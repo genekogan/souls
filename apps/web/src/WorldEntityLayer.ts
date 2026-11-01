@@ -568,7 +568,7 @@ export class WorldEntityLayer {
       // PERF-PASSES: a settled instanced thing (3,263 of Eden 2026's 4,877) keeps its slot, pose and scale; only its interior
       // visibility (its building's cut, far furniture on a phone) can change. The general path below eased its pose to where
       // it already was and ran the hand checks for every one of them each frame.
-      if (d.inst && d.settled && !d.motion && !d.removing && d.obj.userData.cupShown === undefined && !this.overrides.has(id) && !this.held.has(id)) {
+      if (d.inst && d.settled && !d.motion && !d.removing && d.obj.userData.cupShown === undefined && !this.overrides.has(id) && !this.held.has(id) && !this.pours.has(id)) {
         const shown = this.interiorVisible(id, d);
         if (shown !== (d.shown ?? true)) { this.instancer.set(d.inst, id, d.obj.position, d.obj.rotation.y, shown ? d.obj.scale.x : 0, [d.obj.rotation.x, d.obj.rotation.z]); d.shown = shown; }
         continue;
