@@ -89,3 +89,37 @@ test('custom raycasts retain stock behavior after a cache was created',()=>{
  mesh.raycast=()=>{calls++;};assert.equal(score(v,[root]),1);assert.equal(calls,2,'accelerated and stock queries both delegate the custom implementation');
  mesh.raycast=THREE.Mesh.prototype.raycast;assert.equal(score(v,[root]),0);v.reset();geometry.dispose();material.dispose();
 });
+
+test('PERF-PASSES: scores inside one evaluate() share a single bounds pass over the occluders, with the same answers',()=>{
+ const {root,geometry,material}=fixture(),v=new WorldRenderedVisibility(),stats=(v as unknown as {instances:{stats:{boundsPasses:number}}}).instances.stats;
+ const clearPose={position:[10,0,6],target:[10,0,-6],fov:50},clearSubject={anchor:{p:[10,0,-6],yaw:0,points:[[10,0,-6]]}};
+ v.prepareFresh([root]);stats.boundsPasses=0;
+ const separate=[v.score(pose,['anchor'],subject),v.score(clearPose,['anchor'],clearSubject),v.score(pose,['anchor'],subject)];
+ assert.equal(stats.boundsPasses,3,'each score outside an evaluation takes its own pass');
+ v.prepareFresh([root]);stats.boundsPasses=0;
+ const shared=v.evaluate(()=>[v.score(pose,['anchor'],subject),v.score(clearPose,['anchor'],clearSubject),v.score(pose,['anchor'],subject)]);
+ assert.equal(stats.boundsPasses,1,'one pass for the batch');
+ assert.deepEqual(shared,separate);assert.deepEqual(separate,[0,1,0]);
+ // a custom raycast among the objects (no instance caches) still shares the pass
+ const odd=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial());odd.position.set(30,0,0);odd.raycast=()=>{};root.add(odd);
+ v.prepareFresh([root]);stats.boundsPasses=0;
+ assert.deepEqual(v.evaluate(()=>[v.score(pose,['anchor'],subject),v.score(clearPose,['anchor'],clearSubject)]),[0,1]);assert.equal(stats.boundsPasses,1);
+ v.reset();geometry.dispose();material.dispose();
+});
+
+test('PERF-PASSES: object bounds match Sphere.applyMatrix4 for scaled, rotated and non-finite matrices',()=>{
+ const v=new WorldRenderedVisibility(),root=new THREE.Group();
+ const g=new THREE.BoxGeometry(2,1,3);g.computeBoundingSphere();
+ const a=new THREE.Mesh(g,new THREE.MeshBasicMaterial());a.position.set(3,-2,7);a.scale.set(2,.5,1.5);a.rotation.set(.3,1.1,-.7);
+ const b=new THREE.Mesh(g,new THREE.MeshBasicMaterial());b.position.set(Infinity,0,0);
+ root.add(a,b);root.updateMatrixWorld(true);
+ v.prepareFresh([root]);
+ const inner=(v as unknown as {instances:{bounds:Float64Array;boundsObjects:THREE.Object3D[]}}).instances;
+ const [bounds,order]=v.evaluate(()=>[Float64Array.from(inner.bounds),[...inner.boundsObjects]] as const);
+ const expect=new THREE.Sphere().copy(g.boundingSphere!).applyMatrix4(a.matrixWorld);
+ const i=order.indexOf(a);assert.ok(i>=0&&order.indexOf(b)>=0);
+ assert.ok(Math.abs(bounds[i*4]-expect.center.x)<1e-9&&Math.abs(bounds[i*4+1]-expect.center.y)<1e-9&&Math.abs(bounds[i*4+2]-expect.center.z)<1e-9,'centre');
+ assert.ok(Math.abs(bounds[i*4+3]-(expect.radius*(1+1e-6)+1e-6))<1e-9,'radius');
+ assert.ok(Number.isNaN(bounds[order.indexOf(b)*4+3]),'a non-finite matrix: never pre-rejected');
+ v.reset();g.dispose();
+});

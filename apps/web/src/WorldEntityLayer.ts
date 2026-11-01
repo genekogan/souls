@@ -60,10 +60,12 @@ const easeOut = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 const glowOnly = (def: StoredDef) => !!(def.components.light || def.components.lights) && !hasMotion({ ...def, components: { ...def.components, light: undefined, lights: undefined } } as StoredDef);
 /** P1 phones: a frozen thing's subtree is skipped by scene.updateMatrixWorld (its matrices are current; see freeze). */
 function frozenMatrixWorld(this: THREE.Object3D) { /* nothing: thawed before anything in it changes */ }
-const _box = new THREE.Box3(), _projScreen = new THREE.Matrix4();
+const _box = new THREE.Box3(), _projScreen = new THREE.Matrix4(), _sphere = new THREE.Sphere();
 
 type Figure = { holder: THREE.Object3D; wrists: [THREE.Object3D, THREE.Object3D]; knuckles: [THREE.Object3D | null, THREE.Object3D | null] } | { missingAt: number };
-type Drawn = { opening?: OpeningMotion; interior?: { key: number; host: Drawn | null; slot: string }; inst?: string; settled?: boolean; frozen?: THREE.Object3D[]; thaw?: boolean; noFreeze?: boolean; sphere?: THREE.Sphere; offscreen?: boolean; shown?: boolean; obj: THREE.Object3D; from: { p: THREE.Vector3; s: number }; to: { p: THREE.Vector3; s: number }; t0: number; dur: number; removing?: boolean; defHash: string; world?: boolean; motion?: { entity: Entity; def: StoredDef; yaw: number; glowOnly: boolean } };
+type Drawn = { opening?: OpeningMotion; interior?: { key: number; host: Drawn | null; slot: string; floor: number }; inst?: string;
+  /** PERF-PASSES: a motion thing's view sphere (offset from its position, radius; measured once it has settled) for the view test. */
+  mo?: { ox: number; oy: number; oz: number; r: number }; settled?: boolean; frozen?: THREE.Object3D[]; thaw?: boolean; noFreeze?: boolean; sphere?: THREE.Sphere; offscreen?: boolean; shown?: boolean; obj: THREE.Object3D; from: { p: THREE.Vector3; s: number }; to: { p: THREE.Vector3; s: number }; t0: number; dur: number; removing?: boolean; defHash: string; world?: boolean; motion?: { entity: Entity; def: StoredDef; yaw: number; glowOnly: boolean } };
 
 export class WorldEntityLayer {
   readonly group = new THREE.Group();
@@ -534,11 +536,17 @@ export class WorldEntityLayer {
       // G8: a changed moderation veto also takes the whole (server-filtered) picture again
       void fetch(this.api('/v1/world/seq'), { signal: this.signal }).then((r) => (r.ok ? r.json() : null)).then((j: { seq: number; builds?: number; moderation?: { version?: unknown; hidden?: unknown } } | null) => { if (!this.signal?.aborted && j) { if (noteModeration(j.moderation) || j.seq > Math.max(this.seq,this.bufferedSeq)) void this.resync(); else this.sites.checkRevision(j.builds); } }).catch(() => {});
     }
+    const frame = ++this.frame;
     // the entity terrain is the only ground: hide the native backdrop and the native floor planes (a flat
     // plane at y ≈ 0 would cover every pond, river and cut below it)
-    if (baseGround) baseGround.traverse((o) => { if ((o.name === 'outside-ground' || o.name === 'commons-ground' || (o.parent === baseGround && (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry?.type === 'PlaneGeometry')) && !this.hiddenBase.has(o)) { o.visible = false; this.hiddenBase.add(o); } });
-    this.interiorFar.clear();
-    const frame = ++this.frame;
+    // PERF-PASSES: the walk over the native group (~1 ms a frame on Eden 2026, a no-op after the first) runs when the group
+    // or its children change and every 30th frame (a plane added deeper is hidden within half a second)
+    if (baseGround && (baseGround !== this.baseGround || baseGround.children.length !== this.baseChildren || frame % 30 === 0)) {
+      this.baseGround = baseGround; this.baseChildren = baseGround.children.length;
+      baseGround.traverse((o) => { if ((o.name === 'outside-ground' || o.name === 'commons-ground' || (o.parent === baseGround && (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry?.type === 'PlaneGeometry')) && !this.hiddenBase.has(o)) { o.visible = false; this.hiddenBase.add(o); } });
+    }
+    this.hostState.clear();
+    const view = this.viewer;
     // P1 phones: frozen things skip the matrix walk on the promise that what they hang from does not move; if it ever does, thaw all
     if (this.freezeSettled && !this.thingsGroup.matrixWorld.equals(this.frozenUnder)) { this.frozenUnder.copy(this.thingsGroup.matrixWorld); for (const d of this.drawn.values()) if (d.frozen) this.thaw(d); }
     // Entry 34: taps run to their basin unless a held can catches the stream this frame (below); growth and wilt ease
@@ -557,6 +565,14 @@ export class WorldEntityLayer {
       if (d.opening && !stepOpeningMotion(d.opening,nowMs)) d.opening=undefined;
       k++;
       if (d.thaw) this.thaw(d);
+      // PERF-PASSES: a settled instanced thing (3,263 of Eden 2026's 4,877) keeps its slot, pose and scale; only its interior
+      // visibility (its building's cut, far furniture on a phone) can change. The general path below eased its pose to where
+      // it already was and ran the hand checks for every one of them each frame.
+      if (d.inst && d.settled && !d.motion && !d.removing && d.obj.userData.cupShown === undefined && !this.overrides.has(id) && !this.held.has(id)) {
+        const shown = this.interiorVisible(id, d);
+        if (shown !== (d.shown ?? true)) { this.instancer.set(d.inst, id, d.obj.position, d.obj.rotation.y, shown ? d.obj.scale.x : 0, [d.obj.rotation.x, d.obj.rotation.z]); d.shown = shown; }
+        continue;
+      }
       // P1: a settled, still thing (eased in, no motion, not ridden or held) keeps its pose: only its interior visibility
       // can change. ~4,800 entities on Eden 2026; rewriting each pose every frame was most of this loop. On the phone tier a
       // lamp whose only motion is its glow counts as still too, and glows at a quarter of the frame rate (off screen 1/16).
@@ -592,7 +608,10 @@ export class WorldEntityLayer {
       // P1: a hidden thing (a storey its building hides, or far furniture on a phone) is not animated: nobody sees it
       // P7b: things stay at their stored pose under the arrival card (the creatures' first route search was ~0.09 s of a 4x
       // phone's card); nobody sees motion before the card is gone
-      if (d.motion && t >= 1 && !inHand && shown && moving) animate(d.obj, d.motion.entity, d.motion.def, nowMs / 1000, { y: ride ? ride.y : d.to.p.y, yaw: ride && this.overrideYaw.has(id) ? -this.overrideYaw.get(id)! : d.motion.yaw });
+      // PERF-PASSES: a motion thing wholly outside the view (a conservative sphere measured once it settled) is animated every
+      // 2nd frame when it moves about (a route, a creature's rig), every 4th otherwise: motion is a function of world time,
+      // so it is exactly where it would be when it comes into view. In view, held or ridden: every frame, as before.
+      if (d.motion && t >= 1 && !inHand && shown && moving && (!view || ride || this.motionInView(d, view, k + frame))) animate(d.obj, d.motion.entity, d.motion.def, nowMs / 1000, { y: ride ? ride.y : d.to.p.y, yaw: ride && this.overrideYaw.has(id) ? -this.overrideYaw.get(id)! : d.motion.yaw });
       if (ride) { d.obj.position.x = ride.x; d.obj.position.z = ride.z; }
     }
     void dt;
@@ -805,6 +824,45 @@ export class WorldEntityLayer {
   cullPx = 1.25;
   private readonly sunFrustum = new THREE.Frustum();
   readonly cullStats = { culled: 0 };
+  /** PERF-PASSES: the viewer's eye and view frustum (LiveWorld sets it from the camera before `update`; null for a Soul's
+   *  eyes and shots). Motion things wholly outside it are animated less often (see update). */
+  viewer: { eye: THREE.Vector3; frustum: THREE.Frustum } | null = null;
+  /** Last update(): motion things animated this frame / skipped as out of view (diagnostics, tests). */
+  readonly motionStats = { animated: 0, skipped: 0 };
+  private motionInView(d: Drawn, view: { frustum: THREE.Frustum }, phase: number): boolean {
+    let mo = d.mo;
+    if (!mo) {
+      _box.setFromObject(d.obj);
+      const e = d.obj.matrixWorld.elements;
+      if (_box.isEmpty()) mo = { ox: 0, oy: 0, oz: 0, r: 2 };
+      else { const s = _box.getBoundingSphere(_sphere); mo = { ox: s.center.x - e[12], oy: s.center.y - e[13], oz: s.center.z - e[14], r: Math.max(1.5, s.radius * 1.5 + 1) }; }
+      d.mo = mo;
+    }
+    const e = d.obj.matrixWorld.elements;
+    _sphere.center.set(e[12] + mo.ox, e[13] + mo.oy, e[14] + mo.oz); _sphere.radius = mo.r;
+    if (view.frustum.intersectsSphere(_sphere)) { this.motionStats.animated++; return true; }
+    const c = d.motion!.def.components, due = (phase & (c.route || d.obj.userData.rig ? 1 : 3)) === 0;
+    if (due) this.motionStats.animated++; else this.motionStats.skipped++;
+    return due;
+  }
+  /** PERF-PASSES: for an upward ray at (x, z) (the atmosphere's and the sound's cover probe, world-env.ts): the layer's
+   *  groups except the things, and the top-level things that can be above the point: frozen things whose bounding circle
+   *  covers it, and every thing without a sphere (not frozen). The probe raycast the whole layer (~9,000 objects) on every
+   *  frame the camera had moved. */
+  readonly coverCandidates = (x: number, z: number): THREE.Object3D[] => {
+    const out: THREE.Object3D[] = [];
+    for (const g of this.group.children) if (g !== this.thingsGroup) out.push(g);
+    for (const d of this.drawn.values()) {
+      const o = d.obj; if (o.parent !== this.thingsGroup) continue;
+      const s = d.frozen ? d.sphere : undefined;
+      if (s) { const dx = s.center.x - x, dz = s.center.z - z; if (dx * dx + dz * dz > s.radius * s.radius) continue; }
+      out.push(o);
+    }
+    return out;
+  };
+  private baseGround: THREE.Object3D | null = null; private baseChildren = -1;
+  /** Per frame: each interior host's cut and far state, computed once per host, not once per thing in it. */
+  private hostState = new Map<Drawn, { far: boolean; cut: number } | null>();
   private culled: THREE.Object3D[] = [];
   private frustum = new THREE.Frustum();
   /** P1 phones: when set (the phone tier), things inside a building further than `interiorRange` metres from this point
@@ -824,23 +882,26 @@ export class WorldEntityLayer {
     const key = this.seq * 1_048_576 + this.drawn.size;
     let c = d.interior;
     if (!c || c.key !== key || (c.host && !c.host.obj.parent)) {  // (a host redrawn since: find it again)
-      c = { key, host: null, slot: '' };
+      c = { key, host: null, slot: '', floor: 0 };
       let e = this.model.entities.get(id), slot = e?.in.slot;
       for (let depth = 0; e && e.in.parent !== 'world' && depth < 6; depth++) {
         const h = this.drawn.get(e.in.parent);
-        if (h?.obj.userData.interior) { c.host = h; c.slot = slot ?? ''; break; }
+        if (h?.obj.userData.interior) { c.host = h; c.slot = slot ?? ''; c.floor = (h.obj.userData.interior as { floorOf: Record<string, number> }).floorOf[c.slot] ?? 0; break; }
         e = this.model.entities.get(e.in.parent); slot = e?.in.slot;
       }
       d.interior = c;
     }
     if (c.host === null) return true;
-    const hostObj = c.host.obj, host = hostObj.userData.interior as { cut(): number; floorOf: Record<string, number> } | undefined;
-    if (!host) return true;
-    let far = this.interiorFar.get(hostObj);
-    if (far === undefined) { far = !!this.interiorFrom && hostObj.parent === this.thingsGroup && hostObj.position.distanceToSquared(this.interiorFrom) > this.interiorRange * this.interiorRange; this.interiorFar.set(hostObj, far); }
-    return !far && (host.floorOf[c.slot] ?? 0) <= host.cut();
+    // PERF-PASSES: the host's cut and far state once per frame per host (239 buildings hold 3,400 of Eden 2026's things)
+    let hs = this.hostState.get(c.host);
+    if (hs === undefined) {
+      const hostObj = c.host.obj, host = hostObj.userData.interior as { cut(): number; floorOf: Record<string, number> } | undefined;
+      hs = host ? { far: !!this.interiorFrom && hostObj.parent === this.thingsGroup && hostObj.position.distanceToSquared(this.interiorFrom) > this.interiorRange * this.interiorRange, cut: host.cut() } : null;
+      this.hostState.set(c.host, hs);
+    }
+    if (hs === null) return true;
+    return !hs.far && c.floor <= hs.cut;
   }
-  private interiorFar = new Map<THREE.Object3D, boolean>();
 
   /** A box worth looking at first: the placed things if any, else the middle of the world. */
   viewBounds(): [number, number, number, number] {
