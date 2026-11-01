@@ -7,10 +7,11 @@ import {lockPose} from './gen-mesh/vocab-look.ts';
 // Inactive (and invisible) on worlds that have no entity layer.
 import { noteModeration, noteSnapshotVersion } from './moderation-hidden.ts';
 import { godFeature, isFlagDef } from './god-ui/features.ts';
-import { loadSnapshot } from './snapshot-wire.ts';
+import { loadSnapshot, parsePieces } from './snapshot-wire.ts';
+import { SnapshotDecoder, type SnapshotDelta } from './snapshot-delta.ts';
 import * as THREE from 'three';
 import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@sim/ground';
-import { WorldModel, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
+import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
 import { GENERATORS } from '@sim/generators';
 import { meshFor, type MeshCtx } from './gen-mesh/index.ts';
 import { clearBuildingPrefetch, prefetchBuilding } from './gen-mesh/building.mesh.ts';
@@ -256,28 +257,91 @@ export class WorldEntityLayer {
   private lastSeqCheck = 0;
   private bufferedSeq = -1; // received stream head, including native effects awaiting depiction
   private resyncing = false;
-  /** Full resync: refetch the snapshot and redraw everything (no easing). Used after a missed diff. */
+  /** Lane PERF-SNAPSHOT: the snapshot worker (snapshot-delta.ts); its baseline is the first load's bytes. `?snapshotWorker=0`
+   *  parses on the main thread instead (A/B). Ids a socket diff changed since the last snapshot the worker saw, and whether
+   *  one changed the ground: the next delta reports them whatever the worker's baseline says. */
+  private readonly decoder = new SnapshotDecoder(typeof Worker === 'undefined' || (typeof location !== 'undefined' && new URLSearchParams(location.search).get('snapshotWorker') === '0') ? null : () => new Worker(new URL('./snapshot-delta.worker.ts', import.meta.url), { type: 'module' }));
+  private readonly touched = new Set<string>();
+  private groundTouched = false;
+  /** Resync: the snapshot again, as a delta against the last one the worker saw (snapshot-delta.ts), applied over short
+   *  tasks (applyDelta): only what changed is replaced, re-posed or removed; an unchanged thing is never drawn again, so
+   *  on the phone tier it stays frozen and nothing flashes. Used after a missed diff, a seq ahead of ours on the heartbeat,
+   *  or a moderation change (G8: the server-filtered picture removes what was hidden). No easing for things already drawn. */
   async resync() {
     if (this.immutable || this.resyncing || !this.signal) return;
     this.clearSupplementalStairs();
     this.resyncing = true;
     try {
-      const got = await loadSnapshot(this.api('/v1/world/snapshot'), this.signal); if (!got) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version'));
-      const snap = got.snap as unknown as EntitySnapshot; if (this.signal.aborted || snap.contract !== 'world/1') return;
-      ageNow(snap, r);
-      const prevGround = JSON.stringify(this.model?.ground() ?? null);
-      noteUploadSizes(snap.assetBytes);   // CDN4: god uploads may come from assets.eden.art (cdn-assets.ts)
-      this.model = WorldModel.fromSnapshot({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, undefined, undefined, { lazyIndex: true });
-      this.seq = snap.seq;
-      this.sites.reset(snap.builds ?? [], snap.buildsRev ?? 0, snap.now);
-      this.sites.refreshAll(JSON.stringify(snap.ground) !== prevGround);
-      if (JSON.stringify(snap.ground) !== prevGround) { this.rebuildTerrain(); this.rebuildWater(); this.buildHorizon(); }
-      const keep = new Set(snap.entities.map((e) => e.id));
-      for (const id of [...this.drawn.keys()]) if (!keep.has(id)) this.undraw(id);
-      this.model.readPass(() => { for (const e of snap.entities) this.draw(e, !this.drawn.has(e.id)); });
-      this.stats.resyncs++;
-      this.onContextChanged?.();
-    } catch { /* next check retries */ } finally { this.resyncing = false; }
+      const asked = [...this.touched], wantGround = this.groundTouched;
+      const got = await loadSnapshot(this.api('/v1/world/snapshot'), this.signal, false, (pieces) => this.decoder.delta(pieces, asked, wantGround)); if (!got) return;
+      const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version'));
+      const delta = got.snap; if (this.signal.aborted || delta.contract !== 'world/1' || !this.model) return;
+      ageNow(delta, r);
+      await this.applyDelta(delta, new Set(asked), this.signal);
+      for (const id of asked) this.touched.delete(id);
+      if (wantGround) this.groundTouched = false;
+    } catch (e) { this.stats.lastError = `resync: ${String(e)}`; /* next check retries */ } finally { this.resyncing = false; }
+  }
+  /** The last resync's shape, for probes: how much of the snapshot was unchanged and how much was drawn. */
+  lastResync: { seq: number; total: number; unchanged: number; upserts: number; removes: number; drawn: number; full: boolean; stale: boolean } | null = null;
+  /** The resync's apply. The model first (cheap: a few records), then the draws in slices of RESYNC_SLICE_MS with the main
+   *  thread free between them (nextTask), each from the model's record at draw time (a diff applied meanwhile wins). A
+   *  record identical to ours (a diff already applied) is left alone. A snapshot behind what the socket gave us (a diff
+   *  applied while it downloaded) only removes what it lacks and we did not touch (a moderation veto), never steps back. */
+  private async applyDelta(delta: SnapshotDelta, asked: Set<string>, signal: AbortSignal): Promise<void> {
+    const m = this.model!;
+    const stale = delta.seq < this.seq;
+    const last = this.lastResync = { seq: delta.seq, total: delta.total, unchanged: delta.unchanged, upserts: 0, removes: 0, drawn: 0, full: delta.full, stale };
+    const next = delta.full ? new Set(delta.upserts.map((e) => e.id)) : null;
+    const removes = next ? [...m.entities.keys()].filter((id) => !next.has(id)) : delta.removes;
+    let lit = false, changed = false;
+    for (const id of removes) {
+      if ((stale && asked.has(id)) || (!m.entities.has(id) && !this.drawn.has(id))) continue;
+      if (this.lit(id)) lit = true;
+      m.delete(id); this.undraw(id); last.removes++; changed = true;
+    }
+    if (stale) { if (lit) this.lightSeq++; if (changed) this.onContextChanged?.(); return; }
+    noteUploadSizes(delta.assetBytes);   // CDN4: god uploads may come from assets.eden.art (cdn-assets.ts)
+    // defs: new revisions by hash, then every ref to the content the snapshot names (a ref moved back to an older revision too)
+    for (const d of delta.defs) m.defs.set('sha:' + d.hash, d as unknown as StoredDef);
+    const retargeted = new Set<string>();
+    for (const [ref, hash] of new Map(delta.refs)) { const d = m.defs.get('sha:' + hash); if (!d || m.defs.get(ref) === d) continue; retargeted.add(ref); m.defs.set(ref, d); if (ref.startsWith('core-')) m.defs.set('core/' + ref.slice(5), d); }
+    // the ground, the world state (its palette draws the terrain) and the constants
+    const ground = delta.ground as Ground | null, groundChanged = !!ground && JSON.stringify(ground) !== JSON.stringify(m.ground());
+    const palette = (x: unknown) => JSON.stringify((x as { ground?: unknown } | undefined)?.ground ?? null);
+    const paletteChanged = palette(delta.state) !== palette(m.state), stateChanged = JSON.stringify(delta.state) !== JSON.stringify(m.state), constantsChanged = JSON.stringify(delta.constants) !== JSON.stringify(m.constants);
+    if (stateChanged) m.state = delta.state as WorldModel['state'];
+    if (constantsChanged) m.constants = delta.constants as WorldModel['constants'];
+    if (groundChanged) m.terrain = new Terrain(ground!);
+    if (typeof delta.counter === 'number') m.seq = delta.counter;
+    this.seq = delta.seq;
+    this.sites.reset((delta.builds ?? []) as PublicSite[], delta.buildsRev ?? 0, delta.now);
+    // entities: a record that differs from ours is replaced and drawn again (eased only when it is new to the picture)
+    const queue: { id: string; ease: boolean }[] = [], upserted = new Set<string>();
+    for (const e of delta.upserts as unknown as Entity[]) {
+      const cur = m.entities.get(e.id);
+      if (cur && stableStringify(cur) === stableStringify(e)) continue;
+      if (cur) m.delete(e.id);
+      m.insert(e); upserted.add(e.id); last.upserts++; changed = true;
+      if (m.hasIndex) { const def = m.resolvedDef(e.def); if (def?.layer === 'solid') { try { m.index(e.id, m.footprint(e, def)); } catch { /* best effort */ } } }
+      if (this.lit(e.id)) lit = true;
+      queue.push({ id: e.id, ease: !this.drawn.has(e.id) });
+    }
+    // children ride with a moved or replaced parent: the same records, other world poses (no easing, as applyDiff)
+    for (const id of upserted) for (const cid of m.subtree(id).slice(1)) if (!upserted.has(cid)) queue.push({ id: cid, ease: false });
+    // things whose def ref now names other content are drawn from it
+    if (retargeted.size) for (const e of m.entities.values()) if (!upserted.has(e.id) && retargeted.has(e.def)) queue.push({ id: e.id, ease: false });
+    if (lit) this.lightSeq++;
+    if (delta.defs.length || retargeted.size || groundChanged || stateChanged || constantsChanged) changed = true;
+    if (groundChanged) { this.rebuildTerrain(); this.rebuildWater(); this.buildHorizon(); this.sites.refreshAll(true); } else if (paletteChanged) this.rebuildTerrain();
+    const seen = new Set<string>();
+    for (let i = 0; i < queue.length;) {
+      const until = performance.now() + RESYNC_SLICE_MS;
+      m.readPass(() => { while (i < queue.length) { const { id, ease } = queue[i++]; if (seen.has(id)) continue; seen.add(id); const e = m.entities.get(id); if (e) { this.draw(e, ease); last.drawn++; } if (performance.now() >= until) break; } });
+      if (i < queue.length) { await nextTask('user-visible'); if (signal.aborted || this.model !== m) return; }
+    }
+    this.stats.resyncs++;
+    if (changed) this.onContextChanged?.();
   }
 
   /** `onSnapshot`: P7b, called once the snapshot (and its parts) are in, or the attempt failed (early-layer.ts lets the
@@ -289,11 +353,18 @@ export class WorldEntityLayer {
     // lane L3h: the first start takes the snapshot GET index.html sent at page entry (snapshot-prefetch.ts), one request
     // lane W1/O2: the page's edge-cacheable snapshot URL when the server named one (its `now` is then as old as the copy)
     // lane W3: in its wire form (snapshot-wire.ts: defs and ground as cached content-addressed parts)
-    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
+    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true, (pieces) => { const snap = parsePieces(pieces); this.decoder.baselineFrom(pieces); return snap; }); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
       ageNow(snap, r); }} catch { onSnapshot?.(); return; }
     if (signal.aborted || snap.contract !== 'world/1') return;
     noteUploadSizes(snap.assetBytes);   // CDN4
     this.model = WorldModel.fromSnapshot({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, undefined, undefined, { lazyIndex: true });
+    // lane PERF-SNAPSHOT: the snapshot's arrival used to be one main-thread task of ~0.4 s on Eden 2026 (parse, model, the
+    // eager plan, the building prefetch and the whole terrain bake); it is now a few, with the main thread free between
+    // them like the build slices below, and the terrain bake takes the same slices. `building` from here (LiveWorld draws
+    // nothing while it is set; edge diffs wait).
+    this.building = true;
+    try {
+    await nextTask(); if (signal.aborted) return;
     // the loading bar's total: VOCAB-MECH lazy GLBs (gen-mesh/lazy-assets.ts) — only the eager set, nearest the arrival
     // lane PERF: nearest the arrival target (entity-arrival.ts frames the centre of what was built; ?at= for shots), not the origin
     const m0 = this.model, q = new URLSearchParams(location.search), at = q.get('at')?.split(',').map(Number), eyeQ = q.get('eye')?.split(',').map(Number);
@@ -308,13 +379,13 @@ export class WorldEntityLayer {
     // thing's holder are built (~2 s of main thread on a 4x phone) instead of after; each thing's own loadAsset(sha)
     // then joins the same cached promise. The arrival card still waits for them to be drawn.
     for (const sha of eagerShas()) void loadAsset(sha).catch(() => {});
+    await nextTask(); if (signal.aborted || this.model !== m0) return;
     this.seq = snap.seq;
     this.sites.reset(snap.builds ?? [], snap.buildsRev ?? 0, snap.now);
     // lane W1: the first build runs in slices of ~50 ms with the main thread free in between, so the socket's join set,
     // the first takes and the initial downloads proceed while it builds (the arrival card covers it; LiveWorld draws
     // nothing while `building`). Same draws in the same order; edge diffs wait until it is done (applyEdge).
-    this.building = true;
-    try {
+    {
       const m = this.model;
       // lane W1: every building's geometry starts in the building workers now; the slices below wait for one only when
       // they reach it before it is done (building.mesh.ts prefetchBuilding)
@@ -323,10 +394,15 @@ export class WorldEntityLayer {
       // to the workers (fillRest)
       const pending = new Map<string, Promise<void>>();
       const workersLater = progressiveNearM() !== null && new URLSearchParams(location.search).get('nearWorkers') !== '1';
-      if (!workersLater) this.prefetchBuildings(m, snap.entities, pending);
+      if (!workersLater) { this.prefetchBuildings(m, snap.entities, pending); await nextTask(); if (signal.aborted || this.model !== m) return; }
       // P7 (phone): only the sectors near the arrival are baked at full detail before the card; the rest are drawn from a
       // coarse direct sample (no tile bakes, ~1/16 of the height samples) and refined during the fill
-      this.rebuildTerrain(undefined, true, progressiveNearM() === null ? undefined : { at: [[pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]], r: COARSE_BEYOND_M, view });   // lane L3: the first build's playa mottling runs in a worker (terrain-mottle.ts)
+      // lane L3: the first build's playa mottling runs in a worker (terrain-mottle.ts); PERF-SNAPSHOT: a sector per step, in slices
+      let until = performance.now() + BUILD_SLICE_MS;
+      for (const _ of this.terrainSteps(undefined, true, progressiveNearM() === null ? undefined : { at: [[pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]], r: COARSE_BEYOND_M, view })) {
+        if (performance.now() < until) continue;
+        await nextTask(); if (signal.aborted || this.model !== m) return; until = performance.now() + BUILD_SLICE_MS;
+      }
       await nextTask(); if (signal.aborted || this.model !== m) return;
       this.rebuildWater();
       this.buildHorizon();
@@ -351,6 +427,7 @@ export class WorldEntityLayer {
       }
       this.active = true;
       if (this.coarse.size && !this.filling) { this.filling = true; this.fill = this.fillRest(m, all, all.length, pending, signal, false); }   // P7: refine the coarse terrain
+    }
     } finally { this.building = false; if (!this.filling) clearBuildingPrefetch(); }
   }
   private prefetchBuildings(m: WorldModel, entities: readonly Entity[], pending: Map<string, Promise<void>>) {
@@ -410,7 +487,9 @@ export class WorldEntityLayer {
       this.sites.apply(d);
       if(contextChanged&&(d as DiffMsg&{by?:string}).by!=='engine')this.onContextChanged?.();
       for (const def of [...(d.defs ?? []), ...d.diff.defs]) { this.model.defs.set('sha:' + def.hash, def); this.model.defs.set(def.ref, def); if (def.ref.startsWith('core-')) this.model.defs.set('core/' + def.ref.slice(5), def); }
-      for (const id of d.diff.removes) { this.model.delete(id); this.undraw(id, held.has(id) ? SITE_REFINEMENT.removalDelaySeconds : 0); }
+      for (const id of d.diff.removes) { this.touched.add(id); this.model.delete(id); this.undraw(id, held.has(id) ? SITE_REFINEMENT.removalDelaySeconds : 0); }
+      for (const e of d.diff.upserts) this.touched.add(e.id);
+      if (d.ground || d.diff.world) this.groundTouched = true;
       for (const e of d.diff.upserts) { if (this.model.entities.has(e.id)) this.model.delete(e.id); this.model.insert(e); }
       for (const e of d.diff.upserts) { const def = this.model.resolvedDef(e.def); if (def?.layer === 'solid') { try { this.model.index(e.id, this.model.footprint(e, def)); } catch { /* best effort */ } } }
       // a moved parent carries its lamps (their pools move with it)
@@ -917,6 +996,12 @@ export class WorldEntityLayer {
   /** P7: sectors drawn coarse at the arrival, still to be refined (keys `sx,sz`). */
   private coarse = new Set<string>();
   private rebuildTerrain(onlyTiles?: Set<string>, deferMottle = false, fineNear?: { at: [number, number][]; r: number; view?: ViewWedge | null }) {
+    for (const _ of this.terrainSteps(onlyTiles, deferMottle, fineNear)) { /* every sector now */ }
+  }
+  /** The terrain rebuild one sector per step (lane PERF-SNAPSHOT: the first build takes them in slices, start()); the
+   *  steps after the last sector (dropping sectors outside the extent, re-settling things on re-baked tiles) run when the
+   *  generator finishes, so always run it to the end. */
+  private *terrainSteps(onlyTiles?: Set<string>, deferMottle = false, fineNear?: { at: [number, number][]; r: number; view?: ViewWedge | null }): Generator<void> {
     const m = this.model!; const [bx0, bz0, bx1, bz1] = m.ground().extent;   // GOD-ENV: bounds, a rectangle once extended
     const tx0 = Math.floor(bx0 / TILE_M), tx1 = Math.ceil(bx1 / TILE_M) - 1, tz0 = Math.floor(bz0 / TILE_M), tz1 = Math.ceil(bz1 / TILE_M) - 1;
     const sx0 = Math.floor(tx0 / SECTOR_TILES), sx1 = Math.floor(tx1 / SECTOR_TILES), sz0 = Math.floor(tz0 / SECTOR_TILES), sz1 = Math.floor(tz1 / SECTOR_TILES);
@@ -938,6 +1023,7 @@ export class WorldEntityLayer {
       if (fineNear?.view && !onlyTiles && shapeWedgeDistance(fineNear.view, [[X0, Z0], [X1, Z0], [X1, Z1], [X0, Z1]], true) > 0) { const old = this.sectors.get(key); if (old) { this.terrainGroup.remove(old); old.geometry.dispose(); this.sectors.delete(key); } this.coarse.add(key); continue; }
       this.placeSector(key, this.sectorMesh(sx, sz, [tx0, tz0, tx1, tz1], deferMottle, coarse ? COARSE_STEP : TERRAIN_STEP, !!fineNear));
       if (coarse || fineNear) this.coarse.add(key); else this.coarse.delete(key);
+      yield;
     }
     for (const [key, mesh] of this.sectors) if (!wanted.has(key)) { this.terrainGroup.remove(mesh); mesh.geometry.dispose(); this.sectors.delete(key); this.coarse.delete(key); }
     // things settle on the new ground: refresh poses of root entities (no easing)
@@ -1083,6 +1169,9 @@ export class WorldEntityLayer {
     const refinement = ease && !isWorld ? this.sites.refinement(e, m) : null;
     if (existing && existing.defHash === defHash && !existing.removing && !force) {
       if (isWorld) return;
+      // lane PERF-SNAPSHOT: a settled thing asked to stay where it is (a resync, a parent's children re-posed) is left
+      // alone: its pose is not re-eased, so it stays settled (frozen on the phone tier) and nothing flashes
+      if (!ease && existing.settled && existing.to.p.equals(target) && existing.to.s === wp.s && existing.obj.rotation.y === wp.yaw && (!Array.isArray(e.r) || (existing.obj.rotation.x === e.r[1] && existing.obj.rotation.z === e.r[2]))) return;
       existing.obj.rotation.set(0, wp.yaw, 0); applyTilt(existing.obj, e);
       existing.from = refinement ? { p: target.clone(), s: wp.s * refinement.scale } : { p: ease ? existing.obj.position.clone() : target.clone(), s: ease ? existing.obj.scale.x : wp.s };
       existing.to = { p: target, s: wp.s }; existing.t0 = this.now; existing.dur = ease ? refinement?.seconds ?? EASE_IN_S : 0.001; existing.settled = false;
@@ -1161,6 +1250,8 @@ export class WorldEntityLayer {
 }
 
 const BUILD_SLICE_MS = 50;
+/** A resync's draws run during play: short slices, the main thread free between them (applyDelta). */
+const RESYNC_SLICE_MS = 6;
 /** P7: a phone's arrival bakes the terrain sectors within this distance of its eye or target; the rest start coarse. */
 const COARSE_BEYOND_M = 96;
 const COARSE_STEP = 4;
