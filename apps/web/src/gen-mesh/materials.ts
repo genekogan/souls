@@ -45,7 +45,10 @@ export class MaterialLib {
       const glow = opts.glow ?? (look.emissive ? 1 : 0);
       const Mat = opts.surface ? KitSurfaceMaterial : opts.vertexGlow && opts.vertexColors && glow > 0 ? VertexGlowMaterial : THREE.MeshStandardMaterial;
       const mat = new Mat({ color: opts.vertexColors ? '#ffffff' : c, roughness: opts.finish === 'kit-metal' ? 0.32 : look.roughness, metalness: opts.finish === 'kit-metal' ? 0.25 : look.metalness, vertexColors: !!opts.vertexColors, transparent: !!look.transparent, opacity: look.opacity ?? 1, depthWrite: !look.transparent, side: opts.side ?? THREE.FrontSide });
-      if (opts.surface) mat.userData.kitSurface = { ...opts.surface }; // Y1: kept by clones (userData is copied)
+      if (opts.surface) { mat.userData.kitSurface = { ...opts.surface }; // Y1: kept by clones (userData is copied)
+        // PERF-BATCH: the god surface shades in the shape's own metres (the per-vertex edenSurf attribute), so meshes
+        // sharing this material merge without change; only its foliage class seeds a hue from the object origin.
+        mat.userData.batchSafeShader = opts.surface.cls !== 'foliage'; }
       if (glow > 0) {
         mat.emissive = new THREE.Color(opts.vertexGlow && opts.vertexColors ? '#ffffff' : c); mat.emissiveIntensity = glow;
         if (opts.vertexGlow) mat.userData.kitGlowIntensity = glow;

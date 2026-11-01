@@ -5,25 +5,43 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
  * the whole animated scene. Original objects remain the picking/export authority. */
 export type StaticBatchLimits={cellSize:number;maxMeshes:number;maxNodes:number;maxMergedBytes:number;maxWorkingBytes:number;maxMeshesPerBatch:number};
 export const STATIC_BATCH_LIMITS:StaticBatchLimits=Object.freeze({cellSize:24,maxMeshes:8192,maxNodes:65536,maxMergedBytes:32*1024*1024,maxWorkingBytes:64*1024*1024,maxMeshesPerBatch:64});
-export type StaticBatchPreparation={generation:number;signal?:AbortSignal;budgetPolicy?:'partial-cells/1'};
+/** `sharePlainMaterials`: untextured opaque MeshStandardMaterials that differ only in colour share one derived material
+ * per cell, the colour baked into vertex colours (the multiply the shader did; gen-mesh/static-merge.ts does the same per
+ * loaded file). `hideWholeRoots`: a root whose every drawable is batched is hidden whole during the draw (three.js walks one
+ * object instead of its subtree) rather than mesh by mesh. `incremental`: batches whose sources are the same, unchanged meshes as last time keep their merged
+ * geometry (PERF-BATCH: a thaw or a new thing re-merges one cell, not a world). */
+/** PERF-BATCH: how a caller merges meshes whose material patches its shader with per-object inputs: `material(m)` gives
+ * the derived material a merged batch of `m` draws with (null: never merge `m`), `attributes(copy, mesh, toBatch)` adds
+ * to a source geometry copy, still in the source's own frame, whatever that derived material reads per vertex. */
+export type StaticShaderMerge={material(m:THREE.Material):THREE.Material|null;attributes(copy:THREE.BufferGeometry,mesh:THREE.Mesh,toBatch:THREE.Matrix4):void};
+export type StaticBatchPreparation={generation:number;signal?:AbortSignal;budgetPolicy?:'partial-cells/1';sharePlainMaterials?:boolean;incremental?:boolean;hideWholeRoots?:boolean;shaderMerge?:StaticShaderMerge};
 type AttributeStamp={name:string;attribute:THREE.BufferAttribute;version:number};
-type Source={mesh:THREE.Mesh;root:THREE.Object3D;geometry:THREE.BufferGeometry;material:THREE.Material;matrix:number[];attributes:AttributeStamp[];index:THREE.BufferAttribute|null;indexVersion:number;materialVersion:number;layers:number;cast:boolean;receive:boolean;order:number;frustum:boolean;bounds:readonly number[]};
-type Batch={mesh:THREE.Mesh;sources:Source[];bytes:number};
+type Source={mesh:THREE.Mesh;root:THREE.Object3D;geometry:THREE.BufferGeometry;material:THREE.Material;matrix:number[];attributes:AttributeStamp[];index:THREE.BufferAttribute|null;indexVersion:number;materialVersion:number;layers:number;cast:boolean;receive:boolean;order:number;frustum:boolean;bounds:readonly number[];plain:string|null};
+type Batch={mesh:THREE.Mesh;sources:Source[];bytes:number;key:string;okay:boolean};
+type RootInfo={batches:Batch[];whole:boolean};
 const meshBefore=THREE.Object3D.prototype.onBeforeRender,meshAfter=THREE.Object3D.prototype.onAfterRender,shadowBefore=THREE.Object3D.prototype.onBeforeShadow,shadowAfter=THREE.Object3D.prototype.onAfterShadow,materialBefore=THREE.Material.prototype.onBeforeRender,compile=THREE.Material.prototype.onBeforeCompile;
 const visible=(o:THREE.Object3D)=>{for(let p:THREE.Object3D|null=o;p;p=p.parent)if(!p.visible)return false;return true;};
 const within=(o:THREE.Object3D,root:THREE.Object3D)=>{for(let p:THREE.Object3D|null=o;p;p=p.parent)if(p===root)return true;return false;};
 type ValidationWindow={materials:Map<THREE.Material,boolean>;paths:Map<THREE.Object3D,boolean>;geometries:Map<THREE.BufferGeometry,boolean>};
-function materialEligible(m:THREE.Material,cache?:Map<THREE.Material,boolean>){
+// A patched shader merges only when the patch is a class's own (`userData.batchSafeShader`: it reads nothing per
+// object) or when the caller derives a merged variant for it (`shaderMerge`).
+// `userData.batchSafePatch` declares an instance patch that reads nothing per object; `userData.batchTransparent` lets a
+// transparent material merge per cell (its panes blend the same in any order).
+const shaderOkay=(m:THREE.Material,shaderMerge?:StaticShaderMerge)=>m.onBeforeCompile===compile||m.userData.batchSafeShader===true&&m.onBeforeCompile===Object.getPrototypeOf(m).onBeforeCompile||m.userData.batchSafePatch===true||!!shaderMerge?.material(m);
+const opaqueOkay=(m:THREE.Material)=>!m.transparent&&m.opacity===1&&m.depthWrite||m.userData.batchTransparent===true;
+function materialEligible(m:THREE.Material,cache?:Map<THREE.Material,boolean>,shaderMerge?:StaticShaderMerge){
  const known=cache?.get(m);if(known!==undefined)return known;
  const surface=m as THREE.MeshPhysicalMaterial;
- const result=!(m as THREE.ShaderMaterial).isShaderMaterial&&!(m as THREE.RawShaderMaterial).isRawShaderMaterial&&!(surface.transmission>0)&&!surface.displacementMap&&!(surface.normalMap&&surface.normalMapType===THREE.ObjectSpaceNormalMap)&&m.visible&&!m.transparent&&m.opacity===1&&m.depthWrite&&m.depthTest&&m.blending===THREE.NormalBlending&&m.onBeforeCompile===compile&&m.onBeforeRender===materialBefore&&!Object.values(m).some(v=>(v as {isVideoTexture?:boolean}|null)?.isVideoTexture);
+ const result=!(m as THREE.ShaderMaterial).isShaderMaterial&&!(m as THREE.RawShaderMaterial).isRawShaderMaterial&&!(surface.transmission>0)&&!surface.displacementMap&&!(surface.normalMap&&surface.normalMapType===THREE.ObjectSpaceNormalMap)&&m.visible&&opaqueOkay(m)&&m.depthTest&&m.blending===THREE.NormalBlending&&shaderOkay(m,shaderMerge)&&m.onBeforeRender===materialBefore&&!Object.values(m).some(v=>(v as {isVideoTexture?:boolean}|null)?.isVideoTexture);
  cache?.set(m,result);return result;
 }
-function eligible(mesh:THREE.Mesh,root:THREE.Object3D,materials?:Map<THREE.Material,boolean>,pathValidated=false,geometryValidated=false,matrixValidated=false){
- if(mesh.constructor!==THREE.Mesh||mesh.children.length||mesh.raycast!==THREE.Mesh.prototype.raycast||mesh.onBeforeRender!==meshBefore||mesh.onAfterRender!==meshAfter||mesh.onBeforeShadow!==shadowBefore||mesh.onAfterShadow!==shadowAfter||mesh.customDepthMaterial||mesh.customDistanceMaterial||Array.isArray(mesh.material))return false;
+function eligible(mesh:THREE.Mesh,root:THREE.Object3D,materials?:Map<THREE.Material,boolean>,pathValidated=false,geometryValidated=false,matrixValidated=false,shaderMerge?:StaticShaderMerge){
+ // PERF-BATCH: `userData.rangeHook` marks hooks that only ever narrow the draw range (a building's storey cut); the
+ // caller promises, through its trusted revision, that the range is full while the mesh is batched.
+ if(mesh.constructor!==THREE.Mesh||mesh.children.length||mesh.raycast!==THREE.Mesh.prototype.raycast||mesh.userData.rangeHook!==true&&(mesh.onBeforeRender!==meshBefore||mesh.onAfterRender!==meshAfter||mesh.onBeforeShadow!==shadowBefore||mesh.onAfterShadow!==shadowAfter)||mesh.customDepthMaterial||mesh.customDistanceMaterial||Array.isArray(mesh.material))return false;
  if(!pathValidated)for(let p:THREE.Object3D|null=mesh;p;p=p.parent){if(p.animations.length||p.userData.dynamicScreen||p.userData.renderDynamic||p.userData.kind==='context_person')return false;if(p===root)break;}
  const m=mesh.material,g=mesh.geometry;
- if(!materialEligible(m,materials))return false;
+ if(!materialEligible(m,materials,shaderMerge))return false;
  if(!geometryValidated&&!geometryEligible(g))return false;
  return matrixValidated||mesh.matrixWorld.elements.every(Number.isFinite)&&mesh.matrixWorld.determinant()>1e-12;
 }
@@ -41,44 +59,94 @@ function pathCurrent(o:THREE.Object3D,cache:Map<THREE.Object3D,boolean>):boolean
 }
 const geometryBytes=(g:THREE.BufferGeometry)=>Object.values(g.attributes).reduce((n,a)=>n+a.array.byteLength,0)+(g.index?.array.byteLength??0);
 const estimatedBytes=(g:THREE.BufferGeometry)=>Object.values(g.attributes).reduce((n,a)=>n+a.array.byteLength,0)+(g.index?g.index.count*4:0);
+/** A plain merged vertex is position, normal and colour (36 bytes); a 32-bit index per source index or vertex. */
+const estimatedPlainBytes=(g:THREE.BufferGeometry)=>g.attributes.position.count*36+(g.index?g.index.count:g.attributes.position.count)*4;
 const bounds=(g:THREE.BufferGeometry)=>[...(g.boundingBox?[g.boundingBox.min.x,g.boundingBox.min.y,g.boundingBox.min.z,g.boundingBox.max.x,g.boundingBox.max.y,g.boundingBox.max.z]:[]),...(g.boundingSphere?[g.boundingSphere.center.x,g.boundingSphere.center.y,g.boundingSphere.center.z,g.boundingSphere.radius]:[]),g.boundingBox?1:0,g.boundingSphere?1:0];
 function boundsCurrent(g:THREE.BufferGeometry,b:readonly number[]){const box=g.boundingBox,sphere=g.boundingSphere;let i=0;if(!!box!==!!b[b.length-2]||!!sphere!==!!b[b.length-1])return false;if(box&&(box.min.x!==b[i++]||box.min.y!==b[i++]||box.min.z!==b[i++]||box.max.x!==b[i++]||box.max.y!==b[i++]||box.max.z!==b[i++]))return false;return !sphere||sphere.center.x===b[i++]&&sphere.center.y===b[i++]&&sphere.center.z===b[i++]&&sphere.radius===b[i++];}
-function source(mesh:THREE.Mesh,root:THREE.Object3D):Source{return{mesh,root,geometry:mesh.geometry,material:mesh.material as THREE.Material,matrix:[...mesh.matrixWorld.elements],attributes:Object.entries(mesh.geometry.attributes).map(([name,a])=>({name,attribute:a as THREE.BufferAttribute,version:(a as THREE.BufferAttribute).version})),index:mesh.geometry.index,indexVersion:mesh.geometry.index?.version??0,materialVersion:(mesh.material as THREE.Material).version,layers:mesh.layers.mask,cast:mesh.castShadow,receive:mesh.receiveShadow,order:mesh.renderOrder,frustum:mesh.frustumCulled,bounds:bounds(mesh.geometry)};}
-function unchanged(s:Source,scene:THREE.Scene,cache:ValidationWindow){const m=s.mesh,g=m.geometry;
- if(!within(s.root,scene)||!within(m,s.root)||!pathCurrent(m,cache.paths)||!eligible(m,s.root,cache.materials,true,true,true)||g!==s.geometry||m.material!==s.material||s.material.version!==s.materialVersion||m.layers.mask!==s.layers||m.castShadow!==s.cast||m.receiveShadow!==s.receive||m.renderOrder!==s.order||m.frustumCulled!==s.frustum||!m.matrixWorld.elements.every((n,i)=>n===s.matrix[i]))return false;
+function source(mesh:THREE.Mesh,root:THREE.Object3D,plain:string|null):Source{return{mesh,root,geometry:mesh.geometry,material:mesh.material as THREE.Material,matrix:[...mesh.matrixWorld.elements],attributes:Object.entries(mesh.geometry.attributes).map(([name,a])=>({name,attribute:a as THREE.BufferAttribute,version:(a as THREE.BufferAttribute).version})),index:mesh.geometry.index,indexVersion:mesh.geometry.index?.version??0,materialVersion:(mesh.material as THREE.Material).version,layers:mesh.layers.mask,cast:mesh.castShadow,receive:mesh.receiveShadow,order:mesh.renderOrder,frustum:mesh.frustumCulled,bounds:bounds(mesh.geometry),plain};}
+function unchanged(s:Source,scene:THREE.Scene,cache:ValidationWindow,shaderMerge?:StaticShaderMerge){const m=s.mesh,g=m.geometry;
+ if(!within(s.root,scene)||!within(m,s.root)||!pathCurrent(m,cache.paths)||!eligible(m,s.root,cache.materials,true,true,true,shaderMerge)||g!==s.geometry||m.material!==s.material||s.material.version!==s.materialVersion||m.layers.mask!==s.layers||m.castShadow!==s.cast||m.receiveShadow!==s.receive||m.renderOrder!==s.order||m.frustumCulled!==s.frustum||!m.matrixWorld.elements.every((n,i)=>n===s.matrix[i]))return false;
  let geometryCurrent=cache.geometries.get(g);if(geometryCurrent===undefined){geometryCurrent=geometryEligible(g)&&Object.keys(g.attributes).length===s.attributes.length&&s.attributes.every(a=>g.attributes[a.name]===a.attribute&&a.attribute.version===a.version)&&g.index===s.index&&(g.index?.version??0)===s.indexVersion&&boundsCurrent(g,s.bounds);cache.geometries.set(g,geometryCurrent);}return geometryCurrent;
 }
+// PERF-BATCH: `userData.batchSafeShader` on a material says its shader patch reads nothing per object (the kit's
+// surfaces: per-vertex shape metres), so its meshes may merge. A plain material is an untextured, opaque, unclipped MeshStandardMaterial (no subclass: the kit's surface
+// and vertex-glow materials patch the shader). Its signature is everything the shader reads but the colour, which the
+// merged vertices carry instead (white material × vertex colour = colour × 1: the same multiply, in linear space).
+const MAPS=['map','normalMap','roughnessMap','metalnessMap','emissiveMap','aoMap','alphaMap','bumpMap','lightMap','displacementMap','envMap'] as const;
+function plainSignature(m:THREE.Material,cache:Map<THREE.Material,string|null>):string|null{
+ const known=cache.get(m);if(known!==undefined)return known;
+ const s=m as THREE.MeshStandardMaterial;
+ const sig=m.constructor!==THREE.MeshStandardMaterial||s.transparent||s.opacity!==1||!s.depthWrite||s.onBeforeCompile!==compile||s.wireframe||s.alphaTest!==0||s.alphaHash||s.alphaToCoverage||s.clippingPlanes||s.stencilWrite||MAPS.some(k=>s[k])?null:
+  ['plain',s.side,s.shadowSide,s.roughness,s.metalness,s.emissive.r,s.emissive.g,s.emissive.b,s.emissiveIntensity,s.flatShading,s.polygonOffset,s.polygonOffsetFactor,s.polygonOffsetUnits,s.envMapIntensity,s.dithering,s.toneMapped,s.fog,s.depthFunc,s.colorWrite,s.forceSinglePass,s.premultipliedAlpha,s.precision,s.vertexColors?1:0,JSON.stringify(s.defines??null)].join('|');
+ cache.set(m,sig);return sig;
+}
+function derivedPlainMaterial(from:THREE.MeshStandardMaterial){
+ const d=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,side:from.side,shadowSide:from.shadowSide,roughness:from.roughness,metalness:from.metalness,emissive:from.emissive.clone(),emissiveIntensity:from.emissiveIntensity,flatShading:from.flatShading,polygonOffset:from.polygonOffset,polygonOffsetFactor:from.polygonOffsetFactor,polygonOffsetUnits:from.polygonOffsetUnits,envMapIntensity:from.envMapIntensity,dithering:from.dithering,toneMapped:from.toneMapped,fog:from.fog,depthFunc:from.depthFunc,colorWrite:from.colorWrite,forceSinglePass:from.forceSinglePass,premultipliedAlpha:from.premultipliedAlpha,precision:from.precision});
+ d.defines=from.defines?{...from.defines}:d.defines;d.name='Derived static material';return d;
+}
+/** The source geometry with only position, normal (computed when absent) and the material colour × its vertex colour. */
+function plainCopy(s:Source){
+ const g=s.geometry,n=g.attributes.position.count,copy=new THREE.BufferGeometry();
+ copy.setAttribute('position',g.attributes.position.clone());
+ if(g.attributes.normal)copy.setAttribute('normal',g.attributes.normal.clone());else copy.computeVertexNormals();
+ const base=(s.material as THREE.MeshStandardMaterial).color,vc=(s.material as THREE.MeshStandardMaterial).vertexColors?g.attributes.color:undefined,color=new Float32Array(n*3);
+ for(let i=0;i<n;i++){const o=i*3;if(vc&&vc.itemSize>=3){color[o]=base.r*vc.getX(i);color[o+1]=base.g*vc.getY(i);color[o+2]=base.b*vc.getZ(i);}else{color[o]=base.r;color[o+1]=base.g;color[o+2]=base.b;}}
+ copy.setAttribute('color',new THREE.BufferAttribute(color,3));
+ if(g.index)copy.setIndex(g.index.clone());
+ return copy;
+}
+const inert=(o:THREE.Object3D)=>o.constructor===THREE.Object3D||o.constructor===THREE.Group;
 
 export class StaticBatchOwner{
- readonly group=new THREE.Group();private scene:THREE.Scene;private limits:StaticBatchLimits;private batches:Batch[]=[];private roots:THREE.Object3D[]=[];private disposed=false;private rendering=false;private generation:number|null=null;private latestGeneration=-1;private fallback=0;private used=0;private validationCpuMs=0;private restoreCpuMs=0;private prepareCpuMs=0;private sourceNodes=0;private sourceMeshes=0;private preparationError:string|null=null;private budgetSkippedMeshes=0;private budgetSkippedBatches=0;private workingGeometryPeakBytes=0;private callsSaved=0;
+ readonly group=new THREE.Group();private scene:THREE.Scene;private limits:StaticBatchLimits;private batches:Batch[]=[];private roots:THREE.Object3D[]=[];private rootInfo=new Map<THREE.Object3D,RootInfo>();private disposed=false;private rendering=false;private generation:number|null=null;private latestGeneration=-1;private fallback=0;private used=0;private validationCpuMs=0;private restoreCpuMs=0;private prepareCpuMs=0;private sourceNodes=0;private sourceMeshes=0;private preparationError:string|null=null;private budgetSkippedMeshes=0;private budgetSkippedBatches=0;private workingGeometryPeakBytes=0;private callsSaved=0;private validatedRevision:number|null=null;private validatedLastRender=false;private reusedBatches=0;private sourceMaterials=0;private wholeRootsHidden=0;private sharedMaterials=new Map<string,THREE.MeshStandardMaterial>();private shaderMerge:StaticShaderMerge|undefined;
  constructor(scene:THREE.Scene,limits:Partial<StaticBatchLimits>={}){this.scene=scene;this.limits={...STATIC_BATCH_LIMITS,...limits};if(Object.values(this.limits).some(n=>!Number.isFinite(n)||n<=0)||!Number.isInteger(this.limits.maxMeshes)||!Number.isInteger(this.limits.maxNodes)||!Number.isInteger(this.limits.maxMeshesPerBatch)||this.limits.maxWorkingBytes<this.limits.maxMergedBytes)throw Error('static-batches.invalid-limits');this.group.name='Derived static render batches';this.group.visible=false;scene.add(this.group);}
- private clear(){for(const batch of this.batches){batch.mesh.geometry.dispose();batch.mesh.removeFromParent();}this.batches=[];this.roots=[];this.generation=null;this.callsSaved=this.used=this.fallback=0;}
+ private release(batches:Batch[]){for(const batch of batches){batch.mesh.geometry.dispose();batch.mesh.removeFromParent();}}
+ private clear(){this.release(this.batches);this.batches=[];this.roots=[];this.rootInfo.clear();this.generation=null;this.validatedRevision=null;this.callsSaved=this.used=this.fallback=0;}
  reset(){if(this.rendering)throw Error('static-batches.reset-during-render');this.clear();}
- async prepare(roots:readonly THREE.Object3D[],{generation,signal,budgetPolicy}:StaticBatchPreparation){
-  if(this.disposed||this.rendering)throw Error('static-batches.unavailable');if(budgetPolicy!==undefined&&budgetPolicy!=='partial-cells/1')throw Error('static-batches.invalid-budget-policy');if(!Number.isSafeInteger(generation)||generation<0)throw Error('static-batches.invalid-generation');if(generation<this.latestGeneration)throw Error('static-batches.obsolete-generation');if(signal?.aborted)throw new DOMException('Obsolete render preparation','AbortError');this.latestGeneration=generation;this.clear();this.budgetSkippedMeshes=this.budgetSkippedBatches=this.workingGeometryPeakBytes=0;
-  const prepareStart=performance.now(),options=this.limits,buckets=new Map<string,Source[]>(),seen=new Set<THREE.Object3D>();let nodes=0,meshes=0,retained=0;this.preparationError=null;this.scene.updateMatrixWorld(true);
+ async prepare(roots:readonly THREE.Object3D[],{generation,signal,budgetPolicy,sharePlainMaterials=false,incremental=false,hideWholeRoots=false,shaderMerge}:StaticBatchPreparation){
+  if(this.disposed||this.rendering)throw Error('static-batches.unavailable');if(budgetPolicy!==undefined&&budgetPolicy!=='partial-cells/1')throw Error('static-batches.invalid-budget-policy');if(!Number.isSafeInteger(generation)||generation<0)throw Error('static-batches.invalid-generation');if(generation<this.latestGeneration)throw Error('static-batches.obsolete-generation');if(signal?.aborted)throw new DOMException('Obsolete render preparation','AbortError');this.latestGeneration=generation;
+  const previous=incremental?new Map(this.batches.map(b=>[b.key,b])):new Map<string,Batch>();if(incremental){this.batches=[];this.roots=[];this.rootInfo.clear();this.generation=null;this.validatedRevision=null;this.callsSaved=this.used=this.fallback=0;}else this.clear();
+  this.budgetSkippedMeshes=this.budgetSkippedBatches=this.workingGeometryPeakBytes=this.reusedBatches=0;this.shaderMerge=shaderMerge;
+  const prepareStart=performance.now(),options=this.limits,buckets=new Map<string,Source[]>(),seen=new Set<THREE.Object3D>(),signatures=new Map<THREE.Material,string|null>(),materials=new Set<THREE.Material>();let nodes=0,meshes=0,retained=0;this.preparationError=null;this.scene.updateMatrixWorld(true);
   try{
-   for(const root of new Set(roots)){if(root===this.scene||!within(root,this.scene))throw Error('static-batches.unregistered-root');root.updateWorldMatrix(true,true);root.traverse(o=>{if(seen.has(o))return;seen.add(o);if(++nodes>options.maxNodes)throw Error('static-batches.node-budget');if(!(o as THREE.Mesh).isMesh||!visible(o)||!eligible(o as THREE.Mesh,root))return;if(++meshes>options.maxMeshes)throw Error('static-batches.mesh-budget');const m=o as THREE.Mesh,g=m.geometry,attributes=Object.entries(g.attributes).map(([name,a])=>`${name}:${a.itemSize}:${a.normalized}:${a.array.constructor.name}`).sort().join(','),p=new THREE.Vector3().setFromMatrixPosition(m.matrixWorld),key=[(m.material as THREE.Material).uuid,Math.floor(p.x/options.cellSize),Math.floor(p.z/options.cellSize),attributes,!!g.index,m.layers.mask,m.castShadow,m.receiveShadow,m.renderOrder,m.frustumCulled].join('|');const bucket=buckets.get(key)??[];bucket.push(source(m,root));buckets.set(key,bucket);});}
-   const inverseScene=this.scene.matrixWorld.clone().invert(),candidates:{part:Source[];estimate:number;order:number}[]=[];
+   for(const root of new Set(roots)){if(root===this.scene||!within(root,this.scene))throw Error('static-batches.unregistered-root');root.updateWorldMatrix(true,true);root.traverse(o=>{if(seen.has(o))return;seen.add(o);if(++nodes>options.maxNodes)throw Error('static-batches.node-budget');if(!(o as THREE.Mesh).isMesh||!visible(o)||!eligible(o as THREE.Mesh,root,undefined,false,false,false,shaderMerge))return;if(++meshes>options.maxMeshes)throw Error('static-batches.mesh-budget');const m=o as THREE.Mesh,g=m.geometry,material=m.material as THREE.Material,signature=sharePlainMaterials?plainSignature(material,signatures):null,plain=signature!==null,attributes=plain?'plain':Object.entries(g.attributes).map(([name,a])=>`${name}:${a.itemSize}:${a.normalized}:${a.array.constructor.name}`).sort().join(','),p=new THREE.Vector3().setFromMatrixPosition(m.matrixWorld),key=[signature??material.uuid,Math.floor(p.x/options.cellSize),Math.floor(p.z/options.cellSize),attributes,!!g.index,m.layers.mask,m.castShadow,m.receiveShadow,m.renderOrder,m.frustumCulled].join('|');materials.add(material);const bucket=buckets.get(key)??[];bucket.push(source(m,root,signature));buckets.set(key,bucket);});}
+   const inverseScene=this.scene.matrixWorld.clone().invert(),candidates:{part:Source[];estimate:number;order:number;key:string}[]=[];
    // Bucket insertion follows source traversal, spatial cell, material and draw
    // state. Keep this stable order for equal benefit/byte ratios; UUIDs never
    // determine prioritization. Strict preparation retains its original order.
-   for(const sources of buckets.values())for(let i=0;i<sources.length;i+=options.maxMeshesPerBatch){const part=sources.slice(i,i+options.maxMeshesPerBatch);if(part.length>=2)candidates.push({part,estimate:part.reduce((n,s)=>n+estimatedBytes(s.geometry),0),order:candidates.length});}
+   for(const [bucketKey,sources] of buckets)for(let i=0;i<sources.length;i+=options.maxMeshesPerBatch){const part=sources.slice(i,i+options.maxMeshesPerBatch);if(part.length>=2)candidates.push({part,estimate:part.reduce((n,s)=>n+(s.plain?estimatedPlainBytes(s.geometry):estimatedBytes(s.geometry)),0),order:candidates.length,key:bucketKey+'#'+part.map(s=>s.mesh.uuid).join(',')});}
    if(budgetPolicy==='partial-cells/1')candidates.sort((a,b)=>(b.part.length-1)/Math.max(1,b.estimate)-(a.part.length-1)/Math.max(1,a.estimate)||a.order-b.order);
-   for(const {part,estimate} of candidates){if(signal?.aborted)throw new DOMException('Obsolete render preparation','AbortError');if(retained+estimate>options.maxMergedBytes||retained+2*estimate>options.maxWorkingBytes){if(budgetPolicy==='partial-cells/1'){this.budgetSkippedMeshes+=part.length;this.budgetSkippedBatches++;continue;}throw Error('static-batches.geometry-budget');}this.workingGeometryPeakBytes=Math.max(this.workingGeometryPeakBytes,retained+2*estimate);const copies:THREE.BufferGeometry[]=[];let merged:THREE.BufferGeometry|null=null;
-    try{for(const s of part){const copy=s.geometry.clone();copies.push(copy);copy.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inverseScene,s.mesh.matrixWorld));}merged=mergeGeometries(copies,false);}finally{for(const g of copies)g.dispose();}
-    if(!merged)continue;const bytes=geometryBytes(merged);if(retained+bytes>options.maxMergedBytes){merged.dispose();throw Error('static-batches.geometry-budget');}merged.computeBoundingBox();merged.computeBoundingSphere();const first=part[0],mesh=new THREE.Mesh(merged,first.material);mesh.name='Derived static cell';mesh.castShadow=first.cast;mesh.receiveShadow=first.receive;mesh.renderOrder=first.order;mesh.frustumCulled=first.frustum;mesh.layers.mask=first.layers;this.group.add(mesh);this.batches.push({mesh,sources:part,bytes});retained+=bytes;
+   const window:ValidationWindow={materials:new Map(),paths:new Map(),geometries:new Map()};
+   for(const {part,estimate,key} of candidates){if(signal?.aborted)throw new DOMException('Obsolete render preparation','AbortError');
+    const old=previous.get(key);if(old&&old.sources.every(s=>unchanged(s,this.scene,window,shaderMerge))){previous.delete(key);this.batches.push(old);retained+=old.bytes;this.reusedBatches++;continue;}
+    if(retained+estimate>options.maxMergedBytes||retained+2*estimate>options.maxWorkingBytes){if(budgetPolicy==='partial-cells/1'){this.budgetSkippedMeshes+=part.length;this.budgetSkippedBatches++;continue;}throw Error('static-batches.geometry-budget');}this.workingGeometryPeakBytes=Math.max(this.workingGeometryPeakBytes,retained+2*estimate);const copies:THREE.BufferGeometry[]=[];let merged:THREE.BufferGeometry|null=null;const plain=part[0].plain;
+    const derived=plain?null:shaderMerge?.material(part[0].material)??null;
+    try{for(const s of part){const copy=plain?plainCopy(s):s.geometry.clone();copies.push(copy);const toBatch=new THREE.Matrix4().multiplyMatrices(inverseScene,s.mesh.matrixWorld);if(derived)shaderMerge!.attributes(copy,s.mesh,toBatch);copy.applyMatrix4(toBatch);}merged=mergeGeometries(copies,false);}finally{for(const g of copies)g.dispose();}
+    if(!merged)continue;const bytes=geometryBytes(merged);if(retained+bytes>options.maxMergedBytes){merged.dispose();throw Error('static-batches.geometry-budget');}merged.computeBoundingBox();merged.computeBoundingSphere();const first=part[0];let material=derived??first.material;if(plain){let shared=this.sharedMaterials.get(plain);if(!shared){shared=derivedPlainMaterial(first.material as THREE.MeshStandardMaterial);this.sharedMaterials.set(plain,shared);}material=shared;}const mesh=new THREE.Mesh(merged,material);mesh.name='Derived static cell';mesh.castShadow=first.cast;mesh.receiveShadow=first.receive;mesh.renderOrder=first.order;mesh.frustumCulled=first.frustum;mesh.layers.mask=first.layers;this.group.add(mesh);this.batches.push({mesh,sources:part,bytes,key,okay:false});retained+=bytes;
    }
-   this.roots=[...new Set(roots)];this.generation=generation;return{generation,status:'ready' as const};
-  }catch(error){this.clear();this.preparationError=error instanceof Error?error.message:'static-batches.prepare-failed';throw error;}finally{this.prepareCpuMs=performance.now()-prepareStart;this.sourceNodes=nodes;this.sourceMeshes=meshes;}
+   this.release([...previous.values()]);previous.clear();
+   // PERF-BATCH: a root whose every drawable is in a batch is hidden whole while its batches draw, so three.js walks
+   // one object instead of its subtree (a lamp with a light, or a thing with a sprite, hides mesh by mesh).
+   const batched=new Set<THREE.Mesh>();for(const batch of this.batches){for(const s of batch.sources){batched.add(s.mesh);const info=this.rootInfo.get(s.root)??{batches:[],whole:true};if(!info.batches.includes(batch))info.batches.push(batch);this.rootInfo.set(s.root,info);}}
+   for(const [root,info] of this.rootInfo){const walk=(o:THREE.Object3D):boolean=>{if(!o.visible)return true;if(!inert(o)&&!batched.has(o as THREE.Mesh))return false;for(const c of o.children)if(!walk(c))return false;return true;};info.whole=hideWholeRoots&&walk(root);}
+   this.roots=[...new Set(roots)];this.generation=generation;this.sourceMaterials=materials.size;return{generation,status:'ready' as const};
+  }catch(error){this.release([...previous.values()]);this.clear();this.preparationError=error instanceof Error?error.message:'static-batches.prepare-failed';throw error;}finally{this.prepareCpuMs=performance.now()-prepareStart;this.sourceNodes=nodes;this.sourceMeshes=meshes;}
  }
  /** Semantic originals stay unchanged outside this synchronous draw window.
-  * Any changed/detached/dynamic/partly-hidden bucket uses original meshes. */
- withRender<T>(draw:()=>T):T{
-  if(this.disposed||!this.batches.length)return draw();if(this.rendering)throw Error('static-batches.nested-render');this.rendering=true;const start=performance.now(),hidden:THREE.Mesh[]=[],cache:ValidationWindow={materials:new Map(),paths:new Map(),geometries:new Map()};this.used=this.fallback=this.callsSaved=0;
-  try{for(const root of this.roots)root.updateWorldMatrix(true,true);for(const batch of this.batches){const okay=batch.sources.every(s=>unchanged(s,this.scene,cache));batch.mesh.visible=okay;if(!okay){this.fallback++;continue;}this.used++;this.callsSaved+=batch.sources.length-1;for(const s of batch.sources){s.mesh.visible=false;hidden.push(s.mesh);}}this.group.visible=this.used>0;this.validationCpuMs=performance.now()-start;return draw();}
-  finally{const restoreStart=performance.now();for(const mesh of hidden)mesh.visible=true;this.group.visible=false;this.rendering=false;this.restoreCpuMs=performance.now()-restoreStart;}
+  * Any changed/detached/dynamic/partly-hidden bucket uses original meshes.
+  * With `revision` (PERF-BATCH), sources are validated only when it differs from the last validated one: the caller
+  * promises to change it before anything under its roots moves, hides, shows, is added or removed. */
+ withRender<T>(draw:()=>T,revision?:number):T{
+  if(this.disposed||!this.batches.length)return draw();if(this.rendering)throw Error('static-batches.nested-render');this.rendering=true;const start=performance.now(),hidden:THREE.Object3D[]=[];this.used=this.fallback=this.callsSaved=this.wholeRootsHidden=0;
+  try{
+   const validate=revision===undefined||revision!==this.validatedRevision;this.validatedLastRender=validate;
+   if(validate){const cache:ValidationWindow={materials:new Map(),paths:new Map(),geometries:new Map()};for(const root of this.roots)root.updateWorldMatrix(true,true);for(const batch of this.batches)batch.okay=batch.sources.every(s=>unchanged(s,this.scene,cache,this.shaderMerge));this.validatedRevision=revision??null;}
+   const whole=new Set<THREE.Object3D>();for(const [root,info] of this.rootInfo)if(info.whole&&info.batches.every(b=>b.okay))whole.add(root);
+   for(const batch of this.batches){batch.mesh.visible=batch.okay;if(!batch.okay){this.fallback++;continue;}this.used++;this.callsSaved+=batch.sources.length-1;for(const s of batch.sources){if(whole.has(s.root))continue;s.mesh.visible=false;hidden.push(s.mesh);}}
+   for(const root of whole){root.visible=false;hidden.push(root);}this.wholeRootsHidden=whole.size;
+   this.group.visible=this.used>0;this.validationCpuMs=performance.now()-start;return draw();}
+  finally{const restoreStart=performance.now();for(const o of hidden)o.visible=true;this.group.visible=false;this.rendering=false;this.restoreCpuMs=performance.now()-restoreStart;}
  }
- inspection(){return{generation:this.generation,batches:this.batches.length,batchedMeshes:this.batches.reduce((n,b)=>n+b.sources.length,0),callsSavedLastRender:this.callsSaved,mergedBytes:this.batches.reduce((n,b)=>n+b.bytes,0),usedLastRender:this.used,fallbackLastRender:this.fallback,roots:this.roots.length,sourceNodes:this.sourceNodes,sourceMeshes:this.sourceMeshes,budgetSkippedMeshes:this.budgetSkippedMeshes,budgetSkippedBatches:this.budgetSkippedBatches,workingGeometryPeakBytes:this.workingGeometryPeakBytes,prepareCpuMs:this.prepareCpuMs,validationCpuMs:this.validationCpuMs,restoreCpuMs:this.restoreCpuMs,preparationError:this.preparationError};}
- dispose(){if(this.rendering)throw Error('static-batches.dispose-during-render');if(this.disposed)return;this.disposed=true;this.clear();this.group.removeFromParent();}
+ inspection(){return{generation:this.generation,batches:this.batches.length,batchedMeshes:this.batches.reduce((n,b)=>n+b.sources.length,0),callsSavedLastRender:this.callsSaved,mergedBytes:this.batches.reduce((n,b)=>n+b.bytes,0),usedLastRender:this.used,fallbackLastRender:this.fallback,roots:this.roots.length,sourceNodes:this.sourceNodes,sourceMeshes:this.sourceMeshes,budgetSkippedMeshes:this.budgetSkippedMeshes,budgetSkippedBatches:this.budgetSkippedBatches,workingGeometryPeakBytes:this.workingGeometryPeakBytes,prepareCpuMs:this.prepareCpuMs,validationCpuMs:this.validationCpuMs,restoreCpuMs:this.restoreCpuMs,preparationError:this.preparationError,validatedLastRender:this.validatedLastRender,reusedBatches:this.reusedBatches,sourceMaterials:this.sourceMaterials,batchMaterials:new Set(this.batches.map(b=>b.mesh.material)).size,wholeRootsHidden:this.wholeRootsHidden};}
+ dispose(){if(this.rendering)throw Error('static-batches.dispose-during-render');if(this.disposed)return;this.disposed=true;this.clear();for(const m of this.sharedMaterials.values())m.dispose();this.sharedMaterials.clear();this.group.removeFromParent();}
 }

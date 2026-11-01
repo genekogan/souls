@@ -33,3 +33,44 @@ test('transparent, video, custom shader/raycast/dynamic/animated/morph and paren
 test('new material or mutable render properties fall back without changing shadow/layer policy',async()=>{for(const change of[(f:ReturnType<typeof fixture>)=>{f.a.material=new THREE.MeshStandardMaterial();},f=>{f.material.transparent=true;},f=>{f.a.castShadow=false;},f=>{f.a.layers.set(3);},f=>{f.a.renderOrder=2;}]){const f=fixture(),owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1});change(f);const mask=f.a.layers.mask,cast=f.a.castShadow;owner.withRender(()=>assert.equal(owner.group.visible,false));assert.equal(f.a.layers.mask,mask);assert.equal(f.a.castShadow,cast);owner.dispose();}});
 test('spatial cells preserve useful frustum culling and bake relative to transformed scene',async()=>{const f=fixture();f.scene.position.set(10,0,0);const c=f.a.clone(),d=f.b.clone();c.position.set(100,0,0);d.position.set(103,0,0);f.root.add(c,d);const owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1});assert.equal(owner.inspection().batches,2);const camera=new THREE.PerspectiveCamera(45,1,.1,20);camera.position.set(10,0,8);camera.lookAt(10,0,0);camera.updateMatrixWorld();const frustum=new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));owner.withRender(()=>{f.scene.updateMatrixWorld(true);assert.equal(owner.group.children.filter(m=>frustum.intersectsObject(m)).length,1);const first=owner.group.children[0] as THREE.Mesh;const box=first.geometry.boundingBox!;assert.ok(Math.abs(box.min.x+.5)<1e-6,'scene translation not applied twice');});owner.dispose();});
 test('budgets/obsolete generations/abort/nested render refuse and replacement disposes only derived geometry',async()=>{const f=fixture();let originals=0,materials=0;f.a.geometry.addEventListener('dispose',()=>originals++);f.material.addEventListener('dispose',()=>materials++);const owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:2});let disposed=0;(owner.group.children[0] as THREE.Mesh).geometry.addEventListener('dispose',()=>disposed++);await owner.prepare([f.root],{generation:3});assert.equal(disposed,1);await assert.rejects(owner.prepare([f.root],{generation:1}),/obsolete/);const abort=new AbortController();abort.abort();await assert.rejects(owner.prepare([f.root],{generation:4,signal:abort.signal}),/Obsolete/);assert.throws(()=>owner.withRender(()=>owner.withRender(()=>{})),/nested/);assert.equal(f.a.visible,true);owner.dispose();owner.dispose();assert.equal(owner.group.parent,null);assert.equal(originals,0);assert.equal(materials,0);for(const limits of[{maxMergedBytes:100,maxWorkingBytes:200},{maxNodes:1},{maxMeshes:1}]){const o=new StaticBatchOwner(f.scene,limits);await assert.rejects(o.prepare([f.root],{generation:1}),/budget/);assert.equal(o.inspection().batches,0);assert.equal(f.a.visible,true);o.dispose();}});
+// PERF-BATCH: trusted revisions, incremental re-preparation, plain-material sharing and whole-root hiding (entity worlds).
+test('a trusted revision skips validation until it changes; a change under the roots is caught at the next revision',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1});
+ owner.withRender(()=>assert.equal(f.a.visible,false),7);assert.equal(owner.inspection().validatedLastRender,true);
+ owner.withRender(()=>assert.equal(f.a.visible,false),7);assert.equal(owner.inspection().validatedLastRender,false);
+ f.root.userData.renderDynamic=true;owner.withRender(()=>assert.equal(f.a.visible,false),7);  // trusted: not looked at
+ owner.withRender(()=>assert.equal(f.a.visible,true),8);assert.equal(owner.inspection().validatedLastRender,true);assert.equal(owner.inspection().fallbackLastRender,1);
+ delete f.root.userData.renderDynamic;owner.withRender(()=>assert.equal(f.a.visible,false),9);
+ owner.withRender(()=>assert.equal(f.a.visible,false));assert.equal(owner.inspection().validatedLastRender,true);  // no revision: every draw validates
+ owner.dispose();
+});
+test('incremental preparation keeps the merged geometry of unchanged cells and re-merges only changed ones',async()=>{
+ const f=fixture(),c=f.a.clone(),d=f.b.clone();c.position.x=100;d.position.x=103;f.root.add(c,d);const owner=new StaticBatchOwner(f.scene);
+ await owner.prepare([f.root],{generation:1,incremental:true});assert.equal(owner.inspection().batches,2);assert.equal(owner.inspection().reusedBatches,0);
+ const kept=owner.group.children.map(m=>(m as THREE.Mesh).geometry);let disposed=0;for(const g of kept)g.addEventListener('dispose',()=>disposed++);
+ await owner.prepare([f.root],{generation:2,incremental:true});assert.equal(owner.inspection().reusedBatches,2);assert.equal(disposed,0);assert.deepEqual(owner.group.children.map(m=>(m as THREE.Mesh).geometry),kept);
+ d.position.x=104;f.scene.updateMatrixWorld(true);await owner.prepare([f.root],{generation:3,incremental:true});assert.equal(owner.inspection().reusedBatches,1);assert.equal(disposed,1);assert.equal(owner.inspection().batches,2);
+ const e=f.a.clone();e.position.x=101;f.root.add(e);await owner.prepare([f.root],{generation:4,incremental:true});assert.equal(owner.inspection().reusedBatches,1);assert.equal(owner.inspection().batchedMeshes,5);
+ await owner.prepare([f.root],{generation:5});assert.equal(owner.inspection().reusedBatches,0);assert.equal(disposed,2);owner.dispose();
+});
+test('plain materials of different colours share one derived vertex-coloured material; textured ones keep theirs',async()=>{
+ const f=fixture(),red=new THREE.MeshStandardMaterial({color:0xff0000,roughness:.5}),blue=new THREE.MeshStandardMaterial({color:0x0000ff,roughness:.5}),rough=new THREE.MeshStandardMaterial({color:0x0000ff,roughness:.9}),mapped=new THREE.MeshStandardMaterial({color:0x00ff00,map:new THREE.Texture()});
+ f.a.material=red;f.b.material=blue;const c=f.a.clone();c.material=rough;c.position.x=6;const d=f.a.clone();d.material=mapped;d.position.x=9;const e=d.clone();e.position.x=12;f.root.add(c,d,e);
+ const owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,sharePlainMaterials:true});
+ const i=owner.inspection();assert.equal(i.batches,2);assert.equal(i.batchedMeshes,4);assert.equal(i.sourceMaterials,4);assert.equal(i.batchMaterials,2);
+ const plain=owner.group.children.find(m=>((m as THREE.Mesh).material as THREE.Material).name==='Derived static material') as THREE.Mesh,m=plain.material as THREE.MeshStandardMaterial;
+ assert.equal(m.vertexColors,true);assert.equal(m.color.getHex(),0xffffff);assert.equal(m.roughness,.5);assert.deepEqual(Object.keys(plain.geometry.attributes).sort(),['color','normal','position']);
+ const col=plain.geometry.attributes.color,n=f.a.geometry.attributes.position.count;assert.deepEqual([col.getX(0),col.getY(0),col.getZ(0)],[1,0,0]);assert.deepEqual([col.getX(n),col.getY(n),col.getZ(n)],[0,0,1]);
+ assert.equal(plain.geometry.attributes.position.count,2*n);
+ const textured=owner.group.children.find(x=>x!==plain) as THREE.Mesh;assert.equal(textured.material,mapped);
+ owner.withRender(()=>{assert.equal(f.a.visible,false);assert.equal(f.b.visible,false);assert.equal(c.visible,true);assert.equal(d.visible,false);});
+ await owner.prepare([f.root],{generation:2});assert.equal(owner.inspection().batches,1);assert.equal(owner.inspection().batchMaterials,1);owner.dispose();assert.equal(owner.inspection().batches,0);
+});
+test('a root whose drawables are all batched hides whole during the draw; one with a light hides mesh by mesh',async()=>{
+ const f=fixture(),lit=new THREE.Group(),la=f.a.clone(),lb=f.b.clone(),light=new THREE.PointLight();lit.add(la,lb,light);lit.position.x=50;f.scene.add(lit);
+ const owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root,lit],{generation:1,hideWholeRoots:true});assert.equal(owner.inspection().batches,2);
+ owner.withRender(()=>{assert.equal(f.root.visible,false);assert.equal(f.a.visible,true);assert.equal(lit.visible,true);assert.equal(la.visible,false);assert.equal(light.visible,true);assert.equal(owner.inspection().wholeRootsHidden,1);});
+ assert.equal(f.root.visible,true);assert.equal(la.visible,true);
+ f.b.visible=false;owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(f.a.visible,true);assert.equal(owner.inspection().fallbackLastRender,1);});f.b.visible=true;
+ await owner.prepare([f.root,lit],{generation:2});owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(f.a.visible,false);});owner.dispose();
+});

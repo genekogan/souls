@@ -212,9 +212,13 @@ function attachInteriorView(root: THREE.Object3D, L: BuildingLayout) {
   for (let k = 1; k < L.floors; k++) floorOf[`floor-${k}`] = k;
   for (const r of L.rooms) floorOf[r.id] = r.floor;
   for (const s of buildingFacadeSlots(L, Object.keys(floorOf))) if (s.floor !== undefined) floorOf[s.id] = s.floor;
-  root.userData.interior = { cut: () => hideAbove, floorOf };
+  // PERF-BATCH: `decide(camera)` runs the cut decision for a camera and says whether it hides anything; the static batcher
+  // (StaticBatchOwner) merges a building's storey meshes only while nothing is cut, and the entity layer re-decides every
+  // frame before the draw (WorldEntityLayer.decideCuts). `rangeHook` on each mesh: its hooks only ever narrow the draw range.
+  root.userData.interior = { cut: () => hideAbove, floorOf, decide: (camera: THREE.Camera) => { decide(camera); return hideRoof || hideAbove !== Infinity || keepSlab !== -1; } };
   inner.traverse((o) => {
     const mesh = o as THREE.Mesh; if (!mesh.isMesh) return;
+    mesh.userData.rangeHook = true;
     const gname = mesh.parent?.name ?? '';
     const slab = gname.startsWith('slab-'), level = gname === 'roof' ? Infinity : Number(gname.replace(/^(level|slab)-/, ''));
     const hidden = () => (level === Infinity ? hideRoof : slab ? level !== keepSlab && (level > hideAbove || (level === L.floors && hideRoof)) : level > hideAbove);

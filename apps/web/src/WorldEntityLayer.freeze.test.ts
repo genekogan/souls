@@ -162,3 +162,20 @@ test('interior storeys: a thing on a storey above the building\'s cut is hidden;
   assert.equal(up.obj.visible, false);
   void layer;
 });
+
+// PERF-BATCH: the static batcher's roots and revision (LiveWorld re-prepares entity batches when the revision changes).
+test('static batch roots are the frozen still things; freeze, thaw, hide and show move the revision', async () => {
+  const { layer, put, frame } = await layerFor(true);
+  const a = put('a', [5, 0, 0]), b = put('b', [9, 0, 0]);
+  const inner = layer as unknown as { staticRevision: number };
+  assert.deepEqual(layer.staticBatchRoots(), []);
+  const r0 = inner.staticRevision; frame();
+  assert.ok(a.d().frozen && b.d().frozen); assert.ok(inner.staticRevision > r0);
+  assert.deepEqual(layer.staticBatchRoots(), [a.obj, b.obj]);
+  const r1 = inner.staticRevision; frame(); assert.equal(inner.staticRevision, r1);  // nothing changed: nothing to re-prepare
+  b.d().settled = false; frame();  // b moves: thawed and marked dynamic, out of the roots until it freezes again
+  assert.ok(!b.d().frozen); assert.equal(b.obj.userData.renderDynamic, true); assert.ok(inner.staticRevision > r1);
+  assert.deepEqual(layer.staticBatchRoots(), [a.obj]);
+  b.d().settled = true; frame(); assert.ok(b.d().frozen); assert.equal(b.obj.userData.renderDynamic, undefined);
+  assert.deepEqual(layer.staticBatchRoots(), [a.obj, b.obj]);
+});
