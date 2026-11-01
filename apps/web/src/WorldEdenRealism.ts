@@ -25,6 +25,9 @@ varying vec2 vEdenKS;
 attribute float edenFace;
 varying float vEdenFace;
 #endif
+#ifdef EDEN_MERGED
+attribute vec4 edenMerged;
+#endif
 `;
 const VERTEX_BODY=/* glsl */`
 {
@@ -35,8 +38,16 @@ const VERTEX_BODY=/* glsl */`
  #ifdef USE_INSTANCING
   edenP=instanceMatrix*edenP;edenOrigin=instanceMatrix*edenOrigin;edenNrm=mat3(instanceMatrix)*edenNrm;
  #endif
+ #ifdef EDEN_MERGED
+  // PERF-BATCH: a merged static batch carries each source object's origin and local height per vertex (mergedRealismAttributes)
+  edenOrigin=vec4(edenMerged.xyz,1.);
+ #endif
  vEdenW=(modelMatrix*edenP).xyz;vEdenO=(modelMatrix*edenOrigin).xyz;vEdenN=normalize(mat3(modelMatrix)*edenNrm);
- vEdenH=clamp(transformed.y/max(edenRealism.w,1e-3),0.,1.);
+ #ifdef EDEN_MERGED
+  vEdenH=clamp(edenMerged.w/max(edenRealism.w,1e-3),0.,1.);
+ #else
+  vEdenH=clamp(transformed.y/max(edenRealism.w,1e-3),0.,1.);
+ #endif
  #ifdef EDEN_FACADE
   vEdenFace=edenFace;
  #endif
@@ -544,6 +555,24 @@ export function realismNamesOf(material:THREE.Material){return patched.get(mater
 export function realismClassOf(material:THREE.Material):RealismClass|null{const p=patched.get(material);return p&&material.onBeforeCompile!==p.onBeforeCompile?p.cls:null;}
 
 /** Restore pristine compile hooks on given materials (e.g. before a surface study or wind takes ownership); they stay opted out. */
+// PERF-BATCH: the realism shader seeds each object's tone from its origin (vEdenO) and reads its local height
+// (vEdenH), both lost when geometries merge into one scene-space mesh. A merged batch draws with this derived copy of
+// the material (same patch and uniform objects, EDEN_MERGED defined) and carries origin + local y per vertex, so every
+// source pixel shades exactly as its original did. Null for a material the realism pass has not installed.
+const mergedVariants=new WeakMap<THREE.Material,{material:THREE.MeshStandardMaterial;from:THREE.Material['onBeforeCompile']}>();
+export function mergedRealismMaterial(m:THREE.Material):THREE.Material|null{
+ const p=patched.get(m);if(!p||m.onBeforeCompile===p.onBeforeCompile||!(m instanceof THREE.MeshStandardMaterial))return null;
+ const known=mergedVariants.get(m);if(known&&known.from===m.onBeforeCompile)return known.material;
+ const c=m.clone();c.onBeforeCompile=m.onBeforeCompile;c.customProgramCacheKey=()=>m.customProgramCacheKey.call(m)+'|merged';c.defines={...(c.defines??{}),EDEN_MERGED:''};c.name=(m.name||'realism')+' merged';c.needsUpdate=true;
+ mergedVariants.set(m,{material:c,from:m.onBeforeCompile});return c;
+}
+/** Per-vertex `edenMerged` = (source object origin in the batch's frame, source local y). Call before the copy is
+ *  transformed into that frame; `toSceneLocal` is the source mesh's world matrix in the batch's frame. */
+export function mergedRealismAttributes(copy:THREE.BufferGeometry,_mesh:THREE.Mesh,toSceneLocal:THREE.Matrix4){
+ const pos=copy.attributes.position,n=pos.count,out=new Float32Array(n*4),e=toSceneLocal.elements,ox=e[12],oy=e[13],oz=e[14];
+ for(let i=0;i<n;i++){const o=i*4;out[o]=ox;out[o+1]=oy;out[o+2]=oz;out[o+3]=pos.getY(i);}
+ copy.setAttribute('edenMerged',new THREE.BufferAttribute(out,4));
+}
 export function releaseWorldRealism(materials:Iterable<THREE.Material>){
  for(const m of materials){const p=patched.get(m);if(!p)continue;m.onBeforeCompile=p.onBeforeCompile;m.customProgramCacheKey=p.key;m.needsUpdate=true;patched.set(m,{cls:'generic',onBeforeCompile:p.onBeforeCompile,key:p.key});}
 }
