@@ -13,6 +13,7 @@
 //
 //   node tools/score/render-playlist.mjs [--pieces a,b] [--out .local/score-audio] [--seconds 240] [--rate 44100]
 //                                         [--format m4a] [--bitrate 160k] [--concurrency 4] [--force] [--dry-run]
+//                                         [--index <file>]   (another index, for trials; default the committed one)
 //
 // Writes <out>/<sha256>.<ext> per piece, <out>/renders.json (every render's stats) and the index the client imports,
 // apps/web/src/score/playlist/playlist-audio.json (piece id -> url, seconds, seed, bytes, sha256), with the CDN URL the
@@ -31,6 +32,8 @@ export const PLAYLIST_DIR = resolve(root, 'apps/web/src/score/playlist');
 export const INDEX = resolve(PLAYLIST_DIR, 'playlist-audio.json');
 export const CDN = 'https://assets.eden.art';
 export const TRACK_S = 240;
+/** Encoded peak ceiling (linear): -1 dBFS, the engine's own limiter threshold. */
+export const PEAK_TARGET = Math.pow(10, -1 / 20);
 const TONE_UMD = resolve(root, 'apps/web/node_modules/tone/build/Tone.js');
 const FORMATS = {
   m4a: { ext: 'm4a', type: 'audio/mp4', args: (codec, br) => ['-c:a', codec, '-b:a', br, '-movflags', '+faststart'] },
@@ -57,6 +60,11 @@ window.__render = async (id, seed, seconds, sampleRate) => {
   if (!Sim.pieces.find((p) => p.id === id)) (await loadPiece(id)).default(Sim, Tone);
   const piece = Sim.pieces.find((p) => p.id === id);
   if (!piece) throw Error('no piece ' + id);
+  // the seed fixes the notes. The engine's humanise jitter and Tone's noise draw from Math.random, seeded here too
+  // (mulberry32; the vendored engine is untouched). Renders are still not bit-identical run to run: Tone's Reverb builds
+  // its impulse in a nested async offline render whose draws interleave with the piece's (measured: same peak and RMS,
+  // decoded samples differ from ~1 s). The file, not the seed, is the record; its sha256 is in the index.
+  let rs = seed >>> 0; Math.random = () => { rs = (rs + 0x6d2b79f5) >>> 0; let t = Math.imul(rs ^ (rs >>> 15), 1 | rs); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const t0 = performance.now();
   const tb = await Sim.renderOffline(piece, { seconds, seed, sampleRate, channels: 2 });
   const buf = tb.get(), n = buf.length, ch = buf.numberOfChannels;
@@ -102,9 +110,10 @@ export function ffmpegCodec(format) {
   if (format === 'mp3') return has('libmp3lame') ? 'libmp3lame' : null;
   return null;
 }
-function encode(wav, out, format, codec, bitrate) {
+/** `gain` < 1 scales a render whose float peak overshoots the limiter down to PEAK_TARGET before encoding. */
+function encode(wav, out, format, codec, bitrate, gain = 1) {
   const f = FORMATS[format];
-  const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', wav, ...f.args(codec, bitrate), out], { encoding: 'utf8' });
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', wav, ...(gain < 1 ? ['-af', `volume=${gain.toFixed(6)}`] : []), ...f.args(codec, bitrate), out], { encoding: 'utf8' });
   if (r.status !== 0) throw Error(`ffmpeg failed for ${wav}: ${r.stderr}`);
 }
 
@@ -119,14 +128,14 @@ export function indexText(index) {
   return `${JSON.stringify(head).slice(0, -1)},"pieces":{\n${ids.map((id, i) => `${JSON.stringify(id)}:${JSON.stringify(index.pieces[id])}${i < ids.length - 1 ? ',' : ''}`).join('\n')}\n}}\n`;
 }
 
-async function renderAll({ pieces, out, seconds, rate, format, bitrate, concurrency, force, dryRun, log = console.log }) {
+async function renderAll({ pieces, out, seconds, rate, format, bitrate, concurrency, force, dryRun, indexFile = INDEX, log = console.log }) {
   const { PLAYLIST } = await import(pathToFileURL(resolve(PLAYLIST_DIR, 'engine.mjs')).href);
   const ids = pieces ?? [...PLAYLIST];
   for (const id of ids) if (!PLAYLIST.includes(id)) throw Error(`not on the playlist: ${id}`);
   const f = FORMATS[format]; if (!f) throw Error(`--format takes ${Object.keys(FORMATS).join('|')}`);
   const codec = ffmpegCodec(format); if (!codec) throw Error(`ffmpeg with an encoder for ${format} is needed (which ffmpeg; ffmpeg -encoders)`);
   mkdirSync(out, { recursive: true });
-  const index = readIndex(), renders = existsSync(join(out, 'renders.json')) ? JSON.parse(readFileSync(join(out, 'renders.json'), 'utf8')) : {};
+  const index = readIndex(indexFile), renders = existsSync(join(out, 'renders.json')) ? JSON.parse(readFileSync(join(out, 'renders.json'), 'utf8')) : {};
   const todo = ids.filter((id) => { const e = index.pieces[id]; return force || !e || e.seconds !== seconds || !existsSync(join(out, `${e.sha256}.${f.ext}`)); });
   log(`render: ${todo.length} of ${ids.length} pieces, ${seconds} s at ${rate} Hz, ${format} (${codec} ${bitrate}), ${concurrency} at a time -> ${out}`);
   if (dryRun || !todo.length) return { index, renders, rendered: [] };
@@ -150,24 +159,28 @@ async function renderAll({ pieces, out, seconds, rate, format, bitrate, concurre
         const wav = join(out, `${id}.wav`);
         await (await download).saveAs(wav);
         const peakDb = db(stats.peak), rmsDb = db(stats.rms);
-        if (stats.peak >= 1) throw Error(`${id}: render clips (peak ${peakDb} dBFS)`);
+        // Tone.Limiter(-1) is a fast compressor, not a brick wall: some pieces overshoot 0 dBFS in the float render (live
+        // playback clips them at the output). Those are scaled to PEAK_TARGET before encoding, so the file plays clean; a
+        // render far over is a broken piece.
+        if (stats.peak >= 4) throw Error(`${id}: render clips (peak ${peakDb} dBFS)`);
+        const gain = stats.peak > PEAK_TARGET ? PEAK_TARGET / stats.peak : 1, gainDb = gain < 1 ? +(20 * Math.log10(gain)).toFixed(2) : 0;
         if (stats.rms < 1e-3) throw Error(`${id}: render is silent (rms ${rmsDb} dBFS)`);
         if (stats.lastSoundS == null || stats.lastSoundS < seconds * 0.5) throw Error(`${id}: sound ends at ${stats.lastSoundS} s of ${seconds}`);
         const tmp = join(out, `${id}.tmp.${f.ext}`);
-        encode(wav, tmp, format, codec, bitrate);
+        encode(wav, tmp, format, codec, bitrate, gain);
         const sha = sha256File(tmp), file = join(out, `${sha}.${f.ext}`);
         if (existsSync(file)) rmSync(tmp); else spawnSync('mv', [tmp, file]);
         rmSync(wav);
         const bytes = statSync(file).size;
         const entry = { url: cdnUrl(sha, f.ext), seconds, seed, bytes, sha256: sha };
         index.pieces[id] = entry;
-        renders[id] = { ...entry, title: stats.title, bpm: stats.bpm, peakDb, rmsDb, firstSoundS: stats.firstSoundS, lastSoundS: stats.lastSoundS, renderMs: stats.renderMs, wallMs: Date.now() - t0, codec, bitrate, sampleRate: rate, at: new Date().toISOString(), pageErrors: errors.slice(0, 5) };
+        renders[id] = { ...entry, title: stats.title, bpm: stats.bpm, peakDb, rmsDb, gainDb, firstSoundS: stats.firstSoundS, lastSoundS: stats.lastSoundS, renderMs: stats.renderMs, wallMs: Date.now() - t0, codec, bitrate, sampleRate: rate, at: new Date().toISOString(), pageErrors: errors.slice(0, 5) };
         rendered.push(id);
-        log(`  ${id}: peak ${peakDb} dBFS, rms ${rmsDb} dBFS, sound ${stats.firstSoundS}–${stats.lastSoundS} s, render ${(stats.renderMs / 1000).toFixed(1)} s, ${(bytes / 1e6).toFixed(2)} MB ${sha.slice(0, 12)}…${errors.length ? ` (${errors.length} page errors)` : ''}`);
+        log(`  ${id}: peak ${peakDb} dBFS${gain < 1 ? ` (scaled ${gainDb} dB)` : ''}, rms ${rmsDb} dBFS, sound ${stats.firstSoundS}–${stats.lastSoundS} s, render ${(stats.renderMs / 1000).toFixed(1)} s, ${(bytes / 1e6).toFixed(2)} MB ${sha.slice(0, 12)}…${errors.length ? ` (${errors.length} page errors)` : ''}`);
         // the index and stats after every piece, so an interrupted run keeps what it has
         index.generated = new Date().toISOString(); index.format = f.type; index.sampleRate = rate; index.channels = 2; index.seconds = seconds;
         index.note = 'Generated by tools/score/render-playlist.mjs: every playlist piece rendered offline by the score engine (one seed each) and encoded; the player (gen-mesh/music.ts) streams these instead of synthesising. Upload: tools/score/publish-playlist-audio.mjs.';
-        writeFileSync(INDEX, indexText(index)); writeFileSync(join(out, 'renders.json'), JSON.stringify(renders, null, 1) + '\n');
+        writeFileSync(indexFile, indexText(index)); writeFileSync(join(out, 'renders.json'), JSON.stringify(renders, null, 1) + '\n');
       } catch (e) { failures.push({ id, error: String(e).slice(0, 300), pageErrors: errors.slice(0, 5) }); log(`  ${id}: FAILED ${String(e).slice(0, 200)}`); }
       finally { await ctx.close().catch(() => {}); }
     }
@@ -176,7 +189,7 @@ async function renderAll({ pieces, out, seconds, rate, format, bitrate, concurre
   await browser.close(); server.close();
   if (failures.length) { log(`render: ${failures.length} failed`); for (const f of failures) log(`  ${f.id}: ${f.error}${f.pageErrors.length ? `\n    ${f.pageErrors.join('\n    ')}` : ''}`); }
   const total = Object.values(index.pieces).reduce((s, e) => s + e.bytes, 0);
-  log(`render: ${rendered.length} rendered, index ${INDEX} (${Object.keys(index.pieces).length} pieces, ${(total / 1e6).toFixed(1)} MB)`);
+  log(`render: ${rendered.length} rendered, index ${indexFile} (${Object.keys(index.pieces).length} pieces, ${(total / 1e6).toFixed(1)} MB)`);
   if (failures.length) process.exitCode = 1;
   return { index, renders, rendered, failures };
 }
@@ -186,7 +199,7 @@ async function main() {
   await renderAll({
     pieces: value('--pieces') ? value('--pieces').split(',') : null, out: resolve(value('--out', '.local/score-audio')),
     seconds: +value('--seconds', TRACK_S), rate: +value('--rate', 44100), format: value('--format', 'm4a'), bitrate: value('--bitrate', '160k'),
-    concurrency: +value('--concurrency', 4), force: args.includes('--force'), dryRun: args.includes('--dry-run'),
+    concurrency: +value('--concurrency', 4), force: args.includes('--force'), dryRun: args.includes('--dry-run'), indexFile: resolve(value('--index', INDEX)),
   });
 }
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main().catch((e) => { console.error(e.message); process.exitCode = 1; });

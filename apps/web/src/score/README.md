@@ -67,7 +67,11 @@ node tools/score/publish-playlist-audio.mjs --verify                     # publi
 Each piece renders once with a deterministic seed (FNV-1a of its id), 240 s at 44.1 kHz stereo, through the engine's
 master compressor and limiter, is encoded with ffmpeg (AAC 160 kb/s in an `.m4a` with the moov up front; `--format
 opus|mp3` for the others) and is named by its SHA-256, the CDN's content-addressed key (`docs/operations/cdn.md`). The
-renderer records peak and RMS per piece in `.local/score-audio/renders.json` and fails a clipping or silent render. A
+renderer records peak and RMS per piece in `.local/score-audio/renders.json`. Tone's limiter is not a brick wall, so
+about half the pieces overshoot 0 dBFS in the float render (live playback clips them at the output); those are scaled to
+-1 dBFS before encoding (`gainDb` in the stats). A render more than 12 dB over, silent, or ending early fails. The seed
+fixes the notes and `Math.random` is seeded too, but Tone's reverb impulses make renders differ slightly run to run: the
+file is the record, its sha256 is in the index. `--index <file>` writes another index (trials). A
 piece already in the index whose file is in `.local/score-audio` is skipped unless `--force`. Commit the index with the
 code once `--verify` passes; the files are inert until a build names them.
 
