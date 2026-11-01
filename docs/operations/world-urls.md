@@ -68,7 +68,8 @@ node tools/cdn/cdn-walk.mjs .local/root-cdn-walk https://souls.game/w/eden/ \
   https://souls.game/w/mars-college-2026/ https://souls.game/w/mars-college-2027/
 ```
 
-`ship.sh` still describes a combined legacy-plus-prefixed-host release. Do not run that default legacy ceremony on a
-root-only host; use `release.sh` and the root host's runsheet with explicit probe/walk URLs. If using prebuilt web
+`ship.sh --topology root-only` selects the production-only ceremony with canonical probe/walk URLs. The old
+combined ceremony requires explicit `--topology dual-prefix`. See [release](../release.md) for the required mirror
+rehearsal and review before enabling workflow automation. If using prebuilt web
 artifacts, `modal-web-build.py --base /` produces the production build with a root base; its receipt is checked against
 `release.sh`'s source SHA, build ID and base. Never substitute a prefixed web artifact for a root build.

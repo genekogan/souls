@@ -51,7 +51,7 @@ function setup() {
   }
   writeFileSync(env.STUB_LOG, '');
   const run = (args, extra = {}) => {
-    const r = spawnSync('bash', [SHIP, '--label', '999', ...args], { env: { ...env, ...extra }, encoding: 'utf8', timeout: 60_000 });
+    const r = spawnSync('bash', [SHIP, '--topology', 'dual-prefix', '--label', '999', ...args], { env: { ...env, ...extra }, encoding: 'utf8', timeout: 60_000 });
     return { code: r.status, out: r.stdout + r.stderr, calls: readFileSync(env.STUB_LOG, 'utf8').split('\n').filter(Boolean) };
   };
   return { t, env, run, out: join(t, 'out/999') };
@@ -133,7 +133,7 @@ test('a failed production release stops before legacy, stops the probe, prints r
   assert.match(r.out, /live now: release\.sh production failed: activate\.sh hands back to we-prevprod0000/);
   assert.match(r.out, /rollback \(only if you decide to/);
   assert.match(r.out, /legacy: +\S+ root@stub-host bash \/srv\/sim-old\/releases\/we-prevprod0000-root\/tools\/world-launcher\/deploy\/activate\.sh legacy/);
-  assert.match(r.out, /after fixing: \S+ship\.sh --label 999 --from release$/m);
+  assert.match(r.out, /after fixing: \S+ship\.sh --label 999 --topology dual-prefix --out \S+ --from release$/m);
   assert.ok(existsSync(join(s.out, 'probe/stop')), 'the probe was stopped');
   assert.ok(!existsSync(s.env.SHIP_LEGACY_RELEASE_FILE), 'LEGACY-RELEASE untouched');
   assert.match(readFileSync(join(s.out, 'STEPS.txt'), 'utf8'), /^release STOPPED /m);
@@ -246,4 +246,92 @@ test('unknown or duplicate arrival exclusions fail before any release action', (
     const s = setup(), r = s.run(exclusions.flatMap(x => ['--exclude-world', x]));
     assert.equal(r.code, 2, r.out); assert.deepEqual(r.calls, []);
   }
+});
+
+const ROOT_STEPS = ['preflight', 'backup', 'probe-start', 'release', 'released', 'probe-check', 'health', 'walks', 'poster', 'stall', 'cdn-walk'];
+const rootArgs = ['--topology', 'root-only'];
+
+test('topology must be explicit; conflicting build base fails before any commands', () => {
+  const s = setup();
+  const omitted = spawnSync('bash', [SHIP, '--label', '999', '--dry-run'], { env: s.env, encoding: 'utf8' });
+  assert.equal(omitted.status, 2);
+  assert.match(omitted.stdout, /no implicit legacy deployment/);
+  for (const [args, extra] of [[rootArgs, { SIM_WORLDS_BASE: '/worlds' }], [[], { SIM_WORLDS_BASE: '/' }], [['--topology', 'typo'], {}]]) {
+    const r = s.run(args, extra); assert.equal(r.code, 2, r.out); assert.deepEqual(r.calls, []);
+  }
+});
+
+test('root-only dry run contains no legacy operations and covers canonical URLs', () => {
+  const s = setup(), r = s.run([...rootArgs, '--dry-run']);
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual([...r.out.matchAll(/^== \[\d+\/11\] ([a-z-]+):/gm)].map(m => m[1]), ROOT_STEPS);
+  assert.doesNotMatch(r.out, /legacy|sim-old|\/worlds\/w\//);
+  assert.match(r.out, /web base \/; health https:\/\/sim.stub\/__sim\/healthz/);
+  assert.match(r.out, /desktop 3 worlds dpr 1\+2, phone 3 worlds; 9 arrivals/);
+  for (const slug of ['eden', 'mars-college-2026', 'mars-college-2027']) assert.match(r.out, new RegExp(`/w/${slug}/`));
+  assert.deepEqual(r.calls, []); assert.ok(!existsSync(s.out));
+});
+
+test('root-only executes production only, with root health and a production-only rollback', () => {
+  const s = setup(), r = s.run(rootArgs);
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.calls.join('\n'), /legacy|sim-old|\/worlds\/w\//);
+  assert.ok(r.calls.some(c => c.startsWith('release\tproduction --reload')));
+  assert.ok(r.calls.some(c => /health.mjs https:\/\/sim.stub we-0123456789ab/.test(c)));
+  assert.match(readFileSync(join(s.out, 'ROLLBACK.txt'), 'utf8'), /^production:/);
+  assert.doesNotMatch(readFileSync(join(s.out, 'ROLLBACK.txt'), 'utf8'), /legacy/);
+  assert.ok(!existsSync(s.env.SHIP_LEGACY_RELEASE_FILE));
+  assert.deepEqual([...readFileSync(join(s.out, 'STEPS.txt'), 'utf8').matchAll(/^(\S+) ok /gm)].map(m => m[1]), ROOT_STEPS);
+  assert.match(r.out, /SHIPPED we-0123456789ab: every root-only step passed/);
+});
+
+test('root-only backup and activation failures stop without a legacy action or false shipped result', () => {
+  for (const failure of ['pre-r999 production', 'release production']) {
+    const s = setup(), r = s.run([...rootArgs, '--no-probe'], { STUB_FAIL: failure });
+    assert.equal(r.code, 1, r.out); assert.doesNotMatch(r.out, /SHIPPED/);
+    assert.doesNotMatch(r.calls.join('\n'), /legacy|sim-old/);
+    assert.doesNotMatch(readFileSync(join(s.out, 'ROLLBACK.txt'), 'utf8'), /legacy/);
+    const skip = s.run([...rootArgs, '--no-probe', '--from', 'walks']);
+    assert.equal(skip.code, 2, skip.out); assert.match(skip.out, /resume refused: prerequisite/);
+  }
+});
+
+test('root-only failed health retains live-state report and resumes without reactivation', () => {
+  const s = setup(), failed = s.run([...rootArgs, '--no-probe'], { STUB_FAIL: 'health.mjs' });
+  assert.equal(failed.code, 1, failed.out);
+  assert.match(failed.out, /live now: production LIVE on we-0123456789ab/);
+  assert.match(failed.out, /--topology root-only --out \S+ --from health --no-probe/);
+  writeFileSync(s.env.STUB_LOG, '');
+  const resumed = s.run([...rootArgs, '--no-probe', '--from', 'health']);
+  assert.equal(resumed.code, 0, resumed.out);
+  assert.ok(resumed.calls[0].includes('health.mjs'));
+  assert.ok(resumed.calls.every(c => !/^(ssh|scp|release)\t/.test(c)), 'verification-only resume has no remote mutations');
+});
+
+test('root-only resume refuses a missing run and changes of build, target, origin, or coverage', () => {
+  const s = setup();
+  assert.equal(s.run([...rootArgs, '--from', 'walks']).code, 2);
+  assert.equal(s.run([...rootArgs, '--no-probe']).code, 0);
+  for (const extra of [{ SHIP_BUILD: 'we-111111111111' }, { SIM_WORLDS_HOST: 'other@stub-host' }, { SHIP_ORIGIN: 'https://another.stub' }]) {
+    writeFileSync(s.env.STUB_LOG, '');
+    const r = s.run([...rootArgs, '--no-probe', '--from', 'walks'], extra);
+    assert.equal(r.code, 2, r.out); assert.match(r.out, /mismatched RUN.identity/); assert.deepEqual(r.calls, []);
+  }
+  writeFileSync(s.env.STUB_LOG, '');
+  const r = s.run([...rootArgs, '--no-probe', '--from', 'walks', '--exclude-world', 'eden']);
+  assert.equal(r.code, 2, r.out); assert.deepEqual(r.calls, []);
+});
+
+test('root-only resume requires the latest prerequisite verdict and refreshes health', () => {
+  const s = setup(); assert.equal(s.run([...rootArgs, '--no-probe']).code, 0);
+  writeFileSync(s.env.STUB_LOG, '');
+  const badHealth = s.run([...rootArgs, '--no-probe', '--from', 'walks'], { STUB_FAIL: 'health.mjs' });
+  assert.equal(badHealth.code, 1, badHealth.out);
+  assert.equal(badHealth.calls.length, 1); assert.match(badHealth.calls[0], /health.mjs/);
+  assert.doesNotMatch(badHealth.out, /SHIPPED/);
+  writeFileSync(s.env.STUB_LOG, '');
+  const oldPass = s.run([...rootArgs, '--no-probe', '--from', 'walks']);
+  assert.equal(oldPass.code, 2, oldPass.out);
+  assert.match(oldPass.out, /prerequisite health has not passed/);
+  assert.deepEqual(oldPass.calls, []);
 });
