@@ -29,6 +29,7 @@ export class WorldLightPeople {
   setWaterHistory(_takes: readonly Take[]) {}
   setFixtureDrawReplacement(_group: THREE.Group | null, _ids?: readonly string[]) {}
   setSpeaking(_ids: ReadonlySet<string>) {}
+  setViewer(_v: unknown) {}
   bodyObject(_id: string): THREE.Object3D | null { return null; }
   obstructionRoots(): readonly THREE.Object3D[] { return []; }
   pickingRoots(): readonly THREE.Object3D[] { return []; }

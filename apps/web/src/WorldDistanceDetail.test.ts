@@ -13,7 +13,7 @@ test('quality tier: phones get the phone tier, desktops and overrides as asked',
   assert.equal(pickQualityTier({search:'?quality=phone',coarsePointer:false,screen:[2560,1440]}).tier,'phone');
   const full=pickQualityTier({search:'',coarsePointer:false,screen:[1440,900]});
   assert.deepEqual([full.maxPixelRatio,full.shadowMapSize],[2,2048]);   // desktop: same pixels and shadows
-  assert.ok(full.detail&&full.detail.minRadiusPx<=0.5,'desktop: only sub-pixel distance detail');
+  assert.ok(full.detail&&full.detail.minRadiusPx<=1,'desktop: distance detail under one CSS pixel (PERF-EDEN)');
   assert.equal(pickQualityTier({search:'?desktopDetail=0',coarsePointer:false,screen:[1440,900]}).detail,null);
 });
 
@@ -55,6 +55,9 @@ test('far bodies stay drawn but stop casting shadows on phones; near bodies and 
   const phone=new WorldDistanceDetail(PHONE_DETAIL);phone.apply(s.root,s.camera,844);
   assert.equal(s.body.visible,true);assert.equal(s.body.castShadow,false);assert.equal(nearBody.castShadow,true);assert.equal(phone.stats.bodyShadowsSkipped,1);
   phone.restore();assert.equal(s.body.castShadow,true,'restored after the frame');
+  // PERF-EDEN: the desktop tier too stops a body 300 m away from casting (beyond 60 m); the release-3.1 tier (?desktopDetail=1) keeps every body's shadow
   const desk=new WorldDistanceDetail(pickQualityTier({search:'',coarsePointer:false,screen:[1440,900]}).detail!);desk.apply(s.root,s.camera,900);
-  assert.equal(s.body.castShadow,true);assert.equal(desk.stats.bodyShadowsSkipped,0);desk.restore();
+  assert.equal(s.body.castShadow,false);assert.equal(nearBody.castShadow,true);assert.equal(desk.stats.bodyShadowsSkipped,1);desk.restore();assert.equal(s.body.castShadow,true);
+  const old=new WorldDistanceDetail(pickQualityTier({search:'?desktopDetail=1',coarsePointer:false,screen:[1440,900]}).detail!);old.apply(s.root,s.camera,900);
+  assert.equal(s.body.castShadow,true);assert.equal(old.stats.bodyShadowsSkipped,0);old.restore();
 });

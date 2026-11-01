@@ -2,6 +2,7 @@
 // "Travel to…"; a Soul travels from its agent (`node eden-agent.mjs travel <world>|home`). Everyone sees who is visiting: "Visiting from Alder" on a visitor's card, and a
 // visitors line under "Meet its Souls" (GET /v1/world/visitors). Names come from the site's world list.
 import {useEffect,useState} from 'react';
+import {pageHidden} from './poll-pace.ts';
 import {apiPath} from './world-path.ts';
 import {BASE} from './base-path.ts';
 import './SoulTravel.css';
@@ -24,6 +25,7 @@ const visitorSubs=new Set<(v:Visitors)=>void>();
 let visitorsNow:Visitors|null=null,visitorsTimer:ReturnType<typeof setInterval>|undefined;
 const stopVisitors=()=>{clearInterval(visitorsTimer);visitorsTimer=undefined;};
 function readVisitors(){
+ if(pageHidden())return;  // PERF-EDEN: a hidden page does not poll
  void fetch(apiPath('/v1/world/visitors'),{cache:'no-store'}).then(r=>r.status===404?NO_TRAVEL:r.ok?r.json():null).then((d:Visitors|null)=>{
   if(!d||!Array.isArray(d.visitors))return;visitorsNow=d;if(d.available===false)stopVisitors();for(const f of visitorSubs)f(d);}).catch(()=>{});
 }

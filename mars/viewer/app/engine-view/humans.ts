@@ -77,6 +77,8 @@ type Hands = { left?: Vec3; right?: Vec3 };
 type Snap = { p: [number, number, number]; yaw: number; walkW: number; walkT: number; idleT: number; sitW: number; warmW: number; expressionT: number; pose: Posture; hands: Hands; pr: ProneState | null };
 type View = {
   rig: Rig;
+  /** PERF-EDEN: posed at least once (a new body is never left in its bind pose by the pose-rate throttle). */
+  posedOnce?: boolean;
   appearance?:HumanActorAppearance;
   appearanceSoulKey?:string;
   prev: Snap;
@@ -429,8 +431,26 @@ const copyHands = (h?: Hands): Hands => ({ ...(h?.left ? { left: [...h.left] as 
 
 /** Entry 42: clip time advanced under a fade-out of length f, r s in: ∫0^r (1 − smoothstep(u/f)) du (f/2 once the fade is over). */
 const heldClip = (r: number, f: number) => { const x = Math.min(1, Math.max(0, r / f)); return Math.max(0, Math.min(r, f)) - f * (x * x * x - x * x * x * x / 2); };
+/** PERF-EDEN (2026-11-01): the eye, its view and the pose-rate distances (quality-tier.ts bodies). Null: every body is
+ *  posed every frame, as before. */
+export type HumanViewer = { eye: THREE.Vector3; frustum: THREE.Frustum; nearM: number; farM: number };
+const _bodySphere = new THREE.Sphere(undefined, 1.3);
 export class HumanViews {
   readonly group = new THREE.Group();
+  /** Render-time pose rate only: a body further from the eye, or outside the view, keeps its last pose for a few frames
+   *  (every 2nd frame to `farM`, every 4th beyond, every 8th off screen; the skinned mesh itself is still drawn). Speaking
+   *  bodies and bodies within `nearM` are posed every frame. Nothing here moves a body or owns a movement path. */
+  viewer: HumanViewer | null = null;
+  private poseFrame = 0;
+  /** Last render(): bodies posed / skipped by the pose-rate throttle (diagnostics). */
+  readonly poseStats = { posed: 0, skipped: 0 };
+  private poseDue(v: View, id: string): boolean {
+    const w = this.viewer; if (!w || !v.posedOnce || v.speaking) return true;
+    const p = v.cur.p; _bodySphere.center.set(p[0], p[1] + 0.9, p[2]);
+    const d = _bodySphere.center.distanceTo(w.eye);
+    const every = !w.frustum.intersectsSphere(_bodySphere) ? 8 : d < w.nearM ? 1 : d < w.farM ? 2 : 4;
+    return every === 1 || ((this.poseFrame + Math.floor(v.vary * 8)) % every) === 0;
+  }
   private stationBeat:DepictionBeat|null=null;
   /** Explicit renderer phase only; cannot admit an activity or replace hands. */
   setStationBeat(beat:DepictionBeat|null){this.stationBeat=beat?{...beat}:null;}
@@ -878,7 +898,8 @@ export class HumanViews {
     PLAY_MOTION.value.set(0, 0, 0, 0); // empty playground seats hang at rest; riders set theirs below
     this.players.length = 0;
     for (const [id, v] of this.views) if (v.activity === 'play-piano' || (v.activity === 'play-music' && v.instrument === 'drums')) this.players.push({ id, p: v.cur.p, kind: v.activity === 'play-piano' ? 'piano' : 'drums' });
-    for (const v of this.views.values()) this.pose(v, alpha, reach);
+    this.poseFrame++; this.poseStats.posed = this.poseStats.skipped = 0;
+    for (const [id, v] of this.views) { if (this.poseDue(v, id)) { this.pose(v, alpha, reach); v.posedOnce = true; this.poseStats.posed++; } else this.poseStats.skipped++; }
     // the dock shows one bicycle fewer for each one out under a rider (decorative-motion 'dock-bike')
     let out = 0; for (const v of this.views.values()) if (v.bike?.visible) out++; PLAY_MOTION.value.w = out;
   }

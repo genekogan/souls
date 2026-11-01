@@ -27,7 +27,7 @@ import { ComponentViews } from './components.ts';
 import {recordedSleepPose} from './recorded-sleep-pose.ts';
 import {itemPoseOf} from '../../engine/items/presentation.ts';
 import { FixtureViews } from './fixtures.ts';
-import { GAIT_ACTS, GESTURE_FADE, HumanViews, REST_ACTS, type Hands, type SampledHuman } from './humans.ts';
+import { GAIT_ACTS, GESTURE_FADE, HumanViews, REST_ACTS, type Hands, type SampledHuman , type HumanViewer } from './humans.ts';
 import { takeLog, type LogLine, type TakeStep } from './take-log.ts';
 import type { Template } from './people.ts';
 import { walkCum } from './take-walk.ts';
@@ -197,6 +197,9 @@ export class TakePeople {
   /** Wall ms of the last show()'s `sampleTake` (the rest of show() is posing the three.js views). */
   sampleMs = 0;
   appearancesSettled(ids?:ReadonlySet<string>){return this.humans.appearancesSettled(ids);}
+  /** PERF-EDEN: the eye and view for the bodies' pose-rate throttle (null = every body every frame). */
+  setViewer(v:HumanViewer|null){this.humans.viewer=v;}
+  poseStats(){return this.humans.poseStats;}
   contactDiagnostics(){return this.humans.bones();}
   instrumentOf(id:string){return this.humans.instrumentOf(id);}
   appearanceStatus(){return this.humans.appearanceStatus();}

@@ -782,10 +782,14 @@ export class WorldEntityLayer {
   /** P1 phones: render time only (like WorldDistanceDetail): a frozen thing wholly outside the view, or smaller than `cullPx`
    *  pixels of radius, is not drawn, so three.js neither walks nor projects its subtree. Frames that redraw the shadow map keep
    *  off-screen things (they may cast shadows into view). Call `uncull` right after rendering. */
-  cull(camera: THREE.PerspectiveCamera, viewHeight: number, shadowPass: boolean) {
+  cull(camera: THREE.PerspectiveCamera, viewHeight: number, shadowPass: boolean, shadowCamera: THREE.Camera | null = null) {
     if (!this.freezeSettled || !this.active) return;
     camera.updateMatrixWorld();
     const frustum = this.frustum.setFromProjectionMatrix(_projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    // PERF-EDEN: on a frame that redraws the shadow map, an off-screen thing is kept only when the sun's shadow box (the
+    // follow box around what the camera looks at, ~100 m) can see it: a thing outside that box casts nothing into view.
+    // The shadow camera's matrices are those of the last shadow pass (the sun and its box move slowly).
+    const sunFrustum = shadowPass && shadowCamera ? this.sunFrustum.setFromProjectionMatrix(_projScreen.multiplyMatrices(shadowCamera.projectionMatrix, shadowCamera.matrixWorldInverse)) : null;
     const cam = camera.position, ppu = viewHeight / (2 * Math.tan(camera.fov * Math.PI / 360)) * (camera.zoom || 1);
     for (const d of this.drawn.values()) {
       const o = d.obj;
@@ -793,12 +797,13 @@ export class WorldEntityLayer {
       const s = d.sphere, dist = s.center.distanceTo(cam) - s.radius;
       const off = !frustum.intersectsSphere(s);
       d.offscreen = off;
-      if ((dist > 0 && s.radius * ppu / dist < this.cullPx) || (off && !shadowPass)) { o.visible = false; this.culled.push(o); }
+      if ((dist > 0 && s.radius * ppu / dist < this.cullPx) || (off && (!shadowPass || (sunFrustum !== null && !sunFrustum.intersectsSphere(s))))) { o.visible = false; this.culled.push(o); }
     }
     this.cullStats.culled = this.culled.length;
   }
   uncull() { for (const o of this.culled) o.visible = true; this.culled.length = 0; }
   cullPx = 1.25;
+  private readonly sunFrustum = new THREE.Frustum();
   readonly cullStats = { culled: 0 };
   private culled: THREE.Object3D[] = [];
   private frustum = new THREE.Frustum();

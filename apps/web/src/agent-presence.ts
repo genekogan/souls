@@ -2,6 +2,7 @@
 // The open card's inbox poll reports into it (every 2 s); the toolbar chips poll the owner inbox slowly for the rest.
 // Only the owner's own inbox reads feed it (GET /v1/edge/owner/:id/inbox, read-only), so nothing here confers control.
 import {useEffect,useState} from 'react';
+import {whenVisible} from './poll-pace.ts';
 import type {Api} from './useSim.ts';
 import {readLink,type Link} from './soul-state.ts';
 
@@ -55,9 +56,10 @@ export function useOwnedAgentPresence(api:Api|undefined,ids:readonly string[]){
    await Promise.all(key.split(',').map(async id=>{
     try{const r=await api(`/v1/edge/owner/${encodeURIComponent(id)}/inbox`);if(live&&r.status===200&&r.data?.inbox)reportAgentPresence(id,withLink(r.data));}catch{/* keep the last state */}
    }));
-   if(live)timer=setTimeout(()=>void read(),CHIP_POLL_MS);
+   if(live)timer=setTimeout(()=>{cancelVisible=whenVisible(()=>void read());},CHIP_POLL_MS);  // PERF-EDEN: never while hidden
   };
-  void read();return()=>{live=false;clearTimeout(timer);};
+  let cancelVisible=()=>{};
+  void read();return()=>{live=false;clearTimeout(timer);cancelVisible();};
  },[api,key]);
  return (id:string)=>agentPresence(id);
 }
