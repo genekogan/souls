@@ -39,7 +39,7 @@ function draw(name: string, extra: Record<string, unknown> = {}, entity?: Entity
 const EXACT = process.platform === 'darwin' && process.arch === 'arm64';
 function stats(g: THREE.Object3D) {
   const h = createHash('sha256'), q = createHash('sha256'); let tris = 0, draws = 0;
-  g.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return;
+  g.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh || m.userData.shadowProxy) return;   // (the shadow proxy is position only: not a drawn part)
     h.update(m.name); q.update(m.name);
     for (const k of ['position', 'normal', 'color']) { const a = m.geometry.attributes[k].array as Float32Array; h.update(new Uint8Array(a.buffer)); q.update(new Uint8Array(Int32Array.from(a, (v) => Math.round(v * 1000)).buffer)); }
     tris += m.geometry.attributes.position.count / 3; draws++;
@@ -48,7 +48,7 @@ function stats(g: THREE.Object3D) {
 }
 function triangles(g: THREE.Object3D) {
   const out: string[] = [];
-  g.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return;
+  g.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh || m.userData.shadowProxy) return;
     const a = m.geometry.attributes;
     for (let i = 0; i < a.position.count; i += 3) out.push(m.name + ':' + ['position', 'normal', 'color'].map(k => Array.from(a[k].array.slice(i * 3, i * 3 + 9)).join(',')).join('|'));
   });

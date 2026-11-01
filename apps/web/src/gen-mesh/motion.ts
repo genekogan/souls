@@ -11,6 +11,7 @@ import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
 // L1: the singular and plural light components share their pattern curves with pools and halos.
 import {defLights,flickers,lightPatternLevel,lightPhase} from '../WorldNightLights.ts';
 import { hasFlames } from '../fx/flames.ts';
+import { variantOf } from './material-variants.ts';
 import { pose, RouteCache, rand, seedOf, type BehaviorKind, type Plan, type Pose, type Surroundings, type V2 } from './creatures/behavior.ts';
 import { clearFor, giveWay, giveWayState, lookFor, peopleNear, peopleNow, setPeopleSource, type GiveWayState } from './creatures/give-way.ts';
 
@@ -498,26 +499,35 @@ function boatStep(obj: THREE.Object3D, e: Entity, def: StoredDef, model: WorldMo
   obj.rotation.y = base.yaw + 0.35 * (R / Math.max(1e-6, b.drift)) * Math.sin((t * T) / (P * 0.9) + phase * 0.5);
 }
 
-/** Lamps glow at dusk and night; `state.on: false` darkens this one (its own material copy). */
+/** Lamps glow at dusk and night; `state.on: false` darkens this one. Lane PERF-MATERIALS: a glow level is a shared
+ *  variant of the part's library material (material-variants.ts), one per (material, level in 1/64 steps), not a clone
+ *  per lamp: Eden 2026 had 813 lamp materials for 16 distinct looks. A flame part's variant is also its dimmed albedo. */
+type GlowPart = { mesh: THREE.Mesh; base: THREE.MeshStandardMaterial; flame: boolean; gain: number };
+export const GLOW_STEPS = 64;
+function setGlow(p: GlowPart, v: number) {
+  const q = Math.round(v * GLOW_STEPS) / GLOW_STEPS, cur = p.mesh.material as THREE.MeshStandardMaterial;
+  if (cur !== p.base && cur.emissiveIntensity === q) return;
+  p.mesh.material = variantOf(p.base, (p.flame ? 'flame-glow:' : 'glow:') + q, (m) => {
+    // W2: a flame part glows by itself; its lit albedo plus a night-boosted emissive clipped it to white ("an orange cone")
+    if (p.flame) { m.userData.flameCap = FLAME_GLOW_CAP; m.color.multiplyScalar(0.15); }
+    m.emissiveIntensity = q;
+  });
+}
 export function syncLightGlow(obj: THREE.Object3D, e: Entity, def: StoredDef, model: WorldModel | null, t: number) {
-  const ud = obj.userData as { glow?: THREE.Mesh[] };
+  const ud = obj.userData as { glow?: GlowPart[] };
   if (!ud.glow) {
-    ud.glow = []; obj.traverse((c) => { const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && (m as { emissive?: THREE.Color }).emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0) { const own = m.clone(); (c as THREE.Mesh).material = own; ud.glow!.push(c as THREE.Mesh);
-      // W2: a flame part glows by itself; its lit albedo plus a night-boosted emissive clipped it to white ("an orange cone")
-      if (isFlamePart(c)) { own.userData.flameCap = FLAME_GLOW_CAP; own.color.multiplyScalar(0.15); } } });
-    // The layer caches its library materials; these per-entity copies belong to this root instead.
-    const disposeGlow=()=>{for(const mesh of ud.glow??[])(mesh.material as THREE.Material).dispose();obj.removeEventListener('removed',disposeGlow);};
-    obj.addEventListener('removed',disposeGlow);
+    const parts: GlowPart[] = [];
+    obj.traverse((c) => { const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && (m as { emissive?: THREE.Color }).emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0 && !c.userData.shadowProxy) parts.push({ mesh: c as THREE.Mesh, base: m, flame: isFlamePart(c), gain: m.userData.kitGlowIntensity ?? 1 }); });
+    ud.glow = parts;
   }
   const lights=defLights(def.components),off = e.state?.on === false || lights.every(l=>l.on===false);
-  if (off) for (const m of ud.glow) (m.material as THREE.MeshStandardMaterial).emissiveIntensity = 0;
-  if (off) return;
+  if (off) { for (const p of ud.glow) setGlow(p, 0); return; }
   const reduced=!!reducedLightMotion?.matches;
   const patterned=lights.some(l=>l.pattern&&l.pattern!=='steady'),flame=!patterned&&flickers(e.def); // W2: a flame's own glow flickers with its pool
   const pattern=flame?lightPatternLevel('flicker',t,lightPhase(e.id,0,1,'flicker'),reduced):patterned?lights.reduce((v,l,i)=>v+(l.on===false?0:lightPatternLevel(l.pattern,t,lightPhase(e.id,i,lights.length,l.pattern),reduced)),0)/lights.length:1;
   const night = nightOf(model), level = (0.25 + 1.4 * night + (patterned||flame?0:0.03 * Math.sin(t * 3)))*pattern;
   // K1 / XP1: retain v2's per-shape glow level through the day/night and pattern multiplier.
-  for (const m of ud.glow) { const mat = m.material as THREE.MeshStandardMaterial, v = level * (mat.userData.kitGlowIntensity ?? 1); mat.emissiveIntensity = mat.userData.flameCap ? Math.max(FLAME_GLOW_MIN, Math.min(v, mat.userData.flameCap)) : v; }
+  for (const p of ud.glow) { const v = level * p.gain; setGlow(p, p.flame ? Math.max(FLAME_GLOW_MIN, Math.min(v, FLAME_GLOW_CAP)) : v); }
 }
 /** W2: the brightest a flame part's emissive gets (×its tint): saturated orange, never clipped white by the night boost. */
 const FLAME_GLOW_CAP = 0.85, FLAME_GLOW_MIN = 0.55;

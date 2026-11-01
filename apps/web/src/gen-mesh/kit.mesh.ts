@@ -9,6 +9,7 @@ import { flameClusters, flameHint, isFlameShape, isSmokeShape, mountFlames, smok
 import { registerMesh, type MeshCtx } from './registry.ts';
 import { shapeFaceMeshes } from './faces.ts'; // XP8 hook
 import { kitClassSurface, kitSurfaceAttribute, kitSurfaceSuffix } from './kit-surfaces.ts'; // Y1 / XP7 hook
+import { addShadowProxy } from './shadow-proxy.ts';
 
 const cache = new Map<string, THREE.Object3D>();
 /** Entry 33: hand-operated things this viewer has drawn out (on false), so a fire catches only when it was seen lit by hand. */
@@ -241,7 +242,12 @@ registerMesh({
     const parsed = parseKitArgs(ctx.args); if (!parsed.success) return null;
     const key = kitCacheKey(ctx, parsed.data);
     let proto = cache.get(key);
-    if (!proto) { proto = buildKit(parsed.data, { ...ctx, state: ctx.entity.state ?? {}, flameHint: flameHint(ctx.def), plant: isPlantDef(ctx.def), smokeFx: !ctx.def.components.route && !ctx.def.tags.includes('moving') }); cache.set(key, proto); }
+    if (!proto) {
+      proto = buildKit(parsed.data, { ...ctx, state: ctx.entity.state ?? {}, flameHint: flameHint(ctx.def), plant: isPlantDef(ctx.def), smokeFx: !ctx.def.components.route && !ctx.def.tags.includes('moving') });
+      // lane PERF-MATERIALS: a kit of several static casters casts as one proxy (shadow-proxy.ts); role parts keep their own
+      try { addShadowProxy(proto, { generated: true }); } catch (e) { console.warn('kit shadow proxy skipped', e); }
+      cache.set(key, proto);
+    }
     // clone shares geometry and materials; pivots are cloned so each instance animates on its own
     const obj = proto.clone(true); obj.userData = { ...proto.userData };
     // W2: flame parts burn (fx/flames.ts); not on a building site. A fire lit by hand catches (entry 22); entry 33: only
