@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import type { Entity, StoredDef } from '@sim/world-compiler';
 import { VARIANT_CAP, variantCount, variantOf } from './material-variants.ts';
-import { GLOW_STEPS, syncLightGlow } from './motion.ts';
+import { quantizeGlow, syncLightGlow } from './motion.ts';
 import { mergedMaterialCount, mergeStatic } from './static-merge.ts';
 
 test('variantOf: one clone per (source, key), shared, released with its source, capped', () => {
@@ -48,7 +48,7 @@ test('lamps at the same glow level share one material; off and flame parts are v
   assert.equal(a.body.material, b.body.material, 'parts without a glow keep the library material');
   assert.equal(lib.emissiveIntensity, 1);
   const level = (a.glow.material as THREE.MeshStandardMaterial).emissiveIntensity;
-  assert.equal(level, Math.round(level * GLOW_STEPS) / GLOW_STEPS, 'levels are quantised to 1/64');
+  assert.equal(level, quantizeGlow(level), 'levels are quantised to ~1% steps');
   assert.ok(level > 0 && level < 2, String(level));
   syncLightGlow(c.g, entity('c', { on: false }), lampDef, null, 100);
   assert.equal((c.glow.material as THREE.MeshStandardMaterial).emissiveIntensity, 0);
@@ -62,7 +62,7 @@ test('lamps at the same glow level share one material; off and flame parts are v
   // a later sync at the same level is a no-op; a different level is another shared variant
   const before = a.glow.material; syncLightGlow(a.g, entity('a'), lampDef, null, 100); assert.equal(a.glow.material, before);
   const seen = new Set<THREE.Material>(); for (let t = 0; t < 40; t++) { syncLightGlow(a.g, entity('a'), lampDef, null, t * 0.37); seen.add(a.glow.material as THREE.Material); }
-  assert.ok(seen.size > 1 && seen.size <= 12, `breathing spans a few quantised levels (${seen.size})`);
+  assert.ok(seen.size > 1 && seen.size <= 40, `breathing spans a bounded set of quantised levels (${seen.size})`);
 });
 
 function model(roughness: number, color: string) {

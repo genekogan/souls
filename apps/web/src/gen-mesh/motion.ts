@@ -500,12 +500,14 @@ function boatStep(obj: THREE.Object3D, e: Entity, def: StoredDef, model: WorldMo
 }
 
 /** Lamps glow at dusk and night; `state.on: false` darkens this one. Lane PERF-MATERIALS: a glow level is a shared
- *  variant of the part's library material (material-variants.ts), one per (material, level in 1/64 steps), not a clone
+ *  variant of the part's library material (material-variants.ts), one per (material, level in ~1% steps), not a clone
  *  per lamp: Eden 2026 had 813 lamp materials for 16 distinct looks. A flame part's variant is also its dimmed albedo. */
 type GlowPart = { mesh: THREE.Mesh; base: THREE.MeshStandardMaterial; flame: boolean; gain: number };
-export const GLOW_STEPS = 64;
+/** Glow levels per e-fold of intensity: steps of ~1% (relative, so a dim day glow keeps its ratios like a bright night one). */
+export const GLOW_STEPS = 96;
+export function quantizeGlow(v: number): number { return v <= 1e-4 ? 0 : Math.exp(Math.round(Math.log(v) * GLOW_STEPS) / GLOW_STEPS); }
 function setGlow(p: GlowPart, v: number) {
-  const q = Math.round(v * GLOW_STEPS) / GLOW_STEPS, cur = p.mesh.material as THREE.MeshStandardMaterial;
+  const q = quantizeGlow(v), cur = p.mesh.material as THREE.MeshStandardMaterial;
   if (cur !== p.base && cur.emissiveIntensity === q) return;
   p.mesh.material = variantOf(p.base, (p.flame ? 'flame-glow:' : 'glow:') + q, (m) => {
     // W2: a flame part glows by itself; its lit albedo plus a night-boosted emissive clipped it to white ("an orange cone")

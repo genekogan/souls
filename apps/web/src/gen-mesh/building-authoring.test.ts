@@ -127,7 +127,7 @@ test('church and tea-house fixtures remove the unwanted ornaments and mount faca
     const host = model.get(fixture.name)!, baked = model.slotsOf(host);
     // Door lamps, hood, shutters, flower boxes and chimney colours never occur when switched off.
     const mesh = draw('cottage', params), colours = new Set<string>();
-    mesh.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return; const c = m.geometry.attributes.color;
+    mesh.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh || m.userData.shadowProxy) return; const c = m.geometry.attributes.color;
       for (let i = 0; i < c.count; i++) colours.add(new THREE.Color(c.getX(i), c.getY(i), c.getZ(i)).getHexString());
     });
     for (const hex of ['8a4a36', 'a3442f', '6e4a30', 'd9485f', 'f1c84b', 'e86aa8', '9b6fd1', 'ff8a3d']) assert.equal(colours.has(hex), false, `${fixture.name}: no unwanted ${hex}`);

@@ -15,6 +15,11 @@ import { EntityInstancer } from '../EntityInstancer.ts';
 import './building.mesh.ts';
 
 const renderer = { info: { render: { frame: 1 } } } as unknown as THREE.WebGLRenderer;
+type Hook = (...args: unknown[]) => void;
+/** What three does to an object in a pass: onBeforeShadow (shadow pass) / onBeforeRender (main pass) / raycast. */
+const shadowPass = (o: THREE.Object3D) => (o.onBeforeShadow as unknown as Hook)(renderer, o, new THREE.Camera(), new THREE.Camera(), (o as THREE.Mesh).geometry, (o as THREE.Mesh).material, null);
+const mainDraw = (o: THREE.Object3D, scene: THREE.Scene, cam: THREE.Camera = new THREE.Camera()) => (o.onBeforeRender as unknown as Hook)(renderer, scene, cam, (o as THREE.Mesh).geometry, (o as THREE.Mesh).material, null);
+const rayHits = (o: THREE.Object3D, from: THREE.Vector3) => { const hits: THREE.Intersection[] = []; (o.raycast as unknown as Hook)(new THREE.Raycaster(from, new THREE.Vector3(0, 0, 1)), hits); return hits.length; };
 const meshes = (o: THREE.Object3D) => { const out: THREE.Mesh[] = []; o.traverse((c) => { if ((c as THREE.Mesh).isMesh) out.push(c as THREE.Mesh); }); return out; };
 const casters = (o: THREE.Object3D) => meshes(o).filter((m) => m.castShadow);
 const proxies = (o: THREE.Object3D) => meshes(o).filter((m) => m.userData.shadowProxy);
@@ -43,7 +48,7 @@ test('a generated thing casts as one position-only proxy; role parts and texture
   p.geometry.computeBoundingBox(); const b = p.geometry.boundingBox!;
   assert.ok(Math.abs(b.min.x + 0.5) < 1e-6 && Math.abs(b.max.x - 4.5) < 1e-6 && Math.abs(b.min.y) < 1e-6 && Math.abs(b.max.y - 1) < 1e-6, JSON.stringify(b));
   // no raycast answer from the proxy
-  const hits: THREE.Intersection[] = []; p.raycast(new THREE.Raycaster(new THREE.Vector3(0, 0.5, -5), new THREE.Vector3(0, 0, 1)), hits); assert.equal(hits.length, 0);
+  assert.equal(rayHits(p, new THREE.Vector3(0, 0.5, -5)), 0);
 });
 
 test('a clone keeps the proxy class and registers itself with the scene when first drawn; the hub shows it only to the shadow pass', () => {
@@ -52,12 +57,12 @@ test('a clone keeps the proxy class and registers itself with the scene when fir
   const [p] = proxies(copy);
   assert.ok(p instanceof ShadowProxyMesh); assert.notEqual(p, proxies(root)[0]); assert.equal(p.geometry, proxies(root)[0].geometry, 'geometry shared with the template');
   assert.equal(p.visible, true, 'drawn once (nothing) until the hub knows it');
-  p.onBeforeRender(renderer, scene, new THREE.Camera(), p.geometry, p.material as THREE.Material, null as never);
+  mainDraw(p, scene);
   assert.equal(p.visible, false); assert.equal(shadowProxyStats(scene).proxies, 1);
   const hook = scene.children[0] as THREE.Mesh; assert.equal(hook.name, 'shadow-proxy hook');
-  hook.onBeforeShadow(renderer, hook, new THREE.Camera(), new THREE.Camera(), hook.geometry, hook.material as THREE.Material, null as never); assert.equal(p.visible, true, 'on for the shadow pass');
-  hook.onBeforeRender(renderer, scene, new THREE.Camera(), hook.geometry, hook.material as THREE.Material, null as never); assert.equal(p.visible, false, 'off again for the main pass');
-  scene.remove(copy); hook.onBeforeShadow(renderer, hook, new THREE.Camera(), new THREE.Camera(), hook.geometry, hook.material as THREE.Material, null as never);
+  shadowPass(hook); assert.equal(p.visible, true, 'on for the shadow pass');
+  mainDraw(hook, scene); assert.equal(p.visible, false, 'off again for the main pass');
+  scene.remove(copy); shadowPass(hook);
   assert.equal(shadowProxyStats(scene).proxies, 0, 'a removed thing leaves the hub');
 });
 
@@ -66,7 +71,7 @@ test('a cut hands the shadow back to the casters while it lasts', () => {
   const scene = new THREE.Scene(); scene.add(root); trackShadowProxies(root);
   const [p] = proxies(root), own = proxiedCasters(root); let cut = false;
   setShadowCut(p, own, () => cut);
-  const hook = scene.children[0] as THREE.Mesh, pass = () => hook.onBeforeShadow(renderer, hook, new THREE.Camera(), new THREE.Camera(), hook.geometry, hook.material as THREE.Material, null as never);
+  const hook = scene.children[0] as THREE.Mesh, pass = () => shadowPass(hook);
   pass(); assert.equal(p.visible, true); assert.ok(own.every((m) => !m.castShadow)); assert.equal(shadowProxyStats(scene).cut, 0);
   cut = true; pass(); assert.equal(p.visible, false); assert.ok(own.every((m) => m.castShadow)); assert.equal(shadowProxyStats(scene).cut, 1);
   own[0].castShadow = false;   // a render-time pass restored the flag: re-asserted next pass
@@ -93,19 +98,19 @@ test('a building casts as one proxy, cut back to its own casters by the interior
   const sum = own.reduce((a, m) => a + tris(m.geometry), 0); assert.equal(tris(p.geometry), sum, 'the proxy is every caster triangle');
   // the interior view: hidden storeys are a cut
   const scene = new THREE.Scene(); scene.add(g); trackShadowProxies(g);
-  const hook = scene.children[0] as THREE.Mesh, pass = () => hook.onBeforeShadow(renderer, hook, new THREE.Camera(), new THREE.Camera(), hook.geometry, hook.material as THREE.Material, null as never);
+  const hook = scene.children[0] as THREE.Mesh, pass = () => shadowPass(hook);
   pass(); assert.equal(p.visible, true); assert.ok(own.every((m) => !m.castShadow), 'whole: the meshes cast nothing');
   const view = (globalThis as { __buildingView?: { hideRoofs?: boolean } });
   view.__buildingView = { hideRoofs: true };
   try {
     const cam = new THREE.PerspectiveCamera(); cam.position.set(100, 50, 100); cam.updateMatrixWorld();
-    own[0].onBeforeRender(renderer, scene, cam, own[0].geometry, own[0].material as THREE.Material, null as never);   // the main pass decides the cut
+    mainDraw(own[0], scene, cam);   // the main pass decides the cut
     (renderer.info.render as { frame: number }).frame++; pass();
     assert.equal(p.visible, false, 'roofs off: the proxy stands down'); assert.ok(own.every((m) => m.castShadow), 'the meshes cast themselves, hiding the roof');
   } finally { delete view.__buildingView; }
   (renderer.info.render as { frame: number }).frame++;
   const cam = new THREE.PerspectiveCamera(); cam.position.set(100, 50, 100); cam.updateMatrixWorld();
-  own[0].onBeforeRender(renderer, scene, cam, own[0].geometry, own[0].material as THREE.Material, null as never);
+  mainDraw(own[0], scene, cam);
   (renderer.info.render as { frame: number }).frame++; pass();
   assert.equal(p.visible, true); assert.ok(own.every((m) => !m.castShadow));
 });
@@ -135,7 +140,7 @@ test('an instancer pool built from a prototype with a proxy draws the proxy part
   const pp = pool.filter((m) => m.userData.shadowProxy); assert.equal(pp.length, 1);
   assert.ok(pool.filter((m) => !m.userData.shadowProxy).every((m) => !m.castShadow || m.name.endsWith(':3') || m.name.endsWith(':4')), 'the merged parts cast nothing');
   assert.equal(pp[0].castShadow, true);
-  pp[0].onBeforeRender(renderer, scene, new THREE.Camera(), pp[0].geometry, pp[0].material as THREE.Material, null as never);
+  mainDraw(pp[0], scene);
   assert.equal(pp[0].visible, false); assert.equal(shadowProxyStats(scene).proxies, 1);
-  const hits: THREE.Intersection[] = []; pp[0].raycast(new THREE.Raycaster(new THREE.Vector3(1, 0.5, -5), new THREE.Vector3(0, 0, 1)), hits); assert.equal(hits.length, 0);
+  assert.equal(rayHits(pp[0], new THREE.Vector3(1, 0.5, -5)), 0);
 });

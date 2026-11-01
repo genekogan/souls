@@ -143,6 +143,14 @@ const cuts = new WeakMap<THREE.Object3D, Cut>();
 export function setShadowCut(proxy: THREE.Object3D, casters: THREE.Mesh[], cut: (renderer: THREE.WebGLRenderer) => boolean): void {
   cuts.set(proxy, { casters, cut, on: null });
 }
+/** Take the proxies out of one copy of a generated thing and give its casters their shadows back (a canonical context
+ *  capture carries no render-time machinery). */
+export function removeShadowProxies(root: THREE.Object3D): number {
+  const gone: THREE.Object3D[] = [];
+  root.traverse((o) => { if (o.userData.shadowProxy) gone.push(o); else if (o.userData.shadowProxied) { (o as THREE.Mesh).castShadow = true; delete o.userData.shadowProxied; } });
+  for (const p of gone) p.removeFromParent();
+  return gone.length;
+}
 /** The casters a generated proxy stands for, in one copy of the thing (meshes marked when the proxy was built). */
 export function proxiedCasters(root: THREE.Object3D): THREE.Mesh[] {
   const out: THREE.Mesh[] = []; root.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.userData.shadowProxied) out.push(o as THREE.Mesh); }); return out;
