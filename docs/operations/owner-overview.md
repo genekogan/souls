@@ -2,8 +2,10 @@
 
 The launcher serves a read-only overview at `/ops` (and `<base>/ops` on a base-mounted launcher). The root `/ops`
 route must reach that launcher in the reverse proxy before it is a public production URL. This source change does
-not deploy it. No world is started and no GitHub call is made when someone opens the page; ordinary world arrivals
-load none of its CSS, scripts, records or media.
+not deploy it. `/ops` is a reserved root namespace and cannot be the launcher `--base`; `/ops/children`
+is also rejected by the existing one-segment base contract. A world named Ops remains valid at `/w/ops`
+(or `<base>/w/ops`), including its normal aliases. No world is started and no GitHub call is made when someone
+opens the page; ordinary world arrivals load none of its CSS, scripts, records or media.
 
 ## Access and storage
 

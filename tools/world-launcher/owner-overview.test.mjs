@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { collectOverview } from './owner-overview-collect.mjs';
 import { checkpointFrom, projectRecords, presentSnapshot, recordUrl, validateSnapshot, MAX_AGE_MS } from './owner-overview-data.mjs';
+import { productionSettings } from './production.mjs';
+import { slugFor } from './registry.mjs';
 import { ownerOverview, overviewShell } from './owner-overview.mjs';
 const at = '2026-11-02T10:00:00.000Z';
 const cp = { at, state: 'active', changed: 'A focused result', next: 'Owner checkpoint', eta: { range: 'unknown', confidence: 'unknown', basis: 'Final validation not measured' }, sha: 'a'.repeat(40), proofs: [{ url: 'https://github.com/genekogan/souls/pull/600', outcome: 'candidate', environment: 'local' }] };
@@ -51,6 +53,8 @@ test('schema strips extra fields and rejects invalid cache; proof media is never
   assert.throws(() => validateSnapshot({ ...s, items: [{ ...s.items[0], group: 'evil' }] }));
   const page = overviewShell({ clerkPublishableKey: '</script><script>bad', clerkIssuer: 'https://clerk.example.test' });
   assert.equal(page.html.includes('</script><script>bad'), false); assert.match(page.csp, /sha256-/);
+  const scripts = page.csp.split(';').find(x => x.trim().startsWith('script-src')).trim().split(/\s+/);
+  assert.ok(scripts.includes('https://clerk.example.test')); assert.equal(scripts.includes('https://*.clerk.example.test'), false);
 });
 
 test('collector is deterministic, private and atomic; failed API call preserves last observation', async () => {
@@ -102,4 +106,11 @@ test('incidental issue mentions do not attribute another domain PR or its branch
   assert.equal(s.items[0].pulls.length, 0); assert.equal(s.items[0].branch, null);
   s = projectRecords({ issues: [issue()], pulls: [{ ...unrelated, body: 'Refs #556' }], observedAt: at });
   assert.equal(s.items[0].pulls.length, 1); assert.equal(s.items[0].branch, unrelated.headRefName);
+});
+
+test('the root overview namespace cannot be the launcher mount; similarly named world and unrelated prefixes stay valid', () => {
+  const cfg = { range: [19952, 19953], devAuth: true };
+  for (const base of ['/ops', '/ops/', '/ops/children']) assert.throws(() => productionSettings({ ...cfg, base }, 'http://127.0.0.1:19951'), /belongs to the existing release|one path segment/);
+  for (const base of ['', '/worlds', '/ops-other']) assert.equal(productionSettings({ ...cfg, base }, 'http://127.0.0.1:19951').base, base);
+  assert.equal(slugFor('Ops'), 'ops', 'world identity remains distinct at /w/ops');
 });

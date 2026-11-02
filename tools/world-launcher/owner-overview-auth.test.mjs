@@ -36,6 +36,9 @@ test('real Clerk verifier: owner and non-owner sessions, no loopback bypass, rev
   const owner = await sign('user_owner'), other = await sign('user_other');
   const ownerAcct = await verifiedCreator(`Bearer ${owner}`, { envFile, registryPath: join(dir, 'data', 'accounts.sqlite') }, ORIGIN, ROOT);
   assert.match(ownerAcct, /^acct_/);
+  const otherAcct = await verifiedCreator(`Bearer ${other}`, { envFile, registryPath: join(dir, 'data', 'accounts.sqlite') }, ORIGIN, ROOT);
+  process.env.CATALOG_GENE_OWNER_ID = otherAcct; // differing explicit lists: SIM_SITE_OWNERS wins in both checks
+
   process.env.SIM_SITE_OWNERS = `acct_someone-else, ${ownerAcct}`;   // read per request
 
   let r = await dash(); assert.equal(r.status, 401); assert.deepEqual(await r.json(), { ok: false, code: 'sign-in' });
