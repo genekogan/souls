@@ -57,6 +57,13 @@ pr_checks:
 paths:
   # T3: Soul behaviour, navigation, engines and the shared protocol
   - { glob: "apps/server/src/{edge,intent,soul,brain,body,purpose,lifecycle,nav}*", tier: T3 }
+  # The original * keeps top-level names (edge-*.ts, soul-*.ts); nested family directories need **.
+  - { glob: "apps/server/src/{edge,intent,soul,brain,body,purpose,lifecycle,nav}/**", tier: T3 }
+  # These god modules implement Soul navigation/perception, engine edits and BUILDSAFE, not ordinary admin logic.
+  # See architecture/map.md (God mode / EngineBridge) and architecture/split.md (the read-facade boundary).
+  - { glob: "apps/server/src/god/{nav,perceive,engine-bridge,buildsafe}*", tier: T3 }
+  # The split read model, menu facade, deltas and worker transport must preserve the authoritative Soul view.
+  - { prefix: "apps/server/src/split/", tier: T3 }
   - { prefix: "packages/brain/", tier: T3 }
   - { prefix: "packages/kernel/", tier: T3 }
   - { prefix: "packages/protocol/", tier: T3 }
