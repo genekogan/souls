@@ -62,6 +62,11 @@ Both engines describe the same shared verbs for one actor's body; the actor is i
 `converse {with, seconds?}` · `gather {at, seconds?}` · `perform {what?, seconds?}` · `ambient_wander {seconds?, radius?}`.
 Edge capabilities offered to Souls are built on top of these and the engine's own verbs.
 
+`dance:here` uses the body's current standing footprint and never inserts a walk to a larger clearing or another
+venue. A seated Soul still stands first; active movement and occupied support keep their native admission rules.
+Direct `pose_v1` admission reads clearance at the actor's position, independently of the last paged ground window
+queried. Lying poses retain their larger clearance requirement.
+
 ## Conformance
 
 `@sim/engine-contract/conformance` exports `conformance(name, factory, drive)`: same seed and inputs give the same hash,

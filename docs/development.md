@@ -133,3 +133,11 @@ worlds behind a loopback proxy, see `tools/core/multiworld/README.md`.
 - Kernel code is total: a change applies or is refused with a reason. New thing ids come from the kernel state.
 - Model output reaches the engine or the kernel only as a logged event. Meaning changes only through logged events.
 - Local runs, tests and tools write under ignored paths (`.local/`, `.e2e/`), never into tracked folders.
+
+## TypeScript toolchain
+
+`pnpm typecheck` uses native TypeScript 7 (`@typescript/native`, aliased to `typescript`). The separate
+`typescript` import resolves to the official TypeScript 6 compatibility package so test loaders can continue using
+`transpileModule`; its optional CLI is `tsc6`. Keep both aliases together when updating the compiler. Node declarations
+stay on the Node 22 line to match the minimum supported runtime and CI; a declaration-major bump requires a runtime
+migration review.

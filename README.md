@@ -1,6 +1,6 @@
-# Sim
+# Soul
 
-Sim is the server and web app behind **[sim.eden.art](https://sim.eden.art)**: persistent 3D worlds that keep running
+Soul is the server and web app behind **[soul.game](https://soul.game)**: persistent 3D worlds that keep running
 whether or not anyone is watching.
 
 - **Souls** are the people of a world. Each Soul is driven by its owner's own coding agent (Claude Code, Codex,
@@ -15,7 +15,7 @@ whether or not anyone is watching.
 Requirements: Node ≥ 22.18 and pnpm 10.
 
 ```sh
-git clone https://github.com/genekogan/souls.git sim && cd sim
+git clone https://github.com/genekogan/souls.git souls && cd souls
 pnpm install --frozen-lockfile
 pnpm assets:pull                      # media (models, textures, audio) from assets.eden.art, hash-checked
 cp .env.example .env

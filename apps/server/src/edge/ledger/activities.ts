@@ -4,7 +4,7 @@
 import type {Program} from '@sim/engine-contract';
 import type {EdgeCapability} from '../contract.ts';
 import type {Interior, Platform, Ring, Solid} from './nav.ts';
-import {POSE_INSTRUMENTS} from '../../../../../mars/viewer/engine/social/pose.ts';
+import {DANCE_CLEARANCE,POSE_INSTRUMENTS} from '../../../../../mars/viewer/engine/social/pose.ts';
 import {FLIGHT_MARGIN} from '../../../../../mars/viewer/engine/social/frisbee-clearance.ts';
 import {validInteriorShellBounds} from './nav.ts';
 import {paintingParam} from '../../art/painting.ts';
@@ -255,8 +255,10 @@ export function activityCapabilities(data: SpotsData, w: ActivityWorld): {caps: 
   // ---- moving on the spot (P1): standing or on the ground, wherever there is room
   for (const [act, label, sec, lying] of [['dance', 'Dance here', 60, false], ['jump', 'Jump on the spot', 5, false], ['stretch', 'Stretch', 30, false], ['jumping-jacks', 'Do jumping jacks', 30, false],
     ['yoga', 'Do yoga on the ground', 120, true], ['pushups', 'Do push-ups', 30, true], ['situps', 'Do sit-ups', 30, true]] as const) {
-    const need = lying ? 0.95 : 0.45, spot = groundHere >= need ? null : w.open(w.me, need, 30), can = groundHere >= need || !!spot;
-    add({id: `${act}:here`, verb: act, label, available: can, ...(can ? {} : {blocked: {code: 'pose.no-room', reason: 'No open ground within 15 m; walk to a lawn or garden first.'}}), params: secondsParam(sec, 600)},
+    const need = lying ? 0.95 : act === 'dance' ? DANCE_CLEARANCE : 0.45;
+    // "Dance here" never adds a walk: use the same standing footprint as native admission.
+    const spot = act === 'dance' || groundHere >= need ? null : w.open(w.me, need, 30), can = groundHere >= need || !!spot;
+    add({id: `${act}:here`, verb: act, label, available: can, ...(can ? {} : {blocked: {code: 'pose.no-room', reason: act === 'dance' ? 'There is not enough supported standing room here to dance without intersecting an obstacle.' : 'No open ground within 15 m; walk to a lawn or garden first.'}}), params: secondsParam(sec, 600)},
       {label, steps: [...standFirst(w), ...(spot ? [walk(spot)] : []), pose(act, sec)], seconds: true});
   }
   // ---- reading here: keep the current seat, else a reading spot (with a shelf) nearby, else a free seat, else standing
