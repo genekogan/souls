@@ -46,7 +46,7 @@ Before opening a pull request, run the checks in [CONTRIBUTING.md](CONTRIBUTING.
 | `worlds/` | World definitions, templates and patches |
 | `tools/edge-skill`, `tools/world-launcher`, `tools/god-skill` | Soul client and skill, the multi-world launcher and release scripts, god tooling |
 | `tools/test-harness`, `tools/playtest`, `tools/cdn`, `tools/assets` | Gates, playtests, the asset CDN and the media pull |
-| `vendor/sim-score` | Sim Score, the generative soundtrack |
+| `packages/music/source` | Sim Score, the generative soundtrack |
 | `docs/` | Documentation: start at [docs/README.md](docs/README.md) |
 
 ## Documentation

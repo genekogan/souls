@@ -1,7 +1,7 @@
 Sim
 Copyright (c) 2026 Gene Kogan
 
-The code in this repository, including Sim Score (vendor/sim-score, apps/web/src/score), is licensed under the
+The code in this repository, including Sim Score (packages/music/source, apps/web/src/score), is licensed under the
 MIT License (see LICENSE).
 
 Media (3D models, textures, audio, video, photos) is not included in this repository and is not covered by the

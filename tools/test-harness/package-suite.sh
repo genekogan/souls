@@ -2,7 +2,7 @@
 # Keep raw Node TAP/spec output and propagate failures across every package.
 set -u
 rc=0
-packages=(engine-mars world-compiler generators ground kernel brain engine-toy engine-contract protocol engine-native)
+packages=(music engine-mars world-compiler generators ground kernel brain engine-toy engine-contract protocol engine-native)
 [ ! -d packages/conformance/src ] || packages+=(conformance)   # EF4 core-library conformance (was packages/catalog)
 for p in "${packages[@]}"; do
   echo "## $p"
