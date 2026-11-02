@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { edgeRead, observation } from './edge-observation.mjs';
 
 test('valid observation preserves the original body and position', () => {
@@ -69,4 +71,29 @@ test('permanent errors, missing retry instructions and transport failures are ne
   }
   const offline = new Error('connection failed');
   await assert.rejects(edgeRead(async () => { throw offline; }), error => error === offline);
+});
+
+test('an expired walk still returns its terminal observation and running phase for the normal assertion to reject', async () => {
+  // Exercise the actual scenario's soulDoes function with a virtual clock and transport: no server or extra wait.
+  const source = readFileSync(new URL('./lm-two.mjs', import.meta.url), 'utf8');
+  const functionSource = source.slice(source.indexOf('async function soulDoes('), source.indexOf('/** The longest time'));
+  let time = 0;
+  const deadlines = [];
+  const soulDoes = runInNewContext(`${functionSource}; soulDoes`, {
+    Date: { now: () => time },
+    api: async () => ({ data: { accepted: true, receipt: { id: 'test-receipt', phase: 'running' } } }),
+    read: async () => ({ data: { receipt: { phase: 'running' } } }),
+    observe: async (soul, deadline) => {
+      deadlines.push(deadline);
+      return observation(await edgeRead(async () => ({ status: 200, data: { self: { position: [0, 0, 0], activity: 'walk' }, tick: 1 } }), { now: () => time, deadline }));
+    },
+    sleep: async ms => { time += ms; },
+    dist: (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]),
+    xz: p => [p[0], p[2]],
+  });
+  const result = await soulDoes({}, 'walk:test', { maxS: 1 });
+  assert.equal(result.phase, 'running');
+  assert.equal(result.samples.length, 2);
+  assert.deepEqual([...result.end.p], [0, 0, 0]);
+  assert.deepEqual(deadlines, [1000, 1000, 31_400]);
 });

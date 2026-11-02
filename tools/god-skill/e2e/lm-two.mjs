@@ -99,7 +99,9 @@ async function soulDoes(s, capability, { params, maxS = 300, until: stopWhen } =
     if (['completed', 'failed', 'replaced'].includes(rec?.phase)) break;
     await sleep(700);
   }
-  const o = await observe(s, deadline);
+  // Preserve the terminal state read even when maxS expired. It previously had the API's 120 s timeout;
+  // this separate 30 s read budget does not extend the walk/poll deadline or change its receipt phase.
+  const o = await observe(s, Date.now() + 30_000);
   // path length walked vs the straight line (an odd route shows as a high ratio)
   let walked = 0; for (let i = 1; i < samples.length; i++) walked += dist(xz(samples[i].p), xz(samples[i - 1].p));
   const straight = samples.length ? dist(xz(samples[0].p), xz(o.self.position)) : 0;

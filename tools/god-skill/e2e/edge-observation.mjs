@@ -8,6 +8,7 @@ const diagnostic = response => {
 };
 
 // Only safe reads use this function. Refused writes must never be repeated by a scenario.
+// The admission contract sends numeric Retry-After seconds; HTTP-date values fail rather than being guessed.
 export async function edgeRead(request, { now = Date.now, deadline = now() + 120_000,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), onRetry = message => console.log(message) } = {}) {
   let last;
