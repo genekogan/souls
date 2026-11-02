@@ -74,3 +74,13 @@ test('a root whose drawables are all batched hides whole during the draw; one wi
  f.b.visible=false;owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(f.a.visible,true);assert.equal(owner.inspection().fallbackLastRender,1);});f.b.visible=true;
  await owner.prepare([f.root,lit],{generation:2});owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(f.a.visible,false);});owner.dispose();
 });
+test('a source hook buckets and validates a mesh by the material it names while the mesh draws per-object variants of it',async()=>{
+ const f=fixture(),base=new THREE.MeshStandardMaterial({emissive:0xffaa00,emissiveIntensity:.5}),v1=base.clone(),v2=base.clone();v2.emissiveIntensity=.7;
+ f.a.material=v1;f.b.material=v2;f.a.userData.glowBase=base;f.b.userData.glowBase=base;
+ let merged:THREE.MeshStandardMaterial|null=null;const shaderMerge={material:(m:THREE.Material)=>m===base?(merged??=base.clone()):null,attributes(){},source:(mesh:THREE.Mesh)=>(mesh.userData.glowBase as THREE.Material|undefined)??null};
+ const owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,shaderMerge});
+ assert.equal(owner.inspection().batches,1);const cell=owner.group.children[0] as THREE.Mesh;assert.equal(cell.material,merged);
+ f.a.material=v2;owner.withRender(()=>{assert.equal(f.a.visible,false);assert.equal(owner.inspection().fallbackLastRender,0);},1);  // a variant swap is not a change
+ f.a.material=new THREE.MeshStandardMaterial();f.a.userData.glowBase=undefined;owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(owner.inspection().fallbackLastRender,1);},2);  // the hook no longer names the base: the batch falls back
+ await owner.prepare([f.root],{generation:2});assert.equal(owner.inspection().batches,0);owner.dispose();
+});

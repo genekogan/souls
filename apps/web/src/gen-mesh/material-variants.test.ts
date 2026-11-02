@@ -81,3 +81,29 @@ test('static-merge: models with the same plain material values share one merged 
   assert.equal(mergedMaterialCount() - n0 <= 2, true);
   assert.ok(mergeStatic(model(0.8, '#000000'), false)); assert.equal(mergedMaterialCount() - n0 <= 2, true, 'a fourth model adds none');
 });
+
+// PERF-BATCH round 2: a steady lamp's glow merges by its base material at the shared level; patterned, flame and off glows stay dynamic
+test('steady glows merge by base material at a tracked level; an off lamp is dynamic and thaws its frozen owner', async () => {
+  const { glowSourceMaterial, mergedGlowMaterial, steadyGlowLevel } = await import('./motion.ts');
+  const base = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffe9c4', emissiveIntensity: 1, vertexColors: true }); base.userData.kitGlowIntensity = 0.8;
+  const a = lamp(base), b = lamp(base), c = lamp(base);
+  syncLightGlow(a.g, entity('a'), lampDef, null, 100); syncLightGlow(b.g, entity('b'), lampDef, null, 100);
+  assert.equal(glowSourceMaterial(a.glow), base); assert.equal(glowSourceMaterial(b.glow), base);
+  assert.equal(a.glow.userData.renderDynamic, undefined);
+  const level = (a.glow.material as THREE.MeshStandardMaterial).emissiveIntensity;
+  assert.equal(steadyGlowLevel(base), level);
+  const merged = mergedGlowMaterial(base) as THREE.MeshStandardMaterial; assert.ok(merged && merged !== base);
+  assert.equal(merged.emissiveIntensity, level); assert.equal(merged.emissive.getHex(), base.emissive.getHex());
+  assert.equal(mergedGlowMaterial(base), merged, 'one merged material per base');
+  syncLightGlow(a.g, entity('a'), lampDef, null, 101);   // the level moves with the clock: the merged material follows the lamps' variant
+  assert.equal(merged.emissiveIntensity, (a.glow.material as THREE.MeshStandardMaterial).emissiveIntensity);
+  // an off lamp: dynamic, no source material, its frozen owner asked to thaw
+  c.g.userData.frozenDrawn = { thaw: false };
+  syncLightGlow(c.g, entity('c', { on: false }), lampDef, null, 100);
+  assert.equal(c.glow.userData.renderDynamic, true); assert.equal(glowSourceMaterial(c.glow), null); assert.equal((c.g.userData.frozenDrawn as { thaw: boolean }).thaw, true);
+  // switched on again: steady, and the owner thaws once more so the batches take it back
+  (c.g.userData.frozenDrawn as { thaw: boolean }).thaw = false;
+  syncLightGlow(c.g, entity('c'), lampDef, null, 100);
+  assert.equal(c.glow.userData.renderDynamic, undefined); assert.equal(glowSourceMaterial(c.glow), base); assert.equal((c.g.userData.frozenDrawn as { thaw: boolean }).thaw, true);
+  assert.equal(mergedGlowMaterial(new THREE.MeshStandardMaterial()), null);
+});

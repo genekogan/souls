@@ -23,6 +23,8 @@ export function instanceable(obj: THREE.Object3D): boolean {
 export class EntityInstancer {
   readonly group = new THREE.Group();
   private pools = new Map<string, Pool>();
+  /** PERF-BAKED-SHADOWS: changes whenever an instance is placed, moved or removed (the cached sun shadow redraws). */
+  revision = 0;
   constructor() { this.group.name = 'entity-instances'; }
 
   /** Register a prototype object for a key (first time only); later calls reuse it. */
@@ -52,13 +54,13 @@ export class EntityInstancer {
     tmp.compose(p, q, sc.set(s, s, s));
     for (let k = 0; k < pool.parts.length; k++) { tmp2.multiplyMatrices(tmp, pool.parts[k].local); pool.meshes[k].setMatrixAt(i, tmp2); pool.meshes[k].instanceMatrix.needsUpdate = true; }
     for (const m of pool.meshes) { m.count = pool.count; }
-    pool.dirty = true;
+    pool.dirty = true; this.revision++;
   }
   remove(key: string, id: string) {
     const pool = this.pools.get(key); if (!pool) return;
     const i = pool.slots.get(id); if (i === undefined) return;
     for (const m of pool.meshes) { m.setMatrixAt(i, ZERO); m.instanceMatrix.needsUpdate = true; }
-    pool.slots.delete(id); pool.free.push(i); pool.dirty = true;
+    pool.slots.delete(id); pool.free.push(i); pool.dirty = true; this.revision++;
   }
   /** PERF-BATCH: each pool's meshes get one bounding sphere around its placed instances, so a pool whose things are all
    *  off screen costs no draws (they were drawn always: Eden 2026 spent ~220 draws a frame on pools out of view). Call
