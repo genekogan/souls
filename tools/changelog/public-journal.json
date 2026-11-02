@@ -1,0 +1,23 @@
+[
+  {
+    "id": "soul-actions-tea",
+    "version": "4.07",
+    "date": "2026-11-01",
+    "title": "Tea, shared by hand",
+    "result": "Souls can serve tea, drink it in sips and wash their mugs.",
+    "limitations": "Recorded on the development branch before release; this illustrates the feature and is not production verification. This 40.48-second continuous normal-speed excerpt comes from an accepted 205-second take. The poster is an illustrative still, not motion proof.",
+    "source": {
+      "url": "https://github.com/genekogan/souls/pull/493",
+      "commit": "a42e1a8fe93e6702dbf21884e3c040491bf7d050",
+      "capturedOn": "2026-10-31",
+      "environment": "historical-test"
+    },
+    "media": {
+      "kind": "video",
+      "url": "https://github.com/genekogan/souls/releases/download/proofs/pr-493.12-ben-wash-the-cup.mp4",
+      "poster": "https://github.com/genekogan/souls/releases/download/proofs/pr-493.mugs-empty-empty-clean.jpg",
+      "alt": "Ben washes a cup in a historical local test world.",
+      "status": "available"
+    }
+  }
+]

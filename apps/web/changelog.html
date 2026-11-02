@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#101110" media="(prefers-color-scheme: dark)" />
     <title>Changelog · Sim</title>
     <!-- The public changelog (issue #388), filled from CHANGELOG.md at build time (src/changelog-page.ts). No script,
-         no request beyond this document. Tokens and type follow the world list (src/styles.css :root, .world-list). -->
+         optional reviewed posters and user-initiated video. Tokens and type follow the world list (src/styles.css :root, .world-list). -->
     <style>
       :root { color-scheme: light dark; --bg: #fafaf7; --fg: #1b1b18; --dim: #77776f; --line: #d8d8cf; --accent: #0b6e4f; }
       @media (prefers-color-scheme: dark) { :root { --bg: #101110; --fg: #e4e4dc; --dim: #8b8b82; --line: #2b2c29; --accent: #6fd6a8; } }
@@ -30,6 +30,15 @@
       .cl-body li { font-size: 13.5px; line-height: 1.6; margin: 0 0 6px; overflow-wrap: anywhere; }
       .cl-body code { font-size: .95em; padding: 0 3px; border: 1px solid var(--line); border-radius: 3px; }
       .cl-note { margin: 2px 0 18px; color: var(--dim); font-size: 13.5px; }
+      .cl-journal { border: 1px solid var(--line); border-radius: 6px; margin: 12px 0 20px; overflow-wrap: anywhere; }
+      .cl-journal summary { padding: 14px; cursor: pointer; font-size: 14px; }
+      .cl-journal summary span { color: var(--accent); font-size: 12px; }
+      .cl-journal article { padding: 0 14px 18px; }
+      .cl-journal h4 { margin: 6px 0 12px; font-size: 16px; }
+      .cl-journal figure { margin: 16px 0; }
+      .cl-journal video, .cl-journal img { width: 100%; max-height: 460px; object-fit: contain; background: #101110; border-radius: 4px; }
+      .cl-journal figcaption, .cl-provenance, .cl-limits { font-size: 12px; color: var(--dim); }
+      .cl-journal figcaption { margin-top: 8px; }
       .cl-end h2 { color: var(--dim); }
       @media (max-width: 640px) {
         main { margin: 3vh auto; padding: 16px; }
