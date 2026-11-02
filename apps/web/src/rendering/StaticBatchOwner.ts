@@ -122,6 +122,12 @@ function plainCopy(s:Source){
 // from its batch instead: the cell batch is the cheaper caster, and the proxy stands down while its casters are batched.
 const casts=(m:THREE.Mesh)=>m.castShadow||m.userData.shadowProxied===true;
 const inert=(o:THREE.Object3D)=>o.constructor===THREE.Object3D||o.constructor===THREE.Group;
+function wholeRootCovered(o:THREE.Object3D,batched:Set<THREE.Mesh>):boolean{
+ if(!o.visible)return true;
+ if(!inert(o)&&!batched.has(o as THREE.Mesh)&&o.userData.shadowProxy!==true)return false; // a generated proxy's batched casters cast
+ for(const child of o.children)if(!wholeRootCovered(child,batched))return false;
+ return true;
+}
 
 /** One macrotask's pause: a posted message, not a clamped timer. */
 const yieldMain=()=>new Promise<void>(resolve=>{if(typeof MessageChannel==='undefined'){setTimeout(resolve,0);return;}const c=new MessageChannel();c.port1.onmessage=()=>{c.port1.close();c.port2.close();resolve();};c.port2.postMessage(0);});
@@ -163,7 +169,7 @@ export class StaticBatchOwner{
    // PERF-BATCH: a root whose every drawable is in a batch is hidden whole while its batches draw, so three.js walks
    // one object instead of its subtree (a lamp with a light, or a thing with a sprite, hides mesh by mesh).
    const batched=new Set<THREE.Mesh>();for(const batch of this.batches){for(const s of batch.sources){batched.add(s.mesh);const info=this.rootInfo.get(s.root)??{batches:[],whole:true};if(!info.batches.includes(batch))info.batches.push(batch);this.rootInfo.set(s.root,info);}}
-   for(const [root,info] of this.rootInfo){const walk=(o:THREE.Object3D):boolean=>{if(!o.visible)return true;if(!inert(o)&&!batched.has(o as THREE.Mesh)&&o.userData.shadowProxy!==true)return false  /* a generated shadow proxy: its batched casters cast */;for(const c of o.children)if(!walk(c))return false;return true;};info.whole=hideWholeRoots&&walk(root);}
+   for(const [root,info] of this.rootInfo)info.whole=hideWholeRoots&&wholeRootCovered(root,batched);
    this.roots=[...new Set(roots)];this.generation=generation;this.sourceMaterials=materials.size;return{generation,status:'ready' as const};
   }catch(error){if(sliced){this.release(built);if(error instanceof DOMException&&error.name==='AbortError')throw error  /* obsolete: the live set stays */;}else this.release([...next,...previous.values()]);this.clear();this.preparationError=error instanceof Error?error.message:'static-batches.prepare-failed';throw error;}finally{if(preparation===this.preparation){this.prepareCpuMs=performance.now()-prepareStart;this.sourceNodes=nodes;this.sourceMeshes=meshes;}}
  }
@@ -176,7 +182,16 @@ export class StaticBatchOwner{
   try{
    const validate=revision===undefined||revision!==this.validatedRevision;this.validatedLastRender=validate;
    if(validate){const cache=validationWindow();for(const root of this.roots)root.updateWorldMatrix(true,true);for(const batch of this.batches)batch.okay=batch.sources.every(s=>unchanged(s,this.scene,cache,batch.mesh.material as THREE.Material,this.shaderMerge));this.validatedRevision=revision??null;}
-   const whole=new Set<THREE.Object3D>();for(const [root,info] of this.rootInfo)if(info.whole&&info.batches.every(b=>b.okay))whole.add(root);
+   const whole=new Set<THREE.Object3D>();let represented:Set<THREE.Mesh>|undefined;
+   for(const [root,info] of this.rootInfo)if(info.whole&&info.batches.every(b=>b.okay)){
+    // Adding/showing a drawable can leave every old source unchanged. Recheck complete coverage at the same
+    // trusted revision boundary; a revoked whole-root proof stays revoked until a fresh preparation.
+    if(validate){
+     if(!represented){represented=new Set();for(const batch of this.batches)if(batch.okay)for(const s of batch.sources)represented.add(s.mesh);}
+     if(!wholeRootCovered(root,represented)){info.whole=false;continue;}
+    }
+    whole.add(root);
+   }
    for(const batch of this.batches){batch.mesh.visible=batch.okay;if(!batch.okay){this.fallback++;continue;}this.used++;this.callsSaved+=batch.sources.length-1;for(const s of batch.sources){if(whole.has(s.root))continue;s.mesh.visible=false;hidden.push(s.mesh);}}
    for(const root of whole){root.visible=false;hidden.push(root);}this.wholeRootsHidden=whole.size;
    this.group.visible=this.used>0;this.validationCpuMs=performance.now()-start;return draw();}
