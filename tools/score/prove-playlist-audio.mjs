@@ -67,8 +67,18 @@ const pausedAt = gone.music.paused?.positionS;
 await hide(false);
 let resumed = null; for (let i = 0; i < 40; i++) { resumed = await state(); if (resumed.music.playing) break; await sleep(250); }
 const resumeLog = (await page.evaluate(() => window.__edenMusic.log())).filter((e) => e.ev === 'start').at(-1);
-const longHide = { piece: gone.music.paused ? gone.music.playlist[gone.music.paused.index] : null, stoppedWhileHidden: !gone.music.playing, pausedAtS: pausedAt, resumed: resumed.music.playing, resumedPositionS: resumed.music.file.positionS, start: resumeLog };
-console.log(`${at()} s: hidden 14 s: stopped ${longHide.stoppedWhileHidden}, remembered ${longHide.piece} at ${pausedAt?.toFixed?.(1)} s; visible: ${resumed.music.playing} at ${resumed.music.file.positionS} s (${resumeLog?.reason})`);
+const longHide = { piece: gone.music.paused ? gone.music.playlist[gone.music.paused.index] : null, stoppedWhileHidden: !gone.music.playing, pausedAtS: pausedAt, pausedPerf: gone.music.paused?.perf ?? null, resumed: resumed.music.playing, resumedPositionS: resumed.music.file.positionS, resumedPerf: resumed.music.file.performance, start: resumeLog };
+console.log(`${at()} s: hidden 14 s: stopped ${longHide.stoppedWhileHidden}, remembered ${longHide.piece} performance ${longHide.pausedPerf} at ${pausedAt?.toFixed?.(1)} s; visible: ${resumed.music.playing} performance ${longHide.resumedPerf} at ${resumed.music.file.positionS} s (${resumeLog?.reason})`);
+
+// a fresh start of a piece (next, replay) picks a random performance: several starts, the performances they picked
+const picks = [];
+for (let i = 0; i < 8; i++) {
+  await page.evaluate(() => window.__edenMusic.next());
+  let m = null; for (let j = 0; j < 60; j++) { m = (await state()).music; if (m.playing && !m.starting && m.source === 'file') break; await sleep(250); }
+  picks.push({ piece: m.playing, performance: m.file.performance, of: m.file.performances });
+}
+const multi = picks.filter((p) => p.of > 1), distinct = new Set(multi.map((p) => p.performance)).size;
+console.log(`${at()} s: ${picks.length} starts picked performances ${picks.map((p) => `${p.piece}:${p.performance}/${p.of}`).join(' ')} (${distinct} distinct)`);
 
 // a crossfade: shorten the piece and watch the next file take over while the current fades
 await page.evaluate(() => window.__edenMusic.trackSeconds(24));
@@ -81,10 +91,10 @@ for (let i = 0; i < 120; i++) {
 s = await state();
 const log = await page.evaluate(() => window.__edenMusic.log());
 console.log(`${at()} s: crossfade ${cross ? `${cross.piece} started at +${cross.t} ms, previous ended at +${ended?.t} ms` : 'NOT SEEN'}; now ${s.music.playing} (${s.music.source}), level ${s.level}`);
-const proof = { at: new Date().toISOString(), url: target.href, playing: s.music, levels, levelOk: levels.some((l) => l > 0.001), fileSource: s.music.source === 'file', toneNeverLoaded: s.music.toneCtx === 'none' && s.music.fetched.length === 0, profile: { sampledMs: +(total / 1000).toFixed(0), scoreEngineMs: +scoreMs.toFixed(1), top }, crossfade: cross ? { start: cross, previousEnd: ended } : null, focus: { shortHide, longHide }, log, consoleErrors: consoleErrors.slice(0, 20) };
+const proof = { at: new Date().toISOString(), url: target.href, playing: s.music, levels, picks, distinctPerformances: distinct, levelOk: levels.some((l) => l > 0.001), fileSource: s.music.source === 'file', toneNeverLoaded: s.music.toneCtx === 'none' && s.music.fetched.length === 0, profile: { sampledMs: +(total / 1000).toFixed(0), scoreEngineMs: +scoreMs.toFixed(1), top }, crossfade: cross ? { start: cross, previousEnd: ended } : null, focus: { shortHide, longHide }, log, consoleErrors: consoleErrors.slice(0, 20) };
 writeFileSync(out, JSON.stringify(proof, null, 1) + '\n');
-const focusOk = shortHide.sameAfter && shortHide.duckedLevel < shortHide.levelAfter && longHide.stoppedWhileHidden && longHide.resumed === longHide.piece && Math.abs((longHide.resumedPositionS ?? 0) - (longHide.pausedAtS ?? -99)) < 3;
-const ok = proof.levelOk && proof.fileSource && proof.toneNeverLoaded && proof.crossfade && focusOk && scoreMs < 5;
+const focusOk = shortHide.sameAfter && shortHide.duckedLevel < shortHide.levelAfter && longHide.stoppedWhileHidden && longHide.resumed === longHide.piece && longHide.resumedPerf === longHide.pausedPerf && Math.abs((longHide.resumedPositionS ?? 0) - (longHide.pausedAtS ?? -99)) < 3;
+const ok = proof.levelOk && distinct > 1 && proof.fileSource && proof.toneNeverLoaded && proof.crossfade && focusOk && scoreMs < 5;
 console.log(`${ok ? 'PROOF OK' : 'PROOF INCOMPLETE'}: ${out}`);
 await browser.close();
 process.exitCode = ok ? 0 : 1;

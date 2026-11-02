@@ -15,15 +15,24 @@ import type { MusicEvent } from './music.ts';
 
 export const CROSSFADE_S = 3, FADE_IN_S = 0.5;
 
-export type FileIndex = { version: number; format: string | null; seconds: number; pieces: Record<string, { url: string; seconds: number; seed: number; bytes: number; sha256: string }> };
+/** One rendered performance of a piece (its seed and file). */
+export type Performance = { seed: number; url: string; bytes: number; sha256: string };
+/** The rendered-audio index (score/playlist/playlist-audio.json). Version 2 lists several performances per piece; a
+ *  version 1 entry (one file, its fields inline) reads as one performance. */
+export type FileIndex = { version: number; format: string | null; seconds: number; pieces: Record<string, { seconds: number; performances?: Performance[]; url?: string; seed?: number; bytes?: number; sha256?: string }> };
+export function performancesOf(index: FileIndex, id: string): Performance[] {
+  const e = index.pieces[id]; if (!e) return [];
+  if (e.performances?.length) return e.performances;
+  return e.url ? [{ seed: e.seed ?? 0, url: e.url, bytes: e.bytes ?? 0, sha256: e.sha256 ?? '' }] : [];
+}
 /** The subset of HTMLMediaElement the player uses (a fake in tests). */
 export type AudioEl = { src: string; crossOrigin: string | null; preload: string; currentTime: number; duration: number; readyState: number; paused: boolean; play(): Promise<void>; pause(): void; load(): void; removeAttribute(name: string): void; addEventListener(type: string, fn: () => void, opts?: { once?: boolean }): void; removeEventListener(type: string, fn: () => void): void };
 export type ParamLike = { value: number; cancelScheduledValues(t: number): unknown; setValueAtTime(v: number, t: number): unknown; linearRampToValueAtTime(v: number, t: number): unknown };
 export type GainLike = { gain: ParamLike; connect(n: unknown): unknown; disconnect(): void };
 export type CtxLike = { currentTime: number; state: string; destination: unknown; createGain(): GainLike; createMediaElementSource(el: AudioEl): { connect(n: unknown): unknown; disconnect(): void }; resume(): Promise<void>; createAnalyser?(): AnalyserNode; createMediaStreamDestination?(): MediaStreamAudioDestinationNode; createMediaStreamSource?(s: MediaStream): AudioNode };
-export type FileEnv = { ctx(): CtxLike; audio(): AudioEl; now(): number };
+export type FileEnv = { ctx(): CtxLike; audio(): AudioEl; now(): number; random?(): number };
 
-type Deck = { id: string; el: AudioEl; gain: GainLike; src: { disconnect(): void }; startedAt: number; endsAt: number; positionAt: number; fading: boolean; prefetched: boolean; retireAt: number; failed: string | null; onError: () => void };
+type Deck = { id: string; perf: number; el: AudioEl; gain: GainLike; src: { disconnect(): void }; startedAt: number; endsAt: number; positionAt: number; fading: boolean; prefetched: boolean; retireAt: number; failed: string | null; onError: () => void };
 export type FileEventHandler = (e: Omit<MusicEvent, 't'>) => void;
 
 const dbToAmp = (db: number) => (db === -Infinity ? 0 : Math.pow(10, db / 20));
@@ -57,7 +66,11 @@ export class FilePlayer {
   fadeS = 4; prefetchS = 20; crossfadeS = CROSSFADE_S;
   constructor(private env: FileEnv, private index: FileIndex, private on: FileEventHandler = () => {}) {}
 
-  has(id: string) { return !!this.index.pieces[id]; }
+  has(id: string) { return performancesOf(this.index, id).length > 0; }
+  /** How many performances a piece has. */
+  performances(id: string) { return performancesOf(this.index, id).length; }
+  /** A random performance of a piece (each start of a piece picks afresh; a resume passes the one it paused). */
+  private pick(id: string) { const n = this.performances(id); return n > 1 ? Math.min(n - 1, Math.floor((this.env.random ?? Math.random)() * n)) : 0; }
   get ctx() { return this.env.ctx(); }
   private out(): GainLike {
     if (!this.master) { this.master = this.ctx.createGain(); this.master.gain.value = this.volume; this.master.connect(this.ctx.destination); }
@@ -70,14 +83,15 @@ export class FilePlayer {
   /** The music's level (dB at the master; -Infinity is silence), ramped over `rampS`. */
   setVolume(db: number, rampS: number) { this.volume = dbToAmp(db); if (this.master) this.ramp(this.master.gain, this.volume, rampS); }
 
-  private deck(id: string): Deck {
-    if (this.pending?.id === id) { const d = this.pending; this.pending = null; return d; }
+  private deck(id: string, perf?: number): Deck {
+    if (this.pending?.id === id && (perf == null || this.pending.perf === perf)) { const d = this.pending; this.pending = null; return d; }
     if (this.pending) { this.retire(this.pending); this.pending = null; }
+    const all = performancesOf(this.index, id), k = perf != null && perf >= 0 && perf < all.length ? perf : this.pick(id);
     const out = this.out(), el = this.env.audio(), gain = this.ctx.createGain(); gain.gain.value = 0; gain.connect(out);
     const src = this.ctx.createMediaElementSource(el); src.connect(gain);
-    const d: Deck = { id, el, gain, src, startedAt: 0, endsAt: 0, positionAt: 0, fading: false, prefetched: false, retireAt: 0, failed: null, onError: () => { d.failed = 'media error'; } };
+    const d: Deck = { id, perf: k, el, gain, src, startedAt: 0, endsAt: 0, positionAt: 0, fading: false, prefetched: false, retireAt: 0, failed: null, onError: () => { d.failed = 'media error'; } };
     el.addEventListener('error', d.onError);
-    el.src = fileUrl(this.index.pieces[id].url); el.load();
+    el.src = fileUrl(all[k].url); el.load();
     return d;
   }
   private retire(d: Deck) {
@@ -91,11 +105,12 @@ export class FilePlayer {
     this.on({ ev: 'load', piece: id, reason: 'prefetch file' });
     return true;
   }
-  /** Play a piece from `positionS` (a resume), fading in over `fadeInS`. Resolves once it sounds; rejects when the file
-   *  does not load or play (the caller falls back to Tone). A piece already playing fades out (a crossfade). */
-  play(id: string, { positionS = 0, fadeInS = FADE_IN_S, reason = 'play' } = {}): Promise<void> {
-    const entry = this.index.pieces[id]; if (!entry) return Promise.reject(Error(`no file for ${id}`));
-    const d = this.deck(id);
+  /** Play a piece from `positionS` (a resume), fading in over `fadeInS`: performance `perf` (a resume), else a random
+   *  one (or the prefetched one). Resolves once it sounds; rejects when the file does not load or play (the caller falls
+   *  back to Tone). A piece already playing fades out (a crossfade). */
+  play(id: string, { positionS = 0, fadeInS = FADE_IN_S, reason = 'play', perf }: { positionS?: number; fadeInS?: number; reason?: string; perf?: number } = {}): Promise<void> {
+    const entry = this.index.pieces[id]; if (!entry || !this.has(id)) return Promise.reject(Error(`no file for ${id}`));
+    const d = this.deck(id, perf);
     let settledNow = false;
     const p = new Promise<void>((ok, fail) => {
       let settled = false;
@@ -110,7 +125,8 @@ export class FilePlayer {
           this.ramp(d.gain.gain, 1, fadeInS);
           if (this.current && this.current !== d) { this.fadeOut(this.current, this.fadeS); }
           this.current = d;
-          this.on({ ev: 'start', piece: id, reason: positionS > 0 ? `${reason} at ${Math.round(positionS)} s` : reason });
+          const of = this.performances(id) > 1 ? `, performance ${d.perf + 1} of ${this.performances(id)}` : '';
+          this.on({ ev: 'start', piece: id, reason: (positionS > 0 ? `${reason} at ${Math.round(positionS)} s` : reason) + of });
           done();
         };
         (this.ctx.state === 'running' ? Promise.resolve() : this.ctx.resume().catch(() => {})).then(() => d.el.play()).then(start, (e) => done(Error(`${id}: play: ${String(e).slice(0, 80)}`)));
@@ -131,8 +147,8 @@ export class FilePlayer {
   /** Fade the playing piece out over `s` (its end, with no successor). */
   fade(s = this.fadeS) { if (this.current) this.fadeOut(this.current, s); }
   /** Stop everything now. Returns where the playing piece was (position in the file), for a later resume. */
-  stop(): { id: string; positionS: number; remainingMs: number } | null {
-    const c = this.current, place = c ? { id: c.id, positionS: this.position(), remainingMs: Math.max(0, c.endsAt - this.env.now()) } : null;
+  stop(): { id: string; perf: number; positionS: number; remainingMs: number } | null {
+    const c = this.current, place = c ? { id: c.id, perf: c.perf, positionS: this.position(), remainingMs: Math.max(0, c.endsAt - this.env.now()) } : null;
     for (const d of [c, this.pending, ...this.outgoing]) if (d) this.retire(d);
     this.current = null; this.pending = null; this.outgoing = [];
     return place;
@@ -140,7 +156,7 @@ export class FilePlayer {
   /** The position in the playing file (seconds). */
   position() { const c = this.current; if (!c) return 0; const t = c.el.currentTime; return Number.isFinite(t) && t > 0 ? t : c.positionAt + (this.env.now() - c.startedAt) / 1000; }
   /** The playing piece, with when it ends (ms on the env clock). */
-  playing() { const c = this.current; return c ? { id: c.id, endsAt: c.endsAt, fading: c.fading } : null; }
+  playing() { const c = this.current; return c ? { id: c.id, perf: c.perf, endsAt: c.endsAt, fading: c.fading } : null; }
   /** A shorter piece length from now on (tests), applied to the playing piece too. */
   setTrackSeconds(s: number) { this.trackS = s; if (this.current) this.current.endsAt = Math.min(this.current.endsAt, this.env.now() + s * 1000); }
 

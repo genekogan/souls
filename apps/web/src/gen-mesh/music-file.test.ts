@@ -33,11 +33,11 @@ const INDEX: FileIndex = { version: 1, format: 'audio/mp4', seconds: 240, pieces
   b: { url: 'https://assets.eden.art/assets/bb/bbbb.m4a', seconds: 240, seed: 2, bytes: 10, sha256: 'bbbb' },
   c: { url: 'https://assets.eden.art/assets/cc/cccc.m4a', seconds: 240, seed: 3, bytes: 10, sha256: 'cccc' },
 } };
-function rig() {
+function rig(index: FileIndex = INDEX, rolls: number[] = []) {
   const ctx = new FakeCtx(), els: FakeEl[] = [], log: Omit<MusicEvent, 't'>[] = [];
   let now = 1000;
-  const env: FileEnv = { ctx: () => ctx, audio: () => { const e = new FakeEl(); els.push(e); return e; }, now: () => now };
-  const player = new FilePlayer(env, INDEX, (e) => log.push(e));
+  const env: FileEnv = { ctx: () => ctx, audio: () => { const e = new FakeEl(); els.push(e); return e; }, now: () => now, random: () => rolls.shift() ?? 0 };
+  const player = new FilePlayer(env, index, (e) => log.push(e));
   const tick = (ms: number, next: string | null) => { now += ms; ctx.currentTime += ms / 1000; return player.tick(now, next); };
   const flush = () => new Promise((r) => setTimeout(r, 0));
   return { ctx, els, log, player, tick, flush, now: () => now };
@@ -123,7 +123,7 @@ test('stop() remembers the position, and a resume seeks there after the metadata
   const p = player.play('a'); els[0].metadata(); await p;
   tick(65_000, null); els[0].currentTime = 65.2;
   const place = player.stop();
-  assert.deepEqual(place, { id: 'a', positionS: 65.2, remainingMs: 240_000 - 65_000 });
+  assert.deepEqual(place, { id: 'a', perf: 0, positionS: 65.2, remainingMs: 240_000 - 65_000 });
   assert.equal(player.playing(), null); assert.ok(els[0].paused && els[0].removed);
   const q = player.play('a', { positionS: 65.2, reason: 'resume' });
   assert.equal(els[1].seekAtPlay, -1);
@@ -159,4 +159,56 @@ test('fileUrl rebases a CDN key onto the ?musicAudio origin, flat by file name',
   assert.equal(fileUrl('https://assets.eden.art/assets/aa/aaaa.m4a', ''), 'https://assets.eden.art/assets/aa/aaaa.m4a');
   assert.equal(fileUrl('https://assets.eden.art/assets/aa/aaaa.m4a', '?musicAudio=http://localhost:5213'), 'http://localhost:5213/aaaa.m4a');
   assert.equal(fileUrl('https://assets.eden.art/assets/aa/aaaa.m4a', '?x=1&musicAudio=http://localhost:5213/files/'), 'http://localhost:5213/files/aaaa.m4a');
+});
+
+// perf-music-seeds: several performances (seeds) per piece; each start picks one at random, a resume keeps its own
+const perf = (id: string, k: number) => ({ seed: k, url: `https://assets.eden.art/assets/${id}${k}/${id}${k}.m4a`, bytes: 10, sha256: `${id}${k}` });
+const INDEX2: FileIndex = { version: 2, format: 'audio/mp4', seconds: 240, pieces: {
+  a: { seconds: 240, performances: [perf('a', 0), perf('a', 1), perf('a', 2)] },
+  b: { seconds: 240, performances: [perf('b', 0), perf('b', 1), perf('b', 2)] },
+  c: { seconds: 240, performances: [perf('c', 0)] },
+} };
+
+test('each start picks a random performance; the log and playing() name it', async () => {
+  const { els, log, player, flush } = rig(INDEX2, [0.5, 0.99, 0.1]);
+  assert.equal(player.performances('a'), 3); assert.equal(player.performances('c'), 1); assert.ok(player.has('c')); assert.ok(!player.has('z'));
+  let p = player.play('a', { reason: 'first' }); els[0].metadata(); await p;
+  assert.equal(els[0].src, perf('a', 1).url); assert.equal(player.playing()?.perf, 1);
+  assert.equal(log.at(-1)?.reason, 'first, performance 2 of 3');
+  p = player.play('a', { reason: 'next' }); els[1].metadata(); await p; await flush();
+  assert.equal(els[1].src, perf('a', 2).url);   // a replay picks afresh (0.99 -> the last)
+  p = player.play('c', { reason: 'next' }); els[2].metadata(); await p;
+  assert.equal(els[2].src, perf('c', 0).url); assert.equal(log.at(-1)?.reason, 'next');   // one performance: no roll, no suffix
+});
+
+test('stop() returns the performance, and a resume plays that one at its position (no roll)', async () => {
+  const { els, player, tick } = rig(INDEX2, [0.7]);
+  const p = player.play('b'); els[0].metadata(); await p;
+  assert.equal(player.playing()?.perf, 2);
+  tick(30_000, null); els[0].currentTime = 30;
+  const place = player.stop();
+  assert.deepEqual({ id: place?.id, perf: place?.perf, positionS: place?.positionS }, { id: 'b', perf: 2, positionS: 30 });
+  const r = player.play('b', { positionS: place!.positionS, perf: place!.perf, reason: 'resume' }); els[1].metadata(); await r;
+  assert.equal(els[1].src, perf('b', 2).url); assert.equal(els[1].seekAtPlay, 30); assert.equal(player.playing()?.perf, 2);
+});
+
+test('the prefetched next piece rolls its performance once, and the crossfade plays that file', async () => {
+  const { els, log, player, tick, flush } = rig(INDEX2, [0, 0.4]);
+  const p = player.play('a'); els[0].metadata(); await p;
+  tick(220_000, 'b');                       // 20 s before the end: prefetch b, rolling 0.4 -> performance 1
+  assert.equal(els.length, 2); assert.equal(els[1].src, perf('b', 1).url);
+  els[1].metadata();
+  assert.equal(tick(17_000, 'b'), 'crossfade'); await flush(); await flush();
+  assert.equal(els.length, 2);              // the prefetched element plays: no second roll, no new file
+  assert.equal(player.playing()?.id, 'b'); assert.equal(player.playing()?.perf, 1);
+  assert.equal(log.filter((e) => e.ev === 'start').at(-1)?.reason, 'crossfade, performance 2 of 3');
+});
+
+test('a resume naming a performance the prefetch did not roll replaces the prefetched deck', async () => {
+  const { els, player, tick } = rig(INDEX2, [0, 0.9]);
+  const p = player.play('a'); els[0].metadata(); await p;
+  tick(220_000, 'b'); assert.equal(els[1].src, perf('b', 2).url);
+  const r = player.play('b', { perf: 0, positionS: 10, reason: 'resume' });
+  assert.equal(els.length, 3); assert.equal(els[2].src, perf('b', 0).url); assert.ok(els[1].removed);
+  els[2].metadata(); await r; assert.equal(player.playing()?.perf, 0);
 });
