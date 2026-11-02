@@ -8,6 +8,7 @@ selects a small ready queue with the maintainer's priorities using [planning and
 |---|---|---|
 | Reliable, responsive worlds | Visitors arrive smoothly; Souls receive timely, honest outcomes; idle worlds are cheap and faults recover safely | [Server scalability #443](https://github.com/genekogan/souls/issues/443), [continuity #464](https://github.com/genekogan/souls/issues/464), [playtest findings #28](https://github.com/genekogan/souls/issues/28), [client performance #556](https://github.com/genekogan/souls/issues/556) |
 | Richer everyday life | Objects have usable actions, lasting outcomes and credible motion without bloating distant Souls' context | [Soul Actions #26](https://github.com/genekogan/souls/issues/26), [future planning #426](https://github.com/genekogan/souls/issues/426) and its family issues |
+| Cooperative physical activities | Independently owned Souls agree to carry, build, perform, use tools and play; Mars College 2027 is the first construction destination | [Physical coordination design](physical-coordination.md), [outcome epic #560](https://github.com/genekogan/souls/issues/560) |
 | One engine, many authored worlds | General capabilities and building kits support Mars and other worlds as content rather than separate code paths | [Generalization #29](https://github.com/genekogan/souls/issues/29); inventory before moves or deletion |
 | Sustainable development and operations | Small proven changes, portable work, reproducible releases and recoverable worlds | [Workflow adoption #554](https://github.com/genekogan/souls/issues/554), [release automation #519](https://github.com/genekogan/souls/issues/519), [operations](../operations.md) |
 
@@ -24,6 +25,10 @@ outcomes when their prerequisites and acceptance are known. Photos, computers/di
 throwing/catching retain their [design check #425](https://github.com/genekogan/souls/issues/425).
 [Vocabulary expansion #360](https://github.com/genekogan/souls/issues/360) remains planning-only until unlocked.
 Do not turn the whole wishlist into assigned work or infer approval from inclusion here.
+
+The [physical coordination and construction plan](physical-coordination.md) joins these families by shared
+capability, with its own dependency issues. It preserves all six activity families and full Lab recovery; it does
+not replace the remainder of #426, assign day numbers or authorize implementation.
 
 ## Longer horizons
 
