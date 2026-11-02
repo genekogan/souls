@@ -101,13 +101,25 @@ export function waterAt(model: WorldModel, x: number, z: number): number | null 
   const g = model.ground(); let level: number | null = null;
   for (const w of g.waters) {
     if (w.area && pointInPoly(x, z, w.area)) level = w.level;
-    else if (w.path && w.w && distToPath(x, z, w.path) < w.w / 2) level = w.level;
+    else if (w.path && w.w && distToPath(x, z, w.path, w.w / 2) < w.w / 2) level = w.level;
   }
   return level ?? (g.seaLevel !== undefined ? g.seaLevel : null);
 }
-function distToPath(x: number, z: number, path: [number, number][]) {
+/** A finite `within` is a membership query: segments provably outside it need no distance. Read the current points
+ * each time; ground/path arrays can be edited in place. Mooring callers omit the bound and keep exact distances. */
+function distToPath(x: number, z: number, path: [number, number][], within = Infinity) {
   let best = Infinity;
-  for (let i = 1; i < path.length; i++) { const [ax, az] = path[i - 1], [bx, bz] = path[i]; const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)); best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t)); }
+  // In this numeric domain the original projection's subtractions/products are finite. 1/32 m exceeds its rounding
+  // error even at the largest admitted coordinate (2^40 m); it only widens the rejection box, never the water itself.
+  const limit = 2 ** 40, bounded = within > 0 && within <= limit && x >= -limit && x <= limit && z >= -limit && z <= limit, pad = within + 1 / 32;
+  for (let i = 1; i < path.length; i++) {
+    const [ax, az] = path[i - 1], [bx, bz] = path[i];
+    if (bounded && ax >= -limit && ax <= limit && az >= -limit && az <= limit && bx >= -limit && bx <= limit && bz >= -limit && bz <= limit &&
+      (x < Math.min(ax, bx) - pad || x > Math.max(ax, bx) + pad || z < Math.min(az, bz) - pad || z > Math.max(az, bz) + pad)) continue;
+    const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)); best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t));
+    // Do not return early on a hit: a later invalid segment made the old minimum NaN and must still do so.
+  }
   return best;
 }
 /** R4-LIVE: how dark the viewer's world clock makes it (0 day … 1 night), set every frame by the live view; null before
@@ -137,7 +149,7 @@ class Obstacles {
     const k = `${this.model.entities.size}`;
     if (k === this.key && t - this.at < 8) return this.boxes;
     this.key = k; this.at = t; this.boxes = [];
-    for (const { id, fp } of solidFootprints(this.model)) {
+    for (const { id, fp } of solidFootprints(this.model, [this.cx, this.cz, this.reach])) {
       if (this.skip.has(id)) continue;
       for (const b of fp) if (Math.hypot(b.c[0] - this.cx, b.c[1] - this.cz) < this.reach + Math.hypot(b.half[0], b.half[1]) && b.y1 - b.y0 > 0.12) this.boxes.push(b);
     }
@@ -153,23 +165,59 @@ class Obstacles {
  *  object on every set / delete), the entity count and the terrain are the same. Creatures refresh their obstacles every
  *  8 s, staggered, so dropping it after each task re-scanned all ~5,000 entities on most frames of a quiet world. The
  *  2 s bound covers what the revisions do not see (a terrain edited in place); Obstacles already holds boxes for 8 s. */
-let solidScan: { model: WorldModel; entities: object | undefined; defs: object | undefined; size: number; terrain: unknown; solids: { id: string; fp: Box[] }[]; at: number } | null = null;
+let solidScan: { model: WorldModel; entities: object | undefined; defs: object | undefined; size: number; terrain: unknown; solids: { id: string; fp: Box[] }[] | null; anchors: { e: Entity; d: StoredDef; bound: { x: number; z: number; radius: number } | null }[] | null; fps: Map<string, Box[] | null>; at: number } | null = null;
 const SOLID_SCAN_MS = 2000;
+/** A cheap rejection is valid only when it follows WorldModel.footprint's exact box contract. Generator output,
+ * sidecars, stretched defs and children can extend arbitrarily beyond a root's nominal size/pose; keep those in the
+ * full footprint path. In particular, a world-frame shape may have no `p` at all. */
+function simpleSolidBound(model: WorldModel, e: Entity, d: StoredDef): { x: number; z: number; radius: number } | null {
+  if (e.in.parent !== 'world' || d.form !== 'point' || d.make.kind !== 'mesh' || d.make.footprint || d.params.sx || d.params.sy || d.params.sz) return null;
+  const { x, z, s } = model.localPose(e), radius = Math.hypot(d.size.box[0], d.size.box[2]) / 2 * Math.abs(s);
+  return Number.isFinite(x) && Number.isFinite(z) && Number.isFinite(radius) ? { x, z, radius } : null;
+}
 const revisionOf = (m: Map<string, unknown>) => (m as Map<string, unknown> & { revision?: object }).revision;
-export function solidFootprints(model: WorldModel): readonly { id: string; fp: readonly Box[] }[] {
+function solidScanFor(model: WorldModel) {
   const c = solidScan;
   const now = performance.now(), entities = revisionOf(model.entities), defs = revisionOf(model.defs);
-  if (c && c.model === model && c.size === model.entities.size && c.entities === entities && c.defs === defs && c.terrain === model.terrain && (now - c.at < SOLID_SCAN_MS || (entities === undefined && defs === undefined))) return c.solids;
-  const solids: { id: string; fp: Box[] }[] = [];
-  model.readPass(() => { for (const e of model.entities.values()) {
-    const d = model.resolvedDef(e.def); if (!d || d.layer !== 'solid' || d.make.kind === 'none') continue;
-    let fp: Box[]; try { fp = model.footprint(e, d); } catch { continue; }
-    solids.push({ id: e.id, fp });
-  } });
-  solidScan = { model, entities, defs, size: model.entities.size, terrain: model.terrain, solids, at: now };
+  if (c && c.model === model && c.size === model.entities.size && c.entities === entities && c.defs === defs && c.terrain === model.terrain && (now - c.at < SOLID_SCAN_MS || (entities === undefined && defs === undefined))) return c;
+  const fresh = { model, entities, defs, size: model.entities.size, terrain: model.terrain, solids: null, anchors: null, fps: new Map<string, Box[] | null>(), at: now };
+  solidScan = fresh;
   // a model without revisions (a plain Map in tests or fixtures) keeps the old rule: one scan per synchronous task
-  if (entities === undefined || defs === undefined) queueMicrotask(() => { if (solidScan?.solids === solids) solidScan = null; });
-  return solids;
+  if (entities === undefined || defs === undefined) queueMicrotask(() => { if (solidScan === fresh) solidScan = null; });
+  return fresh;
+}
+const footprintOf = (c: NonNullable<typeof solidScan>, model: WorldModel, e: Entity, d: StoredDef): Box[] | null => {
+  let fp = c.fps.get(e.id);
+  if (fp === undefined) { try { fp = model.footprint(e, d); } catch { fp = null; } c.fps.set(e.id, fp); }
+  return fp;
+};
+/** Every solid's world footprint in entity order. `near` ([x, z, reach]) rejects only provably distant boxes;
+ * uncertain bounds always retain the original exhaustive semantics. Obstacles applies the exact final test. */
+export function solidFootprints(model: WorldModel, near?: readonly [number, number, number]): readonly { id: string; fp: readonly Box[] }[] {
+  const c = solidScanFor(model);
+  if (!near) {
+    if (c.solids) return c.solids;
+    const solids: { id: string; fp: Box[] }[] = [];
+    model.readPass(() => { for (const e of model.entities.values()) {
+      const d = model.resolvedDef(e.def); if (!d || d.layer !== 'solid' || d.make.kind === 'none') continue;
+      const fp = footprintOf(c, model, e, d); if (fp) solids.push({ id: e.id, fp });
+    } });
+    c.solids = solids; return solids;
+  }
+  if (!c.anchors) {
+    const anchors: NonNullable<NonNullable<typeof solidScan>['anchors']> = [];
+    for (const e of model.entities.values()) {
+      const d = model.resolvedDef(e.def); if (!d || d.layer !== 'solid' || d.make.kind === 'none') continue;
+      anchors.push({ e, d, bound: simpleSolidBound(model, e, d) });
+    }
+    c.anchors = anchors;
+  }
+  const [x, z, reach] = near, out: { id: string; fp: Box[] }[] = [];
+  model.readPass(() => { for (const a of c.anchors!) {
+    if (a.bound && Math.hypot(a.bound.x - x, a.bound.z - z) > reach + a.bound.radius) continue;
+    const fp = footprintOf(c, model, a.e, a.d); if (fp) out.push({ id: a.e.id, fp });
+  } });
+  return out;
 }
 export function surroundings(model: WorldModel, home: V2, reach: number, medium: 'land' | 'water', skip: Set<string>, area?: V2[]): Surroundings & { obstacles: Obstacles; t: number } {
   const obstacles = new Obstacles(model, home[0], home[1], reach + 4, skip);
@@ -210,7 +258,7 @@ export type Rig = {
   scale?: number;
   area?: V2[];
   // state (deterministic caches only; follow keeps a little smoothing state)
-  plan?: Plan; world?: ReturnType<typeof surroundings>; cache?: RouteCache; homeKey?: string;
+  plan?: Plan; world?: ReturnType<typeof surroundings>; cache?: RouteCache; homeKey?: string; planned?: boolean;
   followState?: { x: number; z: number; yaw: number; dist: number; t: number };
 };
 
@@ -224,6 +272,8 @@ export function makeRig(obj: THREE.Object3D, o: Omit<Rig, 'roles' | 'hip' | 'len
 }
 
 const WATER_KINDS = new Set<BehaviorKind>(['swim']);
+const PLAN_FRAME_MS = 6;
+let planFrame = NaN, planSpent = 0;
 const nocturnal = new Set(['fox', 'cat']);
 
 /** One creature frame: behaviour → pose → gait. `base` gives the home (the entity's resting place). */
@@ -233,6 +283,11 @@ export function creatureStep(obj: THREE.Object3D, rig: Rig, entity: Entity | nul
   const hx = home ? home[0] : obj.position.x, hz = home ? home[1] : obj.position.z;
   if (!model) { gait(obj, rig, idlePose(hx, hz, base.yaw), t, s, 0); return; }
   const key = `${hx.toFixed(2)},${hz.toFixed(2)},${rig.kind},${rig.radius},${rig.speed}`;
+  // PERF-LOAD: a creature's first plan and route cost 1-10 ms; on arrival every creature in view planned on one frame
+  // (~0.16 s). A few plan per frame; the rest stand at home until their turn.
+  const fresh = rig.homeKey !== key || !rig.plan || !rig.planned;
+  if (fresh) { if (t !== planFrame) { planFrame = t; planSpent = 0; } if (planSpent >= PLAN_FRAME_MS) { gait(obj, rig, idlePose(hx, hz, base.yaw), t, s, 0); return; } }
+  const planStart = fresh ? performance.now() : 0;
   if (rig.homeKey !== key || !rig.plan) {
     rig.homeKey = key;
     const medium = WATER_KINDS.has(rig.kind) ? 'water' : 'land';
@@ -250,6 +305,7 @@ export function creatureStep(obj: THREE.Object3D, rig: Rig, entity: Entity | nul
   if (kind === 'follow' && rig.follow) P = followPose(rig, model, t, hx, hz);
   else if (kind !== rig.plan.kind) P = pose({ ...rig.plan, kind }, t, rig.world!, rig.cache!);
   else P = pose(rig.plan, t, rig.world!, rig.cache!);
+  if (fresh) { rig.planned = true; planSpent += performance.now() - planStart; }
   // E2 #3: shy animals bolt from people who come close, then wander back to their routine
   if (rig.flee && rig.gait !== 'fish-swim' && kind !== 'follow') P = fleeStep(rig.fleeState ??= { ox: 0, oz: 0, dist: 0, t }, P, fleeSources(t), rig.flee, rig.speed * s, t, (x, z) => rig.world!.free(x, z, rig.plan!.size));
   // ANI: everything on foot gives way to Souls instead of walking through them (drawn offset only; see give-way.ts)

@@ -27,7 +27,7 @@ import { ComponentViews } from './components.ts';
 import {recordedSleepPose} from './recorded-sleep-pose.ts';
 import {itemPoseOf} from '../../engine/items/presentation.ts';
 import { FixtureViews } from './fixtures.ts';
-import { GAIT_ACTS, GESTURE_FADE, HumanViews, REST_ACTS, type Hands, type SampledHuman , type HumanViewer } from './humans.ts';
+import { GAIT_ACTS, GESTURE_FADE, HumanViews, REST_ACTS, type Hands, type SampledHuman , type HumanViewer, type RigCreationBudget } from './humans.ts';
 import { takeLog, type LogLine, type TakeStep } from './take-log.ts';
 import type { Template } from './people.ts';
 import { walkCum } from './take-walk.ts';
@@ -413,7 +413,7 @@ export class TakePeople {
    * the end); the Walk ease runs on to it, so a body that stopped at a window's end finishes its stop instead of
    * holding mid-stride until the next window arrives.
    */
-  show(t: number, clock = t,stationBeat:DepictionBeat|null=null,ahead=t) {
+  show(t: number, clock = t,stationBeat:DepictionBeat|null=null,ahead=t,rigBudget?:RigCreationBudget) {
     const s0 = performance.now();
     const nativeFrame=sampleTake(this.take,t);
     this.humans.setSupplementalStairs(matchedStairFlights(this.supplementalStairs,nativeFrame,this.allRecords(),this.take.entities0??{},this.supplementalLiveTakeId?{liveTakeId:this.supplementalLiveTakeId,take:this.take}:undefined));
@@ -473,7 +473,7 @@ export class TakePeople {
     this.fixtures.onTick({ entities: Object.fromEntries(Object.entries(fixtures).filter(([, e]) => !e.tags?.includes('entity-world'))) });
     this.fixtures.render(clock);
     this.humans.setStationBeat(stationBeat);
-    this.humans.setFrame(people, clock, { ...comps, ...fixtures }); // seats / fires come from the fixtures
+    this.humans.setFrame(people, clock, { ...comps, ...fixtures },this.humans.viewer?rigBudget:undefined); // seats / fires come from the fixtures; shots/eyes keep immediate random-access creation
     this.humans.setAttention(Object.fromEntries(Object.entries(frame.entities).filter(([,e]) => Array.isArray(e.state.attention)).map(([id,e]) => [id, e.state.attention as [number,number]])));
     this.humans.render(1, (id, from, out) => this.comps.nearestPoint(id, from, out));
     this.comps.attachHeld(this.humans);
