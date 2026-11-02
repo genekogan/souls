@@ -25,7 +25,7 @@ type AttributeStamp={name:string;attribute:THREE.BufferAttribute;version:number}
 type MaterialProgram={compile:THREE.Material['onBeforeCompile'];key:THREE.Material['customProgramCacheKey'];value:string};
 type MergedMaterial=THREE.Material|null|false;  // false: a custom material factory threw
 type Source={mesh:THREE.Mesh;root:THREE.Object3D;geometry:THREE.BufferGeometry;material:THREE.Material;matrix:number[];attributes:AttributeStamp[];index:THREE.BufferAttribute|null;indexVersion:number;materialVersion:number;program:MaterialProgram;layers:number;cast:boolean;receive:boolean;order:number;frustum:boolean;bounds:readonly number[];plain:string|null};
-type Batch={mesh:THREE.Mesh;sources:Source[];bytes:number;key:string;okay:boolean};
+type Batch={mesh:THREE.Mesh;material:THREE.Material;sources:Source[];bytes:number;key:string;okay:boolean};
 type RootInfo={batches:Batch[];whole:boolean};
 const meshBefore=THREE.Object3D.prototype.onBeforeRender,meshAfter=THREE.Object3D.prototype.onAfterRender,shadowBefore=THREE.Object3D.prototype.onBeforeShadow,shadowAfter=THREE.Object3D.prototype.onAfterShadow,materialBefore=THREE.Material.prototype.onBeforeRender,compile=THREE.Material.prototype.onBeforeCompile;
 const visible=(o:THREE.Object3D)=>{for(let p:THREE.Object3D|null=o;p;p=p.parent)if(!p.visible)return false;return true;};
@@ -108,8 +108,8 @@ function derivedPlainMaterial(from:THREE.MeshStandardMaterial){
  d.defines=from.defines?{...from.defines}:d.defines;d.name='Derived static material';return d;
 }
 /** The source geometry with only position, normal (computed when absent) and the material colour × its vertex colour. */
-function plainCopy(s:Source){
- const g=s.geometry,n=g.attributes.position.count,copy=new THREE.BufferGeometry();
+function plainCopy(s:Source,copy:THREE.BufferGeometry){
+ const g=s.geometry,n=g.attributes.position.count;
  copy.setAttribute('position',g.attributes.position.clone());
  if(g.attributes.normal)copy.setAttribute('normal',g.attributes.normal.clone());else copy.computeVertexNormals();
  const base=(s.material as THREE.MeshStandardMaterial).color,vc=(s.material as THREE.MeshStandardMaterial).vertexColors?g.attributes.color:undefined,color=new Float32Array(n*3);
@@ -122,6 +122,12 @@ function plainCopy(s:Source){
 // from its batch instead: the cell batch is the cheaper caster, and the proxy stands down while its casters are batched.
 const casts=(m:THREE.Mesh)=>m.castShadow||m.userData.shadowProxied===true;
 const inert=(o:THREE.Object3D)=>o.constructor===THREE.Object3D||o.constructor===THREE.Group;
+function wholeRootCovered(o:THREE.Object3D,batched:Set<THREE.Mesh>):boolean{
+ if(!o.visible)return true;
+ if(!inert(o)&&!batched.has(o as THREE.Mesh)&&o.userData.shadowProxy!==true)return false; // a generated proxy's batched casters cast
+ for(const child of o.children)if(!wholeRootCovered(child,batched))return false;
+ return true;
+}
 
 /** One macrotask's pause: a posted message, not a clamped timer. */
 const yieldMain=()=>new Promise<void>(resolve=>{if(typeof MessageChannel==='undefined'){setTimeout(resolve,0);return;}const c=new MessageChannel();c.port1.onmessage=()=>{c.port1.close();c.port2.close();resolve();};c.port2.postMessage(0);});
@@ -129,21 +135,27 @@ const yieldMain=()=>new Promise<void>(resolve=>{if(typeof MessageChannel==='unde
 export class StaticBatchOwner{
  readonly group=new THREE.Group();private scene:THREE.Scene;private limits:StaticBatchLimits;private batches:Batch[]=[];private roots:THREE.Object3D[]=[];private rootInfo=new Map<THREE.Object3D,RootInfo>();private disposed=false;private rendering=false;private generation:number|null=null;private latestGeneration=-1;private fallback=0;private used=0;private validationCpuMs=0;private restoreCpuMs=0;private prepareCpuMs=0;private sourceNodes=0;private sourceMeshes=0;private preparationError:string|null=null;private budgetSkippedMeshes=0;private budgetSkippedBatches=0;private workingGeometryPeakBytes=0;private callsSaved=0;private validatedRevision:number|null=null;private validatedLastRender=false;private reusedBatches=0;private sourceMaterials=0;private wholeRootsHidden=0;private sharedMaterials=new Map<string,THREE.MeshStandardMaterial>();private shaderMerge:StaticShaderMerge|undefined;
  constructor(scene:THREE.Scene,limits:Partial<StaticBatchLimits>={}){this.scene=scene;this.limits={...STATIC_BATCH_LIMITS,...limits};if(Object.values(this.limits).some(n=>!Number.isFinite(n)||n<=0)||!Number.isInteger(this.limits.maxMeshes)||!Number.isInteger(this.limits.maxNodes)||!Number.isInteger(this.limits.maxMeshesPerBatch)||this.limits.maxWorkingBytes<this.limits.maxMergedBytes)throw Error('static-batches.invalid-limits');this.group.name='Derived static render batches';this.group.visible=false;scene.add(this.group);}
- private release(batches:Batch[]){for(const batch of batches){batch.mesh.geometry.dispose();batch.mesh.removeFromParent();}}
- /** Forget the live set without disposing it (an incremental preparation reuses or releases its batches). */
+ private committing=false;private cleanupError:string|null=null;
+ /** Three's removal/disposal events can call back into the owner or throw. Detach the entire retired set before
+  * disposing any resources, keep cleanup going, and never let a listener roll back a published replacement. */
+ private cleanup(action:()=>void){try{action();}catch(error){this.cleanupError??=error instanceof Error?error.message:'static-batches.cleanup-failed';}}
+ private release(batches:Batch[],materials:Iterable<THREE.Material>=[]){const committing=this.committing;this.committing=true;try{for(const batch of batches)this.cleanup(()=>batch.mesh.removeFromParent());for(const batch of batches)this.cleanup(()=>batch.mesh.geometry.dispose());for(const material of materials)this.cleanup(()=>material.dispose());}finally{this.committing=committing;}}
+ /** Forget the live set without disposing it; publication and cleanup are separate synchronous steps. */
  private retire(){this.batches=[];this.roots=[];this.rootInfo.clear();this.generation=null;this.validatedRevision=null;this.callsSaved=this.used=this.fallback=0;}
- private clear(){this.release(this.batches);this.batches=[];this.roots=[];this.rootInfo.clear();this.generation=null;this.validatedRevision=null;this.callsSaved=this.used=this.fallback=0;}
+ private clear(){const batches=this.batches,materials=this.sharedMaterials;this.retire();this.sharedMaterials=new Map();this.shaderMerge=undefined;this.release(batches,materials.values());}
  private preparation=0;
- reset(){if(this.rendering)throw Error('static-batches.reset-during-render');this.preparation++;this.clear();}
+ reset(){if(this.committing)throw Error('static-batches.reset-during-commit');if(this.rendering)throw Error('static-batches.reset-during-render');this.preparation++;this.clear();}
  async prepare(roots:readonly THREE.Object3D[],{generation,signal,budgetPolicy,sharePlainMaterials=false,incremental=false,hideWholeRoots=false,shaderMerge,sliceMs}:StaticBatchPreparation){
-  if(this.disposed||this.rendering)throw Error('static-batches.unavailable');if(budgetPolicy!==undefined&&budgetPolicy!=='partial-cells/1')throw Error('static-batches.invalid-budget-policy');if(!Number.isSafeInteger(generation)||generation<0)throw Error('static-batches.invalid-generation');if(generation<this.latestGeneration)throw Error('static-batches.obsolete-generation');if(signal?.aborted)throw new DOMException('Obsolete render preparation','AbortError');this.latestGeneration=generation;
-  // Sliced: the current batches stay live until the new set commits; built cells join the group only then.
-  const preparation=++this.preparation,sliced=sliceMs!==undefined,previous=incremental||sliced?new Map(this.batches.map(b=>[b.key,b])):new Map<string,Batch>(),next:Batch[]=[],built:Batch[]=[];if(!sliced){if(incremental)this.retire();else this.clear();}let sliceStart=performance.now();const window=validationWindow();
+  if(this.disposed||this.rendering||this.committing)throw Error('static-batches.unavailable');if(budgetPolicy!==undefined&&budgetPolicy!=='partial-cells/1')throw Error('static-batches.invalid-budget-policy');if(!Number.isSafeInteger(generation)||generation<0)throw Error('static-batches.invalid-generation');if(generation<this.latestGeneration)throw Error('static-batches.obsolete-generation');if(signal?.aborted)throw new DOMException('Obsolete render preparation','AbortError');this.latestGeneration=generation;
+  // Geometry, shader/root policy and owned materials stay private until the entire candidate can commit.
+  // Even a synchronous build can invoke callbacks that render, fail or start a newer preparation.
+  const preparation=++this.preparation,sliced=sliceMs!==undefined,previous=new Map(this.batches.map(b=>[b.key,b])),acceptedBytes=this.batches.reduce((n,b)=>n+b.bytes,0),next:Batch[]=[],built:Batch[]=[],newMaterials=new Map<string,THREE.MeshStandardMaterial>();let sliceStart=performance.now();const window=validationWindow();
   const obsolete=()=>this.disposed||signal?.aborted||preparation!==this.preparation;
   const breathe=()=>{if(obsolete())throw new DOMException('Obsolete render preparation','AbortError');if(!sliced||performance.now()-sliceStart<sliceMs)return null;return yieldMain().then(()=>{for(const cache of Object.values(window))cache.clear();signatures.clear();sliceStart=performance.now();if(obsolete())throw new DOMException('Obsolete render preparation','AbortError');});};
-  this.budgetSkippedMeshes=this.budgetSkippedBatches=this.workingGeometryPeakBytes=this.reusedBatches=0;this.shaderMerge=shaderMerge;
-  const prepareStart=performance.now(),options=this.limits,buckets=new Map<string,Source[]>(),seen=new Set<THREE.Object3D>(),signatures=new Map<THREE.Material,string|null>(),materials=new Set<THREE.Material>();let nodes=0,meshes=0,retained=0;this.preparationError=null;this.scene.updateMatrixWorld(true);
+  let budgetSkippedMeshes=0,budgetSkippedBatches=0,workingGeometryPeakBytes=acceptedBytes,reusedBatches=0,builtBytes=0;
+  const prepareStart=performance.now(),options=this.limits,buckets=new Map<string,Source[]>(),seen=new Set<THREE.Object3D>(),signatures=new Map<THREE.Material,string|null>(),materials=new Set<THREE.Material>();let nodes=0,meshes=0,retained=0;
   try{
+   this.scene.updateMatrixWorld(true);
    for(const root of new Set(roots)){if(sliced){const pause=breathe();if(pause)await pause;}if(root===this.scene||!within(root,this.scene))throw Error('static-batches.unregistered-root');root.updateWorldMatrix(true,true);root.traverse(o=>{if(seen.has(o))return;seen.add(o);if(++nodes>options.maxNodes)throw Error('static-batches.node-budget');if(!(o as THREE.Mesh).isMesh||!visible(o)||!eligible(o as THREE.Mesh,root,undefined,false,false,false,shaderMerge,window.derived))return;if(++meshes>options.maxMeshes)throw Error('static-batches.mesh-budget');const m=o as THREE.Mesh,g=m.geometry,material=materialOf(m,shaderMerge),program=materialProgram(material,window.programs);if(!program)return;const signature=sharePlainMaterials?plainSignature(material,signatures):null,plain=signature!==null,attributes=plain?'plain':Object.entries(g.attributes).map(([name,a])=>`${name}:${a.itemSize}:${a.normalized}:${a.array.constructor.name}`).sort().join(','),p=new THREE.Vector3().setFromMatrixPosition(m.matrixWorld),key=[signature??(mergedMaterial(material,shaderMerge,window.derived)||material).uuid  /* PERF-BATCH round 2: sources whose merged material is shared bucket together */,Math.floor(p.x/options.cellSize),Math.floor(p.z/options.cellSize),attributes,!!g.index,m.layers.mask,casts(m),m.receiveShadow,m.renderOrder,m.frustumCulled].join('|');materials.add(material);const bucket=buckets.get(key)??[];bucket.push(source(m,root,signature,material,program));buckets.set(key,bucket);});}
    const inverseScene=this.scene.matrixWorld.clone().invert(),candidates:{part:Source[];estimate:number;order:number;key:string}[]=[];
    // Bucket insertion follows source traversal, spatial cell, material and draw
@@ -152,36 +164,62 @@ export class StaticBatchOwner{
    for(const [bucketKey,sources] of buckets)for(let i=0;i<sources.length;i+=options.maxMeshesPerBatch){const part=sources.slice(i,i+options.maxMeshesPerBatch);if(part.length>=2)candidates.push({part,estimate:part.reduce((n,s)=>n+(s.plain?estimatedPlainBytes(s.geometry):estimatedBytes(s.geometry)),0),order:candidates.length,key:bucketKey+'#'+part.map(s=>s.mesh.uuid).join(',')});}
    if(budgetPolicy==='partial-cells/1')candidates.sort((a,b)=>(b.part.length-1)/Math.max(1,b.estimate)-(a.part.length-1)/Math.max(1,a.estimate)||a.order-b.order);
    for(const {part,estimate,key} of candidates){if(sliced){const pause=breathe();if(pause)await pause;}if(signal?.aborted)throw new DOMException('Obsolete render preparation','AbortError');
-    const old=incremental?previous.get(key):undefined;if(old&&old.sources.every(s=>unchanged(s,this.scene,window,old.mesh.material as THREE.Material,shaderMerge))){previous.delete(key);next.push(old);retained+=old.bytes;this.reusedBatches++;continue;}
-    if(retained+estimate>options.maxMergedBytes||retained+2*estimate>options.maxWorkingBytes){if(budgetPolicy==='partial-cells/1'){this.budgetSkippedMeshes+=part.length;this.budgetSkippedBatches++;continue;}throw Error('static-batches.geometry-budget');}this.workingGeometryPeakBytes=Math.max(this.workingGeometryPeakBytes,retained+2*estimate);const copies:THREE.BufferGeometry[]=[];let merged:THREE.BufferGeometry|null=null;const plain=part[0].plain;
+    const old=incremental?previous.get(key):undefined;if(old&&old.sources.every(s=>unchanged(s,this.scene,window,old.material,shaderMerge))){
+     if(retained+old.bytes>options.maxMergedBytes){if(budgetPolicy==='partial-cells/1'){budgetSkippedMeshes+=part.length;budgetSkippedBatches++;continue;}throw Error('static-batches.geometry-budget');}
+     previous.delete(key);next.push(old);retained+=old.bytes;reusedBatches++;continue;
+    }
+    // The accepted set remains allocated until commit. Reused geometry belongs to that set and is counted once;
+    // newly built geometry and the next copy/merge workspace are additional live allocations.
+    const workingBytes=acceptedBytes+builtBytes+2*estimate;
+    if(retained+estimate>options.maxMergedBytes||workingBytes>options.maxWorkingBytes){if(budgetPolicy==='partial-cells/1'){budgetSkippedMeshes+=part.length;budgetSkippedBatches++;continue;}throw Error('static-batches.geometry-budget');}workingGeometryPeakBytes=Math.max(workingGeometryPeakBytes,workingBytes);const copies:THREE.BufferGeometry[]=[];let merged:THREE.BufferGeometry|null=null;const plain=part[0].plain;
     const derived=plain?null:mergedMaterial(part[0].material,shaderMerge,window.derived);if(derived===false)continue;
-    try{for(const s of part){if(sliced){const pause=breathe();if(pause)await pause;}const copy=plain?plainCopy(s):s.geometry.clone();copies.push(copy);const toBatch=new THREE.Matrix4().multiplyMatrices(inverseScene,s.mesh.matrixWorld);if(derived)shaderMerge!.attributes(copy,s.mesh,toBatch,derived);copy.applyMatrix4(toBatch);}if(sliced){const pause=breathe();if(pause)await pause;}merged=mergeGeometries(copies,false);}finally{for(const g of copies)g.dispose();}
-    if(!merged)continue;const bytes=geometryBytes(merged);if(retained+bytes>options.maxMergedBytes){merged.dispose();throw Error('static-batches.geometry-budget');}merged.computeBoundingBox();merged.computeBoundingSphere();const first=part[0];let material=derived??first.material;if(plain){let shared=this.sharedMaterials.get(plain);if(!shared){shared=derivedPlainMaterial(first.material as THREE.MeshStandardMaterial);this.sharedMaterials.set(plain,shared);}material=shared;}const mesh=new THREE.Mesh(merged,material);mesh.name='Derived static cell';mesh.castShadow=first.cast;mesh.receiveShadow=first.receive;mesh.renderOrder=first.order;mesh.frustumCulled=first.frustum;mesh.layers.mask=first.layers;const batch={mesh,sources:part,bytes,key,okay:false};next.push(batch);built.push(batch);retained+=bytes;
+    try{for(const s of part){if(sliced){const pause=breathe();if(pause)await pause;}const copy=plain?new THREE.BufferGeometry():s.geometry.clone();copies.push(copy);if(plain)plainCopy(s,copy);const toBatch=new THREE.Matrix4().multiplyMatrices(inverseScene,s.mesh.matrixWorld);if(derived)shaderMerge!.attributes(copy,s.mesh,toBatch,derived);copy.applyMatrix4(toBatch);}if(sliced){const pause=breathe();if(pause)await pause;}merged=mergeGeometries(copies,false);}finally{for(const g of copies)this.cleanup(()=>g.dispose());}
+    if(!merged)continue;
+    try{const bytes=geometryBytes(merged);if(retained+bytes>options.maxMergedBytes)throw Error('static-batches.geometry-budget');merged.computeBoundingBox();merged.computeBoundingSphere();const first=part[0];let material=derived??first.material;if(plain){let shared=newMaterials.get(plain)??this.sharedMaterials.get(plain);if(!shared){shared=derivedPlainMaterial(first.material as THREE.MeshStandardMaterial);newMaterials.set(plain,shared);}material=shared;}const mesh=new THREE.Mesh(merged,material);mesh.name='Derived static cell';mesh.castShadow=first.cast;mesh.receiveShadow=first.receive;mesh.renderOrder=first.order;mesh.frustumCulled=first.frustum;mesh.layers.mask=first.layers;const batch={mesh,material,sources:part,bytes,key,okay:false};next.push(batch);built.push(batch);retained+=bytes;builtBytes+=bytes;}catch(error){this.cleanup(()=>merged!.dispose());throw error;}
    }
-   if(sliced){if(obsolete()||this.rendering)throw new DOMException('Obsolete render preparation','AbortError');this.retire();}
-   this.release([...previous.values()]);previous.clear();for(const b of built)this.group.add(b.mesh);this.batches=next;built.length=0;
    // PERF-BATCH: a root whose every drawable is in a batch is hidden whole while its batches draw, so three.js walks
    // one object instead of its subtree (a lamp with a light, or a thing with a sprite, hides mesh by mesh).
-   const batched=new Set<THREE.Mesh>();for(const batch of this.batches){for(const s of batch.sources){batched.add(s.mesh);const info=this.rootInfo.get(s.root)??{batches:[],whole:true};if(!info.batches.includes(batch))info.batches.push(batch);this.rootInfo.set(s.root,info);}}
-   for(const [root,info] of this.rootInfo){const walk=(o:THREE.Object3D):boolean=>{if(!o.visible)return true;if(!inert(o)&&!batched.has(o as THREE.Mesh)&&o.userData.shadowProxy!==true)return false  /* a generated shadow proxy: its batched casters cast */;for(const c of o.children)if(!walk(c))return false;return true;};info.whole=hideWholeRoots&&walk(root);}
-   this.roots=[...new Set(roots)];this.generation=generation;this.sourceMaterials=materials.size;return{generation,status:'ready' as const};
-  }catch(error){if(sliced){this.release(built);if(error instanceof DOMException&&error.name==='AbortError')throw error  /* obsolete: the live set stays */;}else this.release([...next,...previous.values()]);this.clear();this.preparationError=error instanceof Error?error.message:'static-batches.prepare-failed';throw error;}finally{if(preparation===this.preparation){this.prepareCpuMs=performance.now()-prepareStart;this.sourceNodes=nodes;this.sourceMeshes=meshes;}}
+   const rootInfo=new Map<THREE.Object3D,RootInfo>(),batched=new Set<THREE.Mesh>();for(const batch of next){for(const s of batch.sources){batched.add(s.mesh);const info=rootInfo.get(s.root)??{batches:[],whole:true};if(!info.batches.includes(batch))info.batches.push(batch);rootInfo.set(s.root,info);}}
+   for(const [root,info] of rootInfo)info.whole=hideWholeRoots&&wholeRootCovered(root,batched);
+   const nextRoots=[...new Set(roots)],usedMaterials=new Set(next.map(b=>b.material)),ownedMaterials=new Map([...this.sharedMaterials,...newMaterials].filter(([,m])=>usedMaterials.has(m))),retiredMaterials=[...this.sharedMaterials.values(),...newMaterials.values()].filter(m=>!usedMaterials.has(m));
+   if(obsolete()||this.rendering)throw new DOMException('Obsolete render preparation','AbortError');
+   this.committing=true;
+   try{
+    // add() dispatches events: an attachment error is still a pre-commit failure. Old metadata remains intact.
+    for(const b of built)this.group.add(b.mesh);
+    if(built.some(b=>b.mesh.parent!==this.group))throw Error('static-batches.attachment-changed');
+    if(obsolete())throw new DOMException('Obsolete render preparation','AbortError');
+    this.batches=next;this.roots=nextRoots;this.rootInfo=rootInfo;this.shaderMerge=shaderMerge;this.sharedMaterials=ownedMaterials;this.generation=generation;this.validatedRevision=null;this.callsSaved=this.used=this.fallback=0;
+    this.sourceMaterials=materials.size;this.budgetSkippedMeshes=budgetSkippedMeshes;this.budgetSkippedBatches=budgetSkippedBatches;this.workingGeometryPeakBytes=workingGeometryPeakBytes;this.reusedBatches=reusedBatches;this.preparationError=null;
+    built.length=0;newMaterials.clear();this.release([...previous.values()],retiredMaterials);
+   }finally{this.committing=false;}
+   return{generation,status:'ready' as const};
+  }catch(error){this.release(built,newMaterials.values());if(preparation===this.preparation)this.preparationError=error instanceof Error?error.message:'static-batches.prepare-failed';throw error;}finally{if(preparation===this.preparation){this.prepareCpuMs=performance.now()-prepareStart;this.sourceNodes=nodes;this.sourceMeshes=meshes;}}
  }
  /** Semantic originals stay unchanged outside this synchronous draw window.
   * Any changed/detached/dynamic/partly-hidden bucket uses original meshes.
   * With `revision` (PERF-BATCH), sources are validated only when it differs from the last validated one: the caller
   * promises to change it before anything under its roots moves, hides, shows, is added or removed. */
  withRender<T>(draw:()=>T,revision?:number):T{
-  if(this.disposed||!this.batches.length)return draw();if(this.rendering)throw Error('static-batches.nested-render');this.rendering=true;const start=performance.now(),hidden:THREE.Object3D[]=[];this.used=this.fallback=this.callsSaved=this.wholeRootsHidden=0;
+  if(this.committing)throw Error('static-batches.render-during-commit');if(this.disposed||!this.batches.length)return draw();if(this.rendering)throw Error('static-batches.nested-render');this.rendering=true;const start=performance.now(),hidden:THREE.Object3D[]=[];this.used=this.fallback=this.callsSaved=this.wholeRootsHidden=0;
   try{
    const validate=revision===undefined||revision!==this.validatedRevision;this.validatedLastRender=validate;
-   if(validate){const cache=validationWindow();for(const root of this.roots)root.updateWorldMatrix(true,true);for(const batch of this.batches)batch.okay=batch.sources.every(s=>unchanged(s,this.scene,cache,batch.mesh.material as THREE.Material,this.shaderMerge));this.validatedRevision=revision??null;}
-   const whole=new Set<THREE.Object3D>();for(const [root,info] of this.rootInfo)if(info.whole&&info.batches.every(b=>b.okay))whole.add(root);
+   if(validate){const cache=validationWindow();for(const root of this.roots)root.updateWorldMatrix(true,true);for(const batch of this.batches)batch.okay=batch.sources.every(s=>unchanged(s,this.scene,cache,batch.material,this.shaderMerge));this.validatedRevision=revision??null;}
+   const whole=new Set<THREE.Object3D>();let represented:Set<THREE.Mesh>|undefined;
+   for(const [root,info] of this.rootInfo)if(info.whole&&info.batches.every(b=>b.okay)){
+    // Adding/showing a drawable can leave every old source unchanged. Recheck complete coverage at the same
+    // trusted revision boundary; a revoked whole-root proof stays revoked until a fresh preparation.
+    if(validate){
+     if(!represented){represented=new Set();for(const batch of this.batches)if(batch.okay)for(const s of batch.sources)represented.add(s.mesh);}
+     if(!wholeRootCovered(root,represented)){info.whole=false;continue;}
+    }
+    whole.add(root);
+   }
    for(const batch of this.batches){batch.mesh.visible=batch.okay;if(!batch.okay){this.fallback++;continue;}this.used++;this.callsSaved+=batch.sources.length-1;for(const s of batch.sources){if(whole.has(s.root))continue;s.mesh.visible=false;hidden.push(s.mesh);}}
    for(const root of whole){root.visible=false;hidden.push(root);}this.wholeRootsHidden=whole.size;
    this.group.visible=this.used>0;this.validationCpuMs=performance.now()-start;return draw();}
   finally{const restoreStart=performance.now();for(const o of hidden)o.visible=true;this.group.visible=false;this.rendering=false;this.restoreCpuMs=performance.now()-restoreStart;}
  }
- inspection(){return{generation:this.generation,batches:this.batches.length,batchedMeshes:this.batches.reduce((n,b)=>n+b.sources.length,0),callsSavedLastRender:this.callsSaved,mergedBytes:this.batches.reduce((n,b)=>n+b.bytes,0),usedLastRender:this.used,fallbackLastRender:this.fallback,roots:this.roots.length,sourceNodes:this.sourceNodes,sourceMeshes:this.sourceMeshes,budgetSkippedMeshes:this.budgetSkippedMeshes,budgetSkippedBatches:this.budgetSkippedBatches,workingGeometryPeakBytes:this.workingGeometryPeakBytes,prepareCpuMs:this.prepareCpuMs,validationCpuMs:this.validationCpuMs,restoreCpuMs:this.restoreCpuMs,preparationError:this.preparationError,validatedLastRender:this.validatedLastRender,reusedBatches:this.reusedBatches,sourceMaterials:this.sourceMaterials,batchMaterials:new Set(this.batches.map(b=>b.mesh.material)).size,wholeRootsHidden:this.wholeRootsHidden};}
- dispose(){if(this.rendering)throw Error('static-batches.dispose-during-render');if(this.disposed)return;this.disposed=true;this.clear();for(const m of this.sharedMaterials.values())m.dispose();this.sharedMaterials.clear();this.group.removeFromParent();}
+ inspection(){return{generation:this.generation,batches:this.batches.length,batchedMeshes:this.batches.reduce((n,b)=>n+b.sources.length,0),callsSavedLastRender:this.callsSaved,mergedBytes:this.batches.reduce((n,b)=>n+b.bytes,0),usedLastRender:this.used,fallbackLastRender:this.fallback,roots:this.roots.length,sourceNodes:this.sourceNodes,sourceMeshes:this.sourceMeshes,budgetSkippedMeshes:this.budgetSkippedMeshes,budgetSkippedBatches:this.budgetSkippedBatches,workingGeometryPeakBytes:this.workingGeometryPeakBytes,prepareCpuMs:this.prepareCpuMs,validationCpuMs:this.validationCpuMs,restoreCpuMs:this.restoreCpuMs,preparationError:this.preparationError,cleanupError:this.cleanupError,validatedLastRender:this.validatedLastRender,reusedBatches:this.reusedBatches,sourceMaterials:this.sourceMaterials,batchMaterials:new Set(this.batches.map(b=>b.material)).size,wholeRootsHidden:this.wholeRootsHidden};}
+ dispose(){if(this.committing)throw Error('static-batches.dispose-during-commit');if(this.rendering)throw Error('static-batches.dispose-during-render');if(this.disposed)return;this.disposed=true;this.clear();this.group.removeFromParent();}
 }
