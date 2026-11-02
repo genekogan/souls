@@ -5,7 +5,10 @@ import {turn,UP} from '../../../mars/viewer/app/engine-view/rig.ts';
  * turn toward the nearest Soul nearby, and nods/torso sway while speaking.
  * Applied after the rig has posed the body and undone right after render, so
  * replay, recorded poses and simulation are never changed. */
-export type IdleSoul={id:string;root:THREE.Object3D|null;p:readonly [number,number,number];yaw:number;activity:string;speaking:boolean;attention?:readonly string[]};
+export type IdleSoul={id:string;root:THREE.Object3D|null;p:readonly [number,number,number];yaw:number;activity:string;speaking:boolean;attention?:readonly string[];
+  /** PERF-PASSES: the body is wholly outside the view this frame: its own offsets are skipped (nobody sees them); it still
+   *  counts as a neighbour others look at. */
+  offscreen?:boolean};
 type Bones={head?:THREE.Object3D;torso?:THREE.Object3D;hips?:THREE.Object3D;abdomen?:THREE.Object3D};
 const RIGID=/walk|run|swim|tread|wade|sleep|lie|prone|climb|carry|ride|dance/;
 /** Hash a Soul id to a stable phase in [0,1). */
@@ -30,7 +33,7 @@ export class WorldIdleLife{
  /** Call once per frame after people are posed and before renderer.render. */
  apply(souls:readonly IdleSoul[],seconds:number,dt:number,reducedMotion=false){
   const k=1-Math.exp(-3*Math.max(0,Math.min(.1,dt)));
-  for(const s of souls){if(!s.root)continue;const b=this.find(s.root),ph=phaseOf(s.id),rigid=RIGID.test(s.activity),amp=reducedMotion?.4:1;
+  for(const s of souls){if(!s.root||s.offscreen)continue;const b=this.find(s.root),ph=phaseOf(s.id),rigid=RIGID.test(s.activity),amp=reducedMotion?.4:1;
    // Breathing: everyone, always (gentle torso pitch, ~4.5 s, per-Soul phase).
    if(b.torso){this.keep(b.torso);this.axis.set(-Math.sin(s.yaw),0,Math.cos(s.yaw));turn(b.torso,this.axis,.018*amp*Math.sin(seconds*2*Math.PI/(4.2+ph)+ph*6.28));}
    if(rigid){this.look.delete(s.id);this.bodyLook.delete(s.id);continue;}

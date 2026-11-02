@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import type { MeshCtx } from './registry.ts';
 import { DRAWER_TRAVEL } from '@sim/world-compiler';
+import { variantOf } from './material-variants.ts';
 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const declared = (ctx: MeshCtx, k: string) => Object.hasOwn(ctx.def.params ?? {}, k);
@@ -33,12 +34,10 @@ function stateMatters(s: Record<string, unknown>, ctx: MeshCtx) {
   return s.open === true || s.locked === true || s.lit === false || (s.on === false && !ctx.def.components.light) || (typeof s.level === 'number' && s.level < 1) || (typeof s.moisture === 'number' && s.moisture < 1) || typeof s.station === 'string';
 }
 
-const matCache = new Map<string, THREE.Material>();
-/** A material changed for a look, shared by every instance with the same look (cached by source uuid + key). */
+/** A material changed for a look, shared by every instance with the same look (a variant of the source material,
+ *  material-variants.ts: released with its source instead of a uuid-keyed map). */
 function lookMaterial(m: THREE.Material, key: string, edit: (m: THREE.MeshStandardMaterial) => void): THREE.Material {
-  const k = m.uuid + '|' + key; let hit = matCache.get(k);
-  if (!hit) { hit = m.clone(); edit(hit as THREE.MeshStandardMaterial); hit.needsUpdate = true; matCache.set(k, hit); if (matCache.size > 4000) matCache.delete(matCache.keys().next().value!); }
-  return hit;
+  return variantOf(m, 'look:' + key, edit as (m: THREE.Material) => void);
 }
 function hashSeed(s: string) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; }
 
@@ -55,7 +54,7 @@ function paintSubtree(root: THREE.Object3D, look: Look, ctx: MeshCtx) {
   const key = `${mul.getHexString()}|${dh.toFixed(3)}|${dl.toFixed(3)}|${look.condition}|${glowOff}`;
   if (key === `ffffff|0.000|0.000|new|false`) return;
   root.traverse((o) => {
-    const mesh = o as THREE.Mesh; if (!mesh.isMesh || mesh.userData.vocabPainted === key || mesh.name === 'asset frame hook') return;
+    const mesh = o as THREE.Mesh; if (!mesh.isMesh || mesh.userData.vocabPainted === key || mesh.name === 'asset frame hook' || mesh.userData.shadowProxy) return;   // (a shadow proxy draws no colour)
     const edit = (m: THREE.MeshStandardMaterial) => {
       if (m.color) { m.color.multiply(mul); if (dh || dl) m.color.offsetHSL(dh, 0, dl); }
       if (look.condition === 'worn' || look.condition === 'damaged') { if (typeof m.roughness === 'number') m.roughness = Math.min(1, m.roughness + 0.15); }

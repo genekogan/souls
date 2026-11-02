@@ -41,5 +41,8 @@ export function nightWindows(m: THREE.Material): THREE.Material {
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${ROOM}`);
   };
   m.customProgramCacheKey = () => 'eden-building-night-windows-v1';
+  // PERF-BATCH: the patch reads only per-vertex pane data and world-space inputs, so storey glass merges per cell in the
+  // static batcher (StaticBatchOwner); same-coloured panes blend the same in any order (lit rooms at night excepted).
+  m.userData.batchSafePatch = true; m.userData.batchTransparent = true;
   return m;
 }

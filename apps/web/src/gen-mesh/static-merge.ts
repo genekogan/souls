@@ -70,6 +70,24 @@ export function mergeStatic(root: THREE.Object3D, animated: boolean): { before: 
   return { before: meshes, after };
 }
 
+// Lane PERF-MATERIALS: the merged material is shared across files. A plain bucket's material is a function of a few
+// numbers (the colour went into the vertices), so two models with the same values draw with one material object: Mars
+// campus and pack models mostly share (side, 0.8–1, 0, black): one material and one program for all of them. Nothing
+// writes to a merged material (per-object edits take material-variants.ts); it lives for the page like a library material.
+const mergedMaterials = new Map<string, THREE.MeshStandardMaterial>();
+function mergedMaterial(s: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  const key = `${s.side}|${s.roughness}|${s.metalness}|${s.emissive.getHexString()}|${s.emissiveIntensity}|${s.flatShading}|${s.polygonOffset}|${s.polygonOffsetFactor}|${s.polygonOffsetUnits}`;
+  let mat = mergedMaterials.get(key);
+  if (!mat) {
+    mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: s.roughness, metalness: s.metalness, emissive: s.emissive, emissiveIntensity: s.emissiveIntensity, side: s.side, flatShading: s.flatShading, polygonOffset: s.polygonOffset, polygonOffsetFactor: s.polygonOffsetFactor, polygonOffsetUnits: s.polygonOffsetUnits });
+    mat.userData.edenAsset = true; mat.name = 'merged';
+    mergedMaterials.set(key, mat);
+  }
+  return mat;
+}
+/** Merged materials made so far (tests and probes). */
+export const mergedMaterialCount = () => mergedMaterials.size;
+
 function build(bucket: Bucket): THREE.Mesh[] {
   // attribute set: plain → position, normal, color; others → what the first geometry has (all must match, else unmerged)
   const attrs = (g: THREE.BufferGeometry) => Object.keys(g.attributes).filter((k) => k !== 'normal').sort().join();
@@ -133,12 +151,7 @@ function build(bucket: Bucket): THREE.Mesh[] {
   for (const nm of names) geo.setAttribute(nm, new THREE.BufferAttribute(arrays[nm], sizes[nm]));
   geo.setIndex(new THREE.BufferAttribute(index, 1));
   if (!computeBounds(geo)) { geo.computeBoundingBox(); geo.computeBoundingSphere(); }
-  let mat = bucket.mat;
-  if (bucket.plain) {
-    const s = bucket.mat as THREE.MeshStandardMaterial;
-    mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: s.roughness, metalness: s.metalness, emissive: s.emissive, emissiveIntensity: s.emissiveIntensity, side: s.side, flatShading: s.flatShading, polygonOffset: s.polygonOffset, polygonOffsetFactor: s.polygonOffsetFactor, polygonOffsetUnits: s.polygonOffsetUnits });
-    mat.userData.edenAsset = true; mat.name = 'merged';
-  }
+  const mat = bucket.plain ? mergedMaterial(bucket.mat as THREE.MeshStandardMaterial) : bucket.mat;
   const mesh = new THREE.Mesh(geo, mat); mesh.name = 'merged'; mesh.castShadow = true; mesh.receiveShadow = true;
   return [mesh];
 }

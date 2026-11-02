@@ -10,6 +10,13 @@
 // displaced materials, and alpha-tested ones whose map really has transparent texels (the depth pass needs the map).
 // Measured on mars-two: 257 of 262 alpha-tested casters had fully opaque maps (the exporter marks everything MASK).
 // `?shadowproxy=0` for A/B.
+//
+// Lane PERF-MATERIALS: the same for generated static things (`generated`). A building template (building.mesh.ts) is
+// ~10 casters (walls, trim, floors, roof per storey group) and Eden 2026 has 239 of them: ~2,450 shadow draws became one
+// per building. Generated proxies are ShadowProxyMesh objects: they survive Object3D.clone (templates and kit
+// prototypes are cloned per thing) and register themselves with their scene's hub the first time the main pass draws
+// them (no layer code needs to know). A thing whose casters can be hidden in part (a building's interior view hides
+// storeys) registers a cut (setShadowCut): while it is cut, the proxy stays off and its casters cast themselves again.
 import * as THREE from 'three';
 import { computeBounds, transformPoints } from './fast-geometry.ts';
 
@@ -55,19 +62,39 @@ function opaqueMap(t: THREE.Texture | null): boolean {
   return ok;
 }
 
+/** Draws nothing in the main pass and answers no raycast; its clones (Object3D.clone keeps the class) register themselves
+ *  with the scene's hub when first drawn, so a proxy built into a shared template or prototype works in every copy. */
+export class ShadowProxyMesh extends THREE.Mesh {
+  override raycast() {}
+  override onBeforeRender(_renderer: THREE.WebGLRenderer, scene: THREE.Object3D) { if (this.visible && (scene as THREE.Scene).isScene) trackShadowProxies(this, scene as THREE.Scene); }
+}
+/** Make an InstancedMesh built from a proxy part (EntityInstancer, glb-instances) behave as a proxy: no raycast, hidden
+ *  from the main pass once drawn. */
+export function markShadowProxy(mesh: THREE.Mesh): void {
+  mesh.userData.shadowProxy = true; mesh.raycast = () => {};
+  mesh.onBeforeRender = (_r, scene) => { if (mesh.visible && (scene as THREE.Scene).isScene) trackShadowProxies(mesh, scene as THREE.Scene); };
+}
+export const isShadowProxyMaterial = (m: THREE.Material | THREE.Material[]) => !Array.isArray(m) && m.name === 'shadow-proxy';
+
+export type ShadowProxyOptions = {
+  /** A generated thing (building template, kit prototype): parts under a `role:` pivot (they move) and textured parts
+   *  (faces, decals) keep casting themselves; a `roof` group merges too (a building's interior view is a cut instead). */
+  generated?: boolean;
+};
 /** Add the proxy to a static model's scene (in place). Returns the casters merged, or 0 when skipped. */
-export function addShadowProxy(root: THREE.Object3D): number {
+export function addShadowProxy(root: THREE.Object3D, opts: ShadowProxyOptions = {}): number {
   if (OFF) return 0;
   root.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const bySide = new Map<number, { mesh: THREE.Mesh; rel: THREE.Matrix4 }[]>();
   let ok = true;
   root.traverse((o) => {
-    if ((o as THREE.SkinnedMesh).isSkinnedMesh || (o as THREE.InstancedMesh).isInstancedMesh || o.name.startsWith('role:')) ok = false;
-    const m = o as THREE.Mesh; if (!m.isMesh || !m.castShadow) return;
-    for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) if (p.name === 'roof' || !p.visible) return;
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh || (o as THREE.InstancedMesh).isInstancedMesh || (!opts.generated && o.name.startsWith('role:'))) ok = false;
+    const m = o as THREE.Mesh; if (!m.isMesh || !m.castShadow || m.userData.shadowProxy) return;
+    for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) if ((!opts.generated && p.name === 'roof') || (opts.generated && p.name.startsWith('role:')) || !p.visible) return;
     if (Array.isArray(m.material) || Object.keys(m.geometry.morphAttributes).length || !m.geometry.attributes.position) return;
     const mat = m.material as THREE.MeshStandardMaterial;
+    if (mat.name === 'shadow-proxy' || (opts.generated && mat.map)) return;
     if ((mat.alphaTest > 0 && !opaqueMap(mat.map)) || mat.alphaToCoverage || mat.wireframe || mat.alphaMap || mat.displacementMap || mat.clippingPlanes?.length || !mat.visible) return;
     const side = mat.side + 3 * (mat.shadowSide === null || mat.shadowSide === undefined ? 3 : mat.shadowSide);
     let list = bySide.get(side); if (!list) bySide.set(side, (list = []));
@@ -95,11 +122,11 @@ export function addShadowProxy(root: THREE.Object3D): number {
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(new THREE.BufferAttribute(idx, 1));
     if (!computeBounds(geo)) { geo.computeBoundingSphere(); geo.computeBoundingBox(); }
     // (the CPU arrays stay: a cached asset is reused by the next renderer after a LiveWorld re-mount, which uploads again)
-    const proxy = new THREE.Mesh(geo, nullMaterial(side));
+    const proxy = new ShadowProxyMesh(geo, nullMaterial(side));
     proxy.name = 'shadow-proxy'; proxy.castShadow = true; proxy.receiveShadow = false; proxy.userData.shadowProxy = true;
     proxy.matrixAutoUpdate = false;   // identity in the model root's frame
     root.add(proxy);
-    for (const { mesh } of list) mesh.castShadow = false;
+    for (const { mesh } of list) { mesh.castShadow = false; mesh.userData.shadowProxied = true; }   // (the mark survives clones: a cut finds its casters)
     merged += list.length;
   }
   return merged;
@@ -108,16 +135,54 @@ export function addShadowProxy(root: THREE.Object3D): number {
 // ---------------------------------------------------------------- runtime: proxies are drawn only in the shadow pass
 type Hub = { proxies: Set<THREE.Object3D>; scene: THREE.Scene };
 const hubs = new WeakMap<THREE.Scene, Hub>();
+type Cut = { casters: THREE.Mesh[]; cut: (renderer: THREE.WebGLRenderer) => boolean; on: boolean | null };
+const cuts = new WeakMap<THREE.Object3D, Cut>();
+/** A proxy whose casters can be hidden in part: while `cut(renderer)` is true (asked once per shadow pass) the proxy
+ *  casts nothing and its `casters` (the meshes it stands for, in this copy) cast themselves again, each with its own
+ *  onBeforeShadow; otherwise the proxy casts and they stay off. */
+export function setShadowCut(proxy: THREE.Object3D, casters: THREE.Mesh[], cut: (renderer: THREE.WebGLRenderer) => boolean): void {
+  cuts.set(proxy, { casters, cut, on: null });
+}
+/** Take the proxies out of one copy of a generated thing and give its casters their shadows back (a canonical context
+ *  capture carries no render-time machinery). */
+export function removeShadowProxies(root: THREE.Object3D): number {
+  const gone: THREE.Object3D[] = [];
+  root.traverse((o) => { if (o.userData.shadowProxy) gone.push(o); else if (o.userData.shadowProxied) { (o as THREE.Mesh).castShadow = true; delete o.userData.shadowProxied; } });
+  for (const p of gone) p.removeFromParent();
+  return gone.length;
+}
+/** The casters a generated proxy stands for, in one copy of the thing (meshes marked when the proxy was built). */
+export function proxiedCasters(root: THREE.Object3D): THREE.Mesh[] {
+  const out: THREE.Mesh[] = []; root.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.userData.shadowProxied) out.push(o as THREE.Mesh); }); return out;
+}
 const hookGeo = new THREE.BufferGeometry(); hookGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0, 0, 0, 0], 3)); hookGeo.setDrawRange(0, 0);
 const hookMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
 function attachedTo(o: THREE.Object3D, scene: THREE.Scene) { let p: THREE.Object3D | null = o; for (let i = 0; p && i < 64; i++) { if (p === scene) return true; p = p.parent; } return false; }
 
+const casterLists = new WeakMap<THREE.Object3D, THREE.Mesh[]>();
+function castersOf(p: THREE.Object3D): THREE.Mesh[] {
+  let l = casterLists.get(p); if (!l) { l = p.parent && !(p as THREE.InstancedMesh).isInstancedMesh ? proxiedCasters(p.parent) : []; casterLists.set(p, l); } return l;
+}
+/** False only when every caster is hidden (a batch draws them); a proxy without known casters always casts. */
+function drawn(casters: THREE.Mesh[]): boolean { if (!casters.length) return true; for (const m of casters) if (m.visible) return true; return false; }
 function hubFor(scene: THREE.Scene): Hub {
   let h = hubs.get(scene);
   if (h) return h;
   const hub: Hub = { proxies: new Set(), scene };
   const hook = new THREE.Mesh(hookGeo, hookMat); hook.name = 'shadow-proxy hook'; hook.frustumCulled = false; hook.castShadow = true; hook.renderOrder = -1e9;
-  hook.onBeforeShadow = () => { for (const p of hub.proxies) { if (attachedTo(p, scene)) p.visible = true; else hub.proxies.delete(p); } };
+  hook.onBeforeShadow = (renderer) => {
+    for (const p of hub.proxies) {
+      if (!attachedTo(p, scene)) { hub.proxies.delete(p); continue; }
+      const c = cuts.get(p);
+      // a static batch that draws the casters (StaticBatchOwner hides them) casts their shadow itself: the proxy stands down
+      const own = c ? c.casters : castersOf(p);
+      if (!c) { p.visible = drawn(own); continue; }
+      const on = !c.cut(renderer);
+      // re-asserted every shadow pass: a render-time pass (WorldShadowDetail, WorldDistanceDetail) restores castShadow after it
+      for (const m of c.casters) m.castShadow = !on;
+      c.on = on; p.visible = on && drawn(own);
+    }
+  };
   hook.onBeforeRender = () => { for (const p of hub.proxies) p.visible = false; };
   scene.add(hook); scene.children.splice(scene.children.indexOf(hook), 1); scene.children.unshift(hook);
   hubs.set(scene, hub);
@@ -136,6 +201,12 @@ export function trackShadowProxies(obj: THREE.Object3D, scene = sceneOf(obj)): b
     o.visible = false; hub.proxies.add(o);
   });
   return true;
+}
+/** Probe: proxies the scene's hub tracks, and how many are cut right now. */
+export function shadowProxyStats(scene: THREE.Scene): { proxies: number; cut: number } {
+  const hub = hubs.get(scene); let cut = 0;
+  if (hub) for (const p of hub.proxies) if (cuts.get(p)?.on === false) cut++;
+  return { proxies: hub?.proxies.size ?? 0, cut };
 }
 
 (globalThis as { __shadowProxyAlpha?: unknown }).__shadowProxyAlpha = alphaStats;
