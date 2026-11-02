@@ -7,7 +7,7 @@ function snapshot() {
   const original = new WorldModel({ constants: { ground: 'land', extent: 100 }, seed: 'model' });
   original.library = coreLibrary(); original.adopt('core/barrel@1');
   original.seq = 1024; original.editSeq = 9;
-  for (let i = 0; i < 1024; i++) original.insert({ id: `e_${i}`, name: `barrel-${i}`, def: 'core/barrel@1', in: { parent: i % 2 ? 'e_0' : 'world' }, p: [i, 0, 0], yaw: 0, scale: 1, params: {}, seed: 1 } as Entity);
+  for (let i = 0; i < 1024; i++) original.insert({ id: `e_${i}`, name: `barrel-${i}`, def: 'core/barrel@1', in: { parent: i % 2 ? 'e_0' : 'world' }, p: [i, 0, 0], yaw: 0, scale: 1, params: {}, seed: 1, by: 'fixture', born: 0, v: 1 } satisfies Entity);
   return original.snapshot();
 }
 

@@ -9,7 +9,7 @@ import { noteModeration, noteSnapshotVersion } from './moderation-hidden.ts';
 import { godFeature, isFlagDef } from './god-ui/features.ts';
 import { loadSnapshot } from './snapshot-wire.ts';
 import { snapshotModel } from './snapshot-model.ts';
-import { SnapshotDecoder, type SnapshotDelta } from './snapshot-delta.ts';
+import type { SnapshotDecoder, SnapshotDelta } from './snapshot-delta.ts';
 import * as THREE from 'three';
 import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@sim/ground';
 import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
@@ -477,7 +477,15 @@ export class WorldEntityLayer {
   /** Lane PERF-SNAPSHOT: the snapshot worker (snapshot-delta.ts); its baseline is the first load's bytes. `?snapshotWorker=0`
    *  parses on the main thread instead (A/B). Ids a socket diff changed since the last snapshot the worker saw, and whether
    *  one changed the ground: the next delta reports them whatever the worker's baseline says. */
-  private readonly decoder = new SnapshotDecoder(typeof Worker === 'undefined' || (typeof location !== 'undefined' && new URLSearchParams(location.search).get('snapshotWorker') === '0') ? null : () => new Worker(new URL('./snapshot-delta.worker.ts', import.meta.url), { type: 'module' }));
+  private decoder: SnapshotDecoder | null = null;
+  private decoderDisposed = false;
+  /** Snapshot transport is asynchronous already. Load its parser/worker client only for a network snapshot; frozen
+   *  views and the frame loop do not need this code. Concurrent requests share one decoder and its baseline. */
+  private async snapshotDecoder(): Promise<SnapshotDecoder> {
+    const { SnapshotDecoder } = await import('./snapshot-delta.ts');
+    if (this.decoderDisposed) throw new DOMException('Snapshot decoder disposed', 'AbortError');
+    return this.decoder ??= new SnapshotDecoder(typeof Worker === 'undefined' || (typeof location !== 'undefined' && new URLSearchParams(location.search).get('snapshotWorker') === '0') ? null : () => new Worker(new URL('./snapshot-delta.worker.ts', import.meta.url), { type: 'module' }));
+  }
   private readonly touched = new Set<string>();
   private groundTouched = false;
   /** Resync: the snapshot again, as a delta against the last one the worker saw (snapshot-delta.ts), applied over short
@@ -490,7 +498,8 @@ export class WorldEntityLayer {
     this.resyncing = true;
     try {
       const asked = [...this.touched], wantGround = this.groundTouched;
-      const got = await loadSnapshot(this.api('/v1/world/snapshot'), this.signal, false, (pieces) => this.decoder.delta(pieces, asked, wantGround)); if (!got) return;
+      const decoder = await this.snapshotDecoder();
+      const got = await loadSnapshot(this.api('/v1/world/snapshot'), this.signal, false, (pieces) => decoder.delta(pieces, asked, wantGround)); if (!got) return;
       const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version'));
       const delta = got.snap; if (this.signal.aborted || delta.contract !== 'world/1' || !this.model) return;
       ageNow(delta, r);
@@ -571,7 +580,7 @@ export class WorldEntityLayer {
     // lane L3h: the first start takes the snapshot GET index.html sent at page entry (snapshot-prefetch.ts), one request
     // lane W1/O2: the page's edge-cacheable snapshot URL when the server named one (its `now` is then as old as the copy)
     // lane W3: in its wire form (snapshot-wire.ts: defs and ground as cached content-addressed parts)
-    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true, async (pieces) => { arrivalMark('snapshot-received'); const snapshot = await this.decoder.initial(pieces, signal); arrivalMark('snapshot-decoded'); return snapshot; }); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
+    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const decoder = await this.snapshotDecoder(); const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true, async (pieces) => { arrivalMark('snapshot-received'); const snapshot = await decoder.initial(pieces, signal); arrivalMark('snapshot-decoded'); return snapshot; }); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
       ageNow(snap, r); }} catch { onSnapshot?.(); return; }
     if (signal.aborted || snap.contract !== 'world/1') return;
     noteUploadSizes(snap.assetBytes);   // CDN4
@@ -1387,7 +1396,7 @@ export class WorldEntityLayer {
   };
 
   dispose() {
-    this.decoder.dispose();
+    this.decoderDisposed = true; this.decoder?.dispose();
     this.sites.dispose();
     for (const pool of [this.instancer, this.scatterPools, this.motionInstancer]) pool.group.removeEventListener('childadded', this.onPoolGeometryAdded);
     this.instancer.dispose(); this.scatterPools.dispose(); this.motionInstancer.dispose();
