@@ -1,6 +1,7 @@
 // The public changelog page (<base>/changelog, issue #388): CHANGELOG.md rendered to static HTML when the web app is
-// built (vite.config.ts `changelogPage`, into changelog.html), so the page ships with its release, loads no script and
-// asks nothing of GitHub or the API at runtime. CHANGELOG.md is what tools/changelog/compile.mjs writes:
+// built (vite.config.ts `changelogPage`, into changelog.html), so the page ships with its release and loads no script.
+// No runtime API/GitHub record collection; reviewed journal posters/clips may load from GitHub release assets.
+// CHANGELOG.md is what tools/changelog/compile.mjs writes:
 //   ## <version> (<YYYY-MM-DD>)    a release; any other `## ` heading (## Earlier) is a closing note
 //   ### Features | Fixes | …        a group inside a release
 //   - one line                       an entry (indented lines continue it); other lines are paragraphs
@@ -58,8 +59,81 @@ export const releaseId = (version: string) => 'v' + version.replace(/[^A-Za-z0-9
 const LONG_DATE = new Intl.DateTimeFormat('en', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 const longDate = (iso: string) => { const t = Date.parse(iso + 'T00:00:00Z'); return Number.isNaN(t) ? iso : LONG_DATE.format(t); };
 
+/** Explicit public projection only; never pass a private board snapshot into this renderer. */
+export type PublicJournal = {
+  id: string; version: string; date: string; title: string; result: string; limitations: string;
+  source: { url: string; commit: string; capturedOn: string; environment: 'historical-test' | 'isolated-test' | 'production' };
+  media: { kind: 'video' | 'image'; url: string; poster?: string; alt: string; status: 'available' | 'retired' };
+};
+
+function publicUrl(value: unknown, media: boolean): string {
+  if (typeof value !== 'string') throw Error('Public journal: URL must be text');
+  const u = new URL(value);
+  if (u.protocol !== 'https:' || u.username || u.password || u.port || u.search || u.hash || u.href !== value)
+    throw Error('Public journal: canonical HTTPS URL required');
+  // Canonical href equality above also rejects dot-segment/backslash normalization before allowlisting paths.
+  const allowed = media
+    ? (u.origin === 'https://assets.eden.art' && /^\/public-journal\/[A-Za-z0-9._/-]+$/.test(u.pathname)) ||
+      (u.origin === 'https://github.com' && /^\/genekogan\/souls\/releases\/download\/proofs\/[A-Za-z0-9._-]+$/.test(u.pathname))
+    : u.origin === 'https://github.com' && /^\/genekogan\/souls\/(?:pull\/\d+|commit\/[a-f0-9]{40}|releases\/tag\/[A-Za-z0-9._-]+)$/.test(u.pathname);
+  if (!allowed) throw Error('Public journal: URL outside publication allowlist');
+  return value;
+}
+
+/** Validate at the build boundary. Unknown fields and unassociated releases fail closed. */
+export function parsePublicJournal(input: unknown, log: Changelog): PublicJournal[] {
+  const object = (v: unknown, keys: string[]): Record<string, unknown> => {
+    if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)))
+      throw Error('Public journal: expected explicitly allowlisted fields');
+    return v as Record<string, unknown>;
+  };
+  const text = (v: unknown): string => {
+    if (typeof v !== 'string' || !v.trim() || v.length > 2000 || /[\x00-\x08\x0b-\x1f]/.test(v)) throw Error('Public journal: invalid text');
+    return v;
+  };
+  const date = (v: unknown): string => {
+    const d = text(v);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(Date.parse(d)) || new Date(d).toISOString().slice(0, 10) !== d)
+      throw Error('Public journal: invalid date');
+    return d;
+  };
+  if (!Array.isArray(input)) throw Error('Public journal: expected entry array');
+  const ids = new Set<string>();
+  return input.map(raw => {
+    const e = object(raw, ['id', 'version', 'date', 'title', 'result', 'limitations', 'source', 'media']);
+    const id = text(e.id), version = text(e.version), shippedOn = date(e.date);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) || ids.has(`${version}/${id}`)) throw Error('Public journal: invalid or duplicate entry id');
+    ids.add(`${version}/${id}`);
+    if (!log.releases.some(r => r.version === version && r.date === shippedOn)) throw Error('Public journal: release version/date not in compiled changelog');
+    const source = object(e.source, ['url', 'commit', 'capturedOn', 'environment']);
+    if (!/^[a-f0-9]{40}$/.test(text(source.commit))) throw Error('Public journal: exact source commit required');
+    if (!['historical-test', 'isolated-test', 'production'].includes(text(source.environment))) throw Error('Public journal: invalid capture environment');
+    const media = object(e.media, ['kind', 'url', 'poster', 'alt', 'status']);
+    if (!['image', 'video'].includes(text(media.kind)) || !['available', 'retired'].includes(text(media.status))) throw Error('Public journal: invalid media kind/status');
+    if (media.kind === 'video' && media.status === 'available' && !media.poster) throw Error('Public journal: video needs a poster');
+    return { id, version, date: shippedOn, title: text(e.title), result: text(e.result), limitations: text(e.limitations),
+      source: { url: publicUrl(source.url, false), commit: text(source.commit), capturedOn: date(source.capturedOn), environment: source.environment as PublicJournal['source']['environment'] },
+      media: { kind: media.kind as 'image' | 'video', url: publicUrl(media.url, true), ...(media.poster ? { poster: publicUrl(media.poster, true) } : {}), alt: text(media.alt), status: media.status as 'available' | 'retired' } };
+  });
+}
+
+function renderJournal(e: PublicJournal): string {
+  const id = `${releaseId(e.version)}-journal-${e.id}`, esc = escapeHtml, m = e.media;
+  const environment = { 'historical-test': 'Historical test capture', 'isolated-test': 'Isolated test capture', production: 'Production capture' }[e.source.environment];
+  const media = m.status === 'retired' ? '<p>Media retired or unavailable. The release notes and provenance remain available.</p>'
+    : m.kind === 'video'
+      ? `<video controls preload="none" playsinline poster="${esc(m.poster!)}" aria-label="${esc(m.alt)}"><source src="${esc(m.url)}" type="video/mp4">Video playback is unavailable.</video>`
+      : `<img src="${esc(m.url)}" alt="${esc(m.alt)}" loading="lazy" decoding="async">`;
+  return `<details class="cl-journal" id="${esc(id)}"><summary>${esc(e.title)} <span>View journal</span></summary>
+    <article aria-label="${esc(e.title)}"><h4><a href="#${esc(id)}">${esc(e.title)}</a></h4><p>${esc(e.result)}</p>
+    <p class="cl-provenance">Released in ${esc(e.version)} · ${esc(e.date)}. ${environment} · ${esc(e.source.capturedOn)} · source <a href="${esc(e.source.url)}">${esc(e.source.commit.slice(0, 12))}</a>.</p>
+    <figure>${media}<figcaption>${esc(m.alt)}${m.kind === 'image' ? ' Still image; does not demonstrate motion.' : ''}</figcaption></figure>
+    <p class="cl-limits">${esc(e.limitations)}</p><p>If media cannot load, use the release notes and source above; <a href="${esc(e.source.url)}">report a missing proof link with this entry id</a>: <code>${esc(id)}</code>.</p>
+    <a href="#${esc(releaseId(e.version))}">← Back to release ${esc(e.version)}</a></article></details>`;
+}
+
 /** The page's body content (inside <main>): releases newest first, as CHANGELOG.md lists them. */
-export function renderChangelog(log: Changelog, { home }: { home: string }): string {
+export function renderChangelog(log: Changelog, { home, journal = [] }: { home: string; journal?: PublicJournal[] }): string {
   const out: string[] = [];
   out.push(`<nav class="cl-nav"><a href="${escapeHtml(home)}">← Worlds</a></nav>`);
   out.push('<header class="cl-head"><h1>Changelog</h1><p>What changed in Sim, release by release. Newest first.</p></header>');
@@ -73,6 +147,7 @@ export function renderChangelog(log: Changelog, { home }: { home: string }): str
       if (b.title) out.push(`<h3>${escapeHtml(b.title)}</h3>`);
       out.push(`<ul>${b.items.map((i) => `<li>${inline(i)}</li>`).join('')}</ul>`);
     }
+    for (const e of journal.filter(e => e.version === r.version)) out.push(renderJournal(e));
     out.push('</div></section>');
   }
   for (const n of log.notes) out.push(`<section class="cl-release cl-end"><h2>${escapeHtml(n.title)}</h2><div class="cl-body">${n.text.map((t) => `<p class="cl-note">${inline(t)}</p>`).join('')}</div></section>`);
@@ -80,8 +155,9 @@ export function renderChangelog(log: Changelog, { home }: { home: string }): str
 }
 
 /** Fills changelog.html's `<!--changelog-->` slot; `base` is Vite's (`/` or `/worlds/`), so "Worlds" goes to this build's list. */
-export function changelogHtml(template: string, md: string, base: string): string {
+export function changelogHtml(template: string, md: string, base: string, publicInput: unknown = []): string {
   if (!template.includes('<!--changelog-->')) throw Error('changelog.html: no <!--changelog--> slot');
   const home = base.endsWith('/') ? base : base + '/';
-  return template.replace('<!--changelog-->', () => renderChangelog(parseChangelog(md), { home }));
+  const log = parseChangelog(md), journal = parsePublicJournal(publicInput, log);
+  return template.replace('<!--changelog-->', () => renderChangelog(log, { home, journal }));
 }
