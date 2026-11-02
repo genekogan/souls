@@ -61,3 +61,20 @@ test('far bodies stay drawn but stop casting shadows on phones; near bodies and 
   const old=new WorldDistanceDetail(pickQualityTier({search:'?desktopDetail=1',coarsePointer:false,screen:[1440,900]}).detail!);old.apply(s.root,s.camera,900);
   assert.equal(s.body.castShadow,true);assert.equal(old.stats.bodyShadowsSkipped,0);old.restore();
 });
+
+test('PERF-PASSES: a mesh inside a frozen thing keeps its world sphere while the freeze lasts; the same answers, and it follows a thaw and a move', () => {
+  const s=scene(),detail=new WorldDistanceDetail(PHONE_DETAIL);
+  // the far cup and the bench hang from "things" the layer froze: userData.frozenDrawn with a `frozen` list that a new freeze replaces
+  const thing=new THREE.Group();s.root.add(thing);thing.add(s.far,s.bench);let frozen:{frozen?:unknown}={frozen:[]};thing.userData.frozenDrawn=frozen;s.root.updateMatrixWorld(true);
+  detail.apply(s.root,s.camera,844);
+  assert.equal(s.far.visible,false);assert.equal(s.bench.castShadow,false);assert.equal(s.near.visible,true);detail.restore();
+  const cands=(detail as unknown as {candidates:{mesh:THREE.Mesh;w?:{list:unknown}}[]}).candidates;
+  assert.ok(cands.find(c=>c.mesh===s.far)!.w&&cands.find(c=>c.mesh===s.far)!.w!.list===frozen.frozen,'the far cup cached its world sphere against the freeze');
+  assert.equal(cands.find(c=>c.mesh===s.near)!.w,undefined,'a loose mesh caches nothing');
+  // the thing thaws (its list goes), moves next to the camera, and freezes again with a new list: the cup is seen at its new place
+  frozen.frozen=undefined;thing.position.set(0,0,195);s.root.updateMatrixWorld(true);
+  detail.apply(s.root,s.camera,844);assert.equal(s.far.visible,true,'thawed: read from its matrix again');detail.restore();
+  frozen={frozen:[]};thing.userData.frozenDrawn=frozen;detail.apply(s.root,s.camera,844);assert.equal(s.far.visible,true);assert.equal(cands.find(c=>c.mesh===s.far)!.w!.list,frozen.frozen,'cached against the new freeze');detail.restore();
+  // while frozen the cache is trusted: the camera moving is still followed (distance is per frame)
+  s.camera.position.set(0,2,400);s.root.updateMatrixWorld(true);detail.apply(s.root,s.camera,844);assert.equal(s.far.visible,false,'a 10 cm cup 205 m away');detail.restore();
+});

@@ -285,7 +285,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     }
     // Lane phones (V4): a phone draws fewer pixels, a smaller shadow map and less far detail (quality-tier.ts).
     const quality=browserQuality(),phoneOff=new Set((new URLSearchParams(location.search).get('phoneOff')??'').split(',')),distanceDetail=quality.detail&&!phoneOff.has('detail')?new WorldDistanceDetail(phoneOff.has('bodies')?{...quality.detail,standInDistance:Infinity}:quality.detail):null;  // ?phoneOff=detail,lod,cards,bodies,worker isolates one phone-tier part
-    const bodyViewer={eye:new THREE.Vector3(),frustum:new THREE.Frustum(),nearM:quality.bodies.nearM,farM:quality.bodies.farM},bodyViewerM=new THREE.Matrix4();  // PERF-EDEN: bodies' pose rate by distance and view
+    const bodyViewer={eye:new THREE.Vector3(),frustum:new THREE.Frustum(),nearM:quality.bodies.nearM,farM:quality.bodies.farM},bodyViewerM=new THREE.Matrix4();let viewerLive=false;  // PERF-EDEN: bodies' pose rate by distance and view; PERF-PASSES: the layer's motion things and idle life read the same view
     const meshLod=quality.detail&&!phoneOff.has('lod')?new WorldMeshLod(quality.tier==='phone'?PHONE_MESH_LOD:DESKTOP_MESH_LOD,async()=>(!phoneOff.has('worker')&&await workerSimplifier(()=>new Worker(new URL('./mesh-lod.worker.ts',import.meta.url),{type:'module'})))||import('meshoptimizer/simplifier').then(async m=>{await m.MeshoptSimplifier.ready;return m.MeshoptSimplifier.supported?m.MeshoptSimplifier as unknown as Simplifier:null;})):null;  // levels built in a worker (?phoneOff=worker: in-thread)
     (window as unknown as {__simQuality?:unknown}).__simQuality={tier:quality.tier,reason:quality.reason,maxPixelRatio:quality.maxPixelRatio,detail:()=>distanceDetail?{...distanceDetail.stats}:null,lod:()=>meshLod?{...meshLod.stats}:null,standIns:()=>farStandIns?{...farStandIns.stats}:null};
     const shotMode=new URLSearchParams(location.search).has('shot');
@@ -367,7 +367,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     const portraits=new WorldSoulAvatars(renderer);
     const seatSurvey=new URLSearchParams(location.search).get('survey')==='seats'?{done:false,since:null as number|null}:null;
     const waterDetail=new WorldWaterDetail(()=>!!reducedMotionQuery?.matches,()=>quality.tier==='phone'),waterDetailOff=new URLSearchParams(location.search).get('water')==='0';  // ?water=0: before/after comparisons
-    waterDetail.boats=AFLOAT;(window as unknown as {__simWater?:unknown}).__simWater=waterDetail.stats;    const idleLife=new WorldIdleLife();const bodyPoses=new WorldBodyPoses();const idleSouls:IdleSoul[]=[];let attentionTargets=new Map<string,readonly string[]>();
+    waterDetail.boats=AFLOAT;(window as unknown as {__simWater?:unknown}).__simWater=waterDetail.stats;    const idleLife=new WorldIdleLife();const bodyPoses=new WorldBodyPoses();const idleSouls:IdleSoul[]=[];const idleSphere=new THREE.Sphere();let attentionTargets=new Map<string,readonly string[]>();
     const contextViews=new WorldContextViews(apiPath,abort.signal,()=>{const state=latestViewerState.current;if(state&&!abort.signal.aborted)context.current.onViewerState?.({...state});},newWorld);
     const edgeItems=new WorldEdgeItems(apiPath('/v1/edge/items'));scene.add(edgeItems.group);edgeItems.start(abort.signal);  // things lying around (together/1)
     const early=newWorld?takeEarlyLayer():null;if(early)abort.signal.addEventListener('abort',()=>early.abort.abort());const entityLayer=early?.layer??new WorldEntityLayer(apiPath);entityLayerRef.current=entityLayer;  // P7b: a phone's layer may have started before this page's code was in (early-layer.ts)
@@ -828,7 +828,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
           people.setPlatformFloors(floors,base?.levels.find(l=>l.id===0)?.y??0);
           if(locationRegions!==take.finalState.regions){locationRegions=take.finalState.regions;depictedLocations=depictedWorldLocations(take.finalState.regions,base?.levels??[],(x,z,y)=>platformFloorOffset(floors,x,z,y,base?.levels.find(l=>l.id===0)?.y??0));}
           const beat=worldDepictionBeat(context.current.depictionBeatAt,s.conn.welcome?.worldId,take,depictedTick,past.current?'history':'live',pick.exact);
-          if(!eyes&&!shotMode){camera.updateMatrixWorld();bodyViewer.frustum.setFromProjectionMatrix(bodyViewerM.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));bodyViewer.eye.copy(camera.position);people.setViewer(bodyViewer);}else people.setViewer(null);  // PERF-EDEN: far / off-screen bodies are posed at a lower rate
+          if(!eyes&&!shotMode){camera.updateMatrixWorld();bodyViewer.frustum.setFromProjectionMatrix(bodyViewerM.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));bodyViewer.eye.copy(camera.position);people.setViewer(bodyViewer);entityLayer.viewer=bodyViewer;viewerLive=true;}else{people.setViewer(null);entityLayer.viewer=null;viewerLive=false;}  // PERF-EDEN: far / off-screen bodies are posed at a lower rate
           const sampled = people.show(local * take.dt, depictedTick * dt,beat,(depictedTick - take.startTick) * take.dt);
           games.update(sampled.entities,depictedTick);
           bodyModels.sync(records,sampled.entities);
@@ -1051,7 +1051,8 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
         soulId=>{const id=s.conn.replica.souls.get(soulId)?.entityId;return id?people?.bodyObject(id)??floaters.object(id)??standIns.getObjectByName(id)??null:null;});
       // Idle life: breathing, weight shifts, head turns, speaking nods (render-time only).
       idleSouls.length=0;if(!past.current){const nowMs=Date.now();for(const soul of s.conn.replica.souls.values()){const e=at.entities[soul.entityId];if(!e)continue;
-        idleSouls.push({id:soul.id,root:people?.bodyObject(soul.entityId)??null,p:e.p,yaw:e.yaw??0,activity:String(e.activity??'idle'),speaking:speeches.some(sp=>sp.speaker===soul.id&&nowMs-sp.at<4000),attention:attentionTargets.get(soul.id)});}}
+        const offscreen=viewerLive&&!bodyViewer.frustum.intersectsSphere(idleSphere.set(idleSphere.center.set(e.p[0],e.p[1]+.9,e.p[2]),1.3));  // PERF-PASSES: no idle offsets for a body outside the view
+        idleSouls.push({id:soul.id,root:people?.bodyObject(soul.entityId)??null,p:e.p,yaw:e.yaw??0,activity:String(e.activity??'idle'),speaking:speeches.some(sp=>sp.speaker===soul.id&&nowMs-sp.at<4000),attention:attentionTargets.get(soul.id),offscreen});}}
       if(refresh)idleLife.forget(new Set(idleSouls.map(s=>s.id)));
       idleLife.apply(idleSouls,atmosphereSeconds,step,!!reducedMotionQuery?.matches);
       bodyPoses.apply(idleSouls.map(x=>({...x,body:s.conn.replica.souls.get(x.id)?.body})),atmosphereSeconds,!!reducedMotionQuery?.matches);  // LINK: zombie arms/lurch, floating sleepers
@@ -1122,7 +1123,9 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
         if(context.current.publishSpeechAnchors&&(!points.length||(initialGate&&(['waiting','downloading','preparing','first-frame'].includes(initialGate.snapshot().stage)||(!arrivalCardDone&&performance.now()<20_000)))))speechAnchors=[];  // F12: none under the arrival card, its ready frame included (that pass held /w/eden's card ~0.15 s at 4x after initial-ready) (the visibility pass cost /w/eden ~0.3 s at 4x before its card). P1: nobody to place: skip the visibility pass over every mesh (~1 ms a frame on Eden 2026)
         else if(context.current.publishSpeechAnchors)try{
           speechVisibility.prepareFresh(visualObstructionRoots());
-          speechAnchors=projectSpeechAnchors(points,camera,host.clientWidth,host.clientHeight,area,p=>speechVisibility.score({position:camera.position.toArray(),target:[...p],fov:camera.fov},['anchor'],{anchor:{p:[...p],yaw:0,points:[[...p]]}})===1);
+          // PERF-PASSES: one evaluation for the whole batch: every anchor's score shares one bounds pass over the ~6,000
+          // occluders (each score took its own: ~40 ms per refresh on Eden 2026, the p95 frame while orbiting)
+          speechAnchors=speechVisibility.evaluate(()=>projectSpeechAnchors(points,camera,host.clientWidth,host.clientHeight,area,p=>speechVisibility.score({position:camera.position.toArray(),target:[...p],fov:camera.fov},['anchor'],{anchor:{p:[...p],yaw:0,points:[[...p]]}})===1));
         }catch{speechAnchors=[];speechVisibility.reset();}
         else speechVisibility.reset();
         emitState(viewerPresentation({room:context.current.edenExpansion?exploreRoom(camera.position.toArray(),EDEN_VIEWER_PLACES,s.conn.replica.souls,at.entities):null,assetDownloads:downloads.snapshot(),soulIds:[...groupSelection],
