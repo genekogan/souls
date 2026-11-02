@@ -109,6 +109,44 @@ the repository root (copy [`deploy.env.example`](../deploy.env.example); the env
 The scripts can run from an authorized clean checkout with SSH access. The workflow remains disabled
 until the qualification checklist above is satisfied.
 
+### Qualification sequence for the release owner
+
+The manual root-only release path remains available with retained evidence and explicit authorization. Preparing a
+cloud checkout or reviewing this PR does not authorize a new full gate, mirror activation or production activation.
+Use the existing approved runsheet for the actual host; never substitute the production host for a missing mirror.
+
+1. Resolve the actual live source from the retained release receipt and exact BUILD, then record the candidate,
+   original gate harness, baseline and any author-rewrite mapping. Reuse the full raw CPU results with
+   [`--no-remote`](testing/remote-gate.md#revalidate-retained-results-without-a-new-gate); import validated runs with
+   `cache-add` where needed. Preserve failed attempts. New source requires separate qualification and any new gate
+   requires its own budget authorization. Do not use current `main` or a rewritten tag as an inferred live baseline.
+2. Provision an isolated nonproduction mirror with fake/test worlds, the production-shaped root launcher and
+   independent data paths. Configure `SIM_DEPLOY_HOST`, `SIM_DEPLOY_USER`, `SHIP_ORIGIN` and `SIM_WORLDS_BASE=/` for
+   that mirror. The deploy identity needs only the intended release directories, backup tools and activation of its
+   own `sim-worlds@production` unit on the mirror; no unrelated services, accounts, DNS or proxies. Verify its
+   known-hosts pin independently. The existing loopback `staging` stage alone does not rehearse this topology.
+3. From a clean exact-source checkout with dependencies, existing assets and the dedicated probe world configured,
+   inspect the root-only plan. This example bypasses any local deploy.env and contacts no host:
+
+   ```sh
+   SIM_DEPLOY_ENV=/dev/null SIM_DEPLOY_HOST=mirror.example.invalid SIM_DEPLOY_USER=sim-release \
+     SHIP_ORIGIN=https://mirror.example.invalid SIM_WORLDS_BASE=/ \
+     tools/world-launcher/deploy/ship.sh --topology root-only --label mirror-check --dry-run
+   ```
+
+   A missing dependency, asset or probe is an unmet preflight, not a passed rehearsal. After explicit mirror
+   authorization, run the same command with the approved mirror target and without `--dry-run`. Retain RUN.identity,
+   STEPS.txt, backup/integrity evidence, exact manifests, health, probe, desktop/phone, poster, stall, CDN and rollback
+   results. A failed step retains its failure and uses the guarded `--from` path only after its cause is corrected.
+4. Before enabling Actions, configure the required variable/secret **names** in the table above, restricted deploy
+   access and the existing protected `production` environment. Review durable full-evidence cache transfer and the
+   shared once-per-head/daily budget ledger across laptop and cloud callers. A fresh Actions cache, concurrency
+   group or reviewed switch is insufficient. This PR supplies no accounting authority or automatic cache transfer.
+5. Only after A3/A4 are evidenced and the owner authorizes the release, dispatch the tested workflow on the exact
+   approved `main` head. Verify the gate candidate, sealed BUILD and live health identify that same full source SHA;
+   retain the workflow run URL and all live receipts before publication acceptance. A6 remains unmet until this
+   first automated release actually succeeds. A manual release receipt does not satisfy automated-release proof.
+
 ## ship.sh
 
 ```sh

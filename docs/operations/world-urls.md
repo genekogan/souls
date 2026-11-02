@@ -62,10 +62,10 @@ listen and WebSocket connection; a synthetic proxy test alone is not live pairin
 The probe and CDN tools accept explicit URLs, so choose the canonical paths:
 
 ```sh
-node tools/world-launcher/deploy/swap-probe.mjs --origin https://souls.game --base / \
+node tools/world-launcher/deploy/swap-probe.mjs --origin https://soul.game --base / \
   --slugs eden,mars-college-2026,mars-college-2027 --out .local/root-probe.json
-node tools/cdn/cdn-walk.mjs .local/root-cdn-walk https://souls.game/w/eden/ \
-  https://souls.game/w/mars-college-2026/ https://souls.game/w/mars-college-2027/
+node tools/cdn/cdn-walk.mjs .local/root-cdn-walk https://soul.game/w/eden/ \
+  https://soul.game/w/mars-college-2026/ https://soul.game/w/mars-college-2027/
 ```
 
 `ship.sh --topology root-only` selects the production-only ceremony with canonical probe/walk URLs. The old

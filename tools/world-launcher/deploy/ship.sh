@@ -5,7 +5,7 @@
 #
 #   tools/world-launcher/deploy/ship.sh --label <n> --topology <root-only|dual-prefix> [--dry-run] [--from <step>] [--no-probe] [--out <dir>]
 #     --label    the release number without dots (353 for 3.53): backups are pre-r<n>-*, the outputs <out>
-#     --topology root-only for souls.game, dual-prefix for the original two-stage host; required
+#     --topology root-only for soul.game, dual-prefix for the original two-stage host; required
 #     --dry-run  prints every step and its exact commands; nothing runs, nothing is written, eden2 is not contacted
 #     --from     resume at <step> after a stop (same --label, so the same <out>); earlier steps are skipped
 #     --no-probe skip the live release probe (probe-start, released, probe-check)
@@ -72,7 +72,7 @@ case "$TOPOLOGY" in
   root-only)
     [ "${SIM_WORLDS_BASE-/}" = / ] || { echo "root-only requires SIM_WORLDS_BASE=/"; exit 2; }
     export SIM_WORLDS_BASE=/
-    ORIGIN="${ORIGIN:-https://souls.game}"; WORLD_BASE=""; EDEN_PAGE=/w/eden/
+    ORIGIN="${ORIGIN:-https://soul.game}"; WORLD_BASE=""; EDEN_PAGE=/w/eden/
     WALK_DESKTOP="/w/eden/|/w/mars-college-2026/|/w/mars-college-2027/"
     WALK_PHONE="$WALK_DESKTOP"
     PROBE_PAGES="/w/eden/,/w/mars-college-2026/,/w/mars-college-2027/"

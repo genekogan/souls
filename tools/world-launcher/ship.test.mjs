@@ -272,6 +272,13 @@ test('root-only dry run contains no legacy operations and covers canonical URLs'
   assert.deepEqual(r.calls, []); assert.ok(!existsSync(s.out));
 });
 
+test('root-only defaults to the current canonical origin', () => {
+  const s = setup(), r = s.run([...rootArgs, '--dry-run'], { SHIP_ORIGIN: '' });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /health https:\/\/soul\.game\/__sim\/healthz/);
+  assert.doesNotMatch(r.out, /souls\.game/); assert.deepEqual(r.calls, []);
+});
+
 test('root-only executes production only, with root health and a production-only rollback', () => {
   const s = setup(), r = s.run(rootArgs);
   assert.equal(r.code, 0, r.out);

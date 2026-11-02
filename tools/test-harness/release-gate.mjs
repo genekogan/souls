@@ -683,8 +683,8 @@ export function scopeFor(files) {
 }
 
 export const USAGE = `usage: release-gate.sh <candidate-ref> [--baseline <ref>] [--out <dir>] [--node 22|26]
-         [--baseline-results <dir> [--candidate-results <dir>]] [--cache <dir> | --no-cache] [--scope full|auto] [--dry-run]
-         [--baseline-bundle-carry <qualified-cache-dir>]
+         [--baseline-results <dir> [--candidate-results <dir>]] [--cache <dir> | --no-cache] [--scope full|auto] [--dry-run] [--no-remote]
+         [--baseline-bundle-carry <qualified-cache-dir>] [--results-harness <original-ref>]
        release-gate.sh cache-add <completed-run-dir> [--cache <dir>]
 The baseline (default main) comes from the gate cache when a validated run of it exists for this harness tree and Node
 major; otherwise it runs once on Modal beside the candidate and is cached. A passing gate caches its candidate run.
@@ -692,9 +692,11 @@ major; otherwise it runs once on Modal beside the candidate and is cached. A pas
 status not-gated); the default --scope full is the release head's gate. Only full gates qualify a ship or fill the cache.
 --baseline-bundle-carry explicitly retains an original qualified cache across only new bundle-key registrations;
 old execution stays unchanged, derived expectations are labelled separately, and no baseline fallback is allowed.
+--results-harness names the original committed harness for an offline imported pair (requires --no-remote).
+--no-remote revalidates imported evidence only; any planned Modal execution or fallback is refused.
 --dry-run prints the plan (refs, scope, cache hit/miss, Modal runs) without contacting Modal or writing anything.`;
-const VALUE_OPTIONS = ['--out', '--baseline', '--baseline-results', '--candidate-results', '--node', '--cache', '--scope', '--baseline-bundle-carry'];
-const FLAG_OPTIONS = ['--dry-run', '--no-cache'];
+const VALUE_OPTIONS = ['--out', '--baseline', '--baseline-results', '--candidate-results', '--node', '--cache', '--scope', '--baseline-bundle-carry', '--results-harness'];
+const FLAG_OPTIONS = ['--dry-run', '--no-cache', '--no-remote'];
 export function parseArgs(args) {
   args = [...args];
   const candidateRef = args.shift();
@@ -712,6 +714,8 @@ export function parseArgs(args) {
   if (options['--scope'] && !['full', 'auto'].includes(options['--scope'])) throw Error('--scope is full or auto');
   if (options['--baseline-bundle-carry'] && (options['--baseline-results'] || options['--candidate-results'] || flags.has('--no-cache') || options['--scope'] === 'auto'))
     throw Error('--baseline-bundle-carry requires full scope/cache and cannot combine with result imports');
+  if (options['--results-harness'] && (!flags.has('--no-remote') || !options['--candidate-results']))
+    throw Error('--results-harness requires --no-remote and both imported results');
   return { candidateRef, options, flags };
 }
 
@@ -726,7 +730,12 @@ function cacheAddCli(args, { root, log }) {
 }
 
 export async function main(args = process.argv.slice(2), deps = {}) {
-  const root = deps.root || ROOT, runRemote = deps.remoteRun || remoteRun, log = deps.log || console.log;
+  const root = deps.root || ROOT, log = deps.log || console.log;
+  let noRemote = false;
+  const runRemote = (...args) => {
+    if (noRemote) throw Error('--no-remote forbids Modal execution, including baseline fallback');
+    return (deps.remoteRun || remoteRun)(...args);
+  };
   const git = (...a) => gitAt(root, ...a);
   if (['--help', '-h'].includes(args[0])) { log(USAGE); return 0; }
   if (args[0] === 'cache-add') return cacheAddCli(args.slice(1), { root, log });
@@ -736,6 +745,8 @@ export async function main(args = process.argv.slice(2), deps = {}) {
   try {
     const { candidateRef, options, flags } = parseArgs(args);
     dryRun = flags.has('--dry-run');
+    noRemote = flags.has('--no-remote');
+    if (noRemote) receipt.remoteExecution = 'forbidden';
     if (options['--out']) out = resolve(options['--out']);
     if (!dryRun) {
       if (existsSync(join(out, 'receipt.json'))) { const previous = out; out = join(out, `rejected-attempt-${Date.now()}`); throw Error(`output already has a receipt: ${previous}`); }
@@ -745,7 +756,7 @@ export async function main(args = process.argv.slice(2), deps = {}) {
     const baselineRef = options['--baseline'] || 'main';
     const baselineSha = git('rev-parse', '--verify', `${baselineRef}^{commit}`);
     const candidateSha = git('rev-parse', '--verify', `${candidateRef}^{commit}`);
-    const harnessRef = git('rev-parse', 'HEAD');
+    const harnessRef = git('rev-parse', '--verify', `${options['--results-harness'] || 'HEAD'}^{commit}`);
     const harnessTree = git('rev-parse', `${harnessRef}:tools/test-harness`), suite = suiteTree(root, harnessRef);
     const harnessClean = !git('status', '--porcelain', '--', 'tools/test-harness');
     if (!harnessClean && !dryRun) throw Error('commit the trusted harness and quarantine before running the gate');
@@ -787,6 +798,7 @@ export async function main(args = process.argv.slice(2), deps = {}) {
         ...(bundleCarry && { bundleExpectationCarry: bundleCarry.provenance }) },
       candidate: { source: pairImport ? 'imported' : 'run', dir: candidateDir },
       modalRuns: [...(pairImport ? [] : ['candidate']), ...(base.source === 'run' ? ['baseline'] : [])] };
+    if (noRemote && plan.modalRuns.length) throw Error(`--no-remote requires imported baseline and candidate results; planned Modal runs: ${plan.modalRuns.join(', ')}`);
     if (dryRun) {
       log(JSON.stringify(plan, null, 2));
       log(`RELEASE_GATE_PLAN candidate=${candidateSha} baseline=${baselineSha} scope=${scope.resolved} steps=${scope.steps.length} baseline_source=${base.source} modal_runs=${plan.modalRuns.length}${harnessClean ? '' : ' harness=DIRTY(would block)'}`);
@@ -805,8 +817,18 @@ export async function main(args = process.argv.slice(2), deps = {}) {
       if (rechecked.pinsSha256 !== bundleCarry.pinsSha256) throw Error('bundle baseline carry: original evidence or expectations changed during candidate execution; no baseline fallback allowed');
       bundleCarry = rechecked;
     }
-    const readBaseline = () => bundleCarry ? bundleCarry.originalRun : base.source === 'cached' || (base.source === 'imported' && !base.exact) ? readSuiteRun(base.dir, { sourceSha: baselineSha, suiteTree: suite, node }, manifest, root)
-      : readRun(base.dir, { ...identity, sourceSha: baselineSha }, manifest, REQUIRED_STEPS, { root });
+    const readBaseline = () => {
+      // A transferred cached baseline may have run at an older commit of the identical full harness tree.
+      // Preserve its own commit/archive identity; this exception cannot launch or change a gate execution.
+      if (noRemote && options['--results-harness'] && base.source === 'imported') {
+        const run = readRun(base.dir, reuseIdentity({ ...identity, sourceSha: baselineSha }), manifest, REQUIRED_STEPS, { root });
+        try { verifyHarnessArchive(run.metadata, root); }
+        catch (e) { run.errors.push(`unverifiable baseline harness: ${e.message.split('\n')[0]}`); }
+        return run;
+      }
+      return bundleCarry ? bundleCarry.originalRun : base.source === 'cached' || (base.source === 'imported' && !base.exact) ? readSuiteRun(base.dir, { sourceSha: baselineSha, suiteTree: suite, node }, manifest, root)
+        : readRun(base.dir, { ...identity, sourceSha: baselineSha }, manifest, REQUIRED_STEPS, { root });
+    };
     let baseline = readBaseline();
     const candidate = readRun(candidateDir, candidateIdentity, manifest, scope.steps, { root });
     if (drivers.candidate && (drivers.candidate.exit !== 0 || drivers.candidate.timedOut)) candidate.errors.push(`Modal driver failed (${drivers.candidate.timedOut ? 'timeout' : drivers.candidate.exit})`);
