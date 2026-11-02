@@ -187,3 +187,50 @@ test('monitor: the quiet tick is the window\'s own tick average, learned only in
   try { bootPhase('serving', 0); assert.equal(liveOf(shared, 1, now).tick!.quietAvgMs, 12.2, 'live.json carries it for the launcher and the bench'); }
   finally { attachBootSlots(before.view as Float64Array, before.offset); }
 });
+
+
+test('monitor: deliberate process suspension is not missed service, and resume retains an existing overload', () => {
+  let now = 0;
+  const host = {engine: {world: {tick: 0}}, tickMs: [1], paused: false, pace: .25, baseRate: 1, running: true, clockAvailable: true};
+  const m = new LoadMonitor({host, now: () => now, shared: newSharedLoad()});
+  m.start();
+  try {
+    for (let i = 0; i < 20; i++) { now += 1000; host.engine.world.tick += 5; m.sample(); }
+    assert.equal(m.level, 'green');
+    now += 10_000; // launcher SIGSTOP: no ticks, monitor callbacks or requests run
+    process.emit('SIGCONT');
+    host.engine.world.tick++; // first tick of the resumed frame; remaining ticks yield between turns
+    m.sample();
+    assert.equal(m.level, 'green', 'suspended wall time is not starvation');
+    assert.equal(m.health().service5s, 1);
+    for (let i = 0; i < 25; i++) { now += 250; m.sample(); } // genuinely stalled after resume
+    assert.equal(m.level, 'red', 'a running but stalled clock still enters red');
+    now += 10_000; process.emit('SIGCONT'); m.sample();
+    assert.equal(m.level, 'red', 'resume does not clear a pre-existing overload');
+  } finally { m.stop(); }
+});
+
+
+test('monitor: overdue sample waits for SIGCONT delivery and stop cancels the queued sample', t => {
+  let now = 0, timerCallback = () => {}, pending: (() => void) | undefined, cancelled = false;
+  t.mock.method(globalThis, 'setInterval', (fn: () => void) => { timerCallback = fn; return {unref() {}} as NodeJS.Timeout; });
+  t.mock.method(globalThis, 'clearInterval', () => {});
+  t.mock.method(globalThis, 'setImmediate', (fn: () => void) => { pending = fn; return {} as NodeJS.Immediate; });
+  t.mock.method(globalThis, 'clearImmediate', () => { cancelled = true; pending = undefined; });
+  const host = {engine: {world: {tick: 0}}, tickMs: [1], paused: false, pace: .25, baseRate: 1, running: true, clockAvailable: true};
+  const m = new LoadMonitor({host, now: () => now, shared: newSharedLoad()});
+  const listeners = process.listenerCount('SIGCONT');
+  m.start();
+  try {
+    now = 1000; host.engine.world.tick = 5; m.sample();
+    now += 10_000; host.engine.world.tick++;
+    timerCallback(); // overdue timers phase precedes signal delivery on a real thaw
+    assert.equal(m.level, 'green');
+    process.emit('SIGCONT');
+    assert.ok(pending); pending();
+    assert.equal(m.level, 'green');
+    timerCallback(); m.stop();
+    assert.equal(cancelled, true);
+    assert.equal(process.listenerCount('SIGCONT'), listeners);
+  } finally { m.stop(); }
+});

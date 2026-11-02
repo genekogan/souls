@@ -1,4 +1,4 @@
-# Sim documentation
+# Soul documentation
 
 The code is the authority. When a doc and the code disagree, the code wins: fix the doc in the same change.
 
@@ -6,10 +6,12 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 
 | I want to… | Read |
 |---|---|
-| run Sim locally | [development](development.md) |
+| set direction or turn a request into work | [vision](design/vision.md), [roadmap](design/roadmap.md), [planning and intake](process/planning.md) |
+| run Soul locally | [development](development.md) |
 | understand how it fits together | [architecture](architecture.md), then the [glossary](glossary.md) |
 | reason about contracts, performance or where a feature plugs in | [component and data-flow map](architecture/map.md) |
 | change the server API or protocol | [API](architecture/api.md), [protocol](architecture/protocol.md), [contracts](architecture/contracts.md) |
+| plan cooperative physical actions and construction | [physical coordination design](design/physical-coordination.md), [epic #560](https://github.com/genekogan/souls/issues/560) |
 | work on Souls or the Soul client | [Souls at the edge](architecture/souls.md) |
 | work on god mode | [god mode](architecture/godmode.md), [safety](architecture/safety.md) |
 | know what Souls do by hand (lamps, doors, water, carrying, boards, music, play, tea) | [Soul Actions](architecture/soul-actions.md) |
@@ -44,7 +46,10 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
   - [agent lifecycle](process/agent-lifecycle.md), [agent workflow](process/agent-workflow.md), [review](process/review.md),
     [playtest method](process/playtest-method.md), [Modal policy](process/modal-policy.md),
     [lessons](process/lessons.md), [PROOF-POLICY.yml](process/PROOF-POLICY.yml)
-- [design/vision.md](design/vision.md): where Sim is heading
+- [design/vision.md](design/vision.md): where Soul is heading
+- [design/roadmap.md](design/roadmap.md): outcome themes and unresolved product questions
+- [design/physical-coordination.md](design/physical-coordination.md): proposed shared physical activities and reusable construction
+- [process/planning.md](process/planning.md): intake, ready work and portable handoffs
 - [mars/](mars/README.md): the vendored deterministic engine
 
 Docs that belong to one folder stay next to its code as that folder's `README.md` (for example

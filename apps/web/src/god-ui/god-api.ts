@@ -5,7 +5,7 @@
 import { BASE } from '../base-path.ts';
 import { apiPath, worldKey } from '../world-path.ts';
 import { isFlagDef } from './checklist.ts';
-import { userAuthHeaders, watchSession } from '../auth-session.ts';
+import { userAuthHeaders, watchSession, session } from '../auth-session.ts';
 import { statusPoll } from './status-poll.ts';
 export { isFlagDef };
 
@@ -19,6 +19,8 @@ export type LauncherWorld = { slug: string; name: string; template: string; temp
 export type LauncherSeen = { looks: number; lastLookAt: number | null; agentSeenAt: number | null; previews: number };
 
 const TOKEN_KEY = `sim.godToken:${worldKey}`;
+let tokenGeneration = 0;
+let pendingToken: Promise<string> | null = null;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Tokens are `god_<worldId>_<secret>` and world ids are `<slug>-<n>`. */
 export const tokenIsFor = (token: string | null, key = worldKey) => !!token && new RegExp(`^god_${escapeRe(key)}-\\d+_`).test(token);
@@ -46,7 +48,12 @@ export function storedToken(): string | null {
   try { const t = localStorage.getItem(TOKEN_KEY) ?? sessionStorage.getItem('sim.godToken'); return tokenIsFor(t) ? t : null; } catch { return null; }
 }
 export function keepToken(token: string) { try { localStorage.setItem(TOKEN_KEY, token); sessionStorage.setItem('sim.godToken', token); } catch { /* storage disabled */ } }
-export function forgetToken() { try { localStorage.removeItem(TOKEN_KEY); if (!tokenIsFor(sessionStorage.getItem('sim.godToken'))) return; sessionStorage.removeItem('sim.godToken'); } catch { /* storage disabled */ } }
+export function forgetToken(refused?: string) {
+  // A late 401 for an older token must not cancel another caller's replacement.
+  if (refused !== undefined && storedToken() !== refused) return;
+  tokenGeneration++; pendingToken = null;
+  try { localStorage.removeItem(TOKEN_KEY); if (!tokenIsFor(sessionStorage.getItem('sim.godToken'))) return; sessionStorage.removeItem('sim.godToken'); } catch { /* storage disabled */ }
+}
 
 async function json<T>(r: Response): Promise<T> { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error((d as { message?: string }).message ?? `HTTP ${r.status}`); return d as T; }
 
@@ -55,7 +62,18 @@ const status = statusPoll<Status | null>(async () => {
 });
 // Owner-only pending codes belong to the current account, including during
 // sign-out and same-label account switches. Old requests cannot refill this cache.
-watchSession(() => status.reset(null));
+let tokenSession = session();
+watchSession(() => {
+  const next = session();
+  if (next.mode !== tokenSession.mode || next.authed !== tokenSession.authed || next.scope !== tokenSession.scope ||
+      (next.scope == null && next.label !== tokenSession.label)) {
+    // Invalidate only work started for the previous identity. Stored bearer
+    // adoption stays unchanged; explicit sign-out/401 paths call forgetToken.
+    tokenGeneration++; pendingToken = null;
+  }
+  tokenSession = next;
+  status.reset(null);
+});
 export const getStatus = status.refresh;
 export const watchStatus = status.subscribe;
 export async function getWelcome(): Promise<string | null> {
@@ -64,16 +82,24 @@ export async function getWelcome(): Promise<string | null> {
 /** The owner's browser token for this world: the remembered one, else minted with the signed-in owner's identity (claims an unowned world). */
 export async function ensureToken(): Promise<string> {
   const t = storedToken(); if (t) return t;
-  const headers = await authHeaders(); if (!headers.authorization) throw new Error('Sign in first.');
-  const d = await json<{ token: string }>(await fetch(apiPath('/v1/god/mint'), { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ label: 'browser' }) }));
-  keepToken(d.token); return d.token;
+  if (pendingToken) return pendingToken;
+  const generation = tokenGeneration;
+  const current = () => { if (generation !== tokenGeneration) throw new Error('Sign-in changed. Try again.'); };
+  const request = (async () => {
+    const headers = await authHeaders(); current();
+    if (!headers.authorization) throw new Error('Sign in first.');
+    const d = await json<{ token: string }>(await fetch(apiPath('/v1/god/mint'), { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ label: 'browser' }) }));
+    current(); keepToken(d.token); return d.token;
+  })().finally(() => { if (pendingToken === request) pendingToken = null; });
+  pendingToken = request;
+  return request;
 }
 /** A god call with this world's token; a refused token is forgotten and re-minted once. */
 export async function god<T>(path: string, init: RequestInit = {}): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     const token = await ensureToken();
     const r = await fetch(apiPath(path), { ...init, headers: { 'content-type': 'application/json', ...(init.headers ?? {}), authorization: `Bearer ${token}` } });
-    if (r.status === 401 && attempt === 0) { forgetToken(); continue; }
+    if (r.status === 401 && attempt === 0) { forgetToken(token); continue; }
     return json<T>(r);
   }
 }

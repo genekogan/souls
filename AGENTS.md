@@ -5,7 +5,7 @@ file. Keep it short: every rule here binds; detail lives in the linked docs.
 
 ## What this is
 
-Sim, the server and web app behind sim.eden.art: persistent worlds, Souls driven by their owners' own agents at the
+Soul, the server and web app behind soul.game: persistent worlds, Souls driven by their owners' own agents at the
 edge, god mode for world creators, and a vendored deterministic engine under `mars/` (its invariants:
 [mars/AGENTS.md](mars/AGENTS.md)). **Code wins over docs**; fix a doc you find wrong. Start at
 [docs/README.md](docs/README.md).
@@ -75,9 +75,12 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
 
 ## Agent lifecycle
 
+[Planning and intake](docs/process/planning.md) separates direction, backlog, ready work and portable handoffs.
+
 - Work starts from an issue you claim (assign + `agent:claimed`); one branch `agent/<issue>-<slug>` and worktree per
   issue; small PRs; unfinished work behind a flag. Proof goes in the PR, not the tree: no status, brief, prompt or
-  report files. No scheduled agents: the maintainer starts them and gives go-aheads.
+  report files. No scheduled agents: the maintainer or authorized development owner starts bounded work within
+  the agreed agenda.
 - Never edit shared append-only files: changelog fragments go in `changes/`, conformance changes in a new supplement,
   generated output is built in CI, baselines are regenerated in their own commit.
 - Ready PRs get `merge:ready`; the merge train rebases, re-tests and merges (T0–T2 on green, T3–T4 after the
@@ -94,9 +97,10 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
 
 ## Release and operations
 
-- Releases run through the release workflow: gate receipt, build of exactly HEAD of a clean tree, CDN-first assets,
+- The authorized release owner follows the current topology and automation limits in the release doc: gate receipt,
+  build of exactly HEAD of a clean tree, CDN-first assets,
   staged ship, healthz, walks, cdn-walk, rollback on failure. [docs/release.md](docs/release.md)
-- Never touch services, users, DNS or proxies on the host that aren't Sim's. [docs/operations.md](docs/operations.md)
+- Never touch services, users, DNS or proxies on the host that aren't Soul's. [docs/operations.md](docs/operations.md)
 
 ## Visitor analytics
 

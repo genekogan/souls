@@ -1,6 +1,6 @@
 # Operations
 
-How the public site runs: `https://sim.eden.art` on one production host, behind Cloudflare, with immutable assets on
+How the public site runs: `https://soul.game` on the root-only production host, with immutable assets on
 `https://assets.eden.art`. Hosts, SSH users, keys and credentials live in deployment secrets and host settings, never
 in the repository.
 
@@ -22,8 +22,8 @@ loopback port and proxies HTTP, SSE and WebSocket traffic to it, starting worlds
 
 | Stage | Public paths | Settings | Data |
 |---|---|---|---|
-| `production` | `/worlds`, `/worlds/w/<slug>/` | `/etc/sim-worlds/production.conf` | `/srv/sim-worlds-data/production` |
-| `legacy` | `/`, `/w/<key>` (the original worlds, served as old-world forks) | `/etc/sim-worlds/legacy.conf` | `/srv/sim-worlds-data/legacy` |
+| `production` | `/`, `/w/<slug>/` | `/etc/sim-worlds/production.conf` | `/srv/sim-worlds-data/production` |
+| `legacy` (historical topology) | Not a second stage on the current public host | `/etc/sim-worlds/legacy.conf` | `/srv/sim-worlds-data/legacy` |
 | `staging` | none (loopback, dev auth) | `/etc/sim-worlds/staging.conf` | `/srv/sim-worlds-data/staging` |
 
 Each settings file holds one line, `SIM_WORLDS_ARGS=...`: the port, the world port range, data directory, public
@@ -31,17 +31,22 @@ origin, auth env file and caps (`--max-worlds`, `--max-running`, `--min-free-mb`
 `tools/world-launcher/deploy/install.sh` writes the production and staging files once and never edits an existing
 one. Memory limits are per-stage systemd drop-ins (`sim-worlds@<stage>.service.d/10-memory.conf`).
 
-Caddy terminates TLS for the site: `/worlds*` goes to the production port, `/blobs/assets/*` is served from disk by
-the snippet in `tools/world-launcher/deploy/blobs/sim-blobs.snippet`, and everything else goes to the legacy port
-([disaster recovery](operations/disaster-recovery.md#6-caddy) describes the site file). After a host reboot, check
-that Caddy is active (`systemctl is-active caddy`).
+Caddy terminates TLS and sends the canonical root site to production; `souls.game` redirects to `soul.game`.
+The canonical worlds are `/w/eden/`, `/w/mars-college-2026/` and `/w/mars-college-2027/`.
+Keep the configured asset-serving rules and old world URL aliases intact. The Clerk primary remains on the
+eden.art instance: old identity-provider URLs are intentional, not blanket rename targets. After a host reboot,
+check that Caddy is active (`systemctl is-active caddy`).
+
+The former `/worlds` production plus `/` legacy topology remains supported by some tools, but is not the current
+public deployment. [Release](release.md) identifies the root-only automation gap; do not apply legacy activation
+or proxy examples to this host. Internal `sim-*` service and data names remain unchanged.
 
 ## Health
 
-- `GET https://sim.eden.art/worlds/__sim/healthz` (the legacy stage answers `/__sim/healthz`):
+- `GET https://soul.game/__sim/healthz`:
   `{ok, service, build, auth, worlds, running, maxWorlds, maxRunning, hostOk, hostCodes?, clientErrorsNew}`. `hostOk`
   and short `hostCodes` are public; the numbers behind them are for loopback requests only.
-- `GET /worlds/__sim/health`: a health page for site owners (accounts listed in `SIM_SITE_OWNERS`) or loopback; build,
+- `GET /__sim/health`: a health page for site owners (accounts listed in `SIM_SITE_OWNERS`) or loopback; build,
   host, every world, backups, arrivals, new client errors and alerts (`tools/world-launcher/health-dash.mjs`).
 - `sim-worlds-health@<stage>.timer` runs `deploy/host-health.mjs` every 10 minutes: disk, memory, the unit's working
   set against its `MemoryMax`, OOM kills and the last backup. It writes `<data>/host-health.json` and appends an
@@ -55,7 +60,9 @@ database of the stage with SQLite's online backup API, checks each copy with `PR
 audit log, uploaded assets, old-world fork inputs and the stage's non-secret host settings, and takes one deduplicated
 restic snapshot. Retention keeps 7 daily, 4 weekly and 6 monthly snapshots (`SIM_BACKUP_KEEP`). An off-host copy to an
 S3-compatible bucket runs when `SIM_BACKUP_OFFSITE` is set. Every release also takes its own compact pre-release copy.
-Commands are in the [runbook](operations/runbook.md#backups).
+Commands are in the [runbook](operations/runbook.md#backups). Local backup verification does not prove offsite
+recovery; [offsite setup #557](https://github.com/genekogan/souls/issues/557) is explicitly deferred and must be
+qualified separately.
 
 ## Logs
 

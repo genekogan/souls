@@ -1,6 +1,6 @@
-# Contributing to Sim
+# Contributing to Soul
 
-Thanks for helping. Sim is developed mostly by coding agents working with the maintainer, and agents are welcome
+Thanks for helping. Soul is developed mostly by coding agents working with the maintainer, and agents are welcome
 contributors here: the same rules apply to everyone, and they are written down in [AGENTS.md](AGENTS.md).
 
 ## Setup
@@ -24,7 +24,7 @@ Details, environment variables and running other worlds: [docs/development.md](d
    [docs/process/PROOF-POLICY.yml](docs/process/PROOF-POLICY.yml). Visible changes need an uncut, real-speed clip of
    the changed journey on a fake-mind world; Soul, navigation and engine changes need a scenario playtest. See
    [docs/process/agent-lifecycle.md](docs/process/agent-lifecycle.md).
-5. **Add a changelog fragment** in `changes/` if people using Sim will notice the change: one line, written for them.
+5. **Add a changelog fragment** in `changes/` if people using Soul will notice the change: one line, written for them.
    The format is in [changes/README.md](changes/README.md). Otherwise ask for the `no-changelog` label. Never edit
    `CHANGELOG.md`; the release compiles it.
 6. **Open a pull request** from the template. Put proof (clips, logs) in the PR, never in the tree.
@@ -41,7 +41,8 @@ Details, environment variables and running other worlds: [docs/development.md](d
    automatically once green, T3 and above after the maintainer approves. If it can't rebase cleanly it labels the PR
    `needs:rebase`. Details: [docs/process/agent-workflow.md](docs/process/agent-workflow.md).
 
-Releases are cut by the maintainer with the `release` workflow ([docs/release.md](docs/release.md)).
+The authorized release owner handles releases under the maintainer’s approvals and existing gates.
+See [docs/release.md](docs/release.md) for the current root-only topology and automation limits.
 
 ## Checks to run
 

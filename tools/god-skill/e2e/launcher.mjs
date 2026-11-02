@@ -23,6 +23,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { observeEdit, observeWeather } from './edit-observation.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../../..');
@@ -156,16 +157,36 @@ try {
   await check('D2 the agent builds it and acks it: the log says Done with the reply', placed.code === 0 && acked.code === 0 && await benchIn() && /Done/.test(ticket) && /Placed a bench/.test(ticket), { place: placed.out.slice(-120), ack: acked.out.slice(-120), ticket: ticket.replace(/\s+/g, ' ') });
   await shot('04-command-done');
 
-  // E. undo / redo
-  await page.locator('[data-undo]').click(); const undo = await note(/Undid edit/); const afterUndo = await benchIn();
-  await sleep(800); await shot('05-undo');
-  await page.locator('[data-redo]').click(); const redo = await note(/Redid edit/); const afterRedo = await benchIn();
-  await check('E1 Undo takes the bench out; Redo puts it back', !!undo && !!redo && !afterUndo && afterRedo, { undo, redo, afterUndo, afterRedo });
+  // E. Undo/Redo: correlate each accepted edit with public seq, keeping immediate
+  // authoritative state separate from bounded convergence of the cached public URL.
+  const benches = (await snapshot()).entities.filter(e => e.name === 'e2e-bench');
+  if (benches.length !== 1) throw new Error('E1 requires exactly one original bench');
+  const entity = { id: benches[0].id, name: benches[0].name };
+  const observeButton = action => observeEdit({ snapshotUrl: `${base}/v1/world/snapshot`, entity, present: action === 'redo',
+    pageErrors: () => report.pageErrors,
+    action: async () => {
+      const pending = page.waitForResponse(r => r.url() === `${base}/v1/god/${action}` && r.request().method() === 'POST');
+      await page.locator(`[data-${action}]`).click();
+      const response = await pending; return { status: response.status(), body: await response.json() };
+    } });
+  const undoObservation = await observeButton('undo'), undo = await note(/Undid edit/);
+  await shot('05-undo');
+  const redoObservation = await observeButton('redo'), redo = await note(/Redid edit/);
+  await check('E1 Undo takes the same bench out; Redo puts it back: authoritative state and bounded cache convergence',
+    !!undo && !!redo && undoObservation.ok && redoObservation.ok && report.pageErrors.length === 0,
+    { entity, undo, redo, undoObservation, redoObservation });
 
   // F. weather
-  await page.locator('[data-weather-kind="rain"]').click(); const rain = await note(/Rain\./);
-  const weather = (await snapshot()).state?.weather;
-  await check('F1 weather: Rain is one press and the world rains', !!rain && weather?.kind === 'rain', { rain, weather });
+  const weatherObservation = await observeWeather({ snapshotUrl: `${base}/v1/world/snapshot`,
+    weather: { kind: 'rain', rain: 0.8, intensity: 0.8 }, pageErrors: () => report.pageErrors,
+    action: async () => {
+      const pending = page.waitForResponse(r => r.url() === `${base}/v1/god/env` && r.request().method() === 'POST');
+      await page.locator('[data-weather-kind="rain"]').click();
+      const response = await pending; return { status: response.status(), body: await response.json() };
+    } });
+  const rain = await note(/Rain\./);
+  await check('F1 weather: Rain is one press and the world rains', !!rain && weatherObservation.ok && report.pageErrors.length === 0,
+    { rain, weatherObservation });
   await shot('06-rain');
 
   // G. Forsake world: confirmations

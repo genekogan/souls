@@ -1,6 +1,6 @@
 # Agent lifecycle
 
-Most changes to Sim are made by coding agents, supervised by the maintainer. People follow the same path. The repo's
+Most changes to Soul are made by coding agents, supervised by the maintainer. People follow the same path. The repo's
 workflows, templates and skills implement it; this page says what each step means.
 
 ```
@@ -11,7 +11,8 @@ issue → branch → change + focused tests → proof at the PR's tier → PR �
 
 Work starts from a GitHub issue: a bug, a feature or a playtest finding. Triage labels it with an area and a proof
 tier, tries a reproduction on a fake-mind world, and marks it ready for an agent or for the maintainer's decision.
-Plans, briefs and status notes live in the issue and its comments, never in the tree.
+Plans for individual tasks, briefs and status notes live in the issue and its comments, never in the tree.
+Durable product direction belongs in design docs; see [planning and intake](planning.md).
 
 ## 2. Branch
 
@@ -92,8 +93,9 @@ gets `needs:rebase`. See [the merge train](agent-workflow.md#the-merge-train). `
 
 ## 8. Release
 
-The release workflow ships `main`'s head: the remote gate against the cached baseline, approval for the production
-environment, the staged ship with healthz, walks and cdn-walk, then the changelog and a GitHub Release. See
+The authorized release owner qualifies an exact `main` head: the remote gate against the cached baseline, required
+approval, staged activation with healthz, walks and cdn-walk, then the changelog and a GitHub Release.
+Root-only workflow automation remains under qualification; use the current topology in the release doc. See
 [release](../release.md).
 
 ## Authority

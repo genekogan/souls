@@ -1,7 +1,10 @@
 # Vision
 
-Sim is aiming for a persistent world of worlds: places that keep running whether or not anyone is watching, inhabited
+Soul is aiming for a persistent world of worlds: places that keep running whether or not anyone is watching, inhabited
 by residents whose people direct them through their own agents, and built by the people who make them.
+
+This describes direction, not a claim that every capability exists. See the [roadmap](roadmap.md) for themes
+and linked issues; implementation status and evidence live in issues, PRs and releases.
 
 ## Principles
 
