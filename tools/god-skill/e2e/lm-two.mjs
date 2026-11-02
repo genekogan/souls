@@ -19,6 +19,7 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromeLease } from '../lib/chrome-lease.mjs';
+import { edgeRead, observation } from './edge-observation.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../../..');
@@ -51,14 +52,14 @@ process.on('exit', () => { if (!args.keep) stop(); });
 
 // ---------- clients: owners (dev identities), the god (god token), the Souls (Soul tokens)
 let godToken = '';
-async function api(path, { method, body, as = 'god' } = {}) {
+async function api(path, { method, body, as = 'god', timeoutMs = 120_000 } = {}) {
   const headers = { 'content-type': 'application/json' };
   if (as === 'god') headers.authorization = `Bearer ${godToken}`;
   else if (typeof as === 'object' && as?.token) headers.authorization = `Bearer ${as.token}`;
   else if (as && as !== 'none') headers.authorization = `Bearer dev:${as}`;
-  const r = await fetch(base + path, { method: method ?? (body ? 'POST' : 'GET'), headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(120_000) });
+  const r = await fetch(base + path, { method: method ?? (body ? 'POST' : 'GET'), headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeoutMs) });
   const text = await r.text(); let data; try { data = JSON.parse(text); } catch { data = text; }
-  return { status: r.status, data };
+  return { status: r.status, data, retryAfter: r.headers.get('retry-after') };
 }
 const summarize = (r) => { try { const s = JSON.stringify(r); return s && s.length > 1500 ? JSON.parse(JSON.stringify(r, (k, v) => (Array.isArray(v) && v.length > 12 ? `[${v.length} items]` : v))) : r; } catch { return String(r); } };
 async function step(name, fn, expect) {
@@ -71,32 +72,34 @@ async function step(name, fn, expect) {
   log(`${okay ? '✔' : '✖'} ${name} — ${ms.toFixed(0)} ms${okay ? '' : ' — ' + (error ?? JSON.stringify(brief)).slice(0, 500)}`);
   return result;
 }
-async function until(fn, ms = 120000, every = 500) { const t0 = Date.now(); let last; while (Date.now() - t0 < ms) { last = await fn(); if (last?.ok) return last; await sleep(every); } return last; }
+async function until(fn, ms = 120000, every = 500) { const deadline = Date.now() + ms; let last; while (Date.now() < deadline) { last = await fn(deadline); if (last?.ok) return last; await sleep(every); } return last; }
 const act = (ops, note) => api('/v1/god/act', { body: { ops, note } });
 const entity = async (path) => (await api(`/v1/world/entities/${path}`, { as: 'none' })).data;
 const groundAt = async (pts) => (await api('/v1/god/query', { body: { points: pts } })).data.points;
 const describe = async (ref) => (await api('/v1/god/query', { body: { describe: ref } })).data.describe;
-const observe = async (s) => (await api('/v1/edge/observe', { as: s })).data;
-const caps = async (s) => (await api('/v1/edge/capabilities', { as: s })).data.capabilities ?? [];
+const read = (path, s, deadline) => edgeRead(timeoutMs => api(path, { as: s, timeoutMs }), { deadline });
+const observe = async (s, deadline) => observation(await read('/v1/edge/observe', s, deadline));
+const caps = async (s, deadline) => (await read('/v1/edge/capabilities', s, deadline)).data.capabilities ?? [];
 const xz = (p) => [p[0], p[2]];
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const near = (p, q, d) => dist(xz(p), q) <= d;
 /** Act as a Soul and follow the receipt to its end, sampling the body (position, activity) on the way. */
 async function soulDoes(s, capability, { params, maxS = 300, until: stopWhen } = {}) {
   const t0 = Date.now();
+  const deadline = t0 + maxS * 1000;
   const r = await api('/v1/edge/act', { body: { capability, ...(params ? { params } : {}) }, as: s });
   if (!r.data?.accepted) return { accepted: false, code: r.data?.code, reason: r.data?.reason, status: r.status, samples: [], end: null, ms: Date.now() - t0 };
   const id = r.data.receipt?.id, samples = [];
   let rec = r.data.receipt;
   while (Date.now() - t0 < maxS * 1000) {
-    const o = await observe(s); const me = o.self;
+    const o = await observe(s, deadline); const me = o.self;
     samples.push({ ms: Date.now() - t0, tick: o.tick, p: me.position, activity: me.activity, state: me.state });
     if (stopWhen?.(me)) break;
-    if (id) rec = (await api(`/v1/edge/receipts/${encodeURIComponent(id)}`, { as: s })).data?.receipt ?? rec;
+    if (id) rec = (await read(`/v1/edge/receipts/${encodeURIComponent(id)}`, s, deadline)).data?.receipt ?? rec;
     if (['completed', 'failed', 'replaced'].includes(rec?.phase)) break;
     await sleep(700);
   }
-  const o = await observe(s);
+  const o = await observe(s, deadline);
   // path length walked vs the straight line (an odd route shows as a high ratio)
   let walked = 0; for (let i = 1; i < samples.length; i++) walked += dist(xz(samples[i].p), xz(samples[i - 1].p));
   const straight = samples.length ? dist(xz(samples[0].p), xz(o.self.position)) : 0;
@@ -222,12 +225,12 @@ try {
     }, (r) => r.soul?.id && r.token);
   }
   const S = (k) => ({ token: souls[k].token });
-  await step('S1 both are born on the ground; their capabilities name the places (flags, the arches)', () => until(async () => {
+  await step('S1 both are born on the ground; their capabilities name the places (flags, the arches)', () => until(async (deadline) => {
     const at = {}, missing = {};
     const want = ['walk:flag-ceramic-commons', 'walk:flag-madmaraca-gallery', 'walk:flag-grotto-of-painted-worlds', 'walk:flag-overlook-summit', 'walk:flag-scan-courts', 'walk:flag-minarete-sky-court', 'pray'];
     for (const k of Object.keys(souls)) {
-      const o = await observe(S(k)); at[k] = o?.self?.position;
-      const c = (await caps(S(k))).map((x) => x.id); const m = want.filter((w) => !c.includes(w)); if (m.length) missing[k] = m;
+      const o = await observe(S(k), deadline); at[k] = o?.self?.position;
+      const c = (await caps(S(k), deadline)).map((x) => x.id); const m = want.filter((w) => !c.includes(w)); if (m.length) missing[k] = m;
       report.caps ??= {}; report.caps[k] = c.filter((x) => x.startsWith('walk:')).slice(0, 80);
     }
     return { ok: Object.values(at).every(Boolean) && !Object.keys(missing).length, at, missing };
