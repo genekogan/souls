@@ -581,6 +581,17 @@ export function syncLightGlow(obj: THREE.Object3D, e: Entity, def: StoredDef, mo
   // K1 / XP1: retain v2's per-shape glow level through the day/night and pattern multiplier.
   for (const p of ud.glow) { steadyPart(p, !patterned && !flame && !p.flame); const v = level * p.gain; setGlow(p, p.flame ? Math.max(FLAME_GLOW_MIN, Math.min(v, FLAME_GLOW_CAP)) : v); }
 }
+/** PERF-EVENTLOOP: the glow level every steady lamp shares at page time `tIn` (syncLightGlow's `level` for an unpatterned lamp,
+ *  before each part's gain): the layer re-syncs its steady lamps only when the quantized value (quantizeGlow) steps. */
+export function steadyGlowAt(tIn: number, model: WorldModel | null = boundModel): number { const t = worldSeconds(tIn); return 0.25 + 1.4 * nightOf(model) + 0.03 * Math.sin(t * 3); }
+/** PERF-EVENTLOOP: how a drawn lamp's glow moves: not at all (switched off), with the shared steady level (every part's level is
+ *  steadyGlowAt × its gain), or by its own pattern (a blink, a twinkle, a flame's flicker). */
+export function glowKind(obj: THREE.Object3D, e: Entity, def: StoredDef): 'off' | 'steady' | 'patterned' {
+  const lights = defLights(def.components);
+  if (e.state?.on === false || lights.every((l) => l.on === false)) return 'off';
+  void obj;
+  return lights.some((l) => l.pattern && l.pattern !== 'steady') || flickers(e.def) ? 'patterned' : 'steady';
+}
 /** W2: the brightest a flame part's emissive gets (×its tint): saturated orange, never clipped white by the night boost. */
 const FLAME_GLOW_CAP = 0.85, FLAME_GLOW_MIN = 0.55;
 /** W2: a mesh that draws a flame — a kit part with `role: flame`, or one tinted flame/ember/fire. */
