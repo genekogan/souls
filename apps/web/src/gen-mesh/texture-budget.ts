@@ -176,10 +176,63 @@ export function uploadTextures(g: GLTF, owner = captureTexturePreparation()): Pr
  *  threw `reading 'isReady'` from its timer when a material was disposed mid-compile (on 3.32/3.33 phones ~1 in 3 loads of
  *  a new world: the early layer replaces near-ring materials while LiveWorld compiles) and then never resolved, so the
  *  arrival waited for its 3 s fallback, or for good where there was none. Every whole-scene compile goes through this. */
-export function compileSceneAsync(r: THREE.WebGLRenderer, scene: THREE.Object3D, camera: THREE.Camera, timeoutMs = 3000): Promise<void> {
+export function compileSceneAsync(r: THREE.WebGLRenderer, scene: THREE.Object3D, camera: THREE.Camera, timeoutMs = 3000, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
   let mats: unknown;
   try { mats = r.compile(scene, camera); } catch { return Promise.resolve(); }
-  return waitForPrograms(r, mats instanceof Set ? mats as Set<object> : new Set(), () => true, timeoutMs);
+  return waitForPrograms(r, mats instanceof Set ? mats as Set<object> : new Set(), () => true, timeoutMs, signal);
+}
+
+// Three's runtime WebGLProgram has isReady, but its declaration currently omits it.
+type MetadataProgram = NonNullable<THREE.WebGLRenderer['info']['programs']>[number] & { isReady?: () => boolean };
+/** Linking does not populate Three's uniform/attribute locations. Its first getUniforms call builds both caches;
+ *  spread that work over separate tasks before the initial live draw. Only touch ready, still-owned programs: a
+ *  compile timeout must not turn into a forced link. Without KHR, isReady is unconditionally true, so leave the
+ *  ordinary first-use path alone. Native metadata creation for one program is atomic, not a millisecond guarantee. */
+export async function warmReadyProgramMetadata(r: THREE.WebGLRenderer, isCurrent: () => boolean, signal?: AbortSignal): Promise<void> {
+  const active = () => !signal?.aborted && isCurrent();
+  if (!active()) return;
+  let programs: MetadataProgram[];
+  try {
+    if (!r.extensions.has('KHR_parallel_shader_compile') || !active()) return;
+    programs = [...new Set(r.info.programs ?? [])];
+  } catch { return; /* ordinary first use remains available */ }
+  for (const program of programs) {
+    if (!active()) return;
+    await metadataTask(signal);
+    if (!active()) return;
+    try {
+      if (!r.info.programs?.includes(program) || !program.program || typeof program.isReady !== 'function' || !program.isReady()) continue;
+      // Readiness can call user/driver code that releases this mount or destroys a program.
+      if (!active()) return;
+      if (!r.info.programs?.includes(program) || !program.program) continue;
+      program.getUniforms();
+    } catch { /* one failed program does not strand the rest; first draw keeps its normal failure path */ }
+  }
+}
+function metadataTask(signal?: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    if (signal?.aborted) { resolve(); return; }
+    let channel: MessageChannel | undefined, timer: ReturnType<typeof setTimeout> | undefined, finished = false;
+    const closeChannel = () => { channel?.port1.close(); channel?.port2.close(); channel = undefined; };
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      signal?.removeEventListener('abort', finish);
+      closeChannel(); clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener('abort', finish, { once: true });
+    if (typeof MessageChannel === 'undefined') timer = setTimeout(finish, 0);
+    else try {
+      channel = new MessageChannel();
+      if (finished) { closeChannel(); return; }
+      channel.port1.onmessage = finish; channel.port2.postMessage(null);
+    } catch {
+      closeChannel();
+      if (!finished) timer = setTimeout(finish, 0);  // optional warmup never makes a failed channel an arrival failure
+    }
+  });
 }
 
 /** Link, in parallel, the programs a change to the scene will need before any frame draws it: `add` puts the change in
