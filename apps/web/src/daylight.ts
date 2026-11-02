@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { solarPosition } from '../../../mars/viewer/engine/env/sun.ts';
 import { siteNorthOffset } from './site-north.ts';
 import {createEdenDaylight} from './atmosphere/visual-transitions.ts';
-import {shadowFollowBox,installStableShadowFilter} from './rendering/WorldLook.ts';
+import {shadowFollowBox,installStableShadowFilter,installBakedSunShadow} from './rendering/WorldLook.ts';
 import { daylightFactors } from '../../../mars/viewer/engine/env/daylight.ts';
 import { fitNearPlane } from '../../../mars/viewer/lib/depth-fit.ts';
 const DAY_SKY = new THREE.Color('#a6bed0'), NIGHT_SKY = new THREE.Color('#121a2b'), DUSK_SKY = new THREE.Color('#d99a6c');
@@ -16,6 +16,10 @@ export class Daylight {
   readonly sun = new THREE.DirectionalLight(0xffffff, 2);
   /** Soft observer fill keeps bodies legible at night; it is not a second sun or a physical light source. */
   readonly fill = new THREE.DirectionalLight(0xb9cbea, 0.65);
+  /** PERF-BAKED-SHADOWS: the sun's cached shadow of still things (rendering/SunShadowCache.ts aims and draws it): a
+   *  shadow source only (no light; the lights chunk shadows the sun with it), right after the sun among the scene's
+   *  shadow-casting lights. null on the phone tier, with `?bakedShadows=0`, or if the chunk could not be patched. */
+  readonly baked: THREE.DirectionalLight | null = null;
   private key = '';
   private commonsReadability=false;
   private nightLighting=false;
@@ -52,7 +56,7 @@ export class Daylight {
   private readonly beforeRender: THREE.Object3D['onBeforeRender'];
   private readonly previousBeforeRender: THREE.Object3D['onBeforeRender'];
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, { bakedShadow = false }: { bakedShadow?: boolean } = {}) {
     installStableShadowFilter();
     this.scene = scene;
     this.sun.castShadow = true;
@@ -60,7 +64,15 @@ export class Daylight {
     this.sun.shadow.bias = -0.0002;
     this.sun.shadow.normalBias = 0.05;
     this.fill.position.set(-12, 18, 12);
-    scene.add(this.hemi, this.sun, this.sun.target, this.fill, this.fill.target);
+    scene.add(this.hemi, this.sun, this.sun.target);
+    if (bakedShadow && installBakedSunShadow()) {
+      const baked = this.baked = new THREE.DirectionalLight(0x000000, 0);
+      baked.name = 'sun (cached shadow)'; baked.castShadow = true;
+      // drawn once by whichever shadow pass comes first (so it is never unwritten), then only by SunShadowCache
+      baked.shadow.autoUpdate = false; baked.shadow.needsUpdate = true;
+      scene.add(baked, baked.target);
+    }
+    scene.add(this.fill, this.fill.target);
     scene.background = DAY_SKY.clone();
     // Depth precision (flickering layered surfaces): fit every perspective camera's near plane to its height
     // above the ground just before the scene is drawn (lib/depth-fit.ts). Chained with any existing hook.
@@ -144,6 +156,7 @@ export class Daylight {
   dispose() {
     this.sun.shadow.dispose();
     this.scene.remove(this.hemi, this.sun, this.sun.target, this.fill, this.fill.target);
+    if (this.baked) { this.baked.shadow.dispose(); this.scene.remove(this.baked, this.baked.target); }
     if (this.scene.onBeforeRender === this.beforeRender) this.scene.onBeforeRender = this.previousBeforeRender;
   }
 }
