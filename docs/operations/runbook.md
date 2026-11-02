@@ -1,5 +1,9 @@
 # Runbook
 
+Current production is root-only `https://soul.game`; internal service/data names are unchanged. Legacy-stage
+sections describe the former deployment and do not apply to the current public host. Check the release owner’s
+approved runsheet before any mutation; see [release topology](../release.md#current-production-topology).
+
 Commands for the running site. They run on the production host as root unless noted; from elsewhere, prefix them
 with `ssh "$SIM_DEPLOY_USER@$SIM_DEPLOY_HOST"` (the same target the release scripts read from `deploy.env`). Stage names, paths and units are
 described in [operations](../operations.md); releases are in [release](../release.md).
@@ -7,23 +11,23 @@ described in [operations](../operations.md); releases are in [release](../releas
 Paths below use the stage's release link, so they always run the live code:
 
 ```sh
-R=/srv/sim-worlds/production          # or /srv/sim-worlds/legacy
+R=/srv/sim-worlds/production
 P=$(sed -n 's/.*--port \([0-9]*\).*/\1/p' /etc/sim-worlds/production.conf)
 ```
 
 ## Health
 
 ```sh
-curl -fsS https://sim.eden.art/worlds/__sim/healthz           # public: build, worlds, running, hostOk
-curl -fsS http://127.0.0.1:$P/worlds/__sim/healthz            # loopback: also the host numbers
-curl -fsS http://127.0.0.1:$P/worlds/w/<slug>/healthz         # one world
-systemctl is-active sim-worlds@production sim-worlds@legacy caddy
+curl -fsS https://soul.game/__sim/healthz           # public: build, worlds, running, hostOk
+curl -fsS http://127.0.0.1:$P/__sim/healthz            # loopback: also the host numbers
+curl -fsS http://127.0.0.1:$P/w/<slug>/healthz         # one world
+systemctl is-active sim-worlds@production caddy
 systemctl list-timers 'sim-worlds-*'
 ```
 
 A single response proves reachability only; repeat a world's healthz after a short interval to see its clock advance.
 `hostOk: false` comes with short `hostCodes`; the details are in `<data>/host-health.json` and `host-health.log`.
-The site owners' page is `https://sim.eden.art/worlds/__sim/health`.
+The site owners' page is `https://soul.game/__sim/health`.
 
 ## Logs
 
@@ -31,8 +35,8 @@ The site owners' page is `https://sim.eden.art/worlds/__sim/health`.
 journalctl -u sim-worlds@production -n 200 --no-pager          # keeper and launcher
 tail -n 100 /srv/sim-worlds-data/production/logs/<slug>.log    # one world
 cat /srv/sim-worlds-data/production/keeper.json                # active build, last handover per world
-node $R/tools/world-launcher/op.mjs client-errors --port $P --base /worlds [--world <slug>]
-node $R/tools/world-launcher/op.mjs audit --port $P --base /worlds [--slug <slug>]
+node $R/tools/world-launcher/op.mjs client-errors --port $P --base / [--world <slug>]
+node $R/tools/world-launcher/op.mjs audit --port $P --base / [--slug <slug>]
 ```
 
 ## Restarting
@@ -57,7 +61,7 @@ refused). Every call is an audit row.
 | `register-fork` / `remove-fork` | Serve or stop an old-world fork (legacy stage) |
 | `set-test`, `soul-*`, `god-pending`, `god-approve` | TEST Souls and the probe god on worlds flagged test only |
 
-All take `--port <port>` and `--base /worlds` for production (no `--base` on legacy).
+All take `--port <port>` and `--base /` for production (no `--base` on legacy).
 
 ## Backups
 
