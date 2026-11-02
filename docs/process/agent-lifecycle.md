@@ -76,7 +76,9 @@ own fixed ports (`op.test.mjs` takes `OP_TEST_PORT`). Server discovery includes 
 `apps/server/src`; two deterministic shards plus the dedicated latency job cover that inventory exactly once.
 The `proof-check` bot keeps one comment
 up to date with the tier, the proof that tier needs, and which acceptance boxes have evidence. The `claude-review`
-workflow reviews every push, including whether the evidence supports each acceptance claim. `@claude` answers
+workflow is the default reviewer on every push, including whether the evidence supports each acceptance claim.
+An independent provider fallback follows the same [review contract and required checks](agent-workflow.md#review),
+with its source, reviewer and findings recorded explicitly. `@claude` answers
 follow-ups, and the author answers each comment with a fix or a reason. The maintainer reviews T3 and above and
 anything labelled for them. See [review](review.md).
 

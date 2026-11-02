@@ -65,9 +65,14 @@ A PR that fails a check leaves the train with its result in the PR; fix it and r
 
 ## Review
 
-- **Claude reviews every PR.** The `claude-review` workflow reviews each non-draft PR against [AGENTS.md](../../AGENTS.md)
+- **A qualified agent reviews every PR.** The current default `claude-review` workflow reviews each non-draft PR against [AGENTS.md](../../AGENTS.md)
   and [PROOF-POLICY.yml](PROOF-POLICY.yml), states the PR's proof tier, and keeps one review comment up to date on
   later pushes. Answer each finding with a fix or a reason.
+- **Provider-neutral review.** If the default provider cannot run, an independent Claude or Codex reviewer may
+  apply the same [review contract](review.md). Record the exact source SHA, reviewer/model, findings and their
+  disposition in the PR. The change's author cannot supply its only review. Preserve the failed provider run;
+  a separate review does not turn it into a pass. Do not require duplicate provider reviews. All required status
+  checks and T3–T4 maintainer approvals still apply; a required failed status cannot be bypassed by a comment.
 - **`@claude` for follow-ups.** Mention `@claude` in an issue, PR comment or review (the `claude` workflow) to ask a
   question, iterate on review feedback or have it push a fix to the PR branch. Only the owner, members and
   collaborators can trigger it.
