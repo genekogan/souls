@@ -20,10 +20,10 @@ on:
         description: UTC observation from approved usage helper, within 30 minutes
         required: true
       weekly_used_percent:
-        description: Actual weekly usage percent; unknown or exhausted usage refuses execution
+        description: Actual weekly usage percent; unknown or 85% and above refuses execution
         required: true
       short_window_used_percent:
-        description: Actual short-window usage percent; unknown or exhausted usage refuses execution
+        description: Actual short-window usage percent; unknown or 85% and above refuses execution
         required: true
       worker_ceiling:
         description: Owner-authorized total ceiling, including external/performance workers

@@ -16,8 +16,12 @@ function apiFor(i = issue(), p = pr(), ref = null) {
   const calls = [];
   return Object.assign(async path => { calls.push(path); if (path.includes('/commits/')) return { sha }; if (path.includes('/git/ref/')) return ref; if (path.includes('/pulls/')) return p; return i; }, { calls });
 }
-test('unknown, exhausted, future and stale quota refuse, including an exhausted short window', () => {
+test('weekly and short-window quota stop new workers at 85%; unknown, future and stale observations refuse', () => {
   assert.equal(validateDispatch(input(), context, now).quota.weeklyUsedPercent, 25.5);
+  for (const field of ['weekly_used_percent', 'short_window_used_percent']) {
+    assert.doesNotThrow(() => validateDispatch({ ...input(), [field]: '84.99' }, context, now));
+    for (const value of ['85', '90']) assert.throws(() => validateDispatch({ ...input(), [field]: value }, context, now), /below 85%/, `${field}=${value}`);
+  }
   for (const [key, value] of [['weekly_used_percent', 'unknown'], ['weekly_used_percent', '100'], ['weekly_used_percent', '-1'], ['short_window_used_percent', '100'], ['short_window_used_percent', ''], ['quota_observed_at', ''], ['quota_observed_at', new Date(now + 1).toISOString()], ['quota_observed_at', new Date(now - MAX_QUOTA_AGE_MS - 1).toISOString()], ['quota_observed_at', '2026-02-30T20:00:00Z']]) {
     assert.throws(() => validateDispatch({ ...input(), [key]: value }, context, now), /usage|quota/i, key);
   }
@@ -35,7 +39,7 @@ test('claimed issues preserve a differing existing branch; PRs require exact sou
   const candidate = await qualifyTask(task, context, apiFor(closed)); assert.equal(candidate.readOnly, true); assert.equal(candidate.branch, 'agent/538-fixture');
   for (const p of [{ head: { ...pr().head, sha: 'b'.repeat(40) } }, { head: { ...pr().head, repo: { full_name: 'fork/repo' } } }, { head: { ...pr().head, ref: 'main' } }]) await assert.rejects(qualifyTask(task, context, apiFor(closed, p)));
 });
-test('action arguments use only the approved model and fixed bounds; read-only work has no write tools', () => {
+test('action arguments use only the approved model and fixed bounds; read-only scope omits built-in edit tools', () => {
   const task = validateDispatch(input(), context, now);
   assert.match(argsFor(task), /--max-turns 12/); assert.match(argsFor(task), /--model approved-model-fixture /);
   assert.match(argsFor(task), /--disallowedTools "Agent,Task,mcp__\*"/); assert.doesNotMatch(argsFor(task), /fallback|api-key/);

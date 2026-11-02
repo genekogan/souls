@@ -1,8 +1,9 @@
 # Owner-dispatched cloud workers
 
-The manual `claude-worker.yml` adapter starts a bounded Claude task on an isolated GitHub Linux runner. It reuses
-the existing Claude action and issue/PR lifecycle. It is not a scheduler or a new task database. Codex Cloud remains
-a separate, unqualified adapter; this workflow does not require Gene to create or move an app chat.
+The optional manual `claude-worker.yml` executor starts a bounded Claude task on a GitHub Linux runner. It reuses
+the existing Claude action and issue/PR lifecycle; it is not adopted as the primary worker fleet, a scheduler or a new
+task database. Codex Cloud remains a separate, unqualified adapter; this workflow does not require Gene to create
+or move an app chat.
 
 Implementation and live qualification are separate in [#601](https://github.com/genekogan/souls/issues/601).
 **No live pilot has run.** The approved usage helper cannot currently obtain a weekly observation on either laptop;
@@ -22,9 +23,10 @@ readable quota or this new dispatch path. Unknown quota blocks execution. Do not
    The authorized development owner uses that existing CLI/API identity; no new account permission is created.
 4. Before **each** dispatch, use the approved usage helper and record its UTC observation time, actual weekly and
    short-window percentages, resets and relevant model-specific constraints in the task journal. The workflow rejects
-   missing/unknown/exhausted percentages and observations older than 30 minutes or in the future. These inputs are
-   an owner attestation, not an independent remote quota query or a reservation. Existing stricter quota/spend caps
-   remain binding; enough apparent remaining quota does not authorize work above them.
+   missing/unknown percentages, either window at **85% or above**, and observations older than 30 minutes or in the
+   future. Stop new workers at 85%; never run above 90%. The same conservative 85% cutoff applies to the short window.
+   These inputs are an owner attestation, not an independent remote quota query or a reservation. Existing stricter
+   quota/spend caps remain binding; enough apparent remaining quota does not authorize work above them.
 5. Count active workers across this adapter, the comments-based Claude action, local/other-provider tasks and the
    separately owned performance lane. Compare against the requested total ceiling and actual executor capacity;
    dispatch only when a slot and independent scope exist. Queued jobs reserve an owner-managed slot too. If a queue
@@ -68,7 +70,8 @@ The job has 30 minutes, the action step 25 minutes and the agent 12 turns. Expli
 supply the comments-mode tracking/branch ceremony, so the wrapper records the exact source/objective, model,
 quota/capacity observation and run URL on the existing thread before model execution. Task text is JSON data;
 it is never interpolated into a shell script or CLI flags. The task descriptor and trusted finalizer are hash-checked
-before posting an outcome. The structured result is posted back to that thread and retained as an artifact.
+before posting an outcome to detect changed files; these hashes do not sandbox code running as the same user or
+provide tamper-proof isolation. The structured result is posted back to that thread and retained as an artifact.
 Raw model transcripts and credentials are not uploaded.
 
 Same-target runs share `claude-<number>` with the existing comments-based action; active work is not cancelled.
@@ -78,9 +81,11 @@ and uses existing claims to avoid two aliases of the same work. A replaced pendi
 
 The action uses the existing OAuth secret and GitHub app integration. Only reviewed GitHub/job permissions are
 requested; no production environment, deployment credentials, API key fallback or Modal token is supplied. Built-in
-agent/task tools and MCP tools are removed; source edits are unavailable for read-only qualification. Focused node
-checks and ordinary lifecycle git/PR commands are allowed. Tool permissions and task instructions are not a sandbox
-for hostile executable source: the owner must authorize the exact repository source and scope. No broad asset pull,
+agent/task tools and MCP tools are removed; built-in Edit/Write tools are omitted for read-only qualification. Focused
+node checks and ordinary lifecycle git/PR commands are allowed. `allowedTools` and the prompt are task scope controls,
+not a security sandbox: git/node commands can execute arbitrary code as the same user. Read-only qualification is a
+requested scope, with post-run HEAD/worktree checks that detect source changes; it does not prevent them. The owner
+must authorize the exact repository source and scope. No broad asset pull,
 installation or suite runs by default; no recursive worker, release gate or deployment is permitted.
 
 ```sh

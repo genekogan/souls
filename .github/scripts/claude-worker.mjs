@@ -22,7 +22,7 @@ export function validateDispatch(input, context, now = Date.now()) {
   const observed = Date.parse(input.quota_observed_at);
   if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(input.quota_observed_at || '') || !Number.isFinite(observed) || new Date(observed).toISOString().slice(0, 19) !== input.quota_observed_at.slice(0, 19) || observed > now || now - observed > MAX_QUOTA_AGE_MS) throw Error('Weekly quota observation is missing, future or older than 30 minutes');
   for (const field of ['weekly_used_percent', 'short_window_used_percent'])
-    if (typeof input[field] !== 'string' || !/^\d+(?:\.\d+)?$/.test(input[field]) || Number(input[field]) >= 100) throw Error('Weekly and short-window usage must be observed and below 100%; unknown is not a pass');
+    if (typeof input[field] !== 'string' || !/^\d+(?:\.\d+)?$/.test(input[field]) || Number(input[field]) >= 85) throw Error('Weekly and short-window usage must be observed and below 85%; unknown is not a pass');
   const ceiling = integer(input.worker_ceiling, 'worker_ceiling', 1), active = integer(input.active_workers, 'active_workers');
   if (active >= ceiling) throw Error('No available worker slot in the owner-reported total ceiling');
   if (input.writer_released !== true && input.writer_released !== 'true') throw Error('Owner must confirm the outgoing writer stopped and existing WIP is preserved');
@@ -94,7 +94,7 @@ async function main(mode) {
       uncommitted: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', maxBuffer: 1024 * 1024 }).trim(),
     };
     result.sourcePreservation = result.workspace.uncommitted ? 'Uncommitted source may be lost with this runner; owner must recover before cancellation/retry' : 'Local tree clean; review reported remote refs before reusing the claim';
-    if (task.readOnly && (result.workspace.head !== task.source || result.workspace.uncommitted)) result.qualification = 'failed read-only source boundary';
+    if (task.readOnly && (result.workspace.head !== task.source || result.workspace.uncommitted)) result.qualification = 'failed read-only task scope';
     writeFileSync(join(dir, 'result.json'), JSON.stringify(result, null, 2) + '\n');
     await api(`repos/${task.repo}/issues/${task.task}/comments`, { body: { body: `Cloud worker outcome: **${result.action}** — ${task.run}\n\nExact dispatched source: \`${task.source}\`; branch: \`${task.branch}\`; resulting local HEAD: \`${result.workspace.head}\`. Adapter qualification: **${result.qualification}**. ${result.handoff}.\n\n${result.sourcePreservation}.\n\n${result.report ? 'Worker report (not independently qualified):\n```json\n' + JSON.stringify(result.report, null, 2) + '\n```\n\n' : ''}Review the cloud-worker artifact for the objective, observations and structured result. Missing/failed checks remain unverified. A successful action does not establish merged/released/live-verified status; do not restart interrupted work without checking its durable source/proof and outgoing writer.` } });
     if (result.qualification.startsWith('failed')) throw Error(result.qualification);
