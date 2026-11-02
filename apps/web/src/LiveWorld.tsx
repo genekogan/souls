@@ -96,7 +96,7 @@ import { setFleeSources, AFLOAT } from './gen-mesh/motion.ts';
 import { WorldLightning } from './WorldLightning.ts';
 import { worldArrivalPose } from './arrival-shot.ts';
 import { anyPersonInView } from './people-in-view.ts';
-import { setAssetLoader } from './gen-mesh/gltf-assets.ts';import { worldResolution } from './adaptive-resolution.ts';import { browserQuality } from './quality-tier.ts';import { WorldDistanceDetail } from './WorldDistanceDetail.ts';import { WorldMeshLod, PHONE_MESH_LOD, DESKTOP_MESH_LOD, workerSimplifier, type Simplifier } from './WorldMeshLod.ts';import { WorldFarStandIns, PHONE_STAND_INS, rendererSnapshotter } from './WorldFarStandIns.ts';import { compileSceneAsync, setTextureRenderer } from './gen-mesh/texture-budget.ts';
+import { setAssetLoader } from './gen-mesh/gltf-assets.ts';import { worldResolution } from './adaptive-resolution.ts';import { browserQuality } from './quality-tier.ts';import { WorldDistanceDetail } from './WorldDistanceDetail.ts';import { WorldMeshLod, PHONE_MESH_LOD, DESKTOP_MESH_LOD, workerSimplifier, type Simplifier } from './WorldMeshLod.ts';import { WorldFarStandIns, PHONE_STAND_INS, rendererSnapshotter } from './WorldFarStandIns.ts';import { captureTexturePreparation, compileSceneAsync, setTextureRenderer, warmReadyProgramMetadata } from './gen-mesh/texture-budget.ts';
 // P1 phones: the god panel and the constitution card are lazy chunks, mounted once the arrival card has gone (20 s cap), or
 // at once when the landing URL carries something for the panel (#join, #approve/…, an offer or pairing link, a preview)
 const GodPanel=lazy(()=>import('./GodPanel.tsx').then(m=>({default:m.GodPanel})));
@@ -723,7 +723,14 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     const officeGuardFrom=new THREE.Vector3(),authoredBoundaries=new WorldAuthoredBoundaries();
     let shadowFrame=0;  // P1 phones
     let posterFrames=0,programsPending=false,warmLayer=0,arrivedOnce=false,earlyPending=0,buildingFrameAt=-Infinity,layerStarted=false,afterNextDraw:(()=>void)|null=null;  // afterNextDraw: ?shot waits for a frame drawn after the build  // lane W1: the built world's shaders are still linking in parallel: no frame yet
-    const compileInitialPrograms=async()=>{await new Promise<void>(r=>setTimeout(r,0));if(!abort.signal.aborted)await compileSceneAsync(renderer,scene,camera);};  // shader traversal gets its own task, separate from the warm frame
+    const compileInitialPrograms=async()=>{
+      const owner=newWorld?captureTexturePreparation():null;
+      const active=()=>!abort.signal.aborted&&(!newWorld||(owner?.renderer===renderer&&captureTexturePreparation()===owner));
+      await new Promise<void>(r=>setTimeout(r,0));  // traversal gets its own task, separate from the warm frame
+      if(!active())return;
+      await compileSceneAsync(renderer,scene,camera,3000,owner?.abort.signal??abort.signal);
+      if(owner&&active())await warmReadyProgramMetadata(renderer,active,owner.abort.signal);
+    };
     const animate = () => {
       officeGuardFrom.copy(camera.position);
       if (abort.signal.aborted) return;
