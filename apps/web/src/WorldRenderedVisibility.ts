@@ -9,6 +9,12 @@ const UP=new THREE.Vector3(0,1,0);
 const FOREGROUND_GRID:readonly (readonly [number,number])[]=[[-.66,-.6],[0,-.6],[.66,-.6],[-.66,0],[.66,0],[-.66,.6],[0,.6],[.66,.6]];
 /** Read-only camera composition over actual opaque render meshes. These are
  * visual occluders, never native collisions, support or actor movement. */
+/** PERF-PASSES: the world matrices a draw would use, for one root: its ancestors, then its subtree through
+ *  updateMatrixWorld(true), so a frozen thing (WorldEntityLayer.freeze replaces its updateMatrixWorld with a no-op; its
+ *  matrices are current by contract) is not re-multiplied: updateWorldMatrix(true, true) walked all ~9,000 of Eden 2026's
+ *  objects, frozen or not, twice per speech refresh. Children with matrixWorldAutoUpdate off are skipped, as the
+ *  renderer's own scene.updateMatrixWorld skips them. */
+export function flushMatrices(root:THREE.Object3D){root.parent?.updateWorldMatrix(true,false);root.updateMatrixWorld(true);}
 export class WorldRenderedVisibility {
   private objects:THREE.Object3D[]=[];
   private roots:THREE.Object3D[]=[];
@@ -34,7 +40,10 @@ export class WorldRenderedVisibility {
     this.cleared=same?this.cleared.filter(c=>this.preparations-c.at<10):[];this.seenSets=same?this.seenSets.filter(c=>this.preparations-c.at<10):[];this.rooms=same?this.rooms.filter(c=>this.preparations-c.at<30):[];this.crowds=same?this.crowds.filter(c=>this.preparations-c.at<10):[];
     this.roots.length=0;this.objects.length=0;this.hits.length=0;this.roots=[...new Set(roots)];const seen=new Set<THREE.Object3D>();
     // A hit object marked cameraTransparent is never opaque(), so it cannot change a score.
-    for(const root of this.roots){root.updateWorldMatrix(true,true);root.traverse(o=>{if((o as THREE.Mesh).isMesh&&o.userData.cameraTransparent!==true&&this.visible(o)&&!seen.has(o)){seen.add(o);this.objects.push(o);}});}
+    // PERF-PASSES: matrices through flushMatrices (frozen things stay no-ops); the walk descends only into visible objects,
+    // so each mesh's ancestor chain is not re-read (the same meshes in the same pre-order as traverse + visible())
+    const collect=(o:THREE.Object3D)=>{if(!o.visible)return;if((o as THREE.Mesh).isMesh&&o.userData.cameraTransparent!==true&&!seen.has(o)){seen.add(o);this.objects.push(o);}const c=o.children;for(let i=0;i<c.length;i++)collect(c[i]);};
+    for(const root of this.roots){flushMatrices(root);if(root.parent&&!this.visible(root.parent))continue;collect(root);}
     this.instances.retain(this.objects);
   }
   /** A fresh speech batch owns no visibility decision from the previous frame.
@@ -49,7 +58,7 @@ export class WorldRenderedVisibility {
   /** One synchronous read-only camera evaluation; never retained across frames. */
   // Component/fixture render poses may change before renderer.render updates
   // matrices. Flush once per evaluation, not once per candidate or subject ray.
-  evaluate<T>(run:()=>T):T{for(const root of this.roots)root.updateWorldMatrix(true,true);return this.instances.withQuery(this.objects,run);}
+  evaluate<T>(run:()=>T):T{for(const root of this.roots)flushMatrices(root);return this.instances.withQuery(this.objects,run);}
   score(pose:CameraPose,ids:readonly string[],subjects:Record<string,SubjectPose>){
     if(!ids.length)return 1;return this.instances.withQuery(this.objects,()=>{this.eye.fromArray(pose.position);let clear=0,total=0;
     for(const id of ids){const subject=subjects[id];if(!subject)return 0;const points=subject.points??[[subject.p[0],subject.p[1]+(subject.height??1.75)*.6,subject.p[2]],[subject.p[0],subject.p[1]+(subject.height??1.75)*.95,subject.p[2]]];
