@@ -1853,7 +1853,13 @@ const frac = (n: number) => { const x = Math.sin(n) * 43758.5453; return x - Mat
 function hashSeed(s: string) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0) % 100000; }
 function waterLevel(g: Ground, x: number, z: number): number | null {
   let level: number | null = null;
-  for (const w of g.waters) if (w.area && pointInPoly(x, z, w.area)) level = w.level; else if (w.path && w.w) { const lv = waterLevelAt(g, x, z); if (lv !== null) level = lv; }
+  let globalLevel: number | null = null, globalRead = false;
+  // Every path branch asks the same whole-ground question. Keep its ordered overwrite (including the sea
+  // fallback), but answer only once per call; a null answer is cached too. Ground edits are seen on the next call.
+  for (const w of g.waters) if (w.area && pointInPoly(x, z, w.area)) level = w.level; else if (w.path && w.w) {
+    if (!globalRead) { globalLevel = waterLevelAt(g, x, z); globalRead = true; }
+    if (globalLevel !== null) level = globalLevel;
+  }
   return level ?? g.seaLevel ?? null;
 }
 // indexed reads, not array destructuring: the same arithmetic as @sim/ground's pointInPoly (L3e)
@@ -1874,4 +1880,4 @@ class DrawnMap extends Map<string, Drawn> {
   override clear(): void { for (const [id, d] of this) this.layer.release(id, d); super.clear(); }
 }
 export type { Def };
-export { TILE_N };
+export { TILE_N, waterLevel };

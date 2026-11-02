@@ -25,6 +25,7 @@ export class StreamRing {
     this.inner = opts.inner; this.outer = opts.outer; this.cell = opts.cell ?? 96; this.step = opts.step ?? Math.max(4, this.inner / 32);
   }
   get size() { return this.entries.size; }
+  get cellCount() { return this.cells.size; }
   get wanted(): ReadonlySet<string> { return this.wantedSet; }
   has(id: string) { return this.entries.has(id); }
   isWanted(id: string) { return this.wantedSet.has(id); }
@@ -37,7 +38,8 @@ export class StreamRing {
     let e = this.entries.get(id);
     if (e) {
       if (e.x === x && e.z === z && e.r === r && e.pinned === pinned) return;
-      e.cell.entries.delete(e); e.x = x; e.z = z; e.r = r; e.pinned = pinned;
+      e.cell.entries.delete(e); if (!e.cell.entries.size) this.cells.delete(e.cell.key);
+      e.x = x; e.z = z; e.r = r; e.pinned = pinned;
     } else { e = { id, x, z, r, cell: null as unknown as Cell, wanted: false, pinned }; this.entries.set(id, e); }
     const cell = this.cellAt(x, z); cell.entries.add(e); cell.maxR = Math.max(cell.maxR, r); e.cell = cell;
   }

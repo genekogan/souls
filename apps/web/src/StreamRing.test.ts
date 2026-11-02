@@ -59,3 +59,24 @@ test('sectors within a radius, nearest first, clipped to the extent', () => {
   assert.equal(sectorDistance('2,0', 10, 10, 256), 502);
   assert.equal(sectorDistance('0,0', 10, 10, 256), 0);
 });
+
+test('moving entries retain only occupied cells while preserving wanted state and shared cells', () => {
+  const ring = new StreamRing({ inner: 10, outer: 20, cell: 8, step: 0 });
+  ring.set('anchor', 0, 0); ring.set('moving', 1, 1);
+  ring.update(0, 0); assert.equal(ring.cellCount, 1);
+  for (let i = 1; i <= 1000; i++) {
+    const x = i * 8, z = -i * 8;
+    ring.set('moving', x, z);
+    assert.equal(ring.cellCount, 2, 'old empty cells are removed, the anchor cell stays');
+    assert.equal(ring.isWanted('moving'), true, 'moving preserves wanted state until update');
+    assert.deepEqual(ring.within(x, z, 0), ['moving']);
+    ring.set('moving', x + .25, z + .25, 1);
+    assert.equal(ring.cellCount, 2, 'same-cell moves and radius changes do not retain another cell');
+  }
+  assert.deepEqual(ring.update(0, 0).leave, ['moving']);
+  ring.set('moving', 1, 1); assert.equal(ring.cellCount, 1);
+  assert.equal(ring.probe('moving'), true);
+  ring.delete('moving'); assert.equal(ring.cellCount, 1);
+  ring.delete('anchor'); assert.equal(ring.cellCount, 0);
+  ring.clear(); assert.equal(ring.cellCount, 0);
+});
