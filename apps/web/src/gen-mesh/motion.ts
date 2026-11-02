@@ -137,7 +137,7 @@ class Obstacles {
     const k = `${this.model.entities.size}`;
     if (k === this.key && t - this.at < 8) return this.boxes;
     this.key = k; this.at = t; this.boxes = [];
-    for (const { id, fp } of solidFootprints(this.model)) {
+    for (const { id, fp } of solidFootprints(this.model, [this.cx, this.cz, this.reach + SOLID_ROOT_REACH])) {
       if (this.skip.has(id)) continue;
       for (const b of fp) if (Math.hypot(b.c[0] - this.cx, b.c[1] - this.cz) < this.reach + Math.hypot(b.half[0], b.half[1]) && b.y1 - b.y0 > 0.12) this.boxes.push(b);
     }
@@ -153,23 +153,57 @@ class Obstacles {
  *  object on every set / delete), the entity count and the terrain are the same. Creatures refresh their obstacles every
  *  8 s, staggered, so dropping it after each task re-scanned all ~5,000 entities on most frames of a quiet world. The
  *  2 s bound covers what the revisions do not see (a terrain edited in place); Obstacles already holds boxes for 8 s. */
-let solidScan: { model: WorldModel; entities: object | undefined; defs: object | undefined; size: number; terrain: unknown; solids: { id: string; fp: Box[] }[]; at: number } | null = null;
+let solidScan: { model: WorldModel; entities: object | undefined; defs: object | undefined; size: number; terrain: unknown; solids: { id: string; fp: Box[] }[] | null; anchors: { e: Entity; x: number; z: number }[] | null; fps: Map<string, Box[] | null>; at: number } | null = null;
 const SOLID_SCAN_MS = 2000;
+/** PERF-STREAM: how far a solid's footprint can lie from its root's stored pose (a building's furniture is in its building;
+ *  the largest building side is under 60 m), so a creature's `near` scan takes the footprints of the roots within its reach
+ *  plus this, never of a 50,000-thing world. */
+const SOLID_ROOT_REACH = 64;
 const revisionOf = (m: Map<string, unknown>) => (m as Map<string, unknown> & { revision?: object }).revision;
-export function solidFootprints(model: WorldModel): readonly { id: string; fp: readonly Box[] }[] {
+function solidScanFor(model: WorldModel) {
   const c = solidScan;
   const now = performance.now(), entities = revisionOf(model.entities), defs = revisionOf(model.defs);
-  if (c && c.model === model && c.size === model.entities.size && c.entities === entities && c.defs === defs && c.terrain === model.terrain && (now - c.at < SOLID_SCAN_MS || (entities === undefined && defs === undefined))) return c.solids;
-  const solids: { id: string; fp: Box[] }[] = [];
-  model.readPass(() => { for (const e of model.entities.values()) {
-    const d = model.resolvedDef(e.def); if (!d || d.layer !== 'solid' || d.make.kind === 'none') continue;
-    let fp: Box[]; try { fp = model.footprint(e, d); } catch { continue; }
-    solids.push({ id: e.id, fp });
-  } });
-  solidScan = { model, entities, defs, size: model.entities.size, terrain: model.terrain, solids, at: now };
+  if (c && c.model === model && c.size === model.entities.size && c.entities === entities && c.defs === defs && c.terrain === model.terrain && (now - c.at < SOLID_SCAN_MS || (entities === undefined && defs === undefined))) return c;
+  const fresh = { model, entities, defs, size: model.entities.size, terrain: model.terrain, solids: null, anchors: null, fps: new Map<string, Box[] | null>(), at: now };
+  solidScan = fresh;
   // a model without revisions (a plain Map in tests or fixtures) keeps the old rule: one scan per synchronous task
-  if (entities === undefined || defs === undefined) queueMicrotask(() => { if (solidScan?.solids === solids) solidScan = null; });
-  return solids;
+  if (entities === undefined || defs === undefined) queueMicrotask(() => { if (solidScan === fresh) solidScan = null; });
+  return fresh;
+}
+const footprintOf = (c: NonNullable<typeof solidScan>, model: WorldModel, e: Entity, d: StoredDef): Box[] | null => {
+  let fp = c.fps.get(e.id);
+  if (fp === undefined) { try { fp = model.footprint(e, d); } catch { fp = null; } c.fps.set(e.id, fp); }
+  return fp;
+};
+/** Every solid's world footprint in entity order; with `near` ([x, z, reach]) only the solids whose root is within reach (PERF-STREAM). */
+export function solidFootprints(model: WorldModel, near?: readonly [number, number, number]): readonly { id: string; fp: readonly Box[] }[] {
+  const c = solidScanFor(model);
+  if (!near) {
+    if (c.solids) return c.solids;
+    const solids: { id: string; fp: Box[] }[] = [];
+    model.readPass(() => { for (const e of model.entities.values()) {
+      const d = model.resolvedDef(e.def); if (!d || d.layer !== 'solid' || d.make.kind === 'none') continue;
+      const fp = footprintOf(c, model, e, d); if (fp) solids.push({ id: e.id, fp });
+    } });
+    c.solids = solids; return solids;
+  }
+  if (!c.anchors) {
+    const anchors: { e: Entity; x: number; z: number }[] = [];
+    for (const e of model.entities.values()) {
+      const d = model.resolvedDef(e.def); if (!d || d.layer !== 'solid' || d.make.kind === 'none') continue;
+      let r = e; for (let depth = 0; r.in.parent !== 'world' && depth < 8; depth++) { const up = model.entities.get(r.in.parent); if (!up) break; r = up; }
+      const p = (r as { p?: number[] }).p; if (!Array.isArray(p) || p.length < 3) continue;
+      anchors.push({ e, x: p[0], z: p[2] });
+    }
+    c.anchors = anchors;
+  }
+  const [x, z, reach] = near, out: { id: string; fp: Box[] }[] = [];
+  model.readPass(() => { for (const a of c.anchors!) {
+    if (Math.hypot(a.x - x, a.z - z) > reach) continue;
+    const d = model.resolvedDef(a.e.def); if (!d) continue;
+    const fp = footprintOf(c, model, a.e, d); if (fp) out.push({ id: a.e.id, fp });
+  } });
+  return out;
 }
 export function surroundings(model: WorldModel, home: V2, reach: number, medium: 'land' | 'water', skip: Set<string>, area?: V2[]): Surroundings & { obstacles: Obstacles; t: number } {
   const obstacles = new Obstacles(model, home[0], home[1], reach + 4, skip);

@@ -192,13 +192,17 @@ export class GroundCover {
     this.indexModel = model; this.indexSeq = seq;
     const palette = (model.state as { ground?: { palette?: string } }).ground?.palette;
     if (!coverPalette(palette) && !this.hasCoverAreas(model)) { this.index = null; this.cells.clear(); this.signature = ''; return false; }
-    const sig = signatureOf(model);
+    // PERF-STREAM: the signature walks every record (JSON per shape); taken again only when the model's records changed
+    const key = typeof model.safetyCacheKey === 'function' ? model.safetyCacheKey() : {};
+    if (this.index && this.sigKey === key && this.sigSize === model.entities.size) { this.index.model = model; return true; }
+    const sig = signatureOf(model); this.sigKey = key; this.sigSize = model.entities.size;
     if (this.index && sig === this.signature) { this.index.model = model; return true; }
     this.signature = sig;
     this.index = coverIndex(model, blockCellsOf(model), BLOCK_CELL);
     this.gen++; this.dirty = true;
     return true;
   }
+  private sigKey: object | null = null; private sigSize = -1;
   private hasCoverAreas(model: WorldModel) {
     for (const e of model.entities.values()) { if (!e.shape || !('area' in e.shape)) continue; const d = model.resolvedDef(e.def); if (d && (d.tags ?? []).includes('meadow')) return true; }
     return false;

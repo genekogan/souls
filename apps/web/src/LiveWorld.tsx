@@ -1003,7 +1003,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       // (never for ?shot pictures or a Soul's eyes: those tools time their own frames)
       const holdDraw=!shotMode&&!eyes&&(programsPending||(arrivalStage!==undefined&&!arrivedOnce));
       {const still=quality.freezeStill&&!eyes&&!shotMode;entityLayer.interiorFrom=still&&quality.tier==='phone'?camera.position:null;entityLayer.freezeSettled=still;}  // P1 phones: far buildings' furniture is not drawn; PERF-EDEN: still things freeze and cull on every tier
-      entityLayer.applyEdge(context.current.sim.edge??[],shown.current?.tick??-Infinity);if(!holdDraw){entityLayer.itemPoses(shown.current.entities);entityLayer.update(step,now,geometry.group);}  // no-ops unless this is a new (entity) world
+      entityLayer.applyEdge(context.current.sim.edge??[],shown.current?.tick??-Infinity);if(!holdDraw){entityLayer.streamFrom(camera.position);entityLayer.itemPoses(shown.current.entities);entityLayer.update(step,now,geometry.group);}  // PERF-STREAM: the ring follows the camera  // no-ops unless this is a new (entity) world
       if(!holdDraw&&shown.current.take)entityLayer.drawHandActuators(shown.current.entities,shown.current.tick,shown.current.take.dt);
       navigation?.update(step);
       rts.update(step);

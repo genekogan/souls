@@ -33,6 +33,8 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, 
 // to GL objects (textures by level and format, buffers, renderbuffers), tracked per object so deletes are subtracted.
 const INIT = `(() => {
   const P = window.__phone = { frames: [], perFrame: [], recording: true, firstDraw: null, draws: 0, tris: 0, tex: 0, buf: 0, rb: 0, texCount: 0, contexts: 0 };
+  // PERF-STREAM: main-thread long tasks (>50 ms) with their start time and duration, from page start, buffered
+  P.long = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) P.long.push([Math.round(e.startTime), Math.round(e.duration)]); }).observe({ type: 'longtask', buffered: true }); } catch {}
   P.gpu = []; let qPending = [], qOpen = null;
   const gpuTick = () => { if (!P.gl) { const c = document.querySelector('canvas[aria-label="Live 3D view of the world"]'); const g = c?.getContext('webgl2'); const e = g?.getExtension('EXT_disjoint_timer_query_webgl2'); if (e) { P.gl = g; P.timer = e; } } const gl = P.gl, ext = P.timer; if (!gl || !ext) return; try {
     if (qOpen) { gl.endQuery(ext.TIME_ELAPSED_EXT); qPending.push(qOpen); qOpen = null; }
@@ -149,13 +151,18 @@ try {
       const d = await page.evaluate(() => { const P = window.__phone; P.recording = false; return { frames: P.frames, perFrame: P.perFrame, gpu: P.gpu }; });
       return { ...summarize(d.frames, ms), drawsP50: q(d.perFrame.map((x) => x[0]), 0.5), drawsMax: d.perFrame.length ? Math.max(...d.perFrame.map((x) => x[0])) : null, trisP50k: q(d.perFrame.map((x) => x[1] / 1000), 0.5), gpuP50: q(d.gpu, 0.5), gpuP95: q(d.gpu, 0.95), gpuN: d.gpu.length };
     };
+    const longAt = (from, to) => page.evaluate(([a, b]) => { const P = window.__phone; const l = P.long.filter((x) => x[0] >= a && x[0] < b); return { n: l.length, over100: l.filter((x) => x[1] > 100).length, max: l.length ? Math.max(...l.map((x) => x[1])) : 0, totalMs: l.reduce((s, x) => s + x[1], 0) }; }, [from, to]);
+    const arrivalLong = await longAt(0, (settledAt ?? Date.now() - tNav) - navOffset);
+    const stillFrom = await page.evaluate(() => performance.now());
     const still = await win(() => page.waitForTimeout(seconds * 1000));
+    still.long = await longAt(stillFrom, Infinity);
     const mem = await page.evaluate(() => { const P = window.__phone; const c = document.querySelector('canvas[aria-label="Live 3D view of the world"]'); const fb = c ? c.width * c.height * (4 + 4) * 4 + c.width * c.height * 4 * 2 : 0; return { texMB: +(P.tex / 1048576).toFixed(1), textures: P.texCount, bufMB: +(P.buf / 1048576).toFixed(1), rbMB: +(P.rb / 1048576).toFixed(1), canvasMB: +(fb / 1048576).toFixed(1), totalMB: +((P.tex + P.buf + P.rb + fb) / 1048576).toFixed(1), heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null, quality: window.__simQuality?.tier ?? null, detail: window.__simQuality?.detail?.() ?? null, lod: window.__simQuality?.lod?.() ?? null, standIns: window.__simQuality?.standIns?.() ?? null, gpuState: P.gpuState ?? null, gpuErr: P.gpuErr ?? null, gpuGl: !!P.gl }; });
     const audit = await page.evaluate(AUDIT);
     await page.screenshot({ path: resolve(out, `${tag}-still.png`) });
     // one-finger touch orbit across the middle of the view, then a two-finger pinch in
     const cx = Math.round(W / 2), cy = Math.round(H * 0.5);
     const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+    const orbitFrom = await page.evaluate(() => performance.now());
     const orbit = await win(async () => {
       const steps = Math.round(seconds * 20);
       await touch('touchStart', [[cx - 120, cy]]);
@@ -165,6 +172,7 @@ try {
       for (let k = 1; k <= 20; k++) { await touch('touchMove', [[cx - 40 - k * 4, cy], [cx + 40 + k * 4, cy]]); await page.waitForTimeout(25); }
       await touch('touchEnd', []);
     });
+    orbit.long = await longAt(orbitFrom, Infinity);
     const camMoved = await page.evaluate(() => JSON.stringify(window.__simCamera ?? null));
     await page.waitForTimeout(800);
     await page.screenshot({ path: resolve(out, `${tag}-orbit.png`) });
@@ -193,9 +201,9 @@ try {
         await page.screenshot({ path: resolve(out, `${tag}-speech.png`) });
       } else speech = { unverified: 'no resident' };
     }
-    const r = { url, label, size: `${W}x${H}`, dpr, cpu, load1m: load0, timing: { firstDrawMs: firstDraw === null ? null : Math.round(firstDraw + navOffset), revealedMs: revealedAt, settledMs: settledAt }, still, orbit, mem, audit, speech, camMoved: camMoved !== 'null' ? 'tracked' : 'n/a', errors };
+    const r = { url, label, size: `${W}x${H}`, dpr, cpu, load1m: load0, timing: { firstDrawMs: firstDraw === null ? null : Math.round(firstDraw + navOffset), revealedMs: revealedAt, settledMs: settledAt, arrivalLong }, still, orbit, mem, audit, speech, camMoved: camMoved !== 'null' ? 'tracked' : 'n/a', errors };
     results.push(r);
-    console.log(`${tag} load ${load0} | first ${r.timing.firstDrawMs} revealed ${revealedAt} settled ${settledAt} ms | still ${still.fps}fps p50 ${still.p50} p95 ${still.p95} >50:${still.over50} draws ${still.drawsP50} tris ${still.trisP50k}k gpu ${still.gpuP50}/${still.gpuP95}ms | orbit ${orbit.fps}fps p50 ${orbit.p50} p95 ${orbit.p95} draws ${orbit.drawsP50} gpu ${orbit.gpuP50}/${orbit.gpuP95}ms | gpu ~${mem.totalMB}MB (tex ${mem.texMB} ×${mem.textures}, buf ${mem.bufMB}, rb ${mem.rbMB}, canvas ${mem.canvasMB}) heap ${mem.heapMB}MB quality ${mem.quality} ${mem.detail ? `culled ${mem.detail.culled}/${mem.detail.candidates} noshadow ${mem.detail.shadowSkipped} ${mem.detail.cpuMs.toFixed(2)}ms` : ""}${mem.lod ? ` lod ${mem.lod.coarser}/${mem.lod.ready}/${mem.lod.meshes} tris ${Math.round(mem.lod.triangles / 1000)}k of ${Math.round(mem.lod.fullTriangles / 1000)}k ${mem.lod.cpuMs.toFixed(2)}ms build ${Math.round(mem.lod.buildMs)}ms` : ''}${mem.standIns ? ` cards ${mem.standIns.cards}/${mem.standIns.cards + mem.standIns.near} saved ${Math.round(mem.standIns.trianglesSaved / 1000)}k ${mem.standIns.cpuMs.toFixed(2)}ms` : ''} | text<12px ${audit.smallText.length} tags ${audit.nameTags}@${audit.nameTagFont}px targets<32 ${audit.smallTargetCount}${errors.length ? ' errors ' + errors.length : ''}`);
+    console.log(`${tag} load ${load0} | first ${r.timing.firstDrawMs} revealed ${revealedAt} settled ${settledAt} ms long ${arrivalLong.n}/${arrivalLong.over100}>100 max ${arrivalLong.max} | still long ${still.long.n} max ${still.long.max} | orbit long ${orbit.long.n}/${orbit.long.over100}>100 max ${orbit.long.max} | still ${still.fps}fps p50 ${still.p50} p95 ${still.p95} >50:${still.over50} draws ${still.drawsP50} tris ${still.trisP50k}k gpu ${still.gpuP50}/${still.gpuP95}ms | orbit ${orbit.fps}fps p50 ${orbit.p50} p95 ${orbit.p95} draws ${orbit.drawsP50} gpu ${orbit.gpuP50}/${orbit.gpuP95}ms | gpu ~${mem.totalMB}MB (tex ${mem.texMB} ×${mem.textures}, buf ${mem.bufMB}, rb ${mem.rbMB}, canvas ${mem.canvasMB}) heap ${mem.heapMB}MB quality ${mem.quality} ${mem.detail ? `culled ${mem.detail.culled}/${mem.detail.candidates} noshadow ${mem.detail.shadowSkipped} ${mem.detail.cpuMs.toFixed(2)}ms` : ""}${mem.lod ? ` lod ${mem.lod.coarser}/${mem.lod.ready}/${mem.lod.meshes} tris ${Math.round(mem.lod.triangles / 1000)}k of ${Math.round(mem.lod.fullTriangles / 1000)}k ${mem.lod.cpuMs.toFixed(2)}ms build ${Math.round(mem.lod.buildMs)}ms` : ''}${mem.standIns ? ` cards ${mem.standIns.cards}/${mem.standIns.cards + mem.standIns.near} saved ${Math.round(mem.standIns.trianglesSaved / 1000)}k ${mem.standIns.cpuMs.toFixed(2)}ms` : ''} | text<12px ${audit.smallText.length} tags ${audit.nameTags}@${audit.nameTagFont}px targets<32 ${audit.smallTargetCount}${errors.length ? ' errors ' + errors.length : ''}`);
     await ctx.close();
   }
 } finally { await browser.close(); release(); }
