@@ -1,7 +1,6 @@
 import {report} from './client-errors.ts';   // lane ERR: first, so errors from here on are reported
-import {discoverWorlds,readWorldBootstrap,WorldBootstrapError} from './world-discovery.ts';
+import {readWorldBootstrap,WorldBootstrapError} from './world-discovery.ts';
 import { apiPath, worldPath, worldKey } from './world-path.ts';
-import {singleLocalPreview} from './local-navigation.ts';
 import {BASE} from './base-path.ts';
 import {pageRoute} from './page-route.ts';
 import {installAssetTransport} from './boot-assets.ts';
@@ -101,25 +100,20 @@ installAssetTransport(); // the CDN transport, then the meter of the original as
 if(!newWorld&&worldKey==='mars'&&!marsFork&&!(location.pathname===BASE+'/'&&!location.hash))prefetchBackdrop(BACKDROP_BLOBS[MARS_CAMPUS_URL]!); // W3: campus starts with the page
 const route=pageRoute(location.pathname,BASE,location.hash);if(route==='missing')document.title='No page here';
 if(route!=='missing')countPage(BASE);  // lane t4-analytics: GoatCounter (visitor-counts.ts), off locally and under automation
-createRoot(document.getElementById('root')!).render(<StrictMode>{route==='list'||route==='legacy'?<WorldList legacy={route==='legacy'}/>:route==='world'?<WorldRoot/>:<NoPage/>}</StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode>{route==='list'?<WorldList/>:route==='world'?<WorldRoot/>:<NoPage/>}</StrictMode>);
 
 /** lane QA: an unknown path (sim.eden.art/nope, a retired lab link) says so and links home, instead of a world error. */
 function NoPage(){return <main className="world-list"><h1>No page here</h1><p>There is nothing at <code>{location.pathname}</code>.</p><p><a href={BASE+'/'}>See the worlds</a></p></main>;}
 
-function WorldList({legacy=false}:{legacy?:boolean}){
- const local=singleLocalPreview(location.hostname);
- const [served,setServed]=useState<Set<string>|null>(null);
- // A launcher manifest owns the homepage at either a root or a prefixed deployment.
- // Legacy world cards are only rendered on the explicit /old route.
+function WorldList(){
  const [launcher,setLauncher]=useState<LauncherList|null>(null);
- const [checking,setChecking]=useState(!legacy);
+ const [checking,setChecking]=useState(true);
+ // The public launcher manifest is the sole discovery source; retired cards never appear during loading/failure.
  useEffect(()=>{let active=true;void (async()=>{
-  if(!legacy){try{const r=await fetch(BASE+'/__sim/worlds.json',{signal:AbortSignal.timeout(5000)});const data=r.ok&&r.headers.get('content-type')?.includes('application/json')?await r.json():null;if(data?.contract==='local-worlds/1'&&typeof data.launcher==='string'&&Array.isArray(data.worlds)){if(active)setLauncher(data);return;}}catch{/* show the home-page retry state */}if(active)setChecking(false);return;}
-  const worlds=await discoverWorlds(path=>fetch(path,{signal:AbortSignal.timeout(5000)}));if(active){setServed(worlds);setChecking(false);}
- })();return()=>{active=false;};},[local,legacy]);
+  try{const r=await fetch(BASE+'/__sim/worlds.json',{signal:AbortSignal.timeout(5000)});const data=r.ok&&r.headers.get('content-type')?.includes('application/json')?await r.json():null;if(data?.contract==='local-worlds/1'&&typeof data.launcher==='string'&&Array.isArray(data.worlds)){if(active)setLauncher(data);return;}}catch{/* show the home-page retry state */}
+  if(active)setChecking(false);
+ })();return()=>{active=false;};},[]);
  if(checking&&!launcher)return <main className="world-list lh"><h1>Worlds</h1><p role="status">Loading worlds…</p></main>;
- if(!legacy&&!launcher&&!checking)return <main className="world-list lh"><h1>Worlds</h1><p role="status">The world list could not load.</p><button type="button" onClick={()=>location.reload()}>Try again</button></main>;
- if(launcher)return <Suspense fallback={<main className="world-list lh"><h1>Worlds</h1><p role="status">Loading worlds…</p></main>}><LauncherRoot list={launcher}/></Suspense>;
- const card=(key:string,name:string,description:string)=>served?.has(key)?<a href={'/w/'+key}><h2>{name}</h2><p>{description}</p><span>enter world →</span></a>:<article aria-disabled="true" style={{border:'1px solid var(--line)',borderRadius:12,padding:18}}><h2>{name}</h2><p>{description}</p><span className="dim">{served?'Not connected to this site':'Checking connection…'}</span></article>;
- return <main className="world-list"><h1>Sim</h1><p>Persistent worlds. Open one to watch, meet its Souls, or give yours direction.</p><div className="world-cards">{card('eden','Eden','Our shared playground. Meet its Souls and see what develops.')}{card('mars','Mars','The 2026 camp, shared places and pallet-rack construction.')}{card('littlemartians','Little Martians','Floating ceramic characters and enterable glazed buildings.')}</div>{!local&&<p><a href="/worlds/">More worlds, or make your own →</a></p>}</main>;
+ if(!launcher)return <main className="world-list lh"><h1>Worlds</h1><p role="status">The world list could not load.</p><button type="button" onClick={()=>location.reload()}>Try again</button></main>;
+ return <Suspense fallback={<main className="world-list lh"><h1>Worlds</h1><p role="status">Loading worlds…</p></main>}><LauncherRoot list={launcher}/></Suspense>;
 }
