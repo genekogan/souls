@@ -4,6 +4,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import type * as THREE from 'three';
 import {createRig,templateFromGltf,templateFromGltfAsync} from '../../../mars/viewer/app/engine-view/people.ts';
@@ -61,4 +62,56 @@ test('standing shape measurements refresh after a source geometry attribute chan
  view.setFrame([actor('before')],0);const before=measuredBodies(view).get('before')!.dims.lieHip;view.clear();
  gltf.scene.traverse(o=>{const m=o as THREE.SkinnedMesh;if(!m.isSkinnedMesh)return;const p=m.geometry.attributes.position;for(let i=0;i<p.count;i++)p.setZ(i,p.getZ(i)+.1);p.needsUpdate=true;});
  view.setFrame([actor('after')],1);assert.notEqual(measuredBodies(view).get('after')!.dims.lieHip,before);view.clear();
+});
+
+const arrivalActor=(id:string,p:[number,number,number]=[0,0,0])=>({id,p,yaw:0,walk:0,walkDist:0});
+test('one animation budget is shared by repeated updates and separate people owners',async()=>{
+ const template=templateFromGltf('casual',await load('casual')),a=new HumanViews(),b=new HumanViews();for(const view of[a,b])view.setTemplates([template]);
+ try{
+  const budget={remaining:1},frame=[arrivalActor('a'),arrivalActor('b')];
+  a.setFrame(frame,0,{},budget);a.setFrame(frame,0,{},budget);b.setFrame([arrivalActor('c')],0,{},budget);
+  assert.equal(a.group.children.length,1);assert.equal(b.group.children.length,0);assert.equal(budget.remaining,0);
+  const next={remaining:1};b.setFrame([arrivalActor('c')],1,{},next);a.setFrame(frame,1,{},next);
+  assert.equal(a.group.children.length,1);assert.equal(b.group.children.length,1,'the next animation frame admits its next owner');
+ }finally{a.clear();b.clear();}
+});
+test('budgeted arrivals keep existing actors on the current pose and never queue removed people',async()=>{
+ const view=new HumanViews();view.setTemplates([templateFromGltf('casual',await load('casual'))]);
+ try{
+  view.setFrame([arrivalActor('a'),arrivalActor('b')],0,{},{remaining:1});view.render(1);const a=view.bodyObject('a')!;
+  assert.ok(a);assert.equal(view.bodyObject('b'),null);
+  view.setFrame([arrivalActor('b'),arrivalActor('a',[4,0,2])],1,{},{remaining:0});view.render(1);
+  assert.equal(view.bodyObject('a'),a);assert.deepEqual(a.position.toArray(),[4,0,2]);assert.equal(view.bodyObject('b'),null);
+  view.setFrame([arrivalActor('c',[8,0,3]),arrivalActor('a',[5,0,2])],2,{},{remaining:1});view.render(1);
+  assert.ok(view.bodyObject('c'));assert.equal(view.bodyObject('b'),null);assert.deepEqual(a.position.toArray(),[5,0,2]);
+  view.setFrame([],3,{},{remaining:1});assert.equal(view.group.children.length,0);
+ }finally{view.clear();}
+});
+test('a deferred replacement keeps its old body moving until the replacement can be created',async()=>{
+ const casual=templateFromGltf('casual',await load('casual')),punk=templateFromGltf('punk',await load('punk')),view=new HumanViews();
+ view.setTemplates([casual]);view.setBodyTemplates(new Map([['replacement',punk]]));
+ try{
+  view.setFrame([arrivalActor('a')],0);view.render(1);const old=view.bodyObject('a')!;
+  view.setFrame([{...arrivalActor('a',[5,0,7]),bodyModel:'replacement'}],1,{},{remaining:0});view.render(1);
+  assert.equal(view.bodyObject('a'),old);assert.equal(old.parent,view.group);assert.deepEqual(old.position.toArray(),[5,0,7]);
+  view.setFrame([{...arrivalActor('a',[6,0,8]),bodyModel:'replacement'}],2,{},{remaining:1});view.render(1);
+  assert.notEqual(view.bodyObject('a'),old);assert.equal(old.parent,null);assert.deepEqual(view.bodyObject('a')!.position.toArray(),[6,0,8]);
+  assert.equal((measuredBodies(view).get('a')!.rig as unknown as {template:typeof punk}).template,punk);
+ }finally{view.clear();}
+});
+test('budgeted final rigs and exact posed skin bounds equal unlimited random-access creation',async()=>{
+ const templates=await Promise.all(['casual','punk','woman'].map(async name=>templateFromGltf(name,await load(name))));
+ const bounded=new HumanViews(),immediate=new HumanViews(),frame=templates.map((t,i)=>({...arrivalActor(String(i),[i*3,.2*i,-i]),yaw:i*.4,bodyModel:t.name}));
+ for(const view of[bounded,immediate])view.setBodyTemplates(new Map(templates.map(t=>[t.name,t])));
+ try{
+  for(let i=0;i<frame.length;i++){bounded.setFrame(frame,7.25,{},{remaining:1});assert.equal(bounded.group.children.length,i+1);}
+  immediate.setFrame(frame,7.25);assert.equal(immediate.group.children.length,frame.length,'the default remains unlimited');
+  for(const view of[bounded,immediate])view.render(1);
+  const snapshot=(view:HumanViews)=>[...measuredBodies(view)].map(([id,v])=>{
+   const nodes:unknown[]=[];v.rig.model.updateWorldMatrix(true,true);v.rig.model.traverse(o=>{const m=o as THREE.SkinnedMesh;if(m.isSkinnedMesh)m.computeBoundingSphere();nodes.push({name:o.name,p:o.position.toArray(),q:o.quaternion.toArray(),scale:o.scale.toArray(),world:o.matrixWorld.toArray(),...(m.isSkinnedMesh?{sphere:[...m.boundingSphere!.center.toArray(),m.boundingSphere!.radius]}:{})});});
+   return{id,dims:v.dims,nodes,surfaces:surfaceRows(v).map(r=>({name:r.mesh.name,idx:r.idx}))};
+  });
+  const actual=snapshot(bounded),expected=snapshot(immediate);assert.deepEqual(actual,expected);
+  const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');assert.equal(hash(actual),hash(expected));console.log('rig-budget-final-sha256 '+hash(actual));
+ }finally{bounded.clear();immediate.clear();}
 });

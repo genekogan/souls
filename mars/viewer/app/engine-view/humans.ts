@@ -436,6 +436,8 @@ const heldClip = (r: number, f: number) => { const x = Math.min(1, Math.max(0, r
 /** PERF-EDEN (2026-11-01): the eye, its view and the pose-rate distances (quality-tier.ts bodies). Null: every body is
  *  posed every frame, as before. */
 export type HumanViewer = { eye: THREE.Vector3; frustum: THREE.Frustum; nearM: number; farM: number };
+/** Shared by every people update within one live animation frame; omitted for immediate random-access views. */
+export type RigCreationBudget={remaining:number};
 const _bodySphere = new THREE.Sphere(undefined, 1.3);
 export class HumanViews {
   readonly group = new THREE.Group();
@@ -805,7 +807,7 @@ export class HumanViews {
    * solved for the frame without the 0.4 s blend).
    * Rigs for ids missing from `frame` are removed. Follow with `render(1, reach)`.
    */
-  setFrame(frame: SampledHuman[], t: number, parts: Record<string, Entity> = {}) {
+  setFrame(frame: SampledHuman[], t: number, parts: Record<string, Entity> = {}, rigBudget?:RigCreationBudget) {
     if (!this.templates.length&&!this.bodyTemplates.size) return;
     const seen = new Set<string>();
     const world = { entities: parts } as unknown as WorldState;
@@ -816,9 +818,14 @@ export class HumanViews {
       const base = baseOf(act, f.baseActivity);
       let v = this.views.get(f.id);
       const wanted=f.bodyModel?this.bodyTemplates.get(f.bodyModel):templateFor(f.id,this.templates);
-      if(v&&v.rig.template!==wanted){v.rig.mixer.stopAllAction();v.rig.mixer.uncacheRoot(v.rig.model);v.appearance?.retire();disposeSkeletons(v.rig.model);v.rig.holder.removeFromParent();this.views.delete(f.id);v=undefined;}
-      if (!v) v = this.make(f.id, { p: [...f.p], yaw: f.yaw, walkW: 0, walkT: 0, idleT: 0, sitW: 0, warmW: 0, expressionT: t, pose: NEUTRAL, hands: {}, pr: null }, act,f.publicSoulKey,f.bodyModel);
-      if(!f.bodyModel)this.syncAppearance(v,f.publicSoulKey);
+      // A live arrival can finish many unique templates together. Defer only new rigs, keeping every existing actor
+      // on the current sample (and its old body until a replacement can be made). No pose is queued across frames.
+      if((!v||v.rig.template!==wanted)&&(!rigBudget||rigBudget.remaining>0)){
+        if(v){v.rig.mixer.stopAllAction();v.rig.mixer.uncacheRoot(v.rig.model);v.appearance?.retire();disposeSkeletons(v.rig.model);v.rig.holder.removeFromParent();this.views.delete(f.id);}
+        v=this.make(f.id, { p: [...f.p], yaw: f.yaw, walkW: 0, walkT: 0, idleT: 0, sitW: 0, warmW: 0, expressionT: t, pose: NEUTRAL, hands: {}, pr: null }, act,f.publicSoulKey,f.bodyModel);if(rigBudget)rigBudget.remaining--;
+      }
+      if(!v)continue;
+      if(!f.bodyModel&&v.rig.template===wanted)this.syncAppearance(v,f.publicSoulKey);
       const walkDur = v.rig.walk.getClip().duration, idleDur = v.rig.idle.getClip().duration;
       v.activity = act;
       if(v.handActuator&&!f.handActuator)v.lastHandActuator=v.handActuator;else if(f.handActuator)v.lastHandActuator=undefined;
