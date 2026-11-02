@@ -47,6 +47,12 @@ a short issue/PR checkpoint with:
 - Active jobs, output locations and resources in use; put private operational details in approved private records.
 - Next action, blockers, approvals and stop conditions.
 
+For long work, include an ETA range with its scope, confidence and observation time, or state what prevents an
+estimate. Update when new evidence changes the result, blocker or estimate; do not spend model turns refreshing
+unchanged status. The proposed [private project overview](../design/project-visibility.md) renders these checkpoints
+and links existing proof. It is not a second task database or a scheduled agent. Keep execution, review and approval
+distinct using [contribution attribution](contribution-attribution.md).
+
 Confirm the outgoing writer has stopped before reusing its workspace. Resume existing jobs and valid evidence;
 switching provider is not a reason to repeat a gate, rebuild unchanged artifacts or discard work. A claim label
 is not an atomic filesystem lock: the owner confirms the assignment before starting competing writers.
