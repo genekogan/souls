@@ -7,7 +7,7 @@ function snapshot() {
   const original = new WorldModel({ constants: { ground: 'land', extent: 100 }, seed: 'model' });
   original.library = coreLibrary(); original.adopt('core/barrel@1');
   original.seq = 1024; original.editSeq = 9;
-  for (let i = 0; i < 1024; i++) original.insert({ id: `e_${i}`, name: `barrel-${i}`, def: 'core/barrel@1', in: { parent: i % 2 ? 'e_0' : 'world' }, p: [i, 0, 0], yaw: 0, scale: 1, params: {}, seed: 1, by: 'fixture', born: 0, v: 1 } satisfies Entity);
+  for (let i = 0; i < 1024; i++) original.insert({ id: `e_${String(i).padStart(4, '0')}`, name: `barrel-${i}`, def: 'core/barrel@1', in: { parent: i % 2 ? 'e_0000' : 'world' }, p: [i, 0, 0], r: 0, s: 1, params: {}, seed: 1, by: 'fixture', born: 0, v: 1 } satisfies Entity);
   return original.snapshot();
 }
 
@@ -22,7 +22,7 @@ test('sliced loading preserves model records, ref bindings, names, children and 
   // The lazy index is built from the populated model, even though its constructor received no entities.
   assert.deepEqual([...sliced.solidRegionCounts()], [...ordinary.solidRegionCounts()]);
   assert.deepEqual([...sliced.entities.keys()].map(id => sliced.footprintsOf(id)), [...ordinary.entities.keys()].map(id => ordinary.footprintsOf(id)));
-  assert.ok(sliced.footprintsOf('e_0').length > 0);
+  assert.ok(sliced.footprintsOf('e_0000').length > 0);
   assert.equal(sliced.hasIndex, true);
 });
 
