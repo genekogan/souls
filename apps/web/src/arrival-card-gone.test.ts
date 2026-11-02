@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { arrivalMark, whenArrivalCardGone } from './arrival-marks.ts';
 
-test('?shot readiness waits for the card to be gone and faded, gives up at its bound, stops on abort', async () => {
+test('?shot readiness waits for the card to be gone and faded, gives up at its bound, stops on abort', async (ctx) => {
   let t = 0; const now = () => t, wait = (fn: () => void) => { t += 50; setImmediate(fn); };
   assert.equal(await whenArrivalCardGone({ timeoutMs: 400, now, wait }), false, 'no card-done yet: bounded');
   const abort = new AbortController(); abort.abort();
   assert.equal(await whenArrivalCardGone({ signal: abort.signal, now, wait }), false);
+  // The mark and waiter must share one clock. Reading the real clock after the
+  // mark mixed elapsed wall time and floating-point steps into this deadline.
+  ctx.mock.method(performance, 'now', now);
   arrivalMark('card-done');
-  t = performance.now(); // the mark's clock
   const start = t; assert.equal(await whenArrivalCardGone({ fadeMs: 300, now, wait }), true);
   assert.ok(t - start >= 300, 'after the fade');
 });

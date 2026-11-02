@@ -1,6 +1,23 @@
-# Releasing Sim
+# Releasing Soul
 
-A release puts one exact commit on the production host. The site has two launcher **stages**, each a
+## Current production topology
+
+The canonical site is `https://soul.game`, with production built and launched at base `/`; `souls.game` redirects
+to it. Internal service/data names stay `sim-*`. There is no second public legacy stage on this host.
+The root-only workflow change remains draft [#523](https://github.com/genekogan/souls/pull/523), tracked by
+[#519](https://github.com/genekogan/souls/issues/519). Shared gate accounting/cache, restricted deployment
+configuration, a nonproduction activation rehearsal and the first workflow receipt remain qualification work.
+
+Until that work is accepted, the authorized release owner uses the approved root-only runsheet and retained
+receipts, explicitly sets `SIM_WORLDS_BASE=/` and verifies the sealed build/launcher base match. The full gate,
+CDN-first assets, staged activation, backups, rollback preparation and live verification still apply.
+The combined `ship.sh`/workflow sequence below describes the historical dual-stage topology: **do not dispatch it
+unmodified on the root-only host**. Its `/worlds`, legacy-upload and legacy-activate examples are not current
+production instructions. Do not start a new gate to compensate for a missing receipt without authorization.
+
+## Historical dual-stage deployment
+
+A release puts one exact commit on its target host. The historical deployment uses two launcher **stages**, each a
 `sim-worlds@<stage>` systemd unit running the world launcher under its keeper (`tools/world-launcher/keeper.mjs`):
 
 | Stage | Serves | Build id | Release directory on the host |
@@ -69,7 +86,8 @@ Outside the workflow, the scripts read the same variables from the environment o
 the repository root (copy [`deploy.env.example`](../deploy.env.example); the environment wins). Loaders:
 `tools/world-launcher/deploy/deploy-env.{sh,mjs}`.
 
-The same scripts run from any clean checkout with SSH access to the host; the workflow is the normal path.
+The scripts can run from an authorized clean checkout with SSH access. The combined workflow below is not yet
+qualified for the current root-only topology; see the warning above.
 
 ## ship.sh
 

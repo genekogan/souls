@@ -112,7 +112,7 @@ type ModelLike = {
   ground?(): { extent?: readonly number[] };
   editSeq?: number;
 };
-type LayerLike = { active: boolean; groundAt(x: number, z: number): number | null; groundPeek?(x: number, z: number): number | null; group: THREE.Object3D; movingLights?():Iterable<string>; lightObject?(id:string):THREE.Object3D|undefined; coverCandidates?(x: number, z: number): THREE.Object3D[] };
+type LayerLike = { active: boolean; groundAt(x: number, z: number): number | null; groundPeek?(x: number, z: number): number | null; lightCandidates?(): Iterable<{ id: string }> | null; group: THREE.Object3D; movingLights?():Iterable<string>; lightObject?(id:string):THREE.Object3D|undefined; coverCandidates?(x: number, z: number): THREE.Object3D[] };
 
 /** God worlds get Eden's living presentation: lamps that light at dusk with warm pools and halos, the sky, weather
  *  (scheduled, or the god's), and rain that stays out of god-built rooms. One per live view. */
@@ -229,7 +229,8 @@ export class GodWorldLiving {
     const sources: NightSource[] = [], marks: HaloSource[] = [], beacons: [number, number, number][] = [];
     this.sourceScans++;
     const portable=new Map<string,{index:number;halo:number;at:readonly number[]}[]>();
-    const scan = () => { for (const e of m.entities.values()) {
+    const candidates = (this.layer.lightCandidates?.() as Iterable<ModelLike['entities'] extends Map<string, infer E> ? E : never> | null | undefined) ?? m.entities.values();   // PERF-STREAM: the drawn things only under streaming
+    const scan = () => { for (const e of candidates) {
       if (e.state?.on === false) continue;
       const def = m.resolvedDef(e.def), components = def?.components, lights = defLights(components);
       // W2: any lighthouse sweeps its beams at night from its lantern room (near the top of its box)

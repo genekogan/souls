@@ -4,8 +4,8 @@
 // that keeps the last snapshot it saw and sends back only what differs (diffSnapshots): on a quiet world nothing at all.
 // Measured here (Node, this machine): parsing the wire snapshot is ~10 ms, expanding its columns ~20–40 ms, but a
 // structured clone of the expanded snapshot is 30–45 ms, so a worker that handed the whole snapshot back would cost the
-// main thread more than parsing it; only a small delta pays. The first load still parses on the main thread (no worker
-// script on the arrival's critical path) and hands the same bytes to the worker as its baseline.
+// main thread more than parsing it; only a small delta pays. Small first loads still parse here; large first loads
+// parse in the worker and pull bounded batches of entities back (one message task per batch).
 import { parsePieces, type SnapshotPieces } from './snapshot-wire.ts';
 
 export type DeltaEntity = { id: string; def: string; in: { parent: string; slot?: string }; [k: string]: unknown };
@@ -66,27 +66,36 @@ export function diffSnapshots(prev: PlainSnapshot | null, next: PlainSnapshot, t
 /** The whole snapshot as a delta (no baseline). */
 export const fullDelta = (snap: PlainSnapshot): SnapshotDelta => diffSnapshots(null, snap);
 
-type Job = { ok: (d: SnapshotDelta | null) => void; no: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
-export type DecoderRequest = { id: number; kind: 'baseline' | 'delta'; pieces: SnapshotPieces; touched?: string[]; wantGround?: boolean };
-export type DecoderReply = { id: number; delta?: SnapshotDelta; error?: string };
+/** Avoid adding a worker round trip to small arrivals. Test/A-B override: ?snapshotWorker=0. */
+export const INITIAL_WORKER_BYTES = 2 * 1024 * 1024;
+/** One reply's structured clone is bounded independently of the world's population. */
+export const INITIAL_ENTITY_BATCH = 256;
+type Job = { ok: (d: DecoderReply) => void; no: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
+type Decode = { kind: 'baseline' | 'delta' | 'initial'; pieces: SnapshotPieces; touched?: string[]; wantGround?: boolean };
+type Pull = { kind: 'pull'; initial: number };
+export type DecoderRequest = (Decode | Pull) & { id: number };
+export type DecoderReply = { id: number; delta?: SnapshotDelta; snapshot?: PlainSnapshot; entities?: DeltaEntity[]; initial?: number; done?: boolean; error?: string };
 
 /** The main thread's handle on the snapshot worker. Without workers (tests, a failed script) every call parses on the
  *  main thread and a delta is then the whole snapshot (fullDelta); nothing waits on a broken worker for long. */
 export class SnapshotDecoder {
   private worker: Worker | null = null;
   private broken = false;
+  private disposed = false;
   private next = 1;
   private readonly jobs = new Map<number, Job>();
   /** True once the worker has a baseline to diff against (else a delta is the whole snapshot). */
   hasBaseline = false;
-  constructor(private readonly make: (() => Worker) | null, private readonly timeoutMs = 20_000) {}
+  private readonly make: (() => Worker) | null;
+  private readonly timeoutMs: number;
+  constructor(make: (() => Worker) | null, timeoutMs = 20_000) { this.make = make; this.timeoutMs = timeoutMs; }
   private get(): Worker | null {
     if (this.broken || !this.make) return null;
     if (this.worker) return this.worker;
     try { this.worker = this.make(); } catch { this.broken = true; return null; }
     this.worker.onmessage = (ev: MessageEvent<DecoderReply>) => {
       const job = this.jobs.get(ev.data.id); if (!job) return; this.jobs.delete(ev.data.id); clearTimeout(job.timer);
-      if (ev.data.error !== undefined) job.no(new Error(ev.data.error)); else job.ok(ev.data.delta ?? null);
+      if (ev.data.error !== undefined) job.no(new Error(ev.data.error)); else job.ok(ev.data);
     };
     this.worker.onerror = () => this.fail(new Error('snapshot worker failed'));
     return this.worker;
@@ -97,26 +106,66 @@ export class SnapshotDecoder {
     this.worker = null;
     for (const j of this.jobs.values()) { clearTimeout(j.timer); j.no(error); } this.jobs.clear();
   }
-  private post(req: Omit<DecoderRequest, 'id'>): Promise<SnapshotDelta | null> | null {
+  private post(req: Decode | Pull, transfer = false): Promise<DecoderReply> | null {
     const w = this.get(); if (!w) return null;
     const id = this.next++;
-    return new Promise<SnapshotDelta | null>((ok, no) => {
+    return new Promise<DecoderReply>((ok, no) => {
       const timer = setTimeout(() => { if (this.jobs.has(id)) this.fail(new Error('snapshot worker timed out')); }, this.timeoutMs);
       this.jobs.set(id, { ok, no, timer });
-      const p = req.pieces, buffers = [p.body, ...(p.kind === 'wire' ? [p.defs, p.ground] : [])].flat().map((c) => c.buffer).filter((b, i, a) => a.indexOf(b) === i);
+      // Baseline-only jobs can relinquish the bytes. Initial/delta jobs retain them: worker failure or timeout must
+      // still be able to parse locally. Cloning raw bytes is cheap; cloning every expanded entity at once is not.
+      const p = 'pieces' in req ? req.pieces : null;
+      const buffers = transfer && p ? [p.body, ...(p.kind === 'wire' ? [p.defs, p.ground] : [])].flat().map(c => c.buffer).filter((b, i, a) => a.indexOf(b) === i) : [];
       try { w.postMessage({ id, ...req } satisfies DecoderRequest, buffers as Transferable[]); } catch (e) { this.jobs.delete(id); clearTimeout(timer); no(e as Error); }
     });
   }
   /** Parse on the main thread (the first load: nothing on the arrival's critical path) and give the worker the same
    *  bytes as its baseline; the chunks are transferred, so call this after nothing else needs them. */
   baselineFrom(pieces: SnapshotPieces): void {
-    const p = this.post({ kind: 'baseline', pieces });
-    if (p) p.then(() => { this.hasBaseline = true; }, () => { this.hasBaseline = false; });
+    const p = this.post({ kind: 'baseline', pieces }, true);
+    if (p) p.then(() => { if (!this.broken) this.hasBaseline = true; }, () => { this.hasBaseline = false; });
   }
+  /** Large first loads parse/expand off-thread. Each pull clones at most INITIAL_ENTITY_BATCH records; the next
+   * browser message is another task, so UI/socket work can run between batches. No partial snapshot escapes. */
+  async initial(pieces: SnapshotPieces, signal?: AbortSignal): Promise<PlainSnapshot> {
+    signal?.throwIfAborted();
+    if (this.disposed) throw new Error('snapshot decoder disposed');
+    if (pieces.body.reduce((n, c) => n + c.byteLength, 0) >= INITIAL_WORKER_BYTES) {
+      const abort = () => this.fail(new Error('snapshot decode aborted'));
+      signal?.addEventListener('abort', abort, { once: true });
+      try {
+        const pending = this.post({ kind: 'initial', pieces });
+        if (pending) {
+          let reply = await pending;
+          const snap = reply.snapshot, initial = reply.initial;
+          if (!snap || initial === undefined) throw new Error('snapshot worker omitted initial header');
+          while (!reply.done) {
+            signal?.throwIfAborted();
+            const next = this.post({ kind: 'pull', initial });
+            if (!next) throw new Error('snapshot worker unavailable');
+            reply = await next;
+            if (!reply.entities || reply.initial !== initial) throw new Error('snapshot worker omitted entity batch');
+            for (const e of reply.entities) snap.entities.push(e);
+          }
+          signal?.throwIfAborted();
+          if (this.disposed) throw new Error('snapshot decoder disposed');
+          this.hasBaseline = true; return snap;
+        }
+      } catch (error) {
+        // Drops any partial worker stream as well. The unchanged input is still ours for the fallback below.
+        this.fail(error instanceof Error ? error : new Error(String(error)));
+        signal?.throwIfAborted();
+        if (this.disposed) throw error;
+      } finally { signal?.removeEventListener('abort', abort); }
+    }
+    const snap = parsePieces(pieces) as unknown as PlainSnapshot;
+    this.baselineFrom(pieces); return snap;
+  }
+  dispose(): void { this.disposed = true; this.fail(new Error('snapshot decoder disposed')); }
   /** The delta of these bytes against the worker's baseline (the worker then keeps them as the next baseline). */
   async delta(pieces: SnapshotPieces, touched: string[], wantGround: boolean): Promise<SnapshotDelta> {
     const p = this.post({ kind: 'delta', pieces, touched, wantGround });
-    if (p) { try { const d = await p; if (d) { this.hasBaseline = true; return d; } } catch { /* main thread below */ } }
+    if (p) { try { const { delta } = await p; if (delta) { this.hasBaseline = true; return delta; } } catch { /* main thread below */ } }
     return fullDelta(parsePieces(pieces) as unknown as PlainSnapshot);
   }
 }

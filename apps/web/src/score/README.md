@@ -44,8 +44,9 @@ idle time. It has two sources, chosen per piece (`source` in `state()` and the l
 - `file` (the default): every piece pre-rendered to audio by the score engine itself and streamed from the asset CDN
   (below), through a media element and a GainNode graph (`gen-mesh/music-file.ts`). The browser's media pipeline decodes
   it off the main thread, so a frame spike cannot drop a note. The next file is prefetched 20 s before the end and
-  crossfades in 3 s before it while the current fades over 4 s; pause and resume keep the position. Tone and the engine
-  are never loaded.
+  crossfades in 3 s before it while the current fades over 4 s. Each piece has several performances (renders with
+  different seeds); every start of a piece (first, next, the crossfade's prefetch) picks one at random, and a resume after
+  a hidden tab plays the same performance from the same position. Tone and the engine are never loaded.
 - `tone`: the live Tone.js path, synthesised on the main thread, when the index lacks a piece or its file fails (three
   failures in a row give up on files for the session). `tone` and the engine are lazy chunks; each piece chunk is fetched
   just before it plays, the next one 20 s before the end. Tone owns its AudioContext (latency hint `playback`, 0.3 s
@@ -53,27 +54,35 @@ idle time. It has two sources, chosen per piece (`source` in `state()` and the l
 
 ### Rendered audio
 
-`playlist/playlist-audio.json` is the index the file source imports: piece id → CDN url, seconds, seed, bytes, sha256.
+`playlist/playlist-audio.json` is the index the file source imports (version 2): piece id → seconds and its
+performances, each `{seed, url, bytes, sha256}`. A version 1 index (one file per piece, inline) still reads as one
+performance each.
 The files are not in git (nor in `tools/assets/manifest.json`: nothing pulls them into a checkout; they stream at play
 time). To render and publish, after a playlist or engine change:
 
 ```sh
-node tools/score/render-playlist.mjs [--pieces a,b] [--force]          # headless Chrome, Sim.renderOffline, ffmpeg AAC
+node tools/score/render-playlist.mjs [--pieces a,b] [--performances 3] [--force]   # headless Chrome, Sim.renderOffline, ffmpeg AAC
 node tools/score/publish-playlist-audio.mjs                              # dry run: the plan
 EDEN_ASSETS_CREDENTIALS=<0600 file> node tools/score/publish-playlist-audio.mjs --apply --receipt .local/<new>.json
 node tools/score/publish-playlist-audio.mjs --verify                     # public GETs: headers, CORS, bytes
 ```
 
-Each piece renders once with a deterministic seed (FNV-1a of its id), 240 s at 44.1 kHz stereo, through the engine's
+Each performance renders with a deterministic seed (performance 0: FNV-1a of the piece id; performance k: FNV-1a of
+`<id>#<k>`), 240 s at 44.1 kHz stereo, through the engine's
 master compressor and limiter, is encoded with ffmpeg (AAC 160 kb/s in an `.m4a` with the moov up front; `--format
 opus|mp3` for the others) and is named by its SHA-256, the CDN's content-addressed key (`docs/operations/cdn.md`). The
-renderer records peak and RMS per piece in `.local/score-audio/renders.json`. Tone's limiter is not a brick wall, so
+renderer records peak and RMS per performance in `.local/score-audio/renders.json`. Tone's limiter is not a brick wall, so
 about half the pieces overshoot 0 dBFS in the float render (live playback clips them at the output); those are scaled to
 -1 dBFS before encoding (`gainDb` in the stats). A render more than 12 dB over, silent, or ending early fails. The seed
 fixes the notes and `Math.random` is seeded too, but Tone's reverb impulses make renders differ slightly run to run: the
 file is the record, its sha256 is in the index. `--index <file>` writes another index (trials). A
-piece already in the index whose file is in `.local/score-audio` is skipped unless `--force`. Commit the index with the
-code once `--verify` passes; the files are inert until a build names them.
+performance already in the index whose file in `.local/score-audio` matches its recorded size and hash is skipped unless
+`--force`; renders run performance by performance (every piece's second before any third) and the index keeps each piece's performances
+contiguous from 0, so an interrupted run leaves a usable index. Restarting also restores verified performances from
+`renders.json` that were hidden behind an unfinished earlier performance. Checkpoints are replaced atomically. The
+download wait has no wall-clock deadline, so pausing the renderer with SIGSTOP cannot discard a completed render;
+page/browser failures still fail the job. Each start is logged for progress monitoring. Publishing verifies and skips
+objects already in the bucket. Commit the index with the code once `--verify` passes; the files are inert until a build names them.
 
 Proof of a local build: the bucket's CORS admits only the production origins, so serve the rendered files locally with
 `node tools/score/serve-playlist-audio.mjs` and open the world with `?musicAudio=http://127.0.0.1:5213`.

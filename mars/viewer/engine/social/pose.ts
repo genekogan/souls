@@ -70,6 +70,8 @@ const OVERLAY = new Set<string>(POSE_OVERLAYS), POSTURE = new Set<string>([...PO
 const GAME_REACH = 30;
 /** Open ground a lying body needs around its point (m). */
 export const LIE_CLEARANCE = 0.9;
+/** An in-place dance keeps the standing body's root and ordinary standing footprint. */
+export const DANCE_CLEARANCE = HUMAN_RADIUS;
 
 type Params = { actor: string; activity: string; seconds: number; prop?: string; base?: 'sit' | 'idle'; seatHeight?: number; face?: Vec2;
   group?: string; pairedPolicy?: 'ready-v1'; windowPolicy?: 'once-v1'; waitSeconds?: number; alone?: 'start' | 'fail'; gap?: number; need?: number; hold?: string; release?: boolean;
@@ -111,12 +113,21 @@ function admission(rt: Runtime, p: Params): Diagnostic | null {
   const seated = h.activity === 'sit' || (h.baseActivity === 'sit' && OVERLAY.has(h.activity));
   if (POSTURE.has(p.activity)) {
     if (seated) return issue('seated', 'Stand up before lying or sitting on the ground.', [p.actor]);
-    const sp = rt.services.spatial as Spatial | undefined, g = sp?.level(h.level);
+    const sp = rt.services.spatial as Spatial | undefined;
     // together/1: a standing gesture done with someone (hug, dance together…) needs only the ground the body already stands on
     const standingTogether = !!p.group && !LYING.has(p.activity);
     // CN5: lying on furniture (a gym bench: seatHeight) needs the bench, not open ground
     const onFurniture = LYING.has(p.activity) && p.seatHeight !== undefined;
-    if (sp && g && !standingTogether && !onFurniture) { sp.sync(rt.world); if (clearanceAt(sp.level(h.level)!, [a.pose.p[0], a.pose.p[2]]) < (LYING.has(p.activity) ? LIE_CLEARANCE : HUMAN_RADIUS + 0.1)) return issue('no-room', 'There is not enough open ground here to lie down; step onto open grass first.', [p.actor]); }
+    if (sp && !standingTogether && !onFurniture) {
+      sp.sync(rt.world);
+      // Admission previews do not focus Runtime's actor window. Read this position explicitly;
+      // an unrelated Soul's last query must not turn open ground into an out-of-grid zero.
+      const at: Vec2 = [a.pose.p[0], a.pose.p[2]], read = sp.clearanceReader(h.level, at);
+      const need = LYING.has(p.activity) ? LIE_CLEARANCE : p.activity === 'dance' ? DANCE_CLEARANCE : HUMAN_RADIUS + 0.1;
+      if ((read && read(at) < need) || (!read && p.activity === 'dance')) return issue('no-room', p.activity === 'dance'
+        ? 'There is not enough supported standing room here to dance without intersecting an obstacle.'
+        : 'There is not enough open ground here to lie down; step onto open grass first.', [p.actor]);
+    }
   }
   return null;
 }

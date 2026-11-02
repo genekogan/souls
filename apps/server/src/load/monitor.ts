@@ -46,6 +46,11 @@ export class LevelState {
       default: return true;
     }
   }
+  /** Suspension is neither calm time nor continuous starvation. Keep the level, restart its timers. */
+  resumed(now: number) {
+    if (this.calmSince !== null) this.calmSince = now;
+    if (this.starvedSince !== null) this.starvedSince = now;
+  }
   update(s: Signals, now: number): Level {
     const enter = this.enterOf(s, now);
     if (RANK[enter] > RANK[this.level]) { this.level = enter; this.calmSince = null; return this.level; }
@@ -141,6 +146,7 @@ export class LoadMonitor {
   private obs: PerformanceObserver | null = null;
   private ticks: {at: number; tick: number; due: number}[] = [];   // due = ticks owed since the previous sample
   private timer: NodeJS.Timeout | null = null;
+  private pendingSample: NodeJS.Immediate | null = null;
   private blackSince: number | null = null;
   private soulsAt = 0;
   private souls = {awake: 0, waiting: 0, connected: 0};
@@ -155,10 +161,26 @@ export class LoadMonitor {
     if (this.timer) return;
     this.hist = monitorEventLoopDelay({resolution: 10}); this.hist.enable(); this.histAt = this.startedAt = this.now(); this.quiet = {depth: 0, reqMs: this.o.requestMs?.() ?? 0, service: 1, tick0: this.o.host.engine.world.tick};
     try { this.obs = new PerformanceObserver(list => { for (const e of list.getEntries()) this.gc.push({at: this.now(), ms: e.duration}); }); this.obs.observe({entryTypes: ['gc']}); } catch { this.obs = null; }
-    this.timer = setInterval(() => this.sample(), this.o.sampleMs ?? 250); this.timer.unref();
+    process.on('SIGCONT', this.resumed);
+    // On thaw, overdue timers can run before the SIGCONT callback. Sample after the poll phase so the explicit
+    // resume notification can discard suspended wall time before it becomes a false red lasting 30 seconds.
+    this.timer = setInterval(() => {
+      if (!this.pendingSample) this.pendingSample = setImmediate(() => { this.pendingSample = null; this.sample(); });
+    }, this.o.sampleMs ?? 250); this.timer.unref();
     this.sample();
   }
-  stop() { if (this.timer) clearInterval(this.timer); this.timer = null; this.hist?.disable(); this.obs?.disconnect(); }
+  stop() {
+    if (this.timer) clearInterval(this.timer); this.timer = null;
+    if (this.pendingSample) clearImmediate(this.pendingSample); this.pendingSample = null;
+    process.off('SIGCONT', this.resumed); this.hist?.disable(); this.obs?.disconnect();
+  }
+  private resumed = () => {
+    const now = this.now();
+    this.ticks = []; this.prevLoopP99 = 0; this.hist?.reset(); this.histAt = now; this.gc = [];
+    this.quiet = {depth: 0, reqMs: this.o.requestMs?.() ?? 0, service: 1, tick0: this.o.host.engine.world.tick};
+    this.state.resumed(now);
+    if (this.blackSince !== null) this.blackSince = now;
+  };
 
   /** One sample: read, decide, publish. Public for tests (which pass signals straight to state.update instead). */
   sample(): Level {

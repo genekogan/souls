@@ -74,6 +74,42 @@ test('a root whose drawables are all batched hides whole during the draw; one wi
  f.b.visible=false;owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(f.a.visible,true);assert.equal(owner.inspection().fallbackLastRender,1);});f.b.visible=true;
  await owner.prepare([f.root,lit],{generation:2});owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(f.a.visible,false);});owner.dispose();
 });
+test('whole-root coverage is revoked when a new visible sibling appears at the next revision',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,hideWholeRoots:true});
+ owner.withRender(()=>assert.equal(f.root.visible,false),1);const batch=owner.group.children[0];
+ const branch=new THREE.Group(),added=f.a.clone();branch.add(added);f.root.add(branch);
+ owner.withRender(()=>{
+  const submitted=new Set<THREE.Object3D>();f.scene.traverseVisible(o=>submitted.add(o));
+  assert.ok(submitted.has(added),'the newly added drawable must remain in the visible traversal');
+  assert.ok(submitted.has(batch),'the unchanged old batch still draws');assert.ok(!submitted.has(f.a)&&!submitted.has(f.b));
+  assert.equal(f.root.visible,true);assert.equal(owner.inspection().wholeRootsHidden,0);assert.equal(owner.inspection().usedLastRender,1);
+ },2);
+ assert.equal(added.visible,true);assert.equal(f.a.visible,true);assert.equal(f.root.visible,true);
+ branch.removeFromParent();await owner.prepare([f.root],{generation:2,hideWholeRoots:true,incremental:true});
+ owner.withRender(()=>assert.equal(f.root.visible,false),3);owner.dispose();
+});
+test('whole-root coverage is revoked when an unrepresented hidden branch becomes visible',async()=>{
+ for(const light of [false,true]){
+  const f=fixture(),branch=new THREE.Group(),added=light?new THREE.PointLight():f.a.clone();branch.add(added);branch.visible=false;f.root.add(branch);
+  const owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,hideWholeRoots:true});owner.withRender(()=>assert.equal(f.root.visible,false),1);
+  branch.visible=true;owner.withRender(()=>{
+   const submitted=new Set<THREE.Object3D>();f.scene.traverseVisible(o=>submitted.add(o));assert.ok(submitted.has(added),'the shown mesh/light must remain visible');
+   assert.equal(f.root.visible,true);assert.equal(f.a.visible,false);assert.equal(f.b.visible,false);assert.equal(owner.inspection().fallbackLastRender,0);
+  },2);
+  assert.equal(branch.visible,true);assert.equal(added.visible,true);assert.equal(f.a.visible,true);owner.dispose();
+ }
+});
+test('whole-root coverage is revoked for the live set while replacement preparation is pending and after abort',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,hideWholeRoots:true});owner.withRender(()=>assert.equal(f.root.visible,false),1);
+ const live=[...owner.group.children],abort=new AbortController(),pending=owner.prepare([f.root],{generation:2,hideWholeRoots:true,incremental:true,sliceMs:0,signal:abort.signal});
+ const added=f.a.clone();f.root.add(added);assert.equal(owner.inspection().generation,1);
+ try{
+  owner.withRender(()=>{const submitted=new Set<THREE.Object3D>();f.scene.traverseVisible(o=>submitted.add(o));assert.ok(submitted.has(added),'pending preparation must not hide the new original');assert.ok(submitted.has(live[0]));assert.equal(f.a.visible,false);},2);
+ }finally{abort.abort();await assert.rejects(pending,{name:'AbortError'});}
+ assert.deepEqual(owner.group.children,live);assert.equal(owner.inspection().generation,1);
+ assert.throws(()=>owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(added.visible,true);assert.equal(f.a.visible,false);throw Error('draw failure');},3),/draw failure/);
+ assert.equal(f.root.visible,true);assert.equal(added.visible,true);assert.equal(f.a.visible,true);assert.equal(owner.group.visible,false);owner.dispose();
+});
 test('a source hook buckets and validates a mesh by the material it names while the mesh draws per-object variants of it',async()=>{
  const f=fixture(),base=new THREE.MeshStandardMaterial({emissive:0xffaa00,emissiveIntensity:.5}),v1=base.clone(),v2=base.clone();v2.emissiveIntensity=.7;
  f.a.material=v1;f.b.material=v2;f.a.userData.glowBase=base;f.b.userData.glowBase=base;
@@ -83,4 +119,141 @@ test('a source hook buckets and validates a mesh by the material it names while 
  f.a.material=v2;owner.withRender(()=>{assert.equal(f.a.visible,false);assert.equal(owner.inspection().fallbackLastRender,0);},1);  // a variant swap is not a change
  f.a.material=new THREE.MeshStandardMaterial();f.a.userData.glowBase=undefined;owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(owner.inspection().fallbackLastRender,1);},2);  // the hook no longer names the base: the batch falls back
  await owner.prepare([f.root],{generation:2});assert.equal(owner.inspection().batches,0);owner.dispose();
+});
+test('sliced preparation keeps the live batches drawing until the new set commits, and a newer generation makes it obsolete',async()=>{
+ const f=fixture(),c=new THREE.Mesh(new THREE.BoxGeometry(),f.material),d=new THREE.Mesh(new THREE.BoxGeometry(),f.material);c.position.x=200;d.position.x=203;f.root.add(c,d);
+ const owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,incremental:true,sliceMs:0});assert.equal(owner.inspection().batches,2);const live=[...owner.group.children];
+ const pending=owner.prepare([f.root],{generation:2,incremental:true,sliceMs:0});
+ assert.equal(owner.inspection().generation,1,'the old set stays live while the new one is built');owner.withRender(()=>assert.equal(f.a.visible,false));
+ const newer=owner.prepare([f.root],{generation:3,incremental:true,sliceMs:0});await assert.rejects(pending,/Obsolete/);await newer;
+ assert.equal(owner.inspection().generation,3);assert.equal(owner.inspection().batches,2);assert.equal(owner.inspection().reusedBatches,2,'unchanged cells are reused');assert.deepEqual(owner.group.children,live);
+ f.b.position.x=4;f.b.updateMatrixWorld();await owner.prepare([f.root],{generation:4,incremental:true,sliceMs:0});assert.equal(owner.group.children.length,2,'a rebuilt cell replaces its old mesh, nothing extra stays in the group');owner.dispose();
+});
+test('reset cancels an in-flight sliced preparation instead of attaching it again afterwards',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1});
+ const pending=owner.prepare([f.root],{generation:2,sliceMs:0});owner.reset();
+ await assert.rejects(pending,{name:'AbortError'});assert.equal(owner.inspection().generation,null);assert.equal(owner.group.children.length,0);owner.dispose();
+});
+test('an obsolete preparation cannot overwrite the diagnostics of a newer committed generation',async()=>{
+ const f=fixture(),newRoot=new THREE.Group(),owner=new StaticBatchOwner(f.scene),messages:(()=>void)[]=[],original=globalThis.MessageChannel;
+ for(let i=0;i<4;i++){const mesh=f.a.clone();mesh.position.x=200+i*2;newRoot.add(mesh);}f.scene.add(newRoot);
+ class QueuedChannel{
+  port1={onmessage:null as null|(()=>void),close(){}};
+  port2={postMessage:()=>messages.push(()=>this.port1.onmessage?.()),close(){}};
+ }
+ globalThis.MessageChannel=QueuedChannel as unknown as typeof MessageChannel;
+ try{
+  const obsolete=assert.rejects(owner.prepare([f.root],{generation:1,sliceMs:0}),{name:'AbortError'});
+  assert.equal(messages.length,1);messages.shift()!();
+  for(let i=0;i<4;i++)await Promise.resolve();
+  assert.equal(messages.length,1,'the old preparation has traversed its sources and paused before merging');
+  const replacement=owner.prepare([newRoot],{generation:2});assert.equal(owner.inspection().preparing,true);assert.equal(owner.inspection().generation,null,'replacement waits for obsolete private cleanup');
+  messages.shift()!();await obsolete;await replacement;const current=owner.inspection(),live=[...owner.group.children];
+  assert.equal(current.sourceNodes,5);assert.equal(current.sourceMeshes,4);
+  await Promise.resolve();
+  const after=owner.inspection();assert.equal(after.generation,2);assert.equal(after.sourceNodes,current.sourceNodes);assert.equal(after.sourceMeshes,current.sourceMeshes);assert.equal(after.prepareCpuMs,current.prepareCpuMs);assert.deepEqual(owner.group.children,live);
+  owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(newRoot.children[0].visible,false);});
+ }finally{owner.dispose();for(const message of messages.splice(0))message();globalThis.MessageChannel=original;}
+});
+function windowFixture(){const f=fixture();f.material.transparent=true;f.material.opacity=.38;f.material.depthWrite=false;f.material.side=THREE.DoubleSide;f.material.userData.batchTransparent=true;f.material.userData.batchSafePatch=true;f.material.onBeforeCompile=()=>{};f.material.customProgramCacheKey=()=> 'window-test';return f;}
+// WebGLRenderer.renderObject's transparent DoubleSide path, including the two real needsUpdate increments.
+function twoPass(material:THREE.Material){material.side=THREE.BackSide;material.needsUpdate=true;material.side=THREE.FrontSide;material.needsUpdate=true;material.side=THREE.DoubleSide;}
+test('a two-pass live-shared material remains batched when rendering interleaves sliced preparation and incremental reuse',async()=>{
+ for(const incremental of[false,true]){
+  const f=windowFixture(),owner=new StaticBatchOwner(f.scene),messages:(()=>void)[]=[],original=globalThis.MessageChannel;
+  await owner.prepare([f.root],{generation:1});const live=owner.group.children[0],initial=f.material.version;
+  class QueuedChannel{port1={onmessage:null as null|(()=>void),close(){}};port2={postMessage:()=>messages.push(()=>this.port1.onmessage?.()),close(){}};}
+  globalThis.MessageChannel=QueuedChannel as unknown as typeof MessageChannel;
+  try{
+   let done=false;const pending=owner.prepare([f.root],{generation:2,sliceMs:0,incremental}).then(()=>{done=true;});
+   messages.shift()!();for(let i=0;i<4;i++)await Promise.resolve();
+   assert.equal(messages.length,1,'sources were captured; preparation is suspended before building/reusing the cell');
+   owner.withRender(()=>{assert.equal(f.a.visible,false);twoPass(f.material);},7);
+   assert.equal(f.material.version,initial+2);assert.equal(f.material.side,THREE.DoubleSide);assert.equal(f.material.forceSinglePass,false);
+   for(let i=0;i<40&&!done;i++){messages.shift()?.();for(let j=0;j<4;j++)await Promise.resolve();}
+   await pending;
+   owner.withRender(()=>{assert.equal(f.a.visible,false);assert.equal(f.b.visible,false);assert.equal((owner.group.children[0] as THREE.Mesh).material,f.material);},8);
+   assert.equal(owner.inspection().usedLastRender,1);assert.equal(owner.inspection().fallbackLastRender,0);assert.equal(owner.inspection().reusedBatches,incremental?1:0);
+   if(incremental)assert.equal(owner.group.children[0],live,'renderer bookkeeping does not needlessly rebuild geometry');
+  }finally{owner.dispose();for(const message of messages.splice(0))message();globalThis.MessageChannel=original;}
+ }
+});
+test('live-shared version tolerance still invalidates compile hooks, key functions/values, eligibility and newly derived materials',async()=>{
+ for(const change of['compile','key-function','key-value','eligibility','derived'] as const){
+  const f=windowFixture(),owner=new StaticBatchOwner(f.scene);let key='one',derived:THREE.Material|null=null;
+  f.material.customProgramCacheKey=()=>key;const shaderMerge={material:()=>derived,attributes(){}};
+  await owner.prepare([f.root],{generation:1,shaderMerge});owner.withRender(()=>assert.equal(f.a.visible,false),1);
+  twoPass(f.material);
+  if(change==='compile')f.material.onBeforeCompile=()=>{};
+  if(change==='key-function')f.material.customProgramCacheKey=()=>key;
+  if(change==='key-value')key='two';
+  if(change==='eligibility')f.material.depthTest=false;
+  if(change==='derived')derived=f.material.clone();
+  owner.withRender(()=>{assert.equal(f.a.visible,true,change);assert.equal(owner.group.visible,false,change);},2);
+  assert.equal(owner.inspection().fallbackLastRender,1,change);owner.dispose();
+ }
+});
+test('plain baked and derived shader material copies keep strict source version invalidation',async()=>{
+ for(const mode of['plain','derived','derived-shared'] as const){
+  const f=fixture(),owner=new StaticBatchOwner(f.scene),derived=f.material.clone();
+  await owner.prepare([f.root],{generation:1,sharePlainMaterials:mode==='plain',...(mode!=='plain'?{shaderMerge:{material:()=>mode==='derived-shared'?f.material:derived,attributes(){}}}:{})});
+  if(mode==='derived-shared')assert.equal((owner.group.children[0] as THREE.Mesh).material,f.material);else assert.notEqual((owner.group.children[0] as THREE.Mesh).material,f.material);
+  f.material.needsUpdate=true;owner.withRender(()=>{assert.equal(f.a.visible,true,mode);assert.equal(owner.group.visible,false,mode);});
+  assert.equal(owner.inspection().fallbackLastRender,1,mode);owner.dispose();
+ }
+});
+test('current program keys and material resolution are read once per material per synchronous validation window',async()=>{
+ const f=windowFixture(),owner=new StaticBatchOwner(f.scene);let keys=0,resolutions=0;
+ f.material.customProgramCacheKey=()=>{keys++;return 'stable';};const shaderMerge={material:()=>{resolutions++;return null;},attributes(){}};
+ await owner.prepare([f.root],{generation:1,shaderMerge});keys=resolutions=0;twoPass(f.material);
+ owner.withRender(()=>assert.equal(f.a.visible,false),1);assert.equal(keys,1);assert.equal(resolutions,1);
+ owner.withRender(()=>assert.equal(f.a.visible,false),1);assert.equal(keys,1,'trusted unchanged revision performs no new material checks');assert.equal(resolutions,1);
+ owner.withRender(()=>assert.equal(f.a.visible,false),2);assert.equal(keys,2);assert.equal(resolutions,2);owner.dispose();
+});
+test('throwing custom program keys or material factories fall back locally and preserve other live/reusable cells',async()=>{
+ for(const throwing of['key','factory'] as const){
+  const f=windowFixture(),other=new THREE.Group(),goodMaterial=new THREE.MeshStandardMaterial(),c=new THREE.Mesh(new THREE.BoxGeometry(),goodMaterial),d=c.clone(),owner=new StaticBatchOwner(f.scene);
+  c.position.x=100;d.position.x=103;for(const mesh of[c,d]){mesh.geometry.computeBoundingBox();mesh.geometry.computeBoundingSphere();}other.add(c,d);f.scene.add(other);
+  let fail=false;f.material.customProgramCacheKey=()=>{if(fail&&throwing==='key')throw Error('exotic key');return 'stable';};
+  const shaderMerge={material:(m:THREE.Material)=>{if(fail&&throwing==='factory'&&m===f.material)throw Error('exotic factory');return null;},attributes(){}};
+  try{
+   await owner.prepare([f.root,other],{generation:1,incremental:true,shaderMerge});const good=owner.group.children.find(m=>(m as THREE.Mesh).material===goodMaterial);assert.ok(good);
+   fail=true;twoPass(f.material);assert.doesNotThrow(()=>owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(c.visible,false);},1));
+   assert.equal(owner.inspection().fallbackLastRender,1);assert.equal(owner.inspection().usedLastRender,1);
+   await owner.prepare([f.root,other],{generation:2,incremental:true,shaderMerge});assert.ok(owner.group.children.includes(good));assert.equal(owner.inspection().reusedBatches,1);
+   owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(c.visible,false);},2);assert.equal(owner.inspection().usedLastRender,1);
+   fail=false;await owner.prepare([f.root,other],{generation:3,incremental:true,shaderMerge});owner.withRender(()=>assert.equal(f.a.visible,false),3);assert.equal(owner.inspection().usedLastRender,2);
+  }finally{owner.dispose();}
+ }
+});
+test('plain signatures captured from an earlier singleton cannot cross a yield and erase a later material hook',async()=>{
+ const f=fixture(),singleton=new THREE.Group(),only=f.a.clone(),owner=new StaticBatchOwner(f.scene),messages:(()=>void)[]=[],original=globalThis.MessageChannel;
+ singleton.add(only);f.scene.add(singleton);f.a.position.x=100;f.b.position.x=103;
+ class QueuedChannel{port1={onmessage:null as null|(()=>void),close(){}};port2={postMessage:()=>messages.push(()=>this.port1.onmessage?.()),close(){}};}
+ globalThis.MessageChannel=QueuedChannel as unknown as typeof MessageChannel;
+ try{
+  let done=false;const pending=owner.prepare([singleton,f.root],{generation:1,sliceMs:0,sharePlainMaterials:true}).then(()=>{done=true;});
+  messages.shift()!();for(let i=0;i<4;i++)await Promise.resolve();assert.equal(messages.length,1,'the first root captured a plain signature; the second has not traversed yet');
+  const hook:THREE.Material['onBeforeCompile']=shader=>{shader.fragmentShader+='\n// newly installed per-vertex patch';};
+  f.material.onBeforeCompile=hook;f.material.userData.batchSafePatch=true;f.material.needsUpdate=true;
+  for(let i=0;i<40&&!done;i++){messages.shift()?.();for(let j=0;j<4;j++)await Promise.resolve();}await pending;
+  assert.equal(owner.inspection().batches,1);const cell=owner.group.children[0] as THREE.Mesh;
+  assert.equal(cell.material,f.material,'post-yield sources retain their new patch instead of a stale plain derivative');assert.equal((cell.material as THREE.Material).onBeforeCompile,hook);
+  assert.equal(cell.geometry.getAttribute('color'),undefined,'a stale plain signature must not bake a different attribute layout');
+  owner.withRender(()=>{assert.equal(f.a.visible,false);assert.equal(f.b.visible,false);assert.equal(only.visible,true);});assert.equal(owner.inspection().usedLastRender,1);
+ }finally{owner.dispose();for(const message of messages.splice(0))message();globalThis.MessageChannel=original;}
+});
+test('an unused slice budget does not yield to queued material mutations between source roots',async()=>{
+ const f=fixture(),singleton=new THREE.Group(),only=f.a.clone(),owner=new StaticBatchOwner(f.scene);singleton.add(only);f.scene.add(singleton);f.a.position.x=100;f.b.position.x=103;
+ let changed=false;
+ const roots=new Proxy([singleton,f.root],{get(target,key,receiver){
+  if(key==='0')queueMicrotask(()=>{changed=true;f.material.onBeforeCompile=()=>{};f.material.userData.batchSafePatch=true;f.material.needsUpdate=true;});
+  if(key==='1')assert.equal(changed,false,'a queued material mutation cannot interleave while the slice budget is unused');
+  return Reflect.get(target,key,receiver);
+ }});
+ try{
+  const pending=owner.prepare(roots,{generation:1,sliceMs:1e9,sharePlainMaterials:true});
+  assert.equal(changed,false);assert.equal(owner.inspection().generation,1,'preparation commits without an unrequested asynchronous pause');await pending;assert.equal(changed,true);
+  owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(f.b.visible,true);assert.equal(only.visible,true);});assert.equal(owner.inspection().fallbackLastRender,1,'the later material mutation still invalidates its copied material');
+ }finally{owner.dispose();}
 });

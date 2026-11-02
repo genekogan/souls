@@ -117,10 +117,17 @@ export function takeSnapshotPrefetchBatch(url: string): { request: PrefetchReque
   const w = (typeof window === 'undefined' ? null : window) as unknown as Record<string, SnapshotPrefetch | undefined> | null;
   const p = w?.[PREFETCH_GLOBAL]; if (!p) return null;
   delete w![PREFETCH_GLOBAL];
+  // Transfer the top request too. Cached inline scripts call sp.abort() from discard(); leave that hook harmless
+  // while the loader owns the original abort. Claimed parts already leave the inline script's pending collection.
+  const request: PrefetchRequest = { response: p.response, abort: p.abort?.bind(p) }; p.abort = () => {};
   const pending = p.parts ?? {}; let closed = false;
-  const close = () => { if (closed) return; closed = true; p.discard?.(); discardRequest(p); for (const ref of Object.keys(pending)) { discardRequest(asRequest(pending[ref])); delete pending[ref]; } };
-  if (p.url !== url) { close(); return null; }
-  return { request: p, part(ref) { if (closed) return null; const part = pending[ref]; delete pending[ref]; return part ? asRequest(part) : null; }, close };
+  const close = () => {
+    if (closed) return; closed = true;
+    const unused = Object.keys(pending).map(ref => { const part = asRequest(pending[ref]); delete pending[ref]; return part; });
+    p.discard?.(); for (const part of unused) discardRequest(part);
+  };
+  if (p.url !== url) { close(); discardRequest(request); return null; }
+  return { request, part(ref) { if (closed) return null; const part = pending[ref]; delete pending[ref]; return part ? asRequest(part) : null; }, close };
 }
 // Compatibility API for existing consumers and pre-controller cached entry scripts.
 export function takeSnapshotPrefetch(url: string): Promise<Response> | null {

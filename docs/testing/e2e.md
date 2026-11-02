@@ -72,3 +72,20 @@ Rules for fixture runs:
   (see [the speed tools](../../tools/speed/README.md)), not repeated smoke attempts.
 
 The release-time real-Chrome walks (V7) are separate; see [remote gate](remote-gate.md).
+
+## God modal edit observation (E1/F1)
+
+E1 captures the accepted owner-button ACK sequence and two first snapshot reads before taking screenshots. A unique
+query must be a launcher cache MISS with public `seq >= ACK.seq` and the exact original bench removed/restored. That
+single immediate check is never retried into a pass. Separately, the unchanged public URL must converge to the same
+sequence/state within 3000ms of the ACK: the documented hot C3 cache TTL is 2000ms, with 1000ms for request/scheduling.
+The first same-URL response, cache headers and monotonic timestamps remain in the report, including stale hits.
+Rejected ACKs, missing/stale sequences, replacement identities, late convergence and page errors fail. This observes
+the existing cache policy; it changes neither production caching nor Undo/Redo admission. Earlier release receipts
+retain their original verdicts. Focused regression: `node --test tools/world-launcher/edit-observation.test.mjs`.
+
+F1 uses the same observation boundary for Rain: capture the weather POST ACK, then require public `seq >= ACK.seq`
+and the requested rain kind, amount and intensity on the single immediate cache MISS. Retain the first unchanged-URL
+response and separately require its convergence within the same bound. This matters when E1's final convergence read
+has just primed the unchanged URL with pre-weather state. The owner Rain note and absence of page errors remain required;
+a note alone cannot prove weather changed. The regression covers this exact Redo-to-weather ordering with primed caches.

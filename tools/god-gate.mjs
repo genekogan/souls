@@ -24,7 +24,7 @@ const suites = [
   ['faces', test(['apps/web/src/gen-mesh/faces.test.ts'])], // XP8: viewer faces/decals and their offline network log
   ['gallery-diff', test(['tools/god-skill/scripts/gallery-diff.test.mjs'])],
   ['CLI-lib', test([...files('tools/god-skill', '.test.mjs'), ...files('tools/god-skill/lib', '.test.mjs')])],
-  ...['server', 'world-compiler', 'generators'].map(name => [`tsc-${name}`, ['node_modules/typescript/bin/tsc', '--noEmit', '-p', name === 'server' ? 'apps/server' : `packages/${name}`]]),
+  ...['server', 'world-compiler', 'generators'].map(name => [`tsc-${name}`, ['node_modules/@typescript/native/bin/tsc', '--noEmit', '-p', name === 'server' ? 'apps/server' : `packages/${name}`]]),
   ['skill-build', ['tools/god-skill/build.mjs', '--check']],
 ];
 if (process.env.GOD_GALLERY_BEFORE || process.env.GOD_GALLERY_AFTER) {

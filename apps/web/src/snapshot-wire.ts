@@ -41,14 +41,14 @@ async function withTransport<T>(caller: AbortSignal, work: (transport: {
   chunks(response: Response): Promise<Uint8Array[]>;
 }) => Promise<T>): Promise<T> {
   caller.throwIfAborted();
-  const controller = new AbortController(), signal = controller.signal, cancels = new Set<() => void>();
+  const controller = new AbortController(), signal = controller.signal, cancels = new Set<() => void>(), requests = new WeakMap<Response, () => void>();
   const close = () => { controller.abort(caller.aborted ? caller.reason : new DOMException('Snapshot attempt completed', 'AbortError')); for (const cancel of cancels) cancel(); cancels.clear(); };
   caller.addEventListener('abort', close, { once: true });
   const request = (url: string, prefetch?: PrefetchRequest | null) => {
     const own = new AbortController();
     const source = prefetch ?? { response: Promise.resolve().then(() => { own.signal.throwIfAborted(); return fetch(url, { signal: own.signal }); }), abort: () => own.abort() };
-    let response: Response | undefined, ended = false, rejectWait: (e: unknown) => void = () => {};
-    const cancel = () => { source.abort?.(); if (response) cancelBody(response); rejectWait(signal.aborted ? signal.reason : new DOMException('Snapshot request cancelled', 'AbortError')); };
+    let response: Response | undefined, ended = false, cancelled = false, rejectWait: (e: unknown) => void = () => {};
+    const cancel = () => { if (cancelled) return; cancelled = true; cancels.delete(cancel); source.abort?.(); if (response) cancelBody(response); rejectWait(signal.aborted ? signal.reason : new DOMException('Snapshot request cancelled', 'AbortError')); };
     cancels.add(cancel);
     const promise = new Promise<Response>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout>;
@@ -57,9 +57,9 @@ async function withTransport<T>(caller: AbortSignal, work: (transport: {
         if (value) resolve(value); else reject(error);
       };
       rejectWait = error => finish(error);
-      timer = setTimeout(() => { finish(stalled()); source.abort?.(); }, SNAPSHOT_STALL_MS);
+      timer = setTimeout(() => { finish(stalled()); cancel(); }, SNAPSHOT_STALL_MS);
       signal.addEventListener('abort', cancel, { once: true });
-      source.response.then(r => { response = r; if (ended) { cancelBody(r); return; } finish(undefined, r); }, e => finish(e));
+      source.response.then(r => { response = r; if (ended) { cancelBody(r); return; } requests.set(r, cancel); finish(undefined, r); }, e => finish(e));
       if (signal.aborted) cancel();
     });
     return { promise, cancel };
@@ -99,6 +99,8 @@ async function withTransport<T>(caller: AbortSignal, work: (transport: {
                 if (done) break;
                 if (value.byteLength) { chunks.push(value); arm(); }
               }
+              // EOF releases this winner before parsing; attempt cleanup still cancels every unfinished request.
+              const cancel = requests.get(response); if (cancel) cancels.delete(cancel); requests.delete(response);
               finished = true; cleanup(); resolve(chunks);
             } catch (error) { fail(error); } finally { reader.releaseLock(); }
           })();
