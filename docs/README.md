@@ -6,6 +6,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 
 | I want to… | Read |
 |---|---|
+| oversee work, review proof or change worker capacity | [owner playbook](process/owner-playbook.md) |
 | set direction or turn a request into work | [vision](design/vision.md), [roadmap](design/roadmap.md), [planning and intake](process/planning.md) |
 | run Soul locally | [development](development.md) |
 | understand how it fits together | [architecture](architecture.md), then the [glossary](glossary.md) |
