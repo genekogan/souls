@@ -55,7 +55,7 @@ function setUp(early: EarlyLayer) {
   renderer.setSize(w, h, false);
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 2400);
   const atmosphere = createWorldAtmosphere(scene);
-  const light = new Daylight(scene); if (quality.shadowMapSize !== light.sun.shadow.mapSize.x) light.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
+  const light = new Daylight(scene, { bakedShadow: quality.bakedShadows }); if (quality.shadowMapSize !== light.sun.shadow.mapSize.x) light.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
   scene.add(layer.group);
   // LiveWorld's lightning (WorldLightning) adds a sky-wide flash, a hemisphere light at 0; a scene's light counts are part
   // of every program, so without a stand-in here LiveWorld relinked all of them. LiveWorld removes it once its own is in
