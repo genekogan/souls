@@ -1,14 +1,15 @@
 # Agent workflow
 
-Several coding agents (and people) work on Sim at once without a coordinator. They stay out of each other's way
-through a few repository conventions, and the merge train decides the order in which their work lands on `main`.
+Several coding agents (and people) can work on Soul concurrently. A development owner selects independent work
+and handles dependencies; repository conventions isolate changes, and the merge train serializes integration.
 [Agent lifecycle](agent-lifecycle.md) is the path one piece of work takes; this page is how many of them share the
 repository.
 
 ## Working in parallel
 
-- **An issue is a lock.** Before starting, an agent assigns the issue to itself (or to the person running it) and adds
-  the `agent:claimed` label. Nobody else starts on a claimed issue; to take one over, ask in the issue. Pick from
+- **An issue records a claim.** Before starting, an agent assigns the issue to itself (or to the person running it) and adds
+  the `agent:claimed` label. Record the active worker/session and scope in a comment. Nobody else starts on a claimed issue;
+  confirm the outgoing writer has stopped before takeover. A label is not an atomic filesystem lock. Pick from
   issues labelled `agent:ready`. Unclaim (remove the label, unassign) when you stop without a PR.
 - **One branch per issue:** `agent/<issue>-<slug>`, for example `agent/412-reading-seat`, cut from the current
   `origin/main`. One worktree per branch when several agents share a machine. Never commit to `main`, never
@@ -18,6 +19,11 @@ repository.
 - **Feature flags for unfinished work.** Work that is not ready for visitors merges behind a flag that defaults to off,
   rather than living on a long branch. Remove the flag in a follow-up once the feature ships.
 - **Plans live in issues.** Briefs, status and findings go in the issue and its comments, never in files in the tree.
+
+Before dispatch, inspect open PRs and claims for shared contracts and assumptions. Sequence coupled changes or
+agree the interface first; a text merge can succeed while semantics conflict. Use separate mutable data and ports,
+share read-only assets, and reserve quiet measurement slots. Reuse a clean workspace after preserving its prior
+work. Record source, evidence, active jobs and the next action at handoff: [planning](planning.md).
 
 ## Conventions that avoid conflicts
 
@@ -72,7 +78,9 @@ A PR that fails a check leaves the train with its result in the PR; fix it and r
 ## Who starts agents
 
 There are no scheduled agents. Nothing wakes up on a timer to pick issues, open PRs or ship releases. The maintainer
-starts agents, oversees them and gives the go-ahead for anything above T2 and for every release. The only automation
+sets priorities and may authorize a development owner to select and start bounded workers within that agenda.
+The maintainer still gives the required go-ahead for anything above T2 and for every release. Delegation does not
+waive proof, budget or production safeguards. The only automation
 that runs on its own is CI (`ci`, `security`, `changelog`, `claude-review`, label sync), which checks work and never
 starts it.
 

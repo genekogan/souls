@@ -1,4 +1,12 @@
-# Disaster recovery: a blank host to a serving site
+# Disaster recovery: legacy dual-stage reference
+
+**Topology warning:** this procedure describes the former prefixed production plus legacy deployment. The current
+public site is root-only `https://soul.game`; do not copy the dual-stage uploads, memory settings or Caddy routing
+below onto its host. Recovery must use the current release owner's approved host/bootstrap record, base `/`,
+actual backup inventory and isolated restore verification. A fully rehearsed root-only recovery procedure remains
+unverified; local backups alone do not prove recovery from losing the server. Offsite provisioning is deferred.
+See [operations](../operations.md) and [release](../release.md#current-production-topology).
+
 
 "Serving" means `https://sim.eden.art/worlds/` (stage `production`) and `https://sim.eden.art/` with `/w/<key>`
 (stage `legacy`), both with Clerk sign-in, on the last released commit, with every world's history as of the last
