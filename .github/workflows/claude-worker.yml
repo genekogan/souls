@@ -98,7 +98,8 @@ jobs:
             access, new secrets or account/permission changes. Do not use another model/provider or paid API fallback.
             Only specifically requested focused checks may run. Unknown/unavailable checks remain unverified.
             For implementation use the selected lifecycle branch and normal proof/commit/PR process; never force push,
-            merge, approve, or reset existing WIP. Check the public diff before staging and preserve unfinished source
+            merge, approve, or reset existing WIP. Open draft PRs only; do not mark them ready or trigger review workflows.
+            Check the public diff before staging and preserve unfinished source
             with a durable commit/ref before stopping. Report exact resulting source/PR refs, commands/results, failures,
             next action and any outstanding approval. Never put credentials or raw private output in your report.
             Return the bounded structured handoff. Action success alone does not qualify acceptance or a release.

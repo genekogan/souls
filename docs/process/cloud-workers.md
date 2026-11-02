@@ -14,6 +14,7 @@ readable quota or this new dispatch path. Unknown quota blocks execution. Do not
 1. Restore the owner's approved Claude account/usage observation through the existing interactive sign-in route.
    Gene performs sign-in; never copy local credentials or ask for a token in chat. A successful GitHub review does
    not require rotating its existing `CLAUDE_CODE_OAUTH_TOKEN` secret merely because the local usage reader failed.
+   Observe the same subscription used by that OAuth integration; a different account's meter is not authorization.
 2. Confirm an actual model identifier available to that subscription, then configure the single repository variable
    `CLAUDE_WORKER_MODEL` to that exact approved workhorse model. This adapter guesses no model ID, defaults to no
    model, and supplies no fallback-model/API/billing option. Model changes require owner review of this variable.
