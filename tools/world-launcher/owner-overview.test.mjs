@@ -55,7 +55,7 @@ test('schema strips extra fields and rejects invalid cache; proof media is never
   const page = overviewShell({ clerkPublishableKey: '</script><script>bad', clerkIssuer: 'https://clerk.example.test' });
   assert.equal(page.html.includes('</script><script>bad'), false); assert.match(page.csp, /sha256-/);
   const scripts = page.csp.split(';').find(x => x.trim().startsWith('script-src')).trim().split(/\s+/);
-  const inlineScript = /<script>([\s\S]*?)<\/script>/.exec(page.html)?.[1];
+  const inlineScript = /<script>([\s\S]*?)<\/script>/i.exec(page.html)?.[1];
   assert.ok(inlineScript);
   assert.deepEqual(scripts, [
     'script-src',
