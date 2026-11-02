@@ -28,9 +28,22 @@ The current engine still has scene-specific constructors and a named-character f
 legacy worlds. These paths need a consumer and compatibility audit: some preserve historical replay or deliberate
 feature exclusions. [#579](https://github.com/genekogan/souls/issues/579) tracks the migration to explicit contracts.
 
-The `/old` page is only the previous world-list UI. Its retirement
-([#582](https://github.com/genekogan/souls/issues/582)) does not retire the underlying bodies, physics, construction,
-music, content or stored worlds. Map these capabilities to supported homes before removing their last consumer.
+The retired `/old` world-list bookmarks redirect to the current Worlds page without serving legacy HTML
+([#582](https://github.com/genekogan/souls/issues/582)). Queries are retained; fragments are deliberately cleared:
+the old cards ignored them, while a fragment on `/` can select the single-world view. Existing world, pairing,
+god, API and asset URLs are not changed by this UI retirement.
+
+| Retired card | Current access / preserved capability |
+|---|---|
+| Eden (`/w/eden`) | Current list: `/w/eden/`; authored Eden content and original namespace remain. |
+| Mars (`/w/mars`) | Current list: `/w/mars-college-2026/` and `/w/mars-college-2027/`; template/content migration remains [#386](https://github.com/genekogan/souls/issues/386), construction and Lab parity [#560](https://github.com/genekogan/souls/issues/560)/[#561](https://github.com/genekogan/souls/issues/561). |
+| Little Martians (`/w/littlemartians`) | Current list: `/w/little-martians-arium/`; original body/content constructors and supported runtime namespaces remain; world-name capability generalization stays [#579](https://github.com/genekogan/souls/issues/579). |
+
+The current public manifest listed these access homes during the retirement audit. The obsolete Mars and Little
+Martians card paths already returned 404 at the canonical site; a similarly named current world is not asserted
+to be the same saved world. Original dispatcher/fork support, bodies, physics, construction, music, assets and
+stored data are preserved. Removing unused card discovery does not remove strict world-bootstrap identity checks
+or authorize deleting the original world data. Engine extraction remains [#381](https://github.com/genekogan/souls/issues/381)/[#382](https://github.com/genekogan/souls/issues/382).
 
 ## Changes that preserve behavior
 

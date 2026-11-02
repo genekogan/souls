@@ -15,8 +15,10 @@ await test('launcher build under /worlds: same rules below the base, nothing out
  for(const p of ['/worlds/nope','/worlds/foo/bar','/worldsx','/w/eden/'])assert.equal(pageRoute(p,'/worlds',''),'missing',p);
 });
 
-test('legacy home is explicit and stays separate from the launcher list',()=>{
- for(const path of ['/old','/old/'])assert.equal(pageRoute(path,'',''),'legacy');
+test('retired legacy list falls back to current Worlds, without treating its ignored hash as a world',()=>{
+ for(const path of ['/old','/old/'])for(const hash of ['', '#watch', '#godpair/OLD'])assert.equal(pageRoute(path,'',hash),'list');
+ for(const path of ['/worlds/old','/worlds/old/'])assert.equal(pageRoute(path,'/worlds','#ignored'),'list');
+ assert.equal(pageRoute('/w/eden/','','#godpair/KEEP'),'world');
  assert.equal(pageRoute('/old-world','',''),'missing');
  assert.equal(pageRoute('/old','/worlds',''),'missing');
 });

@@ -932,7 +932,10 @@ export async function openLauncher(cfg = {}) {
         await toWorld(req, res, world, url); return;
       }
       if (req.method === 'GET' || req.method === 'HEAD') {
-        if (path === '/' || path === '/index.html' || path === '/old' || path === '/old/') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @sim/web build'); return; }
+        // The retired list ignored hashes. An explicit empty fragment prevents browsers inheriting a hash that
+        // would select single-world mode at the root; queries remain intact. No legacy HTML is sent.
+        if (path === '/old' || path === '/old/') { res.writeHead(308, { location: `${B}/${url.search}#`, 'cache-control': 'no-store' }).end(); return; }
+        if (path === '/' || path === '/index.html') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @sim/web build'); return; }
         // #388/#584: build-time changelog HTML, no script/API collection; reviewed optional journal media can load separately.
         if ((path === '/changelog' || path === '/changelog/') && serveFile(res, join(webDir, 'changelog.html'), 'no-cache', req)) return;
         // lane P4: the installable-app manifest beside the world list (apps/web/src/pwa-manifest.ts)

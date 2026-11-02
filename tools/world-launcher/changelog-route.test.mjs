@@ -44,5 +44,7 @@ await test('under --base /worlds the page is /worlds/changelog, and nothing outs
     assert.equal(r.status, 200);
     assert.equal(await r.text(), PAGE);
     assert.equal((await get('/changelog')).status, 404, 'outside the prefix belongs to the other release');
+    for(const path of ['/worlds/old','/worlds/old/']){const old=await fetch(`http://127.0.0.1:9742${path}?from=bookmark`,{redirect:'manual'});assert.equal(old.status,308);assert.equal(old.headers.get('location'),'/worlds/?from=bookmark#');assert.equal(await old.text(),'');}
+    assert.equal((await get('/old')).status,404,'retired route outside this base remains outside this launcher');
   } finally { await L.close(); }
 });
