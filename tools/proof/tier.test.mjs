@@ -19,6 +19,33 @@ test('server and package logic is T1; visible UI is T2; Soul/engine is T3', () =
   assert.equal(tier(['packages/engine-mars/src/nav.ts']), 'T3');
 });
 
+test('Soul and navigation families retain top-level protection and cover nested directories', () => {
+  for (const family of ['edge', 'intent', 'soul', 'brain', 'body', 'purpose', 'lifecycle', 'nav']) {
+    for (const suffix of ['-example.ts', '/nested/example.ts']) {
+      const file = `apps/server/src/${family}${suffix}`;
+      assert.equal(tier([file]), 'T3', file);
+      assert.equal(tier([file], ['tier:T0']), 'T3', `${file}: labels never lower protection`);
+    }
+  }
+  assert.equal(tier(['apps/server/src/edge/ledger/ledger.ts']), 'T3');
+});
+
+test('shared god navigation/perception and split read-facade code require T3', () => {
+  for (const file of [
+    'apps/server/src/god/nav.ts', 'apps/server/src/god/perceive.ts',
+    'apps/server/src/god/engine-bridge.ts', 'apps/server/src/god/buildsafe-rule.ts',
+    'apps/server/src/split/menu-world.test.ts', 'apps/server/src/split/read-model.ts',
+  ]) assert.equal(tier([file]), 'T3', file);
+  for (const file of ['apps/server/src/account-auth.ts', 'apps/server/src/god/assets.ts', 'apps/server/src/http.ts']) {
+    assert.deepEqual(tierForFile(file, policy), { tier: 'T1', rule: 'apps/server/' }, file);
+  }
+});
+
+test('path policy keeps first-match precedence, independent of tier rank', () => {
+  const custom = loadPolicy('paths:\n  - { prefix: "specific/", tier: T1 }\n  - { glob: "**", tier: T3 }\ndefault_tier: T1\n');
+  assert.deepEqual(tierForFile('specific/file.ts', custom), { tier: 'T1', rule: 'specific/' });
+});
+
 test('the highest file wins and a label can raise but not lower', () => {
   assert.equal(tier(['docs/a.md', 'apps/web/x.ts']), 'T2');
   assert.equal(tier(['docs/a.md'], ['tier:T3']), 'T3');
