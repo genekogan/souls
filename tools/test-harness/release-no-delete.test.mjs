@@ -34,6 +34,21 @@ test('same-build manifest detects missing files, symlink changes and executable 
   const third=fixture(t),thirdPath=seal(third);mkdirSync(join(third,'node_modules'));renameSync(join(third,'app','main.js'),join(third,'node_modules','retained-main'));assert.notEqual(verify(third,thirdPath).status,0);
 });
 
+test('Finder metadata appearing after sealing is excluded at every depth, ordinary dotfiles are not',t=>{
+  const root=fixture(t),path=seal(root),sealed=manifest(root);
+  for(const relative of ['.DS_Store','app/.DS_Store'])writeFileSync(join(root,relative),'Finder metadata');
+  assert.deepEqual(manifest(root),sealed);
+  assert.equal(verify(root,path).status,0);
+  writeFileSync(join(root,'app','.DS_Store'),'changed Finder metadata');
+  chmodSync(join(root,'.DS_Store'),0o600);
+  assert.equal(verify(root,path).status,0);
+  for(const name of ['.hidden','.DS_Store.js']){
+    const other=fixture(t),otherPath=seal(other);
+    writeFileSync(join(other,'app',name),'application data');
+    assert.notEqual(verify(other,otherPath).status,0,name+' must remain inventoried');
+  }
+});
+
 test('upload branch permits fresh destinations, verifies exact reuse, and refuses occupied or altered trees', t => {
   const root=fixture(t),bin=join(root,'bin');mkdirSync(bin);
   writeFileSync(join(bin,'ssh'),'#!/bin/sh\nshift\nexec bash -c "$1"\n',{mode:0o755});
