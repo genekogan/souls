@@ -1,6 +1,7 @@
 // The public changelog page (<base>/changelog, issue #388): CHANGELOG.md rendered to static HTML when the web app is
-// built (vite.config.ts `changelogPage`, into changelog.html), so the page ships with its release, loads no script and
-// asks nothing of GitHub or the API at runtime. CHANGELOG.md is what tools/changelog/compile.mjs writes:
+// built (vite.config.ts `changelogPage`, into changelog.html), so the page ships with its release and loads no script.
+// No runtime API/GitHub record collection; reviewed journal posters/clips may load from GitHub release assets.
+// CHANGELOG.md is what tools/changelog/compile.mjs writes:
 //   ## <version> (<YYYY-MM-DD>)    a release; any other `## ` heading (## Earlier) is a closing note
 //   ### Features | Fixes | …        a group inside a release
 //   - one line                       an entry (indented lines continue it); other lines are paragraphs
@@ -70,6 +71,7 @@ function publicUrl(value: unknown, media: boolean): string {
   const u = new URL(value);
   if (u.protocol !== 'https:' || u.username || u.password || u.port || u.search || u.hash || u.href !== value)
     throw Error('Public journal: canonical HTTPS URL required');
+  // Canonical href equality above also rejects dot-segment/backslash normalization before allowlisting paths.
   const allowed = media
     ? (u.origin === 'https://assets.eden.art' && /^\/public-journal\/[A-Za-z0-9._/-]+$/.test(u.pathname)) ||
       (u.origin === 'https://github.com' && /^\/genekogan\/souls\/releases\/download\/proofs\/[A-Za-z0-9._-]+$/.test(u.pathname))

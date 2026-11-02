@@ -33,3 +33,9 @@ uncut complete take or production verification. Do not create substitute histori
 Run `node --test apps/web/src/changelog-page.test.ts` and the web build. Review desktop and phone release → journal →
 media → return with real input; record proof through the repo proof workflow. Public publication does not depend on
 a live owner-board request. An empty array remains valid for text-only releases.
+
+GitHub release-asset URLs redirect from `github.com` to `release-assets.githubusercontent.com`. A future restrictive
+CSP `media-src`/`img-src` must allow both origins (and `assets.eden.art` when publishing through that CDN); do not
+assume the initial link origin alone is sufficient. Publication URLs remain stable; never store expiring redirect
+query strings. `poster` on an image or retired entry is validated but intentionally unused; retained metadata does
+not cause a media request from a retired entry.

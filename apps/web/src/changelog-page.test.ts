@@ -29,7 +29,8 @@ Rolled back; superseded by 4.1.
 Earlier development is recorded in the git history.
 `;
 
-function assertSelfContained(page: string) {
+// Text-only rendering has no subresources. Published visual journals intentionally add allowlisted media.
+function assertTextOnlySelfContained(page: string) {
   assert.ok(!/<script|<link|<img|<iframe|@import|url\(/i.test(page), 'no script and no subresource: the document is the whole page');
   // Entries are escaped text. A written repository address or API path is not a runtime reference.
   const markup = (page.match(/<[^>]*>/g) ?? []).join('\n');
@@ -66,29 +67,29 @@ await test('refused: a CHANGELOG.md without release headings fails the build wit
   assert.throws(() => changelogHtml('<main></main>', SAMPLE, '/'), /no <!--changelog--> slot/);
 });
 
-await test('static-page checks allow inert GitHub and API prose, including escaped would-be markup', () => {
+await test('text-only page checks allow inert GitHub and API prose, including escaped would-be markup', () => {
   const md = SAMPLE.replace('Souls can paint with `brush` colours.', 'See github.com/genekogan/souls and `/v1/config`; <a href="https://github.com/example/repo">stays text</a>.');
   const page = changelogHtml('<main><!--changelog--></main>', md, '/');
   assert.match(page, /See github\.com\/genekogan\/souls and <code>\/v1\/config<\/code>/);
   assert.match(page, /&lt;a href=&quot;https:\/\/github\.com\/example\/repo&quot;&gt;stays text&lt;\/a&gt;/);
-  assertSelfContained(page);
+  assertTextOnlySelfContained(page);
 });
 
-await test('static-page checks still reject actual GitHub/API attributes, scripts and subresources', () => {
+await test('text-only page checks reject actual GitHub/API attributes, scripts and subresources', () => {
   for (const markup of [
     '<a href="https://github.com/example/repo">external</a>',
     '<form action="/v1/config"></form>',
     '<button formaction="/v1/config">send</button>',
     '<button onclick="fetch(\'/v1/config\')">fetch</button>',
-  ]) assert.throws(() => assertSelfContained(changelogHtml(`<main>${markup}<!--changelog--></main>`, SAMPLE, '/')), /no runtime GitHub or API reference/);
+  ]) assert.throws(() => assertTextOnlySelfContained(changelogHtml(`<main>${markup}<!--changelog--></main>`, SAMPLE, '/')), /no runtime GitHub or API reference/);
   for (const markup of [
     '<script>fetch("/anything")</script>', '<link rel="stylesheet" href="/style.css">',
     '<img src="/image.png">', '<iframe src="/frame"></iframe>',
     '<style>@import "/style.css";</style>', '<style>body{background:url(/image.png)}</style>',
-  ]) assert.throws(() => assertSelfContained(changelogHtml(`<main>${markup}<!--changelog--></main>`, SAMPLE, '/')), /no script and no subresource/);
+  ]) assert.throws(() => assertTextOnlySelfContained(changelogHtml(`<main>${markup}<!--changelog--></main>`, SAMPLE, '/')), /no script and no subresource/);
 });
 
-await test('the page template plus the real CHANGELOG.md: every release, no script, nothing fetched, base-aware home link', () => {
+await test('text-only page template plus real CHANGELOG.md: every release, no subresources, base-aware home link', () => {
   const md = readFileSync(new URL('../../../CHANGELOG.md', import.meta.url), 'utf8');
   const template = readFileSync(new URL('../changelog.html', import.meta.url), 'utf8');
   const releases = md.split('\n').filter((l) => /^## \S+ \(\d{4}-\d{2}-\d{2}\)$/.test(l)).length;
@@ -96,7 +97,7 @@ await test('the page template plus the real CHANGELOG.md: every release, no scri
   for (const base of ['/', '/worlds/']) {
     const page = changelogHtml(template, md, base);
     assert.equal((page.match(/<section class="cl-release" id="v/g) ?? []).length, releases, 'one section per release');
-    assertSelfContained(page);
+    assertTextOnlySelfContained(page);
     assert.match(page, new RegExp(`<a href="${base}">← Worlds</a>`));
   }
 });
