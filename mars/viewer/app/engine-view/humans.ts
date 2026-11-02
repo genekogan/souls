@@ -139,6 +139,8 @@ type View = {
   footLat: number[];
   /** Skinned vertices of each foot / hand (by the side the leg / arm has: +1 left): the prone layer keeps them on the deck. */
   surf: { foot: Map<number, VertexRefs>; hand: Map<number, VertexRefs>; body?: VertexRefs };
+  /** PERF-PASSES: restNeed's lowest samples from its last full pass (see restNeed). */
+  restCache?: { key: string; n: number; refs: VertexRefs };
   stairShoes?:ReturnType<typeof stairShoeRefs>;
   stairContact?:StairRigContact|null;
   stairGoals?:[number,number,number][];
@@ -1522,7 +1524,7 @@ export class HumanViews {
         h.updateMatrixWorld(true);
         // the back / head rest on the ground under each part of them
         let need = -Infinity;
-        for (const r of v.surf.body ?? []) for (const i of r.idx) { const q = r.mesh.getVertexPosition(i, _vp).applyMatrix4(r.mesh.matrixWorld); need = Math.max(need, (bench ? floor : groundUnder(q.x, q.z, floor)) + 0.012 - q.y); }
+        need = restNeed(v, sleeper ? 'sleep' : 'lie', bench, floor);
         if (Number.isFinite(need) && rest > 0) { h.position.y += need * rest; h.updateMatrixWorld(true); }
       } else if ((body === 'swim' || body === 'tread') && one === lib.cur && v.shore) {
         const p0 = clipProbe(t, one.clip, 0), root = v.rig.model.getObjectByName('Root');
@@ -1878,13 +1880,59 @@ function surfaceRefs(rig: Rig) {
   return out;
 }
 
+/** PERF-PASSES: the lift that rests a lying body's back and head just on the ground: the largest (ground + 0.012 − y)
+ *  over its sampled torso / head vertices (~1,000 a body). Every 8th pose, and whenever the layout or the floor rule
+ *  changes (moved 5 cm, turned 0.01 rad), every sample is skinned and the REST_KEEP lowest relative to the ground are kept; the poses between read only
+ *  those (in 8 frames breathing moves a back by well under a millimetre, so the lowest sample stays among them). */
+const REST_KEEP = 48, REST_FULL_EVERY = 8;
+export function restNeed(v: View, layout: string, bench: number, floor: number): number {
+  const h = v.rig.holder, key = `${layout}|${bench}|${Math.round(h.position.x * 20)}|${Math.round(h.position.z * 20)}|${Math.round(h.rotation.y * 100)}`, c = v.restCache, under = (x: number, z: number) => (bench ? floor : groundUnder(x, z, floor)) + 0.012;
+  let need = -Infinity;
+  if (c && c.key === key && ++c.n < REST_FULL_EVERY) { eachSkinnedWorld(c.refs, _vp, (p) => { need = Math.max(need, under(p.x, p.z) - p.y); }); return need; }
+  const scored: { mesh: THREE.SkinnedMesh; i: number; n: number }[] = [];
+  for (const r of v.surf.body ?? []) { let k = 0; eachSkinnedWorld([r], _vp, (p) => { const n = under(p.x, p.z) - p.y; scored.push({ mesh: r.mesh, i: r.idx[k++], n }); if (n > need) need = n; }); }
+  scored.sort((a, b) => b.n - a.n);
+  const refs: VertexRefs = [];
+  for (const s of scored.slice(0, REST_KEEP)) { let r = refs.find((q) => q.mesh === s.mesh); if (!r) refs.push((r = { mesh: s.mesh, idx: [] })); r.idx.push(s.i); }
+  v.restCache = { key, n: 0, refs };
+  return need;
+}
 /** Lowest point (world y) of these vertices as rendered now (bone world matrices up to date). */
 function lowestY(refs: VertexRefs | undefined) {
   let low = Infinity;
-  for (const r of refs ?? []) for (const i of r.idx) low = Math.min(low, r.mesh.getVertexPosition(i, _vp).applyMatrix4(r.mesh.matrixWorld).y);
+  eachSkinnedWorld(refs, _vp, (p) => { low = Math.min(low, p.y); });
   return low;
 }
 const _vp = new THREE.Vector3();
+/** PERF-PASSES: each vertex's world position as rendered now, exactly `mesh.getVertexPosition(i, out).applyMatrix4(mesh.matrixWorld)`
+ *  (three 0.186's SkinnedMesh.applyBoneTransform, the same operations in the same order), but each bone's skinning
+ *  matrix (bone.matrixWorld × boneInverse) is formed once per call instead of once per vertex influence: a lying body
+ *  rests on ~1,000 sampled torso / head vertices every pose (Eden 2026: most of humans.render while orbiting). */
+const _skinM: THREE.Matrix4[] = [], _skinB = new THREE.Vector4(), _skinT = new THREE.Vector4(), _skinI = new THREE.Vector4(), _skinW = new THREE.Vector4();
+let _skinMark = new Uint32Array(0), _skinGen = 0;
+export function eachSkinnedWorld(refs: VertexRefs | undefined, out: THREE.Vector3, each: (p: THREE.Vector3) => void) {
+  for (const r of refs ?? []) {
+    const m = r.mesh as THREE.SkinnedMesh, g = m.geometry;
+    if (!m.isSkinnedMesh || (g.morphAttributes.position && m.morphTargetInfluences) || !g.attributes.skinIndex) { for (const i of r.idx) each(m.getVertexPosition(i, out).applyMatrix4(m.matrixWorld)); continue; }
+    const bones = m.skeleton.bones, inverses = m.skeleton.boneInverses, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+    if (_skinMark.length < bones.length) _skinMark = new Uint32Array(bones.length * 2);
+    while (_skinM.length < bones.length) _skinM.push(new THREE.Matrix4());
+    if (++_skinGen === 0xffffffff) { _skinMark.fill(0); _skinGen = 1; }
+    for (const i of r.idx) {
+      out.fromBufferAttribute(pos, i);
+      _skinI.fromBufferAttribute(si as THREE.BufferAttribute, i); _skinW.fromBufferAttribute(sw as THREE.BufferAttribute, i);
+      _skinB.set(out.x, out.y, out.z, 1).applyMatrix4(m.bindMatrix);
+      out.set(0, 0, 0);
+      for (let k = 0; k < 4; k++) {
+        const w = _skinW.getComponent(k); if (w === 0) continue;
+        const b = _skinI.getComponent(k), mat = _skinM[b];
+        if (_skinMark[b] !== _skinGen) { mat.multiplyMatrices(bones[b].matrixWorld, inverses[b]); _skinMark[b] = _skinGen; }
+        out.addScaledVector(_skinT.copy(_skinB).applyMatrix4(mat), w);
+      }
+      each(out.applyMatrix4(m.bindMatrixInverse).applyMatrix4(m.matrixWorld));
+    }
+  }
+}
 
 /**
  * Front depths of the body in the Idle pose (holder at the origin facing +x): `body` = how far the front of the
@@ -1992,7 +2040,7 @@ const groundUnder = (x: number, z: number, floor: number) => { const g = humanGr
 function restOnGround(v: View, h: THREE.Object3D, floor: number, bench = 0) {
   h.updateMatrixWorld(true);
   let need = -Infinity;
-  for (const r of v.surf.body ?? []) for (const i of r.idx) { const p = r.mesh.getVertexPosition(i, _vp).applyMatrix4(r.mesh.matrixWorld); need = Math.max(need, (bench ? floor : groundUnder(p.x, p.z, floor)) + 0.012 - p.y); }
+  need = restNeed(v, 'back', bench, floor);
   if (!Number.isFinite(need) || Math.abs(need) < 0.003) return;
   h.position.y += need; h.updateMatrixWorld(true);
 }

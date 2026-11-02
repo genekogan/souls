@@ -148,20 +148,27 @@ class Obstacles {
  *  refresh in it (lane L3e: at arrival every creature refreshes in the same frame, which was creatures x entities
  *  footprint calls, ~2.8 s of a 4x phone's arrival in Eden 2026). Nothing in one task changes the model between two
  *  creatures, and the cache also drops on any entity/def/terrain change, so each creature gets exactly the boxes its own
- *  scan would have built. The boxes are read-only. */
-let solidScan: { model: WorldModel; entities: object | undefined; defs: object | undefined; size: number; terrain: unknown; solids: { id: string; fp: Box[] }[] } | null = null;
+ *  scan would have built. The boxes are read-only.
+ *  PERF-PASSES: the scan is kept across tasks for up to 2 s while the entity and def map revisions (ModelMap: a fresh
+ *  object on every set / delete), the entity count and the terrain are the same. Creatures refresh their obstacles every
+ *  8 s, staggered, so dropping it after each task re-scanned all ~5,000 entities on most frames of a quiet world. The
+ *  2 s bound covers what the revisions do not see (a terrain edited in place); Obstacles already holds boxes for 8 s. */
+let solidScan: { model: WorldModel; entities: object | undefined; defs: object | undefined; size: number; terrain: unknown; solids: { id: string; fp: Box[] }[]; at: number } | null = null;
+const SOLID_SCAN_MS = 2000;
 const revisionOf = (m: Map<string, unknown>) => (m as Map<string, unknown> & { revision?: object }).revision;
 export function solidFootprints(model: WorldModel): readonly { id: string; fp: readonly Box[] }[] {
   const c = solidScan;
-  if (c && c.model === model && c.size === model.entities.size && c.entities === revisionOf(model.entities) && c.defs === revisionOf(model.defs) && c.terrain === model.terrain) return c.solids;
+  const now = performance.now(), entities = revisionOf(model.entities), defs = revisionOf(model.defs);
+  if (c && c.model === model && c.size === model.entities.size && c.entities === entities && c.defs === defs && c.terrain === model.terrain && (now - c.at < SOLID_SCAN_MS || (entities === undefined && defs === undefined))) return c.solids;
   const solids: { id: string; fp: Box[] }[] = [];
   model.readPass(() => { for (const e of model.entities.values()) {
     const d = model.resolvedDef(e.def); if (!d || d.layer !== 'solid' || d.make.kind === 'none') continue;
     let fp: Box[]; try { fp = model.footprint(e, d); } catch { continue; }
     solids.push({ id: e.id, fp });
   } });
-  solidScan = { model, entities: revisionOf(model.entities), defs: revisionOf(model.defs), size: model.entities.size, terrain: model.terrain, solids };
-  queueMicrotask(() => { if (solidScan?.solids === solids) solidScan = null; });
+  solidScan = { model, entities, defs, size: model.entities.size, terrain: model.terrain, solids, at: now };
+  // a model without revisions (a plain Map in tests or fixtures) keeps the old rule: one scan per synchronous task
+  if (entities === undefined || defs === undefined) queueMicrotask(() => { if (solidScan?.solids === solids) solidScan = null; });
   return solids;
 }
 export function surroundings(model: WorldModel, home: V2, reach: number, medium: 'land' | 'water', skip: Set<string>, area?: V2[]): Surroundings & { obstacles: Obstacles; t: number } {
