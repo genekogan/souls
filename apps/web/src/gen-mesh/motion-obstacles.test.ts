@@ -49,3 +49,20 @@ test('every creature gets the boxes its own scan built; one scan is shared; an e
   assert.equal(JSON.stringify(surroundings(w, [-40, 10], 12, 'land', skip).obstacles.list(0)), JSON.stringify(original(w, -40, 10, 16, skip)));
   assert.ok(surroundings(w, [-40, 10], 12, 'land', skip).obstacles.list(0).length > 0, 'the new bench is an obstacle');
 });
+
+test('PERF-PASSES: the shared scan outlives the task for up to 2 s while nothing changed; a move or edit drops it at once', async () => {
+  const w = world();
+  add(w, [{ op: 'place', def: 'core/bench@1', name: 'a', p: [0, 0] }, { op: 'place', def: 'core/bench@1', name: 'b', p: [5, 0] }]);
+  const first = solidFootprints(w);
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(solidFootprints(w), first, 'a later task (a creature refreshing on another frame) reuses the scan');
+  add(w, [{ op: 'move', id: w.get('a')!.id, p: [9, 9] }]);
+  const moved = solidFootprints(w);
+  assert.notEqual(moved, first, 'a move is a new entity record: the revision changes and the scan is rebuilt');
+  const a = moved.find((s) => s.id === w.get('a')!.id)!;
+  assert.ok(a.fp.every((b) => Math.hypot(b.c[0] - 9, b.c[1] - 9) < 2), 'the rebuilt scan has the bench where it now stands');
+  const realNow = performance.now.bind(performance); let shift = 0;
+  (performance as { now: () => number }).now = () => realNow() + shift;
+  try { shift = 2500; assert.notEqual(solidFootprints(w), moved, 'after 2 s it is rebuilt (terrain edited in place)'); }
+  finally { (performance as { now: () => number }).now = realNow; }
+});
