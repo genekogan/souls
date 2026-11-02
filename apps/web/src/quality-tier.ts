@@ -24,6 +24,10 @@ export type QualitySettings = {
    *  beyond, every 8th when outside the view (HumanViews.viewer). The pose is the skinned body's IK, gestures and
    *  library clips: 68 bodies on Eden 2026 each cost it every frame wherever the camera looked. */
   bodies: BodyDetailOptions;
+  /** Lane PERF-BAKED-SHADOWS (2026-11-02): still things cast into a cached sun shadow map that is redrawn only when the sun
+   *  turns, the view steps or a still thing changes (rendering/SunShadowCache.ts); the per-frame map draws only what moves.
+   *  Desktop only (a second shadow lookup per pixel); `?bakedShadows=0` turns it off. */
+  bakedShadows: boolean;
 };
 export type BodyDetailOptions = { nearM: number; farM: number };
 export const DESKTOP_BODIES: BodyDetailOptions = Object.freeze({ nearM: 40, farM: 90 });
@@ -39,9 +43,8 @@ export type DistanceDetailOptions = {
   rescanFrames: number;
 };
 export const PHONE_SHADOW_EVERY = 3;
-/** Lane PERF-PHONE (2026-11-02): phones draw the 3D view at one drawing-buffer pixel per CSS pixel and the browser
- *  upscales it; DOM text and controls stay at the device ratio. `?phoneDpr=` overrides for measurements. */
-export const PHONE_PIXEL_RATIO = 1;
+/** Preserve the baseline phone drawing-buffer cap; `?phoneDpr=` overrides for measurements. */
+export const PHONE_PIXEL_RATIO = 1.5;
 export const PHONE_DETAIL: DistanceDetailOptions = Object.freeze({ minRadiusPx: 1.25, shadowNear: 24, shadowPerMetre: 14, shadowMaxRadius: 6, standInDistance: 38, rescanFrames: 90 });
 /** Release 3.1: desktops get only the invisible part of distance detail — meshes under half a CSS pixel of radius are
  *  not drawn, small casters far away stop casting — and mesh LOD at half a pixel of error. No flat cards, same pixel
@@ -66,9 +69,9 @@ export function pickQualityTier(env: QualityEnvironment): QualitySettings {
   const q = new URLSearchParams(env.search), num = (k: string, d: number) => { const v = Number(q.get(k)); return q.has(k) && Number.isFinite(v) && v > 0 ? v : d; };
   // P1 phones: ?phoneMinPx= / ?phoneShadowNear= / ?phoneShadowEvery= / ?phoneDpr= tune the phone tier for measurements
   return tier === 'phone'
-    ? { tier, reason, maxPixelRatio: num('phoneDpr', PHONE_PIXEL_RATIO), shadowMapSize: 1024, shadowEvery: Math.round(num('phoneShadowEvery', PHONE_SHADOW_EVERY)), freezeStill: true, bodies: PHONE_BODIES,
+    ? { tier, reason, maxPixelRatio: num('phoneDpr', PHONE_PIXEL_RATIO), shadowMapSize: 1024, shadowEvery: Math.round(num('phoneShadowEvery', PHONE_SHADOW_EVERY)), freezeStill: true, bodies: PHONE_BODIES, bakedShadows: false,
       detail: q.has('phoneMinPx') || q.has('phoneShadowNear') ? { ...PHONE_DETAIL, minRadiusPx: num('phoneMinPx', PHONE_DETAIL.minRadiusPx), shadowNear: num('phoneShadowNear', PHONE_DETAIL.shadowNear) } : PHONE_DETAIL }
-    : { tier, reason, maxPixelRatio: 2, shadowMapSize: 2048, shadowEvery: q.get('desktopDetail') === '0' ? 1 : Math.round(num('shadowEvery', DESKTOP_SHADOW_EVERY)), freezeStill: q.get('freezeStill') !== '0', bodies: DESKTOP_BODIES,
+    : { tier, reason, maxPixelRatio: 2, shadowMapSize: 2048, shadowEvery: q.get('desktopDetail') === '0' ? 1 : Math.round(num('shadowEvery', DESKTOP_SHADOW_EVERY)), freezeStill: q.get('freezeStill') !== '0', bodies: DESKTOP_BODIES, bakedShadows: q.get('bakedShadows') !== '0' && q.get('freezeStill') !== '0',
       detail: q.get('desktopDetail') === '0' ? null : q.get('desktopDetail') === '1' ? DESKTOP_DETAIL : DESKTOP_DETAIL_FAST };
 }
 

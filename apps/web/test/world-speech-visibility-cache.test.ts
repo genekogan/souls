@@ -123,3 +123,45 @@ test('PERF-PASSES: object bounds match Sphere.applyMatrix4 for scaled, rotated a
  assert.ok(Number.isNaN(bounds[order.indexOf(b)*4+3]),'a non-finite matrix: never pre-rejected');
  v.reset();g.dispose();
 });
+
+
+test('visibility refresh respects frozen subtrees while updating live meshes before a draw',()=>{
+ const root=new THREE.Group(),frozen=new THREE.Group(),geometry=new THREE.PlaneGeometry(4,4),material=new THREE.MeshBasicMaterial({side:THREE.DoubleSide});
+ const still=new THREE.Mesh(geometry,material),live=new THREE.Mesh(geometry,material);still.position.x=12;frozen.add(still);root.add(frozen,live);
+ root.updateMatrixWorld(true);frozen.traverse(o=>{o.updateMatrix();o.matrixAutoUpdate=false;});
+ const before=still.matrixWorld.clone();let frozenVisits=0,descendantVisits=0;
+ frozen.updateMatrixWorld=()=>{frozenVisits++;};
+ const update=still.updateMatrixWorld;still.updateMatrixWorld=function(force){descendantVisits++;update.call(this,force);};
+ const v=new WorldRenderedVisibility();v.prepareFresh([root]);assert.equal(v.score(pose,['anchor'],subject),0);
+ live.position.x=12;
+ assert.equal(v.evaluate(()=>v.score(pose,['anchor'],subject)),1,'the live mesh moves before renderer.render');
+ assert.equal(frozenVisits,2,'both refreshes use the frozen root contract');assert.equal(descendantVisits,0,'frozen descendants are not walked');assert.deepEqual(still.matrixWorld.elements,before.elements);
+ v.reset();geometry.dispose();material.dispose();
+});
+
+test('visibility refresh updates ancestors and descendants through a root with a fixed local matrix',()=>{
+ const scene=new THREE.Group(),{root,geometry,material,mesh}=fixture();scene.add(root);root.position.x=-3;root.updateMatrix();root.matrixAutoUpdate=false;
+ const v=new WorldRenderedVisibility();v.prepareFresh([root]);assert.equal(v.score(pose,['anchor'],subject),1);
+ scene.position.x=12;mesh.position.x=-9;
+ assert.equal(v.evaluate(()=>v.score(pose,['anchor'],subject)),0);assert.equal(mesh.matrixWorld.elements[12],0);
+ const actual=mesh.matrixWorld.clone();scene.updateMatrixWorld(true);assert.deepEqual(mesh.matrixWorld.elements,actual.elements,'the same world pose as renderer traversal');
+ v.reset();geometry.dispose();material.dispose();
+});
+
+test('visibility refresh preserves manually supplied world matrices and updates their children',()=>{
+ const {root,geometry,material,mesh}=fixture(),manual=new THREE.Group();root.remove(mesh);root.add(manual);manual.add(mesh);
+ manual.matrixWorldAutoUpdate=false;manual.matrixWorld.makeTranslation(12,0,0);manual.position.x=40;mesh.position.x=-12;
+ const v=new WorldRenderedVisibility();v.prepareFresh([root]);assert.equal(v.score(pose,['anchor'],subject),0);assert.equal(manual.matrixWorld.elements[12],12);
+ manual.matrixWorld.makeTranslation(24,0,0);
+ assert.equal(v.evaluate(()=>v.score(pose,['anchor'],subject)),1);assert.equal(manual.matrixWorld.elements[12],24);assert.equal(mesh.matrixWorld.elements[12],12);
+ v.reset();geometry.dispose();material.dispose();
+});
+
+test('visible mesh collection prunes hidden branches, checks root ancestors and deduplicates overlapping roots',()=>{
+ const {root,geometry,material,mesh}=fixture(),parent=new THREE.Group(),hidden=new THREE.Group(),transparent=new THREE.Mesh(geometry,material);parent.add(root);root.add(hidden,transparent);hidden.visible=false;transparent.userData.cameraTransparent=true;
+ const hiddenMesh=new THREE.Mesh(geometry,material);hidden.add(hiddenMesh);const v=new WorldRenderedVisibility(),objects=()=>[...(v as unknown as {objects:THREE.Object3D[]}).objects];
+ v.prepareFresh([root,mesh]);assert.deepEqual(objects(),[mesh]);assert.equal(v.score(pose,['anchor'],subject),stock([root]));
+ parent.visible=false;v.prepareFresh([root,mesh]);assert.deepEqual(objects(),[]);assert.equal(v.score(pose,['anchor'],subject),stock([root]));
+ parent.visible=true;hidden.visible=true;v.prepareFresh([root,hidden]);assert.deepEqual(objects(),[mesh,hiddenMesh]);assert.equal(v.score(pose,['anchor'],subject),stock([root]));
+ v.reset();geometry.dispose();material.dispose();
+});
