@@ -7,7 +7,8 @@ import {lockPose} from './gen-mesh/vocab-look.ts';
 // Inactive (and invisible) on worlds that have no entity layer.
 import { noteModeration, noteSnapshotVersion } from './moderation-hidden.ts';
 import { godFeature, isFlagDef } from './god-ui/features.ts';
-import { loadSnapshot, parsePieces } from './snapshot-wire.ts';
+import { loadSnapshot } from './snapshot-wire.ts';
+import { snapshotModel } from './snapshot-model.ts';
 import { SnapshotDecoder, type SnapshotDelta } from './snapshot-delta.ts';
 import * as THREE from 'three';
 import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@sim/ground';
@@ -488,11 +489,12 @@ export class WorldEntityLayer {
     // lane L3h: the first start takes the snapshot GET index.html sent at page entry (snapshot-prefetch.ts), one request
     // lane W1/O2: the page's edge-cacheable snapshot URL when the server named one (its `now` is then as old as the copy)
     // lane W3: in its wire form (snapshot-wire.ts: defs and ground as cached content-addressed parts)
-    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true, (pieces) => { const snap = parsePieces(pieces); this.decoder.baselineFrom(pieces); return snap; }); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
+    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true, (pieces) => this.decoder.initial(pieces, signal)); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
       ageNow(snap, r); }} catch { onSnapshot?.(); return; }
     if (signal.aborted || snap.contract !== 'world/1') return;
     noteUploadSizes(snap.assetBytes);   // CDN4
-    this.model = WorldModel.fromSnapshot({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, undefined, undefined, { lazyIndex: true });
+    // Keep the old model visible until all new records exist; aborting a sliced load cannot publish half a world.
+    try { this.model = await snapshotModel({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, signal, nextTask); } catch (error) { if (signal.aborted) return; throw error; }
     // PERF-STREAM: by distance from here on (a frozen context capture is never streamed: it draws the whole world once)
     this.streaming = this.immutable ? null : this.streamOption(this.model.entities.size);
     this.ring = this.streaming ? new StreamRing(this.streaming) : null;
@@ -1247,6 +1249,7 @@ export class WorldEntityLayer {
   };
 
   dispose() {
+    this.decoder.dispose();
     this.sites.dispose();
     this.instancer.dispose(); this.scatterPools.dispose(); this.motionInstancer.dispose();
     this.cover.dispose();
