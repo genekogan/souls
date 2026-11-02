@@ -2,7 +2,7 @@
 // Lane phones (V4): how a world behaves on a phone, in real GPU Chrome with mobile emulation.
 // Emulates a 390×844 phone at dpr 3 (touch, mobile viewport, Android Chrome UA) with the CPU throttled 4×, opens each
 // world URL and records: time to the first drawn frame, to the arrival card closing, to settled (draw calls and triangles
-// unchanged for 3 s); then a still window and a touch-orbit window (real touch events) with rAF frame times (p50/p95);
+// of each frame mode unchanged for 3 s; frame-cadence.mjs); then a still window and a touch-orbit window (real touch events) with rAF frame times (p50/p95);
 // draw calls and triangles per frame; an estimate of GPU memory (bytes uploaded to textures, buffers and renderbuffers,
 // plus the canvas' own buffers); JS heap; and a readability audit of the text drawn over the 3D view (name tags, speech,
 // buttons: font size in CSS px, the smallest touch target). It instruments WebGL itself, so it measures any build
@@ -14,6 +14,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 import { resolve } from 'node:path';
 import { findPlaywright } from '../god-skill/lib/look.mjs';
+import { frameModes, settleKey } from './frame-cadence.mjs';
 const { chromeLease } = await import(process.env.CHROME_LEASE_MODULE ?? '../god-skill/lib/chrome-lease.mjs');
 
 const args = process.argv.slice(2);
@@ -135,11 +136,11 @@ try {
     let last = '', stableSince = Date.now(), settledAt = null, revealedAt = null;
     for (;;) {
       await page.waitForTimeout(250);
-      const s = await page.evaluate(() => ({ d: window.__phone.lastDraws, t: Math.round(window.__phone.lastTris / 1000), rev: document.querySelector('.world-canvas-host')?.getAttribute('data-initial-revealed') === 'true' && !document.querySelector('.viewer-arrival:not([data-done="true"])') })).catch(() => null);
+      const s = await page.evaluate(() => ({ frames: window.__phone.perFrame.splice(0), rev: document.querySelector('.world-canvas-host')?.getAttribute('data-initial-revealed') === 'true' && !document.querySelector('.viewer-arrival:not([data-done="true"])') })).catch(() => null);
       if (!s) continue;
       if (s.rev && revealedAt === null) revealedAt = Date.now() - tNav;
-      const key = `${s.d}:${s.t}`; if (key !== last) { last = key; stableSince = Date.now(); }
-      if (s.rev && s.d > 0 && Date.now() - stableSince > 3000) { settledAt = stableSince - tNav; break; }
+      const key = settleKey(s.frames); if (key !== last) { last = key; stableSince = Date.now(); }
+      if (s.rev && key !== null && Date.now() - stableSince > 3000) { settledAt = stableSince - tNav; break; }
       if (Date.now() - tNav > settleMax * 1000) break;
     }
     const firstDraw = await page.evaluate(() => window.__phone.firstDraw);
@@ -147,9 +148,23 @@ try {
       await page.evaluate(() => { const P = window.__phone; P.frames = []; P.perFrame = []; P.gpu = []; P.recording = true; });
       const t0 = Date.now(); await during(); const ms = Date.now() - t0;
       const d = await page.evaluate(() => { const P = window.__phone; P.recording = false; return { frames: P.frames, perFrame: P.perFrame, gpu: P.gpu }; });
-      return { ...summarize(d.frames, ms), drawsP50: q(d.perFrame.map((x) => x[0]), 0.5), drawsMax: d.perFrame.length ? Math.max(...d.perFrame.map((x) => x[0])) : null, trisP50k: q(d.perFrame.map((x) => x[1] / 1000), 0.5), gpuP50: q(d.gpu, 0.5), gpuP95: q(d.gpu, 0.95), gpuN: d.gpu.length };
+      // drawsP50/trisP50k: the base frames' median (a p50 over alternating base and shadow frames was either by parity)
+      const m = frameModes(d.perFrame);
+      return { ...summarize(d.frames, ms), drawsP50: m.base?.draws ?? null, trisP50k: m.base ? +(m.base.tris / 1000).toFixed(1) : null, drawsPeak: m.peak?.draws ?? null, trisPeakK: m.peak ? +(m.peak.tris / 1000).toFixed(1) : null, peakShare: m.peakShare, drawsMean: m.meanDraws, drawsMax: d.perFrame.length ? Math.max(...d.perFrame.map((x) => x[0])) : null, gpuP50: q(d.gpu, 0.5), gpuP95: q(d.gpu, 0.95), gpuN: d.gpu.length };
     };
     const still = await win(() => page.waitForTimeout(seconds * 1000));
+    // Who draws two frames (one of each mode at a 2-frame cadence), by pass (shadow camera or the view) and owner (the scene path's first three names), with the
+    // entity world's own counters: tells a batch, pool or freeze still forming from the periodic shadow pass.
+    const drawOwners = await page.evaluate(async () => {
+      const w = window.__simEntity; if (!w?.renderer) return null;
+      const key = (o) => { const path = []; for (let p = o; p && p !== w.scene; p = p.parent) path.unshift(p.name || p.userData?.kind || p.type); return path.slice(0, 3).join(' / '); };
+      const r = w.renderer, orig = r.renderBufferDirect, frame = {}; let on = false;
+      r.renderBufferDirect = function (camera, scene, geometry, material, object) { if (on) { const k = (camera.isOrthographicCamera ? 'shadow ' : camera.isPerspectiveCamera ? 'main ' : 'other ') + key(object), n = geometry.index ? geometry.index.count : geometry.attributes.position?.count ?? 0; const e = frame[k] ??= [0, 0]; e[0]++; e[1] += Math.round(n / 3 * (object.isInstancedMesh ? object.count : 1)); } return orig.apply(this, arguments); };
+      try { for (let n = 0; n < 3; n++) await new Promise((res) => requestAnimationFrame(() => { on = n < 2; res(); })); } finally { r.renderBufferDirect = orig; }
+      const sorted = Object.entries(frame).sort((a, b) => b[1][0] - a[1][0]), passes = {};
+      for (const [k, [d, t]] of sorted) { const e = passes[k.split(' ')[0]] ??= [0, 0]; e[0] += d; e[1] += t; }
+      return { passes, owners: Object.fromEntries(sorted.slice(0, 40)), stats: w.stats?.() ?? null };
+    }).catch((e) => String(e));
     const mem = await page.evaluate(() => { const P = window.__phone; const c = document.querySelector('canvas[aria-label="Live 3D view of the world"]'); const fb = c ? c.width * c.height * (4 + 4) * 4 + c.width * c.height * 4 * 2 : 0; return { texMB: +(P.tex / 1048576).toFixed(1), textures: P.texCount, bufMB: +(P.buf / 1048576).toFixed(1), rbMB: +(P.rb / 1048576).toFixed(1), canvasMB: +(fb / 1048576).toFixed(1), totalMB: +((P.tex + P.buf + P.rb + fb) / 1048576).toFixed(1), heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null, quality: window.__simQuality?.tier ?? null, detail: window.__simQuality?.detail?.() ?? null, lod: window.__simQuality?.lod?.() ?? null, standIns: window.__simQuality?.standIns?.() ?? null, gpuState: P.gpuState ?? null, gpuErr: P.gpuErr ?? null, gpuGl: !!P.gl }; });
     const audit = await page.evaluate(AUDIT);
     await page.screenshot({ path: resolve(out, `${tag}-still.png`) });
@@ -193,9 +208,9 @@ try {
         await page.screenshot({ path: resolve(out, `${tag}-speech.png`) });
       } else speech = { unverified: 'no resident' };
     }
-    const r = { url, label, size: `${W}x${H}`, dpr, cpu, load1m: load0, timing: { firstDrawMs: firstDraw === null ? null : Math.round(firstDraw + navOffset), revealedMs: revealedAt, settledMs: settledAt }, still, orbit, mem, audit, speech, camMoved: camMoved !== 'null' ? 'tracked' : 'n/a', errors };
+    const r = { url, label, size: `${W}x${H}`, dpr, cpu, load1m: load0, timing: { firstDrawMs: firstDraw === null ? null : Math.round(firstDraw + navOffset), revealedMs: revealedAt, settledMs: settledAt }, still, drawOwners, orbit, mem, audit, speech, camMoved: camMoved !== 'null' ? 'tracked' : 'n/a', errors };
     results.push(r);
-    console.log(`${tag} load ${load0} | first ${r.timing.firstDrawMs} revealed ${revealedAt} settled ${settledAt} ms | still ${still.fps}fps p50 ${still.p50} p95 ${still.p95} >50:${still.over50} draws ${still.drawsP50} tris ${still.trisP50k}k gpu ${still.gpuP50}/${still.gpuP95}ms | orbit ${orbit.fps}fps p50 ${orbit.p50} p95 ${orbit.p95} draws ${orbit.drawsP50} gpu ${orbit.gpuP50}/${orbit.gpuP95}ms | gpu ~${mem.totalMB}MB (tex ${mem.texMB} ×${mem.textures}, buf ${mem.bufMB}, rb ${mem.rbMB}, canvas ${mem.canvasMB}) heap ${mem.heapMB}MB quality ${mem.quality} ${mem.detail ? `culled ${mem.detail.culled}/${mem.detail.candidates} noshadow ${mem.detail.shadowSkipped} ${mem.detail.cpuMs.toFixed(2)}ms` : ""}${mem.lod ? ` lod ${mem.lod.coarser}/${mem.lod.ready}/${mem.lod.meshes} tris ${Math.round(mem.lod.triangles / 1000)}k of ${Math.round(mem.lod.fullTriangles / 1000)}k ${mem.lod.cpuMs.toFixed(2)}ms build ${Math.round(mem.lod.buildMs)}ms` : ''}${mem.standIns ? ` cards ${mem.standIns.cards}/${mem.standIns.cards + mem.standIns.near} saved ${Math.round(mem.standIns.trianglesSaved / 1000)}k ${mem.standIns.cpuMs.toFixed(2)}ms` : ''} | text<12px ${audit.smallText.length} tags ${audit.nameTags}@${audit.nameTagFont}px targets<32 ${audit.smallTargetCount}${errors.length ? ' errors ' + errors.length : ''}`);
+    console.log(`${tag} load ${load0} | first ${r.timing.firstDrawMs} revealed ${revealedAt} settled ${settledAt} ms | still ${still.fps}fps p50 ${still.p50} p95 ${still.p95} >50:${still.over50} draws ${still.drawsP50} tris ${still.trisP50k}k${still.drawsPeak ? ` (${still.peakShare} of frames ${still.drawsPeak} / ${still.trisPeakK}k)` : ''} gpu ${still.gpuP50}/${still.gpuP95}ms | orbit ${orbit.fps}fps p50 ${orbit.p50} p95 ${orbit.p95} draws ${orbit.drawsP50} gpu ${orbit.gpuP50}/${orbit.gpuP95}ms | gpu ~${mem.totalMB}MB (tex ${mem.texMB} ×${mem.textures}, buf ${mem.bufMB}, rb ${mem.rbMB}, canvas ${mem.canvasMB}) heap ${mem.heapMB}MB quality ${mem.quality} ${mem.detail ? `culled ${mem.detail.culled}/${mem.detail.candidates} noshadow ${mem.detail.shadowSkipped} ${mem.detail.cpuMs.toFixed(2)}ms` : ""}${mem.lod ? ` lod ${mem.lod.coarser}/${mem.lod.ready}/${mem.lod.meshes} tris ${Math.round(mem.lod.triangles / 1000)}k of ${Math.round(mem.lod.fullTriangles / 1000)}k ${mem.lod.cpuMs.toFixed(2)}ms build ${Math.round(mem.lod.buildMs)}ms` : ''}${mem.standIns ? ` cards ${mem.standIns.cards}/${mem.standIns.cards + mem.standIns.near} saved ${Math.round(mem.standIns.trianglesSaved / 1000)}k ${mem.standIns.cpuMs.toFixed(2)}ms` : ''} | text<12px ${audit.smallText.length} tags ${audit.nameTags}@${audit.nameTagFont}px targets<32 ${audit.smallTargetCount}${errors.length ? ' errors ' + errors.length : ''}`);
     await ctx.close();
   }
 } finally { await browser.close(); release(); }
