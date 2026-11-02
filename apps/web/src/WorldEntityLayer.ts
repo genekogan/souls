@@ -1062,7 +1062,14 @@ export class WorldEntityLayer {
   interiorFrom: THREE.Vector3 | null = null;
   /** P1 phones: a settled still thing's subtree leaves scene.updateMatrixWorld (Eden 2026: ~8,700 objects re-multiplied
    *  every frame, ~13% of a phone frame). Anything that moves it first takes it out of `settled`. */
-  freezeSettled = false;
+  private freezeStill = false;
+  get freezeSettled() { return this.freezeStill; }
+  set freezeSettled(value: boolean) {
+    if (value === this.freezeStill) return;
+    this.freezeStill = value;
+    // The desktop early renderer settles before LiveWorld enables freezing; those things need their still pass again.
+    for (const id of this.drawn.keys()) this.live.add(id);
+  }
   /** PERF-BATCH: changes whenever a thing freezes, thaws, is shown or hidden, replaced or removed: what the static batcher
    *  (rendering/StaticBatchOwner.ts) trusts between validations, and what tells LiveWorld to re-prepare its batches. */
   staticRevision = 0;

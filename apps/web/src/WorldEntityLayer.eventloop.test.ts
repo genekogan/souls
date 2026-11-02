@@ -59,6 +59,21 @@ test('settled still things leave the per-frame set after one pass; a write to `s
   assert.ok(things[3].d().frozen?.includes(glb)); assert.equal(layer.loopStats.live, 0);
 });
 
+test('enabling freezing after the early renderer settled things wakes them for their freeze and batch pass', async () => {
+  const { layer, put, frame } = await layerFor();
+  layer.freezeSettled = false;
+  const things = Array.from({ length: 20 }, (_, i) => put(`early-${i}`, [i * 3, 0, 0]));
+  frame(); frame();
+  assert.equal(layer.loopStats.live, 0); assert.ok(things.every(t => !t.d().frozen));
+  layer.freezeSettled = true;
+  assert.equal(layer.loopStats.live, 20);
+  frame();
+  assert.equal(layer.loopStats.live, 0); assert.ok(things.every(t => t.d().frozen));
+  assert.equal(layer.staticBatchRoots().length, 20);
+  layer.freezeSettled = true;
+  assert.equal(layer.loopStats.live, 0, 'the same setting on subsequent frames does not wake anything');
+});
+
 test('a host\'s cut change re-reads only the things of that host; the other host\'s things are not touched', async () => {
   const { layer, inner, put, frame } = await layerFor();
   const reads: string[] = []; const orig = inner.refreshVisibility; inner.refreshVisibility = function (id, d, now) { reads.push(id); return orig.call(this, id, d, now); };
