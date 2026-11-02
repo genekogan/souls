@@ -74,6 +74,42 @@ test('a root whose drawables are all batched hides whole during the draw; one wi
  f.b.visible=false;owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(f.a.visible,true);assert.equal(owner.inspection().fallbackLastRender,1);});f.b.visible=true;
  await owner.prepare([f.root,lit],{generation:2});owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(f.a.visible,false);});owner.dispose();
 });
+test('whole-root coverage is revoked when a new visible sibling appears at the next revision',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,hideWholeRoots:true});
+ owner.withRender(()=>assert.equal(f.root.visible,false),1);const batch=owner.group.children[0];
+ const branch=new THREE.Group(),added=f.a.clone();branch.add(added);f.root.add(branch);
+ owner.withRender(()=>{
+  const submitted=new Set<THREE.Object3D>();f.scene.traverseVisible(o=>submitted.add(o));
+  assert.ok(submitted.has(added),'the newly added drawable must remain in the visible traversal');
+  assert.ok(submitted.has(batch),'the unchanged old batch still draws');assert.ok(!submitted.has(f.a)&&!submitted.has(f.b));
+  assert.equal(f.root.visible,true);assert.equal(owner.inspection().wholeRootsHidden,0);assert.equal(owner.inspection().usedLastRender,1);
+ },2);
+ assert.equal(added.visible,true);assert.equal(f.a.visible,true);assert.equal(f.root.visible,true);
+ branch.removeFromParent();await owner.prepare([f.root],{generation:2,hideWholeRoots:true,incremental:true});
+ owner.withRender(()=>assert.equal(f.root.visible,false),3);owner.dispose();
+});
+test('whole-root coverage is revoked when an unrepresented hidden branch becomes visible',async()=>{
+ for(const light of [false,true]){
+  const f=fixture(),branch=new THREE.Group(),added=light?new THREE.PointLight():f.a.clone();branch.add(added);branch.visible=false;f.root.add(branch);
+  const owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,hideWholeRoots:true});owner.withRender(()=>assert.equal(f.root.visible,false),1);
+  branch.visible=true;owner.withRender(()=>{
+   const submitted=new Set<THREE.Object3D>();f.scene.traverseVisible(o=>submitted.add(o));assert.ok(submitted.has(added),'the shown mesh/light must remain visible');
+   assert.equal(f.root.visible,true);assert.equal(f.a.visible,false);assert.equal(f.b.visible,false);assert.equal(owner.inspection().fallbackLastRender,0);
+  },2);
+  assert.equal(branch.visible,true);assert.equal(added.visible,true);assert.equal(f.a.visible,true);owner.dispose();
+ }
+});
+test('whole-root coverage is revoked for the live set while replacement preparation is pending and after abort',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,hideWholeRoots:true});owner.withRender(()=>assert.equal(f.root.visible,false),1);
+ const live=[...owner.group.children],abort=new AbortController(),pending=owner.prepare([f.root],{generation:2,hideWholeRoots:true,incremental:true,sliceMs:0,signal:abort.signal});
+ const added=f.a.clone();f.root.add(added);assert.equal(owner.inspection().generation,1);
+ try{
+  owner.withRender(()=>{const submitted=new Set<THREE.Object3D>();f.scene.traverseVisible(o=>submitted.add(o));assert.ok(submitted.has(added),'pending preparation must not hide the new original');assert.ok(submitted.has(live[0]));assert.equal(f.a.visible,false);},2);
+ }finally{abort.abort();await assert.rejects(pending,{name:'AbortError'});}
+ assert.deepEqual(owner.group.children,live);assert.equal(owner.inspection().generation,1);
+ assert.throws(()=>owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(added.visible,true);assert.equal(f.a.visible,false);throw Error('draw failure');},3),/draw failure/);
+ assert.equal(f.root.visible,true);assert.equal(added.visible,true);assert.equal(f.a.visible,true);assert.equal(owner.group.visible,false);owner.dispose();
+});
 test('a source hook buckets and validates a mesh by the material it names while the mesh draws per-object variants of it',async()=>{
  const f=fixture(),base=new THREE.MeshStandardMaterial({emissive:0xffaa00,emissiveIntensity:.5}),v1=base.clone(),v2=base.clone();v2.emissiveIntensity=.7;
  f.a.material=v1;f.b.material=v2;f.a.userData.glowBase=base;f.b.userData.glowBase=base;
