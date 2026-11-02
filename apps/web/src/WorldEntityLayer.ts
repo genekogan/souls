@@ -1,5 +1,6 @@
 import {handActuatorFrame,knockContacts,opPoint,HAND_REACH_SECONDS,LOCK_TURN_SECONDS,type HandActuatorMotion} from '../../../mars/viewer/engine/social/hand-actuator.ts';
 import {lockPose} from './gen-mesh/vocab-look.ts';
+import {frozenMatrixWorld} from './rendering/FrozenMatrixWorld.ts';
 // The entity world's picture (spec <eden4>/28 §8): terrain baked from the
 // same ground recipe the server uses, water, a horizon ring, and one mesh per
 // placed entity drawn from its def. Diffs arrive over the hub as
@@ -64,7 +65,7 @@ const easeOut = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 /** P1 phones: motion that only changes a light's glow (lamps: ~790 on Eden 2026); no part of the thing moves. */
 const glowOnly = (def: StoredDef) => !!(def.components.light || def.components.lights) && !hasMotion({ ...def, components: { ...def.components, light: undefined, lights: undefined } } as StoredDef);
 /** P1 phones: a frozen thing's subtree is skipped by scene.updateMatrixWorld (its matrices are current; see freeze). */
-function frozenMatrixWorld(this: THREE.Object3D) { /* nothing: thawed before anything in it changes */ }
+// Shared identity lets bounded static preparation distinguish this known no-op from arbitrary matrix hooks.
 const _box = new THREE.Box3(), _projScreen = new THREE.Matrix4(), _sphere = new THREE.Sphere();
 
 type Figure = { holder: THREE.Object3D; wrists: [THREE.Object3D, THREE.Object3D]; knuckles: [THREE.Object3D | null, THREE.Object3D | null] } | { missingAt: number };
@@ -1272,9 +1273,20 @@ export class WorldEntityLayer {
   staticRevision = 0;
   /** PERF-BATCH: the frozen, still, non-instanced things the static batcher may merge: whole objects under `thingsGroup`
    *  that nothing animates (a glowing lamp's emissive changes; a thing kept in a container shows and hides with its lid). */
-  staticBatchRoots(): THREE.Object3D[] {
+  staticBatchRootScan = { records: 0, truncated: false };
+  staticBatchRoots(maxRecords = Infinity): THREE.Object3D[] {
+    if (maxRecords !== Infinity && (!Number.isSafeInteger(maxRecords) || maxRecords < 0)) throw Error('static-batches.invalid-record-limit');
     const roots: THREE.Object3D[] = [];
-    for (const [id, d] of this.drawn) if (d.frozen && !d.inst && (!d.motion || d.motion.glowOnly) && !d.removing && !d.cut && d.obj.visible && d.obj.parent === this.thingsGroup && !this.keptIn.has(id) && !this.held.has(id)) roots.push(d.obj);
+    let records = 0;
+    const iterator = this.drawn.entries();
+    while (records < maxRecords) {
+      const next = iterator.next();
+      if (next.done) break;
+      const [id, d] = next.value;
+      records++;
+      if (d.frozen && !d.inst && (!d.motion || d.motion.glowOnly) && !d.removing && !d.cut && d.obj.visible && d.obj.parent === this.thingsGroup && !this.keptIn.has(id) && !this.held.has(id)) roots.push(d.obj);
+    }
+    this.staticBatchRootScan = { records, truncated: records < this.drawn.size };
     return roots;
   }
   /** PERF-BAKED-SHADOWS: what casts into the sun's cached shadow (rendering/SunShadowCache.ts): every frozen thing, the

@@ -245,11 +245,14 @@ test('plain signatures captured from an earlier singleton cannot cross a yield a
 });
 test('an unused slice budget does not yield to queued material mutations between source roots',async()=>{
  const f=fixture(),singleton=new THREE.Group(),only=f.a.clone(),owner=new StaticBatchOwner(f.scene);singleton.add(only);f.scene.add(singleton);f.a.position.x=100;f.b.position.x=103;
- let changed=false;const firstTraverse=singleton.traverse,lastTraverse=f.root.traverse;
- singleton.traverse=function(visitor){firstTraverse.call(this,visitor);queueMicrotask(()=>{changed=true;f.material.onBeforeCompile=()=>{};f.material.userData.batchSafePatch=true;f.material.needsUpdate=true;});};
- f.root.traverse=function(visitor){assert.equal(changed,false,'a queued material mutation cannot interleave while the slice budget is unused');lastTraverse.call(this,visitor);};
+ let changed=false;
+ const roots=new Proxy([singleton,f.root],{get(target,key,receiver){
+  if(key==='0')queueMicrotask(()=>{changed=true;f.material.onBeforeCompile=()=>{};f.material.userData.batchSafePatch=true;f.material.needsUpdate=true;});
+  if(key==='1')assert.equal(changed,false,'a queued material mutation cannot interleave while the slice budget is unused');
+  return Reflect.get(target,key,receiver);
+ }});
  try{
-  const pending=owner.prepare([singleton,f.root],{generation:1,sliceMs:1e9,sharePlainMaterials:true});
+  const pending=owner.prepare(roots,{generation:1,sliceMs:1e9,sharePlainMaterials:true});
   assert.equal(changed,false);assert.equal(owner.inspection().generation,1,'preparation commits without an unrequested asynchronous pause');await pending;assert.equal(changed,true);
   owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(f.b.visible,true);assert.equal(only.visible,true);});assert.equal(owner.inspection().fallbackLastRender,1,'the later material mutation still invalidates its copied material');
  }finally{owner.dispose();}
