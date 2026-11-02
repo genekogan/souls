@@ -101,13 +101,25 @@ export function waterAt(model: WorldModel, x: number, z: number): number | null 
   const g = model.ground(); let level: number | null = null;
   for (const w of g.waters) {
     if (w.area && pointInPoly(x, z, w.area)) level = w.level;
-    else if (w.path && w.w && distToPath(x, z, w.path) < w.w / 2) level = w.level;
+    else if (w.path && w.w && distToPath(x, z, w.path, w.w / 2) < w.w / 2) level = w.level;
   }
   return level ?? (g.seaLevel !== undefined ? g.seaLevel : null);
 }
-function distToPath(x: number, z: number, path: [number, number][]) {
+/** A finite `within` is a membership query: segments provably outside it need no distance. Read the current points
+ * each time; ground/path arrays can be edited in place. Mooring callers omit the bound and keep exact distances. */
+function distToPath(x: number, z: number, path: [number, number][], within = Infinity) {
   let best = Infinity;
-  for (let i = 1; i < path.length; i++) { const [ax, az] = path[i - 1], [bx, bz] = path[i]; const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)); best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t)); }
+  // In this numeric domain the original projection's subtractions/products are finite. 1/32 m exceeds its rounding
+  // error even at the largest admitted coordinate (2^40 m); it only widens the rejection box, never the water itself.
+  const limit = 2 ** 40, bounded = within > 0 && within <= limit && x >= -limit && x <= limit && z >= -limit && z <= limit, pad = within + 1 / 32;
+  for (let i = 1; i < path.length; i++) {
+    const [ax, az] = path[i - 1], [bx, bz] = path[i];
+    if (bounded && ax >= -limit && ax <= limit && az >= -limit && az <= limit && bx >= -limit && bx <= limit && bz >= -limit && bz <= limit &&
+      (x < Math.min(ax, bx) - pad || x > Math.max(ax, bx) + pad || z < Math.min(az, bz) - pad || z > Math.max(az, bz) + pad)) continue;
+    const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)); best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t));
+    // Do not return early on a hit: a later invalid segment made the old minimum NaN and must still do so.
+  }
   return best;
 }
 /** R4-LIVE: how dark the viewer's world clock makes it (0 day … 1 night), set every frame by the live view; null before
