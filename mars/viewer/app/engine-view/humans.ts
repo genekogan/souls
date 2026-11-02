@@ -536,7 +536,10 @@ export class HumanViews {
   private make(id: string, s: Snap, activity: string,publicSoulKey?:string,bodyModel?:string): View {
     const rig = createRig(bodyModel?this.bodyTemplates.get(bodyModel)!:templateFor(id, this.templates)!);
     rig.holder.name = id;
-    rig.holder.traverse(o=>{o.userData.entity=id;});
+    rig.holder.traverse(o=>{
+      o.userData.entity=id;const m=o as THREE.SkinnedMesh,p=THREE.SkinnedMesh.prototype;
+      if(m.isSkinnedMesh&&m.computeBoundingSphere===p.computeBoundingSphere&&m.getVertexPosition===p.getVertexPosition&&m.applyBoneTransform===p.applyBoneTransform)m.computeBoundingSphere=computeBodySphere;
+    });
     this.group.add(rig.holder);
     const arms = armsOf(rig), legs = legsOf(rig), spine = spineOf(rig);
     const touched = [...arms.flatMap((a) => [a.upper, a.lower, a.shoulder, a.hand, ...a.fingers, ...a.thumb]), ...legs.flatMap((l) => [l.upper, l.lower, l.foot]), spine?.body, spine?.hips, spine?.abdomen, spine?.torso, spine?.head, rig.model.getObjectByName('Root')];
@@ -1788,7 +1791,8 @@ function measure(v: View) {
   const shMid = sh.reduce((s, q) => s.add(q), V()).multiplyScalar(1 / sh.length);
   const joints = [pivot, w(spine.abdomen), w(spine.torso), shMid];
   const hipMid = hips[0].clone().add(hips[1]).multiplyScalar(0.5);
-  const front = frontDepths(rig, hipMid.x, shMid.x, shMid.y, feet[legs[0].side > 0 ? 0 : 1], legs.flatMap((_, i) => [[hips[i], knees[i]], [knees[i], feet[i]]] as [THREE.Vector3, THREE.Vector3][]));
+  const shape = standingShape(rig,()=>frontDepths(rig, hipMid.x, shMid.x, shMid.y, feet[legs[0].side > 0 ? 0 : 1], legs.flatMap((_, i) => [[hips[i], knees[i]], [knees[i], feet[i]]] as [THREE.Vector3, THREE.Vector3][])));
+  const front=shape.front;
   v.dims = {
     hipH,
     pivotH: pivot.y,
@@ -1809,7 +1813,7 @@ function measure(v: View) {
   v.ankle = legs.map((l) => ankleLocal(l));
   v.footRest = legs.map((l) => l.foot.getWorldQuaternion(new THREE.Quaternion()));
   v.footLat = feet.map((f) => f.z);
-  v.surf = surfaceRefs(rig);
+  v.surf = shape.surf;
   v.stairShoes=stairShoeRefs(rig,v.legs);
   v.stairContact=measureStairRigContact(rig,v.legs,v.stairShoes,legLen);
   h.position.copy(p0);
@@ -1836,19 +1840,53 @@ function skinnedPoints(rig: Rig, stride: number, out: (p: THREE.Vector3, part: B
     const m = o as THREE.SkinnedMesh;
     if (!m.isSkinnedMesh || !m.geometry.attributes.skinIndex) return;
     const pos = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex as THREE.BufferAttribute, sw = m.geometry.attributes.skinWeight as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i += stride) {
-      m.getVertexPosition(i, p).applyMatrix4(m.matrixWorld);
+    const indices=Array.from({length:Math.ceil(pos.count/stride)},(_,i)=>i*stride);let at=0;
+    eachSkinnedWorld([{mesh:m,idx:indices}],p,p=>{
+      const i=indices[at++];
       idx.fromBufferAttribute(si, i);
       wt.fromBufferAttribute(sw, i);
       let k = 0;
       for (let j = 1; j < 4; j++) if (wt.getComponent(j) > wt.getComponent(k)) k = j;
       out(p, partOf(m.skeleton.bones[idx.getComponent(k)]?.name ?? ''));
-    }
+    });
   });
 }
 
 /** Skinned vertices of a mesh (indices). */
 type VertexRefs = { mesh: THREE.SkinnedMesh; idx: number[] }[];
+
+type StoredRefs={mesh:number;idx:number[]}[];
+type ShapeStamp={geometry:THREE.BufferGeometry;attributes:(THREE.BufferAttribute|THREE.InterleavedBufferAttribute)[];versions:number[]};
+type StandingShape={stamps:ShapeStamp[];front:ReturnType<typeof frontDepths>;body:StoredRefs;foot:Map<number,StoredRefs>;hand:Map<number,StoredRefs>};
+const standingShapes=new WeakMap<Template,StandingShape>();
+/** The same immutable template in Idle0 has the same surface measurements for every actor. Cache numbers and vertex
+ * indices only: mesh references are rebound to this actor, never retained from the actor that first measured them.
+ * Attribute replacement/version changes invalidate the cache (kit shape edits and geometry updates). */
+function standingShape(rig:Rig,measureFront:()=>ReturnType<typeof frontDepths>){
+ const meshes:THREE.SkinnedMesh[]=[];
+ rig.model.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)meshes.push(o as THREE.SkinnedMesh);});
+ const attributes=(m:THREE.SkinnedMesh)=>[...Object.values(m.geometry.attributes),...Object.values(m.geometry.morphAttributes).flat()];
+ const version=(a:THREE.BufferAttribute|THREE.InterleavedBufferAttribute)=>'version'in a?a.version:a.data.version;
+ const old=standingShapes.get(rig.template);
+ const matches=old&&old.stamps.length===meshes.length&&old.stamps.every((s,i)=>{
+  const a=attributes(meshes[i]);
+  return s.geometry===meshes[i].geometry&&s.attributes.length===a.length&&a.every((v,k)=>v===s.attributes[k]&&version(v)===s.versions[k]);
+ });
+ if(old&&matches){
+  const bind=(refs:StoredRefs):VertexRefs=>refs.map(r=>({mesh:meshes[r.mesh],idx:r.idx.slice()}));
+  return{
+   front:{...old.front,foot:old.front.foot.map(p=>[...p] as [number,number])},
+   surf:{body:bind(old.body),foot:new Map([...old.foot].map(([side,r])=>[side,bind(r)])),hand:new Map([...old.hand].map(([side,r])=>[side,bind(r)]))},
+  };
+ }
+ const front=measureFront(),surf=surfaceRefs(rig),save=(refs:VertexRefs):StoredRefs=>refs.map(r=>({mesh:meshes.indexOf(r.mesh),idx:r.idx.slice()}));
+ standingShapes.set(rig.template,{
+  stamps:meshes.map(m=>{const a=attributes(m);return{geometry:m.geometry,attributes:a,versions:a.map(version)};}),
+  front:{...front,foot:front.foot.map(p=>[...p] as [number,number])},
+  body:save(surf.body),foot:new Map([...surf.foot].map(([side,r])=>[side,save(r)])),hand:new Map([...surf.hand].map(([side,r])=>[side,save(r)])),
+ });
+ return{front,surf};
+}
 
 /** Foot and hand vertices of a rig, per side (+1 = the person's left: z < 0 with the holder at the origin facing +x). */
 function surfaceRefs(rig: Rig) {
@@ -1859,6 +1897,7 @@ function surfaceRefs(rig: Rig) {
     const m = o as THREE.SkinnedMesh;
     if (!m.isSkinnedMesh || !m.geometry.attributes.skinIndex) return;
     const pos = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex as THREE.BufferAttribute, sw = m.geometry.attributes.skinWeight as THREE.BufferAttribute;
+    const contacts:{i:number;part:'foot'|'hand'}[]=[];
     for (let i = 0; i < pos.count; i++) {
       idx.fromBufferAttribute(si, i);
       wt.fromBufferAttribute(sw, i);
@@ -1868,14 +1907,17 @@ function surfaceRefs(rig: Rig) {
       // a sample of the torso, hips and head: what a body lying on the ground rests on
       if ((part === 'torso' || part === 'head') && i % 3 === 0) { let r = out.body.find((q) => q.mesh === m); if (!r) out.body.push((r = { mesh: m, idx: [] })); r.idx.push(i); }
       if (part !== 'foot' && part !== 'hand') continue;
-      m.getVertexPosition(i, p).applyMatrix4(m.matrixWorld);
+      contacts.push({i,part});
+    }
+    let at=0;eachSkinnedWorld([{mesh:m,idx:contacts.map(c=>c.i)}],p,p=>{
+      const {i,part}=contacts[at++];
       const side = p.z < 0 ? 1 : -1, map = out[part];
       const refs = map.get(side) ?? [];
       let r = refs.find((q) => q.mesh === m);
       if (!r) refs.push((r = { mesh: m, idx: [] }));
       r.idx.push(i);
       map.set(side, refs);
-    }
+    });
   });
   return out;
 }
@@ -1911,9 +1953,12 @@ const _vp = new THREE.Vector3();
 const _skinM: THREE.Matrix4[] = [], _skinB = new THREE.Vector4(), _skinT = new THREE.Vector4(), _skinI = new THREE.Vector4(), _skinW = new THREE.Vector4();
 let _skinMark = new Uint32Array(0), _skinGen = 0;
 export function eachSkinnedWorld(refs: VertexRefs | undefined, out: THREE.Vector3, each: (p: THREE.Vector3) => void) {
+  eachSkinned(refs,out,each,true);
+}
+function eachSkinned(refs: VertexRefs | undefined, out: THREE.Vector3, each: (p: THREE.Vector3) => void, world:boolean) {
   for (const r of refs ?? []) {
     const m = r.mesh as THREE.SkinnedMesh, g = m.geometry;
-    if (!m.isSkinnedMesh || (g.morphAttributes.position && m.morphTargetInfluences) || !g.attributes.skinIndex) { for (const i of r.idx) each(m.getVertexPosition(i, out).applyMatrix4(m.matrixWorld)); continue; }
+    if (!m.isSkinnedMesh || (g.morphAttributes.position && m.morphTargetInfluences) || !g.attributes.skinIndex) { for (const i of r.idx) {m.getVertexPosition(i,out);if(world)out.applyMatrix4(m.matrixWorld);each(out);} continue; }
     const bones = m.skeleton.bones, inverses = m.skeleton.boneInverses, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
     if (_skinMark.length < bones.length) _skinMark = new Uint32Array(bones.length * 2);
     while (_skinM.length < bones.length) _skinM.push(new THREE.Matrix4());
@@ -1929,9 +1974,17 @@ export function eachSkinnedWorld(refs: VertexRefs | undefined, out: THREE.Vector
         if (_skinMark[b] !== _skinGen) { mat.multiplyMatrices(bones[b].matrixWorld, inverses[b]); _skinMark[b] = _skinGen; }
         out.addScaledVector(_skinT.copy(_skinB).applyMatrix4(mat), w);
       }
-      each(out.applyMatrix4(m.bindMatrixInverse).applyMatrix4(m.matrixWorld));
+      out.applyMatrix4(m.bindMatrixInverse);if(world)out.applyMatrix4(m.matrixWorld);each(out);
     }
   }
+}
+
+/** Three computes this on the first draw even for a body with frustum culling off (opaque depth sorting). The same
+ * vertex order and Sphere.expandByPoint keep its result exact; only repeated bone-matrix multiplication is removed. */
+export function computeBodySphere(this:THREE.SkinnedMesh){
+ const sphere=this.boundingSphere??(this.boundingSphere=new THREE.Sphere());sphere.makeEmpty();
+ const idx=Array.from({length:this.geometry.attributes.position.count},(_,i)=>i);
+ eachSkinned([{mesh:this,idx}],new THREE.Vector3(),p=>sphere.expandByPoint(p),false);
 }
 
 /**

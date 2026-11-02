@@ -93,3 +93,28 @@ test('sliced preparation keeps the live batches drawing until the new set commit
  assert.equal(owner.inspection().generation,3);assert.equal(owner.inspection().batches,2);assert.equal(owner.inspection().reusedBatches,2,'unchanged cells are reused');assert.deepEqual(owner.group.children,live);
  f.b.position.x=4;f.b.updateMatrixWorld();await owner.prepare([f.root],{generation:4,incremental:true,sliceMs:0});assert.equal(owner.group.children.length,2,'a rebuilt cell replaces its old mesh, nothing extra stays in the group');owner.dispose();
 });
+test('reset cancels an in-flight sliced preparation instead of attaching it again afterwards',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1});
+ const pending=owner.prepare([f.root],{generation:2,sliceMs:0});owner.reset();
+ await assert.rejects(pending,{name:'AbortError'});assert.equal(owner.inspection().generation,null);assert.equal(owner.group.children.length,0);owner.dispose();
+});
+test('an obsolete preparation cannot overwrite the diagnostics of a newer committed generation',async()=>{
+ const f=fixture(),newRoot=new THREE.Group(),owner=new StaticBatchOwner(f.scene),messages:(()=>void)[]=[],original=globalThis.MessageChannel;
+ for(let i=0;i<4;i++){const mesh=f.a.clone();mesh.position.x=200+i*2;newRoot.add(mesh);}f.scene.add(newRoot);
+ class QueuedChannel{
+  port1={onmessage:null as null|(()=>void),close(){}};
+  port2={postMessage:()=>messages.push(()=>this.port1.onmessage?.()),close(){}};
+ }
+ globalThis.MessageChannel=QueuedChannel as unknown as typeof MessageChannel;
+ try{
+  const obsolete=assert.rejects(owner.prepare([f.root],{generation:1,sliceMs:0}),{name:'AbortError'});
+  assert.equal(messages.length,1);messages.shift()!();
+  for(let i=0;i<4;i++)await Promise.resolve();
+  assert.equal(messages.length,1,'the old preparation has traversed its sources and paused before merging');
+  await owner.prepare([newRoot],{generation:2});const current=owner.inspection(),live=[...owner.group.children];
+  assert.equal(current.sourceNodes,5);assert.equal(current.sourceMeshes,4);
+  messages.shift()!();await obsolete;
+  const after=owner.inspection();assert.equal(after.generation,2);assert.equal(after.sourceNodes,current.sourceNodes);assert.equal(after.sourceMeshes,current.sourceMeshes);assert.equal(after.prepareCpuMs,current.prepareCpuMs);assert.deepEqual(owner.group.children,live);
+  owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(newRoot.children[0].visible,false);});
+ }finally{owner.dispose();for(const message of messages.splice(0))message();globalThis.MessageChannel=original;}
+});
