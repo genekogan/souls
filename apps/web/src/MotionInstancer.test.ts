@@ -55,14 +55,15 @@ test('skinned, hooked and multi-material meshes are left alone', () => {
 test('real FixtureViews stock updates release detached nested meshes and instance exactly their replacements', () => {
   const scene = new THREE.Scene(), inst = new MotionInstancer(), views = new FixtureViews();
   scene.add(inst.group, views.group);
-  const stock: Entity = { id: 'stock', def: 'stack-beam-12ft', kind: 'fixture', pose: { p: [7, 0, 3], yaw: 0 }, support: { kind: 'ground' }, contents: { food: 'stock:beam-12ft', fraction: .5, count: 10 } };
+  const contents = { food: 'stock:beam-12ft', fraction: .5, count: 10 };
+  const stock: Entity = { id: 'stock', def: 'stack-beam-12ft', kind: 'fixture', pose: { p: [7, 0, 3], yaw: 0 }, support: { kind: 'ground' }, contents };
   const world = { entities: { stock } };
   const meshes = () => { const out: THREE.Mesh[] = []; views.group.traverse(o => { if (o instanceof THREE.Mesh) out.push(o); }); return out; };
   views.onTick(world);
   const before = meshes(), root = views.group.children[0];
   inst.trackChildren(views.group); inst.sync();
   assert.equal(inst.instances, before.length);
-  stock.contents!.count = 1; stock.contents!.fraction = .05;
+  contents.count = 1; contents.fraction = .05;
   views.onTick(world); // onTick -> fillStack -> nested group.clear()/add(), with the same tracked fixture root
   assert.equal(views.group.children[0], root);
   const after = meshes(), retired = before.filter(m => !after.includes(m)), added = after.filter(m => !before.includes(m));
