@@ -48,6 +48,8 @@ import { isRideBalloonDef, rideMotionDef } from './gen-mesh/kits/ride-balloon.ts
 import { isRideCarrierDef, carrierIdOf } from './ride-carriers.ts';
 import { holdRainbow, isRainbowDef } from './atmosphere/rainbow-things.ts';
 import {WorldEntityStairs,pendingStairDiff} from './WorldEntityStairs.ts';
+import { ScatterPools } from './ScatterPools.ts';
+import { MotionInstancer } from './MotionInstancer.ts';
 
 export type EntitySnapshot = { contract: string; worldId: string; seq: number; counter?: number; seed?: string; constants: WorldModel['constants']; state: WorldModel['state']; ground: Ground; defs: StoredDef[]; entities: Entity[]; tiles: Record<string, string>; assetBytes?: Record<string, number>; builds?: PublicSite[]; buildsRev?: number; now?: number };
 type DiffMsg = { type: 'edge'; kind: 'world-diff'; seq: number; diff: { upserts: Entity[]; removes: string[]; defs: StoredDef[]; tiles: string[]; world?: Partial<WorldModel['state']> }; ground?: Ground; defs?: StoredDef[] };
@@ -109,6 +111,12 @@ export class WorldEntityLayer {
   private materials = new Map<string, THREE.Material>();
   readonly lib = new MaterialLib();
   readonly instancer = new EntityInstancer();
+  /** PERF-BATCH round 2: frozen scatters' instances draw from one pool per species shared by every scatter (192 m cells on phones; ScatterPools.ts). */
+  readonly scatterPools = new ScatterPools();
+  scatterPooling = true;
+  /** PERF-BATCH round 2: moving things (not lamps that only glow, not fires) draw as instances of their meshes (MotionInstancer.ts). */
+  readonly motionInstancer = new MotionInstancer();
+  motionInstancing = true;
   readonly sites: WorldBuildSites;
   /** W4: old Eden's tall grass, tufts and wildflowers, drawn around the camera from the ground recipe. */
   readonly cover = new GroundCover(() => (this.active ? this.model : null), coverSetting(), () => this.seq);
@@ -252,7 +260,7 @@ export class WorldEntityLayer {
       return r.json();
     } });
     this.group.name = 'entity-world';
-    this.group.add(this.terrainGroup, this.waterGroup, this.thingsGroup, this.instancer.group, this.sites.group, this.cover.group);
+    this.group.add(this.terrainGroup, this.waterGroup, this.thingsGroup, this.instancer.group, this.scatterPools.group, this.motionInstancer.group, this.sites.group, this.cover.group);
   }
 
   private signal: AbortSignal | null = null;
@@ -626,7 +634,7 @@ export class WorldEntityLayer {
       baseGround.traverse((o) => { if ((o.name === 'outside-ground' || o.name === 'commons-ground' || (o.parent === baseGround && (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry?.type === 'PlaneGeometry')) && !this.hiddenBase.has(o)) { o.visible = false; this.hiddenBase.add(o); } });
     }
     this.hostState.clear();
-    this.instancer.updateBounds();
+    this.instancer.updateBounds(); this.scatterPools.updateBounds();
     const view = this.viewer;
     // P1 phones: frozen things skip the matrix walk on the promise that what they hang from does not move; if it ever does, thaw all
     if (this.freezeSettled && !this.thingsGroup.matrixWorld.equals(this.frozenUnder)) { this.frozenUnder.copy(this.thingsGroup.matrixWorld); for (const d of this.drawn.values()) if (d.frozen) this.thaw(d); }
@@ -866,6 +874,7 @@ export class WorldEntityLayer {
     // never ran and the thing never appeared on phones.
     d.sphere = _box.isEmpty() || _box.min.equals(_box.max) ? undefined : _box.getBoundingSphere(new THREE.Sphere());
     d.frozen = list;
+    if (this.scatterPooling && d.world) this.scatterPools.add(d.obj.uuid, d.obj);   // PERF-BATCH round 2: its instances draw from the shared pools
     if (!d.cut) delete d.obj.userData.renderDynamic; this.staticRevision++;
   }
   private thaw(d: Drawn) {
@@ -876,6 +885,7 @@ export class WorldEntityLayer {
       delete d.obj.userData.frozenDrawn;
       // PERF-BATCH: a thawed thing's batch falls back to its originals until it is frozen (and batched) again
       d.obj.userData.renderDynamic = true; this.staticRevision++;
+      this.scatterPools.remove(d.obj.uuid);
     }
     d.frozen = undefined; d.thaw = false; d.sphere = undefined;
   }
@@ -1069,7 +1079,7 @@ export class WorldEntityLayer {
 
   dispose() {
     this.sites.dispose();
-    this.instancer.dispose();
+    this.instancer.dispose(); this.scatterPools.dispose(); this.motionInstancer.dispose();
     this.cover.dispose();
     for (const m of this.sectors.values()) { m.geometry.dispose(); }
     this.sectors.clear();
@@ -1311,6 +1321,7 @@ export class WorldEntityLayer {
     if (isWorld) { from.s = fresh && ease ? 1 : 1; }
     const mdef = rideMotionDef(def);  // BALLOON-BODY: a ride balloon does not hover; Core's vehicle owns its motion
     this.drawn.set(e.id, { ...(opening ? {opening} : {}), ...(instKey ? { inst: instKey, settled: false } : {}), obj: built, from, to, t0: this.now, dur: ease ? refinement?.seconds ?? EASE_IN_S : 0.001, defHash, world: isWorld, ...(hasMotion(mdef) ? { motion: { entity: e, def: mdef, yaw: wp.yaw, glowOnly: glowOnly(mdef) } } : {}) });
+    if (this.motionInstancing && !instKey && hasMotion(mdef) && !glowOnly(mdef) && !hasFlames(mdef) && !rainbow) this.motionInstancer.track(built);   // PERF-BATCH round 2
     // entry 42: a thing kept in a shut container is hidden from its first frame (a resync can draw before the next update)
     if (this.keptIn.has(e.id)) { const k = this.drawn.get(e.id)!, v = this.interiorVisible(e.id, k); if (k.inst) k.shown = v; else k.obj.visible = v; }
   }

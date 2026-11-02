@@ -509,12 +509,47 @@ function boatStep(obj: THREE.Object3D, e: Entity, def: StoredDef, model: WorldMo
 /** Lamps glow at dusk and night; `state.on: false` darkens this one. Lane PERF-MATERIALS: a glow level is a shared
  *  variant of the part's library material (material-variants.ts), one per (material, level in ~1% steps), not a clone
  *  per lamp: Eden 2026 had 813 lamp materials for 16 distinct looks. A flame part's variant is also its dimmed albedo. */
-type GlowPart = { mesh: THREE.Mesh; base: THREE.MeshStandardMaterial; flame: boolean; gain: number };
+type GlowPart = { mesh: THREE.Mesh; base: THREE.MeshStandardMaterial; flame: boolean; gain: number; steady?: boolean };
+// PERF-BATCH round 2: a steady lamp's glow (on, no pattern, not a flame) is the same quantized level on every lamp that
+// shares its base material (the level × the material's own gain), so its glow meshes merge into the cell batches by base
+// material and the merged material follows the level (Eden 2026: 813 lamps, ~40 glow draws in a town view). A patterned,
+// flame or switched-off glow stays dynamic; a change of state thaws the lamp so the batches re-prepare without or with it.
+type SteadyGlow = { level: number; merged: THREE.MeshStandardMaterial | null };
+const steadyGlows = new Map<THREE.MeshStandardMaterial, SteadyGlow>();
+function steadyLevel(base: THREE.MeshStandardMaterial, q: number) {
+  let s = steadyGlows.get(base);
+  if (!s) steadyGlows.set(base, { level: q, merged: null });
+  else if (s.level !== q) { s.level = q; if (s.merged) s.merged.emissiveIntensity = q; }
+}
+function steadyPart(p: GlowPart, steady: boolean) {
+  if (p.steady === steady) return; p.steady = steady;
+  const ud = p.mesh.userData;
+  if (steady) { delete ud.renderDynamic; ud.glowBase = p.base; } else { ud.renderDynamic = true; delete ud.glowBase; }
+  for (let o: THREE.Object3D | null = p.mesh; o; o = o.parent) { const d = o.userData.frozenDrawn as { thaw?: boolean } | undefined; if (d) { d.thaw = true; break; } }
+}
+/** The material a steady glow mesh merges by (its base; its own material is the current level's variant), else null. */
+export function glowSourceMaterial(mesh: THREE.Mesh): THREE.Material | null { return (mesh.userData.glowBase as THREE.Material | undefined) ?? null; }
+/** A merged batch's material for a steady glow base: the base (or `realism`'s merge of it) at the current level, kept
+ *  at the level as the lamps' own variants change. Null for a material no steady glow has used. */
+export function mergedGlowMaterial(m: THREE.Material, realism: (m: THREE.Material) => THREE.Material | null = () => null): THREE.Material | null {
+  const s = steadyGlows.get(m as THREE.MeshStandardMaterial); if (!s) return null;
+  if (!s.merged) {
+    const from = (realism(m) ?? m) as THREE.MeshStandardMaterial, c = from.clone();
+    if (Object.hasOwn(from, 'onBeforeCompile')) c.onBeforeCompile = from.onBeforeCompile;
+    if (Object.hasOwn(from, 'customProgramCacheKey')) c.customProgramCacheKey = from.customProgramCacheKey;
+    if (from.defines) c.defines = { ...from.defines };
+    c.emissiveIntensity = s.level; c.name = (m.name || 'glow') + ' merged'; c.needsUpdate = true; s.merged = c;
+  }
+  return s.merged;
+}
+/** Tests: the steady level tracked for a base material (−1 when none). */
+export function steadyGlowLevel(base: THREE.Material): number { return steadyGlows.get(base as THREE.MeshStandardMaterial)?.level ?? -1; }
 /** Glow levels per e-fold of intensity: steps of ~1% (relative, so a dim day glow keeps its ratios like a bright night one). */
 export const GLOW_STEPS = 96;
 export function quantizeGlow(v: number): number { return v <= 1e-4 ? 0 : Math.exp(Math.round(Math.log(v) * GLOW_STEPS) / GLOW_STEPS); }
 function setGlow(p: GlowPart, v: number) {
   const q = quantizeGlow(v), cur = p.mesh.material as THREE.MeshStandardMaterial;
+  if (p.steady) steadyLevel(p.base, q);
   if (cur !== p.base && cur.emissiveIntensity === q) return;
   p.mesh.material = variantOf(p.base, (p.flame ? 'flame-glow:' : 'glow:') + q, (m) => {
     // W2: a flame part glows by itself; its lit albedo plus a night-boosted emissive clipped it to white ("an orange cone")
@@ -526,17 +561,17 @@ export function syncLightGlow(obj: THREE.Object3D, e: Entity, def: StoredDef, mo
   const ud = obj.userData as { glow?: GlowPart[] };
   if (!ud.glow) {
     const parts: GlowPart[] = [];
-    obj.traverse((c) => { const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && (m as { emissive?: THREE.Color }).emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0 && !c.userData.shadowProxy) { parts.push({ mesh: c as THREE.Mesh, base: m, flame: isFlamePart(c), gain: m.userData.kitGlowIntensity ?? 1 }); c.userData.renderDynamic = true; } });  // PERF-BATCH: its glow level changes over time: never merged
+    obj.traverse((c) => { const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && (m as { emissive?: THREE.Color }).emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0 && !c.userData.shadowProxy) { parts.push({ mesh: c as THREE.Mesh, base: m, flame: isFlamePart(c), gain: m.userData.kitGlowIntensity ?? 1 }); } });  // PERF-BATCH: steadyPart decides whether a part merges or stays dynamic
     ud.glow = parts;
   }
   const lights=defLights(def.components),off = e.state?.on === false || lights.every(l=>l.on===false);
-  if (off) { for (const p of ud.glow) setGlow(p, 0); return; }
+  if (off) { for (const p of ud.glow) { steadyPart(p, false); setGlow(p, 0); } return; }
   const reduced=!!reducedLightMotion?.matches;
   const patterned=lights.some(l=>l.pattern&&l.pattern!=='steady'),flame=!patterned&&flickers(e.def); // W2: a flame's own glow flickers with its pool
   const pattern=flame?lightPatternLevel('flicker',t,lightPhase(e.id,0,1,'flicker'),reduced):patterned?lights.reduce((v,l,i)=>v+(l.on===false?0:lightPatternLevel(l.pattern,t,lightPhase(e.id,i,lights.length,l.pattern),reduced)),0)/lights.length:1;
   const night = nightOf(model), level = (0.25 + 1.4 * night + (patterned||flame?0:0.03 * Math.sin(t * 3)))*pattern;
   // K1 / XP1: retain v2's per-shape glow level through the day/night and pattern multiplier.
-  for (const p of ud.glow) { const v = level * p.gain; setGlow(p, p.flame ? Math.max(FLAME_GLOW_MIN, Math.min(v, FLAME_GLOW_CAP)) : v); }
+  for (const p of ud.glow) { steadyPart(p, !patterned && !flame && !p.flame); const v = level * p.gain; setGlow(p, p.flame ? Math.max(FLAME_GLOW_MIN, Math.min(v, FLAME_GLOW_CAP)) : v); }
 }
 /** W2: the brightest a flame part's emissive gets (×its tint): saturated orange, never clipped white by the night boost. */
 const FLAME_GLOW_CAP = 0.85, FLAME_GLOW_MIN = 0.55;
