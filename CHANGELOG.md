@@ -2,6 +2,12 @@
 
 User-facing changes to Sim, newest first. Each release is compiled from `changes/` fragments.
 
+## 4.12 (2026-11-02)
+
+### Fixes
+
+- Do not mistake a deliberately sleeping world for overload when it wakes, which could refuse the first Soul’s reads for 30 seconds.
+
 ## 4.11 (2026-11-02)
 
 ### Fixes
