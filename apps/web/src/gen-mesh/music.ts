@@ -33,10 +33,11 @@ export const musicDb = (volume: number) => (volume <= 0 ? -Infinity : 20 * Math.
 
 type ToneLike = { start(): Promise<void>; getContext(): { state: string; rawContext: { state: string; createAnalyser(): AnalyserNode } }; getDestination(): { volume: { value: number; rampTo(v: number, s: number): void }; connect(n: AudioNode): unknown } };
 export type MusicSource = 'file' | 'tone';
-export type MusicEvent = { t: number; ev: 'load' | 'loaded' | 'start' | 'fade' | 'stop' | 'error' | 'duck' | 'unduck'; piece?: string; reason?: string; source?: MusicSource };
+// reason is the machine-readable transition; file selection and resume position are separate log metadata.
+export type MusicEvent = { t: number; ev: 'load' | 'loaded' | 'start' | 'fade' | 'stop' | 'error' | 'duck' | 'unduck'; piece?: string; reason?: string; source?: MusicSource; performance?: number; performances?: number; positionS?: number };
 /** A stopped piece's place, so the next start resumes it: the position in its file, or (Tone) the seed and cycle, which
  *  give the same performance from that cycle. */
-export type Paused = { index: number; seed: number; cycle: number; remainingMs: number; positionS?: number };
+export type Paused = { index: number; seed: number; cycle: number; remainingMs: number; positionS?: number; perf?: number };
 
 let want = false, volume = 0.3;
 let Tone: ToneLike | null = null, Sim: ScoreNamespace | null = null, order: readonly string[] = [], loading = false, failed = false;
@@ -127,7 +128,7 @@ function start(i: number, reason: string, from: Paused | null = null) {
   const resume = from && from.index === index ? from : null;
   if (sourceFor(id) === 'file') {
     file!.trackS = trackS; file!.setVolume(musicDb(volume), 0.01);
-    file!.play(id, { positionS: resume?.positionS ?? 0, reason }).then(() => {
+    file!.play(id, { positionS: resume?.positionS ?? 0, perf: resume?.perf, reason }).then(() => {
       if (my !== gen) return;
       starting = false; playing = id; source = 'file'; paused = null; endsAt = file!.playing()?.endsAt ?? performance.now() + trackS * 1000;
     }, (e) => {
@@ -154,7 +155,7 @@ function start(i: number, reason: string, from: Paused | null = null) {
 /** The playing piece's place now (file position, or Tone cycle; time left), for a later resume. */
 function placeNow(): Paused | null {
   if (!playing) return null;
-  if (source === 'file') { const p = file?.stop(); return { index, seed, cycle: 0, remainingMs: Math.max(15_000, p?.remainingMs ?? endsAt - performance.now()), positionS: p?.positionS ?? 0 }; }
+  if (source === 'file') { const p = file?.stop(); return { index, seed, cycle: 0, remainingMs: Math.max(15_000, p?.remainingMs ?? endsAt - performance.now()), positionS: p?.positionS ?? 0, perf: p?.perf }; }
   if (!conductor) return null;
   let cycle = 0; try { cycle = (conductor as unknown as { now(): { cycle: number } | null }).now()?.cycle ?? 0; } catch { /* no transport */ }
   return { index, seed, cycle, remainingMs: Math.max(15_000, endsAt - performance.now()) };
@@ -229,7 +230,7 @@ export function musicState() {
   return { want, loaded: !!file || !!Sim, loading: loading || toneLoading, failed, source, fetched: [...pieceReady.keys()], playing, starting, index, piece: order[index] ?? null, playlist: order.slice(),
     endsInS: playing ? Math.max(0, Math.round((endsAt - performance.now()) / 1000)) : null, toneCtx: Tone?.getContext().state ?? 'none', db: +musicDb(volume).toFixed(1),
     seed, paused, graceLeftS: graceUntil ? Math.max(0, Math.round((graceUntil - performance.now()) / 1000)) : null, lookAhead: (() => { try { return (Tone?.getContext() as unknown as { lookAhead?: number } | undefined)?.lookAhead ?? null; } catch { return null; } })(),
-    file: { index: fileIndexSize, off: fileOff, failures: fileFailures, failed: [...fileFailed], ctx: fileCtx, positionS: source === 'file' && file ? +file.position().toFixed(1) : null, fading } };
+    file: { index: fileIndexSize, off: fileOff, failures: fileFailures, failed: [...fileFailed], ctx: fileCtx, positionS: source === 'file' && file ? +file.position().toFixed(1) : null, performance: source === 'file' && file ? (file.playing()?.perf ?? null) : null, performances: playing && file ? file.performances(playing) : 0, fading } };
 }
 export const musicLog = () => events.slice();
 let meter: AnalyserNode | null = null;
