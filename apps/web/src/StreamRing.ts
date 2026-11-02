@@ -1,9 +1,9 @@
-// Lane PERF-STREAM (2026-11-02): which things are built, by distance from the camera. A world ten times Eden's size
-// (50,000 things) cannot be drawn whole: the viewer builds only the things within `inner` metres of the camera and
+// Experimental distance streaming: the viewer builds only the things within `inner` metres of the camera and
 // drops those beyond `outer` (hysteresis: a thing on the edge is never built and dropped every frame). Entries are
 // kept in a grid of `cell` m cells, so an update around a point touches a few cells, not the world. Pure: no three.js,
 // no DOM (unit tests: StreamRing.test.ts). WorldEntityLayer feeds it every root thing's pose (a building's furniture
-// shares its building's entry) and asks it what to build or unload when the camera has moved.
+// shares its building's entry) and asks it what to build or unload when the camera has moved. This distance policy
+// does not prove that omitted geometry is invisible; the layer enables it only through an explicit experiment flag.
 export type RingEntry = { id: string; x: number; z: number; r: number; cell: Cell; wanted: boolean; pinned: boolean };
 type Cell = { key: string; x0: number; z0: number; x1: number; z1: number; entries: Set<RingEntry>; maxR: number };
 export type RingOptions = { inner: number; outer: number; cell?: number; /** the camera must move this far for `update` to re-evaluate (0: always). */ step?: number };

@@ -4,7 +4,7 @@
 //   node --test apps/web/src/gen-mesh/motion-obstacles.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, type DefInput, type Entity, type StoredDef } from '@sim/world-compiler';
 import terrainKit from '../../../../packages/world-compiler/src/core-kit/terrain.json' with { type: 'json' };
 import { solidFootprints, surroundings } from './motion.ts';
 
@@ -65,4 +65,57 @@ test('PERF-PASSES: the shared scan outlives the task for up to 2 s while nothing
   (performance as { now: () => number }).now = () => realNow() + shift;
   try { shift = 2500; assert.notEqual(solidFootprints(w), moved, 'after 2 s it is rebuilt (terrain edited in place)'); }
   finally { (performance as { now: () => number }).now = realNow; }
+});
+
+
+const put = (w: WorldModel, id: string, extra: Partial<Entity>): Entity => {
+  const e = { id, def: 'core/bench@1', in: { parent: 'world' }, params: {}, seed: 1, ...extra } as Entity;
+  w.insert(e); return e;
+};
+const exactNear = (w: WorldModel, x: number, z: number) => {
+  const expected = original(w, x, z, 16, new Set());
+  assert.ok(expected.length > 0, 'the fixture has a real obstacle at the queried location');
+  assert.deepEqual(surroundings(w, [x, z], 12, 'land', new Set()).obstacles.list(0), expected);
+};
+
+test('a scaled building keeps colliders more than 64 m from its root', () => {
+  const w = world(), e = put(w, 'scaled', { def: 'core-townhouse@1', p: [900, 0, 0], s: 40 });
+  const boxes = w.footprint(e), distant = boxes.reduce((a, b) => Math.hypot(...a.c.map((v, i) => v - [900, 0][i])) > Math.hypot(...b.c.map((v, i) => v - [900, 0][i])) ? a : b);
+  assert.ok(Math.hypot(distant.c[0] - 900, distant.c[1]) > 80, 'outside the old root + obstacle reach');
+  exactNear(w, ...distant.c);
+});
+
+test('children can be far from their root after parent scale, yaw and a slot offset', () => {
+  const w = world(), base = w.resolvedDef('core/bench@1')!;
+  const parentDef = { ...base, ref: 'fixture-parent@1', hash: 'fixture-parent', slots: [{ id: 'remote', kind: 'stand', p: [180, 0, 0], yaw: 0, accepts: {}, capacity: 1 }] } as StoredDef;
+  w.defs.set(parentDef.ref, parentDef);
+  put(w, 'parent', { def: parentDef.ref, p: [900, 0, 900], r: Math.PI / 2, s: 3 });
+  const child = put(w, 'child', { in: { parent: 'parent', slot: 'remote' }, p: [40, 0, 0] });
+  const pose = w.worldPose(child);
+  assert.ok(Math.hypot(pose.x - 900, pose.z - 900) > 600);
+  exactNear(w, pose.x, pose.z);
+});
+
+test('world-frame solid shapes with no stored pose remain obstacles', () => {
+  const w = world();
+  const wall = put(w, 'wall', { def: 'core-garden-wall@1', shape: { path: [[200, 200], [240, 200]] } });
+  assert.equal(wall.p, undefined);
+  const box = w.footprint(wall)[0]; assert.ok(box);
+  exactNear(w, ...box.c);
+});
+
+test('certified mesh bounds include arbitrary scale and 2-D poses while avoiding definitely distant footprints', () => {
+  const w = world(), base = w.resolvedDef('core/bench@1')!;
+  const def = { ...base, ref: 'fixture-box@1', hash: 'fixture-box', form: 'point', params: {}, size: { box: [4, 3, 2], scale: [1, 100] }, make: { kind: 'mesh', asset: 'a'.repeat(64) } } as StoredDef;
+  w.defs.set(def.ref, def);
+  put(w, 'large', { def: def.ref, p: [300, 0, 0], s: 100 });
+  put(w, 'two-d', { def: def.ref, p: [10, 250] });
+  put(w, 'far', { def: def.ref, p: [900, 0, 900] });
+  exactNear(w, 100, 0); exactNear(w, 10, 250);
+  // A fresh revision drops cached footprints before observing calls.
+  put(w, 'far-2', { def: def.ref, p: [800, 0, 800] });
+  const called: string[] = [], footprint = w.footprint.bind(w);
+  w.footprint = (e, d) => { called.push(e.id); return footprint(e, d); };
+  solidFootprints(w, [100, 0, 16]);
+  assert.deepEqual(called, ['large']);
 });

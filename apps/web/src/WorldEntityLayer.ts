@@ -81,12 +81,12 @@ export class WorldEntityLayer {
    *  in small slices between frames. Edge diffs still wait for it (applyEdge). */
   filling = false;
   private model: WorldModel | null = null;
-  /** PERF-STREAM (2026-11-02): build by distance (StreamRing.ts). A world ten times Eden's size cannot be drawn whole: with
+  /** Experimental distance streaming (StreamRing.ts): with
    *  a ring, start() draws only the things within `inner` m of the arrival camera, and every frame (streamFrom + update)
    *  streams in what the camera approaches and unloads what it left beyond `outer` (removed from its batch, pool or
    *  instance slot at once; built again when it comes back). Terrain sectors stream the same way (full within `inner`,
-   *  coarse to `outer` + a sector, none beyond). Decided at start(): `?stream=<m>` sets `inner`, `?stream=0` turns it
-   *  off, else on from STREAM_AUTO_THINGS things (Eden 2026's 5,000 stay drawn whole, as before). */
+   *  coarse to `outer` + a sector, none beyond). Opt in with `?stream=<m>`; off by default at every world size.
+   *  Distance alone is not a visibility bound: far geometry, shadows and offset children can still be visible. */
   streaming: { inner: number; outer: number } | null = null;
   private ring: StreamRing | null = null;
   private readonly streamEye = new THREE.Vector3(); private streamEyeSet = false;
@@ -100,10 +100,10 @@ export class WorldEntityLayer {
   streamFrom(eye: THREE.Vector3) { this.streamEye.copy(eye); this.streamEyeSet = true; }
   /** What the ring decided for a thing (tests, probes): wanted, queued, drawn. */
   streamState(id: string) { return this.ring ? { wanted: this.ring.isWanted(id), queued: this.streamQueued.has(id), drawn: this.drawn.has(id), ringed: this.ring.has(id) } : null; }
-  private streamOption(things: number): { inner: number; outer: number } | null {
+  private streamOption(): { inner: number; outer: number } | null {
     const q = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('stream');
     if (q === '0' || q === 'off') return null;
-    const inner = q !== null && Number.isFinite(Number(q)) && Number(q) > 0 ? Number(q) : things >= STREAM_AUTO_THINGS ? STREAM_INNER_M : 0;
+    const inner = q !== null && Number.isFinite(Number(q)) && Number(q) > 0 ? Number(q) : 0;
     return inner > 0 ? { inner, outer: inner * STREAM_OUTER_RATIO } : null;
   }
   /** A thing's ring entry from its root's stored pose or shape (no slot bakes: a building's furniture goes with its building).
@@ -135,11 +135,36 @@ export class WorldEntityLayer {
     else { if (d.frozen) this.thaw(d); this.motionInstancer.untrack(d.obj); this.thingsGroup.remove(d.obj); disposeObject(d.obj); this.releaseGeometry(d.obj); }
     this.drawn.delete(id); this.staticRevision++; this.streamStats.unloaded++;
   }
-  /** Geometry shared by drawn things (kit primitives, a pool's prototype) is disposed only when the last one goes; a thing's
-   *  own geometry (a building) at once. Only under streaming: Eden's picture never unloads. */
+  /** Distinct picture/pool owners of geometry, including children attached after a lazy asset arrives. Pool prototypes
+   * remain owners even when their last instance unloads. A replacement is retained before the previous owner leaves. */
   private readonly geoRefs = new Map<THREE.BufferGeometry, number>();
-  private retainGeometry(o: THREE.Object3D) { if (!this.ring) return; o.traverse((c) => { const g = (c as THREE.Mesh).geometry; if (g) this.geoRefs.set(g, (this.geoRefs.get(g) ?? 0) + 1); }); }
-  private releaseGeometry(o: THREE.Object3D) { if (!this.ring) return; o.traverse((c) => { const g = (c as THREE.Mesh).geometry; if (!g) return; const n = (this.geoRefs.get(g) ?? 1) - 1; if (n > 0) this.geoRefs.set(g, n); else { this.geoRefs.delete(g); g.dispose(); } }); }
+  private readonly geometryOwners = new Map<THREE.Object3D, { geometries: Set<THREE.BufferGeometry>; nodes: Set<THREE.Object3D>; added: () => void }>();
+  private retainGeometry(o: THREE.Object3D) {
+    if (!this.ring) return;
+    const owner = this.geometryOwners.get(o) ?? { geometries: new Set<THREE.BufferGeometry>(), nodes: new Set<THREE.Object3D>(), added: () => this.retainGeometry(o) };
+    this.geometryOwners.set(o, owner);
+    o.traverse(c => {
+      if (!owner.nodes.has(c)) { owner.nodes.add(c); c.addEventListener('childadded', owner.added); }
+      const geometry = (c as THREE.Mesh).geometry;
+      if (!geometry || owner.geometries.has(geometry)) return;
+      owner.geometries.add(geometry); this.geoRefs.set(geometry, (this.geoRefs.get(geometry) ?? 0) + 1);
+    });
+  }
+  private releaseGeometry(o: THREE.Object3D) {
+    const owner = this.geometryOwners.get(o); if (!owner) return;
+    this.geometryOwners.delete(o);
+    for (const node of owner.nodes) node.removeEventListener('childadded', owner.added);
+    for (const geometry of owner.geometries) {
+      const remaining = this.geoRefs.get(geometry)! - 1;
+      if (remaining > 0) this.geoRefs.set(geometry, remaining);
+      else { this.geoRefs.delete(geometry); geometry.dispose(); }
+    }
+  }
+  /** Pools add/grow their own meshes, including engine fixtures tracked outside draw(). Watch the group from its first
+   * mesh onward; a grow can remove the old mesh before adding its replacement without releasing the prototype. */
+  private readonly onPoolGeometryAdded = (event: { target: THREE.Object3D }) => {
+    if (!this.geometryOwners.has(event.target)) this.retainGeometry(event.target);
+  };
   /** Per frame under streaming: re-evaluate the ring when the camera moved, unload what left, draw what entered (nearest
    *  first) and step the terrain sectors, all within STREAM_SLICE_MS so no frame grows a long task. */
   private streamStep() {
@@ -378,6 +403,7 @@ export class WorldEntityLayer {
   private now = 0;
   private readonly api: (p: string) => string;
   constructor(api: (p: string) => string) {
+    for (const pool of [this.instancer, this.scatterPools, this.motionInstancer]) pool.group.addEventListener('childadded', this.onPoolGeometryAdded);
     this.api = api;
     this.sites = new WorldBuildSites({ model: () => this.model, groundAt: this.groundAt, fetchBuilds: async () => {
       const r = await fetch(this.api('/v1/world/builds'), { signal: this.signal ?? undefined, cache: 'no-store' });
@@ -497,7 +523,7 @@ export class WorldEntityLayer {
     try { this.model = await snapshotModel({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, signal, nextTask); } catch (error) { if (signal.aborted) return; throw error; }
     arrivalMark('snapshot-model-ready');
     // PERF-STREAM: by distance from here on (a frozen context capture is never streamed: it draws the whole world once)
-    this.streaming = this.immutable ? null : this.streamOption(this.model.entities.size);
+    this.streaming = this.immutable ? null : this.streamOption();
     this.ring = this.streaming ? new StreamRing(this.streaming) : null;
     // lane PERF-SNAPSHOT: the snapshot's arrival used to be one main-thread task of ~0.4 s on Eden 2026 (parse, model, the
     // eager plan, the building prefetch and the whole terrain bake); it is now a few, with the main thread free between
@@ -854,7 +880,7 @@ export class WorldEntityLayer {
         continue;
       }
       d.obj.visible = shown;
-      if (d.removing && t >= 1) { this.thingsGroup.remove(d.obj); disposeObject(d.obj); this.releaseGeometry(d.obj); this.drawn.delete(id); continue; }
+      if (d.removing && t >= 1) { this.motionInstancer.untrack(d.obj); this.thingsGroup.remove(d.obj); disposeObject(d.obj); this.releaseGeometry(d.obj); this.drawn.delete(id); continue; }
       if (t >= 1 && (!d.motion || (this.freezeSettled && d.motion.glowOnly)) && !d.removing && !ride && !inHand) d.settled = true;
       // P1: a hidden thing (a storey its building hides, or far furniture on a phone) is not animated: nobody sees it
       // P7b: things stay at their stored pose under the arrival card (the creatures' first route search was ~0.09 s of a 4x
@@ -1252,13 +1278,15 @@ export class WorldEntityLayer {
   dispose() {
     this.decoder.dispose();
     this.sites.dispose();
+    for (const pool of [this.instancer, this.scatterPools, this.motionInstancer]) pool.group.removeEventListener('childadded', this.onPoolGeometryAdded);
     this.instancer.dispose(); this.scatterPools.dispose(); this.motionInstancer.dispose();
     this.cover.dispose();
     for (const m of this.sectors.values()) { m.geometry.dispose(); }
     this.sectors.clear();
     for (const d of this.drawn.values()) disposeObject(d.obj);
+    for (const owner of this.geometryOwners.keys()) this.releaseGeometry(owner);
     this.drawn.clear();this.tugged.clear();
-    this.ring?.clear(); this.ring = null; this.streaming = null; this.streamQueue = []; this.streamQueued.clear(); this.unloadQueue = []; this.streamPending.clear(); this.sectorWork = null; this.geoRefs.clear();
+    this.ring?.clear(); this.ring = null; this.streaming = null; this.streamQueue = []; this.streamQueued.clear(); this.unloadQueue = []; this.streamPending.clear(); this.sectorWork = null;
     this.recordedItems.clear();this.missingItemAt.clear();this.lightMoves.clear();this.keptIn.clear();this.movingBoxes.clear();
     for (const m of this.materials.values()) m.dispose();
     this.materials.clear();
@@ -1485,17 +1513,20 @@ export class WorldEntityLayer {
     // Waiting for animate()'s settled transform left an OFF bulb glowing for 2.5 s.
     if (def.components.light || def.components.lights) syncLightGlow(built,e,def,m,this.now/1000);
     const opening=existing&&def.tags.includes('hand-operated')?beginOpeningMotion(built,existing.obj,this.now):undefined;
-    if (existing) { if (existing.inst) this.instancer.remove(existing.inst, e.id); else { if (existing.frozen) this.thaw(existing); this.thingsGroup.remove(existing.obj); disposeObject(existing.obj); } this.drawn.delete(e.id); }
+    // Shared builders can hand back the very geometry the old object owns. Register the new owner first, so replacing
+    // the sole drawn copy cannot dispose a buffer the replacement or its pool is about to use.
+    this.retainGeometry(built);
+    if (existing) { if (existing.inst) this.instancer.remove(existing.inst, e.id); else { if (existing.frozen) this.thaw(existing); this.motionInstancer.untrack(existing.obj); this.thingsGroup.remove(existing.obj); disposeObject(existing.obj); this.releaseGeometry(existing.obj); } this.drawn.delete(e.id); }
     // a rainbow thing is weather: hidden until the atmosphere shows it after rain (its own meshes, never instanced)
     const rainbow = isRainbowDef(def); if (rainbow) holdRainbow(built);
     // static things with an instance key share one InstancedMesh per part (a few draws for hundreds of props)
     const instKey = !this.immutable && !isWorld && !rainbow && !hasMotion(def) && typeof built.userData.instanceKey === 'string' && instanceable(built) ? built.userData.instanceKey as string : undefined;
-    if (instKey) { this.instancer.ensure(instKey, built); built = new THREE.Object3D(); }
+    if (instKey) { this.instancer.ensure(instKey, built); this.releaseGeometry(built); built = new THREE.Object3D(); }
     if (!isWorld) { built.rotation.set(0, wp.yaw, 0); applyTilt(built, e); }
     const fresh = !existing;
     const from = refinement ? { p: target.clone(), s: wp.s * refinement.scale } : fresh && ease ? { p: target.clone().add(new THREE.Vector3(0, DROP_M, 0)), s: wp.s * 0.2 } : { p: target.clone(), s: wp.s };
     built.position.copy(from.p); built.scale.setScalar(from.s);
-    if (!instKey) { this.thingsGroup.add(built); this.retainGeometry(built); }
+    if (!instKey) this.thingsGroup.add(built);
     const to = { p: target, s: isWorld ? 1 : wp.s };
     if (isWorld) { from.s = fresh && ease ? 1 : 1; }
     const mdef = rideMotionDef(def);  // BALLOON-BODY: a ride balloon does not hover; Core's vehicle owns its motion
@@ -1537,9 +1568,8 @@ export class WorldEntityLayer {
 }
 
 const BUILD_SLICE_MS = 50;
-/** PERF-STREAM: streaming is on from this many things (Eden 2026: ~5,000 stays whole); the ring's radii (`?stream=<m>`
- *  sets `inner`); the slice of a frame the stream may build in (the socket, the UI and the draw share the rest). */
-const STREAM_AUTO_THINGS = 12_000, STREAM_INNER_M = 320, STREAM_OUTER_RATIO = 1.3, STREAM_SLICE_MS = 6, STREAM_SECTOR_MS = 4;
+/** Experimental `?stream=<m>` ring hysteresis and per-frame time slices. */
+const STREAM_OUTER_RATIO = 1.3, STREAM_SLICE_MS = 6, STREAM_SECTOR_MS = 4;
 /** A resync's draws run during play: short slices, the main thread free between them (applyDelta). */
 const RESYNC_SLICE_MS = 6;
 /** P7: a phone's arrival bakes the terrain sectors within this distance of its eye or target; the rest start coarse. */

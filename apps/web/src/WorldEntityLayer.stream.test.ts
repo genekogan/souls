@@ -9,7 +9,7 @@ import { registerHooks } from 'node:module';
 import { WorldModel, coreLibrary, applyBatch, type Entity, type StoredDef } from '@sim/world-compiler';
 import { StreamRing } from './StreamRing.ts';
 
-type Inner = { model: WorldModel; ring: StreamRing | null; streaming: unknown; ringSet: (e: Entity, def: StoredDef) => void; drawn: Map<string, { obj: THREE.Object3D; inst?: string }>; now: number; seq: number; signal: AbortSignal; thingsGroup: THREE.Group };
+type Inner = { model: WorldModel; ring: StreamRing | null; streaming: unknown; streamOption: () => { inner: number; outer: number } | null; ringSet: (e: Entity, def: StoredDef) => void; drawn: Map<string, { obj: THREE.Object3D; inst?: string }>; now: number; seq: number; signal: AbortSignal; thingsGroup: THREE.Group };
 
 async function fixture(inner = 50, outer = 80) {
   (globalThis as { location?: unknown }).location ??= new URL('http://offline.invalid/w/fixture');
@@ -70,4 +70,18 @@ test('a diff draws a new thing only when it is near the camera; a far one waits 
   // a removal of a never-built far thing is harmless, and the ring forgets it
   f.layer.applyEdge([{ type: 'edge', kind: 'world-diff', seq: 13, by: 'god', diff: { upserts: [], removes: ['e_newnear00'], defs: [], tiles: [] } } as never]);
   assert.equal(f.layer.streamState('e_newnear00')?.ringed, false);
+});
+
+test('distance streaming requires an explicit positive radius; world size never enables it', async t => {
+  const f = await fixture(); t.after(() => f.layer.dispose());
+  // There is no visibility proof for automatically excluding far geometry at the former 12,000-thing threshold.
+  Object.defineProperty(f.model.entities, 'size', { get: () => 50_140 });
+  const globals = globalThis as unknown as { location: URL }, previous = globals.location;
+  t.after(() => { globals.location = previous; });
+  for (const query of ['', '?stream=0', '?stream=off', '?stream=auto', '?stream=-1', '?stream=Infinity']) {
+    globals.location = new URL(`http://offline.invalid/w/fixture${query}`);
+    assert.equal(f.self.streamOption(), null, query || 'no override');
+  }
+  globals.location = new URL('http://offline.invalid/w/fixture?stream=320');
+  assert.deepEqual(f.self.streamOption(), { inner: 320, outer: 416 });
 });

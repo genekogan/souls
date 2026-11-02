@@ -137,7 +137,7 @@ class Obstacles {
     const k = `${this.model.entities.size}`;
     if (k === this.key && t - this.at < 8) return this.boxes;
     this.key = k; this.at = t; this.boxes = [];
-    for (const { id, fp } of solidFootprints(this.model, [this.cx, this.cz, this.reach + SOLID_ROOT_REACH])) {
+    for (const { id, fp } of solidFootprints(this.model, [this.cx, this.cz, this.reach])) {
       if (this.skip.has(id)) continue;
       for (const b of fp) if (Math.hypot(b.c[0] - this.cx, b.c[1] - this.cz) < this.reach + Math.hypot(b.half[0], b.half[1]) && b.y1 - b.y0 > 0.12) this.boxes.push(b);
     }
@@ -153,12 +153,16 @@ class Obstacles {
  *  object on every set / delete), the entity count and the terrain are the same. Creatures refresh their obstacles every
  *  8 s, staggered, so dropping it after each task re-scanned all ~5,000 entities on most frames of a quiet world. The
  *  2 s bound covers what the revisions do not see (a terrain edited in place); Obstacles already holds boxes for 8 s. */
-let solidScan: { model: WorldModel; entities: object | undefined; defs: object | undefined; size: number; terrain: unknown; solids: { id: string; fp: Box[] }[] | null; anchors: { e: Entity; x: number; z: number }[] | null; fps: Map<string, Box[] | null>; at: number } | null = null;
+let solidScan: { model: WorldModel; entities: object | undefined; defs: object | undefined; size: number; terrain: unknown; solids: { id: string; fp: Box[] }[] | null; anchors: { e: Entity; d: StoredDef; bound: { x: number; z: number; radius: number } | null }[] | null; fps: Map<string, Box[] | null>; at: number } | null = null;
 const SOLID_SCAN_MS = 2000;
-/** PERF-STREAM: how far a solid's footprint can lie from its root's stored pose (a building's furniture is in its building;
- *  the largest building side is under 60 m), so a creature's `near` scan takes the footprints of the roots within its reach
- *  plus this, never of a 50,000-thing world. */
-const SOLID_ROOT_REACH = 64;
+/** A cheap rejection is valid only when it follows WorldModel.footprint's exact box contract. Generator output,
+ * sidecars, stretched defs and children can extend arbitrarily beyond a root's nominal size/pose; keep those in the
+ * full footprint path. In particular, a world-frame shape may have no `p` at all. */
+function simpleSolidBound(model: WorldModel, e: Entity, d: StoredDef): { x: number; z: number; radius: number } | null {
+  if (e.in.parent !== 'world' || d.form !== 'point' || d.make.kind !== 'mesh' || d.make.footprint || d.params.sx || d.params.sy || d.params.sz) return null;
+  const { x, z, s } = model.localPose(e), radius = Math.hypot(d.size.box[0], d.size.box[2]) / 2 * Math.abs(s);
+  return Number.isFinite(x) && Number.isFinite(z) && Number.isFinite(radius) ? { x, z, radius } : null;
+}
 const revisionOf = (m: Map<string, unknown>) => (m as Map<string, unknown> & { revision?: object }).revision;
 function solidScanFor(model: WorldModel) {
   const c = solidScan;
@@ -175,7 +179,8 @@ const footprintOf = (c: NonNullable<typeof solidScan>, model: WorldModel, e: Ent
   if (fp === undefined) { try { fp = model.footprint(e, d); } catch { fp = null; } c.fps.set(e.id, fp); }
   return fp;
 };
-/** Every solid's world footprint in entity order; with `near` ([x, z, reach]) only the solids whose root is within reach (PERF-STREAM). */
+/** Every solid's world footprint in entity order. `near` ([x, z, reach]) rejects only provably distant boxes;
+ * uncertain bounds always retain the original exhaustive semantics. Obstacles applies the exact final test. */
 export function solidFootprints(model: WorldModel, near?: readonly [number, number, number]): readonly { id: string; fp: readonly Box[] }[] {
   const c = solidScanFor(model);
   if (!near) {
@@ -188,20 +193,17 @@ export function solidFootprints(model: WorldModel, near?: readonly [number, numb
     c.solids = solids; return solids;
   }
   if (!c.anchors) {
-    const anchors: { e: Entity; x: number; z: number }[] = [];
+    const anchors: NonNullable<NonNullable<typeof solidScan>['anchors']> = [];
     for (const e of model.entities.values()) {
       const d = model.resolvedDef(e.def); if (!d || d.layer !== 'solid' || d.make.kind === 'none') continue;
-      let r = e; for (let depth = 0; r.in.parent !== 'world' && depth < 8; depth++) { const up = model.entities.get(r.in.parent); if (!up) break; r = up; }
-      const p = (r as { p?: number[] }).p; if (!Array.isArray(p) || p.length < 3) continue;
-      anchors.push({ e, x: p[0], z: p[2] });
+      anchors.push({ e, d, bound: simpleSolidBound(model, e, d) });
     }
     c.anchors = anchors;
   }
   const [x, z, reach] = near, out: { id: string; fp: Box[] }[] = [];
   model.readPass(() => { for (const a of c.anchors!) {
-    if (Math.hypot(a.x - x, a.z - z) > reach) continue;
-    const d = model.resolvedDef(a.e.def); if (!d) continue;
-    const fp = footprintOf(c, model, a.e, d); if (fp) out.push({ id: a.e.id, fp });
+    if (a.bound && Math.hypot(a.bound.x - x, a.bound.z - z) > reach + a.bound.radius) continue;
+    const fp = footprintOf(c, model, a.e, a.d); if (fp) out.push({ id: a.e.id, fp });
   } });
   return out;
 }
