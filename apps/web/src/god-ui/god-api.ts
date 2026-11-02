@@ -67,10 +67,9 @@ watchSession(() => {
   const next = session();
   if (next.mode !== tokenSession.mode || next.authed !== tokenSession.authed || next.scope !== tokenSession.scope ||
       (next.scope == null && next.label !== tokenSession.label)) {
-    // The first sign-in resolution must keep this document's adopted token on
-    // reload. Later account changes (and resolved sign-out) discard authority.
-    if (tokenSession.ready || tokenSession.authed || (next.ready && !next.authed)) forgetToken();
-    else { tokenGeneration++; pendingToken = null; }
+    // Invalidate only work started for the previous identity. Stored bearer
+    // adoption stays unchanged; explicit sign-out/401 paths call forgetToken.
+    tokenGeneration++; pendingToken = null;
   }
   tokenSession = next;
   status.reset(null);

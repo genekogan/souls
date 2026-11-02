@@ -19,11 +19,11 @@ function fixture(t: TestContext) {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
     t.after(() => { if (before) Object.defineProperty(globalThis, key, before); else Reflect.deleteProperty(globalThis, key); });
   }
-  const load = (world = 'first') => {
+  const load = (world = 'first', publications = [account()]) => {
     Object.defineProperty(globalThis, 'location', { configurable: true, writable: true, value: { pathname: `/w/${world}` } });
     const module = { exports: {} };
     new Function('require', 'module', 'exports', code)(createRequire(import.meta.url), module, module.exports);
-    const api = module.exports as Api; api.publishSession(account()); return api;
+    const api = module.exports as Api; for (const state of publications) api.publishSession(state); return api;
   };
   return { load };
 }
@@ -38,14 +38,15 @@ test('concurrent owner callers share one mint; a stored token makes no request',
   assert.equal(await api.ensureToken(), 'god_first-1_ready'); assert.equal(fetch.mock.callCount(), 1);
 });
 
-test('initial sign-in resolution preserves a remembered token across document reload', async t => {
+for (const placeholderReady of [false, true]) test(`remembered token survives Clerk binding startup (placeholder ready=${placeholderReady})`, async t => {
   const { load } = fixture(t);
   localStorage.setItem('sim.godToken:first', 'god_first-1_remembered');
   sessionStorage.setItem('sim.godToken', 'god_first-1_remembered');
   const fetch = t.mock.method(globalThis, 'fetch', async () => { throw Error('must reuse the adopted token'); });
-  const api = load();
+  const binding = { ...account(), authed: false, scope: null, label: null, getToken: async () => null };
+  const api = load('first', [{ ...binding, ready: placeholderReady }, { ...binding, label: 'Same label' }, account()]);
   assert.equal(await api.ensureToken(), 'god_first-1_remembered'); assert.equal(fetch.mock.callCount(), 0);
-  api.publishSession(account('two')); assert.equal(api.storedToken(), null, 'later account change still discards it');
+  api.forgetToken(); assert.equal(api.storedToken(), null, 'explicit sign-out still clears stored authority');
 });
 
 test('a rejected mint rejects all callers and permits an explicit retry', async t => {
@@ -85,15 +86,22 @@ test('sign-out while reading auth prevents dispatch; rejected flight is recovera
   assert.equal(await api.ensureToken(), 'god_first-1_again'); assert.equal(fetch.mock.callCount(), 1);
 });
 
-test('account switch drops stored authority but a same-account token-reader refresh keeps a flight', async t => {
+test('same-account token-reader refresh keeps a pending flight', async t => {
   const api = fixture(t).load(), mint = deferred<Response>();
-  api.keepToken('god_first-1_old'); api.publishSession(account('two')); assert.equal(api.storedToken(), null);
   const fetch = t.mock.method(globalThis, 'fetch', () => mint.promise);
   const first = api.ensureToken(); await flush();
-  api.publishSession({ ...account('two'), getToken: async () => 'refreshed-bearer' });
+  api.publishSession({ ...account(), getToken: async () => 'refreshed-bearer' });
   const second = api.ensureToken(); await flush(); assert.equal(fetch.mock.callCount(), 1);
   mint.resolve(response('god_first-1_current'));
   assert.deepEqual(await Promise.all([first, second]), ['god_first-1_current', 'god_first-1_current']);
+});
+
+test('explicit token clearing invalidates an in-flight mint before it can restore storage', async t => {
+  const api = fixture(t).load(), mint = deferred<Response>();
+  t.mock.method(globalThis, 'fetch', () => mint.promise);
+  const pending = assert.rejects(api.ensureToken(), /Sign-in changed/); await flush();
+  api.forgetToken(); mint.resolve(response('god_first-1_obsolete')); await pending;
+  assert.equal(api.storedToken(), null);
 });
 
 test('different world documents never share a pending mint or the other world token', async t => {
