@@ -174,7 +174,7 @@ test('each start picks a random performance; the log and playing() name it', asy
   assert.equal(player.performances('a'), 3); assert.equal(player.performances('c'), 1); assert.ok(player.has('c')); assert.ok(!player.has('z'));
   let p = player.play('a', { reason: 'first' }); els[0].metadata(); await p;
   assert.equal(els[0].src, perf('a', 1).url); assert.equal(player.playing()?.perf, 1);
-  assert.equal(log.at(-1)?.reason, 'first, performance 2 of 3');
+  assert.deepEqual(log.at(-1), { ev: 'start', piece: 'a', reason: 'first', performance: 1, performances: 3 });
   p = player.play('a', { reason: 'next' }); els[1].metadata(); await p; await flush();
   assert.equal(els[1].src, perf('a', 2).url);   // a replay picks afresh (0.99 -> the last)
   p = player.play('c', { reason: 'next' }); els[2].metadata(); await p;
@@ -182,7 +182,7 @@ test('each start picks a random performance; the log and playing() name it', asy
 });
 
 test('stop() returns the performance, and a resume plays that one at its position (no roll)', async () => {
-  const { els, player, tick } = rig(INDEX2, [0.7]);
+  const { els, log, player, tick } = rig(INDEX2, [0.7]);
   const p = player.play('b'); els[0].metadata(); await p;
   assert.equal(player.playing()?.perf, 2);
   tick(30_000, null); els[0].currentTime = 30;
@@ -190,6 +190,7 @@ test('stop() returns the performance, and a resume plays that one at its positio
   assert.deepEqual({ id: place?.id, perf: place?.perf, positionS: place?.positionS }, { id: 'b', perf: 2, positionS: 30 });
   const r = player.play('b', { positionS: place!.positionS, perf: place!.perf, reason: 'resume' }); els[1].metadata(); await r;
   assert.equal(els[1].src, perf('b', 2).url); assert.equal(els[1].seekAtPlay, 30); assert.equal(player.playing()?.perf, 2);
+  assert.deepEqual(log.at(-1), { ev: 'start', piece: 'b', reason: 'resume', performance: 2, performances: 3, positionS: 30 });
 });
 
 test('the prefetched next piece rolls its performance once, and the crossfade plays that file', async () => {
@@ -201,7 +202,7 @@ test('the prefetched next piece rolls its performance once, and the crossfade pl
   assert.equal(tick(17_000, 'b'), 'crossfade'); await flush(); await flush();
   assert.equal(els.length, 2);              // the prefetched element plays: no second roll, no new file
   assert.equal(player.playing()?.id, 'b'); assert.equal(player.playing()?.perf, 1);
-  assert.equal(log.filter((e) => e.ev === 'start').at(-1)?.reason, 'crossfade, performance 2 of 3');
+  assert.deepEqual(log.filter((e) => e.ev === 'start').at(-1), { ev: 'start', piece: 'b', reason: 'crossfade', performance: 1, performances: 3 });
 });
 
 test('a resume naming a performance the prefetch did not roll replaces the prefetched deck', async () => {

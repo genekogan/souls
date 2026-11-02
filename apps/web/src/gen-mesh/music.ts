@@ -33,7 +33,8 @@ export const musicDb = (volume: number) => (volume <= 0 ? -Infinity : 20 * Math.
 
 type ToneLike = { start(): Promise<void>; getContext(): { state: string; rawContext: { state: string; createAnalyser(): AnalyserNode } }; getDestination(): { volume: { value: number; rampTo(v: number, s: number): void }; connect(n: AudioNode): unknown } };
 export type MusicSource = 'file' | 'tone';
-export type MusicEvent = { t: number; ev: 'load' | 'loaded' | 'start' | 'fade' | 'stop' | 'error' | 'duck' | 'unduck'; piece?: string; reason?: string; source?: MusicSource };
+// reason is the machine-readable transition; file selection and resume position are separate log metadata.
+export type MusicEvent = { t: number; ev: 'load' | 'loaded' | 'start' | 'fade' | 'stop' | 'error' | 'duck' | 'unduck'; piece?: string; reason?: string; source?: MusicSource; performance?: number; performances?: number; positionS?: number };
 /** A stopped piece's place, so the next start resumes it: the position in its file, or (Tone) the seed and cycle, which
  *  give the same performance from that cycle. */
 export type Paused = { index: number; seed: number; cycle: number; remainingMs: number; positionS?: number; perf?: number };

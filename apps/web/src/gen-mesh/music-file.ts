@@ -125,8 +125,11 @@ export class FilePlayer {
           this.ramp(d.gain.gain, 1, fadeInS);
           if (this.current && this.current !== d) { this.fadeOut(this.current, this.fadeS); }
           this.current = d;
-          const of = this.performances(id) > 1 ? `, performance ${d.perf + 1} of ${this.performances(id)}` : '';
-          this.on({ ev: 'start', piece: id, reason: (positionS > 0 ? `${reason} at ${Math.round(positionS)} s` : reason) + of });
+          const performances = this.performances(id);
+          this.on({ ev: 'start', piece: id, reason,
+            ...(performances > 1 ? { performance: d.perf, performances } : {}),
+            ...(positionS > 0 ? { positionS } : {}),
+          });
           done();
         };
         (this.ctx.state === 'running' ? Promise.resolve() : this.ctx.resume().catch(() => {})).then(() => d.el.play()).then(start, (e) => done(Error(`${id}: play: ${String(e).slice(0, 80)}`)));
