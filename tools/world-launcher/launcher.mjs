@@ -90,6 +90,7 @@ const WORLD_AGENT = new Agent({ keepAlive: false });
 const hopless = (h) => { const { connection: _c, 'keep-alive': _k, ...rest } = h; return rest; };
 import { clientErrors } from './client-errors.mjs';
 import { healthDash } from './health-dash.mjs';
+import { ownerOverview } from './owner-overview.mjs';
 import { connect } from 'node:net';
 import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { brotliCompressSync, gzipSync, constants as zlibConstants } from 'node:zlib';
@@ -297,6 +298,7 @@ export async function openLauncher(cfg = {}) {
   // lane DASH: the site owner's health page (health-dash.mjs)
   const dash = healthDash({ dataDir, build: BUILD, base: B, registry, pool, live, stats, refreshStats, errors, ceilings, hostHealth: () => hostHealth(dataDir), auth, wp,
     verify: (a) => (auth ? verifiedCreator(a, auth.child, publicOrigin, root) : Promise.resolve(null)), worldOwner: safeOwner });
+  const overview = ownerOverview({ dataDir, auth, base: B, allowed: dash.allowed });
   const handoff = makeHandoff({ registry, pool, dataDir, wp, publicOrigin, actorOf, isOwner, closing, log, cobuilders });
   async function ownerArchive(w, body, authorization) {
     const a = await actorOf(w, authorization);
@@ -772,6 +774,9 @@ export async function openLauncher(cfg = {}) {
     }
     dash.noteWatch(req);   // lane DASH: sim-watch's last check (and what it saw down)
     try {
+      if (url.pathname === '/ops' || path === '/ops' || url.pathname.startsWith('/ops/') || path.startsWith('/ops/')) {
+        await overview.handle(req, res, url); return;
+      }
       if (outside) {
         if (path === '/healthz' && direct(req)) { json(res, 200, { ok: true, service: 'world-launcher', base: B, build: BUILD }); return; }
         const p = (req.method === 'GET' || req.method === 'HEAD') && /^\/(modular|mars-assets|engine|browser|models|history|2020|world-assets)\/|^\/data\/manifest\.json$/.test(path) && anyRunning();

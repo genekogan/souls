@@ -1,6 +1,7 @@
 # Project visibility and visual release history
 
-Design for [#581](https://github.com/genekogan/souls/issues/581). The private project view is proposed, not deployed.
+Design for [#581](https://github.com/genekogan/souls/issues/581). The private project view is not yet deployed; the
+[bounded owner-overview implementation](../operations/owner-overview.md) documents its collector and access boundary.
 Keep it read-only and small. Conversation remains the place to change priorities or give feedback.
 
 ## One record, two audiences
