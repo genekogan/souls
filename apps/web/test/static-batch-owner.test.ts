@@ -84,3 +84,12 @@ test('a source hook buckets and validates a mesh by the material it names while 
  f.a.material=new THREE.MeshStandardMaterial();f.a.userData.glowBase=undefined;owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(owner.inspection().fallbackLastRender,1);},2);  // the hook no longer names the base: the batch falls back
  await owner.prepare([f.root],{generation:2});assert.equal(owner.inspection().batches,0);owner.dispose();
 });
+test('sliced preparation keeps the live batches drawing until the new set commits, and a newer generation makes it obsolete',async()=>{
+ const f=fixture(),c=new THREE.Mesh(new THREE.BoxGeometry(),f.material),d=new THREE.Mesh(new THREE.BoxGeometry(),f.material);c.position.x=200;d.position.x=203;f.root.add(c,d);
+ const owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1,incremental:true,sliceMs:0});assert.equal(owner.inspection().batches,2);const live=[...owner.group.children];
+ const pending=owner.prepare([f.root],{generation:2,incremental:true,sliceMs:0});
+ assert.equal(owner.inspection().generation,1,'the old set stays live while the new one is built');owner.withRender(()=>assert.equal(f.a.visible,false));
+ const newer=owner.prepare([f.root],{generation:3,incremental:true,sliceMs:0});await assert.rejects(pending,/Obsolete/);await newer;
+ assert.equal(owner.inspection().generation,3);assert.equal(owner.inspection().batches,2);assert.equal(owner.inspection().reusedBatches,2,'unchanged cells are reused');assert.deepEqual(owner.group.children,live);
+ f.b.position.x=4;f.b.updateMatrixWorld();await owner.prepare([f.root],{generation:4,incremental:true,sliceMs:0});assert.equal(owner.group.children.length,2,'a rebuilt cell replaces its old mesh, nothing extra stays in the group');owner.dispose();
+});
