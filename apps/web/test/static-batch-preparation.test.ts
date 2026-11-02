@@ -139,3 +139,44 @@ test('incremental merged-byte budget control reuses unchanged cells once and ref
  await owner.prepare([f.root],{generation:2,incremental:true});assert.equal(owner.inspection().reusedBatches,2);assert.equal(owner.inspection().workingGeometryPeakBytes,4200);assert.deepEqual(owner.group.children,live);
  f.a.geometry=new THREE.SphereGeometry(1,8,3);await assert.rejects(owner.prepare([f.root],{generation:3,incremental:true}),/geometry-budget/);assert.equal(owner.inspection().generation,2);assert.deepEqual(owner.group.children,live);owner.dispose();
 });
+
+test('a newer preparation waits for obsolete private copies to release across a real yield',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene),derived=f.material.clone();await owner.prepare([f.root],{generation:1});let newer:Promise<unknown>|undefined,disposed=false,startedAfterRelease=false,generationDuringStart:number|null=null;
+ const replacement={material:()=>derived,attributes(){startedAfterRelease=disposed;}};
+ const obsolete={material:()=>derived,attributes(copy:THREE.BufferGeometry){copy.addEventListener('dispose',()=>{disposed=true;});newer=owner.prepare([f.root],{generation:3,shaderMerge:replacement});generationDuringStart=owner.inspection().generation;}};
+ await assert.rejects(owner.prepare([f.root],{generation:2,shaderMerge:obsolete,sliceMs:0}),{name:'AbortError'});await newer;
+ assert.equal(generationDuringStart,1,'the replacement does not publish while an obsolete candidate still owns copies');assert.equal(startedAfterRelease,true,'private candidate allocations never overlap');assert.equal(owner.inspection().generation,3);owner.withRender(()=>assert.equal(f.a.visible,false));owner.dispose();derived.dispose();
+});
+
+for(const budgetPolicy of [undefined,'partial-cells/1'] as const)test(`post-adapter geometry workspace is checked before merge (${budgetPolicy??'strict'})`,async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene,{maxMergedBytes:5000,maxWorkingBytes:7000}),derived=f.material.clone();await owner.prepare([f.root],{generation:1});const live=[...owner.group.children];let copies=0,disposed=0;
+ const shaderMerge={material:()=>derived,attributes(copy:THREE.BufferGeometry){copies++;copy.addEventListener('dispose',()=>disposed++);for(let i=0;i<3;i++)copy.setAttribute('extra'+i,new THREE.BufferAttribute(new Float32Array(copy.attributes.position.count*4),4));}};
+ if(budgetPolicy===undefined){await assert.rejects(owner.prepare([f.root],{generation:2,shaderMerge}),/geometry-budget/);assert.deepEqual(owner.group.children,live);assert.equal(owner.inspection().generation,1);}
+ else{await owner.prepare([f.root],{generation:2,shaderMerge,budgetPolicy});assert.equal(owner.inspection().batches,0);assert.equal(owner.inspection().budgetSkippedMeshes,2);owner.withRender(()=>assert.equal(f.a.visible,true));}
+ assert.equal(copies,2);assert.equal(disposed,copies);owner.dispose();derived.dispose();
+});
+
+test('failed predecessor and aborted queued preparation release the latch for the newest request',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene),derived=f.material.clone();await owner.prepare([f.root],{generation:1});const abort=new AbortController();let cancelled:Promise<void>|undefined,newest:Promise<unknown>|undefined,disposed=false,newestAfterRelease=false;
+ const shaderMerge={material:()=>derived,attributes(copy:THREE.BufferGeometry){
+  copy.addEventListener('dispose',()=>{disposed=true;});cancelled=assert.rejects(owner.prepare([f.root],{generation:3,signal:abort.signal,sliceMs:0}),{name:'AbortError'});abort.abort();
+  newest=owner.prepare([f.root],{generation:4,shaderMerge:{material:()=>derived,attributes(){newestAfterRelease=disposed;}}});throw Error('predecessor copy failed');
+ }};
+ await assert.rejects(owner.prepare([f.root],{generation:2,shaderMerge,sliceMs:0}),/predecessor copy failed/);await cancelled;await newest;
+ assert.equal(newestAfterRelease,true);assert.equal(owner.inspection().generation,4);assert.equal(owner.inspection().preparing,false);owner.withRender(()=>assert.equal(f.a.visible,false));owner.dispose();derived.dispose();
+});
+
+test('reset and disposal cancel both active and queued preparations without leaving a latch',async()=>{
+ for(const dispose of [false,true]){
+  const f=fixture(),owner=new StaticBatchOwner(f.scene);await owner.prepare([f.root],{generation:1});
+  const active=assert.rejects(owner.prepare([f.root],{generation:2,sliceMs:0}),{name:'AbortError'}),queued=assert.rejects(owner.prepare([f.root],{generation:3}),{name:'AbortError'});
+  assert.equal(owner.inspection().preparing,true);if(dispose)owner.dispose();else owner.reset();await Promise.all([active,queued]);assert.equal(owner.inspection().preparing,false);assert.equal(owner.inspection().generation,null);
+  if(!dispose){await owner.prepare([f.root],{generation:4});assert.equal(owner.inspection().generation,4);owner.dispose();}
+ }
+});
+
+test('an oversized adapter return is rejected and its known allocation peak is reported honestly',async()=>{
+ const f=fixture(),owner=new StaticBatchOwner(f.scene,{maxMergedBytes:5000,maxWorkingBytes:7000}),derived=f.material.clone();await owner.prepare([f.root],{generation:1});const live=[...owner.group.children],accepted=owner.inspection().mergedBytes;let known=0,disposed=0;
+ const shaderMerge={material:()=>derived,attributes(copy:THREE.BufferGeometry){copy.addEventListener('dispose',()=>disposed++);for(let i=0;i<100;i++)copy.setAttribute('extra'+i,new THREE.BufferAttribute(new Float32Array(copy.attributes.position.count*4),4));known=accepted+Object.values(copy.attributes).reduce((n,a)=>n+a.array.byteLength,0)+(copy.index?.array.byteLength??0);}};
+ await assert.rejects(owner.prepare([f.root],{generation:2,shaderMerge}),/geometry-budget/);assert.deepEqual(owner.group.children,live);assert.equal(disposed,1);assert.ok(known>7000);assert.equal(owner.inspection().workingGeometryPeakBytes,known,'admission checks cannot prevent arbitrary allocation inside an adapter callback');assert.equal(owner.inspection().preparing,false);owner.dispose();derived.dispose();
+});

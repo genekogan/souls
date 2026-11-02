@@ -147,9 +147,10 @@ test('an obsolete preparation cannot overwrite the diagnostics of a newer commit
   assert.equal(messages.length,1);messages.shift()!();
   for(let i=0;i<4;i++)await Promise.resolve();
   assert.equal(messages.length,1,'the old preparation has traversed its sources and paused before merging');
-  await owner.prepare([newRoot],{generation:2});const current=owner.inspection(),live=[...owner.group.children];
+  const replacement=owner.prepare([newRoot],{generation:2});assert.equal(owner.inspection().preparing,true);assert.equal(owner.inspection().generation,null,'replacement waits for obsolete private cleanup');
+  messages.shift()!();await obsolete;await replacement;const current=owner.inspection(),live=[...owner.group.children];
   assert.equal(current.sourceNodes,5);assert.equal(current.sourceMeshes,4);
-  messages.shift()!();await obsolete;
+  await Promise.resolve();
   const after=owner.inspection();assert.equal(after.generation,2);assert.equal(after.sourceNodes,current.sourceNodes);assert.equal(after.sourceMeshes,current.sourceMeshes);assert.equal(after.prepareCpuMs,current.prepareCpuMs);assert.deepEqual(owner.group.children,live);
   owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(newRoot.children[0].visible,false);});
  }finally{owner.dispose();for(const message of messages.splice(0))message();globalThis.MessageChannel=original;}
