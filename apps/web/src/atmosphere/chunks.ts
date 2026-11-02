@@ -20,8 +20,10 @@ export const DUST={value:{x:0,y:0,z:0,w:0}};
 export function makeAtmosphereNoise(size=128){
  const data=new Uint8Array(size*size*4);
  const hash=(x:number,y:number,s:number)=>{let h=(Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(s,1442695041))|0;h=Math.imul(h^(h>>>13),1274126177);return((h^(h>>>16))>>>0)/4294967296;};
+ // PERF-LOAD: each (period, seed) lattice hashed once (the same values), not four hashes per sample (~60 ms at load)
+ const lattices=new Map<number,Float64Array>(),lattice=(period:number,seed:number)=>{const k=seed*1024+period;let L=lattices.get(k);if(!L){L=new Float64Array(period*period);for(let j=0;j<period;j++)for(let i=0;i<period;i++)L[j*period+i]=hash(i,j,seed);lattices.set(k,L);}return L;};
  const value=(u:number,v:number,period:number,seed:number)=>{const x=u*period,y=v*period,i=Math.floor(x),j=Math.floor(y),fx=x-i,fy=y-j,sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy),w=(a:number)=>((a%period)+period)%period;
-  const a=hash(w(i),w(j),seed),b=hash(w(i+1),w(j),seed),c=hash(w(i),w(j+1),seed),d=hash(w(i+1),w(j+1),seed);return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy;};
+  const L=lattice(period,seed),a=L[w(j)*period+w(i)],b=L[w(j)*period+w(i+1)],c=L[w(j+1)*period+w(i)],d=L[w(j+1)*period+w(i+1)];return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy;};
  for(let y=0;y<size;y++)for(let x=0;x<size;x++){const u=x/size,v=y/size,o=(y*size+x)*4;
   for(let ch=0;ch<4;ch++){let s=0,amp=.5,norm=0;for(let oct=0;oct<4;oct++){s+=amp*value(u,v,4<<oct,ch*31+oct);norm+=amp;amp*=.5;}
    // stretch the fbm (which bunches around .5) back toward 0..1

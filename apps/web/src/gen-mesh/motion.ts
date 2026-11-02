@@ -246,7 +246,7 @@ export type Rig = {
   scale?: number;
   area?: V2[];
   // state (deterministic caches only; follow keeps a little smoothing state)
-  plan?: Plan; world?: ReturnType<typeof surroundings>; cache?: RouteCache; homeKey?: string;
+  plan?: Plan; world?: ReturnType<typeof surroundings>; cache?: RouteCache; homeKey?: string; planned?: boolean;
   followState?: { x: number; z: number; yaw: number; dist: number; t: number };
 };
 
@@ -260,6 +260,8 @@ export function makeRig(obj: THREE.Object3D, o: Omit<Rig, 'roles' | 'hip' | 'len
 }
 
 const WATER_KINDS = new Set<BehaviorKind>(['swim']);
+const PLAN_FRAME_MS = 6;
+let planFrame = NaN, planSpent = 0;
 const nocturnal = new Set(['fox', 'cat']);
 
 /** One creature frame: behaviour → pose → gait. `base` gives the home (the entity's resting place). */
@@ -269,6 +271,11 @@ export function creatureStep(obj: THREE.Object3D, rig: Rig, entity: Entity | nul
   const hx = home ? home[0] : obj.position.x, hz = home ? home[1] : obj.position.z;
   if (!model) { gait(obj, rig, idlePose(hx, hz, base.yaw), t, s, 0); return; }
   const key = `${hx.toFixed(2)},${hz.toFixed(2)},${rig.kind},${rig.radius},${rig.speed}`;
+  // PERF-LOAD: a creature's first plan and route cost 1-10 ms; on arrival every creature in view planned on one frame
+  // (~0.16 s). A few plan per frame; the rest stand at home until their turn.
+  const fresh = rig.homeKey !== key || !rig.plan || !rig.planned;
+  if (fresh) { if (t !== planFrame) { planFrame = t; planSpent = 0; } if (planSpent >= PLAN_FRAME_MS) { gait(obj, rig, idlePose(hx, hz, base.yaw), t, s, 0); return; } }
+  const planStart = fresh ? performance.now() : 0;
   if (rig.homeKey !== key || !rig.plan) {
     rig.homeKey = key;
     const medium = WATER_KINDS.has(rig.kind) ? 'water' : 'land';
@@ -286,6 +293,7 @@ export function creatureStep(obj: THREE.Object3D, rig: Rig, entity: Entity | nul
   if (kind === 'follow' && rig.follow) P = followPose(rig, model, t, hx, hz);
   else if (kind !== rig.plan.kind) P = pose({ ...rig.plan, kind }, t, rig.world!, rig.cache!);
   else P = pose(rig.plan, t, rig.world!, rig.cache!);
+  if (fresh) { rig.planned = true; planSpent += performance.now() - planStart; }
   // E2 #3: shy animals bolt from people who come close, then wander back to their routine
   if (rig.flee && rig.gait !== 'fish-swim' && kind !== 'follow') P = fleeStep(rig.fleeState ??= { ox: 0, oz: 0, dist: 0, t }, P, fleeSources(t), rig.flee, rig.speed * s, t, (x, z) => rig.world!.free(x, z, rig.plan!.size));
   // ANI: everything on foot gives way to Souls instead of walking through them (drawn offset only; see give-way.ts)
