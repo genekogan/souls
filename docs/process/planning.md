@@ -1,5 +1,7 @@
 # Planning and intake
 
+For requests, review and changing worker capacity in plain language, use the [owner playbook](owner-playbook.md).
+
 The issue is the unit of responsibility; the PR is the unit of integration. A maintainer gives an outcome,
 bug report or priority in ordinary language. The development owner finds existing work, records the request
 and takes care of task selection and integration within that authorization.
