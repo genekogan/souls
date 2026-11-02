@@ -502,7 +502,7 @@ function boatStep(obj: THREE.Object3D, e: Entity, def: StoredDef, model: WorldMo
 export function syncLightGlow(obj: THREE.Object3D, e: Entity, def: StoredDef, model: WorldModel | null, t: number) {
   const ud = obj.userData as { glow?: THREE.Mesh[] };
   if (!ud.glow) {
-    ud.glow = []; obj.traverse((c) => { const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && (m as { emissive?: THREE.Color }).emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0) { const own = m.clone(); (c as THREE.Mesh).material = own; ud.glow!.push(c as THREE.Mesh);
+    ud.glow = []; obj.traverse((c) => { const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && (m as { emissive?: THREE.Color }).emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0) { const own = m.clone(); (c as THREE.Mesh).material = own; ud.glow!.push(c as THREE.Mesh); c.userData.renderDynamic = true;  // PERF-BATCH: its emissive changes every frame: never merged
       // W2: a flame part glows by itself; its lit albedo plus a night-boosted emissive clipped it to white ("an orange cone")
       if (isFlamePart(c)) { own.userData.flameCap = FLAME_GLOW_CAP; own.color.multiplyScalar(0.15); } } });
     // The layer caches its library materials; these per-entity copies belong to this root instead.
