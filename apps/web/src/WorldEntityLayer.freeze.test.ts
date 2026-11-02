@@ -34,6 +34,20 @@ async function layerFor(phone: boolean) {
 }
 const worldPos = (o: THREE.Object3D) => new THREE.Vector3().setFromMatrixPosition(o.matrixWorld);
 
+test('static root collection bounds visited records, including ineligible records, before reading the tail', async () => {
+  const { layer, inner, put } = await layerFor(false);
+  put('moving', [0, 0, 0]);
+  const selected = put('static', [2, 0, 0]); selected.d().frozen = [];
+  const tail = put('tail', [4, 0, 0]);
+  Object.defineProperty(tail.d(), 'frozen', { get() { throw Error('unvisited record read'); }, configurable: true });
+  let records = 0; const entries = inner.drawn.entries.bind(inner.drawn);
+  inner.drawn.entries = () => { const iterator = entries(), next = iterator.next.bind(iterator); iterator.next = () => { const entry = next(); if (!entry.done) records++; return entry; }; return iterator; };
+  assert.deepEqual(layer.staticBatchRoots(2), [selected.obj]);
+  assert.equal(records, 2); assert.deepEqual(layer.staticBatchRootScan, { records: 2, truncated: true });
+  records = 0; assert.deepEqual(layer.staticBatchRoots(0), []); assert.equal(records, 0);
+  assert.throws(() => layer.staticBatchRoots(-1), /invalid-record-limit/);
+});
+
 test('phone: a settled still thing freezes; its subtree leaves the matrix walk with current matrices', async () => {
   const { put, frame } = await layerFor(true);
   const a = put('a', [5, 0, 0]);
