@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { collectOverview } from './owner-overview-collect.mjs';
 import { checkpointFrom, projectRecords, presentSnapshot, recordUrl, validateSnapshot, MAX_AGE_MS } from './owner-overview-data.mjs';
 import { productionSettings } from './production.mjs';
@@ -54,7 +55,15 @@ test('schema strips extra fields and rejects invalid cache; proof media is never
   const page = overviewShell({ clerkPublishableKey: '</script><script>bad', clerkIssuer: 'https://clerk.example.test' });
   assert.equal(page.html.includes('</script><script>bad'), false); assert.match(page.csp, /sha256-/);
   const scripts = page.csp.split(';').find(x => x.trim().startsWith('script-src')).trim().split(/\s+/);
-  assert.ok(scripts.includes('https://clerk.example.test')); assert.equal(scripts.includes('https://*.clerk.example.test'), false);
+  const inlineScript = /<script>([\s\S]*?)<\/script>/.exec(page.html)?.[1];
+  assert.ok(inlineScript);
+  assert.deepEqual(scripts, [
+    'script-src',
+    `'sha256-${createHash('sha256').update(inlineScript).digest('base64')}'`,
+    'https://clerk.example.test',
+    'https://challenges.cloudflare.com',
+    'https://*.protect.clerk.com',
+  ]);
 });
 
 test('collector is deterministic, private and atomic; failed API call preserves last observation', async () => {
