@@ -6,10 +6,10 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { registerHooks } from 'node:module';
 import { WorldModel, coreLibrary, applyBatch, type Entity } from '@sim/world-compiler';
-import { diffSnapshots, type PlainSnapshot, type SnapshotDelta } from './snapshot-delta.ts';
+import { diffSnapshots, type PlainSnapshot, type SnapshotDelta, type SnapshotDecoder } from './snapshot-delta.ts';
 
 type Drawn = { settled?: boolean; frozen?: THREE.Object3D[]; removing?: boolean; dur: number; obj: THREE.Object3D; to: { p: THREE.Vector3; s: number } };
-type Inner = { model: WorldModel; draw: (e: Entity, ease: boolean) => void; drawn: Map<string, Drawn>; now: number; seq: number; signal: AbortSignal; touched: Set<string>; groundTouched: boolean; applyDelta: (d: SnapshotDelta, asked: Set<string>, signal: AbortSignal) => Promise<void> };
+type Inner = { snapshotDecoder: () => Promise<SnapshotDecoder>; model: WorldModel; draw: (e: Entity, ease: boolean) => void; drawn: Map<string, Drawn>; now: number; seq: number; signal: AbortSignal; touched: Set<string>; groundTouched: boolean; applyDelta: (d: SnapshotDelta, asked: Set<string>, signal: AbortSignal) => Promise<void> };
 
 const plain = (m: WorldModel, seq: number): PlainSnapshot => { const s = m.snapshot(); return { contract: 'world/1', seq, counter: s.seq, seed: s.seed, constants: s.constants, state: s.state, ground: s.ground, defs: structuredClone(s.defs) as never, entities: structuredClone(s.entities) as never, builds: [], buildsRev: 0, now: 0 }; };
 
@@ -101,4 +101,22 @@ test('applyEdge remembers what the socket changed, so the next delta reports tho
   assert.deepEqual([...f.inner.touched].sort(), [f.a.id, f.b.id].sort()); assert.equal(f.inner.groundTouched, false);
   const d = diffSnapshots(f.base, f.base, f.inner.touched);
   assert.deepEqual(d.upserts.map((e) => e.id).sort(), [f.a.id, f.b.id].sort(), 'both asked for although the snapshot did not change');
+});
+
+
+test('concurrent cold snapshot requests share a baseline owner and teardown closes it', async () => {
+  const f = await fixture();
+  const [a, b] = await Promise.all([f.inner.snapshotDecoder(), f.inner.snapshotDecoder()]);
+  assert.equal(a, b);
+  const pieces = { kind: 'plain' as const, body: [new TextEncoder().encode(JSON.stringify(f.base))] };
+  assert.deepEqual(await a.initial(pieces), f.base);
+  f.layer.dispose();
+  await assert.rejects(a.initial(pieces), /disposed/);
+  await assert.rejects(f.inner.snapshotDecoder(), { name: 'AbortError' });
+});
+
+test('teardown while the snapshot client module is loading prevents a late decoder', async () => {
+  const f = await fixture(), pending = f.inner.snapshotDecoder();
+  f.layer.dispose();
+  await assert.rejects(pending, { name: 'AbortError' });
 });

@@ -1015,7 +1015,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       // (never for ?shot pictures or a Soul's eyes: those tools time their own frames)
       const holdDraw=!shotMode&&!eyes&&(programsPending||(arrivalStage!==undefined&&!arrivedOnce)),warmFrame=warmLayer===1;
       {const still=quality.freezeStill&&!eyes&&!shotMode;entityLayer.interiorFrom=still&&quality.tier==='phone'?camera.position:null;entityLayer.freezeSettled=still;}  // P1 phones: far buildings' furniture is not drawn; PERF-EDEN: still things freeze and cull on every tier
-      entityLayer.applyEdge(context.current.sim.edge??[],shown.current?.tick??-Infinity);if(!holdDraw||warmFrame){entityLayer.itemPoses(shown.current.entities);entityLayer.update(step,now,geometry.group);}
+      entityLayer.applyEdge(context.current.sim.edge??[],shown.current?.tick??-Infinity);if(!holdDraw||warmFrame){entityLayer.streamFrom(camera.position);entityLayer.itemPoses(shown.current.entities);entityLayer.update(step,now,geometry.group);}
       // PERF-LOAD: the built layer's first update runs under the card and its programs (scatter and kit pools, creatures,
       // atmosphere: ~0.3 s of links on the first drawn frame) link in parallel before any frame draws them
       if(warmLayer===2){warmLayer=0;const done=()=>{programsPending=false;arrivalMark('programs-linked');};void compileInitialPrograms().then(done,done);}else if(warmLayer===1)warmLayer=2;  // compiled on the next frame, not in the update's task  // no-ops unless this is a new (entity) world

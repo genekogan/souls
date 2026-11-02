@@ -7,8 +7,9 @@ import {lockPose} from './gen-mesh/vocab-look.ts';
 // Inactive (and invisible) on worlds that have no entity layer.
 import { noteModeration, noteSnapshotVersion } from './moderation-hidden.ts';
 import { godFeature, isFlagDef } from './god-ui/features.ts';
-import { loadSnapshot, parsePieces } from './snapshot-wire.ts';
-import { SnapshotDecoder, type SnapshotDelta } from './snapshot-delta.ts';
+import { loadSnapshot } from './snapshot-wire.ts';
+import { snapshotModel } from './snapshot-model.ts';
+import type { SnapshotDecoder, SnapshotDelta } from './snapshot-delta.ts';
 import * as THREE from 'three';
 import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@sim/ground';
 import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
@@ -38,7 +39,7 @@ import { noteUploadSizes } from './cdn-assets.ts';
 import { eagerShas, planEager } from './gen-mesh/lazy-assets.ts';
 import { progressiveNearM } from './quality-tier.ts';
 import { contextStamp } from './context-stamp.ts';
-import { arrivalOver } from './arrival-marks.ts';
+import { arrivalMark, arrivalOver } from './arrival-marks.ts';
 import { computeVertexNormals } from './gen-mesh/fast-geometry.ts';
 import { entityArrivalPose } from './entity-arrival.ts';
 import { keySeen, shapeWedgeDistance, viewFirst, viewWedge, type ViewWedge } from './arrival-view.ts';
@@ -50,6 +51,7 @@ import { holdRainbow, isRainbowDef } from './atmosphere/rainbow-things.ts';
 import {WorldEntityStairs,pendingStairDiff} from './WorldEntityStairs.ts';
 import { ScatterPools } from './ScatterPools.ts';
 import { MotionInstancer } from './MotionInstancer.ts';
+import { StreamRing, sectorsWithin, sectorDistance } from './StreamRing.ts';
 
 export type EntitySnapshot = { contract: string; worldId: string; seq: number; counter?: number; seed?: string; constants: WorldModel['constants']; state: WorldModel['state']; ground: Ground; defs: StoredDef[]; entities: Entity[]; tiles: Record<string, string>; assetBytes?: Record<string, number>; builds?: PublicSite[]; buildsRev?: number; now?: number };
 type DiffMsg = { type: 'edge'; kind: 'world-diff'; seq: number; diff: { upserts: Entity[]; removes: string[]; defs: StoredDef[]; tiles: string[]; world?: Partial<WorldModel['state']> }; ground?: Ground; defs?: StoredDef[] };
@@ -86,6 +88,154 @@ export class WorldEntityLayer {
    *  in small slices between frames. Edge diffs still wait for it (applyEdge). */
   filling = false;
   private model: WorldModel | null = null;
+  /** Experimental distance streaming (StreamRing.ts): with
+   *  a ring, start() draws only the things within `inner` m of the arrival camera, and every frame (streamFrom + update)
+   *  streams in what the camera approaches and unloads what it left beyond `outer` (removed from its batch, pool or
+   *  instance slot at once; built again when it comes back). Terrain sectors stream the same way (full within `inner`,
+   *  coarse to `outer` + a sector, none beyond). Opt in with `?stream=<m>`; off by default at every world size.
+   *  Distance alone is not a visibility bound: far geometry, shadows and offset children can still be visible. */
+  streaming: { inner: number; outer: number } | null = null;
+  private ring: StreamRing | null = null;
+  private readonly streamEye = new THREE.Vector3(); private streamEyeSet = false;
+  private streamQueue: string[] = []; private readonly streamQueued = new Set<string>();
+  private unloadQueue: string[] = [];
+  private readonly streamPending = new Map<string, Promise<void>>();
+  private sectorWork: { key: string; tiles: [number, number][]; full: boolean } | null = null;
+  /** Probes and tests: what streaming did. */
+  readonly streamStats = { built: 0, unloaded: 0, queued: 0, sectors: 0, sectorsDropped: 0, stepMs: 0, maxStepMs: 0, updates: 0 };
+  /** The camera this frame (LiveWorld, before update): what the ring is evaluated around. */
+  streamFrom(eye: THREE.Vector3) { this.streamEye.copy(eye); this.streamEyeSet = true; }
+  /** What the ring decided for a thing (tests, probes): wanted, queued, drawn. */
+  streamState(id: string) { return this.ring ? { wanted: this.ring.isWanted(id), queued: this.streamQueued.has(id), drawn: this.drawn.has(id), ringed: this.ring.has(id) } : null; }
+  private streamOption(): { inner: number; outer: number } | null {
+    const q = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('stream');
+    if (q === '0' || q === 'off') return null;
+    const inner = q !== null && Number.isFinite(Number(q)) && Number(q) > 0 ? Number(q) : 0;
+    return inner > 0 ? { inner, outer: inner * STREAM_OUTER_RATIO } : null;
+  }
+  /** A thing's ring entry from its root's stored pose or shape (no slot bakes: a building's furniture goes with its building).
+   *  Pinned (always built): Souls' bodies and what they carry, things without a pose (world-wide landforms), the horizon
+   *  and the arrival spot. */
+  private ringSet(e: Entity, def: StoredDef) {
+    const ring = this.ring!, m = this.model!;
+    let r = e, rdef = def;
+    for (let depth = 0; r.in.parent !== 'world' && depth < 8; depth++) { const up = m.entities.get(r.in.parent); if (!up) break; r = up; rdef = m.resolvedDef(r.def) ?? rdef; }
+    const pinned = !!def.components.body || !!rdef.components.body || r.name === 'arrival' || def.tags.includes('horizon');
+    const shape = (r as { shape?: { path?: unknown; area?: unknown } }).shape, pts = shape && (Array.isArray(shape.path) ? shape.path : Array.isArray(shape.area) ? shape.area : null) as number[][] | null;
+    if (pts && pts.length) {
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < z0) z0 = p[1]; if (p[1] > z1) z1 = p[1]; }
+      ring.set(e.id, (x0 + x1) / 2, (z0 + z1) / 2, Math.hypot(x1 - x0, z1 - z0) / 2 + 8, pinned); return;
+    }
+    const p = (r as { p?: unknown }).p;
+    if (!Array.isArray(p) || p.length < 3 || !Number.isFinite(p[0]) || !Number.isFinite(p[2])) { ring.set(e.id, 0, 0, 0, true); return; }
+    const box = (rdef as { size?: { box?: unknown } }).size?.box, sc = Math.max(1, Math.abs(Number((r as { s?: unknown }).s)) || 1);
+    const reach = Array.isArray(box) && box.length === 3 ? Math.hypot(Number(box[0]) || 0, Number(box[2]) || 0) / 2 * sc + 4 : 8;
+    ring.set(e.id, p[0] as number, p[2] as number, reach, pinned);
+  }
+  /** Take a drawn thing out of the picture now (it left the ring): its instance slot, pool instances, batch membership and
+   *  scene object; its geometry when nothing else drawn shares it. Built again by draw() when it comes back. */
+  private unload(id: string) {
+    const d = this.drawn.get(id); if (!d) return;
+    this.forget(id);
+    if (d.inst) this.instancer.remove(d.inst, id);
+    else { if (d.frozen) this.thaw(d); this.motionInstancer.untrack(d.obj); this.thingsGroup.remove(d.obj); disposeObject(d.obj); this.releaseGeometry(d.obj); }
+    this.drawn.delete(id); this.staticRevision++; this.streamStats.unloaded++;
+  }
+  /** Distinct picture/pool owners of geometry, including children attached after a lazy asset arrives. Pool prototypes
+   * remain owners even when their last instance unloads. A replacement is retained before the previous owner leaves. */
+  private readonly geoRefs = new Map<THREE.BufferGeometry, number>();
+  private readonly geometryOwners = new Map<THREE.Object3D, { geometries: Set<THREE.BufferGeometry>; nodes: Set<THREE.Object3D>; added: () => void }>();
+  private retainGeometry(o: THREE.Object3D) {
+    if (!this.ring) return;
+    const owner = this.geometryOwners.get(o) ?? { geometries: new Set<THREE.BufferGeometry>(), nodes: new Set<THREE.Object3D>(), added: () => this.retainGeometry(o) };
+    this.geometryOwners.set(o, owner);
+    o.traverse(c => {
+      if (!owner.nodes.has(c)) { owner.nodes.add(c); c.addEventListener('childadded', owner.added); }
+      const geometry = (c as THREE.Mesh).geometry;
+      if (!geometry || owner.geometries.has(geometry)) return;
+      owner.geometries.add(geometry); this.geoRefs.set(geometry, (this.geoRefs.get(geometry) ?? 0) + 1);
+    });
+  }
+  private releaseGeometry(o: THREE.Object3D) {
+    const owner = this.geometryOwners.get(o); if (!owner) return;
+    this.geometryOwners.delete(o);
+    for (const node of owner.nodes) node.removeEventListener('childadded', owner.added);
+    for (const geometry of owner.geometries) {
+      const remaining = this.geoRefs.get(geometry)! - 1;
+      if (remaining > 0) this.geoRefs.set(geometry, remaining);
+      else { this.geoRefs.delete(geometry); geometry.dispose(); }
+    }
+  }
+  /** Pools add/grow their own meshes, including engine fixtures tracked outside draw(). Watch the group from its first
+   * mesh onward; a grow can remove the old mesh before adding its replacement without releasing the prototype. */
+  private readonly onPoolGeometryAdded = (event: { target: THREE.Object3D }) => {
+    if (!this.geometryOwners.has(event.target)) this.retainGeometry(event.target);
+  };
+  /** Per frame under streaming: re-evaluate the ring when the camera moved, unload what left, draw what entered (nearest
+   *  first) and step the terrain sectors, all within STREAM_SLICE_MS so no frame grows a long task. */
+  private streamStep() {
+    const ring = this.ring, m = this.model; if (!ring || !m || !this.streamEyeSet) return;
+    const t0 = performance.now(), until = t0 + STREAM_SLICE_MS, x = this.streamEye.x, z = this.streamEye.z;
+    const { enter, leave } = ring.update(x, z);
+    if (enter.length || leave.length) {
+      this.streamStats.updates++;
+      for (const id of leave) this.unloadQueue.push(id);
+      const fresh: Entity[] = [];
+      for (const id of enter) if (!this.streamQueued.has(id)) { this.streamQueued.add(id); this.streamQueue.push(id); const e = m.entities.get(id); if (e) fresh.push(e); }
+      this.prefetchBuildings(m, fresh, this.streamPending);   // their geometry starts in the building workers now
+    }
+    if (ring.centre) this.streamSectors(ring.centre.x, ring.centre.z);
+    // unloads first (they free what the builds need), then the terrain's own slice (a tile bake or a sector mesh: each is
+    // longer than a thing), then builds to their own budget; a frame never spends more than the two slices here
+    let k = 0;
+    while (k < this.unloadQueue.length && performance.now() < until) { const id = this.unloadQueue[k++]; if (!ring.isWanted(id)) this.unload(id); }
+    if (k) this.unloadQueue.splice(0, k);
+    this.sectorStep(performance.now() + STREAM_SECTOR_MS);
+    if (this.streamQueue.length) {
+      const until = performance.now() + STREAM_SLICE_MS;
+      let i = 0, deferred = 0; const n = this.streamQueue.length;
+      m.readPass(() => {
+        while (i < n && performance.now() < until) {
+          const id = this.streamQueue[i++];
+          if (!ring.isWanted(id)) { this.streamQueued.delete(id); continue; }
+          const e = m.entities.get(id); if (!e) { this.streamQueued.delete(id); continue; }
+          if (this.streamPending.has(id)) { this.streamQueue.push(id); if (++deferred >= n) break; continue; }   // its workers are not done: later
+          this.streamQueued.delete(id); this.draw(e, false); this.streamStats.built++;
+        }
+      });
+      if (i) this.streamQueue.splice(0, i);
+    }
+    this.streamStats.queued = this.streamQueue.length;
+    const ms = performance.now() - t0; this.streamStats.stepMs = ms; if (ms > this.streamStats.maxStepMs) this.streamStats.maxStepMs = ms;
+  }
+  /** Which terrain sectors the camera needs: full within `inner`, coarse to `outer` + one sector, dropped beyond `outer` +
+   *  two. One sector's work per frame (sectorStep): a coarse sector is one step; a full one bakes its tiles a few per frame
+   *  first, then draws (a 16-tile sector baked in one go was a 100 ms+ task). */
+  private streamSectors(x: number, z: number) {
+    const m = this.model!, ring = this.ring!; if (this.sectorWork) return;
+    const sectorM = SECTOR_TILES * TILE_M, extent = m.ground().extent;
+    for (const [key, mesh] of this.sectors) if (sectorDistance(key, x, z, sectorM) > ring.outer + 2 * sectorM) { this.terrainGroup.remove(mesh); mesh.geometry.dispose(); this.sectors.delete(key); this.coarse.delete(key); this.streamStats.sectorsDropped++; }
+    for (const key of sectorsWithin(x, z, ring.inner, sectorM, extent)) if (!this.sectors.has(key) || this.coarse.has(key)) { this.sectorWork = { key, tiles: this.sectorTiles(key), full: true }; return; }
+    for (const key of sectorsWithin(x, z, ring.outer + sectorM, sectorM, extent)) if (!this.sectors.has(key)) { this.sectorWork = { key, tiles: [], full: false }; return; }
+  }
+  private sectorTiles(key: string): [number, number][] {
+    const m = this.model!, [bx0, bz0, bx1, bz1] = m.ground().extent, [sx, sz] = key.split(',').map(Number);
+    const tx0 = Math.max(Math.floor(bx0 / TILE_M), sx * SECTOR_TILES), tz0 = Math.max(Math.floor(bz0 / TILE_M), sz * SECTOR_TILES);
+    const tx1 = Math.min(Math.ceil(bx1 / TILE_M) - 1, sx * SECTOR_TILES + SECTOR_TILES - 1), tz1 = Math.min(Math.ceil(bz1 / TILE_M) - 1, sz * SECTOR_TILES + SECTOR_TILES - 1);
+    const out: [number, number][] = []; for (let tz = tz0; tz <= tz1; tz++) for (let tx = tx0; tx <= tx1; tx++) out.push([tx, tz]);
+    return out;
+  }
+  private sectorStep(until: number) {
+    const w = this.sectorWork, m = this.model; if (!w || !m) return;
+    while (w.tiles.length && performance.now() < until) { const [tx, tz] = w.tiles.pop()!; m.terrain.tile(tx, tz); }   // bakes what is not baked yet
+    if (w.tiles.length) return;
+    const [bx0, bz0, bx1, bz1] = m.ground().extent, [sx, sz] = w.key.split(',').map(Number);
+    const t: [number, number, number, number] = [Math.floor(bx0 / TILE_M), Math.floor(bz0 / TILE_M), Math.ceil(bx1 / TILE_M) - 1, Math.ceil(bz1 / TILE_M) - 1];
+    this.placeSector(w.key, this.sectorMesh(sx, sz, t, true, w.full ? TERRAIN_STEP : COARSE_STEP, !w.full));
+    if (w.full) this.coarse.delete(w.key); else this.coarse.add(w.key);
+    this.sectorWork = null; this.streamStats.sectors++;
+  }
   private readonly stairContacts=new WorldEntityStairs();
   clearSupplementalStairs(){this.stairContacts.clearObservation();}
   supplementalStairs(messages:readonly {kind?:string;seq?:unknown}[]=[],nativeTick:number|null=null){
@@ -309,6 +459,7 @@ export class WorldEntityLayer {
   private now = 0;
   private readonly api: (p: string) => string;
   constructor(api: (p: string) => string) {
+    for (const pool of [this.instancer, this.scatterPools, this.motionInstancer]) pool.group.addEventListener('childadded', this.onPoolGeometryAdded);
     this.api = api;
     this.sites = new WorldBuildSites({ model: () => this.model, groundAt: this.groundAt, fetchBuilds: async () => {
       const r = await fetch(this.api('/v1/world/builds'), { signal: this.signal ?? undefined, cache: 'no-store' });
@@ -326,7 +477,15 @@ export class WorldEntityLayer {
   /** Lane PERF-SNAPSHOT: the snapshot worker (snapshot-delta.ts); its baseline is the first load's bytes. `?snapshotWorker=0`
    *  parses on the main thread instead (A/B). Ids a socket diff changed since the last snapshot the worker saw, and whether
    *  one changed the ground: the next delta reports them whatever the worker's baseline says. */
-  private readonly decoder = new SnapshotDecoder(typeof Worker === 'undefined' || (typeof location !== 'undefined' && new URLSearchParams(location.search).get('snapshotWorker') === '0') ? null : () => new Worker(new URL('./snapshot-delta.worker.ts', import.meta.url), { type: 'module' }));
+  private decoder: SnapshotDecoder | null = null;
+  private decoderDisposed = false;
+  /** Snapshot transport is asynchronous already. Load its parser/worker client only for a network snapshot; frozen
+   *  views and the frame loop do not need this code. Concurrent requests share one decoder and its baseline. */
+  private async snapshotDecoder(): Promise<SnapshotDecoder> {
+    const { SnapshotDecoder } = await import('./snapshot-delta.ts');
+    if (this.decoderDisposed) throw new DOMException('Snapshot decoder disposed', 'AbortError');
+    return this.decoder ??= new SnapshotDecoder(typeof Worker === 'undefined' || (typeof location !== 'undefined' && new URLSearchParams(location.search).get('snapshotWorker') === '0') ? null : () => new Worker(new URL('./snapshot-delta.worker.ts', import.meta.url), { type: 'module' }));
+  }
   private readonly touched = new Set<string>();
   private groundTouched = false;
   /** Resync: the snapshot again, as a delta against the last one the worker saw (snapshot-delta.ts), applied over short
@@ -339,7 +498,8 @@ export class WorldEntityLayer {
     this.resyncing = true;
     try {
       const asked = [...this.touched], wantGround = this.groundTouched;
-      const got = await loadSnapshot(this.api('/v1/world/snapshot'), this.signal, false, (pieces) => this.decoder.delta(pieces, asked, wantGround)); if (!got) return;
+      const decoder = await this.snapshotDecoder();
+      const got = await loadSnapshot(this.api('/v1/world/snapshot'), this.signal, false, (pieces) => decoder.delta(pieces, asked, wantGround)); if (!got) return;
       const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version'));
       const delta = got.snap; if (this.signal.aborted || delta.contract !== 'world/1' || !this.model) return;
       ageNow(delta, r);
@@ -420,11 +580,16 @@ export class WorldEntityLayer {
     // lane L3h: the first start takes the snapshot GET index.html sent at page entry (snapshot-prefetch.ts), one request
     // lane W1/O2: the page's edge-cacheable snapshot URL when the server named one (its `now` is then as old as the copy)
     // lane W3: in its wire form (snapshot-wire.ts: defs and ground as cached content-addressed parts)
-    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true, (pieces) => { const snap = parsePieces(pieces); this.decoder.baselineFrom(pieces); return snap; }); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
+    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const decoder = await this.snapshotDecoder(); const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true, async (pieces) => { arrivalMark('snapshot-received'); const snapshot = await decoder.initial(pieces, signal); arrivalMark('snapshot-decoded'); return snapshot; }); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
       ageNow(snap, r); }} catch { onSnapshot?.(); return; }
     if (signal.aborted || snap.contract !== 'world/1') return;
     noteUploadSizes(snap.assetBytes);   // CDN4
-    this.model = WorldModel.fromSnapshot({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, undefined, undefined, { lazyIndex: true });
+    // Keep the old model visible until all new records exist; aborting a sliced load cannot publish half a world.
+    try { this.model = await snapshotModel({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, signal, nextTask); } catch (error) { if (signal.aborted) return; throw error; }
+    arrivalMark('snapshot-model-ready');
+    // PERF-STREAM: by distance from here on (a frozen context capture is never streamed: it draws the whole world once)
+    this.streaming = this.immutable ? null : this.streamOption();
+    this.ring = this.streaming ? new StreamRing(this.streaming) : null;
     // lane PERF-SNAPSHOT: the snapshot's arrival used to be one main-thread task of ~0.4 s on Eden 2026 (parse, model, the
     // eager plan, the building prefetch and the whole terrain bake); it is now a few, with the main thread free between
     // them like the build slices below, and the terrain bake takes the same slices. `building` from here (LiveWorld draws
@@ -461,12 +626,13 @@ export class WorldEntityLayer {
       // to the workers (fillRest)
       const pending = new Map<string, Promise<void>>();
       const workersLater = progressiveNearM() !== null && new URLSearchParams(location.search).get('nearWorkers') !== '1';
-      if (!workersLater) { this.prefetchBuildings(m, snap.entities, pending); await nextTask(); if (signal.aborted || this.model !== m) return; }
+      if (!workersLater && !this.ring) { this.prefetchBuildings(m, snap.entities, pending); await nextTask(); if (signal.aborted || this.model !== m) return; }
       // P7 (phone): only the sectors near the arrival are baked at full detail before the card; the rest are drawn from a
       // coarse direct sample (no tile bakes, ~1/16 of the height samples) and refined during the fill
       // lane L3: the first build's playa mottling runs in a worker (terrain-mottle.ts); PERF-SNAPSHOT: a sector per step, in slices
       let until = performance.now() + BUILD_SLICE_MS;
-      for (const _ of this.terrainSteps(undefined, true, progressiveNearM() === null ? undefined : { at: [[pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]], r: COARSE_BEYOND_M, view })) {
+      const ringAt: [number, number][] = [[pose.eye[0], pose.eye[2]], [pose.target[0], pose.target[2]]];
+      for (const _ of this.terrainSteps(undefined, true, this.ring ? { at: ringAt, r: this.ring.inner } : progressiveNearM() === null ? undefined : { at: [[pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]], r: COARSE_BEYOND_M, view }, this.ring ? { at: ringAt, r: this.ring.outer + SECTOR_TILES * TILE_M } : undefined)) {
         if (performance.now() < until) continue;
         await nextTask(); if (signal.aborted || this.model !== m) return; until = performance.now() + BUILD_SLICE_MS;
       }
@@ -477,8 +643,18 @@ export class WorldEntityLayer {
       // drawn (the card then goes), and the rest follows between frames (fill). Elsewhere: everything, in snapshot order.
       const near = progressiveNearM();
       const byId = near === null ? null : byId0 ?? new Map(snap.entities.flatMap((e) => e.name ? [[e.name, e], [e.id, e]] as [string, Entity][] : [[e.id, e]] as [string, Entity][])), keyOf = byId && (keyOf0 ?? nearKeyOf(byId));
-      const sorted: readonly Entity[] & { dist?: number[] } = !keyOf ? snap.entities : byDistance(snap.entities, keyOf, [pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]);  // P7: shapes by their nearest point; furniture with its building
-      const far = near === null ? -1 : sorted.dist!.findIndex((d) => d > near);
+      let sorted: readonly Entity[] & { dist?: number[] } = !keyOf ? snap.entities : byDistance(snap.entities, keyOf, [pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]);  // P7: shapes by their nearest point; furniture with its building
+      let far = near === null ? -1 : sorted.dist!.findIndex((d) => d > near);
+      if (this.ring) {
+        // PERF-STREAM: every thing into the ring (slices: 50,000 records), then only the arrival camera's ring is built now
+        let until = performance.now() + BUILD_SLICE_MS, n = 0;
+        for (const e of snap.entities) { const def = m.resolvedDef(e.def); if (def) this.ringSet(e, def); if ((++n & 1023) === 0 && performance.now() >= until) { await nextTask(); if (signal.aborted || this.model !== m) return; until = performance.now() + BUILD_SLICE_MS; } }
+        this.streamEye.set(pose.eye[0], pose.eye[1], pose.eye[2]); this.streamEyeSet = true;
+        const { enter } = this.ring.update(pose.eye[0], pose.eye[2], true);
+        sorted = enter.flatMap((id) => { const e = m.entities.get(id); return e ? [e] : []; }); far = -1;
+        if (!workersLater) { this.prefetchBuildings(m, sorted, pending); await nextTask(); if (signal.aborted || this.model !== m) return; }
+        (window as unknown as { __simStream?: unknown }).__simStream = { inner: this.ring.inner, outer: this.ring.outer, things: this.ring.size, ring: sorted.length, stats: this.streamStats };   // probes
+      }
       // t4-phone-new: of the near things, those the arrival camera can see (or whose shadow can reach its view) are drawn
       // before the poster; the fill then draws the next things in view, then the near ones behind or beside it (arrival-view.ts)
       const { list: all, first: nearCount } = view && keyOf && byId ? viewFirst(sorted, far < 0 ? sorted.length : far, arrivalSeen(m, view, keyOf, byId, true), FILL_AHEAD) : { list: sorted, first: far < 0 ? sorted.length : far };
@@ -493,7 +669,7 @@ export class WorldEntityLayer {
         if (signal.aborted || this.model !== m) return;
       }
       this.active = true;
-      if (this.coarse.size && !this.filling) { this.filling = true; this.fill = this.fillRest(m, all, all.length, pending, signal, false); }   // P7: refine the coarse terrain
+      if (this.coarse.size && !this.filling && !this.ring) { this.filling = true; this.fill = this.fillRest(m, all, all.length, pending, signal, false); }   // P7: refine the coarse terrain
     }
     } finally { this.building = false; if (!this.filling) clearBuildingPrefetch(); }
   }
@@ -630,11 +806,31 @@ export class WorldEntityLayer {
     for (const e of m.entities.values()) { if (e.in.parent !== 'world') continue; const def = m.resolvedDef(e.def) as (StoredDef & { components: Record<string, unknown> }) | undefined; if (def && isRideCarrierDef(def) && !isRideBalloonDef(def)) out.push(carrierIdOf(e, id => m.entities.has(id))); }
     return out;
   }
+  /** PERF-STREAM: top-level things by name, rebuilt when the world's records change (poseOverride ran a find over every
+   *  record for every ride on every frame: 4 s of a 50,000-thing world's first half minute). */
+  private names: { key: object; size: number; map: Map<string, Entity> } | null = null;
+  private entityNamed(name: string): Entity | undefined {
+    const m = this.model; if (!m) return undefined;
+    const key = typeof m.safetyCacheKey === 'function' ? m.safetyCacheKey() : {};   // a plain fixture model (tests): scanned every time
+    if (!this.names || this.names.key !== key || this.names.size !== m.entities.size) {
+      const map = new Map<string, Entity>();
+      for (const e of m.entities.values()) if (e.name && e.in.parent === 'world' && !map.has(e.name)) map.set(e.name, e);
+      this.names = { key, size: m.entities.size, map };
+    }
+    return this.names.map.get(name);
+  }
+  /** PERF-STREAM: the records a scan of the world's lights should visit: under streaming only the drawn things (a lamp beyond
+   *  the ring lights nothing anyone sees); else null (every record, as before). world-env.ts. */
+  lightCandidates(): Iterable<Entity> | null {
+    const m = this.model; if (!this.ring || !m) return null;
+    const out: Entity[] = []; for (const id of this.drawn.keys()) { const e = m.entities.get(id); if (e) out.push(e); }
+    return out;
+  }
   /** Draw the god thing named `name` where its native twin is (`p`: the recorded engine position), or at its own pose (null).
    *  A thing moored aloft keeps its own height above the ground (drawn y = recorded y + its lift); one standing on the ground
    *  (lift < 0.5 m) draws at the recorded y, so the cabin floor is where Core stands the riders. */
   poseOverride(name: string, p: readonly [number, number, number] | null, yaw?: number) {
-    const e = this.model ? [...this.model.entities.values()].find((x) => x.name === name && x.in.parent === 'world') : undefined;
+    const e = this.entityNamed(name);
     if (!e) return;
     if (!p) { this.overrideYaw.delete(e.id); if (this.overrides.delete(e.id)) { const d = this.drawn.get(e.id); if (d) d.settled = false; } return; }
     const d = this.drawn.get(e.id); if (!d) return;
@@ -670,6 +866,7 @@ export class WorldEntityLayer {
     this.now = nowMs;
     if (!this.active) return;
     this.sites.update(nowMs);
+    if (this.ring && !this.building) this.streamStep();   // PERF-STREAM
     const moving = !this.immutable && arrivalOver();
     // W2b: fill old Eden's generated surface patterns (brick, ashlar, clapboard, tile, slate, turf blades) a few rows a
     // frame; until now only old Eden's own layer did, so entity worlds drew the flat placeholders. No-op once complete.
@@ -741,7 +938,7 @@ export class WorldEntityLayer {
         continue;
       }
       d.obj.visible = shown;
-      if (d.removing && t >= 1) { this.thingsGroup.remove(d.obj); disposeObject(d.obj); this.drawn.delete(id); continue; }
+      if (d.removing && t >= 1) { this.motionInstancer.untrack(d.obj); this.thingsGroup.remove(d.obj); disposeObject(d.obj); this.releaseGeometry(d.obj); this.drawn.delete(id); continue; }
       if (t >= 1 && (!d.motion || (this.freezeSettled && d.motion.glowOnly)) && !d.removing && !ride && !inHand) d.settled = true;
       // P1: a hidden thing (a storey its building hides, or far furniture on a phone) is not animated: nobody sees it
       // P7b: things stay at their stored pose under the arrival card (the creatures' first route search was ~0.09 s of a 4x
@@ -1199,13 +1396,17 @@ export class WorldEntityLayer {
   };
 
   dispose() {
+    this.decoderDisposed = true; this.decoder?.dispose();
     this.sites.dispose();
+    for (const pool of [this.instancer, this.scatterPools, this.motionInstancer]) pool.group.removeEventListener('childadded', this.onPoolGeometryAdded);
     this.instancer.dispose(); this.scatterPools.dispose(); this.motionInstancer.dispose();
     this.cover.dispose();
     for (const m of this.sectors.values()) { m.geometry.dispose(); }
     this.sectors.clear();
     for (const d of this.drawn.values()) disposeObject(d.obj);
+    for (const owner of this.geometryOwners.keys()) this.releaseGeometry(owner);
     this.drawn.clear();this.tugged.clear();this.live.clear();this.visDirty.clear();this.openings.clear();this.dependents.clear();this.interiors.clear();this.hostState.clear();this.glowSteady.clear();this.glowAnim.clear();
+    this.ring?.clear(); this.ring = null; this.streaming = null; this.streamQueue = []; this.streamQueued.clear(); this.unloadQueue = []; this.streamPending.clear(); this.sectorWork = null;
     this.recordedItems.clear();this.missingItemAt.clear();this.lightMoves.clear();this.keptIn.clear();this.movingBoxes.clear();
     for (const m of this.materials.values()) m.dispose();
     this.materials.clear();
@@ -1224,7 +1425,7 @@ export class WorldEntityLayer {
   /** The terrain rebuild one sector per step (lane PERF-SNAPSHOT: the first build takes them in slices, start()); the
    *  steps after the last sector (dropping sectors outside the extent, re-settling things on re-baked tiles) run when the
    *  generator finishes, so always run it to the end. */
-  private *terrainSteps(onlyTiles?: Set<string>, deferMottle = false, fineNear?: { at: [number, number][]; r: number; view?: ViewWedge | null }): Generator<void> {
+  private *terrainSteps(onlyTiles?: Set<string>, deferMottle = false, fineNear?: { at: [number, number][]; r: number; view?: ViewWedge | null }, within?: { at: [number, number][]; r: number }): Generator<void> {
     const m = this.model!; const [bx0, bz0, bx1, bz1] = m.ground().extent;   // GOD-ENV: bounds, a rectangle once extended
     const tx0 = Math.floor(bx0 / TILE_M), tx1 = Math.ceil(bx1 / TILE_M) - 1, tz0 = Math.floor(bz0 / TILE_M), tz1 = Math.ceil(bz1 / TILE_M) - 1;
     const sx0 = Math.floor(tx0 / SECTOR_TILES), sx1 = Math.floor(tx1 / SECTOR_TILES), sz0 = Math.floor(tz0 / SECTOR_TILES), sz1 = Math.floor(tz1 / SECTOR_TILES);
@@ -1243,6 +1444,8 @@ export class WorldEntityLayer {
       // t4-phone-new: a sector the arrival camera cannot see is not drawn before the poster at all; the fill draws it with
       // the coarse ones (refineCoarseSector), nearest first (Eden 2026: most of a portrait phone's ground lies behind it)
       const X0 = sx * SECTOR_TILES * TILE_M, Z0 = sz * SECTOR_TILES * TILE_M, X1 = X0 + SECTOR_TILES * TILE_M, Z1 = Z0 + SECTOR_TILES * TILE_M;
+      // PERF-STREAM: a sector beyond the ring is not built now (streamSectors draws it when the camera comes near)
+      if (within && !onlyTiles && !this.sectors.has(key) && !within.at.some(([x, z]) => rectDistance(x, z, X0, Z0, X1, Z1) <= within.r)) continue;
       if (fineNear?.view && !onlyTiles && shapeWedgeDistance(fineNear.view, [[X0, Z0], [X1, Z0], [X1, Z1], [X0, Z1]], true) > 0) { const old = this.sectors.get(key); if (old) { this.terrainGroup.remove(old); old.geometry.dispose(); this.sectors.delete(key); } this.coarse.add(key); continue; }
       this.placeSector(key, this.sectorMesh(sx, sz, [tx0, tz0, tx1, tz1], deferMottle, coarse ? COARSE_STEP : TERRAIN_STEP, !!fineNear));
       if (coarse || fineNear) this.coarse.add(key); else this.coarse.delete(key);
@@ -1374,6 +1577,9 @@ export class WorldEntityLayer {
   private draw(e: Entity, ease: boolean, force = false) {
     const m = this.model!; const def = m.resolvedDef(e.def);
     if (!def) return;
+    // PERF-STREAM: a thing beyond the ring is not built (its record is kept; it is drawn when the camera comes); one that
+    // is drawn and now beyond it is unloaded. A new thing near the camera (a diff) is built at once (probe).
+    if (this.ring) { this.ringSet(e, def); if (!this.ring.isWanted(e.id) && !this.ring.probe(e.id)) { if (this.drawn.has(e.id)) this.unload(e.id); return; } }
     if(def.components.carryable&&(def.components.light||def.components.lights))this.lightMoves.add(e.id);
     if (def.tags.includes('horizon')) this.horizonBy.add(e.id); else this.horizonBy.delete(e.id);
     const parent = e.in.parent !== 'world' ? m.entities.get(e.in.parent) : undefined;
@@ -1430,12 +1636,15 @@ export class WorldEntityLayer {
     // Waiting for animate()'s settled transform left an OFF bulb glowing for 2.5 s.
     if (def.components.light || def.components.lights) syncLightGlow(built,e,def,m,this.now/1000);
     const opening=existing&&def.tags.includes('hand-operated')?beginOpeningMotion(built,existing.obj,this.now):undefined;
-    if (existing) { if (existing.inst) this.instancer.remove(existing.inst, e.id); else { if (existing.frozen) this.thaw(existing); this.thingsGroup.remove(existing.obj); disposeObject(existing.obj); } this.drawn.delete(e.id); }
+    // Shared builders can hand back the very geometry the old object owns. Register the new owner first, so replacing
+    // the sole drawn copy cannot dispose a buffer the replacement or its pool is about to use.
+    this.retainGeometry(built);
+    if (existing) { if (existing.inst) this.instancer.remove(existing.inst, e.id); else { if (existing.frozen) this.thaw(existing); this.motionInstancer.untrack(existing.obj); this.thingsGroup.remove(existing.obj); disposeObject(existing.obj); this.releaseGeometry(existing.obj); } this.drawn.delete(e.id); }
     // a rainbow thing is weather: hidden until the atmosphere shows it after rain (its own meshes, never instanced)
     const rainbow = isRainbowDef(def); if (rainbow) holdRainbow(built);
     // static things with an instance key share one InstancedMesh per part (a few draws for hundreds of props)
     const instKey = !this.immutable && !isWorld && !rainbow && !hasMotion(def) && typeof built.userData.instanceKey === 'string' && instanceable(built) ? built.userData.instanceKey as string : undefined;
-    if (instKey) { this.instancer.ensure(instKey, built); built = new THREE.Object3D(); }
+    if (instKey) { this.instancer.ensure(instKey, built); this.releaseGeometry(built); built = new THREE.Object3D(); }
     if (!isWorld) { built.rotation.set(0, wp.yaw, 0); applyTilt(built, e); }
     const fresh = !existing;
     const from = refinement ? { p: target.clone(), s: wp.s * refinement.scale } : fresh && ease ? { p: target.clone().add(new THREE.Vector3(0, DROP_M, 0)), s: wp.s * 0.2 } : { p: target.clone(), s: wp.s };
@@ -1450,12 +1659,17 @@ export class WorldEntityLayer {
     if (this.keptIn.has(e.id)) { const k = this.drawn.get(e.id)!, v = this.interiorVisible(e.id, k); if (k.inst) k.shown = v; else k.obj.visible = v; }
   }
   private undraw(id: string, delaySeconds = 0) {
+    this.forget(id);
+    if (this.ring && !this.model?.entities.has(id)) this.ring.delete(id);   // PERF-STREAM: gone from the world
+    const d = this.drawn.get(id); if (!d || d.removing) return;
+    d.removing = true; d.settled = false; d.from = { p: d.obj.position.clone(), s: d.obj.scale.x }; d.to = { p: d.obj.position.clone().add(new THREE.Vector3(0, 2, 0)), s: 0.01 }; d.t0 = this.now + delaySeconds * 1000; d.dur = EASE_OUT_S;
+  }
+  /** What a thing's picture had around it (jets, steam, growth, where it is kept or held). */
+  private forget(id: string) {
     this.held.delete(id); this.horizonBy.delete(id);
     this.tapJets.delete(id); this.growing.delete(id); this.plantShown.delete(id); this.plantTweens.delete(id);
     { const pour = this.pours.get(id); if (pour) { pour.removeFromParent(); (pour.material as THREE.Material).dispose(); this.pours.delete(id); } }
     { const st = this.steamers.get(id); if (st) { st.pts.removeFromParent(); (st.pts.material as THREE.Material).dispose(); st.lamp?.removeFromParent(); this.steamers.delete(id); } } this.keptIn.delete(id);
-    const d = this.drawn.get(id); if (!d || d.removing) return;
-    d.removing = true; d.settled = false; d.from = { p: d.obj.position.clone(), s: d.obj.scale.x }; d.to = { p: d.obj.position.clone().add(new THREE.Vector3(0, 2, 0)), s: 0.01 }; d.t0 = this.now + delaySeconds * 1000; d.dur = EASE_OUT_S;
   }
   /** One Object3D for an entity, from its def's mesh half (gen-mesh registry). Null when it has no picture (landforms, prefab roots, bodies). */
   private build(e: Entity, def: StoredDef): THREE.Object3D | null {
@@ -1477,6 +1691,8 @@ export class WorldEntityLayer {
 }
 
 const BUILD_SLICE_MS = 50;
+/** Experimental `?stream=<m>` ring hysteresis and per-frame time slices. */
+const STREAM_OUTER_RATIO = 1.3, STREAM_SLICE_MS = 6, STREAM_SECTOR_MS = 4;
 /** A resync's draws run during play: short slices, the main thread free between them (applyDelta). */
 const RESYNC_SLICE_MS = 6;
 /** P7: a phone's arrival bakes the terrain sectors within this distance of its eye or target; the rest start coarse. */
@@ -1637,7 +1853,13 @@ const frac = (n: number) => { const x = Math.sin(n) * 43758.5453; return x - Mat
 function hashSeed(s: string) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0) % 100000; }
 function waterLevel(g: Ground, x: number, z: number): number | null {
   let level: number | null = null;
-  for (const w of g.waters) if (w.area && pointInPoly(x, z, w.area)) level = w.level; else if (w.path && w.w) { const lv = waterLevelAt(g, x, z); if (lv !== null) level = lv; }
+  let globalLevel: number | null = null, globalRead = false;
+  // Every path branch asks the same whole-ground question. Keep its ordered overwrite (including the sea
+  // fallback), but answer only once per call; a null answer is cached too. Ground edits are seen on the next call.
+  for (const w of g.waters) if (w.area && pointInPoly(x, z, w.area)) level = w.level; else if (w.path && w.w) {
+    if (!globalRead) { globalLevel = waterLevelAt(g, x, z); globalRead = true; }
+    if (globalLevel !== null) level = globalLevel;
+  }
   return level ?? g.seaLevel ?? null;
 }
 // indexed reads, not array destructuring: the same arithmetic as @sim/ground's pointInPoly (L3e)
@@ -1658,4 +1880,4 @@ class DrawnMap extends Map<string, Drawn> {
   override clear(): void { for (const [id, d] of this) this.layer.release(id, d); super.clear(); }
 }
 export type { Def };
-export { TILE_N };
+export { TILE_N, waterLevel };
