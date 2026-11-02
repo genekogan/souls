@@ -159,6 +159,12 @@ const hookGeo = new THREE.BufferGeometry(); hookGeo.setAttribute('position', new
 const hookMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
 function attachedTo(o: THREE.Object3D, scene: THREE.Scene) { let p: THREE.Object3D | null = o; for (let i = 0; p && i < 64; i++) { if (p === scene) return true; p = p.parent; } return false; }
 
+const casterLists = new WeakMap<THREE.Object3D, THREE.Mesh[]>();
+function castersOf(p: THREE.Object3D): THREE.Mesh[] {
+  let l = casterLists.get(p); if (!l) { l = p.parent && !(p as THREE.InstancedMesh).isInstancedMesh ? proxiedCasters(p.parent) : []; casterLists.set(p, l); } return l;
+}
+/** False only when every caster is hidden (a batch draws them); a proxy without known casters always casts. */
+function drawn(casters: THREE.Mesh[]): boolean { if (!casters.length) return true; for (const m of casters) if (m.visible) return true; return false; }
 function hubFor(scene: THREE.Scene): Hub {
   let h = hubs.get(scene);
   if (h) return h;
@@ -168,11 +174,13 @@ function hubFor(scene: THREE.Scene): Hub {
     for (const p of hub.proxies) {
       if (!attachedTo(p, scene)) { hub.proxies.delete(p); continue; }
       const c = cuts.get(p);
-      if (!c) { p.visible = true; continue; }
+      // a static batch that draws the casters (StaticBatchOwner hides them) casts their shadow itself: the proxy stands down
+      const own = c ? c.casters : castersOf(p);
+      if (!c) { p.visible = drawn(own); continue; }
       const on = !c.cut(renderer);
       // re-asserted every shadow pass: a render-time pass (WorldShadowDetail, WorldDistanceDetail) restores castShadow after it
       for (const m of c.casters) m.castShadow = !on;
-      c.on = on; p.visible = on;
+      c.on = on; p.visible = on && drawn(own);
     }
   };
   hook.onBeforeRender = () => { for (const p of hub.proxies) p.visible = false; };

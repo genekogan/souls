@@ -221,13 +221,17 @@ function attachInteriorView(root: THREE.Object3D, L: BuildingLayout) {
   for (let k = 1; k < L.floors; k++) floorOf[`floor-${k}`] = k;
   for (const r of L.rooms) floorOf[r.id] = r.floor;
   for (const s of buildingFacadeSlots(L, Object.keys(floorOf))) if (s.floor !== undefined) floorOf[s.id] = s.floor;
-  root.userData.interior = { cut: () => hideAbove, floorOf };
+  // PERF-BATCH: `decide(camera)` runs the cut decision for a camera and says whether it hides anything; the static batcher
+  // (StaticBatchOwner) merges a building's storey meshes only while nothing is cut, and the entity layer re-decides every
+  // frame before the draw (WorldEntityLayer.decideCuts). `rangeHook` on each mesh: its hooks only ever narrow the draw range.
+  root.userData.interior = { cut: () => hideAbove, floorOf, decide: (camera: THREE.Camera) => { decide(camera); return hideRoof || hideAbove !== Infinity || keepSlab !== -1; } };
   // lane PERF-MATERIALS: the whole building casts as its proxy while nothing of it is hidden; a cut (roof off, storeys
   // above the camera) hands the shadow back to the meshes, whose onBeforeShadow below hides the cut parts
   const proxies: THREE.Object3D[] = []; inner.traverse((o) => { if (o.userData.shadowProxy) proxies.push(o); });
   if (proxies.length) { const casters = proxiedCasters(inner); for (const p of proxies) setShadowCut(p, casters, (renderer) => { if (mainCamera) decideOnce(renderer, mainCamera); return hideRoof || hideAbove !== Infinity; }); }
   inner.traverse((o) => {
     const mesh = o as THREE.Mesh; if (!mesh.isMesh || mesh.userData.shadowProxy) return;
+    mesh.userData.rangeHook = true;
     const gname = mesh.parent?.name ?? '';
     const slab = gname.startsWith('slab-'), level = gname === 'roof' ? Infinity : Number(gname.replace(/^(level|slab)-/, ''));
     const hidden = () => (level === Infinity ? hideRoof : slab ? level !== keepSlab && (level > hideAbove || (level === L.floors && hideRoof)) : level > hideAbove);

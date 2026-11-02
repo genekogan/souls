@@ -27,6 +27,7 @@ browser page runs from the copy too: `python3 vendor/sim-score/tools/serve.py 48
   optional phrasing, spc, dialogue, groove) unchanged inside `createPlaylistScore(Tone)`, which takes Tone explicitly and
   keeps `Sim` private; plus `PLAYLIST` and `loadPiece(id)`. Nothing plays on import.
 - `playlist/pieces/<id>.mjs`: each piece unchanged inside `register(Sim, Tone)`, one chunk per piece.
+- `playlist/order.mjs`: the playlist order alone, for the file source, which needs neither Tone nor the engine.
 - `playlist/BUILD.json`: source commit, playlist and a sha256 per generated file.
 
 To change the playlist, edit `PLAYLIST` in the builder and rerun it. The builder prints any catalog "New pieces" id the
@@ -37,9 +38,45 @@ The player is `apps/web/src/gen-mesh/music.ts`. The first piece is random per vi
 stops it; turning it on restarts the current piece. A world's own `music` things stay quiet under it, and moving the
 camera never restarts a piece.
 
-Nothing loads at arrival. `tone` and the score engine are lazy chunks, loaded after arrival, after the first gesture,
-with music on and sound unmuted, in idle time. Each piece chunk is fetched just before it plays; the next one is
-prefetched during the current fade. Tone owns its AudioContext; a gesture resumes it where the browser requires (iOS).
+Nothing loads at arrival. The player loads after arrival, after the first gesture, with music on and sound unmuted, in
+idle time. It has two sources, chosen per piece (`source` in `state()` and the log):
+
+- `file` (the default): every piece pre-rendered to audio by the score engine itself and streamed from the asset CDN
+  (below), through a media element and a GainNode graph (`gen-mesh/music-file.ts`). The browser's media pipeline decodes
+  it off the main thread, so a frame spike cannot drop a note. The next file is prefetched 20 s before the end and
+  crossfades in 3 s before it while the current fades over 4 s; pause and resume keep the position. Tone and the engine
+  are never loaded.
+- `tone`: the live Tone.js path, synthesised on the main thread, when the index lacks a piece or its file fails (three
+  failures in a row give up on files for the session). `tone` and the engine are lazy chunks; each piece chunk is fetched
+  just before it plays, the next one 20 s before the end. Tone owns its AudioContext (latency hint `playback`, 0.3 s
+  lookAhead); a gesture resumes it where the browser requires (iOS).
+
+### Rendered audio
+
+`playlist/playlist-audio.json` is the index the file source imports: piece id → CDN url, seconds, seed, bytes, sha256.
+The files are not in git (nor in `tools/assets/manifest.json`: nothing pulls them into a checkout; they stream at play
+time). To render and publish, after a playlist or engine change:
+
+```sh
+node tools/score/render-playlist.mjs [--pieces a,b] [--force]          # headless Chrome, Sim.renderOffline, ffmpeg AAC
+node tools/score/publish-playlist-audio.mjs                              # dry run: the plan
+EDEN_ASSETS_CREDENTIALS=<0600 file> node tools/score/publish-playlist-audio.mjs --apply --receipt .local/<new>.json
+node tools/score/publish-playlist-audio.mjs --verify                     # public GETs: headers, CORS, bytes
+```
+
+Each piece renders once with a deterministic seed (FNV-1a of its id), 240 s at 44.1 kHz stereo, through the engine's
+master compressor and limiter, is encoded with ffmpeg (AAC 160 kb/s in an `.m4a` with the moov up front; `--format
+opus|mp3` for the others) and is named by its SHA-256, the CDN's content-addressed key (`docs/operations/cdn.md`). The
+renderer records peak and RMS per piece in `.local/score-audio/renders.json`. Tone's limiter is not a brick wall, so
+about half the pieces overshoot 0 dBFS in the float render (live playback clips them at the output); those are scaled to
+-1 dBFS before encoding (`gainDb` in the stats). A render more than 12 dB over, silent, or ending early fails. The seed
+fixes the notes and `Math.random` is seeded too, but Tone's reverb impulses make renders differ slightly run to run: the
+file is the record, its sha256 is in the index. `--index <file>` writes another index (trials). A
+piece already in the index whose file is in `.local/score-audio` is skipped unless `--force`. Commit the index with the
+code once `--verify` passes; the files are inert until a build names them.
+
+Proof of a local build: the bucket's CORS admits only the production origins, so serve the rendered files locally with
+`node tools/score/serve-playlist-audio.mjs` and open the world with `?musicAudio=http://127.0.0.1:5213`.
 
 Checks:
 
@@ -47,6 +84,9 @@ Checks:
   piece chunks fetched so far).
 - `playlist.test.ts`: every piece registers once and composes its first cycles under an inert Tone, the optional modules
   load, the vendored copy matches its provenance, and the generated chunks match a fresh build.
+- `gen-mesh/music-file.test.ts`: the file source's prefetch, fade, crossfade, end, resume at a position, volume ramps
+  and the fallback signal, with fake media elements and gain nodes. `tools/score/render-playlist.test.mjs`: seeds, keys,
+  the index text and the publish plan.
 - `node vendor/sim-score/tools/lint.mjs <ids> --cycles 32 --seed 1` (also seeds 7 and 12345) over the playlist.
 - `tools/sound/camera-restarts.mjs`: 60 s of camera drags, counting sound and music restarts.
 

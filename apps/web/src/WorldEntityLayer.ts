@@ -63,7 +63,7 @@ function frozenMatrixWorld(this: THREE.Object3D) { /* nothing: thawed before any
 const _box = new THREE.Box3(), _projScreen = new THREE.Matrix4();
 
 type Figure = { holder: THREE.Object3D; wrists: [THREE.Object3D, THREE.Object3D]; knuckles: [THREE.Object3D | null, THREE.Object3D | null] } | { missingAt: number };
-type Drawn = { opening?: OpeningMotion; interior?: { key: number; host: Drawn | null; slot: string }; inst?: string; settled?: boolean; frozen?: THREE.Object3D[]; thaw?: boolean; noFreeze?: boolean; sphere?: THREE.Sphere; offscreen?: boolean; shown?: boolean; obj: THREE.Object3D; from: { p: THREE.Vector3; s: number }; to: { p: THREE.Vector3; s: number }; t0: number; dur: number; removing?: boolean; defHash: string; world?: boolean; motion?: { entity: Entity; def: StoredDef; yaw: number; glowOnly: boolean } };
+type Drawn = { cut?: boolean; opening?: OpeningMotion; interior?: { key: number; host: Drawn | null; slot: string }; inst?: string; settled?: boolean; frozen?: THREE.Object3D[]; thaw?: boolean; noFreeze?: boolean; sphere?: THREE.Sphere; offscreen?: boolean; shown?: boolean; obj: THREE.Object3D; from: { p: THREE.Vector3; s: number }; to: { p: THREE.Vector3; s: number }; t0: number; dur: number; removing?: boolean; defHash: string; world?: boolean; motion?: { entity: Entity; def: StoredDef; yaw: number; glowOnly: boolean } };
 
 export class WorldEntityLayer {
   readonly group = new THREE.Group();
@@ -122,7 +122,7 @@ export class WorldEntityLayer {
       const m=entities[id].state.handActuator as HandActuatorMotion|undefined;
       // Soul Actions entry 38: a poster being taken down is drawn in the hands (humans.ts) from the moment the peel starts;
       // the wall's own copy of it is hidden until the wall redraws without it at the depicted commit
-      if(m?.stroke?.kind==='unposter'&&m.abortedAt===undefined&&(tick-m.startTick)*dt>=HAND_REACH_SECONDS){const d=this.drawn.get(m.target);if(d){let best:THREE.Object3D|null=null,bd=.12;d.obj.traverse(o=>{if(!o.name.startsWith('poster-slot-'))return;const p=o.getWorldPosition(new THREE.Vector3()),dd=Math.hypot(p.x-m.at[0],p.y-m.at[1],p.z-m.at[2]);if(dd<bd){bd=dd;best=o;}});if(best){(best as THREE.Object3D).visible=false;peeled.add(best);}}continue;}
+      if(m?.stroke?.kind==='unposter'&&m.abortedAt===undefined&&(tick-m.startTick)*dt>=HAND_REACH_SECONDS){const d=this.drawn.get(m.target);if(d){let best:THREE.Object3D|null=null,bd=.12;d.obj.traverse(o=>{if(!o.name.startsWith('poster-slot-'))return;const p=o.getWorldPosition(new THREE.Vector3()),dd=Math.hypot(p.x-m.at[0],p.y-m.at[1],p.z-m.at[2]);if(dd<bd){bd=dd;best=o;}});if(best){(best as THREE.Object3D).visible=false;peeled.add(best);this.thawOwner(best);}}continue;}
       // Entry 10: a bell pull's rope swings with the hand's tug, on the depicted tick
       if(m?.tug){const rope=this.drawn.get(m.target)?.obj.getObjectByName('role:rope');if(rope){rope.rotation.x=-handActuatorFrame(m,(tick-m.startTick)*dt).tug*m.tug.angle;this.tugged.add(rope);}continue;}
       if(!m?.opening&&!m?.slide)continue;
@@ -164,7 +164,7 @@ export class WorldEntityLayer {
       if(!open){if(k.inst?k.shown!==false:k.obj.visible)this.showKept(id,k,false);}
       else if(k.obj.position.distanceToSquared(k.to.p)>1e-8&&k.settled){k.obj.position.copy(k.to.p);this.showKept(id,k,true);}
     }
-    for(const o of this.peeled)if(!peeled.has(o))o.visible=true;
+    for(const o of this.peeled)if(!peeled.has(o)){o.visible=true;this.thawOwner(o);}
     this.peeled=peeled;
   }
   private peeled=new Set<THREE.Object3D>();
@@ -538,6 +538,7 @@ export class WorldEntityLayer {
     // plane at y ≈ 0 would cover every pond, river and cut below it)
     if (baseGround) baseGround.traverse((o) => { if ((o.name === 'outside-ground' || o.name === 'commons-ground' || (o.parent === baseGround && (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry?.type === 'PlaneGeometry')) && !this.hiddenBase.has(o)) { o.visible = false; this.hiddenBase.add(o); } });
     this.interiorFar.clear();
+    this.instancer.updateBounds();
     const frame = ++this.frame;
     // P1 phones: frozen things skip the matrix walk on the promise that what they hang from does not move; if it ever does, thaw all
     if (this.freezeSettled && !this.thingsGroup.matrixWorld.equals(this.frozenUnder)) { this.frozenUnder.copy(this.thingsGroup.matrixWorld); for (const d of this.drawn.values()) if (d.frozen) this.thaw(d); }
@@ -563,7 +564,7 @@ export class WorldEntityLayer {
       const glowing = this.freezeSettled && !!d.motion?.glowOnly;
       if (d.settled && !d.inst && (!d.motion || glowing) && !d.removing && !this.overrides.has(id) && !this.held.has(id)) {
         // phone tier: visibility (interior storeys, far furniture) is checked every other frame
-        if (!this.freezeSettled || !d.frozen || ((k + frame) & 1) === 0) d.obj.visible = this.interiorVisible(id, d);
+        if (!this.freezeSettled || !d.frozen || ((k + frame) & 1) === 0) { const v = this.interiorVisible(id, d); if (v !== d.obj.visible) { d.obj.visible = v; if (d.frozen) this.staticRevision++; } }
         if (!this.immutable && glowing && d.obj.visible && ((k + frame) & (d.offscreen ? 15 : 3)) === 0) animate(d.obj, d.motion!.entity, d.motion!.def, nowMs / 1000, { y: d.to.p.y, yaw: d.motion!.yaw });
         if (this.freezeSettled && !d.frozen && !d.noFreeze) this.freeze(d);
         continue;
@@ -766,6 +767,7 @@ export class WorldEntityLayer {
     // never ran and the thing never appeared on phones.
     d.sphere = _box.isEmpty() || _box.min.equals(_box.max) ? undefined : _box.getBoundingSphere(new THREE.Sphere());
     d.frozen = list;
+    if (!d.cut) delete d.obj.userData.renderDynamic; this.staticRevision++;
   }
   private thaw(d: Drawn) {
     if (d.frozen) {
@@ -773,6 +775,8 @@ export class WorldEntityLayer {
       d.obj.traverse((o) => o.removeEventListener('childadded', this.onFrozenChild));
       delete (d.obj as { updateMatrixWorld?: unknown }).updateMatrixWorld;  // the prototype's again
       delete d.obj.userData.frozenDrawn;
+      // PERF-BATCH: a thawed thing's batch falls back to its originals until it is frozen (and batched) again
+      d.obj.userData.renderDynamic = true; this.staticRevision++;
     }
     d.frozen = undefined; d.thaw = false; d.sphere = undefined;
   }
@@ -813,6 +817,32 @@ export class WorldEntityLayer {
   /** P1 phones: a settled still thing's subtree leaves scene.updateMatrixWorld (Eden 2026: ~8,700 objects re-multiplied
    *  every frame, ~13% of a phone frame). Anything that moves it first takes it out of `settled`. */
   freezeSettled = false;
+  /** PERF-BATCH: changes whenever a thing freezes, thaws, is shown or hidden, replaced or removed: what the static batcher
+   *  (rendering/StaticBatchOwner.ts) trusts between validations, and what tells LiveWorld to re-prepare its batches. */
+  staticRevision = 0;
+  /** PERF-BATCH: the frozen, still, non-instanced things the static batcher may merge: whole objects under `thingsGroup`
+   *  that nothing animates (a glowing lamp's emissive changes; a thing kept in a container shows and hides with its lid). */
+  staticBatchRoots(): THREE.Object3D[] {
+    const roots: THREE.Object3D[] = [];
+    for (const [id, d] of this.drawn) if (d.frozen && !d.inst && (!d.motion || d.motion.glowOnly) && !d.removing && !d.cut && d.obj.visible && d.obj.parent === this.thingsGroup && !this.keptIn.has(id) && !this.held.has(id)) roots.push(d.obj);
+    return roots;
+  }
+  /** PERF-BATCH: before each draw, every frozen building decides its storey cut for this camera (building.mesh.ts does it
+   *  in the meshes' render hooks, which a merged batch never runs). A building that hides a storey leaves the batches
+   *  (renderDynamic: its batch falls back this frame; the next preparation merges without it) until it is whole again. */
+  decideCuts(camera: THREE.Camera) {
+    camera.updateMatrixWorld();
+    for (const d of this.drawn.values()) {
+      const interior = d.obj.userData.interior as { decide?: (camera: THREE.Camera) => boolean } | undefined;
+      if (!interior?.decide || !d.frozen) continue;
+      const cut = interior.decide(camera);
+      if (cut === !!d.cut) continue;
+      d.cut = cut; this.staticRevision++;
+      if (cut) d.obj.userData.renderDynamic = true; else delete d.obj.userData.renderDynamic;
+    }
+  }
+  /** The frozen thing an object belongs to (if any) thaws at the next update: something under it was shown or hidden. */
+  private thawOwner(o: THREE.Object3D) { for (let p: THREE.Object3D | null = o; p; p = p.parent) { const d = p.userData.frozenDrawn as Drawn | undefined; if (d) { d.thaw = true; return; } } }
   interiorRange = 30;
   /** Interior view (building/1's mesh sets `userData.interior`): a thing on a storey its building hides is hidden too. */
   private interiorVisible(id: string, d: Drawn): boolean {
@@ -1115,7 +1145,7 @@ export class WorldEntityLayer {
     // Waiting for animate()'s settled transform left an OFF bulb glowing for 2.5 s.
     if (def.components.light || def.components.lights) syncLightGlow(built,e,def,m,this.now/1000);
     const opening=existing&&def.tags.includes('hand-operated')?beginOpeningMotion(built,existing.obj,this.now):undefined;
-    if (existing) { if (existing.inst) this.instancer.remove(existing.inst, e.id); else { this.thingsGroup.remove(existing.obj); disposeObject(existing.obj); } this.drawn.delete(e.id); }
+    if (existing) { if (existing.inst) this.instancer.remove(existing.inst, e.id); else { if (existing.frozen) this.thaw(existing); this.thingsGroup.remove(existing.obj); disposeObject(existing.obj); } this.drawn.delete(e.id); }
     // a rainbow thing is weather: hidden until the atmosphere shows it after rain (its own meshes, never instanced)
     const rainbow = isRainbowDef(def); if (rainbow) holdRainbow(built);
     // static things with an instance key share one InstancedMesh per part (a few draws for hundreds of props)

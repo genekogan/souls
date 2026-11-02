@@ -12,6 +12,7 @@ import { MaterialLib } from './materials.ts';
 import { addShadowProxy, proxiedCasters, setShadowCut, shadowProxyStats, ShadowProxyMesh, trackShadowProxies } from './shadow-proxy.ts';
 import { Builder, sharedGeometryCount } from './building-kit.ts';
 import { EntityInstancer } from '../EntityInstancer.ts';
+import { StaticBatchOwner } from '../rendering/StaticBatchOwner.ts';
 import './building.mesh.ts';
 
 const renderer = { info: { render: { frame: 1 } } } as unknown as THREE.WebGLRenderer;
@@ -143,4 +144,27 @@ test('an instancer pool built from a prototype with a proxy draws the proxy part
   mainDraw(pp[0], scene);
   assert.equal(pp[0].visible, false); assert.equal(shadowProxyStats(scene).proxies, 1);
   assert.equal(rayHits(pp[0], new THREE.Vector3(1, 0.5, -5)), 0);
+});
+
+test('a statically batched proxied thing casts from its cell batch; its proxy stands down while the batch draws', async () => {
+  const scene = new THREE.Scene(), root = new THREE.Group(), mat = new THREE.MeshStandardMaterial();
+  for (let i = 0; i < 3; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(), mat); m.castShadow = true; m.position.x = i * 2; root.add(m); }
+  scene.add(root);
+  assert.equal(addShadowProxy(root, { generated: true }), 3);
+  assert.ok(trackShadowProxies(root, scene));
+  const proxy = root.children.find((o) => o.userData.shadowProxy)!, hook = scene.children[0];
+  const casters = proxiedCasters(root); assert.equal(casters.length, 3); assert.ok(casters.every((m) => !m.castShadow));
+  shadowPass(hook); assert.equal(proxy.visible, true, 'unbatched: the proxy casts');
+  const owner = new StaticBatchOwner(scene); await owner.prepare([root], { generation: 1, hideWholeRoots: true });
+  const batch = owner.group.children.find((o) => (o as THREE.Mesh).isMesh) as THREE.Mesh;
+  assert.ok(batch, 'the proxied casters still batch'); assert.equal(batch.castShadow, true, 'the batch casts their shadow');
+  assert.ok(!owner.group.children.some((o) => (o as THREE.Mesh).geometry === (proxy as THREE.Mesh).geometry), 'the proxy itself is never merged');
+  owner.withRender(() => {
+    assert.equal(root.visible, false, 'the whole root (proxy included) hides while its batch draws');
+    root.visible = true; for (const m of casters) m.visible = false;   // the mesh-by-mesh case
+    shadowPass(hook); assert.equal(proxy.visible, false, 'casters drawn by a batch: the proxy stands down');
+    for (const m of casters) m.visible = true; root.visible = false;
+  });
+  shadowPass(hook); assert.equal(proxy.visible, true, 'after the batch draw the proxy casts again');
+  owner.dispose();
 });

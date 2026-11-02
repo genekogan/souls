@@ -519,7 +519,7 @@ export function syncLightGlow(obj: THREE.Object3D, e: Entity, def: StoredDef, mo
   const ud = obj.userData as { glow?: GlowPart[] };
   if (!ud.glow) {
     const parts: GlowPart[] = [];
-    obj.traverse((c) => { const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && (m as { emissive?: THREE.Color }).emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0 && !c.userData.shadowProxy) parts.push({ mesh: c as THREE.Mesh, base: m, flame: isFlamePart(c), gain: m.userData.kitGlowIntensity ?? 1 }); });
+    obj.traverse((c) => { const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && (m as { emissive?: THREE.Color }).emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0 && !c.userData.shadowProxy) { parts.push({ mesh: c as THREE.Mesh, base: m, flame: isFlamePart(c), gain: m.userData.kitGlowIntensity ?? 1 }); c.userData.renderDynamic = true; } });  // PERF-BATCH: its glow level changes over time: never merged
     ud.glow = parts;
   }
   const lights=defLights(def.components),off = e.state?.on === false || lights.every(l=>l.on===false);
