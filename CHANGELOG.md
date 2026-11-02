@@ -2,6 +2,39 @@
 
 User-facing changes to Sim, newest first. Each release is compiled from `changes/` fragments.
 
+## 4.12 (2026-11-02)
+
+### Fixes
+
+- Do not mistake a deliberately sleeping world for overload when it wakes, which could refuse the first Soul’s reads for 30 seconds.
+
+## 4.11 (2026-11-02)
+
+### Fixes
+
+- Keep concurrent God Mode requests from minting duplicate browser tokens when an owner enters a world. Discard pending tokens when the signed-in account changes. (#547)
+
+## 4.10 (2026-11-01)
+
+### Fixes
+
+- Let Souls dance in place on ordinary standing ground, including around campfires. Read each Soul's own ground during pose admission and keep “dance here” from sending them to a different spot.
+
+## 4.09 (2026-11-01)
+
+### Fixes
+
+- Use the golden halo for Souls branding and social previews. Open Worlds directly at the home page without briefly showing the legacy page, which remains at /old.
+- Prepared soul.game sign-in and upload CDN compatibility while retaining existing client URLs and account identities.
+
+### Performance
+
+- Worlds reopen their connection before warming Soul menus, keeping lightweight requests available during restart.
+
+## 4.08 (2026-11-01)
+
+Internal changes only.
+
 ## 4.07 (2026-11-01)
 
 ### Features
