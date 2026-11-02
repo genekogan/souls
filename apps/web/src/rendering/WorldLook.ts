@@ -75,6 +75,34 @@ export function installStableShadowFilter() {
   THREE.ShaderChunk.shadowmap_pars_fragment = stableShadowPCF(THREE.ShaderChunk.shadowmap_pars_fragment);
 }
 
+// ------------------------------------------------------------------ the cached sun shadow (SunShadowCache)
+const SUN_SHADOW_LINE = 'directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;';
+const SUN_SHADOW_BLOCK = `#if defined( USE_SHADOWMAP ) && ( UNROLLED_LOOP_INDEX < NUM_DIR_LIGHT_SHADOWS )
+		directionalLightShadow = directionalLightShadows[ i ];
+		${SUN_SHADOW_LINE}
+		#endif`;
+/** Lane PERF-BAKED-SHADOWS: with exactly two shadow-casting directional lights, the second is the sun's cached map of
+ *  still things (Daylight.baked: no light of its own). The sun (light 0) is shadowed by the darker of its per-frame map
+ *  (what moves) and the cached one, through the same PCF; light 1 takes no shadow lookup. Every other light count keeps
+ *  three's loop unchanged. Fails closed (unchanged chunk) if a Three upgrade changes the loop. */
+export function bakedSunShadowChunk(chunk: string): string {
+  if (chunk.includes('EDEN_BAKED_SUN') || !chunk.includes(SUN_SHADOW_BLOCK)) return chunk;
+  const cached = 'getShadow( directionalShadowMap[ 1 ], directionalLightShadows[ 1 ].shadowMapSize, directionalLightShadows[ 1 ].shadowIntensity, directionalLightShadows[ 1 ].shadowBias, directionalLightShadows[ 1 ].shadowRadius, vDirectionalShadowCoord[ 1 ] )';
+  const both = SUN_SHADOW_LINE.replace(/\? (getShadow\( directionalShadowMap\[ i \][^;]*\)) : 1\.0;$/, `? min( $1, ${cached} ) : 1.0;`);
+  return chunk.replace(SUN_SHADOW_BLOCK, `#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS == 2 && UNROLLED_LOOP_INDEX == 0 /* EDEN_BAKED_SUN */
+		directionalLightShadow = directionalLightShadows[ i ];
+		${both}
+		#elif defined( USE_SHADOWMAP ) && ( UNROLLED_LOOP_INDEX < NUM_DIR_LIGHT_SHADOWS ) && NUM_DIR_LIGHT_SHADOWS != 2
+		directionalLightShadow = directionalLightShadows[ i ];
+		${SUN_SHADOW_LINE}
+		#endif`);
+}
+/** True once the lights chunk combines the two sun maps (Daylight creates the cached map only then). */
+export function installBakedSunShadow(): boolean {
+  THREE.ShaderChunk.lights_fragment_begin = bakedSunShadowChunk(THREE.ShaderChunk.lights_fragment_begin);
+  return THREE.ShaderChunk.lights_fragment_begin.includes('EDEN_BAKED_SUN');
+}
+
 // ------------------------------------------------------------------ tone curve (CustomToneMapping)
 const TONE_GLSL = /* glsl */`vec3 CustomToneMapping( vec3 color ) {
 	color *= toneMappingExposure;

@@ -975,6 +975,16 @@ export class WorldEntityLayer {
     for (const [id, d] of this.drawn) if (d.frozen && !d.inst && (!d.motion || d.motion.glowOnly) && !d.removing && !d.cut && d.obj.visible && d.obj.parent === this.thingsGroup && !this.keptIn.has(id) && !this.held.has(id)) roots.push(d.obj);
     return roots;
   }
+  /** PERF-BAKED-SHADOWS: what casts into the sun's cached shadow (rendering/SunShadowCache.ts): every frozen thing, the
+   *  entity instance pools and the scatter pools. Moving things, bodies, sites and ground cover stay in the per-frame map.
+   *  `shadowRevision` changes whenever any of them appears, goes, moves, shows or hides. */
+  shadowStatics(out: THREE.Object3D[]): THREE.Object3D[] {
+    if (!this.active) return out;
+    out.push(this.instancer.group, this.scatterPools.group);
+    for (const d of this.drawn.values()) if (d.frozen && !d.inst && d.obj.parent === this.thingsGroup) out.push(d.obj);
+    return out;
+  }
+  get shadowRevision() { return this.staticRevision + this.instancer.revision; }
   /** PERF-BATCH: before each draw, every frozen building decides its storey cut for this camera (building.mesh.ts does it
    *  in the meshes' render hooks, which a merged batch never runs). A building that hides a storey leaves the batches
    *  (renderDynamic: its batch falls back this frame; the next preparation merges without it) until it is whole again. */
