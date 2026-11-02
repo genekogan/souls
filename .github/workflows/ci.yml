@@ -55,6 +55,7 @@ jobs:
           node --test --test-concurrency=1
           tools/assets/manifest.test.mjs
           tools/assets/mars-web.test.mjs
+          .github/scripts/claude-worker.test.mjs
           .github/scripts/ci-scope.test.mjs
           .github/scripts/server-test-files.test.mjs
           .github/scripts/guards.test.mjs
