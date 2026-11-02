@@ -91,6 +91,34 @@ test('a host\'s cut change re-reads only the things of that host; the other host
   assert.deepEqual(reads.sort(), ['downA', 'upA']); assert.equal(downA.obj.visible, true);
 });
 
+test('a hand thaw wakes a settled thing so its changed parts freeze again', async () => {
+  const { layer, inner, put, frame } = await layerFor();
+  const thing = put('door', [0, 0, 0]); frame();
+  assert.equal(layer.loopStats.live, 0);
+  (inner as unknown as { thaw: (d: Drawn) => void }).thaw(thing.d());
+  thing.mesh.position.x = 2; thing.obj.updateMatrixWorld(true);
+  assert.equal(layer.loopStats.live, 1, 'the hand changed a frozen thing outside update');
+  frame();
+  assert.ok(thing.d().frozen); assert.equal(layer.loopStats.live, 0);
+  assert.equal(new THREE.Vector3().setFromMatrixPosition(thing.mesh.matrixWorld).x, 2);
+});
+
+test('a parent change at the same world pose re-resolves the interior without restarting its easing', async () => {
+  const { layer, inner, put, frame } = await layerFor();
+  const a = put('houseA', [0, 0, 0]), b = put('houseB', [0, 0, 0]);
+  a.obj.userData.interior = { cut: () => 0, floorOf: { up: 1 } };
+  b.obj.userData.interior = { cut: () => 1, floorOf: { up: 1 } };
+  const def = { hash: 'test', make: { kind: 'gen', gen: 'none' }, tags: [], components: {} };
+  const entities = new Map([ent('houseA', 'world'), ent('houseB', 'world'), ent('chair', 'houseA', 'up')]);
+  inner.model = { entities, resolvedDef: () => def, worldPose: () => ({ x: 0, y: 3, z: 0, s: 1, yaw: 0 }) };
+  const chair = put('chair', [0, 3, 0], 1, { defHash: 'test:{}:{}:null:0' });
+  frame(); frame(); assert.equal(chair.obj.visible, false); assert.equal(layer.loopStats.live, 0);
+  const next = ent('chair', 'houseB', 'up')[1]; entities.set('chair', next);
+  (inner as unknown as { draw: (e: unknown, ease: boolean) => void }).draw(next, false);
+  assert.equal(chair.d().settled, true, 'no easing restarted'); assert.equal(layer.loopStats.live, 1);
+  frame(); assert.equal(chair.obj.visible, true, 'the new host shows its upper storey'); assert.equal(layer.loopStats.live, 0);
+});
+
 test('a host redrawn (new record, same id) is found again by its things; a removed host shows them; a thing kept in a box is read every frame', async () => {
   const { layer, inner, put, frame } = await layerFor();
   const reads: string[] = []; const orig = inner.refreshVisibility; inner.refreshVisibility = function (id, d, now) { reads.push(id); return orig.call(this, id, d, now); };

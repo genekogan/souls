@@ -973,6 +973,7 @@ export class WorldEntityLayer {
     if (!d.cut) delete d.obj.userData.renderDynamic; this.staticRevision++;
   }
   private thaw(d: Drawn) {
+    if (d.id !== undefined) this.live.add(d.id);   // a hand or a child changed it outside update(): freeze it again after its next still pass
     if (d.frozen) {
       for (const o of d.frozen) o.matrixAutoUpdate = true;
       d.obj.traverse((o) => o.removeEventListener('childadded', this.onFrozenChild));
@@ -1384,13 +1385,15 @@ export class WorldEntityLayer {
     const refinement = ease && !isWorld ? this.sites.refinement(e, m) : null;
     if (existing && existing.defHash === defHash && !existing.removing && !force) {
       if (isWorld) return;
+      // The parent or slot can change without changing the world pose. Resolve its host again even when no easing is needed.
+      if (existing.interior) existing.interior.stale = true;
+      this.live.add(e.id); this.touchDependents(e.id);
       // lane PERF-SNAPSHOT: a settled thing asked to stay where it is (a resync, a parent's children re-posed) is left
       // alone: its pose is not re-eased, so it stays settled (frozen on the phone tier) and nothing flashes
       if (!ease && existing.settled && existing.to.p.equals(target) && existing.to.s === wp.s && existing.obj.rotation.y === wp.yaw && (!Array.isArray(e.r) || (existing.obj.rotation.x === e.r[1] && existing.obj.rotation.z === e.r[2]))) return;
       existing.obj.rotation.set(0, wp.yaw, 0); applyTilt(existing.obj, e);
       existing.from = refinement ? { p: target.clone(), s: wp.s * refinement.scale } : { p: ease ? existing.obj.position.clone() : target.clone(), s: ease ? existing.obj.scale.x : wp.s };
       existing.to = { p: target, s: wp.s }; existing.t0 = this.now; existing.dur = ease ? refinement?.seconds ?? EASE_IN_S : 0.001; existing.settled = false;
-      if (existing.interior) existing.interior.stale = true;   // PERF-EVENTLOOP: its parent chain may have changed
       return;
     }
     let built = this.build(e, def);

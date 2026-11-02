@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { findPlaywright } from '../god-skill/lib/look.mjs';
+import { settleKey } from './frame-cadence.mjs';
 const { chromeLease } = await import(process.env.CHROME_LEASE_MODULE ?? '../god-skill/lib/chrome-lease.mjs');
 // source-map-js is vite's own dependency: resolve it from where vite lives (pnpm puts a package's dependencies beside it)
 const webRequire = createRequire(new URL('../../apps/web/package.json', import.meta.url));
@@ -26,10 +27,10 @@ const [W, H] = opt('size', '1418x899').split('x').map(Number), dpr = Number(opt(
 const out = resolve(opt('out', `.lane/profile/${label}-${new Date().toISOString().replace(/[:.]/g, '-')}`)); mkdirSync(out, { recursive: true });
 const pw = findPlaywright(); if (!pw) throw new Error('no playwright');
 
-const INIT = `(() => { const P = window.__orbit = { frames: 0, draws: 0, lastDraws: 0, lastTris: 0, tris: 0, recording: false };
-  const tick = () => { if (P.recording) P.frames++; P.lastDraws = P.draws; P.lastTris = P.tris; P.draws = 0; P.tris = 0; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
+const INIT = `(() => { const P = window.__orbit = { frames: 0, perFrame: [], draws: 0, tris: 0, recording: false, updates: [] };
+  const tick = () => { if (P.recording) P.frames++; if (P.draws) { P.perFrame.push([P.draws, P.tris]); if (P.perFrame.length > 600) P.perFrame.shift(); } P.draws = 0; P.tris = 0; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
   const wrap = (proto) => { if (!proto || proto.__orbitWrapped) return; proto.__orbitWrapped = true;
-    for (const name of ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced']) { const orig = proto[name]; if (!orig) continue; proto[name] = function (...a) { P.draws++; const n = name.startsWith('drawElements') ? a[1] : a[2]; P.tris += (n || 0) / 3; return orig.apply(this, a); }; } };
+    for (const name of ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced']) { const orig = proto[name]; if (!orig) continue; proto[name] = function (...a) { P.draws++; const n = name.startsWith('drawElements') ? a[1] : a[2], instances = name === 'drawElementsInstanced' ? a[4] : name === 'drawArraysInstanced' ? a[3] : 1; if (a[0] === 4) P.tris += (n || 0) * instances / 3; return orig.apply(this, a); }; } };
   wrap(window.WebGL2RenderingContext?.prototype); wrap(window.WebGLRenderingContext?.prototype); })();`;
 
 const release = await chromeLease('orbit-profile');
@@ -46,10 +47,10 @@ try {
   let last = '', stableSince = Date.now(), settledAt = null;
   for (;;) {
     await page.waitForTimeout(250);
-    const s = await page.evaluate(() => ({ d: window.__orbit.lastDraws, t: Math.round(window.__orbit.lastTris / 1000), rev: document.querySelector('.world-canvas-host')?.getAttribute('data-initial-revealed') === 'true' && !document.querySelector('.viewer-arrival:not([data-done="true"])') })).catch(() => null);
+    const s = await page.evaluate(() => ({ frames: window.__orbit.perFrame.splice(0), rev: document.querySelector('.world-canvas-host')?.getAttribute('data-initial-revealed') === 'true' && !document.querySelector('.viewer-arrival:not([data-done="true"])') })).catch(() => null);
     if (!s) continue;
-    const key = `${s.d}:${s.t}`; if (key !== last) { last = key; stableSince = Date.now(); }
-    if (s.rev && s.d > 0 && Date.now() - stableSince > 3000) { settledAt = stableSince - tNav; break; }
+    const key = settleKey(s.frames); if (key !== last) { last = key; stableSince = Date.now(); }
+    if (s.rev && key !== null && Date.now() - stableSince > 3000) { settledAt = stableSince - tNav; break; }
     if (Date.now() - tNav > settleMax * 1000) break;
   }
   const entityCount = await page.evaluate(() => window.__simEntity?.layer?.entityCount ?? null);
@@ -58,9 +59,15 @@ try {
   const cx = Math.round(W / 2), cy = Math.round(H * 0.5);
   const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
   await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 100 });
-  await page.evaluate(() => { window.__orbit.frames = 0; window.__orbit.recording = true; });
+  await page.evaluate(() => {
+    const p = window.__orbit, layer = window.__simEntity?.layer;
+    if (!layer) throw new Error('entity layer not available');
+    const update = layer.update;
+    layer.update = function (...args) { const t = performance.now(); try { return update.apply(this, args); } finally { if (p.recording) p.updates.push(performance.now() - t); } };
+    p.frames = 0; p.recording = true;
+  });
   await cdp.send('Profiler.start'); const t0 = Date.now();
-  const steps = Math.round(seconds * 20);
+  const steps = Math.round(seconds * 40);
   await touch('touchStart', [[cx - 120, cy]]);
   for (let k = 1; k <= steps; k++) { await touch('touchMove', [[cx - 120 + Math.round(240 * Math.sin(k / steps * Math.PI)), cy + Math.round(20 * Math.sin(k / 7))]]); await page.waitForTimeout(25); }
   await touch('touchEnd', []);
@@ -69,6 +76,7 @@ try {
   await touch('touchEnd', []);
   const { profile } = await cdp.send('Profiler.stop'); const wallMs = Date.now() - t0;
   const frames = await page.evaluate(() => { window.__orbit.recording = false; return window.__orbit.frames; });
+  const updateTimes = await page.evaluate(() => window.__orbit.updates);
   await page.screenshot({ path: resolve(out, 'orbit.png') });
   writeFileSync(resolve(out, 'profile.cpuprofile'), JSON.stringify(profile));
   await ctx.close();
@@ -94,7 +102,10 @@ try {
   }
   const perFrame = (ms) => +(ms / Math.max(1, frames)).toFixed(3);
   const top = (m, n = 12) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, ms]) => ({ fn: k, msPerFrame: perFrame(ms), ms: +ms.toFixed(1) }));
-  const r = { url, label, frames, wallMs, fps: +(frames * 1000 / wallMs).toFixed(1), entityCount, loopStats: loop, settledMs: settledAt, sampledMsPerFrame: perFrame(total),
+  const sortedUpdates = [...updateTimes].sort((a, b) => a - b);
+  const updateQuantile = (p) => sortedUpdates.length ? +sortedUpdates[Math.min(sortedUpdates.length - 1, Math.ceil(sortedUpdates.length * p) - 1)].toFixed(3) : null;
+  const updateTiming = { frames: updateTimes.length, mean: updateTimes.length ? +(updateTimes.reduce((a, b) => a + b, 0) / updateTimes.length).toFixed(3) : null, p50: updateQuantile(0.5), p95: updateQuantile(0.95), p99: updateQuantile(0.99), max: updateQuantile(1) };
+  const r = { url, label, frames, wallMs, fps: +(frames * 1000 / wallMs).toFixed(1), entityCount, loopStats: loop, settledMs: settledAt, updateTiming, sampledMsPerFrame: perFrame(total),
     perFrame: Object.fromEntries(Object.keys(marks).filter((m) => m !== 'idle').map((m) => [m, perFrame(incl.get(m) ?? 0)])),
     topSelf: top(self), topUnderUpdate: top(underUpdate), errors };
   writeFileSync(resolve(out, 'report.json'), JSON.stringify(r, null, 2));
