@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {eachSkinnedWorld,restNeed} from '../../../mars/viewer/app/engine-view/humans.ts';
+import {eachSkinnedWorld,restNeed,computeBodySphere} from '../../../mars/viewer/app/engine-view/humans.ts';
 
 async function rig(name:string){
  const source=readFileSync(new URL(`../../../mars/viewer/public/modular/environment/animated-${name}.glb`,import.meta.url));
@@ -36,6 +36,15 @@ for(const name of ['casual','punk','woman'])test(`eachSkinnedWorld equals getVer
  const want2:number[]=[];for(const r of refs.slice(0,1))for(const i of r.idx.slice(0,500)){const p=r.mesh.getVertexPosition(i,new THREE.Vector3()).applyMatrix4(r.mesh.matrixWorld);want2.push(p.x,p.y,p.z);}
  const got2:number[]=[];eachSkinnedWorld([{mesh:refs[0].mesh,idx:refs[0].idx.slice(0,500)}],new THREE.Vector3(),p=>{got2.push(p.x,p.y,p.z);});
  assert.deepEqual(got2,want2);
+ for(const m of meshes){
+  m.computeBoundingSphere();const want=m.boundingSphere!.clone();m.boundingSphere=null;computeBodySphere.call(m);
+  assert.deepEqual(m.boundingSphere,want,'first-draw local bounds equal Three exactly, without a world/local roundtrip');
+ }
+ const morph=meshes[0],delta=morph.geometry.attributes.position.clone();
+ for(let i=0;i<delta.count;i++)delta.setXYZ(i,.01,-.02,.03);
+ morph.geometry.morphAttributes.position=[delta];morph.geometry.morphTargetsRelative=true;morph.updateMorphTargets();morph.morphTargetInfluences![0]=.4;
+ morph.computeBoundingSphere();const morphBounds=morph.boundingSphere!.clone();morph.boundingSphere=null;computeBodySphere.call(morph);
+ assert.deepEqual(morph.boundingSphere,morphBounds,'morph targets retain the native vertex path and exact bounds');
 });
 
 test('restNeed: a lying body breathing for 120 poses rests exactly as high as a full pass over every sample would put it', async () => {

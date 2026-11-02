@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import type {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
-import {templateFromParts, type Template} from '../../../../mars/viewer/app/engine-view/people.ts';
+import {templateFromPartsAsync, type Template} from '../../../../mars/viewer/app/engine-view/people.ts';
 import {resolveLook, lookKey, paletteOf, HEADGEAR_FACES, SHAPE_KEYS, type Look, type Slot} from './look.ts';
 import {humanoidMaterial} from './material.ts';
 import {BASE} from '../base-path.ts';
@@ -271,6 +271,6 @@ export class HumanoidKit {
     scene.userData.humanoid = {key, look};
     // fitArms rescales the arm position tracks per template: those (only) are copied, the rest is shared.
     const clips = rig.clips.map(c => c.tracks.some(t => ARM_TRACK.test(t.name)) ? new THREE.AnimationClip(c.name, c.duration, c.tracks.map(t => ARM_TRACK.test(t.name) ? t.clone() : t)) : c);
-    return templateFromParts(key, scene, clips);
+    return templateFromPartsAsync(key, scene, clips);
   }
 }

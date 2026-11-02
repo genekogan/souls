@@ -17,7 +17,7 @@ export class WorldLightPeople {
   take: Take;
   constructor(take: Take) { this.take = take; }
   setTake(take: Take, _walkOffsets?: Record<string, number>) { this.take = take; }
-  show(t: number, _clock?: number, _beat?: unknown, _ahead?: number): TakeFrame {
+  show(t: number, _clock?: number, _beat?: unknown, _ahead?: number, _rigBudget?:unknown): TakeFrame {
     const frame = sampleTake(this.take, t);
     if (!this.platformFloors.length) return frame;
     if (this.records?.take !== this.take) this.records = { take: this.take, all: { ...this.take.entities0, ...this.take.finalState.entities } as Record<string, Entity> };

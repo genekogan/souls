@@ -115,7 +115,7 @@ export async function loadTemplates(signal: AbortSignal, resources: ThreeResourc
         console.warn(`character ${name}: wire files unavailable, loading the source GLB`,error);gltf=undefined;appearance=undefined;
       }
       gltf??=await loadGltf(characterUrl(name),signal,resources,observe,retry);
-      const template=templateFromGltf(name,gltf,appearance);options?.onTemplate?.(template);report('loaded');return template;
+      const template=await templateFromGltfAsync(name,gltf,appearance,signal);options?.onTemplate?.(template);report('loaded');return template;
       }catch(error){report('failed');throw error;}
     }),
   );
@@ -123,16 +123,30 @@ export async function loadTemplates(signal: AbortSignal, resources: ThreeResourc
 
 /** Validated owner GLBs use the same canonical rig fitting and locomotion measurements. */
 export function templateFromGltf(name:string,gltf:GLTF,appearance?:TemplateAppearance):Template{
+ const work=prepareTemplate(name,gltf,appearance);for(;;){const step=work.next();if(step.done)return step.value;}
+}
+
+/** Downloads already yield; fitting must also give input and paint a turn between its independent measurements. */
+export async function templateFromGltfAsync(name:string,gltf:GLTF,appearance?:TemplateAppearance,signal?:AbortSignal):Promise<Template>{
+ const work=prepareTemplate(name,gltf,appearance);for(;;){await yieldTemplate();if(signal?.aborted)throw new DOMException('Body preparation cancelled','AbortError');const step=work.next();if(step.done)return step.value;}
+}
+const yieldTemplate=()=>new Promise<void>(resolve=>{if(typeof MessageChannel==='undefined'){setTimeout(resolve,0);return;}const c=new MessageChannel();c.port1.onmessage=()=>{c.port1.close();c.port2.close();resolve();};c.port2.postMessage(0);});
+
+function* prepareTemplate(name:string,gltf:GLTF,appearance?:TemplateAppearance):Generator<void,Template>{
  // Phone arrival (lane L3): the four locomotion measurements share one fitted clone (a fit clones the whole skinned
  // model; four of them per character were ~0.1 s of a 4x-throttled phone). Each measurement plays only its own clip
  // and stops every action after, so a later one starts from the same pose a fresh clone would (people-template-golden).
- const arms=fitArms(gltf),f=fit(gltf),jog=measureWalk(gltf,'Jog_Fwd_Loop',f),sprint=measureWalk(gltf,'Sprint_Loop',f),run=measureWalk(gltf,'Run',f),bodyScale=bodyScaleOf(gltf);
+ const arms=fitArms(gltf);yield;const f=fit(gltf);yield;
+ const jog=measureWalk(gltf,'Jog_Fwd_Loop',f);yield;const sprint=measureWalk(gltf,'Sprint_Loop',f);yield;const run=measureWalk(gltf,'Run',f);yield;const bodyScale=bodyScaleOf(gltf);
  return {name,gltf,arms,...measureWalk(gltf,'Walk',f),...(appearance?{appearance}:{}),...(jog.found?{jogSpeed:jog.walkSpeed}:{}),...(sprint.found?{sprintSpeed:sprint.walkSpeed}:{}),...(run.found?{runSpeed:run.walkSpeed}:{}),...(bodyScale!==1?{bodyScale}:{})};
 }
 
 /** A composed body (humanoid@2 kit: one shared rig + parts) as a template: same fit/fitArms/measureWalk. */
 export function templateFromParts(name:string,scene:THREE.Group,animations:THREE.AnimationClip[]):Template{
  return templateFromGltf(name,{scene,scenes:[scene],animations,cameras:[],asset:{version:'2.0'},parser:null,userData:{}} as unknown as GLTF);
+}
+export function templateFromPartsAsync(name:string,scene:THREE.Group,animations:THREE.AnimationClip[]):Promise<Template>{
+ return templateFromGltfAsync(name,{scene,scenes:[scene],animations,cameras:[],asset:{version:'2.0'},parser:null,userData:{}} as unknown as GLTF);
 }
 
 function clip(gltf: GLTF, name: string) {
