@@ -11,6 +11,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 | understand how it fits together | [architecture](architecture.md), then the [glossary](glossary.md) |
 | reason about contracts, performance or where a feature plugs in | [component and data-flow map](architecture/map.md) |
 | change the server API or protocol | [API](architecture/api.md), [protocol](architecture/protocol.md), [contracts](architecture/contracts.md) |
+| plan cooperative physical actions and construction | [physical coordination design](design/physical-coordination.md), [epic #560](https://github.com/genekogan/souls/issues/560) |
 | work on Souls or the Soul client | [Souls at the edge](architecture/souls.md) |
 | work on god mode | [god mode](architecture/godmode.md), [safety](architecture/safety.md) |
 | know what Souls do by hand (lamps, doors, water, carrying, boards, music, play, tea) | [Soul Actions](architecture/soul-actions.md) |
@@ -47,6 +48,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
     [lessons](process/lessons.md), [PROOF-POLICY.yml](process/PROOF-POLICY.yml)
 - [design/vision.md](design/vision.md): where Soul is heading
 - [design/roadmap.md](design/roadmap.md): outcome themes and unresolved product questions
+- [design/physical-coordination.md](design/physical-coordination.md): proposed shared physical activities and reusable construction
 - [process/planning.md](process/planning.md): intake, ready work and portable handoffs
 - [mars/](mars/README.md): the vendored deterministic engine
 
