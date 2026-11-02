@@ -218,6 +218,17 @@ function paintingTexture(seed: number, bg: string): THREE.Texture {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; texCache.set(key, t); return t;
 }
 
+// Lane PERF-MATERIALS: one material per face texture. Text and pattern textures are cached by their content, so the
+// eight street banners that read the same drew eight materials of one map; the material is now shared like the map.
+const faceMaterials = new WeakMap<THREE.Texture, { std?: THREE.Material; art?: THREE.Material }>();
+function faceMaterialFor(map: THREE.Texture, art: boolean): THREE.Material {
+  let e = faceMaterials.get(map); if (!e) faceMaterials.set(map, e = {});
+  // video and images glow a little so art reads in dim rooms; text keeps the matte board look
+  if (art) return (e.art ??= new THREE.MeshBasicMaterial({ map, toneMapped: false }));
+  return (e.std ??= new THREE.MeshStandardMaterial({ map, roughness: 0.85, metalness: 0 }));
+}
+const isFaceMaterial = (m: THREE.Material | undefined) => { const map = (m as THREE.MeshBasicMaterial | undefined)?.map, e = map ? faceMaterials.get(map) : undefined; return !!e && (e.std === m || e.art === m); };
+
 registerMesh({
   gen: 'tag:sign-text',
   build(ctx) {
@@ -242,7 +253,7 @@ registerMesh({
       const art = found && src ? { ...found, url: src } : null;
       // a link the page cannot load (most often a web host without a CORS header, which WebGL needs) says so on the
       // face instead of staying black; hover still names the piece and its maker
-      const broken = () => { const old = plane.material as THREE.MeshBasicMaterial; const t = textTexture(brokenLinkLines(art!.url), { ...f, bg: '#2f2a26', ink: '#e8dcc8' }); plane.material = new THREE.MeshStandardMaterial({ map: t, roughness: 0.85, metalness: 0 }); old?.dispose?.(); plane.userData.art = { ...plane.userData.art, broken: true }; const uv = (plane.geometry as THREE.PlaneGeometry).attributes.uv as THREE.BufferAttribute; uv.setXY(0, 0, 1); uv.setXY(1, 1, 1); uv.setXY(2, 0, 0); uv.setXY(3, 1, 0); uv.needsUpdate = true; };
+      const broken = () => { const old = plane.material as THREE.MeshBasicMaterial; const t = textTexture(brokenLinkLines(art!.url), { ...f, bg: '#2f2a26', ink: '#e8dcc8' }); plane.material = faceMaterialFor(t, false); if (!isFaceMaterial(old)) old?.dispose?.(); plane.userData.art = { ...plane.userData.art, broken: true }; const uv = (plane.geometry as THREE.PlaneGeometry).attributes.uv as THREE.BufferAttribute; uv.setXY(0, 0, 1); uv.setXY(1, 1, 1); uv.setXY(2, 0, 0); uv.setXY(3, 1, 0); uv.needsUpdate = true; };
       if (art && art.kind === 'video') map = videoTexture(art.url, plane, broken);
       else if (art && loader && imageBroken(art.url)) { map = textTexture(brokenLinkLines(art.url), { ...f, bg: '#2f2a26', ink: '#e8dcc8' }); art.broken = true; }
       else if (art && loader) { const url = art.url; map = texCache.get(url) ?? loader.load(url, () => imageLoaded(url), undefined, () => { texCache.delete(url); imageFailed(url); }); map.colorSpace = THREE.SRGBColorSpace; texCache.set(url, map); whenImageFails(url, broken); }
@@ -258,7 +269,7 @@ registerMesh({
       else if (ctx.def.tags.includes('chalkboard') && ctx.def.tags.includes('hand-writable')) map = chalkTexture(text, f);
       else map = textTexture((f.line !== undefined ? [text[f.line] ?? ''] : text).slice(0, 6), f);
       // video and images glow a little so art reads in dim rooms; text keeps the matte board look
-      plane.material = art ? new THREE.MeshBasicMaterial({ map, toneMapped: false }) : new THREE.MeshStandardMaterial({ map, roughness: 0.85, metalness: 0 });
+      plane.material = faceMaterialFor(map, !!art);
       plane.position.set(...f.at); plane.rotation.set(f.pitch ?? 0, f.yaw ?? 0, 0, 'YXZ'); plane.name = 'sign-face';
       if (art) { plane.userData.art = art; coverWhenReady(map, plane.geometry as THREE.PlaneGeometry, f.w / f.h); }
       root.add(plane);

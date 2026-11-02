@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { kitArgs, kitPhysics, KIT_PRIMITIVES, type KitProgramArgs } from '@sim/generators';
 import { buildKit, parseKitArgs } from './kit.mesh.ts';
 import { MaterialLib } from './materials.ts';
-import { animate, bindMotionModel, setClockNight } from './motion.ts';
+import { animate, bindMotionModel, setClockNight, quantizeGlow } from './motion.ts';
 import { WorldModel, applyBatch, defSchema, type Entity, type StoredDef } from '@sim/world-compiler';
 import examples from '../../../../tools/god-skill/scripts/gallery-language-examples.json' with { type: 'json' };
 
@@ -64,7 +64,8 @@ test('night motion retains the four glow levels and state/look clones retain the
   const e = { id: 'lamp', state: {} } as Entity, d = { components: { light: {} } } as StoredDef;
   animate(obj, e, d, 1_000_000_000, { y: 0, yaw: 0 });
   const levels = meshes(obj).map(m => m.material.emissiveIntensity);
-  assert.ok(Math.abs(levels[0] / levels[3] - 0.2) < 1e-10); assert.ok(Math.abs(levels[2] / levels[3] - 0.65) < 1e-10);
+  // lane PERF-MATERIALS: a glow level is a shared material per ~1% step (motion.ts quantizeGlow), so ratios hold to a step
+  assert.ok(Math.abs(levels[0] / levels[3] - 0.2) < 0.02, levels.join()); assert.ok(Math.abs(levels[2] / levels[3] - 0.65) < 0.02, levels.join());
   e.state!.on = false; animate(obj, e, d, 1_000_000_001, { y: 0, yaw: 0 });
   for (const m of meshes(obj)) {
     assert.equal(m.material.emissiveIntensity, 0);
@@ -72,7 +73,7 @@ test('night motion retains the four glow levels and state/look clones retain the
     m.material.onBeforeCompile(shader, {} as THREE.WebGLRenderer); assert.match(shader.fragmentShader, /totalEmissiveRadiance \*= vColor\.rgb;/);
   }
   e.state!.on = true; animate(obj, e, d, 1_000_000_002, { y: 0, yaw: 0 });
-  assert.ok(Math.abs(meshes(obj)[0].material.emissiveIntensity / meshes(obj)[3].material.emissiveIntensity - 0.2) < 1e-10);
+  assert.ok(Math.abs(meshes(obj)[0].material.emissiveIntensity / meshes(obj)[3].material.emissiveIntensity - 0.2) < 0.02);
 });
 
 test('slit dome, one-shape rose and upright curved roof are admitted on their first define', () => {
@@ -177,7 +178,7 @@ test('kit glow parts brighten at night from the world clock even when no motion 
     setClockNight(0); animate(obj, e, d, 1_000_000_000, { y: 0, yaw: 0 }); const day = meshes(obj)[0].material.emissiveIntensity;
     setClockNight(1); animate(obj, e, d, 1_000_000_000, { y: 0, yaw: 0 }); const night = meshes(obj)[0].material.emissiveIntensity;
     assert.ok(night > 5 * day, `night ${night} vs day ${day}`);
-    assert.ok(Math.abs(night - (0.25 + 1.4 + 0.03 * Math.sin(1_000_000_000 * 3)) * 0.65) < 1e-9);
+    assert.ok(Math.abs(night - quantizeGlow((0.25 + 1.4 + 0.03 * Math.sin(1_000_000_000 * 3)) * 0.65)) < 1e-9, String(night));   // (shared ~1% glow steps)
   } finally { setClockNight(null); }
 });
 

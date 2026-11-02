@@ -2,6 +2,7 @@
 // `instanceKey` and that have no per-frame motion share one InstancedMesh per (key, part), so a
 // village of 300 benches, lamps and trees costs a few draws. Easing is per instance.
 import * as THREE from 'three';
+import { isShadowProxyMaterial, markShadowProxy } from './gen-mesh/shadow-proxy.ts';
 
 type Part = { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[]; local: THREE.Matrix4; castShadow: boolean; receiveShadow: boolean; windMode?: string };
 type Pool = { key: string; parts: Part[]; meshes: THREE.InstancedMesh[]; capacity: number; count: number; slots: Map<string, number>; free: number[]; radius: number; dirty: boolean };
@@ -84,6 +85,7 @@ export class EntityInstancer {
       const m = new THREE.InstancedMesh(part.geometry, part.material, capacity);
       m.castShadow = part.castShadow; m.receiveShadow = part.receiveShadow; m.name = `instances:${pool.key}:${k}`; if (part.windMode) m.userData.edenWindMode = part.windMode; // W2: plant parts sway
       m.frustumCulled = false;  // instances spread across the world; per-instance culling is not worth it at this scale
+      if (isShadowProxyMaterial(part.material)) markShadowProxy(m);   // a prototype's shadow proxy: drawn only in the shadow pass
       for (let i = 0; i < capacity; i++) m.setMatrixAt(i, ZERO);
       if (old[k]) { for (let i = 0; i < pool.capacity; i++) { old[k].getMatrixAt(i, tmp); m.setMatrixAt(i, tmp); } this.group.remove(old[k]); old[k].dispose(); }
       pool.dirty = true;
