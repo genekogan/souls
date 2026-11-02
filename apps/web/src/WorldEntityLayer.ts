@@ -305,9 +305,10 @@ export class WorldEntityLayer {
     if (stale) { if (lit) this.lightSeq++; if (changed) this.onContextChanged?.(); return; }
     noteUploadSizes(delta.assetBytes);   // CDN4: god uploads may come from assets.eden.art (cdn-assets.ts)
     // defs: new revisions by hash, then every ref to the content the snapshot names (a ref moved back to an older revision too)
-    for (const d of delta.defs) m.defs.set('sha:' + d.hash, d as unknown as StoredDef);
+    // (a def we already hold keeps its object: content is named by hash, and a full delta repeats every def)
+    for (const d of delta.defs) if (!m.defs.has('sha:' + d.hash)) m.defs.set('sha:' + d.hash, d as unknown as StoredDef);
     const retargeted = new Set<string>();
-    for (const [ref, hash] of new Map(delta.refs)) { const d = m.defs.get('sha:' + hash); if (!d || m.defs.get(ref) === d) continue; retargeted.add(ref); m.defs.set(ref, d); if (ref.startsWith('core-')) m.defs.set('core/' + ref.slice(5), d); }
+    for (const [ref, hash] of new Map(delta.refs)) { const d = m.defs.get('sha:' + hash); if (!d || m.defs.get(ref)?.hash === hash) continue; retargeted.add(ref); m.defs.set(ref, d); if (ref.startsWith('core-')) { retargeted.add('core/' + ref.slice(5)); m.defs.set('core/' + ref.slice(5), d); } }
     // the ground, the world state (its palette draws the terrain) and the constants
     const ground = delta.ground as Ground | null, groundChanged = !!ground && JSON.stringify(ground) !== JSON.stringify(m.ground());
     const palette = (x: unknown) => JSON.stringify((x as { ground?: unknown } | undefined)?.ground ?? null);
@@ -334,7 +335,7 @@ export class WorldEntityLayer {
     // things whose def ref now names other content are drawn from it
     if (retargeted.size) for (const e of m.entities.values()) if (!upserted.has(e.id) && retargeted.has(e.def)) queue.push({ id: e.id, ease: false });
     if (lit) this.lightSeq++;
-    if (delta.defs.length || retargeted.size || groundChanged || stateChanged || constantsChanged) changed = true;
+    if (delta.defs.some((d) => m.defs.get('sha:' + d.hash) === (d as unknown)) || retargeted.size || groundChanged || stateChanged || constantsChanged) changed = true;
     if (groundChanged) { this.rebuildTerrain(); this.rebuildWater(); this.buildHorizon(); this.sites.refreshAll(true); } else if (paletteChanged) this.rebuildTerrain();
     const seen = new Set<string>();
     for (let i = 0; i < queue.length;) {
