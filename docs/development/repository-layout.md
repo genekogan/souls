@@ -61,7 +61,7 @@ notices, deterministic composition, lazy playback and the existing UI. Render ou
 |---|---|
 | Install locked dependencies | `pnpm install --frozen-lockfile` |
 | Obtain required media | `pnpm assets:pull`; `pnpm assets:check` checks availability |
-| Develop locally | `pnpm dev`, with fake minds, isolated data and explicit free ports |
+| Develop locally | Follow [development](../development.md) to set fake minds, isolated data and free ports explicitly; `pnpm dev` alone only starts the app scripts |
 | Build | `pnpm build`, including viewer assets through `tools/assets/mars-web.mjs` |
 | Typecheck | `pnpm typecheck`; use the affected package's check while iterating |
 | Test | `pnpm test` for repository tests; focused `node --test` and scoped checks per [testing](../testing.md) |
