@@ -18,16 +18,18 @@ import { pathToFileURL } from 'node:url';
 import { CACHE, validKey } from '../cdn/inventory.mjs';
 import { loadCredentials, requireAccount, signRequest } from '../cdn/publish.mjs';
 import { withNewReceipt } from '../cdn/receipt.mjs';
-import { INDEX, readIndex } from './render-playlist.mjs';
+import { INDEX, readIndex, upgradeIndex } from './render-playlist.mjs';
 
 const TYPES = { m4a: 'audio/mp4', webm: 'audio/webm', mp3: 'audio/mpeg' };
 export const LICENCE = 'own-work';
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 
-/** The objects to publish: every piece of the index whose file is in `out`, rehashed. */
+/** The objects to publish: every performance of every piece in the index whose file is in `out`, rehashed (ids
+ *  `<piece>#<k>`; objects already in the bucket are verified and skipped by publish()). */
 export function plan({ out, index = readIndex(INDEX) }) {
   const objects = [], missing = [];
-  for (const [id, e] of Object.entries(index.pieces).sort()) {
+  const all = Object.entries(upgradeIndex(index).pieces).sort().flatMap(([piece, e]) => e.performances.map((p, k) => [`${piece}#${k}`, p]));
+  for (const [id, e] of all) {
     const key = new URL(e.url).pathname.slice(1), ext = key.split('.').at(-1), file = resolve(out, `${e.sha256}.${ext}`);
     if (!validKey(key, e.sha256) || !TYPES[ext]) throw Error(`${id}: bad key ${key}`);
     if (!existsSync(file)) { missing.push({ id, file }); continue; }
