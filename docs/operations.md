@@ -71,7 +71,7 @@ qualified separately.
 - Handover state: `<data>/keeper.json`.
 - Host checks: `<data>/host-health.log`.
 - Visitors' page errors: pages post to `/__sim/client-errors`; `node tools/world-launcher/op.mjs client-errors --port
-  <port> --base /worlds` summarises them on the host.
+  <port> --base /` summarises them on the current root-only host. Use the actual configured base for other deployments.
 - Operator actions: `<data>/audit.jsonl` (`op.mjs audit`).
 
 ## CDN

@@ -64,7 +64,7 @@ a `version` (for the changelog and tag) and optional `label`, `baseline` (defaul
 4. **publish**: compiles `changes/` into [`CHANGELOG.md`](../CHANGELOG.md), tags `v<version>` on the shipped commit
    and creates the GitHub Release.
 
-The site's public changelog page (`<base>/changelog`, `https://sim.eden.art/worlds/changelog`) is `CHANGELOG.md`
+The site's public changelog page (`<base>/changelog`, currently `https://soul.game/changelog`) is `CHANGELOG.md`
 rendered into the web build (`apps/web/changelog.html`, `apps/web/src/changelog-page.ts`). So that the page shows the
 release being shipped, the ship job first compiles the shipped fragments into a copy outside the tree
 (`tools/changelog/compile.mjs --out`) and the build renders that copy (`SIM_CHANGELOG_FILE`); the tree stays exactly

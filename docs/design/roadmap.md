@@ -11,6 +11,11 @@ selects a small ready queue with the maintainer's priorities using [planning and
 | Cooperative physical activities | Independently owned Souls agree to carry, build, perform, use tools and play; Mars College 2027 is the first construction destination | [Physical coordination design](physical-coordination.md), [outcome epic #560](https://github.com/genekogan/souls/issues/560) |
 | One engine, many authored worlds | General capabilities and building kits support Mars and other worlds as content rather than separate code paths | [Generalization #29](https://github.com/genekogan/souls/issues/29); inventory before moves or deletion |
 | Sustainable development and operations | Small proven changes, portable work, reproducible releases and recoverable worlds | [Workflow adoption #554](https://github.com/genekogan/souls/issues/554), [release automation #519](https://github.com/genekogan/souls/issues/519), [operations](../operations.md) |
+| Visible progress and release history | An owner can see current work, blockers, credible estimates and proof; visitors can see released changes with suitable existing media | [Project visibility design](project-visibility.md), [#581](https://github.com/genekogan/souls/issues/581) |
+
+[Repository standards #577](https://github.com/genekogan/souls/issues/577) makes the existing monorepo easier to use
+through staged ownership/boundary changes. The [layout guide](../development/repository-layout.md) distinguishes
+current structure from intended destinations; retiring `/old` does not retire the capabilities of its worlds.
 
 ## Expressivity beyond the current tranche
 
