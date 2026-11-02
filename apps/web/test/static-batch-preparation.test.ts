@@ -112,3 +112,30 @@ test('working geometry budget includes the accepted set and counts incremental r
  await owner.prepare([f.root],{generation:4,budgetPolicy:'partial-cells/1'});assert.equal(owner.inspection().batches,0);assert.equal(owner.inspection().budgetSkippedMeshes,2);assert.equal(owner.inspection().workingGeometryPeakBytes,bytes);assert.equal(retired,1);
  owner.withRender(()=>{assert.equal(f.root.visible,true);assert.equal(f.a.visible,true);assert.equal(f.b.visible,true);});owner.dispose();
 });
+
+function growingCells(){
+ const f=fixture(),e=f.b.clone(),c=f.a.clone(),d=f.b.clone();e.position.x=6;c.position.x=100;d.position.x=103;f.root.add(e,c,d);
+ const limits={maxMergedBytes:4400,maxWorkingBytes:20000},owner=new StaticBatchOwner(f.scene,limits);
+ return {...f,e,c,d,limits,owner};
+}
+
+for(const budgetPolicy of [undefined,'partial-cells/1'] as const)test(`incremental merged-byte budget covers a later reused cell (${budgetPolicy??'strict'})`,async()=>{
+ const f=growingCells(),{owner}=f;await owner.prepare([f.root],{generation:1});const live=[...owner.group.children];assert.equal(owner.inspection().batches,2);assert.equal(owner.inspection().mergedBytes,4200);
+ // The three-source changed cell still has the better calls-saved/byte ratio, so partial-cell sorting keeps it first.
+ f.a.geometry=new THREE.SphereGeometry(1,8,3);
+ if(budgetPolicy===undefined){
+  await assert.rejects(owner.prepare([f.root],{generation:2,incremental:true}),/geometry-budget/);assert.deepEqual(owner.group.children,live);assert.equal(owner.inspection().generation,1);
+  owner.withRender(()=>{assert.equal(f.a.visible,true);assert.equal(f.e.visible,true);assert.equal(f.c.visible,false);});
+ }else{
+  await owner.prepare([f.root],{generation:2,incremental:true,budgetPolicy});assert.equal(owner.inspection().batches,1);assert.equal(owner.inspection().batchedMeshes,3);assert.equal(owner.inspection().budgetSkippedMeshes,2);assert.equal(owner.inspection().reusedBatches,0);
+  owner.withRender(()=>{assert.equal(f.a.visible,false);assert.equal(f.e.visible,false);assert.equal(f.c.visible,true);assert.equal(f.d.visible,true);});
+ }
+ assert.ok(owner.inspection().mergedBytes<=f.limits.maxMergedBytes);assert.ok(owner.inspection().workingGeometryPeakBytes<=f.limits.maxWorkingBytes);owner.dispose();
+});
+
+test('incremental merged-byte budget control reuses unchanged cells once and refuses growth after reuse',async()=>{
+ const f=growingCells(),{owner}=f;await owner.prepare([f.root],{generation:1});const live=[...owner.group.children];
+ f.root.remove(f.a,f.b,f.e);f.root.add(f.a,f.b,f.e); // The unchanged two-source cell now comes first.
+ await owner.prepare([f.root],{generation:2,incremental:true});assert.equal(owner.inspection().reusedBatches,2);assert.equal(owner.inspection().workingGeometryPeakBytes,4200);assert.deepEqual(owner.group.children,live);
+ f.a.geometry=new THREE.SphereGeometry(1,8,3);await assert.rejects(owner.prepare([f.root],{generation:3,incremental:true}),/geometry-budget/);assert.equal(owner.inspection().generation,2);assert.deepEqual(owner.group.children,live);owner.dispose();
+});

@@ -164,7 +164,10 @@ export class StaticBatchOwner{
    for(const [bucketKey,sources] of buckets)for(let i=0;i<sources.length;i+=options.maxMeshesPerBatch){const part=sources.slice(i,i+options.maxMeshesPerBatch);if(part.length>=2)candidates.push({part,estimate:part.reduce((n,s)=>n+(s.plain?estimatedPlainBytes(s.geometry):estimatedBytes(s.geometry)),0),order:candidates.length,key:bucketKey+'#'+part.map(s=>s.mesh.uuid).join(',')});}
    if(budgetPolicy==='partial-cells/1')candidates.sort((a,b)=>(b.part.length-1)/Math.max(1,b.estimate)-(a.part.length-1)/Math.max(1,a.estimate)||a.order-b.order);
    for(const {part,estimate,key} of candidates){if(sliced){const pause=breathe();if(pause)await pause;}if(signal?.aborted)throw new DOMException('Obsolete render preparation','AbortError');
-    const old=incremental?previous.get(key):undefined;if(old&&old.sources.every(s=>unchanged(s,this.scene,window,old.material,shaderMerge))){previous.delete(key);next.push(old);retained+=old.bytes;reusedBatches++;continue;}
+    const old=incremental?previous.get(key):undefined;if(old&&old.sources.every(s=>unchanged(s,this.scene,window,old.material,shaderMerge))){
+     if(retained+old.bytes>options.maxMergedBytes){if(budgetPolicy==='partial-cells/1'){budgetSkippedMeshes+=part.length;budgetSkippedBatches++;continue;}throw Error('static-batches.geometry-budget');}
+     previous.delete(key);next.push(old);retained+=old.bytes;reusedBatches++;continue;
+    }
     // The accepted set remains allocated until commit. Reused geometry belongs to that set and is counted once;
     // newly built geometry and the next copy/merge workspace are additional live allocations.
     const workingBytes=acceptedBytes+builtBytes+2*estimate;
