@@ -21,11 +21,11 @@
 // Writes <out>/<sha256>.<ext> per performance, <out>/renders.json (every render's stats, keyed `<id>#<k>`) and the index
 // the client imports, apps/web/src/score/playlist/playlist-audio.json (version 2: piece id -> seconds and performances
 // [{seed, url, bytes, sha256}]), with the CDN URL each file will have once tools/score/publish-playlist-audio.mjs has
-// uploaded it. A performance already in the index whose file is in <out> is skipped unless --force. Media never enters
-// git: <out> is under the ignored .local/.
+// uploaded it. Verified performances in the index or renders.json are skipped unless --force. Media never enters git:
+// <out> is under the ignored .local/.
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -143,6 +143,46 @@ export function indexText(index) {
   return `${JSON.stringify(head).slice(0, -1)},"pieces":{\n${ids.map((id, i) => `${JSON.stringify(id)}:${JSON.stringify(piece(index.pieces[id]))}${i < ids.length - 1 ? ',' : ''}`).join('\n')}\n}}\n`;
 }
 
+/** Reuse only the recorded bytes. Stats retain performances hidden behind a gap in the contiguous client index. */
+export function resumeRenders(index, renders, { ids, performances, out, seconds, rate, format, force = false }) {
+  const ready = new Set(), f = FORMATS[format]; let recovered = 0;
+  if (force) return { ready, recovered };
+  const valid = (p, id, k) => {
+    if (!p || p.seed !== performanceSeed(id, k) || !/^[0-9a-f]{64}$/.test(p.sha256) || p.url !== cdnUrl(p.sha256, f.ext)) return false;
+    const file = join(out, `${p.sha256}.${f.ext}`);
+    return existsSync(file) && statSync(file).size === p.bytes && sha256File(file) === p.sha256;
+  };
+  for (let k = 0; k < performances; k++) for (const id of ids) {
+    const e = index.pieces[id];
+    let p = index.sampleRate === rate && index.format === f.type && e?.seconds === seconds ? e.performances[k] : null;
+    if (!valid(p, id, k)) {
+      const saved = renders[`${id}#${k}`] ?? (k === 0 ? renders[id] : null);
+      if (saved?.seconds !== seconds || saved.sampleRate !== rate || !valid(saved, id, k)) continue;
+      const { seed, url, bytes, sha256 } = saved; p = { seed, url, bytes, sha256 }; recovered++;
+    }
+    const piece = e?.seconds === seconds ? e : (index.pieces[id] = { seconds, performances: [] });
+    piece.performances[k] = p; ready.add(`${id}#${k}`);
+  }
+  return { ready, recovered };
+}
+
+/** SIGSTOP suspends work but not Playwright's wall clock. Wait for the result, or an explicit page/browser failure. */
+export async function renderDownload(page, args) {
+  const download = page.waitForEvent('download', { timeout: 0 });
+  const [stats, wav] = await Promise.all([
+    Promise.resolve().then(() => page.evaluate(([id, seed, seconds, rate]) => window.__render(id, seed, seconds, rate), args)),
+    download,
+  ]);
+  return { stats, download: wav };
+}
+
+function checkpoint(indexFile, out, index, renders) {
+  // Stats first: if interrupted between the two renames, the next run restores the newer, verified performances.
+  for (const [file, body] of [[join(out, 'renders.json'), JSON.stringify(renders, null, 1) + '\n'], [indexFile, indexText(index)]]) {
+    const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, body); renameSync(tmp, file);
+  }
+}
+
 async function renderAll({ pieces, performances = 3, out, seconds, rate, format, bitrate, concurrency, force, dryRun, indexFile = INDEX, log = console.log }) {
   const { PLAYLIST } = await import(pathToFileURL(resolve(PLAYLIST_DIR, 'engine.mjs')).href);
   const ids = pieces ?? [...PLAYLIST];
@@ -151,14 +191,21 @@ async function renderAll({ pieces, performances = 3, out, seconds, rate, format,
   const codec = ffmpegCodec(format); if (!codec) throw Error(`ffmpeg with an encoder for ${format} is needed (which ffmpeg; ffmpeg -encoders)`);
   mkdirSync(out, { recursive: true });
   const index = readIndex(indexFile), renders = existsSync(join(out, 'renders.json')) ? JSON.parse(readFileSync(join(out, 'renders.json'), 'utf8')) : {};
-  const have = (id, k) => { const e = index.pieces[id], p = e?.performances?.[k]; return !force && e?.seconds === seconds && p?.seed === performanceSeed(id, k) && existsSync(join(out, `${p.sha256}.${f.ext}`)); };
+  const { ready, recovered } = resumeRenders(index, renders, { ids, performances, out, seconds, rate, format, force });
+  if (recovered) log(`render: recovered ${recovered} verified performances from renders.json`);
   // performance-major order (every piece's k = 1 before any k = 2), so an interrupted run leaves whole tiers
-  const todo = Array.from({ length: performances }, (_, k) => ids.map((id) => ({ id, k }))).flat().filter(({ id, k }) => !have(id, k));
+  const todo = Array.from({ length: performances }, (_, k) => ids.map((id) => ({ id, k }))).flat().filter(({ id, k }) => !ready.has(`${id}#${k}`));
   log(`render: ${todo.length} of ${ids.length * performances} performances (${ids.length} pieces x ${performances}), ${seconds} s at ${rate} Hz, ${format} (${codec} ${bitrate}), ${concurrency} at a time -> ${out}`);
+  if (!dryRun && recovered) {
+    index.generated = new Date().toISOString(); index.version = 2; index.format = f.type; index.sampleRate = rate; index.channels = 2; index.seconds = seconds;
+    checkpoint(indexFile, out, index, renders);
+  }
   if (dryRun || !todo.length) return { index, renders, rendered: [] };
   const pw = findPlaywright(); if (!pw) throw Error('no Playwright found (pnpm install)');
   const { server, origin } = await serve();
-  const browser = await pw.chromium.launch({ channel: 'chrome', headless: true, args: ['--autoplay-policy=no-user-gesture-required', '--disable-gpu'] });
+  let browser;
+  try { browser = await pw.chromium.launch({ channel: 'chrome', headless: true, args: ['--autoplay-policy=no-user-gesture-required', '--disable-gpu'] }); }
+  catch (e) { server.close(); throw e; }
   const rendered = [], failures = [];
   const queue = [...todo];
   const worker = async () => {
@@ -170,12 +217,10 @@ async function renderAll({ pieces, performances = 3, out, seconds, rate, format,
       try {
         await page.goto(`${origin}/render.html`, { waitUntil: 'load' });
         const seed = performanceSeed(id, k), t0 = Date.now();
-        // a slow render (a busy machine, a heavy piece) must not take the run down: the download wait is long, and its
-        // rejection is handled (it is awaited after the render; unawaited, a timeout was an uncaught rejection)
-        const download = page.waitForEvent('download', { timeout: 90 * 60_000 }); download.catch(() => {});
-        const stats = await page.evaluate(([id, seed, seconds, rate]) => window.__render(id, seed, seconds, rate), [id, seed, seconds, rate]);
+        log(`  ${key}: START ${new Date(t0).toISOString()}`);
+        const { stats, download } = await renderDownload(page, [id, seed, seconds, rate]);
         const wav = join(out, `${id}.${k}.wav`);
-        await (await download).saveAs(wav);
+        await download.saveAs(wav);
         const peakDb = db(stats.peak), rmsDb = db(stats.rms);
         // Tone.Limiter(-1) is a fast compressor, not a brick wall: some pieces overshoot 0 dBFS in the float render (live
         // playback clips them at the output). Those are scaled to PEAK_TARGET before encoding, so the file plays clean; a
@@ -200,13 +245,13 @@ async function renderAll({ pieces, performances = 3, out, seconds, rate, format,
         index.generated = new Date().toISOString(); index.format = f.type; index.sampleRate = rate; index.channels = 2; index.seconds = seconds;
         index.version = 2;
         index.note = 'Generated by tools/score/render-playlist.mjs: every playlist piece rendered offline by the score engine, several performances (seeds) each, and encoded; the player (gen-mesh/music.ts) picks one at random and streams it instead of synthesising. Upload: tools/score/publish-playlist-audio.mjs.';
-        writeFileSync(indexFile, indexText(index)); writeFileSync(join(out, 'renders.json'), JSON.stringify(renders, null, 1) + '\n');
+        checkpoint(indexFile, out, index, renders);
       } catch (e) { failures.push({ id: key, error: String(e).slice(0, 300), pageErrors: errors.slice(0, 5) }); log(`  ${key}: FAILED ${String(e).slice(0, 200)}`); }
       finally { await ctx.close().catch(() => {}); }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, todo.length) }, worker));
-  await browser.close(); server.close();
+  try { await Promise.all(Array.from({ length: Math.min(concurrency, todo.length) }, worker)); }
+  finally { await browser.close().catch(() => {}); server.close(); }
   if (failures.length) { log(`render: ${failures.length} failed`); for (const f of failures) log(`  ${f.id}: ${f.error}${f.pageErrors.length ? `\n    ${f.pageErrors.join('\n    ')}` : ''}`); }
   const all = Object.values(index.pieces).flatMap((e) => e.performances), total = all.reduce((s, p) => s + p.bytes, 0);
   log(`render: ${rendered.length} rendered, index ${indexFile} (${Object.keys(index.pieces).length} pieces, ${all.length} performances, ${(total / 1e6).toFixed(1)} MB)`);

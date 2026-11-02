@@ -76,11 +76,13 @@ about half the pieces overshoot 0 dBFS in the float render (live playback clips 
 -1 dBFS before encoding (`gainDb` in the stats). A render more than 12 dB over, silent, or ending early fails. The seed
 fixes the notes and `Math.random` is seeded too, but Tone's reverb impulses make renders differ slightly run to run: the
 file is the record, its sha256 is in the index. `--index <file>` writes another index (trials). A
-performance already in the index whose file is in `.local/score-audio` is skipped unless `--force`; renders run
-performance by performance (every piece's second before any third) and the index keeps each piece's performances
-contiguous from 0, so an interrupted run leaves a usable index. Publishing verifies and skips objects already in the
-bucket. Commit the index with the
-code once `--verify` passes; the files are inert until a build names them.
+performance already in the index whose file in `.local/score-audio` matches its recorded size and hash is skipped unless
+`--force`; renders run performance by performance (every piece's second before any third) and the index keeps each piece's performances
+contiguous from 0, so an interrupted run leaves a usable index. Restarting also restores verified performances from
+`renders.json` that were hidden behind an unfinished earlier performance. Checkpoints are replaced atomically. The
+download wait has no wall-clock deadline, so pausing the renderer with SIGSTOP cannot discard a completed render;
+page/browser failures still fail the job. Each start is logged for progress monitoring. Publishing verifies and skips
+objects already in the bucket. Commit the index with the code once `--verify` passes; the files are inert until a build names them.
 
 Proof of a local build: the bucket's CORS admits only the production origins, so serve the rendered files locally with
 `node tools/score/serve-playlist-audio.mjs` and open the world with `?musicAudio=http://127.0.0.1:5213`.

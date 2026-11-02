@@ -1,11 +1,11 @@
 // PERF-MUSIC: the render tool's pure parts (seeds, keys, the index text) and the publish plan against a scratch folder.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { cdnUrl, indexText, performanceSeed, pieceSeed, readIndex, upgradeIndex, INDEX } from './render-playlist.mjs';
+import { cdnUrl, indexText, performanceSeed, pieceSeed, readIndex, renderDownload, resumeRenders, upgradeIndex, INDEX } from './render-playlist.mjs';
 import { plan } from './publish-playlist-audio.mjs';
 import { PLAYLIST } from './build-playlist.mjs';
 
@@ -42,6 +42,57 @@ test('the index text is stable: fields in order, one piece per line, sorted; per
   assert.deepEqual(JSON.parse(indexText(holed)).pieces.a.performances, [p(1)]);
   assert.deepEqual(text.split('\n').slice(1, 3).map((l) => l.slice(0, 4)), ['"a":', '"b":']);
   assert.equal(indexText(JSON.parse(text)), text);
+});
+
+test('a late render download survives a pause longer than the former wall-clock limit', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let finishRender, emitDownload, listening = false;
+  const stats = { peak: 0.5 }, wav = { saveAs() {} };
+  const page = {
+    waitForEvent(event, { timeout = 30_000 }) {
+      assert.equal(event, 'download'); listening = true;
+      return new Promise((resolve, reject) => { emitDownload = resolve; if (timeout) setTimeout(() => reject(Error('download timeout')), timeout); });
+    },
+    evaluate(_fn, args) {
+      assert.ok(listening, 'listen before the render can emit its download');
+      assert.deepEqual(args, ['velour', 7, 240, 44100]);
+      return new Promise((resolve) => { finishRender = resolve; });
+    },
+  };
+  const pending = renderDownload(page, ['velour', 7, 240, 44100]);
+  await Promise.resolve();
+  t.mock.timers.tick(90 * 60_000 + 1);
+  await Promise.resolve();
+  emitDownload(wav); finishRender(stats);
+  assert.deepEqual(await pending, { stats, download: wav });
+});
+
+test('render and download failures reject promptly while the other operation is still pending', async () => {
+  const pending = () => new Promise(() => {});
+  await assert.rejects(renderDownload({ waitForEvent: pending, evaluate: () => Promise.reject(Error('render failed')) }, []), /render failed/);
+  await assert.rejects(renderDownload({ waitForEvent: () => Promise.reject(Error('browser closed')), evaluate: pending }, []), /browser closed/);
+});
+
+test('resume restores a completed performance behind an index gap and reuses only verified matching bytes', (t) => {
+  const out = mkdtempSync(join(tmpdir(), 'score-resume-')); t.after(() => rmSync(out, { recursive: true, force: true }));
+  const saved = (id, k, body) => {
+    const bytes = Buffer.from(body), sha256 = createHash('sha256').update(bytes).digest('hex');
+    writeFileSync(join(out, `${sha256}.m4a`), bytes);
+    return { seed: performanceSeed(id, k), url: cdnUrl(sha256, 'm4a'), bytes: bytes.length, sha256 };
+  };
+  const a = saved('a', 0, 'first'), hidden = saved('a', 2, 'third'), corrupt = saved('b', 0, 'bad!'), wrongSeed = saved('c', 0, 'wrong seed'), wrongRate = saved('d', 0, 'wrong rate');
+  writeFileSync(join(out, `${corrupt.sha256}.m4a`), 'oops'); // same length, different hash
+  const index = { version: 2, format: 'audio/mp4', sampleRate: 44100, seconds: 240, pieces: { a: { seconds: 240, performances: [a] }, b: { seconds: 240, performances: [corrupt] } } };
+  const stats = (p) => ({ ...p, seconds: 240, sampleRate: 44100 });
+  const renders = { 'a#2': stats(hidden), 'b#0': stats(corrupt), 'c#0': { ...stats(wrongSeed), seed: 123 }, 'd#0': { ...stats(wrongRate), sampleRate: 48000 } };
+  const options = { ids: ['a', 'b', 'c', 'd'], performances: 3, out, seconds: 240, rate: 44100, format: 'm4a' };
+  const result = resumeRenders(index, renders, options);
+  assert.deepEqual([...result.ready], ['a#0', 'a#2']); assert.equal(result.recovered, 1);
+  assert.deepEqual(index.pieces.a.performances[2], hidden);
+  assert.deepEqual(JSON.parse(indexText(index)).pieces.a.performances, [a], 'client index stays contiguous until the gap is filled');
+  const restarted = JSON.parse(indexText(index));
+  assert.ok(resumeRenders(restarted, renders, options).ready.has('a#2'), 'a second restart keeps the hidden completed bytes');
+  assert.equal(resumeRenders(index, renders, { ...options, force: true }).ready.size, 0);
 });
 
 test('the committed index (when present) names every piece on the playlist at most once, each performance with its seed and the CDN key of its hash', () => {
