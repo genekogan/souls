@@ -67,6 +67,10 @@ can ship while a particular earlier source is still missing.
 
 ## Operational telemetry
 
+[Experience reports](experience-reports.md) add a separate future source: private, opt-in episodes joining edge
+breadcrumbs and world facts when an interaction goes poorly, even without an exception. Link their evidence and
+triage outcomes from the owner view; never export raw reports through the public changelog.
+
 Build on the launcher health page, `metrics.mjs`, client-error ingestion, watchdog heartbeats and deployment receipts.
 Separate project status from service health. Metrics code being present does not prove live collection, retention,
 alert delivery or a successful incident drill. [#461](https://github.com/genekogan/souls/issues/461) retains those

@@ -15,6 +15,8 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 | understand folder ownership and ordinary commands | [repository layout](development/repository-layout.md), [development](development.md) |
 | understand project reporting and visual release history | [project visibility design](design/project-visibility.md), [contribution attribution](process/contribution-attribution.md) |
 | work on Souls or the Soul client | [Souls at the edge](architecture/souls.md) |
+| plan custom bodies and non-humanoid actions | [custom body design](design/custom-bodies.md) |
+| diagnose experiences spanning an edge agent and world | [experience report design](design/experience-reports.md) |
 | work on god mode | [god mode](architecture/godmode.md), [safety](architecture/safety.md) |
 | know what Souls do by hand (lamps, doors, water, carrying, boards, music, play, tea) | [Soul Actions](architecture/soul-actions.md) |
 | work on worlds or the launcher | [worlds](architecture/worlds.md), [data](architecture/data.md), [load](architecture/load.md), [split](architecture/split.md) |
