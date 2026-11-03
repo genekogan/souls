@@ -173,6 +173,8 @@ export function activityFrame(activity: string, base: string, seconds: number, i
     // Entry 14: the hands strike the keys at the score's own onsets (the same notes the visitor hears), moving along the
     // keys with pitch; between notes they lift a little. Clocked by world seconds, not the per-person phase.
     case 'play-piano': { const [l, r] = pianoHands(opts.actorId ?? id, seconds);
+      // Standing keyboards retain their shoulder-relative layout; this contact plane belongs to the piano bench.
+      if(!seated){f.hands=[[.42,-.02+l.along,-.36+.028*(1-l.press)],[.42,-.02-r.along,-.36+.028*(1-r.press)]];f.lean=.1;f.look=.3;return f;}
       const lift:[number,number]=[.028*(1-l.press),.028*(1-r.press)];
       f.hands = [[.42,0,0],[.42,0,0]];f.rootHands=[[.42,.17+l.along,PIANO_KEY_HEIGHT+.04],[.42,.17-r.along,PIANO_KEY_HEIGHT+.04]];
       f.curl=[0,0];f.piano={height:PIANO_KEY_HEIGHT,lift};f.lean=.1;f.look=.3;return f; }
