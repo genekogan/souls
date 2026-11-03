@@ -12,7 +12,7 @@ import {classroomProjection,classroomScreenEntityId} from './classroom-projectio
 import {WorldSpeechOverlay} from './WorldSpeechOverlay.tsx';
 import { apiPath, worldPath } from './world-path.ts';
 import {singleLocalPreview} from './local-navigation.ts';
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import type { LogEvent } from '@sim/protocol';
 import { describeIntent } from '@sim/protocol';
 import { makeApi, refreshMe, useSim, type Sim } from './useSim.ts';
@@ -186,8 +186,10 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   // Local favourites never establish ownership. Navbar comes only from server Me.
   const ownedIds=currentMe?.souls??[];
   const signinEnabled=AUTH_UI&&configuredSignIn(cfg,launcherWorld);  // new worlds: local dev sign-in too
+  const newSoulAvailable=(!signinEnabled||auth.ready)&&(signinEnabled||cfg.accountAuthRequired!==true);
   const mine = new Set(currentMe?.souls ?? []);
   const inspect = (id: string | null) => { setSelected(id); if (id) revealPanel(); };
+  const accountSouls=(entry:ReactNode)=><MySouls key={JSON.stringify([worldKey,currentMe?.userId])} recencyKey={JSON.stringify(['sim.soul-recency',worldKey,currentMe?.userId??'public'])} selectedId={selected} newSoul={entry} api={api} bodies={soulBodies} ids={ownedIds} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} select={inspect} follow={requestFollowSoul}/>;
   const edenExpansion=edenExperienceEnabled(location.hostname,worldPath,cfg.worldId,sim.conn.welcome?.worldId,qualifiedEdenWorlds);
   // P1 phones (F12): the page that will show the old Eden town asks for its chunk before the welcome (it came ~1.3 s late)
   const edenExpected=edenExperienceEnabled(location.hostname,worldPath,cfg.worldId,cfg.worldId,qualifiedEdenWorlds);
@@ -213,7 +215,7 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
         <span className={st.state === 'open' ? 'ok' : 'dim'}>{st.state === 'open' ? '● Connected' : 'Connecting…'}</span>
         </>}
         {!advanced&&<div className="hud-left"><EdenMark/><div className="hud-status" ref={setStatusSlot}/><div className="hud-camera-row"><div className="hud-camera-slot" ref={setCameraSlot}/></div>
-        <div className="hud-explore-group">{exploreOn&&tourHandle?.frameLocation&&<EdenTour bodies={soulBodies} worldName={exploreName} locations={exploreLocations} locationPage={explorePage??undefined} onSearch={explorePage?(query=>viewerHandle?.searchLocations?.(query)):undefined} onMore={explorePage?(()=>viewerHandle?.moreLocations?.()):undefined} onClose={()=>viewerHandle?.cancelLocationPictures?.()} presence={explorePresence(sim.edge??[],r.souls.keys())} room={viewerState?.room} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} onOpen={()=>{if(!explorePage)viewerHandle?.refreshLocations?.();viewerHandle?.releaseInput?.();setNavigationOpen(false);}} onSoul={id=>requestFollowSoul(id)} preview={placePreview} onView={place=>{const viewed=tourHandle.frameLocation?.(place)??false;if(viewed){setPanelOpen(false);setNavigationOpen(false);}return viewed;}}/>}{launcherWorld&&<GodButton/>}<MySouls key={JSON.stringify([worldKey,currentMe?.userId])} recencyKey={JSON.stringify(['sim.soul-recency',worldKey,currentMe?.userId??'public'])} selectedId={selected} newSoul={(!signinEnabled||auth.ready)&&(signinEnabled||cfg.accountAuthRequired!==true)?<BringAgent auth={auth} requireAuth={cfg.accountAuthRequired===true} worldName={launcherWorld?worldName:undefined}/>:null} api={api} bodies={soulBodies} ids={ownedIds} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} select={inspect} follow={requestFollowSoul}/></div><AudioMenu/><HudMore/></div>}
+        <div className="hud-explore-group">{exploreOn&&tourHandle?.frameLocation&&<EdenTour bodies={soulBodies} worldName={exploreName} locations={exploreLocations} locationPage={explorePage??undefined} onSearch={explorePage?(query=>viewerHandle?.searchLocations?.(query)):undefined} onMore={explorePage?(()=>viewerHandle?.moreLocations?.()):undefined} onClose={()=>viewerHandle?.cancelLocationPictures?.()} presence={explorePresence(sim.edge??[],r.souls.keys())} room={viewerState?.room} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} onOpen={()=>{if(!explorePage)viewerHandle?.refreshLocations?.();viewerHandle?.releaseInput?.();setNavigationOpen(false);}} onSoul={id=>requestFollowSoul(id)} preview={placePreview} onView={place=>{const viewed=tourHandle.frameLocation?.(place)??false;if(viewed){setPanelOpen(false);setNavigationOpen(false);}return viewed;}}/>}{launcherWorld&&<GodButton/>}{newSoulAvailable?<BringAgent key={JSON.stringify([cfg.worldId??location.pathname,authIdentity(auth)])} renderEntry={accountSouls} auth={auth} requireAuth={cfg.accountAuthRequired===true} worldName={launcherWorld?worldName:undefined}/>:accountSouls(null)}</div><AudioMenu/><HudMore/></div>}
         {!launcherWorld&&<LocalIntegrationNotice source={cfg.localIntegrationMetadataPath}/>}{AUTH_UI&&!launcherWorld&&<LocalConnectionHelp devAuth={cfg.devAuth}/>}
         <div className="hud-actions">
           {advanced&&<a className="world-back" href="#watch" onClick={e => { e.preventDefault(); setAdvanced(false); setPairCode(null); setTab('watch'); history.replaceState(null, '', '#watch'); }}>← Back to the world</a>}
