@@ -31,6 +31,7 @@ test('noughts and crosses: turns, third player, taken square, win, wipe, read, l
  const absent=await here(ana);
  const distant=Array.from({length:100},(_,i)=>({op:'place',def:'core/tictactoe-board@1',name:`distant-game-${i}`,p:[120+i%10*2,120+Math.floor(i/10)*2],state:{text:'XO.X.O...',textBy:'s_zed,s_yan',players:'Zed,Yan'}}));
  assert.equal(god.act({ops:distant}).accepted,true);await tick(45);const far=await here(ana);
+ assert.equal(JSON.stringify(far).length,JSON.stringify(absent).length,'100 distant games add zero here bytes');
  assert.ok(!/distant-game|Zed|Yan/.test(JSON.stringify(far)),'distant games add nothing to here');
  const farIds=new Set(distant.map(d=>god.model.get(d.name).id));assert.deepEqual(edge.capabilities(ana).filter(c=>c.id.startsWith('read:')&&farIds.has(c.id.slice(5))||c.object&&farIds.has(c.object)).map(c=>c.id),[],'no distant offers');
  const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
