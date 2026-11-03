@@ -90,6 +90,6 @@ test('legacy face trace retains its check-before-turn completion boundary exactl
 test('a courtesy step recomputes fixed-target heading before hands resume at the new root',()=>{
  const rt=setup(human('a',0,0),human('b',2,0));for(const id of ['a','b'])pose(rt,id,{group:'objects',need:1,face:[4,0],activity:'read',prop:'book',seconds:10});for(let i=0;i<40;i++)rt.step();
  const nudge=rt.submit('walk_to',{actor:'a',x:0,z:1},{id:'a:make-way:2'});assert.equal(nudge.status,'executing');let resumed=0;
- for(let i=0;i<150;i++){rt.step();const a=body(rt);if(nudge.status==='completed'&&a.human!.activity==='read'){resumed++;assert.ok(Math.abs(delta(Math.atan2(-a.pose.p[2],4-a.pose.p[0]),a.pose.yaw))<=FACING_TOLERANCE);}}
+ for(let i=0;i<150;i++){rt.step();const a=body(rt);if(rt.records.get(nudge.id)?.status==='completed'&&a.human!.activity==='read'){resumed++;assert.ok(Math.abs(delta(Math.atan2(-a.pose.p[2],4-a.pose.p[0]),a.pose.yaw))<=FACING_TOLERANCE);}}
  assert.equal(nudge.status,'completed');assert.ok(resumed>20);assert.ok(body(rt).pose.p[2]>.5,'actual native courtesy changed the supported root');
 });
