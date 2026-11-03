@@ -15,7 +15,7 @@ const root = resolve(fileURLToPath(new URL('../../..', import.meta.url))), temp 
 try {
   const mesh = join(root, 'apps/web/src/gen-mesh'), files = [];
   const walk = dir => { for (const n of readdirSync(dir).sort()) { const p = join(dir, n); if (statSync(p).isDirectory()) walk(p); else if (p.endsWith('.mesh.ts')) files.push(p); } }; walk(mesh);
-  const source = files.map(p => `import ${JSON.stringify(p)};`).join('\n') + `\nexport { meshFor } from ${JSON.stringify(join(mesh, 'registry.ts'))};\nexport { MaterialLib } from ${JSON.stringify(join(mesh, 'materials.ts'))};`;
+  const source = files.map(p => `import ${JSON.stringify(p)};`).join('\n') + `\nexport { meshFor } from ${JSON.stringify(join(mesh, 'registry.ts'))};\nexport { MaterialLib } from ${JSON.stringify(join(mesh, 'materials.ts'))};\nexport { removeShadowProxies } from ${JSON.stringify(join(mesh, 'shadow-proxy.ts'))};`;
   const esbuild = createRequire(join(root, 'mars/viewer/package.json'))('esbuild'), output = join(temp, 'gallery.mjs');
   await esbuild.build({ stdin: { contents: source, resolveDir: root }, bundle: true, platform: 'node', format: 'esm', outfile: output, logLevel: 'error', define: { 'import.meta.env': '{}' } });
   globalThis.location = new URL('http://127.0.0.1:5366/');
@@ -32,9 +32,11 @@ try {
     if (!builder) throw Error(`no gallery builder for ${def.make.gen}`);
     const materials = new gallery.MaterialLib();
     // Canonical buildings retain source faces without auxiliary render-time shadow copies.
-    let obj; try { obj = builder.build({ canonicalContext: true, def, params, baked, model, materials, entity: { id: 'sweep', def: def.ref, in: { parent: 'world' }, p: [0, 0], seed: 7, params }, args: def.make.args ?? {}, tint: (key, fallback) => params[key] ?? def.palette?.[key] ?? fallback }); } catch (e) { if (/document is not defined|window is not defined/.test(String(e))) { gaps.set(def.ref, { def: def.ref, kind: 'browser-only', reason: String(e) }); return; } throw e; }
+    let obj; try { obj = builder.build({ ...(builder.gen === 'building/1' ? { canonicalContext: true } : {}), def, params, baked, model, materials, entity: { id: 'sweep', def: def.ref, in: { parent: 'world' }, p: [0, 0], seed: 7, params }, args: def.make.args ?? {}, tint: (key, fallback) => params[key] ?? def.palette?.[key] ?? fallback }); } catch (e) { if (/document is not defined|window is not defined/.test(String(e))) { gaps.set(def.ref, { def: def.ref, kind: 'browser-only', reason: String(e) }); return; } throw e; }
     if (!obj && (baked.parts?.length || def.form !== 'point')) { gaps.set(def.ref, { def: def.ref, kind: 'world-fixture', reason: 'expanded children/shared surfaces require a world gallery fixture' }); return; }
     if (!obj) throw Error('gallery returned no object');
+    // Other builders keep their normal context; their owned shadow copies are auxiliary to this geometry measurement too.
+    gallery.removeShadowProxies(obj);
     try { let tris = 0, draws = 0; const mats = new Set(); obj.scale.multiplyScalar(scale); obj.updateMatrixWorld(true); obj.traverse(o => { if (o.isMesh) { tris += (o.geometry.index?.count ?? o.geometry.attributes.position.count) / 3; draws++; for (const m of [].concat(o.material)) mats.add(m); } }); obj.traverse(o => { const p = o.geometry?.attributes?.position; if (p) for (let i = 0; i < p.array.length; i++) if (!Number.isFinite(p.array[i])) throw Error('nonfinite gallery vertex'); }); return { tris, draws, materials: mats.size }; }
     finally { obj.traverse(o => { o.geometry?.dispose(); }); materials.dispose?.(); }
   };
