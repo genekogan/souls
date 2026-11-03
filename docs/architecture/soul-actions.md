@@ -96,3 +96,10 @@ node --test --test-concurrency=1 tools/soul-actions/<name>.test.mjs
 Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. The tests live in
 `tools/soul-actions/`; the viewer's motion units are under `apps/web/test/`, `apps/web/src/*.test.ts`,
 `mars/viewer/engine/test/` and `mars/viewer/app/engine-view/`.
+
+
+### M05: recorded hand-over custody (#637)
+
+The recorder and sampleTake already preserve discrete support/held fields at the same native tick. The current reproduced defect was one tick of stale presented held-item metadata after native support changed, rather than the historical seven-sample recording report. New hand-over invitations persist `custodyPolicy: same-tick-v1`; body records copy that marker. At the existing receiver commit, the existing support-derived publisher updates both participants' presented maps, preserving other held items and tag filtering. Old invitations/absent-policy records retain their pinned legacy world/event hash trace and timing. No recorder, ownership/contact clock, movement or consent path is replaced.
+
+This adds two holder lookups (four existing hand scans) once at the active transfer, and 31 serialized bytes per invitation/action marker, not an idle reconciliation hook or new Soul context field. Actual native-hand contact is checked against the take's existing 5.5 mm precision and the 8 cm/50 ms M04 motion bound. The marker can change one fresh receiver palm by 1.575 mm when its pose switches from fixed reach goal to recorded hand; the separate shared 3.937 mm fresh/continuous drift remains disclosed. Exact discrete custody is required; exact cross-mode skin-palm equality is not claimed.
