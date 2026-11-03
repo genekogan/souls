@@ -30,6 +30,7 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromeLease } from '../lib/chrome-lease.mjs';
+import { checkedCapabilities, pollAdmissionRead } from './admission-read.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../../..');
@@ -62,14 +63,15 @@ process.on('exit', () => { if (!args.keep) stop(); });
 
 // ---------- clients: the owner (dev identity), the god (god token), the Soul (Soul token)
 let godToken = '', soulToken = '';
-async function api(path, { method, body, as = 'god' } = {}) {
+async function api(path, { method, body, as = 'god', signal } = {}) {
   const headers = { 'content-type': 'application/json' };
   if (as === 'god') headers.authorization = `Bearer ${godToken}`;
   else if (as === 'soul') headers.authorization = `Bearer ${soulToken}`;
   else if (as && as !== 'none') headers.authorization = `Bearer dev:${as}`;
-  const r = await fetch(base + path, { method: method ?? (body ? 'POST' : 'GET'), headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(120_000) });
+  const started = t();
+  const r = await fetch(base + path, { method: method ?? (body ? 'POST' : 'GET'), headers, body: body ? JSON.stringify(body) : undefined, signal: signal ?? AbortSignal.timeout(120_000) });
   const text = await r.text(); let data; try { data = JSON.parse(text); } catch { data = text; }
-  return { status: r.status, data };
+  return { status: r.status, data, retryAfter: r.headers.get('retry-after'), elapsedMs: t() - started };
 }
 const summarize = (r) => { try { const s = JSON.stringify(r); return s && s.length > 1500 ? JSON.parse(JSON.stringify(r, (k, v) => (Array.isArray(v) && v.length > 12 ? `[${v.length} items]` : v))) : r; } catch { return String(r); } };
 async function step(name, fn, expect) {
@@ -89,12 +91,11 @@ async function navDiag(name, result) {
   const nav = await api('/v1/debug/nav', { as: 'none' }).then((r) => r.data).catch((e) => String(e));
   log(`  ↳ ${name.split(' ')[0]} reason: ${JSON.stringify(reasonsIn(result).slice(0, 3)).slice(0, 600)} nav: ${JSON.stringify(nav)}`);
 }
-async function until(fn, ms = 120000, every = 500) { const t0 = Date.now(); let last; while (Date.now() - t0 < ms) { last = await fn(); if (last?.ok) return last; await sleep(every); } return last; }
 const act = (ops, note) => api('/v1/god/act', { body: { ops, note } });
 const entity = async (path) => (await api(`/v1/world/entities/${path}`, { as: 'none' })).data;
 const groundAt = async (pts) => (await api('/v1/god/query', { body: { points: pts } })).data.points;
 const observe = async () => (await api('/v1/edge/observe', { as: 'soul' })).data;
-const caps = async () => (await api('/v1/edge/capabilities', { as: 'soul' })).data.capabilities ?? [];
+const caps = async () => checkedCapabilities(await api('/v1/edge/capabilities', { as: 'soul' }));
 /** Act as the Soul and follow the receipt to its end, sampling the body (position, level, activity) on the way. */
 async function soulDoes(capability, { params, maxS = 240, until: stopWhen } = {}) {
   const r = await api('/v1/edge/act', { body: { capability, ...(params ? { params } : {}) }, as: 'soul' });
@@ -265,11 +266,11 @@ try {
     for (let i = 0; i < 60; i++) { const o = await observe(); if (o?.self?.position) return { soul: soul.id, token: !!soulToken, at: o.self.position }; await sleep(500); }
     return { soul: soul?.id, token: !!soulToken };
   }, (r) => r.token && r.at);
-  await step('S1 her capabilities name Mimos and its rooms, the kitchen and the dining hall, the showers', () => until(async () => {
-    const c = (await capList()).map((x) => x.id);
+  await step('S1 her capabilities name Mimos and its rooms, the kitchen and the dining hall, the showers', () => pollAdmissionRead(api, '/v1/edge/capabilities', response => {
+    const c = checkedCapabilities(response).map((x) => x.id);
     const want = ['walk:mimos', 'walk:mimos/main', 'walk:mimos/main-south', 'walk:mimos/floor', 'walk:kitchen', 'walk:kitchen/working-kitchen', 'walk:kitchen/dining-hall', 'walk:showers'];
     return { ok: want.every((w) => c.includes(w)), missing: want.filter((w) => !c.includes(w)), walks: c.filter((x) => x.startsWith('walk:')).length };
-  }, 30000), (r) => r?.ok);
+  }, { timeoutMs: 30000 }), (r) => r?.ok);
   await step('S1 the Soul CLI (unchanged) sees them: its map lists the rooms mimos/main, mimos/floor, kitchen/working-kitchen, kitchen/dining-hall, showers/shower-1', async () => {
     const r = await cli('map'); const places = r.data?.places ?? [];
     const want = ['g-mimos.main', 'g-mimos.floor', 'g-kitchen.working-kitchen', 'g-kitchen.dining-hall', 'g-showers.shower-1'];
