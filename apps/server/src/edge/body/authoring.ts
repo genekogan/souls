@@ -9,6 +9,7 @@ export function mountBodyAuthoring(app:Hono,prefix:string,types:string[]){
  const files={
   'SKILL.md':at('tools/body-authoring/SKILL.md'),
   'validate.mjs':at('tools/body-authoring/validate.mjs'),
+  'upload.mjs':at('tools/body-authoring/upload.mjs'),
   'example.json':at('tools/body-authoring/example.json'),
   'admission.ts':new URL('./admission.ts',import.meta.url),
   'rig.ts':new URL('./rig.ts',import.meta.url),

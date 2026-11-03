@@ -63,6 +63,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger}){
   const lookOf=(body:Entity['body']|null|undefined)=>(body as {params?:unknown}|null|undefined)?.params?resolveLook((body as {params:unknown}).params):null;
   const lookChoices={...Object.fromEntries(Object.entries(HUMANOID_PARAMS).map(([k,f])=>[k,f.type==='enum'?f.values:f.type==='number'?{min:f.min,max:f.max}:f.type])),outfit:Object.keys(OUTFITS)};
   app.get('/v1/edge/body',wrap(c=>{const s=deps.soul(c);return {available,body:current(s.entityId),look:lookOf(current(s.entityId)),lookDef:HUMANOID_REF,lookChoices,types,presets:BODY_PRESETS.filter(p=>types.includes(p.body?.type??'humanoid')),limits:BODY_LIMITS,
+    authoring:{skill:prefix+'/body-authoring/SKILL.md',contract:prefix+'/body-authoring/contract.json'},
     selection:{default:'humanoid',presets:'shared',uploads:'owner-only',rediscover:'GET /v1/edge/body; use preset id or uploaded assetId'},
     uploads:(db.prepare('SELECT descriptor FROM edge_body_owners_v1 WHERE world_id=? AND owner=? ORDER BY asset_id').all(world,s.owner) as {descriptor:string}[]).map(r=>JSON.parse(r.descriptor))};}));
   app.post('/v1/edge/body/uploads',wrap(async c=>{

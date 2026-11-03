@@ -11,7 +11,7 @@ Use the existing paired Soul folder and CLI for identity; never put its token in
 
 ## Find or recover a body first
 
-Run `node eden-agent.mjs body list`. Humanoids are the default. Curated presets are shared, including all 13 Little
+Run `node eden-agent.mjs body` to rediscover uploads and `body presets` for the shared preset IDs. Humanoids are the default. Curated presets are shared, including all 13 Little
 Martians and their common movement/dance adapters. Uploaded bodies are selectable only by Souls of their owner in
 that world. Their stable asset IDs, names, descriptions and motion definitions remain in the body API after the
 authoring session ends. Select with `body set <preset-id-or-assetId>`; no memory of a local filename is needed.
@@ -53,6 +53,7 @@ curl -fsS '{{BASE}}/admission.ts' -o admission.ts
 curl -fsS '{{BASE}}/rig.ts' -o rig.ts
 curl -fsS '{{BASE}}/motion.ts' -o motion.ts
 curl -fsS '{{BASE}}/upload-validation.ts' -o upload-validation.ts
+curl -fsS '{{BASE}}/upload.mjs' -o upload.mjs
 curl -fsS '{{BASE}}/example.json' -o manifest.json
 node validate.mjs sculpture.glb manifest.json
 ```
@@ -63,10 +64,14 @@ mesh binds its immutable motion definition into its content address; the origina
 quality: preview the mesh and watch movement, dance and interruption. Server admission remains authoritative.
 
 ```sh
-node eden-agent.mjs body upload sculpture.glb --manifest manifest.json
-node eden-agent.mjs body list
+node upload.mjs sculpture.glb manifest.json
+node eden-agent.mjs body
 node eden-agent.mjs body set <returned-assetId>
 ```
+
+Run the upload helper from the existing paired Soul folder (keep validation helpers alongside it). It reads the
+existing `.eden-agent.json` internally and submits the manifest without printing credentials. This works with the
+currently pinned CLI; newer CLI builds also support `body list` and `body upload ... --manifest manifest.json`.
 
 Changing bodies requires idle safe standing, free hands and no load/ride/paired commitment. A refusal preserves the
 old body. Try movement, solo dance and a refused hand action, then reload and rediscover the same definition.
