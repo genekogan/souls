@@ -8,6 +8,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 |---|---|
 | oversee work, review proof or change worker capacity | [owner playbook](process/owner-playbook.md) |
 | set direction or turn a request into work | [vision](design/vision.md), [roadmap](design/roadmap.md), [planning and intake](process/planning.md) |
+| investigate agent control quality, delays and refusals | [agency quality design](design/agency-quality.md), [tranche #623](https://github.com/genekogan/souls/issues/623) |
 | run Soul locally | [development](development.md) |
 | understand how it fits together | [architecture](architecture.md), then the [glossary](glossary.md) |
 | reason about contracts, performance or where a feature plugs in | [component and data-flow map](architecture/map.md) |

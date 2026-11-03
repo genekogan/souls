@@ -6,6 +6,7 @@ selects a small ready queue with the maintainer's priorities using [planning and
 
 | Theme | Desired outcome | Planning / execution home |
 |---|---|---|
+| Fluid agent–Soul control | Owners can direct Souls intuitively; relevant information, action and course correction stay responsive and accurate, with inspectable opt-in evidence | [Agency quality design](agency-quality.md), [planning tranche #623](https://github.com/genekogan/souls/issues/623); investigate before adopting candidate changes |
 | Reliable, responsive worlds | Visitors arrive smoothly; Souls receive timely, honest outcomes; idle worlds are cheap and faults recover safely | [Server scalability #443](https://github.com/genekogan/souls/issues/443), [continuity #464](https://github.com/genekogan/souls/issues/464), [playtest findings #28](https://github.com/genekogan/souls/issues/28), [client performance #556](https://github.com/genekogan/souls/issues/556) |
 | Richer everyday life | Objects have usable actions, lasting outcomes and credible motion without bloating distant Souls' context | [Soul Actions #26](https://github.com/genekogan/souls/issues/26), [future planning #426](https://github.com/genekogan/souls/issues/426) and its family issues |
 | Cooperative physical activities | Independently owned Souls agree to carry, build, perform, use tools and play; Mars College 2027 is the first construction destination | [Physical coordination design](physical-coordination.md), [outcome epic #560](https://github.com/genekogan/souls/issues/560) |
