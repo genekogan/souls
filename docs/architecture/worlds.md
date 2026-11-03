@@ -32,7 +32,7 @@ Audio opens independent Sound effects and Music switches plus a radio station se
 score playlist: All music, Quiet & ambient, Electronic and Upbeat. Choosing a station while music is off remembers
 it without starting playback. Preferences persist in the browser; the existing file/synthesis playback, positional
 world sounds, ducking and tab audio focus remain in use. Muting effects silences world sounds while leaving music's
-switch independent. Menus support Tab, arrow keys, Escape, outside clicks and touch.
+switch independent. A previously saved master mute migrates to both switches off, preserving silence. Menus support Tab, arrow keys, Escape, outside clicks and touch.
 
 ## The world launcher (`tools/world-launcher`)
 

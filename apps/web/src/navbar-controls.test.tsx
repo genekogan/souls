@@ -4,7 +4,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {MySouls} from './MySouls.tsx';
 import {orderedSoulIds,selectedSoulIds} from './soul-recency.ts';
 import {MUSIC_STATIONS,stationPlaylist} from './music-stations.ts';
-import {audioSettings,setAudioSettings,subscribeAudioSettings} from './audio-settings.ts';
+import {audioSettings,loadAudioSettings,setAudioSettings,subscribeAudioSettings} from './audio-settings.ts';
 import {AudioMenu} from './AudioMenu.tsx';
 import {PLAYLIST} from './score/playlist/order.mjs';
 
@@ -32,11 +32,15 @@ test('each station has actual existing pieces and All restores the complete play
 });
 test('effects, music and station preferences are independent, persisted and observable',()=>{
  const data=new Map<string,string>();Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>data.get(k)??null,setItem:(k:string,v:string)=>data.set(k,v)}});
+ data.set('sim.sound.v1',JSON.stringify({muted:true,music:true,volume:.3}));
+ assert.equal(audioSettings().music,false,'legacy master mute remains silent during migration');
  let updates=0;const off=subscribeAudioSettings(()=>updates++);
  setAudioSettings({music:false,muted:false});setAudioSettings({station:'quiet'});
  assert.equal(audioSettings().music,false);assert.equal(audioSettings().muted,false);assert.equal(data.get('sim.music.station'),'quiet');
  setAudioSettings({muted:true});assert.equal(audioSettings().music,false);setAudioSettings({music:true});assert.equal(audioSettings().muted,true);
  assert.equal(JSON.parse(data.get('sim.sound.v1')!).music,true);assert.equal(updates,4);off();
+ assert.equal(loadAudioSettings(localStorage).music,true,'independent music-on/effects-off survives reload');
+ assert.deepEqual(loadAudioSettings({getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}}),{muted:false,music:true,volume:.32,station:'all'});
  const html=renderToStaticMarkup(<AudioMenu/>);assert.match(html,/aria-label="Audio"/);assert.doesNotMatch(html,/eden-sound-toggle/);
  Reflect.deleteProperty(globalThis,'localStorage');
 });
