@@ -23,7 +23,8 @@ nicknames, unusual encodings and identifiers cannot all be recognized. Manually 
 
 `upload.mjs` preflights text/JSON files for the entire batch before its first upload. Proof checking rejects leaking
 PR/issue/proof text without echoing it into the bot comment; generated proof comments are checked again before
-output. The mandatory manual check also covers connector/CLI issue, review and comment writes, which do not pass
+output. The automated reviewer also checks its complete assembled comment before posting, so a hygiene finding
+cannot repeat the offending value. The mandatory manual check also covers connector/CLI issue, review and comment writes, which do not pass
 through the proof uploader. These checks take effect for CI from the checked-out base, after integration.
 
 For media, inspect the whole recording and audible content, browser chrome, overlays, terminal panes and file
