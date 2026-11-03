@@ -45,12 +45,16 @@ export type FrameOpts = { groundSeat?: boolean; since?: number; gap?: number;ins
 const GAP: Record<string, number> = { hug: 0.52, handshake: 0.85, 'high-five': 0.75, give: 0.9, take: 0.9 };
 /** Shoulder height and half width the hand goals below are written for (BODY_MODEL: shoulders at 1.34 m). */
 const SH = 1.34, HALF = 0.19;
+/** core/piano@1 highest keys: black centre .795 m + half thickness .01 m. */
+export const PIANO_KEY_HEIGHT = .805;
 
 /** One hand goal relative to that arm's shoulder: [forward, outward (+ away from the body midline), up] metres. */
 export type HandGoal = readonly [number, number, number];
 export type ActivityFrame = {
   /** [left, right]; null = that arm is left to the base posture (dangling / hand on thigh). */
   handWeights?:[number,number];
+  /** Piano contact plane and per-hand lift above it, from the shared audible score. */
+  piano?:{height:number;lift:[number,number]};
   hands: [HandGoal | null, HandGoal | null] | null;
   /** Feet apart (metres each side) and pelvis lift (metres, a hop) for standing cycles. */
   feetOut: number; hop: number;
@@ -169,7 +173,9 @@ export function activityFrame(activity: string, base: string, seconds: number, i
     // Entry 14: the hands strike the keys at the score's own onsets (the same notes the visitor hears), moving along the
     // keys with pitch; between notes they lift a little. Clocked by world seconds, not the per-person phase.
     case 'play-piano': { const [l, r] = pianoHands(opts.actorId ?? id, seconds);
-      f.hands = [[0.42, -0.02 + l.along, -0.36 + 0.028 * (1 - l.press)], [0.42, -0.02 - r.along, -0.36 + 0.028 * (1 - r.press)]]; f.lean = 0.1; f.look = 0.3; return f; }
+      const lift:[number,number]=[.028*(1-l.press),.028*(1-r.press)];
+      f.hands = [[.42,0,0],[.42,0,0]];f.rootHands=[[.42,.17+l.along,PIANO_KEY_HEIGHT+.04],[.42,.17-r.along,PIANO_KEY_HEIGHT+.04]];
+      f.curl=[0,0];f.piano={height:PIANO_KEY_HEIGHT,lift};f.lean=.1;f.look=.3;return f; }
     case 'play-music': { const s = Math.sin(t * 6) * 0.06;
       // Entry 26: the sticks meet the drums at the drum part's own hits (the sound the visitor hears), lifting between them
       if(opts.instrument==='drums'){const [l,r]=drumHands(opts.actorId ?? id,seconds);f.hands=[[.38,.05,-.26+l.lift*.16],[.38+r.reach*.06,.05+r.reach*.1,-.26+r.lift*.16+r.reach*.04]];f.look=.18;}

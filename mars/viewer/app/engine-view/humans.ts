@@ -65,6 +65,7 @@ import { sleepGoal, sleepHands, sleepHeadPitch, sleepRestWeight, sleepHeadRestLi
 import { PRONE_ACTIVITY } from '../../engine/construction/handup.ts';
 import { ACTIVITY_OVERLAYS, GROUND_SEAT, LYING, SING_LET_GO, activityFrame, gameArmBlend, makeProp, placeProp, propFor, type ActivityFrame, type PropKind } from './activity-poses.ts';
 import { accompanistOf } from './piano-score.ts';
+import {posePianoHand} from './piano-hands.ts';
 import { handGameActive, handGameGestureClock, handGameSuppress, poseHandGames, type HandGameDiag } from './hand-games.ts';
 import type { HandHoldState } from '../../engine/social/hand-hold.ts';
 import type { RpsState } from '../../engine/social/rps.ts';
@@ -1356,10 +1357,11 @@ export class HumanViews {
         if (t.y < floor) t.y = floor;
         if (wgt <= 0) return;
         targets[i] = t;
-        armTo(arm, t, wgt, 0.98, h, V().copy(_right).multiplyScalar(left ? -0.6 : 0.6).addScaledVector(UP, -0.5).addScaledVector(_fwd, -0.2));
+        if(!act.piano)armTo(arm, t, wgt, 0.98, h, V().copy(_right).multiplyScalar(left ? -0.6 : 0.6).addScaledVector(UP, -0.5).addScaledVector(_fwd, -0.2));
         for(const b of saved){b.o.position.lerpVectors(b.p,b.o.position,weight);b.o.quaternion.slerpQuaternions(b.q,b.o.quaternion.clone(),weight);}
       });
       closeHands(v, v.arms.map((_, i) => !targets[i] ? 0 : (act.curl ? act.curl[armSide(v, i) === 'left' ? 0 : 1] : 0.6) * (act.handWeights?.[armSide(v, i) === 'left' ? 0 : 1] ?? 1)));
+      if(act.piano)v.arms.forEach((arm,i)=>{if(targets[i])posePianoHand(arm,h.position,targets[i]!,_fwd,_right,h.position.y+act.piano!.height,act.piano!.lift[armSide(v,i)==='left'?0:1],visit=>eachSkinnedWorld(v.surf.hand.get(arm.side),V(),visit));});
     } else if (runFallback && !gait && !fp && !posed && proneW===0 && sitW===0) {
       source='expression';v.arms.forEach((arm,i)=>{const f=runFallback.hands[arm.side>0?0:1];targets[i]=arm.upper.getWorldPosition(V()).addScaledVector(_fwd,f.forward).addScaledVector(_right,-arm.side*.06).addScaledVector(UP,f.up);});reachTo(v,targets,false);closeHands(v,targets.map(()=>.45));
     } else if (sitW > 0 && !seatClip) v.arms.forEach((_, i) => handOnThigh(v, i, sitW));
