@@ -289,7 +289,12 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     // Lane phones (V4): a phone draws fewer pixels, a smaller shadow map and less far detail (quality-tier.ts).
     const quality=browserQuality(),phoneOff=new Set((new URLSearchParams(location.search).get('phoneOff')??'').split(',')),distanceDetail=quality.detail&&!phoneOff.has('detail')?new WorldDistanceDetail(phoneOff.has('bodies')?{...quality.detail,standInDistance:Infinity}:quality.detail):null;  // ?phoneOff=detail,lod,cards,bodies,worker isolates one phone-tier part
     const bodyViewer={eye:new THREE.Vector3(),frustum:new THREE.Frustum(),nearM:quality.bodies.nearM,farM:quality.bodies.farM},bodyViewerM=new THREE.Matrix4();let viewerLive=false;  // PERF-EDEN: bodies' pose rate by distance and view; PERF-PASSES: the layer's motion things and idle life read the same view
-    const meshLod=quality.detail&&!phoneOff.has('lod')?new WorldMeshLod(quality.tier==='phone'?PHONE_MESH_LOD:DESKTOP_MESH_LOD,async()=>(!phoneOff.has('worker')&&await workerSimplifier(()=>new Worker(new URL('./mesh-lod.worker.ts',import.meta.url),{type:'module'})))||import('meshoptimizer/simplifier').then(async m=>{await m.MeshoptSimplifier.ready;return m.MeshoptSimplifier.supported?m.MeshoptSimplifier as unknown as Simplifier:null;})):null;  // levels built in a worker (?phoneOff=worker: in-thread)
+    const meshLod=quality.detail&&!phoneOff.has('lod')?new WorldMeshLod(quality.tier==='phone'?PHONE_MESH_LOD:DESKTOP_MESH_LOD,async()=>{
+      if(abort.signal.aborted)return null;
+      const worker=!phoneOff.has('worker')&&await workerSimplifier(()=>new Worker(new URL('./mesh-lod.worker.ts',import.meta.url),{type:'module'}),15000,abort.signal);
+      if(abort.signal.aborted)return null;
+      return worker||import('meshoptimizer/simplifier').then(async m=>{await m.MeshoptSimplifier.ready;return !abort.signal.aborted&&m.MeshoptSimplifier.supported?m.MeshoptSimplifier as unknown as Simplifier:null;});
+    }):null;  // levels built in a worker (?phoneOff=worker: in-thread)
     (window as unknown as {__simQuality?:unknown}).__simQuality={tier:quality.tier,reason:quality.reason,maxPixelRatio:quality.maxPixelRatio,detail:()=>distanceDetail?{...distanceDetail.stats}:null,lod:()=>meshLod?{...meshLod.stats}:null,standIns:()=>farStandIns?{...farStandIns.stats}:null};
     const shotMode=new URLSearchParams(location.search).has('shot');
     // P1 phones: a new world's people (character models, clip libraries and composed Soul bodies: ~1.6 MB on Eden 2026,

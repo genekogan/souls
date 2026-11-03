@@ -6,8 +6,10 @@ export type Simplifier={simplify(indices:Uint32Array,positions:Float32Array,stri
  * (vertex colours, normals) with their weights. */
 export type LodInput={positions:Float32Array;indices:Uint32Array;parts:{array:Float32Array;n:number;w:number}[]};
 export type LodLevel={index:Uint32Array;error:number;triangles:number};
+/** Admission before copying a mesh's input; cancel releases callbacks, not still-running physical work. */
+export type LodReservation={levels(input:LodInput,ratios:readonly number[],maxError:number):Promise<LodLevel[]>;cancel():void};
 /** Builds levels off the main thread; resolves with the same result as simplifyLevels. */
-export type AsyncSimplifier={levels(input:LodInput,ratios:readonly number[],maxError:number):Promise<LodLevel[]>;readonly isAsync:true};
+export type AsyncSimplifier={levels(input:LodInput,ratios:readonly number[],maxError:number):Promise<LodLevel[]>;reserve?():LodReservation|null;readonly isAsync:true};
 
 /** Coarser index levels, coarsest last; a level is kept only when it is meaningfully coarser than the previous one. */
 export function simplifyLevels(s:Simplifier,input:LodInput,ratios:readonly number[],maxError=Number.MAX_VALUE):LodLevel[]{
