@@ -19,7 +19,7 @@ export const REQUIRED_STEPS = [
 // V3-walk (lane WALK, 2026-10-21): walkability of fixed world fixtures + a fresh Eden 2026 genesis against tools/test-harness/walk/baseline.
 // V3-bundle (lane BUDGET, 2026-10-22): web chunk/total sizes of V2-build-root's apps/web/dist against tools/test-harness/bundle-budget/baseline.json.
 const TAP_STEPS = new Set(['V3-packages', 'V3-mars-engine', 'V3-client-cli', 'V3-launcher-unit', 'V3-harness', 'V3-walk', 'V3-bundle', 'V4-web', 'V5-server-full']);
-export const REQUIRED_PACKAGES = ['engine-mars', 'world-compiler', 'generators', 'ground', 'kernel', 'brain', 'engine-toy', 'engine-contract', 'protocol', 'engine-native', 'conformance'];
+export const REQUIRED_PACKAGES = ['music', 'engine-mars', 'world-compiler', 'generators', 'ground', 'kernel', 'brain', 'engine-toy', 'engine-contract', 'protocol', 'engine-native', 'conformance'];
 /** Runs made before 2026-10-16 name the EF4 conformance package by its old directory, packages/catalog. */
 const PACKAGE_ALIASES = { catalog: 'conformance' };
 const STEP_EXCLUSIONS = new Set(); // No step is excluded whole any more (the launcher e2e moved to V7, see above).

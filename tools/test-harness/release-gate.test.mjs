@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, renameSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cacheAdd, cacheKey, compareRuns, lookupCache, prepareBundleBaselineCarry, readSuiteRun, suiteTree, DRIVER_ONLY, main, parseArgs, parseTap, readRun, scopeFor, storeCache, validateQuarantine, REQUIRED_PACKAGES, REQUIRED_STEPS } from './release-gate.mjs';
 import { combineReceipts } from './ship-receipt.mjs';
@@ -170,6 +171,26 @@ test('missing summaries or logs fail closed', t => {
   assert.match(missingSummary.errors.join('\n'), /summary/);
   assert.match(missingLog.errors.join('\n'), /missing log/);
 });
+test('the actual package runner and gate reader share the complete ordered package inventory', t => {
+  // Execute the real shell loop, stubbing only node's test process: no package tests or remote gate run here.
+  const log = execFileSync('bash', ['-c',
+    'node() { printf \'%s\' "$GATE_PACKAGE_STUB_TAP"; }; export -f node; exec bash tools/test-harness/package-suite.sh',
+  ], { cwd: fileURLToPath(new URL('../../', import.meta.url)), encoding: 'utf8',
+    env: { ...process.env, GATE_PACKAGE_STUB_TAP: tap([{ name: 'stubbed package assertion' }]) } });
+  assert.deepEqual(parseTap(log, 'V3-packages').packages, REQUIRED_PACKAGES);
+  assert.deepEqual(readRun(fixture(t, { step: 'V3-packages', log }), expected, manifest(), ['V3-packages']).errors, []);
+});
+test('music package output remains mandatory and duplicate or unexpected packages fail closed', t => {
+  assert.ok(REQUIRED_PACKAGES.includes('music'));
+  const output = p => tap([{ name: 'works' }], { prefix: `## ${p}` }) + `## ${p} exit=0\n`;
+  const full = REQUIRED_PACKAGES.map(output).join('');
+  for (const log of [REQUIRED_PACKAGES.filter(p => p !== 'music').map(output).join(''), full + output('music'), full + output('unexpected-package')]) {
+    const r = readRun(fixture(t, { step: 'V3-packages', log }), expected, manifest(), ['V3-packages']);
+    assert.match(r.errors.join('\n'), /missing\/duplicate package test output/);
+  }
+  const missingExit = full.replace('## music exit=0\n', '');
+  assert.match(readRun(fixture(t, { step: 'V3-packages', log: missingExit }), expected, manifest(), ['V3-packages']).errors.join('\n'), /missing package exit for music/);
+});
 test('all package TAP documents and explicit package exits are mandatory', t => {
   const dir = fixture(t, { step: 'V3-packages', log: tap([{ name: 'one package passed' }], { prefix: '## engine-mars' }) });
   const r = readRun(dir, expected, manifest(), ['V3-packages']);
@@ -177,7 +198,7 @@ test('all package TAP documents and explicit package exits are mandatory', t => 
   assert.match(r.errors.join('\n'), /missing package exit/);
 });
 test('package output: the EF4 package counts as conformance under its old name catalog (runs before 2026-10-16), never twice', t => {
-  const all = (last) => ['engine-mars', 'world-compiler', 'generators', 'ground', 'kernel', 'brain', 'engine-toy', 'engine-contract', 'protocol', 'engine-native', last]
+  const all = (last) => ['music', 'engine-mars', 'world-compiler', 'generators', 'ground', 'kernel', 'brain', 'engine-toy', 'engine-contract', 'protocol', 'engine-native', last]
     .map(p => tap([{ name: 'ok' }], { prefix: `## ${p}` }) + `## ${p} exit=0\n`).join('');
   for (const last of ['conformance', 'catalog']) {
     const r = readRun(fixture(t, { step: 'V3-packages', log: all(last) }), expected, manifest(), ['V3-packages']);
