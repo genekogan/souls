@@ -34,7 +34,7 @@ for(let side=0;side<2;side++){
  const outside=x+(side===0?.056:-.056);part(new T.CylinderGeometry(.115,.115,.018,16),[outside,wheelY,rootZ],'cream',bone,[0,0,Math.PI/2]);
  // Asymmetric spokes and treads make rotation readable on camera.
  box([outside,wheelY+.045,rootZ],[.02,.13,.035],'gold',bone,.008);
- for(let i=0;i<12;i++){const angle=i*Math.PI/6;part(new T.BoxGeometry(.105,.025,.035),[x,wheelY+Math.cos(angle)*(wheelRadius-.013),rootZ+Math.sin(angle)*(wheelRadius-.013)],'steel',bone,[-angle,0,0]);}
+ for(let i=0;i<12;i++){const angle=i*Math.PI/6;part(new T.BoxGeometry(.105,.025,.035),[x,wheelY+Math.cos(angle)*(wheelRadius-.0135),rootZ+Math.sin(angle)*(wheelRadius-.0135)],'steel',bone,[angle,0,0]);}
 }
 // Rounded mustard torso, cream instrument panel, cyan indicator and a little pixel heart.
 box([0,1.16,.045],[.40,.43,.33],'gold','Chest',.065);
