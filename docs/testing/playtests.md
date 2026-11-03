@@ -171,4 +171,18 @@ Each module has `node --test` files on recorded fixtures (no world, no model):
 node --test tools/playtest/**/*.test.mjs
 ```
 
-`arena/smoke.mjs` and `observer/smoke.mjs` boot a real dev world and are run by hand.
+`arena/smoke.mjs` boots a real dev world and uses a model-backed seat; fake native minds do not make the seat's
+model calls free. Run it only within the task's provider and spending authorization.
+
+`observer/smoke.mjs` observes an already running isolated dev world without model calls:
+
+```sh
+node tools/playtest/observer/smoke.mjs --base <local-world-url> --soul <temporary-soul-id> \
+  --identity admin --gpu swiftshader --viewport 800x500 --timeout-seconds 180 --out <private-run-dir>
+```
+
+The smaller viewport is useful for software rendering on a cloud CPU; it is not native GPU or physical-device proof.
+The default remains 1280x800. The smoke requires follow mode, three successful screenshots from each camera, readable
+Soul truth routes and no page errors. It writes `summary.json`, saves arrival diagnostics under `diagnostics/`, and
+exits nonzero on a failure or deadline. Camera startup failures close their contexts, and observation brings each
+camera page to the foreground before arrival and screenshots. Never weaken the readiness checks to qualify a renderer.

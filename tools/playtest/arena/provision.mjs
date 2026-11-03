@@ -1,7 +1,7 @@
 // Provision a local dev world from a server root (the SOUL3 integration worktree) and describe it in world.json.
 // DESIGN §4.1. Only world.kind "dev" is supported at this stage; fork/template-eden2/live are refused.
 import { spawn } from 'node:child_process';
-import { openSync, rmSync } from 'node:fs';
+import { openSync, rmSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { mkdirSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -97,7 +97,18 @@ export async function startWorld({ serverRoot, slug, port, genesis, snapshot, da
   return { fixture, base, pid: child.pid, build: h.build ?? null, healthz: h, bootMs: Date.now() - t0, child, dataDir: data, marsWebDir: marsWeb };
 }
 
-const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+/** Linux init may retain an exited orphan as a zombie; it no longer owns a live world. */
+export function processAlive(pid, { platform = process.platform, signal = process.kill, read = readFileSync } = {}) {
+  try { signal(pid, 0); } catch { return false; }
+  if (platform === 'linux') {
+    try {
+      const stat = read(`/proc/${pid}/stat`, 'utf8');
+      if (stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0] === 'Z') return false;
+    } catch { /* Without /proc evidence retain the conservative signal result. */ }
+  }
+  return true;
+}
+const alive = processAlive;
 /** SIGTERM the world's process group (dev-world spawns it detached when logging), wait, SIGKILL after graceMs. */
 export async function stopWorld({ pid, graceMs = 10000 }) {
   if (!pid) return { stopped: false, reason: 'no pid' };

@@ -23,7 +23,7 @@
 //              .warn (e.g. "A Soul's chosen look could not be composed…" on local dev worlds)
 //  roster      .my-souls button[aria-label] (own Souls, "Open Mira (agent away)"); .explore-souls (Explore open)
 //  new soul    button.bring-agent-open / any button whose text is "New Soul"
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { resolvePlaywright, browsersPath, launchArgs } from '../lib/platform.mjs';
 import { now, sleep } from '../lib/clock.mjs';
@@ -35,7 +35,7 @@ import { appendJsonl } from '../lib/jsonl.mjs';
 export async function openBrowser({ headless = true, gpu: wantGpu = 'metal', serverRoot = null } = {}) {
   browsersPath();
   const pw = resolvePlaywright({ serverRoot });
-  if (!pw) throw new Error('Playwright not found (global playwright, <server-root>/mars/viewer or this checkout's viewer)');
+  if (!pw) throw new Error("Playwright not found (global playwright, <server-root>/mars/viewer or this checkout's viewer)");
   const { args, gpu } = launchArgs({ gpu: wantGpu });
   const browser = await pw.chromium.launch({ headless, args });
   const cams = [];
@@ -46,16 +46,40 @@ export async function openBrowser({ headless = true, gpu: wantGpu = 'metal', ser
 
 /** openCamera({browser, base, identity?, kind:'follow'|'wide', soulId?, viewport, dpr, arrivalTimeoutMs}) → Camera.
  *  One context (own localStorage) and one persistent page per camera. identity signs in as that dev owner. */
-export async function openCamera({ browser, base, identity = null, kind = 'wide', soulId = null, viewport = { width: 1280, height: 800 }, dpr = 1, arrivalTimeoutMs = 90000, name = null }) {
+export async function openCamera({ browser, base, identity = null, kind = 'wide', soulId = null, viewport = { width: 1280, height: 800 }, dpr = 1, arrivalTimeoutMs = 90000, name = null, diagnosticsDir = null }) {
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: dpr });
+  try {
+    return await cameraInContext({ ctx, base, identity, kind, soulId, arrivalTimeoutMs, name, diagnosticsDir });
+  } catch (error) {
+    await ctx.close().catch(() => {});
+    throw error;
+  }
+}
+
+async function cameraInContext({ ctx, base, identity, kind, soulId, arrivalTimeoutMs, name, diagnosticsDir }) {
   await ctx.addInitScript((id) => { try { if (id) localStorage.setItem('sim.dev', id); localStorage.setItem('skipgc', 't'); } catch { /* storage off */ } }, identity);
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e?.message ?? e).slice(0, 300)));
   const t0 = performance.now();
   const url = String(base).replace(/\/+$/, '') + '/' + (kind === 'follow' && soulId ? '#soul/' + encodeURIComponent(soulId) : '');
-  await page.goto(url, { timeout: 120000 });
-  await page.waitForFunction(() => document.body && !document.body.innerText.includes('Arriving in') && document.querySelector('.viewer-history[data-viewer-ready="true"]'), null, { timeout: arrivalTimeoutMs });
+  try {
+    await page.goto(url, { timeout: 120000 });
+    // Each camera has its own page. A background camera can stop drawing and never finish arrival.
+    await page.bringToFront();
+    await page.waitForFunction(() => document.body && !document.body.innerText.includes('Arriving in') && document.querySelector('.viewer-history[data-viewer-ready="true"]'), null, { timeout: arrivalTimeoutMs });
+  } catch (error) {
+    error.observer = { url, pageErrors: [...errors], legible: await page.evaluate(readLegible).catch(() => null) };
+    if (diagnosticsDir) {
+      try {
+        mkdirSync(diagnosticsDir, { recursive: true });
+        const stem = join(diagnosticsDir, kind === 'follow' ? 'follow' : 'wide');
+        await page.screenshot({ path: stem + '.png', timeout: 5000 }).catch(() => {});
+        writeFileSync(stem + '.json', JSON.stringify({ error: String(error), ...error.observer }, null, 2));
+      } catch { /* Diagnostics must not replace the startup failure. */ }
+    }
+    throw error;
+  }
   const cam = { name: name ?? (kind === 'follow' ? soulId : 'wide'), kind, soulId, page, context: ctx, errors, arrivedMs: Math.round(performance.now() - t0), follow: null };
   cam.viewer = () => page.evaluate(() => { const d = document.querySelector('.viewer-history')?.dataset ?? {}; return { mode: d.viewerMode ?? null, selection: d.viewerSelection ?? null, presentation: d.viewerPresentation ?? null, tick: d.viewerTick ? Number(d.viewerTick) : null }; }).catch(() => ({}));
   cam.ensureFollow = async ({ waitMs = 6000 } = {}) => {
@@ -74,6 +98,7 @@ export async function openCamera({ browser, base, identity = null, kind = 'wide'
   };
   /** shot(outPath) → {t, mono, ms, mode, selection, following} */
   cam.shot = async (outPath) => {
+    await page.bringToFront();
     if (kind === 'follow' && !cam.follow?.ok) await cam.ensureFollow({ waitMs: 1500 });
     mkdirSync(dirname(outPath), { recursive: true });
     const c = now(), s0 = performance.now();
@@ -118,7 +143,7 @@ function readLegible() {
     roster: qa('.my-souls button').map((b) => b.getAttribute('aria-label') || tx(b)).concat(qa('.explore-souls').map(tx)).filter(Boolean),
     arrival: tx(q('.viewer-arrival')),
     newSoul: qa('button').some((b) => (b.innerText || '').trim() === 'New Soul'),
-    viewer: { mode: d.viewerMode ?? null, selection: d.viewerSelection ?? null, presentation: d.viewerPresentation ?? null, following: tx(q('.viewer-following-label')) },
+    viewer: { ready: d.viewerReady ?? null, mode: d.viewerMode ?? null, selection: d.viewerSelection ?? null, presentation: d.viewerPresentation ?? null, tick: d.viewerTick ?? null, arrivalDone: q('.viewer-arrival')?.getAttribute('data-done') ?? null, following: tx(q('.viewer-following-label')) },
     raw: (document.body.innerText || '').slice(0, 20000),
   };
 }
