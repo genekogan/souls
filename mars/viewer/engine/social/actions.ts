@@ -31,6 +31,7 @@ import { checkStations, childrenState, walkCrew, type Children } from '../constr
 import { holdingDiagnostic } from '../construction/rules.ts';
 import { assignNearest, isFree, needsApproach, seatApproach, slotById, whyTaken, slotResource, slotsOf, SLOT_CLEARANCE, type Slot, type SlotKind } from './slots.ts';
 import { ambientWander } from './ambient.ts';
+import {FACING_TOLERANCE,stepFacing,turnToward} from './facing.ts';
 
 const id80 = z.string().min(1).max(80);
 const xz = z.tuple([z.number().min(-500).max(500), z.number().min(-500).max(500)]);
@@ -81,8 +82,7 @@ function idle(rt: Runtime, actors: string[], task: string) {
   }
 }
 
-const turnToward = (yaw: number, want: number, max: number) => wrapAngle(yaw + clamp(angleDelta(yaw, want), -max, max));
-const FACE_DONE = 0.03;
+const FACE_DONE = FACING_TOLERANCE;
 
 // ---------- take_slot / sit / stand ----------
 
@@ -376,7 +376,7 @@ export const stand: ActionDef<{ actor: string }, string, StandExec> = {
 
 // ---------- face ----------
 
-type FaceParams = { actor: string; target: { entity: string } | { point: [number, number] } };
+type FaceParams = { facingPolicy?: 'social-v1'; actor: string; target: { entity: string } | { point: [number, number] } };
 type FaceExec = { id: string; actor: string; target: FaceParams['target'] };
 
 function targetYaw(rt: Runtime, actor: Entity, t: FaceParams['target']): number | Diagnostic {
@@ -395,7 +395,7 @@ export const face: ActionDef<FaceParams, number, FaceExec> = {
   verb: 'face',
   description: 'Turn a person in place to face an entity ({ entity }) or a ground point ({ point: [x, z] }); activity idle.',
   navPure: true, // L4 audit: the step turns its own actor only
-  schema: z.strictObject({ actor: id80, target: z.union([z.strictObject({ entity: id80 }), z.strictObject({ point: xz })]) }),
+  schema: z.strictObject({ actor: id80, target: z.union([z.strictObject({ entity: id80 }), z.strictObject({ point: xz })]), facingPolicy:z.literal('social-v1').optional() }),
   reservations: (_w, p) => [{ resource: `actor:${p.actor}`, mode: 'exclusive' }],
   plan(rt, p) {
     const a = readyActor(rt, p.actor);
@@ -412,8 +412,7 @@ export const face: ActionDef<FaceParams, number, FaceExec> = {
     const y = targetYaw(rt, a, ex.target);
     if (typeof y !== 'number') return { status: 'failed', diagnostic: y };
     a.human!.activity = 'idle';
-    if (Math.abs(angleDelta(a.pose.yaw, y)) > FACE_DONE) {
-      a.pose.yaw = turnToward(a.pose.yaw, y, HUMAN_PROFILE.turnRate * dt);
+    if (!stepFacing(a,y,dt)) {
       return { status: 'running', phase: 'turn' };
     }
     idle(rt, [ex.actor], ex.id);

@@ -72,6 +72,15 @@ Fixes found in review and deferred to after the repository migration:
   (also for the piano duet).
 - **Social facing in general.** Groups and conversations should face each other, and a Soul using an object should face
   it; today Souls often keep the heading they arrived with.
+  The #423 native experiment is default off: only local development with both `DEV_AUTH=1` and
+  `SOUL_SOCIAL_FACING=1` records `social-v1` ordinary activity plans. Those explicit standing groups turn gradually
+  toward their centre; object work prepares toward its fixed target, while seats, walks and choreography keep their
+  existing ownership. Old operations and invitations keep legacy semantics. This is unfinished: an immediate durable
+  Comms exchange after a three-person group still publishes speech about 30 degrees away from the partner in the
+  measured case (baseline happened to face that partner). A prospective speech/body preparing-and-ready contract is
+  required before enabling it normally; neither a visual turn nor an arbitrary speech grace period resolves that gap.
+  Maintainer sign-off and uncontaminated T3 timing qualification remain open. #419's board retreat/settled facing fix is
+  separate; this experiment does not replace it.
 
 Other known limits:
 

@@ -99,6 +99,11 @@ export const TOGETHER_RADIUS = 2.2;
 export const besideEachOther = (a: readonly number[], b: readonly number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= TOGETHER_RADIUS;
 
 // Library plans finish with a short shelf visit. Invite the actual activity, not its browse epilogue.
+/** New preparation steps belong to the invitation's recorded policy, not a freshly generated guest menu. */
+const invitationSteps = (steps:Steps, policy:Invite['facingPolicy']):Steps => structuredClone(steps)
+  .filter(s=>policy || !(s.verb==='mars:face' && s.params.facingPolicy==='social-v1'))
+  .map(s=>{if(s.verb==='mars:pose_v1')delete s.params.facingPolicy;return s;});
+
 const invitedPose = (steps: Steps) => [...steps].reverse().find(s => s.verb === 'mars:pose_v1' && s.params.activity !== 'browse')
   ?? [...steps].reverse().find(s => s.verb === 'mars:pose_v1');
 
@@ -113,7 +118,7 @@ const INVITABLE = new Set(['walk', 'stroll', 'wander', 'hang-out', 'gather', 'wa
 export type Invite = {id: string; what: string; host: {soulId: string; name: string}; guests: {soulId: string; name: string}[]; capability: string; label: string;
   kind: 'paired' | 'give' | 'activity' | 'ride'; pairedPolicy?: 'ready-v1';
   /** E2 #2 (2026-10-16): activity invitations carry the group window policy their poses use (absent on older invitations). */
-  windowPolicy?: 'once-v1'; activity?: string; seconds?: number; gap?: number; prop?: string; base?: string;
+  windowPolicy?: 'once-v1'; facingPolicy?:'social-v1'; activity?: string; seconds?: number; gap?: number; prop?: string; base?: string;
   createdTick: number; expiresTick: number; state: 'pending' | 'closed'; responses: Record<string, 'accepted' | 'declined' | 'expired' | 'cancelled'>;
   hostReceipt: string | null; guestReceipts: Record<string, string>;
   /** F1 (2026-10-20): where the host will stand for a paired gesture or hand-over (its meet spot, or where it already
@@ -610,7 +615,7 @@ export class Together {
       const what = ride ? 'ride' : cap.verb, label = ride ? `invites you on ${cap.label.replace(/^.*\(/, '').replace(/\)$/, '') || 'the ride'}` : `invites you to join: ${cap.label}`;
       return {steps: out, commit: receipt => {
         const inv: Invite = {id, what, kind: ride ? 'ride' : 'activity', host: {soulId: soul.soulId, name: soul.name}, guests: w.souls.map(s => ({soulId: s.soulId, name: s.name})), capability: cap.id, label,
-          ...(meetAt ? {meetAt} : {}), ...(last?.params.windowPolicy ? {windowPolicy: 'once-v1' as const} : {}), ...(last ? {activity: String(last.params.activity), seconds: Number(last.params.seconds), ...(last.params.prop ? {prop: String(last.params.prop)} : {}), ...(last.params.base ? {base: String(last.params.base)} : {})} : {}),
+          ...(meetAt ? {meetAt} : {}), ...(last?.params.windowPolicy ? {windowPolicy: 'once-v1' as const} : {}), ...(last?.params.facingPolicy==='social-v1'?{facingPolicy:'social-v1' as const}:{}), ...(last ? {activity: String(last.params.activity), seconds: Number(last.params.seconds), ...(last.params.prop ? {prop: String(last.params.prop)} : {}), ...(last.params.base ? {base: String(last.params.base)} : {})} : {}),
           ...(ride && cap.object ? {ride: {object: cap.object, carrier: String(ride.params.carrier)}} : {}), place: cap.target?.kind === 'place' ? cap.target.id : null,
           createdTick: this.tick, expiresTick: this.tick + (ride ? 90 : 90) * 20, state: 'pending', responses: {}, hostReceipt: receipt, guestReceipts: {}};
         this.saveInvite(inv); this.announce(inv);
@@ -721,14 +726,14 @@ export class Together {
       const to = (id: string) => {const t = (ownPlans.get(id)?.steps ?? []).find(s => s.verb === 'walk_to')?.params.to; return Array.isArray(t) ? Math.hypot(Number(t[0]) - activityAt[0], Number(t[1]) - activityAt[1]) : Infinity;};
       const near = ownCaps.filter(c => c.verb === verb && c.available && c.target?.kind === 'spot' && ownPlans.has(c.id)).map(c => ({c, d: to(c.id)})).filter(x => x.d <= 12).sort((a, b) => a.d - b.d || a.c.id.localeCompare(b.c.id))[0];
       if (near) {
-        const steps = structuredClone(ownPlans.get(near.c.id)!.steps), last = invitedPose(steps);
-        if (last) {if (Number.isFinite(inv.seconds) && inv.seconds! > 0) last.params.seconds = inv.seconds; last.params.group = inv.id; last.params.waitSeconds = 20; last.params.alone = 'start'; if (inv.windowPolicy) last.params.windowPolicy = inv.windowPolicy;}
+        const steps = invitationSteps(ownPlans.get(near.c.id)!.steps,inv.facingPolicy), last = invitedPose(steps);
+        if (last) {if (Number.isFinite(inv.seconds) && inv.seconds! > 0) last.params.seconds = inv.seconds; last.params.group = inv.id; last.params.waitSeconds = 20; last.params.alone = 'start'; if (inv.windowPolicy) last.params.windowPolicy = inv.windowPolicy;if(inv.facingPolicy)last.params.facingPolicy=inv.facingPolicy;}
         return {label: ownPlans.get(near.c.id)!.label, steps, capability: 'accept:' + inv.id, commit};
       }
     }
     if (!hostCap.endsWith(':here') && ownPlans.has(hostCap) && ownCaps.find(c => c.id === hostCap)?.available) {
-      const own = (inv.meetAt && this.spotBeside(inv.meetAt, hb.human?.level ?? 0, me.human?.level ?? 0, verb, hostCap, ownCaps, ownPlans)) || ownPlans.get(hostCap)!, steps = structuredClone(own.steps), last = invitedPose(steps);
-      if (last) {if (Number.isFinite(inv.seconds) && inv.seconds! > 0) last.params.seconds = inv.seconds; last.params.group = inv.id; last.params.waitSeconds = 20; last.params.alone = 'start'; if (inv.windowPolicy) last.params.windowPolicy = inv.windowPolicy;}
+      const own = (inv.meetAt && this.spotBeside(inv.meetAt, hb.human?.level ?? 0, me.human?.level ?? 0, verb, hostCap, ownCaps, ownPlans)) || ownPlans.get(hostCap)!, steps = invitationSteps(own.steps,inv.facingPolicy), last = invitedPose(steps);
+      if (last) {if (Number.isFinite(inv.seconds) && inv.seconds! > 0) last.params.seconds = inv.seconds; last.params.group = inv.id; last.params.waitSeconds = 20; last.params.alone = 'start'; if (inv.windowPolicy) last.params.windowPolicy = inv.windowPolicy;if(inv.facingPolicy)last.params.facingPolicy=inv.facingPolicy;}
       return {label: own.label, steps, capability: 'accept:' + inv.id, commit};
     }
     if (verb === 'sit') {
@@ -741,7 +746,7 @@ export class Together {
     if (inv.activity) {
       const lying = ['lie', 'nap', 'yoga', 'pushups', 'situps'].includes(inv.activity);
       return {label: `${inv.activity} with ${inv.host.name}`, capability: 'accept:' + inv.id, commit,
-        steps: [...this.standFirst(soul.entityId), ...go(lying ? 1.8 : 1.4), pose(inv.activity, inv.seconds ?? 60, {group: inv.id, waitSeconds: 20, alone: 'start', ...(inv.windowPolicy ? {windowPolicy: inv.windowPolicy} : {}), ...(inv.prop ? {prop: inv.prop} : {})})]};
+        steps: [...this.standFirst(soul.entityId), ...go(lying ? 1.8 : 1.4), pose(inv.activity, inv.seconds ?? 60, {group: inv.id, waitSeconds: 20, alone: 'start', ...(inv.windowPolicy ? {windowPolicy: inv.windowPolicy} : {}), ...(inv.facingPolicy?{facingPolicy:inv.facingPolicy}:{}), ...(inv.prop ? {prop: inv.prop} : {})})]};
     }
     return {label: `Join ${inv.host.name}`, steps: [...this.standFirst(soul.entityId), {verb: 'walk_to', params: {to: host.entityId, standoff: 1.4}}], capability: 'accept:' + inv.id, commit};
   }

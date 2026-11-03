@@ -22,6 +22,7 @@ import type { Spatial } from '../spatial/service.ts';
 import { clearanceAt } from '../spatial/grid.ts';
 import { RPS, RPS_SHAPES, type RpsShape } from './rps.ts';
 import { trackHandGame } from './hand-hold.ts';
+import {stepFacing} from './facing.ts';
 
 /** Overlay activities (upper body; drawn on top of baseActivity). */
 export const POSE_OVERLAYS = ['read', 'browse', 'write', 'play-piano', 'play-music', 'paint', 'eat', 'drink', 'cook', 'play-game', 'craft', 'post-letter', 'wave', 'operate',
@@ -51,6 +52,8 @@ export const POSE_ACTIVITIES: readonly string[] = [...POSE_OVERLAYS, ...POSE_POS
 export const POSE_PROPS = ['book', 'brush', 'pen', 'letter', 'cup', 'plate', 'tool', 'cards', 'flower', 'food', 'frisbee', 'dumbbell', 'boule', 'rod', 'bread', 'spoon'] as const;
 /** CN5: the instrument a `play-music` body plays (World draws it at the spot; the body state names it). */
 export const POSE_INSTRUMENTS = ['drums', 'keyboard', 'guitar', 'bass', 'violin', 'viola', 'cello', 'piano', 'flute', 'ukulele'] as const;
+/** Ordinary overlays may opt into slow facing; gestures and choreography retain their own ownership. */
+export const SOCIAL_FACING_ACTIVITIES:ReadonlySet<string> = new Set(['read','browse','write','play-piano','play-music','paint','eat','drink','cook','play-game','craft','post-letter','use-computer','sing','listen','lift-weights','fish','feed','garden','picnic','tell-story']);
 /** CN5 choreographed games: no physics. The world keeps whose turn it is (a pure function of the tick and the players in
  *  the group, sorted), so every body and the viewer agree: turn k lasts `period` s, the throw leaves at `windup` and
  *  arrives `flight` s later. frisbee: thrower → next player (a held frisbee's owner starts); volleyball: the rally
@@ -73,7 +76,7 @@ export const LIE_CLEARANCE = 0.9;
 /** An in-place dance keeps the standing body's root and ordinary standing footprint. */
 export const DANCE_CLEARANCE = HUMAN_RADIUS;
 
-type Params = { actor: string; activity: string; seconds: number; prop?: string; base?: 'sit' | 'idle'; seatHeight?: number; face?: Vec2;
+type Params = { actor: string; activity: string; seconds: number; prop?: string; base?: 'sit' | 'idle'; seatHeight?: number; face?: Vec2; facingPolicy?:'social-v1';
   group?: string; pairedPolicy?: 'ready-v1'; windowPolicy?: 'once-v1'; waitSeconds?: number; alone?: 'start' | 'fail'; gap?: number; need?: number; hold?: string; release?: boolean;
   /** hotfix: stepping in or back for a paired gesture never brings this body closer to anyone else than it already is
    *  (once within arm's reach of them); prospective, set by edge plans, so earlier logs replay unchanged. */
@@ -160,12 +163,13 @@ export const poseV1: ActionDef<Params, true, Exec> = {
   verb: 'pose_v1',
   navPure: true, // L4 audit: the step writes only its own actor's body (pose, human fields); it submits and cancels nothing
   description: 'activities/1: take a generic activity pose where you are (read, browse, write, play-piano, play-music, paint, eat, drink, cook, play-game, craft, post-letter, wave, use-computer, sing, listen, lift-weights over a seat or standing; sit-ground, lie, nap, pushups, situps, yoga on open ground, bench-press on a bench; dance, jump, stretch, jumping-jacks, pull-ups, dips standing; play-frisbee, play-petanque, play-volleyball as choreographed group games) for a number of seconds, optionally holding a prop and facing a point, then return to the base posture.',
-  schema: z.object({ actor: z.string().min(1).max(80), activity: z.enum(POSE_ACTIVITIES as [string, ...string[]]), seconds: z.number().min(0.5).max(3600), prop: z.enum(POSE_PROPS).optional(), base: z.enum(['sit', 'idle']).optional(), seatHeight: z.number().min(0.2).max(1.2).optional(), face: z.tuple([z.number(), z.number()]).optional(),
+  schema: z.object({ actor: z.string().min(1).max(80), activity: z.enum(POSE_ACTIVITIES as [string, ...string[]]), seconds: z.number().min(0.5).max(3600), prop: z.enum(POSE_PROPS).optional(), base: z.enum(['sit', 'idle']).optional(), seatHeight: z.number().min(0.2).max(1.2).optional(), face: z.tuple([z.number(), z.number()]).optional(), facingPolicy:z.literal('social-v1').optional(),
     group: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(), pairedPolicy: z.literal('ready-v1').optional(), windowPolicy: z.literal('once-v1').optional(), waitSeconds: z.number().min(0).max(180).optional(), alone: z.enum(['start', 'fail']).optional(),
     gap: z.number().min(0.5).max(2.5).optional(), need: z.number().int().min(1).max(8).optional(), hold: z.enum(POSE_PROPS).optional(), release: z.boolean().optional(), clear: z.boolean().optional(),
     instrument: z.enum(POSE_INSTRUMENTS).optional(), seatTogether: z.boolean().optional(), throw: z.enum(RPS_SHAPES).optional(),
     accompany: z.object({ radius: z.number().min(1).max(40), grace: z.number().min(0).max(30) }).strict().optional(),
     game: z.object({ kind: z.enum(Object.keys(GAMES) as [GameKind, ...GameKind[]]), flightPolicy:z.literal('clear-v1').optional(), jack: z.tuple([z.number(), z.number()]).optional(), net: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional() }).strict().optional() }).strict()
+    .refine(p=>!p.facingPolicy||(SOCIAL_FACING_ACTIVITIES.has(p.activity)&&!p.pairedPolicy&&!p.gap&&!p.game),{message:'social-v1 is only an ordinary overlay, not paired or choreographed facing'})
     .refine(p => !p.pairedPolicy || (!!p.group && p.gap !== undefined && ['hug','high-five','handshake','dance','rps'].includes(p.activity) && !p.game && !p.hold && !p.release), {message:'ready-v1 requires a paired limb gesture with group and gap'})
     .refine(p=>!p.game?.flightPolicy||p.game.kind==='frisbee',{message:'clear-v1 is only a frisbee policy'})
     .refine((p) => !p.game || (!!p.group && p.activity === 'play-' + p.game.kind), { message: 'a game needs a group and its own play-<game> activity' })
@@ -182,6 +186,11 @@ export const poseV1: ActionDef<Params, true, Exec> = {
   step(rt, ex, dt) {
     const a = rt.world.entities[ex.p.actor], h = a?.human;
     if (!h) return { status: 'failed', diagnostic: issue('not-human', 'the body is gone', [ex.p.actor]) };
+    if(ex.p.facingPolicy && rt.holder('actor:'+ex.p.actor).some(id=>rt.records.get(id)?.verb==='walk_to'&&!nudge(id))){
+      // A later ordinary walk owns heading. Release this overlay without overwriting the walk's body state.
+      const activity=h.activity,speed=h.speed;restore(rt,ex);h.activity=activity;if(speed!==undefined)h.speed=speed;
+      return {status:'failed',diagnostic:issue('not-still','A walk took over; the stationary activity ended.',[ex.p.actor])};
+    }
     if(ex.gameRelease)return releaseGameStep(rt,ex,dt);
     if (ex.phase && nudged(rt, ex.p.actor)) {
       if(ex.p.pairedPolicy){if(ex.phase==='active')ex.phase='waiting';delete ex.readyAt;h.together={group:ex.p.group!,phase:ex.phase,mobile:!!ex.mobile,pairedPolicy:ex.p.pairedPolicy,...(ex.until===undefined?{}:{until:ex.until})};if(ex.phase==='waiting'&&ex.until===undefined&&(ex.waited=(ex.waited??0)+1)>Math.round((ex.p.waitSeconds??30)/dt)){restorePaired(rt,ex);return {status:'failed',diagnostic:issue('pair-not-ready','The paired gesture could not settle in time.',[ex.p.actor])};}}
@@ -189,8 +198,19 @@ export const poseV1: ActionDef<Params, true, Exec> = {
     if (ex.phase) ex.at = [...a.pose.p];   // a grouped pose carries on from wherever a courtesy step left the body
     if (a.pose.p.some((n, i) => Math.abs(n - ex.at[i]) > 1e-6)) { restore(rt, ex); return { status: 'failed', diagnostic: issue('moved', 'The body moved; the activity ended.', [ex.p.actor]) }; }
     if(ex.p.game?.flightPolicy==='clear-v1'&&ex.p.group){const blocked=frisbeeLaneIssue(rt,ex.p.group,ex.p.actor);if(blocked){if(beginGameRelease(rt,ex,dt,blocked))return releaseGameStep(rt,ex,dt);restore(rt,ex);return {status:'failed',diagnostic:blocked};}}
+    // Courtesy movement changes the direction to a fixed object; only the recorded new policy retargets.
+    if(ex.p.facingPolicy && ex.p.face){const d:Vec2=[ex.p.face[0]-a.pose.p[0],ex.p.face[1]-a.pose.p[2]];ex.yaw=hypot(...d)>.05?heading(d):null;}
+    // A grouped object overlay also prepares before publishing hands or joining its shared window.
+    if(ex.phase && ex.p.facingPolicy && ex.yaw!==null && ex.base!=='sit' && !held(rt,ex.p.actor) && !stepFacing(a,ex.yaw,dt)){
+      h.activity=ex.base;return {status:'running',phase:'facing'};
+    }
     if (ex.phase) return together(rt, ex, a, h, dt);
-    if (ex.yaw !== null && !held(rt, ex.p.actor)) a.pose.yaw = ex.yaw;  // a body on a native seat keeps the seat's facing
+    if (ex.yaw !== null && !held(rt, ex.p.actor)) {
+      // Prospective preparation publishes no hand-bearing activity before native facing is ready.
+      // A seated base retains its seat direction even if it has no separate held sit action.
+      if(ex.p.facingPolicy){if(ex.base!=='sit'&&!stepFacing(a,ex.yaw,dt))return {status:'running',phase:'facing'};}
+      else a.pose.yaw = ex.yaw;
+    }
     h.activity = ex.p.activity;
     if (OVERLAY.has(ex.p.activity)) h.baseActivity = ex.base; else delete h.baseActivity;
     if (ex.p.prop) h.prop = ex.p.prop; else if (h.holding) h.prop = h.holding; else delete h.prop;
@@ -253,7 +273,10 @@ function together(rt: Runtime, ex: Exec, a: NonNullable<Runtime['world']['entiti
   // once-v1: a body whose window has passed is no partner (it may still be settling with its stale `until`)
   const near = partnersOf(rt, ex), others = once ? near.filter((o) => (o.human!.together!.until ?? Infinity) > tick) : near, partner = others[0];
   const closed = once && !others.length && near.length > 0;
-  const faceTo = (q: number[]) => { if (!held(rt, ex.p.actor) && hypot(q[0] - a.pose.p[0], q[2] - a.pose.p[2]) > 0.05) a.pose.yaw = heading([q[0] - a.pose.p[0], q[2] - a.pose.p[2]]); };
+  const faceYaw=(yaw:number)=>{if(held(rt,ex.p.actor))return;if(ex.p.facingPolicy){if(ex.base!=='sit')stepFacing(a,yaw,dt);}else a.pose.yaw=yaw;};
+  const faceTo = (q: number[]) => { if (hypot(q[0] - a.pose.p[0], q[2] - a.pose.p[2]) > 0.05) faceYaw(heading([q[0] - a.pose.p[0], q[2] - a.pose.p[2]])); };
+  // Reuse the already-discovered explicit group. No proximity discovery or idle-world hook.
+  const groupPoint=()=>[others.reduce((n,o)=>n+o.pose.p[0],a.pose.p[0])/(others.length+1),a.pose.p[1],others.reduce((n,o)=>n+o.pose.p[2],a.pose.p[2])/(others.length+1)];
   if (h.prop === undefined || ex.p.prop) { if (ex.p.prop) h.prop = ex.p.prop; else if (h.holding) h.prop = h.holding; }
   if (ex.phase === 'waiting') {
     const going = others.find((o) => o.human!.together!.phase === 'active' && (o.human!.together!.until ?? 0) > tick);
@@ -270,7 +293,8 @@ function together(rt: Runtime, ex: Exec, a: NonNullable<Runtime['world']['entiti
       ex.phase = 'active'; ex.until = tick + ticks(ex.p.seconds);
     } else {
       h.together = { group: ex.p.group!, phase: 'waiting', mobile: !!ex.mobile, ...(once ? { windowPolicy: 'once-v1' as const } : {}) };
-      if (partner) faceTo(partner.pose.p); else if (ex.yaw !== null && !held(rt, ex.p.actor)) a.pose.yaw = ex.yaw;
+      if(ex.p.facingPolicy&&ex.yaw!==null)faceYaw(ex.yaw);
+      else if (partner) faceTo(ex.p.facingPolicy?groupPoint():partner.pose.p); else if (ex.yaw !== null) faceYaw(ex.yaw);
       if (h.activity !== ex.base) h.activity = ex.base === 'sit' && !held(rt, ex.p.actor) ? 'idle' : ex.base;
       return { status: 'running' as const, phase: 'waiting-for-partner' };
     }
@@ -302,8 +326,8 @@ function together(rt: Runtime, ex: Exec, a: NonNullable<Runtime['world']['entiti
       ex.close = true;
     }
     delete h.speed;
-  } else if (partner && !held(rt, ex.p.actor) && ex.yaw === null && !POSTURE.has(ex.p.activity)) faceTo(partner.pose.p);
-  else if (ex.yaw !== null && !held(rt, ex.p.actor)) a.pose.yaw = ex.yaw;
+  } else if (partner && !held(rt, ex.p.actor) && ex.yaw === null && !POSTURE.has(ex.p.activity)) faceTo(ex.p.facingPolicy?groupPoint():partner.pose.p);
+  else if (ex.yaw !== null) faceYaw(ex.yaw);
   h.activity = ex.p.activity;
   if (OVERLAY.has(ex.p.activity)) h.baseActivity = ex.base; else delete h.baseActivity;
   if (ex.p.prop) h.prop = ex.p.prop; else if (h.holding) h.prop = h.holding; else delete h.prop;
