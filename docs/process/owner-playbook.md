@@ -4,6 +4,16 @@ Give the development owner the outcome and priority in chat, or open a GitHub is
 agent or choose a branch. The owner finds related work, records acceptance, selects independent tasks and reviews
 their integration. [Planning and intake](planning.md) describes the underlying records.
 
+V1 launches work only on an explicit request. Opening an issue or marking it ready starts no worker; there is no
+scheduled planner or automatic backlog consumption. CI and required PR checks still run normally.
+
+A launch records **scope, worker ceiling, budget/resource policy, stopping point, and merge/release authority**.
+For example: “One worker on issue X; prepare a reviewed PR and stop,” or “One serial lane on navbar issues;
+continue between qualified PRs, stop on a product decision, no deployment.” A requested serial lane can work through
+its agreed queue without another prompt for each issue. Required proof, review and maintainer decisions still apply.
+The owner checks likely collisions at dispatch, when shared contracts change, and at integration; independent work
+need not synchronize continuously. Existing workers and jobs reach an explicit handoff before another writer takes over.
+
 ## Requests and priorities
 
 | Say this | What happens |
