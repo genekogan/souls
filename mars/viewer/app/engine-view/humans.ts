@@ -582,6 +582,9 @@ export class HumanViews {
         const key=(e.human as {soul?:unknown}).soul;
         v = this.make(e.id, s, act,typeof key==='string'?key:undefined);
         v.base = base;
+        // A live/lab view joining an already active wave has no certified onset.
+        // Retain full attained weight, as replay does for a pre-window wave.
+        if(act==='wave'){v.waveEvents=[{start:world.tick*DT-WAVE_BLEND_SECONDS}];v.waveSamples=[{}];v.waveClock=world.tick*DT;}
         v.grip = e.human.grip?.entity;
         v.gripSlot = e.human.grip?.slot;
         v.cur.pose = v.prev.pose = this.postureGoal(v, e, world, false);
@@ -606,7 +609,11 @@ export class HumanViews {
       }
       v.age = act === v.activity ? v.age + 1 : 0;
       v.since = v.age * DT;
-      if(v.waveEvents&&act!=='wave'&&act!=='idle'&&!GAIT_ACTS.has(act)){v.waveEvents=undefined;v.waveSamples=undefined;v.waveClock=undefined;v.waveRestAge=undefined;}
+      if(v.waveEvents){
+        const human=e.human,owner=human.hands?.left||human.hands?.right||human.grip||human.handHold||human.rps||human.heldItemsV1?.left||human.heldItemsV1?.right||human.on;
+        if(owner||(act!=='wave'&&act!=='idle'&&!GAIT_ACTS.has(act))){v.waveEvents=undefined;v.waveSamples=[];v.waveClock=undefined;v.waveRestAge=undefined;}
+      }
+      if(v.waveSamples?.length===0&&act!=='wave'&&(v.since??0)>=WAVE_BLEND_SECONDS)v.waveSamples=undefined;
       if(v.waveEvents){
         const clock=world.tick*DT;if(v.waveRestAge!==undefined)v.waveRestAge+=DT;v.waveEvents=v.waveEvents.filter(e=>e.end===undefined||clock-e.end<WAVE_BLEND_SECONDS);
         v.waveSamples=v.waveEvents.map(e=>e.end===undefined?{age:clock-e.start}:{released:clock-e.end,duration:e.end-e.start});v.waveClock=clock;

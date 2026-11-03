@@ -104,3 +104,14 @@ for(const owner of ['hands','grip','handHold','rps','heldItemsV1','on'])test(`re
  assert.ok(h.activityHistory(ID,68,'idle',0).waveSamples?.length,'tail exists before new owner');
  assert.deepEqual(h.activityHistory(ID,75,'idle',0).waveSamples??[],[],'old wave does not resume after owner clears');
 });
+
+test('live and recorded hands owner pulse permanently cancels the outgoing wave after ownership clears',async()=>{
+ await views('casual');const scene=openGround(),w=emptyWorld('wave-live-owner',scene),e=human(ID,0,0);w.entities[e.id]=e;
+ const rt=new Runtime(w,new Map(),{spatial:new Spatial(scene)},[]),rec=new TakeRecorder(rt,{rulesVersion:'wave-live-owner'}),live=await views('casual');
+ for(let k=0;k<100;k++){
+  e.human!.activity=k>=17&&k<65?'wave':'idle';if(k===70)e.human!.hands={right:[.1,1,0]};if(k===74)delete e.human!.hands;
+  rt.step();live.onTick(w);live.render(1);
+  if(k===75){const v=(live as unknown as {views:Map<string,{waveSamples?:unknown[]}>}).views.get(ID)!;assert.deepEqual(v.waveSamples,[],'live tail stays explicitly cancelled after hands clear');}
+ }
+ const replay=new TakePeople(rec.finish()),h=replay as unknown as {activityHistory(id:string,tick:number,act:string,w:number):SampledHuman};assert.deepEqual(h.activityHistory(ID,76,'idle',0).waveSamples??[],[],'recorded path agrees after ownership clears');
+});
