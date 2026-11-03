@@ -1,3 +1,4 @@
+import {WorldMotionHistory} from './WorldMotionHistory.ts';
 import { setPosterDay } from '../../../mars/viewer/app/engine-view/poster-sheet.ts';
 import {WorldContextViews} from './WorldContextViews.ts';
 import { whenAssetsSettled } from './gen-mesh/gltf-assets.ts';
@@ -712,6 +713,8 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       return l;
     };
 
+    const initialMotionHistory=new WorldMotionHistory(fetchChunks,abort.signal);
+    const motionOwner=()=>JSON.stringify([context.current.sim.conn.welcome?.worldId,context.current.sim.conn.welcome?.epoch]);
     let liveArr: unknown = null, liveKey = '', live: Chunk[] = [], liveTick: number | null = null;
     const spot = new THREE.Vector3();
     const gaitContinuity=new RecordedGaitContinuity();
@@ -784,7 +787,8 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
         tick = liveTick;
       }
 
-      const candidate = chunkAt(chunks, tick);
+      if(initialMotionHistory&&!past.current&&initialMotionHistory.loading)void initialMotionHistory.start(liveList,serverNow(s)??liveList.at(-1)?.toTick??0,LIVE_DELAY,motionOwner(),motionOwner);
+      const candidate = initialMotionHistory?.loading&&!past.current ? null : chunkAt(chunks, tick);
       // the people renderer: at once on desktops and old worlds (no frame until it is here), after the arrival on a phone's
       // new world (WorldLightPeople until then); a failed fetch is retried every 5 s
       if(!peopleKit&&(!peopleLater||arrivalOver())&&now>=peopleKitRetryAt){peopleKitRetryAt=now+5000;void loadPeopleKit().catch(()=>{});}
@@ -797,6 +801,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       if (pick) {
         const chunk = pick.chunk, take = chunk.take;
         const depictedTick = recordingTick(chunk, tick);
+        const motionHistory=!past.current&&initialMotionHistory?initialMotionHistory.history(chunks,chunk,depictedTick):chunks;
         try {
           if(people instanceof WorldLightPeople&&peopleKit){scene.remove(people.group);people.dispose();people=null;applied=null;}  // the renderer has loaded: the same take, drawn
           if (!people) {
@@ -842,7 +847,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
               people.setSupplementalStairs(entityLayer.supplementalStairs(s.edge??[],serverNow(s)),{liveTakeId:take.id});
             }else{entityLayer.clearSupplementalStairs();people.setSupplementalStairs([]);}
           }
-          people.setWaterHistory(chunks.map(c=>c.take));
+          people.setWaterHistory(motionHistory.map(c=>c.take));
           const floors=capturedPlatforms??(!past.current&&currentPlatforms&&currentPlatforms.worldId===s.conn.welcome?.worldId?currentPlatforms.platforms:[]);
           platformDraw.set(floors,base?.levels.find(l=>l.id===0)?.y??0,!!expansion&&!past.current);
           people.setPlatformFloors(floors,base?.levels.find(l=>l.id===0)?.y??0);
