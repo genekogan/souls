@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {pendingNewSoul,requestNewSoul,resumeNewSoul,dismissNewSoul} from './new-soul-entry.ts';
 import {agentOnboarding} from './auth-ui.ts';
@@ -7,7 +7,7 @@ import './BringAgent.css';
 import {copyText,manualCopyHint} from './clipboard.ts';
 const NEW_SOUL_ICON=<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.75" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg>;
 /** VF3: the "New Soul" button (top right of the Eden viewer) and its "Bring a new Soul to Eden" dialog. Opens on #join, so the link itself can be shared. */
-export function BringAgent({auth,requireAuth=false,showButton=true,worldName,entryTarget}:{auth:{ready:boolean;authed:boolean;login():void;signInUrl?:string};requireAuth?:boolean;showButton?:boolean;worldName?:string;entryTarget?:HTMLElement|null}){
+export function BringAgent({auth,requireAuth=false,showButton=true,worldName,renderEntry}:{auth:{ready:boolean;authed:boolean;login():void;signInUrl?:string};requireAuth?:boolean;showButton?:boolean;worldName?:string;renderEntry?:(entry:ReactNode)=>ReactNode}){
  // lane PUX (LAP: every world): when signed in the prompt carries this window's code; the agent's request then comes up right here
  const [code,setCode]=useState<string|null>(null);
  const worldUrl=location.origin+location.pathname.replace(/\/+$/,''),{world,instructionsUrl,text}=agentOnboarding(worldUrl,worldName,code);
@@ -26,8 +26,8 @@ export function BringAgent({auth,requireAuth=false,showButton=true,worldName,ent
  const copy=async()=>{if(await copyText(text)){setNote('Copied.');return;}if(prompt.current){const range=document.createRange();range.selectNodeContents(prompt.current);const selection=getSelection();selection?.removeAllRanges();selection?.addRange(range);}setNote(manualCopyHint);};
  const canonicalJoin=auth.signInUrl?new URL(auth.signInUrl):null;if(canonicalJoin)canonicalJoin.hash='join';
  const button=canonicalJoin?<a className="bring-agent-open" href={canonicalJoin.href} title={`Bring a new Soul to ${world}`} aria-label="New Soul">{NEW_SOUL_ICON}<span>New Soul</span></a>:<button type="button" className="bring-agent-open" aria-haspopup="dialog" aria-expanded={open} title={`Bring a new Soul to ${world}`} aria-label="New Soul" onClick={()=>{if(requireAuth&&!auth.authed){explained.current=true;setExplain(true);}else signIn();}}>{NEW_SOUL_ICON}<span>New Soul</span></button>;
- // Only the entry moves with navbar layout/account changes; its controller and body portal stay mounted.
- const entry=showButton?(entryTarget===undefined?button:entryTarget?createPortal(button,entryTarget):null):null;
+ // The controller owns state above the changing avatar group; the entry keeps normal menu event bubbling.
+ const entry=renderEntry?renderEntry(showButton?button:null):showButton?button:null;
  if(canonicalJoin)return entry;
  if(explain&&requireAuth&&!auth.authed)return <>{entry}{createPortal(<NewSoulExplain world={world} modal={modal} onSignIn={signIn} onClose={()=>setExplain(false)}/>,document.body)}</>;
  if(!open||requireAuth&&!auth.authed)return entry;

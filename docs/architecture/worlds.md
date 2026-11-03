@@ -22,7 +22,7 @@ Up to three available account Souls appear inline beside New Soul. Four or more 
 its menu contains every available owned Soul and New Soul. Selecting a Soul opens its card and follows it, and moves
 it first in the account/world's browser-local selection history. Unselected Souls use the server's stable order;
 opening the menu does not change history. Server ownership and current availability filter every displayed avatar.
-New Soul has one controller outside the account-keyed avatar group; only its entry is portalled into the inline or
+New Soul has one controller outside the account-keyed avatar group; only its entry is rendered in the inline or
 menu slot. An open prompt survives delayed account data and a change between those layouts.
 
 The split camera control shows Broadcast, Free or Following a Soul (and loading/recorded state where applicable).
