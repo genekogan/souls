@@ -16,6 +16,7 @@ test('scrub guard flags private values', () => {
   const home = ['', 'Users', 'alice', 'x'].join('/');
   assert.deepEqual(scrubLine(`open ${home}`), ['home path']);
   assert.deepEqual(scrubLine('see ~/Eden/' + 'team/notes.md'), ['private workspace path']);
+  assert.deepEqual(scrubLine('see ~/' + 'workspace/project'), ['private workspace path']);
   assert.deepEqual(scrubLine('host 93.184.215.14 here'), ['public IP address']);
   assert.deepEqual(scrubLine('box.tail1234.ts' + '.net'), ['private host name']);
   assert.deepEqual(scrubLine('ssh root' + '@prodbox'), ['ssh target']);

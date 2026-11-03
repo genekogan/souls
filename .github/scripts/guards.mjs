@@ -79,7 +79,7 @@ function publicIPv4(ip) {
 export const SCRUB_RULES = [
   // Personal home directories (macOS, Windows). Linux service users such as /home/<service> are deployment config.
   ['home path', line => [...line.matchAll(/(?:^|[^\w.])(?:\/Users|[A-Z]:\\Users)[\\/]([^\\/\s'"`)]+)/g)].some(m => !PLACEHOLDER_USERS.test(m[1]))],
-  ['private workspace path', line => /(?:~|\$HOME|\/)Eden\/team\b/.test(line)],
+  ['private workspace path', line => /(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%)[/\\]|\/Eden\/team\b/i.test(line)],
   ['public IP address', line => [...line.matchAll(/(?<![\w.@-])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])/g)].some(m => publicIPv4(m[1]))],
   ['private host name', line => /\.ts\.net\b|\.(?:sslip|nip)\.io\b|\b[\w-]*macbook[\w-]*\b/i.test(line)],
   ['ssh target', line => [...line.matchAll(/\b(?:root|ubuntu|admin|deploy)@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)/g)].some(m => !ALLOWED_EMAIL.test(m[0]))],

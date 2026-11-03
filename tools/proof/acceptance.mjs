@@ -32,6 +32,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { POLICY_PATH, loadPolicy as loadTierPolicy, tierFor } from './tier.mjs';
 import { APPROVED_LABEL, labelAddedBy, maintainerSignOff, needsSignOff } from './gate.mjs';
+import { assertPublishable, publicationFindings } from './publication.mjs';
 
 export { labelAddedBy };
 
@@ -234,7 +235,14 @@ const label = c => `${c.id ? `${c.id} ` : ''}${String(c.text ?? '').slice(0, 70)
  * Everything proof-check needs to say about one PR. `proof` is the parsed proof.json (or {error}) when the PR links
  * one; `issueBody` is the linked issue's body when there is one.
  */
+function privacyFailure(tier, privacy) {
+  const detail = `device details detected (${privacy.join(', ')}); sanitize source text/metadata before publication`;
+  return { ok: false, tier, rows: [{ name: 'publication privacy', ok: false, detail }], problems: [detail], warnings: [], checklist: [], links: { videos: [], images: [], proofJson: [] }, clips: [] };
+}
+
 export function checkPr({ body = '', tier = 'T0', issueBody = null, proof = undefined, head = null, policy = loadChecks() }) {
+  const privacy = publicationFindings({ body, issueBody, proof });
+  if (privacy.length) return privacyFailure(tier, privacy);
   const s = sections(body);
   const need = new Set(policy.prChecks[tier] ?? policy.prChecks.T0);
   const problems = [], warnings = [], rows = [];
@@ -333,13 +341,18 @@ export function renderComment(result, { required = [], files = [], raisedByLabel
   const clips = result.clips ?? [];
   if (clips.length) {
     const name = u => decodeURIComponent(String(u).split(/[?#]/)[0].split('/').pop());
-    out.push('', '**Clips** (a preview plays here; click it for the full, uncut clip):', '');
-    for (const c of clips) out.push(c.preview ? `[![${name(c.video)}](${c.preview})](${c.video})` : `- [${name(c.video)}](${c.video}) (no inline preview: \`tools/proof/upload.mjs\` makes one)`);
+    out.push('', '**Full-resolution videos** — use the original clips and their proof metadata for motion/contact review. GIFs below are reduced previews.', '');
+    for (const c of clips) {
+      out.push(`- [Full-resolution video: ${name(c.video)}](${c.video})`);
+      if (c.preview) out.push('', `[![${name(c.video)}](${c.preview})](${c.video})`, '');
+    }
   }
   if (result.problems.length) out.push('', '**To fix**', ...result.problems.map(p => `- ${p}`));
   if (result.warnings.length) out.push('', '**Warnings**', ...result.warnings.map(w => `- ${w}`));
   out.push('', '<sub>Updated on every edit, push, label and review. How to fill it: `.claude/skills/journal/SKILL.md`. T3-T4 also need the maintainer\'s sign-off (`tools/proof/gate.mjs`). A maintainer can waive with the `proof:waived` label.</sub>');
-  return out.join('\n');
+  const comment = out.join('\n');
+  assertPublishable(comment);
+  return comment;
 }
 
 /** A proof.json skeleton from an issue's checklist, for the journal skill. */
@@ -404,17 +417,27 @@ export async function prMode({ repo, pr, head, gh = ghJson, fetchImpl = fetch, p
     if (!gate.ok) { result.problems.unshift(`maintainer sign-off: ${gate.detail}`); result.ok = false; }
     return result;
   };
-  if (waived || author === 'dependabot[bot]') {
-    const why = waived ? `Waived by the maintainer with the \`proof:waived\` label.` : 'Dependency update from Dependabot: CI is its proof.';
-    const result = addGate({ ok: true, tier: t.tier, rows: [], problems: [], warnings: warningsOut, checklist: [], links: { videos: [], images: [], proofJson: [] } });
-    return { result, comment: renderComment(result, { required, files: t.byFile, raisedByLabel: t.raisedByLabel, note: why }) };
-  }
   const body = p.body ?? '';
+  const titlePrivacy = publicationFindings({ title: p.title, body });
+  if (titlePrivacy.length) {
+    const result = addGate(privacyFailure(t.tier, titlePrivacy));
+    return { result, comment: renderComment(result) };
+  }
   const issueNums = linkedIssues(sections(body).problem ?? '');
   let issueBody = null;
   if (issueNums.length) { try { const i = gh(`repos/${repo}/issues/${issueNums[0]}`); if (!i.pull_request) issueBody = i.body ?? ''; } catch { /* unreadable issue: skip the carry check */ } }
   const proofUrl = urls(body).find(isProofJson);
   const proof = proofUrl ? await fetchProof(proofUrl, fetchImpl) : undefined;
+  const privateInputs = publicationFindings({ body, issueBody, proof });
+  if (privateInputs.length) {
+    const result = addGate(privacyFailure(t.tier, privateInputs));
+    return { result, comment: renderComment(result) };
+  }
+  if (waived || author === 'dependabot[bot]') {
+    const why = waived ? `Waived by the maintainer with the \`proof:waived\` label.` : 'Dependency update from Dependabot: CI is its proof.';
+    const result = addGate({ ok: true, tier: t.tier, rows: [], problems: [], warnings: warningsOut, checklist: [], links: { videos: [], images: [], proofJson: [] } });
+    return { result, comment: renderComment(result, { required, files: t.byFile, raisedByLabel: t.raisedByLabel, note: why }) };
+  }
   const result = addGate(checkPr({ body, tier: t.tier, issueBody, proof, head: headSha, policy }));
   result.warnings.push(...warningsOut);
   return { result, comment: renderComment(result, { required, files: t.byFile, raisedByLabel: t.raisedByLabel, note: p.draft ? 'Draft PR: proof-check skips drafts and runs when the PR is marked ready for review.' : null }) };
