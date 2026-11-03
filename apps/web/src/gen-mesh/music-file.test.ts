@@ -11,13 +11,15 @@ class FakeGain implements GainLike { gain: FakeParam; connected: unknown[] = [];
 class FakeEl implements AudioEl {
   src = ''; crossOrigin: string | null = 'anonymous'; preload = 'auto'; currentTime = 0; duration = NaN; readyState = 0; paused = true;
   loads = 0; plays = 0; playFails: string | null = null; seekAtPlay = -1; removed = false;
+  playWait: Promise<void> | null = null;
   private ls = new Map<string, Set<() => void>>();
-  play() { this.plays++; if (this.playFails) return Promise.reject(Error(this.playFails)); this.paused = false; this.seekAtPlay = this.currentTime; return Promise.resolve(); }
+  play() { this.plays++; if (this.playFails) return Promise.reject(Error(this.playFails)); this.paused = false; this.seekAtPlay = this.currentTime; return this.playWait ? this.playWait.then(() => { this.paused = false; }) : Promise.resolve(); }
   pause() { this.paused = true; }
   load() { this.loads++; }
   removeAttribute(n: string) { if (n === 'src') { this.src = ''; this.removed = true; } }
   addEventListener(t: string, fn: () => void) { (this.ls.get(t) ?? this.ls.set(t, new Set()).get(t)!).add(fn); }
   removeEventListener(t: string, fn: () => void) { this.ls.get(t)?.delete(fn); }
+  listeners(t: string) { return this.ls.get(t)?.size ?? 0; }
   emit(t: string) { for (const fn of [...(this.ls.get(t) ?? [])]) fn(); }
   /** The browser read the metadata: duration known, seekable. */
   metadata(duration = 240) { this.duration = duration; this.readyState = 1; this.emit('loadedmetadata'); }
@@ -116,6 +118,54 @@ test('a media error before the metadata rejects play()', async () => {
   els[0].emit('error');
   await assert.rejects(p, /media error/);
   assert.ok(els[0].removed);
+});
+
+test('stop cancels an owned metadata wait without playing, retaining handlers or reporting failure', async () => {
+  const { ctx, els, log, player, flush } = rig();
+  const p = player.play('a');
+  assert.equal(player.busy, true);
+  player.stop();
+  assert.equal(player.busy, false); assert.equal(player.playing(), null);
+  assert.ok(els[0].paused && els[0].removed && ctx.sources[0].disconnected && ctx.gains[1].disconnected);
+  assert.equal(els[0].listeners('loadedmetadata'), 0); assert.equal(els[0].listeners('error'), 0);
+  els[0].metadata(); els[0].emit('error'); await flush(); await p;
+  assert.equal(els[0].plays, 0); assert.deepEqual(log, []);
+  assert.equal(ctx.gains[1].gain.ramps.length, 0);
+});
+
+test('stop during context resume cannot call play after resume completes', async () => {
+  const { ctx, els, log, player, flush } = rig();
+  let resume!: () => void; ctx.state = 'suspended'; ctx.resume = () => new Promise<void>(ok => { resume = ok; });
+  const p = player.play('a'); els[0].metadata(); player.stop(); resume(); await flush(); await p;
+  assert.equal(els[0].plays, 0); assert.ok(els[0].paused && els[0].removed);
+  assert.equal(player.playing(), null); assert.equal(player.busy, false); assert.deepEqual(log, []);
+});
+
+test('late play resolution or rejection after stop stays retired and cannot clear a newer start', async () => {
+  for (const reject of [false, true]) {
+    const { ctx, els, log, player, flush } = rig();
+    const p = player.play('a'); let finish!: () => void;
+    els[0].playWait = new Promise<void>((ok, fail) => { finish = reject ? () => fail(Error('late AbortError')) : ok; });
+    els[0].metadata(); await flush(); assert.equal(els[0].plays, 1);
+    player.stop(); const next = player.play('b'); finish(); await flush(); await p;
+    assert.equal(player.busy, true, 'the later operation still owns its metadata wait');
+    assert.equal(player.playing(), null); assert.ok(els[0].paused && els[0].removed && ctx.sources[0].disconnected);
+    assert.equal(ctx.gains[1].gain.ramps.length, 0); assert.equal(log.length, 0);
+    els[1].metadata(); await next;
+    assert.equal(player.playing()?.id, 'b'); assert.equal(player.busy, false);
+    assert.deepEqual(log.map(e => e.ev + ':' + e.piece), ['start:b']);
+  }
+});
+
+test('stop cancels an automatic crossfade successor and retires its outgoing and prefetched decks', async () => {
+  const { els, log, player, tick, flush } = rig();
+  const p = player.play('a'); els[0].metadata(); await p;
+  tick(220_000, 'b'); assert.equal(els.length, 2);
+  assert.equal(tick(17_000, 'b'), 'crossfade'); assert.equal(player.busy, true);
+  player.stop(); els[1].metadata(); await flush();
+  assert.equal(player.busy, false); assert.equal(player.playing(), null);
+  assert.ok(els.every(e => e.paused && e.removed)); assert.equal(els[1].plays, 0);
+  assert.equal(log.some(e => e.ev === 'error' || e.ev === 'start' && e.piece === 'b'), false);
 });
 
 test('stop() remembers the position, and a resume seeks there after the metadata and ends the remaining time later', async () => {
