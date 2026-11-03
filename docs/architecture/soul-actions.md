@@ -96,3 +96,11 @@ node --test --test-concurrency=1 tools/soul-actions/<name>.test.mjs
 Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. The tests live in
 `tools/soul-actions/`; the viewer's motion units are under `apps/web/test/`, `apps/web/src/*.test.ts`,
 `mars/viewer/engine/test/` and `mars/viewer/app/engine-view/`.
+
+### God planter moisture and visual wilt
+
+God planters with numeric `moisture` currently participate in the daily drying pass without an explicit biology opt-in. `core/garden-planter@1` holds moisture; revision 2 also holds growth, thirst and pouring. These immutable definitions do not admit an arbitrary `dryingEnabled` state field. Native ground-planter `gardenCare` is a separate conserved care contract, not a God-planter wilt clock.
+
+For revision 2, `plantLookOf` computes zero wilt when moisture is at least 0.34; below that it uses 0.35+0.65×min(1,thirst/3). Starting fully wet, the daily pass yields visual wilt 0, 0.35, 0.5667, 0.7833, 1 at 24, 48, 72, 96, 120 world hours respectively. Thus three days of moisture depletion is not the full five-day visual drying interval. A watering commit that raises moisture to 1 makes this look function healthy immediately; renderer easing is not a persisted world-hour revival curve.
+
+`BRAIN_MODE=fake node --experimental-transform-types tools/soul-actions/garden-revival-repro.mjs` reproduces these two unmet semantics through actual core definitions, daily operations and the look function. It deliberately exits 1 while unflagged daily state changes or watering immediately removes full wilt; it is a diagnostic, not a passing fix test or an actual watering journey. `SOUL_ACTIONS_REPORT` optionally writes its JSON report outside the source tree. Existing native drying/sprinkler/tap/can tests separately cover their current contact, persistence and bounded-perception contracts.
