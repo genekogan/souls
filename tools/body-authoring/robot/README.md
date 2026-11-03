@@ -40,8 +40,8 @@ bytes are publicly retrievable for rendering; selection and rediscovery remain o
   not introduce vehicle dynamics, independent wheel steering, flight or stair qualification.
 - **Idle:** a quiet standing pose. No inherited human idle gestures. The renderer retains its ordinary breathing/look
   adjustments.
-- **Ground movement:** the canonical foot-phase data drives the existing distance-sampled walk clock, while the
-  authored `WheelL`/`WheelR` tracks turn the visible wheels. Base mesh remains on the root; visible arms follow the
+- **Ground movement:** the canonical foot-phase data drives the existing distance-sampled walk clock, scaled to one wheel circumference per cycle, while the
+  authored `WheelL`/`WheelR` tracks turn forward without a loop seam. Base mesh remains on the root; visible arms follow the
   contact rig. No animation translates the authoritative root.
 - **Dance:** the existing `Dance_Loop` adapter consumes an authored four-second clip. Chest turns +360°; local head
   turns −720° to compensate for its inherited parent turn, giving a −360° world-space head turn. Chassis/wheels stay

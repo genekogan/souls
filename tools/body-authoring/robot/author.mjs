@@ -34,7 +34,7 @@ for(let side=0;side<2;side++){
  const outside=x+(side===0?.056:-.056);part(new T.CylinderGeometry(.115,.115,.018,16),[outside,wheelY,rootZ],'cream',bone,[0,0,Math.PI/2]);
  // Asymmetric spokes and treads make rotation readable on camera.
  box([outside,wheelY+.045,rootZ],[.02,.13,.035],'gold',bone,.008);
- for(let i=0;i<12;i++){const angle=i*Math.PI/6;part(new T.BoxGeometry(.105,.025,.035),[x,wheelY+Math.cos(angle)*wheelRadius,rootZ+Math.sin(angle)*wheelRadius],'steel',bone,[-angle,0,0]);}
+ for(let i=0;i<12;i++){const angle=i*Math.PI/6;part(new T.BoxGeometry(.105,.025,.035),[x,wheelY+Math.cos(angle)*(wheelRadius-.013),rootZ+Math.sin(angle)*(wheelRadius-.013)],'steel',bone,[-angle,0,0]);}
 }
 // Rounded mustard torso, cream instrument panel, cyan indicator and a little pixel heart.
 box([0,1.16,.045],[.40,.43,.33],'gold','Chest',.065);
@@ -79,7 +79,14 @@ function addTrack(clip,node,path,times,values){const input=accessor(new Float32A
 function valuesAtFirst(clip,channel){const s=clip.samplers[channel.sampler],a=gltf.accessors[s.output],v=gltf.bufferViews[a.bufferView],data=Buffer.concat(chunks),n=channel.target.path==='rotation'?4:3;return Array.from({length:n},(_,i)=>data.readFloatLE(v.byteOffset+(a.byteOffset??0)+i*4));}
 // Idle is deliberate stillness; Walk retains the canonical foot phase, with restrained mechanical arms.
 const idle=gltf.animations[0],walk=gltf.animations[1];for(const channel of [...idle.channels]){const first=valuesAtFirst(idle,channel);addTrack(idle,channel.target.node,channel.target.path,[0,2],[...first,...first]);if(!['Foot.L','Foot.R'].includes(nodes[channel.target.node].name))addTrack(walk,channel.target.node,channel.target.path,[0,1],[...first,...first]);}
-const walkDuration=4/3,wheelTimes=Array.from({length:17},(_,i)=>i*walkDuration/16),wheelValues=wheelTimes.flatMap(t=>new T.Quaternion().setFromAxisAngle(new T.Vector3(1,0,0),-2*Math.PI*t/walkDuration).toArray());for(const wheel of wheels){addTrack(idle,wheel,'rotation',[0,2],[0,0,0,1,0,0,0,1]);addTrack(walk,wheel,'rotation',wheelTimes,wheelValues);}
+// Match the canonical distance clock to one wheel circumference per clip: no backwards tread or loop seam.
+const walkDuration=4/3,rawData=Buffer.concat(chunks);
+const readArray=i=>{const a=gltf.accessors[i],v=gltf.bufferViews[a.bufferView],width=a.type==='SCALAR'?1:3;return Array.from({length:a.count*width},(_,k)=>rawData.readFloatLE(v.byteOffset+(a.byteOffset??0)+k*4));};
+const feet=['Foot.L','Foot.R'].map(name=>{const channel=walk.channels.find(c=>c.target.node===index(name)&&c.target.path==='translation'),sampler=walk.samplers[channel.sampler];return {node:index(name),times:readArray(sampler.input),values:readArray(sampler.output)};});
+const at=(foot,t)=>{let i=0;while(i<foot.times.length-2&&foot.times[i+1]<t)i++;const k=Math.max(0,Math.min(1,(t-foot.times[i])/(foot.times[i+1]-foot.times[i])));return [0,1,2].map(axis=>foot.values[i*3+axis]+(foot.values[(i+1)*3+axis]-foot.values[i*3+axis])*k);};
+const velocities=[];let previous;for(let n=0;n<=120;n++){const t=n*walkDuration/120,p=feet.map(foot=>at(foot,t)),side=p[0][1]<p[1][1]?0:1;if(previous&&previous.side===side)velocities.push((p[side][2]-previous.z)/(walkDuration/120));previous={side,z:p[side][2]};}velocities.sort((a,b)=>a-b);const stanceSpeed=Math.abs(velocities[Math.floor(velocities.length/2)]);if(!(stanceSpeed>.2))throw Error('Canonical forward foot phase is unavailable');
+const strideScale=2*Math.PI*wheelRadius/(walkDuration*stanceSpeed);for(const foot of feet)addTrack(walk,foot.node,'translation',foot.times,foot.values.map((v,i)=>i%3===2?v*strideScale:v));
+const wheelTimes=Array.from({length:17},(_,i)=>i*walkDuration/16),wheelValues=wheelTimes.flatMap(t=>new T.Quaternion().setFromAxisAngle(new T.Vector3(1,0,0),2*Math.PI*t/walkDuration).toArray());for(const wheel of wheels){addTrack(idle,wheel,'rotation',[0,2],[0,0,0,1,0,0,0,1]);addTrack(walk,wheel,'rotation',wheelTimes,wheelValues);}
 const dance={name:'Dance_Loop',channels:[],samplers:[]};for(const channel of idle.channels){const v=valuesAtFirst(idle,channel);addTrack(dance,channel.target.node,channel.target.path,[0,4],[...v,...v]);}
 const times=Array.from({length:33},(_,i)=>i/8);for(const [name,turns]of [['Chest',1],['Head',-2]]){const node=index(name),base=new T.Quaternion(...nodes[node].rotation??[0,0,0,1]),values=times.flatMap(t=>base.clone().premultiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0,1,0),turns*2*Math.PI*t/4)).toArray());addTrack(dance,node,'rotation',times,values);}gltf.animations.push(dance);
 // Drop superseded channels and unused source data; no authoring-only buffers enter the upload.
