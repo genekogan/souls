@@ -66,7 +66,8 @@ Fixes found in review and deferred to after the repository migration:
   Watering and drying should become opt-in per planter or world, so a world without a watering routine does not wilt.
 - **Noughts and crosses facing.** After a turn a player turns their back to the board; both should keep facing the board
   or each other between turns.
-- **Rock-paper-scissors hand path.** Readying the hand can pass through the body; it needs a path clear of the torso.
+- **Rock-paper-scissors hand path.** Current source, wire and composed rigs clear the torso in the ready/return audit,
+  including four headings and raised idle gestures. The historical failing-before-fix evidence in #420 remains unverified.
 - **Holding hands.** The clasp curls the fingers back and the right hand reads as a left (thumb on the wrong side).
 - **Piano hands.** The pianist's hands sit below the keys; they should rest on and strike the keys at keyboard height
   (also for the piano duet).

@@ -5,8 +5,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import * as THREE from 'three';
+import {ConvexHull} from 'three/addons/math/ConvexHull.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {HumanViews,type SampledHuman} from '../../../mars/viewer/app/engine-view/humans.ts';
+import {HumanViews,eachSkinnedWorld,type SampledHuman} from '../../../mars/viewer/app/engine-view/humans.ts';
 import {templateFromGltf,type Template} from '../../../mars/viewer/app/engine-view/people.ts';
 import {HAND_GAP,JOIN_SECONDS,RELEASE_SECONDS,HAND_STATE_TAIL,type HandHoldState} from '../../../mars/viewer/engine/social/hand-hold.ts';
 import {RPS,RPS_STATE_TAIL,type RpsShape} from '../../../mars/viewer/engine/social/rps.ts';
@@ -109,7 +111,7 @@ for(const rig of RIGS)for(const shape of ['rock','paper','scissors'] as RpsShape
 // 0.118 m per 50 ms; the count's raise out of a gesture cut the variety in one frame. A hand game starting out of the
 // highest gesture an idle body plays must stay within the boundary bound.
 for(const rig of ['wire-woman','kit-fem','kit-masc'])test(`a hand game starting out of a raised idle gesture (${rig}): offer, join and the count's raise stay within 0.08 m per 50 ms`,async()=>{
- const v=await views(rig),ids=['g_a','g_b','g_c','g_d','g_e','g_f'];let worst=0,cases=0;
+ const v=await views(rig),ids=['g_a','g_b','g_c','g_d','g_e','g_f'];let worst=0,cases=0,minTorsoClearance=Infinity;
  for(const id of ids){
   // find a moment this body holds a hand up in its idle variety (standing still a long while)
   let k0=-1;for(let k=400;k<4000;k+=5){const b=draw(v,[{id,p:[0,0,0],yaw:0,walk:0,walkDist:0,activity:'idle',restAge:60}],k)[id] as unknown as Bones&{variety:number};if(b.variety>.95&&Math.max(...b.arms.map(a=>a.palm[1]))>1.3){k0=k+20;break;}}
@@ -121,11 +123,44 @@ for(const rig of ['wire-woman','kit-fem','kit-masc'])test(`a hand game starting 
      :{id,p:[0,0,0],yaw:0,walk:0,walkDist:0,activity:'idle',restAge:60,handHold:{with:'g_partner',hand:'right',...(kind==='offer'?{offered:k0}:{since:k0})},handGameTick:k,handGameDt:DT};
     const partner:SampledHuman={id:'g_partner',p:[0,0,HAND_GAP],yaw:0,walk:0,walkDist:0,activity:'idle',restAge:60,handHold:{with:id,hand:'left',...(kind==='join'?{since:k0}:{})},handGameTick:k,handGameDt:DT};
     const b=draw(v,kind==='rps'?[f]:[f,partner],k)[id],now=b.arms.map(a=>a.palm);
+    if(kind==='rps'){const arm=b.arms.find(a=>a.side==='right')!;minTorsoClearance=Math.min(minTorsoClearance,torsoClearance(v,id,arm.palm,b.hipY,arm.shoulder[1]));}
     if(prev&&k>k0)for(let j=0;j<2;j++){const s=d3(prev[j],now[j]);if(s>worst&&process.env.HG_DEBUG)console.log(rig,id,kind,k-k0,j,s.toFixed(3));worst=Math.max(worst,s);}
     prev=now;
    }
   }
  }
+ console.log(JSON.stringify({rig,raisedGestureMinimumTorsoClearance:minTorsoClearance}));
+ assert.ok(minTorsoClearance>=0,`raised-idle RPS palm clearance ${minTorsoClearance.toFixed(4)} m`);
  assert.ok(cases>=2,'raised gestures found '+cases);
  assert.ok(worst<=.08,`palm step out of a raised gesture ${worst.toFixed(3)} m per 50 ms`);
+});
+
+
+// F4: a real-rig torso envelope, rather than the hand-game target alone. Bone blending can
+// send a palm through the body even when the final IK goal is in front of the shoulder.
+type TorsoView={rig:{holder:THREE.Object3D};surf:{body:{mesh:THREE.SkinnedMesh;idx:number[]}[];hand:Map<number,{mesh:THREE.SkinnedMesh;idx:number[]}[]>}};
+function torsoClearance(v:HumanViews,id:string,palm:number[],hip:number,shoulder:number){
+ const view=(v as unknown as {views:Map<string,TorsoView>}).views.get(id)!;
+ const points:THREE.Vector3[]=[];
+ eachSkinnedWorld(view.surf.body,new THREE.Vector3(),p=>{if(p.y>=hip-.05&&p.y<=shoulder+.03)points.push(p.clone());});
+ assert.ok(points.length>=20,'the real rig supplies a torso surface');
+ const hull=new ConvexHull().setFromPoints(points),p=new THREE.Vector3(...palm);
+ const margins=hull.faces.map(face=>face.distanceToPoint(p)-.035);
+ const hand=view.surf.hand.get(-1);assert.ok(hand?.length,'actual right-hand skin vertices');
+ eachSkinnedWorld(hand,new THREE.Vector3(),q=>{hull.faces.forEach((face,i)=>{margins[i]=Math.min(margins[i],face.distanceToPoint(q));});});
+ // A single separating torso plane excludes the entire hand's convex skin envelope,
+ // including edges between vertices, and the 3.5 cm palm sphere.
+ return Math.max(...margins);
+}
+for(const rig of RIGS)for(const yaw of [0,Math.PI/2,Math.PI,-Math.PI/2])for(const shape of ['rock','paper','scissors'] as RpsShape[])test(`rock-paper-scissors torso clearance (${rig}, yaw ${yaw}, ${shape}): rendered palm clears the body throughout ready and return`,async()=>{
+ const v=await views(rig),start=100,shoot=start+Math.round(RPS.SHOOT/DT),end=start+Math.round(RPS.SECONDS/DT);
+ let minimum=Infinity,worstAt=0;
+ for(let k=start-10;k<=end+Math.round(RPS_STATE_TAIL/DT)+5;k++){
+  const f:SampledHuman={id:'clearance',p:[0,0,0],yaw,walk:0,walkDist:0,activity:k>=start&&k<end?'rps':'idle',...(k<start?{restAge:30}:k>=end?{restAge:(k-end)*DT,prevActivity:'rps',activityAge:(k-end)*DT}:{}),...(k>=start&&k<end+RPS_STATE_TAIL/DT?{rps:{start,shoot,...(k>=shoot?{shape}:{}),...(k>=end?{end}:{})},handGameTick:k,handGameDt:DT}:{})};
+  const b=draw(v,[f],k).clearance,arm=b.arms.find(a=>a.side==='right')!;
+  const clearance=torsoClearance(v,'clearance',arm.palm,b.hipY,arm.shoulder[1]);
+  if(clearance<minimum){minimum=clearance;worstAt=(k-start)*DT;}
+ }
+ console.log(JSON.stringify({rig,yaw,shape,minimumHandTorsoPlaneMargin:minimum,worstAtSeconds:worstAt}));
+ assert.ok(minimum>=0,`${rig}: palm clearance ${minimum.toFixed(4)} m at ${worstAt.toFixed(2)} s`);
 });
