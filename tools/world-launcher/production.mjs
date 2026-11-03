@@ -19,11 +19,11 @@ import { isAbsolute } from 'node:path';
 export const EXISTING_WORLDS = Object.freeze(['eden', 'mars', 'littlemartians', 'toy']);
 
 /**
- * Root paths the existing sim.eden.art release (laptop proxy + server routes) answers: a --base may not be one.
- * `/w` holds its worlds; `/assets`, `/__sim`, `/v1` its app; the rest Mars static, snapshots and redirects.
+ * Root paths already used by the site (proxy, app and launcher): a --base may not be one.
+ * `/w` holds worlds; `/ops` the private overview; the rest app/static content, snapshots and redirects.
  */
 export const TAKEN_PREFIXES = Object.freeze(['/w', '/l', '/assets', '/__sim', '/v1', '/mcp', '/ws', '/browser', '/modular', '/engine', '/models',
-  '/history', '/2020', '/data', '/mars-assets', '/world-assets', '/lab', '/studio', '/buildings', '/skill.md', '/healthz']);
+  '/history', '/2020', '/data', '/mars-assets', '/world-assets', '/lab', '/studio', '/buildings', '/skill.md', '/healthz', '/ops']);
 
 /** True when a slug could be routed to the existing release by a `/w/<key>*` path glob. */
 export const shadowsExisting = (slug) => EXISTING_WORLDS.some((k) => slug === k || slug.startsWith(k));
