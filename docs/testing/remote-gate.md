@@ -127,10 +127,16 @@ object pack with exactly the historical source files they declare (`historical-i
 `pnpm-lock.yaml` keys a prebuilt dependency layer, so an unchanged lockfile installs offline from it.
 
 The steps run as groups in parallel containers (`GROUPS`, `LARGE`, `V5_SHARDS` in `modal_suite.py`): one larger
-container for the builds and web tests, one for the long serial steps and two V5 shards. `merge()` rebuilds the
-serial output layout. A missing group or shard, a duplicated row or an inexact shard cover fails closed. V5 shards
+container for the builds and web tests, one task for the long serial steps and four shorter V5 tasks. The small
+tasks keep one 4-CPU container for the serial steps and two 4-CPU containers for queued V5 tasks; the larger container
+has its separate one-container cap. Increasing the task count does not increase simultaneous resources.
+`merge()` rebuilds the serial output layout
+and retains each group's preflight and assets diagnostics. A missing group or shard, a duplicated row, an unexpected
+file collision or an inexact shard cover fails closed. V5 shards
 are balanced by `v5-durations.json`; after large test changes, regenerate it from a run's
 `out/groups/v5-*/V5-server-full-files.jsonl` and check the split with `node tools/test-harness/v5-shard.mjs`.
+The V5 summary's seconds column reports the longest task, not elapsed time across queued waves; each task's
+duration remains in its group summary, and the Modal log records the full run's elapsed time.
 
 Results: `<outDir>/out/suite/SUMMARY.tsv` and one log per step, install logs in `<outDir>/out/`, per-group output in
 `<outDir>/out/groups/<name>/`, the Modal client log in `<outDir>/modal.log`. The raw runner returns artifacts even
