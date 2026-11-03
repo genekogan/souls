@@ -64,3 +64,9 @@ test('the local smoke runs for web, server and e2e changes, or with no base', ()
   for (const f of ['docs/testing.md', 'packages/kernel/src/x.ts', 'tools/playtest/x.mjs', 'apps/webby/x']) assert.equal(smokeFor([f]), false, f);
   assert.equal(smokeFor(null), true);
 });
+
+// Music source changes must retain the web generation/composition checks after leaving vendor/.
+test('owned music source selects web build, web tests and package checks', () => {
+  const names = jobsFor(['packages/music/source/site/pieces/pixel-town.js']).include.map(j => j.name);
+  assert.deepEqual(names.sort(), ['packages', 'types-web', 'web']);
+});

@@ -13,7 +13,7 @@ the current tree from intended destinations.
 | `tools/` | Maintained development, asset, test, proof, authoring and release CLIs. Consult the relevant tool's README; this is where most repository scripts live. |
 | `scripts/` | Thin environment entrypoints. Currently `cloud-session-start.sh` is a Claude cloud hook, not a universal setup command. |
 | `changes/` | Unreleased changelog fragments. Release compilation consumes them into `CHANGELOG.md`; a README-only directory is normal. |
-| `vendor/` | Source treated as externally maintained. Sim Score currently has enforced upstream provenance, although the intended ownership is now first-party. |
+| `vendor/` | Source treated as externally maintained. `vendor/sim-score` is a temporary compatibility symlink to the first-party music source, not an external copy. |
 | `mars/` | A mixed historical boundary containing the live deterministic engine, viewer, Lab, content and asset tools. Preserve capabilities while extracting them; do not delete it as cosmetic cleanup. |
 | `docs/` | Current contracts, instructions and durable design intent. Issues and PRs hold execution status and proof. |
 
@@ -61,10 +61,14 @@ lose its implementation or invalidate proof without review. Keep the normal tier
 
 ## First-party music
 
-[#578](https://github.com/genekogan/souls/issues/578) moves source ownership into Soul. The proposed split is a
-reusable `packages/music` and optional `apps/music-studio`; these are destinations, not existing packages.
-The current upstream-sync rule, generator and provenance tests must change together. Preserve source/licence
-notices, deterministic composition, lazy playback and the existing UI. Render outputs stay outside git.
+[#578](https://github.com/genekogan/souls/issues/578) moves source ownership into Soul. `packages/music/source` now
+owns the procedural source and existing optional studio. The studio is an inert,
+explicitly started local app; it is not imported by the game or started by root development/deployment commands.
+`vendor/sim-score` preserves current generator paths as a relative compatibility alias. Historical import hashes
+remain evidence; owned edits no longer require an external checkout or sync. The performance-owned generator and
+score guide still use that compatibility path until their coordinated follow-up under #578. See the package README
+for commands and the archived utility classifications. Preserve source/licence notices, deterministic composition,
+lazy playback and the existing UI. Render outputs stay outside git.
 
 ## Ordinary development commands
 

@@ -38,9 +38,14 @@ node e2e/local-smoke.mjs --port 9950 --clip      # also one uncut, real-speed cl
   in the summary that both are gone. The data dir is removed after a pass (`--keep-data` keeps it).
 - **Exit** 0 pass, 1 a check failed, 2 a precondition is missing: the message names the command that fixes it
   (`--build` builds the web app and the viewer's static build when they are missing).
-- **People need the viewer's static build.** The character models (`/modular`) come from
-  `pnpm build:viewer` (issue #395). Without it the world never draws Ada and the run
-  fails with the 404s in the summary.
+- **People need the served character kit.** Preflight checks the selected `--mars-web` directory, otherwise the
+  launcher's `.lane/mars-web` overlay, otherwise `MARS_WEB_DIR` or the viewer build. It checks the kit manifest and
+  character animation file before launch. A valid viewer build does not repair an incomplete selected overlay.
+  Pass `--mars-web <complete-isolated-overlay>` to select an already prepared overlay without changing the shared
+  pointer. The V7 helper shows how it combines shared static assets with this checkout's modular assets. `--build`
+  builds viewer assets only when the viewer directory is selected. These local checks do not qualify a production-CDN
+  web build on loopback; production CDN/CORS behavior requires its live origin.
+
 - CI runs it on PRs that touch `apps/web`, `apps/server` or `e2e` (the `smoke` job in `.github/workflows/ci.yml`).
 - Use it as a PR's proof: upload `summary.json` and the screenshots (and the clip) with `node tools/proof/upload.mjs`.
   It is a scripted e2e, so it proves the page loads and draws; a T2 change still needs a clip of its own journey

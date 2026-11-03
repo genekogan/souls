@@ -659,6 +659,8 @@ export const SCOPE_RULES = [
   // V3-walk audits fixed world fixtures and a fresh Eden genesis, which the server and the packages produce
   ['apps/server/', ['V1', 'V3-packages', 'V3-walk', 'V5', 'V6']],
   ['apps/web/', ['V1', 'V2', 'V3-bundle', 'V4']],
+  // Owned music inputs feed the generated web playlist as well as package composition checks.
+  ['packages/music/', ['V1', 'V2', 'V3-bundle', 'V3-packages', 'V4']],
   ['packages/', ['V1', 'V3-packages', 'V3-mars-engine', 'V3-walk', 'V5']],
   ['tools/edge-skill/', ['V3-client-cli']],
   ['tools/client-eval/', ['V3-client-cli']],

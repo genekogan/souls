@@ -1,0 +1,21 @@
+{
+  "repository": "sim-score",
+  "commit": "7cb0b2b02ea0b2d4ba9e43484af8e2bd0e81e0f4",
+  "files": [
+    {
+      "sourcePath": "tools/render-index.mjs",
+      "sha256": "9400ab0fe6dda2e73bfadd75f72a4b0d6421015aff6e4eb551316d1058867c82",
+      "bytes": 1070
+    },
+    {
+      "sourcePath": "tools/render.sh",
+      "sha256": "7a68777843c6a7f68e6723162b9a393f3339dcdc2690f875d1ee0492078ef7e6",
+      "bytes": 2543
+    },
+    {
+      "sourcePath": "tools/stage.sh",
+      "sha256": "c2d78bc1c4c37e6b5ea0fcacf59ba84f6c97a5cabce80fa0e110e3c4bf3bf00a",
+      "bytes": 719
+    }
+  ]
+}

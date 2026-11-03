@@ -4,11 +4,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { UsageError, browsersDir, checkPort, parseArgs, portFree } from './local-smoke.mjs';
+import { UsageError, browsersDir, checkPort, parseArgs, portFree, smokeMarsWeb, missingSmokeKit, preflight } from './local-smoke.mjs';
 import { config } from './config.mjs';
 
 test('parseArgs: defaults, flags and the port from E2E_PORT', () => {
-  assert.deepEqual(parseArgs([], {}), { port: null, out: null, clip: false, build: false, keepData: false, timeoutSeconds: 90 });
+  assert.deepEqual(parseArgs([], {}), { port: null, out: null, clip: false, build: false, keepData: false, marsWeb: null, timeoutSeconds: 90 });
   const a = parseArgs(['--port', '9950', '--clip', '--build', '--keep-data', '--out', 'x', '--timeout-seconds', '30'], {});
   assert.equal(a.port, 9950); assert.equal(a.out, 'x'); assert.ok(a.clip && a.build && a.keepData); assert.equal(a.timeoutSeconds, 30);
   assert.equal(parseArgs([], { E2E_PORT: '9970' }).port, 9970);
@@ -43,4 +43,18 @@ test('browsersDir: the env, then /opt/pw-browsers, then this checkout; never a h
   assert.equal(browsersDir({}, (p) => p === '/opt/pw-browsers'), '/opt/pw-browsers');
   const local = browsersDir({}, () => false);
   assert.ok(local.endsWith(join('.e2e', 'browsers')), local);
+});
+
+test('preflight selects and checks the actual served overlay, not a complete viewer beside an incomplete lane', () => {
+  const root = '/fixture', lane = join(root, '.lane/mars-web'), viewer = join(root, 'mars/viewer/dist/client');
+  const present = new Set([lane, join(root, 'apps/web/dist/index.html'), join(viewer, 'modular/humanoid/kit.json'), join(viewer, 'modular/environment/clips-ual.glb')]);
+  const exists = (p) => present.has(p);
+  assert.equal(smokeMarsWeb(root, null, {}, exists), lane);
+  assert.deepEqual(missingSmokeKit(lane, exists), ['modular/humanoid/kit.json', 'modular/environment/clips-ual.glb']);
+  const missing = preflight({ build: false }, lane, { root, exists, spawnCmd: () => ({ status: 0 }) });
+  assert.equal(missing.length, 1);
+  assert.match(missing[0], /selected smoke overlay.*lacks.*--mars-web/);
+  assert.deepEqual(missingSmokeKit(smokeMarsWeb(root, viewer, {}, exists), exists), []);
+  assert.equal(smokeMarsWeb(root, null, { MARS_WEB_DIR: '/env-overlay' }, () => false), '/env-overlay');
+  assert.equal(parseArgs(['--mars-web', '/isolated'], {}).marsWeb, '/isolated');
 });

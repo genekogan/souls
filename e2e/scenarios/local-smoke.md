@@ -22,7 +22,7 @@ assertion) and `shots/`, plus `clip.mp4` (or `clip.webm` without ffmpeg) with `-
 
 ## Preconditions
 - `pnpm install --frozen-lockfile`, `pnpm assets:pull --set web,runtime`, the web build (`apps/web/dist`) and the
-  viewer's static build (`mars/viewer/dist/client/modular`, the people's character set; `--build` makes both).
+  selected static overlay's character kit (`--mars-web`, the launcher overlay, or the viewer build; `--build` builds the viewer when selected).
 - Chromium in `PLAYWRIGHT_BROWSERS_PATH`, `/opt/pw-browsers` or `.e2e/browsers`; never a signed-in profile.
 - A free port and the two after it (`--port`, `E2E_PORT`, or one the runner picks). Not the client fixture's ports in
   `e2e/config.mjs`.
