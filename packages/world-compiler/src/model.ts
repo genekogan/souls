@@ -103,6 +103,9 @@ export class WorldModel {
    *  asks for it, ~0.1 s of its first build). Every index read and write builds it first, from the entities as they are then. */
   private pendingIndex: (() => void) | null = null;
   private ensureIndex() { const f = this.pendingIndex; if (f) { this.pendingIndex = null; f(); } }
+  /** Whether the solid-footprint index exists yet (a lazy one is built from the entities as they are when first read, so an
+   *  insert before that needs no index call; lane PERF-SNAPSHOT: a resync's few upserts never force the whole index). */
+  get hasIndex(): boolean { return this.pendingIndex === null; }
   private safetyKey?: { parts: unknown[]; key: object };
   /** slotsOf per entity object, kept only inside readPass (lane L3g); any model mutation through its methods drops it. */
   private slotMemo?: Map<Entity, Baked['slots']> | null;

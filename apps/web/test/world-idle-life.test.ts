@@ -32,3 +32,13 @@ test('walking/swimming bodies only breathe (no head or hip offsets)', () => {
   assert.ok(a.head.quaternion.angleTo(h0)<1e-9);assert.ok(a.hips.quaternion.angleTo(hip0)<1e-9);
   life.restore();
 });
+
+test('PERF-PASSES: a body outside the view gets no idle offsets this frame, yet neighbours still look at it', () => {
+  const life=new WorldIdleLife(),a=body(),b=body();b.root.position.set(2,0,1);
+  const q0=[a.hips,a.torso,a.head].map(o=>o.quaternion.clone()),h0=b.head.quaternion.clone();
+  life.apply([{...soul('a',[0,0,0],0,'idle',a.root),offscreen:true},soul('b',[2,0,1],Math.PI,'idle',b.root)],1.3,1/60);
+  [a.hips,a.torso,a.head].forEach((o,i)=>assert.ok(o.quaternion.angleTo(q0[i])<1e-12,`off-screen ${o.name} untouched`));
+  assert.ok(b.head.quaternion.angleTo(h0)>1e-6,'the on-screen neighbour turns its head toward it');
+  life.restore();
+  [a.hips,a.torso,a.head].forEach((o,i)=>assert.ok(o.quaternion.angleTo(q0[i])<1e-12));
+});

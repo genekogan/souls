@@ -9,13 +9,20 @@ export type RealismClass='water'|'ground'|'path'|'soil'|'foliage'|'flower'|'bark
 const CLASS_ID:Record<RealismClass,number>={water:15,ground:1,path:2,soil:3,foliage:4,flower:5,bark:6,wood:7,plaster:8,stone:9,roof:10,metal:11,skin:12,cloth:13,generic:14};
 const KEY='eden-realism-v3';
 const patched=new WeakMap<THREE.Material,{cls:RealismClass;onBeforeCompile:THREE.Material['onBeforeCompile'];key:THREE.Material['customProgramCacheKey'];names?:string[]}>();
+/** What `install` gave a material: the values a merged batch carries per vertex or shares (mergedRealismMaterial). */
+const installed=new WeakMap<THREE.Material,{realism:THREE.Vector4;style:THREE.Vector4;paint:THREE.Color;trim:THREE.Color;mural:boolean;facade:boolean}>();
 
 const VERTEX_HEAD=/* glsl */`
 varying vec3 vEdenW;
 varying vec3 vEdenO;
 varying vec3 vEdenN;
 varying float vEdenH;
+#ifdef EDEN_MERGED
+uniform vec4 edenRealismU;
+#define edenRealism edenRealismU
+#else
 uniform vec4 edenRealism;
+#endif
 #ifdef EDEN_GOD_SURFACE
 attribute vec4 edenSurf;
 varying vec3 vEdenL;
@@ -24,6 +31,11 @@ varying vec2 vEdenKS;
 #ifdef EDEN_FACADE
 attribute float edenFace;
 varying float vEdenFace;
+#endif
+#ifdef EDEN_MERGED
+attribute vec4 edenMerged;
+attribute vec3 edenMergedS;
+flat varying vec3 vEdenMS;
 #endif
 `;
 const VERTEX_BODY=/* glsl */`
@@ -35,8 +47,16 @@ const VERTEX_BODY=/* glsl */`
  #ifdef USE_INSTANCING
   edenP=instanceMatrix*edenP;edenOrigin=instanceMatrix*edenOrigin;edenNrm=mat3(instanceMatrix)*edenNrm;
  #endif
+ #ifdef EDEN_MERGED
+  // PERF-BATCH: a merged static batch carries each source object's origin and local height per vertex (mergedRealismAttributes)
+  edenOrigin=vec4(edenMerged.xyz,1.);vEdenMS=edenMergedS;
+ #endif
  vEdenW=(modelMatrix*edenP).xyz;vEdenO=(modelMatrix*edenOrigin).xyz;vEdenN=normalize(mat3(modelMatrix)*edenNrm);
- vEdenH=clamp(transformed.y/max(edenRealism.w,1e-3),0.,1.);
+ #ifdef EDEN_MERGED
+  vEdenH=clamp(edenMerged.w/max(edenRealism.w,1e-3),0.,1.);
+ #else
+  vEdenH=clamp(transformed.y/max(edenRealism.w,1e-3),0.,1.);
+ #endif
  #ifdef EDEN_FACADE
   vEdenFace=edenFace;
  #endif
@@ -51,7 +71,15 @@ varying vec3 vEdenW;
 varying vec3 vEdenO;
 varying vec3 vEdenN;
 varying float vEdenH;
+#ifdef EDEN_MERGED
+// PERF-BATCH round 2: a merged batch shares one program per building layer; each source's class, seed and style ride per
+// vertex (mergedRealismAttributes: flat, so exactly the source's uniforms), strength, height and base y are the batch's.
+uniform vec4 edenRealismU;
+flat varying vec3 vEdenMS;
+#define edenRealism vec4(vEdenMS.x,edenRealismU.y,vEdenMS.y,edenRealismU.w)
+#else
 uniform vec4 edenRealism;
+#endif
 float edenHash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
 // Value noise that fades to its mean once a cell shrinks below ~a pixel: no sparkle/shimmer at distance.
 float edenNoise(vec2 p){vec2 i=floor(p),f=fract(p),d=fwidth(p);f=f*f*(3.-2.*f);
@@ -62,7 +90,12 @@ uniform sampler2D edenPatB;
 uniform sampler2D edenMuralMap;
 uniform sampler2D edenPatC;
 uniform float edenTime;
+#ifdef EDEN_MERGED
+uniform vec4 edenStyleU;
+#define edenStyle vec4(mod(vEdenMS.z,8.),mod(floor(vEdenMS.z/8.),8.),floor(vEdenMS.z/64.),edenStyleU.w)
+#else
 uniform vec4 edenStyle; // building role, wall pattern, roof pattern, building base y
+#endif
 uniform vec3 edenPaint;
 uniform vec3 edenTrim;
 uniform vec4 edenMuralA; // mural centre xyz, width
@@ -336,7 +369,7 @@ const BUMP=/* glsl */`if(edenBumpAmt>0.){vec3 sx=dFdx(-vViewPosition),sy=dFdy(-v
  vec3 grad=sign(det)*(dFdx(edenBump)*r1+dFdy(edenBump)*r2);normal=normalize(abs(det)*normal-grad*edenBumpAmt);}`;
 type CompileShader=Parameters<THREE.Material['onBeforeCompile']>[0];
 function patchShader(shader:CompileShader,uniforms:Record<string,THREE.IUniform>,god=false,facade=false){
- Object.assign(shader.uniforms,uniforms);shader.uniforms.edenTime=realismTime;const head=(god?'#define EDEN_GOD_SURFACE\n':'')+(facade?'#define EDEN_FACADE\n':'');
+ Object.assign(shader.uniforms,uniforms);shader.uniforms.edenTime=realismTime;shader.uniforms.edenRealismU=shader.uniforms.edenRealism;shader.uniforms.edenStyleU=shader.uniforms.edenStyle;const head=(god?'#define EDEN_GOD_SURFACE\n':'')+(facade?'#define EDEN_FACADE\n':'');
  shader.vertexShader=head+VERTEX_HEAD+shader.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n'+VERTEX_BODY);
  shader.fragmentShader=head+FRAGMENT_HEAD+shader.fragmentShader
   .replace('#include <color_fragment>','#include <color_fragment>\n'+FRAGMENT_BODY)
@@ -367,6 +400,7 @@ function install(material:THREE.MeshStandardMaterial,cls:RealismClass,height:num
  material.customProgramCacheKey=function(){return previousKey.call(this)+'|'+KEY+(facade?'|facade':'');};
  material.needsUpdate=true;
  patched.set(material,{cls,onBeforeCompile:previous,key:previousKey,names:context.split('|')});
+ installed.set(material,{realism:uniform.value,style:styleUniforms.edenStyle.value,paint:styleUniforms.edenPaint.value,trim:styleUniforms.edenTrim.value,mural:!!mural,facade});
 }
 
 const SKIP=/water|lake surface|river surface|\bwet\b|cloud|sky|glass|window|pane\b|screen|slide|projection|label|marker|\bring\b|halo|glow|flame|lamp|bulb|highlight|select|riverreach|calmlake| bed\b(?!s)|ceramic|emissive/;
@@ -544,6 +578,44 @@ export function realismNamesOf(material:THREE.Material){return patched.get(mater
 export function realismClassOf(material:THREE.Material):RealismClass|null{const p=patched.get(material);return p&&material.onBeforeCompile!==p.onBeforeCompile?p.cls:null;}
 
 /** Restore pristine compile hooks on given materials (e.g. before a surface study or wind takes ownership); they stay opted out. */
+// PERF-BATCH: the realism shader seeds each object's tone from its origin (vEdenO) and reads its local height
+// (vEdenH), both lost when geometries merge into one scene-space mesh. A merged batch draws with this derived copy of
+// the material (same patch and uniform objects, EDEN_MERGED defined) and carries origin + local y per vertex, so every
+// source pixel shades exactly as its original did. Null for a material the realism pass has not installed.
+const mergedVariants=new WeakMap<THREE.Material,{material:THREE.MeshStandardMaterial;from:THREE.Material['onBeforeCompile']}>();
+// PERF-BATCH round 2: one merged material per signature: every installed material whose shader reads the same things
+// apart from class, seed and style (per vertex in a merged batch) draws from one program and one material, so a cell's
+// walls of every finish, or its roofs, are one draw (Eden 2026: 9 building materials → 3).
+const mergedShared=new Map<string,{material:THREE.MeshStandardMaterial;source:THREE.Material;from:THREE.Material['onBeforeCompile']}>();
+const MAP_KEYS=['map','normalMap','roughnessMap','metalnessMap','emissiveMap','aoMap','alphaMap','bumpMap','lightMap','displacementMap','envMap'] as const;
+function mergedSignature(m:THREE.MeshStandardMaterial,i:NonNullable<ReturnType<typeof installed.get>>){
+ return [m.constructor.name,m.customProgramCacheKey.call(m),i.facade?1:0,i.realism.y,i.realism.w,i.style.w,i.paint.getHex(),i.trim.getHex(),i.mural?m.uuid:0,m.color.getHex(),m.roughness,m.metalness,m.emissive.getHex(),m.emissiveIntensity,m.side,m.shadowSide,m.flatShading?1:0,m.vertexColors?1:0,m.transparent?1:0,m.opacity,m.depthWrite?1:0,m.depthTest?1:0,m.alphaTest,m.alphaHash?1:0,m.alphaToCoverage?1:0,m.polygonOffset?1:0,m.polygonOffsetFactor,m.polygonOffsetUnits,m.envMapIntensity,m.normalScale.x,m.normalScale.y,m.bumpScale,m.wireframe?1:0,m.dithering?1:0,m.toneMapped?1:0,m.fog?1:0,m.blending,m.depthFunc,m.colorWrite?1:0,m.forceSinglePass?1:0,m.premultipliedAlpha?1:0,m.precision,JSON.stringify(m.defines??null),JSON.stringify(m.userData),...MAP_KEYS.map(k=>(m[k] as THREE.Texture|null)?.uuid??'')].join('|');
+}
+export function mergedRealismMaterial(m:THREE.Material):THREE.Material|null{
+ const p=patched.get(m),i=installed.get(m);if(!p||!i||m.onBeforeCompile===p.onBeforeCompile||!(m instanceof THREE.MeshStandardMaterial))return null;
+ const known=mergedVariants.get(m);if(known&&known.from===m.onBeforeCompile)return known.material;
+ const key=mergedSignature(m,i);let shared=mergedShared.get(key);
+ if(!shared||shared.from!==shared.source.onBeforeCompile){
+  const c=m.clone();c.onBeforeCompile=m.onBeforeCompile;c.customProgramCacheKey=()=>m.customProgramCacheKey.call(m)+'|merged';c.defines={...(c.defines??{}),EDEN_MERGED:''};c.name=(m.name||'realism')+' merged';c.userData.mergedRealism=true;c.needsUpdate=true;
+  shared={material:c,source:m,from:m.onBeforeCompile};mergedShared.set(key,shared);
+ }
+ mergedVariants.set(m,{material:shared.material,from:m.onBeforeCompile});return shared.material;
+}
+/** Tests and probes: merged materials made so far. */
+export function mergedRealismCount(){return mergedShared.size;}
+/** Per-vertex `edenMerged` = (source object origin in the batch's frame, source local y) and `edenMergedS` = (realism
+ *  class, seed, style code role + 8·wall + 64·roof) of `material` (the source mesh's installed material). Call before the
+ *  copy is transformed into that frame; `toSceneLocal` is the source mesh's world matrix in the batch's frame. */
+export function mergedRealismAttributes(copy:THREE.BufferGeometry,mesh:THREE.Mesh,toSceneLocal:THREE.Matrix4,material:THREE.Material=mesh.material as THREE.Material){
+ const pos=copy.attributes.position,n=pos.count,out=new Float32Array(n*4),e=toSceneLocal.elements,ox=e[12],oy=e[13],oz=e[14];
+ for(let i=0;i<n;i++){const o=i*4;out[o]=ox;out[o+1]=oy;out[o+2]=oz;out[o+3]=pos.getY(i);}
+ copy.setAttribute('edenMerged',new THREE.BufferAttribute(out,4));
+ const inst=installed.get(material);if(!inst)throw Error('eden-realism.merged-attributes.not-installed');
+ const r=inst.realism,st=inst.style,whole=(v:number,max:number)=>Math.min(max,Math.max(0,Math.round(v)));
+ const cls=r.x,seed=r.z,code=whole(st.x,7)+8*whole(st.y,7)+64*whole(st.z,7),style=new Float32Array(n*3);
+ for(let i=0;i<n;i++){const o=i*3;style[o]=cls;style[o+1]=seed;style[o+2]=code;}
+ copy.setAttribute('edenMergedS',new THREE.BufferAttribute(style,3));
+}
 export function releaseWorldRealism(materials:Iterable<THREE.Material>){
  for(const m of materials){const p=patched.get(m);if(!p)continue;m.onBeforeCompile=p.onBeforeCompile;m.customProgramCacheKey=p.key;m.needsUpdate=true;patched.set(m,{cls:'generic',onBeforeCompile:p.onBeforeCompile,key:p.key});}
 }

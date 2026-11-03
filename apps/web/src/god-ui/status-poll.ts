@@ -1,5 +1,7 @@
-/** One live request and one timer, shared by all views of the world's status. */
-export function statusPoll<T>(read: () => Promise<T>, intervalMs = 4000) {
+import { pageHidden } from '../poll-pace.ts';
+/** One live request and one timer, shared by all views of the world's status. PERF-EDEN: every 8 s (was 4), and not at all
+ *  while the page is hidden (the first visible tick after that reads at once). */
+export function statusPoll<T>(read: () => Promise<T>, intervalMs = 8000) {
   const listeners = new Set<(value: T) => void>();
   let pending: Promise<T> | null = null;
   let latest: T;
@@ -23,7 +25,10 @@ export function statusPoll<T>(read: () => Promise<T>, intervalMs = 4000) {
     pending = request;
     return request;
   };
-  const poll = () => { void refresh().catch(() => {}); };
+  let skipped = false;
+  const poll = () => { if (pageHidden()) { skipped = true; return; } skipped = false; void refresh().catch(() => {}); };
+  const onVisible = () => { if (skipped && !pageHidden() && listeners.size) poll(); };
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
   const subscribe = (listener: (value: T) => void) => {
     listeners.add(listener);
     if (hasValue) listener(latest);

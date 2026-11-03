@@ -15,11 +15,11 @@ test('two status views share each poll and stop only when the last view closes',
   assert.equal(requests, 1);
   assert.deepEqual(bolt, [1]); assert.deepEqual(panel, [1]);
 
-  t.mock.timers.tick(4000); await flush();
+  t.mock.timers.tick(8000); await flush();
   assert.equal(requests, 2);
   assert.deepEqual(bolt, [1, 2]); assert.deepEqual(panel, [1, 2]);
   closeBolt();
-  t.mock.timers.tick(4000); await flush();
+  t.mock.timers.tick(8000); await flush();
   assert.equal(requests, 3); assert.deepEqual(bolt, [1, 2]);
   assert.deepEqual(panel, [1, 2, 3]);
   closePanel();
@@ -39,7 +39,7 @@ test('a slow request is coalesced across timers, title reads and mutation refres
   assert.equal(requests, 1);
   resolve('ready'); await title;
   assert.deepEqual(values, ['ready']);
-  t.mock.timers.tick(4000);
+  t.mock.timers.tick(8000);
   assert.equal(requests, 2);
   resolve('approved'); await status.refresh();
   assert.deepEqual(values, ['ready', 'approved']);
@@ -54,7 +54,7 @@ test('a newly mounted panel reuses a fresh shell result but later subscriptions 
   const values: number[] = [];
   const close = status.subscribe((value) => values.push(value));
   await flush(); assert.equal(requests, 1); assert.deepEqual(values, [1]);
-  close(); t.mock.timers.tick(5000);
+  close(); t.mock.timers.tick(9000);
   const closeLater = status.subscribe((value) => values.push(value));
   await flush(); assert.equal(requests, 2); assert.deepEqual(values, [1, 1, 2]);
   closeLater();
@@ -67,7 +67,7 @@ test('a failed fetch does not poison future polling', async (t) => {
   const values: string[] = [];
   const close = status.subscribe((value) => values.push(value));
   await flush(); assert.deepEqual(values, []);
-  t.mock.timers.tick(4000); await flush();
+  t.mock.timers.tick(8000); await flush();
   assert.equal(requests, 2); assert.deepEqual(values, ['ready']);
   close();
 });
@@ -85,7 +85,7 @@ test('an account reset clears cached owner data before another view subscribes',
   const closeVisitor = status.subscribe((value) => visitor.push(value));
   assert.deepEqual(visitor, [null]);
   await flush(); assert.deepEqual(visitor, [null, 'visitor']); assert.equal(requests, 2);
-  t.mock.timers.tick(4000); await flush(); assert.equal(requests, 3);
+  t.mock.timers.tick(8000); await flush(); assert.equal(requests, 3);
   closeVisitor();
 });
 
@@ -100,7 +100,7 @@ test('a previous account request cannot refill the cache, reach a waiter or clea
   const current = status.refresh(); assert.notEqual(current, old); assert.equal(finish.length, 2);
   finish[0]('owner-private-codes'); assert.equal(await old, null);
   assert.deepEqual(values, [null]); assert.equal(status.refresh(), current);
-  t.mock.timers.tick(4000); assert.equal(finish.length, 2);
+  t.mock.timers.tick(8000); assert.equal(finish.length, 2);
   finish[1]('visitor'); await current; assert.deepEqual(values, [null, 'visitor']);
   const remounted: (string | null)[] = [];
   const closeRemount = status.subscribe((value) => remounted.push(value));

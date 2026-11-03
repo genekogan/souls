@@ -28,6 +28,9 @@ export class WorldVisibilityInstances {
  private proxy?:THREE.Mesh;
  private query?:Map<THREE.InstancedMesh,Cache|undefined>;
  private queryObjects?:readonly THREE.Object3D[];
+ private queryDepth=0;
+ /** Bounds passes taken (one per outermost withQuery; tests and frame-cost readouts). */
+ readonly stats={boundsPasses:0};
  // World bounding spheres per query object (x,y,z,r; NaN = never pre-rejected).
  private bounds?:Float64Array;
  private boundsObjects?:readonly THREE.Object3D[];
@@ -122,12 +125,14 @@ export class WorldVisibilityInstances {
  /** Refresh once for a synchronous read-only score, not once per subject ray.
   * Custom raycasts stay on the fully revalidated fallback path. */
  withQuery<T>(objects:readonly THREE.Object3D[],run:()=>T):T {
-  if(this.query&&this.queryObjects===objects)return run();
+  // PERF-PASSES: a query nested in another over the same objects (every score() inside evaluate()) reuses its bounds
+  // pass, whether or not the instance caches were taken (a custom raycast among the objects leaves `query` unset)
+  if(this.queryDepth>0&&this.queryObjects===objects)return run();
   const previous=this.query,previousObjects=this.queryObjects,generation=this.generation;
   const stock=objects.every(o=>STOCK_RAYCASTS.has(o.raycast));
   this.query=stock&&!previous?new Map(objects.filter((o):o is THREE.InstancedMesh=>o instanceof THREE.InstancedMesh).map(o=>[o,this.prepare(o)])):undefined;
-  this.queryObjects=objects;const previousBounds=this.bounds,previousBoundsObjects=this.boundsObjects;this.bounds=boundsOf(objects);this.boundsObjects=objects;
-  try{return run();}finally{if(this.generation===generation){this.query=previous;this.queryObjects=previousObjects;this.bounds=previousBounds;this.boundsObjects=previousBoundsObjects;}}
+  this.queryObjects=objects;const previousBounds=this.bounds,previousBoundsObjects=this.boundsObjects;this.bounds=boundsOf(objects);this.boundsObjects=objects;this.stats.boundsPasses++;this.queryDepth++;
+  try{return run();}finally{this.queryDepth--;if(this.generation===generation){this.query=previous;this.queryObjects=previousObjects;this.bounds=previousBounds;this.boundsObjects=previousBoundsObjects;}}
  }
  // Exact stock Mesh near/far sphere rejection.
  private misses(sphere:THREE.Sphere,raycaster:THREE.Raycaster){
@@ -202,15 +207,23 @@ function treeOf(spheres:readonly THREE.Sphere[]):Tree{
 }
 /** Every Mesh/InstancedMesh hit is a point inside its (stock-used) world bounding
  * sphere at a distance in [near,far]; other object kinds are never pre-rejected. */
+// PERF-PASSES: ~6,000 objects per pass on Eden 2026, once per speech batch: no closures or arrays per object. A non-finite
+// matrix element gives a non-finite centre or radius here (NaN/Infinity propagate through the products), so the
+// finiteness test is on the result; a sphere that stays finite under such a matrix would bound the same points.
 function boundsOf(objects:readonly THREE.Object3D[]):Float64Array{
- const out=new Float64Array(objects.length*4).fill(NaN),sphere=new THREE.Sphere();
- objects.forEach((o:THREE.Object3D,i)=>{
-  let s:THREE.Sphere|null=null;const kind:unknown=o.constructor;
+ const out=new Float64Array(objects.length*4).fill(NaN);
+ for(let i=0;i<objects.length;i++){
+  const o=objects[i];let s:THREE.Sphere|null=null;const kind:unknown=o.constructor;
   if(kind===THREE.InstancedMesh&&o.raycast===instanceRaycast)s=(o as THREE.InstancedMesh).boundingSphere;
   else if(kind===THREE.Mesh&&o.raycast===meshRaycast)s=(o as THREE.Mesh).geometry.boundingSphere;
-  if(!s||!Number.isFinite(s.radius)||!o.matrixWorld.elements.every(Number.isFinite))return;
-  sphere.copy(s).applyMatrix4(o.matrixWorld);out.set([sphere.center.x,sphere.center.y,sphere.center.z,sphere.radius*(1+1e-6)+1e-6],i*4);
- });
+  if(!s||!Number.isFinite(s.radius))continue;
+  const e=o.matrixWorld.elements,c=s.center,x=c.x,y=c.y,z=c.z;
+  const w=1/(e[3]*x+e[7]*y+e[11]*z+e[15]),cx=(e[0]*x+e[4]*y+e[8]*z+e[12])*w,cy=(e[1]*x+e[5]*y+e[9]*z+e[13])*w,cz=(e[2]*x+e[6]*y+e[10]*z+e[14])*w;
+  // Sphere.applyMatrix4: the radius scales by the matrix's largest axis scale
+  const sx=e[0]*e[0]+e[1]*e[1]+e[2]*e[2],sy=e[4]*e[4]+e[5]*e[5]+e[6]*e[6],sz=e[8]*e[8]+e[9]*e[9]+e[10]*e[10],r=s.radius*Math.sqrt(Math.max(sx,sy,sz));
+  if(!Number.isFinite(cx+cy+cz+r))continue;
+  out[i*4]=cx;out[i*4+1]=cy;out[i*4+2]=cz;out[i*4+3]=r*(1+1e-6)+1e-6;
+ }
  return out;
 }
 function segmentMisses(b:Float64Array,i:number,raycaster:THREE.Raycaster){

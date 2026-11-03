@@ -1,5 +1,6 @@
 import {handActuatorFrame,knockContacts,opPoint,HAND_REACH_SECONDS,LOCK_TURN_SECONDS,type HandActuatorMotion} from '../../../mars/viewer/engine/social/hand-actuator.ts';
 import {lockPose} from './gen-mesh/vocab-look.ts';
+import {frozenMatrixWorld} from './rendering/FrozenMatrixWorld.ts';
 // The entity world's picture (spec <eden4>/28 §8): terrain baked from the
 // same ground recipe the server uses, water, a horizon ring, and one mesh per
 // placed entity drawn from its def. Diffs arrive over the hub as
@@ -8,14 +9,16 @@ import {lockPose} from './gen-mesh/vocab-look.ts';
 import { noteModeration, noteSnapshotVersion } from './moderation-hidden.ts';
 import { godFeature, isFlagDef } from './god-ui/features.ts';
 import { loadSnapshot } from './snapshot-wire.ts';
+import { snapshotModel } from './snapshot-model.ts';
+import type { SnapshotDecoder, SnapshotDelta } from './snapshot-delta.ts';
 import * as THREE from 'three';
 import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@sim/ground';
-import { WorldModel, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
+import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
 import { GENERATORS } from '@sim/generators';
 import { meshFor, type MeshCtx } from './gen-mesh/index.ts';
 import { clearBuildingPrefetch, prefetchBuilding } from './gen-mesh/building.mesh.ts';
 import { MaterialLib } from './gen-mesh/materials.ts';
-import { animate, hasMotion, syncLightGlow } from './gen-mesh/motion.ts';
+import { animate, glowKind, hasMotion, quantizeGlow, steadyGlowAt, syncLightGlow } from './gen-mesh/motion.ts';
 import { hasFlames } from './fx/flames.ts';
 import {lightDiffAhead} from './light-diff-clock.ts';
 import {wateringDiffAhead} from './watering-diff-clock.ts';
@@ -37,7 +40,7 @@ import { noteUploadSizes } from './cdn-assets.ts';
 import { eagerShas, planEager } from './gen-mesh/lazy-assets.ts';
 import { progressiveNearM } from './quality-tier.ts';
 import { contextStamp } from './context-stamp.ts';
-import { arrivalOver } from './arrival-marks.ts';
+import { arrivalMark, arrivalOver } from './arrival-marks.ts';
 import { computeVertexNormals } from './gen-mesh/fast-geometry.ts';
 import { entityArrivalPose } from './entity-arrival.ts';
 import { keySeen, shapeWedgeDistance, viewFirst, viewWedge, type ViewWedge } from './arrival-view.ts';
@@ -47,6 +50,9 @@ import { isRideBalloonDef, rideMotionDef } from './gen-mesh/kits/ride-balloon.ts
 import { isRideCarrierDef, carrierIdOf } from './ride-carriers.ts';
 import { holdRainbow, isRainbowDef } from './atmosphere/rainbow-things.ts';
 import {WorldEntityStairs,pendingStairDiff} from './WorldEntityStairs.ts';
+import { ScatterPools } from './ScatterPools.ts';
+import { MotionInstancer } from './MotionInstancer.ts';
+import { StreamRing, sectorsWithin, sectorDistance } from './StreamRing.ts';
 
 export type EntitySnapshot = { contract: string; worldId: string; seq: number; counter?: number; seed?: string; constants: WorldModel['constants']; state: WorldModel['state']; ground: Ground; defs: StoredDef[]; entities: Entity[]; tiles: Record<string, string>; assetBytes?: Record<string, number>; builds?: PublicSite[]; buildsRev?: number; now?: number };
 type DiffMsg = { type: 'edge'; kind: 'world-diff'; seq: number; diff: { upserts: Entity[]; removes: string[]; defs: StoredDef[]; tiles: string[]; world?: Partial<WorldModel['state']> }; ground?: Ground; defs?: StoredDef[] };
@@ -59,11 +65,20 @@ const easeOut = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 /** P1 phones: motion that only changes a light's glow (lamps: ~790 on Eden 2026); no part of the thing moves. */
 const glowOnly = (def: StoredDef) => !!(def.components.light || def.components.lights) && !hasMotion({ ...def, components: { ...def.components, light: undefined, lights: undefined } } as StoredDef);
 /** P1 phones: a frozen thing's subtree is skipped by scene.updateMatrixWorld (its matrices are current; see freeze). */
-function frozenMatrixWorld(this: THREE.Object3D) { /* nothing: thawed before anything in it changes */ }
-const _box = new THREE.Box3(), _projScreen = new THREE.Matrix4();
+// Shared identity lets bounded static preparation distinguish this known no-op from arbitrary matrix hooks.
+const _box = new THREE.Box3(), _projScreen = new THREE.Matrix4(), _sphere = new THREE.Sphere();
 
 type Figure = { holder: THREE.Object3D; wrists: [THREE.Object3D, THREE.Object3D]; knuckles: [THREE.Object3D | null, THREE.Object3D | null] } | { missingAt: number };
-type Drawn = { opening?: OpeningMotion; interior?: { key: number; host: Drawn | null; slot: string }; inst?: string; settled?: boolean; frozen?: THREE.Object3D[]; thaw?: boolean; noFreeze?: boolean; sphere?: THREE.Sphere; offscreen?: boolean; shown?: boolean; obj: THREE.Object3D; from: { p: THREE.Vector3; s: number }; to: { p: THREE.Vector3; s: number }; t0: number; dur: number; removing?: boolean; defHash: string; world?: boolean; motion?: { entity: Entity; def: StoredDef; yaw: number; glowOnly: boolean } };
+/** PERF-EVENTLOOP: which building (if any) holds a thing and on which storey, resolved when it is first looked at and again
+ *  when any ancestor it walked through (`on`) is drawn, redrawn or removed (`stale`), never per frame. */
+type Interior = { host: Drawn | null; slot: string; floor: number; on: string[]; stale?: boolean };
+type Drawn = { cut?: boolean; opening?: OpeningMotion; interior?: Interior; inst?: string;
+  /** PERF-EVENTLOOP: its entity id and a stable phase for the frame-spread checks (set when the record is adopted, DrawnMap). */
+  id?: string; k?: number;
+  /** PERF-EVENTLOOP: a steady lamp whose glow was not re-synced at the last level step (hidden or off screen then): synced when seen. */
+  glowStale?: boolean;
+  /** PERF-PASSES: a motion thing's view sphere (offset from its position, radius; measured once it has settled) for the view test. */
+  mo?: { ox: number; oy: number; oz: number; r: number }; settled?: boolean; frozen?: THREE.Object3D[]; thaw?: boolean; noFreeze?: boolean; sphere?: THREE.Sphere; offscreen?: boolean; shown?: boolean; obj: THREE.Object3D; from: { p: THREE.Vector3; s: number }; to: { p: THREE.Vector3; s: number }; t0: number; dur: number; removing?: boolean; defHash: string; world?: boolean; motion?: { entity: Entity; def: StoredDef; yaw: number; glowOnly: boolean } };
 
 export class WorldEntityLayer {
   readonly group = new THREE.Group();
@@ -74,6 +89,154 @@ export class WorldEntityLayer {
    *  in small slices between frames. Edge diffs still wait for it (applyEdge). */
   filling = false;
   private model: WorldModel | null = null;
+  /** Experimental distance streaming (StreamRing.ts): with
+   *  a ring, start() draws only the things within `inner` m of the arrival camera, and every frame (streamFrom + update)
+   *  streams in what the camera approaches and unloads what it left beyond `outer` (removed from its batch, pool or
+   *  instance slot at once; built again when it comes back). Terrain sectors stream the same way (full within `inner`,
+   *  coarse to `outer` + a sector, none beyond). Opt in with `?stream=<m>`; off by default at every world size.
+   *  Distance alone is not a visibility bound: far geometry, shadows and offset children can still be visible. */
+  streaming: { inner: number; outer: number } | null = null;
+  private ring: StreamRing | null = null;
+  private readonly streamEye = new THREE.Vector3(); private streamEyeSet = false;
+  private streamQueue: string[] = []; private readonly streamQueued = new Set<string>();
+  private unloadQueue: string[] = [];
+  private readonly streamPending = new Map<string, Promise<void>>();
+  private sectorWork: { key: string; tiles: [number, number][]; full: boolean } | null = null;
+  /** Probes and tests: what streaming did. */
+  readonly streamStats = { built: 0, unloaded: 0, queued: 0, sectors: 0, sectorsDropped: 0, stepMs: 0, maxStepMs: 0, updates: 0 };
+  /** The camera this frame (LiveWorld, before update): what the ring is evaluated around. */
+  streamFrom(eye: THREE.Vector3) { this.streamEye.copy(eye); this.streamEyeSet = true; }
+  /** What the ring decided for a thing (tests, probes): wanted, queued, drawn. */
+  streamState(id: string) { return this.ring ? { wanted: this.ring.isWanted(id), queued: this.streamQueued.has(id), drawn: this.drawn.has(id), ringed: this.ring.has(id) } : null; }
+  private streamOption(): { inner: number; outer: number } | null {
+    const q = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('stream');
+    if (q === '0' || q === 'off') return null;
+    const inner = q !== null && Number.isFinite(Number(q)) && Number(q) > 0 ? Number(q) : 0;
+    return inner > 0 ? { inner, outer: inner * STREAM_OUTER_RATIO } : null;
+  }
+  /** A thing's ring entry from its root's stored pose or shape (no slot bakes: a building's furniture goes with its building).
+   *  Pinned (always built): Souls' bodies and what they carry, things without a pose (world-wide landforms), the horizon
+   *  and the arrival spot. */
+  private ringSet(e: Entity, def: StoredDef) {
+    const ring = this.ring!, m = this.model!;
+    let r = e, rdef = def;
+    for (let depth = 0; r.in.parent !== 'world' && depth < 8; depth++) { const up = m.entities.get(r.in.parent); if (!up) break; r = up; rdef = m.resolvedDef(r.def) ?? rdef; }
+    const pinned = !!def.components.body || !!rdef.components.body || r.name === 'arrival' || def.tags.includes('horizon');
+    const shape = (r as { shape?: { path?: unknown; area?: unknown } }).shape, pts = shape && (Array.isArray(shape.path) ? shape.path : Array.isArray(shape.area) ? shape.area : null) as number[][] | null;
+    if (pts && pts.length) {
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < z0) z0 = p[1]; if (p[1] > z1) z1 = p[1]; }
+      ring.set(e.id, (x0 + x1) / 2, (z0 + z1) / 2, Math.hypot(x1 - x0, z1 - z0) / 2 + 8, pinned); return;
+    }
+    const p = (r as { p?: unknown }).p;
+    if (!Array.isArray(p) || p.length < 3 || !Number.isFinite(p[0]) || !Number.isFinite(p[2])) { ring.set(e.id, 0, 0, 0, true); return; }
+    const box = (rdef as { size?: { box?: unknown } }).size?.box, sc = Math.max(1, Math.abs(Number((r as { s?: unknown }).s)) || 1);
+    const reach = Array.isArray(box) && box.length === 3 ? Math.hypot(Number(box[0]) || 0, Number(box[2]) || 0) / 2 * sc + 4 : 8;
+    ring.set(e.id, p[0] as number, p[2] as number, reach, pinned);
+  }
+  /** Take a drawn thing out of the picture now (it left the ring): its instance slot, pool instances, batch membership and
+   *  scene object; its geometry when nothing else drawn shares it. Built again by draw() when it comes back. */
+  private unload(id: string) {
+    const d = this.drawn.get(id); if (!d) return;
+    this.forget(id);
+    if (d.inst) this.instancer.remove(d.inst, id);
+    else { if (d.frozen) this.thaw(d); this.motionInstancer.untrack(d.obj); this.thingsGroup.remove(d.obj); disposeObject(d.obj); this.releaseGeometry(d.obj); }
+    this.drawn.delete(id); this.staticRevision++; this.streamStats.unloaded++;
+  }
+  /** Distinct picture/pool owners of geometry, including children attached after a lazy asset arrives. Pool prototypes
+   * remain owners even when their last instance unloads. A replacement is retained before the previous owner leaves. */
+  private readonly geoRefs = new Map<THREE.BufferGeometry, number>();
+  private readonly geometryOwners = new Map<THREE.Object3D, { geometries: Set<THREE.BufferGeometry>; nodes: Set<THREE.Object3D>; added: () => void }>();
+  private retainGeometry(o: THREE.Object3D) {
+    if (!this.ring) return;
+    const owner = this.geometryOwners.get(o) ?? { geometries: new Set<THREE.BufferGeometry>(), nodes: new Set<THREE.Object3D>(), added: () => this.retainGeometry(o) };
+    this.geometryOwners.set(o, owner);
+    o.traverse(c => {
+      if (!owner.nodes.has(c)) { owner.nodes.add(c); c.addEventListener('childadded', owner.added); }
+      const geometry = (c as THREE.Mesh).geometry;
+      if (!geometry || owner.geometries.has(geometry)) return;
+      owner.geometries.add(geometry); this.geoRefs.set(geometry, (this.geoRefs.get(geometry) ?? 0) + 1);
+    });
+  }
+  private releaseGeometry(o: THREE.Object3D) {
+    const owner = this.geometryOwners.get(o); if (!owner) return;
+    this.geometryOwners.delete(o);
+    for (const node of owner.nodes) node.removeEventListener('childadded', owner.added);
+    for (const geometry of owner.geometries) {
+      const remaining = this.geoRefs.get(geometry)! - 1;
+      if (remaining > 0) this.geoRefs.set(geometry, remaining);
+      else { this.geoRefs.delete(geometry); geometry.dispose(); }
+    }
+  }
+  /** Pools add/grow their own meshes, including engine fixtures tracked outside draw(). Watch the group from its first
+   * mesh onward; a grow can remove the old mesh before adding its replacement without releasing the prototype. */
+  private readonly onPoolGeometryAdded = (event: { target: THREE.Object3D }) => {
+    if (!this.geometryOwners.has(event.target)) this.retainGeometry(event.target);
+  };
+  /** Per frame under streaming: re-evaluate the ring when the camera moved, unload what left, draw what entered (nearest
+   *  first) and step the terrain sectors, all within STREAM_SLICE_MS so no frame grows a long task. */
+  private streamStep() {
+    const ring = this.ring, m = this.model; if (!ring || !m || !this.streamEyeSet) return;
+    const t0 = performance.now(), until = t0 + STREAM_SLICE_MS, x = this.streamEye.x, z = this.streamEye.z;
+    const { enter, leave } = ring.update(x, z);
+    if (enter.length || leave.length) {
+      this.streamStats.updates++;
+      for (const id of leave) this.unloadQueue.push(id);
+      const fresh: Entity[] = [];
+      for (const id of enter) if (!this.streamQueued.has(id)) { this.streamQueued.add(id); this.streamQueue.push(id); const e = m.entities.get(id); if (e) fresh.push(e); }
+      this.prefetchBuildings(m, fresh, this.streamPending);   // their geometry starts in the building workers now
+    }
+    if (ring.centre) this.streamSectors(ring.centre.x, ring.centre.z);
+    // unloads first (they free what the builds need), then the terrain's own slice (a tile bake or a sector mesh: each is
+    // longer than a thing), then builds to their own budget; a frame never spends more than the two slices here
+    let k = 0;
+    while (k < this.unloadQueue.length && performance.now() < until) { const id = this.unloadQueue[k++]; if (!ring.isWanted(id)) this.unload(id); }
+    if (k) this.unloadQueue.splice(0, k);
+    this.sectorStep(performance.now() + STREAM_SECTOR_MS);
+    if (this.streamQueue.length) {
+      const until = performance.now() + STREAM_SLICE_MS;
+      let i = 0, deferred = 0; const n = this.streamQueue.length;
+      m.readPass(() => {
+        while (i < n && performance.now() < until) {
+          const id = this.streamQueue[i++];
+          if (!ring.isWanted(id)) { this.streamQueued.delete(id); continue; }
+          const e = m.entities.get(id); if (!e) { this.streamQueued.delete(id); continue; }
+          if (this.streamPending.has(id)) { this.streamQueue.push(id); if (++deferred >= n) break; continue; }   // its workers are not done: later
+          this.streamQueued.delete(id); this.draw(e, false); this.streamStats.built++;
+        }
+      });
+      if (i) this.streamQueue.splice(0, i);
+    }
+    this.streamStats.queued = this.streamQueue.length;
+    const ms = performance.now() - t0; this.streamStats.stepMs = ms; if (ms > this.streamStats.maxStepMs) this.streamStats.maxStepMs = ms;
+  }
+  /** Which terrain sectors the camera needs: full within `inner`, coarse to `outer` + one sector, dropped beyond `outer` +
+   *  two. One sector's work per frame (sectorStep): a coarse sector is one step; a full one bakes its tiles a few per frame
+   *  first, then draws (a 16-tile sector baked in one go was a 100 ms+ task). */
+  private streamSectors(x: number, z: number) {
+    const m = this.model!, ring = this.ring!; if (this.sectorWork) return;
+    const sectorM = SECTOR_TILES * TILE_M, extent = m.ground().extent;
+    for (const [key, mesh] of this.sectors) if (sectorDistance(key, x, z, sectorM) > ring.outer + 2 * sectorM) { this.terrainGroup.remove(mesh); mesh.geometry.dispose(); this.sectors.delete(key); this.coarse.delete(key); this.streamStats.sectorsDropped++; }
+    for (const key of sectorsWithin(x, z, ring.inner, sectorM, extent)) if (!this.sectors.has(key) || this.coarse.has(key)) { this.sectorWork = { key, tiles: this.sectorTiles(key), full: true }; return; }
+    for (const key of sectorsWithin(x, z, ring.outer + sectorM, sectorM, extent)) if (!this.sectors.has(key)) { this.sectorWork = { key, tiles: [], full: false }; return; }
+  }
+  private sectorTiles(key: string): [number, number][] {
+    const m = this.model!, [bx0, bz0, bx1, bz1] = m.ground().extent, [sx, sz] = key.split(',').map(Number);
+    const tx0 = Math.max(Math.floor(bx0 / TILE_M), sx * SECTOR_TILES), tz0 = Math.max(Math.floor(bz0 / TILE_M), sz * SECTOR_TILES);
+    const tx1 = Math.min(Math.ceil(bx1 / TILE_M) - 1, sx * SECTOR_TILES + SECTOR_TILES - 1), tz1 = Math.min(Math.ceil(bz1 / TILE_M) - 1, sz * SECTOR_TILES + SECTOR_TILES - 1);
+    const out: [number, number][] = []; for (let tz = tz0; tz <= tz1; tz++) for (let tx = tx0; tx <= tx1; tx++) out.push([tx, tz]);
+    return out;
+  }
+  private sectorStep(until: number) {
+    const w = this.sectorWork, m = this.model; if (!w || !m) return;
+    while (w.tiles.length && performance.now() < until) { const [tx, tz] = w.tiles.pop()!; m.terrain.tile(tx, tz); }   // bakes what is not baked yet
+    if (w.tiles.length) return;
+    const [bx0, bz0, bx1, bz1] = m.ground().extent, [sx, sz] = w.key.split(',').map(Number);
+    const t: [number, number, number, number] = [Math.floor(bx0 / TILE_M), Math.floor(bz0 / TILE_M), Math.ceil(bx1 / TILE_M) - 1, Math.ceil(bz1 / TILE_M) - 1];
+    this.placeSector(w.key, this.sectorMesh(sx, sz, t, true, w.full ? TERRAIN_STEP : COARSE_STEP, !w.full));
+    if (w.full) this.coarse.delete(w.key); else this.coarse.add(w.key);
+    this.sectorWork = null; this.streamStats.sectors++;
+  }
   private readonly stairContacts=new WorldEntityStairs();
   clearSupplementalStairs(){this.stairContacts.clearObservation();}
   supplementalStairs(messages:readonly {kind?:string;seq?:unknown}[]=[],nativeTick:number|null=null){
@@ -102,10 +265,65 @@ export class WorldEntityLayer {
   private readonly waterGroup = new THREE.Group();
   private readonly thingsGroup = new THREE.Group();
   private sectors = new Map<string, THREE.Mesh>();
-  private drawn = new Map<string, Drawn>();
+  /** PERF-EVENTLOOP: every record set here is adopted (its `settled` and `thaw` writes wake it, it joins `live` for one pass) and
+   *  released when replaced or deleted (out of every per-frame set; the things whose host it was look for it again). */
+  private readonly drawn: DrawnMap = new DrawnMap(this);
+  /** PERF-EVENTLOOP: update() visits only these each frame (the rest cost nothing): things in flight (eased in, moving to a new pose,
+   *  easing out), with motion (not a glow-only lamp on the freeze tiers), ridden by a native twin, held or carried, pouring or at a
+   *  figure's lips, and every record once when it is drawn, thawed or woken (`settled = false`); a settled still thing leaves after
+   *  its still pass (freeze, interior visibility, lamp classification). */
+  private readonly live = new Set<string>();
+  /** PERF-EVENTLOOP: settled things whose interior visibility must be read again this frame: their host's cut or far state moved
+   *  (hostPass), an ancestor was (re)drawn or removed, the container they are kept in, or a steady lamp seen with a stale glow. */
+  private readonly visDirty = new Set<string>();
+  /** PERF-EVENTLOOP: things whose hand-operated part is still turning (opening-motion.ts), stepped each frame. */
+  private readonly openings = new Set<string>();
+  /** PERF-EVENTLOOP: ancestor entity id → the drawn things whose interior resolution walked through it (resolveInterior). */
+  private readonly dependents = new Map<string, Set<string>>();
+  /** PERF-EVENTLOOP: drawn things with an interior (buildings), for decideCuts. */
+  private readonly interiors = new Set<Drawn>();
+  /** PERF-EVENTLOOP: settled glow-only lamps by how their glow moves: with the shared steady level (synced only when its quantized
+   *  value steps, and only those seen; the rest sync when seen), or by their own pattern (a blink, twinkle or flicker: every 4th
+   *  frame, 16th off screen, as before). Switched-off lamps are in neither: nothing of them moves. */
+  private readonly glowSteady = new Set<string>();
+  private readonly glowAnim = new Set<string>();
+  private glowLevel = -1;
+  private serial = 0;
+  /** PERF-EVENTLOOP: a record enters the per-frame sets (DrawnMap.set). Its `settled` and `thaw` become accessors so that any
+   *  write that takes it out of rest (draw, undraw, a hand, a native twin, a child added to a frozen subtree, a test) wakes it. */
+  adopt(id: string, d: Drawn) {
+    let settled = d.settled, thaw = d.thaw;
+    Object.defineProperty(d, 'settled', { get: () => settled, set: (v: boolean | undefined) => { settled = v; if (!v) this.live.add(id); }, enumerable: true, configurable: true });
+    Object.defineProperty(d, 'thaw', { get: () => thaw, set: (v: boolean | undefined) => { thaw = v; if (v) this.live.add(id); }, enumerable: true, configurable: true });
+    d.id = id; d.k = ++this.serial;
+    if (d.obj.userData.interior) this.interiors.add(d);
+    if (d.opening) this.openings.add(id);
+    this.live.add(id);
+    this.touchDependents(id);
+  }
+  /** PERF-EVENTLOOP: a record leaves (replaced or deleted): out of every set; what it hosted or was an ancestor of resolves again. */
+  release(id: string, d: Drawn) {
+    this.live.delete(id); this.visDirty.delete(id); this.openings.delete(id); this.glowSteady.delete(id); this.glowAnim.delete(id);
+    this.interiors.delete(d); this.hostState.delete(d);
+    if (d.interior) { for (const a of d.interior.on) { const set = this.dependents.get(a); if (set) { set.delete(id); if (!set.size) this.dependents.delete(a); } } }
+    this.touchDependents(id);
+  }
+  /** The things whose interior resolution walked through entity `id`: they look again (it was drawn, redrawn or removed). */
+  private touchDependents(id: string) {
+    const deps = this.dependents.get(id); if (!deps) return;
+    for (const dep of deps) { const x = this.drawn.get(dep); if (x?.interior) x.interior.stale = true; this.visDirty.add(dep); }
+  }
+  /** PERF-EVENTLOOP, for tests and probes: how many things update() visits per frame, and the dirty sets' sizes. */
+  get loopStats() { return { live: this.live.size, visDirty: this.visDirty.size, openings: this.openings.size, hosts: this.hostState.size, glowSteady: this.glowSteady.size, glowAnim: this.glowAnim.size, drawn: this.drawn.size }; }
   private materials = new Map<string, THREE.Material>();
   readonly lib = new MaterialLib();
   readonly instancer = new EntityInstancer();
+  /** PERF-BATCH round 2: frozen scatters' instances draw from one pool per species shared by every scatter (192 m cells on phones; ScatterPools.ts). */
+  readonly scatterPools = new ScatterPools();
+  scatterPooling = true;
+  /** PERF-BATCH round 2: moving things (not lamps that only glow, not fires) draw as instances of their meshes (MotionInstancer.ts). */
+  readonly motionInstancer = new MotionInstancer();
+  motionInstancing = true;
   readonly sites: WorldBuildSites;
   /** W4: old Eden's tall grass, tufts and wildflowers, drawn around the camera from the ground recipe. */
   readonly cover = new GroundCover(() => (this.active ? this.model : null), coverSetting(), () => this.seq);
@@ -122,7 +340,7 @@ export class WorldEntityLayer {
       const m=entities[id].state.handActuator as HandActuatorMotion|undefined;
       // Soul Actions entry 38: a poster being taken down is drawn in the hands (humans.ts) from the moment the peel starts;
       // the wall's own copy of it is hidden until the wall redraws without it at the depicted commit
-      if(m?.stroke?.kind==='unposter'&&m.abortedAt===undefined&&(tick-m.startTick)*dt>=HAND_REACH_SECONDS){const d=this.drawn.get(m.target);if(d){let best:THREE.Object3D|null=null,bd=.12;d.obj.traverse(o=>{if(!o.name.startsWith('poster-slot-'))return;const p=o.getWorldPosition(new THREE.Vector3()),dd=Math.hypot(p.x-m.at[0],p.y-m.at[1],p.z-m.at[2]);if(dd<bd){bd=dd;best=o;}});if(best){(best as THREE.Object3D).visible=false;peeled.add(best);}}continue;}
+      if(m?.stroke?.kind==='unposter'&&m.abortedAt===undefined&&(tick-m.startTick)*dt>=HAND_REACH_SECONDS){const d=this.drawn.get(m.target);if(d){let best:THREE.Object3D|null=null,bd=.12;d.obj.traverse(o=>{if(!o.name.startsWith('poster-slot-'))return;const p=o.getWorldPosition(new THREE.Vector3()),dd=Math.hypot(p.x-m.at[0],p.y-m.at[1],p.z-m.at[2]);if(dd<bd){bd=dd;best=o;}});if(best){(best as THREE.Object3D).visible=false;peeled.add(best);this.thawOwner(best);}}continue;}
       // Entry 10: a bell pull's rope swings with the hand's tug, on the depicted tick
       if(m?.tug){const rope=this.drawn.get(m.target)?.obj.getObjectByName('role:rope');if(rope){rope.rotation.x=-handActuatorFrame(m,(tick-m.startTick)*dt).tug*m.tug.angle;this.tugged.add(rope);}continue;}
       if(!m?.opening&&!m?.slide)continue;
@@ -164,7 +382,7 @@ export class WorldEntityLayer {
       if(!open){if(k.inst?k.shown!==false:k.obj.visible)this.showKept(id,k,false);}
       else if(k.obj.position.distanceToSquared(k.to.p)>1e-8&&k.settled){k.obj.position.copy(k.to.p);this.showKept(id,k,true);}
     }
-    for(const o of this.peeled)if(!peeled.has(o))o.visible=true;
+    for(const o of this.peeled)if(!peeled.has(o)){o.visible=true;this.thawOwner(o);}
     this.peeled=peeled;
   }
   private peeled=new Set<THREE.Object3D>();
@@ -242,6 +460,7 @@ export class WorldEntityLayer {
   private now = 0;
   private readonly api: (p: string) => string;
   constructor(api: (p: string) => string) {
+    for (const pool of [this.instancer, this.scatterPools, this.motionInstancer]) pool.group.addEventListener('childadded', this.onPoolGeometryAdded);
     this.api = api;
     this.sites = new WorldBuildSites({ model: () => this.model, groundAt: this.groundAt, fetchBuilds: async () => {
       const r = await fetch(this.api('/v1/world/builds'), { signal: this.signal ?? undefined, cache: 'no-store' });
@@ -249,35 +468,108 @@ export class WorldEntityLayer {
       return r.json();
     } });
     this.group.name = 'entity-world';
-    this.group.add(this.terrainGroup, this.waterGroup, this.thingsGroup, this.instancer.group, this.sites.group, this.cover.group);
+    this.group.add(this.terrainGroup, this.waterGroup, this.thingsGroup, this.instancer.group, this.scatterPools.group, this.motionInstancer.group, this.sites.group, this.cover.group);
   }
 
   private signal: AbortSignal | null = null;
   private lastSeqCheck = 0;
   private bufferedSeq = -1; // received stream head, including native effects awaiting depiction
   private resyncing = false;
-  /** Full resync: refetch the snapshot and redraw everything (no easing). Used after a missed diff. */
+  /** Lane PERF-SNAPSHOT: the snapshot worker (snapshot-delta.ts); its baseline is the first load's bytes. `?snapshotWorker=0`
+   *  parses on the main thread instead (A/B). Ids a socket diff changed since the last snapshot the worker saw, and whether
+   *  one changed the ground: the next delta reports them whatever the worker's baseline says. */
+  private decoder: SnapshotDecoder | null = null;
+  private decoderDisposed = false;
+  /** Snapshot transport is asynchronous already. Load its parser/worker client only for a network snapshot; frozen
+   *  views and the frame loop do not need this code. Concurrent requests share one decoder and its baseline. */
+  private async snapshotDecoder(): Promise<SnapshotDecoder> {
+    const { SnapshotDecoder } = await import('./snapshot-delta.ts');
+    if (this.decoderDisposed) throw new DOMException('Snapshot decoder disposed', 'AbortError');
+    return this.decoder ??= new SnapshotDecoder(typeof Worker === 'undefined' || (typeof location !== 'undefined' && new URLSearchParams(location.search).get('snapshotWorker') === '0') ? null : () => new Worker(new URL('./snapshot-delta.worker.ts', import.meta.url), { type: 'module' }));
+  }
+  private readonly touched = new Set<string>();
+  private groundTouched = false;
+  /** Resync: the snapshot again, as a delta against the last one the worker saw (snapshot-delta.ts), applied over short
+   *  tasks (applyDelta): only what changed is replaced, re-posed or removed; an unchanged thing is never drawn again, so
+   *  on the phone tier it stays frozen and nothing flashes. Used after a missed diff, a seq ahead of ours on the heartbeat,
+   *  or a moderation change (G8: the server-filtered picture removes what was hidden). No easing for things already drawn. */
   async resync() {
     if (this.immutable || this.resyncing || !this.signal) return;
     this.clearSupplementalStairs();
     this.resyncing = true;
     try {
-      const got = await loadSnapshot(this.api('/v1/world/snapshot'), this.signal); if (!got) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version'));
-      const snap = got.snap as unknown as EntitySnapshot; if (this.signal.aborted || snap.contract !== 'world/1') return;
-      ageNow(snap, r);
-      const prevGround = JSON.stringify(this.model?.ground() ?? null);
-      noteUploadSizes(snap.assetBytes);   // CDN4: god uploads may come from assets.eden.art (cdn-assets.ts)
-      this.model = WorldModel.fromSnapshot({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, undefined, undefined, { lazyIndex: true });
-      this.seq = snap.seq;
-      this.sites.reset(snap.builds ?? [], snap.buildsRev ?? 0, snap.now);
-      this.sites.refreshAll(JSON.stringify(snap.ground) !== prevGround);
-      if (JSON.stringify(snap.ground) !== prevGround) { this.rebuildTerrain(); this.rebuildWater(); this.buildHorizon(); }
-      const keep = new Set(snap.entities.map((e) => e.id));
-      for (const id of [...this.drawn.keys()]) if (!keep.has(id)) this.undraw(id);
-      this.model.readPass(() => { for (const e of snap.entities) this.draw(e, !this.drawn.has(e.id)); });
-      this.stats.resyncs++;
-      this.onContextChanged?.();
-    } catch { /* next check retries */ } finally { this.resyncing = false; }
+      const asked = [...this.touched], wantGround = this.groundTouched;
+      const decoder = await this.snapshotDecoder();
+      const got = await loadSnapshot(this.api('/v1/world/snapshot'), this.signal, false, (pieces) => decoder.delta(pieces, asked, wantGround)); if (!got) return;
+      const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version'));
+      const delta = got.snap; if (this.signal.aborted || delta.contract !== 'world/1' || !this.model) return;
+      ageNow(delta, r);
+      await this.applyDelta(delta, new Set(asked), this.signal);
+      for (const id of asked) this.touched.delete(id);
+      if (wantGround) this.groundTouched = false;
+    } catch (e) { this.stats.lastError = `resync: ${String(e)}`; /* next check retries */ } finally { this.resyncing = false; }
+  }
+  /** The last resync's shape, for probes: how much of the snapshot was unchanged and how much was drawn. */
+  lastResync: { seq: number; total: number; unchanged: number; upserts: number; removes: number; drawn: number; full: boolean; stale: boolean } | null = null;
+  /** The resync's apply. The model first (cheap: a few records), then the draws in slices of RESYNC_SLICE_MS with the main
+   *  thread free between them (nextTask), each from the model's record at draw time (a diff applied meanwhile wins). A
+   *  record identical to ours (a diff already applied) is left alone. A snapshot behind what the socket gave us (a diff
+   *  applied while it downloaded) only removes what it lacks and we did not touch (a moderation veto), never steps back. */
+  private async applyDelta(delta: SnapshotDelta, asked: Set<string>, signal: AbortSignal): Promise<void> {
+    const m = this.model!;
+    const stale = delta.seq < this.seq;
+    const last = this.lastResync = { seq: delta.seq, total: delta.total, unchanged: delta.unchanged, upserts: 0, removes: 0, drawn: 0, full: delta.full, stale };
+    const next = delta.full ? new Set(delta.upserts.map((e) => e.id)) : null;
+    const removes = next ? [...m.entities.keys()].filter((id) => !next.has(id)) : delta.removes;
+    let lit = false, changed = false;
+    for (const id of removes) {
+      if ((stale && asked.has(id)) || (!m.entities.has(id) && !this.drawn.has(id))) continue;
+      if (this.lit(id)) lit = true;
+      m.delete(id); this.undraw(id); last.removes++; changed = true;
+    }
+    if (stale) { if (lit) this.lightSeq++; if (changed) this.onContextChanged?.(); return; }
+    noteUploadSizes(delta.assetBytes);   // CDN4: god uploads may come from assets.eden.art (cdn-assets.ts)
+    // defs: new revisions by hash, then every ref to the content the snapshot names (a ref moved back to an older revision too)
+    // (a def we already hold keeps its object: content is named by hash, and a full delta repeats every def)
+    for (const d of delta.defs) if (!m.defs.has('sha:' + d.hash)) m.defs.set('sha:' + d.hash, d as unknown as StoredDef);
+    const retargeted = new Set<string>();
+    for (const [ref, hash] of new Map(delta.refs)) { const d = m.defs.get('sha:' + hash); if (!d || m.defs.get(ref)?.hash === hash) continue; retargeted.add(ref); m.defs.set(ref, d); if (ref.startsWith('core-')) { retargeted.add('core/' + ref.slice(5)); m.defs.set('core/' + ref.slice(5), d); } }
+    // the ground, the world state (its palette draws the terrain) and the constants
+    const ground = delta.ground as Ground | null, groundChanged = !!ground && JSON.stringify(ground) !== JSON.stringify(m.ground());
+    const palette = (x: unknown) => JSON.stringify((x as { ground?: unknown } | undefined)?.ground ?? null);
+    const paletteChanged = palette(delta.state) !== palette(m.state), stateChanged = JSON.stringify(delta.state) !== JSON.stringify(m.state), constantsChanged = JSON.stringify(delta.constants) !== JSON.stringify(m.constants);
+    if (stateChanged) m.state = delta.state as WorldModel['state'];
+    if (constantsChanged) m.constants = delta.constants as WorldModel['constants'];
+    if (groundChanged) m.terrain = new Terrain(ground!);
+    if (typeof delta.counter === 'number') m.seq = delta.counter;
+    this.seq = delta.seq;
+    this.sites.reset((delta.builds ?? []) as PublicSite[], delta.buildsRev ?? 0, delta.now);
+    // entities: a record that differs from ours is replaced and drawn again (eased only when it is new to the picture)
+    const queue: { id: string; ease: boolean }[] = [], upserted = new Set<string>();
+    for (const e of delta.upserts as unknown as Entity[]) {
+      const cur = m.entities.get(e.id);
+      if (cur && stableStringify(cur) === stableStringify(e)) continue;
+      if (cur) m.delete(e.id);
+      m.insert(e); upserted.add(e.id); last.upserts++; changed = true;
+      if (m.hasIndex) { const def = m.resolvedDef(e.def); if (def?.layer === 'solid') { try { m.index(e.id, m.footprint(e, def)); } catch { /* best effort */ } } }
+      if (this.lit(e.id)) lit = true;
+      queue.push({ id: e.id, ease: !this.drawn.has(e.id) });
+    }
+    // children ride with a moved or replaced parent: the same records, other world poses (no easing, as applyDiff)
+    for (const id of upserted) for (const cid of m.subtree(id).slice(1)) if (!upserted.has(cid)) queue.push({ id: cid, ease: false });
+    // things whose def ref now names other content are drawn from it
+    if (retargeted.size) for (const e of m.entities.values()) if (!upserted.has(e.id) && retargeted.has(e.def)) queue.push({ id: e.id, ease: false });
+    if (lit) this.lightSeq++;
+    if (delta.defs.some((d) => m.defs.get('sha:' + d.hash) === (d as unknown)) || retargeted.size || groundChanged || stateChanged || constantsChanged) changed = true;
+    if (groundChanged) { this.rebuildTerrain(); this.rebuildWater(); this.buildHorizon(); this.sites.refreshAll(true); } else if (paletteChanged) this.rebuildTerrain();
+    const seen = new Set<string>();
+    for (let i = 0; i < queue.length;) {
+      const until = performance.now() + RESYNC_SLICE_MS;
+      m.readPass(() => { while (i < queue.length) { const { id, ease } = queue[i++]; if (seen.has(id)) continue; seen.add(id); const e = m.entities.get(id); if (e) { this.draw(e, ease); last.drawn++; } if (performance.now() >= until) break; } });
+      if (i < queue.length) { await nextTask('user-visible'); if (signal.aborted || this.model !== m) return; }
+    }
+    this.stats.resyncs++;
+    if (changed) this.onContextChanged?.();
   }
 
   /** `onSnapshot`: P7b, called once the snapshot (and its parts) are in, or the attempt failed (early-layer.ts lets the
@@ -289,11 +581,23 @@ export class WorldEntityLayer {
     // lane L3h: the first start takes the snapshot GET index.html sent at page entry (snapshot-prefetch.ts), one request
     // lane W1/O2: the page's edge-cacheable snapshot URL when the server named one (its `now` is then as old as the copy)
     // lane W3: in its wire form (snapshot-wire.ts: defs and ground as cached content-addressed parts)
-    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
+    try { if(frozen){this.immutable=true;snap=structuredClone(frozen);onSnapshot?.();}else{ const decoder = await this.snapshotDecoder(); const got = await loadSnapshot(this.api('/v1/world/snapshot'), signal, true, async (pieces) => { arrivalMark('snapshot-received'); const snapshot = await decoder.initial(pieces, signal); arrivalMark('snapshot-decoded'); return snapshot; }); onSnapshot?.(); if (!got || signal.aborted) return; const r = got.response; noteSnapshotVersion(r.headers.get('x-moderation-version')); snap = got.snap as unknown as EntitySnapshot;
       ageNow(snap, r); }} catch { onSnapshot?.(); return; }
     if (signal.aborted || snap.contract !== 'world/1') return;
     noteUploadSizes(snap.assetBytes);   // CDN4
-    this.model = WorldModel.fromSnapshot({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, undefined, undefined, { lazyIndex: true });
+    // Keep the old model visible until all new records exist; aborting a sliced load cannot publish half a world.
+    try { this.model = await snapshotModel({ constants: snap.constants, state: snap.state, seed: snap.seed ?? 'viewer', seq: snap.counter ?? 0, editSeq: snap.seq, defs: snap.defs, entities: snap.entities, ground: snap.ground }, signal, nextTask); } catch (error) { if (signal.aborted) return; throw error; }
+    arrivalMark('snapshot-model-ready');
+    // PERF-STREAM: by distance from here on (a frozen context capture is never streamed: it draws the whole world once)
+    this.streaming = this.immutable ? null : this.streamOption();
+    this.ring = this.streaming ? new StreamRing(this.streaming) : null;
+    // lane PERF-SNAPSHOT: the snapshot's arrival used to be one main-thread task of ~0.4 s on Eden 2026 (parse, model, the
+    // eager plan, the building prefetch and the whole terrain bake); it is now a few, with the main thread free between
+    // them like the build slices below, and the terrain bake takes the same slices. `building` from here (LiveWorld draws
+    // nothing while it is set; edge diffs wait).
+    this.building = true;
+    try {
+    await nextTask(); if (signal.aborted) return;
     // the loading bar's total: VOCAB-MECH lazy GLBs (gen-mesh/lazy-assets.ts) — only the eager set, nearest the arrival
     // lane PERF: nearest the arrival target (entity-arrival.ts frames the centre of what was built; ?at= for shots), not the origin
     const m0 = this.model, q = new URLSearchParams(location.search), at = q.get('at')?.split(',').map(Number), eyeQ = q.get('eye')?.split(',').map(Number);
@@ -308,13 +612,13 @@ export class WorldEntityLayer {
     // thing's holder are built (~2 s of main thread on a 4x phone) instead of after; each thing's own loadAsset(sha)
     // then joins the same cached promise. The arrival card still waits for them to be drawn.
     for (const sha of eagerShas()) void loadAsset(sha).catch(() => {});
+    await nextTask(); if (signal.aborted || this.model !== m0) return;
     this.seq = snap.seq;
     this.sites.reset(snap.builds ?? [], snap.buildsRev ?? 0, snap.now);
     // lane W1: the first build runs in slices of ~50 ms with the main thread free in between, so the socket's join set,
     // the first takes and the initial downloads proceed while it builds (the arrival card covers it; LiveWorld draws
     // nothing while `building`). Same draws in the same order; edge diffs wait until it is done (applyEdge).
-    this.building = true;
-    try {
+    {
       const m = this.model;
       // lane W1: every building's geometry starts in the building workers now; the slices below wait for one only when
       // they reach it before it is done (building.mesh.ts prefetchBuilding)
@@ -323,10 +627,16 @@ export class WorldEntityLayer {
       // to the workers (fillRest)
       const pending = new Map<string, Promise<void>>();
       const workersLater = progressiveNearM() !== null && new URLSearchParams(location.search).get('nearWorkers') !== '1';
-      if (!workersLater) this.prefetchBuildings(m, snap.entities, pending);
+      if (!workersLater && !this.ring) { this.prefetchBuildings(m, snap.entities, pending); await nextTask(); if (signal.aborted || this.model !== m) return; }
       // P7 (phone): only the sectors near the arrival are baked at full detail before the card; the rest are drawn from a
       // coarse direct sample (no tile bakes, ~1/16 of the height samples) and refined during the fill
-      this.rebuildTerrain(undefined, true, progressiveNearM() === null ? undefined : { at: [[pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]], r: COARSE_BEYOND_M, view });   // lane L3: the first build's playa mottling runs in a worker (terrain-mottle.ts)
+      // lane L3: the first build's playa mottling runs in a worker (terrain-mottle.ts); PERF-SNAPSHOT: a sector per step, in slices
+      let until = performance.now() + BUILD_SLICE_MS;
+      const ringAt: [number, number][] = [[pose.eye[0], pose.eye[2]], [pose.target[0], pose.target[2]]];
+      for (const _ of this.terrainSteps(undefined, true, this.ring ? { at: ringAt, r: this.ring.inner } : progressiveNearM() === null ? undefined : { at: [[pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]], r: COARSE_BEYOND_M, view }, this.ring ? { at: ringAt, r: this.ring.outer + SECTOR_TILES * TILE_M } : undefined)) {
+        if (performance.now() < until) continue;
+        await nextTask(); if (signal.aborted || this.model !== m) return; until = performance.now() + BUILD_SLICE_MS;
+      }
       await nextTask(); if (signal.aborted || this.model !== m) return;
       this.rebuildWater();
       this.buildHorizon();
@@ -334,8 +644,18 @@ export class WorldEntityLayer {
       // drawn (the card then goes), and the rest follows between frames (fill). Elsewhere: everything, in snapshot order.
       const near = progressiveNearM();
       const byId = near === null ? null : byId0 ?? new Map(snap.entities.flatMap((e) => e.name ? [[e.name, e], [e.id, e]] as [string, Entity][] : [[e.id, e]] as [string, Entity][])), keyOf = byId && (keyOf0 ?? nearKeyOf(byId));
-      const sorted: readonly Entity[] & { dist?: number[] } = !keyOf ? snap.entities : byDistance(snap.entities, keyOf, [pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]);  // P7: shapes by their nearest point; furniture with its building
-      const far = near === null ? -1 : sorted.dist!.findIndex((d) => d > near);
+      let sorted: readonly Entity[] & { dist?: number[] } = !keyOf ? snap.entities : byDistance(snap.entities, keyOf, [pose.target[0], pose.target[2]], [pose.eye[0], pose.eye[2]]);  // P7: shapes by their nearest point; furniture with its building
+      let far = near === null ? -1 : sorted.dist!.findIndex((d) => d > near);
+      if (this.ring) {
+        // PERF-STREAM: every thing into the ring (slices: 50,000 records), then only the arrival camera's ring is built now
+        let until = performance.now() + BUILD_SLICE_MS, n = 0;
+        for (const e of snap.entities) { const def = m.resolvedDef(e.def); if (def) this.ringSet(e, def); if ((++n & 1023) === 0 && performance.now() >= until) { await nextTask(); if (signal.aborted || this.model !== m) return; until = performance.now() + BUILD_SLICE_MS; } }
+        this.streamEye.set(pose.eye[0], pose.eye[1], pose.eye[2]); this.streamEyeSet = true;
+        const { enter } = this.ring.update(pose.eye[0], pose.eye[2], true);
+        sorted = enter.flatMap((id) => { const e = m.entities.get(id); return e ? [e] : []; }); far = -1;
+        if (!workersLater) { this.prefetchBuildings(m, sorted, pending); await nextTask(); if (signal.aborted || this.model !== m) return; }
+        (window as unknown as { __simStream?: unknown }).__simStream = { inner: this.ring.inner, outer: this.ring.outer, things: this.ring.size, ring: sorted.length, stats: this.streamStats };   // probes
+      }
       // t4-phone-new: of the near things, those the arrival camera can see (or whose shadow can reach its view) are drawn
       // before the poster; the fill then draws the next things in view, then the near ones behind or beside it (arrival-view.ts)
       const { list: all, first: nearCount } = view && keyOf && byId ? viewFirst(sorted, far < 0 ? sorted.length : far, arrivalSeen(m, view, keyOf, byId, true), FILL_AHEAD) : { list: sorted, first: far < 0 ? sorted.length : far };
@@ -350,7 +670,8 @@ export class WorldEntityLayer {
         if (signal.aborted || this.model !== m) return;
       }
       this.active = true;
-      if (this.coarse.size && !this.filling) { this.filling = true; this.fill = this.fillRest(m, all, all.length, pending, signal, false); }   // P7: refine the coarse terrain
+      if (this.coarse.size && !this.filling && !this.ring) { this.filling = true; this.fill = this.fillRest(m, all, all.length, pending, signal, false); }   // P7: refine the coarse terrain
+    }
     } finally { this.building = false; if (!this.filling) clearBuildingPrefetch(); }
   }
   private prefetchBuildings(m: WorldModel, entities: readonly Entity[], pending: Map<string, Promise<void>>) {
@@ -410,7 +731,9 @@ export class WorldEntityLayer {
       this.sites.apply(d);
       if(contextChanged&&(d as DiffMsg&{by?:string}).by!=='engine')this.onContextChanged?.();
       for (const def of [...(d.defs ?? []), ...d.diff.defs]) { this.model.defs.set('sha:' + def.hash, def); this.model.defs.set(def.ref, def); if (def.ref.startsWith('core-')) this.model.defs.set('core/' + def.ref.slice(5), def); }
-      for (const id of d.diff.removes) { this.model.delete(id); this.undraw(id, held.has(id) ? SITE_REFINEMENT.removalDelaySeconds : 0); }
+      for (const id of d.diff.removes) { this.touched.add(id); this.model.delete(id); this.undraw(id, held.has(id) ? SITE_REFINEMENT.removalDelaySeconds : 0); }
+      for (const e of d.diff.upserts) this.touched.add(e.id);
+      if (d.ground || d.diff.world) this.groundTouched = true;
       for (const e of d.diff.upserts) { if (this.model.entities.has(e.id)) this.model.delete(e.id); this.model.insert(e); }
       for (const e of d.diff.upserts) { const def = this.model.resolvedDef(e.def); if (def?.layer === 'solid') { try { this.model.index(e.id, this.model.footprint(e, def)); } catch { /* best effort */ } } }
       // a moved parent carries its lamps (their pools move with it)
@@ -457,7 +780,7 @@ export class WorldEntityLayer {
       if(!e||!this.model?.resolvedDef(e.def)?.tags.includes('recorded-item'))continue;
       seen.add(id);this.recordedItems.add(id);
       this.missingItemAt.delete(id);
-      const p=this.overrides.get(id)??new THREE.Vector3();p.set(pose.p[0],pose.p[1],pose.p[2]);this.overrides.set(id,p);this.overrideYaw.set(id,pose.yaw);
+      const p=this.overrides.get(id)??new THREE.Vector3();p.set(pose.p[0],pose.p[1],pose.p[2]);this.overrides.set(id,p);this.overrideYaw.set(id,pose.yaw);this.live.add(id);
       if(this.model.resolvedDef(e.def)?.components.light||this.model.resolvedDef(e.def)?.components.lights)this.lightMoves.add(id);
     }
     for(const id of this.recordedItems)if(!seen.has(id)) {
@@ -484,16 +807,36 @@ export class WorldEntityLayer {
     for (const e of m.entities.values()) { if (e.in.parent !== 'world') continue; const def = m.resolvedDef(e.def) as (StoredDef & { components: Record<string, unknown> }) | undefined; if (def && isRideCarrierDef(def) && !isRideBalloonDef(def)) out.push(carrierIdOf(e, id => m.entities.has(id))); }
     return out;
   }
+  /** PERF-STREAM: top-level things by name, rebuilt when the world's records change (poseOverride ran a find over every
+   *  record for every ride on every frame: 4 s of a 50,000-thing world's first half minute). */
+  private names: { key: object; size: number; map: Map<string, Entity> } | null = null;
+  private entityNamed(name: string): Entity | undefined {
+    const m = this.model; if (!m) return undefined;
+    const key = typeof m.safetyCacheKey === 'function' ? m.safetyCacheKey() : {};   // a plain fixture model (tests): scanned every time
+    if (!this.names || this.names.key !== key || this.names.size !== m.entities.size) {
+      const map = new Map<string, Entity>();
+      for (const e of m.entities.values()) if (e.name && e.in.parent === 'world' && !map.has(e.name)) map.set(e.name, e);
+      this.names = { key, size: m.entities.size, map };
+    }
+    return this.names.map.get(name);
+  }
+  /** PERF-STREAM: the records a scan of the world's lights should visit: under streaming only the drawn things (a lamp beyond
+   *  the ring lights nothing anyone sees); else null (every record, as before). world-env.ts. */
+  lightCandidates(): Iterable<Entity> | null {
+    const m = this.model; if (!this.ring || !m) return null;
+    const out: Entity[] = []; for (const id of this.drawn.keys()) { const e = m.entities.get(id); if (e) out.push(e); }
+    return out;
+  }
   /** Draw the god thing named `name` where its native twin is (`p`: the recorded engine position), or at its own pose (null).
    *  A thing moored aloft keeps its own height above the ground (drawn y = recorded y + its lift); one standing on the ground
    *  (lift < 0.5 m) draws at the recorded y, so the cabin floor is where Core stands the riders. */
   poseOverride(name: string, p: readonly [number, number, number] | null, yaw?: number) {
-    const e = this.model ? [...this.model.entities.values()].find((x) => x.name === name && x.in.parent === 'world') : undefined;
+    const e = this.entityNamed(name);
     if (!e) return;
     if (!p) { this.overrideYaw.delete(e.id); if (this.overrides.delete(e.id)) { const d = this.drawn.get(e.id); if (d) d.settled = false; } return; }
     const d = this.drawn.get(e.id); if (!d) return;
     const g = this.groundAt(d.to.p.x, d.to.p.z) ?? 0;
-    const v = this.overrides.get(e.id) ?? new THREE.Vector3(); const lift = d.to.p.y - g; v.set(p[0], (lift < 0.5 ? 0 : lift) + p[1], p[2]); this.overrides.set(e.id, v);  // BALLOON-BODY: a basket standing on the ground draws its floor at the twin's floor (its riders' feet)
+    const v = this.overrides.get(e.id) ?? new THREE.Vector3(); const lift = d.to.p.y - g; v.set(p[0], (lift < 0.5 ? 0 : lift) + p[1], p[2]); this.overrides.set(e.id, v); this.live.add(e.id);  // BALLOON-BODY: a basket standing on the ground draws its floor at the twin's floor (its riders' feet)
     if (yaw === undefined) this.overrideYaw.delete(e.id); else this.overrideYaw.set(e.id, yaw);
   }
 
@@ -516,7 +859,7 @@ export class WorldEntityLayer {
         this.transported.delete(id); this.overrides.delete(id); this.overrideYaw.delete(id); d.settled = false; continue;
       }
       const pose = this.overrides.get(id) ?? new THREE.Vector3();
-      pose.set(p[0], p[1], p[2]); this.overrides.set(id, pose); this.overrideYaw.set(id, e.yaw);
+      pose.set(p[0], p[1], p[2]); this.overrides.set(id, pose); this.overrideYaw.set(id, e.yaw); this.live.add(id);
     }
   }
 
@@ -524,6 +867,7 @@ export class WorldEntityLayer {
     this.now = nowMs;
     if (!this.active) return;
     this.sites.update(nowMs);
+    if (this.ring && !this.building) this.streamStep();   // PERF-STREAM
     const moving = !this.immutable && arrivalOver();
     // W2b: fill old Eden's generated surface patterns (brick, ashlar, clapboard, tile, slate, turf blades) a few rows a
     // frame; until now only old Eden's own layer did, so entity worlds drew the flat placeholders. No-op once complete.
@@ -534,40 +878,48 @@ export class WorldEntityLayer {
       // G8: a changed moderation veto also takes the whole (server-filtered) picture again
       void fetch(this.api('/v1/world/seq'), { signal: this.signal }).then((r) => (r.ok ? r.json() : null)).then((j: { seq: number; builds?: number; moderation?: { version?: unknown; hidden?: unknown } } | null) => { if (!this.signal?.aborted && j) { if (noteModeration(j.moderation) || j.seq > Math.max(this.seq,this.bufferedSeq)) void this.resync(); else this.sites.checkRevision(j.builds); } }).catch(() => {});
     }
+    const frame = ++this.frame;
     // the entity terrain is the only ground: hide the native backdrop and the native floor planes (a flat
     // plane at y ≈ 0 would cover every pond, river and cut below it)
-    if (baseGround) baseGround.traverse((o) => { if ((o.name === 'outside-ground' || o.name === 'commons-ground' || (o.parent === baseGround && (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry?.type === 'PlaneGeometry')) && !this.hiddenBase.has(o)) { o.visible = false; this.hiddenBase.add(o); } });
-    this.interiorFar.clear();
-    const frame = ++this.frame;
+    // PERF-PASSES: the walk over the native group (~1 ms a frame on Eden 2026, a no-op after the first) runs when the group
+    // or its children change and every 30th frame (a plane added deeper is hidden within half a second)
+    if (baseGround && (baseGround !== this.baseGround || baseGround.children.length !== this.baseChildren || frame % 30 === 0)) {
+      this.baseGround = baseGround; this.baseChildren = baseGround.children.length;
+      baseGround.traverse((o) => { if ((o.name === 'outside-ground' || o.name === 'commons-ground' || (o.parent === baseGround && (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry?.type === 'PlaneGeometry')) && !this.hiddenBase.has(o)) { o.visible = false; this.hiddenBase.add(o); } });
+    }
+    this.instancer.updateBounds(); this.scatterPools.updateBounds();
+    const view = this.viewer;
     // P1 phones: frozen things skip the matrix walk on the promise that what they hang from does not move; if it ever does, thaw all
-    if (this.freezeSettled && !this.thingsGroup.matrixWorld.equals(this.frozenUnder)) { this.frozenUnder.copy(this.thingsGroup.matrixWorld); for (const d of this.drawn.values()) if (d.frozen) this.thaw(d); }
+    if (this.freezeSettled && !this.thingsGroup.matrixWorld.equals(this.frozenUnder)) { this.frozenUnder.copy(this.thingsGroup.matrixWorld); for (const [id, d] of this.drawn) if (d.frozen) { this.thaw(d); this.live.add(id); } }
     // Entry 34: taps run to their basin unless a held can catches the stream this frame (below); growth and wilt ease
     for (const jets of this.tapJets.values()) (jets.material as THREE.ShaderMaterial).uniforms.uDrop.value = jets.userData.dropDefault;
     this.stepSteam();
     for (const [id, tw] of this.plantTweens) {
       const d = this.drawn.get(id), grp = d?.obj.getObjectByName('plant growth') as PlantGroup | undefined;
       if (!d || !grp) { this.plantTweens.delete(id); continue; }
-      if (d.frozen) this.thaw(d);
+      if (d.frozen) { this.thaw(d); this.live.add(id); }
       const k = easeInOut((nowMs - tw.t0) / tw.dur), look = { g: tw.from.g + (tw.to.g - tw.from.g) * k, w: tw.from.w + (tw.to.w - tw.from.w) * k, m: tw.from.m + (tw.to.m - tw.from.m) * k };
       posePlants(grp, look); setPatch(d.obj, look.m); d.obj.updateMatrixWorld(true); this.plantShown.set(id, look);
       if (k >= 1) this.plantTweens.delete(id);
     }
-    let k = 0;
-    for (const [id, d] of this.drawn) {
-      if (d.opening && !stepOpeningMotion(d.opening,nowMs)) d.opening=undefined;
-      k++;
+    // PERF-EVENTLOOP: no pass over the drawn things. Settled still things (Eden 2026: ~4,600 of 4,877; a 50,000-thing world: nearly
+    // all) cost nothing per frame: what can change about them arrives as an event (a diff redraws, a host's cut moves, a lamp
+    // level steps, a hand or a twin wakes) and lands in a small set. The passes below each walk one such set.
+    for (const id of this.openings) { const d = this.drawn.get(id); if (!d?.opening) this.openings.delete(id); else if (!stepOpeningMotion(d.opening, nowMs)) { d.opening = undefined; this.openings.delete(id); } }
+    this.hostPass();
+    for (const id of this.keptIn.keys()) this.visDirty.add(id);   // entry 42: a kept thing follows its box's lid and the hand on it (a 200 ms window: read every frame; a handful)
+    if (this.visDirty.size) { for (const id of this.visDirty) { const d = this.drawn.get(id); if (d && !this.live.has(id)) this.refreshVisibility(id, d, nowMs); } this.visDirty.clear(); }
+    this.glowPass(nowMs, frame);
+    for (const id of this.live) {
+      const d = this.drawn.get(id); if (!d) { this.live.delete(id); continue; }
       if (d.thaw) this.thaw(d);
-      // P1: a settled, still thing (eased in, no motion, not ridden or held) keeps its pose: only its interior visibility
-      // can change. ~4,800 entities on Eden 2026; rewriting each pose every frame was most of this loop. On the phone tier a
-      // lamp whose only motion is its glow counts as still too, and glows at a quarter of the frame rate (off screen 1/16).
-      const glowing = this.freezeSettled && !!d.motion?.glowOnly;
-      if (d.settled && !d.inst && (!d.motion || glowing) && !d.removing && !this.overrides.has(id) && !this.held.has(id)) {
-        // phone tier: visibility (interior storeys, far furniture) is checked every other frame
-        if (!this.freezeSettled || !d.frozen || ((k + frame) & 1) === 0) d.obj.visible = this.interiorVisible(id, d);
-        if (!this.immutable && glowing && d.obj.visible && ((k + frame) & (d.offscreen ? 15 : 3)) === 0) animate(d.obj, d.motion!.entity, d.motion!.def, nowMs / 1000, { y: d.to.p.y, yaw: d.motion!.yaw });
-        if (this.freezeSettled && !d.frozen && !d.noFreeze) this.freeze(d);
-        continue;
-      }
+      // PERF-PASSES: a settled instanced thing (3,263 of Eden 2026's 4,877) keeps its slot, pose and scale; only its interior
+      // visibility (its building's cut, far furniture on a phone) can change.
+      // P1: a settled, still thing (eased in, no motion, not ridden or held) keeps its pose: only its interior visibility can
+      // change. On the freeze tiers a lamp whose only motion is its glow counts as still too (glowPass keeps its level).
+      // PERF-EVENTLOOP: either leaves `live` after this still pass and is not visited again until an event wakes it.
+      const stillInst = !!d.inst && !!d.settled && !d.motion && !d.removing && d.obj.userData.cupShown === undefined && !this.overrides.has(id) && !this.held.has(id) && !this.pours.has(id);
+      if (stillInst || (d.settled && !d.inst && (!d.motion || (this.freezeSettled && d.motion.glowOnly)) && !d.removing && !this.overrides.has(id) && !this.held.has(id))) { this.stillPass(id, d, nowMs); this.live.delete(id); continue; }
       if (d.frozen) this.thaw(d);
       const t = easeOut((nowMs - d.t0) / 1000 / d.dur);
       d.obj.position.lerpVectors(d.from.p, d.to.p, t);
@@ -587,17 +939,66 @@ export class WorldEntityLayer {
         continue;
       }
       d.obj.visible = shown;
-      if (d.removing && t >= 1) { this.thingsGroup.remove(d.obj); disposeObject(d.obj); this.drawn.delete(id); continue; }
+      if (d.removing && t >= 1) { this.motionInstancer.untrack(d.obj); this.thingsGroup.remove(d.obj); disposeObject(d.obj); this.releaseGeometry(d.obj); this.drawn.delete(id); continue; }
       if (t >= 1 && (!d.motion || (this.freezeSettled && d.motion.glowOnly)) && !d.removing && !ride && !inHand) d.settled = true;
       // P1: a hidden thing (a storey its building hides, or far furniture on a phone) is not animated: nobody sees it
       // P7b: things stay at their stored pose under the arrival card (the creatures' first route search was ~0.09 s of a 4x
       // phone's card); nobody sees motion before the card is gone
-      if (d.motion && t >= 1 && !inHand && shown && moving) animate(d.obj, d.motion.entity, d.motion.def, nowMs / 1000, { y: ride ? ride.y : d.to.p.y, yaw: ride && this.overrideYaw.has(id) ? -this.overrideYaw.get(id)! : d.motion.yaw });
+      // PERF-PASSES: a motion thing wholly outside the view (a conservative sphere measured once it settled) is animated every
+      // 2nd frame when it moves about (a route, a creature's rig), every 4th otherwise: motion is a function of world time,
+      // so it is exactly where it would be when it comes into view. In view, held or ridden: every frame, as before.
+      if (d.motion && t >= 1 && !inHand && shown && moving && (!view || ride || this.motionInView(d, view, d.k! + frame))) animate(d.obj, d.motion.entity, d.motion.def, nowMs / 1000, { y: ride ? ride.y : d.to.p.y, yaw: ride && this.overrideYaw.has(id) ? -this.overrideYaw.get(id)! : d.motion.yaw });
       if (ride) { d.obj.position.x = ride.x; d.obj.position.z = ride.z; }
     }
     void dt;
   }
 
+  /** PERF-EVENTLOOP: a settled thing's one still pass: its interior visibility, a glow-only lamp's classification (glowPass), and on
+   *  the freeze tiers its freeze. It then leaves `live` until an event wakes it. */
+  private stillPass(id: string, d: Drawn, nowMs: number) {
+    this.refreshVisibility(id, d, nowMs);
+    if (d.inst) return;
+    if (d.motion?.glowOnly) {
+      const kind = glowKind(d.obj, d.motion.entity, d.motion.def);
+      this.glowSteady.delete(id); this.glowAnim.delete(id);
+      if (kind === 'steady') { this.glowSteady.add(id); if (d.obj.visible && !d.offscreen) this.syncGlow(d, nowMs); else d.glowStale = true; }
+      else if (kind === 'patterned') this.glowAnim.add(id);
+    }
+    if (this.freezeSettled && !d.frozen && !d.noFreeze) this.freeze(d);
+  }
+  /** PERF-EVENTLOOP: a settled thing reads its interior visibility again (visDirty): an instanced thing rewrites its slot only when
+   *  that changed; a drawn one shows or hides (its batch re-prepares); a steady lamp seen with a stale glow syncs. */
+  private refreshVisibility(id: string, d: Drawn, nowMs: number) {
+    const shown = this.interiorVisible(id, d);
+    if (d.inst) { if (shown !== (d.shown ?? true)) { this.instancer.set(d.inst, id, d.obj.position, d.obj.rotation.y, shown ? d.obj.scale.x : 0, [d.obj.rotation.x, d.obj.rotation.z]); d.shown = shown; } return; }
+    if (shown !== d.obj.visible) { d.obj.visible = shown; if (d.frozen) this.staticRevision++; }
+    if (shown && d.glowStale && this.glowSteady.has(id) && !this.immutable) this.syncGlow(d, nowMs);
+  }
+  /** PERF-EVENTLOOP: each interior host's cut and far state, once per host per frame (Eden 2026: 239 buildings hold 3,400 things);
+   *  the things of a host whose state moved are read again this frame (visDirty), the rest are not touched. */
+  private hostPass() {
+    for (const [host, hs] of this.hostState) {
+      const o = host.obj; if (!o.parent) continue;   // gone: its things re-resolve (release marked them)
+      const it = o.userData.interior as { cut(): number } | undefined;
+      const far = !!it && !!this.interiorFrom && o.parent === this.thingsGroup && o.position.distanceToSquared(this.interiorFrom) > this.interiorRange * this.interiorRange, cut = it ? it.cut() : Infinity;
+      if (hs ? (!!it && hs.far === far && hs.cut === cut) : !it) continue;
+      this.hostState.set(host, it ? { far, cut } : null);
+      const deps = this.dependents.get(host.id!); if (deps) for (const id of deps) this.visDirty.add(id);
+    }
+  }
+  /** PERF-EVENTLOOP: glow-only lamps (Eden 2026: ~790). Steady ones share one level (motion.ts steadyGlowAt): when its quantized
+   *  value steps, every seen one is synced and the hidden or off-screen ones are marked stale (synced when seen: refreshVisibility,
+   *  cull). Patterned ones animate every 4th frame, 16th off screen, as before. Nothing is visited on the other frames. */
+  private glowPass(nowMs: number, frame: number) {
+    if (!this.freezeSettled) { if (this.glowSteady.size || this.glowAnim.size) { for (const id of this.glowSteady) this.live.add(id); for (const id of this.glowAnim) this.live.add(id); this.glowSteady.clear(); this.glowAnim.clear(); } return; }   // the lamps are motion things again (as before)
+    if (this.immutable) return;
+    if (this.glowSteady.size) {
+      const q = quantizeGlow(steadyGlowAt(nowMs / 1000));
+      if (q !== this.glowLevel) { this.glowLevel = q; for (const id of this.glowSteady) { const d = this.drawn.get(id)!; if (d.obj.visible && !d.offscreen) this.syncGlow(d, nowMs); else d.glowStale = true; } }
+    }
+    for (const id of this.glowAnim) { const d = this.drawn.get(id)!; if (d.obj.visible && ((d.k! + frame) & (d.offscreen ? 15 : 3)) === 0) this.syncGlow(d, nowMs); }
+  }
+  private syncGlow(d: Drawn, nowMs: number) { animate(d.obj, d.motion!.entity, d.motion!.def, nowMs / 1000, { y: d.to.p.y, yaw: d.motion!.yaw }); d.glowStale = false; }
   /** Viewer B7: where a body's figure holds a carried thing — the palm of its raised hand (the carrying arm is posed to
    *  the engine's hand point; the free one hangs lower), or between both palms when they are level (two-handed / seated).
    *  The figure is the native people view's rig, found in the scene by its name (= the body's engine id). False when the
@@ -766,13 +1167,19 @@ export class WorldEntityLayer {
     // never ran and the thing never appeared on phones.
     d.sphere = _box.isEmpty() || _box.min.equals(_box.max) ? undefined : _box.getBoundingSphere(new THREE.Sphere());
     d.frozen = list;
+    if (this.scatterPooling && d.world) this.scatterPools.add(d.obj.uuid, d.obj);   // PERF-BATCH round 2: its instances draw from the shared pools
+    if (!d.cut) delete d.obj.userData.renderDynamic; this.staticRevision++;
   }
   private thaw(d: Drawn) {
+    if (d.id !== undefined) this.live.add(d.id);   // a hand or a child changed it outside update(): freeze it again after its next still pass
     if (d.frozen) {
       for (const o of d.frozen) o.matrixAutoUpdate = true;
       d.obj.traverse((o) => o.removeEventListener('childadded', this.onFrozenChild));
       delete (d.obj as { updateMatrixWorld?: unknown }).updateMatrixWorld;  // the prototype's again
       delete d.obj.userData.frozenDrawn;
+      // PERF-BATCH: a thawed thing's batch falls back to its originals until it is frozen (and batched) again
+      d.obj.userData.renderDynamic = true; this.staticRevision++;
+      this.scatterPools.remove(d.obj.uuid);
     }
     d.frozen = undefined; d.thaw = false; d.sphere = undefined;
   }
@@ -782,10 +1189,14 @@ export class WorldEntityLayer {
   /** P1 phones: render time only (like WorldDistanceDetail): a frozen thing wholly outside the view, or smaller than `cullPx`
    *  pixels of radius, is not drawn, so three.js neither walks nor projects its subtree. Frames that redraw the shadow map keep
    *  off-screen things (they may cast shadows into view). Call `uncull` right after rendering. */
-  cull(camera: THREE.PerspectiveCamera, viewHeight: number, shadowPass: boolean) {
+  cull(camera: THREE.PerspectiveCamera, viewHeight: number, shadowPass: boolean, shadowCamera: THREE.Camera | null = null) {
     if (!this.freezeSettled || !this.active) return;
     camera.updateMatrixWorld();
     const frustum = this.frustum.setFromProjectionMatrix(_projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    // PERF-EDEN: on a frame that redraws the shadow map, an off-screen thing is kept only when the sun's shadow box (the
+    // follow box around what the camera looks at, ~100 m) can see it: a thing outside that box casts nothing into view.
+    // The shadow camera's matrices are those of the last shadow pass (the sun and its box move slowly).
+    const sunFrustum = shadowPass && shadowCamera ? this.sunFrustum.setFromProjectionMatrix(_projScreen.multiplyMatrices(shadowCamera.projectionMatrix, shadowCamera.matrixWorldInverse)) : null;
     const cam = camera.position, ppu = viewHeight / (2 * Math.tan(camera.fov * Math.PI / 360)) * (camera.zoom || 1);
     for (const d of this.drawn.values()) {
       const o = d.obj;
@@ -793,13 +1204,55 @@ export class WorldEntityLayer {
       const s = d.sphere, dist = s.center.distanceTo(cam) - s.radius;
       const off = !frustum.intersectsSphere(s);
       d.offscreen = off;
-      if ((dist > 0 && s.radius * ppu / dist < this.cullPx) || (off && !shadowPass)) { o.visible = false; this.culled.push(o); }
+      if ((dist > 0 && s.radius * ppu / dist < this.cullPx) || (off && (!shadowPass || (sunFrustum !== null && !sunFrustum.intersectsSphere(s))))) { o.visible = false; this.culled.push(o); }
+      else if (d.glowStale && !off) this.visDirty.add(d.id!);   // PERF-EVENTLOOP: a steady lamp drawn with a stale glow syncs at the next update
     }
     this.cullStats.culled = this.culled.length;
   }
   uncull() { for (const o of this.culled) o.visible = true; this.culled.length = 0; }
   cullPx = 1.25;
+  private readonly sunFrustum = new THREE.Frustum();
   readonly cullStats = { culled: 0 };
+  /** PERF-PASSES: the viewer's eye and view frustum (LiveWorld sets it from the camera before `update`; null for a Soul's
+   *  eyes and shots). Motion things wholly outside it are animated less often (see update). */
+  viewer: { eye: THREE.Vector3; frustum: THREE.Frustum } | null = null;
+  /** Last update(): motion things animated this frame / skipped as out of view (diagnostics, tests). */
+  readonly motionStats = { animated: 0, skipped: 0 };
+  private motionInView(d: Drawn, view: { frustum: THREE.Frustum }, phase: number): boolean {
+    let mo = d.mo;
+    if (!mo) {
+      _box.setFromObject(d.obj);
+      const e = d.obj.matrixWorld.elements;
+      if (_box.isEmpty()) mo = { ox: 0, oy: 0, oz: 0, r: 2 };
+      else { const s = _box.getBoundingSphere(_sphere); mo = { ox: s.center.x - e[12], oy: s.center.y - e[13], oz: s.center.z - e[14], r: Math.max(1.5, s.radius * 1.5 + 1) }; }
+      d.mo = mo;
+    }
+    const e = d.obj.matrixWorld.elements;
+    _sphere.center.set(e[12] + mo.ox, e[13] + mo.oy, e[14] + mo.oz); _sphere.radius = mo.r;
+    if (view.frustum.intersectsSphere(_sphere)) { this.motionStats.animated++; return true; }
+    const c = d.motion!.def.components, due = (phase & (c.route || d.obj.userData.rig ? 1 : 3)) === 0;
+    if (due) this.motionStats.animated++; else this.motionStats.skipped++;
+    return due;
+  }
+  /** PERF-PASSES: for an upward ray at (x, z) (the atmosphere's and the sound's cover probe, world-env.ts): the layer's
+   *  groups except the things, and the top-level things that can be above the point: frozen things whose bounding circle
+   *  covers it, and every thing without a sphere (not frozen). The probe raycast the whole layer (~9,000 objects) on every
+   *  frame the camera had moved. */
+  readonly coverCandidates = (x: number, z: number): THREE.Object3D[] => {
+    const out: THREE.Object3D[] = [];
+    for (const g of this.group.children) if (g !== this.thingsGroup) out.push(g);
+    for (const d of this.drawn.values()) {
+      const o = d.obj; if (o.parent !== this.thingsGroup) continue;
+      const s = d.frozen ? d.sphere : undefined;
+      if (s) { const dx = s.center.x - x, dz = s.center.z - z; if (dx * dx + dz * dz > s.radius * s.radius) continue; }
+      out.push(o);
+    }
+    return out;
+  };
+  private baseGround: THREE.Object3D | null = null; private baseChildren = -1;
+  /** Each interior host's cut and far state (null: no interior data), kept across frames and refreshed once per host per frame
+   *  (hostPass), never once per thing in it. A host enters when a thing resolves to it and leaves when its record is released. */
+  private hostState = new Map<Drawn, { far: boolean; cut: number } | null>();
   private culled: THREE.Object3D[] = [];
   private frustum = new THREE.Frustum();
   /** P1 phones: when set (the phone tier), things inside a building further than `interiorRange` metres from this point
@@ -807,35 +1260,98 @@ export class WorldEntityLayer {
   interiorFrom: THREE.Vector3 | null = null;
   /** P1 phones: a settled still thing's subtree leaves scene.updateMatrixWorld (Eden 2026: ~8,700 objects re-multiplied
    *  every frame, ~13% of a phone frame). Anything that moves it first takes it out of `settled`. */
-  freezeSettled = false;
+  private freezeStill = false;
+  get freezeSettled() { return this.freezeStill; }
+  set freezeSettled(value: boolean) {
+    if (value === this.freezeStill) return;
+    this.freezeStill = value;
+    // The desktop early renderer settles before LiveWorld enables freezing; those things need their still pass again.
+    for (const id of this.drawn.keys()) this.live.add(id);
+  }
+  /** PERF-BATCH: changes whenever a thing freezes, thaws, is shown or hidden, replaced or removed: what the static batcher
+   *  (rendering/StaticBatchOwner.ts) trusts between validations, and what tells LiveWorld to re-prepare its batches. */
+  staticRevision = 0;
+  /** PERF-BATCH: the frozen, still, non-instanced things the static batcher may merge: whole objects under `thingsGroup`
+   *  that nothing animates (a glowing lamp's emissive changes; a thing kept in a container shows and hides with its lid). */
+  staticBatchRootScan = { records: 0, truncated: false };
+  staticBatchRoots(maxRecords = Infinity): THREE.Object3D[] {
+    if (maxRecords !== Infinity && (!Number.isSafeInteger(maxRecords) || maxRecords < 0)) throw Error('static-batches.invalid-record-limit');
+    const roots: THREE.Object3D[] = [];
+    let records = 0;
+    const iterator = this.drawn.entries();
+    while (records < maxRecords) {
+      const next = iterator.next();
+      if (next.done) break;
+      const [id, d] = next.value;
+      records++;
+      if (d.frozen && !d.inst && (!d.motion || d.motion.glowOnly) && !d.removing && !d.cut && d.obj.visible && d.obj.parent === this.thingsGroup && !this.keptIn.has(id) && !this.held.has(id)) roots.push(d.obj);
+    }
+    this.staticBatchRootScan = { records, truncated: records < this.drawn.size };
+    return roots;
+  }
+  /** PERF-BAKED-SHADOWS: what casts into the sun's cached shadow (rendering/SunShadowCache.ts): every frozen thing, the
+   *  entity instance pools and the scatter pools. Moving things, bodies, sites and ground cover stay in the per-frame map.
+   *  `shadowRevision` changes whenever any of them appears, goes, moves, shows or hides. */
+  shadowStatics(out: THREE.Object3D[]): THREE.Object3D[] {
+    if (!this.active) return out;
+    out.push(this.instancer.group, this.scatterPools.group);
+    for (const d of this.drawn.values()) if (d.frozen && !d.inst && d.obj.parent === this.thingsGroup) out.push(d.obj);
+    return out;
+  }
+  get shadowRevision() { return this.staticRevision + this.instancer.revision; }
+  /** PERF-BATCH: before each draw, every frozen building decides its storey cut for this camera (building.mesh.ts does it
+   *  in the meshes' render hooks, which a merged batch never runs). A building that hides a storey leaves the batches
+   *  (renderDynamic: its batch falls back this frame; the next preparation merges without it) until it is whole again. */
+  decideCuts(camera: THREE.Camera) {
+    camera.updateMatrixWorld();
+    for (const d of this.interiors) {   // PERF-EVENTLOOP: the buildings, not every drawn thing
+      const interior = d.obj.userData.interior as { decide?: (camera: THREE.Camera) => boolean } | undefined;
+      if (!interior?.decide || !d.frozen) continue;
+      const cut = interior.decide(camera);
+      if (cut === !!d.cut) continue;
+      d.cut = cut; this.staticRevision++;
+      if (cut) d.obj.userData.renderDynamic = true; else delete d.obj.userData.renderDynamic;
+    }
+  }
+  /** The frozen thing an object belongs to (if any) thaws at the next update: something under it was shown or hidden. */
+  private thawOwner(o: THREE.Object3D) { for (let p: THREE.Object3D | null = o; p; p = p.parent) { const d = p.userData.frozenDrawn as Drawn | undefined; if (d) { d.thaw = true; return; } } }
   interiorRange = 30;
   /** Interior view (building/1's mesh sets `userData.interior`): a thing on a storey its building hides is hidden too. */
   private interiorVisible(id: string, d: Drawn): boolean {
     if (!this.model) return true;
     // entry 42: a thing kept in a shut drawer or locker is not seen, unless a hand is opening or closing it right now
     const box = this.keptIn.get(id); if (box && !(this.movingBoxes.has(box) && this.now - this.movingAt < 200) && this.model.entities.get(box)?.state?.open !== true) return false;
-    // P1: which building (if any) holds a thing, and on which slot, is found once per world revision (seq + drawn count),
-    // not by walking the parent chain of all ~4,800 things every frame; kept on the thing itself (no lookup per frame)
-    const key = this.seq * 1_048_576 + this.drawn.size;
+    // PERF-EVENTLOOP: which building (if any) holds a thing, and on which slot, is resolved once and again only when an ancestor
+    // it walked through is drawn, redrawn or removed (touchDependents), or its host's object left the scene (redrawn since)
     let c = d.interior;
-    if (!c || c.key !== key || (c.host && !c.host.obj.parent)) {  // (a host redrawn since: find it again)
-      c = { key, host: null, slot: '' };
-      let e = this.model.entities.get(id), slot = e?.in.slot;
-      for (let depth = 0; e && e.in.parent !== 'world' && depth < 6; depth++) {
-        const h = this.drawn.get(e.in.parent);
-        if (h?.obj.userData.interior) { c.host = h; c.slot = slot ?? ''; break; }
-        e = this.model.entities.get(e.in.parent); slot = e?.in.slot;
-      }
-      d.interior = c;
-    }
+    if (!c || c.stale || (c.host && !c.host.obj.parent)) c = this.resolveInterior(id, d);
     if (c.host === null) return true;
-    const hostObj = c.host.obj, host = hostObj.userData.interior as { cut(): number; floorOf: Record<string, number> } | undefined;
-    if (!host) return true;
-    let far = this.interiorFar.get(hostObj);
-    if (far === undefined) { far = !!this.interiorFrom && hostObj.parent === this.thingsGroup && hostObj.position.distanceToSquared(this.interiorFrom) > this.interiorRange * this.interiorRange; this.interiorFar.set(hostObj, far); }
-    return !far && (host.floorOf[c.slot] ?? 0) <= host.cut();
+    // the host's cut and far state: kept per host (hostPass refreshes it once per frame), read here only when first asked
+    let hs = this.hostState.get(c.host);
+    if (hs === undefined) {
+      const hostObj = c.host.obj, host = hostObj.userData.interior as { cut(): number; floorOf: Record<string, number> } | undefined;
+      hs = host ? { far: !!this.interiorFrom && hostObj.parent === this.thingsGroup && hostObj.position.distanceToSquared(this.interiorFrom) > this.interiorRange * this.interiorRange, cut: host.cut() } : null;
+      this.hostState.set(c.host, hs);
+    }
+    if (hs === null) return true;
+    return !hs.far && c.floor <= hs.cut;
   }
-  private interiorFar = new Map<THREE.Object3D, boolean>();
+  /** PERF-EVENTLOOP: walk a thing's parent chain (up to 6) to the nearest drawn ancestor with an interior; every ancestor id walked
+   *  through is remembered (dependents), so the walk repeats only when one of them changes. */
+  private resolveInterior(id: string, d: Drawn): Interior {
+    const prev = d.interior; if (prev) for (const a of prev.on) { const set = this.dependents.get(a); if (set) { set.delete(id); if (!set.size) this.dependents.delete(a); } }
+    const c: Interior = { host: null, slot: '', floor: 0, on: [] };
+    let e = this.model!.entities.get(id), slot = e?.in.slot;
+    for (let depth = 0; e && e.in.parent !== 'world' && depth < 6; depth++) {
+      const pid = e.in.parent; c.on.push(pid);
+      let set = this.dependents.get(pid); if (!set) { set = new Set(); this.dependents.set(pid, set); } set.add(id);
+      const h = this.drawn.get(pid);
+      if (h?.obj.userData.interior) { c.host = h; c.slot = slot ?? ''; c.floor = (h.obj.userData.interior as { floorOf: Record<string, number> }).floorOf[c.slot] ?? 0; break; }
+      e = this.model!.entities.get(pid); slot = e?.in.slot;
+    }
+    d.interior = c;
+    return c;
+  }
 
   /** A box worth looking at first: the placed things if any, else the middle of the world. */
   viewBounds(): [number, number, number, number] {
@@ -892,13 +1408,17 @@ export class WorldEntityLayer {
   };
 
   dispose() {
+    this.decoderDisposed = true; this.decoder?.dispose();
     this.sites.dispose();
-    this.instancer.dispose();
+    for (const pool of [this.instancer, this.scatterPools, this.motionInstancer]) pool.group.removeEventListener('childadded', this.onPoolGeometryAdded);
+    this.instancer.dispose(); this.scatterPools.dispose(); this.motionInstancer.dispose();
     this.cover.dispose();
     for (const m of this.sectors.values()) { m.geometry.dispose(); }
     this.sectors.clear();
     for (const d of this.drawn.values()) disposeObject(d.obj);
-    this.drawn.clear();this.tugged.clear();
+    for (const owner of this.geometryOwners.keys()) this.releaseGeometry(owner);
+    this.drawn.clear();this.tugged.clear();this.live.clear();this.visDirty.clear();this.openings.clear();this.dependents.clear();this.interiors.clear();this.hostState.clear();this.glowSteady.clear();this.glowAnim.clear();
+    this.ring?.clear(); this.ring = null; this.streaming = null; this.streamQueue = []; this.streamQueued.clear(); this.unloadQueue = []; this.streamPending.clear(); this.sectorWork = null;
     this.recordedItems.clear();this.missingItemAt.clear();this.lightMoves.clear();this.keptIn.clear();this.movingBoxes.clear();
     for (const m of this.materials.values()) m.dispose();
     this.materials.clear();
@@ -912,6 +1432,12 @@ export class WorldEntityLayer {
   /** P7: sectors drawn coarse at the arrival, still to be refined (keys `sx,sz`). */
   private coarse = new Set<string>();
   private rebuildTerrain(onlyTiles?: Set<string>, deferMottle = false, fineNear?: { at: [number, number][]; r: number; view?: ViewWedge | null }) {
+    for (const _ of this.terrainSteps(onlyTiles, deferMottle, fineNear)) { /* every sector now */ }
+  }
+  /** The terrain rebuild one sector per step (lane PERF-SNAPSHOT: the first build takes them in slices, start()); the
+   *  steps after the last sector (dropping sectors outside the extent, re-settling things on re-baked tiles) run when the
+   *  generator finishes, so always run it to the end. */
+  private *terrainSteps(onlyTiles?: Set<string>, deferMottle = false, fineNear?: { at: [number, number][]; r: number; view?: ViewWedge | null }, within?: { at: [number, number][]; r: number }): Generator<void> {
     const m = this.model!; const [bx0, bz0, bx1, bz1] = m.ground().extent;   // GOD-ENV: bounds, a rectangle once extended
     const tx0 = Math.floor(bx0 / TILE_M), tx1 = Math.ceil(bx1 / TILE_M) - 1, tz0 = Math.floor(bz0 / TILE_M), tz1 = Math.ceil(bz1 / TILE_M) - 1;
     const sx0 = Math.floor(tx0 / SECTOR_TILES), sx1 = Math.floor(tx1 / SECTOR_TILES), sz0 = Math.floor(tz0 / SECTOR_TILES), sz1 = Math.floor(tz1 / SECTOR_TILES);
@@ -930,9 +1456,12 @@ export class WorldEntityLayer {
       // t4-phone-new: a sector the arrival camera cannot see is not drawn before the poster at all; the fill draws it with
       // the coarse ones (refineCoarseSector), nearest first (Eden 2026: most of a portrait phone's ground lies behind it)
       const X0 = sx * SECTOR_TILES * TILE_M, Z0 = sz * SECTOR_TILES * TILE_M, X1 = X0 + SECTOR_TILES * TILE_M, Z1 = Z0 + SECTOR_TILES * TILE_M;
+      // PERF-STREAM: a sector beyond the ring is not built now (streamSectors draws it when the camera comes near)
+      if (within && !onlyTiles && !this.sectors.has(key) && !within.at.some(([x, z]) => rectDistance(x, z, X0, Z0, X1, Z1) <= within.r)) continue;
       if (fineNear?.view && !onlyTiles && shapeWedgeDistance(fineNear.view, [[X0, Z0], [X1, Z0], [X1, Z1], [X0, Z1]], true) > 0) { const old = this.sectors.get(key); if (old) { this.terrainGroup.remove(old); old.geometry.dispose(); this.sectors.delete(key); } this.coarse.add(key); continue; }
       this.placeSector(key, this.sectorMesh(sx, sz, [tx0, tz0, tx1, tz1], deferMottle, coarse ? COARSE_STEP : TERRAIN_STEP, !!fineNear));
       if (coarse || fineNear) this.coarse.add(key); else this.coarse.delete(key);
+      yield;
     }
     for (const [key, mesh] of this.sectors) if (!wanted.has(key)) { this.terrainGroup.remove(mesh); mesh.geometry.dispose(); this.sectors.delete(key); this.coarse.delete(key); }
     // things settle on the new ground: refresh poses of root entities (no easing)
@@ -1060,6 +1589,9 @@ export class WorldEntityLayer {
   private draw(e: Entity, ease: boolean, force = false) {
     const m = this.model!; const def = m.resolvedDef(e.def);
     if (!def) return;
+    // PERF-STREAM: a thing beyond the ring is not built (its record is kept; it is drawn when the camera comes); one that
+    // is drawn and now beyond it is unloaded. A new thing near the camera (a diff) is built at once (probe).
+    if (this.ring) { this.ringSet(e, def); if (!this.ring.isWanted(e.id) && !this.ring.probe(e.id)) { if (this.drawn.has(e.id)) this.unload(e.id); return; } }
     if(def.components.carryable&&(def.components.light||def.components.lights))this.lightMoves.add(e.id);
     if (def.tags.includes('horizon')) this.horizonBy.add(e.id); else this.horizonBy.delete(e.id);
     const parent = e.in.parent !== 'world' ? m.entities.get(e.in.parent) : undefined;
@@ -1078,6 +1610,12 @@ export class WorldEntityLayer {
     const refinement = ease && !isWorld ? this.sites.refinement(e, m) : null;
     if (existing && existing.defHash === defHash && !existing.removing && !force) {
       if (isWorld) return;
+      // The parent or slot can change without changing the world pose. Resolve its host again even when no easing is needed.
+      if (existing.interior) existing.interior.stale = true;
+      this.live.add(e.id); this.touchDependents(e.id);
+      // lane PERF-SNAPSHOT: a settled thing asked to stay where it is (a resync, a parent's children re-posed) is left
+      // alone: its pose is not re-eased, so it stays settled (frozen on the phone tier) and nothing flashes
+      if (!ease && existing.settled && existing.to.p.equals(target) && existing.to.s === wp.s && existing.obj.rotation.y === wp.yaw && (!Array.isArray(e.r) || (existing.obj.rotation.x === e.r[1] && existing.obj.rotation.z === e.r[2]))) return;
       existing.obj.rotation.set(0, wp.yaw, 0); applyTilt(existing.obj, e);
       existing.from = refinement ? { p: target.clone(), s: wp.s * refinement.scale } : { p: ease ? existing.obj.position.clone() : target.clone(), s: ease ? existing.obj.scale.x : wp.s };
       existing.to = { p: target, s: wp.s }; existing.t0 = this.now; existing.dur = ease ? refinement?.seconds ?? EASE_IN_S : 0.001; existing.settled = false;
@@ -1110,12 +1648,15 @@ export class WorldEntityLayer {
     // Waiting for animate()'s settled transform left an OFF bulb glowing for 2.5 s.
     if (def.components.light || def.components.lights) syncLightGlow(built,e,def,m,this.now/1000);
     const opening=existing&&def.tags.includes('hand-operated')?beginOpeningMotion(built,existing.obj,this.now):undefined;
-    if (existing) { if (existing.inst) this.instancer.remove(existing.inst, e.id); else { this.thingsGroup.remove(existing.obj); disposeObject(existing.obj); } this.drawn.delete(e.id); }
+    // Shared builders can hand back the very geometry the old object owns. Register the new owner first, so replacing
+    // the sole drawn copy cannot dispose a buffer the replacement or its pool is about to use.
+    this.retainGeometry(built);
+    if (existing) { if (existing.inst) this.instancer.remove(existing.inst, e.id); else { if (existing.frozen) this.thaw(existing); this.motionInstancer.untrack(existing.obj); this.thingsGroup.remove(existing.obj); disposeObject(existing.obj); this.releaseGeometry(existing.obj); } this.drawn.delete(e.id); }
     // a rainbow thing is weather: hidden until the atmosphere shows it after rain (its own meshes, never instanced)
     const rainbow = isRainbowDef(def); if (rainbow) holdRainbow(built);
     // static things with an instance key share one InstancedMesh per part (a few draws for hundreds of props)
     const instKey = !this.immutable && !isWorld && !rainbow && !hasMotion(def) && typeof built.userData.instanceKey === 'string' && instanceable(built) ? built.userData.instanceKey as string : undefined;
-    if (instKey) { this.instancer.ensure(instKey, built); built = new THREE.Object3D(); }
+    if (instKey) { this.instancer.ensure(instKey, built); this.releaseGeometry(built); built = new THREE.Object3D(); }
     if (!isWorld) { built.rotation.set(0, wp.yaw, 0); applyTilt(built, e); }
     const fresh = !existing;
     const from = refinement ? { p: target.clone(), s: wp.s * refinement.scale } : fresh && ease ? { p: target.clone().add(new THREE.Vector3(0, DROP_M, 0)), s: wp.s * 0.2 } : { p: target.clone(), s: wp.s };
@@ -1125,16 +1666,22 @@ export class WorldEntityLayer {
     if (isWorld) { from.s = fresh && ease ? 1 : 1; }
     const mdef = rideMotionDef(def);  // BALLOON-BODY: a ride balloon does not hover; Core's vehicle owns its motion
     this.drawn.set(e.id, { ...(opening ? {opening} : {}), ...(instKey ? { inst: instKey, settled: false } : {}), obj: built, from, to, t0: this.now, dur: ease ? refinement?.seconds ?? EASE_IN_S : 0.001, defHash, world: isWorld, ...(hasMotion(mdef) ? { motion: { entity: e, def: mdef, yaw: wp.yaw, glowOnly: glowOnly(mdef) } } : {}) });
+    if (this.motionInstancing && !instKey && hasMotion(mdef) && !glowOnly(mdef) && !hasFlames(mdef) && !rainbow) this.motionInstancer.track(built);   // PERF-BATCH round 2
     // entry 42: a thing kept in a shut container is hidden from its first frame (a resync can draw before the next update)
     if (this.keptIn.has(e.id)) { const k = this.drawn.get(e.id)!, v = this.interiorVisible(e.id, k); if (k.inst) k.shown = v; else k.obj.visible = v; }
   }
   private undraw(id: string, delaySeconds = 0) {
+    this.forget(id);
+    if (this.ring && !this.model?.entities.has(id)) this.ring.delete(id);   // PERF-STREAM: gone from the world
+    const d = this.drawn.get(id); if (!d || d.removing) return;
+    d.removing = true; d.settled = false; d.from = { p: d.obj.position.clone(), s: d.obj.scale.x }; d.to = { p: d.obj.position.clone().add(new THREE.Vector3(0, 2, 0)), s: 0.01 }; d.t0 = this.now + delaySeconds * 1000; d.dur = EASE_OUT_S;
+  }
+  /** What a thing's picture had around it (jets, steam, growth, where it is kept or held). */
+  private forget(id: string) {
     this.held.delete(id); this.horizonBy.delete(id);
     this.tapJets.delete(id); this.growing.delete(id); this.plantShown.delete(id); this.plantTweens.delete(id);
     { const pour = this.pours.get(id); if (pour) { pour.removeFromParent(); (pour.material as THREE.Material).dispose(); this.pours.delete(id); } }
     { const st = this.steamers.get(id); if (st) { st.pts.removeFromParent(); (st.pts.material as THREE.Material).dispose(); st.lamp?.removeFromParent(); this.steamers.delete(id); } } this.keptIn.delete(id);
-    const d = this.drawn.get(id); if (!d || d.removing) return;
-    d.removing = true; d.settled = false; d.from = { p: d.obj.position.clone(), s: d.obj.scale.x }; d.to = { p: d.obj.position.clone().add(new THREE.Vector3(0, 2, 0)), s: 0.01 }; d.t0 = this.now + delaySeconds * 1000; d.dur = EASE_OUT_S;
   }
   /** One Object3D for an entity, from its def's mesh half (gen-mesh registry). Null when it has no picture (landforms, prefab roots, bodies). */
   private build(e: Entity, def: StoredDef): THREE.Object3D | null {
@@ -1156,6 +1703,10 @@ export class WorldEntityLayer {
 }
 
 const BUILD_SLICE_MS = 50;
+/** Experimental `?stream=<m>` ring hysteresis and per-frame time slices. */
+const STREAM_OUTER_RATIO = 1.3, STREAM_SLICE_MS = 6, STREAM_SECTOR_MS = 4;
+/** A resync's draws run during play: short slices, the main thread free between them (applyDelta). */
+const RESYNC_SLICE_MS = 6;
 /** P7: a phone's arrival bakes the terrain sectors within this distance of its eye or target; the rest start coarse. */
 const COARSE_BEYOND_M = 96;
 const COARSE_STEP = 4;
@@ -1314,7 +1865,13 @@ const frac = (n: number) => { const x = Math.sin(n) * 43758.5453; return x - Mat
 function hashSeed(s: string) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0) % 100000; }
 function waterLevel(g: Ground, x: number, z: number): number | null {
   let level: number | null = null;
-  for (const w of g.waters) if (w.area && pointInPoly(x, z, w.area)) level = w.level; else if (w.path && w.w) { const lv = waterLevelAt(g, x, z); if (lv !== null) level = lv; }
+  let globalLevel: number | null = null, globalRead = false;
+  // Every path branch asks the same whole-ground question. Keep its ordered overwrite (including the sea
+  // fallback), but answer only once per call; a null answer is cached too. Ground edits are seen on the next call.
+  for (const w of g.waters) if (w.area && pointInPoly(x, z, w.area)) level = w.level; else if (w.path && w.w) {
+    if (!globalRead) { globalLevel = waterLevelAt(g, x, z); globalRead = true; }
+    if (globalLevel !== null) level = globalLevel;
+  }
   return level ?? g.seaLevel ?? null;
 }
 // indexed reads, not array destructuring: the same arithmetic as @sim/ground's pointInPoly (L3e)
@@ -1326,5 +1883,13 @@ function pointInPoly(px: number, pz: number, poly: [number, number][]) {
   }
   return inside;
 }
+/** PERF-EVENTLOOP: the drawn records, adopted on set and released on replace, delete or clear (WorldEntityLayer.adopt/release). */
+class DrawnMap extends Map<string, Drawn> {
+  private readonly layer: { adopt(id: string, d: Drawn): void; release(id: string, d: Drawn): void };
+  constructor(layer: { adopt(id: string, d: Drawn): void; release(id: string, d: Drawn): void }) { super(); this.layer = layer; }
+  override set(id: string, d: Drawn): this { const prev = super.get(id); if (prev === d) return this; if (prev) this.layer.release(id, prev); super.set(id, d); this.layer.adopt(id, d); return this; }
+  override delete(id: string): boolean { const prev = super.get(id); if (prev) this.layer.release(id, prev); return super.delete(id); }
+  override clear(): void { for (const [id, d] of this) this.layer.release(id, d); super.clear(); }
+}
 export type { Def };
-export { TILE_N };
+export { TILE_N, waterLevel };

@@ -202,26 +202,54 @@ function vendorGroups() {
   ];
 }
 
+// PERF-EDEN: with SIM_DEV_API set, a world page carries the live world's inline config (apps/server/src/inline-config.ts
+// writes `window.__simConfig` into <head>; without it the page takes `eden` for an old-engine world and never mounts the
+// entity layer). The page is read from Vite (dev) or dist (preview) and the remote /v1/config is inlined the same way.
+function remoteInlineConfig(): Plugin {
+  const remote = process.env.SIM_DEV_API?.replace(/\/+$/, '');
+  const serve = (html: (url: string) => Promise<string | null>) => async (req: { url?: string; method?: string }, res: { setHeader(k: string, v: string): void; end(b: string): void }, next: () => void) => {
+    const m = req.method === 'GET' ? /^\/w\/([^/?#]+)\/?(?:[?#].*)?$/.exec(req.url ?? '') : null;
+    if (!remote || !m) return next();
+    try {
+      const r = await fetch(`${remote}/w/${m[1]}/v1/config`); const config = r.ok ? await r.json() : null;
+      const page = await html(req.url!); if (page === null) return next();
+      const json = JSON.stringify(config).replace(/</g, '\\u003c');
+      const at = page.search(/<head[^>]*>/i), end = page.indexOf('>', at) + 1;
+      res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(at < 0 || !config ? page : page.slice(0, end) + `<script>window.__simConfig=${json}</script>` + page.slice(end));
+    } catch { next(); }
+  };
+  return {
+    name: 'sim-remote-inline-config',
+    configureServer(server) { if (remote) server.middlewares.use(serve(async (url) => server.transformIndexHtml(url, readFileSync(resolvePath(server.config.root, 'index.html'), 'utf8')))); },
+    configurePreviewServer(server) { if (remote) server.middlewares.use(serve(async () => { try { return readFileSync(resolvePath(server.config.root, server.config.build.outDir, 'index.html'), 'utf8'); } catch { return null; } })); },
+  };
+}
+
 // `pnpm dev` (issue #395): Vite serves the page and hands the server's routes to the server on PORT (the server's own
 // variable, default 4500; WEB_PORT moves Vite off :5173). Under a world's path (/w/toy/) everything but the page itself is
 // the server's: /w/toy/v1/config, the socket. At the root: the API, and the Mars web assets the server serves from
 // mars/viewer/dist/client (src/mars-static.ts), among them the people's character set under /modular.
+// PERF-EDEN: `SIM_DEV_API=https://souls.game pnpm --filter @sim/web dev` points the same proxy at a deployed site, so a local
+// build can be measured against a live world (as an anonymous visitor) without copying its data.
 function devProxy() {
-  const http = `http://127.0.0.1:${process.env.PORT ?? 4500}`;
   // One RegExp key (a key starting with ^ is one) matching whole path segments: /history/… goes to the server, a page
   // /history-x stays with Vite.
   const roots = 'v1|__sim|skill\\.md|cards\\.md|mcp|healthz|modular|mars-assets|engine|models|history|2020|browser|data/manifest\\.json';
+  const remote = process.env.SIM_DEV_API?.replace(/\/+$/, '');
+  if (remote) { const opts = { target: remote, changeOrigin: true, secure: true, ws: true }; return { '^/w/[^/]+/[^?]+': opts, [`^/(?:${roots})(?:[/?]|$)`]: opts, '^/ws(?:[/?]|$)': opts }; }
+  const http = `http://127.0.0.1:${process.env.PORT ?? 4500}`;
   return { '^/w/[^/]+/[^?]+': { target: http, ws: true }, [`^/(?:${roots})(?:[/?]|$)`]: http, '^/ws(?:[/?]|$)': { target: http.replace(/^http/, 'ws'), ws: true } };
 }
 
 export default defineConfig({
-  plugins: [snapshotPrefetch(), cdnPreconnect(), pwa(), phasedEntry(), checkChunks(), changelogPage(), react()],
+  plugins: [snapshotPrefetch(), cdnPreconnect(), pwa(), phasedEntry(), checkChunks(), changelogPage(), react(), remoteInlineConfig()],
   define: { __BUILD__: JSON.stringify(process.env.BUILD_ID ?? 'dev'), __SIM_ARRIVAL_ENABLED__: process.env.SIM_ARRIVAL_UI_ENABLED==='1', __SIM_GOATCOUNTER__: JSON.stringify(process.env.SIM_GOATCOUNTER ?? 'simeden'),
     __SIM_ASSETS_CDN_ENABLED__: process.env.SIM_ASSETS_CDN_ENABLED==='1',
     // CDN4: god uploads via the pull-through Worker on assets.eden.art/w/* (default on; needs the CDN switch above)
     __SIM_GOD_UPLOADS_CDN__: process.env.SIM_GOD_UPLOADS_CDN!=='0',
     __SIM_ASSETS_CDN_ORIGIN__: JSON.stringify(process.env.SIM_ASSETS_CDN_ORIGIN ?? 'https://assets.eden.art') },
   server: { port: Number(process.env.WEB_PORT ?? 5173), proxy: devProxy() },
+  preview: { port: Number(process.env.WEB_PORT ?? 5173), proxy: devProxy() },   // PERF-EDEN: `vite preview` serves a production build through the same proxy (SIM_DEV_API: a live world)
   // W1: standalone world-free studio, served by /god/workbench.
   // chunkSizeWarningLimit (kB, lane BUDGET 2026-10-22): just above the largest legitimate chunk, core-kit (1,491 kB raw /
   // 221 kB gzip on 3.62: the shared three.js + catalogue kit every world loads), so any chunk past it warns at build time.

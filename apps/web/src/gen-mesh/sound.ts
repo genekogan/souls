@@ -492,7 +492,14 @@ function applyMaster() {
   if (master) master.gain.value = settings.muted || !on ? 0 : settings.volume;
   if (ctx) { if (!on && ctx.state === 'running') void ctx.suspend().catch(() => {}); else if (on && ctx.state === 'suspended') void ctx.resume().catch(() => {}); }
 }
-const musicOn = () => settings.music && !settings.muted && audible();
+const musicOn = () => settings.music && !settings.muted;
+// PERF-EDEN (2026-11-01): the playlist ducks to 20 % near a piano, jukebox, drums, radio or singer. The near flags flip the
+// moment an emitter comes into range, so walking past one toggled the music up and down; now the duck holds for 2.5 s
+// after the last near tick (hysteresis) and the music ramps the change over ~1 s (music.ts), so it breathes instead of
+// stepping.
+const DUCK_HOLD_MS = 2500; let duckHeldUntil = 0;
+const musicDuck = () => { const now = performance.now(); if (pianoNear || jukeboxNear || drumsNear || radioNear || voiceNear) duckHeldUntil = now + DUCK_HOLD_MS; return now < duckHeldUntil ? 0.2 : 1; };
+const musicSync = () => syncMusic({ on: musicOn(), audible: audible(), volume: settings.volume * musicDuck(), unlocked: !!ctx && ctx.state === 'running' });
 function unlock() {
   if (ctx || typeof AudioContext === 'undefined') return;
   try { ctx = new AudioContext(); master = ctx.createGain(); applyMaster(); master.connect(ctx.destination); meter = ctx.createAnalyser(); meter.fftSize = 2048; master.connect(meter); noise(ctx).stop(); } catch { ctx = null; }
@@ -656,7 +663,7 @@ export function startSoundLayer() {
   };
   (window as unknown as { __edenMusic?: unknown }).__edenMusic = { state: musicState, log: musicLog, level: musicLevel, next: nextPiece, trackSeconds: musicTrackSeconds };
   // another tab took the sound, or this one came back: act now, not on the next (throttled, when hidden) tick
-  audioFocus()?.subscribe(() => { applyMaster(); syncMusic({ on: musicOn(), volume: settings.volume * (pianoNear || jukeboxNear || drumsNear || radioNear || voiceNear ? 0.2 : 1), unlocked: !!ctx && ctx.state === 'running' }); });
+  audioFocus()?.subscribe(() => { applyMaster(); musicSync(); });
   const gesture = () => { unlock(); musicGesture(); };
   for (const ev of ['pointerdown', 'keydown', 'touchstart', 'touchend', 'click'] as const) window.addEventListener(ev, gesture, { capture: true, passive: true });
   // lane W1: the first scan of the world's sound sources (~0.2 s at 2x CPU on Eden 2026) waits until the arrival is over.
@@ -666,7 +673,7 @@ export function startSoundLayer() {
     mountUi();
     // entry 37: the step first, so the playlist ducks in the same tick a radio (or piano, jukebox) becomes audible
     const host = w.__simEntity; if (host?.camera && host.layer) { const t0 = performance.now(); try { step(host); } catch { /* a world mid-reload */ } cost.ticks++; cost.tickMs += performance.now() - t0; }
-    syncMusic({ on: musicOn(), volume: settings.volume * (pianoNear || jukeboxNear || drumsNear || radioNear || voiceNear ? 0.2 : 1), unlocked: !!ctx && ctx.state === 'running' });
+    musicSync();
   }, TICK_MS);
 }
 startSoundLayer();

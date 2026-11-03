@@ -75,13 +75,17 @@ export class CoverProbe {
   private covered = false;
   // a camera for sprites (labels) in the god's layer: three's Sprite.raycast needs one; label hits are skipped below
   private roots: () => THREE.Object3D[];
+  /** PERF-PASSES: when set, the objects worth casting at for an upward ray at (x, z) (WorldEntityLayer.coverCandidates:
+   *  the layer's other groups and the things whose bounds cover the point) instead of the whole root (~9,000 objects on
+   *  Eden 2026, every frame the camera moved more than a metre). Null falls back to the roots. */
+  candidates: ((x: number, z: number) => THREE.Object3D[]) | null = null;
   constructor(roots: () => THREE.Object3D[]) { this.roots = roots; this.ray.far = 40; this.ray.camera = new THREE.PerspectiveCamera(); }
   test(x: number, y: number, z: number): boolean {
     const now = performance.now();
     if (now - this.last < 400 && this.at.distanceToSquared(_p.set(x, y, z)) < 1) return this.covered;
     this.last = now; this.at.set(x, y, z);
     this.ray.set(this.at, this.up);
-    const roots = this.roots();
+    const roots = this.candidates ? this.candidates(x, z) : this.roots();
     this.covered = roots.length > 0 && this.ray.intersectObjects(roots, true).some((h) => h.object.visible && !(h.object as THREE.Sprite).isSprite && !(h.object.userData as { cameraTransparent?: boolean }).cameraTransparent);
     return this.covered;
   }
@@ -108,7 +112,7 @@ type ModelLike = {
   ground?(): { extent?: readonly number[] };
   editSeq?: number;
 };
-type LayerLike = { active: boolean; groundAt(x: number, z: number): number | null; groundPeek?(x: number, z: number): number | null; group: THREE.Object3D; movingLights?():Iterable<string>; lightObject?(id:string):THREE.Object3D|undefined };
+type LayerLike = { active: boolean; groundAt(x: number, z: number): number | null; groundPeek?(x: number, z: number): number | null; lightCandidates?(): Iterable<{ id: string }> | null; group: THREE.Object3D; movingLights?():Iterable<string>; lightObject?(id:string):THREE.Object3D|undefined; coverCandidates?(x: number, z: number): THREE.Object3D[] };
 
 /** God worlds get Eden's living presentation: lamps that light at dusk with warm pools and halos, the sky, weather
  *  (scheduled, or the god's), and rain that stays out of god-built rooms. One per live view. */
@@ -225,7 +229,8 @@ export class GodWorldLiving {
     const sources: NightSource[] = [], marks: HaloSource[] = [], beacons: [number, number, number][] = [];
     this.sourceScans++;
     const portable=new Map<string,{index:number;halo:number;at:readonly number[]}[]>();
-    const scan = () => { for (const e of m.entities.values()) {
+    const candidates = (this.layer.lightCandidates?.() as Iterable<ModelLike['entities'] extends Map<string, infer E> ? E : never> | null | undefined) ?? m.entities.values();   // PERF-STREAM: the drawn things only under streaming
+    const scan = () => { for (const e of candidates) {
       if (e.state?.on === false) continue;
       const def = m.resolvedDef(e.def), components = def?.components, lights = defLights(components);
       // W2: any lighthouse sweeps its beams at night from its lantern room (near the top of its box)
@@ -278,7 +283,8 @@ export class GodWorldLiving {
   }
   /** For the atmosphere: the god's weather (null = scheduled) and "under a roof" for camera-local rain. */
   atmosphere(tick = NaN): { weather: SetWeather | null; indoors: (x: number, y: number, z: number) => boolean } {
-    return { weather: setWeatherOf(entityWorldState(this.layer), tick), indoors: (x, y, z) => this.layer.active && sharedCoverProbe(this.layer.group).test(x, y, z) };
+    const probe = sharedCoverProbe(this.layer.group); if (!probe.candidates && this.layer.coverCandidates) probe.candidates = this.layer.coverCandidates;
+    return { weather: setWeatherOf(entityWorldState(this.layer), tick), indoors: (x, y, z) => this.layer.active && probe.test(x, y, z) };
   }
   dispose() { setClockNight(null); this.patterns?.dispose(); this.patterns = null; this.group.removeFromParent(); }
 }

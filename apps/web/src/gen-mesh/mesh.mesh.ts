@@ -18,6 +18,7 @@ import { adoptInstance, GLB_INSTANCING } from './glb-instances.ts';
 import { lookKey } from './vocab-look.ts';
 import { trackShadowProxies } from './shadow-proxy.ts';
 import { meshLodAsset, type LodMake } from './mesh-lod.ts';
+import { variantOf } from './material-variants.ts';
 
 const HIDE_ROOFS = typeof location !== 'undefined' && new URLSearchParams(location.search).has('hideRoofs') && new URLSearchParams(location.search).get('hideRoofs') !== '0';
 const MOVING = new Set(['wander', 'graze', 'fly', 'swim', 'follow']);
@@ -69,7 +70,8 @@ const meshBuilder: MeshBuilder = {
       const v = variants.get(sha); if (v) v.inst = loaded; else inst = loaded;
       // flat things (rugs, boards, plates a few cm thick) would z-fight with gently uneven ground: draw them
       // a hair towards the camera (the materials are shared per asset, so every copy of it gets the same)
-      if (ctx.def.size.box[1] <= 0.06) loaded.object.traverse((o) => { const mats = (o as THREE.Mesh).material; for (const m of Array.isArray(mats) ? mats : mats ? [mats] : []) { m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -4; } });
+      // (the materials are shared per asset and, merged, across assets: the offset is a shared variant, never a write)
+      if (ctx.def.size.box[1] <= 0.06) loaded.object.traverse((o) => { const mesh = o as THREE.Mesh; if (!mesh.isMesh || !mesh.material) return; const lift = (m: THREE.Material) => variantOf(m, 'flat-offset', (x) => { x.polygonOffset = true; x.polygonOffsetFactor = -2; x.polygonOffsetUnits = -4; }); mesh.material = Array.isArray(mesh.material) ? mesh.material.map(lift) : lift(mesh.material); });
       target.add(loaded.object); assetShown(sha); if (v) show();
       trackShadowProxies(loaded.object);   // lane PERF2: its one shadow caster draws only in the shadow pass (shadow-proxy.ts)
       // lane PERF2: repeated static copies (no clips, no roof to hide, no motion rig, no look) share one InstancedMesh per

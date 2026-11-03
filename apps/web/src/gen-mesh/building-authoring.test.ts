@@ -39,7 +39,7 @@ function draw(name: string, extra: Record<string, unknown> = {}, entity?: Entity
 const EXACT = process.platform === 'darwin' && process.arch === 'arm64';
 function stats(g: THREE.Object3D) {
   const h = createHash('sha256'), q = createHash('sha256'); let tris = 0, draws = 0;
-  g.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return;
+  g.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh || m.userData.shadowProxy) return;   // (the shadow proxy is position only: not a drawn part)
     h.update(m.name); q.update(m.name);
     for (const k of ['position', 'normal', 'color']) { const a = m.geometry.attributes[k].array as Float32Array; h.update(new Uint8Array(a.buffer)); q.update(new Uint8Array(Int32Array.from(a, (v) => Math.round(v * 1000)).buffer)); }
     tris += m.geometry.attributes.position.count / 3; draws++;
@@ -48,7 +48,7 @@ function stats(g: THREE.Object3D) {
 }
 function triangles(g: THREE.Object3D) {
   const out: string[] = [];
-  g.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return;
+  g.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh || m.userData.shadowProxy) return;
     const a = m.geometry.attributes;
     for (let i = 0; i < a.position.count; i += 3) out.push(m.name + ':' + ['position', 'normal', 'color'].map(k => Array.from(a[k].array.slice(i * 3, i * 3 + 9)).join(',')).join('|'));
   });
@@ -127,7 +127,7 @@ test('church and tea-house fixtures remove the unwanted ornaments and mount faca
     const host = model.get(fixture.name)!, baked = model.slotsOf(host);
     // Door lamps, hood, shutters, flower boxes and chimney colours never occur when switched off.
     const mesh = draw('cottage', params), colours = new Set<string>();
-    mesh.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return; const c = m.geometry.attributes.color;
+    mesh.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh || m.userData.shadowProxy) return; const c = m.geometry.attributes.color;
       for (let i = 0; i < c.count; i++) colours.add(new THREE.Color(c.getX(i), c.getY(i), c.getZ(i)).getHexString());
     });
     for (const hex of ['8a4a36', 'a3442f', '6e4a30', 'd9485f', 'f1c84b', 'e86aa8', '9b6fd1', 'ff8a3d']) assert.equal(colours.has(hex), false, `${fixture.name}: no unwanted ${hex}`);

@@ -3,6 +3,7 @@
 // the owner's agent inbox (presence for the button's dot, the ticket log for the modal), polled every 2 s while the modal
 // is open and every 6 s while it is closed. Visitors never poll the inbox.
 import { useSyncExternalStore } from 'react';
+import { whenVisible } from '../poll-pace.ts';
 import { apiPath } from '../world-path.ts';
 import { userAuthHeaders } from '../auth-session.ts';
 
@@ -58,7 +59,7 @@ async function pollNow() {
   inflight = true; const gen = generation; clearTimeout(timer);
   try { const inbox = await call('/v1/god/inbox'); if (gen === generation) set({ inbox, inboxError: false }); }
   catch { if (gen === generation) set({ inboxError: true }); }
-  finally { inflight = false; if (watchers) timer = setTimeout(() => void pollNow(), state.open ? 2000 : 6000); }
+  finally { inflight = false; if (watchers) timer = setTimeout(() => whenVisible(() => void pollNow()), state.open ? 2000 : 12000); }   // PERF-EDEN: 12 s with the panel closed (was 6), never while hidden
 }
 /** Start polling the owner's inbox; the returned function stops this watcher. */
 export function watchInbox() {
