@@ -68,8 +68,9 @@ Fixes found in review and deferred to after the repository migration:
   or each other between turns.
 - **Rock-paper-scissors hand path.** Readying the hand can pass through the body; it needs a path clear of the torso.
 - **Holding-hands anatomy audit (#421).** Current-main default rigs retain radial thumbs and palmward finger curls on
-  both joined hands, standing and walking, across four headings. The historical mirrored-hand report has not been
-  reproduced by this bounded audit; its original failing-before/fix proof remains unverified. No rig curl-axis change.
+  both joined hands, standing and walking, across four headings. A faithful historical run reproduces reversed finger curls on
+  `a7d68230` and passes the same 24 clasp cases on accepted correction `9af18897`; both checkouts use their own
+  runtime, callers, frozen dependencies and hash-pinned rigs. This reconciles an existing fix; no new rig curl-axis change.
 - **Piano hands.** The pianist's hands sit below the keys; they should rest on and strike the keys at keyboard height
   (also for the piano duet).
 - **Social facing in general.** Groups and conversations should face each other, and a Soul using an object should face

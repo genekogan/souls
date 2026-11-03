@@ -1,4 +1,4 @@
 ---
 type: internal
 ---
-Audit both clasped hands on default real rigs while standing and walking across four headings; retain the historical mirrored-hand proof gap.
+Audit both clasped hands on default real rigs while standing and walking across four headings; reconcile the existing correction with a faithful historical failing-before/passing-after run.
