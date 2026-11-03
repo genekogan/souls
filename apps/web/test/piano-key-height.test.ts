@@ -104,6 +104,7 @@ for(const activity of ['play-piano','play-music'])test(`recorded early piano sto
  assert.ok(Math.abs(view.prevDuration!-.1)<1e-9,'recorded two-tick piano entry duration');assert.equal(view.prevInstrument,'piano');
  const a=sequential.bones(e.id)[e.id].arms,b=fresh.bones(e.id)[e.id].arms;
  assert.ok(a.every((arm,i)=>Math.hypot(...arm.palm.map((x,j)=>x-b[i].palm[j]))<1e-6),'fresh post-interruption replay equals sequential playback');
+ fresh.show(2);assert.equal(view.prevDuration,undefined,'settled idle omits release-only duration');assert.equal(view.prevInstrument,undefined,'settled idle omits release-only instrument');
 });
 
 test('unrelated recorded drums: no piano instrument-history arrays or previous-duration metadata',async()=>{

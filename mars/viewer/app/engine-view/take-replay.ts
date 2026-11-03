@@ -3,6 +3,7 @@
 // Everything is random access in take time, so scrubbing, pausing, the speed
 // and whether the engine camera is on can never change what is shown at a
 // given t (spec §18: the take plays identically with any camera).
+import {PIANO_FADE} from './activity-poses.ts';
 import {recordedBody,admittedBodyUrl} from './recorded-body.ts';
 import {recordedGame} from './recorded-games.ts';
 import {projectPlatformFrame} from './recorded-platforms.ts';
@@ -291,7 +292,7 @@ export class TakePeople {
     let b: string | null = null;
     for (let i = a.bt.length - 1; i >= 0; i--) if (a.bt[i] < a.t[k]) { b = a.bv[i]; break; }
     const history:Pick<SampledHuman,'activityAge'|'prevActivity'|'prevBaseActivity'|'prevActivityDuration'|'prevInstrument'|'restAge'|'walkAge'|'restAgeAtWalk'>={activityAge:(tick-a.t[k])*this.take.dt,prevActivity:a.v[k-1],...(b?{prevBaseActivity:b}:{}),...rest};
-    if(history.prevActivity==='play-piano'||history.prevActivity==='play-music'&&a.it){
+    if(history.activityAge!<PIANO_FADE&&(history.prevActivity==='play-piano'||history.prevActivity==='play-music'&&a.it)){
       let instrument:string|null=null;for(let i=(a.it?.length??0)-1;i>=0;i--)if(a.it![i]<a.t[k]){instrument=a.iv![i];break;}
       if(history.prevActivity==='play-piano'||instrument==='piano'||instrument==='keyboard'){
         history.prevActivityDuration=(a.t[k]-a.t[k-1])*this.take.dt;if(instrument)history.prevInstrument=instrument;
