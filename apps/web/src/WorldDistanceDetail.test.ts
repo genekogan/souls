@@ -78,3 +78,32 @@ test('PERF-PASSES: a mesh inside a frozen thing keeps its world sphere while the
   // while frozen the cache is trusted: the camera moving is still followed (distance is per frame)
   s.camera.position.set(0,2,400);s.root.updateMatrixWorld(true);detail.apply(s.root,s.camera,844);assert.equal(s.far.visible,false,'a 10 cm cup 205 m away');detail.restore();
 });
+
+test('shared ancestors are read once per apply, with current visibility and nearest freeze marker on every frame',()=>{
+  const root=new THREE.Scene(),outer=new THREE.Group(),inner=new THREE.Group(),camera=new THREE.PerspectiveCamera(45,390/844,.1,2400);
+  root.add(outer);outer.add(inner);camera.position.set(0,2,0);
+  let shown=true,reads=0,freezeReads=0,mark:{frozen?:unknown}={frozen:[]};
+  Object.defineProperty(outer,'visible',{get:()=>{reads++;return shown;},set:v=>{shown=v;},configurable:true});
+  Object.defineProperty(outer.userData,'frozenDrawn',{get:()=>{freezeReads++;return mark;},configurable:true});
+  const nested:unknown[]=[],meshes:THREE.Mesh[]=[];inner.userData.frozenDrawn={frozen:nested};
+  for(let i=0;i<128;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(.1,8,4),new THREE.MeshBasicMaterial());m.position.set(0,2,-200);m.castShadow=true;inner.add(m);meshes.push(m);}
+  root.updateMatrixWorld(true);const detail=new WorldDistanceDetail(PHONE_DETAIL);
+  const candidates=()=>((detail as unknown as {candidates:{w?:{list:unknown}}[]}).candidates);
+  detail.apply(root,camera,844);assert.equal(reads,1);assert.equal(freezeReads,1);assert.ok(meshes.every(m=>!m.visible));assert.ok(candidates().every(c=>c.w?.list===nested),'nearest marker still wins');detail.restore();
+  shown=false;reads=freezeReads=0;detail.apply(root,camera,844);assert.equal(reads,1);assert.ok(meshes.every(m=>m.visible),'hidden ancestor is skipped, without changing its children');detail.restore();
+  shown=true;mark={};delete inner.userData.frozenDrawn;outer.position.z=195;root.updateMatrixWorld(true);reads=freezeReads=0;
+  detail.apply(root,camera,844);assert.equal(reads,1);assert.equal(freezeReads,1);assert.ok(meshes.every(m=>m.visible&&m.castShadow));assert.ok(candidates().every(c=>!c.w),'thaw is seen on the next apply');detail.restore();
+  mark={frozen:[]};detail.apply(root,camera,844);assert.ok(candidates().every(c=>c.w?.list===mark.frozen));detail.dispose();
+});
+
+test('ancestor memo preserves scan ownership and parent-mesh culling, then replaces ancestry at the next scan',()=>{
+  const root=new THREE.Scene(),group=new THREE.Group(),hidden=new THREE.Group(),camera=new THREE.PerspectiveCamera(45,390/844,.1,2400);
+  root.add(group,hidden);hidden.visible=false;camera.position.set(0,2,0);
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(.1,8,4),new THREE.MeshBasicMaterial()),child=new THREE.Mesh(new THREE.SphereGeometry(8,8,4),new THREE.MeshBasicMaterial());
+  mesh.position.set(0,2,-200);mesh.castShadow=child.castShadow=true;mesh.add(child);group.add(mesh);root.updateMatrixWorld(true);
+  const detail=new WorldDistanceDetail({...PHONE_DETAIL,rescanFrames:2});detail.apply(root,camera,844);
+  assert.equal(mesh.visible,false);assert.equal(child.visible,true);assert.equal(child.castShadow,true,'child is skipped after its parent mesh is culled');detail.restore();
+  hidden.add(mesh);root.updateMatrixWorld(true);detail.apply(root,camera,844);assert.equal(mesh.visible,false,'between scans, ancestry follows the existing candidate inventory');detail.restore();
+  detail.apply(root,camera,844);assert.equal(mesh.visible,true,'new scan sees the hidden parent and skips the mesh');assert.equal(child.castShadow,true);detail.dispose();
+  assert.equal((detail as unknown as {candidates:unknown[]}).candidates.length,0,'disposing releases the candidate-owned ancestor memo');
+});

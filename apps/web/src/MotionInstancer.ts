@@ -14,7 +14,7 @@ type Entry = { mesh: THREE.Mesh; geometry: THREE.BufferGeometry; material: THREE
 type Culled = THREE.Mesh & { boundingSphere?: THREE.Sphere };
 /** A sphere no frustum contains (every plane distance is under +∞): an own `boundingSphere` that keeps a mesh out of every pass. */
 export const NEVER_DRAWN = Object.freeze(new THREE.Sphere(new THREE.Vector3(), -Infinity)) as THREE.Sphere;
-type Tracked = { root: THREE.Object3D; entries: Entry[] };
+type Tracked = { root: THREE.Object3D; entries: Entry[]; watched: THREE.Object3D[]; dirty: boolean; changed: () => void };
 const tmp = new THREE.Matrix4(), v = new THREE.Vector3(), box = new THREE.Box3();
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const meshBefore = THREE.Object3D.prototype.onBeforeRender, meshAfter = THREE.Object3D.prototype.onAfterRender;
@@ -35,19 +35,33 @@ export class MotionInstancer {
   /** Instance every eligible mesh under `root` from now on; the meshes hide. A root already tracked is left as it is. */
   track(root: THREE.Object3D): number {
     if (this.tracked.has(root)) return this.tracked.get(root)!.entries.length;
-    const entries: Entry[] = [];
-    root.traverse((o) => { if (!motionInstanceable(o)) return; entries.push(this.place(o)); });
-    this.tracked.set(root, { root, entries });
-    return entries.length;
+    const tracked: Tracked = { root, entries: [], watched: [], dirty: false, changed: () => { tracked.dirty = true; } };
+    this.refresh(tracked);
+    this.tracked.set(root, tracked);
+    return tracked.entries.length;
   }
   untrack(root: THREE.Object3D) {
     const t = this.tracked.get(root); if (!t) return;
+    for (const o of t.watched) { o.removeEventListener('childadded', t.changed); o.removeEventListener('childremoved', t.changed); }
     for (const e of t.entries) this.release(e);
     this.tracked.delete(root);
   }
   /** Track each child of `group` that is not yet tracked (an engine fixture group whose boats come and go). */
   trackChildren(group: THREE.Object3D) { for (const c of group.children) if (!this.tracked.has(c)) this.track(c); }
   has(root: THREE.Object3D) { return this.tracked.has(root); }
+
+  /** Fixture stock and other live owners may replace nested children without replacing their root. Revisit only after
+   *  a structural event; ordinary frames keep their existing entries and avoid another subtree traversal. */
+  private refresh(t: Tracked) {
+    for (const o of t.watched) { o.removeEventListener('childadded', t.changed); o.removeEventListener('childremoved', t.changed); }
+    for (const e of t.entries) this.release(e);
+    t.watched.length = 0; t.entries.length = 0;
+    t.root.traverse(o => {
+      t.watched.push(o); o.addEventListener('childadded', t.changed); o.addEventListener('childremoved', t.changed);
+      if (motionInstanceable(o)) t.entries.push(this.place(o));
+    });
+    t.dirty = false;
+  }
 
   private place(mesh: THREE.Mesh): Entry {
     const material = mesh.material as THREE.Material;
@@ -81,6 +95,7 @@ export class MotionInstancer {
   sync() {
     for (const t of this.tracked.values()) {
       if (!t.root.parent) { this.untrack(t.root); continue; }
+      if (t.dirty) this.refresh(t);
       t.root.updateWorldMatrix(true, true);
       let rootShown = true; for (let p: THREE.Object3D | null = t.root; p; p = p.parent) if (!p.visible) { rootShown = false; break; }
       for (let k = 0; k < t.entries.length; k++) {

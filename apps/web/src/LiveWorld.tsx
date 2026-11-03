@@ -6,6 +6,7 @@ import {historyTakePath,historyTakePage} from './WorldTakeTransport.ts';
 import {WorldAuthoredBoundaries} from './WorldAuthoredBoundaries.ts';
 import {exploreRoom} from './explore-data.ts';
 import {RendererDiagnostics} from './RendererDiagnostics.ts';
+import {EngineFixtureInstances} from './EngineFixtureInstances.ts';
 import {StaticBatchOwner} from './rendering/StaticBatchOwner.ts';
 import {glowSourceMaterial,mergedGlowMaterial} from './gen-mesh/motion.ts';
 import {mergedRealismAttributes,mergedRealismMaterial} from './WorldEdenRealism.ts';
@@ -722,6 +723,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     const eyes=WorldEyes.fromSearch(location.search,{renderer,camera,scene,body:id=>people?.bodyObject(id)??floaters.object(id)??standIns.getObjectByName(id)??null,souls:()=>[...context.current.sim.conn.replica.souls.values()].map(x=>x.entityId),overlays:()=>[speechLayer.group,ring,fading.group,hover.marker],tick:()=>shown.current.tick,ready:()=>sceneSettled&&drawnTick.current!==null});
     const officeGuardFrom=new THREE.Vector3(),authoredBoundaries=new WorldAuthoredBoundaries();
     let shadowFrame=0;  // P1 phones
+    const fixtureInstances=new EngineFixtureInstances(entityLayer.motionInstancer);
     let posterFrames=0,programsPending=false,warmLayer=0,arrivedOnce=false,earlyPending=0,buildingFrameAt=-Infinity,layerStarted=false,afterNextDraw:(()=>void)|null=null;  // afterNextDraw: ?shot waits for a frame drawn after the build  // lane W1: the built world's shaders are still linking in parallel: no frame yet
     const compileInitialPrograms=async()=>{
       const owner=newWorld?captureTexturePreparation():null;
@@ -1090,7 +1092,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       if(adaptive&&entityLayer.active&&!eyes)adaptive.frame(now);const draw=()=>{diagnostics.beginRender(renderer);sunCache?.prepare(renderer.shadowMap.autoUpdate||renderer.shadowMap.needsUpdate);if(!eyes)entityLayer.cull(camera,renderer.domElement.clientHeight,renderer.shadowMap.autoUpdate||renderer.shadowMap.needsUpdate,sunCache?.cullCamera??light.sun.shadow.camera);if(distanceDetail&&!eyes)distanceDetail.apply(scene,camera,renderer.domElement.clientHeight);if(meshLod&&!eyes)meshLod.apply(scene,camera,renderer.domElement.clientHeight);if(farStandIns&&!eyes)farStandIns.apply(scene,camera,renderer.domElement.clientHeight);try{if(!eyes?.render()){if(post&&entityLayer.active)post.render(renderer,scene,camera);else renderer.render(scene,camera);}}finally{farStandIns?.restore();meshLod?.restore();distanceDetail?.restore();entityLayer.uncull();diagnostics.endRender();}};
       if(quality.shadowEvery>1&&!eyes){renderer.shadowMap.autoUpdate=false;if(shadowFrame++%quality.shadowEvery===0)renderer.shadowMap.needsUpdate=true;}  // P1 phones: the shadow map every n-th frame
       if(!waterDetailOff&&!holdDraw)try{waterDetail.applyUnderwater(scene,camera,renderer.domElement);}catch{}  // a camera under the water: gradual fog and tint (restored after the draw)
-      if((!holdDraw||warmFrame)&&entityLayer.motionInstancing){const fixtures=scene.getObjectByName('engine fixtures');if(fixtures)entityLayer.motionInstancer.trackChildren(fixtures);entityLayer.motionInstancer.sync();}  /* PERF-BATCH round 2: moving things and the engine's boats draw as instances */
+      if((!holdDraw||warmFrame)&&entityLayer.motionInstancing){fixtureInstances.track(scene);entityLayer.motionInstancer.sync();}  /* PERF-BATCH round 2: moving things and the engine's boats draw as instances */
       if(holdDraw){/* nothing to show yet */}else{
 if(entityBatchEnabled&&entityLayer.active&&entityLayer.freezeSettled)entityLayer.decideCuts(camera);if(batchEnabled)staticBatches.withRender(()=>entityBatchEnabled&&entityBatchDraw?entityBatches.withRender(draw,entityLayer.staticRevision):draw());else if(entityBatchEnabled&&entityBatchDraw)entityBatches.withRender(draw,entityLayer.staticRevision);else draw();if(afterNextDraw){const f=afterNextDraw;afterNextDraw=null;f();}if(posterFrames<2&&earlyPosterShown()&&mount.current?.style.visibility==='visible'&&!mount.current.parentElement?.querySelector('.world-initial-loading')&&++posterFrames===2)requestAnimationFrame(removeEarlyPoster);/* P7d: the early renderer's poster goes once two frames of ours are on screen under it */if(earlyPending&&mount.current?.style.visibility==='visible'&&!mount.current.parentElement?.querySelector('.world-initial-loading')&&--earlyPending===0)requestAnimationFrame(()=>{if(!abort.signal.aborted)earlyArrival.mark();});}  // P7 fix: two frames drawn with nothing covering the canvas, then the next frame (the second is on screen) lifts the card
       shadowDetail?.restore();
@@ -1184,6 +1186,7 @@ if(entityBatchEnabled&&entityLayer.active&&entityLayer.freezeSettled)entityLayer
       releaseAssetLoader();
       releaseDownloads();
       eyes?.dispose();
+      fixtureInstances.clear();
       waterDetail.dispose();
       games.dispose();
       platformDraw.dispose();

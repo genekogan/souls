@@ -43,6 +43,8 @@ export type DistanceDetailOptions = {
   rescanFrames: number;
 };
 export const PHONE_SHADOW_EVERY = 3;
+/** Preserve the baseline phone drawing-buffer cap; `?phoneDpr=` overrides for measurements. */
+export const PHONE_PIXEL_RATIO = 1.5;
 export const PHONE_DETAIL: DistanceDetailOptions = Object.freeze({ minRadiusPx: 1.25, shadowNear: 24, shadowPerMetre: 14, shadowMaxRadius: 6, standInDistance: 38, rescanFrames: 90 });
 /** Release 3.1: desktops get only the invisible part of distance detail — meshes under half a CSS pixel of radius are
  *  not drawn, small casters far away stop casting — and mesh LOD at half a pixel of error. No flat cards, same pixel
@@ -65,9 +67,9 @@ export function pickQualityTier(env: QualityEnvironment): QualitySettings {
     : env.coarsePointer && env.deviceMemory !== undefined && env.deviceMemory <= 2 ? ['phone', `touch device with ${env.deviceMemory} GB`]
     : ['full', 'desktop or large screen'];
   const q = new URLSearchParams(env.search), num = (k: string, d: number) => { const v = Number(q.get(k)); return q.has(k) && Number.isFinite(v) && v > 0 ? v : d; };
-  // P1 phones: ?phoneMinPx= / ?phoneShadowNear= / ?phoneShadowEvery= tune the phone tier for measurements
+  // P1 phones: ?phoneMinPx= / ?phoneShadowNear= / ?phoneShadowEvery= / ?phoneDpr= tune the phone tier for measurements
   return tier === 'phone'
-    ? { tier, reason, maxPixelRatio: 1.5, shadowMapSize: 1024, shadowEvery: Math.round(num('phoneShadowEvery', PHONE_SHADOW_EVERY)), freezeStill: true, bodies: PHONE_BODIES, bakedShadows: false,
+    ? { tier, reason, maxPixelRatio: num('phoneDpr', PHONE_PIXEL_RATIO), shadowMapSize: 1024, shadowEvery: Math.round(num('phoneShadowEvery', PHONE_SHADOW_EVERY)), freezeStill: true, bodies: PHONE_BODIES, bakedShadows: false,
       detail: q.has('phoneMinPx') || q.has('phoneShadowNear') ? { ...PHONE_DETAIL, minRadiusPx: num('phoneMinPx', PHONE_DETAIL.minRadiusPx), shadowNear: num('phoneShadowNear', PHONE_DETAIL.shadowNear) } : PHONE_DETAIL }
     : { tier, reason, maxPixelRatio: 2, shadowMapSize: 2048, shadowEvery: q.get('desktopDetail') === '0' ? 1 : Math.round(num('shadowEvery', DESKTOP_SHADOW_EVERY)), freezeStill: q.get('freezeStill') !== '0', bodies: DESKTOP_BODIES, bakedShadows: q.get('bakedShadows') !== '0' && q.get('freezeStill') !== '0',
       detail: q.get('desktopDetail') === '0' ? null : q.get('desktopDetail') === '1' ? DESKTOP_DETAIL : DESKTOP_DETAIL_FAST };
