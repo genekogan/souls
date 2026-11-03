@@ -1,3 +1,4 @@
+import {IDLE_REACH_HANDOFF,ACTUATOR_GESTURE_HISTORY_SECONDS} from '../../../mars/viewer/app/engine-view/idle-reach-handoff.ts';
 import {WorldMotionHistory} from './WorldMotionHistory.ts';
 import { setPosterDay } from '../../../mars/viewer/app/engine-view/poster-sheet.ts';
 import {WorldContextViews} from './WorldContextViews.ts';
@@ -713,11 +714,12 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       return l;
     };
 
-    const initialMotionHistory=new WorldMotionHistory(fetchChunks,abort.signal);
+    const initialMotionHistory=new WorldMotionHistory(fetchChunks,abort.signal,IDLE_REACH_HANDOFF?ACTUATOR_GESTURE_HISTORY_SECONDS:4);
     const motionOwner=()=>JSON.stringify([context.current.sim.conn.welcome?.worldId,context.current.sim.conn.welcome?.epoch]);
     let liveArr: unknown = null, liveKey = '', live: Chunk[] = [], liveTick: number | null = null;
     const spot = new THREE.Vector3();
     const gaitContinuity=new RecordedGaitContinuity();
+    let idleReachDepiction:boolean|undefined;
     let applied: Chunk | null = null, records: Record<string, Entity> = {}, frame = 0, last = performance.now(), labelAt = 0, brokenTake: string | null = null, frameGap = false;
     const liveChunks = () => {
       const t = takesOf(context.current.sim);
@@ -803,9 +805,12 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
         const depictedTick = recordingTick(chunk, tick);
         const motionHistory=!past.current&&initialMotionHistory?initialMotionHistory.history(chunks,chunk,depictedTick):chunks;
         try {
+          const wantedIdleReach=IDLE_REACH_HANDOFF&&(!!past.current||initialMotionHistory.enabled);
+          if(people&&!(people instanceof WorldLightPeople)&&idleReachDepiction!==wantedIdleReach){scene.remove(people.group);people.dispose();people=null;applied=null;}
           if(people instanceof WorldLightPeople&&peopleKit){scene.remove(people.group);people.dispose();people=null;applied=null;}  // the renderer has loaded: the same take, drawn
           if (!people) {
-            people = peopleKit ? new peopleKit.TakePeople(take, { scene: base ?? undefined,nativeBoat,commonsContrast:geometry.hasAuthoredCommons,humanPresets:humanPresets&&geometry.hasAuthoredCommons }) : new WorldLightPeople(take);
+            people = peopleKit ? new peopleKit.TakePeople(take, { scene: base ?? undefined,nativeBoat,idleReachHandoff:wantedIdleReach,commonsContrast:geometry.hasAuthoredCommons,humanPresets:humanPresets&&geometry.hasAuthoredCommons }) : new WorldLightPeople(take);
+            idleReachDepiction=wantedIdleReach;
             people.setTemplates(templates);
             people.setBodyTemplates(bodyModels.templates);
             scene.add(people.group);

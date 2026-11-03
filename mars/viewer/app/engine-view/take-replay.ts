@@ -1,3 +1,5 @@
+import {IDLE_REACH_HANDOFF,actuatorIdleBlend,ACTUATOR_IDLE_RETURN_SECONDS,ACTUATOR_GESTURE_HISTORY_SECONDS} from './idle-reach-handoff.ts';
+import {handReachSeconds,handSwingSeconds,handReleaseSeconds,type HandActuatorMotion} from '../../engine/social/hand-actuator.ts';
 import {WAVE_BLEND_SECONDS,type WaveSample} from './wave-blend.ts';
 // Recorded take → three.js overlay (spec §21–23, §18). Reads only the take file:
 // `sampleTake` for poses/discrete state, `sampleTrack` for the planned camera.
@@ -180,7 +182,10 @@ export class TakePeople {
    *  crossfades and one-shots need how long the current activity has run and what came before). */
   private waveOwners = new Map<string,number[]>();
   private waveActs = new Map<string,{t:number[];v:string[]}>();
-  private waveTakes = new WeakMap<Take,boolean>();
+  private layerTakes = new WeakMap<Take,number>();
+  private handActs = new Map<string,{t:number[];v:(HandActuatorMotion|null)[]}>();
+  private handOwners = new Map<string,number[]>();
+  private readonly idleReachHandoff:boolean;
   private acts = new Map<string, { t: number[]; v: string[]; bt: number[]; bv: (string | null)[] }>();
   private base: SpatialScene;
   private stairKey = '';
@@ -208,9 +213,10 @@ export class TakePeople {
   instrumentOf(id:string){return this.humans.instrumentOf(id);}
   appearanceStatus(){return this.humans.appearanceStatus();}
 
-  constructor(take: Take, opts: { scene?: SpatialScene; commonsContrast?:boolean; humanPresets?:boolean; nativeBoat?:{layout:NativeBoatLayoutV1;proposal:ShoreDesign['boat']} } = {}) {
+  constructor(take: Take, opts: { scene?: SpatialScene; idleReachHandoff?:boolean; commonsContrast?:boolean; humanPresets?:boolean; nativeBoat?:{layout:NativeBoatLayoutV1;proposal:ShoreDesign['boat']} } = {}) {
     this.take = take;
-    this.humans=new HumanViews(opts.humanPresets??false);
+    this.idleReachHandoff=opts.idleReachHandoff??IDLE_REACH_HANDOFF;
+    this.humans=new HumanViews(opts.humanPresets??false,this.idleReachHandoff);
     this.fixtures=new FixtureViews(opts.commonsContrast??false);
     this.base = opts.scene ?? EMPTY_SCENE;
     this.group.add(this.comps.group, this.fixtures.group, this.humans.group);
@@ -350,38 +356,56 @@ export class TakePeople {
     this.acts.clear();
     const prev = this.neighbours.prev, windows: [Take, number][] = [...(prev ? [[prev, prev.startTick - this.take.startTick] as [Take, number]] : []), [this.take, 0]];
     const add=(take:Take,offset:number)=>{
-      let found=false;
+      let found=0;
       for(const [tick,id,field,value]of take.changes){
+        if(this.idleReachHandoff&&field==='handActuator'&&value)found|=2;
         if(field!=='activity'&&field!=='baseActivity')continue;
         let a=this.acts.get(id);if(!a)this.acts.set(id,(a={t:[],v:[],bt:[],bv:[]}));
         if(field==='activity'){
-          if(value==='wave')found=true;
+          if(value==='wave')found|=1;
           if(typeof value==='string'&&a.v[a.v.length-1]!==value){a.t.push(tick+offset);a.v.push(value);}
         }else{a.bt.push(tick+offset);a.bv.push(typeof value==='string'?value:null);}
       }
-      this.waveTakes.set(take,found);
+      this.layerTakes.set(take,found);
     };
     for(const [take,offset]of windows)add(take,offset);
-    this.waveActs.clear();this.waveOwners.clear();
+    this.waveActs.clear();this.waveOwners.clear();this.handActs.clear();this.handOwners.clear();
     // Cached discovery scans each immutable take once. Ordinary forward idle
     // chunks are already inspected by the existing activity-index pass above.
-    const hasWave=(take:Take)=>{let found=this.waveTakes.get(take);if(found===undefined){found=take.changes.some(([, ,f,v])=>f==='activity'&&v==='wave');this.waveTakes.set(take,found);}return found;};
-    if(!this.history.some(hasWave)&&!hasWave(this.take))return;
+    const layers=(take:Take)=>{let found=this.layerTakes.get(take);if(found===undefined){found=0;for(const[,,f,v]of take.changes){if(f==='activity'&&v==='wave')found|=1;if(this.idleReachHandoff&&f==='handActuator'&&v)found|=2;}this.layerTakes.set(take,found);}return found;};
+    if(!this.history.some(t=>layers(t)!==0)&&!layers(this.take))return;
     const chain:Take[]=[this.take];let first=this.take;
-    while((this.take.startTick-first.startTick)*this.take.dt<2*WAVE_BLEND_SECONDS){
+    // Initial take states retain even a long-running actuator. Only its final idle tail needs predecessors.
+    const layerHistorySeconds=Math.max(2*WAVE_BLEND_SECONDS,this.idleReachHandoff?ACTUATOR_GESTURE_HISTORY_SECONDS:0);
+    while((this.take.startTick-first.startTick)*this.take.dt<layerHistorySeconds){
       const matches=this.history.filter(t=>t!==first&&t.ticks>0&&adjacentTakes(t,first)&&t.rulesVersion===first.rulesVersion);
       if(matches.length!==1)break;first=matches[0];chain.unshift(first);
     }
-    const waveIds=new Set<string>();for(const take of chain)if(hasWave(take))for(const [,id,f,v]of take.changes)if(f==='activity'&&v==='wave')waveIds.add(id);
-    if(!waveIds.size)return;
+    const waveIds=new Set<string>(),handIds=new Set<string>();for(const take of chain)if(layers(take))for(const[,id,f,v]of take.changes){if(f==='activity'&&v==='wave')waveIds.add(id);if(this.idleReachHandoff&&f==='handActuator'&&v)handIds.add(id);}
+    if(!waveIds.size&&!handIds.size)return;
     const owners=new Set(['hands','grip','handHold','rps','heldItemsV1','on']);
     for(const take of chain)for(const [tick,id,f,v]of take.changes){
+      if(handIds.has(id)){
+        if(f==='handActuator'){let a=this.handActs.get(id);if(!a)this.handActs.set(id,(a={t:[],v:[]}));a.t.push(tick+take.startTick-this.take.startTick);a.v.push(v&&typeof v==='object'?v as HandActuatorMotion:null);}
+        if((owners.has(f)&&v&&(typeof v!=='object'||Object.keys(v).length))||(f==='activity'&&typeof v==='string'&&v!=='idle'&&!GAIT_ACTS.has(v))){let a=this.handOwners.get(id);if(!a)this.handOwners.set(id,(a=[]));a.push(tick+take.startTick-this.take.startTick);}
+      }
       if(!waveIds.has(id))continue;
       if(owners.has(f)&&v&&(typeof v!=='object'||Object.keys(v).length)){let t=this.waveOwners.get(id);if(!t)this.waveOwners.set(id,(t=[]));t.push(tick+take.startTick-this.take.startTick);}
       if(f!=='activity'||typeof v!=='string')continue;
       let a=this.waveActs.get(id);if(!a)this.waveActs.set(id,(a={t:[],v:[]}));
       if(a.v.at(-1)!==v){a.t.push(tick+take.startTick-this.take.startTick);a.v.push(v);}
     }
+  }
+  private priorActuator(id:string,tick:number,current:unknown){
+    const a=this.handActs.get(id);if(!a)return null;
+    const active=current as HandActuatorMotion|undefined;
+    let k=this.runAt(a,tick),j=k;
+    while(j>=0&&(!a.v[j]||(active&&a.v[j]!.startTick>=active.startTick)))j--;
+    if(j<0||j===k&&!active)return null;
+    const m=a.v[j]!,cleared=a.t[j+1]??tick,ownerEnd=active?active.startTick-this.take.startTick:tick;
+    if(this.handOwners.get(id)?.some(t=>t>=cleared&&t<ownerEnd))return null;
+    const elapsed=(this.take.startTick+tick)*this.take.dt-m.startTick*this.take.dt;
+    return elapsed>=0&&elapsed<=handReachSeconds(m)+handSwingSeconds(m)+(m.stroke?.release??handReleaseSeconds(m))+ACTUATOR_GESTURE_HISTORY_SECONDS?m:null;
   }
   private runAt(a: { t: number[] } | undefined, tick: number) {
     if (a) for (let i = a.t.length - 1; i >= 0; i--) if (a.t[i] <= tick) return i;
@@ -515,7 +539,7 @@ export class TakePeople {
       const seatHeight=this.nativeBoat?.seatHeightFor(frame,id)??(typeof st.seatHeight==='number'&&Number.isFinite(st.seatHeight)?st.seatHeight:undefined);
       const publicSoulKey=(src.human as {soul?:unknown}|undefined)?.soul;
       const game=recordedGame(e.state.game);
-      people.push({itemPose:itemPoseOf(e.state.itemTransferV1 as NonNullable<Entity['human']>['itemTransferV1'],e.state.heldItemsV1 as NonNullable<Entity['human']>['heldItemsV1'],this.take.startTick+frame.tick,this.take.dt),...(e.state.handActuator?{handActuator:e.state.handActuator as NonNullable<Entity['human']>['handActuator'],handActuatorTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.handTransferV1?{transfer:e.state.handTransferV1 as NonNullable<Entity['human']>['handTransferV1'],transferTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.wateringV1?{watering:e.state.wateringV1 as NonNullable<Entity['human']>['wateringV1'],wateringTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.letGoV1?{letGo:e.state.letGoV1 as NonNullable<Entity['human']>['letGoV1'],letGoTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.cupV1?{cup:e.state.cupV1 as NonNullable<Entity['human']>['cupV1'],cupTime:(this.take.startTick+frame.tick)*this.take.dt}:{}), ...(body?.modelUrl?{bodyModel:admittedBodyUrl(body.modelUrl)??body.modelUrl}:body?.params&&typeof body.model==='string'?{bodyModel:body.model}:{}),...(typeof publicSoulKey==='string'?{publicSoulKey}:{}), ...(seatHeight!==undefined?{seatHeight}:{}), ...(shore.status==='recorded'?{shore:shore.contact}:{}), shoreTime:(this.take.startTick+t/this.take.dt)*this.take.dt,waterTransition:this.waterTransition(id,t), id, p: e.p, yaw: e.yaw, walk, walkDist: dist, activity: e.activity, grip: g?.entity, gripSlot: g?.slot, carryWeight, hands: e.hands, baseActivity: st.baseActivity ?? undefined, ...this.activityHistory(id, frame.tick, e.activity ?? 'idle', climbing ? 0 : walk), ...(typeof (st as {partner?: unknown}).partner==='string'?{partner:(st as {partner:string}).partner}:{}), ...(e.state.handHold||e.state.rps?{...(e.state.handHold?{handHold:e.state.handHold as HandHoldState}:{}),...(e.state.rps?{rps:e.state.rps as RpsState}:{}),handGameTick:this.take.startTick+frame.tick,handGameDt:this.take.dt}:{}), ...(typeof st.prop==='string'?{prop:st.prop}:{}), ...(typeof e.state.instrument==='string'?{instrument:e.state.instrument}:{}),...(game?{game,gameTick:this.take.startTick+frame.tick,gameDt:this.take.dt}:{}),...(Number.isFinite(speed)?{speed:Math.abs(speed)}:{}), on: st.on ?? undefined, ...(proneYaw !== undefined ? { proneYaw } : {}), ...(phaseK !== undefined ? { phaseK } : {}), ...(st.sleepPose ? { sleepPose: recordedSleepPose(this.take,id,frame.tick,st.sleepPose) } : {}) });
+      people.push({... (this.idleReachHandoff?{priorHandActuator:this.priorActuator(id,frame.tick,e.state.handActuator),priorHandActuatorTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),itemPose:itemPoseOf(e.state.itemTransferV1 as NonNullable<Entity['human']>['itemTransferV1'],e.state.heldItemsV1 as NonNullable<Entity['human']>['heldItemsV1'],this.take.startTick+frame.tick,this.take.dt),...(e.state.handActuator?{handActuator:e.state.handActuator as NonNullable<Entity['human']>['handActuator'],handActuatorTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.handTransferV1?{transfer:e.state.handTransferV1 as NonNullable<Entity['human']>['handTransferV1'],transferTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.wateringV1?{watering:e.state.wateringV1 as NonNullable<Entity['human']>['wateringV1'],wateringTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.letGoV1?{letGo:e.state.letGoV1 as NonNullable<Entity['human']>['letGoV1'],letGoTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.cupV1?{cup:e.state.cupV1 as NonNullable<Entity['human']>['cupV1'],cupTime:(this.take.startTick+frame.tick)*this.take.dt}:{}), ...(body?.modelUrl?{bodyModel:admittedBodyUrl(body.modelUrl)??body.modelUrl}:body?.params&&typeof body.model==='string'?{bodyModel:body.model}:{}),...(typeof publicSoulKey==='string'?{publicSoulKey}:{}), ...(seatHeight!==undefined?{seatHeight}:{}), ...(shore.status==='recorded'?{shore:shore.contact}:{}), shoreTime:(this.take.startTick+t/this.take.dt)*this.take.dt,waterTransition:this.waterTransition(id,t), id, p: e.p, yaw: e.yaw, walk, walkDist: dist, activity: e.activity, grip: g?.entity, gripSlot: g?.slot, carryWeight, hands: e.hands, baseActivity: st.baseActivity ?? undefined, ...this.activityHistory(id, frame.tick, e.activity ?? 'idle', climbing ? 0 : walk), ...(typeof (st as {partner?: unknown}).partner==='string'?{partner:(st as {partner:string}).partner}:{}), ...(e.state.handHold||e.state.rps?{...(e.state.handHold?{handHold:e.state.handHold as HandHoldState}:{}),...(e.state.rps?{rps:e.state.rps as RpsState}:{}),handGameTick:this.take.startTick+frame.tick,handGameDt:this.take.dt}:{}), ...(typeof st.prop==='string'?{prop:st.prop}:{}), ...(typeof e.state.instrument==='string'?{instrument:e.state.instrument}:{}),...(game?{game,gameTick:this.take.startTick+frame.tick,gameDt:this.take.dt}:{}),...(Number.isFinite(speed)?{speed:Math.abs(speed)}:{}), on: st.on ?? undefined, ...(proneYaw !== undefined ? { proneYaw } : {}), ...(phaseK !== undefined ? { phaseK } : {}), ...(st.sleepPose ? { sleepPose: recordedSleepPose(this.take,id,frame.tick,st.sleepPose) } : {}) });
     }
     this.stairs(comps);
     this.comps.onTick({ entities: comps });
