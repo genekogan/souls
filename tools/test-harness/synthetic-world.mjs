@@ -6,7 +6,7 @@
 //   node tools/test-harness/synthetic-world.mjs --out <DATA_DIR> [--from <snapshot.json|url>] [--copies 5x2]
 //        [--spacing 1000] [--world-id synth-1] [--owner dev:admin]
 // Serve: BRAIN_MODE=fake DEV_AUTH=1 WORLD_KEY=synth DATA_DIR=<DATA_DIR> PORT=5321 PUBLIC_URL=http://localhost:5321 \
-//        node apps/server/src/main.ts      (see /Users/gene/Eden/team/scratch/perf-synthetic-50k/README.md)
+//        node apps/server/src/main.ts      (isolated synthetic data only; never a production DATA_DIR)
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
