@@ -69,9 +69,11 @@ Fixes found in review and deferred to after the repository migration:
 - **Rock-paper-scissors hand path.** Readying the hand can pass through the body; it needs a path clear of the torso.
 - **Holding hands.** The clasp curls the fingers back and the right hand reads as a left (thumb on the wrong side).
 - **Piano hands (#422).** The seated piano overlay fits the actual hand skin to the immutable `core/piano@1` white
-  and black key surfaces, with each hand lifting on the shared audible score. The existing arm IK owns reach; roots,
+  and black key surfaces after a 0.8 s entry blend, with each hand lifting on the shared audible score. Key changes
+  ease toward the next pitch before its onset; entry, interruption and return use recorded activity history. The existing arm IK owns reach; roots,
   seats, native actions and score timing stay unchanged. Active rendering adds one bounded hand-skin pass per hand;
-  server/idle work and perception are unchanged, but overall rendering-cost equivalence is unverified.
+  server work and perception are unchanged. Replay sampling also indexes existing instrument history; overall client
+  cost equivalence, including idle sampling, is unverified.
 - **Social facing in general.** Groups and conversations should face each other, and a Soul using an object should face
   it; today Souls often keep the heading they arrived with.
 

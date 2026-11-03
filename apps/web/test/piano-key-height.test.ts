@@ -72,3 +72,36 @@ for(const rig of RIGS)for(const height of [1.65,1.75,1.85])for(const yaw of [0,M
  assert.ok(skinSamples>0,'actual full hand skin overlaps keyboard');assert.ok(maxSkinPenetration<=.006,`skin penetrates key surface by ${maxSkinPenetration}`);assert.ok(minPalmDown>.95,'both palms face down');assert.ok(minThumbRadial>0,'both thumbs stay on radial side');assert.ok(maxReach<=.98,'attained arm reach remains clamped');assert.ok(maxGoalError<.006,'actual palms attain the fitted goal');
  assert.equal(maxKneel,0,'seated piano has no kneel');assert.ok(maxDrop<=.03,'no knee dip');assert.ok(minClearance>=-.002,'no finger below key surface');
 });
+
+for(const rig of RIGS)for(const duration of [.1,.4,4])for(const activity of ['play-piano','play-music'])test(`piano arm boundaries (${rig},${duration}s,${activity}): early stop and seated return stay within .08 m per 50 ms and replay identically`,async()=>{
+ const v=await views(rig),id='piano_boundary',stop=2000+Math.round(duration/.05);let prev:number[][]|null=null,worst=0,at=0,snapshot:{f:SampledHuman;t:number;palms:number[][]}|null=null;
+ for(let k=1960;k<=stop+30;k++){
+  const t=k*.05,playing=k>=2000&&k<stop,after=k>=stop;
+  const f:SampledHuman={id,p:[0,0,0],yaw:0,walk:0,walkDist:0,activity:playing?activity:'sit',baseActivity:playing?'sit':undefined,seatHeight:BENCH,...(playing?{instrument:'piano',activityAge:(k-2000)*.05,prevActivity:'sit'}:after?{activityAge:(k-stop)*.05,prevActivity:activity,prevBaseActivity:'sit',prevActivityDuration:duration,prevInstrument:'piano'}:{activityAge:20})};
+  v.setFrame([f],t);v.render(1);const palms=v.bones(id)[id].arms.map(a=>a.palm);
+  if(prev)for(let i=0;i<2;i++){const step=Math.hypot(...palms[i].map((x,j)=>x-prev![i][j]));if(step>worst){worst=step;at=t;}}prev=palms;
+  if(k===stop+2)snapshot={f,t,palms};
+ }
+ const fresh=await views(rig);fresh.setFrame([snapshot!.f],snapshot!.t);fresh.render(1);const replay=fresh.bones(id)[id].arms.map(a=>a.palm);
+ const replayError=Math.max(...replay.map((p,i)=>Math.hypot(...p.map((x,j)=>x-snapshot!.palms[i][j]))));
+ console.log(JSON.stringify({rig,duration,activity,boundaryMaxPalmStep:worst,at,replayError}));assert.ok(worst<=.08,`piano boundary palm step ${worst} m at${at}s`);assert.ok(replayError<1e-6,'random access preserves attained entry weight at stop');
+});
+
+import {TakePeople} from '../../../mars/viewer/app/engine-view/take-replay.ts';
+import {Runtime} from '../../../mars/viewer/engine/runtime/runtime.ts';
+import {Spatial} from '../../../mars/viewer/engine/spatial/service.ts';
+import {emptyWorld,human} from '../../../mars/viewer/engine/world/factory.ts';
+import {TakeRecorder} from '../../../mars/viewer/engine/take/recorder.ts';
+import {openGround} from '../../../mars/viewer/engine/test/frame-fixtures.ts';
+for(const activity of ['play-piano','play-music'])test(`recorded early piano stop (${activity}): take history retains duration/instrument and random access matches`,async()=>{
+ const scene=openGround(),w=emptyWorld('piano-entry',scene),e=human('piano_take',0,0);w.entities[e.id]=e;e.human!.activity='sit';e.human!.seatHeight=BENCH;
+ const rt=new Runtime(w,new Map(),{spatial:new Spatial(scene)},[]),rec=new TakeRecorder(rt,{rulesVersion:'piano-entry'});
+ for(let k=0;k<50;k++){if(k===20){e.human!.activity=activity;e.human!.baseActivity='sit';e.human!.instrument='piano';}if(k===22){e.human!.activity='sit';delete e.human!.baseActivity;delete e.human!.instrument;}rt.step();}
+ const take=rec.finish(),tpl=(await views('wire-woman') as unknown as {templates:Template[]}).templates;
+ const sequential=new TakePeople(take);sequential.setTemplates(tpl);for(let k=0;k<=25;k++)sequential.show(k*.05);
+ const fresh=new TakePeople(take);fresh.setTemplates(tpl);fresh.show(25*.05);
+ const view=(fresh as unknown as {humans:{views:Map<string,{prevDuration?:number;prevInstrument?:string}>}}).humans.views.get(e.id)!;
+ assert.ok(Math.abs(view.prevDuration!-.1)<1e-9,'recorded two-tick piano entry duration');assert.equal(view.prevInstrument,'piano');
+ const a=sequential.bones(e.id)[e.id].arms,b=fresh.bones(e.id)[e.id].arms;
+ assert.ok(a.every((arm,i)=>Math.hypot(...arm.palm.map((x,j)=>x-b[i].palm[j]))<1e-6),'fresh post-interruption replay equals sequential playback');
+});

@@ -177,7 +177,7 @@ export class TakePeople {
   private history: readonly Take[] = [];
   /** Per person: the ticks at which `activity` / `baseActivity` changed in this take, and the values (library clip
    *  crossfades and one-shots need how long the current activity has run and what came before). */
-  private acts = new Map<string, { t: number[]; v: string[]; bt: number[]; bv: (string | null)[] }>();
+  private acts = new Map<string, { t: number[]; v: string[]; bt: number[]; bv: (string | null)[]; it:number[];iv:(string|null)[] }>();
   private base: SpatialScene;
   private stairKey = '';
   private supplementalStairs:readonly SupplementalStair[]=[];
@@ -283,14 +283,15 @@ export class TakePeople {
   }
 
   /** How long `id`'s current activity has run at `tick` and what it did before (absent when it began before the take). */
-  private activityHistory(id: string, tick: number, act: string, walk: number): Pick<SampledHuman, 'activityAge' | 'prevActivity' | 'prevBaseActivity' | 'restAge' | 'walkAge' | 'restAgeAtWalk'> {
+  private activityHistory(id: string, tick: number, act: string, walk: number): Pick<SampledHuman, 'activityAge' | 'prevActivity' | 'prevBaseActivity' | 'prevActivityDuration' | 'prevInstrument' | 'restAge' | 'walkAge' | 'restAgeAtWalk'> {
     const a = this.acts.get(id);
     const k = this.runAt(a, tick);
     const rest = { ...this.restAge(id, a, k, tick, act), ...(walk > 0.02 ? this.walkStart(id, tick) : {}) };
     if (!a || k < 1) return rest;
     let b: string | null = null;
     for (let i = a.bt.length - 1; i >= 0; i--) if (a.bt[i] < a.t[k]) { b = a.bv[i]; break; }
-    return { activityAge: (tick - a.t[k]) * this.take.dt, prevActivity: a.v[k - 1], ...(b ? { prevBaseActivity: b } : {}), ...rest };
+    let instrument:string|null=null;for(let i=a.it.length-1;i>=0;i--)if(a.it[i]<a.t[k]){instrument=a.iv[i];break;}
+    return { prevActivityDuration:(a.t[k]-a.t[k-1])*this.take.dt,...(instrument?{prevInstrument:instrument}:{}),activityAge: (tick - a.t[k]) * this.take.dt, prevActivity: a.v[k - 1], ...(b ? { prevBaseActivity: b } : {}), ...rest };
   }
 
   /**
@@ -326,11 +327,12 @@ export class TakePeople {
     this.acts.clear();
     const prev = this.neighbours.prev, windows: [Take, number][] = [...(prev ? [[prev, prev.startTick - this.take.startTick] as [Take, number]] : []), [this.take, 0]];
     for (const [take, offset] of windows) for (const [tick, id, field, value] of take.changes) {
-      if (field !== 'activity' && field !== 'baseActivity') continue;
+      if (field !== 'activity' && field !== 'baseActivity' && field !== 'instrument') continue;
       let a = this.acts.get(id);
-      if (!a) this.acts.set(id, (a = { t: [], v: [], bt: [], bv: [] }));
+      if (!a) this.acts.set(id, (a = { t: [], v: [], bt: [], bv: [],it:[],iv:[] }));
       if (field === 'activity') { if (typeof value === 'string' && a.v[a.v.length - 1] !== value) { a.t.push(tick + offset); a.v.push(value); } }
-      else { a.bt.push(tick + offset); a.bv.push(typeof value === 'string' ? value : null); }
+      else if(field==='baseActivity'){ a.bt.push(tick + offset); a.bv.push(typeof value === 'string' ? value : null); }
+      else{a.it.push(tick+offset);a.iv.push(typeof value==='string'?value:null);}
     }
   }
   private runAt(a: { t: number[] } | undefined, tick: number) {

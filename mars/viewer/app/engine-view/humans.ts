@@ -63,7 +63,7 @@ import type {ShoreContactV1} from '../../../../packages/engine-contract/src/shor
 import type { DepictionBeat } from './station-depiction.ts';
 import { sleepGoal, sleepHands, sleepHeadPitch, sleepRestWeight, sleepHeadRestLift } from './sleep.ts';
 import { PRONE_ACTIVITY } from '../../engine/construction/handup.ts';
-import { ACTIVITY_OVERLAYS, GROUND_SEAT, LYING, SING_LET_GO, activityFrame, gameArmBlend, makeProp, placeProp, propFor, type ActivityFrame, type PropKind } from './activity-poses.ts';
+import { ACTIVITY_OVERLAYS, GROUND_SEAT, LYING, PIANO_FADE, SING_LET_GO, activityFrame, gameArmBlend, makeProp, placeProp, propFor, type ActivityFrame, type PropKind } from './activity-poses.ts';
 import { accompanistOf } from './piano-score.ts';
 import {posePianoHand} from './piano-hands.ts';
 import { handGameActive, handGameGestureClock, handGameSuppress, poseHandGames, type HandGameDiag } from './hand-games.ts';
@@ -181,6 +181,8 @@ type View = {
   since?: number;
   prevAct?: string;
   prevBase?: string;
+  prevDuration?: number;
+  prevInstrument?: string;
   restAge?: number;
   restFrom?: number;
   /** Idle variety weight drawn at the last render (Idle_Neutral + variant; diagnostics only). */
@@ -304,6 +306,9 @@ export type SampledHuman = {
   activityAge?: number;
   prevActivity?: string;
   prevBaseActivity?: string;
+  /** Duration and instrument of the previous recorded activity, for an interrupted entry fade. */
+  prevActivityDuration?: number;
+  prevInstrument?: string;
   restAge?: number;
   /** Seconds since the current walk began (the Walk weight left 0; absent: not walking, or longer than a gesture fade). */
   walkAge?: number;
@@ -587,7 +592,7 @@ export class HumanViews {
       const inst = Math.hypot(e.pose.p[0] - c.p[0], e.pose.p[2] - c.p[2]) / DT;
       const ground = act === 'ride' || act === 'row' ? 0 : e.human.speed ?? inst; // a vehicle carries a rider: no gait from its motion
       v.speed += (ground - v.speed) * 0.6;
-      if (act !== v.activity) { v.prevAct = v.activity; v.prevBase = v.base; }
+      if (act !== v.activity) { v.prevAct = v.activity; v.prevBase = v.base; v.prevDuration=(v.age+1)*DT;v.prevInstrument=v.instrument; }
       v.age = act === v.activity ? v.age + 1 : 0;
       v.since = v.age * DT;
       v.activity = act;
@@ -856,7 +861,7 @@ export class HumanViews {
       v.restAge = v.restFrom !== undefined && t >= v.restFrom ? t - v.restFrom : undefined;
       v.walkAge = f.walkAge;
       v.restAgeAtWalk = f.restAgeAtWalk;
-      v.prevAct = f.prevActivity;
+      v.prevAct = f.prevActivity;v.prevDuration=f.prevActivityDuration;v.prevInstrument=f.prevInstrument;
       v.prevBase = f.prevActivity === undefined ? undefined : baseOf(f.prevActivity, f.prevBaseActivity);
       v.partner = f.partner;
       v.partnerP = undefined;
@@ -954,8 +959,10 @@ export class HumanViews {
     // entry 36: a singer sings along with the nearest player (her head and breath follow the sung notes); just after her
     // singing ends, the singing frame eases out (the hand lets go of the mic) instead of snapping to the base posture
     const letGo = v.activity !== 'sing' && v.prevAct === 'sing' && (v.since ?? 9) < SING_LET_GO && !GAIT_ACTS.has(v.activity);
+    const pianoRelease=v.activity!=='play-piano'&&(v.prevAct==='play-piano'||v.prevAct==='play-music'&&(v.prevInstrument==='piano'||v.prevInstrument==='keyboard'))&&v.since!==undefined&&v.since<PIANO_FADE;
     const act: ActivityFrame | null = freeBody && !engineHands && w < 0.5 && !waveClip && !interactClip && !clipBody && !lib.sleep
       ? letGo ? activityFrame('sing', 'idle', tSec, pairPhase, { since: 9, released: v.since, accompanist: null })
+      : pianoRelease ? activityFrame('play-piano',v.prevBase??'sit',tSec-v.since!,pairPhase,{actorId:h.name,released:v.since,priorAge:v.prevDuration})
       : activityFrame(v.activity, v.base, tSec, pairPhase, { groundSeat: v.groundSeat, since: v.since, gap: v.partnerP ? Math.hypot(v.partnerP.x - h.position.x, v.partnerP.z - h.position.z) : undefined,instrument:v.instrument,game:v.game,gameTick:v.gameTick,gameDt:v.gameDt,actorId:h.name, ...(v.activity === 'sing' ? { accompanist: accompanistOf(v.cur.p, this.players) } : {}) }) : null;
     h.rotation.z = 0; h.rotation.x = 0;
     let lieFloor = h.position.y;
@@ -1361,7 +1368,7 @@ export class HumanViews {
         for(const b of saved){b.o.position.lerpVectors(b.p,b.o.position,weight);b.o.quaternion.slerpQuaternions(b.q,b.o.quaternion.clone(),weight);}
       });
       closeHands(v, v.arms.map((_, i) => !targets[i] ? 0 : (act.curl ? act.curl[armSide(v, i) === 'left' ? 0 : 1] : 0.6) * (act.handWeights?.[armSide(v, i) === 'left' ? 0 : 1] ?? 1)));
-      if(act.piano)v.arms.forEach((arm,i)=>{if(targets[i])posePianoHand(arm,h.position,targets[i]!,_fwd,_right,h.position.y+act.piano!.height,act.piano!.lift[armSide(v,i)==='left'?0:1],visit=>eachSkinnedWorld(v.surf.hand.get(arm.side),V(),visit));});
+      if(act.piano)v.arms.forEach((arm,i)=>{if(targets[i])posePianoHand(arm,h.position,targets[i]!,_fwd,_right,h.position.y+act.piano!.height,act.piano!.lift[armSide(v,i)==='left'?0:1],act.piano!.weight,visit=>eachSkinnedWorld(v.surf.hand.get(arm.side),V(),visit));});
     } else if (runFallback && !gait && !fp && !posed && proneW===0 && sitW===0) {
       source='expression';v.arms.forEach((arm,i)=>{const f=runFallback.hands[arm.side>0?0:1];targets[i]=arm.upper.getWorldPosition(V()).addScaledVector(_fwd,f.forward).addScaledVector(_right,-arm.side*.06).addScaledVector(UP,f.up);});reachTo(v,targets,false);closeHands(v,targets.map(()=>.45));
     } else if (sitW > 0 && !seatClip) v.arms.forEach((_, i) => handOnThigh(v, i, sitW));

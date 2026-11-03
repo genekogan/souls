@@ -6,8 +6,9 @@ const V=()=>new THREE.Vector3();
 const P=(o:THREE.Object3D)=>o.getWorldPosition(V());
 /** Palm down and fingers gently curled toward the keys. Solve the wrist once,
  * preserving that orientation; no body/root, seat, bone length or score changes. */
-export function posePianoHand(arm:Arm,origin:THREE.Vector3,goal:THREE.Vector3,fwd:THREE.Vector3,right:THREE.Vector3,keyY:number,lift:number,sampleSkin:(visit:(p:THREE.Vector3)=>void)=>void){
- if(arm.fingers.length!==16)return;
+export function posePianoHand(arm:Arm,origin:THREE.Vector3,goal:THREE.Vector3,fwd:THREE.Vector3,right:THREE.Vector3,keyY:number,lift:number,weight:number,sampleSkin:(visit:(p:THREE.Vector3)=>void)=>void){
+ if(arm.fingers.length!==16||weight<=0)return;
+ const before=weight<1?[arm.upper,arm.lower,arm.hand,...arm.fingers,...arm.thumb].map(o=>({o,q:o.quaternion.clone(),p:o.position.clone()})):[];
  const f=palm(arm,V()).sub(P(arm.hand)).normalize(),across=P(arm.fingers[1]).sub(P(arm.fingers[13]));
  across.addScaledVector(f,-across.dot(f)).normalize();
  const n=(arm.side>0?V().crossVectors(across,f):V().crossVectors(f,across)).normalize(),inv=arm.hand.getWorldQuaternion(new THREE.Quaternion()).invert();
@@ -33,4 +34,6 @@ export function posePianoHand(arm:Arm,origin:THREE.Vector3,goal:THREE.Vector3,fw
  const wristGoal=goal.clone().sub(currentPalm).add(wrist),pole=right.clone().multiplyScalar(-arm.side*.6).add(new THREE.Vector3(0,-.5,0)).addScaledVector(fwd,-.2);
  ik(arm.upper,arm.lower,wrist,wristGoal,pole,1,BODY_MODEL.maxExtension);
  setWorldQuat(arm.hand,q);
+ for(const b of before){b.o.quaternion.copy(b.q.slerp(b.o.quaternion.clone(),weight));b.o.position.copy(b.p.lerp(b.o.position.clone(),weight));}
+ arm.upper.updateMatrixWorld(true);
 }
