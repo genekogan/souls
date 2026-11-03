@@ -81,7 +81,8 @@ const STYLE: Record<Style, { bendMax: number; wDrop: number; wBend: number; rise
   // Entry 33 (retest on M04): a hand reach to a switch or a torch at or above the hips is made standing. A target just
   // past the plan reach (a 1.2 m switch from 0.55 m on a 1.67 m body) leans a few degrees in; under 'knees' the 0.04 m knee
   // dip cost a fortieth of that lean, so the body dipped at the knees for a switch at chest height.
-  stand: { bendMax: BODY_MODEL.bendMax.knees, wDrop: 4, wBend: 1.4, rise: false },
+  // M05 #636: a preference alone still chose a 4.2 cm dip; enforce Entry33's existing 3 cm standing bound.
+  stand: { bendMax: BODY_MODEL.bendMax.knees, wDrop: 4, wBend: 1.4, rise: false, dropMax: 0.03 },
 };
 
 /** Style for an engine activity (engine/construction/handup.ts phases, carry, raise, items). */

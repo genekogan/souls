@@ -720,11 +720,13 @@ export class HumanViews {
       const k=(c.a==='hold'?1-c.k:0)+(c.b==='hold'?c.k:0),t=toBody(m.hold[0],m.hold[1]+MUG.wrapUp,m.hold[2],m.hand==='left'?-1:1),q=solvePosture(d,[t],'stand');
       return {drop:q.drop*k,bend:q.bend*k,rise:q.rise*k,kneel:q.kneel*k};}
     if(v.watering&&!v.handActuator&&!walking){const m=v.watering,k=wateringFrame(m,(v.wateringTime??0)-m.startTick*DT).right,t=toBody(m.hold[0],m.hold[1],m.hold[2],1),q=solvePosture(d,[t],t.up>d.hipH+0.15?'walk':'hips');return {drop:q.drop*k,bend:q.bend*k,rise:q.rise*k,kneel:q.kneel*k};}
-    // A hand actuator whose hand points are all at or above the hip joints is a standing reach: lean, never dip.
+    // A hand actuator at or above this rig's standing arm-rest height prefers a standing reach.
+    // Hip joints sit higher than an ordinary resting hand: using hip height made a reachable 0.93 m
+    // valve squat on tall bodies. Keep the existing solver/contact bounds and genuine low reaches.
     // Entry 40: doors too (a door's knob at 1.04 m is above every rig's hips). Entry 31's close from the push side stands 3 cm
     // farther from the leaf for wall clearance; under `knees` that 0.63 m push dipped the hips 0.17 m (0.086 before 31).
-    // A latch below the hips keeps its small bend (`knees`).
-    const style = styleFor(v.activity, walking), standing = style === 'knees' && !!v.handActuator && ts.length > 0 && ts.every((t) => t.up >= d.hipH);
+    // A latch below standing arm-rest height keeps its low-reach style (`knees`).
+    const style = styleFor(v.activity, walking), standing = style === 'knees' && !!v.handActuator && ts.length > 0 && ts.every((t) => t.up >= d.pivotH + d.sh.up - d.armLen);
     // entry 43: taking or putting a handle-held thing (a kettle) leans like the vessel stages: 'hips' flickered its hips 4 cm
     const pz = solvePosture(d, ts, v.transfer && v.transfer.endTick === undefined && v.activity === 'reach' && !walking ? 'lean' : standing ? 'stand' : style);
     // A low latch may need a small bend as well as a hand reach. Ease the whole
