@@ -1,0 +1,12 @@
+{
+  "name": "@sim/music",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": { "./source": "./src/index.ts" },
+  "scripts": {
+    "test": "node --test src/*.test.ts",
+    "studio": "python3 source/tools/serve.py 4802"
+  },
+  "devDependencies": { "@types/node": "^22.19.19" }
+}

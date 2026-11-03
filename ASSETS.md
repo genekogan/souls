@@ -45,7 +45,7 @@ licence. Renders, screenshots and test baselines served from the CDN are our own
 
 ## Code notices
 
-- **Sim Score** (`vendor/sim-score/`, `apps/web/src/score/`), the generative soundtrack, is © Gene Kogan under the
+- **Sim Score** (`packages/music/source/`, `apps/web/src/score/`), the generative soundtrack, is © Gene Kogan under the
   MIT licence, like the rest of the code.
 - `mars/viewer/simulation/env.d.ts` contains generated type declarations © Cloudflare, Inc. and © Microsoft
   Corporation, licensed under the Apache License 2.0 (header kept in the file).

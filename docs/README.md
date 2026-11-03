@@ -60,6 +60,6 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 - [mars/](mars/README.md): the vendored deterministic engine
 
 Docs that belong to one folder stay next to its code as that folder's `README.md` (for example
-`tools/core/multiworld/`, `tools/cdn/`, `packages/conformance/conformance/`, `vendor/sim-score/`). Files the server
+`tools/core/multiworld/`, `tools/cdn/`, `packages/conformance/conformance/`, `packages/music/source/`). Files the server
 serves to agents (`tools/edge-skill/SKILL.md`, `tools/god-skill/SKILL.md`, `tools/world-skill/SKILL.md`, the
 playtest personas and rubric) are product content, not documentation: change them like code.
