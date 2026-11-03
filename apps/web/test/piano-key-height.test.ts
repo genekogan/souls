@@ -105,3 +105,13 @@ for(const activity of ['play-piano','play-music'])test(`recorded early piano sto
  const a=sequential.bones(e.id)[e.id].arms,b=fresh.bones(e.id)[e.id].arms;
  assert.ok(a.every((arm,i)=>Math.hypot(...arm.palm.map((x,j)=>x-b[i].palm[j]))<1e-6),'fresh post-interruption replay equals sequential playback');
 });
+
+test('unrelated recorded drums: no piano instrument-history arrays or previous-duration metadata',async()=>{
+ const scene=openGround(),w=emptyWorld('drum-history',scene),e=human('drummer',0,0);w.entities[e.id]=e;e.human!.activity='sit';
+ const rt=new Runtime(w,new Map(),{spatial:new Spatial(scene)},[]),rec=new TakeRecorder(rt,{rulesVersion:'drum-history'});
+ for(let k=0;k<30;k++){if(k===10){e.human!.activity='play-music';e.human!.baseActivity='sit';e.human!.instrument='drums';}if(k===12){e.human!.activity='sit';delete e.human!.baseActivity;delete e.human!.instrument;}rt.step();}
+ const people=new TakePeople(rec.finish());people.setTemplates((await views('wire-woman') as unknown as {templates:Template[]}).templates);people.show(1);
+ const state=people as unknown as {acts:Map<string,{it?:number[];iv?:unknown[]}>;humans:{views:Map<string,{prevDuration?:number;prevInstrument?:string}>}};
+ assert.equal(state.acts.get(e.id)?.it,undefined);assert.equal(state.acts.get(e.id)?.iv,undefined);
+ assert.equal(state.humans.views.get(e.id)?.prevDuration,undefined);assert.equal(state.humans.views.get(e.id)?.prevInstrument,undefined);
+});

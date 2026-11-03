@@ -71,9 +71,10 @@ Fixes found in review and deferred to after the repository migration:
 - **Piano hands (#422).** The seated piano overlay fits the actual hand skin to the immutable `core/piano@1` white
   and black key surfaces after a 0.8 s entry blend, with each hand lifting on the shared audible score. Key changes
   ease toward the next pitch before its onset; entry, interruption and return use recorded activity history. The existing arm IK owns reach; roots,
-  seats, native actions and score timing stay unchanged. Active rendering adds one bounded hand-skin pass per hand;
-  server work and perception are unchanged. Replay sampling also indexes existing instrument history; overall client
-  cost equivalence, including idle sampling, is unverified.
+  seats, native actions and score timing stay unchanged. Active rendering adds one bounded hand-skin pass per hand
+  with one reusable projection scratch vector. Existing instrument history is indexed only for piano-relevant transitions;
+  unrelated actors have no new instrument arrays or reverse scan. Server work and perception are unchanged; overall
+  client cost equivalence is unverified.
 - **Social facing in general.** Groups and conversations should face each other, and a Soul using an object should face
   it; today Souls often keep the heading they arrived with.
 

@@ -25,8 +25,8 @@ export function posePianoHand(arm:Arm,origin:THREE.Vector3,goal:THREE.Vector3,fw
  if(arm.thumb.length===3){const tip=P(arm.thumb[2]),target=tip.clone().setY(currentPalm.y-.01);swing(arm.thumb[0],tip,target,1);}
  // Fit the actual skinned hand where it overlaps the keyboard, including the
  // thumb and palm. White keys are 12.5 mm below the highest black key surface.
- const shift=goal.clone().sub(currentPalm);shift.y=0;let dy=-Infinity;
- sampleSkin(p=>{const projected=p.clone().add(shift).sub(origin),depth=projected.dot(fwd),along=projected.dot(right);
+ const shift=goal.clone().sub(currentPalm),projected=V();shift.y=0;let dy=-Infinity;
+ sampleSkin(p=>{projected.copy(p).add(shift).sub(origin);const depth=projected.dot(fwd),along=projected.dot(right);
   if(depth>=.47&&depth<=.63&&Math.abs(along)<=.65){const top=keyY-(depth>=.555&&depth<=.625?0:.0125);dy=Math.max(dy,top-p.y);}
  });
  if(!Number.isFinite(dy)){const low=Math.min(...[3,7,11,15].map(i=>P(arm.fingers[i]).y),...(arm.thumb.length?[P(arm.thumb.at(-1)!).y]:[]),currentPalm.y-.02);dy=keyY-low;}
