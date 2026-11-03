@@ -20,7 +20,6 @@ import {WorldAccountControls} from './AccountMenu.tsx';
 import {SoulAccount} from './SoulAccount.tsx';
 import {useSignOutAtOnce} from './sign-out-now.ts';
 import {EdenMark} from './EdenMark.tsx';
-
 import {LocalIntegrationNotice,LocalConnectionHelp,DebugPanel} from './LocalIntegration.tsx';
 import './world-chrome.css';
 import {createApiRequest} from './api-request.ts';

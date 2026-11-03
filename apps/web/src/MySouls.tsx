@@ -40,7 +40,7 @@ const CHIP_MARK:Partial<Record<ChipState,{cls:string;text:string}>>={pairing:{cl
 export function MySouls({ids,souls,select,follow,present,api,bodies,newSoul,recencyKey='sim.soul-recency.'+worldKey,selectedId}:{ids:readonly string[];souls:ReadonlyMap<string,PublicSoul>;select:(id:string)=>void;follow?:(id:string)=>void;present?:ReadonlySet<string>;api?:Api;bodies?:ReadonlyMap<string,Body>;newSoul?:ReactNode;recencyKey?:string;selectedId?:string|null}){
  const [recent,setRecent]=useState(()=>readSoulRecency(recencyKey));
  const remember=(id:string)=>setRecent(prev=>selectedSoulIds(id,prev,ids));
- useEffect(()=>{try{localStorage.setItem(recencyKey,JSON.stringify(recent.filter(id=>ids.includes(id))));}catch{}},[recent,recencyKey,ids.join(',')]);
+ useEffect(()=>{if(!ids.length)return;try{localStorage.setItem(recencyKey,JSON.stringify(recent.filter(id=>ids.includes(id))));}catch{}},[recent,recencyKey,ids.join(',')]);
  useEffect(()=>{if(selectedId&&ids.includes(selectedId))remember(selectedId);},[selectedId,ids.join(',')]);
  const pinned=orderedSoulIds(ids,recent).flatMap(id=>{const soul=souls.get(id);return soul?[soul]:[];});
  const agent=useOwnedAgentPresence(api,pinned.slice(0,3).map(s=>s.id));

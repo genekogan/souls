@@ -163,7 +163,7 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
   const cameraAction=kind==='broadcast'?'Switch to Free camera':'Return to Broadcast';
   const cameraBlock=<div className="viewer-camera-chip camera-split" data-camera={kind} data-follow-soul={kind==='follow'?state?.selection.soulId??'':undefined}>
     <button type="button" className="camera-main" disabled={!handle||arriving} aria-label={`${cameraLabel}: ${cameraAction}`} title={cameraAction} data-tooltip={cameraAction} onClick={()=>kind==='broadcast'?yourCamera():toBroadcast()}>
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6.5h3l1.4-2h5.2l1.4 2h3v9.5H3z" fill="none" stroke="currentColor" strokeWidth="1.5"/><circle cx="10" cy="11" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/></svg><span>{cameraLabel}</span>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6.5h3l1.4-2h5.2l1.4 2h3v9.5H3z" fill="none" stroke="currentColor" strokeWidth="1.5"/><circle cx="10" cy="11" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/></svg><span className={kind==='follow'?'viewer-following-label':undefined}>{cameraLabel}</span>
     </button>
     <NavbarMenu label="Camera modes and help" className="camera-menu" trigger={<span aria-hidden="true">⌄</span>}>
       {dismiss=><><button type="button" aria-pressed={kind==='broadcast'} disabled={!handle||arriving} onClick={()=>{toBroadcast();dismiss();}}>Broadcast</button>

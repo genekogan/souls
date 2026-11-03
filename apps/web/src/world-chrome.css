@@ -210,7 +210,7 @@
 .time-preview .dim{opacity:.7;font-size:12px}
 /* Lane P6 (2026-10-19): small screens only (HudMore.tsx sets html.phone-tidy there, never on desktop). Secondary controls
    leave the world view and are offered from the HUD's one "More" button; watch mode keeps only the primary chrome. */
-html.phone-tidy .human-world:not(.has-advanced) [data-god-panel-toggle],html.phone-tidy .human-world:not(.has-advanced) .visitor-controls,html.phone-tidy .eden-sound-toggle{display:none!important}
+html.phone-tidy .human-world:not(.has-advanced) [data-god-panel-toggle],html.phone-tidy .human-world:not(.has-advanced) .visitor-controls{display:none!important}
 .hud-more-wrap{position:relative;display:inline-flex;flex:none}
 .human-world:not(.has-advanced) .world-hud.slim .hud-more{flex:none;padding:0}
 .hud-more-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:20;display:flex;flex-direction:column;gap:2px;min-width:200px;max-width:calc(100vw - 16px - var(--sa-l) - var(--sa-r));padding:6px;border-radius:14px;border:1px solid var(--glass-line,var(--line));background:var(--glass,var(--panel));-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:var(--glass-shadow)}
