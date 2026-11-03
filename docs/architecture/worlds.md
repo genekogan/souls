@@ -23,7 +23,8 @@ its menu contains every available owned Soul and New Soul. Selecting a Soul open
 it first in the account/world's browser-local selection history. Unselected Souls use the server's stable order;
 opening the menu does not change history. Server ownership and current availability filter every displayed avatar.
 New Soul has one controller outside the account-keyed avatar group; only its entry is rendered in the inline or
-menu slot. An open prompt survives delayed account data and a change between those layouts.
+menu slot. An open prompt survives delayed account data and a change between those layouts. The controller resets
+on a real provider-identity change, so a previous account’s window code cannot carry into another account.
 
 The split camera control shows Broadcast, Free or Following a Soul (and loading/recorded state where applicable).
 Its main segment switches Broadcast → Free or returns Free/Following → Broadcast in one click. The chevron offers
