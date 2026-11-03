@@ -1,9 +1,16 @@
 # Component and data-flow map
 
-The actual things: the classes, concepts and contracts that make up a Sim world, and how data moves between them.
-[architecture.md](../architecture.md) is the overview by component; this page is the map by *seam*, for reasoning about
-contracts, performance and where a feature would plug in. Every claim below was read from the code at the paths given;
-where the code and an older doc disagree, the code is quoted and the doc is named.
+The classes, concepts and contracts that make up a Soul world, and how data moves between them.
+[architecture.md](../architecture.md) is the overview by component; this page maps boundaries for reasoning about
+contracts, performance and feature integration.
+For the proposed extraction boundaries and direct imports, see the [Mars dependency inventory](mars-import-inventory.md).
+
+This detailed source map was assembled before the public cutover. Line numbers, defaults, performance observations
+and the comparisons with older docs below are historical leads, not current measurements or operational instructions.
+Verify the named source at the working commit. Use [operations](../operations.md) and [release](../release.md) for the
+current root-only topology, and [repository layout](../development/repository-layout.md) for extraction boundaries.
+The [starting-line audit #555](https://github.com/genekogan/souls/issues/555) tracks per-section revalidation; this
+notice does not claim the entire map has been reverified.
 
 ## 1. The component graph
 

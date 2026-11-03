@@ -94,20 +94,21 @@ function pwa(): Plugin {
 }
 
 // Issue #388: the public changelog page (changelog.html, served at <base>/changelog by the world launcher) is the repo's
-// CHANGELOG.md rendered at build time (src/changelog-page.ts): static HTML, no script, nothing fetched at runtime. A
+// CHANGELOG.md rendered at build time (src/changelog-page.ts): static HTML, no script, optional reviewed media. A
 // CHANGELOG.md with no release headings fails the build. Dev server too, so `vite` shows the same page.
 // #393: SIM_CHANGELOG_FILE names another copy to render; the release workflow points it at CHANGELOG.md with the
 // shipping release's section already compiled in (tools/changelog/compile.mjs --out), so the page shows that release.
 function changelogPage(): Plugin {
   let base = '/';
   const file = process.env.SIM_CHANGELOG_FILE ? resolvePath(process.env.SIM_CHANGELOG_FILE) : fileURLToPath(new URL('../../CHANGELOG.md', import.meta.url));
+  const journalFile = fileURLToPath(new URL('../../tools/changelog/public-journal.json', import.meta.url));
   return {
     name: 'sim-changelog-page',
     configResolved(c) { base = c.base; },
-    configureServer(server) { server.watcher.add(file); },
+    configureServer(server) { server.watcher.add([file, journalFile]); },
     transformIndexHtml(html, ctx) {
       if (!/(^|\/)changelog\.html$/.test(ctx.path)) return;
-      return changelogHtml(html, readFileSync(file, 'utf8'), base);
+      return changelogHtml(html, readFileSync(file, 'utf8'), base, JSON.parse(readFileSync(journalFile, 'utf8')));
     },
   };
 }

@@ -193,6 +193,10 @@ vocabulary families retain their unrelated scope.
 
 ## Observation, agency and proof
 
+Roles must match a body's declared physical capabilities. The [custom body design](custom-bodies.md) extends
+this to non-humanoids: a rigid body can participate through a validated adaptation, not an assumed humanoid grip.
+Unsupported roles refuse before claims/lifting; an unsafe body change cannot escape an existing commitment.
+
 Nearby relevant tasks, one's own invitations/commitments, missing roles/materials, actual custody, safe-stop
 options and reasons for waiting must be discoverable. Deeper project/geometry detail is on request; normal Soul
 context never includes every distant blueprint/grip/project. Wake at decisions/failures/checkpoints, not each tick.

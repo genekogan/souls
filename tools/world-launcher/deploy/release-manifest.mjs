@@ -1,4 +1,5 @@
-// Exact source/artifact inventory for safe same-build upload reuse. Dependencies installed on eden2 are excluded.
+// Exact source/artifact inventory for safe same-build upload reuse. Installed dependencies are excluded.
+// Match release.sh's exact .DS_Store upload exclusion at every depth; other dotfiles remain inventoried.
 import {readdirSync, lstatSync, readFileSync, readlinkSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -6,7 +7,7 @@ export function manifest(root) {
   const rows = [];
   const visit = (relative = '') => {
     for (const name of readdirSync(join(root, relative)).sort()) {
-      if (name === 'node_modules' || (!relative && name === 'RELEASE-MANIFEST.json')) continue;
+      if (name === 'node_modules' || name === '.DS_Store' || (!relative && name === 'RELEASE-MANIFEST.json')) continue;
       const path = relative ? relative + '/' + name : name, full = join(root, path), stat = lstatSync(full);
       if (stat.isSymbolicLink()) rows.push({path, link: readlinkSync(full)});
       else if (stat.isDirectory()) visit(path);

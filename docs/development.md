@@ -1,5 +1,9 @@
 # Development
 
+For directory responsibilities and the staged engine/music migration, see
+[repository layout](development/repository-layout.md). Commands here describe the existing checkout, not a completed
+layout migration or a receipt that a fresh cloud environment has passed its setup checks.
+
 ## Requirements
 
 - Node ≥ 22.18. The server runs TypeScript directly by type stripping, so code must be erasable: no `enum`, no

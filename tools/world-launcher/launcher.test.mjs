@@ -60,7 +60,13 @@ test('templates: empty first, hello hamlet next, broken files skipped', () => {
 });
 test('homepage and assets come from the web build', async () => {
   const r = await api('/'); assert.equal(r.status, 200); assert.match(await r.text(), /<title>Sim/);
-  for (const path of ['/old', '/old/']) { const old = await api(path); assert.equal(old.status, 200); assert.match(await old.text(), /<title>Sim/); }
+  for (const path of ['/old', '/old/']) for(const method of ['GET','HEAD']) {
+    const old = await api(path+'?source=bookmark', {method,redirect:'manual'});
+    assert.equal(old.status,308);assert.equal(old.headers.get('location'),'/?source=bookmark#');
+    assert.equal(old.headers.get('cache-control'),'no-store');assert.equal(await old.text(),'','redirect never serves legacy markup');
+  }
+  assert.equal((await api('/old-world')).status,404,'similar unknown paths do not redirect');
+  assert.equal((await api('/old',{method:'POST'})).status,404,'no legacy mutation endpoint is introduced');
   assert.equal((await api('/assets/a.js')).status, 200);
   assert.equal((await api('/assets/../../etc/passwd')).status, 404);
 });

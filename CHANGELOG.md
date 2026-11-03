@@ -887,6 +887,59 @@ Internal changes only.
 - Automatic Soul portraits, accessories and outfits, and a new body shape.
 - Travel between worlds, a library, creatures and swimming.
 
+## 2.1 (2026-10-16)
+
+Historical summary reconstructed from the original deployment and walk records; this is not a new release.
+
+### Fixes
+
+- World snapshots no longer wait indefinitely for resident bodies to count as scenery. Multi-view and frame captures honor the requested hour.
+- Construction ghosts use a building's footprint to show completed coverage.
+- Facade attachments use solid wall rather than door or window openings. Existing attachments keep their positions; unusable old slots refuse new attachments.
+- Kit lights brighten at night, and moving a wall attachment keeps it on its mounting frame.
+
+The historical walk accepted this release. Browser account sign-in was not verified, and an invisible faded resident could still affect construction clearance.
+
+## 2 (2026-10-16)
+
+Historical summary reconstructed from the original deployment and walk records; the original release label was `2`.
+
+### Features
+
+- Programmable, walkable construction kits, facade ornaments and anchors, lights and motion, and a kit workbench.
+- Atomic construction undo and additional build integrity diagnostics.
+- Construction can ask affected residents to walk clear of a new placement.
+
+The historical walk kept this release with known snapshot, ghost coverage and facade attachment defects. Release 2.1 addressed those defects; it did not resolve the faded-resident clearance issue.
+
+## 1.2 (2026-10-16)
+
+Historical summary reconstructed from the original deployment and walk records.
+
+### Fixes
+
+- Newly built upper floors become walkable without restarting worlds that have no fixed obstacles. The recorded live walk checked a two-floor cottage and a lighthouse.
+
+## 1.1.1 (2026-10-16)
+
+Historical summary reconstructed from the original deployment and walk records.
+
+### Fixes
+
+- Uploaded Soul bodies load in worlds with custom URL names, instead of preventing visitors from loading the whole world.
+
+Upper-floor access remained a known issue until release 1.2.
+
+## 1.1 (2026-10-16)
+
+Historical summary reconstructed from the original deployment record.
+
+### Performance
+
+- Enabled CDN delivery for the initial published asset set.
+
+The deployment record reports ten worlds running. The subsequent walk found body-loading and upper-floor defects, addressed in 1.1.1 and 1.2. Historical automated checks also had recorded failures and unavailable browser coverage; this entry does not claim every check passed.
+
 ## Earlier
 
-Earlier development is recorded in the git history.
+A release-1 development handoff survives, but a separate production activation has not been established. Earlier development remains in the source history; missing release numbers, dates and visual proof have not been invented.

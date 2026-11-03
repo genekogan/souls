@@ -90,6 +90,7 @@ const WORLD_AGENT = new Agent({ keepAlive: false });
 const hopless = (h) => { const { connection: _c, 'keep-alive': _k, ...rest } = h; return rest; };
 import { clientErrors } from './client-errors.mjs';
 import { healthDash } from './health-dash.mjs';
+import { ownerOverview } from './owner-overview.mjs';
 import { connect } from 'node:net';
 import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { brotliCompressSync, gzipSync, constants as zlibConstants } from 'node:zlib';
@@ -297,6 +298,7 @@ export async function openLauncher(cfg = {}) {
   // lane DASH: the site owner's health page (health-dash.mjs)
   const dash = healthDash({ dataDir, build: BUILD, base: B, registry, pool, live, stats, refreshStats, errors, ceilings, hostHealth: () => hostHealth(dataDir), auth, wp,
     verify: (a) => (auth ? verifiedCreator(a, auth.child, publicOrigin, root) : Promise.resolve(null)), worldOwner: safeOwner });
+  const overview = ownerOverview({ dataDir, auth, base: B, allowed: dash.allowed });
   const handoff = makeHandoff({ registry, pool, dataDir, wp, publicOrigin, actorOf, isOwner, closing, log, cobuilders });
   async function ownerArchive(w, body, authorization) {
     const a = await actorOf(w, authorization);
@@ -772,6 +774,9 @@ export async function openLauncher(cfg = {}) {
     }
     dash.noteWatch(req);   // lane DASH: sim-watch's last check (and what it saw down)
     try {
+      if (url.pathname === '/ops' || path === '/ops' || url.pathname.startsWith('/ops/') || path.startsWith('/ops/')) {
+        await overview.handle(req, res, url); return;
+      }
       if (outside) {
         if (path === '/healthz' && direct(req)) { json(res, 200, { ok: true, service: 'world-launcher', base: B, build: BUILD }); return; }
         const p = (req.method === 'GET' || req.method === 'HEAD') && /^\/(modular|mars-assets|engine|browser|models|history|2020|world-assets)\/|^\/data\/manifest\.json$/.test(path) && anyRunning();
@@ -932,8 +937,11 @@ export async function openLauncher(cfg = {}) {
         await toWorld(req, res, world, url); return;
       }
       if (req.method === 'GET' || req.method === 'HEAD') {
-        if (path === '/' || path === '/index.html' || path === '/old' || path === '/old/') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @sim/web build'); return; }
-        // #388: the public changelog page, static HTML made from CHANGELOG.md by the web build (no script, no runtime fetch)
+        // The retired list ignored hashes. An explicit empty fragment prevents browsers inheriting a hash that
+        // would select single-world mode at the root; queries remain intact. No legacy HTML is sent.
+        if (path === '/old' || path === '/old/') { res.writeHead(308, { location: `${B}/${url.search}#`, 'cache-control': 'no-store' }).end(); return; }
+        if (path === '/' || path === '/index.html') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @sim/web build'); return; }
+        // #388/#584: build-time changelog HTML, no script/API collection; reviewed optional journal media can load separately.
         if ((path === '/changelog' || path === '/changelog/') && serveFile(res, join(webDir, 'changelog.html'), 'no-cache', req)) return;
         // lane P4: the installable-app manifest beside the world list (apps/web/src/pwa-manifest.ts)
         if (path === '/manifest.webmanifest' && serveFile(res, join(webDir, 'manifest.webmanifest'), 'public, max-age=3600', req)) return;
