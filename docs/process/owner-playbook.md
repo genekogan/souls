@@ -61,6 +61,16 @@ base/head SHA, durable WIP, met acceptance, failed/unverified checks, proof, act
 operational details in approved private records. Confirm the outgoing writer stopped; resume existing jobs rather
 than rebuilding or restarting a gate because the model changed. See [portable handoffs](planning.md#portable-execution-and-handoff).
 
+### App-coordinated remote execution
+
+An existing subscription-backed worker can use an approved SSH connection to edit and test in a remote checkout;
+the model session stays with the app coordinator. This route needs no second remote CLI login and is not an unattended
+remote agent or native Codex Cloud dispatch. Use one writer per checkout, reuse the existing checkout, and isolate
+test data. Preserve the exact source revision, commands, results and failed attempts for handoff. Return the patch or
+commit to the coordinator for publication through configured hooks; never copy credentials or bypass hooks. The
+fixture repair in [#609](https://github.com/genekogan/souls/issues/609) and [#610](https://github.com/genekogan/souls/pull/610)
+demonstrates remote implementation and checks with local protected publication.
+
 ## Ship and recover
 
 The release owner follows [release and rollback](../release.md), preserving exact-head gate evidence, required
