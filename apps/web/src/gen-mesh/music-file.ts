@@ -59,7 +59,8 @@ export class FilePlayer {
   private current: Deck | null = null;
   private pending: Deck | null = null;      // the next piece, buffering ahead
   private outgoing: Deck[] = [];            // fading out, retired after their fade
-  private starting: Promise<unknown> | null = null;
+  private starting: { deck: Deck; cancel(): void } | null = null;
+  private startGeneration = 0;
   private meter: AnalyserNode | null = null;
   private volume = 0;
   trackS = Infinity;
@@ -107,19 +108,23 @@ export class FilePlayer {
   }
   /** Play a piece from `positionS` (a resume), fading in over `fadeInS`: performance `perf` (a resume), else a random
    *  one (or the prefetched one). Resolves once it sounds; rejects when the file does not load or play (the caller falls
-   *  back to Tone). A piece already playing fades out (a crossfade). */
+   *  back to Tone). Stop/supersession cancels silently. A piece already playing fades out (a crossfade). */
   play(id: string, { positionS = 0, fadeInS = FADE_IN_S, reason = 'play', perf }: { positionS?: number; fadeInS?: number; reason?: string; perf?: number } = {}): Promise<void> {
     const entry = this.index.pieces[id]; if (!entry || !this.has(id)) return Promise.reject(Error(`no file for ${id}`));
-    const d = this.deck(id, perf);
-    let settledNow = false;
+    this.starting?.cancel();
+    const generation = ++this.startGeneration, d = this.deck(id, perf), operation = { deck: d, cancel: () => {} };
+    this.starting = operation;
     const p = new Promise<void>((ok, fail) => {
       let settled = false;
-      const done = (e?: unknown) => { if (settled) return; settled = true; settledNow = true; this.starting = null; d.el.removeEventListener('loadedmetadata', meta); d.el.removeEventListener('error', err); if (e) { this.retire(d); fail(e); } else ok(); };
+      const active = () => !settled && generation === this.startGeneration && this.starting === operation;
+      const done = (e?: unknown) => { if (settled) return; settled = true; if (this.starting === operation) this.starting = null; d.el.removeEventListener('loadedmetadata', meta); d.el.removeEventListener('error', err); if (e) { this.retire(d); fail(e); } else ok(); };
+      operation.cancel = () => { done(); this.retire(d); };
       const err = () => done(Error(`${id}: ${d.failed ?? 'media error'}`));
       const meta = () => {
+        if (!active()) return;
         if (positionS > 0) { try { d.el.currentTime = Math.min(positionS, Math.max(0, (d.el.duration || entry.seconds) - 1)); } catch { /* not seekable yet */ } }
         const start = () => {
-          if (settled) return;
+          if (!active()) { this.retire(d); return; }
           const now = this.env.now(), left = Math.min(entry.seconds - positionS, this.trackS);
           d.startedAt = now; d.positionAt = positionS; d.endsAt = now + left * 1000;
           this.ramp(d.gain.gain, 1, fadeInS);
@@ -132,13 +137,12 @@ export class FilePlayer {
           });
           done();
         };
-        (this.ctx.state === 'running' ? Promise.resolve() : this.ctx.resume().catch(() => {})).then(() => d.el.play()).then(start, (e) => done(Error(`${id}: play: ${String(e).slice(0, 80)}`)));
+        (this.ctx.state === 'running' ? Promise.resolve() : this.ctx.resume().catch(() => {})).then(() => { if (active()) return d.el.play(); }).then(start, (e) => done(Error(`${id}: play: ${String(e).slice(0, 80)}`)));
       };
       if (d.failed) return err();
       d.el.addEventListener('error', err);
       if (d.el.readyState >= 1) meta(); else d.el.addEventListener('loadedmetadata', meta, { once: true });
     });
-    if (!settledNow) this.starting = p.catch(() => {});
     return p;
   }
   private fadeOut(d: Deck, s: number) {
@@ -152,6 +156,7 @@ export class FilePlayer {
   /** Stop everything now. Returns where the playing piece was (position in the file), for a later resume. */
   stop(): { id: string; perf: number; positionS: number; remainingMs: number } | null {
     const c = this.current, place = c ? { id: c.id, perf: c.perf, positionS: this.position(), remainingMs: Math.max(0, c.endsAt - this.env.now()) } : null;
+    this.startGeneration++; this.starting?.cancel();
     for (const d of [c, this.pending, ...this.outgoing]) if (d) this.retire(d);
     this.current = null; this.pending = null; this.outgoing = [];
     return place;
