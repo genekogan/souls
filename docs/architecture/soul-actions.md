@@ -96,3 +96,9 @@ node --test --test-concurrency=1 tools/soul-actions/<name>.test.mjs
 Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. The tests live in
 `tools/soul-actions/`; the viewer's motion units are under `apps/web/test/`, `apps/web/src/*.test.ts`,
 `mars/viewer/engine/test/` and `mars/viewer/app/engine-view/`.
+
+### M05: supported counter pickup station (#638)
+
+New precise surface-item pickup plans record `reachPolicy: short-station-v1`. They compare the current nearby point with the existing admitted comfort station, using the shorter reach; unavailable stations retain their named native refusal. The old nearby shortcut could keep a 0.84 m reach despite an admitted 0.575 m point. This policy reuses the same native station clearance, route/admission, walk child, face, hand contact and custody. Ground/container paths and absent-policy records keep their previous planning; body/arm limits, fixture geometry and renderer movement are unchanged.
+
+Actual-rig motion is reported in two frames. The existing yaw-zero M04 stop test's 80 mm/50 ms non-full-stride bound extends to true body coordinates by removing each recorded root and yaw. Root-subtracted world-axis steps also include coherent whole-body turning and remain separately reported, including failures above 80 mm; they are not called world-space passes. The original yaw-zero test is unchanged, coordinate invariance is checked, and visible native turns/contact/feet still require client inspection. No universal 120 mm walking bound or animation-clock workaround is introduced.

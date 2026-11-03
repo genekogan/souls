@@ -1896,7 +1896,7 @@ export class EngineBridge {
           caps.push({ id, verb: 'pick-up', label, target: { id: x.id, kind: 'item' }, available: !block, ...(block ? { blocked: block } : {}) });
           const precise=(this.physics?.assets[x.def] as {capabilities?:{recordedItemPoseV1?:boolean}})?.capabilities?.recordedItemPoseV1&&levelOf(x)===(me.human.level??0);
           // entry 43: an opted-in pick-up lets an idle gesture go before the hand reaches (entry 41's M04 finding)
-          plans.set(id, { label, steps: [...stand, ...(precise?[{ verb: 'mars:let_go_v1', params: {} }]:kept?[]:approach(x)), { verb: 'mars:take_item', params: { item: x.id, hand: 'right' } }] });
+          plans.set(id, { label, steps: [...stand, ...(precise?[{ verb: 'mars:let_go_v1', params: {} }]:kept?[]:approach(x)), { verb: 'mars:take_item', params: { item: x.id, hand: 'right', ...(precise&&!kept?{reachPolicy:'short-station-v1'}:{}) } }] });
         }
         const inner = (asset.surfaceSlots as { id: string; inside?: { fit: number[] } }[] | undefined)?.filter((sl) => sl.inside) ?? [];
         if (held && inner.length && d <= STORE_NEAR) {
