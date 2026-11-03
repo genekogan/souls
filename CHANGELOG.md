@@ -2,6 +2,16 @@
 
 User-facing changes to Sim, newest first. Each release is compiled from `changes/` fragments.
 
+## 4.13 (2026-11-02)
+
+### Features
+
+- Released changes can include reviewed visual journals with capture provenance and optional media.
+
+### Fixes
+
+- Old world-list bookmarks open the current Worlds page directly, while existing world links remain available.
+
 ## 4.12 (2026-11-02)
 
 ### Fixes
