@@ -3,12 +3,13 @@
 // and one world in headless Chromium, checks that a person is drawn, writes a summary, and tears everything down.
 // The scenario it runs: e2e/scenarios/local-smoke.md. How to run it: docs/testing/e2e.md#local-smoke.
 //
-//   node e2e/local-smoke.mjs [--port N] [--out <dir>] [--clip] [--build] [--keep-data] [--timeout-seconds N]
+//   node e2e/local-smoke.mjs [--port N] [--out <dir>] [--clip] [--build] [--mars-web <dir>] [--keep-data] [--timeout-seconds N]
 //
 // --port      the launcher's port; its one world runs on the next two ports. Default: $E2E_PORT, else a free port.
 // --out       the run directory. Default: .local/e2e/<UTC timestamp>/ (summary.json, shots/, launcher.log, clip).
 // --clip      also record the whole browser session as one uncut, real-speed video (clip.webm; clip.mp4 with ffmpeg).
-// --build     build what is missing first: the web app (apps/web/dist) and the viewer's static build (/modular).
+// --build     build missing web assets and, when selected, the viewer's static build (/modular).
+// --mars-web  use this explicit complete static overlay; default: launcher selection, then MARS_WEB_DIR or viewer build.
 // --keep-data keep the run's data dir (<out>/data); by default it is removed after a pass.
 // Exit 0: pass. 1: a check failed. 2: a precondition is missing (the message says which command fixes it).
 //
@@ -30,7 +31,7 @@ const DEV = 'dev:smoke';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function parseArgs(argv, env = process.env) {
-  const a = { port: null, out: null, clip: false, build: false, keepData: false, timeoutSeconds: 90 };
+  const a = { port: null, out: null, clip: false, build: false, keepData: false, marsWeb: null, timeoutSeconds: 90 };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i], v = () => { if (i + 1 >= argv.length) throw new UsageError(`${k} needs a value`); return argv[++i]; };
     if (k === '--port') a.port = v();
@@ -38,6 +39,7 @@ export function parseArgs(argv, env = process.env) {
     else if (k === '--clip') a.clip = true;
     else if (k === '--build') a.build = true;
     else if (k === '--keep-data') a.keepData = true;
+    else if (k === '--mars-web') a.marsWeb = v();
     else if (k === '--timeout-seconds') a.timeoutSeconds = Number(v());
     else if (k === '-h' || k === '--help') a.help = true;
     else throw new UsageError(`unknown argument ${k}`);
@@ -84,20 +86,35 @@ export function browsersDir(env = process.env, exists = existsSync) {
 const INSTALL = 'PLAYWRIGHT_BROWSERS_PATH="$PWD/.e2e/browsers" pnpm --filter mars-campus-viewer exec playwright install chromium';
 const BUILDS = [
   { what: 'the web app', file: 'apps/web/dist/index.html', args: ['--filter', '@sim/web', 'build'] },
-  // The people's character set (/modular) only exists after the viewer's static build (issue #395).
-  { what: "the viewer's static build (the people's character set, /modular)", file: 'mars/viewer/dist/client/modular', args: ['build:viewer'] },
 ];
 
-function preflight(a) {
+/** Match launcher selection, then pin it with --mars-web so preflight and serving use the same directory. */
+export function smokeMarsWeb(root, explicit, env = process.env, exists = existsSync) {
+  return resolve(explicit ?? (exists(join(root, '.lane/mars-web')) ? join(root, '.lane/mars-web') : env.MARS_WEB_DIR ?? join(root, 'mars/viewer/dist/client')));
+}
+
+export function missingSmokeKit(marsWeb, exists = existsSync) {
+  return ['modular/humanoid/kit.json', 'modular/environment/clips-ual.glb'].filter((p) => !exists(join(marsWeb, p)));
+}
+
+export function preflight(a, marsWeb, { root = ROOT, exists = existsSync, spawnCmd = spawnSync } = {}) {
   const missing = [];
   for (const b of BUILDS) {
-    if (existsSync(join(ROOT, b.file))) continue;
+    if (exists(join(root, b.file))) continue;
     if (!a.build) { missing.push(`${b.what} is not built (${b.file}): pnpm ${b.args.join(' ')}   (or pass --build)`); continue; }
     console.log(`[smoke] building ${b.what}: pnpm ${b.args.join(' ')}`);
-    const r = spawnSync('pnpm', b.args, { cwd: ROOT, stdio: 'inherit' });
-    if (r.status !== 0 || !existsSync(join(ROOT, b.file))) missing.push(`building ${b.what} failed: pnpm ${b.args.join(' ')}`);
+    const r = spawnCmd('pnpm', b.args, { cwd: root, stdio: 'inherit' });
+    if (r.status !== 0 || !exists(join(root, b.file))) missing.push(`building ${b.what} failed: pnpm ${b.args.join(' ')}`);
   }
-  const media = spawnSync(process.execPath, ['tools/assets/pull.mjs', '--check', '--quiet', '--set', 'web,runtime'], { cwd: ROOT, encoding: 'utf8' });
+  const viewer = join(root, 'mars/viewer/dist/client');
+  if (missingSmokeKit(marsWeb, exists).length && marsWeb === viewer && a.build) {
+    console.log('[smoke] building viewer static assets: pnpm build:viewer');
+    const r = spawnCmd('pnpm', ['build:viewer'], { cwd: root, stdio: 'inherit' });
+    if (r.status !== 0) missing.push('building viewer static assets failed: pnpm build:viewer');
+  }
+  const kit = missingSmokeKit(marsWeb, exists);
+  if (kit.length) missing.push(`selected smoke overlay ${marsWeb} lacks ${kit.join(', ')}; pass --mars-web <complete isolated overlay> (or build the viewer and select it)`);
+  const media = spawnCmd(process.execPath, ['tools/assets/pull.mjs', '--check', '--quiet', '--set', 'web,runtime'], { cwd: root, encoding: 'utf8' });
   if (media.status !== 0) missing.push('media is missing: pnpm assets:pull --set web,runtime');
   return missing;
 }
@@ -207,9 +224,10 @@ export async function run(a) {
   const t0 = Date.now();
   try {
     let s = start('Preconditions: builds, media and Chromium are in place');
-    const missing = preflight(a);
+    const marsWeb = smokeMarsWeb(ROOT, a.marsWeb);
+    const missing = preflight(a, marsWeb);
     if (missing.length) { s.asserts.push({ kind: 'preflight', ok: false, detail: missing.join('; ') }); throw new UsageError(missing.join('\n')); }
-    check(s, 'preflight', true, 'web build, viewer static build (/modular) and web+runtime media present');
+    check(s, 'preflight', true, `web build, selected overlay ${marsWeb} character kit and web+runtime media present`);
     const { launch, from: pwFrom } = await loadChromium();
     browser = await launch();
     summary.browser = `chromium ${browser.version()}`;
@@ -222,7 +240,7 @@ export async function run(a) {
     const base = `http://127.0.0.1:${port}`;
     summary.url = `${base}/`;
     const logFd = openSync(join(out, 'launcher.log'), 'a');
-    launcher = spawn(process.execPath, ['tools/world-launcher/launcher.mjs', '--port', String(port), '--range', `${port + 1}-${port + 2}`, '--data', data, '--eager', '0'],
+    launcher = spawn(process.execPath, ['tools/world-launcher/launcher.mjs', '--port', String(port), '--range', `${port + 1}-${port + 2}`, '--data', data, '--eager', '0', '--mars-web', marsWeb],
       { cwd: ROOT, env: { ...process.env, BRAIN_MODE: 'fake' }, stdio: ['ignore', logFd, logFd] });
     summary.processes.launcher = launcher.pid;
     const health = await waitFor(async () => { if (launcher.exitCode !== null) throw new Error('launcher exited'); const r = await fetch(`${base}/__sim/healthz`); return r.ok && r.json(); }, 30_000, 'the launcher /__sim/healthz')
