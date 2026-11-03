@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Lane S3 (2026-10-20), split per piece by lane SCORE (2026-10-22): builds the world's music playlist
-// (apps/web/src/score/playlist/) from the vendored Sim Score (vendor/sim-score, refreshed by sync-sim-score.mjs).
+// (apps/web/src/score/playlist/) from owned packages/music/source through the vendor/sim-score compatibility symlink.
 //
 // - playlist/engine.mjs: the nine engine files (theory, compose, instruments, more-instruments, conductor, then the
 //   optional phrasing, spc, dialogue, groove, in sim-score's index.html order) unchanged inside createPlaylistScore(Tone),

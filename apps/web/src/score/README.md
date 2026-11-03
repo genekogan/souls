@@ -1,27 +1,27 @@
 # Score: world music
 
-Every world page plays a playlist of Sim Score pieces: Tone.js music written as code and composed in the browser, with
-no samples. Sim Score is MIT licensed, © Gene Kogan (see `SOURCE-NOTICE.md`).
+Every world page plays a playlist of Sim Score pieces: procedural Tone.js music written as code. The default player
+streams rendered performances; browser synthesis remains the fallback. Sim Score is MIT licensed, © Gene Kogan
+(see `SOURCE-NOTICE.md`).
 
-## Vendored Sim Score
+## Owned Sim Score source
 
-`vendor/sim-score/` is a byte-for-byte copy of one Sim Score commit: its `site/` (engine, pieces, catalog, browser
-page), its Node lint harness (`tools/load.mjs`, `lint.mjs`, `score.mjs`, `serve.py`), `README.md` and `COMPOSING.md`.
-`vendor/sim-score/PROVENANCE.json` records the source commit and a sha256 per file. Never edit the copy: fix a piece in
-the Sim Score repository, commit there, and sync:
+`packages/music/source/` owns the engine, pieces, catalog, optional browser composer and Node tools.
+`vendor/sim-score` is its compatibility symlink. `PROVENANCE.json` records the historical import, not an external
+revision lock. Edit the owned source here, then rebuild the generated playlist:
 
 ```sh
-node tools/score/sync-sim-score.mjs <path-to-sim-score> [commit]   # commit defaults to HEAD
+node tools/score/build-playlist.mjs
 ```
 
-The sync refuses a source with uncommitted changes and a vendored copy edited by hand. It copies the commit's files,
-removes the ones it dropped, rewrites `PROVENANCE.json`, prints what was added, changed or removed, and rebuilds the
-playlist. Lint vendored pieces in place with `node vendor/sim-score/tools/lint.mjs <id ...> --cycles 32 --seed 7`. The
-browser page runs from the copy too: `python3 vendor/sim-score/tools/serve.py 4802` (Tone comes from cdnjs).
+External sync is retired; do not overwrite owned edits from another checkout. Lint pieces with
+`node packages/music/source/tools/lint.mjs <id ...> --cycles 32 --seed 7`. The optional browser composer runs with
+`python3 packages/music/source/tools/serve.py 4802` (Tone comes from cdnjs); it is not part of normal game startup.
+See [the music package](../../../../packages/music/README.md) for that boundary.
 
 ## Playlist
 
-`node tools/score/build-playlist.mjs` builds `playlist/` from the vendored copy:
+`node tools/score/build-playlist.mjs` builds `playlist/` from the owned source through its compatibility path:
 
 - `playlist/engine.mjs`: the nine engine files (theory, compose, instruments, more-instruments, conductor, then the
   optional phrasing, spc, dialogue, groove) unchanged inside `createPlaylistScore(Tone)`, which takes Tone explicitly and
@@ -41,14 +41,16 @@ camera never restarts a piece.
 Nothing loads at arrival. The player loads after arrival, after the first gesture, with music on and sound unmuted, in
 idle time. It has two sources, chosen per piece (`source` in `state()` and the log):
 
-- `file` (the default): every piece pre-rendered to audio by the score engine itself and streamed from the asset CDN
+- `file` (the default on public origins): every piece pre-rendered to audio by the score engine itself and streamed from the asset CDN
   (below), through a media element and a GainNode graph (`gen-mesh/music-file.ts`). The browser's media pipeline decodes
-  it off the main thread, so a frame spike cannot drop a note. The next file is prefetched 20 s before the end and
+  it off the main thread, avoiding ordinary synthesis work on the rendering thread. Playback still depends on browser
+  buffering and audio output. The next file is prefetched 20 s before the end and
   crossfades in 3 s before it while the current fades over 4 s. Each piece has several performances (renders with
   different seeds); every start of a piece (first, next, the crossfade's prefetch) picks one at random, and a resume after
   a hidden tab plays the same performance from the same position. Tone and the engine are never loaded.
 - `tone`: the live Tone.js path, synthesised on the main thread, when the index lacks a piece or its file fails (three
-  failures in a row give up on files for the session). `tone` and the engine are lazy chunks; each piece chunk is fetched
+  failures in a row give up on files for the session), or on loopback origins without an explicit `musicAudio` override.
+  `tone` and the engine are lazy chunks; each piece chunk is fetched
   just before it plays, the next one 20 s before the end. Tone owns its AudioContext (latency hint `playback`, 0.3 s
   lookAhead); a gesture resumes it where the browser requires (iOS).
 
@@ -92,7 +94,7 @@ Checks:
 - `window.__edenMusic.state() / log() / level() / next() / trackSeconds(s)` in the browser (`state().fetched` lists the
   piece chunks fetched so far).
 - `playlist.test.ts`: every piece registers once and composes its first cycles under an inert Tone, the optional modules
-  load, the vendored copy matches its provenance, and the generated chunks match a fresh build.
+  load, the current owned source has a deterministic fingerprint, and the generated chunks match a fresh build.
 - `gen-mesh/music-file.test.ts`: the file source's prefetch, fade, crossfade, end, resume at a position, volume ramps
   and the fallback signal, with fake media elements and gain nodes. `tools/score/render-playlist.test.mjs`: seeds, keys,
   the index text and the publish plan.
