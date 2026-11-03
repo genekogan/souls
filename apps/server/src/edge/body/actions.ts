@@ -1,6 +1,7 @@
 import type {Entity,Program} from '@sim/engine-contract';
 import type {EdgeCapability} from '../contract.ts';
 import {creatureOf,type CreatureSpecies} from '../../../../../mars/viewer/engine/bodies/creatures.ts';
+import {hasBodyDance,bodyDanceStep} from '../../../../../mars/viewer/engine/bodies/motion.ts';
 
 export const isRigidBody=(e:Pick<Entity,'body'>|undefined)=>e?.body?.family==='floater';
 /** The creature species of an entity's body (duck, snail, dog), when it is one. */
@@ -17,6 +18,7 @@ function creatureReason(c:CreatureSpecies,verb:string){
   return `${c.cannot.hands} (it cannot ${verb})`;
 }
 export function bodyVerbProblem(e:Entity|undefined,verb:string){
+  if(verb==='dance'&&hasBodyDance(e?.body))return null;
   if(!isRigidBody(e)||rigidVerbs.has(verb))return null;
   const c=creatureOfEntity(e);
   if(c){if(verb==='swim'&&c.swimSpeed)return null;return {code:'body.unsupported',reason:`${creatureReason(c,verb)}. It can ${c.moves}, ${c.swims?'swim, ':''}settle, turn, look, follow and speak.`};}
@@ -28,7 +30,7 @@ export function bodyCapabilityProblem(e:Entity|undefined,c:EdgeCapability,steps?
   if(c.verb==='object'&&['read','respond','add-step','endorse','interest','uninterest','state','history','inspect'].includes(c.action??''))return null;
   const v=bodyVerbProblem(e,c.verb);if(v)return v;
   const creature=creatureOfEntity(e),allowed=creature?.swimSpeed?[...rigidSteps,...swimSteps]:rigidSteps;
-  if(steps?.some(s=>!allowed.includes(s.verb)))return {code:'body.unsupported',reason:creature?`This activity needs hands or a humanoid body; a ${creature.id} can ${creature.moves}, settle, turn and follow.`:'This activity needs a humanoid body; try glide, hover, settle or turn.'};
+  if(steps?.some(s=>!allowed.includes(s.verb)&&!bodyDanceStep(e?.body,s.verb,s.params)))return {code:'body.unsupported',reason:creature?`This activity needs hands or a humanoid body; a ${creature.id} can ${creature.moves}, settle, turn and follow.`:'This activity needs a humanoid body; try glide, hover, settle or turn.'};
   return null;
 }
 type Plan={label:string;steps:Program['steps'];seconds?:boolean};
@@ -36,6 +38,10 @@ type Plan={label:string;steps:Program['steps'];seconds?:boolean};
  *  name its own way of moving (glide; a creature's waddle, slide or trot). */
 export function shapeRigidCapabilities(me:Entity|undefined,caps:EdgeCapability[],plans:Map<string,Plan>,secondsParam:EdgeCapability['params']){
   if(!isRigidBody(me))return;
+  // Reuse the existing supported-ground discovery check, but execute the authored non-limb action.
+  if(hasBodyDance(me?.body)){const index=caps.findIndex(c=>c.id==='dance:here'),p=plans.get('dance:here');
+    if(index>=0&&p){const label='Dance here (wiggle in place)';caps[index]={...caps[index]!,label};plans.set('dance:here',{...p,label,steps:[{verb:'mars:body_motion_v1',params:{motion:'dance',seconds:60}}]});}
+  }
   for(let i=caps.length-1;i>=0;i--)if(bodyCapabilityProblem(me,caps[i]!,plans.get(caps[i]!.id)?.steps as Program['steps']|undefined)){plans.delete(caps[i]!.id);caps.splice(i,1);}
   const creature=creatureOfEntity(me);
   if(creature){

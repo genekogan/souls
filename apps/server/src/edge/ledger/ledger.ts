@@ -1101,6 +1101,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (!focus || ride || focus.verbs.has('object') || objs!.size) {const outer = this.carrierPass; this.carrierPass = outer ?? {}; try {for (const p of this.providers) try {caps.push(...p(soul, objs, this.objectPlaces));} catch {/* a provider fault hides only its own entries */}} finally {this.carrierPass = outer;}}
     if (ride && !stepping) {const seated = this.rideStandRefusal(soul.entityId, caps), i = seated ? caps.findIndex(c => c.id === 'stand:here') : -1; if (i >= 0) caps[i] = {...caps[i]!, available: false, blocked: seated!};}
     shapeRigidCapabilities(me, caps, plans as never, {seconds: {type: 'integer', min: 1, max: 600, default: 60}});
+    if(me?.body?.motion?.dance){const c=caps.find(c=>c.id==='dance:here'),p=plans.get('dance:here');if(c&&p){const issue=this.mw.feasibility.canPerform({actor:soul.entityId,label:p.label,steps:p.steps});if(issue){c.available=false;c.blocked={code:issue.code,reason:issue.message};}}}
     // knowledge/1: an offer that leads to (or names) a secret place this Soul has not been to or found is not offered
     if (this.knowledge.marked().size) for (let i = caps.length - 1; i >= 0; i--) {if (this.secretOffer(soul,caps[i]!)) {plans.delete(caps[i]!.id); caps.splice(i, 1);}}
     return {caps, plans};
@@ -1645,7 +1646,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       // an activity's own pose takes the seconds (not the short shelf visits); otherwise the resting/strolling step does
       if (posed) {for (const s of steps) if (s.verb === 'mars:pose_v1' && s.params.activity !== 'browse') s.params.seconds = params.seconds;}
       else if (cap.verb !== 'follow') {
-        const timed = steps.filter(s => s.verb === 'rest' || s.verb === 'ambient_wander' || s.verb === 'gather');
+        const timed = steps.filter(s => s.verb === 'rest' || s.verb === 'ambient_wander' || s.verb === 'gather' || s.verb === 'mars:body_motion_v1');
         // SOUL3: a seat plan with no rest after it (a god-built seat: one sit step) is timed by the sit step itself; its
         // seconds count once seated, so the walk to the seat does not use them up
         for (const s of timed.length ? timed : steps.filter(s => s.verb === 'sit')) s.params.seconds = params.seconds;

@@ -36,7 +36,7 @@ import {publishCompletedOwnerQueue} from './client-owner-result.mjs';
 import {openClientMemory} from './client-memory.mjs';
 import {travelCommand} from './client-travel.mjs';
 
-export const SKILL_VERSION='1.9.19';
+export const SKILL_VERSION='1.9.20';
 export const CONTRACT='eden-edge/1';
 export const API_CONTRACT='eden-edge/1.1'; // Additive support; preserve legacy wire contract.
 const STATE='.eden-agent.json';
@@ -1195,6 +1195,7 @@ export async function cost(){return costLine(readCostLog(),liveOptions([]));}
 /** BODY-v1: owner-scoped GLBs; identity is consumed internally, never output. */
 export async function body(cmd,...args){
  if(!cmd)return ok(await call('/v1/edge/body'),'body');
+ if(cmd==='list'){const r=ok(await call('/v1/edge/body'),'body');return {selection:r.selection,presets:r.presets,uploads:r.uploads};}
  if(cmd==='presets')return (ok(await call('/v1/edge/body'),'body')).presets;
  if(cmd==='set'){
   const id=args[0];if(!id||args.length!==1)throw new Error('usage: body set <preset|assetId>');
@@ -1217,10 +1218,10 @@ export async function body(cmd,...args){
   throw new Error('usage: body photo [--auto | --upload portrait.png]');
  }
  if(cmd!=='upload')throw new Error('usage: body [presets|set <preset|assetId>|look [--random|--set k=v ...|--set outfit=<preset>]|photo [--auto|--upload x.png]|upload path.glb --type ceramic --license owned --rights-confirmed]');
- const path=args.shift(),opts={};if(!path)throw new Error('body upload needs a GLB path');
- while(args.length){const flag=args.shift();if(flag==='--rights-confirmed')opts.rightsConfirmed=true;else if(flag==='--type'||flag==='--license'){const value=args.shift();if(!value||value.startsWith('--'))throw new Error(flag+' needs a value');opts[flag.slice(2)]=value;}else throw new Error('Unknown body upload argument: '+flag);}
+ const path=args.shift();let opts={};if(!path)throw new Error('body upload needs a GLB path');
+ while(args.length){const flag=args.shift();if(flag==='--manifest'){const file=args.shift();if(!file||file.startsWith('--'))throw new Error('--manifest needs a JSON file');opts=JSON.parse(readFileSync(file,'utf8'));}else if(flag==='--rights-confirmed')opts.rightsConfirmed=true;else if(flag==='--type'||flag==='--license'){const value=args.shift();if(!value||value.startsWith('--'))throw new Error(flag+' needs a value');opts[flag.slice(2)]=value;}else throw new Error('Unknown body upload argument: '+flag);}
  if(!['humanoid','ceramic','floater'].includes(opts.type)||!['CC0','owned'].includes(opts.license)||!opts.rightsConfirmed)throw new Error('Upload requires --type humanoid|ceramic|floater --license CC0|owned --rights-confirmed');
- const size=statSync(path);if(!size.isFile()||size.size>16*1024*1024)throw new Error('Use a GLB file no larger than 16 MiB');
+ const size=statSync(path);if(!size.isFile()||size.size>4*1024*1024)throw new Error('Use a GLB file no larger than 4 MiB');
  if(opts.type==='humanoid')opts.rig='quaternius/1';
  const form=new FormData();form.set('manifest',JSON.stringify(opts));form.set('model',new Blob([readFileSync(path)],{type:'model/gltf-binary'}),'body.glb');
  const state=load(),world=need(state,'world','Register this folder first'),token=need(state,'token','Pair your Soul first');

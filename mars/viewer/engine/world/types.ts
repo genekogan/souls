@@ -49,6 +49,7 @@ export type ComponentPhase =
   | 'installed'; // connected and self-supporting under the assembly rules
 
 export type HumanState = {
+  bodyMotionV1?: import('../bodies/motion.ts').BodyMotionState;
   /** Opt-in stopped-dock boarding and finite boat passenger frame. */
   boatPassenger?: { boatId: string; slotId: string; phase: 'boarding' | 'seated' | 'leaving'; localRoot: Vec3; relativeYaw: number };
   boatTransit?: { from: Vec3; to: Vec3; t: number; supportId: string };
@@ -154,7 +155,7 @@ export type Body = { family: 'humanoid' | 'floater'; type?: 'humanoid' | 'cerami
   avatar?: {kind:'body'; modelUrl:string; bodyType:'humanoid'|'ceramic'|'floater'}; radius?: number; hoverHeight?: number;
   /** core/humanoid@2 look params (compact), with `model` = the look key `humanoid2-<sha16>`. Height, build and walkSpeed
    *  are physical (bodies/humanoid.ts: radius, eye height, seat fit, walking speed); the rest is paint. */
-  params?: Record<string, string | number> };
+  params?: Record<string, string | number>; motion?: import('../bodies/motion.ts').BodyMotion };
 
 export type Entity = {
   /** carrier/1 (vehicles/carrier.ts): a ride with seats that carries its riders along a deterministic route. */

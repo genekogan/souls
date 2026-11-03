@@ -1,12 +1,13 @@
 // BODY-v1: dependency-free GLB admission. Pure; stores nothing before validation succeeds.
 import {createHash} from 'node:crypto';
 import {inflateSync} from 'node:zlib';
+import {bodyMotionProblem,type BodyMotion} from '../../../../../mars/viewer/engine/bodies/motion.ts';
 import {rigWorldPoints,rigWorldMatrices} from './rig.ts';
 export type BodyType='humanoid'|'ceramic'|'floater';
-export type BodyManifest={type:BodyType;license:'CC0'|'owned';rightsConfirmed:true;rig?:'quaternius/1'};
-export const BODY_LIMITS={bytes:16*1024*1024,triangles:100000,images:8,imageBytes:4*1024*1024,imageDimension:2048,nodes:512,accessors:1024} as const;
-export class BodyAdmissionError extends Error {readonly code:string;constructor(code:string,message:string){super(message);this.code=code;}}
-const no=(code:string,message:string):never=>{throw new BodyAdmissionError(code,message);};
+export type BodyManifest={type:BodyType;license:'CC0'|'owned';rightsConfirmed:true;rig?:'quaternius/1';name?:string;description?:string;motion?:BodyMotion};
+export const BODY_LIMITS={bytes:4*1024*1024,triangles:10000,images:2,imageBytes:1024*1024,imageDimension:1024,nodes:512,accessors:1024,rigidDrawCalls:4,humanoidDrawCalls:16} as const;
+export class BodyAdmissionError extends Error {readonly code:string;readonly details?:{field:string;measured:number;limit:number};constructor(code:string,message:string,details?:{field:string;measured:number;limit:number}){super(message);this.code=code;this.details=details;}}
+const no=(code:string,message:string,details?:{field:string;measured:number;limit:number}):never=>{throw new BodyAdmissionError(code,message,details);};
 const list=(x:unknown,k:string):any[]=>x===undefined?[]:Array.isArray(x)?x:no('body.invalid',`${k} must be an array`);
 const nat=(n:unknown,k:string)=>Number.isSafeInteger(n)&&Number(n)>=0?Number(n):no('body.invalid',`${k} must be a nonnegative integer`);
 const ref=(items:any[],i:unknown,k:string)=>{const n=nat(i,k);return items[n]??no('body.invalid',`${k} references missing data`);};
@@ -17,7 +18,7 @@ function imageDimensions(b:Buffer,mime:string):[number,number]{
   while(p+12<=b.length){const n=b.readUInt32BE(p),kind=b.toString('ascii',p+4,p+8);if(p+12+n>b.length)return no('body.image-invalid','Truncated PNG chunk');
    let crc=0xffffffff;for(const byte of b.subarray(p+4,p+8+n)){crc^=byte;for(let k=0;k<8;k++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}if(((crc^0xffffffff)>>>0)!==b.readUInt32BE(p+8+n))return no('body.image-invalid','Invalid PNG checksum');
    if(p===8){if(kind!=='IHDR'||n!==13)return no('body.image-invalid','Invalid PNG IHDR');w=b.readUInt32BE(p+8);h=b.readUInt32BE(p+12);depth=b[p+16];const color=b[p+17];paletteRequired=color===3;channels=({0:1,2:3,3:1,4:2,6:4} as Record<number,number>)[color]??0;
-    if(!w||!h||w>BODY_LIMITS.imageDimension||h>BODY_LIMITS.imageDimension)return no('body.image-too-large','Texture dimensions exceed 2048×2048');
+    if(!w||!h||w>BODY_LIMITS.imageDimension||h>BODY_LIMITS.imageDimension)return no('body.image-too-large','Texture dimensions exceed 1024×1024');
     if(!channels||![1,2,4,8,16].includes(depth)||(color===3&&depth===16)||([2,4,6].includes(color)&&depth<8)||b[p+18]!==0||b[p+19]!==0||b[p+20]!==0)return no('body.image-format','Unsupported PNG pixel/interlace layout');
    }else if(kind==='IHDR')return no('body.image-invalid','Duplicate PNG header');
    if(kind==='PLTE'){if(!n||n%3||n>768)return no('body.image-invalid','Invalid PNG palette');palette=true;}
@@ -48,12 +49,31 @@ function imageDimensions(b:Buffer,mime:string):[number,number]{
  }
  return no('body.image-format','Only embedded PNG and JPEG textures are supported');
 }
+/** Bind authored adapters into admitted bytes, preserving the existing byte-addressed store and moderation keys.
+ * The local validator performs the identical, idempotent metadata transform. Geometry and source files are untouched. */
+export function bindBodyDefinition(bytes:Buffer,raw:unknown):Buffer {
+ const m=raw as BodyManifest|undefined;if(!m?.motion)return bytes;
+ const problem=bodyMotionProblem(m.motion);if(problem)return no('body.motion',problem);
+ if(bytes.length>BODY_LIMITS.bytes)return no('body.too-large','Body GLB exceeds 4 MiB');
+ if(bytes.length<28||bytes.readUInt32LE(0)!==0x46546c67||bytes.readUInt32LE(4)!==2||bytes.readUInt32LE(8)!==bytes.length||bytes.readUInt32LE(16)!==0x4e4f534a)return bytes;
+ const n=bytes.readUInt32LE(12);if(n%4||20+n>bytes.length)return bytes;
+ let j:any;try{j=JSON.parse(bytes.toString('utf8',20,20+n).trim());}catch{return bytes;}
+ if(!j.asset||typeof j.asset!=='object'||Array.isArray(j.asset))return bytes;
+ const fingerprint='body-definition/1 '+createHash('sha256').update(JSON.stringify({type:m.type,motion:m.motion,name:m.name,description:m.description})).digest('hex');
+ if(j.asset.generator===fingerprint)return bytes;
+ j.asset.generator=fingerprint;const json=Buffer.from(JSON.stringify(j)),padded=Buffer.alloc(Math.ceil(json.length/4)*4,32);json.copy(padded);
+ const head=Buffer.from(bytes.subarray(0,20)),result=Buffer.concat([head,padded,bytes.subarray(20+n)]);result.writeUInt32LE(result.length,8);result.writeUInt32LE(padded.length,12);return result;
+}
 export function admitBodyGLB(bytes:Buffer,raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return no('body.manifest','Manifest is required');
  const m=raw as Record<string,unknown>;if(!['humanoid','ceramic','floater'].includes(String(m.type)))return no('body.type','Unknown body type');
  if(m.rightsConfirmed!==true||!['CC0','owned'].includes(String(m.license)))return no('body.rights','Confirm CC0 or ownership rights before uploading');
+ for(const key of Object.keys(m))if(!['type','license','rightsConfirmed','rig','name','description','motion'].includes(key))return no('body.manifest',`Unknown manifest field ${key}`);
+ for(const [key,max]of [['name',80],['description',240]] as const)if(m[key]!==undefined&&(typeof m[key]!=='string'||m[key].length<1||m[key].length>max))return no('body.manifest',`${key} must be 1–${max} characters`);
+ if(m.motion!==undefined){if(m.type==='humanoid')return no('body.motion','Authored rigid motion requires ceramic or floater type');const p=bodyMotionProblem(m.motion);if(p)return no('body.motion',p);}
  const manifest=m as BodyManifest;
- if(bytes.length>BODY_LIMITS.bytes)return no('body.too-large','Body GLB exceeds 16 MiB');
+ bytes=bindBodyDefinition(bytes,manifest);
+ if(bytes.length>BODY_LIMITS.bytes)return no('body.too-large','Body GLB exceeds 4 MiB');
  if(bytes.length<28||bytes.readUInt32LE(0)!==0x46546c67||bytes.readUInt32LE(4)!==2||bytes.readUInt32LE(8)!==bytes.length)return no('body.invalid','Expected a complete GLB 2.0 file');
  let json:any,bin:Buffer|undefined,p=12;
  while(p<bytes.length){if(p+8>bytes.length)return no('body.invalid','Truncated GLB chunk');const n=bytes.readUInt32LE(p),kind=bytes.readUInt32LE(p+4);p+=8;if(n%4||p+n>bytes.length)return no('body.invalid','Invalid GLB chunk length');if(kind===0x4e4f534a){if(json||p!==20)return no('body.invalid','Exactly one first JSON chunk is required');try{json=JSON.parse(bytes.toString('utf8',p,p+n).trim());}catch{return no('body.invalid','Invalid glTF JSON');}}else if(kind===0x004e4942){if(bin)return no('body.invalid','Duplicate binary chunk');bin=bytes.subarray(p,p+n);}else return no('body.extension','Unsupported GLB chunk');p+=n;}
@@ -67,14 +87,16 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
  if(views.length>2048)return no('body.too-complex','Too many buffer views');
  const width:Record<string,number>={SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT2:4,MAT3:9,MAT4:16},components:Record<number,number>={5120:1,5121:1,5122:2,5123:2,5125:4,5126:4};
  let decodedValues=0;for(const a of accessors){if(a.count===0)return no('body.invalid','Empty accessors are unsupported');if(a.sparse)return no('body.extension','Sparse accessors are unsupported');const n=nat(a.count,'accessor.count'),size=components[a.componentType]*width[a.type];if(!Number.isFinite(size)||(['MAT2','MAT3'].includes(a.type)&&components[a.componentType]<4))return no('body.invalid','Invalid or unsupported accessor type');decodedValues+=n*width[a.type];if(decodedValues>4000000)return no('body.too-complex','Total decoded accessor data exceeds the budget');const v=ref(views,a.bufferView,'accessor.bufferView'),offset=nat(a.byteOffset??0,'accessor.byteOffset'),stride=v.byteStride??size;if(stride<size||offset+(n?stride*(n-1)+size:0)>v.byteLength)return no('body.invalid','Accessor exceeds its buffer view');if((offset+(v.byteOffset??0))%components[a.componentType])return no('body.invalid','Misaligned accessor');}
- let triangles=0;const meshes=list(json.meshes,'meshes');if(!meshes.length)return no('body.empty','Body must contain a visible mesh');
- for(const mesh of meshes)for(const p of list(mesh.primitives,'mesh.primitives')){if((p.mode??4)!==4)return no('body.mesh-mode','Only triangle meshes are supported');const pos=ref(accessors,p.attributes?.POSITION,'POSITION');if(pos.type!=='VEC3'||pos.componentType!==5126||pos.count<3)return no('body.invalid','Mesh positions must be floating point VEC3');const indices=p.indices===undefined?null:ref(accessors,p.indices,'indices');if(indices&&(indices.type!=='SCALAR'||![5121,5123,5125].includes(indices.componentType)))return no('body.invalid','Invalid triangle indices');const n=indices?.count??pos.count;if(n%3)return no('body.invalid','Incomplete triangle');triangles+=n/3;if(triangles>BODY_LIMITS.triangles)return no('body.too-complex','Body exceeds 100,000 triangles');if(p.targets)return no('body.extension','Morph targets are unsupported');}
+ let triangles=0,drawCalls=0;const meshes=list(json.meshes,'meshes');if(!meshes.length)return no('body.empty','Body must contain a visible mesh');
+ for(const mesh of meshes)for(const p of list(mesh.primitives,'mesh.primitives')){drawCalls++;if((p.mode??4)!==4)return no('body.mesh-mode','Only triangle meshes are supported');const pos=ref(accessors,p.attributes?.POSITION,'POSITION');if(pos.type!=='VEC3'||pos.componentType!==5126||pos.count<3)return no('body.invalid','Mesh positions must be floating point VEC3');const indices=p.indices===undefined?null:ref(accessors,p.indices,'indices');if(indices&&(indices.type!=='SCALAR'||![5121,5123,5125].includes(indices.componentType)))return no('body.invalid','Invalid triangle indices');const n=indices?.count??pos.count;if(n%3)return no('body.invalid','Incomplete triangle');triangles+=n/3;if(triangles>BODY_LIMITS.triangles)return no('body.too-complex','Body exceeds 10,000 triangles',{field:'triangles',measured:triangles,limit:BODY_LIMITS.triangles});if(p.targets)return no('body.extension','Morph targets are unsupported');}
+ const drawLimit=manifest.type==='humanoid'?BODY_LIMITS.humanoidDrawCalls:BODY_LIMITS.rigidDrawCalls;if(drawCalls>drawLimit)return no('body.too-complex','Too many mesh draw calls',{field:'drawCalls',measured:drawCalls,limit:drawLimit});
  const nodes=list(json.nodes,'nodes');if(nodes.length>BODY_LIMITS.nodes)return no('body.too-complex','Too many nodes');const parents=new Map<number,number>();
  for(let i=0;i<nodes.length;i++){const n=nodes[i];if(n.mesh!==undefined)ref(meshes,n.mesh,'node.mesh');for(const j of list(n.children,'node.children')){ref(nodes,j,'child');if(parents.has(j))return no('body.invalid','Node has multiple parents');parents.set(j,i);}}
  for(let i=0;i<nodes.length;i++){const seen=new Set<number>();for(let j:number|undefined=i;j!==undefined;j=parents.get(j)){if(seen.has(j))return no('body.invalid','Cyclic node graph');seen.add(j);}}
  for(const scene of list(json.scenes,'scenes'))for(const j of list(scene.nodes,'scene.nodes'))ref(nodes,j,'scene root');
  const images=list(json.images,'images');if(images.length>BODY_LIMITS.images)return no('body.too-complex','Too many textures');
- for(const image of images){const v=ref(views,image.bufferView,'image.bufferView');if(v.byteLength>BODY_LIMITS.imageBytes)return no('body.image-too-large','Texture exceeds 4 MiB');const start=v.byteOffset??0,[w,h]=imageDimensions(bin.subarray(start,start+v.byteLength),image.mimeType);if(!w||!h||w>BODY_LIMITS.imageDimension||h>BODY_LIMITS.imageDimension)return no('body.image-too-large','Texture dimensions exceed 2048×2048');}
+ for(const image of images){const v=ref(views,image.bufferView,'image.bufferView');if(v.byteLength>BODY_LIMITS.imageBytes)return no('body.image-too-large','Texture exceeds 1 MiB');const start=v.byteOffset??0,[w,h]=imageDimensions(bin.subarray(start,start+v.byteLength),image.mimeType);if(!w||!h||w>BODY_LIMITS.imageDimension||h>BODY_LIMITS.imageDimension)return no('body.image-too-large','Texture dimensions exceed 1024×1024');}
+ let instances=0,instanceTriangles=0;for(const n of nodes)if(n.mesh!==undefined){instances+=meshes[n.mesh].primitives.length;for(const p of meshes[n.mesh].primitives)instanceTriangles+=(p.indices===undefined?accessors[p.attributes.POSITION].count:accessors[p.indices].count)/3;}if(instanceTriangles>BODY_LIMITS.triangles)return no('body.too-complex','Instantiated body exceeds the triangle budget',{field:'triangles',measured:instanceTriangles,limit:BODY_LIMITS.triangles});if(instances>drawLimit)return no('body.too-complex','Too many instantiated mesh draw calls',{field:'drawCalls',measured:instances,limit:drawLimit});
  // Decode every accessor used by geometry/rig/clips. Bounds alone cannot stop NaNs or
  // out-of-range indices from reaching the renderer. Small fixed-size arrays stay capped by the GLB byte limit.
  const values=(a:any):number[]=>{const v=ref(views,a.bufferView,'accessor.bufferView'),n=nat(a.count,'accessor.count'),c=width[a.type],size=components[a.componentType],stride=v.byteStride??c*size,base=(v.byteOffset??0)+(a.byteOffset??0),out:number[]=[];
@@ -122,5 +144,5 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
    if(anim.name==='Walk')for(const side of ['L','R']){const c=channels.find(c=>c.target.node===named.get('Foot'+side)&&c.target.path==='translation');if(!c)return no('body.clips','Walk requires baked translation for both canonical feet');const v=values(accessors[as[c.sampler].output]);let low=Infinity,high=-Infinity;for(let i=2;i<v.length;i+=3){low=Math.min(low,v[i]);high=Math.max(high,v[i]);}if(high-low<=1e-6)return no('body.clips','Walk requires finite forward stride along Z');}
   }
  }else if(skins.length||nodes.some(n=>n.skin!==undefined)||animations.length)return no('body.rigid','Ceramic and floater bodies must be rigid, without skins or animation clips');
- return{assetId:'body_'+createHash('sha256').update(bytes).digest('hex'),type:manifest.type,license:manifest.license,bytes:bytes.length,triangles,images:images.length,nodes:nodes.length,rig:manifest.type==='humanoid'?'quaternius/1':null};
+ return{assetId:'body_'+createHash('sha256').update(bytes).digest('hex'),type:manifest.type,license:manifest.license,bytes:bytes.length,triangles,images:images.length,nodes:nodes.length,rig:manifest.type==='humanoid'?'quaternius/1':null,...(manifest.motion?{motion:structuredClone(manifest.motion)}:{}),...(manifest.name?{name:manifest.name}:{}),...(manifest.description?{description:manifest.description}:{})};
 }
