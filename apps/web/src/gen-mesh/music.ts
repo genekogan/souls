@@ -23,6 +23,7 @@
 //    it was if the tab is back in time; after the grace (or on music off) the piece is stopped and remembered (file
 //    position, or Tone seed and cycle). Volume changes (the duck near a piano / jukebox) ramp over ~1 s.
 import { arrivalOver } from '../arrival-marks.ts';
+import { useFileMusic } from './music-source.ts';
 import type { ScoreConductor, ScoreNamespace, ScorePieceModule } from '../score/playlist/engine.d.mts';
 import type { FilePlayer } from './music-file.ts';
 
@@ -62,6 +63,7 @@ const sourceFor = (id: string): MusicSource => (file && !fileOff && file.has(id)
 /** The playlist order comes with the file index (tiny); Tone and the engine (large) only when a piece needs them. */
 function loadFiles() {
   if (loading || file || failed) return;
+  if (typeof location !== 'undefined' && !useFileMusic(location.hostname, location.search)) { loadTone(); return; }
   loading = true; note({ ev: 'load', reason: 'file index' });
   idle(() => {
     Promise.all([import('./music-file.ts'), import('../score/playlist/playlist-audio.json'), import('../score/playlist/order.mjs').then((m) => m.PLAYLIST as readonly string[])]).then(([mod, idx, playlist]) => {
