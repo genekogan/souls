@@ -155,7 +155,7 @@
 
 .world-hover-tooltip,.world-place-card{background:color-mix(in srgb,var(--panel) 80%,transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);color:var(--fg);line-height:1.4}.world-hover-tooltip{max-width:240px;font-weight:500}.world-place-card{padding:14px;max-width:280px}.world-place-card p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:color-mix(in srgb,var(--fg) 90%,var(--dim))}
 
-/* Shared account/menu and owned portraits; centered world exploration remains independent of ownership. */
+/* Shared account menu and owned portraits. */
 .human-world .account-sign-in{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:7px 16px;border-radius:999px;border:1px solid var(--glass-line,var(--line));background:var(--glass,var(--panel));color:var(--fg);font:600 13px/1.2 system-ui,sans-serif;text-decoration:none;backdrop-filter:blur(14px)}
 .human-world .account-menu{position:relative}.human-world .account-avatar{list-style:none;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;overflow:hidden;border:1px solid var(--glass-line,var(--line));background:var(--glass,var(--panel));cursor:pointer;font:600 16px/1 system-ui,sans-serif}.account-avatar::-webkit-details-marker{display:none}.account-avatar img{width:100%;height:100%;object-fit:cover;object-position:center}.account-avatar:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 .account-menu-items{position:absolute;right:0;top:calc(100% + 8px);display:flex;flex-direction:column;gap:4px;min-width:150px;padding:8px;border-radius:14px;background:var(--glass,var(--panel));border:1px solid var(--glass-line,var(--line));box-shadow:var(--glass-shadow,0 4px 18px #0003);backdrop-filter:blur(16px);z-index:16}.account-menu-items button{white-space:nowrap;text-align:left;justify-content:flex-start;width:100%}
@@ -210,7 +210,7 @@
 .time-preview .dim{opacity:.7;font-size:12px}
 /* Lane P6 (2026-10-19): small screens only (HudMore.tsx sets html.phone-tidy there, never on desktop). Secondary controls
    leave the world view and are offered from the HUD's one "More" button; watch mode keeps only the primary chrome. */
-html.phone-tidy .human-world:not(.has-advanced) .account-sign-in,html.phone-tidy .human-world:not(.has-advanced) [data-god-panel-toggle],html.phone-tidy .human-world:not(.has-advanced) .visitor-controls,html.phone-tidy .eden-sound-toggle{display:none!important}
+html.phone-tidy .human-world:not(.has-advanced) [data-god-panel-toggle],html.phone-tidy .human-world:not(.has-advanced) .visitor-controls,html.phone-tidy .eden-sound-toggle{display:none!important}
 .hud-more-wrap{position:relative;display:inline-flex;flex:none}
 .human-world:not(.has-advanced) .world-hud.slim .hud-more{flex:none;padding:0}
 .hud-more-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:20;display:flex;flex-direction:column;gap:2px;min-width:200px;max-width:calc(100vw - 16px - var(--sa-l) - var(--sa-r));padding:6px;border-radius:14px;border:1px solid var(--glass-line,var(--line));background:var(--glass,var(--panel));-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:var(--glass-shadow)}
