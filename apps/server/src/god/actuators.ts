@@ -156,10 +156,17 @@ export function gamePatch(a: { name: string }, state: Record<string, unknown>, s
   return { text: g.join(''), textBy: ids.join(','), players: names.join(',') };
 }
 /** After a move a player steps back from the board, so the other can reach it and both can see the game (entry 27). */
-function gameStepBack(def: StoredDef, a: Action, motion: { root: [number, number, number]; params: Record<string, unknown> }) {
+function gameStepBack(def: StoredDef, a: Action, state: Record<string, unknown>, soul: EdgeSoul, board: Vec2, motion: { root: [number, number, number]; params: Record<string, unknown> }) {
   const yaw = (motion.params.stroke as { yaw?: number } | undefined)?.yaw;
   if (!isGameAction(def, a) || typeof yaw !== 'number') return [];
-  return [{ verb: 'walk_to', params: { to: [motion.root[0] + Math.sin(yaw) * 0.9, motion.root[2] + Math.cos(yaw) * 0.9], standoff: 0 } }];
+  // Finish the supported retreat facing the board centre. A native face action owns
+  // the gradual turn; neither the renderer nor an idle per-tick rule re-faces the player.
+  const players = gamePlayers(state).ids;
+  const player = players.includes(soul.soulId) ? players.indexOf(soul.soulId) : players.length;
+  // Separate waiting stations leave the central approach clear for the next player.
+  const side = player === 1 ? 0.9 : -0.9;
+  return [{ verb: 'walk_to', params: { to: [motion.root[0] + Math.sin(yaw) * 0.9 + Math.cos(yaw) * side, motion.root[2] + Math.cos(yaw) * 0.9 - Math.sin(yaw) * side], standoff: 0 } },
+    { verb: 'mars:face', params: { target: { point: board } } }];
 }
 /** Soul-written board text (entry 13): short, at most three lines, printable. Null = acceptable. */
 export function boardTextProblem(v: unknown, max = 100, lines = 3): Refusal | null {
@@ -298,7 +305,7 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
         const contact = host.deferContacts && isContactActuator(def, a);
         const motion=contact&&s.key?host.contactPlan?.(ctx.soul,s.key,a.name,params):null;
         if(motion){const me=host.bodyAt(ctx.soul)!,far=(motion.level??0)>0||Math.hypot(me[0]-motion.root[0],me[1]-motion.root[2])>.1;
-          return {state:s,result:{action:a.name,set:actionPatch(def,a,(s.key&&host.stateOf?.(s.key))||s.state||{},params,ctx.soul)},bodies:[{label:a.label,steps:[{verb:'stand',params:{}},...(far?[(motion.level??0)>0||motion.params.stroke?{verb:'mars:walk_to',params:{x:motion.root[0],z:motion.root[2],level:motion.level}}:{verb:'walk_to',params:{to:[motion.root[0],motion.root[2]],standoff:0}}]:[]),...(motion.face?[{verb:'mars:face',params:{target:{point:motion.face}}}]:[]),{verb:'mars:hand_actuator_v1',params:motion.params},...stepBack(def,a,motion),...gameStepBack(def,a,motion),...(motion.after?[{verb:'walk_to',params:{to:motion.after,standoff:0}}]:[])]}]};}
+          return {state:s,result:{action:a.name,set:actionPatch(def,a,(s.key&&host.stateOf?.(s.key))||s.state||{},params,ctx.soul)},bodies:[{label:a.label,steps:[{verb:'stand',params:{}},...(far?[(motion.level??0)>0||motion.params.stroke?{verb:'mars:walk_to',params:{x:motion.root[0],z:motion.root[2],level:motion.level}}:{verb:'walk_to',params:{to:[motion.root[0],motion.root[2]],standoff:0}}]:[]),...(motion.face?[{verb:'mars:face',params:{target:{point:motion.face}}}]:[]),{verb:'mars:hand_actuator_v1',params:motion.params},...stepBack(def,a,motion),...gameStepBack(def,a,(s.key&&host.stateOf?.(s.key))||s.state||{},ctx.soul,s.at!,motion),...(motion.after?[{verb:'walk_to',params:{to:motion.after,standoff:0}}]:[])]}]};}
 
         const me = host.bodyAt(ctx.soul)!, to = s.front ?? s.at!, far = Math.hypot(s.at![0] - me[0], s.at![1] - me[1]) > (contact ? CONTACT_REACH : ACT_REACH);
         const water = s.key ? waterPlan(a, s.key, ctx.soul, host) : null;

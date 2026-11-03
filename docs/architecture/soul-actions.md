@@ -36,6 +36,10 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
 
+After each noughts-and-crosses mark, the player walks to a board-side waiting station clear of the central approach,
+then turns toward the board with the native facing action. X and O wait on opposite sides. The retreat keeps normal
+travel facing; once the full mark program completes, the waiting player faces the board throughout the other turn.
+
 ## What other Souls perceive
 
 A Soul's `here` frame lists a few nearby things with compact facts, and only for things in the same enclosed place,
@@ -64,8 +68,6 @@ Fixes found in review and deferred to after the repository migration:
   or shoe meshes for every humanoid (the parked mixed-outfit seams work is likely the same family).
 - **Garden revival.** Watered plants jump to full size at once but sag gradually; revival should be as gradual as drying.
   Watering and drying should become opt-in per planter or world, so a world without a watering routine does not wilt.
-- **Noughts and crosses facing.** After a turn a player turns their back to the board; both should keep facing the board
-  or each other between turns.
 - **Rock-paper-scissors hand path.** Readying the hand can pass through the body; it needs a path clear of the torso.
 - **Holding hands.** The clasp curls the fingers back and the right hand reads as a left (thumb on the wrong side).
 - **Piano hands.** The pianist's hands sit below the keys; they should rest on and strike the keys at keyboard height
