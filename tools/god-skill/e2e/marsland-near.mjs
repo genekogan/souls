@@ -9,6 +9,7 @@
 //   node tools/god-skill/e2e/marsland-near.mjs [--port 5962] [--keep] [--dpr 1,2]
 //
 // Report + screenshots under .lane/e2e-marsland-near/<stamp>/.
+import { setCameraMode } from '../../browser/world-controls.mjs';
 import { spawn, execFile } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -158,7 +159,7 @@ try {
       const d = `dpr${dpr}`;
       await step(`V1[${d}] the ring, the scrub and Ana on the playa (real Chrome)`, async () => {
         await waitFor(page, async () => ({ ok: await page.evaluate(() => !!window.__simEntity?.layer?.active) }), 60000);
-        await page.locator('button.viewer-broadcast').first().click().catch(() => {}); await page.waitForTimeout(500);
+        await setCameraMode(page, 'manual'); await page.waitForTimeout(500);
         await page.locator('button[aria-label="collapse"]').first().click().catch(() => {});
         await page.waitForTimeout(3000);
         const stats = await page.evaluate(() => { const g = window.__simEntity?.layer?.group; let ring = 0, scrub = 0, draws = 0; g?.traverse((o) => { if (o.isInstancedMesh && /^tire-ring/.test(o.name)) ring = o.count; if (o.isInstancedMesh && /^scrub:/.test(o.name)) { scrub += o.count; draws++; } }); return { ring, scrub, scrubDraws: draws }; });

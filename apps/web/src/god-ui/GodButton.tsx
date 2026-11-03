@@ -45,10 +45,9 @@ export function GodButton() {
   return (
     <span className="god-control">
       <button type="button" className="explore-open god-open" data-god-open="owner" data-agent={live ?? undefined}
-        aria-haspopup="dialog" aria-expanded={open} title={title} onClick={() => toggleGod()}>
-        {BOLT}<span>God</span>
+        aria-label="God mode" data-tooltip={title} aria-haspopup="dialog" aria-expanded={open} title={title} onClick={() => toggleGod()}>
+        {BOLT}
         {live && <i className={'god-dot ' + live} aria-label={live === 'on' ? 'agent connected' : 'agent not connected'} />}
-        <kbd>{godKeyLabel()}</kbd>
         {status.pending.length ? <span className="gp-badge" aria-label={`${status.pending.length} pairing request`}>{status.pending.length}</span> : null}
       </button>
     </span>

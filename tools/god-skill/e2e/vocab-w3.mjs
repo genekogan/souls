@@ -12,6 +12,7 @@
 //   node tools/god-skill/e2e/vocab-w3.mjs [--port 5750] [--keep] [--dpr 1,2] [--no-viewer] [--no-souls] [--only cafe,house]
 //
 // Report under .lane/e2e-vocab-w3/<stamp>/ (report.json, REPORT.md, shots, every CLI read under reads/).
+import { setCameraMode } from '../../browser/world-controls.mjs';
 import { spawn, execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
@@ -234,7 +235,7 @@ try {
       await step(`V1[${d}] the viewer draws the town (no page errors)`, async () => {
         let s; for (let i = 0; i < 120; i++) { s = await drawn(); if (s?.active && s.drawn > 300) break; await sleep(1000); }
         await sleep(5000);
-        for (let i = 0; i < 3 && (await page.evaluate(() => document.querySelector('canvas')?.dataset.cameraMode)) !== 'manual'; i++) { await page.locator('button.viewer-broadcast').first().click().catch(() => {}); await sleep(600); }
+        for (let i = 0; i < 3 && (await page.evaluate(() => document.querySelector('canvas')?.dataset.cameraMode)) !== 'manual'; i++) { await setCameraMode(page, 'manual'); await sleep(600); }
         await page.evaluate(() => { const t = [...document.querySelectorAll('*')].find((e) => e.textContent?.trim().startsWith('Join this world as a Soul') && e.children.length < 3); let n = t; while (n && n.parentElement && getComputedStyle(n).position !== 'fixed' && getComputedStyle(n).position !== 'absolute') n = n.parentElement; if (n) n.style.display = 'none'; });
         return { ...s, errors };
       }, (r) => r?.active && !r.errors.length);

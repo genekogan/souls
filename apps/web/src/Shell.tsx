@@ -1,4 +1,4 @@
-import { FullscreenToggle } from './FullscreenToggle.tsx';
+import {AudioMenu} from './AudioMenu.tsx';
 import { HudMore } from './HudMore.tsx';
 import {explorePresence} from './explore-data.ts';
 import {bodiesFromEvents} from './soul-state.ts';
@@ -20,7 +20,6 @@ import {WorldAccountControls} from './AccountMenu.tsx';
 import {SoulAccount} from './SoulAccount.tsx';
 import {useSignOutAtOnce} from './sign-out-now.ts';
 import {EdenMark} from './EdenMark.tsx';
-import {useHudFit} from './hud-fit.ts';
 import {LocalIntegrationNotice,LocalConnectionHelp,DebugPanel} from './LocalIntegration.tsx';
 import './world-chrome.css';
 import {createApiRequest} from './api-request.ts';
@@ -136,7 +135,6 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   const [lessonOpen,setLessonOpen]=useState(false);
   // VF3 (Gene): Advanced is unlisted; reach it at #advanced (or any Advanced tab's hash).
   const [advanced, setAdvanced] = useState(() => !['watch', 'my soul'].includes(hashTab().tab) || location.hash === '#advanced');
-  const [hud, setHud] = useState<HTMLElement | null>(null);useHudFit(advanced ? null : hud);  // U3: one-line top bar
   const [statusSlot, setStatusSlot] = useState<HTMLDivElement | null>(null), [cameraSlot, setCameraSlot] = useState<HTMLDivElement | null>(null);
   // UI2: the Soul panel opens only from a name plate, a name in a thread, or a shared Soul link.
   const [panelOpen, setPanelOpen] = useState(() => !!hashTab().soul);
@@ -208,18 +206,18 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
       <VisitorWelcome key={privatePanelKey} api={api} siteApi={siteApi} worldPath={worldPath} ownerId={currentMe?.userId??null} worldId={cfg.worldId} worldName={worldName} build={cfg.build} handle={viewerHandle} state={viewerState}/>
       <WorldSpeechOverlay root={frame} sim={sim} state={viewerState} active={!advanced} handle={viewerHandle}/>
       {!advanced && <ViewerFrame handle={viewerHandle} state={viewerState} dt={sim.conn.welcome?.dt ?? 0.05} navigationOpen={navigationOpen} onNavigationChange={setNavigationOpen} onNavigationOpen={openNavigation} worldTime={worldTimeText(worldClockAt((sim as Sim&{takes?:{chunks?:unknown[]}|null}).takes?.chunks,viewerState?.shownTick))} connected={!connectionLost(sim.conn)} connecting={!sim.conn.welcome} worldName={worldName} followName={viewerState?.cameraMode === 'follow' ? r.souls.get(viewerState.selection.soulId ?? '')?.name ?? null : null} slots={{ status: statusSlot, camera: cameraSlot }} initial={initialProgress} />}
-      <header ref={setHud} className={`world-hud${advanced ? '' : ' slim'}`}>
+      <header className={`world-hud${advanced ? '' : ' slim'}`}>
         {advanced && <>
         <a href="/" className="world-home">SIM</a>
         <span className="world-name">{worldName}</span>
         <span className={st.state === 'open' ? 'ok' : 'dim'}>{st.state === 'open' ? '● Connected' : 'Connecting…'}</span>
         </>}
-        {!advanced&&<div className="hud-left"><EdenMark/><div className="hud-status" ref={setStatusSlot}/><div className="hud-camera-row"><div className="hud-camera-slot" ref={setCameraSlot}/><button className="hud-camera" aria-label="Camera controls" aria-expanded={navigationOpen} title="Camera controls" onClick={()=>setNavigationOpen(o=>!o)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6.5h3l1.4-2h5.2l1.4 2h3v9.5H3z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><circle cx="10" cy="11" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/></svg></button><FullscreenToggle/></div></div>}
-        {!advanced&&exploreOn&&tourHandle?.frameLocation&&<div className="hud-explore-group"><EdenTour bodies={soulBodies} worldName={exploreName} locations={exploreLocations} locationPage={explorePage??undefined} onSearch={explorePage?(query=>viewerHandle?.searchLocations?.(query)):undefined} onMore={explorePage?(()=>viewerHandle?.moreLocations?.()):undefined} onClose={()=>viewerHandle?.cancelLocationPictures?.()} presence={explorePresence(sim.edge??[],r.souls.keys())} room={viewerState?.room} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} onOpen={()=>{if(!explorePage)viewerHandle?.refreshLocations?.();viewerHandle?.releaseInput?.();setNavigationOpen(false);}} onSoul={id=>requestFollowSoul(id)} preview={placePreview} onView={place=>{const viewed=tourHandle.frameLocation?.(place)??false;if(viewed){setPanelOpen(false);setNavigationOpen(false);}return viewed;}}/>{launcherWorld&&<GodButton/>}<MySouls api={api} bodies={soulBodies} ids={ownedIds} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} select={inspect} follow={requestFollowSoul}/></div>}
+        {!advanced&&<div className="hud-left"><EdenMark/><div className="hud-status" ref={setStatusSlot}/><div className="hud-camera-row"><div className="hud-camera-slot" ref={setCameraSlot}/></div>
+        <div className="hud-explore-group">{exploreOn&&tourHandle?.frameLocation&&<EdenTour bodies={soulBodies} worldName={exploreName} locations={exploreLocations} locationPage={explorePage??undefined} onSearch={explorePage?(query=>viewerHandle?.searchLocations?.(query)):undefined} onMore={explorePage?(()=>viewerHandle?.moreLocations?.()):undefined} onClose={()=>viewerHandle?.cancelLocationPictures?.()} presence={explorePresence(sim.edge??[],r.souls.keys())} room={viewerState?.room} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} onOpen={()=>{if(!explorePage)viewerHandle?.refreshLocations?.();viewerHandle?.releaseInput?.();setNavigationOpen(false);}} onSoul={id=>requestFollowSoul(id)} preview={placePreview} onView={place=>{const viewed=tourHandle.frameLocation?.(place)??false;if(viewed){setPanelOpen(false);setNavigationOpen(false);}return viewed;}}/>}{launcherWorld&&<GodButton/>}<MySouls key={JSON.stringify([worldKey,currentMe?.userId])} recencyKey={JSON.stringify(['sim.soul-recency',worldKey,currentMe?.userId??'public'])} selectedId={selected} newSoul={(!signinEnabled||auth.ready)&&(signinEnabled||cfg.accountAuthRequired!==true)?<BringAgent auth={auth} requireAuth={cfg.accountAuthRequired===true} worldName={launcherWorld?worldName:undefined}/>:null} api={api} bodies={soulBodies} ids={ownedIds} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} select={inspect} follow={requestFollowSoul}/></div><AudioMenu/><HudMore/></div>}
         {!launcherWorld&&<LocalIntegrationNotice source={cfg.localIntegrationMetadataPath}/>}{AUTH_UI&&!launcherWorld&&<LocalConnectionHelp devAuth={cfg.devAuth}/>}
         <div className="hud-actions">
           {advanced&&<a className="world-back" href="#watch" onClick={e => { e.preventDefault(); setAdvanced(false); setPairCode(null); setTab('watch'); history.replaceState(null, '', '#watch'); }}>← Back to the world</a>}
-          <WorldAccountControls signinEnabled={signinEnabled} accountAuthRequired={cfg.accountAuthRequired} auth={auth} inviteUrl={joinLink()} newSoul={<BringAgent showButton={!advanced} key={cfg.worldId??location.pathname} auth={auth} requireAuth={cfg.accountAuthRequired===true} worldName={launcherWorld?worldName:undefined}/>}/>{!advanced&&<HudMore/>}
+          <WorldAccountControls signinEnabled={signinEnabled} accountAuthRequired={cfg.accountAuthRequired} auth={auth} inviteUrl={joinLink()} newSoul={advanced?<BringAgent showButton={false} key={cfg.worldId??location.pathname} auth={auth} requireAuth={cfg.accountAuthRequired===true} worldName={launcherWorld?worldName:undefined}/>:undefined}/>
 
         </div>
       </header>
