@@ -67,7 +67,9 @@ Fixes found in review and deferred to after the repository migration:
 - **Noughts and crosses facing.** After a turn a player turns their back to the board; both should keep facing the board
   or each other between turns.
 - **Rock-paper-scissors hand path.** Readying the hand can pass through the body; it needs a path clear of the torso.
-- **Holding hands.** The clasp curls the fingers back and the right hand reads as a left (thumb on the wrong side).
+- **Holding-hands anatomy audit (#421).** Current-main default rigs retain radial thumbs and palmward finger curls on
+  both joined hands, standing and walking, across four headings. The historical mirrored-hand report has not been
+  reproduced by this bounded audit; its original failing-before/fix proof remains unverified. No rig curl-axis change.
 - **Piano hands.** The pianist's hands sit below the keys; they should rest on and strike the keys at keyboard height
   (also for the piano duet).
 - **Social facing in general.** Groups and conversations should face each other, and a Soul using an object should face
