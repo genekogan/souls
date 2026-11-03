@@ -8,7 +8,7 @@
 // --port      the launcher's port; its one world runs on the next two ports. Default: $E2E_PORT, else a free port.
 // --out       the run directory. Default: .local/e2e/<UTC timestamp>/ (summary.json, shots/, launcher.log, clip).
 // --clip      also record the whole browser session as one uncut, real-speed video (clip.webm; clip.mp4 with ffmpeg).
-// --build     build what is missing first: the web app (apps/web/dist) and the viewer's static build (/modular).
+// --build     build missing web assets and, when selected, the viewer's static build (/modular).
 // --mars-web  use this explicit complete static overlay; default: launcher selection, then MARS_WEB_DIR or viewer build.
 // --keep-data keep the run's data dir (<out>/data); by default it is removed after a pass.
 // Exit 0: pass. 1: a check failed. 2: a precondition is missing (the message says which command fixes it).
@@ -109,7 +109,8 @@ export function preflight(a, marsWeb, { root = ROOT, exists = existsSync, spawnC
   const viewer = join(root, 'mars/viewer/dist/client');
   if (missingSmokeKit(marsWeb, exists).length && marsWeb === viewer && a.build) {
     console.log('[smoke] building viewer static assets: pnpm build:viewer');
-    spawnCmd('pnpm', ['build:viewer'], { cwd: root, stdio: 'inherit' });
+    const r = spawnCmd('pnpm', ['build:viewer'], { cwd: root, stdio: 'inherit' });
+    if (r.status !== 0) missing.push('building viewer static assets failed: pnpm build:viewer');
   }
   const kit = missingSmokeKit(marsWeb, exists);
   if (kit.length) missing.push(`selected smoke overlay ${marsWeb} lacks ${kit.join(', ')}; pass --mars-web <complete isolated overlay> (or build the viewer and select it)`);
