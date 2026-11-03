@@ -17,3 +17,12 @@ test('EF4 measures canonical apartment geometry without counting its auxiliary s
  const signature=(f:Finding)=>JSON.stringify([f.def,f.hash,f.field,f.stage,f.code,f.detail]);const allowed=new Set(known.findings.flatMap(f=>f.fields.map(field=>signature({...f,field}))));
  assert.deepEqual(gallery.filter(f=>!allowed.has(signature(f))),[],'Canonical capture must preserve the exact prior apartment findings, not a new triangle allowance');
 });
+
+test('EF4 figure keeps its normal kit context and measures source geometry without auxiliary shadow copies',{timeout:30_000},t=>{
+ const dir=mkdtempSync(join(tmpdir(),'ef4-figure-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));const out=join(dir,'report.json');
+ const result=spawnSync(process.execPath,[new URL('../bin/conformance.mjs',import.meta.url).pathname,'--filter','core-figure@1','--k','2','--out',out,'--report-only'],{encoding:'utf8',timeout:25_000});assert.equal(result.status,0,result.stderr);
+ const report=JSON.parse(readFileSync(out,'utf8')) as {rendered:number;findings:Finding[];qualificationGaps:unknown[]};
+ assert.equal(report.rendered,16,'Every pose, hat and seeded endpoint is still measured');
+ assert.deepEqual(report.qualificationGaps,[]);
+ assert.deepEqual(report.findings.filter(f=>f.stage==='gallery-budget'),[],'Source figure geometry remains within the unchanged 600-triangle budget');
+});
