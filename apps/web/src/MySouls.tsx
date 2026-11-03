@@ -1,4 +1,6 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useState,type ReactNode} from 'react';
+import {NavbarMenu} from './NavbarMenu.tsx';
+import {orderedSoulIds,readSoulRecency,selectedSoulIds} from './soul-recency.ts';
 import type {PublicSoul} from '@sim/protocol';
 import {worldKey,worldPath} from './world-path.ts';
 import {requestSoulConversations} from './dialogue-speaking.ts';
@@ -35,13 +37,20 @@ export function chipState(link:ReturnType<typeof ownerLink>,body:Body|null):Chip
 const CHIP_WORD:Record<ChipState,string>={pairing:'pairing request waiting',connected:'connected',zombie:'disconnected, zombie',asleep:'disconnected, asleep',disconnected:'disconnected'};
 const CHIP_MARK:Partial<Record<ChipState,{cls:string;text:string}>>={pairing:{cls:'my-souls-pair',text:'!'},asleep:{cls:'my-souls-zz',text:'zz'},zombie:{cls:'my-souls-zz my-souls-zombie',text:'≈'}};
 /** B3: a click opens the Soul's card (select) and flies the camera to follow it (follow → requestFollowSoul). */
-export function MySouls({ids,souls,select,follow,present,api,bodies}:{ids:readonly string[];souls:ReadonlyMap<string,PublicSoul>;select:(id:string)=>void;follow?:(id:string)=>void;present?:ReadonlySet<string>;api?:Api;bodies?:ReadonlyMap<string,Body>}){
- const open=(id:string)=>{select(id);follow?.(id);};
- const pinned=ids.flatMap(id=>{const soul=souls.get(id);return soul?[soul]:[];});const gone=ids.length-pinned.length;
- // the owner inbox of the three shown chips is polled; its `link` (or, from an older server, its presence) sets the ring
+export function MySouls({ids,souls,select,follow,present,api,bodies,newSoul,recencyKey='sim.soul-recency.'+worldKey,selectedId}:{ids:readonly string[];souls:ReadonlyMap<string,PublicSoul>;select:(id:string)=>void;follow?:(id:string)=>void;present?:ReadonlySet<string>;api?:Api;bodies?:ReadonlyMap<string,Body>;newSoul?:ReactNode;recencyKey?:string;selectedId?:string|null}){
+ const [recent,setRecent]=useState(()=>readSoulRecency(recencyKey));
+ const remember=(id:string)=>setRecent(prev=>selectedSoulIds(id,prev,ids));
+ useEffect(()=>{try{localStorage.setItem(recencyKey,JSON.stringify(recent.filter(id=>ids.includes(id))));}catch{}},[recent,recencyKey,ids.join(',')]);
+ useEffect(()=>{if(selectedId&&ids.includes(selectedId))remember(selectedId);},[selectedId,ids.join(',')]);
+ const pinned=orderedSoulIds(ids,recent).flatMap(id=>{const soul=souls.get(id);return soul?[soul]:[];});
  const agent=useOwnedAgentPresence(api,pinned.slice(0,3).map(s=>s.id));
  const stateOf=(soul:PublicSoul)=>{const here=agent(soul.id);return chipState(ownerLink(here?.link??null,here),newest(readBody((soul as PublicSoul&{body?:unknown}).body),bodies?.get(soul.id)??null));};
- if(!ids.length)return null;
- return <div className="my-souls" aria-label="Your account Souls">{pinned.slice(0,3).map(soul=>{const st=stateOf(soul),mark=st?CHIP_MARK[st]:undefined,dim=st==='zombie'||st==='asleep'||st==='disconnected';
-  return <button key={soul.id} className={(present&&!present.has(soul.id))||dim?'my-souls-away':undefined} data-link-state={st??undefined} onContextMenu={e=>{e.preventDefault();select(soul.id);requestSoulConversations(soul.id);}} title={`${soul.name}${st?` · ${CHIP_WORD[st]}`:''} · Soul details · right-click for conversations`} aria-label={`Open ${soul.name}${st?` (${CHIP_WORD[st]})`:''}`} onClick={()=>open(soul.id)}><SoulAvatar soul={soul}/>{mark&&<span className={mark.cls} aria-hidden="true">{mark.text}</span>}</button>;})}{pinned.length>3&&<details className="my-souls-more"><summary>+{pinned.length-3}</summary><div>{pinned.slice(3).map(soul=><button key={soul.id} onClick={()=>open(soul.id)}><SoulAvatar soul={soul}/><span>{soul.name}</span></button>)}</div></details>}{gone>0&&<span className="my-souls-gone" title="Owned Souls absent from this world">{gone} away</span>}</div>;
+ const open=(id:string)=>{remember(id);select(id);follow?.(id);};
+ const chip=(soul:PublicSoul,close?:()=>void)=>{const st=stateOf(soul),mark=st?CHIP_MARK[st]:undefined,dim=st==='zombie'||st==='asleep'||st==='disconnected';
+  return <button type="button" key={soul.id} className={(present&&!present.has(soul.id))||dim?'my-souls-away':undefined} data-link-state={st??undefined} onContextMenu={e=>{e.preventDefault();remember(soul.id);select(soul.id);requestSoulConversations(soul.id);}} title={`${soul.name}${st?` · ${CHIP_WORD[st]}`:''} · Soul details · right-click for conversations`} aria-label={`Open ${soul.name}${st?` (${CHIP_WORD[st]})`:''}`} onClick={()=>{open(soul.id);close?.();}}><SoulAvatar soul={soul}/>{close&&<span>{soul.name}</span>}{mark&&<span className={mark.cls} aria-hidden="true">{mark.text}</span>}</button>;};
+ return <div className="my-souls" aria-label="Your account Souls">{pinned.length>3
+  ? <NavbarMenu label="Your Souls" className="souls-menu" trigger={<span className="soul-avatar-pile">{pinned.slice(0,3).map((soul,i)=><span key={soul.id} style={{zIndex:3-i}} data-soul-id={soul.id}><SoulAvatar soul={soul}/></span>)}</span>}>
+      {close=><>{pinned.map(soul=>chip(soul,close))}<div onClick={close}>{newSoul}</div></>}
+    </NavbarMenu>
+  : <>{pinned.map(soul=>chip(soul))}<span className="new-soul-control">{newSoul}</span></>}</div>;
 }
