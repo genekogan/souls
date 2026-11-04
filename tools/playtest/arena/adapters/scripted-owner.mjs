@@ -9,9 +9,10 @@
 //   ack        reply sent with `ack <id>` (≤140 chars); default "On it."
 //   do         eden.mjs argument lists run in order; "{id}" is replaced by the message id. A step that is refused or fails
 //              stops the rule, unless the step ends with an options object {"onRefused": "continue"} (default "fail"):
-//              then the refusal is recorded and the next step runs (#828). "{{prev.<path>}}" in an argument is replaced
-//              from the previous step's JSON output (a refusal's too), e.g. "{{prev.did_you_mean[0].id}}"; a placeholder
-//              that does not resolve fails its step without running it.
+//              then the refusal is recorded and the next step runs (#828). A refused final step still fails the request:
+//              there is no next step to recover with. "{{prev.<path>}}" in an argument is replaced from the previous
+//              step's JSON output (a refusal's too), e.g. "{{prev.did_you_mean[0].id}}", reading own properties only; a
+//              placeholder that does not resolve fails its step without running it, and that skipped step leaves no JSON.
 //   close      "done" (default): `result <id> done|failed` from the steps' outcome. "open": leave the request open (the
 //              activity continues in the world) until a later rule supersedes it or the run ends.
 //   supersede  text for `result <old> failed "<text>"` on every request still open when this rule fires (owner redirection)
@@ -64,12 +65,12 @@ export const stepArgs = (s) => (stepOptions(s) ? s.slice(0, -1) : s);
 /** The previous step's JSON (stdout, else stderr), or null. */
 export function stepJson(r) { for (const t of [r?.stdout, r?.stderr]) { try { const d = JSON.parse(t); if (d && typeof d === 'object') return d; } catch { /* not JSON */ } } return null; }
 /** bindPrev(args, prev) → {args} with every {{prev.<path>}} replaced, or {error} naming the first that does not resolve
- *  to a string or number. */
+ *  to a string or number. Own properties only: a path never reaches the prototype chain (`prev.constructor.name`). */
 export function bindPrev(args, prev) {
   let error = null;
   const out = args.map((a) => a.replace(PREV, (m, path) => {
     let v = prev;
-    for (const k of path.match(/[^.[\]]+/g) ?? []) v = v == null ? undefined : v[k];
+    for (const k of path.match(/[^.[\]]+/g) ?? []) v = v !== null && typeof v === 'object' && Object.hasOwn(v, k) ? v[k] : undefined;
     if (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) return String(v);
     error ??= `unresolved ${m}${prev ? '' : ' (the previous step printed no JSON)'}`;
     return m;
@@ -172,14 +173,14 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
     }
     if (id) await cli(['ack', id, clip(rule.ack ?? 'On it.')]);
     let failed = null, prev = null;
-    for (const step of rule.do) {
+    for (const [i, step] of rule.do.entries()) {
       const args = stepArgs(step), onRefused = stepOptions(step)?.onRefused ?? 'fail';
       const bound = bindPrev(args.map((a) => (id ? a.replaceAll('{id}', id) : a)), prev);
       let o;
-      if (bound.error) o = { ok: false, why: bound.error };
+      if (bound.error) { o = { ok: false, why: bound.error }; prev = null; }
       else { const r = await cli(bound.args); prev = stepJson(r); o = stepOutcome(r, { waited: args.includes('--wait') }); }
       if (o.ok) continue;
-      if (onRefused === 'continue') { say(`[scripted-owner] ${args[0]} refused, continuing: ${o.why}`); continue; }
+      if (onRefused === 'continue' && i < rule.do.length - 1) { say(`[scripted-owner] ${args[0]} refused, continuing: ${o.why}`); continue; }
       failed = `${args[0]}: ${o.why}`; break;
     }
     if (!id) return;

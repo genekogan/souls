@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateScript, classify, matchRule, stepOutcome, turn, renderChat } from './scripted-owner.mjs';
+import { validateScript, classify, matchRule, stepOutcome, turn, renderChat, bindPrev } from './scripted-owner.mjs';
 import { brief } from '../../../world-launcher/soul/eden.mjs';
 import { ADAPTERS } from '../seat.mjs';
 import { providerPolicy } from '../../lib/provider-policy.mjs';
@@ -159,6 +159,30 @@ test('an unresolved {{prev…}} fails its step without running it; onRefused app
   assert.equal(calls(d).filter((c) => c[0] === 'act').length, 1, 'the unresolved step never ran');
   assert.deepEqual(resultOf(d).slice(0, 3), ['result', 'm1', 'failed']);
   assert.match(resultOf(d)[3], /unresolved \{\{prev\.alternatives\[0\]\.id\}\}/);
+});
+
+test('a refused final step fails the request even with onRefused continue', async () => {
+  const d = recoverFolder();
+  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'fly' }]), script: { rules: [{ match: 'fly', do: [['act', 'walk:g-field'], ['act', 'fly up', { onRefused: 'continue' }]], result: 'Flew' }] } });
+  assert.equal(calls(d).filter((c) => c[0] === 'act').length, 2);
+  assert.deepEqual(resultOf(d).slice(0, 3), ['result', 'm1', 'failed']);
+  assert.match(resultOf(d)[3], /^act: .*capability\.unknown/);
+});
+
+test('a step skipped for an unresolved {{prev…}} leaves no JSON for the step after it', async () => {
+  const d = recoverFolder();
+  const script = { rules: [{ match: 'fly', do: [['act', 'fly up', { onRefused: 'continue' }], ['act', '{{prev.alternatives[0].id}}', { onRefused: 'continue' }], ['act', '{{prev.did_you_mean[0].id}}']] }] };
+  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'fly' }]), script });
+  assert.equal(calls(d).filter((c) => c[0] === 'act').length, 1, 'neither placeholder step ran: the refusal two steps back is not reused');
+  assert.deepEqual(resultOf(d).slice(0, 3), ['result', 'm1', 'failed']);
+  assert.match(resultOf(d)[3], /unresolved \{\{prev\.did_you_mean\[0\]\.id\}\} \(the previous step printed no JSON\)/);
+});
+
+test('bindPrev reads own properties only, never the prototype chain', () => {
+  const prev = JSON.parse('{"did_you_mean":[{"id":"walk:g-field"}],"n":3}');
+  assert.deepEqual(bindPrev(['{{prev.did_you_mean[0].id}}', 'x{{prev.n}}'], prev), { args: ['walk:g-field', 'x3'] });
+  for (const path of ['constructor.name', 'toString', 'did_you_mean[0].constructor.name', '__proto__.constructor.name', 'did_you_mean[0].id.length'])
+    assert.match(bindPrev([`{{prev.${path}}}`], prev).error, /^unresolved/, path);
 });
 
 test('step options and {{prev}} placeholders are validated by field', () => {
