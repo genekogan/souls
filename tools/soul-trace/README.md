@@ -50,7 +50,9 @@ The recorder creates the trace file if it is missing (the tap only appends to a 
 refuses symlinks, FIFOs and devices. By default its appends are synchronous in the host's process, so a hung disk
 would block the host's call; it disables itself on the first error but cannot interrupt a write that never returns.
 `hostRecorder({file, queued: true})` (for a long-lived host) uses the tap's bounded asynchronous queue
-(`sink.mjs`) instead; call `close()` or `await drain()` before exit. Its own
+(`sink.mjs`) instead; call `close()` or `await drain()` before exit.
+In hook mode (the `host.mjs` command line) each call is its own recorder: every record is `seq` 1 under a fresh
+`host-…` proc, so the per-recorder record cap limits nothing there. Its own
 cost was not measured separately in A5. Not yet: an adapter for a particular host's hooks (Claude Code hooks cannot pass a tool id
 into the spawned command without rewriting it).
 
