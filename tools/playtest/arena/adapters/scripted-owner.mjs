@@ -56,13 +56,20 @@ export function classify(text) {
   return { kind: 'chat', text };
 }
 
-/** Did one eden.mjs step do what it asked? Exit code, refusals and terminal receipt phases, read from its JSON. */
-export function stepOutcome(r) {
+/** Did one eden.mjs step do what it asked? Exit code, refusals and terminal receipt phases, read from its JSON. A step
+ *  that waited (`--wait`) must end completed, or with the world observing its activity under way (a sit holds its
+ *  receipt open while seated); anything else after the wait is a failure, never a claimed success. */
+export function stepOutcome(r, { waited = false } = {}) {
   let d = null; try { d = JSON.parse(r.stdout); } catch { /* plain text */ }
   if (r.code !== 0) return { ok: false, why: firstLine(r.stderr || r.stdout) || `exit ${r.code}` };
   if (d?.accepted === false) return { ok: false, why: d.code ?? d.reason ?? 'not accepted' };
   const phase = d?.receipt?.phase ?? d?.phase;
   if (['failed', 'refused', 'cancelled', 'interrupted'].includes(phase)) return { ok: false, why: `${phase}${d?.receipt?.reason ? `: ${d.receipt.reason}` : ''}` };
+  if (waited && d?.receipt && phase !== 'completed') {
+    const ongoing = (d.events ?? []).some((e) => e?.kind === 'activity.observed' && e.receipt?.id === d.receipt.id && e.action?.status === 'executing');
+    if (!ongoing) return { ok: false, why: `still ${phase ?? 'open'} after waiting` };
+    return { ok: true, phase, ongoing: true };
+  }
   return { ok: true, phase: phase ?? null };
 }
 const firstLine = (s) => String(s ?? '').split('\n').find((l) => l.trim())?.slice(0, 120) ?? '';
@@ -127,7 +134,7 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
     let failed = null;
     for (const step of rule.do) {
       const r = await cli(step.map((a) => (id ? a.replaceAll('{id}', id) : a)));
-      const o = stepOutcome(r);
+      const o = stepOutcome(r, { waited: step.includes('--wait') });
       if (!o.ok) { failed = `${step[0]}: ${o.why}`; break; }
     }
     if (!id) return;

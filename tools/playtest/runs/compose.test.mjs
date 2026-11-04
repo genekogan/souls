@@ -58,6 +58,9 @@ test('world source and setup batches are resolved, hashed and declared before pl
   assert.equal(r.scenario.world.genesis, 'worlds/templates/littlemartians-garden.json');
   assert.deepEqual(r.effective.setup.batches.map((b) => [b.id, b.ops]), [['bench', 1], ['inline', 1]]);
   assert.equal(r.setup.batches[0].ops[0].name, 'sr-bench');
+  const snap = v(f, f.spec({ cast: 'none', world: { port: nextPort++, snapshot: 'worlds/templates/hello-hamlet.json' } }));
+  assert.equal(snap.effective.world.source.kind, 'snapshot', 'a frozen snapshot is passed to existing provisioning');
+  assert.equal(snap.scenario.world.snapshot, 'worlds/templates/hello-hamlet.json');
   const bad = (setup) => v(f, f.spec({ cast: 'none', setup })).errors.map((e) => e.code);
   assert.deepEqual(bad({ batches: ['missing.json'] }), ['setup.batch-missing']);
   assert.deepEqual(bad({ batches: [] }), ['setup.batches']);

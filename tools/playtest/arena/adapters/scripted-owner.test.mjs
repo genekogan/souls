@@ -43,6 +43,10 @@ test('classify reads onboarding, nudges, wakes and typed chat from the harness t
   assert.equal(stepOutcome({ code: 0, stdout: '{"accepted":false,"code":"no-offer"}' }).why, 'no-offer');
   assert.equal(stepOutcome({ code: 0, stdout: '{"accepted":true,"receipt":{"phase":"failed","reason":"blocked"}}' }).why, 'failed: blocked');
   assert.equal(stepOutcome({ code: 1, stdout: '', stderr: 'boom' }).ok, false);
+  const sat = { accepted: true, receipt: { id: 'r1', phase: 'started' }, events: [{ kind: 'activity.observed', receipt: { id: 'r1' }, action: { status: 'executing' } }] };
+  assert.equal(stepOutcome({ code: 0, stdout: JSON.stringify(sat) }, { waited: true }).ongoing, true, 'a seated sit is under way, not failed');
+  assert.equal(stepOutcome({ code: 0, stdout: JSON.stringify({ ...sat, events: [] }) }, { waited: true }).why, 'still started after waiting');
+  assert.equal(stepOutcome({ code: 0, stdout: JSON.stringify({ ...sat, events: [] }) }).ok, true, 'without --wait a started receipt is fine');
 });
 
 test('a redirection closes the open request as failed, then serves the new one through the CLI', async () => {
