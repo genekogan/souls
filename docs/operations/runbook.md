@@ -63,6 +63,20 @@ refused). Every call is an audit row.
 
 All take `--port <port>` and `--base /` for production (no `--base` on legacy).
 
+## Continuous worlds
+
+`--continuous` in `SIM_WORLDS_ARGS` (or `SIM_CONTINUOUS_WORLDS=1` in the unit's environment) keeps every current-engine
+world running at its full clock without visitors ([worlds](../architecture/worlds.md)). It is off by default. Do not
+turn it on in production until the capacity verdict for the running worlds says the host can carry all of them at once
+(#736, #740 A5). Every registered world then costs its full-clock CPU and memory all the time.
+
+1. Check capacity: registered current-engine worlds ≤ `--max-running`, and their resident memory fits under the unit's
+   memory limit with the qualified headroom.
+2. Add `--continuous` and restart the unit. The launcher log says `continuous worlds: on`, then names each world it starts.
+3. Watch `/__sim/healthz` and `world-problems.json`. `continuousDown` means a world that should run is not (the reason is
+   in the text), and `continuousUnsupported` names old-engine forks, which keep the idle policy.
+4. Rollback: remove the flag and restart the unit. The idle pace, sleep and exit policy apply again from that start.
+
 ## Backups
 
 Nightly at 03:30 UTC `sim-worlds-backup@<stage>.service` runs `deploy/backup-restic.mjs backup <stage>` as
