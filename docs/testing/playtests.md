@@ -28,7 +28,10 @@ node tools/playtest/scenarios/lib/validate.mjs [file...]               # check s
 To run a scenario as an owned Soul Run (a versioned spec that references it, refusals before anything starts, a
 resource ledger, cleanup on completion, failure and Ctrl-C, retention and a terminal `run-receipt.json`), use
 `node tools/playtest/runs/run.mjs validate|start|cleanup`; see [tools/playtest/runs/README.md](../../tools/playtest/runs/README.md).
-`playtest.mjs run` itself is unchanged.
+A run can also choose the world source (genesis or frozen snapshot), apply god-edit setup batches before play, and
+compose its cast and scripted direction in the spec; the model-free `scripted-owner` seat adapter plays a Soul through the
+world's served `eden.mjs` from a per-seat script, so composed scenes need no live model. `playtest.mjs run` behaves as
+before for existing scenarios; a scripted direction entry with `seat: "*"` is now a broadcast.
 
 Everything prints JSON on stdout and logs to stderr. `--server-root` is the Sim checkout whose server the dev worlds
 run from (it needs a built `apps/web/dist`). Pass it explicitly, and pass `--out` or `--runs-root` for where runs go.

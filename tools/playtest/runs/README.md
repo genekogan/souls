@@ -2,13 +2,15 @@
 
 One owned lifecycle around an existing playtest scenario: validate, preflight, run through the scenario runner
 (`playtest.mjs` `cmdRun`), release what the run created, apply retention and write a terminal receipt. Tranche #749;
-this is SR1 (#750). Composed worlds and casts (SR2), diagnostics (SR3), evaluation (SR4) and recording (SR5) build on
+SR1 (#750) is the lifecycle; SR2 (#751) adds world sources, setup and composed casts. Diagnostics (SR3), evaluation (SR4) and recording (SR5) build on
 the same receipt.
 
 ```bash
 node tools/playtest/runs/run.mjs validate tools/playtest/runs/specs/smoke-world.json
 node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/smoke-world.json
 node tools/playtest/runs/run.mjs start    --scenario tools/playtest/scenarios/unified-codex-smoke.json --cast none --port 4311 --duration 30
+node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio.json   # three scripted-owner Souls, one redirection
+node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/garden-setup.json  # another world, a setup batch, another cast
 node tools/playtest/runs/run.mjs cleanup  .local/soul-runs/<run> --world-data --controller-state
 ```
 
@@ -26,8 +28,10 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 | `soulRun` | required, `1` | Spec version. Anything else is refused. |
 | `scenario` | required | Path to an existing scenario JSON, relative to the spec file, the working directory or the repo. |
 | `name` | scenario name | Run name in the run directory. |
-| `cast` | `scenario` | `scenario` runs its seats; `none` removes seats, god and their script events (world, director, observer and review only). |
-| `world.port`, `world.slug` | scenario's | The only world overrides. Use a free port; a busy port is refused, never taken over. |
+| `cast` | `scenario` | `scenario` runs its seats; `none` removes seats, god and their script events (world, director, observer and review only); an object `{seats, script}` replaces the scenario's seats and/or scripted direction, each in the scenario's own format (see Composed casts). |
+| `world.port`, `world.slug` | scenario's | Use a free port; a busy port is refused, never taken over. |
+| `world.genesis` or `world.snapshot` | scenario's | World source: a genesis template or a frozen compiler snapshot (`arena/snapshot-seed.mjs`), a path under the server root. Its sha256 is in the receipt (`spec.effective.world.source`). |
+| `setup` | none | `{batches: [file or {id, ops, note}], maxWallSec: 120}`: god-edit batches applied after provision and before any seat (see Setup). |
 | `durationSec` | scenario's | Play duration override. |
 | `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000}` | Bounded observer check (import plus one browser launch and close). Failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras: ["wide"]` adds a wide camera. |
 | `limits` | `{maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000}` | Hard wall limit for the whole run, controller count, per-resource release wait. |
@@ -52,6 +56,36 @@ applies the same preflight as `start`; `start` runs it once and hands the result
 - `spec.effective.json`, `scenario.effective.json`: exactly what ran.
 - `playtest/`: the scenario runner's own run directory, unchanged in layout (receipts, world.json, evidence, REPORT.md).
 
+## Composed casts and the scripted-owner adapter
+
+`cast.seats` uses the scenario seat format: `id` (unique; one controller per Soul), `soulName`, `adapter`, `model`,
+`effort`, `persona`, `wake`, and for `adapter: "scripted-owner"` a `script`. `limits.maxControllers` bounds the count;
+live adapters still need `controllers.allowLiveModels`. `cast.script` uses the scripted director's entries (`seat`,
+`atSec`, `channel` card|chat, `text`, `budgetSec`); `seat: "*"` is a broadcast the director delivers to every seat, each
+on its own record. Use `director.sequential: false` (in the scenario) when a later entry must reach a seat while an
+earlier request is still open, as a mid-activity redirection does. The scripted director has no pause or resume: an
+entry with `command` is refused at validation; end a run by cancelling it.
+
+`scripted-owner` (`arena/adapters/scripted-owner.mjs`) is a model-free seat adapter: it plays a Soul only through the
+world's served `eden.mjs` in the seat folder. Onboarding fetches the CLI from the world and runs `register`, `create` and
+`status`; owner cards reach it through the harness wake loop's `listen`; it answers each with `ack`, the matching rule's
+`eden.mjs` steps and `result done|failed` from those steps' real outcome. A `--wait` step runs with `--json` so its
+receipt is always in the output, and counts as done only when that receipt completed or the world shows its activity
+under way; a missing or unreadable receipt is a failure. Rules are matched in order by a
+case-insensitive regular expression on the card text; `close: "open"` leaves a request open while its activity
+continues, and `supersede` closes requests still open as failed when a later rule fires (an owner redirection). It has
+no provider and no cost, and its transcript renders like a model seat's. Live casts stay on `playtest.mjs direct` and
+the sim-director skill.
+
+## Setup
+
+Setup batches are existing god-edit batches (`{ops: [...]}` as `eden-god.mjs act` takes them), applied through the world
+owner's own route: `POST /v1/god/mint` as the dev owner, then `POST /v1/god/act` per batch, the same validated
+`commitBatch` the god CLI uses. It runs after provision and before any seat exists, so it is never part of measured
+play. `setup.json` and the receipt record each batch's id, path, sha256 and outcome (edit seq, or the refusal code and
+failures) and the physical fixture hash before and after setup. A refused batch fails the run at stage `setup`; play
+never starts. The minted god token is never written down.
+
 ## Ownership and retention
 
 The ledger separates **owned** resources (created by this run: the world process, controllers, browsers) from
@@ -61,7 +95,7 @@ registers after cleanup started is released at once and marked `late`.
 
 Retention classes: **evidence** (receipts, logs, transcripts, report) is always kept; **world data**
 (`playtest/server/data`) is disposable; **controller state** (`playtest/seats/*`, which holds owner identities and
-controller credentials) is sensitive and never a publication input. Stopping processes does not erase retained data.
+controller credentials, and also the seat transcripts) is sensitive and never a publication input; `controllerState: "delete"` removes those transcripts too. Stopping processes does not erase retained data.
 `cleanup` deletes only paths the receipt lists inside the run directory, and refuses while an owned world is alive.
 
 Not covered: resuming a crashed run, distributed recovery, killing a controller turn that is still running when its
@@ -71,6 +105,7 @@ release wait expires (recorded as `timed-out`).
 
 `cmdRun(args, hooks)` in `playtest.mjs` takes optional hooks: `own(kind, id, release, meta)` is called for the world
 (at spawn, before boot finishes), each controller and the observer browser; `signal` is checked between steps;
-`preflight` reuses a result; `modules` replaces module loading. Without hooks `playtest.mjs run` behaves as before.
+`preflight` reuses a result (`start` passes its own); `modules` replaces module loading; `afterProvision({world, runDir})`
+runs after provision and before seats (Soul Runs setup), and refuses by throwing. Without hooks `playtest.mjs run` behaves as before.
 
-Tests: `node --test tools/playtest/runs/runs.test.mjs`.
+Tests: `node --test tools/playtest/runs/runs.test.mjs tools/playtest/runs/compose.test.mjs tools/playtest/arena/adapters/scripted-owner.test.mjs`.

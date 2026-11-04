@@ -6,6 +6,7 @@ export function providerPolicy(scenario = {}) {
   const required = new Set();
   for (const seat of [...(scenario.seats ?? []), ...(scenario.god ? [scenario.god] : [])]) {
     const adapter = seat.adapter ?? 'claude-headless';
+    if (adapter === 'scripted-owner') continue; // model-free seat adapter (#751): no provider, nothing to spend
     if (!['claude-headless', 'codex-headless'].includes(adapter)) throw new Error(`unknown adapter ${adapter}`);
     const provider = adapter.replace('-headless', '');
     if (!allowed.has(provider)) throw new Error(`provider policy forbids ${provider} seat ${seat.id ?? 'god'}`);
