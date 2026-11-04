@@ -71,6 +71,9 @@ self-appointing as release owner. Only the appointed release owner freezes and q
 
 ## Portable execution and handoff
 
+Use the [harness portability contract](coordinator-portability.md) when entering or transferring a coordinator.
+It maps the same agenda and evidence to native capabilities without requiring one provider's tool names or memory.
+
 Claude Code and Codex follow the same AGENTS.md, lifecycle and Markdown skills. Provider memory and local chat
 history must not be the only record of a decision or unfinished work. Before stopping or switching owners, leave
 a short issue/PR checkpoint with:
