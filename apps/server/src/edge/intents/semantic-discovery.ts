@@ -10,6 +10,10 @@ const names=(p:Place)=>[p.name,...(p.aliases??[]),...(p.ref?[p.ref]:[])];
 const words=(xs:string[])=>new Set(xs.flatMap(tokens));
 const covers=(q:string[],set:Set<string>)=>q.every(w=>set.has(w));
 const GENERIC_SEAT=new Set(['down','here','nearby','nearest','closest','somewhere','seat','chair','bench']);
+// #848: a relation word between a seat and its place ("the bench outside the cottage", "the bench inside the hall"). `inside`
+// reads as `in` (already a stop word). `outside` stays a constraint, read as the authored adjective `outdoor`, never dropped:
+// a place with no outdoor seat still names none.
+const RELATION=new Map<string,string[]>([['inside',[]],['outside',['outdoor']],['outdoors',['outdoor']]]);
 export const PURPOSE=/^(?:(?:find|show|suggest|choose|take me to|go to|head to)\s+)?(?:somewhere|(?:a|the|any)\s+(?:place|venue|spot))\s+(?:to|for)\s+(.+)$|^where\s+(?:can|could|should)\s+(?:i|we)\s+(.+)$/i;
 const stem=(w:string)=>w.length>5&&w.endsWith('ing')?w.slice(0,-3):w.length>4&&w.endsWith('ed')?w.slice(0,-2):w.length>3&&w.endsWith('s')?w.slice(0,-1):w;
 const purposeWords=(xs:string[])=>new Set(xs.flatMap(tokens).map(stem));
@@ -59,7 +63,7 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  }
  const parsed=parseCapability(text,new Set([...caps.map(c=>c.verb),'sit']));if(parsed.verb!=='sit')return null;
  // An infinitive/so-clause after a named seat states why to sit, not a second seat identity.
- const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to)\s+/i)[0],q=tokens(target).filter(w=>w!=='down');
+ const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to)\s+/i)[0],q=tokens(target).filter(w=>w!=='down').flatMap(w=>RELATION.has(w)?RELATION.get(w)!:[w]);
  if(!q.length||q.every(w=>GENERIC_SEAT.has(w)))return null;
  // Existing exact fixture identities retain the normal vocabulary/admission path. A shared
  // word in a semantic part must not intercept a fully named ordinary object.

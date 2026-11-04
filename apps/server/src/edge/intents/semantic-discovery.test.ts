@@ -55,3 +55,11 @@ test('supported untargeted activity commands remain activities before venue disc
  for(const query of ['find somewhere to read a book','find somewhere to take a nap'])assert.equal(semanticDiscovery(L,{soulId:'s'} as any,query,caps,new Map()),null,query);
  const venue=semanticDiscovery(L,{soulId:'s'} as any,'somewhere to hear live music',caps,new Map()) as any;assert.equal(venue.discovery.kind,'purpose');assert.equal(venue.didYouMean[0].id,'walk:stage');
 });
+
+test('#848: relation words between a seat and its place: inside reads as in, outside is a constraint (outdoor)',()=>{
+ const {run,L}=setup();
+ L.places.byId.set('cottage',{id:'cottage',ref:'cottage',name:'Knoll Cottage',aliases:['cottage'],parent:'world',parts:[{id:'outdoor-bench',title:'Outdoor Bench',aliases:['hill bench'],sit:'sit:cottage/part-outdoor-bench',target:{entity:'bench',ref:'bench',slot:'seat'}}]});
+ assert.deepEqual(run('sit on the bench outside the cottage').didYouMean.map((x:any)=>x.id),['sit:cottage/part-outdoor-bench']);
+ assert.deepEqual(run('sit at the podium desk inside Chiba').didYouMean.map((x:any)=>x.id),['sit:chiba/part-podium']);
+ assert.equal(run('sit at the podium desk outside Chiba').didYouMean.length,0,'no outdoor seat in Chiba: the constraint is kept');
+});
