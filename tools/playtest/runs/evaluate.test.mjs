@@ -62,11 +62,11 @@ function makeRun(opts = {}) {
   if (opts.setup) w(join(dir, 'setup.json'), opts.setup);
   if (!opts.plain) w(join(dir, 'run-receipt.json'), {
     soulRun: 1, runId: opts.name ?? 'trio-1', status: opts.status ?? 'completed',
-    spec: { sha256: 'spec', effective: { world: { source: { kind: 'genesis', path: 'worlds/templates/hello-hamlet.json', sha256: 'a'.repeat(64) } }, setup: null, ...(opts.evaluation ? { evaluation: opts.evaluation } : {}) } },
-    source: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0, node: 'v26' },
+    spec: { sha256: 'spec', effective: { arm: opts.arm ?? null, world: { source: { kind: 'genesis', path: 'worlds/templates/hello-hamlet.json', sha256: 'a'.repeat(64) } }, setup: null, ...(opts.evaluation ? { evaluation: opts.evaluation } : {}) } },
+    source: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0, node: 'v26', ...(opts.tools ? { serverRoot: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0 }, tools: opts.tools } : {}) },
     preflight: { scenario: { checks: { laptopLoad: [opts.load ?? 2], freeGb: 50, machineOk: true } } },
     observer: opts.observerOk ? { ok: true } : { ok: false, stage: 'import', owner: '#633' },
-    evidence: { cli: '2.7.1', skill: '2.7.1', build: 'dev', ...(opts.noTick ? {} : { tickValidity: { valid: true, ticks: 1200, seconds: 60, clockRate: 1 } }) },
+    evidence: { cli: opts.cli ?? '2.7.1', skill: opts.skill ?? '2.7.1', build: 'dev', ...(opts.noTick ? {} : { tickValidity: { valid: true, ticks: 1200, seconds: 60, clockRate: 1 } }) },
     cost: { wallMs: 61000, executeMs: 60800, lifecycleOverheadMs: 200 },
   });
   return dir;
@@ -115,7 +115,7 @@ test('offline rescore writes a new version and leaves sources and earlier evalua
   const a = await evaluateRun(dir, { questions: [Q('redirect-honoured.mjs')] });
   const first = readFileSync(join(a.dir, 'evaluation.json'), 'utf8');
   const b = await evaluateRun(dir, { questions: [Q('redirect-honoured.mjs'), Q('walk-seen.mjs')] });
-  assert.deepEqual(readdirSync(join(dir, 'evaluations')), ['001-v1', '002-v1']);
+  assert.deepEqual(readdirSync(join(dir, 'evaluations')), ['001-v2', '002-v2']);
   assert.equal(readFileSync(join(a.dir, 'evaluation.json'), 'utf8'), first);
   assert.deepEqual(indexSources(dir), before, 'evaluations/ is excluded and no source changed');
   assert.equal(b.evaluation.questions.length, 2);
@@ -191,7 +191,7 @@ test('predeclared questions come from the spec and are kept apart from explorato
 test('comparison keeps every attempt, pools completed repeats within an arm and flags incompatible arms', async () => {
   const root = mkdtempSync(join(tmpdir(), 'sr-cmp-'));
   const a = makeRun({ root, name: 'trio-1', port: 4321 });
-  const b = makeRun({ root, name: 'trio-2', port: 4322, dirty: 2, load: 9 });
+  const b = makeRun({ root, name: 'trio-2', port: 4322, load: 9 });
   const c = makeRun({ root, name: 'trio-cancel', status: 'cancelled' });
   const d = makeRun({ root, name: 'trio-other', script: [{ seat: 'bo', atSec: 0, channel: 'card', text: 'Walk to the orchard', budgetSec: 60 }, { seat: 'bo', atSec: 9, channel: 'card', text: 'Change of plan: the pond hall instead', budgetSec: 100 }] });
   const plain = makeRun({ root, name: 'plain-1', plain: true });
@@ -205,8 +205,9 @@ test('comparison keeps every attempt, pools completed repeats within an arm and 
   assert.deepEqual(main.repeats, ['trio-1', 'trio-2'], 'a cancelled attempt is kept but is not a repeat');
   // A plain playtest run of the same scenario has no hashed world source, so it cannot be shown identical: its own arm.
   const plainArm = ix.arms.find((x) => x.attempts.some((t) => t.runId === 'plain-1'));
-  assert.deepEqual(ix.incompatible.find((x) => x.arms.includes(main.arm) && x.arms.includes(plainArm.arm)).differ, ['worldSource']);
-  assert.ok(main.conditionsDiffer.includes('dirtyTrackedFiles')); assert.match(main.caveats.join(' '), /source not exactly identified for trio-2/);
+  // It also has no receipt, so its condition identity is unrecorded: each field is named, never assumed equal.
+  assert.deepEqual(ix.incompatible.find((x) => x.arms.includes(main.arm) && x.arms.includes(plainArm.arm)).differ, ['worldSource', 'serverCommit', 'serverDirtyTrackedFiles', 'cli', 'skill']);
+  assert.deepEqual(main.conditionsDiffer, [], 'port and machine load are listed per attempt, not arm identity');
   assert.equal(main.measures.tickRate.median, 20);
   assert.equal(main.questions['redirect-honoured'].pass, 2);
   const other = ix.arms.find((x) => x.attempts.some((t) => t.runId === 'trio-other'));
@@ -216,6 +217,50 @@ test('comparison keeps every attempt, pools completed repeats within an arm and 
   assert.match(ix.pooled, /never averaged together/);
   assert.match(renderIndex(ix), /Incompatible arms/);
   assert.ok(!existsSync(join(a, 'evaluations')), 'compare evaluates in memory and writes nothing into the runs');
+});
+
+test('compare separates runs served by a different server, tools checkout or CLI/skill, names each difference, and pools them only with --pool (#839)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sr-cond-'));
+  const base = [makeRun({ root, name: 'base-1', commit: 'aaaa1111bbbb', port: 4321 }), makeRun({ root, name: 'base-2', commit: 'aaaa1111bbbb', port: 4322 })];
+  const cand = [makeRun({ root, name: 'cand-1', commit: 'cccc2222dddd', cli: '2.8.1', skill: '2.8.1' }), makeRun({ root, name: 'cand-2', commit: 'cccc2222dddd', cli: '2.8.1', skill: '2.8.1' })];
+  const dirty = makeRun({ root, name: 'dirty-1', commit: 'aaaa1111bbbb', dirty: 3 });
+  const ix = await compareRunSet([...base, ...cand, dirty]);
+  const armOf = (x, id) => x.arms.find((a) => a.attempts.some((t) => t.runId === id));
+  assert.equal(ix.arms.length, 3, JSON.stringify(ix.arms.map((a) => a.attempts.map((t) => t.runId))));
+  assert.deepEqual(armOf(ix, 'base-1').repeats, ['base-1', 'base-2'], 'identical identities still pool (A3)');
+  assert.deepEqual(armOf(ix, 'cand-1').repeats, ['cand-1', 'cand-2']);
+  assert.deepEqual(armOf(ix, 'base-1').condition, { serverCommit: 'aaaa1111bbbb', serverDirtyTrackedFiles: 0, toolsCommit: null, toolsDirtyTrackedFiles: null, cli: '2.7.1', skill: '2.7.1' });
+  const pair = (x, i, j) => x.incompatible.find((p) => p.arms.includes(armOf(x, i).arm) && p.arms.includes(armOf(x, j).arm));
+  assert.deepEqual(pair(ix, 'base-1', 'cand-1').differ, ['serverCommit', 'cli', 'skill']);
+  assert.deepEqual(pair(ix, 'base-1', 'cand-1').values.cli, ['2.7.1', '2.8.1']);
+  assert.deepEqual(pair(ix, 'base-1', 'dirty-1').differ, ['serverDirtyTrackedFiles'], 'uncommitted tracked files on the same commit are a different server');
+  assert.match(armOf(ix, 'dirty-1').caveats.join(' '), /source not exactly identified for dirty-1/);
+  const md = renderIndex(ix);
+  assert.match(md, /3 arm\(s\)/); assert.match(md, /serverCommit \(aaaa1111 vs cccc2222\), cli \(2\.7\.1 vs 2\.8\.1\)/); assert.match(md, /Served by: serverCommit aaaa1111, serverDirtyTrackedFiles 0, toolsCommit unrecorded/);
+  // Older receipts without the tools source read null on both sides: not a difference (A6). A recorded tools commit is.
+  const tools = [makeRun({ root, name: 'tools-1', commit: 'aaaa1111bbbb', tools: { commit: 'eeee3333ffff', dirtyTrackedFiles: 0 } }), makeRun({ root, name: 'tools-2', commit: 'aaaa1111bbbb', tools: { commit: '99998888aaaa', dirtyTrackedFiles: 1 } })];
+  const it = await compareRunSet([base[0], ...tools]);
+  assert.equal(it.arms.length, 3);
+  assert.deepEqual(pair(it, 'tools-1', 'tools-2').differ, ['toolsCommit', 'toolsDirtyTrackedFiles']);
+  assert.deepEqual(pair(it, 'base-1', 'tools-1').differ, ['toolsCommit', 'toolsDirtyTrackedFiles']);
+  // --pool: one arm across the condition identity, which names what it pooled across and keeps every value (A4).
+  const ip = await compareRunSet([...base, ...cand], { pool: true });
+  assert.equal(ip.arms.length, 1);
+  assert.deepEqual(ip.arms[0].repeats, ['base-1', 'base-2', 'cand-1', 'cand-2']);
+  assert.deepEqual(ip.arms[0].pooledAcross, ['serverCommit', 'cli', 'skill']);
+  assert.deepEqual(ip.arms[0].conditionValues.cli, { 'base-1': '2.7.1', 'base-2': '2.7.1', 'cand-1': '2.8.1', 'cand-2': '2.8.1' });
+  assert.ok(ip.arms[0].conditionsDiffer.includes('commit') && ip.arms[0].conditionsDiffer.includes('cli'));
+  assert.match(ip.pooled, /--pool/); assert.equal(ip.poolConditions, true);
+  assert.match(renderIndex(ip), /Pooled across serverCommit: base-1 aaaa1111, base-2 aaaa1111, cand-1 cccc2222, cand-2 cccc2222/);
+  // What ran and the label separate arms with or without --pool (A2, A4).
+  const other = makeRun({ root, name: 'other-1', commit: 'cccc2222dddd', script: [{ seat: 'bo', atSec: 0, channel: 'card', text: 'Walk to the orchard', budgetSec: 60 }] });
+  const lab = [makeRun({ root, name: 'lab-a', arm: 'baseline' }), makeRun({ root, name: 'lab-b', arm: 'candidate' })];
+  const iq = await compareRunSet([base[0], other, ...lab], { pool: true });
+  assert.equal(iq.arms.length, 4);
+  assert.deepEqual(pair(iq, 'base-1', 'other-1').differ, ['scenario', 'director']);
+  assert.deepEqual(pair(iq, 'lab-a', 'lab-b').differ, ['label']); assert.deepEqual(pair(iq, 'lab-a', 'lab-b').values.label, ['baseline', 'candidate']);
+  assert.equal(armOf(iq, 'lab-a').label, 'baseline');
+  assert.match(renderIndex(iq), /## Arm `[0-9a-f]{12}` \(candidate\)/);
 });
 
 test('directions: the direction journal is counted by command and outcome; each redirection says whether its target spoke after', () => {

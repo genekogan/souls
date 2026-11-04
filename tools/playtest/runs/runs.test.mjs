@@ -67,6 +67,11 @@ test('validateSpec refuses unsupported or unauthorized runs before anything is c
   assert.deepEqual(ok.policy.required, []);
   const withSeats = validateSpec({ ...f.spec(), cast: 'scenario', controllers: { allowLiveModels: true } }, { serverRoot: f.serverRoot });
   assert.deepEqual(withSeats.controllers, [{ id: 'pip', adapter: 'codex-headless', model: 'm', effort: null }]);
+  // An arm label (#839) is recorded in the effective spec; a malformed one is refused.
+  assert.equal(ok.effective.arm, null);
+  assert.equal(validateSpec({ ...f.spec(), arm: 'baseline' }, { serverRoot: f.serverRoot }).effective.arm, 'baseline');
+  assert.deepEqual(codes({ ...f.spec(), arm: 'two words' }), ['spec.arm']);
+  assert.deepEqual(codes({ ...f.spec(), arm: 7 }), ['spec.arm']);
 });
 
 test('refused runs create no run directory', async () => {

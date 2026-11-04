@@ -14,7 +14,7 @@ node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/garden-setup
 node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio-direct.json  # a directed cast: swarm director, scripted-owner seats
 node tools/playtest/runs/run.mjs cleanup  .local/soul-runs/<run> --world-data --controller-state
 node tools/playtest/runs/run.mjs evaluate .local/soul-runs/<run> --question tools/playtest/runs/questions/redirect-honoured.mjs
-node tools/playtest/runs/run.mjs compare  .local/soul-runs/<run-a> .local/soul-runs/<run-b> [--out dir] [--md]
+node tools/playtest/runs/run.mjs compare  .local/soul-runs/<run-a> .local/soul-runs/<run-b> [--pool] [--out dir] [--md]
 ```
 
 Exit codes: 0 completed (or valid), 1 failed, 2 refused, 124 stopped at `limits.maxWallSec`, 130 cancelled.
@@ -31,6 +31,7 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 | `soulRun` | required, `1` | Spec version. Anything else is refused. |
 | `scenario` | required | Path to an existing scenario JSON, relative to the spec file, the working directory or the repo. |
 | `name` | scenario name | Run name in the run directory. |
+| `arm` | none | Declared arm label (`baseline`, `candidate`; `--arm`). `compare` never pools different labels. |
 | `cast` | `scenario` | `scenario` runs its seats; `none` removes seats, god and their script events (world, director, observer and review only); an object `{seats, script}` replaces the scenario's seats and/or scripted direction, each in the scenario's own format (see Composed casts). |
 | `world.port`, `world.slug` | scenario's | Use a free port; a busy port is refused, never taken over. |
 | `world.genesis` or `world.snapshot` | scenario's | World source: a genesis template or a frozen compiler snapshot (`arena/snapshot-seed.mjs`), a path under the server root. Its sha256 is in the receipt (`spec.effective.world.source`). |
@@ -163,10 +164,20 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
 `run-index.json` and `COMPARE.md`). It accepts run folders and `replay-set.json` folders. Attempts are grouped into
 arms by exact identity: the scenario without its port and paths, the world source hash, setup batch hashes, the seats
 (adapter, model, effort, persona, script hash), the director script, seed and duration. Every attempt is listed,
-including cancelled, failed and missing ones; only completed attempts are repeats. Code commit, uncommitted tracked
-files, CLI/skill/Node versions, machine load and observer state are listed per attempt and flagged where they differ.
-Arms are never pooled together; each pair of arms lists the identity parts that differ. A plain playtest folder has no
-hashed world source, so it forms its own arm.
+including cancelled, failed and missing ones; only completed attempts are repeats. The arm also covers the run's
+label and its condition identity (#839): the server root's commit and uncommitted tracked file count, the tools
+checkout's commit and count (recorded from #801 on; unrecorded on older receipts, which is not a difference between
+two of them) and the served CLI and skill versions. So a baseline and a candidate on different servers or CLI versions
+are separate arms. Each arm lists the condition identity it was served by, and each pair of arms names every
+differing field with both values. Node version, build, machine load and observer state are listed per attempt and
+flagged where they differ. Arms are never pooled together. `--pool` is the explicit override: it pools attempts that
+differ only in condition identity, and each such arm names the fields it pooled across with every run's value; what
+ran and the label still separate arms. A plain playtest folder has no hashed world source and no receipt, so it forms
+its own arm.
+
+`start --arm <label>` (or the spec field `arm`, letters, digits, `.`, `_` and `-`, at most 40) records a declared arm
+label such as `baseline` or `candidate` in the receipt's effective spec; `compare` shows it, and different labels never
+share an arm.
 
 Answers are retrospective: they describe what the records show and do not establish motivation, causality or that a
 replay would repeat it.
