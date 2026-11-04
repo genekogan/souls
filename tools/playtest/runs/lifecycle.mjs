@@ -6,6 +6,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createLedger } from './ledger.mjs';
 import { validateSpec, portFree } from './spec.mjs';
+import { applySetup } from './setup.mjs';
 import { writeJson, readJson } from '../lib/jsonl.mjs';
 import { scratchDir } from '../../lib/paths.mjs';
 
@@ -79,8 +80,8 @@ export async function executeScenario({ scenarioFile, playtestDir, serverRoot, h
 /** startRun → terminal receipt. status: refused (nothing created) | completed | failed | cancelled | stopped-limit.
  *  signal: an AbortSignal the caller aborts on SIGINT/SIGTERM. execute/scenarioPreflight/importer are injectable. */
 export async function startRun({ spec, specPath = null, specSha256 = null, serverRoot, outDir = null, signal = null, log = () => {},
-  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null }) {
-  const validation = validateSpec(spec, { specPath });
+  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup }) {
+  const validation = validateSpec(spec, { specPath, serverRoot });
   if (!validation.ok) return { status: 'refused', stage: 'validate', errors: validation.errors };
   const pre = await preflightRun({ validation, serverRoot, scenarioPreflight });
   if (!pre.ok) return { status: 'refused', stage: 'preflight', errors: pre.errors, checks: pre.checks };
@@ -130,7 +131,13 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
     save();
     // The scenario preflight already ran in preflightRun; hand its result over so cmdRun does not repeat it (a second
     // machine-gate roll could otherwise refuse inside the runner and read as failed rather than refused).
-    const hooks = { own: ledger.own, signal: abort.signal, ...(pre.checks.scenario ? { preflight: pre.checks.scenario } : {}), ...(modules ? { modules } : {}) };
+    const hooks = { own: ledger.own, signal: abort.signal, ...(pre.checks.scenario ? { preflight: pre.checks.scenario } : {}), ...(modules ? { modules } : {}),
+      ...(validation.setup ? { afterProvision: async ({ world }) => {
+        receipt.setup = await setupFn({ base: world.base, setup: validation.setup });
+        writeJson(join(runDir, 'setup.json'), receipt.setup); save();
+        log(`setup: ${receipt.setup.ok ? `${receipt.setup.batches.length} batch(es) applied` : `refused: ${receipt.setup.error}`}`);
+        if (!receipt.setup.ok) throw Object.assign(new Error(receipt.setup.error), { stage: 'setup' });
+      } } : {}) };
     const e0 = Date.now();
     const executing = Promise.resolve().then(() => execute({ scenarioFile, playtestDir, serverRoot, hooks, runDir }))
       .then((code) => ({ status: code === 0 ? 'completed' : 'failed', exit: code, ...(code === 0 ? {} : { reason: `scenario runner exited ${code}` }) }),
@@ -139,6 +146,7 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
     execMs = Date.now() - e0;
   } catch (e) { outcome = { status: 'failed', reason: short(e), stage: e?.stage ?? 'startup' }; }
   finally { clearTimeout(wall); signal?.removeEventListener?.('abort', onAbort); }
+  if (receipt.setup && !receipt.setup.ok && outcome.status === 'failed') outcome = { ...outcome, stage: 'setup', reason: `setup refused: ${receipt.setup.error}` };
   if (abort.signal.aborted && outcome.status !== 'cancelled' && outcome.status !== 'stopped-limit') outcome = { ...outcome, status: abort.signal.reason === 'limits.maxWallSec' ? 'stopped-limit' : 'cancelled' };
   if (!abort.signal.aborted) abort.abort('run finished'); // runner steps still pending see a stop, not a fresh start
 
