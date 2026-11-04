@@ -2,8 +2,9 @@
 
 One owned lifecycle around an existing playtest scenario: validate, preflight, run through the scenario runner
 (`playtest.mjs` `cmdRun`), release what the run created, apply retention and write a terminal receipt. Tranche #749;
-SR1 (#750) is the lifecycle; SR2 (#751) adds world sources, setup and composed casts; SR4 (#753) evaluates completed
-runs offline and compares repeats. Diagnostics (SR3) and recording (SR5) build on the same receipt.
+SR1 (#750) is the lifecycle; SR2 (#751) adds world sources, setup and composed casts; SR3 (#752) attaches opt-in
+control diagnostics; SR4 (#753) evaluates completed runs offline and compares repeats. Recording (SR5) builds on the
+same receipt.
 
 ```bash
 node tools/playtest/runs/run.mjs validate tools/playtest/runs/specs/smoke-world.json
@@ -38,6 +39,7 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 | `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000}` | Bounded observer check (import plus one browser launch and close). Failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras: ["wide"]` adds a wide camera. |
 | `limits` | `{maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000}` | Hard wall limit for the whole run, controller count, per-resource release wait. |
 | `controllers.allowLiveModels` | `false` | A scenario whose seats, persona director or model review need claude/codex is refused unless this is `true`. Set it only with explicit authorization for live models. |
+| `diagnostics` | none (off) | `{trace: true | [seat ids]}`: passive soul-trace capture for those seats (see Diagnostics). |
 | `evaluation` | none | `{questions: [file]}`: question scorers predeclared before the run (see Evaluation); each is hashed into the effective spec. |
 | `retention` | `{worldData: "keep", controllerState: "keep"}` | `delete` applies only after a completed run with clean cleanup. Failed and cancelled runs keep everything. |
 
@@ -141,6 +143,32 @@ hashed world source, so it forms its own arm.
 Answers are retrospective: they describe what the records show and do not establish motivation, causality or that a
 replay would repeat it.
 
+## Diagnostics (opt-in trace capture)
+
+`diagnostics.trace` turns on the passive control-episode trace owned by #733 (`tools/soul-trace/tap.mjs`, contract
+`soul-trace/1`) for the named seats. Off is the default and adds no argument, environment variable, file or receipt
+field. Supported controller: the `scripted-owner` seat, which runs every `node eden.mjs …` itself; its commands and its
+harness `listen` get `--import <tap>` with `SOUL_TRACE_FILE=<run>/diagnostics/<seat>.trace.jsonl`,
+`SOUL_TRACE_RUN=<run id>` and `SOUL_TRACE_SEAT=<seat id>` (the boundary agreed on #623). Live agent seats are refused:
+their own shell would need `NODE_OPTIONS`, which the capture has not qualified.
+
+Validation records the capability (contract and the tap, readout and inspector hashes) and refuses a request when the
+tap is not in the checkout (`diagnostics.unavailable`); preflight refuses a tap that does not load with capture off
+(`diagnostics.tap`). The receipt's `diagnostics` section links each seat's trace file and, after the run, its bytes,
+hash, record and process counts, capture losses and the run/seat ids the trace carries. Traces are private evidence
+(kept like receipts, outside controller state) and never a publication input. The capture's bounds and failure
+behaviour (asynchronous, bounded, counted drops, a failing sink disables itself) are #733's.
+
+Viewing and analysis are separate, explicit commands that start nothing else:
+
+```bash
+node tools/playtest/runs/run.mjs inspect   <run> --seat bo     # the local read-only inspector (#624) over that trace
+node tools/playtest/runs/run.mjs correlate <run>               # trace ↔ director request ↔ seat transcript ↔ receipt
+```
+
+`correlate` keeps every original id and clock domain, never equates the seat's ack, the world's admission, the start
+tick and the terminal phase, and lists missing links (for example a delivery the trace did not see).
+
 ## Scenario runner hooks
 
 `cmdRun(args, hooks)` in `playtest.mjs` takes optional hooks: `own(kind, id, release, meta)` is called for the world
@@ -148,4 +176,4 @@ replay would repeat it.
 `preflight` reuses a result (`start` passes its own); `modules` replaces module loading; `afterProvision({world, runDir})`
 runs after provision and before seats (Soul Runs setup), and refuses by throwing. Without hooks `playtest.mjs run` behaves as before.
 
-Tests: `node --test tools/playtest/runs/runs.test.mjs tools/playtest/runs/compose.test.mjs tools/playtest/runs/evaluate.test.mjs tools/playtest/arena/adapters/scripted-owner.test.mjs`.
+Tests: `node --test tools/playtest/runs/runs.test.mjs tools/playtest/runs/compose.test.mjs tools/playtest/runs/evaluate.test.mjs tools/playtest/runs/diagnostics.test.mjs tools/playtest/arena/adapters/scripted-owner.test.mjs`.
