@@ -22,18 +22,20 @@ test('brief: an owner message that ends a wait never pushes the receipt out; its
     assert.deepEqual(o.receipt, {id: open.id, capability: open.capability, phase: 'started'}, `owner text of ${len}: the receipt stays`);
     assert.equal(o.done, false); assert.match(o.now, /not there yet/);
     assert.equal(o.ownerMessages.length, 1); assert.equal(o.ownerMessages[0].id, card(1, 0).id);
-    assert.ok(size(o) <= 601, String(size(o)));
+    assert.ok(size(o) <= 600, String(size(o)));
     if (len >= 290) { assert.equal(o.ownerMessages[0].textShortened, true); assert.equal(o.ownerMessages[0].text.length, 101); }
     else assert.equal(o.ownerMessages[0].text, card(1, len).text, 'a short message is printed as it is');
   }
   const many = brief({waited: '5s', receipt: open, ownerMessages: [card(1, 400), card(2, 400), card(3, 400), card(4, 400)]});
   assert.equal(many.receipt.id, open.id); assert.equal(many.ownerMessagesOmitted, 3); assert.equal(many.ownerMessages[0].id, card(4, 0).id, 'the newest is kept');
-  assert.ok(size(many) <= 601, String(size(many)));
+  assert.ok(size(many) <= 600, String(size(many)));
 });
 
 test('brief: without owner messages the output is unchanged (receipt and resolved kept as before)', () => {
   const o = brief({accepted: true, waited: '3s', receipt: open, resolved: {from: 'walk to the pond hall', to: 'walk:lab-pond-hall'}});
   assert.deepEqual(o, {accepted: true, waited: '3s', now: open.now, done: false, receipt: {id: open.id, capability: open.capability, phase: 'started'}, resolved: 'walk:lab-pond-hall'});
+  const long = brief({accepted: true, waited: '3s', receipt: {...open, now: 'n'.repeat(616)}, resolved: {from: 'x', to: 'walk:lab-pond-hall'}});
+  assert.equal(long.receipt, undefined, 'a long sentence without owner messages still drops resolved, then receipt, as 2.8.0 did'); assert.equal(long.resolved, undefined);
 });
 
 test('act --wait woken by a long owner card prints the open receipt (CLI end to end)', async t => {
