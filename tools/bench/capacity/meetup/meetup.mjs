@@ -192,7 +192,7 @@ async function perform(run, s, op, jitter) {
   } finally { run.opAborts.delete(ac); }
   const accepted = op.kind === 'resolve' ? d?.resolve?.ok : d?.accepted;
   const rec = { ...(body?.capability && op.cls === 'act' ? { capability: body.capability.replace(/:s_[\w-]+$/, ':<soul>') } : {}), status, outcome: outcomeOf({ status, code, accepted }), ...(busy ? { busyWaits: busy, waitMs: Math.round(waitMs) } : {}), ...(failed ? { netFailures: failed } : {}), ...(refusals.length ? { refusals } : {}) };
-  if (rec.outcome === 'gameplay-refused') rec.code = d?.code ?? d?.resolve?.code ?? null;
+  if (rec.outcome === 'gameplay-refused') { rec.code = d?.code ?? d?.resolve?.code ?? null; rec.reason = clean(String(d?.reason ?? d?.resolve?.reason ?? '')).replace(/s_[\w-]+/g, '<soul>').slice(0, 160); }
   if (rec.outcome === 'error') rec.code = `${status} ${code ?? ''}`.trim();
   if (d?.receipt?.id) { rec.receipt = d.receipt.id; rec.phase = d.receipt.phase; }
   return rec;
@@ -369,11 +369,12 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
   const reactiveDemand = { offered: rx.length + rxLeft, issued: rx.length, unissued: rxLeft, outcomes: rxOut, e2eMs: quantiles(rx.map((r) => r.doneAt - r.atMs)), inviteDeliveryMs: quantiles(rx.map((r) => r.inviteDeliveryMs)),
     gameplayCodes: rx.filter((r) => r.outcome === 'gameplay-refused').reduce((m, r) => (m[r.code] = (m[r.code] ?? 0) + 1, m), {}) };
   // receipts: action start (first started/terminal phase, server time) and delivery (stream receipt − server time)
-  const start = { all: [] }, delivery = { all: [] }, activity = { all: [] }, never = {};
+  // an invitation starts only when the partner accepts (a social wait, not processing): its start is reported apart
+  const start = { all: [] }, sharedStart = [], delivery = { all: [] }, activity = { all: [] }, never = {};
   for (const r of [...records, ...rx].filter((x) => x.receipt)) {
     const ev = run.receipts.get(r.receipt)?.events ?? [], first = ev.find((e) => e.phase === 'started') ?? ev.find((e) => ['completed', 'failed', 'replaced'].includes(e.phase));
     const w = `w${r.world}`; for (const m of [start, delivery, activity]) m[w] ??= [];
-    if (first) { const v = rel0(first.at - performance.timeOrigin) - r.atMs; start.all.push(v); start[w].push(v); }
+    if (first) { const v = rel0(first.at - performance.timeOrigin) - r.atMs; if (r.kind === 'shared') sharedStart.push(v); else { start.all.push(v); start[w].push(v); } }
     else never[r.phase ?? 'none'] = (never[r.phase ?? 'none'] ?? 0) + 1;
     for (const e of ev) { const v = e.recv - e.at; delivery.all.push(v); delivery[w].push(v); }
     const end = ev.find((e) => e.endedTick != null && e.startedTick != null); if (end) { const v = (end.endedTick - end.startedTick) / TICK_HZ * 1000; activity.all.push(v); activity[w].push(v); }
@@ -405,7 +406,7 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
   };
   return { profile, rep, headline, marksS: Object.fromEntries(Object.entries(run.marks).map(([k, v]) => [k, +((v - run.marks.boot) / 1000).toFixed(1)])), bootS: run.launcher.bootS, rates,
     join: { ms: quantiles(ss.filter((s) => s.joinMs != null).map((s) => s.joinMs)), failed: ss.filter((s) => !s.token).map((s) => ({ soul: s.i, tries: s.joinTries })), retries: ss.reduce((n, s) => n + Math.max(0, (s.joinTries?.length ?? 1) - 2), 0) },
-    worlds: run.worlds.map((w) => ({ slug: w.slug, placesInMenu: w.placesInMenu, meetup: w.meetup, sharedVerbs: w.sharedVerbs })), accounting, reactiveDemand, actionStartMs: q(start), receiptDeliveryMs: q(delivery), plannedActivityMs: q(activity), actsWithoutStart: never,
+    worlds: run.worlds.map((w) => ({ slug: w.slug, placesInMenu: w.placesInMenu, meetup: w.meetup, sharedVerbs: w.sharedVerbs })), accounting, reactiveDemand, actionStartMs: q(start), sharedActionStartMs: quantiles(sharedStart.map(Math.round)), receiptDeliveryMs: q(delivery), plannedActivityMs: q(activity), actsWithoutStart: never,
     stream: { ...run.stream, batches: quantiles(run.stream.batches) }, viewers: run.viewers, browser: BROWSER ? { ...browser, ...run.browserStats } : null,
     clock, healthzMisses: hzMiss, levels, pausedSamples: paused, dilatedSamples: dilated, resources, worldPidChanges: pidChanges, launcher: views, restarts, gameplayRefusals: gameplay, refusalTags,
     driverCpuS: +driverCpuS.toFixed(1), load, cleanup };

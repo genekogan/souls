@@ -28,6 +28,7 @@ export function report(receipt, r) {
   L.push('', `Valid gameplay refusals (kept, not load failures): ${Object.entries(r.gameplayRefusals).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}. Busy answers seen (incl. ones the client then waited out): ${Object.entries(r.refusalTags).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}.`, '');
   L.push('## Actions and receipts', '', '| world | action start | receipt delivery | planned activity (travel etc., not delay) |', '|---|---|---|---|');
   for (const k of Object.keys(r.actionStartMs)) L.push(`| ${k} | ${qs(r.actionStartMs[k])} | ${qs(r.receiptDeliveryMs[k])} | ${qs(r.plannedActivityMs[k])} |`);
+  if (r.sharedActionStartMs) L.push('', `Invitations (shared actions) start when the partner accepts, so their start is a social wait and is not in the action-start rows above: ${qs(r.sharedActionStartMs)}.`);
   L.push('', `Accepted acts with no start or end seen on the stream, by last phase: ${JSON.stringify(r.actsWithoutStart)}. Stream: ${r.stream.responses} responses, ${r.stream.events} events, events per non-empty batch ${qs(r.stream.batches)}, gaps ${r.stream.gaps}, failures ${r.stream.failures}, non-200 ${JSON.stringify(r.stream.non200)}.`, '');
   L.push('## Clock (actual ticks / due ticks at the admin rate, externally timed)', '', '| world | rate | quiet | active | meetups (10 s each) | max stall ms | max deficit ticks | healthz misses | levels after quiet start |', '|---|---|---|---|---|---|---|---|---|');
   for (const [w, c] of Object.entries(r.clock)) {
