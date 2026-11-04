@@ -254,3 +254,16 @@ test('reconcile settles a departure that was in flight when the origin stopped',
   assert.deepEqual(await a.travel.reconcile(), [`${ana.id}: stayed`]);
   assert.equal(a.travel.status(ana).state, 'present');
 });
+
+test('#795: a traveller in the default look arrives in it, also where an earlier visit left a carried body', async () => {
+  const ref = `body_${'e'.repeat(64)}`, worn = {family: 'floater', type: 'ceramic', model: ref};
+  const {world} = site(), a = world('alder', 'Alder'), b = world('birch', 'Birch', {resolve: () => ({ok: true, body: worn})});
+  const ana = born(a, 'dev:ana', 'Ana', {model: ref});
+  const first = await trip(a, ana, 'birch'), there = b.db.soul(first.soulId)!.entity_id;
+  assert.deepEqual(b.entities[there].body, worn);
+  await trip(b, b.db.soul(first.soulId)!, 'home');
+  a.entities[ana.entity_id] = {body: null};   // at home the owner chose the default look
+  const second = await trip(a, a.db.soul(ana.id)!, 'birch');
+  assert.equal(second.soulId, first.soulId, 'the same incarnation returns');
+  assert.equal(b.entities[there].body ?? null, null, 'the default look, not the body left from the first visit');
+});
