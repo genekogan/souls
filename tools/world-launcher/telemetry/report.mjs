@@ -2,7 +2,7 @@
 // Values the source does not export are `unknown`, never 0. Schema: REPORT_SCHEMA (bump on incompatible change).
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { fineFiles, hourOf, readHour, rollups } from './store.mjs';
+import { fineFiles, hourOf, rollups, tryReadHour, unreadable } from './store.mjs';
 import { merge, reduceHour, reduceRows, view } from './reduce.mjs';
 import { labelsOf } from './prom.mjs';
 
@@ -19,11 +19,11 @@ export function parseRange(r, now = Date.now()) {
 /** The store reduced over [from, to): exact from fine samples up to 2 h, else hour-aligned from rollups (an hour without
  *  one is reduced from its fine file, e.g. the current hour). */
 export function reduceRange(dir, types, from, to, everyMs) {
-  if (to - from <= 2 * HOUR) { const hs = fineFiles(dir, from, to).map((f) => readHour(f)); return { ...reduceRows(hs.flatMap((h) => h.rows), types, { from, to, everyMs }), restarts: hs.reduce((n, h) => n + h.restarts, 0) }; }
+  if (to - from <= 2 * HOUR) { const hs = fineFiles(dir, from, to).map(tryReadHour).filter(Boolean); return { ...reduceRows(hs.flatMap((h) => h.rows), types, { from, to, everyMs }), restarts: hs.reduce((n, h) => n + h.restarts, 0) }; }
   const have = new Map(rollups(dir, hourOf(from), to).map((r) => [r.hour, r])); let acc = null;
   for (let h = hourOf(from); h < to; h += HOUR) {
     let r = have.get(h);
-    if (!r) { const f = fineFiles(dir, h, h + HOUR); r = f.length ? reduceHour(h, { rows: f.flatMap((x) => readHour(x).rows), restarts: 0 }, types, everyMs) : { hour: h, from: h, to: h + HOUR, everyMs, samples: 0, gaps: 0, expected: Math.round(HOUR / everyMs), skewMaxMs: 0, series: {} }; }
+    if (!r) { const f = fineFiles(dir, h, h + HOUR); r = f.length ? reduceHour(h, { rows: f.map(tryReadHour).filter(Boolean).flatMap((x) => x.rows), restarts: 0 }, types, everyMs) : { hour: h, from: h, to: h + HOUR, everyMs, samples: 0, gaps: 0, expected: Math.round(HOUR / everyMs), skewMaxMs: 0, series: {} }; }
     acc = merge(acc, r);
   }
   return acc;
@@ -31,7 +31,7 @@ export function reduceRange(dir, types, from, to, everyMs) {
 
 /** Per world and fleet numbers from one reduction. */
 export function summarize(red) {
-  const by = {}, fleet = {}, sec = (s) => (s?.n ?? 0) * red.everyMs / 1000;
+  const by = {}, fleet = {};
   for (const [key, s] of Object.entries(red.series)) {
     const { name, labels } = labelsOf(key);
     if (labels.world) (by[labels.world] ??= {})[key.replace(/,?world="[^"]*"/, '').replace('{}', '')] = { name, labels, s };
@@ -48,22 +48,23 @@ export function summarize(red) {
       status: Object.fromEntries(status.map((x) => [x.labels.status, round(view(x.s).mean, 3)])),
       souls: { active: view(pick(m, 'sim_world_active_souls')), connected: view(pick(m, 'sim_world_active_souls_connected')) },
       // sampled tick progress over answered samples: an indication; the meetup bench's clock check is the oracle
-      tick: tick ? { progress: tick.rise, perSecond: sec(tick) ? round(tick.rise / sec(tick), 2) : null, ratioAtFullClock: sec(tick) ? round(tick.rise / sec(tick) / TICK_HZ, 3) : null, late: view(pick(m, 'sim_world_ticks_late_total'))?.increase ?? 'unknown' } : 'unknown',
+      tick: tick ? { progress: tick.rise, coveredSeconds: view(tick).coveredSeconds, perSecond: round(view(tick).risePerSecond, 2), ratioAtFullClock: view(tick).risePerSecond == null ? null : round(view(tick).risePerSecond / TICK_HZ, 3), late: view(pick(m, 'sim_world_ticks_late_total'))?.increase ?? 'unknown' } : 'unknown',
       service: view(pick(m, 'sim_world_tick_service_ratio')), tickP99Seconds: view(pick(m, 'sim_world_tick_p99_seconds')), loopDelayP99Seconds: view(pick(m, 'sim_world_event_loop_delay_p99_seconds')),
       levels: Object.fromEntries(level.map((x) => [x.labels.level, round(view(x.s).mean, 3)])),
       queue: { depth: view(pick(m, 'sim_world_queue_depth')), oldestSeconds: view(pick(m, 'sim_world_queue_oldest_seconds')) },
-      heapUsedBytes: view(pick(m, 'sim_world_heap_used_bytes')), elu: view(pick(m, 'sim_world_elu')) ?? 'unknown', gcShare: gc && sec(gc) ? round(view(gc).increase / sec(gc), 4) : 'unknown',
+      heapUsedBytes: view(pick(m, 'sim_world_heap_used_bytes')), elu: view(pick(m, 'sim_world_elu')) ?? 'unknown', gcShare: gc && view(gc).perSecond != null ? round(view(gc).perSecond, 4) : 'unknown',
       liveAgeSeconds: view(live), restarts: sumInc(m, 'sim_world_restarts_total') ?? {}, shed: sumInc(m, 'sim_world_shed_total') ?? {}, refused: sumInc(m, 'sim_world_refused_total') ?? {},
     };
   }
   return {
     fleet: { worldsRunning: view(pick(fleet, 'sim_launcher_worlds_running')), worldsKnown: view(pick(fleet, 'sim_launcher_worlds_total')), hostMemAvailableBytes: view(pick(fleet, 'sim_host_mem_available_bytes')),
-      clientErrors: sumInc(fleet, 'sim_client_errors_total') ?? {}, soulsActive: sumGauge(Object.values(worlds), (x) => x.souls.active), soulsConnected: sumGauge(Object.values(worlds), (x) => x.souls.connected) },
+      clientErrors: sumInc(fleet, 'sim_client_errors_total') ?? {}, soulsActive: sumGauge(Object.values(worlds), (x) => x.souls.active, red.expected), soulsConnected: sumGauge(Object.values(worlds), (x) => x.souls.connected, red.expected) },
     worlds,
   };
 }
-// fleet totals of per-world gauges: means add (concurrent averages); maxima of the sum are not known from per-world maxima
-const sumGauge = (ws, f) => { const v = ws.map(f).filter(Boolean); return v.length ? { meanTotal: round(v.reduce((n, x) => n + (x.mean ?? 0), 0), 2), sumOfMaxima: v.reduce((n, x) => n + (x.max ?? 0), 0), note: 'sumOfMaxima bounds the concurrent peak from above' } : 'unknown'; };
+// fleet totals of per-world gauges over the whole range: each world's mean weighted by its share of the range (a world up
+// for 10 % of it at 50 Souls adds 5, not 50); maxima of the sum are not known from per-world maxima
+const sumGauge = (ws, f, expected) => { const v = ws.map(f).filter(Boolean); return v.length ? { meanTotal: round(v.reduce((n, x) => n + (x.mean ?? 0) * Math.min(1, (x.samples ?? 0) / Math.max(1, expected)), 0), 2), sumOfMaxima: v.reduce((n, x) => n + (x.max ?? 0), 0), note: 'meanTotal is over the whole range (uncovered time counts as no Souls known); sumOfMaxima bounds the concurrent peak from above' } : 'unknown'; };
 const round = (v, d) => (v == null ? null : Number(v.toFixed(d)));
 
 /** The full report: range, coverage, 1h/24h/7d comparisons, per world, store and loss counters. */
@@ -74,7 +75,7 @@ export function report(dir, state, { range = '24h', now = Date.now(), everyMs = 
       restarts: Object.values(s.worlds).reduce((n, w) => n + Object.values(w.restarts).reduce((a, b) => a + b, 0), 0), shed: Object.values(s.worlds).reduce((n, w) => n + Object.values(w.shed).reduce((a, b) => a + b, 0), 0) }]; }));
   return { schema: REPORT_SCHEMA, range: { from: new Date(from).toISOString(), to: new Date(to).toISOString() },
     coverage: { samples: red.samples, expected: red.expected, gaps: red.gaps, share: round(red.samples / Math.max(1, red.expected), 3), collectorRestarts: red.restarts ?? 0, clockSkewMaxMs: red.skewMaxMs },
-    compare: cmp, ...summarize(red), store: storeFacts(dir), loss: state.loss ?? {},
+    compare: cmp, ...summarize(red), store: storeFacts(dir), loss: { ...(state.loss ?? {}), unreadableFilesThisReport: unreadable.n },
     unknown: ['actions by outcome (attempted/started/completed/failed)', 'reads by outcome on the main thread', 'viewer and connection counts', 'world DB/WAL growth', 'process CPU and RSS'].map((x) => `${x}: not exported by /__sim/metrics yet (#737)`) };
 }
 function storeFacts(dir) {

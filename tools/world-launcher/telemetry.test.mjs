@@ -40,7 +40,9 @@ test('reduce: counter resets, quantiles by max, gauges over answered samples onl
   const types = { c_total: 'counter', g: 'gauge' }, row = (t, c, g, q) => ({ t, ok: true, values: new Map([['c_total', c], ['g', g], ['lat_p99_seconds', q]]) });
   const rows = [row(0, 10, 2, 0.1), row(15, 15, 4, 0.9), { t: 30, ok: false }, row(45, 3, 6, 0.2), row(60, 8, 8, 0.3)];   // restart between 30 and 45
   const r = reduceRows(rows, types, { from: 0, to: 75, everyMs: 15 });
-  assert.deepEqual(view(r.series.c_total), { increase: 5 + 3 + 5, resets: 1, last: 8, samples: 4 });
+  const c = view(r.series.c_total); assert.deepEqual({ increase: c.increase, resets: c.resets, last: c.last, samples: c.samples }, { increase: 5 + 3 + 5, resets: 1, last: 8, samples: 4 });
+  // rates use covered time only: 0→15 is covered (5 in 15 ms); the gap breaks 15→45; 45→60 is covered (5 in 15 ms)
+  assert.equal(c.coveredSeconds, 0.03); assert.equal(c.perSecond, 10 / 0.03);
   assert.equal(view(r.series.g).mean, 5, 'mean of answered samples (2,4,6,8), the gap is not a 0');
   assert.equal(view(r.series.lat_p99_seconds).max, 0.9); assert.equal(view(r.series.lat_p99_seconds).mean, undefined);
   assert.deepEqual({ samples: r.samples, gaps: r.gaps, expected: r.expected }, { samples: 4, gaps: 1, expected: 5 });
@@ -79,6 +81,24 @@ test('store: sparse rows rebuild exactly; a series that vanishes is absent, not 
   assert.equal(h.rows[2].values.get('sim_world_tick{world="a"}'), 900); assert.equal(h.restarts, 1);
 });
 
+test('a failed write between good scrapes never mis-indexes a series; a long gap does not inflate a rate', async (t) => {
+  const dir = tmp(t), s = openStore(dir, { everyMs: 15_000 }), sc = (tt, worlds) => scrapeOnce(s, 'u', { now: () => tt, fetchImpl: fetchOf(scrape(tt, worlds)) });
+  const a = (tick) => ({ slug: 'a', status: 'running', live: live({ tick }) }), b = (tick) => ({ slug: 'b', status: 'running', live: live({ tick }) });
+  await sc(T0, [a(0)]);
+  const file = join(dir, 'fine', `${new Date(T0).toISOString().slice(0, 13)}.jsonl`);
+  chmodSync(file, 0o400); try { assert.equal(await sc(T0 + 15_000, [a(300), b(7)]), false); } finally { chmodSync(file, 0o600); }
+  await sc(T0 + 30_000, [a(600), b(8)]);
+  await sc(T0 + 30 * 60_000, [a(36_000), b(9)]);   // 29.5 min without a scrape, the clock at full rate meanwhile
+  await sc(T0 + 30 * 60_000 + 15_000, [a(36_300), b(10)]);
+  const h = readHour(file);
+  assert.equal(h.rows.at(-1).values.get('sim_world_tick{world="b"}'), 10); assert.equal(h.rows.at(-1).values.get('sim_world_tick{world="a"}'), 36_300);
+  const r = report(dir, s.state, { range: `${new Date(T0).toISOString()}..${new Date(T0 + H).toISOString()}`, everyMs: 15_000 });
+  assert.ok(Math.abs(r.worlds.a.tick.ratioAtFullClock - 1) < 0.01, `ratio ${r.worlds.a.tick.ratioAtFullClock}: the gap adds neither time nor ticks to the rate`);
+  assert.equal(r.worlds.a.tick.progress, 36_300, 'the total progress keeps every step');
+  // 5 answered samples of 240 expected in the hour: two worlds with 3 Souls each average far below 6 over the hour
+  assert.ok(r.fleet.soulsActive.meanTotal < 0.2, `fleet mean ${r.fleet.soulsActive.meanTotal} is weighted by coverage`);
+});
+
 test('retention: 7 days fine, 90 days hourly rollups, a hard size cap; pruning is counted and touches telemetry only', async (t) => {
   const dir = tmp(t), s = openStore(dir, { everyMs: 600_000 });
   mkdirSync(join(dir, 'gameplay'), { recursive: true });   // a neighbour the store must never touch
@@ -90,8 +110,8 @@ test('retention: 7 days fine, 90 days hourly rollups, a hard size cap; pruning i
   assert.ok(roll.length <= 91 && roll.every((f) => Date.parse(f.slice(0, 10)) >= T0 + 9 * 24 * H), 'no rollup older than 90 days');
   assert.ok(s.state.loss.prunedByAge > 0); assert.equal(s.state.loss.prunedBySize, 0);
   // the hard cap: oldest fine data goes first, then the oldest rollups; every removal is counted
-  const capped = openStore(dir, { everyMs: 600_000, maxBytes: 8 * 1024 }); capped.prune(T0 + 100 * 24 * H);
-  assert.ok(capped.bytes <= 8 * 1024, `store ${capped.bytes} B within the cap`); assert.ok(capped.state.loss.prunedBySize > 0);
+  const capped = openStore(dir, { everyMs: 600_000, maxBytes: 32 * 1024 }); capped.prune(T0 + 100 * 24 * H);
+  assert.ok(capped.bytes <= 32 * 1024, `store ${capped.bytes} B within the cap`); assert.ok(capped.state.loss.prunedBySize > 0);
   const left = readdirSync(join(dir, 'rollup')).sort(); assert.ok(left.length && left.at(-1) === roll.sort().at(-1), 'the newest rollup survives longest');
   assert.ok(existsSync(join(dir, 'gameplay')));
   assert.ok(fine.filter((f) => f.endsWith('.gz')).length >= fine.length - 1, 'closed hours are gzipped');
