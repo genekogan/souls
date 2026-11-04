@@ -40,3 +40,13 @@ test('site body read: keyed, GET-only, binary, capped at 4 MiB; withdrawn and un
   await fetch(`http://127.0.0.1:${PORT}/w/${slug}/healthz`);
   assert.equal((await fetch(`http://127.0.0.1:${PORT}/__sim/site/body/${slug}/${ref}.glb`, { headers: { 'x-sim-site-key': key } })).status, 413);
 });
+
+test('site body read resolves the stable world id after a reslug, and the old slug as an alias', async () => {
+  const { readFileSync, writeFileSync } = await import('node:fs');const { reslugRegistry } = await import('./reslug.mjs');
+  await L.close(); size = 64; key = null;
+  const file = join(dir, 'data', 'worlds.json'), reg = JSON.parse(readFileSync(file, 'utf8')), old = reg.worlds[0].slug, id = `${old}-1`;
+  writeFileSync(file, JSON.stringify(reslugRegistry(reg, [[old, 'granite-field']])));
+  L = await openLauncher({ port: PORT, range: RANGE, dataDir: join(dir, 'data'), webDir, templatesDir, command, eager: 0, log: () => {} });
+  await fetch(`http://127.0.0.1:${PORT}/w/granite-field/healthz`);
+  for (const source of [id, old, 'granite-field']) assert.equal((await fetch(`http://127.0.0.1:${PORT}/__sim/site/body/${source}/${ref}.glb`, { headers: { 'x-sim-site-key': key } })).status, 200, source);
+});

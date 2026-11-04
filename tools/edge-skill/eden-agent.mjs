@@ -1210,6 +1210,8 @@ export async function body(cmd,...args){
  if(cmd==='library'){const scope=args[0]&&!args[0].startsWith('--')?args.shift():'mine',q=new URLSearchParams({scope});
   for(let i=0;i<args.length;i++){if(args[i]==='--q'||args[i]==='--cursor'||args[i]==='--limit'){const v=args[++i];if(v===undefined)throw new Error(`usage: body library [core|mine] [--q text] [--cursor c] [--limit n]`);q.set(args[i-1].slice(2),v);}else throw new Error('usage: body library [core|mine] [--q text] [--cursor c] [--limit n]');}
   return ok(await call('/v1/edge/body/library?'+q),'body library');}
+ if(cmd==='publish'||cmd==='unpublish'){const ref=args[0];if(!ref||args.length!==1||!/^body_[a-f0-9]{64}$/.test(ref))throw new Error(`usage: body ${cmd} <ref>`);
+  return ok(await call('/v1/edge/body/library/'+ref+'/public',{method:cmd==='publish'?'PUT':'DELETE'}),'body '+cmd);}
  if(cmd==='show'||cmd==='save'||cmd==='forget'){const ref=args[0];if(!ref||args.length!==1||!/^[a-z0-9_-]{1,80}$/.test(ref))throw new Error(`usage: body ${cmd} <ref>`);
   return ok(await call('/v1/edge/body/library/'+ref,cmd==='show'?{}:{method:cmd==='save'?'PUT':'DELETE'}),'body '+cmd);}
  if(cmd==='look'){ // core/humanoid@2: read, randomize or edit this Soul's look (paint only; same body and rig)
@@ -1228,7 +1230,7 @@ export async function body(cmd,...args){
   if(flag==='--upload'&&args.length===2)return clientProfile(load().soul,['photo',args[1]],{call});
   throw new Error('usage: body photo [--auto | --upload portrait.png]');
  }
- if(cmd!=='upload')throw new Error('usage: body [presets|library [core|mine] [--q text] [--cursor c]|show|save|forget <ref>|kit <dir> [--starter rigid|humanoid|rolling] [--force]|set <preset|assetId|ref>|look [--random|--set k=v ...|--set outfit=<preset>]|photo [--auto|--upload x.png]|upload path.glb --type ceramic --license owned --rights-confirmed]');
+ if(cmd!=='upload')throw new Error('usage: body [presets|library [core|mine] [--q text] [--cursor c]|show|save|forget|publish|unpublish <ref>|kit <dir> [--starter rigid|humanoid|rolling] [--force]|set <preset|assetId|ref>|look [--random|--set k=v ...|--set outfit=<preset>]|photo [--auto|--upload x.png]|upload path.glb --type ceramic --license owned --rights-confirmed]');
  const path=args.shift();let opts={};if(!path)throw new Error('body upload needs a GLB path');
  while(args.length){const flag=args.shift();if(flag==='--manifest'){const file=args.shift();if(!file||file.startsWith('--'))throw new Error('--manifest needs a JSON file');opts=JSON.parse(readFileSync(file,'utf8'));}else if(flag==='--rights-confirmed')opts.rightsConfirmed=true;else if(flag==='--type'||flag==='--license'){const value=args.shift();if(!value||value.startsWith('--'))throw new Error(flag+' needs a value');opts[flag.slice(2)]=value;}else throw new Error('Unknown body upload argument: '+flag);}
  if(!['humanoid','ceramic','floater'].includes(opts.type)||!['CC0','owned'].includes(opts.license)||!opts.rightsConfirmed)throw new Error('Upload requires --type humanoid|ceramic|floater --license CC0|owned --rights-confirmed');

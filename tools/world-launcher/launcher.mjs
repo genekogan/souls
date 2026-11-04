@@ -880,9 +880,10 @@ export async function openLauncher(cfg = {}) {
         if (!siteOk(req)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
         // #717: another world's admitted body bytes, by content address: GET only, binary, at most 4 MiB, never JSON-parsed.
         // The world answers only with the site key, only for active admitted bytes; the reader verifies the sha256 itself.
-        const bodyRead = path.match(/^\/__sim\/site\/body\/([a-z][a-z0-9-]{0,31})\/(body_[a-f0-9]{64}\.glb)$/);
+        // The source is the definition's stable world id (a reslug keeps it); a slug or an alias still resolves.
+        const bodyRead = path.match(/^\/__sim\/site\/body\/([a-z][a-z0-9-]{0,63})\/(body_[a-f0-9]{64}\.glb)$/);
         if (bodyRead && req.method === 'GET') {
-          const w = registry.get(bodyRead[1]);
+          const w = registry.worlds.find((x) => worldIdOf(x) === bodyRead[1]) ?? registry.get(registry.resolveSlug(bodyRead[1]));
           if (!w || w.fork) { json(res, 404, { ok: false, code: 'body.source-unavailable' }); return; }
           let p; try { p = await pool.ensure(worldEnv(w)); } catch { json(res, 503, { ok: false, code: 'body.source-unavailable' }); return; }
           try {

@@ -7,7 +7,7 @@ import {dirname,join,resolve} from 'node:path';
  *  (WAL, busy_timeout, BEGIN IMMEDIATE), like the registry. It holds references and attribution only; the admitted
  *  bytes stay in the admitting world's edge_body_assets_v1. Collection membership controls discovery, not secrecy:
  *  any holder of a reference can look it up. */
-export type Definition={ref:string;descriptor:Record<string,unknown>;creatorSoul:string;owner:string;sourceWorld:string;license:string;rightsConfirmed:boolean;status:'active'|'withdrawn';createdAt:number};
+export type Definition={ref:string;descriptor:Record<string,unknown>;creatorSoul:string;owner:string;sourceWorld:string;license:string;rightsConfirmed:boolean;status:'active'|'withdrawn';public:boolean;createdAt:number};
 export type LibraryItem={ref:string;name:string;description?:string;type:string;actionProfile?:string;saved?:boolean};
 export const LIBRARY_PAGE={defaultLimit:10,maxLimit:20,maxQuery:60} as const;
 
@@ -28,7 +28,10 @@ export class BodyCollections {
   if(typeof store==='string'){if(store!==':memory:')mkdirSync(dirname(resolve(store)),{recursive:true});this.db=new DatabaseSync(store);this.db.exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');}
   else this.db=store;
   this.db.exec(`CREATE TABLE IF NOT EXISTS body_definitions_v1(asset_id TEXT PRIMARY KEY,descriptor TEXT NOT NULL,creator_soul TEXT NOT NULL,owner TEXT NOT NULL,source_world TEXT NOT NULL,license TEXT NOT NULL,rights_confirmed INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'active',created_at INTEGER NOT NULL) WITHOUT ROWID;
-   CREATE TABLE IF NOT EXISTS body_collection_v1(owner TEXT NOT NULL,asset_id TEXT NOT NULL,saved_by_soul TEXT NOT NULL,saved_at INTEGER NOT NULL,PRIMARY KEY(owner,asset_id)) WITHOUT ROWID;`);
+   CREATE TABLE IF NOT EXISTS body_collection_v1(owner TEXT NOT NULL,asset_id TEXT NOT NULL,saved_by_soul TEXT NOT NULL,saved_at INTEGER NOT NULL,PRIMARY KEY(owner,asset_id)) WITHOUT ROWID;
+   CREATE TABLE IF NOT EXISTS body_imported_v1(source_world TEXT NOT NULL,owner TEXT NOT NULL,asset_id TEXT NOT NULL,PRIMARY KEY(source_world,owner,asset_id)) WITHOUT ROWID;`);
+  // An owner publishes a definition as a public reference; until then only its owner can look it up or select it by ref.
+  if(!(this.db.prepare('PRAGMA table_info(body_definitions_v1)').all() as {name:string}[]).some(c=>c.name==='public'))this.db.exec('ALTER TABLE body_definitions_v1 ADD COLUMN public INTEGER NOT NULL DEFAULT 0');
  }
  private tx<T>(fn:()=>T):T{this.db.exec('BEGIN IMMEDIATE');try{const r=fn();this.db.exec('COMMIT');return r;}catch(e){this.db.exec('ROLLBACK');throw e;}}
  /** Record an admitted definition and put it in its owner's collection. Idempotent: an existing definition keeps its
@@ -37,19 +40,23 @@ export class BodyCollections {
   return this.tx(()=>{
    this.db.prepare('INSERT OR IGNORE INTO body_definitions_v1(asset_id,descriptor,creator_soul,owner,source_world,license,rights_confirmed,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(d.ref,JSON.stringify(d.descriptor),d.creatorSoul,d.owner,d.sourceWorld,d.license,d.rightsConfirmed?1:0,'active',at);
    this.db.prepare('INSERT OR IGNORE INTO body_collection_v1 VALUES(?,?,?,?)').run(d.owner,d.ref,d.creatorSoul,at);
+   this.db.prepare('INSERT OR IGNORE INTO body_imported_v1 VALUES(?,?,?)').run(d.sourceWorld,d.owner,d.ref);
   });
  }
- /** Import many in one transaction (boot): the same first-writer rule as record. */
+ /** Import many in one transaction (boot): the same first-writer rule as record. Membership is added only the first time
+  *  this world reports an owner upload, so a later forget is never undone by a restart. */
  recordAll(ds:{ref:string;descriptor:Record<string,unknown>;creatorSoul:string;owner:string;sourceWorld:string;license:string;rightsConfirmed:boolean}[],at:number){
   if(!ds.length)return;this.tx(()=>{for(const d of ds){
    this.db.prepare('INSERT OR IGNORE INTO body_definitions_v1(asset_id,descriptor,creator_soul,owner,source_world,license,rights_confirmed,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(d.ref,JSON.stringify(d.descriptor),d.creatorSoul,d.owner,d.sourceWorld,d.license,d.rightsConfirmed?1:0,'active',at);
-   this.db.prepare('INSERT OR IGNORE INTO body_collection_v1 VALUES(?,?,?,?)').run(d.owner,d.ref,d.creatorSoul,at);}});
+   if(Number(this.db.prepare('INSERT OR IGNORE INTO body_imported_v1 VALUES(?,?,?)').run(d.sourceWorld,d.owner,d.ref).changes)===1)this.db.prepare('INSERT OR IGNORE INTO body_collection_v1 VALUES(?,?,?,?)').run(d.owner,d.ref,d.creatorSoul,at);}});
  }
  definition(ref:string):Definition|null{
   const r=this.db.prepare('SELECT * FROM body_definitions_v1 WHERE asset_id=?').get(ref) as Record<string,string|number>|undefined;if(!r)return null;
-  return {ref:String(r.asset_id),descriptor:JSON.parse(String(r.descriptor)),creatorSoul:String(r.creator_soul),owner:String(r.owner),sourceWorld:String(r.source_world),license:String(r.license),rightsConfirmed:r.rights_confirmed===1,status:r.status==='withdrawn'?'withdrawn':'active',createdAt:Number(r.created_at)};
+  return {ref:String(r.asset_id),descriptor:JSON.parse(String(r.descriptor)),creatorSoul:String(r.creator_soul),owner:String(r.owner),sourceWorld:String(r.source_world),license:String(r.license),rightsConfirmed:r.rights_confirmed===1,status:r.status==='withdrawn'?'withdrawn':'active',public:r.public===1,createdAt:Number(r.created_at)};
  }
  /** Withdrawal is written through by the definition's source world; a withdrawn definition cannot be newly selected. */
+ /** The owner publishes (or stops publishing) a definition as a public reference. */
+ setPublic(ref:string,on:boolean){this.db.prepare('UPDATE body_definitions_v1 SET public=? WHERE asset_id=?').run(on?1:0,ref);}
  setStatus(ref:string,status:'active'|'withdrawn'){this.db.prepare('UPDATE body_definitions_v1 SET status=? WHERE asset_id=?').run(status,ref);}
  saved(owner:string,ref:string){return !!this.db.prepare('SELECT 1 FROM body_collection_v1 WHERE owner=? AND asset_id=?').get(owner,ref);}
  save(owner:string,ref:string,soul:string,at:number){this.db.prepare('INSERT OR IGNORE INTO body_collection_v1 VALUES(?,?,?,?)').run(owner,ref,soul,at);}
