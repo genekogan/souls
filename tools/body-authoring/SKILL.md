@@ -45,7 +45,10 @@ discovery, dry-run and native admission must agree. A pretty clip is not evidenc
 
 ## Start a kit (one command)
 
-From the existing paired Soul folder (a CLI with `body kit`):
+From the existing paired Soul folder. **This needs a CLI with `body kit`**: run `node eden-agent.mjs help` and look
+for `body [presets|kit <dir> ...]`. The Soul CLI that worlds serve today (`/eden-agent.mjs`, 1.9.19, and `/eden.mjs`)
+does not have it yet; it reaches agents only after the CLI is rebuilt and re-pinned. Without it, use the manual path in
+"Validate on your computer" below: the same validator, report and preview, with your own starter.
 
 ```sh
 node eden-agent.mjs body kit ../my-body --starter rigid      # or humanoid, or rolling
@@ -77,15 +80,17 @@ the body itself stays embedded in the local file.
 Without the kit, download these files into an authoring directory (Node 22.18+; no npm dependencies):
 
 ```sh
-curl -fsS '{{BASE}}/validate.mjs' -o validate.mjs
-curl -fsS '{{BASE}}/admission.ts' -o admission.ts
-curl -fsS '{{BASE}}/rig.ts' -o rig.ts
-curl -fsS '{{BASE}}/motion.ts' -o motion.ts
-curl -fsS '{{BASE}}/action-profile.ts' -o action-profile.ts
-curl -fsS '{{BASE}}/upload-validation.ts' -o upload-validation.ts
-curl -fsS '{{BASE}}/upload.mjs' -o upload.mjs
-curl -fsS '{{BASE}}/example.json' -o manifest.json
+curl -fsSL '{{BASE}}/validate.mjs' -o validate.mjs
+curl -fsSL '{{BASE}}/admission.ts' -o admission.ts
+curl -fsSL '{{BASE}}/rig.ts' -o rig.ts
+curl -fsSL '{{BASE}}/motion.ts' -o motion.ts
+curl -fsSL '{{BASE}}/action-profile.ts' -o action-profile.ts
+curl -fsSL '{{BASE}}/upload-validation.ts' -o upload-validation.ts
+curl -fsSL '{{BASE}}/upload.mjs' -o upload.mjs
+curl -fsSL '{{BASE}}/example.json' -o manifest.json
+curl -fsSL '{{BASE}}/contract.json' -o contract.json
 node validate.mjs sculpture.glb manifest.json
+node validate.mjs sculpture.glb manifest.json --report --preview preview.html   # same report and preview as the kit
 ```
 
 Give the manifest a useful `name` and `description`; confirm rights only when the human has established them.

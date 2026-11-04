@@ -20,6 +20,7 @@ import { adminSchema, commandSchema, inviteSchema, ownerLifecycleCapabilitySchem
 import { hashToken, newId, type Auth } from './auth.ts';
 import type { Brain } from './brain.ts';
 import { publicWorldBase, type Config } from './config.ts';
+import { requestWorldBase } from './world-base.ts';
 import type { Db, SoulRow, UserRow } from './db.ts';
 import { publicTakes, type Hub } from './hub.ts';
 import { cardGrammar } from '@sim/brain';
@@ -145,7 +146,7 @@ export function buildApp(d: Deps) {
     const result=await run();if(guard)checkAcceptanceGuard(guard);return c.json(result);
   };
   /** Public base URL as the caller reached us (works on any hostname pointing at the box). */
-  const baseOf = (c: Context) => { const host = c.req.header('x-forwarded-host') ?? c.req.header('host'); const proto = c.req.header('x-forwarded-proto') ?? (host?.startsWith('localhost') || host?.startsWith('127.') ? 'http' : 'https'); return host ? `${proto}://${host}${d.cfg.worldPath}` : publicWorldBase(d.cfg); };
+  const baseOf = (c: Context) => requestWorldBase(d.cfg.worldPath, (name) => c.req.header(name), () => publicWorldBase(d.cfg));
   /** A whole number from the query string, clamped at both ends (to SQLite, LIMIT -1 means no limit at all). */
   const intQ = (c: Context, name: string, def: number, min: number, max: number) => { const n = Math.floor(Number(c.req.query(name) ?? def)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def; };
   const body = async (c: Context) => { try { return await c.req.json(); } catch { throw new ApiError(400, 'bad-json', 'body must be JSON'); } };

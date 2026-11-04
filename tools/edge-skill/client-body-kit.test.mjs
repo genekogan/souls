@@ -50,6 +50,11 @@ test('rigid kit: served files, a valid original starter, report and preview, no 
   assert.equal(report.measured.fps,null);assert.equal(report.measured.contacts,null);assert.equal(report.repeated.copies[2].triangles,report.repeated.copies[0].triangles*20);
   assert.ok(report.budgets.every(b=>b.remaining>=0));
   const page=readFileSync(join(dir,'k','preview.html'),'utf8');assert.match(page,/Visual preview only/);assert.ok(page.includes(report.assetId));
+  // The page lists every refused action with its reason, from the same report.
+  assert.match(page,/<h4>Refused, with reasons<\/h4><ul id="refused"><\/ul>/);assert.match(page,/for\(const a of R\.actions\.refused\)\{[^}]*a\.action\+': '\+a\.reason[^}]*el\('refused'\)\.append/);
+  const shown=JSON.parse(page.match(/const D=(\{.*?\}),R=D\.report/s)[1]).report.actions.refused;assert.deepEqual(shown,report.actions.refused);
+  for(const a of ['sit','pick-up','swim','ride','partner-dance'])assert.ok(shown.some(r=>r.action===a&&r.reason),a+' is listed as refused with a reason');
+  assert.deepEqual(report.warnings,[]);
   // A second run would replace the source: refused, nothing changed.
   const before=readFileSync(join(dir,'k','body.glb'));
   await assert.rejects(bodyKit([join(dir,'k'),'--seed','7'],world()),/already has .*body\.glb.*nothing was changed/);
@@ -102,5 +107,19 @@ test('rolling kit: the shared Pip source from the world path, with rights left f
   const out=await bodyKit([dir,'--starter','rolling'],world({pip:rigidStarterGLB(4)}));
   const m=JSON.parse(readFileSync(join(dir,'manifest.json'),'utf8'));assert.equal(m.actionProfile,'rolling-gripper/1');assert.equal(m.rightsConfirmed,false);
   assert.equal(out.validation.error.code,'body.rights');assert.match(out.source,/rightsConfirmed is left false/);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a rigid body admitted without motion: the report and --preview say so, and the preview draws it still', async ()=>{
+ const dir=mkdtempSync(join(tmpdir(),'body-kit-'));try{
+  await bodyKit([dir],world());
+  const m=JSON.parse(readFileSync(join(dir,'manifest.json'),'utf8'));delete m.motion;writeFileSync(join(dir,'still.json'),JSON.stringify(m));
+  const r=spawnSync(process.execPath,['validate.mjs','body.glb','still.json','--report','--preview','still.html'],{cwd:dir,encoding:'utf8'});
+  assert.equal(r.status,0,r.stderr);const out=JSON.parse(r.stdout);
+  assert.equal(out.valid,true);assert.match(out.warnings[0],/No motion adapters were submitted/);
+  assert.deepEqual(out.report.requirements.adapters.present,[]);assert.match(out.report.requirements.adapters.note,/draws this body still/);
+  assert.ok(out.report.actions.refused.some(a=>a.action==='dance'&&/motion\.dance/.test(a.reason)));
+  const page=readFileSync(join(dir,'still.html'),'utf8');assert.match(page,/if\(rigid&&!M\.motion\)\{body\.parent\.position\.y=1\.45;\}/);
+  assert.match(page,/<p id="warn" class="banner" hidden><\/p>/);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
