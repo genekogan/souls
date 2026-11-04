@@ -35,7 +35,7 @@ import { appendJsonl } from '../lib/jsonl.mjs';
 export async function openBrowser({ headless = true, gpu: wantGpu = 'metal', serverRoot = null } = {}) {
   browsersPath();
   const pw = resolvePlaywright({ serverRoot });
-  if (!pw) throw new Error('Playwright not found (global playwright, <server-root>/mars/viewer or this checkout's viewer)');
+  if (!pw) throw new Error("Playwright not found (global playwright, <server-root>/mars/viewer or this checkout's viewer)");
   const { args, gpu } = launchArgs({ gpu: wantGpu });
   const browser = await pw.chromium.launch({ headless, args });
   const cams = [];

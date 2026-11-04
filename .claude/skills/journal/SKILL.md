@@ -1,6 +1,6 @@
 ---
 name: journal
-description: Run one milestone the way this repo records work. Write acceptance criteria into the issue before any edit, build, run focused checks, record the proof (uncut clips, images, a proof.json summary), self-audit, then fill the PR as the milestone's journal entry. Stop for review at T3/T4. Use when picking up an issue (agent:ready or assigned), when starting any change bigger than a typo, when a PR's proof-ok check fails, or when asked to "write acceptance first", "journal this", "fill the PR" or "do it with proof".
+description: Run one milestone the way this repo records work. Write acceptance criteria into the issue before any edit, build, run focused checks, record the proof (uncut clips, images, a proof.json summary), self-audit, then fill the PR as the milestone's journal entry. T3/T4 merges require maintainer approval; independent authorized batch work can continue. Use when picking up an issue (agent:ready or assigned), when starting any change bigger than a typo, when a PR's proof-ok check fails, or when asked to "write acceptance first", "journal this", "fill the PR" or "do it with proof".
 ---
 
 # journal: one milestone, acceptance first, proof at the end
@@ -130,14 +130,19 @@ Open the PR as a draft and mark it ready once the proof is attached (`proof-ok` 
 ready for review; until then the local check above is your check). Interrupted work stays a draft with honest unmet
 boxes. Never mark it done.
 
-## 8. Stop for review
+## 8. Review and authorized endpoint
 
 - **T0–T2**: once `ci-ok`, the security checks, the changelog check and `proof-ok` are green and the Claude review
   has no blocking findings, the PR may go to the merge train (`merge:ready`) if the issue or the maintainer said so.
-- **T3/T4**: stop. Ask the maintainer for review in the PR. Do not start dependent work on top of an unreviewed T3
-  result; independent work may continue. A review is not permission to merge or ship. `proof-ok` stays red until
-  the maintainer approves (`tools/proof/gate.mjs`); never approve, add `approved:maintainer` or `proof:waived`
-  yourself.
+- **T3/T4**: request maintainer review in the PR; do not merge before approval. Pause at a requested review stop
+  or an unresolved product assumption. Dependent work needs the prerequisite's independent technical review and an
+  explicit stack; unresolved review findings block that dependency. Independent authorized items may continue.
+  A review is not permission to merge or ship. `proof-ok` stays red until the maintainer approves
+  (`tools/proof/gate.mjs`); never approve, add `approved:maintainer` or `proof:waived` yourself.
 - Answer review findings with fixes or reasons. Revisions stay in the same milestone.
+
+Follow [bounded execution](../../../docs/process/planning.md#bounded-execution). Finish checks, proof and review
+corrections to the authorized endpoint. Use an available goal for sustained work; otherwise checkpoint durably.
+An authorized batch can continue with its next independent item without asking for routine milestone approval.
 
 Report back: the PR link, the tier, each criterion with met, unmet or deferred, the proof links, and what is left.
