@@ -88,7 +88,7 @@ export function mountEdgeRoutes(app: Hono, deps: EdgeDeps & {ledger: EdgeLedger}
   app.get('/v1/edge/items', wrap(() => ({tick: deps.host.engine.world.tick, items: L.together.publicItems()})));
   // Eyes (M3): GET /v1/edge/view first-person sight + alt caption; render worker only when EDGE_EYES=<viewer url>.
   const eyes = mountEdgeEyes(app, deps);
-  const comms = registerEdgeComms(app, deps, {stewardToken: process.env.EDGE_STEWARD_TOKEN || undefined, fading: process.env.EDGE_FADING === '1'});
+  const comms = registerEdgeComms(app, deps, {stewardToken: process.env.EDGE_STEWARD_TOKEN || undefined, fading: process.env.EDGE_FADING === '1', ...(loop ? {ownerLoop: loop} : {})});
   L.attachComms(comms);
   // LINK BODY: the body follows the agent's listen presence (edge/ledger/body-rule.ts)
   const presence = deps.ownerInbox;

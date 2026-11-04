@@ -36,17 +36,31 @@ test('A1: the act after an ack serves the acknowledged message; A2: the next act
  assert.deepEqual(Object.keys(second).sort(),['capability','clientRef','params']);
 });
 
-test('A2: a Soul that never had an owner message sends acts without for; say and object stay unchanged',async t=>{
+test('A2: a Soul that never had an owner message sends acts without for; say is unchanged; #804: an object action serves the message like an act',async t=>{
  const {j,fence}=fixture(t),w=world();
  j.ingest({source:'world',after:null,cursor:'c_1',events:[{id:'c_1'}]});
  await decide(j,fence,w,call('write','act',{capability:'wave'}));
  await decide(j,fence,w,call('write','say',{text:'Hello'}));
+ await decide(j,fence,w,call('write','object',{id:'o_0',action:'look'}));
  owner(j,'m_2');
+ await decide(j,fence,w,call('write','say',{text:'On my way'}));
+ assert.equal(j.control.checkpoint().value.ownerLinkV1,'m_2','say keeps the link');
  await decide(j,fence,w,call('write','object',{id:'o_1',action:'ring'}));
  assert.equal(Object.hasOwn(w.bodies[0].body,'for'),false);
  assert.deepEqual(w.bodies[1].body,{text:'Hello'});
- assert.deepEqual(w.bodies[2],{path:'/v1/edge/objects/o_1/act',body:{action:'ring',params:{}}});
- assert.equal(j.control.checkpoint().value.ownerLinkV1,'m_2','an object write does not use the act link up');
+ assert.deepEqual(w.bodies[2],{path:'/v1/edge/objects/o_0/act',body:{action:'look',params:{}}},'no owner message: no link');
+ assert.deepEqual(w.bodies[3].body,{text:'On my way'});
+ assert.deepEqual(w.bodies[4],{path:'/v1/edge/objects/o_1/act',body:{action:'ring',params:{},for:'m_2',forDefault:true}});
+ assert.equal(j.control.checkpoint().value.ownerLinkV1,undefined,'an accepted object action that is not kept open uses the link up');
+});
+
+test('#804: an object action the world keeps open keeps the link for the next act',async t=>{
+ const {j,fence}=fixture(t),w=world(b=>({accepted:true,...(b.for&&b.action?{for:b.for,open:true}:b.for?{for:b.for}:{}),...(b.capability?{receipt:{id:'r_'+b.clientRef,phase:'started'}}:{})}));
+ owner(j,'m_o');
+ await decide(j,fence,w,call('write','object',{id:'bell',action:'ring'}));
+ assert.equal(w.bodies.at(-1).body.for,'m_o');assert.equal(j.control.checkpoint().value.ownerLinkV1,'m_o','open: the message has a later step');
+ await decide(j,fence,w,call('write','act',{capability:'walk:green'}));
+ assert.equal(w.bodies.at(-1).body.for,'m_o');assert.equal(j.control.checkpoint().value.ownerLinkV1,undefined);
 });
 
 test('A1: a newer owner message replaces the link; an open answer keeps it; result and wait end it',async t=>{

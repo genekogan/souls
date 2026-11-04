@@ -1,12 +1,12 @@
 ---
 name: eden-soul
 metadata:
-  version: "2.7.1"
+  version: "2.7.2"
   contract: eden-edge/1
 description: Control one Eden Soul through the thin `eden.mjs` CLI. You are its only controller. Act, wait for the world's receipt, report what actually happened, and keep a background `listen` open for the owner's messages.
 ---
 
-# Eden Soul — skill 2.7.1
+# Eden Soul — skill 2.7.2
 
 You are the mind of one Soul in Eden, a persistent shared world. The world is the authority on what happens: you
 *offer* an action, it *accepts or refuses*, and a *receipt* tells you when it started and how it ended. Three facts to
@@ -135,7 +135,7 @@ When `listen` exits it prints `{messages:[{id,text,sentAt}…]}`, oldest first. 
 
 1. `node eden.mjs ack <id> "Got it: …"` for **every** message, at most 140 characters each (the first line the owner sees).
 2. Start `node eden.mjs listen --after <last id>` in the background again, before doing the work.
-3. For one action, use `act … --wait` (the first act after an ack serves it; later use `--for <id>`). For a multi-step request, use `act … --for none --wait` for each step, then verify every final condition and send `result <id> done|failed "…"` (at most 140 characters). Never attach the whole request to an intermediate walk. A newer contradictory message wins: `result <old id> failed "Replaced: …"`.
+3. For one action, use `act … --wait` (the first act after an ack serves it, and `object <id> <action>` likewise; later use `--for <id>`). For a multi-step request, use `act … --for none --wait` (or `object … --for none`) for each step, then verify every final condition and send `result <id> done|failed "…"` (at most 140 characters). Never attach the whole request to an intermediate walk. A newer contradictory message wins: `result <old id> failed "Replaced: …"`.
 
 An act linked to the message closes it when that action ends. When no act is needed (already done, a question), close it
 yourself: `result <id> done|failed "…"`. An ack says what you will try, never what happened. A question is answered in the ack, then `result <id> done`. Any command may print `OWNER: n message(s)

@@ -103,3 +103,37 @@ test('act --for (D3c): a default link is marked forDefault; an open answer keeps
   assert.equal((await cli('act', 'wave', '--for', 'm_2')).open, undefined, 'an explicit --for is never a default');
   assert.deepEqual(acts(), [['m_1', true], ['m_1', true], ['m_1', true], [null, null], ['m_2', null]]);
 });
+
+// #804 (2.7.2): `object <id> <action>` links the owner message like `act`: by default the newest acked message, marked
+// forDefault, kept after an `open` answer, used up by the first accepted action; --for <id>|none; a read never links.
+test('object --for (#804): an object action serves the acked message by default, like act', async t => {
+  const seen = [];
+  const server = createServer((req, res) => {
+    let b = ''; req.on('data', d => b += d); req.on('end', () => {
+      const body = b ? JSON.parse(b) : null; seen.push({path: req.url, method: req.method, body});
+      const reply = (status, data) => {res.writeHead(status, {'content-type': 'application/json'}); res.end(JSON.stringify(data));};
+      if (req.url.includes('/ack')) return reply(200, {inbox: {}});
+      if (req.url === '/v1/edge/objects/bell/act') return reply(200, {accepted: true, object: {id: 'bell', version: 2}, action: body.action, ...(body.for ? {for: body.for} : {}), ...(body.forDefault && body.action === 'ring' ? {open: true} : {})});
+      if (req.url === '/v1/edge/objects/bell') return reply(200, {object: {id: 'bell'}});
+      if (req.url === '/v1/edge/act') return reply(200, {accepted: true, channel: 'body', receipt: {id: 'r_1', capability: body.capability, phase: 'started', now: 'busy'}, ...(body.for ? {for: body.for} : {})});
+      reply(404, {error: {code: 'not-found', message: req.url}});
+    });
+  });
+  await new Promise(r => server.listen(0, '127.0.0.1', r)); t.after(() => server.close());
+  const dir = mkdtempSync(join(tmpdir(), 'eden-cli-object-for-'));
+  writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({world: `http://127.0.0.1:${server.address().port}`, token: 'tok'}));
+  const cli = (...args) => new Promise((res, rej) => execFile(process.execPath, [CLI, ...args], {cwd: dir}, (e, out, err) => e ? rej(new Error(err || e.message)) : res(JSON.parse(out))));
+  const writes = () => seen.filter(x => x.method === 'POST' && !x.path.includes('/ack')).map(x => [x.path, x.body.for ?? null, x.body.forDefault ?? null]);
+  await cli('ack', 'm_1', 'I will ring the bell, then come over');
+  await cli('object', 'bell');
+  const rang = await cli('object', 'bell', 'ring');
+  assert.equal(rang.for, 'm_1'); assert.equal(rang.open, true);
+  await cli('act', 'walk to the bandstand');
+  assert.equal((await cli('object', 'bell', 'tap')).for, undefined, 'the act used the default up');
+  await cli('ack', 'm_2');
+  await cli('object', 'bell', 'tap', '--for', 'none');
+  assert.equal((await cli('object', 'bell', 'tap', '{}', '--for', 'm_2')).for, 'm_2');
+  assert.deepEqual(writes(), [['/v1/edge/objects/bell/act', 'm_1', true], ['/v1/edge/act', 'm_1', true], ['/v1/edge/objects/bell/act', null, null],
+    ['/v1/edge/objects/bell/act', null, null], ['/v1/edge/objects/bell/act', 'm_2', null]]);
+  assert.equal(seen.filter(x => x.path === '/v1/edge/objects/bell').length, 1, 'a read is a GET, never linked');
+});

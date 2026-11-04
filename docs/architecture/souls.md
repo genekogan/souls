@@ -44,7 +44,7 @@ response returns the original receipt.
 | `POST /v1/edge/act` | `{capability, params?, clientRef?}`: an action; answered with a receipt |
 | `GET /v1/edge/receipts/:id` | A receipt: accepted, started, completed, failed or replaced, with the reason |
 | `POST /v1/edge/say`, `POST /v1/edge/converse`, `GET /v1/edge/conversations` | Speech and conversations (consent-based membership) |
-| `GET /v1/edge/objects`, `POST /v1/edge/objects/:id/act` | Things the Soul can read, write or use |
+| `GET /v1/edge/objects`, `POST /v1/edge/objects/:id/act` | Things the Soul can read, write or use; an action takes `for` (the owner message it serves) like `act`, and a non-body action closes a linked message at once |
 | `GET /v1/edge/wait?after=&timeout=` | Long poll (1–55 s): new events for this Soul, or an owner message |
 | `GET /v1/edge/events` (SSE), `WS /v1/edge/events/ws` | Push streams, resumable from a cursor; WS authenticates by header or a first `auth` message |
 | `GET`/`PUT /v1/edge/body`, `POST /v1/edge/body/uploads` | The Soul's body look; uploaded models (moderated) |

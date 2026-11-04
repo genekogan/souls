@@ -31,7 +31,11 @@ export type OwnerLoopWorld = {
 };
 /** `steps`: the message's steps when the link is implicit and its words name some (else the act closes it, as before). */
 type Link = {scope: {scope: string; owner: string}; message: string; steps?: MessageStep[]; act?: string[]};
-const verbOf = (r: EdgeReceipt) => r.capability.split(':')[0];
+// #804: an object action (`object:<id>:<action>`) is a step of its action ("sit at the chess table", "ride the balloon":
+// ride widens to join), aimed at its object, never the bare `object` verb.
+const objectAction = (capability: string) => {const [v, id, action] = capability.split(':'); return v === 'object' && id && action ? {id, action} : null;};
+const verbOf = (r: EdgeReceipt) => objectAction(r.capability)?.action ?? r.capability.split(':')[0];
+const targetsOf = (capability: string) => {const o = objectAction(capability); return o ? [o.id] : [capability.slice(capability.indexOf(':') + 1)];};
 /** What the owner still waits for, said plainly ("not resting yet"); `there` for any way of getting somewhere. */
 function pending(step: string[]) {
   const v = step[0];
@@ -46,7 +50,7 @@ const AT_M = 6;
  *  named place or within AT_M of the named thing or Soul. */
 export function reachedTarget(r: EdgeReceipt, t: StepTarget, world: Pick<OwnerLoopWorld, 'placePath' | 'posOf'>, ended = false, act?: string[]): boolean {
   const within = (path: string[] | null) => !!path?.some(p => t.places.includes(p));
-  for (const id of act ?? [r.capability.slice(r.capability.indexOf(':') + 1)]) if (t.places.includes(id) || t.things.includes(id) || t.souls.includes(id) || within(world.placePath(id))) return true;
+  for (const id of act ?? targetsOf(r.capability)) if (t.places.includes(id) || t.things.includes(id) || t.souls.includes(id) || within(world.placePath(id))) return true;
   if (!ended || r.phase !== 'completed') return false;
   const end = r.endedAt as {place?: string | null; pos?: [number, number] | null} | undefined;
   if (end?.place && within(world.placePath(end.place))) return true;
@@ -89,7 +93,7 @@ export class OwnerLoop {
     const scope = this.scope(soul), text = implicit ? this.inbox.messageText?.(scope, message) : null;
     const world = this.world, steps = text ? messageSteps(text, world ? words => world.stepTarget(soul, words) : undefined) : [];
     const aim = world && steps.length > 1 && steps.at(-1)!.target ? world.actTarget(soul, receipt.capability) : null;
-    const l: Link = {scope, message, ...(steps.length ? {steps} : {}), ...(aim ? {act: [aim, receipt.capability.slice(receipt.capability.indexOf(':') + 1)]} : {})};
+    const l: Link = {scope, message, ...(steps.length ? {steps} : {}), ...(aim ? {act: [aim, ...targetsOf(receipt.capability)]} : {})};
     this.links.set(receipt.id, l);
     if (this.links.size > MAX_LINKS) this.links.delete(this.links.keys().next().value!);
     const open = !!l.steps && !this.serves(l, l.steps.length - 1, receipt, false);

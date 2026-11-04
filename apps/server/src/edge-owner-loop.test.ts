@@ -16,6 +16,7 @@ import {AgentInbox} from './inbox.ts';
 import {OwnerLoop, type OwnerLoopWorld} from './edge/owner-loop.ts';
 import {messageSteps} from './edge/ledger/vocabulary.ts';
 import type {EdgeReceipt} from './edge/contract.ts';
+import type {Objects} from './edge/comms/objects/framework.ts';
 
 // D3d: a small commons as the ledger would report it: the balloon and a bench 40 m apart on g-commons, the pavilion's room
 const commonsWorld = (): OwnerLoopWorld => {
@@ -218,4 +219,62 @@ test('D3d: a default-linked last step closes only at its target; an unresolved t
   const one = send('go to the pavilion');
   assert.deepEqual(act(one, 'o1', 'walk:bank-bench', 'walk completed at g-commons.', at('g-commons', [250, 60])), {open: false});
   assert.equal(row(one).result, 'walk completed at g-commons.');
+});
+
+// #804: the object act route names the owner message it serves (`for`), checked and linked as on /v1/edge/act. A
+// body-moving action links its Ledger receipt; a non-body one is a defined immediate result (the message closes now).
+test('#804: POST /objects/:id/act --for: a bad id is refused; a non-body action closes the message now; a body action closes it when its receipt ends; default links serve the action\'s own verb', {timeout: 300000}, async t => {
+  const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
+  await invite(f, 'alice');
+  const a = await accept(f.host, f.souls.create('dev:alice', {name: 'Avery', description: 'Object loop fixture'}));
+  const token = f.souls.pairExchange(f.souls.pairCode(a, 'http://127.0.0.1:5964').code, 'scripted').token;
+  const edge = new EdgeLedger(f.host, f.db);
+  const app = buildApp({cfg: {...config, port: 5964, worldPath: '/w/eden', publicUrl: 'http://127.0.0.1:5964/w/eden', accountAuthRequired: false, webDir: '/nonexistent-loop-fixture', marsWebDir: '/nonexistent-loop-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge, hub: {clients: new Map(), refreshMe() {}} as never});
+  const req = async (path: string, auth?: string, body?: unknown) => {
+    const r = await app.request(path, {method: body === undefined ? 'GET' : 'POST', headers: {...(auth ? {authorization: `Bearer ${auth}`} : {}), 'content-type': 'application/json'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
+    return {status: r.status, data: await r.json() as any};
+  };
+  const objects = edge.comms!.objects as unknown as Objects;
+  objects.create({id: 'chess-o', kind: 'chess', name: 'Chess table', placeId: 'world'});
+  // a body-moving object action (OBJECT-CONTRACT §7): the Ledger performs its steps as a logged decision with a receipt
+  objects.register({kind: 'test-ride', description: 'a little ride', listed: true, roles: [], schema: {}, initial: () => ({}), rolesOf: () => [],
+    actions: {join: {label: 'Get on the little ride', movesBody: true, roles: 'anyone', reach: 'anywhere', params: {}, validate: () => null, apply: (s: object) => ({state: s, bodies: [{label: 'Get on the little ride', steps: [{verb: 'wave', params: {seconds: 1}}]}]})}}});
+  objects.create({id: 'ride-o', kind: 'test-ride', name: 'Little ride', placeId: 'world'});
+  const box = `/v1/edge/owner/${a.id}/inbox`, row = (id: string) => f.db.db.prepare('SELECT result,outcome,result_by,progress FROM soul_inbox_queue_v1 WHERE id=?').get(id) as any;
+  const ask = async (text: string, after?: string) => {
+    assert.equal((await req(box, 'dev:alice', {text})).status, 200);
+    const m = (await req(`/v1/edge/inbox/listen?${after ? `after=${after}&` : ''}timeoutMs=0`, token)).data.backlog.at(-1);
+    assert.equal((await req(`/v1/edge/inbox/${m.id}/ack`, token, {reply: 'On it'})).status, 200); return m;
+  };
+  const m1 = await ask('sit at the chess table');
+  // A1: the same check as /v1/edge/act, before the object acts
+  const bad = await req('/v1/edge/objects/chess-o/act', token, {action: 'sit', for: 'm_nope'});
+  assert.equal(bad.status, 400); assert.match(bad.data.error.message, /no owner message/);
+  // A3: a non-body action is an immediate result: the world writes the message's result line now
+  // (the CLI's and the managed runtime's default link: the action `sit` is the message's one step, so it closes it)
+  const sat = (await req('/v1/edge/objects/chess-o/act', token, {action: 'sit', for: m1.id, forDefault: true})).data;
+  assert.equal(sat.accepted, true, JSON.stringify(sat)); assert.equal(sat.for, m1.id); assert.equal(sat.open, undefined); assert.equal(sat.receipt, undefined, 'no Ledger receipt is invented');
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(row(m1.id).result_by, 'server', JSON.stringify(row(m1.id))); assert.equal(row(m1.id).outcome, 'done'); assert.equal(row(m1.id).result, 'Sit at the chess table: done.', 'the action label, not the capability id'); assert.equal(row(m1.id).progress, null, 'no "not sitting yet" line');
+  // a default link on a message this action is not the last step of answers `open` and leaves it open
+  const m2 = await ask('leave the chess table, then come back to me', m1.id);
+  const left = (await req('/v1/edge/objects/chess-o/act', token, {action: 'leave', for: m2.id, forDefault: true})).data;
+  assert.equal(left.accepted, true, JSON.stringify(left)); assert.equal(left.for, m2.id); assert.equal(left.open, true);
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(row(m2.id).result, null, 'still open'); assert.match(row(m2.id).progress, /; not there yet$/, 'the leave is not the walk back');
+  // A1: a body-moving action links its receipt; the message closes when the receipt ends
+  // (a default link: "ride" widens to the ride's `join`, so this body action is the message's one step)
+  const m3 = await ask('ride the little ride', m2.id);
+  const g = (await accept(f.host, req('/v1/edge/objects/ride-o/act', token, {action: 'join', for: m3.id, forDefault: true}))).data;
+  assert.equal(g.accepted, true, JSON.stringify(g)); assert.equal(g.for, m3.id); assert.equal(g.open, undefined); assert.ok(g.receipt?.id);
+  assert.equal(row(m3.id).result, null, 'not before the receipt ends');
+  for (let i = 0; i < 2000 && ['waiting', 'started', 'accepted'].includes(edge.receipt(a.id, g.receipt.id)!.phase); i++) { f.host.tickOnce(); if (i % 20 === 0) { await new Promise(r => setImmediate(r)); f.host.drainInputs(); } }
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(edge.receipt(a.id, g.receipt.id)!.phase, 'completed'); assert.equal(row(m3.id).result_by, 'server', JSON.stringify(row(m3.id))); assert.equal(row(m3.id).progress, null);
+  // a refused object action is never linked; no `for` is unchanged
+  const m4 = await ask('make a chess move', m3.id);
+  const no = (await req('/v1/edge/objects/chess-o/act', token, {action: 'move', params: {from: 'e2', to: 'e4'}, for: m4.id})).data;
+  assert.equal(no.accepted, false); assert.equal(no.for, undefined); assert.equal(row(m4.id).result, null);
+  const plain = (await req('/v1/edge/objects/chess-o/act', token, {action: 'sit'})).data;
+  assert.equal(plain.accepted, true, JSON.stringify(plain)); assert.equal(plain.for, undefined);
 });

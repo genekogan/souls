@@ -112,7 +112,7 @@ export function createWorldClient({world,token,fetchImpl=fetch,timeoutMs=65000,e
    if(command==='object')return request('/v1/edge/objects/'+segment(args.id),{signal});
    throw Error('Unsupported world read');
   },
-  // link.for: the owner message this act serves (#789), sent as the CLI's default link (D3b/D3c); acts only.
+  // link.for: the owner message this act serves (#789), sent as the CLI's default link (D3b/D3c); acts and object actions (#804).
   async write(command,args,operationId,signal,link){
    if(typeof operationId!=='string'||!/^[A-Za-z0-9._:-]{1,100}$/.test(operationId))throw Error('Stable operation identity required');
    if(command==='converse')validateConversationArgs(args);
@@ -122,13 +122,14 @@ export function createWorldClient({world,token,fetchImpl=fetch,timeoutMs=65000,e
    }
    if(command==='ack'&&args.reply!==undefined&&(typeof args.reply!=='string'||args.reply.length>140||/[\r\n]/.test(args.reply)))throw error('invalid','ack reply must be one line of at most 140 characters',{status:400,uncertain:false});
    let path,body;
-   if(command==='act'){path='/v1/edge/act';body={capability:args.capability,params:args.params??{},clientRef:operationId,...(typeof link?.for==='string'&&link.for?{for:link.for,forDefault:true}:{})};}
+   const linked=typeof link?.for==='string'&&link.for?{for:link.for,forDefault:true}:{};
+   if(command==='act'){path='/v1/edge/act';body={capability:args.capability,params:args.params??{},clientRef:operationId,...linked};}
    else if(command==='say'){path='/v1/edge/say';body={text:args.text};}
    else if(command==='converse'){path='/v1/edge/converse';body={...args};}
    else if(command==='ack'){path='/v1/edge/inbox/'+segment(args.id)+'/ack';body={reply:args.reply};}
    else if(command==='result'){path='/v1/edge/inbox/'+segment(args.id)+'/result';body={outcome:args.outcome,text:args.text};}
    else if(command==='remind'){path='/v1/edge/reminders';body={clientRef:operationId,text:args.text,at:args.at};}
-   else if(command==='object'){path='/v1/edge/objects/'+segment(args.id)+'/act';body={action:args.action,params:args.params??{}};}
+   else if(command==='object'){path='/v1/edge/objects/'+segment(args.id)+'/act';body={action:args.action,params:args.params??{},...linked};}
    else throw Error('Unsupported world write');
    return request(path,{method:'POST',body,operationId,signal});
   },

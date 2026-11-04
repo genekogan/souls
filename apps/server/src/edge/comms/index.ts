@@ -1,6 +1,7 @@
 // Core-Comms routes under /v1/edge: wait (event stream), say, subscribe, converse, objects,
 // digest, and the steward work queue under /v1/edge/steward/*.
 // Mounted by Ledger's edge/routes.ts via registerEdgeComms(app, deps).
+import {randomUUID} from 'node:crypto';
 import type {Context, Hono} from 'hono';
 import type {ContentfulStatusCode} from 'hono/utils/http-status';
 import type {EdgeDeps, EdgeReceipt, EdgeSoul} from '../contract.ts';
@@ -41,6 +42,8 @@ export type CommsOptions = {
   fading?: boolean;
   /** LINK BODY: the idle beam-up (default: SIM_BEAM=1 only). Tests of the old rule pass true. */
   beam?: boolean;
+  /** D3 (#804): the owner loop `/v1/edge/act` uses, so an object action can name the owner message it serves (`for`). */
+  ownerLoop?: {check(soul: EdgeSoul, message: unknown): string | null; link(soul: EdgeSoul, receipt: EdgeReceipt, message: string, implicit?: boolean): {open: boolean}};
 };
 
 export type CommsRuntime = {
@@ -172,16 +175,26 @@ export function registerEdgeComms(app: Hono, deps: EdgeDeps, options: CommsOptio
   app.get('/v1/edge/objects', route((_c, soul) => ({objects: objects.visibleTo(soul)})));
   app.get('/v1/edge/objects/:id', route((c, soul) => objects.get(c.req.param('id') ?? '', soul)));
   app.post('/v1/edge/objects/:id/act', route(async (c, soul) => {
-    const body = await json(c), id = c.req.param('id') ?? '', cap = `object:${id}:${String(body.action ?? '')}`,prepared=objects.prepareAct(id,soul,body),out=prepared.result;
+    // D3 (#804): `for` / `forDefault` name the owner message this action serves, checked and linked as on /v1/edge/act
+    const {for: forMessage, forDefault, ...body} = await json(c), id = c.req.param('id') ?? '', cap = `object:${id}:${String(body.action ?? '')}`, loop = forMessage !== undefined ? options.ownerLoop : undefined;
+    if (loop) {const no = loop.check(soul, forMessage); if (no) throw new EdgeError(400, 'invalid', no);}
+    const linked = <T extends object>(out: T, receipt: EdgeReceipt): T => {if (!loop) return out; const {open} = loop.link(soul, receipt, forMessage as string, forDefault === true); return {...out, for: forMessage, ...(open ? {open} : {})};};
+    const prepared=objects.prepareAct(id,soul,body),out=prepared.result;
     if (!out.accepted) { if(!prepared.movesBody)objects.act(id,soul,body);deps.ledger.recordRefusal?.(soul.soulId, 'object', cap, String((out as {code?: unknown}).code ?? 'refused'), String((out as {reason?: unknown}).reason ?? '')); return out; }
     // A body-moving action (a ride's join/leave/start) gets a normal receipt from the Ledger, or its genuine refusal.
     const {bodies, ...rest} = out;
-    if(!bodies?.length){const accepted=prepared.commit();fading.touch(soul.soulId);return accepted;}
+    // A non-body action has no Ledger receipt here; a linked one is a defined immediate result: an in-memory completed
+    // receipt goes through the same link rules (one step: the message closes now; not its last step: `open`).
+    if(!bodies?.length){const accepted=prepared.commit();fading.touch(soul.soulId);const t=core.tick();
+      if(!loop||!accepted.accepted)return accepted;
+      // the owner's card reads the action's own label ("Leave a short response: done."), not the capability id
+      const label=objects.kindOf(objects.all().find(o=>o.id===id)?.kind??'')?.actions[String(body.action)]?.label;
+      return linked(accepted,{id:`object-act:${soul.soulId}:${randomUUID()}`,soulId:soul.soulId,capability:cap,phase:'completed',acceptedTick:t,startedTick:t,endedTick:t,code:null,reason:null,programId:null,channel:'none',...(label?{done:`${label}: done.`}:{})} as EdgeReceipt);}
     if(!deps.ledger.performBodies)return {accepted:false,code:'object.body-unavailable',reason:'Body admission is unavailable.',object:id,action:out.action};
     const contact=deps.ledger.contactActuatorDetail?.(soul,id,out.action,(body.params&&typeof body.params==='object'?body.params:{}) as Record<string,unknown>);
     const b = await deps.ledger.performBodies(soul, cap, bodies[0]!.label, bodies[0]!.steps as never, typeof body.clientRef === 'string' ? `obj:${body.clientRef}` : undefined,undefined,{guard:prepared.guard,commit:()=>{if(contact)return contact;prepared.commit();}});
     if(b.accepted)fading.touch(soul.soulId);
-    return b.accepted ? {...rest, receipt: b.receipt} : {accepted: false, code: b.code, reason: b.reason, object: id, action: out.action};
+    return b.accepted ? linked({...rest, receipt: b.receipt}, b.receipt) : {accepted: false, code: b.code, reason: b.reason, object: id, action: out.action};
   }));
   // Public (no Soul token). L8: the items are serialized once per object-table change, not per request, and one visitor
   // address may read it 60 times a minute (a request with no x-forwarded-for came from this machine: no limit).
