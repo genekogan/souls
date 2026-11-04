@@ -290,6 +290,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (h.shore || st === 'swimming') return 'water';
     if (st === 'seated') return 'seated';
     if (st === 'lying' || st === 'sleeping' || ['stargaze', 'hammock'].includes(String(h.activity))) return 'lying';
+    if (hasRollingProfile(b.body) && h.activity === 'rest') return 'standby';
     if (['walking', 'jogging', 'running', 'cycling'].includes(st)) return 'moving';
     return st === 'standing' ? 'standing' : 'other';
   }

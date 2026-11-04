@@ -34,3 +34,28 @@ test('unattended idle, disconnected sleep and wake use upright rest without seat
  for(let i=0;i<200;i++){rule.sweep();for(let k=0;k<5;k++)f.host.tickOnce();now+=3002;assert.ok(!/sit|lie|nap/.test(body.human?.activity??''));}assert.equal(seatCalls,0);assert.ok(requested.some(r=>r.option==='body:doze'));assert.ok(requested.every(r=>r.steps.every(s=>s.verb!=='sit'&&s.params?.activity!=='sit-ground')));
  const program=f.host.engine.programOf(row.entity_id);if(program)f.host.engine.stop(program);for(let i=0;i<8;i++)f.host.tickOnce();const sleepingAt=structuredClone(body.pose);listening=false;now+=100;rule.sweep();now+=20;rule.sweep();for(let i=0;i<8;i++)f.host.tickOnce();assert.equal(rule.view(row.id)?.state,'asleep');assert.equal(body.human?.activity,'rest');assert.deepEqual(body.pose,sleepingAt);listening=true;rule.listen(row.id);for(let i=0;i<15;i++)f.host.tickOnce();assert.equal(rule.view(row.id)?.state,'awake');assert.equal(body.human?.activity,'idle');assert.deepEqual(body.pose,sleepingAt);
 });
+
+test('an asleep rolling body keeps one upright standby across settle intervals (real ledger posture), never re-asking',async t=>{
+ const {BodyRule}=await import('./edge/ledger/body-rule.ts');const f=fixture(':memory:',factory,{durableClockV1:true});f.brain.quiesce();const edge=new EdgeLedger(f.host,f.db,undefined,{ambient:false});t.after(()=>{f.host.stop();f.db.close();});await invite(f,'settle-owner');const row=await accept(f.host,f.souls.create('dev:settle-owner',{name:'Pip',description:'Asleep upright'})),s={soulId:row.id,entityId:row.entity_id,name:row.name,owner:row.owner};for(let i=0;i<5;i++)f.host.tickOnce();assert.equal(f.host.engine.assignBodyV1!(row.entity_id,PIP_PRESET.body!),true);
+ const body=f.host.engine.world.entities[row.entity_id],posture=(id:string)=>(edge as any).posture(id);let now=100000;const decisions:{option:string;ok:boolean;code?:string}[]=[];
+ const rule=new BodyRule(f.db.db,f.host.worldId,{souls:()=>[s],presence:()=>({listening:false,at:100000}),createdAt:()=>100000,pose:()=>({x:body.pose.p[0],z:body.pose.p[2],level:0}),posture,agentBusy:()=>false,running:()=>!!f.host.engine.programOf(row.entity_id),dry:()=>true,clear:()=>true,places:()=>'',seat:()=>null,standby:(_s,seconds)=>[{verb:'mars:body_motion_v1',params:{motion:'rest',seconds:Math.min(600,seconds)}}],decide:(_s,option,_label,steps)=>{const r=f.host.engine.perform({actor:row.entity_id,label:option,steps}) as any;decisions.push({option,ok:r.ok!==false,code:r.diagnostic?.code??r.code});},stop:()=>{const p=f.host.engine.programOf(row.entity_id);if(p)f.host.engine.stop(p);},publish(){}},{now:()=>now,knobs:{sleepGraceMs:10,zombieWanderMs:10}});
+ rule.sweep();now+=20;rule.sweep();now+=20;rule.sweep();for(let i=0;i<10;i++)f.host.tickOnce();
+ assert.equal(rule.view(row.id)?.state,'asleep');assert.equal(body.human?.activity,'rest');assert.equal(posture(row.entity_id),'standby');const first=decisions.length;assert.ok(first>=1&&decisions.every(d=>d.ok),JSON.stringify(decisions));
+ for(let k=0;k<3;k++){now+=61_000;rule.sweep();for(let i=0;i<10;i++)f.host.tickOnce();assert.equal(body.human?.activity,'rest','still in standby after interval '+(k+1));assert.equal(rule.view(row.id)?.state,'asleep');}
+ assert.equal(decisions.length,first,'no standby is re-issued while one runs: '+JSON.stringify(decisions));assert.ok(decisions.every(d=>d.ok));
+});
+
+test('a humanoid is not offered paired gestures or hand-overs with a rolling partner: discovery, dry-run and act agree with native admission',async t=>{
+ const f=fixture(':memory:',factory,{durableClockV1:true});f.brain.quiesce();const edge=new EdgeLedger(f.host,f.db,undefined,{ambient:false});t.after(()=>{f.host.stop();f.db.close();});
+ const people=[];for(const owner of ['pip-owner','human-owner']){await invite(f,owner);const row=await accept(f.host,f.souls.create('dev:'+owner,{name:owner,description:'Partner check'}));people.push({row,soul:{soulId:row.id,entityId:row.entity_id,name:row.name,owner:row.owner}});}
+ for(let i=0;i<5;i++)f.host.tickOnce();const [pip,human]=people;assert.equal(f.host.engine.assignBodyV1!(pip.row.entity_id,PIP_PRESET.body!),true);for(let i=0;i<5;i++)f.host.tickOnce();
+ const caps=edge.capabilities(human.soul),paired=['hold-hands','high-five','handshake','hug','dance-with','rps'];
+ for(const verb of paired){const id=verb+':'+pip.row.id,c=caps.find(x=>x.id===id);assert.ok(c,'offered so the refusal is discoverable: '+id);assert.equal(c!.available,false,id);assert.equal(c!.blocked?.code,'body.unsupported',id);assert.match(c!.blocked!.reason,/pip-owner's body cannot/);
+  const dry=edge.intents.dryRun(human.soul,{capability:id}) as any;assert.notEqual(dry.ok&&dry.would?.available,true,'dry-run must not say available: '+JSON.stringify(dry));
+  const r=await accept(f.host,edge.act(human.soul,{capability:id}));assert.equal(r.accepted,false,id+' '+JSON.stringify(r));}
+ // native admission gives the same answer for the same pairing
+ const native=f.host.engine.perform({actor:human.row.entity_id,label:'hold hands',steps:[{verb:'mars:hand_hold_v1',params:{mode:'join',partner:pip.row.entity_id,offer:true,waitSeconds:5}}]}) as any;assert.equal(native.ok,false);
+ assert.match((edge as any).together.partnerBodyProblem({name:'Pip',entityId:pip.row.entity_id},'give')?.reason??'',/Pip's body cannot give/);
+ // a humanoid partner is unaffected
+ assert.equal((edge as any).together.partnerBodyProblem({name:'Ann',entityId:human.row.entity_id},'give'),null);
+});

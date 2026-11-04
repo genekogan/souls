@@ -64,8 +64,11 @@ lazily from this source, verified against their pinned content hash and shared b
 is created for a preset selection. Unused worlds do not import the authoring geometry or fetch Pip.
 
 The manifest now declares `actionProfile: "rolling-gripper/1"`. Its versioned disposition is published in the
-downloaded authoring contract. Compatible ground travel, conversation, free standing gestures and gripper transfers
-use the existing adapters; unsupported or unknown physical actions refuse at discovery, dry-run and native admission.
+downloaded authoring contract. Compatible ground travel, conversation, free standing gestures and gripper pick-up,
+put-on and put-down use the existing adapters; unsupported or unknown physical actions refuse at discovery, dry-run
+and native admission. Paired acts with another Soul (give and hand-overs, holding hands, high-fives, handshakes, hugs,
+partner dance, rock-paper-scissors) are not admitted on either side: a humanoid is offered them toward Pip only as
+blocked, with Pip's reason.
 Sitting, cycling, prone poses, swimming, rides and human eating/drinking are unsupported. Rest, nap and lie requests
 are explicitly relabelled as upright standby, on the existing wheel support. This also covers unattended body reflexes.
 
