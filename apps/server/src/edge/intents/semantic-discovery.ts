@@ -64,8 +64,9 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  const parsed=parseCapability(text,new Set([...caps.map(c=>c.verb),'sit']));if(parsed.verb!=='sit')return null;
  // An infinitive/so-clause after a named seat states why to sit, not a second seat identity.
  const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to)\s+/i)[0],raw=tokens(target).filter(w=>w!=='down');
- const parts=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(L,soul,p,part)).map(part=>({p,part,scope:words(contexts(L,p,soul)),own:words([part.title,...(part.aliases??[])])})));
- const match=(q:string[])=>parts.filter(x=>covers(q,new Set([...x.scope,...x.own])));
+ // (built on first use only: a generic or exact sit returns before it, as it did before #848)
+ let built:{p:Place;part:NonNullable<Place['parts']>[number];scope:Set<string>;own:Set<string>}[]|undefined;
+ const match=(q:string[])=>(built??=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(L,soul,p,part)).map(part=>({p,part,scope:words(contexts(L,p,soul)),own:words([part.title,...(part.aliases??[])])})))).filter(x=>covers(q,new Set([...x.scope,...x.own])));
  // #848: a relation word between a seat and its place is read only when the words read that way name a seat ("the bench
  // outside the cottage"); otherwise ("sit outside", "sit outside with Bo", "the bench outside the hall") the words keep
  // their old handling, so a phrase that named nothing before still answers as before

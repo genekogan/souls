@@ -63,3 +63,8 @@ test('#848: relation words between a seat and its place: inside reads as in, out
  assert.deepEqual(run('sit at the podium desk inside Chiba').didYouMean.map((x:any)=>x.id),['sit:chiba/part-podium']);
  assert.equal(run('sit at the podium desk outside Chiba').didYouMean.length,0,'no outdoor seat in Chiba: the constraint is kept');
 });
+
+test('#848 review: a generic sit does not build the named-seat parts (no cost before the early return)',()=>{
+ const {L,places}=setup(),knows=L.knowledge.knows;let calls=0;L.knowledge.knows=(...a:[string,string])=>{calls++;return knows(...a);};
+ for(const query of ['sit down','sit on a bench']){calls=0;assert.equal(semanticDiscovery(L,{soulId:'s'} as any,query,[],new Map()),null,query);assert.equal(calls,places.length,`${query}: only the known-places filter`);}
+});
