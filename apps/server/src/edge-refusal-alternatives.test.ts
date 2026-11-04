@@ -29,11 +29,18 @@ test('#824: refusals name bounded, available alternatives; other answers carry n
   const unknown = await edge.act(soul, {capability: 'teleport somewhere nice'}) as any;
   assert.equal(unknown.code, 'capability.unknown'); check(unknown, 'unknown verb');
   const verbs = unknown.alternatives.map((x: any) => x.id.split(':')[0]); assert.equal(new Set(verbs).size, verbs.length, 'one per verb');
+  assert.ok(!unknown.alternatives[0].id.startsWith('walk:'), 'no place named: the first alternative is not a walk');
+  assert.ok(unknown.alternatives.some((x: any) => x.id.endsWith(':here')), `offers here rank nearest: ${JSON.stringify(unknown.alternatives)}`);
+  // A1 (review): an unknown place id (the explicit place path) and an unknown Soul name (together/1) are covered too
+  for (const asked of ['walk:atlantis', 'gather:no-such-place', 'hug Nobody', 'dance with Zed']) {
+    const out = await edge.act(soul, {capability: asked}) as any; assert.equal(out.code, 'capability.unknown', `${asked}: ${JSON.stringify(out)}`); check(out, asked);
+  }
+  // A3 (review): a description-only word never names the place ("teleport somewhere nice" names no walk)
   // A3: a refusal that is not "nothing matches" and an accepted act carry no alternatives
   const params = await accept(f.host, edge.act(soul, {capability: 'walk:field', params: {via: 'nowhere-at-all'}})) as any;
   assert.equal(params.accepted, false, JSON.stringify(params)); assert.equal(params.alternatives, undefined, JSON.stringify(params));
   const ok = await accept(f.host, edge.act(soul, {capability: 'wave'})) as any;
   assert.equal(ok.accepted, true, JSON.stringify(ok)); assert.equal(ok.alternatives, undefined);
   // A6: the field's size is bounded (3 entries, labels as offered)
-  console.log('A6 bytes', JSON.stringify({alternatives: fly.alternatives}).length, JSON.stringify({alternatives: unknown.alternatives}).length);
+  for (const out of [fly, unknown]) assert.ok(JSON.stringify({alternatives: out.alternatives}).length <= 600, 'bounded bytes');
 });
