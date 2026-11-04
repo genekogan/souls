@@ -7,6 +7,7 @@ import {
   Blocked, blockedMessage, checkLocal, contentType, embedLine, githubTarget, httpTarget, linkMedia, makePreview, pickTarget, previewArgs, previewPath,
   releaseAssetName, uniqueName, uploadAll, PREVIEW_MAX_BYTES,
 } from './upload.mjs';
+import { validateProof } from './acceptance.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'proof-upload-'));
 const clip = join(dir, 'desktop.mp4'), proofPath = join(dir, 'proof.json');
@@ -107,6 +108,35 @@ test('--proof: links uploaded media into proof.json, then uploads proof.json las
 test('linkMedia leaves a new video for the author to assert uncut / real speed', () => {
   const p = linkMedia({}, [{ file: '/x/phone.webm', url: 'https://h/pr-1.phone.webm' }]);
   assert.equal(p.media[0].uncut, null);
+});
+
+test('linkMedia: a mixed upload puts the clip in media[] and the log and JSON in files[]; old file entries move', () => {
+  const old = { media: [{ file: 'run.log', url: 'https://h/old.log', kind: 'file', caption: 'server log' }] };
+  const p = linkMedia(old, [
+    { file: '/x/desktop.mp4', url: 'https://h/pr-1.desktop.mp4' },
+    { file: '/x/run.log', url: 'https://h/pr-1.run.log' },
+    { file: '/x/summary.json', url: 'https://h/pr-1.summary.json' },
+  ]);
+  assert.deepEqual(p.media.map(m => [m.file, m.kind]), [['desktop.mp4', 'video']]);
+  assert.deepEqual(p.files, [
+    { file: 'run.log', url: 'https://h/pr-1.run.log', caption: 'server log' },
+    { file: 'summary.json', url: 'https://h/pr-1.summary.json', caption: '' },
+  ]);
+  assert.equal(linkMedia({}, [{ file: '/x/a.png', url: 'https://h/a.png' }]).files, undefined, 'no files[] when nothing needs it');
+});
+
+test('--proof with a clip, a log and a JSON summary yields a proof.json that passes acceptance at T2', async () => {
+  const log = join(dir, 'server.log'), summary = join(dir, 'summary.json');
+  writeFileSync(log, 'log'); writeFileSync(summary, '{}');
+  const criteria = [{ id: 'A1', text: 't', status: 'met', evidence: ['`node --test x` -> pass'] }];
+  writeFileSync(proofPath, JSON.stringify({ schema: 'sim-proof/1', tier: 'T2', criteria, media: [{ file: 'desktop.mp4', kind: 'video', uncut: true, realSpeed: true }],
+    checks: [{ cmd: 'node --test x', result: 'pass' }], failedAttempts: [], externalities: [{ what: 'bytes', result: '+0', ok: true }], limits: [] }));
+  const gh = fakeGh({ release: { id: 5 }, assets: [] });
+  await uploadAll({ pr: 8, files: [clip, log, summary], proofPath, target: githubTarget({ repo: 'o/r', run: gh.run }) });
+  const saved = JSON.parse(readFileSync(proofPath, 'utf8'));
+  assert.deepEqual(saved.media.map(m => m.file), ['desktop.mp4']);
+  assert.deepEqual(saved.files.map(f => f.file), ['server.log', 'summary.json']);
+  assert.deepEqual(validateProof(saved, { tier: 'T2' }).problems, []);
 });
 
 test('checkLocal refuses committed media and warns on unignored media in the tree', () => {

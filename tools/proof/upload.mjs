@@ -13,8 +13,8 @@
 //             `${SIM_PROOF_PUBLIC_URL || SIM_PROOF_UPLOAD_URL}/pr-<n>/<file>`. For a future CDN endpoint.
 //
 // An existing name is never overwritten: a re-take gets `-2`, `-3`, ... so earlier (failed) takes stay linkable.
-// With --proof, each uploaded file's url is written into proof.json `media[]` (matched by file name; new media get
-// an entry to complete), then proof.json itself is uploaded last and its link printed: that is the link for the PR.
+// With --proof, each uploaded clip's or image's url is written into proof.json `media[]`, and any other file's (logs,
+// JSON) into `files[]` (matched by file name; new media get an entry to complete), then proof.json itself is uploaded last and its link printed: that is the link for the PR.
 //
 // Inline previews: GitHub serves release assets as downloads, so an mp4 link never plays in the PR. For each video,
 // ffmpeg makes `<clip>.preview.gif` beside it (the first --preview-seconds, default 6, from --preview-start, default 0;
@@ -173,16 +173,27 @@ export function makePreview(file, { start = 0, seconds = 6, ffmpeg = args => exe
 /** The Markdown that embeds a clip's preview in a PR, linked to the full clip. */
 export const embedLine = (u, alt = basename(u.file)) => u.preview ? `[![${alt}](${u.preview})](${u.url})` : `[${alt}](${u.url})`;
 
-/** Writes uploaded links into proof.json media[] (by file name); returns the updated object. */
+/** Writes uploaded links into proof.json: clips and images into media[], everything else (logs, JSON) into files[],
+ *  both matched by file name. A non-media entry left in media[] by an older upload moves to files[]. */
 export function linkMedia(proof, uploaded) {
   const media = Array.isArray(proof.media) ? proof.media : [];
+  const files = Array.isArray(proof.files) ? proof.files : [];
+  const named = (list, file) => list.find(m => m?.file && basename(m.file) === file);
   for (const u of uploaded) {
-    const file = basename(u.file);
-    const entry = media.find(m => m.file && basename(m.file) === file);
+    const file = basename(u.file), kind = kindOf(file);
+    if (kind === 'file') {
+      const stale = named(media, file);
+      if (stale) media.splice(media.indexOf(stale), 1);
+      const entry = named(files, file);
+      if (entry) entry.url = u.url;
+      else files.push({ file, url: u.url, caption: stale?.caption ?? '' });
+      continue;
+    }
+    const entry = named(media, file);
     if (entry) { entry.url = u.url; if (u.preview) entry.preview = u.preview; }
-    else media.push({ file, url: u.url, ...(u.preview ? { preview: u.preview } : {}), kind: kindOf(file), ...(kindOf(file) === 'video' ? { uncut: null, realSpeed: null, seconds: null, viewport: null } : {}), caption: '' });
+    else media.push({ file, url: u.url, ...(u.preview ? { preview: u.preview } : {}), kind, ...(kind === 'video' ? { uncut: null, realSpeed: null, seconds: null, viewport: null } : {}), caption: '' });
   }
-  return { ...proof, media };
+  return { ...proof, media, ...(files.length || Array.isArray(proof.files) ? { files } : {}) };
 }
 
 /** Uploads `files` (each video with its preview when `preview(file)` makes one), then proof.json last. */

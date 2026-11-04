@@ -111,7 +111,8 @@ node tools/proof/upload.mjs --pr $N --proof .e2e/journal/$ISSUE/proof.json .e2e/
 - The default target is the repo's `proofs` prerelease (it is created on first use). Assets are named
   `pr-<n>.<file>`, and a re-take gets `-2`, `-3`, so earlier takes, including failed ones, stay linkable.
   `SIM_PROOF_UPLOAD_URL` (+ `SIM_PROOF_UPLOAD_TOKEN`) switches to another endpoint, such as a CDN.
-- With `--proof`, the links are written into proof.json `media[]`, and proof.json is uploaded last. Paste its link
+- With `--proof`, clip and image links are written into proof.json `media[]`, other files (logs, JSON) into
+  `files[]`, and proof.json is uploaded last. Paste its link
   and the clip links into the PR's Proof section. The `journal` skill covers proof.json.
 - **Inline preview.** GitHub serves release assets as downloads, so an mp4 link never plays in the PR. For each
   video, `upload.mjs` makes a small animated GIF with ffmpeg (`<clip>.preview.gif`: the first 6 s at real speed, at

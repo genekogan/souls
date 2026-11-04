@@ -137,6 +137,19 @@ test('validateProof: schema, evidence, uncut real-speed video, stale commit warn
   assert.ok(validateProof(proofDoc({ tier: 'T1' }), { tier: 'T2' }).problems.some(x => /records T1 proof/.test(x)));
 });
 
+test('validateProof: files[] (logs, JSON) are checked but never count as a clip; kind file in media[] is refused', () => {
+  const files = [{ file: 'run.log', url: 'https://h/pr-7.run.log', caption: '' }, { file: 'summary.json', url: 'https://h/pr-7.summary.json', caption: '' }];
+  assert.deepEqual(validateProof(proofDoc({ files }), { tier: 'T2' }).problems, []);
+  const noClip = validateProof(proofDoc({ media: [], files }), { tier: 'T2' });
+  assert.ok(noClip.problems.some(x => /no uploaded video/.test(x)));
+  const bad = validateProof(proofDoc({ files: [{ file: 'a.log', url: 'http://h/a.log' }, { file: 'b.log' }] }), { tier: 'T2' });
+  assert.ok(bad.problems.some(x => /files 1: url must be https/.test(x)));
+  assert.ok(bad.warnings.some(x => /files 2 \(b\.log\): no url yet/.test(x)));
+  assert.ok(validateProof(proofDoc({ files: {} }), { tier: 'T2' }).problems.some(x => /`files` must be an array/.test(x)));
+  const legacy = validateProof(proofDoc({ media: [...proofDoc().media, { file: 'run.log', url: 'https://h/run.log', kind: 'file' }] }), { tier: 'T2' });
+  assert.ok(legacy.problems.some(x => /kind must be video or image/.test(x)));
+});
+
 test('T3 needs playtest arms with the policy repeats and a reviewer verdict', () => {
   const bad = validateProof(proofDoc({ tier: 'T3', playtest: { arms: [{ name: 'baseline', repeats: 2 }, { name: 'candidate', repeats: 1 }] } }), { tier: 'T3', knobs: policy.knobs });
   assert.ok(bad.problems.some(x => /candidate: 1 repeat/.test(x)));
