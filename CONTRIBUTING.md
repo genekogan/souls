@@ -38,9 +38,9 @@ Details, environment variables and running other worlds: [docs/development.md](d
    Answer each review comment with a fix or a reason. Mention `@claude` in a comment to ask follow-ups or have it push
    a fix (the `claude` workflow).
 8. **Merge.** Label the PR `merge:ready`. The merge train merges it: T0–T2 automatically once green (as is
-   when it merges cleanly and touches no engine path, otherwise rebased onto `main` and re-tested first), T3 and above
-   rebased, re-tested and after the maintainer approves. If it can't rebase cleanly it labels the PR
-   `needs:rebase`. Details: [docs/process/agent-workflow.md](docs/process/agent-workflow.md).
+   when it merges cleanly and touches no engine or other strict path, otherwise rebased onto `main` and re-tested
+   first), T3 and above rebased, re-tested and after the maintainer approves. If it can't rebase cleanly it labels the
+   PR `needs:rebase`. Details: [docs/process/agent-workflow.md](docs/process/agent-workflow.md).
 
 The authorized release owner handles releases under the maintainer’s approvals and existing gates.
 See [docs/release.md](docs/release.md) for the current root-only topology and automation limits.

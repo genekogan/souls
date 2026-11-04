@@ -2,13 +2,17 @@
 # workflow is the queue.
 #
 # Landing mode (landingMode in .github/scripts/merge-train.mjs, decided by the pick step; decision PD10)
-#   non-strict           T0-T2, no engine-sensitive path (mars/, apps/server/src/engine/, packages/engine*), required
-#                        checks green on the current head, GitHub reports it mergeable without conflict, and the
-#                        latest concluded push run of ci.yml on main is green: squash-merged as is, even when behind
-#                        main (steps 1-2 skipped). Main's own push CI is the safety net for the combination
-#   strict               everything else (T3-T4, engine paths, head not green yet, conflict or unknown mergeability):
-#                        steps 1-3 below. While main's push CI is red every PR is strict, and the train says so once
-#                        per red streak on the coordination issue (repo variable MERGE_TRAIN_NOTIFY_ISSUE, default 755)
+#   non-strict           T0-T2, no strict path (STRICT_PATHS: mars/, packages/engine-*, kernel and world-compiler,
+#                        packages/conformance, pnpm-lock.yaml, the walk and bundle baselines, .github/workflows/),
+#                        required checks green on the current head, GitHub reports it mergeable without conflict, and
+#                        main's CI green: squash-merged as is, even when behind main (steps 1-2 skipped). Main's own
+#                        push CI is the safety net for the combination
+#   strict               everything else (T3-T4, strict paths, head not green yet, conflict or unknown mergeability):
+#                        steps 1-3 below. Push runs on main are path-scoped, so a failed run keeps main red until a
+#                        later full-scope run (manual, or every qualify job ran) is green or the failed run is re-run
+#                        green; a narrow green push does not clear it. While main is red every PR is strict, and the
+#                        train says so once per red streak on the coordination issue (repo variable
+#                        MERGE_TRAIN_NOTIFY_ISSUE, default 755; a failed notice is logged and the train goes on)
 #
 # Label flow
 #   merge:ready          the author (or an agent) adds it when the PR is done; the train takes the oldest eligible one

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blocker, landingMode, mainCiState, maintainerApproved, next, parseChecks, summarizeChecks, wait, DEFAULT_CHECKS } from './merge-train.mjs';
+import { blocker, fullScope, landingMode, mainCiState, maintainerApproved, next, parseChecks, summarizeChecks, wait, DEFAULT_CHECKS } from './merge-train.mjs';
+import { JOBS } from './ci-scope.mjs';
 
 const M = 'owner';
 
@@ -101,8 +102,11 @@ test('next: oldest eligible PR first; an unapproved T3 is skipped with one comme
 });
 
 // A one-PR queue for next(): PR 20 is behind main (mergeable_state 'behind'), with every required check green on its
-// head, unless the overrides say otherwise.
-function train({ files, labels = [], approved = false, mainRuns = [{ id: 2, status: 'completed', conclusion: 'success' }], pr = {}, notes = [] }) {
+// head, unless the overrides say otherwise. `mainRuns` are ci.yml runs on main (push unless they say otherwise); the
+// ids in `full` ran every qualify job.
+const run = (id, conclusion, o = {}) => ({ id, status: 'completed', conclusion, event: 'push', ...o });
+const ALL_JOBS = JOBS.map(j => ({ name: j.name, conclusion: 'success' }));
+function train({ files, labels = [], approved = false, mainRuns = [run(2, 'success')], full = [2], pr = {}, notes = [], noticeFails = false }) {
   const comments = [];
   const head = { ref: 'agent/20-x', sha: 'h20', repo: { full_name: 'o/r' } };
   const the = { number: 20, title: 't', labels: [{ name: 'merge:ready' }, ...labels.map(name => ({ name }))], head, base: { ref: 'main' }, mergeable: true, mergeable_state: 'behind', ...pr };
@@ -113,7 +117,8 @@ function train({ files, labels = [], approved = false, mainRuns = [{ id: 2, stat
       if (path.includes('/files')) return files.map(filename => ({ filename }));
       if (path.includes('/reviews')) return approved ? [{ user: { login: M }, state: 'APPROVED' }] : [];
       if (path.includes('/check-runs')) return [{ check_runs: DEFAULT_CHECKS.map((name, id) => ({ id, name, status: 'completed', conclusion: 'success' })) }];
-      if (path.includes('/issues/755/comments')) return notes.concat(comments.filter(c => c.n === '755').map(c => ({ body: c.body })));
+      if (path.includes('/actions/runs/')) return [{ jobs: full.includes(Number(path.split('/')[5])) ? ALL_JOBS : [{ name: 'repo', conclusion: 'success' }, { name: 'ci-ok', conclusion: 'success' }] }];
+      if (path.includes('/issues/755/comments')) { if (noticeFails) throw new Error('HTTP 403'); return notes.concat(comments.filter(c => c.n === '755').map(c => ({ body: c.body }))); }
       return [];
     },
     comment: (repo, n, body) => comments.push({ n: String(n), body }),
@@ -124,8 +129,8 @@ function train({ files, labels = [], approved = false, mainRuns = [{ id: 2, stat
 const GREEN = { mergeable: true, mergeableState: 'behind', headChecks: 'pass', mainCi: 'success' };
 
 test('landing: a T1 behind main, mergeable and green on its head merges as is (non-strict)', () => {
-  const { run, comments } = train({ files: ['apps/server/src/god/catalog.ts'] });
-  const r = run();
+  const { run: go, comments } = train({ files: ['apps/server/src/god/catalog.ts'] });
+  const r = go();
   assert.equal(r.pr, 20);
   assert.equal(r.tier, 'T1');
   assert.equal(r.head_sha, 'h20');
@@ -144,14 +149,32 @@ test('landing: T3 stays strict (rebase and re-test), even approved and green', (
 });
 
 test('landing: a T1 touching an engine-sensitive path stays strict', () => {
-  const r = train({ files: ['docs/a.md', 'apps/server/src/engine/tick.ts'] }).run();
+  const r = train({ files: ['docs/a.md', 'packages/world-compiler/src/compile.ts'] }).run();
   assert.equal(r.tier, 'T1');
   assert.equal(r.mode, 'strict');
   assert.equal(r.mode_why, 'engine-sensitive paths');
-  for (const f of ['mars/src/sim.ts', 'apps/server/src/engine/tick.ts', 'packages/engine-mars/src/nav.ts', 'packages/engine-contract/x.ts']) {
+  assert.equal(train({ files: ['mars/src/sim.ts'] }).run().mode_why, 'engine-sensitive paths'); // T2 by path
+  for (const f of ['mars/src/sim.ts', 'packages/engine-mars/src/nav.ts', 'packages/engine-contract/x.ts', 'packages/kernel/src/k.ts', 'packages/world-compiler/src/c.ts']) {
     assert.deepEqual(landingMode({ ...GREEN, tier: 'T1', files: ['docs/a.md', f] }), { mode: 'strict', why: 'engine-sensitive paths' }, f);
   }
-  assert.equal(landingMode({ ...GREEN, tier: 'T1', files: ['apps/server/src/engines.md', 'docs/mars/a.md'] }).mode, 'nonstrict');
+  assert.equal(landingMode({ ...GREEN, tier: 'T1', files: ['docs/mars/a.md', 'packages/protocol/x.ts', 'apps/server/src/engines.md'] }).mode, 'nonstrict');
+});
+
+test('landing: the lockfile, conformance pins, walk and bundle baselines and workflows stay strict', () => {
+  const cases = {
+    'pnpm-lock.yaml': 'lockfile',
+    'packages/conformance/conformance/0042.json': 'conformance pins',
+    'tools/test-harness/walk/baseline/eden.json': 'walk or bundle baseline',
+    'tools/test-harness/bundle-budget/baseline.json': 'walk or bundle baseline',
+    '.github/workflows/merge-train.yml': 'workflows',
+  };
+  for (const [f, why] of Object.entries(cases)) {
+    assert.deepEqual(landingMode({ ...GREEN, tier: 'T1', files: [f] }), { mode: 'strict', why }, f);
+    assert.equal(train({ files: [f] }).run().mode_why, why, f);
+  }
+  for (const f of ['packages/lockfile.ts', 'tools/test-harness/walk/walk.mjs', 'tools/test-harness/bundle-budget/budget.mjs', '.github/scripts/merge-train.mjs']) {
+    assert.equal(landingMode({ ...GREEN, tier: 'T1', files: [f] }).mode, 'nonstrict', f);
+  }
 });
 
 test('landing: conflicts, unknown mergeability and a head not yet green are strict', () => {
@@ -163,26 +186,64 @@ test('landing: conflicts, unknown mergeability and a head not yet green are stri
   assert.equal(train({ files: ['docs/a.md'], pr: { mergeable: false, mergeable_state: 'dirty' } }).run().mode, 'strict');
 });
 
+test('mainCiState: a later narrow green run does not clear a failure; a full-scope green or a green re-run does', () => {
+  const full = new Set([5, 12]);
+  const isFull = r => full.has(r.id);
+  // The reviewer's case: 9 failed, 10 is a narrow (docs/tools-only) green push.
+  assert.deepEqual(mainCiState([run(9, 'failure'), run(10, 'success')], isFull), { conclusion: 'failure', since: 9 });
+  assert.deepEqual(mainCiState([run(5, 'success'), run(9, 'failure'), run(10, 'success'), run(11, 'failure')], isFull), { conclusion: 'failure', since: 9 });
+  assert.deepEqual(mainCiState([run(9, 'failure'), run(10, 'success'), run(12, 'success')], isFull), { conclusion: 'success', since: null });
+  assert.deepEqual(mainCiState([run(5, 'success'), run(9, 'success', { run_attempt: 2 }), run(10, 'success')], isFull), { conclusion: 'success', since: null }); // 9 re-run green
+  assert.deepEqual(mainCiState([run(5, 'success'), run(9, 'failure'), run(10, 'cancelled')], isFull), { conclusion: 'failure', since: 9 });
+  assert.deepEqual(mainCiState([run(8, 'success'), run(10, 'success')], isFull), { conclusion: 'success', since: null });
+  assert.deepEqual(mainCiState([], isFull), { conclusion: null, since: 'none' });
+  assert.equal(fullScope(run(3, 'success', { event: 'workflow_dispatch' }), []), true);
+  assert.equal(fullScope(run(3, 'success'), ALL_JOBS), true);
+  assert.equal(fullScope(run(3, 'success'), ALL_JOBS.slice(1)), false);
+  assert.equal(fullScope(run(3, 'success'), ALL_JOBS.map((j, i) => i ? j : { ...j, conclusion: 'skipped' })), false);
+  // Through next(): the narrow green push after a failure keeps the train strict.
+  const r = train({ files: ['docs/a.md'], mainRuns: [run(10, 'success'), run(9, 'failure'), run(5, 'success')], full: [5] }).run();
+  assert.equal(r.mode, 'strict');
+  assert.match(r.mode_why, /main CI failure/);
+  // A manual run after the failure is full scope and clears it.
+  assert.equal(train({ files: ['docs/a.md'], mainRuns: [run(11, 'success', { event: 'workflow_dispatch' }), run(10, 'success'), run(9, 'failure')], full: [] }).run().mode, 'nonstrict');
+});
+
 test('landing: a red main CI falls back to strict for everything and comments once on the coordination issue', () => {
-  const red = [{ id: 9, status: 'completed', conclusion: 'failure' }, { id: 8, status: 'completed', conclusion: 'cancelled' }, { id: 5, status: 'completed', conclusion: 'success' }];
-  assert.deepEqual(mainCiState(red), { conclusion: 'failure', lastGreen: 5 });
-  assert.deepEqual(mainCiState([{ id: 3, status: 'completed', conclusion: 'cancelled' }, { id: 2, status: 'completed', conclusion: 'success' }]), { conclusion: 'success', lastGreen: 2 });
-  assert.deepEqual(mainCiState([]), { conclusion: null, lastGreen: 'none' });
-  const t = train({ files: ['docs/a.md'], mainRuns: red });
+  const red = [run(9, 'failure'), run(8, 'cancelled'), run(5, 'success')];
+  const t = train({ files: ['docs/a.md'], mainRuns: red, full: [5] });
   const first = t.run();
   assert.equal(first.mode, 'strict');
   assert.match(first.mode_why, /main CI failure/);
   assert.equal(t.comments.length, 1);
   assert.equal(t.comments[0].n, '755');
   assert.match(t.comments[0].body, /stopped non-strict merges/);
-  t.run(); // the same red streak (same last green run): no second comment
+  t.run(); // the same red streak (same first failed run): no second comment
   assert.equal(t.comments.length, 1);
-  // A new red streak after main went green again gets its own notice.
-  const later = train({ files: ['docs/a.md'], mainRuns: [{ id: 12, status: 'completed', conclusion: 'failure' }, { id: 11, status: 'completed', conclusion: 'success' }], notes: [{ body: t.comments[0].body }] });
+  // More failures in the same streak still post nothing.
+  const more = train({ files: ['docs/a.md'], mainRuns: [run(10, 'failure'), ...red], full: [5], notes: [{ body: t.comments[0].body }] });
+  more.run();
+  assert.equal(more.comments.length, 0);
+  // A new red streak after a full green gets its own notice.
+  const later = train({ files: ['docs/a.md'], mainRuns: [run(12, 'failure'), run(11, 'success')], full: [11], notes: [{ body: t.comments[0].body }] });
   later.run();
   assert.equal(later.comments.length, 1);
   // Green again: non-strict resumes, nothing posted.
   const green = train({ files: ['docs/a.md'], notes: [{ body: t.comments[0].body }] });
   assert.equal(green.run().mode, 'nonstrict');
   assert.equal(green.comments.length, 0);
+});
+
+test('landing: a failing notice does not stall the train', () => {
+  const t = train({ files: ['docs/a.md'], mainRuns: [run(9, 'failure')], full: [], noticeFails: true });
+  const errors = [];
+  const orig = console.error;
+  console.error = m => errors.push(m);
+  try {
+    const r = t.run();
+    assert.equal(r.pr, 20);
+    assert.equal(r.mode, 'strict');
+  } finally { console.error = orig; }
+  assert.equal(t.comments.length, 0);
+  assert.match(errors.join('\n'), /could not post the main-CI notice on #755/);
 });
