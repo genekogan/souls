@@ -57,6 +57,7 @@ jobs:
           tools/assets/mars-web.test.mjs
           .github/scripts/ci-scope.test.mjs
           .github/scripts/server-test-files.test.mjs
+          .github/scripts/server-test-durations.test.mjs
           .github/scripts/guards.test.mjs
           .github/scripts/merge-train.test.mjs
           .github/scripts/install-hooks.test.mjs
@@ -74,8 +75,8 @@ jobs:
     # The qualify jobs (no browser) run on the repository variable CI_HEAVY_RUNNER when it is set, else ubuntu-latest.
     # Its value is one runner label (`souls-ci`) or a JSON array of labels (`["self-hosted","souls-ci"]`).
     runs-on: ${{ vars.CI_HEAVY_RUNNER && (startsWith(vars.CI_HEAVY_RUNNER, '[') && fromJSON(vars.CI_HEAVY_RUNNER) || vars.CI_HEAVY_RUNNER) || 'ubuntu-latest' }}
-    # The recursive server inventory can take about an hour before dependency/media setup.
-    timeout-minutes: ${{ matrix.kind == 'server' && 90 || 60 }}
+    # The recursive server inventory (about an hour of tests in all) runs in duration-balanced shards of ~10 minutes each.
+    timeout-minutes: ${{ matrix.kind == 'server' && 45 || 60 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
@@ -142,13 +143,14 @@ jobs:
             server)
               node --input-type=module <<'NODE'
           import { spawnSync } from 'node:child_process';
-          import { serverTestFiles, serverShardFiles } from './.github/scripts/server-test-files.mjs';
+          import { serverTestFiles, serverShardPlan, SERVER_TEST_CONCURRENCY } from './.github/scripts/server-test-files.mjs';
           const all = serverTestFiles(), shard = Number(process.env.SERVER_SHARD);
-          const files = serverShardFiles(all, shard);
-          console.log(JSON.stringify({ shard, totalServerFiles: all.length, files }));
-          const result = spawnSync('pnpm', ['--filter', '@sim/server', 'exec', process.execPath, '--test', '--test-concurrency=1', ...files], { stdio: 'inherit' });
-          if (result.error) throw result.error;
-          process.exit(result.status ?? 1);
+          const { parallel, serial } = serverShardPlan(all, shard);
+          console.log(JSON.stringify({ shard, totalServerFiles: all.length, files: [...parallel, ...serial], parallel: parallel.length, serial: serial.length, concurrency: SERVER_TEST_CONCURRENCY }));
+          // ephemeral-port files in parallel, then the fixed-port files one at a time; both always run, either failing fails the job
+          const run = (files, n) => { if (!files.length) return 0; const r = spawnSync('pnpm', ['--filter', '@sim/server', 'exec', process.execPath, '--test', `--test-concurrency=${n}`, ...files], { stdio: 'inherit' }); if (r.error) throw r.error; return r.status ?? 1; };
+          const a = run(parallel, SERVER_TEST_CONCURRENCY), b = run(serial, 1);
+          process.exit(a || b);
           NODE
               ;;
             *) echo "unknown check kind: $CHECK_KIND"; exit 1 ;;
