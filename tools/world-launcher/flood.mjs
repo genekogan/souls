@@ -87,6 +87,8 @@ export function requestClass(rest, method = 'GET') {
   if (rest === '/healthz' || rest === '/v1/config') return 'C0';
   if (rest === '/v1/world/snapshot') return read ? 'C3' : null;
   if (!rest.startsWith('/v1/edge/')) return null;
+  // Admitted mesh bytes are public so any visitor can render a Soul; selection/uploads remain owner-bound.
+  if (read && /^\/v1\/edge\/body\/assets\/body_[a-f0-9]{64}\.glb$/.test(rest)) return 'C3';
   const r = rest.slice('/v1/edge/'.length);
   if (/^(inbox\/listen|wait)\/?$/.test(r)) return 'listen';
   if (/^(receipts(\/|$)|inbox(\/|$)|schema\/?$|boot\/static\/?$)/.test(r)) return 'C0';

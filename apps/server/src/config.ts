@@ -4,12 +4,16 @@ import { resolve } from 'node:path';
 
 const env = process.env;
 const thinkingBudget=worldThinkingBudgetV1(env);
+const bodyTypes=(env.WORLD_BODY_TYPES??'humanoid,ceramic,floater,creature').split(',');
+if(!bodyTypes.includes('humanoid')||bodyTypes.some(t=>!['humanoid','ceramic','floater','creature'].includes(t)))throw Error('WORLD_BODY_TYPES must include humanoid and contain only supported body types');
 const worldKey = env.WORLD_KEY ?? 'toy';
 if (!/^[a-z][a-z0-9-]{0,31}$/.test(worldKey)) throw new Error('invalid WORLD_KEY');
 if (env.WORLD_SLUG && !/^[a-z][a-z0-9-]{0,31}$/.test(env.WORLD_SLUG)) throw new Error('invalid WORLD_SLUG');
 /** Worlds with authored content and their own factories; any other key is an entity world (ENABLE_WORLD_ENGINE) on the green field. */
 export const KNOWN_WORLD_KEYS = ['toy', 'mars', 'littlemartians', 'eden'] as const;
 export const config = {
+  /** Worlds may narrow the platform body families; humanoid remains the default. */
+  bodyTypes,
   /** Take recordings (take_chunks + the R2 take archive) are a pose-keyframe cache, not the source of truth: off by default. */
   takesPersist: env.TAKES_PERSIST === '1',
   archiveTakes: env.ARCHIVE_TAKES === '1' && env.TAKES_PERSIST === '1',

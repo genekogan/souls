@@ -224,11 +224,11 @@ async function fetchWithRetry(url, options, runtime = {}, budget = { waited: 0, 
   runtime = { ...retryDefaults, ...runtime };
   const send = runtime.fetch ?? fetch, clock = runtime.now ?? Date.now, random = runtime.random ?? Math.random;
   const { timeoutMs, deadlineAt, signal, ...init } = options ?? {};
-  const wait = runtime.sleep ?? ((ms) => new Promise((resolve6, reject) => {
+  const wait = runtime.sleep ?? ((ms) => new Promise((resolve7, reject) => {
     if (signal?.aborted) return reject(signal.reason);
     const done = () => {
       signal?.removeEventListener("abort", stop);
-      resolve6();
+      resolve7();
     };
     const timer = setTimeout(done, ms);
     function stop() {
@@ -409,9 +409,9 @@ async function startWire(world, { file = WIRE } = {}) {
     }
   });
   server.keepAliveTimeout = 5e3;
-  await new Promise((resolve6, reject) => {
+  await new Promise((resolve7, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve6);
+    server.listen(0, "127.0.0.1", resolve7);
   });
   server.unref();
   const port = server.address().port;
@@ -854,8 +854,8 @@ async function taxonomy(flags2 = {}) {
 }
 
 // cli.mjs
-import { readFileSync as readFileSync9, writeFileSync as writeFileSync5, existsSync as existsSync8, mkdirSync as mkdirSync3, appendFileSync } from "node:fs";
-import { resolve as resolve5 } from "node:path";
+import { readFileSync as readFileSync10, writeFileSync as writeFileSync5, existsSync as existsSync9, mkdirSync as mkdirSync3, appendFileSync } from "node:fs";
+import { resolve as resolve6 } from "node:path";
 
 // lib/mirror.mjs
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
@@ -2003,7 +2003,7 @@ async function follow(seconds = 3600, onEvent = () => {
 }
 
 // lib/args.mjs
-var FREE = /* @__PURE__ */ new Set(["title", "brief", "say", "note", "asks", "steps", "mass", "event", "views", "state", "path", "area", "label", "text"]);
+var FREE = /* @__PURE__ */ new Set(["title", "brief", "say", "note", "asks", "steps", "mass", "event", "views", "state", "path", "area", "label", "text", "description", "license", "source"]);
 var WORD = /* @__PURE__ */ new Set(["at", "near", "along", "t", "side", "facing", "name", "scale", "yaw", "dir", "dist", "offset", "by", "step", "inside", "on", "against", "wall", "corner", "count", "row", "gap", "spacing", "from", "to", "radius", "size", "setback", "around", "via"]);
 var REF_POS = /* @__PURE__ */ new Set(["place", "terrain", "move", "set", "clone", "describe", "where", "clear", "furnish"]);
 var POINT = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/;
@@ -2691,7 +2691,7 @@ function drawableCount(snapshot3 = {}) {
   return (snapshot3.entities ?? []).filter((e) => drawable(e.def)).length;
 }
 function waitForShot({ expect = 0, timeoutMs = 6e5 } = {}) {
-  return new Promise((resolve6, reject) => {
+  return new Promise((resolve7, reject) => {
     let raf, timer, stable = 0, last = -1;
     const cleanup = () => {
       clearTimeout(timer);
@@ -2712,7 +2712,7 @@ function waitForShot({ expect = 0, timeoutMs = 6e5 } = {}) {
       last = drawn?.size ?? -1;
       if (ready && stable >= 2) {
         cleanup();
-        resolve6({ ready, drawn: drawn?.size ?? 0, want: expect, easing, shotReady: true });
+        resolve7({ ready, drawn: drawn?.size ?? 0, want: expect, easing, shotReady: true });
       } else raf = requestAnimationFrame(tick);
     };
     timer = setTimeout(() => {
@@ -3548,6 +3548,351 @@ function missingAbout(m, { kind, limit = 30 } = {}) {
 // lib/version.mjs
 var SKILL_VERSION = "1.7";
 
+// lib/upload.mjs
+import { existsSync as existsSync8, readFileSync as readFileSync9 } from "node:fs";
+import { basename, dirname as dirname2, resolve as resolve5 } from "node:path";
+
+// lib/glb.mjs
+var DEFAULT_BUDGET = Object.freeze({ tris: 8e4, bytes: 3e6, texPx: 2048 });
+var IMAGE_BUDGET = Object.freeze({ bytes: 2e6, texPx: 2048 });
+var DECODABLE = /* @__PURE__ */ new Set(["KHR_draco_mesh_compression", "EXT_meshopt_compression", "EXT_texture_webp", "KHR_mesh_quantization", "KHR_texture_transform", "KHR_materials_unlit", "KHR_materials_emissive_strength", "KHR_texture_basisu"]);
+var WARN_EXTENSIONS = /* @__PURE__ */ new Set(["KHR_texture_basisu"]);
+var u32 = (b, p) => (b[p] | b[p + 1] << 8 | b[p + 2] << 16 | b[p + 3] << 24) >>> 0;
+var ascii = (b, s, e) => String.fromCharCode(...b.subarray(s, e));
+function sniff(b) {
+  if (b.length >= 4 && ascii(b, 0, 4) === "glTF") return "glb";
+  if (b.length >= 8 && b[0] === 137 && ascii(b, 1, 4) === "PNG") return "png";
+  if (b.length >= 3 && b[0] === 255 && b[1] === 216 && b[2] === 255) return "jpg";
+  if (b.length >= 12 && ascii(b, 0, 4) === "RIFF" && ascii(b, 8, 12) === "WEBP") return "webp";
+  let i = 0;
+  while (i < b.length && /\s/.test(String.fromCharCode(b[i]))) i++;
+  return b[i] === 123 ? "json" : "unknown";
+}
+function imageSize(b) {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  if (b.length > 24 && b[0] === 137 && ascii(b, 1, 4) === "PNG") return { w: dv.getUint32(16), h: dv.getUint32(20), type: "png" };
+  if (b.length > 4 && b[0] === 255 && b[1] === 216) {
+    let i = 2;
+    while (i + 9 < b.length) {
+      if (b[i] !== 255) {
+        i++;
+        continue;
+      }
+      const marker = b[i + 1], len = dv.getUint16(i + 2);
+      if (marker >= 192 && marker <= 207 && marker !== 196 && marker !== 200 && marker !== 204) return { w: dv.getUint16(i + 7), h: dv.getUint16(i + 5), type: "jpg" };
+      i += 2 + len;
+    }
+    return { w: 0, h: 0, type: "jpg" };
+  }
+  if (b.length > 30 && ascii(b, 0, 4) === "RIFF" && ascii(b, 8, 12) === "WEBP") {
+    const fmt = ascii(b, 12, 16);
+    if (fmt === "VP8 ") return { w: dv.getUint16(26, true) & 16383, h: dv.getUint16(28, true) & 16383, type: "webp" };
+    if (fmt === "VP8L") {
+      const v = dv.getUint32(21, true);
+      return { w: (v & 16383) + 1, h: (v >> 14 & 16383) + 1, type: "webp" };
+    }
+    if (fmt === "VP8X") return { w: 1 + (b[24] | b[25] << 8 | b[26] << 16), h: 1 + (b[27] | b[28] << 8 | b[29] << 16), type: "webp" };
+    return { w: 0, h: 0, type: "webp" };
+  }
+  return { w: 0, h: 0, type: "unknown" };
+}
+function parseGlb(b) {
+  if (b.length < 20) throw new Error("not a GLB (too short)");
+  if (ascii(b, 0, 4) !== "glTF") throw new Error('not a GLB (magic is not "glTF"): export binary glTF 2.0 (.glb), not .gltf, .obj or .fbx');
+  if (u32(b, 4) !== 2) throw new Error(`GLB version ${u32(b, 4)}; only glTF 2.0 is accepted`);
+  const total = u32(b, 8);
+  if (total !== b.length) throw new Error(total > b.length ? "GLB truncated" : "GLB length does not match the file");
+  let off = 12, json2 = null, bin = null;
+  while (off + 8 <= total) {
+    const len = u32(b, off), type = u32(b, off + 4);
+    if (len % 4 || off + 8 + len > total) throw new Error("GLB chunk is misaligned or truncated");
+    if (off === 12 && type !== 1313821514) throw new Error("GLB first chunk must be JSON");
+    const chunk = b.subarray(off + 8, off + 8 + len);
+    if (type === 1313821514) {
+      if (json2) throw new Error("GLB has duplicate JSON chunks");
+      json2 = JSON.parse(new TextDecoder().decode(chunk));
+    } else if (type === 5130562) {
+      if (bin) throw new Error("GLB has duplicate BIN chunks");
+      bin = chunk;
+    }
+    off += 8 + len;
+  }
+  if (!json2 || typeof json2 !== "object" || Array.isArray(json2)) throw new Error("GLB JSON chunk must be an object");
+  return { json: json2, bin };
+}
+var I4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+function mul(a, b) {
+  const o = new Array(16).fill(0);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+    let s = 0;
+    for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+    o[c * 4 + r] = s;
+  }
+  return o;
+}
+function trs(t = [0, 0, 0], q = [0, 0, 0, 1], s = [1, 1, 1]) {
+  const [x, y, z, w] = q, [sx, sy, sz] = s;
+  return [(1 - 2 * (y * y + z * z)) * sx, 2 * (x * y + z * w) * sx, 2 * (x * z - y * w) * sx, 0, 2 * (x * y - z * w) * sy, (1 - 2 * (x * x + z * z)) * sy, 2 * (y * z + x * w) * sy, 0, 2 * (x * z + y * w) * sz, 2 * (y * z - x * w) * sz, (1 - 2 * (x * x + y * y)) * sz, 0, t[0], t[1], t[2], 1];
+}
+var apply = (m, p) => [m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14]];
+var NORM = { 5120: 127, 5121: 255, 5122: 32767, 5123: 65535 };
+var r3 = (v) => Math.round(v * 1e3) / 1e3;
+function measureGlb(bytes) {
+  const { json: json2, bin } = parseGlb(bytes);
+  if (!String(json2.asset?.version ?? "").startsWith("2")) throw new Error("glTF asset.version must be 2.x");
+  for (const b of json2.buffers ?? []) if (b.uri && !b.uri.startsWith("data:")) throw new Error(`external buffer ${b.uri}: the GLB must be self-contained (export with embedded buffers)`);
+  for (const im of json2.images ?? []) if (im.uri && !im.uri.startsWith("data:")) throw new Error(`external image ${im.uri}: embed textures in the GLB`);
+  const required = json2.extensionsRequired ?? [];
+  const missing = required.filter((e) => !DECODABLE.has(e));
+  if (missing.length) throw new Error(`required extension(s) the viewer cannot decode: ${missing.join(", ")} (use meshopt + KHR_mesh_quantization for geometry, WebP for textures)`);
+  const acc = json2.accessors ?? [];
+  let tris = 0;
+  for (const [mi, m] of (json2.meshes ?? []).entries()) for (const [pi, p] of (m.primitives ?? []).entries()) {
+    const field = `meshes.${mi}.primitives.${pi}`;
+    const position = acc[p.attributes?.POSITION];
+    if (!position || position.min?.length !== 3 || position.max?.length !== 3) throw new Error(`${field}.attributes.POSITION needs an accessor with 3D min/max bounds`);
+    const mode = p.mode ?? 4, n = p.indices !== void 0 ? acc[p.indices]?.count ?? 0 : position.count ?? 0;
+    tris += mode === 4 ? n / 3 : mode === 5 || mode === 6 ? Math.max(0, n - 2) : 0;
+  }
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  const nodes = json2.nodes ?? [], scene = json2.scenes?.[json2.scene ?? 0];
+  const roots = scene?.nodes ?? nodes.map((_, i) => i).filter((i) => !nodes.some((n) => n.children?.includes(i)));
+  const world = /* @__PURE__ */ new Map();
+  const walk = (i, parent, depth) => {
+    const n = nodes[i];
+    if (!n || depth > 64 || world.has(i)) return;
+    const m = mul(parent, n.matrix ?? trs(n.translation, n.rotation, n.scale));
+    world.set(i, m);
+    for (const c of n.children ?? []) walk(c, m, depth + 1);
+  };
+  for (const r of roots) walk(r, I4, 0);
+  for (const [i, m] of world) {
+    const n = nodes[i];
+    if (n.mesh === void 0) continue;
+    const mm = n.skin !== void 0 && json2.skins?.[n.skin]?.joints?.length ? world.get(json2.skins[n.skin].joints[0]) ?? m : m;
+    for (const p of json2.meshes?.[n.mesh]?.primitives ?? []) {
+      const a = acc[p.attributes?.POSITION];
+      if (!a?.min || !a.max) continue;
+      const k = a.normalized ? NORM[a.componentType] ?? 1 : 1, mn = a.min.map((v) => v / k), mx = a.max.map((v) => v / k);
+      for (let c = 0; c < 8; c++) {
+        const q = apply(mm, [c & 1 ? mx[0] : mn[0], c & 2 ? mx[1] : mn[1], c & 4 ? mx[2] : mn[2]]);
+        for (let j = 0; j < 3; j++) {
+          lo[j] = Math.min(lo[j], q[j]);
+          hi[j] = Math.max(hi[j], q[j]);
+        }
+      }
+    }
+  }
+  if (![...lo, ...hi].every(Number.isFinite)) throw new Error("GLB has no measurable geometry (no finite POSITION min/max)");
+  let texPx = 0;
+  const views = json2.bufferViews ?? [];
+  for (const im of json2.images ?? []) {
+    let b = null;
+    if (im.bufferView !== void 0 && bin) {
+      const v = views[im.bufferView];
+      if (v) b = bin.subarray(v.byteOffset ?? 0, (v.byteOffset ?? 0) + Math.min(v.byteLength, 4096));
+    } else if (im.uri?.startsWith("data:")) b = Uint8Array.from(Buffer.from(im.uri.slice(im.uri.indexOf(",") + 1, im.uri.indexOf(",") + 1 + 8192), "base64"));
+    if (b) {
+      const s = imageSize(b);
+      texPx = Math.max(texPx, s.w, s.h);
+    }
+  }
+  return {
+    tris: Math.round(tris),
+    bytes: bytes.byteLength,
+    textures: (json2.images ?? []).length,
+    texPx,
+    box: [r3(hi[0] - lo[0]), r3(hi[1] - lo[1]), r3(hi[2] - lo[2])],
+    min: lo.map(r3),
+    max: hi.map(r3),
+    animations: (json2.animations ?? []).map((a, i) => a.name ?? `clip-${i}`),
+    skins: (json2.skins ?? []).length,
+    meshes: (json2.meshes ?? []).length,
+    materials: (json2.materials ?? []).length,
+    nodes: roots.map((r) => nodes[r]?.name ?? `node-${r}`),
+    extensionsUsed: json2.extensionsUsed ?? [],
+    extensionsRequired: required,
+    vertexColors: (json2.meshes ?? []).some((m) => (m.primitives ?? []).some((p) => p.attributes?.COLOR_0 !== void 0))
+  };
+}
+var MB = (n) => `${(n / 1e6).toFixed(2)} MB`;
+var FIX = "reduce it first: node tools/god-skill/scripts/optimize-glb.mjs <file> --out <dir> --kind hero|scene|character|head|prop (or, without the repo: npx @gltf-transform/cli optimize in.glb out.glb --simplify-error 0.01 --texture-size 1024 --texture-compress webp --compress meshopt), then upload the output";
+function budgetRefusals(m, budget = DEFAULT_BUDGET) {
+  const out = [];
+  if (m.tris > budget.tris) out.push({ code: "asset.budget", field: "tris", measured: m.tris, allowed: budget.tris, message: `${m.tris.toLocaleString("en-US")} triangles > ${budget.tris.toLocaleString("en-US")}` });
+  if (m.bytes > budget.bytes) out.push({ code: "asset.budget", field: "bytes", measured: m.bytes, allowed: budget.bytes, message: `${MB(m.bytes)} > ${MB(budget.bytes)}` });
+  if (m.texPx > budget.texPx) out.push({ code: "asset.budget", field: "texPx", measured: m.texPx, allowed: budget.texPx, message: `a ${m.texPx} px texture > ${budget.texPx} px` });
+  return out;
+}
+function adviceFor(m) {
+  const out = [];
+  for (const e of m.extensionsUsed) if (WARN_EXTENSIONS.has(e)) out.push(`${e}: the web viewer has no KTX2 transcoder; these textures will not show. Use WebP (EXT_texture_webp).`);
+  if (m.texPx > 1024) out.push(`largest texture ${m.texPx} px: the viewer fits colour maps to 1024 px and other maps to 512 px on load; 2048 only pays off on a hero piece seen up close`);
+  if (m.tris > 6e3) out.push(`${m.tris.toLocaleString("en-US")} triangles: above the prop (400) and building (6000) guides; fine for a landmark, heavy if placed many times`);
+  if (m.box[1] < 0.05 || m.box[1] > 200) out.push(`measured height ${m.box[1]} m looks unlike metres; pass --height <m> to scale it`);
+  if (m.animations.length && !m.animations.some((a) => /^(idle|walk)$/i.test(a))) out.push(`clips ${m.animations.join(", ")}: name one Idle and one Walk (Fly/Swim/Run count as Walk) or the first clip plays for everything`);
+  return out;
+}
+function describeMeasure(m) {
+  return `${m.tris.toLocaleString("en-US")} tris, ${MB(m.bytes)}, ${m.textures} texture${m.textures === 1 ? "" : "s"}${m.textures ? ` (max ${m.texPx} px)` : ""}, box ${m.box.join(" \xD7 ")} m, clips ${m.animations.join(", ") || "none"}${m.skins ? `, ${m.skins} skin${m.skins === 1 ? "" : "s"}` : ""}${m.vertexColors ? ", vertex colours" : ""}`;
+}
+var UPLOAD_FIELDS = ["name", "height", "tags", "license", "source", "description", "layer", "define"];
+var MANIFEST_SCHEMA = "god-upload-manifest/1";
+function readManifest(doc) {
+  if (!doc || doc.schema !== MANIFEST_SCHEMA) throw new Error(`manifest.schema must be "${MANIFEST_SCHEMA}"`);
+  if (!Array.isArray(doc.assets) || !doc.assets.length) throw new Error("manifest.assets must be a non-empty array of { file, name, \u2026 }");
+  return doc.assets.map((a, i) => {
+    if (!a || typeof a.file !== "string" || !a.file) throw new Error(`assets[${i}].file must be a path`);
+    if (a.name !== void 0 && typeof a.name !== "string") throw new Error(`assets[${i}].name must be a string`);
+    if (a.height !== void 0 && !(Number(a.height) > 0 && Number(a.height) < 400)) throw new Error(`assets[${i}].height must be metres in (0, 400)`);
+    if (a.layer !== void 0 && !["solid", "decor"].includes(a.layer)) throw new Error(`assets[${i}].layer must be solid or decor`);
+    if (a.tags !== void 0 && !(Array.isArray(a.tags) || typeof a.tags === "string")) throw new Error(`assets[${i}].tags must be an array or a comma list`);
+    const unknown = Object.keys(a).filter((k) => !["file", "footprint", ...UPLOAD_FIELDS].includes(k));
+    if (unknown.length) throw new Error(`assets[${i}]: unknown field(s) ${unknown.join(", ")}; allowed: file, footprint, ${UPLOAD_FIELDS.join(", ")}`);
+    return { ...a, tags: Array.isArray(a.tags) ? a.tags.join(",") : a.tags };
+  });
+}
+
+// lib/upload.mjs
+var FOOTPRINT_BYTES = 1e6;
+var MIME = { glb: "model/gltf-binary", png: "image/png", jpg: "image/jpeg" };
+var USAGE = "usage: upload <file.glb|png|jpg> --name <n> [--height m] [--tags a,b] [--license \u2026] [--source \u2026] [--description \u2026] [--layer solid|decor] [--footprint fp.json] [--define] [--dry]  |  upload <manifest.json> [--dry]";
+var one = (v) => Array.isArray(v) ? v[v.length - 1] : v;
+function inspectFile(bytes, { footprint } = {}, budget = DEFAULT_BUDGET) {
+  const kind = sniff(bytes), refusals = [], advice = [];
+  let measure = null, mime;
+  if (kind === "glb") {
+    try {
+      measure = measureGlb(bytes);
+    } catch (e) {
+      return { kind, refusals: [{ code: "asset.invalid", field: "file", message: e.message, fix: /extension|self-contained|embed/.test(e.message) ? FIX : "export a valid self-contained binary glTF 2.0 file" }], advice, measure: null };
+    }
+    refusals.push(...budgetRefusals(measure, budget).map((r) => ({ ...r, fix: FIX })));
+    advice.push(...adviceFor(measure));
+    mime = MIME.glb;
+  } else if (kind === "png" || kind === "jpg") {
+    const s = imageSize(bytes);
+    measure = { tris: 0, bytes: bytes.byteLength, textures: 1, texPx: Math.max(s.w, s.h), box: [s.w, s.h, 0], animations: [], skins: 0, image: s };
+    if (!(s.w > 0 && s.h > 0)) refusals.push({ code: "asset.invalid", field: "file", message: "image has no readable dimensions" });
+    if (bytes.byteLength > Math.min(budget.bytes, IMAGE_BUDGET.bytes)) refusals.push({ code: "asset.budget", field: "bytes", measured: bytes.byteLength, allowed: Math.min(budget.bytes, IMAGE_BUDGET.bytes), message: `image ${(bytes.byteLength / 1e6).toFixed(2)} MB > ${(Math.min(budget.bytes, IMAGE_BUDGET.bytes) / 1e6).toFixed(2)} MB`, fix: "resize or recompress the image (JPEG quality 85 is plenty for a sign or a picture)" });
+    if (measure.texPx > budget.texPx) refusals.push({ code: "asset.budget", field: "texPx", measured: measure.texPx, allowed: budget.texPx, message: `image ${s.w}\xD7${s.h} > ${budget.texPx} px`, fix: `resize so the longer side is at most ${budget.texPx} px` });
+    mime = MIME[kind];
+  } else {
+    refusals.push({ code: "asset.type", field: "file", message: `${kind === "webp" ? "a standalone WebP" : kind === "json" ? "JSON that is not a god-upload-manifest/1" : "an unknown file type"}; accepted: GLB (binary glTF 2.0), PNG, JPEG`, fix: kind === "webp" ? "WebP is fine inside a GLB; a standalone image must be PNG or JPEG" : "export .glb (not .gltf/.obj/.fbx), .png or .jpg" });
+  }
+  if (footprint !== void 0) {
+    if (footprint.byteLength > FOOTPRINT_BYTES) refusals.push({ code: "asset.budget", field: "footprint", measured: footprint.byteLength, allowed: FOOTPRINT_BYTES, message: `footprint ${footprint.byteLength} bytes > ${FOOTPRINT_BYTES}` });
+    try {
+      const fp = JSON.parse(new TextDecoder().decode(footprint));
+      if (!fp || typeof fp !== "object" || Array.isArray(fp)) throw 0;
+      if (fp.schema && fp.schema !== "lm-building-footprint/1") throw new Error(`schema ${fp.schema}`);
+    } catch (e) {
+      refusals.push({ code: "asset.invalid", field: "footprint", message: `footprint is not an lm-building-footprint/1 object${e?.message ? ` (${e.message})` : ""}` });
+    }
+    if (kind !== "glb") refusals.push({ code: "asset.invalid", field: "footprint", message: "a footprint goes with a GLB, not an image" });
+  }
+  return { kind, mime, measure, refusals, advice };
+}
+var refusalLine = (file, r) => `REFUSED ${file}: ${r.code}${r.field ? ` ${r.field}` : ""}: ${r.message}${r.measured !== void 0 && typeof r.measured !== "object" ? ` (measured ${r.measured}, allowed ${r.allowed})` : ""}${r.fix ? `
+  fix: ${r.fix}` : ""}`;
+async function uploadOne(entry, { dry = false, budget = DEFAULT_BUDGET, send = postAsset } = {}) {
+  const file = entry.file, label = basename(file);
+  if (!existsSync8(file)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such file ${file}`] };
+  const bytes = new Uint8Array(readFileSync9(file));
+  if (!bytes.byteLength) return { ok: false, refused: true, lines: [`REFUSED ${label}: the file is empty`] };
+  let footprint;
+  if (entry.footprint) {
+    if (!existsSync8(entry.footprint)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such footprint ${entry.footprint}`] };
+    footprint = new Uint8Array(readFileSync9(entry.footprint));
+  }
+  const height = entry.height !== void 0 && entry.height !== "" ? Number(entry.height) : void 0;
+  if (height !== void 0 && !(height > 0 && height < 400)) return { ok: false, refused: true, lines: [`REFUSED ${label}: --height must be metres in (0, 400), got ${entry.height}`] };
+  const insp = inspectFile(bytes, { footprint }, budget);
+  if (insp.refusals.length) return { ok: false, refused: true, measure: insp.measure, lines: insp.refusals.map((r4) => refusalLine(label, r4)) };
+  const fields = {};
+  for (const k of UPLOAD_FIELDS) {
+    const v = entry[k];
+    if (v === void 0 || v === "" || v === false) continue;
+    fields[k] = k === "define" ? "1" : String(v);
+  }
+  const what = `${insp.measure.tris !== void 0 && insp.kind === "glb" ? "mesh" : "image"} ${label}: ${describeMeasure(insp.measure)}`;
+  const meta = [fields.name && `as ${fields.name}`, height !== void 0 && `height ${height} m`, footprint && "with footprint", fields.define && "define"].filter(Boolean).join(", ");
+  if (dry) return { ok: true, dry: true, measure: insp.measure, lines: [`would upload ${what}${meta ? ` (${meta})` : ""}`, ...insp.advice.map((a) => `  note: ${a}`)] };
+  const r = await send({ bytes, mime: insp.mime, filename: label, footprint, fields });
+  if (!r.ok) {
+    const d2 = r.data ?? {};
+    const detail = d2.measured !== void 0 || d2.allowed !== void 0 ? `
+  measured ${JSON.stringify(d2.measured)} allowed ${JSON.stringify(d2.allowed)}` : "";
+    return { ok: false, response: r, lines: [`REFUSED ${label}: HTTP ${r.status} ${d2.code ?? ""}${d2.field ? ` ${d2.field}` : ""}: ${d2.message ?? d2.raw ?? ""}${detail}${d2.fix ? `
+  fix: ${d2.fix}` : ""}`] };
+  }
+  const d = r.data, lines = [`uploaded ${what}${meta ? ` (${meta})` : ""}`, `  ${d.asset?.url ?? ""}  sha ${d.asset?.sha ?? "?"}`];
+  if (d.footprint) lines.push(`  footprint: ${d.footprint.rooms} rooms, ${d.footprint.openings} openings, ${d.footprint.links} links, ${d.footprint.colliders} colliders`);
+  if (d.def) {
+    const ref = `${d.def.name}@${d.def.version ?? 1}`;
+    if (d.defined?.accepted) lines.push(`  defined ${ref} (${d.def.size.box.map((v) => Math.round(v * 100) / 100).join(" \xD7 ")} m, layer ${d.def.layer}) \u2014 place it with: place ${ref} --at \u2026`);
+    else if (d.defined) lines.push(`  define REFUSED: ${(d.defined.failures ?? []).map((f) => `${f.code}${f.field ? ` ${f.field}` : ""}: ${f.message}`).join("; ")}`);
+    else lines.push(`  def ${ref} proposed, not defined: rerun with --define, or edit it and run define`);
+  } else if (!fields.name && insp.kind === "glb") lines.push("  no --name: stored only; give --name (and --define) to make it placeable");
+  for (const w of d.warnings ?? []) lines.push(`  note: ${w}`);
+  const said = (s) => s.replace(/[,\s]/g, "").slice(0, 24);
+  for (const a of insp.advice) if (!(d.warnings ?? []).some((w) => said(w) === said(a))) lines.push(`  note: ${a}`);
+  return { ok: true, response: r, measure: insp.measure, lines };
+}
+async function postAsset({ bytes, mime, filename, footprint, fields }, { timeoutMs = Number(process.env.EDEN_GOD_TIMEOUT_MS ?? 18e4) } = {}) {
+  const s = load();
+  if (!s.world) throw new Error("Run: node eden-god.mjs register <world-url>");
+  if (!s.token) throw new Error("no god token: run pair (or mint on a dev server)");
+  const fd = new FormData();
+  fd.set("file", new Blob([bytes], { type: mime }), filename);
+  if (footprint) fd.set("footprint", new Blob([footprint], { type: "application/json" }), "footprint.json");
+  for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+  const headers = { authorization: `Bearer ${s.token}`, "x-eden-god-holder": JSON.stringify(holder("eden-god CLI")) };
+  const r = await fetchWithRetry(`${s.world}/v1/god/assets`, { method: "POST", headers, body: fd, timeoutMs }, { fetch: wireFetch });
+  const text = await r.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text.slice(0, 400) };
+  }
+  return { ok: r.ok, status: r.status, data };
+}
+async function upload(path, flags2 = {}, deps = {}) {
+  if (!path) throw new Error(USAGE);
+  if (!existsSync8(path)) throw new Error(`upload: no such file ${path}`);
+  const bytes = new Uint8Array(readFileSync9(path));
+  const dry = !!flags2.dry;
+  let entries;
+  if (sniff(bytes) === "json") {
+    let doc;
+    try {
+      doc = JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      throw new Error(`upload: ${path} is not JSON`);
+    }
+    if (doc?.schema !== MANIFEST_SCHEMA) throw new Error(`upload: a JSON argument must be a ${MANIFEST_SCHEMA} (schema: "${MANIFEST_SCHEMA}", assets: [{ file, name, height, \u2026 }]); a footprint goes with --footprint beside its GLB`);
+    for (const k of UPLOAD_FIELDS) if (flags2[k] !== void 0) throw new Error(`upload <manifest>: --${k} belongs in the manifest's entries, not on the command`);
+    const dir = dirname2(resolve5(path));
+    entries = readManifest(doc).map((a) => ({ ...a, file: resolve5(dir, a.file), ...a.footprint ? { footprint: resolve5(dir, a.footprint) } : {} }));
+  } else {
+    const entry = { file: path };
+    for (const k of UPLOAD_FIELDS) if (flags2[k] !== void 0) entry[k] = k === "tags" ? [].concat(flags2[k]).join(",") : one(flags2[k]);
+    if (flags2.footprint !== void 0) entry.footprint = one(flags2.footprint);
+    if (entry.layer !== void 0 && !["solid", "decor"].includes(entry.layer)) throw new Error("--layer is solid or decor");
+    entries = [entry];
+  }
+  const results = [];
+  for (const e of entries) results.push({ file: e.file, ...await uploadOne(e, { dry, send: deps.send }) });
+  if (flags2.json) return results.map(({ lines, ...r }) => ({ ...r, text: lines.join("\n") }));
+  const out = results.flatMap((r) => r.lines);
+  if (entries.length > 1) {
+    const sent = results.filter((r) => r.ok).length, refused2 = results.filter((r) => !r.ok);
+    out.push(`${dry ? "would upload" : "uploaded"} ${sent} of ${entries.length}${refused2.length ? `; refused ${refused2.length}: ${refused2.map((r) => basename(r.file)).join(", ")}` : ""}`);
+  }
+  return out.join("\n");
+}
+
 // lib/features.mjs
 var GOD_FEATURES = Object.freeze({ flags: false, previews: false, constitution: false });
 var on = () => (typeof process === "undefined" ? "" : process.env.SIM_GOD_FEATURES ?? "").split(",").map((s) => s.trim());
@@ -3745,12 +4090,12 @@ async function defs(q, flags2 = {}) {
   if (flags2.remove && !flags2.unused) throw Error("defs --remove requires --unused");
   if (flags2.unused) {
     if (q || flags2.tag) throw Error("defs --unused does not take a search or tag filter");
-    const r3 = ok(await call(`/v1/god/defs/unused${flags2.remove ? "/remove" : ""}`, flags2.remove ? { body: {} } : {}), "defs --unused");
+    const r4 = ok(await call(`/v1/god/defs/unused${flags2.remove ? "/remove" : ""}`, flags2.remove ? { body: {} } : {}), "defs --unused");
     if (flags2.remove) {
       invalidate();
-      return flags2.json ? r3 : `removed ${r3.removed.length} never-placed trial defs (seq ${r3.seq})${r3.remaining ? `; ${r3.remaining} remain` : ""}; undo restores them`;
+      return flags2.json ? r4 : `removed ${r4.removed.length} never-placed trial defs (seq ${r4.seq})${r4.remaining ? `; ${r4.remaining} remain` : ""}; undo restores them`;
     }
-    return flags2.json ? r3.defs : `${r3.defs.length} never-placed trial defs${r3.defs.length ? ":\n" + r3.defs.map((d) => "- " + d.ref).join("\n") : ""}`;
+    return flags2.json ? r4.defs : `${r4.defs.length} never-placed trial defs${r4.defs.length ? ":\n" + r4.defs.map((d) => "- " + d.ref).join("\n") : ""}`;
   }
   if (q && !/\s/.test(q.trim())) {
     const name = q.trim().toLowerCase().replace(/^core[/-]/, "").replace(/@\d+$/, "");
@@ -4028,7 +4373,7 @@ var bakeCache = /* @__PURE__ */ new Map();
 var BAKES = ".eden-god.bakes.json";
 var readBakes = (lib) => {
   try {
-    const b = JSON.parse(readFileSync9(BAKES, "utf8"));
+    const b = JSON.parse(readFileSync10(BAKES, "utf8"));
     return b.lib === lib ? b.bakes : {};
   } catch {
     return {};
@@ -4169,7 +4514,7 @@ async function commitItems(v, def, info, flags2, params, items, notes, { op = "p
   const taken = /* @__PURE__ */ new Set();
   if (op === "place" && flags2.name && items.length === 1) {
     const parentId = items[0].candidates[0]?.in ? v.get(items[0].candidates[0].in.parent)?.id ?? items[0].candidates[0].in.parent : "world";
-    const clash = v.rows.find((r3) => r3.parent === parentId && r3.name === flags2.name);
+    const clash = v.rows.find((r4) => r4.parent === parentId && r4.name === flags2.name);
     if (clash) throw new Error(`REFUSED: name.taken: "${flags2.name}" is already ${clash.path} [${clash.def.replace(/^core-/, "core/")}]. Pick another --name, or move/remove that one.`);
   }
   const stem = flags2.name ?? def.replace(/^core\//, "").replace(/@\d+$/, "").replace(/^core-/, "");
@@ -4431,7 +4776,7 @@ async function recolor(id, color, flags2 = {}) {
   const v = view(await mirror()), row = v.get(id);
   if (!row && setOf(v, id)) {
     const out = [];
-    for (const r3 of setOf(v, id).members) out.push(await recolor(r3.path, color, flags2));
+    for (const r4 of setOf(v, id).members) out.push(await recolor(r4.path, color, flags2));
     return out.join("\n");
   }
   if (!row) throw new Error(`no such thing: ${id}`);
@@ -4442,7 +4787,7 @@ async function recolor(id, color, flags2 = {}) {
 }
 async function remove(ids) {
   const v0 = view(await mirror());
-  const list2 = [].concat(ids).filter(Boolean).flatMap((id) => v0.get(id) ? [id] : setOf(v0, id)?.members.map((r3) => r3.path) ?? [id]);
+  const list2 = [].concat(ids).filter(Boolean).flatMap((id) => v0.get(id) ? [id] : setOf(v0, id)?.members.map((r4) => r4.path) ?? [id]);
   if (!list2.length) throw new Error("usage: remove <ref> [<ref>\u2026]");
   const r = await act({ ops: list2.map((id) => ({ op: "remove", id })) });
   return r.accepted ? `removed ${list2.join(", ")} (and what was inside)` : `REFUSED: ${r.failures.map(explainFailure).join("; ")}`;
@@ -4696,13 +5041,13 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
       const masses = f.mass === void 0 ? void 0 : typeof f.mass === "string" ? f.mass.split(",").map((x) => x.trim()) : [];
       if (masses && (!masses.length || masses.length > 8 || masses.some((x) => !/^[a-z0-9][a-z0-9-]{0,18}$/.test(x)))) throw new Error("--mass needs at most 8 mass names, e.g. nave,tower");
       if (!b.claim && !b.lease) throw new Error("no build lease; build resume first");
-      const r3 = ok(await call(BUILD_API.path(b.id, "step"), { body: { ...BUILD_API.stepBody(b, n, label, say, masses), ...f.include !== void 0 ? { include: buildValues(f.include, ",", "include", 512, 300) } : {}, ...f.asks !== void 0 ? { asks: buildValues(f.asks, ";", "asks", 64, 500) } : {} } }), "build step");
-      if (!r3.ok) return f.json ? r3 : `REFUSED: ${r3.failures.map(explainFailure).join("; ")}`;
-      const step = BUILD_API.stepEcho(r3.build, b);
+      const r4 = ok(await call(BUILD_API.path(b.id, "step"), { body: { ...BUILD_API.stepBody(b, n, label, say, masses), ...f.include !== void 0 ? { include: buildValues(f.include, ",", "include", 512, 300) } : {}, ...f.asks !== void 0 ? { asks: buildValues(f.asks, ";", "asks", 64, 500) } : {} } }), "build step");
+      if (!r4.ok) return f.json ? r4 : `REFUSED: ${r4.failures.map(explainFailure).join("; ")}`;
+      const step = BUILD_API.stepEcho(r4.build, b);
       if (!step) throw new Error("build step response is missing the server step; build show before continuing");
-      save({ build: { ...b, n: step.n, label: step.label, status: r3.build.status } });
+      save({ build: { ...b, n: step.n, label: step.label, status: r4.build.status } });
       invalidate();
-      return f.json ? r3 : `step ${step.n}/${b.steps.length}: ${step.label}${BUILD_API.say(r3.build) ? ` \u2014 designing: ${BUILD_API.say(r3.build)}` : ""}`;
+      return f.json ? r4 : `step ${step.n}/${b.steps.length}: ${step.label}${BUILD_API.say(r4.build) ? ` \u2014 designing: ${BUILD_API.say(r4.build)}` : ""}`;
     }
     save({ build: { ...b, n, label } });
     return `step ${n}/${b.steps.length}: ${label} (rides on your next edit)`;
@@ -4714,16 +5059,16 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
   if (sub === "show") {
     const response2 = await call(BUILD_API.path(arg));
     if (arg && BUILD_API.unknown(response2)) return buildChoices(sub, `unknown build: ${arg}`, f);
-    const r3 = ok(response2, "build show");
-    if (r3.ok === false) return `REFUSED: ${r3.failures.map(explainFailure).join("; ")}`;
-    return f.json ? r3 : buildReport(r3);
+    const r4 = ok(response2, "build show");
+    if (r4.ok === false) return `REFUSED: ${r4.failures.map(explainFailure).join("; ")}`;
+    return f.json ? r4 : buildReport(r4);
   }
   if (sub === "check") {
     const id2 = arg ?? b?.id;
     if (!id2) throw new Error("build check needs an id or current build");
-    const r3 = ok(await call(BUILD_API.path(id2, "check"), { body: {} }), "build check");
-    if (r3.ok === false) return f.json ? r3 : `REFUSED: ${r3.failures.map(explainFailure).join("; ")}`;
-    return f.json ? r3 : checkedReceipt(r3.receipt);
+    const r4 = ok(await call(BUILD_API.path(id2, "check"), { body: {} }), "build check");
+    if (r4.ok === false) return f.json ? r4 : `REFUSED: ${r4.failures.map(explainFailure).join("; ")}`;
+    return f.json ? r4 : checkedReceipt(r4.receipt);
   }
   if (sub === "district") {
     if (arg !== void 0 && !/^[a-z0-9][a-z0-9-]{0,29}$/.test(arg)) throw new Error("build district needs a district id (slug, at most 30 characters)");
@@ -4734,32 +5079,32 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
       if (f.file !== void 0) throw new Error("--delete and --file are separate commands");
       const response3 = await call(`/v1/god/districts/${encodeURIComponent(arg)}`, { method: "DELETE" });
       if (response3.status === 404) return unknown();
-      const r4 = ok(response3, "build district --delete");
-      if (!r4.ok) return f.json ? r4 : `REFUSED: ${r4.failures.map(explainFailure).join("; ")}`;
-      return f.json ? r4 : `district ${arg} deleted: its buildings and ${r4.chapters.length} chapter build(s) stay; undo --group <chapter> still works`;
+      const r5 = ok(response3, "build district --delete");
+      if (!r5.ok) return f.json ? r5 : `REFUSED: ${r5.failures.map(explainFailure).join("; ")}`;
+      return f.json ? r5 : `district ${arg} deleted: its buildings and ${r5.chapters.length} chapter build(s) stay; undo --group <chapter> still works`;
     }
     if (f.file !== void 0) {
       if (!arg) throw new Error("build district <id> --file plan.json");
       if (typeof f.file !== "string") throw new Error("--file needs a plan file or inline JSON");
       let plan;
       try {
-        plan = JSON.parse(f.file.trim().startsWith("{") ? f.file : readFileSync9(f.file, "utf8"));
+        plan = JSON.parse(f.file.trim().startsWith("{") ? f.file : readFileSync10(f.file, "utf8"));
       } catch (e) {
         throw new Error(`--file: cannot read the plan (${e.message})`);
       }
       if (plan.id !== void 0 && plan.id !== arg) throw new Error(`the plan's id ${plan.id} differs from ${arg}`);
-      const r4 = ok(await call("/v1/god/districts", { body: { ...plan, id: arg } }), "build district");
-      if (!r4.ok) return f.json ? r4 : `REFUSED: ${r4.failures.map(explainFailure).join("; ")}`;
-      return f.json ? r4 : [...r4.replayed ? [`district ${arg}: already recorded with this plan`] : [], ...districtLines(r4.district), ...r4.warnings.map((w) => `WARNING: ${w}`)].join("\n");
+      const r5 = ok(await call("/v1/god/districts", { body: { ...plan, id: arg } }), "build district");
+      if (!r5.ok) return f.json ? r5 : `REFUSED: ${r5.failures.map(explainFailure).join("; ")}`;
+      return f.json ? r5 : [...r5.replayed ? [`district ${arg}: already recorded with this plan`] : [], ...districtLines(r5.district), ...r5.warnings.map((w) => `WARNING: ${w}`)].join("\n");
     }
     if (!arg) {
-      const r4 = ok(await call("/v1/god/districts"), "build district");
-      return f.json ? r4 : r4.districts.map((x) => `${x.id}: ${x.title}; ${x.counts.built}/${x.counts.plots} built; ${districtNext(x)}`).join("\n") || "no districts; build district <id> --file plan.json records one";
+      const r5 = ok(await call("/v1/god/districts"), "build district");
+      return f.json ? r5 : r5.districts.map((x) => `${x.id}: ${x.title}; ${x.counts.built}/${x.counts.plots} built; ${districtNext(x)}`).join("\n") || "no districts; build district <id> --file plan.json records one";
     }
     const response2 = await call(`/v1/god/districts/${encodeURIComponent(arg)}`);
     if (response2.status === 404) return unknown();
-    const r3 = ok(response2, "build district");
-    return f.json ? r3 : districtLines(r3.district).join("\n");
+    const r4 = ok(response2, "build district");
+    return f.json ? r4 : districtLines(r4.district).join("\n");
   }
   if (sub === "rewind") {
     const id2 = arg ?? b?.id;
@@ -4767,13 +5112,13 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
     if (typeof f.to !== "string" || !/^\d{1,3}$/.test(f.to)) throw new Error("build rewind needs --to <step>: 0 (the start) up to the current step");
     const response2 = await call(BUILD_API.path(id2, "rewind"), { body: { to: Number(f.to), ...f.dry ? { dry: true } : {}, ...f.force ? { force: true } : {} } });
     if (BUILD_API.unknown(response2)) return buildChoices(sub, `unknown build: ${id2}`, f);
-    const r3 = ok(response2, "build rewind");
-    if (r3.ok === false) return f.json ? r3 : `REFUSED: ${r3.failures.map(explainFailure).join("; ")}${r3.edits?.length ? `; nothing was undone (${r3.edits.length} edit(s) checked)` : ""}`;
+    const r4 = ok(response2, "build rewind");
+    if (r4.ok === false) return f.json ? r4 : `REFUSED: ${r4.failures.map(explainFailure).join("; ")}${r4.edits?.length ? `; nothing was undone (${r4.edits.length} edit(s) checked)` : ""}`;
     if (!f.dry) {
-      if (b?.id === id2) save({ build: { ...b, n: r3.build.step.n, label: r3.build.step.label, status: r3.build.status }, buildPreviews: void 0 });
+      if (b?.id === id2) save({ build: { ...b, n: r4.build.step.n, label: r4.build.step.label, status: r4.build.status }, buildPreviews: void 0 });
       invalidate();
     }
-    return f.json ? r3 : rewindReport(id2, r3, !!f.dry);
+    return f.json ? r4 : rewindReport(id2, r4, !!f.dry);
   }
   if (sub === "continue") {
     if (!arg) throw new Error("build continue needs a previous build id");
@@ -4803,7 +5148,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
     for (const k of ["at", "offset", "size", "yaw", "mass", "root"]) if (f[k] !== void 0) throw new Error(`--${k} does not apply to a district chapter: the plan holds each plot's rectangle and massing`);
     const plots = buildValues(f.plots, ",", "plots", 8, 8), steps2 = f.steps === void 0 ? void 0 : buildValues(f.steps, ",", "steps", 24, 60);
     if (f.title !== void 0 && (typeof f.title !== "string" || !f.title.trim() || f.title.length > 80)) throw new Error("--title is 1..80 characters");
-    const brief = f.brief === void 0 ? void 0 : existsSync8(f.brief) ? readFileSync9(f.brief, "utf8") : f.brief;
+    const brief = f.brief === void 0 ? void 0 : existsSync9(f.brief) ? readFileSync10(f.brief, "utf8") : f.brief;
     if (brief !== void 0 && (typeof brief !== "string" || brief.length > 4e3)) throw new Error("--brief is at most 4000 characters");
     const asks = buildValues(f.asks, ";", "asks", 64, 500), include = buildValues(f.include, ",", "include", 512, 300);
     body = { id: arg, district: { id: f.district, ...plots ? { plots } : {} }, ...f.title ? { title: f.title } : {}, ...steps2 ? { steps: steps2 } : {}, ...asks ? { asks } : {}, ...include ? { include } : {}, ...brief !== void 0 ? { brief } : {} };
@@ -4814,7 +5159,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
     const steps2 = f.steps.split(",").map((x) => x.trim());
     if (steps2.length > 24 || steps2.some((x) => !x || x.length > 60)) throw new Error("--steps needs 1..24 labels, each 1..60 characters");
     const massing = inheritedMassing ?? parseMassing(f.mass), site = await buildSite(f);
-    const brief = f.brief === void 0 ? void 0 : existsSync8(f.brief) ? readFileSync9(f.brief, "utf8") : f.brief;
+    const brief = f.brief === void 0 ? void 0 : existsSync9(f.brief) ? readFileSync10(f.brief, "utf8") : f.brief;
     if (brief !== void 0 && (typeof brief !== "string" || brief.length > 4e3)) throw new Error("--brief is at most 4000 characters");
     const asks = buildValues(f.asks, ";", "asks", 64, 500), include = buildValues(f.include, ",", "include", 512, 300);
     body = { id: arg, title: f.title, steps: steps2, site, massing, ...asks ? { asks } : {}, ...include ? { include } : {}, ...brief !== void 0 ? { brief } : {}, ...f.root ? { root: f.root } : {} };
@@ -4866,7 +5211,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
   if (sub === "claim") {
     const file = claimFile(r.claim.id), release = acquireLock(`${file}.lock`, { label: "claim state creation" });
     try {
-      const previous = existsSync8(file) ? JSON.parse(readFileSync9(file, "utf8")) : null;
+      const previous = existsSync9(file) ? JSON.parse(readFileSync10(file, "utf8")) : null;
       if (previous?.build?.id !== r.build.id || previous.build.claim !== r.claim.id) atomicWrite(file, JSON.stringify({ build: BUILD_API.claim(r.build, r.claim) }, null, 2) + "\n");
     } finally {
       release();
@@ -4884,7 +5229,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
 async function helperEnv(s, r, f) {
   const m = ok(await call(BUILD_API.path(r.build.id, `claims/${encodeURIComponent(r.claim.id)}/helper`), { body: { ...f.ttl !== void 0 ? { ttlMs: Math.round(Number(f.ttl) * 6e4) } : {} } }), "build claim --helper");
   if (!m.ok) return f.json ? m : `${r.claim.id}: ${r.claim.part} claimed, but no helper token: ${m.failures.map(explainFailure).join("; ")}`;
-  const file = resolve5(helperFile(r.claim.id));
+  const file = resolve6(helperFile(r.claim.id));
   atomicWrite(file, JSON.stringify({ world: s.world, token: m.token, helper: m.helper, build: BUILD_API.claim(r.build, r.claim) }, null, 2) + "\n");
   if (f.json) return { ...r, helper: m.helper, helperFile: file };
   return [
@@ -5057,7 +5402,7 @@ async function kitLookInner(json2, flags2, runtime, signal) {
     timeoutMs: Math.max(1, runtime.deadlineAt - Date.now()),
     worldUrl: load().world,
     studio: admitted,
-    out: resolve5(flags2.out ?? "looks/kit-workbench.png"),
+    out: resolve6(flags2.out ?? "looks/kit-workbench.png"),
     ...overrides,
     ...flags2.width ? { width: num(flags2.width) } : {},
     ...flags2.h ? { height: num(flags2.h) } : {}
@@ -5120,7 +5465,7 @@ async function lookInner(flags2 = {}, runtime = {}, signal) {
   const cam = views[0];
   signal.throwIfAborted();
   void attention(cam.at, cam.eye);
-  const out = resolve5(flags2.out ?? `looks/look-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`);
+  const out = resolve6(flags2.out ?? `looks/look-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`);
   const args = {
     timeoutMs: Math.max(1, runtime.deadlineAt - Date.now()),
     remote: !!flags2.remote,
@@ -5162,13 +5507,13 @@ async function lookInner(flags2 = {}, runtime = {}, signal) {
 async function exportWorld(file, flags2 = {}) {
   const s = await snapshot2();
   const g = exportGenesis(s, flags2);
-  const out = resolve5(file ?? `${s.worldId}.genesis.json`);
+  const out = resolve6(file ?? `${s.worldId}.genesis.json`);
   writeFileSync5(out, JSON.stringify(g, null, 1));
   const ops = g.batches.flatMap((b) => b.ops), things = ops.filter((op) => op.op === "place").length, defs2 = ops.filter((op) => op.op === "define").length;
   return `exported ${things} things${defs2 ? ` and ${defs2} defs` : ""} in ${g.batches.length} batches to ${out}`;
 }
 var importWorld = (file, flags2 = {}) => withoutBuild(async () => {
-  const g = JSON.parse(readFileSync9(file, "utf8"));
+  const g = JSON.parse(readFileSync10(file, "utf8"));
   if (g.schema !== "genesis/1") throw new Error("import: file must be genesis/1");
   const out = [];
   const s = await snapshot2();
@@ -5188,7 +5533,7 @@ var importWorld = (file, flags2 = {}) => withoutBuild(async () => {
   return out.join("\n");
 });
 async function define(json2, ignored = []) {
-  const def = typeof json2 === "string" ? JSON.parse(existsSync8(json2) ? readFileSync9(json2, "utf8") : json2) : json2;
+  const def = typeof json2 === "string" ? JSON.parse(existsSync9(json2) ? readFileSync10(json2, "utf8") : json2) : json2;
   if (def.make?.kind === "gen" && !def.params) {
     const g = (await schema()).generators?.find((x) => x.id === def.make.gen);
     if (g && Object.keys(g.params).length) def.params = g.params;
@@ -5204,7 +5549,7 @@ function correctedLine(warnings = [], ignored = []) {
   return shown.length ? `corrected${refs.length === 1 ? ` ${refs[0]}` : ""}: ${shown.join("; ")}` : "";
 }
 async function defineKit(json2, flags2 = {}) {
-  const k = typeof json2 === "string" ? JSON.parse(existsSync8(json2) ? readFileSync9(json2, "utf8") : json2) : json2;
+  const k = typeof json2 === "string" ? JSON.parse(existsSync9(json2) ? readFileSync10(json2, "utf8") : json2) : json2;
   if (!k.name || !Array.isArray(k.shapes)) throw new Error("define-kit needs {name, shapes:[\u2026]} (see SKILL.md, kit primitives in SCHEMA.md)");
   const matches = (await searchDefs([k.name.replace(/[-_.]/g, " "), ...k.tags ?? []].join(" "))).defs;
   const picks = [...matches.filter((d) => usedIn(d).length), ...matches.filter((d) => !usedIn(d).length)].slice(0, 5);
@@ -5276,7 +5621,7 @@ async function status() {
   return `${s.world} \u2014 you are ${st.you}; ${st.entities} entities, seq ${st.seq}${s.group ? `; group "${s.group}"` : ""}${s.build ? `; ${buildHeader(s.build, st.builds?.find((b) => b.id === s.build.id))}` : ""}; skill ${SKILL_VERSION}${v ? `; server protocol ${v.protocol}, schema ${v.schema}, skill ${v.skill}, source ${v.source}` : ""}`;
 }
 var BOOL = /* @__PURE__ */ new Set(["missing", "clear", "fix", "helper", "local", "remote", "no-build", "done", "force", "undo", "float", "dry", "plan", "nudge", "json", "all", "keep", "hide-roofs", "stop", "site", "unused", "off", "md", "fresh", "remove", "free", "list", ...ENV_BOOLS, ...LAYERS_BOOLS]);
-var boolsFor = (cmd) => cmd === "look" ? /* @__PURE__ */ new Set([...BOOL, "inside"]) : cmd === "listen" ? /* @__PURE__ */ new Set([...BOOL, "once", "follow"]) : cmd === "ack" ? /* @__PURE__ */ new Set([...BOOL, "failed"]) : BOOL;
+var boolsFor = (cmd) => cmd === "look" ? /* @__PURE__ */ new Set([...BOOL, "inside"]) : cmd === "listen" ? /* @__PURE__ */ new Set([...BOOL, "once", "follow"]) : cmd === "ack" ? /* @__PURE__ */ new Set([...BOOL, "failed"]) : cmd === "upload" ? /* @__PURE__ */ new Set([...BOOL, "define"]) : BOOL;
 function parseFlags(argv, bools = BOOL) {
   const flags2 = {}, rest = [];
   for (let i = 0; i < argv.length; i++) {
@@ -5334,6 +5679,7 @@ var FLAGS = {
   schema: "md",
   act: "note request-ref",
   prayers: "all",
+  upload: "name height tags license source description layer footprint define dry",
   catalog: "category has tag page per",
   find: "category has tag all",
   parts: "",
@@ -5342,7 +5688,7 @@ var FLAGS = {
   ...LAYERS_FLAGS,
   ...GOV_FLAGS
 };
-var POS = { ...GOV_POS, listen: 0, ack: 2, doctor: 0, trace: 0, kit: 2, build: 2, "verify-use": 1, ...LAYERS_POS, catalog: 0, taxonomy: 0, time: 2, strike: 0, land: 3, place: 1, terrain: 1, move: 1, set: 1, about: 1, recolor: 2, clone: 1, describe: 1, where: 1, reach: 2, clear: 1, free: 1, look: 0, sky: 0, weather: 0, select: 0, group: 1, undo: 0, redo: 0, history: 1, map: 0, furnish: 1, mint: 1, pair: 1, register: 2, status: 0, flags: 0, prayers: 0, schema: 0, snapshot: 0, examples: 1, expand: 1, import: 1, export: 1, define: 1, "define-kit": 1, act: 1, dryrun: 1, plan: 1, preview: 1, commit: 1, request: 1, query: 1, stream: 1, follow: 1, mirror: 0, gallery: 0, help: 1 };
+var POS = { ...GOV_POS, listen: 0, ack: 2, doctor: 0, trace: 0, kit: 2, build: 2, "verify-use": 1, ...LAYERS_POS, catalog: 0, taxonomy: 0, time: 2, strike: 0, land: 3, place: 1, terrain: 1, move: 1, set: 1, about: 1, recolor: 2, clone: 1, describe: 1, where: 1, reach: 2, clear: 1, free: 1, look: 0, sky: 0, weather: 0, select: 0, group: 1, undo: 0, redo: 0, history: 1, map: 0, furnish: 1, mint: 1, pair: 1, register: 2, status: 0, flags: 0, prayers: 0, schema: 0, snapshot: 0, examples: 1, expand: 1, import: 1, export: 1, define: 1, "define-kit": 1, upload: 1, act: 1, dryrun: 1, plan: 1, preview: 1, commit: 1, request: 1, query: 1, stream: 1, follow: 1, mirror: 0, gallery: 0, help: 1 };
 var NUMERIC = /* @__PURE__ */ new Set(["dist", "count", "t", "setback", "row", "spacing", "width", "span", "radius", "sun", "clouds", "wind", "rain", "fog", "intensity", "speed", "amount", "level", "depth", "metres", "peak", "edge", "face", "steps", "scale", "floor", "height", "h", "frames", "every", "slope", "gap", "yaw"]);
 var SIDES = ["left", "right", "both", "center", "centre"];
 function checkArgs(cmd, f, rest) {
@@ -5376,7 +5722,7 @@ function helpFor(cmd) {
   return [...lines.length ? lines : [`${cmd}: see help`], `${cmd} options: ${opts.map((x) => "--" + x).join(" ")}`].join("\n");
 }
 var CLI_SHAPE = { POS, FLAGS, BOOL, NUMERIC, boolsFor };
-var readArg = (r) => r[0] !== void 0 ? existsSync8(r[0]) && !r[0].trim().startsWith("{") ? readFileSync9(r[0], "utf8") : r[0] : readFileSync9(0, "utf8");
+var readArg = (r) => r[0] !== void 0 ? existsSync9(r[0]) && !r[0].trim().startsWith("{") ? readFileSync10(r[0], "utf8") : r[0] : readFileSync10(0, "utf8");
 var COMMANDS = {
   doctor: (r, f) => doctor(f),
   trace: (r, f) => trace(f),
@@ -5436,6 +5782,7 @@ var COMMANDS = {
   import: (r, f) => importWorld(r[0], f),
   define: (r) => define(readArg(r)),
   "define-kit": (r, f) => defineKit(readArg(r), f),
+  upload: (r, f) => upload(r[0], f),
   furnish: (r, f) => furnish(r[0], f),
   gallery,
   examples: (r) => examples(r[0]),
@@ -5503,6 +5850,7 @@ resume: omit id to resume the only paused build or active build with a dead lead
 mass:   site-local metres; h = wall/eave height, not total height. Gable/pyramid roofs add half the shorter side; flat adds none. Example: 26x12 h15 gable = 15 m walls + 6 m roof = 21 m total.
 batch:  plan '<batch>' \xB7 preview '<batch>' \xB7 commit <preview-id> \xB7 act '<batch>' \xB7 dryrun '<batch>' \xB7 request <clientRef>
 world:  sky [--palette p --sun s] \xB7 time [19:30|7pm] [--speed h/h] [--pause|--resume] \xB7 weather [--kind storm|rain|fog|wind|cloudy|clear|auto] [--intensity i] [--clouds --wind --rain --fog] [--minutes m] \xB7 strike [--at x,z|thing] ${godFeature("constitution") ? "\xB7 constitution <md> " : ""}\xB7 expand <m> \xB7 export [file] \xB7 import <genesis.json> \xB7 define <def.json> \xB7 define-kit <kit.json> \xB7 furnish <house>[/room]
+models: upload <file.glb|png|jpg> --name n [--height m] [--tags a,b] [--license text] [--source text] [--description text] [--layer solid|decor] [--footprint fp.json] [--define] [--dry] \xB7 upload <manifest.json> [--dry] (god-upload-manifest/1: one entry per asset with file, name, height, tags, license, source, description, layer, footprint, define; budget 80 000 tris, 3 MB, 2048 px per file \u2014 reduce heavy GLBs first with tools/god-skill/scripts/optimize-glb.mjs; SKILL.md "Importing your own models")
 inbox:  listen [--after message-id] [--timeout 25] [--once|--follow] \xB7 ack <message-id> [reply] [--failed] (a reply of up to 140 characters; --failed when it could not be done)
 pair:   register <world-url> \xB7 pair \xB7 ${godFeature("flags") ? "flags \xB7 flag <label> --at x,z \xB7 " : ""}prayers [--all] (answered too) \xB7 answer <id> <text> \xB7 status
 ${LAND_HELP}
