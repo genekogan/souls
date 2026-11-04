@@ -14,7 +14,8 @@ import {addSchemaPart} from '../events/schema.ts';
 import {intakeUpload,recordIntake} from '../../moderation/intake.ts';
 import {moderationFor} from '../../moderation/store.ts';
 import {BODY_UPLOAD_POLICY,UploadRejected} from '../../moderation/validate.ts';
-import {randomInt} from 'node:crypto';
+import {randomInt,createHash} from 'node:crypto';
+import {siteRequestOk} from '../../travel/travel.ts';
 import {lookRequest,resolveLook,legacyPreset,LookError,HUMANOID_PARAMS,HUMANOID_REF,OUTFITS} from '../../../../web/src/humanoid/look.ts';
 
 export const BODY_PRESETS=[{id:'humanoid',name:'Humanoid',body:null},PIP_PRESET,...FLOATER_MODELS.map(m=>{
@@ -42,7 +43,19 @@ async function uploadForm(c:Context){
   catch{throw new EdgeError(400,'body.multipart','Malformed multipart form');}
 }
 
-export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger}){
+/** #717: another world's admitted bytes, read once through the launcher's allowlisted site path (4 MiB cap). */
+export type BodySite={key?:string;pull?:(sourceSlug:string,ref:string)=>Promise<Uint8Array|null>};
+export const BODY_PULL_LIMIT=BODY_LIMITS.bytes;
+export function launcherBodySite(url:string|undefined,key:string|undefined):BodySite{
+  return {key,pull:url&&key?async(slug,ref)=>{
+    const r=await fetch(`${url}/__sim/site/body/${slug}/${ref}.glb`,{headers:{'x-sim-site-key':key},signal:AbortSignal.timeout(30_000)});
+    if(!r.ok||r.headers.get('content-type')!=='model/gltf-binary')return null;
+    const reader=r.body?.getReader();if(!reader)return null;const parts:Uint8Array[]=[];let n=0;
+    for(;;){const c=await reader.read();if(c.done)break;n+=c.value.length;if(n>BODY_PULL_LIMIT){await reader.cancel();return null;}parts.push(c.value);}
+    return Buffer.concat(parts,n);
+  }:undefined};
+}
+export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySite?:BodySite}){
   const db=deps.db.db,world=deps.host.worldId;
   const moderation=moderationFor(db,world);
   const available=!!deps.host.engine.assignBodyV1&&!!deps.host.engine.bodyAssignmentProblemV1;
@@ -64,6 +77,27 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger}){
   /** A definition this world admitted reflects its own moderation now (withdrawal written through). */
   const definition=(ref:string)=>{const d=library.definition(ref);if(d&&d.sourceWorld===here){const m=moderation.state(ref.slice(5)),status=m.hidden||m.creatorVeto||m.adminVeto||m.quarantined?'withdrawn':'active';if(status!==d.status){library.setStatus(ref,status);d.status=status;}}return d;};
   const localBytes=(ref:string)=>!!SHARED_BODY_BYTES[ref]||!!db.prepare('SELECT 1 FROM edge_body_assets_v1 WHERE world_id=? AND asset_id=?').get(world,ref);
+  const site=deps.bodySite??launcherBodySite(process.env.SIM_SITE_URL,process.env.SIM_SITE_KEY);
+  /** Pull-through at selection, never on serve or observe: fetch the source world's admitted bytes, check the content
+   *  address, re-admit under this world's policy, and cache them once (no owner row: the source owner's quota is unchanged). */
+  async function pull(d:{ref:string;sourceWorld:string;descriptor:Record<string,unknown>}){
+    const slug=/^\/w\/([a-z][a-z0-9-]{0,31})$/.exec(d.sourceWorld)?.[1];if(!slug||!site.pull)return false;
+    const bytes=await site.pull(slug,d.ref).catch(()=>null);if(!bytes||bytes.length>BODY_PULL_LIMIT)return false;
+    if('body_'+createHash('sha256').update(bytes).digest('hex')!==d.ref)return false;
+    const m=d.descriptor,manifest=Object.fromEntries(Object.entries({type:m.type,license:m.license,rightsConfirmed:true,rig:m.rig??undefined,actionProfile:m.actionProfile,motion:m.motion,name:m.name,description:m.description}).filter(([,v])=>v!==undefined&&v!==null));
+    const admitted=admitBodyGLB(Buffer.from(bytes),manifest);if(admitted.assetId!==d.ref||!types.includes(admitted.type))return false;
+    const asset={...admitted,rightsConfirmed:true,modelUrl:`${prefix}/v1/edge/body/assets/${d.ref}.glb`};
+    db.prepare('INSERT OR IGNORE INTO edge_body_assets_v1 VALUES(?,?,?,?)').run(world,d.ref,JSON.stringify(asset),Buffer.from(bytes));return true;
+  }
+  // The world side of the launcher's body read path: this machine, the run's site key, never the public proxy; active
+  // admitted bytes only.
+  app.get('/v1/site/body/:file',c=>{
+    if(!siteRequestOk(site.key,c.req.header('x-sim-site-key'),c.req.header('x-forwarded-for')))return c.json({ok:false,code:'not-found'},404);
+    const file=c.req.param('file');if(!/^body_[a-f0-9]{64}\.glb$/.test(file))return c.json({ok:false,code:'not-found'},404);const ref=file.slice(0,-4),d=definition(ref);
+    if(d?.status==='withdrawn')return c.json({ok:false,code:'body.withdrawn'},410);
+    const row=db.prepare('SELECT content FROM edge_body_assets_v1 WHERE world_id=? AND asset_id=?').get(world,ref) as {content:Uint8Array}|undefined;if(!row)return c.json({ok:false,code:'not-found'},404);
+    return c.body(new Uint8Array(row.content),200,{'Content-Type':'model/gltf-binary','Cache-Control':'no-store'});
+  });
   function selectable(d:{status:string;descriptor:Record<string,unknown>;ref:string}):{ok:true}|{ok:false;code:string;reason:string}{
     if(d.status==='withdrawn')return {ok:false,code:'body.withdrawn',reason:'This body definition was withdrawn and cannot be newly selected'};
     if(!types.includes(String(d.descriptor.type)))return {ok:false,code:'body.world-policy',reason:'This world does not admit that body type'};
@@ -141,7 +175,8 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger}){
       const type=asset.type,modelUrl=asset.modelUrl;body={family:type==='humanoid'?'humanoid':'floater',type,model:asset.assetId,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(asset.actionProfile?{actionProfile:asset.actionProfile}:{}),...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})};
     }else if(typeof raw.ref==='string'&&ASSET.test(raw.ref)){ // #717: an explicit public definition reference
       const d=definition(raw.ref);if(!d)throw new EdgeError(404,'body.ref-unknown','No body definition with that reference');
-      const ok=selectable(d);if(!ok.ok)throw new EdgeError(ok.code==='body.world-policy'?403:409,ok.code,ok.reason);
+      let ok=selectable(d);if(!ok.ok&&ok.code==='body.source-unavailable'&&await pull(d))ok=selectable(d);
+      if(!ok.ok)throw new EdgeError(ok.code==='body.world-policy'?403:409,ok.code,ok.reason);
       const asset=d.descriptor as {type:string;actionProfile?:string;motion?:unknown},type=asset.type,modelUrl=`${prefix}/v1/edge/body/assets/${d.ref}.glb`;
       body={family:type==='humanoid'?'humanoid':'floater',type,model:d.ref,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(asset.actionProfile?{actionProfile:asset.actionProfile}:{}),...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})} as Entity['body'];
     }else if(raw.look!==undefined){ // core/humanoid@2: edits over the current look (today's look when none), a preset, or {random:true,seed?}

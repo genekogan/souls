@@ -76,9 +76,13 @@ database). See [collections.ts](../../apps/server/src/edge/body/collections.ts).
   and the bytes are here. A definition withdrawn by its source world's moderation cannot be newly selected.
 - Routine discovery (`GET /v1/edge/body`) carries only `library:{mine, next}`; catalogs load on request.
 - Each world imports its own owner uploads into the store at boot, idempotently; asset ids, descriptors and rights
-  are never rewritten. Bytes stay in the admitting world. Pulling another world's admitted bytes (a sha256-verified
-  cache over one allowlisted launcher read path, 4 MiB) is the next step; until then such a reference answers
-  `body.source-unavailable` in other worlds.
+  are never rewritten. Bytes stay in the admitting world.
+- Another world's definition is pulled through at selection, never on serve or observation: the launcher's
+  `GET /__sim/site/body/<slug>/<ref>.glb` (site key and loopback only, binary, at most 4 MiB) reads the source world's
+  private `/v1/site/body/<ref>.glb`, which answers only for active admitted bytes. The selecting world checks the
+  sha256 against the reference, re-admits the bytes under its own policy and caches them once (no owner row, so no
+  quota is charged). Tampered, oversized, withdrawn or unreachable sources refuse with `body.source-unavailable` or
+  `body.withdrawn`. Forks have no shared store; a standalone world without a launcher keeps a local-only store.
 
 ## Capabilities, not an obligation to imitate a human
 

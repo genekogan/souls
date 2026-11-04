@@ -878,6 +878,22 @@ export async function openLauncher(cfg = {}) {
       if (path.startsWith('/__sim/site/')) {
         // the worlds' travel relay: this machine only, with the run's site key
         if (!siteOk(req)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
+        // #717: another world's admitted body bytes, by content address: GET only, binary, at most 4 MiB, never JSON-parsed.
+        // The world answers only with the site key, only for active admitted bytes; the reader verifies the sha256 itself.
+        const bodyRead = path.match(/^\/__sim\/site\/body\/([a-z][a-z0-9-]{0,31})\/(body_[a-f0-9]{64}\.glb)$/);
+        if (bodyRead && req.method === 'GET') {
+          const w = registry.get(bodyRead[1]);
+          if (!w || w.fork) { json(res, 404, { ok: false, code: 'body.source-unavailable' }); return; }
+          let p; try { p = await pool.ensure(worldEnv(w)); } catch { json(res, 503, { ok: false, code: 'body.source-unavailable' }); return; }
+          try {
+            const r = await fetch(`http://127.0.0.1:${p}${wp(w.slug)}/v1/site/body/${bodyRead[2]}`, { headers: { 'x-sim-site-key': siteKey }, signal: AbortSignal.timeout(30_000) });
+            if (!r.ok || r.headers.get('content-type') !== 'model/gltf-binary') { json(res, r.status === 410 ? 410 : 404, { ok: false, code: r.status === 410 ? 'body.withdrawn' : 'body.source-unavailable' }); return; }
+            const parts = []; let n = 0;
+            for await (const c of r.body) { n += c.length; if (n > 4 * 1024 * 1024) { json(res, 413, { ok: false, code: 'body.too-large' }); return; } parts.push(c); }
+            res.writeHead(200, { 'content-type': 'model/gltf-binary', 'content-length': n, 'cache-control': 'no-store' }); res.end(Buffer.concat(parts, n));
+          } catch { json(res, 504, { ok: false, code: 'body.source-unavailable' }); }
+          return;
+        }
         if (path === '/__sim/site/worlds' && req.method === 'GET') { json(res, 200, { worlds: registry.worlds.filter((w) => !w.fork).map((w) => ({ slug: w.slug, name: w.name })) }); return; }
         if (path === '/__sim/site/relay' && req.method === 'POST') {
           const chunks = []; let n = 0;
