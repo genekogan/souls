@@ -98,7 +98,7 @@ test('packaging writes a private index and a selected projection; unselected and
   assert.equal(ix.private, true);
   assert.equal(ix.recordings[0].file, join('playtest', 'recordings', 'wide.webm'));
   assert.ok(ix.limits.includes('not evaluated (run.mjs evaluate)'));
-  assert.deepEqual(sel.evidence.map((e) => [e.kind, e.camera, e.fullProof]), [['recording', 'wide', true]]);
+  assert.deepEqual(sel.evidence.map((e) => [e.kind, e.camera, e.complete, e.actionVisible]), [['recording', 'wide', true, 'not judged by the package: watch it']]);
   assert.deepEqual(sel.refused, [{ item: 'nope', why: 'not a recording camera or preview file of this run' }]);
   assert.doesNotMatch(readFileSync(p.selected, 'utf8'), /\/(Users|home|private|tmp|var)\//);
   assert.match(readFileSync(p.md, 'utf8'), /Private local index: do not publish/);

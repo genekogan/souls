@@ -101,7 +101,8 @@ export function packageRun(runDir, { select = [] } = {}) {
   // Selected projection: only what was named, run-relative, nothing that looks like a private path.
   const want = new Set(select), refused = [];
   const picked = [
-    ...index.recordings.filter((r) => want.has(r.camera)).map((r) => ({ kind: 'recording', fullProof: !r.partial && r.pageErrors === 0, ...r })),
+    // complete = uncut, not partial, no page errors. Whether the action is visible is a person's call after watching it.
+    ...index.recordings.filter((r) => want.has(r.camera)).map((r) => ({ kind: 'recording', complete: !r.partial && r.pageErrors === 0, actionVisible: 'not judged by the package: watch it', ...r })),
     ...index.previews.filter((p) => want.has(basename(p.file))).map((p) => ({ kind: 'preview', ...p })),
   ];
   for (const s of want) if (!picked.some((p) => p.camera === s || basename(p.file ?? '') === s)) refused.push({ item: s, why: 'not a recording camera or preview file of this run' });
