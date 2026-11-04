@@ -50,8 +50,8 @@ type Pulled = {ok: true} | {ok: false; code: string; reason: string};
  *  later PUT {ref}; it never assigns the body, because only wear() assigns, and wear() has already moved on. */
 function pullWithin(run: () => Promise<Pulled>, ms: number): Promise<Pulled> {
   const pulled = run().catch((e: {code?: unknown}) => ({ok: false as const, code: typeof e?.code === 'string' ? e.code : 'body.source-unavailable', reason: 'The carried body could not be fetched and admitted here'}));
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const slow = new Promise<Pulled>(r => { timer = setTimeout(() => r(SLOW), ms); timer.unref?.(); });
+  let timer: ReturnType<typeof setTimeout> | undefined;   // kept ref'd: cleared in finally, and it must hold the loop until the race settles
+  const slow = new Promise<Pulled>(r => { timer = setTimeout(() => r(SLOW), ms); });
   return Promise.race([pulled, slow]).finally(() => clearTimeout(timer));
 }
 /** A resolved carried reference: the body to wear and, when its bytes are elsewhere, the pull to run once ready. */
