@@ -43,7 +43,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger}){
   const available=!!deps.host.engine.assignBodyV1&&!!deps.host.engine.bodyAssignmentProblemV1;
   const prefix=deps.souls.cfg.worldPath?.replace(/\/$/,'')??'';
   const types=available?(deps.souls.cfg.bodyTypes??['humanoid','ceramic','floater','creature']):[];
-  deps.host.engine.configureBodyTypesV1?.(types);
+  deps.host.configureBodyTypesV1(types);
   mountBodyAuthoring(app,prefix,types);
   db.exec(`CREATE TABLE IF NOT EXISTS edge_body_assets_v1(world_id TEXT NOT NULL,asset_id TEXT NOT NULL,descriptor TEXT NOT NULL,content BLOB NOT NULL,PRIMARY KEY(world_id,asset_id)) WITHOUT ROWID;
     CREATE TABLE IF NOT EXISTS edge_body_owners_v1(world_id TEXT NOT NULL,owner TEXT NOT NULL,asset_id TEXT NOT NULL,descriptor TEXT NOT NULL,PRIMARY KEY(world_id,owner,asset_id)) WITHOUT ROWID;`);
