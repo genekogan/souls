@@ -14,7 +14,10 @@ function worldOutcome(ctx, seat, step) {
   const packs = ctx.evidencePacks ?? [], samples = packs.flatMap((p) => (p.samples ?? []).filter((x) => x.lastReceipt?.id === id));
   for (const p of packs) for (const r of p.receipts ?? []) if (r?.id === id) phases.push(r.phase ?? null);
   for (const x of samples) phases.push(x.lastReceipt.phase ?? null);
-  const reached = own.outcome === 'ongoing' || samples.some((x) => !ENDED.includes(x.lastReceipt.phase) && !['walking', 'standing'].includes(x.posture));
+  // the world's end record says where the body was when the receipt ended (a sit replaced while seated was reached)
+  const endedAt = packs.flatMap((p) => (p.receipts ?? []).filter((r) => r?.id === id && r.endedAt?.posture).map((r) => r.endedAt.posture));
+  const reached = own.outcome === 'ongoing' || samples.some((x) => !ENDED.includes(x.lastReceipt.phase) && !['walking', 'standing'].includes(x.posture))
+    || endedAt.some((p) => !['walking', 'standing'].includes(p));
   const packRefs = packs.filter((p) => (p.receipts ?? []).some((r) => r?.id === id) || (p.samples ?? []).some((x) => x.lastReceipt?.id === id)).map((p) => p.requestId);
   if (phases.includes('completed')) return { outcome: 'completed', packRefs };
   const bad = phases.find((ph) => ENDED_BAD.includes(ph)); if (bad) return { outcome: 'failed', why: bad, packRefs };
@@ -25,11 +28,11 @@ function worldOutcome(ctx, seat, step) {
 
 export default {
   id: 'refusal-helps',
-  version: 1,
+  version: 2,
   question: 'When an owner asked for something the world cannot do here (into the closed reading room), did the refusal give a reason and name an offer, and did acting on that offer work?',
   assumptions: [
     'The request is the act call whose words match /reading room/. An offer is any id in the refusal\'s alternatives or did_you_mean.',
-    'Recovery is the seat\'s next act before its next ack whose capability is one of those offer ids; it works when the world shows it completed or its activity reached and held.',
+    'Recovery is the seat\'s next act before its next ack whose capability is one of those offer ids; it works when the world shows it completed or its activity reached and held (in a sample or the receipt\'s end record, endedAt, since v2).',
     'An accepted request is unknown (the template says entry is unavailable, so acceptance needs a look); a refusal with no reason or no offer fails; no act on an offer fails (nothing was recovered).',
   ],
   score(ctx) {

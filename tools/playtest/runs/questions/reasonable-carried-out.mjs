@@ -18,7 +18,10 @@ export function worldOutcome(ctx, seat, step) {
   const packs = ctx.evidencePacks ?? [], samples = packs.flatMap((p) => (p.samples ?? []).filter((x) => x.lastReceipt?.id === id));
   for (const p of packs) for (const r of p.receipts ?? []) if (r?.id === id) phases.push(r.phase ?? null);
   for (const x of samples) phases.push(x.lastReceipt.phase ?? null);
-  const reached = own.outcome === 'ongoing' || samples.some((x) => !ENDED.includes(x.lastReceipt.phase) && !['walking', 'standing'].includes(x.posture));
+  // the world's end record says where the body was when the receipt ended (a sit replaced while seated was reached)
+  const endedAt = packs.flatMap((p) => (p.receipts ?? []).filter((r) => r?.id === id && r.endedAt?.posture).map((r) => r.endedAt.posture));
+  const reached = own.outcome === 'ongoing' || samples.some((x) => !ENDED.includes(x.lastReceipt.phase) && !['walking', 'standing'].includes(x.posture))
+    || endedAt.some((p) => !['walking', 'standing'].includes(p));
   const packRefs = packs.filter((p) => (p.receipts ?? []).some((r) => r?.id === id) || (p.samples ?? []).some((x) => x.lastReceipt?.id === id)).map((p) => p.requestId);
   if (phases.includes('completed')) return { outcome: 'completed', packRefs };
   const bad = phases.find((ph) => ENDED_BAD.includes(ph)); if (bad) return { outcome: 'failed', why: bad, packRefs };
@@ -29,11 +32,11 @@ export function worldOutcome(ctx, seat, step) {
 
 export default {
   id: 'reasonable-carried-out',
-  version: 1,
+  version: 2,
   question: 'When an owner asked for an ordinary thing the world offers, did the world accept the Soul\'s act in the owner\'s own words at once, and carry it out?',
   assumptions: [
     'A request in the owner\'s words is an act call whose capability argument contains a space (not an offer id); the one matching /reading room/ is the expected refusal and is left to refusal-helps.',
-    'Carried out: the world shows the receipt completed, or its activity reached and held (seated, swimming: not walking or standing) before a later request replaced it. Failed, refused, cancelled or interrupted, or replaced before getting there, fails.',
+    'Carried out: the world shows the receipt completed, or its activity reached and held (seated, swimming: not walking or standing) before a later request replaced it, in a world sample or in the receipt\'s own end record (endedAt, since v2). Failed, refused, cancelled or interrupted, or replaced before getting there, fails.',
     'A receipt with no world record after it started is unknown, never a pass. Seat result claims never count.',
   ],
   score(ctx) {

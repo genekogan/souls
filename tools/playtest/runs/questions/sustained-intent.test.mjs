@@ -47,3 +47,9 @@ test('cancel-not-resumed: the cancelled walk ends without arriving and is not st
   assert.equal(cancel.score(ctx(walkThenStop('completed'), ended)).verdict, 'unknown', 'the walk had ended before the stop');
   assert.equal(cancel.score(ctx(walkThenStop(), [])).verdict, 'unknown', 'no end recorded');
 });
+test('errand-kept-through-burst v3: the second step replaced while seated counts as reached', () => {
+  const sent = [card('c0', 5, null), card('c1', 14, null)];
+  const steps = [...errand(rec('r2', 'sit:cottage/bench', 'started')), ackOf('c1', 82)];
+  const packs = [...sent, { requestId: 'later', seat: 'x', channel: 'card', sentAt: iso(200), receipts: [{ id: 'r2', phase: 'replaced', endedAt: { posture: 'seated' } }], samples: [] }];
+  assert.equal(kept.score(ctx(steps, packs)).verdict, 'pass');
+});

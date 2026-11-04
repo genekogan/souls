@@ -40,3 +40,10 @@ test('refusal-helps: a reason, an offer, and a recovery the world carries out', 
   const accepted = [S('act', ['go into the reading room'], rec('r7', 'walk:lab-reading-room', 'started'))];
   assert.equal(helps.score(ctx(accepted)).verdict, 'unknown');
 });
+test('v2: a sit replaced while seated was reached (the receipt\'s end record), even with no sample in between', () => {
+  const steps = [S('act', ['sit on the cottage bench', '--wait', '55'], rec('r8', 'sit:cottage/bench', 'started'))];
+  const seatedEnd = [pack('p', [{ id: 'r8', phase: 'replaced', endedAt: { posture: 'seated' } }], [{ posture: 'walking', lastReceipt: { id: 'r8', phase: 'started' } }])];
+  assert.equal(carried.score(ctx(steps, seatedEnd)).verdict, 'pass');
+  const walkingEnd = [pack('p', [{ id: 'r8', phase: 'replaced', endedAt: { posture: 'walking' } }])];
+  assert.equal(carried.score(ctx(steps, walkingEnd)).verdict, 'fail', 'replaced on the way');
+});

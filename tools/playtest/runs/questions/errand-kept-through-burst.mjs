@@ -14,7 +14,10 @@ function worldOutcome(ctx, seat, step) {
   const packs = ctx.evidencePacks ?? [], samples = packs.flatMap((p) => (p.samples ?? []).filter((x) => x.lastReceipt?.id === id));
   for (const p of packs) for (const r of p.receipts ?? []) if (r?.id === id) phases.push(r.phase ?? null);
   for (const x of samples) phases.push(x.lastReceipt.phase ?? null);
-  const reached = own.outcome === 'ongoing' || samples.some((x) => !ENDED.includes(x.lastReceipt.phase) && !['walking', 'standing'].includes(x.posture));
+  // the world's end record says where the body was when the receipt ended (a sit replaced while seated was reached)
+  const endedAt = packs.flatMap((p) => (p.receipts ?? []).filter((r) => r?.id === id && r.endedAt?.posture).map((r) => r.endedAt.posture));
+  const reached = own.outcome === 'ongoing' || samples.some((x) => !ENDED.includes(x.lastReceipt.phase) && !['walking', 'standing'].includes(x.posture))
+    || endedAt.some((p) => !['walking', 'standing'].includes(p));
   const packRefs = packs.filter((p) => (p.receipts ?? []).some((r) => r?.id === id) || (p.samples ?? []).some((x) => x.lastReceipt?.id === id)).map((p) => p.requestId);
   if (phases.includes('completed')) return { outcome: 'completed', packRefs };
   const bad = phases.find((ph) => ENDED_BAD.includes(ph)); if (bad) return { outcome: 'failed', why: bad, packRefs };
@@ -25,12 +28,12 @@ function worldOutcome(ctx, seat, step) {
 
 export default {
   id: 'errand-kept-through-burst',
-  version: 2,
+  version: 3,
   question: 'When an owner sent chat while a two-step errand was under way, did every errand step still happen in the world, in order and once each, and was every chat message answered?',
   assumptions: [
     'An errand is two or more acts in the owner\'s words (a space in the capability argument) after one ack and before that card\'s result or the next ack, whichever comes first (v2: v1 ran to the result only, so a card left open swallowed later cards\' acts).',
     'The burst is the owner cards for that seat (evidence packs) sent after the errand\'s first act started and before its last act returned. No such card: unknown (the condition did not happen).',
-    'Carried out: completed, or its activity reached and held (seated). Once each: no second accepted act with the same capability inside the errand.',
+    'Carried out: completed, or its activity reached and held (seated), in a world sample or in the receipt\'s own end record (endedAt, since v3: v2 missed a sit replaced while seated when no sample fell between arrival and replacement). Once each: no second accepted act with the same capability inside the errand.',
     'Answered: the world accepted the seat\'s ack of that card. The seat acks its cards one at a time in the order they arrived (the scripted adapter does), so the k-th card the director sent this seat is the k-th id it acked; a count mismatch is unknown (v2: v1 read the evidence pack\'s ackAt, which the director stops tracking when it sends the next card). The delay is reported, not scored.',
   ],
   score(ctx) {
