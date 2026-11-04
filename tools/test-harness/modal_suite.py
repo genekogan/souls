@@ -118,8 +118,8 @@ ORDER = ["V1-types", "V2-build-root", "V2-build-worlds", "V3-harness", "V3-walk"
 # (seconds): V3-mars-engine 421, V3-client-cli 393, V6-souls-r2 286, V3-launcher-unit 214, V4-web 211, V6-lm-two 187,
 # V3-packages 171, V6-party 146, V6-mars-two 127, V3-walk 97, V1-types 70. Group a builds the web twice (prep + V2) and
 # keeps 8 CPU; every other container is 4 CPU / 8 GB. The former small groups b, c, d, e, f, w run as one container "s"
-# (serial sum ~1870 s, i.e. ~31-40 min at 4 CPU) beside 2 V5 shards (~2280 s of serial tests each, --test-concurrency=1,
-# so 4 cores are enough): 4 containers per run instead of 15, wall ~45-50 min instead of ~22 (accepted by the policy).
+# (serial sum ~1870 s, i.e. ~31-40 min at 4 CPU). Four shorter V5 tasks queue under the same three-small-container
+# cap: interrupted tasks lose less work without raising simultaneous resources. Tests remain serial within a task.
 # Every step of ORDER is in exactly one group. Ports differ per V6 step, but each group still runs its steps serially.
 GROUPS = {
     "a": ["V1-types", "V2-build-root", "V2-build-worlds", "V3-harness", "V3-bundle", "V3-packages", "V4-web", "V4-web-baseline",
@@ -131,15 +131,16 @@ GROUPS = {
           "V6-mars-two", "V6-lm-two"],
 }
 LARGE = {"a"}  # groups on the 8 CPU / 16 GB function; all others use 4 CPU / 8 GB
-V5_SHARDS = 2
+V5_SHARDS = 4
+V5_CONTAINERS = 2
 assert sorted(s for g in GROUPS.values() for s in g) == sorted(set(ORDER) - {"V5-server-full", "V5-server-baseline"})
 
 
 # max_containers (lane GATECAP, 2026-10-23; Modal 1.5.2 keyword): the Modal workspace has a 100-container limit.
-# `modal run` makes a fresh ephemeral app per run, so this caps ONE run, not all of them: at most one run's fan-out
-# (group a on run_large; group s + 2 V5 shards on run) in flight, extra inputs (e.g. preemption restarts) queue instead
-# of adding containers. The cross-gate bound is the ledger team/lanes/GATES.inflight.
-MAX_SMALL = len(GROUPS) - len(LARGE) + V5_SHARDS
+# `modal run` makes a fresh ephemeral app per run, so this caps ONE run, not all of them. Keep the existing peak of
+# three small containers plus one large container independent of V5 task count. V5 keeps its two-container ceiling;
+# the other small steps keep one slot. The cross-gate bound is the ledger team/lanes/GATES.inflight.
+MAX_SMALL = 3
 
 
 # single_use_containers: a preempted input is restarted by Modal, and without this it can land on a warm container that
@@ -149,9 +150,20 @@ def run_large(skip: str, server_files: str = "", only: str = "", shard: str = ""
     return suite(skip, server_files, only, shard)
 
 
-@app.function(image=image, cpu=4.0, memory=8192, timeout=4 * 3600, single_use_containers=True, max_containers=MAX_SMALL)
+@app.function(image=image, cpu=4.0, memory=8192, timeout=4 * 3600, single_use_containers=True, max_containers=MAX_SMALL - V5_CONTAINERS)
 def run(skip: str, server_files: str = "", only: str = "", shard: str = "") -> bytes:
     return suite(skip, server_files, only, shard)
+
+
+@app.function(image=image, cpu=4.0, memory=8192, timeout=4 * 3600, single_use_containers=True, max_containers=V5_CONTAINERS)
+def run_v5(skip: str, server_files: str = "", only: str = "", shard: str = "") -> bytes:
+    return suite(skip, server_files, only, shard)
+
+
+def runner_for(name):
+    if name in LARGE:
+        return run_large
+    return run_v5 if name == "v5" or name.startswith("v5-") else run
 
 
 def suite(skip: str, server_files: str, only: str, shard: str) -> bytes:
@@ -217,15 +229,17 @@ def merge(out: str, jobs, results):
         gsuite = os.path.join(gout, "suite")
         try: grows = _rows(os.path.join(gsuite, "SUMMARY.tsv"))
         except Exception as e: problems.append(f"group {name}: no SUMMARY ({e})"); grows = []
-        for keep in ("RUN-METADATA.json", "suite/SUMMARY.tsv", "suite/V0-preflight.log"):
+        for keep in ("RUN-METADATA.json", "suite/SUMMARY.tsv", "suite/V0-preflight.log", "suite/V0-assets.log"):
             src = os.path.join(gout, keep)
             if os.path.exists(src): shutil.move(src, os.path.join(gdir, os.path.basename(keep)))
         for f in os.listdir(gout):
             if f.startswith("install-") or f == "historical-inputs.pack.json":
                 dst = final if name == jobs[0][0] else gdir
                 shutil.move(os.path.join(gout, f), os.path.join(dst, f))
-        if name == jobs[0][0] and os.path.exists(os.path.join(gdir, "V0-preflight.log")):
-            shutil.copy(os.path.join(gdir, "V0-preflight.log"), os.path.join(suite, "V0-preflight.log"))
+        if name == jobs[0][0]:
+            for diagnostic in ("V0-preflight.log", "V0-assets.log"):
+                if os.path.exists(os.path.join(gdir, diagnostic)):
+                    shutil.copy(os.path.join(gdir, diagnostic), os.path.join(suite, diagnostic))
         wanted = set(only.split(","))
         for step, exit_, secs, log in grows:
             if step not in wanted and not (step == "V8-history-boot" and exit_ == "SKIP" and "V8-history-boot" in wanted):
@@ -322,8 +336,8 @@ def main(out: str, skip: str = "V7,V8", server_files: str = "", only: str = ""):
         raise ValueError(f"--only names unknown steps: {only}")
     jobs = plan(server_files, only)
     t0 = time.time()
-    print(f"fan-out: {len(jobs)} containers: {', '.join(j[0] for j in jobs)}")
-    calls = [(run_large if name in LARGE else run).spawn(skip, server_files, only, shard) for name, only, shard in jobs]
+    print(f"fan-out: {len(jobs)} tasks, at most {MAX_SMALL + len(LARGE)} concurrent containers (V5: {V5_CONTAINERS}): {', '.join(j[0] for j in jobs)}")
+    calls = [runner_for(name).spawn(skip, server_files, only, shard) for name, only, shard in jobs]
     results = []
     for call in calls:  # in job order; a failed container is an exception result, which merge() reports and fails closed
         try: results.append(call.get())

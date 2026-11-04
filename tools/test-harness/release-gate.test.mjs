@@ -369,7 +369,11 @@ const receiptOf = out => JSON.parse(readFileSync(join(out, 'receipt.json'), 'utf
 
 function collisionFixture(t) {
   const repo = gateRepo(t);
-  repo.commit('tools/test-harness/modal_suite.py', readFileSync(new URL('./modal_suite.py', import.meta.url), 'utf8'));
+  // This recovery exception belongs to the original collector, not whichever collector is current.
+  // historical-inputs.mjs transports this public producer file into source-archive test runs.
+  const collector = execFileSync('git', ['show', '5dc672b8d53607e79f8d16eb9ec24c616f238e37:tools/test-harness/modal_suite.py'],
+    { cwd: fileURLToPath(new URL('../../', import.meta.url)), encoding: 'utf8' });
+  repo.commit('tools/test-harness/modal_suite.py', collector);
   repo.commit('apps/server/src/one.test.ts', '// first server file\n');
   const ref = repo.commit('apps/server/src/two.test.ts', '// second server file\n'), dir = join(repo.dir, '.lane/collision');
   const meta = { schemaVersion: 1, sourceSha: ref, harnessRef: ref, harnessTree: gitIn(repo.dir, 'rev-parse', `${ref}:tools/test-harness`),
