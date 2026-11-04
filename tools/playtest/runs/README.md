@@ -39,7 +39,7 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 | `world.genesis` or `world.snapshot` | scenario's | World source: a genesis template or a frozen compiler snapshot (`arena/snapshot-seed.mjs`), a path under the server root. Its sha256 is in the receipt (`spec.effective.world.source`). |
 | `setup` | none | `{batches: [file or {id, ops, note}], maxWallSec: 120}`: god-edit batches applied after provision and before any seat (see Setup). |
 | `durationSec` | scenario's | Play duration override. |
-| `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000, mode: "cameras", record: null, freeComposition: null}` | `mode`: `cameras` (browser cameras, the default), `passive` (world-truth evidence packs, no browser) or `off`. Bounded observer check (import plus one browser launch and close) in `cameras` mode; failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras`: `wide` and/or `free` beside the per-seat follow cameras. `record`: `true` or camera names (`wide`, `free`, `follow` for every seat, or a seat id). See Recording. |
+| `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000, mode: "cameras", record: null, recordSize: "compact", freeComposition: null}` | `mode`: `cameras` (browser cameras, the default), `passive` (world-truth evidence packs, no browser) or `off`. Bounded observer check (import plus one browser launch and close) in `cameras` mode; failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras`: `wide` and/or `free` beside the per-seat follow cameras. `record`: `true` or camera names (`wide`, `free`, `follow` for every seat, or a seat id). `recordSize`: `compact`, `viewport` or `{width, height}` (needs `record`). See Recording. |
 | `limits` | `{maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000}` | Hard wall limit for the whole run, controller count, per-resource release wait. |
 | `controllers.allowLiveModels` | `false` | A scenario whose seats, persona director or model review need claude/codex is refused unless this is `true`. Set it only with explicit authorization for live models. |
 | `diagnostics` | none (off) | `{trace: true | [seat ids]}`: passive soul-trace capture for those seats (see Diagnostics). |
@@ -192,6 +192,14 @@ monotonic open/close, duration, page errors, bytes and sha256, plus the run's pr
 effective-spec hashes, source commit, world slug and port). `playtest/cameras.json` lists every camera that was asked
 for, including those that failed to open. A camera that fails is recorded and the run goes on without it.
 
+Recording size (`observer.recordSize`, #802). Playwright's recorder encodes VP9 at a fixed 25 fps with a target bitrate
+of 1000 kbps × max(1, w·h / (800·450)); frame rate and bitrate are not exposed, the recorded frame size is. `compact`
+(the default) scales the recording to fit 800×450 pixels' worth of area with the viewport's aspect (758×474 for a
+1280×800 camera), where the target is its 1000 kbps floor. `viewport` records at the viewport size, the earlier quality
+(about 2840 kbps at 1280×800). `{width, height}` sets the size outright. The page keeps its viewport; only the video is
+scaled. Measured on the hamlet trio, five cameras: `compact` 7.3–7.9 MB per camera-minute; `viewport` 18.8–22.3 MB. Each
+sidecar records `encoding` (setting, size, fps, target kbps) and `mbPerMin`; the package index shows both.
+
 Every close path finalizes the recordings: the normal close, a failed run and a cancelled run's ledger release. A
 recording closed before play ended is labelled `partial`; a camera that never arrived keeps its partial video with
 `closedBy: "open-failed"`. The receipt's `recordings` summarizes them. Recordings are private run evidence like the rest
@@ -213,8 +221,8 @@ Offline, after the run (reads the run folder, writes only under `<run>/derived/`
   selecting it, then publish it with `tools/proof/upload.mjs` (the PR's proof path).
 
 Observer cost: `observer.mode` `off` / `passive` / `cameras` separates passive evidence capture from browser cameras;
-within `cameras`, video encoding runs in Playwright's own ffmpeg processes. Recording a 1280x800 camera takes about
-20 MB per camera-minute. Compare arms with two repeats each on a quiet machine (`docs/testing/playtests.md`).
+within `cameras`, video encoding runs in Playwright's own ffmpeg processes. A recorded camera takes under 8 MB per
+camera-minute at the default `compact` size and about 21 MB at `viewport` size (1280x800). Compare arms with two repeats each on a quiet machine (`docs/testing/playtests.md`).
 
 ## Scenario runner hooks
 

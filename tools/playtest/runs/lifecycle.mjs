@@ -184,7 +184,7 @@ export function summarizeRecordings(playtestDir) {
   const list = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.webm.json')).sort().map((f) => readJson(join(dir, f), null)).filter(Boolean) : [];
   const cameras = readJson(join(playtestDir, 'cameras.json'), null);
   return { dir, count: list.length, partial: list.filter((r) => r.partial).length, bytes: list.reduce((n, r) => n + (r.bytes ?? 0), 0),
-    items: list.map((r) => ({ camera: r.camera, file: r.file, bytes: r.bytes, sha256: r.sha256, durationSec: r.durationSec, partial: r.partial, ...(r.closedBy ? { closedBy: r.closedBy } : {}), ...(r.error ? { error: r.error } : {}), requested: r.requested?.kind, actual: r.actual?.mode ?? null, pageErrors: r.pageErrors?.length ?? 0 })),
+    items: list.map((r) => ({ camera: r.camera, file: r.file, bytes: r.bytes, sha256: r.sha256, durationSec: r.durationSec, ...(r.encoding ? { encoding: r.encoding, mbPerMin: r.mbPerMin ?? null } : {}), partial: r.partial, ...(r.closedBy ? { closedBy: r.closedBy } : {}), ...(r.error ? { error: r.error } : {}), requested: r.requested?.kind, actual: r.actual?.mode ?? null, pageErrors: r.pageErrors?.length ?? 0 })),
     cameras: cameras?.cameras ?? null };
 }
 
