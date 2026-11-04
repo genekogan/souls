@@ -38,8 +38,10 @@ test('sampled authored dance fades and reverse scrubs without accumulating pose 
  const end=floaterPose('h',{...ground,state:{}},body,100,.05);assert.deepEqual(at(100),end,'no exit jump');
 });
 
-test('world type policy is authoritative for direct/travel assignment and survives snapshots',async()=>{
- const f=await marsFactory(GREEN_FIELD_WORLD),e=f.create(f.genesis('body-policy'));assert.ok(e instanceof MarsEngine);e.spawnHuman({id:'h',label:'Visitor',soul:'s'});e.configureBodyTypesV1(['humanoid']);
- assert.equal(e.bodyAssignmentProblemV1('h',body),'body.world-policy');assert.equal(e.assignBodyV1('h',body),false);assert.equal(e.world.entities.h.body,undefined);
- const restored=f.restore(e.snapshot());assert.equal(restored.bodyAssignmentProblemV1!('h',body),'body.world-policy');
+test('world type policy refuses live admission without entering replayed state or re-judging logged assignments',async()=>{
+ const f=await marsFactory(GREEN_FIELD_WORLD),e=f.create(f.genesis('body-policy'));assert.ok(e instanceof MarsEngine);e.spawnHuman({id:'h',label:'Visitor',soul:'s'});
+ const before=e.stateHash();e.configureBodyTypesV1(['humanoid']);assert.equal(e.stateHash(),before,'policy is mounted after boot replay, so it cannot be part of the clock-frontier hash');
+ assert.equal(e.bodyAssignmentProblemV1('h',body),'body.world-policy');assert.equal(e.world.entities.h.body,undefined);
+ const restored=f.restore(e.snapshot());restored.configureBodyTypesV1!(['humanoid']);assert.equal(restored.bodyAssignmentProblemV1!('h',body),'body.world-policy');
+ assert.equal(restored.assignBodyV1!('h',body),true,'an assignment already in the log folds under a later, narrower policy');assert.equal(restored.world.entities.h.body?.model,'verdelis');
 });
