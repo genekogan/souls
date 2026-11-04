@@ -75,13 +75,16 @@ async function getJ(url, { headers = {}, ms = 5000 } = {}) {
 const LAUNCHER_ENV = { SIM_UNWATCHED_PACE: '1', SIM_WORLD_IDLE_EXIT_MIN: '0', SIM_PREWARM: '0' };
 const LAUNCHER_ARGS = (ldata) => ['--port', String(PORT), '--data', ldata, '--range', RANGE, '--public-origin', `http://localhost:${PORT}`, '--world-heap-mb', String(HEAP_MB),
   '--mars-web', MARS_WEB, '--eager', String(FIXTURES.length), '--max-running', String(FIXTURES.length), '--sleep-ms', '0'];
-async function bootLauncher(dir) {
+async function bootLauncher(dir, run) {
+  // a launcher already on the port would silently take the run's place: refuse instead
+  if ((await getJ(`${BASE}/__sim/healthz`, { ms: 2000 })).status !== 0) throw new Error(`port ${PORT} is already serving; stop that launcher or pass --port`);
   const ldata = join(dir, 'launcher'); mkdirSync(ldata, { recursive: true });
   const rows = FIXTURES.map((f) => ({ slug: f.slug, name: `Meetup ${f.slug}`, template: f.template, port: null, createdAt: 0, unlisted: true, worldHeapMb: HEAP_MB }));
   writeFileSync(join(ldata, 'worlds.json'), JSON.stringify({ schema: 'world-launcher-registry/1', worlds: rows }, null, 2) + '\n');
   // no Eyes, no model keys, no secrets reach the launcher (its children never inherit the rest anyway)
   const env = { ...process.env, ...LAUNCHER_ENV }; for (const k of Object.keys(env)) if (k.startsWith('EDGE_EYES') || /KEY|TOKEN|SECRET/.test(k)) delete env[k];
   const child = spawn(process.execPath, [join(ROOT, 'tools/world-launcher/launcher.mjs'), ...LAUNCHER_ARGS(ldata)], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  run.launcher = { child, ldata };   // owned from now on: an interrupt during boot stops it too
   child.stdout.on('data', (b) => appendFileSync(join(dir, 'launcher.log'), b)); child.stderr.on('data', (b) => appendFileSync(join(dir, 'launcher.log'), b));
   const t0 = mono(), up = new Map();
   while (up.size < FIXTURES.length && mono() - t0 < 900_000) {
@@ -90,12 +93,12 @@ async function bootLauncher(dir) {
     if (up.size < FIXTURES.length) await sleep(1000);
   }
   if (up.size < FIXTURES.length) throw new Error(`worlds not up after 15 min: ${FIXTURES.filter((f) => !up.has(f.slug)).map((f) => f.slug).join(', ')}`);
-  return { child, ldata, bootS: Object.fromEntries(up) };
+  return Object.assign(run.launcher, { bootS: Object.fromEntries(up) });
 }
 function adminRate(ldata, slug) {   // the configured admin rate, from the world's own database (read-only)
   const py = "import sqlite3,sys\nc=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True)\nprint(','.join(str(r[0]) for r in c.execute('select clock_rate from worlds')))";
   const v = sh('python3', ['-c', py, join(ldata, 'worlds', slug, 'sim.db')]);
-  const rates = (v ?? '').split(',').map(Number).filter(Number.isFinite);
+  const rates = (v ?? '').split(',').filter((x) => x.trim() !== '').map(Number).filter(Number.isFinite);
   return rates.length === 1 ? rates[0] : null;
 }
 async function launcherView() {
@@ -238,7 +241,7 @@ async function realBrowser(run) {   // the one real-browser path: world 0's page
     // the playtest harness's own resolver (a global playwright, else mars/viewer's) and Chromium args
     const pf = await import(pathToFileURL(join(ROOT, 'tools/playtest/lib/platform.mjs')).href), pw = pf.resolvePlaywright(); pf.browsersPath();
     if (!pw) throw new Error('no Playwright found (tools/playtest/lib/platform.mjs resolvePlaywright)');
-    const b = run.browser = await pw.chromium.launch({ headless: true, args: pf.launchArgs({ gpu: 'swiftshader' }).args }), page = await b.newPage({ viewport: { width: 1280, height: 800 } });
+    const b = run.browser = await pw.chromium.launch({ headless: true, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false, args: pf.launchArgs({ gpu: 'swiftshader' }).args }), page = await b.newPage({ viewport: { width: 1280, height: 800 } });
     const st = run.browserStats = { ws: 0, frames: 0, bytes: 0, errors: 0, shots: [] };
     page.on('websocket', (ws) => { st.ws++; ws.on('framereceived', (f) => { st.frames++; st.bytes += f.payload?.length ?? 0; }); });
     page.on('pageerror', () => { st.errors++; });
@@ -281,7 +284,7 @@ async function oneRun(profile, rep) {
   process.once('SIGINT', onSig); process.once('SIGTERM', onSig);
   try {
     mark('boot');
-    run.launcher = await bootLauncher(dir);
+    await bootLauncher(dir, run);
     const kids = () => children(run.launcher.ldata), ownPids = () => FIXTURES.map((f) => kids()[f.slug]?.pid).filter(Boolean);
     const rates = Object.fromEntries(FIXTURES.map((f) => [f.slug, adminRate(run.launcher.ldata, f.slug)]));
     log(`${tag}: ten worlds up (${JSON.stringify(run.launcher.bootS)}); admin rates ${JSON.stringify(rates)}`);
