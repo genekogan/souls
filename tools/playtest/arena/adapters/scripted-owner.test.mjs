@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateScript, classify, matchRule, stepOutcome, stepArgs, turn, renderChat } from './scripted-owner.mjs';
+import { validateScript, classify, matchRule, stepOutcome, turn, renderChat } from './scripted-owner.mjs';
 import { brief } from '../../../world-launcher/soul/eden.mjs';
 import { ADAPTERS } from '../seat.mjs';
 import { providerPolicy } from '../../lib/provider-policy.mjs';
@@ -21,7 +21,7 @@ const folder = () => { const d = mkdtempSync(join(tmpdir(), 'scripted-owner-'));
 const calls = (d) => readFileSync(join(d, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const SCRIPT = { rules: [
   { match: 'orchard', ack: 'Heading to the orchard', do: [['act', 'walk to the orchard']], close: 'open' },
-  { match: 'pond', supersede: 'Owner changed the plan', do: [['act', 'walk to the pond', '--wait', '90', '--json'], ['say', 'At the pond']], result: 'At the pond' },
+  { match: 'pond', supersede: 'Owner changed the plan', do: [['act', 'walk to the pond', '--wait', '90'], ['say', 'At the pond']], result: 'At the pond' },
   { match: 'swim', do: [['act', 'swim across']] },
 ] };
 const wake = (msgs) => wakeText('node eden.mjs listen', JSON.stringify({ messages: msgs, next: 'ack each' }));
@@ -62,10 +62,8 @@ test('classify reads onboarding, nudges, wakes and typed chat from the harness t
   assert.equal(stepOutcome({ code: 0, stdout: JSON.stringify({ accepted: true, waited: '60s', receipt: { error: 'HTTP 503' } }) }, { waited: true }).ok, false, '--json form of the same error');
   const finishedLong = brief({ accepted: true, waited: '20s', receipt: { ...walking, phase: 'completed', done: 'walked to the hall.' }, ownerMessages: owner });
   assert.equal(stepOutcome({ code: 0, stdout: JSON.stringify(finishedLong) }, { waited: true }).ok, false, 'even a finished sentence without its receipt is unconfirmed');
-  assert.equal(stepOutcome({ code: 0, stdout: JSON.stringify({ accepted: true, waited: '20s', receipt: { ...walking, phase: 'completed' }, ownerMessages: owner }) }, { waited: true }).ok, true, 'the --json output keeps the receipt');
+  assert.equal(stepOutcome({ code: 0, stdout: JSON.stringify({ accepted: true, waited: '20s', receipt: { ...walking, phase: 'completed' }, ownerMessages: owner }) }, { waited: true }).ok, true, 'output that keeps its receipt (short brief, or --json in a script) counts');
   assert.equal(stepOutcome({ code: 0, stdout: JSON.stringify({ ...cut, events: [{ kind: 'activity.observed', action: { status: 'executing' } }] }) }, { waited: true }).ok, false, 'activity not tied to this receipt does not count');
-  assert.deepEqual(stepArgs(['act', 'walk', '{}', '--wait', '30']), ['act', 'walk', '{}', '--wait', '30', '--json']);
-  assert.deepEqual(stepArgs(['act', 'wave']), ['act', 'wave']);
   assert.equal(stepOutcome({ code: 0, stdout: 'walk completed' }, { waited: true }).ok, false, 'unparsed output is not a completion');
 });
 
@@ -77,7 +75,7 @@ test('a redirection closes the open request as failed, then serves the new one t
   const t2 = await turn({ cwd: d, text: wake([{ id: 'm2', text: 'change of plan: the pond' }]), script: SCRIPT });
   assert.deepEqual(calls(d), [
     ['ack', 'm1', 'Heading to the orchard'], ['act', 'walk to the orchard'],
-    ['result', 'm1', 'failed', 'Owner changed the plan'], ['ack', 'm2', 'On it.'], ['act', 'walk to the pond', '--wait', '90', '--json'], ['say', 'At the pond'], ['result', 'm2', 'done', 'At the pond'],
+    ['result', 'm1', 'failed', 'Owner changed the plan'], ['ack', 'm2', 'On it.'], ['act', 'walk to the pond', '--wait', '90'], ['say', 'At the pond'], ['result', 'm2', 'done', 'At the pond'],
   ]);
   assert.deepEqual(t2.usage, { inputTokens: 0, cachedTokens: 0, cacheCreationTokens: 0, outputTokens: 0, costUsd: 0 });
   assert.equal(t2.toolCalls.length, 5);
@@ -116,7 +114,7 @@ test('a turn cut short before its result leaves the card unhandled, so re-delive
 const a = process.argv.slice(2); appendFileSync('calls.jsonl', JSON.stringify(a) + '\\n');
 if (a[0] === 'act' && !process.env.FAST) await new Promise((r) => setTimeout(r, 5000));
 console.log(JSON.stringify(a[0] === 'act' ? { accepted: true, receipt: { id: 'r1', phase: 'completed' } } : { ok: true }));`);
-  const pond = { rules: [{ match: 'pond', do: [['act', 'walk to the pond', '--wait', '90', '--json']], result: 'At the pond' }] };
+  const pond = { rules: [{ match: 'pond', do: [['act', 'walk to the pond', '--wait', '90']], result: 'At the pond' }] };
   const t1 = await turn({ cwd: d, text: wake([{ id: 'm1', text: 'the pond' }]), script: pond, maxWallSec: 1 });
   assert.equal(t1.timedOut, true);
   const st = join(d, '.scripted-owner.json');

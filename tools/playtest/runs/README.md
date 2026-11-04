@@ -74,9 +74,9 @@ entry with `command` is refused at validation; end a run by cancelling it.
 `scripted-owner` (`arena/adapters/scripted-owner.mjs`) is a model-free seat adapter: it plays a Soul only through the
 world's served `eden.mjs` in the seat folder. Onboarding fetches the CLI from the world and runs `register`, `create` and
 `status`; owner cards reach it through the harness wake loop's `listen`; it answers each with `ack`, the matching rule's
-`eden.mjs` steps and `result done|failed` from those steps' real outcome. A `--wait` step runs with `--json` so its
-receipt is always in the output, and counts as done only when that receipt completed or the world shows its activity
-under way; a missing or unreadable receipt is a failure. Rules are matched in order by a
+`eden.mjs` steps and `result done|failed` from those steps' real outcome. A `--wait` step counts as done only when its
+receipt completed or the world shows that receipt's activity under way; output without a readable receipt (the brief
+form drops it past 600 characters) is a failure, never a claimed success. Rules are matched in order by a
 case-insensitive regular expression on the card text; `close: "open"` leaves a request open while its activity
 continues, and `supersede` closes requests still open as failed when a later rule fires (an owner redirection). It has
 no provider and no cost, and its transcript renders like a model seat's. Live casts stay on `playtest.mjs direct` and
