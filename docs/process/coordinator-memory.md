@@ -50,6 +50,10 @@ transcript indefinitely. On a normal stop, mark handoff-ready only after documen
 
 A fresh coordinator:
 
+During orientation-only onboarding, perform the reads below without claiming ownership or advancing execution.
+Report the recovered state and wait for Gene's agenda and instruction to begin; defer step 4's ownership update
+until execution is authorized. Do not treat an old `next_action` or saved agenda as permission to perform it.
+
 1. Reads repository rules, local bootstrap, manifest and state; reads only the referenced recent decisions.
 2. Confirms the outgoing coordinator stopped or handed off. Age alone is not permission to take over. If uncertain,
    inspect liveness through available tools; keep contested resources untouched while resolving ownership.

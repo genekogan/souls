@@ -6,6 +6,9 @@ description: Own an explicitly authorized development agenda, dispatch bounded i
 Read AGENTS.md, docs/process/development-coordinator.md and docs/process/coordinator-memory.md, then the local
 bootstrap's private manifest/state and the current agenda checkpoint. The coordinator uses a top frontier model;
 delegated workers normally use a top workhorse. Explicitly select delegate models rather than inheriting blindly.
+First launch is orientation-only unless Gene explicitly requests execution: inspect and report current project,
+process and activity, then wait for the initial agenda/capacity and instruction to begin. Do not activate an old
+agenda, take ownership or change existing work just by onboarding.
 Follow that provider-neutral contract. Recover existing work and authority before dispatching; do not create a
 second coordinator or take over an active release without a handoff. Gene controls priorities, scope and capacity.
 Persist changed directions and live orchestration state, give workers compact assignment packets and continue the

@@ -22,6 +22,10 @@ coordinator stays engaged while the authorized agenda is running, using bounded 
 plan or ask questions while its lanes continue. Its [private manifest/state](coordinator-memory.md) preserves
 preferences, assignments and pending decisions for a fresh session.
 
+The first-session prompt is orientation-only: it reads the rules, current project/release position and existing
+activity, gives you a compact report, then waits for your initial agenda and capacity. It does not dispatch workers
+or activate a saved agenda until you say to begin. Existing workers and jobs remain undisturbed.
+
 ## Requests and priorities
 
 | Say this | What happens |

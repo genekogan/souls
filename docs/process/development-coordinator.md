@@ -9,6 +9,16 @@ This is a role followed by an active session, not a scheduler or a new service. 
 
 ## Start or resume
 
+First launch is **orientation-only** unless Gene explicitly requests execution in that session. Read the rules and
+current project/process checkpoints, then inspect the status of existing work through read-only queries. Summarize
+what is live, merged but unreleased, in progress or waiting; identify existing workers, jobs, CI, release activity,
+owners and decisions, distinguishing observations from stale reports or unknown liveness. Use a bounded overview,
+not a new exhaustive audit. Do not claim ownership, launch or resume workers/goals, edit code or tickets, merge,
+deploy, or stop/restart existing activity during onboarding. Leave an in-flight owner's work undisturbed and surface
+urgent concerns. Report where the project stands, then wait for Gene's initial agenda, capacity and instruction to
+begin. A recorded agenda is context, not automatic activation. This onboarding stop is distinct from routine
+milestone pauses after execution has been authorized.
+
 Read AGENTS.md, these process documents and the private local bootstrap when available. Recover the durable
 manifest/state using [coordinator memory](coordinator-memory.md); inspect current main, open claims/PRs and the
 existing coordinator checkpoint. Confirm whether another coordinator or release owner is active before taking over.
@@ -132,22 +142,18 @@ or capability, report that specific blocker and stop dispatch instead of manufac
 
 ## Fresh-session starter
 
-Paste this from the repository root, adding your current priorities:
+Paste this from the repository root. It onboards the coordinator without authorizing execution:
 
 > Act as Souls development coordinator on a top frontier model. Read AGENTS.md, the private local bootstrap if
 > present, docs/process/development-coordinator.md, coordinator-memory.md in that directory and the owner playbook.
-> Recover the private manifest/current state, agenda, active assignments, PRs and release ownership;
-> do not duplicate workers or restart existing jobs. Treat my priorities below as the authorized agenda.
-> Create or resume a bounded goal for that agenda if supported. Honor the recorded worker ceiling, or agree one
-> if none exists, within actual capacity and budget rules. Use workhorse delegates by default. Choose independent
-> lanes, give each the documented assignment packet and carry issues through reviewed PRs. Queue qualified
-> merges within repository rules; preserve maintainer approvals and existing release authority/gate limits.
-> Intake my new requests and persist changed priorities and preferences. Ask only for missing decisions,
-> access or material scope expansion; safely park decision-blocked tasks and keep independent work moving.
-> Persist state and changed preferences for the next session. Give me a compact initial
-> Now / Next / Needs Gene report, then execute. No scheduled agents or paid API fallback.
->
-> Priorities: [name the issues or outcomes and exclusions here].
+> This first turn is orientation-only. Recover the private manifest/current state and inspect existing issue/PR,
+> worker, job, CI and release status using read-only queries. Explain the project's purpose and operating rules,
+> where development/release work currently stands, what is running or waiting, and what is uncertain or needs me.
+> Use existing summaries and targeted checks, not an exhaustive audit. Distinguish observed facts from old reports.
+> Do not launch or resume workers/goals, take over ownership, modify code or tickets, merge, deploy, or interfere
+> with existing activity. An old agenda is context, not permission to act. Give me a compact orientation report,
+> then stop and wait for me to set the initial agenda, capacity and instruction to begin.
 
-The priority placeholder must be filled or recovered from an existing authorized agenda before dispatch. A fresh
-session with no agenda should inventory and propose the next bounded batch, not consume the entire backlog.
+After Gene authorizes execution, record the agreed agenda and capacity, reconcile ownership and follow the dispatch
+loop above. An explicit migration request to resume a particular agenda may authorize this directly; the starter
+prompt itself does not.
