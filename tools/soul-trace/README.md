@@ -65,7 +65,8 @@ owner message delivered with it; it ends at `turn/completed`. Tool items (`item/
 types) are `host.tool` records of their turn. The runtime runs no CLI process, so a managed episode reads delivery →
 turn start → turn end ("host turn to its decision"); tool items are counted, not placed on the gap. Limits: an owner
 message delivered by `steer` into a running turn is not linked to it (one `for` per turn); a managed act carries no
-`for`, so the readout shows it with unknown origin; the tap's 2000-record cap per process bounds a long run.
+`for`, so the readout shows it with unknown origin; the tap's 2000-record cap per process bounds a long run. At shutdown the runtime waits at most 2 s for the trace queue; what a stalled sink has not written is counted as
+dropped and nothing more is written synchronously.
 
 ## Inspector (#624)
 

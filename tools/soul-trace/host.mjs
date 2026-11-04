@@ -53,6 +53,8 @@ export function hostRecorder({file, now = Date.now, mono = () => performance.now
     spawn: ({tool, when} = {}) => write('host.spawn', {tool: ref(tool)}, when),
     /** Environment for the spawned CLI so its proc.start names the turn and tool (explicit link). */
     env: ({turn, tool} = {}) => prune({SOUL_TRACE_TURN: ref(turn), SOUL_TRACE_TOOL: ref(tool)}),
+    /** Queued mode: records queued or in flight, not yet written. */
+    get pending() { return sink ? sink.queued + sink.inFlight : 0; },
     /** Queued mode: resolves when everything queued is written (never rejects). */
     drain: () => sink?.drain() ?? Promise.resolve(),
     /** Queued mode: writes what is still queued synchronously; later records are dropped. */
