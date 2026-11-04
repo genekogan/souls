@@ -13,8 +13,9 @@
 //             `${SIM_PROOF_PUBLIC_URL || SIM_PROOF_UPLOAD_URL}/pr-<n>/<file>`. For a future CDN endpoint.
 //
 // An existing name is never overwritten: a re-take gets `-2`, `-3`, ... so earlier (failed) takes stay linkable.
-// With --proof, each uploaded clip's or image's url is written into proof.json `media[]`, and any other file's (logs,
-// JSON) into `files[]` (matched by file name; new media get an entry to complete), then proof.json itself is uploaded last and its link printed: that is the link for the PR.
+// With --proof, clip and image urls are written into proof.json `media[]` and other files' (logs, JSON) into `files[]`,
+// matched by file name (new media get an entry to complete). Then proof.json itself is uploaded last and its link
+// printed: that is the link for the PR.
 //
 // Inline previews: GitHub serves release assets as downloads, so an mp4 link never plays in the PR. For each video,
 // ffmpeg makes `<clip>.preview.gif` beside it (the first --preview-seconds, default 6, from --preview-start, default 0;
