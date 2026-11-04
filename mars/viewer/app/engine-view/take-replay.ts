@@ -19,7 +19,7 @@ import type { Vec3 } from '../../engine/core/math.ts';
 import type { Entity, WorldState } from '../../engine/world/types.ts';
 import type { SpatialScene } from '../../engine/spatial/types.ts';
 import {carryContactWeight, type CarryContact} from '../../engine/carry/contact.ts';
-import { def } from '../../engine/world/catalog.ts';
+import { CATALOG, def } from '../../engine/world/catalog.ts';
 import { progressiveContributor } from '../../engine/construction/contributor.ts';
 import {waterTransitions,type WaterTransition} from './water-transition.ts';
 import { isPlywood } from '../../engine/construction/deck.ts';
@@ -224,6 +224,9 @@ export class TakePeople {
     const physics = this.take.finalState.entityPhysicsV1 as {assets?: Record<string, import('../../engine/world/catalog.ts').AssetDef>} | undefined;
     const handling = Object.fromEntries(Object.entries(physics?.assets ?? {}).flatMap(([id, asset]) => asset.capabilities?.fixtureCarry ? [[id, asset.capabilities.fixtureCarry.handling]] : []));
     this.humans.setFixtureHandling({...handling, ...this.take.fixtureCarryHandlingV1});
+    // PC03 (#682): a recorded loose-material transport is a library def the native catalog does not know; register its
+    // adapted asset (observation only: the replay reads its size and grips to pose the carriers' hands)
+    for (const [id, asset] of Object.entries(this.take.transportAssetsV1 ?? {})) if (!CATALOG[id]) CATALOG[id] = structuredClone(asset);
     this.indexActs();
     this.waterTransition=waterTransitions(this.take);
     this.waterHistoryKey='';

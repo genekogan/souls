@@ -55,12 +55,14 @@ export function viewerChunk<T>(chunk: T): T {
   const physics = _omit as {assets?: Record<string, import('../../../mars/viewer/engine/world/catalog.ts').AssetDef>};
   const records = state.entities as Record<string, {def:string}> | undefined;
   const handling: Record<string, import('../../../mars/viewer/engine/world/catalog.ts').Handling> = {};
+  const transports: Record<string, import('../../../mars/viewer/engine/world/catalog.ts').AssetDef> = {};
   for (const id of Object.keys(c.take?.tracks ?? {})) {
     const e = records?.[id] ?? c.take?.entities0?.[id];
     const a = e && physics.assets?.[e.def], h = a ? a.capabilities?.fixtureCarry?.handling ?? (isLooseCarryAsset(a) ? a.handling : undefined) : undefined;
     if (e && h) handling[e.def] = h;
+    if (e && a && isLooseCarryAsset(a)) transports[e.def] = a;
   }
-  return { ...c, take: { ...c.take, finalState: rest, ...(Object.keys(handling).length ? {fixtureCarryHandlingV1: handling} : {}) } } as T;
+  return { ...c, take: { ...c.take, finalState: rest, ...(Object.keys(handling).length ? {fixtureCarryHandlingV1: handling} : {}), ...(Object.keys(transports).length ? {transportAssetsV1: transports} : {}) } } as T;
 }
 /** P2 (E-life): an HTTP take history reply (/v1/takes, /v1/take) as the live stream sends it, without each chunk's static
  *  physics; `full` (the `?physics=1` query) keeps the canonical chunks for tools that replay from them. */
