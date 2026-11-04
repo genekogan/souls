@@ -56,8 +56,8 @@ export function marsWebDir(serverRoot, { env = process.env, exists = existsSync 
   return cands.find((d) => exists(join(d, 'modular/humanoid/kit.json'))) ?? join(root, '.lane/mars-web');
 }
 
-/** startWorld({serverRoot, slug, port, genesis, dataDir, log, fresh}) → {base, pid, build, healthz, child, dataDir} */
-export async function startWorld({ serverRoot, slug, port, genesis, snapshot, dataDir, log, fresh = true, kind = 'dev', bootTimeoutMs = 900000, natives = false }) {
+/** startWorld({serverRoot, slug, port, genesis, dataDir, log, fresh, onSpawn}) → {base, pid, build, healthz, child, dataDir} */
+export async function startWorld({ serverRoot, slug, port, genesis, snapshot, dataDir, log, fresh = true, kind = 'dev', bootTimeoutMs = 900000, natives = false, onSpawn = null }) {
   assertKind(kind);
   const root = resolve(serverRoot);
   if (!existsSync(join(root, 'apps/server/src/main.ts'))) throw new Error(`no server under ${root}`);
@@ -80,6 +80,7 @@ export async function startWorld({ serverRoot, slug, port, genesis, snapshot, da
   const out = log ? openSync(resolve(log), 'a') : 'ignore';
   const child = spawn(process.execPath, ['apps/server/src/main.ts'], { cwd: root, env: worldEnvironment, stdio: ['ignore', out, out], detached: true });
   child.unref();
+  onSpawn?.(child); // an owning lifecycle (tools/playtest/runs/) records the process before boot, so a cancel during boot can stop it
   const t0 = Date.now();
   let h = null;
   while (Date.now() - t0 < bootTimeoutMs) {
