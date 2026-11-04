@@ -12,6 +12,7 @@
 // child verbs. A verb with no floater among its params is not this module's business: 'works' (humanoid).
 // Pure and deterministic: no Runtime, no registry import (the table is checked against it in tests).
 import type { Body } from '../world/types.ts';
+import {hasBodyDance} from './motion.ts';
 import { creatureOf } from './creatures.ts';
 
 /** Ground-world swimming verbs, judged by body (creatures that swim) rather than by the table. */
@@ -204,6 +205,10 @@ export function admitFloaters(verb: string, params: unknown, bodyOf: BodyLookup)
   const isFloater = (id: string) => bodyOf(id)?.family === 'floater';
   const named = [...strings(params, new Set())].filter(isFloater).sort();
   const policy = FLOATER_POLICY[verb];
+  if(verb==='body_motion_v1'&&named.length){const p=params as {actor?:string;motion?:string};
+    if(named.length===1&&named[0]===p.actor&&p.motion==='dance'&&hasBodyDance(bodyOf(named[0])))return {verb,status:'works',reason:'body.authored-motion',note:'bounded in-place dance; no hands or root movement',floaters:named};
+    return {verb,status:'refuses',reason:'body.unsupported',note:'This body has no admitted dance adapter.',floaters:named};
+  }
   if (named.length && SWIM_VERBS.has(verb)) {
     // ground-world swimming (locomotion/swim.ts, registered by the ground bridge): creatures whose species swims
     const dry = named.filter((id) => !creatureOf(bodyOf(id))?.swimSpeed);
