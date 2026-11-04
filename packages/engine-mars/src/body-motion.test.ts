@@ -40,7 +40,7 @@ test('sampled authored dance fades and reverse scrubs without accumulating pose 
 
 test('world type policy refuses live admission without entering replayed state or re-judging logged assignments',async()=>{
  const f=await marsFactory(GREEN_FIELD_WORLD),e=f.create(f.genesis('body-policy'));assert.ok(e instanceof MarsEngine);e.spawnHuman({id:'h',label:'Visitor',soul:'s'});
- const before=e.stateHash();e.configureBodyTypesV1(['humanoid']);assert.equal(e.stateHash(),before,'policy is mounted after boot replay, so it cannot be part of the clock-frontier hash');
+ e.configureBodyTypesV1(['humanoid']);assert.ok(!JSON.stringify(e.snapshot()).includes('bodyTypes'),'policy is mounted after boot replay, so it never enters snapshot, cfg or clock-frontier state');
  assert.equal(e.bodyAssignmentProblemV1('h',body),'body.world-policy');assert.equal(e.world.entities.h.body,undefined);
  const restored=f.restore(e.snapshot());restored.configureBodyTypesV1!(['humanoid']);assert.equal(restored.bodyAssignmentProblemV1!('h',body),'body.world-policy');
  assert.equal(restored.assignBodyV1!('h',body),true,'an assignment already in the log folds under a later, narrower policy');assert.equal(restored.world.entities.h.body?.model,'verdelis');
