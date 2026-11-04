@@ -186,7 +186,10 @@ export function registerEdgeComms(app: Hono, deps: EdgeDeps, options: CommsOptio
     // A non-body action has no Ledger receipt here; a linked one is a defined immediate result: an in-memory completed
     // receipt goes through the same link rules (one step: the message closes now; not its last step: `open`).
     if(!bodies?.length){const accepted=prepared.commit();fading.touch(soul.soulId);const t=core.tick();
-      return loop&&accepted.accepted?linked(accepted,{id:`object-act:${soul.soulId}:${randomUUID()}`,soulId:soul.soulId,capability:cap,phase:'completed',acceptedTick:t,startedTick:t,endedTick:t,code:null,reason:null,programId:null,channel:'none'}):accepted;}
+      if(!loop||!accepted.accepted)return accepted;
+      // the owner's card reads the action's own label ("Leave a short response: done."), not the capability id
+      const label=objects.kindOf(objects.all().find(o=>o.id===id)?.kind??'')?.actions[String(body.action)]?.label;
+      return linked(accepted,{id:`object-act:${soul.soulId}:${randomUUID()}`,soulId:soul.soulId,capability:cap,phase:'completed',acceptedTick:t,startedTick:t,endedTick:t,code:null,reason:null,programId:null,channel:'none',...(label?{done:`${label}: done.`}:{})} as EdgeReceipt);}
     if(!deps.ledger.performBodies)return {accepted:false,code:'object.body-unavailable',reason:'Body admission is unavailable.',object:id,action:out.action};
     const contact=deps.ledger.contactActuatorDetail?.(soul,id,out.action,(body.params&&typeof body.params==='object'?body.params:{}) as Record<string,unknown>);
     const b = await deps.ledger.performBodies(soul, cap, bodies[0]!.label, bodies[0]!.steps as never, typeof body.clientRef === 'string' ? `obj:${body.clientRef}` : undefined,undefined,{guard:prepared.guard,commit:()=>{if(contact)return contact;prepared.commit();}});

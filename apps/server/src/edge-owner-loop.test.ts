@@ -223,7 +223,7 @@ test('D3d: a default-linked last step closes only at its target; an unresolved t
 
 // #804: the object act route names the owner message it serves (`for`), checked and linked as on /v1/edge/act. A
 // body-moving action links its Ledger receipt; a non-body one is a defined immediate result (the message closes now).
-test('#804: POST /objects/:id/act --for: a bad id is refused; a non-body action closes the message now; a body action closes it when its receipt ends', {timeout: 300000}, async t => {
+test('#804: POST /objects/:id/act --for: a bad id is refused; a non-body action closes the message now; a body action closes it when its receipt ends; default links serve the action\'s own verb', {timeout: 300000}, async t => {
   const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
   await invite(f, 'alice');
   const a = await accept(f.host, f.souls.create('dev:alice', {name: 'Avery', description: 'Object loop fixture'}));
@@ -237,9 +237,9 @@ test('#804: POST /objects/:id/act --for: a bad id is refused; a non-body action 
   const objects = edge.comms!.objects as unknown as Objects;
   objects.create({id: 'chess-o', kind: 'chess', name: 'Chess table', placeId: 'world'});
   // a body-moving object action (OBJECT-CONTRACT §7): the Ledger performs its steps as a logged decision with a receipt
-  objects.register({kind: 'test-greeter', description: 'waves back', listed: true, roles: [], schema: {}, initial: () => ({}), rolesOf: () => [],
-    actions: {greet: {label: 'Greet the greeter', movesBody: true, roles: 'anyone', reach: 'anywhere', params: {}, validate: () => null, apply: (s: object) => ({state: s, bodies: [{label: 'Wave at the greeter', steps: [{verb: 'wave', params: {seconds: 1}}]}]})}}});
-  objects.create({id: 'greeter-o', kind: 'test-greeter', name: 'Greeter', placeId: 'world'});
+  objects.register({kind: 'test-ride', description: 'a little ride', listed: true, roles: [], schema: {}, initial: () => ({}), rolesOf: () => [],
+    actions: {join: {label: 'Get on the little ride', movesBody: true, roles: 'anyone', reach: 'anywhere', params: {}, validate: () => null, apply: (s: object) => ({state: s, bodies: [{label: 'Get on the little ride', steps: [{verb: 'wave', params: {seconds: 1}}]}]})}}});
+  objects.create({id: 'ride-o', kind: 'test-ride', name: 'Little ride', placeId: 'world'});
   const box = `/v1/edge/owner/${a.id}/inbox`, row = (id: string) => f.db.db.prepare('SELECT result,outcome,result_by,progress FROM soul_inbox_queue_v1 WHERE id=?').get(id) as any;
   const ask = async (text: string, after?: string) => {
     assert.equal((await req(box, 'dev:alice', {text})).status, 200);
@@ -251,24 +251,26 @@ test('#804: POST /objects/:id/act --for: a bad id is refused; a non-body action 
   const bad = await req('/v1/edge/objects/chess-o/act', token, {action: 'sit', for: 'm_nope'});
   assert.equal(bad.status, 400); assert.match(bad.data.error.message, /no owner message/);
   // A3: a non-body action is an immediate result: the world writes the message's result line now
-  const sat = (await req('/v1/edge/objects/chess-o/act', token, {action: 'sit', for: m1.id})).data;
+  // (the CLI's and the managed runtime's default link: the action `sit` is the message's one step, so it closes it)
+  const sat = (await req('/v1/edge/objects/chess-o/act', token, {action: 'sit', for: m1.id, forDefault: true})).data;
   assert.equal(sat.accepted, true, JSON.stringify(sat)); assert.equal(sat.for, m1.id); assert.equal(sat.open, undefined); assert.equal(sat.receipt, undefined, 'no Ledger receipt is invented');
   await new Promise(r => setTimeout(r, 20));
-  assert.equal(row(m1.id).result_by, 'server', JSON.stringify(row(m1.id))); assert.equal(row(m1.id).outcome, 'done'); assert.equal(row(m1.id).result, 'object:chess-o:sit done.');
+  assert.equal(row(m1.id).result_by, 'server', JSON.stringify(row(m1.id))); assert.equal(row(m1.id).outcome, 'done'); assert.equal(row(m1.id).result, 'Sit at the chess table: done.', 'the action label, not the capability id'); assert.equal(row(m1.id).progress, null, 'no "not sitting yet" line');
   // a default link on a message this action is not the last step of answers `open` and leaves it open
   const m2 = await ask('leave the chess table, then come back to me', m1.id);
   const left = (await req('/v1/edge/objects/chess-o/act', token, {action: 'leave', for: m2.id, forDefault: true})).data;
   assert.equal(left.accepted, true, JSON.stringify(left)); assert.equal(left.for, m2.id); assert.equal(left.open, true);
   await new Promise(r => setTimeout(r, 20));
-  assert.equal(row(m2.id).result, null, 'still open');
+  assert.equal(row(m2.id).result, null, 'still open'); assert.match(row(m2.id).progress, /; not there yet$/, 'the leave is not the walk back');
   // A1: a body-moving action links its receipt; the message closes when the receipt ends
-  const m3 = await ask('greet the greeter', m2.id);
-  const g = (await accept(f.host, req('/v1/edge/objects/greeter-o/act', token, {action: 'greet', for: m3.id}))).data;
-  assert.equal(g.accepted, true, JSON.stringify(g)); assert.equal(g.for, m3.id); assert.ok(g.receipt?.id);
+  // (a default link: "ride" widens to the ride's `join`, so this body action is the message's one step)
+  const m3 = await ask('ride the little ride', m2.id);
+  const g = (await accept(f.host, req('/v1/edge/objects/ride-o/act', token, {action: 'join', for: m3.id, forDefault: true}))).data;
+  assert.equal(g.accepted, true, JSON.stringify(g)); assert.equal(g.for, m3.id); assert.equal(g.open, undefined); assert.ok(g.receipt?.id);
   assert.equal(row(m3.id).result, null, 'not before the receipt ends');
   for (let i = 0; i < 2000 && ['waiting', 'started', 'accepted'].includes(edge.receipt(a.id, g.receipt.id)!.phase); i++) { f.host.tickOnce(); if (i % 20 === 0) { await new Promise(r => setImmediate(r)); f.host.drainInputs(); } }
   await new Promise(r => setTimeout(r, 20));
-  assert.equal(edge.receipt(a.id, g.receipt.id)!.phase, 'completed'); assert.equal(row(m3.id).result_by, 'server', JSON.stringify(row(m3.id)));
+  assert.equal(edge.receipt(a.id, g.receipt.id)!.phase, 'completed'); assert.equal(row(m3.id).result_by, 'server', JSON.stringify(row(m3.id))); assert.equal(row(m3.id).progress, null);
   // a refused object action is never linked; no `for` is unchanged
   const m4 = await ask('make a chess move', m3.id);
   const no = (await req('/v1/edge/objects/chess-o/act', token, {action: 'move', params: {from: 'e2', to: 'e4'}, for: m4.id})).data;
