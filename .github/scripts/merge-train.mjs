@@ -3,7 +3,8 @@
 //
 //   node .github/scripts/merge-train.mjs next  --repo o/r [--maintainer login] [--notify-issue n] [--output file]
 //        the oldest `merge:ready` PR that can go now: pr, tier, head_ref, head_sha, base_ref, same_repo, more, and
-//        mode=nonstrict|strict (with mode_why) from landingMode(); a red main CI is reported once on --notify-issue
+//        mode=nonstrict|strict (with mode_why) from landingMode(), after waiting up to 15 minutes while the head's
+//        required checks are pending and could still land it non-strict; a red main CI is reported once on --notify-issue
 //   node .github/scripts/merge-train.mjs wait  --repo o/r --sha <sha> [--checks a,b] [--timeout-min 60] [--output f]
 //        polls check runs and commit statuses on <sha> until every required check concluded: result=pass|fail|timeout
 //   node .github/scripts/merge-train.mjs merge --repo o/r --pr <n> --sha <sha>
@@ -68,6 +69,20 @@ export function landingMode({ tier, files = [], mergeable, mergeableState, headC
   if (mergeable !== true || mergeableState === 'dirty') return { mode: 'strict', why: `not mergeable (${mergeableState ?? 'unknown'})` };
   if (headChecks !== 'pass') return { mode: 'strict', why: `head checks ${headChecks}` };
   return { mode: 'nonstrict', why: 'T0-T2, green on head, mergeable' };
+}
+
+/** How long the pick waits for a head's pending required checks before deciding (then pending counts as strict). */
+export const HEAD_WAIT_MS = 15 * 60_000, HEAD_POLL_MS = 20_000;
+
+/**
+ * Whether the pick should wait before choosing the mode: the head's required checks are still pending, and green ones
+ * would land it non-strict (unknown mergeability counts as possible; GitHub decides it later). Adding merge:ready
+ * re-runs label-triggered required checks (proof-ok, fragment) just as the train starts, so deciding at once would
+ * make every labelled PR strict, and a behind PR without a token would leave with needs:rebase. Failed checks, or
+ * anything else that makes the PR strict, decide at once.
+ */
+export function awaitHead(state) {
+  return state.headChecks === 'pending' && landingMode({ ...state, headChecks: 'pass', mergeable: state.mergeable ?? true }).mode === 'nonstrict';
 }
 
 /**
@@ -175,9 +190,19 @@ function pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api }) {
       .filter(r => ['push', 'workflow_dispatch'].includes(r.event));
     ci = mainCiState(runs, r => fullScope(r, r.event === 'workflow_dispatch' ? [] : api.ghAll(`repos/${repo}/actions/runs/${r.id}/jobs?per_page=100`).flatMap(p => p.jobs ?? p)));
   } catch { ci = { conclusion: 'unreadable', since: 'unreadable' }; }
-  const runs = api.ghAll(`repos/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`).flatMap(p => p.check_runs ?? p);
-  const statuses = api.ghAll(`repos/${repo}/commits/${pr.head.sha}/statuses?per_page=100`);
-  const headChecks = summarizeChecks({ runs, statuses, required: parseChecks(process.env.CHECKS) }).state;
+  const readHead = () => summarizeChecks({
+    runs: api.ghAll(`repos/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`).flatMap(p => p.check_runs ?? p),
+    statuses: api.ghAll(`repos/${repo}/commits/${pr.head.sha}/statuses?per_page=100`),
+    required: parseChecks(process.env.CHECKS),
+  }).state;
+  let headChecks = readHead();
+  // Pending (not failed) head checks: wait, bounded, before choosing; on timeout pending is strict, as before.
+  const now = api.now ?? Date.now, deadline = now() + HEAD_WAIT_MS;
+  for (let i = 0; awaitHead({ tier, files, mergeable: pr.mergeable, mergeableState: pr.mergeable_state, mainCi: ci.conclusion, headChecks }) && now() < deadline; i++) {
+    if (!i) console.error(`merge-train: #${pr.number} head checks pending, waiting up to ${HEAD_WAIT_MS / 60_000} min before choosing the landing mode`);
+    (api.pause ?? pause)(HEAD_POLL_MS);
+    headChecks = readHead();
+  }
   // GitHub computes `mergeable` lazily (null until then, e.g. right after main moved): ask again briefly, when it decides.
   for (let i = 0; ci.conclusion === 'success' && headChecks === 'pass' && pr.mergeable == null && i < 3; i++) {
     (api.pause ?? pause)(3000);

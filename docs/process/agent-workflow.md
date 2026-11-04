@@ -43,7 +43,10 @@ the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
 
 - **Non-strict**: a T0–T2 PR that touches no strict path, whose required checks are green on its current head, which
   GitHub reports mergeable without conflict, and while `main`'s CI is green, is squash-merged as is, even when it is
-  behind `main`: steps 1 and 2 are skipped. `main`'s own CI is the safety net for the combination.
+  behind `main`: steps 1 and 2 are skipped. `main`'s own CI is the safety net for the combination. Adding
+  `merge:ready` re-runs label-triggered required checks (`proof-ok`, `fragment`), so while the head's checks are
+  pending and could still land it non-strict, the train waits up to 15 minutes before choosing; still pending, it is
+  strict.
 - **Strict**: everything else goes through the steps below: T3–T4, a head that is not green yet, a conflict or
   unknown mergeability, and the strict paths (`STRICT_PATHS`): the engine (`mars/`, `packages/engine-*`,
   `packages/kernel`, `packages/world-compiler`), `packages/conformance`, `pnpm-lock.yaml`, the walk and bundle

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blocker, fullScope, landingMode, mainCiState, maintainerApproved, next, parseChecks, summarizeChecks, wait, DEFAULT_CHECKS } from './merge-train.mjs';
+import { awaitHead, blocker, fullScope, HEAD_WAIT_MS, landingMode, mainCiState, maintainerApproved, next, parseChecks, summarizeChecks, wait, DEFAULT_CHECKS } from './merge-train.mjs';
 import { JOBS } from './ci-scope.mjs';
 
 const M = 'owner';
@@ -106,8 +106,9 @@ test('next: oldest eligible PR first; an unapproved T3 is skipped with one comme
 // ids in `full` ran every qualify job.
 const run = (id, conclusion, o = {}) => ({ id, status: 'completed', conclusion, event: 'push', ...o });
 const ALL_JOBS = JOBS.map(j => ({ name: j.name, conclusion: 'success' }));
-function train({ files, labels = [], approved = false, mainRuns = [run(2, 'success')], full = [2], pr = {}, notes = [], noticeFails = false }) {
+function train({ files, labels = [], approved = false, mainRuns = [run(2, 'success')], full = [2], pr = {}, notes = [], noticeFails = false, pendingPolls = 0 }) {
   const comments = [];
+  let headReads = 0, clock = 0, pauses = 0; // head checks stay pending for the first `pendingPolls` reads
   const head = { ref: 'agent/20-x', sha: 'h20', repo: { full_name: 'o/r' } };
   const the = { number: 20, title: 't', labels: [{ name: 'merge:ready' }, ...labels.map(name => ({ name }))], head, base: { ref: 'main' }, mergeable: true, mergeable_state: 'behind', ...pr };
   const api = {
@@ -116,15 +117,19 @@ function train({ files, labels = [], approved = false, mainRuns = [run(2, 'succe
       if (path.startsWith('repos/o/r/issues?')) return [{ number: 20, pull_request: {} }];
       if (path.includes('/files')) return files.map(filename => ({ filename }));
       if (path.includes('/reviews')) return approved ? [{ user: { login: M }, state: 'APPROVED' }] : [];
-      if (path.includes('/check-runs')) return [{ check_runs: DEFAULT_CHECKS.map((name, id) => ({ id, name, status: 'completed', conclusion: 'success' })) }];
+      if (path.includes('/check-runs')) {
+        const pending = headReads++ < pendingPolls;
+        return [{ check_runs: DEFAULT_CHECKS.map((name, id) => ({ id, name, status: pending && name === 'proof-ok' ? 'queued' : 'completed', conclusion: pending && name === 'proof-ok' ? null : 'success' })) }];
+      }
       if (path.includes('/actions/runs/')) return [{ jobs: full.includes(Number(path.split('/')[5])) ? ALL_JOBS : [{ name: 'repo', conclusion: 'success' }, { name: 'ci-ok', conclusion: 'success' }] }];
       if (path.includes('/issues/755/comments')) { if (noticeFails) throw new Error('HTTP 403'); return notes.concat(comments.filter(c => c.n === '755').map(c => ({ body: c.body }))); }
       return [];
     },
     comment: (repo, n, body) => comments.push({ n: String(n), body }),
-    pause: () => {},
+    pause: ms => { pauses++; clock += ms; },
+    now: () => clock,
   };
-  return { run: () => next({ repo: 'o/r', maintainer: M, notifyIssue: '755', api }), comments };
+  return { run: () => next({ repo: 'o/r', maintainer: M, notifyIssue: '755', api }), comments, pauses: () => pauses };
 }
 const GREEN = { mergeable: true, mergeableState: 'behind', headChecks: 'pass', mainCi: 'success' };
 
@@ -255,4 +260,31 @@ test('landing: a failing notice does not stall the train', () => {
   } finally { console.error = orig; }
   assert.equal(t.comments.length, 0);
   assert.match(errors.join('\n'), /could not post the main-CI notice on #755/);
+});
+
+test('landing: pending head checks (merge:ready re-runs proof-ok) wait, not strict; a timeout is strict as before', () => {
+  const base = { ...GREEN, tier: 'T1', files: ['docs/a.md'], headChecks: 'pending' };
+  assert.equal(awaitHead(base), true);
+  assert.equal(awaitHead({ ...base, mergeable: null, mergeableState: 'unknown' }), true); // GitHub decides later
+  assert.equal(awaitHead({ ...base, headChecks: 'fail' }), false);
+  assert.equal(awaitHead({ ...base, headChecks: 'pass' }), false);
+  assert.equal(awaitHead({ ...base, mainCi: 'failure' }), false);
+  assert.equal(awaitHead({ ...base, tier: 'T3' }), false);
+  assert.equal(awaitHead({ ...base, files: ['.github/workflows/ci.yml'] }), false);
+  assert.equal(awaitHead({ ...base, mergeable: false, mergeableState: 'dirty' }), false);
+
+  const later = train({ files: ['docs/a.md'], pendingPolls: 3 });
+  const r = later.run();
+  assert.equal(r.mode, 'nonstrict');
+  assert.equal(later.pauses(), 3);
+
+  const stuck = train({ files: ['docs/a.md'], pendingPolls: Infinity });
+  const s = stuck.run();
+  assert.equal(s.mode, 'strict');
+  assert.equal(s.mode_why, 'head checks pending');
+  assert.equal(stuck.pauses(), HEAD_WAIT_MS / 20_000);
+
+  const strictAnyway = train({ files: ['docs/a.md'], pendingPolls: Infinity, mainRuns: [run(9, 'failure')], full: [] });
+  assert.equal(strictAnyway.run().mode, 'strict');
+  assert.equal(strictAnyway.pauses(), 0); // main red: strict regardless, no wait
 });
