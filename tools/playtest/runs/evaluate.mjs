@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import { sha256 } from '../lib/hash.mjs';
 import { readJson, readJsonl } from '../lib/jsonl.mjs';
 import { loadRun } from '../review/run.mjs';
-import { computeMetrics, readLedger } from '../review/metrics.mjs';
+import { computeMetrics, readLedger, walkTruth, walkSpeeds } from '../review/metrics.mjs';
 import { runOracles } from '../review/oracles.mjs';
 
 export const EVALUATOR = Object.freeze({ name: 'soul-runs/evaluate', version: '1' });
@@ -201,9 +201,11 @@ export function standardMeasures(sr, requests) {
     const oracles = stored.length ? stored : sr.run.evidence.flatMap((ev) => runOracles(ev, { run: sr.run }));
     const m = computeMetrics(sr.run, { ledger, oracles, emergence: readJson(join(sr.playtestDir, 'emergence.json'), null) });
     const src = [sr.at('evidence'), sr.at(stored.length ? 'oracles.jsonl' : 'evidence')];
-    M.push(m.speed.walkMps.n ? measured('walkMps', 'observed-walking-speed', 'm/s', m.speed.walkMps.median, { n: m.speed.walkMps.n, dist: m.speed.walkMps, basis: m.speed.basis, sources: src }) : unavailable('walkMps', 'observed-walking-speed', 'm/s', (() => { const w = sr.run.evidence.flatMap((e) => (e.receipts ?? []).filter((r) => /^(go|walk|visit|goto|stroll)[:.]/i.test(r.capability ?? ''))); return !w.length ? 'the evidence packs hold no walk receipt' : !w.some((r) => r.startedAt) ? `the evidence packs' ${w.length} walk receipt(s) carry no startedAt, which review/metrics.mjs needs to window the samples (an existing gap in the pack, not a zero speed)` : 'no walk receipt has two timely samples in its window'; })(), m.speed.basis));
+    const { skipped: sk, speeds: sb } = walkSpeeds(sr.run);
+    M.push(m.speed.walkMps.n ? measured('walkMps', 'observed-walking-speed', 'm/s', m.speed.walkMps.median, { n: m.speed.walkMps.n, dist: m.speed.walkMps, basis: `${m.speed.basis}; start: ${['firstMotionTick', 'startedTick', 'startedAt'].map((k) => `${k} ${sb.filter((x) => x.startBasis === k).length}`).join(', ')}${sk.length ? `; ${sk.length} receipt(s) not measurable (${sk[0].why})` : ''}`, sources: src }) : unavailable('walkMps', 'observed-walking-speed', 'm/s', !sk.length ? 'the evidence packs hold no walk receipt' : `no walk receipt is measurable: ${[...new Set(sk.map((x) => x.why))].join('; ')} (a missing fact, not a zero speed)`, m.speed.basis));
     M.push(measured('observedFirstBodyChangeSec', 'observed-latency', 's', m.speed.firstBodyChangeSec.median, { n: m.speed.firstBodyChangeSec.n, denominator: packs, dist: m.speed.firstBodyChangeSec, basis: m.speed.basis, sources: src }));
-    M.push(measured('walkArrivalRate', 'observed-physical', 'fraction', m.basics.walkArrivalRate, { n: m.basics.walksArrivalKnown, denominator: m.basics.walkRequests, basis: m.basics.basis, sources: src }));
+    const wt = walkTruth(sr.run), wk = wt.filter((t) => t.arrived !== null);
+    M.push(!wt.length ? unavailable('walkArrivalRate', 'observed-physical', 'fraction', 'no walk request in the evidence packs', 'walk receipts followed to their last phase') : !wk.length ? unavailable('walkArrivalRate', 'observed-physical', 'fraction', `no walk request's receipt reached a terminal phase in the run (${[...new Set(wt.map((t) => t.why))].join('; ')})`, 'walk receipts followed to their last phase') : ({ ...measured('walkArrivalRate', 'observed-physical', 'fraction', m.basics.walkArrivalWorldRate, { n: wk.length, denominator: wt.length, basis: `world truth: each walk request's receipt (seat act output, else accepted in the request window) followed to its last phase anywhere in the run; completed inside the chosen place = arrived, failed or replaced = not, never terminal = unknown and excluded (${wt.length - wk.length}). At the request cutoff the arrival oracle saw ${m.basics.walksArrived}/${m.basics.walksArrivalKnown} there (directed requests are cut off by the next direction)`, sources: src }), walks: wt.map((t) => ({ requestId: t.requestId, receiptId: t.receiptId, phase: t.phase, arrived: t.arrived, why: t.why })) }));
     const ids = [...new Set(oracles.map((o) => o.id))].sort();
     M.push(measured('oracles', 'review-oracles', 'rows', oracles.length, { n: packs, basis: `deterministic oracles per request (${stored.length ? 'stored oracles.jsonl' : 'recomputed offline'}): ${ids.map((id) => `${id} ${['pass', 'fail', 'unknown'].map((s) => oracles.filter((o) => o.id === id && o.status === s).length).join('/')}`).join('; ')} (pass/fail/unknown)`, sources: src }));
   }

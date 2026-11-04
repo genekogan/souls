@@ -236,3 +236,45 @@ test('directions: the direction journal is counted by command and outcome; each 
   assert.deepEqual(m.redirections.map((r) => [r.target, r.atSec, r.outcome, r.spokeAfter, r.expectHeard ?? null]), [['b', 20, 'applied', true, true], ['c', 25, 'held', false, null]]);
   assert.deepEqual(m.sources, ['playtest/director/commands.jsonl', 'playtest/director/speech.jsonl']);
 });
+
+test('#822 walk measures read world truth: arrival from the receipt\'s last phase, speed from receipt ticks', async () => {
+  const S = (sec, tick, x, extra = {}) => ({ t: iso(sec), tick, pos: { x, z: 0 }, posture: 'walking', place: 'field', ...extra });
+  const R = (extra = {}) => ({ id: 'r-walk', capability: 'walk:g-hall', phase: 'started', acceptedTick: 20, startedTick: 20, endedTick: null, chosen: { place: 'g-hall' }, ...extra });
+  // The walk is cut off by the next request (as a directed run's next direction does) and ends in the later pack.
+  const packs = (end, start = {}) => [
+    { requestId: 'bo-001', seat: 'bo', channel: 'card', text: 'Walk to the hall', sentAt: iso(0), cutoffAt: iso(10), samples: [S(2, 40, 0), S(7, 140, 5)], receipts: [R(start)] },
+    { requestId: 'bo-002', seat: 'bo', channel: 'card', text: 'Say hello', sentAt: iso(10), cutoffAt: iso(40), samples: [S(12, 240, 10, { posture: 'standing', place: 'g-hall.room' })], receipts: end ? [R({ ...start, ...end })] : [] },
+  ];
+  const ev = async (pk) => (await evaluateRun(makeRun({ observerOk: true, packs: pk }), { write: false })).evaluation;
+  const done = { phase: 'completed', endedTick: 200, endedAt: { place: 'g-hall.room', pos: [10, 0] } };
+
+  const ok = await ev(packs(done));
+  assert.equal(M(ok, 'walkArrivalRate').value, 1, 'completed after the cutoff is still an arrival (world truth)');
+  assert.equal(M(ok, 'walkArrivalRate').n, 1);
+  assert.match(M(ok, 'walkArrivalRate').basis, /arrival oracle saw 0\/1/, 'the at-cutoff oracle count is kept beside it');
+  assert.equal(M(ok, 'walkArrivalRate').walks[0].receiptId, 'r-walk');
+  assert.equal(M(ok, 'walkMps').status, 'measured');
+  assert.ok(Math.abs(M(ok, 'walkMps').value - 1.25) < 1e-9, `10 m over ticks 40..200 at 20 Hz: ${M(ok, 'walkMps').value}`);
+  assert.equal(M(ok, 'walkMps').n, 1, 'one receipt seen in two packs is one speed');
+  assert.match(M(ok, 'walkMps').basis, /startedTick 1, startedAt 0/);
+
+  const failed = await ev(packs({ phase: 'failed', endedTick: 200, code: 'no-route' }));
+  assert.equal(M(failed, 'walkArrivalRate').value, 0);
+  assert.match(M(failed, 'walkArrivalRate').walks[0].why, /failed \(no-route\)/);
+
+  const elsewhere = await ev(packs({ ...done, endedAt: { place: 'g-yard', pos: [10, 0] } }));
+  assert.equal(M(elsewhere, 'walkArrivalRate').value, 0, 'completed outside the chosen place is not an arrival');
+
+  const open = await ev(packs(null));
+  assert.equal(M(open, 'walkArrivalRate').status, 'unavailable', 'a walk never seen terminal is unknown, not a miss');
+  assert.match(M(open, 'walkArrivalRate').reason, /never terminal/);
+
+  const noTicks = await ev(packs(done, { acceptedTick: undefined, startedTick: undefined }).map((p) => ({ ...p, receipts: p.receipts.map((r) => ({ ...r, acceptedAt: iso(1) })) })));
+  assert.equal(M(noTicks, 'walkMps').status, 'unavailable');
+  assert.equal(M(noTicks, 'walkMps').value, null, 'never 0');
+  assert.match(M(noTicks, 'walkMps').reason, /no startedTick or firstMotionTick/);
+
+  const motion = await ev(packs(done, { firstMotionTick: 140 }));
+  assert.ok(Math.abs(M(motion, 'walkMps').value - 5 / 3) < 1e-9, `from first motion: 5 m over ticks 140..200: ${M(motion, 'walkMps').value}`);
+  assert.match(M(motion, 'walkMps').basis, /firstMotionTick 1, startedTick 0, startedAt 0/);
+});
