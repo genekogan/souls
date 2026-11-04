@@ -80,15 +80,15 @@ the body itself stays embedded in the local file.
 Without the kit, download these files into an authoring directory (Node 22.18+; no npm dependencies):
 
 ```sh
-curl -fsS '{{BASE}}/validate.mjs' -o validate.mjs
-curl -fsS '{{BASE}}/admission.ts' -o admission.ts
-curl -fsS '{{BASE}}/rig.ts' -o rig.ts
-curl -fsS '{{BASE}}/motion.ts' -o motion.ts
-curl -fsS '{{BASE}}/action-profile.ts' -o action-profile.ts
-curl -fsS '{{BASE}}/upload-validation.ts' -o upload-validation.ts
-curl -fsS '{{BASE}}/upload.mjs' -o upload.mjs
-curl -fsS '{{BASE}}/example.json' -o manifest.json
-curl -fsS '{{BASE}}/contract.json' -o contract.json
+curl -fsSL '{{BASE}}/validate.mjs' -o validate.mjs
+curl -fsSL '{{BASE}}/admission.ts' -o admission.ts
+curl -fsSL '{{BASE}}/rig.ts' -o rig.ts
+curl -fsSL '{{BASE}}/motion.ts' -o motion.ts
+curl -fsSL '{{BASE}}/action-profile.ts' -o action-profile.ts
+curl -fsSL '{{BASE}}/upload-validation.ts' -o upload-validation.ts
+curl -fsSL '{{BASE}}/upload.mjs' -o upload.mjs
+curl -fsSL '{{BASE}}/example.json' -o manifest.json
+curl -fsSL '{{BASE}}/contract.json' -o contract.json
 node validate.mjs sculpture.glb manifest.json
 node validate.mjs sculpture.glb manifest.json --report --preview preview.html   # same report and preview as the kit
 ```
