@@ -20,13 +20,21 @@ import { join, relative, resolve } from 'node:path';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { FIXTURES, PROFILES, DEMAND, TICK_HZ, WORKLOAD, LOAD_FAILURES, phases, souls as soulsOf, schedule, scheduleId, scheduleCounts, account, outcomeOf, quantiles, clockWindow, rng } from './workload.mjs';
-import { report } from './report.mjs';
+import { report, verdictReport, OBJECTIVES } from './report.mjs';
+import { probe, threads, between, hotThreads } from './host.mjs';
+import { verdict, headroom } from './verdict.mjs';
 
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf(`--${k}`); return i < 0 ? d : argv[i + 1]; }, flag = (k) => argv.includes(`--${k}`);
 const ROOT = resolve(opt('root', new URL('../../../..', import.meta.url).pathname)), SHORT = flag('short'), SEED = opt('seed', 'cw1');
 const PORT = Number(opt('port', 4400)), RANGE = opt('range', `${PORT + 1}-${PORT + 30}`), HEAP_MB = Number(opt('heap-mb', 2048));
 const PROFILE_LIST = opt('profile', 'even,meetup').split(','), REPEATS = Number(opt('repeats', 1)), JOIN_PAR = Number(opt('join-concurrency', 4));
 const HOST_CLASS = opt('host-class', 'laptop'), QUIET = flag('quiet-host'), BROWSER = flag('browser');
+// --qualifying-executor: the operator asserts this is the isolated production-class executor (#736); with --quiet-host,
+// a full-length run, both profiles and two repeats, the verdict may say `passes`. Nothing else ever can.
+const QUALIFYING = flag('qualifying-executor');
+// --slice "<prefix>": run the launcher (so its worlds) under this command, e.g. a systemd-run scope with CPU and memory
+// limits; the driver stays outside the allocation. Recorded in the receipt.
+const SLICE = opt('slice', '');
 const OUT = resolve(opt('out', join(ROOT, '.local/bench/meetup', new Date().toISOString().replace(/[:.]/g, '-'))));
 const PH = phases(SHORT), WARM_MS = SHORT ? 20_000 : 60_000, DRAIN_MS = 30_000, BASE = `http://127.0.0.1:${PORT}`;
 for (const p of PROFILE_LIST) if (!PROFILES[p]) throw new Error(`--profile ${p}: even | meetup`);
@@ -83,7 +91,8 @@ async function bootLauncher(dir, run) {
   writeFileSync(join(ldata, 'worlds.json'), JSON.stringify({ schema: 'world-launcher-registry/1', worlds: rows }, null, 2) + '\n');
   // no Eyes, no model keys, no secrets reach the launcher (its children never inherit the rest anyway)
   const env = { ...process.env, ...LAUNCHER_ENV }; for (const k of Object.keys(env)) if (k.startsWith('EDGE_EYES') || /KEY|TOKEN|SECRET/.test(k)) delete env[k];
-  const child = spawn(process.execPath, [join(ROOT, 'tools/world-launcher/launcher.mjs'), ...LAUNCHER_ARGS(ldata)], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const cmd = [...(SLICE ? SLICE.split(/\s+/) : []), process.execPath, join(ROOT, 'tools/world-launcher/launcher.mjs'), ...LAUNCHER_ARGS(ldata)];
+  const child = spawn(cmd[0], cmd.slice(1), { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   run.launcher = { child, ldata };   // owned from now on: an interrupt during boot stops it too
   child.stdout.on('data', (b) => appendFileSync(join(dir, 'launcher.log'), b)); child.stderr.on('data', (b) => appendFileSync(join(dir, 'launcher.log'), b));
   const t0 = mono(), up = new Map();
@@ -261,16 +270,20 @@ async function oneRun(profile, rep) {
   const dir = join(OUT, `${profile}-r${rep}`); mkdirSync(dir, { recursive: true });
   const ss = soulsOf(profile).map((s) => Object.assign(s, { reactive: Object.assign([], { n: 0 }) })), ops = schedule(profile, SEED, PH), opsBySoul = ss.map((s) => ops.filter((o) => o.soul === s.i));
   const run = { id: createHash('sha256').update(`${SEED}|${profile}|${rep}|${Date.now()}`).digest('hex').slice(0, 10), dir, stopped: false, cut: false, sockets: [], procs: new Set(), aborts: new Set(), opAborts: new Set(), viewers: {},
-    souls: ss, receipts: new Map(), stream: { responses: 0, events: 0, batches: [], gaps: 0, failures: 0, non200: {} }, worlds: [], samples: [], marks: {}, epochs: {} };
-  const tag = `${profile} r${rep}`, mark = (name) => { run.marks[name] = mono(); run.epochs[name] = Date.now(); log(`${tag}: ${name}`); };
+    souls: ss, receipts: new Map(), stream: { responses: 0, events: 0, batches: [], gaps: 0, failures: 0, non200: {} }, worlds: [], samples: [], marks: {}, epochs: {}, probes: {} };
+  const tag = `${profile} r${rep}`, mark = (name) => { run.marks[name] = mono(); run.epochs[name] = Date.now(); log(`${tag}: ${name}`);
+    // the allocation the worlds live in (the launcher's cgroup; its children share it) and each world's threads, per mark
+    if (run.launcher) { const k = children(run.launcher.ldata); run.probes[name] = { t: mono(), alloc: probe(run.launcher.child.pid), driver: probe('self'),
+      threads: Object.fromEntries(FIXTURES.map((f) => [f.slug, k[f.slug]?.pid ? threads(k[f.slug].pid) : null])) }; } };
   const receipt = {
     workload: WORKLOAD, profile, rep, seed: SEED, short: SHORT, at: new Date().toISOString(),
-    measurement: { hostClass: HOST_CLASS, quiet: QUIET, label: QUIET ? 'operator-declared quiet host' : 'not-quiet', qualifies: false, why: 'qualifying numbers come from #736 on the isolated production-class executor, two matched repeats' },
+    measurement: { hostClass: HOST_CLASS, quiet: QUIET, label: QUIET ? 'operator-declared quiet host' : 'not-quiet', qualifyingExecutor: QUALIFYING, qualifies: QUALIFYING && QUIET && !SHORT,
+      why: QUALIFYING && QUIET && !SHORT ? 'operator-declared quiet qualifying executor; the verdict also needs both profiles twice' : 'qualifying numbers come from #736 on the isolated production-class executor (--qualifying-executor --quiet-host), two matched repeats' },
     source: { sha: sh('git', ['-C', ROOT, 'rev-parse', 'HEAD']), dirty: !!sh('git', ['-C', ROOT, 'status', '--porcelain', '--untracked-files=no']), node: process.version, cliVersion: /const VERSION = "([^"]+)"/.exec(readFileSync(join(ROOT, 'tools/world-launcher/soul/eden.mjs'), 'utf8'))?.[1] ?? null },
     host: { os: `${platform()} ${release()}`, arch: arch(), cpu: cpus()[0]?.model ?? null, cores: cpus().length, memGb: Math.round(totalmem() / 2 ** 30) },
     fixtures: FIXTURES.map((f, w) => { const p = join(ROOT, 'worlds/templates', `${f.template}.json`), t = JSON.parse(readFileSync(p, 'utf8'));
       return { slug: f.slug, template: f.template, sha256: sha256(p), bytes: readFileSync(p).length, batches: t.batches?.length ?? 0, souls: PROFILES[profile][w] }; }),
-    configuration: { launcherEnv: LAUNCHER_ENV, launcherArgs: LAUNCHER_ARGS('<run>/launcher').map((a) => (a.startsWith(ROOT) ? rel(a) : a)), heapMb: HEAP_MB, soulCeilings: SOUL_CEILINGS, auth: 'dev identities (DEV_AUTH=1, the launcher default without --auth-env)', brain: 'BRAIN_MODE=fake (launcher child default)', eyes: 'off (EDGE_EYES* removed from the launcher environment)' },
+    configuration: { launcherEnv: LAUNCHER_ENV, launcherArgs: LAUNCHER_ARGS('<run>/launcher').map((a) => (a.startsWith(ROOT) ? rel(a) : a)), heapMb: HEAP_MB, slice: SLICE || null, soulCeilings: SOUL_CEILINGS, auth: 'dev identities (DEV_AUTH=1, the launcher default without --auth-env)', brain: 'BRAIN_MODE=fake (launcher child default)', eyes: 'off (EDGE_EYES* removed from the launcher environment)' },
     workloadDefinition: { demand: DEMAND, phases: { joinThenWarmMs: WARM_MS, ...PH }, scheduleSha256: scheduleId(ops), counts: scheduleCounts(ops),
       accounts: Object.entries(ss.reduce((m, s) => (m[s.account] = (m[s.account] ?? 0) + 1, m), {})).filter(([, n]) => n > 1).map(([a, n]) => ({ account: a, souls: n })),
       sharedAddresses: Object.entries(ss.reduce((m, s) => (m[s.address] = (m[s.address] ?? 0) + 1, m), {})).filter(([, n]) => n > 1).map(([a, n]) => ({ address: a, souls: n })) },
@@ -290,7 +303,7 @@ async function oneRun(profile, rep) {
   process.on('SIGINT', onSig); process.on('SIGTERM', onSig);
   try {
     mark('boot');
-    await bootLauncher(dir, run);
+    await bootLauncher(dir, run); mark('up');
     const kids = () => children(run.launcher.ldata), ownPids = () => FIXTURES.map((f) => kids()[f.slug]?.pid).filter(Boolean);
     const rates = Object.fromEntries(FIXTURES.map((f) => [f.slug, adminRate(run.launcher.ldata, f.slug)]));
     log(`${tag}: ten worlds up (${JSON.stringify(run.launcher.bootS)}); admin rates ${JSON.stringify(rates)}`);
@@ -301,7 +314,8 @@ async function oneRun(profile, rep) {
     const pr = setInterval(() => { const k = kids(), pids = [run.launcher.child.pid, ...ownPids()], st = procStats(pids);
       write({ k: 'proc', t: Math.round(mono()), launcher: st[run.launcher.child.pid] ?? null, worlds: Object.fromEntries(FIXTURES.map((f) => [f.slug, k[f.slug]?.pid ? { pid: k[f.slug].pid, ...(st[k[f.slug].pid] ?? {}) } : null])),
         driver: { cpuS: +((process.cpuUsage().user + process.cpuUsage().system) / 1e6).toFixed(2), rssMb: Math.round(process.memoryUsage().rss / 2 ** 20), lagP99Ms: +(lag.percentile(99) / 1e6).toFixed(1), lagMaxMs: +(lag.max / 1e6).toFixed(1) } }); lag.reset(); }, 2000);
-    const ho = setInterval(() => write({ k: 'host', t: Math.round(mono()), ...hostFacts() }), 5000);
+    const ho = setInterval(() => { const a = probe(run.launcher.child.pid);
+      write({ k: 'host', t: Math.round(mono()), ...hostFacts(), cgroupMemMb: a.memoryCurrentMb, cgroupSwapMb: a.swapCurrentMb, psiCpuSome10: a.pressure.cpu?.some?.avg10 ?? null, psiMemSome10: a.pressure.memory?.some?.avg10 ?? null }); }, 5000);
     run.timers = [hz, pr, ho];
     // join (timed, not a measuring window)
     mark('join');
@@ -415,7 +429,26 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
     actsWithoutStart: Object.values(never).reduce((a, b) => a + b, 0), unissuedJoinFailed: ops.filter((o) => !ss[o.soul].token).length, clockMinQuiet: minRatio('quiet'), clockMinActive: minRatio('active'), restarts: Object.values(restarts).reduce((a, b) => a + b, 0),
     cleanup: cleanup && cleanup.launcherExited && cleanup.straysAfter === 0 ? 'clean' : 'NOT CLEAN', label: QUIET ? 'quiet-declared' : 'not-quiet',
   };
-  return { profile, rep, headline, marksS: Object.fromEntries(Object.entries(run.marks).map(([k, v]) => [k, +((v - run.marks.boot) / 1000).toFixed(1)])), bootS: run.launcher.bootS, rates,
+  // #736: allocation, headroom and hot threads over the active window; objectives as booleans for the verdict
+  const P = run.probes, act = P.active, end = P.drain, secs = act && end ? (end.t - act.t) / 1000 : null, alloc = between(act?.alloc, end?.alloc, secs);
+  const hostRows = run.samples.filter((x) => x.k === 'host' && inW(x, win.active)), memPeak = Math.max(...hostRows.map((x) => x.cgroupMemMb ?? -1), end?.alloc?.memoryPeakMb ?? -1);
+  const used = FIXTURES.reduce((n, f) => n + (resources.active.worlds[f.slug]?.cpuCores || 0), 0) + (resources.active.launcherCpuCores || 0);
+  const cpusetCores = (end?.alloc?.cpuset ?? '').split(',').filter(Boolean).reduce((n, r) => { const [a, b] = r.split('-').map(Number); return n + (b == null ? 1 : b - a + 1); }, 0) || null;
+  const room = headroom({ quotaCores: end?.alloc?.cpuMax?.quotaCores ?? null, cpusetCores, hostCores: cpus().length, usedCores: used, memMaxMb: end?.alloc?.memoryMaxMb ?? null, memPeakMb: memPeak >= 0 ? memPeak : null });
+  const hotW = Object.fromEntries(FIXTURES.map((f) => [f.slug, hotThreads(act?.threads?.[f.slug], end?.threads?.[f.slug], secs, CLK_TCK)]));
+  const O = OBJECTIVES, rd = (k) => accounting[k]?.e2eMs ?? {}, sq = (k) => quantiles(start[k] ?? []);
+  const meets = (x, p95, p99) => (x.n ? x.p95 <= p95 && x.p99 <= p99 : null), dq = quantiles(delivery.all);
+  const objectives = { read: meets(rd('all|read'), O.readP95Ms, O.readP99Ms), actionStart: meets(sq('all'), O.actStartP95Ms, O.actStartP99Ms), delivery: meets(dq, O.deliveryP95Ms, O.deliveryP99Ms),
+    clock: minRatio('quiet') >= O.clockMin && minRatio('active') >= O.clockMin, failures: headline.loadFailures === 0 && headline.overdue === 0 && headline.unissued === 0, restarts: headline.restarts === 0 && paused === 0 && dilated === 0 };
+  const qualification = { profile, rep, qualifying: { executor: QUALIFYING, quiet: QUIET, short: SHORT }, objectives, headroom: room, cpuUsedCores: +used.toFixed(3),
+    swapPeakMb: Math.max(0, ...hostRows.map((x) => x.cgroupSwapMb ?? 0)), stealShare: alloc?.stealShare ?? null, throttledPeriodShare: alloc?.throttledPeriodShare ?? null, pressureSomeShare: alloc?.pressureSomeShare ?? null,
+    allocation: { supported: !!end?.alloc?.supported, cpuMax: end?.alloc?.cpuMax ?? null, cpuset: end?.alloc?.cpuset ?? null, memoryMaxMb: end?.alloc?.memoryMaxMb ?? null, memoryPeakMb: memPeak >= 0 ? memPeak : null, swapMaxMb: end?.alloc?.swapMaxMb ?? null, cgroupCpuCores: alloc?.cgroupCpuCores ?? null, throttledSecondsPerSecond: alloc?.throttledSecondsPerSecond ?? null,
+      driverSameCgroup: !!end && end.alloc?.supported && JSON.stringify(end.alloc.cpuMax) === JSON.stringify(end.driver?.cpuMax) && end.alloc.memoryMaxMb === end.driver?.memoryMaxMb },
+    worlds: Object.fromEntries(FIXTURES.map((f, w) => { const r = rd(`w${w}|read`), st = sq(`w${w}`), c = clock[f.slug];
+      return [f.slug, { mainCores: hotW[f.slug]?.mainCores ?? null, hottestCores: hotW[f.slug]?.hottest?.cores ?? null, hottestThread: hotW[f.slug]?.hottest?.name ?? null, cpuCores: resources.active.worlds[f.slug]?.cpuCores ?? null,
+        loopP99MsMax: Math.max(0, ...hz.filter((x) => x.w === f.slug && inW(x, win.active)).map((x) => x.loopP99Ms ?? 0)), queueMax: Math.max(0, ...hz.filter((x) => x.w === f.slug && inW(x, win.active)).map((x) => x.queue ?? 0)),
+        met: (meets(r, O.readP95Ms, O.readP99Ms) ?? true) && (meets(st, O.actStartP95Ms, O.actStartP99Ms) ?? true) && (c.active.ratio ?? 0) >= O.clockMin }]; })) };
+  return { profile, rep, headline, qualification, marksS: Object.fromEntries(Object.entries(run.marks).map(([k, v]) => [k, +((v - run.marks.boot) / 1000).toFixed(1)])), bootS: run.launcher.bootS, rates,
     join: { ms: quantiles(ss.filter((s) => s.joinMs != null).map((s) => s.joinMs)), failed: ss.filter((s) => !s.token).map((s) => ({ soul: s.i, tries: s.joinTries })), retries: ss.reduce((n, s) => n + Math.max(0, (s.joinTries?.length ?? 1) - 2), 0) },
     worlds: run.worlds.map((w) => ({ slug: w.slug, placesInMenu: w.placesInMenu, meetup: w.meetup, sharedVerbs: w.sharedVerbs })), accounting, reactiveDemand, actionStartMs: q(start), sharedActionStartMs: quantiles(sharedStart.map(Math.round)), receiptDeliveryMs: q(delivery), plannedActivityMs: q(activity), actsWithoutStart: never,
     stream: { ...run.stream, batches: quantiles(run.stream.batches) }, viewers: run.viewers, browser: BROWSER ? { ...browser, ...run.browserStats } : null,
@@ -427,6 +460,9 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
 log(`meetup workload ${WORKLOAD}: ${PROFILE_LIST.join(',')} x${REPEATS}${SHORT ? ' (short smoke)' : ''}, seed ${SEED}, ${QUIET ? 'quiet host declared' : 'NOT QUIET: indicative only'}; out ${rel(OUT)}`);
 const results = [];
 for (let rep = 1; rep <= REPEATS; rep++) for (const p of PROFILE_LIST) results.push(await oneRun(p, rep));
-writeFileSync(join(OUT, 'summary.json'), JSON.stringify(results.map((r) => ({ profile: r.profile, rep: r.rep, failed: r.failed, headline: r.headline, cleanup: r.cleanup })), null, 1));
+const V = verdict(results.map((r) => r.qualification ?? { profile: r.profile, rep: r.rep, failed: r.failed }));
+writeFileSync(join(OUT, 'summary.json'), JSON.stringify({ verdict: V, runs: results.map((r) => ({ profile: r.profile, rep: r.rep, failed: r.failed, headline: r.headline, qualification: r.qualification, cleanup: r.cleanup })) }, null, 1));
+writeFileSync(join(OUT, 'VERDICT.md'), verdictReport(V, results));
+log(`verdict: ${V.verdict}${V.qualifies ? '' : ' (indicative only)'}; ${V.reasons.join(' | ')}`);
 log(`done: ${rel(join(OUT, 'summary.json'))}`);
 process.exit(results.some((r) => r.failed) ? 1 : 0);
