@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {readFileSync,writeFileSync,existsSync} from 'node:fs';
+import {readFileSync,writeFileSync,existsSync,realpathSync} from 'node:fs';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {dirname,join} from 'node:path';
 import {BODY_UPLOAD_POLICY,validateUpload} from './upload-validation.ts';
@@ -27,7 +27,7 @@ export function bodyReport(admitted,bytes,manifest,contract=null){
  const profile=manifest.actionProfile??(manifest.type==='humanoid'?'humanoid':'rigid'),skinned=(j.skins??[]).length>0;
  const clips=(j.animations??[]).map(a=>a.name),needClips=profile==='rigid'?[]:profile==='humanoid'?['Idle','Walk']:['Idle','Walk','Dance_Loop','Standby_Loop'];
  const adapters=manifest.motion?Object.keys(manifest.motion).filter(k=>k!=='contract'):[];
- const draws=(j.meshes??[]).reduce((s,m)=>s+m.primitives.length,0),images=(j.images??[]).map(im=>{const v=j.bufferViews[im.bufferView],b=bin.subarray(v.byteOffset??0,(v.byteOffset??0)+v.byteLength),[w,h]=imageSize(b,im.mimeType);return {bytes:v.byteLength,width:w,height:h};});
+ const draws=(j.nodes??[]).reduce((s,node)=>s+(node.mesh===undefined?0:j.meshes[node.mesh].primitives.length),0),images=(j.images??[]).map(im=>{const v=j.bufferViews[im.bufferView],b=bin.subarray(v.byteOffset??0,(v.byteOffset??0)+v.byteLength),[w,h]=imageSize(b,im.mimeType);return {bytes:v.byteLength,width:w,height:h};});
  const drawLimit=manifest.type==='humanoid'?BODY_LIMITS.humanoidDrawCalls:BODY_LIMITS.rigidDrawCalls,dim=Math.max(0,...images.map(i=>Math.max(i.width,i.height))),imgBytes=Math.max(0,...images.map(i=>i.bytes));
  const budget=(field,measured,limit)=>({field,measured,limit,remaining:limit-measured});
  const geometryViews=new Set();for(const m of j.meshes??[])for(const p of m.primitives){for(const a of [p.indices,...Object.values(p.attributes)])if(a!==undefined)geometryViews.add(j.accessors[a].bufferView);}
@@ -54,7 +54,7 @@ export function bodyReport(admitted,bytes,manifest,contract=null){
 /** A local page: the supplied body with idle/move/dance/rest/wake/interrupt, and its report. Visual only. */
 export function previewPage(bytes,manifest,report){
  const data={glb:bytes.toString('base64'),manifest,report};
- return PREVIEW_HTML.replace('/*DATA*/null',JSON.stringify(data).replace(/</g,'\\u003c'));
+ return PREVIEW_HTML.replace('/*DATA*/null',()=>JSON.stringify(data).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029'));
 }
 
 const PREVIEW_HTML=`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Body preview</title>
@@ -102,7 +102,7 @@ renderer.setAnimationLoop(()=>{const now=performance.now(),dt=Math.min(.1,(now-l
  else mixer.update(dt);orbit.update();renderer.render(scene,camera);});
 </script>`;
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(realpathSync(process.argv[1])).href){
  try {
   const args=process.argv.slice(2),flags={report:false,preview:null},files=[];
   for(let i=0;i<args.length;i++){if(args[i]==='--report')flags.report=true;else if(args[i]==='--preview'){flags.preview=args[++i];if(!flags.preview)throw Error('--preview needs an output .html path');}else files.push(args[i]);}

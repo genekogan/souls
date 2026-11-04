@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync,existsSync} from 'node:fs';
+import {mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync,existsSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -18,13 +18,13 @@ function served(file){
  if(file==='admission.ts')t=t.replace('../../../../../mars/viewer/engine/bodies/motion.ts','./motion.ts').replace('../../../../../mars/viewer/engine/bodies/action-profile.ts','./action-profile.ts');
  return Buffer.from(t);
 }
-function world({types=['humanoid','ceramic','floater'],humanoid=null}={}){
+function world({types=['humanoid','ceramic','floater'],humanoid=null,pip=null}={}){
  const seen=[];
  const fetchImpl=async(url,init={})=>{seen.push({url,auth:init.headers?.authorization});const path=new URL(url).pathname;
   const file=path.replace(/^\/w\/test\/body-authoring\//,'');
-  const body=KIT_FILES.includes(file)?served(file):path===HUMANOID_SOURCE&&humanoid?humanoid:null;
+  const body=KIT_FILES.includes(file)?served(file):path===HUMANOID_SOURCE&&humanoid?humanoid:path==='/w/test/v1/edge/body/assets/pip.glb'&&pip?pip:null;
   return body?{ok:true,status:200,arrayBuffer:async()=>body.buffer.slice(body.byteOffset,body.byteOffset+body.length)}:{ok:false,status:404};};
- const call=async path=>{assert.equal(path,'/v1/edge/body');return {status:200,data:{available:true,types,presets:[],body:null,uploads:[{assetId:'body_'+'a'.repeat(64),name:'Earlier',type:'ceramic'}],authoring:{skill:'/w/test/body-authoring/SKILL.md'}}};};
+ const call=async path=>{assert.equal(path,'/v1/edge/body');return {status:200,data:{available:true,types,presets:pip?[{id:'pip',body:{modelUrl:'/v1/edge/body/assets/pip.glb'}}]:[],body:null,uploads:[{assetId:'body_'+'a'.repeat(64),name:'Earlier',type:'ceramic'}],authoring:{skill:'/w/test/body-authoring/SKILL.md'}}};};
  return {fetchImpl,call,seen,load:()=>({world:'http://127.0.0.1:4199/w/test',token:TOKEN,soul:'s1'})};
 }
 
@@ -82,5 +82,25 @@ test('humanoid kit: the canonical CC0 rig reduced to Idle and Walk passes admiss
   const r=spawnSync(process.execPath,['validate.mjs','body.glb','manifest.json','--report'],{cwd:dir,encoding:'utf8'});
   const {report}=JSON.parse(r.stdout);assert.equal(report.profile,'humanoid');assert.deepEqual(report.requirements.clips.missing,[]);assert.equal(report.repeated.copies[1].skeletons,5);
   assert.throws(()=>keepClips(readFileSync(casual),['NoSuchClip']),/no NoSuchClip clip/);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('preview data survives replacement patterns and line separators; the validator runs through a symlinked path', async ()=>{
+ const dir=mkdtempSync(join(tmpdir(),'body-kit-'));try{
+  await bodyKit([join(dir,'k')],world());
+  const m=JSON.parse(readFileSync(join(dir,'k','manifest.json'),'utf8'));m.name="x$'y$&z\u2028</script>";writeFileSync(join(dir,'k','manifest.json'),JSON.stringify(m));
+  symlinkSync(join(dir,'k'),join(dir,'link'));
+  const r=spawnSync(process.execPath,[join(dir,'link','validate.mjs'),'body.glb','manifest.json','--preview','p.html'],{cwd:join(dir,'k'),encoding:'utf8'});
+  assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).valid,true);
+  const page=readFileSync(join(dir,'k','p.html'),'utf8');assert.equal(page.split('</script>').length-1,2,'importmap, module script and nothing injected');
+  const data=JSON.parse(page.match(/const D=(\{.*?\}),R=D\.report/s)[1]);assert.equal(data.manifest.name,m.name);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('rolling kit: the shared Pip source from the world path, with rights left for the human to confirm', async ()=>{
+ const dir=mkdtempSync(join(tmpdir(),'body-kit-'));try{
+  const out=await bodyKit([dir,'--starter','rolling'],world({pip:rigidStarterGLB(4)}));
+  const m=JSON.parse(readFileSync(join(dir,'manifest.json'),'utf8'));assert.equal(m.actionProfile,'rolling-gripper/1');assert.equal(m.rightsConfirmed,false);
+  assert.equal(out.validation.error.code,'body.rights');assert.match(out.source,/rightsConfirmed is left false/);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

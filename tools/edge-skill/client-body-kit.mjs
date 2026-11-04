@@ -97,8 +97,8 @@ export async function starterSource(starter,{origin,world=origin,info,seed,fetch
  if(starter==='humanoid')return {model:keepClips(await bytesAt(world+HUMANOID_SOURCE,fetchImpl).catch(()=>bytesAt(origin+HUMANOID_SOURCE,fetchImpl)),['Idle','Walk']),manifest:{type:'humanoid',rig:'quaternius/1',license:'CC0',rightsConfirmed:true,name:'Kit humanoid',description:'The canonical CC0 contact rig with its Idle and Walk clips, ready for local restyling.'},
   source:'the world\'s canonical CC0 humanoid ('+HUMANOID_SOURCE+'), reduced to Idle and Walk'};
  const pip=(info.presets??[]).find(p=>p.id==='pip');if(!pip?.body?.modelUrl)throw Error('kit: this world does not offer the shared rolling robot; choose --starter rigid or humanoid');
- return {model:await bytesAt(origin+pip.body.modelUrl,fetchImpl),manifest:{type:'humanoid',rig:'quaternius/1',license:'owned',rightsConfirmed:true,actionProfile:'rolling-gripper/1',name:'Kit rolling robot',description:'A rolling robot variant started from the shared Pip source. Wheels, grippers and an upright standby.'},
-  source:'the shared Pip rolling robot (repository source, MIT); check with your human that your variant is yours to upload'};
+ return {model:await bytesAt(world+pip.body.modelUrl,fetchImpl).catch(()=>bytesAt(origin+pip.body.modelUrl,fetchImpl)),manifest:{type:'humanoid',rig:'quaternius/1',license:'owned',rightsConfirmed:false,actionProfile:'rolling-gripper/1',name:'Kit rolling robot',description:'A rolling robot variant started from the shared Pip source. Wheels, grippers and an upright standby.'},
+  source:'the shared Pip rolling robot (repository source, MIT); rightsConfirmed is left false: set it only after your human confirms the variant is yours to upload'};
 }
 
 /** body kit <dir>: fetch the world-effective kit, write one starter, validate it locally. Returns a plain report. */

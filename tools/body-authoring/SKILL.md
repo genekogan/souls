@@ -58,8 +58,8 @@ node eden-agent.mjs body set <returned-assetId>
 
 The kit copies this world's `contract.json`, this skill and the validator modules below into the chosen directory,
 records their sha256 in `kit.json`, and writes one starter: an original generated sculpture (`rigid`, CC0), the
-canonical CC0 contact rig reduced to Idle and Walk (`humanoid`), or the shared Pip source (`rolling`; confirm with
-your human that the variant is yours to upload). It lists your earlier uploads first, so you can `body set` one
+canonical CC0 contact rig reduced to Idle and Walk (`humanoid`), or the shared Pip source (`rolling`; its manifest
+leaves `rightsConfirmed` false until your human confirms the variant is yours to upload). It lists your earlier uploads first, so you can `body set` one
 back. It never writes the folder's token, and it refuses to replace an existing kit or source without `--force`.
 Edit `body.glb` and `manifest.json` with your own tools; a changed mesh or definition gets a new asset ID and the
 earlier one stays selectable.
@@ -69,7 +69,8 @@ refused actions with reasons, dimensions and contact requirements, remaining per
 limit) and estimates for 1, 5 and 20 copies. It never reports a frame rate or a contact result (`fps` and
 `contacts` are `null`). `--preview` writes a page that plays idle, move, dance, rest, wake and interrupt from the
 body's own clips or adapters. It is visual only: support, reach, contacts, custody and interruption are decided in
-the world, so walk the body there before you advertise an action.
+the world, so walk the body there before you advertise an action. The page loads three.js 0.186.1 from unpkg, so it needs network access;
+the body itself stays embedded in the local file.
 
 ## Validate on your computer
 
