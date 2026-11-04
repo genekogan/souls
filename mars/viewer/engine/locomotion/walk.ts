@@ -1700,8 +1700,11 @@ function stepLink(rt: Runtime, ex: Exec, a: Entity, leg: Extract<Leg, { kind: 'l
   ex.climbT = Math.min(total, ex.climbT + CLIMB_SPEED * dt);
   const next = pointOnLink(geo, ex.climbT);
   // someone standing on / at the end of the stair: wait rather than pass through them
-  const blocker = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius)
-    ?? (rt.services.stairLandingClearanceV1 === true && ex.climbT >= total - 1e-9 ? landingBlocker(rt, a, leg.ascending ? link.to : link.from, ex.profile.radius) : null);
+  const onStair = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius), exitEnd = leg.ascending ? link.to : link.from;
+  const atLanding = !onStair && rt.services.stairLandingClearanceV1 === true && ex.climbT >= total - 1e-9 ? landingBlocker(rt, a, exitEnd, ex.profile.radius) : null;
+  const blocker = onStair ?? atLanding;
+  // stair-landing-clearance/1: ask an idle body on the landing to step aside, clear of it (spec §17), once a second.
+  if (atLanding && a.body?.family !== 'floater' && rt.tick % 20 === 0) makeWay(rt, atLanding, exitEnd.p);
   if (blocker) {
     if(rt.services.concurrentLinkEgressV1===true)yieldLinkLanding(rt,ex,a,leg,blocker);
     if(a.body?.family==='floater')makeWay(rt,blocker,[next[0],next[2]],{by:a.id,subjects:[a.id],landing:{y:rt.world.entities[blocker].pose.p[1],radius:2*ex.profile.radius+.3}});
@@ -1826,8 +1829,11 @@ function stepLinkCancel(rt: Runtime, ex: Exec, a: Entity, leg: LinkLeg, dt: numb
   }
   const at = forward ? Math.min(geo.total, ex.climbT + CLIMB_SPEED * dt) : Math.max(0, ex.climbT - CLIMB_SPEED * dt);
   const next = pointOnLink(geo, at);
-  const blocker = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius)
-    ?? (rt.services.stairLandingClearanceV1 === true && (forward ? at >= geo.total - 1e-9 : at <= 1e-9) ? landingBlocker(rt, a, landing, ex.profile.radius) : null);
+  const onStair = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius);
+  const atLanding = !onStair && rt.services.stairLandingClearanceV1 === true && (forward ? at >= geo.total - 1e-9 : at <= 1e-9) ? landingBlocker(rt, a, landing, ex.profile.radius) : null;
+  const blocker = onStair ?? atLanding;
+  // stair-landing-clearance/1: ask an idle body on the landing to step aside, clear of it (spec §17), once a second.
+  if (atLanding && a.body?.family !== 'floater' && rt.tick % 20 === 0) makeWay(rt, atLanding, landing.p);
   if (blocker) {
     if(a.body?.family==='floater')makeWay(rt,blocker,[next[0],next[2]],{by:a.id,subjects:[a.id],landing:{y:rt.world.entities[blocker].pose.p[1],radius:2*ex.profile.radius+.3}});
     a.human!.activity = 'climb-wait';

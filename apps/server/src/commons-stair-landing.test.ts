@@ -23,6 +23,7 @@ const faults:{tick:number;error:string}[]=[];
 // test-only: recoverFault is private; observing it is how a recovered fault is told apart from a clean run.
 const host=WorldHost.prototype as unknown as {recoverFault:(this:InstanceType<typeof WorldHost>,...args:unknown[])=>void};
 const recoverFault=host.recoverFault;
+assert.equal(typeof recoverFault,'function','WorldHost.recoverFault is observed');
 host.recoverFault=function(...args){
   faults.push({tick:this.engine.world.tick,error:String((args[0] as Error)?.message??args[0]).slice(0,300)});
   return recoverFault.apply(this,args);
