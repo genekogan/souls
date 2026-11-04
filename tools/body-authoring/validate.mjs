@@ -27,7 +27,7 @@ export function bodyReport(admitted,bytes,manifest,contract=null){
  const profile=manifest.actionProfile??(manifest.type==='humanoid'?'humanoid':'rigid'),skinned=(j.skins??[]).length>0;
  const clips=(j.animations??[]).map(a=>a.name),needClips=profile==='rigid'?[]:profile==='humanoid'?['Idle','Walk']:['Idle','Walk','Dance_Loop','Standby_Loop'];
  const adapters=manifest.motion?Object.keys(manifest.motion).filter(k=>k!=='contract'):[];
- const draws=(j.nodes??[]).reduce((s,node)=>s+(node.mesh===undefined?0:j.meshes[node.mesh].primitives.length),0),images=(j.images??[]).map(im=>{const v=j.bufferViews[im.bufferView],b=bin.subarray(v.byteOffset??0,(v.byteOffset??0)+v.byteLength),[w,h]=imageSize(b,im.mimeType);return {bytes:v.byteLength,width:w,height:h};});
+ const draws=Math.max((j.meshes??[]).reduce((s,m)=>s+m.primitives.length,0),(j.nodes??[]).reduce((s,node)=>s+(node.mesh===undefined?0:j.meshes[node.mesh].primitives.length),0)) // admission refuses on either count,images=(j.images??[]).map(im=>{const v=j.bufferViews[im.bufferView],b=bin.subarray(v.byteOffset??0,(v.byteOffset??0)+v.byteLength),[w,h]=imageSize(b,im.mimeType);return {bytes:v.byteLength,width:w,height:h};});
  const drawLimit=manifest.type==='humanoid'?BODY_LIMITS.humanoidDrawCalls:BODY_LIMITS.rigidDrawCalls,dim=Math.max(0,...images.map(i=>Math.max(i.width,i.height))),imgBytes=Math.max(0,...images.map(i=>i.bytes));
  const budget=(field,measured,limit)=>({field,measured,limit,remaining:limit-measured});
  const geometryViews=new Set();for(const m of j.meshes??[])for(const p of m.primitives){for(const a of [p.indices,...Object.values(p.attributes)])if(a!==undefined)geometryViews.add(j.accessors[a].bufferView);}
