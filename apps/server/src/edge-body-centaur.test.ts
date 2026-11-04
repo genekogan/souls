@@ -27,6 +27,23 @@ test('centaur source: reproducible, within unchanged limits, and its lower body 
  assert.equal(admit({bytes:ubyte,manifest:made.manifest}).actionProfile,QUADRUPED_TORSO,'normalised UNSIGNED_BYTE weights are admitted');
  const noBinds=regl(made.bytes,(j,bin)=>{delete j.skins[0].inverseBindMatrices;return bin;});
  assert.throws(()=>admit({bytes:noBinds,manifest:made.manifest}),(e:any)=>typeof e.code==='string'&&e.code.startsWith('body.'),'identity binds are measured; a refusal is named, never a TypeError');
+ // Throughout, not only at frame 0: a hind-leg kick after the first key of Dance_Loop is refused.
+ const kick=regl(made.bytes,(j,bin)=>{const leg=j.nodes.findIndex((n:any)=>n.name==='HindUpperLeg.L'),clip=j.animations.find((c:any)=>c.name==='Dance_Loop'),ch=clip.channels.find((c:any)=>c.target.node===leg&&c.target.path==='rotation'),a=j.accessors[clip.samplers[ch.sampler].output],v=j.bufferViews[a.bufferView],at=(v.byteOffset??0)+(a.byteOffset??0);
+  const q=[0,1,2,3].map(i=>bin.readFloatLE(at+i*4)),[x,y,z,w]=q,sx=Math.sin(.8),cw=Math.cos(.8),k=[w*sx+x*cw,y*cw+z*sx,z*cw-y*sx,w*cw-x*sx],vals=new Float32Array(a.count*4);for(let i=0;i<a.count;i++)vals.set(i===0?q:k,i*4);
+  const add=Buffer.from(vals.buffer);j.bufferViews.push({buffer:0,byteOffset:bin.length,byteLength:add.length});j.accessors.push({bufferView:j.bufferViews.length-1,componentType:5126,count:a.count,type:'VEC4'});clip.samplers[ch.sampler].output=j.accessors.length-1;const out=Buffer.concat([bin,add]);j.buffers[0].byteLength=out.length;return out;});
+ assert.throws(()=>admit({bytes:kick,manifest:made.manifest}),(e:any)=>e.code==='body.footprint'&&/Dance_Loop at [1-9]/.test(e.message),'a kick after frame 0');
+ // Many unused vertices (unbounded by the triangle cap) get a measurement, never a stack overflow.
+ const padded=regl(made.bytes,(j,bin)=>{const p=j.meshes[0].primitives[0],N=140000;const pos=j.accessors[p.attributes.POSITION],pv=j.bufferViews[pos.bufferView],pat=(pv.byteOffset??0)+(pos.byteOffset??0);
+  const P=new Float32Array((pos.count+N)*3),J=new Uint8Array((pos.count+N)*4),W=new Uint8Array((pos.count+N)*4);for(let i=0;i<pos.count*3;i++)P[i]=bin.readFloatLE(pat+i*4);
+  const ja=j.accessors[p.attributes.JOINTS_0],jv=j.bufferViews[ja.bufferView],jat=(jv.byteOffset??0)+(ja.byteOffset??0);for(let i=0;i<pos.count;i++){J[i*4]=bin.readUInt16LE(jat+i*8);W[i*4]=255;}for(let i=pos.count;i<pos.count+N;i++){P.set(P.subarray(0,3),i*3);J[i*4]=J[0];W[i*4]=255;}
+  const parts=[bin];let off=bin.length;const view=(b:Buffer)=>{j.bufferViews.push({buffer:0,byteOffset:off,byteLength:b.length});parts.push(b,Buffer.alloc((4-b.length%4)%4));off+=Math.ceil(b.length/4)*4;return j.bufferViews.length-1;};
+  j.accessors.push({bufferView:view(Buffer.from(P.buffer)),componentType:5126,count:pos.count+N,type:'VEC3',min:pos.min,max:pos.max});p.attributes.POSITION=j.accessors.length-1;
+  j.accessors.push({bufferView:view(Buffer.from(J.buffer)),componentType:5121,count:pos.count+N,type:'VEC4'});p.attributes.JOINTS_0=j.accessors.length-1;
+  j.accessors.push({bufferView:view(Buffer.from(W.buffer)),componentType:5121,normalized:true,count:pos.count+N,type:'VEC4'});p.attributes.WEIGHTS_0=j.accessors.length-1;delete p.attributes.NORMAL;delete p.attributes.COLOR_0;
+  const out=Buffer.concat(parts);j.buffers[0].byteLength=out.length;return out;});
+ assert.ok(padded.length<4*1024*1024,'under the byte cap: '+padded.length);
+ let outcome:string;try{outcome=admit({bytes:padded,manifest:made.manifest}).actionProfile??'admitted';}catch(e:any){outcome=e.code;assert.ok(typeof e.code==='string'&&e.code.startsWith('body.'),'a named refusal, not '+e);}
+ assert.ok(outcome==='quadruped-torso/1'||outcome.startsWith('body.'),outcome);
  // The profile needs the canonical rig; it is not a rigid-body option.
  assert.throws(()=>admit({bytes:made.bytes,manifest:{...made.manifest,type:'ceramic'}}),(e:any)=>e.code==='body.action-profile');
 });

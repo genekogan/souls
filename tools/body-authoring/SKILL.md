@@ -136,8 +136,8 @@ only), upright standby rest, an authored standing dance, canonical hands, and ev
 `profiles.quadrupedTorso` in the contract. Use the canonical rig. The canonical legs are the forelegs; extra hind
 joints may sit under `Body` (hips) and `Root` (hooves) and are driven by your own clips. Support stays the humanoid
 navigation disc. Standing as the renderer stands it (the `Idle` pose, centred on that pose's x/z box at the fitted
-shoulder height), and in `Standby_Loop` and `Dance_Loop` at their start, every vertex below the hips must stay within
-`footprintRadius` (0.28 m); vertices led by arm joints are not counted, since the renderer refits the arms to the
+shoulder height), and throughout `Idle`, `Standby_Loop` and `Dance_Loop` (their key times, at most 24 per clip), every vertex below the hips must stay within
+`footprintRadius` (0.28 m); vertices weighted only to arm joints are not counted, since the renderer refits the arms to the
 fixed reach, or admission refuses `body.footprint`. Stand the legs square: a human's staggered
 idle stance copied onto hind legs does not fit. Hind hooves are visual: the
 world does not place them on terrain. `tools/body-authoring/centaur/author.mjs` is a worked example.
