@@ -25,6 +25,9 @@ node tools/world-launcher/telemetry.mjs close  --dir <launcher data>/telemetry  
 collector stops cleanly on SIGINT/SIGTERM, and on restart it continues the current hour, recording the restart as a
 boundary.
 
+`collect` saves its options (cadence, retention, cap) in `state.json`, and `report` and `close` use them. Do not run
+`close` while a collector is writing to the same directory.
+
 ## What is kept
 
 | | |
@@ -62,7 +65,14 @@ The report covers the selected range, coverage and 1h/24h/7d comparisons.
 - **Fleet:** worlds running, host memory, client errors, Soul totals.
 - **Store:** size and bytes per day.
 
-Ranges up to 2 h are exact from fine samples. Longer ranges are hour-aligned from rollups.
+Ranges up to 2 h are exact from fine samples. Longer ranges are hour-aligned from rollups, so they start at the first
+hour's beginning.
+
+Rates (ticks per second, GC share) count only the time between adjacent answered samples. A gap adds neither time nor
+steps, while totals such as progress and increases keep every step. A fleet mean weights each world by its share of
+the range.
+
+A file that cannot be read, such as a gzip truncated by a crash, is skipped and counted (`unreadableFilesThisReport`).
 
 `ratioAtFullClock` is an indication from 15 s samples. The meetup bench's clock check
 (`tools/bench/capacity/meetup`) is the oracle. A world at the unwatched quarter pace shows about 0.25 here.

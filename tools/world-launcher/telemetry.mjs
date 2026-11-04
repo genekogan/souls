@@ -37,20 +37,21 @@ async function main() {
     const url = opt('url'); if (!url || !/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\//.test(url)) throw new Error('--url must be the launcher\'s loopback /__sim/metrics');
     const everyMs = num('every', DEFAULTS.everyMs / 1000) * 1000;
     const store = openStore(dir, { everyMs, fineDays: num('fine-days', DEFAULTS.fineDays), rollupDays: num('rollup-days', DEFAULTS.rollupDays), maxBytes: num('max-bytes', DEFAULTS.maxBytes) });
-    store.close(Date.now());   // finish hours a previous run left open
+    try { store.close(Date.now()); } catch { store.state.loss.failedWrites++; }   // finish hours a previous run left open; never fatal
     if (flag('once')) { await scrapeOnce(store, url, { timeoutMs: Math.min(10_000, everyMs) }); store.saveState(); return; }
     let stop = false; const quit = () => { stop = true; }; process.on('SIGINT', quit); process.on('SIGTERM', quit);
     const t0 = Date.now(); let k = 0;
     while (!stop) {
       await scrapeOnce(store, url, { timeoutMs: Math.min(10_000, everyMs) });
       store.state.collector = { rssMb: Math.round(process.memoryUsage().rss / 2 ** 20), at: Date.now(), everyMs };
+      if (k === 0) store.saveState();
       const next = t0 + ++k * everyMs; await new Promise((r) => setTimeout(r, Math.max(0, next - Date.now())));   // fixed cadence: a slow scrape does not shift the grid
     }
     store.saveState(); return;
   }
-  if (cmd === 'close') { const s = openStore(dir); s.close(Date.now()); return; }
+  if (cmd === 'close') { const s = openStore(dir); s.close(Date.now()); return; }   // the collector's own options (state.json); do not run while it is collecting
   if (cmd === 'report') {
-    const s = openStore(dir), r = report(dir, s.state, { range: opt('range', '24h'), everyMs: s.state.collector?.everyMs ?? DEFAULTS.everyMs });
+    const s = openStore(dir), r = report(dir, s.state, { range: opt('range', '24h'), everyMs: s.o.everyMs });
     process.stdout.write(flag('json') ? JSON.stringify(r, null, 1) + '\n' : text(r)); return;
   }
   throw new Error('usage: telemetry.mjs collect|report|close --dir <d> ...');
