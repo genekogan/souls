@@ -1632,9 +1632,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       return {accepted: true, receipt: {...this.receipt(soul.soulId, r.id)!, object: cap.object} as EdgeReceipt, ...(out.result ? {result: out.result} : {}), ...resolved};
     }
     const plan = plans.get(capability) as TogetherPlan & {stop?: boolean; paintingTarget?: string} | undefined;
-    // #850: an offer blocked because no walk reaches it now (a closed entrance, a cut-off route) names what this Soul can do
-    // instead, as a "nothing matches" refusal does (#824)
-    if (!plan) return cap && cap.available === false && cap.blocked ? (ROUTE_DEAD.has(cap.blocked.code) ? this.withAlternatives(soul, asked, refuse(cap.blocked.code, cap.blocked.reason), this.wordsMenu(soul).caps, cap) : refuse(cap.blocked.code, cap.blocked.reason))
+    if (!plan) return cap && cap.available === false && cap.blocked ? refuse(cap.blocked.code, cap.blocked.reason)
       : refuse('capability.unknown', 'That capability is not offered to this Soul right now; read capabilities again.');
     if (params.painting !== undefined && (cap.verb !== 'paint' || !plan.paintingTarget || !this.painting)) return refuse('painting.no-easel', 'The optional painting field is offered only at a real painting easel.');
     let steps = structuredClone(plan.steps);
@@ -2187,7 +2185,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
    *  available offers, never a catalog and never a repeat of did_you_mean. First the offered walk to a place its own words
    *  name ("fly up to the field" -> walk:field, one bindOne), then the nearest available offers of the menu the refusal
    *  already read (one per verb). Nothing available: no field. */
-  private withAlternatives<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, words: string, out: T, caps: EdgeCapability[], blocked?: EdgeCapability): T & {alternatives?: {id: string; label: string}[]} {
+  private withAlternatives<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, words: string, out: T, caps: EdgeCapability[]): T & {alternatives?: {id: string; label: string}[]} {
     const seen = new Set((out.did_you_mean ?? []).map(d => d.id)), picks: EdgeCapability[] = [], verbs = new Set<string>();
     const add = (c: EdgeCapability | undefined) => {if (c?.available && !seen.has(c.id) && !verbs.has(c.verb) && picks.length < ALTERNATIVES * 2) {seen.add(c.id); verbs.add(c.verb); picks.push(c);}};
     const ctx = this.vocabulary(soul, caps), w = tokens(words);
@@ -2199,9 +2197,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     // hall" is walk:lab-pond-hall), on the kept words menu only when the refusal's own menu has no walks
     if (named) {const own = caps.some(c => c.verb === 'walk'), r = resolveCapability(`walk:${named.join(' ')}`, own ? ctx : this.vocabulary(soul, this.wordsMenu(soul).caps)); if (r.kind !== 'unknown' && r.cap.verb === 'walk') add(r.cap);}
     // then the nearest available offers (offers here first), in the menu's own order on a tie, one per verb
-    // #850: for a place no walk reaches now, nearest to that place (offers here are near the Soul, not near it)
-    const from = blocked ? ctx.target(blocked).at ?? null : ctx.me;
-    const near = (c: EdgeCapability) => {if (c.id.endsWith(':here')) return blocked ? Infinity : -1; const at = ctx.target(c).at ?? ctx.me; return at && from ? Math.hypot(at[0] - from[0], at[1] - from[1]) : Infinity;};
+    const near = (c: EdgeCapability) => {if (c.id.endsWith(':here')) return -1; const at = ctx.target(c).at ?? ctx.me; return at && ctx.me ? Math.hypot(at[0] - ctx.me[0], at[1] - ctx.me[1]) : Infinity;};
     for (const c of caps.filter(c => c.available && !ATTENTION_ONLY.has(c.verb)).map((c, i) => [c, near(c), i] as const).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0])) {if (picks.length >= ALTERNATIVES * 2) break; add(c);}
     // the menu read may be a kept words menu (approximate availability), and the named walk may come from it: every pick
     // is rebuilt exactly (bindOne) and kept only if it is available now. Verbs are claimed as picks are added, so a named
