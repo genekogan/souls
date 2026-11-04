@@ -33,9 +33,8 @@ import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-/** The shared release every PR used before per-PR releases; it is full (GitHub caps a release at 1000 assets). */
-export const SHARED_RELEASE_TAG = 'proofs';
-/** The release a PR's proof goes to: `override` when given, else the PR's own `proofs-<n>`. */
+/** The release a PR's proof goes to: `override` when given, else the PR's own `proofs-<n>` (the shared `proofs`
+ *  release every PR used before is full: GitHub caps a release at 1000 assets). */
 export const releaseTag = (pr, override) => override || `proofs-${pr}`;
 const TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const MAX_BYTES = 2 * 1024 ** 3, WARN_BYTES = 100 * 1024 ** 2;
@@ -82,7 +81,8 @@ export function checkLocal(files, git = (...a) => execFileSync('git', a, { cwd: 
 
 // ── targets ─────────────────────────────────────────────────────────────────────────────────────────────────────
 /**
- * GitHub release target through `gh api`: release `tag`, or the PR's own `proofs-<n>` when no tag is given.
+ * GitHub release target through `gh api`: release `tag`, or the PR's own `proofs-<n>` when no tag is given. One target
+ * serves one release, so without a tag it uploads for one PR only (a second PR number throws; the CLI takes one --pr).
  * `run(args, opts)` returns stdout; injected in tests.
  */
 export function githubTarget({ repo, run, dryRun = false, tag = null }) {
@@ -126,7 +126,8 @@ export function githubTarget({ repo, run, dryRun = false, tag = null }) {
           '-H', `Content-Type: ${contentType(file)}`, '--input', file]));
       } catch (e) {
         const msg = `${e.stderr ?? ''} ${e.message ?? ''}`;
-        if (/HTTP 422/.test(msg) && taken.size > 1000) {
+        // `taken` already holds this name, so a release that had 1000 assets now counts 1001.
+        if (/HTTP 422/.test(msg) && taken.size - 1 >= 1000) {
           throw Error(`release "${current}" is at GitHub's 1000-asset limit; drop --release/SIM_PROOF_RELEASE to use the PR's own proofs-${pr}`);
         }
         throw e;
