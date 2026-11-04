@@ -1,0 +1,21 @@
+{
+ "soulRun": 1,
+ "name": "s3-steer-refuse",
+ "cast": {
+  "file": "../../../scenarios/casts/s3-steer-refuse-scripted.json"
+ },
+ "observer": {
+  "check": false
+ },
+ "limits": {
+  "maxWallSec": 900,
+  "maxControllers": 2
+ },
+ "evaluation": {
+  "questions": [
+   "../../questions/steer-honoured.mjs",
+   "../../questions/refusal-recovered.mjs",
+   "../../questions/scene-finished.mjs"
+  ]
+ }
+}
