@@ -9,9 +9,13 @@ export const LATENCY_TEST = 'owner-response-milestones.test.ts';
 export const SERVER_SHARDS = 6;
 /** Files per shard run in parallel (ubuntu-latest has 4 vCPUs). Files that bind a fixed port run afterwards, one at a time. */
 export const SERVER_TEST_CONCURRENCY = 3;
-/** A test file that binds or targets a fixed local port (PORT: 4958, .listen(5964), port: 7049) cannot share a runner
- *  with another such file; everything else uses ephemeral ports and its own temporary directories. */
-export const FIXED_PORT = /PORT['"]?\s*:\s*['"`]?\d{4,5}|\.listen\(\s*\d{4,5}|port:\s*\d{4,5}/;
+/** A test file that binds or targets a fixed local port cannot share a runner with another such file: an env or option
+ *  port (PORT: 4958, port: 7049), a listen on a number, a port constant (const PORT = 4951), or a literal loopback
+ *  address in a file that starts a server or process. Everything else uses ephemeral ports and its own temporary
+ *  directories. Conservative on purpose: a false positive only costs time. */
+export const FIXED_PORT = /PORT['"]?\s*:\s*['"`]?\d{4,5}|\.listen\(\s*\d{4,5}|port:\s*\d{4,5}|\b(?:PORT|port)\s*=\s*\d{4,5}\b/;
+const LOOPBACK_PORT = /(?:127\.0\.0\.1|localhost):\d{4,5}/, STARTS_SERVER = /spawn\(|\.listen\(|createServer\(|serve\(/;
+export const needsSerial = (source) => FIXED_PORT.test(source) || (LOOPBACK_PORT.test(source) && STARTS_SERVER.test(source));
 
 export function serverTestFiles(src = 'apps/server/src') {
   const files = [];
@@ -56,6 +60,6 @@ export function serverShardFiles(all, shard, shards = SERVER_SHARDS, seconds = s
 
 /** One shard's files split into those that may run in parallel and those that must run serially (a fixed port). */
 export function serverShardPlan(all, shard, { src = 'apps/server', readSource = (f) => readFileSync(join(src, f), 'utf8'), ...o } = {}) {
-  const files = serverShardFiles(all, shard, o.shards, o.seconds), serial = files.filter((f) => FIXED_PORT.test(readSource(f)));
+  const files = serverShardFiles(all, shard, o.shards, o.seconds), serial = files.filter((f) => needsSerial(readSource(f)));
   return { parallel: files.filter((f) => !serial.includes(f)), serial };
 }

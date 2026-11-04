@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { LATENCY_TEST, SERVER_SHARDS, serverTestFiles, serverShardFiles, serverShards, serverTestDurations, serverShardPlan, FIXED_PORT } from './server-test-files.mjs';
+import { LATENCY_TEST, SERVER_SHARDS, serverTestFiles, serverShardFiles, serverShards, serverTestDurations, serverShardPlan, FIXED_PORT, needsSerial } from './server-test-files.mjs';
 import { JOBS } from './ci-scope.mjs';
 
 // today's split before #807: two shards by alternating index (kept here only to prove the new one covers the same files)
@@ -53,6 +53,8 @@ test('missing latency inventory, invalid shard, and empty shard fail closed', ()
 test('fixed-port files run serially, everything else in parallel; the plan keeps every file once', () => {
   assert.ok(FIXED_PORT.test("env: {PORT: '4958'}")); assert.ok(FIXED_PORT.test('server.listen(5964)')); assert.ok(FIXED_PORT.test('{port: 7049}'));
   assert.ok(!FIXED_PORT.test('server.listen(0)')); assert.ok(!FIXED_PORT.test("PORT: String(port)"));
+  assert.ok(needsSerial('const PORT = 4951')); assert.ok(needsSerial("spawn(x); fetch('http://127.0.0.1:4956/healthz')"));
+  assert.ok(!needsSerial("app.request('http://localhost:4000/v1/x')"), 'an in-process request URL binds nothing');
   const all = serverTestFiles(); let seen = [];
   for (let s = 0; s < SERVER_SHARDS; s++) { const p = serverShardPlan(all, s); assert.deepEqual([...p.parallel, ...p.serial].sort(), serverShardFiles(all, s)); seen = seen.concat(p.parallel, p.serial); }
   assert.equal(new Set(seen).size, seen.length);
