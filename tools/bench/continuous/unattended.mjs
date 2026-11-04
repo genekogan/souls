@@ -61,9 +61,10 @@ async function main() {
   watch();
   if (alone[0]) { const r = await fetch(`${base}/w/${alone[0]}/v1/world/snapshot`).catch(() => null); await r?.arrayBuffer(); log(`visited ${alone[0]} once (${r?.status ?? 'no answer'})`); }
   const samples = Object.fromEntries(slugs.map((s) => [s, []]));
-  // t is the harness's monotonic time of the file's own write (read time minus the file's age), so a 2 s write cadence
-  // does not add up to 2 s of error per window
-  const take = () => { for (const s of slugs) { const l = liveOf(s), now = performance.now(), age = l?.at ? Math.max(0, Date.now() - l.at) : 0; samples[s].push({ t: Math.round(now - age), pid: l?.pid ?? null, phase: l?.phase ?? null, tick: l?.tick?.world ?? null, at: l?.at ?? null }); } };
+  // t is the harness's monotonic time of the file's own write (read time minus the file's age, at most one write
+  // interval), so the 2 s write cadence does not add 2 s of error per window; a file older than that (a frozen or exited
+  // world) is read as the world's state now, so its stall shows instead of hiding behind its old timestamp
+  const take = () => { for (const s of slugs) { const l = liveOf(s), now = performance.now(), age = l?.at ? Math.max(0, Date.now() - l.at) : 0; samples[s].push({ t: Math.round(now - (age <= 2500 ? age : 0)), read: Math.round(now), pid: l?.pid ?? null, phase: l?.phase ?? null, tick: l?.tick?.world ?? null, at: l?.at ?? null }); } };
   const timer = setInterval(take, SAMPLE_MS); take();
   const load = [];
   const loadTimer = setInterval(() => load.push({ t: Math.round(performance.now() - T0), load1: loadavg()[0] }), 60_000);
@@ -95,6 +96,7 @@ async function main() {
       !back[s] || (typeof back[s].status === 'number' && back[s].status < 500 && back[s].ms <= 5000) ? null : `return ${back[s].status} in ${back[s].ms} ms`].filter(Boolean);
   }
   out.viewerOpens = viewerOpens;
+  out.samples = Object.fromEntries(slugs.map((s) => [s, samples[s].map(({ read, pid, phase, tick, at }) => ({ t: read - Math.round(T0), pid, phase, tick, at }))]));   // raw reads (ms from the start), for re-judging
   const ok = Object.values(out.worlds).every((w) => w.fails.length === 0);
   out.verdict = ok ? 'pass' : 'fail';
   const file = flag('out') ?? join(dir, 'result.json'); writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
