@@ -67,7 +67,7 @@ export async function openBrowser({ headless = true, gpu: wantGpu = 'metal', ser
 
 /** Move one camera's video to <dir>/<name>.webm and write <name>.webm.json beside it: what was asked, what the camera
  *  showed, when it ran, page errors, size and hash. Failed and partial recordings are kept and labelled, never dropped. */
-function writeRecording({ name, o, cam = null, state = null, r = null, partial = false, closedBy = null, error = null }) {
+export function writeRecording({ name, o, cam = null, state = null, r = null, partial = false, closedBy = null, error = null }) {
   const dir = o.record.dir, file = join(dir, `${name}.webm`);
   let bytes = null, sha256 = null;
   try { if (r?.video && existsSync(r.video)) { renameSync(r.video, file); bytes = statSync(file).size; sha256 = createHash('sha256').update(readFileSync(file)).digest('hex'); } } catch (e) { error ??= String(e?.message ?? e); }
@@ -176,8 +176,17 @@ export async function openCamera({ browser, base, identity = null, kind = 'wide'
     const closed = { at: new Date().toISOString(), mono: performance.timeOrigin + performance.now() };
     return { video: video ? await video.path().catch(() => null) : null, opened, closed };
   };
-  if (kind === 'follow') await cam.ensureFollow();
-  if (kind === 'free') await cam.applyFree();
+  // Post-arrival setup can throw too (a click on a detached control): close the context the same way, so its video is
+  // finalized and named in the open-failed sidecar rather than left open until browser.close().
+  try {
+    if (kind === 'follow') await cam.ensureFollow();
+    if (kind === 'free') await cam.applyFree();
+  } catch (e) {
+    const v = record?.dir ? page.video() : null;
+    await ctx.close().catch(() => {});
+    e.video = v ? await v.path().catch(() => null) : null; e.opened = opened;
+    throw e;
+  }
   return cam;
 }
 

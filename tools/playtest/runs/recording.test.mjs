@@ -105,3 +105,25 @@ test('packaging writes a private index and a selected projection; unselected and
   assert.equal(packageRun(run, {}).picked, 0, 'nothing is selected by default');
   assert.equal(listRecordings(run).length, 1);
 });
+
+test('packaging refuses a selected sidecar, a measurement and a question basis that hold local paths or hosts', { skip: !hasFfmpeg && 'ffmpeg not installed' }, async () => {
+  const { run } = recordedRun();
+  // Built at run time so the fixture paths are not literals in the tree.
+  const abs = ['', 'home', 'fixture-user', 'runs', 'x.webm'].join('/'), homeRel = ['~', 'runs', 'q.json'].join('/'), up = ['..', '..', 'outside', 'm.json'].join('/');
+  const recDir = join(run, 'playtest', 'recordings');
+  writeFileSync(join(recDir, 'leaky.webm'), 'v');
+  writeFileSync(join(recDir, 'leaky.webm.json'), JSON.stringify({ recording: 1, camera: 'leaky', file: 'leaky.webm', bytes: 1, sha256: 'y', durationSec: 1, partial: false, requested: { kind: 'wide', viewport: { width: 320, height: 200 } }, actual: { mode: abs, presentation: 'broadcast' }, pageErrors: [] }));
+  const evDir = join(run, 'evaluations', '001-fixture'); mkdirSync(evDir, { recursive: true });
+  writeFileSync(join(evDir, 'evaluation.json'), JSON.stringify({ measures: [{ id: 'ok-measure', status: 'measured', value: 3 }, { id: 'abs-measure', status: 'measured', value: { log: abs } }, { id: 'host-measure', status: 'measured', summary: 'served from 10.1.2.3:4300' }, { id: 'up-measure', status: 'measured', value: up }],
+    acceptance: { predeclared: [{ id: 'q1', basis: `read ${homeRel}`, verdict: 'pass' }] }, questions: [{ id: 'q2', basis: 'world truth', verdict: 'pass' }] }));
+  const p = packageRun(run, { select: ['wide', 'leaky'] });
+  assert.equal(p.ok, true, p.error);
+  const text = readFileSync(p.selected, 'utf8'), sel = JSON.parse(text);
+  assert.deepEqual(sel.evidence.map((e) => e.camera), ['wide'], 'the path-bearing sidecar is not published');
+  assert.deepEqual(sel.refused.map((r) => r.item).sort(), ['leaky', 'measurement abs-measure', 'measurement host-measure', 'measurement up-measure', 'question q1']);
+  assert.deepEqual(sel.measurements.measured.find((m) => m.id === 'ok-measure'), { id: 'ok-measure', value: 3 });
+  assert.equal(sel.measurements.measured.find((m) => m.id === 'abs-measure').withheld, true);
+  assert.equal(sel.measurements.questions.find((q) => q.id === 'q2').basis, 'world truth');
+  for (const leak of [abs, homeRel, up, '10.1.2.3']) assert.ok(!text.includes(leak), `selected.json holds ${leak}`);
+  assert.ok(readFileSync(p.index, 'utf8').includes(abs), 'the private index keeps the full value');
+});

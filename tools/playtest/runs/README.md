@@ -205,8 +205,11 @@ Offline, after the run (reads the run folder, writes only under `<run>/derived/`
   longer matches its sidecar is refused. A preview is a pointer for reviewers, never the proof itself.
 - `package <run> [--select <camera|preview file>]…` writes `derived/package/index.json` and `index.md` (private: outcome,
   cost, measurements and questions from the latest evaluation, recordings and previews with hashes, limits) and
-  `selected.json`, a projection with only the selected items, run-relative and with anything holding an absolute path
-  refused and listed. Nothing is selected by default. The package never uploads or posts: watch a recording before
+  `selected.json`, a projection with only the selected items, run-relative. Every field of it (evidence items,
+  measured values, question bases, limits, run id, spec name, commit) is screened for absolute, home-relative (`~/`),
+  parent-relative (`../`) and user-directory paths, file URLs and hosts (IPv4, `localhost`, `*.local`, `*.ts.net`); a
+  hit is withheld and listed under `refused`. The screen does not recognise tokens or Soul ids: none of the projected
+  fields carries them, and the selected items should still be inspected before publishing. Nothing is selected by default. The package never uploads or posts: watch a recording before
   selecting it, then publish it with `tools/proof/upload.mjs` (the PR's proof path).
 
 Observer cost: `observer.mode` `off` / `passive` / `cameras` separates passive evidence capture from browser cameras;

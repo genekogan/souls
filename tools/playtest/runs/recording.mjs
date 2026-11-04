@@ -54,13 +54,15 @@ export async function previewRecording(runDir, { camera, fromSec, toSec, label =
     const png = join(work, 'label.png');
     await label(text, width, png);
     const r = ffmpeg(['-ss', String(fromSec), '-to', String(to), '-i', rec.path, '-i', png, '-filter_complex', '[0:v][1:v]overlay=0:0', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '24', '-movflags', '+faststart', '-an', out]);
-    if (r.status !== 0) return { ok: false, error: `ffmpeg: ${(r.stderr || '').trim().split('\n').pop()}` };
+    if (r.status !== 0) { rmSync(out, { force: true }); return { ok: false, error: `ffmpeg: ${(r.stderr || '').trim().split('\n').pop()}` }; }
   } finally { rmSync(work, { recursive: true, force: true }); }
   const after = sha256File(rec.path);
   const meta = { preview: 1, derived: true, fullProof: false, kind: 'excerpt', label: text, file: basename(out), bytes: statSync(out).size, sha256: sha256File(out),
     source: { camera, file: rec.file, sha256: before, fromSec, toSec: to, recordingSec: len, partial: !!rec.partial }, sourceUnchanged: before === after, createdAt: new Date().toISOString() };
+  // A source that changed while the excerpt was cut leaves no preview behind, only the error.
+  if (!meta.sourceUnchanged) { rmSync(out, { force: true }); return { ok: false, error: `${rec.file} changed while the preview was cut; preview discarded`, ...meta, path: null }; }
   writeJson(`${out}.json`, meta);
-  return { ok: meta.sourceUnchanged, ...meta, path: out };
+  return { ok: true, ...meta, path: out };
 }
 
 const latestEvaluation = (runDir) => {
@@ -68,7 +70,16 @@ const latestEvaluation = (runDir) => {
   const d = existsSync(root) ? readdirSync(root).filter((x) => /^\d{3}-/.test(x)).sort().pop() : null;
   return d ? { dir: join(root, d), evaluation: readJson(join(root, d, 'evaluation.json'), null) } : null;
 };
-const ABS = /(^|[\s"'(=])(\/(Users|home|private|var|tmp|opt|Volumes)\/|[A-Za-z]:\\)/;
+// What the selected projection never carries: absolute paths (POSIX or Windows), home-relative (`~/`) and parent-relative
+// (`../`) paths, user-directory paths with the leading slash dropped, file URLs, and hosts (IPv4, localhost, *.local,
+// *.ts.net). Run-relative paths such as `playtest/recordings/wide.webm` pass.
+const PRIVATE = [
+  /(^|[\s"'(=:,\[])(\/(Users|home|private|var|tmp|opt|Volumes|root|mnt|srv)\/|[A-Za-z]:[\\/])/,
+  /(^|[\s"'(=:,\[])~[\\/]/, /(^|[\s"'(=:,\[])\.\.[\\/]/,
+  /(^|[\s"'(=:,\[])(Users|home)\/[^/\s"]+\//, /\bfile:\/\//i,
+  /\b\d{1,3}(\.\d{1,3}){3}\b/, /\blocalhost\b/i, /\b[\w-]+\.(local|ts\.net|lan|internal)\b/i,
+];
+export const looksPrivate = (x) => { const t = typeof x === 'string' ? x : JSON.stringify(x ?? null); return PRIVATE.some((r) => r.test(t)); };
 
 /** packageRun(runDir, {select}) → {index, selected}. Local index: outcome, measurements, recordings, previews and their
  *  hashes, limits (private, may hold absolute paths). Selected projection: only the evidence named in `select`
@@ -111,9 +122,17 @@ export function packageRun(runDir, { select = [] } = {}) {
   for (const p of picked) {
     const { actual, requested, ...rest } = p;
     const item = { ...rest, requested: requested ? { kind: requested.kind, viewport: requested.viewport, ...(requested.composition ? { composition: requested.composition } : {}) } : undefined, actual: actual ? { mode: actual.mode, presentation: actual.presentation } : undefined };
-    if (ABS.test(JSON.stringify(item))) refused.push({ item: p.camera ?? p.file, why: 'contains an absolute path' }); else selected.evidence.push(item);
+    if (looksPrivate(item)) refused.push({ item: p.camera ?? p.file, why: 'contains a local path or host' }); else selected.evidence.push(item);
   }
-  if (ABS.test(JSON.stringify(selected.limits))) { selected.limits = selected.limits.map((l) => (ABS.test(l) ? '[limit withheld: contains a local path]' : l)); }
+  // Every other field of the projection is screened the same way: a measured value or question basis that holds a path
+  // or host is withheld and listed, never copied.
+  if (selected.measurements) {
+    selected.measurements.measured = selected.measurements.measured.map((m) => { if (!looksPrivate(m.value)) return m; refused.push({ item: `measurement ${m.id}`, why: 'value contains a local path or host' }); return { id: m.id, value: null, withheld: true }; });
+    selected.measurements.questions = selected.measurements.questions.map((q) => { if (!looksPrivate(q.basis)) return q; refused.push({ item: `question ${q.id}`, why: 'basis contains a local path or host' }); return { ...q, basis: '[withheld: contains a local path or host]' }; });
+  }
+  selected.limits = selected.limits.map((l) => (looksPrivate(l) ? '[limit withheld: contains a local path or host]' : l));
+  for (const k of ['runId', 'spec', 'commit']) if (looksPrivate(selected[k])) { refused.push({ item: k, why: 'contains a local path or host' }); selected[k] = null; }
+  if (looksPrivate(selected)) return { ok: false, error: 'selected projection still holds a local path or host after screening; not written' };
   const out = join(runDir, 'derived', 'package'); mkdirSync(out, { recursive: true });
   writeJson(join(out, 'index.json'), index);
   writeFileSync(join(out, 'index.md'), renderIndex(index));
