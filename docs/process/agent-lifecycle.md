@@ -14,6 +14,10 @@ tier, tries a reproduction on a fake-mind world, and marks it ready for an agent
 Plans for individual tasks, briefs and status notes live in the issue and its comments, never in the tree.
 Durable product direction belongs in design docs; see [planning and intake](planning.md).
 
+Apply [bounded execution](planning.md#bounded-execution): prefer single-digit-hour slices, finish the authorized
+outcome without routine milestone pauses, and get Gene's approval for substantial scope expansion. Use a supported
+goal for sustained execution or a durable checkpoint when unavailable; neither changes proof or approval requirements.
+
 ## 2. Branch
 
 Claim the issue first (assign it and add `agent:claimed`), then work on one branch, `agent/<issue>-<slug>`, in its
@@ -59,7 +63,8 @@ from the template:
 - **Docs touched**, and the **changelog**.
 
 `node tools/proof/acceptance.mjs check` validates the checklist and `proof.json` locally. The `journal` skill walks an
-agent through one milestone; the `epic` skill runs a multi-milestone tranche with review stops. Add a fragment in
+agent through one milestone; the `epic` skill runs a bounded tranche with review stops only when requested. Add a
+fragment in
 [`changes/`](../../changes/README.md) for anything users notice, or the `no-changelog` label. A change in behaviour
 updates its doc in the same PR.
 
@@ -69,7 +74,8 @@ CI runs the checks for the PR's paths. The `main` ruleset requires `ci-ok`, the 
 `path-guard`, `scrub-guard`), `proof-ok` and the changelog `fragment`, and every review thread resolved. PR CI picks
 its jobs from the changed paths with the release gate's `--scope auto` map (`.github/scripts/ci-scope.mjs`): server
 and package tests, typecheck and the web build, the `apps/web` unit suite (`V4-web`), the `tools/world-launcher` unit
-tests (`V3-launcher-unit`) and the `tools/edge-skill` / `tools/client-eval` tests (`V3-client-cli`). The browser
+tests (`V3-launcher-unit`) and the `tools/edge-skill` / `tools/client-eval` tests (`V3-client-cli`). Pushes to
+`main` and manual runs run every job, which is the evidence the merge train needs for non-strict landing. The browser
 walks and the full gate stay with the release. `launcher.test.mjs` takes its 25 ports from
 `LAUNCHER_TEST_PORT_BASE=<port>` so it can run beside other local processes; other launcher test files still use their
 own fixed ports (`op.test.mjs` takes `OP_TEST_PORT`). Server discovery includes every nested `.test.ts` under
@@ -89,9 +95,10 @@ ready for review; check a draft locally with `node tools/proof/acceptance.mjs ch
 
 ## 7. Merge
 
-Label the PR `merge:ready`. The merge train rebases it onto `main`, re-runs the required checks and merges: T0–T2
-automatically on green, T3–T4 after the maintainer approves (enforced by `proof-ok`). A conflict it cannot resolve
-gets `needs:rebase`. See [the merge train](agent-workflow.md#the-merge-train). `main` is always releasable.
+Label the PR `merge:ready`. The merge train merges it: T0–T2 automatically on green (as is when it merges cleanly and
+touches no engine or other strict path, otherwise rebased onto `main` and re-checked first), T3–T4 rebased,
+re-checked and after the maintainer approves (enforced by `proof-ok`). A conflict it cannot resolve gets
+`needs:rebase`. See [the merge train](agent-workflow.md#the-merge-train). `main` is always releasable.
 
 ## 8. Release
 
