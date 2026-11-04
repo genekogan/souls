@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // The merge train's decisions, for .github/workflows/merge-train.yml (the label flow is documented there).
 //
-//   node .github/scripts/merge-train.mjs next  --repo o/r [--maintainer login] [--output file]
-//        the oldest `merge:ready` PR that can go now: pr, tier, head_ref, head_sha, base_ref, same_repo, more
+//   node .github/scripts/merge-train.mjs next  --repo o/r [--maintainer login] [--notify-issue n] [--output file]
+//        the oldest `merge:ready` PR that can go now: pr, tier, head_ref, head_sha, base_ref, same_repo, more, and
+//        mode=nonstrict|strict (with mode_why) from landingMode(); a red main CI is reported once on --notify-issue
 //   node .github/scripts/merge-train.mjs wait  --repo o/r --sha <sha> [--checks a,b] [--timeout-min 60] [--output f]
 //        polls check runs and commit statuses on <sha> until every required check concluded: result=pass|fail|timeout
 //   node .github/scripts/merge-train.mjs merge --repo o/r --pr <n> --sha <sha>
@@ -17,6 +18,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPolicy, tierFor } from '../../tools/proof/tier.mjs';
 import { APPROVED_LABEL, maintainerApproved } from '../../tools/proof/gate.mjs';
+import { JOBS } from './ci-scope.mjs';
 
 // The maintainer gate itself is tools/proof/gate.mjs, enforced by the required `proof-ok` check; the train uses the same
 // rule only to leave unapproved T3-T4 PRs queued instead of waiting on a check that will fail.
@@ -25,6 +27,21 @@ export { APPROVED_LABEL, maintainerApproved };
 export const READY = 'merge:ready', REBASE = 'needs:rebase';
 export const DEFAULT_CHECKS = ['ci-ok', 'gitleaks', 'path-guard', 'scrub-guard', 'fragment', 'proof-ok'];
 const AWAITING = '<!-- merge-train:awaiting-approval -->';
+const MAIN_RED = '<!-- merge-train:main-red';
+/**
+ * Paths that always take the strict path (rebase and re-test), whatever their tier: the engine (the vendored Mars
+ * engine, the engine packages and kernel, the world compiler), conformance pins, the lockfile, the walk and bundle
+ * baselines, and the workflows. The release gate's scope map (SCOPE_RULES) has no engine-specific rule to derive this
+ * from: it maps all of packages/ to the same steps.
+ */
+export const STRICT_PATHS = [
+  [/^(mars\/|packages\/(engine-[^/]+|kernel|world-compiler)\/)/, 'engine-sensitive paths'],
+  [/^packages\/conformance\//, 'conformance pins'],
+  [/^pnpm-lock\.yaml$/, 'lockfile'],
+  [/^tools\/test-harness\/(walk\/baseline\/|bundle-budget\/baseline\.json$)/, 'walk or bundle baseline'],
+  [/^\.github\/workflows\//, 'workflows'],
+];
+const strictPath = files => STRICT_PATHS.find(([re]) => files.some(f => re.test(f)))?.[1];
 const rank = t => ['T0', 'T1', 'T2', 'T3', 'T4'].indexOf(t);
 
 /** Why a ready PR cannot go now, or null when it can. */
@@ -36,6 +53,49 @@ export function blocker({ pr, tier, approved, defaultBranch }) {
   if (pr.base?.ref && pr.base.ref !== defaultBranch) return 'not-default-branch';
   if (rank(tier) >= 3 && !approved) return 'awaiting-approval';
   return null;
+}
+
+/**
+ * How a pickable PR lands. `nonstrict`: squash its current head as is, even when behind main. Only for T0-T2, no
+ * STRICT_PATHS file, required checks green on the head, GitHub reporting it mergeable without conflict, and main's
+ * CI green (mainCiState). Anything else is `strict`: rebase onto main, re-test, merge.
+ */
+export function landingMode({ tier, files = [], mergeable, mergeableState, headChecks, mainCi }) {
+  if (rank(tier) >= 3) return { mode: 'strict', why: `tier ${tier}` };
+  const path = strictPath(files);
+  if (path) return { mode: 'strict', why: path };
+  if (mainCi !== 'success') return { mode: 'strict', why: `main CI ${mainCi ?? 'unknown'}` };
+  if (mergeable !== true || mergeableState === 'dirty') return { mode: 'strict', why: `not mergeable (${mergeableState ?? 'unknown'})` };
+  if (headChecks !== 'pass') return { mode: 'strict', why: `head checks ${headChecks}` };
+  return { mode: 'nonstrict', why: 'T0-T2, green on head, mergeable' };
+}
+
+/**
+ * Main's CI over its recent ci.yml runs (push and workflow_dispatch on the default branch). Both are full scope
+ * (ci-scope.mjs FULL_EVENTS), but older or misconfigured runs may not be, and a narrower green run says nothing
+ * about an earlier failure: main is green only
+ * when no run failed after the newest green full-scope run (`isFull`: a manual run, or one whose every qualify job
+ * succeeded). A failed run re-run green counts as green (a re-run keeps its id). Cancelled and skipped runs say
+ * nothing. With no green full-scope run in the window main is `unproven` (strict): an older failure may be hidden.
+ * Red returns `since`, the first failed run of the streak, which keys the one notice per red streak.
+ */
+export function mainCiState(runs = [], isFull = () => false) {
+  const done = runs.filter(r => r.status === 'completed' && !['cancelled', 'skipped'].includes(r.conclusion)).sort((a, b) => b.id - a.id);
+  const red = [];
+  let proven = false;
+  for (const r of done) {
+    if (r.conclusion !== 'success') red.push(r);
+    else if (isFull(r)) { proven = true; break; }
+  }
+  if (red.length) return { conclusion: red[0].conclusion, since: red.at(-1).id };
+  return proven ? { conclusion: 'success', since: null } : { conclusion: 'unproven', since: 'unproven' };
+}
+
+/** A run checked everything: started by hand (ci.yml then scopes to full), or every qualify job ran and succeeded. */
+export function fullScope(run, jobs) {
+  if (run.event === 'workflow_dispatch') return true;
+  const ok = new Set(jobs.filter(j => j.conclusion === 'success').map(j => j.name));
+  return JOBS.every(j => ok.has(j.name));
 }
 
 /** Folds check runs and commit statuses into one verdict over the required names (latest run per name wins). */
@@ -69,9 +129,10 @@ const ghRaw = (args, input) => execFileSync('gh', ['api', ...args], { encoding: 
 const gh = (...args) => { const out = ghRaw(args); return out.trim() ? JSON.parse(out) : null; };
 const ghAll = path => gh(path, '--paginate', '--slurp').flat();
 
+const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 function comment(repo, pr, body) { ghRaw([`repos/${repo}/issues/${pr}/comments`, '--input', '-'], JSON.stringify({ body })); }
 
-export function next({ repo, maintainer, api = { gh, ghAll, comment } }) {
+export function next({ repo, maintainer, notifyIssue, api = { gh, ghAll, comment } }) {
   const repoInfo = api.gh(`repos/${repo}`);
   const defaultBranch = repoInfo.default_branch;
   const candidates = api.ghAll(`repos/${repo}/issues?state=open&labels=${encodeURIComponent(READY)}&per_page=100`)
@@ -96,12 +157,43 @@ export function next({ repo, maintainer, api = { gh, ghAll, comment } }) {
       }
     }
     if (why) { skipped.push({ pr: n, tier, why }); continue; }
+    const mode = pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api });
     return {
       pr: n, tier, head_ref: pr.head.ref, head_sha: pr.head.sha, base_ref: pr.base.ref, title: pr.title,
       same_repo: pr.head.repo?.full_name === repo, more: candidates.length - i - 1 > 0, skipped,
+      mode: mode.mode, mode_why: mode.why,
     };
   }
   return { pr: '', more: false, skipped };
+}
+
+function pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api }) {
+  if (rank(tier) >= 3 || strictPath(files)) return landingMode({ tier, files });
+  let ci; // unreadable main CI (token scope, API error) counts as not green: strict
+  try {
+    const runs = (api.gh(`repos/${repo}/actions/workflows/ci.yml/runs?branch=${encodeURIComponent(defaultBranch)}&status=completed&per_page=50`)?.workflow_runs ?? [])
+      .filter(r => ['push', 'workflow_dispatch'].includes(r.event));
+    ci = mainCiState(runs, r => fullScope(r, r.event === 'workflow_dispatch' ? [] : api.ghAll(`repos/${repo}/actions/runs/${r.id}/jobs?per_page=100`).flatMap(p => p.jobs ?? p)));
+  } catch { ci = { conclusion: 'unreadable', since: 'unreadable' }; }
+  const runs = api.ghAll(`repos/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`).flatMap(p => p.check_runs ?? p);
+  const statuses = api.ghAll(`repos/${repo}/commits/${pr.head.sha}/statuses?per_page=100`);
+  const headChecks = summarizeChecks({ runs, statuses, required: parseChecks(process.env.CHECKS) }).state;
+  // GitHub computes `mergeable` lazily (null until then, e.g. right after main moved): ask again briefly, when it decides.
+  for (let i = 0; ci.conclusion === 'success' && headChecks === 'pass' && pr.mergeable == null && i < 3; i++) {
+    (api.pause ?? pause)(3000);
+    pr = api.gh(`repos/${repo}/pulls/${pr.number}`);
+  }
+  const mode = landingMode({ tier, files, mergeable: pr.mergeable, mergeableState: pr.mergeable_state, mainCi: ci.conclusion, headChecks });
+  if (ci.conclusion !== 'success' && notifyIssue) {
+    // The notice is best effort: a locked issue or a bad MERGE_TRAIN_NOTIFY_ISSUE must not stall the train.
+    const marker = `${MAIN_RED}:${typeof ci.since === 'number' ? ci.since : `${ci.since}-${new Date().toISOString().slice(0, 10)}`} -->`;
+    try {
+      if (!api.ghAll(`repos/${repo}/issues/${notifyIssue}/comments?per_page=100`).some(c => String(c.body).startsWith(marker))) {
+        api.comment(repo, notifyIssue, `${marker}\nMerge train: CI on \`${defaultBranch}\` is ${ci.conclusion}${typeof ci.since === 'number' ? ` since run ${ci.since}` : ''}, so the train stopped non-strict merges: every PR goes through the strict path (rebase and re-test, or \`needs:rebase\` when it cannot be rebased) until a full-scope run on \`${defaultBranch}\` is green, or the failed run is re-run green.`);
+      }
+    } catch (e) { console.error(`merge-train: could not post the main-CI notice on #${notifyIssue}: ${e.message}`); }
+  }
+  return mode;
 }
 
 export async function wait({ repo, sha, required, timeoutMin = 60, pollSec = 20, api = { ghAll, gh }, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now }) {
@@ -135,7 +227,7 @@ async function main([mode, ...argv]) {
   const repo = opt('--repo') ?? process.env.GITHUB_REPOSITORY;
   if (!repo) { console.error('--repo is required'); return 2; }
   if (mode === 'next') {
-    out(opt('--output'), next({ repo, maintainer: opt('--maintainer') ?? process.env.MAINTAINER ?? repo.split('/')[0] }));
+    out(opt('--output'), next({ repo, maintainer: opt('--maintainer') ?? process.env.MAINTAINER ?? repo.split('/')[0], notifyIssue: opt('--notify-issue') || undefined }));
     return 0;
   }
   if (mode === 'wait') {
