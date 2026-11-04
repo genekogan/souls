@@ -75,10 +75,11 @@ export function reconstruct(text) {
   }
   const acts = new Map();
   for (const r of http.filter(r => r.method === 'POST' && ACT.test(r.route?.split('?')[0] ?? ''))) {
-    const key = r.op ?? r.proc + ':' + r.seq, a = acts.get(key) ?? {op: r.op ?? null, proc: r.proc, route: r.route, attempts: [], for: null, receipt: null};
+    const key = r.op ?? r.proc + ':' + r.seq, a = acts.get(key) ?? {op: r.op ?? null, proc: r.proc, route: r.route, attempts: [], for: null, linkSource: 'world', receipt: null};
     acts.set(key, a);
     a.attempts.push({attempt: r.attempt ?? 1, status: r.status, accepted: r.facts?.accepted ?? null, code: r.facts?.code ?? null, durationMs: r.durationMs ?? null, at: r.at});
-    if (r.facts?.for) a.for = r.facts.for;
+    if (r.facts?.for) { a.for = r.facts.for; a.linkSource = 'world'; }
+    else if (r.requestedFor && !a.for) { a.for = r.requestedFor; a.linkSource = 'requested'; }
     if (r.facts?.receipt?.id) a.receipt = r.facts.receipt.id;
     a.firstAt ??= r.at;
   }
@@ -90,7 +91,7 @@ export function reconstruct(text) {
   const actView = a => {
     const rec = a.receipt ? receipts.get(a.receipt) : null, last = a.attempts.at(-1);
     if (rec && !rec.terminal) anomalies.push({type: 'receipt-unresolved', receipt: rec.id, note: 'no terminal phase observed in this trace'});
-    return {op: a.op, attempts: a.attempts, outcome: last.status === 0 ? 'unreachable' : last.status >= 200 && last.status < 300 && last.accepted !== false ? 'accepted' : 'refused', code: last.code,
+    return {op: a.op, link: a.for ? a.linkSource : null, attempts: a.attempts, outcome: last.status === 0 ? 'unreachable' : last.status >= 200 && last.status < 300 && last.accepted !== false ? 'accepted' : 'refused', code: last.code,
       receipt: rec ? {id: rec.id, capability: rec.capability ?? null, terminal: rec.terminal ?? null, code: rec.code ?? null,
         ticks: {accepted: rec.acceptedTick ?? null, started: rec.startedTick ?? null, ended: rec.endedTick ?? null}, firstObservedAt: rec.phases} : null};
   };
@@ -114,6 +115,7 @@ export function render(t) {
   const out = [`${t.schema} timeline (reconstruction from captured records; not a replay) — ${t.records} records, ${t.processes.length} processes`];
   const actLines = (a, from) => {
     const lines = [];
+    if (a.link === 'requested') lines.push('    (linked by the CLI\'s requested `for`; the world returned no link)');
     for (const x of a.attempts) lines.push(`    act ${a.op ? 'op ' + a.op.slice(0, 8) + ' ' : ''}attempt ${x.attempt} → ${x.status}${x.accepted === false ? ' refused' : ''}${x.code ? ' ' + x.code : ''} in ${x.durationMs ?? '?'} ms (process clock)  @+${secs(x.at - from)} local`);
     if (a.receipt) {
       const r = a.receipt, k = r.ticks;

@@ -113,15 +113,17 @@ export function createTap({file, env = process.env, argv = process.argv, now = D
   };
 
   const wrapFetch = original => async function tracedFetch(input, init) {
-    let route, method, op, attempt, t0;
+    let route, method, op, attempt, t0, requestedFor;
     try {
       t0 = mono();
       route = routeOf(typeof input === 'string' || input instanceof URL ? input : input?.url);
       method = String(init?.method ?? input?.method ?? 'GET').toUpperCase();
       op = ref(headerOf(init?.headers ?? input?.headers, 'idempotency-key'));
       if (op) { attempt = (attempts.get(op) ?? 0) + 1; attempts.set(op, attempt); }
-    } catch { route = undefined; }
-    const base = () => prune({method, route, op, attempt, startMono: t0 === undefined ? undefined : Math.round((t0 - started) * 1000) / 1000});
+      // The owner-message link the CLI asked for (an id only); the rest of the request body is never read.
+      if (typeof init?.body === 'string' && init.body.length <= 65536 && init.body.includes('"for"')) requestedFor = ref(JSON.parse(init.body)?.for);
+    } catch { route ??= undefined; }
+    const base = () => prune({method, route, op, attempt, requestedFor, startMono: t0 === undefined ? undefined : Math.round((t0 - started) * 1000) / 1000});
     let res;
     try { res = await Reflect.apply(original, this, [input, init]); }
     catch (e) { try { record('http', {...base(), status: 0, error: ref(e?.name) ?? 'Error', durationMs: Math.round((mono() - t0) * 1000) / 1000}); } catch {} throw e; }
