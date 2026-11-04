@@ -42,9 +42,10 @@ export async function prepare({base,paths,arm,signal}){
 // Observation-only tee of actual AudioContext destination output, retained from the accepted audio capture recipe.
 function installAudioObserver(){
  const captures=[],byContext=new WeakMap(),connect=AudioNode.prototype.connect,disconnect=AudioNode.prototype.disconnect;
- const ensure=ctx=>{let c=byContext.get(ctx);if(c)return c;const sink=ctx.createMediaStreamDestination(),chunks=[],recorder=new MediaRecorder(sink.stream,{mimeType:'audio/webm;codecs=opus'}),meta={sampleRate:ctx.sampleRate,stateAtStart:ctx.state,requestEpochMs:Date.now(),contextTimeAtStart:ctx.currentTime};c={sink,recorder,chunks,meta};captures.push(c);byContext.set(ctx,c);recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstart=()=>{meta.startEventEpochMs=Date.now();};recorder.start(250);return c;};
+ const ensure=ctx=>{let c=byContext.get(ctx);if(c)return c;const sink=ctx.createMediaStreamDestination(),chunks=[],recorder=new MediaRecorder(sink.stream,{mimeType:'audio/webm;codecs=opus'}),meta={sampleRate:ctx.sampleRate,stateAtStart:ctx.state,requestEpochMs:Date.now(),contextTimeAtStart:ctx.currentTime};c={ctx,sink,recorder,chunks,meta};captures.push(c);byContext.set(ctx,c);recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstart=()=>{meta.startEventEpochMs=Date.now();};recorder.start(250);return c;};
  AudioNode.prototype.connect=function(destination,...args){const result=Reflect.apply(connect,this,[destination,...args]);if(destination===this.context.destination){const c=ensure(this.context);Reflect.apply(connect,this,[c.sink,...args]);}return result;};
  AudioNode.prototype.disconnect=function(...args){const result=Reflect.apply(disconnect,this,args),c=byContext.get(this.context);if(c&&args[0]===this.context.destination){try{Reflect.apply(disconnect,this,[c.sink,...args.slice(1)]);}catch{}}return result;};
+ window.__proofAudioState=()=>captures.map(c=>({state:c.ctx.state,recorder:c.recorder.state,tracks:c.sink.stream.getAudioTracks().length,bytes:c.chunks.reduce((n,b)=>n+b.size,0)}));
  window.__proofAudioStop=async()=>{const out=[];for(const c of captures){c.meta.stopRequestEpochMs=Date.now();await new Promise(resolve=>{c.recorder.onstop=resolve;c.recorder.stop();});const blob=new Blob(c.chunks,{type:c.recorder.mimeType}),base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=reject;reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.readAsDataURL(blob);});out.push({meta:c.meta,mime:c.recorder.mimeType,bytes:blob.size,base64});}return out;};
 }
 export async function beforeNavigation({page,paths}){
@@ -53,8 +54,23 @@ export async function beforeNavigation({page,paths}){
  await page.addInitScript(installAudioObserver);
  // Enable the existing observation-only shot camera before app initialization. No actor/physics state is touched.
  await page.addInitScript(()=>{const u=new URL(location.href);if(u.pathname.includes('/w/')){u.searchParams.set('shot','1');history.replaceState(null,'',u);}});
- return async()=>{const audio=await page.evaluate(()=>window.__proofAudioStop?.()??[]);const tracks=[];for(const [i,a]of audio.entries()){if(a.bytes)writeFileSync(join(paths.dir,`raw-audio-${i}.webm`),Buffer.from(a.base64,'base64'));tracks.push({...a,base64:undefined,file:a.bytes?`raw-audio-${i}.webm`:null});}save(paths,'audio.json',tracks);};
+ return async()=>{const audio=await page.evaluate(()=>window.__proofAudioStop?.()??[]);const tracks=[];for(const [i,a]of audio.entries()){if(a.bytes)writeFileSync(join(paths.dir,`raw-audio-${i}.webm`),Buffer.from(a.base64,'base64'));tracks.push({...a,base64:undefined,file:a.bytes?`raw-audio-${i}.webm`:null});}save(paths,'audio.json',tracks);if(!tracks.some(a=>a.bytes>0))throw Error('actual browser-output audio missing');};
 }
+
+// A default on label describes settings, not browser gesture unlock. Always use the actual control.
+export async function enableProofSound(page,check){
+ const sound=page.getByRole('button',{name:/^Sound is/}).first();
+ if((await sound.getAttribute('aria-label')).startsWith('Sound is on:'))await sound.click();
+ await page.getByRole('button',{name:'Sound is off: turn on'}).click();
+ await page.getByRole('button',{name:'Sound is on: mute'}).waitFor();
+ await page.waitForFunction(()=>globalThis.__edenSound?.state().ctx==='running',undefined,{timeout:8000});
+ await page.waitForFunction(()=>globalThis.__proofAudioState?.().some(a=>a.state==='running'&&a.recorder==='recording'&&a.tracks>0&&a.bytes>0),undefined,{timeout:8000});
+ const audio=await page.evaluate(()=>({sound:globalThis.__edenSound.state(),capture:globalThis.__proofAudioState()}));
+ check('actual-audio-preflight',audio.sound.ctx==='running'&&!audio.sound.muted&&audio.capture.some(a=>a.state==='running'&&a.tracks>0&&a.bytes>0));
+ return audio;
+}
+
+export const hasProofPourOutput=(frames,plantId)=>frames.some(f=>f.audio?.ctx==='running'&&f.audio.rms>0&&f.audio.pour?.some(v=>v.id.split('#')[0]===plantId&&v.gain>0));
 
 export default async function journey({page,paths,fixture:s,check,signal}){
  const baseline=s.arm==='baseline',events=[],frames=[],errors=[];let sequence=0;
@@ -65,8 +81,7 @@ export default async function journey({page,paths,fixture:s,check,signal}){
  await page.evaluate(({x,z})=>globalThis.__simEntity.shotCamera([x+3.9,3.2,z+6.6],[x+.1,.8,z+1.2]),s);
  // The standard shot canvas covers overlays. Temporarily expose the real Sound button for its trusted UI gesture.
  await page.evaluate(()=>{globalThis.__simEntity.renderer.domElement.style.zIndex='0';});
- const sound=page.getByRole('button',{name:/^Sound is/}).first();if((await sound.getAttribute('aria-label')).startsWith('Sound is off:'))await sound.click();
- await page.getByRole('button',{name:'Sound is on: mute'}).waitFor();
+ save(paths,'audio-preflight.json',await enableProofSound(page,check));
  await page.evaluate(({arm,initialWilt})=>{globalThis.__simEntity.renderer.domElement.style.zIndex='2147483000';const el=document.createElement('div');el.id='garden-proof-caption';el.style.cssText='position:fixed;left:18px;bottom:50px;z-index:2147483647;white-space:pre;background:rgba(0,0,0,.78);color:white;padding:10px 14px;font:18px monospace;pointer-events:none';el.textContent=`${arm} | seeded partial wilt≈${initialWilt}\n60 real seconds/world day | native continuous clock\nDRYING → REAL WATERING → REVIVING`;document.body.append(el);},s);
  check('distant-planters-here-bytes',s.hereBytes.near===s.hereBytes.distant100,JSON.stringify(s.hereBytes));
  const start=Date.now();await mark('DRYING · continuous clock begins',{initialWilt:s.initialWilt});
@@ -77,7 +92,8 @@ export default async function journey({page,paths,fixture:s,check,signal}){
   const root=baseline?layer?.drawn?.get(plantId)?.obj:recorded?.getObjectByName('recorded planter '+plantId);
   const controlRoot=layer?.drawn?.get(controlId)?.obj,plants=root?.getObjectByName('plant growth'),controlPlants=controlRoot?.getObjectByName('plant growth'),f=d?.transportFrame?.();
   const project=(o,dy)=>{if(!o)return null;const v=new d.camera.position.constructor();o.getWorldPosition(v);v.y+=dy;return v.project(d.camera).toArray();};
-  return{tick:f?.tick,dt:f?.dt,look:plants?.userData.look,controlLook:controlPlants?.userData.look,plantNdc:project(root,.6),controlNdc:project(controlRoot,.6),plantTopNdc:project(root,1.2),plantBottomNdc:project(root,.1),actor:f?.entities?.[actorId],stats:d?.stats?.(),camera:window.__shotCamera};
+  const audio=globalThis.__edenSound,state=audio?.state();
+  return{audio:{ctx:state?.ctx,rms:audio?.level(),pour:state?.voices?.filter(v=>v.kind==='water'&&v.variant===3)},tick:f?.tick,dt:f?.dt,look:plants?.userData.look,controlLook:controlPlants?.userData.look,plantNdc:project(root,.6),controlNdc:project(controlRoot,.6),plantTopNdc:project(root,1.2),plantBottomNdc:project(root,.1),actor:f?.entities?.[actorId],stats:d?.stats?.(),camera:window.__shotCamera};
  },{...s,baseline});frames.push({epochMs:Date.now(),...frame});save(paths,'frames.json',frames);return frame;}
  const first=await sample();check('both-planters-visible',!!first.look&&!!first.controlLook&&[first.plantNdc,first.controlNdc].every(p=>p&&Math.abs(p[0])<.9&&Math.abs(p[1])<.9&&p[2]>-1&&p[2]<1));
  check('native-close-framing',Math.abs(first.plantTopNdc[1]-first.plantBottomNdc[1])*540>=100);await page.screenshot({path:join(paths.dir,'stage-drying.png')});
@@ -95,6 +111,7 @@ export default async function journey({page,paths,fixture:s,check,signal}){
   if(healthy&&(!baseline||Date.now()-start>=70000))break;
   await page.waitForTimeout(250);
  }
+ check('actual-pour-output-observed',hasProofPourOutput(frames,s.plantId));
  check('actual-water-contact',contact);check('native-water-completed',completed);check('healthy-in-continuous-journey',healthy);
  if(!baseline)check('multiple-gradual-recovery-samples',progress>15,String(progress));
  const final=await api(s.base,'/v1/god/snapshot',s.ownerToken),controlAfter=entities(final).find(e=>e.id===s.controlId)?.state;
