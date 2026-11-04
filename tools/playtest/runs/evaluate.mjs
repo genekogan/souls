@@ -337,6 +337,8 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
     coverage: {
       directorSeats: Object.keys(sr.director).length, seatTranscripts: Object.values(sr.steps).filter((s) => s.length).length, requests: requests.length,
       observerEvidencePacks: sr.run?.evidence?.length ?? 0, observer: sr.receipt?.observer ?? null,
+      // Diagnostics (SR3) are linked, not interpreted here: `run.mjs correlate` is the analysis of a trace.
+      diagnostics: sr.receipt?.diagnostics?.capture ? Object.fromEntries(Object.entries(sr.receipt.diagnostics.capture.seats).map(([seat, x]) => [seat, { file: x.file, present: sr.receipt.diagnostics.capture.result?.[seat]?.present ?? null, sha256: before[x.file]?.sha256 ?? null }])) : 'off',
       // Semantic (model) review is never run here. When the run had one, its mode, model and outputs are identified so
       // an answer built on it can say what it rests on; review/cli.mjs review is the explicit, separately budgeted path.
       semanticReview: review ? { mode: sr.scenario?.review?.mode ?? 'model', provider: (sr.scenario?.review?.mode ?? 'model') === 'model' ? 'claude' : null, model: (sr.scenario?.review?.mode ?? 'model') === 'model' ? (sr.scenario?.review?.reviewerModel ?? 'opus') : null, requests: review.requests ?? 0, inputs: (sr.scenario?.review?.mode ?? 'model') === 'model' ? 'bounded per-request evidence projections (review/run.mjs projectEvidence)' : 'deterministic oracles only', outputs: ['ledger.tsv', 'reviews.jsonl'].map((f) => sr.at(f)).filter((f) => before[f]), note: 'indexed, not re-run; evaluate makes no model call' } : null,
