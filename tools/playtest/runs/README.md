@@ -86,7 +86,10 @@ Setup batches are existing god-edit batches (`{ops: [...]}` as `eden-god.mjs act
 owner's own route: `POST /v1/god/mint` as the dev owner, then `POST /v1/god/act` per batch, the same validated
 `commitBatch` the god CLI uses. It runs after provision and before any seat exists, so it is never part of measured
 play. `setup.json` and the receipt record each batch's id, path, sha256 and outcome (edit seq, or the refusal code and
-failures) and the physical fixture hash before and after setup. A refused batch fails the run at stage `setup`; play
+failures) and the physical fixture hash before and after setup. An accepted batch also lists its `entities`: each
+created root entity id with the op that created it (`place` or `clone`, op index, tmp, name and def where given; just
+`created` when the ids cannot be matched to ops one to one, for example after a build-safe repair), and each entity an
+op changed by id, with that op's name. Parts inside a created entity are not listed. A refused batch fails the run at stage `setup`; play
 never starts. The minted god token is never written down.
 
 ## Ownership and retention
