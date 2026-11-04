@@ -38,6 +38,14 @@ test('scripted mode delivers at offsets on the right channel, captures shown, cl
   assert.ok(['script-complete', 'duration'].includes(out.stoppedBy));
 });
 
+test('scripted mode delivers a seat "*" broadcast to every seat, each on its own record', async () => {
+  const r = rig({ ids: ['a', 'b'] });
+  const scenario = scen({ seats: [{ id: 'a' }, { id: 'b' }], director: { mode: 'scripted', script: [{ seat: '*', atSec: 5, channel: 'card', text: 'wave hello' }] } });
+  await runPlay({ ...r, scenario, world, quotaCheck: noQuota });
+  assert.deepEqual(r.owner.sent.map((m) => [m.soulId, m.text, m.sentAt]).sort(), [['soul-a', 'wave hello', 5000], ['soul-b', 'wave hello', 5000]]);
+  for (const id of ['a', 'b']) assert.equal(jsonl(join(r.runDir, `personas/${id}/decisions.jsonl`)).find((d) => d.scripted)?.scripted.broadcast, true);
+});
+
 test('persona mode respects waitSec and the glance minimum', async () => {
   const r = rig();
   const persona = fakePersona({ decisions: [{ say: null, waitSec: 60 }] });

@@ -1,0 +1,1 @@
+{ "id": "garden-bench", "note": "Soul Runs setup: a bench in the glazed court", "ops": [{ "op": "place", "def": "core/bench@1", "name": "sr-court-bench", "p": [0, 4] }] }
