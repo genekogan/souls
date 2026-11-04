@@ -1,4 +1,6 @@
-# Application checks on isolated runners, scoped to what a change touches.
+# Application checks on isolated runners, scoped to what a change touches. Pushes to main and manual runs are full scope
+# (every qualify job and the local smoke): the merge train lands T0-T2 PRs without re-testing them only while main's
+# latest full-scope run is green (.github/scripts/merge-train.mjs, mainCiState).
 # The job matrix is the release gate's CPU contract split for GitHub runners; `scope` picks jobs with the same path
 # map as `tools/test-harness/release-gate.mjs --scope auto` (.github/scripts/ci-scope.mjs). Branch protection requires
 # the single `ci-ok` check. The full Modal gate still qualifies releases (release.yml); CI is the per-PR check.
@@ -37,10 +39,8 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
           EVENT: ${{ github.event_name }}
-        run: |
-          # A manual run checks everything.
-          if [ "$EVENT" = workflow_dispatch ]; then BASE=; fi
-          node .github/scripts/ci-scope.mjs --base "$BASE" --head "$HEAD_SHA"
+        # A push to main and a manual run check everything (FULL_EVENTS); the merge train reads those runs.
+        run: node .github/scripts/ci-scope.mjs --base "$BASE" --head "$HEAD_SHA" --event "$EVENT"
 
   # Fast, dependency-free checks of the repo's own tooling; always runs.
   repo:
