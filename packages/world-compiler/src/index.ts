@@ -20,6 +20,7 @@ export * as layers from './layers.ts';
 export { isOpen, eventsOn, isDark, followPatch, minutesOf, describeSchedule, scheduleSlots, OWNER_REF, RELATIONS, ZONE_USES, DAYS, type Schedule, type Price, type Relation, type LayersState } from './layers.ts';
 export { aliasRef, type DefLibrary } from './model.ts';
 export { creationInputFailure } from './input.ts';
+export { BIOLOGY_HOURS, biologyEnabled, biologyOf, biologyRecordOf, biologyAt, anchorBiology, waterBiology, biologyHourAt, type PlantBiology } from './plant-biology.ts';
 export { buildLibrary, coreLibrary, libraryRef, pinnedOlder } from './library.ts';
 export { frameMediaKind, MEDIA_SLOTS_MAX } from './sign-media.ts';
 export { correctKitDef, correctKitDefines } from './kit-corrections.ts'; // harvest fix kitlenient

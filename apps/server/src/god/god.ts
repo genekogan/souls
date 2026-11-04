@@ -24,6 +24,7 @@ import { definitionUseClosure } from './unused-defs.ts';
 import { rewindChanges, rewindDependents } from './rewind.ts';
 import { GodTrace } from './trace.ts';
 import { repairBatch, tagPlaces, untagPlaces, type Repair } from './buildsafe.ts';
+import { gardenPolicyOps } from './garden.ts';
 export type { WorldBuildMessage } from './builds.ts';
 const previewBatchSchema = batchSchema.extend({ build: buildFieldSchema.optional() });
 
@@ -112,6 +113,8 @@ export class GodMode {
   /** Bridge admission/decoration must run before the accepted receipt is persisted, and never on replay. */
   actGuard: ((batch: unknown) => Result | null) | null = null;
   finalizeAct: ((result: Result, after: WorldModel) => Result) | null = null;
+  /** Authoritative native hours for atomic, opt-in planter policy edits; installed by the bridge. */
+  biologyHour: (() => number) | null = null;
   onCommit(fn: CommitListener): () => void { this.commitListeners.push(fn); return () => { this.commitListeners = this.commitListeners.filter((f) => f !== fn); }; }
   private subscribers = new Set<(e: GodEvent) => void>();
   private ring: GodEvent[] = [];
@@ -495,6 +498,10 @@ Prayers from Souls queue for you: \`node eden-god.mjs prayers\`, \`answer <id> <
     let repair: Repair | null = null;
     try { repair = repairBatch(this.model, first.next, first.r.diff!, first.r.result.ids ?? {}); } catch { repair = null; }
     const finish = (a: { next: WorldModel; r: ReturnType<typeof applyBatch> }, ops: B['ops'], rep: Repair | null) => {
+      if (a.r.result.accepted && this.biologyHour) {
+        const policy = gardenPolicyOps(this.model, a.next, a.r.diff!, this.biologyHour());
+        if (policy.length) { ops = [...ops, ...policy] as B['ops']; a = go(ops, opts); }
+      }
       const lines = rep?.lines ?? [];
       const ids = a.r.result.accepted ? a.r.result.ids : undefined; if (ids) for (const k of Object.keys(ids)) if (k.startsWith('$bs-')) delete ids[k];
       return { ...a, batch: { ...batch, ops }, repair: rep ? { ops: rep?.ops ?? [], lines, named: rep?.named ?? [], ms: rep?.ms ?? 0 } : null };
@@ -522,6 +529,15 @@ Prayers from Souls queue for you: \`node eden-god.mjs prayers\`, \`answer <id> <
     if (!target) return { accepted: false, failures: [{ op: -1, code: 'undo.conflict', detail: 'nothing to redo' }] };
     return this.revert(target, 'redo');
   }
+  /** Undo restores authored state; a biology policy transition still freezes/resumes at the present native hour. */
+  private applyInverse(before: WorldModel, inverse: Op[], tick: number, opts: PlanOptions) {
+    let ops = inverse, next = before.fork(), r = applyBatch(next, { ops }, 'god', tick, opts);
+    if (r.result.accepted && this.biologyHour) {
+      const policy = gardenPolicyOps(before, next, r.diff!, this.biologyHour(), true);
+      if (policy.length) { ops = [...ops, ...policy]; next = before.fork(); r = applyBatch(next, { ops }, 'god', tick, opts); }
+    }
+    return { next, r, ops };
+  }
   private revert(target: EditRow, kind: 'undo' | 'redo'): Result & { reverted?: number } {
     this.builds.sweep();
     const foreign = this.foreignEdit([target]); if (foreign) return { accepted: false, failures: [foreign] };
@@ -530,21 +546,20 @@ Prayers from Souls queue for you: \`node eden-god.mjs prayers\`, \`answer <id> <
     const admission = this.builds.admit(field, {}, this.caller.identity);
     if (admission.failures) return { accepted: false, failures: admission.failures };
     const tick = this.opts.tick();
-    const next = this.model.fork();
     let made: string[] = [];
-    const r = applyBatch(next, { ops: target.inverse }, 'god', tick, { trusted: true, uses: this.bodies?.uses, refuse: (after, diff, ops) => {
+    const { next, r, ops } = this.applyInverse(this.model, target.inverse, tick, { trusted: true, uses: this.bodies?.uses, refuse: (after, diff, ops) => {
       const refused = this.bodies?.refuse?.(after, diff, ops, { undo: true }); if (refused) return refused;
       const check = this.builds.check(admission, this.model, after, diff, ops, true); if ('failure' in check) return check.failure; made = check.made; return null;
     } });
     if (!r.result.accepted) return { ...r.result, failures: r.result.failures.map((f) => ({ ...f, code: f.code.endsWith('.by-body') || f.code.startsWith('body.') || f.code.startsWith('build.') ? f.code : 'undo.conflict' })) };
-    const walkouts = this.bodies?.prepare?.(this.model, next, r.diff!, target.inverse) ?? NO_WALKOUTS, moved = walkouts.moved;
+    const walkouts = this.bodies?.prepare?.(this.model, next, r.diff!, ops) ?? NO_WALKOUTS, moved = walkouts.moved;
     if (moved.length) r.result.moved = moved;
     r.result.warnings.push(...moved.map(movedWarning), ...walkouts.warnings);
     const at = this.now(), roots = this.builds.rootsDelta(this.model, next, r.diff!, kind, field), updates = this.builds.writes(admission, roots, r.result.seq, at, this.caller.identity, target.grp ?? undefined, true, made);
     if (updates.failures) return { accepted: false, failures: updates.failures };
     r.result.warnings.push(...roots.warnings, ...updates.warnings);
     if (updates.echo) (r.result as typeof r.result & { build: BuildEcho }).build = updates.echo;
-    const refused = this.store.commit(next, this.owner, r.diff!, { seq: r.result.seq, by: 'god', at, note: `${kind} of ${target.seq}`, group: target.grp ?? undefined, ops: target.inverse, inverse: r.inverse!, kind, undoOf: target.seq, builds: updates.writes, who: this.who() });
+    const refused = this.store.commit(next, this.owner, r.diff!, { seq: r.result.seq, by: 'god', at, note: `${kind} of ${target.seq}`, group: target.grp ?? undefined, ops, inverse: r.inverse!, kind, undoOf: target.seq, builds: updates.writes, who: this.who() });
     if (refused) return refused;
     r.result.warnings.push(...this.bodies?.apply?.(moved, { kind }) ?? []);
     Object.assign(this.model, next);
@@ -591,8 +606,8 @@ Prayers from Souls queue for you: \`node eden-god.mjs prayers\`, \`answer <id> <
     for (const target of targets) {
       const admission = builds.admit(field, {}, this.caller.identity);
       if (admission.failures) return { ok: false as const, failed: target.seq, failures: admission.failures };
-      const next = model.fork(); let made: string[] = [];
-      const r = applyBatch(next, { ops: target.inverse }, 'god', tick, { trusted: true, uses: this.bodies?.uses, refuse: (after, diff, ops) => {
+      let made: string[] = [];
+      const { next, r, ops } = this.applyInverse(model, target.inverse, tick, { trusted: true, uses: this.bodies?.uses, refuse: (after, diff, ops) => {
         const refused = this.bodies?.refuse?.(after, diff, ops, { undo: true }); if (refused) return refused;
         const check = builds.check(admission, model, after, diff, ops, true);
         if ('failure' in check) return check.failure; made = check.made; return null;
@@ -604,7 +619,7 @@ Prayers from Souls queue for you: \`node eden-god.mjs prayers\`, \`answer <id> <
       // Mirror SQL's global revision sequence so each later planned row expects the preceding write.
       for (const w of updates.writes) w.rev = ++rev;
       r.result.warnings.push(...roots.warnings, ...updates.warnings);
-      entries.push({ model: next, diff: r.diff!, edit: { seq: r.result.seq, by: 'god', at, note: `undo of ${target.seq}`, group: target.grp ?? undefined, ops: target.inverse, inverse: r.inverse!, kind: 'undo' as const, undoOf: target.seq, builds: updates.writes, who: this.who() }, updates, tick });
+      entries.push({ model: next, diff: r.diff!, edit: { seq: r.result.seq, by: 'god', at, note: `undo of ${target.seq}`, group: target.grp ?? undefined, ops, inverse: r.inverse!, kind: 'undo' as const, undoOf: target.seq, builds: updates.writes, who: this.who() }, updates, tick });
       model = next; builds.accepted(updates.writes);
     }
     return { ok: true as const, entries, model };

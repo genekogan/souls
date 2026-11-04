@@ -1,4 +1,4 @@
 ---
-type: internal
+type: fix
 ---
-Add a reproducible audit of planter opt-in and gradual-revival gaps without changing garden behavior.
+Planters can opt into gradual drying and revival; watering restores them over world hours while unflagged plants stay unchanged.

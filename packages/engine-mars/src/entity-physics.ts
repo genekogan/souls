@@ -16,6 +16,8 @@ export type EntityPartV1 = { surfaces?: Surface[]; solids?: Obstacle[]; links?: 
 /** A god-placed fixture or item as the engine holds it (same id as the entity-world entity). */
 export type FixtureSpecV1 = {
   def: string; kind: 'fixture' | 'item'; label: string;
+  plantBiology?: Entity['plantBiology'];
+  plantRenderV1?: NonNullable<Entity['plantRenderV1']> & {definition:Record<string,unknown>};
   p: [number, number, number]; yaw: number;
   support?: { kind: 'ground' } | { kind: 'resting-on'; on: string; slot: string };
   /** The engine level of the floor it stands on. Hosts send it for a fixture on an upper floor since lane LEVELS
@@ -144,8 +146,11 @@ export function applyWorldEdit(world: WorldState, e: WorldEditV1): { physics: En
   registerAssets(physics.assets);
   world.entityPhysicsV1 = physics;
   const kept: string[] = [];
+  const plants = new Set(world.plantBiologyIdsV1 ?? []), statics = new Set(world.plantStaticIdsV1 ?? []);
   for (const id of Object.keys(e.set).sort()) {
     const v = e.set[id], cur = world.entities[id];
+    if (v?.fixture?.plantBiology?.biologyEnabled) plants.add(id); else plants.delete(id);
+    if(v?.fixture?.plantBiology&&!v.fixture.plantBiology.biologyEnabled)statics.add(id);else statics.delete(id);
     const heldByBody = cur?.support?.kind === 'in-hand' || cur?.support?.kind === 'held';
     if (!v?.fixture) {
       if (cur && cur.tags?.includes('entity-world')) { if (heldByBody) kept.push(id); else delete world.entities[id]; }
@@ -153,6 +158,7 @@ export function applyWorldEdit(world: WorldState, e: WorldEditV1): { physics: En
     }
     if (heldByBody) { kept.push(id); continue; }
     const f = v.fixture;
+    if (f.plantRenderV1 && !world.plantRenderDefsV1?.[f.plantRenderV1.defHash]) world.plantRenderDefsV1 = {...world.plantRenderDefsV1,[f.plantRenderV1.defHash]:structuredClone(f.plantRenderV1.definition)};
     const next: Entity = {
       id, def: f.def, kind: f.kind === 'item' ? 'component' : 'fixture', label: f.label, tags: ['entity-world', ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.recordedItemPoseV1 ? ['entity-world-item-pose'] : []), ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.fixtureCarry ? ['entity-world-transport'] : [])],
       pose: { p: [f.p[0], f.p[1], f.p[2]], yaw: f.yaw },
@@ -161,9 +167,13 @@ export function applyWorldEdit(world: WorldState, e: WorldEditV1): { physics: En
       ...(f.kind !== 'item' && typeof f.level === 'number' ? { level: f.level } : {}),
       ...(f.kind === 'item' && f.support?.kind === 'ground' ? { phase: 'staged' as const } : {}),
       ...(cur?.contents ? { contents: cur.contents } : {}),
+      ...(f.plantBiology ? { plantBiology: structuredClone(f.plantBiology) } : {}),
+      ...(f.plantRenderV1 ? {plantRenderV1: {defHash:f.plantRenderV1.defHash,params:structuredClone(f.plantRenderV1.params),seed:f.plantRenderV1.seed,scale:f.plantRenderV1.scale}} : {}),
     };
     world.entities[id] = next;
   }
+  if (plants.size) world.plantBiologyIdsV1 = [...plants].sort(); else delete world.plantBiologyIdsV1;
+  if(statics.size)world.plantStaticIdsV1=[...statics].sort();else delete world.plantStaticIdsV1;
   return { physics, kept };
 }
 

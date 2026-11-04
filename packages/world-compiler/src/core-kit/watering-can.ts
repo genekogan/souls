@@ -78,4 +78,16 @@ const growingPlanter: DefInput = {
   size: { box: [0.9, 0.9, 0.5] },
 } as DefInput;
 
-export const WATERING_CAN: DefInput[] = [wateringCan, canHook, growingPlanter];
+const optedPlanter: DefInput = {
+  ...growingPlanter, version: 3,
+  description: 'A growing garden planter. Biology is disabled until biologyEnabled is explicitly set. Enabled plants dry and recover over mirrored 72-world-hour curves; watering accumulates recovery before drying resumes.',
+  state: { ...growingPlanter.state,
+    biologyEnabled: { type: 'bool', default: false },
+    biologyHour: { type: 'number', min: -1, max: 1e12, default: -1 },
+    biologyWilt: { type: 'number', min: 0, max: 1, default: 0 },
+    biologyTarget: { type: 'number', min: 0, max: 1, default: 1 },
+    biologyMoisture: { type: 'number', min: 0, max: 1, default: .1 },
+    biologyGrowth: { type: 'number', min: 0, max: 4, default: 0 },
+  } as DefInput['state'],
+};
+export const WATERING_CAN: DefInput[] = [wateringCan, canHook, growingPlanter, optedPlanter];

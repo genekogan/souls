@@ -11,7 +11,7 @@ import type { GodMode } from './god.ts';
 /** The rules payload that (re)starts the clock at `tick` with `dayTicks`, continuing from `prev` when given. */
 export function clockConfig(tick: number, dayTicks: number, prev?: { origin: number; dayTicks: number }) {
   const elapsed = prev ? ((tick - prev.origin) / prev.dayTicks) * dayTicks : 0;
-  return { dayConfig: { origin: Math.max(0, Math.round(tick - elapsed)), dayTicks, customs: [] as string[] }, why: `world clock: one world day every ${dayTicks} ticks (the god's time.dayTicks)` };
+  return { dayConfig: { origin: Math.round(tick - elapsed), dayTicks, customs: [] as string[] }, why: `world clock: one world day every ${dayTicks} ticks (the god's time.dayTicks)` };
 }
 
 /** A stopped clock (the god paused time): a day this long never visibly moves (2^40 ticks ≈ 1,700 years at 20/s). */

@@ -33,7 +33,7 @@ test('watering can and growth stages', {timeout:600000}, async t=>{
 
  // ---- context: absent, then 100 distant growing planters (and 100 cans on hooks), then nearby ----
  const absent=await here();
- const distant=[];for(let i=0;i<100;i++){const x=120+i%10*3,z=120+Math.floor(i/10)*3;distant.push({op:'place',def:'core/garden-planter@2',name:`far-bed-${i}`,p:[x,z],state:{moisture:i%2?1:0.1,growth:i%5}},{op:'place',def:'core/can-hook@1',tmp:`$h${i}`,name:`far-hook-${i}`,p:[x+1.2,z]},{op:'place',def:'core/watering-can@2',name:`far-can-${i}`,in:{parent:`$h${i}`},p:HANG,state:{level:1}});}
+ const distant=[];for(let i=0;i<100;i++){const x=120+i%10*3,z=120+Math.floor(i/10)*3;distant.push({op:'place',def:'core/garden-planter@3',name:`far-bed-${i}`,p:[x,z],state:{biologyEnabled:true,moisture:i%2?1:0.1,growth:i%5}},{op:'place',def:'core/can-hook@1',tmp:`$h${i}`,name:`far-hook-${i}`,p:[x+1.2,z]},{op:'place',def:'core/watering-can@2',name:`far-can-${i}`,in:{parent:`$h${i}`},p:HANG,state:{level:1}});}
  for(let i=0;i<distant.length;i+=150){const placed=god.act({ops:distant.slice(i,i+150)});assert.equal(placed.accepted,true,JSON.stringify(placed.failures?.slice(0,3)));}await tick(45);
  const far=await here();
  const byName=n=>[...god.model.entities.values()].find(e=>e.name===n);
@@ -41,7 +41,7 @@ test('watering can and growth stages', {timeout:600000}, async t=>{
  assert.deepEqual(edge.capabilities(soul).filter(c=>c.object&&farIds.has(c.object)).map(c=>c.id),[],'no distant offers');
  // the scene beside Ana: a hook with an empty can, the garden tap, two planters@2
  const sc=god.act({ops:[{op:'place',def:'core/can-hook@1',tmp:'$hook',name:'can-hook',p:[ax+1.8,az-1.5]},{op:'place',def:'core/watering-can@2',name:'watering-can',in:{parent:'$hook'},p:HANG,r:Math.PI/2,state:{level:0}},
-  {op:'place',def:'core/garden-tap@1',name:'garden-tap',p:[ax-2.2,az-1.2]},{op:'place',def:'core/garden-planter@2',name:'rose-bed',p:[ax+0.6,az+2.6]},{op:'place',def:'core/garden-planter@2',name:'herb-bed',p:[ax-1.6,az+2.6],state:{growth:2,moisture:0.2}}]});
+  {op:'place',def:'core/garden-tap@1',name:'garden-tap',p:[ax-2.2,az-1.2]},{op:'place',def:'core/garden-planter@3',name:'rose-bed',p:[ax+0.6,az+2.6],state:{biologyEnabled:true}},{op:'place',def:'core/garden-planter@3',name:'herb-bed',p:[ax-1.6,az+2.6],state:{biologyEnabled:true,growth:2,moisture:0.2}}]});
  assert.equal(sc.accepted,true,JSON.stringify(sc.failures?.slice(0,3)));await tick(45);
  const id=n=>byName(n).id,state=n=>byName(n).state??{},ent=n=>f.host.engine.world.entities[id(n)];
  assert.deepEqual([ent('watering-can')?.support?.kind,ent('watering-can')?.support?.on],['resting-on',id('can-hook')],'the can hangs on its hook in the engine '+JSON.stringify(ent('watering-can')?.support));
@@ -66,7 +66,7 @@ test('watering can and growth stages', {timeout:600000}, async t=>{
  assert.equal(state('garden-tap').on,false,'the tap is off again');
  assert.ok(timeline.some(s=>s.tap),'the tap ran during the fill');
  assert.equal(r3(state('rose-bed').moisture),1,'3.6 L soak a 4 L bed from 0.1');
- assert.equal(r3(state('watering-can').level),0.64,'10 L can, 3.6 L poured');
+ assert.equal(r3(state('watering-can').level),0.6,'10 L can, 4 L delivered including surplus');
  assert.deepEqual([ent('watering-can').support?.kind,ent('watering-can').support?.on],['resting-on',id('can-hook')],'hung back on its hook');
  assert.equal(byName('watering-can').in.parent,id('can-hook'),'the world has it on the hook too');
  // the tap ran only after the can was under the spout; moisture rose only while the stream ran (three steps)
@@ -77,13 +77,13 @@ test('watering can and growth stages', {timeout:600000}, async t=>{
 
  // ---- the can runs out: two more pours empty it, the fourth act fills it again ----
  const levels=[r3(state('watering-can').level)];
- for(const bed of ['herb-bed','rose-bed']){god.act({ops:[{op:'set',id:id(bed),state:{moisture:0}}]});await tick(5);const r=await act(`object:${id(bed)}:water`);const e=await watch(r);assert.equal(e.phase,'completed');levels.push(r3(state('watering-can').level));}
- assert.deepEqual(levels,[0.64,0.24,0],'pours of 3.6, 4 and the last 2.4 L: '+JSON.stringify(levels));
- god.act({ops:[{op:'set',id:id('herb-bed'),state:{moisture:0}}]});await tick(5);
+ for(const bed of ['herb-bed','rose-bed']){god.act({ops:[{op:'set',id:id(bed),state:{moisture:0,biologyHour:0,biologyMoisture:0,biologyWilt:1,biologyTarget:1}}]});await tick(5);const r=await act(`object:${id(bed)}:water`);const e=await watch(r);assert.equal(e.phase,'completed');levels.push(r3(state('watering-can').level));}
+ assert.deepEqual(levels,[0.6,0.2,0],'pours of 4, 4 and the last 2 L: '+JSON.stringify(levels));
+ god.act({ops:[{op:'set',id:id('herb-bed'),state:{moisture:0,biologyHour:0,biologyMoisture:0,biologyWilt:1,biologyTarget:1}}]});await tick(5);
  const before=timeline.length;const r4=await act(`object:${id('herb-bed')}:water`);await watch(r4);assert.ok(timeline.slice(before).some(s=>s.tap),'an empty can is filled first');
 
  // ---- interruption before the valve: nothing changes ----
- god.act({ops:[{op:'set',id:id('rose-bed'),state:{moisture:0}},{op:'set',id:id('watering-can'),state:{level:0}}]});await tick(5);
+ god.act({ops:[{op:'set',id:id('rose-bed'),state:{moisture:0,biologyHour:0,biologyMoisture:0,biologyWilt:1,biologyTarget:1}},{op:'set',id:id('watering-can'),state:{level:0}}]});await tick(5);
  const m0=state('rose-bed').moisture;const cut=await act(`object:${id('rose-bed')}:water`);
  for(let n=0;n<2000&&body().human?.wateringV1?.stage!=='fill';n++)await tick(1);
  await tick(6);await accept(f.host,edge.act(soul,{capability:'stand:here'}));await tick(120);
@@ -108,13 +108,13 @@ test('watering can and growth stages', {timeout:600000}, async t=>{
  const living0=f.host.living??{};Object.defineProperty(f.host,'living',{configurable:true,value:{...living0,origin:f.host.engine.world.tick,dayTicks:400}});
  await tick(3);const v0=gardenStats.planterVisits,passes0=gardenStats.passes;await tick(300);
  assert.equal(gardenStats.planterVisits-v0,0,'no planter visited on 300 ticks without a day change');
- god.act({ops:[{op:'set',id:id('rose-bed'),state:{moisture:1,growth:0,thirst:0}},{op:'set',id:id('herb-bed'),state:{moisture:0,growth:2,thirst:0}}]});await tick(5);
+ god.act({ops:[{op:'set',id:id('rose-bed'),state:{moisture:1,growth:0,thirst:0,biologyHour:0,biologyMoisture:1,biologyWilt:0,biologyGrowth:0,biologyTarget:1}},{op:'set',id:id('herb-bed'),state:{moisture:0,growth:2,thirst:0,biologyHour:0,biologyMoisture:0,biologyWilt:0,biologyGrowth:2,biologyTarget:1}}]});await tick(5);
  const sql=f.db.db??f.db,seqNow=()=>sql.prepare('SELECT MAX(seq) AS s FROM edge_comms_stream WHERE soul_id = ?').get(soul.soulId)?.s??0,seq0=seqNow();
  await tick(110);
  const dayEvents=sql.prepare('SELECT kind, body FROM edge_comms_stream WHERE soul_id = ? AND seq > ?').all(soul.soulId,seq0);
  const farEvents=dayEvents.filter(r=>[...farIds].some(x=>r.body.includes(x)));
  assert.equal(farEvents.length,0,'no events about the distant planters that grew: '+JSON.stringify(farEvents.slice(0,2)));
- assert.equal(gardenStats.passes-passes0,1,'one pass at the day change');assert.equal(gardenStats.planterVisits-v0,102,'the pass visits each planter once (100 distant + 2 here)');
+ assert.equal(gardenStats.passes-passes0,1,'one pass at the day change');assert.equal(gardenStats.planterVisits-v0,102,'the pass visits each opted-in planter once (100 distant + 2 here)');
  assert.deepEqual([state('rose-bed').growth,state('herb-bed').growth,state('herb-bed').thirst],[1,2,1],'rose grows, herb stalls and thirsts');
  assert.deepEqual(edge.contactActuator.facts(id('rose-bed')),{stage:'sprout'},'now a sprout (what a Soul beside it sees)');
  assert.deepEqual(edge.contactActuator.facts(id('herb-bed')),{stage:'leafy',dry:true},'the herb bed: leafy and dry');
@@ -125,7 +125,7 @@ test('watering can and growth stages', {timeout:600000}, async t=>{
  const farBeds=distant.filter(d=>d.name?.startsWith('far-bed'));
  const swap=async(def)=>{for(const d of farBeds){const e=byName(d.name);if(e)assert.equal(god.act({ops:[{op:'remove',id:e.id}]}).accepted,true);}assert.equal(god.act({ops:farBeds.map(d=>({...d,def,state:def.endsWith('@1')?{moisture:d.state.moisture}:d.state}))}).accepted,true);await tick(45);};
  const tickCost={};const vWith=gardenStats.planterVisits;
- tickCost.growing1=await cost();await swap('core/garden-planter@1');tickCost.v1a=await cost();await swap('core/garden-planter@2');tickCost.growing2=await cost();await swap('core/garden-planter@1');tickCost.v1b=await cost();
+ tickCost.growing1=await cost();await swap('core/garden-planter@1');tickCost.v1a=await cost();await swap('core/garden-planter@3');tickCost.growing2=await cost();await swap('core/garden-planter@1');tickCost.v1b=await cost();
  assert.equal(gardenStats.planterVisits,vWith,'still no planter visits without a day change');
 
  // distant Soul context across the day change: nothing (checked through a second Soul far away)

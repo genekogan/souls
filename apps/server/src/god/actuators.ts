@@ -9,7 +9,7 @@ import type { EdgeSoul } from '../edge/contract.ts';
 import { isContactActuator, CONTACT_REACH } from './contact-actuator.ts';
 import { isPosterAction, isWantedAction, posterProblem, posterPatch, wantedProblem, wantedPatch } from './poster-boards.ts';
 import { afterCommit } from '../edge/comms/store.ts';
-import { SOURCE_NEAR_VESSEL, asPlant, asTank, drawWater, isWaterAction, waterActions, waterFields, waterPlant, waterRole, type Transfer } from './water.ts';
+import { SOURCE_NEAR_VESSEL, asTank, drawWater, isWaterAction, waterActions, waterFields, waterRole, type Transfer } from './water.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Vec2 = [number, number];
@@ -117,7 +117,7 @@ export function waterPlan(a: Action, id: string, soul: EdgeSoul, host: ActuatorH
   if (!(isWaterAction(a) || (role === 'vessel' && a.name === 'fill'))) return null;
   const vessel = (x: Thing | null) => (x && waterRole(x.def) === 'vessel' ? asTank(x.id, x.name, x.def, x.state, x.params) : null);
   if (role === 'source') return drawWater(asTank(t.id, t.name, t.def, t.state, t.params), vessel(w.held(soul)));
-  if (role === 'plant') return waterPlant(asPlant(t.id, t.name, t.def, t.state, t.params), vessel(w.held(soul)));
+  if (role === 'plant') return { code: 'water.native-required', reason: 'Water this planter through the native watering-can contact action.' };
   if (role === 'vessel') {
     const src = w.sourceNear(id, SOURCE_NEAR_VESSEL);
     if (!src) return { code: 'water.no-source', reason: `There is no water by ${t.name}; carry it to a water tank or a rain barrel and fill it there.` };

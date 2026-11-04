@@ -4,6 +4,7 @@
 // an instance of a shared shape (a few draws per bed, whatever its stage). `posePlants` takes a continuous growth value,
 // so a stage change or a wilt eases instead of popping (WorldEntityLayer tweens it).
 import * as THREE from 'three';
+import { biologyRecordOf, biologyAt } from '@sim/world-compiler';
 
 type St = Record<string, unknown> | undefined;
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -12,8 +13,10 @@ const smooth = (v: number) => { const k = clamp01(v); return k * k * (3 - 2 * k)
 /** The look a planter's state asks for: growth 0..4, wilt 0..1 (dry and thirsty), moisture 0..1 (the damp patch). */
 export type PlantLook = { g: number; w: number; m: number };
 export const isGrowingDef = (def: { state?: Record<string, { type?: string }> }) => def.state?.growth?.type === 'number';
-export function plantLookOf(state: St, def: { state?: Record<string, { default?: unknown }> }): PlantLook {
+export function plantLookOf(state: St, def: { state?: Record<string, { default?: unknown }> }, hour?: number): PlantLook {
   const d = (k: string, f: number) => num(state?.[k], num(def.state?.[k]?.default, f));
+  const anchor = biologyRecordOf(state, def);
+  if (anchor && anchor.biologyHour >= 0) { const at = anchor.biologyEnabled ? biologyAt(anchor, hour ?? anchor.biologyHour) : {g:anchor.biologyGrowth,w:anchor.biologyWilt,m:anchor.biologyMoisture}; return {g:at.g,w:at.w,m:at.m}; }
   const m = d('moisture', 0.1), thirst = d('thirst', 0);
   return { g: Math.max(0, Math.min(4, d('growth', 0))), m, w: m >= 0.34 ? 0 : 0.35 + 0.65 * Math.min(1, thirst / 3) };
 }
@@ -169,3 +172,7 @@ export function posePlants(group: PlantGroup, look: PlantLook) {
   mats.fruit.color.copy(C.green).lerp(C.red, smooth((g - 3.3) / 0.6)).lerp(_c.copy(C.dry), 0.25 * w);
   group.userData.look = { ...look };
 }
+
+/** Stable plant layout, independent of the viewer's current model. */
+export const plantSeed = (id:string) => {let h=2166136261;for(let i=0;i<id.length;i++)h=Math.imul(h^id.charCodeAt(i),16777619);return h;};
+export function plantPatch(root:THREE.Object3D,m:number){root.traverse(o=>{if(o.userData.role==='fill'){const k=Math.max(.001,Math.min(1,m));o.scale.set(k,1,k);o.visible=m>.02;}});}

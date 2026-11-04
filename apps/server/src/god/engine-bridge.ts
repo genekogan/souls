@@ -7,6 +7,7 @@
 // The derived physics is plain data in the logged event, so the engine's replay never reads the entity model.
 // Fastest working path on the engine's existing structures (nav/1-style static scene re-base, CATALOG fixtures);
 // the per-tile patch follows L8's tiled Spatial.
+import { biologyRecordOf, anchorBiology, biologyHourAt } from '@sim/world-compiler';
 import { menuWorldOf, type MenuWorld } from '../split/menu-world.ts';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
@@ -25,7 +26,7 @@ import { hasStraightLandings, railRaster } from './rail-raster.ts';
 import { tokenHit } from '../edge/ledger/vocabulary.ts';
 import {outdoorRegionExclusions} from '../edge/ledger/region-arrival.ts';
 import { doorInGap, freeDoorOpening, isDoorDef, isShut } from './doors.ts';
-import { dryingOps } from './garden.ts';
+import { dryingOps, enabledPlanters } from './garden.ts';
 import { createWatering, type Watering } from './watering.ts';
 import { createTea, type Tea } from './tea.ts';
 import { createContactActuatorService } from './contact-actuator.ts';
@@ -271,6 +272,7 @@ export class EngineBridge {
   constructor(o: BridgeOptions) {
     this.host = o.host; this.god = o.god; this.edge = o.edge; this.readSide = !!o.read; const R = this.readSide; this.maxLevel = Math.min(o.maxLevel ?? MAX_LEVEL_ID, MAX_LEVEL_ID); this.log = o.log ?? ((m) => console.log(`[bridge] ${m}`));
     this.initialEngine = this.host.engine;
+    this.god.biologyHour = () => this.biologyHour();
     engineBridges.set(this.god.model, this);
     this.nav = new GodNav({ model: this.god.model, serviceStandingPoints: () => this.activitySpots?.serviceStandingPoints(), outdoorRegionExclusions: ref => {const id = this.places.forRef(ref)?.id;return this.edge && id ? outdoorRegionExclusions(this.edge.places, id) : undefined;}, version: () => this.version, staticVersion: () => this.godEdits, engine: this.host.engine as never, levelAt: (x, z, y) => this.levelAt(x, z, y), engineOwned: (e) => this.engineOwned(e), placeOf: (ref) => (this.edge ? this.places.forRef(ref)?.id : undefined), describeStamp: () => `${this.describeEpoch}:${this.levels.length}` });
     this.layers = new GodLayers({ model: this.god.model, edge: this.edge, get engine() { return o.host.engine as never; }, living: () => this.host.living, engineAct: (ops, note) => this.god.engineAct(ops, note), placeOf: (e) => this.layerPlace(e), authoredPlaceRef: id => {
@@ -294,7 +296,7 @@ export class EngineBridge {
     const owner=(id:string,soul:EdgeSoul)=>{const o=this.layers.ownership(id);return o?.owner?{name:this.layers.nameOf(o.owner),mine:this.layers.isOf(o.owner,soul)}:null;};
     // Entry 38: posters know the world day they went up (age on demand; no per-day pass)
     setWorldDaySource(()=>{const l=this.host.living;return l&&l.dayTicks>0?Math.floor(Math.max(0,this.host.engine.world.tick-l.origin)/l.dayTicks):0;});
-    if(this.edge)this.edge.contactActuator=createContactActuatorService({model:()=>this.god.model,levelAt:(x,z,y)=>this.levelAt(x,z,y),
+    if(this.edge)this.edge.contactActuator=createContactActuatorService({hour:()=>this.biologyHour(),model:()=>this.god.model,levelAt:(x,z,y)=>this.levelAt(x,z,y),
       clearance:(x,z,level)=>(this.host.engine as unknown as {clearanceAtV1?:(x:number,z:number,level?:number)=>number}).clearanceAtV1?.(x,z,level)??Infinity,
       body:id=>this.host.engine.world.entities[id] as never,access:(id,soul)=>this.layers.refusal(id,soul),owner,knock:(soul,id)=>this.knockHeard(soul,id),
       moreFacts:id=>this.tea?.facts(id)??null,
@@ -302,14 +304,14 @@ export class EngineBridge {
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
     // Entry 34: the watering-can act (watering.ts): planned for perceive's offers, its moments committed per tick
-    this.watering = createWatering({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
+    this.watering = createWatering({ hour:()=>this.biologyHour(), model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note, () => {}), log: (m) => this.log(m) });
     // Entry 43: the tea acts (tea.ts), the same way
     this.tea = createTea({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
     this.perceive = new GodPerceive({ model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea });
     // L3 (server reliability): kept Soul menus read god state the ledger does not version (ownership, construction sites)
     // the bridge runs without an edge ledger too (toy/engine-only hosts): guard the ledger, not only the method
     if (!R) (this.edge as { addMenuInput?(f: () => string): void } | undefined)?.addMenuInput?.(() => `${this.version}|${this.god.builds.closingSites().map((x) => x.id).join(',')}`);
-    this.god.onCommit((c) => { this.version++; if (c.diff.tiles.length || c.diff.defs.length) this.describeEpoch++; this.notePerceive([...c.diff.upserts.map((e) => e.id), ...c.diff.removes], c.diff.tiles.length > 0, c.by === 'engine' ? 'engine' : 'authored'); if (c.by !== 'engine') { this.godEdits++; this.editTick = this.host.engine.world.tick; this.onCommit(c.diff); } else if (c.diff.upserts.some(e => { const d=this.model.resolvedDef(e.def); return d?.components.opening && d.tags.includes('hand-operated'); })) { this.onCommit(c.diff); } });
+    this.god.onCommit((c) => { this.version++; if (c.diff.tiles.length || c.diff.defs.length) this.describeEpoch++; this.notePerceive([...c.diff.upserts.map((e) => e.id), ...c.diff.removes], c.diff.tiles.length > 0, c.by === 'engine' ? 'engine' : 'authored'); if (c.by !== 'engine') { this.godEdits++; this.editTick = this.host.engine.world.tick; this.onCommit(c.diff); } else if (c.diff.upserts.some(e => { const d=this.model.resolvedDef(e.def); return (d?.components.opening && d.tags.includes('hand-operated')) || !!d?.state.biologyEnabled; })) { this.onCommit(c.diff); } });
     this.god.onBuild(e => { if (e.kind === 'started' || e.kind === 'resumed') this.editTick = this.host.engine.world.tick; });
     // LAYERS: "under construction (step)" is part of what an owned or scheduled thing is seen as
     // L4 (audit #8): only notices that change what a build's things are seen as (started, a new step, paused/resumed,
@@ -432,15 +434,30 @@ export class EngineBridge {
   private watering?: Watering;
   /** Entry 43: the tea acts; read by perception for a kettle's and a cup's compact facts. */
   tea?: Tea;
-  /** Entry 18: when the world day changes, gardens dry by the days passed (capped at 3; time set backwards restarts the count). */
+  /** Opted-in curves materialise at day boundaries; rendering and contact use continuous native hours. */
   private gardenDay: number | null = null;
+  private gardenQueued = false;
+  private biologyHour() {
+    const clock = (this.host.engine as unknown as {plantClockV1?:()=>{origin:number;dayTicks:number;pausedAtTick?:number}|null}).plantClockV1?.() ?? this.host.living;
+    return clock ? biologyHourAt(this.host.engine.world.tick, clock) : 0;
+  }
   private gardenTick(tick: number) {
+    const ids = enabledPlanters(this.god.model);
+    if (!ids.length || this.gardenQueued) return;
     const l = this.host.living; if (!l || !(l.dayTicks > 0)) return;
-    const day = Math.floor(Math.max(0, tick - l.origin) / l.dayTicks);
-    if (this.gardenDay === null || day < this.gardenDay) { this.gardenDay = day; return; }
-    if (day === this.gardenDay) return;
-    const days = Math.min(3, day - this.gardenDay); this.gardenDay = day;
-    setImmediate(() => { try { const ops = dryingOps(this.god.model, days); if (ops.length) this.god.engineAct(ops as never, `garden: ${days} day(s) of drying`, () => {}); } catch (e) { this.log(`garden drying: ${(e as Error).message}`); } });
+    const day = Math.floor(this.biologyHour() / 24), hour = this.biologyHour();
+    const initial = ids.filter(id => Number(this.god.model.entities.get(id)?.state?.biologyHour ?? -1) < 0);
+    const days = this.gardenDay === null || day < this.gardenDay ? 0 : day - this.gardenDay;
+    this.gardenDay = day;
+    if (!initial.length && !days) return;
+    this.gardenQueued = true;
+    setImmediate(() => { try {
+      const ops = days ? dryingOps(this.god.model, days, hour) : initial.flatMap(id => {
+        const e = this.god.model.entities.get(id), def = e && this.god.model.resolvedDef(e.def), state = e && def && anchorBiology(e.state, def, hour);
+        return state ? [{op:'set' as const,id,state}] : [];
+      });
+      if (ops.length) this.god.engineAct(ops as never, 'garden: materialise opted-in biology', () => {});
+    } catch (e) { this.log(`garden biology: ${(e as Error).message}`); } finally { this.gardenQueued = false; } });
   }
   private checkProjectionSoon() {
     if (!this.readinessChecks.size || this.readinessQueued) return;
@@ -722,6 +739,7 @@ export class EngineBridge {
       if (!known[aid] && !assets[aid]) assets[aid] = assetFromDef(aid, facts, { seen: true });
       part.fixture = { def: aid, kind: 'fixture', label: titleOf(e) ?? (e.name ?? def.name.replace(/^core-/, '')).replace(/-/g, ' '), p: [r3(wp.x), r3(wp.y), r3(wp.z)], yaw: r3(-wp.yaw), support: { kind: 'ground' } };
     }
+    const biology = biologyRecordOf(e.state, def); if (part.fixture && biology) { part.fixture.plantBiology = biology; part.fixture.plantRenderV1 = this.plantRender(e,def,wp.s); }
     if (part.solids || part.surfaces || part.links) withLinkApproaches(part);
     // Extracted tread endpoints already sit a full body radius inside their
     // supporting patches. A generic 0.7 m run-up falls off these narrow treads.
@@ -826,9 +844,14 @@ export class EngineBridge {
     return def.form === 'point' && !isFixtureDef(def) && !c.body && !c.behavior && !c.hover && !/^core[-/]flag@/.test(def.ref) && e.in.parent !== undefined && !this.engineOwned(e);
   }
 
-  private fixtureSpec(e: Entity, def: StoredDef, asset: string, a: { surfaceSlots?: { id: string; local: [number, number, number] }[]; category: string }, wp: { x: number; y: number; z: number; yaw: number }): FixtureSpecV1 {
+  private plantRender(e:Entity,def:StoredDef,scale:number) {
+    const {by:_by,born:_born,hash:_hash,ref:_ref,...definition}=def;
+    return {defHash:def.hash,definition,params:structuredClone(e.params??{}),seed:e.seed??0,scale};
+  }
+  private fixtureSpec(e: Entity, def: StoredDef, asset: string, a: { surfaceSlots?: { id: string; local: [number, number, number] }[]; category: string }, wp: { x: number; y: number; z: number; yaw: number; s:number }): FixtureSpecV1 {
     const label = titleOf(e) ?? (e.name ?? def.name.replace(/^core-/, '')).replace(/-/g, ' ');
     const spec: FixtureSpecV1 = { def: asset, kind: a.category === 'item' ? 'item' : 'fixture', label, p: [r3(wp.x), r3(wp.y), r3(wp.z)], yaw: r3(-wp.yaw) };
+    const biology = biologyRecordOf(e.state, def); if (biology) {spec.plantBiology = biology;spec.plantRenderV1=this.plantRender(e,def,wp.s);}
     if (spec.kind !== 'item') {
       if(def.components.carryable&&def.tags.includes('upright-carry')&&Math.abs(wp.y)<.01)return {...spec,support:{kind:'ground'}};
       // E2 (2026-10-19): a fixture standing on raised ground (a hillside, an alpine terrace, or the ground floor of a
@@ -2045,7 +2068,7 @@ function sentKey(json: string): string {
   return `${json.includes('"links"') ? 'L' : '-'}${[...levels].join(',')}|${createHash('sha256').update(json).digest('base64')}`;
 }
 function normPart(p: Part): Part { const o: Part = {}; if (p.surfaces?.length) o.surfaces = p.surfaces; if (p.solids?.length) o.solids = p.solids; if (p.links?.length) o.links = p.links; if (p.fixture) o.fixture = p.fixture; return o; }
-function fixtureOfEngine(e: any): FixtureSpecV1 { return { def: e.def, kind: e.kind === 'component' ? 'item' : 'fixture', label: e.label, p: [e.pose.p[0], e.pose.p[1], e.pose.p[2]], yaw: e.pose.yaw, ...(e.support ? { support: e.support } : {}), ...(e.kind !== 'component' && typeof e.level === 'number' ? { level: e.level } : {}) }; }
+function fixtureOfEngine(e: any): FixtureSpecV1 { return { def: e.def, kind: e.kind === 'component' ? 'item' : 'fixture', label: e.label, p: [e.pose.p[0], e.pose.p[1], e.pose.p[2]], yaw: e.pose.yaw, ...(e.support ? { support: e.support } : {}), ...(e.plantBiology ? {plantBiology:structuredClone(e.plantBiology)} : {}), ...(e.kind !== 'component' && typeof e.level === 'number' ? { level: e.level } : {}) }; }
 function describeOp(op: Op, w: WorldModel): string {
   const o = op as { op: string; id?: string; in?: { parent: string; slot?: string } };
   const who = o.id ? w.pathOf(o.id) || o.id : '';

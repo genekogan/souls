@@ -3,7 +3,7 @@
 // the valve), carry it to the planter and pour through the rose (watering_can_v1 pour), hang it back (put_item).
 // The world changes at the native timeline's own moments (`wateringEvents`), read only for bodies that were given this
 // act (no per-tick scan of the world): the tap at the valve contacts, the soil in three steps while the stream runs.
-import { opSchema, CAN_GRIP, CAN_LITRES, CAN_OPENING, CAN_ROSE, POUR_LITRES, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { opSchema, biologyEnabled, anchorBiology, waterBiology, CAN_GRIP, CAN_LITRES, CAN_OPENING, CAN_ROSE, POUR_LITRES, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
 import { canPoint, TILT, wateringEvents, type WateringMotion } from '../../../../mars/viewer/engine/items/watering.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
 import { litresOf } from './water.ts';
@@ -39,6 +39,7 @@ export type WateringHost = {
   model: WorldModel;
   /** Bumped on every world commit: the index of cans, hooks and taps is rebuilt only when it changes. */
   version(): number;
+  hour?(): number;
   engine: { world: { entities: Record<string, any>; tick: number }; dt?: number; clearanceAtV1?(x: number, z: number, level?: number): number };
   commit(ops: Op[], note: string): { accepted: boolean };
   log(m: string): void;
@@ -71,6 +72,7 @@ export function createWatering(h: WateringHost) {
   function plan(soul: { entityId: string }, plantId: string): WateringPlan | Refusal | null {
     const m = M(), plant = m.entities.get(plantId), pdef = plant && m.resolvedDef(plant.def);
     if (!plant || !pdef || !isPlant(pdef)) return null;
+    if (!biologyEnabled(plant.state, pdef)) return { code: 'water.biology-disabled', reason: 'Watering is disabled for this planter; its owner may opt it in with biologyEnabled.' };
     const ix = things(); if (!ix.cans.length) return null;
     const body = ents()[soul.entityId]; if (!body?.human) return null;
     const me: Vec2 = [body.pose.p[0], body.pose.p[2]];
@@ -99,10 +101,10 @@ export function createWatering(h: WateringHost) {
       }
     }
     const cdef = defOf(canId)!, canL = litresOf(cdef, (m.entities.get(canId)?.params ?? {}) as Record<string, unknown>) || CAN_LITRES, have = levelOf(canId) * canL;
-    const plantL = litresOf(pdef, (plant.params ?? {}) as Record<string, unknown>), moist = num(plant.state?.moisture, num((pdef.state as any).moisture?.default));
+    const plantL = litresOf(pdef, (plant.params ?? {}) as Record<string, unknown>), moist = anchorBiology(plant.state, pdef, h.hour?.() ?? 0)!.biologyMoisture;
     const want = (1 - moist) * plantL;
     if (want <= 0.05) return { code: 'water.plant-wet', reason: `${m.pathOf(plantId)} is already well watered.` };
-    const fill = have < EMPTY_L, litres = Math.min(POUR_LITRES, want, fill ? canL : have);
+    const fill = have < EMPTY_L, litres = Math.min(POUR_LITRES, plantL, fill ? canL : have);
     const steps: Step[] = [];
     // at the hook: stand behind the can's handle, facing the way its spout points, so the hand closes on the handle and
     // lifts it off without turning it (and hangs it back the same way)
@@ -163,16 +165,25 @@ export function createWatering(h: WateringHost) {
   function commitEvent(m: WateringMotion & { actor?: string }, actor: string, key: string, data: Record<string, unknown>) {
     const model = M(), target = model.entities.get(m.target), tdef = target && model.resolvedDef(target.def), can = model.entities.get(m.item);
     // entry 43: a kettle's fill and pour are tea.ts's moments, even for a body that watered a planter a minute ago
-    if (!target || !tdef || !isCanDef(can ? model.resolvedDef(can.def) : undefined)) return;
+    if (!isCanDef(can ? model.resolvedDef(can.def) : undefined)) return;
+    if(!target||!tdef){
+      if(m.stage!=='pour')return;
+      const id=m.actionId??`${actor}:${m.startTick}`;
+      if(/^pour-[123]$/.test(key)||key==='pour-abort')poured.set(id,(poured.get(id)??0)+(m.litres??0)*num(data.fraction));
+      if(key==='pour-end'&&can){const cdef=model.resolvedDef(can.def)!,capacity=litresOf(cdef,(can.params??{}) as Record<string,unknown>)||CAN_LITRES;
+        const level=typeof data.level==='number'?data.level:Math.max(0,Math.round((levelOf(m.item)-(poured.get(id)??0)/capacity)*1000)/1000);
+        h.commit([opSchema.parse({op:'set',id:m.item,state:{level}})],`${actor} watering: target removed, delivered water spent`);poured.delete(id);}
+      return;
+    }
     const ops: Op[] = [], set = (id: string, state: Record<string, unknown>) => ops.push(opSchema.parse({ op: 'set', id, state }));
     const plantL = litresOf(tdef, (target.params ?? {}) as Record<string, unknown>), id = m.actionId ?? `${actor}:${m.startTick}`;
-    const moisten = (fraction: number) => { const l = (m.litres ?? 0) * fraction; poured.set(id, (poured.get(id) ?? 0) + l); const now = model.entities.get(m.target)!.state?.moisture; set(m.target, { moisture: Math.min(1, Math.round((num(now, num((tdef.state as any).moisture?.default)) + l / plantL) * 1000) / 1000) }); };
+    const moisten = (fraction: number) => { const l = (m.litres ?? 0) * fraction; poured.set(id, (poured.get(id) ?? 0) + l); const patch = waterBiology(target.state, tdef, h.hour?.() ?? 0, l / plantL); if (patch) set(m.target, patch); };
     if (key === 'valve-on') set(m.target, { on: true });
     else if (key === 'valve-off') { set(m.target, { on: false }); if (can) set(m.item, { level: num(data.level, 1) }); }
-    else if (key === 'pour-start') { if ((tdef.state as any).pouring) set(m.target, { pouring: true }); }
+    else if (key === 'pour-start') { if (biologyEnabled(target.state, tdef) && (tdef.state as any).pouring) set(m.target, { pouring: true }); }
     else if (/^pour-[123]$/.test(key) || key === 'pour-abort') moisten(num(data.fraction));
     else if (key === 'pour-end') {
-      if ((tdef.state as any).pouring) set(m.target, { pouring: false });
+      if (biologyEnabled(target.state, tdef) && (tdef.state as any).pouring) set(m.target, { pouring: false });
       if (can) { const cdef = model.resolvedDef(can.def)!, canL = litresOf(cdef, (can.params ?? {}) as Record<string, unknown>) || CAN_LITRES; set(m.item, { level: typeof data.level === 'number' ? data.level : Math.max(0, Math.round((levelOf(m.item) - (poured.get(id) ?? 0) / canL) * 1000) / 1000) }); }
       poured.delete(id);
     }

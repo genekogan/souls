@@ -134,7 +134,7 @@ type Prog = {
   readiedActors?:string[];
   build?: { phase: BuildPhase; crew: string[]; stopping?: Diag; reverse?: true };
 };
-export type MarsWorldConfig = { groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
+export type MarsWorldConfig = { groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number; pausedAtTick?: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
 export const LITTLE_MARTIANS_WORLD: MarsWorldConfig={scene:'littlemartians',arrival:[0,18],arrivalPlace:'garden',reference:[0,16],grounds:{id:'grounds',name:'Ceramic garden'}};
 export const GREEN_FIELD_WORLD:MarsWorldConfig={scene:'greenfield',arrival:[0,0],arrivalPlace:'field',reference:[2,0],grounds:{id:'grounds',name:'Green field'}};
 export const EDEN_COMMONS_WORLD:MarsWorldConfig={scene:'eden-commons',arrival:[14,4],arrivalPlace:'commons',reference:[9,5],grounds:{id:'grounds',name:'Eden commons'}};
@@ -1541,7 +1541,7 @@ export class MarsEngine implements Engine {
       this.recorderScene=captureRenderScene(this.rulesVersion,this.renderScene());this.renderBaseKey=key;
     }
     this.takeScenes.set(this.recorderScene.ref.hash,this.recorderScene);
-    this.recorder=new this.m.TakeRecorder(this.rt,{rulesVersion:this.rulesVersion,renderSceneRef:structuredClone(this.recorderScene.ref)},stateHashNow);
+    this.recorder=new this.m.TakeRecorder(this.rt,{rulesVersion:this.rulesVersion,renderSceneRef:structuredClone(this.recorderScene.ref),clock:this.cfg.clock?structuredClone(this.cfg.clock):undefined},stateHashNow);
     const retained=new Set([this.recorderScene.ref.hash,...this.chunks.map(c=>(c.take as {renderSceneRef:{hash:string}}).renderSceneRef.hash)]);
     for(const hash of this.takeScenes.keys())if(!retained.has(hash))this.takeScenes.delete(hash);
   }
@@ -1897,7 +1897,8 @@ export class MarsEngine implements Engine {
    *  Returns the hash it derived so the host can check replay agreement. */
   applyWorldEditV1(raw:WorldEditV1):{hash:string;relocated:string[];trapped:string[];kept:string[]}{
     if(!raw||raw.contract!=='world-edit/1'||typeof raw.set!=='object'||!Array.isArray(raw.levels))throw Error('world-edit.bad-payload');
-    if(this.renderPlatformMetadata)this.finishRecorder();
+    const plantBoundary=Object.entries(raw.set).some(([id,part])=>this.rt.world.entities[id]?.plantBiology?.biologyEnabled===false||part?.fixture?.plantBiology?.biologyEnabled===false);
+    if(this.renderPlatformMetadata||plantBoundary)this.finishRecorder();
     const baseKey=this.rt.world.entityPhysicsV1?.baseKey;
     const navigationChanged=worldEditChangesNavigation(this.rt.world,raw);
     const {physics,kept}=applyWorldEdit(this.rt.world,raw);
@@ -1915,7 +1916,8 @@ export class MarsEngine implements Engine {
       const to=(e.human.level??0)===0?this.nearestStandableV1([e.pose.p[0],e.pose.p[2]],id):null;
       if(to&&this.relocateHumanV1(id,to))relocated.push(id);else trapped.push(id);
     }
-    if(this.renderPlatformMetadata){this.renderBaseKey='';this.startRecorder();}
+    if(this.renderPlatformMetadata)this.renderBaseKey='';
+    if(this.renderPlatformMetadata||plantBoundary)this.startRecorder();
     return {hash:physics.hash,relocated,trapped,kept};
   }
   /** A read of this world that moves nothing (a Soul's walk listing): the planner syncs once for all of it (Spatial.readPass). */
@@ -2321,11 +2323,12 @@ export class MarsEngine implements Engine {
   }
   /** A negative origin (R4-LIVE: a god set the time of day on a young world) reads as more days elapsed; every logged
    *  clock before it had origin >= 0 (clockConfig and LivingWorld never wrote one below), so replays are unchanged. */
+  plantClockV1() { return this.cfg.clock ? {...this.cfg.clock} : null; }
   configureClock(clock: { origin: number; dayTicks: number }) {
     if(!Number.isSafeInteger(clock.origin)||!Number.isSafeInteger(clock.dayTicks)||clock.dayTicks<=0)
       throw new TypeError('invalid render clock');
     if(this.cfg.clock?.origin===clock.origin&&this.cfg.clock?.dayTicks===clock.dayTicks){this.updateClock();return;}
-    this.finishRecorder();this.cfg.clock={...clock};this.updateClock();this.startRecorder();
+    this.finishRecorder();this.cfg.clock={...clock,...(clock.dayTicks>=2**40?{pausedAtTick:this.rt.tick}:{})};this.updateClock();this.startRecorder();
   }
   private updateClock() {
     const c = this.cfg.clock; if (!c) return;
