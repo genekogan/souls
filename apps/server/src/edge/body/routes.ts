@@ -75,8 +75,8 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
   const importOwn=(store:BodyCollections)=>{const rows=db.prepare('SELECT owner,asset_id,descriptor FROM edge_body_owners_v1 WHERE world_id=?').all(world) as {owner:string;asset_id:string;descriptor:string}[];
     store.recordAll(rows.map(r=>{const d=JSON.parse(r.descriptor);return {ref:r.asset_id,descriptor:d,creatorSoul:typeof d.creatorSoul==='string'?d.creatorSoul:'unrecorded',owner:r.owner,sourceWorld:here,license:String(d.license??'owned'),rightsConfirmed:d.rightsConfirmed===true};}),0);return store;};
   // A shared store that cannot open (corrupt, locked, unwritable) never stops this world: it keeps a local-only store.
-  let library:BodyCollections;try{library=importOwn(new BodyCollections(sharedPath??db));}
-  catch(e){console.error('[body] body.collection-store-unavailable: shared body collections unavailable; this world keeps a local-only store',e instanceof Error?e.message:'');library=importOwn(new BodyCollections(db));}
+  let library:BodyCollections,opened:BodyCollections|undefined;try{opened=new BodyCollections(sharedPath??db);library=importOwn(opened);}
+  catch(e){try{opened?.close();}catch{/* already unusable */}console.error('[body] body.collection-store-unavailable: shared body collections unavailable; this world keeps a local-only store',e instanceof Error?e.message:'');library=importOwn(new BodyCollections(db));}
   /** Moderation, wherever the definition came from: this world's own hide/veto/quarantine and site-wide hides withdraw it
    *  here; the source world's withdrawal is written through to the shared store when it is appended. */
   const withdrawnHere=(ref:string)=>{const m=moderation.state(ref.slice(5));return m.hidden||m.creatorVeto||m.adminVeto||m.quarantined||moderation.isHidden(ref.slice(5));};
@@ -129,7 +129,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
     authoring:{skill:prefix+'/body-authoring/SKILL.md',contract:prefix+'/body-authoring/contract.json'},
     selection:{default:'humanoid',presets:'shared',uploads:'listed for their owner; any definition by explicit ref',rediscover:'GET /v1/edge/body/library; use a preset id, your uploaded assetId, or a ref'},
     uploads:(db.prepare('SELECT descriptor FROM edge_body_owners_v1 WHERE world_id=? AND owner=? ORDER BY asset_id').all(world,s.owner) as {descriptor:string}[]).map(r=>JSON.parse(r.descriptor)),
-    library:{mine:library.count(s.owner),next:'GET /v1/edge/body/library?scope=mine'}};}));
+    library:{mine:(()=>{try{return library.count(s.owner);}catch{return null;}})(),next:'GET /v1/edge/body/library?scope=mine'}};}));
   /** body-library/1: bounded, paginated discovery. core = the shared presets this world admits; mine = the caller owner's
    *  saved references across worlds. Lookup by explicit reference is public; save/forget change only the caller owner's collection. */
   app.get('/v1/edge/body/library',wrap(c=>{const s=deps.soul(c),scope=c.req.query('scope')??'mine',q=(c.req.query('q')??'').trim(),cursor=c.req.query('cursor')??'',limit=Number(c.req.query('limit')??LIBRARY_PAGE.defaultLimit);
