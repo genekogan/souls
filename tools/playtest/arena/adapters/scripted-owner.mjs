@@ -76,8 +76,6 @@ export function stepOutcome(r, { waited = false } = {}) {
   if (!ongoing) return { ok: false, why: `still ${phase ?? 'open'} after waiting` };
   return { ok: true, phase, ongoing: true };
 }
-/** A waited step runs with `--json` so the receipt is never dropped from the output (the brief form omits it when long). */
-export const stepArgs = (step) => (step.includes('--wait') && !step.includes('--json') ? [...step, '--json'] : step);
 const firstLine = (s) => String(s ?? '').split('\n').find((l) => l.trim())?.slice(0, 120) ?? '';
 const clip = (s) => String(s).slice(0, 140);
 
@@ -143,7 +141,7 @@ export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = 
     if (id) await cli(['ack', id, clip(rule.ack ?? 'On it.')]);
     let failed = null;
     for (const step of rule.do) {
-      const r = await cli(stepArgs(step.map((a) => (id ? a.replaceAll('{id}', id) : a))));
+      const r = await cli(step.map((a) => (id ? a.replaceAll('{id}', id) : a)));
       const o = stepOutcome(r, { waited: step.includes('--wait') });
       if (!o.ok) { failed = `${step[0]}: ${o.why}`; break; }
     }
