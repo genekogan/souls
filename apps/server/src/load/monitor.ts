@@ -2,7 +2,7 @@
 // <= 400 tick times), decides the level with hysteresis, publishes the numbers into the shared array the watchdog
 // thread reads (shared.ts), and tells the registered dials the level. It only sets levels; every dial lives in the file
 // that owns the cost and documents its own green/amber/red/black values.
-import {monitorEventLoopDelay, PerformanceObserver, type IntervalHistogram} from 'node:perf_hooks';
+import {monitorEventLoopDelay, performance, PerformanceObserver, type EventLoopUtilization, type IntervalHistogram} from 'node:perf_hooks';
 import v8 from 'node:v8';
 import {LEVELS, S, sharedLoad, type Level} from './shared.ts';
 import {frameBudgetMs} from './admission.ts';
@@ -106,7 +106,7 @@ export class QuietTick {
 }
 
 /** What the monitor reads from the world (WorldHost satisfies it). */
-export type HostLike = {engine: {world: {tick: number}}; tickMs: number[]; paused: boolean; pace: number; baseRate: number; readonly running: boolean; readonly clockAvailable: boolean};
+export type HostLike = {engine: {world: {tick: number}}; tickMs: number[]; ticksLate?: number; paused: boolean; pace: number; baseRate: number; readonly running: boolean; readonly clockAvailable: boolean};
 export type Dial = (level: Level) => void;
 export type MonitorOpts = {
   host: HostLike;
@@ -143,6 +143,8 @@ export class LoadMonitor {
   private prevLoopP99 = 0;
   private histAt = 0;
   private gc: {at: number; ms: number}[] = [];
+  private gcMsTotal = 0;   // every GC pause since start (live.json heap.gcSecondsTotal); never reset, unlike the 10 s window
+  private eluMark: EventLoopUtilization | null = null;
   private obs: PerformanceObserver | null = null;
   private ticks: {at: number; tick: number; due: number}[] = [];   // due = ticks owed since the previous sample
   private timer: NodeJS.Timeout | null = null;
@@ -159,8 +161,8 @@ export class LoadMonitor {
   register(name: string, dial: Dial) { this.dials.set(name, dial); try { dial(this.level); } catch (e) { console.error(`[load] dial ${name} failed`, e); } }
   start() {
     if (this.timer) return;
-    this.hist = monitorEventLoopDelay({resolution: 10}); this.hist.enable(); this.histAt = this.startedAt = this.now(); this.quiet = {depth: 0, reqMs: this.o.requestMs?.() ?? 0, service: 1, tick0: this.o.host.engine.world.tick};
-    try { this.obs = new PerformanceObserver(list => { for (const e of list.getEntries()) this.gc.push({at: this.now(), ms: e.duration}); }); this.obs.observe({entryTypes: ['gc']}); } catch { this.obs = null; }
+    this.hist = monitorEventLoopDelay({resolution: 10}); this.hist.enable(); this.eluMark = performance.eventLoopUtilization(); this.histAt = this.startedAt = this.now(); this.quiet = {depth: 0, reqMs: this.o.requestMs?.() ?? 0, service: 1, tick0: this.o.host.engine.world.tick};
+    try { this.obs = new PerformanceObserver(list => { for (const e of list.getEntries()) { this.gc.push({at: this.now(), ms: e.duration}); this.gcMsTotal += e.duration; } }); this.obs.observe({entryTypes: ['gc']}); } catch { this.obs = null; }
     process.on('SIGCONT', this.resumed);
     // On thaw, overdue timers can run before the SIGCONT callback. Sample after the poll phase so the explicit
     // resume notification can discard suspended wall time before it becomes a false red lasting 30 seconds.
@@ -176,7 +178,7 @@ export class LoadMonitor {
   }
   private resumed = () => {
     const now = this.now();
-    this.ticks = []; this.prevLoopP99 = 0; this.hist?.reset(); this.histAt = now; this.gc = [];
+    this.ticks = []; this.prevLoopP99 = 0; this.hist?.reset(); this.histAt = now; this.gc = []; this.eluMark = performance.eventLoopUtilization();
     this.quiet = {depth: 0, reqMs: this.o.requestMs?.() ?? 0, service: 1, tick0: this.o.host.engine.world.tick};
     this.state.resumed(now);
     if (this.blackSince !== null) this.blackSince = now;
@@ -208,6 +210,8 @@ export class LoadMonitor {
         this.prevLoopP99 = this.hist.count > 0 ? this.hist.percentile(99) / 1e6 : 0;
         this.windowDone(this.prevLoopP99, now);
         this.hist.reset(); this.histAt = now;
+        // ELU of the window that just closed (the same windows as loop delay); a frozen process's window is discarded by resumed()
+        if (this.eluMark) { this.a[S.elu] = performance.eventLoopUtilization(this.eluMark).utilization; this.eluMark = performance.eventLoopUtilization(); }
       }
     }
     const hs = v8.getHeapStatistics(), heapFrac = hs.heap_size_limit ? hs.used_heap_size / hs.heap_size_limit : 0;
@@ -230,7 +234,7 @@ export class LoadMonitor {
     } else this.blackSince = null;
     const shed = this.o.shed?.() ?? {reads: 0, acts: 0};
     a[S.worldTick] = h.engine.world.tick; a[S.service5s] = service; a[S.tickP99Ms] = this.tickStats.p99; a[S.loopP99Ms] = loopP99;
-    a[S.heapUsedMb] = hs.used_heap_size / 1048576; a[S.heapLimitMb] = hs.heap_size_limit / 1048576; a[S.gcPct10s] = 100 * gcMs / 10_000;
+    a[S.heapUsedMb] = hs.used_heap_size / 1048576; a[S.heapLimitMb] = hs.heap_size_limit / 1048576; a[S.gcPct10s] = 100 * gcMs / 10_000; a[S.gcMsTotal] = this.gcMsTotal; a[S.ticksLateTotal] = h.ticksLate ?? 0;
     a[S.level] = LEVELS.indexOf(to); a[S.queueDepth] = q.depth; a[S.queueOldestMs] = q.oldestMs;
     a[S.awake] = this.souls.awake; a[S.waiting] = this.souls.waiting; a[S.connected] = this.souls.connected;
     a[S.shedReads] = shed.reads; a[S.shedActs] = shed.acts; a[S.sampledAt] = now; a[S.quietTickMs] = this.quietTick.value;

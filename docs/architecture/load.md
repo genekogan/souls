@@ -103,15 +103,15 @@ A `worker_threads` watchdog started first in `main.ts` reads a SharedArrayBuffer
 ```json
 {"v":1,"pid":748574,"at":1761880380123,"phase":"serving",
  "boot":{"stage":"replay","tick":51200,"target":53400},
- "loop":{"lastTurnAgeMs":40,"delayP99Ms":180},
- "tick":{"world":53411,"service5s":0.92,"p99Ms":61,"quietAvgMs":12.1},
- "heap":{"usedMb":612,"limitMb":1536,"gcPct10s":6},
+ "loop":{"lastTurnAgeMs":40,"delayP99Ms":180,"elu":0.62},
+ "tick":{"world":53411,"service5s":0.92,"p99Ms":61,"quietAvgMs":12.1,"lateTotal":17},
+ "heap":{"usedMb":612,"limitMb":1536,"gcPct10s":6,"gcSecondsTotal":41.207},
  "level":"green",
  "queue":{"depth":2,"oldestMs":310},
  "souls":{"awake":3,"waiting":0,"connected":4},
  "shed":{"reads":0,"acts":0}}
 ```
-`phase` ∈ `boot:restore | boot:replay | boot:projection | boot:prepare | serving | stopping`. `boot` present only while booting; `tick`/`queue`/`souls` present only while serving.
+`phase` ∈ `boot:restore | boot:replay | boot:projection | boot:prepare | serving | stopping`. `boot` present only while booting; `tick`/`queue`/`souls` present only while serving. `loop.elu` = event-loop utilization of the last closed 5 s loop window (absent until one has closed); `heap.gcSecondsTotal` = every GC pause since the process started (cumulative, not the 10 s window); `tick.lateTotal` = ticks whose own run took longer than the 50 ms budget since the host started (both counters restart with the process).
 
 Launcher rules (L1): **wedged** = `at` older than 30 s, or `loop.lastTurnAgeMs` > 30,000, or 6 consecutive `/healthz` failures 10 s apart → SIGUSR2 (diagnostic report: heap snapshot near limit / CPU profile if enabled) → SIGTERM → SIGKILL after 20 s → restart. **Boot** is judged by progress: killed only if `boot.tick` has not advanced for 60 s, never on a fixed deadline. Restart backoff full-jitter (1 s base, 5 min cap), reset after 10 min healthy; **5 failures in 30 min → `held`** (no restarts, alert, manual or dashboard resume). While booting, Soul API calls get `world.starting`; after ready, a 60 s admission ramp. At red/black the launcher sheds C2 at the proxy and serves C3 from its micro-cache. Heap per world from the registry (`worldHeapMb`), default 1536; `install.sh` writes no 768.
 
@@ -132,7 +132,7 @@ As built (`apps/server/src/split/read-pool.ts`, `split/read-worker.ts`, `load/ad
 
 ## 5. Metrics names (L7, prom-client, launcher loopback `/__sim/metrics`)
 
-`sim_world_last_heartbeat_seconds{world}` · `sim_world_event_loop_delay_p99_seconds` · `sim_world_elu` · `sim_world_gc_seconds_total` · `sim_world_heap_used_bytes` / `sim_world_heap_limit_bytes` · `sim_world_tick_seconds` (histogram) · `sim_world_ticks_late_total` · `sim_world_active_souls` / `_waiting` / `_connected` · `sim_world_queue_depth` · `sim_world_queue_oldest_seconds` · `sim_world_shed_total{class}` · `sim_world_last_boot_seconds` · `sim_world_restarts_total{reason=exit|wedged|crashloop|planned}` · `sim_world_level{level}` (0/1) · `sim_client_errors_total{kind}` · `sim_world_read_workers` / `sim_world_read_lag_gens` / `sim_world_read_routed_total` / `sim_world_read_fallback_total` (Stage B, §4b). Labels: `world` always; no Soul ids, no account ids (privacy).
+`sim_world_last_heartbeat_seconds{world}` · `sim_world_event_loop_delay_p99_seconds` · `sim_world_elu` · `sim_world_gc_seconds_total` · `sim_world_heap_used_bytes` / `sim_world_heap_limit_bytes` · `sim_world_tick_p99_seconds` (a recent-window p99 gauge; live.json carries no buckets, so no tick histogram is emitted) · `sim_world_ticks_late_total` · `sim_world_active_souls` / `_waiting` / `_connected` · `sim_world_queue_depth` · `sim_world_queue_oldest_seconds` · `sim_world_shed_total{class}` · `sim_world_last_boot_seconds` · `sim_world_restarts_total{reason=exit|wedged|crashloop|planned}` · `sim_world_level{level}` (0/1) · `sim_client_errors_total{kind}` · `sim_world_read_workers` / `sim_world_read_lag_gens` / `sim_world_read_routed_total` / `sim_world_read_fallback_total` (Stage B, §4b). Labels: `world` always; no Soul ids, no account ids (privacy).
 
 ## 6. WorldDelta v1 (Stage B, lane B-delta; as built, dark behind `SIM_READ_WORKER=1`)
 

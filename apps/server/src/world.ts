@@ -160,6 +160,8 @@ export class WorldHost {
   lastSnapshotCostMs = 0;
   extra: Record<string, unknown> = {};       // module state persisted with snapshots (narrator schedule etc.)
   tickMs: number[] = [];
+  /** Ticks whose own run took longer than their 50 ms budget, since this host started (live.json tick.lateTotal). */
+  ticksLate = 0;
   /** The last boot's phases (lane L5): restore = snapshot read + decode + engine restore; replay = stepping logged history to its head. */
   bootStats: BootStats | null = null;
   private queue: Pending[] = [];
@@ -547,7 +549,7 @@ export class WorldHost {
     if (now % BATCH_TICKS === 0) this.flush();
     if (now % HEARTBEAT_TICKS === 0) this.heartbeat();
     if (this.snapshotDue(now)) this.schedulePeriodicSnapshot();
-    this.tickMs.push(performance.now() - t0);
+    const tookMs = performance.now() - t0; this.tickMs.push(tookMs); if (tookMs > TICK_MS) this.ticksLate++;
     if (this.tickMs.length > 400) this.tickMs.splice(0, 200);
     if (this.splitTap) this.splitTap(now, out); // never throws (DeltaTap.onTick); reads only
     for (const l of this.listeners) { try { l.afterTickComplete?.(now); } catch { /* observers cannot undo a completed tick */ } }
