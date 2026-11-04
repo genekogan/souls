@@ -14,10 +14,10 @@ export function report(receipt, r) {
   L.push('## Against #443 objectives (indicative)', '', '| objective | budget | this run | |', '|---|---|---|---|');
   const rd = a['all|read']?.e2eMs ?? {}, st = r.actionStartMs.all ?? {}, dl = r.receiptDeliveryMs.all ?? {};
   L.push(`| read end-to-end p95 / p99 (from scheduled time) | ≤ ${O.readP95Ms} / ≤ ${O.readP99Ms} ms | ${f(rd.p95)} / ${f(rd.p99)} ms | ${mark(rd.n ? rd.p95 <= O.readP95Ms && rd.p99 <= O.readP99Ms : null)} |`);
-  L.push(`| action start p95 / p99 (from scheduled time) | ≤ ${O.actStartP95Ms} / ≤ ${O.actStartP99Ms} ms | ${f(st.p95)} / ${f(st.p99)} ms | ${mark(st.n ? st.p95 <= O.actStartP95Ms && st.p99 <= O.actStartP99Ms : null)} |`);
+  L.push(`| action start p95 / p99 (from scheduled time) | ≤ ${O.actStartP95Ms} / ≤ ${O.actStartP99Ms} ms | ${f(st.p95)} / ${f(st.p99)} ms | ${mark(st.n ? st.p95 <= O.actStartP95Ms && st.p99 <= O.actStartP99Ms && !h.actsWithoutStart : null)} |${h.actsWithoutStart ? ` (${h.actsWithoutStart} accepted acts never started)` : ''}`);
   L.push(`| receipt delivery p95 / p99 (after server time) | ≤ ${O.deliveryP95Ms} / ≤ ${O.deliveryP99Ms} ms | ${f(dl.p95)} / ${f(dl.p99)} ms | ${mark(dl.n ? dl.p95 <= O.deliveryP95Ms && dl.p99 <= O.deliveryP99Ms : null)} |`);
   L.push(`| full clock, every world, quiet and active | ≥ ${O.clockMin} | quiet ${f(h.clockMinQuiet, 3)}, active ${f(h.clockMinActive, 3)} | ${mark(h.clockMinQuiet >= O.clockMin && h.clockMinActive >= O.clockMin)} |`);
-  L.push(`| load failures, overdue, unissued | 0 | ${h.loadFailures}, ${h.overdue}, ${h.unissued} | ${mark(h.loadFailures === 0 && h.overdue === 0 && h.unissued === 0)} |`);
+  L.push(`| load failures (incl. reactive), overdue, unissued (incl. reactive) | 0 | ${h.loadFailures}, ${h.overdue}, ${h.unissued + (h.reactiveUnissued ?? 0)}${h.unissuedJoinFailed ? ` (${h.unissuedJoinFailed} of them belong to Souls that failed to join)` : ''} | ${mark(h.loadFailures === 0 && h.overdue === 0 && h.unissued === 0 && !h.reactiveUnissued)} |`);
   L.push(`| restarts, paused or dilated samples | 0 | ${h.restarts}, ${r.pausedSamples}, ${r.dilatedSamples} | ${mark(h.restarts === 0 && r.pausedSamples === 0 && r.dilatedSamples === 0)} |`);
   L.push('', 'CPU and memory headroom (≥ 30 %) need the executor\'s entitlement and cgroup limits: #736.', '');
   L.push('## Offered demand and outcomes', '', 'Latency columns are p50 / p95 / p99 / max ms (n); `*` = p99 from fewer than 100 samples. End-to-end runs from the scheduled time; answered-only is diagnostic.', '');

@@ -19,7 +19,7 @@ import { cpus, freemem, loadavg, platform, arch, release, totalmem } from 'node:
 import { join, relative, resolve } from 'node:path';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { FIXTURES, PROFILES, DEMAND, TICK_HZ, WORKLOAD, phases, souls as soulsOf, schedule, scheduleId, scheduleCounts, account, outcomeOf, quantiles, clockWindow, rng } from './workload.mjs';
+import { FIXTURES, PROFILES, DEMAND, TICK_HZ, WORKLOAD, LOAD_FAILURES, phases, souls as soulsOf, schedule, scheduleId, scheduleCounts, account, outcomeOf, quantiles, clockWindow, rng } from './workload.mjs';
 import { report } from './report.mjs';
 
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf(`--${k}`); return i < 0 ? d : argv[i + 1]; }, flag = (k) => argv.includes(`--${k}`);
@@ -32,7 +32,7 @@ const PH = phases(SHORT), WARM_MS = SHORT ? 20_000 : 60_000, DRAIN_MS = 30_000, 
 for (const p of PROFILE_LIST) if (!PROFILES[p]) throw new Error(`--profile ${p}: even | meetup`);
 const { SOUL_CEILINGS } = await import(pathToFileURL(join(ROOT, 'tools/world-launcher/flood.mjs')).href);
 const sleep = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
-const mono = () => performance.now(), epochOf = (m) => performance.timeOrigin + m;
+const mono = () => performance.now();
 const sh = (cmd, args) => { try { return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } };
 const sha256 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
 const rel = (p) => relative(ROOT, p) || '.';
@@ -109,6 +109,8 @@ async function stopAll(run) {
   run.stopped = true;
   for (const ws of run.sockets) try { ws.close(); } catch { /* closed */ }
   for (const a of [...run.aborts, ...run.opAborts]) try { a.abort(); } catch { /* done */ }
+  for (const p of run.procs ?? []) try { p.kill('SIGKILL'); } catch { /* gone */ }   // CLI calls still in flight (join)
+  const browserPid = run.browser?.process?.()?.pid ?? null;
   try { await run.browser?.close(); } catch { /* gone */ }
   const L = run.launcher; if (!L) return null;
   const pids = Object.values(children(L.ldata)).map((k) => k.pid).filter(Boolean);
@@ -118,17 +120,20 @@ async function stopAll(run) {
   for (let i = 0; i < 20 && pids.some(alive); i++) await sleep(500);
   const survivors = pids.filter(alive); for (const p of survivors) try { process.kill(p, 'SIGKILL'); } catch { /* gone */ }
   if (L.child.exitCode == null) try { L.child.kill('SIGKILL'); } catch { /* gone */ }
-  const strays = (sh('pgrep', ['-f', L.ldata]) ?? '').split('\n').filter(Boolean).length;
-  return { launcherExited: L.child.exitCode != null, launcherExitCode: L.child.exitCode, worldPids: pids.length, survivedSigterm: survivors.length, straysAfter: strays };
+  await sleep(1000);
+  // the recorded world pids, the launcher, the browser and any process still naming this run's data are checked again
+  // after the kill (world processes get their data dir from the environment, so the pid list is the real check)
+  const owned = [...pids, L.child.pid, ...(browserPid ? [browserPid] : [])].filter(alive), named = (sh('pgrep', ['-f', L.ldata]) ?? '').split('\n').filter(Boolean).length;
+  return { launcherExited: L.child.exitCode != null, launcherExitCode: L.child.exitCode, worldPids: pids.length, survivedSigterm: survivors.length, browserPid: !!browserPid, ownedAliveAfter: owned.length, straysAfter: owned.length + named };
 }
 
 // ------------------------------------------------------------------ Souls: join with the CLI, then raw HTTP with its etiquette
-function runCli(dir, args, ms) {
+function runCli(dir, args, ms, procs) {
   return new Promise((done) => {
-    const t = mono(), p = spawn(process.execPath, ['eden.mjs', ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
+    const t = mono(), p = spawn(process.execPath, ['eden.mjs', ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] }); procs?.add(p);
     let err = ''; p.stderr.on('data', (d) => { err = (err + d).slice(-1000); }); p.stdout.resume();
     const k = setTimeout(() => p.kill('SIGKILL'), ms);
-    p.on('exit', (code) => { clearTimeout(k); done({ code, ms: Math.round(mono() - t), err: err.trim().split('\n').at(-1)?.slice(0, 200) }); });
+    p.on('exit', (code) => { clearTimeout(k); procs?.delete(p); done({ code, ms: Math.round(mono() - t), err: clean(err.trim().split('\n').at(-1) ?? '').slice(0, 200) }); });
   });
 }
 async function joinSoul(run, s) {
@@ -137,10 +142,10 @@ async function joinSoul(run, s) {
   // the account grouping: Souls of one account share the CLI's dev identity (one person, several Souls)
   writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({ identity: `agent-${createHash('sha256').update(`${SEED}|${s.account}`).digest('hex').slice(0, 24)}` }) + '\n', { mode: 0o600 });
   const t0 = mono(), tries = [];
-  tries.push({ cmd: 'register', ...(await runCli(dir, ['register', `http://localhost:${PORT}/w/${s.slug}`], 60_000)) });
+  tries.push({ cmd: 'register', ...(await runCli(dir, ['register', `http://localhost:${PORT}/w/${s.slug}`], 60_000, run.procs)) });
   const token = () => { try { return JSON.parse(readFileSync(join(dir, '.eden-agent.json'), 'utf8')).token ?? null; } catch { return null; } };
   // the same name on every try until the folder holds a token or 120 s pass (Soul CLI 2.5.3 resumes its own create)
-  while (!token() && mono() - t0 < 120_000) { tries.push({ cmd: 'create', ...(await runCli(dir, ['create', `Meet${s.i}`], 150_000)) }); if (!token()) await sleep(2000); }
+  while (!token() && mono() - t0 < 120_000) { tries.push({ cmd: 'create', ...(await runCli(dir, ['create', `Meet${s.i}`], 150_000, run.procs)) }); if (!token()) await sleep(2000); }
   s.token = token(); try { s.soulId = JSON.parse(readFileSync(join(dir, '.eden-agent.json'), 'utf8')).soul ?? null; } catch { s.soulId = null; }
   s.joinMs = Math.round(mono() - t0); s.joinTries = tries.map(({ cmd, code, ms, err }) => ({ cmd, code, ms, ...(code ? { err } : {}) }));
   return s;
@@ -208,7 +213,7 @@ function holdStream(run, s) {
       const ac = new AbortController(); run.aborts.add(ac);
       try {
         const r = await fetch(`${BASE}/w/${s.slug}/v1/edge/wait?timeout=50&after=${encodeURIComponent(cursor)}`, { headers: headersOf(s), signal: AbortSignal.any([ac.signal, AbortSignal.timeout(65_000)]) });
-        const d = await r.json().catch(() => ({})), recv = epochOf(mono());
+        const d = await r.json().catch(() => ({})), recv = Date.now();   // same clock as the server's event `at`
         run.stream.responses++; if (r.status !== 200) run.stream.non200[r.status] = (run.stream.non200[r.status] ?? 0) + 1;
         if (d?.gap) run.stream.gaps++;
         if (Array.isArray(d?.events)) { run.stream.events += d.events.length; if (d.events.length) run.stream.batches.push(d.events.length); }
@@ -255,9 +260,9 @@ async function realBrowser(run) {   // the one real-browser path: world 0's page
 async function oneRun(profile, rep) {
   const dir = join(OUT, `${profile}-r${rep}`); mkdirSync(dir, { recursive: true });
   const ss = soulsOf(profile).map((s) => Object.assign(s, { reactive: Object.assign([], { n: 0 }) })), ops = schedule(profile, SEED, PH), opsBySoul = ss.map((s) => ops.filter((o) => o.soul === s.i));
-  const run = { id: createHash('sha256').update(`${SEED}|${profile}|${rep}|${Date.now()}`).digest('hex').slice(0, 10), dir, stopped: false, cut: false, sockets: [], aborts: new Set(), opAborts: new Set(), viewers: {},
-    souls: ss, receipts: new Map(), stream: { responses: 0, events: 0, batches: [], gaps: 0, failures: 0, non200: {} }, worlds: [], samples: [], marks: {} };
-  const tag = `${profile} r${rep}`, mark = (name) => { run.marks[name] = mono(); log(`${tag}: ${name}`); };
+  const run = { id: createHash('sha256').update(`${SEED}|${profile}|${rep}|${Date.now()}`).digest('hex').slice(0, 10), dir, stopped: false, cut: false, sockets: [], procs: new Set(), aborts: new Set(), opAborts: new Set(), viewers: {},
+    souls: ss, receipts: new Map(), stream: { responses: 0, events: 0, batches: [], gaps: 0, failures: 0, non200: {} }, worlds: [], samples: [], marks: {}, epochs: {} };
+  const tag = `${profile} r${rep}`, mark = (name) => { run.marks[name] = mono(); run.epochs[name] = Date.now(); log(`${tag}: ${name}`); };
   const receipt = {
     workload: WORKLOAD, profile, rep, seed: SEED, short: SHORT, at: new Date().toISOString(),
     measurement: { hostClass: HOST_CLASS, quiet: QUIET, label: QUIET ? 'operator-declared quiet host' : 'not-quiet', qualifies: false, why: 'qualifying numbers come from #736 on the isolated production-class executor, two matched repeats' },
@@ -272,7 +277,7 @@ async function oneRun(profile, rep) {
     coverage: { streamPerSoul: '/v1/edge/wait long-poll (receipt.*, speech, arrivals); the owner-message listen (inbox/listen) is not held: the workload sends no owner messages',
       viewers: `${FIXTURES.length} anonymous WebSocket viewers, one per world`, realBrowser: BROWSER ? 'Playwright Chromium, headless, world 0' : 'not run (--browser)',
       imageRendering: 'not exercised: Eyes off; renderer CPU/RSS and render latency are an unqualified capability for #736',
-      legs: 'loopback HTTP and WebSocket through the launcher proxy (dev auth); TLS, the public proxy, Clerk sign-in and the real network are not exercised',
+      legs: 'loopback HTTP and WebSocket through the launcher proxy (dev auth); TLS, the public proxy, Clerk sign-in and the real network are not exercised. The launcher runs with --public-origin http://localhost:<port> while listening on 127.0.0.1, so it applies its behind-a-proxy rules: the per-Soul X-Forwarded-For addresses are honoured and the per-address ceilings apply, as in production behind the proxy',
       sharedActions: 'invitations (high-five, handshake, hug, dance-with) to the next Soul in the same world, accepted by that Soul\'s driver from its own stream as reactive demand',
       notCovered: ['god authoring/import/export', 'travel between worlds', 'conversations (converse) and plans'] },
   };
@@ -280,8 +285,9 @@ async function oneRun(profile, rep) {
   const lag = monitorEventLoopDelay({ resolution: 10 }); lag.enable();
   const cpu0 = process.cpuUsage(), otherBefore = otherSouls([]), host0 = hostFacts();
   let cleanup = null;
-  const onSig = async () => { log(`${tag}: interrupted; stopping owned processes`); cleanup = await stopAll(run); writeFileSync(join(dir, 'cleanup.json'), JSON.stringify(cleanup)); process.exit(130); };
-  process.once('SIGINT', onSig); process.once('SIGTERM', onSig);
+  let stopping = false;   // a second Ctrl-C does not cut the cleanup short
+  const onSig = async () => { if (stopping) return; stopping = true; log(`${tag}: interrupted; stopping owned processes`); cleanup = await stopAll(run); writeFileSync(join(dir, 'cleanup.json'), JSON.stringify(cleanup)); process.exit(130); };
+  process.on('SIGINT', onSig); process.on('SIGTERM', onSig);
   try {
     mark('boot');
     await bootLauncher(dir, run);
@@ -346,8 +352,8 @@ async function oneRun(profile, rep) {
     await run.shot?.('end');
     views.afterActive = await launcherView();
     for (const t of run.timers) clearInterval(t); shots.forEach(clearTimeout);
-    const cpu1 = process.cpuUsage(cpu0), driverCpuS = (cpu1.user + cpu1.system) / 1e6, otherAfter = otherSouls(ownPids()), host1 = hostFacts();
-    cleanup = await stopAll(run);
+    const cpu1 = process.cpuUsage(cpu0), driverCpuS = (cpu1.user + cpu1.system) / 1e6, host1 = hostFacts();
+    cleanup = await stopAll(run); const otherAfter = otherSouls([]);   // after the stop: none of these are ours
     const result = summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup, browser, driverCpuS, load: { before: host0, after: host1, otherSoulsProcessesBefore: otherBefore, otherSoulsProcessesAfter: otherAfter } });
     writeFileSync(join(dir, 'result.json'), JSON.stringify(result, null, 1));
     writeFileSync(join(dir, 'REPORT.md'), report(receipt, result));
@@ -377,7 +383,8 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
   for (const r of [...records, ...rx].filter((x) => x.receipt)) {
     const ev = run.receipts.get(r.receipt)?.events ?? [], first = ev.find((e) => e.phase === 'started') ?? ev.find((e) => ['completed', 'failed', 'replaced'].includes(e.phase));
     const w = `w${r.world}`; for (const m of [start, delivery, activity]) m[w] ??= [];
-    if (first) { const v = rel0(first.at - performance.timeOrigin) - r.atMs; if (r.kind === 'shared') sharedStart.push(v); else { start.all.push(v); start[w].push(v); } }
+    // server `at` is wall-clock ms: anchored to the wall clock read at the activity mark, not to performance.timeOrigin
+    if (first) { const v = (first.at - run.epochs.active) - r.atMs; if (r.kind === 'shared') sharedStart.push(v); else { start.all.push(v); start[w].push(v); } }
     else never[r.phase ?? 'none'] = (never[r.phase ?? 'none'] ?? 0) + 1;
     for (const e of ev) { const v = e.recv - e.at; delivery.all.push(v); delivery[w].push(v); }
     const end = ev.find((e) => e.endedTick != null && e.startedTick != null); if (end) { const v = (end.endedTick - end.startedTick) / TICK_HZ * 1000; activity.all.push(v); activity[w].push(v); }
@@ -399,12 +406,13 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
   const pidChanges = Object.fromEntries(FIXTURES.map((f) => [f.slug, new Set(procs.map((x) => x.worlds[f.slug]?.pid).filter(Boolean)).size - 1]));
   const restarts = Object.fromEntries(FIXTURES.map((f) => [f.slug, (views.afterActive?.[f.slug]?.restarts ?? 0)]));
   const gameplay = {}; for (const r of [...records, ...rx].filter((x) => x.outcome === 'gameplay-refused')) gameplay[`${r.kind}:${r.code}`] = (gameplay[`${r.kind}:${r.code}`] ?? 0) + 1;
-  const refusalTags = {}; for (const r of records) for (const t of r.refusals ?? []) refusalTags[t] = (refusalTags[t] ?? 0) + 1;
+  const refusalTags = {}; for (const r of [...records, ...rx]) for (const t of r.refusals ?? []) refusalTags[t] = (refusalTags[t] ?? 0) + 1;
   const all = (c) => accounting[`all|${c}`] ?? {}, minRatio = (n) => Math.min(...FIXTURES.map((f) => clock[f.slug][n].ratio ?? 0));
   const headline = {
     joined: ss.filter((s) => s.token).length, readE2eP95Ms: all('read').e2eMs?.p95, readE2eP99Ms: all('read').e2eMs?.p99, actE2eP95Ms: all('act').e2eMs?.p95, actE2eP99Ms: all('act').e2eMs?.p99,
     actionStartP95Ms: quantiles(start.all).p95, deliveryP95Ms: quantiles(delivery.all).p95, overdue: (all('read').overdue ?? 0) + (all('act').overdue ?? 0), unissued: (all('read').unissued ?? 0) + (all('act').unissued ?? 0),
-    loadFailures: (all('read').loadFailures ?? 0) + (all('act').loadFailures ?? 0), clockMinQuiet: minRatio('quiet'), clockMinActive: minRatio('active'), restarts: Object.values(restarts).reduce((a, b) => a + b, 0),
+    loadFailures: (all('read').loadFailures ?? 0) + (all('act').loadFailures ?? 0) + LOAD_FAILURES.reduce((n, k) => n + (reactiveDemand.outcomes[k] ?? 0), 0), reactiveUnissued: reactiveDemand.unissued,
+    actsWithoutStart: Object.values(never).reduce((a, b) => a + b, 0), unissuedJoinFailed: ops.filter((o) => !ss[o.soul].token).length, clockMinQuiet: minRatio('quiet'), clockMinActive: minRatio('active'), restarts: Object.values(restarts).reduce((a, b) => a + b, 0),
     cleanup: cleanup && cleanup.launcherExited && cleanup.straysAfter === 0 ? 'clean' : 'NOT CLEAN', label: QUIET ? 'quiet-declared' : 'not-quiet',
   };
   return { profile, rep, headline, marksS: Object.fromEntries(Object.entries(run.marks).map(([k, v]) => [k, +((v - run.marks.boot) / 1000).toFixed(1)])), bootS: run.launcher.bootS, rates,
