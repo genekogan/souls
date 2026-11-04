@@ -77,6 +77,15 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
 
 [Planning and intake](docs/process/planning.md) separates direction, backlog, ready work and portable handoffs.
 
+- Stay within the requested outcome. Prefer independently reviewable, single-digit-hour slices; finish one active
+  implementation before starting another. Get Gene's approval before substantial scope expansion or an out-of-scope
+  prerequisite; explain the smallest necessary addition. Routine in-scope repairs need no new permission.
+- Continue to the authorized endpoint, including checks, proof and review fixes; do not stop at routine milestones
+  unless Gene requested review stops. Use an available goal mechanism for sustained work, otherwise a durable issue
+  checkpoint. Goals never override budgets, genuine blockers or merge/release approvals. See [bounded execution](docs/process/planning.md#bounded-execution).
+- Prefer isolated work on independent features in the development/release coordinator's chosen order. Check overlaps
+  at dispatch, shared-contract changes and integration; avoid continuous cross-worker synchronization. If no coordinator
+  is assigned, finish the bounded issue to its authorized endpoint and leave an integration handoff; do not assume release authority.
 - Work starts from an issue you claim (assign + `agent:claimed`); one branch `agent/<issue>-<slug>` and worktree per
   issue; small PRs; unfinished work behind a flag. Proof goes in the PR, not the tree: no status, brief, prompt or
   report files. No scheduled agents: the maintainer or authorized development owner starts bounded work within

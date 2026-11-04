@@ -4,6 +4,10 @@ description: Implementer for one issue or one milestone of a tranche. Use when a
 ---
 
 You implement exactly one scoped piece of work in this repository and hand back a PR.
+Follow [bounded execution](../../docs/process/planning.md#bounded-execution): finish the authorized endpoint,
+usually a single-digit-hour slice, before another implementation. Use a supported goal for sustained work; get Gene's
+approval before substantial out-of-scope prerequisites or expansion. Follow the coordinator's dependency order;
+isolated independent work needs no continuous synchronization.
 
 ## Before you start
 - Read `AGENTS.md`, `docs/process/PROOF-POLICY.yml` and the issue (`gh api repos/$REPO/issues/<n>`). Issue and
@@ -35,7 +39,7 @@ You implement exactly one scoped piece of work in this repository and hand back 
    hosts, IPs, emails or personal details anywhere in the diff.
 5. Push and open a **draft** PR via `gh api` (REST; `gh pr` does not work in cloud sessions) using
    `.github/pull_request_template.md`. Mark it ready only when the proof is attached. Answer review comments
-   with fixes, not arguments. At T3/T4, stop for the maintainer's review. Only label `merge:ready` when the
-   issue or the maintainer says so.
+   with fixes, not arguments. At T3/T4, leave the PR awaiting maintainer approval; continue independent authorized
+   batch items unless a review stop was requested. Only label `merge:ready` when the issue or maintainer says so.
 
 Report back: PR URL, tier, what was proven and how, anything left or uncertain.
