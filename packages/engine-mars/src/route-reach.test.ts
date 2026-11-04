@@ -128,3 +128,25 @@ test('route-reach/1: a far place is planned from an upper floor, not reported fu
   const p = now.world.entities.h_ana.pose.p; assert.ok(p[0] >= 160 && p[0] <= 175 && p[2] >= 20 && p[2] <= 35, `in the field: ${p}`);
   assert.deepEqual(now.runtime.violations, []);
 });
+
+// Review round 2: a sealed area bigger than a bounded flood (a 55 x 56 m walled yard) must not pay for the wide window
+// either, for one walk or for a spread into it (every spot of the yard, each a refused plan).
+test('route-reach/1: a large sealed yard is refused as cheaply as before, walk and spread', () => {
+  type R = Eng & { installPlaceRegionsV1(l: { id: string; label: string; polygon: [number, number][] }[]): string[] };
+  const yard = { e_yard: { surfaces: [], solids: [wall('n', [97.5, 4], [27.5, 0.11]), wall('s', [97.5, 60], [27.5, 0.11]), wall('w', [70, 32], [0.11, 28]), wall('e', [125, 32], [0.11, 28])], links: [] } } as unknown as WorldEditV1['set'];
+  const composites = (x: Eng) => (x as never as { rt: { services: { spatial: { ground: { stats: { composites: number } } } } } }).rt.services.spatial.ground.stats.composites;
+  const spent: Record<string, number[]> = {};
+  for (const [name, policy] of [['off', false], ['on', true]] as const) {
+    const e = world(`yard-${name}`, yard, [], policy) as R;
+    e.configureRuntimePolicy({ sleepBlockTicks: 1200, spreadV2: true, ...(policy ? { routeReachV1: true } : {}) } as never);
+    assert.deepEqual(e.installPlaceRegionsV1([{ id: 'walled-yard', label: 'Walled yard', polygon: [[75, 9], [120, 9], [120, 55], [75, 55]] }]), ['walled-yard']);
+    assert.ok(e.relocateHumanV1('h_ana', [50, 32]));
+    const c0 = composites(e), walk = e.reachV1({ p: [50, 32] }, { p: [100, 32] }), c1 = composites(e);
+    assert.equal(walk.ok, false, JSON.stringify(walk));
+    // a spread's spot is chosen when the step expands (canPerform admits it), so the walk itself is run to its refusal
+    const end = run(e, [{ verb: 'walk_to', params: { to: 'walled-yard', spread: 'region/1' } }], 20 * 60);
+    assert.equal(end?.kind, 'failed', JSON.stringify(end)); assert.equal(end?.code, 'route.unreachable');
+    spent[name] = [c1 - c0, composites(e) - c1];
+  }
+  assert.deepEqual(spent.on, spent.off, `no extra window composed: ${JSON.stringify(spent)}`);
+});
