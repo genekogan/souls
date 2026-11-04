@@ -150,3 +150,24 @@ test('route-reach/1: a large sealed yard is refused as cheaply as before, walk a
   }
   assert.deepEqual(spent.on, spent.off, `no extra window composed: ${JSON.stringify(spent)}`);
 });
+
+// Review round 3: the per-grid memo. An open flood first, then a room whose only door opens onto that open ground: the room
+// is not sealed (an earlier flood's "reaches the edge" cells are a way out, never a wall).
+test('route-reach/1: enclosedIn memo never seals a room that opens onto ground an earlier flood reached', async () => {
+  const { enclosedIn } = await import('../../../mars/viewer/engine/spatial/tiled.ts');
+  const grid = (sealed: boolean) => {
+    const n = 30, clearance = new Float32Array(n * n).fill(1), at = (i: number, j: number) => j * n + i;
+    for (let i = 22; i <= 28; i++) { clearance[at(i, 12)] = 0; clearance[at(i, 18)] = 0; }
+    for (let j = 12; j <= 18; j++) { clearance[at(28, j)] = 0; if (j !== 15 || sealed) clearance[at(22, j)] = 0; }
+    return { level: 0, y: 0, cell: 1, nx: n, nz: n, ox: 0, oz: 0, x0: 0, z0: 0, free: new Uint8Array(n * n).fill(1), clearance, blockers: new Map() } as never;
+  };
+  const room: [number, number] = [25.5, 15.5], open: [number, number] = [12.5, 15.5];
+  const g = grid(false);
+  assert.equal(enclosedIn(g, open, 0.5, 0.5), false);
+  assert.equal(enclosedIn(g, room, 0.5, 0.5), false, 'the room opens onto the flooded ground');
+  assert.equal(enclosedIn(g, room, 0.5, 0.5), false, 'and the memo agrees');
+  const s = grid(true);
+  assert.equal(enclosedIn(s, open, 0.5, 0.5), false);
+  assert.equal(enclosedIn(s, room, 0.5, 0.5), true, 'a room with no door is sealed');
+  assert.equal(enclosedIn(s, room, 0.5, 0.5), true);
+});

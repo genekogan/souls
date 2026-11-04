@@ -925,9 +925,14 @@ export function enclosedIn(g: LevelGrid, p: Vec2, r: number, tol: number): boole
   for (let q = 0; q < queue.length && sealed; q++) {
     const k = queue[q], i = k % g.nx, j = (k - i) / g.nx;
     if (i === 0 || j === 0 || i === g.nx - 1 || j === g.nz - 1) { sealed = false; break; }
-    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const n = k + dj * g.nx + di; if (!mark[n] && g.clearance[n] >= r) { mark[n] = 2; queue.push(n); } }
+    for (let dj = -1; dj <= 1 && sealed; dj++) for (let di = -1; di <= 1; di++) {
+      const n = k + dj * g.nx + di;
+      // an area an earlier flood found reaching the edge: this one does too (review round 3: never a wall)
+      if (mark[n] < 0 && g.clearance[n] >= r) { sealed = false; break; }
+      if (!mark[n] && g.clearance[n] >= r) { mark[n] = 2; queue.push(n); }
+    }
   }
-  // every cell met is in the seed's area: sealed, or (stopped at the edge) open; unvisited neighbours stay unknown
+  // every cell met is in the seed's area: sealed, or (stopped at the edge or at an open area) open; unvisited ones stay unknown
   for (const k of queue) mark[k] = sealed ? 1 : -1;
   return sealed;
 }
