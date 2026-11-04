@@ -65,6 +65,9 @@ test('a light loose material is carried solo with both hands by the native carry
   const caps = () => edge.capabilities(soul), idOf = (n) => god.model.get(n).id;
   const finish = async (r) => { for (let n = 0; n < 3000; n++) { const p = edge.receipt(soul.soulId, r.receipt.id)?.phase; if (['failed', 'completed', 'replaced'].includes(p)) break; await tick(1); } return edge.receipt(soul.soulId, r.receipt.id); };
   // the old revision keeps its one-hand pick-up; the new materials are never one-hand items
+  // the new materials are recorded native transports (the viewer draws their carried pose); the old one-hand beam is not
+  for (const n of ['beam', 'sheet', 'frame']) assert.ok(f.host.engine.world.entities[idOf(n)].tags.includes('entity-world-transport'), n);
+  assert.ok(!f.host.engine.world.entities[idOf('old-beam')].tags.includes('entity-world-transport'));
   assert.ok(caps().some((c) => c.id === `pick-up:${idOf('old-beam')}`), 'core-rack-beam@1 keeps its one-hand path');
   for (const n of ['beam', 'sheet', 'frame']) assert.ok(!caps().some((c) => c.id === `pick-up:${idOf(n)}`), `${n} is not a one-hand item`);
   // heavy: offered, unavailable, names the crew; acting it is refused and nothing moves
