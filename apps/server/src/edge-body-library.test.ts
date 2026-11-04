@@ -77,6 +77,7 @@ test('body-library/1: a second world pulls the admitted bytes once through the s
  let pulls=0,tamper=false;
  const pull=async(slug:string,r:string)=>{pulls++;assert.equal(slug,'fen');const res=await fen.app.request(`/v1/site/body/${r}.glb`,{headers:{'x-sim-site-key':KEY}});if(!res.ok)return null;const b=new Uint8Array(await res.arrayBuffer());if(tamper)b[b.length-1]^=1;return b;};
  const tarn=await world(t,dir,'tarn',shared,undefined,{key:KEY,pull}),[ta1,ta2,tb]=tarn.ss;
+ assert.deepEqual((await tarn.req(ta1,'body/library/'+ref)).json.selectable,{ok:true,pull:true},'lookup says the bytes will be fetched at selection');
  tamper=true;const bad=await tarn.req(ta1,'body',{ref},'PUT');assert.equal(bad.json.error.code,'body.source-unavailable','tampered bytes never enter the world');tamper=false;
  const first=await accept(tarn.f.host,tarn.req(tb,'body',{ref},'PUT'));assert.equal(first.status,200,JSON.stringify(first.json));assert.equal(tarn.f.host.engine.world.entities[tb.row.entity_id].body?.model,ref);
  const served=await tarn.app.request(`/v1/edge/body/assets/${ref}.glb`);assert.equal(served.status,200);assert.deepEqual(new Uint8Array(await served.arrayBuffer()),new Uint8Array(await (await fen.app.request(`/v1/edge/body/assets/${ref}.glb`)).arrayBuffer()));

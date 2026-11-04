@@ -81,7 +81,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
   /** Pull-through at selection, never on serve or observe: fetch the source world's admitted bytes, check the content
    *  address, re-admit under this world's policy, and cache them once (no owner row: the source owner's quota is unchanged). */
   async function pull(d:{ref:string;sourceWorld:string;descriptor:Record<string,unknown>}){
-    const slug=/^\/w\/([a-z][a-z0-9-]{0,31})$/.exec(d.sourceWorld)?.[1];if(!slug||!site.pull)return false;
+    const slug=sourceSlug(d.sourceWorld);if(!slug||!site.pull)return false;
     const bytes=await site.pull(slug,d.ref).catch(()=>null);if(!bytes||bytes.length>BODY_PULL_LIMIT)return false;
     if('body_'+createHash('sha256').update(bytes).digest('hex')!==d.ref)return false;
     const m=d.descriptor,manifest=Object.fromEntries(Object.entries({type:m.type,license:m.license,rightsConfirmed:true,rig:m.rig??undefined,actionProfile:m.actionProfile,motion:m.motion,name:m.name,description:m.description}).filter(([,v])=>v!==undefined&&v!==null));
@@ -98,10 +98,11 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
     const row=db.prepare('SELECT content FROM edge_body_assets_v1 WHERE world_id=? AND asset_id=?').get(world,ref) as {content:Uint8Array}|undefined;if(!row)return c.json({ok:false,code:'not-found'},404);
     return c.body(new Uint8Array(row.content),200,{'Content-Type':'model/gltf-binary','Cache-Control':'no-store'});
   });
-  function selectable(d:{status:string;descriptor:Record<string,unknown>;ref:string}):{ok:true}|{ok:false;code:string;reason:string}{
+  const sourceSlug=(sourceWorld:string)=>/^\/w\/([a-z][a-z0-9-]{0,31})$/.exec(sourceWorld)?.[1];
+  function selectable(d:{status:string;descriptor:Record<string,unknown>;ref:string;sourceWorld:string},pullable=true):{ok:true;pull?:true}|{ok:false;code:string;reason:string}{
     if(d.status==='withdrawn')return {ok:false,code:'body.withdrawn',reason:'This body definition was withdrawn and cannot be newly selected'};
     if(!types.includes(String(d.descriptor.type)))return {ok:false,code:'body.world-policy',reason:'This world does not admit that body type'};
-    if(!localBytes(d.ref))return {ok:false,code:'body.source-unavailable',reason:'This body was admitted in another world and is not available here yet'};
+    if(!localBytes(d.ref))return pullable&&site.pull&&sourceSlug(d.sourceWorld)&&d.sourceWorld!==here?{ok:true,pull:true}:{ok:false,code:'body.source-unavailable',reason:'This body was admitted in another world and cannot be fetched here'};
     return {ok:true};
   }
   const wrap=(fn:(c:Context)=>unknown|Promise<unknown>)=>async(c:Context)=>{
@@ -175,7 +176,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
       const type=asset.type,modelUrl=asset.modelUrl;body={family:type==='humanoid'?'humanoid':'floater',type,model:asset.assetId,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(asset.actionProfile?{actionProfile:asset.actionProfile}:{}),...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})};
     }else if(typeof raw.ref==='string'&&ASSET.test(raw.ref)){ // #717: an explicit public definition reference
       const d=definition(raw.ref);if(!d)throw new EdgeError(404,'body.ref-unknown','No body definition with that reference');
-      let ok=selectable(d);if(!ok.ok&&ok.code==='body.source-unavailable'&&await pull(d))ok=selectable(d);
+      let ok=selectable(d);if(ok.ok&&ok.pull)ok=await pull(d)?selectable(d,false):{ok:false,code:'body.source-unavailable',reason:'The source world could not supply verified bytes for this body'};
       if(!ok.ok)throw new EdgeError(ok.code==='body.world-policy'?403:409,ok.code,ok.reason);
       const asset=d.descriptor as {type:string;actionProfile?:string;motion?:unknown},type=asset.type,modelUrl=`${prefix}/v1/edge/body/assets/${d.ref}.glb`;
       body={family:type==='humanoid'?'humanoid':'floater',type,model:d.ref,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(asset.actionProfile?{actionProfile:asset.actionProfile}:{}),...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})} as Entity['body'];
