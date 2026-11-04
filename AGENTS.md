@@ -96,7 +96,8 @@ contract; fresh sessions recover its dated agenda and assignments before dispatc
 - Never edit shared append-only files: changelog fragments go in `changes/`, conformance changes in a new supplement,
   generated output is built in CI, baselines are regenerated in their own commit.
 - Ready PRs get `merge:ready`; the merge train rebases, re-tests and merges (T0–T2 on green, T3–T4 after the
-  maintainer, who may delegate that sign-off to the appointed development coordinator by a dated decision:
+  maintainer, who may delegate that sign-off to the appointed development coordinator by a dated decision, as
+  recorded on #755, 2026-11-04; the gate still needs the maintainer's own review or label:
   [delegated sign-off](docs/process/agent-workflow.md#delegated-sign-off)).
   [docs/process/agent-workflow.md](docs/process/agent-workflow.md)
 - Each PR names its proof tier ([PROOF-POLICY.yml](docs/process/PROOF-POLICY.yml); `node tools/proof/tier.mjs`) and
