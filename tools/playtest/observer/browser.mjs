@@ -40,7 +40,9 @@ export async function openBrowser({ headless = true, gpu: wantGpu = 'metal', ser
   const pw = resolvePlaywright({ serverRoot });
   if (!pw) throw new Error("Playwright not found (global playwright, <server-root>/mars/viewer or this checkout's viewer)");
   const { args, gpu } = launchArgs({ gpu: wantGpu });
-  const browser = await pw.chromium.launch({ headless, args });
+  // The caller owns shutdown (a Soul Run releases the browser from its ledger on cancel). Playwright's default SIGINT,
+  // SIGTERM and SIGHUP handlers kill the browser and exit the process mid-cleanup (exit 130), leaking the world and seats.
+  const browser = await pw.chromium.launch({ headless, args, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false });
   const cams = [], recordings = [];
   let completed = false, closing = null;
   return { browser, gpu, playwright: pw.from, recordings,
