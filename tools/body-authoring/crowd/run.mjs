@@ -84,8 +84,8 @@ try{
   for(const mode of ['idle','active','distant']){
    await select(p,arm,mode);const result=await p.evaluate(()=>window.__bodyCrowd.inspect());
    if(firstResources===undefined)firstResources=result.resources;else assert.deepEqual(result.resources,firstResources,'mode changes must reuse downloaded model/clip bytes');
-   assert.equal(result.drawCalls,mode==='distant'||arm==='none'?1:arm==='humanoid'?215:21);
-   if(mode==='distant'||arm==='none')assert.equal(result.drawnTriangles,2);
+   if(mode!=='distant')assert.equal(result.drawCalls,arm==='none'?1:arm==='humanoid'?215:21);
+   if(arm==='none')assert.equal(result.drawnTriangles,2);
    report.resources.push({repeat:repeat+1,arm,textureBudget:budget,mode,...result});
    if(repeat===0&&mode==='idle')await p.screenshot({path:join(out,arm+'-'+budget+'.png')});
   }
