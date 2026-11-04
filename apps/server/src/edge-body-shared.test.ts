@@ -8,7 +8,7 @@ import{GHOST_MANIFEST}from'../../../tools/body-authoring/ghost/author.mjs';impor
 test('shared monster and ghost: pinned bytes, existing presets unchanged, refusals for the ghost, real custody for the monster',async t=>{
  // Existing identities keep their place; the two examples are appended.
  assert.equal(PIP_ASSET,'body_0ac8dd17fab38e64b9367357232b819847bad25254252b5a47921ff1afa23b0f');
- assert.deepEqual(BODY_PRESETS.slice(0,2).map(p=>p.id),['humanoid','pip']);assert.deepEqual(BODY_PRESETS.slice(-2).map(p=>p.id),['monster','ghost']);
+ assert.deepEqual(BODY_PRESETS.slice(0,2).map(p=>p.id),['humanoid','pip']);assert.deepEqual(BODY_PRESETS.slice(-3).map(p=>p.id),['monster','ghost','centaur']);
  assert.equal(new Set(BODY_PRESETS.map(p=>p.id)).size,BODY_PRESETS.length);
  for(const p of [MONSTER_PRESET,GHOST_PRESET])assert.ok(bodyV1Schema.safeParse(p.body).success,p.id);
  assert.deepEqual((GHOST_PRESET.body as any).motion,GHOST_MANIFEST.motion,'one motion source');

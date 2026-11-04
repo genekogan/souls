@@ -127,3 +127,14 @@ The `Standby_Loop` is upright on ordinary ground support, with tucked arms and a
 or tips the root, claims a seat, or depicts a false prone support. The world action owns duration, interruption and
 waking; the clip owns appearance. Unattended idle/sleep reflexes use the same adapter. Test an interrupted rest,
 a direct sit refusal, actual pickup/carry/release and reload, as well as every additional action you advertise.
+
+## Four-legged bodies with a torso
+
+For a compact four-legged body with a human-style upper torso, such as a centaur, declare
+`actionProfile: "quadruped-torso/1"`. Its disposition is the rolling one in its own words: ground travel (walk gait
+only), upright standby rest, an authored standing dance, canonical hands, and everything else refused. Read
+`profiles.quadrupedTorso` in the contract. Use the canonical rig. The canonical legs are the forelegs; extra hind
+joints may sit under `Body` (hips) and `Root` (hooves) and are driven by your own clips. Support stays the humanoid
+navigation disc, so the whole lower body (every visible vertex below the hips) must stay within
+`footprintRadius` (0.28 m) of the body's centre, or admission refuses `body.footprint`. Hind hooves are visual: the
+world does not place them on terrain. `tools/body-authoring/centaur/author.mjs` is a worked example.

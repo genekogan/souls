@@ -1,5 +1,5 @@
 import {PIP_PRESET} from './pip.ts';
-import {MONSTER_PRESET,GHOST_PRESET,SHARED_BODY_BYTES} from './shared-bodies.ts';
+import {MONSTER_PRESET,GHOST_PRESET,CENTAUR_PRESET,SHARED_BODY_BYTES} from './shared-bodies.ts';
 import {mountBodyAuthoring} from './authoring.ts';
 import {BodyCollections,collectionPath,itemOf,LIBRARY_PAGE} from './collections.ts';
 import type {Context,Hono} from 'hono';
@@ -26,7 +26,9 @@ export const BODY_PRESETS=[{id:'humanoid',name:'Humanoid',body:null},PIP_PRESET,
 // Creatures (R11a): procedurally drawn animals with their own gait, speed and abilities (bodies/creatures.ts).
 ...CREATURE_IDS.map(id=>{const c=CREATURES[id];return {id,name:c.name,body:creatureBody(id) as Entity['body'],creature:{moves:c.moves,speed:c.speed,swims:c.swimSpeed!==null,swimSpeed:c.swimSpeed,settles:c.settles,cannot:c.cannot}};}),
 // Shared authored examples (#722): appended so existing preset ids and order are unchanged.
-MONSTER_PRESET,GHOST_PRESET];
+MONSTER_PRESET,GHOST_PRESET,
+// The compact centaur (#723): appended after them.
+CENTAUR_PRESET];
 const ASSET=/^body_[a-f0-9]{64}$/;
 const MAX_UPLOAD_REQUEST=BODY_LIMITS.bytes+64*1024;
 
