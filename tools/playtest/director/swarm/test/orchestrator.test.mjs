@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readJsonl, readJson, writeJson } from '../../../lib/jsonl.mjs';
@@ -13,8 +13,9 @@ import { fakeClock, fakeWorld, testCast, WALL0 } from './fakes.mjs';
 const tmp = () => mkdtempSync(join(tmpdir(), 'swarm-test-'));
 const planOf = (cast) => ({ source: 'template', seats: Object.fromEntries(cast.order.map((id) => [id, templateDirections(cast, id)])) });
 
-async function play({ cast = testCast(), behaviour = {}, script = null, during = null, onboarding = {} } = {}) {
+async function play({ cast = testCast(), behaviour = {}, script = null, during = null, onboarding = {}, prepare = null } = {}) {
   const clock = fakeClock(0); const runDir = tmp();
+  if (prepare) prepare(runDir);
   const w = fakeWorld({ clock, cast, behaviour });
   for (const [id, v] of Object.entries(onboarding)) w.seats[id].onboarding = v;
   writeJson(join(runDir, 'cast.json'), cast);
@@ -241,4 +242,13 @@ test('direction journal: a lifecycle end is recorded once, from its source, and 
   const cmds = readJsonl(join(r.runDir, 'director', 'commands.jsonl'));
   assert.deepEqual(cmds.map((c) => [c.source, c.cmd, c.target, c.outcome, c.reason]), [['lifecycle', 'end', 'all', 'applied', 'lifecycle-cancel']]);
   assert.equal(r.summary.stopped, 'lifecycle-cancel');
+});
+
+test('direction journal: an unwritable journal warns once; commands still apply and a lifecycle end still stops the run', async () => {
+  const r = await play({ prepare: (runDir) => mkdirSync(join(runDir, 'director', 'commands.jsonl'), { recursive: true }),
+    during: (sw, clock) => { sw.submit('hello all'); sw.submit('redirect zed: nothing'); (async () => { await clock.sleep(20000); sw.end('lifecycle-cancel'); })(); } });
+  assert.equal(r.summary.stopped, 'lifecycle-cancel', 'end() reached stop()');
+  assert.deepEqual(r.dirs.filter((d) => d.text === 'hello all').map((d) => d.seat), ['ann', 'bob', 'cy'], 'the typed command was still delivered');
+  assert.ok(r.dirs.some((d) => d.kind === 'gather'), 'the plan loop went on after the failed journal write');
+  assert.equal(r.lines.filter((l) => /direction journal not written/.test(l)).length, 1, 'one warning, not one per command');
 });
