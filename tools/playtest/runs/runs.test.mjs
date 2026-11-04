@@ -65,7 +65,7 @@ test('validateSpec refuses unsupported or unauthorized runs before anything is c
   assert.deepEqual(ok.scenario.soulRunCast.removedSeats, ['pip']);
   assert.equal(ok.scenario.durationSec, 7);
   assert.deepEqual(ok.policy.required, []);
-  const withSeats = validateSpec({ ...f.spec(), cast: "scenario", controllers: { allowLiveModels: true } }, { serverRoot: f.serverRoot });
+  const withSeats = validateSpec({ ...f.spec(), cast: 'scenario', controllers: { allowLiveModels: true } }, { serverRoot: f.serverRoot });
   assert.deepEqual(withSeats.controllers, [{ id: 'pip', adapter: 'codex-headless', model: 'm', effort: null }]);
 });
 

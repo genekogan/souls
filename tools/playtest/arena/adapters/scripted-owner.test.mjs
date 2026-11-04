@@ -88,3 +88,21 @@ test('an invalid script fails the turn without running anything; the adapter is 
   assert.equal(ADAPTERS['scripted-owner'].name, 'scripted-owner');
   assert.deepEqual(providerPolicy({ providers: { allowed: ['codex'] }, seats: [{ id: 'a', adapter: 'scripted-owner' }], director: { mode: 'scripted' }, review: { mode: 'deterministic', developer: false } }).required, []);
 });
+
+test('a turn cut short before its result leaves the card unhandled, so re-delivery answers it', async () => {
+  const d = folder();
+  // A stand-in whose `act` outlasts the turn wall; every other command answers at once.
+  writeFileSync(join(d, 'eden.mjs'), `import { appendFileSync } from 'node:fs';
+const a = process.argv.slice(2); appendFileSync('calls.jsonl', JSON.stringify(a) + '\\n');
+if (a[0] === 'act' && !process.env.FAST) await new Promise((r) => setTimeout(r, 5000));
+console.log(JSON.stringify(a[0] === 'act' ? { accepted: true, receipt: { id: 'r1', phase: 'completed' } } : { ok: true }));`);
+  const pond = { rules: [{ match: 'pond', do: [['act', 'walk to the pond', '--wait', '90']], result: 'At the pond' }] };
+  const t1 = await turn({ cwd: d, text: wake([{ id: 'm1', text: 'the pond' }]), script: pond, maxWallSec: 1 });
+  assert.equal(t1.timedOut, true);
+  const st = join(d, '.scripted-owner.json');
+  assert.deepEqual(existsSync(st) ? JSON.parse(readFileSync(st, 'utf8')).handled : [], []);
+  process.env.FAST = '1';
+  try { await turn({ cwd: d, text: wake([{ id: 'm1', text: 'the pond' }]), script: pond }); } finally { delete process.env.FAST; }
+  assert.deepEqual(calls(d).at(-1), ['result', 'm1', 'done', 'At the pond']);
+  assert.deepEqual(JSON.parse(readFileSync(join(d, '.scripted-owner.json'), 'utf8')).handled, ['m1']);
+});

@@ -4,6 +4,8 @@
 // a refused batch stops the run at stage "setup". The minted god token is a controller credential and is never recorded.
 import { physicalSnapshotSha256 } from '../lib/physical-fixture.mjs';
 
+// Dev auth only: validation refuses any world kind other than an isolated dev world before applySetup can run
+// (`world.kind`, runs.test.mjs), so this owner never reaches a real world.
 const DEV_OWNER = 'dev:admin';
 const short = (x) => String(x ?? '').slice(0, 300);
 

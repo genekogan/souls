@@ -44,6 +44,7 @@ export function validateScript(script) {
 }
 
 /** The first rule whose match fits the text, or null. */
+// `match` is local spec data compiled per message; a pathological pattern only slows its own seat's turn.
 export function matchRule(script, text) { return script.rules.find((r) => new RegExp(r.match, 'i').test(String(text ?? ''))) ?? null; }
 
 /** What a turn's text asks for: onboarding, a wake carrying owner messages, or typed chat. */
@@ -120,10 +121,12 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
   const handle = async ({ id = null, text: msg }) => {
     const rule = matchRule(script, msg);
     if (id && state.handled.includes(id)) return;
-    if (id) { state.handled.push(id); save(); }
+    // A message counts as handled only once its result was accepted (or it is deliberately left open), so a turn cut
+    // short mid-rule (maxWallSec, kill) leaves the card to be handled again on re-delivery instead of never answered.
+    const handled = () => { if (id) { state.handled.push(id); save(); } };
     if (!rule) {
       say(`No scripted response to: ${clip(msg)}`);
-      if (id) { await cli(['ack', id]); await cli(['result', id, 'failed', clip(script.unmatched ?? 'no scripted response')]); }
+      if (id) { await cli(['ack', id]); if ((await cli(['result', id, 'failed', clip(script.unmatched ?? 'no scripted response')])).code === 0) handled(); }
       return;
     }
     if (rule.supersede && state.open.length) {
@@ -138,8 +141,8 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
       if (!o.ok) { failed = `${step[0]}: ${o.why}`; break; }
     }
     if (!id) return;
-    if ((rule.close ?? 'done') === 'open' && !failed) { state.open.push(id); save(); say(`Started; ${id} stays open.`); return; }
-    await cli(['result', id, failed ? 'failed' : 'done', clip(failed ?? rule.result ?? 'Done.')]);
+    if ((rule.close ?? 'done') === 'open' && !failed) { state.open.push(id); handled(); say(`Started; ${id} stays open.`); return; }
+    if ((await cli(['result', id, failed ? 'failed' : 'done', clip(failed ?? rule.result ?? 'Done.')])).code === 0) handled();
   };
 
   if (what.kind === 'wake') for (const m of what.messages) await handle(m);
