@@ -57,7 +57,7 @@ test('A3: a receipt replaced before its body moved never gets firstMotionTick; r
  const f=await setup(t),caps=(await f.call('GET','/v1/edge/capabilities')).capabilities as any[],a=far(caps),b=far(caps,new Set([a.id]));assert.ok(a&&b,'two walks');
  const first=await f.call('POST','/v1/edge/act',{capability:a.id});assert.equal(first.accepted,true);
  f.host.tickOnce();await setImmediate();
- const r1=await f.receipt(first.receipt.id);assert.equal(r1.firstMotionTick,undefined,JSON.stringify(r1));
+ const r1=await f.receipt(first.receipt.id);assert.equal(r1.phase,'started');assert.ok(r1.programId,'the first walk started its body program, so it was watched');assert.equal(r1.firstMotionTick,undefined,JSON.stringify(r1));
  const second=await f.call('POST','/v1/edge/act',{capability:b.id});assert.equal(second.accepted,true);
  for(let i=0;i<400&&(await f.receipt(second.receipt.id)).firstMotionTick===undefined;i++){f.host.tickOnce();if(i%20===0)await setImmediate();}
  const replaced=await f.receipt(first.receipt.id);assert.equal(replaced.phase,'replaced');assert.equal(replaced.firstMotionTick,undefined);

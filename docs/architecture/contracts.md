@@ -51,8 +51,9 @@ accepted is not the same as its being carried out. `ownerSoulDashboardSchema` va
 fields and preserves additive ones. On edge worlds, an action's lifecycle is its receipt (accepted → started →
 completed / failed / replaced), read from `/v1/edge/receipts/:id` or the event stream. `started` (`startedTick`) means
 the body program began executing, not that the body visibly moved: a walk from idle can read `started` for about ten
-ticks before the first step. `firstMotionTick` is the first tick after it at which the body's engine activity changed
-or its root moved more than 5 cm; it is absent until then and on receipts with no body program (#790, D021).
+ticks before the first step. `firstMotionTick` is the first tick at or after it at which the body's engine activity changed
+or its root moved more than 5 cm; it is absent until then, on receipts with no body program, and on a receipt still running across a server
+restart that had not moved before it (#790, D021).
 
 ## Privacy
 

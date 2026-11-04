@@ -658,17 +658,19 @@ export class EdgeLedger implements EdgeLedgerHooks {
   private contactPending=new Set<string>();
   /** #790 (D021): receipts whose body program started but whose body has not visibly begun yet. `started` stays the
    *  engine's program start; the first tick after it at which the body's activity changes or its root moves more than
-   *  MOTION_M is kept as the receipt's `firstMotionTick` (detail). In memory: a restart fails open receipts anyway. */
+   *  MOTION_M is kept as the receipt's `firstMotionTick` (detail). A body with no human state is judged by displacement
+   *  only. In memory only: a receipt restored as still running after a restart is not watched again (its pre-restart
+   *  state is unknown, so a later change would be a false first motion) and keeps no `firstMotionTick` unless set before. */
   private motionWatch=new Map<string,{entityId:string;activity:string;p:[number,number]}>();
   private watchMotion(id:string,soulId:string){
-    const m=this.host.minds.get(soulId),e=m?(this.mw.world as NativeWorld).entities[m.entityId]:undefined;if(!m||!e?.human)return;
-    this.motionWatch.set(id,{entityId:m.entityId,activity:String(e.human.activity??'idle'),p:[e.pose.p[0],e.pose.p[2]]});
+    const m=this.host.minds.get(soulId),e=m?(this.mw.world as NativeWorld).entities[m.entityId]:undefined;if(!m||!e)return;
+    this.motionWatch.set(id,{entityId:m.entityId,activity:String(e.human?.activity??''),p:[e.pose.p[0],e.pose.p[2]]});
   }
   private motionTicks(tick:number){
     const world=this.mw.world as NativeWorld;
     for(const [id,w] of this.motionWatch){
-      const e=world.entities[w.entityId];if(!e?.human){this.motionWatch.delete(id);continue;}
-      if(String(e.human.activity??'idle')===w.activity&&Math.hypot(e.pose.p[0]-w.p[0],e.pose.p[2]-w.p[1])<=MOTION_M)continue;
+      const e=world.entities[w.entityId];if(!e){this.motionWatch.delete(id);continue;}
+      if(String(e.human?.activity??'')===w.activity&&Math.hypot(e.pose.p[0]-w.p[0],e.pose.p[2]-w.p[1])<=MOTION_M)continue;
       this.motionWatch.delete(id);this.setDetail(id,{firstMotionTick:tick});
     }
   }
