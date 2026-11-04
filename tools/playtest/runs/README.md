@@ -150,4 +150,12 @@ replay would repeat it.
 `preflight` reuses a result (`start` passes its own); `modules` replaces module loading; `afterProvision({world, runDir})`
 runs after provision and before seats (Soul Runs setup), and refuses by throwing. Without hooks `playtest.mjs run` behaves as before.
 
-Tests: `node --test tools/playtest/runs/runs.test.mjs tools/playtest/runs/compose.test.mjs tools/playtest/runs/evaluate.test.mjs tools/playtest/arena/adapters/scripted-owner.test.mjs`.
+`cmdDirect(args, hooks)` in `director/swarm/run.mjs` (the directed cast path, `playtest.mjs direct`) takes the same hooks.
+It owns the dev world (a `--world <url>` world is only used), each seat controller and the observer browser. An abort
+before provision, seats or play stops with `RUN_CANCELLED`; an abort during play ends the session as the console's `end`
+does (`stoppedBy: lifecycle-cancel`), so close, verdict and report still run. With hooks, a cast whose seats or planner
+need a live model is refused (exit 2) before the run folder or any process exists unless `hooks.allowLiveModels` is
+true; scripted-owner seats with no planner need no provider, and the Claude quota check is skipped. Without hooks
+`playtest.mjs direct` behaves as before.
+
+Tests: `node --test tools/playtest/director/swarm/test/hooks.test.mjs tools/playtest/runs/runs.test.mjs tools/playtest/runs/compose.test.mjs tools/playtest/runs/evaluate.test.mjs tools/playtest/arena/adapters/scripted-owner.test.mjs`.
