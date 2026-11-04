@@ -127,7 +127,7 @@ export function retainDecision(journal,fence,decision,{events=[],threadId,initia
  // #789 (D3 for the managed path): the newest owner message a retained decision incorporated is the owner link. The
  // act that serves it usually comes a decision later (after the ack), so the link is carried in the checkpoint, and
  // an act's pending record keeps its copy, so a replayed or reconciled write sends the same body. No time window.
- const owner=events.filter(e=>e.source==='owner').at(-1)?.event?.id,link=ownerLinkId(owner)??ownerLinkId(previous.ownerLinkV1);
+ const owner=events.filter(e=>e.source==='owner'&&(e.event?.kind===undefined||e.event.kind==='owner.message')).at(-1)?.event?.id,link=ownerLinkId(owner)??ownerLinkId(previous.ownerLinkV1);
  const serves=link&&execution.call?.type==='write'&&execution.call.command==='act'?link:null;
  const id=randomUUID();const pendingDecision={id,decision:execution,eventIds:events.map(e=>({source:e.source,id:e.event.id})),retainedAt,...(serves?{for:serves}:{})};
  if(previous.lastReceipt)previous.lastReceipt=receiptProjection(previous.lastReceipt);
@@ -226,8 +226,8 @@ export async function applyPendingDecision(journal,fence,world,{signal}={}){
  const listenTo=['listen','wait'].includes(call.type)&&Object.hasOwn(call.args,'listenTo')?listeningScope(call.args.listenTo):latest.value.listenTo??[];
  // The owner link is used up by the first accepted act that served it, unless the world keeps the message open (a
  // later step remains, D3c); a world refusal of the link or the agent's own result for that message also ends it.
- const linkEnded=pending.for&&call.command==='act'&&(response?.accepted===true&&!response.open||response?.error?.status===400&&/no owner message/.test(response.error.message??''))
-  ||call.type==='write'&&call.command==='result'&&call.args.id===previous.ownerLinkV1
+ const linkEnded=(Boolean(pending.for)&&call.command==='act'&&((response?.accepted===true&&!response.open)||(response?.error?.status===400&&/no owner message/.test(response.error.message??''))))
+  ||(call.type==='write'&&call.command==='result'&&call.args.id===previous.ownerLinkV1)
   // Choosing to wait ends it too: an act the Soul starts on its own later must not close an old message (D3b).
   ||call.type==='wait';
  if(linkEnded)delete previous.ownerLinkV1;
