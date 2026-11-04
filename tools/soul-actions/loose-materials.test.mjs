@@ -10,11 +10,12 @@ import {mountEdgeRoutes} from '../../apps/server/src/edge/routes.ts';
 import {GodMode} from '../../apps/server/src/god/god.ts';
 import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
 import {CATALOG} from '../../mars/viewer/engine/world/catalog.ts';
+import {formationFor} from '../../mars/viewer/engine/carry/formation.ts';
 import {coreLibrary} from '../../packages/world-compiler/src/index.ts';
 
 // each new def against the native material it carries: native grips are mapped into the def frame (+x along)
 const NATIVE = {'core-rack-beam@2': 'beam-9ft', 'core-rack-upright@1': 'upright-12ft', 'core-plywood-sheet@1': 'plywood-4x8'};
-const along = (native, g) => native.category === 'rack-upright' ? [g.local[1] - native.size[1] / 2, g.local[2], g.local[0]] : g.local;
+const along = (native, g) => native.category === 'rack-upright' ? [g.local[1] - native.size[1] / 2, g.local[2], -g.local[0]] : g.local;
 const size = (native) => native.category === 'rack-upright' ? [native.size[1], native.size[2], native.size[0]] : native.size;
 const near = (a, b, msg) => a.forEach((x, i) => assert.ok(Math.abs(x - b[i]) < 1e-3, `${msg}: ${a} vs ${b}`));
 
@@ -39,6 +40,8 @@ test('loose materials are new immutable revisions carrying the native handling; 
   assert.equal(now.components.carryable.mass, was.components.carryable.mass);
   assert.equal(now.components.carryable.handling, undefined);
   assert.deepEqual(now.size.box, was.size.box);
+  // the frozen revision's content hash is the one on main at df69a3ca
+  assert.equal(now.hash, '8e6154af4d4d047880f4221c0bb287011aa61e0418d6c2d25a47b05a3fd59505');
 });
 
 test('a light loose material is carried solo with both hands by the native carry; a heavy one names its crew and is refused before motion', {timeout: 120000}, async (t) => {
@@ -65,6 +68,15 @@ test('a light loose material is carried solo with both hands by the native carry
   const caps = () => edge.capabilities(soul), idOf = (n) => god.model.get(n).id;
   const finish = async (r) => { for (let n = 0; n < 3000; n++) { const p = edge.receipt(soul.soulId, r.receipt.id)?.phase; if (['failed', 'completed', 'replaced'].includes(p)) break; await tick(1); } return edge.receipt(soul.soulId, r.receipt.id); };
   // the old revision keeps its one-hand pick-up; the new materials are never one-hand items
+  // independent of the def's own numbers: the adapted asset's carrier formation equals the native material's for every
+  // crew size (along the load and side), so a crew stands where it would at the engine's own beam, frame or sheet
+  for (const [n, nat] of [['beam', 'beam-9ft'], ['frame', 'upright-12ft'], ['sheet', 'plywood-4x8']]) {
+    const adapted = f.host.engine.world.entities[idOf(n)].def, [lo, hi] = CATALOG[nat].handling.carryCrew;
+    for (let k = lo; k <= hi; k++) formationFor(adapted, k).carriers.forEach((c, i) => {
+      const w = formationFor(nat, k).carriers[i];
+      assert.ok(Math.abs(c.along - w.along) < 1e-3 && c.side === w.side, `${n} crew ${k} slot ${i}: ${JSON.stringify(c)} vs ${JSON.stringify(w)}`);
+    });
+  }
   // the new materials are recorded native transports (the viewer draws their carried pose); the old one-hand beam is not
   for (const n of ['beam', 'sheet', 'frame']) assert.ok(f.host.engine.world.entities[idOf(n)].tags.includes('entity-world-transport'), n);
   assert.ok(!f.host.engine.world.entities[idOf('old-beam')].tags.includes('entity-world-transport'));
@@ -87,7 +99,7 @@ test('a light loose material is carried solo with both hands by the native carry
     let raised = 0, crewed = false;
     for (let k = 0; k < 3000; k++) {
       const load = f.host.engine.world.entities[id];
-      raised = Math.max(raised, load.pose.p[1]); crewed ||= load.phase === 'carried' && f.host.engine.world.entities[soul.entityId].human?.task !== undefined;
+      raised = Math.max(raised, load.pose.p[1]); crewed ||= load.phase === 'carried' && f.host.engine.world.entities[soul.entityId].human?.grip?.entity === id;
       const p = edge.receipt(soul.soulId, r.receipt.id)?.phase; if (['failed', 'completed', 'replaced'].includes(p)) break;
       await tick(1);
     }
