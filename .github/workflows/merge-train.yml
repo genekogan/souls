@@ -8,10 +8,12 @@
 #                        main's CI green: squash-merged as is, even when behind main (steps 1-2 skipped). Main's own
 #                        push CI is the safety net for the combination
 #   strict               everything else (T3-T4, strict paths, head not green yet, conflict or unknown mergeability):
-#                        steps 1-3 below. Push runs on main are path-scoped, so a failed run keeps main red until a
-#                        later full-scope run (manual, or every qualify job ran) is green or the failed run is re-run
-#                        green; a narrow green push does not clear it, and with no green full-scope run among the last
-#                        50 runs main is unproven, which counts as red. While main is red every PR is strict, and the
+#                        steps 1-3 below. Main is green only when no ci.yml run failed after its newest green
+#                        full-scope run (every qualify job succeeded, or a manual run), or the failed run is re-run
+#                        green; a narrower green run does not clear a failure. ci.yml makes every push to main and
+#                        every manual run full scope (ci-scope.mjs FULL_EVENTS), so each merge leaves that evidence.
+#                        With no green full-scope run among the last 50 runs main is unproven, which counts as red.
+#                        While main is red every PR is strict, and the
 #                        train says so once per red streak on the coordination issue (repo variable
 #                        MERGE_TRAIN_NOTIFY_ISSUE, default 755; a failed notice is logged and the train goes on)
 #

@@ -48,8 +48,9 @@ the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
   unknown mergeability, and the strict paths (`STRICT_PATHS`): the engine (`mars/`, `packages/engine-*`,
   `packages/kernel`, `packages/world-compiler`), `packages/conformance`, `pnpm-lock.yaml`, the walk and bundle
   baselines and `.github/workflows/`.
-- **Main red**: push CI on `main` runs only the jobs each push's paths select, so a later docs-only green run does not
-  clear a failure. `main` stays red from a failed run until a later full-scope run (a manual `ci` run, or one in which
+- **Main red**: every push to `main` runs every CI job (`FULL_EVENTS` in `.github/scripts/ci-scope.mjs`; pull request
+  runs stay path-scoped), so each merge leaves a full-scope run. A narrower green run does not clear a failure: `main`
+  stays red from a failed run until a later full-scope run (a manual `ci` run, or one in which
   every qualify job ran) is green, or the failed run is re-run green. With no green full-scope run among the last 50
   runs, `main` is unproven, which counts as red. While it is red every PR is strict, and the train
   says so once per red streak on the coordination issue (repository variable `MERGE_TRAIN_NOTIFY_ISSUE`); a failed

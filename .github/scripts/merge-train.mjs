@@ -71,8 +71,9 @@ export function landingMode({ tier, files = [], mergeable, mergeableState, headC
 }
 
 /**
- * Main's CI over its recent ci.yml runs (push and workflow_dispatch on the default branch). Push runs are scoped to
- * the paths each push changed, so a later narrow green run says nothing about an earlier failure: main is green only
+ * Main's CI over its recent ci.yml runs (push and workflow_dispatch on the default branch). Both are full scope
+ * (ci-scope.mjs FULL_EVENTS), but older or misconfigured runs may not be, and a narrower green run says nothing
+ * about an earlier failure: main is green only
  * when no run failed after the newest green full-scope run (`isFull`: a manual run, or one whose every qualify job
  * succeeded). A failed run re-run green counts as green (a re-run keeps its id). Cancelled and skipped runs say
  * nothing. With no green full-scope run in the window main is `unproven` (strict): an older failure may be hidden.
