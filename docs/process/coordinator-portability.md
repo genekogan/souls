@@ -82,3 +82,48 @@ through its own supported mechanism. A successful Codex worker is evidence for t
 Claude or another harness is signed in and qualified. Report static contract review separately from an actual
 end-to-end execution in each harness. The same orientation/agenda prompt works once the receiver can read the
 project and private handoff; continuous execution still depends on that harness remaining runnable.
+
+## Operating the merge pipeline
+
+These rules bind in every harness and add to the sustaining-lanes rules (#766, #769); where they differ, these win.
+Merge-train mechanics live in [agent workflow](agent-workflow.md#the-merge-train).
+
+- **Repo steward.** One workhorse worker owns review dispatch, `merge:ready` on reviewed T0–T2 PRs, CI and
+  merge-train triage, cancelling superseded runs and release-candidate summaries. It never deploys, runs a paid gate
+  or adds `approved:maintainer`.
+- **Steward wake-up.** In Claude Code a subagent steward cannot idle on a `Monitor`, so the coordinator owns the PR
+  watcher and forwards each event, and a periodic queue check, to the same steward agent, which acts and hands back
+  with its context kept. A sidebar-session steward can idle on its own watcher but starts only on a user-driven turn.
+- **Review economy.** No CI theater: one independent review per PR head, then delta re-reviews only. Use Sonnet for
+  tools-only and docs-only diffs and Opus where `apps/`, `packages/` or `mars/` change or the change alters the merge
+  pipeline itself; proof is exactly the policy tier, and passing checks are never re-run.
+- **Queue head.** The train has no rebase token, so the steward merge-forwards only the queue head when it falls
+  behind main. A labelled PR whose required checks have not started within 15 minutes yields the head: the steward
+  removes `merge:ready` and relabels it when green.
+- **Landing mode.** The train lands reviewed T0–T2 PRs non-strict when green on their own head and mergeable, and
+  strict (rebase and re-test) for T3/T4, engine paths, the lockfile, baselines, conformance and workflows. Everything
+  is strict while main's full-scope CI is red or unproven, and every push to main runs full-scope CI (#813).
+- **Stacked PRs.** When a base squash-merges, GitHub retargets the dependent PR to main, and if it is mergeable it
+  lands as is. Only on a conflict does the lane re-cut it from main as a replacement PR, reviewed as a delta against
+  the old head; force-push is never used, and stacks stay shallow.
+- **CI capacity.** At onboarding, record the account's concurrent-job cap and per-PR CI duration; with several lanes
+  the Actions queue, not the train, bounds throughput. Workers push once per bounded step, and per-PR workflows
+  cancel superseded runs (#777).
+- **Congestion.** The steward may cancel queued runs of non-required workflows, and queued `ci`, proof and changelog
+  runs of drafts and of PRs stacked on unlabelled bases. It never cancels runs on main, of labelled PRs, of PRs based
+  on main or of the queue head.
+- **Heavy runner.** The repository variable `CI_HEAVY_RUNNER` selects the self-hosted runner (#816). The steward
+  turns it on when more than 8 `ci` runs are queued, or the queue head's checks have not started in 20 minutes, and
+  the runner is online; off when the queue drains, the runner is offline or a quiet measurement window is needed.
+  Watch the first flip for environment failures.
+- **Harness limits.** Claude Code's auto-mode classifier refuses agents editing permission or hook settings,
+  applying approval labels or asking another session to, force-pushing, cancelling runs in a loop and some CI-config
+  changes. The maintainer adds narrow allow rules to the gitignored project settings (`Agent`, `SendMessage`,
+  `Monitor`, `CronCreate`, `gh`, the state-writing interpreter, `merge:ready`, `gh run cancel`); until a permission
+  dialog in the coordinator session is answered, every lane stalls.
+- **Sessions and scratch.** A superseded worker session receives only stop-and-hand-over messages, since new work
+  would make it a second writer. Workers use per-PR file names in shared scratch, and briefs require sliced reads of
+  long issues.
+- **Private state.** The manifest, `STATE.json` and decision log under the private bootstrap record each lane's
+  identity, budget, hours, branches and handles, a parked lane's resume trigger, and the generator and location of
+  the private progress dashboard.

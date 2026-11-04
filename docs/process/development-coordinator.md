@@ -126,6 +126,9 @@ ready changes to that owner; there is only one owner of an active release head. 
 or deploy merely because it finished its issue. Follow [release](../release.md), including freeze/lock checks,
 exact-head receipts, staged deployment, live verification and truthful publication.
 
+The repo steward, review economy, merge queue, stacked PRs, CI congestion, the heavy runner and harness limits
+follow [operating the merge pipeline](coordinator-portability.md#operating-the-merge-pipeline).
+
 Report meaningful changes in a compact Now / Next / Needs Gene checkpoint, with actual worker count and ETA ranges
 when evidence supports them. Gene-facing reports focus on milestones, releases, meaningful failures and decisions,
 not every PR; detailed task checkpoints stay in the records. Separate the next PR/release from the whole agenda. Do not refresh unchanged status or
