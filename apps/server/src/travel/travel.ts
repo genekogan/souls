@@ -12,6 +12,10 @@ import type {WorldHost} from '../world.ts';
 
 export const TRAVEL_CONTRACT = 'travel/1';
 const LOG_KEEP = 20, ARRIVE_READY_MS = 30_000, RELAY_MS = 60_000;
+// #795: putting on a carried body is bounded so that arrival (up to ARRIVE_READY_MS) plus wearing stays well inside the
+// launcher relay's 55 s abort; a slow source never fails the trip. The pull gets at most BODY_PULL_MS of that budget.
+const WEAR_MS = 12_000, BODY_PULL_MS = 8_000;
+const SLOW = {ok: false as const, code: 'body.source-slow', reason: 'The carried body took too long to fetch here; it was not worn on arrival'};
 
 export class TravelError extends Error {
   readonly status: number; readonly code: string; readonly extra: Record<string, unknown>;
@@ -36,9 +40,20 @@ export type TravelDeps = {
   resolveBodyRef?(ref: string, owner: string): BodyRef;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** The carried-body pull deadline (default BODY_PULL_MS); tests shorten it. */
+  bodyPullMs?: number;
 };
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+type Pulled = {ok: true} | {ok: false; code: string; reason: string};
+/** A carried-body pull against a real-time deadline. A late pull may still finish and cache its verified bytes for a
+ *  later PUT {ref}; it never assigns the body, because only wear() assigns, and wear() has already moved on. */
+function pullWithin(run: () => Promise<Pulled>, ms: number): Promise<Pulled> {
+  const pulled = run().catch((e: {code?: unknown}) => ({ok: false as const, code: typeof e?.code === 'string' ? e.code : 'body.source-unavailable', reason: 'The carried body could not be fetched and admitted here'}));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const slow = new Promise<Pulled>(r => { timer = setTimeout(() => r(SLOW), ms); timer.unref?.(); });
+  return Promise.race([pulled, slow]).finally(() => clearTimeout(timer));
+}
 /** A resolved carried reference: the body to wear and, when its bytes are elsewhere, the pull to run once ready. */
 export type BodyRef = {ok: true; body: unknown; fetch?: () => Promise<{ok: true} | {ok: false; code: string; reason: string}>} | {ok: false; code: string; reason: string};
 /** A body the destination can wear: a kit look, a shipped preset, or (#795) a reference `{ref}` to an admitted
@@ -253,13 +268,14 @@ export class Travel {
     const {host} = this.d, entityId = this.d.db.soul(soulId)!.entity_id;
     const engine = host.engine as unknown as {world: {entities: Record<string, {body?: unknown}>}; bodyAssignmentProblemV1?(id: string, body: unknown): string | null};
     if (!engine.bodyAssignmentProblemV1) return false;
-    for (let i = 0; i < 100; i++) {
+    const until = this.now() + WEAR_MS;
+    for (let i = 0; i < 100 && this.now() <= until; i++) {
       const ent = engine.world.entities[entityId];
       if(engine.bodyAssignmentProblemV1!(entityId,body)==='body.world-policy')return false;
       if (ent && JSON.stringify(ent.body ?? null) === JSON.stringify(body)) return true;
       const guard = (): true => { const e = engine.world.entities[entityId]; if (!e || host.quietBarrier || engine.bodyAssignmentProblemV1!(entityId, body)) throw new Error('travel.body-not-ready'); return true; };
       try { guard();
-        if (fetch) { const run = fetch; fetch = undefined; const f = await run().catch((e: {code?: unknown}) => ({ok: false as const, code: typeof e?.code === 'string' ? e.code : 'body.source-unavailable', reason: 'The carried body could not be fetched and admitted here'})); if (!f.ok) { refused?.(f); return false; } guard(); }   // bytes move only once the body can change
+        if (fetch) { const run = fetch; fetch = undefined; const f = await pullWithin(run, Math.max(0, Math.min(this.d.bodyPullMs ?? BODY_PULL_MS, until - this.now()))); if (!f.ok) { refused?.(f); return false; } guard(); }   // bytes move only once the body can change
         await host.enqueueChecked('body-assignment-v1', 'world:body', {contract: 'body-assignment/1', worldId: this.world, soulId, entityId, body: structuredClone(body)}, guard, () => true); this.d.invalidateBodies?.(); }
       catch { /* not standing still yet (or the birth look landed in between): try again */ }
       await (this.d.sleep ?? sleep)(100);

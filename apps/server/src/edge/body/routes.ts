@@ -133,7 +133,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
   bodyRefResolvers.set(deps.host,(ref,owner):BodyRefResolution=>{
     if(!ASSET.test(ref))return {ok:false,code:'body.ref-unknown',reason:'No body definition with that reference'};
     const preset=SHARED_BODY_BYTES[ref]?BODY_PRESETS.find(p=>(p.body as {model?:string}|null)?.model===ref):undefined;
-    if(preset)return types.includes(preset.body?.type??'humanoid')?{ok:true,body:structuredClone(preset.body) as Entity["body"]}:{ok:false,code:'body.world-policy',reason:'This world does not admit that body type'};
+    if(preset)return types.includes(preset.body?.type??preset.body?.family??'humanoid')?{ok:true,body:structuredClone(preset.body) as Entity["body"]}:{ok:false,code:'body.world-policy',reason:'This world does not admit that body type'};
     const d=definition(ref);if(!d||!visible(d,owner))return {ok:false,code:'body.ref-unknown',reason:'No body definition with that reference'};
     const ok=selectable(d);if(!ok.ok)return ok;
     return {ok:true,body:bodyOfDefinition(d),...(ok.pull?{fetch:async()=>{

@@ -24,7 +24,7 @@ function site() {
     }
   };
   const list = async (): Promise<SiteWorld[]> => [...worlds.values()].map(w => ({slug: w.slug, name: w.name}));
-  function world(slug: string, name: string, opts: {alone?: boolean; resolve?: (ref: string, owner: string) => BodyRef} = {}): World {
+  function world(slug: string, name: string, opts: {alone?: boolean; resolve?: (ref: string, owner: string) => BodyRef; pullMs?: number} = {}): World {
     const db = new Db(':memory:'), entities: Record<string, {body?: unknown}> = {}, minds = new Map<string, unknown>(), faded: string[] = [], arrived: string[] = [];
     const host = {worldId: `${slug}-world`, engine: {world: {entities}, bodyAssignmentProblemV1: () => null}, minds, quietBarrier: false,
       enqueueChecked: async (_k: string, _s: string, p: {entityId: string; body: unknown}, guard: () => true) => { guard(); entities[p.entityId] = {...entities[p.entityId], body: p.body}; }};
@@ -41,7 +41,7 @@ function site() {
     };
     const fading = {enabled: true, depart: (id: string) => { faded.push(id); return true; }, arrive: (id: string) => { arrived.push(id); return true; }, addAway: () => {}};
     const w: World = {slug, name, db, entities, faded, arrived, down: false,
-      travel: new Travel({host: host as never, db, souls: souls as never, fading, slug, name, site: opts.alone ? null : {worlds: list, relay}, sleep: async () => {}, ...(opts.resolve ? {resolveBodyRef: opts.resolve} : {})})};
+      travel: new Travel({host: host as never, db, souls: souls as never, fading, slug, name, site: opts.alone ? null : {worlds: list, relay}, sleep: async () => {}, ...(opts.resolve ? {resolveBodyRef: opts.resolve} : {}), ...(opts.pullMs ? {bodyPullMs: opts.pullMs} : {})})};
     worlds.set(slug, w);
     return w;
   }
@@ -161,6 +161,18 @@ test('#795: a refused reference (unpublished, withdrawn, policy, unreachable) ke
     assert.match(r.log.at(-1)!.note!, new RegExp(code.replace('.', '\\.')), code);
     assert.equal(fetched, fetchFails ? 1 : 0);
   }
+});
+
+test('#795: a carried body whose source never answers is refused body.source-slow within the deadline; the trip succeeds', async () => {
+  const ref = `body_${'e'.repeat(64)}`;let fetched = 0;
+  const {world} = site(), a = world('alder', 'Alder'), b = world('birch', 'Birch', {pullMs: 50, resolve: () => ({ok: true, body: {family: 'floater', type: 'ceramic', model: ref}, fetch: () => { fetched++; return new Promise<never>(() => {}); }})});
+  const ana = born(a, 'dev:ana', 'Ana', {model: ref});
+  const started = Date.now(), r = await trip(a, ana, 'birch'), took = Date.now() - started;
+  assert.equal(r.ok, true, 'travel itself is never refused because of the body');
+  assert.ok(took < 2_000, `arrival answered within the pull deadline (${took} ms)`);
+  assert.deepEqual(b.entities[b.db.soul(r.soulId)!.entity_id].body, {kit: 'default'}, 'the default look is kept');
+  assert.match(r.log.at(-1)!.note!, /body\.source-slow/);
+  assert.equal(fetched, 1, 'one pull, not retried');
 });
 
 test('a closed world refuses newcomers; a resident can always leave and home never refuses its own', async () => {
