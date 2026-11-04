@@ -11,7 +11,7 @@ import {hostRecorder} from '../soul-trace/host.mjs';
 
 export const TOOL_ITEMS = new Set(['commandExecution', 'fileChange', 'mcpToolCall', 'dynamicToolCall', 'webSearch', 'imageView', 'collabAgentToolCall']);
 
-export function createHostTrace(rec) {
+export function createHostTrace(rec, {closeWaitMs = 2000} = {}) {
   const begun = new Map(), started = new Set(), detach = [];
   const safe = fn => (...args) => { try { fn(...args); } catch {} };
   return {
@@ -45,14 +45,22 @@ export function createHostTrace(rec) {
       rec.turn('start', {turn: s.turnId, for: owner?.id, when: begun.get(s.turnId)});
       begun.delete(s.turnId);
     }),
-    async close() { for (const stop of detach.splice(0)) stop(); await rec.drain(); rec.close(); },
+    /** Bounded like the evidence recorder: a stalled trace disk never holds shutdown; what was not written is
+     *  counted as dropped and nothing more is written synchronously. */
+    async close() {
+      for (const stop of detach.splice(0)) stop();
+      const stalled = await Promise.race([rec.drain().then(() => false), new Promise(done => { const h = setTimeout(() => done(true), closeWaitMs); h.unref?.(); })]);
+      if (stalled) { rec.stats.dropped += rec.pending; return {complete: false, dropped: rec.stats.dropped}; }
+      rec.close();
+      return {complete: rec.stats.dropped === 0 && rec.stats.sinkFailures === 0, dropped: rec.stats.dropped};
+    },
   };
 }
 
 /** The managed runtime's host trace when SOUL_TRACE_FILE names a usable file; otherwise null. */
-export function openHostTrace(env = process.env, options = {}) {
+export function openHostTrace(env = process.env, {closeWaitMs, ...options} = {}) {
   const file = env.SOUL_TRACE_FILE;
   if (typeof file !== 'string' || !file) return null;
   const rec = hostRecorder({file, queued: true, ...options});
-  return rec.enabled ? createHostTrace(rec) : null;
+  return rec.enabled ? createHostTrace(rec, closeWaitMs === undefined ? {} : {closeWaitMs}) : null;
 }

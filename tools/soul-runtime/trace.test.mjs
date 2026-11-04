@@ -87,3 +87,22 @@ test('managed host trace is off without SOUL_TRACE_FILE, refuses links, and a fa
   assert.equal(rec.stats.sinkFailures, 1);
   assert.ok(rec.stats.dropped >= 1);
 });
+
+test('managed host trace close is bounded: a trace sink that never calls back cannot hold shutdown', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'sim-managed-trace-stall-'));
+  t.after(() => rmSync(dir, {recursive: true, force: true}));
+  let syncWrites = 0;
+  const rec = hostRecorder({file: join(dir, 'stall.jsonl'), queued: true, append: () => {}, appendSync: () => { syncWrites++; }, limits: {queuedBytes: 4096, exitBytes: 4096, flushMs: 0}});
+  const trace = createHostTrace(rec, {closeWaitMs: 50}), host = fakeHost();
+  trace.bindHost(host);
+  const r = await host.begin(SECRET);
+  trace.state({state: 'host-notified', mode: 'start', turnId: r.turnId, events: []});
+  await sleep(5);
+  host.emit('event', {method: 'turn/completed', params: {turn: {id: r.turnId}}});
+  const t0 = performance.now(), summary = await trace.close();
+  assert.ok(performance.now() - t0 < 1000, 'close returns after closeWaitMs');
+  assert.equal(summary.complete, false);
+  assert.ok(summary.dropped >= 2, String(summary.dropped));
+  assert.equal(syncWrites, 0, 'no synchronous write into a stalled sink');
+  assert.equal(host.listenerCount('event'), 0);
+});
