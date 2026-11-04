@@ -24,6 +24,10 @@ pnpm test:client                             # Soul client and client-eval suite
 pnpm test                                    # everything (slow; prefer the focused forms)
 ```
 
+The Pip authoring example's renderer test is manual, not part of CI: it needs pulled media and loads renderer code
+with parameter properties, so run `node --experimental-transform-types --test tools/body-authoring/robot/robot.test.mjs`
+when you change `tools/body-authoring/robot/` or the humanoid renderer it fits.
+
 `pretest` checks that the media the tests read is in place (`pnpm assets:pull` fixes it). Server tests run with
 `--test-concurrency=1`. Prefer `node --test` on the files you touched while iterating; the full suite belongs to CI
 and the remote gate.
