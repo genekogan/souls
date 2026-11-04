@@ -16,6 +16,10 @@ test('downloaded dependency-free validator, named owner discovery, upload, dance
  const request=async(who:typeof a,path='',body?:unknown)=>app.request('/v1/edge/body'+path,{method:body?'PUT':'GET',headers:{authorization:'Bearer '+who.token,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  for(const file of ['validate.mjs','upload.mjs','admission.ts','rig.ts','motion.ts','action-profile.ts','upload-validation.ts']){const r=await app.request('/body-authoring/'+file);assert.equal(r.status,200);writeFileSync(join(dir,file),await r.text());}
  const skill=await(await app.request('/body-authoring/SKILL.md')).text();assert.ok(!skill.includes('{{BASE}}'));assert.match(skill,/upload.mjs/);
+ // Behind the TLS proxy the skill's links keep the public scheme and host, and follow redirects (curl -L).
+ const proxied=await(await app.request('/body-authoring/SKILL.md',{headers:{host:'127.0.0.1:4100','x-forwarded-host':'soul.example','x-forwarded-proto':'https'}})).text();
+ assert.match(proxied,/curl -fsSL 'https:\/\/soul\.example\/w\/eden\/body-authoring\/validate\.mjs' -o validate\.mjs/);assert.ok(!/http:\/\//.test(proxied),'no plaintext link behind the proxy');assert.ok(!/curl -fsS '/.test(proxied),'every download follows redirects');
+ const direct=await(await app.request('/body-authoring/SKILL.md',{headers:{host:'127.0.0.1:4100'}})).text();assert.match(direct,/'http:\/\/127\.0\.0\.1:4100\/w\/eden\/body-authoring\/validate\.mjs'/);
  const manifest={type:'ceramic',license:'owned',rightsConfirmed:true,name:'Cloud Pebble',description:'A locally authored floating sculpture.',motion:structuredClone(LITTLE_MARTIANS_MOTION)},bytes=rigidGLB(j=>{j.extras={authoringNote:'Discarded source metadata'};});
  writeFileSync(join(dir,'model.glb'),bytes);writeFileSync(join(dir,'manifest.json'),JSON.stringify(manifest));
  const local=JSON.parse(execFileSync(process.execPath,['validate.mjs','model.glb','manifest.json'],{cwd:dir,encoding:'utf8'}));assert.equal(local.valid,true);
