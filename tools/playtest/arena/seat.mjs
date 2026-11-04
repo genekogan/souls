@@ -11,8 +11,9 @@ import { newIdentity } from '../lib/hash.mjs';
 import { now, sleep } from '../lib/clock.mjs';
 import * as claude from './adapters/claude-headless.mjs';
 import * as codex from './adapters/codex-headless.mjs';
+import * as scriptedOwner from './adapters/scripted-owner.mjs';
 
-export const ADAPTERS = { 'claude-headless': claude, 'codex-headless': codex };
+export const ADAPTERS = { 'claude-headless': claude, 'codex-headless': codex, 'scripted-owner': scriptedOwner };
 export const onboardingText = (base, name) => `Make me a Soul in this world: ${base}/ . Call it ${name}. Start from ${base}/instructions.md.`;
 export const wakeText = (cmdLine, stdout) => `[background task] ${cmdLine} exited with output:\n${stdout}`;
 
@@ -95,7 +96,7 @@ export class Seat {
     const first = !this.info.sessionId;
     if (first && this.info.adapter === 'claude-headless') { this.info.sessionId = randomUUID(); this.save(); }
     const r = await this.adapter.turn({ cwd: this.folder, sessionId: this.info.sessionId, resume: !first, model: this.info.model ?? undefined, effort: this.info.effort,
-      text, allowedTools: this.allowedTools, maxWallSec: this.rails.maxTurnWallSec, prevCumulative: this.cumulative });
+      text, allowedTools: this.allowedTools, maxWallSec: this.rails.maxTurnWallSec, prevCumulative: this.cumulative, script: this.seat.script });
     const ended = now();
     if (r.cumulative) this.cumulative = r.cumulative;
     if (r.sessionId && r.sessionId !== this.info.sessionId) { this.info.sessionId = r.sessionId; }

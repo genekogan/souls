@@ -1,0 +1,9 @@
+{
+ "soulRun": 1,
+ "name": "hamlet-trio",
+ "scenario": "../../scenarios/soul-runs/hamlet-trio.json",
+ "world": { "port": 4321 },
+ "observer": { "check": true, "required": false, "cameras": [], "timeoutMs": 60000 },
+ "limits": { "maxWallSec": 600, "maxControllers": 3, "cleanupWaitMs": 15000 },
+ "retention": { "worldData": "keep", "controllerState": "keep" }
+}

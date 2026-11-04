@@ -25,7 +25,7 @@ const log = (...a) => console.error(`[playtest ${new Date().toISOString().slice(
 function receipt(runDir, n, step, data) { writeJson(join(runDir, 'receipts', `${n}-${step}.json`), { step, ...now(), ...data }); }
 function hasReceipt(runDir, n, step) { const r = readJson(join(runDir, 'receipts', `${n}-${step}.json`)); return r && r.ok; }
 
-async function loadModules() {
+export async function loadModules() {
   const m = {};
   const tryImport = async (k, p) => { try { m[k] = await import(p); } catch (e) { m[k] = null; log(`module ${k} unavailable: ${e.message.split('\n')[0]}`); } };
   await tryImport('provision', './arena/provision.mjs');
@@ -78,7 +78,11 @@ export async function preflight({ serverRoot, scenario = {} }) {
   return { ok, allow, checks };
 }
 
-async function cmdRun(a) {
+/** cmdRun(args, hooks?) runs one scenario. hooks (tools/playtest/runs/, all optional) let an owning lifecycle see what
+ *  this run creates and stop it: own(kind, id, release, meta) registers a created resource, signal (AbortSignal) is
+ *  checked between steps, preflight is a result already computed, modules replaces loadModules() (tests).
+ *  Without hooks the behavior is unchanged. */
+export async function cmdRun(a, hooks = null) {
   const scenarioPath = resolve(a._[1]);
   const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
   const policy = providerPolicy(scenario);
@@ -93,17 +97,20 @@ async function cmdRun(a) {
   writeJson(join(runDir, 'scenario.json'), { ...scenario, seed, serverRoot, scenarioPath, scenarioSha256: sha256(readFileSync(scenarioPath)) });
   log(`run ${runDir}`);
   const from = a.from ? STEPS.indexOf(a.from) : 0;
-  const m = await loadModules();
+  const m = hooks?.modules ?? await loadModules();
+  const own = (kind, id, release, meta) => hooks?.own?.(kind, id, release, meta);
+  const checkAbort = (step) => { if (hooks?.signal?.aborted) throw Object.assign(new Error(`run cancelled before ${step}: ${hooks.signal.reason ?? 'aborted'}`), { code: 'RUN_CANCELLED' }); };
   const ctx = { runDir, scenario, seed, serverRoot, m, world: null, seats: [], god: null, browser: null, cameras: {}, owner: null };
 
   // 0 preflight
-  if (from <= 0) { const pf = await preflight({ serverRoot, scenario }); writeJson(join(runDir, 'preflight.json'), pf); receipt(runDir, 0, 'preflight', { ok: pf.ok, allow: pf.allow }); if (!pf.ok) { log('preflight failed', JSON.stringify(pf.checks)); return 2; } }
+  if (from <= 0) { const pf = hooks?.preflight ?? await preflight({ serverRoot, scenario }); writeJson(join(runDir, 'preflight.json'), pf); receipt(runDir, 0, 'preflight', { ok: pf.ok, allow: pf.allow }); if (!pf.ok) { log('preflight failed', JSON.stringify(pf.checks)); return 2; } }
   // 1 provision
   if (from <= 1) {
     if (!m.provision) throw new Error('arena/provision.mjs missing');
+    checkAbort('provision');
     if (scenario.world.kind !== 'dev') throw new Error(`world kind ${scenario.world.kind} is not available in this stage`);
     const slug = scenario.world.slug ?? `pt-${scenario.name}`.slice(0, 31);
-    ctx.world = await m.provision.startWorld({ serverRoot, slug, port: scenario.world.port, genesis: resolve(serverRoot, scenario.world.genesis), snapshot:scenario.world.snapshot?resolve(serverRoot,scenario.world.snapshot):undefined, dataDir: join(runDir, 'server', 'data'), log: join(runDir, 'server', 'world.log'), fresh: true, natives: scenario.world.natives === true });
+    ctx.world = await m.provision.startWorld({ serverRoot, slug, port: scenario.world.port, genesis: resolve(serverRoot, scenario.world.genesis), snapshot:scenario.world.snapshot?resolve(serverRoot,scenario.world.snapshot):undefined, dataDir: join(runDir, 'server', 'data'), log: join(runDir, 'server', 'world.log'), fresh: true, natives: scenario.world.natives === true, onSpawn: (child) => own('world', slug, () => m.provision.stopWorld({ pid: child.pid }), { pid: child.pid, port: scenario.world.port, dataDir: join(runDir, 'server', 'data') }) });
     try { ctx.world = { ...ctx.world, ...(await m.provision.describeWorld({ base: ctx.world.base, slug, port: scenario.world.port, pid: ctx.world.pid, build: ctx.world.build, startedAt: new Date().toISOString() })) }; } catch (e) { log('describeWorld failed', e.message); }
     writeJson(join(runDir, 'world.json'), { ...ctx.world, child: undefined, healthz: undefined });
     try { writeJson(join(runDir, 'server', 'healthz-before.json'), { ...(await m.provision.healthz(ctx.world.base)), at: Date.now() }); } catch { /* recorded as missing */ }
@@ -113,6 +120,8 @@ async function cmdRun(a) {
 
   let exitCode = 0;
   try {
+    // An owning lifecycle's world setup (tools/playtest/runs/setup.mjs): after provision, before any seat; it throws to refuse.
+    if (from <= 1 && hooks?.afterProvision) { checkAbort('setup'); await hooks.afterProvision({ world: ctx.world, runDir }); }
     if (scenario.director?.script?.some(e => e.expect?.journey)) {
       const response = await fetch(`${ctx.world.base}/v1/world/snapshot`);
       if (!response.ok) throw new Error('fixture snapshot unavailable');
@@ -125,7 +134,9 @@ async function cmdRun(a) {
       ctx.owner = m.owner;
       // Keep each declared adapter; a missing provider fails instead of spending on another one.
       for (const s of scenario.seats) {
+        checkAbort(`seat ${s.id}`);
         const seat = await m.seat.createSeat({ runDir, seat: s, worldBase: ctx.world.base, serverRoot, rails: scenario.rails ?? {} });
+        own('controller', s.id, () => seat.stop(), { dir: seat.dir ?? null, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null });
         if (s.substitutedFrom) { seat.info.substitutedFrom = s.substitutedFrom; seat.save?.(); }
         const ob = await seat.onboard({ text: onboardingText(ctx.world.base, s.soulName), maxWallSec: scenario.rails?.onboardWallSec ?? 600, timeoutSec: scenario.rails?.onboardTimeoutSec ?? 540 });
         log(`seat ${s.id}: ${ob.ok ? 'paired ' + ob.soulId : 'NOT PAIRED'}`);
@@ -134,7 +145,9 @@ async function cmdRun(a) {
         if (!ob.ok) { appendJsonl(join(runDir, 'infrastructure-invalid.jsonl'), { seat: s.id, reason: 'onboarding did not pair' }); throw new Error(`seat ${s.id} onboarding invalid; no product requests sent`); }
       }
       if (scenario.god && m.godSeat) {
+        checkAbort('god seat');
         ctx.god = await m.godSeat.createGodSeat({ runDir, god: scenario.god, worldBase: ctx.world.base, serverRoot, rails: scenario.rails ?? {} });
+        own('controller', 'god', () => ctx.god.stop(), { dir: ctx.god.dir ?? null, adapter: scenario.god.adapter ?? 'claude-headless', model: scenario.god.model ?? null });
         const gb = ctx.god.onboardGod ? await ctx.god.onboardGod({ maxWallSec: scenario.rails?.onboardWallSec ?? 600, timeoutSec: scenario.rails?.onboardTimeoutSec ?? 540 }) : await ctx.god.onboard({ text: godOnboardingText(ctx.world.base), maxWallSec: scenario.rails?.maxTurnWallSec ?? 300 });
         log(`god seat: ${gb.ok ? 'paired' : 'NOT PAIRED'}`);
         if (gb.ok) ctx.god.wakeLoop?.();
@@ -144,9 +157,11 @@ async function cmdRun(a) {
     // 3 play
     if (from <= 3) {
       if (!m.director) throw new Error('director/director.mjs missing');
+      checkAbort('play');
       let observer = null;
       if (m.browser && m.evidence && m.truth) {
         ctx.browser = await m.browser.openBrowser({ headless: true, gpu: scenario.observer?.gpu ?? 'metal', serverRoot });
+        own('browser', 'observer', () => ctx.browser.close(), { gpu: ctx.browser.gpu ?? null });
         const vpRaw = scenario.observer?.viewport ?? [1280, 800]; const vp = Array.isArray(vpRaw) ? { width: vpRaw[0], height: vpRaw[1] } : vpRaw;
         const openCam = async (opts) => { try { return await ctx.browser.openCamera({ ...opts, arrivalTimeoutMs: scenario.observer?.arrivalTimeoutMs ?? 180000 }); } catch (e) { log(`camera ${opts.name} failed: ${String(e.message).split('\n')[0]}`); return null; } };
         for (const seat of ctx.seats) { const info = infoOf(seat); if (info.soulId) { const cam = await openCam({ base: ctx.world.base, identity: info.ownerIdentity, kind: 'follow', soulId: info.soulId, viewport: vp, dpr: scenario.observer?.dpr ?? 1, runDir, name: info.id }); if (cam) ctx.cameras[info.id] = cam; } }
