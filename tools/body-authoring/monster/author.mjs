@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Agent-local example: an original compact monster on the canonical CC0 contact rig (quaternius/1).
-// Original geometry is rigidly skinned to the canonical bones; the canonical Idle and Walk clips are kept as they are,
+// Original geometry is rigidly skinned to the canonical bones; its core canonical clips are kept as they are,
 // so the world's existing humanoid adapters (walk, dance, rest, seats, hands) apply unchanged. No new abilities.
 // The GLB is generated from the repository's published animated-casual.glb and is never checked in.
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
@@ -8,6 +8,10 @@ import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
+// The canonical clips the world's humanoid clip library uses for the body's core poses: idle, walk, solo dance, seat,
+// ground sit, lying and swimming. Kept unchanged. Transitions and chore clips (about 15 MiB in the source) are left out
+// to stay compact; the library's fallbacks cover them.
+const CLIPS=['Idle','Walk','Dance_Loop','Sitting_Idle_Loop','GroundSit_Idle_Loop','LayToIdle','Swim_Fwd_Loop'];
 const require=createRequire(join(root,'mars/viewer/package.json'));
 const T=await import(pathToFileURL(require.resolve('three').replace('/build/three.cjs','/build/three.module.js')).href);
 
@@ -56,13 +60,19 @@ export function authorMonster({source=join(root,'mars/viewer/public/modular/envi
   box([foot.x,foot.y+.04,foot.z+.04],[.13,.08,.2],'dark','Foot.'+side);for(const x of [-.035,0,.035])cone([foot.x+x,foot.y+.02,foot.z+.15],.014,.04,'claw','Foot.'+side,[Math.PI/2,0,0]);}
  // A stubby tail on the hips, curling to one side.
  limb(new T.Vector3(hips.x,hips.y,hips.z-.15),new T.Vector3(hips.x+.06,hips.y-.08,hips.z-.32),.06,'moss','Hips',.025);
- // GLB: original nodes, the canonical skin with fresh inverse binds, the canonical Idle and Walk clips, one skinned mesh.
+ // GLB: original nodes, the canonical skin with fresh inverse binds, the canonical library clips, one skinned mesh.
  const gltf={asset:{version:'2.0',generator:'Grumble agent-local monster authoring example'},nodes,skins:[],scenes:[{nodes:[62]}],scene:0,meshes:[],
   materials:[{name:'Grumble palette',pbrMetallicRoughness:{metallicFactor:0,roughnessFactor:.75}}],accessors:[],bufferViews:[],buffers:[],animations:[]},chunks=[];let offset=0;
  const view=buffer=>{const i=gltf.bufferViews.length;gltf.bufferViews.push({buffer:0,byteOffset:offset,byteLength:buffer.length});chunks.push(buffer,Buffer.alloc((4-buffer.length%4)%4));offset+=Math.ceil(buffer.length/4)*4;return i;};
  const accessor=(data,type,componentType=5126,extra={})=>{const i=gltf.accessors.length;gltf.accessors.push({bufferView:view(Buffer.from(data.buffer,data.byteOffset,data.byteLength)),componentType,count:data.length/({SCALAR:1,VEC3:3,VEC4:4,MAT4:16}[type]),type,...extra});return i;};
- const copied=new Map(),copy=i=>{if(!copied.has(i)){const a=original.accessors[i],v=original.bufferViews[a.bufferView],start=v.byteOffset??0;const k=gltf.accessors.length;gltf.accessors.push({...a,bufferView:view(binary.subarray(start,start+v.byteLength))});copied.set(i,k);}return copied.get(i);};
- for(const name of ['Idle','Walk']){const clip=structuredClone(original.animations.find(a=>a.name===name));for(const s of clip.samplers){s.input=copy(s.input);s.output=copy(s.output);}gltf.animations.push(clip);}
+ const copied=new Map(),copy=i=>{if(!copied.has(i)){const a=original.accessors[i],v=original.bufferViews[a.bufferView],start=v.byteOffset??0;const k=gltf.accessors.length;
+  // Quantized (normalized short/byte) rotation keys are expanded to the float keys owner admission accepts; values are the
+  // glTF normalized decoding, unchanged otherwise.
+  if(a.componentType!==5126){const width={VEC4:4,VEC3:3,SCALAR:1}[a.type],at=start+(a.byteOffset??0),out=new Float32Array(a.count*width);
+   for(let e=0;e<out.length;e++)out[e]=a.componentType===5122?Math.max(binary.readInt16LE(at+e*2)/32767,-1):a.componentType===5120?Math.max(binary.readInt8(at+e)/127,-1):a.componentType===5123?binary.readUInt16LE(at+e*2)/65535:binary.readUInt8(at+e)/255;
+   gltf.accessors.push({bufferView:view(Buffer.from(out.buffer)),componentType:5126,count:a.count,type:a.type});}
+  else gltf.accessors.push({...a,bufferView:view(binary.subarray(start,start+v.byteLength))});copied.set(i,k);}return copied.get(i);};
+ for(const name of CLIPS){const clip=structuredClone(original.animations.find(a=>a.name===name));for(const s of clip.samplers){s.input=copy(s.input);s.output=copy(s.output);}gltf.animations.push(clip);}
  const unique=new Map(),indices=[],compact={p:[],n:[],c:[],j:[],w:[]};
  for(let i=0;i<positions.length/3;i++){const key=[...positions.slice(i*3,i*3+3),...normals.slice(i*3,i*3+3),...colours.slice(i*3,i*3+3),jointIds[i*4]].map(v=>v.toFixed(5)).join(',');let k=unique.get(key);
   if(k===undefined){k=unique.size;unique.set(key,k);compact.p.push(...positions.slice(i*3,i*3+3));compact.n.push(...normals.slice(i*3,i*3+3));compact.c.push(...colours.slice(i*3,i*3+3));compact.j.push(...jointIds.slice(i*4,i*4+4));compact.w.push(...weights.slice(i*4,i*4+4));}indices.push(k);}

@@ -21,7 +21,7 @@ preview. The served file list, server routes and web client are unchanged; the d
 content address `body_<sha256>`.
 
 [#722](https://github.com/genekogan/souls/issues/722) adds two shared examples built exactly like Pip: Grumble the
-monster (`tools/body-authoring/monster/`, original geometry on the canonical rig with its Idle and Walk clips, the
+monster (`tools/body-authoring/monster/`, original geometry on the canonical rig with its core canonical clips: idle, walk, solo dance, seat, ground sit, lying and swimming; the
 plain humanoid profile) and Wisp the ghost (`tools/body-authoring/ghost/`, dependency-free rigid mesh with
 `body-motion/1` adapters). The server builds their bytes lazily from that source, through ordinary admission, and
 refuses drift from the pinned asset ids in `apps/server/src/edge/body/shared-bodies.ts`. They are appended to the

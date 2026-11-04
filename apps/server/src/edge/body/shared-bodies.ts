@@ -7,7 +7,7 @@ import {GHOST_MANIFEST} from '../../../../../tools/body-authoring/ghost/author.m
 // Immutable authored v1 shared examples (#722), built like Pip: lazily from their checked-in agent-local authoring
 // source, through the ordinary upload normalization and admission, and refused if the bytes drift from the pin.
 // A revision gets a new hash and preset revision; saves keep their original bytes and definition.
-export const MONSTER_ASSET='body_1c07c81b97d4fd9d4547aaa80008605acdfadd9e5b6d2425a4e06197133d8cbc';
+export const MONSTER_ASSET='body_e7f634a0d090b71d85229a737bbf8bb9274ffadee38d4107a79b0db599c52b77';
 export const GHOST_ASSET='body_8111f1c4504c9c3b585fcc36d2590af26c3371aa7ce3390d8b7e7549f0e1a2bd';
 const url=(asset:string)=>`/v1/edge/body/assets/${asset}.glb`;
 export const MONSTER_PRESET={id:'monster',name:'Grumble the monster',body:{family:'humanoid',type:'humanoid',model:MONSTER_ASSET,modelUrl:url(MONSTER_ASSET),avatar:{kind:'body',modelUrl:url(MONSTER_ASSET),bodyType:'humanoid'}} as Entity['body']};
