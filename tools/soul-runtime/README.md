@@ -130,6 +130,14 @@ advertised `gpt-5.6-sol`; an unavailable `gpt-6.1-sol` request was refused. The
 adapter now queries the host default when no model is explicitly selected; comparison arms
 must pin the same successfully verified model and effort.
 
+An act that serves an owner message names it (`for`, #789), as the thin CLI's default link does (D3b/D3c), so the
+world writes the message's result or progress line when the act ends and soul-trace links the act to its episode. The
+message is the newest owner message a retained decision incorporated, kept in the checkpoint (`ownerLinkV1`) because
+the act usually follows a decision later, after the `ack`; the act's pending record keeps its copy, so a replayed write
+sends the same body. No time window: the first accepted act uses the link up unless the world answers `open` (a later
+step remains); a `wait` decision, the agent's `result` for that message, or a world refusal of the link also ends it.
+Object writes (`POST /v1/edge/objects/:id/act`) carry no link: the world's object route has none.
+
 A read-only operation lookup now recovers retained HTTP outcomes and accepted
 action receipts; a missing result remains unknown and cannot authorize replay.
 Bounded journal payload retention is implemented as described below;

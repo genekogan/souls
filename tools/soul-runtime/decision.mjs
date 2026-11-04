@@ -113,6 +113,7 @@ export function deadlineWake(wakeAt,commitments,now){
  }
  return best?{wakeAt:new Date(best.at).toISOString(),lead:{wakeAt:new Date(best.at).toISOString(),deadlineAt:new Date(best.deadline).toISOString(),requestedWakeAt:wakeAt}}:{wakeAt,lead:null};
 }
+const ownerLinkId=v=>typeof v==='string'&&v.length>0&&v.length<=200&&!/[\u0000-\u001f]/.test(v)?v:null;
 export function retainDecision(journal,fence,decision,{events=[],threadId,initialInstruction,deadlineAt=Infinity}={}){
  const c=journal.control.checkpoint();if(c.value?.pendingDecision)throw Error('Previous decision must be reconciled first');
  // The next choice incorporates the preceding observation. Drop that call/result
@@ -122,10 +123,15 @@ export function retainDecision(journal,fence,decision,{events=[],threadId,initia
  const retainedAt=Date.now();
  if(deadlineAt!==Infinity&&!Number.isFinite(deadlineAt))throw Error('Invalid decision retention deadline');
  if(retainedAt>=deadlineAt)throw Object.assign(Error('Decision window expired before retention; no effect retained'),{code:'DECISION_WINDOW_EXPIRED'});
- const id=randomUUID();const pendingDecision={id,decision:execution,eventIds:events.map(e=>({source:e.source,id:e.event.id})),retainedAt};
  const {lastResult,lastCall,...previous}=c.value??{};
+ // #789 (D3 for the managed path): the newest owner message a retained decision incorporated is the owner link. The
+ // act that serves it usually comes a decision later (after the ack), so the link is carried in the checkpoint, and
+ // an act's pending record keeps its copy, so a replayed or reconciled write sends the same body. No time window.
+ const owner=events.filter(e=>e.source==='owner').at(-1)?.event?.id,link=ownerLinkId(owner)??ownerLinkId(previous.ownerLinkV1);
+ const serves=link&&execution.call?.type==='write'&&execution.call.command==='act'?link:null;
+ const id=randomUUID();const pendingDecision={id,decision:execution,eventIds:events.map(e=>({source:e.source,id:e.event.id})),retainedAt,...(serves?{for:serves}:{})};
  if(previous.lastReceipt)previous.lastReceipt=receiptProjection(previous.lastReceipt);
- journal.control.save(fence,c.revision,{...previous,threadId:threadId??c.value?.threadId,initialInstruction:c.value?.initialInstruction??initialInstruction??null,plan,pendingDecision});
+ journal.control.save(fence,c.revision,{...previous,...(link?{ownerLinkV1:link}:{}),threadId:threadId??c.value?.threadId,initialInstruction:c.value?.initialInstruction??initialInstruction??null,plan,pendingDecision});
  return id;
 }
 export async function applyPendingDecision(journal,fence,world,{signal}={}){
@@ -162,7 +168,7 @@ export async function applyPendingDecision(journal,fence,world,{signal}={}){
   let op=journal.control.prepare(fence,id,call);
   if(op.status==='prepared'){
    journal.control.dispatch(fence,id);
-   try{response=await world.write(call.command,call.args,id,signal);}
+   try{response=await world.write(call.command,call.args,id,signal,pending.for?{for:pending.for}:undefined);}
    catch(e){
     // Even a transport with incomplete error classification must not cause
     // automatic re-execution of a potentially accepted world command.
@@ -218,6 +224,13 @@ export async function applyPendingDecision(journal,fence,world,{signal}={}){
  // boundary. Retention, inference and uncertain effects never refill this budget.
  const {lastResult,urgentRecoveryV1,decisionProgressV1,deadlineWakeV1:_lead,...previous}=latest.value;
  const listenTo=['listen','wait'].includes(call.type)&&Object.hasOwn(call.args,'listenTo')?listeningScope(call.args.listenTo):latest.value.listenTo??[];
+ // The owner link is used up by the first accepted act that served it, unless the world keeps the message open (a
+ // later step remains, D3c); a world refusal of the link or the agent's own result for that message also ends it.
+ const linkEnded=pending.for&&call.command==='act'&&(response?.accepted===true&&!response.open||response?.error?.status===400&&/no owner message/.test(response.error.message??''))
+  ||call.type==='write'&&call.command==='result'&&call.args.id===previous.ownerLinkV1
+  // Choosing to wait ends it too: an act the Soul starts on its own later must not close an old message (D3b).
+  ||call.type==='wait';
+ if(linkEnded)delete previous.ownerLinkV1;
  const finalized={...previous,pendingDecision:null,lastDecisionId:id,lastCall:call,wakeAt,listenTo,...(deadlineWakeV1?{deadlineWakeV1}:{}),lastReceipt:receipt??receiptProjection(latest.value.lastReceipt)??null};
  // Count the actual surrounding checkpoint, including the lastResult key and
  // comma, before deciding whether this complete observation fits inline.

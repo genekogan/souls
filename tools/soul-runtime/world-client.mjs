@@ -112,7 +112,8 @@ export function createWorldClient({world,token,fetchImpl=fetch,timeoutMs=65000,e
    if(command==='object')return request('/v1/edge/objects/'+segment(args.id),{signal});
    throw Error('Unsupported world read');
   },
-  async write(command,args,operationId,signal){
+  // link.for: the owner message this act serves (#789), sent as the CLI's default link (D3b/D3c); acts only.
+  async write(command,args,operationId,signal,link){
    if(typeof operationId!=='string'||!/^[A-Za-z0-9._:-]{1,100}$/.test(operationId))throw Error('Stable operation identity required');
    if(command==='converse')validateConversationArgs(args);
    if(command==='result'){
@@ -121,7 +122,7 @@ export function createWorldClient({world,token,fetchImpl=fetch,timeoutMs=65000,e
    }
    if(command==='ack'&&args.reply!==undefined&&(typeof args.reply!=='string'||args.reply.length>140||/[\r\n]/.test(args.reply)))throw error('invalid','ack reply must be one line of at most 140 characters',{status:400,uncertain:false});
    let path,body;
-   if(command==='act'){path='/v1/edge/act';body={capability:args.capability,params:args.params??{},clientRef:operationId};}
+   if(command==='act'){path='/v1/edge/act';body={capability:args.capability,params:args.params??{},clientRef:operationId,...(typeof link?.for==='string'&&link.for?{for:link.for,forDefault:true}:{})};}
    else if(command==='say'){path='/v1/edge/say';body={text:args.text};}
    else if(command==='converse'){path='/v1/edge/converse';body={...args};}
    else if(command==='ack'){path='/v1/edge/inbox/'+segment(args.id)+'/ack';body={reply:args.reply};}
