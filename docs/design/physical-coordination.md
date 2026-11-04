@@ -157,6 +157,41 @@ and is a discovery source, never a wholesale upgrade. Full refs and original rep
 research archive; the original source lineage is not assumed available in a clean public checkout. The inventory
 issue must publish sanitized provenance/fixtures needed by future workers before assigning recovery work.
 
+**The manifest (PC01, [#680](https://github.com/genekogan/souls/issues/680)).**
+[`physical-coordination-manifest.json`](physical-coordination-manifest.json) is the finite inventory, pinned to
+`main` `df69a3ca`. It has:
+
+- one row for each of the 68 Lab selector ids;
+- one row for the hidden `raise-cancel-proof` route;
+- 15 rows for native primitives and generated builds;
+- 4 rows for server surfaces;
+- 14 rows for asset needs.
+
+Each row names:
+
+- its class: `runnable`, `refusal-probe` or `showcase`;
+- its current source;
+- its primitives and assets;
+- its in-tree evidence;
+- the PC issue that owns the remaining work.
+
+Per-scenario Lab proof grades stay in `mars/viewer/deploy/scenario-coverage.json`.
+
+The two historical failures are recorded in the tree with their exact causes. Their rows stay `unresolved`.
+- **Kitchen** stops at `carry.path-occupied`.
+- **West house** stops at `carry.gather-stuck`.
+
+Both causes come from `FULL_RED` in `mars/viewer/engine/test/year-build-houses.test.ts`.
+
+The candidate refs above are not objects in this repository, so the manifest lists each one as a missing-source
+blocker, with the PCs it blocks. Check the manifest after a pnpm install:
+`node tools/physical-manifest/check.mjs`. The check (with `node --test tools/physical-manifest/check.test.mjs`) fails
+in either case:
+- a selector id is missing or extra;
+- a source path, catalog id or library def does not exist.
+
+Add a row when you add a scenario.
+
 ## Interactive asset coverage
 
 The dated native inventory counted 155 definitions and 16 bundles; it is a reuse starting point, not a completeness
