@@ -2,8 +2,8 @@
 
 One owned lifecycle around an existing playtest scenario: validate, preflight, run through the scenario runner
 (`playtest.mjs` `cmdRun`), release what the run created, apply retention and write a terminal receipt. Tranche #749;
-SR1 (#750) is the lifecycle; SR2 (#751) adds world sources, setup and composed casts. Diagnostics (SR3), evaluation (SR4) and recording (SR5) build on
-the same receipt.
+SR1 (#750) is the lifecycle; SR2 (#751) adds world sources, setup and composed casts; SR4 (#753) evaluates completed
+runs offline and compares repeats. Diagnostics (SR3) and recording (SR5) build on the same receipt.
 
 ```bash
 node tools/playtest/runs/run.mjs validate tools/playtest/runs/specs/smoke-world.json
@@ -12,6 +12,8 @@ node tools/playtest/runs/run.mjs start    --scenario tools/playtest/scenarios/un
 node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio.json   # three scripted-owner Souls, one redirection
 node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/garden-setup.json  # another world, a setup batch, another cast
 node tools/playtest/runs/run.mjs cleanup  .local/soul-runs/<run> --world-data --controller-state
+node tools/playtest/runs/run.mjs evaluate .local/soul-runs/<run> --question tools/playtest/runs/questions/redirect-honoured.mjs
+node tools/playtest/runs/run.mjs compare  .local/soul-runs/<run-a> .local/soul-runs/<run-b> [--out dir] [--md]
 ```
 
 Exit codes: 0 completed (or valid), 1 failed, 2 refused, 124 stopped at `limits.maxWallSec`, 130 cancelled.
@@ -36,6 +38,7 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 | `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000}` | Bounded observer check (import plus one browser launch and close). Failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras: ["wide"]` adds a wide camera. |
 | `limits` | `{maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000}` | Hard wall limit for the whole run, controller count, per-resource release wait. |
 | `controllers.allowLiveModels` | `false` | A scenario whose seats, persona director or model review need claude/codex is refused unless this is `true`. Set it only with explicit authorization for live models. |
+| `evaluation` | none | `{questions: [file]}`: question scorers predeclared before the run (see Evaluation); each is hashed into the effective spec. |
 | `retention` | `{worldData: "keep", controllerState: "keep"}` | `delete` applies only after a completed run with clean cleanup. Failed and cancelled runs keep everything. |
 
 Refusals (`status: "refused"`) happen before any directory or process exists: unknown version or field, unsupported
@@ -99,6 +102,45 @@ controller credentials, and also the seat transcripts) is sensitive and never a 
 Not covered: resuming a crashed run, distributed recovery, killing a controller turn that is still running when its
 release wait expires (recorded as `timed-out`).
 
+## Evaluation and comparison
+
+`evaluate` reads a finished run folder (a Soul Run, a plain `playtest.mjs run` folder, or a failed run) and writes a
+new `evaluations/<NNN>-v<evaluator version>/` with `evaluation.json` and a short `EVALUATION.md`. It starts no world,
+controller or model and makes no network call; earlier evaluations and every source file are left as they are
+(`sources.unchanged` checks the hashes before and after). Evidence is referenced by run-relative path, line and
+sha256, never copied; seat working folders (owner identity, credentials) and world data are not indexed.
+
+- **Standard measures** keep their own family, unit, n, denominator and basis: `request-latency` (owner card to the
+  seat's ack and result calls, and the director's own open time), `physical-completion` (receipt phases the world
+  returned to the seat's act calls: completed, ongoing such as seated, or started and not observed to end),
+  `seat-claims` (result calls, which are claims), `observed-walking-speed` and the review oracles (only from the
+  observer's evidence packs, through `review/metrics.mjs`), `tick-timing`, `token-cost` and `lifecycle`. Emergence
+  numbers are labelled `social-heuristic`. A measure without its source is `unavailable` with the reason, never 0
+  (for example no seat transcript after `controllerState: "delete"`, or no evidence packs while the observer failed).
+- **Questions** are small named scorer modules (`questions/*.mjs`, default export `{id, version, question,
+  assumptions, score(ctx)}`) answering `pass`, `fail` or `unknown` with evidence references and stated uncertainty.
+  `ctx` holds the joined requests (director record plus the seat's ack, act, say and result calls), each seat's CLI
+  steps, the setup record, the observer's packs (if any) and `ref`/`stepRef` helpers. A pass or fail with no cited
+  evidence, a thrown error or an unknown verdict is recorded as `unknown`. Questions named in the spec's
+  `evaluation.questions` are `predeclared` (and `unknown` if the file changed since the run); questions passed with
+  `--question` afterwards are `exploratory`. The scenario's own `expect` oracles are reported as scenario acceptance.
+- **Conflicts** are kept, not resolved: a director that closed a request by budget although the seat reported a
+  result, a result after the director's cutoff, a done claim over acts that all failed.
+- **Model review** is not run by `evaluate`; `review/cli.mjs review` is the explicit, separately budgeted path, and its
+  outputs are indexed when present.
+
+`compare` evaluates each run in memory (writing nothing into the runs) and returns a run index (`--out` writes
+`run-index.json` and `COMPARE.md`). It accepts run folders and `replay-set.json` folders. Attempts are grouped into
+arms by exact identity: the scenario without its port and paths, the world source hash, setup batch hashes, the seats
+(adapter, model, effort, persona, script hash), the director script, seed and duration. Every attempt is listed,
+including cancelled, failed and missing ones; only completed attempts are repeats. Code commit, uncommitted tracked
+files, CLI/skill/Node versions, machine load and observer state are listed per attempt and flagged where they differ.
+Arms are never pooled together; each pair of arms lists the identity parts that differ. A plain playtest folder has no
+hashed world source, so it forms its own arm.
+
+Answers are retrospective: they describe what the records show and do not establish motivation, causality or that a
+replay would repeat it.
+
 ## Scenario runner hooks
 
 `cmdRun(args, hooks)` in `playtest.mjs` takes optional hooks: `own(kind, id, release, meta)` is called for the world
@@ -106,4 +148,4 @@ release wait expires (recorded as `timed-out`).
 `preflight` reuses a result (`start` passes its own); `modules` replaces module loading; `afterProvision({world, runDir})`
 runs after provision and before seats (Soul Runs setup), and refuses by throwing. Without hooks `playtest.mjs run` behaves as before.
 
-Tests: `node --test tools/playtest/runs/runs.test.mjs tools/playtest/runs/compose.test.mjs tools/playtest/arena/adapters/scripted-owner.test.mjs`.
+Tests: `node --test tools/playtest/runs/runs.test.mjs tools/playtest/runs/compose.test.mjs tools/playtest/runs/evaluate.test.mjs tools/playtest/arena/adapters/scripted-owner.test.mjs`.
