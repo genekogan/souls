@@ -159,7 +159,8 @@ function requestOf(run, s, op) {
     case 'gesture': return act(GESTURE[op.pick % GESTURE.length]);
     case 'stand': return act('stand');
     case 'shared': { const mates = run.souls.filter((x) => x.world === s.world && x.i !== s.i && x.soulId), m = mates.find((x) => x.k > s.k) ?? mates[0];
-      return act(m ? `${DEMAND.sharedVerbs[op.pick % DEMAND.sharedVerbs.length]}:${m.soulId}` : 'wave'); }
+      const verbs = W.sharedVerbs.length ? W.sharedVerbs : DEMAND.sharedVerbs;
+      return act(m ? `${verbs[op.pick % verbs.length]}:${m.soulId}` : 'wave'); }
     case 'accept': return act(op.capability);
     case 'say': return ['POST', '/v1/edge/say', { text: 'hello from the meetup workload' }];
     default: throw new Error(`op kind ${op.kind}`);
@@ -190,7 +191,7 @@ async function perform(run, s, op, jitter) {
     }
   } finally { run.opAborts.delete(ac); }
   const accepted = op.kind === 'resolve' ? d?.resolve?.ok : d?.accepted;
-  const rec = { status, outcome: outcomeOf({ status, code, accepted }), ...(busy ? { busyWaits: busy, waitMs: Math.round(waitMs) } : {}), ...(failed ? { netFailures: failed } : {}), ...(refusals.length ? { refusals } : {}) };
+  const rec = { ...(body?.capability && op.cls === 'act' ? { capability: body.capability.replace(/:s_[\w-]+$/, ':<soul>') } : {}), status, outcome: outcomeOf({ status, code, accepted }), ...(busy ? { busyWaits: busy, waitMs: Math.round(waitMs) } : {}), ...(failed ? { netFailures: failed } : {}), ...(refusals.length ? { refusals } : {}) };
   if (rec.outcome === 'gameplay-refused') rec.code = d?.code ?? d?.resolve?.code ?? null;
   if (rec.outcome === 'error') rec.code = `${status} ${code ?? ''}`.trim();
   if (d?.receipt?.id) { rec.receipt = d.receipt.id; rec.phase = d.receipt.phase; }
@@ -304,7 +305,10 @@ async function oneRun(profile, rep) {
       const caps = s ? (await getJ(`${BASE}/w/${f.slug}/v1/edge/capabilities?all=1`, { headers: headersOf(s), ms: 60_000 })).j?.capabilities ?? [] : [];
       const places = caps.filter((c) => c.verb === 'walk' && c.available && c.id.startsWith('walk:')).map((c) => c.id.slice(5)).sort();
       const pick = Array.from({ length: Math.min(8, places.length) }, () => places[Math.floor(r() * places.length)]);
-      run.worlds[w] = { slug: f.slug, placesInMenu: places.length, places: pick.length ? pick : ['here'], meetup: places.length ? places[Math.floor(r() * places.length)] : 'here' };
+      // shared actions this world offers (its menu's verbs); a template without them falls back to the full list, and
+      // the world's refusal is then a classified gameplay refusal
+      const verbs = new Set(caps.map((c) => c.verb)), sharedVerbs = DEMAND.sharedVerbs.filter((v) => verbs.has(v));
+      run.worlds[w] = { slug: f.slug, sharedVerbs, placesInMenu: places.length, places: pick.length ? pick : ['here'], meetup: places.length ? places[Math.floor(r() * places.length)] : 'here' };
     }
     const hello = await viewerHello();
     for (const s of ss) if (s.token) holdStream(run, s);
@@ -401,7 +405,7 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
   };
   return { profile, rep, headline, marksS: Object.fromEntries(Object.entries(run.marks).map(([k, v]) => [k, +((v - run.marks.boot) / 1000).toFixed(1)])), bootS: run.launcher.bootS, rates,
     join: { ms: quantiles(ss.filter((s) => s.joinMs != null).map((s) => s.joinMs)), failed: ss.filter((s) => !s.token).map((s) => ({ soul: s.i, tries: s.joinTries })), retries: ss.reduce((n, s) => n + Math.max(0, (s.joinTries?.length ?? 1) - 2), 0) },
-    worlds: run.worlds.map((w) => ({ slug: w.slug, placesInMenu: w.placesInMenu, meetup: w.meetup })), accounting, reactiveDemand, actionStartMs: q(start), receiptDeliveryMs: q(delivery), plannedActivityMs: q(activity), actsWithoutStart: never,
+    worlds: run.worlds.map((w) => ({ slug: w.slug, placesInMenu: w.placesInMenu, meetup: w.meetup, sharedVerbs: w.sharedVerbs })), accounting, reactiveDemand, actionStartMs: q(start), receiptDeliveryMs: q(delivery), plannedActivityMs: q(activity), actsWithoutStart: never,
     stream: { ...run.stream, batches: quantiles(run.stream.batches) }, viewers: run.viewers, browser: BROWSER ? { ...browser, ...run.browserStats } : null,
     clock, healthzMisses: hzMiss, levels, pausedSamples: paused, dilatedSamples: dilated, resources, worldPidChanges: pidChanges, launcher: views, restarts, gameplayRefusals: gameplay, refusalTags,
     driverCpuS: +driverCpuS.toFixed(1), load, cleanup };
