@@ -72,13 +72,16 @@ export function walkTruth(run) {
 
 /** Walking speed per distinct walk receipt (#822). World receipts carry ticks: the window runs from firstMotionTick when
  *  the receipt has it (#810), else startedTick, to endedTick; points are the seat's samples from every pack whose tick is
- *  in the window plus the receipt's endedAt position at endedTick, and seconds are ticks over the observed tick rate.
+ *  in the window plus the receipt's endedAt position at endedTick, and seconds are world seconds: ticks × the world's
+ *  fixed tick (WORLD_TICK_SEC), never a rate read off wall time, which drifts when the server falls behind or catches up.
  *  A receipt with ISO startedAt (older synthetic packs) is windowed by wall time instead. A walk never seen ending is
  *  bounded by the last cutoff of a pack that carries it. → {speeds: [{receiptId, mps, startBasis}], skipped: [{receiptId,
  *  why}]}; a missing fact is a skipped receipt with its reason, never a 0. */
+/** The world's fixed simulation tick, in seconds: TICK_MS = 50 in apps/server/src/world.ts. A run's world meta that
+ *  records its own tick length (run.world.tickMs) wins. */
+export const WORLD_TICK_SEC = 0.05;
 export function walkSpeeds(run) {
-  const all = run.evidence.flatMap((e) => (e.samples ?? []).filter((s) => Number.isFinite(s.tick) && s.t)).map((s) => ({ tick: s.tick, ms: Date.parse(s.t) })).sort((a, b) => a.ms - b.ms);
-  const hz = all.length > 1 && all.at(-1).ms > all[0].ms && all.at(-1).tick > all[0].tick ? (all.at(-1).tick - all[0].tick) / ((all.at(-1).ms - all[0].ms) / 1000) : null;
+  const tickSec = Number(run.world?.tickMs) > 0 ? run.world.tickMs / 1000 : WORLD_TICK_SEC;
   const seen = new Map(); // receipt id → last cutoff (ms) of a pack that carries it
   for (const e of run.evidence) for (const r of e.receipts ?? []) seen.set(r.id, Math.max(seen.get(r.id) ?? -Infinity, Date.parse(e.cutoffAt) || -Infinity));
   const len = (pts) => { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].p[0] - pts[i - 1].p[0], pts[i].p[1] - pts[i - 1].p[1]); return L; };
@@ -96,17 +99,16 @@ export function walkSpeeds(run) {
         speeds.push({ receiptId: r.id, seat, mps: len(pts) / ((pts.at(-1).ms - pts[0].ms) / 1000), points: pts.length, startBasis: 'startedAt' });
         continue;
       }
-      if (!hz) { skipped.push({ receiptId: r.id, why: 'no samples with ticks to give the tick rate' }); continue; }
       const ended = Number.isFinite(r.endedTick);
       const pts = pool.filter((s) => Number.isFinite(s.tick) && s.tick >= start && (ended ? s.tick <= r.endedTick : s.ms <= lastSeen)).map((s) => ({ tick: s.tick, p: s.p }));
       const ep = r.phase === 'completed' && ended ? xz(r.endedAt?.pos) : null;
       if (ep && !pts.some((x) => x.tick === r.endedTick)) pts.push({ tick: r.endedTick, p: ep });
       pts.sort((a, b) => a.tick - b.tick);
       if (pts.length < 2 || pts.at(-1).tick <= pts[0].tick) { skipped.push({ receiptId: r.id, why: `${pts.length} point(s) with a tick inside the walk (from tick ${start})` }); continue; }
-      speeds.push({ receiptId: r.id, seat, mps: len(pts) / ((pts.at(-1).tick - pts[0].tick) / hz), points: pts.length, startBasis: fm != null ? 'firstMotionTick' : 'startedTick' });
+      speeds.push({ receiptId: r.id, seat, mps: len(pts) / ((pts.at(-1).tick - pts[0].tick) * tickSec), points: pts.length, startBasis: fm != null ? 'firstMotionTick' : 'startedTick' });
     }
   }
-  return { speeds, skipped, hz };
+  return { speeds, skipped, tickSec };
 }
 
 export function computeMetrics(run, { ledger = [], oracles = null, emergence = null } = {}) {
@@ -155,7 +157,7 @@ export function computeMetrics(run, { ledger = [], oracles = null, emergence = n
       ackSec: stats(cardEv.map((e) => secsBetween(e.sentAt, e.ackAt))), firstBodyChangeSec: stats(ev.map((e) => secsBetween(e.sentAt, e.firstBodyChangeAt))), resultSec: stats(ev.map((e) => secsBetween(e.sentAt, e.resultAt))),
       chatQueuedSec: stats(ev.filter((e) => e.channel === 'chat').map((e) => chatQueuedSec(run, e))),
       walkMps: stats(speeds), wallVsBudget: stats(ev.map((e) => (e.budgetSec ? secsBetween(e.sentAt, e.cutoffAt) / e.budgetSec : null))),
-      basis: 'seconds from the owner message (sentAt); ack = card ack only; resultSec = latest observed card result, including server progress, not overall journey completion (use journey physicalCompleteAt/completionClaimAt); chatQueuedSec = sentAt to the start of the seat turn that carried a chat message (Claude Code queues typed messages behind a running turn); walk m/s = sampled displacement per distinct walk receipt, from firstMotionTick (else startedTick) to endedTick, plus the receipt end point, over ticks at the observed tick rate',
+      basis: 'seconds from the owner message (sentAt); ack = card ack only; resultSec = latest observed card result, including server progress, not overall journey completion (use journey physicalCompleteAt/completionClaimAt); chatQueuedSec = sentAt to the start of the seat turn that carried a chat message (Claude Code queues typed messages behind a running turn); walk m/s = sampled displacement per distinct walk receipt, from firstMotionTick (else startedTick) to endedTick, plus the receipt end point, over world seconds at the fixed 50 ms tick',
     },
     uptime: {
       listenOpenFraction: pres.length ? pres.filter((p) => /listening|working/i.test(p)).length / pres.length : null, unackedAtCutoff: cardEv.filter((e) => !e.ackAt || Date.parse(e.ackAt) > Date.parse(e.cutoffAt)).length,

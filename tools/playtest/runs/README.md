@@ -147,7 +147,8 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
   the at-cutoff `arrival` oracle (a directed request is cut off by the next direction, usually before a walk ends);
   that count is kept in the basis. `walkMps` is one speed per distinct walk receipt, over world ticks from
   `firstMotionTick` (when the receipt has it) or `startedTick` to `endedTick`, using the seat's samples from every pack
-  and the receipt's end point; the basis counts which start tick was used.
+  and the receipt's end point, in world seconds at the world's fixed 50 ms tick (not a rate read off wall time, which
+  drifts when the server falls behind); the basis counts which start tick was used.
 - **Questions** are small named scorer modules (`questions/*.mjs`, default export `{id, version, question,
   assumptions, score(ctx)}`) answering `pass`, `fail` or `unknown` with evidence references and stated uncertainty.
   `ctx` holds the joined requests (director record plus the seat's ack, act, say and result calls), each seat's CLI

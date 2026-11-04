@@ -247,8 +247,10 @@ test('#822 walk measures read world truth: arrival from the receipt\'s last phas
   const R = (extra = {}) => ({ id: 'r-walk', capability: 'walk:g-hall', phase: 'started', acceptedTick: 20, startedTick: 20, endedTick: null, chosen: { place: 'g-hall' }, ...extra });
   // The walk is cut off by the next request (as a directed run's next direction does) and ends in the later pack.
   const packs = (end, start = {}) => [
-    { requestId: 'bo-001', seat: 'bo', channel: 'card', text: 'Walk to the hall', sentAt: iso(0), cutoffAt: iso(10), samples: [S(2, 40, 0), S(7, 140, 5)], receipts: [R(start)] },
-    { requestId: 'bo-002', seat: 'bo', channel: 'card', text: 'Say hello', sentAt: iso(10), cutoffAt: iso(40), samples: [S(12, 240, 10, { posture: 'standing', place: 'g-hall.room' })], receipts: end ? [R({ ...start, ...end })] : [] },
+    // A loaded server: the samples are 10 s of wall apart per 100 ticks (10 Hz on the wall clock), but a tick is still
+    // 50 ms of world time, so speed is over ticks × 0.05 s, not over the wall-derived rate.
+    { requestId: 'bo-001', seat: 'bo', channel: 'card', text: 'Walk to the hall', sentAt: iso(0), cutoffAt: iso(20), samples: [S(2, 40, 0), S(12, 140, 5)], receipts: [R(start)] },
+    { requestId: 'bo-002', seat: 'bo', channel: 'card', text: 'Say hello', sentAt: iso(20), cutoffAt: iso(40), samples: [S(22, 240, 10, { posture: 'standing', place: 'g-hall.room' })], receipts: end ? [R({ ...start, ...end })] : [] },
   ];
   const ev = async (pk) => (await evaluateRun(makeRun({ observerOk: true, packs: pk }), { write: false })).evaluation;
   const done = { phase: 'completed', endedTick: 200, endedAt: { place: 'g-hall.room', pos: [10, 0] } };
@@ -259,7 +261,7 @@ test('#822 walk measures read world truth: arrival from the receipt\'s last phas
   assert.match(M(ok, 'walkArrivalRate').basis, /arrival oracle saw 0\/1/, 'the at-cutoff oracle count is kept beside it');
   assert.equal(M(ok, 'walkArrivalRate').walks[0].receiptId, 'r-walk');
   assert.equal(M(ok, 'walkMps').status, 'measured');
-  assert.ok(Math.abs(M(ok, 'walkMps').value - 1.25) < 1e-9, `10 m over ticks 40..200 at 20 Hz: ${M(ok, 'walkMps').value}`);
+  assert.ok(Math.abs(M(ok, 'walkMps').value - 1.25) < 1e-9, `10 m over ticks 40..200 at 50 ms a tick (8 world s), whatever the wall rate: ${M(ok, 'walkMps').value}`);
   assert.equal(M(ok, 'walkMps').n, 1, 'one receipt seen in two packs is one speed');
   assert.match(M(ok, 'walkMps').basis, /startedTick 1, startedAt 0/);
 
