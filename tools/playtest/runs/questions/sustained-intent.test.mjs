@@ -12,18 +12,28 @@ const S = (verb, args, out, sec, doneSec = sec) => ({ verb, args, out, isError: 
 const rec = (id, capability, phase, events = []) => ({ accepted: true, receipt: { id, capability, phase }, events });
 const seated = (id) => [{ kind: 'activity.observed', receipt: { id }, action: { status: 'executing' } }];
 const ctx = (steps, packs = []) => ({ seats: ['ada'], hasTranscript: () => true, steps: () => steps, stepRef: (s) => ({ path: s.file, line: s.line }), ref: (path) => ({ path }), evidencePacks: packs });
-const card = (requestId, sentSec, ackSec, receipts = [], samples = []) => ({ requestId, seat: 'ada', text: 'lovely morning!', sentAt: iso(sentSec), ackAt: ackSec == null ? null : iso(ackSec), receipts, samples });
+const card = (requestId, sentSec, ackSec, receipts = [], samples = []) => ({ requestId, seat: 'ada', channel: 'card', text: 'lovely morning!', sentAt: iso(sentSec), ackAt: ackSec == null ? null : iso(ackSec), receipts, samples });
+const ackOf = (id, sec) => S('ack', [id, 'ok'], { acked: id }, sec);
 
-const errand = (second = rec('r2', 'sit:cottage/bench', 'started', seated('r2'))) => [S('ack', ['m1', 'Orchard first']),
+const errand = (second = rec('r2', 'sit:cottage/bench', 'started', seated('r2'))) => [S('ack', ['m1', 'Orchard first'], { acked: 'm1' }, 6),
   S('act', ['walk over to the orchard', '--wait', '55'], rec('r1', 'walk:orchard', 'completed'), 7, 40),
   S('act', ['sit on the bench outside the cottage', '--wait', '55'], second, 40, 80), S('result', ['m1', 'done', 'ok'], {}, 81)];
 
 test('errand-kept-through-burst: both steps happen once each and the chat is answered', () => {
-  assert.equal(kept.score(ctx(errand(), [card('c1', 14, 82), card('c2', 15, 83)])).verdict, 'pass');
-  assert.equal(kept.score(ctx(errand(), [card('c1', 14, null)])).verdict, 'fail', 'unanswered chat');
-  assert.equal(kept.score(ctx(errand(rec('r2', 'sit:cottage/bench', 'failed')), [card('c1', 14, 82)])).verdict, 'fail', 'lost step');
-  assert.equal(kept.score(ctx(errand(rec('r2', 'walk:orchard', 'completed')), [card('c1', 14, 82)])).verdict, 'fail', 'duplicate step');
-  assert.equal(kept.score(ctx(errand(), [card('c1', 100, 101)])).verdict, 'unknown', 'no chat during the errand');
+  const sent = [card('c0', 5, null), card('c1', 14, null), card('c2', 15, null)];   // the errand card, then two chat cards
+  const answered = [...errand(), ackOf('c1', 82), ackOf('c2', 83)];
+  assert.equal(kept.score(ctx(answered, sent)).verdict, 'pass');
+  assert.equal(kept.score(ctx([...errand(), ackOf('c1', 82)], sent)).verdict, 'unknown', 'acks do not pair with the cards');
+  assert.equal(kept.score(ctx([...errand(rec('r2', 'sit:cottage/bench', 'failed')), ackOf('c1', 82), ackOf('c2', 83)], sent)).verdict, 'fail', 'lost step');
+  assert.equal(kept.score(ctx([...errand(rec('r2', 'walk:orchard', 'completed')), ackOf('c1', 82), ackOf('c2', 83)], sent)).verdict, 'fail', 'duplicate step');
+  assert.equal(kept.score(ctx([...errand(), ackOf('c1', 102)], [card('c0', 5, null), card('c1', 100, null)])).verdict, 'unknown', 'no chat during the errand');
+});
+test('errand-kept-through-burst v2: a card left open does not swallow the next card\'s acts', () => {
+  const open = [S('ack', ['g', 'later'], { acked: 'g' }, 1), ...errand(), ackOf('c1', 82), ackOf('c2', 83), S('ack', ['w', 'walking'], { acked: 'w' }, 90),
+    S('act', ['walk to the pond hall'], rec('r9', 'walk:lab-pond-hall', 'completed'), 90)];
+  const sent = [card('g', 0.5, null), card('c0', 5, null), card('c1', 14, null), card('c2', 15, null), card('w', 89, null)];
+  const a = kept.score(ctx(open, sent));
+  assert.equal(a.verdict, 'pass', JSON.stringify(a.detail)); assert.equal(a.detail.length, 1, 'one errand');
 });
 
 const walkThenStop = (walkPhase = 'started') => [S('act', ['walk over to the orchard'], rec('w1', 'walk:orchard', walkPhase), 7), S('ack', ['m2', 'Stopping']),
