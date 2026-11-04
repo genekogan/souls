@@ -14,6 +14,10 @@ tier, tries a reproduction on a fake-mind world, and marks it ready for an agent
 Plans for individual tasks, briefs and status notes live in the issue and its comments, never in the tree.
 Durable product direction belongs in design docs; see [planning and intake](planning.md).
 
+Apply [bounded execution](planning.md#bounded-execution): prefer single-digit-hour slices, finish the authorized
+outcome without routine milestone pauses, and get Gene's approval for substantial scope expansion. Use a supported
+goal for sustained execution or a durable checkpoint when unavailable; neither changes proof or approval requirements.
+
 ## 2. Branch
 
 Claim the issue first (assign it and add `agent:claimed`), then work on one branch, `agent/<issue>-<slug>`, in its
@@ -59,7 +63,8 @@ from the template:
 - **Docs touched**, and the **changelog**.
 
 `node tools/proof/acceptance.mjs check` validates the checklist and `proof.json` locally. The `journal` skill walks an
-agent through one milestone; the `epic` skill runs a multi-milestone tranche with review stops. Add a fragment in
+agent through one milestone; the `epic` skill runs a bounded tranche with review stops only when requested. Add a
+fragment in
 [`changes/`](../../changes/README.md) for anything users notice, or the `no-changelog` label. A change in behaviour
 updates its doc in the same PR.
 
