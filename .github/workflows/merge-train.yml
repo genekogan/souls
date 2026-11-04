@@ -249,13 +249,14 @@ jobs:
 
       # The merge was pushed with GITHUB_TOKEN, which starts no workflows, so ci.yml's push trigger never fires and
       # mainCiState would read a stale window (every PR strict). A workflow_dispatch made with GITHUB_TOKEN does start a
-      # run, and a manual ci.yml run is full scope. Skipped while a main run is already queued or in progress, so main
-      # runs never pile up; a failed dispatch is logged and the train goes on.
+      # run, and a manual ci.yml run is full scope. Dispatched after every merge: ci.yml's concurrency group keeps at
+      # most one pending main run (a newer one replaces it), so runs cannot pile up and the last merge of a burst is
+      # tested. A failed dispatch is logged and the train goes on.
       - name: Dispatch main CI
         if: steps.merge.outputs.merged == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node .github/scripts/merge-train.mjs main-ci --repo "$REPO" --branch "$DEFAULT_BRANCH"
+        run: gh workflow run ci.yml --repo "$REPO" --ref "$DEFAULT_BRANCH" || echo "::warning::could not dispatch ci.yml on $DEFAULT_BRANCH"
 
       - name: Checks failed or timed out
         if: steps.wait.outputs.result == 'fail' || steps.wait.outputs.result == 'timeout'

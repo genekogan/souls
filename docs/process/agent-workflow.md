@@ -50,8 +50,8 @@ the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
   baselines and `.github/workflows/`.
 - **Main red**: every push to `main` and every manual run runs every CI job (`FULL_EVENTS` in
   `.github/scripts/ci-scope.mjs`; pull request runs stay path-scoped). The train merges with `GITHUB_TOKEN`, whose
-  pushes start no workflows, so after each merge it dispatches `ci.yml` on `main` (skipped while a `main` run is
-  already queued or in progress), and merges leave a full-scope run. A narrower green run does not clear a failure: `main`
+  pushes start no workflows, so after each merge it dispatches `ci.yml` on `main` (the `ci` concurrency group keeps
+  at most one pending `main` run), and merges leave a full-scope run. A narrower green run does not clear a failure: `main`
   stays red from a failed run until a later full-scope run (a manual `ci` run, or one in which
   every qualify job ran) is green, or the failed run is re-run green. With no green full-scope run among the last 50
   runs, `main` is unproven, which counts as red. While it is red every PR is strict, and the train
