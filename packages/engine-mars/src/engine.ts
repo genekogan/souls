@@ -135,7 +135,7 @@ type Prog = {
   readiedActors?:string[];
   build?: { phase: BuildPhase; crew: string[]; stopping?: Diag; reverse?: true };
 };
-export type MarsWorldConfig = { bodyTypes?:string[]; groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
+export type MarsWorldConfig = { groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
 export const LITTLE_MARTIANS_WORLD: MarsWorldConfig={scene:'littlemartians',arrival:[0,18],arrivalPlace:'garden',reference:[0,16],grounds:{id:'grounds',name:'Ceramic garden'}};
 export const GREEN_FIELD_WORLD:MarsWorldConfig={scene:'greenfield',arrival:[0,0],arrivalPlace:'field',reference:[2,0],grounds:{id:'grounds',name:'Green field'}};
 export const EDEN_COMMONS_WORLD:MarsWorldConfig={scene:'eden-commons',arrival:[14,4],arrivalPlace:'commons',reference:[9,5],grounds:{id:'grounds',name:'Eden commons'}};
@@ -1088,9 +1088,14 @@ export class MarsEngine implements Engine {
     return null;
   }
   /** BODY-v1: never interrupt holders, commitments or unsafe postures to swap a body. */
-  configureBodyTypesV1(types:readonly string[]){this.cfg={...this.cfg,bodyTypes:[...types]};}
+  // World body-type policy is live admission only: it is outside cfg (hashed) and never re-judges logged assignments.
+  private bodyTypesV1?:string[];
+  configureBodyTypesV1(types:readonly string[]){this.bodyTypesV1=[...types];}
   bodyAssignmentProblemV1(id:string,body:Body|null):string|null {
-    if(this.cfg.bodyTypes&&!this.cfg.bodyTypes.includes(body?.type??body?.family??'humanoid'))return 'body.world-policy';
+    if(this.bodyTypesV1&&!this.bodyTypesV1.includes(body?.type??body?.family??'humanoid'))return 'body.world-policy';
+    return this.bodySwapProblemV1(id,body);
+  }
+  private bodySwapProblemV1(id:string,body:Body|null):string|null {
     const problem=bodyProblem(body??undefined);if(problem)return problem;
     const e=this.ents[id],h=e?.human;if(!h)return 'body.not-found';
     if(!this.free(id)||this.actorBorrowed(id)||h.task||h.grip||h.on||h.riding||h.carrier||h.boatPassenger||h.boatTransit||h.sleepPose||h.shore||h.together||h.partner||h.holding||h.prop||h.baseActivity==='sit'||!['idle','wait'].includes(h.activity))return 'body.safe-standing-required';
@@ -1102,7 +1107,7 @@ export class MarsEngine implements Engine {
     return null;
   }
   assignBodyV1(id:string,body:Body|null):boolean {
-    if(this.bodyAssignmentProblemV1(id,body))return false;
+    if(this.bodySwapProblemV1(id,body))return false;
     delete this.ents[id].human.bodyMotionV1;
     if(body)this.ents[id].body=structuredClone(body);else delete this.ents[id].body;
     this.out.changes.push([this.rt.tick,id,'body',body]);return true;
