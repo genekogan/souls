@@ -1,0 +1,10 @@
+{
+  "schema": "genesis/1",
+  "name": "Garden biology proof",
+  "constants": { "extent": 1000, "ground": "land" },
+  "state": {
+    "constitution": "An isolated garden proof with fake minds and admitted native watering.",
+    "time": { "dayTicks": 1200, "paused": true }
+  },
+  "batches": []
+}
