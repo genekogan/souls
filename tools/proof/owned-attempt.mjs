@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { startWorld } from '../god-skill/dev-world.mjs';
 import { checkPort, portFree } from '../../e2e/local-smoke.mjs';
 import { config } from '../../e2e/config.mjs';
+import { assertImportedAttemptBudget } from './imported-attempt-budget.mjs';
 import { launchArgs } from '../playtest/lib/platform.mjs';
 
 const TOOL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -18,7 +19,7 @@ const writeNew = (file, value) => writeFileSync(file, typeof value === 'string' 
 const requireThat = (ok, why) => { if (!ok) throw new Error(`proof.${why}`); };
 const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
 const loadedToolHead = git(TOOL_ROOT, 'rev-parse', 'HEAD');
-const loadedFiles = ['tools/proof/owned-attempt.mjs', 'tools/god-skill/dev-world.mjs', 'e2e/config.mjs', 'e2e/local-smoke.mjs', 'tools/playtest/lib/platform.mjs'].map(path => ({ path, hash: digest(readFileSync(join(TOOL_ROOT, path))) }));
+const loadedFiles = ['tools/proof/owned-attempt.mjs', 'tools/proof/imported-attempt-budget.mjs', 'tools/god-skill/dev-world.mjs', 'e2e/config.mjs', 'e2e/local-smoke.mjs', 'tools/playtest/lib/platform.mjs'].map(path => ({ path, hash: digest(readFileSync(join(TOOL_ROOT, path))) }));
 const source = root => { requireThat(!git(root, 'status', '--porcelain'), 'source-dirty'); return { root: resolve(root), head: git(root, 'rev-parse', 'HEAD') }; };
 const within = (root, path) => { const p = relative(root, resolve(path)); return p && p !== '..' && !p.startsWith('../') && !isAbsolute(p); };
 const sameSource = (a, b) => !!a && !!b && JSON.stringify(Object.keys(a).sort()) === JSON.stringify(Object.keys(b).sort()) && Object.keys(a).every(k => a[k].head === b[k].head && a[k].root === b[k].root);
@@ -140,6 +141,16 @@ async function run(o, d) {
       requireThat(typeof driver.default === 'function', 'driver-function-required');
     }
     state = existsSync(ledger) ? json(ledger) : { version: 1, owner: o.owner, historicalCaptures: o.history?.count ?? 0, historicalEvidence: o.history?.evidence ?? [], captures: 0, attempts: [], cycles: [] };
+    const importIdentity = o.importedBudget ? { historyFile: resolve(o.importedBudget.historyFile), historyHash: o.importedBudget.historyHash } : null;
+    if (state.importedBudget) requireThat(digest(state.importedBudget) === digest(importIdentity), 'imported-budget-required-and-pinned');
+    if (o.importedBudget) {
+      // Authoritative check is under this ledger's exclusive lock; an outside preflight can be stale.
+      const imported = assertImportedAttemptBudget({ ...o.importedBudget, ledgerFile: ledger, owner: o.owner,
+        plan: o.cycle.plan, arm: o.arm, repeat: o.repeat,
+        currentHeads: { product: current.product.head, tool: current.tool.head, driver: current.driver?.head } });
+      requireThat(digest(imported.history) === digest(o.history), 'imported-history-mismatch');
+      state.importedBudget = importIdentity;
+    }
     requireThat(state.owner === o.owner, 'owner-mismatch');
     requireThat(Number.isSafeInteger(state.historicalCaptures) && state.historicalCaptures >= 0, 'historical-count-invalid');
     if (!d.test && state.historicalCaptures) requireThat(state.historicalEvidence.length, 'historical-evidence-required');

@@ -88,7 +88,7 @@ may be shared read-only. Build the served assets from the committed product sour
 Call `runOwnedAttempt` from a thin wrapper with private operational mappings, an ignored private ledger, the concrete agent identity,
 product checkout, tracked driver module (`driver: {root, path}`), world recipe, explicit browser cache/executable,
 and a predeclared cycle. Each production attempt requires a fresh Node process; the process-global guard rejects
-reuse, even through another module URL. Wrappers import the runner only and must not preload driver modules. This
+reuse, even through another module URL. Wrappers must not preload driver modules; resource-free budget guards may run before the lifecycle. This
 keeps relative driver imports fresh across committed repairs. The helper binds its own actual checkout and loaded source bytes; the product, helper and
 driver checkouts must all be clean. A driver default export receives `{page, base, paths, signal, check, fixture,
 arm, repeat}` and uses real input and named `check(key, ok, detail)` assertions. Optional `prepare` runs against the
@@ -97,6 +97,17 @@ Imports must have no side effects. Preparation, observation setup, the journey a
 should honor the signal and stop their own asynchronous work when cancelled.
 The owner handles SIGINT, SIGTERM and SIGHUP through finalization, including repeated signals during cleanup;
 the browser library's independent signal-exit handlers are disabled so they cannot skip world or ledger cleanup.
+
+An interrupted, locked ledger is never edited into a finalized result. After exact owned teardown, an explicitly
+reviewed recovery can pin its original ledger/evidence hashes in an `owned-proof-budget/1` history file. The separate
+`imported-attempt-budget.mjs` guard verifies those immutable inputs and the unchanged planned slots inside the
+existing exclusive ledger lock, before any world/data/browser creation. An optional external check is advisory. It
+counts every new recorded status, and refuses a fourth total try per slot. It also requires a fresh evidence-bound
+review declaration before a third total try. Pass `importedBudget: {historyFile, historyHash, thirdReview}` and
+the identical imported `history` to `runOwnedAttempt`; current source heads and the owner are verified under the
+lock. The replacement ledger pins that import identity and refuses later calls that omit or change it.
+A stale external preflight cannot bypass a newly consumed try. The original ledger/lock remain untouched. This is an explicit diagnosed recovery, never an
+automatic per-commit reset or a way to repeat a passing scenario.
 
 The cycle has an explicit `id`, `fix: {root, from, to, paths, scope}`, pinned `arms: {baseline: {root, head},
 candidate: {root, head}}` and ordered `plan: [{arm, repeat}, ...]`. Declare both repeats per arm before measurement.
