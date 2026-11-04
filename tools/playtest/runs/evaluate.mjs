@@ -237,7 +237,9 @@ export function directionsMeasure(sr) {
   const BASIS = 'console commands recorded by the swarm orchestrator (typed, scripted or from the lifecycle), with the outcome it applied';
   const file = sr.playtestDir ? join(sr.playtestDir, 'director', 'commands.jsonl') : null;
   if (!file || !existsSync(file)) return unavailable('directions', 'direction', 'commands', 'no direction journal (not a directed cast, or recorded before #783)', BASIS);
-  const cmds = readJsonl(file), speech = readJsonl(join(sr.playtestDir, 'director', 'speech.jsonl'));
+  // A torn or unparsed line (a killed run's last write) is skipped and counted, never read as a command.
+  const lines = readJsonl(file), cmds = lines.filter((c) => typeof c?.cmd === 'string' && typeof c?.outcome === 'string');
+  const speech = readJsonl(join(sr.playtestDir, 'director', 'speech.jsonl'));
   const byCommand = {};
   for (const c of cmds) { const b = (byCommand[c.cmd] ??= { applied: 0, held: 0, refused: 0 }); b[c.outcome] = (b[c.outcome] ?? 0) + 1; }
   const redirections = cmds.filter((c) => c.cmd === 'redirect').map((c) => {
@@ -246,7 +248,7 @@ export function directionsMeasure(sr) {
     return { target: c.target, source: c.source, atSec: c.elapsedSec, outcome: c.outcome, ...(c.reason ? { reason: c.reason } : {}), requestIds: c.requestIds ?? [], spokeAfter: after.length > 0, ...(words ? { expect: words, expectHeard: after.some((x) => words.some((w) => String(x.text ?? '').toLowerCase().includes(w))) } : {}) };
   });
   return { ...measured('directions', 'direction', 'commands', cmds.length, { n: cmds.length, basis: BASIS, sources: [sr.at('director', 'commands.jsonl'), ...(speech.length ? [sr.at('director', 'speech.jsonl')] : [])] }),
-    byCommand, refused: cmds.filter((c) => c.outcome === 'refused').length, redirections };
+    byCommand, refused: cmds.filter((c) => c.outcome === 'refused').length, skipped: lines.length - cmds.length, redirections };
 }
 
 /** Load a question module: default export {id, version, question, assumptions?, score(ctx)}. */

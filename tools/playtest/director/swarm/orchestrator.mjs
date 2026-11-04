@@ -175,10 +175,17 @@ export function createSwarm({ cast, runDir, seats, world, owner, truth, plan, cl
   // The direction journal (director/commands.jsonl): one record per console command (typed, scripted or from the
   // lifecycle) with its target, timing, outcome and the cards it sent. outcome: applied | held (a redirect kept for the
   // seat's turn but not delivered now) | refused (no effect, with the reason).
+  // The journal is evidence about the run, never a reason to stop it: a write failure (disk full, permissions) warns
+  // once and the command still takes effect, and a lifecycle end still stops the run.
+  let journalWarned = false;
   function journal(rec) {
     const out = { t: iso(), mono: clock.now(), elapsedSec: Math.round(elapsed() * 10) / 10, phase: state.phase, ...rec };
-    appendJsonl(join(dir, 'commands.jsonl'), out);
-    if (out.outcome !== 'applied') timeline('command', { cmd: out.cmd, source: out.source, outcome: out.outcome, reason: out.reason ?? null }, `command ${out.cmd} ${out.outcome}${out.reason ? `: ${out.reason}` : ''}`);
+    try {
+      appendJsonl(join(dir, 'commands.jsonl'), out);
+      if (out.outcome !== 'applied') timeline('command', { cmd: out.cmd, source: out.source, outcome: out.outcome, reason: out.reason ?? null }, `command ${out.cmd} ${out.outcome}${out.reason ? `: ${out.reason}` : ''}`);
+    } catch (e) {
+      if (!journalWarned) { journalWarned = true; print(`[${mmss(elapsed())}] warning: direction journal not written (${String(e?.message ?? e).split('\n')[0]}); the run goes on`); }
+    }
     return out;
   }
   async function handle({ line, expect = null, scripted = false }) {
