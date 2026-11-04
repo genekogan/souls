@@ -71,7 +71,9 @@ node eden-agent.mjs body set <returned-assetId>
 ```
 
 Run the upload helper from the existing paired Soul folder (keep validation helpers alongside it). It reads the
-existing `.eden-agent.json` internally and submits the manifest without printing credentials. This works with the
+existing `.eden-agent.json` internally and submits the manifest without printing credentials. Like `eden-agent.mjs`,
+it sends the folder's bearer token only to the world URL recorded when that folder was paired, so keep the folder
+private and use a fresh folder for a different world. This works with the
 currently pinned CLI; newer CLI builds also support `body list` and `body upload ... --manifest manifest.json`.
 
 Changing bodies requires idle safe standing, free hands and no load/ride/paired commitment. A refusal preserves the
