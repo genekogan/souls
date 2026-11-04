@@ -8,7 +8,8 @@ file. Keep it short: every rule here binds; detail lives in the linked docs.
 Soul, the server and web app behind soul.game: persistent worlds, Souls driven by their owners' own agents at the
 edge, god mode for world creators, and a vendored deterministic engine under `mars/` (its invariants:
 [mars/AGENTS.md](mars/AGENTS.md)). **Code wins over docs**; fix a doc you find wrong. Start at
-[docs/README.md](docs/README.md).
+[docs/README.md](docs/README.md). Checkout placement and recovery:
+[workspace relocation](docs/process/workspace-relocation.md).
 
 ## Setup and everyday commands
 
@@ -76,7 +77,18 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
 ## Agent lifecycle
 
 [Planning and intake](docs/process/planning.md) separates direction, backlog, ready work and portable handoffs.
+For an agenda with multiple workers, follow the [development coordinator](docs/process/development-coordinator.md)
+contract; fresh sessions recover its dated agenda and assignments before dispatch.
 
+- Stay within the requested outcome. Prefer independently reviewable, single-digit-hour slices; finish one active
+  implementation before starting another. Get Gene's approval before substantial scope expansion or an out-of-scope
+  prerequisite; explain the smallest necessary addition. Routine in-scope repairs need no new permission.
+- Continue to the authorized endpoint, including checks, proof and review fixes; do not stop at routine milestones
+  unless Gene requested review stops. Use an available goal mechanism for sustained work, otherwise a durable issue
+  checkpoint. Goals never override budgets, genuine blockers or merge/release approvals. See [bounded execution](docs/process/planning.md#bounded-execution).
+- Prefer isolated work on independent features in the development/release coordinator's chosen order. Check overlaps
+  at dispatch, shared-contract changes and integration; avoid continuous cross-worker synchronization. If no coordinator
+  is assigned, finish the bounded issue to its authorized endpoint and leave an integration handoff; do not assume release authority.
 - Work starts from an issue you claim (assign + `agent:claimed`); one branch `agent/<issue>-<slug>` and worktree per
   issue; small PRs; unfinished work behind a flag. Proof goes in the PR, not the tree: no status, brief, prompt or
   report files. No scheduled agents: the maintainer or authorized development owner starts bounded work within
@@ -93,7 +105,7 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
 - Issues state the problem and acceptance criteria before work starts. The PR is the journal entry: acceptance with
   evidence, proof, self-audit. [docs/process/agent-lifecycle.md](docs/process/agent-lifecycle.md#5-pull-request)
 - Repo skills in `.claude/skills/` (plain Markdown, readable by any agent): `journal`, `epic`, `triage`, `finish`,
-  `proof`, `e2e`, `sim-director`. Agent definitions in `.claude/agents/`: `lane`, `reviewer`.
+  `proof`, `e2e`, `sim-director`. Agent definitions in `.claude/agents/`: `coordinator`, `lane`, `reviewer`.
 
 ## Release and operations
 

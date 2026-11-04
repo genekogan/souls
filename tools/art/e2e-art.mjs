@@ -6,6 +6,7 @@
 //
 //   node tools/art/e2e-art.mjs --port 6031 --out .local/artsound/e2e [--media <dir>] [--keep]
 // Needs apps/web/dist (pnpm --filter @sim/web build). Uses only its own port and data; stops only the server it started.
+import { openAudio, setEffects, setMusic } from '../browser/world-controls.mjs';
 import { spawn, execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -116,16 +117,17 @@ try {
         await god('time', '11:00');
         report.soundLog = await page.evaluate(() => window.__edenSound.log());
         // the mute button: a real click, then a reload remembers it
-        await page.click('.eden-sound-toggle button[data-sound="mute"]');
+        await setEffects(page, false);
         await page.waitForTimeout(500);
         await shot('muted-button');
         await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => !!window.__edenSound && !!document.querySelector('.eden-sound-toggle'), null, { timeout: 180_000 });
-        await step('the mute button remembers across a reload', () => page.evaluate(() => ({ muted: window.__edenSound.state().muted, pressed: document.querySelector('.eden-sound-toggle button[data-sound="mute"]').getAttribute('aria-pressed') })), (r) => r.muted === true && r.pressed === 'false');
-        await page.click('.eden-sound-toggle button[data-sound="mute"]');
-        await page.click('.eden-sound-toggle button[data-sound="music"]');
+        await page.waitForFunction(() => !!window.__edenSound && !!document.querySelector('.navbar-audio .navbar-menu-trigger'), null, { timeout: 180_000 });
+        await openAudio(page);
+        await step('the effects switch remembers across a reload', () => page.evaluate(() => ({ muted: window.__edenSound.state().muted, checked: document.querySelector('.navbar-popover.navbar-audio [role="switch"]')?.getAttribute('aria-checked') })), (r) => r.muted === true && r.checked === 'false');
+        await setEffects(page, true);
+        await setMusic(page, true);
         await page.waitForTimeout(3000);
-        await step('music is opt-in: the note button turns the ambient piece on', () => page.evaluate(() => window.__edenSound.state()), (s) => s.music === true && s.emitters.some((e) => e.id === 'amb:music'));
+        await step('the independent music switch enables the score playlist', () => page.evaluate(() => ({music:window.__edenSound.state().music,playing:window.__edenMusic.state().playing})), (s) => s.music === true && !!s.playing);
         await browser.close();
       }
     } finally { release(); }
