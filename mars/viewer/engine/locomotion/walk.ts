@@ -1270,6 +1270,21 @@ export function stairBlocker(rt: Runtime, me: Entity, from: number[], to: number
 }
 
 /**
+ * stair-landing-clearance/1 (#509): a body on a flight's destination level (within 1 m in height) that stands closer
+ * to its landing point than the two bodies' radii less 2 cm, in entity order, or null. Walk avoidance and the separation invariant compare
+ * bodies on the same level only, so a walker on the destination floor cannot see a climber who is still on the flight.
+ * `stairBlocker` refuses only a step that brings the climber closer to a body; this refuses the final step onto an
+ * occupied landing whatever its direction, so the climber waits on the flight instead of arriving overlapping.
+ */
+export function landingBlocker(rt: Runtime, me: Entity, landing: { p: Vec2; y: number; level: number }, r: number): string | null {
+  for (const o of entitiesOf(rt)) {
+    if (o.id === me.id || o.kind !== 'human' || o.human?.level !== landing.level || Math.abs(o.pose.p[1] - landing.y) > 1.0) continue;
+    if (hypot(o.pose.p[0] - landing.p[0], o.pose.p[2] - landing.p[1]) < r + bodyProfile(o).radius - 0.02) return o.id;
+  }
+  return null;
+}
+
+/**
  * Directed tasks outrank ambient idleness (spec §17): an idle person who is in
  * the way is asked to step to the nearest free spot clear of the requester's
  * destination. People holding or carrying are never moved. A walker whose own
@@ -1685,7 +1700,8 @@ function stepLink(rt: Runtime, ex: Exec, a: Entity, leg: Extract<Leg, { kind: 'l
   ex.climbT = Math.min(total, ex.climbT + CLIMB_SPEED * dt);
   const next = pointOnLink(geo, ex.climbT);
   // someone standing on / at the end of the stair: wait rather than pass through them
-  const blocker = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius);
+  const blocker = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius)
+    ?? (rt.services.stairLandingClearanceV1 === true && ex.climbT >= total - 1e-9 ? landingBlocker(rt, a, leg.ascending ? link.to : link.from, ex.profile.radius) : null);
   if (blocker) {
     if(rt.services.concurrentLinkEgressV1===true)yieldLinkLanding(rt,ex,a,leg,blocker);
     if(a.body?.family==='floater')makeWay(rt,blocker,[next[0],next[2]],{by:a.id,subjects:[a.id],landing:{y:rt.world.entities[blocker].pose.p[1],radius:2*ex.profile.radius+.3}});
@@ -1810,7 +1826,8 @@ function stepLinkCancel(rt: Runtime, ex: Exec, a: Entity, leg: LinkLeg, dt: numb
   }
   const at = forward ? Math.min(geo.total, ex.climbT + CLIMB_SPEED * dt) : Math.max(0, ex.climbT - CLIMB_SPEED * dt);
   const next = pointOnLink(geo, at);
-  const blocker = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius);
+  const blocker = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius)
+    ?? (rt.services.stairLandingClearanceV1 === true && (forward ? at >= geo.total - 1e-9 : at <= 1e-9) ? landingBlocker(rt, a, landing, ex.profile.radius) : null);
   if (blocker) {
     if(a.body?.family==='floater')makeWay(rt,blocker,[next[0],next[2]],{by:a.id,subjects:[a.id],landing:{y:rt.world.entities[blocker].pose.p[1],radius:2*ex.profile.radius+.3}});
     a.human!.activity = 'climb-wait';

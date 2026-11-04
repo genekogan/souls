@@ -93,6 +93,17 @@ Routes copy planned link geometry, and every link step re-checks the current sce
 link returns `route.link-unusable`: before entry the action fails; between levels it stays blocked at its pose with
 ownership retained, and resumes once the link is restored. A missing landing blocks as `route.landing-unavailable`.
 
+## Occupied landings
+
+A climber waits on the flight (`climb-wait`, blocked `traffic.person` naming the body) instead of stepping into anyone
+it would come within 2r − 0.02 m of and closer to (`stairBlocker`). Walk avoidance and the `collision.human-human`
+invariant compare bodies on the same level only, so a walker on the destination floor does not see a climber still on
+the flight. Under the runtime policy `stair-landing-clearance/1` (`stairLandingClearanceV1`, #509), the final step of a
+climb, or of a cancelled climb, also refuses a landing that a body on the destination level occupies: within 1.0 m in
+height and closer than the two radii less 0.02 m in plan, whatever the direction of that step. The climber resumes
+when the landing clears. The policy is prospective. Edge worlds log it at startup (`operator:stair-landing-clearance`)
+after the other stair-traffic rules, except the Little Martians worlds. History before that event replays the old rule.
+
 ## Approximations
 
 - The look-ahead predicts the sidestep offset at 0.9 m/s lateral; the hard layer catches the rest (counted in
