@@ -97,9 +97,11 @@ docs/tools-only changes are never gated ([Modal policy](process/modal-policy.md)
 ## Capacity qualification workflow
 
 `.github/workflows/capacity-qualify.yml` runs the meetup bench (`tools/bench/capacity/meetup/meetup.mjs`, CW1/CW2)
-on the self-hosted `souls-saturn` runner. It is manual only, and one run at a time. Someone with write access
-dispatches it with `ref` set to a branch that carries the bench. Until #791 and #793 merge, that is
-`agent/736-hardware-qualification`:
+on a self-hosted runner. It is manual only, and one run at a time. The runner's labels come from the
+`QUALIFY_RUNNER` repository variable, a JSON array such as `["self-hosted","<neutral label>"]`; the default is
+`["self-hosted"]`. Keep labels, the runner name and the machine name neutral, because the public job log prints the
+runner and machine names. Someone with write access dispatches it with `ref` set to a branch that carries the bench.
+Until #791 and #793 merge, that is `agent/736-hardware-qualification`:
 
 ```bash
 gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
@@ -107,7 +109,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
 ```
 
 - **Quiet.** The bench gets `--quiet-host --qualifying-executor` only when four things hold: the dispatcher sets
-  `quiet_host`; the Actions API shows no other job in progress on a `souls-saturn` runner; no other Soul server
+  `quiet_host`; the Actions API shows no other job in progress on the same runner set; no other Soul server
   process runs on the host; and the host's 1-minute load per core settles below 0.25 within 5 minutes. Otherwise the
   run still measures, but it is labelled not-quiet, and every failing reason is recorded. The same checks run again
   after the bench. If they fail then, the artifact's `VERDICT.md` carries a "not quiet after the fact" banner.

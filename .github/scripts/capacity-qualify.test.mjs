@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseInputs, benchArgs, overlappingJobs, decideBefore, decideAfter, scrub, stage, benchOtherSouls, LOAD_PER_CORE_MAX } from './capacity-qualify.mjs';
+import { parseInputs, benchArgs, overlappingJobs, runnerLabels, sameRunnerSet, decideBefore, decideAfter, scrub, stage, benchOtherSouls, LOAD_PER_CORE_MAX } from './capacity-qualify.mjs';
 
 const ENV = { INPUT_REF: 'agent/736-hardware-qualification', INPUT_PROFILE: 'even,meetup', INPUT_REPEATS: '2', INPUT_SHORT: 'false', INPUT_QUIET_HOST: 'true', INPUT_HOST_CLASS: 'maintainer-self-hosted', INPUT_SLICE_CPU_QUOTA: '', INPUT_SLICE_MEMORY_MAX: '' };
 
@@ -30,17 +30,27 @@ test('bench args: --quiet-host and --qualifying-executor together, only when qui
   assert.ok(benchArgs(parseInputs({ ...ENV, INPUT_SHORT: 'true' }), true, 'o').includes('--short'));
 });
 
-const job = (o) => ({ run_id: 7, name: 'ci', status: 'in_progress', runner_name: 'r', labels: ['self-hosted', 'souls-saturn'], started_at: '2026-11-04T10:00:00Z', completed_at: null, ...o });
+const job = (o) => ({ run_id: 7, name: 'ci', status: 'in_progress', runner_name: 'r', labels: ['self-hosted', 'qualify-pool'], started_at: '2026-11-04T10:00:00Z', completed_at: null, ...o });
 
 test('jobs: others on the label count; this run, other labels, unassigned and earlier jobs do not', () => {
   const jobs = [job({}), job({ run_id: 1 }), job({ run_id: 8, labels: ['ubuntu-latest'] }), job({ run_id: 9, runner_name: null, status: 'queued' }),
     job({ run_id: 10, status: 'completed', completed_at: '2026-11-04T09:00:00Z' })];
-  assert.deepEqual(overlappingJobs(jobs, { selfRunId: 1 }).map((j) => j.run), [7]);
+  assert.deepEqual(overlappingJobs(jobs, { selfRunId: 1, labels: ['self-hosted', 'qualify-pool'] }).map((j) => j.run), [7]);
   // after: a job that started and finished inside the window overlaps; one that finished before it does not
   const since = Date.parse('2026-11-04T09:30:00Z'), until = Date.parse('2026-11-04T12:00:00Z');
   const after = [job({ status: 'completed', started_at: '2026-11-04T10:00:00Z', completed_at: '2026-11-04T10:05:00Z' }), job({ run_id: 10, status: 'completed', completed_at: '2026-11-04T09:00:00Z' }),
     job({ run_id: 11, started_at: '2026-11-04T13:00:00Z' })];
-  assert.deepEqual(overlappingJobs(after, { selfRunId: 1, since, until }).map((j) => j.run), [7]);
+  assert.deepEqual(overlappingJobs(after, { selfRunId: 1, labels: ['self-hosted', 'qualify-pool'], since, until }).map((j) => j.run), [7]);
+});
+
+test('runner set: labels come from the variable; generic labels alone match any self-hosted job', () => {
+  assert.deepEqual(runnerLabels(''), ['self-hosted']);
+  assert.deepEqual(runnerLabels('["self-hosted","qualify-pool"]'), ['self-hosted', 'qualify-pool']);
+  for (const bad of ['self-hosted', '[]', '[1]', '{"a":1}']) assert.throws(() => runnerLabels(bad), /QUALIFY_RUNNER/);
+  assert.equal(sameRunnerSet(['self-hosted', 'Qualify-Pool'], ['self-hosted', 'qualify-pool']), true);
+  assert.equal(sameRunnerSet(['self-hosted', 'other-pool'], ['self-hosted', 'Linux', 'qualify-pool']), false);
+  assert.equal(sameRunnerSet(['self-hosted', 'other-pool'], ['self-hosted']), true);
+  assert.equal(sameRunnerSet(['ubuntu-latest'], ['self-hosted']), false);
 });
 
 test('before: quiet only when declared, no other job or Soul server, load settled', () => {
@@ -85,7 +95,7 @@ test('stage: allowlist only, scrubbed, with the executor header', () => {
   assert.deepEqual(copied.sort(), ['VERDICT.md', 'even-r1/REPORT.md', 'even-r1/receipt.json', 'even-r1/result.json', 'qualify.json', 'summary.json']);
   for (const f of ['even-r1/souls', 'even-r1/launcher', 'even-r1/ops.jsonl', 'even-r1/launcher.log', 'meetup.log']) assert.ok(!existsSync(join(dest, f)), f);
   const v = readFileSync(join(dest, 'VERDICT.md'), 'utf8');
-  assert.match(v, /self-hosted runner `souls-saturn`, host class `maintainer-self-hosted`. Quiet before: yes; after: yes/);
+  assert.match(v, /self-hosted runner, host class `maintainer-self-hosted`. Quiet before: yes; after: yes/);
   assert.ok(!v.includes(out) && v.includes('ran under .'));
   assert.doesNotMatch(v, /NOT QUIET/);
   rmSync(out, { recursive: true });

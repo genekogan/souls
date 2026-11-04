@@ -1,5 +1,5 @@
-# CW2 (#736, #840): run the 50-Soul / 10-world meetup bench on the self-hosted `souls-saturn` runner and upload its
-# verdict. Manual only. The control script (.github/scripts/capacity-qualify.mjs) comes from this workflow's commit;
+# CW2 (#736, #840): run the 50-Soul / 10-world meetup bench on a self-hosted runner and upload its verdict. The runner
+# labels come from the QUALIFY_RUNNER repository variable (a JSON array, default ["self-hosted"]), never from this file. Manual only. The control script (.github/scripts/capacity-qualify.mjs) comes from this workflow's commit;
 # the bench comes from `ref`. The bench is told the host is quiet (--quiet-host --qualifying-executor) only when the
 # dispatcher declares it quiet AND no other job runs on the label, no other Soul server runs and the load has settled;
 # the same checks run again afterwards. The artifact is an allowlist of summaries, scrubbed of host paths and names,
@@ -44,7 +44,7 @@ concurrency:
 jobs:
   qualify:
     if: github.repository == 'genekogan/souls'
-    runs-on: [self-hosted, souls-saturn]
+    runs-on: ${{ fromJSON(vars.QUALIFY_RUNNER || '["self-hosted"]') }}
     timeout-minutes: 300
     env:
       INPUT_REF: ${{ inputs.ref }}
@@ -55,6 +55,7 @@ jobs:
       INPUT_HOST_CLASS: ${{ inputs.host_class }}
       INPUT_SLICE_CPU_QUOTA: ${{ inputs.slice_cpu_quota }}
       INPUT_SLICE_MEMORY_MAX: ${{ inputs.slice_memory_max }}
+      QUALIFY_RUNNER: ${{ vars.QUALIFY_RUNNER || '["self-hosted"]' }}
       CTL: ../ctl/.github/scripts/capacity-qualify.mjs
       QUALIFY: .local/bench/qualify.json
       OUT: .local/bench/meetup/ci-${{ github.run_id }}

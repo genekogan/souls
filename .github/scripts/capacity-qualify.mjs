@@ -17,7 +17,19 @@ import { cpus, hostname, loadavg, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const LABEL = 'souls-saturn';
+// The runner set comes from the QUALIFY_RUNNER repository variable (a JSON label array), never from this file, so no
+// machine-specific label is committed. Generic labels say nothing about which machine a job ran on.
+export const GENERIC_LABELS = ['self-hosted', 'linux', 'x64', 'arm64', 'arm', 'macos', 'windows'];
+export function runnerLabels(json) {
+  let v; try { v = JSON.parse(json || '["self-hosted"]'); } catch { throw new Error('QUALIFY_RUNNER must be a JSON array of runner labels'); }
+  if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !x)) throw new Error('QUALIFY_RUNNER must be a JSON array of runner labels');
+  return v;
+}
+/** Does a job target the same self-hosted runner set? Shares a specific label, or any self-hosted job when ours has none. */
+export function sameRunnerSet(jobLabels, ours) {
+  const low = (a) => a.map((x) => x.toLowerCase()), j = low(jobLabels ?? []), specific = low(ours).filter((x) => !GENERIC_LABELS.includes(x));
+  return specific.length ? specific.some((x) => j.includes(x)) : j.includes('self-hosted');
+}
 export const LOAD_PER_CORE_MAX = 0.25;   // 1-minute load per core that counts as settled
 export const SETTLE_WAIT_S = 300;
 const PROFILES = ['even', 'meetup'];
@@ -48,10 +60,10 @@ export function benchArgs(inp, quiet, out) {
     ...(inp.short ? ['--short'] : []), ...(inp.slice ? ['--slice', inp.slice] : []), ...(quiet ? ['--quiet-host', '--qualifying-executor'] : [])];
 }
 
-/** Jobs that ran on a runner with `label`, outside run `selfRunId`, overlapping [since, until] (null = open). */
-export function overlappingJobs(jobs, { selfRunId, label = LABEL, since = null, until = null }) {
+/** Jobs that ran on a runner of the same set (`labels`), outside run `selfRunId`, overlapping [since, until] (null = open). */
+export function overlappingJobs(jobs, { selfRunId, labels = ['self-hosted'], since = null, until = null }) {
   const t = (s) => (s ? Date.parse(s) : null);
-  return jobs.filter((j) => String(j.run_id) !== String(selfRunId) && j.runner_name && (j.labels ?? []).includes(label)
+  return jobs.filter((j) => String(j.run_id) !== String(selfRunId) && j.runner_name && sameRunnerSet(j.labels, labels)
     && (j.status === 'in_progress' || (j.status === 'completed' && since != null && (t(j.completed_at) ?? 0) > since))
     && (until == null || (t(j.started_at) ?? Infinity) < until))
     .map((j) => ({ run: j.run_id, job: j.name, status: j.status }));
@@ -62,7 +74,7 @@ export function decideBefore({ declared, jobs, otherSouls, loadPerCore, max = LO
   const reasons = [];
   if (!declared) reasons.push('the dispatcher did not declare the host quiet (quiet_host=false)');
   if (jobs == null) reasons.push('the Actions jobs API could not be read, so other jobs on the runner label are unknown');
-  else if (jobs.length) reasons.push(`${jobs.length} other job(s) in progress on a ${LABEL} runner`);
+  else if (jobs.length) reasons.push(`${jobs.length} other job(s) in progress on this self-hosted runner set`);
   if (otherSouls == null) reasons.push('other Soul server processes could not be counted');
   else if (otherSouls > 0) reasons.push(`${otherSouls} other Soul server process(es) running on the host`);
   if (loadPerCore == null || !(loadPerCore < max)) reasons.push(`1-minute load per core ${loadPerCore ?? 'unknown'} did not settle below ${max} within ${SETTLE_WAIT_S} s`);
@@ -73,7 +85,7 @@ export function decideBefore({ declared, jobs, otherSouls, loadPerCore, max = LO
 export function decideAfter({ quietBefore, jobs, benchOtherSouls }) {
   const reasons = [];
   if (jobs == null) reasons.push('the Actions jobs API could not be read after the run');
-  else if (jobs.length) reasons.push(`${jobs.length} other job(s) ran on a ${LABEL} runner during the measurement`);
+  else if (jobs.length) reasons.push(`${jobs.length} other job(s) ran on this self-hosted runner set during the measurement`);
   if (benchOtherSouls > 0) reasons.push(`the bench counted ${benchOtherSouls} other Soul server process(es) before or after a run`);
   return { quiet: quietBefore && reasons.length === 0, reasons };
 }
@@ -116,7 +128,7 @@ export function stage({ out, dest, qualify, scrubWith }) {
     if (rel.length > 1) mkdirSync(join(dest, ...rel.slice(0, -1)), { recursive: true });
     writeFileSync(join(dest, ...rel), text); copied.push(rel.join('/'));
   };
-  const head = `> Executor: self-hosted runner \`${LABEL}\`, host class \`${qualify.inputs?.hostClass}\`. Quiet before: ${qualify.before?.quiet ? 'yes' : 'no'}; after: ${qualify.after?.quiet ? 'yes' : 'no'}.`
+  const head = `> Executor: self-hosted runner, host class \`${qualify.inputs?.hostClass}\`. Quiet before: ${qualify.before?.quiet ? 'yes' : 'no'}; after: ${qualify.after?.quiet ? 'yes' : 'no'}.`
     + `${[...(qualify.before?.reasons ?? []), ...(qualify.after?.reasons ?? [])].map((r) => `\n> - ${r}`).join('')}\n`
     + (qualify.before?.quiet && qualify.after?.quiet === false ? '\n> **NOT QUIET after the fact: the bench was told the host was quiet, but the re-check above failed. This verdict does not qualify.**\n' : '') + '\n';
   for (const rel of files) write(rel, scrub((rel.join('/') === 'VERDICT.md' ? head : '') + readFileSync(join(out, ...rel), 'utf8'), scrubWith));
@@ -162,7 +174,7 @@ async function main(cmd) {
   if (cmd === 'before') {
     const cores = cpus().length; let lpc = null;
     for (let t = 0; t <= SETTLE_WAIT_S; t += 15) { lpc = +(loadavg()[0] / cores).toFixed(3); if (lpc < LOAD_PER_CORE_MAX) break; if (t < SETTLE_WAIT_S) await sleep(15_000); }
-    const jobs = await labelJobs(), facts = { declared: inp.quietDeclared, jobs: jobs && overlappingJobs(jobs, { selfRunId: process.env.GITHUB_RUN_ID }), otherSouls: otherSoulsNow(), loadPerCore: lpc };
+    const jobs = await labelJobs(), facts = { declared: inp.quietDeclared, jobs: jobs && overlappingJobs(jobs, { selfRunId: process.env.GITHUB_RUN_ID, labels: runnerLabels(process.env.QUALIFY_RUNNER) }), otherSouls: otherSoulsNow(), loadPerCore: lpc };
     const d = decideBefore(facts), startedAt = new Date().toISOString();
     writeFileSync(qf, JSON.stringify({ schema: 'capacity-qualify/1', workflowRun: process.env.GITHUB_RUN_ID, ref: inp.ref, commit: process.env.BENCH_COMMIT ?? null, inputs: { ...inp, slice: inp.slice || null },
       host: { cores, loadPerCoreAtStart: lpc, otherSoulsAtStart: facts.otherSouls, otherJobsAtStart: facts.jobs }, startedAt, before: d }, null, 1));
@@ -179,7 +191,7 @@ async function main(cmd) {
   }
   if (cmd === 'after') {
     const q = readJ(qf), out = arg('out'), now = Date.now(), jobs = await labelJobs(q.startedAt);
-    const d = decideAfter({ quietBefore: !!q.before?.quiet, jobs: jobs && overlappingJobs(jobs, { selfRunId: process.env.GITHUB_RUN_ID, since: Date.parse(q.startedAt), until: now }), benchOtherSouls: benchOtherSouls(out) });
+    const d = decideAfter({ quietBefore: !!q.before?.quiet, jobs: jobs && overlappingJobs(jobs, { selfRunId: process.env.GITHUB_RUN_ID, labels: runnerLabels(process.env.QUALIFY_RUNNER), since: Date.parse(q.startedAt), until: now }), benchOtherSouls: benchOtherSouls(out) });
     writeFileSync(qf, JSON.stringify({ ...q, endedAt: new Date(now).toISOString(), after: d }, null, 1));
     console.log(`quiet after: ${d.quiet}${d.reasons.map((r) => `\n  - ${r}`).join('')}`); return;
   }
