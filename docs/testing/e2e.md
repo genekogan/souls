@@ -95,6 +95,8 @@ arm, repeat}` and uses real input and named `check(key, ok, detail)` assertions.
 owned world before the browser; `beforeNavigation` installs observation and may return an owned cleanup function.
 Imports must have no side effects. Preparation, observation setup, the journey and cleanup are bounded; drivers
 should honor the signal and stop their own asynchronous work when cancelled.
+The dev-world adapter keeps legacy relative genesis paths relative to the caller's working directory when
+`checkout` is omitted; an explicit checkout resolves them within that source root.
 The owner handles SIGINT, SIGTERM and SIGHUP through finalization, including repeated signals during cleanup;
 the browser library's independent signal-exit handlers are disabled so they cannot skip world or ledger cleanup.
 

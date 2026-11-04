@@ -12,20 +12,22 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-export async function startWorld({ slug, port, data, genesis, fresh = false, log, checkout = root, onSpawn,
+export async function startWorld({ slug, port, data, genesis, fresh = false, log, checkout, onSpawn,
   signal, timeoutMs = 180000, env: extraEnv = {} } = {}) {
   signal?.throwIfAborted();
   if (!/^[a-z][a-z0-9-]{0,31}$/.test(slug ?? '')) throw new Error('slug: lowercase letters, digits, dashes');
-  const target = resolve(checkout), dataDir = resolve(data ?? `${target}/.lane/data-${slug}`);
+  const target = resolve(checkout === undefined ? root : checkout), dataDir = resolve(data ?? `${target}/.lane/data-${slug}`);
   if (fresh) rmSync(dataDir, { recursive: true, force: true });
   mkdirSync(dataDir, { recursive: true });
   const marsWeb = resolve(target, '.lane/mars-web');
   const env = { ...process.env, WORLD_KEY: slug, WORLD_ID: `${slug}-1`, ENGINE: 'mars', PORT: String(port), DEV_AUTH: '1', BRAIN_MODE: 'fake', SEED_NATIVES: '0', EDGE_FADING: '1', DATA_DIR: dataDir, PUBLIC_URL: `http://127.0.0.1:${port}`, ...(existsSync(marsWeb) ? { MARS_WEB_DIR: marsWeb } : {}), ...(genesis ? { GENESIS_FILE: resolve(genesis) } : {}) };
   const owned = Object.fromEntries(['WORLD_KEY', 'WORLD_ID', 'ENGINE', 'PORT', 'DEV_AUTH', 'BRAIN_MODE', 'SEED_NATIVES', 'EDGE_FADING', 'DATA_DIR', 'PUBLIC_URL'].map(key => [key, env[key]]));
   Object.assign(env, extraEnv, owned);
-  if (genesis) env.GENESIS_FILE = resolve(target, genesis);
+  // Existing callers resolve recipes from their cwd; an explicit checkout owns relative recipe paths.
+  if (genesis) env.GENESIS_FILE = checkout === undefined ? resolve(genesis) : resolve(target, genesis);
   const out = log ? openSync(log, 'a') : 'ignore';
   const child = spawn(process.execPath, ['apps/server/src/main.ts'], { cwd: target, env, stdio: ['ignore', out, out], detached: !!log });
+  // spawn duplicated this descriptor into the child; close only the parent's copy.
   if (typeof out === 'number') closeSync(out);
   let spawnError; child.once('error', e => { spawnError = e; });
   try { onSpawn?.(child); } catch (e) { child.kill(); throw e; }

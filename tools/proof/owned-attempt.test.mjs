@@ -167,6 +167,28 @@ test('default checkout caller and ownership-callback error retain default entryp
   await new Promise(resolve => { if (child.exitCode !== null || child.signalCode !== null) resolve(); else child.once('exit', resolve); });
   assert.ok(existsSync(data)); assert.ok(child.exitCode !== null || child.signalCode !== null);
 });
+for (const explicit of [false, true]) test(`public world adapter resolves relative genesis from ${explicit ? 'explicit checkout' : 'legacy caller cwd'}`, async t => {
+  const f = setup(t), { startWorld } = await import('../god-skill/dev-world.mjs'), previous = process.cwd();
+  const caller = join(f.root, 'caller'); mkdirSync(caller); mkdirSync(join(f.product, 'apps/server/src'), { recursive: true });
+  writeFileSync(join(f.product, 'apps/server/src/main.ts'), "throw Error('probe must exit before the real entry');\n");
+  writeFileSync(join(caller, 'relative-seed.json'), 'caller fixture'); writeFileSync(join(f.product, 'relative-seed.json'), 'checkout fixture');
+  const port = await new Promise(resolve => { const server = createServer().listen(0, () => { const p = server.address().port; server.close(() => resolve(p)); }); });
+  const probe = "import{readFileSync}from'node:fs';console.log(JSON.stringify({genesis:process.env.GENESIS_FILE,content:readFileSync(process.env.GENESIS_FILE,'utf8')}));process.exit(0);";
+  const log = join(f.root, 'genesis-probe.log'); let child;
+  try {
+    process.chdir(caller);
+    await assert.rejects(startWorld({ slug: 'genesis-probe', port, data: join(f.root, 'data'), genesis: 'relative-seed.json',
+      ...(explicit ? { checkout: f.product } : {}), log, timeoutMs: 1500, onSpawn: c => { child = c; },
+      env: { NODE_OPTIONS: '--import=data:text/javascript,' + encodeURIComponent(probe), GENESIS_FILE: 'must-not-override-owned-recipe' } }), /world exited before healthy/);
+  } finally {
+    process.chdir(previous);
+    if (child && child.exitCode === null && child.signalCode === null) { child.kill(); await new Promise(resolve => child.once('exit', resolve)); }
+  }
+  assert.equal(child.exitCode, 0, 'the actual child could read the selected fixture before its controlled exit');
+  const selected = JSON.parse(readFileSync(log, 'utf8').trim());
+  assert.equal(selected.genesis, join(explicit ? f.product : caller, 'relative-seed.json'));
+  assert.equal(selected.content, explicit ? 'checkout fixture' : 'caller fixture');
+});
 test('actual public API rejects arbitrary running URLs before any browser or child work', async () => {
   await assert.rejects(runOwnedAttempt({ owner: 'agent', cycle: { id: 'x', plan: [{}] }, ledger: 'unused', url: 'https://example.com' }), /existing-resource-override/);
 });
