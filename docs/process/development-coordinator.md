@@ -129,7 +129,9 @@ approval to a different candidate silently.
 ## Integrate, ship and hand off
 
 Review qualified PRs and queue merges only within existing authority. T3/T4 maintainer approvals, proof requirements
-and release limits remain binding. The coordinator either serves as explicitly appointed release owner or hands
+and release limits remain binding. If the maintainer has delegated T3/T4 sign-off to the coordinator by a dated
+decision on the coordination issue, present each such PR pre-verified for the maintainer's label
+([delegated sign-off](agent-workflow.md#delegated-sign-off)). The coordinator either serves as explicitly appointed release owner or hands
 ready changes to that owner; there is only one owner of an active release head. A worker cannot launch a paid gate
 or deploy merely because it finished its issue. Follow [release](../release.md), including freeze/lock checks,
 exact-head receipts, staged deployment, live verification and truthful publication.

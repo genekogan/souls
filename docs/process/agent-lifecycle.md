@@ -89,7 +89,9 @@ anything labelled for them. See [review](review.md).
 
 The maintainer gate is part of `proof-ok`: at T3 and T4 it fails until the maintainer approves (or, on their own PR,
 adds `approved:maintainer`), so no merge path, the train or `gh pr merge --auto`, lands a gated PR without them
-([agent workflow](agent-workflow.md#the-merge-train)). `proof-ok` is skipped on drafts and runs when the PR is marked
+([agent workflow](agent-workflow.md#the-merge-train)). The maintainer may delegate that sign-off to the appointed
+development coordinator; the label still comes from the maintainer's account
+([delegated sign-off](agent-workflow.md#delegated-sign-off)). `proof-ok` is skipped on drafts and runs when the PR is marked
 ready for review; check a draft locally with `node tools/proof/acceptance.mjs check`.
 
 ## 7. Merge
