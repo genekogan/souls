@@ -4,6 +4,9 @@ For directory responsibilities and the staged engine/music migration, see
 [repository layout](development/repository-layout.md). Commands here describe the existing checkout, not a completed
 layout migration or a receipt that a fresh cloud environment has passed its setup checks.
 
+The checkout can live independently of any strategy workspace. Use repository-relative commands and the
+[workspace recovery guide](process/workspace-relocation.md) when moving an existing installation.
+
 ## Requirements
 
 - Node ≥ 22.18. The server runs TypeScript directly by type stripping, so code must be erasable: no `enum`, no
