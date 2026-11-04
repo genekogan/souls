@@ -66,6 +66,9 @@ import {BodyRule, BODY_PATH_SAMPLE_M, type BodyKnobs, type BodySoul, type Postur
 
 type Resolved = {from: string; to: string; note: string};
 const WAIT_CODES = new Set(['program.safe-stop-required', 'program.safe-stop-pending']);
+/** PC05 (#684): native carry refusals that can pass (someone in the way, the load reserved); a shared commit waits on them.
+ *  Any other `carry.*` refusal is permanent; any other code waits until the proposal lapses. */
+const SHARED_CARRY_WAIT = new Set(['carry.item-unavailable', 'carry.path-occupied', 'carry.pickup-occupied', 'carry.setdown-occupied', 'carry.route-blocked', 'carry.target-blocked']);
 const WAIT_LIMIT_TICKS = 20 * 60;   // a waiting receipt that cannot start within a minute fails
 const NEAR_RADIUS = 20, GO_NEAR_RADIUS = 60;
 /** srv-act-words (C): the destination words of a focus-shaped walk (vocabulary WORDS_FOCUS_SHAPE's walk arm). */
@@ -417,7 +420,10 @@ export class EdgeLedger implements EdgeLedgerHooks {
       deliver: (sid, kind, body) => {try {(this.comms as unknown as {streams?: {deliver?(s: string, k: string, t: number, b: object): void}} | undefined)?.streams?.deliver?.(sid, kind, this.host.engine.world.tick, body);} catch {/* events are best effort */}},
       spectate: m => {try {(this.comms as unknown as {core?: {spectate(m: object): void}} | undefined)?.core?.spectate({tick: this.host.engine.world.tick, ...m});} catch {/* spectators never break the ledger */}},
       touch: id => this.comms?.fading.touch?.(id),
-      decide: (soul, receipt, capability, label, steps) => this.decide(soul, receipt, capability, label, steps), sharedCarry: this.sharedCarry});
+      decide: (soul, receipt, capability, label, steps) => this.decide(soul, receipt, capability, label, steps), sharedCarry: this.sharedCarry,
+      start: (id, programId) => this.update(id, {phase: 'started', program_id: programId, code: null, reason: null}),
+      note: (id, code, reason) => this.update(id, {code, reason}),
+      commitShared: id => {void this.commitShared(id).catch(e => console.error('[edge] shared commit', e instanceof Error ? e.message : e));}});
     this.receiptListeners.push(r => {if(!OPEN.includes(r.phase))this.menusChangedBy('receipt-closed', r.soulId, r.capability);});
     if (this.readOnly) return;
     // D1: the card's doing line names an edge act's approach ("walking to Kitchen chair") from this ledger's plans
@@ -519,6 +525,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   openReceipts(soulId: string): EdgeReceipt[] {return this.rows("soul_id=? AND phase IN ('waiting','started') ORDER BY accepted_tick", soulId).map(r => this.view(r));}
   private insert(soul: EdgeSoul, capability: string, phase: EdgeReceipt['phase'], clientRef?: string, keepActivity = false, detail: Record<string, unknown> = {},contentParams:Record<string,unknown>={},receiptId?:string): EdgeReceipt {
     const id = receiptId??'r_' + randomUUID(), tick = this.host.engine.world.tick,content=['read','write','use-computer','listen','paint','craft','post-letter'].includes(capability.split(':')[0])?outcomeParams(contentParams):{};
+    // PC05 (#684, PC02 §3): a body act of a member of a running shared operation is refused, never a replacement
+    if (!keepActivity) {const open = this.openReceipts(soul.soulId); for (const old of open) {const busy = this.together.sharedBusyFor(old); if (busy) throw new EdgeError(409, 'shared.busy', busy.reason, {op: busy.op});}}
     if (!keepActivity) {for (const old of this.openReceipts(soul.soulId)) {const left=this.together.sharedLeave(old);this.update(old.id, left?{phase:'failed',code:left.code,reason:left.reason}:{phase: 'replaced', reason: 'A newer action from this Soul replaced it.'});} afterCommit(this.db.db,()=>this.pending.delete(soul.soulId));}
     tx(this.db.db,()=>{this.db.db.prepare('INSERT INTO edge_receipts_v1 (world_id,receipt_id,soul_id,capability,phase,accepted_tick,ended_tick,client_ref,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(this.host.worldId, id, soul.soulId, capability, phase, tick,OPEN.includes(phase)?null:tick, clientRef ?? null, Date.now());
     // The generic read alias can select a real shelf-reading spot. Preserve that
@@ -595,6 +603,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   private onProgram(ev: {id: string; kind: string; code?: string; message?: string}) {
     if (ev.kind === 'step') return;
     const r = this.rows("program_id=? AND phase IN ('waiting','started')", ev.id)[0]; if (!r) return;
+    // PC05: a shared operation's programme ended; every member's receipt ends with it
+    if (this.together.sharedProgramEnded(r.receipt_id, ev)) return;
     if (ev.kind === 'completed') {
       const unsupported = this.nativeUseRefusal?.(r.capability);
       if (unsupported) { this.update(r.receipt_id, {phase: 'failed', code: unsupported.code, reason: unsupported.reason}); return; }
@@ -1493,6 +1503,17 @@ export class EdgeLedger implements EdgeLedgerHooks {
   }
 
   async act(soul: EdgeSoul, input: {capability?: unknown; params?: unknown; clientRef?: unknown; verb?: unknown; target?: unknown}): Promise<{accepted: true; receipt: EdgeReceipt; resolved?: Resolved; result?: unknown} | {accepted: false; code: string; reason: string; capability: string; retry_after?: number; did_you_mean?: {id: string; label: string}[]; resolved?: Resolved}> {
+    // PC05 (#684, PC02 §3): `shared.busy` (from insert) is the act's refusal: no receipt, nothing replaced, the owner's
+    // message stays unacked; the agent decides what to do
+    try {return await this.actWork(soul, input);}
+    catch (e) {
+      if (!(e instanceof EdgeError) || e.code !== 'shared.busy') throw e;
+      const capability = typeof input.capability === 'string' ? input.capability : String(input.verb ?? '');
+      this.recordRefusal(soul.soulId, 'act', capability, e.code, e.message);
+      return {accepted: false, code: e.code, reason: e.message, capability, ...(e.extra ?? {})};
+    }
+  }
+  private async actWork(soul: EdgeSoul, input: {capability?: unknown; params?: unknown; clientRef?: unknown; verb?: unknown; target?: unknown}): Promise<{accepted: true; receipt: EdgeReceipt; resolved?: Resolved; result?: unknown} | {accepted: false; code: string; reason: string; capability: string; retry_after?: number; did_you_mean?: {id: string; label: string}[]; resolved?: Resolved}> {
     // intents/1 (Core-A): {verb, target} is resolved now and acted on as the concrete choice it reports
     if (input.capability === undefined && input.verb !== undefined) {const out = await this.intents.act(soul, input as IntentInput); if (out.accepted) this.menusChangedBy('act-intent', soul.soulId, out.receipt.capability); return out;}
     let exactWalk:ExactWalkBindings|null=null;
@@ -1974,6 +1995,34 @@ export class EdgeLedger implements EdgeLedgerHooks {
     return {accepted: true, receipt: this.receipt(soul.soulId, r.id)!};
   }
 
+  /** PC05 (#684, PC02 §2): the atomic commit of a ready shared proposal. One host decision with one native crew `carry`,
+   *  through the atomic object decision: its guard re-derives readiness under the write lock and requires no operation
+   *  yet; its journal writes the operation, `committed` and every member's `started` receipt with the event, or nothing.
+   *  A stale guard (someone left, moved away, or it already started) commits nothing; the next check re-derives. */
+  private async commitShared(id: string) {
+    const plan = this.together.sharedCommitPlan(id); if (!plan || this.host.quietBarrier) return;
+    const {host, label, steps, revision, opId} = plan, inv = this.together.invite(id)!;
+    const issue = this.host.engine.canPerform({actor: host.entityId, label, steps});
+    const wait = (code: string, message?: string) => this.together.sharedNotReady(inv, [{soulId: host.soulId, name: 'The carry', why: `cannot start yet (${code}${message ? `: ${message}` : ''})`}]);
+    if (issue) {if (WAIT_CODES.has(issue.code) || SHARED_CARRY_WAIT.has(issue.code) || !issue.code.startsWith('carry.')) wait(issue.code, issue.message); else this.together.sharedRefused(id, issue.code, issue.message ?? humanBlockedExplanationV1(issue.code, label)); return;}
+    const guard = (): true => {
+      this.together.sharedCommitGuard(id, revision);
+      if (this.host.quietBarrier) throw new EdgeError(409, 'state.changed', 'The world entered a quiet barrier; retry.');
+      const fresh = this.host.engine.canPerform({actor: host.entityId, label, steps}); if (fresh) throw new EdgeError(409, fresh.code, fresh.message ?? fresh.code);
+      return true;
+    };
+    try {
+      await this.host.enqueueObjectDecision(`edge:${host.soulId}`, {soulId: host.soulId, entityId: host.entityId, option: plan.capability, label, steps, reevalTicks: 1e9, fallback: false, trigger: `shared-commit:${opId}`}, guard, e => {
+        const program = (this.host.engine as {instantProgramV1?(a: string): string | null}).instantProgramV1?.(host.entityId) ?? this.host.engine.programOf(host.entityId);
+        if (!program) throw Error('shared.native-program-missing');
+        this.together.sharedCommitted(id, revision, program, e.seq); return true;
+      });
+    } catch (error) {
+      // nothing was committed (the transaction rolled back); a native refusal at the fold is handled as at the check above
+      const code = error instanceof Error ? /^object\.native-admission-refused:(.+)$/.exec(error.message)?.[1] : undefined;
+      if (code && code.startsWith('carry.') && !SHARED_CARRY_WAIT.has(code)) this.together.sharedRefused(id, code, humanBlockedExplanationV1(code, label));
+    }
+  }
   private async performAtomicObjectBodies(soul:EdgeSoul,capability:string,label:string,steps:Program['steps'],clientRef:string|undefined,admission:ObjectBodyAdmission){
     const refuse=(code:string,reason:string)=>{this.recordRefusal(soul.soulId,'object',capability,code,reason);return {accepted:false as const,code,reason};};
     const source=this.db.soul(soul.soulId),id='r_'+randomUUID();
