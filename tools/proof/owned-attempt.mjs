@@ -48,7 +48,7 @@ function reviewThird(review, attempts, owner, current, repair, now, lineChanged)
   requireThat(Date.parse(review.at) > Date.parse(previous.at(-1).endedAt) && Date.parse(review.at) <= now + 1000, 'review-stale');
   requireThat(JSON.stringify(review.evidence) === JSON.stringify(previous.map(a => a.reportHash)), 'review-evidence-mismatch');
   requireThat(sameSource(review.source, current), 'review-source-mismatch');
-  requireThat(review.hypothesis?.trim() && review.hypothesis !== previous.at(-1).hypothesis, 'different-hypothesis-required');
+  requireThat(review.hypothesis?.trim() && previous.every(a => review.hypothesis !== a.hypothesis), 'different-hypothesis-required');
   requireThat(review.change?.path && Number.isSafeInteger(review.change.line) && review.change.line > 0 && repair.paths.includes(review.change.path), 'review-file-line-required');
   const path = resolve(repair.root, review.change.path);
   requireThat(within(repair.root, path) && readFileSync(path, 'utf8').split('\n').length >= review.change.line, 'review-file-line-invalid');

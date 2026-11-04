@@ -64,6 +64,8 @@ test('third attempt requires fresh independent evidence-bound review and is the 
   f.o.review.evidence = ['stale']; await assert.rejects(f.runner(f.o), /review-evidence-mismatch/); f.o.review.evidence = attempts.map(a => a.reportHash);
   f.o.review.source.product.head = 'stale'; await assert.rejects(f.runner(f.o), /review-source-mismatch/); f.o.review.source.product = f.identity(f.product);
   f.o.review.at = attempts[1].endedAt; await assert.rejects(f.runner(f.o), /review-stale/); f.o.review.at = new Date(f.now()).toISOString();
+  const newHypothesis = f.o.review.hypothesis; f.o.review.hypothesis = attempts[0].hypothesis;
+  await assert.rejects(f.runner(f.o), /different-hypothesis-required/); f.o.review.hypothesis = newHypothesis;
   changedLine = false; await assert.rejects(f.runner(f.o), /review-line-not-changed/); changedLine = true;
   const third = await f.runner(f.o); assert.equal(third.repairAttempt, 3); assert.equal(third.status, 'FAIL');
   f.change('p4'); await assert.rejects(f.runner(f.o), /repair-ceiling/);
