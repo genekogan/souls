@@ -72,7 +72,7 @@ const latestEvaluation = (runDir) => {
 };
 // What the selected projection never carries: absolute paths (POSIX or Windows), home-relative (`~/`) and parent-relative
 // (`../`) paths, user-directory paths with the leading slash dropped, file URLs, and hosts (IPv4, localhost, *.local,
-// *.ts.net). Run-relative paths such as `playtest/recordings/wide.webm` pass.
+// *.lan, *.internal and mesh-VPN host names). Run-relative paths such as `playtest/recordings/wide.webm` pass.
 const PRIVATE = [
   /(^|[\s"'(=:,\[])(\/(Users|home|private|var|tmp|opt|Volumes|root|mnt|srv)\/|[A-Za-z]:[\\/])/,
   /(^|[\s"'(=:,\[])~[\\/]/, /(^|[\s"'(=:,\[])\.\.[\\/]/,
