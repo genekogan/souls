@@ -94,6 +94,34 @@ candidate and its baseline on Modal and compares them. Clean means 0 new failure
 The release head always takes the full scope; candidates may use `--scope auto`. The baseline comes from a cache, and
 docs/tools-only changes are never gated ([Modal policy](process/modal-policy.md)).
 
+## Capacity qualification workflow
+
+`.github/workflows/capacity-qualify.yml` runs the meetup bench (`tools/bench/capacity/meetup/meetup.mjs`, CW1/CW2)
+on the self-hosted `souls-saturn` runner. It is manual only, and one run at a time. Someone with write access
+dispatches it with `ref` set to a branch that carries the bench. Until #791 and #793 merge, that is
+`agent/736-hardware-qualification`:
+
+```bash
+gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
+  [-f profile=even,meetup] [-f repeats=2] [-f short=false] [-f slice_cpu_quota=400%] [-f slice_memory_max=8G]
+```
+
+- **Quiet.** The bench gets `--quiet-host --qualifying-executor` only when four things hold: the dispatcher sets
+  `quiet_host`; the Actions API shows no other job in progress on a `souls-saturn` runner; no other Soul server
+  process runs on the host; and the host's 1-minute load per core settles below 0.25 within 5 minutes. Otherwise the
+  run still measures, but it is labelled not-quiet, and every failing reason is recorded. The same checks run again
+  after the bench. If they fail then, the artifact's `VERDICT.md` carries a "not quiet after the fact" banner.
+  Before dispatching, turn off anything else that can use the runner, such as the `CI_HEAVY_RUNNER` variable.
+- **Allocation.** `slice_cpu_quota` and `slice_memory_max` run the worlds inside a `systemd-run --user --scope` with
+  those limits, and the run is refused if the host cannot apply them. Without them the allocation is the runner's
+  own cgroup. A memory limit it does not set leaves headroom unknown, so the verdict cannot be `passes`.
+- **Artifact** `capacity-qualify-<run id>`. It holds `VERDICT.md`, `summary.json` and `qualify.json` (the quiet
+  decision and its facts), plus each run's `REPORT.md`, `receipt.json` and `result.json`. Workspace, home, host and
+  user names are replaced with placeholders. The upload is refused if a file holds a Soul token. `souls/`,
+  `launcher/` and logs never leave the runner and are deleted at the end of the job.
+- **What it qualifies.** The host is the maintainer's machine. Its verdict is labelled with `host_class` and is not
+  a production-class result unless that host is the production class.
+
 ## Playtests and the swarm director
 
 - [testing/playtests.md](testing/playtests.md): batteries, personas and casts play Souls and gods as coding-agent
