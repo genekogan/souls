@@ -1,7 +1,7 @@
 {
  "kind": "cast",
  "name": "s3-sustained-intent-scripted",
- "version": 1,
+ "version": 2,
  "seed": 6234,
  "world": {
   "kind": "dev",
@@ -63,7 +63,7 @@
        ],
        [
         "act",
-        "sit on the bench outside the cottage",
+        "sit on the cottage bench",
         "--wait",
         "55"
        ]
