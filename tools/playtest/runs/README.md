@@ -93,9 +93,11 @@ the verdict is in `evidence.verdict`, and the direction journal (`playtest/direc
 (`references.cast`).
 
 A directed spec takes `name`, `world` (`port`, `slug` only), `durationSec`, `observer` (`check`, `required`,
-`timeoutMs`, `cameras` as a subset of `follow` and `wide`), `limits`, `controllers`, `retention` and `evaluation`.
+`timeoutMs`, `cameras` as a subset of `follow` and `wide`), `limits`, `controllers`, `retention`, `evaluation` and
+`setup` (validated, hashed and applied exactly as for a scenario spec: after provision, through `cmdDirect`'s
+`afterProvision` hook, before any seat exists; see Setup).
 Validation refuses before anything starts: a spec that names both a cast and a scenario, unknown `cast` fields, a
-missing or invalid cast file, an invalid scripted-owner script, `setup` (not supported with a cast yet), and
+missing or invalid cast file, an invalid scripted-owner script, an invalid `setup`, and
 (`controllers.live-model`) any seat that is not `scripted-owner` or a `planner`, unless `controllers.allowLiveModels`
 is true. `cmdDirect` refuses the same live minds again inside the runner. `specs/hamlet-trio-direct.json` runs three
 scripted-owner Souls in the hamlet pond hall, with one redirection of Bo delivered while Ada speaks.

@@ -53,7 +53,7 @@ test('live seats or a live planner are refused unless controllers.allowLiveModel
   assert.deepEqual(codes(validateSpec(f.spec({ scenario: 'x.json' }), { serverRoot: f.serverRoot })), ['cast.with-scenario']);
   assert.deepEqual(codes(validateSpec({ ...f.spec(), cast: { file: join(f.dir, 'cast.json'), seats: [] } }, { serverRoot: f.serverRoot })), ['cast.unknown-field']);
   assert.deepEqual(codes(validateSpec({ ...f.spec(), cast: { file: join(f.dir, 'nope.json') } }, { serverRoot: f.serverRoot })), ['cast.not-found']);
-  assert.deepEqual(codes(validateSpec(f.spec({ setup: { batches: ['b.json'] } }), { serverRoot: f.serverRoot })), ['setup.directed']);
+  assert.deepEqual(codes(validateSpec(f.spec({ setup: { batches: [join(f.dir, 'b.json')] } }), { serverRoot: f.serverRoot })), ['setup.batch-missing']);
   assert.deepEqual(codes(validateSpec(f.spec({ world: { genesis: 'other.json' } }), { serverRoot: f.serverRoot })), ['world.override']);
   writeFileSync(join(f.dir, 'bad.json'), JSON.stringify({ ...f.cast, seats: [{ id: 'ann', soulName: 'Ann', character: 'c', adapter: 'scripted-owner', script: { rules: [] } }] }));
   assert.deepEqual(codes(validateSpec({ ...f.spec(), cast: { file: join(f.dir, 'bad.json') } }, { serverRoot: f.serverRoot })), ['cast.seat-script']);
@@ -97,4 +97,43 @@ test('executeCast refuses live minds inside the runner too when the spec did not
   const code = await executeCast({ castFile: join(f.dir, 'cast.json'), playtestDir: join(f.dir, 'pt'), serverRoot: f.serverRoot, hooks: { own: () => assert.fail('nothing owned'), modules: fakeDirectModules().modules, preflight: { ok: true, checks: {} } } });
   assert.equal(code, 2);
   assert.equal(existsSync(join(f.dir, 'pt')), false);
+});
+
+test('setup batches with a directed cast: validated and hashed like a scenario spec, applied before any seat, a refusal fails at setup', async () => {
+  const f = fixture({ consoleScript: [{ atSec: 0.5, line: 'end' }] });
+  writeFileSync(join(f.dir, 'bench.json'), JSON.stringify({ id: 'hall-bench', ops: [{ op: 'place', def: 'core/bench@1', name: 'b', p: [0, 4] }] }));
+  writeFileSync(join(f.dir, 'empty.json'), JSON.stringify({ id: 'empty', ops: [] }));
+  const setup = { batches: [join(f.dir, 'bench.json'), { id: 'inline', ops: [{ op: 'place', def: 'core/bench@1', name: 'c', p: [1, 4] }] }], maxWallSec: 30 };
+  const v = validateSpec(f.spec({ setup }), { serverRoot: f.serverRoot });
+  assert.equal(v.ok, true, JSON.stringify(v.errors));
+  assert.equal(v.effective.setup.maxWallSec, 30);
+  assert.deepEqual(v.effective.setup.batches.map((b) => [b.id, b.ops, /^[0-9a-f]{64}$/.test(b.sha256)]), [['hall-bench', 1, true], ['inline', 1, true]]);
+  assert.equal(v.setup.batches[0].ops[0].def, 'core/bench@1');
+  // The same static refusals as scenario specs, before anything starts.
+  for (const [bad, code] of [[{ batches: [], extra: 1 }, ['setup.unknown-field', 'setup.batches']], [{ batches: [join(f.dir, 'empty.json')] }, ['setup.batch-ops']], [{ batches: [7] }, ['setup.batch']], [{ batches: [join(f.dir, 'b.json')], maxWallSec: 0 }, ['setup.maxWallSec']]]) {
+    assert.deepEqual(codes(validateSpec(f.spec({ setup: bad }), { serverRoot: f.serverRoot })), code, JSON.stringify(bad));
+  }
+  // Applied after provision and before any seat: the setup call sees the world and no seat yet.
+  const fake = fakeDirectModules(), seen = [];
+  const setupFn = async ({ base, setup: s }) => { seen.push({ base, made: [...fake.made], ids: s.batches.map((b) => b.id) }); return { ok: true, batches: s.batches.map((b) => ({ id: b.id, ok: true })) }; };
+  const out = f.out();
+  const r = await startRun({ spec: f.spec({ name: 'fx-setup', setup }), serverRoot: f.serverRoot, outDir: out, scenarioPreflight: PREFLIGHT, setupFn,
+    execute: (o) => executeCast({ ...o, castFile: o.scenarioFile, hooks: { ...o.hooks, modules: fake.modules } }) });
+  assert.equal(r.status, 'completed', r.reason);
+  assert.equal(seen.length, 1);
+  assert.deepEqual(seen[0].ids, ['hall-bench', 'inline']);
+  assert.equal(seen[0].base, 'http://127.0.0.1:9');
+  assert.ok(seen[0].made.some((m) => m.startsWith('world:')) && !seen[0].made.some((m) => m.startsWith('seat')), JSON.stringify(seen[0].made));
+  assert.equal(r.setup.ok, true);
+  assert.ok(existsSync(join(out, 'setup.json')));
+  // A refused batch fails the run at setup: no seat, everything owned released.
+  const fake2 = fakeDirectModules();
+  const refused = await startRun({ spec: f.spec({ name: 'fx-setup-refused', setup }), serverRoot: f.serverRoot, outDir: f.out(), scenarioPreflight: PREFLIGHT,
+    setupFn: async () => ({ ok: false, error: 'batch hall-bench refused: build.blocked', batches: [] }),
+    execute: (o) => executeCast({ ...o, castFile: o.scenarioFile, hooks: { ...o.hooks, modules: fake2.modules } }) });
+  assert.equal(refused.status, 'failed');
+  assert.equal(refused.stage, 'setup');
+  assert.match(refused.reason, /setup refused: batch hall-bench refused/);
+  assert.ok(!fake2.made.some((m) => m.startsWith('seat')), JSON.stringify(fake2.made));
+  assert.equal(refused.resources.ok, true, JSON.stringify(refused.resources.failed));
 });
