@@ -224,6 +224,14 @@ Observer cost: `observer.mode` `off` / `passive` / `cameras` separates passive e
 within `cameras`, video encoding runs in Playwright's own ffmpeg processes. A recorded camera takes under 8 MB per
 camera-minute at the default `compact` size and about 21 MB at `viewport` size (1280x800). Compare arms with two repeats each on a quiet machine (`docs/testing/playtests.md`).
 
+Four saved arms of the same hamlet trio compare observer cost (#803): `specs/hamlet-trio-off.json`,
+`hamlet-trio-passive.json`, `hamlet-trio-cameras.json` (the recorded arm's five cameras, recipes and viewports, with
+recording off) and `hamlet-trio-recorded.json`. The recording share is the difference between the last two. Every run's
+receipt has `cost.processes`: CPU seconds and peak RSS of the runner's descendant processes by class (`browser`,
+`encoder` for Playwright's ffmpeg, `world`, `other`), sampled with `ps` every 2 s. Only the class is kept, never a
+command line. A process that exits between samples loses up to one interval. If `ps` fails, the field is `unavailable`
+with the reason, and the run is unaffected.
+
 ## Scenario runner hooks
 
 `cmdRun(args, hooks)` in `playtest.mjs` takes optional hooks: `own(kind, id, release, meta)` is called for the world
