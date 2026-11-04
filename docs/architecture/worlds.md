@@ -109,5 +109,6 @@ A body made from an admitted definition (an upload, or a shared authored preset 
 a reference (`{ref: body_<sha>}`), never as its home URL (#795). The destination resolves it with the same rules as
 `PUT /v1/edge/body {ref}`: the owner's own or a published definition, not withdrawn, a body type that world admits.
 Bytes it lacks are pulled through the site path once the arriving Soul can change bodies (sha256 verified,
-re-admitted, two pulls per owner per minute). A refused reference never refuses the trip: the Soul keeps the default
-look, and its travel log names the code.
+re-admitted, two pulls per owner per minute). A refused reference never refuses the trip: the Soul's body there is unchanged (the default look
+for a first visit), and its travel log names the code. Travel pulls count against a per-owner budget, separate from
+the per-Soul budget of `PUT {ref}`.

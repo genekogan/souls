@@ -218,7 +218,7 @@ export class Travel {
     const ref=carriedRef(p.body);
     if(ref){const r=this.d.resolveBodyRef?.(ref,p.owner)??{ok:false as const,code:'body.ref-unsupported',reason:'This world cannot resolve carried body references'};if(r.ok){carried=r.body;fetch=r.fetch;}else{refusal=r;carried=null;}}
     const worn=await this.wear(soulId, carried, fetch, f=>{refusal=f;});
-    if(refusal){const inc=this.inc(soulId)!,log=JSON.parse(inc.log) as LogEntry[];if(log.length)log[log.length-1].note=`The carried body was not admitted here (${refusal.code}: ${refusal.reason}); the default body is worn.`;this.sql.prepare('UPDATE travel_incarnations_v1 SET log=? WHERE world_id=? AND soul_id=?').run(JSON.stringify(log),this.world,soulId);}
+    if(refusal){const inc=this.inc(soulId)!,log=JSON.parse(inc.log) as LogEntry[];if(log.length)log[log.length-1].note=`The carried body was not admitted here (${refusal.code}: ${refusal.reason}); its body here is unchanged.`;this.sql.prepare('UPDATE travel_incarnations_v1 SET log=? WHERE world_id=? AND soul_id=?').run(JSON.stringify(log),this.world,soulId);}
     else if(carried&&!worn){const inc=this.inc(soulId)!,log=JSON.parse(inc.log) as LogEntry[];if(log.length)log[log.length-1].note='The destination did not admit the carried body; its existing body is retained.';this.sql.prepare('UPDATE travel_incarnations_v1 SET log=? WHERE world_id=? AND soul_id=?').run(JSON.stringify(log),this.world,soulId);}
     this.event(p.traveller, soulId, p.name, atHome ? 'came-home' : 'arrived', p.from, p.fromName);
     return this.admitted(p, soulId, created, returned);
@@ -256,7 +256,7 @@ export class Travel {
       if (ent && JSON.stringify(ent.body) === JSON.stringify(body)) return true;
       const guard = (): true => { const e = engine.world.entities[entityId]; if (!e || host.quietBarrier || engine.bodyAssignmentProblemV1!(entityId, body)) throw new Error('travel.body-not-ready'); return true; };
       try { guard();
-        if (fetch) { const f = await fetch(); fetch = undefined; if (!f.ok) { refused?.(f); return false; } guard(); }   // bytes move only once the body can change
+        if (fetch) { const run = fetch; fetch = undefined; const f = await run().catch((e: {code?: unknown}) => ({ok: false as const, code: typeof e?.code === 'string' ? e.code : 'body.source-unavailable', reason: 'The carried body could not be fetched and admitted here'})); if (!f.ok) { refused?.(f); return false; } guard(); }   // bytes move only once the body can change
         await host.enqueueChecked('body-assignment-v1', 'world:body', {contract: 'body-assignment/1', worldId: this.world, soulId, entityId, body: structuredClone(body)}, guard, () => true); this.d.invalidateBodies?.(); }
       catch { /* not standing still yet (or the birth look landed in between): try again */ }
       await (this.d.sleep ?? sleep)(100);
