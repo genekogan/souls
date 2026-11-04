@@ -59,9 +59,10 @@ switch independent. A previously saved master mute migrates to both switches off
   clock on return. The child gets no `SIM_UNWATCHED_PACE`, so it has no attention pace and no clock catch-up. It is never frozen, released to exit or
   evicted to make room. At start and every 15 s, `ChildPool.keepRunning` starts any such world that is not running,
   including one never visited, with a passive boot that is not a use. A world that cannot run (the running cap, the
-  memory floor, a boot failure) is never evicted or silent: `problems()` lists it as `continuousDown`, so it appears in
-  `/__sim/healthz` `hostCodes` and `world-problems.json`. Old-engine forks are not supported: they keep the idle policy
-  and are listed as `continuousUnsupported`. An admin pause, archive, body sleep, crash and wedge restarts, the
+  memory floor, a boot failure, a crash restart waiting for room) is never evicted or silent: `problems()` lists it as
+  `continuousDown`, so it appears in `/__sim/healthz` `hostCodes` and `world-problems.json`. Repeated boot failures still
+  trip the breaker (`held`). Old-engine forks are not supported: they keep the idle policy and are listed under
+  `continuous.unsupported` in `/__sim/launcher`, a configuration fact rather than a host fault, so not in `hostCodes`. An admin pause, archive, body sleep, crash and wedge restarts, the
   breaker (`held`) and handovers are unchanged. Restart downtime is not simulated: the clock resumes where the snapshot
   left it. Operating recipe and rollback: [runbook](../operations/runbook.md#continuous-worlds).
 - **Registry.** `<data>/worlds.json` records each world (slug, owner, template, flags). Reserved slugs include `toy`,

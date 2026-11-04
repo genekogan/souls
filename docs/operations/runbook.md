@@ -70,12 +70,15 @@ world running at its full clock without visitors ([worlds](../architecture/world
 turn it on in production until the capacity verdict for the running worlds says the host can carry all of them at once
 (#736, #740 A5). Every registered world then costs its full-clock CPU and memory all the time.
 
-1. Check capacity: registered current-engine worlds ≤ `--max-running`, and their resident memory fits under the unit's
-   memory limit with the qualified headroom.
+1. Check capacity: registered current-engine worlds, plus any old-engine forks that are running, ≤ `--max-running`,
+   and their resident memory fits under the unit's memory limit with the qualified headroom.
 2. Add `--continuous` and restart the unit. The launcher log says `continuous worlds: on`, then names each world it starts.
-3. Watch `/__sim/healthz` and `world-problems.json`. `continuousDown` means a world that should run is not (the reason is
-   in the text), and `continuousUnsupported` names old-engine forks, which keep the idle policy.
+3. Watch `/__sim/healthz` and `world-problems.json`. `continuousDown` means a world that should run is not, with the
+   reason in the text. A world that stays down is logged once, not on every sweep. `/__sim/launcher` `continuous`
+   lists `unsupported`, the old-engine forks, which keep the idle policy.
 4. Rollback: remove the flag and restart the unit. The idle pace, sleep and exit policy apply again from that start.
+   A `clock-wall.json` left from before activation still holds its old anchor. The first unwatched return after a
+   rollback therefore jumps the world's day clock by everything since that anchor, as the old policy always did.
 
 ## Backups
 

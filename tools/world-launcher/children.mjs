@@ -246,29 +246,36 @@ export class ChildPool {
   }
   /** CW6 (#740): with the continuous setting, start (passively: not a use) every given world that should be running and
    *  is not: never visited, its process gone, or capacity freed since. A world that cannot run is never silent: it is in
-   *  problems() as continuousDown (with the reason), and an old-engine fork as continuousUnsupported. Held, booting,
-   *  stopping, adopted and handed-back worlds are left to their own paths. Returns the slugs it started a boot for. */
+   *  problems() as continuousDown with the reason (a refused sweep boot, or a crash restart waiting for capacity). Old-
+   *  engine forks are configuration, not a fault: they are in continuousStatus().unsupported, not in problems() (which
+   *  turns the host's hostOk false). Held, booting, stopping, adopted and handed-back worlds are left to their own paths.
+   *  Returns the slugs it starts a boot for that were not already down (so a world that stays down is logged once). */
   keepRunning(worlds) {
-    const notes = (this.continuousNotes ??= new Map()), started = [];
+    const notes = (this.continuousNotes ??= new Map()), unsupported = (this.continuousForks ??= new Set()), started = [];
     if (!this.o.continuous || this.closing || this.fenced || this.gate) return started;
     const known = new Set();
+    const down = (slug, why) => notes.set(slug, { code: 'continuousDown', text: `${slug} should keep its full clock but is not running (${why})` });
+    unsupported.clear();
     for (const w of worlds) {
       known.add(w.slug);
-      if (w.fork) { notes.set(w.slug, { code: 'continuousUnsupported', text: `${w.slug} runs the old engine (a fork): continuous time is not supported for it, so it keeps the idle sleep policy` }); continue; }
+      if (w.fork) { unsupported.add(w.slug); continue; }
       const k = this.kids.get(w.slug);
       if (k?.held) { notes.delete(w.slug); continue; }   // shown as held
-      if (k?.frozen) this.thaw(k, { use: false });       // frozen before the setting was on
       if (k && k.status === 'running') { notes.delete(w.slug); continue; }
-      if (k && (k.ready || k.stopping || k.adopted || k.handedBack || k.timer || k.status === 'handover')) continue;
-      started.push(w.slug);
+      // a crash restart refused for capacity re-schedules itself without counting toward the breaker: still down
+      if (k?.timer) { if (k.restartReason === 'capacity') down(w.slug, `capacity: ${k.lastError ?? 'no room'}; it restarts when room frees`); continue; }
+      if (k && (k.ready || k.stopping || k.adopted || k.handedBack || k.status === 'handover')) continue;
+      if (!notes.has(w.slug)) started.push(w.slug);
       this.ensure(w, { passive: true }).then(() => notes.delete(w.slug), (e) => {
         if (['handed-over', 'handed-back', 'stopping', 'starting'].includes(e.code) || this.closing) return;
-        notes.set(w.slug, { code: 'continuousDown', text: `${w.slug} should keep its full clock but is not running (${e.code ?? 'error'}: ${e.message})` });
+        down(w.slug, `${e.code ?? 'error'}: ${e.message}`);
       });
     }
     for (const slug of notes.keys()) if (!known.has(slug)) notes.delete(slug);   // unregistered (archived) since
     return started;
   }
+  /** CW6: the continuous setting, the worlds it cannot cover (old-engine forks) and those down (as in problems()). */
+  continuousStatus() { return { on: !!this.o.continuous, unsupported: [...(this.continuousForks ?? [])], down: [...(this.continuousNotes ?? new Map()).keys()] }; }
   /** Wake a frozen world (SIGCONT); it counts as just used unless `use` is false (a passive read: it may sleep again soon). */
   thaw(k, { use = true } = {}) {
     if (!k?.frozen) return;
@@ -489,7 +496,7 @@ export class ChildPool {
     if (reason === 'wedged') k.lastWedge = { at: now, reason: k.lastExit?.reason ?? 'wedged' };
     if (reason !== 'capacity' && reason !== 'planned' && this.noteFailure(k, reason)) return;
     const wait = reason === 'planned' ? 0 : backoffMs(k.crashes++, this.random, g);
-    k.restartsBy = { ...(k.restartsBy ?? {}), [reason]: (k.restartsBy?.[reason] ?? 0) + 1 };
+    k.restartsBy = { ...(k.restartsBy ?? {}), [reason]: (k.restartsBy?.[reason] ?? 0) + 1 }; k.restartReason = reason;
     k.status = 'restarting'; k.restarts++; k.nextTryAt = now + wait; this.o.onChange?.(k.slug);
     this.log(`world ${k.slug} restarts in ${(wait / 1000).toFixed(1)} s (${reason}; failure ${k.failures?.length ?? 0} of ${g.breakerN} in ${Math.round(g.breakerWindowMs / 60_000)} min)`);
     if (!k.pending) { let resolve; const p = new Promise((r) => { resolve = r; }); p.catch(() => {}); k.pending = { p, resolve }; }

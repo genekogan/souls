@@ -918,7 +918,7 @@ export async function openLauncher(cfg = {}) {
       }
       if (path === '/__sim/launcher' && req.method === 'GET') {
         if (!direct(req)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
-        json(res, 200, { origin, publicOrigin: prod.publicOrigin, devAuth: prod.devAuth, dataDir, range, maxWorlds: MAX_WORLDS, maxRunning: prod.maxRunning, minFreeMb: prod.minFreeMb, memAvailableMb: memAvailableMb(), children: registry.worlds.map((w) => ({ slug: w.slug, viewers: live.get(w.slug) ?? 0, heapMb: w.fork ? (w.worldHeapMb ?? cfg.forkHeapMb ?? 1536) : worldHeapMb(w, prod.worldHeapMb), ...pool.status(w.slug) })) }); return;
+        json(res, 200, { origin, publicOrigin: prod.publicOrigin, devAuth: prod.devAuth, dataDir, range, maxWorlds: MAX_WORLDS, maxRunning: prod.maxRunning, minFreeMb: prod.minFreeMb, memAvailableMb: memAvailableMb(), continuous: pool.continuousStatus(), children: registry.worlds.map((w) => ({ slug: w.slug, viewers: live.get(w.slug) ?? 0, heapMb: w.fork ? (w.worldHeapMb ?? cfg.forkHeapMb ?? 1536) : worldHeapMb(w, prod.worldHeapMb), ...pool.status(w.slug) })) }); return;
       }
       // lane L7: Prometheus text for the worlds and the launcher (LOAD-CONTRACT §5), loopback only
       if (path === '/__sim/metrics' && req.method === 'GET') { if (!direct(req)) { json(res, 404, { ok: false, code: 'not-found' }); return; } serveMetrics(res, { launcher: { build: BUILD, maxRunning: prod.maxRunning, maxWorlds: MAX_WORLDS, memAvailableMb: memAvailableMb() }, clientErrors: errors, worlds: registry.worlds.map((w) => ({ slug: w.slug, ...pool.status(w.slug), refused: ceilings.refused(w.slug), listenHeld: ceilings.held(w.slug), ...(readStats.has(w.slug) ? { read: { ...readStats.get(w.slug) } } : {}), live: readLive(registry.worldDir(w.slug)) })) }); return; }
@@ -1038,10 +1038,10 @@ export async function openLauncher(cfg = {}) {
   // a handover starts nothing until it has taken over (takeOverAll sets `taken`)
   let taken = !adopting;
   const keepRunning = () => { if (!taken || closed || !pool.o.continuous) return; for (const slug of pool.keepRunning(registry.worlds.filter((w) => !closing.has(w.slug)).map(worldEnv))) log(`${slug}: starting it (continuous worlds: it keeps its clock without a visitor)`); };
+  if (pool.o.continuous) log('continuous worlds: on (no attention pace, idle sleep, idle exit or idle eviction for current-engine worlds)');
   if (!adopting) { wakeRecent(); keepRunning(); }   // a handover wakes nothing until it has taken over (takeOverAll)
   const continuousSweep = pool.o.continuous ? setInterval(keepRunning, cfg.continuousSweepMs ?? CONTINUOUS_SWEEP_MS) : null;
   continuousSweep?.unref();
-  if (pool.o.continuous) log('continuous worlds: on (no attention pace, idle sleep, idle exit or idle eviction for current-engine worlds)');
   // idle worlds sleep (frozen in place) and wake on their next request; see ChildPool.freezeIdle
   const sleepMs = cfg.sleepMs ?? SLEEP_MS;
   // ...and a world asleep for exitMs more exits (its memory given back) and cold-boots on its next request; see ChildPool.releaseIdle
