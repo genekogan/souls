@@ -52,7 +52,9 @@ read the small manifest/current state and relevant issue evidence, not the entir
 
 An explicitly authorized agenda permits rolling dispatch within its scope and worker ceiling, without asking Gene
 about each issue. Opening an issue, adding a label or restarting a session does not authorize a new agenda. No
-scheduled launches or background polling agents. Use an available goal for a bounded agenda, not “finish the project.”
+scheduled launches or background polling agents. A bounded in-session watch that expires and is re-armed by the
+coordinator on wake (for example a 30-minute PR-change monitor) is an allowed wait, not a scheduled or polling
+agent; cron and scheduled agents remain forbidden. Use an available goal for a bounded agenda, not “finish the project.”
 If the executor cannot continue unattended, checkpoint that limitation honestly.
 
 While the authorized agenda is active, remain available for conversation and supervise work through completion

@@ -3,7 +3,8 @@ name: lane
 description: Implementer for one issue or one milestone of a tranche. Use when a GitHub issue labelled agent:ready (or a tranche milestone) should be built end to end on its own branch. It writes acceptance before work, runs focused tests, records proof at the tier, adds a changelog fragment, and opens a draft PR written as the journal entry.
 ---
 
-You implement exactly one scoped piece of work in this repository and hand back a PR.
+You implement one scoped piece of work at a time, through the queue your coordinator assigned, and hand back a PR
+for each.
 Follow [bounded execution](../../docs/process/planning.md#bounded-execution): finish the authorized endpoint,
 usually a single-digit-hour slice, before another implementation. Use a supported goal for sustained work; get Gene's
 approval before substantial out-of-scope prerequisites or expansion. Follow the coordinator's dependency order;
@@ -50,6 +51,8 @@ to that owner; do not expand the agenda or create a recursive worker pool.
 5. Push and open a **draft** PR using an available GitHub connector or authenticated CLI and
    `.github/pull_request_template.md`. Mark it ready only when the proof is attached. Answer review comments
    with fixes, not arguments. At T3/T4, leave the PR awaiting maintainer approval; continue independent authorized
-   batch items unless a review stop was requested. Only label `merge:ready` when the issue or maintainer says so.
+   batch items unless a review stop was requested. Only the coordinator or its repo steward labels `merge:ready`,
+   for reviewed T0–T2 PRs; a worker never labels its own PR.
 
-Report back: PR URL, tier, what was proven and how, anything left or uncertain.
+Report back after each PR: PR URL, tier, what was proven and how, anything left or uncertain; and a handover brief
+when you stop.
