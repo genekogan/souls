@@ -115,8 +115,6 @@ const SHARED_WATER_WAIT_POLICY = 'shared-water-wait/1';
  * in old snapshots keep the plain wait, so recorded histories replay unchanged. */
 const SHARED_WATER_WAIT_POLICY_V2 = 'shared-water-wait/2';
 const SHARED_WATER_WAIT_POLICIES = new Set([SHARED_WATER_WAIT_POLICY, SHARED_WATER_WAIT_POLICY_V2]);
-/** route-reach/1: the refusals that mean people are in the way (a place is full only for these). */
-const PEOPLE_CODES = new Set(['route.goal-blocked', 'route.start-blocked']);
 type Op = { verb: string; params: Record<string, unknown>; settle: 'done' | 'held'; soft?: boolean; raw?: boolean } | { wait: number };
 type Prog = {
   id: string; actor: string; label: string; steps: Program['steps'];
@@ -597,8 +595,9 @@ export class MarsEngine implements Engine {
     for(const {p} of order){const no=this.plan(this.movementVerb(actor,p[0],p[1]),{actor,x:p[0],z:p[1],level},subjects);if(!no)return {x:p[0],z:p[1],level};last=no;if(subjects&&this.waterBodyObstruction(no,actor))crowded??=no;}
     let ringLast:Diag|undefined;
     if(v2&&ring.length){const ground=0;for(const p of ring.sort((a,b)=>Math.hypot(a[0]-e.pose.p[0],a[1]-e.pose.p[2])-Math.hypot(b[0]-e.pose.p[0],b[1]-e.pose.p[2])).slice(0,24)){const no=this.plan(this.movementVerb(actor,p[0],p[1]),{actor,x:p[0],z:p[1],level:ground});if(!no)return {x:p[0],z:p[1],level:ground};ringLast=no;}
-      // route-reach/1 (#872): only people make a place full; a spot no walk reaches reports the planner's own reason
-      if(this.cfg.routeReachV1===true&&ringLast&&!PEOPLE_CODES.has(ringLast.code)&&!PEOPLE_CODES.has(last.code))return crowded??ringLast;
+      // route-reach/1 (#872): only people make a place full (someone stands inside it); when nobody does, the spots no walk
+      // reaches report the planner's own reason
+      if(this.cfg.routeReachV1===true&&ringLast&&!taken.some(t=>inPoly(t[0],t[1],r.polygon)))return crowded??ringLast;
       return {code:'route.region-full',message:`${region} is full and nobody can stand beside it right now`};}
     return crowded??last;
   }

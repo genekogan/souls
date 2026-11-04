@@ -881,7 +881,7 @@ export function pagedRoute(nav: GroundNav, scene: SpatialScene, profile: AgentPr
     const last = k >= path.length && goal.level === 0, target: Vec2 = last ? goal.p : path[Math.min(k, path.length - 1)];
     const r = rectOf([start.p, target, ...path.slice(1, k + 1)], margin);
     const grids: GridSet = { cell: nav.cell, levels: new Map([[0, nav.compose(r, scene.obstacles)]]) };
-    return { k, last, res: findRoute(grids, { ...scene, bounds: rectBounds(r), links: [] }, profile, start, { level: 0, p: target }, last ? opts : { ...opts, goalTolerance: 2.5 }) };
+    return { k, last, target, grid: grids.levels.get(0)!, res: findRoute(grids, { ...scene, bounds: rectBounds(r), links: [] }, profile, start, { level: 0, p: target }, last ? opts : { ...opts, goalTolerance: 2.5 }) };
   };
   let h = hop(k0);
   // BS3 (b): the coarse path runs through enterable buildings (only big solids are coarse-solid), so the hop's waypoint can
@@ -890,7 +890,9 @@ export function pagedRoute(nav: GroundNav, scene: SpatialScene, profile: AgentPr
   if (!h.res.ok && !h.last) for (const kk of hopRetries(k0, path.length, h.res.diagnostic.code, goal.level === 0)) { const t = hop(kk); if (t.res.ok) { h = t; break; } }
   // route-reach/1 (#872): the fine route can need ground outside a window cut WINDOW_MARGIN_M round the coarse path (a
   // fence or a building's walls the coarse path crosses: the way round leaves the tile). One tile wider, once, before refusing.
-  if (!h.res.ok && opts.routeReachV1 && HOP_RETRY_CODES.has(h.res.diagnostic.code)) { const t = hop(h.k, WINDOW_MARGIN_M + GROUND_TILE_M); if (t.res.ok) h = t; }
+  // Only when neither end is sealed inside this window: an area wholly inside it stays sealed in any wider one, so a place
+  // no walk reaches keeps its old, cheap refusal (review: a sealed goal flooded the wide window on every admission check).
+  if (!h.res.ok && opts.routeReachV1 && HOP_RETRY_CODES.has(h.res.diagnostic.code) && !enclosedIn(h.grid, start.p, profile.radius) && !enclosedIn(h.grid, h.target, profile.radius)) { const t = hop(h.k, WINDOW_MARGIN_M + GROUND_TILE_M); if (t.res.ok) h = t; }
   const { k, last, res } = h;
   if (!res.ok || last) return res;
   // length: this chunk's, plus the coarse path's remainder (an estimate of the whole walk, e.g. routeEstimateV1)
@@ -899,6 +901,28 @@ export function pagedRoute(nav: GroundNav, scene: SpatialScene, profile: AgentPr
   return { ok: true, route: { ...res.route, length: res.route.length + more, rest: goal } };
 }
 
+/**
+ * route-reach/1: whether the standing area round `p` (cells with clearance for radius `r`, 8-connected, from the nearest
+ * such cell within 0.6 m) lies wholly inside grid `g`, never reaching its edge. True also when no cell near `p` has room.
+ * Bounded: past `limit` cells it answers false (the wider window is tried).
+ */
+export function enclosedIn(g: LevelGrid, p: Vec2, r: number, limit = 250_000): boolean {
+  const c = g.cell, ci = latticeIndex(p[0], c) - g.ox, cj = latticeIndex(p[1], c) - g.oz, snap = Math.ceil(0.6 / c);
+  let seed = -1, best = Infinity;
+  for (let dj = -snap; dj <= snap; dj++) for (let di = -snap; di <= snap; di++) {
+    const i = ci + di, j = cj + dj; if (i < 0 || j < 0 || i >= g.nx || j >= g.nz) continue;
+    const k = j * g.nx + i, d = di * di + dj * dj; if (g.clearance[k] >= r && d < best) { best = d; seed = k; }
+  }
+  if (seed < 0) return true;
+  const seen = new Uint8Array(g.nx * g.nz), queue = [seed]; seen[seed] = 1;
+  for (let q = 0; q < queue.length; q++) {
+    if (queue.length > limit) return false;
+    const k = queue[q], i = k % g.nx, j = (k - i) / g.nx;
+    if (i === 0 || j === 0 || i === g.nx - 1 || j === g.nz - 1) return false;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const n = k + dj * g.nx + di; if (!seen[n] && g.clearance[n] >= r) { seen[n] = 1; queue.push(n); } }
+  }
+  return true;
+}
 /** Distances (m along the line to the goal) of the ground points route-reach/1 tries as the end of an upper floor's first chunk. */
 const UPPER_CHUNK_M = [60, 48, 36, 24, 12, 0];
 /**

@@ -60,9 +60,15 @@ test('route-reach/1: a hop whose way round leaves the tile window is planned one
 test('route-reach/1: a place no walk reaches still refuses honestly', () => {
   // the same fence closed into a ring round the goal: no way in at any window
   const ring = { e_ring: { surfaces: [], solids: [wall('n', [100, 22], [10, 0.11]), wall('s', [100, 42], [10, 0.11]), wall('w', [90, 32], [0.11, 10]), wall('e', [110, 32], [0.11, 10])], links: [] } } as unknown as WorldEditV1['set'];
-  const e = world('ring', ring, [], true);
-  const r = e.reachV1({ p: [70, 32] }, { p: [100, 32] });
-  assert.equal(r.ok, false, JSON.stringify(r)); assert.equal((r as { code: string }).code, 'route.unreachable');
+  const composites = (x: Eng) => (x as never as { rt: { services: { spatial: { ground: { stats: { composites: number } } } } } }).rt.services.spatial.ground.stats.composites;
+  const off = world('ring-off', ring), e = world('ring', ring, [], true);
+  for (const x of [off, e]) {
+    const c0 = composites(x), r = x.reachV1({ p: [70, 32] }, { p: [100, 32] });
+    assert.equal(r.ok, false, JSON.stringify(r)); assert.equal((r as { code: string }).code, 'route.unreachable');
+    (x as never as { spent: number }).spent = composites(x) - c0;
+  }
+  // and cheaply: the sealed goal is found inside the first window, so no wider window is composed (review: it flooded one)
+  assert.equal((e as never as { spent: number }).spent, (off as never as { spent: number }).spent, 'no extra window for a sealed goal');
 });
 
 // A two-storey house with stairs: from its upper floor, a ground goal 110 m away was refused `ground.too-far`.
@@ -100,7 +106,8 @@ test('route-reach/1 replays: a snapshot keeps the policy, and a world without it
 });
 
 // bench-eden / eden-2026: from an upper floor, `walk:field` (a place 100 m away) said "field is full and nobody can stand
-// beside it" when every spot was only too far to plan; now it is planned, and a real full place still says full.
+// beside it" when every spot was only too far to plan; now it is planned. (A place people fill still says full: it is the
+// unchanged branch, taken only while someone stands inside it.)
 test('route-reach/1: a far place is planned from an upper floor, not reported full', () => {
   type R = Eng & { installPlaceRegionsV1(l: { id: string; label: string; polygon: [number, number][] }[]): string[]; canPerform(p: unknown): { code: string; message: string } | null };
   const mk = (seed: string, policy: boolean) => {

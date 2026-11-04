@@ -155,4 +155,6 @@ through an explicit world descriptor; once adopted, a rollback must use a reader
 - **Full places.** A place is reported `route.region-full` only when people fill it. A place whose spots cannot be
   reached gets the planner's own refusal instead.
 
-A place that no walk reaches still refuses.
+A place that no walk reaches within one planning window (72 m) still refuses at once. Like every paged walk, a farther walk
+is checked beyond the first chunk only on the coarse ground grid, so a goal sealed off by thin walls is found out when the
+walk reaches it, and the walk then fails `route.unreachable` there.
