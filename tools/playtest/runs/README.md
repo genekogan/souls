@@ -229,8 +229,10 @@ Four saved arms of the same hamlet trio compare observer cost (#803): `specs/ham
 recording off) and `hamlet-trio-recorded.json`. The recording share is the difference between the last two. Every run's
 receipt has `cost.processes`: CPU seconds and peak RSS of the runner's descendant processes by class (`browser`,
 `encoder` for Playwright's ffmpeg, `world`, `other`), sampled with `ps` every 2 s. Only the class is kept, never a
-command line. A process that exits between samples loses up to one interval. If `ps` fails, the field is `unavailable`
-with the reason, and the run is unaffected.
+command line. Basis: only descendants of the runner's process are counted, so a process that is reparented or detached
+out of that tree is missed. A process that exits between samples loses up to one interval. Peak RSS is the largest
+sampled sum of RSS over the processes in each class, so memory they share can make it overstate actual use. If `ps`
+fails, the field is `unavailable` with the reason, and the run is unaffected.
 
 ## Scenario runner hooks
 
