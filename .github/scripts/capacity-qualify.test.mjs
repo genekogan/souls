@@ -91,7 +91,7 @@ test('scrub: paths verbatim, names as whole words, short values ignored', () => 
   assert.equal(s, './x at ~ on <host>; boxhosted; ab');
 });
 
-function fixture({ token = 'tok-0123456789abcdef', leak = false, otherSouls = 0 } = {}) {
+function fixture({ token = 'tok-FAKE-fixture-0000', leak = false, otherSouls = 0 } = {}) {
   const out = mkdtempSync(join(tmpdir(), 'cq-')), r = join(out, 'even-r1');
   mkdirSync(join(r, 'souls', 's0'), { recursive: true }); mkdirSync(join(r, 'launcher'), { recursive: true });
   writeFileSync(join(r, 'souls', 's0', '.eden-agent.json'), JSON.stringify({ token }));
