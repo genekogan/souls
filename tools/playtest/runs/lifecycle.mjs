@@ -3,6 +3,7 @@
 // The lifecycle owns cleanup and the receipt; the scenario runner keeps its own steps and semantics.
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createLedger } from './ledger.mjs';
 import { validateSpec, portFree } from './spec.mjs';
@@ -17,7 +18,8 @@ const short = (e) => String(e?.message ?? e).split('\n')[0].slice(0, 300);
 const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
 const inside = (root, p) => { const r = relative(resolve(root), resolve(p)); return r && !r.startsWith('..') && !r.startsWith(sep) && r !== '..'; };
 
-const TOOLS_ROOT = new URL('.', import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: a checkout under a path with a space (or %, #, non-ASCII) must still resolve.
+export const TOOLS_ROOT = fileURLToPath(new URL('.', import.meta.url));
 const checkoutIdentity = (cwd) => {
   const git = (args) => { try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000 }).trim(); } catch { return null; } };
   const status = git(['status', '--porcelain', '--untracked-files=no']);

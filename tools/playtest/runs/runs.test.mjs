@@ -1,13 +1,14 @@
 // Soul Runs SR1 (#750): spec validation, the ownership ledger and the lifecycle's terminal receipts. Deterministic:
 // no world, browser, model or network; temporary directories only; borrowed resources are fakes the test watches.
 import { test } from 'node:test';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLedger } from './ledger.mjs';
 import { validateSpec } from './spec.mjs';
-import { startRun, cleanupRun, RECEIPT, sourceIdentity } from './lifecycle.mjs';
+import { startRun, cleanupRun, RECEIPT, sourceIdentity, TOOLS_ROOT } from './lifecycle.mjs';
 import { execFileSync } from 'node:child_process';
 import { cmdRun } from '../playtest.mjs';
 
@@ -223,4 +224,15 @@ test('the receipt source names both the server root and the tools checkout, labe
   assert.deepEqual(same.tools, same.serverRoot, 'one checkout is still recorded under both labels');
   const none = sourceIdentity(tmpdir(), tools.d);
   assert.equal(none.serverRoot.commit, null, 'not a checkout reads as null, never as a guess');
+});
+
+test('the tools checkout resolves under a path with a space; the default tools root is a real directory (#785)', () => {
+  assert.ok(existsSync(TOOLS_ROOT) && existsSync(join(TOOLS_ROOT, 'lifecycle.mjs')), `TOOLS_ROOT ${TOOLS_ROOT} must exist`);
+  const d = join(mkdtempSync(join(tmpdir(), 'sr-space-')), 'a dir #1'); mkdirSync(d, { recursive: true });
+  const g = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd: d, stdio: 'ignore' });
+  g('init', '-q'); writeFileSync(join(d, 'a.txt'), 'x'); g('add', '.'); g('commit', '-q', '-m', 'x');
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: d, encoding: 'utf8' }).trim();
+  const viaUrl = fileURLToPath(pathToFileURL(join(d, 'lifecycle.mjs')).href.replace(/lifecycle\.mjs$/, ''));
+  assert.notEqual(new URL('.', pathToFileURL(join(d, 'lifecycle.mjs'))).pathname, `${d}/`, 'URL.pathname is percent-encoded here: the old bug');
+  assert.deepEqual(sourceIdentity(d, viaUrl).tools, { commit: head, dirtyTrackedFiles: 0 });
 });
