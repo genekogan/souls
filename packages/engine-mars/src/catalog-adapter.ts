@@ -36,6 +36,8 @@ export const FIXTURE_COMPONENTS = ['seat', 'bed', 'surface', 'container', 'carry
 export const isFixtureDef = (d: Pick<DefFacts, 'components'> & Partial<Pick<DefFacts, 'tags' | 'name' | 'ref' | 'slots'>>) => FIXTURE_COMPONENTS.some((k) => !!d.components[k]) || isFireCircleDef(d) || !!d.slots?.some((s) => s.kind === 'hang');
 /** A small one-hand item the engine's items verbs (take_item / put_item) can carry. */
 export const isCarryableDef = (d: Pick<DefFacts, 'components'>) => !!d.components.carryable;
+/** PC03 (#682): an adapted loose material (an item whose handling is the native crew carry's, not a small one-hand item). */
+export const isLooseCarryAsset = (a: Pick<AssetDef, 'category' | 'handling'> | undefined) => a?.category === 'item' && !!a.handling && !a.handling.small;
 
 const SURFACE_PITCH = 0.3, SURFACE_MARGIN = 0.12;
 const r4 = (v: number) => Math.round(v * 10000) / 10000;

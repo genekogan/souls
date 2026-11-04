@@ -12,6 +12,7 @@ import type { Brain } from './brain.ts';
 import type { Db } from './db.ts';
 import { type WorldHost } from './world.ts';
 import type { Souls } from './souls.ts';
+import { isLooseCarryAsset } from '@sim/engine-mars';
 import type {CandidateStationV1} from './station.ts';
 import type {CandidateStationV2} from './station-v2.ts';
 
@@ -56,8 +57,8 @@ export function viewerChunk<T>(chunk: T): T {
   const handling: Record<string, import('../../../mars/viewer/engine/world/catalog.ts').Handling> = {};
   for (const id of Object.keys(c.take?.tracks ?? {})) {
     const e = records?.[id] ?? c.take?.entities0?.[id];
-    const h = e && physics.assets?.[e.def]?.capabilities?.fixtureCarry?.handling;
-    if (h) handling[e.def] = h;
+    const a = e && physics.assets?.[e.def], h = a ? a.capabilities?.fixtureCarry?.handling ?? (isLooseCarryAsset(a) ? a.handling : undefined) : undefined;
+    if (e && h) handling[e.def] = h;
   }
   return { ...c, take: { ...c.take, finalState: rest, ...(Object.keys(handling).length ? {fixtureCarryHandlingV1: handling} : {}) } } as T;
 }
