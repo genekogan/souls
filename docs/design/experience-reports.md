@@ -11,9 +11,12 @@ This is also the field-learning component of [agency quality](agency-quality.md)
 [#625](https://github.com/genekogan/souls/issues/625) defines evaluation validity. Local capture and remote
 sharing are independent opt-ins, both disabled by default. Develop one useful local episode before expanding
 upload/aggregation. No feature or data collection is enabled by this planning expansion.
-The November 3 controllability revision starts with a minimal trace/readout; neither a complete browser viewer
-nor this reporting service blocks a demonstrated control fix. Each small release can use existing health
-evidence and deliberately opted-in local episodes, with a bounded observation window and honest missing feedback.
+The combined controllability agenda starts with a minimal trace/readout, then a bounded local inspector before
+the planned core-control pass. Elaborate viewer/reporting expansion does not block that pass. Each small release
+can use existing health evidence and deliberately opted-in local episodes, with a bounded observation window
+and honest missing feedback. Physical collaboration under [#560](https://github.com/genekogan/souls/issues/560)
+uses the same record, inspector and export path. Participation in a shared action does not authorize collection
+or export of another owner's private trace, prompts or media; cross-participant joins retain consent and gaps.
 
 ## Reuse the evidence we have
 

@@ -24,8 +24,9 @@ responsiveness and system cost. No universal first-action latency target is esta
 
 The objective is a Soul that carries an intention over short and long horizons, receives relevant changes
 promptly, acts without avoidable delay and remains steerable while doing so. Observation is an enabling tool,
-not the product finish line. A comprehensive dashboard, fleet reporting system or harness replacement must not
-become a prerequisite for repairing a demonstrated control failure.
+not the product finish line. The chosen sequence is basic passive telemetry, a bounded local debugging UI,
+core controllability, then advanced demonstrations and physical collaboration. A comprehensive dashboard,
+fleet reporting system or harness replacement must not expand the initial diagnostic phases indefinitely.
 
 The ordered assignments and release journal live in [#623](https://github.com/genekogan/souls/issues/623).
 Each implementation slice owns one independently useful outcome and its proof, normally within a single-digit
@@ -43,7 +44,7 @@ new improvement. Reject an ineffective candidate rather than manufacture a PR or
 Begin with one supported control path used in ordinary play, documenting how it was identified. Distinguish
 direct chat, legacy live and managed control; do not claim cross-host coverage from one adapter. Reuse existing
 listeners, dashboards, task state and receipts. Add only missing fields necessary for the next question. A
-small trace/readout is enough for the first fixes; the browser viewer can consume that contract independently.
+small trace/readout establishes the contract for the early browser viewer and subsequent control fixes.
 Expand coverage by a named subsequent slice, never silently drop other supported paths.
 
 ### Running intentions and responsive activity
@@ -332,11 +333,11 @@ endless study. Existing safety/security/proof/release requirements remain; no ga
 ## Ownership and implementation handoff
 
 Follow the [development coordinator contract](https://github.com/genekogan/souls/blob/main/docs/process/development-coordinator.md)
-and #623's current dated agenda. Start with #592's bounded current-path/evidence inventory and #625's small
-baseline/stress specification. Then qualify a minimal passive trace with its own cost. Select one or two
-demonstrated control defects for the first useful batch; the full #624 viewer and #590 reporting expansion are
-not mandatory prerequisites. Source-only audits and focused correctness fixes may proceed earlier with
-proportionate proof. File implementation children when their outcome and evidence are concrete; retain the
+and #623's current dated agenda. Start with #592's bounded current-path/evidence inventory, qualify the minimal
+passive trace and #625's small baseline/stress specification, then deliver #624's bounded local inspector.
+Select demonstrated control defects for the first useful core batch. Elaborate viewer/reporting expansion is
+not a prerequisite; a separately urgent evidenced correctness fix can proceed with a recorded ordering exception.
+File implementation children when their outcome and evidence are concrete; retain the
 15 original work issues as scope/evidence owners, not 15 giant assignments or a completion percentage.
 
 #626 host-loop changes and #450/#451 capacity work are conditional routes to a demonstrated control benefit,
@@ -345,10 +346,11 @@ bridge. A bounded comparison may reject a rewrite. Do not launch every lane or a
 the future coordinator's actual implementation, model/resource, merge and release authority before dispatch;
 this design revision itself launches no workers, model runs, collection or deployment.
 
-The existing continuity, scalability, action and reporting owners remain authoritative. Expressive actions
-[#26](https://github.com/genekogan/souls/issues/26)/[#426](https://github.com/genekogan/souls/issues/426) and
-cooperation [#560](https://github.com/genekogan/souls/issues/560) supply transfer cases, not a prerequisite to
-rebuild every activity. Client performance #556, project visibility #581/#583 and operational alerting #461
+The existing continuity, scalability, action and reporting owners remain authoritative. Physical collaboration
+[#560](https://github.com/genekogan/souls/issues/560) is a major workstream inside #623, with its full acceptance
+preserved. Expressive actions [#26](https://github.com/genekogan/souls/issues/26)/
+[#426](https://github.com/genekogan/souls/issues/426) retain their unrelated scope; accepted activities are reused.
+Client performance #556, project visibility #581/#583 and operational alerting #461
 are related but do not substitute for this experience-level work.
 
 Apply independent review at the repository cadence and before shared-contract adoption; Gene's review points
@@ -357,3 +359,49 @@ from actual surfaces: planning T0, local UI at least T2, shared behavior/runtime
 No production migration, automatic issue flood,
 continuous model critic or central social director is implied. Preserve rejected hypotheses and historical
 failures, update issues with dispositions and link implementation proof and eventual release evidence separately.
+
+## Physical collaboration within the same control framework
+
+The [physical collaboration design](physical-coordination.md) supplies the largest advanced application of this
+control contract. Independently owned Souls agree to bounded execution together, retain their own intentions,
+and return to independent activity. Mars construction is the first demanding application; partner movement,
+performances, tools, preparation and games establish broader reuse. More animations alone do not establish
+better agency, and core responsiveness must not wait for the construction programme to finish.
+
+Use one existing decision owner per Soul and one authoritative world operation for a coupled maneuver. A shared
+session is a temporary physical commitment, not a second mind, scheduler or global Soul lock. Receive owner
+revisions and relevant events during execution; allow compatible speech and observation. An incompatible
+physical change requests the accepted safe cleanup. Report stop receipt, cleanup progress, supported blockage
+and actual resource release separately. Prompt reception cannot promise instantaneous inference or safe release.
+
+| Shared boundary | Required integration |
+|---|---|
+| Evidence | Extend the common episode record with shared session/revision, role, capability/resource claims, operation and per-member outcomes; reuse the local inspector and report path |
+| Intention | Keep the latest owner's outcome/constraints distinct from an assembly project's remaining structure; cancellation invalidates obsolete future work without erasing completed effects |
+| Busy | Distinguish request admission, host availability and physical claims; holding a beam does not justify rejecting unrelated speech or all observations |
+| Recovery | Reconcile host intent and uncertain writes with authoritative load/claims/effects; reconnect grants no new consent and cannot revive cancelled tasks |
+| Discovery | Show compact relevant invitations, feasible roles and actual prerequisites; deeper blueprint/geometry details stay on request |
+| Proof | Reuse the same fault probes, varied tasks and timing contract; add current-rig contact, support/custody and actual audio when relevant |
+
+Correlation across participants is not permission to inspect another owner's private agent trace. Each owner
+controls capture/export of their own diagnostic content. Join authorized world/session facts with consented
+records, preserve redaction and missing links, and show partial visibility honestly. A coordinator or world owner
+does not gain another participant's private prompts, observations or media merely by organizing shared work.
+
+Inventory the interface constraints early; reconcile the minimum shared execution contract against the qualified
+core behavior before building consumers. Do not freeze a universal collaboration API before the first carry.
+Physical scope owners remain responsible for consent, readiness, atomic claims, safe cleanup and world state;
+core control owners remain responsible for input delivery, retries and intent continuity. Contract changes have
+one reviewed owner and named consumers, not duplicate implementations or evidence pipelines.
+
+Qualify ordinary-agent discovery/agreement, compatible conversation, owner course correction, limited competing
+claims and unrelated-Soul progress with the first safe carry. Each later family checks its own interruption and
+restart semantics; final combined qualification tests interactions and full coverage rather than discovering
+these requirements for the first time. Demonstrate the latest intent after release, including explicit cancellation.
+
+One combined coordinator uses one serial implementation worker by default for this agenda. Keep proof/review
+capacity inside actual limits and preserve other active owners. The durable order is diagnostics, inspector,
+core control, expressive composition, safe carry, portable usable bay, other collaboration families, extended
+Lab recovery and combined delivery. Exact assignments, dependency evidence, estimates and status live in #623
+and #560. Carry and the first bay can ship independently; full closure still requires every required Lab,
+activity-family and asset outcome. Source omissions trigger explicit work and reforecasting, not silent exclusion.
