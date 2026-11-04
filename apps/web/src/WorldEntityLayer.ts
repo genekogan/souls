@@ -1,3 +1,5 @@
+import {RecordedPlanters} from './fx/recorded-planters.ts';
+import { biologyEnabled } from '@sim/world-compiler';
 import {handActuatorFrame,knockContacts,opPoint,HAND_REACH_SECONDS,LOCK_TURN_SECONDS,type HandActuatorMotion} from '../../../mars/viewer/engine/social/hand-actuator.ts';
 import {lockPose} from './gen-mesh/vocab-look.ts';
 import {frozenMatrixWorld} from './rendering/FrozenMatrixWorld.ts';
@@ -25,7 +27,7 @@ import {wateringDiffAhead} from './watering-diff-clock.ts';
 import {defLights} from './WorldNightLights.ts';
 import {pourJets, spoutJets, waterJets} from './fx/water-jets.ts';
 import {setSteam, steam} from './fx/steam.ts';
-import {isGrowingDef, plantGroup, plantLookOf, posePlants, type PlantGroup, type PlantLook} from './fx/plant-growth.ts';
+import {isGrowingDef, plantGroup, plantLookOf, posePlants, plantSeed, plantPatch, type PlantGroup, type PlantLook} from './fx/plant-growth.ts';
 import {itemDiffAhead} from './item-diff-clock.ts';
 import {beginOpeningMotion,stepOpeningMotion,type OpeningMotion} from './opening-motion.ts';
 import { EntityInstancer, instanceable } from './EntityInstancer.ts';
@@ -863,6 +865,21 @@ export class WorldEntityLayer {
     }
   }
 
+  private currentRecordedPlantIds=new Set<string>();
+  private readonly recordedPlanters=new RecordedPlanters();
+  private hiddenRecordedPlants=new Set<string>();
+  setPlantTake(take:Parameters<RecordedPlanters['setTake']>[0]) {this.recordedPlanters.setTake(take);}
+  plantFrame(entities:Parameters<RecordedPlanters['update']>[0],tick:number,clock?:Parameters<RecordedPlanters['update']>[2],historical=false) {
+    if(!this.recordedPlanters.group.parent)this.group.add(this.recordedPlanters.group);
+    const shown=this.recordedPlanters.update(entities,tick,clock),hidden=new Set(shown);
+    if(historical)for(const id of this.currentRecordedPlantIds)hidden.add(id);
+    for(const id of this.hiddenRecordedPlants)if(!hidden.has(id))this.recordedPlantHidden(id,false);
+    for(const id of hidden){this.recordedPlantHidden(id,true);this.plantTweens.delete(id);}
+    this.hiddenRecordedPlants=hidden;
+  }
+
+  private recordedPlantHidden(id:string,hidden:boolean){const d=this.drawn.get(id);if(d&&d.obj.visible===hidden){d.obj.visible=!hidden;this.staticRevision++;}}
+
   update(dt: number, nowMs: number, baseGround?: THREE.Object3D) {
     this.now = nowMs;
     if (!this.active) return;
@@ -899,7 +916,7 @@ export class WorldEntityLayer {
       if (!d || !grp) { this.plantTweens.delete(id); continue; }
       if (d.frozen) { this.thaw(d); this.live.add(id); }
       const k = easeInOut((nowMs - tw.t0) / tw.dur), look = { g: tw.from.g + (tw.to.g - tw.from.g) * k, w: tw.from.w + (tw.to.w - tw.from.w) * k, m: tw.from.m + (tw.to.m - tw.from.m) * k };
-      posePlants(grp, look); setPatch(d.obj, look.m); d.obj.updateMatrixWorld(true); this.plantShown.set(id, look);
+      posePlants(grp, look); plantPatch(d.obj, look.m); d.obj.updateMatrixWorld(true); this.plantShown.set(id, look);
       if (k >= 1) this.plantTweens.delete(id);
     }
     // PERF-EVENTLOOP: no pass over the drawn things. Settled still things (Eden 2026: ~4,600 of 4,877; a 50,000-thing world: nearly
@@ -950,6 +967,7 @@ export class WorldEntityLayer {
       if (d.motion && t >= 1 && !inHand && shown && moving && (!view || ride || this.motionInView(d, view, d.k! + frame))) animate(d.obj, d.motion.entity, d.motion.def, nowMs / 1000, { y: ride ? ride.y : d.to.p.y, yaw: ride && this.overrideYaw.has(id) ? -this.overrideYaw.get(id)! : d.motion.yaw });
       if (ride) { d.obj.position.x = ride.x; d.obj.position.z = ride.z; }
     }
+    for(const id of this.hiddenRecordedPlants)this.recordedPlantHidden(id,true);
     void dt;
   }
 
@@ -1408,6 +1426,7 @@ export class WorldEntityLayer {
   };
 
   dispose() {
+    this.recordedPlanters.dispose();
     this.decoderDisposed = true; this.decoder?.dispose();
     this.sites.dispose();
     for (const pool of [this.instancer, this.scatterPools, this.motionInstancer]) pool.group.removeEventListener('childadded', this.onPoolGeometryAdded);
@@ -1629,9 +1648,10 @@ export class WorldEntityLayer {
     // Entry 34: a growing planter's plants, eased from how they were last drawn to what the state now asks for; a can
     // carried by its handle (a `carry` slot) is posed from the hand every frame, so never instanced
     if (isGrowingDef(def as never)) {
+      if(def.state.biologyEnabled&&(biologyEnabled(e.state,def)||Number(e.state?.biologyHour??-1)>=0))this.currentRecordedPlantIds.add(e.id);else this.currentRecordedPlantIds.delete(e.id);
       const look = plantLookOf(e.state, def as never), shown = this.plantShown.get(e.id) ?? look;
-      built.add(plantGroup(seedOf(e.id), shown)); delete built.userData.instanceKey; setPatch(built, shown.m); this.growing.add(e.id);
-      if (!sameLook(shown, look)) this.plantTweens.set(e.id, { from: shown, to: look, t0: this.now, dur: lookSeconds(shown, look) * 1000 }); else this.plantTweens.delete(e.id);
+      built.add(plantGroup(plantSeed(e.id), shown)); delete built.userData.instanceKey; plantPatch(built, shown.m); this.growing.add(e.id);
+      if (!biologyEnabled(e.state, def) && !sameLook(shown, look)) this.plantTweens.set(e.id, { from: shown, to: look, t0: this.now, dur: lookSeconds(shown, look) * 1000 }); else this.plantTweens.delete(e.id);
       this.plantShown.set(e.id, shown);
     }
     { const grip = (def as unknown as { slots?: { kind: string; p: number[] }[] }).slots?.find((x) => x.kind === 'carry'); if (grip) { built.userData.handleGrip = [...grip.p]; delete built.userData.instanceKey; } }
@@ -1679,6 +1699,7 @@ export class WorldEntityLayer {
   /** What a thing's picture had around it (jets, steam, growth, where it is kept or held). */
   private forget(id: string) {
     this.held.delete(id); this.horizonBy.delete(id);
+    this.currentRecordedPlantIds.delete(id);
     this.tapJets.delete(id); this.growing.delete(id); this.plantShown.delete(id); this.plantTweens.delete(id);
     { const pour = this.pours.get(id); if (pour) { pour.removeFromParent(); (pour.material as THREE.Material).dispose(); this.pours.delete(id); } }
     { const st = this.steamers.get(id); if (st) { st.pts.removeFromParent(); (st.pts.material as THREE.Material).dispose(); st.lamp?.removeFromParent(); this.steamers.delete(id); } } this.keptIn.delete(id);
@@ -1832,15 +1853,9 @@ const _pl = new THREE.Vector3(), _pr = new THREE.Vector3(), _v3 = new THREE.Vect
 // Entry 34 scratch: held-by-handle pose, tap catch, rose shower
 const _qh = new THREE.Quaternion(), _qt = new THREE.Quaternion(), _qy = new THREE.Quaternion(), _zAxis = new THREE.Vector3(0, 0, 1), _yAxis = new THREE.Vector3(0, 1, 0), _vs = new THREE.Vector3(), _vo = new THREE.Vector3(), _vn = new THREE.Vector3(), _vr = new THREE.Vector3(), _eu = new THREE.Euler();
 const easeInOut = (k: number) => { const x = Math.max(0, Math.min(1, k)); return x * x * (3 - 2 * x); };
-/** A planter's seed for its plants' layout (stable per entity). */
-const seedOf = (id: string) => { let h = 2166136261; for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619); return h; };
 const sameLook = (a: PlantLook, b: PlantLook) => Math.abs(a.g - b.g) < 1e-3 && Math.abs(a.w - b.w) < 1e-3 && Math.abs(a.m - b.m) < 1e-3;
 /** A stage or a wilt change eases over 2.4 s; the soil darkening while water is poured over 0.9 s. */
 const lookSeconds = (a: PlantLook, b: PlantLook) => (Math.abs(a.g - b.g) > 1e-3 || Math.abs(a.w - b.w) > 1e-3 ? 2.4 : 0.9);
-/** The damp patch (role fill) of a planter spread for moisture `m`. */
-function setPatch(root: THREE.Object3D, m: number) {
-  root.traverse((o) => { if (o.userData.role === 'fill') { const k = Math.max(0.001, Math.min(1, m)); o.scale.set(k, 1, k); o.visible = m > 0.02; } });
-}
 /** Still in a scene graph (a re-created figure leaves its old holder detached). */
 function attached(o: THREE.Object3D): boolean { let p: THREE.Object3D | null = o; for (let i = 0; p && i < 64; i++) { if (p.type === 'Scene') return true; p = p.parent; } return false; }
 /** Lane PERF2: two grounds differ only in landforms, waters or extent (what a world diff's tile list covers), so baked

@@ -43,6 +43,7 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `bsgen-20261021.json` | re-pins for apartment block, office block and hospital revisions |
 | `seatdef-20261022.json` | re-pins for seat heights taken from model geometry |
 | `office-desk-20261028.json` | `core-office-desk@2` (no baked scenery chairs): one construction-view draw overrun |
+| `garden-biology-20261104.json` | immutable default-off `core-garden-planter@3`: focused sweep has no findings or rendering gaps |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
 Repair a range or budget in a new revision and pin what remains.

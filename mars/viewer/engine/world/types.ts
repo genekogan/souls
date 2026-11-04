@@ -192,6 +192,9 @@ export type Entity = {
   /** Partial preparation survives interruption; incomplete contents cannot be served. */
   foodPreparation?: FoodPreparation;
   gardenCare?: import('../objects/garden.ts').GardenState;
+  /** God-planter opt-in anchor; independent of native conserved garden care. */
+  plantRenderV1?: {defHash:string;params:Record<string,unknown>;seed:number;scale:number};
+  plantBiology?: { biologyEnabled: boolean; biologyHour: number; biologyWilt: number; biologyTarget: number; biologyMoisture: number; biologyGrowth: number };
   /** Soul Actions 34: a handle-held can rides this much lower in the hand when it is full (m). */
   carryDropV1?: number;
   planting?: import('../objects/planting.ts').PlantingState;
@@ -237,6 +240,10 @@ export type Environment = {
 };
 
 export type WorldState = {
+  /** Commit-maintained index: unflagged fixtures need no biological tick scan. */
+  plantBiologyIdsV1?: string[];
+  plantStaticIdsV1?: string[];
+  plantRenderDefsV1?: Record<string,unknown>;
   schema: typeof WORLD_SCHEMA;
   base: BaseRef;
   tick: number;

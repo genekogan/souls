@@ -4,7 +4,7 @@ import {actuatorPoint,actuatorHand,tugPoint,opPoint,slidePoint,strokePoint,strok
 import { createHash } from 'node:crypto';
 import { isDry, stageWord } from './garden.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
-import { opSchema, contactStateKey, DRAWER_TRAVEL, containerInside, pinSlot, signupSlot, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
+import { opSchema, biologyEnabled, anchorBiology, waterBiology, contactStateKey, DRAWER_TRAVEL, containerInside, pinSlot, signupSlot, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
 import { posterName, posterFreeSlot, posterTarget, posterAge, posterStale, wantedColumn, wantedFreeRow, wantedTarget } from './poster-boards.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { actionPatch, actionsOf, actuatedState, boardTextProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
@@ -23,7 +23,7 @@ const LOCK_OPS=new Set(['lock','unlock','knock']);
 type Refusal={code:string;reason:string};
 export const isContactActuator = (def:StoredDef, action:{name:string}) => contactStateKey(def,action.name)!==null;
 const fail=(code:string,reason:string)=>({ok:false as const,code,reason});
-export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:number)=>number;clearance?:(x:number,z:number,level?:number)=>number;model:()=>WorldModel;body:(id:string)=>{pose:{p:number[]};human?:{hands?:{left?:number[];right?:number[]};handActuator?:import('../../../../mars/viewer/engine/social/hand-actuator.ts').HandActuatorMotion}}|undefined;access:(id:string,soul:EdgeSoul)=>{code:string;reason:string}|null;
+export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:number)=>number;clearance?:(x:number,z:number,level?:number)=>number;model:()=>WorldModel;hour?:()=>number;body:(id:string)=>{pose:{p:number[]};human?:{hands?:{left?:number[];right?:number[]};handActuator?:import('../../../../mars/viewer/engine/social/hand-actuator.ts').HandActuatorMotion}}|undefined;access:(id:string,soul:EdgeSoul)=>{code:string;reason:string}|null;
  /** entry 32: the thing's owner (a name) and whether it is this Soul; null when nobody owns it */ owner?:(id:string,soul:EdgeSoul)=>{name:string;mine:boolean}|null;
  /** entry 32: a knock on the leaf landed (the first rap): tell those who hear it */ knock?:(soul:EdgeSoul,id:string)=>void;
  /** Entry 43: compact facts of things that are not contact actuators (a kettle, a cup of tea), or null. */ moreFacts?:(id:string)=>Record<string,unknown>|null;
@@ -175,9 +175,9 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    const m=d.model(),e=m.entities.get(target),def=e&&m.resolvedDef(e.def),key=def&&contactStateKey(def);
    // Entry 18: a thirsty planter says so (only when dry; a watered garden adds nothing)
    if(e&&def&&!key&&(def.state as Record<string,{type?:string}>).moisture?.type==='number'){
-    const st=def.state as Record<string,{type?:string;default?:unknown}>,dry=isDry(e.state?.moisture??st.moisture?.default);
+    const st=def.state as Record<string,{type?:string;default?:unknown}>,bio=anchorBiology(e.state,def,d.hour?.()??0),dry=!!bio&&isDry(bio.biologyMoisture);
     // Entry 34: a growing planter says its stage in a word (and dry only when dry)
-    const stage=st.growth?.type==='number'?stageWord(e.state?.growth??st.growth.default):null;
+    const stage=st.growth?.type==='number'?stageWord(bio?.biologyGrowth??e.state?.growth??st.growth.default):null;
     return stage?{stage,...(dry?{dry:true}:{})}:dry?{dry:true}:null;}
    if(e&&def&&!key)return d.moreFacts?.(target)??null;
    if(!e||!def||!key)return null;const state=actuatedState(e,def),facts:Record<string,boolean|string|string[]>={};
@@ -228,7 +228,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    // one pass over the world at this event, never per tick.
    const soak:Op[]=[];
    if(def.tags?.includes('sprinkler')&&a.name==='switch-on'){const reach=Number(e.params?.reach??(def.params.reach as {default?:number}|undefined)?.default??3.5);
-    for(const o of m.entities.values()){const od=o.id!==e.id&&m.resolvedDef(o.def);if(!od||(od.state as Record<string,{type?:string}>).moisture?.type!=='number')continue;const op=m.worldPose(o);const fx=Math.sin(p.yaw),fz=Math.cos(p.yaw);if(Math.hypot(op.x-p.x,op.z-p.z)<=reach&&(op.x-p.x)*fx+(op.z-p.z)*fz>0&&o.state?.moisture!==1)soak.push(opSchema.parse({op:'set',id:o.id,state:{moisture:1}}));}}
+    for(const o of m.entities.values()){const od=o.id!==e.id&&m.resolvedDef(o.def);if(!od||!biologyEnabled(o.state,od))continue;const op=m.worldPose(o);const fx=Math.sin(p.yaw),fz=Math.cos(p.yaw);if(Math.hypot(op.x-p.x,op.z-p.z)<=reach&&(op.x-p.x)*fx+(op.z-p.z)*fz>0) {const state=waterBiology(o.state,od,d.hour?.()??0,1);if(state)soak.push(opSchema.parse({op:'set',id:o.id,state}));}}}
    const r=d.commit([opSchema.parse({op:'set',id:e.id,state:patch}),...soak],`${soul.soulId} ${a.name} ${e.name??e.id}`,()=>{
     // entry 32: a guest's thumb-turn on the way out is part of the walk, not an `unlock` of theirs (that is the owner's)
     if(!(intent.passage&&a.name==='unlock'))d.record(soul,e.id,a.name,intent.params??{});done();});

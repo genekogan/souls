@@ -63,6 +63,8 @@ export type Take = {
   /** Optional public render-base content address, bound before recording.
    * Not a physical topology/asset-availability or installation guarantee. */
   renderSceneRef?: {contract:'render-scene-ref/1';rulesVersion:string;hash:string};
+  /** Captured clock for biology; scene clocks may retain an earlier time-of-day origin. */
+  clock?: { origin: number; dayTicks: number; pausedAtTick?: number };
   /** Content address: hash of every other field. */
   id: string;
   planHash?: string;

@@ -17,6 +17,7 @@ import { entityKeys, entityList, stableIndices } from '../world/entity-list.ts';
 
 export type RecorderOptions = {
   renderSceneRef?: Take['renderSceneRef'];
+  clock?: Take['clock'];
   planHash?: string;
   baselineCheckpoint?: string;
   rulesVersion: string;
@@ -84,6 +85,8 @@ const FIELDS: [string, (e: Entity) => unknown][] = [
   ['sleepPose', (e) => e.human?.sleepPose], // additive semantic lie/wake state; renderer owns rig coordinates
   ['planting', e => e.planting],
   ['gardenCare', e => e.gardenCare],
+  ['plantBiology', e => e.plantBiology],
+  ['plantRenderV1', e => e.plantRenderV1],
   ['foodPreparation', e => e.foodPreparation],
   ['contents', (e) => e.contents], // bowl / pot / cup fill (items)
   ['proneYaw', (e) => (e.human?.proneYaw === undefined ? undefined : q(e.human.proneYaw, ANG_Q))], ['phaseK', (e) => (e.human?.phaseK === undefined ? undefined : q(e.human.phaseK, 100))], // prone receiver: lying heading (mrad), phase progress (%)
@@ -222,6 +225,7 @@ export class TakeRecorder implements RuntimeObserver {
   private readonly itemTracks = new Set<string>(); // finite recording chunk, never an accumulating world history
 
   private readonly transportTracks = new Set<string>();
+  private readonly plantTracks = new Set<string>();
 
   private sample() {
     const t = this.rt.tick - this.startTick;
@@ -249,7 +253,8 @@ export class TakeRecorder implements RuntimeObserver {
       const h=ents[id].human;
       for (const load of [h?.grip?.entity,h?.carryContactV1?.item]) if (load && transports.has(load)) this.transportTracks.add(load);
     }
-    const extra = [...this.itemTracks, ...this.transportTracks].filter(id => !!ents[id]);
+    for (const id of this.rt.world.plantBiologyIdsV1 ?? []) this.plantTracks.add(id);
+    const extra = [...this.itemTracks, ...this.transportTracks, ...this.plantTracks].filter(id => !!ents[id]);
     const dynamic = extra.length ? [...new Set([...base, ...extra])].sort() : base;
     for (const id of dynamic) {
       const e = ents[id];
@@ -368,6 +373,8 @@ export class TakeRecorder implements RuntimeObserver {
       baselineStateHash: this.baselineStateHash,
       rulesVersion: this.opts.rulesVersion,
       renderSceneRef: this.opts.renderSceneRef ? structuredClone(this.opts.renderSceneRef) : undefined,
+      // Only active recorded biology needs this anchor. Unrelated legacy takes retain their exact bytes and IDs.
+      ...(this.opts.clock && this.plantTracks.size ? {clock: structuredClone(this.opts.clock)} : {}),
       dt: DT,
       startTick: this.startTick,
       ticks: this.rt.tick - this.startTick,

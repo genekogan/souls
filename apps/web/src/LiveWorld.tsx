@@ -823,6 +823,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
               else try{connectedDressing.setTake(take);}catch{clearConnectedDressing();connectedDressingFailed=true;}
             }
             people.setTake(take,gaitContinuity.offsets(chunks,chunk));
+            entityLayer.setPlantTake(take);
             records = { ...(take.entities0 as Record<string, Entity> | undefined), ...take.finalState.entities };
             applied = chunk;
             geometry.markRegions(take.finalState.regions);
@@ -860,6 +861,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
           if(nativeSocialDraw)nativeSocialDraw.update(people,publication,take,records,sampled,appearanceProfiles.nativeSocial);else people.setFixtureDrawReplacement(null);
           geometry?.setRecordedFixtures(sampled.entities,records);
           geometry?.setViewTime(depictedTick*take.dt);
+          entityLayer.plantFrame(sampled.entities, depictedTick, take.clock, !!past.current);
           const expansionWanted=edenExpansionCapture(!!context.current.edenExpansion,s.conn.welcome?.worldId,expansionSceneInfo,publication,!!past.current);expansionWantedNow=expansionWanted;
           if(!expansionWanted&&expansion)clearExpansion();
           if(expansionWanted&&!expansion&&!expansionFailed&&!oldEden)void loadOldEden().catch(()=>{expansionFailed=true;problem('Some new Eden scenery could not be shown.');});

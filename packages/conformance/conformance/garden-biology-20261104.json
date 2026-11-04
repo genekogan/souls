@@ -1,0 +1,6 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "Issue418 adds immutable core-garden-planter@3 with explicit default-off biology and persisted world-hour anchors. Existing revisions1/2 keep their original bytes. Exact v3 hash cccdd84fd2a140fc708e4a160f525bbfeceafe9fe4e14d6ee41867b4ecf166ef. Focused K=2 garden-planter sweep:3defs,19samples,19 placements/bakes/gallery geometries,0findings,0qualification gaps. No geometry budgets, samples or existing supplements changed. Native contact and historical rendered biology are qualified separately.",
+  "findings": [],
+  "revisions": [{"ref": "core-garden-planter@3", "hash": "cccdd84fd2a140fc708e4a160f525bbfeceafe9fe4e14d6ee41867b4ecf166ef"}]
+}
