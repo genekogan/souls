@@ -245,7 +245,7 @@ export class LoadMonitor {
     a[S.level] = LEVELS.indexOf(to); a[S.queueDepth] = q.depth; a[S.queueOldestMs] = q.oldestMs;
     a[S.awake] = this.souls.awake; a[S.waiting] = this.souls.waiting; a[S.connected] = this.souls.connected;
     a[S.shedReads] = shed.reads; a[S.shedActs] = shed.acts; a[S.sampledAt] = now; a[S.quietTickMs] = this.quietTick.value;
-    a[S.adminRate] = h.baseRate; a[S.clockRate] = h.clockRate ?? h.baseRate; a[S.pace] = h.pace; a[S.tickMonoMs] = performance.timeOrigin + performance.now();
+    a[S.adminRate] = h.baseRate; a[S.clockRate] = h.clockRate ?? h.baseRate; a[S.pace] = h.pace; a[S.tickMonoMs] = performance.timeOrigin + performance.now(); a[S.clockState] = h.paused ? 1 : h.running && h.clockAvailable ? 0 : 2;
     return to;
   }
   /** CW3 S2: process totals, once per closed loop window (two cheap syscalls, nothing per Soul or object). */

@@ -87,7 +87,7 @@ test('liveOf: absent until written (never a false 0); process, clock, inventory,
   a[S.wsOpened] = 3; a[S.wsClosed] = 1; a[S.wsBytesSent] = 4096; a[S.wsBytesReceived] = 64;
   const live: LiveJson = liveOf(a, 1, 1000, {dbBytes: 1 << 20, walBytes: 4096, freeBytes: 1e9});
   assert.deepEqual(live.proc, {cpuUserSeconds: 1.5, cpuSystemSeconds: 0.25, rssMb: 200, externalMb: 3, arrayBuffersMb: 1});
-  assert.deepEqual(live.clock, {adminRate: 1, rate: 0.5, pace: 0.25, monoMs: 1_700_000_000_123});
+  assert.deepEqual(live.clock, {adminRate: 1, rate: 0.5, pace: 0.25, monoMs: 1_700_000_000_123, state: 'running'});
   assert.deepEqual(live.inventory, {souls: 5, entities: 321, viewers: 2});
   const text = metricsText({now: 1000, worlds: [{slug: 'w', status: 'running', live}]});
   const want: [string, string, number][] = [['sim_world_process_cpu_seconds_total', 'mode="user"', 1.5], ['sim_world_process_resident_bytes', 'world="w"', 200 * 1048576],
@@ -96,6 +96,8 @@ test('liveOf: absent until written (never a false 0); process, clock, inventory,
     ['sim_world_awake_soul_seconds_total', 'world="w"', 12.3], ['sim_world_ws_connections_total', 'event="closed"', 1], ['sim_world_ws_sent_bytes_total', 'world="w"', 4096],
     ['sim_world_db_bytes', 'world="w"', 1 << 20], ['sim_world_wal_bytes', 'world="w"', 4096], ['sim_world_disk_free_bytes', 'world="w"', 1e9]];
   for (const [name, l, v] of want) assert.equal(val(text, name, l), v, name);
+  a[S.clockState] = 1; assert.equal(liveOf(a, 1, 1000).clock?.state, 'paused');
+  a[S.awakeSoulSeconds] = 1234567.8; assert.equal(val(metricsText({now: 1000, worlds: [{slug: 'w', status: 'running', live: liveOf(a, 1, 1000)}]}), 'sim_world_awake_soul_seconds_total', 'world="w"'), 1234567.8, 'a counter keeps its precision');
   assert.equal(rows(text, 'sim_world_requests_total').length, 0, 'no admission, no request series (unknown, not 0)');
 });
 
@@ -118,6 +120,7 @@ test('a fake-mind world writes the S2 blocks; a real edge request is counted; th
   const first = await until(l => !!l?.proc && !!l?.clock && !!l?.requests && !!l?.disk, 'S2 blocks never appeared');
   assert.ok(first.proc!.rssMb > 0 && first.proc!.cpuUserSeconds > 0);
   assert.equal(first.clock!.adminRate, 1); assert.ok(first.clock!.pace > 0 && first.clock!.pace <= 1);
+  assert.equal(first.clock!.state, 'running');
   assert.ok((first.disk!.dbBytes ?? 0) > 0 && (first.disk!.freeBytes ?? 0) > 0, 'sim.db size and free disk read by the watchdog');
   assert.equal(typeof first.inventory!.souls, 'number'); assert.equal(typeof first.ws!.opened, 'number');
   // one real edge read with an unknown token: admitted (C2), run, answered by the route with a 4xx -> rejected

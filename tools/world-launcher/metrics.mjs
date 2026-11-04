@@ -35,7 +35,7 @@ const REQ_CODES = ['soul.busy', 'soul.slow-down', 'world.busy', 'world.crowded']
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const esc = (v) => String(v).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');
-const fmt = (v) => (Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(6))));
+const fmt = (v, digits = 6) => (Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(digits))));
 
 /** The world's live.json (LOAD-CONTRACT §4), or null when absent, too big or not JSON. Never throws. */
 export function readLive(dataDir) {
@@ -55,7 +55,8 @@ function registry() {
     const v = num(value); if (v === null) return;
     let f = fams.get(name); if (!f) fams.set(name, (f = { type, help, rows: [] }));
     const l = Object.entries(labels ?? {}).map(([k, x]) => `${k}="${esc(x)}"`).join(',');
-    f.rows.push(`${name}${suffix}${l ? `{${l}}` : ''} ${fmt(v)}`);
+    // counters and histograms keep 12 significant digits, so a long uptime's fractional totals still rate() finely
+    f.rows.push(`${name}${suffix}${l ? `{${l}}` : ''} ${fmt(v, type === 'gauge' ? 6 : 12)}`);
   };
   const text = () => {
     let out = '';
@@ -163,12 +164,13 @@ function worldS2(r, world, v) {
   c('sim_world_process_cpu_seconds_total', 'CPU seconds of the world process since it started, by mode (includes its worker threads).', { world, mode: 'user' }, proc.cpuUserSeconds);
   c('sim_world_process_cpu_seconds_total', 'CPU seconds of the world process since it started, by mode (includes its worker threads).', { world, mode: 'system' }, proc.cpuSystemSeconds);
   g('sim_world_process_resident_bytes', 'RSS of the world process (includes its worker threads).', L, MB(proc.rssMb));
-  g('sim_world_process_external_bytes', 'V8 external memory of the world process.', L, MB(proc.externalMb));
-  g('sim_world_process_array_buffers_bytes', 'ArrayBuffer/Buffer memory of the world process.', L, MB(proc.arrayBuffersMb));
+  g('sim_world_process_external_bytes', 'V8 external memory of the world\'s main thread only (not its worker threads).', L, MB(proc.externalMb));
+  g('sim_world_process_array_buffers_bytes', 'ArrayBuffer/Buffer memory of the world\'s main thread only (not its worker threads).', L, MB(proc.arrayBuffersMb));
   g('sim_world_clock_admin_rate', 'World time per wall time as the admin set it (the full-clock rate).', L, clock.adminRate);
   g('sim_world_clock_rate', 'Effective world clock rate (below the admin rate while dilated).', L, clock.rate);
   g('sim_world_attention_pace', 'Attention pace of the clock (1 = full pace).', L, clock.pace);
   g('sim_world_tick_sampled_seconds', 'Process-monotonic Unix time at which sim_world_tick was read.', L, num(clock.monoMs) === null ? null : clock.monoMs / 1000);
+  if (typeof clock.state === 'string') for (const st of ['running', 'paused', 'unavailable']) g('sim_world_clock_state', 'The world clock runs, is paused by an admin, or is unavailable (1 = current).', { world, state: st }, clock.state === st ? 1 : 0);
   g('sim_world_souls_resident', 'Souls resident in the world process (minds; not humans).', L, inv.souls);
   g('sim_world_entities', 'Entities in the world\'s god model (placed objects; not definitions).', L, inv.entities);
   g('sim_world_viewers', 'Viewer sockets on the world\'s hub (connections, not humans).', L, inv.viewers);

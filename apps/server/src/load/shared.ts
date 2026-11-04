@@ -31,8 +31,9 @@ export const S = {
   // the last closed 5 s window (-1 = no window closed yet); gcMsTotal: GC pause ms since the process started (never
   // reset, so a scrape sees every pause); ticksLateTotal: ticks whose own run took longer than their 50 ms budget.
   elu: 29, gcMsTotal: 30, ticksLateTotal: 31,
-  // CW3 (#737) S2. Process totals, sampled when a 5 s monitor window closes (procAt = 0 until then): CPU ms since the
-  // process started (user, system), RSS / external / array-buffer MB. They include the watchdog and read-worker threads.
+  // CW3 (#737) S2, sampled when a 5 s monitor window closes (procAt = 0 until then): CPU ms since the process started
+  // (user, system) and RSS MB are process totals (the watchdog and read-worker threads included); external and
+  // array-buffer MB are the main thread's V8 isolate only (process.memoryUsage reports those per thread).
   procAt: 32, cpuUserMs: 33, cpuSysMs: 34, rssMb: 35, externalMb: 36, arrayBuffersMb: 37,
   // independent full-clock evidence: the admin rate (world time per wall time, as set), the current rate (dilation), the
   // attention pace, and the process-monotonic epoch ms of the sample that wrote worldTick (tickMonoMs)
@@ -47,7 +48,9 @@ export const S = {
   reqOn: 52, req: 53,          // REQ_CLASSES × REQ_OUTCOMES counters
   refused: 65,                 // REQ_CLASSES × REQ_CODES counters
   hist: 73,                    // REQ_HISTS × HIST_SLOTS: per-bucket counts (not cumulative), +Inf, then the sum in seconds
-  size: 125,
+  // 0 = the clock runs; 1 = paused by an admin; 2 = no clock (not serving it): a full-clock measurer excludes 1 and 2
+  clockState: 125,
+  size: 126,
 } as const;
 
 /** CW3 (#737) S2: closed label sets of the request counters. Order is the slot layout (append only). */
@@ -78,10 +81,10 @@ export type LiveJson = {
   /** Stage B: the first read worker's port (the launcher routes C2 reads here); present only with read workers. */
   readPort?: number;
   read?: {ports: number[]; workers: number; lagGens: number; subset: boolean; routes: string[]};
-  /** CW3 S2: process totals (present once a 5 s window has closed). */
+  /** CW3 S2 (present once a 5 s window has closed): CPU and RSS of the whole process; external and arrayBuffers of the main thread only. */
   proc?: {cpuUserSeconds: number; cpuSystemSeconds: number; rssMb: number; externalMb: number; arrayBuffersMb: number};
-  /** CW3 S2: full-clock evidence; monoMs is the process-monotonic epoch ms at which `tick.world` was read. */
-  clock?: {adminRate: number; rate: number; pace: number; monoMs: number};
+  /** CW3 S2: full-clock evidence; monoMs is the process-monotonic epoch ms at which `tick.world` was read; state: the clock runs, is paused, or is unavailable. */
+  clock?: {adminRate: number; rate: number; pace: number; monoMs: number; state: 'running' | 'paused' | 'unavailable'};
   inventory?: {souls: number; entities?: number; viewers: number};
   activity?: {awakeSoulSeconds: number; connectedSoulSeconds: number; viewerSeconds: number};
   ws?: {opened: number; closed: number; bytesSent: number; bytesReceived: number};
@@ -132,7 +135,7 @@ export function liveOf(a: Float64Array, pid: number, now: number, disk?: LiveJso
     out.tick = {world: a[S.worldTick], service5s: r2(a[S.service5s]), p99Ms: r1(a[S.tickP99Ms]), quietAvgMs: r1(a[S.quietTickMs]), lateTotal: a[S.ticksLateTotal]};
     out.queue = {depth: a[S.queueDepth], oldestMs: Math.round(a[S.queueOldestMs])};
     out.souls = {awake: a[S.awake], waiting: a[S.waiting], connected: a[S.connected]};
-    if (a[S.adminRate] > 0) out.clock = {adminRate: a[S.adminRate], rate: a[S.clockRate], pace: a[S.pace], monoMs: Math.round(a[S.tickMonoMs])};
+    if (a[S.adminRate] > 0) out.clock = {adminRate: a[S.adminRate], rate: a[S.clockRate], pace: a[S.pace], monoMs: Math.round(a[S.tickMonoMs]), state: a[S.clockState] === 1 ? 'paused' : a[S.clockState] === 2 ? 'unavailable' : 'running'};
     out.inventory = {souls: a[S.soulsTotal], ...(a[S.entities] >= 0 ? {entities: a[S.entities]} : {}), viewers: a[S.viewers]};
     out.activity = {awakeSoulSeconds: r1(a[S.awakeSoulSeconds]), connectedSoulSeconds: r1(a[S.connectedSoulSeconds]), viewerSeconds: r1(a[S.viewerSeconds])};
     out.ws = {opened: a[S.wsOpened], closed: a[S.wsClosed], bytesSent: a[S.wsBytesSent], bytesReceived: a[S.wsBytesReceived]};

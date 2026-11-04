@@ -342,9 +342,12 @@ export function admissionPort(adm: Admission | undefined, port: PortLike, run: (
   const reply = (d: PortDone, transfer?: ArrayBuffer[]) => { closed.delete(d.id); port.postMessage(d, transfer); };
   const go = async (m: PortJob, done?: () => void) => {
     const counted = !!adm && !!m.route && (m.route.cls === 'C1' || m.route.cls === 'C2'), ranAt = performance.now();
-    try { const r = await run(m.payload, m); if (counted) { const st = (r.result as {status?: unknown} | null)?.status; adm!.answered(m.route!.cls, typeof st === 'number' ? st : 200, performance.now() - ranAt); } reply({t: 'done', id: m.id, result: r.result}, r.transfer); }
-    catch (e) { stats.failed++; if (counted) adm!.answered(m.route!.cls, 500, performance.now() - ranAt); reply({t: 'done', id: m.id, error: e instanceof Error ? e.message : String(e)}); }
-    finally { done?.(); }
+    let r: {result: unknown; transfer?: ArrayBuffer[]};
+    try { r = await run(m.payload, m); }
+    catch (e) { stats.failed++; if (counted) adm!.answered(m.route!.cls, 500, performance.now() - ranAt); try { reply({t: 'done', id: m.id, error: e instanceof Error ? e.message : String(e)}); } finally { done?.(); } return; }
+    // counted once, before the reply (a reply that throws is not a second outcome)
+    if (counted) { const st = (r.result as {status?: unknown} | null)?.status; adm!.answered(m.route!.cls, typeof st === 'number' ? st : 200, performance.now() - ranAt); }
+    try { reply({t: 'done', id: m.id, result: r.result}, r.transfer); } finally { done?.(); }
   };
   port.on('message', (x) => {
     const m = x as PortJob | PortClosed;
