@@ -106,7 +106,7 @@ export class QuietTick {
 }
 
 /** What the monitor reads from the world (WorldHost satisfies it). */
-export type HostLike = {engine: {world: {tick: number}}; tickMs: number[]; ticksLate?: number; paused: boolean; pace: number; baseRate: number; readonly running: boolean; readonly clockAvailable: boolean};
+export type HostLike = {engine: {world: {tick: number}}; tickMs: number[]; ticksLate?: number; paused: boolean; pace: number; baseRate: number; clockRate?: number; readonly running: boolean; readonly clockAvailable: boolean};
 export type Dial = (level: Level) => void;
 export type MonitorOpts = {
   host: HostLike;
@@ -117,6 +117,10 @@ export type MonitorOpts = {
   /** Registry pin for the quiet loop baseline (SIM_LOAD_BASELINE_MS): fixed, never learned; 0 = absolute bands. */
   baselineMs?: number;
   souls?: () => {awake: number; waiting: number; connected: number};
+  /** CW3 S2, read with `souls` every 2 s (O(1) sizes, never a scan): resident minds, god-model entities (-1 = none), hub viewers. */
+  inventory?: () => {souls: number; entities: number; viewers: number};
+  /** CW3 S2: the viewer hub's cumulative WebSocket counters (hub.ts `wire`). */
+  wire?: () => {opened: number; closed: number; sent: number; received: number};
   onLevel?: (from: Level, to: Level, s: Signals) => void;
   /** Black for this long → planned restart (main.ts: snapshot, exit 75). */
   onBlackTooLong?: () => void; blackLimitMs?: number;
@@ -152,6 +156,8 @@ export class LoadMonitor {
   private blackSince: number | null = null;
   private soulsAt = 0;
   private souls = {awake: 0, waiting: 0, connected: 0};
+  private viewers = 0;
+  private integratedAt: number | null = null;   // CW3 S2: awake/connected/viewer seconds integrate from here (reset on resume)
   private a: Float64Array;
   private now: () => number;
   private o: MonitorOpts;
@@ -180,7 +186,7 @@ export class LoadMonitor {
     const now = this.now();
     this.ticks = []; this.prevLoopP99 = 0; this.hist?.reset(); this.histAt = now; this.gc = []; this.eluMark = performance.eventLoopUtilization();
     this.quiet = {depth: 0, reqMs: this.o.requestMs?.() ?? 0, service: 1, tick0: this.o.host.engine.world.tick};
-    this.state.resumed(now);
+    this.state.resumed(now); this.integratedAt = now;   // suspended wall time is not activity
     if (this.blackSince !== null) this.blackSince = now;
   };
 
@@ -212,6 +218,7 @@ export class LoadMonitor {
         this.hist.reset(); this.histAt = now;
         // ELU of the window that just closed (the same windows as loop delay); a frozen process's window is discarded by resumed()
         if (this.eluMark) { this.a[S.elu] = performance.eventLoopUtilization(this.eluMark).utilization; this.eluMark = performance.eventLoopUtilization(); }
+        this.process(now);
       }
     }
     const hs = v8.getHeapStatistics(), heapFrac = hs.heap_size_limit ? hs.used_heap_size / hs.heap_size_limit : 0;
@@ -222,7 +229,7 @@ export class LoadMonitor {
     const ms = h.tickMs; let sum = 0, max = 0; for (const x of ms) { sum += x; if (x > max) max = x; }
     const sorted = ms.length ? [...ms].sort((x, y) => x - y) : [];
     this.tickStats = {avg: ms.length ? Math.round(10 * sum / ms.length) / 10 : 0, max: Math.round(10 * max) / 10, n: ms.length, p99: sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(0.99 * sorted.length))] : 0};
-    if (this.o.souls && now - this.soulsAt >= 2000) { this.soulsAt = now; try { this.souls = this.o.souls(); } catch { /* presence is best effort */ } }
+    if (this.o.souls && now - this.soulsAt >= 2000) { this.soulsAt = now; this.activity(now); try { this.souls = this.o.souls(); } catch { /* presence is best effort */ } this.counts(); }
     // the serving turn's own warm-up (JIT, first projections) is not load: loop delay counts for levels once two windows
     // have closed (the first window's p99 carries into the second); service, heap and queue count at once
     const warm = this.startedAt !== null && now - this.startedAt < 2 * this.windowMs, judged = warm ? {...this.signals, loopP99Ms: 0} : this.signals;
@@ -238,7 +245,28 @@ export class LoadMonitor {
     a[S.level] = LEVELS.indexOf(to); a[S.queueDepth] = q.depth; a[S.queueOldestMs] = q.oldestMs;
     a[S.awake] = this.souls.awake; a[S.waiting] = this.souls.waiting; a[S.connected] = this.souls.connected;
     a[S.shedReads] = shed.reads; a[S.shedActs] = shed.acts; a[S.sampledAt] = now; a[S.quietTickMs] = this.quietTick.value;
+    a[S.adminRate] = h.baseRate; a[S.clockRate] = h.clockRate ?? h.baseRate; a[S.pace] = h.pace; a[S.tickMonoMs] = performance.timeOrigin + performance.now();
     return to;
+  }
+  /** CW3 S2: process totals, once per closed loop window (two cheap syscalls, nothing per Soul or object). */
+  private process(now: number) {
+    try {
+      const c = process.cpuUsage(), m = process.memoryUsage(), a = this.a;
+      a[S.cpuUserMs] = c.user / 1000; a[S.cpuSysMs] = c.system / 1000; a[S.rssMb] = m.rss / 1048576; a[S.externalMb] = m.external / 1048576; a[S.arrayBuffersMb] = m.arrayBuffers / 1048576; a[S.procAt] = now;
+    } catch { /* telemetry never stops a sample */ }
+  }
+  /** CW3 S2: integrate the last presence reading over the time since it was taken (left sum at the 2 s presence cadence). */
+  private activity(now: number) {
+    const a = this.a, at = this.integratedAt; this.integratedAt = now;
+    if (at === null || now <= at) return;
+    const dt = (now - at) / 1000;
+    a[S.awakeSoulSeconds] += this.souls.awake * dt; a[S.connectedSoulSeconds] += this.souls.connected * dt; a[S.viewerSeconds] += this.viewers * dt;
+  }
+  /** CW3 S2: inventory and WebSocket counters, read with presence. */
+  private counts() {
+    const a = this.a;
+    try { const i = this.o.inventory?.(); if (i) { a[S.soulsTotal] = i.souls; a[S.entities] = i.entities; a[S.viewers] = this.viewers = i.viewers; } } catch { /* best effort */ }
+    try { const w = this.o.wire?.(); if (w) { a[S.wsOpened] = w.opened; a[S.wsClosed] = w.closed; a[S.wsBytesSent] = w.sent; a[S.wsBytesReceived] = w.received; } } catch { /* best effort */ }
   }
   /** A loop window closed: feed the quiet baseline (QuietBaseline). The serving warm-up windows are not quiet. Public for tests. */
   windowDone(loopP99Ms: number, now: number) {

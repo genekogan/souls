@@ -81,6 +81,8 @@ export class Hub {
   /** Other WebSocket endpoints on this server (EVENTS-v1 /v1/edge/events/ws); each returns true when it took the upgrade. */
   upgradeHandlers: ((req: import('node:http').IncomingMessage, socket: import('node:stream').Duplex, head: Buffer) => boolean)[] = [];
   clients = new Set<Client>();
+  /** CW3 (#737) S2: cumulative viewer-socket counters for the load monitor (live.json `ws`); bytes as the hub already counts them per client. */
+  readonly wire = { opened: 0, closed: 0, sent: 0, received: 0 };
   /** Every upgraded socket on this server (viewers and other WebSocket endpoints) until it is closed. */
   private upgraded = new Set<import('node:stream').Duplex>();
   brain!: Brain;
@@ -161,9 +163,9 @@ export class Hub {
     let sameIp = 0; for (const x of this.clients) if (x.ip === ip) sameIp++;
     if (this.clients.size >= MAX_CLIENTS || sameIp >= MAX_PER_IP) { ws.close(1013, 'too many connections'); return; }
     const c: Client = { ws, me: null, ready: false, alive: true, joinedAt: Date.now(), resyncs: 0, sent: 0, ip, msgs: 0, windowStart: Date.now(), lastHello: 0, lastSnapshot: 0,stationContract:null,authUserId:null,helloGeneration:0 };
-    this.clients.add(c);
+    this.clients.add(c); this.wire.opened++;
     ws.on('pong', () => (c.alive = true));
-    ws.on('close', () => this.clients.delete(c));
+    ws.on('close', () => { this.clients.delete(c); this.wire.closed++; });
     ws.on('error', () => this.clients.delete(c));
     const inbound = (data: unknown, fromUrl = false) => {
       // inbound messages are validated and rate limited (20 per 10 s is far more than a well-behaved client sends)
@@ -178,7 +180,7 @@ export class Hub {
       if(this.lifecycleSouls)void pending.catch(error=>{if(this.clients.has(c)&&c.helloGeneration===generation)this.privateViewFailed(c,error);});
       else void pending;
     };
-    ws.on('message', (data) => inbound(data));
+    ws.on('message', (data) => { this.wire.received += (data as { byteLength?: number }).byteLength ?? 0; inbound(data); });
     // P7: the page's entry socket says its anonymous hello in the URL (/ws?hello=…), so the join leaves as soon as the
     // socket is open: a hello sent from the page's open event waited for its main thread, busy building the world (~1 s
     // on a phone)
@@ -293,7 +295,7 @@ export class Hub {
       c.ready=false;c.ws.send(JSON.stringify({t:'error',code:'takes.transport-invalid',message:'The take transport cannot be encoded exactly.'}));c.ws.close(1011,'invalid take transport');return false;
     }
     s=this.kernelWire(c,current,s);
-    c.sent += s.length;
+    c.sent += s.length; this.wire.sent += s.length;
     if(c.joinSend){c.joinPending=(c.joinPending??0)+1;c.ws.send(s,()=>{c.joinPending=(c.joinPending??1)-1;});}else c.ws.send(s);
     if(nextTable!==undefined&&c.takeEntities)c.takeEntities.last=nextTable;
     if(nextTake!==undefined&&c.takeChunks)c.takeChunks.last=nextTake;
@@ -384,7 +386,7 @@ export class Hub {
     // a batch is never dropped for backpressure (lane W1, research D6): a missing one is a seq gap, and the gap costs the
     // viewer a whole new snapshot (1.4 MB for Eden 2026); right after a join the join set alone is over 1 MB queued
     for (const c of this.clients) { if (!c.ready || c.ws.readyState !== 1 || (filter && !filter(c))) continue; if (c.ws.bufferedAmount > MAX_BUFFERED && m.t !== 'batch') continue;
-      const out=this.kernelWire(c,m,s,rest);c.sent += out.length; this.hold(c.ws); c.ws.send(out); }
+      const out=this.kernelWire(c,m,s,rest);c.sent += out.length; this.wire.sent += out.length; this.hold(c.ws); c.ws.send(out); }
   }
   /** srv-hub-physics: a tick's broadcasts reach each viewer as one socket write. The first broadcast frame a socket gets in
    *  this turn of the event loop corks it; the turn's end (process.nextTick, after the tick's synchronous work) uncorks
