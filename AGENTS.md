@@ -76,6 +76,8 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
 ## Agent lifecycle
 
 [Planning and intake](docs/process/planning.md) separates direction, backlog, ready work and portable handoffs.
+For an agenda with multiple workers, follow the [development coordinator](docs/process/development-coordinator.md)
+contract; fresh sessions recover its dated agenda and assignments before dispatch.
 
 - Stay within the requested outcome. Prefer independently reviewable, single-digit-hour slices; finish one active
   implementation before starting another. Get Gene's approval before substantial scope expansion or an out-of-scope
@@ -102,7 +104,7 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
 - Issues state the problem and acceptance criteria before work starts. The PR is the journal entry: acceptance with
   evidence, proof, self-audit. [docs/process/agent-lifecycle.md](docs/process/agent-lifecycle.md#5-pull-request)
 - Repo skills in `.claude/skills/` (plain Markdown, readable by any agent): `journal`, `epic`, `triage`, `finish`,
-  `proof`, `e2e`, `sim-director`. Agent definitions in `.claude/agents/`: `lane`, `reviewer`.
+  `proof`, `e2e`, `sim-director`. Agent definitions in `.claude/agents/`: `coordinator`, `lane`, `reviewer`.
 
 ## Release and operations
 

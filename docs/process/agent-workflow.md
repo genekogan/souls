@@ -3,7 +3,7 @@
 Several coding agents (and people) can work on Soul concurrently. A development owner selects independent work
 and handles dependencies; repository conventions isolate changes, and the merge train serializes integration.
 [Agent lifecycle](agent-lifecycle.md) is the path one piece of work takes; this page is how many of them share the
-repository.
+repository. The [coordinator contract](development-coordinator.md) defines intake, rolling dispatch and recovery.
 
 ## Working in parallel
 
