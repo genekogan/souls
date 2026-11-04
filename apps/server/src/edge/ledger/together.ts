@@ -45,7 +45,9 @@ type Tag =
   | {kind: 'let-go'}
   | {kind: 'follow'; target: string}
   | {kind: 'unfollow'; follower: string}
-  | {kind: 'item'; op: 'pick-up' | 'put-down' | 'consume'; item?: string; source?: string; itemKind?: string};
+  | {kind: 'item'; op: 'pick-up' | 'put-down' | 'consume'; item?: string; source?: string; itemKind?: string}
+  /** PC04 (#683): propose one shared physical operation; the first template carries a loose `shared-carry` load */
+  | {kind: 'shared'; load: string; def: string; name: string; crew: [number, number]};
 export type Paired = 'hug' | 'high-five' | 'handshake' | 'dance-with' | 'rps' | 'hold-hands';
 export type ItemKind = 'book' | 'flower' | 'cup' | 'food' | 'letter' | 'tool' | 'frisbee';
 
@@ -93,6 +95,8 @@ const ITEM_WORDS: [ItemKind, RegExp][] = [['book', /\b(?:book|books|novel)\b/], 
   ['food', /\b(?:food|snack|bread|apple|fruit|cake|bun|sandwich|something to eat|to eat)\b/], ['letter', /\b(?:letter|card|note|paper|postcard)\b/], ['tool', /\b(?:tool|hammer|trowel|chisel|spade)\b/], ['frisbee', /\b(?:frisbee|disc|disk)\b/]];
 /** Bounds (Gene: simple, deterministic, bounded). */
 export const ITEM_LIMITS = {perPlace: 12, placedWorld: 150, pickReach: 120, consumableMinutes: 20, keepHours: 4, nearItems: 20};
+/** PC04 (#683): how long a shared proposal stays open (s). */
+export const SHARED_LAPSE = 120;
 const INVITE_RADIUS = 60, GESTURE_RADIUS = 8, APPROACH_RADIUS = 400, APPROACH_SECONDS = 240, FOLLOW_RADIUS = 20, FOLLOW_LOST = 45, CATCH_UP = 3;
 /** A shared walk is only "together" when the guest ends beside the host: follow standoff is 1.5 m, so 2.2 m leaves slack but not 2.8 m apart. */
 export const TOGETHER_RADIUS = 2.2;
@@ -111,10 +115,10 @@ const INVITABLE = new Set(['walk', 'stroll', 'wander', 'hang-out', 'gather', 'wa
   'cook-together', 'tell-story', 'hear-story', 'book-club', 'social-dance', 'yoga-class']);
 
 export type Invite = {id: string; what: string; host: {soulId: string; name: string}; guests: {soulId: string; name: string}[]; capability: string; label: string;
-  kind: 'paired' | 'give' | 'activity' | 'ride'; pairedPolicy?: 'ready-v1';
+  kind: 'paired' | 'give' | 'activity' | 'ride' | 'shared'; pairedPolicy?: 'ready-v1';
   /** E2 #2 (2026-10-16): activity invitations carry the group window policy their poses use (absent on older invitations). */
   windowPolicy?: 'once-v1'; activity?: string; seconds?: number; gap?: number; prop?: string; base?: string;
-  createdTick: number; expiresTick: number; state: 'pending' | 'closed'; responses: Record<string, 'accepted' | 'declined' | 'expired' | 'cancelled'>;
+  createdTick: number; expiresTick: number; state: 'pending' | 'closed'; responses: Record<string, 'accepted' | 'declined' | 'expired' | 'cancelled' | 'left'>;
   hostReceipt: string | null; guestReceipts: Record<string, string>;
   /** F1 (2026-10-20): where the host will stand for a paired gesture or hand-over (its meet spot, or where it already
    *  stood), or the destination of an invited activity, so a guest who accepts while the host is still walking there
@@ -125,7 +129,20 @@ export type Invite = {id: string; what: string; host: {soulId: string; name: str
   /** entry 35: the hand an offerer holds out (hold-hands). */
   hand?: 'left' | 'right';
   /** entry 41: the world thing a hand-over passes (what = 'hand-over'; custody is the engine's, never this table's). */
-  thing?: {id: string; name: string}};
+  thing?: {id: string; name: string};
+  /** PC04 (#683): the shared operation this invitation proposes (kind 'shared'). */
+  shared?: SharedSession};
+/** PC04 (#683, docs/design/shared-execution.md §1): a shared physical operation, held in its together invitation's body.
+ *  `revision` bumps on any material change (load, destination, crew); each member accepts their own role against it, and
+ *  a bump clears every acceptance. `op` stays null until a commit (PC05). */
+export type SharedSession = {template: {id: 'carry'; version: 1}; revision: number; load: {entity: string; def: string; name: string};
+  destination: {place: string; name: string}; roles: {role: 'carrier'; slot: number; soulId: string | null}[]; crew: [number, number];
+  cleanup: 'set-down-here'; op: null; changed?: string};
+/** What a shared receipt shows its own Soul (PC02 §5): the invitation, the revision it was made for, its role and phase. */
+export type SharedReceiptV1 = {invite: string; revision: number; role: 'carrier'; slot: number | null; phase: 'pending' | 'ended'};
+type Prepared = {steps: Steps; label?: string; commit?: (receipt: string) => void; noBody?: boolean;
+  /** PC04: a shared proposal opens a `waiting` receipt with no body steps; `existing` answers a repeat with its receipt. */
+  wait?: boolean; existing?: string; detail?: Record<string, unknown>};
 export type Item = {id: string; kind: ItemKind; name: string; holder: string | null; placeId: string | null; at: V2 | null; state: 'held' | 'placed' | 'gone'; claimedBy: string | null; by: string | null; createdAt: number; placedAt: number | null};
 type ItemOp = {soulId: string; op: 'pick-up' | 'put-down' | 'consume' | 'give' | 'take'; item?: string; kind?: ItemKind; source?: string; to?: string; invite?: string};
 /** SOCIAL-APPROACH: the act waiting at the end of a walk over to its partner (its pose steps, params, label). */
@@ -152,6 +169,8 @@ export type TogetherPort = {
   spectate(m: Record<string, unknown>): void;
   touch(soulId: string): void;
   decide(soul: EdgeSoul, receipt: string, capability: string, label: string, steps: Steps): Promise<unknown>;
+  /** PC04 (#683): shared physical operations (carry-with) are offered; default off until PC05 can commit them. */
+  sharedCarry?: boolean;
 };
 
 const pose = (activity: string, seconds: number, extra: Record<string, unknown> = {}) => ({verb: 'mars:pose_v1', params: {activity, seconds, ...extra}});
@@ -242,9 +261,10 @@ export class Together {
    *  accepts. Cheap for every other receipt: only paired/give capabilities ever look at the invitation table. */
   awaitingAnswer(receiptId: string, capability: string): {invite: string; what: string; waitingFor: {soulId: string; name: string}[]; expiresInSeconds: number} | null {
     const verb = capability.split(':')[0]!;
-    if (verb !== 'give' && !Object.hasOwn(PAIRED, verb)) return null;
-    const inv = this.pending().find(i => i.hostReceipt === receiptId && (i.kind === 'paired' || i.kind === 'give'));
-    if (!inv || Object.values(inv.responses).includes('accepted')) return null;
+    if (verb !== 'give' && verb !== 'carry-with' && !Object.hasOwn(PAIRED, verb)) return null;
+    const inv = this.pending().find(i => i.hostReceipt === receiptId && (i.kind === 'paired' || i.kind === 'give' || i.kind === 'shared'));
+    // PC04: a shared proposal names whoever is still undecided, whether or not others have accepted
+    if (!inv || inv.kind !== 'shared' && Object.values(inv.responses).includes('accepted')) return null;
     const open = inv.guests.filter(g => !inv.responses[g.soulId]);
     if (!open.length) return null;
     return {invite: inv.id, what: inv.what, waitingFor: open.map(g => ({soulId: g.soulId, name: this.p.host.minds.get(g.soulId)?.name ?? g.name})), expiresInSeconds: Math.max(0, Math.round((inv.expiresTick - this.tick) / 20))};
@@ -272,7 +292,9 @@ export class Together {
   followingOf(soulId: string) {return [...this.follows.values()].find(f => f.soulId === soulId) ?? null;}
   followersOf(soulId: string) {return [...this.follows.values()].filter(f => f.target === soulId);}
   /** A guest with an unanswered invitation is not idle (ambient life leaves it be while its agent decides). */
-  awaiting(soulId: string) {return this.invitesFor(soulId).length > 0;}
+  awaiting(soulId: string) {return this.invitesFor(soulId).length > 0 || this.sharedFor(soulId).length > 0;}
+  /** PC04: pending shared proposals this Soul has accepted (its role is held until commit, expiry or it leaves). */
+  sharedFor(soulId: string): Invite[] {return this.pending().filter(i => i.kind === 'shared' && i.responses[soulId] === 'accepted');}
 
   // ---------------------------------------------------------------- item sources
   private sourceCache: {key: string; list: ItemSource[]} | null = null;
@@ -333,14 +355,15 @@ export class Together {
     const here: V2 = [me.pose.p[0], me.pose.p[2]], add = (c: EdgeCapability, plan: TogetherPlan) => {caps.push(c); plans.set(c.id, plan);};
     const seated = this.seated(soul.entityId), aloft = this.p.aboard(soul.entityId);
     // invitations to me lead (accept / decline)
-    for (const inv of this.invitesFor(soul.soulId)) {
+    for (const inv of [...this.invitesFor(soul.soulId), ...this.sharedFor(soul.soulId)]) {
+      if (inv.shared) {this.sharedOffers(soul, inv, add); continue;}
       add({id: 'accept:' + inv.id, verb: 'accept', label: `Accept: ${inv.host.name} ${inv.label} (${Math.max(0, Math.round((inv.expiresTick - this.tick) / 20))} s left)${inv.what === 'rps' ? '; choose your throw in shape' : ''}`, target: {id: inv.host.soulId, kind: 'soul'}, available: true, ...(inv.what === 'rps' ? {params: SHAPE_PARAM} : {})}, {label: 'Accept the invitation', steps: [], together: {kind: 'accept', invite: inv.id}});
       add({id: 'decline:' + inv.id, verb: 'decline', label: `Decline ${inv.host.name}'s invitation (${inv.what})`, target: {id: inv.host.soulId, kind: 'soul'}, available: true}, {label: 'Decline the invitation', steps: [], together: {kind: 'decline', invite: inv.id}});
     }
     // entry 35: my own open offers of a hand or a game can be withdrawn; joined hands can be let go
-    for (const inv of this.pending()) if (inv.host.soulId === soul.soulId && (inv.what === 'rps' || inv.what === 'hold-hands' || inv.what === 'hand-over') && !Object.values(inv.responses).includes('accepted')) {
+    for (const inv of this.pending()) if (inv.host.soulId === soul.soulId && (inv.kind === 'shared' || (inv.what === 'rps' || inv.what === 'hold-hands' || inv.what === 'hand-over') && !Object.values(inv.responses).includes('accepted'))) {
       const to = inv.guests.map(g => this.mindOf(g.soulId)?.name ?? g.name).join(', ');
-      add({id: 'withdraw:' + inv.id, verb: 'withdraw', label: `Withdraw your offer to ${to} (${inv.what === 'rps' ? 'rock-paper-scissors' : inv.what === 'hand-over' ? `the ${inv.thing?.name ?? 'thing'}` : 'your hand'})`, target: {id: inv.guests[0].soulId, kind: 'soul'}, available: true}, {label: 'Withdraw the offer', steps: [], together: {kind: 'withdraw', invite: inv.id}});
+      add({id: 'withdraw:' + inv.id, verb: 'withdraw', label: `Withdraw your offer to ${to} (${this.offerWords(inv)})`, target: {id: inv.guests[0].soulId, kind: 'soul'}, available: true}, {label: 'Withdraw the offer', steps: [], together: {kind: 'withdraw', invite: inv.id}});
     }
     const hands = this.handsWith(soul.entityId);
     if (hands) add({id: 'let-go:here', verb: 'let-go', label: `Let go of ${hands.name}'s hand`, target: {id: hands.soulId, kind: 'soul'}, available: true}, {label: `Let go of ${hands.name}'s hand`, steps: [{verb: 'mars:hand_hold_v1', params: {mode: 'release'}}], together: {kind: 'let-go'}});
@@ -496,8 +519,9 @@ export class Together {
 
   /** Before an act is accepted: validate what it adds, adjust its steps, and say what to record once its receipt exists.
    *  No side effects here (a refusal later in act leaves nothing behind). */
-  prepare(soul: EdgeSoul, cap: EdgeCapability, plan: TogetherPlan, params: Record<string, unknown>, steps: Steps): {code: string; reason: string; did_you_mean?: {id: string; label: string}[]} | {steps: Steps; label?: string; commit?: (receipt: string) => void; noBody?: boolean} {
+  prepare(soul: EdgeSoul, cap: EdgeCapability, plan: TogetherPlan, params: Record<string, unknown>, steps: Steps): {code: string; reason: string; did_you_mean?: {id: string; label: string}[]} | Prepared {
     const tag = plan.together;
+    if (tag?.kind === 'shared') return this.prepareShared(soul, cap, tag, params);
     // entry 41: a hand-over of a held world thing: walk to stand facing them, hold it out, wait for their answer
     if (tag?.kind === 'hand-over') return this.prepareHandOver(soul, cap, plan, params, steps, tag);
     // an earlier invitation of mine that this act replaces is withdrawn when its receipt ends (onReceipt)
@@ -559,10 +583,13 @@ export class Together {
       return {steps: [], noBody: true, commit: () => {this.endFollow(f, 'failed', 'follow.asked-to-stop', `${soul.name} asked you to stop following.`);}};
     }
     if (tag?.kind === 'withdraw') {
-      const inv = this.invite(tag.invite); if (!inv || inv.state !== 'pending' || inv.host.soulId !== soul.soulId || Object.values(inv.responses).includes('accepted')) return {code: 'invite.gone', reason: 'That offer is no longer open.'};
+      const inv = this.invite(tag.invite); if (!inv || inv.state !== 'pending' || inv.host.soulId !== soul.soulId || inv.kind !== 'shared' && Object.values(inv.responses).includes('accepted')) return {code: 'invite.gone', reason: 'That offer is no longer open.'};
       return {steps: [], noBody: true, commit: () => {
-        for (const g of inv.guests) if (!inv.responses[g.soulId]) {inv.responses[g.soulId] = 'cancelled'; this.p.deliver(g.soulId, 'invite.withdrawn', {invite: {id: inv.id, what: inv.what}, from: inv.host, text: `${soul.name} withdrew the offer (${inv.what === 'rps' ? 'rock-paper-scissors' : inv.what === 'hand-over' ? `the ${inv.thing?.name ?? 'thing'}` : 'a hand to hold'}).`, untrusted: true});}
-        inv.state = 'closed'; this.saveInvite(inv); this.hostAlone(inv, 'invite.withdrawn', 'You withdrew your offer.');
+        for (const g of inv.guests) if (!inv.responses[g.soulId]) {inv.responses[g.soulId] = 'cancelled'; this.p.deliver(g.soulId, 'invite.withdrawn', {invite: {id: inv.id, what: inv.what}, from: inv.host, text: `${soul.name} withdrew the offer (${this.offerWords(inv, true)}).`, untrusted: true});}
+        inv.state = 'closed'; this.saveInvite(inv);
+        // PC04: members who had accepted a shared proposal are told by their own receipt (closed first, so it stays closed)
+        this.failShared(inv, 'invite.withdrawn', `${soul.name} withdrew the proposal; nothing was lifted.`);
+        this.hostAlone(inv, 'invite.withdrawn', 'You withdrew your offer.');
       }};
     }
     if (tag?.kind === 'let-go') {
@@ -570,7 +597,13 @@ export class Together {
       return {steps, commit: () => this.p.deliver(w.soulId, 'hands.released', {from: {soulId: soul.soulId, name: soul.name}, text: `${soul.name} let go of your hand.`, untrusted: true})};
     }
     if (tag?.kind === 'decline') {
-      const inv = this.invite(tag.invite); if (!inv || inv.state !== 'pending' || inv.responses[soul.soulId]) return {code: 'invite.gone', reason: 'That invitation is no longer open.'};
+      const inv = this.invite(tag.invite);
+      // PC04 (PC02 §1): leaving before commit is free; the role is freed when the receipt ends (onReceipt)
+      if (inv?.kind === 'shared' && inv.state === 'pending' && inv.responses[soul.soulId] === 'accepted') {
+        const r = inv.guestReceipts[soul.soulId];
+        return {steps: [], noBody: true, commit: () => {if (r) this.p.fail(r, 'shared.left', 'You left the shared carry before it started; nothing was lifted.');}};
+      }
+      if (!inv || inv.state !== 'pending' || inv.responses[soul.soulId]) return {code: 'invite.gone', reason: 'That invitation is no longer open.'};
       return {steps: [], noBody: true, commit: () => this.respond(inv.id, soul, 'declined')};
     }
     if (tag?.kind === 'item') {
@@ -620,17 +653,19 @@ export class Together {
   }
   private announce(inv: Invite) {
     const secs = Math.round((inv.expiresTick - this.tick) / 20);
-    for (const g of inv.guests) this.p.deliver(g.soulId, 'invite', {invite: {id: inv.id, what: inv.what, from: inv.host, label: `${inv.host.name} ${inv.label}`, expiresInSeconds: secs, accept: 'accept:' + inv.id, decline: 'decline:' + inv.id}, untrusted: true});
+    for (const g of inv.guests) this.p.deliver(g.soulId, 'invite', {invite: {id: inv.id, what: inv.what, from: inv.host, label: `${inv.host.name} ${inv.label}`, expiresInSeconds: secs, accept: 'accept:' + inv.id, decline: 'decline:' + inv.id, ...(inv.shared ? {revision: inv.shared.revision, acceptParams: {revision: inv.shared.revision}} : {})}, untrusted: true});
     this.p.spectate({kind: 'invite', invite: {id: inv.id, what: inv.what, from: inv.host, to: inv.guests, state: 'pending'}, untrusted: true});
   }
   private respond(id: string, soul: EdgeSoul, answer: 'accepted' | 'declined', guestReceipt?: string) {
     const inv = this.invite(id); if (!inv || inv.state !== 'pending') return;
     inv.responses[soul.soulId] = answer; if (guestReceipt) inv.guestReceipts[soul.soulId] = guestReceipt;
+    if (inv.shared && answer === 'accepted') {const free = inv.shared.roles.find(x => !x.soulId); if (free) free.soulId = soul.soulId;}
     this.p.deliver(inv.host.soulId, 'invite.' + answer, {invite: {id: inv.id, what: inv.what}, from: {soulId: soul.soulId, name: soul.name}, text: `${soul.name} ${answer === 'accepted' ? 'accepted' : 'declined'} (${inv.what}).`, untrusted: true});
     this.p.spectate({kind: 'invite', invite: {id: inv.id, what: inv.what, from: inv.host, to: inv.guests, state: answer, by: {soulId: soul.soulId, name: soul.name}}, untrusted: true});
     const open = inv.guests.filter(g => !inv.responses[g.soulId]);
-    if (!open.length || answer === 'accepted' && (inv.kind === 'paired' || inv.kind === 'give')) inv.state = 'closed';
+    if (inv.kind !== 'shared' && (!open.length || answer === 'accepted' && (inv.kind === 'paired' || inv.kind === 'give'))) inv.state = 'closed';
     this.saveInvite(inv);
+    if (inv.kind === 'shared' && answer === 'declined') this.sharedViable(inv, 'invite.declined', `${soul.name} declined.`);
     // nobody will come: a paired gesture or a gift ends for the host (an activity simply goes on alone)
     if (inv.state === 'closed' && !Object.values(inv.responses).includes('accepted') && (inv.kind === 'paired' || inv.kind === 'give')) this.hostAlone(inv, answer === 'declined' ? 'invite.declined' : 'invite.expired', `${soul.name} declined.`);
   }
@@ -640,6 +675,119 @@ export class Together {
     const running = this.p.running(inv.host.soulId, r);
     this.p.fail(r, code, reason);
     if (running) this.p.stop(inv.host.soulId, m.entityId, r);
+  }
+
+  // ---------------------------------------------------------------- PC04 (#683): shared physical operations
+  /** What an offer is, in the words of a withdraw label (`withdrew` for the guest's notice). */
+  private offerWords(inv: Invite, withdrew = false): string {
+    if (inv.shared) return `carrying ${inv.shared.load.name} to ${inv.shared.destination.name} together`;
+    return inv.what === 'rps' ? 'rock-paper-scissors' : inv.what === 'hand-over' ? `the ${inv.thing?.name ?? 'thing'}` : withdrew ? 'a hand to hold' : 'your hand';
+  }
+  /** PC02 §4: a shared carry needs a humanoid body with two free hands, standing on its own feet. */
+  private sharedBodyProblem(soul: EdgeSoul): {code: string; reason: string} | null {
+    const me = this.p.body(soul.entityId);
+    if (!me?.human || isRigidBody(me)) return {code: 'body.unsupported', reason: 'Carrying something together needs a humanoid body with two free hands; try talking or looking instead.'};
+    const held = this.heldBy(soul.soulId); if (held) return {code: 'hands.full', reason: `You are holding ${held.name}; put it down first.`};
+    const thing = Object.values(this.w.entities).find(x => x.support?.kind === 'in-hand' && x.support.by === soul.entityId);
+    if (thing || me.human.grip) return {code: 'hands.full', reason: `Your hands are full${thing ? ` (${this.thingName?.(thing.id) ?? String(thing.label ?? thing.id)})` : ''}; put it down first.`};
+    const hands = this.handsWith(soul.entityId); if (hands) return {code: 'hands.holding', reason: `You are holding ${hands.name}'s hand; let go first.`};
+    if (this.p.aboard(soul.entityId)) return {code: 'ride.aboard', reason: 'Not while riding.'};
+    return null;
+  }
+  /** PC02 §1 propose / amend: `carry-with:<load> {to, with}` asks Souls to carry it together (revision 1, a `waiting`
+   *  receipt, no body steps); with `invite` from its host it amends that proposal, bumping its revision when anything
+   *  material changed. Nothing moves and nothing is claimed here. `params.toPlace` is the ledger's resolved `to`. */
+  private prepareShared(soul: EdgeSoul, cap: EdgeCapability, tag: Extract<Tag, {kind: 'shared'}>, params: Record<string, unknown>): {code: string; reason: string} | Prepared {
+    if (!this.p.sharedCarry) return {code: 'capability.unknown', reason: 'Carrying things together is not available in this world yet.'};
+    const body = this.sharedBodyProblem(soul); if (body) return body;
+    const to = params.toPlace as {id: string; name: string} | undefined;
+    if (!to) return {code: 'capability.params', reason: 'Choose a named place to carry it to (to).'};
+    if (params.with === undefined) return {code: 'capability.params', reason: `Name who carries ${tag.name} with you (with: Soul names or ids).`};
+    const w = this.withSouls(soul, params.with); if (!w.ok) return {code: w.code, reason: w.reason};
+    const guests = w.souls.filter(g => g.soulId !== soul.soulId).map(g => ({soulId: g.soulId, name: g.name}));
+    const crew = 1 + guests.length, [lo, hi] = tag.crew, names = guests.map(g => g.name).join(', ');
+    if (!guests.length || crew < lo) return {code: 'carry.crew-too-small', reason: `${tag.name} needs at least ${lo} carriers; ask ${Math.max(1, lo - 1)} Soul${lo - 1 > 1 ? 's' : ''} to carry it with you.`};
+    if (crew > hi) return {code: 'carry.crew-too-large', reason: `${tag.name} takes at most ${hi} carriers; ask fewer Souls.`};
+    const label = `Ask ${names} to carry ${tag.name} to ${to.name} together`;
+    if (params.invite !== undefined) {
+      const inv = typeof params.invite === 'string' ? this.invite(params.invite) : null;
+      if (!inv?.shared || inv.state !== 'pending' || inv.host.soulId !== soul.soulId) return {code: 'invite.gone', reason: 'That proposal is no longer open.'};
+      const s = inv.shared, changes: string[] = [];
+      if (s.load.entity !== tag.load) changes.push(`the load is now ${tag.name}`);
+      if (s.destination.place !== to.id) changes.push(`the destination is now ${to.name}`);
+      if (inv.guests.map(g => g.soulId).sort().join() !== guests.map(g => g.soulId).sort().join()) changes.push(`the crew is now ${soul.name} with ${names}`);
+      // the same proposal again changes nothing: its host's receipt answers
+      if (!changes.length) return {steps: [], existing: inv.hostReceipt ?? undefined};
+      return {steps: [], noBody: true, label, commit: () => this.amendShared(inv.id, soul, cap.id, tag, to, guests, changes)};
+    }
+    const id = 'inv_' + randomUUID().slice(0, 12);
+    return {steps: [], wait: true, label, detail: {sharedV1: {invite: id, revision: 1}}, commit: receipt => {
+      const inv: Invite = {id, what: 'carry', kind: 'shared', host: {soulId: soul.soulId, name: soul.name}, guests, capability: cap.id, label: `asks you to carry ${tag.name} to ${to.name} together`,
+        createdTick: this.tick, expiresTick: this.tick + SHARED_LAPSE * 20, state: 'pending', responses: {}, hostReceipt: receipt, guestReceipts: {},
+        shared: {template: {id: 'carry', version: 1}, revision: 1, load: {entity: tag.load, def: tag.def, name: tag.name}, destination: {place: to.id, name: to.name},
+          roles: [{role: 'carrier', slot: 0, soulId: soul.soulId}, ...guests.map((_, i) => ({role: 'carrier' as const, slot: i + 1, soulId: null}))], crew: tag.crew, cleanup: 'set-down-here', op: null}};
+      this.saveInvite(inv); this.announce(inv);
+    }};
+  }
+  /** PC02 §1 amend: a new revision clears every acceptance; whoever had accepted is told by their own receipt. */
+  private amendShared(id: string, soul: EdgeSoul, capability: string, tag: Extract<Tag, {kind: 'shared'}>, to: {id: string; name: string}, guests: {soulId: string; name: string}[], changes: string[]) {
+    const inv = this.invite(id); if (!inv?.shared || inv.state !== 'pending') return;
+    const s = inv.shared, accepted = Object.entries(inv.guestReceipts).filter(([g]) => inv.responses[g] === 'accepted');
+    const dropped = inv.guests.filter(g => !guests.some(x => x.soulId === g.soulId));
+    s.revision++; s.changed = changes.join('; '); s.load = {entity: tag.load, def: tag.def, name: tag.name}; s.destination = {place: to.id, name: to.name}; s.crew = tag.crew;
+    s.roles = [{role: 'carrier', slot: 0, soulId: soul.soulId}, ...guests.map((_, i) => ({role: 'carrier' as const, slot: i + 1, soulId: null}))];
+    Object.assign(inv, {guests, responses: {}, guestReceipts: {}, capability, label: `asks you to carry ${tag.name} to ${to.name} together`, expiresTick: this.tick + SHARED_LAPSE * 20});
+    this.saveInvite(inv);
+    for (const [, r] of accepted) this.p.fail(r, 'shared.revision-changed', `${inv.host.name} changed the proposal to revision ${s.revision} (${s.changed}); accept the new revision if you still agree.`);
+    for (const g of dropped) this.p.deliver(g.soulId, 'invite.closed', {invite: {id: inv.id, what: inv.what}, from: inv.host, text: `${inv.host.name}'s proposal changed and no longer includes you.`, untrusted: true});
+    this.announce(inv);
+  }
+  /** PC02 §1 accept: each guest accepts their own role against the current revision. Accepting moves nobody: it opens
+   *  the guest's own `waiting` receipt (commit is PC05); a repeat of the same revision answers with that receipt. */
+  private acceptShared(soul: EdgeSoul, inv: Invite, params: Record<string, unknown>): {code: string; reason: string} | {label: string; steps: Steps; capability: string; commit: (receipt: string) => void; wait?: boolean; existing?: string; detail?: Record<string, unknown>} {
+    const s = inv.shared, gone = {code: 'invite.gone', reason: 'That proposal is no longer open.'};
+    if (!this.p.sharedCarry || !s || inv.state !== 'pending' || !inv.guests.some(g => g.soulId === soul.soulId)) return gone;
+    const answer = inv.responses[soul.soulId], capability = 'accept:' + inv.id;
+    if (answer === 'accepted') {if (params.revision === undefined || params.revision === s.revision) return {label: 'Accepted', steps: [], capability, existing: inv.guestReceipts[soul.soulId], commit: () => {}};}
+    else if (answer) return {code: 'invite.gone', reason: 'You already answered that proposal.'};
+    if (!Number.isInteger(params.revision)) return {code: 'capability.params', reason: `Say which revision you agree to: {"revision": ${s.revision}}.`};
+    if (params.revision !== s.revision) return {code: 'shared.revision-changed', reason: `The proposal changed: it is now revision ${s.revision}${s.changed ? ` (${s.changed})` : ''}. Accept {"revision": ${s.revision}} if you still agree.`};
+    const body = this.sharedBodyProblem(soul); if (body) return body;
+    if (!this.mindOf(inv.host.soulId) || this.p.faded(inv.host.soulId)) return {code: 'invite.gone', reason: `${inv.host.name} is not here any more.`};
+    if (!s.roles.some(r => !r.soulId)) return {code: 'shared.full', reason: 'Every role in that carry is taken.'};
+    return {label: `Carry ${s.load.name} to ${s.destination.name} with ${inv.host.name}`, steps: [], capability, wait: true, detail: {sharedV1: {invite: inv.id, revision: s.revision}},
+      commit: receipt => this.respond(inv.id, soul, 'accepted', receipt)};
+  }
+  /** Accept / decline (or leave) offers of a shared proposal to one of its guests; no distant clutter (only its guests). */
+  private sharedOffers(soul: EdgeSoul, inv: Invite, add: (c: EdgeCapability, plan: TogetherPlan) => void) {
+    const s = inv.shared!, secs = Math.max(0, Math.round((inv.expiresTick - this.tick) / 20)), mine = inv.responses[soul.soulId] === 'accepted';
+    const what = `carry ${s.load.name} to ${s.destination.name} with ${inv.host.name}`, target = {id: inv.host.soulId, kind: 'soul'};
+    add({id: 'accept:' + inv.id, verb: 'accept', label: mine ? `You accepted: ${what} (revision ${s.revision}); accepting again changes nothing` : `Accept: ${inv.host.name} asks you to ${what} (revision ${s.revision}, ${secs} s left; accepting moves nobody yet)`,
+      target, available: true, params: {revision: {type: 'integer', min: 1, description: `the proposal revision you agree to (now ${s.revision})`}}}, {label: 'Accept the shared carry', steps: [], together: {kind: 'accept', invite: inv.id}});
+    add({id: 'decline:' + inv.id, verb: 'decline', label: mine ? `Leave: ${what} (before it starts)` : `Decline ${inv.host.name}'s proposal to ${what}`, target, available: true}, {label: mine ? 'Leave the shared carry' : 'Decline the proposal', steps: [], together: {kind: 'decline', invite: inv.id}});
+  }
+  /** End the open receipts of every guest who had accepted (the invitation is closed or superseded first). */
+  private failShared(inv: Invite, code: string, reason: string) {
+    if (inv.kind !== 'shared') return;
+    for (const [g, r] of Object.entries(inv.guestReceipts)) if (inv.responses[g] === 'accepted') this.p.fail(r, code, reason);
+  }
+  /** A proposal nobody can still fill closes: its host's receipt ends with why (rather than waiting out the lapse). */
+  private sharedViable(inv: Invite, code: string, reason: string) {
+    if (inv.state !== 'pending' || inv.guests.some(g => !inv.responses[g.soulId] || inv.responses[g.soulId] === 'accepted')) return;
+    inv.state = 'closed'; this.saveInvite(inv); this.hostAlone(inv, code, reason);
+  }
+  /** PC04: a shared receipt as its own Soul sees it (PC02 §5): live role and phase while it is the member's current one. */
+  sharedReceipt(receiptId: string, soulId: string, made: {invite: string; revision: number}): SharedReceiptV1 {
+    const inv = this.invite(made.invite), s = inv?.shared;
+    const current = !!s && s.revision === made.revision && (inv!.hostReceipt === receiptId || inv!.guestReceipts[soulId] === receiptId && inv!.responses[soulId] === 'accepted');
+    return {invite: made.invite, revision: made.revision, role: 'carrier', slot: current ? s!.roles.find(r => r.soulId === soulId)?.slot ?? null : null, phase: current && inv!.state === 'pending' ? 'pending' : 'ended'};
+  }
+  /** PC02 §1: an open shared receipt that a newer body act of its Soul ends is `failed` / `shared.left`, never `replaced`. */
+  sharedLeave(r: EdgeReceipt): {code: string; reason: string} | null {
+    if (!r.capability.startsWith('carry-with:') && !r.capability.startsWith('accept:')) return null;
+    const inv = this.inviteForReceipt(r.id); if (inv?.kind !== 'shared' || inv.state !== 'pending') return null;
+    if (inv.hostReceipt === r.id) return {code: 'shared.left', reason: 'You did something else, so the shared carry you proposed is off; nothing was lifted.'};
+    return inv.guestReceipts[r.soulId] === r.id ? {code: 'shared.left', reason: 'You did something else, so you left the shared carry before it started; nothing was lifted.'} : null;
   }
 
   /** BROWSE-COURTESY: a guest joining a place-bound activity (read in the library) takes its own free spot of that activity
@@ -661,8 +809,9 @@ export class Together {
     return near && ownPlans.get(near.c.id);
   }
   /** accept:<invite> → the guest's own plan to join (computed now, from where everyone is). */
-  acceptPlan(soul: EdgeSoul, inviteId: string, ownCaps: EdgeCapability[], ownPlans: Map<string, TogetherPlan>, params: Record<string, unknown> = {}): {code: string; reason: string} | {label: string; steps: Steps; capability: string; ride?: {object: string}; commit: (receipt: string) => void} {
+  acceptPlan(soul: EdgeSoul, inviteId: string, ownCaps: EdgeCapability[], ownPlans: Map<string, TogetherPlan>, params: Record<string, unknown> = {}): {code: string; reason: string} | {label: string; steps: Steps; capability: string; ride?: {object: string}; commit: (receipt: string) => void; wait?: boolean; existing?: string; detail?: Record<string, unknown>} {
     const inv = this.invite(inviteId);
+    if (inv?.kind === 'shared') return this.acceptShared(soul, inv, params);
     if (!inv || inv.state !== 'pending' || !inv.guests.some(g => g.soulId === soul.soulId) || inv.responses[soul.soulId]) return {code: 'invite.gone', reason: 'That invitation is no longer open.'};
     if(inv.pairedPolicy!==undefined&&inv.pairedPolicy!=='ready-v1')return {code:'gesture.policy-unsupported',reason:'That invitation names an unsupported paired policy.'};
     const host = this.mindOf(inv.host.soulId), hb = host ? this.p.body(host.entityId) : undefined, me = this.p.body(soul.entityId);
@@ -844,6 +993,18 @@ export class Together {
       const open = inv.guests.filter(g => !inv.responses[g.soulId]);
       for (const g of open) {inv.responses[g.soulId] = 'cancelled'; this.p.deliver(g.soulId, 'invite.closed', {invite: {id: inv.id, what: inv.what}, from: inv.host, text: `${inv.host.name}'s invitation (${inv.what}) is no longer open.`, untrusted: true});}
       inv.state = 'closed'; this.saveInvite(inv);
+      // PC04 (PC02 §1): the host did something else, so the proposal is off for everyone who had accepted
+      this.failShared(inv, 'shared.left', `${inv.host.name} did something else, so the shared carry is off; nothing was lifted.`);
+    }
+    // PC04: a guest's shared receipt ended before commit (left, or another act of theirs): free the role
+    const shared = r.capability.startsWith('accept:') ? this.inviteForReceipt(r.id) : null;
+    const guest = shared?.kind === 'shared' && shared.state === 'pending' ? Object.keys(shared.guestReceipts).find(g => shared.guestReceipts[g] === r.id && shared.responses[g] === 'accepted') : undefined;
+    if (shared?.shared && guest) {
+      const name = this.mindOf(guest)?.name ?? shared.guests.find(g => g.soulId === guest)?.name ?? 'someone';
+      shared.responses[guest] = 'left'; for (const role of shared.shared.roles) if (role.soulId === guest) role.soulId = null;
+      this.saveInvite(shared);
+      this.p.deliver(shared.host.soulId, 'invite.left', {invite: {id: shared.id, what: shared.what, revision: shared.shared.revision}, from: {soulId: guest, name}, text: `${name} left the shared carry before it started.`, untrusted: true});
+      this.sharedViable(shared, 'shared.left', `${name} left the shared carry.`);
     }
   }
   private dropPlace(soulId: string) {return this.p.innermostPlace(soulId) ?? 'world';}
@@ -985,6 +1146,11 @@ export class Together {
       inv.state = 'closed'; this.saveInvite(inv);
       if (open.length) this.p.deliver(inv.host.soulId, 'invite.expired', {invite: {id: inv.id, what: inv.what}, text: `No answer from ${open.map(g => g.name).join(', ')} (${inv.what}).`, untrusted: true});
       if (!Object.values(inv.responses).includes('accepted') && (inv.kind === 'paired' || inv.kind === 'give')) this.hostAlone(inv, 'invite.expired', `No answer from ${open.map(g => g.name).join(', ')}.`);
+      // PC04: a shared proposal that never started lapses for every member (expiry never applies after a commit, PC05)
+      if (inv.kind === 'shared') {
+        const why = open.length ? `No answer from ${open.map(g => g.name).join(', ')}; the shared carry lapsed and nothing was lifted.` : 'The shared carry did not start before the proposal lapsed; nothing was lifted.';
+        this.failShared(inv, 'invite.expired', why); this.hostAlone(inv, 'invite.expired', why);
+      }
     }
     for (const f of [...this.follows.values()]) {
       const r = this.p.receipt(f.soulId, f.receipt); if (!r || !['started', 'waiting'].includes(r.phase)) {this.dropFollow(f.receipt); continue;}
@@ -1011,7 +1177,7 @@ export class Together {
       holding: held ? {id: held.id, kind: held.kind, name: held.name} : null,
       following: f ? {soulId: f.target, name: this.mindOf(f.target)?.name ?? 'someone', untrusted: true} : null,
       followedBy: this.followersOf(soul.soulId).map(x => ({soulId: x.soulId, name: this.mindOf(x.soulId)?.name ?? 'someone'})),
-      invites: this.invitesFor(soul.soulId).map(i => ({id: i.id, what: i.what, from: i.host, label: `${i.host.name} ${i.label}`, expiresInSeconds: Math.max(0, Math.round((i.expiresTick - this.tick) / 20)), accept: 'accept:' + i.id, decline: 'decline:' + i.id, untrusted: true})),
+      invites: this.invitesFor(soul.soulId).map(i => ({id: i.id, what: i.what, from: i.host, label: `${i.host.name} ${i.label}`, expiresInSeconds: Math.max(0, Math.round((i.expiresTick - this.tick) / 20)), accept: 'accept:' + i.id, decline: 'decline:' + i.id, ...(i.shared ? {revision: i.shared.revision} : {}), untrusted: true})),
       invited: this.pending().filter(i => i.host.soulId === soul.soulId).map(i => ({id: i.id, what: i.what, guests: i.guests.map(g => ({...g, answer: i.responses[g.soulId] ?? 'pending'})), expiresInSeconds: Math.max(0, Math.round((i.expiresTick - this.tick) / 20))})),
       items,
     };
