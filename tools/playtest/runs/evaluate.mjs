@@ -281,9 +281,13 @@ function scenarioAcceptance(sr) {
 /** Identity of what ran (must match for repeats to pool) and the conditions it ran under (listed, not pooled on). */
 export function runIdentity(sr) {
   const sc = sr.scenario ? structuredClone(sr.scenario) : null;
-  if (sc) { for (const k of ['scenarioPath', 'scenarioSha256', 'serverRoot']) delete sc[k]; if (sc.world) delete sc.world.port; }
+  if (sc) {
+    for (const k of ['scenarioPath', 'scenarioSha256', 'serverRoot']) delete sc[k]; if (sc.world) delete sc.world.port;
+    // A traced seat is a different condition from an untraced one, but its run-specific trace file and ids are not.
+    for (const s of sc.seats ?? []) if (s.diagnostics?.trace) s.diagnostics = { trace: true };
+  }
   const eff = sr.receipt?.spec?.effective ?? null;
-  const seats = (sc?.seats ?? []).map((s) => ({ id: s.id, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null, effort: s.effort ?? null, persona: s.persona ?? null, script: s.script ? hashOf(s.script).slice(0, 16) : null }));
+  const seats = (sc?.seats ?? []).map((s) => ({ id: s.id, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null, effort: s.effort ?? null, persona: s.persona ?? null, script: s.script ? hashOf(s.script).slice(0, 16) : null, ...(s.diagnostics?.trace ? { traced: true } : {}) }));
   const components = {
     scenario: sc ? hashOf(sc).slice(0, 16) : null,
     worldSource: eff?.world?.source ? `${eff.world.source.kind}:${eff.world.source.path}@${eff.world.source.sha256.slice(0, 16)}` : sc?.world ? `${sc.world.snapshot ? 'snapshot' : 'genesis'}:${sc.world.snapshot ?? sc.world.genesis}@unhashed` : null,
