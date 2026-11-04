@@ -60,7 +60,7 @@ export function reconstruct(text) {
   const observeReceipt = (fact, r) => {
     const x = receipts.get(fact.id) ?? {id: fact.id, phases: {}, lastRank: -1};
     receipts.set(fact.id, x);
-    for (const k of ['soulId', 'capability', 'acceptedTick', 'startedTick', 'endedTick', 'code']) if (fact[k] !== undefined) x[k] = fact[k];
+    for (const k of ['soulId', 'capability', 'acceptedTick', 'startedTick', 'firstMotionTick', 'endedTick', 'code']) if (fact[k] !== undefined) x[k] = fact[k];
     const rank = ORDER.indexOf(fact.phase);
     if (fact.phase && !(fact.phase in x.phases)) x.phases[fact.phase] = r.at;
     if (rank >= 0 && rank < x.lastRank && TERMINAL.has(x.terminal)) anomalies.push({type: 'stale-receipt', receipt: fact.id, phase: fact.phase, after: x.terminal, proc: r.proc, seq: r.seq});
@@ -93,7 +93,7 @@ export function reconstruct(text) {
     if (rec && !rec.terminal) anomalies.push({type: 'receipt-unresolved', receipt: rec.id, note: 'no terminal phase observed in this trace'});
     return {op: a.op, link: a.for ? a.linkSource : null, attempts: a.attempts, outcome: last.status === 0 ? 'unreachable' : last.status >= 200 && last.status < 300 && last.accepted !== false ? 'accepted' : 'refused', code: last.code,
       receipt: rec ? {id: rec.id, capability: rec.capability ?? null, terminal: rec.terminal ?? null, code: rec.code ?? null,
-        ticks: {accepted: rec.acceptedTick ?? null, started: rec.startedTick ?? null, ended: rec.endedTick ?? null}, firstObservedAt: rec.phases} : null};
+        ticks: {accepted: rec.acceptedTick ?? null, started: rec.startedTick ?? null, firstMotion: rec.firstMotionTick ?? null, ended: rec.endedTick ?? null}, firstObservedAt: rec.phases} : null};
   };
   const episodes = [...messages.values()].sort((a, b) => a.deliveredAt - b.deliveredAt).map(m => {
     const linked = [...acts.values()].filter(a => a.for === m.id);
@@ -109,6 +109,7 @@ export function reconstruct(text) {
     episodes, unlinked};
 }
 
+const ticks = n => `${n} ticks (≈${n * 50} ms at 20 Hz)`;
 const secs = ms => (ms === null || ms === undefined ? '?' : `${(ms / 1000).toFixed(3)}s`);
 const clock = at => new Date(at).toISOString().slice(11, 23);
 export function render(t) {
@@ -119,8 +120,10 @@ export function render(t) {
     for (const x of a.attempts) lines.push(`    act ${a.op ? 'op ' + a.op.slice(0, 8) + ' ' : ''}attempt ${x.attempt} → ${x.status}${x.accepted === false ? ' refused' : ''}${x.code ? ' ' + x.code : ''} in ${x.durationMs ?? '?'} ms (process clock)  @+${secs(x.at - from)} local`);
     if (a.receipt) {
       const r = a.receipt, k = r.ticks;
-      lines.push(`    receipt ${r.id} ${r.capability ?? ''}: accepted t${k.accepted ?? '?'} → started t${k.started ?? '?'} → ended t${k.ended ?? '?'} = ${r.terminal ?? 'no terminal observed'}${r.code ? ' (' + r.code + ')' : ''}  [world ticks]`);
-      if (k.accepted !== null && k.started !== null) lines.push(`      accepted→started ${k.started - k.accepted} ticks; started→ended ${k.ended !== null ? k.ended - k.started + ' ticks' : 'open'}`);
+      // #790: `started` is the body program's start; first motion is when the body visibly began (the receipt's
+      // firstMotionTick; absent when the world did not report one, for example an older server or no body program).
+      lines.push(`    receipt ${r.id} ${r.capability ?? ''}: accepted t${k.accepted ?? '?'} → started (program) t${k.started ?? '?'} → first motion t${k.firstMotion ?? '?'} → ended t${k.ended ?? '?'} = ${r.terminal ?? 'no terminal observed'}${r.code ? ' (' + r.code + ')' : ''}  [world ticks]`);
+      if (k.accepted !== null && k.started !== null) lines.push(`      accepted→started ${k.started - k.accepted} ticks; started→first motion ${k.firstMotion !== null ? ticks(k.firstMotion - k.started) : 'not reported'}; started→ended ${k.ended !== null ? k.ended - k.started + ' ticks' : 'open'}`);
       if (r.terminal && r.firstObservedAt[r.terminal]) lines.push(`      terminal first seen by the client @+${secs(r.firstObservedAt[r.terminal] - from)} local (bounded by polling)`);
     }
     return lines;

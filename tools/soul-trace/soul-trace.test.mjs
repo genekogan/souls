@@ -30,7 +30,7 @@ async function stubWorld(t) {
         if (body.capability === 'fly') return reply(200, {accepted: false, code: 'capability.unknown', reason: 'no fly here'});
         return reply(200, {accepted: true, channel: 'body', receipt: {id: 'r_9', soulId: 's_1', capability: 'walk:fountain', phase: 'started', acceptedTick: tick - 2, startedTick: tick, now: 'walking'}, ...(body.for ? {for: body.for} : {})});
       }
-      if (req.url.startsWith('/v1/edge/receipts/r_9')) return reply(200, {receipt: {id: 'r_9', soulId: 's_1', capability: 'walk:fountain', phase: 'completed', acceptedTick: 100, startedTick: 102, endedTick: 160, outcome: {summary: SECRET}}});
+      if (req.url.startsWith('/v1/edge/receipts/r_9')) return reply(200, {receipt: {id: 'r_9', soulId: 's_1', capability: 'walk:fountain', phase: 'completed', acceptedTick: 100, startedTick: 102, firstMotionTick: 112, endedTick: 160, outcome: {summary: SECRET}}});
       reply(404, {error: {code: 'not-found', message: 'nothing here'}});
     });
   });
@@ -74,7 +74,9 @@ test('A1/A2/A3: a traced thin-CLI episode links owner message → act → receip
   assert.ok(refusedLinked.every(a => a.link === 'requested'), 'a refusal carries no world link; the requested id joins it, marked as such');
   ep.acts = ep.acts.filter(a => a.outcome === 'accepted'); assert.equal(ep.acts[0].link, 'world');
   assert.equal(ep.acts[0].receipt.terminal, 'completed');
-  assert.deepEqual(ep.acts[0].receipt.ticks, {accepted: 100, started: 102, ended: 160});
+  assert.deepEqual(ep.acts[0].receipt.ticks, {accepted: 100, started: 102, firstMotion: 112, ended: 160});
+  assert.match(render(tl), /started \(program\) t102 → first motion t112 → ended t160/);
+  assert.match(render(tl), /started→first motion 10 ticks \(≈500 ms at 20 Hz\)/, '#790: the program start and the visible start are split');
   assert.equal(tl.unlinked.length, 1); assert.equal(tl.unlinked[0].outcome, 'refused', 'HTTP 200 with accepted:false is a refusal');
   assert.equal(tl.unlinked[0].origin.kind, 'unknown');
   assert.deepEqual(tl.anomalies, []);

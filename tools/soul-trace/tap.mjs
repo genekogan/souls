@@ -25,7 +25,7 @@ export function routeOf(url) {
 
 const receiptFact = r => (r && typeof r === 'object' && ref(r.id) ? prune({
   id: r.id, soulId: ref(r.soulId), capability: ref(r.capability), phase: ref(r.phase), code: ref(r.code),
-  acceptedTick: int(r.acceptedTick), startedTick: int(r.startedTick), endedTick: int(r.endedTick),
+  acceptedTick: int(r.acceptedTick), startedTick: int(r.startedTick), firstMotionTick: int(r.firstMotionTick), endedTick: int(r.endedTick),
 }) : undefined);
 const messageFact = m => (m && typeof m === 'object' && ref(m.id) ? prune({id: m.id, sentAt: int(m.sentAt), state: ref(m.state)}) : undefined);
 

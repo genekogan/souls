@@ -67,6 +67,7 @@ import {BodyRule, BODY_PATH_SAMPLE_M, type BodyKnobs, type BodySoul, type Postur
 type Resolved = {from: string; to: string; note: string};
 const WAIT_CODES = new Set(['program.safe-stop-required', 'program.safe-stop-pending']);
 const WAIT_LIMIT_TICKS = 20 * 60;   // a waiting receipt that cannot start within a minute fails
+const MOTION_M = 0.05;   // #790: a root displacement (m, ground plane) larger than this is first motion
 const NEAR_RADIUS = 20, GO_NEAR_RADIUS = 60;
 /** srv-act-words (C): the destination words of a focus-shaped walk (vocabulary WORDS_FOCUS_SHAPE's walk arm). */
 const WALK_DEST = /^(?:please )?(?:go|walk|head)(?: over| back)? (?:to|into|inside|towards?) ([a-z0-9' -]+?)[.!]?$/;
@@ -541,6 +542,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if(patch.phase==='completed'&&next.capability==='stand:here')this.ownerControlGrace(next.soul_id);
     if (patch.phase && !OPEN.includes(patch.phase)) next.detail = this.setDetail(id, {endedAt: bodyEnd(this, cur.soul_id)});   // strict/1: where the body ended up
     if(patch.phase&&!OPEN.includes(patch.phase))this.finishOutcome(next);});
+    if (patch.phase && !OPEN.includes(patch.phase)) this.motionWatch.delete(id);
+    else if (next.phase === 'started' && patch.program_id && next.program_id && !cur.program_id) this.watchMotion(id, next.soul_id);
     if (patch.phase && patch.phase !== cur.phase) this.emit(this.view(next));
   }
   /** Called only inside the original terminal phase transaction. Replay only reads the immutable result. */
@@ -653,6 +656,22 @@ export class EdgeLedger implements EdgeLedgerHooks {
     else this.update(r.receipt_id, {phase: 'failed', code: ev.code ?? 'action.failed', reason: ev.message ?? humanBlockedExplanationV1(ev.code, 'That action')});
   }
   private contactPending=new Set<string>();
+  /** #790 (D021): receipts whose body program started but whose body has not visibly begun yet. `started` stays the
+   *  engine's program start; the first tick after it at which the body's activity changes or its root moves more than
+   *  MOTION_M is kept as the receipt's `firstMotionTick` (detail). In memory: a restart fails open receipts anyway. */
+  private motionWatch=new Map<string,{entityId:string;activity:string;p:[number,number]}>();
+  private watchMotion(id:string,soulId:string){
+    const m=this.host.minds.get(soulId),e=m?(this.mw.world as NativeWorld).entities[m.entityId]:undefined;if(!m||!e?.human)return;
+    this.motionWatch.set(id,{entityId:m.entityId,activity:String(e.human.activity??'idle'),p:[e.pose.p[0],e.pose.p[2]]});
+  }
+  private motionTicks(tick:number){
+    const world=this.mw.world as NativeWorld;
+    for(const [id,w] of this.motionWatch){
+      const e=world.entities[w.entityId];if(!e?.human){this.motionWatch.delete(id);continue;}
+      if(String(e.human.activity??'idle')===w.activity&&Math.hypot(e.pose.p[0]-w.p[0],e.pose.p[2]-w.p[1])<=MOTION_M)continue;
+      this.motionWatch.delete(id);this.setDetail(id,{firstMotionTick:tick});
+    }
+  }
   /** entry 31: passage contacts already applied (receipt|hand action), before their commit's detail write lands. */
   private passageApplied=new Set<string>();
   private contactTicks(tick:number){
@@ -683,6 +702,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   }
   private afterTick(tick: number) {
     if(this.contactPending.size)this.contactTicks(tick);
+    if(this.motionWatch.size)this.motionTicks(tick);
     for (const [soulId, p] of this.pending) {
       if (this.host.quietBarrier) {p.deadline = Math.max(p.deadline, tick + WAIT_LIMIT_TICKS); continue;}   // the wait clock pauses during renewal
       if (tick > p.deadline) {this.pending.delete(soulId); this.update(p.receipt, {phase: 'failed', code: 'state.safe-stop-timeout', reason: 'The body could not reach a safe stop within a minute.'}); continue;}
@@ -2652,9 +2672,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
 }
 
 /** Receipt detail (Core-A): channel (body | attention | none), chosen (what an intent picked), endedAt (terminal). */
-function detailOf(r: Row): {channel?: string; chosen?: unknown; endedAt?: unknown; alternatives?: unknown; meal?: unknown; approach?: unknown} {
+function detailOf(r: Row): {channel?: string; chosen?: unknown; endedAt?: unknown; alternatives?: unknown; meal?: unknown; approach?: unknown; firstMotionTick?: number} {
   if (!r.detail) return {};
-  try {const d = JSON.parse(r.detail) as {channel?: string; chosen?: unknown; endedAt?: unknown; alternatives?: unknown; meal?: unknown; approach?: unknown}; return {...(d.channel ? {channel: d.channel} : {}), ...(d.chosen ? {chosen: d.chosen} : {}), ...(d.endedAt ? {endedAt: d.endedAt} : {}), ...(d.alternatives ? {alternatives: d.alternatives} : {}), ...(d.meal ? {meal: d.meal} : {}), ...(d.approach ? {approach: d.approach} : {})};}
+  try {const d = JSON.parse(r.detail) as {channel?: string; chosen?: unknown; endedAt?: unknown; alternatives?: unknown; meal?: unknown; approach?: unknown; firstMotionTick?: unknown}; return {...(Number.isSafeInteger(d.firstMotionTick) ? {firstMotionTick: d.firstMotionTick as number} : {}), ...(d.channel ? {channel: d.channel} : {}), ...(d.chosen ? {chosen: d.chosen} : {}), ...(d.endedAt ? {endedAt: d.endedAt} : {}), ...(d.alternatives ? {alternatives: d.alternatives} : {}), ...(d.meal ? {meal: d.meal} : {}), ...(d.approach ? {approach: d.approach} : {})};}
   catch {return {};}
 }
 
