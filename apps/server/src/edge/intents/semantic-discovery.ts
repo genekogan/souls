@@ -64,16 +64,19 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  const parsed=parseCapability(text,new Set([...caps.map(c=>c.verb),'sit']));if(parsed.verb!=='sit')return null;
  // An infinitive/so-clause after a named seat states why to sit, not a second seat identity.
  const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to)\s+/i)[0],raw=tokens(target).filter(w=>w!=='down');
- // #848: a relation word is read only when a name follows it ("the bench outside the cottage"); a bare or trailing one
- // ("sit outside", "a bench outside") keeps its old handling
- const q=raw.flatMap((w,i)=>RELATION.has(w)&&i<raw.length-1?RELATION.get(w)!:[w]);
+ const parts=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(L,soul,p,part)).map(part=>({p,part,scope:words(contexts(L,p,soul)),own:words([part.title,...(part.aliases??[])])})));
+ const match=(q:string[])=>parts.filter(x=>covers(q,new Set([...x.scope,...x.own])));
+ // #848: a relation word between a seat and its place is read only when the words read that way name a seat ("the bench
+ // outside the cottage"); otherwise ("sit outside", "sit outside with Bo", "the bench outside the hall") the words keep
+ // their old handling, so a phrase that named nothing before still answers as before
+ const mapped=raw.flatMap((w,i)=>RELATION.has(w)&&i<raw.length-1?RELATION.get(w)!:[w]);
+ const q=mapped.join(' ')!==raw.join(' ')&&match(mapped).length?mapped:raw;
  if(!q.length||q.every(w=>GENERIC_SEAT.has(w)))return null;
  // Existing exact fixture identities retain the normal vocabulary/admission path. A shared
  // word in a semantic part must not intercept a fully named ordinary object.
  const identity=raw.join(' ');
  if(caps.some(c=>c.verb==='sit'&&c.target?.kind==='object'&&[c.id.slice(c.id.indexOf(':')+1),c.target.id,c.label.split(/\s*[([]|,\s*by\s/)[0],parseCapability(c.label,new Set(['sit'])).rest].some(n=>tokens(n).join(' ')===identity)))return null;
- const entries=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(L,soul,p,part)).map(part=>({p,part,scope:words(contexts(L,p,soul)),own:words([part.title,...(part.aliases??[])])})))
-  .filter(x=>covers(q,new Set([...x.scope,...x.own])));
+ const entries=match(q);
  // Do not relax an explicit target to a nearby fixture if a named part/place is missing or unsupported.
  const relevant=entries.length||known.some(p=>p.parts?.length&&q.some(w=>words([...contexts(L,p,soul),...p.parts!.filter(part=>knownPart(L,soul,p,part)).flatMap(x=>[x.title,...(x.aliases??[])])]).has(w)));
  if(!relevant)return null;

@@ -21,15 +21,19 @@ test('#848: "outside"/"inside" name the right seat on hello-hamlet, and "outside
   }
 });
 
-// Review of 98ccb03e: a bare or trailing relation word keeps its old handling (A6), on hello-hamlet and eden-2026.
-test('#848: bare "outside"/"outdoors" and a trailing "outside" answer as before', {timeout: 300000}, async t => {
+// Review of 98ccb03e and d00ed59b: a relation word that does not lead to a named seat keeps its old handling (A6), on
+// hello-hamlet and eden-2026.
+test('#848: "outside" that names no seat (bare, trailing, "with Bo", "now") answers as before', {timeout: 300000}, async t => {
   const hamlet = await bootEden(() => {}, new URL('../../../worlds/templates/hello-hamlet.json', import.meta.url)); t.after(hamlet.close);
   const outdoors = await accept(hamlet.host, hamlet.edge.act(hamlet.soul, {capability: 'sit outdoors'})) as any;
   assert.equal(outdoors.accepted, true, JSON.stringify(outdoors)); assert.equal(outdoors.receipt?.capability ?? outdoors.resolved, 'sit:cottage/part-outdoor-bench');
-  const trailing = await accept(hamlet.host, hamlet.edge.act(hamlet.soul, {capability: 'sit on a bench outside'})) as any;
-  assert.notEqual(trailing.code, 'capability.choose', JSON.stringify(trailing));
+  // a relation word followed by words that name no seat ("with Bo", "now"): as before, unknown with suggestions
+  for (const words of ['sit outside', 'sit outside with Bo', 'sit outside now', 'sit down outside for a minute', 'sit outside here']) {
+    const r = await accept(hamlet.host, hamlet.edge.act(hamlet.soul, {capability: words})) as any;
+    assert.equal(r.code, 'capability.unknown', `${words}: ${JSON.stringify(r).slice(0, 300)}`); assert.ok(r.did_you_mean?.length, `${words}: suggestions kept`);
+  }
   const eden = await bootEden(); t.after(eden.close);
-  for (const words of ['sit outside', 'sit outdoors']) {
+  for (const words of ['sit outside', 'sit outdoors', 'sit outside with Bo', 'sit outside now', 'sit down outside for a minute']) {
     const r = await accept(eden.host, eden.edge.act(eden.soul, {capability: words})) as any;
     assert.equal(r.code, 'capability.unknown', `${words}: ${JSON.stringify(r).slice(0, 300)}`); assert.ok(r.did_you_mean?.length, `${words}: suggestions kept`);
   }
