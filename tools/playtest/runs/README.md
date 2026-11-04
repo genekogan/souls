@@ -79,11 +79,13 @@ form drops it past 600 characters) is a failure, never a claimed success. Rules 
 case-insensitive regular expression on the card text; `close: "open"` leaves a request open while its activity
 continues, and `supersede` closes requests still open as failed when a later rule fires (an owner redirection).
 A refused or failed step stops its rule and fails the request, unless the step ends with `{"onRefused": "continue"}`
-(default `"fail"`): then the refusal is said in the transcript and the next step runs (#828). An argument
+(default `"fail"`): then the refusal is said in the transcript and the next step runs (#828). A refused final step
+fails the request even with `continue`, since no later step can recover. An argument
 `{{prev.<path>}}` (dots and `[n]`, e.g. `{{prev.did_you_mean[0].id}}`) takes a value from the previous step's JSON
-output, a refusal's included, so a script can act on the world's own suggestion:
+output, a refusal's included, reading own properties only, so a script can act on the world's own suggestion:
 `[["act", "fly up to the field", {"onRefused": "continue"}], ["act", "{{prev.did_you_mean[0].id}}", "--wait", "60"]]`.
-The transcript shows the resolved command. A placeholder that does not resolve fails its step without running it. It has
+The transcript shows the resolved command. A placeholder that does not resolve fails its step without running it, and
+that skipped step leaves no JSON for the step after it. It has
 no provider and no cost, and its transcript renders like a model seat's. Live casts stay on `playtest.mjs direct` and
 the sim-director skill.
 
