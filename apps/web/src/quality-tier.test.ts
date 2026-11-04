@@ -11,11 +11,17 @@ test('a touch phone gets the phone tier: capped pixels, small shadow map, shadow
 });
 test('a desktop redraws the shadow map every other frame, freezes still things and poses far bodies less often (PERF-EDEN); ?shadowEvery=1 restores every frame', () => {
   const q = pickQualityTier({ search: '', coarsePointer: false, screen: [1440, 900] });
+  assert.equal(DESKTOP_SHADOW_EVERY, 2, 'the intentionally changed desktop default remains explicit');
   assert.equal(q.tier, 'full'); assert.equal(q.shadowEvery, DESKTOP_SHADOW_EVERY); assert.equal(q.freezeStill, true); assert.equal(q.detail, DESKTOP_DETAIL_FAST); assert.equal(q.bodies, DESKTOP_BODIES);
-  assert.equal(pickQualityTier({ search: '?shadowEvery=1', coarsePointer: false, screen: [1440, 900] }).shadowEvery, 1);
   assert.equal(pickQualityTier({ search: '?freezeStill=0', coarsePointer: false, screen: [1440, 900] }).freezeStill, false);
   const old = pickQualityTier({ search: '?desktopDetail=1', coarsePointer: false, screen: [1440, 900] }); assert.equal(old.detail, DESKTOP_DETAIL);
   const off = pickQualityTier({ search: '?desktopDetail=0', coarsePointer: false, screen: [1440, 900] }); assert.equal(off.detail, null); assert.equal(off.shadowEvery, 1);
+});
+// #615 intentionally changes the default cadence. Keep the legacy every-frame capability explicit and independently
+// tested, alongside the new-default test above; this does not claim that the default remains one frame.
+test('a desktop keeps every-frame shadows', () => {
+  const q = pickQualityTier({ search: '?shadowEvery=1', coarsePointer: false, screen: [1440, 900] });
+  assert.equal(q.tier, 'full'); assert.equal(q.shadowEvery, 1);
 });
 test('phone knobs come from the URL for measurements; bad values keep the defaults', () => {
   const q = pickQualityTier({ ...phone, search: '?phoneShadowEvery=1&phoneMinPx=3&phoneDpr=1' });

@@ -11,6 +11,7 @@
 //   node tools/god-skill/e2e/vocab-w2.mjs [--port 5690] [--keep] [--dpr 1,2] [--no-viewer]
 //
 // Report under .lane/e2e-vocab-w2/<stamp>/ (report.json, REPORT.md, shots, every CLI read under reads/).
+import { setCameraMode } from '../../browser/world-controls.mjs';
 import { spawn, execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
@@ -134,7 +135,7 @@ try {
       await step(`V1[${d}] the viewer draws every new type (no page errors)`, async () => {
         let s; for (let i = 0; i < 90; i++) { s = await drawn(); if (s?.active && s.drawn > 60) break; await sleep(1000); }
         await sleep(4000);
-        for (let i = 0; i < 3 && (await page.evaluate(() => document.querySelector('canvas')?.dataset.cameraMode)) !== 'manual'; i++) { await page.locator('button.viewer-broadcast').first().click().catch(() => {}); await sleep(600); }
+        for (let i = 0; i < 3 && (await page.evaluate(() => document.querySelector('canvas')?.dataset.cameraMode)) !== 'manual'; i++) { await setCameraMode(page, 'manual'); await sleep(600); }
         return { ...s, errors };
       }, (r) => r?.active && !r.errors.length);
       if (dpr === dprs[0]) await step(`S1[${d}] the sound layer: heard near, silent far; off silences; the speaker only while playing`, async () => {

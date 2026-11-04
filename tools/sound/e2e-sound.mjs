@@ -5,6 +5,7 @@
 // mute silences it. Fake minds, no paid generation, no production data. Only stops the server it started.
 //
 //   node tools/sound/e2e-sound.mjs --port 6341 --out .local/r31v/sound [--dprs 1,2]
+import { openAudio, setEffects } from '../browser/world-controls.mjs';
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -116,8 +117,8 @@ try {
             return { hit, said };
           }, (r) => !!r.hit);
           await step('mute silences the output; unmute brings it back', async () => {
-            await page.click('.eden-sound-toggle button[data-sound="mute"]'); await sleep(1200); const off = await page.evaluate(() => window.__edenSound.level());
-            await page.click('.eden-sound-toggle button[data-sound="mute"]'); await sleep(1500); const on = await page.evaluate(() => window.__edenSound.level());
+            await setEffects(page, false); await sleep(1200); const off = await page.evaluate(() => window.__edenSound.level());
+            await setEffects(page, true); await sleep(1500); const on = await page.evaluate(() => window.__edenSound.level());
             return { off, on };
           }, (r) => r.off === 0 && r.on > 0);
           await step('night', () => god('time', '23:30'), (r) => r.code === 0);
@@ -129,14 +130,14 @@ try {
           await step('back to day', () => god('time', '11:00'), (r) => r.code === 0);
           await sleep(5000);
         }
-        // the UI: speaker buttons bottom right, at this dpr, at the fountain
+        // The navbar audio menu at this DPR, at the fountain.
         const g = await ground(75, 12); await look([75, g + 2.2, 10], [75, g + 1, 19]); await sleep(2500);
         await page.screenshot({ path: resolve(out, `fountain-dpr${dpr}.png`) }); report.shots.push(`fountain-dpr${dpr}.png`);
-        await page.screenshot({ path: resolve(out, `toggle-dpr${dpr}.png`), clip: { x: 1440 - 140, y: 900 - 70, width: 140, height: 70 } }); report.shots.push(`toggle-dpr${dpr}.png`);
+        await openAudio(page); await page.getByRole('dialog', { name: 'Audio', exact: true }).screenshot({ path: resolve(out, `toggle-dpr${dpr}.png`) }); report.shots.push(`toggle-dpr${dpr}.png`);
         await step(`dpr ${dpr}: no page errors`, () => errors, (e) => e.length === 0);
         await page.context().close();
       }
-      // a phone: the first tap unlocks audio, the speaker buttons are tappable, mute silences it
+      // A phone: the first tap unlocks audio; the navbar effects switch is tappable and silences effects.
       {
         const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
         const page = await ctx.newPage(); const errors = []; page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
@@ -146,12 +147,14 @@ try {
         await page.touchscreen.tap(195, 600); await sleep(3000);
         const after = await page.evaluate(() => ({ ctx: window.__edenSound.state().ctx, level: window.__edenSound.level(), voices: window.__edenSound.state().voices.length }));
         await step('phone: no audio before the first tap; the tap starts it', () => ({ before, ...after }), (r) => r.before === 'none' && r.ctx === 'running' && r.level > 0);
-        const box = await page.locator('.eden-sound-toggle button[data-sound="mute"]').boundingBox();
-        await page.locator('.eden-sound-toggle button[data-sound="mute"]').tap(); await sleep(1200);
+        await page.locator('.navbar-audio .navbar-menu-trigger').tap();
+        const effects = page.getByRole('switch', { name: /^Sound effects / });
+        const box = await effects.boundingBox();
+        await effects.tap(); await sleep(1200);
         const muted = await page.evaluate(() => ({ muted: window.__edenSound.state().muted, level: window.__edenSound.level() }));
-        await step('phone: the speaker button is a 34 px target in the bottom-right corner and mutes on tap', () => ({ box, ...muted }), (r) => r.muted && r.level === 0 && r.box && r.box.x + r.box.width <= 390 && r.box.y + r.box.height <= 844);
+        await step('phone: the navbar effects switch has a 44 px target, stays in the viewport and mutes on tap', () => ({ box, ...muted }), (r) => r.muted && r.level === 0 && r.box && r.box.height >= 44 && r.box.x >= 0 && r.box.x + r.box.width <= 390 && r.box.y + r.box.height <= 844);
         await page.screenshot({ path: resolve(out, 'phone-dpr3.png') }); report.shots.push('phone-dpr3.png');
-        await page.locator('.eden-sound-toggle button[data-sound="mute"]').tap();
+        await effects.tap();
         await step('phone: no page errors', () => errors, (e) => e.length === 0);
         await ctx.close();
       }
