@@ -195,8 +195,10 @@ test('mainCiState: a later narrow green run does not clear a failure; a full-sco
   assert.deepEqual(mainCiState([run(9, 'failure'), run(10, 'success'), run(12, 'success')], isFull), { conclusion: 'success', since: null });
   assert.deepEqual(mainCiState([run(5, 'success'), run(9, 'success', { run_attempt: 2 }), run(10, 'success')], isFull), { conclusion: 'success', since: null }); // 9 re-run green
   assert.deepEqual(mainCiState([run(5, 'success'), run(9, 'failure'), run(10, 'cancelled')], isFull), { conclusion: 'failure', since: 9 });
-  assert.deepEqual(mainCiState([run(8, 'success'), run(10, 'success')], isFull), { conclusion: 'success', since: null });
-  assert.deepEqual(mainCiState([], isFull), { conclusion: null, since: 'none' });
+  // The window holds no green full-scope run: an older failure may be hidden behind narrow greens, so not green.
+  assert.deepEqual(mainCiState([run(8, 'success'), run(10, 'success')], isFull), { conclusion: 'unproven', since: 'unproven' });
+  assert.deepEqual(mainCiState([run(5, 'success'), run(8, 'success'), run(10, 'success')], isFull), { conclusion: 'success', since: null });
+  assert.deepEqual(mainCiState([], isFull), { conclusion: 'unproven', since: 'unproven' });
   assert.equal(fullScope(run(3, 'success', { event: 'workflow_dispatch' }), []), true);
   assert.equal(fullScope(run(3, 'success'), ALL_JOBS), true);
   assert.equal(fullScope(run(3, 'success'), ALL_JOBS.slice(1)), false);
@@ -205,6 +207,13 @@ test('mainCiState: a later narrow green run does not clear a failure; a full-sco
   const r = train({ files: ['docs/a.md'], mainRuns: [run(10, 'success'), run(9, 'failure'), run(5, 'success')], full: [5] }).run();
   assert.equal(r.mode, 'strict');
   assert.match(r.mode_why, /main CI failure/);
+  // Window exhausted: only narrow greens (the failure, if any, is older than the window) keeps the train strict.
+  const narrow = train({ files: ['docs/a.md'], mainRuns: [run(11, 'success'), run(10, 'success')], full: [] });
+  const n = narrow.run();
+  assert.equal(n.mode, 'strict');
+  assert.equal(n.mode_why, 'main CI unproven');
+  assert.equal(narrow.comments.length, 1);
+  assert.match(narrow.comments[0].body, /is unproven/);
   // A manual run after the failure is full scope and clears it.
   assert.equal(train({ files: ['docs/a.md'], mainRuns: [run(11, 'success', { event: 'workflow_dispatch' }), run(10, 'success'), run(9, 'failure')], full: [] }).run().mode, 'nonstrict');
 });

@@ -75,18 +75,19 @@ export function landingMode({ tier, files = [], mergeable, mergeableState, headC
  * the paths each push changed, so a later narrow green run says nothing about an earlier failure: main is green only
  * when no run failed after the newest green full-scope run (`isFull`: a manual run, or one whose every qualify job
  * succeeded). A failed run re-run green counts as green (a re-run keeps its id). Cancelled and skipped runs say
- * nothing. Red returns `since`, the first failed run of the streak, which keys the one notice per red streak.
+ * nothing. With no green full-scope run in the window main is `unproven` (strict): an older failure may be hidden.
+ * Red returns `since`, the first failed run of the streak, which keys the one notice per red streak.
  */
 export function mainCiState(runs = [], isFull = () => false) {
   const done = runs.filter(r => r.status === 'completed' && !['cancelled', 'skipped'].includes(r.conclusion)).sort((a, b) => b.id - a.id);
   const red = [];
+  let proven = false;
   for (const r of done) {
     if (r.conclusion !== 'success') red.push(r);
-    else if (isFull(r)) break;
+    else if (isFull(r)) { proven = true; break; }
   }
-  if (!done.length) return { conclusion: null, since: 'none' };
-  if (!red.length) return { conclusion: 'success', since: null };
-  return { conclusion: red[0].conclusion, since: red.at(-1).id };
+  if (red.length) return { conclusion: red[0].conclusion, since: red.at(-1).id };
+  return proven ? { conclusion: 'success', since: null } : { conclusion: 'unproven', since: 'unproven' };
 }
 
 /** A run checked everything: started by hand (ci.yml then scopes to full), or every qualify job ran and succeeded. */
@@ -172,7 +173,7 @@ function pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api }) {
     const runs = (api.gh(`repos/${repo}/actions/workflows/ci.yml/runs?branch=${encodeURIComponent(defaultBranch)}&status=completed&per_page=50`)?.workflow_runs ?? [])
       .filter(r => ['push', 'workflow_dispatch'].includes(r.event));
     ci = mainCiState(runs, r => fullScope(r, r.event === 'workflow_dispatch' ? [] : api.ghAll(`repos/${repo}/actions/runs/${r.id}/jobs?per_page=100`).flatMap(p => p.jobs ?? p)));
-  } catch { ci = { conclusion: 'unreadable', since: `unreadable-${new Date().toISOString().slice(0, 10)}` }; }
+  } catch { ci = { conclusion: 'unreadable', since: 'unreadable' }; }
   const runs = api.ghAll(`repos/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`).flatMap(p => p.check_runs ?? p);
   const statuses = api.ghAll(`repos/${repo}/commits/${pr.head.sha}/statuses?per_page=100`);
   const headChecks = summarizeChecks({ runs, statuses, required: parseChecks(process.env.CHECKS) }).state;
@@ -184,10 +185,10 @@ function pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api }) {
   const mode = landingMode({ tier, files, mergeable: pr.mergeable, mergeableState: pr.mergeable_state, mainCi: ci.conclusion, headChecks });
   if (ci.conclusion !== 'success' && notifyIssue) {
     // The notice is best effort: a locked issue or a bad MERGE_TRAIN_NOTIFY_ISSUE must not stall the train.
-    const marker = `${MAIN_RED}:${ci.since} -->`;
+    const marker = `${MAIN_RED}:${typeof ci.since === 'number' ? ci.since : `${ci.since}-${new Date().toISOString().slice(0, 10)}`} -->`;
     try {
       if (!api.ghAll(`repos/${repo}/issues/${notifyIssue}/comments?per_page=100`).some(c => String(c.body).startsWith(marker))) {
-        api.comment(repo, notifyIssue, `${marker}\nMerge train: CI on \`${defaultBranch}\` is ${ci.conclusion ?? 'not concluded'}${typeof ci.since === 'number' ? ` since run ${ci.since}` : ''}, so the train stopped non-strict merges: every PR goes through the strict path (rebase and re-test, or \`needs:rebase\` when it cannot be rebased) until a full-scope run on \`${defaultBranch}\` is green, or the failed run is re-run green.`);
+        api.comment(repo, notifyIssue, `${marker}\nMerge train: CI on \`${defaultBranch}\` is ${ci.conclusion}${typeof ci.since === 'number' ? ` since run ${ci.since}` : ''}, so the train stopped non-strict merges: every PR goes through the strict path (rebase and re-test, or \`needs:rebase\` when it cannot be rebased) until a full-scope run on \`${defaultBranch}\` is green, or the failed run is re-run green.`);
       }
     } catch (e) { console.error(`merge-train: could not post the main-CI notice on #${notifyIssue}: ${e.message}`); }
   }

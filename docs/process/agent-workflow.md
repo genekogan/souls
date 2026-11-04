@@ -50,7 +50,8 @@ the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
   baselines and `.github/workflows/`.
 - **Main red**: push CI on `main` runs only the jobs each push's paths select, so a later docs-only green run does not
   clear a failure. `main` stays red from a failed run until a later full-scope run (a manual `ci` run, or one in which
-  every qualify job ran) is green, or the failed run is re-run green. While it is red every PR is strict, and the train
+  every qualify job ran) is green, or the failed run is re-run green. With no green full-scope run among the last 50
+  runs, `main` is unproven, which counts as red. While it is red every PR is strict, and the train
   says so once per red streak on the coordination issue (repository variable `MERGE_TRAIN_NOTIFY_ISSUE`); a failed
   notice is logged and does not stop the train.
 
