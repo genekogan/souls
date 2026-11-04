@@ -84,9 +84,15 @@ test('body-library/1: a second world pulls the admitted bytes once through the s
  const before=pulls;const second=await accept(tarn.f.host,tarn.req(ta2,'body',{ref},'PUT'));assert.equal(second.status,200);assert.equal(pulls,before,'cached once per world; no pull on the next selection');
  assert.equal((tarn.f.db.db.prepare('SELECT COUNT(*) n FROM edge_body_assets_v1 WHERE asset_id=?').get(ref) as {n:number}).n,1);
  assert.equal((tarn.f.db.db.prepare('SELECT COUNT(*) n FROM edge_body_owners_v1').get() as {n:number}).n,0,'a pulled definition is not an upload of this world');
- // withdrawal at the source: the site path answers 410 and no new selection succeeds anywhere
- const {moderationFor}=await import('./moderation/store.ts');moderationFor(fen.f.db.db,fen.f.host.worldId).append({sha:ref.slice(5),action:'hide',actor:'dev:mod',role:'admin',reason:'test'} as never);
- assert.equal((await fen.req(a1,'body/library/'+ref)).json.definition.status,'withdrawn');
+ // the destination's own moderation applies to a pulled definition too (a world or site hide of the same sha)
+ const ref2=(await fen.upload(a1,{...RIGID_MANIFEST,name:'Second Stone'},rigidGLB((j:any)=>{j.nodes[0].name='Second';}))).json.asset.assetId;
+ const pulled=await accept(tarn.f.host,tarn.req(ta1,'body',{ref:ref2},'PUT'));assert.equal(pulled.status,200,JSON.stringify(pulled.json));
+ const {moderationFor}=await import('./moderation/store.ts');moderationFor(tarn.f.db.db,tarn.f.host.worldId).append({sha:ref2.slice(5),action:'hide',actor:'dev:mod',role:'admin',reason:'test'} as never);
+ assert.equal((await tarn.req(tb,'body/library/'+ref2)).json.selectable.code,'body.withdrawn');assert.equal((await accept(tarn.f.host,tarn.req(ta2,'body',{ref:ref2},'PUT'))).json.error.code,'body.withdrawn');
+ assert.equal((await fen.req(a1,'body/library/'+ref2)).json.definition.status,'active','a destination hide does not withdraw it at the source');
+ // withdrawal at the source is written through when it is appended: nobody in fen looks it up, and tarn refuses at once
+ moderationFor(fen.f.db.db,fen.f.host.worldId).append({sha:ref.slice(5),action:'hide',actor:'dev:mod',role:'admin',reason:'test'} as never);
+ assert.equal((await accept(tarn.f.host,tarn.req(ta1,'body',{ref},'PUT'))).json.error.code,'body.withdrawn');
+ assert.equal((await tarn.req(tb,'body/library/'+ref)).json.definition.status,'withdrawn');
  assert.equal((await fen.app.request(`/v1/site/body/${ref}.glb`,{headers:{'x-sim-site-key':KEY}})).status,410);
- assert.equal((await tarn.req(ta1,'body',{ref},'PUT')).json.error.code,'body.withdrawn');
 });

@@ -71,11 +71,20 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
   }
   // #717: cross-world collection membership and attribution (body-library/1). Import this world's owner uploads once,
   // idempotently; asset ids, descriptors and rights records are never rewritten, and no other world's database is read.
-  const sharedPath=collectionPath(deps.souls.cfg as {bodyCollectionPath?:string;accountRegistryPath?:string}),library=new BodyCollections(sharedPath??db),here=prefix||world;
-  for(const r of db.prepare('SELECT owner,asset_id,descriptor FROM edge_body_owners_v1 WHERE world_id=?').all(world) as {owner:string;asset_id:string;descriptor:string}[]){
-    const d=JSON.parse(r.descriptor);library.record({ref:r.asset_id,descriptor:d,creatorSoul:typeof d.creatorSoul==='string'?d.creatorSoul:'unrecorded',owner:r.owner,sourceWorld:here,license:String(d.license??'owned'),rightsConfirmed:d.rightsConfirmed===true},0);}
-  /** A definition this world admitted reflects its own moderation now (withdrawal written through). */
-  const definition=(ref:string)=>{const d=library.definition(ref);if(d&&d.sourceWorld===here){const m=moderation.state(ref.slice(5)),status=m.hidden||m.creatorVeto||m.adminVeto||m.quarantined?'withdrawn':'active';if(status!==d.status){library.setStatus(ref,status);d.status=status;}}return d;};
+  const sharedPath=collectionPath(deps.souls.cfg as {bodyCollectionPath?:string;accountRegistryPath?:string}),here=prefix||world;
+  const importOwn=(store:BodyCollections)=>{const rows=db.prepare('SELECT owner,asset_id,descriptor FROM edge_body_owners_v1 WHERE world_id=?').all(world) as {owner:string;asset_id:string;descriptor:string}[];
+    store.recordAll(rows.map(r=>{const d=JSON.parse(r.descriptor);return {ref:r.asset_id,descriptor:d,creatorSoul:typeof d.creatorSoul==='string'?d.creatorSoul:'unrecorded',owner:r.owner,sourceWorld:here,license:String(d.license??'owned'),rightsConfirmed:d.rightsConfirmed===true};}),0);return store;};
+  // A shared store that cannot open (corrupt, locked, unwritable) never stops this world: it keeps a local-only store.
+  let library:BodyCollections;try{library=importOwn(new BodyCollections(sharedPath??db));}
+  catch(e){console.error('[body] body.collection-store-unavailable: shared body collections unavailable; this world keeps a local-only store',e instanceof Error?e.message:'');library=importOwn(new BodyCollections(db));}
+  /** Moderation, wherever the definition came from: this world's own hide/veto/quarantine and site-wide hides withdraw it
+   *  here; the source world's withdrawal is written through to the shared store when it is appended. */
+  const withdrawnHere=(ref:string)=>{const m=moderation.state(ref.slice(5));return m.hidden||m.creatorVeto||m.adminVeto||m.quarantined||moderation.isHidden(ref.slice(5));};
+  const definition=(ref:string)=>{const d=library.definition(ref);if(!d)return d;const local=withdrawnHere(ref);
+    if(d.sourceWorld===here){const status=local?'withdrawn':'active';if(status!==d.status){library.setStatus(ref,status);d.status=status;}}
+    else if(local)d.status='withdrawn';
+    return d;};
+  moderation.appended.push(sha=>{const ref='body_'+sha;if(ASSET.test(ref))definition(ref);});
   const localBytes=(ref:string)=>!!SHARED_BODY_BYTES[ref]||!!db.prepare('SELECT 1 FROM edge_body_assets_v1 WHERE world_id=? AND asset_id=?').get(world,ref);
   const site=deps.bodySite??launcherBodySite(process.env.SIM_SITE_URL,process.env.SIM_SITE_KEY);
   /** Pull-through at selection, never on serve or observe: fetch the source world's admitted bytes, check the content
@@ -118,7 +127,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
   const lookChoices={...Object.fromEntries(Object.entries(HUMANOID_PARAMS).map(([k,f])=>[k,f.type==='enum'?f.values:f.type==='number'?{min:f.min,max:f.max}:f.type])),outfit:Object.keys(OUTFITS)};
   app.get('/v1/edge/body',wrap(c=>{const s=deps.soul(c);return {available,body:current(s.entityId),look:lookOf(current(s.entityId)),lookDef:HUMANOID_REF,lookChoices,types,presets:BODY_PRESETS.filter(p=>types.includes(p.body?.type??'humanoid')),limits:BODY_LIMITS,
     authoring:{skill:prefix+'/body-authoring/SKILL.md',contract:prefix+'/body-authoring/contract.json'},
-    selection:{default:'humanoid',presets:'shared',uploads:'owner-only',rediscover:'GET /v1/edge/body; use preset id or uploaded assetId'},
+    selection:{default:'humanoid',presets:'shared',uploads:'listed for their owner; any definition by explicit ref',rediscover:'GET /v1/edge/body/library; use a preset id, your uploaded assetId, or a ref'},
     uploads:(db.prepare('SELECT descriptor FROM edge_body_owners_v1 WHERE world_id=? AND owner=? ORDER BY asset_id').all(world,s.owner) as {descriptor:string}[]).map(r=>JSON.parse(r.descriptor)),
     library:{mine:library.count(s.owner),next:'GET /v1/edge/body/library?scope=mine'}};}));
   /** body-library/1: bounded, paginated discovery. core = the shared presets this world admits; mine = the caller owner's
@@ -159,7 +168,8 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
     if(!existing&&(quota.n>=8||quota.bytes+bytes.length>64*1024*1024))throw new EdgeError(409,'body.storage-limit','This owner already has the maximum admitted body storage');
     db.exec('BEGIN IMMEDIATE');try{db.prepare('INSERT OR IGNORE INTO edge_body_assets_v1 VALUES(?,?,?,?)').run(world,asset.assetId,JSON.stringify(asset),bytes);db.prepare('INSERT INTO edge_body_owners_v1(world_id,owner,asset_id,descriptor) VALUES(?,?,?,?) ON CONFLICT(world_id,owner,asset_id) DO UPDATE SET descriptor=excluded.descriptor').run(world,s.owner,asset.assetId,JSON.stringify(asset));db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
     recordIntake(moderation,intake,{surface:'body',actor:s.owner});
-    library.record({ref:asset.assetId,descriptor:asset,creatorSoul:s.soulId,owner:s.owner,sourceWorld:here,license:String(asset.license),rightsConfirmed:true},Date.now());
+    try{library.record({ref:asset.assetId,descriptor:asset,creatorSoul:s.soulId,owner:s.owner,sourceWorld:here,license:String(asset.license),rightsConfirmed:true},Date.now());}
+    catch(e){console.error('[body] body.collection-record-failed: the upload is stored; its collection entry is imported at the next boot',e instanceof Error?e.message:'');}
     return {asset,moderation:{...moderation.state(intake.upload.sha),classifier:intake.verdict.classifier,labels:intake.verdict.labels,stripped:intake.upload.stripped}};
   }));
   app.put('/v1/edge/body',wrap(async c=>{const s=deps.soul(c);return assign(s,await c.req.json().catch(()=>null),true);}));

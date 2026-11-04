@@ -73,7 +73,9 @@ database). See [collections.ts](../../apps/server/src/edge/body/collections.ts).
   world can select it. Holding a reference grants no authorship, membership or control of another Soul.
 - `PUT|DELETE /v1/edge/body/library/<ref>`: save or forget a reference in the caller owner's collection only.
 - `PUT /v1/edge/body {ref}`: select by explicit reference when the definition is active, the world admits its type
-  and the bytes are here. A definition withdrawn by its source world's moderation cannot be newly selected.
+  and the bytes are here or can be pulled. A definition withdrawn by its source world's moderation (written through to the
+  store when the moderation entry is appended), or hidden by this world's or the site's moderation, cannot be newly
+  selected.
 - Routine discovery (`GET /v1/edge/body`) carries only `library:{mine, next}`; catalogs load on request.
 - Each world imports its own owner uploads into the store at boot, idempotently; asset ids, descriptors and rights
   are never rewritten. Bytes stay in the admitting world.
@@ -82,7 +84,10 @@ database). See [collections.ts](../../apps/server/src/edge/body/collections.ts).
   private `/v1/site/body/<ref>.glb`, which answers only for active admitted bytes. The selecting world checks the
   sha256 against the reference, re-admits the bytes under its own policy and caches them once (no owner row, so no
   quota is charged). Tampered, oversized, withdrawn or unreachable sources refuse with `body.source-unavailable` or
-  `body.withdrawn`. Forks have no shared store; a standalone world without a launcher keeps a local-only store.
+  `body.withdrawn`. Pulled bytes are re-admitted but not re-classified: the source world's upload intake ran on them.
+  Forks (`BODY_COLLECTION_PATH=local`) and standalone worlds keep a local-only store; a shared store that cannot open
+  leaves the world on a local-only store with the diagnostic `body.collection-store-unavailable`, never down. Uploads
+  admitted before this store existed import with the creator Soul `unrecorded`.
 
 ## Capabilities, not an obligation to imitate a human
 

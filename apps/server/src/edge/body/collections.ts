@@ -14,6 +14,7 @@ export const LIBRARY_PAGE={defaultLimit:10,maxLimit:20,maxQuery:60} as const;
 /** Where the shared collection store lives: BODY_COLLECTION_PATH, else beside the account registry. Null: a standalone
  *  world keeps a local-only store in its own database (no other world shares it). */
 export function collectionPath(cfg:{bodyCollectionPath?:string;accountRegistryPath?:string}):string|null{
+ if(cfg.bodyCollectionPath==='local')return null; // forks and isolated worlds: a local-only store
  if(cfg.bodyCollectionPath)return cfg.bodyCollectionPath;
  if(cfg.accountRegistryPath)return join(dirname(resolve(cfg.accountRegistryPath)),'body-collections.sqlite');
  return null;
@@ -37,6 +38,12 @@ export class BodyCollections {
    this.db.prepare('INSERT OR IGNORE INTO body_definitions_v1(asset_id,descriptor,creator_soul,owner,source_world,license,rights_confirmed,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(d.ref,JSON.stringify(d.descriptor),d.creatorSoul,d.owner,d.sourceWorld,d.license,d.rightsConfirmed?1:0,'active',at);
    this.db.prepare('INSERT OR IGNORE INTO body_collection_v1 VALUES(?,?,?,?)').run(d.owner,d.ref,d.creatorSoul,at);
   });
+ }
+ /** Import many in one transaction (boot): the same first-writer rule as record. */
+ recordAll(ds:{ref:string;descriptor:Record<string,unknown>;creatorSoul:string;owner:string;sourceWorld:string;license:string;rightsConfirmed:boolean}[],at:number){
+  if(!ds.length)return;this.tx(()=>{for(const d of ds){
+   this.db.prepare('INSERT OR IGNORE INTO body_definitions_v1(asset_id,descriptor,creator_soul,owner,source_world,license,rights_confirmed,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(d.ref,JSON.stringify(d.descriptor),d.creatorSoul,d.owner,d.sourceWorld,d.license,d.rightsConfirmed?1:0,'active',at);
+   this.db.prepare('INSERT OR IGNORE INTO body_collection_v1 VALUES(?,?,?,?)').run(d.owner,d.ref,d.creatorSoul,at);}});
  }
  definition(ref:string):Definition|null{
   const r=this.db.prepare('SELECT * FROM body_definitions_v1 WHERE asset_id=?').get(ref) as Record<string,string|number>|undefined;if(!r)return null;
