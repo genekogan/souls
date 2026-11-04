@@ -26,6 +26,7 @@ test('Little Martians startup does not queue occupied-link routing or concurrent
  for(const [key,config] of [['littlemartians',LITTLE_MARTIANS_WORLD],['little-martians-arium',GREEN_FIELD_WORLD]] as const){
   const {policy,authors,services}=await startup(key,config);
   assert.equal(policy.quietStallReleaseV1,true,key);assert.equal(policy.yieldTimeoutV1,true,key);assert.equal(policy.spreadV2,true,key);
+  assert.equal(policy.routeReachV1,true,key+': route-reach/1 (#872) is on every edge world');
   assert.equal(policy.occupiedLinkRoutingV1,undefined,key);assert.equal(policy.concurrentLinkEgressV1,undefined,key);
   assert.ok(!authors.includes('operator:occupied-link-routing')&&!authors.includes('operator:concurrent-link-egress'),key+': '+authors.join(','));
   assert.notEqual(services.occupiedLinkRoutingV1,true,key);assert.notEqual(services.concurrentLinkEgressV1,true,key);
@@ -36,6 +37,7 @@ test('a qualifying non-Little-Martians edge world still activates both rules aft
  for(const key of ['eden-2026','my-mars-college-2026-3','godmode-lab']){
   const {policy,authors,services}=await startup(key,GREEN_FIELD_WORLD);
   assert.equal(policy.occupiedLinkRoutingV1,true,key);assert.equal(policy.concurrentLinkEgressV1,true,key);
+  assert.equal(policy.routeReachV1,true,key);
   assert.deepEqual(authors.filter(a=>a.startsWith('operator:')).slice(-2),['operator:occupied-link-routing','operator:concurrent-link-egress'],key);
   assert.equal(services.occupiedLinkRoutingV1,true,key);assert.equal(services.concurrentLinkEgressV1,true,key);
  }
