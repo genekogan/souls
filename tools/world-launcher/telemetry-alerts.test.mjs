@@ -92,7 +92,7 @@ test('drill: collector outage, failed scrapes or no rows at all, fires telemetry
   assert.deepEqual(silent.events.map((e) => [e.rule, e.to]), [['telemetry-gap', 'firing']]);
   assert.deepEqual(silent.open, [{ rule: 'telemetry-gap', state: 'firing' }]);
   // and an empty store is a gap too, never healthy
-  assert.deepEqual(catchUp(tmp(t), { everyMs: EVERY, now: T0 }).events.map((e) => e.to), ['firing']);
+  assert.deepEqual(catchUp(tmp(t), { everyMs: EVERY, now: T0 }).events.map((e) => [e.to, e.value]), [['firing', 'never']]);
 });
 
 test('missing series on a running world are unknown, never healthy; what is not exported is listed', async (t) => {

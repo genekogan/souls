@@ -94,7 +94,7 @@ node tools/world-launcher/telemetry.mjs alerts --dir <d> [--rules rules.json] [-
 
 | | |
 |---|---|
-| `alerts.jsonl` | one line per **transition**, `{t, rule, world?, from, to, value, threshold, what}`. `to` is `firing`, `resolved`, `unknown` or `known`. An unchanged state, healthy or not, writes nothing. |
+| `alerts.jsonl` | one line per **transition**, `{t, rule, world?, from, to, value, threshold, what}`. `to` is `firing`, `resolved`, `unknown` or `known`. `value` is `null` when the series is missing, and `"never"` for a telemetry gap with no answered scrape at all. An unchanged state, healthy or not, writes nothing. |
 | `alerts-state.json` | the evaluator's windows and last row. A restart neither repeats a transition nor loses one, and healthy rules keep no state. |
 
 Each rule has three windows, which give it hysteresis:

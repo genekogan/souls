@@ -59,7 +59,8 @@ export function evaluate(rows, rules, state = initialState(), { everyMs = 15_000
     const key = `${rule.id}|${scope ?? ''}`;
     if (!st.keys[key] && v != null && !(rule.op === '>' ? v > rule.threshold : rule.op === '>=' ? v >= rule.threshold : v < rule.threshold)) return;   // ok and nothing pending: keep no state
     const k = (st.keys[key] ??= { state: 'ok', condSince: null, clearSince: null, missingSince: null });
-    const emit = (to) => { events.push({ t, rule: rule.id, ...(scope ? { world: scope } : {}), from: k.state, to: to === 'ok' ? (k.state === 'unknown' ? 'known' : 'resolved') : to, value: v == null ? null : +v.toFixed(4), threshold: rule.threshold, what: rule.what }); k.state = to; };
+    const emit = (to) => { events.push({ t, rule: rule.id, ...(scope ? { world: scope } : {}), from: k.state, to: to === 'ok' ? (k.state === 'unknown' ? 'known' : 'resolved') : to, value: v == null ? null : Number.isFinite(v) ? +v.toFixed(4) : 'never',   // never: no answered scrape at all
+      threshold: rule.threshold, what: rule.what }); k.state = to; };
     if (v == null) { k.condSince = k.clearSince = null; k.missingSince ??= t; if (k.state !== 'unknown' && t - k.missingSince >= rule.holdMs) emit('unknown'); return; }
     k.missingSince = null;
     const holds = k.state === 'firing' && rule.clearAt != null ? cmp(rule.op, v, rule.clearAt) : cmp(rule.op, v, rule.threshold);
