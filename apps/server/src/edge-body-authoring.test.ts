@@ -4,7 +4,7 @@ import {Hono} from 'hono';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';
 import {rigidGLB} from './edge/body/testing.ts';import {LITTLE_MARTIANS_MOTION} from '../../../mars/viewer/engine/bodies/motion.ts';
-import {mountBodyRoutes} from './edge/body/routes.ts';
+import {mountBodyRoutes,BODY_PRESETS} from './edge/body/routes.ts';
 import {admitBodyGLB} from './edge/body/admission.ts';
 
 test('downloaded dependency-free validator, named owner discovery, upload, dance, refusal and safe selection',async t=>{
@@ -37,5 +37,8 @@ test('downloaded dependency-free validator, named owner discovery, upload, dance
  for(const preset of rediscovered.presets.filter((p:any)=>p.body?.type==='ceramic')){const r=await accept(f.host,request(a,'',{preset:preset.id}));assert.equal(r.status,200);assert.ok((await r.json()).body.motion.dance,preset.id);}
  const prior=f.souls.cfg.bodyTypes;try{f.souls.cfg.bodyTypes=['humanoid'];const limited=new Hono();mountBodyRoutes(limited,{host:f.host,db:f.db,souls:f.souls,ledger:L,soul:edgeSoulResolver(f.host,f.souls,c=>c.req.header('authorization')?.replace(/^Bearer /,''))});
  const headers={authorization:'Bearer '+a.token,'content-type':'application/json'};const catalog=await(await limited.request('/v1/edge/body',{headers})).json();assert.deepEqual(catalog.types,['humanoid']);assert.deepEqual(catalog.presets.map((p:any)=>p.id),['humanoid']);assert.equal((await limited.request('/v1/edge/body',{method:'PUT',headers,body:JSON.stringify({preset:'verdelis'})})).status,403);
- }finally{f.souls.cfg.bodyTypes=prior;}
+ const ceramic=BODY_PRESETS.find(p=>p.body?.type==='ceramic')!.body!,host=f.host as unknown as {restoreBody(b:unknown):void;captureBody():unknown};
+ assert.equal(f.host.engine.bodyAssignmentProblemV1!(a.soul.entityId,ceramic),'body.world-policy');
+ host.restoreBody(host.captureBody());assert.equal(f.host.engine.bodyAssignmentProblemV1!(a.soul.entityId,ceramic),'body.world-policy','a host engine swap (rollback/recovery) keeps the world policy for travel and other live guards');
+ }finally{f.souls.cfg.bodyTypes=prior;f.host.configureBodyTypesV1(prior??['humanoid','ceramic','floater','creature']);}
 });
