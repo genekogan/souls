@@ -122,7 +122,7 @@ export const SERVING_WAIT_MS = 15_000;
 const nextTurn = () => new Promise<void>(r => setImmediate(r));
 
 /** #824: how many offers a "nothing matches" refusal names as `alternatives`, and verbs never offered as one. */
-const ALTERNATIVES = 3, ATTENTION_ONLY = new Set(['look', 'turn', 'face']);
+const ALTERNATIVES = 3, ATTENTION_ONLY = new Set(['look', 'turn', 'face']), NOTHING_MATCHES = new Set(['capability.unknown', 'place.unknown']);
 export class EdgeLedger implements EdgeLedgerHooks {
   places: PlaceIndex;
   private receiptListeners: ((r: EdgeReceipt) => void)[] = [];
@@ -1509,7 +1509,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
       // that id, as the skill says; the id was refused place.unwalkable here. actOnce below walks it on demand, as words.
       const onDemand=!!place&&!place.ok&&place.code==='place.unwalkable'&&this.onDemandId(soul,input.capability.trim());
       if(place&&!onDemand){
-        if(!place.ok){this.recordRefusal(soul.soulId,'act',input.capability,place.code,place.reason);const {ok:_ok,...refusal}=place;return this.withInPlaceAlternative(soul,{accepted:false as const,capability:input.capability,...refusal});}
+        if(!place.ok){this.recordRefusal(soul.soulId,'act',input.capability,place.code,place.reason);const {ok:_ok,...refusal}=place,out=this.withInPlaceAlternative(soul,{accepted:false as const,capability:input.capability,...refusal});
+          // #824: an unknown place id names what the Soul can do instead (one kept words-menu read, on this refusal only)
+          return NOTHING_MATCHES.has(out.code)?this.withAlternatives(soul,input.capability,out,exactWalk?.caps??this.wordsMenu(soul).caps):out;}
         const out=await this.act(soul,{...input,capability:place.chosen.capability});
         if(!out.accepted)return out;
         const receipt=this.coreA.setDetail(out.receipt.id,{chosen:{...place.chosen,...(out.receipt.chosen as Record<string,unknown>??{})}})??out.receipt;return {...out,receipt};
@@ -1569,7 +1571,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (!caps.some(c => c.id === asked)) {
       const more = [...caps], morePlans = new Map(plans), r = this.together.resolve(soul, asked, more, morePlans as Map<string, TogetherPlan>);
       if (more.length !== caps.length) {caps = more; plans = morePlans;}   // SOCIAL-APPROACH: a walk-over act toward a Soul out of sight
-      if (r && 'code' in r) return {...refuse(r.code, r.reason), did_you_mean: r.did_you_mean};
+      if (r && 'code' in r) {const out = {...refuse(r.code, r.reason), did_you_mean: r.did_you_mean}; return NOTHING_MATCHES.has(r.code) ? this.withAlternatives(soul, asked, out, caps) : out;}
       if (r) {social = {note: r.note}; params = {...params, ...(r.params ?? {})}; text = r.capability || r.rest || asked;}
     }
     // PM-R057: exact ids first; an unambiguous natural name is accepted and reported back as `resolved`;
@@ -2179,23 +2181,29 @@ export class EdgeLedger implements EdgeLedgerHooks {
     return {game: {kind: g.kind, players: g.players.map(name), ...(g.waiting ? {waiting: 'for someone to join'} : {turn: g.turn, throwing: name(g.from), to: g.to ? name(g.to) : null}),
       ...(g.kind === 'petanque' ? {end: g.end ?? 0, lastEndWonBy: name(g.lastWinner), boulesThisEnd: g.boules?.length ?? 0} : {}), myWins: g.wins ?? 0, untrusted: true}};
   }
-  /** R2 stroll (longrun 2026-10-16): a construction refusal names what the Soul can do where it stands instead (wander
-   *  here), in the reason and first in did_you_mean, so a closed site never leaves it standing still. */
   /** #824: a refusal for "nothing matches" names what this Soul can do here and now instead: at most ALTERNATIVES
    *  available offers, never a catalog and never a repeat of did_you_mean. First the offered walk to a place its own words
    *  name ("fly up to the field" -> walk:field, one bindOne), then the nearest available offers of the menu the refusal
    *  already read (one per verb). Nothing available: no field. */
   private withAlternatives<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, words: string, out: T, caps: EdgeCapability[]): T & {alternatives?: {id: string; label: string}[]} {
-    const seen = new Set((out.did_you_mean ?? []).map(d => d.id)), alt: {id: string; label: string}[] = [], verbs = new Set<string>();
-    const add = (c: EdgeCapability | undefined) => {if (c?.available && !seen.has(c.id) && alt.length < ALTERNATIVES) {seen.add(c.id); verbs.add(c.verb); alt.push({id: c.id, label: c.label});}};
+    const seen = new Set((out.did_you_mean ?? []).map(d => d.id)), picks: EdgeCapability[] = [], verbs = new Set<string>();
+    const add = (c: EdgeCapability | undefined) => {if (c?.available && !seen.has(c.id) && !verbs.has(c.verb) && picks.length < ALTERNATIVES) {seen.add(c.id); verbs.add(c.verb); picks.push(c);}};
     const ctx = this.vocabulary(soul, caps), w = tokens(words);
-    // the place its words end on ("fly up to the field": the field), longest tail first
-    let named: {id: string} | undefined; for (let i = 1; i < w.length && !named; i++) named = placeMatch(w.slice(i), ctx.places, ctx.withheld)[0];
+    // the place its words end on ("fly up to the field": the field) by its own name or id words (tier <= 1), the last few
+    // words only, longest first
+    let named: {id: string} | undefined;
+    for (let i = Math.max(1, w.length - 4); i < w.length && !named; i++) {const m = placeMatchTier(w.slice(i), ctx.places, ctx.withheld); if (m.tier >= 0 && m.tier <= 1) named = m.found[0];}
     if (named) add(caps.find(c => c.id === 'walk:' + named.id) ?? this.bindOne(soul, 'walk:' + named.id)?.cap);
-    const near = (c: EdgeCapability) => {const at = ctx.target(c).at; return at && ctx.me ? Math.hypot(at[0] - ctx.me[0], at[1] - ctx.me[1]) : Infinity;};
-    for (const c of caps.filter(c => c.available && !ATTENTION_ONLY.has(c.verb)).map(c => [c, near(c)] as const).sort((a, b) => a[1] - b[1] || a[0].id.localeCompare(b[0].id)).map(x => x[0])) if (!verbs.has(c.verb)) add(c);
+    // then the nearest available offers (offers here first), in the menu's own order on a tie, one per verb
+    const near = (c: EdgeCapability) => {if (c.id.endsWith(':here')) return -1; const at = ctx.target(c).at ?? ctx.me; return at && ctx.me ? Math.hypot(at[0] - ctx.me[0], at[1] - ctx.me[1]) : Infinity;};
+    for (const c of caps.filter(c => c.available && !ATTENTION_ONLY.has(c.verb)).map((c, i) => [c, near(c), i] as const).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0])) {if (picks.length >= ALTERNATIVES * 2) break; add(c);}
+    // the menu read may be a kept words menu (approximate availability): each pick is rebuilt exactly (bindOne) and kept
+    // only if it is available now
+    const alt = picks.map(c => this.bindOne(soul, c.id)?.cap ?? (caps.includes(c) ? null : c)).filter((c): c is EdgeCapability => !!c?.available).slice(0, ALTERNATIVES).map(c => ({id: c.id, label: c.label}));
     return alt.length ? {...out, alternatives: alt} : out;
   }
+  /** R2 stroll (longrun 2026-10-16): a construction refusal names what the Soul can do where it stands instead (wander
+   *  here), in the reason and first in did_you_mean, so a closed site never leaves it standing still. */
   private withInPlaceAlternative<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, out: T): T {
     if (out.code !== 'site.under-construction') return out;
     const wander = [this.bindOne(soul, 'wander:here')?.cap].find(c => c?.available); if (!wander || out.reason.includes(wander.id)) return out;
