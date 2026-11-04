@@ -75,3 +75,25 @@ test('#824: a named walk from the kept words menu is named only if it is still o
   assert.ok(!(stale.alternatives ?? []).some((x: {id: string}) => x.id === 'walk:lab-pond-hall'), `stale walk named: ${JSON.stringify(stale.alternatives)}`);
   for (const x of stale.alternatives ?? []) assert.ok(bindOne(w.soul, x.id)?.cap.available, `${x.id} is available now`);
 });
+
+// #850: a place no walk reaches now (route.unreachable) names what this Soul can do instead, near that place, never the
+// blocked walk itself: the hello-hamlet reading room (its only door closed by the template) and an interior room of a
+// house a god edit placed with its front door closed.
+test('#850: a place no walk reaches names available alternatives near it', {timeout: 300000}, async t => {
+  const w = await bootEden(() => {}, new URL('../../../worlds/templates/hello-hamlet.json', import.meta.url)); t.after(w.close);
+  const {ref: _r, hash: _h, by: _b, born: _bo, ...definition} = (w.god.model as any).resolvedDef('core/cottage@1');
+  const placed = (w.god as any).act({ops: [
+    {op: 'define', def: {...definition, name: 'closed-cottage-control', state: {...definition.state, doors: {type: 'json', default: {}}}}},
+    {op: 'place', def: 'closed-cottage-control@1', name: 'closed-house', p: [20, -30], state: {doors: {'front-door': 'closed'}}}]});
+  assert.equal(placed.accepted, true, JSON.stringify(placed)); await w.settle(6);
+  const avail = new Set((w.edge.capabilitiesPage(w.soul, {all: true}).capabilities as {id: string; available: boolean}[]).filter(c => c.available).map(c => c.id));
+  for (const [words, blocked] of [['go into the reading room', 'walk:lab-reading-room'], ['walk:closed-house/bedroom', 'walk:closed-house/bedroom']]) {
+    const r = await accept(w.host, w.edge.act(w.soul, {capability: words})) as any;
+    assert.equal(r.code, 'route.unreachable', `${words}: ${JSON.stringify(r)}`);
+    assert.ok(r.alternatives?.length >= 1 && r.alternatives.length <= 3, `${words}: 1-3 alternatives ${JSON.stringify(r.alternatives)}`);
+    for (const x of r.alternatives) {assert.ok(avail.has(x.id), `${words}: ${x.id} is available now`); assert.notEqual(x.id, blocked);}
+  }
+  // the closed house's own exterior comes first for its room (nearest to the place, not to the Soul)
+  const room = await accept(w.host, w.edge.act(w.soul, {capability: 'walk:closed-house/bedroom'})) as any;
+  assert.equal(room.alternatives[0].id, 'walk:closed-house', JSON.stringify(room.alternatives));
+});
