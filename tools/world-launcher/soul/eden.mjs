@@ -11,7 +11,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.7.1";
+const VERSION = "2.7.2";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -675,17 +675,24 @@ async function act(...argv) {
   // D3c (laptop trio-r1 rook-003: a wave closed "rest, then come back to the balloon"): a default link says so
   // (forDefault); the world closes the message only with an act of its last step and answers `open` otherwise, and then
   // the default serves the next act too (within IMPLICIT_FOR_MS of this one).
-  const s = load(), implicit = forArg === undefined && s.lastAcked && !s.lastAckedActed && Date.now() - Date.parse(s.lastAckedAt ?? 0) < IMPLICIT_FOR_MS;
-  const forId = forArg === "none" ? undefined : forArg ?? (implicit ? s.lastAcked : undefined);
-  let r = await call("/v1/edge/act", { body: forId ? { ...body, for: forId, ...(implicit ? { forDefault: true } : {}) } : body });
-  if (implicit && r.status === 400 && /owner message/.test(r.data?.error?.message ?? "")) { save({ lastAcked: undefined, lastAckedAt: undefined, lastAckedActed: undefined }); r = await call("/v1/edge/act", { body }); }
-  const d = ok(r, "act");
-  if (d.accepted) { const t = load(); if (implicit && d.open) save({ lastAckedAt: now() }); else if (t.lastAcked && !t.lastAckedActed) save({ lastAckedActed: true }); }
+  const d = ok(await linkedCall("/v1/edge/act", body, forArg), "act");
   if (!d.accepted) return { accepted: false, code: d.code, reason: d.reason, ...(d.did_you_mean?.length ? { did_you_mean: d.did_you_mean.slice(0, 8) } : {}), ...(d.retry_after ? { retry_after: d.retry_after } : {}) };
   let out = { accepted: true, receipt: d.receipt, ...(d.resolved ? { resolved: d.resolved } : {}), ...(d.chosen ? { chosen: d.chosen } : {}), channel: d.channel, ...(d.for ? { for: d.for } : {}), ...(d.open ? { open: true } : {}) };
   if (d.receipt?.id && d.channel !== "attention" && d.channel !== "none") save({ lastReceipt: d.receipt.id, lastActAt: now() });
   if (waitFor && d.receipt?.id && !TERMINAL.has(d.receipt.phase)) out = { ...out, ...(await wait(waitFor, d.receipt.id, "--json")) };
   return json ? out : brief(out);
+}
+
+// D3/D3b/D3c: an act or object action (#804) sent with its owner link; the default link is used up by the first act the
+// world accepts and does not keep `open`. A default link the world no longer knows is dropped and the act sent unlinked.
+async function linkedCall(path, body, forArg) {
+  const s = load(), implicit = forArg === undefined && s.lastAcked && !s.lastAckedActed && Date.now() - Date.parse(s.lastAckedAt ?? 0) < IMPLICIT_FOR_MS;
+  const forId = forArg === "none" ? undefined : forArg ?? (implicit ? s.lastAcked : undefined);
+  let r = await call(path, { body: forId ? { ...body, for: forId, ...(implicit ? { forDefault: true } : {}) } : body });
+  if (implicit && r.status === 400 && /owner message/.test(r.data?.error?.message ?? "")) { save({ lastAcked: undefined, lastAckedAt: undefined, lastAckedActed: undefined }); r = await call(path, { body }); }
+  const d = r.data;
+  if (r.status >= 200 && r.status < 300 && d?.accepted) { const t = load(); if (implicit && d.open) save({ lastAckedAt: now() }); else if (t.lastAcked && !t.lastAckedActed) save({ lastAckedActed: true }); }
+  return r;
 }
 
 // D3: the default output is one top-level sentence from the world, `done` when the receipt has ended, else `now` (what
@@ -815,10 +822,12 @@ async function converse(op, arg, ...text) {
   return clean(ok(await call("/v1/edge/converse", { body }), "converse"));
 }
 
-async function object(id, action, params) {
-  if (!id) throw new Error("usage: object <objectId> [action] [params-json]");
+// object <id> [action] [params-json] [--for <message-id>|none]: an action links its owner message like act (#804).
+async function object(...argv) {
+  const { args: [id, action, params], for: forArg } = waitOption(argv);
+  if (!id) throw new Error("usage: object <objectId> [action] [params-json] [--for <message-id>|none]");
   if (!action) return clean(ok(await call(`/v1/edge/objects/${encodeURIComponent(id)}`), "object"));
-  const d = clean(ok(await call(`/v1/edge/objects/${encodeURIComponent(id)}/act`, { body: { action, params: params ? JSON.parse(params) : {} } }), "object"));
+  const d = clean(ok(await linkedCall(`/v1/edge/objects/${encodeURIComponent(id)}/act`, { action, params: params ? JSON.parse(params) : {} }, forArg), "object"));
   if (d.receipt?.id) save({ lastReceipt: d.receipt.id, lastActAt: now() });
   return d;
 }
@@ -1044,7 +1053,7 @@ look      here   observe   around|explore [place]   caps [--search w] [--verb v]
           context [query] [--cursor nextCursor]   views <ref> [ref…] [--detail] [--original] [--out picture.png]
           receipt [id]   events [--since c_N] [--raw]   conversations
 do        act "<words or offer:id>" [params-json] [--wait [s]] [--for id|none] [--json]   resolve "<words>"   wait [s] [receiptId] [--json]
-          say "<text>"   converse <list|turns|start|say|accept|decline|leave|ask> …   object <id> [action] [json]
+          say "<text>"   converse <list|turns|start|say|accept|decline|leave|ask> …   object <id> [action] [json] [--for <id>|none]
 owner     listen [--after id] [--once]   ack <id> ["reply"]   result <id> done|failed "<text>"
           now "<public one-line status>" | now --clear   (or add --now "<line>" to act, say, ack, result, wait)
 self      profile [name|description|photo …]   body [presets|set|look …]   travel [<world>|home]
