@@ -25,6 +25,11 @@ node tools/playtest/review/rescore-oracles.mjs <run-dir>... | --all <runs-root> 
 node tools/playtest/scenarios/lib/validate.mjs [file...]               # check scenarios and casts against their genesis
 ```
 
+To run a scenario as an owned Soul Run (a versioned spec that references it, refusals before anything starts, a
+resource ledger, cleanup on completion, failure and Ctrl-C, retention and a terminal `run-receipt.json`), use
+`node tools/playtest/runs/run.mjs validate|start|cleanup`; see [tools/playtest/runs/README.md](../../tools/playtest/runs/README.md).
+`playtest.mjs run` itself is unchanged.
+
 Everything prints JSON on stdout and logs to stderr. `--server-root` is the Sim checkout whose server the dev worlds
 run from (it needs a built `apps/web/dist`). Pass it explicitly, and pass `--out` or `--runs-root` for where runs go.
 
