@@ -81,6 +81,12 @@ Required independent diagnosis/review uses the same capacity budget; workers mus
 
 ## Operate with little coordination
 
+Keep every lane busy. A lane is either running or has a handoff the coordinator will be woken for; on every wake
+the coordinator reconciles every lane, and an idle lane is a coordinator failure. Mechanical repository work
+(review dispatch, merge-queue labelling, CI and merge-train triage, release-candidate summaries) belongs to a
+standing workhorse repo steward, not the frontier coordinator; the steward never deploys or runs a paid gate. Worker
+rules and per-harness mechanics: [sustaining lanes](coordinator-portability.md#sustaining-lanes).
+
 Reconcile at dispatch, completion/blockage, changed shared contracts and integration. Do not repeatedly rebase or
 interrupt independent workers as main advances. Workers fix ordinary rebase conflicts; the coordinator resolves
 semantic dependencies with the affected owners. Integrate foundations before dependent PRs and run checks affected

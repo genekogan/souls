@@ -31,6 +31,12 @@ to that owner; do not expand the agenda or create a recursive worker pool.
   Resume existing jobs; do not assume every executor supports detached shell sessions.
 - Respect `attempt_cap` from the policy: after two failed fix attempts on the same problem, get an independent
   diagnosis (a fresh subagent with the failing output and the code, not your hypothesis) before the third.
+- Never open a blocking question dialog. Decide routine questions and record the choice; send scope or ordering
+  questions to the coordinator as a message and keep working.
+- Read your PR's comments at every safe boundary; review findings arrive there.
+- Continue through the assigned queue: after posting a task's checkpoint, start the next task. Read long parent
+  issues in slices, never whole. When your context nears its limit, checkpoint and hand over with a brief.
+  See [sustaining lanes](../../docs/process/coordinator-portability.md#sustaining-lanes).
 
 ## Done means
 1. `node tools/proof/tier.mjs` → the tier. Produce what that tier requires (the `proof` skill records clips;
