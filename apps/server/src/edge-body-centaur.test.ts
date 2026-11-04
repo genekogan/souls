@@ -32,6 +32,15 @@ test('centaur source: reproducible, within unchanged limits, and its lower body 
   const q=[0,1,2,3].map(i=>bin.readFloatLE(at+i*4)),[x,y,z,w]=q,sx=Math.sin(.8),cw=Math.cos(.8),k=[w*sx+x*cw,y*cw+z*sx,z*cw-y*sx,w*cw-x*sx],vals=new Float32Array(a.count*4);for(let i=0;i<a.count;i++)vals.set(i===0?q:k,i*4);
   const add=Buffer.from(vals.buffer);j.bufferViews.push({buffer:0,byteOffset:bin.length,byteLength:add.length});j.accessors.push({bufferView:j.bufferViews.length-1,componentType:5126,count:a.count,type:'VEC4'});clip.samplers[ch.sampler].output=j.accessors.length-1;const out=Buffer.concat([bin,add]);j.buffers[0].byteLength=out.length;return out;});
  assert.throws(()=>admit({bytes:kick,manifest:made.manifest}),(e:any)=>e.code==='body.footprint'&&/Dance_Loop at [1-9]/.test(e.message),'a kick after frame 0');
+ // Every key time is measured: a kick on one key among 40 is refused; more than the named cap of key times is refused by name.
+ const keyed=(n:number,kickAt:number)=>regl(made.bytes,(j,bin)=>{const leg=j.nodes.findIndex((x:any)=>x.name==='HindUpperLeg.L'),clip=j.animations.find((c:any)=>c.name==='Dance_Loop'),ch=clip.channels.find((c:any)=>c.target.node===leg&&c.target.path==='rotation'),a=j.accessors[clip.samplers[ch.sampler].output],v=j.bufferViews[a.bufferView],at=(v.byteOffset??0)+(a.byteOffset??0);
+  const [x,y,z,w]=[0,1,2,3].map(i=>bin.readFloatLE(at+i*4)),sx=Math.sin(.45),cw=Math.cos(.45),k=[w*sx+x*cw,y*cw+z*sx,z*cw-y*sx,w*cw-x*sx],T=new Float32Array(n),V=new Float32Array(n*4);for(let i=0;i<n;i++){T[i]=4*i/(n-1);V.set(i===kickAt?k:[x,y,z,w],i*4);}
+  const parts=[bin];let off=bin.length;const view=(b:Buffer)=>{j.bufferViews.push({buffer:0,byteOffset:off,byteLength:b.length});parts.push(b);off+=b.length;return j.bufferViews.length-1;};
+  j.accessors.push({bufferView:view(Buffer.from(T.buffer)),componentType:5126,count:n,type:'SCALAR',min:[0],max:[4]});clip.samplers[ch.sampler].input=j.accessors.length-1;
+  j.accessors.push({bufferView:view(Buffer.from(V.buffer)),componentType:5126,count:n,type:'VEC4'});clip.samplers[ch.sampler].output=j.accessors.length-1;const out=Buffer.concat(parts);j.buffers[0].byteLength=out.length;return out;});
+ assert.throws(()=>admit({bytes:keyed(40,13),manifest:made.manifest}),(e:any)=>e.code==='body.footprint'&&/Dance_Loop at 1\.33/.test(e.message),'a kick on key 13 of 40');
+ assert.ok(admit({bytes:keyed(40,-1),manifest:made.manifest}).actionProfile,'40 still keys are admitted');
+ assert.throws(()=>admit({bytes:keyed(65,-1),manifest:made.manifest}),(e:any)=>e.code==='body.too-complex'&&e.details?.field==='footprintKeys'&&e.details.limit===64&&e.details.measured===65);
  // Many unused vertices (unbounded by the triangle cap) get a measurement, never a stack overflow.
  const padded=regl(made.bytes,(j,bin)=>{const p=j.meshes[0].primitives[0],N=140000;const pos=j.accessors[p.attributes.POSITION],pv=j.bufferViews[pos.bufferView],pat=(pv.byteOffset??0)+(pos.byteOffset??0);
   const P=new Float32Array((pos.count+N)*3),J=new Uint8Array((pos.count+N)*4),W=new Uint8Array((pos.count+N)*4);for(let i=0;i<pos.count*3;i++)P[i]=bin.readFloatLE(pat+i*4);

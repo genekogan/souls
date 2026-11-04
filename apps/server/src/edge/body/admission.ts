@@ -5,6 +5,8 @@ import {bodyMotionProblem,type BodyMotion} from '../../../../../mars/viewer/engi
 import {QUADRUPED_TORSO,isActionProfile,type ActionProfile} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
 /** quadruped-torso/1 support: the lower body stays inside the humanoid navigation disc (world/catalog.ts HUMAN_RADIUS). */
 export const QUADRUPED_FOOTPRINT_RADIUS=.28;
+/** quadruped-torso/1: the most distinct key times a standing clip (Idle, Standby_Loop, Dance_Loop) may have; each is measured. */
+export const QUADRUPED_FOOTPRINT_KEYS=64;
 import {rigWorldPoints,rigWorldMatrices} from './rig.ts';
 export type BodyType='humanoid'|'ceramic'|'floater';
 export type BodyManifest={type:BodyType;license:'CC0'|'owned';rightsConfirmed:true;rig?:'quaternius/1';name?:string;description?:string;motion?:BodyMotion;actionProfile?:ActionProfile};
@@ -172,8 +174,11 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
    const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(const v of idle.out)for(let a=0;a<3;a++){if(v[a]<lo[a])lo[a]=v[a];if(v[a]>hi[a])hi[a]=v[a];}   // a loop: vertex count is not bounded by the triangle cap
    const cx=(lo[0]+hi[0])/2,cz=(lo[2]+hi[2])/2,fit=1.34/(idle.shoulder-lo[1]);
    if(!(fit>0&&Number.isFinite(fit)))return no('body.footprint','The Idle pose needs shoulders above its lowest point');
-   // Throughout each standing clip: every key time of its samplers (at most 24 per clip, evenly chosen when there are more).
-   const keyTimes=(name:string)=>{const clip=animations.find((a:any)=>a.name===name);if(!clip)return [0];const ts=new Set<number>();for(const smp of clip.samplers)for(const t of values(accessors[smp.input]))ts.add(t);const all=[...ts].sort((a,b)=>a-b);return all.length<=24?all:Array.from({length:24},(_,i)=>all[Math.round(i*(all.length-1)/23)]!);};
+   // Throughout each standing clip: every key time of its samplers. A standing clip with more distinct key times than
+   // QUADRUPED_FOOTPRINT_KEYS is refused by name rather than sampled (an unsampled key could hide a kick).
+   const keyTimes=(name:string)=>{const clip=animations.find((a:any)=>a.name===name);if(!clip)return [0];const ts=new Set<number>();for(const smp of clip.samplers)for(const t of values(accessors[smp.input]))ts.add(t);
+    if(ts.size>QUADRUPED_FOOTPRINT_KEYS)return no('body.too-complex',`${name} has ${ts.size} distinct key times; quadruped-torso/1 measures standing clips with at most ${QUADRUPED_FOOTPRINT_KEYS}`,{field:'footprintKeys',measured:ts.size,limit:QUADRUPED_FOOTPRINT_KEYS});
+    return [...ts].sort((a,b)=>a-b);};
    let reach=0,where='Idle';for(const name of ['Idle','Standby_Loop','Dance_Loop'])for(const t of keyTimes(name)){const pose=posed(name,t);for(const v of pose.out)if(v[1]<pose.hip&&!v[3]){const d=Math.hypot(v[0]-cx,v[2]-cz)*fit;if(d>reach){reach=d;where=`${name} at ${Math.round(t*100)/100} s`;}}}
    if(reach>QUADRUPED_FOOTPRINT_RADIUS)return no('body.footprint',`In ${where} the lower body reaches ${reach.toFixed(3)} m from where the body stands; quadruped-torso/1 admits at most ${QUADRUPED_FOOTPRINT_RADIUS} m`,{field:'footprint',measured:Math.round(reach*1000)/1000,limit:QUADRUPED_FOOTPRINT_RADIUS});
   }
