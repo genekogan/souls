@@ -52,7 +52,7 @@ The existing fields keep their meaning:
 | **Propose** | The host's act `carry-with` creates the invite at revision 1, with `state: 'pending'`. Its parameters are the load, `to`, and `with` (the Souls asked). It opens the host's receipt in `waiting`. A proposal moves nobody, and conversation membership is not consent. *Change:* `awaitingAnswer` and `hostAlone` cover only `paired`/`give` today (`together.ts`); they extend to `shared`, so the host's receipt names who is still undecided. |
 | **Accept / decline** | A guest acts `accept {invite, revision}` or `decline {invite}` (extending today's `accept:<invite>` and `decline:<invite>` offers). Acceptance creates the guest's receipt for the shared operation, in `waiting`, linked in `guestReceipts`. `accept` checks the §4 envelope itself (body, hands), so a floater cannot accept a carry even though floaters may `accept` other invitations. If the revision is stale, the world refuses with `shared.revision-changed`, naming the current revision and what changed. |
 | **Amend** | Only the host's `carry-with {invite, …}` with changed parameters bumps `revision`: the load, `to`, the role set or the crew range. A bump clears every acceptance, and those receipts end `failed` / `shared.revision-changed`, so nobody holds a silently changed agreement. |
-| **Leave before commit** | Before commit, a member may leave freely: a guest acts `decline {invite}`, which *Change:* is still offered after accepting, and the host withdraws the offer (`withdraw:<invite>`, today offered only for rps, hold-hands and hand-over). Any other body act by a member ends that member's `waiting` shared receipt as `failed` / `shared.left`, never `replaced`, and frees their role. The rest of the session stays pending. |
+| **Leave before commit** | Before commit, a member may leave freely: a guest acts `decline {invite}`, which *Change:* is still offered after accepting, and the host withdraws the offer (`withdraw:<invite>`, today offered only for rps, hold-hands and hand-over). Any other body act by a guest ends that guest's `waiting` shared receipt as `failed` / `shared.left`, never `replaced`, and frees their role; the rest of the session stays pending. Any other body act by the host closes the invite: every member's receipt ends `failed` / `shared.left`. |
 | **Expiry** | If the roles are not all filled and ready by `expiresTick`, the open responses become `expired` and the open receipts end `failed` / `invite.expired`, as today. Expiry never applies after commit (§2). |
 | **Readiness** | Derived each tick and never stored. A member is ready while all of these hold: they accepted the current revision; their body passes §4; their hands are empty (`hands.full`); they have no other open receipt; and they are on level 0 within `SHARED_GATHER_RADIUS` (10 m) of the load. Members do **not** walk to their grips before commit. The native `carry` gather phase does that walking (`carry/actions.ts`, bounded by `GATHER_TIMEOUT_S`), so no pre-commit walk can replace a shared receipt. |
 | **Commit** | When every role is filled and every member is ready, the world commits atomically (§2). The host does not commit for the others; each member's own acceptance is their consent. The commit either acquires every claim and starts one native crew `carry`, or changes nothing. If it cannot proceed yet, the session stays pending, each member's receipt names the blocker (`shared.not-ready`, with who and why), and the world tries again when readiness changes, until `expiresTick`. If it is refused for good, for example the native `plan()` refuses with `carry.no-route` or `carry.crew-too-small`, every receipt ends `failed` with that diagnostic. |
@@ -166,7 +166,7 @@ today's `withdraw:<invite>`, which withdraws an unanswered offer before commit.
   it cannot replace the member's shared receipt. Its own receipt completes in the same tick with the outcome "stop
   requested". This is the prompt acknowledgment, not a physical release. `op.phase` becomes `stopping`, and every
   member's shared receipt gets `reason: 'stopping: <name> asked to stop'`.
-- **Supported cleanup.** *Change:* the stop calls `engine.stop(op.programId)`. Today's `edge-stop` fold stops
+- **Supported cleanup.** *Change:* the stop calls `engine.stop(op.programId)`, and the logged `edge-stop` event carries `programId` in its payload so that the stop replays deterministically. Today's `edge-stop` fold stops
   `programOf(entityId)` (`fold.ts`), which is the wrong program for a borrowed guest. The engine cancels the native
   `carry`, and that cancel never drops a load:
   - during gather, the walkers simply stop;
@@ -175,10 +175,10 @@ today's `withdraw:<invite>`, which withdraws an unanswered offer before commit.
 
   Members' bodies finish only that disclosed cleanup.
 - **When no safe release is possible yet.** When the native cancel refuses (`carry.cancel-unsafe` on a flight, which
-  the first template excludes, or a set-down spot that is not clear), the engine on a physical world sets
+  the first template excludes, or a set-down spot that is not clear), the engine sets
   `p.stopping`, keeps the formation moving along its already validated route, and retries the cancel every tick
   (`packages/engine-mars/src/engine.ts` `stop` and `advance`). The load is set down at the first clear pose, or at the
-  destination. The ledger reads this from the program (`stopping` set, action still active) and reports it:
+  destination. The ledger reads this from the program, which needs a reader that does not exist yet: `p.stopping` is private engine state. *Change (PC08):* `engine-contract` gains a read-only `programStoppingV1(id)`. The ledger reports it like this:
   - the op stays `stopping`, and each receipt's reason says the crew is carrying on to the first clear spot;
   - if the formation itself is held up by an obstacle while stopping, the op becomes `blocked`, the receipts name
     the native blocker, the claims are kept because the load is still supported, and the assistance route is named
@@ -207,6 +207,7 @@ shows the actual outcome. PC09 ([#688](https://github.com/genekogan/souls/issues
 | crew | 2 for PC06 and 2–4 for PC11, never beyond the native maximum of 8 or the def's `carryCrew` | `carry.crew-too-small` with the arithmetic (`MAX_KG_PER_CARRIER = 30`) |
 | ground | level 0 only, the start and destination on the same level, no stair flights | `carry.ground-only` (exists for the solo carry) |
 | route | the whole formation, planned by the native planner at commit | `carry.no-route` and the planner's named blocker |
+| world | a physical world only: on a non-physical world `engine.stop` ends the program while the action is still active, so the supported-cleanup contract of §3 does not hold | `shared.unsupported-world` |
 
 The solo upright carry, `fixtureCarry` through `mars:move_fixture`, is unchanged. Its `carry.crew-too-small` refusal
 exists only for `upright-carry` fixtures (`god/engine-bridge.ts`). The loose `core-rack-beam@1` (12 kg, two grips)
