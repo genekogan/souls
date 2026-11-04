@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync
 import { resolve, join } from 'node:path';
 import { createServer } from 'node:net';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { createTestRunner, runOwnedAttempt } from './owned-attempt.mjs';
 
 const parent = resolve('.e2e/670'); mkdirSync(parent, { recursive: true });
@@ -251,4 +252,35 @@ test('public production preflight refuses a dirty helper, or reaches owned boot 
     assert.deepEqual(Object.keys(r.source).sort(), ['driver', 'product', 'tool']);
     await assert.rejects(runOwnedAttempt(o), /fresh-node-process-required/);
   }
+});
+
+for (const signalName of ['SIGINT','SIGTERM','SIGHUP']) test(`production browser adapter owns ${signalName} through repeated interruption and finalizes both cleanups`, async t => {
+  const f = setup(t), dependencyRoot=join(f.root,'controlled-dependency'), pkg=join(dependencyRoot,'node_modules/@playwright/test');
+  mkdirSync(pkg,{recursive:true});writeFileSync(join(pkg,'package.json'),JSON.stringify({name:'@playwright/test',main:'index.cjs'}));
+  writeFileSync(join(pkg,'index.cjs'),'module.exports={chromium:{}};\n');
+  const pw = createRequire(join(dependencyRoot,'mars/viewer/package.json'))('@playwright/test');
+  const original = pw.chromium.launchPersistentContext;
+  let closed = false, launchOptions;
+  const page = { on() {}, goto: async () => {}, url: () => 'https://example.com:19040/w/proof-fixture',
+    screenshot: async () => Buffer.from('PNG observation'), locator: () => ({ ariaSnapshot: async () => '- fixture' }) };
+  // Exercise the real production adapter through the controlled library boundary, not an injected browser helper.
+  pw.chromium.launchPersistentContext = async (_profile, options) => {
+    launchOptions = options;
+    assert.equal(options.handleSIGINT, false, 'Playwright must not exit the owner during SIGINT cleanup');
+    assert.equal(options.handleSIGTERM, false); assert.equal(options.handleSIGHUP, false);
+    return { pages: () => [page], close: async () => { assert.equal(process.emit(signalName),true,'owner still handles repeated signals during cleanup'); closed = true; } };
+  };
+  t.after(() => { pw.chromium.launchPersistentContext = original; });
+  const cache = join(f.root, 'explicit-browser-cache'); mkdirSync(cache); const executable = join(cache, 'browser'); writeFileSync(executable, 'controlled launch boundary');
+  Object.assign(f.o, { browserCache: cache, browserExecutable: executable, playwrightRoot: dependencyRoot,
+    journeyTimeoutMs: 50, journey: async () => await new Promise(() => setTimeout(() => process.emit(signalName), 1)) });
+  const runner = createTestRunner({ source: f.identity, changed: () => ['fix.ts'], portFree: async () => true,
+    boot: async o => { const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null }); f.children.push(child); o.onSpawn(child);
+      writeFileSync(o.log, 'owned fixture world\n'); return { child, base: page.url(), dataDir: o.data }; },
+    stop: async c => { c.exitCode = 0; } });
+  const report = await runner(f.o);
+  assert.ok(launchOptions); assert.equal(report.status, 'INTERRUPTED'); assert.equal(report.qualified, false);
+  assert.equal(closed, true); assert.equal(report.teardown.browserClosed, true); assert.equal(report.teardown.worldStopped, true);
+  assert.ok(existsSync(join(report.paths.dir, 'report.json'))); assert.equal(f.ledger().cycles[0].inFlight, undefined);
+  assert.equal(existsSync(f.o.ledger + '.lock'), false, 'finalized interruption releases its owned lock');
 });

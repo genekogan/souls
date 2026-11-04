@@ -82,6 +82,8 @@ async function openBrowser(o, paths, base) {
   process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(o.browserCache);
   const pw = createRequire(join(o.playwrightRoot ?? o.sourceRoot, 'mars/viewer/package.json'))('@playwright/test');
   const context = await pw.chromium.launchPersistentContext(paths.profile, { executablePath: o.browserExecutable,
+    // The owner controller must finish evidence/ledger/world cleanup; Playwright's default SIGINT handler exits early.
+    handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false,
     timeout: o.phaseTimeoutMs ?? 30000,
     headless: o.headless ?? true, args: launchArgs({ gpu: o.gpu ?? 'metal' }).args,
     viewport: o.viewport ?? { width: 1920, height: 1080 }, deviceScaleFactor: 1,
@@ -120,7 +122,7 @@ async function run(o, d) {
   const timeout = error => { timedOut = true; controller.abort(error); };
   const onSignal = () => controller.abort(new Error('proof.interrupted'));
   o.signal?.addEventListener('abort', onAbort, { once: true }); if (o.signal?.aborted) onAbort();
-  process.once('SIGINT', onSignal); process.once('SIGTERM', onSignal);
+  process.on('SIGINT', onSignal); process.on('SIGTERM', onSignal); process.on('SIGHUP', onSignal);
   const save = () => { const tmp = ledger + '.' + randomUUID(); writeNew(tmp, state); renameSync(tmp, ledger); };
   try {
     const current = { product: d.source(o.sourceRoot), tool: d.source(toolRoot) };
@@ -264,7 +266,7 @@ async function run(o, d) {
       delete cycle.inFlight; if (cleanupFailed) cycle.stopped = 'cleanup failed'; save(); finalized = true;
     }
     } finally {
-    o.signal?.removeEventListener('abort', onAbort); process.removeListener('SIGINT', onSignal); process.removeListener('SIGTERM', onSignal);
+    o.signal?.removeEventListener('abort', onAbort); process.removeListener('SIGINT', onSignal); process.removeListener('SIGTERM', onSignal); process.removeListener('SIGHUP', onSignal);
     if (report && !finalized) cleanupFailed = true;
     if (!cleanupFailed) rmSync(lock, { recursive: true });
     }

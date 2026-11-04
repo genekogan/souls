@@ -85,7 +85,7 @@ helper and owns one world child, fresh mutable data, a fresh persistent Chromium
 accepts a world recipe, never an arbitrary running URL. Assets and an explicitly selected browser cache/executable
 may be shared read-only. Build the served assets from the committed product source first.
 
-Call `runOwnedAttempt` from a committed driver wrapper with an ignored private ledger, the concrete agent identity,
+Call `runOwnedAttempt` from a thin wrapper with private operational mappings, an ignored private ledger, the concrete agent identity,
 product checkout, tracked driver module (`driver: {root, path}`), world recipe, explicit browser cache/executable,
 and a predeclared cycle. Each production attempt requires a fresh Node process; the process-global guard rejects
 reuse, even through another module URL. Wrappers import the runner only and must not preload driver modules. This
@@ -95,6 +95,8 @@ arm, repeat}` and uses real input and named `check(key, ok, detail)` assertions.
 owned world before the browser; `beforeNavigation` installs observation and may return an owned cleanup function.
 Imports must have no side effects. Preparation, observation setup, the journey and cleanup are bounded; drivers
 should honor the signal and stop their own asynchronous work when cancelled.
+The owner handles SIGINT, SIGTERM and SIGHUP through finalization, including repeated signals during cleanup;
+the browser library's independent signal-exit handlers are disabled so they cannot skip world or ledger cleanup.
 
 The cycle has an explicit `id`, `fix: {root, from, to, paths, scope}`, pinned `arms: {baseline: {root, head},
 candidate: {root, head}}` and ordered `plan: [{arm, repeat}, ...]`. Declare both repeats per arm before measurement.
