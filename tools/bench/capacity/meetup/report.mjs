@@ -23,6 +23,8 @@ export function report(receipt, r) {
   L.push('## Offered demand and outcomes', '', 'Latency columns are p50 / p95 / p99 / max ms (n); `*` = p99 from fewer than 100 samples. End-to-end runs from the scheduled time; answered-only is diagnostic.', '');
   L.push('| group | offered | issued | unissued | overdue | load failures | outcomes | end-to-end | lateness at send | answered-only |', '|---|---|---|---|---|---|---|---|---|---|');
   for (const [k, x] of Object.entries(a)) L.push(`| ${k} | ${x.offered} | ${x.issued} | ${x.unissued} | ${x.overdue} | ${x.loadFailures} | ${Object.entries(x.outcomes).map(([o, n]) => `${o} ${n}`).join(', ')} | ${qs(x.e2eMs)} | ${qs(x.lateMs)} | ${qs(x.answeredOnlyServiceMs)} |`);
+  const rx = r.reactiveDemand;
+  if (rx) L.push('', `Reactive demand (accepting invitations from the event stream; not in the fixed schedule): offered ${rx.offered}, issued ${rx.issued}, unissued ${rx.unissued}, outcomes ${JSON.stringify(rx.outcomes)}, end-to-end from receipt of the invitation ${qs(rx.e2eMs)}, invitation delivery ${qs(rx.inviteDeliveryMs)}, refusal codes ${JSON.stringify(rx.gameplayCodes)}.`);
   L.push('', `Valid gameplay refusals (kept, not load failures): ${Object.entries(r.gameplayRefusals).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}. Busy answers seen (incl. ones the client then waited out): ${Object.entries(r.refusalTags).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}.`, '');
   L.push('## Actions and receipts', '', '| world | action start | receipt delivery | planned activity (travel etc., not delay) |', '|---|---|---|---|');
   for (const k of Object.keys(r.actionStartMs)) L.push(`| ${k} | ${qs(r.actionStartMs[k])} | ${qs(r.receiptDeliveryMs[k])} | ${qs(r.plannedActivityMs[k])} |`);

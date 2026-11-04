@@ -95,8 +95,9 @@ afterwards) without changing `bench.mjs`.
 - `meetup/workload.mjs`: the workload as data, pure and seeded: fixtures, the two profiles (`even` = 5 per world;
   `meetup` = 20 in world 0 and 30 across the other nine), account and address grouping (a three-Soul account in the
   meetup world, a three-world account, five Souls behind one network address; documentation addresses only), the
-  declared demand (a rich read per Soul every 4 s, an act every 20 s, three meetups where all fifty act within 1 s and
-  read twice within the next 2 s), the schedule, all-attempt accounting and the clock check. `workload.test.mjs` pins it.
+  declared demand (a rich read per Soul every 4 s; an act every 20 s cycling movement, attention, speech, a gesture, an
+  interrupting act and an invitation to a shared action that the partner's driver accepts from its own stream; three
+  meetups where all fifty act within 1 s and read twice within the next 2 s), the schedule, all-attempt accounting and the clock check. `workload.test.mjs` pins it.
 - `meetup/meetup.mjs`: the runner. `meetup/report.mjs`: `REPORT.md` against #443's initial objectives.
 
 ```bash

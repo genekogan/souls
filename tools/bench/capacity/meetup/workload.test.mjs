@@ -40,15 +40,15 @@ test('declared rates: one read per 4 s, one act per 20 s (plus interrupts), thre
   assert.equal(burst.filter((o) => o.cls === 'act').length, 150);
   assert.equal(burst.filter((o) => o.cls === 'read').length, 300);
   assert.equal(n.read - 300, 50 * perSoulReads);
-  // every fifth act slot is a walk followed by a stand: 1.2 acts per slot
-  assert.ok(Math.abs((n.act - 150) - 50 * perSoulActs * 1.2) <= 50, `${n.act}`);
+  // one act slot in actMix.length is a walk followed by a stand
+  assert.ok(Math.abs((n.act - 150) - 50 * perSoulActs * (1 + 1 / DEMAND.actMix.length)) <= 50, `${n.act}`);
   for (const [b, m] of ph.meetupsMs.entries()) {
     const acts = burst.filter((o) => o.burst === b && o.cls === 'act'), reads = burst.filter((o) => o.burst === b && o.cls === 'read');
     assert.ok(acts.every((o) => o.atMs >= m && o.atMs < m + DEMAND.burstActWithinMs));
     assert.ok(reads.every((o) => o.atMs >= m + DEMAND.burstActWithinMs && o.atMs <= m + DEMAND.burstActWithinMs + DEMAND.burstReadsWithinMs));
     assert.equal(new Set(acts.map((o) => o.soul)).size, 50);
   }
-  assert.deepEqual(new Set(ops.map((o) => o.kind)), new Set(['observe', 'here', 'capabilities', 'resolve', 'walk', 'attention', 'say', 'gesture', 'stand', 'meetup']));
+  assert.deepEqual(new Set(ops.map((o) => o.kind)), new Set(['observe', 'here', 'capabilities', 'resolve', 'walk', 'attention', 'say', 'gesture', 'stand', 'shared', 'meetup']));
   // each Soul's calls are in time order (they are sent one at a time, in this order)
   for (let i = 0; i < 50; i++) { const t = ops.filter((o) => o.soul === i).map((o) => o.atMs); assert.deepEqual(t, [...t].sort((x, y) => x - y)); }
 });

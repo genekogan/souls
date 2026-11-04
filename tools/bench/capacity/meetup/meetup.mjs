@@ -138,7 +138,8 @@ async function joinSoul(run, s) {
   const token = () => { try { return JSON.parse(readFileSync(join(dir, '.eden-agent.json'), 'utf8')).token ?? null; } catch { return null; } };
   // the same name on every try until the folder holds a token or 120 s pass (Soul CLI 2.5.3 resumes its own create)
   while (!token() && mono() - t0 < 120_000) { tries.push({ cmd: 'create', ...(await runCli(dir, ['create', `Meet${s.i}`], 150_000)) }); if (!token()) await sleep(2000); }
-  s.token = token(); s.joinMs = Math.round(mono() - t0); s.joinTries = tries.map(({ cmd, code, ms, err }) => ({ cmd, code, ms, ...(code ? { err } : {}) }));
+  s.token = token(); try { s.soulId = JSON.parse(readFileSync(join(dir, '.eden-agent.json'), 'utf8')).soul ?? null; } catch { s.soulId = null; }
+  s.joinMs = Math.round(mono() - t0); s.joinTries = tries.map(({ cmd, code, ms, err }) => ({ cmd, code, ms, ...(code ? { err } : {}) }));
   return s;
 }
 const headersOf = (s) => ({ authorization: `Bearer ${s.token}`, 'content-type': 'application/json', 'x-forwarded-for': s.address });
@@ -157,6 +158,9 @@ function requestOf(run, s, op) {
     case 'attention': return act(LOOK[op.pick % LOOK.length]);
     case 'gesture': return act(GESTURE[op.pick % GESTURE.length]);
     case 'stand': return act('stand');
+    case 'shared': { const mates = run.souls.filter((x) => x.world === s.world && x.i !== s.i && x.soulId), m = mates.find((x) => x.k > s.k) ?? mates[0];
+      return act(m ? `${DEMAND.sharedVerbs[op.pick % DEMAND.sharedVerbs.length]}:${m.soulId}` : 'wave'); }
+    case 'accept': return act(op.capability);
     case 'say': return ['POST', '/v1/edge/say', { text: 'hello from the meetup workload' }];
     default: throw new Error(`op kind ${op.kind}`);
   }
@@ -204,7 +208,10 @@ function holdStream(run, s) {
         run.stream.responses++; if (r.status !== 200) run.stream.non200[r.status] = (run.stream.non200[r.status] ?? 0) + 1;
         if (d?.gap) run.stream.gaps++;
         if (Array.isArray(d?.events)) { run.stream.events += d.events.length; if (d.events.length) run.stream.batches.push(d.events.length); }
-        for (const e of d?.events ?? []) if (e.kind === 'receipt' && e.receipt?.id) {
+        for (const e of d?.events ?? []) if (e.kind === 'invite' && e.invite?.accept && run.marks.active && !run.cut) {
+          // reactive demand: this Soul accepts the invitation from its own stream, in arrival order, one call at a time
+          const atMs = Math.round(mono() - run.marks.active); s.reactive.push({ id: `s${s.i}-r${s.reactive.n++}`, soul: s.i, world: s.world, cls: 'act', kind: 'accept', capability: e.invite.accept, atMs, burst: null, reactive: true, delivery: Math.round(recv - e.at) });
+        } else if (e.kind === 'receipt' && e.receipt?.id) {
           let x = run.receipts.get(e.receipt.id); if (!x) run.receipts.set(e.receipt.id, x = { soul: s.i, events: [] });
           x.events.push({ phase: e.receipt.phase, at: e.at, tick: e.tick, recv, startedTick: e.receipt.startedTick, endedTick: e.receipt.endedTick, code: e.receipt.code });
         }
@@ -243,9 +250,9 @@ async function realBrowser(run) {   // the one real-browser path: world 0's page
 // ------------------------------------------------------------------ one run
 async function oneRun(profile, rep) {
   const dir = join(OUT, `${profile}-r${rep}`); mkdirSync(dir, { recursive: true });
-  const ss = soulsOf(profile), ops = schedule(profile, SEED, PH), opsBySoul = ss.map((s) => ops.filter((o) => o.soul === s.i));
+  const ss = soulsOf(profile).map((s) => Object.assign(s, { reactive: Object.assign([], { n: 0 }) })), ops = schedule(profile, SEED, PH), opsBySoul = ss.map((s) => ops.filter((o) => o.soul === s.i));
   const run = { id: createHash('sha256').update(`${SEED}|${profile}|${rep}|${Date.now()}`).digest('hex').slice(0, 10), dir, stopped: false, cut: false, sockets: [], aborts: new Set(), opAborts: new Set(), viewers: {},
-    receipts: new Map(), stream: { responses: 0, events: 0, batches: [], gaps: 0, failures: 0, non200: {} }, worlds: [], samples: [], marks: {} };
+    souls: ss, receipts: new Map(), stream: { responses: 0, events: 0, batches: [], gaps: 0, failures: 0, non200: {} }, worlds: [], samples: [], marks: {} };
   const tag = `${profile} r${rep}`, mark = (name) => { run.marks[name] = mono(); log(`${tag}: ${name}`); };
   const receipt = {
     workload: WORKLOAD, profile, rep, seed: SEED, short: SHORT, at: new Date().toISOString(),
@@ -262,7 +269,8 @@ async function oneRun(profile, rep) {
       viewers: `${FIXTURES.length} anonymous WebSocket viewers, one per world`, realBrowser: BROWSER ? 'Playwright Chromium, headless, world 0' : 'not run (--browser)',
       imageRendering: 'not exercised: Eyes off; renderer CPU/RSS and render latency are an unqualified capability for #736',
       legs: 'loopback HTTP and WebSocket through the launcher proxy (dev auth); TLS, the public proxy, Clerk sign-in and the real network are not exercised',
-      notCovered: ['invite-based shared actions (hug, dance-with) that need the other Soul\'s accept', 'god authoring/import/export', 'travel between worlds'] },
+      sharedActions: 'invitations (high-five, handshake, hug, dance-with) to the next Soul in the same world, accepted by that Soul\'s driver from its own stream as reactive demand',
+      notCovered: ['god authoring/import/export', 'travel between worlds', 'conversations (converse) and plans'] },
   };
   writeFileSync(join(dir, 'receipt.json'), JSON.stringify(receipt, null, 1));
   const lag = monitorEventLoopDelay({ resolution: 10 }); lag.enable();
@@ -306,18 +314,23 @@ async function oneRun(profile, rep) {
     mark('quiet'); await run.shot?.('quiet'); await sleep(PH.quietMs);
     // activity: the fixed schedule, one call at a time per Soul, in order; late calls are overdue, never dropped
     const views = { beforeActive: await launcherView() };
-    mark('active'); const t0 = run.marks.active, records = [];
+    mark('active'); const t0 = run.marks.active, records = [], reactive = []; run.reactiveRecords = reactive;
     const opsFile = join(dir, 'ops.jsonl');
     const shots = PH.meetupsMs.map((m, b) => setTimeout(() => run.shot?.(`meetup${b + 1}`), m + 2500));
     const loops = ss.filter((s) => s.token).map(async (s) => {
-      const jitter = rng(`${SEED}|jitter|${s.i}`);
-      for (const op of opsBySoul[s.i]) {
-        await sleep(t0 + op.atMs - mono());
-        if (mono() - t0 >= PH.activeMs || run.cut) return;   // the window closed: the rest of this Soul's queue is unissued
+      const jitter = rng(`${SEED}|jitter|${s.i}`), closed = () => mono() - t0 >= PH.activeMs || run.cut;
+      const send = async (op) => {
         const issuedAt = mono() - t0, r = await perform(run, s, op, jitter), doneAt = mono() - t0;
-        const rec = { id: op.id, soul: s.i, world: s.world, kind: op.kind, cls: op.cls, burst: op.burst, atMs: op.atMs, issuedAt: Math.round(issuedAt), doneAt: Math.round(doneAt), ...r };
-        records.push(rec); appendFileSync(opsFile, JSON.stringify(rec) + '\n');
+        const rec = { id: op.id, soul: s.i, world: s.world, kind: op.kind, cls: op.cls, burst: op.burst, atMs: op.atMs, issuedAt: Math.round(issuedAt), doneAt: Math.round(doneAt), ...(op.reactive ? { reactive: true, inviteDeliveryMs: op.delivery } : {}), ...r };
+        (op.reactive ? reactive : records).push(rec); appendFileSync(opsFile, JSON.stringify(rec) + '\n');
+      };
+      for (const op of opsBySoul[s.i]) {
+        // invitations this Soul received go first, in arrival order; the scheduled call waits for its time
+        for (;;) { while (s.reactive.length && !closed()) await send(s.reactive.shift()); const left = t0 + op.atMs - mono(); if (left <= 0 || closed()) break; await sleep(Math.min(250, left)); }
+        if (closed()) return;   // the window closed: the rest of this Soul's queue is unissued
+        await send(op);
       }
+      while (!closed()) { while (s.reactive.length && !closed()) await send(s.reactive.shift()); await sleep(250); }
     });
     await sleep(PH.activeMs);
     mark('drain');
@@ -347,9 +360,13 @@ async function oneRun(profile, rep) {
 function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup, browser, driverCpuS, load }) {
   const t0 = run.marks.active, rel0 = (m) => m - t0, hz = run.samples.filter((x) => x.k === 'hz'), procs = run.samples.filter((x) => x.k === 'proc');
   const accounting = account(ops, records);
+  // reactive demand (accepting invitations): offered = invitations received during the window; never in the fixed schedule
+  const rx = run.reactiveRecords ?? [], rxLeft = ss.reduce((n, s) => n + s.reactive.length, 0), rxOut = {}; for (const r of rx) rxOut[r.outcome] = (rxOut[r.outcome] ?? 0) + 1;
+  const reactiveDemand = { offered: rx.length + rxLeft, issued: rx.length, unissued: rxLeft, outcomes: rxOut, e2eMs: quantiles(rx.map((r) => r.doneAt - r.atMs)), inviteDeliveryMs: quantiles(rx.map((r) => r.inviteDeliveryMs)),
+    gameplayCodes: rx.filter((r) => r.outcome === 'gameplay-refused').reduce((m, r) => (m[r.code] = (m[r.code] ?? 0) + 1, m), {}) };
   // receipts: action start (first started/terminal phase, server time) and delivery (stream receipt − server time)
   const start = { all: [] }, delivery = { all: [] }, activity = { all: [] }, never = {};
-  for (const r of records.filter((x) => x.receipt)) {
+  for (const r of [...records, ...rx].filter((x) => x.receipt)) {
     const ev = run.receipts.get(r.receipt)?.events ?? [], first = ev.find((e) => e.phase === 'started') ?? ev.find((e) => ['completed', 'failed', 'replaced'].includes(e.phase));
     const w = `w${r.world}`; for (const m of [start, delivery, activity]) m[w] ??= [];
     if (first) { const v = rel0(first.at - performance.timeOrigin) - r.atMs; start.all.push(v); start[w].push(v); }
@@ -373,7 +390,7 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
       driverCpuCores: +(rate(a, b, (x) => x.driver.cpuS) ?? NaN).toFixed(3), driverRssMbMax: Math.max(0, ...p.map((x) => x.driver.rssMb)), driverLagP99MsMax: Math.max(0, ...p.map((x) => x.driver.lagP99Ms)), driverLagMaxMs: Math.max(0, ...p.map((x) => x.driver.lagMaxMs)) }]; }));
   const pidChanges = Object.fromEntries(FIXTURES.map((f) => [f.slug, new Set(procs.map((x) => x.worlds[f.slug]?.pid).filter(Boolean)).size - 1]));
   const restarts = Object.fromEntries(FIXTURES.map((f) => [f.slug, (views.afterActive?.[f.slug]?.restarts ?? 0)]));
-  const gameplay = {}; for (const r of records.filter((x) => x.outcome === 'gameplay-refused')) gameplay[`${r.kind}:${r.code}`] = (gameplay[`${r.kind}:${r.code}`] ?? 0) + 1;
+  const gameplay = {}; for (const r of [...records, ...rx].filter((x) => x.outcome === 'gameplay-refused')) gameplay[`${r.kind}:${r.code}`] = (gameplay[`${r.kind}:${r.code}`] ?? 0) + 1;
   const refusalTags = {}; for (const r of records) for (const t of r.refusals ?? []) refusalTags[t] = (refusalTags[t] ?? 0) + 1;
   const all = (c) => accounting[`all|${c}`] ?? {}, minRatio = (n) => Math.min(...FIXTURES.map((f) => clock[f.slug][n].ratio ?? 0));
   const headline = {
@@ -384,7 +401,7 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
   };
   return { profile, rep, headline, marksS: Object.fromEntries(Object.entries(run.marks).map(([k, v]) => [k, +((v - run.marks.boot) / 1000).toFixed(1)])), bootS: run.launcher.bootS, rates,
     join: { ms: quantiles(ss.filter((s) => s.joinMs != null).map((s) => s.joinMs)), failed: ss.filter((s) => !s.token).map((s) => ({ soul: s.i, tries: s.joinTries })), retries: ss.reduce((n, s) => n + Math.max(0, (s.joinTries?.length ?? 1) - 2), 0) },
-    worlds: run.worlds.map((w) => ({ slug: w.slug, placesInMenu: w.placesInMenu, meetup: w.meetup })), accounting, actionStartMs: q(start), receiptDeliveryMs: q(delivery), plannedActivityMs: q(activity), actsWithoutStart: never,
+    worlds: run.worlds.map((w) => ({ slug: w.slug, placesInMenu: w.placesInMenu, meetup: w.meetup })), accounting, reactiveDemand, actionStartMs: q(start), receiptDeliveryMs: q(delivery), plannedActivityMs: q(activity), actsWithoutStart: never,
     stream: { ...run.stream, batches: quantiles(run.stream.batches) }, viewers: run.viewers, browser: BROWSER ? { ...browser, ...run.browserStats } : null,
     clock, healthzMisses: hzMiss, levels, pausedSamples: paused, dilatedSamples: dilated, resources, worldPidChanges: pidChanges, launcher: views, restarts, gameplayRefusals: gameplay, refusalTags,
     driverCpuS: +driverCpuS.toFixed(1), load, cleanup };

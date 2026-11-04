@@ -40,8 +40,10 @@ export const DEMAND = Object.freeze({
   actEveryMs: 20_000,
   // the pinned rich-read mix, cycled per Soul from a seeded offset (observe is the richest; it leads)
   readMix: Object.freeze(['observe', 'here', 'capabilities', 'observe', 'resolve', 'here']),
-  // movement, attention, speech, a gesture and an interruption (a walk replaced 3 s later by a stand)
-  actMix: Object.freeze(['walk', 'attention', 'say', 'gesture', 'interrupt']),
+  // movement, attention, speech, a gesture, an interruption (a walk replaced 3 s later by a stand) and a shared action
+  // (an invitation to the next Soul in the same world, which that Soul's driver accepts from its own event stream)
+  actMix: Object.freeze(['walk', 'attention', 'say', 'gesture', 'interrupt', 'shared']),
+  sharedVerbs: Object.freeze(['high-five', 'handshake', 'hug', 'dance-with']),
   interruptAfterMs: 3000,
   burstActWithinMs: 1000,   // every Soul submits its coordinated act within 1 s of the meetup point
   burstReads: 2,            // ...then two reads each
@@ -83,7 +85,8 @@ export function souls(profile) {
 }
 
 /** Every scheduled call of the activity window, sorted by (soul, atMs, seq). atMs is relative to the window start.
- *  Kinds: reads observe|here|capabilities|resolve; acts walk|attention|say|gesture|stand|meetup. A Soul's targets
+ *  Kinds: reads observe|here|capabilities|resolve; acts walk|attention|say|gesture|stand|shared|meetup. Accepting an
+ *  invitation is reactive demand (it follows another Soul's act), counted apart by the runner. A Soul's targets
  *  (which place to walk to) are chosen at run time from its own world's menu by `pick`, so the same seed is valid in
  *  any template. */
 export function schedule(profile, seed, ph = phases()) {
