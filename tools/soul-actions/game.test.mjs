@@ -46,7 +46,12 @@ test('noughts and crosses: turns, third player, taken square, win, wipe, read, l
  const reasons={};
  const m1=await mark(ana,'centre');assert.equal(m1.early,false,'no mark before the stroke ends');assert.equal(state('game').text,'....X....');
  reasons.outOfTurnAlone=await refused(ana,'top right',/O's turn: the next Soul to mark plays O against Ana/);
- await mark(ben,'top left');reasons.third=await refused(cy,'bottom right',/between Ana and Ben/);
+ await mark(ben,'top left');
+ // X and O wait at separate stations on either side of the board, leaving its central approach clear (review #640).
+ const stationOf=s=>[body(s).pose.p[0],body(s).pose.p[2]],gb=god.model.worldPose(god.model.get('game')),[sa,sb]=[stationOf(ana),stationOf(ben)];
+ const separation=Math.hypot(sa[0]-sb[0],sa[1]-sb[1]),split=Math.abs(Math.atan2(Math.sin(Math.atan2(sa[1]-gb.z,sa[0]-gb.x)-Math.atan2(sb[1]-gb.z,sb[0]-gb.x)),Math.cos(Math.atan2(sa[1]-gb.z,sa[0]-gb.x)-Math.atan2(sb[1]-gb.z,sb[0]-gb.x))));
+ assert.ok(separation>=1.2,`X and O stations are apart: ${separation.toFixed(2)} m`);assert.ok(split>=30*Math.PI/180,`X and O flank the board: ${(split*180/Math.PI).toFixed(1)} degrees`);
+ reasons.third=await refused(cy,'bottom right',/between Ana and Ben/);
  reasons.taken=await refused(ana,'1',/taken/);await mark(ana,'top right');reasons.outOfTurn=await refused(ana,'bottom right',/Ben's turn/);
  await mark(ben,'middle left');await mark(ana,'bottom left');
  assert.equal(state('game').text,'O.XOX.X..');
