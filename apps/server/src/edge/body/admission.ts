@@ -2,7 +2,9 @@
 import {createHash} from 'node:crypto';
 import {inflateSync} from 'node:zlib';
 import {bodyMotionProblem,type BodyMotion} from '../../../../../mars/viewer/engine/bodies/motion.ts';
-import {ROLLING_GRIPPER,type ActionProfile} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
+import {QUADRUPED_TORSO,isActionProfile,type ActionProfile} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
+/** quadruped-torso/1 support: the lower body stays inside the humanoid navigation disc (world/catalog.ts HUMAN_RADIUS). */
+export const QUADRUPED_FOOTPRINT_RADIUS=.28;
 import {rigWorldPoints,rigWorldMatrices} from './rig.ts';
 export type BodyType='humanoid'|'ceramic'|'floater';
 export type BodyManifest={type:BodyType;license:'CC0'|'owned';rightsConfirmed:true;rig?:'quaternius/1';name?:string;description?:string;motion?:BodyMotion;actionProfile?:ActionProfile};
@@ -72,7 +74,7 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
  for(const key of Object.keys(m))if(!['type','license','rightsConfirmed','rig','name','description','motion','actionProfile'].includes(key))return no('body.manifest',`Unknown manifest field ${key}`);
  for(const [key,max]of [['name',80],['description',240]] as const)if(m[key]!==undefined&&(typeof m[key]!=='string'||m[key].length<1||m[key].length>max))return no('body.manifest',`${key} must be 1–${max} characters`);
  if(m.motion!==undefined){if(m.type==='humanoid')return no('body.motion','Authored rigid motion requires ceramic or floater type');const p=bodyMotionProblem(m.motion);if(p)return no('body.motion',p);}
- if(m.actionProfile!==undefined&&(m.actionProfile!==ROLLING_GRIPPER||m.type!=='humanoid'))return no('body.action-profile','Use rolling-gripper/1 only with the canonical contact rig');
+ if(m.actionProfile!==undefined&&(!isActionProfile(m.actionProfile)||m.type!=='humanoid'))return no('body.action-profile','Use rolling-gripper/1 or quadruped-torso/1 only with the canonical contact rig');
  const manifest=m as BodyManifest;
  bytes=bindBodyDefinition(bytes,manifest);
  if(bytes.length>BODY_LIMITS.bytes)return no('body.too-large','Body GLB exceeds 4 MiB');
@@ -140,6 +142,13 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
   for(const node of nodes)if(node.mesh!==undefined&&node.skin!==undefined){const skin=skins[node.skin];for(const name of canonical)if(!skin.joints.includes(named.get(name)))return no('body.rig',`Used skin is missing canonical bone ${name}`);for(const p of meshes[node.mesh].primitives){const ja=ref(accessors,p.attributes.JOINTS_0,'JOINTS_0'),wa=ref(accessors,p.attributes.WEIGHTS_0,'WEIGHTS_0');if(ja.type!=='VEC4'||ja.normalized===true||![5121,5123].includes(ja.componentType)||wa.type!=='VEC4'||![5121,5123,5126].includes(wa.componentType)||(wa.componentType!==5126&&wa.normalized!==true)||values(ja).some(i=>i>=skin.joints.length))return no('body.rig','Invalid skin joint or weight attributes');const weights=values(wa),unit=wa.componentType===5121?255:wa.componentType===5123?65535:1;for(let i=0;i<weights.length;i+=4){const group=weights.slice(i,i+4).map(v=>v/unit);if(group.some(v=>v<0||v>1.0001)||Math.abs(group.reduce((a,b)=>a+b,0)-1)>.02)return no('body.rig','Skin weights must be normalized per vertex');}}}
   if(!nodes.some(n=>n.mesh!==undefined&&n.skin!==undefined))return no('body.rig','Humanoid mesh must use its admitted skin');
   for(const name of manifest.actionProfile?['Idle','Walk','Dance_Loop','Standby_Loop']:['Idle','Walk'])if(!animations.some(a=>a.name===name))return no('body.clips',`Missing ${name} clip`);
+  // Honest support for four legs: every visible vertex below the hips (bind pose, at the renderer's fitted scale) stays
+  // inside the disc the world navigates and collides with. Longer bodies would hide legs outside admitted clearance.
+  if(manifest.actionProfile===QUADRUPED_TORSO){const hip=at('Hips')[1],c=at('Root');let reach=0;
+   for(const i of seen){const node=nodes[i];if(node.mesh===undefined)continue;const w=matrix(i);for(const primitive of meshes[node.mesh].primitives){const v=values(accessors[primitive.attributes.POSITION]);
+    for(let k=0;k<v.length;k+=3){const x=w[0]*v[k]+w[4]*v[k+1]+w[8]*v[k+2]+w[12],y=w[1]*v[k]+w[5]*v[k+1]+w[9]*v[k+2]+w[13],z=w[2]*v[k]+w[6]*v[k+1]+w[10]*v[k+2]+w[14];if(y<hip)reach=Math.max(reach,Math.hypot(x-c[0],z-c[2])*scale);}}}
+   if(reach>QUADRUPED_FOOTPRINT_RADIUS)return no('body.footprint',`The lower body reaches ${reach.toFixed(3)} m from the root; quadruped-torso/1 admits at most ${QUADRUPED_FOOTPRINT_RADIUS} m`,{field:'footprint',measured:Math.round(reach*1000)/1000,limit:QUADRUPED_FOOTPRINT_RADIUS});
+  }
   for(const anim of animations){const channels=list(anim.channels,'animation.channels'),as=list(anim.samplers,'animation.samplers');if(!channels.length||!as.length)return no('body.clips','Animation requires channels and samplers');let positive=false;
    for(const channel of channels){const node=ref(nodes,channel.target?.node,'animation.target.node');void node;if(!['translation','rotation','scale'].includes(channel.target?.path))return no('body.clips','Unsupported animation target');const sampler=ref(as,channel.sampler,'animation.sampler');if(sampler.interpolation!==undefined&&!['LINEAR','STEP'].includes(sampler.interpolation))return no('body.clips','Only LINEAR/STEP clips are supported');const input=ref(accessors,sampler.input,'animation.input'),output=ref(accessors,sampler.output,'animation.output');if(input.type!=='SCALAR'||input.componentType!==5126||!input.count||output.componentType!==5126||output.count!==input.count||output.type!==(channel.target.path==='rotation'?'VEC4':'VEC3'))return no('body.clips','Invalid clip accessor');const times=values(input);if(times.some((v,i)=>v<0||(i>0&&v<=times[i-1])))return no('body.clips','Clip key times must increase and be nonnegative');positive ||= times[times.length-1]>0;}
    if(!positive)return no('body.clips','Clip must have positive finite duration');

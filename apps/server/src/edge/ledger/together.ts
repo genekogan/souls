@@ -388,7 +388,7 @@ export class Together {
    *  by its standoff and pause (GEST-LIVE r11: 13 m after 15 s, follow.lost at 45 m on a 240 m walk). So the programme is
    *  three legs, re-issued with the current gap, and a follower more than CATCH_UP metres behind jogs them (humanoids
    *  only; floaters glide at one pace). */
-  /** The partner's body profile applies to a paired act as the actor's does: a rolling partner (Pip) has no admitted
+  /** The partner's body profile applies to a paired act as the actor's does: a declared-profile partner (Pip, the centaur) has no admitted
    *  paired-gesture, hand-hold or hand-over adapter, so these are offered blocked and refused before acceptance, the
    *  same answer native admission gives (mars/viewer/engine/bodies/policy.ts). */
   private partnerBodyProblem(o: {name: string; entityId: string}, verb: string): {code: string; reason: string} | null {
