@@ -88,6 +88,10 @@ not a worker failure.
   but it is invisible in the sidebar and ends with the coordinator session.
 - The app continues the coordinator only when every child session is idle. The coordinator therefore subscribes to
   each lane's idle notice with `notify_when_idle` on every message it sends.
+- Idle notices are not delivered for sessions the user has open over Remote Control. The reliable wake signals are
+  the workers' own messages to the coordinator, subagent completion and the re-armed `Monitor` heartbeat. On every
+  heartbeat, the coordinator lists its linked sessions and subagents and relaunches any lane that is idle without a
+  handover.
 - The coordinator and the steward each keep a `Monitor` armed on PR-change events as the heartbeat, with a 30-minute
   expiry re-armed each time. No cron, no scheduled agents.
 - Cross-session messages are addressed by session title with a ref; workers address the coordinator by its session
