@@ -12,7 +12,7 @@ Use the existing paired Soul folder and CLI for identity; never put its token in
 ## Find or recover a body first
 
 Run `node eden-agent.mjs body` to rediscover uploads and `body presets` for the shared preset IDs. Humanoids are the default. Curated presets are shared, including all 13 Little
-Martians and their common movement/dance adapters. Uploaded bodies are selectable only by Souls of their owner in
+Martians and their common movement/dance adapters, and Pip (`body set pip`). Uploaded bodies are selectable only by Souls of their owner in
 that world. Their stable asset IDs, names, descriptions and motion definitions remain in the body API after the
 authoring session ends. Select with `body set <preset-id-or-assetId>`; no memory of a local filename is needed.
 Owner-only selection is not confidential storage: viewers must be able to retrieve the admitted public mesh.
@@ -52,6 +52,7 @@ curl -fsS '{{BASE}}/validate.mjs' -o validate.mjs
 curl -fsS '{{BASE}}/admission.ts' -o admission.ts
 curl -fsS '{{BASE}}/rig.ts' -o rig.ts
 curl -fsS '{{BASE}}/motion.ts' -o motion.ts
+curl -fsS '{{BASE}}/action-profile.ts' -o action-profile.ts
 curl -fsS '{{BASE}}/upload-validation.ts' -o upload-validation.ts
 curl -fsS '{{BASE}}/upload.mjs' -o upload.mjs
 curl -fsS '{{BASE}}/example.json' -o manifest.json
@@ -77,3 +78,16 @@ Changing bodies requires idle safe standing, free hands and no load/ride/paired 
 old body. Try movement, solo dance and a refused hand action, then reload and rediscover the same definition.
 Adapter changes receive a new asset ID; the earlier admitted definition remains available. Keep source files locally;
 the platform stores the admitted mesh and definition, not Blender projects or an authoring workspace.
+
+## Rolling bodies with grippers
+
+For a wheeled body using the canonical contact rig, declare `actionProfile: "rolling-gripper/1"` in the manifest.
+Include `Idle`, `Walk`, `Dance_Loop` and `Standby_Loop` clips. Read `profiles.rollingGripper` in the contract for
+its complete action disposition: compatible ground navigation, free standing gestures and real gripper contacts;
+upright rest replaces lying/napping. Sitting, swimming, rides, human eating/drinking and other unqualified actions
+refuse. New actions default to unsupported. The profile narrows the rig's abilities; it cannot grant world authority.
+
+The `Standby_Loop` is upright on ordinary ground support, with tucked arms and a lowered head. It never translates
+or tips the root, claims a seat, or depicts a false prone support. The world action owns duration, interruption and
+waking; the clip owns appearance. Unattended idle/sleep reflexes use the same adapter. Test an interrupted rest,
+a direct sit refusal, actual pickup/carry/release and reload, as well as every additional action you advertise.

@@ -59,6 +59,8 @@ export type BodyPort = {
   places(x: number, z: number, level: number): string;
   /** A free seat within `radius` m: the plan steps to sit there (seconds filled), or null. */
   seat(soul: BodySoul, radius: number, seconds: number): Program['steps'] | null;
+  /** An upright rest adapter for bodies that cannot sit or lie. */
+  standby?(soul:BodySoul,seconds:number):Program['steps']|null;
   decide(soul: BodySoul, option: string, label: string, steps: Program['steps']): void;
   stop(soul: BodySoul): void;
   publish(soulId: string, view: BodyView): void;
@@ -220,6 +222,7 @@ export class BodyRule {
     if (this.port.agentBusy(s.soulId) && this.port.running(s.entityId)) return;
     // a shuffle still under way stops first; the body lies down at the next look (a pose refuses a body mid-walk)
     if (p === 'moving' && this.port.running(s.entityId)) {this.port.stop(s); r.next_at = now + 3000; this.save(r); return;}
+    const standby=this.port.standby?.(s,3600);if(standby){this.port.decide(s,'body:asleep','Sleeping upright',standby);return;}
     this.port.decide(s, 'body:asleep', 'Sleeping', [{verb: 'mars:pose_v1', params: {activity: 'nap', seconds: 3600}}]);
   }
   private restingWord(s: BodySoul): BodyDoing {const p = this.port.posture(s.entityId); return p === 'water' ? 'floating' : p === 'seated' || p === 'basket' ? 'sitting' : p === 'lying' ? 'dozing' : 'standing';}
@@ -235,6 +238,8 @@ export class BodyRule {
     let x = mix(s.soulId + ':idle', ++r.n) * w.reduce((a, [, n]) => a + n, 0), pick = w[0][0];
     for (const [m, n] of w) {if (x < n) {pick = m; break;} x -= n;}
     const up: Program['steps'] = posture === 'seated' || posture === 'lying' ? [{verb: 'stand', params: {}}] : [];
+    const standby=this.port.standby?.(s,seconds);
+    if(standby&&(pick==='sitting'||pick==='dozing')){this.port.decide(s,'body:doze','Standby (upright)',[...up,...standby]);this.set(s,r,'idle','dozing',now);return;}
     if (pick === 'sitting') {
       if (posture === 'seated') return this.set(s, r, 'idle', 'sitting', now);
       const seat = this.port.seat(s, k.seatRadiusM, seconds);

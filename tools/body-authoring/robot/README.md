@@ -50,8 +50,26 @@ bytes are publicly retrievable for rendering; selection and rediscovery remain o
   The world's existing item transfer, occupied hand, custody and release paths remain authoritative. A rendered
   object parented to a hand would not by itself prove carrying; qualification also checks receipt and custody state.
 
-Current output: about 420 KB, 6,460 triangles, one mesh/material draw, no images, 64 skin joints and three clips.
+Current output: about 440 KB, 6,460 triangles, one mesh/material draw, no images, 64 skin joints and four clips.
 The focused test exercises actual renderer fitting, complete opposing turns, stationary base, rolling wheel joints
 and the distance between a rendered gripper and its fitted palm. The world journey additionally qualifies pickup,
-carrying, release, interruption and reload. Other humanoid-profile activities inherit the existing rig adapters;
-this example does not claim visual qualification of every seated, swimming or exercise pose.
+carrying, release, interruption and reload. Other activities follow the declared rolling profile: compatible adapters are named, and seated, swimming, exercise
+or otherwise unqualified physical actions refuse.
+
+## Shared Pip and complete action coverage
+
+Any paired Soul may select the shared core preset with `node eden-agent.mjs body set pip`. Uploads of custom
+robot derivatives still use the normal owner submission path. The preset's immutable admitted bytes are generated
+lazily from this source, verified against their pinned content hash and shared by requests; no world database blob
+is created for a preset selection. Unused worlds do not import the authoring geometry or fetch Pip.
+
+The manifest now declares `actionProfile: "rolling-gripper/1"`. Its versioned disposition is published in the
+downloaded authoring contract. Compatible ground travel, conversation, free standing gestures and gripper transfers
+use the existing adapters; unsupported or unknown physical actions refuse at discovery, dry-run and native admission.
+Sitting, cycling, prone poses, swimming, rides and human eating/drinking are unsupported. Rest, nap and lie requests
+are explicitly relabelled as upright standby, on the existing wheel support. This also covers unattended body reflexes.
+
+`Standby_Loop` tucks the forearms inward and lowers the head while the root and wheels stay fixed. Rest requires
+free hands; a carried object is retained and the rest request refuses. Standing/waking safely releases standby.
+The current shared revision adds this fourth clip: approximately 440 KB, with the same 6,460 triangles, one draw,
+no images and 64 skin joints. The additional clip data loads only with a body that uses this revision.

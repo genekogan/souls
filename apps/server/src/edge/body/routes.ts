@@ -1,3 +1,4 @@
+import {PIP_PRESET,PIP_ASSET,pipBytes} from './pip.ts';
 import {mountBodyAuthoring} from './authoring.ts';
 import type {Context,Hono} from 'hono';
 import type {Entity} from '@sim/engine-contract';
@@ -14,7 +15,7 @@ import {BODY_UPLOAD_POLICY,UploadRejected} from '../../moderation/validate.ts';
 import {randomInt} from 'node:crypto';
 import {lookRequest,resolveLook,legacyPreset,LookError,HUMANOID_PARAMS,HUMANOID_REF,OUTFITS} from '../../../../web/src/humanoid/look.ts';
 
-export const BODY_PRESETS=[{id:'humanoid',name:'Humanoid',body:null},...FLOATER_MODELS.map(m=>{
+export const BODY_PRESETS=[{id:'humanoid',name:'Humanoid',body:null},PIP_PRESET,...FLOATER_MODELS.map(m=>{
   // Trusted flat aliases retain the same shipped bytes; placement roles stay in the world catalog.
   const modelUrl=`/world-assets/littlemartians/characters/${m.file.replace(/^kin\//,'')}`;
   return {id:m.id,name:m.name,body:{family:'floater',type:'ceramic',model:m.id,modelUrl,avatar:{kind:'body',modelUrl,bodyType:'ceramic'},radius:.35,hoverHeight:1.45,motion:structuredClone(LITTLE_MARTIANS_MOTION)} as Entity['body']};
@@ -97,7 +98,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger}){
     else if(typeof raw.assetId==='string'&&ASSET.test(raw.assetId)){
       if(!db.prepare('SELECT 1 FROM edge_body_owners_v1 WHERE world_id=? AND owner=? AND asset_id=?').get(world,s.owner,raw.assetId))throw new EdgeError(403,'body.not-owned','This upload does not belong to the Soul owner');
       const row=record(raw.assetId,s.owner);if(!row)throw new EdgeError(404,'body.asset-not-found','No admitted body asset');const asset=JSON.parse(row.descriptor);
-      const type=asset.type,modelUrl=asset.modelUrl;body={family:type==='humanoid'?'humanoid':'floater',type,model:asset.assetId,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})};
+      const type=asset.type,modelUrl=asset.modelUrl;body={family:type==='humanoid'?'humanoid':'floater',type,model:asset.assetId,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(asset.actionProfile?{actionProfile:asset.actionProfile}:{}),...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})};
     }else if(raw.look!==undefined){ // core/humanoid@2: edits over the current look (today's look when none), a preset, or {random:true,seed?}
       try{body=lookRequest(current(s.entityId),raw.look,{preset:legacyPreset(s.entityId)},()=>randomInt(0,2**32-1)) as Entity['body'];}
       catch(e){if(e instanceof LookError)throw new EdgeError(400,'body.look',e.message);throw e;}
@@ -118,8 +119,9 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger}){
     const event=await deps.host.enqueueChecked('body-assignment-v1','world:body',{contract:'body-assignment/1',worldId:world,soulId:s.soulId,entityId:s.entityId,body:structuredClone(body)},guard,()=>true);
     deps.ledger.invalidateBodies();return {body:current(s.entityId),changed:true,tick:event.tick,seq:event.seq};
   }
-  app.get('/v1/edge/body/assets/:file',c=>{
+  app.get('/v1/edge/body/assets/:file',async c=>{
     const file=c.req.param('file');if(!/^body_[a-f0-9]{64}\.glb$/.test(file))return c.notFound();
+    if(file===PIP_ASSET+'.glb'){try{return c.body(new Uint8Array(await pipBytes()),200,{'Content-Type':'model/gltf-binary','Cache-Control':'public, max-age=31536000, immutable','X-Content-Type-Options':'nosniff'});}catch{return c.body('Shared body is temporarily unavailable',503);}}
     const row=db.prepare('SELECT content FROM edge_body_assets_v1 WHERE world_id=? AND asset_id=?').get(world,file.slice(0,-4)) as {content:Uint8Array}|undefined;if(!row)return c.notFound();
     return c.body(new Uint8Array(row.content),200,{'Content-Type':'model/gltf-binary','Cache-Control':'public, max-age=31536000, immutable','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'"});
   });
