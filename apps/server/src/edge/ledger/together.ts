@@ -690,7 +690,7 @@ export class Together {
     const held = this.heldBy(soul.soulId); if (held) return {code: 'hands.full', reason: `You are holding ${held.name}; put it down first.`};
     const thing = Object.values(this.w.entities).find(x => x.support?.kind === 'in-hand' && x.support.by === soul.entityId);
     if (me.human.grip) return {code: 'carry.hands-full', reason: 'Your hands are on a load already; set it down first.'};
-    if (thing) return {code: 'hands.full', reason: `Your hands are full${thing ? ` (${this.thingName?.(thing.id) ?? String(thing.label ?? thing.id)})` : ''}; put it down first.`};
+    if (thing) return {code: 'hands.full', reason: `Your hands are full (${this.thingName?.(thing.id) ?? String(thing.label ?? thing.id)}); put it down first.`};
     const hands = this.handsWith(soul.entityId); if (hands) return {code: 'hands.holding', reason: `You are holding ${hands.name}'s hand; let go first.`};
     if (this.p.aboard(soul.entityId)) return {code: 'ride.aboard', reason: 'Not while riding.'};
     return null;

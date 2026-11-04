@@ -1576,7 +1576,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     ({v, caps, plans} = bound.pre && !social && text === asked ? bound.pre : this.resolveOnDemand(soul, text, caps, plans));
     if (words) {plans = new Map(plans); v = this.exactWords(soul, words, text, v, plans);}
     // PC04 (#683): answering a shared proposal that has closed is refused as gone, not unknown
-    if (v.kind === 'unknown' && /^(?:accept|decline):inv_/.test(asked) && this.together.invite(asked.slice(asked.indexOf(':') + 1))?.kind === 'shared') return refuse('invite.gone', 'That proposal is no longer open.');
+    if (v.kind === 'unknown' && /^(?:accept|decline):inv_/.test(asked) && ((i) => i?.kind === 'shared' && (i.host.soulId === soul.soulId || i.guests.some(g => g.soulId === soul.soulId)))(this.together.invite(asked.slice(asked.indexOf(':') + 1)))) return refuse('invite.gone', 'That proposal is no longer open.');
     if (v.kind === 'unknown') return {...refuse(v.code ?? 'capability.unknown', v.reason), did_you_mean: v.didYouMean};
     let cap = v.cap; capability = cap.id;
     const bodyIssue=bodyCapabilityProblem(this.body(soul.entityId),cap,plans.get(capability)?.steps);if(bodyIssue)return refuse(bodyIssue.code,bodyIssue.reason);
@@ -1729,7 +1729,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const prep = this.together.prepare(soul, cap, plan, params, steps);
     if ('code' in prep) return {...refuse(prep.code, prep.reason), ...(prep.did_you_mean ? {did_you_mean: prep.did_you_mean} : {}), ...resolved};
     steps = prep.steps;
-    if (prep.existing) {const old = this.receipt(soul.soulId, prep.existing); if (!old) return refuse('invite.gone', 'That proposal is no longer open.'); prep.commit?.(old.id); return {accepted: true, receipt: this.receipt(soul.soulId, old.id)!, ...resolved};}
+    if (prep.existing) {const old = this.receipt(soul.soulId, prep.existing); if (!old) return refuse('invite.gone', 'That proposal is no longer open.'); if (prep.commit) {prep.commit(old.id); this.comms?.fading.touch?.(soul.soulId);} return {accepted: true, receipt: this.receipt(soul.soulId, old.id)!, ...resolved};}
     if (prep.wait) return this.openShared(soul, capability, clientRef, prep, resolved);
     if (prep.noBody) {
       // answering someone (decline, ask to stop following) never interrupts what the body is doing
