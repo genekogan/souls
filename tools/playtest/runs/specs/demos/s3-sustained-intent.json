@@ -1,0 +1,20 @@
+{
+ "soulRun": 1,
+ "name": "s3-sustained-intent",
+ "cast": {
+  "file": "../../../scenarios/casts/s3-sustained-intent-scripted.json"
+ },
+ "observer": {
+  "check": false
+ },
+ "limits": {
+  "maxWallSec": 1000,
+  "maxControllers": 2
+ },
+ "evaluation": {
+  "questions": [
+   "../../questions/errand-kept-through-burst.mjs",
+   "../../questions/cancel-not-resumed.mjs"
+  ]
+ }
+}
