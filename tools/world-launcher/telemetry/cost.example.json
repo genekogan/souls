@@ -3,7 +3,7 @@
   "currency": "EUR",
   "period": { "start": "2026-11-01", "end": "2026-12-01" },
   "items": [
-    { "id": "host", "kind": "compute", "basis": "fixed", "amount": 100, "source": "placeholder: the host's monthly rent from its invoice", "sourceDate": "2026-11-01",
+    { "id": "host", "kind": "compute", "basis": "fixed", "amount": 100, "host": { "cores": 8, "memGiB": 32 }, "source": "placeholder: the host's monthly rent from its invoice", "sourceDate": "2026-11-01",
       "billed": [{ "period": { "start": "2026-10-01", "end": "2026-11-01" }, "amount": 100 }] },
     { "id": "backups", "kind": "backups", "basis": "metered", "rate": 0.01, "unit": "GB-month", "usage": 200, "source": "placeholder: the storage provider's price list", "sourceDate": "2026-11-01" },
     { "id": "cdn", "kind": "cdn", "basis": "metered", "rate": 0.005, "unit": "GB", "usage": null, "source": "placeholder: the CDN's price list; usage not measured yet", "sourceDate": "2026-11-01" },

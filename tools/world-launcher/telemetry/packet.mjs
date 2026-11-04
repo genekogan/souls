@@ -13,8 +13,17 @@ function worstWorld(r) {
   return rows[0] ?? null;
 }
 
-/** r: report() output; open: alerts open() list or null (not evaluated); cost: costReport() or null; build: {launcher, tools}. */
-export function packet({ r, open = null, cost = null, build = {} }) {
+/** The headroom qualification line: only a qualifying `passes` bench verdict (#736) is qualified. */
+export function qualification(capacity) {
+  if (!capacity) return 'unqualified (no capacity verdict given: --bench <capacity-qualify dir>)';
+  const run = capacity.run ? ` (run ${capacity.run})` : '';
+  return capacity.verdict === 'passes' && capacity.qualifies ? `qualified: the bench verdict passes${run}` : `unqualified: the bench verdict is ${capacity.verdict}${run}`;
+}
+
+/** r: report() output; open: alerts open() list or null (not evaluated); cost: costReport() or null; build: {launcher, tools};
+ *  capacity: {verdict, qualifies, run} from the #736 bench (units.mjs sizingFromBench) or null. */
+export function packet({ r, open = null, cost = null, build = {}, capacity = null }) {
+  const qualified = qualification(capacity);
   const firing = (open ?? []).filter((o) => o.state === 'firing').sort((a, b) => ORDER.indexOf(a.rule) - ORDER.indexOf(b.rule) || String(a.world ?? '').localeCompare(String(b.world ?? '')));
   const unknown = (open ?? []).filter((o) => o.state === 'unknown');
   const worst = worstWorld(r), memMin = r.fleet.hostMemAvailableBytes?.min ?? null;
@@ -27,7 +36,7 @@ export function packet({ r, open = null, cost = null, build = {} }) {
   else if (firing.length) next = `investigate ${firing[0].rule}${firing[0].world ? ` on ${firing[0].world}` : ''}: a software bottleneck or the allocation? The meetup bench verdict (#736) decides before any hardware change`;
   else if (unknown.length) next = `export the missing series (${[...new Set(unknown.map((u) => u.rule))].join(', ')} unknown) so the alerts can judge them`;
   else if (memMin != null && memMin < 1.5 * GIB) next = `host memory went down to ${(memMin / GIB).toFixed(2)} GiB available: review world heap limits or the running cap before adding worlds`;
-  else next = 'no capacity action indicated; headroom stays unqualified until #736 has a verdict';
+  else next = `no capacity action indicated; headroom ${qualified}`;
   return {
     schema: PACKET_SCHEMA,
     source: { launcherBuild: build.launcher ?? 'unknown', toolsCommit: build.tools ?? 'unknown' },
@@ -37,7 +46,7 @@ export function packet({ r, open = null, cost = null, build = {} }) {
     alerts: open == null ? 'not evaluated' : { firing: firing.length, unknown: unknown.length },
     cost: cost ? { currency: cost.currency, billed: cost.billed.amount, billedCoverage: cost.billed.coverage, estimatedWindow: cost.estimated.window, estimatedBillingPeriod: cost.estimated.billingPeriod,
       unknown: cost.estimated.unknown, rateSources: cost.estimated.items.map((i) => `${i.id}: ${i.source}${i.sourceDate ? ` (${i.sourceDate})` : ''}`), external: cost.external.map((e) => `${e.id}: ${e.perPeriod}`) } : 'no cost file given',
-    headroom: { hostMemAvailableMinGiB: memMin == null ? 'unknown' : Number((memMin / GIB).toFixed(2)), cpu: 'unknown (process and cgroup CPU are not exported)', qualified: 'unqualified until #736 has a verdict' },
+    headroom: { hostMemAvailableMinGiB: memMin == null ? 'unknown' : Number((memMin / GIB).toFixed(2)), cpu: 'unknown (process and cgroup CPU are not exported)', qualified },
     next,
   };
 }

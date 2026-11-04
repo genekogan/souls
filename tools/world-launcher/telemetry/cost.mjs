@@ -14,6 +14,7 @@ const DAY = 86_400_000, HOUR = 3_600_000;
 const money = (v) => (v == null ? null : Math.round(v * 100) / 100);
 const date = (v, f) => { const t = Date.parse(`${v}T00:00:00Z`); if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v)) || !Number.isFinite(t)) throw new Error(`cost: ${f} must be YYYY-MM-DD`); return t; };
 const nonneg = (v, f) => { if (v == null) return null; if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw new Error(`cost: ${f} must be a number >= 0 or null (unknown)`); return v; };
+const pos = (v, f) => { if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) throw new Error(`cost: ${f} must be a number > 0`); return v; };
 const span = (p, f) => { const start = date(p?.start, `${f}.start`), end = date(p?.end, `${f}.end`); if (end <= start) throw new Error(`cost: ${f}.end must be after ${f}.start`); return { start, end }; };
 
 /** Validate a sim-cost/1 object; throws naming the field. */
@@ -31,8 +32,11 @@ export function parseCost(o) {
     if (typeof x.source !== 'string' || !x.source) throw new Error(`cost: ${f}.source must say where the rate comes from`);
     const sourceDate = x.sourceDate == null ? null : (date(x.sourceDate, `${f}.sourceDate`), x.sourceDate);
     const billed = (x.billed ?? []).map((b, j) => ({ ...span(b.period, `${f}.billed[${j}].period`), amount: nonneg(b.amount, `${f}.billed[${j}].amount`) }));
+    // S3: an optional host shape on a fixed compute item sizes the world-count scenarios (units.mjs)
+    if (x.host != null && !(x.kind === 'compute' && x.basis === 'fixed')) throw new Error(`cost: ${f}.host is only for a fixed compute item`);
+    const host = x.host == null ? null : { cores: pos(x.host.cores, `${f}.host.cores`), memGiB: pos(x.host.memGiB, `${f}.host.memGiB`) };
     return x.basis === 'fixed'
-      ? { id: x.id, kind: x.kind, payer, basis: 'fixed', amount: nonneg(x.amount, `${f}.amount`), source: x.source, sourceDate, billed }
+      ? { id: x.id, kind: x.kind, payer, basis: 'fixed', amount: nonneg(x.amount, `${f}.amount`), source: x.source, sourceDate, billed, ...(host ? { host } : {}) }
       : { id: x.id, kind: x.kind, payer, basis: 'metered', rate: nonneg(x.rate, `${f}.rate`), unit: String(x.unit ?? 'unit'), usage: nonneg(x.usage, `${f}.usage`), source: x.source, sourceDate, billed };
   });
   return { currency: o.currency, period, items };

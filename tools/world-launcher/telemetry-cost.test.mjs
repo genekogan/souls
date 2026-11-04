@@ -108,7 +108,7 @@ test('packet: deterministic, names the firing bottleneck and the next decision, 
   const p = packet({ r, open: evaluated.open, cost: costFor(r, file, EVERY), build: { launcher: 'build-test-1', tools: 'abc1234' } });
   assert.deepEqual(p.bottleneck, { from: 'alerts', rule: 'loop-stall', world: 'busy-plaza', alsoFiring: 0 });
   assert.match(p.next, /^investigate loop-stall on busy-plaza/);
-  assert.equal(p.headroom.qualified, 'unqualified until #736 has a verdict');
+  assert.equal(p.headroom.qualified, 'unqualified (no capacity verdict given: --bench <capacity-qualify dir>)');
   assert.equal(p.cost.billed, 300); assert.deepEqual(p.cost.external, ['edge: unknown']);
   assert.deepEqual(packet({ r, open: evaluated.open, cost: costFor(r, file, EVERY), build: { launcher: 'build-test-1', tools: 'abc1234' } }), p, 'same inputs, same packet');
   const txt = packetText(p);
@@ -116,7 +116,7 @@ test('packet: deterministic, names the firing bottleneck and the next decision, 
   assert.doesNotMatch(JSON.stringify(p), /Meet\d|soul_|token/i, "world slugs and numbers only");
   // without alerts evaluated, the next step says so; with everything quiet, no capacity action
   assert.match(packet({ r, open: null }).next, /^evaluate alerts/);
-  assert.match(packet({ r, open: [] }).next, /^no capacity action indicated; headroom stays unqualified until #736/);
+  assert.match(packet({ r, open: [] }).next, /^no capacity action indicated; headroom unqualified \(no capacity verdict given/);
   assert.equal(packet({ r, open: [{ rule: 'telemetry-gap', state: 'firing' }] }).next.startsWith('restore telemetry coverage'), true);
 });
 
