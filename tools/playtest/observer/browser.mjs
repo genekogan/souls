@@ -86,9 +86,10 @@ function writeRecording({ name, o, cam = null, state = null, r = null, partial =
   return meta;
 }
 
-/** The free-camera recipe (#754): a real click on the viewer's own camera button ("Switch to Free camera"), then a fixed
- *  mouse drag and wheel on the canvas centre. Same composition, same input: repeatable. Only this page's view moves. */
-export const FREE_COMPOSITION = { drag: [-240, 60], wheel: -400 };
+/** The free-camera recipe (#754): a real click on the viewer's own broadcast/free toggle, the viewer's "Reset view", then
+ *  an optional fixed mouse drag and wheel on the canvas centre. The default composition is the reset pose itself (the
+ *  whole settlement). Same start pose, same input: repeatable. Only this page's view moves. */
+export const FREE_COMPOSITION = { drag: [0, 0], wheel: 0 };
 const FREE_CONTROLS = ['.camera-main', '.viewer-broadcast'];
 
 /** openCamera({browser, base, identity?, kind:'follow'|'wide'|'free', soulId?, viewport, dpr, arrivalTimeoutMs, record?,
@@ -148,14 +149,22 @@ export async function openCamera({ browser, base, identity = null, kind = 'wide'
     if (!control) return (cam.free = { ok: false, how: null, composition: comp, reason: `no free-camera control (${FREE_CONTROLS.join(', ')}) on this page` });
     if ((await cam.viewer()).mode === 'broadcast') await page.locator(control).first().click();
     await page.waitForFunction(() => document.querySelector('.viewer-history')?.dataset.viewerMode === 'manual', null, { timeout: 5000 }).catch(() => {});
+    // Start from the viewer's own reset pose (camera controls → "Reset view"), not from wherever broadcast had cut,
+    // so the composition is the same every run. Without that control the start pose is recorded as not reset.
+    let reset = false;
+    const resetBtn = () => page.getByRole('button', { name: /^Reset view$/ }).first();
+    if (!(await resetBtn().isVisible().catch(() => false)) && await page.locator('.hud-camera').count()) await page.locator('.hud-camera').first().click().catch(() => {});
+    if (await resetBtn().isVisible().catch(() => false)) { await resetBtn().click().catch(() => {}); reset = true; await page.keyboard.press('Escape').catch(() => {}); await page.waitForTimeout(800); }
     const vp = page.viewportSize() ?? viewport, cx = Math.round(vp.width / 2), cy = Math.round(vp.height / 2);
-    await page.mouse.move(cx, cy); await page.mouse.down();
-    await page.mouse.move(cx + comp.drag[0], cy + comp.drag[1], { steps: 20 }); await page.mouse.up();
-    if (comp.wheel) await page.mouse.wheel(0, comp.wheel);
+    if (comp.drag[0] || comp.drag[1]) { // a drag only: a press and release in place would be a click on the world
+      await page.mouse.move(cx, cy); await page.mouse.down();
+      await page.mouse.move(cx + comp.drag[0], cy + comp.drag[1], { steps: 20 }); await page.mouse.up();
+    }
+    if (comp.wheel) { await page.mouse.move(cx, cy); await page.mouse.wheel(0, comp.wheel); }
     await page.waitForTimeout(600);
     const v = await cam.viewer(), navigation = await page.evaluate(() => document.querySelector('.viewer-history')?.dataset.viewerNavigation ?? null).catch(() => null);
-    return (cam.free = v.mode === 'manual' ? { ok: true, how: `click ${control} + mouse drag/wheel`, mode: v.mode, navigation, composition: comp }
-      : { ok: false, how: 'clicked', mode: v.mode ?? null, navigation, composition: comp, reason: `mode stayed ${v.mode ?? 'unknown'}` });
+    return (cam.free = v.mode === 'manual' ? { ok: true, how: `click ${control}${reset ? ' + Reset view' : ''} + mouse drag/wheel`, reset, mode: v.mode, navigation, composition: comp }
+      : { ok: false, how: 'clicked', reset, mode: v.mode ?? null, navigation, composition: comp, reason: `mode stayed ${v.mode ?? 'unknown'}` });
   };
   /** state() → requested versus actual camera state, for the recording sidecar. */
   cam.state = async () => ({ requested: { kind, soulId, ...(kind === 'free' ? { composition: composition ?? FREE_COMPOSITION } : {}) },

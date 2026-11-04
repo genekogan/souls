@@ -183,7 +183,7 @@ client, with real input only. They observe; none of them sends a Soul command.
 |---|---|---|
 | follow (one per seat, always in `cameras` mode) | the owner's page at `#soul/<id>`, then a real click on the card's Follow button | `follow` of that Soul, or `ok: false` with the reason |
 | `wide` | the public page on the viewer's broadcast camera | `broadcast` |
-| `free` | the public page, a real click on the viewer's own broadcast/free toggle, then a fixed mouse drag and wheel (`observer.freeComposition`, default `{drag: [-240, 60], wheel: -400}`): the same composition every run | `manual`, or `ok: false` with the reason |
+| `free` | the public page, a real click on the viewer's own broadcast/free toggle, then its camera controls' "Reset view" (a fixed start pose instead of wherever broadcast had cut), then an optional fixed mouse drag and wheel (`observer.freeComposition`, default `{drag: [0, 0], wheel: 0}`: the reset pose, the whole settlement): the same composition every run | `manual` with `reset: true`, or `ok: false` with the reason |
 
 `observer.record` records the named cameras with Playwright's context video: one uncut, real-speed take from page
 creation to context close, under `playtest/recordings/<camera>.webm`. Each recording has a `<camera>.webm.json` sidecar:
