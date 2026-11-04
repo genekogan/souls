@@ -2199,9 +2199,10 @@ export class EdgeLedger implements EdgeLedgerHooks {
     // then the nearest available offers (offers here first), in the menu's own order on a tie, one per verb
     const near = (c: EdgeCapability) => {if (c.id.endsWith(':here')) return -1; const at = ctx.target(c).at ?? ctx.me; return at && ctx.me ? Math.hypot(at[0] - ctx.me[0], at[1] - ctx.me[1]) : Infinity;};
     for (const c of caps.filter(c => c.available && !ATTENTION_ONLY.has(c.verb)).map((c, i) => [c, near(c), i] as const).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0])) {if (picks.length >= ALTERNATIVES * 2) break; add(c);}
-    // the menu read may be a kept words menu (approximate availability): each pick is rebuilt exactly (bindOne) and kept
-    // only if it is available now
-    const alt = picks.map(c => this.bindOne(soul, c.id)?.cap ?? (caps.includes(c) ? null : c)).filter((c): c is EdgeCapability => !!c?.available).slice(0, ALTERNATIVES).map(c => ({id: c.id, label: c.label}));
+    // the menu read may be a kept words menu (approximate availability), and the named walk may come from it: every pick
+    // is rebuilt exactly (bindOne) and kept only if it is available now. Verbs are claimed as picks are added, so a named
+    // walk dropped here is not replaced by another walk.
+    const alt = picks.map(c => this.bindOne(soul, c.id)?.cap).filter((c): c is EdgeCapability => !!c?.available).slice(0, ALTERNATIVES).map(c => ({id: c.id, label: c.label}));
     return alt.length ? {...out, alternatives: alt} : out;
   }
   /** R2 stroll (longrun 2026-10-16): a construction refusal names what the Soul can do where it stands instead (wander

@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture, invite, accept} from '../test/native-owner-fixture.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';
+import {bootEden} from '../test/eden-capabilities-timing.ts';
 
 test('#824: refusals name bounded, available alternatives; other answers carry none', {timeout: 300000}, async t => {
   const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
@@ -45,4 +46,15 @@ test('#824: refusals name bounded, available alternatives; other answers carry n
   assert.equal(ok.accepted, true, JSON.stringify(ok)); assert.equal(ok.alternatives, undefined);
   // A6: the field's size is bounded (3 entries, labels as offered)
   for (const out of [fly, unknown]) assert.ok(JSON.stringify({alternatives: out.alternatives}).length <= 600, 'bounded bytes');
+});
+
+// Review of 6d48ceb1: the motivating case. "The pond hall" names a region with no walk of its own; `walk the pond hall`
+// resolves to its building's walk (walk:lab-pond-hall), and so must the refusal's first alternative (S3 demo, #831).
+test('#824: a named region whose walk is its building\'s gives that walk first (hello-hamlet pond hall)', {timeout: 300000}, async t => {
+  const w = await bootEden(() => {}, new URL('../../../worlds/templates/hello-hamlet.json', import.meta.url)); t.after(w.close);
+  const fly = await w.edge.act(w.soul, {capability: 'fly up to the pond hall'}) as any;
+  assert.equal(fly.accepted, false, JSON.stringify(fly));
+  assert.equal(fly.alternatives?.[0]?.id, 'walk:lab-pond-hall', JSON.stringify(fly.alternatives));
+  const avail = new Set((w.edge.capabilitiesPage(w.soul, {all: true}).capabilities as {id: string; available: boolean}[]).filter(c => c.available).map(c => c.id));
+  for (const x of fly.alternatives) assert.ok(avail.has(x.id), `${x.id} is available now`);
 });
