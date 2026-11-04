@@ -11,6 +11,32 @@ const H = 3.0, W = 2.7, D = 1.1, STEP = 0.1524;
 const sockets = [];
 for (const [side, x] of [['l', -W / 2], ['r', W / 2]]) for (let i = 1; i * STEP < H - 0.1; i++) sockets.push(socket(`beam-${side}-${i}`, [x, +(i * STEP).toFixed(3), D / 2], 0, ['beam']));
 
+// PC03 (#682): loose construction materials carrying the native engine materials' handling as data
+// (mars/viewer/engine/world/catalog.ts: beam-9ft, upright-12ft, plywood-4x8), each laid with its long axis on +x.
+// New revisions only: core-rack-beam@1 stays the one-hand 2.7 m item it always was.
+const FT = 0.3048, IN = 0.0254;
+// size.box is the native material's exact size (the kit's own box rounds and floors thin parts at 5 cm)
+const loose = (def, version, handling, box) => Object.assign(def, { version, size: { ...def.size, box: box.map((x) => +x.toFixed(5)) }, components: { ...def.components, carryable: { ...def.components.carryable, handling } } });
+const BEAM_L = 9 * FT, BEAM_H = 4 * IN, BEAM_D = 2 * IN;
+const UP_L = 12 * FT, UP_W = 4 * FT, UP_T = 3 * IN, COL = 3 * IN;
+const PLY_L = 8 * FT, PLY_W = 4 * FT, PLY_T = 0.75 * IN;
+const LOOSE = [
+  loose(work('rack-beam', 'A loose orange 9 ft rack beam (2.74 m, 19 kg) with hook clips at each end; one person carries it with both hands, or two.', ['beam', 'rack', 'construction', 'material', 'loose-material', 'shared-carry'],
+    [cbox([0, BEAM_H / 2, 0], [BEAM_L - 0.06, BEAM_H, BEAM_D], 'beam'), box([-(BEAM_L / 2 - 0.03), BEAM_H / 2, 0], [0.06, BEAM_H, BEAM_D], 'clip'), box([BEAM_L / 2 - 0.03, BEAM_H / 2, 0], [0.06, BEAM_H, BEAM_D], 'clip')],
+    { beam: ORANGE, clip: '#3b3d40' }, { components: { carryable: { mass: 19, grips: 4 } } }), 2,
+    { crew: [1, 2], pose: 'edge', height: 0.85, grips: { 1: [[0, 0, 0]], 2: [[-1.09728, 0, 0], [1.09728, 0, 0]] } }, [BEAM_L, BEAM_H, BEAM_D]),
+  loose(work('rack-upright', 'A loose 12 ft pallet-rack upright frame (3.66 m, 38 kg) lying flat: two blue columns joined by bracing. It needs two to four carriers.', ['rack', 'upright', 'frame', 'construction', 'material', 'loose-material', 'shared-carry'],
+    [...[-1, 1].map((s) => cbox([0, UP_T / 2, s * (UP_W / 2 - COL / 2)], [UP_L, UP_T, COL], 'upright')),
+      ...[0.15, 0.85].map((f) => box([UP_L * (f - 0.5), UP_T / 2, 0], [0.04, 0.04, UP_W - 2 * COL], 'brace')),
+      ...[0.15, 0.5].map((f) => box([UP_L * (f - 0.5) + UP_L * 0.175, UP_T / 2, 0], [0.04, 0.04, Math.hypot(UP_L * 0.35, UP_W - 2 * COL)], 'brace', { yaw: Math.atan2(UP_L * 0.35, UP_W - 2 * COL) }))],
+    { upright: BLUE, brace: '#4a6f9a' }, { components: { carryable: { mass: 38, grips: 4 } } }), 1,
+    // upright-12ft's grips (local y along the height from its base, x across) mapped to this frame: x = y - L/2, z = x
+    { crew: [2, 4], pose: 'flat', height: 0.8, grips: { 2: [[-1.170432, 0, 0], [1.170432, 0, 0]], 3: [[-1.389888, 0, 0], [0, 0, 0], [1.389888, 0, 0]], 4: [[-1.09728, 0, -0.6096], [-1.09728, 0, 0.6096], [1.09728, 0, -0.6096], [1.09728, 0, 0.6096]] } }, [UP_L, UP_T, UP_W]),
+  loose(work('plywood-sheet', 'One loose 4×8 ft plywood sheet (2.44 × 1.22 m, 19 mm, 27 kg); one person carries it on edge with both hands, or two.', ['plywood', 'sheet', 'construction', 'material', 'loose-material', 'shared-carry'],
+    [cbox([0, PLY_T / 2, 0], [PLY_L, PLY_T, PLY_W], 'ply')], { ply: PLY }, { components: { carryable: { mass: 27, grips: 4 } } }), 1,
+    { crew: [1, 2], pose: 'edge', height: 0.75, grips: { 1: [[0, 0, 0]], 2: [[-1, 0, 0], [1, 0, 0]] } }, [PLY_L, PLY_T, PLY_W]),
+];
+
 export default [
   work('pallet-rack', 'A pallet-rack bay (2.7 m wide, 3 m tall): two upright frames with beam sockets every 15 cm on the front face (slots beam-l-N / beam-r-N); two beam levels fitted with shelf slots.', ['rack', 'storage', 'pallet', 'warehouse', 'construction'],
     [...[-W / 2, W / 2].flatMap((x) => [cbox([x, H / 2, D / 2], [0.08, H, 0.06], 'upright'), cbox([x, H / 2, -D / 2], [0.08, H, 0.06], 'upright'), ...[0.3, 1.2, 2.1, 2.9].map((y) => box([x, y, 0], [0.04, 0.04, D], 'brace'))]),
@@ -48,4 +74,5 @@ export default [
   work('anvil', 'A blacksmith\'s anvil on an oak stump.', ['anvil', 'smithy', 'metal', 'tools'],
     [cyl([0, 0.3, 0], 0.28, 0.6, 'stump', { r2: 0.26, seg: 8 }), cbox([0, 0.68, 0], [0.22, 0.16, 0.42], 'iron'), cbox([0, 0.8, 0], [0.3, 0.1, 0.56], 'iron'), cone([0, 0.8, 0.42], 0.06, 0.3, 'iron', { pitch: Math.PI / 2, seg: 5 })],
     { stump: '#6b4a2f', iron: '#3b3d40' }, { components: { workstation: { kind: 'smithing' } } }),
+  ...LOOSE,
 ];
