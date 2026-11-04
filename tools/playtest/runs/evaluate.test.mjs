@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { evaluateRun, compareRunSet, cliArgs, joinRequests, loadSoulRun, answerQuestion, renderIndex, indexSources } from './evaluate.mjs';
+import { evaluateRun, compareRunSet, cliArgs, joinRequests, loadSoulRun, answerQuestion, renderIndex, indexSources, directionsMeasure } from './evaluate.mjs';
 import { validateSpec } from './spec.mjs';
 
 const Q = (f) => new URL(`./questions/${f}`, import.meta.url).pathname;
@@ -216,4 +216,23 @@ test('comparison keeps every attempt, pools completed repeats within an arm and 
   assert.match(ix.pooled, /never averaged together/);
   assert.match(renderIndex(ix), /Incompatible arms/);
   assert.ok(!existsSync(join(a, 'evaluations')), 'compare evaluates in memory and writes nothing into the runs');
+});
+
+test('directions: the direction journal is counted by command and outcome; each redirection says whether its target spoke after', () => {
+  const pt = mkdtempSync(join(tmpdir(), 'sr-dir-'));
+  const sr = { playtestDir: pt, at: (...p) => ['playtest', ...p].join('/') };
+  assert.equal(directionsMeasure(sr).status, 'unavailable', 'no journal: unavailable, never 0');
+  w(join(pt, 'director', 'commands.jsonl'), jl([
+    { t: iso(10), elapsedSec: 10, source: 'console', cmd: 'broadcast', target: 'all', outcome: 'applied', requestIds: ['a-001', 'b-001'] },
+    { t: iso(12), elapsedSec: 12, source: 'console', cmd: 'error', target: null, outcome: 'refused', reason: 'unknown seat "zed"', requestIds: [] },
+    { t: iso(20), elapsedSec: 20, source: 'script', cmd: 'redirect', target: 'b', outcome: 'applied', requestIds: ['b-002'], expect: ['Piano'] },
+    { t: iso(25), elapsedSec: 25, source: 'script', cmd: 'redirect', target: 'c', outcome: 'held', reason: 'card not delivered (seat not paired); kept for its turn', requestIds: [] },
+    { t: iso(90), elapsedSec: 90, source: 'lifecycle', cmd: 'end', target: 'all', outcome: 'applied', reason: 'lifecycle-cancel', requestIds: [] },
+  ]));
+  w(join(pt, 'director', 'speech.jsonl'), jl([{ t: iso(15), seat: 'b', atMs: T0 + 15000, text: 'rocks' }, { t: iso(40), seat: 'b', atMs: T0 + 40000, text: 'I love the old piano' }]));
+  const m = directionsMeasure(sr);
+  assert.deepEqual({ status: m.status, value: m.value, refused: m.refused }, { status: 'measured', value: 5, refused: 1 });
+  assert.deepEqual(m.byCommand, { broadcast: { applied: 1, held: 0, refused: 0 }, error: { applied: 0, held: 0, refused: 1 }, redirect: { applied: 1, held: 1, refused: 0 }, end: { applied: 1, held: 0, refused: 0 } });
+  assert.deepEqual(m.redirections.map((r) => [r.target, r.atSec, r.outcome, r.spokeAfter, r.expectHeard ?? null]), [['b', 20, 'applied', true, true], ['c', 25, 'held', false, null]]);
+  assert.deepEqual(m.sources, ['playtest/director/commands.jsonl', 'playtest/director/speech.jsonl']);
 });

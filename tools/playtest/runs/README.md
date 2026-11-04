@@ -116,7 +116,9 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
   seat's ack and result calls, and the director's own open time), `physical-completion` (receipt phases the world
   returned to the seat's act calls: completed, ongoing such as seated, or started and not observed to end),
   `seat-claims` (result calls, which are claims), `observed-walking-speed` and the review oracles (only from the
-  observer's evidence packs, through `review/metrics.mjs`), `tick-timing`, `token-cost` and `lifecycle`. Emergence
+  observer's evidence packs, through `review/metrics.mjs`), `tick-timing`, `token-cost`, `lifecycle` and, for directed
+  casts, `direction` (the `directions` measure: the journal's commands by command and outcome, and each redirection
+  with its target, run-relative time, outcome and whether the target spoke afterwards). Emergence
   numbers are labelled `social-heuristic`. A measure without its source is `unavailable` with the reason, never 0
   (for example no seat transcript after `controllerState: "delete"`, or no evidence packs while the observer failed).
 - **Questions** are small named scorer modules (`questions/*.mjs`, default export `{id, version, question,

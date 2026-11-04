@@ -211,3 +211,34 @@ test('without the guard the same eager seat would talk out of turn (the verifier
   const r = await play({ behaviour: { cy: { speaksOnAny: true, obeysGuard: false } } });
   assert.equal(r.verdict.checks.eachOnce.pass, false);
 });
+
+test('direction journal: every console command is recorded with source, target, timing, outcome and the cards it sent', async () => {
+  const r = await play({ behaviour: { cy: { unpaired: true } }, onboarding: { cy: true },
+    script: [{ atSec: 0, line: 'redirect cy: talk about the piano instead' }, { at: 'go:ann', line: 'redirect bob: talk about the piano instead', expect: ['piano'] }],
+    during: (sw, clock) => {
+      sw.submit('hello all'); sw.submit('redirect zed: nothing'); sw.submit('economy all lavish'); sw.submit('cy: are you there'); sw.submit('# a comment'); sw.submit('status');
+    } });
+  const cmds = readJsonl(join(r.runDir, 'director', 'commands.jsonl'));
+  const row = (cmd, source) => cmds.find((c) => c.cmd === cmd && (!source || c.source === source));
+  assert.equal(cmds.some((c) => c.line === '# a comment'), false, 'comments are not commands');
+  const hello = cmds.find((c) => c.line === 'hello all');
+  assert.deepEqual({ source: hello.source, target: hello.target, outcome: hello.outcome, cards: hello.requestIds.length }, { source: 'console', target: 'all', outcome: 'applied', cards: 2 });
+  assert.match(hello.t, /^\d{4}-\d\d-\d\dT/); assert.equal(typeof hello.elapsedSec, 'number');
+  assert.deepEqual([cmds.find((c) => c.line === 'redirect zed: nothing').outcome, cmds.find((c) => c.line === 'redirect zed: nothing').reason], ['refused', 'unknown seat "zed"']);
+  assert.deepEqual([row('economy').outcome, row('economy').reason], ['refused', 'unknown economy lavish']);
+  assert.deepEqual([row('say').outcome, row('say').target, row('say').reason], ['refused', 'cy', 'seat not paired']);
+  const held = cmds.find((c) => c.cmd === 'redirect' && c.target === 'cy');
+  assert.deepEqual([held.source, held.outcome], ['script', 'held']);
+  const bob = cmds.find((c) => c.cmd === 'redirect' && c.target === 'bob');
+  assert.deepEqual([bob.source, bob.outcome, bob.requestIds.length, bob.expect], ['script', 'applied', 1, ['piano']]);
+  assert.equal(row('status').outcome, 'applied');
+  // directions.jsonl keeps its shape: one record per direction with the same fields as before
+  assert.deepEqual(Object.keys(r.dirs.find((d) => !d.error)).sort(), ['by', 'channel', 'economy', 'elapsedSec', 'kind', 'messageId', 'mono', 'n', 'phase', 'reason', 'requestId', 'seat', 'speaker', 't', 'text']);
+});
+
+test('direction journal: a lifecycle end is recorded once, from its source, and stops the run', async () => {
+  const r = await play({ during: (sw, clock) => { (async () => { await clock.sleep(20000); sw.end('lifecycle-cancel'); sw.end('again'); })(); } });
+  const cmds = readJsonl(join(r.runDir, 'director', 'commands.jsonl'));
+  assert.deepEqual(cmds.map((c) => [c.source, c.cmd, c.target, c.outcome, c.reason]), [['lifecycle', 'end', 'all', 'applied', 'lifecycle-cancel']]);
+  assert.equal(r.summary.stopped, 'lifecycle-cancel');
+});

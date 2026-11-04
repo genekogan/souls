@@ -28,7 +28,10 @@ Steps: preflight, provision (or attach to `--world`), seats onboarding in parall
 wide), planner, orchestrator with the console, close, verdict, then metrics, journal and `story.html`. Reviewer and
 developer are off by default. `node tools/playtest/playtest.mjs review <run-dir>` adds them later.
 
-Outputs in the run folder: `director/directions.jsonl` (every direction and its reason), `director/verdict.json` and
+Outputs in the run folder: `director/directions.jsonl` (every direction and its reason), `director/commands.jsonl`
+(the direction journal: every console command, typed, scripted or from a Soul Run's cancel, with its source, target,
+time, outcome `applied`, `held` or `refused` with the reason, and the request ids of the cards it sent),
+`director/verdict.json` and
 `director/VERDICT.md` (checks plus per-seat cost), `REPORT.md`, `story.html`, and the usual seats, evidence and shots
 folders. Re-verify a finished run with `node tools/playtest/director/swarm/verify.mjs <run-dir>`.
 

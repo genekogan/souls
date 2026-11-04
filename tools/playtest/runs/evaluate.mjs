@@ -221,10 +221,30 @@ export function standardMeasures(sr, requests) {
     M.push(measured('costUsd', 'token-cost', 'USD', r3(sum('costUsd')), { n: usage.length, basis: 'adapter-reported cost per turn', sources: Object.keys(sr.steps).map((s) => sr.at('seats', s, 'turns.jsonl')) }));
   }
   if (sr.receipt?.cost) M.push(measured('lifecycleOverheadMs', 'lifecycle', 'ms', sr.receipt.cost.lifecycleOverheadMs ?? null, { basis: `run wall ${sr.receipt.cost.wallMs} ms minus scenario execution ${sr.receipt.cost.executeMs} ms`, sources: ['run-receipt.json'] }));
+  M.push(directionsMeasure(sr));
   const em = sr.playtestDir ? readJson(join(sr.playtestDir, 'emergence.json'), null) : null;
   if (!em?.metric?.souls) M.push({ ...unavailable('coLocationRatio', 'social-heuristic', 'ratio', em ? 'emergence.json saw no Souls (it reads observer samples)' : 'no emergence.json', 'review/emergence.mjs'), heuristic: true });
   else M.push({ ...measured('coLocationRatio', 'social-heuristic', 'ratio', em.metric.coLocation?.ratio ?? null, { n: em.metric.souls, basis: `HEURISTIC, not a social outcome: ${em.metric.basis?.coLocation ?? 'co-location'}`, sources: [sr.at('emergence.json')] }), heuristic: true });
   return M;
+}
+
+/** Directed casts (#783): the direction journal (director/commands.jsonl) as counts by command and outcome, and each
+ *  redirection with its target, run-relative time, outcome and whether the target spoke afterwards (director/speech.jsonl,
+ *  world time after the command's wall time; with expect words, whether that speech contained one). */
+export function directionsMeasure(sr) {
+  const BASIS = 'console commands recorded by the swarm orchestrator (typed, scripted or from the lifecycle), with the outcome it applied';
+  const file = sr.playtestDir ? join(sr.playtestDir, 'director', 'commands.jsonl') : null;
+  if (!file || !existsSync(file)) return unavailable('directions', 'direction', 'commands', 'no direction journal (not a directed cast, or recorded before #783)', BASIS);
+  const cmds = readJsonl(file), speech = readJsonl(join(sr.playtestDir, 'director', 'speech.jsonl'));
+  const byCommand = {};
+  for (const c of cmds) { const b = (byCommand[c.cmd] ??= { applied: 0, held: 0, refused: 0 }); b[c.outcome] = (b[c.outcome] ?? 0) + 1; }
+  const redirections = cmds.filter((c) => c.cmd === 'redirect').map((c) => {
+    const after = speech.filter((x) => x.seat === c.target && (x.atMs ?? Date.parse(x.t)) > Date.parse(c.t));
+    const words = Array.isArray(c.expect) ? c.expect.map((w) => String(w).toLowerCase()) : null;
+    return { target: c.target, source: c.source, atSec: c.elapsedSec, outcome: c.outcome, ...(c.reason ? { reason: c.reason } : {}), requestIds: c.requestIds ?? [], spokeAfter: after.length > 0, ...(words ? { expect: words, expectHeard: after.some((x) => words.some((w) => String(x.text ?? '').toLowerCase().includes(w))) } : {}) };
+  });
+  return { ...measured('directions', 'direction', 'commands', cmds.length, { n: cmds.length, basis: BASIS, sources: [sr.at('director', 'commands.jsonl'), ...(speech.length ? [sr.at('director', 'speech.jsonl')] : [])] }),
+    byCommand, refused: cmds.filter((c) => c.outcome === 'refused').length, redirections };
 }
 
 /** Load a question module: default export {id, version, question, assumptions?, score(ctx)}. */
