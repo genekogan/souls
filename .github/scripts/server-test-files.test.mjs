@@ -3,29 +3,49 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { LATENCY_TEST, serverTestFiles, serverShardFiles } from './server-test-files.mjs';
+import { LATENCY_TEST, SERVER_SHARDS, serverTestFiles, serverShardFiles, serverShards, serverTestDurations } from './server-test-files.mjs';
+import { JOBS } from './ci-scope.mjs';
 
-test('both PR shards plus latency cover nested server tests exactly once', t => {
+// today's split before #807: two shards by alternating index (kept here only to prove the new one covers the same files)
+const twoShardUnion = (all) => [0, 1].flatMap((s) => all.filter((f) => f !== LATENCY_TEST).filter((_, i) => i % 2 === s)).map((f) => `src/${f}`).sort();
+
+test('the shards plus latency cover nested server tests exactly once', t => {
   const src = mkdtempSync(join(tmpdir(), 'server-ci-inventory-'));
   t.after(() => rmSync(src, { recursive: true, force: true }));
-  // Create in reverse order; include directories deeper than the reported regression.
-  const expected = ['z.test.ts', 'split/menu-world.test.ts', LATENCY_TEST,
-    'god/read-content-binding.test.ts', 'god/nested/contract.test.ts', 'god/exact-authored-walk.test.ts', 'a.test.ts'].sort();
-  for (const file of [...expected].reverse().concat('god/implementation.ts', 'god/readme.md')) {
-    mkdirSync(dirname(join(src, file)), { recursive: true });
-    writeFileSync(join(src, file), '');
-  }
+  const expected = ['z.test.ts', 'split/menu-world.test.ts', LATENCY_TEST, 'god/read-content-binding.test.ts', 'god/nested/contract.test.ts',
+    'god/exact-authored-walk.test.ts', 'a.test.ts', 'b.test.ts', 'c.test.ts', 'd.test.ts'].sort();
+  for (const file of [...expected].reverse().concat('god/implementation.ts', 'god/readme.md')) { mkdirSync(dirname(join(src, file)), { recursive: true }); writeFileSync(join(src, file), ''); }
   const all = serverTestFiles(src);
   assert.deepEqual(all, expected);
-  const first = serverShardFiles(all, 0), second = serverShardFiles(all, 1);
-  assert.deepEqual(first, ['src/a.test.ts', 'src/god/nested/contract.test.ts', 'src/split/menu-world.test.ts']);
-  assert.deepEqual(second, ['src/god/exact-authored-walk.test.ts', 'src/god/read-content-binding.test.ts', 'src/z.test.ts']);
-  assert.equal(first.some(f => second.includes(f)), false, 'shards do not overlap');
-  assert.deepEqual([...first, ...second, `src/${LATENCY_TEST}`].sort(), expected.map(f => `src/${f}`));
+  const shards = Array.from({ length: SERVER_SHARDS }, (_, s) => serverShardFiles(all, s, SERVER_SHARDS, { 'src/z.test.ts': 100, 'src/a.test.ts': 1, 'src/b.test.ts': 1, 'src/c.test.ts': 1 }));
+  const flat = shards.flat();
+  assert.equal(new Set(flat).size, flat.length, 'no file in two shards');
+  assert.deepEqual([...flat, `src/${LATENCY_TEST}`].sort(), expected.map(f => `src/${f}`));
+  assert.deepEqual(shards.find((s) => s.includes('src/z.test.ts')), ['src/z.test.ts'], 'the heaviest file gets a shard to itself');
+});
+
+test('the real inventory: same files as the two shards, every shard used, slowest shard under 12 minutes measured', t => {
+  const all = serverTestFiles(), shards = serverShards(all), flat = shards.flatMap((s) => s.files);
+  assert.equal(shards.length, SERVER_SHARDS); assert.ok(SERVER_SHARDS >= 4 && SERVER_SHARDS <= 6);
+  assert.equal(new Set(flat).size, flat.length);
+  assert.deepEqual([...flat].sort(), twoShardUnion(all), 'union equals the old two shards\' file sets');
+  assert.ok(!flat.includes(`src/${LATENCY_TEST}`), 'latency stays in its own job');
+  const d = serverTestDurations(), measured = flat.filter((f) => Number.isFinite(d[f])).length;
+  assert.ok(measured / flat.length > 0.9, `${measured}/${flat.length} files measured`);
+  const max = Math.max(...shards.map((s) => s.seconds));
+  assert.ok(max < 11 * 60, `slowest shard ${max} s by measurement (target < 12 min with setup)`);
+  t.diagnostic(shards.map((s, i) => `server-${i}: ${s.files.length} files, ${s.seconds} s`).join('; '));
+});
+
+test('deterministic, and the scope map selects every server shard', () => {
+  const all = serverTestFiles();
+  assert.deepEqual(serverShards(all), serverShards(all));
+  assert.deepEqual(JOBS.filter((j) => j.kind === 'server').map((j) => j.name), Array.from({ length: SERVER_SHARDS }, (_, i) => `server-${i}`));
 });
 
 test('missing latency inventory, invalid shard, and empty shard fail closed', () => {
   assert.throws(() => serverShardFiles(['a.test.ts'], 0), /latency test is missing/);
-  assert.throws(() => serverShardFiles([LATENCY_TEST, 'a.test.ts'], 2), /Invalid server shard/);
-  assert.throws(() => serverShardFiles([LATENCY_TEST], 0), /Empty server shard/);
+  assert.throws(() => serverShardFiles([LATENCY_TEST, 'a.test.ts'], SERVER_SHARDS), /Invalid server shard/);
+  assert.throws(() => serverShardFiles([LATENCY_TEST, 'a.test.ts'], -1), /Invalid server shard/);
+  assert.throws(() => serverShardFiles([LATENCY_TEST, 'a.test.ts'], 0, 2), /Empty server shard/);
 });
