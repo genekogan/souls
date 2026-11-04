@@ -101,11 +101,12 @@ on a self-hosted runner. It is manual only, and one run at a time. The runner's 
 `QUALIFY_RUNNER` repository variable, a JSON array such as `["self-hosted","<neutral label>"]`; the default is
 `["self-hosted"]`. Keep labels, the runner name and the machine name neutral, because the public job log prints the
 runner and machine names. Someone with write access dispatches it with `ref` set to a branch that carries the bench.
-Until #791 and #793 merge, that is `agent/736-hardware-qualification`:
+`ref` must be `main` or one `agent/<name>` branch of this repository; tags, commit SHAs and any other branch are
+refused before checkout. Until #791 and #793 merge, the bench is on `agent/736-hardware-qualification`:
 
 ```bash
 gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
-  [-f profile=even,meetup] [-f repeats=2] [-f short=false] [-f slice_cpu_quota=400%] [-f slice_memory_max=8G]
+  [-f profile=even,meetup] [-f repeats=2] [-f short=false] [-f browser=false] [-f slice_cpu_quota=400%] [-f slice_memory_max=8G]
 ```
 
 - **Quiet.** The bench gets `--quiet-host --qualifying-executor` only when four things hold: the dispatcher sets
@@ -114,6 +115,15 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
   run still measures, but it is labelled not-quiet, and every failing reason is recorded. The same checks run again
   after the bench. If they fail then, the artifact's `VERDICT.md` carries a "not quiet after the fact" banner.
   Before dispatching, turn off anything else that can use the runner, such as the `CI_HEAVY_RUNNER` variable.
+- **Nothing shared between runs.** The runner is persistent and the bench ref's code runs on it, so pnpm itself,
+  its store, cache and state, the media cache and any Chromium download live in a per-run directory under the job's
+  temp dir, and the last step deletes it. No step uses `actions/cache`. Each run therefore downloads its packages and
+  the web and runtime media again.
+- **Browser.** The bench's real browser (`--browser`: one headless Chromium holding world 0's page) is off by default
+  (`browser=false`). Browser-dependent measurements need a host that already has Playwright's Chromium system
+  libraries: the workflow downloads Chromium but never installs system packages (no `--with-deps`, no sudo). The
+  default self-hosted runner does not have them, because Playwright cannot install them for its OS, so leave
+  `browser` off there; if Chromium cannot start, the bench records the browser as unavailable.
 - **Allocation.** `slice_cpu_quota` and `slice_memory_max` run the worlds inside a `systemd-run --user --scope` with
   those limits, and the run is refused if the host cannot apply them. Without them the allocation is the runner's
   own cgroup. A memory limit it does not set leaves headroom unknown, so the verdict cannot be `passes`.

@@ -4,21 +4,30 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseInputs, benchArgs, overlappingJobs, runnerLabels, sameRunnerSet, decideBefore, decideAfter, scrub, stage, benchOtherSouls, LOAD_PER_CORE_MAX } from './capacity-qualify.mjs';
+import { parseInputs, checkoutRef, benchArgs, overlappingJobs, runnerLabels, sameRunnerSet, decideBefore, decideAfter, scrub, stage, benchOtherSouls, LOAD_PER_CORE_MAX } from './capacity-qualify.mjs';
 
-const ENV = { INPUT_REF: 'agent/736-hardware-qualification', INPUT_PROFILE: 'even,meetup', INPUT_REPEATS: '2', INPUT_SHORT: 'false', INPUT_QUIET_HOST: 'true', INPUT_HOST_CLASS: 'maintainer-self-hosted', INPUT_SLICE_CPU_QUOTA: '', INPUT_SLICE_MEMORY_MAX: '' };
+const ENV = { INPUT_REF: 'agent/736-hardware-qualification', INPUT_PROFILE: 'even,meetup', INPUT_REPEATS: '2', INPUT_SHORT: 'false', INPUT_QUIET_HOST: 'true', INPUT_BROWSER: 'false', INPUT_HOST_CLASS: 'maintainer-self-hosted', INPUT_SLICE_CPU_QUOTA: '', INPUT_SLICE_MEMORY_MAX: '' };
 
 test('inputs: valid dispatch parses; slice prefix only from validated limits', () => {
   const i = parseInputs(ENV);
   assert.deepEqual([i.profile, i.repeats, i.short, i.quietDeclared, i.slice], ['even,meetup', 2, false, true, '']);
   assert.equal(parseInputs({ ...ENV, INPUT_SLICE_CPU_QUOTA: '400%', INPUT_SLICE_MEMORY_MAX: '8G' }).slice, 'systemd-run --user --scope --quiet -p CPUQuota=400% -p MemoryMax=8G');
-  assert.equal(parseInputs({ ...ENV, INPUT_REF: 'a'.repeat(40) }).ref, 'a'.repeat(40));
+  assert.equal(parseInputs({ ...ENV, INPUT_REF: 'main' }).ref, 'main');
+  assert.equal(parseInputs({ ...ENV, INPUT_REF: 'agent/840-capacity-qualify' }).ref, 'agent/840-capacity-qualify');
+  assert.equal(checkoutRef('agent/840-capacity-qualify'), 'refs/heads/agent/840-capacity-qualify');
+  assert.equal(parseInputs({ ...ENV, INPUT_BROWSER: undefined }).browser, false);
+});
+
+test('inputs: ref is main or one agent/<name> branch of this repository; everything else is refused', () => {
+  for (const v of ['', 'a'.repeat(40), 'v1.0', 'refs/heads/main', 'feature/x', 'agent', 'agent/', 'agent/a/b', 'agent/../main', 'agent/x..y', 'agent/x.lock', 'agent/x.', 'agent/-x',
+    'mainx', 'main ', 'Main', 'origin/main', 'agent/x:y', 'agent/x~1', 'agent/$(id)'])
+    assert.throws(() => parseInputs({ ...ENV, INPUT_REF: v }), /input ref=.*main or an agent\/<name> branch/, JSON.stringify(v));
 });
 
 test('inputs: malformed values are refused before anything runs', () => {
   for (const [k, v] of [['INPUT_SLICE_CPU_QUOTA', '400% -p Foo=1'], ['INPUT_SLICE_CPU_QUOTA', '4'], ['INPUT_SLICE_MEMORY_MAX', '8G;id'], ['INPUT_SLICE_MEMORY_MAX', '0G'],
     ['INPUT_PROFILE', 'even,even'], ['INPUT_PROFILE', 'burst'], ['INPUT_REPEATS', '0'], ['INPUT_REPEATS', '9'], ['INPUT_REPEATS', '2 --short'],
-    ['INPUT_REF', '../main'], ['INPUT_REF', '-x'], ['INPUT_REF', 'a b'], ['INPUT_REF', '$(id)'], ['INPUT_HOST_CLASS', 'Host Name'], ['INPUT_HOST_CLASS', ''], ['INPUT_QUIET_HOST', 'yes'], ['INPUT_SHORT', '1']])
+    ['INPUT_REF', '../main'], ['INPUT_REF', '-x'], ['INPUT_REF', 'a b'], ['INPUT_REF', '$(id)'], ['INPUT_HOST_CLASS', 'Host Name'], ['INPUT_HOST_CLASS', ''], ['INPUT_QUIET_HOST', 'yes'], ['INPUT_SHORT', '1'], ['INPUT_BROWSER', 'on']])
     assert.throws(() => parseInputs({ ...ENV, [k]: v }), new RegExp(k.slice(6).toLowerCase()), `${k}=${v}`);
 });
 
@@ -28,6 +37,11 @@ test('bench args: --quiet-host and --qualifying-executor together, only when qui
   assert.ok(!n.includes('--quiet-host') && !n.includes('--qualifying-executor'));
   assert.equal(q[q.indexOf('--slice') + 1], 'systemd-run --user --scope --quiet -p MemoryMax=8G');
   assert.ok(benchArgs(parseInputs({ ...ENV, INPUT_SHORT: 'true' }), true, 'o').includes('--short'));
+});
+
+test('bench args: the real browser is off unless browser=true', () => {
+  assert.ok(!benchArgs(parseInputs(ENV), true, 'o').includes('--browser'));
+  assert.ok(benchArgs(parseInputs({ ...ENV, INPUT_BROWSER: 'true' }), true, 'o').includes('--browser'));
 });
 
 const job = (o) => ({ run_id: 7, name: 'ci', status: 'in_progress', runner_name: 'r', labels: ['self-hosted', 'qualify-pool'], started_at: '2026-11-04T10:00:00Z', completed_at: null, ...o });

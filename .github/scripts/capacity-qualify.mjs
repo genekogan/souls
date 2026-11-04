@@ -3,7 +3,7 @@
 // the self-hosted host is quiet before and after the meetup bench (tools/bench/capacity/meetup/meetup.mjs), and
 // stage a sanitized artifact. It runs from the workflow's own commit, never from the ref under measurement.
 //
-//   node capacity-qualify.mjs inputs                           validate INPUT_* env; write step outputs
+//   node capacity-qualify.mjs inputs                           validate INPUT_* env; write step outputs (`target`: the checkout ref)
 //   node capacity-qualify.mjs slice-check                      the slice prefix applies a real cgroup limit
 //   node capacity-qualify.mjs before --qualify <file>          quiet decision before the bench (bounded load wait)
 //   node capacity-qualify.mjs bench  --qualify <file> --out <bench out>   run meetup.mjs with the decided flags (cwd: the bench ref)
@@ -33,13 +33,17 @@ export function sameRunnerSet(jobLabels, ours) {
 export const LOAD_PER_CORE_MAX = 0.25;   // 1-minute load per core that counts as settled
 export const SETTLE_WAIT_S = 300;
 const PROFILES = ['even', 'meetup'];
+// The bench ref runs on a persistent self-hosted runner, so only this repository's own branches are accepted: `main`
+// or one `agent/<name>` branch. Tags, commit SHAs, other branches and anything else are refused before checkout.
+export const REF_ALLOWED = /^(main|agent\/[A-Za-z0-9][A-Za-z0-9._-]{0,150})$/;
+export const checkoutRef = (ref) => `refs/heads/${ref}`;
 
 /** INPUT_* env → validated inputs and the bench argument list; throws on anything malformed. */
 export function parseInputs(env) {
   const bad = (k, v, why) => { throw new Error(`input ${k}=${JSON.stringify(v)}: ${why}`); };
   const bool = (k) => { const v = String(env[`INPUT_${k.toUpperCase()}`] ?? 'false'); if (v !== 'true' && v !== 'false') bad(k, v, 'true or false'); return v === 'true'; };
   const ref = String(env.INPUT_REF ?? '');
-  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/.test(ref) || ref.includes('..') || ref.endsWith('/') || ref.endsWith('.lock')) bad('ref', ref, 'a branch, tag or commit');
+  if (!REF_ALLOWED.test(ref) || ref.includes('..') || ref.endsWith('.') || ref.endsWith('.lock')) bad('ref', ref, 'main or an agent/<name> branch of this repository');
   const profile = String(env.INPUT_PROFILE ?? 'even,meetup'), list = profile.split(',');
   if (!list.length || list.some((p) => !PROFILES.includes(p)) || new Set(list).size !== list.length) bad('profile', profile, 'even, meetup or even,meetup');
   const repeats = String(env.INPUT_REPEATS ?? '2');
@@ -50,14 +54,15 @@ export function parseInputs(env) {
   if (cpu && !/^[1-9]\d{0,4}%$/.test(cpu)) bad('slice_cpu_quota', cpu, 'empty or a systemd CPUQuota such as 400%');
   if (mem && !/^[1-9]\d{0,5}[MG]$/.test(mem)) bad('slice_memory_max', mem, 'empty or a systemd MemoryMax such as 8G');
   const slice = cpu || mem ? ['systemd-run', '--user', '--scope', '--quiet', ...(cpu ? ['-p', `CPUQuota=${cpu}`] : []), ...(mem ? ['-p', `MemoryMax=${mem}`] : [])].join(' ') : '';
-  const short = bool('short'), quietDeclared = bool('quiet_host');
-  return { ref, profile, repeats: Number(repeats), short, quietDeclared, hostClass, slice };
+  const short = bool('short'), quietDeclared = bool('quiet_host'), browser = bool('browser');
+  return { ref, profile, repeats: Number(repeats), short, quietDeclared, browser, hostClass, slice };
 }
 
-/** The bench's argument list for a decision. --quiet-host and --qualifying-executor go together, only when quiet. */
+/** The bench's argument list for a decision. --quiet-host and --qualifying-executor go together, only when quiet.
+ *  --browser (one headless Chromium on world 0) only when the dispatcher asked for it: off by default. */
 export function benchArgs(inp, quiet, out) {
   return ['--profile', inp.profile, '--repeats', String(inp.repeats), '--host-class', inp.hostClass, '--out', out, '--port', '4460', '--range', '4461-4490',
-    ...(inp.short ? ['--short'] : []), ...(inp.slice ? ['--slice', inp.slice] : []), ...(quiet ? ['--quiet-host', '--qualifying-executor'] : [])];
+    ...(inp.short ? ['--short'] : []), ...(inp.browser ? ['--browser'] : []), ...(inp.slice ? ['--slice', inp.slice] : []), ...(quiet ? ['--quiet-host', '--qualifying-executor'] : [])];
 }
 
 /** Jobs that ran on a runner of the same set (`labels`), outside run `selfRunId`, overlapping [since, until] (null = open). */
@@ -161,7 +166,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main(cmd) {
   const inp = parseInputs(process.env), qf = arg('qualify');
-  if (cmd === 'inputs') { output('slice', inp.slice); console.log(`inputs ok: ${inp.profile} x${inp.repeats}${inp.short ? ' short' : ''}, quiet declared ${inp.quietDeclared}, slice ${inp.slice ? 'set' : 'none'}`); return; }
+  if (cmd === 'inputs') { output('slice', inp.slice); output('target', checkoutRef(inp.ref)); console.log(`inputs ok: ${inp.ref}, ${inp.profile} x${inp.repeats}${inp.short ? ' short' : ''}, quiet declared ${inp.quietDeclared}, browser ${inp.browser}, slice ${inp.slice ? 'set' : 'none'}`); return; }
   if (cmd === 'slice-check') {
     if (!inp.slice) { console.log('no slice limits requested'); return; }
     const probe = "d=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup); echo $(cat $d/cpu.max 2>/dev/null || echo none) $(cat $d/memory.max 2>/dev/null || echo none)";
