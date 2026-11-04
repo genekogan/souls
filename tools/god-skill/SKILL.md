@@ -329,7 +329,7 @@ a phone), and each file is parsed in one frame.
 | animation | skins and several clips are kept; name clips **Idle** and **Walk** (Fly/Swim/Run count as Walk) | |
 
 ```
-upload models/kalama.glb --name kalama --height 1.2 --tags martian,character --license "Vanessa Rosa, all rights reserved" --define
+upload models/kalama.glb --name kalama --height 1.2 --tags martian,character --license "CC-BY-4.0 <Artist Name>" --define
 upload models/kalama.glb --dry                       # measure and show what would be sent, post nothing
 upload art/mural-east.jpg --name mural-east          # an image for a sign, picture or kit face
 upload models/manifest.json --dry                    # a folder of models: one manifest, one command

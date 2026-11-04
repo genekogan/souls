@@ -91,9 +91,9 @@ test('images: PNG/JPEG within 2048 px and 2 MB pass; a standalone WebP is refuse
 });
 
 test('the CLI reads upload the way SKILL.md writes it', () => {
-  const r = readArgs('upload', ['models/kalama.glb', '--name', 'kalama', '--height', '1.2', '--tags', 'martian,character', '--license', 'Vanessa Rosa, all rights reserved', '--define', '--dry']);
+  const r = readArgs('upload', ['models/kalama.glb', '--name', 'kalama', '--height', '1.2', '--tags', 'martian,character', '--license', 'CC-BY-4.0 <Artist Name>', '--define', '--dry']);
   checkArgs('upload', r.flags, r.rest);
-  assert.equal(r.flags.define, true); assert.equal(r.flags.license, 'Vanessa Rosa, all rights reserved'); assert.deepEqual(r.rest, ['models/kalama.glb']);
+  assert.equal(r.flags.define, true); assert.equal(r.flags.license, 'CC-BY-4.0 <Artist Name>'); assert.deepEqual(r.rest, ['models/kalama.glb']);
   assert.throws(() => checkArgs('upload', { colour: 'red' }, ['a.glb']), /upload has no option --colour/);
   assert.throws(() => checkArgs('upload', { height: 'tall' }, ['a.glb']), /--height takes a number/);
   assert.throws(() => checkArgs('upload', {}, ['a.glb', 'b.glb']), /takes one word/);

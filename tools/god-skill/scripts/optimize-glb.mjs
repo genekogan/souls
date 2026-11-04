@@ -17,7 +17,7 @@
 // by their own name, and an existing output is kept unless --force. <out>/REPORT.json records source and output sha,
 // before/after triangles, bytes and texture size, and the settings, so a library points back to its masters.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
@@ -54,8 +54,8 @@ export function parseArgs(argv) {
   return o;
 }
 
-/** The .glb files under the inputs, and the refusal when --out would touch them. */
-export function planFiles(inputs, out) {
+/** The .glb files under the inputs, and the refusal when --out would touch them. `skip` lists those whose output exists (empty with force). */
+export function planFiles(inputs, out, force = false) {
   const files = [], dirs = new Set();
   for (const input of inputs) {
     const p = resolve(input);
@@ -73,7 +73,8 @@ export function planFiles(inputs, out) {
     if (outputs.has(basename(f))) throw new Error(`two inputs are both named ${basename(f)} (${relative(process.cwd(), outputs.get(basename(f)))} and ${relative(process.cwd(), f)}): give them distinct names`);
     outputs.set(basename(f), f);
   }
-  return { files, out: o };
+  const skip = force ? [] : files.filter((f) => existsSync(join(o, basename(f))));   // an existing output is kept unless --force
+  return { files, out: o, skip };
 }
 function* walk(dir) { for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) { const p = join(dir, e.name); if (e.isDirectory()) yield* walk(p); else if (/\.glb$/i.test(e.name)) yield p; } }
 
@@ -87,7 +88,7 @@ async function tools() {
   await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready, MeshoptSimplifier.ready]);
   // three's Draco decoder is an emscripten CommonJS file inside an ESM package: load a private copy as .cjs
   const web = createRequire(join(ROOT, 'apps/web/package.json'));
-  const dracoCjs = join(tmpdir(), `optimize-glb-draco-${process.pid}.cjs`);
+  const dracoCjs = join(mkdtempSync(join(tmpdir(), 'optimize-glb-')), 'draco_decoder.cjs');
   writeFileSync(dracoCjs, readFileSync(web.resolve('three/examples/jsm/libs/draco/gltf/draco_decoder.js')));
   const draco = await createRequire(import.meta.url)(dracoCjs)();
   const io = new core.NodeIO().setLogger(new core.Logger(core.Logger.Verbosity.ERROR)).registerExtensions(ext.ALL_EXTENSIONS)
@@ -160,9 +161,9 @@ export async function optimizeGlb(T, bytes, targets, { budget = BUDGET } = {}) {
 }
 
 // ---------------------------------------------------------------- main
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   let o; try { o = parseArgs(process.argv.slice(2)); } catch (e) { console.error(e.message); process.exit(2); }
-  let plan; try { plan = planFiles(o.inputs, o.out); } catch (e) { console.error(`REFUSED: ${e.message}`); process.exit(2); }
+  let plan; try { plan = planFiles(o.inputs, o.out, o.force); } catch (e) { console.error(`REFUSED: ${e.message}`); process.exit(2); }
   mkdirSync(plan.out, { recursive: true });
   const reportFile = join(plan.out, 'REPORT.json');
   const report = existsSync(reportFile) ? JSON.parse(readFileSync(reportFile, 'utf8')) : { schema: 'optimize-glb-report/1', files: {} };
@@ -172,8 +173,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   for (const f of plan.files) {
     i++;
     const name = basename(f), dest = join(plan.out, name), rel = relative(process.cwd(), f);
+    if (plan.skip.includes(f)) { skipped++; console.log(`${i}/${plan.files.length} ${name}: kept (${relative(process.cwd(), dest)} exists; --force to overwrite)`); continue; }
     const bytes = new Uint8Array(readFileSync(f)), srcSha = sha256(bytes);
-    if (!o.force && existsSync(dest) && report.files[name]?.sourceSha256 === srcSha && report.files[name]?.sha256) { skipped++; console.log(`${i}/${plan.files.length} ${name}: kept (same source; --force to redo)`); continue; }
     const t0 = Date.now();
     try {
       const r = await optimizeGlb(T, bytes, o.targets);
