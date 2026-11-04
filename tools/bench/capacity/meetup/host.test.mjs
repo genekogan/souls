@@ -47,3 +47,9 @@ test('probe never invents numbers where the host has no cgroup v2 (macOS: all un
   assert.equal(typeof p.cores, 'number');
   if (!p.supported) { assert.equal(p.cpuMax, null); assert.equal(p.memoryMaxMb, null); assert.equal(p.cpuStat, null); }
 });
+
+test('between: no enforcement periods is 0 throttling (known); no cpu.stat is unknown', () => {
+  const at = (periods, throttled) => ({ procStat: { steal: 0, total: 1000 }, cpuStat: { usage_usec: 0, nr_periods: periods, nr_throttled: throttled, throttled_usec: 0 }, pressure: {} });
+  assert.equal(between(at(0, 0), at(0, 0), 10).throttledPeriodShare, 0);
+  assert.equal(between({ ...at(0, 0), cpuStat: null }, { ...at(0, 0), cpuStat: null }, 10).throttledPeriodShare, null);
+});

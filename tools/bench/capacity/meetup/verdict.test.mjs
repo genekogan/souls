@@ -46,3 +46,25 @@ test('failed runs and unknown allocation keep the verdict inconclusive', () => {
   assert.equal(verdict([...matrix().slice(0, 3), { profile: 'meetup', rep: 2, failed: 'join' }]).verdict, 'inconclusive');
   assert.equal(verdict(matrix({ headroom: { cpu: 0.5, memory: null } })).verdict, 'inconclusive');
 });
+
+test('absent evidence is unknown: no objectives, or unreadable swap, steal or throttling, never pass', () => {
+  const v = verdict(matrix({ objectives: {} })); assert.equal(v.verdict, 'inconclusive'); assert.equal(v.qualifies, false); assert.match(v.reasons.join(), /no objectives recorded/);
+  const bare = ['even', 'meetup'].flatMap((p) => [1, 2].map((rep) => ({ profile: p, rep, qualifying: { executor: true, quiet: true, short: false }, headroom: { cpu: 0.5, memory: 0.5 } })));
+  assert.equal(verdict(bare).verdict, 'inconclusive', 'runs holding only profile, rep, qualifying and headroom');
+  for (const k of ['swapPeakMb', 'stealShare', 'throttledPeriodShare']) for (const x of [null, undefined]) {
+    const w = verdict(matrix({ [k]: x })); assert.equal(w.verdict, 'inconclusive', `${k}=${x}`); assert.match(w.reasons.join(), new RegExp(`unreadable.*${k}`));
+  }
+  assert.equal(verdict(matrix({ qualifying: { executor: true, quiet: true } })).verdict, 'inconclusive', 'short missing is not short=false');
+});
+
+test('repeats are distinct rep identities: two copies of rep 1 are one repeat', () => {
+  const v = verdict([good('even', 1), good('even', 1), good('meetup', 1), good('meetup', 1)]);
+  assert.equal(v.verdict, 'inconclusive'); assert.match(v.reasons.join(), /even: 1\/2.*meetup: 1\/2/);
+});
+
+test('a failed run next to a complete matrix is inconclusive; a hot thread counts from 0.9 core', () => {
+  assert.equal(verdict([...matrix(), { profile: 'meetup', rep: 3, failed: 'boot' }]).verdict, 'inconclusive');
+  const miss = { objectives: { read: false }, headroom: { cpu: 0.1, memory: 0.6 } };
+  assert.equal(verdict(matrix({ ...miss, worlds: { mw0: { hottestCores: 0.9, met: false } } })).verdict, 'software bottleneck');
+  assert.equal(verdict(matrix({ ...miss, worlds: { mw0: { hottestCores: 0.89, met: false } } })).verdict, 'insufficient resources');
+});

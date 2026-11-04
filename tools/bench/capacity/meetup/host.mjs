@@ -71,7 +71,8 @@ export function between(a, b, seconds) {
   return {
     stealShare: dt ? +(d(a.procStat.steal, b.procStat.steal) / dt).toFixed(4) : null,
     cgroupCpuCores: usage == null ? null : +(usage / 1e6 / seconds).toFixed(3),
-    throttledPeriodShare: periods ? +(d(a.cpuStat.nr_throttled, b.cpuStat.nr_throttled) / periods).toFixed(4) : null,
+    // no enforcement periods (no CPU quota) means nothing could be throttled: 0, known; no cpu.stat at all: null, unknown
+    throttledPeriodShare: periods == null ? null : periods === 0 ? 0 : +(d(a.cpuStat.nr_throttled, b.cpuStat.nr_throttled) / periods).toFixed(4),
     throttledSecondsPerSecond: throttled == null ? null : +(throttled / 1e6 / seconds).toFixed(4),
     pressureSomeShare: { cpu: share(ps('cpu')), memory: share(ps('memory')), io: share(ps('io')) },
   };

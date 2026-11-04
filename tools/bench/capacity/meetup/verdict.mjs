@@ -19,9 +19,13 @@ export function headroom({ quotaCores = null, cpusetCores = null, hostCores, use
  *  swapPeakMb, stealShare, throttledPeriodShare, worlds: {slug: {hottestCores, met: bool}}}] → {verdict, reasons[], ...}. */
 export function verdict(runs) {
   const reasons = [], missing = [];
-  for (const p of PROFILES) { const n = runs.filter((r) => r.profile === p && !r.failed).length; if (n < REPEATS) missing.push(`${p}: ${n}/${REPEATS} completed repeats`); }
+  // repeats are distinct `rep` identities: two copies of one repeat are one repeat
+  for (const p of PROFILES) { const n = new Set(runs.filter((r) => r.profile === p && !r.failed).map((r) => r.rep)).size; if (n < REPEATS) missing.push(`${p}: ${n}/${REPEATS} completed repeats`); }
   const failed = runs.filter((r) => r.failed), ok = runs.filter((r) => !r.failed);
-  const notQualifying = ok.filter((r) => !r.qualifying?.executor || !r.qualifying?.quiet || r.qualifying?.short);
+  const notQualifying = ok.filter((r) => r.qualifying?.executor !== true || r.qualifying?.quiet !== true || r.qualifying?.short !== false);
+  // evidence that is absent is unknown, never a pass: no objectives recorded, or swap, steal or throttling unreadable
+  const noObjectives = ok.filter((r) => !Object.keys(r.objectives ?? {}).length).map((r) => `${r.profile} r${r.rep}`);
+  const unread = ok.flatMap((r) => ['swapPeakMb', 'stealShare', 'throttledPeriodShare'].filter((k) => r[k] == null).map((k) => `${r.profile} r${r.rep} ${k}`));
   const missed = ok.flatMap((r) => Object.entries(r.objectives ?? {}).filter(([, v]) => v === false).map(([k]) => `${r.profile} r${r.rep}: ${k}`));
   const unknown = ok.filter((r) => r.headroom?.cpu == null || r.headroom?.memory == null).map((r) => `${r.profile} r${r.rep}`);
   const lowHeadroom = ok.filter((r) => (r.headroom?.cpu ?? 1) < HEADROOM || (r.headroom?.memory ?? 1) < HEADROOM || (r.swapPeakMb ?? 0) > 0 || (r.throttledPeriodShare ?? 0) > 0.05 || (r.stealShare ?? 0) > 0.05);
@@ -34,11 +38,13 @@ export function verdict(runs) {
   let v;
   if (missed.length && (hot.length || (missedWithRoom && !lowHeadroom.length))) v = 'software bottleneck';
   else if (missed.length && lowHeadroom.length) v = 'insufficient resources';
-  else if (failed.length || missing.length || notQualifying.length || unknown.length || missed.length) v = 'inconclusive';
+  else if (failed.length || missing.length || notQualifying.length || unknown.length || noObjectives.length || unread.length || missed.length) v = 'inconclusive';
   else v = lowHeadroom.length ? 'insufficient resources' : 'passes';
-  const qualifies = v === 'passes' || (!notQualifying.length && !missing.length && !unknown.length);
+  const qualifies = v === 'passes' || (!notQualifying.length && !missing.length && !unknown.length && !noObjectives.length && !unread.length);
   if (missing.length) reasons.push(`incomplete matrix: ${missing.join('; ')}`);
   if (notQualifying.length) reasons.push(`not qualifying (laptop, not quiet, short or off the executor): ${notQualifying.map((r) => `${r.profile} r${r.rep}`).join(', ')}`);
   if (unknown.length) reasons.push(`allocation unknown (no cgroup v2 limits): ${unknown.join(', ')}`);
+  if (noObjectives.length) reasons.push(`no objectives recorded: ${noObjectives.join(', ')}`);
+  if (unread.length) reasons.push(`unreadable (unknown, not 0): ${unread.join(', ')}`);
   return { verdict: v, qualifies, indicativeOnly: !qualifies, reasons };
 }

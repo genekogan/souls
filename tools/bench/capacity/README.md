@@ -131,7 +131,10 @@ Each run also reads the allocation the worlds live in (`meetup/host.mjs`: the la
 cpuset, `cpu.stat` throttling, `memory.max`/`current`/`peak`, swap, PSI, `/proc/stat` steal; Linux only, `unknown`
 elsewhere) and each world's main and hottest thread. `meetup/verdict.mjs` turns the runs into `VERDICT.md`:
 `passes`, `insufficient resources`, `software bottleneck` or `inconclusive`. Only a complete matrix (both profiles,
-two repeats each, full length) declared `--qualifying-executor --quiet-host`, with a known allocation, can pass; a
+two repeats each, distinct repeats, full length) declared `--qualifying-executor --quiet-host`, with a known
+allocation, recorded objectives and readable swap, steal and throttling, can pass: evidence that is absent is
+unknown, never a pass. `--quiet-host` is the operator's assertion; the bench records load and other Soul processes
+but does not check them. The manual `capacity-qualify` workflow (#840) checks them before it passes the flag. A
 missed objective with spare allocation, or a hot world thread at ≥ 0.9 core, is a software bottleneck whatever the
 host. On the executor (the operator's private record holds the host binding; nothing here names it):
 
