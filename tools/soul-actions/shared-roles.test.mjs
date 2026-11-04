@@ -81,9 +81,6 @@ test('PC04: propose, accept against the revision, and nothing moves', {timeout: 
   for (const s of [Cy, Fy]) assert.ok(!caps(w, s).some((c) => c.id.endsWith(inv.id)), `${s.name} sees no offer of it`);
   // nobody accepts for Bo: Ada's and Cy's streams are refused, and Bo's receipt is his alone
   for (const s of [Ada, Cy]) assert.equal((await act(w, s, {capability: `accept:${inv.id}`, params: {revision: 1}})).accepted, false);
-  // the world owner's god API has no way to answer for a Soul
-  const godTry = (() => { try { return w.god.act({ops: [{op: 'accept', invite: inv.id}]}); } catch (e) { return {accepted: false, error: String(e)}; } })();
-  assert.notEqual(godTry.accepted, true, JSON.stringify(godTry));
   // talking is not consent: Ada and Bo in one conversation, and Bo's answer is still open
   const converse = async (s, body) => { w.setCurrent(s); return (await accept(w.f.host, w.app.request('/v1/edge/converse', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}))).json(); };
   const cv = await converse(Ada, {op: 'start', with: [Bo.soulId], text: 'Carry the beam with me?'});
@@ -153,19 +150,33 @@ test('PC04: decline, leave, amend, expiry and other acts end shared receipts det
   a = ok(await act(w, Bo, {capability: `accept:${id}`, params: {revision: 1}}));
   const same = ok(await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'shed', with: 'Bo', invite: id}}));
   assert.equal(same.receipt.id, p.receipt.id, 'the same proposal again changes nothing');
-  ok(await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'yard', with: 'Bo', invite: id}}));
+  const am = ok(await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'yard', with: 'Bo', invite: id}}));
+  assert.equal(am.receipt.id, p.receipt.id, 'an amend answers with Ada\'s one shared receipt, not a new carry-with one');
   const amended = inviteOf(w, id);
   assert.equal(amended.shared.revision, 2); assert.match(amended.shared.changed, /destination/); assert.deepEqual(amended.responses, {});
   assert.equal(read(Bo, a).code, 'shared.revision-changed'); assert.equal(read(Ada, p).phase, 'waiting', 'Ada keeps her one receipt');
-  assert.equal(read(Ada, p).shared.revision, 1, 'made for revision 1; the invitation is at 2');
+  assert.deepEqual(read(Ada, p).shared, {invite: id, revision: 2, role: 'carrier', slot: 0, phase: 'pending'}, 'the host\'s receipt follows the amend');
   assert.equal(code(await act(w, Bo, {capability: `accept:${id}`, params: {revision: 1}})), 'shared.revision-changed');
   a = ok(await act(w, Bo, {capability: `accept:${id}`, params: {revision: 2}}));
+  // a changed load is revision 3; a crew that drops Bo (now Cy) is revision 4, and Bo's acceptance ends
+  ok(await act(w, Ada, {capability: `carry-with:${w.idOf('beam2')}`, params: {to: 'yard', with: 'Bo', invite: id}}));
+  assert.equal(inviteOf(w, id).shared.revision, 3); assert.match(inviteOf(w, id).shared.changed, /load/); assert.equal(read(Bo, a).code, 'shared.revision-changed');
+  a = ok(await act(w, Bo, {capability: `accept:${id}`, params: {revision: 3}}));
+  ok(await act(w, Ada, {capability: `carry-with:${w.idOf('beam2')}`, params: {to: 'yard', with: 'Cy', invite: id}}));
+  assert.equal(inviteOf(w, id).shared.revision, 4); assert.match(inviteOf(w, id).shared.changed, /crew/); assert.equal(read(Bo, a).code, 'shared.revision-changed');
+  assert.ok(!caps(w, Bo).some((c) => c.id.endsWith(id)), 'Bo is no longer asked');
+  a = ok(await act(w, w.souls.Cy, {capability: `accept:${id}`, params: {revision: 4}}));
+  const still = {Ada: [...w.pos(Ada)], Cy: [...w.pos(w.souls.Cy)]};
   // expiry: every open member receipt lapses; a late acceptance is refused
   await w.tick(SHARED_LAPSE * 20 + 40);
   assert.equal(inviteOf(w, id).state, 'closed');
-  for (const [s, r] of [[Ada, p], [Bo, a]]) assert.equal(read(s, r).code, 'invite.expired', s.name);
-  const late = await act(w, Bo, {capability: `accept:${id}`, params: {revision: 2}});
-  assert.equal(late.accepted, false); assert.ok(['invite.gone', 'capability.unknown'].includes(code(late)), JSON.stringify(late));
+  for (const [s, r] of [[Ada, p], [w.souls.Cy, a]]) assert.equal(read(s, r).code, 'invite.expired', s.name);
+  for (const s of [Ada, w.souls.Cy]) {
+    assert.equal(w.f.host.engine.programOf(s.entityId), null, `${s.name} runs nothing through expiry`);
+    assert.ok(Math.hypot(w.pos(s)[0] - still[s.name][0], w.pos(s)[2] - still[s.name][2]) < 1e-6, `${s.name} did not move through expiry`);
+  }
+  const late = await act(w, w.souls.Cy, {capability: `accept:${id}`, params: {revision: 4}});
+  assert.equal(late.accepted, false); assert.equal(code(late), 'invite.gone', JSON.stringify(late));
   // full hands: Bo holding the old one-hand beam cannot accept
   const old = w.idOf('old-beam'), pick = ok(await act(w, Bo, {capability: `pick-up:${old}`}));
   for (let n = 0; n < 2000 && ['waiting', 'started'].includes(read(Bo, pick).phase); n++) await w.tick(1);

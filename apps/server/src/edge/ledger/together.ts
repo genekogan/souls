@@ -689,7 +689,8 @@ export class Together {
     if (!me?.human || isRigidBody(me)) return {code: 'body.unsupported', reason: 'Carrying something together needs a humanoid body with two free hands; try talking or looking instead.'};
     const held = this.heldBy(soul.soulId); if (held) return {code: 'hands.full', reason: `You are holding ${held.name}; put it down first.`};
     const thing = Object.values(this.w.entities).find(x => x.support?.kind === 'in-hand' && x.support.by === soul.entityId);
-    if (thing || me.human.grip) return {code: 'hands.full', reason: `Your hands are full${thing ? ` (${this.thingName?.(thing.id) ?? String(thing.label ?? thing.id)})` : ''}; put it down first.`};
+    if (me.human.grip) return {code: 'carry.hands-full', reason: 'Your hands are on a load already; set it down first.'};
+    if (thing) return {code: 'hands.full', reason: `Your hands are full${thing ? ` (${this.thingName?.(thing.id) ?? String(thing.label ?? thing.id)})` : ''}; put it down first.`};
     const hands = this.handsWith(soul.entityId); if (hands) return {code: 'hands.holding', reason: `You are holding ${hands.name}'s hand; let go first.`};
     if (this.p.aboard(soul.entityId)) return {code: 'ride.aboard', reason: 'Not while riding.'};
     return null;
@@ -718,7 +719,8 @@ export class Together {
       if (inv.guests.map(g => g.soulId).sort().join() !== guests.map(g => g.soulId).sort().join()) changes.push(`the crew is now ${soul.name} with ${names}`);
       // the same proposal again changes nothing: its host's receipt answers
       if (!changes.length) return {steps: [], existing: inv.hostReceipt ?? undefined};
-      return {steps: [], noBody: true, label, commit: () => this.amendShared(inv.id, soul, cap.id, tag, to, guests, changes)};
+      // the amend answers with the host's one shared receipt, never a new "carry-with completed" one (PC02 §2)
+      return {steps: [], existing: inv.hostReceipt ?? undefined, label, commit: () => this.amendShared(inv.id, soul, cap.id, tag, to, guests, changes)};
     }
     const id = 'inv_' + randomUUID().slice(0, 12);
     return {steps: [], wait: true, label, detail: {sharedV1: {invite: id, revision: 1}}, commit: receipt => {
@@ -748,7 +750,7 @@ export class Together {
     const s = inv.shared, gone = {code: 'invite.gone', reason: 'That proposal is no longer open.'};
     if (!this.p.sharedCarry || !s || inv.state !== 'pending' || !inv.guests.some(g => g.soulId === soul.soulId)) return gone;
     const answer = inv.responses[soul.soulId], capability = 'accept:' + inv.id;
-    if (answer === 'accepted') {if (params.revision === undefined || params.revision === s.revision) return {label: 'Accepted', steps: [], capability, existing: inv.guestReceipts[soul.soulId], commit: () => {}};}
+    if (answer === 'accepted') {const mine = inv.guestReceipts[soul.soulId]; if (!mine) return gone; if (params.revision === undefined || params.revision === s.revision) return {label: 'Accepted', steps: [], capability, existing: mine, commit: () => {}};}
     else if (answer) return {code: 'invite.gone', reason: 'You already answered that proposal.'};
     if (!Number.isInteger(params.revision)) return {code: 'capability.params', reason: `Say which revision you agree to: {"revision": ${s.revision}}.`};
     if (params.revision !== s.revision) return {code: 'shared.revision-changed', reason: `The proposal changed: it is now revision ${s.revision}${s.changed ? ` (${s.changed})` : ''}. Accept {"revision": ${s.revision}} if you still agree.`};
@@ -771,16 +773,17 @@ export class Together {
     if (inv.kind !== 'shared') return;
     for (const [g, r] of Object.entries(inv.guestReceipts)) if (inv.responses[g] === 'accepted') this.p.fail(r, code, reason);
   }
-  /** A proposal nobody can still fill closes: its host's receipt ends with why (rather than waiting out the lapse). */
+  /** A proposal that can no longer reach its crew minimum closes: its host's receipt ends with why (not at the lapse). */
   private sharedViable(inv: Invite, code: string, reason: string) {
-    if (inv.state !== 'pending' || inv.guests.some(g => !inv.responses[g.soulId] || inv.responses[g.soulId] === 'accepted')) return;
+    const can = inv.guests.filter(g => !inv.responses[g.soulId] || inv.responses[g.soulId] === 'accepted').length;
+    if (inv.state !== 'pending' || !inv.shared || can > 0 && 1 + can >= inv.shared.crew[0]) return;
     inv.state = 'closed'; this.saveInvite(inv); this.hostAlone(inv, code, reason);
   }
   /** PC04: a shared receipt as its own Soul sees it (PC02 §5): live role and phase while it is the member's current one. */
   sharedReceipt(receiptId: string, soulId: string, made: {invite: string; revision: number}): SharedReceiptV1 {
     const inv = this.invite(made.invite), s = inv?.shared;
-    const current = !!s && s.revision === made.revision && (inv!.hostReceipt === receiptId || inv!.guestReceipts[soulId] === receiptId && inv!.responses[soulId] === 'accepted');
-    return {invite: made.invite, revision: made.revision, role: 'carrier', slot: current ? s!.roles.find(r => r.soulId === soulId)?.slot ?? null : null, phase: current && inv!.state === 'pending' ? 'pending' : 'ended'};
+    const host = !!s && inv!.hostReceipt === receiptId, current = host || !!s && s.revision === made.revision && inv!.guestReceipts[soulId] === receiptId && inv!.responses[soulId] === 'accepted';
+    return {invite: made.invite, revision: host ? s!.revision : made.revision, role: 'carrier', slot: current ? s!.roles.find(r => r.soulId === soulId)?.slot ?? null : null, phase: current && inv!.state === 'pending' ? 'pending' : 'ended'};
   }
   /** PC02 §1: an open shared receipt that a newer body act of its Soul ends is `failed` / `shared.left`, never `replaced`. */
   sharedLeave(r: EdgeReceipt): {code: string; reason: string} | null {
@@ -1339,7 +1342,7 @@ export class Together {
     if (fol && !/^(?:me|us)$/.test(fol[1].trim())) {
       if(/\s+to\s+\S/.test(fol[1])&&!near.some(o=>o.name.toLowerCase()===fol[1].trim()))return {code:'follow.destination',reason:'Following only tracks the named Soul. To reach a place, walk with them to that place and invite them.',did_you_mean:[]};
       const o = who(fol[1]); if (!o) return /^(?:him|her|them|they|she|he)$/.test(fol[1].trim()) ? null : notHere('follow', fol[1]);
-      const back = this.invitesFor(soul.soulId).find(i => i.host.soulId === o.soulId && i.kind !== 'paired' && i.kind !== 'give'); if (back) return {capability: 'accept:' + back.id, note: `joining ${o.name}'s ${back.what}`};
+      const back = this.invitesFor(soul.soulId).find(i => i.host.soulId === o.soulId && i.kind !== 'paired' && i.kind !== 'give' && i.kind !== 'shared'); if (back) return {capability: 'accept:' + back.id, note: `joining ${o.name}'s ${back.what}`};
       if (this.followingOf(soul.soulId)?.target === o.soulId) return {code: 'follow.already', reason: `You are already walking with ${o.name}.`, did_you_mean: []};
       const c = capFor('follow', o); if (!c) return {code: 'follow.unavailable', reason: `${o.name} is too far away to walk with (${o.distance} m); go near them first.`, did_you_mean: caps.filter(c => c.id === 'go-near:' + o.soulId).map(c => ({id: c.id, label: c.label}))};
       return {capability: c.id, note: `${raw} is ${c.id}`};

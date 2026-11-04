@@ -1575,6 +1575,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
     // (srv-act-words: focused words were resolved already, on these offers, by wordsFocused)
     ({v, caps, plans} = bound.pre && !social && text === asked ? bound.pre : this.resolveOnDemand(soul, text, caps, plans));
     if (words) {plans = new Map(plans); v = this.exactWords(soul, words, text, v, plans);}
+    // PC04 (#683): answering a shared proposal that has closed is refused as gone, not unknown
+    if (v.kind === 'unknown' && /^(?:accept|decline):inv_/.test(asked) && this.together.invite(asked.slice(asked.indexOf(':') + 1))?.kind === 'shared') return refuse('invite.gone', 'That proposal is no longer open.');
     if (v.kind === 'unknown') return {...refuse(v.code ?? 'capability.unknown', v.reason), did_you_mean: v.didYouMean};
     let cap = v.cap; capability = cap.id;
     const bodyIssue=bodyCapabilityProblem(this.body(soul.entityId),cap,plans.get(capability)?.steps);if(bodyIssue)return refuse(bodyIssue.code,bodyIssue.reason);
@@ -1727,7 +1729,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const prep = this.together.prepare(soul, cap, plan, params, steps);
     if ('code' in prep) return {...refuse(prep.code, prep.reason), ...(prep.did_you_mean ? {did_you_mean: prep.did_you_mean} : {}), ...resolved};
     steps = prep.steps;
-    if (prep.existing) {const old = this.receipt(soul.soulId, prep.existing); if (old) return {accepted: true, receipt: old, ...resolved};}
+    if (prep.existing) {const old = this.receipt(soul.soulId, prep.existing); if (!old) return refuse('invite.gone', 'That proposal is no longer open.'); prep.commit?.(old.id); return {accepted: true, receipt: this.receipt(soul.soulId, old.id)!, ...resolved};}
     if (prep.wait) return this.openShared(soul, capability, clientRef, prep, resolved);
     if (prep.noBody) {
       // answering someone (decline, ask to stop following) never interrupts what the body is doing
@@ -1908,7 +1910,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   private async acceptInvite(soul: EdgeSoul, cap: EdgeCapability, plans: Map<string, {label: string; steps: Program['steps']}>, caps: EdgeCapability[], clientRef: string | undefined, resolved: {resolved?: Resolved}, refuse: (code: string, reason: string) => {accepted: false; code: string; reason: string; capability: string}, params: Record<string, unknown> = {}) {
     const plan = this.together.acceptPlan(soul, cap.id.slice('accept:'.length), caps, plans as Map<string, TogetherPlan>, params);
     if ('code' in plan) return {...refuse(plan.code, plan.reason), ...resolved};
-    if (plan.existing) {const old = this.receipt(soul.soulId, plan.existing); if (old) return {accepted: true as const, receipt: old, ...resolved};}
+    if (plan.existing) {const old = this.receipt(soul.soulId, plan.existing); if (!old) return {...refuse('invite.gone', 'That proposal is no longer open.'), ...resolved}; return {accepted: true as const, receipt: old, ...resolved};}
     if (plan.wait) return this.openShared(soul, cap.id, clientRef, plan, resolved);
     this.comms?.fading.touch?.(soul.soulId);
     if (plan.ride) {

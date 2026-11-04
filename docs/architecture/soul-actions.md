@@ -30,7 +30,9 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Leave.** `decline` is still offered after accepting, as a way to leave. Any other body act by a member ends
     their shared receipt `shared.left`, not `replaced`. Any other body act by the host closes the proposal for
     everyone.
-  - **Expiry.** A proposal lapses after 120 s (`invite.expired`).
+  - **Closing early.** A decline or leave that leaves the proposal unable to reach its crew minimum closes it. The
+    host's receipt ends then, rather than at the lapse.
+  - **Expiry.** A proposal lapses after 120 s (`invite.expired`). A late answer is refused `invite.gone`.
 
   Nothing moves, commits or claims yet. The carry itself is PC05/PC06.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
