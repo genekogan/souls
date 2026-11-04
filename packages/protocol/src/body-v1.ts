@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {bodyMotionProblem,type BodyMotion} from '../../../mars/viewer/engine/bodies/motion.ts';
 
 const id=z.string().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 const url=z.string().regex(/^\/(?:w\/[a-z0-9-]+\/)?(?:v1\/edge\/body\/assets\/body_[a-f0-9]{64}\.glb|world-assets\/littlemartians\/characters\/[a-z0-9-]+\.glb)$/);
@@ -13,8 +14,9 @@ export const bodyV1Schema=z.strictObject({
   model:z.string().regex(/^(?:[a-z0-9-]{1,64}|body_[a-f0-9]{64})$/).optional(),modelUrl:url.optional(),
   avatar:z.strictObject({kind:z.literal('body'),modelUrl:url,bodyType:z.enum(['humanoid','ceramic','floater'])}).optional(),
   radius:z.number().min(.15).max(.9).optional(),hoverHeight:z.number().min(.1).max(3).optional(),
-  params:lookParams.optional(),
-}).refine(b=>b.type===undefined||(b.family==='humanoid'?b.type==='humanoid':b.type==='ceramic'||b.type==='floater'||b.type==='creature'))
+  params:lookParams.optional(),motion:z.custom<BodyMotion>(x=>bodyMotionProblem(x)===null).optional(),
+}).refine(b=>b.motion===undefined||(b.family==='floater'&&b.type!=='creature'))
+ .refine(b=>b.type===undefined||(b.family==='humanoid'?b.type==='humanoid':b.type==='ceramic'||b.type==='floater'||b.type==='creature'))
  .refine(b=>b.type==='creature'?(CREATURE_MODELS as readonly string[]).includes(b.model??'')&&b.modelUrl===undefined&&b.avatar===undefined&&b.params===undefined&&(b.hoverHeight===undefined||b.hoverHeight<=1.2):(b.hoverHeight===undefined||b.hoverHeight>=.4))
  .refine(b=>b.family!=='humanoid'||(b.radius===undefined&&b.hoverHeight===undefined&&(b.model===undefined||b.modelUrl!==undefined||b.params!==undefined)))
  .refine(b=>b.params===undefined||(b.family==='humanoid'&&b.modelUrl===undefined&&b.avatar===undefined&&typeof b.model==='string'&&LOOK_MODEL.test(b.model)))
