@@ -77,10 +77,19 @@ export async function executeScenario({ scenarioFile, playtestDir, serverRoot, h
   return cmdRun({ _: ['run', scenarioFile], out: playtestDir, 'server-root': serverRoot }, hooks);
 }
 
+/** The directed-cast adapter (#783): one cast through director/swarm/run.mjs cmdDirect, headless, with the lifecycle's
+ *  hooks. Live minds stay refused inside cmdDirect too unless the spec allowed them. A session that ran to its end is
+ *  completed whatever its verdict (exit 4); the verdict is evidence, read by evaluate. */
+export async function executeCast({ castFile, playtestDir, serverRoot, hooks, allowLiveModels = false }) {
+  const { cmdDirect } = await import('../director/swarm/run.mjs');
+  const code = await cmdDirect({ _: ['direct', castFile], out: playtestDir, 'server-root': serverRoot, headless: true }, { ...hooks, allowLiveModels });
+  return code === 4 ? 0 : code;
+}
+
 /** startRun → terminal receipt. status: refused (nothing created) | completed | failed | cancelled | stopped-limit.
  *  signal: an AbortSignal the caller aborts on SIGINT/SIGTERM. execute/scenarioPreflight/importer are injectable. */
 export async function startRun({ spec, specPath = null, specSha256 = null, serverRoot, outDir = null, signal = null, log = () => {},
-  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup }) {
+  execute = null, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup }) {
   const validation = validateSpec(spec, { specPath, serverRoot });
   if (!validation.ok) return { status: 'refused', stage: 'validate', errors: validation.errors };
   const pre = await preflightRun({ validation, serverRoot, scenarioPreflight });
@@ -103,8 +112,11 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   };
   const save = () => writeJson(join(runDir, RECEIPT), receipt);
   save(); // a crash from here on leaves status "running", never a false success
-  const scenarioFile = join(runDir, 'scenario.effective.json');
-  writeJson(scenarioFile, validation.scenario);
+  const directed = !!validation.cast;
+  const scenarioFile = join(runDir, directed ? 'cast.effective.json' : 'scenario.effective.json');
+  writeJson(scenarioFile, directed ? validation.cast : validation.scenario);
+  if (directed) Object.assign(receipt.references, { cast: scenarioFile, journal: join(playtestDir, 'director', 'commands.jsonl') });
+  const run = execute ?? (directed ? (o) => executeCast({ ...o, castFile: o.scenarioFile, allowLiveModels: eff.controllers.allowLiveModels === true }) : executeScenario);
   writeJson(join(runDir, 'spec.effective.json'), eff);
 
   let stop = null;
@@ -139,7 +151,7 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
         if (!receipt.setup.ok) throw Object.assign(new Error(receipt.setup.error), { stage: 'setup' });
       } } : {}) };
     const e0 = Date.now();
-    const executing = Promise.resolve().then(() => execute({ scenarioFile, playtestDir, serverRoot, hooks, runDir }))
+    const executing = Promise.resolve().then(() => run({ scenarioFile, playtestDir, serverRoot, hooks, runDir }))
       .then((code) => ({ status: code === 0 ? 'completed' : 'failed', exit: code, ...(code === 0 ? {} : { reason: `scenario runner exited ${code}` }) }),
         (e) => ({ status: 'failed', reason: short(e), stage: e?.code === 'RUN_CANCELLED' ? 'cancelled-step' : 'execute' }));
     outcome = await Promise.race([executing, stopped]);
@@ -167,7 +179,8 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
 function summarizeEvidence(playtestDir) {
   const receipts = existsSync(join(playtestDir, 'receipts')) ? readdirSync(join(playtestDir, 'receipts')).sort() : [];
   const world = readJson(join(playtestDir, 'world.json'), null);
-  return { receipts, report: existsSync(join(playtestDir, 'REPORT.md')) ? join(playtestDir, 'REPORT.md') : null, build: world?.build ?? null, skill: world?.skill?.version ?? null, cli: world?.cli?.['eden.mjs.version'] ?? null, tickValidity: readJson(join(playtestDir, 'server', 'tick-validity.json'), null), infrastructureInvalid: existsSync(join(playtestDir, 'infrastructure-invalid.jsonl')) };
+  const verdict = readJson(join(playtestDir, 'director', 'verdict.json'), null);
+  return { receipts, ...(verdict ? { verdict: { pass: verdict.pass ?? null, checks: Object.fromEntries(Object.entries(verdict.checks ?? {}).map(([k, v]) => [k, v?.pass ?? null])) } } : {}), report: existsSync(join(playtestDir, 'REPORT.md')) ? join(playtestDir, 'REPORT.md') : null, build: world?.build ?? null, skill: world?.skill?.version ?? null, cli: world?.cli?.['eden.mjs.version'] ?? null, tickValidity: readJson(join(playtestDir, 'server', 'tick-validity.json'), null), infrastructureInvalid: existsSync(join(playtestDir, 'infrastructure-invalid.jsonl')) };
 }
 
 /** Evidence is always kept. World data and controller state (sensitive: owner identities and controller credentials)

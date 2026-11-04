@@ -64,12 +64,15 @@ export async function cmdDirect(a, hooks = null, { log = (...x) => console.error
   if (!pfOk) { log('preflight failed', JSON.stringify(pf.checks)); return 2; }
 
   const mods = hooks?.modules ?? {};
-  const provision = mods.provision ?? await import('../../arena/provision.mjs');
-  const seatMod = mods.seat ?? await import('../../arena/seat.mjs');
-  const owner = mods.owner ?? await import('../../arena/owner.mjs');
-  const truthMod = mods.truth ?? await import('../../observer/world-truth.mjs');
-  const evidence = mods.evidence ?? await import('../../observer/evidence.mjs');
-  const browserMod = mods.browser ?? await import('../../observer/browser.mjs');
+  // A module given as null (a lifecycle whose observer check failed sets browser: null) stays off; undefined loads it.
+  const pick = async (k, p) => (mods[k] !== undefined ? mods[k] : import(p));
+  const provision = await pick('provision', '../../arena/provision.mjs');
+  const seatMod = await pick('seat', '../../arena/seat.mjs');
+  const owner = await pick('owner', '../../arena/owner.mjs');
+  const truthMod = await pick('truth', '../../observer/world-truth.mjs');
+  const evidence = await pick('evidence', '../../observer/evidence.mjs');
+  // The observer browser is optional, as in playtest.mjs loadModules: an import failure (#633) plays without cameras.
+  const browserMod = await pick('browser', '../../observer/browser.mjs').catch((e) => { log(`observer browser unavailable: ${String(e.message).split('\n')[0]}`); return null; });
   const swarmTruth = mods.swarmTruth ?? worldTruth;
 
   let world = null, browser = null, sw = null, consoleIn = null; const seats = {}; const cameras = {};

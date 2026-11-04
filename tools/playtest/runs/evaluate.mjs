@@ -301,7 +301,7 @@ function scenarioAcceptance(sr) {
 /** Identity of what ran (must match for repeats to pool) and the conditions it ran under (listed, not pooled on). */
 export function runIdentity(sr) {
   const sc = sr.scenario ? structuredClone(sr.scenario) : null;
-  if (sc) { for (const k of ['scenarioPath', 'scenarioSha256', 'serverRoot']) delete sc[k]; if (sc.world) delete sc.world.port; }
+  if (sc) { for (const k of ['scenarioPath', 'scenarioSha256', 'serverRoot', 'castPath']) delete sc[k]; if (sc.world) delete sc.world.port; }
   const eff = sr.receipt?.spec?.effective ?? null;
   const seats = (sc?.seats ?? []).map((s) => ({ id: s.id, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null, effort: s.effort ?? null, persona: s.persona ?? null, script: s.script ? hashOf(s.script).slice(0, 16) : null }));
   const components = {
