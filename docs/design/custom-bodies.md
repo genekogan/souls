@@ -98,6 +98,21 @@ database). See [collections.ts](../../apps/server/src/edge/body/collections.ts).
   store when the moderation entry is appended), or hidden by this world's or the site's moderation, cannot be newly
   selected.
 - Routine discovery (`GET /v1/edge/body`) carries only `library:{mine, next}`; catalogs load on request.
+
+### Versioned core presets (#795 A1, D027)
+
+A core preset id names one immutable, content-addressed definition, recorded in an append-only ledger
+([core-revisions.ts](../../apps/server/src/edge/body/core-revisions.ts)). The core listing and lookup show it as
+`<preset>@<n> → body_<sha>` (`version: "pip@1"`, `asset: "body_0ac8…"`), and `PUT /v1/edge/body {preset: "pip@1"}`
+selects that exact revision. A released revision is never re-pinned: a changed preset ships as a new id, `<family>-<n>`
+(`pip-2`, shown as `pip@2`), and the old id keeps its source in `tools/body-authoring`, stays selectable and stays served
+by its address. `edge-body-core-revisions.test.ts` holds the released entries and fails if one changes. Selections need no
+migration: a world stores what a Soul wears as its content address (`model: body_<sha>`), never as the preset id, so
+restarts and newer revisions leave it unchanged. Versions apply to the authored presets served by content address
+(Pip, the monster, the ghost, the centaur). The engine-native presets (the default humanoid, whose look has its own
+`core/humanoid@2` definition, the Little Martian floaters and the procedural creatures) are selected by id and listed
+without a version. Per-world copies of preset bytes and a release-side archive of old revisions were considered and not
+chosen.
 - Each world imports its own owner uploads into the store at boot, idempotently; asset ids, descriptors and rights
   are never rewritten. An upload enters its owner's collection once (an import marker per world, owner and
   reference), so a forget survives restarts. Bytes stay in the admitting world. The source world is recorded by its
