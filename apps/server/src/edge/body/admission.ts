@@ -158,15 +158,20 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
      let v=a.map((x:number,j:number)=>x+((b[j]??x)-x)*f);if(w===4){const d=a.reduce((s:number,x:number,j:number)=>s+x*b[j],0);if(d<0)v=a.map((x:number,j:number)=>x+(-b[j]-x)*f);const n=Math.hypot(...v)||1;v=v.map((x:number)=>x/n);}
      animated[ch.target.node][ch.target.path]=v;delete animated[ch.target.node].matrix;}
     const world=rigWorldMatrices(animated,parents),out:number[][]=[];
-    for(const i of seen){const node=nodes[i];if(node.mesh===undefined||node.skin===undefined)continue;const skin=skins[node.skin],joints=skin.joints as number[],inv=values(accessors[skin.inverseBindMatrices]);
-     const skinning=joints.map((j,q)=>{const m=world(j),b=inv.slice(q*16,q*16+16);return Array.from({length:16},(_,e)=>{const row=e%4,col=Math.floor(e/4);let s=0;for(let r=0;r<4;r++)s+=m[r*4+row]*b[col*4+r];return s;});});
-     for(const p of meshes[node.mesh].primitives){const pos=values(accessors[p.attributes.POSITION]),js=values(accessors[p.attributes.JOINTS_0]),ws=values(accessors[p.attributes.WEIGHTS_0]);
-      for(let k=0;k<pos.length/3;k++){const r=[0,0,0];for(let q=0;q<4;q++){const wt=ws[k*4+q];if(!wt)continue;const m=skinning[js[k*4+q]];for(let ax=0;ax<3;ax++)r[ax]+=wt*(m[ax]*pos[k*3]+m[4+ax]*pos[k*3+1]+m[8+ax]*pos[k*3+2]+m[12+ax]);}out.push(r);}}}
+    // Arms are not lower body (the renderer refits them to the fixed reach): a vertex led by an arm joint is not measured.
+    const arm=new Set<number>();for(const side of ['L','R']){const top=named.get('Shoulder'+side)!;for(let j=0;j<nodes.length;j++)for(let k:number|undefined=j;k!==undefined;k=parents.get(k))if(k===top){arm.add(j);break;}}
+    const ident=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+    for(const i of seen){const node=nodes[i];if(node.mesh===undefined)continue;
+     if(node.skin===undefined){const m=world(i);for(const p of meshes[node.mesh].primitives){const pos=values(accessors[p.attributes.POSITION]);for(let k=0;k<pos.length;k+=3)out.push([0,1,2].map(ax=>m[ax]*pos[k]+m[4+ax]*pos[k+1]+m[8+ax]*pos[k+2]+m[12+ax]).concat(0));}continue;}
+     const skin=skins[node.skin],joints=skin.joints as number[],inv=skin.inverseBindMatrices===undefined?null:values(accessors[skin.inverseBindMatrices]);   // absent: identity (glTF)
+     const skinning=joints.map((j,q)=>{const m=world(j),b=inv?inv.slice(q*16,q*16+16):ident;return Array.from({length:16},(_,e)=>{const row=e%4,col=Math.floor(e/4);let s=0;for(let r=0;r<4;r++)s+=m[r*4+row]*b[col*4+r];return s;});});
+     for(const p of meshes[node.mesh].primitives){const pos=values(accessors[p.attributes.POSITION]),js=values(accessors[p.attributes.JOINTS_0]),wa=accessors[p.attributes.WEIGHTS_0],unit=wa.componentType===5121?255:wa.componentType===5123?65535:1,ws=values(wa).map((w:number)=>w/unit);
+      for(let k=0;k<pos.length/3;k++){const r=[0,0,0];let lead=0,best=-1;for(let q=0;q<4;q++){const wt=ws[k*4+q];if(!wt)continue;if(wt>best){best=wt;lead=joints[js[k*4+q]];}const m=skinning[js[k*4+q]];for(let ax=0;ax<3;ax++)r[ax]+=wt*(m[ax]*pos[k*3]+m[4+ax]*pos[k*3+1]+m[8+ax]*pos[k*3+2]+m[12+ax]);}out.push([...r,arm.has(lead)?1:0]);}}}
     return {out,hip:world(named.get('Hips')!)[13],shoulder:(world(named.get('UpperArmL')!)[13]+world(named.get('UpperArmR')!)[13])/2};};
    const idle=posed('Idle',.01);if(!idle.out.length)return no('body.footprint','A quadruped-torso/1 body needs a skinned mesh');
    const lo=[0,1,2].map(a=>Math.min(...idle.out.map(v=>v[a]))),hi=[0,1,2].map(a=>Math.max(...idle.out.map(v=>v[a]))),cx=(lo[0]+hi[0])/2,cz=(lo[2]+hi[2])/2,fit=1.34/(idle.shoulder-lo[1]);
    if(!(fit>0&&Number.isFinite(fit)))return no('body.footprint','The Idle pose needs shoulders above its lowest point');
-   let reach=0,where='Idle';for(const [name,pose] of [['Idle',idle],['Standby_Loop',posed('Standby_Loop',0)],['Dance_Loop',posed('Dance_Loop',0)]] as const)for(const v of pose.out)if(v[1]<pose.hip){const d=Math.hypot(v[0]-cx,v[2]-cz)*fit;if(d>reach){reach=d;where=name;}}
+   let reach=0,where='Idle';for(const [name,pose] of [['Idle',idle],['Standby_Loop',posed('Standby_Loop',0)],['Dance_Loop',posed('Dance_Loop',0)]] as const)for(const v of pose.out)if(v[1]<pose.hip&&!v[3]){const d=Math.hypot(v[0]-cx,v[2]-cz)*fit;if(d>reach){reach=d;where=name;}}
    if(reach>QUADRUPED_FOOTPRINT_RADIUS)return no('body.footprint',`In ${where} the lower body reaches ${reach.toFixed(3)} m from where the body stands; quadruped-torso/1 admits at most ${QUADRUPED_FOOTPRINT_RADIUS} m`,{field:'footprint',measured:Math.round(reach*1000)/1000,limit:QUADRUPED_FOOTPRINT_RADIUS});
   }
  }else if(skins.length||nodes.some(n=>n.skin!==undefined)||animations.length)return no('body.rigid','Ceramic and floater bodies must be rigid, without skins or animation clips');

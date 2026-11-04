@@ -20,7 +20,8 @@ export const CENTAUR_MANIFEST={type:'humanoid',license:'owned',rightsConfirmed:t
 export const HIND_OFFSET=.24;
 const LEG=['UpperLeg','LowerLeg','Foot'],HIND={UpperLeg:'HindUpperLeg',LowerLeg:'HindLowerLeg',Foot:'HindFoot'};
 
-export function authorCentaur({source=join(root,'mars/viewer/public/modular/environment/animated-casual.glb'),out,hindOffset=HIND_OFFSET}={}){
+/** `stance:'canonical'` keeps the human Idle's staggered stance (a test variant that admission refuses). */
+export function authorCentaur({source=join(root,'mars/viewer/public/modular/environment/animated-casual.glb'),out,hindOffset=HIND_OFFSET,stance='square'}={}){
  const src=readFileSync(resolve(source)),size=src.readUInt32LE(12),original=JSON.parse(src.toString('utf8',20,20+size)),binary=src.subarray(28+size);
  if(original.nodes?.[61]?.name!=='Root'||original.skins?.[0]?.joints?.length!==62)throw Error('Use the repository canonical animated-casual.glb source; this example is not a general rig converter.');
  const nodes=structuredClone(original.nodes.slice(0,62));nodes.push({name:'JuniperRig',children:[61]});
@@ -106,7 +107,7 @@ export function authorCentaur({source=join(root,'mars/viewer/public/modular/envi
  // the pelvis and the legs hold their bind pose (straight legs, hooves under the hips) while the torso keeps its Idle.
  const square=clip=>{for(const name of ['Body',...LEG.flatMap(n=>[n+'.L',n+'.R'])]){const node=index(name),n=nodes[node];
    clip.tracks=clip.tracks.filter(t=>t.node!==node);for(const [path,v]of [['translation',n.translation??[0,0,0]],['rotation',n.rotation??[0,0,0,1]],['scale',n.scale??[1,1,1]]])clip.tracks.push({node,path,times:[0,1],values:[...v,...v],interpolation:'LINEAR'});}return clip;};
- const idle=addHind(square(canonical('Idle')),0),walk=addHind(canonical('Walk'),.5);
+ const idle=addHind(stance==='canonical'?canonical('Idle'):square(canonical('Idle')),0),walk=addHind(canonical('Walk'),.5);
  const still=(name,seconds)=>({name,tracks:idle.tracks.map(t=>{const v=sample(t,0);return {node:t.node,path:t.path,times:[0,seconds],values:[...v,...v],interpolation:'LINEAR'};})});
  const rest=(clip,name)=>{const t=clip.tracks.find(t=>t.node===index(name)&&t.path==='rotation');if(t)return t;const n={node:index(name),path:'rotation',times:[0,1],values:[...nodes[index(name)].rotation??[0,0,0,1],...nodes[index(name)].rotation??[0,0,0,1]],interpolation:'LINEAR'};clip.tracks.push(n);return n;};
  const turn=(clip,name,frames)=>{const t=rest(clip,name),base=new T.Quaternion(...t.values.slice(0,4));t.times=frames.map(f=>f[0]);t.values=frames.flatMap(([,axis,angle])=>base.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(...axis),angle)).toArray());};

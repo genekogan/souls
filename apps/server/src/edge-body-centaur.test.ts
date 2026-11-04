@@ -17,6 +17,16 @@ test('centaur source: reproducible, within unchanged limits, and its lower body 
  assert.equal(QUADRUPED_FOOTPRINT_RADIUS,HUMAN_RADIUS);
  // A longer-bodied variant would hide its hind legs outside the admitted clearance: refused with field/measured/limit.
  assert.throws(()=>admit(authorCentaur({hindOffset:.45})),(e:any)=>e.code==='body.footprint'&&e.details?.field==='footprint'&&e.details.measured>e.details.limit);
+ // The human Idle's staggered stance on four legs puts a hind hoof outside the disc where the renderer stands it.
+ assert.throws(()=>admit(authorCentaur({stance:'canonical'})),(e:any)=>e.code==='body.footprint'&&/Idle/.test(e.message));
+ // Valid glTF variants are measured, not crashed on: normalised byte weights admit; no inverse binds is a named refusal.
+ const regl=(bytes:Buffer,edit:(j:any,bin:Buffer)=>Buffer)=>{const n=bytes.readUInt32LE(12),j=JSON.parse(bytes.toString('utf8',20,20+n)),bin=edit(j,bytes.subarray(28+n)),jb=Buffer.from(JSON.stringify(j)),json=Buffer.alloc(Math.ceil(jb.length/4)*4,32);jb.copy(json);
+  const o=Buffer.alloc(28+json.length+bin.length);o.writeUInt32LE(0x46546c67,0);o.writeUInt32LE(2,4);o.writeUInt32LE(o.length,8);o.writeUInt32LE(json.length,12);o.writeUInt32LE(0x4e4f534a,16);json.copy(o,20);o.writeUInt32LE(bin.length,20+json.length);o.writeUInt32LE(0x004e4942,24+json.length);bin.copy(o,28+json.length);return o;};
+ const ubyte=regl(made.bytes,(j,bin)=>{const a=j.accessors[j.meshes[0].primitives[0].attributes.WEIGHTS_0],v=j.bufferViews[a.bufferView],at=(v.byteOffset??0)+(a.byteOffset??0),u=Buffer.alloc(a.count*4);for(let i=0;i<a.count*4;i++)u[i]=Math.round(bin.readFloatLE(at+i*4)*255);
+  j.bufferViews.push({buffer:0,byteOffset:bin.length,byteLength:u.length});j.accessors.push({bufferView:j.bufferViews.length-1,componentType:5121,normalized:true,count:a.count,type:'VEC4'});j.meshes[0].primitives[0].attributes.WEIGHTS_0=j.accessors.length-1;const out=Buffer.concat([bin,u]);j.buffers[0].byteLength=out.length;return out;});
+ assert.equal(admit({bytes:ubyte,manifest:made.manifest}).actionProfile,QUADRUPED_TORSO,'normalised UNSIGNED_BYTE weights are admitted');
+ const noBinds=regl(made.bytes,(j,bin)=>{delete j.skins[0].inverseBindMatrices;return bin;});
+ assert.throws(()=>admit({bytes:noBinds,manifest:made.manifest}),(e:any)=>typeof e.code==='string'&&e.code.startsWith('body.'),'identity binds are measured; a refusal is named, never a TypeError');
  // The profile needs the canonical rig; it is not a rigid-body option.
  assert.throws(()=>admit({bytes:made.bytes,manifest:{...made.manifest,type:'ceramic'}}),(e:any)=>e.code==='body.action-profile');
 });
