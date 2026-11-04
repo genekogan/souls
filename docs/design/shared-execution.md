@@ -77,7 +77,8 @@ The guests' bodies are borrowed by that program, so the engine's `actorBorrowed`
 else. This is the intended mechanism, not a verified one: PC05 must show that the native `carry` runs as an edge
 decision step with borrowed crew. If it cannot, PC05 names the smallest engine change, which is T3 engine work.
 
-**Operation identity.** `op = {id: 'op_' + invite + '_r' + revision, programId, eventSeq, committedTick, phase, claims}`.
+**Operation identity.** `op = {id: 'op_' + invite + '_r' + revision, programId, eventSeq, committedTick, phase,
+claims}`.
 - `programId` is the engine program, and `eventSeq` is the decision event's sequence number. The native action
   record starts later and is not stored.
 - `phase` is `started`, then `stopping`, then optionally `blocked`, then `ended`.
@@ -85,7 +86,8 @@ decision step with borrowed crew. If it cannot, PC05 names the smallest engine c
 - *Change:* `Invite.state` gains `'committed'`, so the expiry sweep, which today closes every `pending` invite once
   `tick > expiresTick` (`together.ts`), never touches a running operation.
 
-**Claims.** `claims` lists `{soulId, capabilities: ['hands', 'locomotion']}` for each member, plus `{entity: load, by: op}`
+**Claims.** `claims` lists `{soulId, capabilities: ['hands', 'locomotion']}` for each member, plus `{entity: load, by:
+op}`
 for the load. The load claim is the native `reservedBy`. Claims name the capability they hold, so the busy refusal in
 §3 can say what is occupied. The first template claims only `hands` and `locomotion`. `stance` and equipment claims
 come with the templates that need them (PC13 onward).
@@ -166,7 +168,8 @@ today's `withdraw:<invite>`, which withdraws an unanswered offer before commit.
   it cannot replace the member's shared receipt. Its own receipt completes in the same tick with the outcome "stop
   requested". This is the prompt acknowledgment, not a physical release. `op.phase` becomes `stopping`, and every
   member's shared receipt gets `reason: 'stopping: <name> asked to stop'`.
-- **Supported cleanup.** *Change:* the stop calls `engine.stop(op.programId)`, and the logged `edge-stop` event carries `programId` in its payload so that the stop replays deterministically. Today's `edge-stop` fold stops
+- **Supported cleanup.** *Change:* the stop calls `engine.stop(op.programId)`, and the logged `edge-stop` event carries
+  `programId` in its payload so that the stop replays deterministically. Today's `edge-stop` fold stops
   `programOf(entityId)` (`fold.ts`), which is the wrong program for a borrowed guest. The engine cancels the native
   `carry`, and that cancel never drops a load:
   - during gather, the walkers simply stop;
@@ -178,7 +181,9 @@ today's `withdraw:<invite>`, which withdraws an unanswered offer before commit.
   the first template excludes, or a set-down spot that is not clear), the engine sets
   `p.stopping`, keeps the formation moving along its already validated route, and retries the cancel every tick
   (`packages/engine-mars/src/engine.ts` `stop` and `advance`). The load is set down at the first clear pose, or at the
-  destination. The ledger reads this from the program, which needs a reader that does not exist yet: `p.stopping` is private engine state. *Change (PC08):* `engine-contract` gains a read-only `programStoppingV1(id)`. The ledger reports it like this:
+  destination. The ledger reads this from the program, which needs a reader that does not exist yet: `p.stopping` is
+  private engine state. *Change (PC08):* `engine-contract` gains a read-only `programStoppingV1(id)`. The ledger reports
+  it like this:
   - the op stays `stopping`, and each receipt's reason says the crew is carrying on to the first clear spot;
   - if the formation itself is held up by an obstacle while stopping, the op becomes `blocked`, the receipts name
     the native blocker, the claims are kept because the load is still supported, and the assistance route is named
@@ -194,7 +199,8 @@ today's `withdraw:<invite>`, which withdraws an unanswered offer before commit.
 **Mind disconnect and fade.** A disconnected mind's body keeps its accepted manoeuvre to its end, and never joins
 anything new. A member who *fades* (`ledger.ts`) fails their open receipts and stops their program today. For a
 borrowed member that would cut across a running carry. PC09 owns the rule: fading during a shared operation is
-treated as a stop request with supported cleanup. A pending acceptance from a disconnected mind still counts until `expiresTick`. On reconnect, the same receipt
+treated as a stop request with supported cleanup. A pending acceptance from a disconnected mind still counts until
+`expiresTick`. On reconnect, the same receipt
 shows the actual outcome. PC09 ([#688](https://github.com/genekogan/souls/issues/688)) proves this.
 
 ## 4. Envelope of the first template (A3)
@@ -262,11 +268,11 @@ them. This contract builds on all of them. Its new boundary questions are the on
 | contract piece | current surface | PC |
 |---|---|---|
 | loose beam and sheet defs, opt-in `shared-carry`, a new `core-rack-beam` revision, and a conformance supplement | `packages/world-compiler/src/core-kit/authoring/work.mjs`, `packages/conformance/conformance/` | PC03 [#682](https://github.com/genekogan/souls/issues/682) |
-| `kind: 'shared'` invites, revision, accept and decline against a revision, expiry | `edge/ledger/together.ts` | PC04 [#683](https://github.com/genekogan/souls/issues/683) |
+| `kind: 'shared'` invites, revision, accept and decline against a revision, expiry; a test that a host body act closes the invite (`shared.left` for every member) | `edge/ledger/together.ts` | PC04 [#683](https://github.com/genekogan/souls/issues/683) |
 | readiness, atomic commit (`enqueueObjectDecision`), the `committed` state, claims, borrowed crew, `shared.busy` instead of `replaced`, `shared.left`, per-member receipts | `edge/ledger/ledger.ts` `insert`, `world.ts`, `god/engine-bridge.ts`, `packages/engine-mars/src/engine.ts` | PC05 [#684](https://github.com/genekogan/souls/issues/684) |
 | the native crew `carry` through the bridge, `carry-with` offers, the solo refusal's alternative | `god/engine-bridge.ts`, `mars/viewer/engine/carry/` | PC06 [#685](https://github.com/genekogan/souls/issues/685) |
 | a brief obstruction wait, detour or lasting blockage for the formation | native `planner.ts` and `blockedWait` | PC07 [#686](https://github.com/genekogan/souls/issues/686) |
-| `stop-carry`, stopping a program by `op.programId`, `stopping`, `blocked`, release | the ledger, `fold.ts` `edge-stop`, engine `stop`/`advance`, the native `cancel` | PC08 [#687](https://github.com/genekogan/souls/issues/687) |
+| `stop-carry`, stopping a program by `op.programId`, `stopping`, `blocked`, release; old `edge-stop` events without `programId` keep replaying through `programOf(entityId)`, unchanged | the ledger, `fold.ts` `edge-stop`, engine `stop`/`advance`, the native `cancel` | PC08 [#687](https://github.com/genekogan/souls/issues/687) |
 | disconnect, reconnect, and fade during an operation | the ledger and the owner loop | PC09 [#688](https://github.com/genekogan/souls/issues/688) |
 | restart reconciliation | the invite row plus host checkpoint and log replay | PC10 [#689](https://github.com/genekogan/souls/issues/689) |
 | a different load and a crew of 3–4 | data and def only | PC11 [#690](https://github.com/genekogan/souls/issues/690) |
