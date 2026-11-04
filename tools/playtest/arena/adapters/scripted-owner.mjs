@@ -197,7 +197,8 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
         // #832: woken by an owner message with the act still going: keep waiting on its receipt for the rest of the window.
         // A `wait` would return at once while that card is unacknowledged (the world's rule, so "stop" is never slept
         // through), so check the receipt instead, every POLL_MS, until it ends or the window does.
-        const rid = waited ? ownerWokeOpen(r) : null;
+        // Not when the woken output already shows the act under way (a seated sit holds its receipt open while seated).
+        const rid = waited && !stepOutcome(r, { waited }).ok ? ownerWokeOpen(r) : null;
         while (rid && Date.now() + POLL_MS <= until) {
           await new Promise((ok) => setTimeout(ok, POLL_MS));
           const q = await cli(['receipt', rid]), rec = stepJson(q);

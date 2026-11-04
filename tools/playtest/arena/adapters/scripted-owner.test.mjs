@@ -210,3 +210,14 @@ test('ownerWokeOpen and waitWindowSec: only an owner wake on an open receipt res
   assert.equal(ownerWokeOpen({ code: 1, stdout: '' }), null);
   assert.deepEqual([waitWindowSec(['act', 'x', '--wait']), waitWindowSec(['act', 'x', '--wait', '100']), waitWindowSec(['act', 'x', '--wait', '20'])], [60, 60, 20]);
 });
+
+test('owner-woken wait: a sit the world shows under way is not re-checked and stays done (#832 review)', async () => {
+  const SIT = `import { appendFileSync } from 'node:fs';
+const a = process.argv.slice(2); appendFileSync('calls.jsonl', JSON.stringify(a) + '\\n');
+if (a[0] === 'act') console.log(JSON.stringify({ accepted: true, waited: '3s', done: false, receipt: { id: 'r_sit', capability: 'sit:bench', phase: 'started' }, ownerMessages: [{ id: 'm_x', text: 'next' }], events: [{ kind: 'activity.observed', receipt: { id: 'r_sit' }, action: { status: 'executing' } }] }));
+else console.log(JSON.stringify({ ok: true, cmd: a[0] }));`;
+  const d = folder(SIT);
+  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'sit on the bench' }]), script: { rules: [{ match: 'bench', do: [['act', 'sit on the bench', '--wait', '8']], result: 'Sitting' }] } });
+  const c = calls(d);
+  assert.equal(c.filter((x) => x[0] === 'receipt').length, 0); assert.deepEqual(c.at(-1), ['result', 'm1', 'done', 'Sitting']);
+});
