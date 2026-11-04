@@ -135,6 +135,8 @@ For a compact four-legged body with a human-style upper torso, such as a centaur
 only), upright standby rest, an authored standing dance, canonical hands, and everything else refused. Read
 `profiles.quadrupedTorso` in the contract. Use the canonical rig. The canonical legs are the forelegs; extra hind
 joints may sit under `Body` (hips) and `Root` (hooves) and are driven by your own clips. Support stays the humanoid
-navigation disc, so the whole lower body (every visible vertex below the hips) must stay within
-`footprintRadius` (0.28 m) of the body's centre, or admission refuses `body.footprint`. Hind hooves are visual: the
+navigation disc. Standing as the renderer stands it (the `Idle` pose, centred on that pose's x/z box at the fitted
+shoulder height), and in `Standby_Loop` and `Dance_Loop` at their start, every skinned vertex below the hips must stay
+within `footprintRadius` (0.28 m), or admission refuses `body.footprint`. Stand the legs square: a human's staggered
+idle stance copied onto hind legs does not fit. Hind hooves are visual: the
 world does not place them on terrain. `tools/body-authoring/centaur/author.mjs` is a worked example.

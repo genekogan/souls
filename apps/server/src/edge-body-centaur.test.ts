@@ -48,6 +48,8 @@ test('shared centaur preset: earlier presets unchanged, selection, honest dispos
  const halt=await accept(f.host,edge.act(a.soul,{capability:'stand:here'}));assert.ok(halt.accepted);tick(20);
  // A humanoid next to the centaur is not offered paired contact acts with it (partner profile), as native admission says.
  for(const verb of ['hug','high-five','dance-with'])assert.equal(profileActionProblem(body.body,verb,undefined,'edge')!==null,true,verb);
+ const toward=edge.capabilities(b.soul).filter(c=>['hug','high-five','dance-with','handshake'].includes(c.verb)&&c.id.endsWith(':'+a.row.id));assert.ok(toward.length>0,'paired offers toward the centaur are listed');
+ for(const c of toward){assert.equal(c.available,false,c.id);assert.equal(c.blocked?.code,'body.unsupported',c.id);const r=await accept(f.host,edge.act(b.soul,{capability:c.id}));assert.equal(r.accepted,false,c.id);assert.equal((r as any).code,'body.unsupported',c.id);}
  // Hands: the canonical adapters with real custody, then release onto support.
  const god=new GodMode(f.db,{worldId:f.host.worldId,ownerId:'dev:fixture',tick:()=>f.host.engine.world.tick,emit(){}});installEngineBridge({host:f.host,god,edge,log(){},worldLore:false,worldClock:false});
  assert.ok(god.act({ops:[{op:'place',def:'core/table@1',name:'load-table',p:[2,0]},{op:'place',def:'core/lantern@3',name:'real-load',in:{parent:'load-table',slot:'top'},p:[0,0]}]}).accepted);tick(15);

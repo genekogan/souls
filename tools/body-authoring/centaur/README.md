@@ -20,9 +20,12 @@ How it is built:
   `Root`) sit 0.24 m behind them. In each clip, a hind leg replays its same-side foreleg's track half a stride later.
   As a result, left fore with right hind, and right fore with left hind, move together. There is no solver,
   retargeting or foot IK.
-- **Footprint.** The horse body is foal-sized, so everything below the hips fits the 0.28 m humanoid navigation disc.
-  That disc is the world's support and collision footprint for this body, and admission checks it (`body.footprint`).
-  `authorCentaur({hindOffset:.45})` makes a longer variant that admission refuses.
+- **Footprint.** The horse body is foal-sized and stands square: the pelvis and legs hold their bind pose in Idle
+  instead of the canonical human's staggered stance. As the renderer stands it (its Idle pose, centred and fitted),
+  everything below the hips in Idle, standby and dance fits the 0.28 m humanoid navigation disc. That disc is the world's
+  support and collision footprint, and admission checks those poses (`body.footprint`). The walk's stride swings the
+  hooves beyond the disc mid-step, as a humanoid's feet do. `authorCentaur({hindOffset:.45})` makes a longer variant
+  that admission refuses.
 - **Hands.** The torso, arms and hands are the canonical ones. Pick-up, carry and put-down use the world's existing hand
   adapters and real custody.
 - **Rest and dance.** Rest is an upright standby on the same four hooves. The dance sways the torso and pumps the arms

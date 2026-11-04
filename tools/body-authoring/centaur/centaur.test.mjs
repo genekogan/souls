@@ -30,3 +30,10 @@ test('pose adapters leave the hind joints alone; standby and dance keep all four
  const back=frame(v,'idle',60,{since:4});hooves(back).forEach((p,i)=>assert.ok(p.distanceTo(idleHooves[i])<.02));
 });
 
+
+test('as the renderer stands it, every hoof stays inside the 0.28 m disc in idle, standby and dance',async()=>{
+ const {v}=await views(),HOOF=.055;let worst=0;
+ for(const [activity,t] of [['idle',10],['rest',20],['dance',30],['dance',30.6],['idle',40]]){const h=frame(v,activity,t,{since:4+t%1});
+  for(const n of ['Foot.L','Foot.R','HindFoot.L','HindFoot.R']){const p=world(h,n);worst=Math.max(worst,Math.hypot(p.x,p.z)+HOOF);}}
+ assert.ok(worst<=.28,'farthest hoof edge '+worst.toFixed(3)+' m');
+});

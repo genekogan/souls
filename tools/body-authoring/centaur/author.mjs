@@ -27,13 +27,13 @@ export function authorCentaur({source=join(root,'mars/viewer/public/modular/envi
  const index=name=>{const i=nodes.findIndex(n=>n.name===name);if(i<0)throw Error('Missing joint '+name);return i;};
  // Hind chains: hip under Body, knee under the hip, hoof under Root (canonical feet are Root children), offset straight back.
  // Body and Root carry no bind rotation in the canonical rig, so a world offset is the same local offset.
- for(const n of [index('Body'),index('Root')])if(Math.abs((nodes[n].rotation??[0,0,0,1])[1])>1e-5||(nodes[n].scale??[1,1,1]).some(s=>Math.abs(s-1)>1e-5))throw Error('Canonical Body/Root bind transform changed');
+ for(const n of [index('Body'),index('Root')])if((nodes[n].rotation??[0,0,0,1]).slice(0,3).some(v=>Math.abs(v)>1e-5)||(nodes[n].scale??[1,1,1]).some(s=>Math.abs(s-1)>1e-5))throw Error('Canonical Body/Root bind transform changed');
  const back=t=>[t[0],t[1],t[2]-hindOffset];
  for(const side of ['L','R']){
   const fore=LEG.map(n=>nodes[index(n+'.'+side)]),[hip,knee,hoof]=LEG.map(n=>nodes.length+LEG.indexOf(n));
   nodes.push({name:HIND.UpperLeg+'.'+side,rotation:fore[0].rotation,scale:fore[0].scale,translation:back(fore[0].translation),children:[knee]});
   nodes.push({name:HIND.LowerLeg+'.'+side,rotation:fore[1].rotation,scale:fore[1].scale,translation:fore[1].translation});
-  nodes.push({name:HIND.Foot+'.'+side,rotation:fore[2].rotation,translation:back(fore[2].translation)});
+  nodes.push({name:HIND.Foot+'.'+side,rotation:fore[2].rotation,...(fore[2].scale?{scale:fore[2].scale}:{}),translation:back(fore[2].translation)});
   nodes[index('Body')].children.push(hip);nodes[index('Root')].children.push(hoof);
  }
  const parents=new Map();nodes.forEach((n,i)=>(n.children??[]).forEach(c=>parents.set(c,i)));
@@ -102,7 +102,11 @@ export function authorCentaur({source=join(root,'mars/viewer/public/modular/envi
     const values=times.flatMap(t=>{const v=sample(track,shift?((t+shift)%duration):t);return offset?v.map((x,i)=>x+offset[i]):v;});
     clip.tracks.push({node:hind,path:track.path,times,values,interpolation:track.interpolation});}}
   return clip;}
- const idle=addHind(canonical('Idle'),0),walk=addHind(canonical('Walk'),.5);
+ // A four-legged stance is square: the canonical Idle's staggered human stance would put a hind hoof outside the disc, so
+ // the pelvis and the legs hold their bind pose (straight legs, hooves under the hips) while the torso keeps its Idle.
+ const square=clip=>{for(const name of ['Body',...LEG.flatMap(n=>[n+'.L',n+'.R'])]){const node=index(name),n=nodes[node];
+   clip.tracks=clip.tracks.filter(t=>t.node!==node);for(const [path,v]of [['translation',n.translation??[0,0,0]],['rotation',n.rotation??[0,0,0,1]],['scale',n.scale??[1,1,1]]])clip.tracks.push({node,path,times:[0,1],values:[...v,...v],interpolation:'LINEAR'});}return clip;};
+ const idle=addHind(square(canonical('Idle')),0),walk=addHind(canonical('Walk'),.5);
  const still=(name,seconds)=>({name,tracks:idle.tracks.map(t=>{const v=sample(t,0);return {node:t.node,path:t.path,times:[0,seconds],values:[...v,...v],interpolation:'LINEAR'};})});
  const rest=(clip,name)=>{const t=clip.tracks.find(t=>t.node===index(name)&&t.path==='rotation');if(t)return t;const n={node:index(name),path:'rotation',times:[0,1],values:[...nodes[index(name)].rotation??[0,0,0,1],...nodes[index(name)].rotation??[0,0,0,1]],interpolation:'LINEAR'};clip.tracks.push(n);return n;};
  const turn=(clip,name,frames)=>{const t=rest(clip,name),base=new T.Quaternion(...t.values.slice(0,4));t.times=frames.map(f=>f[0]);t.values=frames.flatMap(([,axis,angle])=>base.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(...axis),angle)).toArray());};
