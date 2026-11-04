@@ -1,8 +1,9 @@
 # Agency quality: fluid agent–Soul control
 
 Design direction for [tranche #623](https://github.com/genekogan/souls/issues/623), developed from the owner's
-November 2, 2026 review. This is a planning specification, not a claim of implemented behavior or authorization
-to collect telemetry, run live/model experiments, replace a harness, relax world rules or deploy. Issues hold
+November 2 review and November 3, 2026 controllability reassessment. This is a planning specification, not a claim
+of implemented behavior or authorization to collect telemetry, run live/model experiments, replace a harness,
+relax world rules or deploy. Issues hold
 execution state; this document holds the shared reasoning and contracts. Candidate solutions earn adoption
 through evidence and can be revised, rejected or left inconclusive.
 
@@ -19,6 +20,105 @@ quick answer that loses the errand is not good control. Intentional waiting, phy
 attention can be appropriate. Measure the owner's repair work, surprise and trust alongside completion,
 responsiveness and system cost. No universal first-action latency target is established by this design.
 
+## Deliver useful control improvements incrementally
+
+The objective is a Soul that carries an intention over short and long horizons, receives relevant changes
+promptly, acts without avoidable delay and remains steerable while doing so. Observation is an enabling tool,
+not the product finish line. A comprehensive dashboard, fleet reporting system or harness replacement must not
+become a prerequisite for repairing a demonstrated control failure.
+
+The ordered assignments and release journal live in [#623](https://github.com/genekogan/souls/issues/623).
+Each implementation slice owns one independently useful outcome and its proof, normally within a single-digit
+number of active hours including relevant verification. Split larger work without hiding unfinished acceptance.
+The initial exceptions to visible product benefit are a bounded current-path/contract audit and measurement
+qualification. Their endpoint is enough trustworthy evidence to select and prove the first improvement.
+
+Every product PR states the expected user benefit, the observed baseline, changed mechanism, acceptance,
+unrelated behavior/cost guardrails and rollback. Demonstrate the benefit by measurement or uncut real-speed
+visual evidence; use both when the claim involves timing and visible behavior. Protocol tests support but do
+not replace real-agent evidence for agent-quality claims. A clip proves what occurred in that episode, not a
+population-wide improvement. No-op qualification can retire an obsolete finding with evidence; it is not a
+new improvement. Reject an ineffective candidate rather than manufacture a PR or mark the product goal met.
+
+Begin with one supported control path used in ordinary play, documenting how it was identified. Distinguish
+direct chat, legacy live and managed control; do not claim cross-host coverage from one adapter. Reuse existing
+listeners, dashboards, task state and receipts. Add only missing fields necessary for the next question. A
+small trace/readout is enough for the first fixes; the browser viewer can consume that contract independently.
+Expand coverage by a named subsequent slice, never silently drop other supported paths.
+
+### Running intentions and responsive activity
+
+An intention is more than a queued command or a successful receipt. Preserve its requested outcome, constraints,
+latest owner revision, completed effects, remaining work and actual wait/dependency across interruptions.
+Represent the distinctions using existing task/session state before inventing another planner or intent store.
+The following behavior is required, independent of internal representation:
+
+- A temporary question updates understanding and permits an appropriate response without erasing the errand.
+- An owner change to destination, constraint or priority updates the relevant work. Explicit replacement or
+  cancellation invalidates obsolete queued steps; completed or uncertain public effects are not blindly replayed.
+- A sustained activity can coexist with compatible conversation, or pause/resume through native mechanics.
+  Model-turn interruption does not automatically cancel the body. Incompatible activities obey physical rules.
+- Waiting has a reason and a wake condition or a bounded progress check where supported. Slow travel, deliberate
+  reading and provider delay are not automatically a deadlock. A missing receipt or host connection remains
+  unknown until reconciled; exhausted recovery reports a useful blocked state instead of silent success.
+- An event burst must not cause endless replanning, starvation of the owner's task or lost critical updates.
+  Coalesce redundant observations where safe; preserve owner revisions, required events and terminal receipts.
+- Restart/reconnect restores the latest intention without repeating completed effects or resurrecting cancelled
+  work. Host exit, unsupported wake mechanisms and operating-system sleep remain explicit availability limits.
+
+Measure reception, host delivery, useful response and physical course correction separately. "Immediate" means
+avoiding unnecessary blocking and promptly offering urgent information through supported host mechanisms;
+it cannot promise zero inference/network delay or cognitive incorporation at every instant. Set practical
+per-slice latency/progress bounds from baseline before comparing candidates, and report misses and unknowns.
+
+### Stress and transfer as part of each slice
+
+Reuse existing test/playtest machinery. Establish a small versioned family of tasks and perturbations rather
+than a new test platform or a large Cartesian scenario catalogue. Select the relevant subset for each change:
+simple travel/action, an interrupted sustained activity, a multi-step intention, and an expressive composition
+of existing actions. Vary wording, targets, starting state and relevant ambiguity; reserve examples before tuning.
+
+Stress factors include slow/refused observations, overlapping read and speech, event bursts during a model
+turn, owner revision/cancel while work is queued, lost/duplicate/out-of-order receipts, temporary disconnect,
+controller restart and bounded crowd/load. Seed one fault at a time for causal diagnosis, then a small selected
+combination for integration. Inject faults only in isolated fixtures, never production traffic.
+
+Use deterministic/fake-host cases for fidelity, ordering, no duplicate effects, retry limits and bounded
+recovery. Use separately authorized real-agent comparisons for usefulness and expressivity. Keep model/effort
+and relevant conditions matched, retain all attempts, use repetitions appropriate to the claim and label
+insufficient samples honestly. Existing minimum repeats remain required but do not establish significance.
+Long-horizon proof names actual elapsed duration, interruptions and restarts; a compressed clock test proves
+state mechanics, not hours of reliable ordinary play. No claim of indefinite unattended operation from a clip.
+
+For expressive composition, use at least two materially different unseen intentions involving existing
+movement/activity, communication and owner revisions or social interruptions. Judge satisfied intent,
+appropriate response, continued progress and owner repair burden, allowing different valid plans and dialogue.
+More action types, chatter or shorter average time alone are not evidence of more expressive agency.
+
+### Release and learn while development continues
+
+Release independently useful qualified changes in small coherent batches through the existing release owner,
+not one release per ticket and not one final big-bang release. The coordinator maintains issue-to-PR-to-release
+links and separates implemented, proved, reviewed, merged, released and observed in use.
+
+Each candidate batch records its intended benefit, exact versions, scoped proof, consented observation plan,
+sampling window/budget, denominators where known, regression thresholds and rollback/disable procedure before
+activation. Existing admission/world health and unrelated-actor behavior are guardrails. Monitor correct useful
+starts, response/correction delay, preserved intentions, avoidable refusals and owner repairs alongside those
+guardrails, with missing observations explicit. Use existing health evidence and opted-in episodes; do not add
+background agent monitors or silent calls home. A human review request is not permission to collect their data.
+
+At the end of the bounded observation window, record retain, revise or roll back with evidence and uncertainty.
+If natural-use feedback is unavailable, report that limitation; staging success is not field validation.
+Critical loss/duplication of actions, stale cancelled work, access violations or world-health regression stop
+further rollout and invoke the authorized rollback path. Define smaller practical regression limits before
+rollout rather than selecting them after seeing results. Preserve required gates and original failed evidence.
+
+Gene reviews the first visible benefit batch and material product choices, such as changing a justified action
+restriction, adopting a different host architecture or expanding scope/resources. Group required T3/T4 approvals
+into coherent review packets where allowed; do not waive them. Routine milestones continue within the authorized
+agenda. Independent technical review and a resolved shared contract are still needed before dependent work.
+
 ## What is known, and what is only suspected
 
 The original [continuity plan #22](https://github.com/genekogan/souls/issues/22) and
@@ -31,7 +131,7 @@ generalizing from the source. A closed historical issue is not current behaviora
 
 These source leads were inspected at main `9c0862b0621d0cffbb8473f6c5dc9143fb5da8b3`: the
 [managed supervisor](../../tools/soul-runtime/supervisor.mjs),
-[thin skill](../../tools/world-launcher/soul/SKILL.md),
+[thin skill](../../tools/world-launcher/soul/skill.md),
 [request admission](../../apps/server/src/load/admission.ts) and
 [activity offers](../../apps/server/src/edge/ledger/activities.ts). They are audit inputs, not incident traces.
 
@@ -231,12 +331,19 @@ endless study. Existing safety/security/proof/release requirements remain; no ga
 
 ## Ownership and implementation handoff
 
-Start with #592's current-path/evidence inventory and #625's measurement design. Then select the smallest
-authorized #624 slice that renders a trustworthy local episode and measures its own cost. Use those findings
-to select one or two concrete investigations/fixes, with explicit acceptance before code. Source-only audits
-can proceed earlier; broad behavioral claims depend on qualified observation and authorized experiments.
-Select new implementation issues after the cause and scope are known. Do not launch every lane or adopt all
-candidate architectures because they appear here. Any required model spend/resources need separate authority.
+Follow the [development coordinator contract](https://github.com/genekogan/souls/blob/main/docs/process/development-coordinator.md)
+and #623's current dated agenda. Start with #592's bounded current-path/evidence inventory and #625's small
+baseline/stress specification. Then qualify a minimal passive trace with its own cost. Select one or two
+demonstrated control defects for the first useful batch; the full #624 viewer and #590 reporting expansion are
+not mandatory prerequisites. Source-only audits and focused correctness fixes may proceed earlier with
+proportionate proof. File implementation children when their outcome and evidence are concrete; retain the
+15 original work issues as scope/evidence owners, not 15 giant assignments or a completion percentage.
+
+#626 host-loop changes and #450/#451 capacity work are conditional routes to a demonstrated control benefit,
+not unconditional foundations. Prefer supported mainstream host facilities and the smallest necessary Soul
+bridge. A bounded comparison may reject a rewrite. Do not launch every lane or adopt all candidates. Record
+the future coordinator's actual implementation, model/resource, merge and release authority before dispatch;
+this design revision itself launches no workers, model runs, collection or deployment.
 
 The existing continuity, scalability, action and reporting owners remain authoritative. Expressive actions
 [#26](https://github.com/genekogan/souls/issues/26)/[#426](https://github.com/genekogan/souls/issues/426) and
@@ -244,8 +351,9 @@ cooperation [#560](https://github.com/genekogan/souls/issues/560) supply transfe
 rebuild every activity. Client performance #556, project visibility #581/#583 and operational alerting #461
 are related but do not substitute for this experience-level work.
 
-Review each first observer/contract or shared-runtime milestone before dependent adoption; otherwise review
-at most two bounded milestones together. Determine proof tier from actual surfaces: planning T0, local UI
-at least T2, shared behavior/runtime/engine changes often T3. No production migration, automatic issue flood,
+Apply independent review at the repository cadence and before shared-contract adoption; Gene's review points
+are the product/release decisions above, not an automatic pause every one or two tasks. Determine proof tier
+from actual surfaces: planning T0, local UI at least T2, shared behavior/runtime/engine changes often T3.
+No production migration, automatic issue flood,
 continuous model critic or central social director is implied. Preserve rejected hypotheses and historical
 failures, update issues with dispositions and link implementation proof and eventual release evidence separately.

@@ -11,6 +11,9 @@ This is also the field-learning component of [agency quality](agency-quality.md)
 [#625](https://github.com/genekogan/souls/issues/625) defines evaluation validity. Local capture and remote
 sharing are independent opt-ins, both disabled by default. Develop one useful local episode before expanding
 upload/aggregation. No feature or data collection is enabled by this planning expansion.
+The November 3 controllability revision starts with a minimal trace/readout; neither a complete browser viewer
+nor this reporting service blocks a demonstrated control fix. Each small release can use existing health
+evidence and deliberately opted-in local episodes, with a bounded observation window and honest missing feedback.
 
 ## Reuse the evidence we have
 
@@ -52,7 +55,7 @@ cannot reconstruct facts that were never retained.
 
 ## Opt-in capture without burdening the mind
 
-Start with the shared evidence contract and a useful local episode/timeline, then selected manual reports;
+Start with the smallest shared evidence contract and a useful local episode/readout, then selected manual reports;
 optional upload, bounded anomaly triggers and aggregation follow only after that journey works. Local inspection
 does not require sharing. The agent can flag an unexpected result in one report, without narrating every
 action, repeatedly polling, or performing extra model calls. A bounded local ring and asynchronous upload queue
