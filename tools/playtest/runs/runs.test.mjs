@@ -190,3 +190,13 @@ test('cmdRun hooks are opt-in: without a signal it reaches provision as before; 
   assert.equal(started, true);
   await assert.rejects(cmdRun({ _: ['run', join(f.dir, 'scenario.json')], out: join(f.dir, 'cancelled'), 'server-root': f.serverRoot }, { modules, preflight: { ok: true }, signal: ac.signal }), /cancelled before provision/);
 });
+
+test('the scenario preflight runs once: its result reaches cmdRun through hooks', async () => {
+  const f = fixture();
+  let calls = 0, seen = null;
+  const r = await startRun({ spec: f.spec(), serverRoot: f.serverRoot, outDir: f.out(), scenarioPreflight: async () => { calls += 1; return { ok: true, checks: {}, allow: { allowed: true } }; },
+    execute: async ({ hooks }) => { seen = hooks.preflight; return 0; } });
+  assert.equal(r.status, 'completed');
+  assert.equal(calls, 1);
+  assert.deepEqual(seen, { ok: true, checks: {}, allow: { allowed: true } });
+});

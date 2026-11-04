@@ -23,6 +23,9 @@ export function createLedger({ file = null, clock = () => new Date().toISOString
     entries.push(entry);
     record('own', entry, { meta });
     // Registered after cleanup ran (a runner step that was already in flight at cancel): stop it at once, on the record.
+    // releaseAll awaits late entries registered before it returns. One registered after it returns is settled here
+    // without a waiter: best effort, and process exit may pre-empt it; its 'own' line in ledger.jsonl (with no matching
+    // 'release') keeps that visible rather than hidden.
     if (closed) { entry.late = true; entry.lateRelease = settle(entry, 15000); }
     return entry;
   }

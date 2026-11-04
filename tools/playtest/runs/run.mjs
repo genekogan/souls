@@ -36,7 +36,9 @@ async function main() {
     const { spec, specPath } = load();
     const v = validateSpec(spec, { specPath });
     if (!v.ok) { print({ status: 'refused', stage: 'validate', errors: v.errors }); return 2; }
-    const pre = await preflightRun({ validation: v, serverRoot });
+    // validate applies the same preflight as start (providers, quota, machine gate) and creates nothing.
+    const { preflight } = await import('../playtest.mjs');
+    const pre = await preflightRun({ validation: v, serverRoot, scenarioPreflight: preflight });
     print({ status: pre.ok ? 'valid' : 'refused', stage: 'preflight', effective: v.effective, controllers: v.controllers, providers: v.policy.required, errors: pre.errors, checks: pre.checks });
     return pre.ok ? 0 : 2;
   }

@@ -128,7 +128,9 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
       }
     } else receipt.observer = { ok: null, skipped: 'observer.check false' };
     save();
-    const hooks = { own: ledger.own, signal: abort.signal, ...(modules ? { modules } : {}) };
+    // The scenario preflight already ran in preflightRun; hand its result over so cmdRun does not repeat it (a second
+    // machine-gate roll could otherwise refuse inside the runner and read as failed rather than refused).
+    const hooks = { own: ledger.own, signal: abort.signal, ...(pre.checks.scenario ? { preflight: pre.checks.scenario } : {}), ...(modules ? { modules } : {}) };
     const e0 = Date.now();
     const executing = Promise.resolve().then(() => execute({ scenarioFile, playtestDir, serverRoot, hooks, runDir }))
       .then((code) => ({ status: code === 0 ? 'completed' : 'failed', exit: code, ...(code === 0 ? {} : { reason: `scenario runner exited ${code}` }) }),

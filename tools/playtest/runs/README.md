@@ -36,7 +36,8 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 
 Refusals (`status: "refused"`) happen before any directory or process exists: unknown version or field, unsupported
 cast, non-dev world, draft measurement fixture, live controllers without opt-in, too many controllers, missing server
-files or web build, busy port, and the scenario runner's own preflight (providers, quota, machine gate).
+files or web build, busy port, and the scenario runner's own preflight (providers, quota, machine gate). `validate`
+applies the same preflight as `start`; `start` runs it once and hands the result to the scenario runner.
 
 ## What a run writes
 
