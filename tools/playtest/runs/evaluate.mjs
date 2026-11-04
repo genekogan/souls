@@ -281,9 +281,13 @@ function scenarioAcceptance(sr) {
 /** Identity of what ran (must match for repeats to pool) and the conditions it ran under (listed, not pooled on). */
 export function runIdentity(sr) {
   const sc = sr.scenario ? structuredClone(sr.scenario) : null;
-  if (sc) { for (const k of ['scenarioPath', 'scenarioSha256', 'serverRoot']) delete sc[k]; if (sc.world) delete sc.world.port; }
+  if (sc) {
+    for (const k of ['scenarioPath', 'scenarioSha256', 'serverRoot']) delete sc[k]; if (sc.world) delete sc.world.port;
+    // A traced seat is a different condition from an untraced one, but its run-specific trace file and ids are not.
+    for (const s of sc.seats ?? []) if (s.diagnostics?.trace) s.diagnostics = { trace: true };
+  }
   const eff = sr.receipt?.spec?.effective ?? null;
-  const seats = (sc?.seats ?? []).map((s) => ({ id: s.id, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null, effort: s.effort ?? null, persona: s.persona ?? null, script: s.script ? hashOf(s.script).slice(0, 16) : null }));
+  const seats = (sc?.seats ?? []).map((s) => ({ id: s.id, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null, effort: s.effort ?? null, persona: s.persona ?? null, script: s.script ? hashOf(s.script).slice(0, 16) : null, ...(s.diagnostics?.trace ? { traced: true } : {}) }));
   const components = {
     scenario: sc ? hashOf(sc).slice(0, 16) : null,
     worldSource: eff?.world?.source ? `${eff.world.source.kind}:${eff.world.source.path}@${eff.world.source.sha256.slice(0, 16)}` : sc?.world ? `${sc.world.snapshot ? 'snapshot' : 'genesis'}:${sc.world.snapshot ?? sc.world.genesis}@unhashed` : null,
@@ -337,6 +341,8 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
     coverage: {
       directorSeats: Object.keys(sr.director).length, seatTranscripts: Object.values(sr.steps).filter((s) => s.length).length, requests: requests.length,
       observerEvidencePacks: sr.run?.evidence?.length ?? 0, observer: sr.receipt?.observer ?? null,
+      // Diagnostics (SR3) are linked, not interpreted here: `run.mjs correlate` is the analysis of a trace.
+      diagnostics: sr.receipt?.diagnostics?.capture ? Object.fromEntries(Object.entries(sr.receipt.diagnostics.capture.seats).map(([seat, x]) => [seat, { file: x.file, present: sr.receipt.diagnostics.capture.result?.[seat]?.present ?? null, sha256: before[x.file]?.sha256 ?? null }])) : 'off',
       // Semantic (model) review is never run here. When the run had one, its mode, model and outputs are identified so
       // an answer built on it can say what it rests on; review/cli.mjs review is the explicit, separately budgeted path.
       semanticReview: review ? { mode: sr.scenario?.review?.mode ?? 'model', provider: (sr.scenario?.review?.mode ?? 'model') === 'model' ? 'claude' : null, model: (sr.scenario?.review?.mode ?? 'model') === 'model' ? (sr.scenario?.review?.reviewerModel ?? 'opus') : null, requests: review.requests ?? 0, inputs: (sr.scenario?.review?.mode ?? 'model') === 'model' ? 'bounded per-request evidence projections (review/run.mjs projectEvidence)' : 'deterministic oracles only', outputs: ['ledger.tsv', 'reviews.jsonl'].map((f) => sr.at(f)).filter((f) => before[f]), note: 'indexed, not re-run; evaluate makes no model call' } : null,

@@ -7,9 +7,10 @@ import { providerPolicy, assertMeasurementReady } from '../lib/provider-policy.m
 import { sha256 } from '../lib/hash.mjs';
 import { REPO_ROOT } from '../../lib/paths.mjs';
 import { validateScenario } from '../scenarios/lib/validate.mjs';
+import { validateDiagnostics } from './diagnostics.mjs';
 
 export const SPEC_VERSION = 1;
-const TOP = new Set(['soulRun', 'name', 'scenario', 'cast', 'world', 'durationSec', 'observer', 'limits', 'controllers', 'retention', 'setup', 'evaluation']);
+const TOP = new Set(['soulRun', 'name', 'scenario', 'cast', 'world', 'durationSec', 'observer', 'limits', 'controllers', 'retention', 'setup', 'evaluation', 'diagnostics']);
 const CASTS = ['scenario', 'none'];
 // The scripted director delivers cards and chat; it has no pause or resume (end is the run's own cancellation).
 const DIRECTOR_COMMANDS = { scripted: [] };
@@ -35,7 +36,7 @@ export function readSpec(file) {
 }
 
 /** Static validation: no process, port or directory is touched. Returns {ok, errors, effective, scenario, policy}. */
-export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serverRoot = REPO_ROOT } = {}) {
+export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serverRoot = REPO_ROOT, toolsRoot = REPO_ROOT } = {}) {
   const errors = [];
   const fail = (code, message) => errors.push({ code, message });
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return { ok: false, errors: [{ code: 'spec.not-object', message: 'spec must be a JSON object' }] };
@@ -121,6 +122,9 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (errors.length) return { ok: false, errors };
   const effectiveScenario = applyOverrides(scenario, { cast, world: spec.world, durationSec: spec.durationSec, observer });
   if (composed) for (const m of validateScenario(effectiveScenario)) fail('cast.scenario', `composed scenario: ${m}`);
+  // Diagnostics (SR3): opt-in trace capture per seat; off unless named. Capability and availability are recorded.
+  const diag = validateDiagnostics(spec.diagnostics, effectiveScenario.seats ?? [], { root: toolsRoot });
+  for (const e of diag.errors) errors.push(e);
   let policy = null;
   try { policy = providerPolicy(effectiveScenario); } catch (e) { fail('controllers.policy', e.message); }
   const controllerList = [...(effectiveScenario.seats ?? []).map((s) => ({ id: s.id, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null, effort: s.effort ?? null })), ...(effectiveScenario.god ? [{ id: 'god', adapter: effectiveScenario.god.adapter ?? 'claude-headless', model: effectiveScenario.god.model ?? null, effort: effectiveScenario.god.effort ?? null }] : [])];
@@ -128,7 +132,7 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (policy?.required?.length && controllers.allowLiveModels !== true) fail('controllers.live-model', `this run needs live model providers (${policy.required.join(', ')}) for ${[...controllerList.map((c) => `${c.id}:${c.adapter}`), ...(policy.claude && !controllerList.length ? ['director/reviewer'] : [])].join(', ')}; set controllers.allowLiveModels only with explicit authorization, or use cast "none" with a scripted director and deterministic review`);
   if (errors.length) return { ok: false, errors };
 
-  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}) };
+  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), ...(diag.effective ? { diagnostics: diag.effective } : {}) };
   return { ok: true, errors: [], effective, scenario: effectiveScenario, controllers: controllerList, policy, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches } : null };
 }
 
