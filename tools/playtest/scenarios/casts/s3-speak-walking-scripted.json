@@ -1,0 +1,180 @@
+{
+ "kind": "cast",
+ "name": "s3-speak-walking-scripted",
+ "version": 1,
+ "seed": 6232,
+ "world": {
+  "kind": "dev",
+  "genesis": "worlds/templates/hello-hamlet.json",
+  "slug": "s3-speak-walking",
+  "port": 4254,
+  "natives": false
+ },
+ "durationSec": 300,
+ "brief": "Two neighbours walk to the pond hall and each gives one short talk. On the way, each owner asks their Soul to say something; the Soul speaks while it keeps walking.",
+ "room": {
+  "label": "the pond hall",
+  "match": [
+   "waterside",
+   "pond-hall",
+   "pond hall"
+  ]
+ },
+ "order": [
+  "ada",
+  "bo"
+ ],
+ "seats": [
+  {
+   "id": "ada",
+   "soulName": "Ada",
+   "adapter": "scripted-owner",
+   "economy": "lean",
+   "character": "Ada is cheerful and keeps bees.",
+   "topic": "the apple trees",
+   "script": {
+    "rules": [
+     {
+      "match": "^Your turn",
+      "ack": "My turn",
+      "do": [
+       [
+        "say",
+        "Hello everyone, I am Ada. On the way I told my owner about the apple trees, and I kept walking while I talked."
+       ]
+      ],
+      "result": "Gave my talk"
+     },
+     {
+      "match": "what can you see",
+      "ack": "Telling you while I walk",
+      "do": [
+       [
+        "say",
+        "On my way I can see the apple trees in flower and the still pond ahead."
+       ]
+      ],
+      "result": "Said what I can see, still walking"
+     },
+     {
+      "match": "now and wait there with everyone|Walk there now|Go back there now",
+      "ack": "Walking to the pond hall",
+      "close": "open",
+      "do": [
+       [
+        "act",
+        "walk to the pond hall"
+       ]
+      ]
+     },
+     {
+      "match": ".",
+      "ack": "Noted",
+      "do": [],
+      "result": "Noted"
+     }
+    ]
+   }
+  },
+  {
+   "id": "bo",
+   "soulName": "Bo",
+   "adapter": "scripted-owner",
+   "economy": "lean",
+   "character": "Bo is shy and plays music.",
+   "topic": "the pond",
+   "script": {
+    "rules": [
+     {
+      "match": "^Your turn",
+      "ack": "My turn",
+      "do": [
+       [
+        "say",
+        "Hello, I am Bo. I hummed a little tune on the way here, and the pond was very still."
+       ]
+      ],
+      "result": "Gave my talk"
+     },
+     {
+      "match": "hum",
+      "ack": "Humming as I go",
+      "do": [
+       [
+        "say",
+        "Hmm hm hmm, la la la, hmm."
+       ]
+      ],
+      "result": "Hummed while walking"
+     },
+     {
+      "match": "now and wait there with everyone|Walk there now|Go back there now",
+      "ack": "Walking to the pond hall",
+      "close": "open",
+      "do": [
+       [
+        "act",
+        "walk to the pond hall"
+       ]
+      ]
+     },
+     {
+      "match": ".",
+      "ack": "Noted",
+      "do": [],
+      "result": "Noted"
+     }
+    ]
+   }
+  }
+ ],
+ "timing": {
+  "truthPollSec": 2,
+  "gatherMaxSec": 180,
+  "nudgeAfterSec": 45,
+  "maxNudges": 2,
+  "quietSec": 8,
+  "speakTimeoutSec": 60,
+  "maxSpeakNudges": 1,
+  "prepareAhead": true,
+  "presentWaitSec": 30
+ },
+ "orchestrator": {
+  "planner": null
+ },
+ "success": {
+  "allPresent": true,
+  "minChars": 40,
+  "inOrder": true,
+  "eachOnce": true
+ },
+ "observer": {
+  "sampleSec": 10,
+  "cameras": [],
+  "viewport": [
+   1024,
+   640
+  ],
+  "dpr": 1
+ },
+ "rails": {
+  "onboardWallSec": 120,
+  "onboardTimeoutSec": 90,
+  "onboardConcurrency": 2,
+  "quotaStopPct": 90,
+  "maxTurnsPerRequest": 4,
+  "maxTurnWallSec": 120
+ },
+ "console": {
+  "script": [
+   {
+    "atSec": 6,
+    "line": "ada: tell me what can you see on your way?"
+   },
+   {
+    "atSec": 8,
+    "line": "bo: hum a little tune while you walk"
+   }
+  ]
+ }
+}
