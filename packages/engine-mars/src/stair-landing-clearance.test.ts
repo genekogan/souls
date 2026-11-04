@@ -64,22 +64,38 @@ test('without the policy the climber lands overlapping a deck body (the #509 fau
   assert.deepEqual([...v!.subjects].sort(),['climber','deck']);
 });
 
-test('with the policy the climber waits on the flight, then lands once the landing is clear',()=>{
-  const e=stairTop(true),rt=(e as any).rt;
-  let waited=0;
-  for(let i=0;i<200;i++){
+/** Steps until `done`, asserting no invariant violation and no teleport of the climber on every tick. */
+function run(e:MarsEngine,ticks:number,done:()=>boolean,each?:()=>void){
+  for(let i=0;i<ticks;i++){
     const before=[...e.world.entities.climber.pose.p];e.step();assert.deepEqual(e.runtime.violations,[]);
-    const c=e.world.entities.climber,p=c.pose.p;
-    assert.ok(Math.hypot(p[0]-before[0],p[1]-before[1],p[2]-before[2])<=.05,'no teleport');
-    if(c.human!.activity==='climb-wait'){
-      waited++;assert.equal(c.human!.level,0,'the waiting climber is still on the flight');
-      const rec=rt.records.get(c.human!.task);assert.equal(rec?.status,'blocked');assert.equal(rec.diagnostic.code,'traffic.person');assert.ok(rec.diagnostic.subjects.includes('deck'),JSON.stringify(rec.diagnostic));
-    }
+    const p=e.world.entities.climber.pose.p;assert.ok(Math.hypot(p[0]-before[0],p[1]-before[1],p[2]-before[2])<=.05,'no teleport');
+    each?.();if(done())return i+1;
   }
-  assert.ok(waited>=100,`the climber waited at the landing (${waited} ticks)`);
-  assert.equal(e.world.entities.climber.human!.level,0);
-  const away=e.perform({actor:'deck',label:'leave the landing',steps:[{verb:'mars:walk_to',params:{x:7.6,z:-2.4,level:1}}]});assert.equal(away.ok,true,JSON.stringify(away));
-  for(let i=0;i<400&&e.programOf('climber');i++){e.step();assert.deepEqual(e.runtime.violations,[]);}
-  assert.equal(e.programOf('climber'),null,'the climb completed');
-  assert.equal(e.world.entities.climber.human!.level,1);
+  return -1;
+}
+function landedClear(e:MarsEngine){
+  const c=e.world.entities.climber,d=e.world.entities.deck;
+  assert.equal(c.human!.level,1);assert.ok(Math.hypot(c.pose.p[0]-d.pose.p[0],c.pose.p[2]-d.pose.p[2])>=.54-1e-9,'landed clear of the deck body');
+}
+
+test('with the policy the climber waits on the flight, the idle deck body makes way, then the climber lands',()=>{
+  const e=stairTop(true),rt=(e as any).rt;let waited=0;
+  const landed=run(e,400,()=>e.world.entities.climber.human!.level===1,()=>{
+    const c=e.world.entities.climber;
+    if(c.human!.activity!=='climb-wait')return;
+    waited++;const rec=rt.records.get(c.human!.task);
+    assert.equal(rec?.status,'blocked');assert.equal(rec.diagnostic.code,'traffic.person');assert.ok(rec.diagnostic.subjects.includes('deck'),JSON.stringify(rec.diagnostic));
+  });
+  assert.ok(landed>0,'the climber reached the deck');assert.ok(waited>0,'the climber waited at the occupied landing');
+  assert.ok([...rt.records.keys()].some((id:string)=>id.startsWith('deck:make-way:')),'the deck body was asked to make way');
+  landedClear(e);
+  assert.ok(run(e,400,()=>e.programOf('climber')===null)>=0,'the climb completed');
+});
+
+test('with the policy a climb stopped while waiting at the landing ends on it once the landing clears',()=>{
+  const e=stairTop(true);
+  assert.ok(run(e,200,()=>e.world.entities.climber.human!.activity==='climb-wait'&&e.world.entities.climber.pose.p[2]<-1.38)>0,'waiting at the landing');
+  e.stop(e.programOf('climber')!);
+  assert.ok(run(e,400,()=>e.world.entities.climber.human!.level===1)>0,'the cancelled climb stepped off');
+  landedClear(e);assert.equal(e.world.entities.climber.human!.activity,'idle');
 });

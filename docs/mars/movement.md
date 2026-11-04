@@ -100,8 +100,11 @@ it would come within 2r − 0.02 m of and closer to (`stairBlocker`). Walk avoid
 invariant compare bodies on the same level only, so a walker on the destination floor does not see a climber still on
 the flight. Under the runtime policy `stair-landing-clearance/1` (`stairLandingClearanceV1`, #509), the final step of a
 climb, or of a cancelled climb, also refuses a landing that a body on the destination level occupies: within 1.0 m in
-height and closer than the two radii less 0.02 m in plan, whatever the direction of that step. The climber resumes
-when the landing clears. The policy is prospective. Edge worlds log it at startup (`operator:stair-landing-clearance`)
+height and closer than the two radii less 0.02 m in plan, whatever the direction of that step. Once a second it asks
+an idle body there to make way (`makeWay`, clear of the landing); a body with a task of its own is waited for. The
+climber resumes when the landing clears. A body on the destination level can still stand over the top of a flight
+whose last stretch runs under that floor (the commons deck's front flight): neither walk avoidance nor the invariant
+sees the climber there until it changes level. Carry climbs keep the direction-only check. The policy is prospective. Edge worlds log it at startup (`operator:stair-landing-clearance`)
 after the other stair-traffic rules, except the Little Martians worlds. History before that event replays the old rule.
 
 ## Approximations
