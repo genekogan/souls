@@ -76,8 +76,8 @@ world's served `eden.mjs` in the seat folder. Onboarding fetches the CLI from th
 `eden.mjs` steps and `result done|failed` from those steps' real outcome. A `--wait` step counts as done only when its
 receipt completed or the world shows that receipt's activity under way; output without a readable receipt (CLI 2.8.0
 and earlier drop it from the brief form past 600 characters) is a failure, never a claimed success. When an owner card
-ends the wait while the receipt is still open, the step keeps waiting on that receipt (`wait <s> <receiptId>`) for the
-rest of its window (at most 60 s, as the CLI applies `--wait`) and is judged on that; the card is handled next turn. Rules are matched in order by a
+ends the wait while the receipt is still open, the step keeps checking that receipt (`receipt <id>` every 2 s; a `wait`
+returns at once while the card is unacknowledged) for the rest of its window (at most 60 s, as the CLI applies `--wait`) and is judged on that; the card is handled next turn. Rules are matched in order by a
 case-insensitive regular expression on the card text; `close: "open"` leaves a request open while its activity
 continues, and `supersede` closes requests still open as failed when a later rule fires (an owner redirection).
 A refused or failed step stops its rule and fails the request, unless the step ends with `{"onRefused": "continue"}`

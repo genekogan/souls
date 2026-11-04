@@ -174,38 +174,31 @@ test('step options and {{prev}} placeholders are validated by field', () => {
 
 // #832 (S3 demo, #831): the director's "Your turn" card ended Ada's `act "walk to the pond hall" --wait` at 0 m left, and
 // the seat failed the steered request although she arrived a second later. An owner-woken wait on an open receipt now
-// keeps waiting on that receipt for the rest of the step's window; the card is handled on the next turn.
-const WOKEN = (waitReply) => `import { appendFileSync } from 'node:fs';
+// keeps checking that receipt (`receipt <id>`, every 2 s; a `wait` returns at once while the card is unacknowledged)
+// for the rest of the step's window; the card is handled on the next turn.
+const WOKEN = (receiptReply) => `import { appendFileSync } from 'node:fs';
 const a = process.argv.slice(2); appendFileSync('calls.jsonl', JSON.stringify(a) + '\\n');
 const rec = (phase) => ({ id: 'r_walk', capability: 'walk:lab-pond-hall', phase });
 if (a[0] === 'act') console.log(JSON.stringify({ accepted: true, waited: '32s', now: 'walking to Waterside Hall, 0 m left; not there yet', done: false, receipt: rec('started'), ownerMessages: [{ id: 'm_turn', text: 'Your turn: give the talk now' }] }));
-else if (a[0] === 'wait') console.log(JSON.stringify(${waitReply}));
+else if (a[0] === 'receipt') console.log(JSON.stringify(${receiptReply}));
 else console.log(JSON.stringify({ ok: true, cmd: a[0] }));`;
-const STEER = { rules: [{ match: 'green', do: [['act', 'walk to the pond hall', '--wait', '100']], result: 'At the pond hall' }] };
+const STEER = (s = '100') => ({ rules: [{ match: 'green', do: [['act', 'walk to the pond hall', '--wait', s]], result: 'At the pond hall' }] });
+const steer = async (reply, s) => { const d = folder(WOKEN(reply)); await turn({ cwd: d, text: wake([{ id: 'm1', text: 'by the village green first' }]), script: STEER(s) }); return calls(d); };
 
-test('owner-woken wait: an open receipt is waited on for the rest of the window, then judged (#832)', async () => {
-  const d = folder(WOKEN(`{ waited: '1s', done: 'walk completed at g-lab-pond-hall.', receipt: rec('completed') }`));
-  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'by the village green first' }]), script: STEER });
-  const c = calls(d);
-  assert.equal(c[2][0], 'wait'); assert.equal(c[2][2], 'r_walk', 'waits on the same receipt'); assert.ok(Number(c[2][1]) >= 1 && Number(c[2][1]) <= 60, c[2][1]);
-  assert.deepEqual(c.at(-1), ['result', 'm1', 'done', 'At the pond hall']);
-  assert.equal(c.length, 4, 'ack, act, one wait, result: the owner card is left for the next turn');
+test('owner-woken wait: an open receipt is checked for the rest of the window, then judged (#832)', async () => {
+  const c = await steer(`rec('completed')`);
+  assert.deepEqual(c.slice(1), [['act', 'walk to the pond hall', '--wait', '100'], ['receipt', 'r_walk'], ['result', 'm1', 'done', 'At the pond hall']], 'one check, no wait (it would return at once), the owner card left for the next turn');
 });
 
 test('owner-woken wait: still open when the window runs out, or ended badly, is a failure (#832)', async () => {
-  let d = folder(WOKEN(`{ waited: '58s', now: 'walking', done: false, receipt: rec('started') }`));
-  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'by the village green first' }]), script: STEER });
-  assert.deepEqual(calls(d).at(-1), ['result', 'm1', 'failed', 'act: still started after waiting']);
-  d = folder(WOKEN(`{ waited: '2s', done: 'walk replaced.', receipt: rec('replaced') }`));
-  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'by the village green first' }]), script: STEER });
-  assert.equal(calls(d).at(-1)[2], 'failed', 'a replaced walk is not a done');
-  d = folder(WOKEN(`{ waited: '2s', ownerMessages: [{ id: 'm_x', text: 'again' }] }`));
-  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'by the village green first' }]), script: STEER });
-  assert.deepEqual(calls(d).at(-1), ['result', 'm1', 'failed', 'act: receipt unknown after waiting: completion not confirmed']);
-  // A one-second window has nothing left to wait: judged at once.
-  d = folder(WOKEN(`{ waited: '1s', done: 'walk completed.', receipt: rec('completed') }`));
-  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'by the village green first' }]), script: { rules: [{ match: 'green', do: [['act', 'walk to the pond hall', '--wait', '1']] }] } });
-  assert.equal(calls(d).filter((x) => x[0] === 'wait').length, 0); assert.equal(calls(d).at(-1)[2], 'failed');
+  let c = await steer(`rec('started')`, '3');
+  assert.equal(c.filter((x) => x[0] === 'receipt').length, 1, 'a 3 s window has room for one check'); assert.deepEqual(c.at(-1), ['result', 'm1', 'failed', 'act: still started after waiting']);
+  c = await steer(`rec('replaced')`);
+  assert.equal(c.at(-1)[2], 'failed', 'a replaced walk is not a done');
+  c = await steer(`{ error: 'gone' }`);
+  assert.equal(c.filter((x) => x[0] === 'receipt').length, 1); assert.deepEqual(c.at(-1), ['result', 'm1', 'failed', 'act: still started after waiting'], 'an unreadable check keeps the woken output: still open');
+  c = await steer(`rec('completed')`, '1');
+  assert.equal(c.filter((x) => x[0] === 'receipt').length, 0, 'a 1 s window has nothing left to wait'); assert.equal(c.at(-1)[2], 'failed');
 });
 
 test('ownerWokeOpen and waitWindowSec: only an owner wake on an open receipt resumes; no extra command otherwise (#832)', () => {

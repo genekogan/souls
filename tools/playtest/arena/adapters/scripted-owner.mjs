@@ -8,8 +8,8 @@
 //   match      case-insensitive regular expression tested against the owner's message text; the first rule that matches wins
 //   ack        reply sent with `ack <id>` (≤140 chars); default "On it."
 //   do         eden.mjs argument lists run in order; "{id}" is replaced by the message id. A `--wait` step that an owner
-//              message ends while its receipt is still open keeps waiting on that receipt (`wait <s> <receiptId>`) for the
-//              rest of its window (#832); the message is handled on the next turn. A step that is refused or fails
+//              message ends while its receipt is still open keeps checking that receipt (`receipt <id>` every 2 s) for the rest
+//              of its window (#832); the message is handled on the next turn. A step that is refused or fails
 //              stops the rule, unless the step ends with an options object {"onRefused": "continue"} (default "fail"):
 //              then the refusal is recorded and the next step runs (#828). "{{prev.<path>}}" in an argument is replaced
 //              from the previous step's JSON output (a refusal's too), e.g. "{{prev.did_you_mean[0].id}}"; a placeholder
@@ -114,7 +114,7 @@ export function stepOutcome(r, { waited = false } = {}) {
 }
 /** #832: an owner message ends a `--wait` early, by design, so the agent can read it. The receipt id to keep waiting on
  *  when that happened and the receipt has not ended, else null. The message itself is handled on the next turn. */
-const ENDED = ['completed', 'failed', 'refused', 'cancelled', 'interrupted', 'replaced'];
+const ENDED = ['completed', 'failed', 'refused', 'cancelled', 'interrupted', 'replaced'], POLL_MS = 2000;
 export function ownerWokeOpen(r) {
   const d = stepJson(r), rec = d?.receipt && !d.receipt.error ? d.receipt : null;
   return r?.code === 0 && d?.ownerMessages?.length && rec?.id && !ENDED.includes(rec.phase) ? rec.id : null;
@@ -195,8 +195,16 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
         const waited = args.includes('--wait'), until = Date.now() + waitWindowSec(args) * 1000;
         let r = await cli(bound.args); prev = stepJson(r);
         // #832: woken by an owner message with the act still going: keep waiting on its receipt for the rest of the window.
-        let rid = waited ? ownerWokeOpen(r) : null, left;
-        while (rid && (left = Math.floor((until - Date.now()) / 1000)) >= 1) { r = await cli(['wait', String(left), rid]); rid = ownerWokeOpen(r); }
+        // A `wait` would return at once while that card is unacknowledged (the world's rule, so "stop" is never slept
+        // through), so check the receipt instead, every POLL_MS, until it ends or the window does.
+        const rid = waited ? ownerWokeOpen(r) : null;
+        while (rid && Date.now() + POLL_MS <= until) {
+          await new Promise((ok) => setTimeout(ok, POLL_MS));
+          const q = await cli(['receipt', rid]), rec = stepJson(q);
+          if (q.code !== 0 || !rec?.id) break;
+          r = { code: 0, stdout: JSON.stringify({ receipt: rec }) };
+          if (ENDED.includes(rec.phase)) break;
+        }
         o = stepOutcome(r, { waited });
       }
       if (o.ok) continue;
