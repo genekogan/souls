@@ -33,7 +33,7 @@ test('water transfers conserve litres and refuse honestly', () => {
   assert.equal((waterPlant(bed, null) as any).code, 'water.no-vessel');
 });
 
-test('a Soul fills a watering can from the Mars tank and waters the planter; nothing comes from nothing', { timeout: 600000 }, async (t) => {
+test('a Soul draws finite Mars tank water; a legacy planter without biology opt-in keeps its complete state', { timeout: 600000 }, async (t) => {
   const f = fixture(':memory:', factory, { durableClockV1: true });
   const god = new GodMode(f.db, { worldId: f.host.worldId, ownerId: 'dev:admin', tick: () => f.host.engine.world.tick, emit: () => {} });
   const edge = new EdgeLedger(f.host, f.db);
@@ -63,6 +63,7 @@ test('a Soul fills a watering can from the Mars tank and waters the planter; not
   const id = (n: string) => ([...god.model.entities.values()].find((e: any) => e.name === n) as any).id as string;
   const tank = id('tank'), bed = id('garden-bed'), can = id('can'), oldCan = id('old-can');
   const st = (e: string) => god.model.entities.get(e)!.state as any;
+  const originalBed = structuredClone(st(bed));
   const cap = (c: string) => edge.capabilities(ana).find((x: any) => x.id === c) as any;
   const run = async (rid: string) => { for (let i = 0; i < 6000; i++) { f.host.tickOnce(); if (i % 20 === 0) { await setImmediate(); f.host.drainInputs(); const r: any = edge.receipt(ana.soulId, rid); if (r?.outcome) return r; } } return edge.receipt(ana.soulId, rid); };
   const act = async (c: string) => { const a: any = await accept(f.host, edge.act(ana, { capability: c })); assert.equal(a.accepted, true, JSON.stringify(a)); const r: any = await run(a.receipt?.id ?? a.receiptId ?? a.id); await settle(4); return r; };
@@ -70,7 +71,7 @@ test('a Soul fills a watering can from the Mars tank and waters the planter; not
 
   // empty-handed: the tank and the bed say what is missing; the can lying 5 m from the tank does not fill from nothing
   refused(`object:${tank}:draw-water`, 'water.no-vessel');
-  refused(`object:${bed}:water`, 'water.no-vessel');
+  refused(`object:${bed}:water`, 'water.biology-disabled');
   refused(`object:${oldCan}:fill`, 'water.no-source');
   assert.match(cap(`object:${tank}:draw-water`).blocked.reason, /not holding a watering can/);
 
@@ -86,11 +87,11 @@ test('a Soul fills a watering can from the Mars tank and waters the planter; not
   refused(`object:${tank}:draw-water`, 'water.source-empty');
   assert.match(cap(`object:${tank}:draw-water`).blocked.reason, /water delivery/);
 
-  const wt: any = await act(`object:${bed}:water`);
-  await settle(30); inHand('after watering');
-  assert.equal(wt.phase, 'completed', JSON.stringify(wt));
-  assert.ok(Math.abs(st(bed).moisture - 0.95) < 1e-6, JSON.stringify(st(bed)));
-  assert.equal(st(can).level, 0);
-  refused(`object:${bed}:water`, 'water.vessel-empty');
-  // litres conserved: 6 L left the tank, 6 L reached the bed (0.75 of its 8 L)
+  const denied: any = await accept(f.host, edge.act(ana, { capability: `object:${bed}:water` }));
+  assert.equal(denied.accepted, false, JSON.stringify(denied));
+  await settle(30); inHand('after disabled watering refusal');
+  assert.deepEqual(st(bed), originalBed, 'unflagged legacy soil is never watered');
+  assert.equal(st(can).level, 0.6, 'the refused action spends no water');
+  refused(`object:${bed}:water`, 'water.biology-disabled');
+  // All 6 L left the tank and remain in the can; opted-in native soil delivery is covered by garden-revival-native.
 });

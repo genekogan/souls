@@ -373,7 +373,8 @@ export class TakeRecorder implements RuntimeObserver {
       baselineStateHash: this.baselineStateHash,
       rulesVersion: this.opts.rulesVersion,
       renderSceneRef: this.opts.renderSceneRef ? structuredClone(this.opts.renderSceneRef) : undefined,
-      ...(this.opts.clock ? {clock: structuredClone(this.opts.clock)} : {}),
+      // Only active recorded biology needs this anchor. Unrelated legacy takes retain their exact bytes and IDs.
+      ...(this.opts.clock && this.plantTracks.size ? {clock: structuredClone(this.opts.clock)} : {}),
       dt: DT,
       startTick: this.startTick,
       ticks: this.rt.tick - this.startTick,

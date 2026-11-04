@@ -32,6 +32,7 @@ test('admitted full-wilt native watering, opt-out, two historical anchors, clock
  place(Array.from({length:100},(_,i)=>({op:'place',def:'core/garden-planter@3',name:`far-bed-${i}`,p:[120+i%10*2,120+Math.floor(i/10)*2]})));
  await tick(45);const far=await here();assert.equal(JSON.stringify(far).length,JSON.stringify(absent).length,'100 distant beds add zero here bytes');
  gardenStats.planterVisits=0;await tick(45);assert.equal(gardenStats.planterVisits,0,'no biological visits for unflagged beds');
+ assert.ok(captured.size);for(const c of captured.values())assert.equal(c.take.clock,undefined,'unflagged takes retain legacy clock bytes');
  place([{op:'place',def:'core/can-hook@1',tmp:'$hook',name:'can-hook',p:[ax+1.8,az-1.5]},
   {op:'place',def:'core/watering-can@2',name:'watering-can',in:{parent:'$hook'},p:HOOK_PEG.map((x,i)=>x-CAN_GRIP[i]),r:Math.PI/2,state:{level:1}},
   {op:'place',def:'core/garden-planter@3',name:'rose-bed',p:[ax+.6,az+2.6],state:{biologyEnabled:true,moisture:.1,growth:2,thirst:3}},
