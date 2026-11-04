@@ -11,6 +11,7 @@
 // the verb's own verdict. Delegating verbs (living_intention, gathering_continuation) judge their bound
 // child verbs. A verb with no floater among its params is not this module's business: 'works' (humanoid).
 // Pure and deterministic: no Runtime, no registry import (the table is checked against it in tests).
+import {hasRollingProfile,rollingActionProblem} from './action-profile.ts';
 import type { Body } from '../world/types.ts';
 import {hasBodyDance} from './motion.ts';
 import { creatureOf } from './creatures.ts';
@@ -203,7 +204,9 @@ function strings(v: unknown, out: Set<string>): Set<string> {
  */
 export function admitFloaters(verb: string, params: unknown, bodyOf: BodyLookup): Admission {
   const isFloater = (id: string) => bodyOf(id)?.family === 'floater';
-  const named = [...strings(params, new Set())].filter(isFloater).sort();
+  const involved=[...strings(params,new Set())];
+  for(const id of involved)if(hasRollingProfile(bodyOf(id))){const problem=rollingActionProblem(verb,params as Record<string,unknown>);if(problem)return {verb,status:'refuses',reason:'body.unsupported',note:problem,floaters:[id]};}
+  const named = involved.filter(isFloater).sort();
   const policy = FLOATER_POLICY[verb];
   if(verb==='body_motion_v1'&&named.length){const p=params as {actor?:string;motion?:string};
     if(named.length===1&&named[0]===p.actor&&p.motion==='dance'&&hasBodyDance(bodyOf(named[0])))return {verb,status:'works',reason:'body.authored-motion',note:'bounded in-place dance; no hands or root movement',floaters:named};

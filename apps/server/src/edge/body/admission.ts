@@ -2,9 +2,10 @@
 import {createHash} from 'node:crypto';
 import {inflateSync} from 'node:zlib';
 import {bodyMotionProblem,type BodyMotion} from '../../../../../mars/viewer/engine/bodies/motion.ts';
+import {ROLLING_GRIPPER,type ActionProfile} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
 import {rigWorldPoints,rigWorldMatrices} from './rig.ts';
 export type BodyType='humanoid'|'ceramic'|'floater';
-export type BodyManifest={type:BodyType;license:'CC0'|'owned';rightsConfirmed:true;rig?:'quaternius/1';name?:string;description?:string;motion?:BodyMotion};
+export type BodyManifest={type:BodyType;license:'CC0'|'owned';rightsConfirmed:true;rig?:'quaternius/1';name?:string;description?:string;motion?:BodyMotion;actionProfile?:ActionProfile};
 export const BODY_LIMITS={bytes:4*1024*1024,triangles:10000,images:2,imageBytes:1024*1024,imageDimension:1024,nodes:512,accessors:1024,rigidDrawCalls:4,humanoidDrawCalls:16} as const;
 export class BodyAdmissionError extends Error {readonly code:string;readonly details?:{field:string;measured:number;limit:number};constructor(code:string,message:string,details?:{field:string;measured:number;limit:number}){super(message);this.code=code;this.details=details;}}
 const no=(code:string,message:string,details?:{field:string;measured:number;limit:number}):never=>{throw new BodyAdmissionError(code,message,details);};
@@ -52,14 +53,14 @@ function imageDimensions(b:Buffer,mime:string):[number,number]{
 /** Bind authored adapters into admitted bytes, preserving the existing byte-addressed store and moderation keys.
  * The local validator performs the identical, idempotent metadata transform. Geometry and source files are untouched. */
 export function bindBodyDefinition(bytes:Buffer,raw:unknown):Buffer {
- const m=raw as BodyManifest|undefined;if(!m?.motion)return bytes;
- const problem=bodyMotionProblem(m.motion);if(problem)return no('body.motion',problem);
+ const m=raw as BodyManifest|undefined;if(!m?.motion&&!m?.actionProfile)return bytes;
+ const problem=m.motion?bodyMotionProblem(m.motion):null;if(problem)return no('body.motion',problem);
  if(bytes.length>BODY_LIMITS.bytes)return no('body.too-large','Body GLB exceeds 4 MiB');
  if(bytes.length<28||bytes.readUInt32LE(0)!==0x46546c67||bytes.readUInt32LE(4)!==2||bytes.readUInt32LE(8)!==bytes.length||bytes.readUInt32LE(16)!==0x4e4f534a)return bytes;
  const n=bytes.readUInt32LE(12);if(n%4||20+n>bytes.length)return bytes;
  let j:any;try{j=JSON.parse(bytes.toString('utf8',20,20+n).trim());}catch{return bytes;}
  if(!j.asset||typeof j.asset!=='object'||Array.isArray(j.asset))return bytes;
- const fingerprint='body-definition/1 '+createHash('sha256').update(JSON.stringify({type:m.type,motion:m.motion,name:m.name,description:m.description})).digest('hex');
+ const fingerprint='body-definition/1 '+createHash('sha256').update(JSON.stringify({type:m.type,motion:m.motion,actionProfile:m.actionProfile,name:m.name,description:m.description})).digest('hex');
  if(j.asset.generator===fingerprint)return bytes;
  j.asset.generator=fingerprint;const json=Buffer.from(JSON.stringify(j)),padded=Buffer.alloc(Math.ceil(json.length/4)*4,32);json.copy(padded);
  const head=Buffer.from(bytes.subarray(0,20)),result=Buffer.concat([head,padded,bytes.subarray(20+n)]);result.writeUInt32LE(result.length,8);result.writeUInt32LE(padded.length,12);return result;
@@ -68,9 +69,10 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return no('body.manifest','Manifest is required');
  const m=raw as Record<string,unknown>;if(!['humanoid','ceramic','floater'].includes(String(m.type)))return no('body.type','Unknown body type');
  if(m.rightsConfirmed!==true||!['CC0','owned'].includes(String(m.license)))return no('body.rights','Confirm CC0 or ownership rights before uploading');
- for(const key of Object.keys(m))if(!['type','license','rightsConfirmed','rig','name','description','motion'].includes(key))return no('body.manifest',`Unknown manifest field ${key}`);
+ for(const key of Object.keys(m))if(!['type','license','rightsConfirmed','rig','name','description','motion','actionProfile'].includes(key))return no('body.manifest',`Unknown manifest field ${key}`);
  for(const [key,max]of [['name',80],['description',240]] as const)if(m[key]!==undefined&&(typeof m[key]!=='string'||m[key].length<1||m[key].length>max))return no('body.manifest',`${key} must be 1–${max} characters`);
  if(m.motion!==undefined){if(m.type==='humanoid')return no('body.motion','Authored rigid motion requires ceramic or floater type');const p=bodyMotionProblem(m.motion);if(p)return no('body.motion',p);}
+ if(m.actionProfile!==undefined&&(m.actionProfile!==ROLLING_GRIPPER||m.type!=='humanoid'))return no('body.action-profile','Use rolling-gripper/1 only with the canonical contact rig');
  const manifest=m as BodyManifest;
  bytes=bindBodyDefinition(bytes,manifest);
  if(bytes.length>BODY_LIMITS.bytes)return no('body.too-large','Body GLB exceeds 4 MiB');
@@ -137,12 +139,12 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
   for(const n of canonical)if(!joints.has(named.get(n)!))return no('body.rig',`Canonical bone ${n} is not a skin joint`);
   for(const node of nodes)if(node.mesh!==undefined&&node.skin!==undefined){const skin=skins[node.skin];for(const name of canonical)if(!skin.joints.includes(named.get(name)))return no('body.rig',`Used skin is missing canonical bone ${name}`);for(const p of meshes[node.mesh].primitives){const ja=ref(accessors,p.attributes.JOINTS_0,'JOINTS_0'),wa=ref(accessors,p.attributes.WEIGHTS_0,'WEIGHTS_0');if(ja.type!=='VEC4'||ja.normalized===true||![5121,5123].includes(ja.componentType)||wa.type!=='VEC4'||![5121,5123,5126].includes(wa.componentType)||(wa.componentType!==5126&&wa.normalized!==true)||values(ja).some(i=>i>=skin.joints.length))return no('body.rig','Invalid skin joint or weight attributes');const weights=values(wa),unit=wa.componentType===5121?255:wa.componentType===5123?65535:1;for(let i=0;i<weights.length;i+=4){const group=weights.slice(i,i+4).map(v=>v/unit);if(group.some(v=>v<0||v>1.0001)||Math.abs(group.reduce((a,b)=>a+b,0)-1)>.02)return no('body.rig','Skin weights must be normalized per vertex');}}}
   if(!nodes.some(n=>n.mesh!==undefined&&n.skin!==undefined))return no('body.rig','Humanoid mesh must use its admitted skin');
-  for(const name of ['Idle','Walk'])if(!animations.some(a=>a.name===name))return no('body.clips',`Missing ${name} clip`);
+  for(const name of manifest.actionProfile?['Idle','Walk','Dance_Loop','Standby_Loop']:['Idle','Walk'])if(!animations.some(a=>a.name===name))return no('body.clips',`Missing ${name} clip`);
   for(const anim of animations){const channels=list(anim.channels,'animation.channels'),as=list(anim.samplers,'animation.samplers');if(!channels.length||!as.length)return no('body.clips','Animation requires channels and samplers');let positive=false;
    for(const channel of channels){const node=ref(nodes,channel.target?.node,'animation.target.node');void node;if(!['translation','rotation','scale'].includes(channel.target?.path))return no('body.clips','Unsupported animation target');const sampler=ref(as,channel.sampler,'animation.sampler');if(sampler.interpolation!==undefined&&!['LINEAR','STEP'].includes(sampler.interpolation))return no('body.clips','Only LINEAR/STEP clips are supported');const input=ref(accessors,sampler.input,'animation.input'),output=ref(accessors,sampler.output,'animation.output');if(input.type!=='SCALAR'||input.componentType!==5126||!input.count||output.componentType!==5126||output.count!==input.count||output.type!==(channel.target.path==='rotation'?'VEC4':'VEC3'))return no('body.clips','Invalid clip accessor');const times=values(input);if(times.some((v,i)=>v<0||(i>0&&v<=times[i-1])))return no('body.clips','Clip key times must increase and be nonnegative');positive ||= times[times.length-1]>0;}
    if(!positive)return no('body.clips','Clip must have positive finite duration');
    if(anim.name==='Walk')for(const side of ['L','R']){const c=channels.find(c=>c.target.node===named.get('Foot'+side)&&c.target.path==='translation');if(!c)return no('body.clips','Walk requires baked translation for both canonical feet');const v=values(accessors[as[c.sampler].output]);let low=Infinity,high=-Infinity;for(let i=2;i<v.length;i+=3){low=Math.min(low,v[i]);high=Math.max(high,v[i]);}if(high-low<=1e-6)return no('body.clips','Walk requires finite forward stride along Z');}
   }
  }else if(skins.length||nodes.some(n=>n.skin!==undefined)||animations.length)return no('body.rigid','Ceramic and floater bodies must be rigid, without skins or animation clips');
- return{assetId:'body_'+createHash('sha256').update(bytes).digest('hex'),type:manifest.type,license:manifest.license,bytes:bytes.length,triangles,images:images.length,nodes:nodes.length,rig:manifest.type==='humanoid'?'quaternius/1':null,...(manifest.motion?{motion:structuredClone(manifest.motion)}:{}),...(manifest.name?{name:manifest.name}:{}),...(manifest.description?{description:manifest.description}:{})};
+ return{assetId:'body_'+createHash('sha256').update(bytes).digest('hex'),type:manifest.type,license:manifest.license,bytes:bytes.length,triangles,images:images.length,nodes:nodes.length,rig:manifest.type==='humanoid'?'quaternius/1':null,...(manifest.actionProfile?{actionProfile:manifest.actionProfile}:{}),...(manifest.motion?{motion:structuredClone(manifest.motion)}:{}),...(manifest.name?{name:manifest.name}:{}),...(manifest.description?{description:manifest.description}:{})};
 }
