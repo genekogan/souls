@@ -58,3 +58,20 @@ test('#824: a named region whose walk is its building\'s gives that walk first (
   const avail = new Set((w.edge.capabilitiesPage(w.soul, {all: true}).capabilities as {id: string; available: boolean}[]).filter(c => c.available).map(c => c.id));
   for (const x of fly.alternatives) assert.ok(avail.has(x.id), `${x.id} is available now`);
 });
+
+// Delta review of f269d320, non-blocking note 1: the stale words-menu walk, as a permanent test. The refusal's own menu
+// has no walks, so the named walk comes from the kept words menu (approximate availability). If an exact rebuild
+// (bindOne) no longer offers it, it must not be named: at 6d48ceb1 it still was.
+test('#824: a named walk from the kept words menu is named only if it is still offered now', {timeout: 300000}, async t => {
+  const w = await bootEden(() => {}, new URL('../../../worlds/templates/hello-hamlet.json', import.meta.url)); t.after(w.close);
+  const edge = w.edge as any, noWalks = (w.edge.capabilitiesPage(w.soul, {all: true}).capabilities as {verb: string}[]).filter(c => c.verb !== 'walk');
+  const refusal = () => ({code: 'ride.unavailable', reason: 'no ride here', did_you_mean: []});
+  // control: with the exact rebuild intact, the walk the words name comes first even though the menu has no walks
+  const live = edge.withAlternatives(w.soul, 'fly up to the pond hall', refusal(), noWalks);
+  assert.equal(live.alternatives?.[0]?.id, 'walk:lab-pond-hall', JSON.stringify(live.alternatives));
+  // the walk is gone now: the exact rebuild returns nothing for it
+  const bindOne = edge.bindOne.bind(edge); edge.bindOne = (soul: unknown, id: string) => id === 'walk:lab-pond-hall' ? undefined : bindOne(soul, id);
+  const stale = edge.withAlternatives(w.soul, 'fly up to the pond hall', refusal(), noWalks);
+  assert.ok(!(stale.alternatives ?? []).some((x: {id: string}) => x.id === 'walk:lab-pond-hall'), `stale walk named: ${JSON.stringify(stale.alternatives)}`);
+  for (const x of stale.alternatives ?? []) assert.ok(bindOne(w.soul, x.id)?.cap.available, `${x.id} is available now`);
+});
