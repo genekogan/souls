@@ -1,10 +1,13 @@
 import {readFileSync} from 'node:fs';
-import type {Hono} from 'hono';
+import type {Context,Hono} from 'hono';
 import {BODY_LIMITS} from './admission.ts';
+import {requestWorldBase} from '../../world-base.ts';
 import {MOTION_LIMITS} from '../../../../../mars/viewer/engine/bodies/motion.ts';
 
 /** A fixed allowlist: a downloaded skill and the identical dependency-free admission implementation. */
 export function mountBodyAuthoring(app:Hono,prefix:string,types:string[]){
+ // The skill's links follow the world's own base rule (proxy-forwarded scheme and host), never the proxied hop's http URL.
+ const base=(c:Context)=>requestWorldBase(prefix,name=>c.req.header(name),()=>new URL(c.req.url).origin+prefix)+'/body-authoring';
  const at=(file:string)=>new URL('../../../../../'+file,import.meta.url);
  const files={
   'SKILL.md':at('tools/body-authoring/SKILL.md'),
@@ -23,7 +26,7 @@ export function mountBodyAuthoring(app:Hono,prefix:string,types:string[]){
  }));
  for(const [file,path]of Object.entries(files))app.get('/body-authoring/'+file,c=>{
   let text=readFileSync(path,'utf8');
-  if(file==='SKILL.md')text=text.replaceAll('{{BASE}}',new URL(c.req.url).origin+prefix+'/body-authoring');
+  if(file==='SKILL.md')text=text.replaceAll('{{BASE}}',base(c));
   if(file==='admission.ts')text=text.replace('../../../../../mars/viewer/engine/bodies/motion.ts','./motion.ts');
   const type=file.endsWith('.json')?'application/json':file.endsWith('.md')?'text/markdown':'text/javascript';
   return c.body(text,200,{'Content-Type':type+'; charset=utf-8','Cache-Control':'public, max-age=60','X-Content-Type-Options':'nosniff'});
