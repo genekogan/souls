@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createLedger } from './ledger.mjs';
 import { validateSpec, portFree } from './spec.mjs';
 import { applySetup } from './setup.mjs';
@@ -113,6 +114,8 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   // Diagnostics capture (opt-in, SR3): traced seats get their preload and trace file before the scenario is written.
   const diagnostics = attachTrace(validation.scenario, { effective: eff.diagnostics, runId: receipt.runId, runDir, ...(toolsRoot ? { root: toolsRoot } : {}) });
   if (diagnostics) { receipt.diagnostics = diagnostics; save(); }
+  // Recording sidecars carry the run's provenance (#754); the runner adds world, camera and clock fields.
+  if (eff.observer.record != null) validation.scenario.observer = { ...(validation.scenario.observer ?? {}), recordMeta: { runId: receipt.runId, attempt: 1, specSha256: specSha256 ?? null, effectiveSpecSha256: sha256Of(JSON.stringify(eff)), source: { commit: receipt.source?.commit ?? null, dirtyTrackedFiles: receipt.source?.dirtyTrackedFiles ?? null } } };
   writeJson(scenarioFile, validation.scenario);
   writeJson(join(runDir, 'spec.effective.json'), eff);
 
@@ -126,7 +129,8 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   let outcome, execMs = null;
   try {
     let modules;
-    if (eff.observer.check) {
+    if (eff.observer.mode !== 'cameras') receipt.observer = { ok: null, mode: eff.observer.mode, skipped: `observer.mode ${eff.observer.mode}: no browser` };
+    else if (eff.observer.check) {
       receipt.observer = await observerCheck({ serverRoot, timeoutMs: eff.observer.timeoutMs, ledger, importer: observerImporter });
       log(`observer check: ${receipt.observer.ok ? 'ok' : `unavailable at ${receipt.observer.stage}: ${receipt.observer.error}`}`);
       if (!receipt.observer.ok && eff.observer.required) throw Object.assign(new Error(`observer required but unavailable (${receipt.observer.stage}: ${receipt.observer.error}); see #633`), { stage: 'observer-check' });
@@ -166,12 +170,22 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   Object.assign(receipt, outcome, {
     endedAt: new Date(endedAt).toISOString(), resources: cleanup,
     cost: { wallMs: endedAt - t0, executeMs: execMs, lifecycleOverheadMs: execMs == null ? null : endedAt - t0 - execMs, runnerCpuUserMs: Math.round((usage1.userCPUTime - usage0.userCPUTime) / 1000), runnerCpuSystemMs: Math.round((usage1.systemCPUTime - usage0.systemCPUTime) / 1000), runnerMaxRssMb: Math.round(usage1.maxRSS / 1024), runDirBytes: bytesUnder(runDir) },
-    evidence: summarizeEvidence(playtestDir),
+    evidence: summarizeEvidence(playtestDir), ...(eff.observer.record != null || existsSync(join(playtestDir, 'recordings')) ? { recordings: summarizeRecordings(playtestDir) } : {}),
   });
   if (receipt.diagnostics) receipt.diagnostics.capture.result = summarizeTraces(runDir, receipt.diagnostics);
   if (!cleanup.ok && receipt.status === 'completed') { receipt.status = 'failed'; receipt.reason = `cleanup incomplete: ${cleanup.failed.join(', ')}`; }
   save();
   return receipt;
+}
+
+/** Recording sidecars written by the observer (one per camera), summarized; the files stay private run evidence. */
+export function summarizeRecordings(playtestDir) {
+  const dir = join(playtestDir, 'recordings');
+  const list = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.webm.json')).sort().map((f) => readJson(join(dir, f), null)).filter(Boolean) : [];
+  const cameras = readJson(join(playtestDir, 'cameras.json'), null);
+  return { dir, count: list.length, partial: list.filter((r) => r.partial).length, bytes: list.reduce((n, r) => n + (r.bytes ?? 0), 0),
+    items: list.map((r) => ({ camera: r.camera, file: r.file, bytes: r.bytes, sha256: r.sha256, durationSec: r.durationSec, partial: r.partial, ...(r.closedBy ? { closedBy: r.closedBy } : {}), ...(r.error ? { error: r.error } : {}), requested: r.requested?.kind, actual: r.actual?.mode ?? null, pageErrors: r.pageErrors?.length ?? 0 })),
+    cameras: cameras?.cameras ?? null };
 }
 
 function summarizeEvidence(playtestDir) {
@@ -210,3 +224,5 @@ export function cleanupRun(runDir, { worldData = false, controllerState = false,
   writeFileSync(file, JSON.stringify(receipt, null, 1) + '\n');
   return { ok: true, deleted: done };
 }
+
+const sha256Of = (text) => createHash('sha256').update(text).digest('hex');

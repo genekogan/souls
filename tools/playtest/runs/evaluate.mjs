@@ -20,7 +20,7 @@ export const INDEX_SCHEMA = 'soul-run-index/1';
 const VERDICTS = ['pass', 'fail', 'unknown'];
 // Never indexed: world data, the seat working folders (owner identity, controller credentials, the served CLI) and
 // earlier evaluations. Seat transcripts are indexed (hash only) because they are the controller's evidence.
-const SKIP = [/^evaluations(\/|$)/, /^playtest\/server\/data(\/|$)/, /^playtest\/seats\/[^/]+\/folder(\/|$)/, /(^|\/)node_modules(\/|$)/];
+const SKIP = [/^evaluations(\/|$)/, /^derived(\/|$)/, /^playtest\/server\/data(\/|$)/, /^playtest\/seats\/[^/]+\/folder(\/|$)/, /(^|\/)node_modules(\/|$)/];
 
 const r1 = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v * 10) / 10);
 const r3 = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v * 1000) / 1000);
