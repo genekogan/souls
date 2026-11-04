@@ -37,7 +37,7 @@ test('each job kind has a branch in ci.yml', () => {
 
 test('server changes run server shards and latency, not native', () => {
   const picked = names(['apps/server/src/world.ts']);
-  for (const n of ['latency', 'server-0', 'server-1', 'packages', 'types-web']) assert.ok(picked.includes(n), n);
+  for (const n of ['latency', 'server-0', 'server-1', 'server-5', 'packages', 'types-web']) assert.ok(picked.includes(n), n);
   assert.ok(!picked.includes('native'));
 });
 
