@@ -141,13 +141,14 @@ jobs:
             server)
               node --input-type=module <<'NODE'
           import { spawnSync } from 'node:child_process';
-          import { serverTestFiles, serverShardFiles } from './.github/scripts/server-test-files.mjs';
+          import { serverTestFiles, serverShardPlan, SERVER_TEST_CONCURRENCY } from './.github/scripts/server-test-files.mjs';
           const all = serverTestFiles(), shard = Number(process.env.SERVER_SHARD);
-          const files = serverShardFiles(all, shard);
-          console.log(JSON.stringify({ shard, totalServerFiles: all.length, files }));
-          const result = spawnSync('pnpm', ['--filter', '@sim/server', 'exec', process.execPath, '--test', '--test-concurrency=1', ...files], { stdio: 'inherit' });
-          if (result.error) throw result.error;
-          process.exit(result.status ?? 1);
+          const { parallel, serial } = serverShardPlan(all, shard);
+          console.log(JSON.stringify({ shard, totalServerFiles: all.length, files: [...parallel, ...serial], parallel: parallel.length, serial: serial.length, concurrency: SERVER_TEST_CONCURRENCY }));
+          // ephemeral-port files in parallel, then the fixed-port files one at a time; both always run, either failing fails the job
+          const run = (files, n) => { if (!files.length) return 0; const r = spawnSync('pnpm', ['--filter', '@sim/server', 'exec', process.execPath, '--test', `--test-concurrency=${n}`, ...files], { stdio: 'inherit' }); if (r.error) throw r.error; return r.status ?? 1; };
+          const a = run(parallel, SERVER_TEST_CONCURRENCY), b = run(serial, 1);
+          process.exit(a || b);
           NODE
               ;;
             *) echo "unknown check kind: $CHECK_KIND"; exit 1 ;;

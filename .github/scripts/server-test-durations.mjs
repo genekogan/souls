@@ -5,6 +5,8 @@
 //   gh run view --job <server job id> --log -R <owner/repo> > job.log      (one per server shard job, several runs)
 //   node .github/scripts/server-test-durations.mjs [--src apps/server] job.log... > .github/scripts/server-test-durations.json
 //
+// Use logs of serial runs (the serial pass of each job, or a run with --test-concurrency=1): attribution assumes files
+// report in list order, which parallel runs do not keep.
 // Each job prints its file list ({"shard":…,"files":[…]}) and runs the files one after another (--test-concurrency=1);
 // node's TAP output reports each top-level test as `ok N - <name>` when its file finishes. A test is attributed to the
 // first file at or after the current one whose source contains its name (files run in list order), and a file's time

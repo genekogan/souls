@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { LATENCY_TEST, SERVER_SHARDS, serverTestFiles, serverShardFiles, serverShards, serverTestDurations } from './server-test-files.mjs';
+import { LATENCY_TEST, SERVER_SHARDS, serverTestFiles, serverShardFiles, serverShards, serverTestDurations, serverShardPlan, FIXED_PORT } from './server-test-files.mjs';
 import { JOBS } from './ci-scope.mjs';
 
 // today's split before #807: two shards by alternating index (kept here only to prove the new one covers the same files)
@@ -48,4 +48,14 @@ test('missing latency inventory, invalid shard, and empty shard fail closed', ()
   assert.throws(() => serverShardFiles([LATENCY_TEST, 'a.test.ts'], SERVER_SHARDS), /Invalid server shard/);
   assert.throws(() => serverShardFiles([LATENCY_TEST, 'a.test.ts'], -1), /Invalid server shard/);
   assert.throws(() => serverShardFiles([LATENCY_TEST, 'a.test.ts'], 0, 2), /Empty server shard/);
+});
+
+test('fixed-port files run serially, everything else in parallel; the plan keeps every file once', () => {
+  assert.ok(FIXED_PORT.test("env: {PORT: '4958'}")); assert.ok(FIXED_PORT.test('server.listen(5964)')); assert.ok(FIXED_PORT.test('{port: 7049}'));
+  assert.ok(!FIXED_PORT.test('server.listen(0)')); assert.ok(!FIXED_PORT.test("PORT: String(port)"));
+  const all = serverTestFiles(); let seen = [];
+  for (let s = 0; s < SERVER_SHARDS; s++) { const p = serverShardPlan(all, s); assert.deepEqual([...p.parallel, ...p.serial].sort(), serverShardFiles(all, s)); seen = seen.concat(p.parallel, p.serial); }
+  assert.equal(new Set(seen).size, seen.length);
+  const plan = serverShardPlan(['a.test.ts', 'b.test.ts', LATENCY_TEST], 0, { shards: 1, seconds: {}, readSource: (f) => (f.endsWith('b.test.ts') ? 'PORT: 4958' : '') });
+  assert.deepEqual(plan, { parallel: ['src/a.test.ts'], serial: ['src/b.test.ts'] });
 });

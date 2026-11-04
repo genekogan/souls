@@ -7,6 +7,11 @@ import { join } from 'node:path';
 
 export const LATENCY_TEST = 'owner-response-milestones.test.ts';
 export const SERVER_SHARDS = 6;
+/** Files per shard run in parallel (ubuntu-latest has 4 vCPUs). Files that bind a fixed port run afterwards, one at a time. */
+export const SERVER_TEST_CONCURRENCY = 3;
+/** A test file that binds or targets a fixed local port (PORT: 4958, .listen(5964), port: 7049) cannot share a runner
+ *  with another such file; everything else uses ephemeral ports and its own temporary directories. */
+export const FIXED_PORT = /PORT['"]?\s*:\s*['"`]?\d{4,5}|\.listen\(\s*\d{4,5}|port:\s*\d{4,5}/;
 
 export function serverTestFiles(src = 'apps/server/src') {
   const files = [];
@@ -47,4 +52,10 @@ export function serverShards(all, shards = SERVER_SHARDS, seconds = serverTestDu
 export function serverShardFiles(all, shard, shards = SERVER_SHARDS, seconds = serverTestDurations()) {
   if (!Number.isInteger(shard) || shard < 0 || shard >= shards) throw Error('Invalid server shard');
   return serverShards(all, shards, seconds)[shard].files;
+}
+
+/** One shard's files split into those that may run in parallel and those that must run serially (a fixed port). */
+export function serverShardPlan(all, shard, { src = 'apps/server', readSource = (f) => readFileSync(join(src, f), 'utf8'), ...o } = {}) {
+  const files = serverShardFiles(all, shard, o.shards, o.seconds), serial = files.filter((f) => FIXED_PORT.test(readSource(f)));
+  return { parallel: files.filter((f) => !serial.includes(f)), serial };
 }
