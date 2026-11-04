@@ -9,7 +9,7 @@ import { REPO_ROOT } from '../../lib/paths.mjs';
 import { validateScenario } from '../scenarios/lib/validate.mjs';
 
 export const SPEC_VERSION = 1;
-const TOP = new Set(['soulRun', 'name', 'scenario', 'cast', 'world', 'durationSec', 'observer', 'limits', 'controllers', 'retention', 'setup']);
+const TOP = new Set(['soulRun', 'name', 'scenario', 'cast', 'world', 'durationSec', 'observer', 'limits', 'controllers', 'retention', 'setup', 'evaluation']);
 const CASTS = ['scenario', 'none'];
 // The scripted director delivers cards and chat; it has no pause or resume (end is the run's own cancellation).
 const DIRECTOR_COMMANDS = { scripted: [] };
@@ -61,6 +61,13 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
     if (!Array.isArray(setup.batches) || !setup.batches.length) fail('setup.batches', 'setup.batches: a list of god-edit batch files or {id, ops} objects');
     if (setup.maxWallSec != null && !(setup.maxWallSec > 0)) fail('setup.maxWallSec', 'setup.maxWallSec must be positive');
   }
+  // Predeclared evaluation (SR4): question scorer files named before the run, hashed now, so a later evaluation can tell
+  // predeclared acceptance from exploratory post-run questions.
+  const evaluation = spec.evaluation ?? null;
+  if (evaluation != null) {
+    for (const k of Object.keys(evaluation)) if (k !== 'questions') fail('evaluation.unknown-field', `evaluation.${k} is unknown (evaluation takes questions)`);
+    if (!Array.isArray(evaluation.questions) || !evaluation.questions.every((q) => typeof q === 'string')) fail('evaluation.questions', 'evaluation.questions: a list of question scorer files (runs/questions/)');
+  }
   const observer = { ...DEFAULTS.observer, ...(spec.observer ?? {}) };
   const limits = { ...DEFAULTS.limits, ...(spec.limits ?? {}) };
   const controllers = { ...DEFAULTS.controllers, ...(spec.controllers ?? {}) };
@@ -105,6 +112,12 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
     } else if (b && typeof b === 'object' && Array.isArray(b.ops) && b.ops.length && typeof b.id === 'string') batches.push({ id: b.id, path: null, sha256: sha256(JSON.stringify(b.ops)), ops: b.ops, note: b.note ?? null });
     else fail('setup.batch', `setup.batches[${i}]: a file path or {id, ops}`);
   }
+  const questions = [];
+  for (const [i, q] of (evaluation?.questions ?? []).entries()) {
+    const p = find(q);
+    if (!p) { fail('evaluation.question-missing', `evaluation.questions[${i}]: ${q} not found`); continue; }
+    questions.push({ id: q.split('/').pop().replace(/\.mjs$/, ''), path: p, sha256: sha256(readFileSync(p)) });
+  }
   if (errors.length) return { ok: false, errors };
   const effectiveScenario = applyOverrides(scenario, { cast, world: spec.world, durationSec: spec.durationSec, observer });
   if (composed) for (const m of validateScenario(effectiveScenario)) fail('cast.scenario', `composed scenario: ${m}`);
@@ -115,7 +128,7 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (policy?.required?.length && controllers.allowLiveModels !== true) fail('controllers.live-model', `this run needs live model providers (${policy.required.join(', ')}) for ${[...controllerList.map((c) => `${c.id}:${c.adapter}`), ...(policy.claude && !controllerList.length ? ['director/reviewer'] : [])].join(', ')}; set controllers.allowLiveModels only with explicit authorization, or use cast "none" with a scripted director and deterministic review`);
   if (errors.length) return { ok: false, errors };
 
-  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention };
+  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}) };
   return { ok: true, errors: [], effective, scenario: effectiveScenario, controllers: controllerList, policy, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches } : null };
 }
 

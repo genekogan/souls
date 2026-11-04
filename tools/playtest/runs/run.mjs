@@ -3,6 +3,8 @@
 //   node tools/playtest/runs/run.mjs validate <spec.json> | --scenario <file> [--cast none] [--port n]
 //   node tools/playtest/runs/run.mjs start    <spec.json> | --scenario <file> [--cast none] [--port n] [--duration s] [--name x] [--out dir] [--server-root dir] [--force-machine]
 //   node tools/playtest/runs/run.mjs cleanup  <runDir> [--world-data] [--controller-state]
+//   node tools/playtest/runs/run.mjs evaluate <runDir>… [--question q.mjs]…            (offline; new versioned evaluations/)
+//   node tools/playtest/runs/run.mjs compare  <runDir|replay-set>… [--question q.mjs]… [--out dir] [--md]
 // Exit: 0 completed/valid, 1 failed, 2 refused, 130 cancelled, 124 stopped at limits.maxWallSec.
 import { resolve } from 'node:path';
 import { readSpec, adHocSpec, validateSpec } from './spec.mjs';
@@ -57,7 +59,22 @@ async function main() {
     const r = cleanupRun(resolve(argv[1]), { worldData: has('world-data'), controllerState: has('controller-state') });
     print(r); return r.ok ? 0 : 1;
   }
-  console.error('usage: run.mjs validate|start <spec.json> | --scenario <file> [--cast none] [--port n] [--duration s] [--out dir] | cleanup <runDir> [--world-data] [--controller-state]');
+  if (cmd === 'evaluate' || cmd === 'compare') {
+    // Offline: reads retained run folders only; starts no world, controller or model.
+    const { evaluateRun, compareRunSet, renderIndex } = await import('./evaluate.mjs');
+    const dirs = []; const questions = [];
+    for (let i = 1; i < argv.length; i++) { if (argv[i] === '--question') questions.push(resolve(argv[++i])); else if (argv[i] === '--out') i++; else if (!argv[i].startsWith('--')) dirs.push(argv[i]); }
+    if (!dirs.length) throw new Error(`${cmd} <runDir>${cmd === 'compare' ? ' <runDir>…' : ''} [--question file.mjs]…`);
+    if (cmd === 'evaluate') {
+      for (const d of dirs) { const { evaluation: e, dir } = await evaluateRun(d, { questions }); print({ run: e.run.runId, status: e.run.status, arm: e.run.arm, evaluation: dir, measured: e.measures.filter((m) => m.status === 'measured').length, unavailable: e.measures.filter((m) => m.status === 'unavailable').map((m) => m.id), questions: [...e.acceptance.predeclared, ...e.questions].map((q) => `${q.id}:${q.basis}:${q.verdict}`), conflicts: e.conflicts.length, sourcesUnchanged: e.sources.unchanged }); }
+      return 0;
+    }
+    const ix = await compareRunSet(dirs, { questions });
+    if (flag('out')) { const { writeFileSync, mkdirSync } = await import('node:fs'); const o = resolve(flag('out')); mkdirSync(o, { recursive: true }); writeFileSync(`${o}/run-index.json`, JSON.stringify(ix, null, 1) + '\n'); writeFileSync(`${o}/COMPARE.md`, renderIndex(ix)); print({ index: `${o}/run-index.json`, arms: ix.arms.length, attempts: ix.attempts.length }); }
+    else process.stdout.write(has('md') ? renderIndex(ix) : JSON.stringify(ix, null, 1) + '\n');
+    return 0;
+  }
+  console.error('usage: run.mjs validate|start <spec.json> | --scenario <file> [--cast none] [--port n] [--duration s] [--out dir] | cleanup <runDir> [--world-data] [--controller-state] | evaluate <runDir>… [--question q.mjs]… | compare <runDir|replay-set>… [--question q.mjs]… [--out dir] [--md]');
   return 2;
 }
 main().then((code) => process.exit(code), (e) => { log(e.stack ?? e.message); process.exit(1); });
