@@ -12,6 +12,7 @@
 //   node tools/god-skill/e2e/vocab-mech.mjs [--port 5574] [--keep] [--dpr 1,2] [--no-viewer]
 //
 // Report under .lane/e2e-vocab/<stamp>/ (report.json, REPORT.md, shots, every CLI read under reads/).
+import { setCameraMode } from '../../browser/world-controls.mjs';
 import { spawn, execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
@@ -189,7 +190,7 @@ try {
         let s; for (let i = 0; i < 90; i++) { s = await drawn(); if (s?.active && s.drawn > 12) break; await sleep(1000); }
         await sleep(4000);
         // take the camera (broadcast → manual), as a person does with the Broadcast button
-        for (let i = 0; i < 3 && (await page.evaluate(() => document.querySelector('canvas')?.dataset.cameraMode)) !== 'manual'; i++) { await page.locator('button.viewer-broadcast').first().click().catch(() => {}); await sleep(600); }
+        for (let i = 0; i < 3 && (await page.evaluate(() => document.querySelector('canvas')?.dataset.cameraMode)) !== 'manual'; i++) { await setCameraMode(page, 'manual'); await sleep(600); }
         s = { ...s, mode: await page.evaluate(() => document.querySelector('canvas')?.dataset.cameraMode) };
         await look([2, 5, 12], [0, 1, -4]); await sleep(1500); await snap('v1-scene');
         return { ...s, errors };

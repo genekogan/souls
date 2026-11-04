@@ -6,7 +6,10 @@ import {historyTakePath,historyTakePage} from './WorldTakeTransport.ts';
 import {WorldAuthoredBoundaries} from './WorldAuthoredBoundaries.ts';
 import {exploreRoom} from './explore-data.ts';
 import {RendererDiagnostics} from './RendererDiagnostics.ts';
+import {EngineFixtureInstances} from './EngineFixtureInstances.ts';
 import {StaticBatchOwner} from './rendering/StaticBatchOwner.ts';
+import {glowSourceMaterial,mergedGlowMaterial} from './gen-mesh/motion.ts';
+import {mergedRealismAttributes,mergedRealismMaterial} from './WorldEdenRealism.ts';
 import {AssetDownloads,trackAssetDownloads,type AssetDownloadProgress} from './AssetDownloads.ts';
 import {PLACE_SHOT_MINUTES,WorldPlacePreviews} from './WorldPlacePreviews.ts';
 import {constrainOfficeGuardCamera,officeGuardsFromPublication} from './WorldOfficeGuards.ts';
@@ -88,12 +91,13 @@ import { earlyPosterShown, removeEarlyPoster, takeEarlyLayer, takeEarlyRender } 
 import { WorldWaterDetail, markHeight } from './WorldWaterDetail.ts';
 import { findSeats, surveySeats } from './WorldSeatSurvey.ts';
 import { visitorPreviewHour } from './visitor-hour.ts';
+import { SunShadowCache } from './rendering/SunShadowCache.ts';
 import { GodWorldLiving, calendarClock, entityWorldState, godTourViews, parseShotHour, shotClockAt, whenShotClock } from './world-env.ts';
 import { setFleeSources, AFLOAT } from './gen-mesh/motion.ts';
 import { WorldLightning } from './WorldLightning.ts';
 import { worldArrivalPose } from './arrival-shot.ts';
 import { anyPersonInView } from './people-in-view.ts';
-import { setAssetLoader } from './gen-mesh/gltf-assets.ts';import { worldResolution } from './adaptive-resolution.ts';import { browserQuality } from './quality-tier.ts';import { WorldDistanceDetail } from './WorldDistanceDetail.ts';import { WorldMeshLod, PHONE_MESH_LOD, DESKTOP_MESH_LOD, workerSimplifier, type Simplifier } from './WorldMeshLod.ts';import { WorldFarStandIns, PHONE_STAND_INS, rendererSnapshotter } from './WorldFarStandIns.ts';import { compileSceneAsync, setTextureRenderer } from './gen-mesh/texture-budget.ts';
+import { setAssetLoader } from './gen-mesh/gltf-assets.ts';import { worldResolution } from './adaptive-resolution.ts';import { browserQuality } from './quality-tier.ts';import { WorldDistanceDetail } from './WorldDistanceDetail.ts';import { WorldMeshLod, PHONE_MESH_LOD, DESKTOP_MESH_LOD, workerSimplifier, type Simplifier } from './WorldMeshLod.ts';import { WorldFarStandIns, PHONE_STAND_INS, rendererSnapshotter } from './WorldFarStandIns.ts';import { captureTexturePreparation, compileSceneAsync, setTextureRenderer, warmReadyProgramMetadata } from './gen-mesh/texture-budget.ts';
 // P1 phones: the god panel and the constitution card are lazy chunks, mounted once the arrival card has gone (20 s cap), or
 // at once when the landing URL carries something for the panel (#join, #approve/…, an offer or pairing link, a preview)
 const GodPanel=lazy(()=>import('./GodPanel.tsx').then(m=>({default:m.GodPanel})));
@@ -284,7 +288,13 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     }
     // Lane phones (V4): a phone draws fewer pixels, a smaller shadow map and less far detail (quality-tier.ts).
     const quality=browserQuality(),phoneOff=new Set((new URLSearchParams(location.search).get('phoneOff')??'').split(',')),distanceDetail=quality.detail&&!phoneOff.has('detail')?new WorldDistanceDetail(phoneOff.has('bodies')?{...quality.detail,standInDistance:Infinity}:quality.detail):null;  // ?phoneOff=detail,lod,cards,bodies,worker isolates one phone-tier part
-    const meshLod=quality.detail&&!phoneOff.has('lod')?new WorldMeshLod(quality.tier==='phone'?PHONE_MESH_LOD:DESKTOP_MESH_LOD,async()=>(!phoneOff.has('worker')&&await workerSimplifier(()=>new Worker(new URL('./mesh-lod.worker.ts',import.meta.url),{type:'module'})))||import('meshoptimizer/simplifier').then(async m=>{await m.MeshoptSimplifier.ready;return m.MeshoptSimplifier.supported?m.MeshoptSimplifier as unknown as Simplifier:null;})):null;  // levels built in a worker (?phoneOff=worker: in-thread)
+    const bodyViewer={eye:new THREE.Vector3(),frustum:new THREE.Frustum(),nearM:quality.bodies.nearM,farM:quality.bodies.farM},bodyViewerM=new THREE.Matrix4();let viewerLive=false;  // PERF-EDEN: bodies' pose rate by distance and view; PERF-PASSES: the layer's motion things and idle life read the same view
+    const meshLod=quality.detail&&!phoneOff.has('lod')?new WorldMeshLod(quality.tier==='phone'?PHONE_MESH_LOD:DESKTOP_MESH_LOD,async()=>{
+      if(abort.signal.aborted)return null;
+      const worker=!phoneOff.has('worker')&&await workerSimplifier(()=>new Worker(new URL('./mesh-lod.worker.ts',import.meta.url),{type:'module'}),15000,abort.signal);
+      if(abort.signal.aborted)return null;
+      return worker||import('meshoptimizer/simplifier').then(async m=>{await m.MeshoptSimplifier.ready;return !abort.signal.aborted&&m.MeshoptSimplifier.supported?m.MeshoptSimplifier as unknown as Simplifier:null;});
+    }):null;  // levels built in a worker (?phoneOff=worker: in-thread)
     (window as unknown as {__simQuality?:unknown}).__simQuality={tier:quality.tier,reason:quality.reason,maxPixelRatio:quality.maxPixelRatio,detail:()=>distanceDetail?{...distanceDetail.stats}:null,lod:()=>meshLod?{...meshLod.stats}:null,standIns:()=>farStandIns?{...farStandIns.stats}:null};
     const shotMode=new URLSearchParams(location.search).has('shot');
     // P1 phones: a new world's people (character models, clip libraries and composed Soul bodies: ~1.6 MB on Eden 2026,
@@ -325,6 +335,14 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     const farStandIns=quality.tier==='phone'&&quality.detail&&!phoneOff.has('cards')?new WorldFarStandIns(PHONE_STAND_INS,rendererSnapshotter(renderer)):null;if(farStandIns)scene.add(farStandIns.group);  // lane phones: flat cards for far scattered things
     const staticBatches=new StaticBatchOwner(scene),batchEnabled=new URLSearchParams(location.search).get('staticBatches')!=='0';
     let batchGeometry:WorldGeometry|null=null,batchRevision=-1,batchGeneration=0;
+    // PERF-BATCH: the entity world's frozen things (WorldEntityLayer.staticBatchRoots) merge per cell and plain material
+    // into derived meshes (Eden 2026: ~6,000 meshes, 983 materials → a few hundred draws). Sources are trusted between
+    // changes of the layer's staticRevision; a changed revision re-prepares (incrementally) once things have been still
+    // for a moment. `?entityBatches=0` turns it off, `?entityCell=<m>` sets the cell size (default 48 m).
+    const entityBatchQuery=new URLSearchParams(location.search),entityBatchEnabled=entityBatchQuery.get('entityBatches')!=='0',entityCell=Number(entityBatchQuery.get('entityCell'))||96;
+    const entityBatches=new StaticBatchOwner(scene,{cellSize:entityCell,maxMeshes:32768,maxNodes:262144,maxRootInputs:32768,maxMergedBytes:160*1024*1024,maxWorkingBytes:320*1024*1024,maxMeshesPerBatch:1024});
+    let entityBatchRevision=-1,entityBatchChangedAt=0,entityBatchStillAt=0,entityBatchSeenRevision=-1,entityBatchGeneration=0,entityBatchDraw=true;  // entityBatchDraw: a proof's A/B switch (window.__simEntity.batching)
+    const prepareEntityBatches=()=>{const revision=entityLayer.staticRevision;entityBatchRevision=revision;entityBatchSeenRevision=revision;void entityBatches.prepare(entityLayer.staticBatchRoots(32768),{sourcePolicy:'complete-roots/1',generation:++entityBatchGeneration,signal:abort.signal,budgetPolicy:'partial-cells/1',sharePlainMaterials:true,incremental:true,hideWholeRoots:true,sliceMs:24  /* PERF-LOAD: cell by cell, not one ~0.45 s task */,shaderMerge:{material:(m)=>mergedGlowMaterial(m,mergedRealismMaterial)??mergedRealismMaterial(m),attributes:(copy,mesh,toBatch,derived)=>{if(derived.userData.mergedRealism)mergedRealismAttributes(copy,mesh,toBatch,glowSourceMaterial(mesh)??mesh.material as THREE.Material);},source:glowSourceMaterial}}).catch(()=>{});};
     // Far plane covers the whole ±900 m terrain from anywhere in Eden: a nearer far plane slices the distant
     // ranges and the slice moves with the camera (ridges seemed to rise and recede). Depth precision is set by near.
     const camera = (adopted?.camera as THREE.PerspectiveCamera|undefined) ?? new THREE.PerspectiveCamera(45, 1, 0.1, 2400);
@@ -357,10 +375,10 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     const portraits=new WorldSoulAvatars(renderer);
     const seatSurvey=new URLSearchParams(location.search).get('survey')==='seats'?{done:false,since:null as number|null}:null;
     const waterDetail=new WorldWaterDetail(()=>!!reducedMotionQuery?.matches,()=>quality.tier==='phone'),waterDetailOff=new URLSearchParams(location.search).get('water')==='0';  // ?water=0: before/after comparisons
-    waterDetail.boats=AFLOAT;(window as unknown as {__simWater?:unknown}).__simWater=waterDetail.stats;    const idleLife=new WorldIdleLife();const bodyPoses=new WorldBodyPoses();const idleSouls:IdleSoul[]=[];let attentionTargets=new Map<string,readonly string[]>();
+    waterDetail.boats=AFLOAT;(window as unknown as {__simWater?:unknown}).__simWater=waterDetail.stats;    const idleLife=new WorldIdleLife();const bodyPoses=new WorldBodyPoses();const idleSouls:IdleSoul[]=[];const idleSphere=new THREE.Sphere();let attentionTargets=new Map<string,readonly string[]>();
     const contextViews=new WorldContextViews(apiPath,abort.signal,()=>{const state=latestViewerState.current;if(state&&!abort.signal.aborted)context.current.onViewerState?.({...state});},newWorld);
     const edgeItems=new WorldEdgeItems(apiPath('/v1/edge/items'));scene.add(edgeItems.group);edgeItems.start(abort.signal);  // things lying around (together/1)
-    const early=newWorld?takeEarlyLayer():null;if(early)abort.signal.addEventListener('abort',()=>early.abort.abort());const entityLayer=early?.layer??new WorldEntityLayer(apiPath);entityLayerRef.current=entityLayer;  // P7b: a phone's layer may have started before this page's code was in (early-layer.ts)
+    const early=newWorld?takeEarlyLayer():null;if(early)abort.signal.addEventListener('abort',()=>early.abort.abort());const entityLayer=early?.layer??new WorldEntityLayer(apiPath);entityLayerRef.current=entityLayer;{const q=new URLSearchParams(location.search);entityLayer.scatterPooling=q.get('scatterPools')!=='0';entityLayer.motionInstancing=q.get('motionPools')!=='0';entityLayer.scatterPools.cellSize=Number(q.get('scatterCell'))||(quality.tier==='phone'?192:Infinity);}  // P7b: a phone's layer may have started before this page's code was in (early-layer.ts)
     scene.add(entityLayer.group);entityLayer.cover.bindScene(scene);let entityWorldFramed=false,rideNames:string[]|null=null,rideNamesAt=0,rideCarriers:CarrierPose[]=[],rideCars:string[]=[],carrierIds:string[]=[];
     // E2 #3: shy animals in a god world run from where the Souls' figures are now; ANI: every animal (god worlds and old Eden) gives way to them
     setFleeSources(()=>{const out:[number,number][]=[];for(const soul of context.current.sim.conn.replica.souls.values()){const e=shown.current.entities[soul.entityId];if(e?.p)out.push([e.p[0],e.p[2]]);}return out;});
@@ -389,7 +407,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       if(abort.signal.aborted)return;frameEntityWorld();setEntityWorld(entityLayer.active);
       // lane W1: link the built world's shaders in parallel (KHR_parallel_shader_compile) before its first frame, instead
       // of the first frame stalling the page on each program (~0.2-0.35 s); frames wait for it, at most 3 s
-      if(entityLayer.active){programsPending=true;const done=()=>{programsPending=false;arrivalMark('programs-linked');};void compileSceneAsync(renderer,scene,camera).then(done,done);}
+      if(entityLayer.active){programsPending=true;warmLayer=1;}  // PERF-LOAD: linked after the layer's first update (warmLayer, in the frame loop), which adds its pools
       // r2.1: and after the first world clock reaches the lights (all views/frames of `look --hour` honour the hour)
       if(shotMode){await whenAssetsSettled();await whenShotClock(()=>light.daylight!==null,{timeoutMs:shotHour!==null?15_000:4_000,signal:abort.signal});await whenArrivalCardGone({signal:abort.signal});await new Promise<void>(r=>{afterNextDraw=r;});requestAnimationFrame(()=>requestAnimationFrame(()=>{
         if(abort.signal.aborted)return;document.title=entityLayer.active?'ready':'no-entity-world';
@@ -423,7 +441,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       let lifted=0;for(let i=0;i<4;i++){const l=cameraGround.apply(camera,scene);if(!(l>0))break;lifted+=l;camera.lookAt(controls.target);}
       const round=(v:number)=>Math.round(v*100)/100;
       const pin:ShotPin={eye:camera.position.toArray(),at:controls.target.toArray(),lifted:round(lifted),closer:round(fixed?.closer??0),raised:fixed?.raised??0};(window as unknown as {__shotCamera?:ShotPin}).__shotCamera=pin;return pin;};
-    renderer.domElement.addEventListener('click',onFlagClick);if(newWorld)(window as unknown as {__simEntity?:unknown}).__simEntity={layer:entityLayer,get depictedTick(){return shown.current.tick;},get worldSeconds(){const dt=shown.current.take?.dt;return dt?shown.current.tick*dt:null;},transportFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt,entities:shown.current.entities,bones:people&&!(people instanceof WorldLightPeople)?people.bones():null}),gameFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt??.05,entities:shown.current.entities,bones:(people as TakePeople|null)?.bones?.()??{},souls:[...context.current.sim.conn.replica.souls.values()].map(s=>({id:s.id,entityId:s.entityId,name:s.name})),props:games.group.children.map(o=>({key:o.name,p:o.position.toArray(),kind:o.userData.gameKind}))}),contactFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt,takeStart:shown.current.take?.startTick,entities:shown.current.entities,bones:people&&!(people instanceof WorldLightPeople)?people.contactDiagnostics():null}),shotCamera,labelScene,applyEdge:(msg:Parameters<WorldEntityLayer['applyEdge']>[0][number]|Parameters<WorldEntityLayer['applyEdge']>[0])=>entityLayer.applyEdge(Array.isArray(msg)?msg:[msg]),siteStyle:(style:string)=>entityLayer.sites.siteStyle(style),siteStats:()=>entityLayer.sites.inspect(),camera,get controls(){return controls;},residents:()=>{const out:{id:string;p:readonly[number,number,number];speaking?:boolean;body?:string;activity?:string;instrument?:string}[]=[],now=Date.now();for(const s of context.current.sim.conn.replica.souls.values()){const e=shown.current.entities[s.entityId];if(e)out.push({id:s.id,p:e.p as readonly[number,number,number],speaking:speeches.some(sp=>sp.speaker===s.id&&now-sp.at<Math.min(9000,1500+sp.text.length*55)),body:s.entityId,activity:(e as {activity?:string}).activity,instrument:people&&!(people instanceof WorldLightPeople)?people.instrumentOf(s.entityId):undefined});}return out;},scene,renderer,stats:()=>({draws:renderer.info.render.calls,tris:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,instances:entityLayer.instancer.instances,instanceDraws:entityLayer.instancer.draws,entities:entityLayer.entityCount})};  // the entity world (god mode), when this world has one
+    renderer.domElement.addEventListener('click',onFlagClick);if(newWorld)(window as unknown as {__simEntity?:unknown}).__simEntity={layer:entityLayer,get depictedTick(){return shown.current.tick;},get worldSeconds(){const dt=shown.current.take?.dt;return dt?shown.current.tick*dt:null;},transportFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt,entities:shown.current.entities,bones:people&&!(people instanceof WorldLightPeople)?people.bones():null}),gameFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt??.05,entities:shown.current.entities,bones:(people as TakePeople|null)?.bones?.()??{},souls:[...context.current.sim.conn.replica.souls.values()].map(s=>({id:s.id,entityId:s.entityId,name:s.name})),props:games.group.children.map(o=>({key:o.name,p:o.position.toArray(),kind:o.userData.gameKind}))}),contactFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt,takeStart:shown.current.take?.startTick,entities:shown.current.entities,bones:people&&!(people instanceof WorldLightPeople)?people.contactDiagnostics():null}),shotCamera,labelScene,applyEdge:(msg:Parameters<WorldEntityLayer['applyEdge']>[0][number]|Parameters<WorldEntityLayer['applyEdge']>[0])=>entityLayer.applyEdge(Array.isArray(msg)?msg:[msg]),siteStyle:(style:string)=>entityLayer.sites.siteStyle(style),siteStats:()=>entityLayer.sites.inspect(),camera,get controls(){return controls;},residents:()=>{const out:{id:string;p:readonly[number,number,number];speaking?:boolean;body?:string;activity?:string;instrument?:string}[]=[],now=Date.now();for(const s of context.current.sim.conn.replica.souls.values()){const e=shown.current.entities[s.entityId];if(e)out.push({id:s.id,p:e.p as readonly[number,number,number],speaking:speeches.some(sp=>sp.speaker===s.id&&now-sp.at<Math.min(9000,1500+sp.text.length*55)),body:s.entityId,activity:(e as {activity?:string}).activity,instrument:people&&!(people instanceof WorldLightPeople)?people.instrumentOf(s.entityId):undefined});}return out;},scene,renderer,stats:()=>({draws:renderer.info.render.calls,tris:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,instances:entityLayer.instancer.instances,instanceDraws:entityLayer.instancer.draws,scatterDraws:entityLayer.scatterPools.draws,motionDraws:entityLayer.motionInstancer.draws,motionInstances:entityLayer.motionInstancer.instances,scatterInstances:entityLayer.scatterPools.instances,entities:entityLayer.entityCount,batches:entityBatches.inspection(),staticRevision:entityLayer.staticRevision,sunShadow:sunCache?{...sunCache.stats}:null}),batching:(on:boolean)=>{entityBatchDraw=on;}};  // the entity world (god mode), when this world has one
     const games=new WorldGames();scene.add(games.group);
     const platformDraw=new WorldPlatforms();scene.add(platformDraw.group);
     const placeActivity=new WorldPlaceActivity();scene.add(placeActivity.group);
@@ -434,7 +452,9 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     // MARSLAND-FORK: the Mars fork (/worlds/w/mars) draws the mars-two template's drone surroundings and its desert sky (lazy: only the fork loads the kit)
     let forkLand:ForkLand|null=null,forkLandLoad:Promise<void>|null=null;
     const dressForkLand=(camp:THREE.Object3D)=>{if(!marsFork)return;forkLandLoad??=import('./WorldMarsForkLand.ts').then(m=>{if(abort.signal.aborted)return;forkLand=m.createForkLand(0);scene.add(forkLand.group);(window as unknown as {__simForkLand?:unknown}).__simForkLand=forkLand.stats;},e=>console.warn('mars fork land could not be drawn',e));void forkLandLoad.then(()=>forkLand?.dress(camp));};let atmosphereSeconds=0;const reducedMotionQuery=typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):null;
-    const light = (adopted?.light as Daylight|undefined) ?? new Daylight(scene);if(quality.shadowMapSize!==light.sun.shadow.mapSize.x)light.sun.shadow.mapSize.set(quality.shadowMapSize,quality.shadowMapSize);
+    const light = (adopted?.light as Daylight|undefined) ?? new Daylight(scene,{bakedShadow:quality.bakedShadows});if(quality.shadowMapSize!==light.sun.shadow.mapSize.x)light.sun.shadow.mapSize.set(quality.shadowMapSize,quality.shadowMapSize);
+    // PERF-BAKED-SHADOWS: still things cast into the sun's cached map (redrawn when the sun turns, the view steps or a still thing changes); the per-frame map draws what moves
+    const sunCache=light.baked?new SunShadowCache(renderer,scene,light.sun,light.baked,{enabled:()=>look.enabled&&look.follow&&entityLayer.active&&!expansion&&!eyes&&entityLayer.freezeSettled,statics:()=>{const out=entityLayer.shadowStatics([]);out.push(entityBatches.group,staticBatches.group);return out;},revision:()=>entityLayer.shadowRevision}):null;
     const broadcast = new WorldBroadcast();
     broadcast.hints=()=>({soulEntity:id=>context.current.sim.conn.replica.souls.get(id)?.entityId??null,eden:!!expansion&&!past.current,daylight:light.daylight,carriers:rideCarriers,...(entityLayer.active&&!expansion?{views:godTourViews(entityLayer,entityLayer.groundAt)}:{})});  // R4-LIVE: a god world's own landmarks  // VF1/VF5: who speaks; Eden town views; time of day
     const followMotion=new WorldFollowMotion();
@@ -598,7 +618,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       if(!response.ok)throw Error('Recorded scenery unavailable');return response.json();
     },decodeSceneCapturePublication);
     const installScene=(info:ReturnType<typeof parseSceneInfo>,verifiedPublication?:unknown,profiles:OptionalAppearanceProfiles=ALL_OPTIONAL_APPEARANCE_PROFILES)=>{
-      staticBatches.reset();batchGeometry=null;batchRevision=-1;
+      staticBatches.reset();batchGeometry=null;batchRevision=-1;entityBatches.reset();entityBatchRevision=-1;
       speechVisibility.reset();
       const gate=newInitialGate();locationRegions=null;depictedLocations=[];placePreviews.invalidate();
       appearanceProfiles=profiles;
@@ -634,7 +654,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       const key=reference===undefined?(history?'history-unbound':'current-unbound'):JSON.stringify([ref?.contract,ref?.hash,ref?.rulesVersion,mismatch]);
       if(key===sceneKey&&(sceneSettled||now<sceneRetryAt))return sceneSettled;
       const request=++sceneRequest;sceneKey=key;sceneRetryAt=Infinity;sceneSettled=false;initialGate?.cancel();setInitialProgress({generation:initialGeneration,stage:'waiting',required:0,completed:0,failed:[],bytesLoaded:0,bytesTotal:null});
-      staticBatches.reset();batchGeometry=null;batchRevision=-1;
+      staticBatches.reset();batchGeometry=null;batchRevision=-1;entityBatches.reset();entityBatchRevision=-1;
       speechVisibility.reset();
       resetSocialDraw();
       clearSocialPaths();
@@ -708,7 +728,16 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     const eyes=WorldEyes.fromSearch(location.search,{renderer,camera,scene,body:id=>people?.bodyObject(id)??floaters.object(id)??standIns.getObjectByName(id)??null,souls:()=>[...context.current.sim.conn.replica.souls.values()].map(x=>x.entityId),overlays:()=>[speechLayer.group,ring,fading.group,hover.marker],tick:()=>shown.current.tick,ready:()=>sceneSettled&&drawnTick.current!==null});
     const officeGuardFrom=new THREE.Vector3(),authoredBoundaries=new WorldAuthoredBoundaries();
     let shadowFrame=0;  // P1 phones
-    let posterFrames=0,programsPending=false,arrivedOnce=false,earlyPending=0,buildingFrameAt=-Infinity,layerStarted=false,afterNextDraw:(()=>void)|null=null;  // afterNextDraw: ?shot waits for a frame drawn after the build  // lane W1: the built world's shaders are still linking in parallel: no frame yet
+    const fixtureInstances=new EngineFixtureInstances(entityLayer.motionInstancer);
+    let posterFrames=0,programsPending=false,warmLayer=0,arrivedOnce=false,earlyPending=0,buildingFrameAt=-Infinity,layerStarted=false,afterNextDraw:(()=>void)|null=null;  // afterNextDraw: ?shot waits for a frame drawn after the build  // lane W1: the built world's shaders are still linking in parallel: no frame yet
+    const compileInitialPrograms=async()=>{
+      const owner=newWorld?captureTexturePreparation():null;
+      const active=()=>!abort.signal.aborted&&(!newWorld||(owner?.renderer===renderer&&captureTexturePreparation()===owner));
+      await new Promise<void>(r=>setTimeout(r,0));  // traversal gets its own task, separate from the warm frame
+      if(!active())return;
+      await compileSceneAsync(renderer,scene,camera,3000,owner?.abort.signal??abort.signal);
+      if(owner&&active())await warmReadyProgramMetadata(renderer,active,owner.abort.signal);
+    };
     const animate = () => {
       officeGuardFrom.copy(camera.position);
       if (abort.signal.aborted) return;
@@ -718,6 +747,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       if(eyes&&!eyes.wake(performance.now()))return;  // VF1b: a slow frame leaves room for socket messages
       const now = performance.now(), step = Math.min(0.1, (now - last) / 1000);
       last = now;
+      const rigBudget={remaining:1};  // one shared cap for this animate, including any repeated people updates
       const s = context.current.sim, dt = dtOf(s), liveList = liveChunks();
       let chunks: Chunk[], tick: number;
       const p = past.current;
@@ -818,7 +848,8 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
           people.setPlatformFloors(floors,base?.levels.find(l=>l.id===0)?.y??0);
           if(locationRegions!==take.finalState.regions){locationRegions=take.finalState.regions;depictedLocations=depictedWorldLocations(take.finalState.regions,base?.levels??[],(x,z,y)=>platformFloorOffset(floors,x,z,y,base?.levels.find(l=>l.id===0)?.y??0));}
           const beat=worldDepictionBeat(context.current.depictionBeatAt,s.conn.welcome?.worldId,take,depictedTick,past.current?'history':'live',pick.exact);
-          const sampled = people.show(local * take.dt, depictedTick * dt,beat,(depictedTick - take.startTick) * take.dt);
+          if(!eyes&&!shotMode){camera.updateMatrixWorld();bodyViewer.frustum.setFromProjectionMatrix(bodyViewerM.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));bodyViewer.eye.copy(camera.position);people.setViewer(bodyViewer);entityLayer.viewer=bodyViewer;viewerLive=true;}else{people.setViewer(null);entityLayer.viewer=null;viewerLive=false;}  // PERF-EDEN: far / off-screen bodies are posed at a lower rate
+          const sampled = people.show(local * take.dt, depictedTick * dt,beat,(depictedTick - take.startTick) * take.dt,!eyes&&!shotMode?rigBudget:undefined);
           games.update(sampled.entities,depictedTick);
           bodyModels.sync(records,sampled.entities);
           const sampledFloaters=new Map(Object.entries(sampled.entities).flatMap(([id,e])=>{const body=recordedBody(records[id]?.body,e.state);if(body?.family!=='floater')return [];const url=admittedBodyUrl(body.modelUrl,apiPath('').replace(/\/$/,''));return [[id,{...body,...(url?{modelUrl:url}:{})} as NonNullable<Entity['body']>]] as [string,NonNullable<Entity['body']>][];}));
@@ -989,9 +1020,12 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       if(bodyModels.held&&arrivalOver()){bodyModels.held=false;startTemplates();}  // P1 phones: the people stream in now
       if(newWorld&&!templatesStarted&&!bodyModels.held&&(arrivedOnce||layerStarted&&!entityLayer.active)){startTemplates();}
       // (never for ?shot pictures or a Soul's eyes: those tools time their own frames)
-      const holdDraw=!shotMode&&!eyes&&(programsPending||(arrivalStage!==undefined&&!arrivedOnce));
-      if(quality.tier==='phone'&&!eyes&&!shotMode){entityLayer.interiorFrom=camera.position;entityLayer.freezeSettled=true;}else{entityLayer.interiorFrom=null;entityLayer.freezeSettled=false;}  // P1 phones: far buildings' furniture is not drawn
-      entityLayer.applyEdge(context.current.sim.edge??[],shown.current?.tick??-Infinity);if(!holdDraw){entityLayer.itemPoses(shown.current.entities);entityLayer.update(step,now,geometry.group);}  // no-ops unless this is a new (entity) world
+      const holdDraw=!shotMode&&!eyes&&(programsPending||(arrivalStage!==undefined&&!arrivedOnce)),warmFrame=warmLayer===1;
+      {const still=quality.freezeStill&&!eyes&&!shotMode;entityLayer.interiorFrom=still&&quality.tier==='phone'?camera.position:null;entityLayer.freezeSettled=still;}  // P1 phones: far buildings' furniture is not drawn; PERF-EDEN: still things freeze and cull on every tier
+      entityLayer.applyEdge(context.current.sim.edge??[],shown.current?.tick??-Infinity);if(!holdDraw||warmFrame){entityLayer.streamFrom(camera.position);entityLayer.itemPoses(shown.current.entities);entityLayer.update(step,now,geometry.group);}
+      // PERF-LOAD: the built layer's first update runs under the card and its programs (scatter and kit pools, creatures,
+      // atmosphere: ~0.3 s of links on the first drawn frame) link in parallel before any frame draws them
+      if(warmLayer===2){warmLayer=0;const done=()=>{programsPending=false;arrivalMark('programs-linked');};void compileInitialPrograms().then(done,done);}else if(warmLayer===1)warmLayer=2;  // compiled on the next frame, not in the update's task  // no-ops unless this is a new (entity) world
       if(!holdDraw&&shown.current.take)entityLayer.drawHandActuators(shown.current.entities,shown.current.tick,shown.current.take.dt);
       navigation?.update(step);
       rts.update(step);
@@ -1004,7 +1038,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
           if(pose.done){soulFlight=null;context.current.onSelect(flight.soulId);context.current.setThing(null);context.current.cameraMode='follow';context.current.follow=true;context.current.setCameraMode('follow');}}
       }
       atmosphereSeconds+=step;godLiving?.update(now,light.daylight,!!reducedMotionQuery?.matches||(look.enabled&&shotMode));const godSky=godLiving&&entityLayer.active&&!expansion?godLiving.atmosphere(shown.current?.tick??NaN):forkLand&&!expansion?forkLand.atmosphere():null;  // look pass: a still picture shows patterned lamps at their steady level (repeatable shots)
-      if(!holdDraw)try{atmosphere.update({seconds:atmosphereSeconds,dt:step,daylight:light.daylight,camera,eden:(!!expansion||!!godSky)&&!past.current,reducedMotion:!!reducedMotionQuery?.matches,clock:shotClockAt(shown.current?.datetime??adopted?.clock??null,shotHour??visitorPreviewHour()),...(godSky?{profile:'world' as const,weather:godSky.weather,indoors:godSky.indoors}:{})});}catch{}
+      if(!holdDraw||warmFrame)try{atmosphere.update({seconds:atmosphereSeconds,dt:step,daylight:light.daylight,camera,eden:(!!expansion||!!godSky)&&!past.current,reducedMotion:!!reducedMotionQuery?.matches,clock:shotClockAt(shown.current?.datetime??adopted?.clock??null,shotHour??visitorPreviewHour()),...(godSky?{profile:'world' as const,weather:godSky.weather,indoors:godSky.indoors}:{})});}catch{}
       try{godLightning?.update(shown.current?.tick??NaN,camera,step,!!reducedMotionQuery?.matches);}catch{}
       if(controls.enabled)controls.update();
       rts.afterControls();  // B2: the head offset over the pivot (controls.update aims at the pivot)
@@ -1040,7 +1074,8 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
         soulId=>{const id=s.conn.replica.souls.get(soulId)?.entityId;return id?people?.bodyObject(id)??floaters.object(id)??standIns.getObjectByName(id)??null:null;});
       // Idle life: breathing, weight shifts, head turns, speaking nods (render-time only).
       idleSouls.length=0;if(!past.current){const nowMs=Date.now();for(const soul of s.conn.replica.souls.values()){const e=at.entities[soul.entityId];if(!e)continue;
-        idleSouls.push({id:soul.id,root:people?.bodyObject(soul.entityId)??null,p:e.p,yaw:e.yaw??0,activity:String(e.activity??'idle'),speaking:speeches.some(sp=>sp.speaker===soul.id&&nowMs-sp.at<4000),attention:attentionTargets.get(soul.id)});}}
+        const offscreen=viewerLive&&!bodyViewer.frustum.intersectsSphere(idleSphere.set(idleSphere.center.set(e.p[0],e.p[1]+.9,e.p[2]),1.3));  // PERF-PASSES: no idle offsets for a body outside the view
+        idleSouls.push({id:soul.id,root:people?.bodyObject(soul.entityId)??null,p:e.p,yaw:e.yaw??0,activity:String(e.activity??'idle'),speaking:speeches.some(sp=>sp.speaker===soul.id&&nowMs-sp.at<4000),attention:attentionTargets.get(soul.id),offscreen});}}
       if(refresh)idleLife.forget(new Set(idleSouls.map(s=>s.id)));
       idleLife.apply(idleSouls,atmosphereSeconds,step,!!reducedMotionQuery?.matches);
       bodyPoses.apply(idleSouls.map(x=>({...x,body:s.conn.replica.souls.get(x.id)?.body})),atmosphereSeconds,!!reducedMotionQuery?.matches);  // LINK: zombie arms/lurch, floating sleepers
@@ -1054,12 +1089,17 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       expansion?.wallFrames.update(camera,expansion.group.visible&&!past.current);
       // Initial required attachments are prepared together, never per GLB.
       if((!initialGate||initialGate.snapshot().stage==='ready')&&batchEnabled&&(batchGeometry!==geometry||batchRevision!==geometry.staticRenderRevision))void prepareStaticRendering();
+      // PERF-BATCH: re-prepare once the layer's revision has been still for 300 ms (things freeze one by one after an
+      // arrival or an edit), or after 3 s of continuous change; never while a build is drawing or under the card.
+      if(entityBatchEnabled&&entityLayer.active&&!entityLayer.building&&!eyes&&entityLayer.freezeSettled&&entityLayer.staticRevision!==entityBatchRevision){if(entityLayer.staticRevision!==entityBatchSeenRevision){if(entityBatchSeenRevision===entityBatchRevision)entityBatchChangedAt=now;entityBatchSeenRevision=entityLayer.staticRevision;entityBatchStillAt=now;}if(now-entityBatchStillAt>300||now-entityBatchChangedAt>3000)prepareEntityBatches();}
       if(geometry.backdropDetailPending&&(!initialGate||initialGate.snapshot().stage==='ready'))geometry.backdropDetailWhenSettled(loader,now);  // W3: the campus's exact furniture after arrival
       if(look.enabled&&entityLayer.active&&!expansion){if(look.follow)light.follow(controls.target,camera.position);renderer.toneMappingExposure=lookExposure(light.daylight,look.nightExposure);}
-      if(adaptive&&entityLayer.active&&!eyes)adaptive.frame(now);const draw=()=>{diagnostics.beginRender(renderer);if(!eyes)entityLayer.cull(camera,renderer.domElement.clientHeight,renderer.shadowMap.autoUpdate||renderer.shadowMap.needsUpdate);if(distanceDetail&&!eyes)distanceDetail.apply(scene,camera,renderer.domElement.clientHeight);if(meshLod&&!eyes)meshLod.apply(scene,camera,renderer.domElement.clientHeight);if(farStandIns&&!eyes)farStandIns.apply(scene,camera,renderer.domElement.clientHeight);try{if(!eyes?.render()){if(post&&entityLayer.active)post.render(renderer,scene,camera);else renderer.render(scene,camera);}}finally{farStandIns?.restore();meshLod?.restore();distanceDetail?.restore();entityLayer.uncull();diagnostics.endRender();}};
+      if(adaptive&&entityLayer.active&&!eyes)adaptive.frame(now);const draw=()=>{diagnostics.beginRender(renderer);sunCache?.prepare(renderer.shadowMap.autoUpdate||renderer.shadowMap.needsUpdate);if(!eyes)entityLayer.cull(camera,renderer.domElement.clientHeight,renderer.shadowMap.autoUpdate||renderer.shadowMap.needsUpdate,sunCache?.cullCamera??light.sun.shadow.camera);if(distanceDetail&&!eyes)distanceDetail.apply(scene,camera,renderer.domElement.clientHeight);if(meshLod&&!eyes)meshLod.apply(scene,camera,renderer.domElement.clientHeight);if(farStandIns&&!eyes)farStandIns.apply(scene,camera,renderer.domElement.clientHeight);try{if(!eyes?.render()){if(post&&entityLayer.active)post.render(renderer,scene,camera);else renderer.render(scene,camera);}}finally{farStandIns?.restore();meshLod?.restore();distanceDetail?.restore();entityLayer.uncull();diagnostics.endRender();}};
       if(quality.shadowEvery>1&&!eyes){renderer.shadowMap.autoUpdate=false;if(shadowFrame++%quality.shadowEvery===0)renderer.shadowMap.needsUpdate=true;}  // P1 phones: the shadow map every n-th frame
       if(!waterDetailOff&&!holdDraw)try{waterDetail.applyUnderwater(scene,camera,renderer.domElement);}catch{}  // a camera under the water: gradual fog and tint (restored after the draw)
-      if(holdDraw){/* nothing to show yet */}else{if(batchEnabled)staticBatches.withRender(draw);else draw();if(afterNextDraw){const f=afterNextDraw;afterNextDraw=null;f();}if(posterFrames<2&&earlyPosterShown()&&mount.current?.style.visibility==='visible'&&!mount.current.parentElement?.querySelector('.world-initial-loading')&&++posterFrames===2)requestAnimationFrame(removeEarlyPoster);/* P7d: the early renderer's poster goes once two frames of ours are on screen under it */if(earlyPending&&mount.current?.style.visibility==='visible'&&!mount.current.parentElement?.querySelector('.world-initial-loading')&&--earlyPending===0)requestAnimationFrame(()=>{if(!abort.signal.aborted)earlyArrival.mark();});}  // P7 fix: two frames drawn with nothing covering the canvas, then the next frame (the second is on screen) lifts the card
+      if((!holdDraw||warmFrame)&&entityLayer.motionInstancing){fixtureInstances.track(scene);entityLayer.motionInstancer.sync();}  /* PERF-BATCH round 2: moving things and the engine's boats draw as instances */
+      if(holdDraw){/* nothing to show yet */}else{
+if(entityBatchEnabled&&entityLayer.active&&entityLayer.freezeSettled)entityLayer.decideCuts(camera);if(batchEnabled)staticBatches.withRender(()=>entityBatchEnabled&&entityBatchDraw?entityBatches.withRender(draw,entityLayer.staticRevision):draw());else if(entityBatchEnabled&&entityBatchDraw)entityBatches.withRender(draw,entityLayer.staticRevision);else draw();if(afterNextDraw){const f=afterNextDraw;afterNextDraw=null;f();}if(posterFrames<2&&earlyPosterShown()&&mount.current?.style.visibility==='visible'&&!mount.current.parentElement?.querySelector('.world-initial-loading')&&++posterFrames===2)requestAnimationFrame(removeEarlyPoster);/* P7d: the early renderer's poster goes once two frames of ours are on screen under it */if(earlyPending&&mount.current?.style.visibility==='visible'&&!mount.current.parentElement?.querySelector('.world-initial-loading')&&--earlyPending===0)requestAnimationFrame(()=>{if(!abort.signal.aborted)earlyArrival.mark();});}  // P7 fix: two frames drawn with nothing covering the canvas, then the next frame (the second is on screen) lifts the card
       shadowDetail?.restore();
       waterDetail.restoreUnderwater();
       bodyPoses.restore();
@@ -1089,7 +1129,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
         // is built, its programs linked and shown (at most 15 s), so the card never goes over the bare hills (live /w/eden
         // on a 4x phone: the town appeared ~1.5 s after the card) and the compile below covers its lights
         if(context.current.edenExpansion){const until=performance.now()+15_000;while(expansionWantedNow!==false&&!expansionFailed&&!past.current&&!expansion?.group.visible&&performance.now()<until){await new Promise(r=>setTimeout(r,100));if(abort.signal.aborted||initialGate!==gate||!gate.attached)return;}}
-        await prepareStaticRendering();if(abort.signal.aborted||initialGate!==gate||!gate.attached)return;await compileSceneAsync(renderer,scene,camera);})();void prepared.then(()=>{if(!abort.signal.aborted&&initialGate===gate)gate.preparationComplete(gate.generation);},()=>{if(!abort.signal.aborted&&initialGate===gate)gate.preparationFailed('Rendering preparation');});}
+        await prepareStaticRendering();if(abort.signal.aborted||initialGate!==gate||!gate.attached)return;await compileInitialPrograms();})();void prepared.then(()=>{if(!abort.signal.aborted&&initialGate===gate)gate.preparationComplete(gate.generation);},()=>{if(!abort.signal.aborted&&initialGate===gate)gate.preparationFailed('Rendering preparation');});}
       if (!renderer.getContext().isContextLost()) {if(at.take&&!holdDraw&&initialGate?.snapshot().stage==='first-frame')initialGate.firstFrame(initialGate.generation);drawnTick.current = at.take&&initialGate?.snapshot().stage==='ready' ? at.tick : null;if(drawnTick.current!==null)arrivalMark('first-live-frame');}
       // A paused seek is a discrete displayed moment. Publish its first drawn
       // frame immediately; moving playback retains the existing 250ms cadence.
@@ -1108,7 +1148,9 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
         if(context.current.publishSpeechAnchors&&(!points.length||(initialGate&&(['waiting','downloading','preparing','first-frame'].includes(initialGate.snapshot().stage)||(!arrivalCardDone&&performance.now()<20_000)))))speechAnchors=[];  // F12: none under the arrival card, its ready frame included (that pass held /w/eden's card ~0.15 s at 4x after initial-ready) (the visibility pass cost /w/eden ~0.3 s at 4x before its card). P1: nobody to place: skip the visibility pass over every mesh (~1 ms a frame on Eden 2026)
         else if(context.current.publishSpeechAnchors)try{
           speechVisibility.prepareFresh(visualObstructionRoots());
-          speechAnchors=projectSpeechAnchors(points,camera,host.clientWidth,host.clientHeight,area,p=>speechVisibility.score({position:camera.position.toArray(),target:[...p],fov:camera.fov},['anchor'],{anchor:{p:[...p],yaw:0,points:[[...p]]}})===1);
+          // PERF-PASSES: one evaluation for the whole batch: every anchor's score shares one bounds pass over the ~6,000
+          // occluders (each score took its own: ~40 ms per refresh on Eden 2026, the p95 frame while orbiting)
+          speechAnchors=speechVisibility.evaluate(()=>projectSpeechAnchors(points,camera,host.clientWidth,host.clientHeight,area,p=>speechVisibility.score({position:camera.position.toArray(),target:[...p],fov:camera.fov},['anchor'],{anchor:{p:[...p],yaw:0,points:[[...p]]}})===1));
         }catch{speechAnchors=[];speechVisibility.reset();}
         else speechVisibility.reset();
         emitState(viewerPresentation({room:context.current.edenExpansion?exploreRoom(camera.position.toArray(),EDEN_VIEWER_PLACES,s.conn.replica.souls,at.entities):null,assetDownloads:downloads.snapshot(),soulIds:[...groupSelection],
@@ -1120,7 +1162,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
         }));
       }
 
-      if(diagnostics.enabled)diagnostics.sample(renderer,now,performance.now()-now,expansion?.wallFrames.inspection()??[],batchEnabled?staticBatches.inspection():null);
+      if(diagnostics.enabled)diagnostics.sample(renderer,now,performance.now()-now,expansion?.wallFrames.inspection()??[],entityLayer.active&&entityBatchEnabled?entityBatches.inspection():batchEnabled?staticBatches.inspection():null);
     };
 
     // click (not drag) to select a Soul, a thing, or a kin
@@ -1142,13 +1184,14 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('wheel', onWheel, { passive: true });
     renderer.domElement.addEventListener('pointerup', onUp);
-    animate();
+    frame=requestAnimationFrame(animate);  // the first shader uploads/draw get their own task after React's mount
 
     return () => {
       releaseTexturePreparation();
       releaseAssetLoader();
       releaseDownloads();
       eyes?.dispose();
+      fixtureInstances.clear();
       waterDetail.dispose();
       games.dispose();
       platformDraw.dispose();
@@ -1183,7 +1226,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       people?.dispose();
       if(entityWorldFramed)entityView.current={eye:camera.position.toArray(),target:controls.target.toArray(),pending:!!arrivalPending,broadcast:context.current.cameraMode==='broadcast'};  // entity worlds only: the camera survives the scene re-mount
       edgeItems.dispose();entityLayer.dispose();const entityDebug=window as unknown as {__simEntity?:{layer:WorldEntityLayer}};if(entityDebug.__simEntity?.layer===entityLayer)delete entityDebug.__simEntity;setFleeSources(null);
-      initialGate?.cancel();retryInitial.current=null;staticBatches.dispose();distanceDetail?.dispose();meshLod?.dispose();farStandIns?.dispose();diagnostics.dispose();placePreviews.dispose();bodyModels.dispose();
+      initialGate?.cancel();retryInitial.current=null;staticBatches.dispose();entityBatches.dispose();distanceDetail?.dispose();meshLod?.dispose();farStandIns?.dispose();diagnostics.dispose();placePreviews.dispose();bodyModels.dispose();
       floaters.dispose();
       kin.dispose();
       sceneRequest++;sceneHistory.dispose();
@@ -1192,7 +1235,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       planting?.dispose();planting=null;
       clearNewcomerMarkers();restMarkers?.dispose();restMarkers=null;publication=null;
       clearExpansion();cameraGround.bindGround(undefined);geometry.dispose();
-      light.dispose();
+      sunCache?.dispose();light.dispose();
       ring.geometry.dispose(); (ring.material as THREE.Material).dispose();
       standInGeometry.dispose(); standInMaterial.dispose();
       resources.dispose();

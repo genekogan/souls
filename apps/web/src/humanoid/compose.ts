@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import type {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
-import {templateFromParts, type Template} from '../../../../mars/viewer/app/engine-view/people.ts';
+import {templateFromPartsAsync, type Template} from '../../../../mars/viewer/app/engine-view/people.ts';
 import {resolveLook, lookKey, paletteOf, HEADGEAR_FACES, SHAPE_KEYS, type Look, type Slot} from './look.ts';
 import {humanoidMaterial} from './material.ts';
 import {BASE} from '../base-path.ts';
@@ -129,6 +129,16 @@ function scaleHead(g: THREE.BufferGeometry, s: number, joint: [number, number, n
   return g;
 }
 
+const PART_NAMES = ['head', 'top', 'bottom', 'shoes'] as const;
+const MERGE_OFF = typeof location !== 'undefined' && new URLSearchParams(location.search).get('merge') === '0';
+/** The four part geometries as one (mergeParts: kit format), with each part's index range in `userData.parts`; null when a
+ *  part is not kit format (then the four draw apart). */
+export function mergeBodyParts(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
+  if (geos.some(g => !g.index || Object.keys(g.morphAttributes).length)) return null;
+  let merged: THREE.BufferGeometry; try { merged = mergeParts(geos); } catch { return null; }
+  let at = 0; merged.userData.parts = geos.map((g, i) => { const part = { name: PART_NAMES[i], start: at, count: g.index!.count }; at += g.index!.count; return part; });
+  merged.name = 'body'; return merged;
+}
 const headKey = (look: Look) => ['head', look.frame, look.face, look.hair, look.hat, look.glasses, look.headSize, look.facialHair, look.mask, look.scarf, earrings(look)];
 const topKey = (look: Look) => ['top', look.frame, look.top, look.bag, look.gloves, look.scarf, necklace(look)];
 export type KitReader = (url: string) => Promise<ArrayBuffer>;
@@ -245,7 +255,12 @@ export class HumanoidKit {
     const bones = binder!.skeleton.bones; binder!.removeFromParent();
     const {palette, pattern} = paletteOf(look, look.preset !== 'none' ? m.presets[look.preset]?.palette : undefined);
     const material = humanoidMaterial(palette, pattern);
-    const meshes = geos.map((g, i) => { const mesh = new THREE.SkinnedMesh(g, material); mesh.name = ['head', 'top', 'bottom', 'shoes'][i]; armature.add(mesh); return mesh; });
+    // PERF-BATCH round 2: the four parts share one material and one skeleton, so they draw as one skinned mesh (a town
+    // view of 17 people: 68 → 17 draws, and as many in the shadow pass); `?merge=0` keeps the four for A/B. userData.parts
+    // keeps each part's index range in the merged geometry.
+    const merged = MERGE_OFF ? null : mergeBodyParts(geos);
+    const meshes = merged ? [(() => { const mesh = new THREE.SkinnedMesh(merged, material); mesh.name = 'body'; armature.add(mesh); return mesh; })()]
+      : geos.map((g, i) => { const mesh = new THREE.SkinnedMesh(g, material); mesh.name = PART_NAMES[i]; armature.add(mesh); return mesh; });
     // Same child order as the shipped GLBs (meshes before the Root bone): people.ts fit() measures its box in
     // traversal order, so this keeps today's placement exactly (the box sees the bind pose, as it does today).
     armature.children.sort((a, b) => Number((a as THREE.Bone).isBone ?? false) - Number((b as THREE.Bone).isBone ?? false));
@@ -256,6 +271,6 @@ export class HumanoidKit {
     scene.userData.humanoid = {key, look};
     // fitArms rescales the arm position tracks per template: those (only) are copied, the rest is shared.
     const clips = rig.clips.map(c => c.tracks.some(t => ARM_TRACK.test(t.name)) ? new THREE.AnimationClip(c.name, c.duration, c.tracks.map(t => ARM_TRACK.test(t.name) ? t.clone() : t)) : c);
-    return templateFromParts(key, scene, clips);
+    return templateFromPartsAsync(key, scene, clips);
   }
 }

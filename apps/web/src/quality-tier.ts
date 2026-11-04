@@ -16,7 +16,22 @@ export type QualitySettings = {
   /** P1 phones: the sun's shadow map is redrawn every n-th frame (1 = every frame). The shadow pass was ~4.5 ms of an
    *  ~18.6 ms frame for Eden 2026 at phone settings (M3 Max 1x; a 4x-throttled phone pays four times that). */
   shadowEvery: number;
+  /** Lane PERF-EDEN (2026-11-01): settled, still things of an entity world keep their pose (no per-frame matrix walk) and
+   *  are frustum / sub-pixel culled at render time (WorldEntityLayer.freeze/cull). Was phone-only: on Eden 2026 the
+   *  desktop tier rewrote ~4,800 poses a frame and culled nothing. */
+  freezeStill: boolean;
+  /** Bodies (Souls, kin) are posed every frame within `nearM` metres of the eye, every 2nd frame to `farM`, every 4th
+   *  beyond, every 8th when outside the view (HumanViews.viewer). The pose is the skinned body's IK, gestures and
+   *  library clips: 68 bodies on Eden 2026 each cost it every frame wherever the camera looked. */
+  bodies: BodyDetailOptions;
+  /** Lane PERF-BAKED-SHADOWS (2026-11-02): still things cast into a cached sun shadow map that is redrawn only when the sun
+   *  turns, the view steps or a still thing changes (rendering/SunShadowCache.ts); the per-frame map draws only what moves.
+   *  Desktop only (a second shadow lookup per pixel); `?bakedShadows=0` turns it off. */
+  bakedShadows: boolean;
 };
+export type BodyDetailOptions = { nearM: number; farM: number };
+export const DESKTOP_BODIES: BodyDetailOptions = Object.freeze({ nearM: 40, farM: 90 });
+export const PHONE_BODIES: BodyDetailOptions = Object.freeze({ nearM: 25, farM: 60 });
 export type DistanceDetailOptions = {
   /** Meshes whose bounding sphere projects smaller than this many CSS pixels (radius) are not drawn. */
   minRadiusPx: number;
@@ -28,11 +43,20 @@ export type DistanceDetailOptions = {
   rescanFrames: number;
 };
 export const PHONE_SHADOW_EVERY = 3;
+/** Preserve the baseline phone drawing-buffer cap; `?phoneDpr=` overrides for measurements. */
+export const PHONE_PIXEL_RATIO = 1.5;
 export const PHONE_DETAIL: DistanceDetailOptions = Object.freeze({ minRadiusPx: 1.25, shadowNear: 24, shadowPerMetre: 14, shadowMaxRadius: 6, standInDistance: 38, rescanFrames: 90 });
 /** Release 3.1: desktops get only the invisible part of distance detail — meshes under half a CSS pixel of radius are
  *  not drawn, small casters far away stop casting — and mesh LOD at half a pixel of error. No flat cards, same pixel
  *  ratio and shadow map. `?desktopDetail=0` turns it off. */
 export const DESKTOP_DETAIL: DistanceDetailOptions = Object.freeze({ minRadiusPx: 0.5, shadowNear: 60, shadowPerMetre: 30, shadowMaxRadius: 6, standInDistance: Infinity, rescanFrames: 90 });
+/** Lane PERF-EDEN (2026-11-01, measured on souls.game/w/eden: ~4,400 shadow casters, ~1,500 draws + a shadow pass of
+ *  as many again, 36 fps on an M3 Pro): meshes under one CSS pixel of radius are not drawn, small casters stop casting
+ *  beyond 40 m + 20 m per metre of radius (a chair at 50 m, a bench group at 80 m), bodies beyond 60 m cast no shadow,
+ *  and the sun's shadow map is redrawn every other frame (`?shadowEvery=1` restores every frame, `?desktopDetail=1` the
+ *  release-3.1 values, `?desktopDetail=0` no distance detail at all, as before). */
+export const DESKTOP_DETAIL_FAST: DistanceDetailOptions = Object.freeze({ minRadiusPx: 1, shadowNear: 40, shadowPerMetre: 20, shadowMaxRadius: 6, standInDistance: 60, rescanFrames: 90 });
+export const DESKTOP_SHADOW_EVERY = 2;
 
 export type QualityEnvironment = { search: string; coarsePointer: boolean; screen: readonly [number, number]; deviceMemory?: number };
 export function pickQualityTier(env: QualityEnvironment): QualitySettings {
@@ -43,11 +67,12 @@ export function pickQualityTier(env: QualityEnvironment): QualitySettings {
     : env.coarsePointer && env.deviceMemory !== undefined && env.deviceMemory <= 2 ? ['phone', `touch device with ${env.deviceMemory} GB`]
     : ['full', 'desktop or large screen'];
   const q = new URLSearchParams(env.search), num = (k: string, d: number) => { const v = Number(q.get(k)); return q.has(k) && Number.isFinite(v) && v > 0 ? v : d; };
-  // P1 phones: ?phoneMinPx= / ?phoneShadowNear= / ?phoneShadowEvery= tune the phone tier for measurements
+  // P1 phones: ?phoneMinPx= / ?phoneShadowNear= / ?phoneShadowEvery= / ?phoneDpr= tune the phone tier for measurements
   return tier === 'phone'
-    ? { tier, reason, maxPixelRatio: 1.5, shadowMapSize: 1024, shadowEvery: Math.round(num('phoneShadowEvery', PHONE_SHADOW_EVERY)),
+    ? { tier, reason, maxPixelRatio: num('phoneDpr', PHONE_PIXEL_RATIO), shadowMapSize: 1024, shadowEvery: Math.round(num('phoneShadowEvery', PHONE_SHADOW_EVERY)), freezeStill: true, bodies: PHONE_BODIES, bakedShadows: false,
       detail: q.has('phoneMinPx') || q.has('phoneShadowNear') ? { ...PHONE_DETAIL, minRadiusPx: num('phoneMinPx', PHONE_DETAIL.minRadiusPx), shadowNear: num('phoneShadowNear', PHONE_DETAIL.shadowNear) } : PHONE_DETAIL }
-    : { tier, reason, maxPixelRatio: 2, shadowMapSize: 2048, shadowEvery: 1, detail: q.get('desktopDetail') === '0' ? null : DESKTOP_DETAIL };
+    : { tier, reason, maxPixelRatio: 2, shadowMapSize: 2048, shadowEvery: q.get('desktopDetail') === '0' ? 1 : Math.round(num('shadowEvery', DESKTOP_SHADOW_EVERY)), freezeStill: q.get('freezeStill') !== '0', bodies: DESKTOP_BODIES, bakedShadows: q.get('bakedShadows') !== '0' && q.get('freezeStill') !== '0',
+      detail: q.get('desktopDetail') === '0' ? null : q.get('desktopDetail') === '1' ? DESKTOP_DETAIL : DESKTOP_DETAIL_FAST };
 }
 
 /** The page's tier (browser only). */

@@ -77,6 +77,8 @@ type Hands = { left?: Vec3; right?: Vec3 };
 type Snap = { p: [number, number, number]; yaw: number; walkW: number; walkT: number; idleT: number; sitW: number; warmW: number; expressionT: number; pose: Posture; hands: Hands; pr: ProneState | null };
 type View = {
   rig: Rig;
+  /** PERF-EDEN: posed at least once (a new body is never left in its bind pose by the pose-rate throttle). */
+  posedOnce?: boolean;
   appearance?:HumanActorAppearance;
   appearanceSoulKey?:string;
   prev: Snap;
@@ -137,6 +139,8 @@ type View = {
   footLat: number[];
   /** Skinned vertices of each foot / hand (by the side the leg / arm has: +1 left): the prone layer keeps them on the deck. */
   surf: { foot: Map<number, VertexRefs>; hand: Map<number, VertexRefs>; body?: VertexRefs };
+  /** PERF-PASSES: restNeed's lowest samples from its last full pass (see restNeed). */
+  restCache?: { key: string; n: number; refs: VertexRefs };
   stairShoes?:ReturnType<typeof stairShoeRefs>;
   stairContact?:StairRigContact|null;
   stairGoals?:[number,number,number][];
@@ -429,8 +433,28 @@ const copyHands = (h?: Hands): Hands => ({ ...(h?.left ? { left: [...h.left] as 
 
 /** Entry 42: clip time advanced under a fade-out of length f, r s in: ∫0^r (1 − smoothstep(u/f)) du (f/2 once the fade is over). */
 const heldClip = (r: number, f: number) => { const x = Math.min(1, Math.max(0, r / f)); return Math.max(0, Math.min(r, f)) - f * (x * x * x - x * x * x * x / 2); };
+/** PERF-EDEN (2026-11-01): the eye, its view and the pose-rate distances (quality-tier.ts bodies). Null: every body is
+ *  posed every frame, as before. */
+export type HumanViewer = { eye: THREE.Vector3; frustum: THREE.Frustum; nearM: number; farM: number };
+/** Shared by every people update within one live animation frame; omitted for immediate random-access views. */
+export type RigCreationBudget={remaining:number};
+const _bodySphere = new THREE.Sphere(undefined, 1.3);
 export class HumanViews {
   readonly group = new THREE.Group();
+  /** Render-time pose rate only: a body further from the eye, or outside the view, keeps its last pose for a few frames
+   *  (every 2nd frame to `farM`, every 4th beyond, every 8th off screen; the skinned mesh itself is still drawn). Speaking
+   *  bodies and bodies within `nearM` are posed every frame. Nothing here moves a body or owns a movement path. */
+  viewer: HumanViewer | null = null;
+  private poseFrame = 0;
+  /** Last render(): bodies posed / skipped by the pose-rate throttle (diagnostics). */
+  readonly poseStats = { posed: 0, skipped: 0 };
+  private poseDue(v: View, id: string): boolean {
+    const w = this.viewer; if (!w || !v.posedOnce || v.speaking) return true;
+    const p = v.cur.p; _bodySphere.center.set(p[0], p[1] + 0.9, p[2]);
+    const d = _bodySphere.center.distanceTo(w.eye);
+    const every = !w.frustum.intersectsSphere(_bodySphere) ? 8 : d < w.nearM ? 1 : d < w.farM ? 2 : 4;
+    return every === 1 || ((this.poseFrame + Math.floor(v.vary * 8)) % every) === 0;
+  }
   private stationBeat:DepictionBeat|null=null;
   /** Explicit renderer phase only; cannot admit an activity or replace hands. */
   setStationBeat(beat:DepictionBeat|null){this.stationBeat=beat?{...beat}:null;}
@@ -514,7 +538,10 @@ export class HumanViews {
   private make(id: string, s: Snap, activity: string,publicSoulKey?:string,bodyModel?:string): View {
     const rig = createRig(bodyModel?this.bodyTemplates.get(bodyModel)!:templateFor(id, this.templates)!);
     rig.holder.name = id;
-    rig.holder.traverse(o=>{o.userData.entity=id;});
+    rig.holder.traverse(o=>{
+      o.userData.entity=id;const m=o as THREE.SkinnedMesh,p=THREE.SkinnedMesh.prototype;
+      if(m.isSkinnedMesh&&m.computeBoundingSphere===p.computeBoundingSphere&&m.getVertexPosition===p.getVertexPosition&&m.applyBoneTransform===p.applyBoneTransform)m.computeBoundingSphere=computeBodySphere;
+    });
     this.group.add(rig.holder);
     const arms = armsOf(rig), legs = legsOf(rig), spine = spineOf(rig);
     const touched = [...arms.flatMap((a) => [a.upper, a.lower, a.shoulder, a.hand, ...a.fingers, ...a.thumb]), ...legs.flatMap((l) => [l.upper, l.lower, l.foot]), spine?.body, spine?.hips, spine?.abdomen, spine?.torso, spine?.head, rig.model.getObjectByName('Root')];
@@ -780,7 +807,7 @@ export class HumanViews {
    * solved for the frame without the 0.4 s blend).
    * Rigs for ids missing from `frame` are removed. Follow with `render(1, reach)`.
    */
-  setFrame(frame: SampledHuman[], t: number, parts: Record<string, Entity> = {}) {
+  setFrame(frame: SampledHuman[], t: number, parts: Record<string, Entity> = {}, rigBudget?:RigCreationBudget) {
     if (!this.templates.length&&!this.bodyTemplates.size) return;
     const seen = new Set<string>();
     const world = { entities: parts } as unknown as WorldState;
@@ -791,9 +818,14 @@ export class HumanViews {
       const base = baseOf(act, f.baseActivity);
       let v = this.views.get(f.id);
       const wanted=f.bodyModel?this.bodyTemplates.get(f.bodyModel):templateFor(f.id,this.templates);
-      if(v&&v.rig.template!==wanted){v.rig.mixer.stopAllAction();v.rig.mixer.uncacheRoot(v.rig.model);v.appearance?.retire();disposeSkeletons(v.rig.model);v.rig.holder.removeFromParent();this.views.delete(f.id);v=undefined;}
-      if (!v) v = this.make(f.id, { p: [...f.p], yaw: f.yaw, walkW: 0, walkT: 0, idleT: 0, sitW: 0, warmW: 0, expressionT: t, pose: NEUTRAL, hands: {}, pr: null }, act,f.publicSoulKey,f.bodyModel);
-      if(!f.bodyModel)this.syncAppearance(v,f.publicSoulKey);
+      // A live arrival can finish many unique templates together. Defer only new rigs, keeping every existing actor
+      // on the current sample (and its old body until a replacement can be made). No pose is queued across frames.
+      if((!v||v.rig.template!==wanted)&&(!rigBudget||rigBudget.remaining>0)){
+        if(v){v.rig.mixer.stopAllAction();v.rig.mixer.uncacheRoot(v.rig.model);v.appearance?.retire();disposeSkeletons(v.rig.model);v.rig.holder.removeFromParent();this.views.delete(f.id);}
+        v=this.make(f.id, { p: [...f.p], yaw: f.yaw, walkW: 0, walkT: 0, idleT: 0, sitW: 0, warmW: 0, expressionT: t, pose: NEUTRAL, hands: {}, pr: null }, act,f.publicSoulKey,f.bodyModel);if(rigBudget)rigBudget.remaining--;
+      }
+      if(!v)continue;
+      if(!f.bodyModel&&v.rig.template===wanted)this.syncAppearance(v,f.publicSoulKey);
       const walkDur = v.rig.walk.getClip().duration, idleDur = v.rig.idle.getClip().duration;
       v.activity = act;
       if(v.handActuator&&!f.handActuator)v.lastHandActuator=v.handActuator;else if(f.handActuator)v.lastHandActuator=undefined;
@@ -878,7 +910,8 @@ export class HumanViews {
     PLAY_MOTION.value.set(0, 0, 0, 0); // empty playground seats hang at rest; riders set theirs below
     this.players.length = 0;
     for (const [id, v] of this.views) if (v.activity === 'play-piano' || (v.activity === 'play-music' && v.instrument === 'drums')) this.players.push({ id, p: v.cur.p, kind: v.activity === 'play-piano' ? 'piano' : 'drums' });
-    for (const v of this.views.values()) this.pose(v, alpha, reach);
+    this.poseFrame++; this.poseStats.posed = this.poseStats.skipped = 0;
+    for (const [id, v] of this.views) { if (this.poseDue(v, id)) { this.pose(v, alpha, reach); v.posedOnce = true; this.poseStats.posed++; } else this.poseStats.skipped++; }
     // the dock shows one bicycle fewer for each one out under a rider (decorative-motion 'dock-bike')
     let out = 0; for (const v of this.views.values()) if (v.bike?.visible) out++; PLAY_MOTION.value.w = out;
   }
@@ -1501,7 +1534,7 @@ export class HumanViews {
         h.updateMatrixWorld(true);
         // the back / head rest on the ground under each part of them
         let need = -Infinity;
-        for (const r of v.surf.body ?? []) for (const i of r.idx) { const q = r.mesh.getVertexPosition(i, _vp).applyMatrix4(r.mesh.matrixWorld); need = Math.max(need, (bench ? floor : groundUnder(q.x, q.z, floor)) + 0.012 - q.y); }
+        need = restNeed(v, sleeper ? 'sleep' : 'lie', bench, floor);
         if (Number.isFinite(need) && rest > 0) { h.position.y += need * rest; h.updateMatrixWorld(true); }
       } else if ((body === 'swim' || body === 'tread') && one === lib.cur && v.shore) {
         const p0 = clipProbe(t, one.clip, 0), root = v.rig.model.getObjectByName('Root');
@@ -1765,7 +1798,8 @@ function measure(v: View) {
   const shMid = sh.reduce((s, q) => s.add(q), V()).multiplyScalar(1 / sh.length);
   const joints = [pivot, w(spine.abdomen), w(spine.torso), shMid];
   const hipMid = hips[0].clone().add(hips[1]).multiplyScalar(0.5);
-  const front = frontDepths(rig, hipMid.x, shMid.x, shMid.y, feet[legs[0].side > 0 ? 0 : 1], legs.flatMap((_, i) => [[hips[i], knees[i]], [knees[i], feet[i]]] as [THREE.Vector3, THREE.Vector3][]));
+  const shape = standingShape(rig,()=>frontDepths(rig, hipMid.x, shMid.x, shMid.y, feet[legs[0].side > 0 ? 0 : 1], legs.flatMap((_, i) => [[hips[i], knees[i]], [knees[i], feet[i]]] as [THREE.Vector3, THREE.Vector3][])));
+  const front=shape.front;
   v.dims = {
     hipH,
     pivotH: pivot.y,
@@ -1786,7 +1820,7 @@ function measure(v: View) {
   v.ankle = legs.map((l) => ankleLocal(l));
   v.footRest = legs.map((l) => l.foot.getWorldQuaternion(new THREE.Quaternion()));
   v.footLat = feet.map((f) => f.z);
-  v.surf = surfaceRefs(rig);
+  v.surf = shape.surf;
   v.stairShoes=stairShoeRefs(rig,v.legs);
   v.stairContact=measureStairRigContact(rig,v.legs,v.stairShoes,legLen);
   h.position.copy(p0);
@@ -1813,19 +1847,53 @@ function skinnedPoints(rig: Rig, stride: number, out: (p: THREE.Vector3, part: B
     const m = o as THREE.SkinnedMesh;
     if (!m.isSkinnedMesh || !m.geometry.attributes.skinIndex) return;
     const pos = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex as THREE.BufferAttribute, sw = m.geometry.attributes.skinWeight as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i += stride) {
-      m.getVertexPosition(i, p).applyMatrix4(m.matrixWorld);
+    const indices=Array.from({length:Math.ceil(pos.count/stride)},(_,i)=>i*stride);let at=0;
+    eachSkinnedWorld([{mesh:m,idx:indices}],p,p=>{
+      const i=indices[at++];
       idx.fromBufferAttribute(si, i);
       wt.fromBufferAttribute(sw, i);
       let k = 0;
       for (let j = 1; j < 4; j++) if (wt.getComponent(j) > wt.getComponent(k)) k = j;
       out(p, partOf(m.skeleton.bones[idx.getComponent(k)]?.name ?? ''));
-    }
+    });
   });
 }
 
 /** Skinned vertices of a mesh (indices). */
 type VertexRefs = { mesh: THREE.SkinnedMesh; idx: number[] }[];
+
+type StoredRefs={mesh:number;idx:number[]}[];
+type ShapeStamp={geometry:THREE.BufferGeometry;attributes:(THREE.BufferAttribute|THREE.InterleavedBufferAttribute)[];versions:number[]};
+type StandingShape={stamps:ShapeStamp[];front:ReturnType<typeof frontDepths>;body:StoredRefs;foot:Map<number,StoredRefs>;hand:Map<number,StoredRefs>};
+const standingShapes=new WeakMap<Template,StandingShape>();
+/** The same immutable template in Idle0 has the same surface measurements for every actor. Cache numbers and vertex
+ * indices only: mesh references are rebound to this actor, never retained from the actor that first measured them.
+ * Attribute replacement/version changes invalidate the cache (kit shape edits and geometry updates). */
+function standingShape(rig:Rig,measureFront:()=>ReturnType<typeof frontDepths>){
+ const meshes:THREE.SkinnedMesh[]=[];
+ rig.model.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)meshes.push(o as THREE.SkinnedMesh);});
+ const attributes=(m:THREE.SkinnedMesh)=>[...Object.values(m.geometry.attributes),...Object.values(m.geometry.morphAttributes).flat()];
+ const version=(a:THREE.BufferAttribute|THREE.InterleavedBufferAttribute)=>'version'in a?a.version:a.data.version;
+ const old=standingShapes.get(rig.template);
+ const matches=old&&old.stamps.length===meshes.length&&old.stamps.every((s,i)=>{
+  const a=attributes(meshes[i]);
+  return s.geometry===meshes[i].geometry&&s.attributes.length===a.length&&a.every((v,k)=>v===s.attributes[k]&&version(v)===s.versions[k]);
+ });
+ if(old&&matches){
+  const bind=(refs:StoredRefs):VertexRefs=>refs.map(r=>({mesh:meshes[r.mesh],idx:r.idx.slice()}));
+  return{
+   front:{...old.front,foot:old.front.foot.map(p=>[...p] as [number,number])},
+   surf:{body:bind(old.body),foot:new Map([...old.foot].map(([side,r])=>[side,bind(r)])),hand:new Map([...old.hand].map(([side,r])=>[side,bind(r)]))},
+  };
+ }
+ const front=measureFront(),surf=surfaceRefs(rig),save=(refs:VertexRefs):StoredRefs=>refs.map(r=>({mesh:meshes.indexOf(r.mesh),idx:r.idx.slice()}));
+ standingShapes.set(rig.template,{
+  stamps:meshes.map(m=>{const a=attributes(m);return{geometry:m.geometry,attributes:a,versions:a.map(version)};}),
+  front:{...front,foot:front.foot.map(p=>[...p] as [number,number])},
+  body:save(surf.body),foot:new Map([...surf.foot].map(([side,r])=>[side,save(r)])),hand:new Map([...surf.hand].map(([side,r])=>[side,save(r)])),
+ });
+ return{front,surf};
+}
 
 /** Foot and hand vertices of a rig, per side (+1 = the person's left: z < 0 with the holder at the origin facing +x). */
 function surfaceRefs(rig: Rig) {
@@ -1836,6 +1904,7 @@ function surfaceRefs(rig: Rig) {
     const m = o as THREE.SkinnedMesh;
     if (!m.isSkinnedMesh || !m.geometry.attributes.skinIndex) return;
     const pos = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex as THREE.BufferAttribute, sw = m.geometry.attributes.skinWeight as THREE.BufferAttribute;
+    const contacts:{i:number;part:'foot'|'hand'}[]=[];
     for (let i = 0; i < pos.count; i++) {
       idx.fromBufferAttribute(si, i);
       wt.fromBufferAttribute(sw, i);
@@ -1845,25 +1914,85 @@ function surfaceRefs(rig: Rig) {
       // a sample of the torso, hips and head: what a body lying on the ground rests on
       if ((part === 'torso' || part === 'head') && i % 3 === 0) { let r = out.body.find((q) => q.mesh === m); if (!r) out.body.push((r = { mesh: m, idx: [] })); r.idx.push(i); }
       if (part !== 'foot' && part !== 'hand') continue;
-      m.getVertexPosition(i, p).applyMatrix4(m.matrixWorld);
+      contacts.push({i,part});
+    }
+    let at=0;eachSkinnedWorld([{mesh:m,idx:contacts.map(c=>c.i)}],p,p=>{
+      const {i,part}=contacts[at++];
       const side = p.z < 0 ? 1 : -1, map = out[part];
       const refs = map.get(side) ?? [];
       let r = refs.find((q) => q.mesh === m);
       if (!r) refs.push((r = { mesh: m, idx: [] }));
       r.idx.push(i);
       map.set(side, refs);
-    }
+    });
   });
   return out;
 }
 
+/** PERF-PASSES: the lift that rests a lying body's back and head just on the ground: the largest (ground + 0.012 − y)
+ *  over its sampled torso / head vertices (~1,000 a body). Every 8th pose, and whenever the layout or the floor rule
+ *  changes (moved 5 cm, turned 0.01 rad), every sample is skinned and the REST_KEEP lowest relative to the ground are kept; the poses between read only
+ *  those (in 8 frames breathing moves a back by well under a millimetre, so the lowest sample stays among them). */
+const REST_KEEP = 48, REST_FULL_EVERY = 8;
+export function restNeed(v: View, layout: string, bench: number, floor: number): number {
+  const h = v.rig.holder, key = `${layout}|${bench}|${Math.round(h.position.x * 20)}|${Math.round(h.position.z * 20)}|${Math.round(h.rotation.y * 100)}`, c = v.restCache, under = (x: number, z: number) => (bench ? floor : groundUnder(x, z, floor)) + 0.012;
+  let need = -Infinity;
+  if (c && c.key === key && ++c.n < REST_FULL_EVERY) { eachSkinnedWorld(c.refs, _vp, (p) => { need = Math.max(need, under(p.x, p.z) - p.y); }); return need; }
+  const scored: { mesh: THREE.SkinnedMesh; i: number; n: number }[] = [];
+  for (const r of v.surf.body ?? []) { let k = 0; eachSkinnedWorld([r], _vp, (p) => { const n = under(p.x, p.z) - p.y; scored.push({ mesh: r.mesh, i: r.idx[k++], n }); if (n > need) need = n; }); }
+  scored.sort((a, b) => b.n - a.n);
+  const refs: VertexRefs = [];
+  for (const s of scored.slice(0, REST_KEEP)) { let r = refs.find((q) => q.mesh === s.mesh); if (!r) refs.push((r = { mesh: s.mesh, idx: [] })); r.idx.push(s.i); }
+  v.restCache = { key, n: 0, refs };
+  return need;
+}
 /** Lowest point (world y) of these vertices as rendered now (bone world matrices up to date). */
 function lowestY(refs: VertexRefs | undefined) {
   let low = Infinity;
-  for (const r of refs ?? []) for (const i of r.idx) low = Math.min(low, r.mesh.getVertexPosition(i, _vp).applyMatrix4(r.mesh.matrixWorld).y);
+  eachSkinnedWorld(refs, _vp, (p) => { low = Math.min(low, p.y); });
   return low;
 }
 const _vp = new THREE.Vector3();
+/** PERF-PASSES: each vertex's world position as rendered now, exactly `mesh.getVertexPosition(i, out).applyMatrix4(mesh.matrixWorld)`
+ *  (three 0.186's SkinnedMesh.applyBoneTransform, the same operations in the same order), but each bone's skinning
+ *  matrix (bone.matrixWorld × boneInverse) is formed once per call instead of once per vertex influence: a lying body
+ *  rests on ~1,000 sampled torso / head vertices every pose (Eden 2026: most of humans.render while orbiting). */
+const _skinM: THREE.Matrix4[] = [], _skinB = new THREE.Vector4(), _skinT = new THREE.Vector4(), _skinI = new THREE.Vector4(), _skinW = new THREE.Vector4();
+let _skinMark = new Uint32Array(0), _skinGen = 0;
+export function eachSkinnedWorld(refs: VertexRefs | undefined, out: THREE.Vector3, each: (p: THREE.Vector3) => void) {
+  eachSkinned(refs,out,each,true);
+}
+function eachSkinned(refs: VertexRefs | undefined, out: THREE.Vector3, each: (p: THREE.Vector3) => void, world:boolean) {
+  for (const r of refs ?? []) {
+    const m = r.mesh as THREE.SkinnedMesh, g = m.geometry;
+    if (!m.isSkinnedMesh || (g.morphAttributes.position && m.morphTargetInfluences) || !g.attributes.skinIndex) { for (const i of r.idx) {m.getVertexPosition(i,out);if(world)out.applyMatrix4(m.matrixWorld);each(out);} continue; }
+    const bones = m.skeleton.bones, inverses = m.skeleton.boneInverses, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+    if (_skinMark.length < bones.length) _skinMark = new Uint32Array(bones.length * 2);
+    while (_skinM.length < bones.length) _skinM.push(new THREE.Matrix4());
+    if (++_skinGen === 0xffffffff) { _skinMark.fill(0); _skinGen = 1; }
+    for (const i of r.idx) {
+      out.fromBufferAttribute(pos, i);
+      _skinI.fromBufferAttribute(si as THREE.BufferAttribute, i); _skinW.fromBufferAttribute(sw as THREE.BufferAttribute, i);
+      _skinB.set(out.x, out.y, out.z, 1).applyMatrix4(m.bindMatrix);
+      out.set(0, 0, 0);
+      for (let k = 0; k < 4; k++) {
+        const w = _skinW.getComponent(k); if (w === 0) continue;
+        const b = _skinI.getComponent(k), mat = _skinM[b];
+        if (_skinMark[b] !== _skinGen) { mat.multiplyMatrices(bones[b].matrixWorld, inverses[b]); _skinMark[b] = _skinGen; }
+        out.addScaledVector(_skinT.copy(_skinB).applyMatrix4(mat), w);
+      }
+      out.applyMatrix4(m.bindMatrixInverse);if(world)out.applyMatrix4(m.matrixWorld);each(out);
+    }
+  }
+}
+
+/** Three computes this on the first draw even for a body with frustum culling off (opaque depth sorting). The same
+ * vertex order and Sphere.expandByPoint keep its result exact; only repeated bone-matrix multiplication is removed. */
+export function computeBodySphere(this:THREE.SkinnedMesh){
+ const sphere=this.boundingSphere??(this.boundingSphere=new THREE.Sphere());sphere.makeEmpty();
+ const idx=Array.from({length:this.geometry.attributes.position.count},(_,i)=>i);
+ eachSkinned([{mesh:this,idx}],new THREE.Vector3(),p=>sphere.expandByPoint(p),false);
+}
 
 /**
  * Front depths of the body in the Idle pose (holder at the origin facing +x): `body` = how far the front of the
@@ -1971,7 +2100,7 @@ const groundUnder = (x: number, z: number, floor: number) => { const g = humanGr
 function restOnGround(v: View, h: THREE.Object3D, floor: number, bench = 0) {
   h.updateMatrixWorld(true);
   let need = -Infinity;
-  for (const r of v.surf.body ?? []) for (const i of r.idx) { const p = r.mesh.getVertexPosition(i, _vp).applyMatrix4(r.mesh.matrixWorld); need = Math.max(need, (bench ? floor : groundUnder(p.x, p.z, floor)) + 0.012 - p.y); }
+  need = restNeed(v, 'back', bench, floor);
   if (!Number.isFinite(need) || Math.abs(need) < 0.003) return;
   h.position.y += need; h.updateMatrixWorld(true);
 }

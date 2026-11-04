@@ -38,17 +38,17 @@ const cancelBody = (r: Response) => { void r.body?.cancel().catch(() => {}); };
 /** Each wire/plain attempt owns its requests. A failed part cancels siblings before plain fallback starts. */
 async function withTransport<T>(caller: AbortSignal, work: (transport: {
   headers(url: string, prefetch?: PrefetchRequest | null, hedge?: boolean): Promise<Response>;
-  json(response: Response): Promise<unknown>;
+  chunks(response: Response): Promise<Uint8Array[]>;
 }) => Promise<T>): Promise<T> {
   caller.throwIfAborted();
-  const controller = new AbortController(), signal = controller.signal, cancels = new Set<() => void>();
+  const controller = new AbortController(), signal = controller.signal, cancels = new Set<() => void>(), requests = new WeakMap<Response, () => void>();
   const close = () => { controller.abort(caller.aborted ? caller.reason : new DOMException('Snapshot attempt completed', 'AbortError')); for (const cancel of cancels) cancel(); cancels.clear(); };
   caller.addEventListener('abort', close, { once: true });
   const request = (url: string, prefetch?: PrefetchRequest | null) => {
     const own = new AbortController();
     const source = prefetch ?? { response: Promise.resolve().then(() => { own.signal.throwIfAborted(); return fetch(url, { signal: own.signal }); }), abort: () => own.abort() };
-    let response: Response | undefined, ended = false, rejectWait: (e: unknown) => void = () => {};
-    const cancel = () => { source.abort?.(); if (response) cancelBody(response); rejectWait(signal.aborted ? signal.reason : new DOMException('Snapshot request cancelled', 'AbortError')); };
+    let response: Response | undefined, ended = false, cancelled = false, rejectWait: (e: unknown) => void = () => {};
+    const cancel = () => { if (cancelled) return; cancelled = true; cancels.delete(cancel); source.abort?.(); if (response) cancelBody(response); rejectWait(signal.aborted ? signal.reason : new DOMException('Snapshot request cancelled', 'AbortError')); };
     cancels.add(cancel);
     const promise = new Promise<Response>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout>;
@@ -57,9 +57,9 @@ async function withTransport<T>(caller: AbortSignal, work: (transport: {
         if (value) resolve(value); else reject(error);
       };
       rejectWait = error => finish(error);
-      timer = setTimeout(() => { finish(stalled()); source.abort?.(); }, SNAPSHOT_STALL_MS);
+      timer = setTimeout(() => { finish(stalled()); cancel(); }, SNAPSHOT_STALL_MS);
       signal.addEventListener('abort', cancel, { once: true });
-      source.response.then(r => { response = r; if (ended) { cancelBody(r); return; } finish(undefined, r); }, e => finish(e));
+      source.response.then(r => { response = r; if (ended) { cancelBody(r); return; } requests.set(r, cancel); finish(undefined, r); }, e => finish(e));
       if (signal.aborted) cancel();
     });
     return { promise, cancel };
@@ -81,10 +81,10 @@ async function withTransport<T>(caller: AbortSignal, work: (transport: {
           listen(tasks[0]);
         });
       },
-      json(response) {
+      chunks(response) {
         signal.throwIfAborted();
         if (!response.body) return Promise.reject(new SyntaxError('Unexpected end of JSON input'));
-        const reader = response.body.getReader(), decoder = new TextDecoder(), chunks: string[] = [];
+        const reader = response.body.getReader(), chunks: Uint8Array[] = [];
         return new Promise((resolve, reject) => {
           let finished = false, timer: ReturnType<typeof setTimeout>;
           const cleanup = () => { clearTimeout(timer); signal.removeEventListener('abort', aborted); };
@@ -97,10 +97,11 @@ async function withTransport<T>(caller: AbortSignal, work: (transport: {
               for (;;) {
                 const { done, value } = await reader.read(); if (finished) return;
                 if (done) break;
-                if (value.byteLength) { chunks.push(decoder.decode(value, { stream: true })); arm(); }
+                if (value.byteLength) { chunks.push(value); arm(); }
               }
-              chunks.push(decoder.decode()); const value = JSON.parse(chunks.join(''));
-              finished = true; cleanup(); resolve(value);
+              // EOF releases this winner before parsing; attempt cleanup still cancels every unfinished request.
+              const cancel = requests.get(response); if (cancel) cancels.delete(cancel); requests.delete(response);
+              finished = true; cleanup(); resolve(chunks);
             } catch (error) { fail(error); } finally { reader.releaseLock(); }
           })();
         });
@@ -110,10 +111,34 @@ async function withTransport<T>(caller: AbortSignal, work: (transport: {
   } finally { caller.removeEventListener('abort', close); close(); }
 }
 
-export type Loaded = { snap: Record<string, unknown>; response: Response };
-/** Preserve exact wire references/response metadata; transport failure falls back once to the bounded plain request. */
-export async function loadSnapshot(plainUrl: string, signal: AbortSignal, first = false): Promise<Loaded | null> {
-  const plain = () => withTransport(signal, async t => { const r = await t.headers(plainUrl); return r.ok ? { snap: await t.json(r) as Record<string, unknown>, response: r } : null; });
+/** A snapshot's bytes as they came off the wire, before any JSON work (lane PERF-SNAPSHOT: parsed by parsePieces here or
+ *  in snapshot-delta.worker.ts). The wire form carries its two parts and the refs the headers named. */
+export type SnapshotPieces =
+  | { kind: 'wire'; body: Uint8Array[]; defs: Uint8Array[]; ground: Uint8Array[]; defsRef: string; groundRef: string }
+  | { kind: 'plain'; body: Uint8Array[] };
+export function decodeText(chunks: Uint8Array[]): string {
+  const decoder = new TextDecoder(); let text = '';
+  for (const c of chunks) text += decoder.decode(c, { stream: true });
+  return text + decoder.decode();
+}
+/** The plain snapshot from its bytes: exactly what `response.json()` of the plain snapshot would give (expandSnapshot
+ *  for the wire form). Throws when the pieces do not fit together (the caller then takes the plain snapshot). */
+export function parsePieces(pieces: SnapshotPieces): Record<string, unknown> {
+  if (pieces.kind === 'plain') {
+    const snap = JSON.parse(decodeText(pieces.body)) as Record<string, unknown>;
+    if ('defsRef' in snap) throw Error('Snapshot part headers missing');
+    return snap;
+  }
+  const body = JSON.parse(decodeText(pieces.body)) as WireBody, defs = JSON.parse(decodeText(pieces.defs)) as unknown, ground = JSON.parse(decodeText(pieces.ground)) as unknown;
+  if (body.defsRef !== pieces.defsRef || body.groundRef !== pieces.groundRef || !Array.isArray(defs)) throw Error('Snapshot part references mismatch');
+  return expandSnapshot(body, defs as Def[], ground);
+}
+
+export type Loaded<T = Record<string, unknown>> = { snap: T; response: Response };
+/** Preserve exact wire references/response metadata; transport failure falls back once to the bounded plain request.
+ *  `parse` turns the bytes into what the caller wants (default: the plain snapshot, on this thread). */
+export async function loadSnapshot<T = Record<string, unknown>>(plainUrl: string, signal: AbortSignal, first = false, parse: (pieces: SnapshotPieces) => T | Promise<T> = parsePieces as unknown as (pieces: SnapshotPieces) => T): Promise<Loaded<T> | null> {
+  const plain = () => withTransport(signal, async t => { const r = await t.headers(plainUrl); return r.ok ? { snap: await parse({ kind: 'plain', body: await t.chunks(r) }), response: r } : null; });
   const url = first ? entryWireUrl(plainUrl) : `${plainUrl}?defs=ref&cols=1`;
   const batch = first ? takeSnapshotPrefetchBatch(url) : null;
   try {
@@ -121,11 +146,10 @@ export async function loadSnapshot(plainUrl: string, signal: AbortSignal, first 
       const r = await t.headers(url, batch?.request, first);
       if (!r.ok) throw Error(`snapshot ${r.status}`);
       const defsRef = r.headers.get('x-defs-ref'), groundRef = r.headers.get('x-ground-ref');
-      if (!defsRef || !groundRef) { const snap = await t.json(r) as Record<string, unknown>; if ('defsRef' in snap) throw Error('Snapshot part headers missing'); return { snap, response: r }; }
-      const part = async (ref: string) => { const p = await t.headers(plainUrl.replace(/\/v1\/world\/snapshot$/, `/v1/world/part/${ref}`), batch?.part(ref), first); if (!p.ok) throw Error(`part ${p.status}`); return t.json(p); };
-      const [body, defs, ground] = await Promise.all([t.json(r) as Promise<WireBody>, part(defsRef), part(groundRef)]);
-      if (body.defsRef !== defsRef || body.groundRef !== groundRef || !Array.isArray(defs)) throw Error('Snapshot part references mismatch');
-      return { snap: expandSnapshot(body, defs, ground), response: r };
+      if (!defsRef || !groundRef) return { snap: await parse({ kind: 'plain', body: await t.chunks(r) }), response: r };
+      const part = async (ref: string) => { const p = await t.headers(plainUrl.replace(/\/v1\/world\/snapshot$/, `/v1/world/part/${ref}`), batch?.part(ref), first); if (!p.ok) throw Error(`part ${p.status}`); return t.chunks(p); };
+      const [body, defs, ground] = await Promise.all([t.chunks(r), part(defsRef), part(groundRef)]);
+      return { snap: await parse({ kind: 'wire', body, defs, ground, defsRef, groundRef }), response: r };
     });
   } catch (error) {
     signal.throwIfAborted();

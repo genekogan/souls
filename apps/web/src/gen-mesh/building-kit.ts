@@ -196,11 +196,15 @@ export class Builder {
     for (const [k, b] of this.buf) {
       if (!b.p.length) continue;
       const [gname, layer] = k.split('|') as [string, Layer];
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(b.p.view(), 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(b.n.view(), 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(b.c.view(), 3));
-      if (b.face && this.finish) { const f = new Float32Array(b.p.length / 3); for (let i = 0; i < b.face.length; i += 2) f.fill(1, b.face[i], b.face[i + 1]); g.setAttribute('edenFace', new THREE.Float32BufferAttribute(f, 1)); }
-      if (b.pane && layer === 'glass') g.setAttribute('edenPane', new THREE.Float32BufferAttribute(paneView(b), 4));
-      g.computeBoundingBox(); g.computeBoundingSphere();
+      const face = b.face && this.finish ? b.face : null, pane = b.pane && layer === 'glass' ? paneView(b) : null;
+      const g = sharedGeometry(soupKey(b, face, pane), () => {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(b.p.view(), 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(b.n.view(), 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(b.c.view(), 3));
+        if (face) { const f = new Float32Array(b.p.length / 3); for (let i = 0; i < face.length; i += 2) f.fill(1, face[i], face[i + 1]); g.setAttribute('edenFace', new THREE.Float32BufferAttribute(f, 1)); }
+        if (pane) g.setAttribute('edenPane', new THREE.Float32BufferAttribute(pane, 4));
+        g.computeBoundingBox(); g.computeBoundingSphere();
+        return g;
+      });
       const mesh = new THREE.Mesh(g, materialFor(materials, layer, this.finish)); mesh.name = `${gname} ${layer}`;
       // Structural evidence comes from the builder layer, never a display-name guess.
       // Wall soups combine interior and exterior surfaces, so conservatively protect all facades.
@@ -215,6 +219,36 @@ export class Builder {
     return { groups, draws, tris };
   }
 }
+
+// Lane PERF-MATERIALS: one BufferGeometry per distinct soup, whatever building emitted it. Templates are per (def,
+// params, paint), but their ornaments (chimneys, shutters, steps, sills) and plain storeys repeat across templates byte
+// for byte: Eden 2026's 239 buildings held 3,906 geometries of 2,046 distinct contents. The key is the vertex data itself
+// (two 32-bit FNV-1a hashes over the float bits, with the lengths), so a hit is the same picture. Past the cap the
+// oldest geometry is released; a mesh still drawing it uploads it again (three re-creates disposed buffers), the same
+// self-healing the template cap relied on.
+export const SHARED_GEOMETRY_CAP = 4096;
+const sharedGeometries = new Map<string, THREE.BufferGeometry>();
+function fnv(h: number, a: Float32Array): number {
+  const u = new Uint32Array(a.buffer, a.byteOffset, a.length);
+  for (let i = 0; i < u.length; i++) { const x = u[i]; h = Math.imul(h ^ (x & 0xffff), 16777619); h = Math.imul(h ^ (x >>> 16), 16777619); }
+  return h >>> 0;
+}
+function soupKey(b: Buf, face: number[] | null, pane: Float32Array | null): string {
+  const p = b.p.view(), n = b.n.view(), c = b.c.view();
+  let h1 = fnv(fnv(fnv(2166136261, p), n), c), h2 = fnv(fnv(fnv(0x811c9dc5 ^ 0x5bd1e995, c), n), p);
+  if (face) for (const f of face) { h1 = Math.imul(h1 ^ f, 16777619) >>> 0; h2 = Math.imul(h2 ^ (f + 7), 16777619) >>> 0; }
+  if (pane) { h1 = fnv(h1, pane); h2 = fnv(h2 ^ 0x9e3779b9, pane); }
+  return `${p.length}|${face ? face.length : '-'}|${pane ? pane.length : '-'}|${h1.toString(16)}|${h2.toString(16)}`;
+}
+function sharedGeometry(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
+  let g = sharedGeometries.get(key);
+  if (g) { sharedGeometries.delete(key); sharedGeometries.set(key, g); return g; }   // most recent last
+  g = make(); g.userData.sharedKey = key; sharedGeometries.set(key, g);
+  if (sharedGeometries.size > SHARED_GEOMETRY_CAP) { const [k, old] = sharedGeometries.entries().next().value!; sharedGeometries.delete(k); old.dispose(); }
+  return g;
+}
+/** Shared building geometries held (tests and probes). */
+export const sharedGeometryCount = () => sharedGeometries.size;
 
 let glow: THREE.Material | null = null;
 const realismOff = typeof location !== 'undefined' && new URLSearchParams(location.search).get('realism') === '0';

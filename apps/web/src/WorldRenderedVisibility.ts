@@ -7,6 +7,11 @@ const REACH_WORK=8;
 const UP=new THREE.Vector3(0,1,0);
 /** Frustum grid in NDC, subject centre excluded. */
 const FOREGROUND_GRID:readonly (readonly [number,number])[]=[[-.66,-.6],[0,-.6],[.66,-.6],[-.66,0],[.66,0],[-.66,.6],[0,.6],[.66,.6]];
+/** Refresh the matrices a draw would use. WorldEntityLayer freezes current
+ * subtrees by replacing updateMatrixWorld with a no-op; updateWorldMatrix
+ * bypasses that contract and re-walks them. Ancestors still update first, and
+ * manually supplied matrixWorld values keep Three's renderer semantics. */
+function flushMatrices(root:THREE.Object3D){root.parent?.updateWorldMatrix(true,false);root.updateMatrixWorld(true);}
 /** Read-only camera composition over actual opaque render meshes. These are
  * visual occluders, never native collisions, support or actor movement. */
 export class WorldRenderedVisibility {
@@ -34,7 +39,9 @@ export class WorldRenderedVisibility {
     this.cleared=same?this.cleared.filter(c=>this.preparations-c.at<10):[];this.seenSets=same?this.seenSets.filter(c=>this.preparations-c.at<10):[];this.rooms=same?this.rooms.filter(c=>this.preparations-c.at<30):[];this.crowds=same?this.crowds.filter(c=>this.preparations-c.at<10):[];
     this.roots.length=0;this.objects.length=0;this.hits.length=0;this.roots=[...new Set(roots)];const seen=new Set<THREE.Object3D>();
     // A hit object marked cameraTransparent is never opaque(), so it cannot change a score.
-    for(const root of this.roots){root.updateWorldMatrix(true,true);root.traverse(o=>{if((o as THREE.Mesh).isMesh&&o.userData.cameraTransparent!==true&&this.visible(o)&&!seen.has(o)){seen.add(o);this.objects.push(o);}});}
+    // traverseVisible keeps the same mesh order while pruning hidden branches;
+    // check ancestors once per root instead of once per mesh.
+    for(const root of this.roots){flushMatrices(root);if(root.parent&&!this.visible(root.parent))continue;root.traverseVisible(o=>{if((o as THREE.Mesh).isMesh&&o.userData.cameraTransparent!==true&&!seen.has(o)){seen.add(o);this.objects.push(o);}});}
     this.instances.retain(this.objects);
   }
   /** A fresh speech batch owns no visibility decision from the previous frame.
@@ -49,7 +56,7 @@ export class WorldRenderedVisibility {
   /** One synchronous read-only camera evaluation; never retained across frames. */
   // Component/fixture render poses may change before renderer.render updates
   // matrices. Flush once per evaluation, not once per candidate or subject ray.
-  evaluate<T>(run:()=>T):T{for(const root of this.roots)root.updateWorldMatrix(true,true);return this.instances.withQuery(this.objects,run);}
+  evaluate<T>(run:()=>T):T{for(const root of this.roots)flushMatrices(root);return this.instances.withQuery(this.objects,run);}
   score(pose:CameraPose,ids:readonly string[],subjects:Record<string,SubjectPose>){
     if(!ids.length)return 1;return this.instances.withQuery(this.objects,()=>{this.eye.fromArray(pose.position);let clear=0,total=0;
     for(const id of ids){const subject=subjects[id];if(!subject)return 0;const points=subject.points??[[subject.p[0],subject.p[1]+(subject.height??1.75)*.6,subject.p[2]],[subject.p[0],subject.p[1]+(subject.height??1.75)*.95,subject.p[2]]];

@@ -10,7 +10,7 @@
 //
 // New worlds only: it starts when the page publishes `window.__simEntity` (LiveWorld does that only for world-engine
 // worlds), and the AudioContext is created on the first pointer/key gesture (browsers refuse audio before one).
-// Quiet by default; a small speaker button (bottom right) mutes it and toggles the music, remembered per browser.
+// The navbar Audio menu independently toggles effects and music, remembered per browser.
 // `window.__edenSound.state()` reports emitters and voices; `.log()` lists which sources started where, `.events()` every
 // start and stop with its reason (tests, proof).
 //
@@ -19,11 +19,12 @@
 // longer restarts sounds: a source that drops out of hearing keeps its voice, silent, for LINGER_MS and picks up where it
 // was if it is heard again, a source that follows the listener (the sea) is heard wherever the camera is, and a voice's
 // event clock never fires a backlog of notes when it comes back.
+import {audioSettings,setAudioSettings,subscribeAudioSettings} from '../audio-settings.ts';
 import { kettleHeat, type WorldModel } from '@sim/world-compiler';
 import { accompanistOf, drumHits, pianoNotes, sungNotes, type Accompanist } from '../../../../mars/viewer/app/engine-view/piano-score.ts';
 import { RADIO_STATIONS, stationEvents, TUNE, type RadioEvent } from './radio-stations.ts';
 import { makeSinger, micChain, type Singer } from './voice.ts';
-import { ambienceAt, condition, DEFAULT_SETTINGS, distanceTo, emittersOf, exposureAt, falloff, loadSettings, Movement, saveSettings, treeIndex, treesOf, type Emitter, type Resident, type SoundKind, type SoundSettings, type Source, type TreeIndex } from './sound-plan.ts';
+import { ambienceAt, condition, distanceTo, emittersOf, exposureAt, falloff, Movement, treeIndex, treesOf, type Emitter, type Resident, type SoundKind, type Source, type TreeIndex } from './sound-plan.ts';
 import { nightOf } from './motion.ts';
 import { sharedCoverProbe, type CoverProbe } from '../world-env.ts';
 import { arrivalOver } from '../arrival-marks.ts';
@@ -48,7 +49,7 @@ const MAX_LIVE_EVENTS = 48, LINGER_EVENTS_MS = 20000;
 
 type Voice = { kind: SoundKind; variant: number; source: Source; out: GainNode; loops: boolean; stop: () => void; tick: (t: number, e: Emitter) => void; gain: number; quietSince: number };
 let ctx: AudioContext | null = null, master: GainNode | null = null, noiseBuf: AudioBuffer | null = null;
-let settings: SoundSettings = { ...DEFAULT_SETTINGS };
+let settings = audioSettings();
 
 function noise(c: AudioContext) {
   if (!noiseBuf) { noiseBuf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate); const d = noiseBuf.getChannelData(0); let b = 0; for (let i = 0; i < d.length; i++) { const w = Math.random() * 2 - 1; b = 0.97 * b + 0.03 * w; d[i] = w * 0.5 + b * 2; } }
@@ -492,7 +493,14 @@ function applyMaster() {
   if (master) master.gain.value = settings.muted || !on ? 0 : settings.volume;
   if (ctx) { if (!on && ctx.state === 'running') void ctx.suspend().catch(() => {}); else if (on && ctx.state === 'suspended') void ctx.resume().catch(() => {}); }
 }
-const musicOn = () => settings.music && !settings.muted && audible();
+const musicOn = () => settings.music;
+// PERF-EDEN (2026-11-01): the playlist ducks to 20 % near a piano, jukebox, drums, radio or singer. The near flags flip the
+// moment an emitter comes into range, so walking past one toggled the music up and down; now the duck holds for 2.5 s
+// after the last near tick (hysteresis) and the music ramps the change over ~1 s (music.ts), so it breathes instead of
+// stepping.
+const DUCK_HOLD_MS = 2500; let duckHeldUntil = 0;
+const musicDuck = () => { const now = performance.now(); if (pianoNear || jukeboxNear || drumsNear || radioNear || voiceNear) duckHeldUntil = now + DUCK_HOLD_MS; return now < duckHeldUntil ? 0.2 : 1; };
+const musicSync = () => syncMusic({ on: musicOn(), station: settings.station, audible: audible(), volume: settings.volume * musicDuck(), unlocked: !!ctx && ctx.state === 'running' });
 function unlock() {
   if (ctx || typeof AudioContext === 'undefined') return;
   try { ctx = new AudioContext(); master = ctx.createGain(); applyMaster(); master.connect(ctx.destination); meter = ctx.createAnalyser(); meter.fftSize = 2048; master.connect(meter); noise(ctx).stop(); } catch { ctx = null; }
@@ -582,38 +590,14 @@ function step(host: Host) {
   }
 }
 
-// ------------------------------------------------------------------ the speaker button
-
-const ICON_ON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
-const ICON_OFF = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16.5 9.5l5 5M21.5 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
-const ICON_NOTE = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 17V5l10-2v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="6.5" cy="17" r="2.5" fill="currentColor"/><circle cx="16.5" cy="15" r="2.5" fill="currentColor"/></svg>';
-let ui: HTMLDivElement | null = null;
-function store() { try { return window.localStorage; } catch { return null; } }
-function setSettings(next: Partial<SoundSettings>) { settings = { ...settings, ...next }; saveSettings(store(), settings); applyMaster(); lastAmb = 0; renderUi(); }
-function renderUi() {
-  if (!ui) return;
-  const [mute, music] = ui.querySelectorAll('button');
-  mute.innerHTML = settings.muted ? ICON_OFF : ICON_ON; mute.setAttribute('aria-pressed', String(!settings.muted));
-  mute.title = settings.muted ? 'Sound is off: turn on' : 'Sound is on: mute'; mute.setAttribute('aria-label', mute.title);
-  music.innerHTML = ICON_NOTE; music.setAttribute('aria-pressed', String(settings.music)); music.hidden = settings.muted;
-  music.title = settings.music ? 'Music is on: turn off' : 'Music is off: turn on'; music.setAttribute('aria-label', music.title);
-  music.style.opacity = settings.music ? '1' : '0.55';
-}
-function mountUi() {
-  if (ui || typeof document === 'undefined' || !document.body) return;
-  ui = document.createElement('div'); ui.className = 'eden-sound-toggle';
-  ui.style.cssText = 'position:fixed;right:calc(12px + env(safe-area-inset-right, 0px));bottom:calc(12px + env(safe-area-inset-bottom, 0px));z-index:30;display:flex;gap:6px;';
-  const btn = () => { const b = document.createElement('button'); b.type = 'button'; b.style.cssText = 'width:34px;height:34px;border-radius:17px;border:1px solid rgba(255,255,255,.35);background:rgba(20,22,26,.55);color:#f4efe2;display:grid;place-items:center;cursor:pointer;padding:0;backdrop-filter:blur(4px);'; return b; };
-  const mute = btn(), music = btn(); mute.dataset.sound = 'mute'; music.dataset.sound = 'music';
-  mute.addEventListener('click', (e) => { e.stopPropagation(); unlock(); setSettings({ muted: !settings.muted }); });
-  music.addEventListener('click', (e) => { e.stopPropagation(); unlock(); setSettings({ music: !settings.music }); });
-  ui.append(mute, music); document.body.append(ui); renderUi();
-}
+// Listener preferences are shared with the React navbar; no separate floating controls.
+const setSettings = setAudioSettings;
 
 /** Starts once per page; idles until a world-engine world publishes its host object. */
 export function startSoundLayer() {
   if (typeof window === 'undefined' || (window as unknown as { __edenSound?: unknown }).__edenSound) return;
-  settings = loadSettings(store());
+  settings = audioSettings();
+  subscribeAudioSettings(()=>{settings=audioSettings();applyMaster();lastAmb=0;musicSync();});
   const w = window as unknown as { __simEntity?: Host; __edenSound?: unknown };
   w.__edenSound = {
     state: () => ({ ctx: ctx?.state ?? 'none', muted: settings.muted, music: settings.music, volume: settings.volume, covered, piano: { near: pianoNear, scheduled: pianoDone.size }, jukebox: { near: jukeboxNear, ids: jukeboxIds.size, scheduled: jukeboxDone.size }, drums: { near: drumsNear, scheduled: drumDone.size },
@@ -656,17 +640,17 @@ export function startSoundLayer() {
   };
   (window as unknown as { __edenMusic?: unknown }).__edenMusic = { state: musicState, log: musicLog, level: musicLevel, next: nextPiece, trackSeconds: musicTrackSeconds };
   // another tab took the sound, or this one came back: act now, not on the next (throttled, when hidden) tick
-  audioFocus()?.subscribe(() => { applyMaster(); syncMusic({ on: musicOn(), volume: settings.volume * (pianoNear || jukeboxNear || drumsNear || radioNear || voiceNear ? 0.2 : 1), unlocked: !!ctx && ctx.state === 'running' }); });
+  audioFocus()?.subscribe(() => { applyMaster(); musicSync(); });
   const gesture = () => { unlock(); musicGesture(); };
   for (const ev of ['pointerdown', 'keydown', 'touchstart', 'touchend', 'click'] as const) window.addEventListener(ev, gesture, { capture: true, passive: true });
   // lane W1: the first scan of the world's sound sources (~0.2 s at 2x CPU on Eden 2026) waits until the arrival is over.
   // Lane S3: the speaker and the music on every world page (old worlds too); the soundscape where a world has entities.
   setInterval(() => {
     if (!arrivalOver() || !document.querySelector('.world-scene canvas')) return;
-    mountUi();
+
     // entry 37: the step first, so the playlist ducks in the same tick a radio (or piano, jukebox) becomes audible
     const host = w.__simEntity; if (host?.camera && host.layer) { const t0 = performance.now(); try { step(host); } catch { /* a world mid-reload */ } cost.ticks++; cost.tickMs += performance.now() - t0; }
-    syncMusic({ on: musicOn(), volume: settings.volume * (pianoNear || jukeboxNear || drumsNear || radioNear || voiceNear ? 0.2 : 1), unlocked: !!ctx && ctx.state === 'running' });
+    musicSync();
   }, TICK_MS);
 }
 startSoundLayer();

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { simplifyLevels, type AsyncSimplifier, type LodInput, type LodLevel, type Simplifier } from './mesh-lod-core.ts';
 export type { Simplifier, AsyncSimplifier } from './mesh-lod-core.ts';
+export {workerSimplifier} from './mesh-lod-worker-client.ts';
 /** Lane phones (V4): lower geometric detail at a distance, for the phone quality tier.
  *
  * The heavy triangles in a world are a few large static meshes: terrain sectors (32k triangles each, 25 of them on a
@@ -24,7 +25,7 @@ export const DESKTOP_MESH_LOD:MeshLodOptions=Object.freeze({...PHONE_MESH_LOD,ma
  * displacement, so painted detail survives simplification. Normals keep the shading of folds. */
 const COLOUR_WEIGHT=0.5,NORMAL_WEIGHT=0.05;
 type Level={geometry:THREE.BufferGeometry;error:number;triangles:number};
-type Entry={mesh:THREE.Mesh;base:THREE.BufferGeometry;centre:THREE.Vector3;radius:number;levels:Level[]|null;pending?:boolean};
+type Entry={mesh:THREE.Mesh;base:THREE.BufferGeometry;centre:THREE.Vector3;radius:number;levels:Level[]|null;pending?:boolean;cancel?:()=>void};
 
 /** Copies of what the simplifier needs from a geometry (transferable to a worker; the geometry itself is untouched). */
 export function lodInput(geometry:THREE.BufferGeometry):LodInput{
@@ -38,24 +39,6 @@ export function lodInput(geometry:THREE.BufferGeometry):LodInput{
 export function buildLevels(s:Simplifier,geometry:THREE.BufferGeometry,ratios:readonly number[],maxError=Number.MAX_VALUE):LodLevel[]{
   return simplifyLevels(s,lodInput(geometry),ratios,maxError);
 }
-/** A simplifier running in a module worker; resolves null when workers or the simplifier are unavailable (the caller
- * then falls back to the in-thread simplifier). */
-export function workerSimplifier(make:()=>Worker,timeoutMs=15000):Promise<AsyncSimplifier|null>{
-  let w:Worker;try{w=make();}catch{return Promise.resolve(null);}
-  const jobs=new Map<number,{ok:(l:LodLevel[])=>void;no:(e:Error)=>void}>();let next=1,broken=false;
-  return new Promise(resolve=>{
-    const timer=setTimeout(()=>{broken=true;w.terminate();resolve(null);},timeoutMs);
-    w.onerror=()=>{broken=true;clearTimeout(timer);for(const j of jobs.values())j.no(new Error('worker failed'));jobs.clear();resolve(null);};
-    w.onmessage=(ev:MessageEvent<{id:number;ready?:boolean;levels?:LodLevel[];error?:string}>)=>{
-      const {id,ready,levels,error}=ev.data;
-      if(id===0){clearTimeout(timer);if(!ready){w.terminate();resolve(null);return;}
-        resolve({isAsync:true,levels:(input,ratios,maxError)=>broken?Promise.reject(new Error('worker failed')):new Promise((ok,no)=>{const id=next++;jobs.set(id,{ok,no});
-          w.postMessage({id,input,ratios:[...ratios],maxError},[input.positions.buffer,input.indices.buffer,...input.parts.map(p=>p.array.buffer)]);})});return;}
-      const j=jobs.get(id);if(!j)return;jobs.delete(id);if(levels)j.ok(levels);else j.no(new Error(error??'failed'));
-    };
-    w.postMessage({id:0});
-  });
-}
 const suitable=(m:THREE.Mesh,min:number)=>{
   const mat=m.material as THREE.Material;if(Array.isArray(mat)||mat.polygonOffset||mat.transparent)return false;   // decals and see-through layers draped on other surfaces keep their exact shape
   const g=m.geometry;if(!m.isMesh||(m as THREE.SkinnedMesh).isSkinnedMesh||(m as THREE.InstancedMesh).isInstancedMesh||!m.frustumCulled||m.userData.keepDetail||!g||!g.index)return false;
@@ -64,10 +47,10 @@ const suitable=(m:THREE.Mesh,min:number)=>{
 };
 export class WorldMeshLod{
   private entries=new Map<THREE.Mesh,Entry>();private frame=0;private swapped:Entry[]=[];private world=new THREE.Vector3();
-  private o:MeshLodOptions;private simplifier:Simplifier|AsyncSimplifier|null=null;private inFlight=0;
+  private o:MeshLodOptions;private simplifier:Simplifier|AsyncSimplifier|null=null;private inFlight=0;private disposed=false;
   /** Last apply(): meshes with levels, meshes drawn coarser, triangles drawn vs. the originals', CPU ms (incl. building). */
   readonly stats={meshes:0,ready:0,coarser:0,triangles:0,fullTriangles:0,cpuMs:0,buildMs:0};
-  constructor(o:MeshLodOptions,load:()=>Promise<Simplifier|AsyncSimplifier|null>){this.o=o;void load().then(s=>{this.simplifier=s;},()=>{this.simplifier=null;});}
+  constructor(o:MeshLodOptions,load:()=>Promise<Simplifier|AsyncSimplifier|null>){this.o=o;void load().then(s=>{if(!this.disposed)this.simplifier=s;},()=>{if(!this.disposed)this.simplifier=null;});}
   private scan(root:THREE.Object3D){
     const seen=new Set<THREE.Mesh>();
     root.traverse(o=>{const m=o as THREE.Mesh;if(!m.isMesh||!suitable(m,this.o.minTriangles))return;seen.add(m);
@@ -77,17 +60,22 @@ export class WorldMeshLod{
     for(const e of [...this.entries.values()])if(!seen.has(e.mesh))this.drop(e);
   }
   // A dropped entry's base is no longer drawn by its mesh: free the level index buffers (three also forgets the shared attributes' buffers; a still-used base simply uploads them again)
-  private drop(e:Entry){this.entries.delete(e.mesh);for(const l of e.levels??[])l.geometry.dispose();e.levels=null;}
+  private drop(e:Entry){this.entries.delete(e.mesh);e.cancel?.();e.cancel=undefined;for(const l of e.levels??[])l.geometry.dispose();e.levels=null;}
   private build(e:Entry){
     const el=e.mesh.matrixWorld.elements,scale=Math.sqrt(Math.max(el[0]*el[0]+el[1]*el[1]+el[2]*el[2],el[4]*el[4]+el[5]*el[5]+el[6]*el[6],el[8]*el[8]+el[9]*el[9]+el[10]*el[10]))||1;
     const s=this.simplifier!;
     if('isAsync' in s){
-      // off the main thread: the entry keeps drawing its original until the levels come back (and is skipped if it was replaced meanwhile)
-      e.pending=true;this.inFlight++;
-      s.levels(lodInput(e.base),this.o.ratios,this.o.maxWorldError/scale).then(levels=>{if(this.entries.get(e.mesh)===e)this.attach(e,levels);},()=>{e.levels=[];}).finally(()=>{e.pending=false;this.inFlight--;});
-      return;
+      const reservation=s.reserve?.();if(reservation===null)return false;
+      let result:Promise<LodLevel[]>;
+      try{result=(reservation??s).levels(lodInput(e.base),this.o.ratios,this.o.maxWorldError/scale);}
+      catch(error){reservation?.cancel();throw error;}
+      e.pending=true;e.cancel=reservation?.cancel;this.inFlight++;
+      void Promise.resolve(result).then(levels=>{
+        if(this.entries.get(e.mesh)===e)try{this.attach(e,levels);}catch{e.levels=[];}
+      },()=>{if(this.entries.get(e.mesh)===e)e.levels=[];}).finally(()=>{e.pending=false;e.cancel=undefined;this.inFlight--;});
+      return true;
     }
-    this.attach(e,buildLevels(s,e.base,this.o.ratios,this.o.maxWorldError/scale));
+    this.attach(e,buildLevels(s,e.base,this.o.ratios,this.o.maxWorldError/scale));return true;
   }
   private attach(e:Entry,levels:LodLevel[]){
     e.levels=levels.map(({index,error,triangles})=>{
@@ -97,9 +85,10 @@ export class WorldMeshLod{
   }
   /** Call right before renderer.render. */
   apply(root:THREE.Object3D,camera:THREE.PerspectiveCamera,viewHeight:number){
+    if(this.disposed)return;
     const t0=performance.now();
     if(this.frame++%this.o.rescanFrames===0)this.scan(root);
-    if(this.simplifier){const b0=performance.now(),async='isAsync' in this.simplifier;for(const e of this.entries.values()){if(e.levels||e.pending)continue;if(async?this.inFlight>=2:performance.now()-b0>this.o.budgetMs)break;try{this.build(e);}catch{e.levels=[];}}this.stats.buildMs+=performance.now()-b0;}
+    if(this.simplifier){const b0=performance.now(),async='isAsync' in this.simplifier;for(const e of this.entries.values()){if(e.levels||e.pending)continue;if(async?this.inFlight>=2:performance.now()-b0>this.o.budgetMs)break;try{if(!this.build(e))break;}catch{e.levels=[];}}this.stats.buildMs+=performance.now()-b0;}
     const cam=camera.position,pxPerUnit=viewHeight/(2*Math.tan(camera.fov*Math.PI/360))*(camera.zoom||1);let coarser=0,tris=0,full=0,ready=0;
     for(const e of this.entries.values()){
       const m=e.mesh,n=e.base.index!.count/3;full+=n;
@@ -115,5 +104,5 @@ export class WorldMeshLod{
   }
   /** Call right after renderer.render. */
   restore(){for(const e of this.swapped)e.mesh.geometry=e.base;this.swapped.length=0;}
-  dispose(){this.restore();for(const e of [...this.entries.values()])this.drop(e);}
+  dispose(){if(this.disposed)return;this.disposed=true;this.simplifier=null;this.restore();for(const e of [...this.entries.values()])this.drop(e);}
 }

@@ -77,8 +77,11 @@ test('plural lamps animate their glow independently and can be switched repeated
   const entity:any={id:'one',def:'light@1',state:{}};
   animate(a,entity,def,1e9,{y:0,yaw:0});assert.notEqual(a.material,shared);assert.equal(b.material.emissiveIntensity,1);
   for(let i=0;i<2;i++){entity.state.on=false;animate(a,entity,def,1e9,{y:0,yaw:0});assert.equal(a.material.emissiveIntensity,0);entity.state.on=true;animate(a,entity,def,1e9,{y:0,yaw:0});assert.ok(a.material.emissiveIntensity>0);}
-  let disposed=0;a.material.addEventListener('dispose',()=>disposed++);const parent=new THREE.Group();parent.add(a);parent.remove(a);assert.equal(disposed,1,'per-entity glow materials are released with their root');
-  a.geometry.dispose();b.geometry.dispose();shared.dispose();
+  // lane PERF-MATERIALS: a glow level is a variant shared by every lamp at that level (material-variants.ts): nothing is released per entity; the variants go with the shared source
+  let disposed=0;a.material.addEventListener('dispose',()=>disposed++);const parent=new THREE.Group();parent.add(a);parent.remove(a);assert.equal(disposed,0,'a shared glow level is not released with one root');
+  const c=new THREE.Mesh(new THREE.BoxGeometry(),shared);animate(c,{id:'two',def:'light@1',state:{}} as any,def,1e9,{y:0,yaw:0});assert.equal(c.material,a.material,'two lamps at one level share the material');
+  shared.dispose();assert.equal(disposed,1,'glow levels are released with their source material');
+  a.geometry.dispose();b.geometry.dispose();c.geometry.dispose();
 });
 
 function fakeRenderer() {

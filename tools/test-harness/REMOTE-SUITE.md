@@ -2,6 +2,10 @@
 
 The release driver's complete contract is documented in [Remote gate](../../docs/testing/remote-gate.md).
 
+The current collector retains every group's `V0-assets.log` alongside its preflight log and copies the first group's
+diagnostics into the serial layout. These expected per-group diagnostics do not collide; other duplicate files still
+fail collection. The historical recovery below remains limited to its original collector and evidence.
+
 For the historical four-group collector blob `f2812707466098b30ab8fd7f280cd65bee6a8481`, the driver can validate
 completed execution despite exactly three duplicate informational `V0-assets.log` collisions. This is restricted to
 a full run: every retained group must have completed on the same source, harness and runtime; the original harness
