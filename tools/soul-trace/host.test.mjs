@@ -61,7 +61,10 @@ test('a missing boundary leaves an explicitly unattributed segment', () => {
   const g = reconstruct(lines(episode({withTool: false, withSpawn: false}))).episodes[0].host;
   // Without tool records the process cannot be linked to the turn, so only the turn start is attributed.
   assert.equal(g.tool, null);
-  assert.deepEqual(g.segments.map(s => s.to), ['turn.start']);
+  assert.deepEqual(g.segments.map(s => s.to), ['turn.start', 'first.command'], 'the first command stays visible');
+  assert.equal(g.segments[1].ms, 2100);
+  assert.match(g.segments[1].label, /^unattributed \(no tool call linked; `ack` found by time\)/);
+  assert.match(render(reconstruct(lines(episode({withTool: false, withSpawn: false})))), /turn\.start → first\.command {2}2100 ms {2}unattributed/);
   const s = reconstruct(lines(episode({withSpawn: false}))).episodes[0].host.segments;
   assert.deepEqual(s.map(x => [x.from, x.to]), [['delivered', 'turn.start'], ['turn.start', 'tool.start'], ['tool.start', 'proc.origin'], ['proc.origin', 'proc.start'], ['proc.start', 'first.request']]);
   assert.match(s[2].label, /^unattributed \(no spawn recorded\)/);
@@ -72,7 +75,14 @@ test('a turn that began before the delivery is reported, never subtracted', () =
   assert.deepEqual(g.before, [{boundary: 'turn.start', msBeforeDelivery: 600}]);
   assert.equal(g.segments[0].from, 'delivered');
   assert.equal(g.segments[0].to, 'tool.start');
+  assert.match(g.segments[0].label, /^host reasoning before the tool call \(from the delivery; turn\.start came before it\)/);
   assert.ok(g.segments.every(s => s.ms >= 0));
+});
+
+test('boundaries out of order across clocks are flagged as skew, not hidden', () => {
+  const rs = episode().map(r => (r.kind === 'proc.start' && r.command === 'ack' ? {...r, timeOrigin: r.timeOrigin + 200} : r));
+  const t = reconstruct(lines(rs));
+  assert.ok(t.anomalies.some(a => a.type === 'host-clock-skew' && a.from === 'proc.origin' && a.to === 'proc.start' && a.ms < 0), JSON.stringify(t.anomalies));
 });
 
 test('links are by recorded ids only: an unknown tool, an unlinked turn and a missing tool are anomalies', () => {
