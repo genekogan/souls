@@ -14,6 +14,7 @@ import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REQUIRED_STEPS, scopeFor } from '../../tools/test-harness/release-gate.mjs';
+import { SERVER_SHARDS } from './server-test-files.mjs';
 
 // The qualify matrix. `steps` are the gate steps that make a job relevant, and the job runs the same command as that
 // step in tools/test-harness/one-validation.sh (web: V4-web, launcher: V3-launcher-unit, client-cli: V3-client-cli);
@@ -27,8 +28,8 @@ export const JOBS = [
   { name: 'client-cli', kind: 'client-cli', assets: true, steps: ['V3-client-cli'] },
   { name: 'native', kind: 'native', assets: true, steps: ['V3-mars-engine'] },
   { name: 'latency', kind: 'latency', assets: false, steps: ['V5-server-full'] },
-  { name: 'server-0', kind: 'server', shard: 0, assets: true, steps: ['V5-server-full', 'V6-'] },
-  { name: 'server-1', kind: 'server', shard: 1, assets: true, steps: ['V5-server-full', 'V6-'] },
+  // the server inventory in SERVER_SHARDS duration-balanced shards (server-test-files.mjs)
+  ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, steps: ['V5-server-full', 'V6-'] })),
 ];
 
 const relevant = (job, steps) => job.steps.some(s => steps.some(step => s.endsWith('-') ? step.startsWith(s) : step === s));
