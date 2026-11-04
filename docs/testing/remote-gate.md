@@ -69,6 +69,7 @@ receipt reports it as fixed).
 | `tools/world-launcher/` | V3-launcher-unit, V6 |
 | `tools/edge-skill/`, `tools/client-eval/` | V3-client-cli |
 | `tools/god-skill/` | V6 |
+| `tools/body-authoring/` (the source of the pinned shared presets) | V5 |
 | other `tools/`, `docs/`, root `*.md`, `LICENSE` | none |
 | anything else (lockfile, `mars/`, `worlds/`, `vendor/`, `e2e/`, `.github/`, root files) | full contract |
 

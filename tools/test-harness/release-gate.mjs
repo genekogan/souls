@@ -666,6 +666,8 @@ export const SCOPE_RULES = [
   ['tools/client-eval/', ['V3-client-cli']],
   ['tools/world-launcher/', ['V3-launcher-unit', 'V6']],
   ['tools/god-skill/', ['V6']],
+  // The server builds the pinned shared presets (Pip, monster, ghost, centaur) from this source and refuses drifted bytes
+  ['tools/body-authoring/', ['V5']],
   ['tools/', []],
   ['docs/', []],
 ];

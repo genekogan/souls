@@ -11,6 +11,12 @@ test('docs, process and CI changes are T0', () => {
   assert.equal(tier([]), 'T0');
 });
 
+test('body-authoring source of the pinned presets is T1; other tools stay T0', () => {
+  assert.deepEqual(tierForFile('tools/body-authoring/pip/robot.mjs', policy), { tier: 'T1', rule: 'tools/body-authoring/' });
+  assert.equal(tier(['tools/body-authoring/centaur/centaur.test.mjs', 'docs/a.md']), 'T1');
+  assert.equal(tier(['tools/body-authoring-notes/x.md']), 'T0');
+});
+
 test('server and package logic is T1; visible UI is T2; Soul/engine is T3', () => {
   assert.equal(tier(['apps/server/src/account-auth.ts']), 'T1');
   assert.equal(tier(['packages/world-compiler/src/x.ts', 'pnpm-lock.yaml']), 'T1');

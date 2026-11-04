@@ -41,6 +41,16 @@ test('server changes run server shards and latency, not native', () => {
   assert.ok(!picked.includes('native'));
 });
 
+// tools/body-authoring builds the pinned shared presets the server serves (D028): the server legs, including the
+// renderer step on server-0, and latency; nothing else, and no browser smoke.
+test('body-authoring changes run every server shard and latency, and nothing else', () => {
+  const files = ['tools/body-authoring/pip/robot.mjs'], server = JOBS.filter(j => j.kind === 'server').map(j => j.name);
+  assert.ok(server.includes('server-0') && server.length > 1, server.join());
+  assert.deepEqual(names(files).sort(), ['latency', ...server].sort());
+  assert.equal(jobsFor(files).scope, 'scoped');
+  assert.equal(smokeFor(files), false);
+});
+
 test('unmapped paths (lockfile, .github, mars) run every job', () => {
   for (const f of ['pnpm-lock.yaml', '.github/workflows/ci.yml', 'mars/viewer/x.js']) assert.equal(names([f]).length, JOBS.length, f);
 });
