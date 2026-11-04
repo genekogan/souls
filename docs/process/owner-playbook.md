@@ -14,6 +14,11 @@ its agreed queue without another prompt for each issue. Required proof, review a
 The owner checks likely collisions at dispatch, when shared contracts change, and at integration; independent work
 need not synchronize continuously. Existing workers and jobs reach an explicit handoff before another writer takes over.
 
+Use one [development coordinator](development-coordinator.md) session to manage the agenda. Within an explicitly
+authorized agenda it can replace finished workers and select the next ready issue without a new prompt each time.
+Tell it priorities, capacity and stop conditions; it persists changes so another session can resume. This does not
+require a permanently running supervisor, and docs alone cannot supply an unavailable task-launch capability.
+
 ## Requests and priorities
 
 | Say this | What happens |
