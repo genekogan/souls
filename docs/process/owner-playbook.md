@@ -17,7 +17,10 @@ need not synchronize continuously. Existing workers and jobs reach an explicit h
 Use one [development coordinator](development-coordinator.md) session to manage the agenda. Within an explicitly
 authorized agenda it can replace finished workers and select the next ready issue without a new prompt each time.
 Tell it priorities, capacity and stop conditions; it persists changes so another session can resume. This does not
-require a permanently running supervisor, and docs alone cannot supply an unavailable task-launch capability.
+require a separate supervisor service, and docs alone cannot supply an unavailable task-launch capability. Your
+coordinator stays engaged while the authorized agenda is running, using bounded waits and worker events; you can
+plan or ask questions while its lanes continue. Its [private manifest/state](coordinator-memory.md) preserves
+preferences, assignments and pending decisions for a fresh session.
 
 ## Requests and priorities
 
@@ -60,10 +63,16 @@ existing work reach a recoverable checkpoint. “Stop now” interrupts executio
 leaves exact resume instructions; a production activation still needs a safe recovery decision. None of these
 instructions authorizes deleting unfinished work, skipping checks or abandoning an active deployment unsafely.
 
-Use a workhorse model for ordinary implementation, a cheaper model for mechanical work with objective checks,
-and a frontier model for a bounded hard question. Report provider usage independently: source, observation time,
+Run the coordinator on a top frontier model; use workhorse delegates for ordinary implementation and cheaper
+delegates for mechanical work with objective checks. Frontier delegates are the exception (roughly 0–5%, a guideline)
+for bounded hard planning, cross-stack or mission-critical questions. Report provider usage independently: source, observation time,
 quota/reset if available, and unknown fields. Unknown usage is not zero; one provider's meter cannot measure another.
 Do not silently switch to paid APIs. Preserve the agreed gate/spend limits and start no scheduled agents.
+
+When a task needs you, the coordinator asks asynchronously with a recommendation and safely parks only the blocked
+work. It may refill that capacity from the authorized agenda while you are away. Your reply triggers revalidation
+and resumption; silence never grants approval. Updates focus on milestones, releases, meaningful failures and
+decisions; task details remain in journals and private state.
 
 ## Execute and switch tools
 
