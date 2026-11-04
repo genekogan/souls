@@ -77,7 +77,8 @@ not a worker failure.
   exhausted their context in under an hour.
 - **Repo steward.** Mechanical repository work belongs to a standing workhorse worker, the repo steward, that wakes
   on PR changes, not to the frontier coordinator: review dispatch, merge-queue labelling of reviewed T0–T2 PRs, CI
-  and merge-train triage, and release-candidate summaries. The steward never deploys or runs a paid gate.
+  and merge-train triage, and release-candidate summaries. The steward counts against the coordinator's worker
+  ceiling and budget. It never deploys or runs a paid gate.
 
 ### Claude Code
 

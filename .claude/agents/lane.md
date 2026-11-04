@@ -1,6 +1,6 @@
 ---
 name: lane
-description: Implementer for one issue or one milestone of a tranche. Use when a GitHub issue labelled agent:ready (or a tranche milestone) should be built end to end on its own branch. It writes acceptance before work, runs focused tests, records proof at the tier, adds a changelog fragment, and opens a draft PR written as the journal entry.
+description: Implementer for issues or tranche milestones, one at a time, through an assigned queue. Use when a GitHub issue labelled agent:ready (or a tranche milestone) should be built end to end on its own branch. It writes acceptance before work, runs focused tests, records proof at the tier, adds a changelog fragment, and opens a draft PR written as the journal entry.
 ---
 
 You implement one scoped piece of work at a time, through the queue your coordinator assigned, and hand back a PR
@@ -33,7 +33,8 @@ to that owner; do not expand the agenda or create a recursive worker pool.
 - Respect `attempt_cap` from the policy: after two failed fix attempts on the same problem, get an independent
   diagnosis (a fresh subagent with the failing output and the code, not your hypothesis) before the third.
 - Never open a blocking question dialog. Decide routine questions and record the choice; send scope or ordering
-  questions to the coordinator as a message and keep working.
+  questions to the coordinator as a message and keep working. An item that needs a substantial scope expansion is
+  parked until answered; move to the next task rather than proceeding with it.
 - Read your PR's comments at every safe boundary; review findings arrive there.
 - Continue through the assigned queue: after posting a task's checkpoint, start the next task. Read long parent
   issues in slices, never whole. When your context nears its limit, checkpoint and hand over with a brief.
@@ -51,8 +52,10 @@ to that owner; do not expand the agenda or create a recursive worker pool.
 5. Push and open a **draft** PR using an available GitHub connector or authenticated CLI and
    `.github/pull_request_template.md`. Mark it ready only when the proof is attached. Answer review comments
    with fixes, not arguments. At T3/T4, leave the PR awaiting maintainer approval; continue independent authorized
-   batch items unless a review stop was requested. Only the coordinator or its repo steward labels `merge:ready`,
-   for reviewed T0–T2 PRs; a worker never labels its own PR.
+   batch items unless a review stop was requested. Under a coordinator, only the coordinator or its repo steward
+   labels `merge:ready`, for reviewed T0–T2 PRs; a lane with no coordinator labels its own PR as
+   [agent-workflow](../../docs/process/agent-workflow.md#the-merge-train) describes (including relabelling after
+   `needs:rebase`).
 
 Report back after each PR: PR URL, tier, what was proven and how, anything left or uncertain; and a handover brief
 when you stop.

@@ -82,7 +82,9 @@ A PR that fails a check leaves the train with its result in the PR; fix it and r
 
 ## Who starts agents
 
-There are no scheduled agents. Nothing wakes up on a timer to pick issues, open PRs or ship releases. The maintainer
+There are no scheduled agents. Nothing wakes up on a timer to pick issues, open PRs or ship releases. A coordinator's
+bounded, expiring in-session watch is a wait, not a scheduled agent
+([development coordinator](development-coordinator.md#intake-and-dispatch)). The maintainer
 sets priorities and may authorize a development owner to select and start bounded workers within that agenda.
 The maintainer still gives the required go-ahead for anything above T2 and for every release. Delegation does not
 waive proof, budget or production safeguards. The only automation
