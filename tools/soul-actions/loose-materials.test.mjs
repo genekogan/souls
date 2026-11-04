@@ -78,7 +78,9 @@ test('a light loose material is carried solo with both hands by the native carry
   for (const n of ['beam', 'sheet']) {
     const id = idOf(n), c = caps().find((x) => x.id === `carry:${id}`);
     assert.ok(c?.available, JSON.stringify(caps().filter((x) => x.verb === 'carry')));
-    const r = ok(await accept(f.host, edge.act(soul, {capability: `carry:${id}`, params: {to: 'yard'}})));
+    // the beam goes through the words an owner's agent would use; the world resolves them to the carry offer
+    const r = ok(await accept(f.host, edge.act(soul, {capability: n === 'beam' ? 'carry the beam' : `carry:${id}`, params: {to: 'yard'}})));
+    assert.equal(r.receipt.capability, `carry:${id}`);
     let raised = 0, crewed = false;
     for (let k = 0; k < 3000; k++) {
       const load = f.host.engine.world.entities[id];
