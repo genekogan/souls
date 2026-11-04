@@ -72,7 +72,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.any == 'true'
     # The qualify jobs (no browser) run on the repository variable CI_HEAVY_RUNNER when it is set, else ubuntu-latest.
-    # Its value is one runner label (`souls-lambda`) or a JSON array of labels (`["self-hosted","souls-lambda"]`).
+    # Its value is one runner label (`souls-ci`) or a JSON array of labels (`["self-hosted","souls-ci"]`).
     runs-on: ${{ vars.CI_HEAVY_RUNNER && (startsWith(vars.CI_HEAVY_RUNNER, '[') && fromJSON(vars.CI_HEAVY_RUNNER) || vars.CI_HEAVY_RUNNER) || 'ubuntu-latest' }}
     # The recursive server inventory can take about an hour before dependency/media setup.
     timeout-minutes: ${{ matrix.kind == 'server' && 90 || 60 }}
