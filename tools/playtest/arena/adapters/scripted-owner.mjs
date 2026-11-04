@@ -7,7 +7,11 @@
 // script: { rules: [{ match, ack?, do: [[eden.mjs args…], …], close?: "done"|"open", result?, supersede? }], unmatched? }
 //   match      case-insensitive regular expression tested against the owner's message text; the first rule that matches wins
 //   ack        reply sent with `ack <id>` (≤140 chars); default "On it."
-//   do         eden.mjs argument lists run in order; "{id}" is replaced by the message id. A step that fails stops the rule.
+//   do         eden.mjs argument lists run in order; "{id}" is replaced by the message id. A step that is refused or fails
+//              stops the rule, unless the step ends with an options object {"onRefused": "continue"} (default "fail"):
+//              then the refusal is recorded and the next step runs (#828). "{{prev.<path>}}" in an argument is replaced
+//              from the previous step's JSON output (a refusal's too), e.g. "{{prev.did_you_mean[0].id}}"; a placeholder
+//              that does not resolve fails its step without running it.
 //   close      "done" (default): `result <id> done|failed` from the steps' outcome. "open": leave the request open (the
 //              activity continues in the world) until a later rule supersedes it or the run ends.
 //   supersede  text for `result <old> failed "<text>"` on every request still open when this rule fires (owner redirection)
@@ -34,13 +38,43 @@ export function validateScript(script) {
     for (const k of Object.keys(r ?? {})) if (!['match', 'ack', 'do', 'close', 'result', 'supersede'].includes(k)) errs.push(`${at}.${k} is unknown`);
     if (typeof r?.match !== 'string') errs.push(`${at}.match: a regular expression string`);
     else { try { new RegExp(r.match, 'i'); } catch (e) { errs.push(`${at}.match: ${e.message}`); } }
-    if (!Array.isArray(r?.do) || !r.do.every((s) => Array.isArray(s) && s.length && s.every((a) => typeof a === 'string'))) errs.push(`${at}.do: a list of eden.mjs argument lists`);
-    else if (r.do.some((s) => ['register', 'create', 'pair', 'listen', 'ack', 'result', 'travel'].includes(s[0]))) errs.push(`${at}.do: setup, inbox and travel commands are the adapter's own (use ack/result/close fields)`);
+    if (!Array.isArray(r?.do) || !r.do.every((s) => Array.isArray(s) && stepArgs(s).length && stepArgs(s).every((a) => typeof a === 'string'))) errs.push(`${at}.do: a list of eden.mjs argument lists`);
+    else {
+      if (r.do.some((s) => ['register', 'create', 'pair', 'listen', 'ack', 'result', 'travel'].includes(s[0]))) errs.push(`${at}.do: setup, inbox and travel commands are the adapter's own (use ack/result/close fields)`);
+      r.do.forEach((s, j) => {
+        const o = stepOptions(s);
+        if (o) for (const [k, v] of Object.entries(o)) if (k !== 'onRefused') errs.push(`${at}.do[${j}].${k} is unknown (step options: onRefused)`); else if (!['continue', 'fail'].includes(v)) errs.push(`${at}.do[${j}].onRefused: continue or fail`);
+        for (const a of stepArgs(s)) for (const m of a.matchAll(PREV)) {
+          if (j === 0) errs.push(`${at}.do[0]: ${m[0]} needs a previous step`);
+          if (!PATH.test(m[1])) errs.push(`${at}.do[${j}]: ${m[0]} is not a path like prev.did_you_mean[0].id`);
+        }
+      });
+    }
     if (r?.close != null && !CLOSES.includes(r.close)) errs.push(`${at}.close: done or open`);
     for (const k of ['ack', 'result', 'supersede']) if (r?.[k] != null && (typeof r[k] !== 'string' || !r[k].trim() || r[k].length > 140)) errs.push(`${at}.${k}: 1-140 characters`);
   });
   if (script.unmatched != null && (typeof script.unmatched !== 'string' || script.unmatched.length > 140)) errs.push('script.unmatched: up to 140 characters');
   return errs;
+}
+
+/** A step is eden.mjs arguments, optionally ending with an options object ({onRefused}). */
+const PREV = /\{\{prev\.([^}]*)\}\}/g, PATH = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*$/;
+export const stepOptions = (s) => (s.length && s.at(-1) && typeof s.at(-1) === 'object' && !Array.isArray(s.at(-1)) ? s.at(-1) : null);
+export const stepArgs = (s) => (stepOptions(s) ? s.slice(0, -1) : s);
+/** The previous step's JSON (stdout, else stderr), or null. */
+export function stepJson(r) { for (const t of [r?.stdout, r?.stderr]) { try { const d = JSON.parse(t); if (d && typeof d === 'object') return d; } catch { /* not JSON */ } } return null; }
+/** bindPrev(args, prev) → {args} with every {{prev.<path>}} replaced, or {error} naming the first that does not resolve
+ *  to a string or number. */
+export function bindPrev(args, prev) {
+  let error = null;
+  const out = args.map((a) => a.replace(PREV, (m, path) => {
+    let v = prev;
+    for (const k of path.match(/[^.[\]]+/g) ?? []) v = v == null ? undefined : v[k];
+    if (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) return String(v);
+    error ??= `unresolved ${m}${prev ? '' : ' (the previous step printed no JSON)'}`;
+    return m;
+  }));
+  return error ? { error } : { args: out };
 }
 
 /** The first rule whose match fits the text, or null. */
@@ -137,11 +171,16 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
       save();
     }
     if (id) await cli(['ack', id, clip(rule.ack ?? 'On it.')]);
-    let failed = null;
+    let failed = null, prev = null;
     for (const step of rule.do) {
-      const r = await cli(step.map((a) => (id ? a.replaceAll('{id}', id) : a)));
-      const o = stepOutcome(r, { waited: step.includes('--wait') });
-      if (!o.ok) { failed = `${step[0]}: ${o.why}`; break; }
+      const args = stepArgs(step), onRefused = stepOptions(step)?.onRefused ?? 'fail';
+      const bound = bindPrev(args.map((a) => (id ? a.replaceAll('{id}', id) : a)), prev);
+      let o;
+      if (bound.error) o = { ok: false, why: bound.error };
+      else { const r = await cli(bound.args); prev = stepJson(r); o = stepOutcome(r, { waited: args.includes('--wait') }); }
+      if (o.ok) continue;
+      if (onRefused === 'continue') { say(`[scripted-owner] ${args[0]} refused, continuing: ${o.why}`); continue; }
+      failed = `${args[0]}: ${o.why}`; break;
     }
     if (!id) return;
     if ((rule.close ?? 'done') === 'open' && !failed) { state.open.push(id); handled(); say(`Started; ${id} stays open.`); return; }

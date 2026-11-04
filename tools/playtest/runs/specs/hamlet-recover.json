@@ -1,0 +1,9 @@
+{
+ "soulRun": 1,
+ "name": "hamlet-recover",
+ "scenario": "../../scenarios/soul-runs/hamlet-recover.json",
+ "world": { "port": 4327 },
+ "observer": { "check": false, "required": false, "mode": "passive", "timeoutMs": 60000 },
+ "limits": { "maxWallSec": 300, "maxControllers": 1, "cleanupWaitMs": 15000 },
+ "retention": { "worldData": "keep", "controllerState": "keep" }
+}

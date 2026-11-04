@@ -1,0 +1,19 @@
+{
+  "name": "sr-hamlet-recover",
+  "version": 1,
+  "seed": 8280,
+  "providers": { "allowed": ["codex"] },
+  "world": { "kind": "dev", "genesis": "worlds/templates/hello-hamlet.json", "slug": "sr-hamlet-recover", "port": 4327, "natives": false },
+  "durationSec": 90,
+  "seats": [
+    { "id": "ada", "adapter": "scripted-owner", "soulName": "Ada", "script": { "rules": [
+      { "match": "moon", "ack": "Trying the moon", "do": [["act", "walk:the-moon", { "onRefused": "continue" }], ["act", "{{prev.did_you_mean[0].id}}", "--wait", "70"]], "result": "No path to the moon; took the world's suggestion instead" } ] } }
+  ],
+  "god": null,
+  "director": { "mode": "scripted", "script": [
+    { "seat": "ada", "atSec": 5, "channel": "card", "text": "Walk to the moon, please.", "budgetSec": 80 }
+  ] },
+  "observer": { "sampleSec": 3, "viewport": [1280, 800], "dpr": 1, "cameras": [] },
+  "review": { "mode": "deterministic", "developer": false },
+  "rails": { "maxTurnWallSec": 120, "onboardWallSec": 120, "onboardTimeoutSec": 90, "maxTurnsPerRequest": 4 }
+}
