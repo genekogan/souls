@@ -2,6 +2,47 @@
 
 User-facing changes to Sim, newest first. Each release is compiled from `changes/` fragments.
 
+## 4.14 (2026-11-03)
+
+### Features
+
+- World controls now group on the left, with recent Soul avatars, one-click camera switching, and an audio menu for independent sound effects, music, and radio stations.
+
+### Fixes
+
+- Keep the New Soul prompt open while account data loads or owned Souls switch between inline avatars and the avatar menu.
+- Play the synthesised music playlist in local development worlds when the audio CDN cannot serve their origin.
+- Leaving a world stops its mesh simplification worker, and replacing terrain keeps background work bounded without reviving obsolete geometry.
+- Keep music stopped when it is turned off or loses audio focus while a file is still loading or starting.
+- Completed world snapshots finish without being cancelled during arrival cleanup.
+- World geometry stays visible if a background render rebuild fails, and repeated edits release obsolete rendering resources.
+- Newly added or shown parts stay visible while their unchanged siblings use static render batches.
+- Overlapping render rebuilds release obsolete temporary geometry before replacements start and check known geometry workspace before merging; arbitrary allocations inside shader callbacks can only be accounted for after those callbacks return.
+- Recorded music with several performances now advances the playlist state during automatic crossfades, so the following piece and a resumed performance stay in sync with the sounding file.
+- Creatures keep avoiding large and offset obstacles, and experimental distance streaming releases unused geometry without losing shared models.
+
+### Performance
+
+- Large worlds keep unbatched objects visible while static drawing preparation stays within its source and geometry budgets.
+- The sun's shadow of buildings, trees and other still things is drawn once and reused until the sun or the view moves on, so the shadow pass draws only what moves.
+- Big god-built worlds draw far fewer calls on desktop: scattered plants and rocks draw as one pool per species, moving things (ducks, boats) as instances, a person as one mesh, steady lamp glows and every wall finish of a cell as one merged draw each.
+- Big god-built worlds orbit smoothly on desktop: their still props, buildings and window glass draw as a few hundred merged batches instead of thousands of separate meshes.
+- Settled things leave the entity update loop until a pose, hand, lamp or interior change wakes them, reducing work as worlds grow.
+- Moving the camera in a busy world costs less work each frame. Speech bubbles check what hides them in one pass, the indoor-sound probe looks only above the camera, settled furniture skips work that does not change, sleeping bodies settle onto the ground with far fewer calculations, and animals reuse their obstacle maps. The picture is the same.
+- Prepare ready shader uniform and attribute metadata in separate tasks before a new world's first live draw.
+- Worlds prepare their people and scenery in smaller steps while loading.
+- Creature water queries skip provably distant path segments while preserving current widths, levels and in-place edits.
+- The world's music now plays from pre-rendered recordings of the same pieces, so it no longer stutters when the scene is busy, and one piece crossfades into the next.
+- Each piece of the world's music now has three recorded performances, and a different one may play each time the piece comes round; a piece paused by switching tabs resumes the same performance where it left off.
+- Reduce repeated phone rendering work while preserving scene detail and shadows.
+- Cache fixture lookup between frames and keep motion pools in sync when scenery or stock changes, preserving the existing phone renderer resolution.
+- Buildings, lamps and generated things now share their materials, repeated building pieces share one geometry, and a building casts its shadow in one draw, so the world holds far fewer GPU objects with the same picture.
+- Big worlds no longer stutter when they catch up after a dropped connection, and their first load no longer freezes the page for a moment: only what changed is redrawn.
+- Large worlds assemble their initial snapshot in smaller tasks so the page stays responsive during arrival.
+- Keep static window batches active when transparent rendering updates their shared material's version.
+- Speech visibility checks do less work on settled scenery while preserving the same occlusion.
+- Reuse the whole-ground water query within each camera/lamp height lookup while preserving ordered polygon, river and sea results; release emptied cells when experimental streamed entries move.
+
 ## 4.13 (2026-11-02)
 
 ### Features

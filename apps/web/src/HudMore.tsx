@@ -21,12 +21,12 @@ export const MORE_TARGETS: readonly { key: string; selector: string; label?: str
   // U2: in the account menu when signed in; U3: signed out there is no desktop menu for it, so the phone's More asks directly
   { key: 'feedback', selector: '[data-feedback-open]', label: 'Feedback', fallback: requestFeedback },
   { key: 'visitor', selector: '.visitor-controls button' },  // Since your last visit, when VisitorWelcome.RETURN_HISTORY is on
-  // U3: top-bar controls hud-fit.ts moves off a narrow phone bar, in the order they leave it
-  { key: 'fullscreen', selector: '.hud-camera-row .fullscreen-toggle' },
-  { key: 'follow', selector: '.hud-camera-slot .viewer-broadcast, .hud-camera-slot .viewer-following button' },
-  { key: 'camera', selector: '.hud-camera-row .hud-camera[aria-label="Camera controls"]' },
-  { key: 'souls', selector: '.hud-explore-group .my-souls > button' },
-  { key: 'sound', selector: '.eden-sound-toggle [data-sound]' },
+  // The wrapping navbar keeps these visible; offer their current controls only when actually hidden.
+  { key: 'fullscreen', selector: '.camera-menu .fullscreen-toggle' },
+  { key: 'follow', selector: '.hud-camera-slot .camera-main' },
+  { key: 'camera', selector: '.camera-menu .navbar-menu-trigger', label: 'Camera modes and help' },
+  { key: 'souls', selector: '.hud-explore-group .my-souls > button, .souls-menu .navbar-menu-trigger' },
+  { key: 'sound', selector: '.navbar-audio .navbar-menu-trigger' },
 ];
 
 type Target = Pick<HTMLElement, 'click' | 'textContent' | 'getAttribute' | 'hidden'> & { checkVisibility?: (o?: { visibilityProperty?: boolean }) => boolean; getClientRects?: () => { length: number } };
