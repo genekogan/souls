@@ -47,10 +47,23 @@ and the tool calls naming that turn are attached; a later turn or a tool call wi
 that come out negative across clocks are flagged `host-clock-skew`.
 
 The recorder creates the trace file if it is missing (the tap only appends to a regular file or a new one too) and
-refuses symlinks, FIFOs and devices. Its appends are synchronous in the host's process, so a hung disk would block
-the host's call; it disables itself on the first error but cannot interrupt a write that never returns. Its own
+refuses symlinks, FIFOs and devices. By default its appends are synchronous in the host's process, so a hung disk
+would block the host's call; it disables itself on the first error but cannot interrupt a write that never returns.
+`hostRecorder({file, queued: true})` (for a long-lived host) uses the tap's bounded asynchronous queue
+(`sink.mjs`) instead; call `close()` or `await drain()` before exit. Its own
 cost was not measured separately in A5. Not yet: an adapter for a particular host's hooks (Claude Code hooks cannot pass a tool id
 into the spawned command without rewriting it).
+
+## Managed runtime (#733 S2)
+
+`tools/soul-runtime/run.mjs` writes the same host records when `SOUL_TRACE_FILE` is set
+(`tools/soul-runtime/trace.mjs`); load the tap on it too (`node --import tools/soul-trace/tap.mjs
+tools/soul-runtime/run.mjs …`). A turn starts at the runtime's `begin` request and names, with `for`, the first
+owner message delivered with it; it ends at `turn/completed`. Tool items (`item/started` / `item/completed` of tool
+types) are `host.tool` records of their turn. The runtime runs no CLI process, so a managed episode reads delivery →
+turn start → turn end ("host turn to its decision"); tool items are counted, not placed on the gap. Limits: an owner
+message delivered by `steer` into a running turn is not linked to it (one `for` per turn); a managed act carries no
+`for`, so the readout shows it with unknown origin; the tap's 2000-record cap per process bounds a long run.
 
 ## Inspector (#624)
 
@@ -108,5 +121,7 @@ request or changes stdout, stderr, exit code or request order; it disables itsel
 batch still in flight when the process exits may be lost and shows as `inFlightAtExit` and missing records.
 Response bodies are read from a clone for JSON responses ≤1 MiB; others record headers only.
 
-Not covered yet: the managed runtime (`tools/soul-runtime`, which has its own `--evidence` recorder) and the legacy
-live CLI; a host-specific hooks adapter; server-side joins; any upload.
+The queue is `sink.mjs`, shared by the tap, the queued host recorder and the managed runtime's `--evidence`
+recorder.
+
+Not covered yet: the legacy live CLI; a host-specific hooks adapter; server-side joins; any upload.

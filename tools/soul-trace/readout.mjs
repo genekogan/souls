@@ -189,6 +189,13 @@ function hostGap(m, {turns, tools, byTool}, firstCommand = null, anomalies = [])
     segments.push({from: prev, to: name, ms, clock: exact ? 'process-monotonic' : 'local-wall≈', label});
     prev = name;
   }
+  // No tool call links a command, and the turn ended before any later command (the managed runtime, which runs no
+  // CLI process: its turn ends in a decision the runtime then applies). The turn itself is the host's reasoning.
+  if (!call && turn.end && prev === 'turn.start' && turn.end.at >= turn.start.at && !(firstCommand && firstCommand.at < turn.end.at)) {
+    const exact = turn.start.proc === turn.end.proc && Number.isFinite(turn.start.mono) && Number.isFinite(turn.end.mono);
+    segments.push({from: 'turn.start', to: 'turn.end', ms: round(exact ? turn.end.mono - turn.start.mono : turn.end.at - turn.start.at), clock: exact ? 'process-monotonic' : 'local-wall≈', label: 'host turn to its decision (no tool call linked)'});
+    prev = 'turn.end'; pts['turn.end'] = turn.end;
+  }
   // No tool call links a command: keep the rest of the gap visible, as it was without host records.
   if (!call && firstCommand && firstCommand.at > pts[prev].at) {
     segments.push({from: prev, to: 'first.command', ms: round(firstCommand.at - pts[prev].at), clock: 'local-wall≈',
