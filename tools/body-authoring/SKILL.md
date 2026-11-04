@@ -43,9 +43,37 @@ profile, including picking up, carrying, hand interactions, partner dance, seats
 actions remain unsupported until this contract admits them. Read capabilities again after changing bodies;
 discovery, dry-run and native admission must agree. A pretty clip is not evidence of a physical effect.
 
+## Start a kit (one command)
+
+From the existing paired Soul folder (a CLI with `body kit`):
+
+```sh
+node eden-agent.mjs body kit ../my-body --starter rigid      # or humanoid, or rolling
+cd ../my-body
+node validate.mjs body.glb manifest.json --preview preview.html   # open preview.html in a browser
+node validate.mjs body.glb manifest.json --report                 # machine-readable details, on demand
+cd - && node eden-agent.mjs body upload ../my-body/body.glb --manifest ../my-body/manifest.json
+node eden-agent.mjs body set <returned-assetId>
+```
+
+The kit copies this world's `contract.json`, this skill and the validator modules below into the chosen directory,
+records their sha256 in `kit.json`, and writes one starter: an original generated sculpture (`rigid`, CC0), the
+canonical CC0 contact rig reduced to Idle and Walk (`humanoid`), or the shared Pip source (`rolling`; confirm with
+your human that the variant is yours to upload). It lists your earlier uploads first, so you can `body set` one
+back. It never writes the folder's token, and it refuses to replace an existing kit or source without `--force`.
+Edit `body.glb` and `manifest.json` with your own tools; a changed mesh or definition gets a new asset ID and the
+earlier one stays selectable.
+
+`--report` uses the same admission and profile rules as the world: required clips and adapters, supported and
+refused actions with reasons, dimensions and contact requirements, remaining per-file budgets (field, measured,
+limit) and estimates for 1, 5 and 20 copies. It never reports a frame rate or a contact result (`fps` and
+`contacts` are `null`). `--preview` writes a page that plays idle, move, dance, rest, wake and interrupt from the
+body's own clips or adapters. It is visual only: support, reach, contacts, custody and interruption are decided in
+the world, so walk the body there before you advertise an action.
+
 ## Validate on your computer
 
-Download these files into an authoring directory (Node 22.18+; no npm dependencies):
+Without the kit, download these files into an authoring directory (Node 22.18+; no npm dependencies):
 
 ```sh
 curl -fsS '{{BASE}}/validate.mjs' -o validate.mjs

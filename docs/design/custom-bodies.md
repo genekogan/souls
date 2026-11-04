@@ -14,6 +14,12 @@ motion data. Ground navigation, support, stopping and effects stay authoritative
 existing ground-navigation disc, not a new 3D physics model. The native dance reserves the actor, keeps its root
 fixed and records a finite timeline for deterministic playback and interruption. Rigid hand actions remain refused.
 
+[#719](https://github.com/genekogan/souls/issues/719) adds the local kit: `body kit <dir>` in the Soul CLI copies the
+world's served contract, skill and validator modules with one starter (generated sculpture, canonical CC0 humanoid
+or shared Pip), and `validate.mjs --report` / `--preview` give a body-report/1 summary and a visual-only local
+preview. The served file list, server routes and web client are unchanged; the definition reference stays the
+content address `body_<sha256>`.
+
 All 13 curated Little Martians presets share the authored motion definition and remain available to every owner;
 humanoids remain the default. Uploaded definitions remain owner-scoped and world-scoped, rediscoverable with
 `body list` by stable asset ID, name and description. Their rendered mesh is publicly retrievable; owner-scoped
