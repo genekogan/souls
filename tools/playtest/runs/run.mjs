@@ -34,7 +34,7 @@ async function main() {
   const serverRoot = resolve(flag('server-root') ?? process.env.PLAYTEST_SERVER_ROOT ?? REPO_ROOT);
   if (cmd === 'validate') {
     const { spec, specPath } = load();
-    const v = validateSpec(spec, { specPath });
+    const v = validateSpec(spec, { specPath, serverRoot });
     if (!v.ok) { print({ status: 'refused', stage: 'validate', errors: v.errors }); return 2; }
     // validate applies the same preflight as start (providers, quota, machine gate) and creates nothing.
     const { preflight } = await import('../playtest.mjs');

@@ -120,6 +120,8 @@ export async function cmdRun(a, hooks = null) {
 
   let exitCode = 0;
   try {
+    // An owning lifecycle's world setup (tools/playtest/runs/setup.mjs): after provision, before any seat; it throws to refuse.
+    if (from <= 1 && hooks?.afterProvision) { checkAbort('setup'); await hooks.afterProvision({ world: ctx.world, runDir }); }
     if (scenario.director?.script?.some(e => e.expect?.journey)) {
       const response = await fetch(`${ctx.world.base}/v1/world/snapshot`);
       if (!response.ok) throw new Error('fixture snapshot unavailable');

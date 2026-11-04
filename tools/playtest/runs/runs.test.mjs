@@ -15,7 +15,7 @@ let nextPort = 43170;
 function fixture({ seats = [{ id: 'pip', adapter: 'codex-headless', model: 'm' }], kind = 'dev' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'soul-runs-'));
   const serverRoot = join(dir, 'root');
-  for (const f of ['apps/server/src/main.ts', 'apps/web/dist/index.html', 'tools/world-launcher/soul/eden.mjs']) { mkdirSync(join(serverRoot, f, '..'), { recursive: true }); writeFileSync(join(serverRoot, f), ''); }
+  for (const f of ['apps/server/src/main.ts', 'apps/web/dist/index.html', 'tools/world-launcher/soul/eden.mjs', 'g.json']) { mkdirSync(join(serverRoot, f, '..'), { recursive: true }); writeFileSync(join(serverRoot, f), ''); }
   const scenario = { name: 'fixture', version: 1, seed: 1, providers: { allowed: ['codex'] }, world: { kind, genesis: 'g.json', slug: 'pt-fixture', port: 4999 }, durationSec: 5, seats, god: null, observer: { cameras: [] }, director: { mode: 'scripted', script: seats.map((s) => ({ seat: s.id, atSec: 1, channel: 'card', text: 'sit' })) }, review: { mode: 'deterministic', developer: false } };
   writeFileSync(join(dir, 'scenario.json'), JSON.stringify(scenario));
   const spec = (extra = {}) => ({ soulRun: 1, scenario: join(dir, 'scenario.json'), cast: 'none', world: { port: nextPort++ }, observer: { check: false }, ...extra });
@@ -46,24 +46,26 @@ test('ledger releases owned resources newest first, records failure and timeout,
 
 test('validateSpec refuses unsupported or unauthorized runs before anything is created', () => {
   const f = fixture();
-  const codes = (spec) => validateSpec(spec).errors.map((e) => e.code);
+  const codes = (spec) => validateSpec(spec, { serverRoot: f.serverRoot }).errors.map((e) => e.code);
   assert.deepEqual(codes({ ...f.spec(), soulRun: 2 }), ['spec.version']);
   assert.deepEqual(codes({ ...f.spec(), extra: 1 }), ['spec.unknown-field']);
   assert.deepEqual(codes({ ...f.spec(), cast: 'composed' }), ['cast.unsupported']);
   assert.deepEqual(codes({ ...f.spec(), scenario: join(f.dir, 'nope.json') }), ['scenario.not-found']);
-  assert.deepEqual(codes({ ...f.spec(), world: { genesis: 'x' } }), ['world.override']);
+  assert.deepEqual(codes({ ...f.spec(), world: { natives: true } }), ['world.override']);
+  assert.deepEqual(codes({ ...f.spec(), world: { genesis: 'x' } }), ['world.source'], 'a world source must exist under the server root');
+  assert.deepEqual(codes({ ...f.spec(), world: { genesis: 'g.json', snapshot: 'g.json' } }), ['world.source']);
   assert.deepEqual(codes({ ...f.spec(), cast: 'scenario' }), ['controllers.live-model'], 'a live seat needs explicit opt-in');
   assert.deepEqual(codes({ ...f.spec(), cast: 'scenario', controllers: { allowLiveModels: true }, limits: { maxControllers: 0 } }), ['limits.maxControllers']);
   const live = fixture({ kind: 'live' });
   assert.ok(codes(live.spec()).includes('world.kind'));
-  const ok = validateSpec(f.spec({ durationSec: 7 }));
+  const ok = validateSpec(f.spec({ durationSec: 7 }), { serverRoot: f.serverRoot });
   assert.equal(ok.ok, true);
   assert.deepEqual(ok.scenario.seats, []);
   assert.deepEqual(ok.scenario.director.script, []);
   assert.deepEqual(ok.scenario.soulRunCast.removedSeats, ['pip']);
   assert.equal(ok.scenario.durationSec, 7);
   assert.deepEqual(ok.policy.required, []);
-  const withSeats = validateSpec({ ...f.spec(), cast: 'scenario', controllers: { allowLiveModels: true } });
+  const withSeats = validateSpec({ ...f.spec(), cast: "scenario", controllers: { allowLiveModels: true } }, { serverRoot: f.serverRoot });
   assert.deepEqual(withSeats.controllers, [{ id: 'pip', adapter: 'codex-headless', model: 'm', effort: null }]);
 });
 
@@ -73,6 +75,7 @@ test('refused runs create no run directory', async () => {
   const r = await startRun({ spec: { ...f.spec(), cast: 'scenario' }, serverRoot: f.serverRoot, outDir: out, execute: () => assert.fail('must not execute') });
   assert.equal(r.status, 'refused');
   assert.equal(existsSync(out), false);
+  mkdirSync(join(f.dir, 'empty'), { recursive: true }); writeFileSync(join(f.dir, 'empty', 'g.json'), '{}');
   const missing = await startRun({ spec: f.spec(), serverRoot: join(f.dir, 'empty'), outDir: out, execute: () => assert.fail('must not execute') });
   assert.equal(missing.stage, 'preflight');
   assert.equal(existsSync(out), false);
