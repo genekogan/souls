@@ -1,7 +1,8 @@
 // CW2 (#736) A3–A5: the verdict can only pass on a complete, quiet, qualifying matrix; failures name their cause.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { verdict, headroom } from './verdict.mjs';
+import { readFileSync } from 'node:fs';
+import { verdict, headroom, evidence, EVIDENCE } from './verdict.mjs';
 
 const good = (profile, rep, o = {}) => ({ profile, rep, qualifying: { executor: true, quiet: true, short: false }, objectives: { read: true, actionStart: true, delivery: true, clock: true, failures: true, restarts: true },
   headroom: { cpu: 0.45, memory: 0.6 }, swapPeakMb: 0, stealShare: 0, throttledPeriodShare: 0, worlds: { mw0: { hottestCores: 0.4, met: true } }, ...o });
@@ -67,4 +68,18 @@ test('a failed run next to a complete matrix is inconclusive; a hot thread count
   const miss = { objectives: { read: false }, headroom: { cpu: 0.1, memory: 0.6 } };
   assert.equal(verdict(matrix({ ...miss, worlds: { mw0: { hottestCores: 0.9, met: false } } })).verdict, 'software bottleneck');
   assert.equal(verdict(matrix({ ...miss, worlds: { mw0: { hottestCores: 0.89, met: false } } })).verdict, 'insufficient resources');
+});
+
+test('summarize shape: every evidence field is present on a run, read values flow through, unread ones are null', () => {
+  const read = evidence({ hostRows: [{ cgroupSwapMb: 0 }, { cgroupSwapMb: 3 }], alloc: { stealShare: 0.01, throttledPeriodShare: 0, pressureSomeShare: { cpu: 0.02 } } });
+  assert.deepEqual(read, { swapPeakMb: 3, stealShare: 0.01, throttledPeriodShare: 0, pressureSomeShare: { cpu: 0.02 } });
+  const unread = evidence({ hostRows: [{ cgroupSwapMb: null }], alloc: null });
+  for (const k of [...EVIDENCE, 'pressureSomeShare']) { assert.ok(k in read && k in unread, k); assert.equal(unread[k], null, k); }
+  // a matrix built from readable evidence can pass; the same matrix with the bench's unread evidence cannot
+  const clean = evidence({ hostRows: [{ cgroupSwapMb: 0 }], alloc: { stealShare: 0, throttledPeriodShare: 0 } });
+  assert.equal(verdict(matrix(clean)).verdict, 'passes');
+  assert.equal(verdict(matrix(unread)).verdict, 'inconclusive');
+  // and the bench's summarize puts them on every run's qualification (a comment once swallowed three of them)
+  const src = readFileSync(new URL('./meetup.mjs', import.meta.url), 'utf8'), q = src.slice(src.indexOf('const qualification = {'));
+  assert.match(q.slice(0, q.indexOf('\n    allocation:')), /\n\s+\.\.\.evidence\(\{ hostRows, alloc \}\),/);
 });

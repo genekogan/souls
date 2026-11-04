@@ -22,7 +22,7 @@ import { pathToFileURL } from 'node:url';
 import { FIXTURES, PROFILES, DEMAND, TICK_HZ, WORKLOAD, LOAD_FAILURES, phases, souls as soulsOf, schedule, scheduleId, scheduleCounts, account, outcomeOf, quantiles, clockWindow, rng } from './workload.mjs';
 import { report, verdictReport, OBJECTIVES } from './report.mjs';
 import { probe, threads, between, hotThreads } from './host.mjs';
-import { verdict, headroom } from './verdict.mjs';
+import { verdict, headroom, evidence } from './verdict.mjs';
 
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf(`--${k}`); return i < 0 ? d : argv[i + 1]; }, flag = (k) => argv.includes(`--${k}`);
 const ROOT = resolve(opt('root', new URL('../../../..', import.meta.url).pathname)), SHORT = flag('short'), SEED = opt('seed', 'cw1');
@@ -441,7 +441,7 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
   const objectives = { read: meets(rd('all|read'), O.readP95Ms, O.readP99Ms), actionStart: meets(sq('all'), O.actStartP95Ms, O.actStartP99Ms), delivery: meets(dq, O.deliveryP95Ms, O.deliveryP99Ms),
     clock: minRatio('quiet') >= O.clockMin && minRatio('active') >= O.clockMin, failures: headline.loadFailures === 0 && headline.overdue === 0 && headline.unissued === 0, restarts: headline.restarts === 0 && paused === 0 && dilated === 0 };
   const qualification = { profile, rep, qualifying: { executor: QUALIFYING, quiet: QUIET, short: SHORT }, objectives, headroom: room, cpuUsedCores: +used.toFixed(3),
-    swapPeakMb: hostRows.some((x) => x.cgroupSwapMb != null) ? Math.max(0, ...hostRows.map((x) => x.cgroupSwapMb ?? 0)) : null,   // unreadable: unknown, not 0 stealShare: alloc?.stealShare ?? null, throttledPeriodShare: alloc?.throttledPeriodShare ?? null, pressureSomeShare: alloc?.pressureSomeShare ?? null,
+    ...evidence({ hostRows, alloc }),   // swap, steal, throttling and pressure; unreadable stays null (unknown), never 0
     allocation: { supported: !!end?.alloc?.supported, cpuMax: end?.alloc?.cpuMax ?? null, cpuset: end?.alloc?.cpuset ?? null, memoryMaxMb: end?.alloc?.memoryMaxMb ?? null, memoryPeakMb: memPeak >= 0 ? memPeak : null, swapMaxMb: end?.alloc?.swapMaxMb ?? null, cgroupCpuCores: alloc?.cgroupCpuCores ?? null, throttledSecondsPerSecond: alloc?.throttledSecondsPerSecond ?? null,
       driverSameCgroup: !!end && end.alloc?.supported && JSON.stringify(end.alloc.cpuMax) === JSON.stringify(end.driver?.cpuMax) && end.alloc.memoryMaxMb === end.driver?.memoryMaxMb },
     worlds: Object.fromEntries(FIXTURES.map((f, w) => { const r = rd(`w${w}|read`), st = sq(`w${w}`), c = clock[f.slug];

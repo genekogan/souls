@@ -15,6 +15,16 @@ export function headroom({ quotaCores = null, cpusetCores = null, hostCores, use
   };
 }
 
+/** The evidence fields a run's qualification carries; the verdict refuses `passes` while any is null (unreadable).
+ *  hostRows: the bench's 5 s host samples ({cgroupSwapMb}); alloc: host.mjs between() over the active window. */
+export const EVIDENCE = ['swapPeakMb', 'stealShare', 'throttledPeriodShare'];
+export function evidence({ hostRows = [], alloc = null } = {}) {
+  return {
+    swapPeakMb: hostRows.some((x) => x.cgroupSwapMb != null) ? Math.max(0, ...hostRows.map((x) => x.cgroupSwapMb ?? 0)) : null,
+    stealShare: alloc?.stealShare ?? null, throttledPeriodShare: alloc?.throttledPeriodShare ?? null, pressureSomeShare: alloc?.pressureSomeShare ?? null,
+  };
+}
+
 /** runs: [{profile, rep, failed?, qualifying: {executor, quiet, short}, objectives: {name: bool}, headroom: {cpu, memory},
  *  swapPeakMb, stealShare, throttledPeriodShare, worlds: {slug: {hottestCores, met: bool}}}] → {verdict, reasons[], ...}. */
 export function verdict(runs) {
@@ -25,7 +35,7 @@ export function verdict(runs) {
   const notQualifying = ok.filter((r) => r.qualifying?.executor !== true || r.qualifying?.quiet !== true || r.qualifying?.short !== false);
   // evidence that is absent is unknown, never a pass: no objectives recorded, or swap, steal or throttling unreadable
   const noObjectives = ok.filter((r) => !Object.keys(r.objectives ?? {}).length).map((r) => `${r.profile} r${r.rep}`);
-  const unread = ok.flatMap((r) => ['swapPeakMb', 'stealShare', 'throttledPeriodShare'].filter((k) => r[k] == null).map((k) => `${r.profile} r${r.rep} ${k}`));
+  const unread = ok.flatMap((r) => EVIDENCE.filter((k) => r[k] == null).map((k) => `${r.profile} r${r.rep} ${k}`));
   const missed = ok.flatMap((r) => Object.entries(r.objectives ?? {}).filter(([, v]) => v === false).map(([k]) => `${r.profile} r${r.rep}: ${k}`));
   const unknown = ok.filter((r) => r.headroom?.cpu == null || r.headroom?.memory == null).map((r) => `${r.profile} r${r.rep}`);
   const lowHeadroom = ok.filter((r) => (r.headroom?.cpu ?? 1) < HEADROOM || (r.headroom?.memory ?? 1) < HEADROOM || (r.swapPeakMb ?? 0) > 0 || (r.throttledPeriodShare ?? 0) > 0.05 || (r.stealShare ?? 0) > 0.05);
