@@ -57,6 +57,13 @@ When a PR is ready, label it `merge:ready`. From there the train takes over, one
    would land a T3/T4 PR around the train. The rule is `tools/proof/gate.mjs`; the train reads the same rule only to
    leave unapproved PRs queued. The check trusts GitHub identity, so agents never approve a PR or add
    `approved:maintainer` or `proof:waived`, and never act with the maintainer's account to do so.
+
+   <a id="delegated-sign-off"></a>**Delegated sign-off.** The maintainer may delegate T3/T4 sign-off to the
+   appointed development coordinator, recorded as a dated decision on the coordination issue. The gate accepts the
+   `approved:maintainer` label only from the maintainer's own account, and a harness may refuse agents applying it
+   unless the maintainer has explicitly permitted that command; until then the maintainer adds the label on PRs the
+   coordinator presents pre-verified. Independent review, proof at tier, gate caps and spend limits are unchanged;
+   destructive production deletes always need the maintainer in person.
 4. **On a conflict**, a Claude step tries to resolve it on the branch and re-runs the checks. If it can't produce a
    clean, green rebase, it labels the PR `needs:rebase` and comments with what conflicted; the author rebases by hand
    and relabels `merge:ready`.

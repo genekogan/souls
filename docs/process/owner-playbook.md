@@ -10,7 +10,8 @@ scheduled planner or automatic backlog consumption. CI and required PR checks st
 A launch records **scope, worker ceiling, budget/resource policy, stopping point, and merge/release authority**.
 For example: “One worker on issue X; prepare a reviewed PR and stop,” or “One serial lane on navbar issues;
 continue between qualified PRs, stop on a product decision, no deployment.” A requested serial lane can work through
-its agreed queue without another prompt for each issue. Required proof, review and maintainer decisions still apply.
+its agreed queue without another prompt for each issue. Required proof, review and maintainer decisions still apply
+([delegated sign-off](agent-workflow.md#delegated-sign-off)).
 The owner checks likely collisions at dispatch, when shared contracts change, and at integration; independent work
 need not synchronize continuously. Existing workers and jobs reach an explicit handoff before another writer takes over.
 
