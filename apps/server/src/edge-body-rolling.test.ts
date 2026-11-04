@@ -45,6 +45,20 @@ test('an asleep rolling body keeps one upright standby across settle intervals (
  assert.equal(decisions.length,first,'no standby is re-issued while one runs: '+JSON.stringify(decisions));assert.ok(decisions.every(d=>d.ok));
 });
 
+test('an idle rolling body labelled dozing is in standby at every look across idle steps (real ledger posture and standby clock)',async t=>{
+ const {BodyRule}=await import('./edge/ledger/body-rule.ts');const f=fixture(':memory:',factory,{durableClockV1:true});f.brain.quiesce();const edge=new EdgeLedger(f.host,f.db,undefined,{ambient:false});t.after(()=>{f.host.stop();f.db.close();});await invite(f,'doze-owner');const row=await accept(f.host,f.souls.create('dev:doze-owner',{name:'Pip',description:'Idle upright doze'})),s={soulId:row.id,entityId:row.entity_id,name:row.name,owner:row.owner};for(let i=0;i<5;i++)f.host.tickOnce();assert.equal(f.host.engine.assignBodyV1!(row.entity_id,PIP_PRESET.body!),true);
+ const body=f.host.engine.world.entities[row.entity_id],posture=(id:string)=>(edge as any).posture(id);let now=100000;const decisions:{option:string;ok:boolean;code?:string}[]=[];
+ const standbyLeftMs=(edge.attachPresence({soulPresence:()=>({listening:true,at:100000})}) as any).port.standbyLeftMs;edge.bodyRule=null;   // the ledger's own standby clock; only the rule under test sweeps
+ const rule=new BodyRule(f.db.db,f.host.worldId,{souls:()=>[s],presence:()=>({listening:true,at:100000}),createdAt:()=>100000,pose:()=>({x:body.pose.p[0],z:body.pose.p[2],level:0}),posture,agentBusy:()=>false,running:()=>!!f.host.engine.programOf(row.entity_id),dry:()=>true,clear:()=>true,places:()=>'',seat:()=>null,standby:(_s,seconds)=>[{verb:'mars:body_motion_v1',params:{motion:'rest',seconds:Math.min(600,seconds)}}],standbyLeftMs,decide:(_s,option,_label,steps)=>{const r=f.host.engine.perform({actor:row.entity_id,label:option,steps}) as any;decisions.push({option,ok:r.ok!==false,code:r.diagnostic?.code??r.code});},stop:()=>{const p=f.host.engine.programOf(row.entity_id);if(p)f.host.engine.stop(p);},publish(){}},{now:()=>now,knobs:{idleStartMs:0,idleDozeMs:0}});
+ // One second of world time per sweep (the production cadence); the label is checked at each look.
+ let dozingLooks=0,mislabelled=0;
+ for(let sec=0;sec<1100;sec++){const n=decisions.length;rule.sweep();let ticks=0;if(decisions.length>n){f.host.tickOnce();ticks++;}   // a new program starts at the next tick
+  const v=rule.view(row.id);if(v?.state==='idle'&&v.doing==='dozing'){dozingLooks++;if(body.human?.activity!=='rest')mislabelled++;}
+  for(;ticks<20;ticks++)f.host.tickOnce();now+=1000;}
+ assert.ok(decisions.filter(d=>d.option==='body:doze').length>=2,'at least two standby cycles: '+JSON.stringify(decisions));assert.ok(dozingLooks>400,'mostly dozing when late: '+dozingLooks);
+ assert.equal(mislabelled,0,'labelled dozing only while the upright standby runs');assert.ok(decisions.every(d=>d.ok),JSON.stringify(decisions));
+});
+
 test('a humanoid is not offered paired gestures or hand-overs with a rolling partner: discovery, dry-run and act agree with native admission',async t=>{
  const f=fixture(':memory:',factory,{durableClockV1:true});f.brain.quiesce();const edge=new EdgeLedger(f.host,f.db,undefined,{ambient:false});t.after(()=>{f.host.stop();f.db.close();});
  const people=[];for(const owner of ['pip-owner','human-owner']){await invite(f,owner);const row=await accept(f.host,f.souls.create('dev:'+owner,{name:owner,description:'Partner check'}));people.push({row,soul:{soulId:row.id,entityId:row.entity_id,name:row.name,owner:row.owner}});}
