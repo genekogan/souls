@@ -7,11 +7,12 @@ export const LITTLE_MARTIANS_WORLD_KEYS: readonly string[] = Object.freeze(['lit
 
 /** The prospective runtime rules an edge world turns on at startup, in order. Each enable is idempotent (a world that
  *  already logged the rule queues nothing). occupiedLinkRoutingV1 and concurrentLinkEgressV1 are not activated on the
- *  Little Martians worlds; every other world gets the same sequence as before. */
+ *  Little Martians worlds (route-reach/1, #872, is: it only plans walks that were refused); every other world gets the same sequence as before. */
 export async function enableEdgeRuntimeRules(host: WorldHost, worldKey: string): Promise<void> {
   await host.enableQuietStallReleaseV1();
   await host.enableYieldTimeoutV1?.();
   await host.enableSpreadV2?.();
+  await host.enableRouteReachV1?.();
   if (LITTLE_MARTIANS_WORLD_KEYS.includes(worldKey)) return;
   await host.enableOccupiedLinkRoutingV1?.();
   await host.enableConcurrentLinkEgressV1?.();

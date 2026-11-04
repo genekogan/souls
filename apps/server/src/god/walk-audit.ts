@@ -57,7 +57,7 @@ export function goallessEntryAlias(t: Thing, byRef: ReadonlyMap<string, Thing>, 
   return room.ref;
 }
 
-type Booted = { name: string; worldId: string; host: any; god: any; bridge: any; engine: any; refused: [string, string, string][]; stop(): void };
+type Booted = { name: string; worldId: string; host: any; god: any; bridge: any; engine: any; edge: any; refused: [string, string, string][]; stop(): void };
 
 /** Env as main.ts sees it on a production entity world with fake minds; set before the server modules load. */
 function env(key: string, worldId: string, dir: string) {
@@ -94,7 +94,7 @@ export async function bootForWalk(o: { db?: string; genesis?: string; fuzz?: str
   // the copy is scratch: on the laptop it goes to the cleanup trash (lane rule: no rm), elsewhere the OS reaps tmp
   const trash = join(homedir(), '.Trash', 'eden-cleanup-20261020');
   const stop = () => { host.stop(); if (existsSync(trash)) try { renameSync(dir, join(trash, basename(dir))); } catch { /* left in tmp */ } };
-  return { name, worldId, host, god, bridge, engine: host.engine as any, refused, stop };
+  return { name, worldId, host, god, bridge, engine: host.engine as any, edge, refused, stop };
 }
 
 /** tools/test-harness/walk/fuzz-world.mjs: a genesis for the terrain plus god batches, one per place, and the buildings to furnish. */

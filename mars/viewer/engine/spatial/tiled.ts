@@ -853,7 +853,7 @@ export function pagedRoute(nav: GroundNav, scene: SpatialScene, profile: AgentPr
   const f = nav.field, direct = hypot(goal.p[0] - start.p[0], goal.p[1] - start.p[1]) <= PAGED_DIRECT_M;
   if (start.level !== 0 || goal.level !== 0) {
     if (direct) { const r = rectOf([start.p, goal.p]); return findRoute(nav.gridsOver(r, scene), { ...scene, bounds: rectBounds(r) }, profile, start, goal, opts); }
-    if (start.level !== 0) return failR('ground.too-far', `(${fmt(goal.p)}) is too far to plan from an upper floor; walk down first`, goal);
+    if (start.level !== 0) return (opts.routeReachV1 ? upperChunk(nav, scene, profile, start, goal, opts) : null) ?? failR('ground.too-far', `(${fmt(goal.p)}) is too far to plan from an upper floor; walk down first`, goal);
   } else {
     const goalIssue = groundGoalIssue(f, goal.p);
     if (goalIssue) return goalIssue;
@@ -877,9 +877,9 @@ export function pagedRoute(nav: GroundNav, scene: SpatialScene, profile: AgentPr
   // the first hop (as groundRoute cuts them); the last one ends at the goal itself
   let acc = 0, k0 = 1;
   for (; k0 < path.length; k0++) { acc += hypot(path[k0][0] - path[k0 - 1][0], path[k0][1] - path[k0 - 1][1]); if (acc >= HOP_M && k0 < path.length - 4) break; }
-  const hop = (k: number) => {
+  const hop = (k: number, margin = WINDOW_MARGIN_M) => {
     const last = k >= path.length && goal.level === 0, target: Vec2 = last ? goal.p : path[Math.min(k, path.length - 1)];
-    const r = rectOf([start.p, target, ...path.slice(1, k + 1)]);
+    const r = rectOf([start.p, target, ...path.slice(1, k + 1)], margin);
     const grids: GridSet = { cell: nav.cell, levels: new Map([[0, nav.compose(r, scene.obstacles)]]) };
     return { k, last, res: findRoute(grids, { ...scene, bounds: rectBounds(r), links: [] }, profile, start, { level: 0, p: target }, last ? opts : { ...opts, goalTolerance: 2.5 }) };
   };
@@ -888,12 +888,38 @@ export function pagedRoute(nav: GroundNav, scene: SpatialScene, profile: AgentPr
   // lie in a shop where no fine route ends (eden-2026: the jetty -> chapel walk stopped in old-town-north-arcade-1); a few
   // waypoints further along or back along the same coarse path are tried before the walk fails
   if (!h.res.ok && !h.last) for (const kk of hopRetries(k0, path.length, h.res.diagnostic.code, goal.level === 0)) { const t = hop(kk); if (t.res.ok) { h = t; break; } }
+  // route-reach/1 (#872): the fine route can need ground outside a window cut WINDOW_MARGIN_M round the coarse path (a
+  // fence or a building's walls the coarse path crosses: the way round leaves the tile). One tile wider, once, before refusing.
+  if (!h.res.ok && opts.routeReachV1 && HOP_RETRY_CODES.has(h.res.diagnostic.code)) { const t = hop(h.k, WINDOW_MARGIN_M + GROUND_TILE_M); if (t.res.ok) h = t; }
   const { k, last, res } = h;
   if (!res.ok || last) return res;
   // length: this chunk's, plus the coarse path's remainder (an estimate of the whole walk, e.g. routeEstimateV1)
   let more = 0;
   for (let j = Math.min(k, path.length - 1) + 1; j < path.length; j++) more += hypot(path[j][0] - path[j - 1][0], path[j][1] - path[j - 1][1]);
   return { ok: true, route: { ...res.route, length: res.route.length + more, rest: goal } };
+}
+
+/** Distances (m along the line to the goal) of the ground points route-reach/1 tries as the end of an upper floor's first chunk. */
+const UPPER_CHUNK_M = [60, 48, 36, 24, 12, 0];
+/**
+ * route-reach/1 (#872): a far walk from an upper floor. The first chunk is planned in one window from where the body
+ * stands, down the building's own stairs, to a standable ground point toward the goal (the farthest of UPPER_CHUNK_M
+ * that a fine route reaches and from which a coarse footpath goes on to the goal); the route carries `rest`, and the
+ * walker plans on from the ground, as every paged walk does. Null (the old refusal) when no such chunk exists.
+ */
+function upperChunk(nav: GroundNav, scene: SpatialScene, profile: AgentProfile, start: Place, goal: Place, opts: RouteOpts): RouteResult | null {
+  const d = hypot(goal.p[0] - start.p[0], goal.p[1] - start.p[1]); if (!(d > 0)) return null;
+  const u: Vec2 = [(goal.p[0] - start.p[0]) / d, (goal.p[1] - start.p[1]) / d];
+  for (const m of UPPER_CHUNK_M) {
+    const p: Vec2 = [start.p[0] + u[0] * m, start.p[1] + u[1] * m];
+    if (groundGoalIssue(nav.field, p)) continue;
+    if (!nav.coarsePath(p, goal.p, WALK_COST)) continue;
+    const r = rectOf([start.p, p]);
+    const res = findRoute(nav.gridsOver(r, scene), { ...scene, bounds: rectBounds(r) }, profile, start, { level: 0, p }, { ...opts, goalTolerance: 2.5 });
+    if (!res.ok) continue;
+    return { ok: true, route: { ...res.route, length: res.route.length + hypot(goal.p[0] - p[0], goal.p[1] - p[1]), rest: goal } };
+  }
+  return null;
 }
 
 /** BS3 (b): a fine hop to coarse waypoint `k` failed with `code`: the other waypoint indices to try, nearest first (one

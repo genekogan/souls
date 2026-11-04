@@ -686,8 +686,10 @@ export class Spatial {
     this.navN++;
   }
 
+  /** route-reach/1 (#872): set by the engine from its accepted runtime policy (re-applied after every runtime rebuild). */
+  routeReachV1 = false;
   route(world: WorldState, profile: AgentProfile, start: Place, goal: Place, opts?: RouteOpts): RouteResult {
-    const o = this.planner === 'exact' ? opts : { planner: this.planner, ...opts };
+    const o0 = this.planner === 'exact' ? opts : { planner: this.planner, ...opts }, o = this.routeReachV1 ? { ...o0, routeReachV1: true } : o0;
     if (this.ground) {
       this.sync(world);
       const run = () => groundRoute(this.ground!, this.scene, profile, start, goal, o ?? {}, (r) => this.groundInclude(world, r), () => this.grids);

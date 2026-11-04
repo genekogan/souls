@@ -143,3 +143,16 @@ Some engine behaviour changes are adopted per world as logged `rules` facts, so 
 example is `walkSettleWaitV1` (`WorldHost.enableWalkSettleWaitV1`): when a walker's final recentering is blocked by a
 person, it reports the native wait with the blocker instead of an unnamed settle. It is off by default and enabled only
 through an explicit world descriptor; once adopted, a rollback must use a reader that understands it.
+
+`routeReachV1` (route-reach/1, #872; `WorldHost.enableRouteReachV1`) is turned on at edge startup
+(`edge-runtime-rules.ts`). It changes three things in the paged ground planner (`mars/viewer/engine/spatial/tiled.ts`):
+
+- **Far walks from an upper floor.** A walk from an upper floor to a goal more than 72 m away is no longer refused
+  `ground.too-far`. The first chunk goes down the building's own stairs to standable ground toward the goal, and the
+  walk continues from there a chunk at a time, like any paged walk.
+- **Hops cut short by the window.** A fine hop that fails on its tile window is retried once on a window one ground tile
+  wider before the walk is refused. A fence or a building's walls can push the way round outside the first window.
+- **Full places.** A place is reported `route.region-full` only when people fill it. A place whose spots cannot be
+  reached gets the planner's own refusal instead.
+
+A place that no walk reaches still refuses.
