@@ -91,9 +91,10 @@ export function writeRecording({ name, o, cam = null, state = null, r = null, pa
 
 /** Recording size (#802). Playwright's recorder encodes VP9 at a fixed 25 fps with a target bitrate of 1000 kbps ×
  *  max(1, w·h / (800·450)); only the frame size is ours to set. `compact` (the default) fits the viewport, aspect kept,
- *  into 800×450 pixels' worth of area, where the target sits at its 1000 kbps floor (about 7.5 MB per camera-minute at
- *  most; 1280×800 at full size targets about 2840 kbps). `viewport` records at the viewport's own size (the earlier
- *  quality); {width, height} is an explicit size. The page is scaled down to fit; what is recorded and when is unchanged. */
+ *  into 800×450 pixels' worth of area, where the target sits at its 1000 kbps floor (about 7.5–8 MB per camera-minute,
+ *  measured median 7.7; 1280×800 at full size targets about 2840 kbps). `viewport` records at the viewport's own size
+ *  (the earlier quality); {width, height} is an explicit size. The page is scaled down to fit; what is recorded and when
+ *  is unchanged. */
 export const RECORD_FPS = 25, RECORD_FLOOR_AREA = 800 * 450;
 export const RECORD_SIZES = ['compact', 'viewport'];
 export function recordEncoding(setting = 'compact', viewport = { width: 1280, height: 800 }) {

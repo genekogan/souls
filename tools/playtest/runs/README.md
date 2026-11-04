@@ -221,8 +221,8 @@ Offline, after the run (reads the run folder, writes only under `<run>/derived/`
   selecting it, then publish it with `tools/proof/upload.mjs` (the PR's proof path).
 
 Observer cost: `observer.mode` `off` / `passive` / `cameras` separates passive evidence capture from browser cameras;
-within `cameras`, video encoding runs in Playwright's own ffmpeg processes. A recorded camera takes under 8 MB per
-camera-minute at the default `compact` size and about 21 MB at `viewport` size (1280x800). Compare arms with two repeats each on a quiet machine (`docs/testing/playtests.md`).
+within `cameras`, video encoding runs in Playwright's own ffmpeg processes. A recorded camera takes about 7.5–8 MB per
+camera-minute (median 7.7) at the default `compact` size and about 21 MB at `viewport` size (1280x800). Compare arms with two repeats each on a quiet machine (`docs/testing/playtests.md`).
 
 ## Scenario runner hooks
 
