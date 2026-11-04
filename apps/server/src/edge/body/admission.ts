@@ -7,6 +7,8 @@ import {QUADRUPED_TORSO,isActionProfile,type ActionProfile} from '../../../../..
 export const QUADRUPED_FOOTPRINT_RADIUS=.28;
 /** quadruped-torso/1: the most distinct key times a standing clip (Idle, Standby_Loop, Dance_Loop) may have; each is measured. */
 export const QUADRUPED_FOOTPRINT_KEYS=64;
+/** quadruped-torso/1: the most vertex poses (skinned vertices × measured key times) the footprint check performs. */
+export const QUADRUPED_FOOTPRINT_WORK=1_000_000;
 import {rigWorldPoints,rigWorldMatrices} from './rig.ts';
 export type BodyType='humanoid'|'ceramic'|'floater';
 export type BodyManifest={type:BodyType;license:'CC0'|'owned';rightsConfirmed:true;rig?:'quaternius/1';name?:string;description?:string;motion?:BodyMotion;actionProfile?:ActionProfile};
@@ -179,7 +181,11 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
    const keyTimes=(name:string)=>{const clip=animations.find((a:any)=>a.name===name);if(!clip)return [0];const ts=new Set<number>();for(const smp of clip.samplers)for(const t of values(accessors[smp.input]))ts.add(t);
     if(ts.size>QUADRUPED_FOOTPRINT_KEYS)return no('body.too-complex',`${name} has ${ts.size} distinct key times; quadruped-torso/1 measures standing clips with at most ${QUADRUPED_FOOTPRINT_KEYS}`,{field:'footprintKeys',measured:ts.size,limit:QUADRUPED_FOOTPRINT_KEYS});
     return [...ts].sort((a,b)=>a-b);};
-   let reach=0,where='Idle';for(const name of ['Idle','Standby_Loop','Dance_Loop'])for(const t of keyTimes(name)){const pose=posed(name,t);for(const v of pose.out)if(v[1]<pose.hip&&!v[3]){const d=Math.hypot(v[0]-cx,v[2]-cz)*fit;if(d>reach){reach=d;where=`${name} at ${Math.round(t*100)/100} s`;}}}
+   // Bounded work: skinned vertices × measured poses. Admission is synchronous, so a body whose footprint would take more
+   // than QUADRUPED_FOOTPRINT_WORK vertex skinnings to measure is refused by name instead of stalling the world.
+   const plan=(['Idle','Standby_Loop','Dance_Loop'] as const).map(name=>[name,keyTimes(name)] as const),work=idle.out.length*plan.reduce((n,[,ts])=>n+ts.length,0);
+   if(work>QUADRUPED_FOOTPRINT_WORK)return no('body.too-complex',`Measuring this body's standing footprint needs ${work} vertex poses; quadruped-torso/1 allows at most ${QUADRUPED_FOOTPRINT_WORK}`,{field:'footprintWork',measured:work,limit:QUADRUPED_FOOTPRINT_WORK});
+   let reach=0,where='Idle';for(const [name,times] of plan)for(const t of times){const pose=posed(name,t);for(const v of pose.out)if(v[1]<pose.hip&&!v[3]){const d=Math.hypot(v[0]-cx,v[2]-cz)*fit;if(d>reach){reach=d;where=`${name} at ${Math.round(t*100)/100} s`;}}}
    if(reach>QUADRUPED_FOOTPRINT_RADIUS)return no('body.footprint',`In ${where} the lower body reaches ${reach.toFixed(3)} m from where the body stands; quadruped-torso/1 admits at most ${QUADRUPED_FOOTPRINT_RADIUS} m`,{field:'footprint',measured:Math.round(reach*1000)/1000,limit:QUADRUPED_FOOTPRINT_RADIUS});
   }
  }else if(skins.length||nodes.some(n=>n.skin!==undefined)||animations.length)return no('body.rigid','Ceramic and floater bodies must be rigid, without skins or animation clips');

@@ -2,7 +2,7 @@ import{setImmediate}from'node:timers/promises';import{GodMode}from'./god/god.ts'
 import test from 'node:test';import assert from 'node:assert/strict';import{Hono}from'hono';
 import{fixture,invite,accept,factory}from'../test/native-owner-fixture.ts';import{EdgeLedger}from'./edge/ledger/ledger.ts';import{mountEdgeRoutes,edgeSoulResolver}from'./edge/routes.ts';
 import{PIP_ASSET}from'./edge/body/pip.ts';import{BODY_PRESETS}from'./edge/body/routes.ts';import{MONSTER_ASSET,GHOST_ASSET,CENTAUR_ASSET,CENTAUR_PRESET,centaurBytes}from'./edge/body/shared-bodies.ts';
-import{admitBodyGLB,bindBodyDefinition,QUADRUPED_FOOTPRINT_RADIUS}from'./edge/body/admission.ts';import{validateUpload,BODY_UPLOAD_POLICY}from'./moderation/validate.ts';
+import{admitBodyGLB,bindBodyDefinition,QUADRUPED_FOOTPRINT_RADIUS,QUADRUPED_FOOTPRINT_KEYS,QUADRUPED_FOOTPRINT_WORK}from'./edge/body/admission.ts';import{validateUpload,BODY_UPLOAD_POLICY}from'./moderation/validate.ts';
 import{authorCentaur}from'../../../tools/body-authoring/centaur/author.mjs';import{bodyV1Schema}from'../../../packages/protocol/src/body-v1.ts';
 import{profileActionProblem,QUADRUPED_ACTIONS,QUADRUPED_TORSO}from'../../../mars/viewer/engine/bodies/action-profile.ts';import{HUMAN_RADIUS}from'../../../mars/viewer/engine/world/catalog.ts';
 
@@ -51,8 +51,7 @@ test('centaur source: reproducible, within unchanged limits, and its lower body 
   j.accessors.push({bufferView:view(Buffer.from(W.buffer)),componentType:5121,normalized:true,count:pos.count+N,type:'VEC4'});p.attributes.WEIGHTS_0=j.accessors.length-1;delete p.attributes.NORMAL;delete p.attributes.COLOR_0;
   const out=Buffer.concat(parts);j.buffers[0].byteLength=out.length;return out;});
  assert.ok(padded.length<4*1024*1024,'under the byte cap: '+padded.length);
- let outcome:string;try{outcome=admit({bytes:padded,manifest:made.manifest}).actionProfile??'admitted';}catch(e:any){outcome=e.code;assert.ok(typeof e.code==='string'&&e.code.startsWith('body.'),'a named refusal, not '+e);}
- assert.ok(outcome==='quadruped-torso/1'||outcome.startsWith('body.'),outcome);
+ const t0=Date.now();assert.throws(()=>admit({bytes:padded,manifest:made.manifest}),(e:any)=>e.code==='body.too-complex'&&e.details?.field==='footprintWork'&&e.details.measured>e.details.limit,'bounded work: refused by name');assert.ok(Date.now()-t0<5000,'and quickly');
  // The profile needs the canonical rig; it is not a rigid-body option.
  assert.throws(()=>admit({bytes:made.bytes,manifest:{...made.manifest,type:'ceramic'}}),(e:any)=>e.code==='body.action-profile');
 });
@@ -97,5 +96,5 @@ test('shared centaur preset: earlier presets unchanged, selection, honest dispos
  const put=await accept(f.host,edge.act(a.soul,{capability:'put-on:'+table}));assert.ok(put.accepted,JSON.stringify(put));if(!put.accepted)return;assert.equal(await settle(put.receipt.id),'completed');
  assert.notEqual(((f.host.engine.world.entities[item] as any).support).kind,'in-hand','released onto the table');
  const back=await accept(f.host,req(a,{preset:'humanoid'}));assert.equal(back.status,200,'safe swap back');assert.ok(edge.capabilities(b.soul).some(c=>c.verb==='sit'),'ordinary humanoid seating is preserved');
- const contract=await(await app.request('/body-authoring/contract.json')).json();assert.equal(contract.profiles.quadrupedTorso.id,QUADRUPED_TORSO);assert.equal(contract.profiles.quadrupedTorso.footprintRadius,.28);assert.equal(contract.profiles.rollingGripper.id,'rolling-gripper/1');
+ const contract=await(await app.request('/body-authoring/contract.json')).json();assert.equal(contract.profiles.quadrupedTorso.id,QUADRUPED_TORSO);assert.equal(contract.profiles.quadrupedTorso.footprintRadius,QUADRUPED_FOOTPRINT_RADIUS);assert.equal(contract.profiles.quadrupedTorso.footprintKeys,QUADRUPED_FOOTPRINT_KEYS);assert.equal(contract.profiles.quadrupedTorso.footprintWork,QUADRUPED_FOOTPRINT_WORK);assert.equal(QUADRUPED_FOOTPRINT_KEYS,64,'the served contract and admission agree on the published cap');assert.equal(contract.profiles.rollingGripper.id,'rolling-gripper/1');
 });

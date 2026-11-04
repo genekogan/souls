@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import type {Context,Hono} from 'hono';
-import {BODY_LIMITS,QUADRUPED_FOOTPRINT_RADIUS} from './admission.ts';
+import {BODY_LIMITS,QUADRUPED_FOOTPRINT_RADIUS,QUADRUPED_FOOTPRINT_KEYS,QUADRUPED_FOOTPRINT_WORK} from './admission.ts';
 import {ROLLING_ACTIONS,QUADRUPED_ACTIONS} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
 import {requestWorldBase} from '../../world-base.ts';
 import {MOTION_LIMITS} from '../../../../../mars/viewer/engine/bodies/motion.ts';
@@ -23,7 +23,7 @@ export function mountBodyAuthoring(app:Hono,prefix:string,types:string[]){
  };
  app.get('/body-authoring/contract.json',c=>c.json({contract:'body-authoring/1',limits:BODY_LIMITS,types,motionLimits:MOTION_LIMITS,
   manifest:{required:['type','license','rightsConfirmed'],fields:{type:['humanoid','ceramic','floater'],license:['CC0','owned'],rightsConfirmed:true,rig:'quaternius/1 (required for humanoids)',name:{minLength:1,maxLength:80},description:{minLength:1,maxLength:240},actionProfile:'rolling-gripper/1 or quadruped-torso/1 (canonical rig, Dance_Loop and Standby_Loop required; quadruped-torso/1 keeps its lower body inside the 0.28 m disc throughout Idle, Standby_Loop and Dance_Loop)',motion:{contract:'body-motion/1',required:['idle','move','rest'],optional:['dance'],adapterFields:['period','bob','pitch','roll','yaw']}}},
-  profiles:{rollingGripper:ROLLING_ACTIONS,quadrupedTorso:{...QUADRUPED_ACTIONS,footprintRadius:QUADRUPED_FOOTPRINT_RADIUS},humanoid:{rig:'quaternius/1',clips:['Idle','Walk'],actions:'existing canonical humanoid adapters'},rigid:{support:'ground navigation',radius:.35,hoverHeight:1.45,meshExtent:.7,core:['move','stop','orient','rest','observe','speak'],dance:'requires admitted motion.dance',otherPhysical:{supported:false,reason:'This profile has no hands, seat, swim or ride adaptations.'}}},
+  profiles:{rollingGripper:ROLLING_ACTIONS,quadrupedTorso:{...QUADRUPED_ACTIONS,footprintRadius:QUADRUPED_FOOTPRINT_RADIUS,footprintKeys:QUADRUPED_FOOTPRINT_KEYS,footprintWork:QUADRUPED_FOOTPRINT_WORK},humanoid:{rig:'quaternius/1',clips:['Idle','Walk'],actions:'existing canonical humanoid adapters'},rigid:{support:'ground navigation',radius:.35,hoverHeight:1.45,meshExtent:.7,core:['move','stop','orient','rest','observe','speak'],dance:'requires admitted motion.dance',otherPhysical:{supported:false,reason:'This profile has no hands, seat, swim or ride adaptations.'}}},
   selection:{default:'humanoid',presets:'shared',uploads:'owner-only in the admitting world',discovery:'GET /v1/edge/body'},
  }));
  for(const [file,path]of Object.entries(files))app.get('/body-authoring/'+file,c=>{

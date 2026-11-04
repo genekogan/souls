@@ -39,7 +39,8 @@ in its own words:
 The canonical legs are the forelegs. Two extra hind chains replay the same-side foreleg half a stride later.
 
 Support stays the 0.28 m humanoid disc. Owner admission skins `Idle`, `Standby_Loop` and `Dance_Loop` at their key times
-(every key time; more than 64 distinct key times in a standing clip is refused, `body.too-complex`). It centres on the Idle pose as the renderer stands the body, and refuses `body.footprint` when a
+(every key time; more than 64 distinct key times in a standing clip is refused, `body.too-complex`; so is a body needing more than
+1,000,000 vertex poses to measure, which bounds this synchronous check to well under a second). It centres on the Idle pose as the renderer stands the body, and refuses `body.footprint` when a
 lower-body vertex leaves the disc; vertices weighted only to arm joints are not counted. The hooves are visual and the
 walk's stride is not bounded. The shared preset `centaur` is pinned like the others.
 
