@@ -103,7 +103,7 @@ export function reconstruct(text) {
     const firstCommand = starts.find(s => s.at > m.deliveredAt && s.command !== 'listen' && s.proc !== m.deliveredBy);
     return {origin: {kind: 'owner-message', id: m.id, sentAt: m.sentAt}, deliveredAt: m.deliveredAt, deliveredBy: m.deliveredBy,
       firstCommand: firstCommand ? {command: firstCommand.command ?? null, at: firstCommand.at, proc: firstCommand.proc} : null,
-      host: hostGap(m, host),
+      host: hostGap(m, host, firstCommand, anomalies),
       inbox: inbox.filter(x => x.id === m.id), acts: linked.map(actView)};
   });
   for (const t of host.turns.values()) if (!t.for || !messages.has(t.for)) anomalies.push({type: 'host-turn-unlinked', turn: t.id, for: t.for ?? null, note: t.for ? 'its message was not delivered in this trace' : 'no `for` recorded'});
@@ -157,8 +157,13 @@ export const HOST_SEGMENTS = {
 const ORDERED = ['delivered', ...Object.keys(HOST_SEGMENTS)];
 const round = ms => Math.round(ms * 1000) / 1000;
 
-/** The delivery → first-command gap of one episode, split at recorded host boundaries; null without a linked turn. */
-function hostGap(m, {turns, tools, byTool}) {
+/**
+ * The delivery → first-command gap of one episode, split at recorded host boundaries; null without a linked turn.
+ * Only the earliest turn that names the message is used, and only tool calls that name that turn; a later turn or a
+ * tool call without a turn is not attached (deterministic, never joined by time). When no tool call links a command,
+ * the rest of the gap up to the first command (found by time, as without host records) stays unattributed.
+ */
+function hostGap(m, {turns, tools, byTool}, firstCommand = null, anomalies = []) {
   const turn = [...turns.values()].filter(t => t.for === m.id && t.start).sort((a, b) => a.start.at - b.start.at)[0];
   if (!turn) return null;
   const calls = [...tools.values()].filter(c => c.turn === turn.id).sort((a, b) => (a.start?.at ?? a.spawn?.at ?? 0) - (b.start?.at ?? b.spawn?.at ?? 0));
@@ -176,10 +181,18 @@ function hostGap(m, {turns, tools, byTool}) {
     if (!p) continue;
     if (p.at < pts[prev].at && prev === 'delivered') { before.push({boundary: name, msBeforeDelivery: round(pts.delivered.at - p.at)}); continue; }
     const a = pts[prev], exact = a.proc === p.proc && Number.isFinite(a.mono) && Number.isFinite(p.mono) && !a.origin;
-    const skipped = ORDERED.slice(ORDERED.indexOf(prev) + 1, ORDERED.indexOf(name) );
-    segments.push({from: prev, to: name, ms: round(exact ? p.mono - a.mono : p.at - a.at), clock: exact ? 'process-monotonic' : 'local-wall≈',
-      label: skipped.length ? `unattributed (no ${skipped.join(', ')} recorded)` : HOST_SEGMENTS[name]});
+    const skipped = ORDERED.slice(ORDERED.indexOf(prev) + 1, ORDERED.indexOf(name));
+    const early = skipped.filter(n => before.some(b => b.boundary === n)), missing = skipped.filter(n => !early.includes(n));
+    const label = missing.length ? `unattributed (no ${missing.join(', ')} recorded)` : early.length ? `${HOST_SEGMENTS[name]} (from the delivery; ${early.join(', ')} came before it)` : HOST_SEGMENTS[name];
+    const ms = round(exact ? p.mono - a.mono : p.at - a.at);
+    if (ms < 0) anomalies.push({type: 'host-clock-skew', message: m.id, from: prev, to: name, ms, note: 'boundaries out of order across clocks; the interval is not meaningful'});
+    segments.push({from: prev, to: name, ms, clock: exact ? 'process-monotonic' : 'local-wall≈', label});
     prev = name;
+  }
+  // No tool call links a command: keep the rest of the gap visible, as it was without host records.
+  if (!call && firstCommand && firstCommand.at > pts[prev].at) {
+    segments.push({from: prev, to: 'first.command', ms: round(firstCommand.at - pts[prev].at), clock: 'local-wall≈',
+      label: `unattributed (no tool call linked; \`${firstCommand.command ?? '?'}\` found by time)`});
   }
   return {turn: turn.id, tool: call?.id ?? null, proc: ps?.proc ?? null, command: ps?.command ?? null, before, segments,
     toolCalls: calls.length, toEnd: pts[prev] === pts.delivered ? null : round(pts[prev].at - m.deliveredAt)};

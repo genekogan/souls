@@ -41,7 +41,15 @@ into: delivery → turn start (host picks it up), turn start → tool call (host
 runner), spawn → process origin (exec; Node's `performance.timeOrigin`), origin → tap start (Node boot), tap start →
 first request (CLI). Each interval names its clock: process-monotonic when both ends are in one process, else local
 wall (≈). A missing boundary leaves an `unattributed` interval; a turn already running before the delivery is
-reported, not subtracted. Not yet: an adapter for a particular host's hooks (Claude Code hooks cannot pass a tool id
+reported, not subtracted. When no tool call links a command, the rest of the gap up to the first command (found
+by time, as without host records) is shown as one unattributed interval. Only the earliest turn naming a message
+and the tool calls naming that turn are attached; a later turn or a tool call without a turn is ignored. Intervals
+that come out negative across clocks are flagged `host-clock-skew`.
+
+The recorder creates the trace file if it is missing (the tap only appends to a regular file or a new one too) and
+refuses symlinks, FIFOs and devices. Its appends are synchronous in the host's process, so a hung disk would block
+the host's call; it disables itself on the first error but cannot interrupt a write that never returns. Its own
+cost was not measured separately in A5. Not yet: an adapter for a particular host's hooks (Claude Code hooks cannot pass a tool id
 into the spawned command without rewriting it).
 
 ## Inspector (#624)
