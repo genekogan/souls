@@ -40,10 +40,11 @@ export async function previewRecording(runDir, { camera, fromSec, toSec, label =
   const rec = listRecordings(runDir).find((r) => r.camera === camera);
   if (!rec?.file || !existsSync(rec.path)) return { ok: false, error: `no recording for camera ${camera}` };
   if (!(toSec > fromSec && fromSec >= 0)) return { ok: false, error: '--from and --to: 0 <= from < to (seconds into the recording)' };
-  if (rec.durationSec != null && fromSec >= rec.durationSec) return { ok: false, error: `--from ${fromSec} is past the recording (${rec.durationSec} s)` };
+  const len = rec.videoSec ?? rec.durationSec;
+  if (len != null && fromSec >= len) return { ok: false, error: `--from ${fromSec} is past the recording (${len} s)` };
   const before = sha256File(rec.path);
   if (rec.sha256 && before !== rec.sha256) return { ok: false, error: `${rec.file} no longer matches its sidecar hash; not deriving from it` };
-  const to = rec.durationSec != null ? Math.min(toSec, rec.durationSec) : toSec;
+  const to = len != null ? Math.min(toSec, len) : toSec;
   const outDir = join(resolve(runDir), 'derived', 'previews'); mkdirSync(outDir, { recursive: true });
   const name = `${camera}-${fromSec}-${to}`.replace(/[^\w.-]/g, '_'), out = join(outDir, `${name}.mp4`);
   const width = rec.requested?.viewport?.width ?? 1280;
@@ -57,7 +58,7 @@ export async function previewRecording(runDir, { camera, fromSec, toSec, label =
   } finally { rmSync(work, { recursive: true, force: true }); }
   const after = sha256File(rec.path);
   const meta = { preview: 1, derived: true, fullProof: false, kind: 'excerpt', label: text, file: basename(out), bytes: statSync(out).size, sha256: sha256File(out),
-    source: { camera, file: rec.file, sha256: before, fromSec, toSec: to, recordingDurationSec: rec.durationSec, partial: !!rec.partial }, sourceUnchanged: before === after, createdAt: new Date().toISOString() };
+    source: { camera, file: rec.file, sha256: before, fromSec, toSec: to, recordingSec: len, partial: !!rec.partial }, sourceUnchanged: before === after, createdAt: new Date().toISOString() };
   writeJson(`${out}.json`, meta);
   return { ok: meta.sourceUnchanged, ...meta, path: out };
 }
@@ -94,7 +95,7 @@ export function packageRun(runDir, { select = [] } = {}) {
   const measurements = e ? { evaluation: rel(join(ev.dir, 'evaluation.json')), measured: e.measures.filter((m) => m.status === 'measured').map((m) => ({ id: m.id, value: m.value ?? m.summary ?? null })),
     questions: [...(e.acceptance?.predeclared ?? []), ...(e.questions ?? [])].map((q) => ({ id: q.id, basis: q.basis, verdict: q.verdict })) } : null;
   const index = { package: 1, private: true, createdAt: new Date().toISOString(), outcome, measurements,
-    recordings: recordings.map((r) => ({ camera: r.camera, file: r.file ? rel(r.path) : null, bytes: r.bytes, sha256: r.sha256, durationSec: r.durationSec, partial: r.partial, requested: r.requested, actual: r.actual, pageErrors: r.pageErrors?.length ?? 0 })),
+    recordings: recordings.map((r) => ({ camera: r.camera, file: r.file ? rel(r.path) : null, bytes: r.bytes, sha256: r.sha256, durationSec: r.durationSec, videoSec: r.videoSec ?? null, partial: r.partial, requested: r.requested, actual: r.actual, pageErrors: r.pageErrors?.length ?? 0 })),
     previews: previews.map((p) => ({ file: rel(join(pdir, p.file)), sha256: p.sha256, fullProof: false, source: p.source })),
     diagnostics: receipt.diagnostics ? { requested: true, result: receipt.diagnostics.capture?.result ?? null } : { requested: false }, limits };
   // Selected projection: only what was named, run-relative, nothing that looks like a private path.
@@ -123,7 +124,7 @@ function renderIndex(ix) {
   const o = ix.outcome, L = [`# Soul Run ${o.runId}: ${o.status}`, '', `Spec ${o.spec.name ?? '-'} (${(o.spec.sha256 ?? '-').slice(0, 12)}), source ${(o.source?.commit ?? '-').slice(0, 12)}; ${o.startedAt} → ${o.endedAt}. Private local index: do not publish; publish only selected.json items with tools/proof/upload.mjs.`, ''];
   if (o.reason) L.push(`Reason: ${o.reason}`, '');
   L.push('## Recordings (uncut, real speed)', '', '| camera | file | s | MB | partial | requested → actual |', '|---|---|---|---|---|---|');
-  for (const r of ix.recordings) L.push(`| ${r.camera} | ${r.file ?? '(none)'} | ${r.durationSec ?? '-'} | ${r.bytes ? (r.bytes / 1e6).toFixed(1) : '-'} | ${r.partial ? 'yes' : 'no'} | ${r.requested?.kind ?? '-'} → ${r.actual?.mode ?? '-'} |`);
+  for (const r of ix.recordings) L.push(`| ${r.camera} | ${r.file ?? '(none)'} | ${r.videoSec ?? r.durationSec ?? '-'} | ${r.bytes ? (r.bytes / 1e6).toFixed(1) : '-'} | ${r.partial ? 'yes' : 'no'} | ${r.requested?.kind ?? '-'} → ${r.actual?.mode ?? '-'} |`);
   if (ix.previews.length) { L.push('', '## Previews (derived, not full proof)', ''); for (const p of ix.previews) L.push(`- ${p.file}: ${p.source.fromSec}–${p.source.toSec} s of ${p.source.file}`); }
   if (ix.measurements) { L.push('', '## Measurements', ''); for (const m of ix.measurements.measured) L.push(`- ${m.id}: ${typeof m.value === 'object' ? JSON.stringify(m.value) : m.value}`); for (const q of ix.measurements.questions) L.push(`- question ${q.id}: ${q.verdict} (${q.basis})`); }
   L.push('', '## Limits', '', ...(ix.limits.length ? ix.limits.map((l) => `- ${l}`) : ['- none recorded']), '');

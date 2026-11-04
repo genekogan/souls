@@ -25,6 +25,7 @@
 //  new soul    button.bring-agent-open / any button whose text is "New Soul"
 import { mkdirSync, renameSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { resolvePlaywright, browsersPath, launchArgs } from '../lib/platform.mjs';
@@ -69,11 +70,15 @@ function writeRecording({ name, o, cam = null, state = null, r = null, partial =
   let bytes = null, sha256 = null;
   try { if (r?.video && existsSync(r.video)) { renameSync(r.video, file); bytes = statSync(file).size; sha256 = createHash('sha256').update(readFileSync(file)).digest('hex'); } } catch (e) { error ??= String(e?.message ?? e); }
   const opened = r?.opened ?? cam?.opened ?? null, closed = r?.closed ?? null;
+  // The video's own length (ffprobe, when installed): it starts at the first painted frame, so it can be shorter than
+  // the context's open-to-close time; the gap is lead-in before the page painted, not a cut.
+  let videoSec = null;
+  if (sha256) { const p = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:format_tags=DURATION:stream_tags=DURATION', '-of', 'json', file], { encoding: 'utf8' }); try { const j = JSON.parse(p.stdout); const d = Number(j.format?.duration); const tag = j.streams?.[0]?.tags?.DURATION ?? j.format?.tags?.DURATION; videoSec = Number.isFinite(d) ? +d.toFixed(2) : tag ? +tag.split(':').reduce((a, x) => a * 60 + Number(x), 0).toFixed(2) : null; } catch { /* no ffprobe */ } }
   const meta = { recording: 1, camera: name, file: sha256 ? `${name}.webm` : null, bytes, sha256, uncut: true, realSpeed: true,
     partial: !!partial || !!closedBy, ...(closedBy ? { closedBy } : {}), ...(error || r?.error ? { error: error ?? r.error } : {}),
     requested: { kind: o.kind ?? 'wide', soulId: o.soulId ?? null, identity: o.identity ? 'dev-owner' : 'public', viewport: o.viewport ?? null, ...(o.kind === 'free' ? { composition: o.composition ?? FREE_COMPOSITION } : {}) },
     actual: state?.actual ?? null, ready: state?.ready ?? false, arrivedMs: cam?.arrivedMs ?? null,
-    openedAt: opened?.at ?? null, closedAt: closed?.at ?? null, durationSec: opened && closed ? +((closed.mono - opened.mono) / 1000).toFixed(2) : null,
+    openedAt: opened?.at ?? null, closedAt: closed?.at ?? null, durationSec: opened && closed ? +((closed.mono - opened.mono) / 1000).toFixed(2) : null, videoSec,
     pageErrors: cam?.errors ?? [], ...(o.record.meta ?? {}) };
   writeFileSync(`${file}.json`, JSON.stringify(meta, null, 1) + '\n');
   return meta;
