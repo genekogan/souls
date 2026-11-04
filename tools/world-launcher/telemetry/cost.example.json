@@ -1,0 +1,14 @@
+{
+  "schema": "sim-cost/1",
+  "currency": "EUR",
+  "period": { "start": "2026-11-01", "end": "2026-12-01" },
+  "items": [
+    { "id": "host", "kind": "compute", "basis": "fixed", "amount": 100, "source": "placeholder: the host's monthly rent from its invoice", "sourceDate": "2026-11-01",
+      "billed": [{ "period": { "start": "2026-10-01", "end": "2026-11-01" }, "amount": 100 }] },
+    { "id": "backups", "kind": "backups", "basis": "metered", "rate": 0.01, "unit": "GB-month", "usage": 200, "source": "placeholder: the storage provider's price list", "sourceDate": "2026-11-01" },
+    { "id": "cdn", "kind": "cdn", "basis": "metered", "rate": 0.005, "unit": "GB", "usage": null, "source": "placeholder: the CDN's price list; usage not measured yet", "sourceDate": "2026-11-01" },
+    { "id": "auth", "kind": "auth", "basis": "fixed", "amount": 0, "source": "placeholder: free tier", "sourceDate": "2026-11-01" },
+    { "id": "render", "kind": "render", "basis": "metered", "rate": null, "unit": "image", "usage": null, "source": "placeholder: platform-paid render service, rate not recorded" },
+    { "id": "edge-inference", "kind": "model", "payer": "owner", "basis": "metered", "rate": null, "usage": null, "source": "owners' own agents; not platform spend" }
+  ]
+}
