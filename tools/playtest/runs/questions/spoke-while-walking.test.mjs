@@ -9,7 +9,7 @@ const S = (verb, args, out, atMs) => ({ verb, args, out, atMs, file: 'playtest/s
 const steps = [S('ack', ['m1', 'Walking']), S('act', ['walk to the pond hall'], { accepted: true, receipt: { id: 'r1', capability: 'walk:lab-pond-hall', phase: 'started' } }, 1000),
   S('ack', ['m2', 'Telling you while I walk']), S('say', ['I can see the pond'], { said: { id: 'sp1' } }, 5000)];
 const sample = (sec, phase, posture = 'walking') => ({ t: new Date(sec * 1000).toISOString(), posture, lastReceipt: { id: 'r1', phase } });
-const ctx = (samples) => ({ seats: ['ada'], hasTranscript: () => true, steps: () => steps, stepRef: (s) => ({ path: s.file, line: s.line }), ref: (path) => ({ path }),
+const ctx = (samples, st = steps) => ({ seats: ['ada'], hasTranscript: () => true, steps: () => st, stepRef: (s) => ({ path: s.file, line: s.line }), ref: (path) => ({ path }),
   evidencePacks: [{ requestId: 'm2', samples }] });
 
 test('pass: said mid-walk, the same walk completes', () => {
@@ -20,4 +20,9 @@ test('fail: speech replaced the walk, or the walk had already ended; unknown wit
   assert.equal(q.score(ctx([sample(3, 'started'), sample(8, 'replaced', 'standing')])).verdict, 'fail');
   assert.equal(q.score(ctx([sample(3, 'completed', 'standing'), sample(8, 'completed', 'standing')])).verdict, 'fail');
   assert.equal(q.score(ctx([sample(3, 'started')])).verdict, 'unknown');
+});
+test('unknown, never pass: a say with no recorded time (it would otherwise rest on the act\'s own receipt claim)', () => {
+  const untimed = steps.map((s) => (s.verb === 'say' ? { ...s, atMs: null } : s));
+  const a = q.score(ctx([sample(3, 'started'), sample(8, 'started'), sample(20, 'completed', 'standing')], untimed));
+  assert.equal(a.verdict, 'unknown', JSON.stringify(a));
 });
