@@ -40,16 +40,20 @@ export async function prepare({base,paths,arm,signal}){
 }
 
 // Observation-only tee of actual AudioContext destination output, retained from the accepted audio capture recipe.
-function installAudioObserver(){
+export function installAudioObserver(){
  const captures=[],byContext=new WeakMap(),connect=AudioNode.prototype.connect,disconnect=AudioNode.prototype.disconnect;
  const ensure=ctx=>{let c=byContext.get(ctx);if(c)return c;const sink=ctx.createMediaStreamDestination(),chunks=[],recorder=new MediaRecorder(sink.stream,{mimeType:'audio/webm;codecs=opus'}),meta={sampleRate:ctx.sampleRate,stateAtStart:ctx.state,requestEpochMs:Date.now(),contextTimeAtStart:ctx.currentTime};c={ctx,sink,recorder,chunks,meta};captures.push(c);byContext.set(ctx,c);recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstart=()=>{meta.startEventEpochMs=Date.now();};recorder.start(250);return c;};
- AudioNode.prototype.connect=function(destination,...args){const result=Reflect.apply(connect,this,[destination,...args]);if(destination===this.context.destination){const c=ensure(this.context);Reflect.apply(connect,this,[c.sink,...args]);}return result;};
+ AudioNode.prototype.connect=function(destination,...args){const result=Reflect.apply(connect,this,[destination,...args]);if(destination===this.context.destination&&typeof this.context.createMediaStreamDestination==='function'){const c=ensure(this.context);Reflect.apply(connect,this,[c.sink,...args]);}return result;};
  AudioNode.prototype.disconnect=function(...args){const result=Reflect.apply(disconnect,this,args),c=byContext.get(this.context);if(c&&args[0]===this.context.destination){try{Reflect.apply(disconnect,this,[c.sink,...args.slice(1)]);}catch{}}return result;};
  window.__proofAudioState=()=>captures.map(c=>({state:c.ctx.state,recorder:c.recorder.state,tracks:c.sink.stream.getAudioTracks().length,bytes:c.chunks.reduce((n,b)=>n+b.size,0)}));
  window.__proofAudioStop=async()=>{const out=[];for(const c of captures){c.meta.stopRequestEpochMs=Date.now();await new Promise(resolve=>{c.recorder.onstop=resolve;c.recorder.stop();});const blob=new Blob(c.chunks,{type:c.recorder.mimeType}),base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=reject;reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.readAsDataURL(blob);});out.push({meta:c.meta,mime:c.recorder.mimeType,bytes:blob.size,base64});}return out;};
 }
 export async function beforeNavigation({page,paths}){
  const setup=JSON.parse(readFileSync(join(paths.dir,'setup.json'),'utf8'));
+ const observations=[];const observed=row=>{observations.push({epochMs:Date.now(),...row});save(paths,'browser-observations.json',observations);};
+ page.on('response',r=>{if(r.status()>=400)observed({kind:'response',status:r.status(),url:r.url(),method:r.request().method(),resourceType:r.request().resourceType()});});
+ page.on('pageerror',e=>observed({kind:'pageerror',message:String(e),stack:e.stack}));
+ page.on('console',m=>{if(m.type()==='error')observed({kind:'console',text:m.text(),location:m.location()});});
  save(paths,'capture-origin.json',{videoStartEpochBoundsMs:[setup.preparedAtEpochMs,Date.now()],viewport:{width:1920,height:1080},capture:'Native video plus actual browser-output audio; no playback or listening inference.'});
  await page.addInitScript(installAudioObserver);
  // Enable the existing observation-only shot camera before app initialization. No actor/physics state is touched.

@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {resolve,join} from 'node:path';
-import {enableProofSound,beforeNavigation,hasProofPourOutput} from './garden-revival-proof.mjs';
+import {enableProofSound,beforeNavigation,hasProofPourOutput,installAudioObserver} from './garden-revival-proof.mjs';
 import {WATERING_CAN} from '../../packages/world-compiler/src/core-kit/watering-can.ts';
 import {emittersOf} from '../../apps/web/src/gen-mesh/sound-plan.ts';
 function control(t,{muted=false,record=true,running=true}={}){
@@ -29,7 +29,7 @@ test('cleanup preserves an empty audio diagnostic then refuses qualification',as
  const parent=resolve('.e2e/418');mkdirSync(parent,{recursive:true});const dir=mkdtempSync(join(parent,'audio-regression-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
  writeFileSync(join(dir,'setup.json'),JSON.stringify({preparedAtEpochMs:Date.now()}));
  const previous=globalThis.window;globalThis.window={__proofAudioStop:async()=>[]};t.after(()=>{globalThis.window=previous;});
- const stop=await beforeNavigation({paths:{dir},page:{addInitScript:async()=>{},evaluate:async fn=>fn()}});
+ const stop=await beforeNavigation({paths:{dir},page:{on(){},addInitScript:async()=>{},evaluate:async fn=>fn()}});
  await assert.rejects(stop(),/actual browser-output audio missing/);assert.deepEqual(JSON.parse(readFileSync(join(dir,'audio.json'))),[]);
 });
 
@@ -44,4 +44,31 @@ test('pour output is associated with the actual planter emitter, not the carried
   assert.equal(hasProofPourOutput(frames,'bed'),true);assert.equal(hasProofPourOutput(frames,'can'),false);
   frames[0].audio.rms=0;assert.equal(hasProofPourOutput(frames,'bed'),false);
  }
+});
+
+test('the audio observer preserves offline native connections and still tees realtime output',t=>{
+ const old={AudioNode:globalThis.AudioNode,MediaRecorder:globalThis.MediaRecorder,window:globalThis.window};
+ const connections=[],disconnections=[];class Node{constructor(context){this.context=context;}connect(destination){connections.push([this,destination]);return destination;}disconnect(destination){disconnections.push([this,destination]);}}
+ class Recorder{state='inactive';constructor(stream){this.stream=stream;}start(){this.state='recording';this.onstart?.();this.ondataavailable?.({data:{size:12}});}}
+ globalThis.AudioNode=Node;globalThis.MediaRecorder=Recorder;globalThis.window={};
+ t.after(()=>{globalThis.AudioNode=old.AudioNode;globalThis.MediaRecorder=old.MediaRecorder;globalThis.window=old.window;});
+ installAudioObserver();
+ const offline={destination:{offline:true}},offlineNode=new Node(offline);
+ assert.equal(offlineNode.connect(offline.destination),offline.destination,'offline native return preserved');
+ offlineNode.disconnect(offline.destination);assert.equal(window.__proofAudioState().length,0,'offline graph has no observation side effects');
+ const realtime={destination:{realtime:true},state:'running',sampleRate:48000,currentTime:0,createMediaStreamDestination(){return{stream:{getAudioTracks:()=>[{}]}};}};
+ const live=new Node(realtime);assert.equal(live.connect(realtime.destination),realtime.destination);
+ assert.deepEqual(window.__proofAudioState(),[{state:'running',recorder:'recording',tracks:1,bytes:12}]);
+ live.disconnect(realtime.destination);assert.equal(connections.length,3,'offline connects once; realtime native+tee');assert.equal(disconnections.length,3);
+});
+
+test('resource and page-error provenance is retained without filtering console failures',async t=>{
+ const parent=resolve('.e2e/418');mkdirSync(parent,{recursive:true});const dir=mkdtempSync(join(parent,'audio-provenance-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ writeFileSync(join(dir,'setup.json'),JSON.stringify({preparedAtEpochMs:Date.now()}));const callbacks={};
+ await beforeNavigation({paths:{dir},page:{on:(name,fn)=>{callbacks[name]=fn;},addInitScript:async()=>{}}});
+ callbacks.response({status:()=>503,url:()=>'https://example.com/asset',request:()=>({method:()=>'GET',resourceType:()=>'media'})});
+ callbacks.pageerror(Object.assign(Error('offline render failed'),{stack:'retained caller stack'}));
+ callbacks.console({type:()=>'error',text:()=>'resource failed',location:()=>({url:'https://example.com/asset',lineNumber:3})});
+ const rows=JSON.parse(readFileSync(join(dir,'browser-observations.json')));
+ assert.equal(rows[0].status,503);assert.equal(rows[0].resourceType,'media');assert.equal(rows[1].stack,'retained caller stack');assert.equal(rows[2].location.lineNumber,3);
 });
