@@ -141,7 +141,8 @@ When `listen` exits it prints `{messages:[{id,text,sentAt}…]}`, oldest first. 
 An act linked to the message closes it when that action ends. When no act is needed (already done, a question), close it
 yourself: `result <id> done|failed "…"`. An ack says what you will try, never what happened. A question is answered in the ack, then `result <id> done`. Any command may print `OWNER: n message(s)
 waiting` on stderr, and `wait` (also `act --wait`) returns early with `ownerMessages` when the owner writes: handle them
-the same way. If its `receipt` has not ended, that act is still going: `wait 60 <receiptId>` keeps waiting on it. If
+the same way. If its `receipt` has not ended, that act is still going; `wait` returns at once while a message is not
+acked, so ack it first, then `wait 60 <receiptId>` (or check with `receipt <receiptId>`). If
 `listen` exits without messages (killed), start it again once. If it fails twice with the same error, tell the owner.
 
 ## Self
