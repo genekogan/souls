@@ -72,7 +72,9 @@ jobs:
     name: ${{ matrix.name }}
     needs: scope
     if: needs.scope.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    # The qualify jobs (no browser) run on the repository variable CI_HEAVY_RUNNER when it is set, else ubuntu-latest.
+    # Its value is one runner label (`souls-ci`) or a JSON array of labels (`["self-hosted","souls-ci"]`).
+    runs-on: ${{ vars.CI_HEAVY_RUNNER && (startsWith(vars.CI_HEAVY_RUNNER, '[') && fromJSON(vars.CI_HEAVY_RUNNER) || vars.CI_HEAVY_RUNNER) || 'ubuntu-latest' }}
     # The recursive server inventory (about an hour of tests in all) runs in duration-balanced shards of ~10 minutes each.
     timeout-minutes: ${{ matrix.kind == 'server' && 45 || 60 }}
     strategy:
@@ -159,6 +161,8 @@ jobs:
   smoke:
     needs: scope
     if: needs.scope.outputs.smoke == 'true'
+    # Always GitHub-hosted, whatever CI_HEAVY_RUNNER says: `playwright install --with-deps` installs Chromium's system
+    # libraries through apt, which a self-hosted runner without root, or with an OS Playwright does not support, cannot do.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
