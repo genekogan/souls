@@ -53,6 +53,6 @@ export function packetText(p) {
     `bottleneck ${b.from === 'alerts' ? `${b.rule}${b.world ? ` on ${b.world}` : ''} firing (+${b.alsoFiring} more)` : b.world ? `${b.world}: loop p99 max ${b.loopP99MaxS ?? '—'} s, tick p99 max ${b.tickP99MaxS ?? '—'} s (${b.from})` : b.note}`,
     `alerts     ${typeof p.alerts === 'string' ? p.alerts : `${p.alerts.firing} firing, ${p.alerts.unknown} unknown`}`,
     `cost       ${c}`,
-    `headroom   host memory min ${p.headroom.hostMemAvailableMinGiB} GiB; cpu ${p.headroom.cpu}; ${p.headroom.qualified}`,
+    `headroom   host memory min ${typeof p.headroom.hostMemAvailableMinGiB === 'number' ? `${p.headroom.hostMemAvailableMinGiB} GiB` : 'unknown'}; cpu ${p.headroom.cpu}; ${p.headroom.qualified}`,
     `next       ${p.next}`].join('\n') + '\n';
 }
