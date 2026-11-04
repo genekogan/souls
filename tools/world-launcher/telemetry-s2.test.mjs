@@ -47,7 +47,9 @@ test('report: S2 series per world and for the fleet, across a world restart; abs
   for (let k = 0; k < N; k++) {
     const at = T0 + k * EVERY, i = k < 20 ? k + 1 : k - 19;   // the world restarts after scrape 20: its counters start again
     const base = metricsText({ now: at, launcher: { build: 'test', maxRunning: 10 }, worlds: [{ slug: 'a', status: 'running', live: live(300 * (k + 1)) }, { slug: 'old', status: 'running', live: live(300 * (k + 1)) }, { slug: 'slow', status: 'running', live: live(75 * (k + 1)) }] });
-    assert.equal(await scrapeOnce(s, 'u', { now: () => at, fetchImpl: fetchOf(base + s2('a', i, at) + s2('slow', k + 1, at, { pace: 0.25 }).replace(/^# TYPE.*\n/gm, '')) }), true);
+    // `slow` exports everything but the request series and histograms (a partial exporter)
+    const slow = s2('slow', k + 1, at, { pace: 0.25 }).split('\n').filter((l) => l && !l.startsWith('#') && !/requests|request_queue/.test(l)).join('\n') + '\n';
+    assert.equal(await scrapeOnce(s, 'u', { now: () => at, fetchImpl: fetchOf(base + s2('a', i, at) + slow) }), true);
   }
   const r = report(dir, s.state, { range: `${new Date(T0).toISOString()}..${new Date(T0 + N * EVERY).toISOString()}`, now: T0 + N * EVERY, everyMs: EVERY }), a = r.worlds.a;
   // 39 increases: 19 + 1 (the restart: the new value counts from 0) + 19 = 39 scrapes' worth
@@ -65,12 +67,14 @@ test('report: S2 series per world and for the fleet, across a world restart; abs
   assert.equal(r.worlds.slow.clock.fullClockRatio, 0.25, 'an attention-paced world is seen at a quarter of its full clock');
   assert.equal(r.worlds.slow.clock.pace.last, 0.25);
   for (const k of ['requests', 'latency', 'process', 'disk', 'viewers', 'clock']) assert.equal(r.worlds.old[k], 'unknown', `old: ${k} unknown, never 0`);
-  assert.deepEqual(r.fleet.requests.act, { attempted: 78 + 78, started: 78 + 78, completed: 39 + 39, rejected: 39 + 39, failed: 0, dropped: 0 });
+  assert.equal(r.worlds.slow.requests, 'unknown', 'slow exports no request series (see s2 below)');
+  assert.deepEqual(r.fleet.requests.act, { attempted: 78, started: 78, completed: 39, rejected: 39, failed: 0, dropped: 0 }, 'only worlds that export requests');
   assert.equal(r.fleet.cpuCores.sum, 0.1); assert.equal(r.fleet.cpuCores.worlds, 2);
   assert.deepEqual(r.unknown, [], 'every S2 block was exported by some world');
   const txt = text(r);
   assert.match(txt, /\n {2}a: ok\/rejected\/failed\/refused read 351\/0\/0\/39, act 39\/39\/0\/0; p95 s queue 2\.5\/—/);
   assert.doesNotMatch(txt, /\n {2}old:/, 'no S2 line for a world without the series');
+  assert.match(txt, /\n {2}slow: ok\/rejected\/failed\/refused read \?, act \?;.*viewers 2; clock 0\.25/, 'a world with only some blocks still gets its line; missing ones are ?');
 });
 
 test('report: a store from before #859 says unknown for each S2 block, as S1 did', async (t) => {
@@ -80,4 +84,18 @@ test('report: a store from before #859 says unknown for each S2 block, as S1 did
   assert.equal(r.unknown.length, 6); assert.ok(r.unknown.every((u) => /not exported by any world in this range/.test(u)));
   assert.equal(r.worlds.a.requests, 'unknown'); assert.equal(r.fleet.requests, 'unknown'); assert.equal(r.fleet.cpuCores, 'unknown');
   assert.ok(r.worlds.a.tick.progress > 0, 'S1 fields as before');
+});
+
+test('report: honest unknowns: a missing outcome keeps the fleet figure unknown; rate 0 gives no clock ratio; no refusal series is unknown, not 0', async (t) => {
+  const dir = tmp(t), st = openStore(dir, { everyMs: EVERY });
+  for (let k = 0; k < 4; k++) {
+    const at = T0 + k * EVERY, base = metricsText({ now: at, worlds: [{ slug: 'p', status: 'running', live: live(300 * (k + 1)) }, { slug: 'q', status: 'running', live: live(300 * (k + 1)) }] });
+    const p = s2('p', k + 1, at), q = s2('q', k + 1, at).split('\n').filter((l) => !/outcome="failed"|refused_total/.test(l)).join('\n').replace(/sim_world_clock_admin_rate\{world="q"\} 1/, 'sim_world_clock_admin_rate{world="q"} 0');
+    await scrapeOnce(st, 'u', { now: () => at, fetchImpl: fetchOf(base + p + q.replace(/^# TYPE.*$/gm, '')) });
+  }
+  const r = report(dir, st.state, { range: `${new Date(T0).toISOString()}..${new Date(T0 + 4 * EVERY).toISOString()}`, now: T0 + 4 * EVERY, everyMs: EVERY });
+  assert.equal(r.worlds.q.requests.read.failed, 'unknown'); assert.equal(r.fleet.requests.read.failed, 'unknown', 'never p alone presented as the fleet');
+  assert.equal(r.fleet.requests.read.completed, 27 + 27);
+  assert.equal(r.worlds.q.requests.read.refused, 'unknown'); assert.match(text(r), /\n {2}q: ok\/rejected\/failed\/refused read 27\/0\/unknown\/\?/);
+  assert.equal(r.worlds.q.clock, 'unknown', 'admin rate 0: no ratio, never NaN'); assert.equal(r.worlds.p.clock.fullClockRatio, 1);
 });

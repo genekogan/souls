@@ -86,7 +86,7 @@ function s2(m, pick) {
   const out = {};
   const req = named('sim_world_requests_total'), ref = named('sim_world_requests_refused_total');
   out.requests = req.length ? Object.fromEntries(REQ_CLASSES.map((c) => [c, { ...Object.fromEntries(REQ_OUTCOMES.map((o) => [o, req.find((x) => x.labels.class === c && x.labels.outcome === o) ? inc(req.find((x) => x.labels.class === c && x.labels.outcome === o)) : 'unknown'])),
-    refused: Object.fromEntries(ref.filter((x) => x.labels.class === c).map((x) => [x.labels.code, inc(x)])) }])) : 'unknown';
+    refused: ref.length ? Object.fromEntries(ref.filter((x) => x.labels.class === c).map((x) => [x.labels.code, inc(x)])) : 'unknown' }])) : 'unknown';
   const lat = {};
   for (const kind of ['queue', 'run']) for (const x of named(`sim_world_request_${kind}_seconds_bucket`)) (((lat[x.labels.class] ??= {})[kind] ??= []).push({ le: x.labels.le === '+Inf' ? Infinity : Number(x.labels.le), n: inc(x) }));
   out.latency = Object.keys(lat).length ? Object.fromEntries(Object.entries(lat).map(([c, k]) => [c, Object.fromEntries(Object.entries(k).map(([kind, b]) => [kind, histQuantiles(b)]))])) : 'unknown';
@@ -103,14 +103,15 @@ function s2(m, pick) {
     connections: Object.fromEntries(ws.map((x) => [x.labels.event, inc(x)])), soulsResident: view(pick(m, 'sim_world_souls_resident')) ?? 'unknown', entities: view(pick(m, 'sim_world_entities')) ?? 'unknown' } : 'unknown';
   // the tick's own sample time (#859), not the scrape's: the rise of the tick over the rise of the time it was read at
   const tick = pick(m, 'sim_world_tick'), at = pick(m, 'sim_world_tick_sampled_seconds'), rate = pick(m, 'sim_world_clock_admin_rate');
-  out.clock = tick && at && rate && (at.covRise ?? 0) > 0 ? { fullClockRatio: round((tick.covRise ?? 0) / ((at.covRise ?? 0) * TICK_HZ * view(rate).last), 4), seconds: round(at.covRise, 1), adminRate: view(rate).last,
+  out.clock = tick && at && rate && (at.covRise ?? 0) > 0 && view(rate).last > 0 ? { fullClockRatio: round((tick.covRise ?? 0) / ((at.covRise ?? 0) * TICK_HZ * view(rate).last), 4), seconds: round(at.covRise, 1), adminRate: view(rate).last,
     pace: view(pick(m, 'sim_world_attention_pace')) ?? 'unknown' } : 'unknown';
   return out;
 }
 function fleetS2(ws) {
   const known = (k) => ws.filter((w) => w[k] && w[k] !== 'unknown');
   const req = known('requests'), proc = known('process').filter((w) => typeof w.process.cpuCores === 'number');
-  const sum = (c, o) => req.reduce((n, w) => n + (typeof w.requests[c][o] === 'number' ? w.requests[c][o] : 0), 0);
+  // a world that exported requests but not this outcome makes the fleet figure unknown, not a smaller number
+  const sum = (c, o) => (req.every((w) => typeof w.requests[c][o] === 'number') ? req.reduce((n, w) => n + w.requests[c][o], 0) : 'unknown');
   return { requests: req.length ? Object.fromEntries(REQ_CLASSES.map((c) => [c, Object.fromEntries(REQ_OUTCOMES.map((o) => [o, sum(c, o)]))])) : 'unknown',
     cpuCores: proc.length ? { sum: round(proc.reduce((n, w) => n + w.process.cpuCores, 0), 3), worlds: proc.length, note: 'world processes only; the launcher and the host are not included' } : 'unknown' };
 }
@@ -150,10 +151,11 @@ export function text(r) {
     String(x.tick?.ratioAtFullClock ?? '?').padStart(11), fmt(x.service?.min).padStart(12), fmt(x.loopDelayP99Seconds?.max).padStart(13), fmt(x.queue.depth?.max).padStart(10), fmt(x.elu?.mean).padStart(9), String(x.gcShare).padStart(9),
     String(Object.values(x.restarts).reduce((a, b) => a + b, 0)).padStart(9), String(Object.values(x.shed).reduce((a, b) => a + b, 0)).padStart(5)].join(' '));
   for (const [w, x] of Object.entries(r.worlds)) {   // S2: only for worlds that exported the #859 series
-    if (x.requests === 'unknown' && x.process === 'unknown' && x.disk === 'unknown') continue;
-    const rq = (c) => (x.requests === 'unknown' ? '?' : `${c} ${x.requests[c].completed}/${x.requests[c].rejected}/${x.requests[c].failed}/${Object.values(x.requests[c].refused).reduce((a, b) => a + b, 0)}`);
+    if (Object.keys(S2_UNKNOWN).every((k) => x[k] === 'unknown')) continue;
+    const refusedN = (f) => (f === 'unknown' ? '?' : Object.values(f).reduce((a, b) => a + b, 0));
+    const rq = (c) => (x.requests === 'unknown' ? `${c} ?` : `${c} ${x.requests[c].completed}/${x.requests[c].rejected}/${x.requests[c].failed}/${refusedN(x.requests[c].refused)}`);
     const p95 = (c, k) => (x.latency === 'unknown' ? '?' : String(x.latency[c]?.[k]?.p95 ?? '—'));
-    L.push(`  ${w}: ok/rejected/failed/refused ${rq('read')}, ${rq('act')}; p95 s queue ${p95('read', 'queue')}/${p95('act', 'queue')} run ${p95('read', 'run')}/${p95('act', 'run')}; cpu ${x.process === 'unknown' ? '?' : x.process.cpuCores} cores; rss max ${x.process === 'unknown' || x.process.rssBytes === 'unknown' ? '?' : Math.round(x.process.rssBytes.max / 2 ** 20) + ' MB'}; db ${x.disk === 'unknown' || x.disk.dbBytes === 'unknown' ? '?' : fmt(x.disk.dbBytes.perDay) + ' B/day'}; clock ${x.clock === 'unknown' ? '?' : x.clock.fullClockRatio}`);
+    L.push(`  ${w}: ok/rejected/failed/refused ${rq('read')}, ${rq('act')}; p95 s queue ${p95('read', 'queue')}/${p95('act', 'queue')} run ${p95('read', 'run')}/${p95('act', 'run')}; cpu ${x.process === 'unknown' ? '?' : x.process.cpuCores} cores; rss max ${x.process === 'unknown' || x.process.rssBytes === 'unknown' ? '?' : Math.round(x.process.rssBytes.max / 2 ** 20) + ' MB'}; db ${x.disk === 'unknown' || x.disk.dbBytes === 'unknown' ? '?' : fmt(x.disk.dbBytes.perDay) + ' B/day'}; viewers ${x.viewers === 'unknown' ? '?' : fmt(x.viewers.meanConcurrent)}; clock ${x.clock === 'unknown' ? '?' : x.clock.fullClockRatio}`);
   }
   L.push('', `store ${Math.round(r.store.bytes / 2 ** 20)} MB over ${r.store.days} days (${Math.round(r.store.bytesPerDay / 2 ** 20)} MB/day); loss ${JSON.stringify(r.loss)}`, ...r.unknown.map((u) => `unknown: ${u}`));
   return L.join('\n') + '\n';
