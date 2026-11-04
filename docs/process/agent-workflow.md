@@ -43,13 +43,15 @@ the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
 
 - **Non-strict**: a T0–T2 PR that touches no strict path, whose required checks are green on its current head, which
   GitHub reports mergeable without conflict, and while `main`'s CI is green, is squash-merged as is, even when it is
-  behind `main`: steps 1 and 2 are skipped. `main`'s own push CI is the safety net for the combination.
+  behind `main`: steps 1 and 2 are skipped. `main`'s own CI is the safety net for the combination.
 - **Strict**: everything else goes through the steps below: T3–T4, a head that is not green yet, a conflict or
   unknown mergeability, and the strict paths (`STRICT_PATHS`): the engine (`mars/`, `packages/engine-*`,
   `packages/kernel`, `packages/world-compiler`), `packages/conformance`, `pnpm-lock.yaml`, the walk and bundle
   baselines and `.github/workflows/`.
-- **Main red**: every push to `main` runs every CI job (`FULL_EVENTS` in `.github/scripts/ci-scope.mjs`; pull request
-  runs stay path-scoped), so each merge leaves a full-scope run. A narrower green run does not clear a failure: `main`
+- **Main red**: every push to `main` and every manual run runs every CI job (`FULL_EVENTS` in
+  `.github/scripts/ci-scope.mjs`; pull request runs stay path-scoped). The train merges with `GITHUB_TOKEN`, whose
+  pushes start no workflows, so after each merge it dispatches `ci.yml` on `main` (skipped while a `main` run is
+  already queued or in progress), and merges leave a full-scope run. A narrower green run does not clear a failure: `main`
   stays red from a failed run until a later full-scope run (a manual `ci` run, or one in which
   every qualify job ran) is green, or the failed run is re-run green. With no green full-scope run among the last 50
   runs, `main` is unproven, which counts as red. While it is red every PR is strict, and the train

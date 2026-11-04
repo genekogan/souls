@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blocker, fullScope, landingMode, mainCiState, maintainerApproved, next, parseChecks, summarizeChecks, wait, DEFAULT_CHECKS } from './merge-train.mjs';
+import { activeMainRun, blocker, dispatchMainCi, fullScope, landingMode, mainCiState, maintainerApproved, next, parseChecks, summarizeChecks, wait, DEFAULT_CHECKS } from './merge-train.mjs';
 import { JOBS } from './ci-scope.mjs';
 
 const M = 'owner';
@@ -255,4 +255,26 @@ test('landing: a failing notice does not stall the train', () => {
   } finally { console.error = orig; }
   assert.equal(t.comments.length, 0);
   assert.match(errors.join('\n'), /could not post the main-CI notice on #755/);
+});
+
+test('main CI dispatch: after a merge, start ci.yml on main unless a main run is already queued or in progress', () => {
+  const r = (id, status, event = 'push') => ({ id, status, event, conclusion: status === 'completed' ? 'success' : null });
+  assert.equal(activeMainRun([r(3, 'completed'), r(2, 'completed', 'workflow_dispatch')]), null);
+  assert.equal(activeMainRun([r(4, 'queued', 'workflow_dispatch'), r(3, 'completed')]).id, 4);
+  assert.equal(activeMainRun([r(5, 'in_progress'), r(6, 'pending', 'workflow_dispatch')]).id, 6);
+  for (const s of ['waiting', 'requested']) assert.equal(activeMainRun([r(7, s)]).id, 7);
+  // A pull_request run whose head branch happens to be called main is not a main run.
+  assert.equal(activeMainRun([r(8, 'in_progress', 'pull_request')]), null);
+
+  const fake = runs => {
+    const calls = [];
+    return { calls, api: { gh: (...args) => { calls.push(args); return args[0] === '-X' ? null : { workflow_runs: runs }; } } };
+  };
+  const idle = fake([r(3, 'completed')]);
+  assert.deepEqual(dispatchMainCi({ repo: 'o/r', branch: 'main', api: idle.api }), { dispatched: true });
+  assert.match(idle.calls[0][0], /^repos\/o\/r\/actions\/workflows\/ci\.yml\/runs\?branch=main&/);
+  assert.deepEqual(idle.calls[1], ['-X', 'POST', 'repos/o/r/actions/workflows/ci.yml/dispatches', '-f', 'ref=main']);
+  const busy = fake([r(9, 'queued', 'workflow_dispatch'), r(3, 'completed')]);
+  assert.deepEqual(dispatchMainCi({ repo: 'o/r', branch: 'main', api: busy.api }), { dispatched: false, run: 9, status: 'queued' });
+  assert.equal(busy.calls.length, 1); // listed only, no dispatch
 });

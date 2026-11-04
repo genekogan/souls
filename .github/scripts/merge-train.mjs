@@ -10,6 +10,8 @@
 //        squash-merges exactly <sha>
 //   node .github/scripts/merge-train.mjs eject --repo o/r --pr <n> [--label needs:rebase] --message-file <file>
 //        takes the PR off the train (removes merge:ready), adds the label, comments why
+//   node .github/scripts/merge-train.mjs main-ci --repo o/r [--branch main]
+//        after a merge: dispatches ci.yml on the branch unless a run there is already queued or in progress (best effort)
 //
 // Every GitHub call goes through `gh api` (GH_TOKEN).
 import { execFileSync } from 'node:child_process';
@@ -122,6 +124,25 @@ export function summarizeChecks({ runs = [], statuses = [], required = DEFAULT_C
 export function parseChecks(text) {
   const list = String(text ?? '').split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
   return list.length ? list : DEFAULT_CHECKS;
+}
+
+/** The newest ci.yml run on main (push or manual) that has not finished, or null. */
+export function activeMainRun(runs = []) {
+  return runs.filter(r => ['push', 'workflow_dispatch'].includes(r.event) && r.status !== 'completed').sort((a, b) => b.id - a.id)[0] ?? null;
+}
+
+/**
+ * Starts a ci.yml run on `branch` after a train merge. The train merges with GITHUB_TOKEN, whose pushes start no
+ * workflows, so without this main gets no ci.yml run and mainCiState goes stale (every PR strict). A workflow_dispatch
+ * made with GITHUB_TOKEN does start a run, and a manual run is full scope (fullScope). While a main run is already
+ * queued or in progress nothing is dispatched, so runs never pile up.
+ */
+export function dispatchMainCi({ repo, branch, api = { gh } }) {
+  const runs = api.gh(`repos/${repo}/actions/workflows/ci.yml/runs?branch=${encodeURIComponent(branch)}&per_page=20`)?.workflow_runs ?? [];
+  const active = activeMainRun(runs);
+  if (active) return { dispatched: false, run: active.id, status: active.status };
+  api.gh('-X', 'POST', `repos/${repo}/actions/workflows/ci.yml/dispatches`, '-f', `ref=${branch}`);
+  return { dispatched: true };
 }
 
 // ── gh ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -249,7 +270,16 @@ async function main([mode, ...argv]) {
     console.log(`ejected #${pr}${opt('--label') ? ` with ${opt('--label')}` : ''}`);
     return 0;
   }
-  console.error('usage: merge-train.mjs next | wait | merge | eject (see the header)');
+  if (mode === 'main-ci') {
+    const branch = opt('--branch') ?? 'main';
+    // Best effort: a failed dispatch is logged and never fails the train.
+    try {
+      const r = dispatchMainCi({ repo, branch });
+      console.log(r.dispatched ? `dispatched ci.yml on ${branch}` : `ci.yml run ${r.run} on ${branch} is ${r.status}: not dispatching another`);
+    } catch (e) { console.error(`merge-train: could not dispatch ci.yml on ${branch}: ${e.message}`); }
+    return 0;
+  }
+  console.error('usage: merge-train.mjs next | wait | merge | eject | main-ci (see the header)');
   return 2;
 }
 
