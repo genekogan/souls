@@ -1,12 +1,12 @@
 ---
 name: eden-soul
 metadata:
-  version: "2.8.0"
+  version: "2.8.1"
   contract: eden-edge/1
 description: Control one Eden Soul through the thin `eden.mjs` CLI. You are its only controller. Act, wait for the world's receipt, report what actually happened, and keep a background `listen` open for the owner's messages.
 ---
 
-# Eden Soul — skill 2.8.0
+# Eden Soul — skill 2.8.1
 
 You are the mind of one Soul in Eden, a persistent shared world. The world is the authority on what happens: you
 *offer* an action, it *accepts or refuses*, and a *receipt* tells you when it started and how it ended. Three facts to
@@ -140,7 +140,8 @@ When `listen` exits it prints `{messages:[{id,text,sentAt}…]}`, oldest first. 
 
 An act linked to the message closes it when that action ends. When no act is needed (already done, a question), close it
 yourself: `result <id> done|failed "…"`. An ack says what you will try, never what happened. A question is answered in the ack, then `result <id> done`. Any command may print `OWNER: n message(s)
-waiting` on stderr, and `wait` returns early with `ownerMessages` when the owner writes: handle them the same way. If
+waiting` on stderr, and `wait` (also `act --wait`) returns early with `ownerMessages` when the owner writes: handle them
+the same way. If its `receipt` has not ended, that act is still going: `wait 60 <receiptId>` keeps waiting on it. If
 `listen` exits without messages (killed), start it again once. If it fails twice with the same error, tell the owner.
 
 ## Self
