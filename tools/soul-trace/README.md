@@ -17,6 +17,33 @@ Off by default: without `--import` nothing is loaded; with it but no `SOUL_TRACE
 served CLI bytes are unchanged. `SOUL_TRACE_RUN` / `SOUL_TRACE_SEAT` (opaque `[A-Za-z0-9._:-]{1,100}` ids) are
 copied onto each process-start record for Soul Runs (#749); the tap never invents or interprets them.
 
+## Host boundaries (#733 S2)
+
+The CLI only sees its own process. The chat host that runs it can opt in to recording its side of the gap
+between a delivery and the next command, in the same file:
+
+```js
+import {hostRecorder} from '<repo>/tools/soul-trace/host.mjs';
+const h = hostRecorder({file: trace});
+h.turn('start', {turn: 't1', for: messageId});        // the turn that answers this owner message
+h.tool('start', {turn: 't1', tool: 'c1'});            // the tool call that will run a CLI command
+h.spawn({tool: 'c1'});                                // just before spawning it, with h.env({turn: 't1', tool: 'c1'})
+h.tool('end', {tool: 'c1', exitCode}); h.turn('end', {turn: 't1'});
+```
+
+or, from a hook that runs as its own process, `SOUL_TRACE_FILE=… node tools/soul-trace/host.mjs tool start --turn t1
+--tool c1` (always exits 0). The spawned CLI copies `SOUL_TRACE_TURN` / `SOUL_TRACE_TOOL` onto its `proc.start`.
+Ids are opaque refs chosen by the host; no prompt, command text, paths or output are recorded. Without a recorder
+nothing changes.
+
+The readout links turn → message by `for`, tool → turn and process → tool by those ids only, and splits the gap
+into: delivery → turn start (host picks it up), turn start → tool call (host reasoning), tool call → spawn (tool
+runner), spawn → process origin (exec; Node's `performance.timeOrigin`), origin → tap start (Node boot), tap start →
+first request (CLI). Each interval names its clock: process-monotonic when both ends are in one process, else local
+wall (≈). A missing boundary leaves an `unattributed` interval; a turn already running before the delivery is
+reported, not subtracted. Not yet: an adapter for a particular host's hooks (Claude Code hooks cannot pass a tool id
+into the spawned command without rewriting it).
+
 ## Inspector (#624)
 
 ```bash
@@ -33,6 +60,8 @@ Access: bound to 127.0.0.1; exact `Host` (refuses DNS rebinding), cross-site or 
 per-run token is exchanged for an `HttpOnly; SameSite=Strict` cookie and dropped from the address bar; nonce CSP,
 `no-store`, `nosniff`, `frame-ancestors 'none'`. Every trace string is placed with text nodes, never as markup.
 Stop it with Ctrl-C; the trace and the world are unaffected.
+Limit: the session cookie is the bearer token, and cookies ignore ports, so another server on 127.0.0.1 that the same
+browser visits would receive it (any local process could read the trace file anyway).
 
 ## Contract `soul-trace/1`
 
@@ -41,8 +70,9 @@ from 1), `at` (local wall ms), `mono` (process-monotonic ms since start).
 
 | kind | fields |
 |---|---|
-| `proc.start` | `cli`, `cliSha256` (the running CLI's bytes), `command`, `argBytes`, `node`, `timeOrigin`, `run?`, `seat?`, `clocks`, `omitted` |
+| `proc.start` | `cli`, `cliSha256` (the running CLI's bytes), `command`, `argBytes`, `node`, `timeOrigin`, `run?`, `seat?`, `turn?`, `tool?`, `clocks`, `omitted` |
 | `http` | `method`, `route` (path only; no origin, world prefix or query values), `op` (the CLI's idempotency key = logical operation), `attempt`, `startMono`, `status` (0 = transport error), `headMs`, `durationMs`, `bytes`, `facts` |
+| `host.turn` / `host.tool` / `host.spawn` | written by `host.mjs`, not the CLI: `phase` (start/end), `turn`, `tool`, `for`, `exitCode`; `proc` is the recorder (`host-…`) |
 | `proc.end` | `exitCode`, `durationMs`, `stats` {records, dropped, truncated, sinkFailures, inFlightAtExit, bodiesPendingAtExit, bodyOmitted} |
 
 `facts` is a whitelist: `accepted`, `code`, `receipt` {id, soulId, capability, phase, code, acceptedTick,
@@ -51,8 +81,8 @@ facts only). Never recorded: owner or speech text, observation content, reasons,
 
 Clock domains: `sentAt` server wall; receipt ticks world tick (authoritative for accepted/started/ended); `at` local
 wall (display); `mono` exact only inside one process. The readout labels cross-domain intervals approximate and
-never subtracts them as exact latency. The chat host's own work is opaque: the time between a delivery and the next
-command is shown as unattributed host time.
+never subtracts them as exact latency. Without host records the chat host's work is opaque: the time between a delivery
+and the next command is shown as unattributed host time (see Host boundaries).
 
 ## Readout
 
@@ -71,4 +101,4 @@ batch still in flight when the process exits may be lost and shows as `inFlightA
 Response bodies are read from a clone for JSON responses ≤1 MiB; others record headers only.
 
 Not covered yet: the managed runtime (`tools/soul-runtime`, which has its own `--evidence` recorder) and the legacy
-live CLI; host turn/tool internals; server-side joins; any upload.
+live CLI; a host-specific hooks adapter; server-side joins; any upload.

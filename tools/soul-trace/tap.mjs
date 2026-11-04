@@ -106,7 +106,7 @@ export function createTap({file, env = process.env, argv = process.argv, now = D
       cli: argv[1] ? ref(basename(argv[1])) : undefined, cliSha256, command,
       argBytes: argv.slice(3).reduce((n, a) => n + Buffer.byteLength(String(a)), 0),
       node: process.version, timeOrigin: Math.round(performance.timeOrigin),
-      run: ref(env.SOUL_TRACE_RUN), seat: ref(env.SOUL_TRACE_SEAT),
+      run: ref(env.SOUL_TRACE_RUN), seat: ref(env.SOUL_TRACE_SEAT), turn: ref(env.SOUL_TRACE_TURN), tool: ref(env.SOUL_TRACE_TOOL),
       clocks: {at: 'local-wall-ms', mono: 'process-monotonic-ms', sentAt: 'server-wall-ms', ticks: 'world-tick'},
       omitted: ['text', 'speech', 'observation-content', 'authorization', 'origin-host', 'query-values'],
     }));
