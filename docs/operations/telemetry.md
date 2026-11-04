@@ -79,3 +79,57 @@ A file that cannot be read, such as a gzip truncated by a crash, is skipped and 
 
 Fields the launcher does not export yet are listed under `unknown` instead of being shown as 0: actions and reads by
 outcome, viewer and connection counts, DB/WAL growth, process CPU and RSS (#737).
+
+## Alerts
+
+`telemetry.mjs alerts` (CW5 S1, #739) evaluates fixed rules over the stored scrapes. The evaluation is
+deterministic: the same rows always give the same transitions. There are two ways to run it:
+
+```bash
+node tools/world-launcher/telemetry.mjs collect --url ... --dir <d> --alerts [--rules rules.json]   # after every scrape
+node tools/world-launcher/telemetry.mjs alerts --dir <d> [--rules rules.json] [--json]              # catch up, e.g. from cron
+```
+
+### What it writes
+
+| | |
+|---|---|
+| `alerts.jsonl` | one line per **transition**, `{t, rule, world?, from, to, value, threshold, what}`. `to` is `firing`, `resolved`, `unknown` or `known`. An unchanged state, healthy or not, writes nothing. |
+| `alerts-state.json` | the evaluator's windows and last row. A restart neither repeats a transition nor loses one, and healthy rules keep no state. |
+
+Each rule has three windows, which give it hysteresis:
+
+- **Hold window:** the condition must hold for this long before the rule fires. The default is 30 s, which is 3 samples at the 15 s cadence. A condition that holds therefore fires within 60 s.
+- **Clear window:** the condition must stay clear for this long before the rule resolves. The default is 60 s.
+- **Clear threshold** (optional): a firing rule only counts as clear once its value is back past this threshold.
+
+A running world without a rule's series becomes `unknown` after the hold window, never healthy. A world that is not running is not judged, except for crash loops. Nothing is sent anywhere: delivery and dead-man alerting belong to #461, and a monitor on the same host cannot detect that host failing.
+
+### Rules
+
+| Rule | Scope | Fires when | Clears below |
+|---|---|---|---|
+| `loop-stall` | world | event-loop delay p99 > 0.25 s | 0.15 s |
+| `tick-slow` | world | tick p99 > 0.1 s | 0.075 s |
+| `gc-pressure` | world | GC share > 10 % | 5 % |
+| `main-thread-busy` | world | ELU > 0.9 | 0.8 |
+| `heap-pressure` | world | heap used / limit > 0.85 | 0.8 |
+| `queue-stall` | world | oldest queued request > 2 s | 1 s |
+| `clock-lag` | world | late ticks > 1 per second (`sim_world_ticks_late_total`, the independent measurement, not the pace-normalized service ratio) | 0.2 per second |
+| `refusals` | world | any increase of `sim_world_refused_total` or `sim_world_shed_total` (fires at once; clears after 5 quiet minutes) | — |
+| `stale-live` | world | `live.json` older than 30 s (fires at once) | — |
+| `crash-loop` | any world | at least 3 non-planned restarts within 10 min (fires at once; clears after 10 min) | — |
+| `host-memory` | fleet | host memory available < 1 GiB | 1.5 GiB |
+| `telemetry-gap` | collector | no answered scrape for more than 2.5 × the cadence. This covers failed scrapes, a silent collector seen by a later `alerts` run, and an empty store. | — |
+
+### Changing the rules
+
+`rules.json` overrides rules by id: `{"rules": {"loop-stall": {"threshold": 0.5, "holdMs": 60000}, "host-memory": {"off": true}}}`. The keys an override can set are `threshold`, `clearAt`, `holdMs`, `clearMs` and `off`. An unknown id is refused.
+
+### Not covered yet
+
+The launcher does not export process CPU, process RSS, cgroup CPU or memory pressure, or disk and WAL growth. These are listed as not exported (unknown) in every `alerts` output, and none of them are assumed healthy.
+
+### Cost
+
+With 400 registered worlds (20 running), evaluation after each scrape takes 40 ms at the median and at most 80 ms at the end of an hour. That is under 0.6 % of one core at the 15 s cadence. The state file is about 40 KB.
