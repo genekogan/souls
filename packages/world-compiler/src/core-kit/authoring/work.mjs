@@ -30,8 +30,9 @@ const LOOSE = [
       ...[0.15, 0.85].map((f) => box([UP_L * (f - 0.5), UP_T / 2, 0], [0.04, 0.04, UP_W - 2 * COL], 'brace')),
       ...[0.15, 0.5].map((f) => box([UP_L * (f - 0.5) + UP_L * 0.175, UP_T / 2, 0], [0.04, 0.04, Math.hypot(UP_L * 0.35, UP_W - 2 * COL)], 'brace', { yaw: Math.atan2(UP_L * 0.35, UP_W - 2 * COL) }))],
     { upright: BLUE, brace: '#4a6f9a' }, { components: { carryable: { mass: 38, grips: 4 } } }), 1,
-    // upright-12ft's grips (local y along the height from its base, x across) mapped to this frame: x = y - L/2, z = x
-    { crew: [2, 4], pose: 'flat', height: 0.8, grips: { 2: [[-1.170432, 0, 0], [1.170432, 0, 0]], 3: [[-1.389888, 0, 0], [0, 0, 0], [1.389888, 0, 0]], 4: [[-1.09728, 0, -0.6096], [-1.09728, 0, 0.6096], [1.09728, 0, -0.6096], [1.09728, 0, 0.6096]] } }, [UP_L, UP_T, UP_W]),
+    // upright-12ft's grips (local y along the height from its base, x across) mapped to this frame: x = y - L/2, z = -x
+    // (the native frame is carried pitched and rolled onto its face, which sends its +x across to -z; formationFor agrees)
+    { crew: [2, 4], pose: 'flat', height: 0.8, grips: { 2: [[-1.170432, 0, 0], [1.170432, 0, 0]], 3: [[-1.389888, 0, 0], [0, 0, 0], [1.389888, 0, 0]], 4: [[-1.09728, 0, 0.6096], [-1.09728, 0, -0.6096], [1.09728, 0, 0.6096], [1.09728, 0, -0.6096]] } }, [UP_L, UP_T, UP_W]),
   loose(work('plywood-sheet', 'One loose 4×8 ft plywood sheet (2.44 × 1.22 m, 19 mm, 27 kg); one person carries it on edge with both hands, or two.', ['plywood', 'sheet', 'construction', 'material', 'loose-material', 'shared-carry'],
     [cbox([0, PLY_T / 2, 0], [PLY_L, PLY_T, PLY_W], 'ply')], { ply: PLY }, { components: { carryable: { mass: 27, grips: 4 } } }), 1,
     { crew: [1, 2], pose: 'edge', height: 0.75, grips: { 1: [[0, 0, 0]], 2: [[-1, 0, 0], [1, 0, 0]] } }, [PLY_L, PLY_T, PLY_W]),
