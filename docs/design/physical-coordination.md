@@ -189,6 +189,8 @@ blocker, with the PCs it blocks. Check the manifest after a pnpm install:
 in either case:
 - a selector id is missing or extra;
 - a source path, catalog id or library def does not exist.
+- the pinned source or a reachable research baseline is not a commit in this repository, or a ref listed as missing
+  is in fact present (`git cat-file`, failing closed).
 
 Add a row when you add a scenario.
 

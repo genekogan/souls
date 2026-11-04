@@ -4,8 +4,10 @@
 // - every source path exists;
 // - every named native catalog id and library def exists;
 // - every row names a PC issue or an out-of-scope reason;
-// - an unresolved row is never presented as qualified.
+// - an unresolved row is never presented as qualified;
+// - the source pin and the reachable research baselines are commits here, and no missing-source ref is (fail closed).
 // Usage: node tools/physical-manifest/check.mjs [manifest.json]
+import {execFileSync} from 'node:child_process';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
@@ -29,6 +31,8 @@ export async function treeFacts(root = ROOT) {
     native: new Set(Object.keys(CATALOG)),
     library,
     exists: (p) => existsSync(join(root, p)),
+    /** Whether a ref names a commit in this repository (git cat-file); false when it does not or git fails. */
+    commit: (ref) => { try { return execFileSync('git', ['-C', root, 'cat-file', '-t', ref], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']}).trim() === 'commit'; } catch { return false; } },
   };
 }
 
@@ -73,6 +77,14 @@ export function check(manifest, facts) {
     for (const id of a.library ?? []) if (!facts.library.has(id)) errors.push(`asset ${a.need}: library def ${id} does not exist`);
     if (!['missing', 'adapt', 'exists'].includes(a.status)) errors.push(`asset ${a.need}: status must be missing, adapt or exists`);
   }
+  // Pins fail closed: a reachable baseline must be a commit here, and a missing-source ref must not be one.
+  const pin = manifest.provenance?.pinnedSource?.split(' ').pop();
+  if (!pin || !facts.commit(pin)) errors.push(`pinned source ${pin} is not a commit in this repository`);
+  for (const b of manifest.provenance?.researchBaselines ?? []) {
+    if (b.reachable !== true) errors.push(`research baseline ${b.ref}: only reachable baselines belong here; list others under missingSource`);
+    else if (!facts.commit(b.ref)) errors.push(`research baseline ${b.ref} is not a commit in this repository`);
+  }
+  for (const m of manifest.provenance?.missingSource ?? []) if (facts.commit(m.ref)) errors.push(`missing source ${m.ref} is a commit here; move it to researchBaselines`);
   for (const m of manifest.provenance?.missingSource ?? []) for (const b of m.blocks ?? []) if (!pcs.has(b)) errors.push(`missing source ${m.ref}: ${b} is not a PC issue`);
   return errors;
 }

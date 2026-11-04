@@ -28,3 +28,14 @@ test('a missing source, an unknown asset id or a row without an owner is reporte
   assert.ok(errors.some((e) => e.includes('upright-99ft does not exist')), errors.join('\n'));
   assert.ok(errors.some((e) => e.includes('names neither a PC issue')), errors.join('\n'));
 });
+
+test('pins fail closed: a bogus baseline or pin, or a missing-source ref that is in fact here, is reported', () => {
+  const m = manifest();
+  m.provenance.researchBaselines[0].ref = 'deadbeef0';
+  m.provenance.pinnedSource = 'main 0000000';
+  m.provenance.missingSource[0].ref = m.provenance.researchBaselines[1].ref;
+  const errors = check(m, facts);
+  assert.ok(errors.includes('research baseline deadbeef0 is not a commit in this repository'), errors.join('\n'));
+  assert.ok(errors.includes('pinned source 0000000 is not a commit in this repository'), errors.join('\n'));
+  assert.ok(errors.some((e) => e.endsWith('is a commit here; move it to researchBaselines')), errors.join('\n'));
+});
