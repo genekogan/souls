@@ -51,7 +51,9 @@ applies the same preflight as `start`; `start` runs it once and hands the result
 `.local/soul-runs/<stamp>-<name>/` (or `--out`; `SIM_SCRATCH` moves `.local`):
 
 - `run-receipt.json`: the terminal receipt. `status` is `running` until the end, so a crash never reads as success.
-  It records the effective spec and its hash, the scenario path and hash, source commit and dirty tracked-file count,
+  It records the effective spec and its hash, the scenario path and hash, the source (`source.serverRoot` and
+  `source.tools`, each a commit and uncommitted tracked-file count; the tools checkout is the one whose runner,
+  adapters and director ran, often not the server root; top-level `source.commit` stays the server root's),
   Node version, controllers (adapter, model, effort), preflight checks, observer check, every resource with its owner
   and release state, retention, cost (`wallMs`, `executeMs`, `lifecycleOverheadMs`, runner CPU and max RSS, run
   directory bytes) and the scenario runner's evidence (receipts, report, build, CLI and skill versions, tick validity).
@@ -135,8 +137,8 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
 `run-index.json` and `COMPARE.md`). It accepts run folders and `replay-set.json` folders. Attempts are grouped into
 arms by exact identity: the scenario without its port and paths, the world source hash, setup batch hashes, the seats
 (adapter, model, effort, persona, script hash), the director script, seed and duration. Every attempt is listed,
-including cancelled, failed and missing ones; only completed attempts are repeats. Code commit, uncommitted tracked
-files, CLI/skill/Node versions, machine load and observer state are listed per attempt and flagged where they differ.
+including cancelled, failed and missing ones; only completed attempts are repeats. Server root and tools commits,
+uncommitted tracked files in each, CLI/skill/Node versions, machine load and observer state are listed per attempt and flagged where they differ.
 Arms are never pooled together; each pair of arms lists the identity parts that differ. A plain playtest folder has no
 hashed world source, so it forms its own arm.
 
