@@ -25,6 +25,8 @@ test('#824: refusals name bounded, available alternatives; other answers carry n
   const fly = await edge.act(soul, {capability: 'fly up to the field'}) as any;
   assert.equal(fly.code, 'ride.unavailable'); assert.deepEqual(fly.did_you_mean, []); check(fly, 'fly');
   assert.equal(fly.alternatives[0].id, 'walk:field');
+  // the named place's walk comes from the walk resolver ("to the field" -> walk:field), the same as `walk to the field`
+  const flyTo = await edge.act(soul, {capability: 'fly to the green field'}) as any; check(flyTo, 'fly to'); assert.equal(flyTo.alternatives[0].id, 'walk:field');
   // A2: a materially different case (an unknown verb, no place named): the nearest available offers, one per verb
   const unknown = await edge.act(soul, {capability: 'teleport somewhere nice'}) as any;
   assert.equal(unknown.code, 'capability.unknown'); check(unknown, 'unknown verb');
