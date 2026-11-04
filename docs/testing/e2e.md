@@ -78,6 +78,50 @@ Rules for fixture runs:
 
 The release-time real-Chrome walks (V7) are separate; see [remote gate](remote-gate.md).
 
+## Custom journeys with owned attempts
+
+`tools/proof/owned-attempt.mjs` enforces the lifecycle for new custom browser proofs. It reuses the dev-world boot
+helper and owns one world child, fresh mutable data, a fresh persistent Chromium profile and video directory. It
+accepts a world recipe, never an arbitrary running URL. Assets and an explicitly selected browser cache/executable
+may be shared read-only. Build the served assets from the committed product source first.
+
+Call `runOwnedAttempt` from a committed driver wrapper with an ignored private ledger, the concrete agent identity,
+product checkout, tracked driver module (`driver: {root, path}`), world recipe, explicit browser cache/executable,
+and a predeclared cycle. Each production attempt requires a fresh Node process; the process-global guard rejects
+reuse, even through another module URL. Wrappers import the runner only and must not preload driver modules. This
+keeps relative driver imports fresh across committed repairs. The helper binds its own actual checkout and loaded source bytes; the product, helper and
+driver checkouts must all be clean. A driver default export receives `{page, base, paths, signal, check, fixture,
+arm, repeat}` and uses real input and named `check(key, ok, detail)` assertions. Optional `prepare` runs against the
+owned world before the browser; `beforeNavigation` installs observation and may return an owned cleanup function.
+Imports must have no side effects. Preparation, observation setup, the journey and cleanup are bounded; drivers
+should honor the signal and stop their own asynchronous work when cancelled.
+
+The cycle has an explicit `id`, `fix: {root, from, to, paths, scope}`, pinned `arms: {baseline: {root, head},
+candidate: {root, head}}` and ordered `plan: [{arm, repeat}, ...]`. Declare both repeats per arm before measurement.
+Each passing slot advances to the next planned measurement. A failure pins that slot: changing repeat/sample IDs
+cannot skip it, and all tries, including boot aborts, consume its three-attempt repair ceiling. Every retry needs
+a relevant committed change (`repair`, with the same change fields plus a concrete `hypothesis`). A commit alone
+does not reset counters. A completed passing plan cannot rerun without an explicitly named new corrective cycle
+and a relevant material change. Keep historical capture count and hashed original evidence in `history`; capture
+ordinals remain cumulative across cycles, separately from corrective repair-attempt numbers.
+
+Before attempt three, supply a fresh `review` with the independent **agent** identity (not the shared GitHub
+account), `evidenceOnly: true`, time after the preceding attempt, both preceding immutable `reportHash` values,
+the current source identities, a different concrete hypothesis, and `change: {path, line}` in the actual committed
+repair. Only `decision: 'TRY'` proceeds; missing, stale, self, source-mismatched or `ESCALATE` reviews stop. The
+ledger pins the implementing identity. Never remove a lock or edit a failed record to manufacture another try.
+
+Private reports retain screenshots, accessibility, console, world-log tail, explanation, source identities,
+capture/repair numbering and teardown results without overwrite. Boot abort, interruption, evidence failure and
+cleanup failure cannot qualify. A world crash stays a failure even when browser assertions pass. A crash leaves
+in-flight ownership visible; failed cleanup retains the lock for explicit diagnosis. A browser launch still pending
+at cancellation also retains ownership; any late context is closed and gets a separate immutable cleanup record,
+without changing the failed attempt's verdict. These records contain local
+operational mappings: publish only a separately sanitized summary and manually inspected media, checked with the
+publication checker. `createTestRunner` is injection-only and always produces **unqualified** reports. Tests of
+the helper are not feature/browser acceptance; clip duration, audio, framing, native resolution, product criteria,
+quiet-machine measurements and independent product review remain the proof author's responsibilities.
+
 ## God modal edit observation (E1/F1)
 
 E1 captures the accepted owner-button ACK sequence and two first snapshot reads before taking screenshots. A unique
