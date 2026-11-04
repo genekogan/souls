@@ -38,12 +38,23 @@ Two PRs that both append to one shared file conflict every time. So nothing a PR
 
 ## The merge train
 
-When a PR is ready, label it `merge:ready`. From there the train takes over, one PR at a time:
+When a PR is ready, label it `merge:ready`. From there the train takes over, one PR at a time, and first picks how
+the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
+
+- **Non-strict**: a T0–T2 PR that touches no engine-sensitive path (`mars/`, `apps/server/src/engine/`,
+  `packages/engine*`), whose required checks are green on its current head, which GitHub reports mergeable without
+  conflict, and while the latest concluded push CI run on `main` is green, is squash-merged as is, even when it is
+  behind `main`: steps 1 and 2 are skipped. `main`'s own push CI is the safety net for the combination.
+- **Strict**: everything else (T3–T4, engine paths, a head that is not green yet, a conflict or unknown
+  mergeability) goes through the steps below. While `main`'s push CI is red, every PR is strict, and the train says so
+  once per red streak on the coordination issue (repository variable `MERGE_TRAIN_NOTIFY_ISSUE`).
+
+The strict steps:
 
 1. **Rebase** the branch onto the current `main`.
 2. **Re-test**: the required checks (`ci-ok` from the `ci` workflow, `gitleaks`, `path-guard`, `scrub-guard`,
    `proof-ok` and `fragment`) run on the rebased head, and the train waits for them there (a personal-account repo
-   has no GitHub merge queue; `merge-train.yml` is the queue), so `main` never gets a commit tested only against an
+   has no GitHub merge queue; `merge-train.yml` is the queue), so a strict PR never lands tested only against an
    older base.
 3. **Merge**, by tier ([PROOF-POLICY.yml](PROOF-POLICY.yml), `node tools/proof/tier.mjs`):
    - **T0–T2** merge automatically once every required check is green.

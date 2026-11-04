@@ -94,8 +94,9 @@ ready for review; check a draft locally with `node tools/proof/acceptance.mjs ch
 
 ## 7. Merge
 
-Label the PR `merge:ready`. The merge train rebases it onto `main`, re-runs the required checks and merges: T0–T2
-automatically on green, T3–T4 after the maintainer approves (enforced by `proof-ok`). A conflict it cannot resolve
+Label the PR `merge:ready`. The merge train merges it: T0–T2 automatically on green (as is when it merges cleanly and
+touches no engine path, otherwise rebased onto `main` and re-checked first), T3–T4 rebased, re-checked and after the
+maintainer approves (enforced by `proof-ok`). A conflict it cannot resolve
 gets `needs:rebase`. See [the merge train](agent-workflow.md#the-merge-train). `main` is always releasable.
 
 ## 8. Release

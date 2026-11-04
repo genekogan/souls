@@ -1,5 +1,14 @@
-# The merge train: lands ready PRs on main one at a time, each re-tested on top of the main it will join. The repo
-# has no merge queue (personal account), so this workflow is the queue.
+# The merge train: lands ready PRs on main one at a time. The repo has no merge queue (personal account), so this
+# workflow is the queue.
+#
+# Landing mode (landingMode in .github/scripts/merge-train.mjs, decided by the pick step; decision PD10)
+#   non-strict           T0-T2, no engine-sensitive path (mars/, apps/server/src/engine/, packages/engine*), required
+#                        checks green on the current head, GitHub reports it mergeable without conflict, and the
+#                        latest concluded push run of ci.yml on main is green: squash-merged as is, even when behind
+#                        main (steps 1-2 skipped). Main's own push CI is the safety net for the combination
+#   strict               everything else (T3-T4, engine paths, head not green yet, conflict or unknown mergeability):
+#                        steps 1-3 below. While main's push CI is red every PR is strict, and the train says so once
+#                        per red streak on the coordination issue (repo variable MERGE_TRAIN_NOTIFY_ISSUE, default 755)
 #
 # Label flow
 #   merge:ready          the author (or an agent) adds it when the PR is done; the train takes the oldest eligible one
@@ -89,11 +98,13 @@ jobs:
 
       - name: Pick the next PR
         id: pick
-        run: node .github/scripts/merge-train.mjs next --repo "$REPO" --maintainer "$MAINTAINER" --output "$GITHUB_OUTPUT"
+        env:
+          NOTIFY_ISSUE: ${{ vars.MERGE_TRAIN_NOTIFY_ISSUE || '755' }}
+        run: node .github/scripts/merge-train.mjs next --repo "$REPO" --maintainer "$MAINTAINER" --notify-issue "$NOTIFY_ISSUE" --output "$GITHUB_OUTPUT"
 
       - name: Rebase onto main
         id: rebase
-        if: steps.pick.outputs.pr != ''
+        if: steps.pick.outputs.pr != '' && steps.pick.outputs.mode != 'nonstrict'
         env:
           HEAD_REF: ${{ steps.pick.outputs.head_ref }}
           HEAD_SHA: ${{ steps.pick.outputs.head_sha }}
@@ -204,7 +215,7 @@ jobs:
         id: wait
         if: >-
           steps.pick.outputs.pr != '' && steps.needs_rebase.outcome == 'skipped' &&
-          (steps.rebase.outputs.status == 'current' || steps.push.outcome == 'success')
+          (steps.rebase.outputs.status == 'current' || steps.push.outcome == 'success' || steps.pick.outputs.mode == 'nonstrict')
         env:
           SHA: ${{ steps.push.outputs.sha || steps.pick.outputs.head_sha }}
         run: node .github/scripts/merge-train.mjs wait --repo "$REPO" --sha "$SHA" --timeout-min 60 --output "$GITHUB_OUTPUT"
@@ -215,8 +226,10 @@ jobs:
           PR: ${{ steps.pick.outputs.pr }}
           SHA: ${{ steps.push.outputs.sha || steps.pick.outputs.head_sha }}
           TIER: ${{ steps.pick.outputs.tier }}
+          MODE: ${{ steps.pick.outputs.mode }}
+          MODE_WHY: ${{ steps.pick.outputs.mode_why }}
         run: |
-          echo "Merging #$PR ($TIER) at $SHA"
+          echo "Merging #$PR ($TIER, $MODE: $MODE_WHY) at $SHA"
           if ! node .github/scripts/merge-train.mjs merge --repo "$REPO" --pr "$PR" --sha "$SHA" 2> "$RUNNER_TEMP/merge.err"; then
             { echo "Merge train: the checks passed but GitHub refused the merge, so this PR left the train:"; echo; echo '```'; cat "$RUNNER_TEMP/merge.err"; echo '```'; echo; echo "Fix it and add \`merge:ready\` again."; } > "$RUNNER_TEMP/eject.md"
             node .github/scripts/merge-train.mjs eject --repo "$REPO" --pr "$PR" --message-file "$RUNNER_TEMP/eject.md"
@@ -231,7 +244,7 @@ jobs:
           PENDING: ${{ steps.wait.outputs.pending }}
         run: |
           {
-            if [ "$RESULT" = fail ]; then echo "Merge train: required checks failed on the rebased head (\`$FAILED\`), so this PR left the train."
+            if [ "$RESULT" = fail ]; then echo "Merge train: required checks failed on the head it would merge (\`$FAILED\`), so this PR left the train."
             else echo "Merge train: required checks did not finish within 60 minutes (\`$PENDING\`), so this PR left the train."; fi
             echo; echo "Fix it and add \`merge:ready\` again."
           } > "$RUNNER_TEMP/eject.md"

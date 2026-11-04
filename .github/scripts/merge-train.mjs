@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // The merge train's decisions, for .github/workflows/merge-train.yml (the label flow is documented there).
 //
-//   node .github/scripts/merge-train.mjs next  --repo o/r [--maintainer login] [--output file]
-//        the oldest `merge:ready` PR that can go now: pr, tier, head_ref, head_sha, base_ref, same_repo, more
+//   node .github/scripts/merge-train.mjs next  --repo o/r [--maintainer login] [--notify-issue n] [--output file]
+//        the oldest `merge:ready` PR that can go now: pr, tier, head_ref, head_sha, base_ref, same_repo, more, and
+//        mode=nonstrict|strict (with mode_why) from landingMode(); a red main CI is reported once on --notify-issue
 //   node .github/scripts/merge-train.mjs wait  --repo o/r --sha <sha> [--checks a,b] [--timeout-min 60] [--output f]
 //        polls check runs and commit statuses on <sha> until every required check concluded: result=pass|fail|timeout
 //   node .github/scripts/merge-train.mjs merge --repo o/r --pr <n> --sha <sha>
@@ -25,6 +26,9 @@ export { APPROVED_LABEL, maintainerApproved };
 export const READY = 'merge:ready', REBASE = 'needs:rebase';
 export const DEFAULT_CHECKS = ['ci-ok', 'gitleaks', 'path-guard', 'scrub-guard', 'fragment', 'proof-ok'];
 const AWAITING = '<!-- merge-train:awaiting-approval -->';
+const MAIN_RED = '<!-- merge-train:main-red';
+/** Engine-sensitive paths always take the strict path (rebase and re-test), whatever their tier. */
+export const ENGINE_PATHS = /^(mars\/|apps\/server\/src\/engine\/|packages\/engine)/;
 const rank = t => ['T0', 'T1', 'T2', 'T3', 'T4'].indexOf(t);
 
 /** Why a ready PR cannot go now, or null when it can. */
@@ -36,6 +40,29 @@ export function blocker({ pr, tier, approved, defaultBranch }) {
   if (pr.base?.ref && pr.base.ref !== defaultBranch) return 'not-default-branch';
   if (rank(tier) >= 3 && !approved) return 'awaiting-approval';
   return null;
+}
+
+/**
+ * How a pickable PR lands. `nonstrict`: squash its current head as is, even when behind main. Only for T0-T2, no
+ * engine-sensitive path, required checks green on the head, GitHub reporting it mergeable without conflict, and the
+ * latest concluded push CI on main green. Anything else is `strict`: rebase onto main, re-test, merge.
+ */
+export function landingMode({ tier, files = [], mergeable, mergeableState, headChecks, mainCi }) {
+  if (rank(tier) >= 3) return { mode: 'strict', why: `tier ${tier}` };
+  if (files.some(f => ENGINE_PATHS.test(f))) return { mode: 'strict', why: 'engine-sensitive paths' };
+  if (mainCi !== 'success') return { mode: 'strict', why: `main CI ${mainCi ?? 'unknown'}` };
+  if (mergeable !== true || mergeableState === 'dirty') return { mode: 'strict', why: `not mergeable (${mergeableState ?? 'unknown'})` };
+  if (headChecks !== 'pass') return { mode: 'strict', why: `head checks ${headChecks}` };
+  return { mode: 'nonstrict', why: 'T0-T2, green on head, mergeable' };
+}
+
+/**
+ * The latest concluded push run of ci.yml on the default branch (cancelled and skipped runs say nothing), and the id
+ * of the newest green run, which keys the one-comment-per-red-streak notice.
+ */
+export function mainCiState(runs = []) {
+  const done = runs.filter(r => r.status === 'completed' && !['cancelled', 'skipped'].includes(r.conclusion)).sort((a, b) => b.id - a.id);
+  return { conclusion: done[0]?.conclusion ?? null, lastGreen: done.find(r => r.conclusion === 'success')?.id ?? 'none' };
 }
 
 /** Folds check runs and commit statuses into one verdict over the required names (latest run per name wins). */
@@ -69,9 +96,10 @@ const ghRaw = (args, input) => execFileSync('gh', ['api', ...args], { encoding: 
 const gh = (...args) => { const out = ghRaw(args); return out.trim() ? JSON.parse(out) : null; };
 const ghAll = path => gh(path, '--paginate', '--slurp').flat();
 
+const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 function comment(repo, pr, body) { ghRaw([`repos/${repo}/issues/${pr}/comments`, '--input', '-'], JSON.stringify({ body })); }
 
-export function next({ repo, maintainer, api = { gh, ghAll, comment } }) {
+export function next({ repo, maintainer, notifyIssue, api = { gh, ghAll, comment } }) {
   const repoInfo = api.gh(`repos/${repo}`);
   const defaultBranch = repoInfo.default_branch;
   const candidates = api.ghAll(`repos/${repo}/issues?state=open&labels=${encodeURIComponent(READY)}&per_page=100`)
@@ -96,12 +124,37 @@ export function next({ repo, maintainer, api = { gh, ghAll, comment } }) {
       }
     }
     if (why) { skipped.push({ pr: n, tier, why }); continue; }
+    const mode = pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api });
     return {
       pr: n, tier, head_ref: pr.head.ref, head_sha: pr.head.sha, base_ref: pr.base.ref, title: pr.title,
       same_repo: pr.head.repo?.full_name === repo, more: candidates.length - i - 1 > 0, skipped,
+      mode: mode.mode, mode_why: mode.why,
     };
   }
   return { pr: '', more: false, skipped };
+}
+
+function pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api }) {
+  if (rank(tier) >= 3 || files.some(f => ENGINE_PATHS.test(f))) return landingMode({ tier, files });
+  let ci; // unreadable main CI (token scope, API error) counts as not green: strict
+  try { ci = mainCiState(api.gh(`repos/${repo}/actions/workflows/ci.yml/runs?branch=${encodeURIComponent(defaultBranch)}&event=push&status=completed&per_page=30`)?.workflow_runs); }
+  catch { ci = { conclusion: 'unreadable', lastGreen: 'unreadable' }; }
+  const runs = api.ghAll(`repos/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`).flatMap(p => p.check_runs ?? p);
+  const statuses = api.ghAll(`repos/${repo}/commits/${pr.head.sha}/statuses?per_page=100`);
+  const headChecks = summarizeChecks({ runs, statuses, required: parseChecks(process.env.CHECKS) }).state;
+  // GitHub computes `mergeable` lazily (null until then, e.g. right after main moved): ask again briefly, when it decides.
+  for (let i = 0; ci.conclusion === 'success' && headChecks === 'pass' && pr.mergeable == null && i < 3; i++) {
+    (api.pause ?? pause)(3000);
+    pr = api.gh(`repos/${repo}/pulls/${pr.number}`);
+  }
+  const mode = landingMode({ tier, files, mergeable: pr.mergeable, mergeableState: pr.mergeable_state, mainCi: ci.conclusion, headChecks });
+  if (ci.conclusion !== 'success' && notifyIssue) {
+    const marker = `${MAIN_RED}:${ci.lastGreen} -->`;
+    if (!api.ghAll(`repos/${repo}/issues/${notifyIssue}/comments?per_page=100`).some(c => String(c.body).startsWith(marker))) {
+      api.comment(repo, notifyIssue, `${marker}\nMerge train: the latest push CI on \`${defaultBranch}\` is ${ci.conclusion ?? 'not concluded'}, so the train stopped non-strict merges and rebases and re-tests every PR until \`${defaultBranch}\` is green again.`);
+    }
+  }
+  return mode;
 }
 
 export async function wait({ repo, sha, required, timeoutMin = 60, pollSec = 20, api = { ghAll, gh }, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now }) {
@@ -135,7 +188,7 @@ async function main([mode, ...argv]) {
   const repo = opt('--repo') ?? process.env.GITHUB_REPOSITORY;
   if (!repo) { console.error('--repo is required'); return 2; }
   if (mode === 'next') {
-    out(opt('--output'), next({ repo, maintainer: opt('--maintainer') ?? process.env.MAINTAINER ?? repo.split('/')[0] }));
+    out(opt('--output'), next({ repo, maintainer: opt('--maintainer') ?? process.env.MAINTAINER ?? repo.split('/')[0], notifyIssue: opt('--notify-issue') || undefined }));
     return 0;
   }
   if (mode === 'wait') {
