@@ -32,11 +32,9 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
   under an ignored path (`.local/`).
 - Never commit secrets, `.env`, `deploy.env`, databases, run outputs or media. Never bypass the secret scanner or
   commit hooks (`--no-verify`).
-- Never publish device-specific paths, usernames, hostnames, IP addresses, SSH targets, local URLs or operational
-  resource identifiers in GitHub bodies/comments, commits, logs, proof or media (including metadata). Use relative
-  paths and neutral environment labels; keep operational mappings private. Before every write/upload, check the
-  exact payload with `node tools/proof/publication.mjs <payload files>` and inspect media separately.
-  [Publication privacy](docs/process/publication-privacy.md) applies even to private repositories.
+- Never publish device details (personal paths, usernames, hosts, private IPs, SSH targets, local URLs, resource ids)
+  in GitHub text, commits, proof or media. Run `node tools/proof/publication.mjs` on outgoing text/JSON; it cannot
+  read pixels, audio or media metadata, so inspect those yourself. [Publication privacy](docs/process/publication-privacy.md)
 
 ## Engine invariants
 

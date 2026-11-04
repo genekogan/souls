@@ -41,3 +41,11 @@ test('added lines carry file and line numbers; guard files are skipped', () => {
   assert.deepEqual(lines.map(l => `${l.file}:${l.line}`), ['x.md:5', 'x.md:6', '.gitleaks.toml:1']);
   assert.deepEqual(checkScrub(lines), ['x.md:6: public IP address']);
 });
+
+test('scrub guard: workspace paths and SSH targets beyond the service users, with placeholders allowed', () => {
+  for (const line of ['cd ~/' + 'Projects/app', 'see $HOME/' + 'code/app', 'ssh -p 2222 someuser' + '@some-host', 'x someuser' + '@192.168.' + '7.8'])
+    assert.ok(scrubLine(line).length, line);
+  for (const line of ['cache ~/.cache/sim-assets', 'set $HOME/.config/tool', 'clone into ~/<project>', 'a bare ~/ prefix',
+    'ssh user' + '@host', 'ssh -T git' + '@github.com', 'pnpm add foo' + '@latest', 'ssh deploy' + '@<host>'])
+    assert.deepEqual(scrubLine(line), [], line);
+});
