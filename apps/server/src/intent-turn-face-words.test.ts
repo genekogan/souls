@@ -46,11 +46,13 @@ test('F1: "turn to face the bandstand" turns toward the bandstand, also out of s
   // id forms act too: turn:<degrees>, and an offered face:<soul> still faces that Soul
   const deg = await act(a, 'turn:180'); assert.equal(deg.accepted, true, JSON.stringify(deg)); await w.ticks(60); assert.equal(headingOfYaw(w.body(a).pose.yaw), 180);
   assert.deepEqual((await dry('turn:90')).would?.chosen?.heading, 90);
-  await w.put(b, [w.pos(a)[0] + 2, w.pos(a)[1]]);
-  // an offered face:<soul>, and its alias forms turn-to:<soul> / look-at:<soul>, still face that Soul (dry run and act)
-  for (const q of ['face:', 'turn-to:', 'look-at:'].map(v => v + b.soulId)) {
+  // an offered face:<soul>, and its alias forms turn-to:<soul> / look-at:<soul>, still face that Soul (dry run and act):
+  // B stands on a different side before each, so each act's own turn is what is measured
+  const sides: [number, number][] = [[2, 0], [0, -2], [-2, 0]];
+  for (const [k, q] of ['turn-to:', 'look-at:', 'face:'].map(v => v + b.soulId).entries()) {
+    const at = w.pos(a); await w.put(b, [at[0] + sides[k]![0], at[1] + sides[k]![1]]);
     const r = await dry(q); assert.equal(r.would?.capability, 'face:' + b.soulId, q + ' ' + JSON.stringify(r));
-    const fs = await act(a, q); assert.equal(fs.accepted, true, q + ' ' + JSON.stringify(fs)); await w.ticks(5);
-    assert.equal(w.body(a).human.gaze?.kind, 'face', q + ' ' + JSON.stringify(w.body(a).human.gaze)); assert.equal(w.body(a).human.gaze?.target, b.entityId, q);
+    const fs = await act(a, q); assert.equal(fs.accepted, true, q + ' ' + JSON.stringify(fs)); await w.ticks(120);
+    assert.equal(headingOfYaw(w.body(a).pose.yaw), headingOfYaw(yawTowards(w.pos(a), w.pos(b))), q + ' faces B');
   }
 });
