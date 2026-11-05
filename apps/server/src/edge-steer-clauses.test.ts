@@ -21,6 +21,7 @@ test('single-clause steer words read as before, the land tail included', () => {
     ['fly to the lighthouse then land', {to: 'lighthouse', land: true}],
     ['fly to the lighthouse, then land there', {to: 'lighthouse', land: true}],
     ['fly to the lighthouse and then land', {to: 'lighthouse', land: true}],
+    ['fly to the lighthouse then then land', {to: 'lighthouse', land: true}],
     ['fly north', {direction: 'north', distance: 100}],
     ['fly north 50 m then land', {direction: 'north', distance: 50, land: true}],
     ['land', {land: true}],
