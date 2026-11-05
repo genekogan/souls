@@ -32,12 +32,19 @@ test('rock-paper-scissors and holding hands with consent', {timeout:600000}, asy
  await put(ben,ax,az+1.6);await put(cy,ax+3,az-1.2);await tick(20);
  const sz=x=>Buffer.byteLength(JSON.stringify(x));
  const absent=await here(cy),absentAna=await here(ana);
- // 100 distant pairs holding hands and 100 mid-game (body state) with pending offers among them (rows), far away
- const ents=W().entities;
- for(let i=0;i<200;i++){const id=`far_${i}`,e=structuredClone(body(cy));e.id=id;e.label=`Far ${i}`;delete e.human.task;ents[id]=e;const k=Math.floor(i/2),side=i%2;e.pose.p=[180+k%10*3+(side?0.62:0),0,180+Math.floor(k/10)*3];e.pose.yaw=0;
-  if(k<50){e.human.handHold={with:`far_${i^1}`,hand:side?'left':'right',since:1};}else{e.human.activity='rps';e.human.rps={start:1,shoot:53,shape:'rock'};}}
+ // 100 distant pairs holding hands and 100 mid-game (body state) with pending offers among them (rows), far away but
+ // on the floor (this fixture's ground is [-30, 30]²; a body off it is a fault the world sets aside, as in handover.test):
+ // the far corner, beyond the 15 m object radius from all three Souls; pairs 1.6 m apart, rows 1.5 m
+ const [gx0,gz0,gx1,gz1]=f.host.engine.groundBoundsV1(),FX=ax<=(gx0+gx1)/2?gx1-17:gx0+2,FZ=az<=(gz0+gz1)/2?gz1-17:gz0+2;
+ const ents=W().entities;let distantScene;
+ for(let i=0;i<200;i++){const id=`far_${i}`,e=structuredClone(body(cy));e.id=id;e.label=`Far ${i}`;delete e.human.task;ents[id]=e;const k=Math.floor(i/2),side=i%2;e.pose.p=[FX+k%10*1.6+(side?0.62:0),0,FZ+Math.floor(k/10)*1.5];e.pose.yaw=0;
+  if(k<50){e.human.handHold={with:`far_${i^1}`,hand:side?'left':'right',since:1};}else{e.human.activity='rps';delete e.human.speed;e.human.rps={start:1,shoot:53,shape:'rock'};}}
  for(let i=0;i<100;i++)f.db.db.prepare('INSERT INTO edge_invites_v1 (world_id,invite_id,state,body,created_at) VALUES (?,?,?,?,?)').run(f.host.worldId,`inv_far${i}`,'pending',JSON.stringify({id:`inv_far${i}`,what:i%2?'rps':'hold-hands',kind:'paired',host:{soulId:`s_far${i*2}`,name:`Far ${i*2}`},guests:[{soulId:`s_far${i*2+1}`,name:`Far ${i*2+1}`}],capability:'x',label:'offers you a game',createdTick:W().tick,expiresTick:W().tick+1e9,state:'pending',responses:{},hostReceipt:null,guestReceipts:{},rps:{host:'rock'}}),Date.now());
  await tick(10);
+ assert.equal(f.db.events(f.host.worldId,0).filter(e=>e.kind==='rules'&&e.payload?.recovery).length,0,'the distant scene raised no engine fault (nothing set aside): '+JSON.stringify(f.db.events(f.host.worldId,0).filter(e=>e.kind==='rules'&&e.payload?.recovery).map(e=>e.payload.recovery.reason)).slice(0,900));
+ {const farIds=Object.keys(W().entities).filter(id=>id.startsWith('far_'));assert.equal(farIds.length,200,'the distant bodies are all still there');
+  assert.equal(farIds.filter(id=>W().entities[id].human?.handHold).length,100,'100 distant bodies still hold hands');assert.equal(farIds.filter(id=>W().entities[id].human?.rps).length,100,'100 distant bodies are still mid-game');
+  distantScene={from:[FX,FZ],nearestSoul:+Math.min(...[ana,ben,cy].map(q=>Math.hypot(at(q)[0]-FX,at(q)[1]-FZ))).toFixed(1)};}
  const far=await here(cy),farAna=await here(ana);
  assert.equal(sz(far),sz(absent),'100 distant pairs and their offers add nothing to here');assert.equal(sz(farAna),sz(absentAna));
  assert.ok(!/Far |far_|holding hands|offers you/.test(JSON.stringify(far)),'no names, no lines');
@@ -146,6 +153,6 @@ test('rock-paper-scissors and holding hands with consent', {timeout:600000}, asy
  const nearCy=await here(cy);
  report.hereBytes={absent:sz(absent),distant100Pairs:sz(far),nearbyBystander:sz(nearCy),offereeAbsent:sz(absentAna),offereeWithOffer:sz(benHand),offereeJoined:sz(near),offerLineBytes:Buffer.byteLength(JSON.stringify({offer:benHand.me.offer})),holdingLineBytes:Buffer.byteLength(JSON.stringify({hands:near.me.hands}))};
  assert.deepEqual(f.host.engine.runtime.violations,[]);
- Object.assign(report,{status:'pass',retries,checks:['offer in plain words; the offeree alone sees one line','decline is polite and final (invite.gone after)','a throw is required with the offer and the acceptance (rps.choose)','one shared count; no throw shown before shoot; arm\'s length 0.95-1.05 m','the world referees; both told the result','an unanswered offer lapses','an offered hand can be withdrawn; Ben never moved before accepting','taking her hand: side by side 0.58-0.68 m, same facing; both see "holding hands with"','walk together: Ana leads, Ben beside her at her pace','told to go elsewhere, Ben lets go first (the release in full), then walks','letting go asked in plain words','100 distant pairs and their offers: +0 bytes; the bystander +0 throughout','zero native violations']});
+ Object.assign(report,{status:'pass',retries,distantScene,checks:['offer in plain words; the offeree alone sees one line','decline is polite and final (invite.gone after)','a throw is required with the offer and the acceptance (rps.choose)','one shared count; no throw shown before shoot; arm\'s length 0.95-1.05 m','the world referees; both told the result','an unanswered offer lapses','an offered hand can be withdrawn; Ben never moved before accepting','taking her hand: side by side 0.58-0.68 m, same facing; both see "holding hands with"','walk together: Ana leads, Ben beside her at her pace','told to go elsewhere, Ben lets go first (the release in full), then walks','letting go asked in plain words','100 distant pairs and their offers: +0 bytes; the bystander +0 throughout','zero native violations']});
  if(out){mkdirSync(out,{recursive:true});writeFileSync(`${out}/summary.json`,JSON.stringify(report,null,2));}console.log(JSON.stringify(report));
 });
