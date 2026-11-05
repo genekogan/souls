@@ -125,11 +125,8 @@ async function launcherView() {
 }
 async function stopAll(run) {
   run.stopped = true;
-  // the telemetry collector first (it checks for a stop after each 15 s scrape): SIGTERM, up to 20 s, then SIGKILL
-  const T = run.telemetry; let telemetry = null;
-  if (T) { try { T.kill('SIGTERM'); } catch { /* gone */ } for (let i = 0; i < 40 && T.exitCode == null && T.signalCode == null; i++) await sleep(500);
-    const killed = T.exitCode == null && T.signalCode == null; if (killed) try { T.kill('SIGKILL'); } catch { /* gone */ }
-    telemetry = { exitCode: T.exitCode, signal: T.signalCode, killed, earlyExit: run.telemetryEarlyExit ?? null }; }
+  // the telemetry collector is told first (it checks for a stop after each 15 s scrape) and awaited after the launcher
+  const T = run.telemetry; let telemetry = null; try { T?.kill('SIGTERM'); } catch { /* gone */ }
   for (const ws of run.sockets) try { ws.close(); } catch { /* closed */ }
   for (const a of [...run.aborts, ...run.opAborts]) try { a.abort(); } catch { /* done */ }
   for (const p of run.procs ?? []) try { p.kill('SIGKILL'); } catch { /* gone */ }   // CLI calls still in flight (join)
@@ -143,6 +140,9 @@ async function stopAll(run) {
   for (let i = 0; i < 20 && pids.some(alive); i++) await sleep(500);
   const survivors = pids.filter(alive); for (const p of survivors) try { process.kill(p, 'SIGKILL'); } catch { /* gone */ }
   if (L.child.exitCode == null) try { L.child.kill('SIGKILL'); } catch { /* gone */ }
+  if (T) { for (let i = 0; i < 40 && T.exitCode == null && T.signalCode == null; i++) await sleep(500);   // up to 20 s, then SIGKILL
+    const killed = T.exitCode == null && T.signalCode == null; if (killed) try { T.kill('SIGKILL'); } catch { /* gone */ }
+    telemetry = { exitCode: T.exitCode, signal: T.signalCode, killed, earlyExit: run.telemetryEarlyExit ?? null }; }
   await sleep(1000);
   // the recorded world pids, the launcher, the browser and any process still naming this run's data are checked again
   // after the kill (world processes get their data dir from the environment, so the pid list is the real check)
