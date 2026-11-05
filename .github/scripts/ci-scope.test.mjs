@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { FULL_EVENTS, JOBS, changedFiles, jobsFor, smokeFor } from './ci-scope.mjs';
+import { FULL_EVENTS, GOD_SKILL_TESTS, JOBS, changedFiles, jobsFor, smokeFor } from './ci-scope.mjs';
 import { SCOPE_RULES, scopeFor } from '../../tools/test-harness/release-gate.mjs';
 
 const names = files => jobsFor(files).include.map(j => j.name);
@@ -91,4 +91,17 @@ test('pushes to main and manual runs check everything; pull request runs stay sc
   const workflow = readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8');
   assert.match(workflow, /ci-scope\.mjs --base "\$BASE" --head "\$HEAD_SHA" --event "\$EVENT"/);
   assert.match(workflow, /push:\n\s+branches: \[main\]/);
+});
+
+// #918: the god-skill unit tests (replay corpus included) run on the one job carrying godSkill.
+test('god-skill unit tests: one job runs them, and god or god-skill changes select it', () => {
+  assert.deepEqual(JOBS.filter(j => j.godSkill).map(j => j.name), ['server-0']);
+  assert.equal(JOBS.find(j => j.godSkill).assets, true, 'glb and upload tests read pulled media');
+  const god = files => jobsFor(files).include.filter(j => j.godSkill).map(j => j.name);
+  for (const f of ['tools/god-skill/lib/upload.mjs', 'tools/god-skill/replay-corpus.test.mjs', 'apps/server/src/god/buildsafe-rule.ts']) assert.deepEqual(god([f]), ['server-0'], f);
+  assert.deepEqual(god(['docs/testing.md']), []);
+  const workflow = readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8');
+  assert.match(workflow, /GOD_SKILL: \$\{\{ matrix\.godSkill \|\| false \}\}/);
+  assert.ok(workflow.includes(`if [ "$GOD_SKILL" = true ]; then node --test --test-concurrency=1 ${GOD_SKILL_TESTS} || god=$?; fi`));
+  assert.match(workflow, /exit \$\(\( server \|\| god \)\)/);
 });

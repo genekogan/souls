@@ -28,9 +28,14 @@ export const JOBS = [
   { name: 'client-cli', kind: 'client-cli', assets: true, steps: ['V3-client-cli'] },
   { name: 'native', kind: 'native', assets: true, steps: ['V3-mars-engine'] },
   { name: 'latency', kind: 'latency', assets: false, steps: ['V5-server-full'] },
-  // the server inventory in SERVER_SHARDS duration-balanced shards (server-test-files.mjs)
-  ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, steps: ['V5-server-full', 'V6-'] })),
+  // the server inventory in SERVER_SHARDS duration-balanced shards (server-test-files.mjs). Shard 0 also runs the
+  // god-skill unit tests (GOD_SKILL_TESTS, among them the replay corpus): about 3 s, and they need the pulled media,
+  // so they ride on a leg that god paths already select instead of starting a runner of their own (#918).
+  ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, ...(shard === 0 ? { godSkill: true } : {}), steps: ['V5-server-full', 'V6-'] })),
 ];
+
+/** The god-skill unit tests, run by the job with `godSkill` (ci.yml, the server case). */
+export const GOD_SKILL_TESTS = 'tools/god-skill/*.test.mjs';
 
 const relevant = (job, steps) => job.steps.some(s => steps.some(step => s.endsWith('-') ? step.startsWith(s) : step === s));
 
