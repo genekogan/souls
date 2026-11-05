@@ -4,7 +4,7 @@
 // `object:<entity>:switch-off`, walks up to it, reaches out, and the lamp's state changes in the world (an engine edit:
 // in the ledger, broadcast to viewers, never the god's to undo). Nothing in the edge changes: the object framework's own
 // capabilities, admission, receipts and body plans carry it.
-import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, gameSquareOf, gameStatus, pollOptions, containerInside, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, gameSquareOf, gameStatus, pollOptions, containerInside, containerOpen, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { isContactActuator, CONTACT_REACH } from './contact-actuator.ts';
 import { isPosterAction, isWantedAction, posterProblem, posterPatch, wantedProblem, wantedPatch } from './poster-boards.ts';
@@ -30,8 +30,12 @@ export const actionsOf = (def: StoredDef): Action[] => { const w = waterActions(
 export function keptShut(m: Pick<WorldModel, 'entities' | 'resolvedDef'>, e: Entity): boolean {
   if (e.in.parent === 'world' || !e.in.slot) return false;
   const p = m.entities.get(e.in.parent), pd = p && m.resolvedDef(p.def), ins = containerInside(pd);
-  return !!ins && ins.slots.some((s) => s.id === e.in.slot) && actuatedState(p!, pd!).open !== true;
+  return !!ins && ins.slots.some((s) => s.id === e.in.slot) && !containerOpen(pd!, actuatedState(p!, pd!));
 }
+/** #435 (W071): who left each thing in a container whose def declares `leftBy` (a swap shelf): "itemId=soulId" pairs. */
+export const leftByOf = (state: Record<string, unknown> | undefined): Map<string, string> =>
+  new Map(String(state?.leftBy ?? '').split(',').filter((p) => p.includes('=')).map((p) => p.split('=', 2) as [string, string]));
+export const keepsLeftBy = (def: StoredDef | undefined): boolean => !!def?.state && Object.hasOwn(def.state, 'leftBy');
 export function actuatedState(e: Entity, def: StoredDef): Record<string, unknown> {
   const fields = new Set<string>(waterFields(def));
   for (const a of actionsOf(def)) { for (const w of a.when) fields.add(w.field); for (const t of a.then) if ('field' in t) fields.add(t.field); }

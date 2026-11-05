@@ -1,5 +1,5 @@
 export * from './schemas.ts';
-export {contactStateKey,DRAWER_TRAVEL,CONTACT_EXTRA_FIELDS,containerInside,type ContainerInside} from './contact.ts';
+export {contactStateKey,DRAWER_TRAVEL,CONTACT_EXTRA_FIELDS,containerInside,containerOpen,type ContainerInside} from './contact.ts';
 export { gameSquare, gameSquareOf, gameStatus, GAME_LINES } from './core-kit/writable-boards.ts'; // Soul Actions entry 27
 export { WorldModel, definitionRefs, nearHash, obbOverlap, type OBB, type AssetInfo, type AssetLookup } from './model.ts';
 export { plan, applyBatch, checkFields, aimOf, boundsOf, onAbsoluteDeck, type Plan, type PlanOptions, type UsesHook, type Diff } from './compile.ts';

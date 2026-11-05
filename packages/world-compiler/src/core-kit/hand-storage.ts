@@ -36,4 +36,30 @@ const lockers: DefInput = {
   components: { ...lockerV2.components, container: { capacity: 1, inside: { lip: 1.055, face: 0.236, stand: [-0.12, 0.76], fit: [0.26, 0.62, 0.36], word: 'locker' } } } as DefInput['components'],
 } as DefInput;
 
-export const HAND_STORAGE: DefInput[] = [drawerChest, lockers];
+// #435 (W071): a swap shelf (a free shelf). The same storage with data only: no `open` state, so no door (always open,
+// containerOpen), and a declared `leftBy`, so it records who left each thing. One shelf at 1 m behind a low front rail, three
+// places on it (each up to 0.3 m across and 0.28 m tall); the body stands 0.4 m in front of the rail. The lower shelf is fixed.
+const H = 1.55, W = 1.0, D = 0.4, rail = 0.195;
+const swapShelf: DefInput = {
+  schema: 'def/1', name: 'core-swap-shelf', version: 1,
+  description: 'An open wooden swap shelf (1 × 0.4 m, 1.55 m tall) under a painted header: take something, leave something. One shelf at 1 m behind a low front rail holds up to three small things (each up to 0.3 m across and 0.28 m tall), and it remembers who left each one; nearby you see what is on it and who left it. The lower shelf is fixed.',
+  tags: ['furniture', 'storage', 'shelf', 'swap', 'hand-operated', 'storage-inside'],
+  synonyms: ['swap shelf', 'free shelf', 'giveaway shelf', 'take one leave one'],
+  form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: [
+    box([-W / 2 + 0.015, H / 2, 0], [0.03, H, D], 'wood'), box([W / 2 - 0.015, H / 2, 0], [0.03, H, D], 'wood'),
+    box([0, H / 2, -D / 2 + 0.01], [W - 0.06, H, 0.02], 'back'), box([0, H - 0.015, 0], [W, 0.03, D], 'wood'),
+    box([0, 0.06, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 0.52, 0], [W - 0.06, 0.03, D - 0.02], 'wood'),
+    box([0, 1.0, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 1.04, rail - 0.01], [W - 0.06, 0.05, 0.02], 'wood'),
+    box([0, H + 0.1, 0], [0.84, 0.17, 0.03], 'sign'), box([0, H + 0.1, 0.016], [0.6, 0.05, 0.004], 'letters'),
+    box([-0.28, 0.66, -0.04], [0.3, 0.25, 0.22], 'b0'), box([0.12, 0.64, -0.04], [0.22, 0.21, 0.22], 'b1'),
+  ] } },
+  params: { wood: { type: 'color', default: '#8a6240', doc: 'wood colour' }, back: { type: 'color', default: '#6f4d32', doc: 'back panel colour' }, sign: { type: 'color', default: '#2f6b5a', doc: 'header colour' } },
+  state: { leftBy: { type: 'string', max: 240, default: '' } },
+  slots: [shelf('in-1', [-0.3, 1.015, -0.01], 'shelf'), shelf('in-2', [0, 1.015, -0.01], 'shelf'), shelf('in-3', [0.3, 1.015, -0.01], 'shelf')] as DefInput['slots'],
+  components: { container: { capacity: 3, inside: { lip: 1.065, face: rail, stand: [0, rail + 0.4], fit: [0.3, 0.28, 0.3], word: 'shelf' } } } as DefInput['components'],
+  palette: { wood: '#8a6240', back: '#6f4d32', sign: '#2f6b5a', letters: '#f1ead8', b0: '#9a3b32', b1: '#3b5f8a' },
+  size: { box: [W, H + 0.19, D] },
+} as DefInput;
+
+export const HAND_STORAGE: DefInput[] = [drawerChest, lockers, swapShelf];

@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 storage family (#435, W071): a swap shelf. core-swap-shelf@1 (3d3ae6482628…) is a new def on entry 42's container faculty with data only: an open shelf with no `open` state (no door, so always open), three shelf places behind a low front rail, and a declared `leftBy` record of who left each thing. 144 triangles (budget 400). Frozen core-drawer-chest@2 (49445cc00954…) and core-lockers@3 (a6e4e98f7e03…) are byte-identical. A narrow production K=2 run (`conformance.mjs --k 2 --filter core-swap-shelf`) baked, placed and rendered all 5 samples with 0 findings and 0 qualification gaps, so this supplement pins no finding. No budgets, samples or gap checks were relaxed.",
+  "findings": []
+}

@@ -32,3 +32,8 @@ export function containerInside(def:{tags?:readonly string[];components?:{contai
   const slots=(def.slots??[]).filter(s=>s.kind==='shelf').map(s=>({id:s.id,p:s.p}));
   return slots.length?{...c.inside,slots}:null;
 }
+/** #435 (W071): a container with an inside and no `open` state has no door (open shelving: a swap shelf). What is kept
+ *  in it is always seen nearby and taken without an open step; one that declares `open` is open only while it is. */
+export function containerOpen(def:{state?:Record<string,unknown>},state:{open?:unknown}|undefined):boolean{
+  return !(def.state&&Object.hasOwn(def.state,'open'))||state?.open===true;
+}

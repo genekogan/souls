@@ -300,15 +300,19 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
 }
 // Soul Actions entry 42: "put the bowl in the drawer" is put-in:<container>; "take the bowl out of the chest" is that
 // bowl's take from inside it. A shut container's contents are never offered: its words name its open offer instead.
-const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip)\s+(?:away\s+)?(.+?)\s+(?:in|into|inside|in\s+to|away\s+in)\s+(.+?)[.!]?$/;
-const UNSTOW = /^(?:please\s+)?(?:take|get|fetch|remove|grab|lift|pull|pick\s+up|pick)\s+(.+?)\s+(?:out\s+of|out\s+from|from\s+inside|from\s+in|from)\s+(.+?)[.!]?$/;
+// #435: an open shelf a Soul keeps things on (a swap shelf) is a container too: "leave the bowl on the swap shelf" and
+// "take the bowl off the swap shelf". "on" is a put-in only when no surface by those words is on offer (a table stays put-on).
+const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
+const UNSTOW = /^(?:please\s+)?(?:take|get|fetch|remove|grab|lift|pull|pick\s+up|pick)\s+(.+?)\s+(?:out\s+of|out\s+from|from\s+inside|from\s+in|from|off\s+of|off)\s+(.+?)[.!]?$/;
 function storeWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
   const put = STOW.exec(text), take = put ? null : UNSTOW.exec(text), m = put ?? take; if (!m) return null;
   const verb = put ? 'put-in' : 'pick-up', pool = ctx.caps.filter(c => c.verb === verb); if (!pool.length && put) return null;
   const words = (x: string) => tokens(x).filter(w => !['the', 'a', 'an', 'my', 'your', 'it', 'its', 'of', 'top'].includes(w));
-  const thing = words(m[1]), box = words(m[2]), hits = (c: EdgeCapability, ws: string[]) => {const t = ctx.target(c), all = tokens([c.id, c.label, ...t.names].join(' ')); return ws.every(w => tokenHit(w, all) || (SYNONYMS[w] ?? []).some(s => tokenHit(s, all)));};
+  const thing = words(m[1]), box = words(put ? m[3] : m[2]), hits = (c: EdgeCapability, ws: string[]) => {const t = ctx.target(c), all = tokens([c.id, c.label, ...t.names].join(' ')); return ws.every(w => tokenHit(w, all) || (SYNONYMS[w] ?? []).some(s => tokenHit(s, all)));};
   // a take from inside names its container (the label says "out of chest (drawer)"); a put names the container it goes in
-  const named = pool.filter(c => hits(c, box) && (put || hits(c, thing))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
+  const on = !!put && /^on/.test(put[2]), door = (c: EdgeCapability) => ctx.caps.some(o => o.verb === 'object' && (o.action === 'open' || o.action === 'close') && o.object === c.target?.id);
+  if (on && ctx.caps.some(c => c.verb === 'put-on' && hits(c, box))) return null;
+  const named = pool.filter(c => hits(c, box) && (put || hits(c, thing)) && !(on && door(c))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
   if (named[0] && (put || / out of /.test(named[0].label))) return {kind: 'alias', cap: named[0], note: `${input} is ${named[0].id} (${named[0].label}).`};
   if (put) return null;
   // nothing offered to take from there: a shut container named by these words says so (what is inside stays unseen)
