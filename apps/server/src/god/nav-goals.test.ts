@@ -150,16 +150,20 @@ test('from a raised room, a far ground goal is walked to via the building front;
 
 /** #875 fixture: a chair (or a two-seat sofa) facing +z with its stand points 0.75 m in front; `main` says which standing
  *  spots are connected both ways to the main walkable area (navCheckV1), everything else is a sealed pocket. */
-function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean) {
+function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean, room?: Vec2[]) {
   const entity = { id: 'chair', name: 'chair', def: 'chair@1', in: { parent: 'world' } };
   const def = { name: 'chair', form: 'point', components: {}, tags: ['seat'], make: { kind: 'mesh' } };
   const baked = { rooms: [], colliders: [], openings: [], slots: seats.map(([x, z], i) => ({ id: `seat-${i}`, kind: 'seat', p: [x, 0, z], yaw: 0 })) };
+  // `room`: a building (no door) whose one room holds the chair
+  const hall = { id: 'hall', name: 'hall', def: 'hall@1', in: { parent: 'world' } };
+  const hallDef = { name: 'hall', form: 'point', components: {}, tags: ['building'], make: { kind: 'mesh' } };
+  const hallBaked = { rooms: [{ id: 'dining', polygon: room }], colliders: [], openings: [], slots: [] };
   const checked: Vec2[] = [];
   const nav = new GodNav({ model: {
-    entities: new Map([['chair', entity]]), editSeq: 1,
-    ground: () => ({ waters: [] }), resolvedDef: () => def, bake: () => baked,
+    entities: new Map<string, unknown>([['chair', entity], ...(room ? [['hall', hall]] as [string, unknown][] : [])]), editSeq: 1,
+    ground: () => ({ waters: [] }), resolvedDef: (d: string) => (d === 'hall@1' ? hallDef : def), bake: (d: { name: string }) => (d.name === 'hall' ? hallBaked : baked),
     worldPose: () => ({ x: 0, y: 0, z: 0, yaw: 0, s: 1 }),
-    pathOf: () => 'chair', get: () => undefined,
+    pathOf: (id: string) => id, get: () => undefined,
   }, engine: { world: { tick: 0, entities: {} },
     standableNearV1: (at: Vec2) => at,
     navWarmV1: () => true,
@@ -187,4 +191,13 @@ test('#875: a chair with no connected floor within 2.5 m keeps its own goal (ref
   const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 4);
   const goal = nav.goal(nav.thing('chair')!, [0, 10])!;
   assert.deepEqual(goal, { p: [0, 0.75], level: 0 });
+});
+
+test('#875: the spot beside a pocketed chair stays in its own room, not through the wall', () => {
+  // connected floor through the wall (x < -0.4) is nearer than the room's own connected floor (z >= 1.5)
+  const { nav } = seatRoom([[0, 0]], (p) => p[0] < -0.4 || p[1] >= 1.5, [[-0.4, -3], [3, -3], [3, 3], [-0.4, 3]]);
+  const room = nav.things().find((x) => x.kind === 'room');
+  assert.ok(room?.poly, 'the dining room is described');
+  const goal = nav.goal(nav.thing('chair')!, [0, 10])!;
+  assert.ok(goal.p[0] >= -0.4 && goal.p[1] >= 1.5, `inside the room on its connected floor: ${JSON.stringify(goal)}`);
 });

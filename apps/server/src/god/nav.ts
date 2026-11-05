@@ -458,7 +458,9 @@ export class GodNav {
       if (goal && t.seat && E.navCheckV1 && E.navWarmV1?.(0) && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) {
         let other: { p: Vec2; level: number } | null = null;
         for (const s of stands) { const g = near(s, t.level, 6); if (g && E.navCheckV1([{ id: t.ref, ...g }])[0]?.ok) { other = g; break; } }
-        goal = other ?? this.roofReach(goal, 2.5) ?? goal;
+        // the spot stays in the seat's own room: the floor through the wall (the next room, the garden) is no way to it
+        const room = this.things().find((r) => r.kind === 'room' && r.level === t.level && r.poly && inPoly(t.at[0], t.at[1], r.poly));
+        goal = other ?? this.roofReach(goal, 2.5, room?.poly) ?? goal;
       }
       // WALK3: a duck on the lake, a boat in the harbour: the shore of the water it floats on, nearest to it
       if (!goal && !t.level) for (const w of this.things()) {
@@ -494,10 +496,11 @@ export class GodNav {
     return goal;
   }
 
-  /** RESOLVE2: the nearest connected (walkable both ways from the main ground) standing spot on `g`'s level within `r` m. */
-  private roofReach(g: { p: Vec2; level: number }, r = 4): { p: Vec2; level: number } | null {
+  /** RESOLVE2: the nearest connected (walkable both ways from the main ground) standing spot on `g`'s level within `r` m
+   *  (and inside `within`, a room's polygon, when given). */
+  private roofReach(g: { p: Vec2; level: number }, r = 4, within?: Vec2[]): { p: Vec2; level: number } | null {
     const E = this.E, pts: { id: string; p: Vec2; level: number }[] = [];
-    for (let dz = -r; dz <= r; dz += 0.5) for (let dx = -r; dx <= r; dx += 0.5) if (Math.hypot(dx, dz) <= r) pts.push({ id: `${dx},${dz}`, p: [r2(g.p[0] + dx), r2(g.p[1] + dz)], level: g.level });
+    for (let dz = -r; dz <= r; dz += 0.5) for (let dx = -r; dx <= r; dx += 0.5) if (Math.hypot(dx, dz) <= r && (!within || inPoly(g.p[0] + dx, g.p[1] + dz, within))) pts.push({ id: `${dx},${dz}`, p: [r2(g.p[0] + dx), r2(g.p[1] + dz)], level: g.level });
     let best: Vec2 | null = null, bd = Infinity;
     for (const v of E.navCheckV1!(pts) as { id: string; ok: boolean }[]) {
       if (!v.ok) continue; const [dx, dz] = v.id.split(',').map(Number), d = Math.hypot(dx, dz);
