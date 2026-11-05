@@ -134,3 +134,27 @@ test('skipping a superseded recovery prefix preserves its original violation cei
   assert.throws(()=>new WorldHost(db,factory,'ceiling',1e9).boot(),/recovery replay still violates/);
   db.close();
 });
+
+test('a recovery replay that still violates names the new violation and the original fault (#509)',()=>{
+  const factory:EngineFactory={...toyFactory,restore:s=>{
+    const e=toyFactory.restore(s);
+    if((s as any).testReplayViolation)e.runtime.violations.push({code:'collision.human-human',message:'a and b overlap (0.30 m apart)',subjects:['a','b'],tick:7} as any);
+    return e;
+  }};
+  const db=new Db(join(mkdtempSync(join(tmpdir(),'sim-recovery-cause-')),'sim.db'));
+  const h=new WorldHost(db,factory,'cause',1e9); h.boot(); h.saveSnapshot();
+  const snap=db.latestSnapshot(h.worldId)!, baseline=snap.body as any;
+  const innerBody=structuredClone(baseline); innerBody.runtime.testReplayViolation=true;
+  const inner={baseline:innerBody,events:[],untilTick:snap.tick,faults:{},excluded:[],reason:'inner'};
+  const event={seq:h.seq+1,tick:snap.tick,kind:'rules',author:'world:recovery',payload:{recovery:inner},at:Date.now()};
+  const outer={...inner,baseline,events:[event],reason:'Error: [{"code":"collision.human-human","subjects":["c","d"]}]'};
+  db.db.prepare('INSERT INTO events (world_id,seq,tick,kind,author,payload,at) VALUES (?,?,?,?,?,?,?)')
+    .run(h.worldId,h.seq+2,snap.tick,'rules','world:recovery',JSON.stringify({recovery:outer}),Date.now());
+  assert.throws(()=>new WorldHost(db,factory,'cause',1e9).boot(),(error:Error)=>{
+    assert.match(error.message,/^recovery replay still violates the engine: collision\.human-human \[a, b\] at tick 7: a and b overlap/);
+    assert.match(error.message,/original fault: Error: \[\{"code":"collision\.human-human","subjects":\["c","d"\]\}\]$/);
+    assert.equal(error.cause,outer.reason);
+    return true;
+  });
+  db.close();
+});
