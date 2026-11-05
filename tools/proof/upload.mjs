@@ -31,6 +31,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertPublishable, readPublication } from './publication.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 /** The release a PR's proof goes to: `override` when given, else the PR's own `proofs-<n>` (the shared `proofs`
@@ -197,7 +198,9 @@ export function makePreview(file, { start = 0, seconds = 6, ffmpeg = args => exe
 }
 
 /** The Markdown that embeds a clip's preview in a PR, linked to the full clip. */
-export const embedLine = (u, alt = basename(u.file)) => u.preview ? `[![${alt}](${u.preview})](${u.url})` : `[${alt}](${u.url})`;
+export const embedLine = (u, alt = basename(u.file)) => u.preview
+  ? `[Full-resolution video: ${alt}](${u.url}) — reduced GIF preview below.\n\n[![Reduced preview: ${alt}](${u.preview})](${u.url})`
+  : `[Full-resolution video: ${alt}](${u.url})`;
 
 /** Writes uploaded links into proof.json media[] (by file name); returns the updated object. */
 export function linkMedia(proof, uploaded) {
@@ -213,6 +216,11 @@ export function linkMedia(proof, uploaded) {
 
 /** Uploads `files` (each video with its preview when `preview(file)` makes one), then proof.json last. */
 export async function uploadAll({ pr, files, proofPath = null, target, read = readFileSync, write = writeFileSync, preview = null, warn = () => {} }) {
+  // Check the entire batch before the first network write, including a late proof/log payload.
+  for (const file of [...files, ...(proofPath ? [proofPath] : [])]) {
+    assertPublishable(basename(file));
+    if (file === proofPath || kindOf(file) === 'file') assertPublishable(readPublication(file, read, { json: file === proofPath }));
+  }
   const uploaded = [];
   for (const file of files) {
     const u = { file, ...(await target.upload(pr, file)) };
@@ -226,6 +234,7 @@ export async function uploadAll({ pr, files, proofPath = null, target, read = re
   let proofLink = null;
   if (proofPath) {
     const proof = linkMedia(JSON.parse(read(proofPath, 'utf8')), uploaded);
+    assertPublishable(proof);
     write(proofPath, `${JSON.stringify(proof, null, 2)}\n`);
     const r = await target.upload(pr, proofPath);
     proofLink = r.url;
