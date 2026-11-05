@@ -16,7 +16,9 @@ import { GodNav, type Thing } from './nav.ts';
 
 // The frozen writer predates meaning. Compare every physical field, then assert
 // the new generic-vocabulary classification explicitly below.
-const physical = (places: ReturnType<GodPlaces['list']>) => places.map(({name: _n, aliases: _a, genericAliases: _g, semanticParent: _p, semanticRole: _r, semanticKind: _k, salience: _s, parts: _parts, ...p}) => ({...p, ...(p.of === 'shore' ? {description: 'shore'} : {})}));
+const physical = (places: ReturnType<GodPlaces['list']>) => places.map(({name: _n, aliases: _a, genericAliases: _g, semanticParent: _p, semanticRole: _r, semanticKind: _k, salience: _s, parts: _parts, ...p}) => ({...p, ...(p.of === 'shore' || p.of === 'building' ? {description: p.of} : {}), ...(p.schedule ? {schedule: p.schedule.map(({label: _l, ...x}) => x)} : {})}));
+// (F8 #958: a building's description lists its rooms by name and a schedule slot's label names its thing by display name;
+// both are display prose the frozen writer predates, checked by display-names.test.ts)
 
 type Lookup = (e: Entity) => { id: string; name: string } | null;
 function fixture(memo = true) {

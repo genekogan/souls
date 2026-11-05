@@ -84,7 +84,7 @@ test('painting credit preserves parent, landmarks and ownership/access/price/hou
   const { f, target, seen, finish, errors } = fixture(t);
   const blank = seen();
   assert.ok(blank.public.what.length <= 120, 'ordinary unpainted projection retains its original bound');
-  assert.match(blank.public.what, /^an easel in inn, by /);
+  assert.match(blank.public.what, /^an easel in Inn, by /);
   assert.ok(blank.public.near.includes('map'), 'GodNav supplies an actual nearby landmark');
   assert.match(blank.public.what, /\bmap\b/);
   assert.match(blank.public.what, /; Ana's, private; for sale: 2 coins; open 07:00–15:00$/);
@@ -118,7 +118,7 @@ test('painting credit preserves parent, landmarks and ownership/access/price/hou
 test('ordinary longer painting credit must retain the complete existing metadata suffix', t => {
   const { seen, finish, errors } = fixture(t);
   const blank = seen();
-  assert.match(blank.public.what, /^an easel in inn, by /);
+  assert.match(blank.public.what, /^an easel in Inn, by /);
   assert.match(blank.public.what, /; Ana's, private; for sale: 2 coins; open 07:00–15:00$/);
   const suffix = blank.public.what.slice('an easel'.length);
   const actual = finish('After the Summer Rain', 'Alexandra Montgomery');

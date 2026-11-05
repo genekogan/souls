@@ -88,14 +88,14 @@ test('the presenter timber box on the Chiba deck is sat on top (0.41 m); one sta
   assert.ok(aboard?.available, `the floating canoe is offered, not seat.inside: ${JSON.stringify(aboard)}`);
   // F3: the agent is told the floor it stands on, and where the walk ended carries it
   const here: any = hereFrame(w.edge, s as any);
-  assert.ok(here.floors?.some((l: string) => /^You are standing on the raised gallery floor of chiba, 0\.37 m above the ground; open on (all four sides|its .+ sides?)\.$/.test(l)), JSON.stringify(here.floors));
+  assert.ok(here.floors?.some((l: string) => /^You are standing on the raised gallery floor of Chiba, 0\.37 m above the ground; open on (all four sides|its .+ sides?)\.$/.test(l)), JSON.stringify(here.floors));
   t.diagnostic(`here.floors ${JSON.stringify(here.floors)} sit ${onBox!.label}`);
   const end: any = bodyEnd(w.edge, s.soulId);
   assert.equal(end.floor, 'chiba-deck'); assert.ok(Math.abs(end.y - 0.37) < 0.02, JSON.stringify(end));
   await accept(w.host, w.host.enqueue('edge-relocate', 'test:floors', {soulId: s.soulId, entityId: s.entityId, to: [-3, -12], why: 'outside Chiba'}));
   await w.settle(2);
   const around: any = aroundFrame(w.edge, s as any);
-  assert.ok(around.floors?.some((l: string) => /^The raised gallery floor of chiba: \d+ m .+, a 0\.37 m step up; open on /.test(l)), JSON.stringify(around.floors));
+  assert.ok(around.floors?.some((l: string) => /^The raised gallery floor of Chiba: \d+ m .+, a 0\.37 m step up; open on /.test(l)), JSON.stringify(around.floors));
   t.diagnostic(`around.floors ${JSON.stringify(around.floors)} blocked ${off!.blocked!.reason}`);
   assert.equal(bodyEnd(w.edge, s.soulId)!.hasOwnProperty('floor'), false, 'off the deck: no floor in endedAt');
 });

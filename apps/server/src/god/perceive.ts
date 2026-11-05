@@ -24,6 +24,7 @@ import { heldGodThing } from './held.ts';
 import { waterRole, wordOf } from './water.ts';
 import { economyOn } from './layers.ts';
 import { supportY } from './nav.ts';
+import { displayName, kindWords } from './meaning.ts';
 import { posterStale } from './poster-boards.ts';
 import { posterList, wantedList } from '@sim/world-compiler';
 
@@ -92,6 +93,8 @@ export type PerceiveHost = {
   engine: { world: { entities: Record<string, any> } };
   engineOwned(e: Entity): boolean;
   namesNear(at: Vec2, except: string): string[];
+  /** F8 (#958): a thing's display name by its ref (nav.displayOf); unset: the ref. */
+  displayOf?(ref: string): string;
   /** The named things (nav.ts): an edit re-derives the objects within 12 m of the ones it touched. Without it every
    *  catch-up re-derives every thing. */
   things?(): { id: string; at: Vec2; area?: Vec2[]; path?: Vec2[]; poly?: Vec2[]; width?: number }[];
@@ -154,7 +157,7 @@ export class GodPerceive {
     if (!this.objs!.kindOf(k)) this.objs!.register(builtKindFor(key => this.desired.get(key), k,
       def && actionsOf(def).length && this.h.commit ? kindActions(def, this.actHost(), st => {
         const id = (st as BuiltState).key, e = id ? this.h.model.entities.get(id) : undefined;
-        return e?.name ? this.h.model.pathOf(e.id) : short;
+        return (e?.name ? displayName(e) : undefined) ?? short;   // F8 (#958): its display name, never its path
       }) : {}));
     this.kinds.add(k);
   }
@@ -245,10 +248,11 @@ export class GodPerceive {
     { const sh = e.shape as { area?: unknown; path?: unknown } | undefined; if (GOD_PLACES && this.h.places && def.form !== 'point' && e.in.parent === 'world' && sh && text === null) return null; }
     const at = this.at(e, def); if (!at) return null;
     const kind = shortDef(def), parent = e.in.parent !== 'world' ? m.entities.get(e.in.parent) : undefined;
-    const name = e.name ? m.pathOf(e.id) : `${kind} ${e.id.slice(2, 6)}`;
-    const near = this.h.namesNear(at, e.id).filter((n) => n !== name).slice(0, 2);
-    const prefix = article(kind);
-    const suffix = `${parent?.name ? ` in ${m.pathOf(parent.id)}` : ''}${near.length ? `, by ${near.join(' and ')}` : ''}${lay ? `; ${lay}` : ''}`;
+    // F8 (#958): a built object is named by its display name, and by the names of what it is in and by; never its path
+    const name = (e.name ? displayName(e) : undefined) ?? `${kindWords(kind)} ${e.id.slice(2, 6)}`;
+    const near = this.h.namesNear(at, e.id).map((r) => this.h.displayOf?.(r) ?? r).filter((n) => n !== name).slice(0, 2);
+    const prefix = article(kindWords(kind));
+    const suffix = `${parent?.name ? ` in ${displayName(parent)}` : ''}${near.length ? `, by ${near.join(' and ')}` : ''}${lay ? `; ${lay}` : ''}`;
     const painting = paintingLine(e, def);
     // Keep the complete bounded painting credit plus exactly the suffix visible before it was painted.
     // Unpainted input is unchanged; only painted initialization opts into the 230-character bound.

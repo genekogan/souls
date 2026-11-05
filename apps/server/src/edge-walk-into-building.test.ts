@@ -16,7 +16,8 @@ test('D2 Eden 2026: "walk to the pavilion on the commons" ends inside the pavili
   const L = w.edge as unknown as {act: (s: unknown, i: unknown) => unknown; receipt: (soul: string, id: string) => {phase: string} | null; placePathOf: (soul: string) => {id: string}[];
     coreA: {binds(s: unknown): {caps: {id: string; label: string}[]}}};
   const cap = L.coreA.binds(w.soul).caps.find(c => c.id === 'walk:commons-pavilion')!;
-  assert.match(cap.label, /inside, into commons-pavilion\/pavilion/);
+  // F8 (#958): the room by its display name, its exact ref in brackets
+  assert.match(cap.label, /inside, into Commons Pavilion \/ Pavilion \[commons-pavilion\/pavilion\]/);
   const out = await accept(w.host, Promise.resolve(L.act(w.soul, {capability: 'walk to the pavilion on the commons'}))) as {accepted?: boolean; receipt?: {id: string; capability: string}};
   assert.equal(out.accepted, true, JSON.stringify(out));
   assert.equal(out.receipt?.capability, 'walk:commons-pavilion', JSON.stringify(out));

@@ -21,6 +21,7 @@ import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 import type { GodMode } from './god.ts';
 import { reachProviders, seatProviders, syncProviders, usesProviders, type ReachEnd, type ReachEndpoint } from './query.ts';
 import { GodNav } from './nav.ts';
+import { displayName, kindWords } from './meaning.ts';
 import { hasStraightLandings, railRaster } from './rail-raster.ts';
 import { tokenHit } from '../edge/ledger/vocabulary.ts';
 import {outdoorRegionExclusions} from '../edge/ledger/region-arrival.ts';
@@ -305,7 +306,7 @@ export class EngineBridge {
     this.watering = createWatering({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
     // Entry 43: the tea acts (tea.ts), the same way
     this.tea = createTea({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
-    this.perceive = new GodPerceive({ model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea });
+    this.perceive = new GodPerceive({ model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), displayOf: (ref) => this.nav.displayOf(ref), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea });
     // L3 (server reliability): kept Soul menus read god state the ledger does not version (ownership, construction sites)
     // the bridge runs without an edge ledger too (toy/engine-only hosts): guard the ledger, not only the method
     if (!R) (this.edge as { addMenuInput?(f: () => string): void } | undefined)?.addMenuInput?.(() => `${this.version}|${this.god.builds.closingSites().map((x) => x.id).join(',')}`);
@@ -759,7 +760,7 @@ export class EngineBridge {
           if (this.plateOpenings.size > 64) this.plateOpenings.clear();
           this.plateOpenings.set(key, openings);
         }
-        out.push({ id: f.id, name: `the ${f.label} of ${this.model.pathOf(e.id)}`, y, rise: r3(y - this.model.terrain.sample(centre[0], centre[1])), on: d === 0, d: Math.round(d), at: [r3(centre[0]), r3(centre[1])], openings });
+        out.push({ id: f.id, name: `the ${f.label} of ${displayName(e) ?? this.model.pathOf(e.id)}`, y, rise: r3(y - this.model.terrain.sample(centre[0], centre[1])), on: d === 0, d: Math.round(d), at: [r3(centre[0]), r3(centre[1])], openings });
       }
     }
     return out.sort((a, b) => a.d - b.d || a.id.localeCompare(b.id));
@@ -1808,7 +1809,9 @@ export class EngineBridge {
     const here: Vec2 = [me.pose.p[0], me.pose.p[2]];
     if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on')) {
       const held = Object.values(ents).find((x: any) => x.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === soul.entityId) as any;
-      const name = (id: string) => (this.model.entities.has(id) ? this.model.pathOf(id) : String(ents[id]?.label ?? id));
+      // F8 (#958): a thing is named by its display name; labels keep its exact path in brackets (the words resolve to it)
+      const said = (id: string) => (this.model.entities.has(id) ? displayName(this.model.entities.get(id)) ?? this.model.pathOf(id) : String(ents[id]?.label ?? id));
+      const name = (id: string) => (this.model.entities.has(id) ? `${said(id)} [${this.model.pathOf(id)}]` : said(id));
       // MARSLIVED: a thing resting on a table is reached from the table's floor (its top's height matched Mimos's 0.53 m
       // raised floor, so a cup on the ground-floor tea table read "floor 1" and Souls were sent up there for it)
       const levelOf = (x: any) => { let s = x; for (let i = 0; i < 4 && s.support?.kind === 'resting-on' && ents[s.support.on]; i++) s = ents[s.support.on]; return this.levelOfY(s.pose.p[1]); };
@@ -1836,8 +1839,8 @@ export class EngineBridge {
           // what it is and what it is by (P4): "Sit on e_… (a bench, by pond; 12 m)" — so "sit on the bench by the pond"
           // resolves through the ledger's vocabulary (every word in the label) to this seat and not another bench
           const ent = this.model.entities.get(x.id), kind = ent ? this.model.resolvedDef(ent.def)?.name.replace(/^core-/, '') : undefined;
-          const by = ent ? this.nav.namesNear([x.pose.p[0], x.pose.p[2]], x.id) : [];
-          const id = `sit:${x.id}`, labelOf = (seatWords: string) => `${name(x.id)} (${kind && !name(x.id).split('/').pop()!.includes(kind) ? `a ${kind}, ` : ''}${seatWords}${by.length ? `by ${by.join(' and ')}; ` : ''}${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
+          const by = ent ? this.nav.namesNear([x.pose.p[0], x.pose.p[2]], x.id).map((r) => this.nav.displayOf(r)) : [];
+          const id = `sit:${x.id}`, labelOf = (seatWords: string) => `${name(x.id)} (${kind && !(ent ? this.model.pathOf(x.id) : name(x.id)).split('/').pop()!.includes(kind) ? `a ${kindWords(kind)}, ` : ''}${seatWords}${by.length ? `by ${by.join(' and ')}; ` : ''}${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
           // F1: a bench for two stays free while one of its seats is; the seat a Soul sits on is not free to itself
           const full = others.length >= seats || (!!u && !mine && seats <= 1);
           // seat fit (engine bodies/humanoid.ts): a body whose look sets its height cannot get onto a seat too high for it.
@@ -1850,10 +1853,10 @@ export class EngineBridge {
           const feet = levelOf(x) === 0 ? this.mw.standYAtV1?.(x.pose.p[0], x.pose.p[2], 0) : undefined, lift = typeof feet === 'number' ? x.pose.p[1] - feet : 0;
           // a floating thing (a moored canoe, party S8) rides above the pond floor by design and is boarded from its side
           const afloat = !!ent && isFloatingDef(this.model.resolvedDef(ent.def) as { components: Record<string, unknown> });
-          const inside = !afloat && lift > SEAT_LIFT ? { code: 'seat.inside', reason: `${name(x.id)} stands ${lift.toFixed(2)} m above the floor you would stand on there, on something the world does not walk on: sitting on it would put you inside it.` } : null;
+          const inside = !afloat && lift > SEAT_LIFT ? { code: 'seat.inside', reason: `${said(x.id)} stands ${lift.toFixed(2)} m above the floor you would stand on there, on something the world does not walk on: sitting on it would put you inside it.` } : null;
           const top = tops.length ? Math.min(...tops) : undefined, ownDef = ent ? this.model.resolvedDef(ent.def) : undefined;
           const onTop = top !== undefined && ownDef && ownDef.size.box[1] > 0 && top >= ownDef.size.box[1] * (ent ? this.model.worldPose(ent).s : 1) - 0.05 ? `sit on top, ${top.toFixed(2)} m high; ` : top !== undefined ? `seat ${top.toFixed(2)} m high; ` : '';
-          const block = mine ? { code: 'seat.yours', reason: `You are sitting on ${name(x.id)} already; stand:here to get up.` } : full ? { code: 'seat.taken', reason: `${(others.length ? others : [u!.body]).map((b) => this.soulName(b)).join(' and ')} ${others.length > 1 ? 'are' : 'is'} sitting there.` } : misfit ? { code: misfit.code, reason: `${name(x.id)} does not fit your body: ${misfit.message}.` } : inside;
+          const block = mine ? { code: 'seat.yours', reason: `You are sitting on ${said(x.id)} already; stand:here to get up.` } : full ? { code: 'seat.taken', reason: `${(others.length ? others : [u!.body]).map((b) => this.soulName(b)).join(' and ')} ${others.length > 1 ? 'are' : 'is'} sitting there.` } : misfit ? { code: misfit.code, reason: `${said(x.id)} does not fit your body: ${misfit.message}.` } : inside;
           const label = labelOf(onTop);
           if (block?.code === 'seat.inside' || block?.code === 'seat.too-high') unusable.push(caps.length); else if (!block) usable.push({ id, label, d });
           caps.push({ id, verb: 'sit', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}), params: { seconds: { type: 'integer', min: 1, max: 600, default: 60 } } });
@@ -1866,7 +1869,7 @@ export class EngineBridge {
         if (berths) {
           const occ = this.mw.seatOccupantsV1?.(x.id, 'berth') ?? [];
           const mine = occ.some((o) => o.body === soul.entityId), others = occ.filter((o) => o.body !== soul.entityId).map((o) => o.body);
-          const block = mine ? { code: 'bed.yours', reason: `You are lying on ${name(x.id)} already; stand:here to get up.` }
+          const block = mine ? { code: 'bed.yours', reason: `You are lying on ${said(x.id)} already; stand:here to get up.` }
             : others.length >= berths ? { code: 'bed.taken', reason: `${others.map((b) => this.soulName(b)).join(' and ')} ${others.length > 1 ? 'are' : 'is'} lying there.` } : null;
           for (const [verb, activity, sec] of [['lie', 'lie', 120], ['sleep', 'nap', 600]] as const) {
             const id = `${verb}:${x.id}`, label = `${verb === 'lie' ? 'Lie down on' : 'Sleep in'} ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
@@ -1882,7 +1885,7 @@ export class EngineBridge {
           if(def?.components.carryable&&def.tags.includes('upright-carry')){
             const mass=(asset as {massKg?:number}).massKg??0,need=Math.max(handling.carryCrew[0],Math.ceil(mass/MAX_KG_PER_CARRIER));
             const denied=this.layers.refusal(x.id,soul), occupied=this.seatTakers(x.id).some(id=>id!==soul.entityId);
-            const block=denied??(occupied?{code:'carry.occupied',reason:'Someone else is using this seat; wait until they stand up.'}:null)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} needs ${need} carriers; a solo carry allows at most ${MAX_KG_PER_CARRIER} kg.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.support?.kind!=='ground'||x.phase==='carried'?{code:'carry.in-use',reason:`${name(x.id)} is in use or not resting on the ground.`}:(me.human.level??0)!==0||Math.abs(x.pose.p[1])>.01?{code:'carry.ground-only',reason:'This upright carry starts and finishes on level-zero ground.'}:((asset as {size?:number[]}).size?.[1]??0)>handling.carryHeight*2-.1?{code:'carry.too-tall',reason:`${name(x.id)} cannot clear the ground at this hand height.`}:null);
+            const block=denied??(occupied?{code:'carry.occupied',reason:'Someone else is using this seat; wait until they stand up.'}:null)??(need>1?{code:'carry.crew-too-small',reason:`${said(x.id)} needs ${need} carriers; a solo carry allows at most ${MAX_KG_PER_CARRIER} kg.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.support?.kind!=='ground'||x.phase==='carried'?{code:'carry.in-use',reason:`${name(x.id)} is in use or not resting on the ground.`}:(me.human.level??0)!==0||Math.abs(x.pose.p[1])>.01?{code:'carry.ground-only',reason:'This upright carry starts and finishes on level-zero ground.'}:((asset as {size?:number[]}).size?.[1]??0)>handling.carryHeight*2-.1?{code:'carry.too-tall',reason:`${name(x.id)} cannot clear the ground at this hand height.`}:null);
             const id=`carry:${x.id}`,label=`Carry ${name(x.id)} upright with both hands, then set it down (to: a place name)`;
             caps.push({id,verb:'carry',label,target:{id:x.id,kind:'object'},available:!block,...(block?{blocked:block}:{}),params:{to:{type:'string',maxLength:100}}});
             if(!block)plans.set(id,{label,steps:[...stand,{verb:'mars:move_fixture',params:{fixture:x.id,to:{x:here[0],z:here[1],yaw:x.pose.yaw??0}}}]});
@@ -1907,8 +1910,8 @@ export class EngineBridge {
             const hd = this.model.entities.get(held.id), hdef = hd && this.model.resolvedDef(hd.def), lit = !!hdef && !!(hdef.components.light || hdef.components.lights) && actuatedState(hd!, hdef).on !== false;
             const fit = inner[0].inside!.fit, m2 = (v: number) => v.toFixed(2), fits = !size || (size[1] <= fit[1] + 1e-6 && ((size[0] <= fit[0] + 1e-6 && size[2] <= fit[2] + 1e-6) || (size[2] <= fit[0] + 1e-6 && size[0] <= fit[2] + 1e-6)));
             const block = this.storageRefusal(box, soul)
-              ?? (!fits ? { code: 'item.does-not-fit', reason: `${name(held.id)} (${size!.map(m2).join(' × ')} m) does not fit in ${box.label} (up to ${fit.map(m2).join(' × ')} m).` } : null)
-              ?? (lit ? { code: 'item.lit', reason: `${name(held.id)} is lit; switch it off before putting it away.` } : null)
+              ?? (!fits ? { code: 'item.does-not-fit', reason: `${said(held.id)} (${size!.map(m2).join(' × ')} m) does not fit in ${box.label} (up to ${fit.map(m2).join(' × ')} m).` } : null)
+              ?? (lit ? { code: 'item.lit', reason: `${said(held.id)} is lit; switch it off before putting it away.` } : null)
               ?? (!free ? { code: 'container.full', reason: `${box.label} is full (${inner.length} ${inner.length === 1 ? 'thing' : 'things'}).` } : null);
             const id = `put-in:${x.id}`, label = `Put ${name(held.id)} in ${box.label} (${d} m)`;
             caps.push({ id, verb: 'put-in', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}) });
@@ -1924,7 +1927,7 @@ export class EngineBridge {
           const yw = -(x.pose.yaw ?? 0), at = (sl: { local?: number[] }) => { const l = sl.local ?? [0, 0, 0]; return [x.pose.p[0] + l[0] * Math.cos(yw) + l[2] * Math.sin(yw), x.pose.p[2] - l[0] * Math.sin(yw) + l[2] * Math.cos(yw)]; };
           const free = (asset.surfaceSlots as { id: string; local?: number[]; inside?: unknown }[]).filter((s) => !s.inside && !taken.has(s.id)).sort((a, b) => { const pa = at(a), pb = at(b); return Math.hypot(pa[0] - here[0], pa[1] - here[1]) - Math.hypot(pb[0] - here[0], pb[1] - here[1]); })[0];
           const id = `put-on:${x.id}`, label = `Put ${name(held.id)} on ${name(x.id)} (${d} m)`;
-          caps.push({ id, verb: 'put-on', label, target: { id: x.id, kind: 'object' }, available: !!free, ...(free ? {} : { blocked: { code: 'surface.full', reason: `${name(x.id)} has no free place.` } }) });
+          caps.push({ id, verb: 'put-on', label, target: { id: x.id, kind: 'object' }, available: !!free, ...(free ? {} : { blocked: { code: 'surface.full', reason: `${said(x.id)} has no free place.` } }) });
           // The native item action already plans a slot-specific station. A generic
           // walk to the table can first put the body opposite the selected slot.
           const precise=(this.physics?.assets[held.def] as {capabilities?:{recordedItemPoseV1?:boolean}})?.capabilities?.recordedItemPoseV1&&levelOf(x)===(me.human.level??0);
@@ -1968,7 +1971,7 @@ export class EngineBridge {
       const e = this.model.entities.get(c.target.id), def = e ? this.model.resolvedDef(e.def) : undefined;
       const lit = e?.state?.lit ?? (def?.state as Record<string, { default?: unknown }> | undefined)?.lit?.default;
       if (lit !== false) continue;
-      c.available = false; c.blocked = { code: 'fire.out', reason: `${this.model.pathOf(e!.id)} is not lit; light it first (object:${e!.id}:light), then warm up by it.` };
+      c.available = false; c.blocked = { code: 'fire.out', reason: `${displayName(e!) ?? this.model.pathOf(e!.id)} is not lit; light it first (object:${e!.id}:light), then warm up by it.` };
     }
   }
   /** SOULFIX: which storey of its building a thing upstairs stands on ("floor 1" = the first floor above the ground),

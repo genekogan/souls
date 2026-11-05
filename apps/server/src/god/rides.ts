@@ -12,6 +12,7 @@
 import type { WorldModel } from '@sim/world-compiler';
 import type { WorldHost } from '../world.ts';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
+import { displayName } from './meaning.ts';
 import { CARRIER_ROUTES, type CarrierInstallSpec, type RouteKey } from '../../../../mars/viewer/engine/vehicles/carrier.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -102,7 +103,7 @@ export function installGodRides(o: { host: WorldHost; edge: EdgeLedger; model: W
       const vehicle = /ferris/.test(c.id) ? 'ferris-wheel' : /carousel/.test(c.id) ? 'carousel' : 'balloon';
       const place = edge.places.containing(c.pose.p[0], c.pose.p[2], 0).find((p) => !p.carrier)?.id ?? [...edge.places.byId.values()].find((p) => p.parent === null)?.id;
       if (!place) { complete = false; continue; }
-      try { edge.comms.objects.create({ id: `ride-${c.id}`, kind: 'ride', name: c.label, placeId: place, params: { carrier: c.id, vehicle } }); } catch { complete = false; }
+      try { edge.comms.objects.create({ id: `ride-${c.id}`, kind: 'ride', name: displayName(model.get(c.id)) ?? c.label, placeId: place, params: { carrier: c.id, vehicle } }); } catch { complete = false; }
     }
     if (complete) published = key;
   };
