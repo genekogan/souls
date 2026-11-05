@@ -62,6 +62,9 @@ export const kettleWord = (p: KettlePhase) => p;
 export type Vessel = { grip: [number, number, number]; opening: [number, number, number]; outlet: [number, number, number]; outletAngle: number; pour: 'rose' | 'spout' };
 export const isKettleDef = (def: { name?: string; version?: number; tags?: readonly string[]; slots?: readonly { kind: string }[] } | undefined) => !!def && !!def.tags?.includes('kettle') && !!def.slots?.some((s) => s.kind === 'carry');
 export const isTeaCupDef = (def: { tags?: readonly string[]; state?: Record<string, unknown> } | undefined) => !!def && !!def.tags?.includes('tea-cup') && !!def.state?.tea;
+/** #437 W078: what a `tea-cup` mug makes and holds, by its tags: 'coffee' for a coffee mug, otherwise 'tea'. Its words, refusals
+ *  and nearby fact say this; its state fields stay the tea faculty's (`tea` is how full it is, `bag` the unused brew in it). */
+export const cupDrink = (def: { tags?: readonly string[] } | undefined): 'tea' | 'coffee' => def?.tags?.includes('coffee') ? 'coffee' : 'tea';
 
 const kettlePalette = { shell: '#e6dfcf', steel: '#b9bfc3', dark: '#2f2b29', switch: '#d0621f' };
 const kettle: DefInput = {
@@ -149,4 +152,32 @@ const campSink: DefInput = {
   actions: (vocab.find((d) => d.name === 'core-desk-lamp')! as unknown as DefInput).actions!.map((a) => ({ ...structuredClone(a), label: a.name === 'switch-on' ? 'Turn on the sink tap' : 'Turn off the sink tap' })) as DefInput['actions'],
 } as unknown as DefInput;
 
-export const TEA_DEFS: DefInput[] = [kettle, cup, campSink];
+// #437 W078: a coffee mug. The tea mug's faculty with data only (the `tea-cup` tag, its state, rim and body): a
+// spoonful of ground coffee at the bottom where the tea mug has its bag, made into coffee by the kettle's hot water, drunk
+// in sips and rinsed clean the same way. The `coffee` tag names what it holds (cupDrink), so its words and facts say coffee.
+const coffeePalette = { glaze: '#33506e', coffee: '#3b2416', grounds: '#4a3020' };
+// lighter than the tea mug (#416 budgets; about half its triangles): the coffee drawn at five levels, one per sip (1, 0.8
+// .. 0.2; a third poured shows as 0.4, two thirds as 0.6), and one disc of grounds on the floor of the mug: the unbrewed
+// spoonful before the pour, the dregs once drunk, gone once rinsed (the tea mug's bag, stain and string in one)
+const SEG = { lathe: 12, torus: 6 } as Record<string, number>;
+const COFFEE_STEPS: [number, number][] = [[0.9, 1], [0.7, 0.8], [0.5, 0.6], [0.3, 0.4], [0.05, 0.2]];
+/** A flat disc facing up (a one-band lathe drawn inward), on the mug body's own sides. */
+const disc = (y: number, r: number, tint: string, when: string) => ({ kind: 'lathe', at: [0, 0, 0], profile: [[r, y], [0, y]], segments: SEG.lathe, tint, when });
+const cupShapes = (cup.make as unknown as { args: { shapes: { kind: string; tint: string; when?: string }[] } }).args.shapes;
+const coffeeMug: DefInput = {
+  ...structuredClone(cup), name: 'core-coffee-mug', version: 1,
+  description: 'A mug with a spoonful of ground coffee in it. Boiling water poured in makes a cup of coffee that stays in it, carried or set down, until it is drunk, sip by sip. Rinsed at a tap it is clean again.',
+  tags: ['kitchen', 'item', 'cup', 'mug', 'coffee', 'container', 'tea-cup', 'recorded-item'],
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.006, shapes: [
+    // the tea mug's body and handle; the coffee's levels; the grounds where the tea mug has its bag
+    ...cupShapes.filter((sh) => sh.tint === 'glaze').map((sh) => ({ ...structuredClone(sh), segments: SEG[sh.kind] })),
+    ...COFFEE_STEPS.map(([when, tea]) => disc(CUP_RIM.floor + (CUP_RIM.full - CUP_RIM.floor) * tea, 0.038 + 0.0015 * tea, 'coffee', `@tea>${when}`)),
+    disc(CUP_RIM.floor + 0.001, 0.036, 'grounds', '!@bag=false&@tea<=0.05')] } } as unknown as DefInput['make'],
+  params: Object.fromEntries(Object.entries(coffeePalette).map(([k, v]) => [k, { type: 'color', default: v, doc: `${k} colour` }])) as DefInput['params'], palette: coffeePalette,
+  actions: [{ name: 'brew', label: 'Make a cup of coffee', then: [{ op: 'set', field: 'tea', value: 1 }] },
+    { name: 'drink', label: 'Drink the coffee', then: [{ op: 'set', field: 'tea', value: 0 }] },
+    { name: 'sip', label: 'Take a sip of the coffee', then: [{ op: 'set', field: 'tea', value: 0 }] },
+    { name: 'wash', label: 'Wash the mug', then: [{ op: 'set', field: 'tea', value: 0 }] }] as DefInput['actions'],
+} as unknown as DefInput;
+
+export const TEA_DEFS: DefInput[] = [kettle, cup, campSink, coffeeMug];

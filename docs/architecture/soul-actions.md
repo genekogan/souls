@@ -33,8 +33,18 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station. Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station" |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
-| Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
+| Food | Make tea or coffee: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "make a cup of coffee", "offer Ben the tea", "offer Ben the coffee", "drink the coffee", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
+
+### Coffee (#437)
+
+A coffee mug (`core-coffee-mug@1`) is the tea mug's faculty with data only: the `tea-cup` tag, the same state, kettle,
+pour, hand-over, sips and rinse. Its `coffee` tag names what it holds, so its offers ("Make a cup of coffee"), summaries,
+refusals and nearby fact (`coffee: 0.4`) say coffee. It starts with a spoonful of ground coffee in it, where a tea mug
+has its bag; a rinsed mug has none, so it can't make coffee again. Words that name a drink take only a mug whose offer
+names it, nearest first: "make a cup of tea" leaves a nearer coffee mug alone. Words that name neither ("drink it",
+"wash the mug") take the nearest mug of either kind. "pour the tea" from a kettle fills the nearest empty mug, which may
+be a coffee mug, and then says coffee.
 
 ## What other Souls perceive
 
@@ -44,7 +54,7 @@ within about 4 m and in plain sight:
 - switches and fire: `on`; doors, windows, curtains and drawers: `open` (and `locked` for lockable doors);
 - a radio that is on: its `station`; an open drawer or locker: what it `holds` (names only; nothing while shut);
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
-  a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
+  a mug: how much `tea` (or `coffee`) is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
 - who is holding hands, who is offering a hand-over, and who is holding what.
 
@@ -80,7 +90,7 @@ Other known limits:
 - At a hand-over the model's record of who holds the item lags the engine by a few samples.
 - The `here` frame lists at most two things of a kind (three seats); more appear only as a count under `more`.
 - Some new defs are over the library's geometry budgets: triangles for the fountain, jukebox, curtained window, drum kit,
-  drawer chests, watering can, mic stand, kettle, mug and bell pull, and draw calls for the newest door and locker
+  drawer chests, watering can, mic stand, kettle, mug, coffee mug and bell pull, and draw calls for the newest door and locker
   revisions. They need lighter meshes, or recorded budget holds with reasons, before release.
 - Portable lights were rebuilt as carry-and-set-down (entry 29); the earlier version is retired. Mixed-outfit seams
   (entry 11) remain parked.

@@ -1,0 +1,20 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 Soul Actions family #437 (food, W078 coffee, Lane S #903). core-coffee-mug@1 is the tea mug's faculty with data only and is drawn lighter than core-cup@2 (1084 triangles, pinned in soul-actions-20261101.json): the same body and handle at 12 and 6 sides, the coffee's surface at five levels (one per sip) and one disc of grounds instead of the tea mug's seven levels, stain, bag, string and tag. It is still over the 400-triangle item budget, because each drawn level is its own disc (a shape's state condition picks which one shows): 528 > 400 in every sample. Fewer levels would draw a part-drunk mug at the wrong height. Lighter mugs belong to the library budget work (#416, #494); the finding is pinned to the exact revision hash so the gate stays exact. No budgets, samples or gap checks were relaxed, and the rendering-gap list is unchanged.",
+  "findings": [
+    {
+      "def": "core-coffee-mug@1",
+      "hash": "549b42eee0b441f71a8c7259c9fe91efc59431cf8c73bf33e95ed47c216cb448",
+      "stage": "budget",
+      "code": "triangles",
+      "detail": "528 > 400",
+      "fields": [
+        "defaults",
+        "size.scale.min",
+        "size.scale.max",
+        "random[0]",
+        "random[1]"
+      ]
+    }
+  ]
+}
