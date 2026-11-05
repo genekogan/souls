@@ -32,6 +32,7 @@
 - { name: "agent:ready", color: "5319e7", description: "Triaged and specified well enough for an agent to pick up" }
 - { name: "agent:claimed", color: "7057ff", description: "An agent or person has claimed this issue; others leave it alone" }
 - { name: "merge:ready", color: "0e8a16", description: "Hand the PR to the merge train (.github/workflows/merge-train.yml)" }
+- { name: "ci:run", color: "1d76db", description: "Open the CI window: run this ready PR's heavy CI jobs (docs/testing.md#ci-window)" }
 - { name: "needs:rebase", color: "e99695", description: "The merge train could not rebase cleanly; rebase by hand, then relabel merge:ready" }
 - { name: "approved:maintainer", color: "0e8a16", description: "Maintainer sign-off on a T3+ PR they authored (GitHub forbids self-approval)" }
 - { name: "proof:waived", color: "fef2c0", description: "Maintainer waives the proof-ok check for this PR (say why in a comment)" }
