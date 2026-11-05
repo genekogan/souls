@@ -1,6 +1,7 @@
 import {worldThinkingBudgetV1} from './thinking-budget.ts';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const env = process.env;
 const thinkingBudget=worldThinkingBudgetV1(env);
@@ -30,8 +31,9 @@ export const config = {
   /** App's agent CLI served at /eden-agent.mjs (read per request). Unset: 404. */
   cliFile: env.EDGE_CLI_FILE || undefined as string | undefined,
   /** Single-controller CLI served at /eden.mjs, separate so existing folders retain their legacy CLI. Unset: the pinned
-   *  tools/world-launcher/soul/eden.mjs (SOURCES.json), so a world started without the launcher serves what its guide names (#983). */
-  controllerCliFile: (env.EDGE_CONTROLLER_CLI_FILE || resolve(new URL('../../../tools/world-launcher/soul/eden.mjs', import.meta.url).pathname)) as string | undefined,
+   *  tools/world-launcher/soul/eden.mjs (SOURCES.json), so a world started without the launcher serves the pinned controller
+   *  CLI too (#983). Its directory's runtime/ files are then published at /soul-runtime/* (soul-runtime-publication.ts). */
+  controllerCliFile: (env.EDGE_CONTROLLER_CLI_FILE || fileURLToPath(new URL('../../../tools/world-launcher/soul/eden.mjs', import.meta.url))) as string | undefined,
   /** Who chooses Souls' actions: 'edge' (owners' own agents; the world runs no Soul mind) or 'central' (legacy brain, kept for a future NPC driver). */
   // Default 'edge'. Under node --test (NODE_TEST_CONTEXT) legacy suites keep 'central'; edge tests opt in explicitly.
   mindDriver: ((env.MIND_DRIVER ?? (env.NODE_TEST_CONTEXT ? 'central' : 'edge')) === 'central' ? 'central' : 'edge') as 'edge' | 'central',

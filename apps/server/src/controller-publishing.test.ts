@@ -32,7 +32,8 @@ test('controllerCliFile defaults to the pinned eden.mjs; EDGE_CONTROLLER_CLI_FIL
  const {execFileSync} = await import('node:child_process');
  const {createHash} = await import('node:crypto');
  const {readFileSync} = await import('node:fs');
- const configTs = new URL('./config.ts', import.meta.url).pathname, soulDir = new URL('../../../tools/world-launcher/soul/', import.meta.url).pathname;
+ const {fileURLToPath} = await import('node:url');
+ const configTs = fileURLToPath(new URL('./config.ts', import.meta.url)), soulDir = fileURLToPath(new URL('../../../tools/world-launcher/soul/', import.meta.url));
  const configured = (value?: string) => { const env = {...process.env}; delete env.EDGE_CONTROLLER_CLI_FILE; if (value) env.EDGE_CONTROLLER_CLI_FILE = value;
   return execFileSync(process.execPath, ['--input-type=module', '-e', `const {config} = await import(${JSON.stringify(configTs)}); process.stdout.write(String(config.controllerCliFile));`], {env, encoding: 'utf8'}); };
  const pinned = JSON.parse(readFileSync(soulDir + 'SOURCES.json', 'utf8')).controllerCli;
