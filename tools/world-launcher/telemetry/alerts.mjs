@@ -34,10 +34,11 @@ export const RULES = [
   { id: 'queue-stall', scope: 'world', what: 'oldest queued request (s)', value: (c) => c.g('sim_world_queue_oldest_seconds'), op: '>', threshold: 2, clearAt: 1 },
   // the full clock, independently of the pace-normalized service ratio (#737 S2): ticks run ÷ ticks due over a trailing
   // 60 s window, from the tick's own sample time (see clockRatio). No reading while the clock is paused (clock-paused).
-  { id: 'clock-lag', scope: 'world', what: 'ticks run / ticks due over 60 s (tick sample time)', value: (c) => c.clock(), op: '<', threshold: 0.98, clearAt: 0.99 },
+  { id: 'clock-behind', scope: 'world', what: 'ticks run / ticks due over 60 s (tick sample time)', value: (c) => c.clock(), op: '<', threshold: 0.98, clearAt: 0.99 },
   { id: 'clock-paused', scope: 'world', what: 'clock paused or unavailable (admin pause and engine-fault pause alike)', value: (c) => c.clockState(), op: '>', threshold: 0, holdMs: 60 * S },
-  // slow ticks (#799): ticks whose own run exceeded 50 ms, per second
-  { id: 'ticks-late', scope: 'world', what: 'late ticks per second', value: (c) => c.rate('sim_world_ticks_late_total'), op: '>', threshold: 1, clearAt: 0.2 },
+  // S1's rule, unchanged in id and meaning (an existing rules.json override keeps applying to it): slow ticks (#799),
+  // ticks whose own run exceeded 50 ms, per second. It cannot see a stopped clock; clock-behind does.
+  { id: 'clock-lag', scope: 'world', what: 'late ticks per second', value: (c) => c.rate('sim_world_ticks_late_total'), op: '>', threshold: 1, clearAt: 0.2 },
   { id: 'refusals', scope: 'world', what: 'refused or shed requests per second', value: (c) => { const a = c.rate('sim_world_refused_total'), b = c.rate('sim_world_shed_total'); return a == null && b == null ? null : (a ?? 0) + (b ?? 0); }, op: '>', threshold: 0, missingOk: true, holdMs: 0, clearMs: 5 * MIN },
   { id: 'stale-live', scope: 'world', what: 'live.json age (s)', value: (c) => c.g('sim_world_live_age_seconds'), op: '>', threshold: 30, holdMs: 0 },
   // a crash loop is judged whatever the world's status (a restarting world is not running)
