@@ -7,6 +7,7 @@ import {ReadPool, readPorts} from './split/read-pool.ts';
 import {Admission} from './load/admission.ts';
 import {liveOf, newSharedLoad, S} from './load/shared.ts';
 import type {WorldInit} from './split/read-model.ts';
+import {SECURITY_HEADERS} from './security-headers.ts';
 
 const human = (id: string, x: number) => ({id, kind: 'human', pose: {p: [x, 0, 0], yaw: 0}, human: {}});
 const init = (tick = 7): WorldInit => ({v: 1, gen: 1, seq: 0, tick, logSeq: 0, entities: {ent1: human('ent1', 0), ent2: human('ent2', 5)}, env: {}, living: null,
@@ -75,6 +76,24 @@ test('what the worker does not serve goes to main over the MessagePort, through 
     const busy = await get(port, '/v1/edge/act', 'sim_a', {method: 'POST', body: '{}'});
     assert.equal(busy.status, 429); assert.equal((busy.body!.error as {code: string}).code, 'soul.busy');
     adm.outstanding.delete('soul:sim_a');
+  } finally { adm.close(); await p.close(); }
+});
+
+test('the worker\'s own answers carry the shared security headers; a forwarded answer keeps main\'s headers (#1025)', async () => {
+  const adm = new Admission(), {p} = pool({admission: adm}); p.start();
+  const secure = (h: Headers, why: string) => { for (const [name, value] of Object.entries(SECURITY_HEADERS)) assert.equal(h.get(name), value, `${why}: ${name}`); };
+  try {
+    await ready(p); const port = p.slots[0].port;
+    secure((await get(port, '/w/test/healthz/read')).headers, 'health');
+    const here = await get(port, '/w/test/v1/edge/here', 'sim_a'); assert.equal(here.headers.get('x-sim-read'), 'worker'); secure(here.headers, 'subset read');
+    secure((await get(port, '/v1/edge/capabilities', 'sim_b')).headers, 'subset capabilities');
+    adm.outstanding.add('soul:sim_a');
+    const busy = await get(port, '/v1/edge/act', 'sim_a', {method: 'POST', body: '{}'});
+    assert.equal(busy.status, 429); secure(busy.headers, 'refusal');
+    adm.outstanding.delete('soul:sim_a');
+    // Main's answer is relayed as it is: main's app sets these headers itself (buildApp); the worker adds none.
+    const fwd = await get(port, '/v1/edge/observe', 'sim_a');
+    assert.equal(fwd.headers.get('x-from'), 'main'); assert.equal(fwd.headers.get('x-frame-options'), null);
   } finally { adm.close(); await p.close(); }
 });
 

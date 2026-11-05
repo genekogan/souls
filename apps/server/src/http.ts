@@ -14,7 +14,6 @@ export const bodyCeiling=(path:string)=>/\/v1\/(?:edge\/body\/uploads|art\/media
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
-import type { ServerResponse } from 'node:http';
 import { decodeJwt } from 'jose';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { adminSchema, commandSchema, inviteSchema, ownerLifecycleCapabilitySchema, pairApproveSchema, pairExchangeSchema, pairPollSchema, pairStartSchema, publicEvent, setIntentSchema,TAKE_BOUNDARY_WIRE_V1,stringifyTakeBoundaryWireV1 } from '@sim/protocol';
@@ -83,14 +82,9 @@ export function servingWait(whenServing: () => Promise<void> | null): Middleware
  *  `/healthz` is deliberately not here: its 503 is the health answer for a halted world. */
 export const CLOCK_EXEMPT: readonly RegExp[] = [/^\/v1\/moderation(?:\/|$)/];
 export const clockExempt = (path: string) => CLOCK_EXEMPT.some(r => r.test(path));
-/** The security headers every answer carries (#1006): Hono's, from buildApp, and the few answers main.ts writes itself
- *  (/mcp and the restart 503, #1017). Defined once here; docs/architecture/api.md "Headers". */
-export const SECURITY_HEADERS: Readonly<Record<string, string>> = { 'X-Robots-Tag': 'noindex, nofollow', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'" };
-/** A response's own CSP keeps its directives, with frame-ancestors 'none' added; no CSP gets the shared one. */
-export const withFrameAncestors = (csp: string | null | undefined) => !csp ? SECURITY_HEADERS['Content-Security-Policy'] : /frame-ancestors/i.test(csp) ? csp : `${csp}; ${SECURITY_HEADERS['Content-Security-Policy']}`;
-/** The same headers on a Node response that never reaches Hono. Call it before the response is written. Its CSP is
- *  the plain shared one: an answer that writes its own CSP header later replaces it (none does today). */
-export function secureNodeResponse(res: ServerResponse) { for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value); }
+// The shared security headers (#1006, #1017) live in a leaf module so the read worker can use them (#1025).
+export {SECURITY_HEADERS, withFrameAncestors, secureNodeResponse} from './security-headers.ts';
+import {SECURITY_HEADERS, withFrameAncestors} from './security-headers.ts';
 type Deps = { cfg: Config; db: Db; host: WorldHost; auth: Auth; hub: Hub; brain: Brain; souls: Souls; takes?: TakeArchive; station?:CandidateStationV1; stationV2?:CandidateStationV2; intentV2?:IntentControlV2; edge?:EdgeLedger; god?: GodMode; contextReady?:()=>boolean; contextWait?:(signal:AbortSignal)=>Promise<void>; contextLevelAt?:(x:number,z:number,y:number)=>number; load?:{admission?:Admission;monitor:LoadMonitor;crowded?:(soulId:string)=>{position:number;eta_s:number}|null} };
 
 export function buildApp(d: Deps) {
