@@ -265,7 +265,7 @@ async function callOnce(url, { method, headers, body, timeoutMs, recoverRead, at
   let text;
   try { text = await r.text(); }
   catch (e) {
-    trace(method, url, 0, t0, r, attempt);
+    trace(method, url, 0, t0, r, attempt);   // status 0: no answer arrived (the body was lost), as the caller sees it
     // Only listen opts in: a dropped read is safe to re-poll. A write's lost answer
     // must keep its existing semantics rather than encouraging an action retry.
     if (!recoverRead || (r.status >= 300 && r.status < 500 && r.status !== 429)) throw e;
@@ -621,7 +621,8 @@ async function view(...args) {
   const d = ok(await call("/v1/edge/view" + (String(q) ? "?" + q : "")), "view");
   const res = { alt: d.alt, heading: d.heading?.compass, sees: (d.seen?.souls ?? []).map((x) => `${x.name} · ${Math.round(x.distance)}m ${x.side}`), untrusted: true };
   if (d.url && !altOnly) {
-    const t0 = performance.now(), img = await fetch(load().world + d.url, { signal: AbortSignal.timeout(30_000) });
+    const t0 = performance.now(), img = await fetch(load().world + d.url, { signal: AbortSignal.timeout(30_000) }).catch((e) => { trace("GET", load().world + d.url, 0, t0, null, 1); throw e; });
+    if (!img.ok) trace("GET", load().world + d.url, img.status, t0, img, 1);
     if (img.ok) {
       const file = resolvePath(out ?? (isMap ? "map.jpg" : "view.jpg")), bytes = Buffer.from(await img.arrayBuffer());
       trace("GET", load().world + d.url, img.status, t0, img, 1);
@@ -661,7 +662,7 @@ async function views(...args) {
   const url = original ? data.targets[0]?.original?.url : refs.length === 1 ? data.views[0]?.url : data.sheet?.url;
   if (!url) return { ...data, saved: null, note: original ? "No admitted original image for this target." : "Picture pending or unavailable. Request these refs again when useful; text and live queries remain available." };
   if (!url.startsWith("/v1/world/context/")) throw new Error("Invalid context picture URL");
-  const t0 = performance.now(), state = load(), response = await fetch(state.world + url, { headers: state.token ? { authorization: `Bearer ${state.token}` } : {}, redirect: "error", signal: AbortSignal.timeout(30_000) });
+  const t0 = performance.now(), state = load(), response = await fetch(state.world + url, { headers: state.token ? { authorization: `Bearer ${state.token}` } : {}, redirect: "error", signal: AbortSignal.timeout(30_000) }).catch((e) => { trace("GET", state.world + url, 0, t0, null, 1); throw e; });
   if (!response.ok) { trace("GET", state.world + url, response.status, t0, response, 1); throw new Error(`Picture expired or inaccessible (HTTP ${response.status}); request current views.`); }
   const bytes = Buffer.from(await response.arrayBuffer()); trace("GET", state.world + url, response.status, t0, response, 1); if (bytes.length > 8 * 1024 * 1024) throw new Error("Picture exceeds download limit");
   const saved = resolvePath(out); writeFileSync(saved, bytes);

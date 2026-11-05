@@ -225,9 +225,12 @@ function soulOf(token: string): Promise<{soulId: string | null; account?: string
 
 const level = (): Level => (load ? LEVELS[load[S.level]] : undefined) ?? 'green';
 const bearer = (req: IncomingMessage) => req.headers.authorization?.replace(/^Bearer\s+/i, '');
+/** #371 H-b: the worker's own wall time for each request (a forwarded answer: including main's), as x-handler-ms. */
+const started = new WeakMap<ServerResponse, number>();
+const handlerMs = (res: ServerResponse) => {const t0 = started.get(res); return t0 === undefined ? {} : {'x-handler-ms': (performance.now() - t0).toFixed(1)};};
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
   if (res.headersSent || res.destroyed) return;
-  res.writeHead(status, {'content-type': 'application/json', 'cache-control': 'no-store', 'x-sim-load': level(), 'x-sim-read': 'worker', ...headers}).end(JSON.stringify(body));
+  res.writeHead(status, {'content-type': 'application/json', 'cache-control': 'no-store', 'x-sim-load': level(), 'x-sim-read': 'worker', ...headers, ...handlerMs(res)}).end(JSON.stringify(body));
 }
 function health(res: ServerResponse) {
   const mainGen = lag[0];
@@ -262,7 +265,7 @@ async function forward(req: IncomingMessage, res: ServerResponse, url: string, p
   if (d.error || !d.result) {send(res, 502, {ok: false, code: 'world.unavailable', message: 'the read worker could not reach the world'}); return;}
   const r = d.result as Forwarded, h: Record<string, string> = {};
   for (const [k, v] of r.headers) if (k !== 'content-length' && k !== 'transfer-encoding' && k !== 'connection') h[k] = v;
-  res.writeHead(r.status, h).end(Buffer.from(r.body));
+  res.writeHead(r.status, {...h, ...handlerMs(res)}).end(Buffer.from(r.body));
 }
 
 /** The replica has this Soul and its body (else main answers: a Soul born since the last delta, a body asleep). The
@@ -302,7 +305,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   return forward(req, res, url, path, token);
 }
-const server = createServer((req, res) => {handle(req, res).catch(e => {console.error('[read-worker]', wd.index, e); send(res, 500, {ok: false, code: 'read.failed'});});});
+const server = createServer((req, res) => {started.set(res, performance.now()); handle(req, res).catch(e => {console.error('[read-worker]', wd.index, e); send(res, 500, {ok: false, code: 'read.failed'});});});
 server.keepAliveTimeout = 5000;
 server.listen(wd.port, '127.0.0.1', () => parentPort!.postMessage({t: 'listening', index: wd.index, port: (server.address() as {port: number}).port}))
   .on('error', e => parentPort!.postMessage({t: 'error', index: wd.index, error: `read port ${wd.port}: ${e.message}`}));

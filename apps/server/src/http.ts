@@ -91,6 +91,7 @@ export function buildApp(d: Deps) {
   const portraits=new AutoPortraits(d.host);profiles.autoBytes=(id,hash)=>portraits.bytes(id,hash);
   const bearer = (c: Context) => c.req.header('authorization')?.replace(/^Bearer\s+/i, '');
   // P2 runaway-agent protection: overall buckets per god token and per visitor address, before anything else answers
+  // (only the x-handler-ms timing below runs first)
   // (SIM_FLOOD=0 turns it off for a local experiment)
   const refusals = new RefusalLog();   // every 429/413 this world answers, in its log without flooding it
   // #371 H-b: the server's own wall time for each request (first middleware to response, ms), so a late answer can be

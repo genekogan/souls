@@ -12,10 +12,13 @@ import {traceLine} from './soul/eden.mjs';
 
 const CLI = fileURLToPath(new URL('./soul/eden.mjs', import.meta.url));
 
-async function world(t, {handler = true} = {}) {
+async function world(t, {handler = true, busyFirst = 0} = {}) {
+  const seen = [];
   const dir = mkdtempSync(join(tmpdir(), 'trace-')), server = createServer((req, res) => {
     req.resume(); req.on('end', () => {
       const u = new URL(req.url, 'http://x'), h = {'content-type': 'application/json', ...(handler ? {'x-handler-ms': '4.5'} : {})};
+      seen.push(u.pathname);
+      if (u.pathname === '/v1/edge/here' && busyFirst-- > 0) { res.writeHead(503, {...h, 'retry-after': '1'}); return res.end(JSON.stringify({error: {code: 'world.busy', message: 'busy'}, world: {load: 'green', retry_after_s: 1}})); }
       res.writeHead(200, h);
       res.end(JSON.stringify(u.pathname === '/v1/edge/act' ? {accepted: true, receipt: {id: 'r_1', phase: 'accepted', capability: 'wander:here'}} : {soul: {id: 's_pip', name: 'Pip'}, inbox: {connected: true, queued: 0}}));
     });
@@ -26,7 +29,7 @@ async function world(t, {handler = true} = {}) {
   const run = (args, env = {}) => new Promise(resolve => execFile(process.execPath, [CLI, ...args], {cwd: dir, env: {...process.env, EDEN_TRACE: '', ...env}}, (err, out, errText) => {
     assert.equal(err?.code ?? 0, 0, errText); resolve({out, err: errText});
   }));
-  return {run};
+  return {run, seen};
 }
 const traces = (s) => s.split('\n').filter(l => l.startsWith('TRACE ')).map(l => JSON.parse(l.slice(6)));
 
@@ -43,7 +46,7 @@ test('EDEN_TRACE=1: one stderr line per request with the world handler time; std
   assert.equal(traces(plain.err).length, 0, 'nothing without the variable');
   assert.equal(traced.out.includes('TRACE'), false, 'never on stdout');
   const lines = traces(traced.err);
-  assert.ok(lines.length >= 1); assert.ok(lines.some(l => l.method === 'POST' && l.path === '/v1/edge/act' && l.status === 200));
+  assert.equal(lines.length, w.seen.length / 2, 'one line per request of the traced run'); assert.ok(lines.some(l => l.method === 'POST' && l.path === '/v1/edge/act' && l.status === 200));
   for (const l of lines) { assert.equal(l.handlerMs, 4.5); assert.ok(l.ms >= 0); assert.equal(l.attempt, 1); assert.deepEqual(Object.keys(l), ['method', 'path', 'status', 'ms', 'handlerMs', 'attempt']); }
   assert.ok(!traced.err.includes('sim_fixture_secret_token') && !/\?/.test(lines.map(l => l.path).join('')), 'no token, no query');
   assert.equal(traced.err.replace(/^TRACE .*\n/gm, ''), plain.err, 'the rest of stderr unchanged');
@@ -51,5 +54,11 @@ test('EDEN_TRACE=1: one stderr line per request with the world handler time; std
 
 test('EDEN_TRACE=1 against a world without the header: handlerMs is null', async t => {
   const w = await world(t, {handler: false}), lines = traces((await w.run(['status'], {EDEN_TRACE: '1'})).err);
-  assert.ok(lines.length >= 1); for (const l of lines) assert.equal(l.handlerMs, null);
+  assert.equal(lines.length, w.seen.length); for (const l of lines) assert.equal(l.handlerMs, null);
+});
+
+test('EDEN_TRACE=1 on a read the world answers busy twice: one line per attempt, numbered 1, 2, 3', {timeout: 30000}, async t => {
+  const w = await world(t, {busyFirst: 2}), lines = traces((await w.run(['here'], {EDEN_TRACE: '1'})).err).filter(l => l.path === '/v1/edge/here');
+  assert.deepEqual(lines.map(l => [l.status, l.attempt]), [[503, 1], [503, 2], [200, 3]]);
+  assert.equal(w.seen.filter(p => p === '/v1/edge/here').length, 3);
 });
