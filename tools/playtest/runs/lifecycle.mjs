@@ -11,6 +11,7 @@ import { applySetup } from './setup.mjs';
 import { attachTrace, checkTap, summarizeTraces } from './diagnostics.mjs';
 import { writeJson, readJson } from '../lib/jsonl.mjs';
 import { scratchDir } from '../../lib/paths.mjs';
+import { startProcessSampler } from './proc-cost.mjs';
 
 export const RECEIPT = 'run-receipt.json';
 const TIMEOUT = Symbol('timeout');
@@ -87,7 +88,7 @@ export async function executeScenario({ scenarioFile, playtestDir, serverRoot, h
 /** startRun → terminal receipt. status: refused (nothing created) | completed | failed | cancelled | stopped-limit.
  *  signal: an AbortSignal the caller aborts on SIGINT/SIGTERM. execute/scenarioPreflight/importer are injectable. */
 export async function startRun({ spec, specPath = null, specSha256 = null, serverRoot, outDir = null, signal = null, log = () => {},
-  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup, toolsRoot, tapCheck }) {
+  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup, toolsRoot, tapCheck, processSampler = startProcessSampler }) {
   const validation = validateSpec(spec, { specPath, serverRoot, ...(toolsRoot ? { toolsRoot } : {}) });
   if (!validation.ok) return { status: 'refused', stage: 'validate', errors: validation.errors };
   const pre = await preflightRun({ validation, serverRoot, scenarioPreflight, ...(tapCheck ? { tapCheck } : {}) });
@@ -103,6 +104,8 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   ledger.borrow('checkout', 'server-root', { path: serverRoot, use: 'read-only source and web build' });
   ledger.borrow('port-range', 'host', { note: 'other services on this host are never stopped' });
   const t0 = Date.now(), usage0 = process.resourceUsage();
+  // Descendant processes by class (#803): browser rendering and video encoding apart from the runner's own CPU.
+  let procs = null; try { procs = processSampler(); } catch (e) { procs = { stop: async () => ({ status: 'unavailable', reason: short(e) }) }; }
   const receipt = {
     soulRun: 1, runId: runDir.split(sep).pop(), status: 'running', startedAt: new Date(t0).toISOString(),
     spec: { path: specPath, sha256: specSha256, effective: eff }, source: sourceIdentity(serverRoot), controllers: validation.controllers,
@@ -166,10 +169,11 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   log(`run ${outcome.status}${outcome.reason ? `: ${outcome.reason}` : ''}; releasing owned resources`);
   const cleanup = await ledger.releaseAll({ waitMs: eff.limits.cleanupWaitMs });
   receipt.retention = applyRetention({ runDir, ledger, retention: eff.retention, completed: outcome.status === 'completed' && cleanup.ok });
+  const processes = await procs.stop().catch((e) => ({ status: 'unavailable', reason: short(e) }));
   const usage1 = process.resourceUsage(), endedAt = Date.now();
   Object.assign(receipt, outcome, {
     endedAt: new Date(endedAt).toISOString(), resources: cleanup,
-    cost: { wallMs: endedAt - t0, executeMs: execMs, lifecycleOverheadMs: execMs == null ? null : endedAt - t0 - execMs, runnerCpuUserMs: Math.round((usage1.userCPUTime - usage0.userCPUTime) / 1000), runnerCpuSystemMs: Math.round((usage1.systemCPUTime - usage0.systemCPUTime) / 1000), runnerMaxRssMb: Math.round(usage1.maxRSS / 1024), runDirBytes: bytesUnder(runDir) },
+    cost: { wallMs: endedAt - t0, executeMs: execMs, lifecycleOverheadMs: execMs == null ? null : endedAt - t0 - execMs, runnerCpuUserMs: Math.round((usage1.userCPUTime - usage0.userCPUTime) / 1000), runnerCpuSystemMs: Math.round((usage1.systemCPUTime - usage0.systemCPUTime) / 1000), runnerMaxRssMb: Math.round(usage1.maxRSS / 1024), runDirBytes: bytesUnder(runDir), processes },
     evidence: summarizeEvidence(playtestDir), ...(eff.observer.record != null || existsSync(join(playtestDir, 'recordings')) ? { recordings: summarizeRecordings(playtestDir) } : {}),
   });
   if (receipt.diagnostics) receipt.diagnostics.capture.result = summarizeTraces(runDir, receipt.diagnostics);
