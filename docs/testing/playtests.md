@@ -92,6 +92,10 @@ after the cutoff are diagnostic only.
   after it is a fail. A direction is read from the sentences that name the target, plus an "It…" sentence right after
   one (the whole answer when none does), and "can't tell" there is a fail. A description counts only after a `view` that started by the answer, and a
   refused act to turn or face is a fail. The rubric never scores a claim that was true when written as W.
+  A `near` expect names the place asked about in `targets[]` (template position and the radius the author used), and
+  an answer word counts only when the genesis places a thing by that word within that radius of the place, not merely
+  near where the Soul stood. A word that names nothing placed (an alias such as "hill") still counts. The scenario
+  validator holds every `answer.anyOf` word to the same truth. Older run folders without `targets[]` score as before.
 - **Developer** (`review/developer.mjs`) reads the server source (read-only tools) and writes a spec per issue marked
   `DRAFT — NOT IMPLEMENTED`. It never edits files.
 

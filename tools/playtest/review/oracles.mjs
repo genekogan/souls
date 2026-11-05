@@ -1,8 +1,12 @@
 // Deterministic oracles over one request's evidence pack (DESIGN §4.4, spec §2.4). Code only: pass | fail | unknown
 // with pointers, never a score. Facts after the request's cutoff are excluded (late diagnostics never grant hits).
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { seatActs, xz } from './run.mjs';
 import { journeyOracles } from './journey-oracles.mjs';
 import { expectFor, expectOracles } from './expect-oracles.mjs';
+import { templateNames } from '../scenarios/lib/world-names.mjs';
 
 export const ORACLE_IDS = ['ack-latency', 'result-sent', 'listen-open', 'arrival', 'posture', 'duration-held', 'inside-solid', 'no-progress', 'oscillation', 'stuck-receipt', 'truthfulness-basic', 'vocabulary', 'duplicate-acts', 'server-errors', 'first-body-change'];
 export const PHYSICAL = ['arrival', 'posture', 'truthfulness-basic', 'inside-solid', 'no-progress'];
@@ -13,6 +17,15 @@ const secs = (a, b) => Math.round((b - a) / 100) / 10;
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const norm = (s) => String(s ?? '').toLowerCase().replace(/^the\s+/, '').replace(/[^a-z0-9]+/g, '');
 const o = (id, status, detail, pointers = []) => ({ id, status, detail, pointers });
+
+const REPO = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
+const GENESIS = new Map();
+/** The placed things of a run's genesis template (repo-relative path), read once per file; null when it cannot be read. */
+export function genesisThings(genesis) {
+  if (!genesis) return null;
+  if (!GENESIS.has(genesis)) { const f = resolve(REPO, genesis); let names = null; try { if (existsSync(f)) names = templateNames(f); } catch { names = null; } GENESIS.set(genesis, names); }
+  return GENESIS.get(genesis);
+}
 
 function postureWanted(text) {
   const t = String(text).toLowerCase();
@@ -111,8 +124,8 @@ export function claimsIn(text, { soulName = null, others = [] } = {}) {
   return found;
 }
 
-/** runOracles(evidence, ctx) — ctx: {acts?: seat tool calls with outputs, godSlice?, run?, expect?} (acts are read from the run when
- *  absent; expect from the run's script entry when absent). A request with an `expect` also gets the scenario-truth oracles
+/** runOracles(evidence, ctx) — ctx: {acts?: seat tool calls with outputs, godSlice?, run?, expect?, things?} (acts are read from the
+ *  run when absent; expect from the run's script entry when absent; things, for near answers, from the run's genesis). A request with an `expect` also gets the scenario-truth oracles
  *  of expect-oracles.mjs after the fifteen ORACLE_IDS; requests without one get exactly ORACLE_IDS. */
 export function runOracles(ev, ctx = {}) {
   const P = `evidence/${ev.requestId}.json`;
@@ -250,7 +263,10 @@ export function runOracles(ev, ctx = {}) {
   const fb = ms(ev.firstBodyChangeAt);
   out.push(fb && fb <= cutoff ? o('first-body-change', 'pass', `first visible body change after ${secs(sent, fb)} s`, [`${P}#firstBodyChangeAt`]) : accepted ? o('first-body-change', 'fail', 'an action was accepted but no visible body change before cutoff', [`${P}#firstBodyChangeAt`]) : o('first-body-change', 'unknown', 'no body action was started'));
   if (expect?.journey) out.push(...journeyOracles({ ev, journey: expect.journey, receipts, replies, acts, acceptedMs: r => acceptedMs(r, clk), endedMs: r => endedMs(r, clk) }));
-  if (expect && expect.kind !== 'journey') out.push(...expectOracles({ ev, expect, timely, replies, receipts, acts, inWindow, P }));
+  if (expect && expect.kind !== 'journey') {
+    const things = expect.kind !== 'near' ? null : ctx.things !== undefined ? ctx.things : genesisThings(ctx.run?.scenario?.world?.genesis);
+    out.push(...expectOracles({ ev, expect, timely, replies, receipts, acts, inWindow, P, things }));
+  }
   if (late) out.forEach((r) => { r.lateSamplesExcluded = late; });
   return out.map((r) => ({ requestId: ev.requestId, ...r }));
 }
