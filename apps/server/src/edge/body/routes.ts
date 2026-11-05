@@ -1,6 +1,7 @@
 import {PIP_PRESET} from './pip.ts';
 import {MONSTER_PRESET,GHOST_PRESET,CENTAUR_PRESET,SHARED_BODY_BYTES} from './shared-bodies.ts';
 import {mountBodyAuthoring} from './authoring.ts';
+import {coreRevision,versionOf} from './core-revisions.ts';
 import {BodyCollections,collectionPath,itemOf,LIBRARY_PAGE} from './collections.ts';
 import type {Context,Hono} from 'hono';
 import type {Entity} from '@sim/engine-contract';
@@ -30,6 +31,11 @@ MONSTER_PRESET,GHOST_PRESET,
 // The compact centaur (#723): appended after them.
 CENTAUR_PRESET];
 const ASSET=/^body_[a-f0-9]{64}$/;
+/** #795 A1: a core preset by id (`pip`) or by released version (`pip@1`). Versions name the authored, content-addressed
+ *  presets only; the engine-native presets (humanoid, Martians, creatures) are selected by id. */
+export function corePreset(ref:string){const r=coreRevision(ref);return r?BODY_PRESETS.find(p=>p.id===r.id):ref.includes('@')?undefined:BODY_PRESETS.find(p=>p.id===ref);}
+/** The released version and content address of a core preset, when it has one: `{version:'pip@1', asset:'body_…'}`. */
+export function coreVersion(id:string){const r=coreRevision(id);return r&&!id.includes('@')?{version:versionOf(r),asset:r.asset}:{};}
 const MAX_UPLOAD_REQUEST=BODY_LIMITS.bytes+64*1024;
 
 /** Read a bounded multipart request before invoking the platform's form parser. */
@@ -166,10 +172,10 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
     if(cursor.length>80)throw new EdgeError(400,'body.library-cursor','Unknown cursor');
     if(scope==='core'){const all=BODY_PRESETS.filter(p=>types.includes(p.body?.type??'humanoid')).filter(p=>!q||(p.name+' '+p.id).toLowerCase().includes(q.toLowerCase()));
       const start=cursor?all.findIndex(p=>p.id===cursor)+1:0;if(cursor&&start===0)throw new EdgeError(400,'body.library-cursor','Unknown cursor');
-      const page=all.slice(start,start+limit);return {contract:'body-library/1',scope,items:page.map(p=>({ref:p.id,name:p.name,type:p.body?.type??'humanoid',...((p.body as {actionProfile?:string}|null)?.actionProfile?{actionProfile:(p.body as {actionProfile:string}).actionProfile}:{})})),next:start+limit<all.length?page.at(-1)!.id:null};}
+      const page=all.slice(start,start+limit);return {contract:'body-library/1',scope,items:page.map(p=>({ref:p.id,...coreVersion(p.id),name:p.name,type:p.body?.type??'humanoid',...((p.body as {actionProfile?:string}|null)?.actionProfile?{actionProfile:(p.body as {actionProfile:string}).actionProfile}:{})})),next:start+limit<all.length?page.at(-1)!.id:null};}
     return {contract:'body-library/1',scope,...library.mine(s.owner,{q:q||undefined,after:cursor||undefined,limit})};}));
   app.get('/v1/edge/body/library/:ref',wrap(c=>{const s=deps.soul(c),ref=c.req.param('ref')??'';
-    const preset=BODY_PRESETS.find(p=>p.id===ref);if(preset)return {contract:'body-library/1',definition:{ref,name:preset.name,type:preset.body?.type??'humanoid',core:true},selectable:types.includes(preset.body?.type??'humanoid')?{ok:true}:{ok:false,code:'body.world-policy',reason:'This world does not admit that body type'}};
+    const preset=corePreset(ref);if(preset)return {contract:'body-library/1',definition:{ref:preset.id,...coreVersion(preset.id),name:preset.name,type:preset.body?.type??'humanoid',core:true},selectable:types.includes(preset.body?.type??'humanoid')?{ok:true}:{ok:false,code:'body.world-policy',reason:'This world does not admit that body type'}};
     if(!ASSET.test(ref))throw new EdgeError(404,'body.ref-unknown','No body definition with that reference');
     const d=definition(ref);if(!d||!visible(d,s.owner))throw new EdgeError(404,'body.ref-unknown','No body definition with that reference');
     return {contract:'body-library/1',definition:{ref,...itemOf(d.descriptor),public:d.public,...(d.descriptor.motion?{motion:d.descriptor.motion}:{}),triangles:d.descriptor.triangles,bytes:d.descriptor.bytes,status:d.status,sourceWorld:d.sourceWorld,attribution:{creatorSoul:d.creatorSoul}},saved:library.saved(s.owner,ref),selectable:selectable(d)};}));
@@ -213,7 +219,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
   async function assign(s:{soulId:string;entityId:string;owner:string;name:string},raw:any,tokenBound:boolean){
     const source=deps.db.soul(s.soulId);if(!source)throw new EdgeError(401,'unauthorized','Soul owner is unavailable');if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).length!==1)throw new EdgeError(400,'body.assignment','Choose exactly one preset, assetId or look');
     let body:Entity['body']|null,fetchFirst:{ref:string;sourceWorld:string;descriptor:Record<string,unknown>;status:string}|null=null;
-    if(typeof raw.preset==='string'){const preset=BODY_PRESETS.find(p=>p.id===raw.preset);if(!preset)throw new EdgeError(400,'body.preset-unknown','Unknown body preset');body=preset.body;}
+    if(typeof raw.preset==='string'){const preset=corePreset(raw.preset);if(!preset)throw new EdgeError(400,'body.preset-unknown','Unknown body preset');body=preset.body;}
     else if(typeof raw.assetId==='string'&&ASSET.test(raw.assetId)){
       if(!db.prepare('SELECT 1 FROM edge_body_owners_v1 WHERE world_id=? AND owner=? AND asset_id=?').get(world,s.owner,raw.assetId))throw new EdgeError(403,'body.not-owned','This upload does not belong to the Soul owner');
       const row=record(raw.assetId,s.owner);if(!row)throw new EdgeError(404,'body.asset-not-found','No admitted body asset');const asset=JSON.parse(row.descriptor);
