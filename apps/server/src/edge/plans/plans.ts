@@ -12,7 +12,7 @@ export type OnRefusal = 'pause-and-notify' | 'skip' | 'cancel';
 export const ON_REFUSAL: OnRefusal[] = ['pause-and-notify', 'skip', 'cancel'];
 export const PLAN_MAX_STEPS = 20, STEP_MAX_MS = 6 * 3600_000, PLAN_TICK_MS = 1000;
 /** A `for` step whose act the world ended early for one of these reasons (someone bumped a lying body, a restart) acts again. */
-const RESUMABLE = /^(pose\.moved|action\.interrupted|receipt\.lost-on-restart|state\.safe-stop-timeout)$/;
+const RESUMABLE = /^(pose\.moved|action\.interrupted|receipt\.lost-on-restart|state\.safe-stop-timeout|nav\.warm-timeout)$/;
 const TRANSIENT_RETRY_MS = 5000, TRANSIENT_MAX = 12, REISSUE_MAX = 60, REISSUE_GAP_MS = 5000, REISSUE_MIN_LEFT_MS = 15_000;
 /** Verbs whose posture or activity a `for` step keeps up by acting again when the body's own activity ends early. */
 const REHOLD = new Set(['sit', 'sit-ground', 'lie', 'nap', 'read', 'rest', 'warm-by-fire', 'gather', 'swim', 'dance', 'jump', 'stretch', 'jumping-jacks', 'yoga', 'pushups', 'situps', 'play-piano', 'paint', 'play-music', 'write', 'play-game', 'craft', 'cook', 'wander', 'hang-out']);

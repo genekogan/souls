@@ -171,6 +171,8 @@ export class GodNav {
   /** #882: whether the engine's connectivity labels are ready (navWarmV1(0)), read at most once per tick: a read syncs
    *  the paged spatial service. A goal made before they were ready skipped RESOLVE2's roofReach and WALK3's main ground. */
   private warmSeen: { tick: number; warm: boolean } | null = null;
+  /** nav-warm-wait/1 (#884): the labels were warmed within this tick (an act relabelled them): the memo reads again. */
+  forgetWarm(): void { this.warmSeen = null; }
   private navWarm(tick: number): boolean {
     if (this.warmSeen?.tick !== tick) this.warmSeen = { tick, warm: !!this.E.navWarmV1?.(0) };
     return this.warmSeen.warm;
