@@ -61,3 +61,49 @@ export async function applySetup({ base, setup, fetchImpl = fetch, now = Date.no
   out.elapsedMs = now() - t0;
   return out;
 }
+
+// World time (#888): a run's clips show the world by day. Dev and run worlds boot at 06:00 and run one world day per real
+// hour, so a server up for 40 minutes is at night. A run sets the time of day (default midday) and the clock's speed
+// (default 0, paused) through the god env route before any seat or camera exists.
+export const WORLD_TIME_DEFAULTS = Object.freeze({ timeOfDay: 12, timeScale: 0 });
+const HOUR = /^\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$/i;
+
+/** The hour a timeOfDay names (0..24 hours, "HH:MM", "7pm"), as the server's parseHour reads it; null when invalid. */
+export function parseTimeOfDay(v) {
+  if (typeof v === 'number') return Number.isFinite(v) && v >= 0 && v <= 24 ? v % 24 : null;
+  if (typeof v !== 'string') return null;
+  const m = HOUR.exec(v); if (!m) return null;
+  let h = Number(m[1]); const min = Number(m[2] ?? 0), ap = m[3]?.toLowerCase();
+  if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
+  return h > 24 || min > 59 ? null : (h + min / 60) % 24;
+}
+
+/** worldTimeRequest({timeOfDay, timeScale}) → {time, errors}: the env body to send (null = leave the clock alone).
+ *  timeOfDay "keep" leaves the time of day; timeScale "keep" leaves the speed; both default to midday, paused. */
+export function worldTimeRequest({ timeOfDay, timeScale } = {}) {
+  const errors = [], tod = timeOfDay ?? WORLD_TIME_DEFAULTS.timeOfDay;
+  const scale = timeScale ?? (tod === 'keep' ? 'keep' : WORLD_TIME_DEFAULTS.timeScale);
+  if (tod !== 'keep' && parseTimeOfDay(tod) == null) errors.push({ code: 'world.timeOfDay', message: `world.timeOfDay ${JSON.stringify(tod)}: hours 0-24, "HH:MM" (or "7pm"), or "keep"` });
+  if (scale !== 'keep' && !(typeof scale === 'number' && scale >= 0 && scale <= 1440)) errors.push({ code: 'world.timeScale', message: `world.timeScale ${JSON.stringify(scale)}: world hours per real hour, 0 (paused) to 1440, or "keep"` });
+  if (errors.length) return { time: null, errors };
+  const time = { ...(tod !== 'keep' ? { timeOfDay: tod } : {}), ...(scale !== 'keep' ? { timeScale: scale } : {}) };
+  return { time: Object.keys(time).length ? time : null, errors };
+}
+
+/** applyWorldTime({base, time}) → {ok, requested, applied?, error?}: POST /v1/god/env as the dev owner, then the clock the
+ *  world reports. Never throws: a run whose clock could not be set still runs, and its receipt says so. */
+export async function applyWorldTime({ base, time, fetchImpl = fetch, maxWallSec = 30, now = Date.now }) {
+  const t0 = now(), left = () => t0 + maxWallSec * 1000 - now();
+  const out = { ok: false, requested: time, route: 'POST /v1/god/env (world owner, dev auth)' };
+  try {
+    const minted = await call(fetchImpl, `${base}/v1/god/mint`, { method: 'POST', headers: { authorization: `Bearer ${DEV_OWNER}`, 'content-type': 'application/json' }, body: JSON.stringify({ label: 'world-time' }) }, left);
+    if (!minted.ok || !minted.body?.token) throw new Error(`god mint refused: HTTP ${minted.status} ${short(minted.body?.code ?? minted.body?.error)}`);
+    const r = await call(fetchImpl, `${base}/v1/god/env`, { method: 'POST', headers: { authorization: `Bearer ${minted.body.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ ...time, note: 'run world time (#888)' }) }, left);
+    if (!r.ok || r.body?.accepted === false) throw new Error(`env refused: HTTP ${r.status} ${short(r.body?.code ?? r.body?.message ?? r.body?.failures?.[0]?.code)}`);
+    const t = r.body?.env?.time ?? {};
+    out.applied = { clock: t.clock ?? null, datetime: t.datetime ?? null, paused: t.paused ?? null, timeScale: t.timeScale ?? null };
+    out.ok = true;
+  } catch (e) { out.error = short(e?.message ?? e); }
+  out.elapsedMs = now() - t0;
+  return out;
+}

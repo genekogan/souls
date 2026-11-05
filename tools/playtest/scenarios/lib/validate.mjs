@@ -58,6 +58,7 @@ export function validateScenario(s) {
       if (!['chat', 'card'].includes(e.channel)) errs.push(`script[${i}].channel`);
       if (!e.text) errs.push(`script[${i}].text`);
       if (!(e.atSec >= 0)) errs.push(`script[${i}].atSec`);
+      if (e.after != null && e.after !== 'result') errs.push(`script[${i}].after must be "result" (send once this seat's open requests have closed)`);
       if (e.atSec + (e.budgetSec ?? 0) > s.durationSec) errs.push(`script[${i}] ends after durationSec`);
       for (const id of e.seat === '*' ? ids : [e.seat]) (bySeat[id] ??= []).push(e);
       if (e.expect) { for (const m of validateExpect(e.expect)) errs.push(`script[${i}] ${m}`); if (s.world?.genesis) errs.push(...checkTargets(s.world.genesis, e.expect.targets, `script[${i}]`)); }

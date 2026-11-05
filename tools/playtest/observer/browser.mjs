@@ -31,6 +31,7 @@ import { dirname, join } from 'node:path';
 import { resolvePlaywright, browsersPath, launchArgs } from '../lib/platform.mjs';
 import { now, sleep } from '../lib/clock.mjs';
 import { appendJsonl } from '../lib/jsonl.mjs';
+import { worldArrived, canScreencast, startScreencast } from '../lib/arrival.mjs';
 
 /** openBrowser({headless, gpu, serverRoot}) → {browser, gpu, playwright, openCamera(opts), close()}.
  *  Playwright: global `playwright` first (cloud), then <serverRoot>/mars/viewer, then this checkout's viewer (lib/platform.mjs).
@@ -48,7 +49,7 @@ export async function openBrowser({ headless = true, gpu: wantGpu = 'metal', ser
   return { browser, gpu, playwright: pw.from, recordings,
     openCamera: async (o) => {
       try { const c = await openCamera({ ...o, browser }); cams.push({ cam: c, o }); return c; }
-      catch (e) { if (o.record?.dir) recordings.push(writeRecording({ name: o.name ?? o.kind, o, r: { video: e.video ?? null, opened: e.opened ?? null, closed: { at: new Date().toISOString(), mono: performance.timeOrigin + performance.now() } }, closedBy: 'open-failed', error: String(e?.message ?? e).split('\n')[0] })); throw e; }
+      catch (e) { if (o.record?.dir) recordings.push(writeRecording({ name: o.name ?? o.kind, o, cam: e.cam ?? null, r: { video: e.video ?? null, opened: e.opened ?? null, closed: { at: new Date().toISOString(), mono: performance.timeOrigin + performance.now() } }, closedBy: 'open-failed', error: String(e?.message ?? e).split('\n')[0] })); throw e; }
     },
     /** The play phase ended normally: recordings closed after this are complete, not partial. */
     markComplete: () => { completed = true; },
@@ -77,7 +78,11 @@ export function writeRecording({ name, o, cam = null, state = null, r = null, pa
   let videoSec = null;
   if (sha256) { const p = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:format_tags=DURATION:stream_tags=DURATION', '-of', 'json', file], { encoding: 'utf8' }); try { const j = JSON.parse(p.stdout); const d = Number(j.format?.duration); const tag = j.streams?.[0]?.tags?.DURATION ?? j.format?.tags?.DURATION; videoSec = Number.isFinite(d) ? +d.toFixed(2) : tag ? +tag.split(':').reduce((a, x) => a * 60 + Number(x), 0).toFixed(2) : null; } catch { /* no ffprobe */ } }
   const sec = videoSec ?? (opened && closed ? (closed.mono - opened.mono) / 1000 : null); // MB per camera-minute basis
+  // Where the take starts (#888): at arrival by default (the file begins on the arrived world), or at page creation.
+  const start = cam?.start ?? { start: o.record.start ?? 'arrival', startRequested: o.record.start ?? 'arrival', startedAt: null, marks: [] };
   const meta = { recording: 1, camera: name, file: sha256 ? `${name}.webm` : null, bytes, sha256, uncut: true, realSpeed: true,
+    start: start.start, startRequested: start.startRequested, ...(start.startFallback ? { startFallback: start.startFallback } : {}), startedAt: start.startedAt, marks: start.marks,
+    ...(cam?.failShot ? { openFailedShot: cam.failShot } : {}), ...(cam?.worldTime ? { worldTime: cam.worldTime } : {}),
     partial: !!partial || !!closedBy, ...(closedBy ? { closedBy } : {}), ...(error || r?.error ? { error: error ?? r.error } : {}),
     requested: { kind: o.kind ?? 'wide', soulId: o.soulId ?? null, identity: o.identity ? 'dev-owner' : 'public', viewport: o.viewport ?? null, ...(o.kind === 'free' ? { composition: o.composition ?? FREE_COMPOSITION } : {}) },
     actual: state?.actual ?? null, ready: state?.ready ?? false, arrivedMs: cam?.arrivedMs ?? null,
@@ -114,28 +119,50 @@ const FREE_CONTROLS = ['.camera-main', '.viewer-broadcast'];
 
 /** openCamera({browser, base, identity?, kind:'follow'|'wide'|'free', soulId?, viewport, dpr, arrivalTimeoutMs, record?,
  *  composition?}) → Camera. One context (own localStorage) and one persistent page per camera. identity signs in as that
- *  dev owner. record: {dir, size?} records the context as one uncut real-speed video (Playwright recordVideo) until
- *  close(), at recordEncoding(size) (default compact). */
+ *  dev owner. record: {dir, size?, start?} records the page as one uncut real-speed video until close(), at
+ *  recordEncoding(size) (default compact). start (#888): 'arrival' (default) begins the file when the world is on screen
+ *  and the arrival card is gone (page.screencast); 'load' records the context from page creation (recordVideo), for a
+ *  take whose subject is loading itself. A Playwright without page.screencast falls back to 'load', labelled. */
 export async function openCamera({ browser, base, identity = null, kind = 'wide', soulId = null, viewport = { width: 1280, height: 800 }, dpr = 1, arrivalTimeoutMs = 90000, name = null, record = null, composition = null }) {
   const opened = { at: new Date().toISOString(), mono: performance.timeOrigin + performance.now() };
   const encoding = record?.dir ? recordEncoding(record.size ?? 'compact', viewport) : null;
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: dpr, ...(encoding ? { recordVideo: { dir: record.dir, size: encoding.size } } : {}) });
-  await ctx.addInitScript((id) => { try { if (id) localStorage.setItem('sim.dev', id); localStorage.setItem('skipgc', 't'); } catch { /* storage off */ } }, identity);
-  const page = await ctx.newPage();
+  const camName = name ?? (kind === 'follow' ? soulId : kind);
+  const startRequested = record?.start ?? 'arrival';
+  const newCtx = async (video) => {
+    const c = await browser.newContext({ viewport, deviceScaleFactor: dpr, ...(video ? { recordVideo: { dir: record.dir, size: encoding.size } } : {}) });
+    await c.addInitScript((id) => { try { if (id) localStorage.setItem('sim.dev', id); localStorage.setItem('skipgc', 't'); } catch { /* storage off */ } }, identity);
+    return c;
+  };
+  let ctx = await newCtx(encoding && startRequested === 'load'), page = await ctx.newPage(), startFallback = null;
+  if (encoding && startRequested === 'arrival' && !canScreencast(page)) { // this Playwright cannot start a recording mid-page
+    await ctx.close().catch(() => {});
+    ctx = await newCtx(true); page = await ctx.newPage(); startFallback = 'page.screencast unavailable in this Playwright: recorded from page creation';
+  }
+  const screencast = encoding && startRequested === 'arrival' && !startFallback ? join(record.dir, `.${String(camName).replace(/[^\w.-]/g, '_')}-${process.pid}-${Date.now()}.webm`) : null;
+  const start = encoding ? { start: screencast ? 'arrival' : 'load', startRequested, ...(startFallback ? { startFallback } : {}), startedAt: screencast ? null : opened.at, marks: [] } : null;
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e?.message ?? e).slice(0, 300)));
   const t0 = performance.now();
   const url = String(base).replace(/\/+$/, '') + '/' + (kind === 'follow' && soulId ? '#soul/' + encodeURIComponent(soulId) : '');
   try {
     await page.goto(url, { timeout: 120000 });
-    await page.waitForFunction(() => document.body && !document.body.innerText.includes('Arriving in') && document.querySelector('.viewer-history[data-viewer-ready="true"]'), null, { timeout: arrivalTimeoutMs });
-  } catch (e) { // a camera that never arrived leaves no open context; its partial video is kept as failed evidence
-    const v = record?.dir ? page.video() : null;
+    await page.waitForFunction(worldArrived, null, { timeout: arrivalTimeoutMs });
+  } catch (e) { // a camera that never arrived leaves no open context; its partial video (from load) or a still of the
+    // page it was stuck on (arrival start: nothing was recorded yet) is kept as failed evidence
+    let failShot = null;
+    if (screencast) { const f = join(record.dir, `${camName}.open-failed.png`); failShot = await page.screenshot({ path: f, timeout: 15000 }).then(() => `${camName}.open-failed.png`, () => null); }
+    const v = record?.dir && !screencast ? page.video() : null;
     await ctx.close().catch(() => {});
-    e.video = v ? await v.path().catch(() => null) : null; e.opened = opened;
+    e.video = v ? await v.path().catch(() => null) : null; e.opened = opened; e.cam = { start, failShot };
     throw e;
   }
-  const cam = { name: name ?? (kind === 'follow' ? soulId : kind), kind, soulId, page, context: ctx, errors, arrivedMs: Math.round(performance.now() - t0), follow: null, free: null, opened, recording: !!record?.dir, encoding };
+  const arrivedMs = Math.round(performance.now() - t0);
+  if (start) {
+    if (screencast) { Object.assign(start, await startScreencast(page, { path: screencast, size: encoding.size })); delete start.mono; start.marks.push({ label: 'arrived', atSec: 0 }); }
+    else start.marks.push({ label: 'arrived', atSec: +(arrivedMs / 1000).toFixed(2), basis: 'since page creation; the video starts at its first painted frame' });
+  }
+  const cam = { name: camName, kind, soulId, page, context: ctx, errors, arrivedMs, follow: null, free: null, opened, recording: !!record?.dir, encoding, start,
+    worldTime: record?.dir ? await worldClock(base) : null };
   cam.viewer = () => page.evaluate(() => { const d = document.querySelector('.viewer-history')?.dataset ?? {}; return { mode: d.viewerMode ?? null, selection: d.viewerSelection ?? null, presentation: d.viewerPresentation ?? null, tick: d.viewerTick ? Number(d.viewerTick) : null }; }).catch(() => ({}));
   cam.ensureFollow = async ({ waitMs = 6000 } = {}) => {
     if (kind !== 'follow') return null;
@@ -193,10 +220,11 @@ export async function openCamera({ browser, base, identity = null, kind = 'wide'
     actual: { ...(await cam.viewer()), follow: cam.follow, free: cam.free }, ready: true, arrivedMs: cam.arrivedMs });
   /** close() → {video, closed} — the video file is complete only after its context closed. */
   cam.close = async () => {
-    const video = cam.recording ? page.video() : null;
+    if (screencast) await page.screencast.stop().catch(() => {});
+    const video = cam.recording && !screencast ? page.video() : null;
     await ctx.close();
     const closed = { at: new Date().toISOString(), mono: performance.timeOrigin + performance.now() };
-    return { video: video ? await video.path().catch(() => null) : null, opened, closed };
+    return { video: screencast ? (existsSync(screencast) ? screencast : null) : video ? await video.path().catch(() => null) : null, opened, closed };
   };
   // Post-arrival setup can throw too (a click on a detached control): close the context the same way, so its video is
   // finalized and named in the open-failed sidecar rather than left open until browser.close().
@@ -204,12 +232,22 @@ export async function openCamera({ browser, base, identity = null, kind = 'wide'
     if (kind === 'follow') await cam.ensureFollow();
     if (kind === 'free') await cam.applyFree();
   } catch (e) {
-    const v = record?.dir ? page.video() : null;
+    if (screencast) await page.screencast.stop().catch(() => {});
+    const v = record?.dir && !screencast ? page.video() : null;
     await ctx.close().catch(() => {});
-    e.video = v ? await v.path().catch(() => null) : null; e.opened = opened;
+    e.video = screencast ? (existsSync(screencast) ? screencast : null) : v ? await v.path().catch(() => null) : null; e.opened = opened; e.cam = cam;
     throw e;
   }
   return cam;
+}
+
+/** The world clock when a recording starts (#888), from the public env route: {clock, paused, timeScale} or null. */
+export async function worldClock(base, fetchImpl = fetch) {
+  try {
+    const r = await fetchImpl(`${String(base).replace(/\/+$/, '')}/v1/world/env`, { signal: AbortSignal.timeout(3000) });
+    const t = r.ok ? (await r.json())?.time : null;
+    return t ? { clock: t.clock ?? null, paused: t.paused ?? null, timeScale: t.timeScale ?? null, at: new Date().toISOString() } : null;
+  } catch { return null; }
 }
 
 /** Runs inside the page. Keep it self-contained (no closures). */

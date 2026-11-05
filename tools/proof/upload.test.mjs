@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
   Blocked, blockedMessage, checkLocal, contentType, embedLine, githubTarget, httpTarget, linkMedia, makePreview, pickTarget, previewArgs, previewPath,
-  releaseAssetName, releaseTag, uniqueName, uploadAll, PREVIEW_MAX_BYTES,
+  releaseAssetName, releaseTag, uniqueName, uploadAll, PREVIEW_MAX_BYTES, previewStartFor,
 } from './upload.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'proof-upload-'));
@@ -184,4 +184,25 @@ test('uploadAll: each video gets its preview uploaded beside it and recorded in 
   const skipped = await uploadAll({ pr: 9, files: [clip], target: githubTarget({ repo: 'o/r', run: fakeGh({ release: { id: 5 } }).run }), preview: () => ({ skipped: 'ffmpeg is not installed' }), warn: m => warned.push(m) });
   assert.equal(skipped.uploaded[0].preview, undefined);
   assert.match(warned[0], /no inline preview \(ffmpeg is not installed\)/);
+});
+
+test('previews start where the take opens on the world (#888): the arrived mark, or 0 for a take recorded from load on purpose', async () => {
+  assert.deepEqual(previewStartFor({ start: 'arrival', startRequested: 'arrival', marks: [{ label: 'arrived', atSec: 0 }] }), { start: 0, why: 'arrived mark' });
+  assert.deepEqual(previewStartFor({ start: 'load', startRequested: 'arrival', startFallback: 'no screencast', marks: [{ label: 'goto', atSec: 0 }, { label: 'arrived', atSec: 7.4 }] }), { start: 7.4, why: 'arrived mark' }, 'a fallback load take still previews from arrival');
+  assert.deepEqual(previewStartFor({ start: 'load', startRequested: 'load', marks: [{ label: 'arrived', atSec: 7.4 }] }), { start: 0, why: 'recorded from load on purpose' });
+  assert.deepEqual(previewStartFor(null), { start: 0, why: 'no sidecar' });
+  const d = mkdtempSync(join(tmpdir(), 'proof-start-')), fromLoad = join(d, 'load.mp4'), fallback = join(d, 'fallback.mp4'), proof = join(d, 'proof.json');
+  writeFileSync(fromLoad, 'v'); writeFileSync(fallback, 'v');
+  writeFileSync(`${fromLoad}.json`, JSON.stringify({ start: 'load', startRequested: 'load', marks: [{ label: 'arrived', atSec: 5 }] }));
+  writeFileSync(`${fallback}.json`, JSON.stringify({ start: 'load', startRequested: 'arrival', marks: [{ label: 'arrived', atSec: 6.5 }] }));
+  writeFileSync(proof, JSON.stringify({ schema: 'sim-proof/1', media: [{ file: 'load.mp4', kind: 'video' }] }));
+  const asked = [];
+  const preview = (file, at) => { asked.push([basename(file), at]); const out = previewPath(file); writeFileSync(out, 'gif'); return { file: out, bytes: 3 }; };
+  await uploadAll({ pr: 8, files: [fromLoad, fallback], proofPath: proof, target: githubTarget({ repo: 'o/r', run: fakeGh({ release: { id: 5 }, assets: [] }).run }), preview });
+  assert.deepEqual(asked, [['load.mp4', 0], ['fallback.mp4', 6.5]]);
+  const media = JSON.parse(readFileSync(proof, 'utf8')).media;
+  assert.deepEqual(media.map((m) => [m.file, m.start, m.previewStartSec]), [['load.mp4', 'load', 0], ['fallback.mp4', 'load', 6.5]], 'proof.json records which start each take used');
+  asked.length = 0;
+  await uploadAll({ pr: 8, files: [fallback], target: githubTarget({ repo: 'o/r', run: fakeGh({ release: { id: 5 }, assets: [] }).run }), preview, previewStart: 2 });
+  assert.deepEqual(asked, [['fallback.mp4', 2]], '--preview-start still wins');
 });
