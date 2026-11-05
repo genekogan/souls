@@ -119,7 +119,7 @@ const signupSheet: DefInput = {
 const page = (x: number, tint = 'page') => ({ kind: 'box', at: [x, 1.25, 0.014], size: [0.34, 0.46, 0.012], round: 0, tint, pitch: -0.35 });
 const guestbook: DefInput = {
   schema: 'def/1', name: 'core-guestbook', version: 1,
-  description: `A visitors' book propped open on a tall wooden book stand, with a title its maker sets (state title). Visitors sign it by hand with their name and a few words (once each); it keeps the last ${2 * SIGNUP_MAX} entries, turning to a fresh page when full.`,
+  description: `A visitors' book propped open on a tall wooden book stand, with a title its maker sets (state title). Visitors sign it by hand with their name and a few words (once each); it keeps up to ${2 * SIGNUP_MAX} entries, turning to a fresh page when full (its oldest page gives way).`,
   tags: ['signage', 'sign-text', 'board', 'signup', 'keeps-newest', 'hand-writable'], form: 'point',
   synonyms: ['guestbook', 'guest book', 'visitors book', "visitors' book", 'visitor book'],
   make: { kind: 'gen', gen: 'kit/2', args: { round: 0.006, shapes: [...stand(1.2, 'wood'),
@@ -128,7 +128,8 @@ const guestbook: DefInput = {
     page(-0.177), page(0.177),
     { kind: 'box', at: [0, 1.0, 0.1], size: [0.78, 0.03, 0.06], round: 0, tint: 'wood', pitch: -0.35 },
     { kind: 'box', at: [-0.2, 1.02, 0.11], size: [0.15, 0.012, 0.012], round: 0, tint: 'cover' }],
-    faces: [{ at: [0.177, 1.25, 0.022], w: 0.3, h: 0.44, pitch: -0.35, bg: '#f6efdc', ink: '#2a2622' }] } } as unknown as DefInput['make'],
+    faces: [{ at: [0.177, 1.25, 0.03], w: 0.3, h: 0.44, pitch: -0.35,   // 1 cm proud of the page front (2 mm z-fought on the sheet)
+ bg: '#f6efdc', ink: '#2a2622' }] } } as unknown as DefInput['make'],
   params: { wood: { type: 'color', default: '#6b4a2e', doc: 'stand colour' }, cover: { type: 'color', default: '#6e2a2a', doc: 'cover colour' } },
   palette: { wood: '#6b4a2e', cover: '#6e2a2a', page: '#f6efdc' },
   state: { title: { type: 'string', max: 60, default: 'Guestbook' }, text: { type: 'string', max: 2 * SIGNUP_MAX * (44 + GUESTBOOK_WORDS_MAX), lines: 2 * SIGNUP_MAX, default: '' }, textBy: { type: 'string', max: 2 * SIGNUP_MAX * 41, default: '' } } as DefInput['state'],

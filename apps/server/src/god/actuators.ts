@@ -225,7 +225,9 @@ export function listProblem(def: StoredDef, a: { name: string }, state: Record<s
     if (mine) return { code: 'object.state', reason: noun ? `You have already signed the ${noun}.` : 'Your name is already on this sheet.' };
     if (names.length >= cap && !def.tags.includes('keeps-newest')) return { code: 'object.state', reason: `The ${noun ?? 'sheet'} is full (${cap} names).` };
     const field = signupWordsField(def, a);
-    if (field && params?.text !== undefined && params.text !== '') { const bad = boardTextProblem(params.text, field.max, 1); return bad && noun ? { ...bad, reason: bad.reason.replace('the board', `the ${noun}`) } : bad; }
+    // optional words: blank is no words; inner line breaks collapse (listPatch), so only length and control characters refuse
+    const w = typeof params?.text === 'string' ? params.text.replace(/[\r\n]+/g, ' ').trim() : params?.text;
+    if (field && w !== undefined && w !== '') { const bad = boardTextProblem(w, field.max, 1); return bad && noun ? { ...bad, reason: bad.reason.replace('the board', `the ${noun}`) } : bad; }
     return null;
   }
   if (isPollAction(def, a)) {
