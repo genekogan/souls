@@ -144,7 +144,8 @@ refused before checkout. Until #791 and #793 merge, the bench is on `agent/736-h
 
 ```bash
 gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
-  [-f profile=even,meetup] [-f repeats=2] [-f short=false] [-f browser=false] [-f slice_cpu_quota=400%] [-f slice_memory_max=8G]
+  [-f profile=even,meetup] [-f repeats=2] [-f short=false] [-f browser=false] [-f slice_cpu_quota=400%] [-f slice_memory_max=8G] \
+  [-f active_min=60] [-f telemetry=true]
 ```
 
 - **Quiet.** The bench gets `--quiet-host --qualifying-executor` only when four things hold: the dispatcher sets
@@ -174,6 +175,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
   this lands on `main`, dispatch the workflow from the branch that carries it (`gh workflow run … --ref <branch>`).
   The artifact holds the top-level `REPORT.md`, `receipt.json` and `results.json`, plus each arm's `result.json`. The
   calls, live samples, CPU profiles, templates and `souls/` stay on the runner.
+- **Long windows (CW8 A2, #955).** `active_min` sets the activity window, from 20 to 240 minutes; blank means 20. It is refused unless `(minutes + 15) × runs ≤ 280`, so the run fits the job's 300 min: for example, `profile=meetup repeats=1 active_min=60`. `telemetry=true` runs the launcher's collector beside the worlds. Each run's `result.json` carries `growth`, the trends after an explicit warm-up; see the bench README's "Long windows" section.
 - **What it qualifies.** The host is the maintainer's machine. Its verdict is labelled with `host_class` and is not
   a production-class result unless that host is the production class.
 

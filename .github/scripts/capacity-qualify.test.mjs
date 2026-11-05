@@ -148,3 +148,25 @@ test('slopes (#741): profile slopes alone runs the slopes bench with CPU profile
   assert.deepEqual(copied.sort(), ['REPORT.md', 'inv5000-r1/result.json', 'qualify.json', 'receipt.json', 'results.json']);
   rmSync(out, { recursive: true });
 });
+
+test('CW8 A2 (#955): active_min and telemetry pass through; without them the argument list is exactly today\'s', () => {
+  const today = ['--profile', 'even,meetup', '--repeats', '2', '--host-class', 'maintainer-self-hosted', '--out', 'o', '--port', '4460', '--range', '4461-4490', '--quiet-host', '--qualifying-executor'];
+  assert.deepEqual(benchArgs(parseInputs(ENV), true, 'o'), today);
+  assert.deepEqual(benchArgs(parseInputs({ ...ENV, INPUT_ACTIVE_MIN: undefined, INPUT_TELEMETRY: undefined }), true, 'o'), today);
+  const long = parseInputs({ ...ENV, INPUT_PROFILE: 'meetup', INPUT_REPEATS: '1', INPUT_ACTIVE_MIN: '60', INPUT_TELEMETRY: 'true' });
+  assert.deepEqual([long.activeMin, long.telemetry], [60, true]);
+  assert.deepEqual(benchArgs(long, true, 'o').slice(-3), ['--active-min', '60', '--telemetry']);
+  assert.equal(parseInputs({ ...ENV, INPUT_ACTIVE_MIN: '20' }).activeMin, 20, '4 runs of 20 min fit');
+  assert.equal(parseInputs({ ...ENV, INPUT_REPEATS: '1', INPUT_ACTIVE_MIN: '60' }).activeMin, 60, 'both profiles once: (60 + 15) x 2 = 150');
+  for (const v of ['19', '241', '60.5', '060', 'sixty', '60 --short'])
+    assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'meetup', INPUT_REPEATS: '1', INPUT_ACTIVE_MIN: v }), /active_min/, v);
+  assert.throws(() => parseInputs({ ...ENV, INPUT_ACTIVE_MIN: '60' }), /active_min="60".*fits the 300 min job/, 'even,meetup x2 at 60 min: (75) x 4 = 300 > 280');
+  assert.throws(() => parseInputs({ ...ENV, INPUT_SHORT: 'true', INPUT_ACTIVE_MIN: '60', INPUT_PROFILE: 'meetup', INPUT_REPEATS: '1' }), /active_min.*short/);
+  assert.throws(() => parseInputs({ ...ENV, INPUT_TELEMETRY: 'yes' }), /telemetry/);
+});
+
+test('slopes (#741) with CW8 A2 (#955): active_min and telemetry are refused with profile=slopes', () => {
+  assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'slopes', INPUT_ACTIVE_MIN: '60' }), /active_min.*slopes/);
+  assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'slopes', INPUT_TELEMETRY: 'true' }), /telemetry.*slopes/);
+  assert.equal(parseInputs({ ...ENV, INPUT_PROFILE: 'slopes' }).profile, 'slopes');
+});
