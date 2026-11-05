@@ -78,10 +78,12 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  // one seat (or numbered copies of one, which the vocabulary already reads as the nearest) keeps the normal path; seats
  // of different names are ambiguous and are named, never chosen.
  if(!candidates.length){
-  const own=caps.filter(c=>c.verb==='sit'&&c.target?.kind==='object'&&covers(q,words(seatNames(c))));
-  const bases=new Set(own.map(c=>seatNames(c)[0]!.replace(/[-\s]+\d+$/,'')));
-  if(bases.size===1)return null;
-  if(bases.size>1){const named=own.slice(0,8).map(c=>({capability:c.id,name:seatNames(c)[0]!,place:c.target!.id,available:c.available,...(c.blocked?{reason:c.blocked.reason}:{})}));return choice('interaction','sit',named,`Several seats are named that way (${[...bases].slice(0,8).join(', ')}); choose one by its exact sit capability ID. No seat has been selected.`);}
+  // own names only (label head, id, target id): the label's "by <neighbours>" and kind words never name a seat
+  const own=caps.filter(c=>c.verb==='sit'&&c.target?.kind==='object'&&covers(q,words(seatNames(c).slice(0,3))));
+  const base=(c:EdgeCapability)=>{const t=tokens(seatNames(c)[0]!);return (/^\d+$/.test(t.at(-1)??'')&&t.length>1?t.slice(0,-1):t).join(' ');};
+  const byBase=new Map<string,EdgeCapability>();for(const c of own)if(!byBase.has(base(c)))byBase.set(base(c),c);
+  if(byBase.size===1)return null;
+  if(byBase.size>1){const kept=[...byBase.values()].slice(0,8),named=kept.map(c=>({capability:c.id,name:seatNames(c)[0]!,place:c.target!.id,available:c.available,...(c.blocked?{reason:c.blocked.reason}:{})}));return choice('interaction','sit',named,`Several seats are named that way (${named.map(c=>c.name).join(', ')}); choose one by its exact sit capability ID. No seat has been selected.`);}
  }
  return choice('interaction','sit',candidates,candidates.length?'Choose a bound seat by its exact sit capability ID. No seat has been selected.':'No bound sit action matches that named target; no nearby seat or walk was substituted.');
 }

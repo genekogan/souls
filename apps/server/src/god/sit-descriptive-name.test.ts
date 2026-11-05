@@ -40,6 +40,10 @@ test('F5: "sit on the presenter box" sits on the presenter timber box; other des
   assert.equal(dry('sit on the presenter seat').code, 'capability.choose', 'a part choice stays a choice');
   assert.equal(dry('walk to the Chiba auditorium').would?.capability, 'walk:chiba');
   assert.equal(dry('sit on the chair').ok, true, 'a generic seat word keeps the nearest seat');
+  assert.equal(dry('sit:presenter-timber-box').would?.capability, 'sit:' + box);
+  assert.match(String(dry('sit on the navy sofa').would?.label), /^navy-sofa/, 'numbered copies keep the nearest of them');
+  assert.equal(dry('sit at the podium desk in Chiba').code, 'capability.choose', 'a part choice stays a choice');
+  assert.equal(dry('sit on the presenter tracks').ok, false, 'a neighbour named in the label is not the seat');
   // act: the Soul walks to the box and sits on it
   const out = await accept(w.host, Promise.resolve(edge.act(soul as never, {capability: 'sit on the presenter box'}))) as any;
   assert.equal(out.accepted, true, JSON.stringify(out)); assert.equal(out.receipt.capability, 'sit:' + box);
