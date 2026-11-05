@@ -30,6 +30,8 @@ The split camera control shows Broadcast, Free or Following a Soul (and loading/
 Its main segment switches Broadcast → Free or returns Free/Following → Broadcast in one click. The chevron offers
 explicit modes and Camera controls, including the existing movement guide, reset and device fullscreen option.
 Dragging, zooming and movement keys retain their existing camera behavior.
+Free has no wall near the map's edge: a lost-camera guard (`WorldRtsCamera.keepPivotInBounds`) keeps the pivot within one
+far-zoom limit (320–1,400 m) of the world's ground rectangle, so the world is out of sight before it applies.
 
 Audio opens independent Sound effects and Music switches plus a radio station selector. Stations curate the existing
 score playlist: All music, Quiet & ambient, Electronic and Upbeat. Choosing a station while music is off remembers

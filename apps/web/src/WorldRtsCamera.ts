@@ -428,10 +428,12 @@ export class WorldRtsCamera {
     }
     return this.zoomAnchor=p??target.clone();
   }
-  /** Pan/WASD/zoom keep the pivot over the map (its ground rectangle plus a margin); the eye moves with it. */
+  /** A lost-camera guard: pan/WASD/zoom keep the pivot within one far-zoom limit (farLimit, 320-1,400 m) of the map's
+   * ground rectangle; the eye moves with it. #660: it used to sit 60 m (or a quarter map) out, an invisible wall that
+   * WASD hit near the edge of what is drawn; now the world is out of sight before it applies. */
   private keepPivotInBounds(target:THREE.Vector3):boolean{
     const e=this.o.extent?.();if(!e||!e.every(Number.isFinite))return false;
-    const m=Math.max(60,.25*Math.max(e[2]-e[0],e[3]-e[1]));
+    const m=farLimit(e);
     const x=Math.max(e[0]-m,Math.min(e[2]+m,target.x)),z=Math.max(e[1]-m,Math.min(e[3]+m,target.z));
     if(x===target.x&&z===target.z)return false;
     this.camera.position.x+=x-target.x;this.camera.position.z+=z-target.z;target.x=x;target.z=z;return true;

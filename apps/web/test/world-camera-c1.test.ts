@@ -112,8 +112,9 @@ test('C1: Home/H goes to the overview; WASD speed grows with height; the pivot s
     assert.ok(Math.abs((manualCameraStep(w,1).forward??0)-.1*3)<1e-9,'dt is capped at .1 s');
     assert.ok(Math.abs((manualCameraStep(w,.1,10).forward??0)-3)<1e-9);
     assert.ok(Math.abs((manualCameraStep(w,.1,.2).forward??0)-.3)<1e-9,'never slower than the base');
+    // #660: the guard is one far limit (here 500 m) beyond the map, not 100 m: a lost-camera guard, not a wall near the edge
     f.controls.target.set(5000,0,0);f.camera.position.set(5000,31,70);f.rts.update(1/60);
-    assert.equal(f.controls.target.x,300);assert.equal(f.camera.position.x,300);
+    assert.equal(f.controls.target.x,700);assert.equal(f.camera.position.x,700);
   }finally{f.rts.dispose();}
 });
 
@@ -125,4 +126,16 @@ test('C1 broadcast: the aim lifts toward the horizon by the tunable fraction, sa
   assert.ok(Math.abs(pitch+25*(1-BROADCAST_HORIZON_LIFT))<1e-9,String(pitch));
   assert.deepEqual(liftHorizon(eye,[0,12,-5]),[0,12,-5],'an upward look is unchanged');
   assert.deepEqual(liftHorizon(eye,at,0),at);
+});
+
+test('#660: held WASD crosses the old wall (map edge + max(60 m, quarter map)) forward and sideways', () => {
+  const f=rig();try{
+    // the old wall for a [-200, 200] map sat at ±300 m; start 20 m inside it, then hold W, then D from a second position
+    f.controls.target.set(0,0,-280);f.camera.position.set(0,31,-210);f.camera.lookAt(f.controls.target);f.settle(2);
+    f.fire('keydown',{code:'KeyW',key:'w'},f.win);f.settle(600);f.fire('keyup',{code:'KeyW',key:'w'},f.win);f.settle(2);
+    assert.ok(f.controls.target.z<-330,`forward passes the old wall: ${f.controls.target.z}`);
+    f.controls.target.set(280,0,0);f.camera.position.set(280,31,70);f.camera.lookAt(f.controls.target);f.settle(2);
+    f.fire('keydown',{code:'KeyD',key:'d'},f.win);f.settle(600);f.fire('keyup',{code:'KeyD',key:'d'},f.win);f.settle(2);
+    assert.ok(f.controls.target.x>330,`sideways passes the old wall: ${f.controls.target.x}`);
+  }finally{f.rts.dispose();}
 });
