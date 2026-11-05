@@ -47,7 +47,7 @@ test('hide and seek: hide, search empty and found, nothing told, words, refusals
   {op: 'place', def: 'core/book@1', name: 'book', in: {parent: 'table', slot: 'top'}, p: [0.25, 0]},
   {op: 'place', def: 'core/bowl@2', name: 'bowl', in: {parent: 'table', slot: 'top'}, p: [-0.25, 0]},
   {op: 'place', def: 'core/lantern@3', name: 'lantern', in: {parent: 'table', slot: 'top'}, p: [0.55, 0.2], state: {on: false}},
-  {op: 'place', def: 'core/hollow-stump@1', name: 'stump', p: [ax + 1, az + 2.6], r: Math.PI},
+  {op: 'place', def: 'core/hollow-stump@1', name: 'stump', p: [ax + 1, az + 2.6], r: Math.PI + 0.4}, // turned off the grid: the body's clearance at the rim is checked at an angle too
   {op: 'place', def: 'core/wall-niche@1', name: 'niche', p: [ax - 2, az + 3.4], r: Math.PI},
   {op: 'place', def: 'core/wall-niche@1', name: 'private-niche', p: [ax + 4.6, az + 3.4], r: Math.PI, access: 'private'},
   {op: 'place', def: 'core/wall-niche@1', name: 'spare', p: [ax - 5.2, az + 1], r: Math.PI / 2},

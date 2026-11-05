@@ -91,15 +91,15 @@ const hollowStump: DefInput = {
   synonyms: ['stump', 'hollow stump', 'tree stump', 'hiding place'],
   form: 'point',
   make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: [
-    { kind: 'lathe', at: [0, 0, 0], profile: [[STUMP_R + 0.07, 0], [STUMP_R + 0.02, 0.12], [STUMP_R, 0.5], [STUMP_R - 0.02, STUMP_RIM - 0.03], [STUMP_R - 0.04, STUMP_RIM], [STUMP_R - 0.08, STUMP_RIM], [STUMP_R - 0.09, STUMP_FLOOR + 0.01], [0, STUMP_FLOOR]], segments: 14, tint: 'bark', collide: true },
+    { kind: 'lathe', at: [0, 0, 0], profile: [[STUMP_R + 0.04, 0], [STUMP_R + 0.02, 0.12], [STUMP_R, 0.5], [STUMP_R - 0.02, STUMP_RIM - 0.03], [STUMP_R - 0.04, STUMP_RIM], [STUMP_R - 0.08, STUMP_RIM], [STUMP_R - 0.09, STUMP_FLOOR + 0.01], [0, STUMP_FLOOR]], segments: 14, tint: 'bark', collide: true },
     { kind: 'lathe', at: [0, 0, 0], profile: [[STUMP_R - 0.081, STUMP_FLOOR + 0.005], [0, STUMP_FLOOR + 0.002]], segments: 14, tint: 'hollow' },
   ] } },
   params: { bark: { type: 'color', default: '#5b4632', doc: 'bark colour' }, hollow: { type: 'color', default: '#1f1711', doc: 'colour down inside the hollow' } },
   state: {},
-  slots: [shelf('in-1', [0, STUMP_FLOOR, 0], 'stump')] as DefInput['slots'],
-  components: { container: { capacity: 1, hidden: true, inside: { lip: STUMP_RIM, face: STUMP_R, stand: [0, STUMP_R + 0.4], fit: [0.3, 0.12, 0.3], word: 'stump' } } } as DefInput['components'],
+  slots: [shelf('in-1', [0, STUMP_FLOOR, 0.03], 'stump')] as DefInput['slots'],
+  components: { container: { capacity: 1, hidden: true, inside: { lip: STUMP_RIM, face: STUMP_R, stand: [0, STUMP_R + 0.04 + 0.4], fit: [0.3, 0.12, 0.3], word: 'stump' } } } as DefInput['components'],
   palette: { bark: '#5b4632', hollow: '#1f1711' },
-  size: { box: [(STUMP_R + 0.07) * 2, STUMP_RIM, (STUMP_R + 0.07) * 2] },
+  size: { box: [(STUMP_R + 0.04) * 2, STUMP_RIM, (STUMP_R + 0.04) * 2] },
 } as DefInput;
 const NW = 1.2, NH = 1.35, ND = 0.42;
 const wallNiche: DefInput = {
