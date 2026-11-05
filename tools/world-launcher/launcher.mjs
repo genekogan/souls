@@ -35,6 +35,9 @@
 //                                unregister it (never deletes; worldops.mjs). restore-world {id} puts it back; list-archive;
 //                                audit {slug?} reads <data>/audit.jsonl
 //   POST /__sim/worlds/<slug>/unlisted the world's owner (signed in, or their own agent's god token): {unlisted: true|false}
+//   POST|DELETE /__sim/worlds/<slug>/thumbnail  the world's owner (signed in, or their own agent's god token): a 16:9 JPEG as
+//                                the body (thumbnail.mjs), or DELETE to fall back to the template's default; never wakes the world
+//   GET  /__sim/thumbs/<slug>/<sha>.jpg, /__sim/thumbs/_template/<sha>.jpg  the world list's pictures, immutable (#887)
 //   POST /__sim/op/soul-pending|soul-approve|soul-message|soul-inbox|soul-delete, /__sim/op/set-test  operator only: TEST Souls
 //                                on worlds flagged test (op-souls.mjs, apps/server/src/op-souls.ts); /__sim/op/god-pending|
 //                                god-approve: the owner's god pairing on a scratch test world (the release probe's god folder)
@@ -107,9 +110,10 @@ import { EXISTING_WORLDS, decorateCommand, memAvailableMb, productionSettings } 
 import { makeHandoff } from './handoff.mjs';
 import { MicroCache, launcherFlood, listenTimeoutMs, refusalBody, requestClass, short, soulCeilings } from './flood.mjs';
 import { readLive, serveMetrics } from './metrics.mjs';   // lane L7
-import { archiveWorld, archivedSlugs, listArchive, readAudit, restoreWorld, tokenLabel } from './worldops.mjs';
+import { archiveWorld, archivedSlugs, audit, listArchive, readAudit, restoreWorld, tokenLabel } from './worldops.mjs';
 import { isUnlisted, publicWorlds } from './listing.mjs';
 import { opSoul, opSetTest } from './op-souls.mjs';
+import { THUMB, THUMB_CACHE, THUMB_PATH, clearThumbnail, intakeThumbnail, rateRefusal, templateThumbs, thumbnailFile, thumbnailOf, thumbnailRate, writeThumbnail } from './thumbnail.mjs';
 // The host check's last result, if the sim-worlds-health timer runs; stale (>30 min) counts as not ok.
 /** The world's heap cap (lane L1, LOAD-CONTRACT §4: per world from the registry, registry.mjs worldHeapMb). A node child gets
  *  it as its own command-line flag, so a NODE_OPTIONS the auth env file sets (tests' preloads) still applies and a heap
@@ -181,6 +185,7 @@ export async function openLauncher(cfg = {}) {
   const webDir = resolve(cfg.webDir ?? join(root, 'apps/web/dist'));
   const templatesDir = resolve(cfg.templatesDir ?? join(root, 'worlds/templates'));
   const templateList = cachedTemplates(templatesDir);   // P2: never parse ~2 MB of templates per proxied request
+  const defaultThumbs = templateThumbs(cfg.templateThumbsDir ?? join(templatesDir, 'thumbs'));   // #887: pulled from the asset CDN, may be absent
   const marsWebDir = cfg.marsWebDir ?? (existsSync(join(root, '.lane/mars-web')) ? join(root, '.lane/mars-web') : undefined);
   const log = cfg.log ?? ((s) => console.log(`[launcher] ${s}`));
   const flood = process.env.SIM_FLOOD === '0' ? () => null : launcherFlood({ log, limits: cfg.floodLimits });   // P2 coarse ceiling, see flood.mjs
@@ -248,7 +253,7 @@ export async function openLauncher(cfg = {}) {
     const st = pool.status(w.slug), s = stats.get(w.slug), t = templateList({ all: true }).find((x) => x.id === w.template);
     // two worlds with the same shown name are told apart by their slug (the address people see), e.g. "Mars · my-mars-2"
     const twin = registry.worlds.some((x) => x !== w && sameName(x.name, w.name));
-    return { nameTag: twin ? w.slug : null, claimable: w.claimable !== false, unlisted: isUnlisted(w), key: w.slug, worldKey: w.slug, slug: w.slug, name: w.name, basePath: wp(w.slug), configPath: `${wp(w.slug)}/v1/config`, url: auth ? `${wp(w.slug)}/` : `${wp(w.slug)}/?dev=1`, template: w.template, templateName: t?.name ?? (w.template === 'empty' ? 'Empty plain' : w.template), createdAt: w.createdAt, owner: w.owner ?? null, god: s?.god ?? w.god ?? false, entities: s?.entities ?? w.entities ?? null, seq: s?.seq ?? w.seq ?? null, souls: s?.souls ?? w.souls ?? null, godName: (s?.god ?? w.god) ? (w.godName ?? null) : null, status: st.status, restarts: st.restarts ?? 0 };
+    return { nameTag: twin ? w.slug : null, claimable: w.claimable !== false, unlisted: isUnlisted(w), key: w.slug, worldKey: w.slug, slug: w.slug, name: w.name, basePath: wp(w.slug), configPath: `${wp(w.slug)}/v1/config`, url: auth ? `${wp(w.slug)}/` : `${wp(w.slug)}/?dev=1`, template: w.template, templateName: t?.name ?? (w.template === 'empty' ? 'Empty plain' : w.template), createdAt: w.createdAt, owner: w.owner ?? null, god: s?.god ?? w.god ?? false, entities: s?.entities ?? w.entities ?? null, seq: s?.seq ?? w.seq ?? null, souls: s?.souls ?? w.souls ?? null, godName: (s?.god ?? w.god) ? (w.godName ?? null) : null, ...thumbnailOf(w, { base: B, defaults: defaultThumbs }), status: st.status, restarts: st.restarts ?? 0 };
   };
   async function worldsJson() {
     await Promise.all(registry.worlds.map(refreshStats));
@@ -467,6 +472,38 @@ export async function openLauncher(cfg = {}) {
     const a = await actorOf(w, authorization);
     if (!isOwner(w, a)) return [403, { ok: false, code: 'forbidden', message: "only this world's owner (or the site admin) may list or unlist it" }];
     return setUnlisted(w, body?.unlisted, a.account);
+  }
+  // #887: the world's picture on the list. Who is asking is settled without the world's process: a god token and the
+  // owner are read from its database, a Clerk session is verified here, and a local dev sign-in "dev:<name>" is the
+  // account dev:<name> exactly as the world's dev auth makes it (apps/server/src/auth.ts). A sleeping world stays asleep.
+  const thumbRate = thumbnailRate(cfg.thumbnailRate);
+  async function quietActorOf(w, authorization) {
+    if (/^Bearer\s+god_\S+$/i.test(authorization ?? '')) return actorOf(w, authorization);
+    const tok = /^Bearer\s+(\S+)$/i.exec(authorization ?? '')?.[1];
+    if (!tok) return null;
+    if (auth) { const id = await verifiedCreator(authorization, auth.child, publicOrigin, root); return id ? { account: id, via: 'session' } : null; }
+    return tok.startsWith('dev:') && tok.length > 4 ? { account: `dev:${tok.slice(4, 40)}`, via: 'session' } : null;
+  }
+  async function ownerThumbnail(w, method, bytes, authorization) {
+    const a = await quietActorOf(w, authorization);
+    if (!a) return [401, { ok: false, code: 'unauthorized', message: "sign in, or use this world's god token", fix: "Run it from the world owner's agent folder (eden-god thumbnail), or send the owner's sign-in." }];
+    if (!isOwner(w, a)) return [403, { ok: false, code: 'forbidden', message: "only this world's owner sets its thumbnail", fix: "Ask the world's owner; co-builders and visitors cannot change it." }];
+    const wait = thumbRate(w.slug);
+    if (wait !== null) return [429, rateRefusal(wait), { 'retry-after': String(wait) }];
+    const dir = registry.worldDir(w.slug);
+    if (method === 'DELETE') {
+      clearThumbnail(dir); const rest = registry.update(w.slug, { thumbnail: undefined });   // undefined: dropped when the registry is written
+      audit(dataDir, { op: 'thumbnail-clear', slug: w.slug, by: a.account, via: a.via });
+      log(`${w.slug}: thumbnail cleared (${a.account})`);
+      return [200, { ok: true, slug: w.slug, ...thumbnailOf(rest, { base: B, defaults: defaultThumbs }) }];
+    }
+    const t = await intakeThumbnail(bytes, { words: [w.name] });
+    if (!t.ok) { if (t.verdict) audit(dataDir, { op: 'thumbnail-refused', slug: w.slug, by: a.account, code: t.body.code, classifier: t.verdict.classifier, labels: t.verdict.labels }); return [t.status, t.body]; }
+    writeThumbnail(dir, t.sha, t.bytes);
+    registry.update(w.slug, { thumbnail: { sha: t.sha, at: Date.now() } });
+    audit(dataDir, { op: 'thumbnail', slug: w.slug, by: a.account, via: a.via, sha: t.sha });
+    log(`${w.slug}: thumbnail ${t.sha.slice(0, 12)} ${t.width}×${t.height} ${t.bytes.length} B (${a.account})`);
+    return [200, { ok: true, slug: w.slug, ...thumbnailOf(registry.get(w.slug), { base: B, defaults: defaultThumbs }), sha: t.sha, width: t.width, height: t.height, bytes: t.bytes.length, stripped: t.stripped }];
   }
   async function opRemoveFork(body) {
     const w = registry.get(typeof body?.slug === 'string' ? body.slug : '');
@@ -874,6 +911,24 @@ export async function openLauncher(cfg = {}) {
         const out = own[2] === 'archive' || own[2] === 'unlisted' ? (req.method === 'POST' ? await (own[2] === 'archive' ? ownerArchive : ownerSetUnlisted)(w, body, req.headers.authorization) : null) : await handoff(w, own[2], req.method, body, req.headers.authorization);
         if (!out) { json(res, 405, { ok: false, code: 'method' }); return; }
         json(res, out[0], out[1]); return;
+      }
+      const thumbOwn = path.match(/^\/__sim\/worlds\/([a-z][a-z0-9-]{0,31})\/thumbnail$/);
+      if (thumbOwn) {
+        if (req.method !== 'POST' && req.method !== 'DELETE') { json(res, 405, { ok: false, code: 'method', message: 'POST a JPEG, or DELETE' }, { allow: 'POST, DELETE' }); return; }
+        const w = registry.get(thumbOwn[1]); if (!w || closing.has(w.slug)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
+        const chunks = []; let n = 0;
+        if (req.method === 'POST') for await (const c of req) { n += c.length; if (n > THUMB.maxBytes) { res.shouldKeepAlive = false; json(res, 413, { ok: false, code: 'thumbnail.size', message: `a thumbnail is at most ${THUMB.maxBytes} bytes`, fix: 'Save it as a 1280×720 JPEG at quality 80 or lower (usually 100–250 KB).' }, { connection: 'close' }); return; } chunks.push(c); }
+        const out = await ownerThumbnail(w, req.method, Buffer.concat(chunks, n), req.headers.authorization);
+        json(res, out[0], out[1], out[2] ?? {}); return;
+      }
+      const thumbGet = (req.method === 'GET' || req.method === 'HEAD') && path.match(THUMB_PATH);
+      if (thumbGet) {
+        const w = thumbGet[1] === '_template' ? null : registry.get(thumbGet[1]);
+        const file = thumbGet[1] === '_template' ? defaultThumbs.file(thumbGet[2]) : w && w.thumbnail?.sha === thumbGet[2] ? thumbnailFile(registry.worldDir(w.slug), thumbGet[2]) : null;
+        if (!file) { json(res, 404, { ok: false, code: 'not-found' }); return; }
+        res.setHeader('x-content-type-options', 'nosniff');
+        if (serveFile(res, file, THUMB_CACHE, req)) return;
+        json(res, 404, { ok: false, code: 'not-found' }); return;
       }
       if (path.startsWith('/__sim/site/')) {
         // the worlds' travel relay: this machine only, with the run's site key
