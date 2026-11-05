@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { defaultCommand } from './children.mjs';
 import { addGodToken } from './worldops.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import { appendFileSync } from 'node:fs';
 import { THUMB, intakeThumbnail, thumbnailRate } from './thumbnail.mjs';
 import { setUploadClassifier } from '../../apps/server/src/moderation/classifier.ts';
 
@@ -26,7 +28,7 @@ db.exec('CREATE TABLE IF NOT EXISTS god_tokens_v1 (world_id TEXT NOT NULL, token
 if (!db.prepare('SELECT 1 FROM world_meta_v1 WHERE world_id=?').get(process.env.WORLD_KEY + '-1')) db.prepare('INSERT INTO world_meta_v1 VALUES (?, ?)').run(process.env.WORLD_KEY + '-1', JSON.stringify({ owner: process.env.WORLD_OWNER_ID || null }));
 db.close(); await import(${JSON.stringify(new URL('./fake-world.mjs', import.meta.url).pathname)});`);
 const command = (w, port) => { const c = defaultCommand(w, port, { publicOrigin: ORIGIN }); return { cmd: process.execPath, args: [born], env: { ...c.env, DATA_DIR: w.dataDir, FAKE_HITS: hits } }; };
-const open = () => openLauncher({ port: PORT, range: RANGE, dataDir: data, webDir, templatesDir, command, eager: 0, log: () => {}, cobuilders: true, thumbnailRate: { limit: 100 } });
+const open = () => openLauncher({ port: PORT, range: RANGE, dataDir: data, webDir, templatesDir, command, eager: 0, log: () => {}, cobuilders: true, thumbnailRate: { limit: 100 }, moderationVetoTtlMs: 0 });
 let L;
 before(async () => { L = await open(); });
 after(async () => { await L?.close(); setUploadClassifier(null); });
@@ -43,7 +45,7 @@ function jpeg(w, h, { exif = false, comment = null, pad = 0, trailer = null } = 
 }
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 // after a launcher restart the client may still hold a kept-alive socket to the old one: one retry on a reset
-const api = (p, o = {}) => fetch(`${ORIGIN}${p}`, o).catch((e) => { if (e?.cause?.code !== 'ECONNRESET') throw e; return fetch(`${ORIGIN}${p}`, o); });
+const api = (p, o = {}) => fetch(`${ORIGIN}${p}`, o).catch((e) => { if (!['ECONNRESET', 'UND_ERR_SOCKET'].includes(e?.cause?.code)) throw e; return fetch(`${ORIGIN}${p}`, o); });
 const post = (p, body, headers = {}) => api(p, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
 const put = (slug, bytes, token, method = 'POST') => api(`/__sim/worlds/${slug}/thumbnail`, { method, headers: { 'content-type': 'image/jpeg', ...(token ? { authorization: `Bearer ${token}` } : {}) }, ...(bytes ? { body: bytes } : {}) });
 const row = async (slug) => (await (await api('/__sim/worlds.json')).json()).worlds.find((w) => w.slug === slug);
@@ -219,4 +221,36 @@ test('archived while an upload is being checked: nothing is written into the mov
   const big = await api('/__sim/worlds/brief/thumbnail', { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: Buffer.alloc(THUMB.maxBytes + 1, 1) });
   assert.equal(big.status, 413); assert.equal((await big.json()).code, 'thumbnail.size');
   assert.equal((await put('brief', jpeg(1280, 720), null)).status, 401);
+});
+
+test("the site admin's veto: a vetoed image is refused at upload (451) and no longer served or listed", async () => {
+  await L.close(); L = await open();
+  const siteLog = join(data, 'worlds', 'assets', 'moderation-site.jsonl'); mkdirSync(join(data, 'worlds', 'assets'), { recursive: true });
+  const admin = (sha, action) => appendFileSync(siteLog, JSON.stringify({ scope: 'site', world: 'second-plain-1', sha, action, actor: 'dev:admin', role: 'admin', reason: 'test', at: Date.now() }) + '\n');
+  const img = jpeg(1280, 720, { pad: 31 }), s1 = sha(img);
+  let r = await put('second-plain', img, 'dev:gene'); assert.equal(r.status, 200);
+  const url = (await row('second-plain')).thumbnail; assert.equal(url, `/__sim/thumbs/second-plain/${s1}.jpg`);
+  admin(s1, 'hide');
+  assert.equal((await api(url)).status, 404, 'a stored picture the admin vetoed is not served');
+  assert.equal((await row('second-plain')).thumbnailSource, 'template', 'the card falls back to the default');
+  r = await put('second-plain', img, 'dev:gene'); let b = await r.json();
+  assert.equal(r.status, 451); assert.equal(b.code, 'thumbnail.vetoed'); assert.ok(b.fix);
+  // the veto is by content: the same picture with EXIF added (different input bytes, same stripped bytes) is refused too
+  r = await put('second-plain', jpeg(1280, 720, { pad: 31, exif: true }), 'dev:gene'); assert.equal(r.status, 451);
+  admin(s1, 'unhide');
+  assert.equal((await api(url)).status, 200, 'lifted: served again');
+  // a world-scope admin veto, from the world's own log (read-only)
+  const other = jpeg(1280, 720, { pad: 33 });
+  const db = new DatabaseSync(join(data, 'worlds/second-plain/sim.db'));
+  db.exec("CREATE TABLE IF NOT EXISTS moderation_log_v1(seq INTEGER PRIMARY KEY AUTOINCREMENT, world_id TEXT NOT NULL, sha TEXT NOT NULL, action TEXT NOT NULL, actor TEXT NOT NULL, role TEXT NOT NULL, reason TEXT, detail TEXT, at INTEGER NOT NULL)");
+  db.prepare('INSERT INTO moderation_log_v1(world_id, sha, action, actor, role, reason, detail, at) VALUES (?,?,?,?,?,?,?,?)').run('second-plain-1', sha(other), 'hide', 'dev:admin', 'admin', 'test', null, Date.now()); db.close();
+  r = await put('second-plain', other, 'god_owneragent'); assert.equal(r.status, 401, 'that token belongs to another world');
+  r = await put('second-plain', other, 'dev:gene'); assert.equal(r.status, 451);
+  // a vetoed template default is neither listed nor served
+  const def = (await row('willow')).thumbnail ?? (await row('bare-one')).thumbnail ?? `/__sim/thumbs/_template/${sha(DEFAULT)}.jpg`;
+  admin(sha(DEFAULT), 'hide');
+  assert.equal((await api(`/__sim/thumbs/_template/${sha(DEFAULT)}.jpg`)).status, 404);
+  assert.deepEqual([(await row('brief')).thumbnail, (await row('brief')).thumbnailSource], [null, null]);
+  admin(sha(DEFAULT), 'unhide');
+  assert.ok(def);
 });
