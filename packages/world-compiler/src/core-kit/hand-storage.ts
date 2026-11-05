@@ -58,13 +58,8 @@ const swapShelf: DefInput = {
   make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: shelfShapes() } },
   params: { wood: { type: 'color', default: '#8a6240', doc: 'wood colour' }, back: { type: 'color', default: '#6f4d32', doc: 'back panel colour' }, sign: { type: 'color', default: '#2f6b5a', doc: 'header colour' } },
   state: { leftBy: { type: 'string', max: 240, default: '' } },
-<<<<<<< HEAD
   slots: shelfSlots(),
-  components: { container: { capacity: 3, inside: { lip: 1.065, face: rail, stand: [0, rail + 0.4], fit: [0.3, 0.28, 0.3], word: 'shelf' } } } as DefInput['components'],
-=======
-  slots: [shelf('in-1', [-0.3, 1.015, -0.01], 'shelf'), shelf('in-2', [0, 1.015, -0.01], 'shelf'), shelf('in-3', [0.3, 1.015, -0.01], 'shelf')] as DefInput['slots'],
   components: { container: { capacity: 3, inside: { lip: 1.065, face: rail, stand: [0, rail + 0.605], fit: [0.3, 0.28, 0.3], word: 'shelf' } } } as DefInput['components'],
->>>>>>> agent/435-swap-shelf
   palette: { wood: '#8a6240', back: '#6f4d32', sign: '#2f6b5a', letters: '#f1ead8', b0: '#9a3b32', b1: '#3b5f8a' },
   size: { box: [W, H + 0.19, D] },
 } as DefInput;
