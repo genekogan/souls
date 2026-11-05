@@ -170,6 +170,11 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
   decision and its facts), plus each run's `REPORT.md`, `receipt.json` and `result.json`. Workspace, home, host and
   user names are replaced with placeholders. The upload is refused if a file holds a Soul token. `souls/`,
   `launcher/` and logs never leave the runner and are deleted at the end of the job.
+- **Slopes (CW7, #741).** `profile=slopes`, alone, runs `tools/bench/capacity/slopes/slopes.mjs` instead, with
+  `--cpu-prof`; see the bench README's "Slopes" section. The ctl script comes from the workflow's own commit, so until
+  this lands on `main`, dispatch the workflow from the branch that carries it (`gh workflow run … --ref <branch>`).
+  The artifact holds the top-level `REPORT.md`, `receipt.json` and `results.json`, plus each arm's `result.json`. The
+  calls, live samples, CPU profiles, templates and `souls/` stay on the runner.
 - **Long windows (CW8 A2, #955).** `active_min` sets the activity window, from 20 to 240 minutes; blank means 20. It is refused unless `(minutes + 15) × runs ≤ 280`, so the run fits the job's 300 min: for example, `profile=meetup repeats=1 active_min=60`. `telemetry=true` runs the launcher's collector beside the worlds. Each run's `result.json` carries `growth`, the trends after an explicit warm-up; see the bench README's "Long windows" section.
 - **What it qualifies.** The host is the maintainer's machine. Its verdict is labelled with `host_class` and is not
   a production-class result unless that host is the production class.
@@ -191,7 +196,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
 | Server or package logic | `node --test` on touched files, `tsc -p` of touched packages |
 | Anything that can move geometry, navigation or god builds | add the walk gate |
 | Web app | `pnpm --filter @sim/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
-| Library defs, generators, compiler | conformance, plus a supplement when a revision changes |
+| Library defs, generators, compiler | `library.test.ts` and `catalogue-checks.test.ts` (budgets and holds), conformance, plus a supplement when a revision changes |
 | Soul behaviour, navigation, engines | the above plus a scenario playtest with two repeats per arm |
 | Release head | the remote gate, then the release workflow (live walks and cdn-walk) |
 

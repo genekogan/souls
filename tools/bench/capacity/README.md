@@ -199,6 +199,36 @@ node tools/bench/capacity/meetup/compare.mjs .local/qualify/<baseline>/capacity-
 - **Both verdicts:** they are printed with their reasons.
 - **Changed conditions:** a change in host class, quiet, short, slice or limits is listed as not like for like. A condition that neither side recorded is listed as not compared, not as a match.
 
+## Slopes: inventory versus activity (CW7, #741)
+
+`slopes/slopes.mjs` asks whether stable inventory is charged again on every request. It runs three orthogonal axes on one designated `eden-2026` world. This is not a sweep.
+
+| axis | arms | held fixed |
+|---|---|---|
+| `inventory` | 5,000 vs 10,000 placed objects | 5 Souls registered and active, the scene and the acts |
+| `activity` | 0, 5 or 10 of 10 registered Souls active | the scene as authored |
+| `quiet` | the designated world alone, or with 9 quiet ticking worlds (CW1 fixtures 1–9, no Souls) | 5 active Souls in the designated world |
+
+- **The distant inventory** (`slopes/inventory.mjs`, `cw7-distant/1`): deterministic copies of the template's own small furniture kinds, in the largest empty square at least 100 m from every authored object's edge. That is beyond sight (30 m) and go-near (60 m). The copies are applied as extra genesis batches of at most 256 ops each; the authored batches are unchanged.
+- **Per arm:**
+  - boot and settle;
+  - join through a loopback path-stripping proxy, because the CLI wants a `/w/<slug>` URL; the measured calls go straight to the world;
+  - warm-up, then a quiet window;
+  - a per-route probe: `--probe-n` serial calls each of `here`, `observe`, `capabilities`, `resolve` and one non-moving act, one at a time and rotating over the registered Souls, each with its own CPU budget. A busy answer (`soul.slow-down`, `world.busy`) is waited out for its Retry-After, up to 3 times, as the CLI does, and the waits are counted;
+  - an active window at CW1's per-Soul rates (a read every 4 s, an act every 20 s, one call at a time). The acts never move a Soul, so the neighbourhood is the same in every arm, and walk planning (#454) is **not** exercised.
+- **CPU** is the world process's (`/proc` or `ps`). Per-call CPU nets out the quiet window's rate, so it is an upper bound. `--cpu-prof` records the main thread with the inspector during the probe and during the active window. The result keeps the top self-time and inclusive functions, which stand in for the counters the server does not have: rows examined, plan builds, invalidations. It also keeps the inclusive time of the paths a decision names (`WATCH` in `slopes/report.mjs`: the menu build, the tick, the walk offers and their `goal()`, `navScan` and others) whatever their rank, because a top-15 list cannot show a mid-tree path's share.
+- **Output:** `<out>/{receipt.json, results.json, REPORT.md}`, with one `<arm>-r<k>/result.json` per run, plus local-only `calls.jsonl`, `live.jsonl`, `*.cpuprofile`, the world data and `souls/`, which holds tokens.
+
+```bash
+# laptop (functional only, INDICATIVE; one world at a time, so --quiet-worlds 1 keeps the quiet axis light)
+node tools/bench/capacity/slopes/slopes.mjs --root <built checkout> --axis inventory,activity --short --cpu-prof --port 4700
+# qualifying executor: the capacity-qualify workflow with profile=slopes (it adds --cpu-prof and, when quiet, --quiet-host --qualifying-executor)
+```
+
+- **What qualifies:** only a run on the qualifying executor that is declared quiet, full length (not `--short`) and has at least 2 repeats; every other run is labelled INDICATIVE. A failed arm or repeat is listed under "Failed runs" in REPORT.md, enters no mean (each section's `n` counts the runs its means rest on), and makes the bench exit 1.
+
+`--slice` wraps each world on its own, so a CPU quota there is per world, unlike the meetup bench. A qualifying slopes run needs no slice: it measures cost per call, not headroom.
+
 ## Recorded baseline (2026-10-31, before the server-reliability fixes)
 
 Fixture: the compact Eden 2026 copy, sha256 `d0921000a7ef…`, heap cap 768 MB unless noted; two repeats per arm, shown

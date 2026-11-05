@@ -17,7 +17,7 @@ on:
         required: true
         default: main
       profile:
-        description: even, meetup or even,meetup
+        description: even, meetup or even,meetup; or slopes alone (the CW7 slopes bench, tools/bench/capacity/slopes)
         default: even,meetup
       repeats:
         description: Repeats per profile (the verdict needs 2)
@@ -112,6 +112,7 @@ jobs:
         working-directory: bench
         run: |
           f=tools/bench/capacity/meetup/meetup.mjs
+          if [ "$INPUT_PROFILE" = slopes ]; then f=tools/bench/capacity/slopes/slopes.mjs; fi
           if [ ! -f "$f" ] || ! grep -q "qualifying-executor" "$f"; then
             echo "::error::ref $INPUT_REF has no $f with --qualifying-executor (CW2, #793); dispatch with a ref that does"; exit 1
           fi

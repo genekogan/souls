@@ -123,9 +123,10 @@ Other known limits:
 - Picking up something at the back of a counter bends the body deeply.
 - At a hand-over the model's record of who holds the item lags the engine by a few samples.
 - The `here` frame lists at most two things of a kind (three seats); more appear only as a count under `more`.
-- Some new defs are over the library's geometry budgets: triangles for the fountain, jukebox, curtained window, drum kit,
-  drawer chests, watering can, mic stand, kettle, mug and bell pull, and draw calls for the newest door and locker
-  revisions. They need lighter meshes, or recorded budget holds with reasons, before release.
+- Some defs are over the library's geometry budgets: triangles for the fountain, curtained window, drawer chests,
+  watering can, kettle, mug and bell pull, and draw calls for the newest door and locker revisions. They are getting
+  lighter revisions family by family (#494). The drum kit, mic stand and jukebox already have one (`@2`, in budget);
+  their `@1` keeps its bytes and its recorded hold, because published revisions are immutable.
 - Portable lights were rebuilt as carry-and-set-down (entry 29); the earlier version is retired. Mixed-outfit seams
   (entry 11) remain parked.
 
@@ -137,7 +138,10 @@ Each family has a deterministic native test that runs a real server and engine i
 node --test --test-concurrency=1 tools/soul-actions/<name>.test.mjs
 ```
 
-Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. The tests live in
+Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. An entry that adds or
+revises a library def also runs the library budget tests, so a def over its triangle or draw budget is caught by its
+own entry: `node --test packages/world-compiler/src/core-kit/library.test.ts packages/conformance/src/catalogue-checks.test.ts`
+and `pnpm --filter @sim/conformance test`. A new revision carries no budget hold; fix the mesh instead. The tests live in
 `tools/soul-actions/`; the viewer's motion units are under `apps/web/test/`, `apps/web/src/*.test.ts`,
 `mars/viewer/engine/test/` and `mars/viewer/app/engine-view/`.
 
