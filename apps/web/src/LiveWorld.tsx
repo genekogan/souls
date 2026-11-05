@@ -6,6 +6,7 @@ import {historyTakePath,historyTakePage} from './WorldTakeTransport.ts';
 import {WorldAuthoredBoundaries} from './WorldAuthoredBoundaries.ts';
 import {WorldTouchFree} from './touch/WorldTouchFree.ts';
 import {SoulSwipe,swipeStep,soulRing,interestScores} from './touch/soul-swipe.ts';
+import {hapticTick} from './touch/haptics.ts';
 import {exploreRoom} from './explore-data.ts';
 import {RendererDiagnostics} from './RendererDiagnostics.ts';
 import {EngineFixtureInstances} from './EngineFixtureInstances.ts';
@@ -369,7 +370,7 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
     let soulFlight:SoulFlight|null=null,soulFlightClock=0,soulFlightChip=false;const stopSoulFlight=(e:Event)=>{if(soulFlight&&soulFlightChip&&(e as PointerEvent).pointerType==='touch')return;soulFlight=null;};  // #892: a touch's glide is already Follow on the way (a flick, a ground tap or the chip decide what it does)
     const chipFlight=()=>!!soulFlight&&soulFlightChip;
     for(const type of ['pointerdown','keydown','wheel'] as const)window.addEventListener(type,stopSoulFlight,{capture:true,passive:true});
-    const rts=new WorldRtsCamera(renderer.domElement,camera,{controls:()=>controls,mode:()=>context.current.cameraMode,takeOver:()=>{context.current.manualNavigation='orbit';context.current.cameraMode='manual';context.current.follow=false;if(!navigation?.sync(true))navigation?.release(false);context.current.setManualNavigation('orbit');context.current.setCameraMode('manual');},scene:()=>scene,pickRoots:()=>[floaters.root,kin.view.root,standIns,...(people?.pickingRoots()??[]),...visualObstructionRoots()],focusAt:(x,y)=>{const target=hover.pick(x,y);if(target){inspectHover(target);return {center:target.point,radius:target.radius};}return null;},enabled:()=>!(context.current.cameraMode==='manual'&&context.current.manualNavigation==='free'),
+    const rts=new WorldRtsCamera(renderer.domElement,camera,{arrived:()=>hapticTick(),controls:()=>controls,mode:()=>context.current.cameraMode,takeOver:()=>{context.current.manualNavigation='orbit';context.current.cameraMode='manual';context.current.follow=false;if(!navigation?.sync(true))navigation?.release(false);context.current.setManualNavigation('orbit');context.current.setCameraMode('manual');},scene:()=>scene,pickRoots:()=>[floaters.root,kin.view.root,standIns,...(people?.pickingRoots()??[]),...visualObstructionRoots()],focusAt:(x,y)=>{const target=hover.pick(x,y);if(target){inspectHover(target);return {center:target.point,radius:target.radius};}return null;},enabled:()=>!(context.current.cameraMode==='manual'&&context.current.manualNavigation==='free'),
       extent:()=>(entityLayer.active?entityLayer.groundExtent():null)??(expansion?EDEN_TERRAIN_EXTENT:geometry.bounds),home:()=>{context.current.setCameraMode('manual');controlsApi.current?.overview();}});scene.add(rts.marker);  // VF2: your camera (keys, pivot, double-click)
     // #891: on a touch screen in Free, the floating stick walks, one finger looks, pinch glides, two fingers rise, double-tap flies (all through rts)
     const touchFree=new WorldTouchFree(renderer.domElement,host,{camera:rts,free:()=>context.current.cameraMode==='manual'&&context.current.manualNavigation==='orbit'&&!chipFlight(),soulAt:(x,y)=>hover.pick(x,y)?.kind==='soul'});
@@ -527,7 +528,7 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
         soulFlightChip=!!opts?.chip;  // #892: a touch's follow shows the bottom chip, not the card (same flight)
         navigation?.release();rts.release();groupSelection.clear();c.onSelect(soulId,soulFlightChip?'chip':undefined);c.setThing(null);
         const target=new THREE.Vector3(p[0],p[1]+1,p[2]);
-        if(reducedMotionQuery?.matches){soulFlight=null;c.cameraMode='follow';c.follow=true;c.setCameraMode('follow');return true;}
+        if(reducedMotionQuery?.matches){soulFlight=null;c.cameraMode='follow';c.follow=true;c.setCameraMode('follow');hapticTick();return true;}
         c.manualNavigation='orbit';c.cameraMode='manual';c.follow=false;c.setManualNavigation('orbit');c.setCameraMode('manual');
         camera.updateMatrixWorld();soulFlightClock=performance.now();soulFlight=new SoulFlight(soulId,camera.position,camera.getWorldDirection(new THREE.Vector3()),camera.position.distanceTo(controls.target),target);
         return true;
@@ -1046,7 +1047,7 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
         if(!q||context.current.cameraMode!=='manual'||past.current)soulFlight=null;
         else{const wall=performance.now(),pose=flight.step(Math.min(.5,(wall-soulFlightClock)/1000),new THREE.Vector3(q[0],q[1]+1,q[2]));soulFlightClock=wall;  // wall time: a slow frame rate (step is capped at 0.1 s) does not stretch the flight
           controls.target.copy(pose.target);camera.position.copy(pose.eye);camera.lookAt(pose.target);
-          if(pose.done){soulFlight=null;if(!soulFlightChip||context.current.selected!==flight.soulId)context.current.onSelect(flight.soulId,soulFlightChip?'chip':undefined);context.current.setThing(null);context.current.cameraMode='follow';context.current.follow=true;context.current.setCameraMode('follow');}}
+          if(pose.done){soulFlight=null;if(!soulFlightChip||context.current.selected!==flight.soulId)context.current.onSelect(flight.soulId,soulFlightChip?'chip':undefined);context.current.setThing(null);context.current.cameraMode='follow';context.current.follow=true;context.current.setCameraMode('follow');hapticTick();}}  // #893: Follow starts
       }
       atmosphereSeconds+=step;godLiving?.update(now,light.daylight,!!reducedMotionQuery?.matches||(look.enabled&&shotMode));const godSky=godLiving&&entityLayer.active&&!expansion?godLiving.atmosphere(shown.current?.tick??NaN):forkLand&&!expansion?forkLand.atmosphere():null;  // look pass: a still picture shows patterned lamps at their steady level (repeatable shots)
       if(!holdDraw||warmFrame)try{atmosphere.update({seconds:atmosphereSeconds,dt:step,daylight:light.daylight,camera,eden:(!!expansion||!!godSky)&&!past.current,reducedMotion:!!reducedMotionQuery?.matches,clock:shotClockAt(shown.current?.datetime??adopted?.clock??null,shotHour??visitorPreviewHour()),...(godSky?{profile:'world' as const,weather:godSky.weather,indoors:godSky.indoors}:{})});}catch{}

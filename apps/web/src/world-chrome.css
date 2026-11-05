@@ -288,3 +288,14 @@ canvas[data-pointer-focus]:focus{outline:none}
 .soul-chip-action{flex:none;min-height:40px;padding:0 16px;border-radius:999px;font:600 13px/1 system-ui,sans-serif}
 @media (min-width:701px){.soul-chip{bottom:calc(72px + var(--sa-b))}}  /* wide touch screens: clear of the bottom follow hint */
 @media (prefers-reduced-motion:reduce){.soul-chip{animation:none}}
+/* #893 phone camera menu: a bottom sheet clear of the home indicator and side insets */
+.navbar-popover.navbar-sheet{top:auto;left:calc(8px + var(--sa-l));right:calc(8px + var(--sa-r));bottom:calc(8px + var(--sa-b));width:auto;max-width:none;max-height:min(70dvh,calc(100dvh - 16px - var(--sa-t) - var(--sa-b)));padding:10px;border-radius:18px;animation:navbar-sheet-in .2s ease-out}
+.navbar-popover.navbar-sheet button{min-height:46px;font-size:15px}
+@keyframes navbar-sheet-in{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
+/* #893 first-run touch hints: three glyphs, centred, never in the way of a touch */
+.touch-hints{position:fixed;z-index:30;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:14px;padding:14px 16px;border-radius:18px;background:color-mix(in srgb,var(--panel) 88%,transparent);color:var(--fg);box-shadow:0 6px 28px #0003;pointer-events:none;transition:opacity .4s ease;font:500 12px/1.25 system-ui,sans-serif}
+.touch-hints[data-phase=fading]{opacity:0}
+.touch-hints figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:6px;width:84px;text-align:center}
+.touch-hints svg{width:40px;height:40px}
+@media (prefers-reduced-motion:reduce){.navbar-popover.navbar-sheet{animation:none}.touch-hints{transition:none}}
+.camera-help-scrim{padding:max(16px,var(--sa-t)) max(16px,var(--sa-r)) max(16px,var(--sa-b)) max(16px,var(--sa-l))}  /* #893: the help dialog clears the notch and home indicator */

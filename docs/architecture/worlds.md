@@ -42,6 +42,12 @@ or previous (right) Soul here; slower drags still orbit. The order is a ring mad
 then the others by the director's interest score, then by distance. A tap on the ground while following hands you the
 camera (Free) and glides it to that point (`WorldRtsCamera.flyToGround`). In Broadcast a touch screen's chip reads
 "Now showing <name>" with a Follow button. Mouse clicks keep the card-and-button flow.
+The first touch of a page on a touch screen shows three glyphs (stick, drag, pinch; `touch/hints.tsx`) that fade on
+the first drag, a second finger or after 3 s. The device remembers it in `localStorage` (`sim.touch-hints`). `?shot`
+and automation (`navigator.webdriver`) never show it. `?hints=1` overrides `navigator.webdriver` only, for recording
+proof of the hint. Phones get the camera menu as a bottom sheet (Broadcast, Free, Follow for a selected Soul or Stop
+following, Camera controls, Fullscreen) clear of `env(safe-area-inset-*)`. A device with `navigator.vibrate` ticks for
+12 ms when Follow starts and when a fly-to arrives (`touch/haptics.ts`).
 
 Audio opens independent Sound effects and Music switches plus a radio station selector. Stations curate the existing
 score playlist: All music, Quiet & ambient, Electronic and Upbeat. Choosing a station while music is off remembers
