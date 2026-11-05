@@ -62,6 +62,12 @@ Fixes found in review and deferred to after the repository migration:
 
 - **Ankles on every humanoid.** Many bodies show a gap between trousers and shoes. The fix belongs in the body, outfit
   or shoe meshes for every humanoid (the parked mixed-outfit seams work is likely the same family).
+  The #417 candidate assembles cached bind-space calf skin for detected mixed-part holes, preserving source part
+  buffers and the original shoes. Catalogue bind sections pass for 882 pairs at ten sampled heights; a 24-look
+  skinned diagnostic and actual-client verification are recorded separately. This remains incomplete: up to 224
+  vertices / 384 triangles add GPU skin/shadow work, so original A5 is not satisfied. Cold donor download is at
+  most 53,208 bytes per frame (106,416 both); catalogue files are unchanged. Entry 11 stays open pending the wider
+  seam review.
 - **Garden revival.** Watered plants jump to full size at once but sag gradually; revival should be as gradual as drying.
   Watering and drying should become opt-in per planter or world, so a world without a watering routine does not wilt.
 - **Noughts and crosses facing.** After a turn a player turns their back to the board; both should keep facing the board
