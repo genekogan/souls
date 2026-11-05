@@ -22,11 +22,14 @@ export const ACTS = Object.freeze(['look left', 'wave', 'say', 'look right', 'no
 export const cores = (a, b) => (a && b && b.t > a.t && a.cpuS != null && b.cpuS != null ? (b.cpuS - a.cpuS) / ((b.t - a.t) / 1000) : null);
 const r = (x, d = 1) => (x == null || !Number.isFinite(x) ? null : +x.toFixed(d));
 
+// CPU seconds over a span net of the quiet rate; below the quiet rate it is unknown (null), never a negative cost.
+const netCpuS = (cpuS, spanMs, quietCores) => { if (cpuS == null || quietCores == null || spanMs == null) return null; const x = cpuS - (quietCores * spanMs) / 1000; return x < 0 ? null : x; };
+
 /** One probe route: calls [{ms, bytes, status}] and the CPU seconds the world used over the route's span, minus the quiet
  *  rate over that span. → per-call CPU-ms (an upper bound: tick variation and the hub are inside it). */
 export function probeRoute(calls, { cpuS, spanMs, quietCores }) {
   const ok = calls.filter((c) => c.status >= 200 && c.status < 300), q = quantiles(ok.map((c) => c.ms));
-  const extra = cpuS == null || quietCores == null ? null : cpuS - quietCores * spanMs / 1000;
+  const extra = netCpuS(cpuS, spanMs, quietCores);
   const waits = calls.reduce((m, c) => m + (c.busyWaits ?? 0), 0);
   return { n: calls.length, ok: ok.length, ...(waits ? { busyWaits: waits } : {}), cpuMsPerCall: ok.length && extra != null ? r(1000 * extra / ok.length) : null, p50Ms: q.p50 ?? null, p95Ms: q.p95 ?? null, bytesMean: ok.length ? Math.round(ok.reduce((s, c) => s + c.bytes, 0) / ok.length) : null };
 }
@@ -35,7 +38,7 @@ export function probeRoute(calls, { cpuS, spanMs, quietCores }) {
 export function activeWindow(calls, { cpuS, spanMs, quietCores, offered }) {
   const served = calls.filter((c) => c.outcome === 'ok' || c.outcome === 'gameplay-refused'), routes = {};
   for (const c of calls) (routes[c.route] ??= []).push(c);
-  const extra = cpuS == null || quietCores == null ? null : cpuS - quietCores * spanMs / 1000;
+  const extra = netCpuS(cpuS, spanMs, quietCores);
   return {
     offered, issued: calls.length, busyWaits: calls.reduce((m, c) => m + (c.busyWaits ?? 0), 0), refusals: calls.flatMap((c) => c.refusals ?? []).reduce((m, k) => ({ ...m, [k]: (m[k] ?? 0) + 1 }), {}), unissued: offered - calls.length, served: served.length,
     outcomes: calls.reduce((m, c) => ({ ...m, [c.outcome]: (m[c.outcome] ?? 0) + 1 }), {}),
@@ -70,15 +73,19 @@ export function summarizeProfile(p, root = '', top = 15, watch = WATCH) {
   for (const n of p.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
   (p.samples ?? []).forEach((id, i) => self.set(id, (self.get(id) ?? 0) + (p.timeDeltas?.[i] ?? 0) / 1000));
   const keyOf = (n) => { const f = n.callFrame, u = String(f.url ?? '').replace(/^file:\/\//, ''), file = root && u.startsWith(root) ? u.slice(root.length).replace(/^\//, '') : u; return `${f.functionName || '(anonymous)'} ${file ? `${file}:${f.lineNumber + 1}` : ''}`.trim(); };
-  const selfBy = new Map(), inclBy = new Map();
+  const selfBy = new Map(), inclBy = new Map(), watchBy = new Map(watch.map(([name, file]) => [`${name} ${file}`, 0]));
   let total = 0, idle = 0;
   for (const [id, ms] of self) {
     const n = byId.get(id); total += ms; const k = keyOf(n); if (/^\((idle|program|garbage collector)\)/.test(k)) { if (k.startsWith('(idle)')) idle += ms; }
     selfBy.set(k, (selfBy.get(k) ?? 0) + ms);
-    const seen = new Set(); for (let x = id; x != null; x = parent.get(x)) { const kk = keyOf(byId.get(x)); if (!seen.has(kk)) { seen.add(kk); inclBy.set(kk, (inclBy.get(kk) ?? 0) + ms); } }
+    const seen = new Set(), wseen = new Set();
+    for (let x = id; x != null; x = parent.get(x)) {
+      const kk = keyOf(byId.get(x)); if (!seen.has(kk)) { seen.add(kk); inclBy.set(kk, (inclBy.get(kk) ?? 0) + ms); }
+      const wk = kk.replace(/:\d+$/, ''); if (watchBy.has(wk) && !wseen.has(wk)) { wseen.add(wk); watchBy.set(wk, watchBy.get(wk) + ms); }   // same-named functions of a file nested on one stack count once
+    }
   }
   const busy = total - idle, list = (m) => [...m].filter(([k]) => !/^\((idle|root)\)/.test(k)).sort((a, b) => b[1] - a[1]).slice(0, top).map(([fn, ms]) => ({ fn, ms: r(ms, 0), share: busy ? r(ms / busy, 3) : null }));
-  const watched = watch.map(([name, file]) => { let ms = 0; for (const [k, v] of inclBy) if (k.startsWith(`${name} ${file}:`)) ms += v; return { fn: `${name} ${file}`, ms: r(ms, 0), share: busy ? r(ms / busy, 3) : null }; });
+  const watched = [...watchBy].map(([fn, ms]) => ({ fn, ms: r(ms, 0), share: busy ? r(ms / busy, 3) : null }));
   return { sampledMs: r(total, 0), busyMs: r(busy, 0), self: list(selfBy), inclusive: list(inclBy).filter((x) => !/^\(program\)/.test(x.fn)), watched };
 }
 

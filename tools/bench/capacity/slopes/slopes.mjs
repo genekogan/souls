@@ -75,12 +75,16 @@ async function bootWorld(dir, { slug, templateFile, port, inspect }) {
   const child = spawn(cmd[0], cmd.slice(1), { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let wlog = ''; const wl = (b) => { wlog = (wlog + b).slice(-20000); appendFileSync(join(dir, 'world.log'), b); };
   child.stdout.on('data', wl); child.stderr.on('data', wl);
+  const booting = { slug, child }; LIVE.add(booting);   // stopped on SIGINT/SIGTERM, or below if it never comes up
   const t0 = mono(); let up = false;
-  while (!up && mono() - t0 < 900_000) { if (child.exitCode != null) throw new Error(`${slug} exited at boot (${child.exitCode}): ${wlog.trim().split('\n').slice(-6).join(' | ').split(ROOT).join('.')}`); up = (await getJ(`${origin}/healthz`, 3000)).j?.ok; if (!up) await sleep(1000); }
-  if (!up) throw new Error(`${slug} did not answer /healthz in 15 min`);
+  try {
+    while (!up && mono() - t0 < 900_000) { if (child.exitCode != null) throw new Error(`${slug} exited at boot (${child.exitCode}): ${wlog.trim().split('\n').slice(-6).join(' | ').split(ROOT).join('.')}`); up = (await getJ(`${origin}/healthz`, 3000)).j?.ok; if (!up) await sleep(1000); }
+    if (!up) throw new Error(`${slug} did not answer /healthz in 15 min`);
+  } catch (e) { await stopWorld(booting); LIVE.delete(booting); throw e; }
   const bootS = (mono() - t0) / 1000;
   // settled: the boot's perceive catch-up logged, or 30 s up with three calm ticks; cap 300 s
   for (let calm = 0, tc = mono(); !/perceive catch-up/.test(wlog) && mono() - tc < 300_000 && !(mono() - tc > 30_000 && calm >= 3);) { await sleep(1000); const h = (await getJ(`${origin}/healthz`)).j; calm = h?.ok && h.tickMs?.avg < 25 ? calm + 1 : 0; }
+  LIVE.delete(booting);   // the caller adds the world it returns
   return { slug, child, pid: nodePid(child.pid), data, origin, bootS: +bootS.toFixed(1), settledS: +((mono() - t0) / 1000).toFixed(1) };
 }
 async function stopWorld(w) {
@@ -95,7 +99,7 @@ const liveOf = (w) => { try { return JSON.parse(readFileSync(join(w.data, 'live.
 async function inspector(port) {
   const list = (await getJ(`http://127.0.0.1:${port}/json/list`)).j, ws = new WebSocket(list[0].webSocketDebuggerUrl), wait = new Map(); let id = 0;
   await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = no; });
-  ws.onmessage = (e) => { const m = JSON.parse(e.data), done = typeof m?.id === 'number' ? wait.get(m.id) : undefined; if (typeof done === 'function') { wait.delete(m.id); done(m); } };
+  ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } const done = typeof m?.id === 'number' ? wait.get(m.id) : undefined; if (typeof done === 'function') { wait.delete(m.id); done(m); } };
   const send = (method, params = {}) => new Promise((ok) => { const i = ++id; wait.set(i, ok); ws.send(JSON.stringify({ id: i, method, params })); });
   await send('Profiler.enable'); await send('Profiler.setSamplingInterval', { interval: 1000 });
   return { start: () => send('Profiler.start'), stop: async () => (await send('Profiler.stop')).result?.profile ?? null, close: () => ws.close() };
@@ -165,29 +169,30 @@ async function oneRun(arm, rep) {
   const src = JSON.parse(readFileSync(join(ROOT, 'worlds/templates/eden-2026.json'), 'utf8')), inv = arm.placed ? withDistantInventory(src, arm.placed) : { template: src, added: 0, own: null, region: null };
   const templateFile = join(dir, 'template.json'); writeFileSync(templateFile, JSON.stringify(inv.template));
   const placed = inv.template.batches.reduce((s, b) => s + b.ops.filter((o) => o.op === 'place').length, 0);
+  let sampling = false, sampler = null, jp = null, prof = null;   // stopped in the finally, also when the arm throws
   try {
     log(`${run.id}: boot designated world (${placed} placed${inv.added ? `, ${inv.added} distant` : ''})`);
     const W = await bootWorld(join(dir, 'w0'), { slug: 'sw0', templateFile, port: PORT, inspect: PROF ? INSPECT : 0 }); worlds.push(W); LIVE.add(W);
     const quietN = arm.quiet ? Math.min(arm.quiet, QUIET_N) : 0;
     for (let q = 1; q <= quietN; q++) { const f = FIXTURES[q]; log(`${run.id}: boot quiet world ${q} (${f.template})`); const qw = await bootWorld(join(dir, `w${q}`), { slug: `sq${q}`, templateFile: join(ROOT, 'worlds/templates', `${f.template}.json`), port: PORT + q, inspect: 0 }); worlds.push(qw); LIVE.add(qw); }
-    const souls = [], jp = await joinProxy(W, PORT + 40); run.joinUrl = jp.url;
+    const souls = []; jp = await joinProxy(W, PORT + 40); run.joinUrl = jp.url;
     for (let i = 0; i < arm.registered; i += 4) souls.push(...await Promise.all(Array.from({ length: Math.min(4, arm.registered - i) }, (_, k) => joinSoul(run, W, i + k))));
-    await jp.close();
+    await jp.close(); jp = null;
     log(`${run.id}: ${souls.length} Souls joined; warm-up ${WARM_S} s`);
-    let sampling = true;
-    const sampler = (async () => { while (sampling) { const l = liveOf(W); samples.push({ t: mono(), live: l, w: proc(W.pid), q: worlds.length > 1 ? sumProc(worlds.slice(1).map((x) => proc(x.pid))) : null }); await sleep(2000); } })();
+    sampling = true;
+    sampler = (async () => { while (sampling) { const l = liveOf(W); samples.push({ t: mono(), live: l, w: proc(W.pid), q: worlds.length > 1 ? sumProc(worlds.slice(1).map((x) => proc(x.pid))) : null }); await sleep(2000); } })();
     await sleep(WARM_S * 1000);
     const mark = (k) => ({ k, t: mono(), w: proc(W.pid), q: worlds.length > 1 ? sumProc(worlds.slice(1).map((x) => proc(x.pid))) : null });
     const m = { quiet0: mark('quiet0') }; await sleep(QUIET_S * 1000); m.quiet1 = mark('quiet1');
     const quietCores = cores(m.quiet0.w, m.quiet1.w);
     // the probe: PROBE_N serial calls per route, one at a time, rotating over the registered Souls (each has its own
     // CPU budget: one Soul alone runs out of it at 10,000 objects and is told soul.slow-down), nothing else active
-    const prof = PROF ? await inspector(INSPECT) : null, profiles = {};
+    prof = PROF ? await inspector(INSPECT) : null; const profiles = {};
     if (prof) await prof.start();
     const probe = {};
     for (const route of PROBE_ROUTES) {
       const a = proc(W.pid), cs = []; for (let n = 0; n < PROBE_N; n++) cs.push(await call(run, W, souls[n % souls.length], route, n)); const b = proc(W.pid);
-      probe[route] = probeRoute(cs, { cpuS: a && b ? b.cpuS - a.cpuS : null, spanMs: b.t - a.t, quietCores });
+      probe[route] = probeRoute(cs, { cpuS: a && b ? b.cpuS - a.cpuS : null, spanMs: a && b ? b.t - a.t : null, quietCores });
       for (const c of cs) appendFileSync(join(dir, 'calls.jsonl'), JSON.stringify({ phase: 'probe', ...c }) + '\n');
     }
     if (prof) { const p = await prof.stop(); writeFileSync(join(dir, 'profile-probe.cpuprofile'), JSON.stringify(p)); profiles.probe = summarizeProfile(p, ROOT); }
@@ -201,7 +206,7 @@ async function oneRun(arm, rep) {
     await Promise.all(plan.map(async ({ s, ops }) => { for (const [k, op] of ops.entries()) { await sleep(t0 + op.at - mono()); if (mono() >= end) break;
       const late = Math.max(0, Math.round(mono() - (t0 + op.at))), c = await call(run, W, s, op.route, op.n ?? k); c.lateMs = late; calls.push(c); appendFileSync(join(dir, 'calls.jsonl'), JSON.stringify({ phase: 'active', ...c }) + '\n'); } }));
     await sleep(end - mono()); m.active1 = mark('active1');
-    if (prof) { const p = await prof.stop(); writeFileSync(join(dir, 'profile-active.cpuprofile'), JSON.stringify(p)); profiles.active = summarizeProfile(p, ROOT); prof.close(); }
+    if (prof) { const p = await prof.stop(); writeFileSync(join(dir, 'profile-active.cpuprofile'), JSON.stringify(p)); profiles.active = summarizeProfile(p, ROOT); prof.close(); prof = null; }
     sampling = false; await sampler;
     for (const x of samples) appendFileSync(join(dir, 'live.jsonl'), JSON.stringify({ t: Math.round(x.t), live: x.live, w: x.w, q: x.q }) + '\n');
     const inWin = (a, b) => samples.filter((x) => x.t >= a.t && x.t <= b.t);
@@ -219,7 +224,10 @@ async function oneRun(arm, rep) {
     writeFileSync(join(dir, 'result.json'), JSON.stringify(result, null, 1) + '\n');
     log(`${run.id}: quiet ${result.windows.quiet.cores} cores, active ${result.windows.active.cores} cores, ${result.active.served}/${offered} served, probe CPU-ms ${PROBE_ROUTES.map((k) => `${k} ${probe[k].cpuMsPerCall}`).join(', ')}`);
     return result;
-  } finally { for (const w of worlds.reverse()) { await stopWorld(w); LIVE.delete(w); } }
+  } finally {
+    sampling = false; await sampler; await jp?.close(); prof?.close();
+    for (const w of worlds.reverse()) { await stopWorld(w); LIVE.delete(w); }
+  }
 }
 
 // ------------------------------------------------------------------ main
@@ -229,6 +237,7 @@ const receipt = { slopes: SLOPES, at: new Date().toISOString(), indicative: !QUA
   axes: AXIS_LIST, repeats: REPEATS, windows: { warmS: WARM_S, quietS: QUIET_S, activeS: ACTIVE_S, probeN: PROBE_N }, quietWorldsCap: QUIET_N, cpuProfile: PROF, slice: SLICE ? 'given' : null,
   coverage: ['fake minds; server delivery only, no model latency', 'acts never move a Soul (attention, gesture, say): walk planning (#454) is not exercised', 'Eyes (rendering) off; no browser viewers; no launcher proxy',
     'CPU is the whole world process (worker threads included); per-call CPU is an upper bound (tick variation inside it)', 'no counters for rows examined, plan builds or invalidations: the CPU profile attributes cost to functions instead',
+    ...(PROF ? ['with --cpu-prof the probe and active windows run under a 1 ms sampling profiler and the quiet window does not: its overhead is inside every per-call CPU figure, alike across arms'] : []),
     ...(QUIET_N < 9 ? [`quiet axis capped at ${QUIET_N} quiet worlds (--quiet-worlds), not 9`] : [])] };
 writeFileSync(join(OUT, 'receipt.json'), JSON.stringify(receipt, null, 1) + '\n');
 const results = [];

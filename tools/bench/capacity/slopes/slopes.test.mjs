@@ -45,6 +45,8 @@ test('reductions: probe CPU per call nets out the quiet rate; the active window 
   // 2 CPU s over 4 s at a quiet 0.25 cores: 1 s of it is the tick, 1 s / 10 calls = 100 ms per call
   assert.deepEqual(probeRoute(calls, { cpuS: 2, spanMs: 4000, quietCores: 0.25 }), { n: 10, ok: 10, cpuMsPerCall: 100, p50Ms: 104, p95Ms: 109, bytesMean: 1000 });
   assert.equal(probeRoute(calls, { cpuS: null, spanMs: 4000, quietCores: 0.25 }).cpuMsPerCall, null);
+  assert.equal(probeRoute(calls, { cpuS: 0.5, spanMs: 4000, quietCores: 0.25 }).cpuMsPerCall, null);   // below the quiet rate: unknown, not negative
+  assert.equal(probeRoute(calls, { cpuS: 2, spanMs: null, quietCores: 0.25 }).cpuMsPerCall, null);
   const act = activeWindow([{ route: 'here', ms: 50, lateMs: 0, bytes: 10, status: 200, outcome: 'ok' }, { route: 'act', ms: 70, lateMs: 30, bytes: 5, status: 503, outcome: 'load-refused' }],
     { cpuS: 1.5, spanMs: 10_000, quietCores: 0.1, offered: 3 });
   assert.equal(act.unissued, 1); assert.equal(act.served, 1); assert.equal(act.cpuMsPerServed, 500);
@@ -66,6 +68,10 @@ test('profile summary: self and inclusive time by function, idle excluded from s
   assert.equal(w.inclusive.length, 1);
   assert.deepEqual(w.watched.map((x) => [x.fn, x.ms, x.share]), [['scan apps/server/src/y.ts', 2, 0.667], ['scan apps/server/src/x.ts', 0, 0], ['handle apps/server/src/x.ts', 3, 1]]);
   assert.match(reportText({ host: {} }, [{ arm: AXES.quiet[0], rep: 1, profiles: { probe: w } }]), /\| 2 \| 0\.667 \| `scan apps\/server\/src\/y\.ts` \|/);
+  // recursion and same-named nesting count once per sample
+  const q = { nodes: [f(1, '(root)', '', [2]), f(2, 'goal', `file://${ROOT}apps/server/src/god/nav.ts`, [3]), { id: 3, callFrame: { functionName: 'goal', url: `file://${ROOT}apps/server/src/god/nav.ts`, lineNumber: 40 }, children: [4] }, f(4, 'goal', `file://${ROOT}apps/server/src/god/nav.ts`)], samples: [4, 2], timeDeltas: [3000, 1000] };
+  const g = summarizeProfile(q, ROOT, 15, [['goal', 'apps/server/src/god/nav.ts']]);
+  assert.equal(g.watched[0].ms, 4); assert.equal(g.inclusive.find((x) => x.fn === 'goal apps/server/src/god/nav.ts:10').ms, 4);
   assert.equal(summarizeProfile(null), null);
 });
 
