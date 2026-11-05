@@ -41,12 +41,12 @@ test('traceLine: method, query-free path with opaque segments redacted, status, 
 });
 
 test('EDEN_TRACE=1: one stderr line per request with the world handler time; stdout is the same JSON; no token or query', async t => {
-  const w = await world(t), plain = await w.run(['act', 'wander:here']), traced = await w.run(['act', 'wander:here'], {EDEN_TRACE: '1'});
+  const w = await world(t), plain = await w.run(['act', 'wander:here']), before = w.seen.length, traced = await w.run(['act', 'wander:here'], {EDEN_TRACE: '1'});
   assert.equal(traced.out, plain.out, 'stdout unchanged');
   assert.equal(traces(plain.err).length, 0, 'nothing without the variable');
   assert.equal(traced.out.includes('TRACE'), false, 'never on stdout');
   const lines = traces(traced.err);
-  assert.equal(lines.length, w.seen.length / 2, 'one line per request of the traced run'); assert.ok(lines.some(l => l.method === 'POST' && l.path === '/v1/edge/act' && l.status === 200));
+  assert.equal(lines.length, w.seen.length - before, 'one line per request of the traced run'); assert.ok(lines.some(l => l.method === 'POST' && l.path === '/v1/edge/act' && l.status === 200));
   for (const l of lines) { assert.equal(l.handlerMs, 4.5); assert.ok(l.ms >= 0); assert.equal(l.attempt, 1); assert.deepEqual(Object.keys(l), ['method', 'path', 'status', 'ms', 'handlerMs', 'attempt']); }
   assert.ok(!traced.err.includes('sim_fixture_secret_token') && !/\?/.test(lines.map(l => l.path).join('')), 'no token, no query');
   assert.equal(traced.err.replace(/^TRACE .*\n/gm, ''), plain.err, 'the rest of stderr unchanged');
