@@ -289,6 +289,19 @@ test('compare groups recorded repeats by spec, server and label, not by run id, 
   const night = await compareRunSet([runs[0], run('night-1', 4325, 'aaaa1111bbbb', 'baseline', { timeOfDay: 0, timeScale: 0 })]);
   assert.equal(night.arms.length, 2);
   assert.deepEqual(night.incompatible[0].differ, ['scenario']);
+  // A directed cast's scenario hashes its effective cast file, which carries the port: the run's cast.json minus the
+  // port is what counts, so repeats on different ports pool and a different console script does not.
+  const directed = (name, port, console) => {
+    const dir = makeRun({ root, name, port }), cast = { name: 'trio', world: { kind: 'dev', port }, console: { script: console } };
+    w(join(dir, 'playtest', 'cast.json'), cast);
+    const f = join(dir, 'playtest', 'scenario.json'), sc = JSON.parse(readFileSync(f, 'utf8'));
+    writeFileSync(f, JSON.stringify({ ...sc, castPath: join(dir, 'cast.effective.json'), castSha256: `sha-of-cast-on-${port}` }));
+    return dir;
+  };
+  const say = [{ atSec: 0, text: 'Bo, walk to the orchard' }];
+  const dx = await compareRunSet([directed('d-1', 4331, say), directed('d-2', 4332, say), directed('d-other', 4333, [{ atSec: 0, text: 'Bo, sit down' }])]);
+  assert.deepEqual(dx.arms.map((a) => a.repeats), [['d-1', 'd-2'], ['d-other']]);
+  assert.deepEqual(dx.incompatible[0].differ, ['scenario']);
 });
 
 test('directions: the direction journal is counted by command and outcome; each redirection says whether its target spoke after', () => {

@@ -15,6 +15,7 @@ import { computeMetrics, readLedger } from '../review/metrics.mjs';
 import { runOracles } from '../review/oracles.mjs';
 
 // v2 (#839): the arm also covers the condition identity (server root, tools checkout, served CLI/skill) and the label.
+// v3 (#1023): the arm ignores per-run identity: a recorded run's observer metadata and a directed cast's world port.
 export const EVALUATOR = Object.freeze({ name: 'soul-runs/evaluate', version: '3' });
 export const SCHEMA = 'soul-run-evaluation/1';
 export const INDEX_SCHEMA = 'soul-run-index/2';
@@ -311,6 +312,10 @@ export function runIdentity(sr) {
     // A recorded run's observer metadata names the run itself (run id, attempt, effective spec hash with its port and
     // paths) and its server commit, which is condition identity. Only the requested world time describes what ran.
     if (sc.observer?.recordMeta) sc.observer.recordMeta = { worldTimeRequested: sc.observer.recordMeta.worldTimeRequested ?? null };
+    // A directed cast's castSha256 hashes the effective cast file, which carries the world port. The cast itself (seat
+    // scripts, console script) is identity, so hash the run's copy of it without the port when the run kept one.
+    const cast = sc.castSha256 != null && sr.playtestDir ? readJson(join(sr.playtestDir, 'cast.json'), null) : null;
+    if (cast) { if (cast.world) delete cast.world.port; sc.castSha256 = hashOf(cast); }
   }
   const eff = sr.receipt?.spec?.effective ?? null;
   const seats = (sc?.seats ?? []).map((s) => ({ id: s.id, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null, effort: s.effort ?? null, persona: s.persona ?? null, script: s.script ? hashOf(s.script).slice(0, 16) : null, ...(s.diagnostics?.trace ? { traced: true } : {}) }));
