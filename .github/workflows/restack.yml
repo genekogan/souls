@@ -1,0 +1,52 @@
+# Restack: after a PR squash-merges, the PRs stacked on it are retargeted to its base and that base is merged forward
+# into them (.github/scripts/restack.mjs, where the merge is explained). A child cut from the merged branch still
+# carries the branch's old commits; a plain `git merge main` then conflicts on files the child never changed, so the
+# merge here is 3-way against the child's fork point from the old base. Pushes are fast-forwards, never forced.
+# A real conflict pushes nothing: the child gets needs:rebase and a comment naming the files.
+#
+# Triggers: a merged PR (pull_request_target closed; the merge train and people merge with tokens that start
+# workflows), or workflow_dispatch with the merged PR's number to redo one by hand. Like the merge train, this always
+# runs the default branch's copy and never executes PR code: it only fetches, merges and pushes git objects.
+#
+# Secrets
+#   MERGE_TRAIN_TOKEN  pushes made with it start CI on the child; with the default token they would not
+name: restack
+on:
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Number of the merged PR whose stacked children to restack
+        required: true
+permissions:
+  contents: read
+jobs:
+  restack:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: restack
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.MERGE_TRAIN_TOKEN || github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ inputs.pr || github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.MERGE_TRAIN_TOKEN || github.token }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22 }
+      - name: Restack the children of the merged PR
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          node .github/scripts/restack.mjs run --repo "$REPO" --pr "$PR"
