@@ -11,7 +11,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.8.1";
+const VERSION = "2.8.2";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -85,6 +85,18 @@ async function selfLink() {
   return { link: null, now: null };
 }
 const TERMINAL = new Set(["completed", "failed", "replaced"]);
+// F7 (#378): a sit or lie keeps its receipt `started` while the body holds the pose, so a wait for its terminal phase
+// ran the whole window. The world's latest activity.observed for that same receipt says the pose is reached: seated for
+// a sit, lying or sleeping for a lie or nap. That ends the wait; the receipt stays `started`. Timed activities (dance,
+// read, walk) are not held poses and still wait for their end; a ride join already completes once the rider is seated.
+const HELD_POSE = { sit: (b) => b.posture === "seated", "sit-ground": (b) => b.posture === "seated", lie: (b) => b.posture === "lying" || b.posture === "sleeping", nap: (b) => b.posture === "lying" || b.posture === "sleeping" };
+/** The held phase an activity.observed event shows for receipt `receiptId` ("occupied", "seated"…), or null. */
+export function heldPhase(e, receiptId) {
+  if (e?.kind !== "activity.observed" || !receiptId || e.receipt?.id !== receiptId || e.receipt?.phase !== "started" || e.action?.status !== "executing") return null;
+  const cap = String(e.receipt.capability ?? ""), b = e.body;
+  if (!b || typeof b !== "object") return null;
+  return HELD_POSE[cap.split(":")[0]]?.(b) === true ? String(e.action.phase ?? b.posture) : null;
+}
 
 // ---------------------------------------------------------------- transport
 
@@ -684,7 +696,9 @@ async function act(...argv) {
   if (!d.accepted) return { accepted: false, code: d.code, reason: d.reason, ...(d.did_you_mean?.length ? { did_you_mean: d.did_you_mean.slice(0, 8) } : {}), ...(d.alternatives?.length ? { alternatives: d.alternatives.slice(0, 3) } : {}), ...(d.retry_after ? { retry_after: d.retry_after } : {}) };
   let out = { accepted: true, receipt: d.receipt, ...(d.resolved ? { resolved: d.resolved } : {}), ...(d.chosen ? { chosen: d.chosen } : {}), channel: d.channel, ...(d.for ? { for: d.for } : {}), ...(d.open ? { open: true } : {}) };
   if (d.receipt?.id && d.channel !== "attention" && d.channel !== "none") save({ lastReceipt: d.receipt.id, lastActAt: now() });
-  if (waitFor && d.receipt?.id && !TERMINAL.has(d.receipt.phase)) out = { ...out, ...(await wait(waitFor, d.receipt.id, "--json")) };
+  // F7: an act that asked for its own duration (`seconds`) is waited out as before; an open-ended sit or lie ends the
+  // wait once the body holds the pose.
+  if (waitFor && d.receipt?.id && !TERMINAL.has(d.receipt.phase)) out = { ...out, ...(await waitRaw(waitFor, d.receipt.id, { untilHeld: body.params?.seconds === undefined })) };
   return json ? out : brief(out);
 }
 
@@ -713,7 +727,7 @@ export function brief(out) {
   const o = {
     ...(out.accepted !== undefined ? { accepted: out.accepted } : {}), ...(out.waited ? { waited: out.waited } : {}),
     ...(sentence ? (fin ? { [key]: sentence } : { now: sentence, done: false }) : {}),
-    ...(rec ? { receipt: { id: rec.id, capability: rec.capability, phase: rec.phase, ...(rec.code ? { code: rec.code } : {}) } } : {}),
+    ...(rec ? { receipt: { id: rec.id, capability: rec.capability, phase: rec.phase, ...(rec.code ? { code: rec.code } : {}), ...(!fin && out.held ? { observed: out.held } : {}) } } : {}),
     ...(out.for ? { for: out.for } : {}), ...(out.open ? { open: true } : {}), ...(out.ownerMessages ? { ownerMessages: out.ownerMessages } : {}),
     ...(out.resolved?.to && out.resolved.to !== out.resolved.from ? { resolved: out.resolved.to } : {}),
   };
@@ -747,14 +761,14 @@ async function resolve(...args) {
   return ok(await call("/v1/edge/resolve", { body }), "resolve").resolve;
 }
 
-// wait [seconds] [receiptId]: long-poll world events (max 60 s) until the receipt is terminal,
-// the owner writes, or an invitation/conversation turn arrives. Saves the event cursor.
+// wait [seconds] [receiptId]: long-poll world events (max 60 s) until the receipt is terminal, its sit or lie holds the
+// pose (held, still `started`), the owner writes, or an invitation/conversation turn arrives. Saves the cursor.
 async function wait(...argv) {
   const json = argv.includes("--json"), [secArg, idArg] = argv.filter((a) => a !== "--json");
   const out = await waitRaw(secArg, idArg);
   return json ? out : brief(out);
 }
-async function waitRaw(seconds = 45, receiptId) {
+async function waitRaw(seconds = 45, receiptId, { untilHeld = true } = {}) {
   const s = load();
   seconds = Math.min(60, Math.max(1, Number(seconds) || 45));
   receiptId = /^r_/.test(String(receiptId ?? "")) ? receiptId : s.lastReceipt;
@@ -762,7 +776,7 @@ async function waitRaw(seconds = 45, receiptId) {
   let cursor = s.cursor ?? "c_0", ownerMark = s.ownerMark, ownerWrote = 0, gap = false;
   const since = cursor;
   const seen = [];
-  let terminal = null;
+  let terminal = null, held = null;
   while (Date.now() < until) {
     const t = Math.max(1, Math.min(55, Math.round((until - Date.now()) / 1000)));
     const q = `timeout=${t}&after=${encodeURIComponent(cursor)}` + (Number.isSafeInteger(ownerMark) ? `&ownerSince=${ownerMark}` : "");
@@ -782,6 +796,9 @@ async function waitRaw(seconds = 45, receiptId) {
     if (ownerWrote) break;
     terminal = seen.find((e) => e.receipt?.id === receiptId && TERMINAL.has(e.receipt?.phase));
     if (terminal) break;
+    const latest = untilHeld ? seen.findLast((e) => e.kind === "activity.observed" && e.receipt?.id === receiptId) : null;
+    held = latest ? heldPhase(latest, receiptId) : null;
+    if (held) break;
     if (seen.some((e) => /^(invite|conversation\.(invite|turn))/.test(e.kind ?? ""))) break;
     if (!receiptId && seen.length) break;
   }
@@ -789,6 +806,7 @@ async function waitRaw(seconds = 45, receiptId) {
   if (receiptId) {
     const rec = await receipt(receiptId).catch((e) => ({ id: receiptId, error: String(e.message) }));
     out.receipt = rec;
+    if (held && !rec.error && !TERMINAL.has(rec.phase)) out.held = held;
   }
   if (ownerWrote) {
     const inbox = await call("/v1/edge/inbox/listen?timeoutMs=0");
@@ -1012,7 +1030,7 @@ I asked, then \`${CLI} result <id> done|failed "<what happened>"\`.
 
 **Doing things:** \`${CLI} act "<my words>" --wait\` (e.g. \`act "walk to the library" --wait\`, \`act "sit down"\`,
 \`act "dance"\`). The server resolves plain words to an offer; read \`accepted\`, \`code\`/\`reason\` and \`did_you_mean\`
-if refused. \`--wait\` returns when the receipt ends or the wait window expires; check its phase and current body. A long action: \`act\` without
+if refused. \`--wait\` returns when the receipt ends, when a sit or lie without a requested duration holds its pose (the receipt stays \`started\`; \`receipt.observed\` says so), or when the wait window expires; check its phase and current body. A long action: \`act\` without
 --wait, then \`${CLI} wait 60\` as needed. \`${CLI} caps --search "<thing>"\` lists current offers.
 
 For “take a seat” with no requested duration, use a durable fixture's exact sit offer with \`'{"seconds":1}' --for none --wait --json\` if it supports seconds. Verify \`here\` posture is seated and its seat matches the receipt's chosen slot before reporting. The seat stays occupied after the timed action; keep listening, without standing or canceling. Preserve requested durations; this does not apply to temporary ground poses. Default sitting receipts can stay open for ten minutes while already seated.
