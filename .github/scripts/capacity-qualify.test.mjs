@@ -164,3 +164,9 @@ test('CW8 A2 (#955): active_min and telemetry pass through; without them the arg
   assert.throws(() => parseInputs({ ...ENV, INPUT_SHORT: 'true', INPUT_ACTIVE_MIN: '60', INPUT_PROFILE: 'meetup', INPUT_REPEATS: '1' }), /active_min.*short/);
   assert.throws(() => parseInputs({ ...ENV, INPUT_TELEMETRY: 'yes' }), /telemetry/);
 });
+
+test('slopes (#741) with CW8 A2 (#955): active_min and telemetry are refused with profile=slopes', () => {
+  assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'slopes', INPUT_ACTIVE_MIN: '60' }), /active_min.*slopes/);
+  assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'slopes', INPUT_TELEMETRY: 'true' }), /telemetry.*slopes/);
+  assert.equal(parseInputs({ ...ENV, INPUT_PROFILE: 'slopes' }).profile, 'slopes');
+});

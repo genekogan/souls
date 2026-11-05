@@ -62,6 +62,7 @@ export function parseInputs(env) {
   // boot, join, warm-up and quiet window (about 15 min each) and some slack: (minutes + 15) x runs <= 280.
   const am = String(env.INPUT_ACTIVE_MIN ?? '');
   if (am && (!/^[1-9]\d{1,2}$/.test(am) || Number(am) < 20 || Number(am) > 240)) bad('active_min', am, 'empty or whole minutes from 20 to 240');
+  if ((am || telemetry) && profile === SLOPES) bad(am ? 'active_min' : 'telemetry', am || 'true', 'refused with profile=slopes (the slopes bench has its own windows and no collector); use meetup or even for long windows');
   if (am && short) bad('active_min', am, 'empty with short (the smoke shape has its own window)');
   if (am && (Number(am) + 15) * list.length * Number(repeats) > 280) bad('active_min', am, `a window that fits the 300 min job: (minutes + 15) x ${list.length * Number(repeats)} runs must be at most 280`);
   return { ref, profile, repeats: Number(repeats), short, quietDeclared, browser, hostClass, slice, activeMin: am ? Number(am) : null, telemetry };
