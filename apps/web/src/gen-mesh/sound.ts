@@ -21,11 +21,10 @@
 // event clock never fires a backlog of notes when it comes back.
 import {audioSettings,setAudioSettings,subscribeAudioSettings} from '../audio-settings.ts';
 import { kettleHeat, type WorldModel } from '@sim/world-compiler';
-import { accompanistOf, drumHits, pianoNotes, pianoReadyAt, sungNotes, type Accompanist } from '../../../../mars/viewer/app/engine-view/piano-score.ts';
-import { PIANO_FADE } from '../../../../mars/viewer/app/engine-view/activity-poses.ts';
+import { accompanistOf, drumHits, PIANO_FADE, pianoEndAt, pianoNotes, pianoReadyAt, sungNotes, type Accompanist } from '../../../../mars/viewer/app/engine-view/piano-score.ts';
 import { RADIO_STATIONS, stationEvents, TUNE, type RadioEvent } from './radio-stations.ts';
 import { makeSinger, micChain, type Singer } from './voice.ts';
-import { ambienceAt, condition, distanceTo, emittersOf, exposureAt, falloff, Movement, QueuedNotes, treeIndex, treesOf, type Emitter, type Resident, type SoundKind, type Source, type TreeIndex } from './sound-plan.ts';
+import { ambienceAt, condition, distanceTo, emittersOf, exposureAt, falloff, Movement, notesToSound, QueuedNotes, treeIndex, treesOf, type Emitter, type Resident, type SoundKind, type Source, type TreeIndex } from './sound-plan.ts';
 import { nightOf } from './motion.ts';
 import { sharedCoverProbe, type CoverProbe } from '../world-env.ts';
 import { arrivalOver } from '../arrival-marks.ts';
@@ -91,12 +90,10 @@ function playPianos(host: Host, x: number, y: number, z: number) {
     playing.add(r.body);
     const g = falloff(Math.hypot(r.p[0] - x, r.p[1] - y, r.p[2] - z), PIANO_RADIUS, PIANO_VOLUME); if (g <= 0.001) continue;
     pianoNear = true;
-    const ready = pianoReadyAt(now, r.activityAge, PIANO_FADE);
-    for (const n of pianoNotes(r.body, now - 0.05, now + PIANO_AHEAD)) {
-      if (n.t < ready - 1e-6) continue; // still reaching for the keys: silent, and never revived by the look-back
-      // entry 36: keyed by hand too (the bass and the melody often start together: keyed by time alone, the melody note
-      // on every half bar was dropped since entry 14)
-      const key = `${r.body}:${n.t}:${n.hand}`; if (pianoDone.has(key)) continue; pianoDone.set(key, n.t);
+    // silent while still reaching for the keys and from the run's recorded end; entry 36: keyed by hand too (the bass and the
+    // melody often start together: keyed by time alone, the melody note on every half bar was dropped since entry 14)
+    const ready = pianoReadyAt(now, r.activityAge, PIANO_FADE), end = pianoEndAt(now, r.activityLeft), body = r.body;
+    for (const n of notesToSound(pianoNotes(body, now - 0.05, now + PIANO_AHEAD), ready, end, pianoDone, n => `${body}:${n.t}:${n.hand}`)) {
       const at = audioNow + Math.max(0, n.t - now);
       pianoQueued.add(r.body, at, pianoKey(ctx, master, at, n.midi, g * n.vel * 0.5)); if (n.hand === 1) pianoAt.set(`${r.body}:${n.t}`, at);
     }
@@ -285,8 +282,12 @@ function playSingers(host: Host, x: number, y: number, z: number) {
       if (s && s.with !== who.seed) { s.voice.silence(ctx.currentTime); s.done.clear(); s.with = who.seed; }
       if (!s) { mic ??= micChain(ctx, master); s = { voice: makeSinger(ctx, mic), done: new Set(), with: who.seed }; singers.set(r.body, s); }
       s.voice.out.gain.setTargetAtTime(g, ctx.currentTime, 0.08);
+      // with a piano, the voice keeps to the pianist's audible notes: silent while the hands reach for the keys (#422)
+      const pianist = who.kind === 'piano' ? rs.find(q => q.body === who.seed) : undefined;
+      const ready = pianist ? pianoReadyAt(now, pianist.activityAge, PIANO_FADE) : -Infinity, end = pianist ? pianoEndAt(now, pianist.activityLeft) : Infinity;
       for (const n of sungNotes(who, now - 0.05, now + PIANO_AHEAD)) {
         if (s.done.has(n.t)) continue; s.done.add(n.t);
+        if (n.t < ready - 1e-6 || n.t >= end - 1e-6) continue;
         // the moment the piano's note of that second sounds, when it is already scheduled (a singer who starts mid-song
         // joins on the piano's own note: scheduled a tick later from the world clock, it landed 5–10 ms off in take 3)
         const at = pianoAt.get(`${who.seed}:${n.t}`) ?? audioNow + Math.max(0, n.t - now);

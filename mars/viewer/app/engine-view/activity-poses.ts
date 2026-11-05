@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PIANO_STEP, drumHands, pianoHands, pianoLanes, voiceAt, type Accompanist } from './piano-score.ts';
+import { PIANO_FADE, PIANO_STEP, drumHands, pianoHands, pianoLanes, voiceAt, type Accompanist } from './piano-score.ts';
 import {gameContact,type RecordedGame} from './recorded-games.ts';
 import {rowingStroke} from './rowing-motion.ts';
 import {seesawAngle, swingAngle} from './play-motion.ts';
@@ -48,7 +48,7 @@ const SH = 1.34, HALF = 0.19;
 /** core/piano@1 highest keys: black centre .795 m + half thickness .01 m. */
 export const PIANO_KEY_HEIGHT = .805;
 /** Ease free piano arms in/out on recorded activity age; explicit engine hand targets still win. */
-export const PIANO_FADE = .8;
+export { PIANO_FADE };
 
 /** One hand goal relative to that arm's shoulder: [forward, outward (+ away from the body midline), up] metres. */
 export type HandGoal = readonly [number, number, number];

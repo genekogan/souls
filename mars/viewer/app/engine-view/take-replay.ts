@@ -208,6 +208,9 @@ export class TakePeople {
   contactDiagnostics(){return this.humans.bones();}
   instrumentOf(id:string){return this.humans.instrumentOf(id);}
   activityAgeOf(id:string){return this.humans.activityAgeOf(id);}
+  /** Seconds until `id`'s current activity ends at the depicted tick, when the take already records the change (#422:
+   *  a pianist's notes stop where the release pose freezes the score); undefined while the end is not yet known. */
+  activityLeftOf(id:string){const tick=this.frame?.tick;if(tick===undefined)return undefined;const a=this.acts.get(id),next=a?a.t[this.runAt(a,tick)+1]:undefined;return next===undefined?undefined:(next-tick)*this.take.dt;}
   appearanceStatus(){return this.humans.appearanceStatus();}
 
   constructor(take: Take, opts: { scene?: SpatialScene; commonsContrast?:boolean; humanPresets?:boolean; nativeBoat?:{layout:NativeBoatLayoutV1;proposal:ShoreDesign['boat']} } = {}) {

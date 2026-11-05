@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { componentsSchema } from '@sim/world-compiler';
-import { ambienceAt, condition, DEFAULT_SETTINGS, distanceTo, emittersOf, exposureAt, impliedSpecs, treeIndex, treesOf, loadSettings, Movement, saveSettings, SETTINGS_KEY, specsOf, variantOf, VARIANTS, KINDS, MASTER_DEFAULT } from './sound-plan.ts';
+import { ambienceAt, condition, DEFAULT_SETTINGS, distanceTo, emittersOf, exposureAt, impliedSpecs, treeIndex, treesOf, loadSettings, Movement, saveSettings, SETTINGS_KEY, specsOf, variantOf, VARIANTS, KINDS, MASTER_DEFAULT, QueuedNotes } from './sound-plan.ts';
 
 test('a def may carry one sound or a list; unknown kinds are dropped; the schema accepts both', () => {
   assert.equal(specsOf({ components: { sound: { kind: 'water', radius: 10, volume: 0.5 } } } as never).length, 1);
@@ -145,7 +145,6 @@ test('a resident who is speaking murmurs where they stand, alone or not; silent 
 });
 
 // #422: a piano note scheduled ahead never sounds once its player has stopped; a begun note keeps its decay.
-import { QueuedNotes } from './sound-plan.ts';
 test('queued notes: a stopped player loses only the notes that have not begun', () => {
   const q = new QueuedNotes<string>();
   q.add('a', 10.0, ['a-begun']); q.add('a', 10.2, ['a-next', 'a-next-octave']); q.add('b', 10.3, ['b-next']);

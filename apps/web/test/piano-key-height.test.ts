@@ -107,6 +107,21 @@ for(const activity of ['play-piano','play-music'])test(`recorded early piano sto
  fresh.show(2);assert.equal(view.prevDuration,undefined,'settled idle omits release-only duration');assert.equal(view.prevInstrument,undefined,'settled idle omits release-only instrument');
 });
 
+test('the age and the time left that the piano sound reads come from the recorded run, live and on random access',async()=>{
+ const scene=openGround(),w=emptyWorld('piano-age',scene),e=human('piano_age',0,0);w.entities[e.id]=e;e.human!.activity='sit';e.human!.seatHeight=BENCH;
+ const rt=new Runtime(w,new Map(),{spatial:new Spatial(scene)},[]),rec=new TakeRecorder(rt,{rulesVersion:'piano-age'});
+ for(let k=0;k<60;k++){if(k===20){e.human!.activity='play-piano';e.human!.baseActivity='sit';}if(k===44){e.human!.activity='sit';delete e.human!.baseActivity;}rt.step();}
+ const take=rec.finish(),tpl=(await views('wire-woman') as unknown as {templates:Template[]}).templates;
+ const view=new TakePeople(take);view.setTemplates(tpl);
+ const find=(p:TakePeople)=>{const k=(p as unknown as {acts:Map<string,{t:number[];v:string[]}>}).acts.get(e.id)!;const i=k.v.indexOf('play-piano');return [k.t[i],k.t[i+1]];};
+ for(const t of [1.3,1.55,2.0]){view.show(t);const tick=view.frame!.tick,[s,end]=find(view);
+  assert.ok(Math.abs(view.activityAgeOf(e.id)!-(tick-s)*.05)<1e-9,`age at ${t}s is the depicted tick minus the recorded start`);
+  assert.ok(Math.abs(view.activityLeftOf(e.id)!-(end-tick)*.05)<1e-9,`time left at ${t}s reaches the recorded end`);
+  const fresh=new TakePeople(take);fresh.setTemplates(tpl);fresh.show(t);
+  assert.ok(Math.abs(fresh.activityAgeOf(e.id)!-view.activityAgeOf(e.id)!)<1e-9&&Math.abs(fresh.activityLeftOf(e.id)!-view.activityLeftOf(e.id)!)<1e-9,'random access agrees');}
+ view.show(2.9);assert.equal(view.activityLeftOf(e.id),undefined,'the run after the last recorded change has no known end');
+});
+
 test('unrelated recorded drums: no piano instrument-history arrays or previous-duration metadata',async()=>{
  const scene=openGround(),w=emptyWorld('drum-history',scene),e=human('drummer',0,0);w.entities[e.id]=e;e.human!.activity='sit';
  const rt=new Runtime(w,new Map(),{spatial:new Spatial(scene)},[]),rec=new TakeRecorder(rt,{rulesVersion:'drum-history'});

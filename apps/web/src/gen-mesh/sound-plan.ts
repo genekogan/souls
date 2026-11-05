@@ -260,7 +260,9 @@ export function ambienceAt(L: Listener): Emitter[] {
 /** `speaking`: the resident is saying something right now (a speech line shown in the last few seconds). */
 export type Resident = { id: string; p: readonly [number, number, number]; speaking?: boolean; body?: string; activity?: string; instrument?: string;
   /** Seconds the depicted activity has run (absent: began before the known history). */
-  activityAge?: number };
+  activityAge?: number;
+  /** Seconds until the depicted activity ends, when the take already records its end. */
+  activityLeft?: number };
 type Track = { p: readonly [number, number, number]; t: number; speed: number };
 
 /** Footsteps where residents walk, a resident's murmur while they speak, and chatter where two or more stand within 4 m of each other; the visitor's own
@@ -316,6 +318,15 @@ export function loadSettings(store: Store): SoundSettings {
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 export function saveSettings(store: Store, s: SoundSettings) { try { store?.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* private window */ } }
+
+/** #422: which of a player's score notes (already windowed to the look-back and look-ahead) to schedule now. A note sounds
+ *  only from `ready` (the arm entry blend has put the hands on the keys) and before `end` (the run's recorded end). Each
+ *  note is decided once and remembered in `done`, so a note silenced once is never revived by a later look-back. */
+export function notesToSound<N extends { t: number }>(notes: readonly N[], ready: number, end: number, done: Map<string, number>, key: (n: N) => string): N[] {
+  const out: N[] = [];
+  for (const n of notes) { const k = key(n); if (done.has(k)) continue; done.set(k, n.t); if (n.t >= ready - 1e-6 && n.t < end - 1e-6) out.push(n); }
+  return out;
+}
 
 /** Notes scheduled ahead of the audio clock, per player (#422): once the player has stopped, a note that has not begun is
  *  returned by `settle` to be silenced; a note that has begun keeps its natural decay. */
