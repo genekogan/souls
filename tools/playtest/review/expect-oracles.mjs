@@ -43,12 +43,20 @@ export function namesIn(text, names) {
   return (names ?? []).filter((n) => { const A = words(n).trim(); return A && new RegExp(` ${A.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(s|es)? `).test(T); });
 }
 
-const CANT_TELL = /\b(?:can'?t|cannot|could ?n'?t|couldn't) tell\b|\bnot sure (?:which way|where)\b|\b(?:don'?t|do not) know (?:which way|where)\b|\bno idea\b|\bunable to (?:tell|say)\b/i;
-/** The sentences of an answer that name any of these names; the whole answer when none does (H1). */
+// "can't tell" about the direction: a bare "can't tell" or one about which way / where, never "can't tell you how …".
+const CANT_TELL = /\b(?:can['’]?t|cannot|could ?n['’]?t) (?:tell|say)(?:(?: you)?(?: for sure| exactly)?)? *(?:[.!,;]|$|which way|where|what direction|the direction|from here)|\bnot sure (?:which way|where)\b|\b(?:don['’]?t|do not) know (?:which way|where)\b|\bno idea\b|\bunable to (?:tell|say)\b/im;
+const ABBREV = /\b(?:e\.g|i\.e|etc|approx|vs|dr|st|mt)\.$/i;
+const FOLLOW_UP = /^(?:it|it['’]s|its|that|that['’]s|this|there)\b/i;
+/** The sentences of an answer that name any of these names, each with a directly following "It…/That…" sentence; the
+ *  whole answer when none does (H1). Abbreviations (e.g., i.e., approx.) and decimals do not end a sentence. */
 export function sentencesNaming(text, names) {
-  const all = String(text ?? '').split(/(?<=[.!?\n])\s+/).map((x) => x.trim()).filter(Boolean);
-  const naming = all.filter((x) => namesIn(x, names).length);
-  return naming.length ? naming : all;
+  const all = [];
+  for (const part of String(text ?? '').split(/(?<=[.!?\n])\s+/).map((x) => x.trim()).filter(Boolean)) {
+    if (all.length && ABBREV.test(all.at(-1))) all[all.length - 1] += ` ${part}`; else all.push(part);
+  }
+  const keep = all.map((x) => namesIn(x, names).length > 0);
+  const out = all.filter((x, i) => keep[i] || (i > 0 && keep[i - 1] && FOLLOW_UP.test(x)));
+  return keep.some(Boolean) ? out : all;
 }
 
 /** The script entry (and its expect) that produced this evidence pack: same seat and text, k-th occurrence by sentAt. */
@@ -147,8 +155,9 @@ export function expectOracles({ ev, expect: x, timely = [], replies = [], receip
       if (!replies.length) { out.push(o(id, 'fail', `no answer (truth: ${compassName(want)}, ${Math.round(d)} m)`, [sp(first)])); continue; }
       if (lateOnly) { out.push(o(id, 'fail', `answer came after the cutoff (truth: ${compassName(want)}, ${Math.round(d)} m)`, [...rptr, sp(first)])); continue; }
       const read = sentencesNaming(reply, T.flatMap((k) => k.names)).join(' '); // H1: the sentences naming the target
-      if (CANT_TELL.test(read)) { out.push(o(id, 'fail', `said it can't tell (truth: ${compassName(want)}, ${Math.round(d)} m)`, [...rptr, sp(first)])); continue; }
       const said = compassWords(read);
+      // "can't tell" in the sentences read, or anywhere in an answer that gives no direction there, is a fail
+      if (CANT_TELL.test(read) || (!said.length && CANT_TELL.test(reply))) { out.push(o(id, 'fail', `said it can't tell (truth: ${compassName(want)}, ${Math.round(d)} m)`, [...rptr, sp(first)])); continue; }
       if (!said.length) { out.push(o(id, 'unknown', `answered without a compass direction (truth: ${compassName(want)}, ${Math.round(d)} m)`, [...rptr, sp(first)])); continue; }
       const ok = said.find((w) => angleDiff(w.deg, want) <= tol);
       out.push(o(id, ok ? 'pass' : 'fail', `said ${said.map((w) => w.word).join(', ')}; truth ${compassName(want)} (${Math.round(want)}°, ${Math.round(d)} m to ${label(t)}; tolerance ${tol}°)`, [...rptr, sp(first)]));
@@ -163,7 +172,7 @@ export function expectOracles({ ev, expect: x, timely = [], replies = [], receip
         out.push(o(id, 'fail', `body faces ${Math.round(h.heading)}° (${compassName(h.heading)}); ${label(t)} lies at ${Math.round(want)}° (${compassName(want)}), ${Math.round(diff)}° off (tolerance ${tol}°)`, [`${P}#receipts`]));
       } else {
         // a refused act to turn or face is a fail, not an unknown
-        const refused = acts.find((a) => a.output?.accepted === false && /\bact\b/.test(a.cmd ?? '') && /\b(turn|face|facing)\b/i.test(a.cmd ?? ''));
+        const refused = acts.filter((a) => a.output?.accepted === false && /\beden(-agent)?\.mjs act\s+["']?(?:turn|face|facing)\b/i.test(a.cmd ?? '')).at(-1); // the act's own words start with turn/face
         out.push(gaze ? o(id, 'pass', `eyes turned with view --gaze ${gaze} (no body heading in the window)`)
           : refused ? o(id, 'fail', `facing refused (${refused.output.code ?? 'no code'}${refused.output.reason ? `: ${String(refused.output.reason).slice(0, 80)}` : ''})`, refused.turn != null ? [`seats/${ev.seat}/transcript.jsonl#turn${refused.turn}`] : [])
           : o(id, 'unknown', 'no completed act with a heading in the request window'));

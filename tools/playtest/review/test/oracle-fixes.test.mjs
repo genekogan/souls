@@ -24,6 +24,9 @@ test('C1: answer-direction reads only the sentences naming the target; the whole
   assert.equal(r.status, 'pass'); assert.match(r.detail, /^said east;/);
   assert.equal(row(score(cafe, "I'm facing east. The cafe is to the west."), 'answer-direction').status, 'fail', 'a compass word in another sentence no longer rescues it');
   assert.equal(row(score(cafe, 'Head east, about 50 m.'), 'answer-direction').status, 'pass');
+  // abbreviations and decimals do not end a sentence; an "It…" sentence right after a naming one is read with it
+  assert.deepEqual(sentencesNaming('The cafe is e.g. 40.5 m away. It is east. The pond is west.', ['cafe']), ['The cafe is e.g. 40.5 m away.', 'It is east.']);
+  assert.equal(row(score(cafe, "The cafe is 40 m away. It's east. The pond is west."), 'answer-direction').status, 'pass');
 });
 
 test('C1: an answer that cannot tell the direction is a fail, not unknown', () => {
@@ -31,6 +34,9 @@ test('C1: an answer that cannot tell the direction is a fail, not unknown', () =
     const r = row(score(cafe, text), 'answer-direction');
     assert.equal(r.status, 'fail', text); assert.match(r.detail, /^said it can't tell/);
   }
+  assert.equal(row(score(cafe, 'I can’t tell where the cafe is.'), 'answer-direction').status, 'fail', 'a curly apostrophe');
+  assert.equal(row(score(cafe, "The cafe? I can't tell."), 'answer-direction').status, 'fail', 'a bare "can\'t tell"');
+  assert.equal(row(score(cafe, "I can't tell you how lovely the cafe is; it is east."), 'answer-direction').status, 'pass', '"can\'t tell you how" is not about the direction');
   // "can't tell" in a sentence that does not name the target is not read when another sentence does
   assert.equal(row(score(cafe, "I can't tell you much about the plaza. The cafe is east."), 'answer-direction').status, 'pass');
   assert.equal(row(score(cafe, 'The cafe is somewhere around.'), 'answer-direction').status, 'unknown', 'no compass word and no "can\'t tell" stays unknown');
@@ -65,6 +71,8 @@ test('C3: named-in-description passes only after a view that started by the answ
   const untimed = [{ turn: 3, cmd: 'node eden.mjs view', output: {} }];
   assert.equal(row(score(look, 'I see the bandstand and a violin.', { acts: untimed }), 'named-in-description').status, 'pass', 'no act times: any view in the request counts');
   assert.equal(row(score(look, 'I see grass.', { acts: before }), 'named-in-description').status, 'fail', 'a view does not make a wrong answer pass');
+  const card = runOracles(pack({ channel: 'card', chatTurns: [], resultText: 'I see a violin.', resultAt: null }), { expect: look, acts: after, turns: [] });
+  assert.equal(row(card, 'named-in-description').status, 'pass', 'an answer without a time is in time, and any view counts (fails open)');
 });
 
 test('C4: a refused act to turn or face is a fail; with no act at all it stays unknown', () => {
@@ -74,7 +82,7 @@ test('C4: a refused act to turn or face is a fail; with no act at all it stays u
   assert.equal(r.status, 'fail'); assert.equal(r.detail, 'facing refused (capability.unknown: no such capability)');
   assert.deepEqual(r.pointers, ['seats/pip/transcript.jsonl#turn3']);
   assert.equal(row(score(face, 'Done.'), 'facing').status, 'unknown');
-  const otherRefusal = [{ turn: 3, cmd: 'node eden.mjs act "sit down"', output: { accepted: false, code: 'x' } }];
+  const otherRefusal = [{ turn: 3, cmd: 'node eden.mjs act "sit down facing the bandstand"', output: { accepted: false, code: 'x' } }];
   assert.equal(row(score(face, 'Done.', { acts: otherRefusal }), 'facing').status, 'unknown', 'a refusal of another act is not a facing refusal');
   const gazed = [...refused, { turn: 3, cmd: 'node eden.mjs view --gaze bandstand', output: {} }];
   assert.equal(row(score(face, 'Looking at it.', { acts: gazed }), 'facing').status, 'pass', 'eyes turned still pass');
