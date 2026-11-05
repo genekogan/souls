@@ -52,9 +52,19 @@ export function liveWindow(samples) {
     queueDepthMax: max(v((s) => s.queue?.depth)), awakeMean: r(mean(v((s) => s.souls?.awake)), 1), levels: samples.reduce((m, s) => (s.level ? { ...m, [s.level]: (m[s.level] ?? 0) + 1 } : m), {}) };
 }
 
-/** A V8 .cpuprofile → sampled ms and the top self-time and inclusive functions. File paths are made relative to `root`;
- *  Node's own and anonymous frames are kept under their names. */
-export function summarizeProfile(p, root = '', top = 15) {
+// Paths named in a decision, kept by inclusive time whatever their rank: a top-15 list cannot show a mid-tree path's share
+// (the first qualifying run, 41972880510, could not confirm #912's `goal()` share for that reason). Matched on the
+// function name and the file it is in.
+export const WATCH = Object.freeze([
+  ['bindsCoreIn', 'apps/server/src/edge/ledger/ledger.ts'], ['pumpFrame', 'apps/server/src/world.ts'],
+  ['capabilities', 'apps/server/src/god/nav.ts'], ['offerWalk', 'apps/server/src/god/nav.ts'], ['goal', 'apps/server/src/god/nav.ts'],
+  ['standableNearV1', 'packages/engine-mars/src/engine.ts'], ['navScan', 'mars/viewer/engine/spatial/service.ts'],
+  ['heldGodThing', 'apps/server/src/god/held.ts'], ['outdoorRegionExclusions', 'apps/server/src/edge/ledger/region-arrival.ts'],
+]);
+
+/** A V8 .cpuprofile → sampled ms, the top self-time and inclusive functions, and the WATCH paths' inclusive time (0 when
+ *  never sampled). File paths are made relative to `root`; Node's own and anonymous frames are kept under their names. */
+export function summarizeProfile(p, root = '', top = 15, watch = WATCH) {
   if (!p?.nodes?.length) return null;
   const byId = new Map(p.nodes.map((n) => [n.id, n])), parent = new Map(), self = new Map();
   for (const n of p.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
@@ -68,7 +78,8 @@ export function summarizeProfile(p, root = '', top = 15) {
     const seen = new Set(); for (let x = id; x != null; x = parent.get(x)) { const kk = keyOf(byId.get(x)); if (!seen.has(kk)) { seen.add(kk); inclBy.set(kk, (inclBy.get(kk) ?? 0) + ms); } }
   }
   const busy = total - idle, list = (m) => [...m].filter(([k]) => !/^\((idle|root)\)/.test(k)).sort((a, b) => b[1] - a[1]).slice(0, top).map(([fn, ms]) => ({ fn, ms: r(ms, 0), share: busy ? r(ms / busy, 3) : null }));
-  return { sampledMs: r(total, 0), busyMs: r(busy, 0), self: list(selfBy), inclusive: list(inclBy).filter((x) => !/^\(program\)/.test(x.fn)) };
+  const watched = watch.map(([name, file]) => { let ms = 0; for (const [k, v] of inclBy) if (k.startsWith(`${name} ${file}:`)) ms += v; return { fn: `${name} ${file}`, ms: r(ms, 0), share: busy ? r(ms / busy, 3) : null }; });
+  return { sampledMs: r(total, 0), busyMs: r(busy, 0), self: list(selfBy), inclusive: list(inclBy).filter((x) => !/^\(program\)/.test(x.fn)), watched };
 }
 
 const mean = (xs) => { const v = xs.filter((x) => typeof x === 'number' && Number.isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
@@ -115,6 +126,7 @@ export function reportText(receipt, results) {
     for (const f of prof.self.slice(0, 10)) L.push(`| ${f.ms} | ${f.share} | \`${f.fn}\` |`);
     L.push('', '| inclusive ms | share | function |', '|---|---|---|');
     for (const f of prof.inclusive.slice(0, 12)) L.push(`| ${f.ms} | ${f.share} | \`${f.fn}\` |`);
+    if (prof.watched?.length) { L.push('', '| watched inclusive ms | share | path |', '|---|---|---|'); for (const f of prof.watched) L.push(`| ${f.ms} | ${f.share} | \`${f.fn}\` |`); }
     L.push('');
   }
   L.push('## Coverage', '', ...(receipt.coverage ?? []).map((c) => `- ${c}`), '');

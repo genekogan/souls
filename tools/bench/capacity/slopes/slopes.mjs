@@ -95,7 +95,7 @@ const liveOf = (w) => { try { return JSON.parse(readFileSync(join(w.data, 'live.
 async function inspector(port) {
   const list = (await getJ(`http://127.0.0.1:${port}/json/list`)).j, ws = new WebSocket(list[0].webSocketDebuggerUrl), wait = new Map(); let id = 0;
   await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = no; });
-  ws.onmessage = (e) => { const m = JSON.parse(e.data); wait.get(m.id)?.(m); wait.delete(m.id); };
+  ws.onmessage = (e) => { const m = JSON.parse(e.data), done = typeof m?.id === 'number' ? wait.get(m.id) : undefined; if (typeof done === 'function') { wait.delete(m.id); done(m); } };
   const send = (method, params = {}) => new Promise((ok) => { const i = ++id; wait.set(i, ok); ws.send(JSON.stringify({ id: i, method, params })); });
   await send('Profiler.enable'); await send('Profiler.setSamplingInterval', { interval: 1000 });
   return { start: () => send('Profiler.start'), stop: async () => (await send('Profiler.stop')).result?.profile ?? null, close: () => ws.close() };

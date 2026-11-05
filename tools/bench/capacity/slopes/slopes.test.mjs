@@ -61,6 +61,11 @@ test('profile summary: self and inclusive time by function, idle excluded from s
   assert.equal(s.sampledMs, 8); assert.equal(s.busyMs, 3);
   assert.deepEqual(s.self.map((x) => [x.fn, x.ms]), [['scan apps/server/src/y.ts:10', 2], ['handle apps/server/src/x.ts:10', 1]]);
   assert.equal(s.inclusive.find((x) => x.fn.startsWith('handle')).ms, 3);
+  // watched paths: inclusive time by name and file whatever their rank; a path never sampled reads 0
+  const w = summarizeProfile(p, ROOT, 1, [['scan', 'apps/server/src/y.ts'], ['scan', 'apps/server/src/x.ts'], ['handle', 'apps/server/src/x.ts']]);
+  assert.equal(w.inclusive.length, 1);
+  assert.deepEqual(w.watched.map((x) => [x.fn, x.ms, x.share]), [['scan apps/server/src/y.ts', 2, 0.667], ['scan apps/server/src/x.ts', 0, 0], ['handle apps/server/src/x.ts', 3, 1]]);
+  assert.match(reportText({ host: {} }, [{ arm: AXES.quiet[0], rep: 1, profiles: { probe: w } }]), /\| 2 \| 0\.667 \| `scan apps\/server\/src\/y\.ts` \|/);
   assert.equal(summarizeProfile(null), null);
 });
 
