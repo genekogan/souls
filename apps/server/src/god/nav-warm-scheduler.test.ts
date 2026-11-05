@@ -91,3 +91,34 @@ test('an engine without navigation support becomes ready without repeated work',
   assert.equal(w.state.navWarm, true); assert.equal(w.state.navPending, false);
   assert.equal(w.calls.length, 0); assert.equal(w.rescues(), 0); assert.equal(w.notices.length, 0);
 });
+
+test('#901: after the first build, labels gone cold are found by a poll every 10 ticks and relabelled a slice a tick', t => {
+  let warm = true, slices = 0;
+  // cold (a moving ride invalidated them) until `slices` relabel calls have run
+  const w = fixture(t, () => { if (!warm && --slices <= 0) warm = true; return warm; });
+  const upTo = (n: number) => { while (w.host.engine.world.tick < n) w.tick(); };
+  upTo(9);
+  assert.deepEqual(w.calls, [{ tick: 2, budget: 20 }], 'the first build; warm reads cost nothing until the poll');
+  upTo(10);
+  assert.equal(w.calls.length, 2); assert.equal(w.calls[1].tick, 10, 'polled on the 10th tick');
+  assert.ok(w.calls[1].budget > 0 && w.calls[1].budget <= 10, `one slice at most 10 ms: ${w.calls[1].budget}`);
+  warm = false; slices = 3;
+  upTo(19); assert.equal(w.calls.length, 2, 'no work between polls');
+  upTo(23);
+  assert.deepEqual(w.calls.slice(2).map(c => c.tick), [20, 21, 22], 'found cold on the poll, then a slice each tick until warm');
+  assert.ok(w.calls.slice(2).every(c => c.budget > 0 && c.budget <= 10));
+  assert.equal(w.state.navWarm, true); assert.equal(w.state.navPending, false, 'the first-build state is untouched');
+  assert.equal(w.rescues(), 1, 'a re-warm is not an edit: no rescue, no notice'); assert.equal(w.notices.length, 1);
+  upTo(30); assert.deepEqual(w.calls.slice(5).map(c => c.tick), [30], 'warm again: back to the poll');
+});
+
+test('#901: a re-warm error is logged once and the poll stops; the first-build path is unchanged', t => {
+  let fail = false;
+  const w = fixture(t, () => { if (fail) throw new Error('controlled re-warm failure'); return true; });
+  w.tick(); w.tick(); fail = true;
+  while (w.host.engine.world.tick < 40) w.tick();
+  assert.deepEqual(w.logs, ['nav re-warm: controlled re-warm failure']);
+  assert.deepEqual(w.calls.map(c => c.tick), [2, 10], 'no retry loop');
+  fail = false; w.rearm(); w.tick();
+  assert.equal(w.calls.length, 3, 'an edit still re-arms the first-build path'); assert.equal(w.state.navPending, false);
+});

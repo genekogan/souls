@@ -213,6 +213,9 @@ export type LoadLevel = keyof typeof PERCEIVE_DIAL;
 /** Build notices that change nothing a Soul perceives (no step label, no closure): they never start a catch-up. */
 const PERCEPTION_QUIET_BUILD = new Set<string>(['alive', 'claimed', 'released', 'taken']);
 const WRITE_BACK_SLICE_MS = 8;
+/** #901: after the first nav build, the tick loop polls the labels this often (ticks) and relabels cold ones in slices of
+ *  at most this many ms a tick (a moving ride invalidates them; the relabel takes ~70-150 ms on Eden 2026). */
+const NAV_REWARM_POLL_TICKS = 10, NAV_REWARM_SLICE_MS = 10;
 type WriteBackUnit = { key: string; ops: Op[]; body?: string };
 type WriteBackBody = { pose: string; entity: Entity | undefined };
 
@@ -896,6 +899,7 @@ export class EngineBridge {
     if (tick % 40 === 7 || this.layerPlacesPending !== null) { this.layersStep(tick % 40 === 7); if (S) t = S.add('layers', t); }
     if (tick % 20 === 13) { this.flushMapNotices(); if (S) t = S.add('mapNotices', t); }
     if (!this.navWarm || this.navPending) { this.navStep(startedAtMs); if (S) t = S.add('nav', t); }
+    else if (this.navCold || tick % NAV_REWARM_POLL_TICKS === 0) { this.navRewarmStep(startedAtMs); if (S) t = S.add('navRewarm', t); }
     if (this.evacuatedEdit !== this.editTick && tick - this.editTick >= 10) { this.evacuatedEdit = this.editTick; this.evacuateSites(); if (S) t = S.add('evacuate', t); }
     if (this.rescued !== this.editTick && tick - this.editTick >= 10 && (tick - this.editTick >= 20 || tick - this.rescuedAt >= 40)) { this.rescuedAt = tick; this.rescueTrapped(); if (S) t = S.add('rescue', t); }
     if (S && S.due()) this.log(S.line(this));
@@ -1018,6 +1022,26 @@ export class EngineBridge {
     if (!this.edge || this.perceiveRunning || this.perceive.pending()) return;
     // L4 item 6: a served world derives the spots in slices of the perception budget, one per tick until done
     try { if (this.activitySpots.warm(this.perceiveDial?.sliceMs ?? PERCEIVE_SLICE_MS)) this.logSpots(); } catch (e) { this.log(`activity spots: ${(e as Error).message}`); }
+  }
+  /** #901: labels known cold after the first build (a moving ride, or any static change, invalidated them); null once the
+   *  re-warm failed (logged once; the first-build path and the reads that drain the labels are unchanged). */
+  private navCold: boolean | null = false;
+  /** #901: after the first build nothing else warmed the labels again: once a moving ride (a balloon, the carousel, the
+   *  ferris wheel) changed the static world, listings, walk goals (RESOLVE2's roofReach, WALK3's main ground) and offerWalk's
+   *  cut check read them cold until some read happened to drain them. Every NAV_REWARM_POLL_TICKS the tick loop polls them
+   *  (warm: a spatial sync and a key compare); once cold, it relabels one slice of at most NAV_REWARM_SLICE_MS a tick, inside
+   *  the nav envelope, until they are warm. Then the per-tick memos that read them cold earlier in the tick read again. */
+  private navRewarmStep(tickStartedAtMs?: number) {
+    if (this.navCold === null) return;
+    try {
+      const E = this.engine as unknown as { navWarmV1?: (ms: number) => boolean };
+      if (!E.navWarmV1) { this.navCold = null; return; }
+      const budgetMs = tickStartedAtMs === undefined ? NAV_REWARM_SLICE_MS
+        : Math.min(NAV_REWARM_SLICE_MS, Math.max(0, 40 - (performance.now() - tickStartedAtMs)));
+      const warm = E.navWarmV1(budgetMs);
+      if (warm && this.navCold) { this.nav.forgetWarm(); this.edge?.navRelabelled(); }
+      this.navCold = !warm;
+    } catch (e) { this.navCold = null; this.log(`nav re-warm: ${(e as Error).message}`); }
   }
   private navStep(tickStartedAtMs?: number) {
     try {
