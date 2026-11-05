@@ -1,4 +1,4 @@
-// ship.sh (deploy/ship.sh): the one release command. Every eden2/build/browser command is a stub (SHIP_TEST=1 + SHIP_SSH,
+// ship-dual-stage.sh: the historical dual-stage release command (the root-only command is deploy/ship.sh, ship-root.test.mjs). Every eden2/build/browser command is a stub (SHIP_TEST=1 + SHIP_SSH,
 // SHIP_SCP, SHIP_NODE, SHIP_PYTHON, SHIP_RELEASE_SH) that logs its argv, so these tests check the step order, that a
 // failure stops the run with the live state + rollback + the --from to resume, and --from itself. Nothing leaves the
 // machine. Plus unit tests for the step verdicts (ship/checks.mjs) and the walk's wheel-zoom rule (ship/walk.mjs).
@@ -13,7 +13,7 @@ import { checkPoster, checkQuickCheck, checkStall, checkWalks } from './deploy/s
 import { NOTCH_FACTOR, zoomStep } from './deploy/ship/walk.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SHIP = join(HERE, 'deploy/ship.sh');
+const SHIP = join(HERE, 'deploy/ship-dual-stage.sh');
 const BUILD = 'we-0123456789ab';
 
 // One stub per command: logs "<name>\t<argv>" to $STUB_LOG; exits 1 when "<name> <argv>" contains $STUB_FAIL.

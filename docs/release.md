@@ -4,18 +4,15 @@
 
 The canonical site is `https://soul.game`, with production built and launched at base `/`; `souls.game` redirects
 to it. Internal service/data names stay `sim-*`. There is no second public legacy stage on this host.
-The root-only workflow change remains draft [#523](https://github.com/genekogan/souls/pull/523), tracked by
-[#519](https://github.com/genekogan/souls/issues/519). Shared gate accounting/cache, restricted deployment
-configuration, a nonproduction activation rehearsal and the first workflow receipt remain qualification work.
-
-Until that work is accepted, the authorized release owner uses the approved root-only runsheet and retained
-receipts, explicitly sets `SIM_WORLDS_BASE=/` and verifies the sealed build/launcher base match. The full gate,
-CDN-first assets, staged activation, backups, rollback preparation and live verification still apply.
-The combined `ship.sh`/workflow sequence below describes the historical dual-stage topology: **do not dispatch it
-unmodified on the root-only host**. Its `/worlds`, legacy-upload and legacy-activate examples are not current
-production instructions. Do not start a new gate to compensate for a missing receipt without authorization.
+A release is one command, [`ship.sh`](#shipsh), run from a clean checkout of the exact commit. It sets
+`SIM_WORLDS_BASE=/`, so the sealed build and launcher base match. The release workflow is not qualified for this
+topology yet (draft [#523](https://github.com/genekogan/souls/pull/523), tracked by
+[#519](https://github.com/genekogan/souls/issues/519)): it still runs the historical dual-stage command, so **do not
+dispatch it on the root-only host**. Do not start a new gate to compensate for a missing receipt without authorization.
 
 ## Historical dual-stage deployment
+
+This section and [`ship-dual-stage.sh`](#ship-dual-stagesh-historical) describe the old host. Current production does not use them.
 
 A release puts one exact commit on its target host. The historical deployment uses two launcher **stages**, each a
 `sim-worlds@<stage>` systemd unit running the world launcher under its keeper (`tools/world-launcher/keeper.mjs`):
@@ -41,10 +38,10 @@ in `release.sh`; ship.sh does not use it. See [operations](operations.md) for th
 3. **CDN first.** Any new immutable asset the web build's CDN manifest references is uploaded to `assets.eden.art`
    and verified before the release ([CDN](operations/cdn.md)). The client falls back to the origin on a CDN miss,
    but a release must not depend on that.
-4. **Staged ship.** `tools/world-launcher/deploy/ship.sh` runs backups, the legacy upload, the live probe, the
-   production release and the legacy activation in that order (below).
+4. **Staged ship.** `tools/world-launcher/deploy/ship.sh` takes a read-only snapshot, stages without activating, makes
+   row-verified backups, starts the live probe and does one guarded reload, in that order (below).
 5. **healthz.** Each activation checks the stage's `/__sim/healthz` reports the new build and every registered world
-   answers; afterwards `https://sim.eden.art/worlds/__sim/healthz` shows `build`, `worlds`/`running` and `hostOk`.
+   answers; afterwards `https://soul.game/__sim/healthz` shows `build`, `worlds`/`running` and `hostOk`.
 6. **Walks.** Real-Chrome arrivals on desktop and phone, the poster and stall checks.
 7. **cdn-walk.** `tools/cdn/cdn-walk.mjs` proves the live pages load mapped assets from the CDN.
 8. **Rollback on failure.** A failed handover or health check rolls back on its own; any later failure stops the run
@@ -52,14 +49,14 @@ in `release.sh`; ship.sh does not use it. See [operations](operations.md) for th
 
 ## The release workflow
 
-Releases run from [`.github/workflows/release.yml`](../.github/workflows/release.yml), started by manual dispatch with
+This workflow runs the historical dual-stage command and is not qualified for the root-only host. Releases that use it run from [`.github/workflows/release.yml`](../.github/workflows/release.yml), started by manual dispatch with
 a `version` (for the changelog and tag) and optional `label`, `baseline` (default: the newest `v*` tag) and
 `no_probe`. A `release` concurrency group lets only one run at a time. Its jobs:
 
 1. **preflight**: the required secrets and variables exist (it names any that are missing), the head is `main`, and
    the inputs are sane.
 2. **gate**: the full remote gate against the baseline release.
-3. **ship**: waits for the protected `production` environment's required reviewer, then runs `ship.sh` over SSH
+3. **ship**: waits for the protected `production` environment's required reviewer, then runs `ship-dual-stage.sh` over SSH
    and checks healthz.
 4. **publish**: compiles `changes/` into [`CHANGELOG.md`](../CHANGELOG.md), tags `v<version>` on the shipped commit
    and creates the GitHub Release.
@@ -69,7 +66,7 @@ rendered into the web build (`apps/web/changelog.html`, `apps/web/src/changelog-
 release being shipped, the ship job first compiles the shipped fragments into a copy outside the tree
 (`tools/changelog/compile.mjs --out`) and the build renders that copy (`SIM_CHANGELOG_FILE`); the tree stays exactly
 HEAD. Publish then writes the same section, with the same date from preflight, into the committed `CHANGELOG.md`. A
-laptop `ship.sh` run renders the committed `CHANGELOG.md` unless you set `SIM_CHANGELOG_FILE` the same way.
+laptop `ship-dual-stage.sh` run renders the committed `CHANGELOG.md` unless you set `SIM_CHANGELOG_FILE` the same way.
 
 Configuration lives in GitHub, never in the repository; preflight names whatever is missing:
 
@@ -86,13 +83,69 @@ Outside the workflow, the scripts read the same variables from the environment o
 the repository root (copy [`deploy.env.example`](../deploy.env.example); the environment wins). Loaders:
 `tools/world-launcher/deploy/deploy-env.{sh,mjs}`.
 
-The scripts can run from an authorized clean checkout with SSH access. The combined workflow below is not yet
-qualified for the current root-only topology; see the warning above.
-
 ## ship.sh
 
 ```sh
-tools/world-launcher/deploy/ship.sh --label <n> [--dry-run] [--from <step>] [--no-probe] [--exclude-world <slug>] [--out <dir>]
+tools/world-launcher/deploy/ship.sh --label <version> --sha <full sha> [--dry-run] [--from <step>] [--out <dir>]
+```
+
+It asks nothing: ssh runs in batch mode, and it never prompts. Before the release is live, any failure stops the run.
+Afterwards, a failed check is recorded and the later checks still run, so the owner decides with all the evidence.
+
+| Option | Meaning |
+|---|---|
+| `--label <version>` | The release, such as `4.16`. Names the output folder and the backups (`pre-r416-production-<time>`). |
+| `--sha <full sha>` | The commit to ship. It must be HEAD of a clean tree and an ancestor of `origin/main`. |
+| `--dry-run` | Prints every step and its commands. Nothing remote is touched and nothing is written. Exits 1 when a guard would stop a real run. |
+| `--from <step>` | Resumes at `snapshot`, `stage`, `backup`, `probe-start`, `healthz`, `walks`, `poster`, `stall` or `cdn-walk`, with the same `--out`. Activation always follows a fresh probe, so resume it `--from probe-start`. The guards run on every resume. |
+| `--out <dir>` | Output folder (default `$SHIP_OUT_ROOT/<label>`). A folder that already holds a run is refused without `--from`. |
+
+There is no host option. The host and operator paths come from the environment or the untracked `deploy.env`:
+
+| Variable | Default | Used for |
+|---|---|---|
+| `SIM_DEPLOY_HOST`, `SIM_DEPLOY_USER` | none / `root` | SSH target of the production host. It is never printed or written to the outputs |
+| `SHIP_RECEIPTS` | none; required | Folder holding the gate's `receipt.json` and `ship-receipt.json` for this commit |
+| `SHIP_PROBE_CLI` | none; required | God folder of the [release-probe world](#the-release-probe-world) |
+| `PLAYWRIGHT_BROWSERS_PATH` | none; required | Browsers folder. Preflight checks that it actually holds a Chromium executable |
+| `SHIP_ORIGIN` | `https://soul.game` | Public origin |
+| `SHIP_WALK_SLUGS` | `eden mars-college-2026 mars-college-2027` | Worlds for the walks and the cdn-walk |
+| `SHIP_PROBE_PAGE`, `SHIP_POSTER_PAGE` | `/w/eden/` | Pages for the probe, and for the poster and stall |
+| `SHIP_OUT_ROOT` | `.local/ship` | Parent of the output folder |
+| `SHIP_PROBE_READY_S` | `600` | How long to wait for the probe to be ready |
+| `SHIP_HOST_ROOT`, `SHIP_HOST_DATA`, `SHIP_HOST_CONF`, `SHIP_HOST_UNIT`, `SHIP_HOST_TMP` | `/srv/sim-worlds`, `/srv/sim-worlds-data/production`, `/etc/sim-worlds/production.conf`, `sim-worlds@production`, `/tmp` | Paths on the host, passed to its scripts as arguments |
+| `SIM_PREBUILT_WEB_ROOT`, `MARS_WEB_SRC` | see [release.sh](#releasesh) | Read by `release.sh` |
+
+| Step | What it does | On failure |
+|---|---|---|
+| preflight | Local guards: the host is set, the tree is clean, HEAD is `--sha`, the commit is on `origin/main`, the gate and ship receipts are clean for it, the probe folder and Chromium exist, every tool is present | Refused; nothing remote ran |
+| snapshot | Public healthz and read-only host metadata: stage link, config hash, registry identity, every database by name (`body-collections.sqlite` too), keeper. Writes `ROLLBACK.txt` | Stops |
+| stage | `release.sh production --no-activate` at base `/`; verifies the manifest locally and on the host; compares the host with the snapshot | Stops |
+| backup | Row-verified compact copy of every database, `quick_check` on each, the same filenames as the snapshot | Stops |
+| probe-start | Starts `release-probe.mjs` and waits for `<out>/probe/ready` | Stops |
+| activate | Checks that the snapshot and backup are under an hour old and that nothing drifted, then runs `ship/host-activate.sh` on the host: one `activate.sh --reload` and a health check | The host rolls code back to the previous build; stops |
+| probe-check | Reads the probe's exit | 3 stops (the release rolled back). Anything else is recorded and the run continues |
+| healthz | Public healthz reports this build, every world and `hostOk` | Stops |
+| walks | `ship/walk.mjs` on desktop and phone at dpr 1 and 2, then `checks.mjs walks` | Recorded |
+| poster | `ship/poster.mjs` three times, `poster-count.py`, `checks.mjs poster` | Recorded |
+| stall | `ship/stall.mjs` four times, `checks.mjs stall` | Recorded |
+| cdn-walk | `tools/cdn/cdn-walk.mjs` on the same worlds | Recorded |
+
+The output folder holds `STEPS.txt`, `ship.log`, `POSTLIVE.txt` (each post-live check and its exit), each step's logs and
+`ship-result.json`: `live`, `live-with-failures` or `stopped`. The exit is 0 only when every step passed. `ROLLBACK.txt`
+has the manual rollback, with the host as `$SIM_DEPLOY_HOST`.
+
+Not done here: publishing new CDN assets first, the uncut live clip, the changelog PR, the tag and the GitHub Release.
+
+Tests run the whole command against a fake host, with the remote block under an empty environment:
+`node --test tools/world-launcher/ship-root.test.mjs`.
+
+## ship-dual-stage.sh (historical)
+
+The old dual-stage command, kept for the workflow above. Do not run it on the root-only host.
+
+```sh
+tools/world-launcher/deploy/ship-dual-stage.sh --label <n> [--dry-run] [--from <step>] [--no-probe] [--exclude-world <slug>] [--out <dir>]
 ```
 
 | Option | Meaning |
@@ -133,13 +186,13 @@ Steps, each checked by `ship/checks.mjs`:
 | stall | `ship/stall.mjs` four times on a phone | no frame gap over 1 s |
 | cdn-walk | `tools/cdn/cdn-walk.mjs` on three live pages, desktop and phone | PASS |
 
-Before the first change on the host, ship.sh reads the current and previous stage links and writes the rollback
+Before the first change on the host, ship-dual-stage.sh reads the current and previous stage links and writes the rollback
 commands to `<out>/ROLLBACK.txt`. The output folder also holds `STEPS.txt` (one line per step), `ship.log`, and each
-step's logs, JSON and screenshots. Any failure stops the run: ship.sh prints what is live at that moment, the
+step's logs, JSON and screenshots. Any failure stops the run: it prints what is live at that moment, the
 rollback commands and the `--from` that resumes. It never rolls back by itself; `activate.sh` already does that for a
 failed handover, and probe exit 3 reports it.
 
-Tests stub every external command: `node --test tools/world-launcher/ship.test.mjs` (`SHIP_TEST=1` with `SHIP_SSH`,
+Its tests stub every external command: `node --test tools/world-launcher/ship.test.mjs` (`SHIP_TEST=1` with `SHIP_SSH`,
 `SHIP_SCP`, `SHIP_NODE`, `SHIP_PYTHON`, `SHIP_RELEASE_SH` and `SHIP_BUILD`).
 
 ## release.sh
@@ -166,7 +219,7 @@ It runs from a clean checkout (`git status --porcelain --untracked-files=no` emp
    or different upload is refused, never overwritten. Use a new commit instead.
 6. **Installs** (`install.sh`, idempotent; not for legacy) and the server's Linux dependencies
    (`pnpm install --frozen-lockfile --filter @sim/server...`) as the `simworlds` user.
-7. **Activates** with `activate.sh` unless `--no-activate` (legacy is never activated by release.sh; ship.sh does it).
+7. **Activates** with `activate.sh` unless `--no-activate` (legacy is never activated by release.sh; ship-dual-stage.sh does it).
    Production refuses to activate without `/etc/sim-worlds/production-auth.env` ([auth](operations/auth.md)).
 
 release.sh never prunes local or remote releases. Focused check: `node --test tools/test-harness/release-no-delete.test.mjs`.
@@ -242,11 +295,10 @@ the tab has been hidden for a minute (`useSim.ts`).
 ## Rollback
 
 - **Automatic:** activate.sh puts `<stage>.previous` back on a failed handover, health check or world boot.
-- **By hand:** run the commands ship.sh wrote to `ROLLBACK.txt`, which are of the form
+- **By hand:** run the command ship.sh wrote to `ROLLBACK.txt`, which is of the form
 
   ```sh
   ssh "$SIM_DEPLOY_USER@$SIM_DEPLOY_HOST" bash <previous>/tools/world-launcher/deploy/activate.sh production <previous> --reload
-  ssh "$SIM_DEPLOY_USER@$SIM_DEPLOY_HOST" bash <previous-root>/tools/world-launcher/deploy/activate.sh legacy <previous-root> --reload
   ```
 
   Do not move the stage link yourself first: activate.sh records `<stage>.previous` only when the link still points
@@ -267,7 +319,7 @@ node tools/world-launcher/op.mjs create-world --port <port> --base /worlds --nam
 node tools/world-launcher/op.mjs set-test --port <port> --base /worlds --slug release-probe --test true
 ```
 
-Then, in an empty folder on the machine that will run ship.sh, register and pair a god for it:
+Then, in an empty folder on the machine that will run the release, register and pair a god for it:
 
 ```sh
 node tools/god-skill/eden-god.mjs register https://sim.eden.art/worlds/w/release-probe/
@@ -300,6 +352,6 @@ what a visitor would.
 
 ## Root-only world deployments
 
-Set `SIM_WORLDS_BASE=/` for a root web build and run the launcher with `--base /`. Existing `/worlds` releases remain
-supported. Follow [world URL migration](operations/world-urls.md) to preserve world identities and paired agents when
-changing public slugs. The combined legacy/prefixed `ship.sh` defaults are not a root-only host runsheet.
+[`ship.sh`](#shipsh) sets `SIM_WORLDS_BASE=/` for a root web build; run the launcher with `--base /`. Existing `/worlds`
+releases remain supported. Follow [world URL migration](operations/world-urls.md) to preserve world identities and paired
+agents when changing public slugs.
