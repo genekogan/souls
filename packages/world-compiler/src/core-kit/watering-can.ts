@@ -83,10 +83,11 @@ const growingPlanter: DefInput = {
 // arch is a three-point tube through its crown, the pouring handle and the spout are straight rods through v2's path
 // points, and the drum turns with 10 sides. CAN_GRIP, CAN_ROSE and CAN_OPENING stay where they are; carrying,
 // filling, pouring, hanging and every other field are v2's.
-/** A cylinder from a to b in the can's x-y plane (z = 0). */
+/** A cylinder from a to b in the can's x-y plane (z = 0). Like v2's sweeps it never collides (a tall tilted cylinder
+ *  would otherwise add a collider the can never had). */
 const rod = (a: [number, number], b: [number, number], r: number, extra: Record<string, unknown> = {}) => {
   const dx = b[0] - a[0], dy = b[1] - a[1];
-  return { kind: 'cyl', at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0], r, h: Math.hypot(dx, dy), segments: 5, tint: 'metal', roll: Math.atan2(-dx, dy), ...extra };
+  return { kind: 'cyl', at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0], r, h: Math.hypot(dx, dy), segments: 5, tint: 'metal', roll: Math.atan2(-dx, dy), collide: false, ...extra };
 };
 const wateringCan3: DefInput = { ...structuredClone(wateringCan), version: 3,
   make: { kind: 'gen', gen: 'kit/2', args: { round: 0.006, shapes: [
