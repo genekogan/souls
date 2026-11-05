@@ -107,6 +107,15 @@ async function plainFactory() {
 // ground/1 (lane L8): every terrain recipe this entity world logged resolves by hash before the engine replays
 if (config.worldEngine) loadGroundRecipes(db, config.worldId);
 const host = new WorldHost(db, factory, config.worldSeed, config.snapshotEveryTicks, config.worldId,edenCore?{durableClockV1:true}:undefined);
+// #447: an engine fault that recovery cannot repair stops this world for a restart from its last good snapshot (exit 76,
+// ENGINE_FAULT_EXIT in tools/world-launcher/children.mjs). The launcher restarts it with backoff and counts it toward the
+// breaker, so a fault that replays deterministically ends `held` (visible) rather than looping. Other worlds run on.
+// Set before boot: a fault can surface while the bridge waits for initial physics. Until `shutdown` exists (boot), the
+// process exits at once; nothing is snapshotted either way.
+host.onEngineHalt = (halt) => {
+  console.error(`[world] engine fault: stopping for a restart from the last good snapshot (exit 76): ${halt.original?.code ?? 'error'} at tick ${halt.tick}`);
+  setImmediate(() => { try { void shutdown('engine:fault', 76).catch(() => process.exit(76)); } catch { process.exit(76); } });
+};
 { const at = performance.now(); if (db.vacuumIfBloated()) console.log(`[db] vacuumed at boot in ${Math.round(performance.now() - at)} ms (free pages over 30 %)`); }
 host.snapshotDebtMs = config.snapshotDebtMs; host.snapshotMinGapMs = config.snapshotMinGapMs; host.snapshotAfterReplayTicks = config.snapshotAfterReplayTicks;
 bootAt.open = performance.now();
@@ -346,10 +355,12 @@ const shutdown = async (sig: string, exitCode = 0) => {
     await drainEdenThought(host,brain,intentV2,closed,[()=>edenLifeHandles?.settled()??Promise.resolve(),()=>takes.settled(),()=>Promise.all(backupWork)]);
     edenLifeHandles?.close();
   }
-  console.log(`[world] ${sig}: saving snapshot at tick ${host.engine.world.tick}`);
   host.stop(); takes.stop();
   const saveAt = performance.now();
-  try { host.saveSnapshot(true); } catch (e) { console.error('[world] snapshot failed', e); }
+  // #447: after an unrecoverable engine fault the engine holds a failed recovery replay. Never make that the head: the
+  // restart boots from the last good snapshot and replays the log.
+  if (host.engineFault) console.log(`[world] ${sig}: no snapshot (engine fault at tick ${host.engine.world.tick}); the restart boots from the last good snapshot`);
+  else { console.log(`[world] ${sig}: saving snapshot at tick ${host.engine.world.tick}`); try { host.saveSnapshot(true); } catch (e) { console.error('[world] snapshot failed', e); } }
   if (process.env.SIM_BOOT_HASH === '1') console.log(`[world] ${sig}: state at tick ${host.engine.world.tick}: ${host.engine.stateHash()}`);
   console.log(`[world] ${sig}: snapshot saved in ${Math.round(performance.now() - saveAt)} ms (capture ${Math.round(host.snapshotMs.capture)}, write ${Math.round(host.snapshotMs.persist)})`);
   server.close(); void hub.closeClients('server restarting');

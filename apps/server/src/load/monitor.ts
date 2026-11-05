@@ -106,7 +106,9 @@ export class QuietTick {
 }
 
 /** What the monitor reads from the world (WorldHost satisfies it). */
-export type HostLike = {engine: {world: {tick: number}}; tickMs: number[]; paused: boolean; pace: number; baseRate: number; readonly running: boolean; readonly clockAvailable: boolean};
+export type HostLike = {engine: {world: {tick: number}}; tickMs: number[]; paused: boolean; pace: number; baseRate: number; readonly running: boolean; readonly clockAvailable: boolean;
+  /** #447: why the world stopped for good, if it did (WorldHost.halted). */
+  halted?(): {kind: 'engine-fault' | 'clock'; tick: number} | null};
 export type Dial = (level: Level) => void;
 export type MonitorOpts = {
   host: HostLike;
@@ -234,6 +236,7 @@ export class LoadMonitor {
     a[S.level] = LEVELS.indexOf(to); a[S.queueDepth] = q.depth; a[S.queueOldestMs] = q.oldestMs;
     a[S.awake] = this.souls.awake; a[S.waiting] = this.souls.waiting; a[S.connected] = this.souls.connected;
     a[S.shedReads] = shed.reads; a[S.shedActs] = shed.acts; a[S.sampledAt] = now; a[S.quietTickMs] = this.quietTick.value;
+    const halt = h.halted?.() ?? null; a[S.halt] = halt ? (halt.kind === 'engine-fault' ? 1 : 2) : 0; a[S.haltTick] = halt?.tick ?? 0;
     return to;
   }
   /** A loop window closed: feed the quiet baseline (QuietBaseline). The serving warm-up windows are not quiet. Public for tests. */

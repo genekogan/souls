@@ -132,6 +132,29 @@ test('exit 75 (the world asks for a planned restart): restarted at once, reason 
   await p.closeAll();
 });
 
+test('#447 exit 76 (an unrecoverable engine fault): restarted with backoff, reason engine-fault, counted toward the breaker', async () => {
+  const p = pool(R, { FAKE_FAULT_MS: '150' });
+  await p.ensure(world('ef'));
+  await until(() => p.status('ef').status === 'held', 8000, 'held: a deterministic fault never hot-loops');
+  const st = p.status('ef');
+  assert.equal(st.restartsByReason['engine-fault'], 4, 'four restarts, the fifth fault holds it'); assert.equal(st.held.reason, 'engine-fault');
+  assert.equal(st.lastHalt.reason, 'engine-fault'); assert.equal(st.lastExit.reason, 'engine-fault');
+  assert.ok(p.lines.some((l) => /ef exited \(76\): an unrecoverable engine fault/.test(l)));
+  assert.ok(p.lines.some((l) => /ef restarts in [\d.]+ s \(engine-fault; failure [1-4] of 5/.test(l)), 'a failure with backoff, not a planned restart');
+  await p.closeAll();
+});
+
+test('#447 a world whose live.json says halted is dead to the guard: wedged, restarted, and its halt kept', async () => {
+  assert.match(liveWedge({ at: 1e6, loop: { lastTurnAgeMs: 10 }, halted: { reason: 'engine-fault', tick: 13777 } }, 1e6), /^halted \(engine-fault\) at tick 13777$/);
+  assert.equal(liveWedge({ at: 1e6, loop: { lastTurnAgeMs: 10 } }, 1e6), null, 'an operator pause has no halted field: alive');
+  const p = pool(R, { FAKE_LIVE: '1', FAKE_HALT_MS: '700' });
+  await p.ensure(world('hl')); p.startGuard();
+  await until(() => (p.status('hl').restartsByReason?.wedged ?? 0) >= 1, 8000, 'restarted after the halt');
+  assert.ok(p.lines.some((l) => /hl wedged \(halted \(engine-fault\) at tick 13777\)/.test(l)), p.lines.join('\n'));
+  assert.deepEqual({ reason: p.status('hl').lastHalt.reason, tick: p.status('hl').lastHalt.tick }, { reason: 'engine-fault', tick: 13777 });
+  p.stopGuard(); await p.closeAll();
+});
+
 test('a frozen (asleep) world is not judged, nor for liveStaleMs after it wakes', async () => {
   const p = pool(R, { FAKE_LIVE: '1' }, { sleepMs: 50, busy: () => false });
   await p.ensure(world('fz')); const pid = p.state('fz').child.pid;

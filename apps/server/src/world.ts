@@ -74,6 +74,20 @@ export type RecoveryRecipe = { baseline: SnapshotBody; events: LogEvent[]; until
      *  the nearest free standing point, instead of where the rewind left it (its arrival point). Absent in older recipes. */
     poses?: Record<string, RecoveryPose> } };
 export type RecoveryPose = { p: [number, number, number]; yaw: number; level: number };
+/** The violation that started an engine fault (#447): its code, subjects and tick, parsed from the fault. */
+export type FaultSummaryV1 = { code: string; subjects: string[]; tick: number | null; message?: string };
+/** Why a world stopped for good (#447). `engine-fault`: recovery could not repair it; `clock`: the durable clock failed. */
+export type WorldHaltV1 = { kind: 'engine-fault' | 'clock'; why: string; tick: number; at?: number; original?: FaultSummaryV1; replay?: string };
+/** The first violation a fault names: tickOnce throws the step's new violations as a JSON list; anything else is an error. */
+export function faultSummaryV1(fault: unknown): FaultSummaryV1 {
+  const text = String(fault instanceof Error ? fault.message : fault);
+  try {
+    const list = JSON.parse(text.replace(/^Error:\s*/, '')) as { code?: unknown; subjects?: unknown; tick?: unknown; message?: unknown }[];
+    const v = Array.isArray(list) ? list[0] : null;
+    if (v && typeof v.code === 'string') return { code: v.code, subjects: Array.isArray(v.subjects) ? v.subjects.map(String) : [], tick: typeof v.tick === 'number' ? v.tick : null, ...(typeof v.message === 'string' ? { message: v.message.slice(0, 300) } : {}) };
+  } catch { /* not a violation list */ }
+  return { code: 'error', subjects: [], tick: null, message: text.slice(0, 300) };
+}
 /** A synchronous, read-only acceptance check. Throw to refuse before logging. */
 export type AcceptanceGuard = () => true;
 export function checkAcceptanceGuard(guard: AcceptanceGuard): void {
@@ -1195,6 +1209,7 @@ export class WorldHost {
 
   enableSpreadV2(){if((this.extra.runtimePolicy as {spreadV2?:boolean}|undefined)?.spreadV2)return Promise.resolve();return this.enqueue('rules','operator:spread-v2',{runtimePolicy:{sleepBlockTicks:1200,...this.extra.runtimePolicy as object,spreadV2:true},why:'shared places take arrivals by real area: proportional inset, 1 m spots, centre kept, arrivals stand just outside a full place instead of being refused; retain historical replay before this event'});}
   enableOccupiedLinkRoutingV1(){if((this.extra.runtimePolicy as {occupiedLinkRoutingV1?:boolean}|undefined)?.occupiedLinkRoutingV1)return Promise.resolve();return this.enqueue('rules','operator:occupied-link-routing',{runtimePolicy:{sleepBlockTicks:1200,...this.extra.runtimePolicy as object,occupiedLinkRoutingV1:true},why:'before entering a stair flight, boundedly reroute around a stationary occupied landing when another supported route exists; preserve seated occupants, clearance and historical replay before this event'});}
+  enableStallReleaseSupportV1(){if((this.extra.runtimePolicy as {stallReleaseSupportV1?:boolean}|undefined)?.stallReleaseSupportV1)return Promise.resolve();return this.enqueue('rules','operator:stall-release-support',{runtimePolicy:{sleepBlockTicks:1200,...this.extra.runtimePolicy as object,stallReleaseSupportV1:true},why:'a stall release stands a body only on supported clear standing: on an upper level where it is when the floor holds it, else the nearer free landing of its stair link, else not released (#447: a body set down mid-flight faulted collision.human-static and paused the world); retain historical replay before this event'});}
   enableStairLandingClearanceV1(){if((this.extra.runtimePolicy as {stairLandingClearanceV1?:boolean}|undefined)?.stairLandingClearanceV1)return Promise.resolve();return this.enqueue('rules','operator:stair-landing-clearance',{runtimePolicy:{sleepBlockTicks:1200,...this.extra.runtimePolicy as object,stairLandingClearanceV1:true},why:'a climber waits on the flight rather than step onto a landing another body occupies on the destination level (#509); retain historical replay before this event'});}
   enableConcurrentLinkEgressV1(){if((this.extra.runtimePolicy as {concurrentLinkEgressV1?:boolean}|undefined)?.concurrentLinkEgressV1)return Promise.resolve();return this.enqueue('rules','operator:concurrent-link-egress',{runtimePolicy:{sleepBlockTicks:1200,...this.extra.runtimePolicy as object,concurrentLinkEgressV1:true},why:'resolve mutual stair-entry traffic waits with supported collision-checked landing courtesy; retain goals, seat occupants and historical replay before this event'});}
   enableShoreDepartV1(){if((this.extra.runtimePolicy as {shoreDepartV1?:boolean}|undefined)?.shoreDepartV1)return Promise.resolve();return this.enqueue('rules','operator:shore-depart',{runtimePolicy:{sleepBlockTicks:1200,...this.extra.runtimePolicy as object,shoreDepartV1:true},why:'shore travel may step away from a body already touching the mover; only a step toward it is occupied (two swimmers stopped against a third at the dry gate held each other for good); retain historical replay before this event'});}
@@ -1434,7 +1449,7 @@ export class WorldHost {
     try { baseline=this.recoveryCapture ? this.recoveryCapture() : this.recoveryBaseline; }
     catch (failure) { this.failCheckpoint(failure); return; }
     this.cancelPeriodicSnapshot(); this.recoveryCapture = null; this.recoveryBaseline = baseline;
-    if (!baseline) { if (this.edgeRecovery()) return this.haltOnFault(error, 'no resumable recovery baseline'); throw new Error(`No resumable recovery baseline: ${String(error)}`); }
+    if (!baseline) { if (this.edgeRecovery()) return this.haltOnFault(error, 'no resumable recovery baseline', error, this.seq); throw new Error(`No resumable recovery baseline: ${String(error)}`); }
     const untilTick=this.engine.world.tick, originalSeq=this.seq, all=this.db.events(this.worldId,baseline.seq);
     const pending=[...this.minds.values()].filter(m=>m.pending).map(m=>m.pending!.card);
     const latest=[...all].reverse().find(e=>e.kind==='decision' && pending.includes(e.payload.card));
@@ -1454,7 +1469,7 @@ export class WorldHost {
       const edge=plan.edge?{...plan.edge,...this.rewoundPoses(plan.edge, all)}:undefined;
       const recipe: RecoveryRecipe={baseline:structuredClone(baseline),events,untilTick,faults:{...faults},excluded:[...plan.excluded],reason:String(error).slice(0,800),...(edge?{edge}:{})};
       try { this.restoreRecovery(recipe); }
-      catch (replayError) { if (attempt===plans.length-1) { if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults'); throw replayError; } continue; }
+      catch (replayError) { if (attempt===plans.length-1) { if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults', error, originalSeq); throw replayError; } continue; }
       this.seq=originalSeq;
       const e: LogEvent={seq:++this.seq,tick:untilTick,kind:'rules',author:'world:recovery',payload:{recovery:recipe},at:Date.now()};
       this.db.appendEvent(this.worldId,e); this.resetAcc(); this.acc.log.push(e); this.ring=[];
@@ -1528,13 +1543,33 @@ export class WorldHost {
     const out = [...(named.length ? [current(running(named))] : []), plan(running(named.length ? named : humans), false), plan(named.length ? named : humans, false), plan(running(humans), true)];
     return out.filter((p, i) => p.stopActors.length + p.excludedSeqs.length > 0 && out.findIndex(q => JSON.stringify(q) === JSON.stringify(p)) === i);
   }
-  /** Last resort for edge worlds: keep the process up, the world paused and the fault reported (never a crash loop). */
-  private haltOnFault(error: unknown, why: string) {
-    console.error(`[world] engine fault could not be recovered (${why}); the world is paused, the process stays up:`, String(error).slice(0, 800));
+  /** Last resort for edge worlds: the world stops ticking and the fault is reported with the violation that started it.
+   *  `original` is the live fault that recovery tried to repair; `seq` is the log head before the failed replay (#447: a
+   *  replay that set aside the last events left `seq` behind the log, so the next append collided with a logged seq).
+   *  No snapshot is taken from here on: the engine now holds a failed replay, never the last good state. The process
+   *  owner (main.ts `onEngineHalt`) exits for a restart from the last good snapshot; without one the world stays paused. */
+  private haltOnFault(error: unknown, why: string, original: unknown = error, seq = this.seq) {
+    this.seq = Math.max(this.seq, seq);
+    this.cancelPeriodicSnapshot(); this.recoveryCapture = null;
+    const tick = this.engine.world.tick, first = faultSummaryV1(original), replay = original === error ? null : String(error).slice(0, 800);
+    const where = (f: FaultSummaryV1) => `${f.code}${f.subjects.length ? ` [${f.subjects.join(', ')}]` : ''}${f.tick != null ? ` at tick ${f.tick}` : ''}`;
+    console.error(`[world] engine fault could not be recovered (${why}) at tick ${tick}: original ${where(first)}${first.message ? `: ${first.message}` : ''}${replay ? `; ${replay}` : ''}`);
     this.paused = true; this.engineFault = String(error).slice(0, 800);
+    this.haltV1 = { kind: 'engine-fault', why, tick, at: Date.now(), original: first, ...(replay ? { replay } : {}) };
+    try { this.onEngineHalt?.(this.haltV1); } catch (e) { console.error('[world] engine halt handler failed', e); }
   }
   /** The fault that paused this world (edge worlds), if any. */
   engineFault: string | null = null;
+  private haltV1: WorldHaltV1 | null = null;
+  /** Set by the process owner (main.ts): called once when an engine fault cannot be recovered. */
+  onEngineHalt?: (halt: WorldHaltV1) => void;
+  /** Why this world stopped for good, if it did: an unrecoverable engine fault, or a failed clock (journal append,
+   *  periodic checkpoint, clock frontier). Healthz, live.json and the launcher read it (#447). Null while it runs. */
+  halted(): WorldHaltV1 | null {
+    if (this.haltV1) return this.haltV1;
+    if (!this.clockFailure) return null;
+    return { kind: 'clock', why: String(this.clockFailure instanceof Error ? this.clockFailure.message : this.clockFailure).slice(0, 300), tick: this.engine.world.tick };
+  }
 
   setClockRate(rate: number, author: string, why: string) {
     this.clockRate = this.baseRate = rate; this.db.setClockRate(this.worldId, rate);
@@ -1719,7 +1754,7 @@ export class WorldHost {
    *  the end of the next tick through the sliced periodic path, so the caller's tick is not lengthened. Returns null
    *  when the clock is unavailable (a failed world snapshots nothing). */
   requestSnapshot(reason: string, options?: { now?: boolean }): { tick: number; pending: boolean } | null {
-    if (!this.clockAvailable) return null;
+    if (!this.clockAvailable || this.engineFault) return null;
     if (!options?.now) { this.snapshotSoon ??= reason; return { tick: this.engine.world.tick, pending: true }; }
     const t0 = performance.now(), r = this.saveSnapshot(true);
     console.log(`[snapshot] ${reason}: tick ${r.tick}${r.pending ? ' (head not serializable: checkpoint logged)' : ''} in ${Math.round(performance.now() - t0)} ms`);
@@ -1730,6 +1765,7 @@ export class WorldHost {
   /** Capture is synchronous (it must see one consistent tick); the database write is deferred past the current tick. */
   saveSnapshot(sync = true): { tick: number; stateHash: string; pending?: undefined } | { pending: boolean; tick: number; stateHash?: undefined } {
     this.assertClockReady();
+    if (this.engineFault) throw new Error('snapshot.engine-fault: the engine holds a failed recovery; the last good snapshot stays the head');
     this.cancelPeriodicSnapshot();
     this.drainInputs();
     if(this.durableClockV1)this.persistClockFrontier();
@@ -1765,7 +1801,7 @@ export class WorldHost {
   /** Periodic checkpoints own a complete boundary before yielding. Only emission
    * and persistence use continuations; ordinary/manual snapshots keep their API. */
   private schedulePeriodicSnapshot(): void {
-    if (this.periodicSnapshot) return;
+    if (this.periodicSnapshot || this.engineFault) return;
     if (!this.engine.captureCheckpoint && !this.engine.captureSnapshot) { this.saveSnapshot(false); return; }
     this.assertClockReady(); this.drainInputs();
     if (this.durableClockV1) this.persistClockFrontier();

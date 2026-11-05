@@ -21,6 +21,10 @@ const within = (p, ms) => { let t; return Promise.race([p, new Promise((r) => { 
 /** Restart wait after the n-th failure in a row: full jitter, 1 s base, 5 min cap (guard.mjs). */
 /** The exit code of a world that asks to be restarted (apps/server main.ts: black for 60 s, snapshot saved): no backoff. */
 export const PLANNED_EXIT = 75;
+/** #447: the exit code of a world whose engine fault could not be recovered (main.ts onEngineHalt; no snapshot of the
+ *  faulted state). Restarted from its last good snapshot with backoff and counted toward the breaker: a fault that
+ *  replays deterministically ends held, never a hot restart loop. */
+export const ENGINE_FAULT_EXIT = 76;
 export const backoffMs = (n, random = Math.random, g = GUARD) => jitterMs(n, g, random);
 
 /** True when nothing listens on 127.0.0.1:port (we can bind it ourselves). */
@@ -253,7 +257,7 @@ export class ChildPool {
     return { status: k.frozen || (k.asleep && k.status === 'stopped') ? 'asleep' : k.status, ...(k.frozen ? { frozen: true } : {}), port: k.port, pid: k.child?.pid ?? k.adopted?.pid ?? null, ...(k.adopted ? { adopted: true } : {}), restarts: k.restarts, upSince: k.upSince, lastExit: k.lastExit,
       ...(k.restartsBy ? { restartsByReason: { ...k.restartsBy } } : {}), ...(k.lastBootMs != null ? { lastBootMs: k.lastBootMs } : {}), ...(k.readPorts?.length ? { readPorts: [...k.readPorts] } : {}), ...(k.healthPort ? { healthPort: k.healthPort } : k.noHealthPort ? { watchdog: 'none: live.json + main /healthz' } : {}), ...(k.held ? { held: { ...k.held } } : {}), ...(k.wedging ? { wedging: { ...k.wedging } } : {}),
       ...(k.boot && (k.status === 'starting' || k.status === 'handover') ? { boot: { ...k.boot } } : {}), ...(k.nextTryAt && k.status === 'restarting' ? { nextTryAt: k.nextTryAt } : {}),
-      ...(k.live ? { level: k.live.level ?? null } : {}), ...(k.rampFrom && k.status === 'running' ? { rampFrom: k.rampFrom } : {}) };
+      ...(k.live ? { level: k.live.level ?? null } : {}), ...(k.lastHalt ? { lastHalt: { ...k.lastHalt } } : {}), ...(k.rampFrom && k.status === 'running' ? { rampFrom: k.rampFrom } : {}) };
   }
   /** Ports held by live or (re)starting children; a sleeping world's old port is free for anyone. */
   usedPorts(except) { return new Set([...this.kids.values()].filter((k) => k.slug !== except && (k.child || k.adopted || k.status === 'starting' || k.status === 'restarting' || k.status === 'handover')).flatMap((k) => [k.port, k.healthPort, ...(k.readPorts ?? [])]).filter(Boolean)); }
@@ -441,13 +445,16 @@ export class ChildPool {
   onExit(k, child, code, signal) {
     if (k.child !== child) return;
     const wedged = k.wedging; k.wedging = null;
-    k.child = null; k.frozen = false; k.lastExit = { code, signal, at: Date.now(), ...(wedged ? { reason: `wedged: ${wedged.reason}` } : {}) }; this.savePids();
+    const halted = k.live?.halted ?? null, fault = !wedged && code === ENGINE_FAULT_EXIT;
+    k.child = null; k.frozen = false; k.lastExit = { code, signal, at: Date.now(), ...(wedged ? { reason: `wedged: ${wedged.reason}` } : fault ? { reason: 'engine-fault' } : {}) }; this.savePids();
+    // #447: the last reason a world stopped for good is kept with its state (a qualify run's children.json records it)
+    if (fault || halted) k.lastHalt = { at: Date.now(), reason: fault ? 'engine-fault' : halted.reason, ...(halted?.tick != null ? { tick: halted.tick } : {}) };
     if (this.closing || k.stopped || this.fenced) { k.status = 'stopped'; this.o.onChange?.(k.slug); return; }
     if (k.status === 'starting') return;  // boot() reports it (to ensure()'s caller, or to the restart loop)
     // exit 75 (LOAD-CONTRACT §4): the world asked for a planned restart (black too long; its snapshot is saved): at once
     const planned = !wedged && code === PLANNED_EXIT;
-    this.log(`world ${k.slug} exited (${code ?? signal})${wedged ? ` after it was found wedged: ${wedged.reason}` : planned ? ': a planned restart' : ''}`);
-    this.scheduleRestart(k, wedged ? 'wedged' : planned ? 'planned' : 'exit');
+    this.log(`world ${k.slug} exited (${code ?? signal})${wedged ? ` after it was found wedged: ${wedged.reason}` : planned ? ': a planned restart' : fault ? ': an unrecoverable engine fault (restart from its last good snapshot)' : ''}`);
+    this.scheduleRestart(k, wedged ? 'wedged' : planned ? 'planned' : fault ? 'engine-fault' : 'exit');
   }
   /** A crash, a wedge or a failed restart (lane L1): restart after a full-jitter backoff (1 s base, 5 min cap; the count
    *  resets after 10 min healthy). breakerN failures within breakerWindowMs: held, no more restarts until resume().

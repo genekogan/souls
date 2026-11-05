@@ -63,12 +63,14 @@ const lock = () => {
 // (200) and answers SIM_HEALTH_PORT /healthz (503 once the main thread has not turned for FAKE_TURN_MS, 30 000), so both go
 // on while the main thread is stuck (/wedge). FAKE_BOOT_TICK_MS: the boot moves that often (live.json boot.tick, or a
 // line of output without FAKE_LIVE); FAKE_BOOT_STUCK=1: a boot that never moves nor listens. FAKE_FLAP_MS: exits 3 that
-// long after it serves; FAKE_PLANNED_MS: exits 75 (a planned restart) that long after it serves.
-const LEVELS = ['green', 'amber', 'red', 'black'], L = new Float64Array(new SharedArrayBuffer(64));   // turn, serving, tick, level, readPort, readMode, readFail
+// long after it serves; FAKE_PLANNED_MS: exits 75 (a planned restart) that long after it serves. #447: FAKE_FAULT_MS:
+// exits 76 (an unrecoverable engine fault) that long after it serves; FAKE_HALT_MS: that long after it serves, live.json
+// says halted (engine-fault) while the process stays up and answers, as a paused-for-good world did.
+const LEVELS = ['green', 'amber', 'red', 'black'], L = new Float64Array(new SharedArrayBuffer(128));   // turn, serving, tick, level, readPort, readMode, readFail, readLag, halted
 L[0] = Date.now(); setInterval(() => { L[0] = Date.now(); }, 50).unref();
 if (process.env.FAKE_LIVE === '1') new Worker(`
   const { workerData: w } = require('node:worker_threads'), fs = require('node:fs'), L = new Float64Array(w.buf);
-  const live = () => { const now = Date.now(), serving = L[1] === 1, o = { v: 1, pid: w.pid, at: now, phase: serving ? 'serving' : 'boot:replay', loop: { lastTurnAgeMs: Math.round(now - L[0]), delayP99Ms: 1 }, level: ${JSON.stringify(LEVELS)}[L[3]] ?? 'green' }; if (!serving) o.boot = { stage: 'replay', tick: L[2], target: 1000 }; if (L[4] > 0) { o.readPort = L[4]; o.read = { ports: [L[4]], workers: 1, lagGens: L[7], subset: L[5] === 1, routes: L[5] === 1 ? ['here', 'capabilities'] : ['here', 'observe', 'capabilities', 'resolve', 'view'] }; } return o; };
+  const live = () => { const now = Date.now(), serving = L[1] === 1, o = { v: 1, pid: w.pid, at: now, phase: serving ? 'serving' : 'boot:replay', loop: { lastTurnAgeMs: Math.round(now - L[0]), delayP99Ms: 1 }, level: ${JSON.stringify(LEVELS)}[L[3]] ?? 'green' }; if (!serving) o.boot = { stage: 'replay', tick: L[2], target: 1000 }; if (L[8] > 0) o.halted = { reason: 'engine-fault', tick: 13777 }; if (L[4] > 0) { o.readPort = L[4]; o.read = { ports: [L[4]], workers: 1, lagGens: L[7], subset: L[5] === 1, routes: L[5] === 1 ? ['here', 'capabilities'] : ['here', 'observe', 'capabilities', 'resolve', 'view'] }; } return o; };
   const write = () => { if (!w.file) return; fs.writeFileSync(w.file + '.tmp', JSON.stringify(live())); fs.renameSync(w.file + '.tmp', w.file); };
   write(); setInterval(write, w.every);
   if (w.port) require('node:http').createServer((q, r) => { const l = live(), up = l.phase === 'serving' && l.loop.lastTurnAgeMs < w.turnMs; r.writeHead(up ? 200 : 503, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: up, ...l })); }).listen(w.port, '127.0.0.1');
@@ -93,6 +95,8 @@ server.on('listening', () => {
   if (process.env.FAKE_LIVE === '1') process.on('SIGUSR2', () => console.log('[report] (a process report, as lane L2 writes one)'));
   if (process.env.FAKE_FLAP_MS) setTimeout(() => process.exit(3), Number(process.env.FAKE_FLAP_MS));
   if (process.env.FAKE_PLANNED_MS) setTimeout(() => process.exit(75), Number(process.env.FAKE_PLANNED_MS));
+  if (process.env.FAKE_FAULT_MS) setTimeout(() => process.exit(76), Number(process.env.FAKE_FAULT_MS));
+  if (process.env.FAKE_HALT_MS) setTimeout(() => { L[8] = 1; }, Number(process.env.FAKE_HALT_MS));
 });
 // FAKE_LOAD_MS: "code loading" (before the standby mark); FAKE_BOOT_MS: opening the data. SIM_STANDBY=1 waits for SIGUSR2 between.
 const open = () => { lock(); if (process.env.FAKE_BOOT_STUCK === '1') return setInterval(() => {}, 1 << 30); setTimeout(() => server.listen(port, '127.0.0.1'), Number(process.env.FAKE_BOOT_MS ?? 50)); };
