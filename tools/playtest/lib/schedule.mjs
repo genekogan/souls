@@ -25,11 +25,11 @@ const ends = (scenario) => {
 export function scheduleProblems(scenario) {
   const dur = scenario?.durationSec;
   if (!Number.isFinite(dur)) return [];
-  return ends(scenario).filter((x) => x.endSec > dur).map((x) => ({ ...x, durationSec: dur, message: `script[${x.index}] (${x.seat} at ${x.atSec} s, "${String(scenario.director.script[x.index].text ?? '').slice(0, 60)}"): budget ${x.budgetSec} s + ${QUEUE_SLACK_SEC} s slack ends at ${x.endSec} s, after the run's ${dur} s` }));
+  return ends(scenario).filter((x) => !Number.isFinite(x.endSec) || x.endSec > dur).map((x) => (Number.isFinite(x.endSec) ? x : { ...x, endSec: null, missingAtSec: true })).map((x) => ({ ...x, durationSec: dur, message: x.missingAtSec ? `script[${x.index}] (${x.seat}, "${String(scenario.director.script[x.index].text ?? '').slice(0, 60)}"): no numeric atSec` : `script[${x.index}] (${x.seat} at ${x.atSec} s, "${String(scenario.director.script[x.index].text ?? '').slice(0, 60)}"): budget ${x.budgetSec} s + ${QUEUE_SLACK_SEC} s slack ends at ${x.endSec} s, after the run's ${dur} s` }));
 }
 
 /** The scenario with durationSec raised (never lowered) so every scripted request fits; persona mode unchanged. */
 export function fitDuration(scenario) {
-  const need = Math.max(0, ...ends(scenario).map((x) => x.endSec));
+  const need = Math.max(0, ...ends(scenario).map((x) => x.endSec).filter(Number.isFinite));
   return Number.isFinite(scenario?.durationSec) && need > scenario.durationSec ? { ...scenario, durationSec: Math.ceil(need) } : scenario;
 }

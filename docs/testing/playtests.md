@@ -93,8 +93,9 @@ after the cutoff are diagnostic only.
   run-level check is separate: the tick service between healthz at provision and at close, where under 0.8 marks
   the run infrastructure-invalid.
 - **Server root.** `world.json` records the server root's `HEAD` and whether its tree was dirty, at run start and at
-  run end (`serverRoot.headAtStart`, `dirtyAtStart`, `headAtEnd`, `dirtyAtEnd`; never the path). The report's Server
-  root row flags a change during the run.
+  run end (`serverRoot.headAtStart`, `dirtyAtStart`, `headAtEnd`, `dirtyAtEnd`; never the path). Dirty means any
+  modified, staged or untracked file; ignored files never count. The report's Server root row flags a change during
+  the run.
 - **Reviewer** (`review/reviewer.mjs`) scores each request H (hit), P (partial), M (honest miss) or W (wrong) using
   [`review/RUBRIC.md`](../../tools/playtest/review/RUBRIC.md). It writes issues in player terms only; causes, code
   areas and fixes are stripped. With `review.mode: "deterministic"` no model scores are made and only oracles count.
