@@ -6,7 +6,9 @@
 // body near the goal, or it is skipped and the reader browses where it stands. Either way no bystander is moved.
 // Deterministic: the reader is put at a fixed point before it asks to read (its 'go' arrival varies with load). A put
 // lands "about" its point: relocateHumanV1 refuses a busy body and moves off a point within 0.8 m of another body, so
-// every Soul first settles (no programme, no live action) and each put must land exactly (#653). The read takes the
+// every Soul first settles (no programme, no live action), and staging is collision-free by construction: each Soul
+// first goes to a holding point outside the library (the arrivals stand inside) chosen more than 1.6 m from every body
+// and every final point, then to its final point, which is by then clear of every body. Each put must land exactly (#653). The read takes the
 // reading spot nearest the reader; the third case starts west of the midpoint between the two tables' south seats
 // (2.61 m from each at x = 74), so it reads by the west shelf by distance, not by an id tie-break.
 import test from 'node:test';
@@ -29,8 +31,14 @@ for (const [label, startX] of [['a bystander on the west shelf point', 74], ['a 
     const busy = (s: typeof a) => E.programOf(s.entityId) !== null || [...E.runtime.records.values()].some(r => r.params?.actor === s.entityId && !['completed', 'failed', 'cancelled'].includes(r.status));
     await w.ticks(2400, () => ![a, b, c, d].some(busy));
     assert.deepEqual([a, b, c, d].filter(busy).map(s => s.name), [], 'every Soul has settled after its library walk');
-    const placed = async (s: typeof a, at: V2) => {await w.put(s, at); await w.ticks(20); assert.ok(Math.hypot(w.pos(s)[0] - at[0], w.pos(s)[1] - at[1]) < 0.05, `${s.name} lands where placed: ${w.pos(s)} vs ${at}`);};
-    await placed(a, [72, -10]); await placed(c, [76, -10]); await placed(d, [74, -10]);
+    const dist = (p: V2, q: V2) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+    const placed = async (s: typeof a, at: V2) => {await w.put(s, at); await w.ticks(20); assert.ok(dist(w.pos(s), at) < 0.05, `${s.name} lands where placed: ${w.pos(s)} vs ${at}`);};
+    const finals: [typeof a, V2][] = [[a, [72, -10]], [c, [76, -10]], [d, [74, -10]], [b, [startX, -6.5]]];
+    // open ground south and west of the library (eden-east): no 'go' arrival stands there
+    const holds: V2[] = [[68, -12], [70, -12], [72, -12], [74, -12], [76, -12], [78, -12], [68, -8], [68, -5]];
+    const clear = (q: V2, self: typeof a) => [a, b, c, d].every(o => o === self || dist(w.pos(o), q) > 1.6) && finals.every(([, f]) => dist(f, q) > 1.6);
+    for (const [s] of finals) {const h = holds.find(q => clear(q, s)); assert.ok(h, `a clear holding point for ${s.name}`); await placed(s, h!);}
+    for (const [s, at] of finals.slice(0, 3)) await placed(s, at);
     await w.put(b, [startX, -6.5]); await w.ticks(40);
     // The east case's start lies against a table, so its put lands on the nearest clear point (static geometry).
     assert.ok(Math.hypot(w.pos(b)[0] - startX, w.pos(b)[1] + 6.5) < (label.includes('east') ? 1 : 0.05), `the reader starts where placed: ${w.pos(b)}`);
