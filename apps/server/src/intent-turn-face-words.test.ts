@@ -16,6 +16,10 @@ test('attentionWords: a second attention verb names no target; id forms parse; o
   assert.deepEqual(attentionWords('turn-to:face-the-bandstand'), {verb: 'turn', target: 'the-bandstand'});
   assert.deepEqual(attentionWords('look-at:pond'), {verb: 'look', target: 'pond'});
   assert.deepEqual(attentionWords('turn:90'), {verb: 'turn', heading: 90});
+  // a name that only starts with an attention word keeps it
+  assert.deepEqual(attentionWords('turn to Look Out Point'), {verb: 'turn', target: 'Look Out Point'});
+  assert.deepEqual(attentionWords('look:look-out'), {verb: 'look', target: 'look-out'});
+  for (const q of ['turn:on the tap', 'turn: off-the-lamp']) assert.equal(attentionWords(q), null, q);
   for (const q of ['turn on the tap', 'turn off the lamp', 'look for the fire', 'look around for Bill', 'walk:pond', 'sit:here']) assert.equal(attentionWords(q), null, q);
 });
 
@@ -41,6 +45,12 @@ test('F1: "turn to face the bandstand" turns toward the bandstand, also out of s
   await w.ticks(60); assert.equal(headingOfYaw(w.body(a).pose.yaw), bearing(far!.id).heading);
   // id forms act too: turn:<degrees>, and an offered face:<soul> still faces that Soul
   const deg = await act(a, 'turn:180'); assert.equal(deg.accepted, true, JSON.stringify(deg)); await w.ticks(60); assert.equal(headingOfYaw(w.body(a).pose.yaw), 180);
+  assert.deepEqual((await dry('turn:90')).would?.chosen?.heading, 90);
   await w.put(b, [w.pos(a)[0] + 2, w.pos(a)[1]]);
-  const fs = await act(a, 'face:' + b.soulId); assert.equal(fs.accepted, true, JSON.stringify(fs)); assert.equal(fs.chosen.kind, 'soul', JSON.stringify(fs.chosen));
+  // an offered face:<soul>, and its alias forms turn-to:<soul> / look-at:<soul>, still face that Soul (dry run and act)
+  for (const q of ['face:', 'turn-to:', 'look-at:'].map(v => v + b.soulId)) {
+    const r = await dry(q); assert.equal(r.would?.capability, 'face:' + b.soulId, q + ' ' + JSON.stringify(r));
+    const fs = await act(a, q); assert.equal(fs.accepted, true, q + ' ' + JSON.stringify(fs)); await w.ticks(5);
+    assert.equal(w.body(a).human.gaze?.kind, 'face', q + ' ' + JSON.stringify(w.body(a).human.gaze)); assert.equal(w.body(a).human.gaze?.target, b.entityId, q);
+  }
 });
