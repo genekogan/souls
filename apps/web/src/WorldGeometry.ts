@@ -220,7 +220,8 @@ export class WorldGeometry {
   /** Ground rectangle [minX, minZ, maxX, maxZ] that the camera frames. */
   readonly bounds: [number, number, number, number];
 
-  constructor(scene: SpatialScene | null, ground?:'grass', commons?:CommonsSceneMetadataV1, shore?:WorldShore,private assetRoot='/world-assets/littlemartians') {
+  private assetRoot: string;
+  constructor(scene: SpatialScene | null, ground?:'grass', commons?:CommonsSceneMetadataV1, shore?:WorldShore,assetRoot='/world-assets/littlemartians') {this.assetRoot=assetRoot;
     if(ground==='grass'){this.materials.floor.color.set('#76a454');this.materials.outside.color.set('#639844');}
     this.group.name = 'camp';
     this.buildings.name = 'buildings';
