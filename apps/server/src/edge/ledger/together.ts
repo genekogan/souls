@@ -38,7 +38,7 @@ type Tag =
   | {kind: 'paired'; what: Paired; guest: string; approach?: boolean}
   | {kind: 'give'; guest: string; item: string; approach?: boolean}
   /** entry 41: hand a held world thing (an opted-in lantern, bowl) to a Soul, hand to hand, if they accept */
-  | {kind: 'hand-over'; guest: string; item: string; name: string; approach?: boolean}
+  | {kind: 'hand-over'; guest: string; item: string; name: string; approach?: boolean; custodyPolicy?: 'same-tick-v1'}
   | {kind: 'accept'; invite: string}
   | {kind: 'decline'; invite: string}
   | {kind: 'withdraw'; invite: string}
@@ -125,7 +125,7 @@ export type Invite = {id: string; what: string; host: {soulId: string; name: str
   /** entry 35: the hand an offerer holds out (hold-hands). */
   hand?: 'left' | 'right';
   /** entry 41: the world thing a hand-over passes (what = 'hand-over'; custody is the engine's, never this table's). */
-  thing?: {id: string; name: string}};
+  thing?: {id: string; name: string}; custodyPolicy?: 'same-tick-v1'};
 export type Item = {id: string; kind: ItemKind; name: string; holder: string | null; placeId: string | null; at: V2 | null; state: 'held' | 'placed' | 'gone'; claimedBy: string | null; by: string | null; createdAt: number; placedAt: number | null};
 type ItemOp = {soulId: string; op: 'pick-up' | 'put-down' | 'consume' | 'give' | 'take'; item?: string; kind?: ItemKind; source?: string; to?: string; invite?: string};
 /** SOCIAL-APPROACH: the act waiting at the end of a walk over to its partner (its pose steps, params, label). */
@@ -417,7 +417,7 @@ export class Together {
     if (thing) {
       const blocked = busy ? {code: 'gesture.partner-unavailable', reason: `${o.name} is ${busy}.`} : aloft ? {code: 'ride.aboard', reason: 'Not while riding.'} : this.partnerBodyProblem(o, 'give') ?? (this.handsFull(o.soulId, o.entityId) ? {code: 'hands.full', reason: `${o.name}'s hands are full.`} : null);
       add({id: 'give:' + o.soulId, verb: 'give', label: `Give ${o.name} the ${thing.name} you are holding: ${far ? 'walks over to them first, then ' : ''}hold it out for them to take (they accept or decline)`, target: {id: o.soulId, kind: 'soul'}, available: !blocked, ...(blocked ? {blocked} : {})},
-        {label: `Give ${o.name} the ${thing.name}`, steps: [...this.standFirst(soul.entityId), {verb: 'walk_to', params: {to: o.entityId, standoff: HANDOVER_GAP}}, {verb: 'mars:hand_over_v1', params: {mode: 'offer', partner: o.entityId, item: thing.id, waitSeconds: 40}}], together: {kind: 'hand-over', guest: o.soulId, item: thing.id, name: thing.name, ...(far ? {approach: true} : {})}});
+        {label: `Give ${o.name} the ${thing.name}`, steps: [...this.standFirst(soul.entityId), {verb: 'walk_to', params: {to: o.entityId, standoff: HANDOVER_GAP}}, {verb: 'mars:hand_over_v1', params: {mode: 'offer', partner: o.entityId, item: thing.id, waitSeconds: 40}}], together: {kind: 'hand-over', guest: o.soulId, item: thing.id, name: thing.name, custodyPolicy: 'same-tick-v1', ...(far ? {approach: true} : {})}});
     }
     if (held) {
       const blocked = busy ? {code: 'gesture.partner-unavailable', reason: `${o.name} is ${busy}.`} : this.partnerBodyProblem(o, 'give') ?? (this.heldBy(o.soulId) ? {code: 'hands.full', reason: `${o.name}'s hands are full.`} : null);
@@ -818,11 +818,11 @@ export class Together {
     const meet = this.handOverSteps(soul.entityId, g.entityId);
     if (!meet) return {code: 'gesture.no-room', reason: `There is no clear spot in front of ${g.name} right now; try again in a moment or somewhere roomier.`, did_you_mean: [{id: 'go-near:' + g.soulId, label: `Go near ${g.name}`}]};
     const id = 'inv_' + randomUUID().slice(0, 12), out = structuredClone(steps).flatMap(s => s.verb === 'walk_to' && s.params.to === g.entityId ? meet : [s]);
-    for (const s of out) if (s.verb === 'mars:hand_over_v1') s.params.group = id;
+    for (const s of out) if (s.verb === 'mars:hand_over_v1') {s.params.group = id;if(tag.custodyPolicy)s.params.custodyPolicy=tag.custodyPolicy;}
     const meetAt: V2 = meet[0]?.verb === 'walk_to' ? meet[0].params.to as V2 : [r2(me.pose.p[0]), r2(me.pose.p[2])];
     return {steps: out, commit: receipt => {
       const inv: Invite = {id, what: 'hand-over', kind: 'give', host: {soulId: soul.soulId, name: soul.name}, guests: [{soulId: g.soulId, name: g.name}], capability: cap.id, meetAt,
-        label: `wants to give you the ${tag.name}`, thing: {id: tag.item, name: tag.name}, createdTick: this.tick, expiresTick: this.tick + 30 * 20, state: 'pending', responses: {}, hostReceipt: receipt, guestReceipts: {}};
+        label: `wants to give you the ${tag.name}`, thing: {id: tag.item, name: tag.name}, ...(tag.custodyPolicy?{custodyPolicy:tag.custodyPolicy}:{}), createdTick: this.tick, expiresTick: this.tick + 30 * 20, state: 'pending', responses: {}, hostReceipt: receipt, guestReceipts: {}};
       this.saveInvite(inv); this.announce(inv);
     }};
   }
@@ -836,7 +836,7 @@ export class Together {
     const d = Math.hypot(hb.pose.p[0] - me.pose.p[0], hb.pose.p[2] - me.pose.p[2]), coming = !hb.human?.itemTransferV1;
     const go: Steps = !coming && d > HANDOVER_GAP + 0.5 ? [{verb: 'walk_to', params: {to: host.entityId, standoff: HANDOVER_GAP}}] : [];
     return {label: `Take the ${thing.name} from ${inv.host.name}`, capability: 'accept:' + inv.id, commit,
-      steps: [...this.standFirst(soul.entityId), ...go, {verb: 'mars:hand_over_v1', params: {mode: 'receive', partner: host.entityId, item: thing.id, group: inv.id, waitSeconds: 40}}]};
+      steps: [...this.standFirst(soul.entityId), ...go, {verb: 'mars:hand_over_v1', params: {mode: 'receive', partner: host.entityId, item: thing.id, group: inv.id, waitSeconds: 40, ...(inv.custodyPolicy?{custodyPolicy:inv.custodyPolicy}:{})}}]};
   }
 
   // ---------------------------------------------------------------- receipts, follows, time

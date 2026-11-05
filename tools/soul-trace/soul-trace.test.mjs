@@ -184,3 +184,11 @@ test('A2: duplicates, reordering, missing origin, restart, lost records and dela
   assert.equal(tl.unlinked.at(-1).origin.kind, 'unknown', 'an act with no recorded owner link is not joined by time');
   assert.equal(tl.episodes.find(e => e.origin.id === 'm_2').acts.length, 1);
 });
+
+// #824: a refusal's alternatives are kept as offer ids only (bounded, labels omitted) and the readout prints them.
+test('factsOf keeps a refusal\'s alternative ids, never their labels', () => {
+  const f = factsOf({accepted: false, code: 'ride.unavailable', alternatives: [{id: 'walk:field', label: 'Green field'}, {id: 'bad id with spaces', label: 'x'}, {id: 'gather:field', label: 'y'}, {id: 'jog:field', label: 'z'}]});
+  assert.deepEqual(f.alternatives, ['walk:field', 'gather:field']);
+  assert.ok(!JSON.stringify(f).includes('Green field'));
+  assert.equal(factsOf({accepted: false, code: 'capability.params'}).alternatives, undefined);
+});

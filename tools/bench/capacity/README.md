@@ -125,6 +125,29 @@ host names, users, home paths or tokens), `ops.jsonl` (one line per issued call)
 `REPORT.md`; `souls/` holds Soul tokens and stays local. Every owned process is stopped at the end (also on Ctrl-C)
 and the result records the cleanup. A run without `--quiet-host` is labelled `not-quiet`; no laptop run qualifies.
 
+### Hardware qualification (CW2, #736)
+
+Each run also reads the allocation the worlds live in (`meetup/host.mjs`: the launcher's cgroup v2 `cpu.max`,
+cpuset, `cpu.stat` throttling, `memory.max`/`current`/`peak`, swap, PSI, `/proc/stat` steal; Linux only, `unknown`
+elsewhere) and each world's main and hottest thread. `meetup/verdict.mjs` turns the runs into `VERDICT.md`:
+`passes`, `insufficient resources`, `software bottleneck` or `inconclusive`. Only a complete matrix (both profiles,
+two repeats each, distinct repeats, full length) declared `--qualifying-executor --quiet-host`, with a known
+allocation, recorded objectives and readable swap, steal and throttling, can pass: evidence that is absent is
+unknown, never a pass. `--quiet-host` is the operator's assertion; the bench records load and other Soul processes
+but does not check them. The manual `capacity-qualify` workflow (#840) checks them before it passes the flag. A
+missed objective with spare allocation, or a hot world thread at ≥ 0.9 core, is a software bottleneck whatever the
+host. On the executor (the operator's private record holds the host binding; nothing here names it):
+
+```bash
+# quiet window; the launcher and its worlds inside the slice, the driver outside it
+node tools/bench/capacity/meetup/meetup.mjs --profile even,meetup --repeats 2 --browser \
+  --slice "systemd-run --quiet --scope -p AllowedCPUs=<cpus> -p MemoryMax=<limit> --uid=<bench user> --gid=<bench group>" \
+  --qualifying-executor --quiet-host --host-class production-class --out <scratch>/meetup-<sha>
+```
+
+The report states whether the driver shares the worlds' cgroup (it should not when `--slice` is used). With `--uid`, run the driver as
+root (so `systemd-run` may drop to the bench user) and give that user write access to `--out`.
+
 ## Slopes: inventory versus activity (CW7, #741)
 
 `slopes/slopes.mjs` asks whether stable inventory is charged again on every request. It runs three orthogonal axes on one designated `eden-2026` world. This is not a sweep.

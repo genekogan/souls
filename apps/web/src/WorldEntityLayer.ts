@@ -849,7 +849,9 @@ export class WorldEntityLayer {
       const grip = entities[body]?.state.grip as {entity?: string} | undefined;
       const contact = entities[body]?.state.carryContactV1 as {item?: string} | undefined;
       const id = grip?.entity ?? contact?.item, e = id && this.model?.entities.get(id);
-      if (e && this.model?.resolvedDef(e.def)?.tags.includes('upright-carry')) { held.add(e.id); this.transported.add(e.id); }
+      // PC03 (#682): a loose material carried by the native crew carry follows its recorded pose the same way
+      const tags = e && this.model?.resolvedDef(e.def)?.tags;
+      if (e && (tags?.includes('upright-carry') || tags?.includes('loose-material'))) { held.add(e.id); this.transported.add(e.id); }
     }
     for (const id of this.transported) {
       const e = entities[id], d = this.drawn.get(id);

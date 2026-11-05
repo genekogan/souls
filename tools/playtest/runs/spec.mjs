@@ -9,6 +9,8 @@ import { REPO_ROOT } from '../../lib/paths.mjs';
 import { validateScenario } from '../scenarios/lib/validate.mjs';
 import { validateDiagnostics } from './diagnostics.mjs';
 import { RECORD_SIZES } from '../observer/browser.mjs';
+import { RECORD_STARTS } from '../lib/arrival.mjs';
+import { worldTimeRequest } from './setup.mjs';
 
 export const SPEC_VERSION = 1;
 const CAMERAS = ['wide', 'free'];
@@ -21,7 +23,7 @@ const RETAIN = ['keep', 'delete'];
 
 export const DEFAULTS = Object.freeze({
   cast: 'scenario',
-  observer: { check: true, required: false, cameras: null, timeoutMs: 60000, mode: 'cameras', record: null, recordSize: 'compact', freeComposition: null },
+  observer: { check: true, required: false, cameras: null, timeoutMs: 60000, mode: 'cameras', record: null, recordSize: 'compact', recordStart: 'arrival', freeComposition: null },
   limits: { maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000 },
   controllers: { allowLiveModels: false },
   // Evidence is always kept. These apply only after a completed run; failed or cancelled runs keep everything.
@@ -89,8 +91,12 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   const rs = spec.observer?.recordSize;
   if (rs != null && !(RECORD_SIZES.includes(rs) || (rs && typeof rs === 'object' && Object.keys(rs).every((k) => k === 'width' || k === 'height') && [rs.width, rs.height].every((n) => Number.isInteger(n) && n >= 16 && n <= 4096)))) fail('observer.recordSize', `observer.recordSize: ${RECORD_SIZES.join(' or ')}, or {width, height} in whole pixels 16..4096`);
   if (rs != null && observer.record == null) fail('observer.recordSize', 'observer.recordSize needs observer.record');
+  if (!RECORD_STARTS.includes(observer.recordStart)) fail('observer.recordStart', `observer.recordStart: ${RECORD_STARTS.join(' or ')} (arrival: the take begins with the world on screen; load: from page creation, when loading is what it shows)`);
   if (observer.freeComposition != null && !(Array.isArray(observer.freeComposition.drag) && observer.freeComposition.drag.length === 2 && observer.freeComposition.drag.every(Number.isFinite) && (observer.freeComposition.wheel == null || Number.isFinite(observer.freeComposition.wheel)))) fail('observer.freeComposition', 'observer.freeComposition: {drag: [dx, dy], wheel?: n}');
-  for (const k of Object.keys(spec.world ?? {})) if (!['port', 'slug', 'genesis', 'snapshot'].includes(k)) fail('world.override', `world.${k} cannot be overridden here; reference a scenario with that world`);
+  for (const k of Object.keys(spec.world ?? {})) if (!['port', 'slug', 'genesis', 'snapshot', 'timeOfDay', 'timeScale'].includes(k)) fail('world.override', `world.${k} cannot be overridden here; reference a scenario with that world`);
+  // World time (#888): midday with the clock paused unless the spec says otherwise; applied after provision.
+  const worldTime = worldTimeRequest({ timeOfDay: spec.world?.timeOfDay, timeScale: spec.world?.timeScale });
+  for (const e of worldTime.errors) fail(e.code, e.message);
   if (spec.world?.genesis != null && spec.world?.snapshot != null) fail('world.source', 'world: give genesis or snapshot, not both');
   if (spec.world?.port != null && !(Number.isInteger(spec.world.port) && spec.world.port > 1024 && spec.world.port < 65536)) fail('world.port', 'world.port must be an unprivileged port');
   if (spec.world?.slug != null && !/^[a-z][a-z0-9-]{0,31}$/.test(spec.world.slug)) fail('world.slug', 'world.slug: lowercase letters, digits, dashes');
@@ -105,6 +111,9 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   try { scenarioText = readFileSync(scenarioPath, 'utf8'); scenario = JSON.parse(scenarioText); } catch (e) { return { ok: false, errors: [{ code: 'scenario.unreadable', message: e.message }] }; }
   if (scenario.world?.kind !== 'dev') fail('world.kind', `world.kind "${scenario.world?.kind}" is not supported; only isolated dev worlds`);
   try { assertMeasurementReady(scenario); } catch (e) { fail('scenario.measurement', e.message); }
+  // A scenario's own recording start stands unless the spec names one.
+  if (spec.observer?.recordStart == null && scenario.observer?.recordStart != null) observer.recordStart = scenario.observer.recordStart;
+  if (!RECORD_STARTS.includes(observer.recordStart)) fail('observer.recordStart', `scenario observer.recordStart: ${RECORD_STARTS.join(' or ')}`);
 
   const base0 = specPath ? dirname(specPath) : cwd;
   const find = (p) => isAbsolute(p) ? p : [resolve(base0, p), resolve(cwd, p), resolve(REPO_ROOT, p)].find(existsSync) ?? null;
@@ -144,7 +153,7 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (policy?.required?.length && controllers.allowLiveModels !== true) fail('controllers.live-model', `this run needs live model providers (${policy.required.join(', ')}) for ${[...controllerList.map((c) => `${c.id}:${c.adapter}`), ...(policy.claude && !controllerList.length ? ['director/reviewer'] : [])].join(', ')}; set controllers.allowLiveModels only with explicit authorization, or use cast "none" with a scripted director and deterministic review`);
   if (errors.length) return { ok: false, errors };
 
-  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), ...(diag.effective ? { diagnostics: diag.effective } : {}) };
+  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, time: worldTime.time, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), ...(diag.effective ? { diagnostics: diag.effective } : {}) };
   return { ok: true, errors: [], effective, scenario: effectiveScenario, controllers: controllerList, policy, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches } : null };
 }
 
@@ -157,7 +166,7 @@ export function applyOverrides(scenario, { cast = 'scenario', world = null, dura
   if (world?.snapshot != null) out.world.snapshot = world.snapshot;
   if (durationSec != null) out.durationSec = durationSec;
   if (observer?.cameras != null) out.observer = { ...(out.observer ?? {}), cameras: observer.cameras };
-  for (const k of ['mode', 'record', 'recordSize', 'freeComposition']) if (observer?.[k] != null && !(k === 'mode' && observer.mode === 'cameras')) out.observer = { ...(out.observer ?? {}), [k]: observer[k] };
+  for (const k of ['mode', 'record', 'recordSize', 'recordStart', 'freeComposition']) if (observer?.[k] != null && !(k === 'mode' && observer.mode === 'cameras') && !(k === 'recordStart' && observer.record == null)) out.observer = { ...(out.observer ?? {}), [k]: observer[k] };
   if (cast && typeof cast === 'object') {
     // A composed cast replaces the scenario's seats and/or scripted direction in their own formats (seat "*" is the
     // scripted director's broadcast).
