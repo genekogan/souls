@@ -19,7 +19,7 @@ import type { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { readOnlyObjectAdvance, refreshOnlyObjectAdvance } from '../edge/comms/objects/framework.ts';
 import type { NearFilter, Objects } from '../edge/comms/objects/framework.ts';
 import { canonicalJson, stateDigest } from '../edge/comms/objects/table.ts';
-import { actionsOf, actuatedState, keptShut, kindActions, wrapAct, type Thing } from './actuators.ts';
+import { ACT_SIGHT, actionsOf, actuatedState, keptShut, kindActions, wrapAct, type Thing } from './actuators.ts';
 import { heldGodThing } from './held.ts';
 import { waterRole, wordOf } from './water.ts';
 import { economyOn } from './layers.ts';
@@ -162,6 +162,21 @@ export class GodPerceive {
   }
   /** Entry 42: a thing inside a container that is shut (a lantern in a closed locker). */
   private keptShut(id: string): boolean { const e = this.h.model.entities.get(id); return !!e && keptShut(this.h.model, e); }
+  /** #439: the checkers boards, found once per world version (never a scan per offer). */
+  private checkersIndex: { v: number; ids: string[] } | null = null;
+  /** #439: another checkers board within ACT_SIGHT where this Soul has a game in progress (not won): its name, or null. */
+  private gameElsewhere(soul: EdgeSoul, id: string): string | null {
+    const m = this.h.model, v = this.h.version?.() ?? -1;
+    if (!this.checkersIndex || this.checkersIndex.v !== v || v < 0) this.checkersIndex = { v, ids: [...m.entities.values()].filter((e) => m.resolvedDef(e.def)?.tags.includes('checkers')).map((e) => e.id) };
+    const b = this.h.engine.world.entities[soul.entityId]?.pose?.p; if (!b) return null;
+    for (const o of this.checkersIndex.ids) {
+      const e = m.entities.get(o), def = e && m.resolvedDef(e.def); if (o === id || !e || !def) continue;
+      const st = { ...actuatedState(e, def), ...(e.state ?? {}) }, ids = typeof st.textBy === 'string' && st.textBy ? st.textBy.split(',') : [];
+      if (!ids.includes(soul.soulId) || checkersStatus(st.text).winner) continue;
+      const wp = m.worldPose(e); if (Math.hypot(wp.x - b[0], wp.z - b[2]) <= ACT_SIGHT) return m.pathOf(o);
+    }
+    return null;
+  }
   private actHost() {
     return {
       // entry 42: a container is not shut on a hand that is putting something in or taking something out
@@ -178,6 +193,7 @@ export class GodPerceive {
       wateringBegun: (soul: EdgeSoul) => this.h.watering?.expect(soul.entityId),
       tea: (soul: EdgeSoul, id: string, action: string) => this.h.tea?.plan(soul, id, action) ?? null,
       teaBegun: (soul: EdgeSoul) => this.h.tea?.expect(soul.entityId),
+      gameElsewhere: (soul: EdgeSoul, id: string) => this.gameElsewhere(soul, id),
       contactPlan:(soul:EdgeSoul,id:string,action:string,params?:Record<string,unknown>)=>this.h.edge?.contactActuator?.plan(soul,id,action,params)??null,
       policy:(id:string,soul:EdgeSoul,action:string)=>this.h.edge?.contactActuator?.policy(soul,id,action)??null,
       bodyAt: (soul: EdgeSoul): Vec2 | null => { const b = this.h.engine.world.entities[soul.entityId]; return b?.pose?.p ? [b.pose.p[0], b.pose.p[2]] : null; },

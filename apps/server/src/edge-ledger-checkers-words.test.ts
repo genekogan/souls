@@ -6,8 +6,8 @@ import {resolveCapability, type VocabContext} from './edge/ledger/vocabulary.ts'
 import type {EdgeCapability} from './edge/contract.ts';
 
 const at = new Map<string, [number, number]>([['e_near', [1, 0]], ['e_far', [4, 0]], ['e_ttt', [0.5, 0]]]);
-const board = (id: string, available = true): EdgeCapability[] => [
-  {id: `object:${id}:move`, verb: 'object', object: id, action: 'move', label: `Move a piece on the checkers board (${id})`, available, target: {id, kind: 'object'}},
+const board = (id: string, available = true, code = 'object.state'): EdgeCapability[] => [
+  {id: `object:${id}:move`, verb: 'object', object: id, action: 'move', label: `Move a piece on the checkers board (${id})`, available, ...(available ? {} : {blocked: {code, reason: code}}), target: {id, kind: 'object'}},
   {id: `object:${id}:erase`, verb: 'object', object: id, action: 'erase', label: `Wipe the checkers board for a new game (${id})`, available, target: {id, kind: 'object'}},
 ];
 const ttt: EdgeCapability[] = [{id: 'object:e_ttt:mark', verb: 'object', object: 'e_ttt', action: 'mark', label: 'Mark a square on the game board (game)', available: true, target: {id: 'e_ttt', kind: 'object'}}];
@@ -16,8 +16,8 @@ const to = (input: string, caps: EdgeCapability[]) => {
   const r = resolveCapability(input, ctx); return r.kind === 'unknown' ? 'unknown' : {id: r.cap.id, params: r.kind === 'alias' ? r.params : undefined};
 };
 
-test('#439 checkers words: two squares are the nearest board\'s move', () => {
-  const caps = [...board('e_far'), ...board('e_near'), ...ttt];
+test('#439 checkers words: two squares are the board\'s move', () => {
+  const caps = [...board('e_far', false, 'object.not-yours'), ...board('e_near'), ...ttt];
   for (const w of ['move c3 to d4', 'move from c3 to d4', 'c3 to d4', 'c3-d4', 'move c3 d4', 'Move the piece on c3 to d4.', 'please move c3 to d4 on the checkers board'])
     assert.deepEqual(to(w, caps), {id: 'object:e_near:move', params: {from: 'c3', to: 'd4'}}, w);
   assert.deepEqual(to('jump d4 to f6', caps), {id: 'object:e_near:move', params: {from: 'd4', to: 'f6'}});
@@ -41,4 +41,16 @@ test('#439 a chained multi-jump does its first jump now, with its squares', () =
 test('#439 the first part of "A, then B" keeps its params for steer words too', () => {
   const steer: EdgeCapability[] = [{id: 'object:e_balloon:steer', verb: 'object', object: 'e_balloon', action: 'steer', label: 'Steer the balloon (balloon)', available: true, target: {id: 'e_balloon', kind: 'object'}}];
   assert.deepEqual(to('fly north then fly east', steer), {id: 'object:e_balloon:steer', params: {direction: 'north', distance: 100}});
+});
+
+test('#439 two boards: the words go to the Soul\'s own game; with none, several open boards are a named choice', () => {
+  // in turn: its own board is the open one (the other refuses a second game)
+  assert.deepEqual(to('move c3 to d4', [...board('e_near', false, 'game.elsewhere'), ...board('e_far')]), {id: 'object:e_far:move', params: {from: 'c3', to: 'd4'}});
+  // out of turn: its own board answers whose turn it is, though the other board is nearer
+  assert.deepEqual(to('move c3 to d4', [...board('e_near', false, 'game.elsewhere'), ...board('e_far', false, 'game.turn')]), {id: 'object:e_far:move', params: {from: 'c3', to: 'd4'}});
+  // no game in progress and two free boards: refused, naming both, never a new game on the nearest
+  const ctx: VocabContext = {caps: [...board('e_far'), ...board('e_near')], places: [], root: ['w'], me: [0, 0], target: (c) => ({names: [], around: [], at: c.target ? at.get(c.target.id) ?? null : null})};
+  const r = resolveCapability('move c3 to d4', ctx);
+  assert.equal(r.kind, 'unknown');
+  if (r.kind === 'unknown') { assert.equal(r.code, 'game.which-board'); assert.match(r.reason, /2 checkers boards here .*: e_near, e_far/); assert.deepEqual(r.didYouMean.map(d => d.id), ['object:e_near:move', 'object:e_far:move']); }
 });

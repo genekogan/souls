@@ -98,6 +98,8 @@ export type ActuatorHost = {
   /** Entry 43 (tea.ts): "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea" as acts of native steps. */
   tea?(soul: EdgeSoul, thing: string, action: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | Refusal | null;
   teaBegun?(soul: EdgeSoul): void;
+  /** #439: the name of another checkers board in sight where this Soul has a game in progress, or null. */
+  gameElsewhere?(soul: EdgeSoul, id: string): string | null;
 };
 export type Thing = { id: string; name: string; def: StoredDef; state: Record<string, unknown>; params: Record<string, unknown> };
 export type WaterHost = {
@@ -146,7 +148,7 @@ export function gameProblem(def: StoredDef, a: { name: string }, state: Record<s
   if (st.draw) return { code: 'object.state', reason: 'The game is over: a draw. Wipe the board for a new game.' };
   if (ids.length >= 2 && me < 0) return { code: 'object.not-yours', reason: `This game is between ${names.join(' and ')}; wait for the next one.` };
   const mine = me >= 0 ? (me === 0 ? 'X' : 'O') : ids.length === 0 ? 'X' : 'O', next = def.tags?.includes('checkers') ? 'move' : 'mark';
-  if (mine !== st.turn) return { code: 'object.state', reason: names[st.turn === 'X' ? 0 : 1] ? `It is ${names[st.turn === 'X' ? 0 : 1]}'s turn.` : `It is O's turn: the next Soul to ${next} plays O against ${names[0]}.` };
+  if (mine !== st.turn) return { code: def.tags?.includes('checkers') ? 'game.turn' : 'object.state', reason: names[st.turn === 'X' ? 0 : 1] ? `It is ${names[st.turn === 'X' ? 0 : 1]}'s turn.` : `It is O's turn: the next Soul to ${next} plays O against ${names[0]}.` };
   if (params === undefined) return null;
   if (def.tags?.includes('checkers')) return checkersMoveProblem(state.text, params.from, params.to);
   const g = gameGrid(state), i = gameSquareOf(params.square ?? '');
@@ -298,7 +300,12 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
       const tea = s.key ? host.tea?.(ctx.soul, s.key, a.name) : null; if (tea) return 'code' in tea ? tea : null;
       const water = s.key ? waterPlan(a, s.key, ctx.soul, host) : null; if (water) return isRefusal(water) ? water : null;
       const state = (s.key && host.stateOf?.(s.key)) || s.state || {};
-      return whenRefusal(a, state, nameOf(s)) ?? (isListAction(def, a) ? listProblem(def, a, state, ctx.soul) : isGameAction(def, a) ? gameProblem(def, a, state, ctx.soul) : null);
+      const base = whenRefusal(a, state, nameOf(s)) ?? (isListAction(def, a) ? listProblem(def, a, state, ctx.soul) : isGameAction(def, a) ? gameProblem(def, a, state, ctx.soul) : null);
+      // #439: a Soul with a game of checkers in progress on another board in sight plays that one; it starts or joins no
+      // second game here (an out-of-turn move never silently becomes a new game on the next board)
+      if (base || a.name !== 'move' || !def.tags?.includes('checkers') || !s.key || gamePlayers(state).ids.includes(ctx.soul.soulId)) return base;
+      const other = host.gameElsewhere?.(ctx.soul, s.key);
+      return other ? { code: 'game.elsewhere', reason: `You have a game of checkers in progress on ${other}; play it there, or wipe that board first.` } : null;
     };
     out[a.name] = {
       label: a.label, roles: 'anyone', reach: 'anywhere', params: actionParams(a), movesBody: true,
