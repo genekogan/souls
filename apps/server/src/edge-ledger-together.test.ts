@@ -126,6 +126,7 @@ const gestures = (pinned?: string[]) => async (t: import('node:test').TestContex
   // its own window is not the shared one, and it never borrows a settling body's stale deadline.
   const lateActors=new Set(frames.flatMap(f=>f.actors.filter(x=>x.late).map(x=>x.soulId)));
   assert.ok(lateActors.size<=1&&!lateActors.has(a.soulId),'only a guest can be late, never the host');
+  if(pinned)assert.ok(lateActors.has(c.soulId),'#508: with these ids c arrives after the window and the group left: late');
   const sharedUntils=new Set(frames.flatMap(f=>f.actors.flatMap(x=>x.until===undefined||x.late?[]:[x.until])));
   assert.equal(sharedUntils.size,1,'one actual shared pose deadline');const commonUntil=[...sharedUntils][0];
   assert.ok(overlap.maxSimultaneous>=2,'actual overlapping participation, not invitation-only');
