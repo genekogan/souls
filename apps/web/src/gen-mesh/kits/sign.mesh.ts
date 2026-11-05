@@ -9,7 +9,7 @@ import { registerMesh } from '../registry.ts';
 import { bindMotionModel } from '../motion.ts';
 import { apiPath } from '../../world-path.ts';
 import { artOf, brokenLinkLines, coverWhenReady, imageBroken, imageFailed, imageLoaded, videoTexture, whenImageFails } from '../art-media.ts';
-import { frameMediaKind, gameSquare, gameStatus, pinSlot, signupSlot, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@sim/world-compiler';
+import { frameMediaKind, gameSquare, gameStatus, pinSlot, signupSlot, signupPageStart, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@sim/world-compiler';
 import { posterMesh, posterAgeDays } from '../../../../../mars/viewer/app/engine-view/poster-sheet.ts';
 
 type Face = { at: [number, number, number]; w: number; h: number; yaw?: number; pitch?: number; bg?: string; ink?: string; font?: string; line?: number; media?: boolean; slot?: number };
@@ -264,7 +264,7 @@ registerMesh({
       else if (ctx.def.tags.includes('posters')) map = posterWallTexture(f);
       else if (ctx.def.tags.includes('wanted')) map = wantedTexture(wantedList(st), f);
       else if (ctx.def.tags.includes('pinboard')) map = pinboardTexture(typeof st.text === 'string' ? st.text.split('\n') : [], f);
-      else if (ctx.def.tags.includes('signup')) map = signupTexture(String(st.title ?? ''), typeof st.text === 'string' && st.text ? st.text.split('\n') : [], f);
+      else if (ctx.def.tags.includes('signup')) { const names = typeof st.text === 'string' && st.text ? st.text.split('\n') : []; map = signupTexture(String(st.title ?? ''), names.slice(signupPageStart(names.length)), f); }   // #429: a guestbook shows its current page
       else if (ctx.def.tags.includes('poll')) { const opts = pollOptions(st), votes = typeof st.textBy === 'string' && st.textBy ? st.textBy.split(',').map((v) => Number(v.split(':')[1])) : []; map = pollTexture(String(st.title ?? ''), opts, opts.map((_, i) => votes.filter((v) => v === i).length), f); }
       else if (ctx.def.tags.includes('chalkboard') && ctx.def.tags.includes('hand-writable')) map = chalkTexture(text, f);
       else map = textTexture((f.line !== undefined ? [text[f.line] ?? ''] : text).slice(0, 6), f);

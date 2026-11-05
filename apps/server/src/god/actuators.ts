@@ -4,7 +4,7 @@
 // `object:<entity>:switch-off`, walks up to it, reaches out, and the lamp's state changes in the world (an engine edit:
 // in the ledger, broadcast to viewers, never the god's to undo). Nothing in the edge changes: the object framework's own
 // capabilities, admission, receipts and body plans carry it.
-import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, gameSquareOf, gameStatus, pollOptions, containerInside, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, signupCapacity, signupNoun, gameSquareOf, gameStatus, pollOptions, containerInside, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { isContactActuator, CONTACT_REACH } from './contact-actuator.ts';
 import { isPosterAction, isWantedAction, posterProblem, posterPatch, wantedProblem, wantedPatch } from './poster-boards.ts';
@@ -195,6 +195,8 @@ export function pinPatch(a: { name: string }, state: Record<string, unknown>, so
 }
 /** Entry 25: a sign-up sheet (one line per signer: their own name) and a poll (one vote per Soul). */
 const signerName = (soul: EdgeSoul) => (soul.name || 'a Soul').replace(/[\n,—|:]/g, ' ').trim().slice(0, 40);
+/** #429: the few words a sign action takes with the name, when its def declares a `text` param (the guestbook). */
+const signupWordsField = (def: StoredDef, a: { name: string }) => { const f = def.actions?.find(x => x.name === a.name)?.params?.text; return a.name === 'sign' && f?.type === 'string' ? f : null; };
 export const isSignupAction = (def: StoredDef, a: { name: string }) => !!def.tags?.includes('signup') && (a.name === 'sign' || a.name === 'unsign');
 export const isPollAction = (def: StoredDef, a: { name: string }) => !!def.tags?.includes('poll') && a.name === 'vote';
 /** A board whose lines several Souls own (pinboard notes, sign-up names, poll votes). */
@@ -217,10 +219,13 @@ export function listProblem(def: StoredDef, a: { name: string }, state: Record<s
   if (isWantedAction(def, a)) return wantedProblem(a, state, soul, params);
   if (isPinAction(def, a)) return pinProblem(a, state, soul, a.name === 'pin' ? params?.text : undefined);
   if (isSignupAction(def, a)) {
-    const names = pinNotes(state), mine = names.some(n => n.by === soul.soulId);
-    if (a.name === 'unsign') return mine ? null : { code: 'object.not-yours', reason: 'Your name is not on this sheet; only a signer crosses their own name off.' };
-    if (mine) return { code: 'object.state', reason: 'Your name is already on this sheet.' };
-    if (names.length >= SIGNUP_MAX) return { code: 'object.state', reason: `The sheet is full (${SIGNUP_MAX} names).` };
+    // #429: capacity, noun and page turning come from the def (signupCapacity / signupNoun / `keeps-newest`); the sheet's words stay
+    const names = pinNotes(state), mine = names.some(n => n.by === soul.soulId), noun = signupNoun(def), cap = signupCapacity(def);
+    if (a.name === 'unsign') return mine ? null : { code: 'object.not-yours', reason: noun ? `Your name is not in the ${noun}; only a signer crosses their own name off.` : 'Your name is not on this sheet; only a signer crosses their own name off.' };
+    if (mine) return { code: 'object.state', reason: noun ? `You have already signed the ${noun}.` : 'Your name is already on this sheet.' };
+    if (names.length >= cap && !def.tags.includes('keeps-newest')) return { code: 'object.state', reason: `The ${noun ?? 'sheet'} is full (${cap} names).` };
+    const field = signupWordsField(def, a);
+    if (field && params?.text !== undefined && params.text !== '') { const bad = boardTextProblem(params.text, field.max, 1); return bad && noun ? { ...bad, reason: bad.reason.replace('the board', `the ${noun}`) } : bad; }
     return null;
   }
   if (isPollAction(def, a)) {
@@ -240,8 +245,11 @@ export function listPatch(def: StoredDef, a: { name: string }, state: Record<str
   if (isWantedAction(def, a)) return wantedPatch(a, state, soul, params);
   if (isPinAction(def, a)) return pinPatch(a, state, soul, params.text);
   if (isSignupAction(def, a)) {
-    const names = pinNotes(state).filter(n => n.by !== soul.soulId);
-    if (a.name === 'sign') names.push({ text: signerName(soul), by: soul.soulId });
+    let names = pinNotes(state).filter(n => n.by !== soul.soulId);
+    // #429: a full list tagged keeps-newest turns to a fresh page: its oldest page gives way
+    if (a.name === 'sign' && def.tags.includes('keeps-newest') && names.length >= signupCapacity(def)) names = names.slice(Math.min(names.length, SIGNUP_MAX));
+    const words = signupWordsField(def, a) && typeof params.text === 'string' ? params.text.replace(/\s+/g, ' ').trim() : '';
+    if (a.name === 'sign') names.push({ text: words ? `${signerName(soul)} — ${words}` : signerName(soul), by: soul.soulId });
     return { text: names.map(n => n.text).join('\n'), textBy: names.map(n => n.by).join(',') };
   }
   const votes = pollVotes(state).filter(v => v.by !== soul.soulId), i = pollChoice(state, params.choice);
