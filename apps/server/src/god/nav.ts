@@ -452,6 +452,14 @@ export class GodNav {
       // RESOLVE2: a thing up on a roof whose own patch is cut off (eden-house-3: its planters stand on a strip a ridge
       // parts from the terrace its roof stair lands on): the nearest connected standing room on that roof within 4 m
       if (goal && goal.level > 0 && E.navCheckV1 && E.navWarmV1?.(0) && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) goal = this.roofReach(goal) ?? goal;
+      // #875: a seat whose stand point is in a pocket furniture closes off (a dining chair pushed in between the table and
+      // the wall) while the room's main floor is beside it: another stand point of it that is connected, else the nearest
+      // connected standing spot within 2.5 m (inside THING_REACH_M); with none the goal stays, refused honestly
+      if (goal && t.seat && E.navCheckV1 && E.navWarmV1?.(0) && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) {
+        let other: { p: Vec2; level: number } | null = null;
+        for (const s of stands) { const g = near(s, t.level, 6); if (g && E.navCheckV1([{ id: t.ref, ...g }])[0]?.ok) { other = g; break; } }
+        goal = other ?? this.roofReach(goal, 2.5) ?? goal;
+      }
       // WALK3: a duck on the lake, a boat in the harbour: the shore of the water it floats on, nearest to it
       if (!goal && !t.level) for (const w of this.things()) {
         if (w.kind !== 'water' || !w.area || !inPoly(t.at[0], t.at[1], w.area)) continue;
@@ -486,10 +494,10 @@ export class GodNav {
     return goal;
   }
 
-  /** RESOLVE2: the nearest connected (walkable both ways from the main ground) standing spot on `g`'s level within 4 m. */
-  private roofReach(g: { p: Vec2; level: number }): { p: Vec2; level: number } | null {
+  /** RESOLVE2: the nearest connected (walkable both ways from the main ground) standing spot on `g`'s level within `r` m. */
+  private roofReach(g: { p: Vec2; level: number }, r = 4): { p: Vec2; level: number } | null {
     const E = this.E, pts: { id: string; p: Vec2; level: number }[] = [];
-    for (let dz = -4; dz <= 4; dz += 0.5) for (let dx = -4; dx <= 4; dx += 0.5) if (Math.hypot(dx, dz) <= 4) pts.push({ id: `${dx},${dz}`, p: [r2(g.p[0] + dx), r2(g.p[1] + dz)], level: g.level });
+    for (let dz = -r; dz <= r; dz += 0.5) for (let dx = -r; dx <= r; dx += 0.5) if (Math.hypot(dx, dz) <= r) pts.push({ id: `${dx},${dz}`, p: [r2(g.p[0] + dx), r2(g.p[1] + dz)], level: g.level });
     let best: Vec2 | null = null, bd = Infinity;
     for (const v of E.navCheckV1!(pts) as { id: string; ok: boolean }[]) {
       if (!v.ok) continue; const [dx, dz] = v.id.split(',').map(Number), d = Math.hypot(dx, dz);

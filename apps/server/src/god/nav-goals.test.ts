@@ -147,3 +147,44 @@ test('from a raised room, a far ground goal is walked to via the building front;
   assert.ok(Math.abs((far.steps[0].params.z as number) - 3) < 1.5, `walks out through the front door first: ${JSON.stringify(far.steps[0])}`);
   assert.equal(near.steps.length, 1, 'a near ground goal is planned directly');
 });
+
+/** #875 fixture: a chair (or a two-seat sofa) facing +z with its stand points 0.75 m in front; `main` says which standing
+ *  spots are connected both ways to the main walkable area (navCheckV1), everything else is a sealed pocket. */
+function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean) {
+  const entity = { id: 'chair', name: 'chair', def: 'chair@1', in: { parent: 'world' } };
+  const def = { name: 'chair', form: 'point', components: {}, tags: ['seat'], make: { kind: 'mesh' } };
+  const baked = { rooms: [], colliders: [], openings: [], slots: seats.map(([x, z], i) => ({ id: `seat-${i}`, kind: 'seat', p: [x, 0, z], yaw: 0 })) };
+  const checked: Vec2[] = [];
+  const nav = new GodNav({ model: {
+    entities: new Map([['chair', entity]]), editSeq: 1,
+    ground: () => ({ waters: [] }), resolvedDef: () => def, bake: () => baked,
+    worldPose: () => ({ x: 0, y: 0, z: 0, yaw: 0, s: 1 }),
+    pathOf: () => 'chair', get: () => undefined,
+  }, engine: { world: { tick: 0, entities: {} },
+    standableNearV1: (at: Vec2) => at,
+    navWarmV1: () => true,
+    navCheckV1: (pts: { id: string; p: Vec2 }[]) => pts.map((x) => { checked.push(x.p); return { id: x.id, ok: main(x.p) }; }),
+  }, levelAt: () => 0, engineOwned: () => false } as unknown as NavHost);
+  return { nav, checked };
+}
+
+test('#875: a chair whose front is a sealed pocket is walked to on the connected floor beside it', () => {
+  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 2);
+  const chair = nav.thing('chair')!;
+  assert.equal(chair.kind, 'seat');
+  const goal = nav.goal(chair, [0, 10])!;
+  assert.ok(goal && goal.p[1] >= 2, `on the connected floor: ${JSON.stringify(goal)}`);
+  assert.ok(Math.hypot(goal.p[0], goal.p[1]) <= 3.5, 'within reach of the chair');
+});
+
+test('#875: a two-seat sofa is walked to at the stand point that is connected, not the nearer pocket one', () => {
+  const { nav } = seatRoom([[-1, 0], [1, 0]], (p) => p[0] > 0);
+  const goal = nav.goal(nav.thing('chair')!, [-1, 3])!;
+  assert.deepEqual(goal, { p: [1, 0.75], level: 0 });
+});
+
+test('#875: a chair with no connected floor within 2.5 m keeps its own goal (refused honestly, not moved far)', () => {
+  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 4);
+  const goal = nav.goal(nav.thing('chair')!, [0, 10])!;
+  assert.deepEqual(goal, { p: [0, 0.75], level: 0 });
+});
