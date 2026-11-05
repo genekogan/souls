@@ -598,6 +598,16 @@ export class EngineBridge {
     return (this.doorSpotsCache = out);
   }
 
+  /** PC12 (#691): a part joined into an assembly is not carried off: it names what it is joined to (by joint), so the
+   *  Soul knows why and the god knows what to disconnect. */
+  private joinedRefusal(id: string): { code: string; reason: string } | null {
+    const e = this.model.entities.get(id), js = Object.entries(e?.joins ?? {});
+    if (!e || !js.length) return null;
+    const nameOf = (x: string) => { const o = this.model.entities.get(x); return String((o && (o.name ?? titleOf(o) ?? this.model.resolvedDef(o.def)?.name.replace(/^core-/, ''))) ?? x).replace(/-/g, ' '); };
+    const to = [...new Set(js.map(([, j]) => nameOf(j.to)))];
+    return { code: 'carry.joined', reason: `${nameOf(id)} is joined to ${to.length > 1 ? `${to.slice(0, -1).join(', ')} and ${to.at(-1)}` : to[0]} (${js.map(([c, j]) => `${c} to ${j.at}`).join(', ')}); a joined part is not carried until it is disconnected.` };
+  }
+
   /** The engine physics of one entity: its solids, floors and stairs, or its fixture registration. */
   derive(e: Entity, assets: Record<string, unknown>, known: Record<string, unknown>): Part | null {
     const def = this.model.resolvedDef(e.def); if (!def) return null;
@@ -855,6 +865,16 @@ export class EngineBridge {
         const wx = pp.x + sl.local[0] * c + sl.local[2] * s, wz = pp.z - sl.local[0] * s + sl.local[2] * c;
         return { ...spec, p: [r3(wx), r3(pp.y + sl.local[1]), r3(wz)], support: { kind: 'resting-on', on: parent.id, slot } };
       }
+    }
+    // PC12 (#691): a part with connectors keeps its tilt about its own z (an upright stood on end) and its joints: the
+    // engine's own reciprocal connections; a part held up by bearing connectors is supported by what they join
+    const cs = def.components.connectors;
+    if (cs && e.in.parent === 'world') {
+      const roll = Array.isArray(e.r) && e.r[2] ? r3(e.r[2]) : 0;
+      const joins = Object.entries(e.joins ?? {}).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+      const bears = new Set(cs.filter((c) => c.bears).map((c) => c.id)), on = [...new Set(joins.filter(([c]) => bears.has(c)).map(([, j]) => j.to))];
+      return { ...spec, ...(roll ? { roll } : {}), support: on.length ? { kind: 'connected', to: on } : { kind: 'ground' },
+        ...(joins.length ? { connections: joins.map(([c, j]) => ({ socket: c, to: j.to, toSocket: j.at })) } : {}) };
     }
     return { ...spec, support: { kind: 'ground' } };
   }
@@ -1897,14 +1917,14 @@ export class EngineBridge {
           // PC04 (#683, PC02 §1): a `shared-carry` load can be proposed as a carry with other Souls (behind the sharedCarry flag)
           const sharedDef=this.edge?.sharedCarry?this.model.entities.get(x.id):undefined,sdef=sharedDef&&this.model.resolvedDef(sharedDef.def),shareable=!!sharedDef&&!!sdef?.tags.includes('shared-carry');
           // PC06 (#685, PC02 §4): the solo refusal names the way to carry it with others when that is on offer
-          const block=this.layers.refusal(x.id,soul)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.${shareable&&need<=Math.min(loose.carryCrew[1],8)?` Ask others to carry it with you: carry-with:${x.id} (to: a place, with: who).`:''}`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
+          const block=this.layers.refusal(x.id,soul)??this.joinedRefusal(x.id)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.${shareable&&need<=Math.min(loose.carryCrew[1],8)?` Ask others to carry it with you: carry-with:${x.id} (to: a place, with: who).`:''}`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
           const id=`carry:${x.id}`,label=`Carry ${name(x.id)} with both hands, then lay it down (to: a place name)${need>1?`; it needs ${need} carriers`:''}`;
           caps.push({id,verb:'carry',label,target:{id:x.id,kind:'object'},available:!block,...(block?{blocked:block}:{}),params:{to:{type:'string',maxLength:100}}});
           if(!block)plans.set(id,{label,steps:[...stand,{verb:'mars:carry',params:{crew:[soul.entityId],item:x.id,to:{x:here[0],z:here[1],yaw:x.pose.yaw??0}}}]});
           // Proposing moves nobody: it is a together invitation, so the plan has no body steps.
           if(sharedDef&&shareable){
             const crew:[number,number]=[need,Math.min(loose.carryCrew[1],8)],sid=`carry-with:${x.id}`;
-            const sblock=this.layers.refusal(x.id,soul)??(need>crew[1]?{code:'carry.crew-too-large',reason:`${name(x.id)} needs more carriers than it has grips.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
+            const sblock=this.layers.refusal(x.id,soul)??this.joinedRefusal(x.id)??(need>crew[1]?{code:'carry.crew-too-large',reason:`${name(x.id)} needs more carriers than it has grips.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
             const slabel=`Carry ${name(x.id)} with other Souls (asks them first; ${crew[0]}–${crew[1]} carriers; to: a place name, with: who)`;
             caps.push({id:sid,verb:'carry-with',label:slabel,target:{id:x.id,kind:'object'},available:!sblock,...(sblock?{blocked:sblock}:{}),params:{to:{type:'string',maxLength:100},with:{type:'string',maxLength:300,description:'the Souls who carry it with you (names or ids: "Bo and Cy", "Bo, Cy and Dee")'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
             // `def` is the placed def ref with its revision (for example core/rack-beam@2): the load's identity (PC02 §4)

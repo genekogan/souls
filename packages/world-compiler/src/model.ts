@@ -305,6 +305,17 @@ export class WorldModel {
     this.entities.set(e.id, e);
     const parts = this.safetyParts(); if (parts) this.safetyKey = { parts, key };
   }
+  /** PC12 (#691): replace a part's joint halves only, preserving every geometry, name, slot and safety index (joints never
+   *  move anything: `connect` only joins connectors that already meet). */
+  replaceJoins(e: Entity) {
+    const prev = this.entities.get(e.id);
+    if (!prev) throw new Error('joint target missing');
+    const { joins: _old, v: _v, ...before } = prev, { joins: _new, v: _nv, ...after } = e;
+    if (stableStringify(before) !== stableStringify(after)) throw new Error('replaceJoins cannot change structure');
+    const key = this.safetyCacheKey();
+    this.entities.set(e.id, e);
+    const parts = this.safetyParts(); if (parts) this.safetyKey = { parts, key };
+  }
   delete(id: string) {
     this.slotMemo?.clear();
     const e = this.entities.get(id); if (!e) return;
@@ -371,7 +382,10 @@ export class WorldModel {
     }
     const wp = this.worldPose(e);
     const c = Math.cos(wp.yaw), s = Math.sin(wp.yaw);
-    return baked.colliders.map((o) => ({
+    // PC12 (#691): a part with connectors stood on end (r = [yaw, 0, roll]) collides as its rolled box; other tilted
+    // things keep the yaw-only boxes they always had
+    const roll = Array.isArray(e.r) && e.r[2] && def.components.connectors ? e.r[2] : 0;
+    return (roll ? baked.colliders.map((o) => rolledCollider(o, roll)) : baked.colliders).map((o) => ({
       c: [wp.x + (o.c[0] * c + o.c[1] * s) * wp.s, wp.z + (-o.c[0] * s + o.c[1] * c) * wp.s],
       half: [o.half[0] * wp.s, o.half[1] * wp.s], yaw: wp.yaw + o.yaw, y0: wp.y + o.y0 * wp.s, y1: wp.y + o.y1 * wp.s,
     }));
@@ -523,4 +537,17 @@ function genParams(gen: string): StoredDef['params'] | undefined {
     genParamsCache.set(gen, out);
   }
   return genParamsCache.get(gen) ?? undefined;
+}
+
+/** PC12 (#691): a collider (centre, half extents and yaw in the part's x/z, y span) rolled about the part's z axis, as the
+ *  axis-aligned box that holds it in the part's own yaw frame. */
+function rolledCollider<T extends { c: [number, number]; half: [number, number]; yaw: number; y0: number; y1: number }>(o: T, roll: number): T {
+  const k = Math.cos(roll), sn = Math.sin(roll), cy = Math.cos(o.yaw), sy = Math.sin(o.yaw);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const a of [-1, 1]) for (const b of [-1, 1]) for (const y of [o.y0, o.y1]) {
+    const x = o.c[0] + a * o.half[0] * cy + b * o.half[1] * sy, z = o.c[1] - a * o.half[0] * sy + b * o.half[1] * cy;
+    const X = x * k - y * sn, Y = x * sn + y * k;
+    x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+  }
+  return { ...o, c: [(x0 + x1) / 2, (z0 + z1) / 2], half: [(x1 - x0) / 2, (z1 - z0) / 2], yaw: 0, y0, y1 };
 }

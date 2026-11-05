@@ -34,6 +34,23 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Known limit ([#1031](https://github.com/genekogan/souls/issues/1031)).** The native planner may lift facing
     either way along the load. When it lifts facing the other way, the load turns half a turn in the crew's hands
     during the lift, because the native lift interpolates its yaw. This happens for any load.
+- **Joined into an assembly (PC12, [#691](https://github.com/genekogan/souls/issues/691)).** `core-rack-upright@2` and
+  `core-rack-beam@3` are the same loose upright and beam, plus typed structural connectors. The world's god joins them
+  into a bay with `connect` (see [god mode](godmode.md#joints)).
+  - **One graph.** The entity world holds each joint as two halves (`joins`), one on each part. The engine mirrors it as
+    its own `connections`: a joined part is `installed`, and a beam is supported (`connected`) by the uprights its
+    ends join. An upright stood on end (`r = [yaw, 0, π/2]`) reaches the engine with that roll, so its box stands. Its
+    connectors are the adapted asset's sockets. The beams stay at the world root, because their support is their
+    joints, not a parent. The client draws each part once, from the entity world.
+  - **Not carried while joined.** `carry:<id>` of a joined part is offered unavailable, `carry.joined`, naming what it
+    is joined to and at which connectors, and acting it is refused before any motion. The engine refuses it on its
+    own too (`carry.item-unavailable`: an installed part is not a load lying on the ground). A free beam of the same
+    revision is carried as before.
+  - **Restart.** Nothing new is snapshotted: the joints ride the entity rows and the logged `world-edit` events, so a
+    clean or crash restart brings back the same graph in both.
+  - **Not yet.** Souls do not raise uprights or connect beams (PC13, PC14). The native rack stability rule
+    (`construction/rules.ts`) does not apply to these parts, which are items to the engine. Only a part's own
+    bearing connectors decide its support.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
   A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
   comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one

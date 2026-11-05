@@ -45,6 +45,13 @@ export const componentsSchema = z.object({
   carryable: z.object({ mass: num.positive(), grips: z.number().int().min(1).max(4).default(1),
     handling: z.object({ crew: z.tuple([z.number().int().min(1).max(8), z.number().int().min(1).max(8)]), pose: z.enum(['edge', 'flat']), height: num.positive().max(2),
       grips: z.record(z.string().regex(/^[1-8]$/), z.array(v3).min(1).max(8)) }).strict().optional() }).optional(),
+  /** PC12 (#691): typed structural connectors, in the def frame at scale 1. Two connectors join when each one's `mates`
+   *  names the other's `kind` and their points meet (`connect`); a `bears` connector holds its part up, so a part with
+   *  bearing connectors is supported through them once all are joined (or by the ground when none is). Generic data:
+   *  nothing in the compiler names a kind. */
+  connectors: z.array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9@._-]{0,31}$/), kind: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/), at: v3,
+    mates: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,31}$/)).min(1).max(8), bears: z.literal(true).optional() }).strict()).min(1).max(128)
+    .refine((cs) => new Set(cs.map((c) => c.id)).size === cs.length, 'connector ids must be unique').optional(),
   opening: z.object({ width: num.positive(), height: num.positive(), state: z.enum(['open', 'closed', 'always']).default('always') }).optional(),
   floor: z.object({ level: z.number().int().default(0), y: num.default(0) }).optional(),
   stairs: z.object({ rise: num.positive(), run: num.positive(), treads: z.number().int().min(1) }).optional(),
@@ -254,9 +261,14 @@ export const entitySchema = z.object({
   access: z.enum(ACCESS).optional(),
   schedule: scheduleSchema.optional(),
   price: priceSchema.optional(),
+  /** PC12 (#691): this part's half of each structural joint, by its own connector id: the other part and its connector.
+   *  Both halves are always present (`connect`, `disconnect`); the joint's id is `jointId` of the two ends. */
+  joins: z.record(z.string(), z.object({ to: z.string(), at: z.string() }).strict()).optional(),
   by: z.string(), born: z.number().int(), v: z.number().int().default(1),
 });
 export type Entity = z.infer<typeof entitySchema>;
+/** PC12 (#691): a joint's stable id, the same from either end: `<a>.<connector>~<b>.<connector>`, the lesser end first. */
+export const jointId = (a: string, ca: string, b: string, cb: string) => { const x = `${a}.${ca}`, y = `${b}.${cb}`; return x < y ? `${x}~${y}` : `${y}~${x}`; };
 
 // ---------- world ----------
 
@@ -354,6 +366,10 @@ const clone = z.object({
   count: z.number().int().min(1).max(64).default(1), step: v2.optional(),
   mode: z.enum(['strict', 'nudge']).default('strict'),
 });
+/** PC12 (#691): join two parts at a connector each (both halves recorded), or undo one joint by either end. */
+const end = z.object({ id: z.string(), connector: z.string() });
+const connect = z.object({ op: z.literal('connect'), a: end, b: end });
+const disconnect = z.object({ op: z.literal('disconnect'), a: end });
 const define = z.object({ op: z.literal('define'), def: defSchema });
 // W1: retire an unused local ref; hashed content remains available to undo.
 const undefine = z.object({ op: z.literal('undefine'), ref: z.string() });
@@ -371,9 +387,9 @@ const restoreDef = z.object({ op: z.literal('restore-def'), ref: z.string(), has
 });
 const reviveDef = z.object({ op: z.literal('revive-def'), ref: z.string(), hash: z.string().regex(/^[0-9a-f]{64}$/) });
 
-export const opSchema = z.discriminatedUnion('op', [place, remove, move, set, clone, define, undefine, world, expand, answer, restore, restoreDef, reviveDef, economy, mint, pay, relate]);
+export const opSchema = z.discriminatedUnion('op', [place, remove, move, set, clone, define, undefine, world, expand, answer, restore, restoreDef, reviveDef, economy, mint, pay, relate, connect, disconnect]);
 export type Op = z.infer<typeof opSchema>;
-export const clientOpSchema = z.discriminatedUnion('op', [place, remove, move, set, clone, define, undefine, world, expand, answer, economy, mint, pay, relate]);
+export const clientOpSchema = z.discriminatedUnion('op', [place, remove, move, set, clone, define, undefine, world, expand, answer, economy, mint, pay, relate, connect, disconnect]);
 
 export const batchSchema = z.object({
   schema: z.literal(EDIT_SCHEMA).default(EDIT_SCHEMA),
@@ -408,6 +424,7 @@ export const refusalCodes = [
   'size.range', 'size.furnished', 'extent.outside', 'overlap.solid', 'support.none', 'body.protected',
   'constant.immutable', 'float.no-water', 'constraint.unsatisfied', 'architecture', 'architecture.sealed', 'architecture.unreachable', 'architecture.headroom', 'entity.unknown', 'entity.limit', 'name.taken', 'params.invalid', 'state.invalid', 'undo.conflict',
   'wallet.insufficient', 'relation.invalid', 'handling.crew', 'handling.grips', 'handling.mass', 'handling.reach',
+  'connector.unknown', 'connector.incompatible', 'connector.taken', 'connector.apart', 'connector.joined', 'connector.free',
   'request.conflict', 'request.budget', 'revision.stale', 'asset.invalid', 'asset.budget', 'budget.world', 'budget.region',
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
