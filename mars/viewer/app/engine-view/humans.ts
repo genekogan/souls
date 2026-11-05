@@ -64,8 +64,9 @@ import type {ShoreContactV1} from '../../../../packages/engine-contract/src/shor
 import type { DepictionBeat } from './station-depiction.ts';
 import { sleepGoal, sleepHands, sleepHeadPitch, sleepRestWeight, sleepHeadRestLift } from './sleep.ts';
 import { PRONE_ACTIVITY } from '../../engine/construction/handup.ts';
-import { ACTIVITY_OVERLAYS, GROUND_SEAT, LYING, SING_LET_GO, activityFrame, gameArmBlend, makeProp, placeProp, propFor, type ActivityFrame, type PropKind } from './activity-poses.ts';
+import { ACTIVITY_OVERLAYS, GROUND_SEAT, LYING, PIANO_FADE, SING_LET_GO, activityFrame, gameArmBlend, makeProp, placeProp, propFor, type ActivityFrame, type PropKind } from './activity-poses.ts';
 import { accompanistOf } from './piano-score.ts';
+import {posePianoHand} from './piano-hands.ts';
 import { handGameActive, handGameGestureClock, handGameSuppress, poseHandGames, type HandGameDiag } from './hand-games.ts';
 import type { HandHoldState } from '../../engine/social/hand-hold.ts';
 import type { RpsState } from '../../engine/social/rps.ts';
@@ -186,6 +187,8 @@ type View = {
   prevWaveDuration?: number;
   waveRestAge?: number;
   prevBase?: string;
+  prevDuration?: number;
+  prevInstrument?: string;
   restAge?: number;
   restFrom?: number;
   /** Idle variety weight drawn at the last render (Idle_Neutral + variant; diagnostics only). */
@@ -314,6 +317,9 @@ export type SampledHuman = {
   prevWaveDuration?: number;
   waveRestAge?: number;
   prevBaseActivity?: string;
+  /** Duration and instrument of the previous recorded activity, for an interrupted entry fade. */
+  prevActivityDuration?: number;
+  prevInstrument?: string;
   restAge?: number;
   /** Seconds since the current walk began (the Walk weight left 0; absent: not walking, or longer than a gesture fade). */
   walkAge?: number;
@@ -605,7 +611,7 @@ export class HumanViews {
         if(v.activity==='wave'&&v.waveEvents?.length)v.waveEvents[v.waveEvents.length-1].end=clock;
         if(act==='wave'){if(!v.waveEvents?.length)v.waveRestAge=v.restAge;(v.waveEvents??=[]).push({start:clock});}
         v.prevWaveDuration=v.activity==='wave'?v.since:undefined;
-        v.prevAct = v.activity; v.prevBase = v.base;
+        v.prevAct = v.activity; v.prevBase = v.base; v.prevDuration=(v.age+1)*DT;v.prevInstrument=v.instrument;
       }
       v.age = act === v.activity ? v.age + 1 : 0;
       v.since = v.age * DT;
@@ -885,7 +891,7 @@ export class HumanViews {
       v.restAge = v.restFrom !== undefined && t >= v.restFrom ? t - v.restFrom : undefined;
       v.walkAge = f.walkAge;
       v.restAgeAtWalk = f.restAgeAtWalk;
-      v.prevAct = f.prevActivity;
+      v.prevAct = f.prevActivity;v.prevDuration=f.prevActivityDuration;v.prevInstrument=f.prevInstrument;
       v.prevWaveDuration=f.prevWaveDuration;v.waveRestAge=f.waveRestAge;v.waveSamples=f.waveSamples;v.waveClock=f.waveClock;
       v.prevBase = f.prevActivity === undefined ? undefined : baseOf(f.prevActivity, f.prevBaseActivity);
       v.partner = f.partner;
@@ -991,8 +997,10 @@ export class HumanViews {
     // entry 36: a singer sings along with the nearest player (her head and breath follow the sung notes); just after her
     // singing ends, the singing frame eases out (the hand lets go of the mic) instead of snapping to the base posture
     const letGo = v.activity !== 'sing' && v.prevAct === 'sing' && (v.since ?? 9) < SING_LET_GO && !GAIT_ACTS.has(v.activity);
+    const pianoRelease=v.activity!=='play-piano'&&(v.prevAct==='play-piano'||v.prevAct==='play-music'&&(v.prevInstrument==='piano'||v.prevInstrument==='keyboard'))&&v.since!==undefined&&v.since<PIANO_FADE;
     const act: ActivityFrame | null = freeBody && !engineHands && w < 0.5 && !waveClip && !interactClip && !clipBody && !lib.sleep
       ? letGo ? activityFrame('sing', 'idle', tSec, pairPhase, { since: 9, released: v.since, accompanist: null })
+      : pianoRelease ? activityFrame('play-piano',v.prevBase??'sit',tSec-v.since!,pairPhase,{actorId:h.name,released:v.since,priorAge:v.prevDuration})
       : activityFrame(waveReturn?'wave':v.activity, v.base, waveActive?waveTime:tSec, pairPhase, { groundSeat: v.groundSeat, since: v.since, gap: v.partnerP ? Math.hypot(v.partnerP.x - h.position.x, v.partnerP.z - h.position.z) : undefined,instrument:v.instrument,game:v.game,gameTick:v.gameTick,gameDt:v.gameDt,actorId:h.name, ...(v.activity === 'sing' ? { accompanist: accompanistOf(v.cur.p, this.players) } : {}) }) : null;
     if(act && waveActive && !extra.wave)act.handW=[0,waveBlend];
     h.rotation.z = 0; h.rotation.x = 0;
@@ -1405,10 +1413,11 @@ export class HumanViews {
         if (t.y < floor) t.y = floor;
         if (wgt <= 0) return;
         targets[i] = t;
-        armTo(arm, t, wgt, 0.98, h, V().copy(_right).multiplyScalar(left ? -0.6 : 0.6).addScaledVector(UP, -0.5).addScaledVector(_fwd, -0.2));
+        if(!act.piano)armTo(arm, t, wgt, 0.98, h, V().copy(_right).multiplyScalar(left ? -0.6 : 0.6).addScaledVector(UP, -0.5).addScaledVector(_fwd, -0.2));
         for(const b of saved){b.o.position.lerpVectors(b.p,b.o.position,weight);b.o.quaternion.slerpQuaternions(b.q,b.o.quaternion.clone(),weight);}
       });
       closeHands(v, v.arms.map((_, i) => !targets[i] ? 0 : (act.curl ? act.curl[armSide(v, i) === 'left' ? 0 : 1] : 0.6) * (act.handWeights?.[armSide(v, i) === 'left' ? 0 : 1] ?? 1)));
+      if(act.piano)v.arms.forEach((arm,i)=>{if(targets[i])posePianoHand(arm,h.position,targets[i]!,_fwd,_right,h.position.y+act.piano!.height,act.piano!.lift[armSide(v,i)==='left'?0:1],act.piano!.weight,visit=>eachSkinnedWorld(v.surf.hand.get(arm.side),V(),visit));});
     } else if (runFallback && !gait && !fp && !posed && proneW===0 && sitW===0) {
       source='expression';v.arms.forEach((arm,i)=>{const f=runFallback.hands[arm.side>0?0:1];targets[i]=arm.upper.getWorldPosition(V()).addScaledVector(_fwd,f.forward).addScaledVector(_right,-arm.side*.06).addScaledVector(UP,f.up);});reachTo(v,targets,false);closeHands(v,targets.map(()=>.45));
     } else if (sitW > 0 && !seatClip) v.arms.forEach((_, i) => handOnThigh(v, i, sitW));
@@ -1647,6 +1656,8 @@ export class HumanViews {
   /** Per-person pose readout of the last render (lab hook `bones()`). */
   /** Entry 26: the instrument a body plays now (from its take frame), for the sound layer. */
   instrumentOf(id: string): string | undefined { return this.views.get(id)?.instrument; }
+  /** Seconds the depicted activity has run (the age the activity frames use); absent when it began before known history. */
+  activityAgeOf(id: string): number | undefined { return this.views.get(id)?.since; }
   bones(id?: string) {
     const out: Record<string, Diag & { activity: string; base: string; ankleH: number; armLen: number; walkW: number; variety: number; template: string; body: Record<string, number>; armFit: { k: number; before: number }[]; on: string | null; goal: Posture; dims: Dims | null }> = {};
     for (const [k, v] of this.views) {
