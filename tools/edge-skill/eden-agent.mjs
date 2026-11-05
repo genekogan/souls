@@ -1212,7 +1212,7 @@ export async function body(cmd,...args){
   return ok(await call('/v1/edge/body/library?'+q),'body library');}
  if(cmd==='publish'||cmd==='unpublish'){const ref=args[0];if(!ref||args.length!==1||!/^body_[a-f0-9]{64}$/.test(ref))throw new Error(`usage: body ${cmd} <ref>`);
   return ok(await call('/v1/edge/body/library/'+ref+'/public',{method:cmd==='publish'?'PUT':'DELETE'}),'body '+cmd);}
- if(cmd==='show'||cmd==='save'||cmd==='forget'){const ref=args[0];if(!ref||args.length!==1||!/^[a-z0-9_-]{1,80}$/.test(ref))throw new Error(`usage: body ${cmd} <ref>`);
+ if(cmd==='show'||cmd==='save'||cmd==='forget'){const ref=args[0];if(!ref||args.length!==1||!/^[a-z0-9_-]{1,80}(@[1-9][0-9]{0,5})?$/.test(ref))throw new Error(`usage: body ${cmd} <ref>`);
   return ok(await call('/v1/edge/body/library/'+ref,cmd==='show'?{}:{method:cmd==='save'?'PUT':'DELETE'}),'body '+cmd);}
  if(cmd==='look'){ // core/humanoid@2: read, randomize or edit this Soul's look (paint only; same body and rig)
   if(!args.length){const r=ok(await call('/v1/edge/body'),'body');return {look:r.look,choices:r.lookChoices};}
