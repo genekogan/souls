@@ -47,5 +47,6 @@ test('#1015: 60 refused solo carries to a sealed vault in 60 s search once or tw
   assert.ok(searches >= 1 && searches <= 2, `searched ${searches} times`);
   assert.ok(kept >= 58, `${kept} kept answers`);
   assert.ok(expanded > 0);
-  assert.equal(f.host.engine.world.tick - tick0, 60 * 20, 'the world kept its ticks');
+  // the test drives the ticks itself (tickOnce), so this only says the loop ran its 60 s; the tick-rate figure is the Soul Run's
+  assert.equal(f.host.engine.world.tick - tick0, 60 * 20, '60 world seconds');
 });
