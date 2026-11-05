@@ -101,8 +101,9 @@ export function mountModeration(app: Hono, d: ModerationDeps): ModerationStore {
   });
   app.use('/v1/edge/body', async (c, next) => {
     if (c.req.method !== 'PUT') return next();
-    const raw = await c.req.raw.clone().json().catch(() => null) as { assetId?: unknown } | null;
-    const sha = typeof raw?.assetId === 'string' ? targetSha(raw.assetId) : null;
+    const raw = await c.req.raw.clone().json().catch(() => null) as { assetId?: unknown; ref?: unknown } | null;
+    const asset = typeof raw?.assetId === 'string' ? raw.assetId : typeof raw?.ref === 'string' ? raw.ref : null;   // #717: a public reference too
+    const sha = asset ? targetSha(asset) : null;
     if (sha && store.isHidden(sha)) return c.json({ contract: 'edge/1', error: { code: 'body.moderated', message: 'This upload is hidden by moderation and cannot be worn' } }, 409, noStore);
     return next();
   });

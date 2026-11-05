@@ -111,7 +111,14 @@ export class ModerationStore {
 
   // ---- appending
 
+  /** Called after every append (best effort): e.g. body collections write a withdrawal through (#717). */
+  readonly appended: ((sha: string) => void)[] = [];
   append(e: { sha: string; action: ModAction; actor: string; role: ModRole; reason?: string | null; detail?: unknown; scope?: 'world' | 'site' }): ModEntry {
+    const entry = this.appendEntry(e);
+    for (const f of this.appended) { try { f(e.sha); } catch { /* a listener never fails moderation */ } }
+    return entry;
+  }
+  private appendEntry(e: { sha: string; action: ModAction; actor: string; role: ModRole; reason?: string | null; detail?: unknown; scope?: 'world' | 'site' }): ModEntry {
     if (!SHA.test(e.sha)) throw new Error('moderation target must be a sha256');
     const reason = e.reason ? String(e.reason).slice(0, 500) : null, at = Date.now();
     if (e.scope === 'site') {
