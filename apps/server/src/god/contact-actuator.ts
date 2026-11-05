@@ -129,6 +129,8 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
      const clear=(p:number[])=>!d.clearance||d.clearance(p[0],p[2],d.levelAt?.(p[0],p[2],wp.y)??0)>=HUMAN_RADIUS+.04;
      const want=Math.atan2(dz,dx),ring=(r:number)=>Array.from({length:8},(_,i)=>i*Math.PI/4).map(a=>[params.at[0]+Math.cos(a)*r,wp.y,params.at[2]+Math.sin(a)*r,Math.abs(((a-want+Math.PI*3)%(Math.PI*2))-Math.PI)]).filter(outside).filter(clear).filter(swingClear).sort((p,q)=>p[3]-q[3])[0];
      // #427: beside a pivoted leaf, a step further out when the near ring is all in the sweep or against the thing
+     // (0.7 m is at the edge of a standing reach: the body bends a little to a low toggle). With neither ring clear (walls
+     // or a crowd right at the front) she stands at the default point and the leaf may sweep her: a known limit
      const best=ring(.55)??(pivot?ring(.7):undefined);
      if(best)root=[best[0],best[1],best[2]];
      // Entry 37: a panel of knobs (a def with a tuning knob as well as the power knob) is worked from straight in front of
