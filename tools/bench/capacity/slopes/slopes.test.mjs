@@ -143,3 +143,9 @@ test('#911 review: only a quiet, full-length, two-repeat run on the qualifying e
   assert.equal(qualifies(ok), true); assert.equal(qualifies({ ...ok, repeats: 3 }), true);
   for (const bad of [{ executor: false }, { quiet: false }, { short: true }, { repeats: 1 }, { repeats: undefined }]) assert.equal(qualifies({ ...ok, ...bad }), false, JSON.stringify(bad));
 });
+
+test('#911 CodeQL: a backslash before a pipe in a failed run error cannot unescape the pipe in the table', () => {
+  const run = { arm: AXES.inventory[1], rep: 2, error: 'path C:\\tmp\\| tail' };
+  const text = reportText({ indicative: true, host: {}, windows: {}, source: {} }, [run]);
+  assert.ok(text.split('\n').includes('| inv10000 | 2 | path C:\\\\tmp\\\\\\| tail |'), 'backslashes doubled, then the pipe escaped');
+});
