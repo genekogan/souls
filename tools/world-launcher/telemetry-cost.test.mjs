@@ -108,7 +108,7 @@ test('packet: deterministic, names the firing bottleneck and the next decision, 
   const p = packet({ r, open: evaluated.open, cost: costFor(r, file, EVERY), build: { launcher: 'build-test-1', tools: 'abc1234' } });
   assert.deepEqual(p.bottleneck, { from: 'alerts', rule: 'loop-stall', world: 'busy-plaza', alsoFiring: 0 });
   assert.match(p.next, /^investigate loop-stall on busy-plaza/);
-  assert.equal(p.headroom.qualified, 'unqualified until #736 has a verdict');
+  assert.equal(p.headroom.qualified, 'unqualified (no capacity verdict given: --bench <capacity-qualify dir>)');
   assert.equal(p.cost.billed, 300); assert.deepEqual(p.cost.external, ['edge: unknown']);
   assert.deepEqual(packet({ r, open: evaluated.open, cost: costFor(r, file, EVERY), build: { launcher: 'build-test-1', tools: 'abc1234' } }), p, 'same inputs, same packet');
   const txt = packetText(p);
@@ -116,8 +116,18 @@ test('packet: deterministic, names the firing bottleneck and the next decision, 
   assert.doesNotMatch(JSON.stringify(p), /Meet\d|soul_|token/i, "world slugs and numbers only");
   // without alerts evaluated, the next step says so; with everything quiet, no capacity action
   assert.match(packet({ r, open: null }).next, /^evaluate alerts/);
-  assert.match(packet({ r, open: [] }).next, /^no capacity action indicated; headroom stays unqualified until #736/);
+  assert.match(packet({ r, open: [] }).next, /^no capacity action indicated; headroom unqualified \(no capacity verdict given/);
   assert.equal(packet({ r, open: [{ rule: 'telemetry-gap', state: 'firing' }] }).next.startsWith('restore telemetry coverage'), true);
+  // #853 review notes: the invoice period is printed with the billed amount; a cost packet is marked private
+  assert.deepEqual(p.cost.billedPeriods, ['2026-11-01..2026-12-01']); assert.match(txt, /billed 300 \(invoice period 2026-11-01\.\.2026-12-01, not prorated to the window\)/);
+  assert.match(p.private, /do not publish/); assert.match(txt.split('\n')[0], /PRIVATE/); assert.equal(packet({ r, open: [] }).private, undefined, 'no cost file: nothing private');
+  // a stale or unreadable alert state never reads as "0 firing"
+  const end = Date.parse(r.range.to);
+  const stale = packet({ r, open: [], alertsThrough: end - 10 * 60_000 });
+  assert.match(stale.alerts, /^stale \(evaluated through /); assert.match(stale.next, /^the saved alert state is stale: re-evaluate alerts/);
+  assert.match(packet({ r, open: [], alertsThrough: null }).alerts, /^stale/, 'a state with no evaluated row is stale');
+  assert.deepEqual(packet({ r, open: [], alertsThrough: end - 60_000 }).alerts, { firing: 0, unknown: 0 }, 'current');
+  const bad = packet({ r, open: null, alertsUnreadable: true }); assert.equal(bad.alerts, 'not evaluated (alerts-state.json unreadable)'); assert.match(bad.next, /^alerts-state\.json is unreadable: re-evaluate/);
 });
 
 test('cli: cost needs --cost; packet prints the text packet from a store', async (t) => {
