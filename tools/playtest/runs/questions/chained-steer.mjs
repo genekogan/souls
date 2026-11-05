@@ -4,7 +4,7 @@
 const CHAINED = /then fly north/i;
 export default {
   id: 'chained-steer',
-  version: 1,
+  version: 2,
   question: 'Was the rider\'s chained steer accepted as a steer toward its first clause\'s place, with the second clause left for a later act?',
   assumptions: ['The seat ran `resolve` and then `act` with the same chained words; the resolve output carries the params and the note.'],
   score(ctx) {
@@ -12,9 +12,11 @@ export default {
     const act = steps.find((x) => x.verb === 'act'), look = steps.find((x) => x.verb === 'resolve');
     const evidence = steps.map(ctx.stepRef);
     if (!act) return { verdict: 'unknown', uncertainty: 'no seat sent the chained steer', evidence };
-    const would = look?.out?.would ?? null, cap = act.out?.receipt?.capability ?? act.out?.resolved ?? null;
-    const detail = { accepted: act.out?.accepted ?? null, capability: cap, code: act.out?.code ?? act.out?.error?.code ?? null, params: would?.params ?? null, note: would?.resolved ?? null };
-    const steered = act.out?.accepted === true && /:steer$/.test(cap ?? '') && typeof would?.params?.to === 'string' && !CHAINED.test(would.params.to);
+    if (!look?.out?.would) return { verdict: 'unknown', uncertainty: 'the seat sent the chained steer but no resolve output records its params and note', evidence };
+    const would = look.out.would, cap = act.out?.receipt?.capability ?? act.out?.resolved ?? null;
+    const detail = { accepted: act.out?.accepted ?? null, capability: cap, code: act.out?.code ?? act.out?.error?.code ?? null, params: would.params ?? null, note: would.resolved ?? null };
+    // the first clause's place is the library, and the note leaves the second clause for a later act
+    const steered = act.out?.accepted === true && /:steer$/.test(cap ?? '') && /^(?:the\s+)?library$/i.test(would.params?.to ?? '') && /act again for "fly north"/i.test(would.resolved ?? '');
     return { verdict: steered ? 'pass' : 'fail', evidence, detail };
   },
 };
