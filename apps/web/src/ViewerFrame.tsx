@@ -11,6 +11,7 @@ import type { InitialWorldProgress } from './InitialWorldReadiness.ts';
 import { assetBytes, megabytes } from './asset-bytes.ts';
 import { hourLabel, setVisitorPreviewHour, subscribeVisitorHour, visitorPreviewHour } from './visitor-hour.ts';
 import { arrivalGate } from './gen-mesh/lazy-assets.ts';
+import { TouchHints } from './touch/hints.tsx';
 
 /** Edge overlays are measured against World's actual viewport, never the window. */
 export function useViewerInsets(root: RefObject<HTMLDivElement | null>, visible: boolean, layout: string): ViewportInsets {
@@ -60,7 +61,7 @@ export function useViewerInsets(root: RefObject<HTMLDivElement | null>, visible:
 
 /** VF2 (Gene): one "your camera" (drag orbits, right-drag pans, scroll zooms to the pointer, WASD/QE/RF keys;
  * WorldRtsCamera), and a split camera control beside Live: current state / one-click switching, modes and help. */
-export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationChange, worldTime, connected = true, connecting = false, worldName, followName, slots, initial }: { handle: WorldViewerHandle | null; state: WorldViewerState | null; dt: number; navigationOpen: boolean; onNavigationChange: (open: boolean) => void; onNavigationOpen?: () => void; worldTime?: string; connected?: boolean; connecting?: boolean; worldName?: string; followName?: string | null; slots?: { status: HTMLElement | null; camera: HTMLElement | null }; initial?: InitialWorldProgress | null }) {
+export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationChange, worldTime, connected = true, connecting = false, worldName, followName, selectedName, slots, initial }: { handle: WorldViewerHandle | null; state: WorldViewerState | null; dt: number; navigationOpen: boolean; onNavigationChange: (open: boolean) => void; onNavigationOpen?: () => void; worldTime?: string; connected?: boolean; connecting?: boolean; worldName?: string; followName?: string | null; selectedName?: string | null; slots?: { status: HTMLElement | null; camera: HTMLElement | null }; initial?: InitialWorldProgress | null }) {
   const [cameraNote, setCameraNote] = useState('');
   const previewHour = useSyncExternalStore(subscribeVisitorHour, visitorPreviewHour, visitorPreviewHour);
   const [hourOpen, setHourOpen] = useState(false);
@@ -160,20 +161,25 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
         </>}
       </div>
     </div>;
+  // #893: phones get the camera menu as a bottom sheet; Follow appears when a Soul is selected.
+  const phoneSheet = coarse || (() => { try { return matchMedia('(max-width: 700px)').matches; } catch { return false; } })();
+  const followable = state?.selection.soulId ?? null;
   const cameraLabel=arriving?'Loading':state?.presentation==='history'?'Recorded':kind==='follow'?`Following ${followName??'a Soul'}`:kind==='yours'?'Free':'Broadcast';
   const cameraAction=kind==='broadcast'?'Switch to Free camera':'Return to Broadcast';
   const cameraBlock=<div className="viewer-camera-chip camera-split" data-camera={kind} data-follow-soul={kind==='follow'?state?.selection.soulId??'':undefined}>
     <button type="button" className="camera-main" disabled={!handle||arriving} aria-label={`${cameraLabel}: ${cameraAction}`} title={cameraAction} data-tooltip={cameraAction} onClick={()=>kind==='broadcast'?yourCamera():toBroadcast()}>
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6.5h3l1.4-2h5.2l1.4 2h3v9.5H3z" fill="none" stroke="currentColor" strokeWidth="1.5"/><circle cx="10" cy="11" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/></svg><span className={kind==='follow'?'viewer-following-label':undefined}>{cameraLabel}</span>
     </button>
-    <NavbarMenu label="Camera modes and help" className="camera-menu" trigger={<span aria-hidden="true">⌄</span>}>
+    <NavbarMenu label="Camera modes and help" className="camera-menu" sheet={phoneSheet} trigger={<span aria-hidden="true">⌄</span>}>
       {dismiss=><><button type="button" aria-pressed={kind==='broadcast'} disabled={!handle||arriving} onClick={()=>{toBroadcast();dismiss();}}>Broadcast</button>
       <button type="button" aria-pressed={kind==='yours'} disabled={!handle||arriving} onClick={()=>{yourCamera();dismiss();}}>Free</button>
+      {phoneSheet&&kind!=='follow'&&followable&&state?.flyingTo!==followable&&<button type="button" disabled={!handle||arriving||state?.presentation==='history'} onClick={()=>{handle?.flyToSoul?.(followable,{chip:coarse});dismiss();}}>Follow {selectedName ?? 'this Soul'}</button>}
       {kind==='follow'&&<button type="button" onClick={()=>{yourCamera();dismiss();}}>Stop following</button>}
       <button type="button" onClick={()=>{dismiss();onNavigationChange(true);}}>Camera controls</button><FullscreenToggle/></>}
     </NavbarMenu>
   </div>;
   return <>
+    {!arriving && <TouchHints />}
     {arrivalShown && !blocked && initial?.stage !== 'failed' && <div className="viewer-arrival" data-done={!card} role="status" aria-live="polite">
       <div className="viewer-arrival-card"><span className="viewer-arrival-spinner" aria-hidden="true" />
         <div><p className="viewer-arrival-title">Arriving in {worldName ?? 'the world'}</p>
