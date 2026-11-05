@@ -155,7 +155,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
 | Server or package logic | `node --test` on touched files, `tsc -p` of touched packages |
 | Anything that can move geometry, navigation or god builds | add the walk gate |
 | Web app | `pnpm --filter @sim/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
-| Library defs, generators, compiler | conformance, plus a supplement when a revision changes |
+| Library defs, generators, compiler | `library.test.ts` and `catalogue-checks.test.ts` (budgets and holds), conformance, plus a supplement when a revision changes |
 | Soul behaviour, navigation, engines | the above plus a scenario playtest with two repeats per arm |
 | Release head | the remote gate, then the release workflow (live walks and cdn-walk) |
 
