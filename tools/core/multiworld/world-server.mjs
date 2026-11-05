@@ -68,7 +68,7 @@ export async function openWorldServer({input,dataDir,worldKey,worldId,port,build
    publicUrl:`${origin.replace(/\/$/,'')}${basePath}/w/${worldKey}`,engine:'mars',livingWorld:true,seedNatives:false,ownerId,
    brainMode:'fake',budgetUsdPerDay:0,thinkingBudgetCeiling:1,authorizedThinkingWorldId:undefined,typesafeKey:undefined,anthropicKey:undefined,
    ...(exposure.configured?{}:{authProvider:'none',privyAppId:'',privyAppSecret:''}),r2:{prefix:'sim'},archiveTakes:false,inviteRequired:exposure.configured?defaults.inviteRequired:false,maxSoulsPerUser:exposure.configured?defaults.maxSoulsPerUser:50,build,mindDriver:'edge',
-   skillFile:undefined,cliFile:cliFile?resolve(cliFile):undefined,instructionsFile:instructionsFile?resolve(instructionsFile):join(input,'tools/edge-skill/INSTRUCTIONS.md')};
+   skillFile:undefined,cliFile:cliFile?resolve(cliFile):undefined,instructionsFile:resolve(instructionsFile||join(input,'tools/world-launcher/soul/instructions.md'))};
   const {Db}=await load('apps/server/src/db.ts'),{WorldHost}=await load('apps/server/src/world.ts'),native=await load('packages/engine-mars/src/index.ts');
   const {worldDefinition}=await load('apps/server/src/world-config.ts'),definition=worldDefinition(worldKey);
   db=new Db(join(dataDir,'sim.db'));
@@ -78,6 +78,9 @@ export async function openWorldServer({input,dataDir,worldKey,worldId,port,build
   if(worldKey==='littlemartians'&&host.engine.world.base.staticHash!==factory.genesis(host.seed).base.staticHash)throw Error('LM persisted physical base differs from selected map; preserve the old reader and database');
   const authored=authoredData?(await load('apps/server/src/worlds/authored-lm-edge.ts')).validateAuthoredLmSidecars(host,authoredData):undefined;
   if(checkOnly){const result={checkOnly:true,boot,worldKey,worldId,tick:host.engine.world.tick,head:host.seq,stateHash:host.engine.stateHash(),rulesVersion:host.engine.rulesVersion};host.stop();db.close();releaseLock();return result;}
+  // #1008: no skillFile → the pinned launcher skill, adapted below like the one local-worlds.mjs passes; the instructions
+  // default above is the pinned guide too, so neither names the legacy eden-agent.mjs.
+  skillFile||=join(input,'tools/world-launcher/soul/skill.md');
   if(skillFile){
    // The shared CLI stays identical. Only selected-world prose is adapted.
    const text=readFileSync(resolve(skillFile),'utf8').replace(/\bEden\b/g,definition.name);
