@@ -43,6 +43,8 @@ tiers:
 #               externality check and known limits, each filled ("none" is an answer)
 #   clip        a video link in the PR (uncut, real speed; the proof skill records it, tools/proof/upload.mjs hosts it)
 #   proof_json  a link to the proof.json machine summary; it validates and agrees with the checklist
+#               (clip and proof.json links count only on a proof host: this repository's proofs releases, GitHub
+#               attachments or the SIM_PROOF_PUBLIC_URL CDN; proof-check fetches proof.json from nowhere else)
 #   playtest    proof.json `playtest.arms`, each with at least knobs.repeats_per_arm repeats
 #   review      proof.json `review`: the reviewer-agent pass and its verdict
 pr_checks:
