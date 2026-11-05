@@ -15,6 +15,17 @@ Get the tier of the current diff with `node tools/proof/tier.mjs --base origin/m
 ## Rules
 - **Uncut and real speed.** One browser context, one take. Never trim, splice, speed up or slow down. If the journey
   is longer than the policy's `max_seconds`, record a shorter journey that still shows the change, not a faster one.
+- **The take starts at arrival** (the default): the recording begins once the world is on screen and the arrival card
+  is gone, so the clip opens on the world, not on loading. From there it is one uncut, real-speed take of the journey,
+  which is what the policy asks. When loading or arrival is itself what the change is about (the arrival card, a
+  loading screen, first paint), or the journey is not on a world page (the world list, sign-in), pass `--from-load`:
+  the take then starts at page creation. The sidecar's `start` (`arrival` or `load`) says which was used, and
+  `upload.mjs --proof` copies it into proof.json `media[]`.
+- **By day.** On a local world URL the recorder sets the world to midday with its clock paused before the page opens
+  (`--time-of-day 12`, the default; the god env route as the dev owner). Dev worlds boot at 06:00 and run a world day
+  per real hour, so without it a world up for 40 minutes is at night. Setting it is one `world` entry in the world's god
+  history, and the clock stays paused afterwards. Pass another hour, or `--time-of-day keep` when the clock, the light
+  or the god history is what the change is about. The sidecar's `worldTime` says what was set.
 - **Real input.** Drive with `page.mouse`, `page.keyboard`, `page.touchscreen` or locator clicks, the way a user
   would. Do not call app internals from `page.evaluate` to make things happen on camera.
 - **Fake minds, isolated data.** Local worlds only, `BRAIN_MODE=fake`, a fresh data dir. Never record against a
@@ -65,8 +76,9 @@ not a clip of your change: a T2 change still records its own journey below. Deta
 ## 2. Write the steps
 
 Copy `.claude/skills/proof/steps.example.mjs` to `.e2e/proof/<slug>/steps.mjs` and script the changed journey:
-arrive, do the thing, show the result. `mark('label')` stamps a chapter time into the sidecar so the PR can say
-"the panel opens at 0:07". Keep it to the journey the change affects.
+do the thing, show the result. With the default arrival start the steps begin on the arrived world (the `arrived` mark
+is 0:00); with `--from-load` they begin right after navigation. `mark('label')` stamps a chapter time into the sidecar
+so the PR can say "the panel opens at 0:07". Keep it to the journey the change affects.
 
 ## 3. Record
 
@@ -86,7 +98,11 @@ node .claude/skills/proof/record.mjs --url '...' --steps .e2e/proof/<slug>/steps
 - With ffmpeg: an mp4 with a progress bar along the bottom and a `hh:mm:ss / total` timecode (the timecode needs an
   ffmpeg built with drawtext; the sidecar's `timecode` says whether it is there). Without ffmpeg: the raw `.webm`;
   say so in the PR (players still show their own scrub bar).
-- Each clip gets a `<clip>.json` sidecar: url, viewport, duration, marks, console errors, commit and dirty flag.
+- Each clip gets a `<clip>.json` sidecar: url, viewport, duration, `start`, `startedAt`, marks (`arrived` among them),
+  `worldTime`, console errors, commit and dirty flag. A Playwright without `page.screencast` records from page creation
+  even without `--from-load`; the sidecar says so in `startFallback`.
+- The page has `--arrival-seconds` (default 120) to arrive before the take starts; a page that never shows a world fails
+  (exit 1) with a hint to use `--from-load`, a still of where it stuck (`<clip>.open-failed.png`) and a sidecar.
   Console errors in the sidecar are findings: explain or fix them.
 
 The run takes well under the 10-minute foreground limit. For several clips in one go, run them in the background
@@ -122,8 +138,8 @@ node tools/proof/upload.mjs --pr $N --proof .e2e/journal/$ISSUE/proof.json .e2e/
   `files[]`, and proof.json is uploaded last. Paste its link
   and the clip links into the PR's Proof section. The `journal` skill covers proof.json.
 - **Inline preview.** GitHub serves release assets as downloads, so an mp4 link never plays in the PR. For each
-  video, `upload.mjs` makes a small animated GIF with ffmpeg (`<clip>.preview.gif`: the first 6 s at real speed, at
-  most 5 MB), uploads it beside the clip, records it as `media[].preview` and prints a line like
+  video, `upload.mjs` makes a small animated GIF with ffmpeg (`<clip>.preview.gif`: 6 s at real speed from the clip's
+  `arrived` mark, or from 0 for a `--from-load` take; at most 5 MB), uploads it beside the clip, records it as `media[].preview` and prints a line like
   `[![desktop.mp4](…pr-412.desktop.preview.gif)](…pr-412.desktop.mp4)`. Paste that line: the preview plays in the
   PR and clicking it opens the full clip. When the change shows later in the clip, pick the window with
   `--preview-start <s>` (and `--preview-seconds <s>`). The preview is a pointer, not the proof: the uncut mp4 is.
