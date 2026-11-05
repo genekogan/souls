@@ -117,8 +117,7 @@ function startTurn(cmd, args, { cwd, env, maxWallSec, onLine }) {
 /** H-g (#371): is the Claude CLI signed in? `claude auth status` exits 0 unless signed out; JSON output with
  *  `loggedIn: false` also fails. → {ok, exit}. Its output (account details) is read here and never kept. */
 export async function authStatus({ runFn = run } = {}) {
-  const env = { ...process.env }; delete env.CLAUDECODE; delete env.CLAUDE_CODE_ENTRYPOINT;
-  let r; try { r = await runFn('claude', ['auth', 'status'], { env, maxWallMs: 20000 }); } catch { return { ok: false, exit: null }; }
+  let r; try { r = await runFn('claude', ['auth', 'status'], { maxWallMs: 20000 }); } catch { return { ok: false, exit: null }; }
   let loggedIn = null; try { const j = JSON.parse(r.stdout ?? ''); if (typeof j?.loggedIn === 'boolean') loggedIn = j.loggedIn; } catch { /* plain text */ }
   return { ok: r.code === 0 && loggedIn !== false, exit: r.code ?? null };
 }

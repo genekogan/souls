@@ -100,6 +100,7 @@ export class Seat {
         const rec = { turn: n, reason, startedAt: t.t, endedAt: t.t, startMono: t.mono, endMono: t.mono, wallMs: 0, usage: null, finalText: null, toolCalls: [], exit: null, timedOut: false, endedAfterResult: null, authFailed: true, authExit: a?.exit ?? null };
         appendJsonl(join(this.dir, 'turns.jsonl'), rec);
         if (this.infraFile) appendJsonl(this.infraFile, { t: t.t, check: 'H-g', seat: this.seat.id, turn: n, reason: 'claude auth status failed twice before the turn; no model call', authExit: a?.exit ?? null });
+        if (this.waking && !this.stopped) this.startListen(); // as a turn's end does: a skipped wake turn must not leave the seat deaf
         return rec;
       }
     }

@@ -108,6 +108,15 @@ test('G1: two failed checks: no model call, the turn is recorded as an infrastru
   assert.deepEqual(log.slice(2), ['auth true', 'run stand up']);
 });
 
+test('G1: a skipped wake turn restarts the listener, as a finished turn does', async () => {
+  const { s, log } = authSeat([{ ok: false, exit: 1 }, { ok: false, exit: 1 }]);
+  let listens = 0; s.startListen = () => { listens += 1; };
+  s.waking = true;
+  const rec = await s.chat('[background task] node eden.mjs listen exited with output:\n{}', { reason: 'wake' });
+  assert.equal(rec.authFailed, true); assert.deepEqual(log, ['auth false', 'auth false']);
+  assert.equal(listens, 1, 'the seat keeps listening for the owner');
+});
+
 test('G1: codex and scripted-owner seats run no auth check', async () => {
   for (const adapter of ['codex-headless', 'scripted-owner']) {
     const { s, log } = authSeat([{ ok: false, exit: 1 }], adapter);
