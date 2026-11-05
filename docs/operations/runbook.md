@@ -87,7 +87,12 @@ gets one Soul that an agent leaves strolling, and the run measures it as follows
   a world never visited.
 - **Matched-tick state.** After the stop, `tools/bench/continuous/matched-tick.mjs` replays each world offline from
   the snapshot it booted from, with its logged inputs. At every snapshot tick, the engine state and the minds' needs
-  must equal what the world saved while nobody was there.
+  must equal what the world saved while nobody was there. A logged day-clock catch-up fails the check. This proves
+  that every tick was simulated and nothing changed outside the log. It cannot prove the pace: a throttled world also
+  replays exactly.
+- **Pace.** Each arm is compared with the attended control. During the measurement, no input may come from outside the
+  world. The world's own wall-timed body-rule moves must be logged 20 × rate ticks per wall second apart, within 2 %.
+  The agent's `here` and `caps` afterwards must show the current tick and the same capabilities as before.
 
 `--clip <world> --clip-dir <dir>` adds the before and return browser clips.
 

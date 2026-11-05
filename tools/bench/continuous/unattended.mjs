@@ -17,8 +17,13 @@
 // run the body is left to the world's own timed and autonomous behaviour: the stroll's RNG legs, the presence rule
 // (edge/ledger/body-rule.ts: a disconnected body shuffles every 20-60 s, then lies down asleep after 30 min) and the
 // minds' needs. The harness copies each periodic snapshot row (tick, engine hash, host body) from the world's database,
-// read-only, as it appears; after the stop, matched-tick.mjs replays the run offline from its first snapshot with the
-// logged inputs and compares the engine and the minds at every snapshot tick.
+// read-only, as it appears, into <dir>/snapshots. After the stop, matched-tick.mjs replays the run offline from its
+// first snapshot with the logged inputs and compares the engine and the minds at every snapshot tick: the state is the
+// simulation of every tick, with nothing outside the log and no day-clock catch-up. The pace is judged per arm against
+// the control: ticks against monotonic time (above), no input from outside the world during the measurement, and the
+// ticks per wall second of the body rule's own wall-timed moves (20 × rate when the clock keeps its configured rate; a
+// throttled world logs them fewer ticks apart). The agent's own `here` and `caps` after the run must show the current
+// tick and the same capabilities as before (nothing was traded for the pass).
 //
 // --clip <world> --clip-dir <dir> [--clip-steps f.mjs] (A4): an uncut real-speed browser clip of that world after its
 // Soul starts strolling in the setup run (the browser then closes), and one more as the world's first browser visit of
@@ -27,7 +32,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { copyFileSync, openSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { createServer } from 'node:net';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { cpus, loadavg } from 'node:os';
 import { anonymousHello } from '../../../packages/client/src/hello.ts';
@@ -77,7 +82,7 @@ function clip(base, slug, phase) {
   const t = performance.now();
   execFileSync(process.execPath, [join(ROOT, '.claude/skills/proof/record.mjs'), '--url', `${base}/w/${slug}`, '--out', file, '--viewport', 'desktop', ...(flag('clip-steps') ? ['--steps', resolve(flag('clip-steps'))] : ['--settle-seconds', '30'])],
     { cwd: ROOT, stdio: ['ignore', openSync(file.replace(/\.mp4$/, '.log'), 'w'), openSync(file.replace(/\.mp4$/, '.log'), 'a')], timeout: 300_000, env: { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR, ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? { PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH } : {}) } });
-  (out0.clips ??= []).push({ phase, world: slug, file, startedMin: +((t - T0) / 60_000).toFixed(2), tookS: Math.round((performance.now() - t) / 1000) });
+  (out0.clips ??= []).push({ phase, world: slug, file: relative(ROOT, file), startedMin: +((t - T0) / 60_000).toFixed(2), tookS: Math.round((performance.now() - t) / 1000) });
   log(`clip ${phase} of ${slug} -> ${file}`);
 }
 // the agent's own reads after the measurement: the tick it is told and the capabilities it is offered (M4)
@@ -89,16 +94,20 @@ function agentRead(slug) {
 // each periodic snapshot row a world saves (it keeps only its latest 5), copied as it appears; read-only, never a visitor
 const snaps = {};
 function captureSnapshots(slug) {
-  if (!SOULS) return;
-  const file = join(dir, 'data', 'worlds', slug, 'sim.db'); if (!existsSync(file)) return;
-  const have = (snaps[slug] ??= {});
+  if (!SOULS) return true;
+  const file = join(dir, 'data', 'worlds', slug, 'sim.db'); if (!existsSync(file)) return false;
+  const have = (snaps[slug] ??= {}), keep = join(dir, 'snapshots', slug); mkdirSync(keep, { recursive: true });
   let db; try {
     db = new DatabaseSync(file, { readOnly: true });
-    for (const r of db.prepare('SELECT world_id, tick, seq, state_hash, physical_hash, rules_version, snapshot, at FROM snapshots').all()) {
-      if (have[r.tick]) continue;
-      have[r.tick] = { worldId: r.world_id, tick: r.tick, seq: r.seq, stateHash: r.state_hash, physicalHash: r.physical_hash, rulesVersion: r.rules_version, at: r.at, body: JSON.parse(r.snapshot) };
+    const row = db.prepare('SELECT world_id, tick, seq, state_hash, physical_hash, rules_version, snapshot, at FROM snapshots WHERE world_id = ? AND tick = ?');
+    for (const { world_id: w, tick } of db.prepare('SELECT world_id, tick FROM snapshots').all()) {
+      if (have[tick]) continue;
+      const r = row.get(w, tick); if (!r) continue;   // pruned between the two reads: kept rows are 20 s+ apart, the next pass has the next one
+      have[tick] = { worldId: r.world_id, tick: r.tick, seq: r.seq, stateHash: r.state_hash, physicalHash: r.physical_hash, rulesVersion: r.rules_version, at: r.at, body: JSON.parse(r.snapshot) };
+      writeFileSync(join(keep, `${tick}.json`), JSON.stringify(have[tick]));   // re-verifiable later: matched-tick.mjs --snapshots
     }
-  } catch { /* busy or not there yet: the next pass reads it */ } finally { try { db?.close(); } catch { /* closed */ } }
+    return true;
+  } catch (e) { log(`snapshot read ${slug}: ${e.message} (the next pass reads it)`); return false; } finally { try { db?.close(); } catch { /* closed */ } }
 }
 
 async function main() {
@@ -112,7 +121,8 @@ async function main() {
   if (CLIP) clip(base, slugs[NAMES.indexOf(CLIP)], 'before');
   log(`created ${slugs.join(', ')}; restarting the launcher so none has been visited in its run`);
   await stop(launcher); await sleep(1000);
-  for (const s of slugs) captureSnapshots(s);   // S0: the state each world stopped with, which its boot restores
+  // S0: the state each world stopped with, which its boot restores
+  for (const s of slugs) if (SOULS && !captureSnapshots(s) && !captureSnapshots(s)) throw new Error(`${s}: could not read the snapshot its boot restores (S0)`);
   const s0Tick = Object.fromEntries(slugs.map((s) => [s, Math.max(-1, ...Object.keys(snaps[s] ?? {}).map(Number))]));
   T0 = performance.now(); T0wall = Date.now(); launcher = start(port, lo, hi); await up(base);
   const [control, ...alone] = slugs;
@@ -132,7 +142,7 @@ async function main() {
   const loadTimer = setInterval(() => load.push({ t: Math.round(performance.now() - T0), load1: loadavg()[0] }), 60_000);
   const endAt = T0 + MINUTES * 60_000;
   while (performance.now() < endAt) { await sleep(Math.min(60_000, endAt - performance.now())); const s = slugs.map((x) => `${x}=${samples[x].at(-1)?.tick ?? '-'}`).join(' '); log(`ticks ${s} (load ${loadavg()[0].toFixed(1)})`); }
-  clearInterval(timer); clearInterval(loadTimer); if (snapTimer) clearInterval(snapTimer); take(); attending = false; try { viewer?.close(); } catch { /* gone */ }
+  clearInterval(timer); clearInterval(loadTimer); if (snapTimer) clearInterval(snapTimer); take(); attending = false; const endWall = Date.now(); try { viewer?.close(); } catch { /* gone */ }
   // 3. the return: one visit each; how long it takes, and whether the world clock jumped
   const back = {};
   for (const s of alone) { const t = performance.now(); let status = 0; try { const r = await fetch(`${base}/w/${s}/v1/world/snapshot`, { signal: AbortSignal.timeout(120_000) }); status = r.status; await r.arrayBuffer(); } catch (e) { status = String(e.message); } back[s] = { status, ms: Math.round(performance.now() - t) }; }
@@ -166,20 +176,45 @@ async function main() {
     captureSnapshots(s);
     const src = join(dir, 'data', 'worlds', s, 'sim.db'), copy = join(dir, 'copies', s); mkdirSync(copy, { recursive: true });
     for (const ext of ['', '-wal', '-shm']) if (existsSync(src + ext)) copyFileSync(src + ext, join(copy, 'sim.db' + ext));
-    const rows = Object.values(snaps[s] ?? {}).filter((x) => x.tick >= s0Tick[s]), r = await verifyMatchedTicks({ dbFile: join(copy, 'sim.db'), worldId: rows[0]?.worldId, samples: rows });
-    // the snapshots this world saved in this launcher run (after S0), as minutes from the start
-    const runSamples = r.samples.map((x) => ({ ...x, min: x.at ? +((x.at - T0wall) / 60_000).toFixed(1) : null }));
-    out.worlds[s].matched = { ...r, samples: runSamples, compared: runSamples.length, spanTicks: runSamples.length ? runSamples.at(-1).tick - r.from.tick : 0 };
-    if (r.verdict !== 'pass') out.worlds[s].fails.push(...r.fails.map((f) => `matched: ${f}`));
-    if (runSamples.length < 2) out.worlds[s].fails.push(`matched: only ${runSamples.length} snapshot(s) in the run`);
+    const w = out.worlds[s], rows = Object.values(snaps[s] ?? {}).filter((x) => x.tick >= s0Tick[s]);
+    let r; try { r = await verifyMatchedTicks({ dbFile: join(copy, 'sim.db'), worldId: rows[0]?.worldId, samples: rows }); }
+    catch (e) { r = { verdict: 'fail', fails: [`verifier threw: ${e.message}`], samples: [], inputs: [], from: null }; }   // the time series is still written
+    // the snapshots this world saved in this launcher run after S0, as minutes from the start; `unattended` = saved before
+    // the measurement ended (the stop snapshot comes after the return reads and is compared, but not counted)
+    const runSamples = r.samples.map((x) => ({ ...x, min: x.at ? +((x.at - T0wall) / 60_000).toFixed(1) : null, unattended: !!x.at && x.at <= endWall }));
+    const during = runSamples.filter((x) => x.unattended), minMatched = Number(flag('min-matched') ?? Math.max(2, Math.floor(MINUTES / 5) - 1));
+    const inputs = r.inputs ?? [], measured = inputs.filter((e) => e.at >= T0wall && e.at <= endWall);
+    // the world's own inputs: the presence rule's moves (trigger edge-body) and the world's own rules; anything else
+    // during the measurement came from an agent, a viewer or an operator
+    const external = measured.filter((e) => e.trigger !== 'edge-body' && !/^(world|system)/.test(e.author));
+    const body = measured.filter((e) => e.trigger === 'edge-body'), b0 = body[0], b1 = body.at(-1);
+    const asleep = body.find((e) => e.label === 'Sleeping');
+    w.matched = { verdict: r.verdict, fails: r.fails, from: r.from, compared: runSamples.length, unattendedCompared: during.length, minMatched, spanTicks: during.length && r.from ? during.at(-1).tick - r.from.tick : 0, samples: runSamples, events: r.events,
+      external: external.length,
+      bodyRule: { moves: body.length, labels: Object.fromEntries([...new Set(body.map((e) => e.label))].map((l) => [l, body.filter((e) => e.label === l).length])),
+        // a wall-timed effect: its logged ticks advance 20 × rate per wall second when the clock keeps its rate
+        ticksPerWallS: b0 && b1 && b1.at > b0.at ? +((b1.tick - b0.tick) / ((b1.at - b0.at) / 1000)).toFixed(3) : null,
+        movesPer1000Ticks: b0 && b1 && b1.tick > b0.tick ? +((body.length - 1) / ((b1.tick - b0.tick) / 1000)).toFixed(3) : null,
+        asleep: asleep ? { tick: asleep.tick, min: +((asleep.at - T0wall) / 60_000).toFixed(1), ticksAfterS0: r.from ? asleep.tick - r.from.tick : null } : null } };
+    if (r.verdict !== 'pass') w.fails.push(...r.fails.map((f) => `matched: ${f}`));
+    if (during.length < minMatched) w.fails.push(`matched: ${during.length} unattended snapshot(s), fewer than ${minMatched}`);
+    if (external.length) w.fails.push(`${external.length} input(s) from outside the world during the measurement`);
+    const tps = w.matched.bodyRule.ticksPerWallS;
+    if (tps === null || Math.abs(tps / (TICK_HZ * RATE) - 1) > 0.02) w.fails.push(`body-rule moves ${tps} ticks per wall second, not ${TICK_HZ * RATE} ± 2 %`);
+    const a = out.agentBefore?.[s], z = out.agentAfter?.[s];
+    w.agent = { capsBefore: a?.capsTotal ?? null, capsAfter: z?.capsTotal ?? null, hereTick: z?.hereTick ?? null, liveTick: z?.liveTick ?? null, posture: z?.posture ?? null };
+    if (!(a?.capsTotal > 0) || a.capsTotal !== z?.capsTotal) w.fails.push(`capabilities ${a?.capsTotal} before, ${z?.capsTotal} after`);
+    if (!(Math.abs((z?.hereTick ?? NaN) - (z?.liveTick ?? NaN)) <= 100)) w.fails.push(`the agent was told tick ${z?.hereTick}, the world was at ${z?.liveTick}`);
   }
+  // the unattended arms against the control: the same tick rate of the world's own wall-timed moves
+  if (SOULS) { const c = out.worlds[control]?.matched?.bodyRule?.ticksPerWallS; for (const s of alone) { const x = out.worlds[s].matched?.bodyRule?.ticksPerWallS; out.worlds[s].matched.vsControl = c && x ? +(x / c).toFixed(4) : null; if (!(c && x && Math.abs(x / c - 1) <= 0.02)) out.worlds[s].fails.push(`body-rule tick rate ${x} vs control ${c}`); } }
   out.samples = Object.fromEntries(slugs.map((s) => [s, samples[s].map(({ read, pid, phase, tick, at }) => ({ t: read - Math.round(T0), pid, phase, tick, at }))]));   // raw reads (ms from the start), for re-judging
   const ok = Object.values(out.worlds).every((w) => w.fails.length === 0);
   if (SOULS) out.souls = { wanderS: WANDER_S, agent: 'one CLI create and one act per world before the restart; no listen, no agent request after it' };
   out.verdict = ok ? 'pass' : 'fail';
   const file = flag('out') ?? join(dir, 'result.json'); writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
   log(`${out.verdict}: ${Object.entries(out.worlds).map(([s, w]) => `${s} ${w.role} ratio ${w.ratio} min window ${w.minWindow} gap ${w.maxGapS} s jumps ${w.catchUpJumps}`).join('; ')} -> ${file}`);
-  if (!has('keep')) rmSync(join(dir, 'data'), { recursive: true, force: true });
+  if (!has('keep')) for (const d of ['data', 'copies', 'souls']) rmSync(join(dir, d), { recursive: true, force: true });   // snapshots/ and result.json stay
   process.exitCode = ok ? 0 : 1;
 }
 main().catch(async (e) => { console.error(e); await stop(launcher); process.exitCode = 2; });

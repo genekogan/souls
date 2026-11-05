@@ -1,11 +1,19 @@
 #!/usr/bin/env node
 // CW6 (#740 A2/A3): matched-tick engine-state check for a world that ran with nobody there. The live world saved its
-// state (engine hash and host body: minds with their timed needs, extra, kernel) at each periodic snapshot. The
-// reference is the server's own replay, offline: restore the run's starting snapshot S0 in a copy of the world's
-// database, apply exactly the logged inputs (same seed, same events, same ticks) and step the engine tick by tick with
-// the boot replay's per-tick function (engine.step, the minds' needs, program outcomes). At every live snapshot tick the
-// reference must equal the live world. A world that skipped, jumped or throttled ticks, or that dropped or reordered
-// inputs while unattended, differs. The verifier reads copies only; it never opens a port or touches a running world.
+// state at each periodic snapshot: the engine hash, and the host body with the minds and their timed needs. The
+// reference is the server's own replay, offline. It restores the run's starting snapshot S0 in a copy of the world's
+// database and applies exactly the logged inputs: the same seed, the same events at the same ticks. It steps the engine
+// tick by tick with the boot replay's per-tick function: engine.step, the minds' needs, program outcomes. At every
+// live snapshot tick, the reference must equal the live world.
+//
+// What this proves: the state the world held at each tick is the deterministic simulation of S0 plus its logged inputs,
+// every tick of it. Nothing changed the world outside the log, and the stroll, the body rule and the needs advanced tick
+// by tick. A logged day-clock catch-up (a jump that simulates nothing) is a failure here, although it replays.
+// What it does not prove on its own: the pace. A throttled or frozen world also replays exactly; it just reaches fewer
+// ticks. Whether the clock kept its configured rate comes from unattended.mjs: ticks against monotonic time, gaps and
+// pids, and the ticks per wall second of the world's own wall-timed body-rule moves, per arm against the control.
+// The kernel and `extra` are not compared: live ticks sweep the kernel, but the non-durable boot replay does not.
+// The verifier reads copies only; it never opens a port or touches a running world.
 //
 //   node tools/bench/continuous/matched-tick.mjs --db <copy of sim.db> --world-id <id> --snapshots <dir of <tick>.json>
 //
@@ -28,6 +36,9 @@ async function launcherFactory() {
 /** A copy of the database whose only snapshot is S0 and whose log ends at S0, so a boot restores S0 and replays nothing. */
 function startCopy(dbFile, s0, worldId, Db) {
   const dir = mkdtempSync(join(tmpdir(), 'cw6-matched-'));
+  try { return startIn(dir, dbFile, s0, worldId, Db); } catch (e) { rmSync(dir, { recursive: true, force: true }); throw e; }
+}
+function startIn(dir, dbFile, s0, worldId, Db) {
   for (const ext of ['', '-wal', '-shm']) if (existsSync(dbFile + ext)) copyFileSync(dbFile + ext, join(dir, 'sim.db' + ext));
   const db = new Db(join(dir, 'sim.db')), raw = db.db;
   raw.prepare('DELETE FROM snapshots WHERE world_id = ?').run(worldId);
@@ -59,11 +70,18 @@ export async function verifyMatchedTicks({ dbFile, worldId, samples }) {
   const ordered = [...samples].sort((a, b) => a.tick - b.tick || a.seq - b.seq);
   const [s0, ...rest] = ordered;
   if (!s0 || !rest.length) return { verdict: 'fail', fails: ['fewer than two snapshots'], samples: [] };
-  // the log after S0, from the run's own (copied) database
-  const src = (() => { const d = new Db(dbFile); try { return d.events(worldId, s0.seq); } finally { d.close(); } })();
-  const { dir, db } = startCopy(dbFile, s0, worldId, Db);
-  const out = [], fails = [], byKind = {};
+  const out = [], fails = [], byKind = {}, inputs = [];
+  let src = [], copy = null;
   try {
+    // the log after S0, from the run's own (copied) database
+    { const d = new Db(dbFile); try { src = d.events(worldId, s0.seq); } finally { d.close(); } }
+    for (const e of src) {
+      inputs.push({ seq: e.seq, tick: e.tick, at: e.at, kind: e.kind, author: e.author.replace(/s_[A-Za-z0-9_-]+/, 's_*'), trigger: e.payload?.trigger ?? null, label: e.payload?.label ?? null });
+      // a day-clock catch-up replays exactly, but it is the jump that substitutes for simulation
+      if (e.kind === 'rules' && (e.payload?.dayConfig || /caught up/.test(e.payload?.why ?? ''))) fails.push(`day-clock catch-up logged at tick ${e.tick} (seq ${e.seq})`);
+    }
+    copy = startCopy(dbFile, s0, worldId, Db);
+    const db = copy.db;
     loadGroundRecipes(db, worldId);
     const host = new WorldHost(db, await launcherFactory(), 'sim-genesis-1', 20 * 60 * 5, worldId);
     const boot = host.boot();
@@ -94,8 +112,8 @@ export async function verifyMatchedTicks({ dbFile, worldId, samples }) {
     }
     host.stop?.();
   } catch (e) { fails.push(String(e?.message ?? e)); }
-  finally { try { db.close(); } catch { /* closed */ } rmSync(dir, { recursive: true, force: true }); }
-  return { verdict: fails.length ? 'fail' : 'pass', fails, from: { tick: s0.tick, seq: s0.seq, stateHash: s0.stateHash.slice(0, 16) }, samples: out, events: { total: src.length, byKind } };
+  finally { if (copy) { try { copy.db.close(); } catch { /* closed */ } rmSync(copy.dir, { recursive: true, force: true }); } }
+  return { verdict: fails.length ? 'fail' : 'pass', fails, from: { tick: s0.tick, seq: s0.seq, stateHash: s0.stateHash.slice(0, 16) }, samples: out, events: { total: src.length, byKind }, inputs };
 }
 
 /** Captured snapshot rows from a directory of <tick>.json files. */
