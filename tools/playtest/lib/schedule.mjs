@@ -17,7 +17,7 @@ const ends = (scenario) => {
   const godId = scenario.god ? (scenario.god.id ?? 'god') : null;
   return scenario.director.script.map((e, index) => {
     const budgetSec = budgetMsFor({ scenario, budgetSec: e.budgetSec ?? null, god: e.seat === godId }) / 1000;
-    return { index, seat: e.seat, atSec: e.atSec, budgetSec, endSec: Math.round((e.atSec + budgetSec + QUEUE_SLACK_SEC) * 10) / 10 };
+    return { index, seat: e.seat, atSec: e.atSec, budgetSec, endSec: Number.isFinite(e.atSec) ? Math.round((e.atSec + budgetSec + QUEUE_SLACK_SEC) * 10) / 10 : NaN };
   });
 };
 

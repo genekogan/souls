@@ -117,6 +117,7 @@ test('V3: a scripted request that cannot finish inside the run is named; valid, 
   assert.deepEqual(bad.map((p) => [p.index, p.endSec]), [[1, 301], [2, 445]], 'a missing budget uses the scenario default (180 s)');
   assert.match(bad[0].message, /^script\[1\] \(pip at 196 s, "go to the library"\): budget 90 s \+ 15 s slack ends at 301 s, after the run's 300 s$/);
   assert.match(scheduleProblems(scripted([{ seat: 'pip', text: 'wave', budgetSec: 10 }]))[0].message, /^script\[0\] \(pip, "wave"\): no numeric atSec$/);
+  for (const atSec of [null, '10']) assert.match(scheduleProblems(scripted([{ seat: 'pip', atSec, text: 'wave', budgetSec: 10 }]))[0].message, /no numeric atSec$/, `atSec ${atSec}`);
   const god = scheduleProblems(scripted([{ seat: 'god', atSec: 10, text: 'build a hut' }], { god: { model: 'm' }, durationSec: 600 }));
   assert.equal(god[0].budgetSec, 600, 'a god request gets the god default');
   assert.deepEqual(scheduleProblems({ ...scripted([{ seat: 'pip', atSec: 299, text: 'x' }]), director: { mode: 'persona', script: [{ seat: 'pip', atSec: 299, text: 'x' }] } }), [], 'persona mode is unchanged');
