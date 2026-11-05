@@ -17,3 +17,7 @@ updates:
         update-types: [minor, patch]
       npm-major:
         update-types: [major]
+    ignore:
+      # @types/node tracks the Node 22 runtime major; 26.x types give ~425 type errors (#603).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

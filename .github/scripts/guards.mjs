@@ -61,6 +61,19 @@ const PLACEHOLDER_USERS = /^(you|me|user|username|name|example|runner|someone|\$
 const SKIP_FILES = new Set(['.github/scripts/guards.mjs', '.github/scripts/guards.test.mjs', '.gitleaks.toml']);
 const ALLOWED_EMAIL = /(@(users\.)?noreply\.github\.com|@example\.(com|org|net)|\.(invalid|test|example|localhost)$|^noreply@|^git@github\.com$)/i;
 
+const HOME_PLACEHOLDER = /^(?:\.[^\s/\\]*|<[^>]*>?|\.\.\.|…|\*|\$\{?\w+\}?|(?:example|your|some|my|path|dir|placeholder)(?:[-_.][\w.-]*)?)$/i;
+/** The first segment after each `~/`, `$HOME/`, `${HOME}/` or `%USERPROFILE%\` in a line (empty for a bare prefix). */
+export const homeSegments = line => [...line.matchAll(/(?:^|[^\w$%~])(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%)[/\\]([^\s/\\'"`),;:\]]*)/gi)].map(m => m[1]);
+const SSH_PLACEHOLDER_HOST = /^(?:host|hostname|server|remote|machine|example(?:\.\w+)*|[\w.-]*\.example(?:\.\w+)?|[\w.-]*\.(?:invalid|test))$/i;
+const sshPlaceholder = (user, host) => PLACEHOLDER_USERS.test(user) || SSH_PLACEHOLDER_HOST.test(host);
+/** RFC 1918, loopback, link-local and carrier-grade NAT (overlay VPN) IPv4 addresses. */
+export function privateIPv4(ip) {
+  const o = ip.split('.').map(Number);
+  if (o.some(n => n > 255)) return false;
+  const [a, b] = o;
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+}
+
 // Public resolvers and conventional placeholder addresses that tests use as obviously fake values.
 const WELL_KNOWN_FAKE = new Set(['1.2.3.4', '5.6.7.8', '8.8.8.8', '8.8.4.4', '1.0.0.1', '9.9.9.9']);
 function publicIPv4(ip) {
@@ -79,10 +92,14 @@ function publicIPv4(ip) {
 export const SCRUB_RULES = [
   // Personal home directories (macOS, Windows). Linux service users such as /home/<service> are deployment config.
   ['home path', line => [...line.matchAll(/(?:^|[^\w.])(?:\/Users|[A-Z]:\\Users)[\\/]([^\\/\s'"`)]+)/g)].some(m => !PLACEHOLDER_USERS.test(m[1]))],
-  ['private workspace path', line => /(?:~|\$HOME|\/)Eden\/team\b/.test(line)],
+  // Home-relative paths name a real workspace unless they are a generic dotfile (`~/.cache/…`) or a placeholder.
+  ['private workspace path', line => homeSegments(line).some(seg => seg && !HOME_PLACEHOLDER.test(seg)) || /(?:~|\$HOME|\/)Eden\/team\b/.test(line)],
   ['public IP address', line => [...line.matchAll(/(?<![\w.@-])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])/g)].some(m => publicIPv4(m[1]))],
   ['private host name', line => /\.ts\.net\b|\.(?:sslip|nip)\.io\b|\b[\w-]*macbook[\w-]*\b/i.test(line)],
-  ['ssh target', line => [...line.matchAll(/\b(?:root|ubuntu|admin|deploy)@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)/g)].some(m => !ALLOWED_EMAIL.test(m[0]))],
+  // Service users at any host; any user in an ssh/scp/sftp/mosh command; any user at a private IPv4 address.
+  ['ssh target', line => [...line.matchAll(/\b(?:root|ubuntu|admin|deploy)@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)/g)].some(m => !ALLOWED_EMAIL.test(m[0]))
+    || [...line.matchAll(/\b(?:ssh|scp|sftp|mosh)\b[^\n]*?(?<![\w.%+-])([\w.-]+)@([A-Za-z0-9][\w.-]*[\w])/g)].some(m => !ALLOWED_EMAIL.test(`${m[1]}@${m[2]}`) && !sshPlaceholder(m[1], m[2]))
+    || [...line.matchAll(/(?<![\w.%+-])([\w.-]+)@(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])/g)].some(m => privateIPv4(m[2]))],
   // Not URL userinfo (`user:pw@host`), systemd instance units (`name@instance.service`) or matrix products (`a@np.dot(`).
   ['email address', line => [...line.matchAll(/(?<![\w.%+:\/-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]{2,}(?:\.[A-Za-z0-9-]+)*\.(?!(?:service|socket|timer|target|mount|path)\b)[A-Za-z]{2,}\b(?![(\[.])/g)].some(m => !ALLOWED_EMAIL.test(m[0]))],
 ];
