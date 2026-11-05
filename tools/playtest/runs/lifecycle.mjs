@@ -3,6 +3,7 @@
 // The lifecycle owns cleanup and the receipt; the scenario runner keeps its own steps and semantics.
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createLedger } from './ledger.mjs';
@@ -20,10 +21,19 @@ const short = (e) => String(e?.message ?? e).split('\n')[0].slice(0, 300);
 const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
 const inside = (root, p) => { const r = relative(resolve(root), resolve(p)); return r && !r.startsWith('..') && !r.startsWith(sep) && r !== '..'; };
 
-function sourceIdentity(serverRoot) {
-  const git = (args) => { try { return execFileSync('git', args, { cwd: serverRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000 }).trim(); } catch { return null; } };
+// fileURLToPath, not URL.pathname: a checkout under a path with a space (or %, #, non-ASCII) must still resolve.
+export const TOOLS_ROOT = fileURLToPath(new URL('.', import.meta.url));
+const checkoutIdentity = (cwd) => {
+  const git = (args) => { try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000 }).trim(); } catch { return null; } };
   const status = git(['status', '--porcelain', '--untracked-files=no']);
-  return { commit: git(['rev-parse', 'HEAD']), dirtyTrackedFiles: status == null ? null : status.split('\n').filter(Boolean).length, node: process.version };
+  return { commit: git(['rev-parse', 'HEAD']), dirtyTrackedFiles: status == null ? null : status.split('\n').filter(Boolean).length };
+};
+
+/** The server root's checkout (top-level commit/dirtyTrackedFiles, kept for older receipts) and, labelled, both the
+ * server root's and the tools checkout's (the runner, adapters and director that ran; #785). */
+export function sourceIdentity(serverRoot, toolsRoot = TOOLS_ROOT) {
+  const server = checkoutIdentity(serverRoot), tools = checkoutIdentity(toolsRoot);
+  return { ...server, node: process.version, serverRoot: server, tools };
 }
 
 function bytesUnder(dir) {

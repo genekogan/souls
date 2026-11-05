@@ -58,7 +58,9 @@ applies the same preflight as `start`; `start` runs it once and hands the result
 `.local/soul-runs/<stamp>-<name>/` (or `--out`; `SIM_SCRATCH` moves `.local`):
 
 - `run-receipt.json`: the terminal receipt. `status` is `running` until the end, so a crash never reads as success.
-  It records the effective spec and its hash, the scenario path and hash, source commit and dirty tracked-file count,
+  It records the effective spec and its hash, the scenario path and hash, the source (`source.serverRoot` and
+  `source.tools`, each a commit and uncommitted tracked-file count; the tools checkout is the one whose runner,
+  adapters and director ran, often not the server root; top-level `source.commit` stays the server root's),
   Node version, controllers (adapter, model, effort), preflight checks, observer check, every resource with its owner
   and release state, retention, cost (`wallMs`, `executeMs`, `lifecycleOverheadMs`, runner CPU and max RSS, run
   directory bytes) and the scenario runner's evidence (receipts, report, build, CLI and skill versions, tick validity).
@@ -179,7 +181,8 @@ checkout's commit and count (recorded from #801 on; unrecorded on older receipts
 two of them) and the served CLI and skill versions. So a baseline and a candidate on different servers or CLI versions
 are separate arms. Each arm lists the condition identity it was served by, and each pair of arms names every
 differing field with both values. Node version, build, machine load and observer state are listed per attempt and
-flagged where they differ. Arms are never pooled together. `--pool` is the explicit override: it pools attempts that
+flagged where they differ; each arm's `Source:` line lists every attempt's server root and tools commit with its
+uncommitted tracked-file count. Arms are never pooled together. `--pool` is the explicit override: it pools attempts that
 differ only in condition identity, and each such arm names the fields it pooled across with every run's value; what
 ran and the label still separate arms. A plain playtest folder has no hashed world source and no receipt, so it forms
 its own arm.

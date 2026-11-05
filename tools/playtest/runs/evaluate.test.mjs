@@ -63,7 +63,7 @@ function makeRun(opts = {}) {
   if (!opts.plain) w(join(dir, 'run-receipt.json'), {
     soulRun: 1, runId: opts.name ?? 'trio-1', status: opts.status ?? 'completed',
     spec: { sha256: 'spec', effective: { arm: opts.arm ?? null, world: { source: { kind: 'genesis', path: 'worlds/templates/hello-hamlet.json', sha256: 'a'.repeat(64) } }, setup: null, ...(opts.evaluation ? { evaluation: opts.evaluation } : {}) } },
-    source: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0, node: 'v26', ...(opts.tools ? { serverRoot: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0 }, tools: opts.tools } : {}) },
+    source: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0, node: 'v26', ...((opts.tools ?? opts.toolsCommit) ? { serverRoot: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0 }, tools: opts.tools ?? { commit: opts.toolsCommit, dirtyTrackedFiles: opts.toolsDirty ?? 0 } } : {}) },
     preflight: { scenario: { checks: { laptopLoad: [opts.load ?? 2], freeGb: 50, machineOk: true } } },
     observer: opts.observerOk ? { ok: true } : { ok: false, stage: 'import', owner: '#633' },
     evidence: { cli: opts.cli ?? '2.7.1', skill: opts.skill ?? '2.7.1', build: 'dev', ...(opts.noTick ? {} : { tickValidity: { valid: true, ticks: 1200, seconds: 60, clockRate: 1 } }) },
@@ -289,4 +289,23 @@ test('directions: the direction journal is counted by command and outcome; each 
   writeFileSync(join(pt, 'director', 'commands.jsonl'), readFileSync(join(pt, 'director', 'commands.jsonl'), 'utf8') + '{"t":"2026-01-01T00:01:40Z","cmd":"redir');
   const torn = directionsMeasure(sr);
   assert.deepEqual({ value: torn.value, skipped: torn.skipped, keys: Object.keys(torn.byCommand) }, { value: 5, skipped: 1, keys: ['broadcast', 'error', 'redirect', 'end'] });
+});
+
+test('compare lists the tools checkout next to the server root; a tools-only difference is its own arm unless --pool (#785, #839)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sr-tools-'));
+  const a = makeRun({ root, name: 'trio-1', port: 4321, toolsCommit: 'aaaa1111bbbb' });
+  const b = makeRun({ root, name: 'trio-2', port: 4322, toolsCommit: 'cccc2222dddd', toolsDirty: 3 });
+  const old = makeRun({ root, name: 'trio-old', port: 4323, noTools: true });
+  assert.equal((await compareRunSet([a, b, old], {})).arms.length, 3, 'the tools checkout is condition identity (#839): separate arms');
+  const ix = await compareRunSet([a, b, old], { pool: true });
+  assert.equal(ix.arms.length, 1, '--pool pools across the tools checkout and lists it per attempt');
+  const arm = ix.arms[0];
+  assert.deepEqual([arm.conditions['trio-1'].commit, arm.conditions['trio-1'].toolsCommit], ['c0ffee', 'aaaa1111bbbb']);
+  assert.equal(arm.conditions['trio-old'].toolsCommit, null, 'an older receipt without tools reads as unrecorded');
+  assert.ok(arm.conditionsDiffer.includes('toolsCommit') && arm.conditionsDiffer.includes('toolsDirtyTrackedFiles'));
+  assert.ok(!arm.conditionsDiffer.includes('commit'), 'the server root is the same');
+  assert.match(arm.caveats.join(' '), /source not exactly identified for trio-2 \(tools\)/);
+  const md = renderIndex(ix);
+  assert.match(md, /Conditions differ: toolsCommit, toolsDirtyTrackedFiles/);
+  assert.match(md, /trio-1 \(server root c0ffee, tools aaaa1111\); trio-2 \(server root c0ffee, tools cccc2222\+3\); trio-old \(server root c0ffee, tools unrecorded\)/);
 });
