@@ -40,13 +40,14 @@ export type PickContext = {
 };
 
 /** Activities whose whole-body procedural frame (activity-poses.ts) the library clip replaces. Others keep theirs. */
-export const CLIP_BODY = new Set(['lie', 'nap', 'listen', 'dance', 'sit-ground', 'cheer', 'nod', 'shake-head', 'pick-up', 'put-down', 'eat', 'drink']);
+export const CLIP_BODY = new Set(['rest','lie', 'nap', 'listen', 'dance', 'sit-ground', 'cheer', 'nod', 'shake-head', 'pick-up', 'put-down', 'eat', 'drink']);
 
 export function libraryPick(c: PickContext): LibraryPick | null {
   if (c.sleep !== undefined) return { clip: 'LayToIdle', mode: 'phase', body: 'lie' };
   if (c.water === 'swim') return { clip: 'Swim_Fwd_Loop', mode: 'loop', body: 'swim', rate: 0.85 };
   if (c.water === 'tread') return { clip: 'Swim_Idle_Loop', mode: 'loop', body: 'tread' };
   const a = c.activity;
+  if(a==='rest')return {clip:'Standby_Loop',mode:'loop',body:'stand'};
   if (a === 'lie' || a === 'nap') return { clip: 'LayToIdle', mode: 'hold', body: 'lie' };
   if (c.ground) {
     if (a === 'sit-ground' || a === 'idle' || a === 'sit') return { clip: 'GroundSit_Idle_Loop', mode: 'loop', body: 'ground-seat' };
