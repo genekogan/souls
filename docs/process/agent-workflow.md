@@ -84,7 +84,19 @@ The strict steps:
    requires no approving review, so that T0–T2 merge on green; without the gate in `proof-ok`, `gh pr merge --auto`
    would land a T3/T4 PR around the train. The rule is `tools/proof/gate.mjs`; the train reads the same rule only to
    leave unapproved PRs queued. The check trusts GitHub identity, so agents never approve a PR or add
-   `approved:maintainer` or `proof:waived`, and never act with the maintainer's account to do so.
+   `approved:maintainer` or `proof:waived`, and never act with the maintainer's account to do so, with one exception:
+
+   **Delegated T3 sign-off (maintainer decision, 2026-11-05).** The
+   [development coordinator](development-coordinator.md), and no other agent, may add `approved:maintainer` to a T3
+   PR that is flag-gated, test-only or otherwise low-risk, when all of these hold at the PR's current head:
+   - an independent approval at that head;
+   - a clean, predeclared 2×2 playtest;
+   - clips of at most 90 s at real speed that start at arrival;
+   - green required checks.
+
+   When it signs, the coordinator records the head SHA and the bar in a PR comment. These stay with the maintainer:
+   T4, anything touching production, engine-contract changes without a flag, and policy PRs, this rule included.
+   `proof:waived` and approving reviews are unchanged.
 4. **On a conflict**, a Claude step tries to resolve it on the branch and re-runs the checks. If it can't produce a
    clean, green rebase, it labels the PR `needs:rebase` and comments with what conflicted; the author rebases by hand
    and relabels `merge:ready`.
