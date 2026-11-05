@@ -4,7 +4,7 @@ import {actuatorPoint,actuatorHand,tugPoint,opPoint,slidePoint,strokePoint,strok
 import { createHash } from 'node:crypto';
 import { isDry, stageWord } from './garden.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
-import { opSchema, contactStateKey, DRAWER_TRAVEL, containerInside, containerOpen, pinSlot, signupSlot, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
+import { opSchema, contactStateKey, DRAWER_TRAVEL, containerInside, containerOpen, containerHidden, pinSlot, signupSlot, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
 import { posterName, posterFreeSlot, posterTarget, posterAge, posterStale, wantedColumn, wantedFreeRow, wantedTarget } from './poster-boards.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { actionPatch, actionsOf, actuatedState, keepsLeftBy, boardTextProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
@@ -28,6 +28,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
  /** entry 32: a knock on the leaf landed (the first rap): tell those who hear it */ knock?:(soul:EdgeSoul,id:string)=>void;
  /** Entry 43: compact facts of things that are not contact actuators (a kettle, a cup of tea), or null. */ moreFacts?:(id:string)=>Record<string,unknown>|null;
  /** #435: what a Soul nearby is told about a thing kept in a container with a `leftBy` record ("left by Ana"; "Ana's, found by Ben"), or null. */ keptNote?:(box:string,item:string,soul?:EdgeSoul)=>string|null;
+ /** #435 (W068): what a finished search of a hiding place came to. */ searchOutcome?:(soul:EdgeSoul,spot:string,beaten?:boolean)=>string|null;
  record:(soul:EdgeSoul,id:string,action:string,params?:Record<string,unknown>)=>void;commit:(ops:Op[],note:string,done:()=>void)=>{accepted:boolean}}){
  const binding=(id:string)=>{const m=d.model(),e=m.entities.get(id);return e?createHash('sha256').update(JSON.stringify([e,m.worldPose(e),m.resolvedDef(e.def)?.hash])).digest('hex'):null;};
  return {
@@ -189,10 +190,11 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    // entry 42: what is inside an open container (names only, at most its few places); nothing while it is shut
    // #435: a doorless container (a swap shelf) is always open, and one that keeps a `leftBy` record names who left each
    // thing (a lost-and-found: whose it is and who found it)
-   const ins=containerOpen(def,state)?containerInside(def):null,noted=keepsLeftBy(def);
+   const ins=containerOpen(def,state)&&!containerHidden(def)?containerInside(def):null,noted=keepsLeftBy(def); // #435: a hiding place says nothing of what it holds
    if(ins){const slots=new Set(ins.slots.map(s=>s.id)),holds:string[]=[];for(const c of m.children.get(target)??[]){const x=m.entities.get(c);if(!x||!slots.has(x.in.slot??''))continue;const n=x.name??(m.resolvedDef(x.def)?.name.replace(/^core-/,'')??'something'),note=noted?d.keptNote?.(target,c,soul):null;holds.push(note?`${n} (${note})`:n);}if(holds.length)facts.holds=holds.sort();}
    return facts;
   },
+  searched:(soul:EdgeSoul,spot:string,beaten?:boolean)=>d.searchOutcome?.(soul,spot,beaten)??null,
   /** Entry 33: a neon sign's words for a Soul near it (the same nearby rule as `facts`): its owner's text, at most 32
    *  characters on two lines, control characters removed, with the owner ref that set it. Untrusted text. */
   words(target:string){

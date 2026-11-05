@@ -40,10 +40,15 @@ export function containerOpen(def:{state?:Record<string,unknown>},state:{open?:u
 /** #435: whether a thing in this slot is kept behind a door (a drawer, a locker) that can hide it and moves it with the
  *  lid; a doorless container's contents (a swap shelf's) are ordinary things to the viewer. */
 export function keptBehindDoor(def:Parameters<typeof containerInside>[0]&{state?:Record<string,unknown>},slot:string|undefined):boolean{
-  return !!def&&!containerOpen(def,{})&&!!containerInside(def)?.slots.some(s=>s.id===slot);
+  return !!def&&(!containerOpen(def,{})||containerHidden(def))&&!!containerInside(def)?.slots.some(s=>s.id===slot);
 }
 /** #435 (W072): whether a container gives a thing that has an owner of its own back only to that owner (`claim: "owner"`,
  *  a lost-and-found); things nobody owns are anyone's to take, as on a swap shelf. */
 export function containerClaims(def:{components?:{container?:unknown}}|undefined):boolean{
   return (def?.components?.container as {claim?:unknown}|undefined)?.claim==='owner';
+}
+/** #435 (W068): whether what a container keeps is out of everyone's sight (`hidden: true`, a hiding place): never named,
+ *  offered or drawn, like a thing behind a shut door but with nothing to open; it is found only by searching the place. */
+export function containerHidden(def:{components?:{container?:unknown}}|undefined):boolean{
+  return (def?.components?.container as {hidden?:unknown}|undefined)?.hidden===true;
 }

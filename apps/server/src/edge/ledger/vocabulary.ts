@@ -302,7 +302,7 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
 // bowl's take from inside it. A shut container's contents are never offered: its words name its open offer instead.
 // #435: an open shelf a Soul keeps things on (a swap shelf) is a container too: "leave the bowl on the swap shelf" and
 // "take the bowl off the swap shelf". "on" is a put-in only when no surface by those words is on offer (a table stays put-on).
-const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
+const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip|hide|stash)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
 const UNSTOW = /^(?:please\s+)?(?:take|get|fetch|remove|grab|lift|pull|pick\s+up|pick)\s+(.+?)\s+(?:out\s+of|out\s+from|from\s+inside|from\s+in|from|off\s+of|off)\s+(.+?)[.!]?$/;
 function storeWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
   const put = STOW.exec(text), take = put ? null : UNSTOW.exec(text), m = put ?? take; if (!m) return null;
@@ -317,10 +317,27 @@ function storeWords(input: string, text: string, ctx: VocabContext): VocabResult
   const named = pool.filter(c => boxHit(c) && (put || hits(c, thing)) && !(on && door(c))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
   if (named[0] && (put || / out of /.test(named[0].label))) return {kind: 'alias', cap: named[0], note: `${input} is ${named[0].id} (${named[0].label}).`};
   if (put) return null;
+  // #435 (W068): "take the book from the stump": what is in a hiding place is not on offer by name, so this is its search
+  const place = box.length ? searchCaps(ctx, box)[0] : undefined;
+  if (place) return {kind: 'alias', cap: place, note: `${input} is ${place.id} (${place.label}).`};
   // nothing offered to take from there: a shut container named by these words says so (what is inside stays unseen)
   const shut = ctx.caps.filter(c => c.verb === 'object' && c.action === 'open' && c.available && /^e_/.test(c.object ?? '') && hits(c, box));
   if (shut[0]) return {kind: 'unknown', code: 'container.closed', reason: `${shut[0].label.replace(/^Open /, '').replace(/^the /i, 'The ')} is shut, so nothing inside it can be seen or taken; open it first (${shut[0].id}).`, didYouMean: [{id: shut[0].id, label: shut[0].label}]};
   return null;
+}
+// #435 (W068): "search the stump", "look in the niche", "search around here" are a hiding place's search; with no place named,
+// the nearest one. Words that name nothing on offer here fall through to the rest of the vocabulary.
+const SEARCH = /^(?:please\s+)?(search(?:\s+(?:around|about|through|in|inside))?|rummage(?:\s+(?:around|about|through|in|inside))?|look\s+(?:in|inside|into)|check(?:\s+(?:in|inside))?|feel\s+(?:in|inside))(?:\s+(.*?))?[.!?]*$/;
+function searchCaps(ctx: VocabContext, words: string[]): EdgeCapability[] {
+  return ctx.caps.filter(c => c.verb === 'search' && words.every(w => {const all = tokens([c.id, c.label, ...ctx.target(c).names].join(' ')); return tokenHit(w, all) || (SYNONYMS[w] ?? []).some(s => tokenHit(s, all));}))
+    .sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
+}
+function searchWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
+  const m = SEARCH.exec(text); if (!m) return null;
+  const words = tokens(m[2] ?? '').filter(w => !['the', 'a', 'an', 'my', 'your', 'this', 'that', 'it', 'here', 'nearby', 'around', 'about', 'area', 'place', 'spot'].includes(w));
+  if (!words.length && !/^(?:search|rummage)/.test(m[1])) return null;
+  const hit = searchCaps(ctx, words)[0];
+  return hit ? {kind: 'alias', cap: hit, note: `${input} is ${hit.id} (${hit.label}).`} : null;
 }
 function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const exact = ctx.caps.find(c => c.id === input); if (exact) return {kind: 'exact', cap: exact};
@@ -341,6 +358,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   }
   const text = input.toLowerCase(), colon = text.indexOf(':'), head = colon >= 0 ? text.slice(0, colon) : '';
   const stow = colon < 0 ? storeWords(input, text, ctx) : null; if (stow) return stow;
+  const searching = colon < 0 ? searchWords(input, text, ctx) : null; if (searching) return searching;
   // RESOLVE (SOULSIM-E "find a boat": no "find" capability): find / look for / search for X is a walk to the nearest X you
   // can reach, unless the words name an activity offered here ("find somewhere quiet to read", "find a seat" keep theirs)
   const find = colon < 0 ? FIND.exec(text.trim()) : null;
@@ -350,6 +368,9 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
       const r = resolveCapability(`walk to ${x}`, ctx);
       if (r.kind === 'exact') return {kind: 'alias', cap: r.cap, note: `${input} is ${r.cap.id} (${r.cap.label}).`};
       if (r.kind === 'alias') return {...r, note: `${input}: ${r.note}`};
+      // #435 (W068): "search for the book" with a hiding place nearby and no book to walk to: search it
+      const place = /^(?:please\s+)?(?:search|hunt) for\b/.test(text.trim()) ? searchCaps(ctx, [])[0] : undefined;
+      if (place) return {kind: 'alias', cap: place, note: `${input} is ${place.id} (${place.label}).`};
       return r.code ? r : {...r, reason: `Nothing called "${x.replace(/^(?:a|an|the|some)\s+/, '')}" is anywhere you can walk to from here; nothing else was chosen in its place.`};
     }
   }

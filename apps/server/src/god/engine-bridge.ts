@@ -11,7 +11,7 @@ import { menuWorldOf, type MenuWorld } from '../split/menu-world.ts';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
 import { deckRaised, railGaps, rasterOf } from '@sim/generators';
-import { applyBatch, containerClaims, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
+import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
 import { assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
 import { createHash } from 'node:crypto';
 import type { WorldHost } from '../world.ts';
@@ -299,7 +299,7 @@ export class EngineBridge {
     if(this.edge)this.edge.contactActuator=createContactActuatorService({model:()=>this.god.model,levelAt:(x,z,y)=>this.levelAt(x,z,y),
       clearance:(x,z,level)=>(this.host.engine as unknown as {clearanceAtV1?:(x:number,z:number,level?:number)=>number}).clearanceAtV1?.(x,z,level)??Infinity,
       body:id=>this.host.engine.world.entities[id] as never,access:(id,soul)=>this.layers.refusal(id,soul),owner,knock:(soul,id)=>this.knockHeard(soul,id),
-      moreFacts:id=>this.tea?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),
+      moreFacts:id=>this.tea?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,beaten)=>this.searchOutcome(soul,spot,beaten),
       record:(soul,id,action,params={})=>{const r=this.edge!.comms?.objects.act?.(id,soul,{action,params}) as {accepted?:boolean}|undefined;if(!r?.accepted)throw Error('switch.object-record-refused');},
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
@@ -1844,6 +1844,8 @@ export class EngineBridge {
       // floors (2026-10-26): a seat the body cannot use names the nearest one it can (or the ground)
       const unusable: number[] = [], usable: { id: string; label: string; d: number }[] = [];
       for (const x of near) {
+        // #435 (W068): a thing in a hiding place has no offers of its own, of any kind; only the place's search finds it
+        if (x.support?.kind === 'resting-on' && this.keptIn(x)?.hidden) continue;
         const asset = (this.physics?.assets[x.def] ?? {}) as { slots?: { kind: string }[]; surfaceSlots?: { id: string; inside?: unknown }[]; category?: string };
         const d = Math.round(Math.hypot(x.pose.p[0] - here[0], x.pose.p[2] - here[1]));
         if (asset.slots?.some((s) => s.kind === 'seat')) {
@@ -1939,6 +1941,18 @@ export class EngineBridge {
           plans.set(id, { label, steps: [...stand, ...(precise?[{ verb: 'mars:let_go_v1', params: {} }]:kept?[]:approach(x)), { verb: 'mars:take_item', params: { item: x.id, hand: 'right' } }] });
         }
         const inner = (asset.surfaceSlots as { id: string; inside?: { fit: number[] } }[] | undefined)?.filter((sl) => sl.inside) ?? [];
+        // #435 (W068): search a hiding place. The offer reads the same whether or not anything is there: the hand reaches in,
+        // and takes what it finds; an empty place gets the same walk and a reach, and the hand comes away with nothing
+        if (inner.length && d <= STORE_NEAR) {
+          const box = this.storage(x.id);
+          if (box?.hidden) {
+            const block = this.storageRefusal(box, soul) ?? (held || me.human.grip ? { code: 'carry.hands-full', reason: `Put down what you are holding before searching ${box.label}.` } : null);
+            const id = `search:${x.id}`, label = `Search ${box.label} (${d} m)`;
+            caps.push({ id, verb: 'search', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}) });
+            const found = Object.values(ents).find((o: any) => o.support?.kind === 'resting-on' && o.support.on === x.id && inner.some((sl) => sl.id === o.support.slot)) as any;
+            if (!block) plans.set(id, { label, steps: found ? [...stand, { verb: 'mars:let_go_v1', params: {} }, { verb: 'mars:take_item', params: { item: found.id, hand: 'right' } }] : [...stand, ...this.reachInto(x, box, levelOf(x), soul.entityId)] });
+          }
+        }
         if (held && inner.length && d <= STORE_NEAR) {
           const box = this.storage(x.id);
           if (box) {
@@ -1987,7 +2001,21 @@ export class EngineBridge {
     const e = this.model.entities.get(id), def = e && this.model.resolvedDef(e.def), ins = containerInside(def);
     if (!e || !def || !ins) return null;
     const n = this.model.pathOf(id), word = ins.word;
-    return { id, ins, open: containerOpen(def, actuatedState(e, def)), label: n.toLowerCase().split(/[^a-z0-9]+/).includes(word) ? n : `${n} (${word})`, word, name: n };
+    return { id, ins, hidden: containerHidden(def), open: containerOpen(def, actuatedState(e, def)), label: n.toLowerCase().split(/[^a-z0-9]+/).includes(word) ? n : `${n} (${word})`, word, name: n };
+  }
+  /** #435 (W068): an empty search's steps: to where a body stands at this place (the def's `stand`), and a hand over its lip. */
+  private reachInto(x: { id: string; pose: { p: number[]; yaw?: number } }, box: NonNullable<ReturnType<EngineBridge['storage']>>, level: number, body: string) {
+    const yw = -(x.pose.yaw ?? 0), at = (l: number, f: number): [number, number] => [x.pose.p[0] + l * Math.cos(yw) + f * Math.sin(yw), x.pose.p[2] - l * Math.sin(yw) + f * Math.cos(yw)];
+    const st = this.mw.standableNearV1!(at(box.ins.stand[0], box.ins.stand[1]), level, body, 0.4, 16), s = box.ins.slots[0].p, [hx, hz] = at(s[0], s[2]);
+    return [...(st ? [{ verb: 'mars:walk_to', params: { x: st[0], z: st[1], level } }] : []), { verb: 'mars:let_go_v1', params: {} },
+      { verb: 'mars:hand_actuator_v1', params: { target: x.id, at: [hx, x.pose.p[1] + Math.max(s[1] + 0.1, box.ins.lip + 0.02), hz].map(r3), hold: 1 } }];
+  }
+  /** #435 (W068): what a finished search of this place came to, told to the searcher (the receipt's outcome). */
+  searchOutcome(soul: { entityId: string }, spot: string, beaten = false): string | null {
+    const box = this.storage(spot); if (!box) return null;
+    if (beaten) return `Someone else got to ${box.label} first; you came away with nothing.`;
+    const got = Object.values(this.engine.world.entities).find((o: any) => o.tags?.includes('entity-world') && o.support?.kind === 'in-hand' && o.support.by === soul.entityId) as { id: string } | undefined, e = got && this.model.entities.get(got.id);
+    return e ? `You found ${e.name ?? this.model.resolvedDef(e.def)?.name.replace(/^core-/, '') ?? 'something'} in ${box.label}.` : `You searched ${box.label} and found nothing there.`;
   }
   /** #435: what a Soul near a container that keeps a `leftBy` record is told about a thing in it: "left by Ana" (a swap
    *  shelf, W071); in one that gives things back to their owners (`claim: "owner"`, a lost-and-found, W072), whose it is and
