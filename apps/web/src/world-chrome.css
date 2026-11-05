@@ -286,4 +286,5 @@ canvas[data-pointer-focus]:focus{outline:none}
 .soul-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
 .soul-chip-status{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-size:12px}
 .soul-chip-action{flex:none;min-height:40px;padding:0 16px;border-radius:999px;font:600 13px/1 system-ui,sans-serif}
+@media (min-width:701px){.soul-chip{bottom:calc(72px + var(--sa-b))}}  /* wide touch screens: clear of the bottom follow hint */
 @media (prefers-reduced-motion:reduce){.soul-chip{animation:none}}

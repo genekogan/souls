@@ -191,9 +191,9 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   const newSoulAvailable=(!signinEnabled||auth.ready)&&(signinEnabled||cfg.accountAuthRequired!==true);
   const mine = new Set(currentMe?.souls ?? []);
   // #892: a touch that followed a Soul (a tap, a swipe, the Broadcast chip) collapses its card to the bottom chip.
-  const [chip,setChip]=useState<string|null>(null),[chipNote,setChipNote]=useState('');
+  const [chip,setChip]=useState<string|null>(null),[chipNote,setChipNote]=useState<{text:string;at:number}|null>(null);
   const [coarse]=useState(()=>{try{return matchMedia('(pointer: coarse)').matches;}catch{return false;}});
-  useEffect(()=>{if(!chipNote)return;const t=setTimeout(()=>setChipNote(''),2500);return()=>clearTimeout(t);},[chipNote]);
+  useEffect(()=>{if(!chipNote)return;const t=setTimeout(()=>setChipNote(null),2500);return()=>clearTimeout(t);},[chipNote]);
   const inspect = (id: string | null, how?: 'chip') => { setSelected(id); if(how==='chip'&&id){setChip(id);setPanelOpen(false);return;} setChip(null); if (id) revealPanel(); };
   const accountSouls=(entry:ReactNode)=><MySouls key={JSON.stringify([worldKey,currentMe?.userId])} recencyKey={JSON.stringify(['sim.soul-recency',worldKey,currentMe?.userId??'public'])} selectedId={selected} newSoul={entry} api={api} bodies={soulBodies} ids={ownedIds} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} select={inspect} follow={requestFollowSoul}/>;
   const edenExpansion=edenExperienceEnabled(location.hostname,worldPath,cfg.worldId,sim.conn.welcome?.worldId,qualifiedEdenWorlds);
@@ -210,7 +210,7 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   return (
     <div ref={frame} className={`human-world ${advanced ? 'has-advanced' : ''}`}>
       {!launcherWorld&&<OldWorldApprovals linkId={approvalId} auth={auth} accountAuthRequired={cfg.accountAuthRequired===true} onLinkDone={()=>{setApprovalId(null);history.replaceState(null,'',location.pathname+location.search+'#watch');}}/>}
-      <div className="world-scene"><LiveWorld sim={sim} selected={selected} onSelect={inspect} onChipNote={setChipNote} embedded bootWorldId={launcherWorld?cfg.worldId:undefined} {...{edenExpansion,edenExpected,localClassroomPresentation,publishSpeechAnchors:!advanced,humanPresets:humanPresetsEnabled&&edenExpansion}} hideControls={!advanced} hideSoulInfo={!advanced} viewportInsets={viewportInsets} onViewerHandle={receiveHandle} onViewerState={receiveState} onInitialProgress={advanced ? undefined : setInitialProgress} /></div>
+      <div className="world-scene"><LiveWorld sim={sim} selected={selected} onSelect={inspect} onChipNote={text=>setChipNote({text,at:Date.now()})} embedded bootWorldId={launcherWorld?cfg.worldId:undefined} {...{edenExpansion,edenExpected,localClassroomPresentation,publishSpeechAnchors:!advanced,humanPresets:humanPresetsEnabled&&edenExpansion}} hideControls={!advanced} hideSoulInfo={!advanced} viewportInsets={viewportInsets} onViewerHandle={receiveHandle} onViewerState={receiveState} onInitialProgress={advanced ? undefined : setInitialProgress} /></div>
       <VisitorWelcome key={privatePanelKey} api={api} siteApi={siteApi} worldPath={worldPath} ownerId={currentMe?.userId??null} worldId={cfg.worldId} worldName={worldName} build={cfg.build} handle={viewerHandle} state={viewerState}/>
       <WorldSpeechOverlay root={frame} sim={sim} state={viewerState} active={!advanced} handle={viewerHandle}/>
       {!advanced && <ViewerFrame handle={viewerHandle} state={viewerState} dt={sim.conn.welcome?.dt ?? 0.05} navigationOpen={navigationOpen} onNavigationChange={setNavigationOpen} onNavigationOpen={openNavigation} worldTime={worldTimeText(worldClockAt((sim as Sim&{takes?:{chunks?:unknown[]}|null}).takes?.chunks,viewerState?.shownTick))} connected={!connectionLost(sim.conn)} connecting={!sim.conn.welcome} worldName={worldName} followName={viewerState?.cameraMode === 'follow' ? r.souls.get(viewerState.selection.soulId ?? '')?.name ?? null : null} slots={{ status: statusSlot, camera: cameraSlot }} initial={initialProgress} />}
@@ -230,8 +230,8 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
         </div>
       </header>
       {!advanced&&!panelOpen&&(()=>{
-        const following=chip&&selected===chip&&(viewerState?.cameraMode==='follow'&&viewerState.selection.soulId===chip||viewerState?.flyingTo===chip)?r.souls.get(chip):undefined;
-        if(following)return <SoulChip kind="follow" name={following.name} status={doingText(following.doing,(r.entities[following.entityId] as {activity?:string}|undefined)?.activity,following.id)} note={chipNote} openCard={()=>{setChip(null);revealPanel();}}/>;
+        const following=chip&&selected===chip&&(viewerState?.cameraMode==='follow'||viewerState?.flyingTo===chip)?r.souls.get(chip):undefined;
+        if(following)return <SoulChip kind="follow" name={following.name} status={doingText(following.doing,(r.entities[following.entityId] as {activity?:string}|undefined)?.activity,following.id)} note={chipNote?.text} openCard={()=>{setChip(null);revealPanel();}}/>;
         const showing=coarse&&viewerState?.cameraMode==='broadcast'&&viewerState.shownTick!=null&&viewerState.broadcastSoulId?r.souls.get(viewerState.broadcastSoulId):undefined;
         return showing?<SoulChip kind="broadcast" name={showing.name} follow={()=>{viewerHandle?.flyToSoul?.(showing.id,{chip:true});}}/>:null;
       })()}

@@ -366,12 +366,13 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
       const target=controls.target.clone();controls.dispose();controls=newControls(target);
     },owned=>{if(latestViewerState.current)emitState({...latestViewerState.current,inputOwned:owned});});
     // B3: a flight to a Soul's Follow shot (flyToSoul); any pointer or key input stops it where it is (manual camera).
-    let soulFlight:SoulFlight|null=null,soulFlightClock=0,soulFlightChip=false;const stopSoulFlight=()=>{soulFlight=null;};
+    let soulFlight:SoulFlight|null=null,soulFlightClock=0,soulFlightChip=false;const stopSoulFlight=(e:Event)=>{if(soulFlight&&soulFlightChip&&(e as PointerEvent).pointerType==='touch')return;soulFlight=null;};  // #892: a touch's glide is already Follow on the way (a flick, a ground tap or the chip decide what it does)
+    const chipFlight=()=>!!soulFlight&&soulFlightChip;
     for(const type of ['pointerdown','keydown','wheel'] as const)window.addEventListener(type,stopSoulFlight,{capture:true,passive:true});
     const rts=new WorldRtsCamera(renderer.domElement,camera,{controls:()=>controls,mode:()=>context.current.cameraMode,takeOver:()=>{context.current.manualNavigation='orbit';context.current.cameraMode='manual';context.current.follow=false;if(!navigation?.sync(true))navigation?.release(false);context.current.setManualNavigation('orbit');context.current.setCameraMode('manual');},scene:()=>scene,pickRoots:()=>[floaters.root,kin.view.root,standIns,...(people?.pickingRoots()??[]),...visualObstructionRoots()],focusAt:(x,y)=>{const target=hover.pick(x,y);if(target){inspectHover(target);return {center:target.point,radius:target.radius};}return null;},enabled:()=>!(context.current.cameraMode==='manual'&&context.current.manualNavigation==='free'),
       extent:()=>(entityLayer.active?entityLayer.groundExtent():null)??(expansion?EDEN_TERRAIN_EXTENT:geometry.bounds),home:()=>{context.current.setCameraMode('manual');controlsApi.current?.overview();}});scene.add(rts.marker);  // VF2: your camera (keys, pivot, double-click)
     // #891: on a touch screen in Free, the floating stick walks, one finger looks, pinch glides, two fingers rise, double-tap flies (all through rts)
-    const touchFree=new WorldTouchFree(renderer.domElement,host,{camera:rts,free:()=>context.current.cameraMode==='manual'&&context.current.manualNavigation==='orbit',soulAt:(x,y)=>hover.pick(x,y)?.kind==='soul'});
+    const touchFree=new WorldTouchFree(renderer.domElement,host,{camera:rts,free:()=>context.current.cameraMode==='manual'&&context.current.manualNavigation==='orbit'&&!chipFlight(),soulAt:(x,y)=>hover.pick(x,y)?.kind==='soul'});
     const speechLayer=new SpectatorSpeechLayer();scene.add(speechLayer.group);let speeches:SpectatorSpeech[]=[];const speechHead=new THREE.Vector3();
     // W3 fading visuals: Core C9 state when it ships; meanwhile a ?fade= preview override.
     // W2/W5 preview: ?snapshots=1 exposes on-demand low-res JPEG eyes/overhead/map frames (steward queue C10 will call these).
@@ -708,7 +709,7 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
       const {el, name, line, card} = nameTag(document);
       el.dataset.soulId = soul.id;
       let touched=false;el.addEventListener('pointerdown',e=>{touched=e.pointerType==='touch';},{passive:true});
-      el.addEventListener('click', e => { e.stopPropagation(); setPlaceCard(null); context.current.setThing(null); if(touched&&controlsApi.current?.flyToSoul(soul.id,{chip:true}))return; context.current.onSelect(soul.id); });  // #892: a touch on a name plate follows at once
+      el.addEventListener('click', e => { e.stopPropagation(); setPlaceCard(null); context.current.setThing(null); const byTouch=touched;touched=false;if(byTouch&&controlsApi.current?.flyToSoul(soul.id,{chip:true}))return; context.current.onSelect(soul.id); });  // #892: a touch on a name plate follows at once
       el.addEventListener('dblclick', e => {
         e.preventDefault();e.stopPropagation();setPlaceCard(null);context.current.setThing(null);context.current.onSelect(soul.id);
         const point=shown.current.entities[soul.entityId]?.p;
@@ -1045,7 +1046,7 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
         if(!q||context.current.cameraMode!=='manual'||past.current)soulFlight=null;
         else{const wall=performance.now(),pose=flight.step(Math.min(.5,(wall-soulFlightClock)/1000),new THREE.Vector3(q[0],q[1]+1,q[2]));soulFlightClock=wall;  // wall time: a slow frame rate (step is capped at 0.1 s) does not stretch the flight
           controls.target.copy(pose.target);camera.position.copy(pose.eye);camera.lookAt(pose.target);
-          if(pose.done){soulFlight=null;context.current.onSelect(flight.soulId,soulFlightChip?'chip':undefined);context.current.setThing(null);context.current.cameraMode='follow';context.current.follow=true;context.current.setCameraMode('follow');}}
+          if(pose.done){soulFlight=null;if(!soulFlightChip||context.current.selected!==flight.soulId)context.current.onSelect(flight.soulId,soulFlightChip?'chip':undefined);context.current.setThing(null);context.current.cameraMode='follow';context.current.follow=true;context.current.setCameraMode('follow');}}
       }
       atmosphereSeconds+=step;godLiving?.update(now,light.daylight,!!reducedMotionQuery?.matches||(look.enabled&&shotMode));const godSky=godLiving&&entityLayer.active&&!expansion?godLiving.atmosphere(shown.current?.tick??NaN):forkLand&&!expansion?forkLand.atmosphere():null;  // look pass: a still picture shows patterned lamps at their steady level (repeatable shots)
       if(!holdDraw||warmFrame)try{atmosphere.update({seconds:atmosphereSeconds,dt:step,daylight:light.daylight,camera,eden:(!!expansion||!!godSky)&&!past.current,reducedMotion:!!reducedMotionQuery?.matches,clock:shotClockAt(shown.current?.datetime??adopted?.clock??null,shotHour??visitorPreviewHour()),...(godSky?{profile:'world' as const,weather:godSky.weather,indoors:godSky.indoors}:{})});}catch{}
@@ -1194,7 +1195,7 @@ if(entityBatchEnabled&&entityLayer.active&&entityLayer.freezeSettled)entityLayer
     };
     const onDown = (e: PointerEvent) => {
       groupSelection.clear(); down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
-      if(e.pointerType==='touch'){touchesDown.add(e.pointerId);flick=touchesDown.size===1?{id:e.pointerId,x:e.clientX,y:e.clientY,at:e.timeStamp}:null;}
+      if(e.pointerType==='touch'){if(e.isPrimary)touchesDown.clear();touchesDown.add(e.pointerId);flick=touchesDown.size===1?{id:e.pointerId,x:e.clientX,y:e.clientY,at:e.timeStamp}:null;}
     };
     const onCancel=(e:PointerEvent)=>{touchesDown.delete(e.pointerId);if(flick?.id===e.pointerId)flick=null;};
     const onMove = (e: PointerEvent) => {
@@ -1204,13 +1205,13 @@ if(entityBatchEnabled&&entityLayer.active&&entityLayer.freezeSettled)entityLayer
     const onUp = (e: PointerEvent) => {
       const touch=e.pointerType==='touch',started=touch&&flick?.id===e.pointerId?flick:null;if(touch)onCancel(e);
       if (touchFree.consumed(e.pointerId)) { down = null; return; }  // #891: a touch gesture (stick, look, pinch, rise, double-tap), not a tap
-      if(started&&context.current.cameraMode==='follow'&&context.current.selected){const dir=swipeStep(e.clientX-started.x,e.clientY-started.y,e.timeStamp-started.at);if(dir){down=null;swipeSoul(dir);return;}}  // #892: a flick switches; a slower drag orbited
+      if(started&&(context.current.cameraMode==='follow'||chipFlight())&&context.current.selected){const dir=swipeStep(e.clientX-started.x,e.clientY-started.y,e.timeStamp-started.at);if(dir){down=null;swipeSoul(dir);return;}}  // #892: a flick switches; a slower drag orbited
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) { down = null; return; }
       down = null;
       if (entityLayer.active && godFeature('flags') && (e.altKey || flagModeRef.current)) return;  // a flag drop (onFlagClick), not a selection: no place card over the god panel
       const target=hover.pick(e.clientX,e.clientY);
       if(touch&&target?.kind==='soul'&&controlsApi.current?.flyToSoul(target.id,{chip:true}))return;  // #892: one tap follows (the card's flight)
-      if(touch&&target?.kind!=='object'&&context.current.cameraMode==='follow'){setPlaceCard(null);rts.flyToGround(e);return;}  // #892: a tap on the ground frees the camera there
+      if(touch&&(!target||target.kind==='place')&&(context.current.cameraMode==='follow'||chipFlight())){setPlaceCard(null);soulFlight=null;rts.flyToGround(e);return;}  // #892: a tap on the ground frees the camera there
       if(target)inspectHover(target);else{setPlaceCard(null);context.current.setThing(null);}rts.clickPivot(e);  // C1 + CAMERA-PIVOT: the clicked point (thing or ground) becomes the pivot (manual camera only)
 
     };
