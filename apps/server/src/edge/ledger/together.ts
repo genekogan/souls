@@ -15,7 +15,7 @@ import {afterCommit} from '../comms/store.ts';
 //   the visible prop (human.holding), changed when a pose completes, so both agree.
 import {menuWorldOf} from '../../split/menu-world.ts';
 import {randomUUID} from 'node:crypto';
-import {isRigidBody} from '../body/actions.ts';
+import {bodyVerbProblem,isRigidBody} from '../body/actions.ts';
 import type {Program} from '@sim/engine-contract';
 import type {WorldState as NativeWorld} from '../../../../../mars/viewer/engine/world/types.ts';
 import type {WorldHost} from '../../world.ts';
@@ -388,6 +388,13 @@ export class Together {
    *  by its standoff and pause (GEST-LIVE r11: 13 m after 15 s, follow.lost at 45 m on a 240 m walk). So the programme is
    *  three legs, re-issued with the current gap, and a follower more than CATCH_UP metres behind jogs them (humanoids
    *  only; floaters glide at one pace). */
+  /** The partner's body profile applies to a paired act as the actor's does: a declared-profile partner (Pip, the centaur) has no admitted
+   *  paired-gesture, hand-hold or hand-over adapter, so these are offered blocked and refused before acceptance, the
+   *  same answer native admission gives (mars/viewer/engine/bodies/policy.ts). */
+  private partnerBodyProblem(o: {name: string; entityId: string}, verb: string): {code: string; reason: string} | null {
+    const issue = bodyVerbProblem(this.p.body(o.entityId), verb);
+    return issue && !isRigidBody(this.p.body(o.entityId)) ? {code: issue.code, reason: `${o.name}'s body cannot ${verb}: ${issue.reason}`} : null;
+  }
   /** Paired gestures and a hand-over offered toward one Soul. Within GESTURE_RADIUS the plan steps in and asks; farther
    *  off (SOCIAL-APPROACH, ACCEPT2 brief 6) the same id is offered with `approach`: the world walks the Soul over to them
    *  first (follow-style legs that track a moving partner) and asks once it is there, never "not nearby". */
@@ -398,7 +405,7 @@ export class Together {
       const def = PAIRED[g];
       // entry 35: holding hands needs free hands on both sides (an item in the hand, or someone else's hand, comes first)
       const handsBusy = g === 'hold-hands' ? (mineHands ? {code: 'hands.holding', reason: mineHands.soulId === o.soulId ? `You are already holding ${o.name}'s hand.` : `You are holding ${mineHands.name}'s hand; let go first.`} : held ? {code: 'hands.full', reason: `You are holding ${held.name}; put it down first.`} : this.heldBy(o.soulId) ? {code: 'hands.full', reason: `${o.name}'s hands are full.`} : this.handsWith(o.entityId) ? {code: 'gesture.partner-unavailable', reason: `${o.name} is holding someone's hand.`} : null) : null;
-      const blocked = busy ? {code: 'gesture.partner-unavailable', reason: `${o.name} is ${busy}.`} : aloft ? {code: 'ride.aboard', reason: 'Not while riding.'} : handsBusy;
+      const blocked = busy ? {code: 'gesture.partner-unavailable', reason: `${o.name} is ${busy}.`} : aloft ? {code: 'ride.aboard', reason: 'Not while riding.'} : this.partnerBodyProblem(o, g) ?? handsBusy;
       const steps: Steps = g === 'hold-hands'
         ? [...this.standFirst(soul.entityId), {verb: 'walk_to', params: {to: o.entityId, standoff: 1.1}}, {verb: 'mars:hand_hold_v1', params: {mode: 'join', partner: o.entityId, offer: true, waitSeconds: def.lapse + 5}}]
         : [...this.standFirst(soul.entityId), {verb: 'walk_to', params: {to: o.entityId, standoff: 1.1}}, pose(def.activity, def.seconds, {gap: def.gap, waitSeconds: 45, alone: 'fail', clear: true})];
@@ -408,12 +415,12 @@ export class Together {
     // entry 41: a held world thing that opted in to hand-to-hand transfer (the lantern, the bowl) is handed over, not dropped
     const thing = held ? null : this.thingIn(soul.entityId);
     if (thing) {
-      const blocked = busy ? {code: 'gesture.partner-unavailable', reason: `${o.name} is ${busy}.`} : aloft ? {code: 'ride.aboard', reason: 'Not while riding.'} : this.handsFull(o.soulId, o.entityId) ? {code: 'hands.full', reason: `${o.name}'s hands are full.`} : null;
+      const blocked = busy ? {code: 'gesture.partner-unavailable', reason: `${o.name} is ${busy}.`} : aloft ? {code: 'ride.aboard', reason: 'Not while riding.'} : this.partnerBodyProblem(o, 'give') ?? (this.handsFull(o.soulId, o.entityId) ? {code: 'hands.full', reason: `${o.name}'s hands are full.`} : null);
       add({id: 'give:' + o.soulId, verb: 'give', label: `Give ${o.name} the ${thing.name} you are holding: ${far ? 'walks over to them first, then ' : ''}hold it out for them to take (they accept or decline)`, target: {id: o.soulId, kind: 'soul'}, available: !blocked, ...(blocked ? {blocked} : {})},
         {label: `Give ${o.name} the ${thing.name}`, steps: [...this.standFirst(soul.entityId), {verb: 'walk_to', params: {to: o.entityId, standoff: HANDOVER_GAP}}, {verb: 'mars:hand_over_v1', params: {mode: 'offer', partner: o.entityId, item: thing.id, waitSeconds: 40}}], together: {kind: 'hand-over', guest: o.soulId, item: thing.id, name: thing.name, custodyPolicy: 'same-tick-v1', ...(far ? {approach: true} : {})}});
     }
     if (held) {
-      const blocked = busy ? {code: 'gesture.partner-unavailable', reason: `${o.name} is ${busy}.`} : this.heldBy(o.soulId) ? {code: 'hands.full', reason: `${o.name}'s hands are full.`} : null;
+      const blocked = busy ? {code: 'gesture.partner-unavailable', reason: `${o.name} is ${busy}.`} : this.partnerBodyProblem(o, 'give') ?? (this.heldBy(o.soulId) ? {code: 'hands.full', reason: `${o.name}'s hands are full.`} : null);
       add({id: 'give:' + o.soulId, verb: 'give', label: `Give ${o.name} ${held.name} you are holding (${far ? 'walks over to them first; ' : ''}they accept or decline)`, target: {id: o.soulId, kind: 'soul'}, available: !blocked, ...(blocked ? {blocked} : {})},
         {label: `Give ${o.name} ${held.name}`, steps: [...this.standFirst(soul.entityId), {verb: 'walk_to', params: {to: o.entityId, standoff: 1.1}}, pose('give', 2.5, {prop: held.kind, gap: 0.8, waitSeconds: 45, alone: 'fail', release: true, clear: true})], together: {kind: 'give', guest: o.soulId, item: held.id, ...(far ? {approach: true} : {})}});
     }
@@ -505,6 +512,7 @@ export class Together {
       const g = this.mindOf(tag.guest), gb = g ? this.p.body(g.entityId) : undefined, me = this.p.body(soul.entityId);
       if (!g || !gb || !me || this.p.faded(tag.guest)) return {code: 'gesture.partner-unavailable', reason: 'They are not here any more.'};
       if(isRigidBody(me)||isRigidBody(gb))return {code:'body.unsupported',reason:'Paired limb gestures and hand transfers require humanoid bodies; try looking or talking instead.'};
+      const partner = this.partnerBodyProblem({name: g.name, entityId: g.entityId}, tag.kind === 'paired' ? tag.what : 'give'); if (partner) return partner;
       // SOCIAL-APPROACH: out of reach, walk over first (legs that track them); the act and its invitation start on arrival
       const apart = Math.hypot(gb.pose.p[0] - me.pose.p[0], gb.pose.p[2] - me.pose.p[2]);
       if (tag.approach && apart > GESTURE_RADIUS) {
@@ -795,6 +803,7 @@ export class Together {
     const g = this.mindOf(tag.guest), gb = g ? this.p.body(g.entityId) : undefined, me = this.p.body(soul.entityId);
     if (!g || !gb || !me || this.p.faded(tag.guest)) return {code: 'gesture.partner-unavailable', reason: 'They are not here any more.'};
     if (isRigidBody(me) || isRigidBody(gb)) return {code: 'body.unsupported', reason: 'A hand-over needs two humanoid bodies with hands.'};
+    const partner = this.partnerBodyProblem({name: g.name, entityId: g.entityId}, 'give'); if (partner) return partner;
     if (this.thingIn(soul.entityId)?.id !== tag.item) return {code: 'hands.empty', reason: 'You are not holding that any more.'};
     if (this.handsFull(tag.guest, g.entityId)) return {code: 'hands.full', reason: `${g.name}'s hands are full.`};
     const apart = Math.hypot(gb.pose.p[0] - me.pose.p[0], gb.pose.p[2] - me.pose.p[2]);

@@ -13,6 +13,8 @@ const server = createServer((req, res) => {
   const path = req.url.startsWith(base) ? req.url.slice(base.length) || '/' : req.url;
   res.setHeader('x-sim-load', LEVELS[L[3]] ?? 'green');   // LOAD-CONTRACT §3 (set with /level?l=red)
   if (process.env.FAKE_HITS) appendFileSync(process.env.FAKE_HITS, `${path}\n`);   // which requests reached the world
+  // #717 body read path stand-in: answers only with a site key; FAKE_BODY_BYTES sets the size (for the 4 MiB cap)
+  if (path.startsWith('/v1/site/body/')) { if (!req.headers['x-sim-site-key']) return res.writeHead(404).end('{}'); if (path.includes('body_' + 'f'.repeat(64))) return res.writeHead(410, { 'content-type': 'application/json' }).end('{"code":"body.withdrawn"}'); return res.writeHead(200, { 'content-type': 'model/gltf-binary' }).end(Buffer.alloc(Number(process.env.FAKE_BODY_BYTES ?? 64), 7)); }
   if (path === '/healthz') return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, worldId: `${slug}-1`, genesis: process.env.GENESIS_FILE ?? null, pid: process.pid, ...(process.env.FAKE_TICK_MS ? { tickMs: { avg: Number(process.env.FAKE_TICK_MS), max: 2 * Number(process.env.FAKE_TICK_MS), n: 400 }, clockRate: 1 } : {}) }));
   if (path === '/argv') return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ execArgv: process.execArgv, heapMb: process.env.SIM_WORLD_HEAP_MB ?? null, nodeOptions: process.env.NODE_OPTIONS ?? null, limitMb: Math.round(getHeapStatistics().heap_size_limit / 2 ** 20) }));
   if (path === '/v1/world/snapshot') return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ tick: Date.now(), slug }));

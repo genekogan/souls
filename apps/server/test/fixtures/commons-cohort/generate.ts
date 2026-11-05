@@ -22,7 +22,9 @@ import type {Hub} from '../../../src/hub.ts';
 import {CandidateStationV1} from '../../../src/station.ts';
 import {drainEdenThought} from '../../../src/eden-bootstrap.ts';
 
-export async function generateCommonsCohort(measuredTicks=3600,retryV1=false,diagnosticsV1=false,walkBlockV1=false){
+// stairLandingV1 (#509): the cohort models a new world, which adopts stair-landing-clearance/1; false keeps the
+// pre-policy behaviour for the seeded regression's before arm.
+export async function generateCommonsCohort(measuredTicks=3600,retryV1=false,diagnosticsV1=false,walkBlockV1=false,stairLandingV1=true){
   const dir=mkdtempSync(join(tmpdir(),'eden-commons-cohort-')),path=join(dir,'native.db'),db=new Db(path);
   const factory=await marsFactory({...EDEN_SAFE_COMMONS_WORLD,safeCrewRemoval:true,walkBlockV1}),seed='commons-active-24',worldId='commons-active-24';
   const host=new WorldHost(db,factory,seed,1e9,worldId,{durableClockV1:true});host.boot();host.drainInputs();
@@ -49,6 +51,7 @@ export async function generateCommonsCohort(measuredTicks=3600,retryV1=false,dia
       assert.equal((await request('/v1/invite','cohort'+i,{code})).status,200);
     }
     await drive(host.enqueue('rules','fixture',{dayConfig:{origin:0,dayTicks:72000,customs:[]}}));
+    if(stairLandingV1)await drive<unknown>(host.enableStairLandingClearanceV1());
     for(let i=0;i<24;i++){
       const owner='cohort'+Math.floor(i/4),created=await drive(request('/v1/souls',owner,{name:'Resident '+i,description:'local owned population'},{'X-Sim-Lifecycle':'1'}));assert.equal(created.status,202,await created.clone().text());
       const {lifecycle}=await created.json() as any;await setImmediate();host.drainInputs();await setImmediate();host.drainInputs();
