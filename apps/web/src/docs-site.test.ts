@@ -49,7 +49,10 @@ test('llms.txt lists every published page once with its description; llms-full.t
   assert.ok(!/\bSim\b/.test(llms + full), 'one product name');
 });
 
-test('the built dist (when present) holds the same files the build function makes', { skip: !existsSync(join(ROOT, 'apps/web/dist/docs/index.html')) && 'no web build here' }, () => {
+// A plain root build with the default origin (as `pnpm --filter @sim/web build` and the bundle gate make it) must hold exactly
+// these files. A based or differently-originated build is checked by the parity test above, not here.
+const DIST = join(ROOT, 'apps/web/dist'), rootBuild = existsSync(join(DIST, 'llms.txt')) && readFileSync(join(DIST, 'llms.txt'), 'utf8').includes('](https://soul.game/docs.md)');
+test('a root web build holds exactly the files the build function makes', { skip: !rootBuild && 'no root web build with the default origin in apps/web/dist' }, () => {
   const { out } = build();
   for (const [file, text] of out) assert.equal(readFileSync(join(ROOT, 'apps/web/dist', file), 'utf8'), text, file);
 });
@@ -63,7 +66,9 @@ test('the Markdown subset: headings with anchors, lists, ordered lists, tables, 
   assert.match(html, /<table><thead><tr><th>a<\/th><th>b<\/th><\/tr><\/thead><tbody><tr><td><a href="\/base\/changelog">x<\/a><\/td><td><code>y<\/code><\/td><\/tr><\/tbody><\/table>/);
   assert.match(html, /<pre><code class="language-bash">echo &quot;&lt;hi&gt;&quot;<\/code><\/pre>/);
   assert.match(html, /<blockquote><p>quoted<\/p><\/blockquote>/);
-  assert.equal(inline('[x](javascript:alert(1))'), '<a href="javascript:alert(1">x</a>)', 'a link target stays inside its attribute');
+  for (const bad of ['javascript:alert(1)', 'data:text/html,hi', 'vbscript:x', '//evil.example/x']) assert.throws(() => inline(`[x](${bad})`), /is not a site path/, bad);
+  assert.equal(inline('[a **b](/c**d)'), '<a href="/c**d">a **b</a>', 'emphasis never runs across link markup');
+  assert.match(markdownHtml('## Dup\n\n## Dup'), /id="dup"[\s\S]*id="dup-2"/);
   assert.equal(slug('Start in one line'), 'start-in-one-line');
 });
 

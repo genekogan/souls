@@ -157,10 +157,24 @@ export const eyesAgent = (ua) => typeof ua === 'string' && EYES_UA.test(ua);
 const PASSIVE_READ = /\/w\/[a-z][a-z0-9-]{0,31}\/(?:healthz|v1\/config|v1\/god\/status|v1\/world\/souls)\/?$/;
 export const SOUL = { controllerCli: join(here, 'soul/eden.mjs'), cli: join(here, 'soul/eden-agent.mjs'), skill: join(here, 'soul/skill.md'), instructions: join(here, 'soul/instructions.md') };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8' };
+/** #896: does this Accept header prefer Markdown? text/markdown with q > 0 and above text/html's q (a tie goes to the one
+ *  listed first); media types are case-insensitive. Browsers never name text/markdown, so they get HTML. */
+export function wantsMarkdown(accept = '') {
+  let md = null, html = null;
+  for (const [i, part] of String(accept).toLowerCase().split(',').entries()) {
+    const [type, ...params] = part.split(';').map((s) => s.trim());
+    const qp = params.find((p) => p.startsWith('q=')), q = qp ? Number(qp.slice(2)) : 1;
+    if (!Number.isFinite(q)) continue;
+    if (type === 'text/markdown' && md === null) md = { q, i };
+    if ((type === 'text/html' || type === 'application/xhtml+xml') && (html === null || q > html.q)) html = { q, i };
+  }
+  if (!md || md.q <= 0) return false;
+  return !html || md.q > html.q || (md.q === html.q && md.i < html.i);
+}
 /** #896: the web-build file for a docs or changelog path: /docs, /docs/<page>[/] -> its HTML (docs[/<page>]/index.html) or, at
- *  <path>.md or for an Accept naming text/markdown ahead of text/html, its Markdown twin; /changelog.md -> changelog.md. */
+ *  <path>.md or when the Accept header prefers Markdown (wantsMarkdown), its Markdown twin; /changelog.md -> changelog.md. */
 export function docFile(path, accept = '') {
-  const md = /\btext\/markdown\b/.test(accept) && !/^\s*text\/html\b/.test(accept);
+  const md = wantsMarkdown(accept);
   if (path === '/changelog.md' || (md && (path === '/changelog' || path === '/changelog/'))) return 'changelog.md';
   const m = /^\/docs((?:\/[a-z0-9-]+)*)(\.md|\/)?$/.exec(path);
   if (!m) return null;
@@ -987,10 +1001,13 @@ export async function openLauncher(cfg = {}) {
         // #896: the docs, llms.txt and the changelog's Markdown twin, all built into the web build (apps/web/src/docs-site.ts).
         // A page answers as HTML, or as its Markdown twin at <path>.md or for `Accept: text/markdown`.
         if (path === '/llms.txt' || path === '/llms-full.txt') { if (serveFile(res, join(webDir, path.slice(1)), 'no-cache', req)) return; }
-        const doc = docFile(path, req.headers.accept);
-        if (doc) { res.setHeader('vary', 'Accept'); if (serveFile(res, join(webDir, doc), 'no-cache', req)) return; res.removeHeader('vary'); }
+        const doc = docFile(path, req.headers.accept), negotiated = /^\/docs(?:\.md$|\/|$)|^\/changelog(?:\/|\.md)?$/.test(path);
+        if (negotiated) res.setHeader('vary', 'Accept');
+        if (doc && serveFile(res, join(webDir, doc), 'no-cache', req)) return;
         // #388/#584: build-time changelog HTML, no script/API collection; reviewed optional journal media can load separately.
         if ((path === '/changelog' || path === '/changelog/') && serveFile(res, join(webDir, 'changelog.html'), 'no-cache', req)) return;
+        // #896: the site's own paths end here: a miss is a plain 404, never handed to a world (which could wake it)
+        if (negotiated || path === '/llms.txt' || path === '/llms-full.txt') { res.removeHeader('vary'); json(res, 404, { ok: false, code: 'docs.not-found' }); return; }
         // lane P4: the installable-app manifest beside the world list (apps/web/src/pwa-manifest.ts)
         if (path === '/manifest.webmanifest' && serveFile(res, join(webDir, 'manifest.webmanifest'), 'public, max-age=3600', req)) return;
         if (path.startsWith('/assets/')) { const f = inside(webDir, path); if (f && serveFile(res, f, 'public, max-age=31536000, immutable', req)) return; }  // P1: req = ETag/304 + precompressed .br/.gz

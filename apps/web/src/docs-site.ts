@@ -39,15 +39,23 @@ export function parseDoc(rel: string, text: string): DocPage {
 export const slug = (s: string) => s.toLowerCase().replace(/<[^>]*>/g, '').replace(/[`*_]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 /** Inline Markdown -> HTML: code spans first (their content is literal), then links, autolinks, bold, italics. */
+/** A link target the docs may use: a site path, an in-page anchor, https, http or mailto. Anything else fails the build. */
+export function safeHref(h: string): string {
+  if (/^(?:\/(?!\/)|#|https?:\/\/|mailto:)/i.test(h)) return h;
+  throw Error(`docs: link target "${h}" is not a site path, an anchor, http(s) or mailto`);
+}
+/** Inline Markdown -> HTML: code spans first (their content is literal), then links (held aside so emphasis never runs over
+ *  their markup), autolinks, bold, italics. */
 export function inline(text: string, link: (href: string) => string = (h) => h): string {
   return text.split(/(`[^`]+`)/).map((part) => {
     if (/^`[^`]+`$/.test(part)) return `<code>${esc(part.slice(1, -1))}</code>`;
+    const held: string[] = [], hold = (html: string) => `\u0000${held.push(html) - 1}\u0000`;
     let s = esc(part);
-    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, t: string, h: string) => `<a href="${esc(link(h.replace(/&amp;/g, '&')))}">${t}</a>`);
-    s = s.replace(/&lt;(https:\/\/[^\s&]+)&gt;/g, (_m, h: string) => `<a href="${h}">${h}</a>`);
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, t: string, h: string) => hold(`<a href="${esc(link(safeHref(h.replace(/&amp;/g, '&'))))}">`) + t + hold('</a>'));
+    s = s.replace(/&lt;(https:\/\/[^\s&]+)&gt;/g, (_m, h: string) => hold(`<a href="${h}">${h}</a>`));
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/(^|[\s(])_([^_]+)_(?=$|[\s).,;:!?])/g, '$1<em>$2</em>').replace(/(^|[\s(])\*([^*]+)\*(?=$|[\s).,;:!?])/g, '$1<em>$2</em>');
-    return s;
+    return s.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => held[Number(i)]!);
   }).join('');
 }
 
@@ -55,7 +63,7 @@ export function inline(text: string, link: (href: string) => string = (h) => h):
 export function markdownHtml(md: string, link: (href: string) => string = (h) => h): string {
   const lines = md.replace(/\r\n?/g, '\n').split('\n'), out: string[] = [];
   let i = 0;
-  const para: string[] = [];
+  const para: string[] = [], ids = new Set<string>();
   const flush = () => { if (para.length) { out.push(`<p>${inline(para.join(' '), link)}</p>`); para.length = 0; } };
   while (i < lines.length) {
     const line = lines[i]!;
@@ -66,7 +74,7 @@ export function markdownHtml(md: string, link: (href: string) => string = (h) =>
       i++; out.push(`<pre><code${fence[2] ? ` class="language-${esc(fence[2])}"` : ''}>${esc(code.join('\n'))}</code></pre>`); continue;
     }
     const h = /^(#{1,3}) (.+)$/.exec(line);
-    if (h) { flush(); const n = h[1]!.length, t = h[2]!.trim(); out.push(`<h${n} id="${slug(t)}">${inline(t, link)}</h${n}>`); i++; continue; }
+    if (h) { flush(); const n = h[1]!.length, t = h[2]!.trim(); let id = slug(t), k = 2; while (ids.has(id)) id = `${slug(t)}-${k++}`; ids.add(id); out.push(`<h${n} id="${id}">${inline(t, link)}</h${n}>`); i++; continue; }
     if (/^\s*$/.test(line)) { flush(); i++; continue; }
     if (/^\|.*\|\s*$/.test(line) && /^\|[\s:|-]+\|\s*$/.test(lines[i + 1] ?? '')) {
       flush(); const cells = (l: string) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());

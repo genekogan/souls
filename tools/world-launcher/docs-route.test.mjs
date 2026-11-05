@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { docFile, openLauncher } from './launcher.mjs';
+import { docFile, openLauncher, wantsMarkdown } from './launcher.mjs';
 import { TAKEN_PREFIXES } from './production.mjs';
 import { RESERVED } from './registry.mjs';
 
@@ -16,6 +16,13 @@ test('docFile maps docs and changelog paths to build files, and nothing else', (
     ['/docs/essays/few-rules', '', 'docs/essays/few-rules/index.html'], ['/changelog.md', '', 'changelog.md'], ['/changelog', 'text/markdown', 'changelog.md'],
     ['/changelog', '', null], ['/docs/../etc', '', null], ['/docs/a%2fb', '', null], ['/docsx', '', null], ['/docs/Concepts', '', null], ['/w/docs', '', null]];
   for (const [p, a, want] of cases) assert.equal(docFile(p, a), want, `${p} ${a}`);
+});
+
+test('Accept negotiation: Markdown only when preferred over HTML, by q-value, case-insensitively', () => {
+  for (const [a, want] of [['text/markdown', true], ['Text/Markdown', true], ['text/markdown;q=0', false], ['text/markdown;q=0.1, text/html', false],
+    ['application/xhtml+xml,text/html;q=0.9,text/markdown;q=0.1', false], ['text/html, text/markdown', false], ['text/markdown, text/html', true],
+    ['text/html;q=0.5, text/markdown', true], ['text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', false], ['*/*', false], ['', false], ['text/markdown;q=abc', false]])
+    assert.equal(wantsMarkdown(a), want, a);
 });
 
 test('the public paths are taken prefixes and docs is a reserved slug', () => {
@@ -49,7 +56,11 @@ test('through the launcher: HTML, twins by suffix and by Accept, llms files, cha
     if (p.startsWith('/docs')) assert.equal(r.headers.get('vary'), 'Accept', p);
   }
   for (const [p, accept, , start] of want) assert.ok((await (await get(p, accept)).text()).includes(start.replace(/^<title>/, '')), p);
-  assert.equal((await get('/docs/nowhere')).status, 404);
+  for (const p of ['/docs/nowhere', '/docs/nowhere.md', '/docs/Concepts', '/docs/essays', '/docs/concepts/x']) {
+    const r = await get(p); assert.equal(r.status, 404, p); assert.equal((await r.json()).code, 'docs.not-found', `${p}: answered here, never handed to a world`);
+    assert.equal(r.headers.get('x-robots-tag'), 'noindex, nofollow', p);
+  }
+  assert.equal((await get('/changelog')).headers.get('vary'), 'Accept', 'the changelog HTML is negotiated too');
   const locs = [...(await (await get('/sitemap.xml')).text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1].replace(`http://127.0.0.1:${PORT}`, ''));
   assert.deepEqual(locs, ['/', '/changelog', '/docs', '/docs/concepts'], 'published docs pages from the build; a malformed entry is dropped');
   assert.equal(L.registry.worlds.length, 0);
