@@ -111,7 +111,8 @@ export interface Engine {
   previewAdmission?(program: Program): ProgramAdmission;
   /** Stop a running program (the actor is left idle where it is). */
   /** `untilSafe` (PC08, a shared carry's stop): the programme stays until its native cleanup has finished, retrying a
-   *  refused cancel each tick, as a physical runtime always does; without it, legacy behaviour is unchanged. */
+   *  refused cancel each tick the action moves (not while it is held up), as a physical runtime does; without it,
+   *  legacy behaviour is unchanged. */
   stop(programId: string, opts?: { untilSafe?: boolean }): void;
   /** Synchronous read-only feasibility batch; memoization never crosses its boundary. */
   withFeasibilityRead?<T>(read:()=>T):T;

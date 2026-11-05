@@ -13,6 +13,8 @@ import {EdgeLedger} from '../../apps/server/src/edge/ledger/ledger.ts';
 import {mountEdgeRoutes} from '../../apps/server/src/edge/routes.ts';
 import {GodMode} from '../../apps/server/src/god/god.ts';
 import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
+import {WorldHost} from '../../apps/server/src/world.ts';
+import {kernelHash} from '../../packages/kernel/src/index.ts';
 
 async function world(t, extra = () => []) {
   const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
@@ -109,9 +111,14 @@ function stopped(w, r, result) {
 
 test('PC08 A1/A3: a stop mid-move sets the beam down short of the shed; both are told, then free on their own', {timeout: 300000}, async (t) => {
   const w = await world(t), {Ada, Bo, Cy} = w.souls;
-  let busy = null, said = null, looked = null, again = null, ada2 = null, held = null;
+  let busy = null, said = null, looked = null, again = null, ada2 = null, held = null, before = null, boBusy = null, ref = null;
   const cyWalk = ok(await act(w, Cy, {capability: w.edge.capabilities(Cy).find((c) => c.verb === 'walk' && c.available).id}));
   const r = await carry(w, t, (c) => c.phase === 'move' && c.n > 0 && flat(sub(c.E[c.beam].pose.p, [w.ax + 2, 0, w.az + 1.5])) > 2, async (c) => {
+    if (!c.stop && !before && c.phase === 'move') {
+      // before any stop, a body act from either member is refused and offered the safe stop
+      before = {};
+      for (const m of [Ada, Bo]) { const x = await act(w, m, {capability: w.edge.capabilities(m).find((y) => y.verb === 'walk' && y.available).id}); before[m.name] = x; }
+    }
     if (!c.stop || c.op.phase === 'ended') return;
     // the stop acknowledged at once: its own receipt completed in the same tick, the member's shared receipt untouched
     if (!held) {
@@ -126,10 +133,19 @@ test('PC08 A1/A3: a stop mid-move sets the beam down short of the shed; both are
       assert.equal(stops(w).length, 1, 'a repeat logs nothing');
       // the claims stay while it is set down: a body act is refused, talking and looking work
       busy = await act(w, Ada, {capability: w.edge.capabilities(Ada).find((x) => x.verb === 'walk' && x.available).id});
+      boBusy = await act(w, Bo, {capability: w.edge.capabilities(Bo).find((x) => x.verb === 'walk' && x.available).id});
+      ref = [ok(await act(w, Ada, {capability: `stop-carry:${c.op.id}`, clientRef: 'ada-stop-1'})), ok(await act(w, Ada, {capability: `stop-carry:${c.op.id}`, clientRef: 'ada-stop-1'}))];
       said = await post(w, Bo, '/v1/edge/say', {text: 'Setting it down.'}); looked = await get(w, Ada, '/v1/edge/here');
     }
   });
   assert.equal(r.stopPhase, 'move');
+  for (const m of ['Ada', 'Bo']) {
+    const x = before[m]; assert.equal(code(x), 'shared.busy', `${m}: ${JSON.stringify(x)}`); assert.equal(x.op, r.op.id);
+    assert.deepEqual(x.alternatives?.map((y) => y.id), [`stop-carry:${r.op.id}`], `${m} is offered the safe stop`); assert.match(x.reason, /To stop safely, act stop-carry:/);
+  }
+  for (const x of [busy, boBusy]) { assert.equal(code(x), 'shared.busy'); assert.deepEqual(x.alternatives?.map((y) => y.id), [`stop-carry:${r.op.id}`], 'still offered while stopping'); assert.match(x.alternatives[0].label, /already asked by Bo/); }
+  assert.equal(ref[0].receipt.id, ref[1].receipt.id, 'a clientRef repeat is the same receipt');
+  for (const m of [Ada, Bo]) { const kinds = streamOf(w, m).map((e) => e.kind).filter((k) => k === 'shared.stopping' || k === 'shared.stopped'); assert.deepEqual([kinds[0], kinds.at(-1)], ['shared.stopping', 'shared.stopped'], `${m.name}: stopping, then stopped`); }
   assert.equal(code(busy), 'shared.busy'); assert.match(busy.reason, /setting beam down safely with Bo \(Bo asked to stop/);
   assert.ok(said.said?.heardBy >= 1, JSON.stringify(said)); assert.ok(looked && !looked.error, 'Ada can look around');
   stopped(w, r, 'stopped');
@@ -164,12 +180,36 @@ test('PC08 A1: a stop before contact lets go where it lies; during the lift it i
   }
 });
 
-test('PC08 A1: a stop while it is set down at the shed finishes that set-down: stopped-at-destination', {timeout: 300000}, async (t) => {
-  const w = await world(t), r = await carry(w, t, (c) => c.phase === 'set-down');
-  assert.equal(r.stopPhase, 'set-down');
-  stopped(w, r, 'stopped-at-destination');
-  const b = w.f.host.engine.world.entities[r.beam].pose.p; assert.ok(inside(shedOf(w), b[0], b[2]));
-  assert.doesNotMatch(read(w, w.souls.Ada, r.p).reason, /arrived/);
+test('PC08 A1: a stop during the final lowering or release finishes it: stopped-at-destination', {timeout: 300000}, async (t) => {
+  for (const at of ['set-down', 'release']) {
+    const w = await world(t), r = await carry(w, t, (c) => c.phase === at && inside(shedOf(w), c.E[c.beam].pose.p[0], c.E[c.beam].pose.p[2]));
+    assert.equal(r.stopPhase, at);
+    stopped(w, r, 'stopped-at-destination');
+    const b = w.f.host.engine.world.entities[r.beam].pose.p; assert.ok(inside(shedOf(w), b[0], b[2]));
+    assert.doesNotMatch(read(w, w.souls.Ada, r.p).reason, /arrived/);
+  }
+});
+
+test('PC08 A2: a stop reached through a bare verb, words or an intent is the same stop; two members in one tick log one', {timeout: 300000}, async (t) => {
+  for (const how of ['verb', 'words', 'intent', 'both']) {
+    const w = await world(t), {Ada, Bo} = w.souls;
+    let tried = null;
+    const r = await carry(w, t, () => false, async (c) => {
+      if (tried || c.phase !== 'move' || c.n < 20) return;
+      const offer = w.edge.capabilities(Bo).find((x) => x.verb === 'stop-carry');
+      assert.equal(offer?.id, `stop-carry:${c.op.id}`, 'the stop is on offer');
+      if (how === 'both') {
+        // both ask before the next drain: one stop event, one stop-requested, one stop-asked
+        const [a, b] = await Promise.all([accept(w.f.host, w.edge.act(Bo, {capability: offer.id})), accept(w.f.host, w.edge.act(Ada, {capability: offer.id}))]);
+        tried = [ok(a), ok(b)];
+      } else tried = [ok(await act(w, Bo, how === 'verb' ? {capability: 'stop-carry'} : how === 'words' ? {capability: 'stop carrying beam'} : {verb: 'stop-carry', target: offer.target}))];
+    });
+    assert.ok(tried, `${how}: tried`);
+    assert.equal(stops(w).length, 1, `${how}: one stop event`);
+    assert.ok(r.op.stop, `${how}: stopped`); assert.ok(r.op.result === 'stopped', `${how}: ${r.op.result}`);
+    if (how === 'both') assert.deepEqual(tried.map((x) => x.receipt.code).sort(), ['shared.stop-asked', 'shared.stop-requested']);
+    else assert.equal(tried[0].receipt.code, 'shared.stop-requested', `${how}: ${JSON.stringify(tried[0])}`);
+  }
 });
 
 test('PC08 A2: where the ground under the beam is not clear, the crew carries on to the first clear spot', {timeout: 300000}, async (t) => {
@@ -220,4 +260,12 @@ test('PC08 A1: the logged stop replays by its programme; an old edge-stop withou
   foldEvent(engine, k, {kind: 'edge-stop', tick: 0, payload: {entityId: 'e_host', programId: 'p_op'}}, {});
   foldEvent(engine, k, {kind: 'edge-stop', tick: 0, payload: {entityId: 'e_body'}}, {});
   assert.deepEqual(calls, ['p_op safe', 'p_of_e_body']);
+  // the live world after the stop replays from genesis (and from a snapshot) to the same engine and kernel state
+  w.f.host.drainInputs(); w.f.host.saveSnapshot(true);
+  const head = {engine: w.f.host.engine.stateHash(), kernel: kernelHash(w.f.host.kernel)};
+  for (const mode of ['snapshot', 'genesis']) {
+    if (mode === 'genesis') w.f.db.db.prepare('DELETE FROM snapshots WHERE world_id=?').run(w.f.host.worldId);
+    const h = new WorldHost(w.f.db, factory, w.f.host.seed, 1e9, w.f.host.worldId, {durableClockV1: true});
+    assert.equal(h.boot().from, mode); assert.deepEqual({engine: h.engine.stateHash(), kernel: kernelHash(h.kernel)}, head, mode); h.stop();
+  }
 });

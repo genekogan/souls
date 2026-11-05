@@ -223,6 +223,9 @@ export type TogetherPort = {
   previewCarry?(params: {crew: string[]; item: string; to: {x: number; z: number; yaw: number}}): CarryIssue | null;
   /** PC07: the native action a programme is on (status, phase and the diagnostic of a hold-up), read on the ledger's engine. */
   carryState?(programId: string): ({status: string; phase?: string} & Partial<CarryIssue>) | null;
+  /** PC08: a stop asked before a restart is logged again for the replayed programme (a stop is idempotent natively), so
+   *  a stop whose event never reached the log is not lost. */
+  restop?(hostEntity: string, programId: string, op: string): void;
   /** PC05: stop a Soul's running programme (best effort; the native carry sets its load down). */
   stopBody?(soul: EdgeSoul): void;
 };
@@ -1003,7 +1006,8 @@ export class Together {
     if (!inv || !s || !op || inv.state !== 'committed' || op.phase === 'ended' || inv.hostReceipt !== r.id && inv.guestReceipts[r.soulId] !== r.id) return null;
     const others = this.sharedMembers(inv).filter(m => m.soulId !== r.soulId).map(m => m.name).join(' and ');
     // PC08 (#687): the claims stay until the load is set down, so a stopping operation is still busy; the safe stop is offered
-    if (op.stop) return {op: op.id, reason: `Your hands and walking are committed to setting ${s.load.name} down safely with ${others} (${op.stop.name} asked to stop; ${op.id}); nothing else was started. You can still talk and look around, and you are free again once it is set down.`};
+    if (op.stop) return {op: op.id, reason: `Your hands and walking are committed to setting ${s.load.name} down safely with ${others} (${op.stop.name} asked to stop; ${op.id}); nothing else was started. You can still talk and look around, and you are free again once it is set down.`,
+      alternatives: [{id: `stop-carry:${op.id}`, label: `${this.stopLabel(inv)}: already asked by ${op.stop.name}; asking again changes nothing`}]};
     return {op: op.id, reason: `Your hands and walking are committed to carrying ${s.load.name} to ${s.destination.name} with ${others} (${op.id}); nothing else was started. You can still talk and look around, and you are free again once it is set down. To stop safely, act stop-carry:${op.id}.`,
       alternatives: [{id: `stop-carry:${op.id}`, label: this.stopLabel(inv)}]};
   }
@@ -1057,10 +1061,15 @@ export class Together {
     if (!inv) return;
     for (const m of this.sharedMembers(inv)) this.p.deliver(m.soulId, 'shared.stopping', {op: inv.shared!.op!.id, by: {soulId: inv.shared!.op!.stop!.by, name: inv.shared!.op!.stop!.name}, deferred: true, text, untrusted: true});
   }
+  /** The load lies on the ground, carried and reserved by nobody. */
+  private laidFree(entity: string): boolean {
+    const x = this.w.entities[entity] as (NativeWorld['entities'][string] & {support?: {kind: string}; phase?: string}) | undefined;
+    return !!x && x.support?.kind === 'ground' && x.phase !== 'carried' && !x.reservedBy;
+  }
   /** A stopped operation ended: where the native cleanup left the load decides `stopped` or `stopped-at-destination`. */
   private sharedStopped(inv: Invite) {
     const s = inv.shared!, op = s.op!, st = op.stop!, x = this.w.entities[s.load.entity], crew = this.sharedMembers(inv).map(m => m.name).join(' and ');
-    const atDestination = !!x && this.p.places.containing(x.pose.p[0], x.pose.p[2], 0).some(p => p.id === s.destination.place);
+    const atDestination = !!x && this.p.places.containing(x.pose.p[0], x.pose.p[2], (x as {level?: number}).level ?? 0).some(p => p.id === s.destination.place);
     const lifted = !(st.phase === 'gather' || st.phase === 'reach' || st.phase === 'gather-cancel');
     const where = !lifted ? `${s.load.name} was never lifted; it lies where it was`
       : st.phase === 'lift' ? `${s.load.name} was lowered back where it lay`
@@ -1073,8 +1082,9 @@ export class Together {
   sharedProgramEnded(receiptId: string, ev: {id: string; kind: string; code?: string; message?: string}): boolean {
     const inv = this.inviteForReceipt(receiptId), s = inv?.shared, op = s?.op;
     if (!inv || !s || !op || inv.state !== 'committed' || op.programId !== ev.id || inv.hostReceipt !== receiptId) return false;
-    // PC08: after a stop, the native cleanup's end (cancelled, or the set-down finishing) is the stop's outcome
-    if (op.stop && ev.kind !== 'failed') {this.sharedStopped(inv); return true;}
+    // PC08: after a stop, the native cleanup's end is the stop's outcome, once the load really lies free on the ground
+    // (anything else, e.g. a programme ended another way while the load is still held, is reported as it is: `ended`)
+    if (op.stop && ev.kind !== 'failed' && this.laidFree(s.load.entity)) {this.sharedStopped(inv); return true;}
     const arrived = ev.kind === 'completed';
     this.sharedEnd(inv, arrived ? 'arrived' : 'ended', ev.code ?? 'action.failed', `The shared carry of ${s.load.name} ended before ${s.destination.name}${ev.message ? ` (${ev.message})` : ''}.`);
     return true;
@@ -1117,7 +1127,7 @@ export class Together {
     for (const inv of this.committed()) {
       const op = inv.shared?.op; if (!op || op.phase === 'ended') continue;
       const host = this.mindOf(inv.host.soulId);
-      if (host && this.p.programOf(host.entityId) === op.programId) {this.staleOps.delete(inv.id); if (!this.watching.has(inv.id)) this.watching.set(inv.id, {programId: op.programId, held: 0, clear: 0, ...(op.stop ? {stopping: true as const, ...(op.stop.unsafe !== undefined ? {unsafe: true as const} : {})} : {}), ...(op.blocked ? {since: op.blocked.fromTick, code: op.blocked.code, ...(op.blocked.lasting ? {lasting: true as const} : {})} : {})}); continue;}
+      if (host && this.p.programOf(host.entityId) === op.programId) {this.staleOps.delete(inv.id); if (!this.watching.has(inv.id) && op.stop) this.p.restop?.(host.entityId, op.programId, op.id); if (!this.watching.has(inv.id)) this.watching.set(inv.id, {programId: op.programId, held: 0, clear: 0, ...(op.stop ? {stopping: true as const, ...(op.stop.unsafe !== undefined ? {unsafe: true as const} : {})} : {}), ...(op.blocked ? {since: op.blocked.fromTick, code: op.blocked.code, ...(op.blocked.lasting ? {lasting: true as const} : {})} : {})}); continue;}
       if (!this.staleOps.has(inv.id)) {this.staleOps.set(inv.id, this.tick); continue;}
       this.sharedEnd(inv, 'ended', 'shared.ended', `The shared carry of ${inv.shared!.load.name} is no longer running.`);
     }
@@ -1620,6 +1630,8 @@ export class Together {
   resolve(soul: EdgeSoul, text: string, caps: EdgeCapability[], plans?: Map<string, TogetherPlan>): {capability: string; params?: Record<string, unknown>; rest?: string; note: string} | {code: string; reason: string; did_you_mean: {id: string; label: string}[]} | null {
     const raw = text.trim(), t = raw.toLowerCase().replace(/[!?.]+$/, '').replace(/^(?:please|ok|okay|sure|yes,?|let'?s|lets|i'?d like to|i want to|go and|go)\s+/, '').trim();
     if (raw.includes(':') && caps.some(c => c.id === raw)) return null;
+    // PC08: "stop carrying", "put it down", "stop the carry" by a member of a running shared carry is its safe stop
+    if (/^(?:stop|quit|halt)\b.*\bcarry(?:ing)?\b|^(?:put|set) (?:it|the \S+|\S+) down\b|^let'?s? (?:put|set) it down\b/.test(t)) {const stop = caps.find(c => c.verb === 'stop-carry'); if (stop) return {capability: stop.id, note: 'Stop the shared carry: the crew sets the load down safely first.'};}
     const near = this.p.perceived(soul.soulId, INVITE_RADIUS);
     const who = (words: string): NearbyBody | null => {
       const w = words.trim().replace(/^(?:to|with|at|the|my friend)\s+/, '').replace(/['’]s\b.*$/, '').trim(); if (!w) return null;

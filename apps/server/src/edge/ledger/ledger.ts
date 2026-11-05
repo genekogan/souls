@@ -427,6 +427,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       start: (id, programId) => this.update(id, {phase: 'started', program_id: programId, code: null, reason: null}),
       note: (id, code, reason) => this.update(id, {code, reason}),
       stopBody: soul => {try {void this.host.enqueue('edge-stop', `edge:${soul.soulId}`, {soulId: soul.soulId, entityId: soul.entityId, why: 'shared.ended'}).catch(() => {/* best effort */});} catch {/* clock not ready */}},
+      restop: (entityId, programId, op) => {try {void this.host.enqueue('edge-stop', 'edge:shared', {entityId, programId, op, why: 'shared.stop'}).catch(() => {/* best effort */});} catch {/* clock not ready: the next sweep asks again */}},
       commitShared: id => {void this.commitShared(id).catch(e => console.error('[edge] shared commit', e instanceof Error ? e.message : e));},
       previewCarry: params => (this.host.engine as {previewMarsVerbV1?(verb: string, params: unknown): {code: string; message?: string; subjects?: string[]; details?: Record<string, unknown>} | null}).previewMarsVerbV1?.('carry', params) ?? null});
     this.receiptListeners.push(r => {if(!OPEN.includes(r.phase))this.menusChangedBy('receipt-closed', r.soulId, r.capability);});
@@ -1755,9 +1756,11 @@ export class EdgeLedger implements EdgeLedgerHooks {
       if (program) this.update(r.id, {phase: 'completed'});
       return {accepted: true, receipt: this.receipt(soul.soulId, r.id)!, ...resolved};
     }
+    // PC08: a stop offer reached through words or a bare verb is the same stop (never an ordinary body act)
+    if (this.sharedCarry && capability.startsWith('stop-carry:')) return {...await this.stopShared(soul, capability, clientRef), ...resolved};
     // PC05: a member of a running shared operation cannot propose or accept another (the body checks below would
     // otherwise answer with their own codes, e.g. hands.full)
-    if (/^(carry-with|accept):/.test(capability)) {const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...resolved};}
+    if (/^(carry-with|accept):/.test(capability)) {const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy), ...resolved};}
     // together/1: invitations (params.with), paired gestures, gifts, follows and items check and adjust their plan here
     const prep = this.together.prepare(soul, cap, plan, params, steps);
     if ('code' in prep) return {...refuse(prep.code, prep.reason), ...(prep.did_you_mean ? {did_you_mean: prep.did_you_mean} : {}), ...resolved};
@@ -1780,6 +1783,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   }
   /** Start a body plan as the Soul's act: queued through a quiet renewal or a safe stop, else decided now. */
   private async launch(soul: EdgeSoul, capability: string, label: string, steps: Program['steps'], clientRef: string | undefined, resolved: {resolved?: Resolved}, refuse: (code: string, reason: string) => {accepted: false; code: string; reason: string; capability: string}, commit?: (receipt: string) => void,contentParams:Record<string,unknown>={},chosen?:Record<string,unknown>) {
+    // PC08: an intent's launch of the stop offer (`{verb: 'stop-carry'}`) is the same stop
+    if (this.sharedCarry && capability.startsWith('stop-carry:')) return {...await this.stopShared(soul, capability, clientRef), ...resolved};
     // Freeze the binding before dispatch: semantic capability names are not
     // identities of the real native fixtures they invoke. This is selection,
     // not a claim that the body has reached or used the target.
@@ -1795,7 +1800,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       painting = prepared;
     }
     const detail={...((chosen||typeof seatSlot==='string')?{chosen:{...structuredClone(chosen??{}),...(typeof seatSlot==='string'?{seat:seatSlot.split('#')[0],slot:seatSlot}:{})}}:{}), ...(painting ? {paintingV1: painting} : {})};
-    const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...resolved};
+    const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy), ...resolved};
     const nativeUse = this.nativeUseRefusal?.(capability, steps);
     if (nativeUse) return {...refuse(nativeUse.code, nativeUse.reason), ...resolved};
     const stepOut = this.stepOutRefusal(soul.entityId); if (stepOut) return {...refuse(stepOut.code, stepOut.reason), ...resolved};
@@ -1990,7 +1995,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   async performBodies(soul: EdgeSoul, capability: string, label: string, steps: Program['steps'], clientRef?: string,effects?:ConfirmedEffects,admission?:ObjectBodyAdmission): Promise<{accepted: true; receipt: EdgeReceipt} | {accepted: false; code: string; reason: string}> {
     if (clientRef) {const old = this.rows('soul_id=? AND client_ref=?', soul.soulId, clientRef)[0]; if (old) return {accepted: true, receipt: this.view(old)};}
     const refuse = (code: string, reason: string) => {this.recordRefusal(soul.soulId, 'object', capability, code, reason); return {accepted: false as const, code, reason};};
-    const busy = this.sharedBusy(soul.soulId); if (busy) return refuse('shared.busy', busy.reason);
+    const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy)};
     const nativeUse = this.nativeUseRefusal?.(capability, steps);
     if (nativeUse) return refuse(nativeUse.code, nativeUse.reason);
     const stepOut = this.stepOutRefusal(soul.entityId); if (stepOut) return refuse(stepOut.code, stepOut.reason);
@@ -2043,6 +2048,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
     return {accepted: true, receipt: this.receipt(soul.soulId, receipt)!};
   }
   /** PC05 (#684, PC02 §3): the shared.busy refusal of a member of a running operation, before any native check. */
+  /** PC08: what a `shared.busy` refusal carries besides its reason: the op, and the safe stop on offer. */
+  private busyExtra(busy: NonNullable<ReturnType<Together['sharedBusyFor']>>): {op?: string; alternatives?: {id: string; label: string}[]} {return {op: busy.op, ...(busy.alternatives ? {alternatives: busy.alternatives} : {})};}
   private sharedBusy(soulId: string): ReturnType<Together['sharedBusyFor']> {for (const r of this.openReceipts(soulId)) {const b = this.together.sharedBusyFor(r); if (b) return b;} return null;}
   /** PC05 (#684, PC02 §2): the atomic commit of a ready shared proposal. One host decision with one native crew `carry`,
    *  through the atomic object decision: its guard re-derives readiness under the write lock and requires no operation

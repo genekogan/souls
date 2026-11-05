@@ -28,7 +28,8 @@ interface Engine {
   step(): { paths; changes; events; programs };        // what changed this tick, for broadcast and the host
   perform(program): { id; ok; diagnostic? };           // start a program, replacing what the actor was doing
   stop(programId, opts?): void;                        // request a stop; committed physical work may finish safely;
-                                                       // {untilSafe} keeps the programme until its native cleanup lands
+                                                       // {untilSafe} keeps the programme until its native cleanup lands,
+                                                       // retrying a refused cancel while the action moves
   canPerform(program): { code; message } | null;       // is the first step feasible now? no side effects
   programOf(actor): string | null;
   submit(verb, params, opts?); cancel(id, reason?);

@@ -112,13 +112,18 @@ context-size checks below), regression runs, and an uncut real-client recording 
       down at the first clear spot, or at the destination.
     - **Held up while stopping.** That is `blocked`, as above, with the claims kept. The reason says a stop was asked,
       and moving again returns the operation to `stopping`, never `started`.
-    - **Claims.** The claims stay until the load is set down. Until then, a member's body act is refused `shared.busy`.
-    - **Release.** Every member's receipt ends together, `completed` with code `shared.stopped`, the same `op` and
+    - **Claims.** The claims stay until the load is set down. Until then, a member's body act is refused `shared.busy`,
+      and the refusal still offers `stop-carry:<op>` (asking again changes nothing).
+    - **Release.** Once the programme has ended and the load lies on the ground, held by nobody, every member's receipt
+      ends together, `completed` with code `shared.stopped`, the same `op` and
       `stop`, and `shared.result` either `stopped` (set down short of the destination, or never lifted) or
       `stopped-at-destination`. It is never `arrived`. Each stream gets `shared.stopped`, and each Soul then acts on its
       own; nothing is resumed for them.
     - **Repeats.** The same member asking again gets the first stop's receipt. Another member's stop completes with
       `shared.stop-asked` and changes nothing. One stop event is logged.
+    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop.
+    - **Restart.** A stop asked before a restart is logged again for the replayed programme; a native stop is
+      idempotent. Full restart qualification is PC10.
     - **Refusals.** A stop after the end is refused `shared.not-running`, one from a non-member `shared.not-member`,
       and an unknown op `shared.unknown-op`.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
