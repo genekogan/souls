@@ -822,7 +822,8 @@ export class Together {
   private sharedCarryStep(crew: string[], load: string, placeId: string): Steps[number] | null {
     const place = this.p.places.byId.get(placeId), x = this.w.entities[load]; if (!place?.polygon?.length || !x) return null;
     const at = centroid(place.polygon);
-    return {verb: 'mars:carry', params: {crew, item: load, to: {x: at[0], z: at[1], yaw: x.pose.yaw ?? 0}}};
+    // PC07 (#686): a shared carry opts in to the held, named route cut (actions.ts holdCutV1)
+    return {verb: 'mars:carry', params: {crew, item: load, to: {x: at[0], z: at[1], yaw: x.pose.yaw ?? 0}, holdCutV1: true}};
   }
   /** PC02 §1 amend: a new revision clears every acceptance; whoever had accepted is told by their own receipt. */
   private amendShared(id: string, soul: EdgeSoul, capability: string, tag: Extract<Tag, {kind: 'shared'}>, to: {id: string; name: string}, guests: {soulId: string; name: string}[], changes: string[]) {

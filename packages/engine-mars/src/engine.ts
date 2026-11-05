@@ -544,7 +544,8 @@ export class MarsEngine implements Engine {
     const body=this.m.admitFloaters(verb,parsed.data,(id:string)=>this.ents[id]?.body);
     if(body.status==='refuses')return {code:body.reason,message:body.note};
     const r = def.plan(this.rt, parsed.data);
-    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])],...(r.diagnostic.details?{details:{...r.diagnostic.details}}:{})}:{}) };
+    // PC07: a preview of a `holdCutV1` carry also returns the planner's details (its search size and budget); others unchanged
+    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])],...(r.diagnostic.details&&(parsed.data as {holdCutV1?:true}).holdCutV1?{details:{...r.diagnostic.details}}:{})}:{}) };
   }
   /** VEHICLE-STEER: a pure check of a Mars verb (no `mars:` prefix) against the world now: the refusal it would meet, or null. */
   previewMarsVerbV1(verb: string, params: unknown): Diag | null { return this.plan(verb, params, true); }

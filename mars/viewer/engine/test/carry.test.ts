@@ -58,10 +58,10 @@ function audit(rt: Runtime, item: string, crew: string[]) {
   return s;
 }
 
-function cornerRun() {
+function cornerRun(extra: { holdCutV1?: true } = {}) {
   const rt = setup(carryCorridors(), component('b1', 'beam-12ft', [4, 0, 4], 0), human('p1', 2, 6.5), human('p2', 6, 1.5));
   const t0 = performance.now();
-  const a = rt.submit('carry', { crew: ['p1', 'p2'], item: 'b1', to: { x: 18, z: 11, yaw: Math.PI / 2 } });
+  const a = rt.submit('carry', { crew: ['p1', 'p2'], item: 'b1', to: { x: 18, z: 11, yaw: Math.PI / 2 }, ...extra });
   const planMs = performance.now() - t0;
   return { rt, a, planMs };
 }
@@ -227,8 +227,8 @@ test('carry: cancel during gather releases the crew immediately; target on an ob
   assert.match(b.diagnostic!.message, /stack of 2x4s/);
 });
 
-test('carry: a construction cut with no other way holds the load; the cut is searched once per scene change (PC07)', () => {
-  const { rt, a } = cornerRun();
+test('carry: a construction cut with no other way holds the load; the cut is searched once per scene change (PC07, holdCutV1)', () => {
+  const { rt, a } = cornerRun({ holdCutV1: true });
   const s = audit(rt, 'b1', ['p1', 'p2']);
   stepUntil(rt, () => a.phase === 'move' && centre(rt)[0] > 5);
   // three wall blocks across corridor A's east arm, ahead of the load: the only way to the target is cut
@@ -260,6 +260,23 @@ test('carry: a construction cut with no other way holds the load; the cut is sea
   assert.equal(a.status, 'completed', a.diagnostic?.message);
   assert.deepEqual(rt.violations.map((v) => v.message), []);
   assert.deepEqual(s.overlaps, [], 'load never overlaps a wall');
+});
+
+test('carry: without holdCutV1 a cut is reported as before PC07 (no named cut, no details, searched every tick)', () => {
+  const { rt, a } = cornerRun();
+  stepUntil(rt, () => a.phase === 'move' && centre(rt)[0] > 5);
+  for (const [i, z] of [3, 4, 5].entries()) rt.world.entities[`cut${i}`] = component(`cut${i}`, 'test-wall', [12, 0, z], 0, { phase: 'staged', label: 'cut block' });
+  stepUntil(rt, () => a.status === 'blocked', 40);
+  const d1 = a.diagnostic!;
+  assert.equal(d1.code, 'carry.route-blocked');
+  assert.match(d1.message, /^the carry route of b1 is now blocked near \([\d.]+, [\d.]+\) and no alternative exists: /, d1.message);
+  assert.equal(d1.details, undefined, 'no PC07 details');
+  rt.step(); rt.step();
+  assert.notEqual(a.diagnostic, d1, 'searched again on the next tick, as before');
+  assert.equal(a.status, 'blocked');
+  for (const i of [0, 1, 2]) delete rt.world.entities[`cut${i}`];
+  assert.ok(rt.runUntilIdle(20 * 180));
+  assert.equal(a.status, 'completed', a.diagnostic?.message);
 });
 
 test('carry: determinism — same inputs give the same final state hash', () => {

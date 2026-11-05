@@ -117,12 +117,14 @@ test('PC07 A1: a turn the formation cannot make, a load nobody can take hold of,
   assert.equal(code(boxed), 'carry.no-route', JSON.stringify(boxed));
   assert.match(boxed.reason, /^2 people carrying boxed cannot get it to vault \(the carrying formation would hit box-wall wall\)\. Nobody was asked; choose another place\.$/i, boxed.reason);
   assert.doesNotMatch(boxed.reason, /does not prove|each could walk/i); nobody(boxed, 'boxed');
-  const proof = eng.previewMarsVerbV1('carry', {crew: [Ada.entityId, Bo.entityId], item: w.idOf('boxed'), to: {x: w.ax + 8, z: w.az - 8.5, yaw: 0}});
+  // the server's shared preflight asks with holdCutV1 (its details give the search size and budget); a carry without it is unchanged
+  const proof = eng.previewMarsVerbV1('carry', {crew: [Ada.entityId, Bo.entityId], item: w.idOf('boxed'), to: {x: w.ax + 8, z: w.az - 8.5, yaw: 0}, holdCutV1: true});
+  assert.equal(eng.previewMarsVerbV1('carry', {crew: [Ada.entityId, Bo.entityId], item: w.idOf('boxed'), to: {x: w.ax + 8, z: w.az - 8.5, yaw: 0}}).details, undefined, 'no details without the opt-in');
   assert.equal(proof?.code, 'carry.no-route'); assert.ok(proof.details.expanded <= proof.details.budget, `a proof, not a budget (${proof.details.expanded} of ${proof.details.budget})`);
   // a turn the formation cannot make: the beam lies in the nook, whose only way out is a corridor with a right-angle bend.
   // Each person walks out alone; the planner proves (a small search) the carrying formation cannot turn the corner
   await w.at(Ada, w.ax + 5, w.az + 9); await w.at(Bo, w.ax + 6, w.az + 9.6);
-  const native = eng.previewMarsVerbV1('carry', {crew: [Ada.entityId, Bo.entityId], item: inner, to: {x: w.ax + 8.5, z: w.az, yaw: 0}});
+  const native = eng.previewMarsVerbV1('carry', {crew: [Ada.entityId, Bo.entityId], item: inner, to: {x: w.ax + 8.5, z: w.az, yaw: 0}, holdCutV1: true});
   assert.equal(native?.code, 'carry.clearance'); assert.match(native.message, /cannot turn .*'bend-wall wall'.*\((\d+) poses searched\)/, native.message);
   assert.ok(native.details.expanded <= native.details.budget, 'a proof, not a budget');
   const turn = await act(w, Ada, {capability: `carry-with:${inner}`, params: {to: 'shed', with: 'Bo'}});

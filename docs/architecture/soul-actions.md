@@ -95,7 +95,8 @@ context-size checks below), regression runs, and an uncut real-client recording 
       `shared` receipt view. A replan to the same place counts as a detour (`detours`), and the revision stays the same.
     - **Lasting.** After 30 s the hold-up is `lasting`, and each member's stream is told again. The crew still holds
       the load: nobody lets go on a timeout. Clearing the obstacle lets the carry go on, and the native carry rechecks
-      the changed scene. A cut is searched once per scene change, not every tick. A supported stop and set-down come
+      the changed scene. A cut is searched once per scene change, not every tick (the shared carry's opt-in `holdCutV1`;
+      every other carry is unchanged). A supported stop and set-down come
       with PC08.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
