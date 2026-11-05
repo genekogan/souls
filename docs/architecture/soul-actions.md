@@ -19,6 +19,22 @@ context-size checks below), regression runs, and an uncut real-client recording 
   it as a recorded transport. A load that needs more people than one is offered unavailable, with
   `carry.crew-too-small` naming the crew, and acting it is refused before any motion. Shared carries come with
   [shared execution](../design/shared-execution.md). `core-rack-beam@1` keeps its one-hand item path.
+- **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
+  A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who).
+  - **Propose.** Acting it is a together invitation of kind `shared` at revision 1. The host's receipt is `waiting`,
+    and its `awaitingAnswer` names who is undecided.
+  - **Accept.** Only the invited Souls are offered `accept:<invite>`, which needs `{"revision": n}`. Accepting opens
+    the guest's own `waiting` receipt. Each receipt carries `shared` (invite, revision, role slot, phase).
+  - **Amend.** The host's `carry-with` with `invite` and a changed load, place or crew bumps the revision. That ends
+    earlier acceptances with `shared.revision-changed`.
+  - **Leave.** `decline` is still offered after accepting, as a way to leave. Any other body act by a member ends
+    their shared receipt `shared.left`, not `replaced`. Any other body act by the host closes the proposal for
+    everyone.
+  - **Closing early.** A decline or leave that leaves the proposal unable to reach its crew minimum closes it. The
+    host's receipt ends then, rather than at the lapse.
+  - **Expiry.** A proposal lapses after 120 s (`invite.expired`). A late answer is refused `invite.gone`.
+
+  Nothing moves, commits or claims yet. The carry itself is PC05/PC06.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station. A word only applies when that action is on offer.
@@ -104,9 +120,10 @@ Other known limits:
 - Picking up something at the back of a counter bends the body deeply.
 - At a hand-over the model's record of who holds the item lags the engine by a few samples.
 - The `here` frame lists at most two things of a kind (three seats); more appear only as a count under `more`.
-- Some new defs are over the library's geometry budgets: triangles for the fountain, jukebox, curtained window, drum kit,
-  drawer chests, watering can, mic stand, kettle, mug and bell pull, and draw calls for the newest door and locker
-  revisions. They need lighter meshes, or recorded budget holds with reasons, before release.
+- Some defs are over the library's geometry budgets: triangles for the fountain, curtained window, drawer chests,
+  watering can, kettle, mug and bell pull, and draw calls for the newest door and locker revisions. They are getting
+  lighter revisions family by family (#494). The drum kit, mic stand and jukebox already have one (`@2`, in budget);
+  their `@1` keeps its bytes and its recorded hold, because published revisions are immutable.
 - Portable lights were rebuilt as carry-and-set-down (entry 29); the earlier version is retired. Mixed-outfit seams
   (entry 11) remain parked.
 
@@ -118,7 +135,10 @@ Each family has a deterministic native test that runs a real server and engine i
 node --test --test-concurrency=1 tools/soul-actions/<name>.test.mjs
 ```
 
-Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. The tests live in
+Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. An entry that adds or
+revises a library def also runs the library budget tests, so a def over its triangle or draw budget is caught by its
+own entry: `node --test packages/world-compiler/src/core-kit/library.test.ts packages/conformance/src/catalogue-checks.test.ts`
+and `pnpm --filter @sim/conformance test`. A new revision carries no budget hold; fix the mesh instead. The tests live in
 `tools/soul-actions/`; the viewer's motion units are under `apps/web/test/`, `apps/web/src/*.test.ts`,
 `mars/viewer/engine/test/` and `mars/viewer/app/engine-view/`.
 
