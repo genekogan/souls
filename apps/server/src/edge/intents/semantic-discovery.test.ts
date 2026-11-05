@@ -55,3 +55,14 @@ test('supported untargeted activity commands remain activities before venue disc
  for(const query of ['find somewhere to read a book','find somewhere to take a nap'])assert.equal(semanticDiscovery(L,{soulId:'s'} as any,query,caps,new Map()),null,query);
  const venue=semanticDiscovery(L,{soulId:'s'} as any,'somewhere to hear live music',caps,new Map()) as any;assert.equal(venue.discovery.kind,'purpose');assert.equal(venue.didYouMean[0].id,'walk:stage');
 });
+test('F5 (#376): a bound seat whose own name holds every word keeps the vocabulary path; seats of different names are named, never chosen',()=>{
+ const {L}=setup(),seat=(name:string,id=name)=>({id:'sit:e_'+id,verb:'sit',label:`${name} (a mars-presenter-timber-box, sit on top, 23 m)`,target:{kind:'object',id},available:true});
+ const run=(q:string,caps:any[])=>semanticDiscovery(L,{soulId:'s'} as any,q,caps,new Map()) as any;
+ // "presenter" names a Chiba part alias ("presenter desk"), so on main this was refused with no candidates
+ assert.equal(run('sit on the presenter box',[seat('presenter-timber-box')]),null);
+ assert.equal(run('sit on the presenter box',[seat('presenter-timber-box'),seat('presenter-timber-box-2')]),null,'numbered copies of one seat stay the nearest-of-them');
+ const two=run('sit on the presenter box',[seat('presenter-timber-box'),seat('presenter-spare-box')]);
+ assert.equal(two.code,'capability.choose');assert.deepEqual(two.didYouMean.map((c:any)=>c.id).sort(),['sit:e_presenter-spare-box','sit:e_presenter-timber-box']);
+ assert.match(two.reason,/presenter-spare-box/);assert.match(two.reason,/presenter-timber-box/);assert.equal(two.discovery.requested,'sit');
+ const none=run('sit on the auditorium sofa',[seat('presenter-timber-box')]);assert.equal(none.code,'capability.unavailable');assert.equal(none.didYouMean.length,0);
+});
