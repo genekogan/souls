@@ -172,7 +172,7 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
     <NavbarMenu label="Camera modes and help" className="camera-menu" sheet={phoneSheet} trigger={<span aria-hidden="true">⌄</span>}>
       {dismiss=><><button type="button" aria-pressed={kind==='broadcast'} disabled={!handle||arriving} onClick={()=>{toBroadcast();dismiss();}}>Broadcast</button>
       <button type="button" aria-pressed={kind==='yours'} disabled={!handle||arriving} onClick={()=>{yourCamera();dismiss();}}>Free</button>
-      {kind!=='follow'&&followable&&<button type="button" disabled={!handle||arriving} onClick={()=>{handle?.flyToSoul?.(followable,{chip:coarse});dismiss();}}>Follow {selectedName ?? 'this Soul'}</button>}
+      {phoneSheet&&kind!=='follow'&&followable&&state?.flyingTo!==followable&&<button type="button" disabled={!handle||arriving||state?.presentation==='history'} onClick={()=>{handle?.flyToSoul?.(followable,{chip:coarse});dismiss();}}>Follow {selectedName ?? 'this Soul'}</button>}
       {kind==='follow'&&<button type="button" onClick={()=>{yourCamera();dismiss();}}>Stop following</button>}
       <button type="button" onClick={()=>{dismiss();onNavigationChange(true);}}>Camera controls</button><FullscreenToggle/></>}
     </NavbarMenu>
