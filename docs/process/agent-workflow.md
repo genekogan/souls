@@ -91,6 +91,15 @@ The strict steps:
 
 A PR that fails a check leaves the train with its result in the PR; fix it and relabel.
 
+**Stacked PRs.** When a PR squash-merges, the `restack` workflow (`.github/workflows/restack.yml`,
+`.github/scripts/restack.mjs`) handles the PRs stacked on it. It retargets each one to the merged PR's base (GitHub
+already does this when it deletes the merged branch) and merges that base forward. A child still carries the old
+branch's commits, so a plain `git merge main` diffs from the old `main` fork point and conflicts on files the child
+never changed. The restack merge is 3-way against the child's fork point from the old base instead: files the child's
+own diff doesn't touch take the squashed content. The result is an ordinary merge commit, pushed as a fast-forward with
+`MERGE_TRAIN_TOKEN` (never forced), so CI runs on it. A real conflict pushes nothing; the child gets `needs:rebase`
+and a comment naming the files. To redo one by hand, run `gh workflow run restack.yml -f pr=<merged PR>`.
+
 ## Review
 
 - **A qualified agent reviews every PR.** The current default `claude-review` workflow reviews each non-draft PR against [AGENTS.md](../../AGENTS.md)
