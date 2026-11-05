@@ -25,10 +25,10 @@ export const CHALK_FADE_DAYS = 4;
 export const CHALK_SQUARE_DEF: DefInput = {
   schema: 'def/1', name: 'core-chalk-square', version: 1,
   description: `A pale paving square set in the ground for chalk drawings, with a tin of chalk at one corner. Draw on it in chalk to leave a picture with your title and credit; it fades over ${CHALK_FADE_DAYS} world days and washes away.`,
-  tags: ['art', 'chalk', 'street', 'sign-text', 'fades'], form: 'point',
+  tags: ['art', 'chalk', 'street', 'sign-text', 'fades'], category: 'object.art', form: 'point',
   synonyms: ['chalk square', 'pavement chalk', 'chalk drawing', 'paving square'],
   make: { kind: 'gen', gen: 'kit/2', args: { round: 0.004, shapes: [
-    { kind: 'box', at: [0, 0.012, 0], size: [1.0, 0.024, 1.0], round: 0, tint: 'stone' },
+    { kind: 'box', at: [0, 0.012, 0], size: [1.0, 0.024, 1.0], round: 0, tint: 'stone', collide: true },
     { kind: 'cyl', at: [0.43, 0.058, 0.43], r: 0.035, h: 0.07, segments: 8, tint: 'tin' },
     { kind: 'box', at: [0.43, 0.098, 0.43], size: [0.012, 0.012, 0.05], round: 0, tint: 'chalk1', yaw: 0.6 },
     { kind: 'box', at: [0.35, 0.03, 0.46], size: [0.05, 0.012, 0.012], round: 0, tint: 'chalk2', yaw: 0.3 }],

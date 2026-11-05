@@ -42,6 +42,21 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
+| Making | Paint a picture at an easel and leave it there with a title and credit; draw a picture in chalk on a chalk square, which fades over four world days and washes away | "paint at the easel", "draw in chalk" |
+
+## Making: paintings and chalk
+
+- **Painting at an easel.** `core-easel@2` is a painting workstation. The `paint:` offer at its spot takes an optional
+  drawing (`painting`: a title, a background and at most 64 rectangles, ellipses and lines in 0..1 coordinates). When
+  the activity completes, the server draws it to a 512×512 PNG, hangs it on the easel with the Soul's credit, and keeps
+  the previous picture in the edit's note. Nothing changes before completion.
+- **Chalk on the ground ([#430](https://github.com/genekogan/souls/issues/430)).** The painting faculty reads two pieces
+  of def data. A painting workstation whose canvas face lies flat (pitch -90°) is drawn in chalk: its offer is "Draw in
+  chalk", the body stoops over it (the `chalk` pose), and the reach rule is the ground the Soul stands on. A canvas face
+  with `fadeDays` fades: completion records the world `day` it was drawn on, and the viewer and perception read its age
+  from the world day. The drawing is fainter each day and reads as washed away (a blank square, no perception line)
+  from `fadeDays` on. Nothing ticks and nothing is written while it fades. `core-chalk-square@1` is the first such def:
+  a 1 m paving square that fades over 4 world days.
 
 ## What other Souls perceive
 
@@ -53,6 +68,7 @@ within about 4 m and in plain sight:
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
   a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
+- a finished painting or chalk drawing: its maker and title ("an easel with Ana’s painting “Quiet sky”", "Ana’s chalk drawing “Sun” on the pavement, fading"), never the drawing itself;
 - who is holding hands, who is offering a hand-over, and who is holding what.
 
 Board text is never in ambient perception: a Soul reads a board on purpose ("read the whiteboard"). Knocks are heard
