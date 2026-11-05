@@ -8,3 +8,24 @@ test('required model recovery creates a real body while optional failed names do
 test('failed world metadata lookup retries and actual building attachment uses successful cached root',async()=>{let fetches=0,loads=0;const urls:string[]=[];const lookup=successfulInitialLookup(async()=>initialAssetRoot(++fetches===1?new Response('temporary failure',{status:500}):Response.json({assetRoot:'/world-assets/mars'}))),geometry=new WorldGeometry(null),loader={loadAsync:async(url:string)=>{urls.push(url);loads++;const scene=new THREE.Group();scene.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial()));return{scene};}},gate=new InitialWorldReadiness(1);gate.require('building',async()=>{const assetRoot=await lookup();assert.ok(assetRoot);geometry.setAssetRoot(assetRoot);const failed=await geometry.addBuildings([{file:'tea.glb',p:[0,0,0]}],loader as never);if(failed.length)throw Error('fixture building failed');});gate.seal();await new Promise(r=>setImmediate(r));assert.equal(gate.snapshot().stage,'failed');gate.retry();await new Promise(r=>setImmediate(r));assert.equal(gate.snapshot().stage,'preparing');assert.equal(fetches,2);assert.equal(loads,1);assert.deepEqual(urls,['/world-assets/mars/buildings/tea.glb']);await lookup();assert.equal(fetches,2);assert.ok(geometry.group.getObjectByName('building:tea.glb'));geometry.dispose();});
 
 test('only explicit missing legacy metadata may use default root; malformed/transient responses refuse',async()=>{assert.equal(await initialAssetRoot(new Response('',{status:404})),undefined);await assert.rejects(initialAssetRoot(new Response('',{status:503})),/503/);await assert.rejects(initialAssetRoot(Response.json({assetRoot:'/models'})),/invalid root/);});
+
+test('shared floater preparation runs once and readiness waits for prepared textures',async()=>{
+ let loads=0,prepares=0,finish!:()=>void;
+ const prepared=new Promise<void>(resolve=>{finish=resolve;});
+ const loader={loadAsync:async()=>{loads++;const scene=new THREE.Group();scene.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial()));return{scene};}};
+ const view=new FloaterView(new THREE.Group(),{baseUrl:'/characters/',loader:loader as never,prepareModel:async()=>{prepares++;await prepared;}});
+ for(let i=0;i<20;i++)view.add('copy-'+i,{family:'floater',model:'verdelis'});
+ let ready=false;const initial=view.readyInitial(view.ids()).then(()=>{ready=true;});
+ await new Promise(r=>setImmediate(r));assert.equal(loads,1);assert.equal(prepares,1);assert.equal(ready,false);
+ finish();await initial;for(const id of view.ids())assert.equal(view.object(id)?.userData.bodyModel,'verdelis');
+ view.remove('copy-0');view.add('reused',{family:'floater',model:'verdelis'});await view.readyInitial(['reused']);assert.equal(loads,1);assert.equal(prepares,1);view.dispose();
+});
+
+test('failed floater preparation stays isolated and can retry the missing model',async()=>{
+ let fail=true;
+ const loader={loadAsync:async()=>{const scene=new THREE.Group();scene.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial()));return{scene};}};
+ const view=new FloaterView(new THREE.Group(),{baseUrl:'/characters/',loader:loader as never,prepareModel:async()=>{if(fail)throw Error('fixture preparation failure');}});
+ view.add('broken',{family:'floater',model:'verdelis'});await assert.rejects(view.readyInitial(['broken']),/Required body broken/);assert.equal(view.object('broken')?.userData.bodyModel,'stand-in');
+ fail=false;view.add('other',{family:'floater',model:'mycos'});await view.readyInitial(['other']);assert.equal(view.object('other')?.userData.bodyModel,'mycos');
+ view.retryInitial(['broken']);await view.readyInitial(['broken']);assert.equal(view.object('broken')?.userData.bodyModel,'verdelis');view.dispose();
+});

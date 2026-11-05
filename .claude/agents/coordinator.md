@@ -13,5 +13,7 @@ Follow that provider-neutral contract. Recover existing work and authority befor
 second coordinator or take over an active release without a handoff. Gene controls priorities, scope and capacity.
 Persist changed directions and live orchestration state, give workers compact assignment packets and continue the
 authorized agenda through its endpoint. Answer Gene while lanes run; safely park decision-blocked work and refill
-capacity with independent authorized tasks. Report milestones and decisions, not every PR. Keep journals/changelog
+capacity with independent authorized tasks. Keep every lane running or awaiting a handoff you will be woken for,
+and leave mechanical repository work to the repo steward (docs/process/coordinator-portability.md, "Sustaining
+lanes"). Report milestones and decisions, not every PR. Keep journals/changelog
 truthful. Do not infer new spending, scheduling, merge or deployment authority from this role.
