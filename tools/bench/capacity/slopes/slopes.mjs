@@ -19,9 +19,9 @@ import { cpus, loadavg, freemem, platform, arch, totalmem } from 'node:os';
 import { join, resolve, relative } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { FIXTURES, DEMAND, rng, outcomeOf } from '../meetup/workload.mjs';
+import { FIXTURES, outcomeOf } from '../meetup/workload.mjs';
 import { withDistantInventory } from './inventory.mjs';
-import { AXES, ACTS, PROBE_ROUTES, SLOPES, cores, probeRoute, activeWindow, liveWindow, summarizeProfile, reportText } from './report.mjs';
+import { AXES, ACTS, PROBE_ROUTES, SLOPES, activePlan, cores, planSeed, probeRoute, activeWindow, liveWindow, scheduleFacts, summarizeProfile, reportText } from './report.mjs';
 
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf(`--${k}`); return i < 0 ? d : argv[i + 1]; }, flag = (k) => argv.includes(`--${k}`);
 const ROOT = resolve(opt('root', new URL('../../../..', import.meta.url).pathname)), SHORT = flag('short');
@@ -197,12 +197,11 @@ async function oneRun(arm, rep) {
     }
     if (prof) { const p = await prof.stop(); writeFileSync(join(dir, 'profile-probe.cpuprofile'), JSON.stringify(p)); profiles.probe = summarizeProfile(p, ROOT); }
     // the active window: `active` Souls at CW1's per-Soul rates, one call at a time, from seeded offsets
+    // seeded by the repeat, not the arm (report.mjs activePlan, #951): every arm of a repeat replays the same phases
+    const seed = planSeed(rep), opsBySoul = activePlan(seed, arm.active, ACTIVE_S * 1000), schedule = scheduleFacts(opsBySoul, seed);
+    const plan = opsBySoul.map((ops, i) => ({ s: souls[i], ops })), offered = opsBySoul.reduce((t, ops) => t + ops.length, 0);
     if (prof) await prof.start();
-    m.active0 = mark('active0'); const t0 = m.active0.t, end = t0 + ACTIVE_S * 1000, R = rng(`${SLOPES}|${arm.id}`); let offered = 0;
-    const plan = souls.slice(0, arm.active).map((s) => { const ops = [], ro = R() * DEMAND.readEveryMs, ao = R() * DEMAND.actEveryMs; let n = Math.floor(R() * 6);
-      for (let t = ro; t < ACTIVE_S * 1000; t += DEMAND.readEveryMs) ops.push({ at: t, route: DEMAND.readMix[n++ % DEMAND.readMix.length] });
-      for (let t = ao, k = 0; t < ACTIVE_S * 1000; t += DEMAND.actEveryMs) ops.push({ at: t, route: 'act', n: k++ });
-      offered += ops.length; return { s, ops: ops.sort((a, b) => a.at - b.at) }; });
+    m.active0 = mark('active0'); const t0 = m.active0.t, end = t0 + ACTIVE_S * 1000;
     await Promise.all(plan.map(async ({ s, ops }) => { for (const [k, op] of ops.entries()) { await sleep(t0 + op.at - mono()); if (mono() >= end) break;
       const late = Math.max(0, Math.round(mono() - (t0 + op.at))), c = await call(run, W, s, op.route, op.n ?? k); c.lateMs = late; calls.push(c); appendFileSync(join(dir, 'calls.jsonl'), JSON.stringify({ phase: 'active', ...c }) + '\n'); } }));
     await sleep(end - mono()); m.active1 = mark('active1');
@@ -217,7 +216,7 @@ async function oneRun(arm, rep) {
       boot: { seconds: W.bootS, settledS: W.settledS, dbMb: dbBytes == null ? null : +(dbBytes / 2 ** 20).toFixed(1), quietWorlds: worlds.slice(1).map((x) => ({ slug: x.slug, bootS: x.bootS })) },
       windows: { quiet: win(m.quiet0, m.quiet1, 'w'), active: win(m.active0, m.active1, 'w') },
       quietWorlds: worlds.length > 1 ? { n: worlds.length - 1, ...win(m.active0, m.active1, 'q') } : null,
-      probe, active: activeWindow(calls, { cpuS: m.active0.w && m.active1.w ? m.active1.w.cpuS - m.active0.w.cpuS : null, spanMs: m.active1.t - m.active0.t, quietCores, offered }),
+      probe, schedule, active: activeWindow(calls, { cpuS: m.active0.w && m.active1.w ? m.active1.w.cpuS - m.active0.w.cpuS : null, spanMs: m.active1.t - m.active0.t, quietCores, offered }),
       live: { quiet: liveWindow(inWin(m.quiet0, m.quiet1).map((x) => x.live).filter(Boolean)), active: liveWindow(inWin(m.active0, m.active1).map((x) => x.live).filter(Boolean)) },
       profiles, load: { otherSoulsProcessesBefore: otherBefore, otherSoulsProcessesAfter: otherSouls(worlds.map((x) => x.pid)) }, host: { loadavg: loadavg().map((x) => +x.toFixed(2)), freeMemMb: Math.round(freemem() / 2 ** 20) },
     };
@@ -236,6 +235,7 @@ const receipt = { slopes: SLOPES, at: new Date().toISOString(), indicative: !QUA
   host: { class: HOST_CLASS, platform: platform(), arch: arch(), cores: cpus().length, memGiB: Math.round(totalmem() / 2 ** 30), quietDeclared: QUIET, loadavgStart: loadavg().map((x) => +x.toFixed(2)) },
   axes: AXIS_LIST, repeats: REPEATS, windows: { warmS: WARM_S, quietS: QUIET_S, activeS: ACTIVE_S, probeN: PROBE_N }, quietWorldsCap: QUIET_N, cpuProfile: PROF, slice: SLICE ? 'given' : null,
   coverage: ['fake minds; server delivery only, no model latency', 'acts never move a Soul (attention, gesture, say): walk planning (#454) is not exercised', 'Eyes (rendering) off; no browser viewers; no launcher proxy',
+    'the active window replays one schedule per repeat (seeded by the repeat, not the arm; #951): every arm of a repeat has the same phases for its first k Souls, and `crowded reads` gives how bursty they were',
     'CPU is the whole world process (worker threads included); per-call CPU is an upper bound (tick variation inside it)', 'no counters for rows examined, plan builds or invalidations: the CPU profile attributes cost to functions instead',
     ...(PROF ? ['with --cpu-prof the probe and active windows run under a 1 ms sampling profiler and the quiet window does not: its overhead is inside every per-call CPU figure, alike across arms'] : []),
     ...(QUIET_N < 9 ? [`quiet axis capped at ${QUIET_N} quiet worlds (--quiet-worlds), not 9`] : [])] };
