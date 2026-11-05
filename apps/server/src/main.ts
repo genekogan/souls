@@ -360,9 +360,9 @@ const shutdown = async (sig: string, exitCode = 0) => {
   // #447: after an unrecoverable engine fault the engine holds a failed recovery replay. Never make that the head: the
   // restart boots from the last good snapshot and replays the log.
   if (host.engineFault) console.log(`[world] ${sig}: no snapshot (engine fault at tick ${host.engine.world.tick}); the restart boots from the last good snapshot`);
-  else { console.log(`[world] ${sig}: saving snapshot at tick ${host.engine.world.tick}`); try { host.saveSnapshot(true); } catch (e) { console.error('[world] snapshot failed', e); } }
+  else { console.log(`[world] ${sig}: saving snapshot at tick ${host.engine.world.tick}`); try { host.saveSnapshot(true); } catch (e) { console.error('[world] snapshot failed', e); }
   if (process.env.SIM_BOOT_HASH === '1') console.log(`[world] ${sig}: state at tick ${host.engine.world.tick}: ${host.engine.stateHash()}`);
-  console.log(`[world] ${sig}: snapshot saved in ${Math.round(performance.now() - saveAt)} ms (capture ${Math.round(host.snapshotMs.capture)}, write ${Math.round(host.snapshotMs.persist)})`);
+  console.log(`[world] ${sig}: snapshot saved in ${Math.round(performance.now() - saveAt)} ms (capture ${Math.round(host.snapshotMs.capture)}, write ${Math.round(host.snapshotMs.persist)})`); }
   server.close(); void hub.closeClients('server restarting');
   await closeContextViews();
   auth.close();db.close(); process.exit(exitCode);

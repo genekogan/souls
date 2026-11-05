@@ -96,6 +96,9 @@ export class StallGuard {
     try {
       await this.h.release(soul, {code: 'stall.released', message});
       this.seen.delete(soul.soulId);
+      // stall-release-support/1 (#447): the landing filled between the probe and the fold, so the world set nothing down:
+      // no "released" receipt for a body still held (the guard looks again later)
+      if (this.h.probe(soul.entityId)?.exempt === 'release.unsupported') return false;
       const stallV1: StallV1 = {contract: 'stall/1', what: w, holders: p.holders.map(x => `${x.verb}${x.phase ? ':' + x.phase : ''}`), markers: p.markers, seconds, trigger};
       this.h.record(soul, message, {stallV1});
       return true;

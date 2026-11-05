@@ -397,7 +397,7 @@ export class ChildPool {
     child.stdout.pipe(log, { end: false }); child.stderr.pipe(log, { end: false });
     // a boot's progress, when the world writes no live.json: its output (healthy())
     const out = () => { run.lastOutputAt = Date.now(); }; child.stdout.on('data', out); child.stderr.on('data', out);
-    child.once('exit', (code, signal) => { run.exited = true; log.end(`--- exit ${code ?? signal}\n`); this.onExit(k, child, code, signal); });
+    child.once('exit', (code, signal) => { run.exited = true; run.code = code; log.end(`--- exit ${code ?? signal}\n`); this.onExit(k, child, code, signal); });
     child.once('error', (e) => { log.write(`--- spawn error ${e.message}\n`); });
     return run;
   }
@@ -437,7 +437,8 @@ export class ChildPool {
     if (!run.exited) child.kill('SIGKILL');
     k.status = 'failed'; k.boot = null; this.o.onChange?.(k.slug);
     const e = new Error(run.exited ? `world ${k.slug} exited while booting (see ${join(this.o.logDir, k.slug + '.log')})` : stalled ? `world ${k.slug} boot made no progress for ${since} s (killed ${Math.round((Date.now() - t0) / 1000)} s into it)` : `world ${k.slug}: boot stopped`);
-    e.reason = stalled ? 'boot-stalled' : 'boot';
+    // #447: a fault that surfaces while booting (exit 76) is still an engine fault, not a boot failure
+    e.reason = stalled ? 'boot-stalled' : run.code === ENGINE_FAULT_EXIT ? 'engine-fault' : 'boot';
     if (stalled) this.log(e.message);
     throw e;
   }
@@ -449,6 +450,7 @@ export class ChildPool {
     k.child = null; k.frozen = false; k.lastExit = { code, signal, at: Date.now(), ...(wedged ? { reason: `wedged: ${wedged.reason}` } : fault ? { reason: 'engine-fault' } : {}) }; this.savePids();
     // #447: the last reason a world stopped for good is kept with its state (a qualify run's children.json records it)
     if (fault || halted) k.lastHalt = { at: Date.now(), reason: fault ? 'engine-fault' : halted.reason, ...(halted?.tick != null ? { tick: halted.tick } : {}) };
+    k.live = null;   // that process's live.json: never read as the next child's
     if (this.closing || k.stopped || this.fenced) { k.status = 'stopped'; this.o.onChange?.(k.slug); return; }
     if (k.status === 'starting') return;  // boot() reports it (to ensure()'s caller, or to the restart loop)
     // exit 75 (LOAD-CONTRACT §4): the world asked for a planned restart (black too long; its snapshot is saved): at once
