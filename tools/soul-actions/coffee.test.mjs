@@ -118,7 +118,7 @@ test('coffee: made on the tea faculty, served by hand, drunk to empty, rinsed cl
   report.checks.push('words pick the mug: "make a cup of coffee" -> mug (tea mug nearer the kettle untouched); "make a cup of tea" -> cup (coffee mug untouched)');
 
   // ---- Ana picks up the coffee, offers it to Ben; he accepts: one holder in every tick, the coffee unchanged ----
-  await done(ana, `pick-up:${id('mug')}`); assert.equal(ent('mug').support.by, ana.entityId, 'Ana holds the coffee');
+  as(ana); report.cupSourceOffered = edge.capabilities(ana).some((c) => c.id === 'pick-up:cup'); await done(ana, 'pick up the mug'); assert.equal(ent('mug').support.by, ana.entityId, 'Ana holds the coffee');
   const holders = new Set();
   const g = await act(ana, 'offer Ben the coffee'); await tick(5);
   const benOffer = await here(ben); assert.match(benOffer.me?.offer ?? '', /^Ana holds out the .+ for you: accept or decline \(\d+ s\)$/, JSON.stringify(benOffer.me));

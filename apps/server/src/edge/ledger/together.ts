@@ -1211,11 +1211,12 @@ export class Together {
       if (kind) {
         if (held) return {code: 'hands.full', reason: `You are holding ${held.name}; put it down or give it away first.`, did_you_mean: caps.filter(c => c.id === 'put-down:here' || c.verb === 'give').slice(0, 4).map(c => ({id: c.id, label: c.label}))};
         const lying = caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && this.item(c.target.id)?.kind === kind)[0];
-        const c = lying ?? caps.find(c => c.id === 'pick-up:' + kind);
-        // entry 43: a world thing of that word lying near (a god-built mug) when no prop of the kind is: the one called
-        // exactly that first, then one whose name has the word, nearest first (labels end "(N m)")
-        const named = !c ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
+        // entry 43: a world thing of that word lying near (a god-built mug): the one called exactly that first, then one whose
+        // name has the word, nearest first (labels end "(N m)"). #437: it comes before a prop source of the kind, so "pick up
+        // the coffee mug" by a tea room takes the god-built coffee-mug, not a prop cup of tea; a lying prop still comes first
+        const named = !lying ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
           const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(); return {c, rank: n === w ? 0 : new RegExp(`(^|[^a-z])${w.replace(/[^a-z ]/g, '')}([^a-z]|$)`).test(n) ? 1 : 9, d};}).filter(x => x.rank < 9).sort((a, b) => a.rank - b.rank || a.d - b.d)[0]?.c : undefined;
+        const c = lying ?? (named ? undefined : caps.find(c => c.id === 'pick-up:' + kind));
         if (!c && named) return {capability: named.id, note: `${raw} is ${named.id} (${named.label})`};
         if (!c) {
           const me = this.posOf(soul.soulId), far = me ? this.sources().filter(s => s.kind === kind && s.place).map(s => ({s, d: Math.hypot(s.at[0] - me[0], s.at[1] - me[1])})).sort((a, b) => a.d - b.d) : [];
