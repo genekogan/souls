@@ -11,7 +11,7 @@ the current tree from intended destinations.
 | `packages/` | First-party reusable code with explicit interfaces. The current `engine-mars` adapter still loads code from `mars/viewer/engine`; it is not yet an isolated engine package. |
 | `worlds/` | Curated templates, content definitions, source manifests and examples. Named worlds are legitimate data. Historical patch scripts need a documented role and are not automatically part of world startup. |
 | `tools/` | Maintained development, asset, test, proof, authoring and release CLIs. Consult the relevant tool's README; this is where most repository scripts live. |
-| `scripts/` | Thin environment entrypoints. Currently `cloud-session-start.sh` is a Claude cloud hook, not a universal setup command. |
+| `scripts/` | Environment entrypoints. `bootstrap.sh` is the provider-neutral checkout bootstrap; `cloud-session-start.sh` is the thin Claude cloud hook around it. |
 | `changes/` | Unreleased changelog fragments. Release compilation consumes them into `CHANGELOG.md`; a README-only directory is normal. |
 | `vendor/` | Source treated as externally maintained. `vendor/sim-score` is a temporary compatibility symlink to the first-party music source, not an external copy. |
 | `mars/` | A mixed historical boundary containing the live deterministic engine, viewer, Lab, content and asset tools. Preserve capabilities while extracting them; do not delete it as cosmetic cleanup. |
@@ -86,6 +86,6 @@ lazy playback and the existing UI. Render outputs stay outside git.
 | Release qualification | Authorized release owner only; [release](../release.md) and existing gate accounting |
 
 This list describes checked-in commands; it is not a receipt that they all ran in a fresh cloud environment.
-The clean-cloud pilot in [#554](https://github.com/genekogan/souls/issues/554) must qualify that path. The current
-Claude hook includes its own install/asset logic; a future shared bootstrap should own that logic, with thin provider
-wrappers. Do not make another provider emulate Claude environment variables to obtain a normal checkout.
+The clean-cloud pilot in [#554](https://github.com/genekogan/souls/issues/554) must qualify that path. The shared
+`scripts/bootstrap.sh` owns the install/asset logic; provider hooks such as the Claude cloud hook are thin wrappers
+around it. Do not make another provider emulate Claude environment variables to obtain a normal checkout.

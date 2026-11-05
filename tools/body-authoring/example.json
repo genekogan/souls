@@ -1,0 +1,14 @@
+{
+  "type": "ceramic",
+  "license": "owned",
+  "rightsConfirmed": true,
+  "name": "My floating sculpture",
+  "description": "A rigid sculpture that glides, rests and wiggles in place. No hands.",
+  "motion": {
+    "contract": "body-motion/1",
+    "idle": {"period": 4, "bob": 0.035, "pitch": 0.025, "roll": 0.035, "yaw": 0.05},
+    "move": {"period": 3.2, "bob": 0.025, "pitch": 0.12, "roll": 0.025, "yaw": 0.02},
+    "rest": {"period": 5, "bob": 0.015, "pitch": 0.012, "roll": 0.015, "yaw": 0.02},
+    "dance": {"period": 0.95, "bob": 0.045, "pitch": 0.16, "roll": 0.24, "yaw": 0.32}
+  }
+}
