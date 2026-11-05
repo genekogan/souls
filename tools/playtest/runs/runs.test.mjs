@@ -18,7 +18,7 @@ function fixture({ seats = [{ id: 'pip', adapter: 'codex-headless', model: 'm' }
   const dir = mkdtempSync(join(tmpdir(), 'soul-runs-'));
   const serverRoot = join(dir, 'root');
   for (const f of ['apps/server/src/main.ts', 'apps/web/dist/index.html', 'tools/world-launcher/soul/eden.mjs', 'g.json']) { mkdirSync(join(serverRoot, f, '..'), { recursive: true }); writeFileSync(join(serverRoot, f), ''); }
-  const scenario = { name: 'fixture', version: 1, seed: 1, providers: { allowed: ['codex'] }, world: { kind, genesis: 'g.json', slug: 'pt-fixture', port: 4999 }, durationSec: 5, seats, god: null, observer: { cameras: [] }, director: { mode: 'scripted', script: seats.map((s) => ({ seat: s.id, atSec: 1, channel: 'card', text: 'sit' })) }, review: { mode: 'deterministic', developer: false } };
+  const scenario = { name: 'fixture', version: 1, seed: 1, providers: { allowed: ['codex'] }, world: { kind, genesis: 'g.json', slug: 'pt-fixture', port: 4999 }, durationSec: 200, seats, god: null, observer: { cameras: [] }, director: { mode: 'scripted', script: seats.map((s) => ({ seat: s.id, atSec: 1, channel: 'card', text: 'sit' })) }, review: { mode: 'deterministic', developer: false } };
   writeFileSync(join(dir, 'scenario.json'), JSON.stringify(scenario));
   const spec = (extra = {}) => ({ soulRun: 1, scenario: join(dir, 'scenario.json'), cast: 'none', world: { port: nextPort++ }, observer: { check: false }, ...extra });
   return { dir, serverRoot, spec, out: () => join(dir, `run-${nextPort++}`) };

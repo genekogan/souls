@@ -56,7 +56,8 @@ export function computeMetrics(run, { ledger = [], oracles = null, emergence = n
   const sum = (k) => costRows.reduce((a, r) => a + (r[k] ?? 0), 0);
   const fid = { H: 0, P: 0, M: 0, W: 0, unresolved: 0 }; const cls = {};
   ledger.forEach((r) => { fid[r.fidelity] = (fid[r.fidelity] ?? 0) + 1; if (r.class) cls[r.class] = (cls[r.class] ?? 0) + 1; });
-  const truth = ors.filter((r) => r.id === 'truthfulness-basic');
+  const truth = ors.filter((r) => r.id === 'truthfulness-basic' && r.status !== 'unscorable'); // H-a/H-f: neither pass nor fail
+  const unscorable = (why) => new Set(ors.filter((r) => r.unscorable === why).map((r) => r.requestId)).size;
   const sampleSec = run.scenario?.observer?.sampleSec ?? 5; const cams = run.scenario?.observer?.cameras?.length ?? 1; const seatsN = (run.scenario?.seats?.length ?? 1) + (run.scenario?.god ? 1 : 0);
   const shotsPlanned = Math.floor((run.scenario?.durationSec ?? 0) / sampleSec) * (cams === 1 ? seatsN : seatsN + cams - 1);
   const lateness = ev.flatMap((e) => { const s = (e.samples ?? []).map((x) => Date.parse(x.t)); return s.slice(1).map((t, i) => (t - s[i]) / 1000 - sampleSec).filter((d) => d > sampleSec * 0.5); });
@@ -92,7 +93,8 @@ export function computeMetrics(run, { ledger = [], oracles = null, emergence = n
       serverErrors: ev.reduce((a, e) => a + (e.serverErrors ?? 0), 0), seatCrashes: allTurns.filter((t) => t.exit !== 0 && t.exit != null).length, seatTimeouts: allTurns.filter((t) => t.timedOut).length,
       healthzBefore: run.healthz.before?.ok ?? null, healthzAfter: run.healthz.after?.ok ?? null,
       tickRate: (() => { const s = ev.flatMap((e) => e.samples ?? []).filter((x) => x.tick != null).sort((a, b) => Date.parse(a.t) - Date.parse(b.t)); return s.length > 1 ? Math.round(((s.at(-1).tick - s[0].tick) / ((Date.parse(s.at(-1).t) - Date.parse(s[0].t)) / 1000)) * 100) / 100 : null; })(),
-      basis: 'presence from the rendered card; crashes = seat turns with non-zero exit',
+      unscorableStalled: unscorable('stalled'), unscorableTruncated: unscorable('truncated'),
+      basis: 'presence from the rendered card; crashes = seat turns with non-zero exit; tickRate = ticks per second over all samples; unscorable* = request windows below 15 ticks/s (world stalled) or cut short by the run end or a quota stop before their budget (truncated), whose oracle rows are unscorable',
     },
     cost: {
       tokensTotal: { input: sum('inputTokens'), cached: sum('cachedTokens'), output: sum('outputTokens') },

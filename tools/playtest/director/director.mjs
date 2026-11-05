@@ -9,6 +9,8 @@ import { quota, quotaAllows } from '../lib/quota.mjs';
 import { withKinematics } from '../observer/kinematics.mjs';
 import { runFixtureSetup } from '../arena/fixture-setup.mjs';
 import { PersonaSession, loadSheet, parseSheet } from './persona.mjs';
+import { budgetMsFor } from '../lib/schedule.mjs';
+export { budgetMsFor } from '../lib/schedule.mjs';
 
 const RESULT_STATES = new Set(['done', 'completed', 'complete', 'failed', 'refused', 'declined', 'cancelled', 'canceled', 'replaced', 'result', 'error']);
 const realClock = { now: monoMs, sleep: realSleep };
@@ -38,14 +40,6 @@ export function nextIntervalMs(glance, waitSec, r) {
   const [a, b] = glance;
   const sec = Number.isFinite(waitSec) ? waitSec * (0.85 + 0.3 * r()) : a + r() * (b - a);
   return Math.round(Math.min(900, Math.max(a, sec)) * 1000);
-}
-
-export function budgetMsFor({ scenario, quick, budgetSec, god = false }) {
-  if (Number.isFinite(budgetSec)) return budgetSec * 1000;
-  if (god) return (scenario.director?.godBudgetSec ?? 600) * 1000; // a build outlives a Soul request window
-  const o = scenario.director?.budgetSec;
-  if (Number.isFinite(o)) return o * 1000;
-  return ((quick ? o?.quick : o?.default) ?? (quick ? 90 : 180)) * 1000;
 }
 
 /**

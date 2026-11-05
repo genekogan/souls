@@ -4,7 +4,7 @@
  "scenario": "../../scenarios/soul-runs/hamlet-trio.json",
  "world": { "port": 4322, "slug": "sr-garden-setup", "genesis": "worlds/templates/littlemartians-garden.json" },
  "setup": { "batches": ["../setup/garden-bench.json"], "maxWallSec": 60 },
- "durationSec": 110,
+ "durationSec": 125,
  "cast": {
   "seats": [
    { "id": "dee", "adapter": "scripted-owner", "soulName": "Dee", "script": { "rules": [

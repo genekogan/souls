@@ -22,7 +22,7 @@ test('metrics.json families from the fixture', async () => {
   assert.equal(m.fidelity.vetoed, 1); assert.equal(m.fidelity.vocabularyMisses, 1);
   assert.equal(m.fidelity.truthfulnessPassRate, 2 / 3);
   assert.deepEqual(m.physical, { ...m.physical, insideSolid: 0, noProgress: 1, stuckReceipts: 1, oscillations: 0 });
-  assert.equal(m.uptime.listenOpenFraction, 1); assert.equal(m.uptime.unackedAtCutoff, 0); assert.equal(m.uptime.tickRate, 4);
+  assert.equal(m.uptime.listenOpenFraction, 1); assert.equal(m.uptime.unackedAtCutoff, 0); assert.equal(m.uptime.tickRate, 20);
   assert.equal(m.cost.tokensTotal.input, 49500); assert.equal(m.cost.turnsPerRequest.median, 1); assert.equal(m.cost.cliCallsPerRequest.max, 3);
   assert.equal(m.emergence.storyRating, 2); assert.equal(m.harness.reviewerLeaks, 1);
   assert.ok(m.harness.shotsPlanned > 0 && m.harness.packsWithUnknowns === 3);
