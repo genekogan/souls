@@ -79,6 +79,18 @@ type Ledger=Pick<EdgeLedger,'worldProfile'>&Partial<Pick<EdgeLedger,'registerExa
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'flag';
 const centroid = (pts: [number, number][]) => { let x = 0, z = 0; for (const p of pts) { x += p[0]; z += p[1]; } return [x / pts.length, z / pts.length] as [number, number]; };
 
+/** F4 (#375): a named god flag as wayfinding sees it: its label, the walk that goes there, and where it stands. */
+export type NamedFlagV1 = { name: string; walk: string; entity: string; at: [number, number] };
+export function namedFlagsV1(god: GodMode): NamedFlagV1[] {
+  const out: NamedFlagV1[] = [];
+  for (const e of god.model.entities.values()) {
+    if (!/^core[-/]flag@/.test(god.model.def(e.def)?.ref ?? e.def)) continue;
+    const wp = god.model.worldPose(e), label = String(e.state?.label ?? e.name ?? e.id);
+    out.push({ name: label, walk: `walk:flag-${slug(e.name ?? label)}`, entity: e.id, at: [Math.round(wp.x * 10) / 10, Math.round(wp.z * 10) / 10] });
+  }
+  return out;
+}
+
 /** Offer `walk:flag-<name>` and `swim:<water>` capabilities from the god world (chains any profile already installed). */
 const DEEP_MIDDLE = new Map<string, boolean>();
 /** B-facade (read worker): what main's swim offers read besides the god model, shipped with the delta: the ground recipe
@@ -96,6 +108,7 @@ export function installGroundCapabilities(ledger: Ledger, god: GodMode, host: Wo
     }
   };
   const prev = ledger.worldProfile;
+  (ledger as { namedFlagsV1?: () => NamedFlagV1[] }).namedFlagsV1 = () => namedFlagsV1(god);   // F4: `around` and `map` name the flags
   if (!read) (ledger as { groundEnvV1?: () => GroundEnvV1 }).groundEnvV1 = () => ({ recipe: (host.engine.world as unknown as { groundV1?: { recipeHash: string } }).groundV1?.recipeHash ?? null, middles: Object.fromEntries(DEEP_MIDDLE) });
   ledger.worldProfile = (soul, caps, plans) => {
     prev?.(soul, caps, plans);

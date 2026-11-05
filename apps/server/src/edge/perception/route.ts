@@ -8,6 +8,7 @@ import {exploreDiscovery} from '../intents/semantic-discovery.ts';
 import {knownPart} from '../intents/resolved-parts.ts';
 import {tokens} from '../ledger/vocabulary.ts';
 import type {MeaningPart} from '../../god/meaning.ts';
+import type {NamedFlagV1} from '../../god/ground-host.ts';
 import {centroid, inPoly} from '../ledger/places.ts';
 import {Perception} from './here.ts';
 import {compassOf, dist2, durationWord, walkSeconds} from './geometry.ts';
@@ -48,11 +49,14 @@ export function routeFrame(ledger: EdgeLedger, soul: EdgeSoul, query: string) {
   const ask=tokens(query),matches=(names:string[])=>{const exact=names.some(n=>tokens(n).join(' ')===ask.join(' '));const all=names.flatMap(tokens);return exact?0:ask.length&&ask.every(w=>all.includes(w))?1:9;};
   const scored=known.map(p=>{const tier=matches([p.name,p.id,...(p.aliases??[]),...(p.semanticKind?[p.semanticKind]:[])]),at=placeAt(p);return{p,at,exact:tier===0,tier:tier+(p.name.includes('/')?0.5:0),d:inPoly(pos[0],pos[1],p.polygon)?0:dist2(pos,at)};}).filter(x=>x.tier<9).sort((a,b)=>a.tier-b.tier||a.d-b.d);
   const parts=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(ledger,soul,ledger.places.byId.get(p.id)!,part)).map(part=>{const named=matches([part.title,...(part.aliases??[])]);return{p,part,exact:named===0,tier:named<9?named:matches([part.title,...(part.aliases??[]),p.name,...(p.aliases??[])])+0.5};})).filter(x=>x.tier<9).sort((a,b)=>a.tier-b.tier);
+  // F4 (#375): a named god flag ("orchard", "the orchard flag") answers like a place; flags are public markers. An exact
+  // flag name beats a partial place match; a place that matches as well as a flag keeps the answer.
+  const flagAsk=ask.filter(w=>w!=='flag'&&w!=='flags'),flags=flagAsk.length?((ledger as {namedFlagsV1?:()=>NamedFlagV1[]}).namedFlagsV1?.()??[]).map(f=>{const n=tokens(f.name);return{f,tier:n.join(' ')===flagAsk.join(' ')?0:flagAsk.every(w=>n.includes(w))?1:9,d:dist2(pos,f.at)};}).filter(x=>x.tier<9).sort((a,b)=>a.tier-b.tier||a.d-b.d):[];
   // Keep exact Soul lookup, but a known exact destination must not be stolen by
   // a Soul whose longer name merely contains it. Withheld places/parts do not
   // participate in this choice; their names must not change a visible result.
   const souls = [...ledger.host.minds.values()].filter(m => m.soulId !== soul.soulId);
-  const exactDestination=scored.some(x=>x.exact)||parts.some(x=>x.exact);
+  const exactDestination=scored.some(x=>x.exact)||parts.some(x=>x.exact)||flags[0]?.tier===0;
   const soulHit = souls.find(m=>norm(m.name)===q) ?? (!exactDestination&&q.length>=4?souls.find(m=>norm(m.name).includes(q)):undefined);
   // a Soul by name: where it is (its building or outdoor place, never the room)
   if (soulHit) {
@@ -62,6 +66,11 @@ export function routeFrame(ledger: EdgeLedger, soul: EdgeSoul, query: string) {
     const l = leg(at, false), lm = landmark(at, new Set(where ? [where.id] : []));
     return {query, found: true, soul: {id: soulHit.soulId, name: soulHit.name}, at: where?.name ?? 'out in the open', ...l, ...(lm ? {[lm.how]: lm.name} : {}),
       say: `${soulHit.name} is at ${where?.name ?? 'an open spot'}, ${l.m} m ${l.dir} of you (${l.eta})${lm ? `, ${lm.how} ${lm.name}` : ''}.`};
+  }
+  if(flags.length&&flags[0].tier<Math.min(scored[0]?.tier??9,parts[0]?.tier??9)){
+    const {f}=flags[0],l=leg(f.at,false),lm=landmark(f.at,new Set()),problem=l.m<=2?null:ledger.routeProblem(soul,f.walk);
+    return{query,found:true,flag:{name:f.name,walk:f.walk},...(l.m<=2?{m:l.m}:l),...(lm?{[lm.how]:lm.name}:{}),...(l.m<=2?{here:true}:{walk:f.walk,...(problem?{reachable:false,why:problem.code}:{})}),
+      say:l.m<=2?`You are at the ${f.name} flag now.`:`The ${f.name} flag: ${l.m} m ${l.dir} (${l.eta})${lm?`, ${lm.how} ${lm.name}`:''}. To go: act ${f.walk}.`};
   }
   if(parts.length&&(!scored.length||parts[0].tier<scored[0].tier)){
     const tied=parts.filter(x=>x.tier===parts[0].tier);
