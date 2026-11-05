@@ -36,7 +36,7 @@ test('refuses what it cannot restore exactly; garbage throws',()=>{
 });
 // #619: malformed wire metadata is refused before it is used: no borrowed prototype, no inherited property as data
 test('malformed keys, shapes, indices and columns from the wire are refused (#619)',()=>{
- const bad=(json:string)=>assert.throws(()=>unpackColumnsV1(JSON.parse(json)),/columns-v1.invalid/,json);
+ const bad=(json:string)=>assert.throws(()=>unpackColumnsV1(JSON.parse(json)),/columns-v1.invalid/,json.slice(0,200));
  // the two payloads reported in #619, as literal JSON
  bad('{"$columnsV1":{"n":1,"keys":[["__proto__"]],"shapes":[["__columns_triage_marker_20261103__"]],"shape":[0],"cols":{"__columns_triage_marker_20261103__":{"r":[true]}}}}');
  bad('{"$columnsV1":{"n":1,"shapes":[["value"]],"shape":[0],"cols":{"value":{"d":[],"i":["constructor"]}}}}');
@@ -64,6 +64,20 @@ test('malformed keys, shapes, indices and columns from the wire are refused (#61
  bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"k":1}}}}');
  bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"o":{"n":1,"keys":[["__proto__"]],"shapes":[["b"]],"shape":[0],"cols":{"b":{"r":[1]}}}}}}}');
  bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"x":1}}}}');
+ bad('{"$columnsV1":{"n":-1,"shapes":[],"shape":[],"cols":{}}}');
+ bad('{"$columnsV1":{"n":0.5,"shapes":[],"shape":[],"cols":{}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["v"]],"shape":[0],"cols":{"v":{"d":[7],"i":0}}}}');
+ bad('{"$columnsV1":{"n":2,"sorted":"constructor","shapes":[["id"]],"shape":[0,0],"cols":{"id":{"r":["x","y"]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a","a"]],"shape":[0],"cols":{"a":{"r":[1,2]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"f":1,"v":[1e400]}}}}');
+ // nesting deeper than the encoder's three levels is refused with the same error, never a stack overflow
+ let deep = '{"n":1,"shapes":[["x"]],"shape":[0],"cols":{"x":{"r":[1]}}}';
+ for (let d = 0; d < 4; d++) deep = `{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"o":${deep}}}}`;
+ bad(`{"$columnsV1":${deep}}`);
+ let wide = '{"n":1,"shapes":[["x"]],"shape":[0],"cols":{"x":{"r":[1]}}}';
+ for (let d = 0; d < 20000; d++) wide = `{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"o":${wide}}}}`;
+ bad(`{"$columnsV1":${wide}}`);
  // a well-formed envelope of the same shapes still decodes
+
  assert.deepEqual(unpackColumnsV1(JSON.parse('{"$columnsV1":{"n":2,"keys":["x","y"],"shapes":[["id","v","t"]],"shape":[0,0],"cols":{"id":{"k":1},"v":{"d":[7],"i":[0,0]},"t":{"f":2,"v":[1,2,3,4]}}}}')),{x:{id:'x',v:7,t:[1,2]},y:{id:'y',v:7,t:[3,4]}});
 });
