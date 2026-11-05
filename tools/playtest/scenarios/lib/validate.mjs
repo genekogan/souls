@@ -4,7 +4,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateExpect } from '../../review/expect-oracles.mjs';
+import { validateExpect, wordFromTargets } from '../../review/expect-oracles.mjs';
 import { normalizeCast } from '../../director/swarm/cast.mjs';
 import { providerPolicy } from '../../lib/provider-policy.mjs';
 import { templateNames, dist } from './world-names.mjs';
@@ -25,6 +25,20 @@ export function checkTargets(genesis, targets, where) {
     const ref = t.ref ?? t.names?.[0]; const n = N.get(ref);
     if (!n) { errs.push(`${where} targets[${i}]: "${ref}" is not a placed name in ${genesis}`); continue; }
     if (n.pos && Array.isArray(t.pos) && dist(n.pos, t.pos) > 0.5) errs.push(`${where} targets[${i}]: pos ${t.pos} is not ${ref}'s template position ${n.pos}`);
+  }
+  return errs;
+}
+
+/** Near-expect truth against the template (H4): targets[] with radiusM, and every answer.anyOf word that names placed
+ *  things names one within radiusM of a target (a word that names nothing placed is an alias and passes). → [string] */
+export function checkNear(genesis, x, where) {
+  if (!Array.isArray(x?.targets) || !x.targets.length) return [`${where} expect.targets[] required for near (the place asked about, from the template)`];
+  const errs = x.targets.flatMap((t, i) => (t.radiusM > 0 ? [] : [`${where} targets[${i}].radiusM required for near`]));
+  if (errs.length) return errs;
+  const N = namesOf(genesis);
+  for (const w of x.answer?.anyOf ?? []) {
+    const j = wordFromTargets(N, x.targets, w);
+    if (j.placed && !j.near) errs.push(`${where} answer.anyOf "${w}": the nearest placed ${j.thing} is ${j.d.toFixed(1)} m from ${j.target.ref ?? j.target.names[0]} (radiusM ${j.target.radiusM})`);
   }
   return errs;
 }
@@ -61,7 +75,10 @@ export function validateScenario(s) {
       if (e.after != null && e.after !== 'result') errs.push(`script[${i}].after must be "result" (send once this seat's open requests have closed)`);
       if (e.atSec + (e.budgetSec ?? 0) > s.durationSec) errs.push(`script[${i}] ends after durationSec`);
       for (const id of e.seat === '*' ? ids : [e.seat]) (bySeat[id] ??= []).push(e);
-      if (e.expect) { for (const m of validateExpect(e.expect)) errs.push(`script[${i}] ${m}`); if (s.world?.genesis) errs.push(...checkTargets(s.world.genesis, e.expect.targets, `script[${i}]`)); }
+      if (e.expect) {
+        for (const m of validateExpect(e.expect)) errs.push(`script[${i}] ${m}`);
+        if (s.world?.genesis && existsSync(join(REPO, s.world.genesis))) { errs.push(...checkTargets(s.world.genesis, e.expect.targets, `script[${i}]`)); if (e.expect.kind === 'near') errs.push(...checkNear(s.world.genesis, e.expect, `script[${i}]`)); }
+      }
     }
     // Sequential direction waits for each request; non-sequential direction may overlap them (a mid-activity redirection).
     if (d.sequential !== false) for (const [seat, es] of Object.entries(bySeat)) { const o = [...es].sort((a, b) => a.atSec - b.atSec); for (let k = 1; k < o.length; k++) if (o[k].atSec < o[k - 1].atSec + (o[k - 1].budgetSec ?? 0)) errs.push(`seat ${seat}: "${o[k].text}" starts before "${o[k - 1].text}" has used its budget`); }

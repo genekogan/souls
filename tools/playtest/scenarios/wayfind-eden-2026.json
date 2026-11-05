@@ -82,6 +82,20 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "eden-bandstand",
+       "names": [
+        "eden-bandstand",
+        "bandstand"
+       ],
+       "pos": [
+        38.5,
+        -26
+       ],
+       "radiusM": 20
+      }
+     ],
      "answer": {
       "anyOf": [
        "violin",
@@ -182,6 +196,20 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "int-cafe",
+       "names": [
+        "int-cafe",
+        "cafe"
+       ],
+       "pos": [
+        101.5,
+        25
+       ],
+       "radiusM": 15
+      }
+     ],
      "answer": {
       "anyOf": [
        "terrace",
@@ -369,6 +397,20 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "eden-greenhouse",
+       "names": [
+        "eden-greenhouse",
+        "greenhouse"
+       ],
+       "pos": [
+        69,
+        35
+       ],
+       "radiusM": 15
+      }
+     ],
      "answer": {
       "anyOf": [
        "market",
@@ -491,6 +533,20 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "eden-bandstand",
+       "names": [
+        "eden-bandstand",
+        "bandstand"
+       ],
+       "pos": [
+        38.5,
+        -26
+       ],
+       "radiusM": 20
+      }
+     ],
      "answer": {
       "anyOf": [
        "violin",
@@ -591,6 +647,20 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "int-cafe",
+       "names": [
+        "int-cafe",
+        "cafe"
+       ],
+       "pos": [
+        101.5,
+        25
+       ],
+       "radiusM": 15
+      }
+     ],
      "answer": {
       "anyOf": [
        "terrace",
@@ -778,6 +848,20 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "eden-greenhouse",
+       "names": [
+        "eden-greenhouse",
+        "greenhouse"
+       ],
+       "pos": [
+        69,
+        35
+       ],
+       "radiusM": 15
+      }
+     ],
      "answer": {
       "anyOf": [
        "market",

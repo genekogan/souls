@@ -81,6 +81,19 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "mimos",
+       "names": [
+        "mimos"
+       ],
+       "pos": [
+        2.1,
+        -34
+       ],
+       "radiusM": 18
+      }
+     ],
      "answer": {
       "anyOf": [
        "kitchen",
@@ -180,11 +193,24 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "freeside",
+       "names": [
+        "freeside"
+       ],
+       "pos": [
+        85.2,
+        -25.5
+       ],
+       "radiusM": 18
+      }
+     ],
      "answer": {
       "anyOf": [
        "colab",
        "lamp",
-       "coffee table",
+       "coffee",
        "sofa",
        "speaker",
        "mattress",
@@ -192,12 +218,11 @@
        "chair",
        "dj",
        "hydro cart",
-       "cart",
-       "hut"
+       "cart"
       ],
       "minHits": 1
      },
-     "source": "worlds/templates/mars-two.json: things within 18 m of op \"freeside\" (colab-floor-lamp, colab-drawer-coffee, colab-taupe-sofa, freeside-speaker*, freeside-lime-sofa, freeside-mattress*, folding-chair*, dj-table, freeside-hydro-cart-chrome)"
+     "source": "worlds/templates/mars-two.json: things within 18 m of op \"freeside\" (colab-floor-lamp, colab-drawer-coffee, colab-taupe-sofa, freeside-speaker*, freeside-lime-sofa, freeside-mattress*, folding-chair*, dj-table, freeside-hydro-cart-chrome); H4: \"coffee\" for colab-drawer-coffee (the only coffee table within 18 m), \"hut\" dropped (nearest colab-hut-5 32.5 m)"
     }
    },
    {
@@ -377,6 +402,19 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "showers",
+       "names": [
+        "showers"
+       ],
+       "pos": [
+        4.5,
+        -44.2
+       ],
+       "radiusM": 14
+      }
+     ],
      "answer": {
       "anyOf": [
        "mimos",
@@ -462,6 +500,19 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "mimos",
+       "names": [
+        "mimos"
+       ],
+       "pos": [
+        2.1,
+        -34
+       ],
+       "radiusM": 18
+      }
+     ],
      "answer": {
       "anyOf": [
        "kitchen",
@@ -561,11 +612,24 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "freeside",
+       "names": [
+        "freeside"
+       ],
+       "pos": [
+        85.2,
+        -25.5
+       ],
+       "radiusM": 18
+      }
+     ],
      "answer": {
       "anyOf": [
        "colab",
        "lamp",
-       "coffee table",
+       "coffee",
        "sofa",
        "speaker",
        "mattress",
@@ -573,12 +637,11 @@
        "chair",
        "dj",
        "hydro cart",
-       "cart",
-       "hut"
+       "cart"
       ],
       "minHits": 1
      },
-     "source": "worlds/templates/mars-two.json: things within 18 m of op \"freeside\" (colab-floor-lamp, colab-drawer-coffee, colab-taupe-sofa, freeside-speaker*, freeside-lime-sofa, freeside-mattress*, folding-chair*, dj-table, freeside-hydro-cart-chrome)"
+     "source": "worlds/templates/mars-two.json: things within 18 m of op \"freeside\" (colab-floor-lamp, colab-drawer-coffee, colab-taupe-sofa, freeside-speaker*, freeside-lime-sofa, freeside-mattress*, folding-chair*, dj-table, freeside-hydro-cart-chrome); H4: \"coffee\" for colab-drawer-coffee (the only coffee table within 18 m), \"hut\" dropped (nearest colab-hut-5 32.5 m)"
     }
    },
    {
@@ -758,6 +821,19 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "showers",
+       "names": [
+        "showers"
+       ],
+       "pos": [
+        4.5,
+        -44.2
+       ],
+       "radiusM": 14
+      }
+     ],
      "answer": {
       "anyOf": [
        "mimos",

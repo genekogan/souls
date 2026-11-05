@@ -81,17 +81,29 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "cottage",
+       "names": [
+        "cottage"
+       ],
+       "pos": [
+        44,
+        10
+       ],
+       "radiusM": 10
+      }
+     ],
      "answer": {
       "anyOf": [
        "knoll",
        "hill",
        "mound",
-       "bench",
-       "pond"
+       "bench"
       ],
       "minHits": 1
      },
-     "source": "worlds/templates/hello-hamlet.json: op \"knoll\" under the cottage (4 m), op \"bench\" in the cottage, the cottage faces op \"pond\""
+     "source": "worlds/templates/hello-hamlet.json: op \"knoll\" under the cottage (4 m), op \"bench\" in the cottage, the cottage faces op \"pond\"; H4: \"pond\" dropped (the pond is 70 m from the cottage, outside 10 m)"
     }
    },
    {
@@ -151,6 +163,19 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "pond",
+       "names": [
+        "pond"
+       ],
+       "pos": [
+        -17,
+        43.5
+       ],
+       "radiusM": 50
+      }
+     ],
      "answer": {
       "anyOf": [
        "plaza",
@@ -304,6 +329,19 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "plaza",
+       "names": [
+        "plaza"
+       ],
+       "pos": [
+        0,
+        0
+       ],
+       "radiusM": 50
+      }
+     ],
      "answer": {
       "anyOf": [
        "knoll",
@@ -374,17 +412,29 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "cottage",
+       "names": [
+        "cottage"
+       ],
+       "pos": [
+        44,
+        10
+       ],
+       "radiusM": 10
+      }
+     ],
      "answer": {
       "anyOf": [
        "knoll",
        "hill",
        "mound",
-       "bench",
-       "pond"
+       "bench"
       ],
       "minHits": 1
      },
-     "source": "worlds/templates/hello-hamlet.json: op \"knoll\" under the cottage (4 m), op \"bench\" in the cottage, the cottage faces op \"pond\""
+     "source": "worlds/templates/hello-hamlet.json: op \"knoll\" under the cottage (4 m), op \"bench\" in the cottage, the cottage faces op \"pond\"; H4: \"pond\" dropped (the pond is 70 m from the cottage, outside 10 m)"
     }
    },
    {
@@ -444,6 +494,19 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "pond",
+       "names": [
+        "pond"
+       ],
+       "pos": [
+        -17,
+        43.5
+       ],
+       "radiusM": 50
+      }
+     ],
      "answer": {
       "anyOf": [
        "plaza",
@@ -597,6 +660,19 @@
     "budgetSec": 90,
     "expect": {
      "kind": "near",
+     "targets": [
+      {
+       "ref": "plaza",
+       "names": [
+        "plaza"
+       ],
+       "pos": [
+        0,
+        0
+       ],
+       "radiusM": 50
+      }
+     ],
      "answer": {
       "anyOf": [
        "knoll",
