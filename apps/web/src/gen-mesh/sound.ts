@@ -287,7 +287,7 @@ function playSingers(host: Host, x: number, y: number, z: number) {
       const ready = pianist ? pianoReadyAt(now, pianist.activityAge, PIANO_FADE) : -Infinity, end = pianist ? pianoEndAt(now, pianist.activityLeft) : Infinity;
       for (const n of sungNotes(who, now - 0.05, now + PIANO_AHEAD)) {
         if (s.done.has(n.t)) continue; s.done.add(n.t);
-        if (n.t < ready - 1e-6 || n.t >= end - 1e-6) continue;
+        if (n.t < ready - 1e-6 || n.t > end + 1e-6) continue;
         // the moment the piano's note of that second sounds, when it is already scheduled (a singer who starts mid-song
         // joins on the piano's own note: scheduled a tick later from the world clock, it landed 5–10 ms off in take 3)
         const at = pianoAt.get(`${who.seed}:${n.t}`) ?? audioNow + Math.max(0, n.t - now);

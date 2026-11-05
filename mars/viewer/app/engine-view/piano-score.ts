@@ -40,8 +40,8 @@ export function pianoHands(seed: string, t: number): [{ press: number; along: nu
 /** Seconds the seated arms take to blend onto the keys (and off them again); the pose and the sound share it (#422). */
 export const PIANO_FADE = .8;
 export function pianoReadyAt(now:number,age:number|undefined,fade:number){return age===undefined?-Infinity:now-age+fade;}
-/** The world second a pianist's run ends (`left`: seconds still to run at `now`, when recorded); from there the release pose
- *  freezes the score, so no note at or after it sounds. Unknown: not yet ended. */
+/** The world second a pianist's run ends (`left`: seconds still to run at `now`, when recorded). The release pose freezes the
+ *  score there, holding a note struck at that instant, so a note at the end sounds and none after it. Unknown: not ended. */
 export function pianoEndAt(now:number,left:number|undefined){return left===undefined?Infinity:now+left;}
 /** Move toward the next key before its onset, so pitch changes do not teleport a wrist.
  * At the onset the lane is exact; the audible note/strike clock is unchanged. */

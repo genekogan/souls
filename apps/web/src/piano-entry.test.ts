@@ -1,7 +1,7 @@
 // #422: a piano note sounds only once the arm entry blend has put the hands on the keys; the score clock never shifts.
 //   node --test apps/web/src/piano-entry.test.ts
 import test from 'node:test';import assert from 'node:assert/strict';
-import {pianoEndAt,pianoNotes,pianoReadyAt} from '../../../mars/viewer/app/engine-view/piano-score.ts';
+import {pianoEndAt,pianoHands,pianoNotes,pianoReadyAt} from '../../../mars/viewer/app/engine-view/piano-score.ts';
 import {notesToSound} from './gen-mesh/sound-plan.ts';
 import {activityFrame,PIANO_FADE} from '../../../mars/viewer/app/engine-view/activity-poses.ts';
 const weight=(seed:string,t:number,since:number|undefined)=>activityFrame('play-piano','sit',t,seed,{actorId:seed,since})!.piano!.weight;
@@ -32,20 +32,23 @@ function schedule(seed:string,steps:{now:number;age?:number;left?:number}[]){
  for(const s of steps)for(const n of notesToSound(pianoNotes(seed,s.now-.05,s.now+.35),pianoReadyAt(s.now,s.age,PIANO_FADE),pianoEndAt(s.now,s.left),done,n=>`${n.t}:${n.hand}`))out.push({t:n.t,hand:n.hand,at:s.now});
  return out;
 }
-test('the schedule over a whole run: nothing before the hands reach the keys, nothing at or after the recorded end, each note once',()=>{
- for(const seed of ['h_a','h_cb33a8d209'])for(const [start,stop] of [[100,106],[100.05,103.2],[257.35,259.3]]){
+test('the schedule over a whole run: nothing before the hands reach the keys, nothing after the recorded end, each note once',()=>{
+ for(const seed of ['h_a','h_cb33a8d209'])for(const [start,stop] of [[100,106],[100.05,103.2],[257.35,259.3],[100.1,104.5]]){
   // sound steps every .1 s, at an offset from the score grid; the end is known from 1.5 s before it (live depiction lag)
   const steps=[];for(let now=start+.03;now<stop+1;now+=.1)if(now<stop)steps.push({now,age:now-start,...(now>stop-1.5?{left:stop-now}:{})});
-  const out=schedule(seed,steps),want=pianoNotes(seed,start+PIANO_FADE-1e-6,stop-1e-6);
+  const out=schedule(seed,steps),want=pianoNotes(seed,start+PIANO_FADE-1e-6,stop+1e-6);
   assert.deepEqual(out.map(n=>[n.t,n.hand]),want.map(n=>[n.t,n.hand]),`${seed} ${start}-${stop}: exactly the score from the ready time to the end`);
-  assert.ok(out.every(n=>n.t>=start+PIANO_FADE-1e-6&&n.t<stop-1e-6));
+  assert.ok(out.every(n=>n.t>=start+PIANO_FADE-1e-6&&n.t<=stop+1e-6));
   // ungated, the same steps sound notes during the entry blend and after the stop (the #646 counterexample and review P2-1)
   const ungated=schedule(seed,steps.map(s=>({now:s.now})));assert.ok(ungated.some(n=>n.t<start+PIANO_FADE-1e-6));
  }
  // a stop just before a note, seen only by a later step: without the recorded end the next note was already started
  const seed='h_a',notes=pianoNotes(seed,100,104),t=notes.find(n=>n.t>101.5)!.t,stop=t-.05;
  const late=schedule(seed,[{now:stop-.04,age:5},{now:stop-.04+.1,age:5}]);assert.ok(late.some(n=>n.t===t),'no end known: the note after the stop sounds');
- const ended=schedule(seed,[{now:stop-.04,age:5,left:.04}]);assert.ok(!ended.some(n=>n.t>=stop),'recorded end: nothing at or after it');
+ const ended=schedule(seed,[{now:stop-.04,age:5,left:.04}]);assert.ok(!ended.some(n=>n.t>stop),'recorded end: nothing after it');
+ // a stop on an onset: the frozen release pose holds that key down (pianoHands at the stop presses it), so it sounds
+ const onStop=schedule(seed,[{now:t-.04,age:5,left:.04}]);assert.ok(onStop.some(n=>n.t===t),'the note struck at the stop instant sounds');
+ assert.ok(pianoHands(seed,t).some(h=>h.press>0),'the release pose shows that note pressed');assert.ok(!onStop.some(n=>n.t>t));
 });
 test('a note silenced during the entry blend is never revived when a later step sees an earlier ready time',()=>{
  const seed='h_a',first=pianoNotes(seed,100.5,101)[0].t;

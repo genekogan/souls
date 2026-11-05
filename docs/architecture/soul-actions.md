@@ -77,7 +77,8 @@ Fixes found in review and deferred to after the repository migration:
   client cost equivalence is unverified.
   The sound follows the hands: a note sounds only from the moment the entry blend has put the hands on the keys
   (depicted activity start + 0.8 s, from the same recorded activity age the pose uses; an unknown age counts as
-  settled for both). No note at or after the run's recorded end sounds (the release pose freezes the score there),
+  settled for both). No note after the run's recorded end sounds (the release pose freezes the score there, holding a note struck at that
+  instant, which sounds),
   and a note silenced once is never revived. A singer accompanying the piano follows the same window. The absolute
   score clock is not shifted. When a pianist stops before the end is known, notes scheduled ahead that have not begun
   are cancelled, and notes already ringing decay naturally.

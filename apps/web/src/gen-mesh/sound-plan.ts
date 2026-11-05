@@ -320,11 +320,12 @@ export function loadSettings(store: Store): SoundSettings {
 export function saveSettings(store: Store, s: SoundSettings) { try { store?.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* private window */ } }
 
 /** #422: which of a player's score notes (already windowed to the look-back and look-ahead) to schedule now. A note sounds
- *  only from `ready` (the arm entry blend has put the hands on the keys) and before `end` (the run's recorded end). Each
+ *  only from `ready` (the arm entry blend has put the hands on the keys) up to `end` (the run's recorded end; a note at
+ *  the end itself is struck by the frozen release pose, so it sounds). Each
  *  note is decided once and remembered in `done`, so a note silenced once is never revived by a later look-back. */
 export function notesToSound<N extends { t: number }>(notes: readonly N[], ready: number, end: number, done: Map<string, number>, key: (n: N) => string): N[] {
   const out: N[] = [];
-  for (const n of notes) { const k = key(n); if (done.has(k)) continue; done.set(k, n.t); if (n.t >= ready - 1e-6 && n.t < end - 1e-6) out.push(n); }
+  for (const n of notes) { const k = key(n); if (done.has(k)) continue; done.set(k, n.t); if (n.t >= ready - 1e-6 && n.t <= end + 1e-6) out.push(n); }
   return out;
 }
 
