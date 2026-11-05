@@ -113,7 +113,7 @@ import { readLive, serveMetrics } from './metrics.mjs';   // lane L7
 import { archiveWorld, archivedSlugs, audit, listArchive, readAudit, restoreWorld, tokenLabel } from './worldops.mjs';
 import { isUnlisted, publicWorlds } from './listing.mjs';
 import { opSoul, opSetTest } from './op-souls.mjs';
-import { THUMB, THUMB_CACHE, THUMB_PATH, clearThumbnail, intakeThumbnail, rateRefusal, templateThumbs, thumbnailFile, thumbnailOf, thumbnailRate, writeThumbnail } from './thumbnail.mjs';
+import { THUMB, THUMB_CACHE, THUMB_PATH, clearThumbnail, intakeThumbnail, pruneThumbnails, rateRefusal, templateThumbs, thumbnailFile, thumbnailOf, thumbnailRate, writeThumbnail } from './thumbnail.mjs';
 // The host check's last result, if the sim-worlds-health timer runs; stale (>30 min) counts as not ok.
 /** The world's heap cap (lane L1, LOAD-CONTRACT §4: per world from the registry, registry.mjs worldHeapMb). A node child gets
  *  it as its own command-line flag, so a NODE_OPTIONS the auth env file sets (tests' preloads) still applies and a heap
@@ -484,23 +484,33 @@ export async function openLauncher(cfg = {}) {
     if (auth) { const id = await verifiedCreator(authorization, auth.child, publicOrigin, root); return id ? { account: id, via: 'session' } : null; }
     return tok.startsWith('dev:') && tok.length > 4 ? { account: `dev:${tok.slice(4, 40)}`, via: 'session' } : null;
   }
-  async function ownerThumbnail(w, method, bytes, authorization) {
+  /** `readBody` runs only once the owner is known (null: over the size limit). Every await is followed by a check that
+   *  the world was not archived meanwhile, so nothing is written into a folder that has moved (the restore would refuse). */
+  const TOO_BIG = [413, { ok: false, code: 'thumbnail.size', message: `a thumbnail is at most ${THUMB.maxBytes} bytes`, fix: 'Save it as a 1280×720 JPEG at quality 80 or lower (usually 100–250 KB).' }, { connection: 'close' }];
+  const GONE = [404, { ok: false, code: 'not-found', message: 'this world was archived while the thumbnail was being checked' }];
+  async function ownerThumbnail(w, method, readBody, authorization) {
+    const gone = () => registry.get(w.slug) !== w || closing.has(w.slug);
     const a = await quietActorOf(w, authorization);
+    if (gone()) return GONE;
     if (!a) return [401, { ok: false, code: 'unauthorized', message: "sign in, or use this world's god token", fix: "Run it from the world owner's agent folder (eden-god thumbnail), or send the owner's sign-in." }];
     if (!isOwner(w, a)) return [403, { ok: false, code: 'forbidden', message: "only this world's owner sets its thumbnail", fix: "Ask the world's owner; co-builders and visitors cannot change it." }];
     const wait = thumbRate(w.slug);
     if (wait !== null) return [429, rateRefusal(wait), { 'retry-after': String(wait) }];
-    const dir = registry.worldDir(w.slug);
     if (method === 'DELETE') {
-      clearThumbnail(dir); const rest = registry.update(w.slug, { thumbnail: undefined });   // undefined: dropped when the registry is written
+      clearThumbnail(registry.worldDir(w.slug)); const rest = registry.update(w.slug, { thumbnail: undefined });   // undefined: dropped when the registry is written
       audit(dataDir, { op: 'thumbnail-clear', slug: w.slug, by: a.account, via: a.via });
       log(`${w.slug}: thumbnail cleared (${a.account})`);
       return [200, { ok: true, slug: w.slug, ...thumbnailOf(rest, { base: B, defaults: defaultThumbs }) }];
     }
+    const bytes = await readBody();
+    if (bytes === null) return TOO_BIG;
     const t = await intakeThumbnail(bytes, { words: [w.name] });
+    if (gone()) return GONE;
     if (!t.ok) { if (t.verdict) audit(dataDir, { op: 'thumbnail-refused', slug: w.slug, by: a.account, code: t.body.code, classifier: t.verdict.classifier, labels: t.verdict.labels }); return [t.status, t.body]; }
-    writeThumbnail(dir, t.sha, t.bytes);
+    const dir = registry.worldDir(w.slug);
+    writeThumbnail(dir, t.sha, t.bytes);   // the new file first, then the row, then the old file goes
     registry.update(w.slug, { thumbnail: { sha: t.sha, at: Date.now() } });
+    pruneThumbnails(dir, t.sha);
     audit(dataDir, { op: 'thumbnail', slug: w.slug, by: a.account, via: a.via, sha: t.sha });
     log(`${w.slug}: thumbnail ${t.sha.slice(0, 12)} ${t.width}×${t.height} ${t.bytes.length} B (${a.account})`);
     return [200, { ok: true, slug: w.slug, ...thumbnailOf(registry.get(w.slug), { base: B, defaults: defaultThumbs }), sha: t.sha, width: t.width, height: t.height, bytes: t.bytes.length, stripped: t.stripped }];
@@ -915,10 +925,12 @@ export async function openLauncher(cfg = {}) {
       const thumbOwn = path.match(/^\/__sim\/worlds\/([a-z][a-z0-9-]{0,31})\/thumbnail$/);
       if (thumbOwn) {
         if (req.method !== 'POST' && req.method !== 'DELETE') { json(res, 405, { ok: false, code: 'method', message: 'POST a JPEG, or DELETE' }, { allow: 'POST, DELETE' }); return; }
-        const w = registry.get(thumbOwn[1]); if (!w || closing.has(w.slug)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
-        const chunks = []; let n = 0;
-        if (req.method === 'POST') for await (const c of req) { n += c.length; if (n > THUMB.maxBytes) { res.shouldKeepAlive = false; json(res, 413, { ok: false, code: 'thumbnail.size', message: `a thumbnail is at most ${THUMB.maxBytes} bytes`, fix: 'Save it as a 1280×720 JPEG at quality 80 or lower (usually 100–250 KB).' }, { connection: 'close' }); return; } chunks.push(c); }
-        const out = await ownerThumbnail(w, req.method, Buffer.concat(chunks, n), req.headers.authorization);
+        const w = registry.get(registry.resolveSlug(thumbOwn[1]) ?? ''); if (!w || closing.has(w.slug)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
+        if (Number(req.headers['content-length']) > THUMB.maxBytes) { res.shouldKeepAlive = false; json(res, ...TOO_BIG); return; }
+        // the body is read only after the owner is known: nobody else makes the launcher hold half a megabyte
+        const readBody = async () => { const chunks = []; let n = 0; for await (const c of req) { n += c.length; if (n > THUMB.maxBytes) return null; chunks.push(c); } return Buffer.concat(chunks, n); };
+        const out = await ownerThumbnail(w, req.method, readBody, req.headers.authorization);
+        if (out[2]?.connection === 'close' || (req.method === 'POST' && !req.readableEnded)) res.shouldKeepAlive = false;   // an unread body never shares the socket
         json(res, out[0], out[1], out[2] ?? {}); return;
       }
       const thumbGet = (req.method === 'GET' || req.method === 'HEAD') && path.match(THUMB_PATH);

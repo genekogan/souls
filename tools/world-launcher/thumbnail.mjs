@@ -65,13 +65,17 @@ export const rateRefusal = (s) => ({ ...refusal(429, 'thumbnail.rate', `At most 
 
 // ---------- the owner's file, in the world's own folder (it moves with the world on archive and restore)
 const thumbsDir = (worldDir) => join(worldDir, 'thumbs');
-/** Keep exactly one thumbnail: write the new file (atomically), then drop any other. */
+/** Write the new file atomically; the caller records it, then prunes the old one (a crash never orphans the row). */
 export function writeThumbnail(worldDir, sha, bytes) {
   const dir = thumbsDir(worldDir); mkdirSync(dir, { recursive: true });
   const file = join(dir, `${sha}.jpg`), tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, bytes); renameSync(tmp, file);
-  for (const f of readdirSync(dir)) if (f !== `${sha}.jpg`) rmSync(join(dir, f), { force: true });
   return file;
+}
+/** Keep exactly one thumbnail: the one the row names. */
+export function pruneThumbnails(worldDir, keepSha) {
+  const dir = thumbsDir(worldDir);
+  for (const f of readdirSync(dir)) if (f !== `${keepSha}.jpg`) rmSync(join(dir, f), { force: true });
 }
 export function clearThumbnail(worldDir) { rmSync(thumbsDir(worldDir), { recursive: true, force: true }); }
 export function thumbnailFile(worldDir, sha) { const f = join(thumbsDir(worldDir), `${sha}.jpg`); return existsSync(f) ? f : null; }
