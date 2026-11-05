@@ -10,7 +10,17 @@ const REACH_SLACK = 0.05;
 type Handling = {crew: [number, number]; grips: Record<string, number[][]>};
 type DefLike = {size?: {box?: number[]}; components?: {carryable?: {mass?: number; handling?: Handling}}};
 
-export function handlingProblem(def: DefLike): {code: string; field: string; message: string} | null {
+export function handlingProblem(def: DefLike): {code: string; field: string; message: string; fix: string} | null {
+  const p = handlingProblemOf(def);
+  return p && {...p, fix: FIX[p.code]};
+}
+const FIX: Record<string, string> = {
+  'handling.crew': 'Give the crew range as [fewest, most] carriers.',
+  'handling.grips': 'Give every crew size in the range, and no other, a grip layout with that many grips.',
+  'handling.mass': 'Lower the mass or allow a larger crew (30 kg per carrier), with a grip layout for it.',
+  'handling.reach': 'Move the grip onto the load\'s own box (x along its length, y up from its base, z across).',
+};
+function handlingProblemOf(def: DefLike): {code: string; field: string; message: string} | null {
   const c = def.components?.carryable, h = c?.handling;
   if (!h) return null;
   const [lo, hi] = h.crew, field = 'components.carryable.handling';

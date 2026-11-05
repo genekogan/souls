@@ -20,7 +20,8 @@ import {WorldHost} from '../../apps/server/src/world.ts';
 
 const HOUR = 3_600_000, STEP_MS = 50;
 // core-work-table@1's grips in its own frame (+x along the top, z across): packages/world-compiler/src/core-kit/authoring/work.mjs
-const TABLE = {kg: 75, grips: {3: [[-1.1, 0.38], [-1.1, -0.38], [1.1, 0]], 4: [[-1.1, 0.38], [-1.1, -0.38], [1.1, 0.38], [1.1, -0.38]]}};
+const REACH = 0.35;   // mars/viewer/engine/carry/formation.ts
+const TABLE = {kg: 75, halfW: 0.4572, grips: {3: [[-1.1, 0.38], [-1.1, -0.38], [1.1, 0]], 4: [[-1.1, 0.38], [-1.1, -0.38], [1.1, 0.38], [1.1, -0.38]]}};
 
 /** Mount the edge on a host as the server does: the ledger with the flag on, Comms with fading, the god's bridge. */
 function mount(w, host, db) {
@@ -105,7 +106,7 @@ async function commit(w, host, guests, load, to, words) {
  *  grip. `during(ctx)` runs each tick. */
 async function carry(w, t, c, load, grips, during, max = 8000) {
   const E = w.E(), eng = w.host.engine, last = {}, slots = new Set();
-  const seen = {held: 0, lifted: 0, maxReach: 0, maxStep: 0, maxLoadStep: 0, unsupported: 0, phases: [], turn: 0}, lying = {y: E[load].pose.p[1], yaw: E[load].pose.yaw ?? 0};
+  const seen = {held: 0, lifted: 0, maxReach: 0, maxStep: 0, maxLoadStep: 0, unsupported: 0, phases: [], liftTurn: 0, setDownTurn: 0}, turnFrom = {phase: null, yaw: 0}, lying = {y: E[load].pose.p[1], yaw: E[load].pose.yaw ?? 0};
   for (let n = 0; n < max && inviteOf(w, c.id).shared.op.phase !== 'ended'; n++) {
     await w.tick(1);
     const x = w.E()[load], b = x.pose.p, g = c.crew.map(([s]) => w.E()[s.entityId].human?.grip);
@@ -113,27 +114,33 @@ async function carry(w, t, c, load, grips, during, max = 8000) {
     for (const [s] of c.crew) { const q = w.E()[s.entityId].pose.p; if (last[s.name]) seen.maxStep = Math.max(seen.maxStep, flat(sub(q, last[s.name]))); last[s.name] = [...q]; }
     if (last.load) seen.maxLoadStep = Math.max(seen.maxLoadStep, flat(sub(b, last.load)), Math.abs(b[1] - last.load[1])); last.load = [...b];
     if (x.phase !== 'carried' && x.support?.kind !== 'ground') seen.unsupported++;
-    // the native lift and set-down interpolate the load's pose; a crew that lifts facing the other way along the load
-    // turns it half a turn in their hands meanwhile (a pre-existing native limit, reported in #690), so reach is checked
-    // outside those two transitions and the turn is measured
-    if (phase === 'lift' || phase === 'set-down') { seen.turn = Math.max(seen.turn, Math.abs(Math.atan2(Math.sin((x.pose.yaw ?? 0) - lying.yaw), Math.cos((x.pose.yaw ?? 0) - lying.yaw)))); }
-    if (grips && g.every((h) => h?.entity === load) && phase !== 'lift' && phase !== 'set-down') {
+    // each transition's turn of the load about its vertical axis: the native lift interpolates the load's pose, so a
+    // crew that lifts facing the other way along the load turns it half a turn in their hands (a pre-existing native
+    // limit, reported on #690); reach is checked on every other held tick, set-down included
+    if ((phase === 'lift' || phase === 'set-down') && turnFrom.phase !== phase) Object.assign(turnFrom, {phase, yaw: x.pose.yaw ?? 0});
+    if (phase === 'lift' || phase === 'set-down') { const k = phase === 'lift' ? 'liftTurn' : 'setDownTurn', d = x.pose.yaw - turnFrom.yaw; seen[k] = Math.max(seen[k], Math.abs(Math.atan2(Math.sin(d), Math.cos(d)))); }
+    if (grips && g.every((h) => h?.entity === load) && phase !== 'lift') {
       seen.held++; for (const h of g) slots.add(h.slot);
-      // the grips in world space as the engine turns them (mars/viewer/engine/core/math.ts rot2); they are the formation's: its heading is the load's long axis either way round (a box turned half a turn is
-      // the same box), so a grip is reached in the frame the crew formed in, which is the same for all of them
-      const yaw = x.pose.yaw ?? 0, frame = (th) => c.crew.map(([s], i) => { const [lx, lz] = grips[Number(g[i].slot.slice(1))], cs = Math.cos(th), sn = Math.sin(th); return flat(sub(w.E()[s.entityId].pose.p, [b[0] + cs * lx - sn * lz, 0, b[2] + sn * lx + cs * lz])); });
+      // where the native formation stands each carrier (mars/viewer/engine/carry/formation.ts carrierSpots): beside their
+      // own grip, on the grip's side (a centreline grip alternates by slot), REACH beyond the load's edge, turned as the
+      // engine turns (core/math.ts rot2). The formation's heading is the load's axis either way round, the same for all.
+      const yaw = x.pose.yaw ?? 0, frame = (th) => c.crew.map(([s], i) => {
+        const j = Number(g[i].slot.slice(1)), [lx, lz] = grips[j], side = Math.abs(lz) > 0.05 ? Math.sign(lz) : j % 2 === 0 ? 1 : -1, lat = side * (TABLE.halfW + REACH), cs = Math.cos(th), sn = Math.sin(th);
+        return flat(sub(w.E()[s.entityId].pose.p, [b[0] + cs * lx - sn * lat, 0, b[2] + sn * lx + cs * lat]));
+      });
       const ds = [frame(yaw), frame(yaw + Math.PI)].sort((p, q) => Math.max(...p) - Math.max(...q))[0];
       for (const [i, [s]] of c.crew.entries()) {
         const d = ds[i];
-        seen.maxReach = Math.max(seen.maxReach, d); assert.ok(d < 1, `${s.name} is ${d.toFixed(2)} m from grip ${g[i].slot} (tick ${eng.world.tick}; yaw ${yaw.toFixed(2)}, load ${b.map((v) => v.toFixed(2))}, body ${w.E()[s.entityId].pose.p.map((v) => v.toFixed(2))})`);
+        seen.maxReach = Math.max(seen.maxReach, d); assert.ok(d < 0.15, `${s.name} is ${d.toFixed(2)} m from where grip ${g[i].slot} is held (tick ${eng.world.tick}, ${phase}; yaw ${yaw.toFixed(2)}, load ${b.map((v) => v.toFixed(2))}, body ${w.E()[s.entityId].pose.p.map((v) => v.toFixed(2))})`);
       }
       if (b[1] > lying.y + 0.3) seen.lifted++;
     }
     await during?.({n, phase, op: inviteOf(w, c.id).shared.op, x});
   }
-  t.diagnostic(`native phases ${seen.phases.join(',')}; held by all ${seen.held} ticks on ${[...slots].sort().join(',')}, lifted ${seen.lifted}; carriers at most ${seen.maxReach.toFixed(2)} m from their grips; load turned up to ${seen.turn.toFixed(2)} rad in a lift or set-down; largest step ${seen.maxStep.toFixed(3)} m, load ${seen.maxLoadStep.toFixed(3)} m`);
+  t.diagnostic(`native phases ${seen.phases.join(',')}; held by all ${seen.held} ticks on ${[...slots].sort().join(',')}, lifted ${seen.lifted}; carriers at most ${seen.maxReach.toFixed(2)} m from where their grips are held; the load turned ${seen.liftTurn.toFixed(2)} rad in the lift, ${seen.setDownTurn.toFixed(2)} rad in the set-down; largest step ${seen.maxStep.toFixed(3)} m, load ${seen.maxLoadStep.toFixed(3)} m`);
   assert.ok(seen.maxStep < 0.1, `no carrier teleports (${seen.maxStep.toFixed(3)} m)`); assert.ok(seen.maxLoadStep < 0.1, `the load never jumps or drops (${seen.maxLoadStep.toFixed(3)} m)`);
   assert.equal(seen.unsupported, 0, 'the load is always carried or lying on the ground');
+  assert.ok(seen.setDownTurn < 0.05, `the load is set down along its own axis, never turned in the crew's hands (${seen.setDownTurn.toFixed(2)} rad)`);
   return {...seen, slots, end: inviteOf(w, c.id).shared.op};
 }
 const arrived = (w, c, place, load) => {
@@ -182,7 +189,7 @@ test('PC11 A1a/A1b/A4b: a crew of three carries the 75 kg table through ordinary
     }
     if (!eveDoneDuring && read(w, Eve, eveWalk).phase === 'completed') eveDoneDuring = inviteOf(w, id).shared.op.phase !== 'ended';
   });
-  assert.ok(seen.held > 40, `all three held the table together (${seen.held} ticks)`); assert.equal(seen.slots.size, 3, 'on three distinct grips');
+  assert.ok(seen.held > 40, `all three held the table together (${seen.held} ticks)`); assert.ok(seen.liftTurn < 0.05, `lifted facing the way it goes, without a turn (${seen.liftTurn.toFixed(2)} rad)`); assert.equal(seen.slots.size, 3, 'on three distinct grips');
   assert.ok(seen.lifted > 20, `the table was off the ground while carried (${seen.lifted} ticks)`);
   assert.ok(spoke?.said?.heardBy >= 1, `Bo is heard mid-carry: ${JSON.stringify(spoke)}`);
   t.diagnostic(`competing: ${JSON.stringify({offer: competing.offer, solo: code(competing.solo), shared: code(competing.shared)})}`);
@@ -205,7 +212,7 @@ test('PC11 A1c: a crew of four carries the table (one at each leg); a crew of th
   arrived(w, c, 'shed', table);
   for (const [s, dx] of [[Bo, -1], [Cy, -4], [Dee, -6]]) await w.at(s, w.ax + dx, w.az + 8);
   const u = await commit(w, Bo, [Cy, Dee], frame, 'yard');
-  await carry(w, t, u, frame, null);
+  await carry(w, t, u, frame, null);   // the upright is carried pitched and rolled onto its face, so its grips are not checked here (PC03's tests)
   arrived(w, u, 'yard', frame);
   assert.deepEqual(w.host.engine.runtime.violations, []);
 });
@@ -314,7 +321,7 @@ test('PC11 A3c: a server restart mid-carry with a crew of three keeps the op and
   assert.ok(flat(sub(w.E()[table].pose.p, at)) < 0.1, 'the table is where it was'); assert.equal(w.E()[table].phase, 'carried');
   const stale = await act(w, Cy, {capability: `accept:${c.id}`, params: {revision: 1}});
   assert.equal(stale.accepted, false); assert.equal(code(stale), 'shared.busy');
-  await carry(w, t, c, table, null);
+  await carry(w, t, c, table, TABLE.grips[3]);
   arrived(w, c, 'shed', table);
   assert.deepEqual(w.host.engine.runtime.violations, []);
 });
@@ -330,7 +337,7 @@ test('PC11 A3d/A4b: one of four declines while the rest meet the minimum; everyo
   assert.equal(host.phase, 'waiting'); assert.equal(inviteOf(w, id).state, 'pending');
   assert.equal(host.awaitingAnswer.note, 'Invitation sent; Cy has not accepted yet. Nothing shared has started.');
   assert.equal(host.code, 'shared.not-ready');
-  assert.equal(host.reason, `Not started: Dee declined, so this revision of the carry of table cannot start as asked. To carry it with Bo and Cy, amend this proposal: act carry-with:${table} with {"to": "Shed", "with": "Bo and Cy", "invite": "${id}"} (a new revision they accept again); or ask someone else in their place the same way.`);
+  assert.equal(host.reason, `Not started: Dee declined, so this revision of the carry of table cannot start as asked. To carry it with Bo and Cy, amend this proposal: act carry-with:${table} with {"to":"Shed","with":"Bo and Cy","invite":"${id}"} (a new revision they accept again); or ask someone else in their place the same way.`);
   const c1 = ok(await act(w, Cy, {capability: `accept:${id}`, params: {revision: 1}}));
   await w.tick(30);
   assert.equal(inviteOf(w, id).state, 'pending', 'a revision with a declined role never starts');
@@ -378,5 +385,22 @@ test('PC11 A3e: ordinary solo handling still works with the flag on (a one-hand 
   const solo = ok(await act(w, Bo, {capability: `carry:${beam}`, params: {to: 'yard'}}));
   await until(w, () => !['waiting', 'started'].includes(read(w, Bo, solo).phase), 3000);
   assert.equal(read(w, Bo, solo).phase, 'completed', `the solo carry of the beam still works: ${JSON.stringify(read(w, Bo, solo))}`);
+  assert.deepEqual(w.host.engine.runtime.violations, []);
+});
+
+test('PC11: crews in ordinary words reach every with-invitation; a Soul whose own name has "and" in it is still one Soul', {timeout: 300000}, async (t) => {
+  const w = await world(t, {names: ['Ada', 'Bo', 'Cy', 'Salt and Pepper'], scene: async (w, souls, n, ax, az) => {
+    await w.at(souls.Bo, ax, az + 3); await w.at(souls.Cy, ax + 2, az + 2); await w.at(souls['Salt and Pepper'], ax - 2, az + 2);
+    ok(w.god.act({ops: [{op: 'place', def: 'core/zone@1', name: 'yard', shape: {area: [[ax - 11, az - 2.5], [ax - 7, az - 2.5], [ax - 7, az + 2.5], [ax - 11, az + 2.5]]}}]}));
+  }});
+  const {Ada, Bo, Cy} = w.souls, sp = w.souls['Salt and Pepper'];
+  // an activity invitation (a walk) with "Bo and Cy" asks both
+  const walk = ok(await act(w, Ada, {capability: walkOf(w, Ada, 'yard'), params: {with: 'Bo and Cy'}}));
+  t.diagnostic(`walk with: ${JSON.stringify(walk.receipt?.awaitingAnswer ?? walk.receipt?.phase)}`);
+  for (const s of [Bo, Cy]) assert.equal(w.edge.together.invitesFor(s.soulId).length, 1, `${s.name} is asked`);
+  assert.equal(w.edge.together.invitesFor(sp.soulId).length, 0);
+  // the whole phrase is a Soul's own name: one Soul, not "Salt" and "Pepper"
+  const r = ok(await act(w, Bo, {capability: walkOf(w, Bo, 'yard'), params: {with: 'Salt and Pepper'}}));
+  assert.equal(w.edge.together.invitesFor(sp.soulId).length, 1, `Salt and Pepper is asked: ${JSON.stringify(r.receipt?.awaitingAnswer)}`);
   assert.deepEqual(w.host.engine.runtime.violations, []);
 });

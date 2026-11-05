@@ -28,7 +28,7 @@ test('PC11 A2c: a handling no crew could carry is refused on define, with a name
     const r = define(def);
     assert.equal(r.accepted, false, `${code} refused`);
     if (r.accepted) continue;
-    assert.equal(r.failures[0].code, code); assert.match(r.failures[0].detail, why); assert.match(r.failures[0].field ?? '', /^components\.carryable/);
+    assert.equal(r.failures[0].code, code); assert.match(r.failures[0].detail, why); assert.match(r.failures[0].field ?? '', /^components\.carryable/); assert.ok(r.failures[0].fix, 'with a fix');
   }
 });
 

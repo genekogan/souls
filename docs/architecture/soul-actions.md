@@ -25,12 +25,15 @@ context-size checks below), regression runs, and an uncut real-client recording 
   names a def, load or Soul: a crew of three or four goes through the same invitation, op and receipts as two.
   - **Checked on define.** A def's handling must fit together, or `define` refuses it with a named code:
     - `handling.crew`: an inverted crew range;
-    - `handling.grips`: a crew size in range without a grip layout, or a layout of the wrong count or outside the range;
+    - `handling.grips`: a crew size in range without a grip layout, or a layout of the wrong count or outside the range
+      (stricter than the native carry, which ignores a layout outside the range);
     - `handling.mass`: a mass the largest crew cannot lift at 30 kg each;
     - `handling.reach`: a grip outside the load's own box (`packages/world-compiler/src/handling.ts`).
-  - **Known limit.** A crew that lifts facing the other way along the load (the native planner may pick either way)
-    sees the load turn half a turn during the lift, since the native lift interpolates its yaw. It happens whatever the
-    load; it is reported in #690.
+  - **Set down along its axis.** A shared carry lays the load down along its own axis, either way round, whichever is
+    nearer the way it travels, so the crew never turns it while setting it down.
+  - **Known limit ([#1031](https://github.com/genekogan/souls/issues/1031)).** The native planner may lift facing
+    either way along the load. When it lifts facing the other way, the load turns half a turn in the crew's hands
+    during the lift, because the native lift interpolates its yaw. This happens for any load.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
   A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
   comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"). A refused crew too small for the load's mass says

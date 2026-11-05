@@ -39,7 +39,8 @@ const LOOSE = [
     { crew: [1, 2], pose: 'edge', height: 0.75, grips: { 1: [[0, 0, 0]], 2: [[-1, 0, 0], [1, 0, 0]] } }, [PLY_L, PLY_T, PLY_W]),
   // PC11 (#690): a table-shaped load. A heavy 8 ft work table (75 kg) needs three carriers by mass (30 kg each) and has
   // room for four, one at each leg; it is carried level on its legs (the 'flat' pose keeps its height vertical) with
-  // hands at its leg corners. Grips for three: the two legs at one end, and one carrier at the middle of the other end.
+  // hands at its leg corners. Grips for three: the two legs at one end, and one at the middle of the other end's
+  // width, which the native carry takes from a long side near that end (formation.ts: a centreline grip is a side slot).
   loose(work('work-table', 'A heavy 8 ft work table (2.44 × 0.91 m top, 0.76 m tall, 75 kg) on four steel legs; it needs three or four carriers.', ['table', 'workbench', 'furniture', 'construction', 'loose-material', 'shared-carry'],
     [cbox([0, TBL_H - TBL_TOP / 2, 0], [TBL_L, TBL_TOP, TBL_W], 'top'),
       ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => box([sx * TBL_LX, (TBL_H - TBL_TOP) / 2, sz * TBL_LZ], [0.05, TBL_H - TBL_TOP, 0.05], 'leg'))),

@@ -574,7 +574,8 @@ export class Together {
     const near = this.p.perceived(soul.soulId, INVITE_RADIUS), out: {soulId: string; name: string; entityId: string}[] = [];
     // PC11 (#690): a crew in ordinary words ("Bo and Cy", "Bo, Cy and Dee", "Bo & Cy") names each of them; a Soul whose
     // own name is the whole phrase is still that one Soul
-    const whole = typeof raw === 'string' && near.some(o => o.name.toLowerCase() === raw.trim().toLowerCase());
+    const said = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+    const whole = !!said && (near.some(o => o.name.toLowerCase() === said) || [...this.p.host.minds.values()].some(m => m.soulId !== soul.soulId && m.name.toLowerCase() === said));
     const list = typeof raw === 'string' ? (whole ? [raw] : raw.split(/\s*,\s*(?:and\s+)?|\s+and\s+|\s*&\s*/i).filter(x => x.trim())) : raw;
     if (!Array.isArray(list) || !list.length || list.length > 6 || !list.every(x => typeof x === 'string' && x.trim() && x.length <= 100)) return {ok: false, code: 'capability.params', reason: 'with must be up to 6 Soul ids or names.'};
     for (const want of list as string[]) {
@@ -778,8 +779,8 @@ export class Together {
     const guests = w.souls.filter(g => g.soulId !== soul.soulId).map(g => ({soulId: g.soulId, name: g.name}));
     const crew = 1 + guests.length, [lo, hi] = tag.crew, names = listed(guests.map(g => g.name));
     // PC11 (#690): a load that needs more carriers by mass says the arithmetic (PC02 §4)
-    const kg = tag.mass && Math.ceil(tag.mass.kg / tag.mass.each) >= lo ? ` (${tag.mass.kg} kg; one person carries at most ${tag.mass.each} kg)` : '';
-    if (!guests.length || crew < lo) return {code: 'carry.crew-too-small', reason: `${tag.name} needs at least ${lo} carriers${kg}; ask ${Math.max(1, lo - 1)} Soul${lo - 1 > 1 ? 's' : ''} to carry it with you.`};
+    const kg = tag.mass && lo > 1 && Math.ceil(tag.mass.kg / tag.mass.each) >= lo ? ` (${tag.mass.kg} kg; one person carries at most ${tag.mass.each} kg)` : '';
+    if (!guests.length || crew < lo) return {code: 'carry.crew-too-small', reason: `${tag.name} needs at least ${lo} carrier${lo > 1 ? 's' : ''}${kg}; ask ${Math.max(1, lo - 1)} Soul${lo - 1 > 1 ? 's' : ''} to carry it with you.`};
     if (crew > hi) return {code: 'carry.crew-too-large', reason: `${tag.name} takes at most ${hi} carriers; ask fewer Souls.`};
     const label = `Ask ${names} to carry ${tag.name} to ${to.name} together`;
     if (params.invite !== undefined) {
@@ -837,9 +838,12 @@ export class Together {
   private sharedCarryStep(crew: string[], load: string, placeId: string): Steps[number] | null {
     const place = this.p.places.byId.get(placeId), x = this.w.entities[load]; if (!place?.polygon?.length || !x) return null;
     const at = centroid(place.polygon);
-    // PC11 (#690): a load placed at any turn lays down at the same turn (the native carry takes a yaw within ±7 rad)
-    const yaw = x.pose.yaw ?? 0;
-    return {verb: 'mars:carry', params: {crew, item: load, to: {x: at[0], z: at[1], yaw: Math.atan2(Math.sin(yaw), Math.cos(yaw))}}};
+    // PC11 (#690): the load lies down along its own axis, either way round (a loose box turned half a turn is the same
+    // box), whichever is nearer the way it travels, so the crew never turns it half a turn while setting it down; the
+    // yaw is wrapped (the native carry takes one within ±7 rad) for a load placed at any turn
+    const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a)), yaw = wrap(x.pose.yaw ?? 0), way = Math.atan2(at[1] - x.pose.p[2], at[0] - x.pose.p[0]);
+    const flip = wrap(yaw + Math.PI), near = Math.abs(wrap(flip - way)) < Math.abs(wrap(yaw - way)) ? flip : yaw;
+    return {verb: 'mars:carry', params: {crew, item: load, to: {x: at[0], z: at[1], yaw: near}}};
   }
   /** PC02 §1 amend: a new revision clears every acceptance; whoever had accepted is told by their own receipt. */
   private amendShared(id: string, soul: EdgeSoul, capability: string, tag: Extract<Tag, {kind: 'shared'}>, to: {id: string; name: string}, guests: {soulId: string; name: string}[], changes: string[]) {
@@ -869,7 +873,8 @@ export class Together {
     const body = this.sharedBodyProblem(soul) ?? this.sharedTooFar(soul, s.load.entity, s.load.name); if (body) return body;
     if (!this.mindOf(inv.host.soulId) || this.p.faded(inv.host.soulId)) return {code: 'invite.gone', reason: `${inv.host.name} is not here any more.`};
     if (!s.roles.some(r => !r.soulId)) return {code: 'shared.full', reason: 'Every role in that carry is taken.'};
-    return {label: `Carry ${s.load.name} to ${s.destination.name} with ${inv.host.name}`, steps: [], capability, wait: true, detail: {sharedV1: {invite: inv.id, revision: s.revision}},
+    const rest = listed([inv.host.name, ...inv.guests.filter(g => g.soulId !== soul.soulId && (!inv.responses[g.soulId] || inv.responses[g.soulId] === 'accepted')).map(g => this.mindOf(g.soulId)?.name ?? g.name)]);
+    return {label: `Carry ${s.load.name} to ${s.destination.name} with ${rest}`, steps: [], capability, wait: true, detail: {sharedV1: {invite: inv.id, revision: s.revision}},
       commit: receipt => this.respond(inv.id, soul, 'accepted', receipt)};
   }
   /** Accept / decline (or leave) offers of a shared proposal to one of its guests; no distant clutter (only its guests). */
@@ -978,7 +983,7 @@ export class Together {
       const r = m.receipt ? this.p.receipt(m.soulId, m.receipt) : null;
       if (r?.phase !== 'waiting') continue;
       const how = m.soulId === inv.host.soulId
-        ? `To carry it with ${restNames}, amend this proposal: act carry-with:${s.load.entity} with {"to": "${s.destination.name}", "with": "${restNames}", "invite": "${inv.id}"} (a new revision they accept again); or ask someone else in their place the same way.`
+        ? `To carry it with ${restNames}, amend this proposal: act carry-with:${s.load.entity} with ${JSON.stringify({to: s.destination.name, with: restNames, invite: inv.id})} (a new revision they accept again); or ask someone else in their place the same way.`
         : `${inv.host.name} can ask again without them (a new revision you would accept again); until then nothing moves.`;
       const why = `Not started: ${gone}, so this revision of the carry of ${s.load.name} cannot start as asked. ${how}`;
       if (r.code !== 'shared.not-ready' || r.reason !== why) this.p.note?.(r.id, 'shared.not-ready', why);

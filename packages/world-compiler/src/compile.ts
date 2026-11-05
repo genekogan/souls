@@ -725,7 +725,7 @@ function checkDef(w: WorldModel, def: Parameters<WorldModel['defineDef']>[0], i:
   if (Math.min(...box) < lim.sizeMin) return fail(i, 'size.range', `box below ${lim.sizeMin} m`);
   // PC11 (#690): a loose material's handling must fit together (crew range, grips per crew, mass, reach)
   const handling = handlingProblem(def as never);
-  if (handling) return { ...fail(i, handling.code, handling.message), field: handling.field, fix: 'Give every crew size in range a grip layout of that many grips on the load, and a mass the largest crew can lift.' };
+  if (handling) return { ...fail(i, handling.code, handling.message), field: handling.field, fix: handling.fix };
   if (def.make.kind === 'mesh') {
     const info = w.assets(def.make.asset);
     if (!info) return fail(i, 'def.invalid', `asset ${def.make.asset.slice(0, 12)}… not uploaded`);
