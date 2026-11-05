@@ -46,8 +46,10 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   const soulActions = JSON.parse(readFileSync(new URL('../conformance/soul-actions-20261101.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // PC03 2026-11-04: loose construction materials; the narrow run found nothing, so this pins no finding.
   const looseMaterials = JSON.parse(readFileSync(new URL('../conformance/loose-materials-20261104.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  // PC11 2026-11-05: the table-shaped load core-work-table@1; the narrow run found nothing, so this pins no finding.
+  const workTable = JSON.parse(readFileSync(new URL('../conformance/work-table-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   const signature = (f: Finding) => JSON.stringify([f.def, f.hash, f.field, f.stage, f.code, f.detail]);
-  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
+  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...workTable.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
   const newFindings = report.findings.filter(f => !allowed.has(signature(f)));
   assert.deepEqual(newFindings, [], `Undocumented conformance failures: ${JSON.stringify(newFindings.slice(0, 12))}`);
   assert.deepEqual(report.qualificationGaps, known.qualificationGaps, 'rendering gaps changed: qualify them or document the exact gap');

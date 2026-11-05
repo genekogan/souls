@@ -1908,7 +1908,7 @@ export class EngineBridge {
             const slabel=`Carry ${name(x.id)} with other Souls (asks them first; ${crew[0]}–${crew[1]} carriers; to: a place name, with: who)`;
             caps.push({id:sid,verb:'carry-with',label:slabel,target:{id:x.id,kind:'object'},available:!sblock,...(sblock?{blocked:sblock}:{}),params:{to:{type:'string',maxLength:100},with:{type:'string',maxLength:300,description:'the Souls who carry it with you (names or ids, comma-separated)'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
             // `def` is the placed def ref with its revision (for example core/rack-beam@2): the load's identity (PC02 §4)
-            const splan={label:slabel,steps:[],together:{kind:'shared' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew}};
+            const splan={label:slabel,steps:[],together:{kind:'shared' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew,mass:{kg:mass,each:MAX_KG_PER_CARRIER}}};
             if(!sblock)plans.set(sid,splan);
           }
         }

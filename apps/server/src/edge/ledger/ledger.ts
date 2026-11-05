@@ -43,7 +43,7 @@ import type {ContactActuatorIntent,ContactActuatorService} from '../../god/conta
 import type {DoorPassage,DoorPassageRefusal} from '../../god/door-passage.ts';
 import type {PaintingIntent, PaintingService} from '../../art/painting-completion.ts';
 import {humanoidDims} from '../../../../../mars/viewer/engine/bodies/humanoid.ts';
-import {Together, PAIRED, togetherMayOffer, type TogetherPlan} from './together.ts';
+import {Together, PAIRED, listed, togetherMayOffer, type TogetherPlan} from './together.ts';
 import {semanticDiscovery, PURPOSE} from '../intents/semantic-discovery.ts';
 import {knownPart} from '../intents/resolved-parts.ts';
 import {Intents,walkWithDestinationWords,walkWithFallback, attentionWords, type IntentInput} from '../intents/intents.ts';
@@ -491,7 +491,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const awaiting=r.phase==='started'||r.phase==='waiting'&&r.capability.startsWith('carry-with:')?this.together?.awaitingAnswer(r.receipt_id,r.capability)??null:null;
     // PC04 (#683): a shared receipt shows its own Soul the invitation, revision, role and phase it was made for
     const made=r.detail?.includes('"sharedV1"')?(JSON.parse(r.detail) as {sharedV1?:{invite:string;revision:number}}).sharedV1:undefined,shared=made&&this.together?this.together.sharedReceipt(r.receipt_id,r.soul_id,made):undefined;
-    return {id: r.receipt_id, soulId: r.soul_id, capability: r.capability, phase: awaiting?'waiting':r.phase, acceptedTick: r.accepted_tick, startedTick: r.started_tick, endedTick: r.ended_tick, code: r.code, reason: r.reason, programId: r.program_id, ...detailOf(r),...(outcome?{outcome}:{}),...(awaiting?{awaitingAnswer:{...awaiting,note:`Invitation sent; ${awaiting.waitingFor.map(g=>g.name).join(', ')} has not accepted yet. Nothing shared has started.`}}:{}),...(shared?{shared}:{}),...(OPEN.includes(r.phase)?this.bodyFacts(r,!!awaiting):{})};}
+    return {id: r.receipt_id, soulId: r.soul_id, capability: r.capability, phase: awaiting?'waiting':r.phase, acceptedTick: r.accepted_tick, startedTick: r.started_tick, endedTick: r.ended_tick, code: r.code, reason: r.reason, programId: r.program_id, ...detailOf(r),...(outcome?{outcome}:{}),...(awaiting?{awaitingAnswer:{...awaiting,note:`Invitation sent; ${listed(awaiting.waitingFor.map(g=>g.name))} ${awaiting.waitingFor.length>1?'have':'has'} not accepted yet. Nothing shared has started.`}}:{}),...(shared?{shared}:{}),...(OPEN.includes(r.phase)?this.bodyFacts(r,!!awaiting):{})};}
   /** D1: an open receipt's body (what the engine has the body doing now, not the plan) and one `now` sentence built from it. */
   private bodyFacts(r: Row, awaiting = false): {body?: BodyStateV1; now?: string} {
     const m = this.host.minds.get(r.soul_id); if (!m) return {};
