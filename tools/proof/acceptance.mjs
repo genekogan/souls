@@ -23,6 +23,7 @@
 //   { schema, pr, issue, commit, tier,
 //     criteria:      [{ id, text, status: met|unmet|deferred, evidence: [url | "`command` -> result" | "#n"] }],
 //     media:         [{ file, url, kind: video|image, seconds, viewport, uncut, realSpeed, caption }],
+//     files?:        [{ file, url, caption }],          other uploads (logs, JSON); never counted as a clip
 //     checks:        [{ cmd, result: pass|fail|skip, note }],
 //     failedAttempts:[{ what, why, evidence }],          kept, never deleted; [] when there were none
 //     externalities: [{ what, result, ok }],             long-tail cost elsewhere: payload or context bytes when the
@@ -239,6 +240,13 @@ export function validateProof(proof, { tier = 'T0', checklist = null, knobs = {}
     if (m?.kind === 'video' && (m.uncut !== true || m.realSpeed !== true)) problems.push(`proof.json media ${i + 1}: a proof video must be uncut and real speed (uncut: true, realSpeed: true)`);
   }
   if (rank(tier) >= 2 && !media.some(m => m?.kind === 'video' && m.url)) problems.push('proof.json: no uploaded video for a T2+ change');
+  if (proof.files !== undefined) {
+    for (const [i, f] of arr('files').entries()) {
+      if (!f?.file) problems.push(`proof.json files ${i + 1}: needs a file name`);
+      if (f?.url && !/^https:\/\//.test(f.url)) problems.push(`proof.json files ${i + 1}: url must be https`);
+      if (!f?.url) warnings.push(`proof.json files ${i + 1} (${f?.file ?? '?'}): no url yet (not uploaded)`);
+    }
+  }
   const checks = arr('checks', rank(tier) >= 1 ? 1 : 0);
   for (const [i, c] of checks.entries()) if (!c?.cmd || !['pass', 'fail', 'skip'].includes(c?.result)) problems.push(`proof.json check ${i + 1}: needs cmd and result pass|fail|skip`);
   arr('failedAttempts');
