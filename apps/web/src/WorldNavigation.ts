@@ -22,6 +22,13 @@ export function manualCameraStep(keys:ReadonlySet<string>,seconds:number,scale=1
   return {forward:forward/n*speed*dt,right:right/n*speed*dt,up:up/n*speed*dt,
     yaw:(held('ArrowRight')-held('ArrowLeft'))*1.2*angular*dt,pitch:(held('ArrowUp')-held('ArrowDown'))*.9*angular*dt};
 }
+/** #891 touch Free camera: the floating stick's deflection (forward/right, each -1..1, length at most 1) as one frame's
+ * metres, at the desktop WASD speed (3 m/s × `scale`) when fully deflected. */
+export function stickStep(forward:number,right:number,seconds:number,scale=1):CameraMove {
+  const dt=Number.isFinite(seconds)?Math.min(.1,Math.max(0,seconds)):0,f=Number.isFinite(forward)?forward:0,r=Number.isFinite(right)?right:0;
+  const n=Math.max(1,Math.hypot(f,r)),speed=3*(Number.isFinite(scale)?Math.max(1,scale):1);
+  return {forward:f/n*speed*dt,right:r/n*speed*dt};
+}
 /** Turn the view at its current eye position, keeping a level horizon and a finite orbit target. */
 export function rotateWorldView(camera:PerspectiveCamera,target:Vector3,yawDelta:number,pitchDelta:number){
   if(!yawDelta&&!pitchDelta)return;
@@ -66,6 +73,9 @@ export function createWorldOrbitControls(camera: PerspectiveCamera,canvas: HTMLC
   // VF2 (Gene): your camera pans along the ground and zooms toward the point under the cursor; Follow keeps its Soul centred.
   controls.mouseButtons.RIGHT=null; // RMB is owned by look-in-place, never OrbitControls pan.
   controls.screenSpacePanning=false;controls.zoomToCursor=context.mode==='manual';
+  // #891: in Free (your camera) touch belongs to the stick, look, pinch-glide and rise gestures (touch/WorldTouchFree.ts);
+  // Follow and Broadcast keep OrbitControls' touch orbit and pinch.
+  if(context.mode==='manual'&&context.navigation==='orbit')controls.touches={ONE:null,TWO:null};
   // The displayed camera may fit to 1 m in a doorway; never push it back out to
   // the preferred user zoom floor. RMB deliberately takes over to look in place.
   if(context.mode==='follow'){controls.minDistance=FOLLOW_NEAR;controls.maxDistance=FOLLOW_MAX;}

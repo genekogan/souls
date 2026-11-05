@@ -38,6 +38,30 @@ test('scripted mode delivers at offsets on the right channel, captures shown, cl
   assert.ok(['script-complete', 'duration'].includes(out.stoppedBy));
 });
 
+test('scripted mode delivers a seat "*" broadcast to every seat, each on its own record', async () => {
+  const r = rig({ ids: ['a', 'b'] });
+  const scenario = scen({ seats: [{ id: 'a' }, { id: 'b' }], director: { mode: 'scripted', script: [{ seat: '*', atSec: 5, channel: 'card', text: 'wave hello' }] } });
+  await runPlay({ ...r, scenario, world, quotaCheck: noQuota });
+  assert.deepEqual(r.owner.sent.map((m) => [m.soulId, m.text, m.sentAt]).sort(), [['soul-a', 'wave hello', 5000], ['soul-b', 'wave hello', 5000]]);
+  for (const id of ['a', 'b']) assert.equal(jsonl(join(r.runDir, `personas/${id}/decisions.jsonl`)).find((d) => d.scripted)?.scripted.broadcast, true);
+});
+
+test('scripted after "result": the next request follows the seat\'s own result, and the run ends with the last result', async () => {
+  const r = rig({ ids: ['a'] });
+  const scenario = scen({ seats: [{ id: 'a' }], durationSec: 300, director: { mode: 'scripted', sequential: false, script: [
+    { seat: 'a', atSec: 5, channel: 'card', text: 'walk to the orchard' },
+    { seat: 'a', atSec: 6, after: 'result', channel: 'card', text: 'say hello' }] } });
+  const out = await runPlay({ ...r, scenario, world, quotaCheck: noQuota });
+  const [walk, hello] = r.owner.sent;
+  const walkResult = r.observer.closed.find((c) => c.requestId === 'a-001').at;
+  assert.equal(walk.sentAt, 5000);
+  assert.ok(hello.sentAt >= walkResult && hello.sentAt - walkResult <= 10000, `hello at ${hello.sentAt}, result at ${walkResult}`);
+  assert.equal(jsonl(join(r.runDir, 'personas/a/decisions.jsonl'))[1].scripted.after, 'result');
+  assert.equal(out.stoppedBy, 'script-complete');
+  const helloResult = r.observer.closed.find((c) => c.requestId === 'a-002').at;
+  assert.ok(out.elapsedSec * 1000 - helloResult <= 10000, `ended ${out.elapsedSec} s, last result ${helloResult} ms`);
+});
+
 test('persona mode respects waitSec and the glance minimum', async () => {
   const r = rig();
   const persona = fakePersona({ decisions: [{ say: null, waitSec: 60 }] });
