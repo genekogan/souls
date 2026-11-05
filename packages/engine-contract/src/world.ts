@@ -14,6 +14,7 @@ export type Provenance = {
 export type EntityKind = 'human' | 'component' | 'vehicle' | 'fixture' | 'marker';
 
 export type HumanState = {
+  bodyMotionV1?: import('../../../mars/viewer/engine/bodies/motion.ts').BodyMotionState;
   activity: string; // 'idle' | 'walk' | 'sit' | 'converse' | 'wave' | 'rest' ...
   task?: string; // owning action id
   level: number;
@@ -35,7 +36,7 @@ export type Entity = {
   body?: {family:'humanoid'|'floater';type?:'humanoid'|'ceramic'|'floater'|'creature';model?:string;modelUrl?:string;
     avatar?:{kind:'body';modelUrl:string;bodyType:'humanoid'|'ceramic'|'floater'};radius?:number;hoverHeight?:number;
     /** core/humanoid@2 look params (compact), with model = the look key (engine bodies/humanoid.ts). */
-    params?:Record<string,string|number>};
+    actionProfile?:import('../../../mars/viewer/engine/bodies/action-profile.ts').ActionProfile;params?:Record<string,string|number>;motion?:import('../../../mars/viewer/engine/bodies/motion.ts').BodyMotion};
   reservedBy?: string;
   /** Fixture capacity for seats/gathering (toy extension). */
   seats?: number;

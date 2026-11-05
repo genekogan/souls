@@ -5,11 +5,14 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } f
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createLedger } from './ledger.mjs';
 import { validateSpec, portFree } from './spec.mjs';
 import { applySetup } from './setup.mjs';
+import { attachTrace, checkTap, summarizeTraces } from './diagnostics.mjs';
 import { writeJson, readJson } from '../lib/jsonl.mjs';
 import { scratchDir } from '../../lib/paths.mjs';
+import { startProcessSampler } from './proc-cost.mjs';
 
 export const RECEIPT = 'run-receipt.json';
 const TIMEOUT = Symbol('timeout');
@@ -42,7 +45,7 @@ function bytesUnder(dir) {
 
 /** Static checks plus capability checks that create nothing: server files, the world port, the scenario runner's own
  *  preflight (providers, quota, machine gate). Returns {ok, errors, checks}. */
-export async function preflightRun({ validation, serverRoot, scenarioPreflight }) {
+export async function preflightRun({ validation, serverRoot, scenarioPreflight, tapCheck = checkTap }) {
   const errors = [];
   const files = { server: 'apps/server/src/main.ts', webDist: 'apps/web/dist/index.html', controllerCli: 'tools/world-launcher/soul/eden.mjs' };
   const checks = { files: {} };
@@ -59,6 +62,11 @@ export async function preflightRun({ validation, serverRoot, scenarioPreflight }
         ...(checks.scenario.allow?.allowed === false ? [`quota: ${checks.scenario.allow.note}`] : []), ...(checks.scenario.error ? [checks.scenario.error] : [])];
       errors.push({ code: 'preflight.scenario', message: `scenario preflight refused: ${why.join('; ') || 'see checks.scenario'}` });
     }
+  }
+  if (validation.effective.diagnostics?.trace) {
+    // The preload must load cleanly with capture off, or every traced CLI call would fail: checked before anything starts.
+    checks.diagnostics = await tapCheck();
+    if (!checks.diagnostics.ok) errors.push({ code: 'diagnostics.tap', message: `trace preload does not load: ${checks.diagnostics.error}` });
   }
   return { ok: errors.length === 0, errors, checks };
 }
@@ -90,10 +98,10 @@ export async function executeScenario({ scenarioFile, playtestDir, serverRoot, h
 /** startRun → terminal receipt. status: refused (nothing created) | completed | failed | cancelled | stopped-limit.
  *  signal: an AbortSignal the caller aborts on SIGINT/SIGTERM. execute/scenarioPreflight/importer are injectable. */
 export async function startRun({ spec, specPath = null, specSha256 = null, serverRoot, outDir = null, signal = null, log = () => {},
-  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup }) {
-  const validation = validateSpec(spec, { specPath, serverRoot });
+  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup, toolsRoot, tapCheck, processSampler = startProcessSampler }) {
+  const validation = validateSpec(spec, { specPath, serverRoot, ...(toolsRoot ? { toolsRoot } : {}) });
   if (!validation.ok) return { status: 'refused', stage: 'validate', errors: validation.errors };
-  const pre = await preflightRun({ validation, serverRoot, scenarioPreflight });
+  const pre = await preflightRun({ validation, serverRoot, scenarioPreflight, ...(tapCheck ? { tapCheck } : {}) });
   if (!pre.ok) return { status: 'refused', stage: 'preflight', errors: pre.errors, checks: pre.checks };
   const eff = validation.effective;
 
@@ -106,6 +114,8 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   ledger.borrow('checkout', 'server-root', { path: serverRoot, use: 'read-only source and web build' });
   ledger.borrow('port-range', 'host', { note: 'other services on this host are never stopped' });
   const t0 = Date.now(), usage0 = process.resourceUsage();
+  // Descendant processes by class (#803): browser rendering and video encoding apart from the runner's own CPU.
+  let procs = null; try { procs = processSampler(); } catch (e) { procs = { stop: async () => ({ status: 'unavailable', reason: short(e) }) }; }
   const receipt = {
     soulRun: 1, runId: runDir.split(sep).pop(), status: 'running', startedAt: new Date(t0).toISOString(),
     spec: { path: specPath, sha256: specSha256, effective: eff }, source: sourceIdentity(serverRoot), controllers: validation.controllers,
@@ -114,6 +124,11 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   const save = () => writeJson(join(runDir, RECEIPT), receipt);
   save(); // a crash from here on leaves status "running", never a false success
   const scenarioFile = join(runDir, 'scenario.effective.json');
+  // Diagnostics capture (opt-in, SR3): traced seats get their preload and trace file before the scenario is written.
+  const diagnostics = attachTrace(validation.scenario, { effective: eff.diagnostics, runId: receipt.runId, runDir, ...(toolsRoot ? { root: toolsRoot } : {}) });
+  if (diagnostics) { receipt.diagnostics = diagnostics; save(); }
+  // Recording sidecars carry the run's provenance (#754); the runner adds world, camera and clock fields.
+  if (eff.observer.record != null) validation.scenario.observer = { ...(validation.scenario.observer ?? {}), recordMeta: { runId: receipt.runId, attempt: 1, specSha256: specSha256 ?? null, effectiveSpecSha256: sha256Of(JSON.stringify(eff)), source: { commit: receipt.source?.commit ?? null, dirtyTrackedFiles: receipt.source?.dirtyTrackedFiles ?? null } } };
   writeJson(scenarioFile, validation.scenario);
   writeJson(join(runDir, 'spec.effective.json'), eff);
 
@@ -127,7 +142,8 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   let outcome, execMs = null;
   try {
     let modules;
-    if (eff.observer.check) {
+    if (eff.observer.mode !== 'cameras') receipt.observer = { ok: null, mode: eff.observer.mode, skipped: `observer.mode ${eff.observer.mode}: no browser` };
+    else if (eff.observer.check) {
       receipt.observer = await observerCheck({ serverRoot, timeoutMs: eff.observer.timeoutMs, ledger, importer: observerImporter });
       log(`observer check: ${receipt.observer.ok ? 'ok' : `unavailable at ${receipt.observer.stage}: ${receipt.observer.error}`}`);
       if (!receipt.observer.ok && eff.observer.required) throw Object.assign(new Error(`observer required but unavailable (${receipt.observer.stage}: ${receipt.observer.error}); see #633`), { stage: 'observer-check' });
@@ -163,15 +179,27 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   log(`run ${outcome.status}${outcome.reason ? `: ${outcome.reason}` : ''}; releasing owned resources`);
   const cleanup = await ledger.releaseAll({ waitMs: eff.limits.cleanupWaitMs });
   receipt.retention = applyRetention({ runDir, ledger, retention: eff.retention, completed: outcome.status === 'completed' && cleanup.ok });
+  const processes = await procs.stop().catch((e) => ({ status: 'unavailable', reason: short(e) }));
   const usage1 = process.resourceUsage(), endedAt = Date.now();
   Object.assign(receipt, outcome, {
     endedAt: new Date(endedAt).toISOString(), resources: cleanup,
-    cost: { wallMs: endedAt - t0, executeMs: execMs, lifecycleOverheadMs: execMs == null ? null : endedAt - t0 - execMs, runnerCpuUserMs: Math.round((usage1.userCPUTime - usage0.userCPUTime) / 1000), runnerCpuSystemMs: Math.round((usage1.systemCPUTime - usage0.systemCPUTime) / 1000), runnerMaxRssMb: Math.round(usage1.maxRSS / 1024), runDirBytes: bytesUnder(runDir) },
-    evidence: summarizeEvidence(playtestDir),
+    cost: { wallMs: endedAt - t0, executeMs: execMs, lifecycleOverheadMs: execMs == null ? null : endedAt - t0 - execMs, runnerCpuUserMs: Math.round((usage1.userCPUTime - usage0.userCPUTime) / 1000), runnerCpuSystemMs: Math.round((usage1.systemCPUTime - usage0.systemCPUTime) / 1000), runnerMaxRssMb: Math.round(usage1.maxRSS / 1024), runDirBytes: bytesUnder(runDir), processes },
+    evidence: summarizeEvidence(playtestDir), ...(eff.observer.record != null || existsSync(join(playtestDir, 'recordings')) ? { recordings: summarizeRecordings(playtestDir) } : {}),
   });
+  if (receipt.diagnostics) receipt.diagnostics.capture.result = summarizeTraces(runDir, receipt.diagnostics);
   if (!cleanup.ok && receipt.status === 'completed') { receipt.status = 'failed'; receipt.reason = `cleanup incomplete: ${cleanup.failed.join(', ')}`; }
   save();
   return receipt;
+}
+
+/** Recording sidecars written by the observer (one per camera), summarized; the files stay private run evidence. */
+export function summarizeRecordings(playtestDir) {
+  const dir = join(playtestDir, 'recordings');
+  const list = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.webm.json')).sort().map((f) => readJson(join(dir, f), null)).filter(Boolean) : [];
+  const cameras = readJson(join(playtestDir, 'cameras.json'), null);
+  return { dir, count: list.length, partial: list.filter((r) => r.partial).length, bytes: list.reduce((n, r) => n + (r.bytes ?? 0), 0),
+    items: list.map((r) => ({ camera: r.camera, file: r.file, bytes: r.bytes, sha256: r.sha256, durationSec: r.durationSec, ...(r.encoding ? { encoding: r.encoding, mbPerMin: r.mbPerMin ?? null } : {}), partial: r.partial, ...(r.closedBy ? { closedBy: r.closedBy } : {}), ...(r.error ? { error: r.error } : {}), requested: r.requested?.kind, actual: r.actual?.mode ?? null, pageErrors: r.pageErrors?.length ?? 0 })),
+    cameras: cameras?.cameras ?? null };
 }
 
 function summarizeEvidence(playtestDir) {
@@ -210,3 +238,5 @@ export function cleanupRun(runDir, { worldData = false, controllerState = false,
   writeFileSync(file, JSON.stringify(receipt, null, 1) + '\n');
   return { ok: true, deleted: done };
 }
+
+const sha256Of = (text) => createHash('sha256').update(text).digest('hex');

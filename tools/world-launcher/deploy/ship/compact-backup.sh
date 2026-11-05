@@ -11,6 +11,6 @@ mkdir -p /srv/sim-worlds-data/release-backups
 B="$(mktemp -d "/srv/sim-worlds-data/release-backups/$L-$STAGE-$(date -u +%Y%m%d-%H%M%S)-XXXXXX")"
 mkdir -p "$B/worlds" "$B/forks"
 for w in "$D"/worlds/*/; do s=$(basename "$w"); [ -f "$w/sim.db" ] || continue; mkdir -p "$B/worlds/$s"; python3 "$COPY" "$w/sim.db" "$B/worlds/$s/sim.db" --keep-takes; done
-for f in accounts.sqlite forks/accounts.sqlite; do [ -f "$D/$f" ] && python3 "$COPY" "$D/$f" "$B/$f" --keep-takes; done
+for f in accounts.sqlite body-collections.sqlite forks/accounts.sqlite; do [ -f "$D/$f" ] && python3 "$COPY" "$D/$f" "$B/$f" --keep-takes; done
 [ -f "$D/worlds.json" ] && cp "$D/worlds.json" "$B/" || true
 chown -R simworlds:simworlds "$B"; chmod -R go-rwx "$B"; du -sh "$B"; echo "$B"
