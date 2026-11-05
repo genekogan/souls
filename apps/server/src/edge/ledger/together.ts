@@ -267,6 +267,8 @@ export class Together {
   // ---------------------------------------------------------------- storage
   invite(id: string): Invite | null {const r = this.p.db.db.prepare('SELECT body FROM edge_invites_v1 WHERE world_id=? AND invite_id=?').get(this.p.host.worldId, id) as {body: string} | undefined; return r ? JSON.parse(r.body) as Invite : null;}
   private pending(): Invite[] {return (this.p.db.db.prepare("SELECT body FROM edge_invites_v1 WHERE world_id=? AND state='pending' ORDER BY created_at").all(this.p.host.worldId) as {body: string}[]).map(r => JSON.parse(r.body) as Invite);}
+  /** PC05: the running shared operations (their load claims exclude a second commit for the same load). */
+  private committed(): Invite[] {return (this.p.db.db.prepare("SELECT body FROM edge_invites_v1 WHERE world_id=? AND state='committed' ORDER BY created_at").all(this.p.host.worldId) as {body: string}[]).map(r => JSON.parse(r.body) as Invite);}
   /** L3: moves on every invitation, item, item-op or follow write (and again when its in-memory copy updates after the
    *  commit), so a menu cached on it never keeps an answered invitation or a handed-over item. */
   version = 0;
@@ -835,7 +837,10 @@ export class Together {
     if (!x) return [...out, {soulId: null, name: s.load.name, why: 'is no longer here'}];
     const def = this.thingDef?.(s.load.entity);
     if (def !== undefined && def !== s.load.def) out.push({soulId: null, name: s.load.name, why: `changed (it is ${def ?? 'gone'} now, not ${s.load.def})`});
-    if (x.reservedBy || x.phase === 'carried') out.push({soulId: null, name: s.load.name, why: 'is being carried by someone else'});
+    // the load claim of a running operation: the native reservation starts only on the programme's first tick, so two
+    // commits for one load in the same tick are excluded here, under the same write lock as the journal that claims it
+    const claimed = this.committed().find(o => o.id !== inv.id && o.shared?.op && o.shared.op.phase !== 'ended' && o.shared.load.entity === s.load.entity);
+    if (claimed || x.reservedBy || x.phase === 'carried') out.push({soulId: null, name: s.load.name, why: 'is being carried by someone else'});
     else if (x.support?.kind !== 'ground') out.push({soulId: null, name: s.load.name, why: 'is not lying on the ground'});
     for (const m of this.sharedMembers(inv)) {
       const mind = this.mindOf(m.soulId), row = this.p.db.soul(m.soulId), b = mind ? this.p.body(mind.entityId) : undefined, h = b?.human;
