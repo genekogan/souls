@@ -38,7 +38,9 @@ Two PRs that both append to one shared file conflict every time. So nothing a PR
 
 ## The merge train
 
-When a PR is ready, label it `merge:ready`. From there the train takes over, one PR at a time, and first picks how
+When a PR is ready, label it `merge:ready`. Its heavy CI jobs run only inside the [CI window](../testing.md#ci-window)
+(a ready PR labelled `ci:run` or `merge:ready`), so open the window with `ci:run` and add `merge:ready` once `ci-ok`
+is green. From there the train takes over, one PR at a time, and first picks how
 the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
 
 - **Non-strict**: a T0–T2 PR that touches no strict path, whose required checks are green on its current head, which
@@ -67,7 +69,10 @@ The strict steps:
 2. **Re-test**: the required checks (`ci-ok` from the `ci` workflow, `gitleaks`, `path-guard`, `scrub-guard`,
    `proof-ok` and `fragment`) run on the rebased head, and the train waits for them there (a personal-account repo
    has no GitHub merge queue; `merge-train.yml` is the queue), so a strict PR never lands tested only against an
-   older base.
+   older base. The newest workflow run at the head decides each check. A result from a run that was cancelled, that
+   a newer run of the same workflow replaced, or that predates a re-run in progress is ignored, and a `cancelled`
+   conclusion counts as pending, never as a failure. Until the replacing run reports, the check is pending within the
+   train's bounded waits.
 3. **Merge**, by tier ([PROOF-POLICY.yml](PROOF-POLICY.yml), `node tools/proof/tier.mjs`):
    - **T0–T2** merge automatically once every required check is green.
    - **T3–T4** wait for the maintainer's approval, then merge.
