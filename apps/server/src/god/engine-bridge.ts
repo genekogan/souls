@@ -1809,9 +1809,12 @@ export class EngineBridge {
     const here: Vec2 = [me.pose.p[0], me.pose.p[2]];
     if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on')) {
       const held = Object.values(ents).find((x: any) => x.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === soul.entityId) as any;
-      // F8 (#958): a thing is named by its display name; labels keep its exact path in brackets (the words resolve to it)
+      // F8 (#958): a thing is named by its display name; labels keep its exact path in brackets
       const said = (id: string) => (this.model.entities.has(id) ? displayName(this.model.entities.get(id)) ?? this.model.pathOf(id) : String(ents[id]?.label ?? id));
-      const name = (id: string) => (this.model.entities.has(id) ? `${said(id)} [${this.model.pathOf(id)}]` : said(id));
+      // (what holds it, by name, stays in the words: brackets are not words to the vocabulary, so "the chair in the study of
+      // eden house 2" still names it — review of #958)
+      const within = (id: string) => { const out: string[] = []; for (let p = this.model.entities.get(id)?.in.parent; p && p !== 'world' && out.length < 3; ) { const x = this.model.entities.get(p); if (!x) break; const n = displayName(x); if (n) out.push(` in ${n}`); p = x.in.parent; } return out.join(''); };
+      const name = (id: string) => (this.model.entities.has(id) ? `${said(id)}${within(id)} [${this.model.pathOf(id)}]` : said(id));
       // MARSLIVED: a thing resting on a table is reached from the table's floor (its top's height matched Mimos's 0.53 m
       // raised floor, so a cup on the ground-floor tea table read "floor 1" and Souls were sent up there for it)
       const levelOf = (x: any) => { let s = x; for (let i = 0; i < 4 && s.support?.kind === 'resting-on' && ents[s.support.on]; i++) s = ents[s.support.on]; return this.levelOfY(s.pose.p[1]); };

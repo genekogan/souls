@@ -15,7 +15,7 @@ export const PLACES_RADIUS = 160;
 /** At most `n` characters, cut at the last word boundary (F8 #958: never `… the separ…`); one word longer than that is cut. */
 export const clip = (s: string, n: number) => {
   if (s.length <= n) return s;
-  const cut = s.slice(0, n - 1), at = /\w/.test(s[n - 1] ?? '') ? cut.search(/\W\w*$/) : cut.length;
+  const cut = s.slice(0, n - 1), at = /[\p{L}\p{N}_]/u.test(s[n - 1] ?? '') ? cut.search(/[^\p{L}\p{N}_][\p{L}\p{N}_]*$/u) : cut.length;
   return (at > 0 ? cut.slice(0, at) : cut).replace(/[\s,;:'’–—-]+$/, '') + '…';
 };
 

@@ -122,6 +122,8 @@ export const GOD_PLACES = process.env.GOD_PLACES !== '0';
 export class GodPerceive {
   private h: PerceiveHost;
   private sigs = new Map<string, string>();
+  /** F8 (#958): each built object's stored name, as last seen or written. */
+  private names = new Map<string, string>();
   /** What each `built` object's state should be now (its kind's advance reads this). */
   private desired = new Map<string, BuiltState>();
   private signs = new Map<string, SignRow>();
@@ -338,7 +340,7 @@ export class GodPerceive {
   private begin(): Run | null {
     const objs = this.objects(); if (!objs) return null;
     const root = this.rootPlace(); if (!root) return null;
-    if (!this.sigs.size) for (const o of objs.all()) if (this.kinds.has(o.kind) || (o.state as BuiltState)?.key === o.id) { this.sigs.set(o.id, stateDigest(o.state)); if (!this.kinds.has(o.kind)) { const e = this.h.model.entities.get(o.id), def = e && this.h.model.resolvedDef(e.def); this.registerBuiltKind(o.kind, def ?? undefined); } }
+    if (!this.sigs.size) for (const o of objs.all()) if (this.kinds.has(o.kind) || (o.state as BuiltState)?.key === o.id) { this.sigs.set(o.id, stateDigest(o.state)); this.names.set(o.id, o.name); if (!this.kinds.has(o.kind)) { const e = this.h.model.entities.get(o.id), def = e && this.h.model.resolvedDef(e.def); this.registerBuiltKind(o.kind, def ?? undefined); } }
     const layersOn = !!this.h.layers?.active();
     // L4 item 5: the layers switching on or off changes only what wantOne's `lay` reads: things with a layer field
     if (layersOn !== this.layersOn) { this.layersOn = layersOn; for (const e of this.h.model.entities.values()) if (layered(e)) this.retag.add(e.id); }
@@ -366,7 +368,7 @@ export class GodPerceive {
     return { queue: [...ids], i: 0, changed: [], made: 0, root, layersOn, full, ms: 0 };
   }
   /** Recompute one id and bring its object in line. */
-  private apply(r: Run, id: string, objs: { create(i: unknown): unknown; refresh?(ids: string[]): void }) {
+  private apply(r: Run, id: string, objs: { create(i: unknown): unknown; refresh?(ids: string[]): void; rename?(id: string, name: string): void }) {
     const e = this.h.model.entities.get(id), x = e ? this.wantOne(e, r.layersOn) : null;
     const old = this.entries.get(id);
     if (old) { this.cellDel(id, old.at); this.entries.delete(id); this.signs.delete(id); }
@@ -379,13 +381,15 @@ export class GodPerceive {
     }
     const at = x.w.params.at as Vec2;
     this.entries.set(id, { ...x, at }); this.cellAdd(id, at); if (x.sign) this.signs.set(id, x.sign);
+    // F8 (#958): an object made before its name was derived as now (a path, on an older world) takes the current name
+    if (this.sigs.has(id) && this.names.get(id) !== x.w.name) { try { objs.rename?.(id, x.w.name); this.names.set(id, x.w.name); } catch (err) { this.h.log(`built object ${id}: ${(err as Error).message}`); } }
     const state = builtKind.initial({ ...x.w.params, key: id } as never), sig = canonicalJson(state);
     if (this.sigs.get(id) === sig) return;
     this.desired.set(id, state);
     try {
       // L8: a changed object is brought in line at once, not at the end of the (sliced) catch-up: built kinds' advance is
       // refresh-only, so a listing between slices would otherwise show the old state of an object already recomputed
-      if (!this.sigs.has(id)) { objs.create({ id, kind: x.w.kind, name: x.w.name, description: x.w.description, placeId: r.root, params: { ...x.w.params, key: id } }); r.made++; } else { r.changed.push(id); objs.refresh?.([id]); }
+      if (!this.sigs.has(id)) { this.names.set(id, x.w.name); objs.create({ id, kind: x.w.kind, name: x.w.name, description: x.w.description, placeId: r.root, params: { ...x.w.params, key: id } }); r.made++; } else { r.changed.push(id); objs.refresh?.([id]); }
       this.sigs.set(id, sig);
     } catch (err) { this.h.log(`built object ${id}: ${(err as Error).message}`); }
   }

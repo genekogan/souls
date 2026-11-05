@@ -21,7 +21,7 @@ const RAW: [string, RegExp][] = [['a place id', /\b(place|int|g|region)-[a-z]/],
  *  paths an author wrote into a def's description (`god/examples/light-motion.mjs`) are prose, not ids. */
 const strip = (s: string) => s.replace(/\[[^\]]*\]/g, '[]').replace(/\b[a-z][a-z0-9-]*:[^\s,;)\]]+/g, 'CAP').replace(/\b[\w./-]+\.(mjs|js|ts|json|md)\b/g, 'FILE');
 /** Fields that are ids or machine values, not display text. */
-const ID_KEYS = new Set(['id', 'placeId', 'capability', 'walk', 'sit', 'to', 'unvisited', 'fullCapabilities', 'ref', 'entity', 'entityId', 'soulId', 'target', 'carrier', 'parent', 'place', 'places', 'placePath', 'kind', 'owner', 'slot', 'cursor', 'since', 'programId', 'receipt', 'itemId', 'for', 'verb', 'role', 'def', 'cron', 'key', 'apiContract', 'semanticKind', 'semanticParent', 'semanticRole', 'aliases', 'genericAliases', 'code', 'at']);
+const ID_KEYS = new Set(['id', 'placeId', 'capability', 'walk', 'sit', 'to', 'unvisited', 'fullCapabilities', 'ref', 'entity', 'entityId', 'soulId', 'target', 'carrier', 'parent', 'place', 'owner', 'slot', 'cursor', 'since', 'programId', 'receipt', 'itemId', 'for', 'verb', 'role', 'def', 'cron', 'key', 'apiContract', 'semanticKind', 'semanticParent', 'semanticRole', 'genericAliases', 'code', 'at']);
 const NO = ['eden-2026', 'mars-two', 'eden-district'].filter(t => !existsSync(new URL(`../../../worlds/templates/${t}.json`, import.meta.url)));
 
 /** Every problem in one string: [why, text]. Known refs with a slash are found by name too (`chiba/kitchen` has no hyphen). */
@@ -68,15 +68,34 @@ for (const template of ['eden-2026', 'mars-two', 'eden-district']) test(`${templ
     const full = w.edge.places.byId.get(p.id)?.description; if (!p.what?.endsWith('…') || !full) continue;
     const head = p.what.slice(0, -1); clipped++;
     assert.ok(full.startsWith(head), `${p.id}: the clip is a prefix`);
-    assert.ok(!/\w/.test(full[head.length] ?? ' ') || !/\w$/.test(head), `${p.id}: cut mid-word: …${head.slice(-20)}|${full.slice(head.length, head.length + 10)}`);
+    assert.ok(!/[\p{L}\p{N}]/u.test(full[head.length] ?? ' ') || !/[\p{L}\p{N}]$/u.test(head), `${p.id}: cut mid-word: …${head.slice(-20)}|${full.slice(head.length, head.length + 10)}`);
   }
   t.diagnostic(`${clipped} clipped place descriptions checked`);
+  if (template !== 'eden-2026') return;
+  // review of #958: plain words that named a seat or bed by what holds it still do (brackets are not words to the
+  // vocabulary, so the label says what holds it by name)
+  const m = w.god.model, dry = (text: string) => (w.edge as unknown as {intents: {dryRun(s: unknown, b: unknown): {ok: boolean; would?: {capability: string}; code?: string}}}).intents.dryRun(s, {capability: text});
+  for (const [text, path] of [['lie down on the bed in the bedroom of eden house 2', 'eden-house-2-bedroom/eden-house-2-bed'], ['lie down on the bed in the eden house 1 bedroom', 'eden-house-1-bedroom/eden-house-1-bed'],
+    ['sit on the eden house 1 chair 1 in the eden house 1 kitchen', 'eden-house-1-kitchen/eden-house-1-chair-1']] as const) {
+    const r = dry(text), id = r.would?.capability.split(':')[1];
+    assert.equal(id && m.entities.has(id) ? m.pathOf(id) : r.code, path, text);
+  }
+  // review of #958: a world made before this rule keeps its objects (create() keeps a row); the next catch-up renames them
+  const obj = comms.objects.all().find(o => o.kind !== 'ride' && m.entities.get(o.id)?.in.parent !== 'world' && m.entities.get(o.id)?.name)!;
+  const row = () => comms.objects.all().find(o => o.id === obj.id)!, want = obj.name, stale = m.pathOf(obj.id), v0 = row().version;
+  comms.objects.rename(obj.id, stale); assert.equal(row().name, stale);
+  comms.objects.rename(obj.id, stale); assert.equal(row().version, v0 + 1, 'the same name again writes nothing');
+  const p = (w.bridge as unknown as {perceive: {note(ids: string[], all: boolean): void; sigs: Map<string, string>}}).perceive;
+  p.sigs.clear(); p.note([], true);   // as on a restart: what is stored is read back, then every thing is derived again
+  for (let i = 0; i < 40 && row().name !== want; i++) await w.settle(2);
+  assert.equal(row().name, want, `${obj.id} renamed from ${stale}`);
 });
 
 test('clip ends at a word boundary; display helpers never keep an id or a dotted path', () => {
   assert.equal(clip('Tea, cake and cards at the long table', 30), 'Tea, cake and cards at the…');
   assert.equal(clip('the adjoining classroom', 18), 'the adjoining…');
   assert.equal(clip('short', 30), 'short');
+  assert.equal(clip('We meet at the cafés tonight', 20), 'We meet at the…', 'letters beyond ASCII are word letters');
   assert.equal(clip('Supercalifragilisticexpialidocious', 10), 'Supercali…', 'one long word is cut, as before');
   assert.equal(humanTitle('region-seaside-resort.ferris-wheel'), 'Seaside resort ferris wheel');
   assert.equal(humanTitle('place-commons-deck'), 'Commons deck');
