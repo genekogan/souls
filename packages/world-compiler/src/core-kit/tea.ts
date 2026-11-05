@@ -181,11 +181,13 @@ const cup3: DefInput = { ...structuredClone(cup), version: 3,
     { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0], [0.042, 0], [0.044, 0.1], [0.04, 0.1], [0.038, 0.014], [0, 0.014]], segments: 10, tint: 'glaze' },
     { kind: 'torus', at: [0.05, 0.055, 0], r: 0.024, r2: 0.0065, segments: 6, tint: 'glaze' },
     ...TEA_STEPS_3.map(([when, tea]) => ({ kind: 'cyl', at: [0, CUP_RIM.floor + (CUP_RIM.full - CUP_RIM.floor) * tea, 0], r: 0.0404 + 0.0012 * tea, h: 0.003, segments: 7, tint: 'tea', when: `@tea>${when}` })),
-    { kind: 'cyl', at: [0, CUP_RIM.floor + 0.001, 0], r: 0.039, h: 0.002, segments: 7, tint: 'stain', when: '@tea<=0.05&@brewedTick>=0' },
+    // drunk, a 5-sided tea stain at the bottom
+    { kind: 'cyl', at: [0, CUP_RIM.floor + 0.001, 0], r: 0.039, h: 0.002, segments: 5, tint: 'stain', when: '@tea<=0.05&@brewedTick>=0' },
     { kind: 'box', at: [0.006, CUP_RIM.floor + 0.008, -0.01], size: [0.034, 0.012, 0.026], round: 0.004, tint: 'bag', when: '!@bag=false&@brewedTick>=0&@tea<=0.4' },
-    // the tea bag's string, from the bag up over the rim, and its paper tag outside
-    { ...rod([0.008, 0.03, -0.012], [0.01, 0.103, -0.047], 0.0012, 3, 'string'), when: '!@bag=false' },
-    { kind: 'box', at: [0.008, 0.09, -0.049], size: [0.02, 0.026, 0.003], round: 0, tint: 'tag', when: '!@bag=false' }] } } as unknown as DefInput['make'],
+    // the tea bag's string, from the bag up over the rim and down to its paper tag outside (@2's tag)
+    { ...rod([0.008, 0.03, -0.012], [0.012, 0.104, -0.044], 0.0012, 3, 'string'), when: '!@bag=false' },
+    { ...rod([0.012, 0.104, -0.044], [0.006, 0.087, -0.051], 0.0012, 3, 'string'), when: '!@bag=false' },
+    { kind: 'box', at: [0.006, 0.074, -0.051], size: [0.02, 0.026, 0.003], round: 0, tint: 'tag', when: '!@bag=false' }] } } as unknown as DefInput['make'],
 } as DefInput;
 
 export const TEA_DEFS: DefInput[] = [kettle, cup, campSink, kettle3, cup3];
