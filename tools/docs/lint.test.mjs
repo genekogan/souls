@@ -47,6 +47,24 @@ test('refusals: each broken page names its problem', () => {
   assert.ok(codes(page(FM, '# A page\n\nWrite to someone@example.com.')).includes('private.email'));
 });
 
+test('frontmatter edge cases and the writing rules the lint enforces', () => {
+  assert.deepEqual(codes(page(FM, '# A page').replace(/\n/g, '\r\n')), [], 'CRLF files read like LF');
+  assert.deepEqual(codes(page(FM.replace('title: A page', 'title: "A: page"'), '# A: page')), [], 'quoted values lose their quotes');
+  assert.equal(frontmatter(page(FM.replace('One line.', 'See issue C # sharp.'), '# A page')).data.description, 'See issue C # sharp.', 'no inline comments');
+  assert.ok(codes(page(FM.replace('2026-11-05', '2026-13-45'), '# A page')).includes('frontmatter.updated'));
+  assert.ok(codes(page(FM.replace('docs/design/vision.md', '../outside.md'), '# A page')).includes('frontmatter.source'));
+  assert.ok(codes(page(FM, '# A page\n\nBare https://soul.game/docs/nowhere here.')).includes('link.unresolved'));
+  assert.ok(codes(page(FM, '# A page\n\nAn autolink <https://soul.game/docs/nowhere>.')).includes('link.unresolved'));
+  assert.deepEqual(codes(page(FM, '# A page\n\nCode `[x](/docs/nowhere)` is not a link.\n\n~~~\n[y](/docs/nowhere)\n~~~')), []);
+  assert.ok(codes(page(FM, '# A page\n\nWelcome to Sim.')).includes('name.retired'));
+  assert.ok(codes(page(FM, '# A page\n\nAll Eden worlds.')).includes('name.eden'));
+  assert.deepEqual(codes(page(FM, '# A page\n\nVisit Eden 2026.')), [], 'Eden 2026 is a world');
+  assert.ok(codes(page(FM, '# A page\n\nIt works — mostly.')).includes('style.em-dash'));
+  assert.ok(codes(page(FM, '# A page\n\nFixed in #890.')).includes('text.issue-number'));
+  assert.ok(codes(page(FM, '# A page\n\nSee path=/Users/x/y.')).includes('private.local-path'));
+  assert.ok(codes(page(FM, '# A page\n\nThe box at 100.101.1.2.')).includes('private.ip'));
+});
+
 test('a tree missing an outline page fails', () => {
   const dir = mkdtempSync(join(tmpdir(), 'docs-lint-'));
   try {
