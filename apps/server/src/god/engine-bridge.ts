@@ -307,7 +307,7 @@ export class EngineBridge {
     this.watering = createWatering({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
     // Entry 43: the tea acts (tea.ts), the same way
     this.tea = createTea({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
-    this.perceive = new GodPerceive({ model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea });
+    this.perceive = new GodPerceive({ model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea, claim: (id, soul) => this.claimRefusal(id, soul) });
     // L3 (server reliability): kept Soul menus read god state the ledger does not version (ownership, construction sites)
     // the bridge runs without an edge ledger too (toy/engine-only hosts): guard the ledger, not only the method
     if (!R) (this.edge as { addMenuInput?(f: () => string): void } | undefined)?.addMenuInput?.(() => `${this.version}|${this.god.builds.closingSites().map((x) => x.id).join(',')}`);
@@ -1932,7 +1932,7 @@ export class EngineBridge {
         if (asset.category === 'item' && !(loose && !loose.small) && x.support?.kind !== 'in-hand' && !held && (!kept || (kept.open && d <= STORE_NEAR))) {
           const note = kept && d <= FACTS_NEAR ? this.keptNote(kept.id, x.id, soul) : null;
           const id = `pick-up:${x.id}`, label = kept ? `Take ${name(x.id)}${note ? ` (${note})` : ''} out of ${kept.label} (${d} m)` : `Pick up ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
-          const block = kept ? this.storageRefusal(kept, soul) ?? this.claimRefusal(kept, x.id, name(x.id), soul, d <= FACTS_NEAR) : null;
+          const block = kept ? this.storageRefusal(kept, soul) ?? this.claimRefusal(x.id, soul, d <= FACTS_NEAR) : null;
           caps.push({ id, verb: 'pick-up', label, target: { id: x.id, kind: 'item' }, available: !block, ...(block ? { blocked: block } : {}) });
           const precise=(this.physics?.assets[x.def] as {capabilities?:{recordedItemPoseV1?:boolean}})?.capabilities?.recordedItemPoseV1&&levelOf(x)===(me.human.level??0);
           // entry 43: an opted-in pick-up lets an idle gesture go before the hand reaches (entry 41's M04 finding)
@@ -2000,12 +2000,14 @@ export class EngineBridge {
     return [whose, by && `found by ${by}`].filter(Boolean).join(', ') || null;
   }
   /** #435 (W072): a container with `claim: "owner"` gives a thing that has an owner of its own (not inherited from the
-   *  container) back only to that owner or a member of that group; nobody else may take it, the finder included. */
-  private claimRefusal(box: NonNullable<ReturnType<EngineBridge['storage']>>, item: string, what: string, soul: EdgeSoul, near: boolean): { code: string; reason: string } | null {
-    const e = this.model.entities.get(box.id), owner = this.model.entities.get(item)?.owner;
-    if (!e || !owner || !containerClaims(this.model.resolvedDef(e.def)) || this.layers.isOf(owner, soul)) return null;
-    const n = this.layers.nameOf(owner), id = near ? leftByOf(e.state).get(item) : undefined, by = id ? this.host.minds.get(id)?.name ?? 'someone' : null;
-    return { code: 'item.not-yours', reason: `${what} is ${possessive(n)}${by ? `; ${by === soul.name ? 'you' : by} handed it in` : ''}. Only ${n} can claim it from ${box.label}.` };
+   *  container) back only to that owner or a member of that group; nobody else may take or handle it (a take, a wash at the
+   *  tap: every object action's access check), the finder included. The finder is named only `near` (the facts range). */
+  claimRefusal(item: string, soul: EdgeSoul, near = false): { code: string; reason: string } | null {
+    const x = this.model.entities.get(item), owner = x?.owner; if (!x || !owner || x.in.parent === 'world') return null;
+    const box = this.storage(x.in.parent), be = this.model.entities.get(x.in.parent);
+    if (!box || !be || !box.ins.slots.some((q) => q.id === x.in.slot) || !containerClaims(this.model.resolvedDef(be.def)) || this.layers.isOf(owner, soul)) return null;
+    const n = this.layers.nameOf(owner), id = near ? leftByOf(be.state).get(item) : undefined, by = id ? (id === soul.soulId ? 'you' : this.host.minds.get(id)?.name ?? 'someone') : null;
+    return { code: 'item.not-yours', reason: `${this.model.pathOf(item)} is ${possessive(n)}${by ? `; ${by} handed it in` : ''}. Only ${n} can claim it from ${box.label}.` };
   }
   /** Entry 42: the container an engine item rests inside, or null (a table top, the ground). */
   keptIn(x: { support?: { kind: string; on?: string; slot?: string } }) {

@@ -48,7 +48,7 @@ test('lost-and-found: hand in, owner claim, finder named nearby only, group and 
  ok(god.act({ops: [{op: 'set', id: ent('mid-lf').id, state: {leftBy: `${ent('mid-bowl').id}=${souls.Ben.soulId}`}}]})); await tick(5);
  const midAna = edge.capabilities(souls.Ana).find(c => c.id === `pick-up:${ent('mid-bowl').id}`), midBen = edge.capabilities(souls.Ben).find(c => c.id === `pick-up:${ent('mid-bowl').id}`), mid = await here();
  assert.ok(midAna?.available && !/found by|Ana's|yours/.test(midAna.label), 'a take 6 m away names nobody: ' + midAna?.label);
- assert.ok(midBen && !midBen.available && midBen.blocked.code === 'item.not-yours' && !/Ben|handed/.test(midBen.blocked.reason), 'refused 6 m away without the finder: ' + JSON.stringify(midBen?.blocked));
+ assert.ok(midBen && !midBen.available && midBen.blocked.code === 'item.not-yours' && /is Ana's\. Only Ana can claim it/.test(midBen.blocked.reason) && !/Ben|handed/.test(midBen.blocked.reason), 'refused 6 m away without the finder: ' + JSON.stringify(midBen?.blocked));
  assert.ok(!JSON.stringify(mid).includes('found by'), 'nor does here, 6 m away');
  const midLabel = midAna.label, midRefusal = midBen.blocked; ok(god.act({ops: [{op: 'remove', id: ent('mid-lf').id}]})); await tick(10);
  ok(god.act({ops: [
@@ -136,11 +136,22 @@ test('lost-and-found: hand in, owner claim, finder named nearby only, group and 
  const cupAna = edge.capabilities(souls.Ana).find(c => c.id === `pick-up:${cup}`), cupBen = edge.capabilities(souls.Ben).find(c => c.id === `pick-up:${cup}`);
  assert.equal(cupAna?.available, false); assert.equal(cupAna.blocked.code, 'item.not-yours'); assert.match(cupAna.blocked.reason, /the bakers'\. Only the bakers can claim it/);
  assert.equal(cupBen?.available, true, 'a member of the owning group may take it');
+ {const b = await refuse('take the cup from the lost and found', 'item.not-yours', souls.Ana); assert.match(b.reason, /apron-cup is the bakers'\. Only the bakers can claim it/);}
  results.unowned = await done('take the book from the lost and found', souls.Ana);
  assert.equal(item('book').support.by, souls.Ana.entityId, 'a thing nobody owns is anyone\'s');
  results.baker = await done('take the cup from the lost and found', souls.Ben);
  assert.equal(item('apron-cup').support.by, souls.Ben.entityId);
  results.anaBookDown = await done('put the book on the table', souls.Ana);
+ results.bakerCupDown = await done('put the cup on the table', souls.Ben);
+ // every other way to handle a kept thing is the owner's too: Ana's drunk mug (owner by Soul id) is not Ben's to wash
+ ok(god.act({ops: [{op: 'place', def: 'core/camp-sink@1', name: 'sink', p: [ax - 1.2, az + 2.6], r: Math.PI / 2},
+  {op: 'place', def: 'core/cup@2', name: 'mug', in: {parent: 'lost-and-found', slot: 'in-1'}, p: [0, 0], owner: `soul:${souls.Ana.soulId}`, state: {tea: 0, brewedTick: 1}}]})); await tick(30);
+ {const b = await refuse(`object:${id('mug')}:wash`, 'item.not-yours', souls.Ben); assert.match(b.reason, /mug is Ana's\. Only Ana can claim it/);
+  assert.equal(item('mug').support.on, boxId, 'the refused wash leaves the mug on the shelf'); assert.equal(leftBy(), '');
+  const washAna = edge.capabilities(souls.Ana).find(c => c.id === `object:${id('mug')}:wash`), washBen = edge.capabilities(souls.Ben).find(c => c.id === `object:${id('mug')}:wash`);
+  results.wash = {ana: washAna ? {available: washAna.available, blocked: washAna.blocked?.code ?? null} : null, ben: washBen ? {available: washBen.available, blocked: washBen.blocked?.code ?? null} : null};
+  assert.notEqual(washAna?.blocked?.code, 'item.not-yours', 'the owner may wash it: ' + JSON.stringify(results.wash));}
+ ok(god.act({ops: [{op: 'remove', id: id('mug')}]})); await tick(10);
 
  // refused: the lantern does not fit; then a full box
  results.lanternUp = await done('pick up the lantern', souls.Ana);

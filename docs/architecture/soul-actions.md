@@ -21,8 +21,10 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Lost-and-found ([#435](https://github.com/genekogan/souls/issues/435)).** A container whose def declares
   `components.container.claim: "owner"` gives a thing that has an owner of its own (the layers `owner` on the thing, a
   Soul or a group) back only to that owner or a member of that group. Anyone else, the finder included, is offered the
-  take as blocked `item.not-yours`, with a reason that names the owner. Things nobody owns are anyone's to take, and
-  anyone may hand a thing in. `core-lost-and-found@1` is the swap shelf's form with this claim; its `leftBy` record
+  take as blocked `item.not-yours`, with a reason that names the owner, and every other action on it (a wash at the tap)
+  is refused the same way. Things nobody owns are anyone's to take, and anyone may hand a thing in; a thing the god owns
+  stays until the god moves it. An owner ref by name (`soul:Ana`) follows whoever has that name, so a god that sets owners
+  for a lost-and-found should prefer Soul ids. `core-lost-and-found@1` is the swap shelf's form with this claim; its `leftBy` record
   reads as who found each thing, and nearby Souls are told "bowl (Ana's, found by Ben)" ("yours, …" to the owner).
 - **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
