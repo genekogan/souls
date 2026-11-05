@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url';
 
 const env = process.env;
 const thinkingBudget=worldThinkingBudgetV1(env);
+// Default 'edge'. Under node --test (NODE_TEST_CONTEXT) legacy suites keep 'central'; edge tests opt in explicitly.
+const mindDriver = ((env.MIND_DRIVER ?? (env.NODE_TEST_CONTEXT ? 'central' : 'edge')) === 'central' ? 'central' : 'edge') as 'edge' | 'central';
+/** The pinned Soul files a launcher world serves (tools/world-launcher/soul/SOURCES.json). */
+const pinnedSoul = (file: string) => fileURLToPath(new URL(`../../../tools/world-launcher/soul/${file}`, import.meta.url));
 const bodyTypes=(env.WORLD_BODY_TYPES??'humanoid,ceramic,floater,creature').split(',');
 if(!bodyTypes.includes('humanoid')||bodyTypes.some(t=>!['humanoid','ceramic','floater','creature'].includes(t)))throw Error('WORLD_BODY_TYPES must include humanoid and contain only supported body types');
 const worldKey = env.WORLD_KEY ?? 'toy';
@@ -24,19 +28,20 @@ export const config = {
   worldSlug: env.WORLD_SLUG || undefined as string | undefined,
   /** God mode + entity world (spec eden4/28): on for every non-authored key, or by explicit flag. */
   worldEngine: env.ENABLE_WORLD_ENGINE === '1' || !['toy', 'mars', 'littlemartians', 'eden'].includes(worldKey),
-  /** Markdown served at /skill.md (App's agent skill). Unset: edge worlds get a built-in edge stub; central worlds the legacy skill. */
-  skillFile: env.EDGE_SKILL_FILE || undefined as string | undefined,
-  /** Source-owned onboarding Markdown, served with the selected world's base and display name. */
-  instructionsFile: (env.EDGE_INSTRUCTIONS_FILE || resolve(new URL('../../../tools/edge-skill/INSTRUCTIONS.md',import.meta.url).pathname)) as string | undefined,
+  /** Markdown served at /skill.md (App's agent skill). Unset: an edge world serves the pinned tools/world-launcher/soul/skill.md,
+   *  the guide for the /eden.mjs it serves, as a launcher world does (#1003); a central world the legacy skill. */
+  skillFile: (env.EDGE_SKILL_FILE || (mindDriver === 'edge' ? pinnedSoul('skill.md') : undefined)) as string | undefined,
+  /** Source-owned onboarding Markdown, served with the selected world's base and display name. Unset: an edge world serves the
+   *  pinned tools/world-launcher/soul/instructions.md (#1003); a central world tools/edge-skill/INSTRUCTIONS.md. */
+  instructionsFile: (env.EDGE_INSTRUCTIONS_FILE || (mindDriver === 'edge' ? pinnedSoul('instructions.md') : resolve(new URL('../../../tools/edge-skill/INSTRUCTIONS.md',import.meta.url).pathname))) as string | undefined,
   /** App's agent CLI served at /eden-agent.mjs (read per request). Unset: 404. */
   cliFile: env.EDGE_CLI_FILE || undefined as string | undefined,
   /** Single-controller CLI served at /eden.mjs, separate so existing folders retain their legacy CLI. Unset: the pinned
    *  tools/world-launcher/soul/eden.mjs (SOURCES.json), so a world started without the launcher serves the pinned controller
    *  CLI too (#983). Its directory's runtime/ files are then published at /soul-runtime/* (soul-runtime-publication.ts). */
-  controllerCliFile: (env.EDGE_CONTROLLER_CLI_FILE || fileURLToPath(new URL('../../../tools/world-launcher/soul/eden.mjs', import.meta.url))) as string | undefined,
+  controllerCliFile: (env.EDGE_CONTROLLER_CLI_FILE || pinnedSoul('eden.mjs')) as string | undefined,
   /** Who chooses Souls' actions: 'edge' (owners' own agents; the world runs no Soul mind) or 'central' (legacy brain, kept for a future NPC driver). */
-  // Default 'edge'. Under node --test (NODE_TEST_CONTEXT) legacy suites keep 'central'; edge tests opt in explicitly.
-  mindDriver: ((env.MIND_DRIVER ?? (env.NODE_TEST_CONTEXT ? 'central' : 'edge')) === 'central' ? 'central' : 'edge') as 'edge' | 'central',
+  mindDriver,
   livingWorld: env.ENABLE_LIVING_WORLD === '1',
   worldId: env.WORLD_ID ?? (worldKey === 'toy' ? 'toy-1' : `${worldKey}-1`),
   worldPath: env.WORLD_PATH ?? `/w/${worldKey}`,

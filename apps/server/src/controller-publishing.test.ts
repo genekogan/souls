@@ -48,3 +48,35 @@ test('controllerCliFile defaults to the pinned eden.mjs; EDGE_CONTROLLER_CLI_FIL
  f.souls.cfg.controllerCliFile = configured(custom);
  assert.equal(await (await f.request('/eden.mjs')).text(), '// a custom controller\n');
 });
+
+// #1003: an edge world started without the launcher serves the pinned guides for the eden.mjs it serves; central worlds
+// keep theirs, and the variables override both.
+test('edge worlds default skillFile and instructionsFile to the pinned guides; central worlds and the variables are unchanged', async t => {
+ const {execFileSync} = await import('node:child_process');
+ const {createHash} = await import('node:crypto');
+ const {readFileSync} = await import('node:fs');
+ const {fileURLToPath} = await import('node:url');
+ const configTs = fileURLToPath(new URL('./config.ts', import.meta.url)), soulDir = fileURLToPath(new URL('../../../tools/world-launcher/soul/', import.meta.url));
+ const legacyInstructions = fileURLToPath(new URL('../../../tools/edge-skill/INSTRUCTIONS.md', import.meta.url));
+ const configured = (extra: Record<string, string>) => { const env = {...process.env}; for (const k of ['EDGE_SKILL_FILE', 'EDGE_INSTRUCTIONS_FILE', 'MIND_DRIVER']) delete env[k]; Object.assign(env, extra);
+  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `const {config} = await import(${JSON.stringify(configTs)}); process.stdout.write(JSON.stringify({skill: config.skillFile ?? null, instructions: config.instructionsFile ?? null}));`], {env, encoding: 'utf8'})) as {skill: string | null; instructions: string | null}; };
+ const pins = JSON.parse(readFileSync(soulDir + 'SOURCES.json', 'utf8'));
+ const edge = configured({MIND_DRIVER: 'edge'});
+ assert.deepEqual(edge, {skill: soulDir + pins.skill.file, instructions: soulDir + pins.instructions.file}, 'edge, unset: the pinned guides');
+ assert.deepEqual(configured({MIND_DRIVER: 'central'}), {skill: null, instructions: legacyInstructions}, 'central: unchanged');
+ const dir = mkdtempSync(join(tmpdir(), 'sim-guides-default-')), skill = join(dir, 's.md'), guide = join(dir, 'i.md');
+ assert.deepEqual(configured({MIND_DRIVER: 'edge', EDGE_SKILL_FILE: skill, EDGE_INSTRUCTIONS_FILE: guide}), {skill, instructions: guide}, 'the variables override');
+ const sha = (b: string | Buffer) => createHash('sha256').update(b).digest('hex');
+ assert.equal(sha(readFileSync(edge.skill!)), pins.skill.sha256); assert.equal(sha(readFileSync(edge.instructions!)), pins.instructions.sha256);
+ const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
+ f.souls.cfg.mindDriver = 'edge'; f.souls.cfg.skillFile = edge.skill!; f.souls.cfg.instructionsFile = edge.instructions!; f.souls.cfg.cliFile = undefined;
+ const s = await f.request('/skill.md'); assert.equal(s.status, 200);
+ const skillText = await s.text(); assert.equal(sha(skillText), pins.skill.sha256, 'the skill is served as pinned');
+ const i = await f.request('/instructions.md'); assert.equal(i.status, 200);
+ const text = await i.text();
+ assert.ok(!text.includes(pins.instructions.capture.base), 'the capture base is replaced with this world');
+ assert.match(text, /\/eden\.mjs/);
+ for (const t of [skillText, text]) assert.doesNotMatch(t, /eden-agent\.mjs/, 'neither guide sends an agent to the unserved legacy CLI');
+ assert.equal((await f.request('/eden-agent.mjs')).status, 404, 'and indeed it is not served');
+ assert.equal((await f.request('/eden.mjs')).status, 200, 'the CLI the guides name is');
+});
