@@ -80,6 +80,17 @@ turn it on in production until the capacity verdict for the running worlds says 
    A `clock-wall.json` left from before activation still holds its old anchor. The first unwatched return after a
    rollback therefore jumps the world's day clock by everything since that anchor, as the old policy always did.
 
+The evidence before activation comes from an isolated run, never from production: fake minds, a `.local/` data
+directory and free ports. Run `node tools/bench/continuous/unattended.mjs --minutes 76 --continuous --souls`. Each world
+gets one Soul that an agent leaves strolling, and the run measures it as follows:
+- **Rate.** Ticks are compared with the harness's monotonic clock, for an attended control, a world visited once and
+  a world never visited.
+- **Matched-tick state.** After the stop, `tools/bench/continuous/matched-tick.mjs` replays each world offline from
+  the snapshot it booted from, with its logged inputs. At every snapshot tick, the engine state and the minds' needs
+  must equal what the world saved while nobody was there.
+
+`--clip <world> --clip-dir <dir>` adds the before and return browser clips.
+
 ## Backups
 
 Nightly at 03:30 UTC `sim-worlds-backup@<stage>.service` runs `deploy/backup-restic.mjs backup <stage>` as
