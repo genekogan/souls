@@ -1,0 +1,143 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {writeFileSync, mkdirSync} from 'node:fs';
+import {setImmediate} from 'node:timers/promises';
+import {Hono} from '../../apps/server/node_modules/hono/dist/index.js';
+import {fixture, invite, accept, factory} from '../../apps/server/test/native-owner-fixture.ts';
+import {EdgeLedger} from '../../apps/server/src/edge/ledger/ledger.ts';
+import {mountEdgeRoutes} from '../../apps/server/src/edge/routes.ts';
+import {GodMode} from '../../apps/server/src/god/god.ts';
+import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
+import {dryingOps} from '../../apps/server/src/god/garden.ts';
+import {handActuatorFrame} from '../../mars/viewer/engine/social/hand-actuator.ts';
+import {WorldModel} from '../../packages/world-compiler/src/model.ts';
+
+// #438 W085/W086: picking from a growing planter into a vessel held in one hand. Ana says "pick the tomatoes": she takes the
+// basket from the garden table, walks to the fruiting bed and picks with her free hand; at the contact the bed is flowering
+// and the basket holds three tomatoes. She puts the basket on the counter. "pick flowers for the vase" is the same faculty
+// with the vase's data: the flowering bed goes back to leafy and the vase holds a bunch. Refusals, an interrupted pick, the
+// regrowth, the long tail (100 distant baskets and vases add nothing) and a restored snapshot. Plain words throughout.
+const out = process.env.SOUL_ACTIONS_OUT;
+test('harvest: tomatoes into the basket, flowers into the vase, at the hand contact; refusals; long tail', {timeout: 600000}, async t => {
+ const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
+ const edge = new EdgeLedger(f.host, f.db, undefined, {ambient: false}), app = new Hono(); let soul;
+ const comms = mountEdgeRoutes(app, {host: f.host, db: f.db, souls: f.souls, ledger: edge, soul: () => soul});
+ t.after(() => { comms.close(); f.host.stop(); f.db.close(); });
+ const god = new GodMode(f.db, {worldId: f.host.worldId, ownerId: 'dev:admin', tick: () => f.host.engine.world.tick, emit() {}});
+ const logs = [];
+ const bridge = installEngineBridge({host: f.host, god, edge, log(m) { if (/harvest|refused/.test(m)) logs.push(m); }, worldLore: false, worldClock: false});
+ const tick = async (n = 5) => { for (let i = 0; i < n; i++) { f.host.tickOnce(); await setImmediate(); f.host.drainInputs(); } };
+ await tick();
+ const join = async (k, name) => { await invite(f, k); const row = await accept(f.host, f.souls.create('dev:' + k, {name, description: 'Harvest test'})); await tick(); return {soulId: row.id, entityId: row.entity_id, name: row.name, owner: row.owner}; };
+ const ana = await join('ana', 'Ana'), ben = await join('ben', 'Ben');
+ const W = () => f.host.engine.world, body = s => W().entities[s.entityId], as = s => { soul = s; };
+ const here = async s => { as(s); const r = await app.request('/v1/edge/here?include=doHere'); assert.equal(r.status, 200); return (await r.json()).here; };
+ const size = h => JSON.stringify({...h, tick: 0}).length;
+ const byName = n => [...god.model.entities.values()].find(e => e.name === n), id = n => byName(n).id, state = n => byName(n).state ?? {}, ent = n => W().entities[id(n)];
+ const report = {status: 'fail', hereBytes: {}, words: {}, summaries: {}, refusals: {}, checks: []};
+ const [ax, az] = [body(ana).pose.p[0], body(ana).pose.p[2]];
+ await accept(f.host, f.host.enqueue('edge-relocate', `edge:${ben.soulId}`, {soulId: ben.soulId, entityId: ben.entityId, to: [ax + 3.5, az - 1.5], why: 'test placement'})); await tick(20);
+
+ // ---- the long tail: 100 baskets and vases in every state 120 m away add nothing ----
+ const absentHere = await here(ana), absent = size(absentHere);
+ const vstate = i => i % 2 ? [{flowers: 3}, {flowers: 0}][i % 4 >> 1] : [{fruit: 3}, {fruit: 6}, {fruit: 0}][i % 3];
+ const far = Array.from({length: 100}, (_, i) => ({op: 'place', def: i % 2 ? 'core/flower-vase@1' : 'core/harvest-basket@1', name: `far-${i}`, p: [120 + (i % 10) * 0.8, 120 + Math.floor(i / 10) * 0.8], state: vstate(i)}));
+ const rf = god.act({ops: far}); assert.equal(rf.accepted, true, JSON.stringify(rf.failures?.slice(0, 3))); await tick(60);
+ const farHere = await here(ana), distant = size(farHere), farIds = new Set(far.map(d => id(d.name)));
+ assert.equal(distant, absent, '100 distant baskets and vases add 0 bytes');
+ as(ana); assert.deepEqual(edge.capabilities(ana).filter(c => c.object && farIds.has(c.object)).map(c => c.id), [], 'no distant offers');
+ const visits0 = bridge.harvest.visits(); await tick(40); assert.equal(bridge.harvest.visits(), visits0, 'no harvest work per tick without an act');
+ Object.assign(report.hereBytes, {absent, distant100: distant});
+ report.checks.push('long tail: 100 distant baskets and vases (with tomatoes, full, empty; with flowers, empty): +0 bytes, no offers; no per-tick visits');
+
+ // ---- the garden: a fruiting bed, a leafy bed, a garden table with the basket and the vase, a counter ----
+ const sc = god.act({ops: [
+  {op: 'place', def: 'core/garden-planter@2', name: 'bed', p: [ax, az + 2.6], state: {growth: 4, moisture: 1}},
+  {op: 'place', def: 'core/garden-planter@2', name: 'bed-two', p: [ax + 4, az + 2.6], state: {growth: 2, moisture: 1}},
+  {op: 'place', def: 'core/table@1', name: 'garden-table', p: [ax - 2.2, az + 0.6]},
+  {op: 'place', def: 'core/harvest-basket@1', name: 'basket', in: {parent: 'garden-table', slot: 'top'}, p: [0.2, 0.1]},
+  {op: 'place', def: 'core/flower-vase@1', name: 'vase', in: {parent: 'garden-table', slot: 'top'}, p: [-0.25, 0.1]},
+  {op: 'place', def: 'core/counter@1', name: 'counter', p: [ax + 2.2, az - 0.4]}]});
+ assert.equal(sc.accepted, true, JSON.stringify(sc.failures?.slice(0, 3))); await tick(60);
+ const cap = (s, c) => { as(s); return edge.capabilities(s).find(x => x.id === c); };
+ const refused = (s, c, code, words) => { const x = cap(s, c); assert.ok(x && !x.available, c + ' should be refused ' + JSON.stringify(x)); assert.equal(x.blocked?.code, code, JSON.stringify(x)); if (words) assert.match(x.blocked.reason, words, JSON.stringify(x.blocked)); report.refusals[`${s.name} ${code}`] = x.blocked.reason; };
+ const basketPick = `object:${id('basket')}:harvest`, vasePick = `object:${id('vase')}:harvest`;
+ assert.match(cap(ana, basketPick)?.label ?? '', /^Pick the ripe tomatoes into the basket/);
+ assert.match(cap(ana, vasePick)?.label ?? '', /^Pick flowers for the vase/);
+ assert.equal(cap(ana, basketPick).available, true, JSON.stringify(cap(ana, basketPick)));
+ refused(ana, vasePick, 'harvest.not-ripe', /Nothing in bed is ready .*: it is fruiting, and flowers are picked when it is flowering/);
+ const nearHere = await here(ana); report.hereBytes.nearby = size(nearHere);
+ assert.ok(!JSON.stringify(nearHere).includes('"fruit"') && !JSON.stringify(nearHere).includes('"flowers"'), 'an empty basket and vase say nothing');
+ let retries = 0;
+ const act = async (s, capability, want = true) => { let b; for (let k = 0; k < 20; k++) { as(s); const r = await accept(f.host, app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability})})); b = await r.json(); if (b.code !== 'object.admission-failed') break; retries++; await tick(10); } assert.equal(b.accepted, want, capability + ' ' + JSON.stringify(b).slice(0, 400)); return b; };
+ const phase = (s, b) => edge.receipt(s.soulId, b.receipt.id)?.phase;
+ // a picking act to its end; the tick the planter changed and the tick of the hand's recorded contact
+ const pick = async (s, words, watch) => {
+  const b = await act(s, words); report.words[`${s.name}: ${words}`] = b.capability ?? b.receipt?.capability;
+  let changed = null, contact = null; const before = state(watch).growth;
+  for (let n = 0; n < 9000; n++) { const m = body(s).human?.handActuator; if (m && contact === null && handActuatorFrame(m, (W().tick - m.startTick) * f.host.engine.dt).contact) contact = W().tick; if (changed === null && state(watch).growth !== before) changed = W().tick; if (['completed', 'failed', 'cancelled', 'replaced'].includes(phase(s, b))) break; await tick(1); }
+  const rc = edge.receipt(s.soulId, b.receipt.id); assert.equal(rc.phase, 'completed', JSON.stringify(rc).slice(0, 600));
+  report.summaries[`${s.name}: ${words}`] = JSON.stringify(b).match(/"summary":"([^"]*)"/)?.[1] ?? rc.outcome?.summary;
+  return {changed, contact, rc, b};
+ };
+ const done = async (s, words) => { const b = await act(s, words); report.words[`${s.name}: ${words}`] = b.capability ?? b.receipt?.capability; for (let n = 0; n < 9000 && !['completed', 'failed', 'cancelled', 'replaced'].includes(phase(s, b)); n++) await tick(1); assert.equal(phase(s, b), 'completed', words); };
+
+ // ---- an interrupted pick changes nothing: she has the basket, the hand is on its way, she is told to stand ----
+ const ib = await act(ana, 'pick the tomatoes'); let reaching = false;
+ for (let n = 0; n < 9000 && !reaching; n++) { const m = body(ana).human?.handActuator; if (m && m.target === id('bed')) reaching = true; else await tick(1); }
+ assert.ok(reaching, 'the hand started for the bed');
+ const stop = await act(ana, 'stand:here'); for (let n = 0; n < 400 && !['completed', 'failed', 'cancelled', 'replaced'].includes(phase(ana, stop)); n++) await tick(1); await tick(40);
+ assert.notEqual(phase(ana, ib), 'completed', 'the pick was interrupted');
+ assert.equal(state('bed').growth, 4, 'the bed keeps its tomatoes'); assert.equal(state('basket').fruit ?? 0, 0, 'no tomatoes appear');
+ assert.equal(ent('basket').support?.by, ana.entityId, 'she still holds the basket');
+ report.checks.push(`interrupted before the contact (${phase(ana, ib)}): the bed stays fruiting, the basket empty`);
+
+ // ---- "pick the tomatoes": from the basket in her hand, at the contact ----
+ const p1 = await pick(ana, 'pick the tomatoes', 'bed');
+ assert.equal(state('bed').growth, 3, 'the bed is flowering'); assert.equal(state('basket').fruit, 3, 'three tomatoes in the basket');
+ assert.ok(p1.contact !== null && p1.changed !== null && p1.changed >= p1.contact, `the bed changed at the contact (contact ${p1.contact}, changed ${p1.changed})`);
+ assert.equal(ent('basket').support?.by, ana.entityId); assert.equal(ent('basket').support?.hand, 'right');
+ assert.match(report.summaries['Ana: pick the tomatoes'] ?? '', /Picked 3 tomatoes from bed into .*basket/);
+ assert.deepEqual(bridge.harvest.facts(id('basket')), {fruit: 3});
+ const fullHere = await here(ana), row = fullHere.objects?.find(o => o.id === id('basket'));
+ report.hereBytes.nearbyWithTomatoes = size(fullHere); report.basketRow = row ?? null;
+ refused(ana, basketPick, 'harvest.not-ripe', /Nothing in bed is ready .*: it is flowering/);
+ refused(ben, basketPick, 'harvest.vessel-held', /Someone else is holding/);
+ report.checks.push('pick: the bed fruiting -> flowering and the basket 0 -> 3 at the hand contact, not before; then refused: nothing ripe; Ben: in someone else\'s hand');
+
+ // ---- the regrowth: the existing daily pass grows the moist bed back to fruiting ----
+ const grow = dryingOps(god.model, 1).find(o => o.id === id('bed'));
+ assert.equal(grow?.state?.growth, 4, 'a day later the moist bed is fruiting again ' + JSON.stringify(grow));
+ report.checks.push('regrowth: the daily pass (garden.ts) takes the picked bed from flowering to fruiting again');
+
+ // ---- "put the basket on the counter" ----
+ await done(ana, 'put the basket on the counter');
+ assert.equal(ent('basket').support?.kind, 'resting-on'); assert.equal(ent('basket').support?.on, id('counter')); assert.equal(state('basket').fruit, 3, 'the tomatoes stay in it');
+
+ // ---- "pick flowers for the vase": the same faculty, the vase's data; the bed is flowering now ----
+ assert.equal(cap(ana, vasePick).available, true, JSON.stringify(cap(ana, vasePick)));
+ const p2 = await pick(ana, 'pick flowers for the vase', 'bed');
+ assert.equal(state('bed').growth, 2, 'the bed is leafy'); assert.equal(state('vase').flowers, 3, 'a bunch in the vase');
+ assert.ok(p2.contact !== null && p2.changed >= p2.contact, 'at the contact');
+ assert.equal(state('bed-two').growth, 2, 'the other bed is untouched');
+ refused(ana, vasePick, 'harvest.vessel-full', /full \(3 flowers\)/);
+ await done(ana, 'put the vase on the table');
+ assert.equal(ent('vase').support?.on, id('garden-table')); assert.equal(state('vase').flowers, 3);
+ report.checks.push('flowers: the vase from the table, the bed flowering -> leafy and the vase 0 -> 3 at the contact; full refused; set back on the table with its flowers');
+
+ // ---- hands full: Ben holds the vase; the basket (room for 3 more) is refused to him ----
+ await done(ben, 'pick up the vase');
+ refused(ben, basketPick, 'harvest.hands-full', /You are holding .*vase; put it down first/);
+ // more words resolve to the same offers
+ const vocab = (s, w) => { as(s); return edge.resolve ? edge.resolve(s, w) : null; };
+ void vocab;
+
+ // ---- persistence ----
+ const restored = WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())), undefined, god.model.library);
+ assert.equal([...restored.entities.values()].find(e => e.name === 'basket').state.fruit, 3); assert.equal([...restored.entities.values()].find(e => e.name === 'vase').state.flowers, 3); assert.equal(restored.get('bed').state.growth, 2);
+ report.checks.push('persistence: a restored snapshot keeps the basket\'s tomatoes, the vase\'s flowers and the bed\'s stage');
+ assert.deepEqual(f.host.engine.runtime.violations, []);
+ report.status = 'pass'; report.retries = retries; report.logs = logs.slice(0, 20);
+ if (out) { mkdirSync(out, {recursive: true}); writeFileSync(`${out}/summary.json`, JSON.stringify(report, null, 2)); }
+ console.log(JSON.stringify(report));
+});

@@ -35,13 +35,27 @@ context-size checks below), regression runs, and an uncut real-client recording 
 |---|---|---|
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
 | Doors and openings | Open and close doors, windows, cupboard and locker doors, fridge doors, curtains, blinds and drawers; doors open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "knock on the door", "lock the door" |
-| Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
+| Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages; pick the ripe tomatoes into a basket and flowers for a vase, and carry them indoors | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed", "pick the tomatoes", "put the basket on the counter", "pick flowers for the vase", "put the vase on the table" |
 | Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station. Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station" |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
+
+### Picking from the garden (#438)
+
+A harvest basket (`core-harvest-basket@1`) and a flower vase (`core-flower-vase@1`) pick from a growing planter
+(`core-garden-planter@2`, unchanged). "pick the tomatoes" (harvest the tomatoes, pick the fruit) is one act: the Soul picks
+up the basket in the right hand if it is not holding it, walks to the nearest fruiting planter, and reaches into the plants
+with the free left hand. At the hand's contact the planter goes back to flowering and the basket holds three tomatoes (it
+holds six). "pick flowers for the vase" (pick some flowers) is the same act with the vase: a flowering planter goes back to
+leafy and the vase holds a bunch of three. An act interrupted before the contact changes nothing. What a vessel picks (the
+stage it picks from and leaves, its state field, how many, where the hand goes) is one row of data per def
+(`packages/world-compiler/src/core-kit/harvest.ts`); the faculty is `apps/server/src/god/harvest.ts`. A picked planter
+fruits or flowers again through the daily growth pass while it stays watered. "put the basket on the counter" is the
+ordinary put-on. Refusals say why: nothing ripe (with the nearest planter's stage), the vessel full, in someone else's
+hand, or the Soul's hands full. A planter offers nothing new: the picking offer belongs to the basket and the vase.
 
 ## What other Souls perceive
 
@@ -51,7 +65,8 @@ within about 4 m and in plain sight:
 - switches and fire: `on`; doors, windows, curtains and drawers: `open` (and `locked` for lockable doors);
 - a radio that is on: its `station`; an open drawer or locker: what it `holds` (names only; nothing while shut);
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
-  a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
+  a mug: how much `tea` is left, `empty` once drunk, `clean` once washed; a basket: its `fruit` and a vase its
+  `flowers`, once they hold some;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
 - who is holding hands, who is offering a hand-over, and who is holding what.
 

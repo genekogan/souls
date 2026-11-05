@@ -298,6 +298,18 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
   }
   return null;
 }
+// #438 W085/W086: "pick the tomatoes" (harvest them, pick the fruit, pick tomatoes into the basket) is the harvest of the
+// nearest offered basket; "pick flowers for the vase" (pick some flowers, pick the flowers) that of the nearest offered vase.
+// The vessel's offer names what it picks ("Pick the ripe tomatoes into the basket", "Pick flowers for the vase"); an
+// available one first. Only while such an offer exists; other words, and "pick up", resolve as before.
+const HARVEST_WORDS = /^(?:please\s+)?(?:(?:go\s+and\s+|go\s+)?(?:pick|harvest|gather|collect|cut))\s+(?:(?:the|some|a\s+few|a\s+bunch\s+of|a\s+handful\s+of|my|our)\s+)?(?:ripe\s+)?(tomatoes|tomato|fruit|flowers|flower|blooms|cosmos)(?:\s+(?:in|into|for|to\s+put\s+in)\s+(?:the|a|my)\s+(?:basket|vase))?(?:\s+from\s+(?:the\s+)?[a-z][\w -]*)?$/;
+function harvestWords(input: string, ctx: VocabContext): VocabResult | null {
+  const m = HARVEST_WORDS.exec(input.toLowerCase().replace(/[.!?\s]+$/, '').trim()); if (!m) return null;
+  const word = /^(?:tomato|fruit)/.test(m[1]) ? /\btomato/i : /\bflowers?\b/i;
+  const caps = ctx.caps.filter(c => c.verb === 'object' && c.action === 'harvest' && word.test(c.label.replace(/\s*\(.*\)$/, ''))); if (!caps.length) return null;
+  const cap = [...caps].sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id))[0]!;
+  return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`};
+}
 // Soul Actions entry 42: "put the bowl in the drawer" is put-in:<container>; "take the bowl out of the chest" is that
 // bowl's take from inside it. A shut container's contents are never offered: its words name its open offer instead.
 const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip)\s+(?:away\s+)?(.+?)\s+(?:in|into|inside|in\s+to|away\s+in)\s+(.+?)[.!]?$/;
@@ -319,6 +331,7 @@ function storeWords(input: string, text: string, ctx: VocabContext): VocabResult
 function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const exact = ctx.caps.find(c => c.id === input); if (exact) return {kind: 'exact', cap: exact};
   const steered = steerWords(input, ctx); if (steered) return steered;
+  const picked = harvestWords(input, ctx); if (picked) return picked;
   // CN5 (acceptance): "A, then B" is two things. Walks and strolls chain (the earlier ones become `via` legs of the last);
   // anything else does the first and says to act again for the rest (never a mix-up of the two).
   // r3 quality case 35: "pick up a book and give it to X" is two steps too (the give is offered only once holding it).
