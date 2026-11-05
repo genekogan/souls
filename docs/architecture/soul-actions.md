@@ -36,7 +36,8 @@ context-size checks below), regression runs, and an uncut real-client recording 
     during the lift, because the native lift interpolates its yaw. This happens for any load.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
   A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
-  comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"). A refused crew too small for the load's mass says
+  comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one
+  Soul). A refused crew too small for the load's mass says
   the arithmetic.
   - **Propose.** Acting it is a together invitation of kind `shared` at revision 1. The host's receipt is `waiting`,
     and its `awaitingAnswer` names who is undecided.

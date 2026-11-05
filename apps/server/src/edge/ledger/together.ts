@@ -572,11 +572,15 @@ export class Together {
   /** Resolve souls named in params.with (ids or names), live and within reach. */
   private withSouls(soul: EdgeSoul, raw: unknown): {ok: true; souls: {soulId: string; name: string; entityId: string}[]} | {ok: false; code: string; reason: string} {
     const near = this.p.perceived(soul.soulId, INVITE_RADIUS), out: {soulId: string; name: string; entityId: string}[] = [];
-    // PC11 (#690): a crew in ordinary words ("Bo and Cy", "Bo, Cy and Dee", "Bo & Cy") names each of them; a Soul whose
-    // own name is the whole phrase is still that one Soul
+    // PC11 (#690): a crew in ordinary words ("Bo and Cy", "Bo, Cy and Dee", "Bo & Cy") names each of them. A Soul whose
+    // own name is the whole phrase is that one Soul: one nearby first, then the parts when every part is someone nearby,
+    // then one farther away
     const said = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
-    const whole = !!said && (near.some(o => o.name.toLowerCase() === said) || [...this.p.host.minds.values()].some(m => m.soulId !== soul.soulId && m.name.toLowerCase() === said));
-    const list = typeof raw === 'string' ? (whole ? [raw] : raw.split(/\s*,\s*(?:and\s+)?|\s+and\s+|\s*&\s*/i).filter(x => x.trim())) : raw;
+    const parts = typeof raw === 'string' ? raw.split(/\s*,\s*(?:and\s+)?|\s+and\s+|\s*&\s*/i).filter(x => x.trim()) : [];
+    const nearPart = (x: string) => {const w = x.trim().toLowerCase(); return near.some(o => o.soulId === x.trim() || o.name.toLowerCase() === w);};
+    const whole = !!said && (near.some(o => o.name.toLowerCase() === said)
+      || !(parts.length > 1 && parts.every(nearPart)) && [...this.p.host.minds.values()].some(m => m.soulId !== soul.soulId && m.name.toLowerCase() === said));
+    const list = typeof raw === 'string' ? (whole ? [raw] : parts) : raw;
     if (!Array.isArray(list) || !list.length || list.length > 6 || !list.every(x => typeof x === 'string' && x.trim() && x.length <= 100)) return {ok: false, code: 'capability.params', reason: 'with must be up to 6 Soul ids or names.'};
     for (const want of list as string[]) {
       const stale=this.p.host.soulNameRefusal(want);if(stale)return {ok:false,code:stale,reason:'That previous Soul name is unavailable or ambiguous; use the current name and immutable Soul ID.'};
@@ -838,8 +842,8 @@ export class Together {
   private sharedCarryStep(crew: string[], load: string, placeId: string): Steps[number] | null {
     const place = this.p.places.byId.get(placeId), x = this.w.entities[load]; if (!place?.polygon?.length || !x) return null;
     const at = centroid(place.polygon);
-    // PC11 (#690): the load lies down along its own axis, either way round (a loose box turned half a turn is the same
-    // box), whichever is nearer the way it travels, so the crew never turns it half a turn while setting it down; the
+    // PC11 (#690): the load lies down along its own axis, either way round (a loose box turned half a turn has the same
+    // footprint), whichever is nearer the way it travels, so the crew never turns it half a turn while setting it down; the
     // yaw is wrapped (the native carry takes one within ±7 rad) for a load placed at any turn
     const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a)), yaw = wrap(x.pose.yaw ?? 0), way = Math.atan2(at[1] - x.pose.p[2], at[0] - x.pose.p[0]);
     const flip = wrap(yaw + Math.PI), near = Math.abs(wrap(flip - way)) < Math.abs(wrap(yaw - way)) ? flip : yaw;

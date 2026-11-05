@@ -389,8 +389,8 @@ test('PC11 A3e: ordinary solo handling still works with the flag on (a one-hand 
 });
 
 test('PC11: crews in ordinary words reach every with-invitation; a Soul whose own name has "and" in it is still one Soul', {timeout: 300000}, async (t) => {
-  const w = await world(t, {names: ['Ada', 'Bo', 'Cy', 'Salt and Pepper'], scene: async (w, souls, n, ax, az) => {
-    await w.at(souls.Bo, ax, az + 3); await w.at(souls.Cy, ax + 2, az + 2); await w.at(souls['Salt and Pepper'], ax - 2, az + 2);
+  const w = await world(t, {names: ['Ada', 'Bo', 'Cy', 'Salt and Pepper', 'Salt'], scene: async (w, souls, n, ax, az) => {
+    await w.at(souls.Bo, ax, az + 3); await w.at(souls.Cy, ax + 2, az + 2); await w.at(souls['Salt and Pepper'], ax - 2, az + 2); await w.at(souls.Salt, ax - 1, az + 4);
     ok(w.god.act({ops: [{op: 'place', def: 'core/zone@1', name: 'yard', shape: {area: [[ax - 11, az - 2.5], [ax - 7, az - 2.5], [ax - 7, az + 2.5], [ax - 11, az + 2.5]]}}]}));
   }});
   const {Ada, Bo, Cy} = w.souls, sp = w.souls['Salt and Pepper'];
@@ -402,5 +402,6 @@ test('PC11: crews in ordinary words reach every with-invitation; a Soul whose ow
   // the whole phrase is a Soul's own name: one Soul, not "Salt" and "Pepper"
   const r = ok(await act(w, Bo, {capability: walkOf(w, Bo, 'yard'), params: {with: 'Salt and Pepper'}}));
   assert.equal(w.edge.together.invitesFor(sp.soulId).length, 1, `Salt and Pepper is asked: ${JSON.stringify(r.receipt?.awaitingAnswer)}`);
+  assert.equal(w.edge.together.invitesFor(w.souls.Salt.soulId).length, 0, 'Salt, nearby too, is not asked: the phrase was one name');
   assert.deepEqual(w.host.engine.runtime.violations, []);
 });
