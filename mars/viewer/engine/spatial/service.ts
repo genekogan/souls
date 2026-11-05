@@ -147,7 +147,9 @@ export class Spatial {
   epoch = 0;
   /** Paged-ground counters (cheap integers, read by the server's load stats): syncs, rebuilds because only the windows
    *  moved / because the static world changed, the ms those rebuilds took, and window grids built (and their ms). */
-  readonly stats = { pagedSyncs: 0, pagedMoved: 0, pagedChanged: 0, pagedMs: 0, gridBuilds: 0, gridMs: 0, scans: 0, scanMs: 0, trusted: 0 };
+  /** Diagnostic counters. carry*: native carry formation searches run, the poses they expanded, and refused searches
+   *  answered from their kept verdict instead (carry/validate.ts, #1015). */
+  readonly stats = { pagedSyncs: 0, pagedMoved: 0, pagedChanged: 0, pagedMs: 0, gridBuilds: 0, gridMs: 0, scans: 0, scanMs: 0, trusted: 0, carrySearches: 0, carryExpanded: 0, carryRefusalsKept: 0 };
   /** Diagnostic (SIM_L4_SCAN_SITES=1): scans per calling function (the first frame outside this file). */
   readonly scanSites: Map<string, number> | null = typeof process !== 'undefined' && (process as { env?: Record<string, string | undefined> }).env?.SIM_L4_SCAN_SITES === '1' ? new Map() : null;
   /** Snapshot restore: the navigation epoch the snapshot recorded, until the engine adopts it (adoptRestoredEpoch). */
