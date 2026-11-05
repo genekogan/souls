@@ -223,6 +223,10 @@ test('comparison keeps every attempt, pools completed repeats within an arm and 
   assert.match(ix.pooled, /never averaged together/);
   assert.match(renderIndex(ix), /Incompatible arms/);
   assert.ok(!existsSync(join(a, 'evaluations')), 'compare evaluates in memory and writes nothing into the runs');
+  // A traced seat (#752) is its own arm, but two traced repeats are one arm despite their run-specific trace files.
+  const traced = (name) => { const dir = makeRun({ root, name }); for (const f of ['scenario.effective.json', 'playtest/scenario.json']) { const sc = JSON.parse(readFileSync(join(dir, f), 'utf8')); sc.seats[0].diagnostics = { trace: { tap: 'file:///t.mjs', file: `${dir}/diagnostics/bo.trace.jsonl`, run: name, seat: 'bo' } }; writeFileSync(join(dir, f), JSON.stringify(sc)); } return dir; };
+  const tx = await compareRunSet([a, traced('t-1'), traced('t-2')]);
+  assert.deepEqual(tx.arms.map((x) => x.repeats), [['trio-1'], ['t-1', 't-2']]);
 });
 
 test('directions: the direction journal is counted by command and outcome; each redirection says whether its target spoke after', () => {

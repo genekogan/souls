@@ -84,6 +84,7 @@ const NAV_ANCHORED=new Set<unknown>(['sit','lie','nap','sleep']);
 import { listEntities } from '../../../mars/viewer/engine/world/entity-list.ts';
 import type {NativeBoatControlsV1} from '@sim/engine-contract';
 import type {BodyLocationV1} from '@sim/engine-contract';
+import {bodyDanceStep} from '../../../mars/viewer/engine/bodies/motion.ts';
 import {bodyProblem} from '../../../mars/viewer/engine/bodies/body.ts';
 import {humanRadius,seatFitProblem} from '../../../mars/viewer/engine/bodies/humanoid.ts';
 import {slotTransitionIssue,obstacleIndex,type ObstacleIndex} from '../../../mars/viewer/engine/social/actions.ts';
@@ -1083,11 +1084,18 @@ export class MarsEngine implements Engine {
     if(body?.family!=='floater'||body.type===undefined&&body.modelUrl===undefined)return null;
     // creatures (bodies/creatures.ts) whose species swims may also swim and come ashore
     const swims=!!creatureOf(body)?.swimSpeed;
-    for(const s of program.steps){const verb=s.verb.replace(/^mars:/,'');if(!['walk_to','ambient_wander','face','wave','rest','gather','stand','converse'].includes(verb)&&!(swims&&['swim_to','ground_travel','swim_in'].includes(verb)))return {code:'body.unsupported',message:creatureOf(body)?(['swim_to','ground_travel','swim_in'].includes(verb)&&creatureOf(body)!.cannot.swim||`A ${creatureOf(body)!.id} cannot do that; it can ${creatureOf(body)!.moves}, settle, turn and follow.`):'Rigid ceramic/floater bodies cannot do that limb activity; try glide, hover, settle or turn.'};}
+    for(const s of program.steps){if(bodyDanceStep(body,s.verb,s.params))continue;const verb=s.verb.replace(/^mars:/,'');if(!['walk_to','ambient_wander','face','wave','rest','gather','stand','converse'].includes(verb)&&!(swims&&['swim_to','ground_travel','swim_in'].includes(verb)))return {code:'body.unsupported',message:creatureOf(body)?(['swim_to','ground_travel','swim_in'].includes(verb)&&creatureOf(body)!.cannot.swim||`A ${creatureOf(body)!.id} cannot do that; it can ${creatureOf(body)!.moves}, settle, turn and follow.`):'Rigid ceramic/floater bodies cannot do that limb activity; try glide, hover, settle or turn.'};}
     return null;
   }
   /** BODY-v1: never interrupt holders, commitments or unsafe postures to swap a body. */
+  // World body-type policy is live admission only: it is outside cfg (hashed) and never re-judges logged assignments.
+  private bodyTypesV1?:string[];
+  configureBodyTypesV1(types:readonly string[]){this.bodyTypesV1=[...types];}
   bodyAssignmentProblemV1(id:string,body:Body|null):string|null {
+    if(this.bodyTypesV1&&!this.bodyTypesV1.includes(body?.type??body?.family??'humanoid'))return 'body.world-policy';
+    return this.bodySwapProblemV1(id,body);
+  }
+  private bodySwapProblemV1(id:string,body:Body|null):string|null {
     const problem=bodyProblem(body??undefined);if(problem)return problem;
     const e=this.ents[id],h=e?.human;if(!h)return 'body.not-found';
     if(!this.free(id)||this.actorBorrowed(id)||h.task||h.grip||h.on||h.riding||h.carrier||h.boatPassenger||h.boatTransit||h.sleepPose||h.shore||h.together||h.partner||h.holding||h.prop||h.baseActivity==='sit'||!['idle','wait'].includes(h.activity))return 'body.safe-standing-required';
@@ -1099,7 +1107,8 @@ export class MarsEngine implements Engine {
     return null;
   }
   assignBodyV1(id:string,body:Body|null):boolean {
-    if(this.bodyAssignmentProblemV1(id,body))return false;
+    if(this.bodySwapProblemV1(id,body))return false;
+    delete this.ents[id].human.bodyMotionV1;
     if(body)this.ents[id].body=structuredClone(body);else delete this.ents[id].body;
     this.out.changes.push([this.rt.tick,id,'body',body]);return true;
   }
