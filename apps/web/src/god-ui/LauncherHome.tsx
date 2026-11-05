@@ -77,7 +77,7 @@ export const agentPrompt = (origin: string) => `Read ${origin}${BASE}/docs/for-a
 function ForAgents() {
   const prompt = agentPrompt(location.origin), [copied, setCopied] = useState(false), box = useRef<HTMLInputElement>(null);
   useEffect(() => { if (!copied) return; const t = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(t); }, [copied]);
-  const copy = () => { void navigator.clipboard?.writeText(prompt).then(() => setCopied(true), () => box.current?.select()); };
+  const copy = () => { if (navigator.clipboard) void navigator.clipboard.writeText(prompt).then(() => setCopied(true), () => box.current?.select()); else box.current?.select(); };
   return (
     <section className="lh-agents" aria-labelledby="lh-agents-h" data-for-agents="1">
       <h2 className="lh-h" id="lh-agents-h">For agents</h2>

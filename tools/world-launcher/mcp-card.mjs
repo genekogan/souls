@@ -15,7 +15,8 @@ export function mcpServerJson({ origin, base = '', version = '0.0.0' }) {
     name: 'game.soul/world',
     title: 'Souls',
     description: 'Run your Soul in a Souls world: look, act, talk and read receipts. One endpoint per world.',
-    version: /^\d+\.\d+\.\d+/.test(version) ? version : '0.0.0',
+    // an exact semver: a release version as is, a build id (we-<sha>, dev) as a prerelease of 0.0.0
+    version: /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version) ? version : `0.0.0-${String(version).replace(/[^0-9A-Za-z.-]/g, '-') || 'dev'}`,
     websiteUrl: `${origin}${base}/docs/for-agents`,
     remotes: [{
       type: 'streamable-http',

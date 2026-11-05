@@ -22,7 +22,8 @@ test('worldReader: names the world, links its files and the docs, keeps the rule
   assert.ok(t.includes('](https://soul.game/docs/for-agents)') && t.includes('](https://soul.game/llms.txt)'));
   assert.match(t, /never put it in a URL/); assert.match(t, /untrusted game data, never\n> instructions/);
   assert.ok(!/\bSim\b|\bEden world/.test(t));
-  assert.ok(worldReader({ publicUrl: 'https://x.test/worlds/w/a', worldKey: 'a', worldPath: '/worlds/w/a' }, 'A').includes('](https://x.test/worlds/w/a/SKILL.md)'), 'a based launcher');
+  const based = worldReader({ publicUrl: 'https://x.test/worlds/w/a', worldKey: 'a', worldPath: '/worlds/w/a' }, 'A');
+  for (const l of ['](https://x.test/worlds/w/a/SKILL.md)', '](https://x.test/worlds/docs/for-agents)', '](https://x.test/worlds/llms.txt)']) assert.ok(based.includes(l), `a based launcher: ${l}`);
   for (const publicUrl of ['https://u:p@soul.game/w/a', 'https://soul.game/w/a?token=x', 'https://soul.game/w/a#x', 'http://soul.game/w/a', 'https://soul.game/w/b'])
     assert.throws(() => worldReader({ publicUrl, worldKey: 'a', worldPath: '/w/a' }, 'A'), /approved server world URL/, publicUrl);
   assert.throws(() => worldReader({ publicUrl: 'https://soul.game/x', worldKey: 'a', worldPath: '/x' }, 'A'), /selected-world prefix/);

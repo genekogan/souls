@@ -10,8 +10,9 @@ test('server.json meets the registry schema (2025-12-11) constraints', () => {
   for (const k of ['name', 'description', 'version']) assert.ok(typeof d[k] === 'string' && d[k].length, k);
   assert.match(d.name, /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/); assert.ok(d.name.length >= 3 && d.name.length <= 200);
   assert.ok(d.description.length >= 1 && d.description.length <= 100, `description is ${d.description.length} characters`);
-  assert.ok(d.version.length <= 255 && !/[\^~><=*x]/.test(d.version), 'an exact version, not a range');
-  assert.equal(mcpServerJson({ origin: 'https://soul.game', version: 'dev' }).version, '0.0.0', 'a dev build still has a valid version');
+  assert.ok(d.version.length <= 255 && !/[\^~><=*]|\.x(\.|$)/.test(d.version), 'an exact version, not a range');
+  assert.equal(mcpServerJson({ origin: 'https://soul.game', version: 'dev' }).version, '0.0.0-dev', 'a dev build: a semver prerelease');
+  assert.equal(mcpServerJson({ origin: 'https://soul.game', version: 'we-9c6cec5397a2' }).version, '0.0.0-we-9c6cec5397a2', 'a release build id');
   assert.equal(d.remotes.length, 1);
   const [r] = d.remotes;
   assert.equal(r.type, 'streamable-http'); assert.match(r.url, /^https?:\/\/[^\s]+$/); assert.equal(r.url, 'https://soul.game/w/{world}/mcp');

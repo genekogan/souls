@@ -987,7 +987,8 @@ export async function openLauncher(cfg = {}) {
         if (!SLUG_RE.test(world)) { json(res, 404, { ok: false, code: 'world.not-served' }); return; }
         if (path === `/w/${world}`) { res.writeHead(308, { location: `${wp(world)}/${url.search}` }).end(); return; }
         // #897: an unlisted world has no public reader (its page and skills still answer at their URLs)
-        if (path === `/w/${world}/llms.txt` && (req.method === 'GET' || req.method === 'HEAD')) { const w = registry.get(world); if (w && isUnlisted(w)) { json(res, 404, { ok: false, code: 'world.unlisted' }); return; } }
+        let plain = path; try { plain = decodeURIComponent(path); } catch { /* malformed: compared as sent */ }
+        if (plain === `/w/${world}/llms.txt` && (req.method === 'GET' || req.method === 'HEAD')) { const w = registry.get(world); if (w && isUnlisted(w)) { json(res, 404, { ok: false, code: 'world.unlisted' }); return; } }
         // a world's site routes answer the relay above, never the public proxy
         if (path.startsWith(`/w/${world}/v1/site/`)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
         await toWorld(req, res, world, url); return;

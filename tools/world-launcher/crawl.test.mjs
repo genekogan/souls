@@ -72,7 +72,7 @@ test('through the launcher: robots and sitemap answered without a world, a liste
   // #897: the root llms.txt lists listed worlds' readers; an unlisted world has none; the MCP card is served
   const llms = await (await api('/llms.txt')).text();
   assert.ok(llms.includes(`(http://127.0.0.1:${PORT}/w/garden/llms.txt)`) && !llms.includes('hidden-garden'), llms);
-  r = await api('/w/hidden-garden/llms.txt'); assert.equal(r.status, 404); assert.equal((await r.json()).code, 'world.unlisted');
+  for (const p of ['/w/hidden-garden/llms.txt', '/w/hidden-garden/llms%2Etxt', '/w/hidden-garden/%6Clms.txt']) { r = await api(p); assert.equal(r.status, 404, p); assert.equal((await r.json()).code, 'world.unlisted', p); }
   r = await api('/w/garden/llms.txt'); assert.notEqual((await r.text()).includes('world.unlisted'), true, 'a listed world answers its own reader');
   r = await api('/.well-known/mcp/server.json'); assert.equal(r.status, 200); assert.equal((await r.json()).remotes[0].url, `http://127.0.0.1:${PORT}/w/{world}/mcp`);
   // a root path a world answers (whichever runs, maybe the unlisted one) is never indexable under the site root

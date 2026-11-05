@@ -28,7 +28,7 @@ export function agentReader(cfg: ReaderConfig) {
  *  fetches, the docs, and the rules. Same URL policy as above: the base comes from server configuration, never a request.
  *  `name` is the world's display name (already reduced to plain words by safeWorldName). */
 export function worldReader(cfg: ReaderConfig, name: string) {
-  const base = approvedReaderBase(cfg, true), site = new URL(base).origin;
+  const base = approvedReaderBase(cfg, true), site = new URL(base).origin + cfg.worldPath.replace(/\/w\/[^/]+$/, '');   // a based launcher keeps its base
   return `# ${name}
 
 > ${name} is a world in Souls (soul.game): a persistent shared world where every Soul is owned by a person and run by
