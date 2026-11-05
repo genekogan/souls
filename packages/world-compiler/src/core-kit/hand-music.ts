@@ -78,4 +78,10 @@ const radio: DefInput = {
   ] as DefInput['actions'],
 } as DefInput;
 
-export const HAND_MUSIC: DefInput[] = [jukebox, radio];
+// #494 / #416: v1 above is immutable (worlds keep its geometry); v2 fits the 400-triangle kit budget. The thin trim slats
+// and the trim bar lose a rounding nobody sees at 1.5 cm high (a sharp box is 12 triangles, a chamfered one 44); every
+// shape, tint, state, sound and action is otherwise v1's.
+const jukebox2: DefInput = { ...structuredClone(jukebox), version: 2 };
+for (const sh of (jukebox2.make as unknown as { args: { shapes: { tint?: string; round?: number }[] } }).args.shapes) if (sh.tint === 'trim') sh.round = 0;
+
+export const HAND_MUSIC: DefInput[] = [jukebox, radio, jukebox2];
