@@ -36,7 +36,7 @@ async function labelPng(text, width, out) {
 /** previewRecording(runDir, {camera, fromSec, toSec}) → sidecar. A labelled excerpt of one recording, written beside
  *  nothing it came from: <run>/derived/previews/<camera>-<from>-<to>.mp4 (+ .json). The source is hashed before and
  *  after; a changed source fails the preview. A preview is never full proof. */
-export async function previewRecording(runDir, { camera, fromSec, toSec, label = labelPng } = {}) {
+export async function previewRecording(runDir, { camera, fromSec, toSec, label = labelPng, auto = null } = {}) {
   const rec = listRecordings(runDir).find((r) => r.camera === camera);
   if (!rec?.file || !existsSync(rec.path)) return { ok: false, error: `no recording for camera ${camera}` };
   if (!(toSec > fromSec && fromSec >= 0)) return { ok: false, error: '--from and --to: 0 <= from < to (seconds into the recording)' };
@@ -58,11 +58,58 @@ export async function previewRecording(runDir, { camera, fromSec, toSec, label =
   } finally { rmSync(work, { recursive: true, force: true }); }
   const after = sha256File(rec.path);
   const meta = { preview: 1, derived: true, fullProof: false, kind: 'excerpt', label: text, file: basename(out), bytes: statSync(out).size, sha256: sha256File(out),
-    source: { camera, file: rec.file, sha256: before, fromSec, toSec: to, recordingSec: len, partial: !!rec.partial }, sourceUnchanged: before === after, createdAt: new Date().toISOString() };
+    source: { camera, file: rec.file, sha256: before, fromSec, toSec: to, recordingSec: len, partial: !!rec.partial, start: rec.start ?? 'load' }, ...(auto ? { auto } : {}), sourceUnchanged: before === after, createdAt: new Date().toISOString() };
   // A source that changed while the excerpt was cut leaves no preview behind, only the error.
   if (!meta.sourceUnchanged) { rmSync(out, { force: true }); return { ok: false, error: `${rec.file} changed while the preview was cut; preview discarded`, ...meta, path: null }; }
   writeJson(`${out}.json`, meta);
   return { ok: true, ...meta, path: out };
+}
+
+// Start points from run events (#888). The first act: the earliest seat turn that ran an action (`eden.mjs act|say|…`),
+// timed at that call (the turn's start plus the calls before it); without one, the first request the director delivered.
+const ACTION = /\beden\.mjs\s+(act|say|go|walk|emote|sit|do)\b/;
+const jsonlRows = (f) => { try { return readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; } };
+const subdirs = (d) => (existsSync(d) ? readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : []);
+
+/** runEvents(runDir, {seat}) → {firstAct, firstRequest}: each {kind, seat, t, source, detail} or null, over every seat or
+ *  only `seat`. Reads the run folder only. */
+export function runEvents(runDir, { seat: only = null } = {}) {
+  const pt = join(resolve(runDir), 'playtest');
+  let firstAct = null, firstRequest = null;
+  for (const seat of subdirs(join(pt, 'seats')).filter((x) => !only || x === only)) {
+    for (const turn of jsonlRows(join(pt, 'seats', seat, 'turns.jsonl'))) {
+      const calls = turn.toolCalls ?? [], i = calls.findIndex((c) => ACTION.test(c.cmd ?? ''));
+      const t0 = Date.parse(turn.startedAt);
+      if (i < 0 || !Number.isFinite(t0)) continue;
+      const t = t0 + calls.slice(0, i).reduce((n, c) => n + (c.ms ?? 0), 0);
+      if (!firstAct || t < Date.parse(firstAct.t)) firstAct = { kind: 'first-act', seat, t: new Date(t).toISOString(), source: `playtest/seats/${seat}/turns.jsonl`, detail: `turn ${turn.turn}: ${String(calls[i].cmd).slice(0, 120)}` };
+    }
+  }
+  for (const seat of subdirs(join(pt, 'personas')).filter((x) => !only || x === only)) {
+    for (const d of jsonlRows(join(pt, 'personas', seat, 'decisions.jsonl'))) {
+      if (!d.delivered || !Number.isFinite(Date.parse(d.t))) continue;
+      if (!firstRequest || Date.parse(d.t) < Date.parse(firstRequest.t)) firstRequest = { kind: 'first-request', seat, t: d.t, source: `playtest/personas/${seat}/decisions.jsonl`, detail: String(d.scripted?.text ?? d.decision?.say?.text ?? '').slice(0, 120) };
+    }
+  }
+  return { firstAct, firstRequest };
+}
+
+/** autoStart(runDir, {camera, seconds, leadSec}) → {ok, fromSec, toSec, auto} | {ok:false, error}: the excerpt window
+ *  from the run's first act (else first request; a seat's follow camera: that seat's), mapped onto the recording by wall clock: offset = event time − the
+ *  recording's startedAt (its openedAt for recordings made from page creation before #888). */
+export function autoStart(runDir, { camera, seconds = 20, leadSec = 1 } = {}) {
+  const rec = listRecordings(runDir).find((r) => r.camera === camera);
+  if (!rec?.file) return { ok: false, error: `no recording for camera ${camera}` };
+  // A seat's follow camera starts from that seat's own first act; every other camera from the run's first act.
+  const own = runEvents(runDir, { seat: camera }), ev = own.firstAct || own.firstRequest ? own : runEvents(runDir), event = ev.firstAct ?? ev.firstRequest;
+  if (!event) return { ok: false, error: 'no act or delivered request in this run to start from; give --from and --to' };
+  const startedAt = rec.startedAt ?? rec.openedAt, len = rec.videoSec ?? rec.durationSec;
+  if (!Number.isFinite(Date.parse(startedAt))) return { ok: false, error: `${rec.file} has no startedAt or openedAt to map run events onto` };
+  const offsetSec = +((Date.parse(event.t) - Date.parse(startedAt)) / 1000).toFixed(2);
+  if (len != null && offsetSec >= len) return { ok: false, error: `${event.kind} at ${offsetSec} s is past the recording (${len} s)` };
+  const fromSec = Math.max(0, +(offsetSec - leadSec).toFixed(1)), toSec = +(fromSec + seconds).toFixed(1);
+  return { ok: true, fromSec, toSec, auto: { event, recording: { start: rec.start ?? 'load', startedAt, basis: rec.startedAt ? 'startedAt' : 'openedAt (recorded from page creation)' }, offsetSec, leadSec, seconds,
+    mapping: 'fromSec = max(0, (event.t − recording.startedAt) − leadSec); toSec = fromSec + seconds', ...(offsetSec < 0 ? { note: 'the event came before this recording started; the excerpt starts at 0' } : {}) } };
 }
 
 const latestEvaluation = (runDir) => {

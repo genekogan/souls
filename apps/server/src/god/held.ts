@@ -100,7 +100,7 @@ export function installHeld(L: EdgeLedger, h: HeldHost) {
     } else if(kind==='carry') {
       const x=ents()[target];
       const place=x&&L.places.containing(x.pose.p[0],x.pose.p[2],0).find(p=>p.parent!==null),where=place?` in ${place.name}`:'';
-      if(x?.support?.kind==='ground'&&x.phase!=='carried')eff={...effects,summary:`Carried ${name(target)} upright and set it down on the ground${where}; your hands are free.`,changed:[...(effects.changed??[]),{id:target,kind:'item-placed',summary:`${name(target)} is on the ground${where} at (${x.pose.p[0].toFixed(1)}, ${x.pose.p[2].toFixed(1)}).`,source:`item:${target}:placed`}],detail:{...(effects.detail??{}),placed:{id:target,name:name(target),at:[...x.pose.p],...(place?{place:{id:place.id,name:place.name}}:{})}}};
+      if(x?.support?.kind==='ground'&&x.phase!=='carried')eff={...effects,summary:`Carried ${name(target)}${x.kind==='component'?'':' upright'} and ${x.kind==='component'?'laid it':'set it down'} on the ground${where}; your hands are free.`,changed:[...(effects.changed??[]),{id:target,kind:'item-placed',summary:`${name(target)} is on the ground${where} at (${x.pose.p[0].toFixed(1)}, ${x.pose.p[2].toFixed(1)}).`,source:`item:${target}:placed`}],detail:{...(effects.detail??{}),placed:{id:target,name:name(target),at:[...x.pose.p],...(place?{place:{id:place.id,name:place.name}}:{})}}};
     } else {
       const id = putting.get(ctx.soulId), x = id ? ents()[id] : undefined;
       if (x && !(x.support?.kind === 'in-hand' && x.support.by === body)) {

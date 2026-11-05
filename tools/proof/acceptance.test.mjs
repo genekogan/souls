@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  checkPr, clipPreviews, issueNumberFromPath, linkedIssues, loadChecks, parseAudit, parseChecklist, prMode, renderComment, sections, skeleton, validateProof, MARKER, SCHEMA,
+  allowedProofLinks, checkPr, clipPreviews, issueNumberFromPath, linkedIssues, loadChecks, parseAudit, parseChecklist, prMode, renderComment, sections, skeleton, validateProof, proofHostProblem, MARKER, SCHEMA,
 } from './acceptance.mjs';
 
 const policy = loadChecks();
@@ -142,6 +142,19 @@ test('validateProof: schema, evidence, uncut real-speed video, stale commit warn
   assert.ok(validateProof(proofDoc({ tier: 'T1' }), { tier: 'T2' }).problems.some(x => /records T1 proof/.test(x)));
 });
 
+test('validateProof: files[] (logs, JSON) are checked but never count as a clip; kind file in media[] is refused', () => {
+  const files = [{ file: 'run.log', url: 'https://h/pr-7.run.log', caption: '' }, { file: 'summary.json', url: 'https://h/pr-7.summary.json', caption: '' }];
+  assert.deepEqual(validateProof(proofDoc({ files }), { tier: 'T2' }).problems, []);
+  const noClip = validateProof(proofDoc({ media: [], files }), { tier: 'T2' });
+  assert.ok(noClip.problems.some(x => /no uploaded video/.test(x)));
+  const bad = validateProof(proofDoc({ files: [{ file: 'a.log', url: 'http://h/a.log' }, { file: 'b.log' }] }), { tier: 'T2' });
+  assert.ok(bad.problems.some(x => /files 1: url must be https/.test(x)));
+  assert.ok(bad.warnings.some(x => /files 2 \(b\.log\): no url yet/.test(x)));
+  assert.ok(validateProof(proofDoc({ files: {} }), { tier: 'T2' }).problems.some(x => /`files` must be an array/.test(x)));
+  const legacy = validateProof(proofDoc({ media: [...proofDoc().media, { file: 'run.log', url: 'https://h/run.log', kind: 'file' }] }), { tier: 'T2' });
+  assert.ok(legacy.problems.some(x => /kind must be video or image/.test(x)));
+});
+
 test('T3 needs playtest arms with the policy repeats and a reviewer verdict', () => {
   const bad = validateProof(proofDoc({ tier: 'T3', playtest: { arms: [{ name: 'baseline', repeats: 2 }, { name: 'candidate', repeats: 1 }] } }), { tier: 'T3', knobs: policy.knobs });
   assert.ok(bad.problems.some(x => /candidate: 1 repeat/.test(x)));
@@ -253,5 +266,98 @@ test('the comment embeds each clip\'s preview, linked to the clip (proof.json fi
   const c = renderComment(r, { required: [] });
   assert.ok(c.includes(`[![pr-7.desktop.mp4](${GIF})](${VIDEO})`), c);
   const plain = renderComment(checkPr({ body: body(), tier: 'T1', policy }), { required: [] });
-  assert.match(plain, /\[pr-7\.desktop\.mp4\]\(.*\) \(no inline preview/);
+  assert.match(plain, /\[Full-resolution video: pr-7\.desktop\.mp4\]\(.*\)/);
+  assert.match(c, /GIFs below are reduced previews/);
+});
+
+test('private PR/issue/proof values fail without being copied into the generated comment', () => {
+  const privatePath = ['', 'Users', 'private-person', 'workspace'].join('/');
+  for (const patch of [{ body: `## Problem\nFailure in ${privatePath}` }, { issueBody: privatePath }, { proof: { checks: [{ cmd: privatePath }] } }]) {
+    const r = checkPr({ body: body(), tier: 'T1', policy, ...patch });
+    assert.equal(r.ok, false);
+    assert.match(r.problems.join(' '), /device details detected/);
+    assert.ok(!JSON.stringify(r).includes('private-person'));
+    assert.ok(!renderComment(r).includes('private-person'));
+  }
+  const r = checkPr({ body: body(), tier: 'T1', policy });
+  r.warnings.push(privatePath);
+  assert.throws(() => renderComment(r), /Publication blocked/);
+});
+
+
+test('privacy is never waived or skipped for Dependabot, including linked issue and proof metadata', async () => {
+  const privatePath = ['', 'Users', 'fixture-person', 'workspace'].join('/');
+  for (const exempt of ['waived', 'dependabot']) for (const location of ['body', 'title', 'issue', 'proof']) {
+    const gh = path => {
+      if (path.endsWith('/pulls/7')) return {
+        title: location === 'title' ? privatePath : 'safe title',
+        body: location === 'body' ? 'CPU 50%. ' + encodeURIComponent(privatePath) : body({ proof: PROOF }),
+        labels: exempt === 'waived' ? [{ name: 'proof:waived' }] : [],
+        user: { login: exempt === 'dependabot' ? 'dependabot[bot]' : 'agent' },
+      };
+      if (path.includes('/files')) return [[{ filename: 'docs/a.md' }]];
+      if (path.includes('/events')) return [[{ event: 'labeled', label: { name: 'proof:waived' }, actor: { login: 'o' } }]];
+      if (path.endsWith('/issues/12')) return { body: location === 'issue' ? privatePath : '' };
+      throw Error('unexpected read');
+    };
+    const fetchImpl = async () => ({ ok: true, text: async () => JSON.stringify(location === 'proof' ? { cmd: privatePath } : proofDoc()) });
+    const r = await prMode({ repo: 'o/r', pr: 7, gh, fetchImpl, policy });
+    assert.equal(r.result.ok, false, exempt + '/' + location);
+    assert.match(r.comment, /device details detected/);
+    assert.ok(!r.comment.includes('fixture-person'));
+  }
+});
+
+// #765: proof links count, and proof.json is fetched, only from a proof host.
+test('proofHostProblem: this repository\'s proofs releases, GitHub attachments and the proof CDN only', () => {
+  const ok = (u, o = { repo: 'o/r' }) => assert.equal(proofHostProblem(u, o), null, u);
+  const no = (u, re, o = { repo: 'o/r' }) => assert.match(String(proofHostProblem(u, o)), re, u);
+  ok(VIDEO); ok(PROOF); ok(SHARED(VIDEO));
+  ok('https://github.com/user-attachments/assets/1a2b3c4d-1111-2222-3333-444455556666');
+  ok('https://github.com/user-attachments/files/123456/run.log');
+  ok('https://cdn.example.test/proofs/pr-7/clip.mp4', { repo: 'o/r', cdn: 'https://cdn.example.test/proofs' });
+  // look-alike hosts and paths
+  no('https://github.com.evil.test/o/r/releases/download/proofs-7/x.mp4', /not a proof host/);
+  no('https://evil.test/github.com/o/r/releases/download/proofs-7/x.mp4', /not a proof host/);
+  no('https://gist.github.com/o/r/releases/download/proofs-7/x.mp4', /not a proof host/);
+  no('https://cdn.example.test.evil.test/proofs/x.mp4', /not a proof host/, { repo: 'o/r', cdn: 'https://cdn.example.test/proofs' });
+  no('https://cdn.example.test/other/x.mp4', /not a proof host/, { repo: 'o/r', cdn: 'https://cdn.example.test/proofs' });
+  // userinfo, ports, queries, fragments, plain http
+  no('https://user:pw@github.com/o/r/releases/download/proofs-7/x.mp4', /userinfo/);
+  no('https://github.com:8443/o/r/releases/download/proofs-7/x.mp4', /port/);
+  no(`${VIDEO}?x=1`, /query/); no(`${VIDEO}#t=3`, /fragment/);
+  no(VIDEO.replace('https:', 'http:'), /not https/);
+  // other repositories and other release tags
+  no('https://github.com/evil/r/releases/download/proofs-7/x.mp4', /proofs release \(o\/r\)/);
+  no('https://github.com/o/r/releases/download/v4.14/x.mp4', /proofs release/);
+  no('https://github.com/o/r/releases/download/proofs-x/x.mp4', /proofs release/);
+  no('https://github.com/o/r/releases/download/proofs-7/../v1/x.mp4', /proofs release/);
+  no('https://github.com/o/r/blob/main/x.mp4', /proofs release/);
+  assert.equal(proofHostProblem('https://github.com/any/repo/releases/download/proofs/x.mp4', { repo: null }), null, 'a local check with no repository accepts any proofs release');
+  assert.deepEqual(allowedProofLinks([VIDEO, 'https://evil.test/a.mp4'], { repo: 'o/r' }).ok, [VIDEO]);
+});
+
+test('checkPr counts clips and proof.json only on proof hosts and says why the rest were ignored', () => {
+  const evil = 'https://evil.test/pr-7.proof.json', clip = 'https://evil.test/pr-7.mp4';
+  const r = checkPr({ body: body({ proof: `- clip: ${clip}\n- proof.json: ${evil}` }), tier: 'T2', policy, repo: 'o/r' });
+  assert.ok(!r.links.videos.includes(clip) && !r.links.proofJson.includes(evil));
+  assert.ok(r.warnings.some(w => w.includes(`ignored proof link ${evil}`) && /not a proof host/.test(w)), r.warnings.join('\n'));
+  assert.ok(r.problems.some(p => /no proof\.json link/.test(p)));
+  const good = checkPr({ body: body({ proof: `- clip: ${VIDEO}\n- proof.json: ${PROOF}` }), tier: 'T2', policy, repo: 'o/r', proof: proofDoc() });
+  assert.deepEqual(good.links.proofJson, [PROOF]);
+});
+
+test('prMode never fetches a proof.json from a host outside the allowlist', async () => {
+  const evil = 'https://evil.test/pr-7.proof.json';
+  const gh = path => {
+    if (path.endsWith('/pulls/7')) return { body: body({ proof: `- clip: ${VIDEO}\n- proof.json: ${evil}` }), labels: [], user: { login: 'someone' }, head: { sha: 'abc1234' }, draft: false };
+    if (path.includes('/pulls/7/files')) return [[{ filename: 'apps/web/src/seat.ts' }]];
+    if (path.endsWith('/issues/12')) return { body: '' };
+    throw Error(`unexpected ${path}`);
+  };
+  const fetched = [];
+  const { result } = await prMode({ repo: 'o/r', pr: 7, gh, fetchImpl: async url => { fetched.push(url); throw Error('no'); }, policy });
+  assert.deepEqual(fetched, []);
+  assert.equal(result.ok, false);
+  assert.ok(result.warnings.some(w => w.startsWith(`ignored proof link ${evil}`)));
 });
