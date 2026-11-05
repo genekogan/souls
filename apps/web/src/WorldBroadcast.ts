@@ -123,6 +123,9 @@ export class WorldBroadcast {
     return this.godViews;
   }
 
+  /** #892: the body the current shot is about (its focus), or null for a landmark or no shot. */
+  get subject(): string | null { return this.choice?.kind === 'subjects' ? this.choice.focus : null; }
+
   reset() {
     broadcastLog('reset', this.choice?.key ?? '');
     this.director.reset('live-world');this.rendered.reset();

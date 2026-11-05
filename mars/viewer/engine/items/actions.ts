@@ -35,7 +35,7 @@ import {
   type BodyFrame, type Hand,
 } from './body.ts';
 import {
-  BODY_REACH, carryPoint, fitsInside, fixtureLocal, fixturePoint, followHand, graspPoint, heldBy, heldYaw, inHand, isItem, itemReachSeconds, placeOnGround, placeOnSlot, putInHand,
+  BODY_REACH, carryPoint, fitsInside, fixtureLocal, fixturePoint, followHand, graspPoint, heldBy, heldYaw, publishHeldItems, inHand, isItem, itemReachSeconds, placeOnGround, placeOnSlot, putInHand,
   reachOf, reachStation, slotOccupant, storedIn, surfaceSlot, whereIs, type Station, type SurfaceSlot,
 } from './model.ts';
 
@@ -127,9 +127,7 @@ export const holdItems: ActionDef<{ actor: string }, null, HoldExec> = {
     const held = heldBy(rt.world, ex.actor);
     // Reuse the custody lookup already required by the holder. No new world scan,
     // and old definitions/takes retain their original state bytes.
-    const presented = held.filter(x => x.item.tags?.includes('entity-world-item-pose'));
-    if (presented.length) a.human.heldItemsV1 = Object.fromEntries(presented.map(x => [x.hand, x.item.id]));
-    else delete a.human.heldItemsV1;
+    publishHeldItems(a, held);
     // a construction grip (carry / lift / hand_up) owns human.hands while it lasts: leave them alone
     for (const h of a.human.grip ? [] : HANDS) {
       if (driven(rt, ex.actor, h)) continue;

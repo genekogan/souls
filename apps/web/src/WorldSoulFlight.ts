@@ -29,11 +29,13 @@ export type FlightPose = { eye: THREE.Vector3; target: THREE.Vector3; done: bool
 /** One flight. It starts from the camera's own eye and gaze (the gaze point at the pivot's distance, so a head turned away
  * from its pivot does not snap) and tracks a walking Soul: the shot moves with the Soul's target. */
 export class SoulFlight {
+  readonly soulId: string;
   readonly seconds: number;
   private t = 0;
   private fromEye: THREE.Vector3; private fromTarget: THREE.Vector3;
   private shotOffset: THREE.Vector3;
-  constructor(readonly soulId: string, eye: THREE.Vector3, gaze: THREE.Vector3, pivotDistance: number, target: THREE.Vector3) {
+  constructor(soulId: string, eye: THREE.Vector3, gaze: THREE.Vector3, pivotDistance: number, target: THREE.Vector3) {
+    this.soulId = soulId;
     const shot = followShot(eye, target), g = gaze.clone().normalize();
     this.fromEye = eye.clone();
     this.fromTarget = eye.clone().addScaledVector(g, Number.isFinite(pivotDistance) && pivotDistance > .5 ? pivotDistance : 20);

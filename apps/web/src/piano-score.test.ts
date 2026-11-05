@@ -30,3 +30,11 @@ test('drums: every hit is on the piano grid, the fill closes the phrase, sticks 
   const a = drumHits('e_a', 0, 16).filter((h) => h.kind === 'kick' && Math.round(h.t / STEP26) % 8 === 0).map((h) => h.t), b = drumHits('e_b', 0, 16).filter((h) => h.kind === 'kick' && Math.round(h.t / STEP26) % 8 === 0).map((h) => h.t);
   assert.deepEqual(a, b);
 });
+
+import {pianoLanes} from '../../../mars/viewer/app/engine-view/piano-score.ts';
+test('seated piano lanes arrive at each scored pitch on its onset, with bounded travel between keys',()=>{
+ for(const seed of ['h_a','h_b','h_cb33a8d209','h_2a6daed123']){
+  for(const n of pianoNotes(seed,100,116))assert.ok(Math.abs(pianoLanes(seed,n.t)[n.hand]-pianoHands(seed,n.t)[n.hand].along)<1e-9,'hand at scored key on onset');
+  let prev=pianoLanes(seed,100);for(let k=2001;k<=2320;k++){const now=pianoLanes(seed,k*.05);for(let h=0;h<2;h++)assert.ok(Math.abs(now[h]-prev[h])<=.06,'no sideways wrist teleport');prev=now;}
+ }
+});
