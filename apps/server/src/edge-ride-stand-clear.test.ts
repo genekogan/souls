@@ -70,7 +70,7 @@ test('F3 (#374): a ride join from the Commons walks to a boarding point with sta
 const thicket = (name: string, cx: number, cz: number, half: number) => Array.from({length: Math.round(half / 0.3) + 1}, (_, i) => ({op: 'place', def: 'core/garden-wall@1', name: `${name}-${i}`,
   shape: {path: [[cx - half, cz - half + i * 0.6], [cx + half, cz - half + i * 0.6]]}}));
 
-test('F3 (#374) stand/1: every turn around the target without room falls back to a point at most 1 m further out, and the walk ends there; none is refused, named', {timeout: 900000}, async t => {
+test('F3 (#374) stand/1: every turn around the target without room falls back to a point at most 0.9 m further out, and the walk ends there; none is refused, named', {timeout: 900000}, async t => {
   const {w, god, tick, souls: [pip], engine} = await district(t, ['Pip']);
   const goalNear = (w.host.engine as unknown as {goalNear(a: string, to: unknown, off: number, stand?: unknown): {x: number; z: number} | 'here' | {code: string; message: string}}).goalNear.bind(w.host.engine);
   // each patch on the first open ground near the Commons that the god may build on (the template's trees are solid)
@@ -85,12 +85,12 @@ test('F3 (#374) stand/1: every turn around the target without room falls back to
   };
   const A = build('small', 2), B = build('large', 10, A); await tick(40);
   const radius = ROOM;
-  // the small patch: no turn at 2.2 m from its centre has room; a point on a wider ring (at most 1 m further) is taken
+  // the small patch: no turn at 2.2 m from its centre has room; a point on a wider ring (at most 0.9 m further) is taken
   const small = goalNear(pip.entityId, A, 2.2, 'clear/1');
   assert.ok(typeof small === 'object' && 'x' in small, JSON.stringify(small));
   assert.ok(engine.clearanceAtV1(small.x, small.z) >= radius, `room at the fallback point ${small.x},${small.z}`);
   const d = Math.hypot(small.x - A[0], small.z - A[1]);
-  assert.ok(d > 2.2 && d <= 2.2 + 1 + 1e-6, `beside the patch, no further than 1 m past the standoff (${d.toFixed(2)} m from its centre)`);
+  assert.ok(d > 2.2 && d <= 2.2 + 0.9 + 1e-6, `beside the patch, no further than 0.9 m past the standoff (${d.toFixed(2)} m from its centre)`);
   // and the walk itself ends there
   await accept(w.host, w.host.enqueue('decision', `soul:${pip.soulId}`, {soulId: pip.soulId, entityId: pip.entityId, option: 'walk', label: 'walk',
     steps: [{verb: 'walk_to', params: {to: A, standoff: 2.2, stand: 'clear/1'}}], reevalTicks: 10000, trigger: 'fixture', fallback: false}));
@@ -100,6 +100,6 @@ test('F3 (#374) stand/1: every turn around the target without room falls back to
   // the large patch: no standable point within 4 m of the first turn; refused as the walk's own goal refusal, named
   const large = goalNear(pip.entityId, B, 2.2, 'clear/1');
   assert.ok(typeof large === 'object' && 'code' in large, JSON.stringify(large));
-  assert.equal(large.code, 'route.goal-blocked'); assert.match(large.message, /no standing room for a 0\.3\d m-radius body 2\.2 m from the target .* or up to 1 m beyond it around the target \(blocked by e_[0-9a-f]+/, large.message);
+  assert.equal(large.code, 'route.goal-blocked'); assert.match(large.message, /no standing room for a 0\.3\d m-radius body 2\.2 m from the target .* or up to 0\.9 m beyond it around the target \(blocked by e_[0-9a-f]+/, large.message);
   t.diagnostic(`fallback (${small.x}, ${small.z}); refusal: ${large.message}`);
 });

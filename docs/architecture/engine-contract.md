@@ -65,7 +65,7 @@ Edge capabilities offered to Souls are built on top of these and the engine's ow
 A Mars `walk_to` step may carry `stand: 'clear/1'` (#374). Its standoff point must have standing room for the walker's
 body, the same radius the route's own goal check uses. Each turn around the target is read for that room before it is
 planned. When no turn has both room and a route, the step takes a point with room on a wider ring around the target, at most
-1 m beyond the standoff, so a ride still boards within its 3.2 m reach. It makes at most 8 more route plans for this. When there is none, it is refused `route.goal-blocked`, naming the blocker. A balloon, ferris wheel or carousel join marks its walk to the carrier this way; a punt walks to its bank's door as before.
+0.9 m beyond the standoff, so a ride still boards within its 3.2 m reach. It makes at most 8 more route plans for this. When there is none, it is refused `route.goal-blocked`, naming the blocker. A balloon, ferris wheel or carousel join marks its walk to the carrier this way; a punt walks to its bank's door as before.
 This matters on paged ground, where a long walk's plan checks only its first fine hop, so a standoff point inside a
 ride's own collider used to pass the plan. A step without the marker keeps the goal it always chose, so recorded
 programmes replay unchanged.

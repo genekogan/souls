@@ -153,7 +153,7 @@ export const FREE_GOAL_V1 = 'goal/1', FREE_GOAL_GAP = 0.8, FREE_GOAL_PLANS = 8;
  *  body (an exact clearance read) and, when no turn around the target has room and a route, the nearest standable point
  *  at most STAND_CLEAR_BEYOND metres beyond the standoff (a ride boards within 3.2 m of its carrier): STAND_CLEAR_SPOKES
  *  points on each half-metre ring out to there, nearest the first turn first, at most FREE_GOAL_PLANS route plans. Unmarked steps keep the goal they always chose. */
-export const STAND_CLEAR_V1 = 'clear/1', STAND_CLEAR_BEYOND = 1, STAND_CLEAR_SPOKES = 16;
+export const STAND_CLEAR_V1 = 'clear/1', STAND_CLEAR_BEYOND = 0.9, STAND_CLEAR_SPOKES = 16;
 const num = { type: 'number' }, str = { type: 'string' };
 const ref = { anyOf: [str, { type: 'array', items: num, minItems: 2, maxItems: 2 }] };
 /** The body language, as the card grammar and agents see it. The actor is always implied. */
@@ -563,9 +563,11 @@ export class MarsEngine implements Engine {
     // stand/1: an exact read of standing room for this body before a point is planned (null: no grid there, unchanged)
     const marked = stand === STAND_CLEAR_V1 && level === 0, radius = marked ? bodyProfile(this.ents[actor]).radius + PLAN_MARGIN : 0;   // the route's own goal check (spatial/path.ts prepare)
     const roomy = marked ? (() => { const sp = this.rt.services.spatial as Spatial; sp.sync(this.rt.world); return sp.clearTester(0, [t[0], t[1]], radius); })() : null;
+    let turnRoom = false;
     for (const turn of off === 0 ? [0] : [0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9, Math.PI]) {
       const x = r3(t[0] + Math.cos(base + turn) * off), z = r3(t[1] + Math.sin(base + turn) * off);
       if (roomy && !roomy([x, z])) continue;
+      turnRoom = true;
       const no = this.plan(this.movementVerb(actor,x,z), { actor, x, z, level });
       if (!no) return { x, z, level };
       last = no;
@@ -574,8 +576,8 @@ export class MarsEngine implements Engine {
       // the fallback: points around the target (never further than STAND_CLEAR_BEYOND past the standoff) with room and no
       // other body within 0.8 m, ring by ring from the standoff out, nearest the first turn first; the first that plans
       const people = (listEntities(this.ents) as any[]).filter(o => o.kind === 'human' && o.id !== actor).map(o => [o.pose.p[0], o.pose.p[2]] as [number, number]);
-      const rings: number[] = []; for (let r = off === 0 ? .5 : off; r <= off + STAND_CLEAR_BEYOND + 1e-9; r += .5) rings.push(r);
-      let roomless = true, plans = 0;
+      const rings: number[] = []; for (const r of off === 0 ? [.5, STAND_CLEAR_BEYOND] : [off, off + .5, off + STAND_CLEAR_BEYOND]) rings.push(r);   // below the 3.2 m boarding reach after rounding
+      let roomless = !turnRoom, plans = 0;
       for (const rr of rings) if (plans < FREE_GOAL_PLANS) for (const k of Array.from({ length: STAND_CLEAR_SPOKES }, (_, i) => i).sort((a, b) => Math.min(a, STAND_CLEAR_SPOKES - a) - Math.min(b, STAND_CLEAR_SPOKES - b) || a - b)) {
         const ang = base + (k / STAND_CLEAR_SPOKES) * Math.PI * 2, x = r3(t[0] + dcos(ang) * rr), z = r3(t[1] + dsin(ang) * rr);
         if (!roomy([x, z])) continue;
