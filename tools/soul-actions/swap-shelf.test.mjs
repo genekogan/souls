@@ -121,6 +121,11 @@ test('swap shelf: leave and take by plain words, no door, who left what, nearby 
  const holds = shelfRow(full)?.state?.holds ?? []; assert.equal(holds.length, 3, JSON.stringify(holds)); assert.ok(holds.includes('bowl (left by Bea)')); assert.ok(holds.filter(h => !/left by/.test(h)).length === 2, 'god-placed things have no leaver');
  results.bookUp = await done('pick up the book');
  await refuse('leave the book on the swap shelf', 'container.full');
+ // a book (an item-kind word, as cups and letters are): its take names the shelf, so storage words resolve it, not the kind
+ ok(god.act({ops: [{op: 'remove', id: [...god.model.entities.values()].find(e => e.in.parent === shelfId && e.name !== 'bowl').id}]})); await tick(10);
+ results.bookPut = await done('leave the book on the swap shelf');
+ results.bookTake = await done('take the book from the swap shelf', souls.Bea);
+ assert.equal(results.bookTake.capability, `pick-up:${id('book')}`); assert.equal(item('book').support.by, souls.Bea.entityId);
 
  // persistence: the world model keeps the contents and the record; the engine checkpoint replays
  const restored = WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())), undefined, god.model.library);
