@@ -58,6 +58,12 @@ regexes = [
 ]
 
 [[allowlists]]
+description = "Synthetic Soul token default in the capacity-qualify test fixture (tok-FAKE-fixture-NNNN; tok-0123456789abcdef in b174a821)"
+condition = "AND"
+paths = ['''^\.github/scripts/capacity-qualify\.test\.mjs$''']
+regexes = ['''^tok-(0123456789abcdef|FAKE-fixture-[0-9]{4})$''']
+
+[[allowlists]]
 description = "localStorage key names flagged by generic-api-key"
 regexes = ['''^(w11-surface-v[0-9]+|eden-atmos-wind-v[0-9]+)$''']
 

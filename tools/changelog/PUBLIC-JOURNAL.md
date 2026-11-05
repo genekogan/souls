@@ -20,7 +20,8 @@ without media elements. For a newly broken link, retain the entry id/source and 
 is repaired; the page always retains a text fallback. There is no runtime availability probe or GitHub/API fetch.
 
 URLs must be canonical HTTPS, without credentials, nondefault port, query or fragment. Media is restricted to
-`https://assets.eden.art/public-journal/…` or this repository's `releases/download/proofs/…` assets. Source links are
+`https://assets.eden.art/public-journal/…` or this repository's proof-release assets: `releases/download/proofs/…` (the shared release) or
+`releases/download/proofs-<pr>/…` (a PR's own release, the `tools/proof/upload.mjs` default). Source links are
 restricted to this repository's PRs, exact commits or release tags. Unknown fields fail the build. All prose is
 escaped, including captions. These checks do not replace human publication review: never copy private board cards,
 plans, transcripts, host paths, account information, credentials, failed or rejected proof into the input.

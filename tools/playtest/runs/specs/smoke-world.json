@@ -1,0 +1,11 @@
+{
+ "soulRun": 1,
+ "name": "smoke-world",
+ "scenario": "../../scenarios/unified-codex-smoke.json",
+ "cast": "none",
+ "world": { "port": 4311, "slug": "sr-smoke-world" },
+ "durationSec": 30,
+ "observer": { "check": true, "required": false, "cameras": ["wide"], "timeoutMs": 60000 },
+ "limits": { "maxWallSec": 600, "cleanupWaitMs": 15000 },
+ "retention": { "worldData": "keep", "controllerState": "delete" }
+}
