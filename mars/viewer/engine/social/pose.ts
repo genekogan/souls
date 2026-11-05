@@ -159,7 +159,7 @@ const partnersOf = (rt: Runtime, ex: Exec) => {
     .sort((a, b) => hypot(a.pose.p[0] - me.pose.p[0], a.pose.p[2] - me.pose.p[2]) - hypot(b.pose.p[0] - me.pose.p[0], b.pose.p[2] - me.pose.p[2]) || (a.id < b.id ? -1 : 1));
 };
 /** once-v2: another grouped pose of this group has completed, so its window has run. Records are snapshotted; a host that
- *  prunes old records (engine-mars keeps about 120 s) forgets the window after that, and a guest that late waits as under
+ *  prunes old records (engine-mars keeps about 120 s) forgets the window after that, and a guest arriving that late waits as under
  *  once-v1 (invitations expire after 90 s). */
 const windowRan = (rt: Runtime, ex: Exec) => {
   for (const r of rt.records.values()) if (r.verb === 'pose_v1' && r.status === 'completed' && r.id !== ex.id && (r.params as Params | undefined)?.group === ex.p.group) return true;
@@ -266,7 +266,6 @@ function together(rt: Runtime, ex: Exec, a: NonNullable<Runtime['world']['entiti
   const near = partnersOf(rt, ex), others = once ? near.filter((o) => (o.human!.together!.until ?? Infinity) > tick) : near, partner = others[0];
   // once-v2: nobody in reach, but the window already ran (checked on arrival and before a timeout opens a window)
   const ran = () => ex.p.windowPolicy === 'once-v2' && !near.length && windowRan(rt, ex);
-
   const faceTo = (q: number[]) => { if (!held(rt, ex.p.actor) && hypot(q[0] - a.pose.p[0], q[2] - a.pose.p[2]) > 0.05) a.pose.yaw = heading([q[0] - a.pose.p[0], q[2] - a.pose.p[2]]); };
   if (h.prop === undefined || ex.p.prop) { if (ex.p.prop) h.prop = ex.p.prop; else if (h.holding) h.prop = h.holding; }
   if (ex.phase === 'waiting') {
