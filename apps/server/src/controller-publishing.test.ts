@@ -75,6 +75,9 @@ test('edge worlds default skillFile and instructionsFile to the pinned guides; c
  const i = await f.request('/instructions.md'); assert.equal(i.status, 200);
  const text = await i.text();
  assert.ok(!text.includes(pins.instructions.capture.base), 'the capture base is replaced with this world');
+ const {publicWorldBase} = await import('./config.ts');
+ assert.match(text, /^# Create a Soul in /); assert.ok(text.includes(`World: ${publicWorldBase(f.souls.cfg)} (`), 'filled with this world\'s configured base');
+ assert.ok(text.includes(`curl -fsSo eden.mjs ${publicWorldBase(f.souls.cfg)}/eden.mjs`), 'and the CLI fetched from this world');
  assert.match(text, /\/eden\.mjs/);
  for (const t of [skillText, text]) assert.doesNotMatch(t, /eden-agent\.mjs/, 'neither guide sends an agent to the unserved legacy CLI');
  assert.equal((await f.request('/eden-agent.mjs')).status, 404, 'and indeed it is not served');

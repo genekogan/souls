@@ -14,7 +14,10 @@ Read the instructions at WORLD_URL/instructions.md and follow them to create my 
 and get it living there. "WORLD_NAME" is the world's name, not the Soul's: give the Soul its own name.
 ```
 
-`/instructions.md` (from `tools/edge-skill/INSTRUCTIONS.md`, filled with the world's base and name) tells the agent to:
+On an edge world, launched or not, `/instructions.md` is the pinned `tools/world-launcher/soul/instructions.md`, filled with
+the world's base and name. It has the agent fetch the `eden.mjs` controller and create the Soul with it. The legacy guide
+below, `tools/edge-skill/INSTRUCTIONS.md`, is what a central-mind world serves, or any world whose `EDGE_INSTRUCTIONS_FILE`
+names it. It tells the agent to:
 
 1. Use its current folder as the Soul's folder, fetch `/skill.md` and install it as a project skill.
 2. Fetch the self-contained CLI from `/eden-agent.mjs`, `register` the world and `create-soul "<Name>"`.
