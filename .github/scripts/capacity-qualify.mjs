@@ -54,15 +54,22 @@ export function parseInputs(env) {
   if (cpu && !/^[1-9]\d{0,4}%$/.test(cpu)) bad('slice_cpu_quota', cpu, 'empty or a systemd CPUQuota such as 400%');
   if (mem && !/^[1-9]\d{0,5}[MG]$/.test(mem)) bad('slice_memory_max', mem, 'empty or a systemd MemoryMax such as 8G');
   const slice = cpu || mem ? ['systemd-run', '--user', '--scope', '--quiet', ...(cpu ? ['-p', `CPUQuota=${cpu}`] : []), ...(mem ? ['-p', `MemoryMax=${mem}`] : [])].join(' ') : '';
-  const short = bool('short'), quietDeclared = bool('quiet_host'), browser = bool('browser');
-  return { ref, profile, repeats: Number(repeats), short, quietDeclared, browser, hostClass, slice };
+  const short = bool('short'), quietDeclared = bool('quiet_host'), browser = bool('browser'), telemetry = bool('telemetry');
+  // CW8 A2 (#955): a longer activity window (blank = the bench's 20 min). It must fit the job's 300 min with every run's
+  // boot, join, warm-up and quiet window (about 15 min each) and some slack: (minutes + 15) x runs <= 280.
+  const am = String(env.INPUT_ACTIVE_MIN ?? '');
+  if (am && (!/^[1-9]\d{1,2}$/.test(am) || Number(am) < 20 || Number(am) > 240)) bad('active_min', am, 'empty or whole minutes from 20 to 240');
+  if (am && short) bad('active_min', am, 'empty with short (the smoke shape has its own window)');
+  if (am && (Number(am) + 15) * list.length * Number(repeats) > 280) bad('active_min', am, `a window that fits the 300 min job: (minutes + 15) x ${list.length * Number(repeats)} runs must be at most 280`);
+  return { ref, profile, repeats: Number(repeats), short, quietDeclared, browser, hostClass, slice, activeMin: am ? Number(am) : null, telemetry };
 }
 
 /** The bench's argument list for a decision. --quiet-host and --qualifying-executor go together, only when quiet.
  *  --browser (one headless Chromium on world 0) only when the dispatcher asked for it: off by default. */
 export function benchArgs(inp, quiet, out) {
   return ['--profile', inp.profile, '--repeats', String(inp.repeats), '--host-class', inp.hostClass, '--out', out, '--port', '4460', '--range', '4461-4490',
-    ...(inp.short ? ['--short'] : []), ...(inp.browser ? ['--browser'] : []), ...(inp.slice ? ['--slice', inp.slice] : []), ...(quiet ? ['--quiet-host', '--qualifying-executor'] : [])];
+    ...(inp.short ? ['--short'] : []), ...(inp.browser ? ['--browser'] : []), ...(inp.slice ? ['--slice', inp.slice] : []), ...(quiet ? ['--quiet-host', '--qualifying-executor'] : []),
+    ...(inp.activeMin ? ['--active-min', String(inp.activeMin)] : []), ...(inp.telemetry ? ['--telemetry'] : [])];
 }
 
 /** Jobs that ran on a runner of the same set (`labels`), outside run `selfRunId`, overlapping [since, until] (null = open). */
@@ -166,7 +173,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main(cmd) {
   const inp = parseInputs(process.env), qf = arg('qualify');
-  if (cmd === 'inputs') { output('slice', inp.slice); output('target', checkoutRef(inp.ref)); console.log(`inputs ok: ${inp.ref}, ${inp.profile} x${inp.repeats}${inp.short ? ' short' : ''}, quiet declared ${inp.quietDeclared}, browser ${inp.browser}, slice ${inp.slice ? 'set' : 'none'}`); return; }
+  if (cmd === 'inputs') { output('slice', inp.slice); output('target', checkoutRef(inp.ref)); console.log(`inputs ok: ${inp.ref}, ${inp.profile} x${inp.repeats}${inp.short ? ' short' : ''}, quiet declared ${inp.quietDeclared}, browser ${inp.browser}, slice ${inp.slice ? 'set' : 'none'}${inp.activeMin ? `, activity ${inp.activeMin} min` : ''}${inp.telemetry ? ', telemetry on' : ''}`); return; }
   if (cmd === 'slice-check') {
     if (!inp.slice) { console.log('no slice limits requested'); return; }
     const probe = "d=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup); echo $(cat $d/cpu.max 2>/dev/null || echo none) $(cat $d/memory.max 2>/dev/null || echo none)";
