@@ -95,7 +95,12 @@ test('thumbnail: --file (JPEG as is, PNG re-encoded), --dry --out sends nothing,
   let sent = [];
   const fetch = async (url, o) => { sent.push({ url, ...o }); return o.method === 'DELETE' ? reply(200, { ok: true, thumbnail: '/__sim/thumbs/_template/y.jpg', thumbnailSource: 'template' }) : reply(200, { ok: true, width: 640, height: 360, bytes: o.body.length }); };
   await thumbnail({ file: jpg }, { load: () => state, fetch });
-  assert.deepEqual(Buffer.from(sent[0].body), readFileSync(jpg), 'a JPEG is sent byte for byte');
+  assert.deepEqual(Buffer.from(sent[0].body), readFileSync(jpg), 'a clean JPEG is sent byte for byte');
+  // a phone photo's EXIF (APP1) and a comment are removed before sending; the pixels' bytes are untouched
+  const clean = readFileSync(jpg), seg = (m, t) => { const body = Buffer.from(t, 'latin1'); return Buffer.concat([Buffer.from([0xff, m, (body.length + 2) >> 8, (body.length + 2) & 255]), body]); };
+  const dirty = join(dir, 'dirty.jpg'); writeFileSync(dirty, Buffer.concat([clean.subarray(0, 2), seg(0xe1, 'Exif\0\0GPS 51.5N serial CAM-1'), seg(0xfe, 'my kitchen'), clean.subarray(2), Buffer.from('trailer')]));
+  sent = []; await thumbnail({ file: dirty }, { load: () => state, fetch });
+  const out = Buffer.from(sent[0].body); assert.ok(!/Exif|GPS|kitchen|trailer/.test(out.toString('latin1'))); assert.deepEqual(out, clean);
   const pngFile = join(dir, 'mine.png'); writeFileSync(pngFile, png(640, 360, scene));
   sent = []; assert.match(await thumbnail({ file: pngFile }, { load: () => state, fetch }), /re-encoded as JPEG q82/);
   sent = []; const keep = join(dir, 'kept.jpg');
@@ -110,8 +115,17 @@ test('thumbnail: --file (JPEG as is, PNG re-encoded), --dry --out sends nothing,
   assert.throws(() => toJpeg(Buffer.from('GIF89a')), /JPEG or PNG/);
 });
 
+test('thumbnail: a file the launcher would refuse is refused before sending', async () => {
+  let n = 0; const fetch = async () => { n++; return reply(200, {}); };
+  const tall = join(dir, 'tall2.jpg'); writeFileSync(tall, encodeJpeg(decodePng(png(400, 600, scene))));
+  await assert.rejects(thumbnail({ file: tall }, { load: () => state, fetch }), /400×600 is not 16:9/);
+  const small = join(dir, 'small.jpg'); writeFileSync(small, encodeJpeg(decodePng(png(320, 180, scene))));
+  await assert.rejects(thumbnail({ file: small }, { load: () => state, fetch }), /640–1920 px wide/);
+  assert.equal(n, 0, 'nothing sent');
+});
+
 test('thumbnail: a refusal names the code and the launcher’s fix; no token, no upload', async () => {
-  const jpg = join(dir, 'tall.jpg'); writeFileSync(jpg, encodeJpeg(decodePng(png(400, 600, scene))));
+  const jpg = join(dir, 'wide.jpg'); writeFileSync(jpg, encodeJpeg(decodePng(png(1280, 720, scene))));
   const fetch = async () => reply(400, { ok: false, code: 'thumbnail.dimensions', message: 'The image is 400×600; a thumbnail is 16:9', fix: 'Crop or resize it to 16:9, 640–1920 px wide; 1280×720 is the default.' });
   await assert.rejects(thumbnail({ file: jpg }, { load: () => state, fetch }), /refused: thumbnail\.dimensions: .*\n {2}fix: Crop or resize/);
   await assert.rejects(thumbnail({ file: jpg }, { load: () => ({ world: state.world }), fetch }), /no god token; run pair/);

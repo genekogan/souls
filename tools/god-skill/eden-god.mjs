@@ -4410,9 +4410,41 @@ function thumbnailEndpoint(worldUrl) {
   if (!m) throw Error(`thumbnail: ${worldUrl || "this folder"} is not a world served by a world launcher (<site>/w/<slug>); thumbnails belong to the world list`);
   return { url: `${m[1]}/__sim/worlds/${m[2]}/thumbnail`, slug: m[2], site: `${m[1]}/` };
 }
+var LIMITS = Object.freeze({ maxBytes: 512 * 1024, minWidth: 640, maxWidth: 1920, aspect: 16 / 9, tolerance: 0.02 });
+function cleanJpeg(b) {
+  const keep = [b.subarray(0, 2)];
+  let p = 2, w = 0, h = 0;
+  while (p + 4 <= b.length && b[p] === 255) {
+    const m = b[p + 1], n = b[p + 2] << 8 | b[p + 3], end2 = p + 2 + n;
+    if (n < 2 || end2 > b.length) throw Error("thumbnail: the JPEG is truncated");
+    if ([192, 193, 194].includes(m)) {
+      h = b[p + 5] << 8 | b[p + 6];
+      w = b[p + 7] << 8 | b[p + 8];
+    }
+    const meta = m === 254 || m >= 225 && m <= 239 && m !== 226 && m !== 238;
+    if (m === 218) {
+      let e = b.length;
+      for (let i = b.length - 2; i > end2; i--) if (b[i] === 255 && b[i + 1] === 217) {
+        e = i + 2;
+        break;
+      }
+      keep.push(b.subarray(p, e));
+      break;
+    }
+    if (!meta) keep.push(b.subarray(p, end2));
+    p = end2;
+  }
+  if (!w || !h) throw Error("thumbnail: not a readable JPEG (no frame header)");
+  return { jpeg: new Uint8Array(Buffer.concat(keep)), width: w, height: h };
+}
+function precheck({ jpeg, width, height }) {
+  if (jpeg.length > LIMITS.maxBytes) return `${Math.round(jpeg.length / 1024)} KB is over ${LIMITS.maxBytes / 1024} KB; save it as a 1280\xD7720 JPEG at quality 80 or lower`;
+  if (width < LIMITS.minWidth || width > LIMITS.maxWidth || Math.abs(width / height - LIMITS.aspect) / LIMITS.aspect > LIMITS.tolerance) return `${width}\xD7${height} is not 16:9 and ${LIMITS.minWidth}\u2013${LIMITS.maxWidth} px wide; crop or resize it (1280\xD7720 is the default)`;
+  return null;
+}
 function toJpeg(bytes) {
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  if (b[0] === 255 && b[1] === 216 && b[2] === 255) return { jpeg: b, width: null, height: null, quality: null };
+  if (b[0] === 255 && b[1] === 216 && b[2] === 255) return { ...cleanJpeg(b), quality: null };
   if (b[0] !== 137 || b[1] !== 80) throw Error("thumbnail: --file takes a JPEG or PNG image");
   const img = decodePng(b);
   let jpeg, quality;
@@ -4448,8 +4480,10 @@ async function thumbnail(flags2 = {}, runtime = {}) {
   if (flags2.file) {
     const file = resolve6(String(one2(flags2.file)));
     const t = toJpeg(readFileSync10(file));
+    const wrong = precheck(t);
+    if (wrong) throw Error(`thumbnail: ${file}: ${wrong}`);
     jpeg = t.jpeg;
-    how = t.quality ? `${file}, re-encoded as JPEG q${t.quality}` : file;
+    how = t.quality ? `${file}, re-encoded as JPEG q${t.quality}` : `${file}, metadata removed`;
   } else {
     const dir = mkdtempSync(join(tmpdir(), "eden-god-thumb-"));
     try {
