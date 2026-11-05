@@ -17,7 +17,8 @@ live data.
 | `worldId` | the history's id |
 | `port` | a private port in 4963–4969 |
 | `publicOrigin` | optional loopback HTTP origin, usually the proxy's |
-| `webDir`, `marsWebDir`, `skillFile`, `cliFile` | built web app, Mars assets and the served Soul skill and CLI |
+| `webDir`, `marsWebDir` | built web app and Mars assets |
+| `skillFile`, `instructionsFile`, `cliFile` | optional Soul guides and legacy CLI. Unset, `/skill.md` is the pinned `tools/world-launcher/soul/skill.md` with this world's prose added, `/instructions.md` is the pinned `instructions.md`, and `/eden-agent.mjs` is 404. Every world serves `/eden.mjs`, the pinned one unless `EDGE_CONTROLLER_CLI_FILE` names another |
 | `authMode` | `local-dev` (default), `public-preview` or `configured` (see below) |
 
 `check` boots an existing disposable copy and reports its clock, head and hash before anything new is installed.
@@ -51,8 +52,6 @@ Save a config outside the repository and start the group:
   "edenPort": 4970,
   "proxyPort": 4966,
   "webDir": "/abs/sim-checkout/apps/web/dist",
-  "skillFile": "/abs/sim-checkout/tools/edge-skill/SKILL.md",
-  "cliFile": "/abs/sim-checkout/tools/edge-skill/eden-agent.mjs",
   "marsWebDir": "/abs/mars-web",
   "mars": { "port": 4963, "worldId": "mars-2026-1" },
   "littlemartians": { "port": 4964, "worldId": "littlemartians-1" }
