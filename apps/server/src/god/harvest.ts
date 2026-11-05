@@ -94,7 +94,8 @@ export function createHarvest(h: HarvestHost) {
     if (held && support.hand !== 'right') return { code: 'harvest.wrong-hand', reason: `Hold ${name} in your right hand to pick with the left.` };
     const other = Object.values(ents()).find((x: any) => x?.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === soul.entityId && x.id !== id);
     if (other) return { code: 'harvest.hands-full', reason: `You are holding ${m.pathOf(other.id)}; put it down first.` };
-    if (!held && (body.human.holding || body.human.carrier || body.human.grip)) return { code: 'harvest.hands-full', reason: 'Your hands are busy carrying something; set it down first.' };
+    if (body.human.carrier) return { code: 'harvest.riding', reason: 'You are aboard something; get off first, then pick.' };
+    if (body.human.holding || body.human.grip) return { code: 'harvest.hands-full', reason: 'Your hands are busy carrying something; set it down first.' };
     if (!held) { const q = ents()[id]?.pose?.p as Vec3 | undefined; if (!q || Math.hypot(q[0] - me[0], q[2] - me[1]) > HARVEST_REACH) return { code: 'harvest.vessel-far', reason: `${name} is too far away; walk closer first.` }; }
     // the nearest planter ripe for this vessel; else the nearest planter, to say what it is doing
     const from = GROWTH_STAGES.indexOf(hv.from);
@@ -136,7 +137,7 @@ export function createHarvest(h: HarvestHost) {
   }
 
   // ---- the world changes at the hand's contact ----
-  const watching = new Map<string, number>(), fired = new Set<string>(), planned = new Map<string, { vessel: string; planter: string }>(), acting = new Map<string, { vessel: string; planter: string }>();
+  const watching = new Map<string, number>(), fired = new Set<string>(), planned = new Map<string, { vessel: string; planter: string }>(), acting = new Map<string, { vessel: string; planter: string; reached?: true }>();
   let visits = 0;
   /** A body was given a picking act: watch its motions until they are done (with a minute's grace before them). */
   function expect(body: string) { const p = planned.get(body); if (!p) return; acting.set(body, p); watching.set(body, h.engine.world.tick + GRACE_TICKS); }
@@ -162,8 +163,10 @@ export function createHarvest(h: HarvestHost) {
       // a long fetch and walk keeps the watch while the vessel is in this body's hand (tea.ts, watering.ts)
       const s = p ? ents()[p.vessel]?.support : undefined;
       if (p && s?.kind === 'in-hand' && s.by === body && !(am && am.target === p.planter)) watching.set(body, now + GRACE_TICKS);
+      // the act's hand motion on the planter has ended (picked, or interrupted before the contact): nothing more to watch
+      if (p?.reached && !(am && am.target === p.planter)) { acting.delete(body); watching.delete(body); continue; }
       if (p && am && am.target === p.planter) {
-        watching.set(body, now + GRACE_TICKS);
+        p.reached = true; watching.set(body, now + GRACE_TICKS);
         const key = am.actionId ?? `${body}:${am.startTick}`;
         if (!fired.has(key) && handActuatorFrame(am, (now - am.startTick) * d).contact) { fired.add(key); try { pick(body, p.vessel, p.planter); } catch (e) { h.log(`harvest: ${(e as Error).message}`); } }
       } else if (now > until) { watching.delete(body); acting.delete(body); }

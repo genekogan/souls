@@ -92,6 +92,7 @@ test('harvest: tomatoes into the basket, flowers into the vase, at the hand cont
  assert.notEqual(phase(ana, ib), 'completed', 'the pick was interrupted');
  assert.equal(state('bed').growth, 4, 'the bed keeps its tomatoes'); assert.equal(state('basket').fruit ?? 0, 0, 'no tomatoes appear');
  assert.equal(ent('basket').support?.by, ana.entityId, 'she still holds the basket');
+ assert.equal(bridge.harvest.watchingCount(), 0, 'the interrupted act is no longer watched, though she holds the basket');
  report.checks.push(`interrupted before the contact (${phase(ana, ib)}): the bed stays fruiting, the basket empty`);
 
  // ---- "pick the tomatoes": from the basket in her hand, at the contact ----
@@ -112,6 +113,8 @@ test('harvest: tomatoes into the basket, flowers into the vase, at the hand cont
  refused(ben, basketPick, 'harvest.vessel-held', /Someone else is holding/);
  report.checks.push('pick: the bed fruiting -> flowering and the basket 0 -> 3 at the hand contact, not before; then refused: nothing ripe; Ben: in someone else\'s hand');
 
+ await tick(5); assert.equal(bridge.harvest.watchingCount(), 0, 'after the pick nothing is watched, though she holds the basket');
+ const v1 = bridge.harvest.visits(); await tick(40); assert.equal(bridge.harvest.visits(), v1, 'no per-tick work after the pick');
  // ---- the regrowth: the existing daily pass grows the moist bed back to fruiting ----
  const grow = dryingOps(god.model, 1).find(o => o.id === id('bed'));
  assert.equal(grow?.state?.growth, 4, 'a day later the moist bed is fruiting again ' + JSON.stringify(grow));
