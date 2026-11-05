@@ -85,6 +85,46 @@ node bench.mjs --root /srv/sim-bench/src-<sha> --fixture /srv/sim-bench/fixtures
 
 The exact eden2 recipe for a run is `eden2/run-stageb.sh` (`run-stageb-f.sh` for part F).
 
+## Meetup workload (CW1, #735: 50 Souls across 10 worlds)
+
+`meetup/` is the near-term product as a workload: ten substantial worlds from `worlds/templates/` behind the
+checkout's own launcher, fifty fake-mind Souls, quiet periods and coordinated meetups. It reuses this bench's
+approach (the launcher in the path, the Soul CLI to join, raw HTTP with the CLI's requests and retry etiquette
+afterwards) without changing `bench.mjs`.
+
+- `meetup/workload.mjs`: the workload as data, pure and seeded: fixtures, the two profiles (`even` = 5 per world;
+  `meetup` = 20 in world 0 and 30 across the other nine), account and address grouping (a three-Soul account in the
+  meetup world, a three-world account, five Souls behind one network address; documentation addresses only), the
+  declared demand (a rich read per Soul every 4 s; an act every 20 s cycling movement, attention, speech, a gesture, an
+  interrupting act and an invitation to a shared action that the partner's driver accepts from its own stream; three
+  meetups where all fifty act within 1 s and read twice within the next 2 s), the schedule, all-attempt accounting and the clock check. `workload.test.mjs` pins it.
+- `meetup/meetup.mjs`: the runner. `meetup/report.mjs`: `REPORT.md` against #443's initial objectives.
+
+```bash
+pnpm --filter @sim/web build && pnpm build:viewer      # once per checkout: the worlds refuse genesis without them
+node tools/bench/capacity/meetup/meetup.mjs --profile even,meetup [--repeats 2] [--browser] [--short] [--quiet-host] \
+  [--host-class <neutral label>] [--port 4400] [--out .local/bench/meetup/<name>]
+```
+
+Per run (about 35 min; `--short` about 6 min): boot and join (timed, not measured), warm-up, 5 min quiet-but-living
+(streams and viewers held, no commands), 20 min activity. The schedule is fixed before the run from the seed; a Soul
+sends one call at a time in schedule order; a call sent more than 1 s late is **overdue** and a call still queued when
+the window closes is **unissued**; neither is dropped from the totals. End-to-end latency runs from the scheduled time
+(queueing, Retry-After waits and backoff included); answered-only time is diagnostic. Action start and receipt delivery
+come from each Soul's own event stream (`/v1/edge/wait`, `receipt.*` events with server tick and time); travel and
+activity duration is its own column. The clock check samples every world's `/healthz` tick each second against
+monotonic time at the admin rate in the world's own database; nothing is clipped or reset.
+
+Full clock comes from existing switches only, set on the launcher: `SIM_UNWATCHED_PACE=1`,
+`SIM_WORLD_IDLE_EXIT_MIN=0`, `--sleep-ms 0`. The production defaults (quarter pace unwatched, sleep, idle exit) are
+#740's subject. Eyes rendering is off: image delivery is not covered here. The run is loopback through the launcher's
+proxy with dev auth: TLS, the public proxy, Clerk and the real network are not exercised.
+
+Outputs under `--out`: `receipt.json` (source, seed, schedule sha256, fixture sha256s, configuration, coverage; no
+host names, users, home paths or tokens), `ops.jsonl` (one line per issued call), `samples.jsonl`, `result.json`,
+`REPORT.md`; `souls/` holds Soul tokens and stays local. Every owned process is stopped at the end (also on Ctrl-C)
+and the result records the cleanup. A run without `--quiet-host` is labelled `not-quiet`; no laptop run qualifies.
+
 ## Recorded baseline (2026-10-31, before the server-reliability fixes)
 
 Fixture: the compact Eden 2026 copy, sha256 `d0921000a7ef…`, heap cap 768 MB unless noted; two repeats per arm, shown
