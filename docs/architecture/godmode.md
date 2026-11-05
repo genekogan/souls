@@ -98,8 +98,12 @@ A def may declare typed structural connectors (`components.connectors`: `id`, `k
   - `support.none`: a bearing part would hang or float, or an upright holding parts up is not standing on the
     ground. This covers a beam placed in the air unjoined, one end released, or the upright under it removed. Take
     the beams down first.
-- **Not yet.** Loose materials have no compiler collider (as before), so the god's overlap check does not see a
-  standing bay; the engine's box is its obstacle. A terrain edit under a joined or bearing part is not re-checked.
+- **Not yet.**
+  - Loose materials have no compiler collider (as before), so the god's overlap check does not see a standing bay. The
+    engine's box is its obstacle.
+  - A terrain edit under a joined or bearing part is not re-checked.
+  - An upright must stand on the terrain itself, not on a floor or a deck.
+  - A loose part that a Soul is carrying is not refused `connect`.
 
 The core revisions `core-rack-upright@2` (88 beam seats, `front|back-l|r-<n>` every 6 in from 12 in) and
 `core-rack-beam@3` (`end-l`, `end-r`, bearing) build a bay. Stand the upright with `r = [yaw, 0, π/2]` and

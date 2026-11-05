@@ -629,7 +629,8 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
         }
         const bid = resolveId(op.b.id, i); if (!bid || bid === 'world') { if (bid === 'world') failures.push(fail(i, 'entity.unknown', 'world')); return; }
         const b = scratch.entities.get(bid)!;
-        // a part a Soul is using (carrying it, standing or sitting on it) is not joined under them
+        // a part with a Soul's body in it (sitting or standing on it) is not joined under them; a part in a Soul's hands is
+        // not checked here (it can still be at the world root in the entity world while carried: a limit)
         if (inUse(aid, i) || inUse(bid, i)) return;
         const problem = joinProblem(scratch, a, op.a.connector, b, op.b.connector, i);
         if (problem) { failures.push(problem); return; }
@@ -931,7 +932,7 @@ function admit(w: WorldModel, e: Entity, def: StoredDef, i: number, mode: 'stric
       const st = settle(w.terrain, fp, anchor, { maxTiltRad: def.tilt ? (def.tilt.maxDeg * Math.PI) / 180 : 0 });
       e.p = [p[0], st.y, p[1]];
       if (anchor === 'conform' && st.pitch !== undefined) e.r = [yaw, st.pitch, st.roll ?? 0];
-      if (anchor === 'base' && st.needsPad && (def.components.foundation?.kind ?? 'pad') === 'pad') {
+      if (anchor === 'base' && st.needsPad && (def.components.foundation?.kind ?? 'pad') === 'pad' && !def.components.connectors) {
         (e as Entity & { _pad?: Landform })._pad = padFor(`${e.id}:pad`, fp, st.y, padGrading(w, baked, p[0], p[1], yaw, s));
       }
     // PC12 (#691): a part with connectors is held up by its joints or lies on the ground; it never raises the ground under it
