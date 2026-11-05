@@ -175,6 +175,8 @@ export type TogetherPort = {
   complete(receiptId: string): void;
   /** The receipt's programme, if it is still running for that body. */
   running(soulId: string, receiptId: string): boolean;
+  /** The programme a body is running, read on the ledger's engine (this module never reaches the engine itself). */
+  programOf(entityId: string): string | null;
   stop(soulId: string, entityId: string, receiptId: string): void;
   aboard(entityId: string): {id: string; phase: string; label: string} | null;
   faded(soulId: string): boolean;
@@ -892,7 +894,7 @@ export class Together {
         if (this.seated(mind.entityId) || h.activity === 'lie' || h.baseActivity === 'lie') return 'is not standing';
         if ((h.level ?? 0) !== 0) return 'is not on level-zero ground';
         const d = Math.hypot(b.pose.p[0] - x.pose.p[0], b.pose.p[2] - x.pose.p[2]); if (d > SHARED_GATHER_RADIUS) return `is ${Math.round(d)} m from ${s.load.name} (within ${SHARED_GATHER_RADIUS} m to start)`;
-        if (this.p.host.engine.programOf(mind.entityId)) return 'is still finishing what they were doing';
+        if (this.p.programOf(mind.entityId)) return 'is still finishing what they were doing';
         return null;
       })();
       if (why) out.push({soulId: m.soulId, name: m.name, why});
@@ -993,7 +995,7 @@ export class Together {
     if (!r.capability.startsWith('carry-with:') && !r.capability.startsWith('accept:')) return;
     const inv = this.inviteForReceipt(r.id), op = inv?.shared?.op;
     if (!inv || !op || inv.state !== 'committed' || op.phase === 'ended' || inv.hostReceipt !== r.id && inv.guestReceipts[r.soulId] !== r.id) return;
-    const host = this.mindOf(inv.host.soulId), live = !!host && this.p.host.engine.programOf(host.entityId) === op.programId, who = this.mindOf(r.soulId)?.name ?? 'A member';
+    const host = this.mindOf(inv.host.soulId), live = !!host && this.p.programOf(host.entityId) === op.programId, who = this.mindOf(r.soulId)?.name ?? 'A member';
     this.sharedEnd(inv, false, 'shared.ended', `${who} stopped (${r.code ?? r.phase}), so the shared carry of ${inv.shared!.load.name} ended for everyone.`);
     if (live && host) afterCommit(this.p.db.db, () => this.p.stopBody?.({soulId: host.soulId, entityId: host.entityId, name: host.name, owner: host.owner}));
   }
@@ -1004,7 +1006,7 @@ export class Together {
     for (const inv of this.committed()) {
       const op = inv.shared?.op; if (!op || op.phase === 'ended') continue;
       const host = this.mindOf(inv.host.soulId);
-      if (host && this.p.host.engine.programOf(host.entityId) === op.programId) {this.staleOps.delete(inv.id); continue;}
+      if (host && this.p.programOf(host.entityId) === op.programId) {this.staleOps.delete(inv.id); continue;}
       if (!this.staleOps.has(inv.id)) {this.staleOps.set(inv.id, this.tick); continue;}
       this.sharedEnd(inv, false, 'shared.ended', `The shared carry of ${inv.shared!.load.name} is no longer running.`);
     }
@@ -1012,7 +1014,7 @@ export class Together {
   /** Restart: a member's started receipt of an operation whose programme the snapshot still runs is still followed. */
   sharedLive(receiptId: string): boolean {
     const inv = this.inviteForReceipt(receiptId), op = inv?.shared?.op, host = inv ? this.mindOf(inv.host.soulId) : undefined;
-    return !!inv && !!op && inv.state === 'committed' && op.phase !== 'ended' && !!host && this.p.host.engine.programOf(host.entityId) === op.programId;
+    return !!inv && !!op && inv.state === 'committed' && op.phase !== 'ended' && !!host && this.p.programOf(host.entityId) === op.programId;
   }
 
   /** BROWSE-COURTESY: a guest joining a place-bound activity (read in the library) takes its own free spot of that activity
