@@ -59,6 +59,8 @@ test('PC05: commit atomically, refuse body acts shared.busy, release every membe
   const p = ok(await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'shed', with: 'Bo'}})), id = p.receipt.shared.invite;
   const a = ok(await act(w, Bo, {capability: `accept:${id}`, params: {revision: 1}}));
   assert.equal(inviteOf(w, id).shared.op, null); assert.equal(read(w, Bo, a).startedTick, null, 'acceptance is not start');
+  // two commit attempts queued in the same drain: the guard under the write lock admits exactly one
+  const c1 = w.edge.commitShared(id), c2 = w.edge.commitShared(id); await w.tick(1); await Promise.all([c1, c2]);
   for (let n = 0; n < 60 && inviteOf(w, id).state === 'pending'; n++) await w.tick(1);
   const inv = inviteOf(w, id), op = inv.shared.op;
   assert.equal(inv.state, 'committed', JSON.stringify([read(w, Ada, p), read(w, Bo, a)]));
@@ -75,12 +77,15 @@ test('PC05: commit atomically, refuse body acts shared.busy, release every membe
   const busy = await act(w, Bo, {capability: 'wave:here'});
   assert.equal(code(busy), 'shared.busy', JSON.stringify(busy)); assert.match(busy.reason, /hands and walking/);
   assert.equal(code(await act(w, Ada, {capability: 'wave:here'})), 'shared.busy');
+  const toBo = await act(w, Ada, {capability: `wave:${Bo.soulId}`});
+  assert.equal(code(toBo), 'shared.busy', `the host's wave to Bo is refused shared.busy before any native check: ${JSON.stringify(toBo)}`);
+  assert.equal(code(await act(w, Bo, {capability: `carry-with:${w.idOf('beam2')}`, params: {to: 'yard', with: 'Ada'}})), 'shared.busy', 'nor can a member propose another');
   assert.deepEqual(w.edge.openReceipts(Bo.soulId).map((r) => r.id), [a.receipt.id], 'no receipt was created or replaced');
   assert.ok(w.edge.capabilities(Bo).length > 0, 'Bo can still read his options');
   for (let n = 0; n < 3000 && ['waiting', 'started'].includes(read(w, Ada, p).phase); n++) await w.tick(1);
   for (const [s, r] of [[Ada, p], [Bo, a]]) {const x = read(w, s, r); assert.equal(x.phase, 'completed', `${s.name}: ${JSON.stringify(x)}`); assert.equal(x.shared.phase, 'ended'); assert.equal(x.shared.result, 'arrived');}
   assert.equal(inviteOf(w, id).state, 'closed'); assert.equal(E[beam].phase === 'carried', false);
-  ok(await act(w, Bo, {capability: 'wave:here'}));
+  ok(await act(w, Bo, {capability: 'wave:here'})); ok(await act(w, Ada, {capability: 'wave:here'}));
   assert.deepEqual(eng.runtime.violations, []);
 });
 
@@ -165,3 +170,26 @@ test('PC05: races. accept vs withdraw or leave never commits; two proposals for 
   assert.deepEqual(E[near].pose.p, before, 'the load did not move'); for (const s of [Ada, Bo]) assert.equal(eng.programOf(s.entityId), null);
   assert.deepEqual(eng.runtime.violations, []);
 });
+
+test('PC05: a member\'s receipt ended another way (a god walkout of the host) ends the operation for everyone', {timeout: 300000}, async (t) => {
+  const w = await world(t, true), {Ada, Bo} = w.souls, beam = w.idOf('beam'), eng = w.f.host.engine;
+  const p = ok(await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'shed', with: 'Bo'}})), id = p.receipt.shared.invite;
+  const a = ok(await act(w, Bo, {capability: `accept:${id}`, params: {revision: 1}}));
+  await until(w, () => inviteOf(w, id).state !== 'pending', 60);
+  assert.equal(inviteOf(w, id).state, 'committed'); await w.tick(20);
+  w.edge.godInterrupted(Ada.soulId, 'test: the host is walked out mid-carry');
+  assert.equal(read(w, Ada, p).phase, 'failed');
+  const x = read(w, Bo, a); assert.equal(x.phase, 'failed', 'Bo\'s receipt ends with the host\'s'); assert.equal(x.code, 'shared.ended'); assert.match(x.reason, /Ada stopped/);
+  assert.equal(inviteOf(w, id).state, 'closed'); assert.equal(inviteOf(w, id).shared.op.phase, 'ended');
+  await until(w, () => eng.programOf(Ada.entityId) === null, 2000);
+  assert.equal(eng.programOf(Ada.entityId), null, 'the host\'s programme was stopped');
+  ok(await act(w, Bo, {capability: 'wave:here'}));
+  // the load is free for a new proposal, which can commit
+  await until(w, () => !E(w)[beam].reservedBy && E(w)[beam].phase !== 'carried', 2000);
+  const p2 = ok(await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'shed', with: 'Bo'}})), id2 = p2.receipt.shared.invite;
+  ok(await act(w, Bo, {capability: `accept:${id2}`, params: {revision: 1}}));
+  await until(w, () => inviteOf(w, id2).state !== 'pending', 200);
+  assert.equal(inviteOf(w, id2).state, 'committed', JSON.stringify(read(w, Ada, p2)));
+  assert.deepEqual(eng.runtime.violations, []);
+});
+const E = (w) => w.f.host.engine.world.entities;

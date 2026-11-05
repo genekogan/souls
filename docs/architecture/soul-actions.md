@@ -46,11 +46,15 @@ context-size checks below), regression runs, and an uncut real-client recording 
     (`op_<invite>_r<revision>`), the `committed` state and every member's receipt `started` in that tick, or nothing.
     Of two proposals for one load, exactly one commits. A native refusal that can pass (someone in the way) keeps
     waiting. A permanent one (`carry.no-route`) ends every receipt `failed` with that diagnostic, and nothing is lifted.
-  - **Busy.** While the operation runs, a member's body act is refused `shared.busy`, naming the operation and the
-    claimed hands and walking. Nothing is replaced and no receipt is created. Speech, reads and owner messages are
-    unaffected, and the proposal's lapse no longer applies.
-  - **Release.** When the native programme ends, every member's receipt ends together: `completed` on arrival,
-    `failed` otherwise. The next act is accepted.
+  - **Busy.** While the operation runs, a member's body act is refused `shared.busy` before any native check,
+    naming the operation and the claimed hands and walking. That includes proposing or accepting another carry.
+    Nothing is replaced and no receipt is created. Speech and reads still work, and the proposal's lapse no longer
+    applies.
+  - **Release.** When the native programme ends, every member's receipt ends together, in one transaction:
+    `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (a
+    fade, an engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the
+    host's programme is stopped. After a restart, guests of a carry that still runs keep their receipts. An operation
+    whose programme is gone is ended on the next sweeps.
 
   The visible carry journey on the shared-execution fixture is PC06.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and

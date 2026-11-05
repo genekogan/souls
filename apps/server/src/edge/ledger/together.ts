@@ -1,4 +1,4 @@
-import {afterCommit} from '../comms/store.ts';
+import {afterCommit, tx} from '../comms/store.ts';
 // together/1 (core-next4, ACTION-COVERAGE-AUDIT §3/§5 P2; Gene: gestures are "absolutely. critical even"):
 // Souls do things with each other, natively and visibly, with light consent. No model calls; deterministic plans.
 // - Gestures: hug / high-five / handshake / dance-with <soul> ask first (the other accepts, declines or ignores; an
@@ -188,6 +188,8 @@ export type TogetherPort = {
   note?(receiptId: string, code: string | null, reason: string | null): void;
   /** PC05: every member is ready; try the atomic commit (the ledger's guarded decision). */
   commitShared?(inviteId: string): void;
+  /** PC05: stop a Soul's running programme (best effort; the native carry sets its load down). */
+  stopBody?(soul: EdgeSoul): void;
 };
 
 const pose = (activity: string, seconds: number, extra: Record<string, unknown> = {}) => ({verb: 'mars:pose_v1', params: {activity, seconds, ...extra}});
@@ -889,6 +891,7 @@ export class Together {
   sharedCommitGuard(id: string, revision: number): true {
     const inv = this.invite(id), s = inv?.shared;
     if (!inv || !s || inv.state !== 'pending' || s.revision !== revision || s.op) throw new EdgeError(409, 'shared.not-ready', 'The proposal changed or already started.');
+    if (this.tick > inv.expiresTick) throw new EdgeError(409, 'shared.not-ready', 'The proposal lapsed before it could start.');
     const blockers = this.sharedBlockers(inv); if (blockers.length) throw new EdgeError(409, 'shared.not-ready', blockers.map(b => `${b.name} ${b.why}`).join('; '));
     return true;
   }
@@ -902,9 +905,12 @@ export class Together {
     for (const m of members) {
       if (!m.receipt) throw new EdgeError(409, 'shared.not-ready', `${m.name} has no receipt for this revision.`);
       this.p.start?.(m.receipt, m.soulId === inv.host.soulId ? programId : null);
-      this.p.deliver(m.soulId, 'shared.started', {invite: {id: inv.id, revision: s.revision}, op: opId, text: `The shared carry started: ${members.map(x => x.name).join(' and ')} carry ${s.load.name} to ${s.destination.name}.`, untrusted: true});
     }
-    this.p.spectate({kind: 'shared', op: {id: opId, invite: inv.id, load: s.load.entity, crew: members.map(m => ({soulId: m.soulId, name: m.name})), phase: 'started'}, untrusted: true});
+    // told only once the commit is final (the journal runs inside the decision's transaction)
+    afterCommit(this.p.db.db, () => {
+      for (const m of members) this.p.deliver(m.soulId, 'shared.started', {invite: {id: inv.id, revision: s.revision}, op: opId, text: `The shared carry started: ${members.map(x => x.name).join(' and ')} carry ${s.load.name} to ${s.destination.name}.`, untrusted: true});
+      this.p.spectate({kind: 'shared', op: {id: opId, invite: inv.id, load: s.load.entity, crew: members.map(m => ({soulId: m.soulId, name: m.name})), phase: 'started'}, untrusted: true});
+    });
   }
   /** A permanent refusal (the native plan refused the route or the crew): every member's receipt ends with it; nothing moved. */
   sharedRefused(id: string, code: string, reason: string) {
@@ -925,15 +931,51 @@ export class Together {
     const inv = this.inviteForReceipt(receiptId), s = inv?.shared, op = s?.op;
     if (!inv || !s || !op || inv.state !== 'committed' || op.programId !== ev.id || inv.hostReceipt !== receiptId) return false;
     const arrived = ev.kind === 'completed';
-    Object.assign(op, {phase: 'ended', endedTick: this.tick, result: arrived ? 'arrived' : 'ended', ...(arrived ? {} : {code: ev.code ?? 'action.failed'})});
-    inv.state = 'closed'; this.saveInvite(inv);
-    for (const m of this.sharedMembers(inv)) {
-      if (!m.receipt) continue;
-      if (arrived) this.p.complete(m.receipt);
-      else this.p.fail(m.receipt, ev.code ?? 'action.failed', `The shared carry of ${s.load.name} ended before ${s.destination.name}${ev.message ? ` (${ev.message})` : ''}.`);
-    }
-    this.p.spectate({kind: 'shared', op: {id: op.id, invite: inv.id, load: s.load.entity, phase: 'ended', result: op.result}, untrusted: true});
+    this.sharedEnd(inv, arrived, ev.code ?? 'action.failed', `The shared carry of ${s.load.name} ended before ${s.destination.name}${ev.message ? ` (${ev.message})` : ''}.`);
     return true;
+  }
+  /** PC02 §3 release, in one transaction: the operation ends, the claims go and every member's still-open receipt ends
+   *  (`completed` on arrival, else `failed` with the code). */
+  private sharedEnd(inv: Invite, arrived: boolean, code: string, reason: string) {
+    const s = inv.shared!, op = s.op!;
+    Object.assign(op, {phase: 'ended', endedTick: this.tick, result: arrived ? 'arrived' : 'ended', ...(arrived ? {} : {code})});
+    inv.state = 'closed';
+    tx(this.p.db.db, () => {
+      this.saveInvite(inv);
+      for (const m of this.sharedMembers(inv)) {
+        const r = m.receipt ? this.p.receipt(m.soulId, m.receipt) : null; if (!r || (r.phase !== 'waiting' && r.phase !== 'started')) continue;
+        if (arrived) this.p.complete(r.id); else this.p.fail(r.id, code, reason);
+      }
+    });
+    this.staleOps.delete(inv.id);
+    this.p.spectate({kind: 'shared', op: {id: op.id, invite: inv.id, load: s.load.entity, phase: 'ended', result: op.result}, untrusted: true});
+  }
+  /** A member's receipt of a running operation ended another way (a fade, an engine-fault recovery, a god walkout, a
+   *  restart): the operation ends for every member, and the host's programme is stopped. */
+  private sharedMemberEnded(r: EdgeReceipt) {
+    if (!r.capability.startsWith('carry-with:') && !r.capability.startsWith('accept:')) return;
+    const inv = this.inviteForReceipt(r.id), op = inv?.shared?.op;
+    if (!inv || !op || inv.state !== 'committed' || op.phase === 'ended' || inv.hostReceipt !== r.id && inv.guestReceipts[r.soulId] !== r.id) return;
+    const host = this.mindOf(inv.host.soulId), live = !!host && this.p.host.engine.programOf(host.entityId) === op.programId, who = this.mindOf(r.soulId)?.name ?? 'A member';
+    this.sharedEnd(inv, false, 'shared.ended', `${who} stopped (${r.code ?? r.phase}), so the shared carry of ${inv.shared!.load.name} ended for everyone.`);
+    if (live && host) this.p.stopBody?.({soulId: host.soulId, entityId: host.entityId, name: host.name, owner: host.owner});
+  }
+  /** Each sweep: a running operation whose programme is gone on two checks in a row (its end was never seen, e.g. across
+   *  a restart) is ended for every member. */
+  private staleOps = new Map<string, number>();
+  private sharedReconcile() {
+    for (const inv of this.committed()) {
+      const op = inv.shared?.op; if (!op || op.phase === 'ended') continue;
+      const host = this.mindOf(inv.host.soulId);
+      if (host && this.p.host.engine.programOf(host.entityId) === op.programId) {this.staleOps.delete(inv.id); continue;}
+      if (!this.staleOps.has(inv.id)) {this.staleOps.set(inv.id, this.tick); continue;}
+      this.sharedEnd(inv, false, 'shared.ended', `The shared carry of ${inv.shared!.load.name} is no longer running.`);
+    }
+  }
+  /** Restart: a member's started receipt of an operation whose programme the snapshot still runs is still followed. */
+  sharedLive(receiptId: string): boolean {
+    const inv = this.inviteForReceipt(receiptId), op = inv?.shared?.op, host = inv ? this.mindOf(inv.host.soulId) : undefined;
+    return !!inv && !!op && inv.state === 'committed' && op.phase !== 'ended' && !!host && this.p.host.engine.programOf(host.entityId) === op.programId;
   }
 
   /** BROWSE-COURTESY: a guest joining a place-bound activity (read in the library) takes its own free spot of that activity
@@ -1131,6 +1173,7 @@ export class Together {
   /** Receipt phase changes (live): items change hands, invitations close with their host's act, follows end. */
   onReceipt(r: EdgeReceipt) {
     if (r.phase === 'started' || r.phase === 'waiting') return;
+    this.sharedMemberEnded(r);
     if (r.phase === 'completed') this.tellRps(r);
     const op = this.takeOp(r.id);
     if (op) this.applyOp(op, r);
@@ -1281,6 +1324,7 @@ export class Together {
   }
   /** Every second: invitations lapse; follows whose target faded end; placed items are cleared after a while. */
   sweep() {
+    this.sharedReconcile();
     const tick = this.tick, carriers = (menuWorldOf(this.p.host) as unknown as {carriers?: () => {id: string; state: {phase: string; hold?: unknown}}[]}).carriers?.() ?? [];
     for (const inv of this.pending()) {
       // a ride invitation closes once the basket has gone (or stopped keeping the place)
