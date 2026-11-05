@@ -255,9 +255,16 @@ export class WorldRtsCamera {
   touchLookEnd(){
     if(!this.touchable()||!this.lookActive())return;
     const c=this.adopt();this.camera.updateMatrixWorld();
-    const gaze=this.camera.getWorldDirection(new THREE.Vector3()),d=Math.max(NEAR_LIMIT,this.camera.position.distanceTo(this.pivot));
+    const eye=this.camera.position,gaze=this.camera.getWorldDirection(new THREE.Vector3()),d=Math.max(NEAR_LIMIT,eye.distanceTo(this.pivot));
     const ground=centreGround(this.camera,this.o.scene(),Math.max(600,d*1.5));
-    this.pivot.copy(ground&&ground.distanceTo(this.camera.position)>=1?ground:this.camera.position.clone().addScaledVector(gaze,d));
+    let t=ground&&ground.distanceTo(eye)>=1?ground.distanceTo(eye):d;
+    // The new pivot stays where keepPivotInBounds would leave it: otherwise the next frame pulls it back and the eye with it.
+    const ok=(k:number)=>this.pivotInBounds(eye.clone().addScaledVector(gaze,k));
+    if(!ok(t)){
+      if(!ok(NEAR_LIMIT))return;  // the eye is outside the map: keep the head offset
+      let lo=NEAR_LIMIT,hi=t;for(let i=0;i<20;i++){const m=(lo+hi)/2;if(ok(m))lo=m;else hi=m;}t=lo;
+    }
+    this.pivot.copy(eye).addScaledVector(gaze,t);
     this.look={yaw:0,pitch:0};this.lookBlend=null;this.write(c);this.camera.up.set(0,1,0);this.camera.lookAt(this.pivot);this.moved=false;
   }
   /** #891: two-finger vertical drag (pixels, + down) rises or lowers the eye on the next frame, as Q/E. */
@@ -492,11 +499,16 @@ export class WorldRtsCamera {
     }
     return this.zoomAnchor=p??target.clone();
   }
+  /** The pivot's allowed rectangle: the map's ground rectangle plus a margin (null when the map is unknown). */
+  private pivotRect():[number,number,number,number]|null{
+    const e=this.o.extent?.();if(!e||!e.every(Number.isFinite))return null;
+    const m=Math.max(60,.25*Math.max(e[2]-e[0],e[3]-e[1]));return [e[0]-m,e[1]-m,e[2]+m,e[3]+m];
+  }
+  private pivotInBounds(p:THREE.Vector3){const r=this.pivotRect();return !r||(p.x>=r[0]&&p.x<=r[2]&&p.z>=r[1]&&p.z<=r[3]);}
   /** Pan/WASD/zoom keep the pivot over the map (its ground rectangle plus a margin); the eye moves with it. */
   private keepPivotInBounds(target:THREE.Vector3):boolean{
-    const e=this.o.extent?.();if(!e||!e.every(Number.isFinite))return false;
-    const m=Math.max(60,.25*Math.max(e[2]-e[0],e[3]-e[1]));
-    const x=Math.max(e[0]-m,Math.min(e[2]+m,target.x)),z=Math.max(e[1]-m,Math.min(e[3]+m,target.z));
+    const r=this.pivotRect();if(!r)return false;
+    const x=Math.max(r[0],Math.min(r[2],target.x)),z=Math.max(r[1],Math.min(r[3],target.z));
     if(x===target.x&&z===target.z)return false;
     this.camera.position.x+=x-target.x;this.camera.position.z+=z-target.z;target.x=x;target.z=z;return true;
   }

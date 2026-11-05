@@ -89,8 +89,9 @@ export class WorldTouchFree {
     if (e.pointerType !== 'touch') return;
     const id = e.pointerId, x = e.clientX, y = e.clientY;
     if (this.locked) {  // any touch stops the auto-walk, and does nothing else
+      const walking = this.o.camera.walking && this.o.free();  // the camera may have dropped it (mode change, blur, Escape)
       this.locked = false; this.o.camera.setStick(0, 0);
-      if (this.fingers.size === 0) {
+      if (walking && this.fingers.size === 0) {
         this.track(id, { x, y, x0: x, y0: y, t0: e.timeStamp, role: 'spent', moved: false, second: false });
         this.claimed.add(id); e.stopImmediatePropagation(); e.preventDefault(); return;
       }
@@ -112,6 +113,7 @@ export class WorldTouchFree {
       e.stopImmediatePropagation(); e.preventDefault();
     } else if (!stick && looks.length === 1 && !paired) {  // a second finger: pinch or rise
       const first = looks[0];
+      if (first.moved) this.o.camera.touchLookEnd();  // keep where it looked before the pinch zooms
       for (const [fid, f] of this.fingers) if (f === first) this.claimed.add(fid);
       first.role = 'pair'; finger.role = 'pair'; this.claimed.add(id); this.lastTap = null;
       const spread = Math.hypot(x - first.x, y - first.y), my = (y + first.y) / 2;

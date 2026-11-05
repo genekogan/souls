@@ -66,7 +66,7 @@ function gestures(opts: { free?: () => boolean; soul?: (x: number, y: number) =>
   const down = (id: number, x: number, y: number) => canvas.dispatchEvent(ev('pointerdown', id, x, y));
   const move = (id: number, x: number, y: number) => doc.dispatchEvent(ev('pointermove', id, x, y));
   const up = (id: number, x: number, y: number, type = 'pointerup') => doc.dispatchEvent(ev(type, id, x, y));
-  return { touch, calls, passed, down, move, up, tick: (ms: number) => { clock += ms; }, fire: () => { const f = pending; pending = null; f?.(); }, docListeners, last: (k: string) => calls.filter(c => c[0] === k).at(-1) };
+  return { touch, calls, passed, down, move, up, stop: () => { walking = false; }, tick: (ms: number) => { clock += ms; }, fire: () => { const f = pending; pending = null; f?.(); }, docListeners, last: (k: string) => calls.filter(c => c[0] === k).at(-1) };
 }
 
 test('a lower-left touch spawns the stick, walks by deflection and stops on lift; nothing else sees it', () => {
@@ -144,6 +144,18 @@ test('long-press is decided by input times: a busy page that runs the timer befo
   g.up(3, 80, 640);assert.equal(g.touch.state.locked, true);
 });
 
+test('a stale auto-walk lock (dropped by the camera) does not swallow the next touch', () => {
+  const g = gestures();
+  g.down(1, 80, 700);g.tick(LONG_PRESS_MS);g.fire();g.move(1, 80, 640);g.up(1, 80, 640);assert.equal(g.touch.state.locked, true);
+  g.stop();  // the camera dropped the walk (Follow, blur, Escape)
+g.down(2, 300, 300);assert.deepEqual(g.passed, [2], 'the touch reaches the viewer');assert.equal(g.touch.state.locked, false);
+});
+
+test('a look that becomes a pinch commits the look first', () => {
+  const g = gestures();
+  g.down(1, 300, 300);g.move(1, 320, 300);g.down(2, 200, 300);assert.ok(g.calls.some(c => c[0] === 'lookEnd'));
+});
+
 test('A5: at rest no document listeners or timers; they exist only while a finger is down', () => {
   const g = gestures();
   const live = () => [...g.docListeners.values()].reduce((a, b) => a + b, 0);
@@ -195,6 +207,18 @@ test('two-finger rise is Q/E: up without tilting; held touch keeps one take-over
     assert.ok(g.camera.position.distanceTo(p) < 1e-9 && g.rts.headLook.yaw === 0 && g.takeOvers() === 0, 'Follow keeps its own touch mapping');
     assert.equal(g.rts.walking, false, 'a stick held into Follow is dropped');
   } finally { g.rts.dispose(); }
+});
+
+test('a touch look ending on a far ground point at the map edge never moves the eye (no pull back next frame)', () => {
+  const f = rtsRig();try {
+    f.camera.position.set(0, 10, 95);f.controls.target.set(0, 0, 60);f.camera.lookAt(f.controls.target);f.camera.updateMatrixWorld();f.frame();
+    f.rts.setTouchHeld(true);f.rts.touchLook(0, 90);f.rts.touchLook(0, 90);f.rts.touchLook(0, -170);f.rts.touchLook(-400, 0);  // nearly level, facing out of the map
+    const eye = f.camera.position.clone(), gaze = f.camera.getWorldDirection(new THREE.Vector3());
+    f.rts.touchLookEnd();f.rts.setTouchHeld(false);for (let i = 0; i < 10; i++) f.frame();
+    assert.ok(f.camera.position.distanceTo(eye) < 1e-9, `eye moved ${f.camera.position.distanceTo(eye).toFixed(2)} m`);
+    assert.ok(f.camera.getWorldDirection(new THREE.Vector3()).angleTo(gaze) < 1e-6, 'the view does not turn');
+    assert.ok(Math.abs(f.controls.target.z) <= 160 && Math.abs(f.controls.target.x) <= 160, 'the pivot is inside the map plus margin');
+  } finally { f.rts.dispose(); }
 });
 
 test('pinch zooms like the wheel toward the point between the fingers; double-tap flies once even if the browser adds dblclick', () => {
