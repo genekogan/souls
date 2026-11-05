@@ -17,6 +17,7 @@ import { installEngineBridge } from './god/engine-bridge.ts';
 import { worldDay } from './god/poster-boards.ts';
 import { createPaintingService } from './art/painting-completion.ts';
 import { planHang } from './art/art.ts';
+import { resolveCapability } from './edge/ledger/vocabulary.ts';
 
 const sun = { title: 'Sun', background: '#bdb8ad', shapes: [{ kind: 'ellipse', cx: 0.5, cy: 0.45, rx: 0.2, ry: 0.2, colour: '#ffd23f' }, { kind: 'line', x1: 0.2, y1: 0.85, x2: 0.8, y2: 0.85, width: 0.03, colour: '#ffffff' }] };
 const boat = { title: 'Boat', background: '#bdb8ad', shapes: [{ kind: 'rect', x: 0.25, y: 0.55, width: 0.5, height: 0.12, colour: '#3a7bd5' }] };
@@ -82,6 +83,8 @@ test('chalk: draw on a chalk square by plain words, credited at completion, fadi
   lines.day10 = await lineOf(ben); is(lines.day10, 'Ana’s chalk drawing “Sun” on the pavement');
   await toDay(11); lines.day11 = await lineOf(ben); is(lines.day11, 'Ana’s chalk drawing “Sun” on the pavement, fading');
   // C7: drawing over replaces it, credited to the new Soul, drawn today; the old one is in the edit's note
+  // her body stands on its only drawing spot: Ben's plain words are refused, and the easel nearby is not chosen instead
+  { const busy = await act(ben, 'draw in chalk', { seconds: 5, painting: boat }); assert.equal(busy.accepted, false, JSON.stringify(busy)); results.busy = busy.reason; }
   // Ana steps away from the square first (her body stands on its only drawing spot)
   { const w = await act(ana, 'walk:easel'); assert.equal(w.accepted, true, JSON.stringify(w)); assert.equal((await wait(ana, w.receipt.id)).phase, 'completed'); }
   const b = await act(ben, chalk.id, { seconds: 5, painting: boat }); assert.equal(b.accepted, true, JSON.stringify(b)); const bd = await wait(ben, b.receipt.id); assert.equal(bd.phase, 'completed', JSON.stringify(bd));
@@ -120,4 +123,14 @@ test('chalk: draw on a chalk square by plain words, credited at completion, fadi
   const report = { status: 'pass', hereBytes: { absent: JSON.stringify(absent).length, distant100: JSON.stringify(far).length, nearbyBlank: JSON.stringify(near).length, nearbyDrawn: JSON.stringify(nearFinal).length }, results };
   if (out) { mkdirSync(out, { recursive: true }); writeFileSync(`${out}/chalk-summary.json`, JSON.stringify(report, null, 2)); }
   console.log(JSON.stringify(report.hereBytes));
+});
+
+// #430 review of the 2×2: a taken chalk square is refused in chalk's own words, not as "Paint at the easel"
+test('chalk: a taken square is refused as "Draw in chalk is not free right now"', () => {
+  const ctx = { caps: [], places: [], root: ['w'], me: [0, 0] as [number, number], target: () => ({ names: [], around: [], at: [0, 0] as [number, number] }),
+    elsewhere: (v: string) => v === 'paint' ? { label: 'Chalk square', title: 'Draw in chalk', place: 'Green field', distance: 4.6 } : undefined };
+  const r = resolveCapability('draw in chalk', ctx as never);
+  assert.equal(r.kind, 'unknown'); if (r.kind === 'unknown') assert.match(r.reason, /^Draw in chalk is not free right now: the nearest, Chalk square in Green field \(about 5 m away\), is in use by someone/);
+  const easel = resolveCapability('paint at the easel', { ...ctx, elsewhere: (v: string) => v === 'paint' ? { label: 'Easel', distance: 3 } : undefined } as never);
+  assert.equal(easel.kind, 'unknown'); if (easel.kind === 'unknown') assert.match(easel.reason, /^Paint at the easel is not free right now/);
 });

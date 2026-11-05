@@ -2285,10 +2285,10 @@ export class EdgeLedger implements EdgeLedgerHooks {
       const marks = rideMarks ?? (verb === 'cycle' ? (this.spots.docks ?? []).map(k => ({at: k.at, label: k.label ?? 'a bicycle dock', place: k.place}))
         // VERBS: ducks or swans to feed (a feed spot whose title or label names birds), for "feed the ducks"
         : verb === 'feed-birds' ? this.spots.spots.filter(x => x.activity === 'feed' && /\b(?:ducks?|swans?|geese|goose|birds?)\b/i.test(`${x.title ?? ''} ${x.label ?? ''}`)).map(x => ({at: x.at, label: x.label ?? 'a duck-feeding bank', place: x.place}))
-        : verb in SPOT_ACTIVITIES ? this.spots.spots.filter(x => x.activity === verb || x.also?.includes(verb)).map(x => ({at: x.at, label: x.label ?? `a ${verb} spot`, place: x.place})) : undefined);
+        : verb in SPOT_ACTIVITIES ? this.spots.spots.filter(x => x.activity === verb || x.also?.includes(verb)).map(x => ({at: x.at, label: x.label ?? `a ${verb} spot`, place: x.place, ...(x.activity === verb && x.paintingTarget && x.title ? {title: x.title} : {})})) : undefined);
       if (!marks) return undefined;
       const best = marks.map(m => {const placeId = m.place ?? around(m.at[0], m.at[1])[0], pl = placeId ? this.places.byId.get(placeId) : undefined;
-        return {label: m.label, at: m.at, distance: here ? Math.hypot(m.at[0] - here[0], m.at[1] - here[1]) : 0, ...(pl && known.includes(pl) ? {place: pl.name, placeId: pl.id} : {})};})
+        return {label: m.label, ...('title' in m && m.title ? {title: m.title as string} : {}), at: m.at, distance: here ? Math.hypot(m.at[0] - here[0], m.at[1] - here[1]) : 0, ...(pl && known.includes(pl) ? {place: pl.name, placeId: pl.id} : {})};})
         .sort((a, b) => a.distance - b.distance || a.label.localeCompare(b.label))[0];
       if (!best) return null;
       // entry 36: who is singing at the nearest mic (a sing spot is one singer's), for a polite refusal that names them
