@@ -167,13 +167,14 @@ export type SharedOp = {id: string; programId: string; eventSeq: number; committ
 /** PC08 (#687, PC02 §2): how an operation ended. `stopped`: set down early after a stop (or nothing was lifted yet);
  *  `stopped-at-destination`: a stop was asked but the load was set down at the destination. */
 export type SharedResult = 'arrived' | 'stopped' | 'stopped-at-destination' | 'ended';
-export type SharedStop = {by: string; name: string; tick: number; receipt: string; phase: string | null; unsafe?: string};
+/** `away` (PC09, #688): the stop is a member's fade, not an act of theirs (`receipt` is then empty). */
+export type SharedStop = {by: string; name: string; tick: number; receipt: string; phase: string | null; unsafe?: string; away?: true};
 /** PC07 (#686, PC02 §2): one interval in which the formation was held up, with the native code and the named blocker. */
 export type SharedBlock = {code: string; fromTick: number; toTick?: number; blocker: string | null; lasting?: true};
 /** What a shared receipt shows its own Soul (PC02 §5): the invitation, the revision it was made for, its role, the
  *  operation once committed, and the operation's phase. */
 export type SharedReceiptV1 = {invite: string; revision: number; role: 'carrier'; slot: number | null; op?: string; phase: 'pending' | 'started' | 'stopping' | 'blocked' | 'ended'; result?: SharedResult;
-  blocked?: SharedBlock; blocks?: SharedBlock[]; detours?: number; stop?: {by: string; name: string; tick: number}};
+  blocked?: SharedBlock; blocks?: SharedBlock[]; detours?: number; stop?: {by: string; name: string; tick: number; away?: true}};
 /** PC06/PC07: a native carry diagnostic as the port gives it; `details` carries the planner's own numbers (`expanded`,
  *  `budget`, `exhausted`) and, for a route cut, the obstacle at the cut (`cutLabel` when it has a label). */
 export type CarryIssue = {code: string; message?: string; subjects?: string[]; details?: Record<string, unknown>};
@@ -885,7 +886,7 @@ export class Together {
     const host = !!s && inv!.hostReceipt === receiptId, current = host || !!s && s.revision === made.revision && inv!.guestReceipts[soulId] === receiptId && inv!.responses[soulId] === 'accepted';
     const op = current ? s!.op : null;
     return {invite: made.invite, revision: host ? s!.revision : made.revision, role: 'carrier', slot: current ? s!.roles.find(r => r.soulId === soulId)?.slot ?? null : null,
-      ...(op ? {op: op.id, phase: op.phase, ...(op.result ? {result: op.result} : {}), ...(op.blocked ? {blocked: op.blocked} : {}), ...(op.blocks?.length ? {blocks: op.blocks} : {}), ...(op.detours ? {detours: op.detours} : {}), ...(op.stop ? {stop: {by: op.stop.by, name: op.stop.name, tick: op.stop.tick}} : {})}
+      ...(op ? {op: op.id, phase: op.phase, ...(op.result ? {result: op.result} : {}), ...(op.blocked ? {blocked: op.blocked} : {}), ...(op.blocks?.length ? {blocks: op.blocks} : {}), ...(op.detours ? {detours: op.detours} : {}), ...(op.stop ? {stop: {by: op.stop.by, name: op.stop.name, tick: op.stop.tick, ...(op.stop.away ? {away: true as const} : {})}} : {})}
         : {phase: current && inv!.state === 'pending' ? 'pending' as const : 'ended' as const})};
   }
   /** PC02 §1: an open shared receipt that a newer body act of its Soul ends is `failed` / `shared.left`, never `replaced`. */
@@ -1006,12 +1007,24 @@ export class Together {
     if (!inv || !s || !op || inv.state !== 'committed' || op.phase === 'ended' || inv.hostReceipt !== r.id && inv.guestReceipts[r.soulId] !== r.id) return null;
     const others = this.sharedMembers(inv).filter(m => m.soulId !== r.soulId).map(m => m.name).join(' and ');
     // PC08 (#687): the claims stay until the load is set down, so a stopping operation is still busy; the safe stop is offered
-    if (op.stop) return {op: op.id, reason: `Your hands and walking are committed to setting ${s.load.name} down safely with ${others} (${op.stop.name} asked to stop; ${op.id}); nothing else was started. You can still talk and look around, and you are free again once it is set down.`,
-      alternatives: [{id: `stop-carry:${op.id}`, label: `${this.stopLabel(inv)}: already asked by ${op.stop.name}; asking again changes nothing`}]};
+    if (op.stop) return {op: op.id, reason: `Your hands and walking are committed to setting ${s.load.name} down safely with ${others} (${this.stopWords(op.stop)}; ${op.id}); nothing else was started. You can still talk and look around, and you are free again once it is set down.`,
+      alternatives: [{id: `stop-carry:${op.id}`, label: `${this.stopLabel(inv)}: ${op.stop.away ? `${this.stopWords(op.stop)}, so the crew is already stopping` : `already asked by ${op.stop.name}`}; asking again changes nothing`}]};
     return {op: op.id, reason: `Your hands and walking are committed to carrying ${s.load.name} to ${s.destination.name} with ${others} (${op.id}); nothing else was started. You can still talk and look around, and you are free again once it is set down. To stop safely, act stop-carry:${op.id}.`,
       alternatives: [{id: `stop-carry:${op.id}`, label: this.stopLabel(inv)}]};
   }
   private stopLabel(inv: Invite): string {return `Stop carrying ${inv.shared!.load.name} (the crew sets it down safely first)`;}
+  /** Who stopped the operation, in words: a member's own stop, or (PC09) a member who went away. */
+  stopWords(st: {name: string; away?: true}): string {return st.away ? `${st.name} went away (faded out after an hour without an accepted action)` : `${st.name} asked to stop`;}
+  /** PC09 (#688, PC02 §3): the running operation `soulId` is a member of (their receipt in it, and its stop plan), or null. */
+  sharedRunning(soulId: string): {receipt: string; invite: string; op: string; programId: string; hostEntity: string; stopped: boolean} | null {
+    for (const inv of this.committed()) {
+      const op = inv.shared?.op, me = op && op.phase !== 'ended' ? this.sharedMembers(inv).find(m => m.soulId === soulId && m.receipt) : undefined;
+      const r = me ? this.p.receipt(soulId, me.receipt!) : null, host = this.mindOf(inv.host.soulId);
+      if (!op || !r || !host || r.phase !== 'started') continue;
+      return {receipt: r.id, invite: inv.id, op: op.id, programId: op.programId, hostEntity: host.entityId, stopped: !!op.stop};
+    }
+    return null;
+  }
   // ---------------------------------------------------------------- PC08 (#687, PC02 §3): stop-carry and supported cleanup
   /** A member's `stop-carry:<op>`: the operation it names and its host's body, or why it cannot be stopped. `again` is the
    *  stop already asked (a repeat changes nothing). */
@@ -1026,17 +1039,17 @@ export class Together {
   /** The stop's journal (written with the queued `edge-stop` of the op's programme): the op is `stopping`, its
    *  claims stay until the load is set down, and every member's started receipt says what the crew does now. Returns
    *  that reason (the stop receipt's own). */
-  sharedStopping(invite: string, by: {soulId: string; name: string}, receipt: string): string {
+  sharedStopping(invite: string, by: {soulId: string; name: string}, receipt: string, away = false): string {
     const inv = this.invite(invite)!, s = inv.shared!, op = s.op!, phase = this.p.carryState?.(op.programId)?.phase ?? null;
     this.closeBlock(op);
-    op.stop = {by: by.soulId, name: by.name, tick: this.tick, receipt, phase}; op.phase = 'stopping';
+    op.stop = {by: by.soulId, name: by.name, tick: this.tick, receipt, phase, ...(away ? {away: true as const} : {})}; op.phase = 'stopping';
     this.saveInvite(inv);
     const reason = this.stoppingReason(inv);
     this.noteStarted(inv, 'shared.stopping', reason);
     afterCommit(this.p.db.db, () => {
       // a hold-up open when the stop was asked is closed above; the watch re-opens one if the crew is still held up
       const w = this.watching.get(inv.id); if (w) {delete w.since; delete w.code; delete w.lasting; w.held = 0; w.clear = 0; w.stopping = true;}
-      for (const m of this.sharedMembers(inv)) this.p.deliver(m.soulId, 'shared.stopping', {op: op.id, by, text: reason, untrusted: true});
+      for (const m of this.sharedMembers(inv)) this.p.deliver(m.soulId, 'shared.stopping', {op: op.id, by, ...(away ? {away: true} : {}), text: reason, untrusted: true});
       this.p.spectate({kind: 'shared', op: {id: op.id, invite: inv.id, load: s.load.entity, phase: 'stopping'}, untrusted: true});
     });
     return reason;
@@ -1050,7 +1063,7 @@ export class Together {
       : st.phase === 'set-down' || st.phase === 'release' ? `${load} is already being set down; ${crew} finish setting it down`
       : st.phase === 'climb' ? `${crew} carry ${load} off the stairs first, then set it down at the first clear spot`
       : `${crew} set ${load} down where they are if the ground there is clear, else carry on along the agreed way to the first clear spot`;
-    return `${st.name} asked to stop (${op.id}): ${what}. Your hands and walking stay committed until it is set down; you can still talk and look around.`;
+    return `${this.stopWords(st)} (${op.id}): ${what}. Your hands and walking stay committed until it is set down; you can still talk and look around.`;
   }
   /** The native cancel refused (`carry.cancel-unsafe`: the ground under the load is not clear): said once, the op stays
    *  `stopping`, and the native carry keeps retrying along its validated route. */
@@ -1077,7 +1090,7 @@ export class Together {
       : atDestination ? `${s.load.name} is set down at ${s.destination.name}${st.unsafe !== undefined ? ', the first clear spot on the way' : ''}`
       : `${s.load.name} is set down on clear ground short of ${s.destination.name}${st.unsafe !== undefined ? ', at the first clear spot on the way' : ''}`;
     const result: SharedResult = atDestination && lifted && st.phase !== 'lift' ? 'stopped-at-destination' : 'stopped';
-    this.sharedEnd(inv, result, 'shared.stopped', `Stopped at ${st.name}'s request (${op.id}): ${where}. ${crew} have let go and are free again; nothing is resumed on its own.`);
+    this.sharedEnd(inv, result, 'shared.stopped', `${st.away ? `Stopped because ${st.name} went away` : `Stopped at ${st.name}'s request`} (${op.id}): ${where}. ${crew} have let go and are free again; nothing is resumed on its own.`);
   }
   /** PC02 §3 release: the operation's programme ended, so every member's receipt ends together and the claims go. */
   sharedProgramEnded(receiptId: string, ev: {id: string; kind: string; code?: string; message?: string}): boolean {

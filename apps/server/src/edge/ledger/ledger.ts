@@ -211,8 +211,12 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const fadeOut = (soulId: string) => {
       const m = this.host.minds.get(soulId); if (!m) return;
       this.faded.add(soulId); this.pending.delete(soulId);
+      // PC09 (#688, PC02 §3): a member of a running shared carry keeps its receipt, and the fade is its stop with the
+      // supported cleanup (the op's programme is stopped untilSafe, never cut); the receipt ends with the crew's result
+      const shared = this.sharedCarry ? this.together.sharedRunning(soulId) : null;
       // Not replaced by the Soul's own act: its open receipts end failed, so agents can tell why.
-      for (const r of this.openReceipts(soulId)) this.update(r.id, {phase: 'failed', code: 'soul.faded', reason: 'This Soul faded out after an hour without an accepted action; act again to come back.'});
+      for (const r of this.openReceipts(soulId)) if (r.id !== shared?.receipt) this.update(r.id, {phase: 'failed', code: 'soul.faded', reason: 'This Soul faded out after an hour without an accepted action; act again to come back.'});
+      if (shared) {if (!shared.stopped) this.awayStop(soulId, m.name, shared); return;}
       try { if (this.host.engine.programOf(m.entityId)) void this.host.enqueue('edge-stop', `edge:${soulId}`, {soulId, entityId: m.entityId, why: 'faded'}).catch(() => {/* best effort */}); } catch { /* clock not ready: ambient skips faded Souls anyway */ }
     };
     fading?.onFade?.(e => {
@@ -220,7 +224,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       // Reclaimed by speech/converse/object acts (not through act()): land at a starting place like act() does.
       else if (e.change === 'reclaimed' && this.faded.delete(e.soulId)) {
         const m = this.host.minds.get(e.soulId);
-        try { if (m) void this.host.enqueue('edge-relocate', `edge:${e.soulId}`, {soulId: e.soulId, entityId: m.entityId, to: this.startingPoint(e.soulId), why: 'reclaimed after fading'}).catch(() => {/* best effort */}); } catch { /* clock not ready */ }
+        try { if (m && !this.inSharedCarry(e.soulId)) void this.host.enqueue('edge-relocate', `edge:${e.soulId}`, {soulId: e.soulId, entityId: m.entityId, to: this.startingPoint(e.soulId), why: 'reclaimed after fading'}).catch(() => {/* best effort */}); } catch { /* clock not ready */ }
         this.dropMenu('reclaimed', e.soulId);
       }
     });
@@ -1573,7 +1577,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (this.faded.has(soul.soulId)) {
       // Reclaim: fall onto feet at a starting place, identity and history intact (C9).
       this.faded.delete(soul.soulId);
-      await this.host.enqueue('edge-relocate', `edge:${soul.soulId}`, {soulId: soul.soulId, entityId: soul.entityId, to: this.startingPoint(soul.soulId), why: 'reclaimed after fading'});
+      if (!this.inSharedCarry(soul.soulId)) await this.host.enqueue('edge-relocate', `edge:${soul.soulId}`, {soulId: soul.soulId, entityId: soul.entityId, to: this.startingPoint(soul.soulId), why: 'reclaimed after fading'});
       this.dropMenu('act-retry', soul.soulId);
     }
     // L3 item 4: an offered id builds that one offer (bindOne), never the whole menu; words and via legs read the menu
@@ -2014,6 +2018,17 @@ export class EdgeLedger implements EdgeLedgerHooks {
     return {accepted: true, receipt: this.receipt(soul.soulId, r.id)!};
   }
 
+  /** PC09 (#688, PC02 §3): a member of a running shared carry faded. Their fade is their stop: the same logged
+   *  `edge-stop` naming the op's programme as `stop-carry`, and the op's `stopping` journal (`stop.away`), but no stop
+   *  receipt in their name; their shared receipt stays open and ends with the crew's result. A clock that is not running
+   *  logs nothing and writes nothing, so the body goes on with the accepted carry to its end. */
+  private awayStop(soulId: string, name: string, op: {invite: string; op: string; programId: string; hostEntity: string}) {
+    try {void this.host.enqueue('edge-stop', `edge:${soulId}`, {soulId, entityId: op.hostEntity, programId: op.programId, op: op.op, why: 'shared.away'}).catch(() => {/* best effort */});}
+    catch {return;}
+    tx(this.db.db, () => {this.together.sharedStopping(op.invite, {soulId, name}, '', true);});
+  }
+  /** PC09: a reclaimed Soul whose body a running shared carry still moves is not relocated (no teleport out of a crew). */
+  private inSharedCarry(soulId: string): boolean {return this.sharedCarry && !!this.together.sharedRunning(soulId);}
   /** PC08 (#687, PC02 §3): `stop-carry:<op>` from any member. The stop is logged as `edge-stop` naming the op's programme
    *  (so it replays by that programme, not by the member's body); the op's `stopping` and the stop's own receipt are
    *  written with it, and that receipt completes at once ("stop requested": the prompt acknowledgment, not the release). The
@@ -2023,10 +2038,10 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const refuse = (code: string, reason: string) => {this.recordRefusal(soul.soulId, 'act', capability, code, reason); return {accepted: false as const, code, reason, capability};};
     if (clientRef) {const old = this.rows('soul_id=? AND client_ref=?', soul.soulId, clientRef)[0]; if (old) return {accepted: true, receipt: this.view(old)};}
     const opId = capability.slice('stop-carry:'.length);
-    const again = (plan: {again?: {by: string; name: string; tick: number; receipt: string}}) => {
+    const again = (plan: {again?: {by: string; name: string; tick: number; receipt: string; away?: true}}) => {
       const first = plan.again!;
       if (first.by === soul.soulId) {const r = this.receipt(soul.soulId, first.receipt); if (r) return {accepted: true as const, receipt: r};}
-      const r = tx(this.db.db, () => {const r = this.insert(soul, capability, 'waiting', clientRef, true, {stopCarryV1: {op: opId, repeat: true}}); this.update(r.id, {code: 'shared.stop-asked', reason: `${first.name} already asked to stop (${opId}); nothing more was done. The crew sets the load down safely, and you are free once it is down.`}); this.update(r.id, {phase: 'completed'}); return r;});
+      const r = tx(this.db.db, () => {const r = this.insert(soul, capability, 'waiting', clientRef, true, {stopCarryV1: {op: opId, repeat: true}}); this.update(r.id, {code: 'shared.stop-asked', reason: `${first.away ? `${this.together.stopWords(first)}, so the crew is already stopping` : `${first.name} already asked to stop`} (${opId}); nothing more was done. The crew sets the load down safely, and you are free once it is down.`}); this.update(r.id, {phase: 'completed'}); return r;});
       return {accepted: true as const, receipt: this.receipt(soul.soulId, r.id)!};
     };
     const plan = this.together.sharedStopPlan(soul.soulId, opId);
@@ -2484,6 +2499,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const program = this.mw.programOf(m.entityId), open = this.openReceipts(soulId);
     const running = open.find(r => r.phase === 'started' && r.programId && r.programId === program);
     if (running) return 'activity ' + running.capability;
+    // PC09 (#688): a running shared carry holds every member, the borrowed guest too (the host's programme moves its body)
+    const shared = open.find(r => r.phase === 'started' && this.together.sharedBusyFor(r));
+    if (shared) return 'shared ' + shared.capability;
     if (open.some(r => r.phase === 'waiting')) return 'starting ' + open[0]!.capability;
     if (this.aboard(m.entityId)) return 'riding';
     const state = stateOf(this.host, m.entityId);
@@ -2766,7 +2784,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       reclaim: async (s: EdgeSoul) => {
         if (!self.faded.has(s.soulId)) return;
         self.faded.delete(s.soulId);
-        await self.host.enqueue('edge-relocate', `edge:${s.soulId}`, {soulId: s.soulId, entityId: s.entityId, to: self.startingPoint(s.soulId), why: 'reclaimed after fading'});
+        if (!self.inSharedCarry(s.soulId)) await self.host.enqueue('edge-relocate', `edge:${s.soulId}`, {soulId: s.soulId, entityId: s.entityId, to: self.startingPoint(s.soulId), why: 'reclaimed after fading'});
         self.dropMenu('coreA-retry', s.soulId);
       },
       /** Open conversations (ids and member Soul ids only; never turns). */
