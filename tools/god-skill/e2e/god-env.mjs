@@ -9,6 +9,7 @@
 //   node tools/god-skill/e2e/god-env.mjs [--port 5591] [--keep] [--dpr 1,2]
 //
 // Report + screenshots under .lane/e2e-god-env/<stamp>/.
+import { setCameraMode } from '../../browser/world-controls.mjs';
 import { spawn, execFile } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -191,7 +192,7 @@ try {
         const r = await waitFor(page, async () => { const s = await page.evaluate(() => ({ atmos: window.__simLiving?.atmosphere?.(), lightning: window.__simLiving?.lightning?.(), entity: !!window.__simEntity?.layer?.active })); return { ok: s.entity && s.atmos?.kind === 'storm' && !!s.lightning, ...s }; }, 60000);
         const c = await page.locator('canvas').first().boundingBox(); await page.mouse.click(c.x + c.width * 0.5, c.y + c.height * 0.62); await page.waitForTimeout(800);
         // take the camera (real click on Broadcast → your camera) and fold the god panel away for the pictures
-        await page.locator('button.viewer-broadcast').first().click().catch(() => {}); await page.waitForTimeout(500);
+        await setCameraMode(page, 'manual'); await page.waitForTimeout(500);
         await page.locator('button[aria-label="collapse"]').first().click().catch(() => {});
         const mode = await page.evaluate(() => document.querySelector('canvas')?.dataset.cameraMode);
         return { ...r, mode, audio: (await page.evaluate(() => window.__simLiving.lightning())).audio, errors };

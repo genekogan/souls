@@ -1,0 +1,26 @@
+{
+ "soulRun": 1,
+ "name": "garden-setup",
+ "scenario": "../../scenarios/soul-runs/hamlet-trio.json",
+ "world": { "port": 4322, "slug": "sr-garden-setup", "genesis": "worlds/templates/littlemartians-garden.json" },
+ "setup": { "batches": ["../setup/garden-bench.json"], "maxWallSec": 60 },
+ "durationSec": 110,
+ "cast": {
+  "seats": [
+   { "id": "dee", "adapter": "scripted-owner", "soulName": "Dee", "script": { "rules": [
+    { "match": "bench", "ack": "Going to sit", "do": [["act", "sit on the bench", "--wait", "80"]], "result": "Sitting on the bench" },
+    { "match": "wave|hello", "do": [["say", "Hello from the bench!"]], "result": "Said hello" } ] } },
+   { "id": "eli", "adapter": "scripted-owner", "soulName": "Eli", "script": { "rules": [
+    { "match": "tower", "ack": "Heading to the tower", "do": [["act", "walk to the ceramic tower", "--wait", "80"]], "result": "At the ceramic tower" },
+    { "match": "wave|hello", "do": [["say", "Hello from the tower!"]], "result": "Said hello" } ] } }
+  ],
+  "script": [
+   { "seat": "dee", "atSec": 5, "channel": "card", "text": "Please sit on the new bench in the court.", "budgetSec": 80 },
+   { "seat": "eli", "atSec": 5, "channel": "card", "text": "Walk over to the ceramic tower.", "budgetSec": 80 },
+   { "seat": "*", "atSec": 90, "channel": "card", "text": "Wave hello to each other.", "budgetSec": 18 }
+  ]
+ },
+ "observer": { "check": true, "required": false, "cameras": [], "timeoutMs": 60000 },
+ "limits": { "maxWallSec": 600, "maxControllers": 2, "cleanupWaitMs": 15000 },
+ "retention": { "worldData": "keep", "controllerState": "keep" }
+}

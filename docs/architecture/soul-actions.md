@@ -101,3 +101,34 @@ node --test --test-concurrency=1 tools/soul-actions/<name>.test.mjs
 Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. The tests live in
 `tools/soul-actions/`; the viewer's motion units are under `apps/web/test/`, `apps/web/src/*.test.ts`,
 `mars/viewer/engine/test/` and `mars/viewer/app/engine-view/`.
+
+### M05 wave transition (#635)
+
+The existing shared Wave clip uses its authored raised-hand band (normalized phase .36–.72), traversed smoothly on
+recorded world time. The full authored cycle lowered the palm by about .337 m in 50 ms before its loop endpoint;
+merely easing its weight did not fix that internal motion. A two-second entry and attained-weight release retain the
+native wave target and action duration. Release freezes the authored pose at the native stop. The procedural fallback
+receives the same envelope. No source animation, movement path or native authority changes.
+
+Recorded wave tails overlap when another wave begins during the return: the strongest envelope supplies the weight,
+and their weighted authored phases join the poses continuously. A new hand, seat or activity owner cancels the old
+tail. Wave's contributing mixer actions are reactivated in a stable order, using public animation APIs and the same
+recorded times/weights; quaternion accumulation otherwise depends on activation history and differs on a fresh seek.
+
+Take replay derives the wave intervals from a compatible contiguous recording chain, up to four seconds for entry
+plus early release. Wave history is separate from the legacy activity index. Unknown pre-window wave onset retains
+full attained weight rather than inventing a short entry. Entry/release use take history, never a client wall clock.
+Cached per-take wave discovery reuses the existing activity pass; older unseen takes are inspected once. Never-wave
+histories skip the deep chain/change scan after discovery. The native engine, events and Soul context are unchanged.
+Rendering adds eligibility branches, cached history lookups on updates, active/recent-wave arithmetic and active-wave
+mixer reactivation. These are explicit rendering costs, not a claim of overall render-cost equivalence.
+
+Cold joins receive about two seconds of socket takes while live depiction runs 1.5 seconds behind the server. A wave's release can therefore outlive the join prefix. The shared live view now requests a compatible initial four-second motion prefix through the existing history endpoint, once per view owner/epoch, with at most 12 chunks and a five-second abort/deadline. It gates first body depiction while that request settles. A bounded 14-chunk rolling client history retains subsequently observed live chunks; compatible hashes, rules, timestep and base identity prevent foreign or broken prefixes from being adopted. Missing or failed history keeps the existing unknown-prefix depiction; it does not certify equivalent wave recovery.
+
+This adds a one-time client HTTP lookup, possibly up to five seconds of initial depiction wait, and bounded history indexing on live/chunk updates, including worlds without waves. Stable frame inputs reuse the cached history prefix. These are explicit client arrival and rendering costs; there is no claim of arrival-latency or overall client-cost equivalence. Native world state, context, events, action timing and engine tick paths are unchanged.
+
+### M05: recorded hand-over custody (#637)
+
+The recorder and sampleTake already preserve discrete support/held fields at the same native tick. The current reproduced defect was one tick of stale presented held-item metadata after native support changed, rather than the historical seven-sample recording report. New hand-over invitations persist `custodyPolicy: same-tick-v1`; body records copy that marker. At the existing receiver commit, the existing support-derived publisher updates both participants' presented maps, preserving other held items and tag filtering. Old invitations/absent-policy records retain their pinned legacy world/event hash trace and timing. No recorder, ownership/contact clock, movement or consent path is replaced.
+
+This adds two holder lookups (four existing hand scans) once at the active transfer, and 31 serialized bytes per invitation/action marker, not an idle reconciliation hook or new Soul context field. Actual native-hand contact is checked against the take's existing 5.5 mm precision and the 8 cm/50 ms M04 motion bound. The marker can change one fresh receiver palm by 1.575 mm when its pose switches from fixed reach goal to recorded hand; the separate shared 3.937 mm fresh/continuous drift remains disclosed. Exact discrete custody is required; exact cross-mode skin-palm equality is not claimed.

@@ -7,6 +7,7 @@
 //   node tools/god-skill/e2e/nav-far.mjs [--port 5671] [--keep] [--dpr 1,2]
 //
 // Report + screenshots under .lane/e2e-nav-far/<stamp>/.
+import { setCameraMode } from '../../browser/world-controls.mjs';
 import { spawn, execFile } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -138,7 +139,7 @@ try {
       const d = `dpr${dpr}`;
       await step(`V1[${d}] Ana by the far hut on the new land (real Chrome)`, async () => {
         await waitFor(page, async () => ({ ok: await page.evaluate(() => !!window.__simEntity?.layer?.active) }), 60000);
-        await page.locator('button.viewer-broadcast').first().click().catch(() => {}); await page.waitForTimeout(500);
+        await setCameraMode(page, 'manual'); await page.waitForTimeout(500);
         await page.locator('button[aria-label="collapse"]').first().click().catch(() => {});
         const p = (await hereOf())?.me?.pos ?? [942, 12];
         await look(page, [p[0] - 16, 9, p[1] + 14], [p[0] + 4, 1.5, p[1] - 1]); await page.waitForTimeout(5000); await snap(page, `v1-ana-at-far-hut-${d}`);

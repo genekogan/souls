@@ -18,7 +18,7 @@ import type { Entity } from '../world/types.ts';
 import { angleDelta, datan2, hypot, wrapAngle, type Vec3 } from '../core/math.ts';
 import { bodyFrame, carryHand, lerp3, restHand, sideOf, smooth, at, type Hand } from './body.ts';
 import { HANDOVER_IDLE_RETURN_SECONDS, HANDOVER_SETTLE_SECONDS, ITEM_REACH_SECONDS, ITEM_RECOVERY_SECONDS } from './presentation.ts';
-import { graspPoint, heldYaw, inHand, isItem, poseAtHand, putInHand } from './model.ts';
+import { graspPoint, heldBy, heldYaw, publishHeldItems, inHand, isItem, poseAtHand, putInHand } from './model.ts';
 import { HUMAN_RADIUS } from '../world/catalog.ts';
 import type { Spatial } from '../spatial/service.ts';
 import { clearanceAt } from '../spatial/grid.ts';
@@ -52,6 +52,8 @@ const schema = z.object({
   hand: z.enum(['left', 'right']).optional(),
   /** offer: how long the raised item waits for its taker; receive: how long to wait for the raised item (s). */
   waitSeconds: z.number().min(1).max(120).optional(),
+  /** Prospective same-tick presented-map publication; absent keeps recorded legacy behavior. */
+  custodyPolicy: z.literal('same-tick-v1').optional(),
 }).strict();
 export type HandOverParams = z.infer<typeof schema>;
 type Phase = 'face' | 'raise' | 'offering' | 'let-go' | 'lower' | 'recover' | 'wait' | 'reach' | 'contact' | 'withdraw' | 'cancel-withdraw' | 'cancel-recover' | 'done';
@@ -327,6 +329,11 @@ function stepReceive(rt: Runtime, ex: Exec, a: Entity, b: Entity | undefined, it
   putInHand(item, a.id, ex.hand);
   ex.turn0 = wrapAngle(yaw - a.pose.yaw); ex.turn1 = Math.abs(angleDelta(0, ex.turn0)) > Math.PI / 2 ? wrapAngle(Math.round(ex.turn0 / Math.PI) * Math.PI) : 0;
   (item.support as { turn?: number }).turn = ex.turn0;
+  if (ex.p.custodyPolicy === 'same-tick-v1') {
+    // One existing support commit, then its metadata projection. Never step holder actions here.
+    publishHeldItems(a, heldBy(rt.world, a.id));
+    if (b?.human) publishHeldItems(b, heldBy(rt.world, b.id));
+  }
   // the item's base centre stays where it is: beside this palm, settling onto it as it is drawn in
   const g = graspPoint(item); ex.off0 = [g[0] - q[0], g[1] - q[1], g[2] - q[2]];
   itemAt(item, q, ex.off0, yaw);

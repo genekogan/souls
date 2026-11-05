@@ -33,7 +33,8 @@ export const BODY_KNOBS: Readonly<BodyKnobs> = Object.freeze({
 export const SHUFFLE_M = [2, 6] as const, DRIFT_M = [5, 15] as const;
 export const BODY_PATH_SAMPLE_M = 0.25;
 /** How the body is held right now (read from the engine by the ledger). */
-export type Posture = 'standing' | 'moving' | 'seated' | 'lying' | 'water' | 'basket' | 'other';
+/** `standby`: a rolling body already in its upright rest (the sleep/doze it would be asked for; never re-issued). */
+export type Posture = 'standing' | 'moving' | 'seated' | 'lying' | 'standby' | 'water' | 'basket' | 'other';
 export type BodySoul = {soulId: string; entityId: string; name: string; owner: string};
 
 /** What the rule needs from the world (the Ledger implements it; tests may fake it). */
@@ -59,6 +60,10 @@ export type BodyPort = {
   places(x: number, z: number, level: number): string;
   /** A free seat within `radius` m: the plan steps to sit there (seconds filled), or null. */
   seat(soul: BodySoul, radius: number, seconds: number): Program['steps'] | null;
+  /** An upright rest adapter for bodies that cannot sit or lie. */
+  standby?(soul:BodySoul,seconds:number):Program['steps']|null;
+  /** Milliseconds left in the upright rest this body is running now, or null when none runs. */
+  standbyLeftMs?(entityId:string):number|null;
   decide(soul: BodySoul, option: string, label: string, steps: Program['steps']): void;
   stop(soul: BodySoul): void;
   publish(soulId: string, view: BodyView): void;
@@ -123,7 +128,7 @@ export class BodyRule {
   private inWater(s: BodySoul) {return this.port.posture(s.entityId) === 'water';}
   private sleepDoing(s: BodySoul): BodyDoing {
     const p = this.port.posture(s.entityId);
-    return p === 'water' ? 'floating' : p === 'seated' || p === 'basket' ? 'sitting' : p === 'lying' ? 'dozing' : p === 'moving' ? 'drifting' : 'standing';
+    return p === 'water' ? 'floating' : p === 'seated' || p === 'basket' ? 'sitting' : p === 'lying' || p === 'standby' ? 'dozing' : p === 'moving' ? 'drifting' : 'standing';
   }
   private set(s: BodySoul, r: Row, state: BodyState, doing: BodyDoing, now: number) {
     const changed = r.state !== state || r.doing !== doing;
@@ -215,14 +220,16 @@ export class BodyRule {
     r.next_at = now + 60_000;
     const p = this.port.posture(s.entityId), doing = this.sleepDoing(s);
     if (doing !== r.doing) this.set(s, r, 'asleep', doing, now); else this.save(r);
+    if (p === 'standby') {const left = this.port.standbyLeftMs?.(s.entityId); if (left != null) {r.next_at = now + Math.min(60_000, left); this.save(r);} return;}   // look again when the standby ends
     if (p === 'seated' || p === 'basket' || p === 'lying') return;
     if (p === 'water') {if (this.port.running(s.entityId) && !this.port.agentBusy(s.soulId)) this.port.stop(s); return;}
     if (this.port.agentBusy(s.soulId) && this.port.running(s.entityId)) return;
     // a shuffle still under way stops first; the body lies down at the next look (a pose refuses a body mid-walk)
     if (p === 'moving' && this.port.running(s.entityId)) {this.port.stop(s); r.next_at = now + 3000; this.save(r); return;}
+    const standby=this.port.standby?.(s,3600);if(standby){this.port.decide(s,'body:asleep','Sleeping upright',standby);return;}
     this.port.decide(s, 'body:asleep', 'Sleeping', [{verb: 'mars:pose_v1', params: {activity: 'nap', seconds: 3600}}]);
   }
-  private restingWord(s: BodySoul): BodyDoing {const p = this.port.posture(s.entityId); return p === 'water' ? 'floating' : p === 'seated' || p === 'basket' ? 'sitting' : p === 'lying' ? 'dozing' : 'standing';}
+  private restingWord(s: BodySoul): BodyDoing {const p = this.port.posture(s.entityId); return p === 'water' ? 'floating' : p === 'seated' || p === 'basket' ? 'sitting' : p === 'lying' || p === 'standby' ? 'dozing' : 'standing';}
   /** Idle reflex: one move, weighted by how long the Soul has idled (doze dominates after IDLE_DOZE). */
   private idleStep(s: BodySoul, r: Row, now: number, k: BodyKnobs) {
     if (this.port.posture(s.entityId) === 'moving' && this.port.running(s.entityId)) {this.port.stop(s); r.next_at = now + 3000; this.save(r); return;}   // a drift ends first
@@ -235,6 +242,10 @@ export class BodyRule {
     let x = mix(s.soulId + ':idle', ++r.n) * w.reduce((a, [, n]) => a + n, 0), pick = w[0][0];
     for (const [m, n] of w) {if (x < n) {pick = m; break;} x -= n;}
     const up: Program['steps'] = posture === 'seated' || posture === 'lying' ? [{verb: 'stand', params: {}}] : [];
+    const standby=this.port.standby?.(s,seconds);
+    if(standby&&(pick==='sitting'||pick==='dozing')&&posture==='standby'){   // already in standby: continue it, never cancel and re-ask; look again when it ends
+      const left=this.port.standbyLeftMs?.(s.entityId);if(left!=null)r.next_at=now+Math.min(stepMs,left);this.set(s,r,'idle','dozing',now);return;}
+    if(standby&&(pick==='sitting'||pick==='dozing')){this.port.decide(s,'body:doze','Standby (upright)',[...up,...standby]);this.set(s,r,'idle','dozing',now);return;}
     if (pick === 'sitting') {
       if (posture === 'seated') return this.set(s, r, 'idle', 'sitting', now);
       const seat = this.port.seat(s, k.seatRadiusM, seconds);

@@ -1,3 +1,4 @@
+import {WAVE_BLEND_SECONDS,type WaveSample} from './wave-blend.ts';
 // Recorded take → three.js overlay (spec §21–23, §18). Reads only the take file:
 // `sampleTake` for poses/discrete state, `sampleTrack` for the planned camera.
 // Everything is random access in take time, so scrubbing, pausing, the speed
@@ -178,6 +179,9 @@ export class TakePeople {
   private history: readonly Take[] = [];
   /** Per person: the ticks at which `activity` / `baseActivity` changed in this take, and the values (library clip
    *  crossfades and one-shots need how long the current activity has run and what came before). */
+  private waveOwners = new Map<string,number[]>();
+  private waveActs = new Map<string,{t:number[];v:string[]}>();
+  private waveTakes = new WeakMap<Take,boolean>();
   private acts = new Map<string, { t: number[]; v: string[]; bt: number[]; bv: (string | null)[]; it?:number[];iv?:(string|null)[] }>();
   private base: SpatialScene;
   private stairKey = '';
@@ -253,8 +257,10 @@ export class TakePeople {
   setWaterHistory(takes:readonly Take[]){
     // the walk ease reads across the adjacent take windows of the same history (a stop just past a window's edge)
     this.history=takes;const nb=this.adjacent(takes);
-    if(nb.prev!==this.neighbours.prev||nb.next!==this.neighbours.next){this.neighbours=nb;this.gaits.clear();this.strides.clear();this.indexActs();}
+    const changed=nb.prev!==this.neighbours.prev||nb.next!==this.neighbours.next;
+    if(changed){this.neighbours=nb;this.gaits.clear();this.strides.clear();this.indexActs();}
     const key=this.take.id+'|'+takes.map(t=>t.id).join('|');if(key===this.waterHistoryKey)return;
+    if(!changed)this.indexActs();
     this.waterTransition=waterTransitions(this.take,takes);this.waterHistoryKey=key;
   }
 
@@ -284,15 +290,33 @@ export class TakePeople {
   }
 
   /** How long `id`'s current activity has run at `tick` and what it did before (absent when it began before the take). */
-  private activityHistory(id: string, tick: number, act: string, walk: number): Pick<SampledHuman, 'activityAge' | 'prevActivity' | 'prevBaseActivity' | 'prevActivityDuration' | 'prevInstrument' | 'restAge' | 'walkAge' | 'restAgeAtWalk'> {
+  private activityHistory(id: string, tick: number, act: string, walk: number): Pick<SampledHuman, 'activityAge' | 'prevActivity' | 'prevBaseActivity' | 'prevActivityDuration' | 'prevInstrument' | 'restAge' | 'walkAge' | 'restAgeAtWalk' | 'prevWaveDuration' | 'waveRestAge' | 'waveSamples' | 'waveClock'> {
     const a = this.acts.get(id);
     const k = this.runAt(a, tick);
     const rest = { ...this.restAge(id, a, k, tick, act), ...(walk > 0.02 ? this.walkStart(id, tick) : {}) };
-    if (!a || k < 1) return rest;
-    let b: string | null = null;
-    for (let i = a.bt.length - 1; i >= 0; i--) if (a.bt[i] < a.t[k]) { b = a.bv[i]; break; }
-    const history:Pick<SampledHuman,'activityAge'|'prevActivity'|'prevBaseActivity'|'prevActivityDuration'|'prevInstrument'|'restAge'|'walkAge'|'restAgeAtWalk'>={activityAge:(tick-a.t[k])*this.take.dt,prevActivity:a.v[k-1],...(b?{prevBaseActivity:b}:{}),...rest};
-    if(history.activityAge!<PIANO_FADE&&(history.prevActivity==='play-piano'||history.prevActivity==='play-music'&&a.it)){
+    const wave:Pick<SampledHuman,'waveSamples'|'waveRestAge'|'waveClock'>={};
+    const wa=this.waveActs.get(id),wk=this.runAt(wa,tick);
+    if(wa){
+      const samples:WaveSample[]=[];
+      for(let j=0;j<=wk;j++)if(wa.v[j]==='wave'){
+        if(this.waveOwners.get(id)?.some(t=>t>=wa.t[j]&&t<=tick))continue;
+        if(wa.v.slice(j+1,wk+1).some(v=>v!=='idle'&&v!=='wave'&&!GAIT_ACTS.has(v)))continue;
+        const next=wa.t[j+1],end=next!==undefined&&next<=tick?next:undefined,released=end===undefined?undefined:(tick-end)*this.take.dt;
+        if(released!==undefined&&released>=WAVE_BLEND_SECONDS)continue;
+        samples.push(end===undefined?{...(j>0?{age:(tick-wa.t[j])*this.take.dt}:{})}:{released,...(j>0?{duration:(end-wa.t[j])*this.take.dt}:{})});
+      }
+      if(samples.length){
+        wave.waveSamples=samples;wave.waveClock=(this.take.startTick+tick)*this.take.dt;
+        const idleActs={t:wa.t,v:wa.v.map(v=>v==='wave'?'idle':v)};
+        const hypothetical=this.restAge(id,idleActs,wk,tick,act==='wave'?'idle':act).restAge;
+        if(hypothetical!==undefined)wave.waveRestAge=hypothetical;
+      }else if(a&&k>0&&a.v[k-1]==='wave')wave.waveSamples=[];
+    }else if(a&&k>0&&a.v[k-1]==='wave')wave.waveSamples=[];
+    if(!a||k<1)return {...rest,...wave};
+    let b:string|null=null;for(let i=a.bt.length-1;i>=0;i--)if(a.bt[i]<a.t[k]){b=a.bv[i];break;}
+    const age=(tick-a.t[k])*this.take.dt;
+    const history:Pick<SampledHuman,'activityAge'|'prevActivity'|'prevBaseActivity'|'prevActivityDuration'|'prevInstrument'|'restAge'|'walkAge'|'restAgeAtWalk'|'prevWaveDuration'|'waveRestAge'|'waveSamples'|'waveClock'>={ ...wave, activityAge: age, prevActivity: a.v[k - 1], ...(b ? { prevBaseActivity: b } : {}), ...rest };
+    if(age<PIANO_FADE&&(history.prevActivity==='play-piano'||history.prevActivity==='play-music'&&a.it)){
       let instrument:string|null=null;for(let i=(a.it?.length??0)-1;i>=0;i--)if(a.it![i]<a.t[k]){instrument=a.iv![i];break;}
       if(history.prevActivity==='play-piano'||instrument==='piano'||instrument==='keyboard'){
         history.prevActivityDuration=(a.t[k]-a.t[k-1])*this.take.dt;if(instrument)history.prevInstrument=instrument;
@@ -333,14 +357,40 @@ export class TakePeople {
   private indexActs() {
     this.acts.clear();
     const prev = this.neighbours.prev, windows: [Take, number][] = [...(prev ? [[prev, prev.startTick - this.take.startTick] as [Take, number]] : []), [this.take, 0]];
-    for (const [take, offset] of windows) for (const [tick, id, field, value] of take.changes) {
-      if (field !== 'activity' && field !== 'baseActivity' && field !== 'instrument') continue;
-      if(field==='instrument'&&value!=='piano'&&value!=='keyboard'&&!this.acts.get(id)?.it)continue;
-      let a = this.acts.get(id);
-      if (!a) this.acts.set(id, (a = { t: [], v: [], bt: [], bv: [] }));
-      if (field === 'activity') { if (typeof value === 'string' && a.v[a.v.length - 1] !== value) { a.t.push(tick + offset); a.v.push(value); } }
-      else if(field==='baseActivity'){ a.bt.push(tick + offset); a.bv.push(typeof value === 'string' ? value : null); }
-      else if(value==='piano'||value==='keyboard'||a.it){(a.it??=[]).push(tick+offset);(a.iv??=[]).push(typeof value==='string'?value:null);}
+    const add=(take:Take,offset:number)=>{
+      let found=false;
+      for(const [tick,id,field,value]of take.changes){
+        if(field!=='activity'&&field!=='baseActivity'&&field!=='instrument')continue;
+        if(field==='instrument'&&value!=='piano'&&value!=='keyboard'&&!this.acts.get(id)?.it)continue;
+        let a=this.acts.get(id);if(!a)this.acts.set(id,(a={t:[],v:[],bt:[],bv:[]}));
+        if(field==='activity'){
+          if(value==='wave')found=true;
+          if(typeof value==='string'&&a.v[a.v.length-1]!==value){a.t.push(tick+offset);a.v.push(value);}
+        }else if(field==='baseActivity'){a.bt.push(tick+offset);a.bv.push(typeof value==='string'?value:null);}
+        else{(a.it??=[]).push(tick+offset);(a.iv??=[]).push(typeof value==='string'?value:null);}
+      }
+      this.waveTakes.set(take,found);
+    };
+    for(const [take,offset]of windows)add(take,offset);
+    this.waveActs.clear();this.waveOwners.clear();
+    // Cached discovery scans each immutable take once. Ordinary forward idle
+    // chunks are already inspected by the existing activity-index pass above.
+    const hasWave=(take:Take)=>{let found=this.waveTakes.get(take);if(found===undefined){found=take.changes.some(([, ,f,v])=>f==='activity'&&v==='wave');this.waveTakes.set(take,found);}return found;};
+    if(!this.history.some(hasWave)&&!hasWave(this.take))return;
+    const chain:Take[]=[this.take];let first=this.take;
+    while((this.take.startTick-first.startTick)*this.take.dt<2*WAVE_BLEND_SECONDS){
+      const matches=this.history.filter(t=>t!==first&&t.ticks>0&&adjacentTakes(t,first)&&t.rulesVersion===first.rulesVersion);
+      if(matches.length!==1)break;first=matches[0];chain.unshift(first);
+    }
+    const waveIds=new Set<string>();for(const take of chain)if(hasWave(take))for(const [,id,f,v]of take.changes)if(f==='activity'&&v==='wave')waveIds.add(id);
+    if(!waveIds.size)return;
+    const owners=new Set(['hands','grip','handHold','rps','heldItemsV1','on']);
+    for(const take of chain)for(const [tick,id,f,v]of take.changes){
+      if(!waveIds.has(id))continue;
+      if(owners.has(f)&&v&&(typeof v!=='object'||Object.keys(v).length)){let t=this.waveOwners.get(id);if(!t)this.waveOwners.set(id,(t=[]));t.push(tick+take.startTick-this.take.startTick);}
+      if(f!=='activity'||typeof v!=='string')continue;
+      let a=this.waveActs.get(id);if(!a)this.waveActs.set(id,(a={t:[],v:[]}));
+      if(a.v.at(-1)!==v){a.t.push(tick+take.startTick-this.take.startTick);a.v.push(v);}
     }
   }
   private runAt(a: { t: number[] } | undefined, tick: number) {

@@ -77,4 +77,15 @@ test('automatic multi-performance crossfades advance playlist state, prefetch th
   assert.equal(musicState().index, following, 'a second automatic crossfade advances again');
   assert.equal(musicState().playing, first.playlist[following]);
   assert.equal(musicState().toneCtx, 'none');
+  syncMusic({...on,on:false});
+  syncMusic({...on,on:false,station:'quiet'});
+  assert.equal(musicState().playing,null,'changing station while off never starts music');
+  assert.equal(musicState().want,false);assert.equal(musicState().station,'quiet');
+  assert.equal(musicState().playlist.length,6);
+  syncMusic({...on,station:'quiet'});await flush();
+  assert.ok(musicState().playlist.includes(musicState().playing!));
+  assert.equal(musicState().source,'file');
+  syncMusic({...on,on:false,station:'all'});
+  assert.equal(musicState().playlist.length,44,'All restores every original piece');
+
 });

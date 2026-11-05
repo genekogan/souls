@@ -1,3 +1,4 @@
+import {wavePose,WAVE_BLEND_SECONDS,type WaveSample} from './wave-blend.ts';
 import {actuatorHand,handActuatorFrame,posterLocal,strokeWork,twoHanded,HAND_REACH_SECONDS,HAND_RELEASE_SECONDS,type HandActuatorMotion} from '../../engine/social/hand-actuator.ts';
 import {insidePoint,itemPoseOf,ITEM_RECOVERY_SECONDS,type ItemPoseView} from '../../engine/items/presentation.ts';
 import {wateringFrame,transferWeight,TRANSFER_HANDOFF,type HandTransfer,type WateringMotion} from '../../engine/items/watering.ts';
@@ -180,6 +181,11 @@ type View = {
    *  and base before it (crossfade), the paired-gesture partner and where it is, metres walked, speaking now. */
   since?: number;
   prevAct?: string;
+  waveSamples?: readonly WaveSample[];
+  waveClock?: number;
+  waveEvents?: {start:number;end?:number}[];
+  prevWaveDuration?: number;
+  waveRestAge?: number;
   prevBase?: string;
   prevDuration?: number;
   prevInstrument?: string;
@@ -305,6 +311,11 @@ export type SampledHuman = {
    *  one-shots); absent when the activity began before the take. */
   activityAge?: number;
   prevActivity?: string;
+  /** Release-only shared-wave timing; derived from recorded activity history, never a renderer wall clock. */
+  waveSamples?: readonly WaveSample[];
+  waveClock?: number;
+  prevWaveDuration?: number;
+  waveRestAge?: number;
   prevBaseActivity?: string;
   /** Duration and instrument of the previous recorded activity, for an interrupted entry fade. */
   prevActivityDuration?: number;
@@ -577,6 +588,9 @@ export class HumanViews {
         const key=(e.human as {soul?:unknown}).soul;
         v = this.make(e.id, s, act,typeof key==='string'?key:undefined);
         v.base = base;
+        // A live/lab view joining an already active wave has no certified onset.
+        // Retain full attained weight, as replay does for a pre-window wave.
+        if(act==='wave'){v.waveEvents=[{start:world.tick*DT-WAVE_BLEND_SECONDS}];v.waveSamples=[{}];v.waveClock=world.tick*DT;}
         v.grip = e.human.grip?.entity;
         v.gripSlot = e.human.grip?.slot;
         v.cur.pose = v.prev.pose = this.postureGoal(v, e, world, false);
@@ -592,9 +606,25 @@ export class HumanViews {
       const inst = Math.hypot(e.pose.p[0] - c.p[0], e.pose.p[2] - c.p[2]) / DT;
       const ground = act === 'ride' || act === 'row' ? 0 : e.human.speed ?? inst; // a vehicle carries a rider: no gait from its motion
       v.speed += (ground - v.speed) * 0.6;
-      if (act !== v.activity) { v.prevAct = v.activity; v.prevBase = v.base; v.prevDuration=(v.age+1)*DT;v.prevInstrument=v.instrument; }
+      if (act !== v.activity) {
+        const clock=world.tick*DT;
+        if(v.activity==='wave'&&v.waveEvents?.length)v.waveEvents[v.waveEvents.length-1].end=clock;
+        if(act==='wave'){if(!v.waveEvents?.length)v.waveRestAge=v.restAge;(v.waveEvents??=[]).push({start:clock});}
+        v.prevWaveDuration=v.activity==='wave'?v.since:undefined;
+        v.prevAct = v.activity; v.prevBase = v.base; v.prevDuration=(v.age+1)*DT;v.prevInstrument=v.instrument;
+      }
       v.age = act === v.activity ? v.age + 1 : 0;
       v.since = v.age * DT;
+      if(v.waveEvents){
+        const human=e.human,owner=human.hands?.left||human.hands?.right||human.grip||human.handHold||human.rps||human.heldItemsV1?.left||human.heldItemsV1?.right||human.on;
+        if(owner||(act!=='wave'&&act!=='idle'&&!GAIT_ACTS.has(act))){v.waveEvents=undefined;v.waveSamples=[];v.waveClock=undefined;v.waveRestAge=undefined;}
+      }
+      if(v.waveSamples?.length===0&&act!=='wave'&&(v.since??0)>=WAVE_BLEND_SECONDS)v.waveSamples=undefined;
+      if(v.waveEvents){
+        const clock=world.tick*DT;if(v.waveRestAge!==undefined)v.waveRestAge+=DT;v.waveEvents=v.waveEvents.filter(e=>e.end===undefined||clock-e.end<WAVE_BLEND_SECONDS);
+        v.waveSamples=v.waveEvents.map(e=>e.end===undefined?{age:clock-e.start}:{released:clock-e.end,duration:e.end-e.start});v.waveClock=clock;
+        if(!v.waveEvents.length){v.waveEvents=undefined;v.waveSamples=undefined;v.waveClock=undefined;v.waveRestAge=undefined;}
+      }
       v.activity = act;
       v.groundSeat = onGround(act, e.human.baseActivity);
       v.partner = (e.human as { partner?: string }).partner;
@@ -862,6 +892,7 @@ export class HumanViews {
       v.walkAge = f.walkAge;
       v.restAgeAtWalk = f.restAgeAtWalk;
       v.prevAct = f.prevActivity;v.prevDuration=f.prevActivityDuration;v.prevInstrument=f.prevInstrument;
+      v.prevWaveDuration=f.prevWaveDuration;v.waveRestAge=f.waveRestAge;v.waveSamples=f.waveSamples;v.waveClock=f.waveClock;
       v.prevBase = f.prevActivity === undefined ? undefined : baseOf(f.prevActivity, f.prevBaseActivity);
       v.partner = f.partner;
       v.partnerP = undefined;
@@ -952,7 +983,14 @@ export class HumanViews {
     const tSec = lerp(a.expressionT, b.expressionT, alpha);
     const engineHands = !!(b.hands.left || b.hands.right || a.hands.left || a.hands.right);
     const freeBody = !v.grip && !v.on && !fp && proneW === 0 && !v.sleepPose;
-    const waveClip = v.activity === 'wave' && !!extra.wave && !engineHands, interactClip = INTERACT.has(v.activity) && !!extra.interact && !engineHands && b.sitW === 0;
+    // Shared Wave eases from its recorded onset and lowers from the attained
+    // pose at a stop. Native hand/seat/walk owners keep the final authority.
+    const waveReturn=(v.waveSamples?v.waveSamples.some(s=>s.released!==undefined):(v.prevAct==='wave'&&(v.since??Infinity)<WAVE_BLEND_SECONDS)) && (v.activity==='idle'||GAIT_ACTS.has(v.activity)) && freeBody && !v.handHold && !v.rps;
+    const waveActive=v.activity==='wave'||waveReturn;
+    const wave=waveActive?wavePose(v.waveSamples??[v.activity==='wave'?{age:v.since}:{released:v.since,duration:v.prevWaveDuration}],v.waveClock??tSec):null;
+    const waveBlend=wave?.weight??0;
+    const waveTime=wave?.fallbackTime??tSec;
+    const waveClip = waveActive && !!extra.wave && !engineHands, interactClip = INTERACT.has(v.activity) && !!extra.interact && !engineHands && b.sitW === 0;
     // a library clip that does the whole body replaces the procedural frame; overlays (hands) stay on top of it
     const clipBody = !!lib.cur && CLIP_BODY.has(v.activity) && lib.cur.pick.body !== 'seat' && !(lib.cur.pick.body === 'ground-seat' && v.activity !== 'sit-ground');
     const pairPhase = v.partner && v.partner < h.name ? v.partner : h.name; // partners move in step
@@ -963,7 +1001,8 @@ export class HumanViews {
     const act: ActivityFrame | null = freeBody && !engineHands && w < 0.5 && !waveClip && !interactClip && !clipBody && !lib.sleep
       ? letGo ? activityFrame('sing', 'idle', tSec, pairPhase, { since: 9, released: v.since, accompanist: null })
       : pianoRelease ? activityFrame('play-piano',v.prevBase??'sit',tSec-v.since!,pairPhase,{actorId:h.name,released:v.since,priorAge:v.prevDuration})
-      : activityFrame(v.activity, v.base, tSec, pairPhase, { groundSeat: v.groundSeat, since: v.since, gap: v.partnerP ? Math.hypot(v.partnerP.x - h.position.x, v.partnerP.z - h.position.z) : undefined,instrument:v.instrument,game:v.game,gameTick:v.gameTick,gameDt:v.gameDt,actorId:h.name, ...(v.activity === 'sing' ? { accompanist: accompanistOf(v.cur.p, this.players) } : {}) }) : null;
+      : activityFrame(waveReturn?'wave':v.activity, v.base, waveActive?waveTime:tSec, pairPhase, { groundSeat: v.groundSeat, since: v.since, gap: v.partnerP ? Math.hypot(v.partnerP.x - h.position.x, v.partnerP.z - h.position.z) : undefined,instrument:v.instrument,game:v.game,gameTick:v.gameTick,gameDt:v.gameDt,actorId:h.name, ...(v.activity === 'sing' ? { accompanist: accompanistOf(v.cur.p, this.players) } : {}) }) : null;
+    if(act && waveActive && !extra.wave)act.handW=[0,waveBlend];
     h.rotation.z = 0; h.rotation.x = 0;
     let lieFloor = h.position.y;
     if (act?.lying) {
@@ -984,7 +1023,7 @@ export class HumanViews {
     const runFallback = v.running && !jog && !extra.run && w > .05 ? runningGaitAt(Math.max(0,v.dist-v.speed*DT*(1-alpha)),v.speed) : null;
     const libShare = lib.cur || lib.prev ? 1 - w : 0;
     const curW = lib.cur ? libShare * lib.fade : 0, prevW = lib.prev ? libShare * (1 - lib.fade) : 0;
-    const waveW = waveClip && !lib.cur ? 1 - w : 0, interactW = interactClip && !lib.cur ? 1 - w : 0;
+    const waveW = waveClip && !lib.cur ? (1 - w)*waveBlend : 0, interactW = interactClip && !lib.cur ? 1 - w : 0;
     // A hand actuator's reach out of an idle gesture (hand at the hair, folded arms): the gesture fades out over the reach
     // while the arm travels from it to the target. It was cut on the first actuator frame (engine hands, idleBlend 0): the
     // hand dropped from the hair to the hip in one frame, 0.747 m per 50 ms (entry 33, neon switch-off).
@@ -1012,7 +1051,7 @@ export class HumanViews {
     // Entry 7 (frisbee clear-v1): the arms lower out of the game on its own recorded clock; idle variety fades in under them
     const gameBlend = v.game?.flightPolicy === 'clear-v1' ? gameArmBlend(v.game, v.gameTick ?? 0, v.gameDt ?? .05) : 1;
     const gameShare = v.activity === 'idle' || v.game?.flightPolicy !== 'clear-v1' ? 1 : 1 - gameBlend;
-    const idleFree = (v.activity === 'idle' || gameBlend < 1 || carryIdle || itemReach || GAIT_ACTS.has(v.activity) || ((v.activity === 'operate' || v.activity === 'reach') && reachFade > 0) || singFade > 0 || (v.activity === 'rps' && hgOff < 1)) && b.sitW === 0 && (!engineHands || reachFade > 0 || (v.itemPose?.idleBlend ?? 0) > 0) && (freeBody || carryIdle) && !lib.cur;
+    const idleFree = (waveActive || v.activity === 'idle' || gameBlend < 1 || carryIdle || itemReach || GAIT_ACTS.has(v.activity) || ((v.activity === 'operate' || v.activity === 'reach') && reachFade > 0) || singFade > 0 || (v.activity === 'rps' && hgOff < 1)) && b.sitW === 0 && (!engineHands || reachFade > 0 || (v.itemPose?.idleBlend ?? 0) > 0) && (freeBody || carryIdle) && !lib.cur;
     // Entry 43 (entry 41's M04 finding): a let-go before a reach fades the gesture out on its own clock; the reach after
     // it then fades none of its own (its gesture is already gone), and the act's own return of the idle (after the arm is
     // down) still applies. A reach with no let-go keeps the fade over the reach. A put of a handle-held item starts
@@ -1043,11 +1082,13 @@ export class HumanViews {
     // Idle variety (Idle_Neutral, fold arms, look around) fades in from when the body came to rest: switched on at full
     // weight it raised or crossed the arms in one frame whenever a walk ended inside a person's variety window
     // (entry 29's shared idle-onset fix, carried by entry 33: a hand-to-hair flash at each walk stop before a reach).
-    const restOnset = singFade > 0 ? v.singOnset! : v.restAge === undefined ? 1 : smooth(Math.min(1, v.restAge / IDLE_VARIETY_ONSET));
+    const normalRestOnset=v.restAge===undefined?1:smooth(v.restAge/IDLE_VARIETY_ONSET);
+    const waveRestOnset=v.waveRestAge===undefined?1:smooth(v.waveRestAge/IDLE_VARIETY_ONSET);
+    const restOnset = waveActive ? waveRestOnset : singFade > 0 ? v.singOnset! : normalRestOnset;
     if (v.activity === 'idle') v.singOnset = restOnset; else if (v.activity !== 'sing') v.singOnset = undefined;
-    const neutralW = extra.idleNeutral && idleFree ? (1 - w) * neutralWeight(h.name, gT) * idleHandoff * restOnset * (1 - hgOff) * idleShare * gameShare : 0;
+    const neutralW = extra.idleNeutral && idleFree ? (1 - w) * neutralWeight(h.name, gT) * idleHandoff * restOnset * (1 - hgOff) * idleShare * gameShare * (waveActive?1-waveBlend:1) : 0;
     const variant = idleFree ? idleVariant(h.name, gT) : null, variantA = variant ? libAction(v.rig, variant.clip) : null;
-    const variantW = variantA ? (1 - w - neutralW) * variant!.w * idleHandoff * restOnset * (1 - hgOff) * idleShare * gameShare : 0;
+    const variantW = variantA ? (1 - w - neutralW) * variant!.w * idleHandoff * restOnset * (1 - hgOff) * idleShare * gameShare * (waveActive?1-waveBlend:1) : 0;
     v.variety = neutralW + variantW;
     // A walk starting out of an idle gesture: the legs take the walk's own ease (WALK_EASE, 0.55 s), but folded arms opening
     // that fast swung a hand 0.28 m per 50 ms. On the arms alone (arms-only copies of the gesture clips) the gesture fades
@@ -1065,6 +1106,14 @@ export class HumanViews {
       // Entry 38: and never above the idle handoff of an actuator that just ended (a board stroke handing over to its step back)
       const want = (n0 + v0) * g * Math.min(idleHandoff, v.handoffAtWalk ?? 1), have = neutralW + variantW;
       if (want > have + 1e-4 && hgOff < 1e-4) { const k = Math.min(20, (want - have) / Math.max(1e-3, 1 - want)) / (n0 + v0); armsN = n0 * k; armsV = v0 * k; }
+    }
+    // Quaternion accumulation in AnimationMixer depends on activation order.
+    // A fresh seek must blend Wave and the idle layers in the same order as
+    // continuous playback. Re-activate only this contributing wave's layers;
+    // every action below receives its recorded time and weight again.
+    if(waveW>0||(act&&waveActive&&!extra.wave&&waveBlend>0)){
+      if(v.layered){for(const saved of v.saved){saved.o.position.copy(saved.p);saved.o.quaternion.copy(saved.q);}v.layered=false;}
+      for(const action of v.libOn)action.stop();for(const action of Object.values(extra))action?.stop();
     }
     const libOn = new Set<THREE.AnimationAction>();
     const libAt = (act: THREE.AnimationAction | null, weight: number, time: number) => {
@@ -1094,7 +1143,7 @@ export class HumanViews {
       else if (c.isRunning()) c.stop();
     };
     clipAt('run', jog ? 0 : runW, v.dist/(v.rig.template.runSpeed ?? 2.5));
-    clipAt('wave', waveW, tSec);
+    clipAt('wave', waveW, wave&&extra.wave?wave.phase*extra.wave.getClip().duration:0);
     clipAt('interact', interactW, tSec);
     clipAt('idleNeutral', 0, tSec); // drawn as a gesture (arms, neck, head) above
     walk.setEffectiveWeight(w - runW);
