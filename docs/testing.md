@@ -91,6 +91,40 @@ node e2e/local-smoke.mjs --build                 # any free port; --port N or E2
 runs and authors them. Rendering diagnostics for camera follow and temporal stability are in `tools/render-checks/`.
 The engine's own browser tests are in `mars/viewer/e2e/`.
 
+## CI window
+
+Per-PR CI (`ci.yml`) shares GitHub's hosted-runner cap, about 20 concurrent jobs. A server change selects about ten
+heavy legs, so with several workers pushing, unready PRs used to starve the merge path. Pull request runs are
+therefore **windowed**:
+
+- **Every PR push** runs the cheap jobs, `scope` and `repo` (the tooling tests), and the separate `security` (gitleaks,
+  path-guard, scrub-guard), `proof` and `changelog` workflows.
+- **Heavy jobs** (the `qualify` matrix and the browser `smoke`) run only inside the window: the PR is not a draft
+  and carries `merge:ready` or `ci:run`. Outside the window, a run whose paths selected heavy jobs is **deferred**.
+  The heavy jobs are skipped and `ci-ok` fails with "Full CI deferred". A deferred `ci-ok` is a real failure, so
+  skipped heavy jobs never count toward merging, and branch protection still requires a green `ci-ok`. Docs or
+  tools-only PRs select no heavy jobs and are never deferred.
+- **To request full CI**, add `ci:run` (or `merge:ready`) to a ready PR. `ci-request.yml` then dispatches `ci.yml`
+  for it, unless the head's newest CI run already passed. By hand: `gh workflow run ci.yml --ref <branch> -f pr=<n>`.
+  A requested run is scoped by the PR's paths against main, not full scope. It queues behind a CI run already going
+  for the same PR, and does no heavy work if that run passes at the same head. Once a PR is in the window, its later
+  pushes run in full as usual.
+- **A branch cut before the window (#914)** carries an old `ci.yml` with no `pr` input, and a dispatch runs the
+  branch's own copy, so GitHub would refuse the request. `ci-request.yml` checks the head's `ci.yml` first. When the
+  input is missing, it dispatches nothing and posts one comment on the PR: merge main forward (merge or rebase main
+  into the branch and push), and that push runs CI in the window. The merge train's strict path also rebases a
+  `merge:ready` PR. Dispatching main's `ci.yml` instead would not help: its checks would attach to main's commit, not
+  the PR head.
+- Pushes to main, manual runs without `pr`, and merge-group runs are never windowed. Main keeps its full-scope runs,
+  which the merge train reads.
+
+Steward procedure: give `ci:run` to the PRs entering the window, normally the next two in merge order. Add
+`merge:ready` once a head's `ci-ok` is green, and remove `ci:run` from PRs that leave the window. A PR labelled
+`merge:ready` straight from a deferred head still works: the request replaces the deferred run, and the train reads
+the replaced failure as stale (#909). But the train's 15-minute head wait is shorter than a server run, so a PR that
+is behind main can still leave with `needs:rebase`. The decision is `windowFor` and `windowed` in
+`.github/scripts/ci-scope.mjs`.
+
 ## Remote gate
 
 [testing/remote-gate.md](testing/remote-gate.md): `tools/test-harness/release-gate.sh` runs the complete suite for a
