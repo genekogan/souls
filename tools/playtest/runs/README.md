@@ -176,8 +176,11 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
 
 `compare` evaluates each run in memory (writing nothing into the runs) and returns a run index (`--out` writes
 `run-index.json` and `COMPARE.md`). It accepts run folders and `replay-set.json` folders. Attempts are grouped into
-arms by exact identity: the scenario without its port and paths, the world source hash, setup batch hashes, the seats
-(adapter, model, effort, persona, script hash), the director script, seed and duration. Every attempt is listed,
+arms by exact identity: the scenario without its port and paths (and, for a recorded run, without the observer
+metadata that names the run itself: run id, attempt, spec and effective spec hashes and server commit; only the
+requested world time stays; a directed cast counts its effective cast without the port), the world source hash,
+setup batch hashes, the seats (adapter, model, effort, persona, script hash), the director script, seed and duration.
+Every attempt is listed,
 including cancelled, failed and missing ones; only completed attempts are repeats. The arm also covers the run's
 label and its condition identity (#839): the server root's commit and uncommitted tracked file count, the tools
 checkout's commit and count (recorded from #801 on; unrecorded on older receipts, which is not a difference between
