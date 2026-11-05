@@ -26,7 +26,7 @@ import { publicTakes, type Hub } from './hub.ts';
 import { cardGrammar } from '@sim/brain';
 import { skillMd } from './skill.ts';
 import { edgeSkillStub } from './edge/skill-stub.ts';
-import { agentReader } from './agent-reader.ts';
+import { agentReader, LEGACY_READER_KEYS, worldReader } from './agent-reader.ts';
 import { ApiError, type Souls } from './souls.ts';
 import { mountMarsStatic } from './mars-static.ts';
 import type {TakeArchive} from './take-archive.ts';
@@ -292,7 +292,8 @@ export function buildApp(d: Deps) {
   // Selected-world text producer, before the SPA fallback. Origin/prefix come
   // from approved server configuration, never forwarded or caller headers.
   app.get('/llms.txt', c => {
-    try { return c.text(agentReader(d.cfg), 200, { 'content-type':'text/plain; charset=utf-8', 'cache-control':'public, max-age=60' }); }
+    // #897: the four original worlds keep their reviewed reader; every other world serves worldReader
+    try { return c.text(LEGACY_READER_KEYS.includes(d.cfg.worldKey) ? agentReader(d.cfg) : worldReader(d.cfg, displayWorldName), 200, { 'content-type':'text/plain; charset=utf-8', 'cache-control':'public, max-age=60' }); }
     catch { return c.text('World agent instructions are unavailable.', 503, { 'cache-control':'no-store' }); }
   });
   app.get('/w/:key/llms.txt', c => c.text('No agent reader for this world on this process.', 404));

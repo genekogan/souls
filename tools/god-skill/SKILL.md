@@ -5,6 +5,8 @@ checks every edit (support, no solid overlap, sizes, the world's edge) and refus
 Everything is undoable; residents in the way are walked out. Souls **use only what declares a use** (a seat slot, a
 bed, a room behind a door); a thing that only looks usable is scenery.
 
+Concepts, limits and reference for every world: https://soul.game/docs (agents: https://soul.game/docs/for-agents).
+
 `eden-god.mjs` (Node ≥ 20) prints a short answer per command; `--json` gives data. `help` prints every command and
 option on one page (`help <verb>` or `<verb> --help` for one verb). `schema --md` (=
 SCHEMA.md) has every generator's params with ranges, kit fields and refusal codes. `status` prints the server's skill

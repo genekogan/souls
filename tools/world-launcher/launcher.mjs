@@ -112,6 +112,7 @@ import { readLive, serveMetrics } from './metrics.mjs';   // lane L7
 import { archiveWorld, archivedSlugs, listArchive, readAudit, restoreWorld, tokenLabel } from './worldops.mjs';
 import { isUnlisted, publicWorlds } from './listing.mjs';
 import { NOINDEX, robotsTxt, sitemapXml } from './crawl.mjs';
+import { mcpServerJson, siteLlmsTxt } from './mcp-card.mjs';
 import { opSoul, opSetTest } from './op-souls.mjs';
 // The host check's last result, if the sim-worlds-health timer runs; stale (>30 min) counts as not ok.
 /** The world's heap cap (lane L1, LOAD-CONTRACT §4: per world from the registry, registry.mjs worldHeapMb). A node child gets
@@ -985,6 +986,8 @@ export async function openLauncher(cfg = {}) {
       if (world) {
         if (!SLUG_RE.test(world)) { json(res, 404, { ok: false, code: 'world.not-served' }); return; }
         if (path === `/w/${world}`) { res.writeHead(308, { location: `${wp(world)}/${url.search}` }).end(); return; }
+        // #897: an unlisted world has no public reader (its page and skills still answer at their URLs)
+        if (path === `/w/${world}/llms.txt` && (req.method === 'GET' || req.method === 'HEAD')) { const w = registry.get(world); if (w && isUnlisted(w)) { json(res, 404, { ok: false, code: 'world.unlisted' }); return; } }
         // a world's site routes answer the relay above, never the public proxy
         if (path.startsWith(`/w/${world}/v1/site/`)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
         await toWorld(req, res, world, url); return;
@@ -1000,7 +1003,11 @@ export async function openLauncher(cfg = {}) {
         if (path === '/' || path === '/index.html') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @sim/web build'); return; }
         // #896: the docs, llms.txt and the changelog's Markdown twin, all built into the web build (apps/web/src/docs-site.ts).
         // A page answers as HTML, or as its Markdown twin at <path>.md or for `Accept: text/markdown`.
-        if (path === '/llms.txt' || path === '/llms-full.txt') { if (serveFile(res, join(webDir, path.slice(1)), 'no-cache', req)) return; }
+        if (path === '/llms-full.txt' && serveFile(res, join(webDir, 'llms-full.txt'), 'no-cache', req)) return;
+        // #897: the root llms.txt is the build's docs index plus every listed world's reader (registry, per request)
+        if (path === '/llms.txt') { let idx; try { idx = readFileSync(join(webDir, 'llms.txt'), 'utf8'); } catch { idx = null; }
+          if (idx !== null) { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache' }).end(req.method === 'HEAD' ? undefined : siteLlmsTxt(idx, { origin: publicOrigin, base: B, worlds: publicWorlds(registry.worlds.filter((w) => !closing.has(w.slug))) })); return; } }
+        if (path === '/.well-known/mcp/server.json') { json(res, 200, mcpServerJson({ origin: publicOrigin, base: B, version: BUILD }), { 'cache-control': 'public, max-age=3600', 'x-robots-tag': 'noindex' }); return; }
         const doc = docFile(path, req.headers.accept), negotiated = /^\/docs(?:\.md$|\/|$)|^\/changelog(?:\/|\.md)?$/.test(path);
         if (negotiated) res.setHeader('vary', 'Accept');
         if (doc && serveFile(res, join(webDir, doc), 'no-cache', req)) return;
