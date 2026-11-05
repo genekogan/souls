@@ -374,6 +374,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
     return `${this.places.version}.${this.spotsSeq}.${this.navSeen.v}.${this.staticSeq}${this.navSeen.warm ? 'w' : ''}`;
   }
   private navSeen: {tick: number; v: string; warm: boolean} | null = null;
+  /** #901: the bridge's tick loop relabelled navigation after this tick's reads: the listing's warm memo reads again. */
+  navRelabelled(): void {this.navSeen = null;}
   /** Something static changed that the places, spots and navigation epoch do not show (a god layer switch…). */
   bumpStatic() {this.staticSeq++;}
   get spots(): SpotsData {
