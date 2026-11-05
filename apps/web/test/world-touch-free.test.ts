@@ -54,7 +54,7 @@ function gestures(opts: { free?: () => boolean; soul?: (x: number, y: number) =>
   const calls: Call[] = [];let walking = false;let pending: (() => void) | null = null;
   const camera: TouchCamera = {
     setStick: (f, r) => { walking = !!(f || r); calls.push(['stick', f, r]); }, get walking() { return walking; },
-    setTouchHeld: h => calls.push(['held', Number(h)]), touchLook: (dx, dy) => calls.push(['look', dx, dy]),
+    setTouchHeld: h => calls.push(['held', Number(h)]), touchLook: (dx, dy) => calls.push(['look', dx, dy]), touchLookEnd: () => calls.push(['lookEnd']),
     touchPinch: (x, y, r, s) => calls.push(['pinch', x, y, r, Number(s)]), touchRise: dy => calls.push(['rise', dy]), touchFly: (x, y) => calls.push(['fly', x, y]),
   };
   const touch = new WorldTouchFree(canvas, host, { camera, free: opts.free ?? (() => true), soulAt: opts.soul ?? (() => false) },
@@ -91,7 +91,7 @@ test('one finger elsewhere looks once past the tap slop; a stick touch and a loo
   const g = gestures();
   g.down(1, 300, 300);g.move(1, 303, 300);assert.equal(g.last('look'), undefined, 'within the tap slop');
   g.move(1, 320, 290);assert.deepEqual(g.last('look'), ['look', 17, -10]);assert.equal(g.touch.consumed(1), true, 'a look is not a tap');
-  g.up(1, 320, 290);
+  g.up(1, 320, 290);assert.deepEqual(g.calls.at(-2), ['lookEnd']);
   g.down(2, 80, 700);g.down(3, 300, 300);g.move(2, 80, 640);g.move(3, 340, 300);
   assert.ok(g.last('stick')![1] > .9);assert.deepEqual(g.last('look'), ['look', 40, 0], 'twin thumbs');
 });
@@ -123,6 +123,16 @@ test('long-press locks auto-walk until the next touch, which only stops it', () 
   g.down(2, 300, 200);assert.deepEqual(g.last('stick'), ['stick', 0, 0]);assert.deepEqual(g.passed, [], 'the stopping tap does nothing else');
   assert.equal(g.touch.state.locked, false);g.up(2, 300, 200);
   g.down(3, 80, 700);g.move(3, 80, 600);g.up(3, 80, 600);assert.deepEqual(g.last('stick'), ['stick', 0, 0], 'without the long-press, lifting stops');
+});
+
+test('long-press is decided by input times: a busy page that runs the timer before the moves does not lock', () => {
+  const g = gestures();
+  g.down(1, 80, 700);g.tick(100);g.fire();  // the timer ran late in page time, but the thumb moved 100 ms after touching
+  g.move(1, 80, 640);assert.equal(g.touch.state.armed, false);g.up(1, 80, 640);
+  assert.equal(g.touch.state.locked, false);assert.deepEqual(g.last('stick'), ['stick', 0, 0]);
+  g.down(2, 300, 300);g.move(2, 330, 300);assert.deepEqual(g.last('look'), ['look', 30, 0], 'the next finger looks (it is not eaten as a stop)');g.up(2, 330, 300);
+  g.tick(1000);g.down(3, 80, 700);g.tick(LONG_PRESS_MS + 50);g.move(3, 80, 640);assert.equal(g.touch.state.armed, true, 'held still past 0.5 s by input time arms it even before the timer');
+  g.up(3, 80, 640);assert.equal(g.touch.state.locked, true);
 });
 
 test('A5: at rest no document listeners or timers; they exist only while a finger is down', () => {
@@ -165,7 +175,11 @@ test('two-finger rise is Q/E: up without tilting; held touch keeps one take-over
     assert.ok(Math.abs(f.camera.position.y - y0 - 100 * RISE_PER_PIXEL) < 1e-6, 'fingers up 100 px: up 2 m, at most 1 m a frame');
     assert.ok(f.camera.getWorldDirection(new THREE.Vector3()).angleTo(d0) < 1e-6);
     f.rts.touchLook(30, 0);f.rts.touchLook(30, 0);f.frame();assert.equal(f.takeOvers(), 1, 'a held gesture takes over once');
-    assert.ok(f.rts.headLook.yaw > .2, 'one-finger look turns the head as right-drag');f.rts.setTouchHeld(false);
+    assert.ok(f.rts.headLook.yaw > .2, 'one-finger look turns the head as right-drag');
+    const gaze = f.camera.getWorldDirection(new THREE.Vector3()), eye = f.camera.position.clone();f.rts.touchLookEnd();f.rts.setTouchHeld(false);
+    for (let i = 0; i < 20; i++) f.frame();
+    assert.equal(f.rts.headLook.yaw, 0, 'lifting keeps the look as the new pivot');
+    assert.ok(f.camera.getWorldDirection(new THREE.Vector3()).angleTo(gaze) < 1e-6 && f.camera.position.distanceTo(eye) < 1e-9, 'the view does not move');
   } finally { f.rts.dispose(); }
   let mode: 'manual' | 'follow' = 'follow';const g = rtsRig(() => mode);try {
     const p = g.camera.position.clone();g.rts.setStick(1, 0);g.rts.touchRise(-50);g.rts.touchLook(40, 0);g.frame();

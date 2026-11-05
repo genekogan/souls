@@ -249,6 +249,17 @@ export class WorldRtsCamera {
     if(!this.touchable()||(!dx&&!dy))return;
     this.flight=null;this.cancelClick();this.startManualInput();this.turnHead(dx*.004,-dy*.004);this.markerAge=0;
   }
+  /** #891: a finished touch look keeps where you look: the pivot moves onto the gaze (the ground under the screen centre,
+   * else the point along the gaze at the old distance) and the head offset becomes zero, so the next pinch or orbit does not
+   * swing the view back. The eye and the view do not move. (Desktop right-drag keeps LOOK_MODEL's blend back.) */
+  touchLookEnd(){
+    if(!this.touchable()||!this.lookActive())return;
+    const c=this.adopt();this.camera.updateMatrixWorld();
+    const gaze=this.camera.getWorldDirection(new THREE.Vector3()),d=Math.max(NEAR_LIMIT,this.camera.position.distanceTo(this.pivot));
+    const ground=centreGround(this.camera,this.o.scene(),Math.max(600,d*1.5));
+    this.pivot.copy(ground&&ground.distanceTo(this.camera.position)>=1?ground:this.camera.position.clone().addScaledVector(gaze,d));
+    this.look={yaw:0,pitch:0};this.lookBlend=null;this.write(c);this.camera.up.set(0,1,0);this.camera.lookAt(this.pivot);this.moved=false;
+  }
   /** #891: two-finger vertical drag (pixels, + down) rises or lowers the eye on the next frame, as Q/E. */
   touchRise(dy:number){
     if(!this.touchable()||!Number.isFinite(dy)||!dy)return;

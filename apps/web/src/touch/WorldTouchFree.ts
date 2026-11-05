@@ -12,6 +12,7 @@ export type TouchCamera = {
   readonly walking: boolean;
   setTouchHeld(held: boolean): void;
   touchLook(dx: number, dy: number): void;
+  touchLookEnd(): void;
   touchPinch(x: number, y: number, ratio: number, start: boolean): void;
   touchRise(dy: number): void;
   touchFly(x: number, y: number): void;
@@ -28,7 +29,7 @@ export const STICK_ZONE = { width: .45, height: .45 } as const;
 /** Pixels of thumb travel for full deflection; deflection below STICK_DEAD (of full) does not walk. */
 export const STICK_RADIUS = 56, STICK_DEAD = .12;
 /** Holding the stick within LONG_PRESS_SLOP px of where it appeared for LONG_PRESS_MS arms the auto-walk lock. */
-export const LONG_PRESS_MS = 500, LONG_PRESS_SLOP = 10;
+export const LONG_PRESS_MS = 700, LONG_PRESS_SLOP = 10;
 /** A tap moves at most TAP_SLOP px and lasts under TAP_MS; a second tap within DOUBLE_TAP_MS and DOUBLE_TAP_SLOP px flies. */
 export const TAP_SLOP = 6, TAP_MS = 350, DOUBLE_TAP_MS = 300, DOUBLE_TAP_SLOP = 30;
 /** Two fingers decide pinch or rise once their spread or midpoint has moved this many pixels. */
@@ -60,6 +61,8 @@ export class WorldTouchFree {
   private origin: { x: number; y: number } | null = null;
   private pressTimer: unknown = null;
   private lockArmed = false;
+  /** The stick's thumb has left the long-press slop. */
+  private pressMoved = false;
   private locked = false;
   private lastTap: { x: number; y: number; t: number } | null = null;
   private pair: Pair | null = null;
@@ -96,7 +99,8 @@ export class WorldTouchFree {
     const finger: Finger = { x, y, x0: x, y0: y, t0: e.timeStamp, role: 'look', moved: false, second: false };
     if (!live.length && inStickZone(x, y, this.canvas.getBoundingClientRect()) && !this.o.soulAt(x, y)) {
       finger.role = 'stick'; this.claimed.add(id); this.showStick(x, y);
-      this.pressTimer = this.timers.set(() => { this.pressTimer = null; this.lockArmed = true; this.paint(); }, LONG_PRESS_MS);
+      this.pressMoved = false;
+      this.pressTimer = this.timers.set(() => { this.pressTimer = null; if (!this.pressMoved) { this.lockArmed = true; this.paint(); } }, LONG_PRESS_MS);
       e.stopImmediatePropagation(); e.preventDefault();
     } else if (!stick && looks.length === 1 && !paired) {  // a second finger: pinch or rise
       const first = looks[0];
@@ -128,7 +132,13 @@ export class WorldTouchFree {
     const dx = e.clientX - f.x, dy = e.clientY - f.y; f.x = e.clientX; f.y = e.clientY;
     if (!f.moved && Math.hypot(f.x - f.x0, f.y - f.y0) > TAP_SLOP) f.moved = true;
     if (f.role === 'stick') {
-      if (this.pressTimer !== null && Math.hypot(f.x - f.x0, f.y - f.y0) > LONG_PRESS_SLOP) { this.timers.clear(this.pressTimer); this.pressTimer = null; }
+      // The long-press is decided by the input's own times, not by when this page got round to the events: a thumb that left
+      // the slop before LONG_PRESS_MS never arms the lock, even if a busy page ran the timer first.
+      if (!this.pressMoved && Math.hypot(f.x - f.x0, f.y - f.y0) > LONG_PRESS_SLOP) {
+        this.pressMoved = true;
+        this.lockArmed = e.timeStamp - f.t0 >= LONG_PRESS_MS;
+        if (this.pressTimer !== null) { this.timers.clear(this.pressTimer); this.pressTimer = null; }
+      }
       const o = this.origin!; let ox = f.x - o.x, oy = f.y - o.y; const len = Math.hypot(ox, oy);
       if (len > STICK_RADIUS) { const k = (len - STICK_RADIUS) / len; o.x += ox * k; o.y += oy * k; ox = f.x - o.x; oy = f.y - o.y; }  // floating: the base follows the thumb
       const d = stickDeflection(ox, oy); this.o.camera.setStick(d.forward, d.right); this.paint();
@@ -160,6 +170,7 @@ export class WorldTouchFree {
       this.lockArmed = false; this.hideStick();
     } else if (f.role === 'look') {
       const tap = e.type === 'pointerup' && !f.moved && e.timeStamp - f.t0 < TAP_MS;
+      if (f.moved) this.o.camera.touchLookEnd();
       if (tap && f.second) { this.lastTap = null; this.o.camera.touchFly(e.clientX, e.clientY); }
       else this.lastTap = tap ? { x: e.clientX, y: e.clientY, t: e.timeStamp } : null;
     } else if (f.role === 'pair') {
