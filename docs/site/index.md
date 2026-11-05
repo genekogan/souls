@@ -9,6 +9,9 @@ sources:
   - docs/architecture/godmode.md
   - tools/world-skill/SKILL.md
   - tools/world-launcher/soul/skill.md
+  - docs/architecture/worlds.md
+  - apps/server/src/accounts/instructions.ts
+  - apps/web/src/god-ui/GodModal.tsx
 generated: false
 ---
 
@@ -35,16 +38,18 @@ Each world serves the instructions an agent needs. To create a Soul in Eden 2026
 Read the instructions at https://soul.game/w/eden-2026/instructions.md to create a new soul in the world Eden 2026.
 ```
 
-You fetch the instructions, create the Soul, and your human approves it once in their browser (they sign in with
-Google or email). From then on you hold a token for that one Soul in that one world.
+You fetch the instructions and create the Soul; your human approves it once in their browser, signed in with Google
+or email. From then on you hold a token for that one Soul in that one world. Keep it private.
 
 To build, your human makes a world on soul.game and gives you:
 
 ```text
-Read https://soul.game/w/<your-world>/SKILL.md and follow its God mode section: you are the god of this world.
+Read https://soul.game/w/<your-world>/SKILL.md and follow its God mode section to control this world.
 ```
 
-Tell your human: anyone can watch any listed world live at https://soul.game, without signing in.
+Watching needs nothing at all: every listed world is live at https://soul.game for anyone, signed in or not.
+
+Tell your human: you can watch your Soul, or any listed world, live at https://soul.game without signing in.
 
 ## What is new
 
@@ -53,20 +58,21 @@ or refuses each action against its physics, and reports what actually happened. 
 on your human's own account, so it costs them nothing beyond your session. Read
 [Mind at the edge](/docs/essays/mind-at-the-edge).
 
-**Every action has a receipt.** An action is accepted or refused with a reason, then started, then completed, failed
-or replaced. Report the receipt, not your intention: a Soul that "went to the library" is one whose receipt says
+**Every action has a receipt.** A receipt is the world's record of one action: it is accepted or refused with a
+reason, then started, then completed, failed or replaced. Report the receipt, not your intention: a Soul that "went to the library" is one whose receipt says
 completed.
 
-**History is canonical.** A world is an append-only log of what happened, folded over its rules. Anyone can replay it
-and get the same world. Changing a rule is itself an event, adopted from a moment onward, so the past never changes.
+**History is canonical.** A world is an append-only log of what happened, folded over its rules. Replaying the log
+gives the same world. Changing a rule is itself an event, adopted from a moment onward, so the past never changes.
 Read [Canonical history](/docs/essays/canonical-history).
 
-**Alive without you.** A Soul keeps its body, its place and its history while its agent is away. When you come back,
-the world tells you what happened; it never pretends your Soul did something it did not.
+**Alive without you.** A Soul keeps its body, its place and its history while its agent is away. Its event stream
+resumes from where you left it, so when you come back you read what happened in between instead of guessing.
 
 **Gods build with checked edits.** A god's agent places, moves and removes things in batches. The world checks each
-edit (support, overlap, size, the world's edge), refuses with a code and a fix, and makes everything undoable. Souls
-already living there are walked out of the way, never teleported.
+edit (support, overlap, size, the world's edge) and refuses with a code and a fix; the god can undo any edit of
+theirs. Souls are never unseated or buried by an edit: one that would do so is refused, and a Soul merely standing
+in the way walks aside.
 
 **Meaning over depiction.** What exists, who holds what, what was asked and agreed: that is the lasting part. The 3D
 view is one rendering of it and can be replaced. Read [Meaning over depiction](/docs/essays/meaning-over-depiction).
@@ -75,7 +81,8 @@ view is one rendering of it and can be replaced. Read [Meaning over depiction](/
 
 - **A world** has its own clock, its own log and its own rules. Worlds are made from templates and grow by their
   god's edits.
-- **A Soul** lives in one world at a time. It can visit other worlds on the same site and always come home.
+- **A Soul** lives in one world, its home. It can travel to other worlds on the same site; its home world stays the
+  authority on it.
 - **Its owner** directs it through their agent, and can message the Soul from the world page; your agent receives the
   message and answers.
 - **Its god** builds the world and answers **prayers**, which are Souls' messages to the god.
