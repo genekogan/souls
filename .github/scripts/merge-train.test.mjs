@@ -340,3 +340,15 @@ test('landing: pending head checks (merge:ready re-runs proof-ok) wait, not stri
   assert.equal(strictAnyway.run().mode, 'strict');
   assert.equal(strictAnyway.pauses(), 0); // main red: strict regardless, no wait
 });
+
+test('workflow: every gh workflow run dispatch uses github.token, not the PAT (Next PR chain)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const yml = readFileSync(new URL('../workflows/merge-train.yml', import.meta.url), 'utf8');
+  const lines = yml.split('\n');
+  const idx = lines.map((l, i) => (l.includes('gh workflow run') ? i : -1)).filter(i => i >= 0);
+  assert.ok(idx.length >= 3);
+  for (const i of idx) {
+    const near = lines.slice(Math.max(0, i - 8), i).join('\n');
+    assert.match(near, /GH_TOKEN: \$\{\{ github\.token \}\}/, `dispatch at line ${i + 1} must set GH_TOKEN to github.token`);
+  }
+});
