@@ -79,11 +79,11 @@ Other known limits:
 - Picking up something at the back of a counter bends the body deeply.
 - At a hand-over the model's record of who holds the item lags the engine by a few samples.
 - The `here` frame lists at most two things of a kind (three seats); more appear only as a count under `more`.
-- Some defs are over the library's geometry budgets: triangles for the curtained window, drawer chests, kettle, mug
-  and bell pull, and draw calls for the newest door and locker revisions. They are getting lighter revisions family by
-  family (#494). The drum kit, mic stand, jukebox and garden fountain already have one (`@2`, in budget), and so does
-  the watering can (`@3`); the older revision keeps its bytes and its recorded hold, because published revisions are
-  immutable.
+- Some defs are over the library's geometry budgets: triangles for the kettle and mug, and draw calls for the newest
+  door and locker revisions. They are getting lighter revisions family by family (#494). The drum kit, mic stand,
+  jukebox, garden fountain and curtained window already have one (`@2`, in budget), and so do the watering can, the
+  drawer chest and the bell pull (`@3`); the older revision keeps its bytes and its recorded hold, because published
+  revisions are immutable.
 - Portable lights were rebuilt as carry-and-set-down (entry 29); the earlier version is retired. Mixed-outfit seams
   (entry 11) remain parked.
 

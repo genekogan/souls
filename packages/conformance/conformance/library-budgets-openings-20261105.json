@@ -1,0 +1,46 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 library budgets, openings, drawers and bell (#494, #416): new revisions core-curtained-window@2, core-drawer-chest@3 and core-bell@3 fit their budgets (kit estimate 400, 366 and 329; drawn 400, 396 and 350; v1 curtains 448, drawer chest @1/@2 628, bell@2 drawn 470) with the previous revision's shapes, roles, slots, components, state and actions; only facet counts, one sill rounding and the bell's two straight sweeps (now the same straight rods) change. Published revisions are immutable, so curtained-window@1, drawer-chest@1/@2 and bell@2 keep their bytes, their pinned findings (hashes unchanged) and their holds, now marked superseded. A filtered K=2 sweep baked, placed and rendered every new sample; curtains and drawer chest have no finding. bell@3 keeps only the construction-scaffold view's overruns (condition=construction, also drawn by random[1], whose sampled condition is construction): 494 and 542 triangles and 10 and 12 draws, the same class of overrun bell@1 and bell@2 carry in known-20261015.json and soul-actions-20261101.json (scaffolding is drawn around the frame). Pinned here to the exact @3 hash. No budgets, samples or gap checks were relaxed; the rendering-gap list is unchanged.",
+  "findings": [
+    {
+      "def": "core-bell@3",
+      "hash": "bd6f889207f41775957ecb6331aa3c89006ec824416f14546e4ca9a87be11c81",
+      "stage": "gallery-budget",
+      "code": "triangles",
+      "detail": "494 > 400",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-bell@3",
+      "hash": "bd6f889207f41775957ecb6331aa3c89006ec824416f14546e4ca9a87be11c81",
+      "stage": "gallery-budget",
+      "code": "draws",
+      "detail": "10 > 4",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-bell@3",
+      "hash": "bd6f889207f41775957ecb6331aa3c89006ec824416f14546e4ca9a87be11c81",
+      "stage": "gallery-budget",
+      "code": "triangles",
+      "detail": "542 > 400",
+      "fields": [
+        "random[1]"
+      ]
+    },
+    {
+      "def": "core-bell@3",
+      "hash": "bd6f889207f41775957ecb6331aa3c89006ec824416f14546e4ca9a87be11c81",
+      "stage": "gallery-budget",
+      "code": "draws",
+      "detail": "12 > 4",
+      "fields": [
+        "random[1]"
+      ]
+    }
+  ]
+}
