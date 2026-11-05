@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { createLedger } from './ledger.mjs';
 import { validateSpec, portFree } from './spec.mjs';
 import { applySetup } from './setup.mjs';
+import { attachTrace, checkTap, summarizeTraces } from './diagnostics.mjs';
 import { writeJson, readJson } from '../lib/jsonl.mjs';
 import { scratchDir } from '../../lib/paths.mjs';
 
@@ -32,7 +33,7 @@ function bytesUnder(dir) {
 
 /** Static checks plus capability checks that create nothing: server files, the world port, the scenario runner's own
  *  preflight (providers, quota, machine gate). Returns {ok, errors, checks}. */
-export async function preflightRun({ validation, serverRoot, scenarioPreflight }) {
+export async function preflightRun({ validation, serverRoot, scenarioPreflight, tapCheck = checkTap }) {
   const errors = [];
   const files = { server: 'apps/server/src/main.ts', webDist: 'apps/web/dist/index.html', controllerCli: 'tools/world-launcher/soul/eden.mjs' };
   const checks = { files: {} };
@@ -49,6 +50,11 @@ export async function preflightRun({ validation, serverRoot, scenarioPreflight }
         ...(checks.scenario.allow?.allowed === false ? [`quota: ${checks.scenario.allow.note}`] : []), ...(checks.scenario.error ? [checks.scenario.error] : [])];
       errors.push({ code: 'preflight.scenario', message: `scenario preflight refused: ${why.join('; ') || 'see checks.scenario'}` });
     }
+  }
+  if (validation.effective.diagnostics?.trace) {
+    // The preload must load cleanly with capture off, or every traced CLI call would fail: checked before anything starts.
+    checks.diagnostics = await tapCheck();
+    if (!checks.diagnostics.ok) errors.push({ code: 'diagnostics.tap', message: `trace preload does not load: ${checks.diagnostics.error}` });
   }
   return { ok: errors.length === 0, errors, checks };
 }
@@ -80,10 +86,10 @@ export async function executeScenario({ scenarioFile, playtestDir, serverRoot, h
 /** startRun → terminal receipt. status: refused (nothing created) | completed | failed | cancelled | stopped-limit.
  *  signal: an AbortSignal the caller aborts on SIGINT/SIGTERM. execute/scenarioPreflight/importer are injectable. */
 export async function startRun({ spec, specPath = null, specSha256 = null, serverRoot, outDir = null, signal = null, log = () => {},
-  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup }) {
-  const validation = validateSpec(spec, { specPath, serverRoot });
+  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup, toolsRoot, tapCheck }) {
+  const validation = validateSpec(spec, { specPath, serverRoot, ...(toolsRoot ? { toolsRoot } : {}) });
   if (!validation.ok) return { status: 'refused', stage: 'validate', errors: validation.errors };
-  const pre = await preflightRun({ validation, serverRoot, scenarioPreflight });
+  const pre = await preflightRun({ validation, serverRoot, scenarioPreflight, ...(tapCheck ? { tapCheck } : {}) });
   if (!pre.ok) return { status: 'refused', stage: 'preflight', errors: pre.errors, checks: pre.checks };
   const eff = validation.effective;
 
@@ -104,6 +110,9 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   const save = () => writeJson(join(runDir, RECEIPT), receipt);
   save(); // a crash from here on leaves status "running", never a false success
   const scenarioFile = join(runDir, 'scenario.effective.json');
+  // Diagnostics capture (opt-in, SR3): traced seats get their preload and trace file before the scenario is written.
+  const diagnostics = attachTrace(validation.scenario, { effective: eff.diagnostics, runId: receipt.runId, runDir, ...(toolsRoot ? { root: toolsRoot } : {}) });
+  if (diagnostics) { receipt.diagnostics = diagnostics; save(); }
   writeJson(scenarioFile, validation.scenario);
   writeJson(join(runDir, 'spec.effective.json'), eff);
 
@@ -159,6 +168,7 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
     cost: { wallMs: endedAt - t0, executeMs: execMs, lifecycleOverheadMs: execMs == null ? null : endedAt - t0 - execMs, runnerCpuUserMs: Math.round((usage1.userCPUTime - usage0.userCPUTime) / 1000), runnerCpuSystemMs: Math.round((usage1.systemCPUTime - usage0.systemCPUTime) / 1000), runnerMaxRssMb: Math.round(usage1.maxRSS / 1024), runDirBytes: bytesUnder(runDir) },
     evidence: summarizeEvidence(playtestDir),
   });
+  if (receipt.diagnostics) receipt.diagnostics.capture.result = summarizeTraces(runDir, receipt.diagnostics);
   if (!cleanup.ok && receipt.status === 'completed') { receipt.status = 'failed'; receipt.reason = `cleanup incomplete: ${cleanup.failed.join(', ')}`; }
   save();
   return receipt;
