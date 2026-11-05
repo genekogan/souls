@@ -88,8 +88,8 @@ function main(argv) {
   const labels = argv.flatMap((a, i) => a === '--label' ? [argv[i + 1]] : []);
   let files;
   if (opt('--files') !== undefined) files = opt('--files').split(',');
-  else if (opt('--head')) files = git('diff', '--name-only', `${opt('--base') || defaultBase()}...${opt('--head')}`);
-  else files = [...new Set([...git('diff', '--name-only', opt('--base') || defaultBase()), ...git('ls-files', '--others', '--exclude-standard')])];
+  else if (opt('--head')) files = git('diff', '--name-only', '--no-renames', `${opt('--base') || defaultBase()}...${opt('--head')}`);
+  else files = [...new Set([...git('diff', '--name-only', '--no-renames', opt('--base') || defaultBase()), ...git('ls-files', '--others', '--exclude-standard')])];
   const result = tierFor(files, loadPolicy(), labels);
   if (argv.includes('--json')) {
     const gate = scopeFor(files);

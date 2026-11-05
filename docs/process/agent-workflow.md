@@ -75,7 +75,9 @@ The strict steps:
    train's bounded waits.
 3. **Merge**, by tier ([PROOF-POLICY.yml](PROOF-POLICY.yml), `node tools/proof/tier.mjs`):
    - **T0–T2** merge automatically once every required check is green.
-   - **T3–T4** wait for the maintainer's approval, then merge.
+   - **T3–T4** wait for the maintainer's approval, then merge. A change that touches only test files under
+     `apps/server/src/edge*` (plus docs or a fragment) computes T1, not T3 (PROOF-POLICY.yml `when: tests-only`), so it
+     lands on green; its review checks that no assertion was dropped or loosened and no `skip`/`todo` was added.
 
    The maintainer gate lives in the required `proof-ok` check, not only in the train: for a T3 or T4 PR, `proof-ok`
    fails until the maintainer's latest decisive review is an approval or, on a PR the maintainer authored (GitHub

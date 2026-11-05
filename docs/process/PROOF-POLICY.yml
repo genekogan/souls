@@ -24,6 +24,9 @@ tiers:
     typical: visible UI or behaviour
     required: [T1, one uncut real-speed clip of the changed journey on a fake-mind world (desktop; phone too when layout changed)]
     not_required: [playtest]
+  # T3 needs the maintainer's sign-off. One exception, by path: a change that touches only `*.test.ts`/`*.test.mjs` files
+  # under apps/server/src/edge* (plus T0 files) computes T1 (`when: tests-only` below, #928). Its reviewer checks that no
+  # assertion was deleted or loosened and no `skip`/`todo` was added (skipped checks count as unproved, AGENTS.md).
   T3:
     typical: Soul behaviour, navigation or engine, shared or brittle code
     required: [T2, scenario playtest with repeats_per_arm repeats per arm, reviewer agent pass, maintainer sign-off]
