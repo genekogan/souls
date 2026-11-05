@@ -78,6 +78,11 @@ command, mandate, cards), `/v1/souls/:id/{intent,command,mandate,cards,deck,time
 (`/v1/souls/:id/pair`, `/v1/agent/pair`, `/v1/agent/pair/start`, `/v1/agent/pair/poll`), and intent v2 routes.
 They drive the central mind driver and the kernel's cards (see [brain](brain.md)). New agents use the edge API.
 
+`POST /v1/souls/:id/command` is one route with one handler per world mode, chosen when the app is built
+(`ownerCommandRoute` in `apps/server/src/inbox-routes.ts`). On an edge world it delivers the owner's text to the Soul's
+agent inbox, like `POST /v1/edge/owner/:id/inbox`: the same record, the same 20-a-minute owner bucket and an 8 KB
+body limit. On a central-mind world the central mind translates it. Only that world's handler is registered.
+
 ## MCP
 
 `POST /mcp` with a Soul token, or `POST /mcp/<token>` for apps that only accept a URL (`apps/server/src/mcp.ts`).
