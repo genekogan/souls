@@ -97,6 +97,11 @@ Code: `engine/carry/`; tests: `engine/test/carry.test.ts`, `carry-stairs.test.ts
   the set-down. The carriers stand at the other ends, the box and its disc cover are the same either way round, and
   the load never turns. Floor carries only: a stair carry ignores it. The server's loose-material carries set it. A
   carry without it, including all recorded history, is unchanged (the rules version cannot take a new suffix).
+  - **Rollback.** Do not revert the engine change. Code from before it rejects the `keepYawV1` param. A durable-clock
+    world that has recorded such a carry then refuses to boot (`clock-frontier.replay-differs`). Any other world
+    silently refuses the replayed carry (`action.invalid-params`), because the rules version is the same. The safe
+    rollback is to revert the one-line `keepYawV1: true` in the server's loose-material carry plan
+    (`apps/server/src/god/engine-bridge.ts`). New carries then take the old path, and recorded ones still replay.
 - Reservations: `actor:<id>` exclusive per crew member, `entity:<item>` exclusive.
 - Validation (all before anything moves): known humans on one level; item is a
   component lying on the ground (`stored|staged`, support `ground`); crew rules;
