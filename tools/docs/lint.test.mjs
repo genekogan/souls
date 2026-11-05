@@ -61,7 +61,7 @@ test('frontmatter edge cases and the writing rules the lint enforces', () => {
   assert.deepEqual(codes(page(FM, '# A page\n\nVisit Eden 2026.')), [], 'Eden 2026 is a world');
   assert.ok(codes(page(FM, '# A page\n\nIt works — mostly.')).includes('style.em-dash'));
   assert.ok(codes(page(FM, '# A page\n\nFixed in #890.')).includes('text.issue-number'));
-  assert.ok(codes(page(FM, '# A page\n\nSee path=/Users/x/y.')).includes('private.local-path'));   // scrub-guard: allow (a fixture the lint must refuse)
+  assert.ok(codes(page(FM, '# A page\n\nSee path=/Users/you/y.')).includes('private.local-path'));   // a placeholder user: the lint refuses any /Users/ path
   assert.ok(codes(page(FM, '# A page\n\nThe box at 100.101.1.2.')).includes('private.ip'));
 });
 
