@@ -224,11 +224,11 @@ async function fetchWithRetry(url, options, runtime = {}, budget = { waited: 0, 
   runtime = { ...retryDefaults, ...runtime };
   const send = runtime.fetch ?? fetch, clock = runtime.now ?? Date.now, random = runtime.random ?? Math.random;
   const { timeoutMs, deadlineAt, signal, ...init } = options ?? {};
-  const wait = runtime.sleep ?? ((ms) => new Promise((resolve7, reject) => {
+  const wait = runtime.sleep ?? ((ms) => new Promise((resolve8, reject) => {
     if (signal?.aborted) return reject(signal.reason);
     const done = () => {
       signal?.removeEventListener("abort", stop);
-      resolve7();
+      resolve8();
     };
     const timer = setTimeout(done, ms);
     function stop() {
@@ -409,9 +409,9 @@ async function startWire(world, { file = WIRE } = {}) {
     }
   });
   server.keepAliveTimeout = 5e3;
-  await new Promise((resolve7, reject) => {
+  await new Promise((resolve8, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve7);
+    server.listen(0, "127.0.0.1", resolve8);
   });
   server.unref();
   const port = server.address().port;
@@ -463,8 +463,8 @@ async function wireFetch(url, init = {}) {
     r = await fetch(`http://127.0.0.1:${w.port}/`, { ...init, headers });
   } catch (e) {
     if (init.signal?.aborted) throw e;
-    const refused2 = /ECONNREFUSED|ECONNRESET|EPIPE|ENOTFOUND/.test(String(e?.cause?.code ?? e?.code ?? ""));
-    if (refused2 || !init.method || init.method === "GET") {
+    const refused3 = /ECONNREFUSED|ECONNRESET|EPIPE|ENOTFOUND/.test(String(e?.cause?.code ?? e?.code ?? ""));
+    if (refused3 || !init.method || init.method === "GET") {
       known = null;
       return fetch(url, init);
     }
@@ -854,8 +854,8 @@ async function taxonomy(flags2 = {}) {
 }
 
 // cli.mjs
-import { readFileSync as readFileSync10, writeFileSync as writeFileSync5, existsSync as existsSync9, mkdirSync as mkdirSync3, appendFileSync } from "node:fs";
-import { resolve as resolve6 } from "node:path";
+import { readFileSync as readFileSync11, writeFileSync as writeFileSync6, existsSync as existsSync9, mkdirSync as mkdirSync3, appendFileSync } from "node:fs";
+import { resolve as resolve7 } from "node:path";
 
 // lib/mirror.mjs
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
@@ -1009,9 +1009,9 @@ function boxInPolygon(box, poly) {
   return true;
 }
 function obbHit(a, b, margin = 0) {
-  const A = { ...a, half: [a.half[0] + margin, a.half[1] + margin] };
-  const axes = [[Math.cos(A.yaw), -Math.sin(A.yaw)], [Math.sin(A.yaw), Math.cos(A.yaw)], [Math.cos(b.yaw), -Math.sin(b.yaw)], [Math.sin(b.yaw), Math.cos(b.yaw)]];
-  const ca = corners(A), cb = corners(b);
+  const A2 = { ...a, half: [a.half[0] + margin, a.half[1] + margin] };
+  const axes = [[Math.cos(A2.yaw), -Math.sin(A2.yaw)], [Math.sin(A2.yaw), Math.cos(A2.yaw)], [Math.cos(b.yaw), -Math.sin(b.yaw)], [Math.sin(b.yaw), Math.cos(b.yaw)]];
+  const ca = corners(A2), cb = corners(b);
   for (const [ax, az] of axes) {
     let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
     for (const [x, z] of ca) {
@@ -1080,15 +1080,15 @@ function solve(v, thing, rel) {
   };
   if (thing.form === "path" && (rel.from || rel.between)) {
     const [a, b] = rel.between ?? [rel.from, rel.to];
-    let A = refPoint(v, a), B = refPoint(v, b);
+    let A2 = refPoint(v, a), B = refPoint(v, b);
     const toEdge = (P, Q) => {
       if (P.kind !== "region") return P;
       const d = norm(COMPASS[P.word]), h = v.extent / 2 - 2;
       const k = Math.min(...[0, 1].map((i) => Math.abs(d[i]) < 1e-9 ? Infinity : (Math.sign(d[i]) * h - (i ? Q.z : Q.x)) / d[i]));
       return { x: r22(Q.x + d[0] * k), z: r22(Q.z + d[1] * k), kind: "point", ref: `the ${P.word} edge` };
     };
-    if (A.kind === "region" && B.kind !== "region") A = toEdge(A, B);
-    else if (B.kind === "region") B = toEdge(B, A.kind === "region" ? { x: 0, z: 0 } : A);
+    if (A2.kind === "region" && B.kind !== "region") A2 = toEdge(A2, B);
+    else if (B.kind === "region") B = toEdge(B, A2.kind === "region" ? { x: 0, z: 0 } : A2);
     const ENDS_ONLY = /bridge|pier|deck|dock|jetty/;
     const approach = (P) => [P.x, P.z];
     const edge = (P, Q) => {
@@ -1129,16 +1129,16 @@ function solve(v, thing, rel) {
     const isPath = (P) => P.kind === "entity" && !!P.row.shape?.path;
     const towardA = via.length ? asQ(via[0]) : null, towardB = via.length ? asQ(via.at(-1)) : null;
     let pa, pb;
-    if (isPath(A) && !isPath(B)) {
-      pb = edge(B, towardB ?? asQ(isPath(A) ? nearestOnPath(A.row.shape.path, approach(B)).p : approach(A)));
-      pa = edge(A, towardA ?? asQ(pb));
+    if (isPath(A2) && !isPath(B)) {
+      pb = edge(B, towardB ?? asQ(isPath(A2) ? nearestOnPath(A2.row.shape.path, approach(B)).p : approach(A2)));
+      pa = edge(A2, towardA ?? asQ(pb));
     } else {
-      pa = edge(A, towardA ?? asQ(isPath(B) ? nearestOnPath(B.row.shape.path, approach(A)).p : approach(B)));
+      pa = edge(A2, towardA ?? asQ(isPath(B) ? nearestOnPath(B.row.shape.path, approach(A2)).p : approach(B)));
       pb = edge(B, towardB ?? asQ(pa));
     }
     const path = [pa, ...via, pb];
     for (const [ref, id] of doorUsed) notes.push(`starts at ${ref}'s door ${id}`);
-    notes.push(`path from ${A.ref ?? a} to ${B.ref ?? b}${via.length ? ` via ${via.length} point(s)` : ""}, ${r22(polylineLength(path))} m`);
+    notes.push(`path from ${A2.ref ?? a} to ${B.ref ?? b}${via.length ? ` via ${via.length} point(s)` : ""}, ${r22(polylineLength(path))} m`);
     return { items: [{ candidates: [{ shape: { path, ...rel.width ? { width: Number(rel.width) } : {} }, note: notes.at(-1) }] }], notes };
   }
   if (rel.across) {
@@ -1364,10 +1364,10 @@ function solve(v, thing, rel) {
     return { items: items2, notes };
   }
   if (rel.between) {
-    const [A, B] = rel.between.map((x2) => refPoint(v, x2));
-    const x = (A.x + B.x) / 2, z = (A.z + B.z) / 2;
-    const yaw2 = finalYaw(x, z, Math.atan2(-(B.z - A.z), B.x - A.x));
-    return { items: [{ candidates: [pose(x, z, yaw2, { note: `between ${A.ref ?? rel.between[0]} and ${B.ref ?? rel.between[1]}` })] }], notes };
+    const [A2, B] = rel.between.map((x2) => refPoint(v, x2));
+    const x = (A2.x + B.x) / 2, z = (A2.z + B.z) / 2;
+    const yaw2 = finalYaw(x, z, Math.atan2(-(B.z - A2.z), B.x - A2.x));
+    return { items: [{ candidates: [pose(x, z, yaw2, { note: `between ${A2.ref ?? rel.between[0]} and ${B.ref ?? rel.between[1]}` })] }], notes };
   }
   if (rel.near || rel.around) {
     const R = refPoint(v, rel.near ?? rel.around);
@@ -2432,16 +2432,16 @@ function treeRssMb(psText, port) {
     if (!kids.has(r.ppid)) kids.set(r.ppid, []);
     kids.get(r.ppid).push(r);
   }
-  let kb2 = 0;
+  let kb3 = 0;
   const seen = /* @__PURE__ */ new Set(), stack = [...roots];
   while (stack.length) {
     const r = stack.pop();
     if (seen.has(r.pid)) continue;
     seen.add(r.pid);
-    kb2 += r.rss;
+    kb3 += r.rss;
     stack.push(...kids.get(r.pid) ?? []);
   }
-  return Math.round(kb2 / 1024);
+  return Math.round(kb3 / 1024);
 }
 
 // lib/look.mjs
@@ -2691,7 +2691,7 @@ function drawableCount(snapshot3 = {}) {
   return (snapshot3.entities ?? []).filter((e) => drawable(e.def)).length;
 }
 function waitForShot({ expect = 0, timeoutMs = 6e5 } = {}) {
-  return new Promise((resolve7, reject) => {
+  return new Promise((resolve8, reject) => {
     let raf, timer, stable = 0, last = -1;
     const cleanup = () => {
       clearTimeout(timer);
@@ -2712,7 +2712,7 @@ function waitForShot({ expect = 0, timeoutMs = 6e5 } = {}) {
       last = drawn?.size ?? -1;
       if (ready && stable >= 2) {
         cleanup();
-        resolve7({ ready, drawn: drawn?.size ?? 0, want: expect, easing, shotReady: true });
+        resolve8({ ready, drawn: drawn?.size ?? 0, want: expect, easing, shotReady: true });
       } else raf = requestAnimationFrame(tick);
     };
     timer = setTimeout(() => {
@@ -3887,10 +3887,585 @@ async function upload(path, flags2 = {}, deps = {}) {
   if (flags2.json) return results.map(({ lines, ...r }) => ({ ...r, text: lines.join("\n") }));
   const out = results.flatMap((r) => r.lines);
   if (entries.length > 1) {
-    const sent = results.filter((r) => r.ok).length, refused2 = results.filter((r) => !r.ok);
-    out.push(`${dry ? "would upload" : "uploaded"} ${sent} of ${entries.length}${refused2.length ? `; refused ${refused2.length}: ${refused2.map((r) => basename(r.file)).join(", ")}` : ""}`);
+    const sent = results.filter((r) => r.ok).length, refused3 = results.filter((r) => !r.ok);
+    out.push(`${dry ? "would upload" : "uploaded"} ${sent} of ${entries.length}${refused3.length ? `; refused ${refused3.length}: ${refused3.map((r) => basename(r.file)).join(", ")}` : ""}`);
   }
   return out.join("\n");
+}
+
+// lib/thumbnail.mjs
+import { mkdtempSync, readFileSync as readFileSync10, rmSync as rmSync5, writeFileSync as writeFileSync5 } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve as resolve6 } from "node:path";
+
+// lib/jpeg.mjs
+import { inflateSync } from "node:zlib";
+var ZIGZAG = [0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63];
+var LUMA_Q = [16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55, 14, 13, 16, 24, 40, 57, 69, 56, 14, 17, 22, 29, 51, 87, 80, 62, 18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92, 49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99];
+var CHROMA_Q = [17, 18, 24, 47, 99, 99, 99, 99, 18, 21, 26, 66, 99, 99, 99, 99, 24, 26, 56, 99, 99, 99, 99, 99, 47, 66, 99, 99, 99, 99, 99, 99, ...Array(32).fill(99)];
+var DC_LUMA = [[0, 1, 5, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]];
+var DC_CHROMA = [[0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]];
+var AC_LUMA = [[0, 2, 1, 3, 3, 2, 4, 3, 5, 5, 4, 4, 0, 0, 1, 125], [
+  1,
+  2,
+  3,
+  0,
+  4,
+  17,
+  5,
+  18,
+  33,
+  49,
+  65,
+  6,
+  19,
+  81,
+  97,
+  7,
+  34,
+  113,
+  20,
+  50,
+  129,
+  145,
+  161,
+  8,
+  35,
+  66,
+  177,
+  193,
+  21,
+  82,
+  209,
+  240,
+  36,
+  51,
+  98,
+  114,
+  130,
+  9,
+  10,
+  22,
+  23,
+  24,
+  25,
+  26,
+  37,
+  38,
+  39,
+  40,
+  41,
+  42,
+  52,
+  53,
+  54,
+  55,
+  56,
+  57,
+  58,
+  67,
+  68,
+  69,
+  70,
+  71,
+  72,
+  73,
+  74,
+  83,
+  84,
+  85,
+  86,
+  87,
+  88,
+  89,
+  90,
+  99,
+  100,
+  101,
+  102,
+  103,
+  104,
+  105,
+  106,
+  115,
+  116,
+  117,
+  118,
+  119,
+  120,
+  121,
+  122,
+  131,
+  132,
+  133,
+  134,
+  135,
+  136,
+  137,
+  138,
+  146,
+  147,
+  148,
+  149,
+  150,
+  151,
+  152,
+  153,
+  154,
+  162,
+  163,
+  164,
+  165,
+  166,
+  167,
+  168,
+  169,
+  170,
+  178,
+  179,
+  180,
+  181,
+  182,
+  183,
+  184,
+  185,
+  186,
+  194,
+  195,
+  196,
+  197,
+  198,
+  199,
+  200,
+  201,
+  202,
+  210,
+  211,
+  212,
+  213,
+  214,
+  215,
+  216,
+  217,
+  218,
+  225,
+  226,
+  227,
+  228,
+  229,
+  230,
+  231,
+  232,
+  233,
+  234,
+  241,
+  242,
+  243,
+  244,
+  245,
+  246,
+  247,
+  248,
+  249,
+  250
+]];
+var AC_CHROMA = [[0, 2, 1, 2, 4, 4, 3, 4, 7, 5, 4, 4, 0, 1, 2, 119], [
+  0,
+  1,
+  2,
+  3,
+  17,
+  4,
+  5,
+  33,
+  49,
+  6,
+  18,
+  65,
+  81,
+  7,
+  97,
+  113,
+  19,
+  34,
+  50,
+  129,
+  8,
+  20,
+  66,
+  145,
+  161,
+  177,
+  193,
+  9,
+  35,
+  51,
+  82,
+  240,
+  21,
+  98,
+  114,
+  209,
+  10,
+  22,
+  36,
+  52,
+  225,
+  37,
+  241,
+  23,
+  24,
+  25,
+  26,
+  38,
+  39,
+  40,
+  41,
+  42,
+  53,
+  54,
+  55,
+  56,
+  57,
+  58,
+  67,
+  68,
+  69,
+  70,
+  71,
+  72,
+  73,
+  74,
+  83,
+  84,
+  85,
+  86,
+  87,
+  88,
+  89,
+  90,
+  99,
+  100,
+  101,
+  102,
+  103,
+  104,
+  105,
+  106,
+  115,
+  116,
+  117,
+  118,
+  119,
+  120,
+  121,
+  122,
+  130,
+  131,
+  132,
+  133,
+  134,
+  135,
+  136,
+  137,
+  138,
+  146,
+  147,
+  148,
+  149,
+  150,
+  151,
+  152,
+  153,
+  154,
+  162,
+  163,
+  164,
+  165,
+  166,
+  167,
+  168,
+  169,
+  170,
+  178,
+  179,
+  180,
+  181,
+  182,
+  183,
+  184,
+  185,
+  186,
+  194,
+  195,
+  196,
+  197,
+  198,
+  199,
+  200,
+  201,
+  202,
+  210,
+  211,
+  212,
+  213,
+  214,
+  215,
+  216,
+  217,
+  218,
+  226,
+  227,
+  228,
+  229,
+  230,
+  231,
+  232,
+  233,
+  234,
+  242,
+  243,
+  244,
+  245,
+  246,
+  247,
+  248,
+  249,
+  250
+]];
+function codes([counts, symbols]) {
+  const out = /* @__PURE__ */ new Map();
+  let code = 0, k = 0;
+  for (let len = 1; len <= 16; len++) {
+    for (let i = 0; i < counts[len - 1]; i++) out.set(symbols[k++], [code++, len]);
+    code <<= 1;
+  }
+  return out;
+}
+var scaled = (table, quality) => {
+  const q = Math.min(100, Math.max(1, Math.round(quality))), s = q < 50 ? 5e3 / q : 200 - 2 * q;
+  return table.map((v) => Math.min(255, Math.max(1, Math.floor((v * s + 50) / 100))));
+};
+var A = Array.from({ length: 8 }, (_, u) => Array.from({ length: 8 }, (_2, x) => (u ? 1 : Math.SQRT1_2) / 2 * Math.cos((2 * x + 1) * u * Math.PI / 16)));
+var Bits = class {
+  constructor() {
+    this.bytes = [];
+    this.acc = 0;
+    this.n = 0;
+  }
+  put(code, len) {
+    for (let i = len - 1; i >= 0; i--) {
+      this.acc = this.acc << 1 | code >> i & 1;
+      if (++this.n === 8) {
+        this.bytes.push(this.acc);
+        if (this.acc === 255) this.bytes.push(0);
+        this.acc = 0;
+        this.n = 0;
+      }
+    }
+  }
+  flush() {
+    if (this.n) this.put((1 << 8 - this.n) - 1, 8 - this.n);
+  }
+  // pad with 1s
+};
+var magnitude = (v) => {
+  let a = Math.abs(v), n = 0;
+  while (a) {
+    n++;
+    a >>= 1;
+  }
+  return n;
+};
+function encodeJpeg({ width, height, data, channels = 4 }, { quality = 82 } = {}) {
+  if (!(width > 0 && height > 0 && width < 65536 && height < 65536) || data.length < width * height * channels) throw Error("jpeg: bad image size");
+  const ql = scaled(LUMA_Q, quality), qc = scaled(CHROMA_Q, quality);
+  const dcL = codes(DC_LUMA), acL = codes(AC_LUMA), dcC = codes(DC_CHROMA), acC = codes(AC_CHROMA);
+  const W = Math.ceil(width / 16) * 16, H = Math.ceil(height / 16) * 16;
+  const Y = new Float32Array(W * H), Cb = new Float32Array(W * H), Cr = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const o = (Math.min(y, height - 1) * width + Math.min(x, width - 1)) * channels, r = data[o], g = data[o + 1], b = data[o + 2], i = y * W + x;
+    Y[i] = 0.299 * r + 0.587 * g + 0.114 * b - 128;
+    Cb[i] = -0.168736 * r - 0.331264 * g + 0.5 * b;
+    Cr[i] = 0.5 * r - 0.418688 * g - 0.081312 * b;
+  }
+  const bits = new Bits(), block = new Float32Array(64), tmp = new Float32Array(64), pred = [0, 0, 0];
+  const encodeBlock = (q, dc, ac, comp) => {
+    for (let v = 0; v < 8; v++) for (let x = 0; x < 8; x++) {
+      let s = 0;
+      for (let y = 0; y < 8; y++) s += A[v][y] * block[y * 8 + x];
+      tmp[v * 8 + x] = s;
+    }
+    const zz = new Int32Array(64);
+    for (let v = 0; v < 8; v++) for (let u = 0; u < 8; u++) {
+      let s = 0;
+      for (let x = 0; x < 8; x++) s += tmp[v * 8 + x] * A[u][x];
+      block[v * 8 + u] = s;
+    }
+    for (let i = 0; i < 64; i++) zz[i] = Math.round(block[ZIGZAG[i]] / q[ZIGZAG[i]]);
+    const diff = zz[0] - pred[comp];
+    pred[comp] = zz[0];
+    const n = magnitude(diff);
+    bits.put(...dc.get(n));
+    if (n) bits.put(diff < 0 ? diff + (1 << n) - 1 : diff, n);
+    let run = 0;
+    for (let i = 1; i < 64; i++) {
+      const c = zz[i];
+      if (!c) {
+        run++;
+        continue;
+      }
+      while (run > 15) {
+        bits.put(...ac.get(240));
+        run -= 16;
+      }
+      const m = magnitude(c);
+      bits.put(...ac.get(run << 4 | m));
+      bits.put(c < 0 ? c + (1 << m) - 1 : c, m);
+      run = 0;
+    }
+    if (run) bits.put(...ac.get(0));
+  };
+  for (let my = 0; my < H; my += 16) for (let mx = 0; mx < W; mx += 16) {
+    for (const [ox, oy] of [[0, 0], [8, 0], [0, 8], [8, 8]]) {
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) block[y * 8 + x] = Y[(my + oy + y) * W + mx + ox + x];
+      encodeBlock(ql, dcL, acL, 0);
+    }
+    for (const [plane, comp] of [[Cb, 1], [Cr, 2]]) {
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        const i = (my + 2 * y) * W + mx + 2 * x;
+        block[y * 8 + x] = (plane[i] + plane[i + 1] + plane[i + W] + plane[i + W + 1]) / 4;
+      }
+      encodeBlock(qc, dcC, acC, comp);
+    }
+  }
+  bits.flush();
+  const seg = (marker, body) => [255, marker, body.length + 2 >> 8, body.length + 2 & 255, ...body];
+  const dht = (cls, id, [counts, symbols]) => [cls << 4 | id, ...counts, ...symbols];
+  const head = [
+    255,
+    216,
+    ...seg(224, [74, 70, 73, 70, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0]),
+    ...seg(219, [0, ...ZIGZAG.map((k) => ql[k]), 1, ...ZIGZAG.map((k) => qc[k])]),
+    ...seg(192, [8, height >> 8, height & 255, width >> 8, width & 255, 3, 1, 34, 0, 2, 17, 1, 3, 17, 1]),
+    ...seg(196, [...dht(0, 0, DC_LUMA), ...dht(1, 0, AC_LUMA), ...dht(0, 1, DC_CHROMA), ...dht(1, 1, AC_CHROMA)]),
+    ...seg(218, [3, 1, 0, 2, 17, 3, 17, 0, 63, 0])
+  ];
+  const out = new Uint8Array(head.length + bits.bytes.length + 2);
+  out.set(head);
+  out.set(bits.bytes, head.length);
+  out.set([255, 217], head.length + bits.bytes.length);
+  return out;
+}
+function decodePng(bytes) {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const u322 = (p2) => (b[p2] << 24 >>> 0) + (b[p2 + 1] << 16) + (b[p2 + 2] << 8) + b[p2 + 3];
+  if (b.length < 33 || u322(0) !== 2303741511 || u322(4) !== 218765834) throw Error("png: not a PNG file");
+  let p = 8, width = 0, height = 0, depth = 0, color = 0, interlace = 0;
+  const idat = [];
+  while (p + 8 <= b.length) {
+    const n = u322(p), type = String.fromCharCode(b[p + 4], b[p + 5], b[p + 6], b[p + 7]), d = b.subarray(p + 8, p + 8 + n);
+    if (type === "IHDR") {
+      width = u322(p + 8);
+      height = u322(p + 12);
+      depth = d[8];
+      color = d[9];
+      interlace = d[12];
+    } else if (type === "IDAT") idat.push(d);
+    else if (type === "IEND") break;
+    p += 12 + n;
+  }
+  const ch = { 0: 1, 2: 3, 4: 2, 6: 4 }[color];
+  if (depth !== 8 || !ch || interlace) throw Error(`png: only 8-bit non-interlaced grey/RGB/RGBA images are supported (depth ${depth}, colour type ${color}, interlace ${interlace})`);
+  const raw = inflateSync(Buffer.concat(idat)), stride = width * ch;
+  if (raw.length < (stride + 1) * height) throw Error("png: truncated image data");
+  const px = new Uint8Array(stride * height), rgba = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const f = raw[y * (stride + 1)], row = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)), o = y * stride;
+    for (let i = 0; i < stride; i++) {
+      const a = i >= ch ? px[o + i - ch] : 0, up = y ? px[o - stride + i] : 0, c = i >= ch && y ? px[o - stride + i - ch] : 0;
+      const pa = Math.abs(up - c), pb = Math.abs(a - c), pc = Math.abs(a + up - 2 * c);
+      const pred = f === 1 ? a : f === 2 ? up : f === 3 ? a + up >> 1 : f === 4 ? pa <= pb && pa <= pc ? a : pb <= pc ? up : c : 0;
+      px[o + i] = row[i] + pred & 255;
+    }
+  }
+  for (let i = 0, j = 0; i < width * height; i++, j += ch) {
+    const g = ch < 3;
+    rgba[i * 4] = px[j];
+    rgba[i * 4 + 1] = g ? px[j] : px[j + 1];
+    rgba[i * 4 + 2] = g ? px[j] : px[j + 2];
+    rgba[i * 4 + 3] = ch === 4 ? px[j + 3] : ch === 2 ? px[j + 1] : 255;
+  }
+  return { width, height, data: rgba, channels: 4 };
+}
+
+// lib/thumbnail.mjs
+var THUMB_SIZE = Object.freeze({ width: 1280, height: 720 });
+var TARGET_BYTES = 480 * 1024;
+var QUALITIES = [82, 72, 62, 50];
+var THUMBNAIL_HELP = 'thumbnail [--from sw] [--at ref|x,z] [--dist m] [--span m] [--hour 12:00] [--weather clear] [--remote] [--out file.jpg] [--dry] \xB7 thumbnail --file <image.jpg|png> \xB7 thumbnail --clear  (the world list picture: a 16:9 look sent as a JPEG; SKILL.md "Thumbnail")';
+var one2 = (v) => Array.isArray(v) ? v[v.length - 1] : v;
+function thumbnailEndpoint(worldUrl) {
+  const m = /^(https?:\/\/[^/?#]+(?:\/[^?#]*?)?)\/w\/([a-z][a-z0-9-]{0,31})\/?$/.exec(String(worldUrl ?? "").split(/[?#]/)[0]);
+  if (!m) throw Error(`thumbnail: ${worldUrl || "this folder"} is not a world served by a world launcher (<site>/w/<slug>); thumbnails belong to the world list`);
+  return { url: `${m[1]}/__sim/worlds/${m[2]}/thumbnail`, slug: m[2], site: `${m[1]}/` };
+}
+function toJpeg(bytes) {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (b[0] === 255 && b[1] === 216 && b[2] === 255) return { jpeg: b, width: null, height: null, quality: null };
+  if (b[0] !== 137 || b[1] !== 80) throw Error("thumbnail: --file takes a JPEG or PNG image");
+  const img = decodePng(b);
+  let jpeg, quality;
+  for (quality of QUALITIES) {
+    jpeg = encodeJpeg(img, { quality });
+    if (jpeg.length <= TARGET_BYTES) break;
+  }
+  return { jpeg, width: img.width, height: img.height, quality };
+}
+function framing(flags2 = {}) {
+  const out = { from: one2(flags2.from) ?? "sw", hour: one2(flags2.hour) ?? "12:00", weather: one2(flags2.weather) ?? "clear", width: String(THUMB_SIZE.width), h: String(THUMB_SIZE.height), json: true };
+  for (const k of ["at", "dist", "span", "remote"]) if (flags2[k] !== void 0) out[k] = one2(flags2[k]);
+  return out;
+}
+var kb2 = (n) => `${Math.round(n / 1024)} KB`;
+var refused2 = (verb, r, e) => Error(`thumbnail ${verb} refused: ${e.code ?? r.status}: ${e.message ?? "the launcher refused it"}${e.fix ? `
+  fix: ${e.fix}` : ""}`);
+async function thumbnail(flags2 = {}, runtime = {}) {
+  const st = (runtime.load ?? load)(), send = runtime.fetch ?? fetch;
+  const { url, slug, site } = thumbnailEndpoint(st.world);
+  if (!st.token && !flags2.dry) throw Error("thumbnail: this folder has no god token; run pair first");
+  const headers = { authorization: `Bearer ${st.token}` };
+  if (flags2.clear) {
+    const r4 = await send(url, { method: "DELETE", headers, signal: AbortSignal.timeout(3e4) });
+    const e2 = await r4.json().catch(() => ({}));
+    if (!r4.ok) throw refused2("clear", r4, e2);
+    return `thumbnail: cleared for ${slug}; the world list shows ${e2.thumbnailSource === "template" ? "the template's default picture" : "no picture"} (${site})`;
+  }
+  let jpeg, how;
+  if (flags2.file) {
+    const file = resolve6(String(one2(flags2.file)));
+    const t = toJpeg(readFileSync10(file));
+    jpeg = t.jpeg;
+    how = t.quality ? `${file}, re-encoded as JPEG q${t.quality}` : file;
+  } else {
+    const dir = mkdtempSync(join(tmpdir(), "eden-god-thumb-"));
+    try {
+      const shot = await runtime.look({ ...framing(flags2), out: join(dir, "look.png") });
+      const t = toJpeg(readFileSync10(shot.file));
+      jpeg = t.jpeg;
+      how = `a look from the ${framing(flags2).from} at ${framing(flags2).hour} toward (${(shot.at ?? []).join(", ")}), ${t.width}\xD7${t.height}, JPEG q${t.quality}`;
+    } finally {
+      rmSync5(dir, { recursive: true, force: true });
+    }
+  }
+  const out = flags2.out ? resolve6(String(one2(flags2.out))) : null;
+  if (out) writeFileSync5(out, jpeg);
+  if (flags2.dry) return `thumbnail (dry): ${how}, ${kb2(jpeg.length)}${out ? ` \u2192 ${out}` : ""}; nothing sent`;
+  const r = await send(url, { method: "POST", headers: { ...headers, "content-type": "image/jpeg" }, body: jpeg, signal: AbortSignal.timeout(6e4) });
+  const e = await r.json().catch(() => ({}));
+  if (!r.ok) throw refused2("upload", r, e);
+  return `thumbnail: set for ${slug} from ${how}, ${e.width}\xD7${e.height}, ${kb2(e.bytes)}${out ? ` (kept at ${out})` : ""}
+  the world list (${site}) shows it on its next refresh; retake any time, or thumbnail --clear for the template's default`;
 }
 
 // lib/features.mjs
@@ -4373,7 +4948,7 @@ var bakeCache = /* @__PURE__ */ new Map();
 var BAKES = ".eden-god.bakes.json";
 var readBakes = (lib) => {
   try {
-    const b = JSON.parse(readFileSync10(BAKES, "utf8"));
+    const b = JSON.parse(readFileSync11(BAKES, "utf8"));
     return b.lib === lib ? b.bakes : {};
   } catch {
     return {};
@@ -5088,7 +5663,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
       if (typeof f.file !== "string") throw new Error("--file needs a plan file or inline JSON");
       let plan;
       try {
-        plan = JSON.parse(f.file.trim().startsWith("{") ? f.file : readFileSync10(f.file, "utf8"));
+        plan = JSON.parse(f.file.trim().startsWith("{") ? f.file : readFileSync11(f.file, "utf8"));
       } catch (e) {
         throw new Error(`--file: cannot read the plan (${e.message})`);
       }
@@ -5148,7 +5723,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
     for (const k of ["at", "offset", "size", "yaw", "mass", "root"]) if (f[k] !== void 0) throw new Error(`--${k} does not apply to a district chapter: the plan holds each plot's rectangle and massing`);
     const plots = buildValues(f.plots, ",", "plots", 8, 8), steps2 = f.steps === void 0 ? void 0 : buildValues(f.steps, ",", "steps", 24, 60);
     if (f.title !== void 0 && (typeof f.title !== "string" || !f.title.trim() || f.title.length > 80)) throw new Error("--title is 1..80 characters");
-    const brief = f.brief === void 0 ? void 0 : existsSync9(f.brief) ? readFileSync10(f.brief, "utf8") : f.brief;
+    const brief = f.brief === void 0 ? void 0 : existsSync9(f.brief) ? readFileSync11(f.brief, "utf8") : f.brief;
     if (brief !== void 0 && (typeof brief !== "string" || brief.length > 4e3)) throw new Error("--brief is at most 4000 characters");
     const asks = buildValues(f.asks, ";", "asks", 64, 500), include = buildValues(f.include, ",", "include", 512, 300);
     body = { id: arg, district: { id: f.district, ...plots ? { plots } : {} }, ...f.title ? { title: f.title } : {}, ...steps2 ? { steps: steps2 } : {}, ...asks ? { asks } : {}, ...include ? { include } : {}, ...brief !== void 0 ? { brief } : {} };
@@ -5159,7 +5734,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
     const steps2 = f.steps.split(",").map((x) => x.trim());
     if (steps2.length > 24 || steps2.some((x) => !x || x.length > 60)) throw new Error("--steps needs 1..24 labels, each 1..60 characters");
     const massing = inheritedMassing ?? parseMassing(f.mass), site = await buildSite(f);
-    const brief = f.brief === void 0 ? void 0 : existsSync9(f.brief) ? readFileSync10(f.brief, "utf8") : f.brief;
+    const brief = f.brief === void 0 ? void 0 : existsSync9(f.brief) ? readFileSync11(f.brief, "utf8") : f.brief;
     if (brief !== void 0 && (typeof brief !== "string" || brief.length > 4e3)) throw new Error("--brief is at most 4000 characters");
     const asks = buildValues(f.asks, ";", "asks", 64, 500), include = buildValues(f.include, ",", "include", 512, 300);
     body = { id: arg, title: f.title, steps: steps2, site, massing, ...asks ? { asks } : {}, ...include ? { include } : {}, ...brief !== void 0 ? { brief } : {}, ...f.root ? { root: f.root } : {} };
@@ -5211,7 +5786,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
   if (sub === "claim") {
     const file = claimFile(r.claim.id), release = acquireLock(`${file}.lock`, { label: "claim state creation" });
     try {
-      const previous = existsSync9(file) ? JSON.parse(readFileSync10(file, "utf8")) : null;
+      const previous = existsSync9(file) ? JSON.parse(readFileSync11(file, "utf8")) : null;
       if (previous?.build?.id !== r.build.id || previous.build.claim !== r.claim.id) atomicWrite(file, JSON.stringify({ build: BUILD_API.claim(r.build, r.claim) }, null, 2) + "\n");
     } finally {
       release();
@@ -5229,7 +5804,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
 async function helperEnv(s, r, f) {
   const m = ok(await call(BUILD_API.path(r.build.id, `claims/${encodeURIComponent(r.claim.id)}/helper`), { body: { ...f.ttl !== void 0 ? { ttlMs: Math.round(Number(f.ttl) * 6e4) } : {} } }), "build claim --helper");
   if (!m.ok) return f.json ? m : `${r.claim.id}: ${r.claim.part} claimed, but no helper token: ${m.failures.map(explainFailure).join("; ")}`;
-  const file = resolve6(helperFile(r.claim.id));
+  const file = resolve7(helperFile(r.claim.id));
   atomicWrite(file, JSON.stringify({ world: s.world, token: m.token, helper: m.helper, build: BUILD_API.claim(r.build, r.claim) }, null, 2) + "\n");
   if (f.json) return { ...r, helper: m.helper, helperFile: file };
   return [
@@ -5402,7 +5977,7 @@ async function kitLookInner(json2, flags2, runtime, signal) {
     timeoutMs: Math.max(1, runtime.deadlineAt - Date.now()),
     worldUrl: load().world,
     studio: admitted,
-    out: resolve6(flags2.out ?? "looks/kit-workbench.png"),
+    out: resolve7(flags2.out ?? "looks/kit-workbench.png"),
     ...overrides,
     ...flags2.width ? { width: num(flags2.width) } : {},
     ...flags2.h ? { height: num(flags2.h) } : {}
@@ -5465,7 +6040,7 @@ async function lookInner(flags2 = {}, runtime = {}, signal) {
   const cam = views[0];
   signal.throwIfAborted();
   void attention(cam.at, cam.eye);
-  const out = resolve6(flags2.out ?? `looks/look-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`);
+  const out = resolve7(flags2.out ?? `looks/look-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`);
   const args = {
     timeoutMs: Math.max(1, runtime.deadlineAt - Date.now()),
     remote: !!flags2.remote,
@@ -5507,13 +6082,13 @@ async function lookInner(flags2 = {}, runtime = {}, signal) {
 async function exportWorld(file, flags2 = {}) {
   const s = await snapshot2();
   const g = exportGenesis(s, flags2);
-  const out = resolve6(file ?? `${s.worldId}.genesis.json`);
-  writeFileSync5(out, JSON.stringify(g, null, 1));
+  const out = resolve7(file ?? `${s.worldId}.genesis.json`);
+  writeFileSync6(out, JSON.stringify(g, null, 1));
   const ops = g.batches.flatMap((b) => b.ops), things = ops.filter((op) => op.op === "place").length, defs2 = ops.filter((op) => op.op === "define").length;
   return `exported ${things} things${defs2 ? ` and ${defs2} defs` : ""} in ${g.batches.length} batches to ${out}`;
 }
 var importWorld = (file, flags2 = {}) => withoutBuild(async () => {
-  const g = JSON.parse(readFileSync10(file, "utf8"));
+  const g = JSON.parse(readFileSync11(file, "utf8"));
   if (g.schema !== "genesis/1") throw new Error("import: file must be genesis/1");
   const out = [];
   const s = await snapshot2();
@@ -5533,7 +6108,7 @@ var importWorld = (file, flags2 = {}) => withoutBuild(async () => {
   return out.join("\n");
 });
 async function define(json2, ignored = []) {
-  const def = typeof json2 === "string" ? JSON.parse(existsSync9(json2) ? readFileSync10(json2, "utf8") : json2) : json2;
+  const def = typeof json2 === "string" ? JSON.parse(existsSync9(json2) ? readFileSync11(json2, "utf8") : json2) : json2;
   if (def.make?.kind === "gen" && !def.params) {
     const g = (await schema()).generators?.find((x) => x.id === def.make.gen);
     if (g && Object.keys(g.params).length) def.params = g.params;
@@ -5549,7 +6124,7 @@ function correctedLine(warnings = [], ignored = []) {
   return shown.length ? `corrected${refs.length === 1 ? ` ${refs[0]}` : ""}: ${shown.join("; ")}` : "";
 }
 async function defineKit(json2, flags2 = {}) {
-  const k = typeof json2 === "string" ? JSON.parse(existsSync9(json2) ? readFileSync10(json2, "utf8") : json2) : json2;
+  const k = typeof json2 === "string" ? JSON.parse(existsSync9(json2) ? readFileSync11(json2, "utf8") : json2) : json2;
   if (!k.name || !Array.isArray(k.shapes)) throw new Error("define-kit needs {name, shapes:[\u2026]} (see SKILL.md, kit primitives in SCHEMA.md)");
   const matches = (await searchDefs([k.name.replace(/[-_.]/g, " "), ...k.tags ?? []].join(" "))).defs;
   const picks = [...matches.filter((d) => usedIn(d).length), ...matches.filter((d) => !usedIn(d).length)].slice(0, 5);
@@ -5585,7 +6160,7 @@ async function examples(name) {
     const r = await fetch(`${load().world}/god/examples/${name}.${ext}`);
     if (!r.ok) throw new Error(`the world did not serve ${name}.${ext} (${r.status})`);
     const t = await r.text();
-    writeFileSync5(`examples/${name}.${ext}`, t);
+    writeFileSync6(`examples/${name}.${ext}`, t);
     if (ext === "log") out.push(t);
   }
   return `${out[0].trim()}
@@ -5680,6 +6255,7 @@ var FLAGS = {
   act: "note request-ref",
   prayers: "all",
   upload: "name height tags license source description layer footprint define dry",
+  thumbnail: "from at dist span hour weather remote out dry file clear",
   catalog: "category has tag page per",
   find: "category has tag all",
   parts: "",
@@ -5688,7 +6264,7 @@ var FLAGS = {
   ...LAYERS_FLAGS,
   ...GOV_FLAGS
 };
-var POS = { ...GOV_POS, listen: 0, ack: 2, doctor: 0, trace: 0, kit: 2, build: 2, "verify-use": 1, ...LAYERS_POS, catalog: 0, taxonomy: 0, time: 2, strike: 0, land: 3, place: 1, terrain: 1, move: 1, set: 1, about: 1, recolor: 2, clone: 1, describe: 1, where: 1, reach: 2, clear: 1, free: 1, look: 0, sky: 0, weather: 0, select: 0, group: 1, undo: 0, redo: 0, history: 1, map: 0, furnish: 1, mint: 1, pair: 1, register: 2, status: 0, flags: 0, prayers: 0, schema: 0, snapshot: 0, examples: 1, expand: 1, import: 1, export: 1, define: 1, "define-kit": 1, upload: 1, act: 1, dryrun: 1, plan: 1, preview: 1, commit: 1, request: 1, query: 1, stream: 1, follow: 1, mirror: 0, gallery: 0, help: 1 };
+var POS = { ...GOV_POS, listen: 0, ack: 2, doctor: 0, trace: 0, kit: 2, build: 2, "verify-use": 1, ...LAYERS_POS, catalog: 0, taxonomy: 0, time: 2, strike: 0, land: 3, place: 1, terrain: 1, move: 1, set: 1, about: 1, recolor: 2, clone: 1, describe: 1, where: 1, reach: 2, clear: 1, free: 1, look: 0, sky: 0, weather: 0, select: 0, group: 1, undo: 0, redo: 0, history: 1, map: 0, furnish: 1, mint: 1, pair: 1, register: 2, status: 0, flags: 0, prayers: 0, schema: 0, snapshot: 0, examples: 1, expand: 1, import: 1, export: 1, define: 1, "define-kit": 1, upload: 1, thumbnail: 0, act: 1, dryrun: 1, plan: 1, preview: 1, commit: 1, request: 1, query: 1, stream: 1, follow: 1, mirror: 0, gallery: 0, help: 1 };
 var NUMERIC = /* @__PURE__ */ new Set(["dist", "count", "t", "setback", "row", "spacing", "width", "span", "radius", "sun", "clouds", "wind", "rain", "fog", "intensity", "speed", "amount", "level", "depth", "metres", "peak", "edge", "face", "steps", "scale", "floor", "height", "h", "frames", "every", "slope", "gap", "yaw"]);
 var SIDES = ["left", "right", "both", "center", "centre"];
 function checkArgs(cmd, f, rest) {
@@ -5722,7 +6298,7 @@ function helpFor(cmd) {
   return [...lines.length ? lines : [`${cmd}: see help`], `${cmd} options: ${opts.map((x) => "--" + x).join(" ")}`].join("\n");
 }
 var CLI_SHAPE = { POS, FLAGS, BOOL, NUMERIC, boolsFor };
-var readArg = (r) => r[0] !== void 0 ? existsSync9(r[0]) && !r[0].trim().startsWith("{") ? readFileSync10(r[0], "utf8") : r[0] : readFileSync10(0, "utf8");
+var readArg = (r) => r[0] !== void 0 ? existsSync9(r[0]) && !r[0].trim().startsWith("{") ? readFileSync11(r[0], "utf8") : r[0] : readFileSync11(0, "utf8");
 var COMMANDS = {
   doctor: (r, f) => doctor(f),
   trace: (r, f) => trace(f),
@@ -5783,6 +6359,7 @@ var COMMANDS = {
   define: (r) => define(readArg(r)),
   "define-kit": (r, f) => defineKit(readArg(r), f),
   upload: (r, f) => upload(r[0], f),
+  thumbnail: (r, f) => thumbnail(f, { look }),
   furnish: (r, f) => furnish(r[0], f),
   gallery,
   examples: (r) => examples(r[0]),
@@ -5851,6 +6428,7 @@ mass:   site-local metres; h = wall/eave height, not total height. Gable/pyramid
 batch:  plan '<batch>' \xB7 preview '<batch>' \xB7 commit <preview-id> \xB7 act '<batch>' \xB7 dryrun '<batch>' \xB7 request <clientRef>
 world:  sky [--palette p --sun s] \xB7 time [19:30|7pm] [--speed h/h] [--pause|--resume] \xB7 weather [--kind storm|rain|fog|wind|cloudy|clear|auto] [--intensity i] [--clouds --wind --rain --fog] [--minutes m] \xB7 strike [--at x,z|thing] ${godFeature("constitution") ? "\xB7 constitution <md> " : ""}\xB7 expand <m> \xB7 export [file] \xB7 import <genesis.json> \xB7 define <def.json> \xB7 define-kit <kit.json> \xB7 furnish <house>[/room]
 models: upload <file.glb|png|jpg> --name n [--height m] [--tags a,b] [--license text] [--source text] [--description text] [--layer solid|decor] [--footprint fp.json] [--define] [--dry] \xB7 upload <manifest.json> [--dry] (god-upload-manifest/1: one entry per asset with file, name, height, tags, license, source, description, layer, footprint, define; budget 80 000 tris, 3 MB, 2048 px per file \u2014 reduce heavy GLBs first with tools/god-skill/scripts/optimize-glb.mjs; SKILL.md "Importing your own models")
+thumb:  ${THUMBNAIL_HELP}
 inbox:  listen [--after message-id] [--timeout 25] [--once|--follow] \xB7 ack <message-id> [reply] [--failed] (a reply of up to 140 characters; --failed when it could not be done)
 pair:   register <world-url> \xB7 pair \xB7 ${godFeature("flags") ? "flags \xB7 flag <label> --at x,z \xB7 " : ""}prayers [--all] (answered too) \xB7 answer <id> <text> \xB7 status
 ${LAND_HELP}
