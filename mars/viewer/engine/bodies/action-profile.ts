@@ -1,0 +1,19 @@
+// Declarative adapter selection only: a profile narrows existing world abilities and never grants authority.
+export const ROLLING_GRIPPER='rolling-gripper/1' as const;
+export type ActionProfile=typeof ROLLING_GRIPPER;
+export const hasRollingProfile=(body:{actionProfile?:string}|null|undefined)=>body?.actionProfile===ROLLING_GRIPPER;
+const edgeCore=['go','walk','glide','stroll','wander','approach','go-near','hang-out','stand','turn','face','look','auto-face','follow','ask-to-stop','accept','decline','make','speak','say','talk','converse','listen'];
+const edgePhysical=['dance','rest','lie','nap','standby','pick-up','put-on','put-down','drop','wave','nod','shake-head','point','clap','cheer'];
+const nativeCore=['walk_to','ground_travel','ambient_wander','face','stand','converse'];
+const nativeHands=['take_item','put_item','hold_items','stow_items','hand_actuator_v1','let_go_v1'];
+export const ROLLING_POSES=['dance','wave','nod','shake-head','point','clap','cheer','listen'] as const;
+export const ROLLING_ACTIONS={contract:'body-actions/1',id:ROLLING_GRIPPER,locomotion:'supported ground travel rendered as rolling',rest:'upright standby; no seat or prone posture',edge:[...edgeCore,...edgePhysical],native:[...nativeCore,...nativeHands,'pose_v1','body_motion_v1'],poses:ROLLING_POSES,unknown:'unsupported; requires an admitted adapter'} as const;
+const edge=new Set<string>(ROLLING_ACTIONS.edge),native=new Set<string>(ROLLING_ACTIONS.native),poses=new Set<string>(ROLLING_POSES);
+export function rollingActionProblem(verb:string,params?:Record<string,unknown>,kind:'edge'|'native'='native'):string|null{
+ const v=verb.replace(/^mars:/,'');
+ if(!(kind==='edge'?edge:native).has(v))return `This rolling body has no admitted ${v} adapter; use ground movement, upright standby, dance or its grippers.`;
+ if(kind==='native'&&['walk_to','ground_travel'].includes(v)&&params?.gait!==undefined&&params.gait!=='walk')return 'This rolling body uses its ground rolling adapter, not cycling or an unqualified running gait.';
+ if(kind==='native'&&v==='pose_v1'&&(!poses.has(String(params?.activity))||params?.base==='sit'||params?.seatHeight!==undefined||params?.group!==undefined||params?.gap!==undefined||params?.hold!==undefined||params?.release!==undefined||params?.prop!==undefined))return 'This rolling body cannot sit, lie prone or use an unqualified pose/prop; use upright standby or an admitted standing gesture.';
+ if(kind==='native'&&v==='body_motion_v1'&&!['rest'].includes(String(params?.motion)))return 'This rolling profile uses its authored standing dance clip; only upright rest uses body motion.';
+ return null;
+}

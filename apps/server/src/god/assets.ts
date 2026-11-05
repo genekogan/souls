@@ -189,6 +189,9 @@ export function measureGlb(buf: Uint8Array): GlbMeasure {
     if (sk.inverseBindMatrices === undefined || !bin) return jw;
     const a = acc[sk.inverseBindMatrices], v = a?.bufferView !== undefined ? views[a.bufferView] : undefined; if (!v) return jw;
     const off = (v.byteOffset ?? 0) + ((a as { byteOffset?: number }).byteOffset ?? 0);
+    // #760: in a meshopt-compressed file the matrices sit in a compressed view (or the virtual fallback buffer), not in
+    // the BIN chunk at this offset; at rest the joint's world matrix stands in, as it does for a skin without matrices.
+    if (v.extensions?.EXT_meshopt_compression || json.buffers?.[v.buffer]?.extensions?.EXT_meshopt_compression?.fallback || off + 64 > bin.byteLength) return jw;
     const dv2 = new DataView(bin.buffer, bin.byteOffset + off, 64);
     const ib = Array.from({ length: 16 }, (_, k) => dv2.getFloat32(k * 4, true));
     return mul(jw, ib);

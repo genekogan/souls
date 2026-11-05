@@ -206,7 +206,8 @@ export class Travel {
     }
     this.sql.prepare('INSERT OR REPLACE INTO travel_requests_v1 (world_id, request_id, traveller, soul_id, at) VALUES (?,?,?,?,?)').run(this.world, p.requestId, p.traveller, soulId, this.now());
     if (atHome) this.setWhere(p.traveller, this.d.slug);
-    await this.wear(soulId, p.body);
+    const worn=await this.wear(soulId, p.body);
+    if(p.body&&!worn){const inc=this.inc(soulId)!,log=JSON.parse(inc.log) as LogEntry[];if(log.length)log[log.length-1].note='The destination did not admit the carried body; its existing body is retained.';this.sql.prepare('UPDATE travel_incarnations_v1 SET log=? WHERE world_id=? AND soul_id=?').run(JSON.stringify(log),this.world,soulId);}
     this.event(p.traveller, soulId, p.name, atHome ? 'came-home' : 'arrived', p.from, p.fromName);
     return this.admitted(p, soulId, created, returned);
   }
@@ -239,6 +240,7 @@ export class Travel {
     if (!engine.bodyAssignmentProblemV1) return false;
     for (let i = 0; i < 100; i++) {
       const ent = engine.world.entities[entityId];
+      if(engine.bodyAssignmentProblemV1!(entityId,body)==='body.world-policy')return false;
       if (ent && JSON.stringify(ent.body) === JSON.stringify(body)) return true;
       const guard = (): true => { const e = engine.world.entities[entityId]; if (!e || host.quietBarrier || engine.bodyAssignmentProblemV1!(entityId, body)) throw new Error('travel.body-not-ready'); return true; };
       try { guard(); await host.enqueueChecked('body-assignment-v1', 'world:body', {contract: 'body-assignment/1', worldId: this.world, soulId, entityId, body: structuredClone(body)}, guard, () => true); this.d.invalidateBodies?.(); }
