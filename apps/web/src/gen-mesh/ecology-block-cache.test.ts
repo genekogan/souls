@@ -109,7 +109,9 @@ test('a footprinted kit blocks its ground rooms in world pose; a kit without roo
     { op: 'place', def: 'pavilion@1', name: 'studio', p: [40, -20], r: yaw, s },
     { op: 'place', def: 'canopy@1', name: 'shade', p: [-40, 20] }] } as never, 'god', 0) as { result: { accepted: boolean } };
   assert.equal(r.result.accepted, true, JSON.stringify(r.result));
+  const bakes = (w as unknown as { bakes: Map<string, unknown> }).bakes, before = bakes.size;
   const cells = blockCellsOf(w), test = blockTest(cells, BLOCK_CELL, '\u0000cover');
+  assert.equal(bakes.size, before, 'A6: the room pass reads the memoised bake, no new one');
   // the kit's local frame, checked against its own post colliders (footprint() is the world-pose reference)
   const at = (e: string, lx: number, lz: number): [number, number] => { const p = w.worldPose(w.get(e)!), c = Math.cos(p.yaw), si = Math.sin(p.yaw); return [p.x + (lx * c + lz * si) * p.s, p.z + (-lx * si + lz * c) * p.s]; };
   const post = w.footprint(w.get('studio')!).map((o) => o.c).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -118,7 +120,7 @@ test('a footprinted kit blocks its ground rooms in world pose; a kit without roo
   // A1: the room floor is blocked everywhere inside, under the yawed, scaled pose
   for (let lx = -2.9; lx <= 2.9; lx += 0.29) for (let lz = -2.9; lz <= 2.9; lz += 0.29) assert.equal(test(...at('studio', lx, lz)), true, `inside ${lx},${lz}`);
   // A2: open ground beyond the room and the posts' pad stays open
-  for (const [lx, lz] of [[0, 3.8], [0, -3.8], [3.8, 0], [-3.8, 0], [3.4, 3.4]]) assert.equal(test(...at('studio', lx, lz)), false, `outside ${lx},${lz}`);
+  for (const [lx, lz] of [[0, 3.1], [0, -3.1], [3.1, 0], [-3.1, 0], [0, 3.8], [3.4, 3.4]]) assert.equal(test(...at('studio', lx, lz)), false, `outside ${lx},${lz}`);
   // A3: a kit without a footprint has no rooms: only its post colliders block, its middle stays meadow as before
   assert.equal(test(-40, 20), false, 'no-room kit middle'); assert.equal(test(-40 + 2.8, 20 + 2.8), true, 'no-room kit post');
   const polys = (id: string) => [...cells.values()].flat().filter((b) => b.id === id && b.kind === 'poly').length;

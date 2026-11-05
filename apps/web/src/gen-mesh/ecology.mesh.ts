@@ -113,8 +113,9 @@ function addBlocks(model: WorldModel, e: Entity, pad: number, cells: BlockCells,
     }
     for (const o of model.footprint(e, d)) { const r = Math.hypot(o.half[0], o.half[1]) + pad; put(o.c[0] - r, o.c[1] - r, o.c[0] + r, o.c[1] + r, { kind: 'obb', c: o.c, h: [o.half[0] + pad, o.half[1] + pad], yaw: o.yaw, id: e.id }); }
     // #870: a footprinted kit's (or a mesh sidecar's) ground rooms are walkable floor, not colliders, but no meadow either:
-    // each floor-0 room polygon is blocked in the thing's world pose (the bake footprint() just made, memoised)
-    if (gen !== 'building/1' && (gen === 'kit/2' || d.make.kind === 'mesh')) {
+    // each floor-0 room polygon is blocked in the thing's world pose (the bake footprint() just made, memoised). Only a
+    // def with a footprint has rooms: the rest skip the second bake lookup
+    if (d.make.kind === 'mesh' ? d.make.footprint : d.make.kind === 'gen' && d.make.gen === 'kit/2' && d.make.args?.footprint) {
       const rooms = model.bake(d, e.params ?? {}, e.seed ?? 0, e.shape).rooms;
       if (rooms?.length) {
         const world = d.form !== 'point' && e.in.parent === 'world', wp = world ? null : model.worldPose(e), co = wp ? Math.cos(wp.yaw) : 1, si = wp ? Math.sin(wp.yaw) : 0;
