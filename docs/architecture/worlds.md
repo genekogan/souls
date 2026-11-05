@@ -35,6 +35,13 @@ view spawns a floating stick that walks the eye; one finger elsewhere looks in p
 between the fingers, a two-finger vertical drag rises or lowers, and a double-tap flies there. Each gesture feeds the
 existing `WorldRtsCamera` path (WASD, Q/E, right-drag, wheel, double-click), so the same clamps hold. Follow and
 Broadcast keep OrbitControls' touch orbit and pinch.
+On a touch screen, one tap on a Soul's body or name plate follows it at once, through the same `flyToSoul` glide as the
+card's Follow button; the Soul's card collapses to a bottom chip (`SoulChip.tsx`: name, status line, Card). While
+following, a fast one-finger sideways flick (`touch/soul-swipe.ts`: over 60 px, under 400 ms) goes to the next (left)
+or previous (right) Soul here; slower drags still orbit. The order is a ring made on a swipe only: the followed Soul,
+then the others by the director's interest score, then by distance. A tap on the ground while following hands you the
+camera (Free) and glides it to that point (`WorldRtsCamera.flyToGround`). In Broadcast a touch screen's chip reads
+"Now showing <name>" with a Follow button. Mouse clicks keep the card-and-button flow.
 
 Audio opens independent Sound effects and Music switches plus a radio station selector. Stations curate the existing
 score playlist: All music, Quiet & ambient, Electronic and Upbeat. Choosing a station while music is off remembers

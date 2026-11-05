@@ -390,6 +390,15 @@ export class WorldRtsCamera {
     this.o.takeOver();
     this.flyTo(point);
   }
+  /** #892: a touch tap on the ground while following: take the camera (Free) and glide the pivot to the tapped point. */
+  flyToGround(e: { clientX: number; clientY: number }): boolean {
+    if (this.enabledNow() === false) return false;
+    const point = this.pickPoint(e.clientX, e.clientY);
+    if (!point) return false;
+    this.o.takeOver();
+    this.flyTo(point);
+    return true;
+  }
   /** Glide the pivot to `point`, coming in to a comfortable distance (6–16 m) at the same angle. */
   frameSubject(center:THREE.Vector3,boundingRadius:number){
     const vfov=this.camera.fov*Math.PI/180,hfov=2*Math.atan(Math.tan(vfov/2)*this.camera.aspect);
