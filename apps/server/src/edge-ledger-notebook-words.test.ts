@@ -18,6 +18,7 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('write in the study', [desk, pin, unpin]), desk.id, 'a pinboard nearby does not turn "write in" into pinning');
   assert.equal(resolve('write in the notebook', [desk, pin, unpin, nbPin, nbUnpin]), nbPin.id);
   assert.equal(resolve('write a line in the notebook', [nbPin, nbUnpin]), nbPin.id);
+  assert.equal(resolve('write in the study', [desk, nbPin, nbUnpin]), desk.id, 'a notebook nearby does not take "write in the study" from the desk');
   assert.equal(resolve('cross out my line in the notebook', [nbPin, nbUnpin]), nbUnpin.id);
   assert.equal(resolve('cross out my name on the sign-up sheet', [sign, unsign, nbPin, nbUnpin]), unsign.id, 'cross out keeps its sign-up meaning where that is offered');
 });

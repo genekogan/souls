@@ -469,6 +469,14 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     if (put && ctx.caps.some(c => c.verb === 'put-on')) return resolveCapability(`put-on ${put[1]}`, ctx);
   }
   let {verb, rest} = parseCapability(input, verbs);
+  // #428: "write in <words>" is the notebook's line only when the words name an offered notebook ("write in the study"
+  // beside a notebook stand still means the desk): otherwise the words are read again without the notebook's words
+  if (notebookOffered && NOTEBOOK_WORDS[verb]) {
+    const said = tokens(rest), nb = acts.filter(c => c.action === 'pin' && /\bnotebook\b/i.test(c.label));
+    if (!nb.some(c => {const t = ctx.target(c); return said.some(w => tokenHit(w, [...tokens(c.label), ...(t.names ?? []).flatMap(tokens)]));})) {
+      const plain = new Set([...verbs].filter(v => !NOTEBOOK_WORDS[v])); ({verb, rest} = parseCapability(input, plain));
+    }
+  }
   const nearestRequested = /\b(?:nearest|closest|nearby|anywhere|somewhere)\b|^(?:find|look for|search for)\b|\b(?:a|an)\s/.test(input.toLowerCase());
   const nearestBuilding=verb==='walk'&&/\b(?:nearest|closest)\b/i.test(rest)&&norm(rest.replace(/\bbehind(?:\s+(?:you|me|us))?\b/ig,' ').replace(/\b(?:nearest|closest)\b/ig,' '))==='building';
   const behind = /\bbehind(?:\s+(?:you|me|us))?\b/i.test(rest);
