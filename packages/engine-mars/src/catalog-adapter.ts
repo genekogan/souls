@@ -36,6 +36,8 @@ export const FIXTURE_COMPONENTS = ['seat', 'bed', 'surface', 'container', 'carry
 export const isFixtureDef = (d: Pick<DefFacts, 'components'> & Partial<Pick<DefFacts, 'tags' | 'name' | 'ref' | 'slots'>>) => FIXTURE_COMPONENTS.some((k) => !!d.components[k]) || isFireCircleDef(d) || !!d.slots?.some((s) => s.kind === 'hang');
 /** A small one-hand item the engine's items verbs (take_item / put_item) can carry. */
 export const isCarryableDef = (d: Pick<DefFacts, 'components'>) => !!d.components.carryable;
+/** PC03 (#682): an adapted loose material (an item whose handling is the native crew carry's, not a small one-hand item). */
+export const isLooseCarryAsset = (a: Pick<AssetDef, 'category' | 'handling'> | undefined) => a?.category === 'item' && !!a.handling && !a.handling.small;
 
 const SURFACE_PITCH = 0.3, SURFACE_MARGIN = 0.12;
 const r4 = (v: number) => Math.round(v * 10000) / 10000;
@@ -131,6 +133,12 @@ export function assetFromDef(id: string, d: DefFacts, o: { seen?: boolean } = {}
     const crew=Math.ceil(c.carryable.grips/2),span=Math.min(.6,w*.8);
     out.obstacle=true;
     out.capabilities={fixtureCarry:{upright:true,handling:{carryCrew:[crew,crew],carryPose:'edge',carryHeight:.95,hands:2,grips:{[crew]:Array.from({length:crew},(_,i)=>({id:`grip-${i}`,local:[crew===1?0:(i===0?-w*.25:w*.25),h*.5,i%2===0?dd/2:-dd/2] as [number,number,number],span:[span,0,0] as [number,number,number]}))}}}};
+  } else if (c.carryable?.handling) {
+    // PC03 (#682): a loose material carries the native material's handling as data (crew range, grips for each crew
+    // size, pose, hand height), so the native crew `carry` moves it exactly as it moves the engine's own beam or sheet
+    const h = c.carryable.handling as { crew: [number, number]; pose: 'edge' | 'flat'; height: number; grips: Record<string, [number, number, number][]> };
+    out.handling = { carryCrew: [h.crew[0], h.crew[1]], carryPose: h.pose, carryHeight: h.height,
+      grips: Object.fromEntries(Object.entries(h.grips).map(([n, gs]) => [Number(n), gs.map((local, i) => ({ id: gs.length === 1 ? 'mid' : `g${i}`, local: [r4(local[0]), r4(local[1]), r4(local[2])] as [number, number, number] }))])) };
   } else if (c.carryable) {
     // one hand, palm under the base (catalog-items.ts hand1): the engine's take_item / put_item / serve verbs
     out.handling = { carryCrew: [1, 1], carryPose: 'flat', grips: { 1: [{ id: 'hand', local: [0, 0, 0] }] }, carryHeight: 0.95, hands: 1, small: true };
