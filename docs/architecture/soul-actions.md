@@ -37,10 +37,14 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Distance.** Proposing or accepting from more than 10 m from the load is refused `shared.too-far` before any
     receipt, because walking closer would be another body act and would leave.
   - **Route preflight (PC06, [#685](https://github.com/genekogan/souls/issues/685)).** Before anyone is asked, the native
-    planner plans the whole crew's carry of the load to the place. A proposal or amend is refused if the formation has no
-    route there (`carry.no-route`, `carry.clearance`) or the load cannot be laid down there (`carry.target-blocked`). The
-    refusal carries the planner's named blocker, and no invitation or receipt is made. People in the way are not decided
-    here; the commit waits on them.
+    carry planner alone plans the whole crew's carry of the load to the place's centre. It skips everyone's programme
+    checks, so a guest busy walking does not hide the answer.
+    - **Refused.** A proposal or amend is refused when the formation has no way there (`carry.no-route`, or
+      `carry.clearance` when each person could walk there alone) or when the load cannot be laid down there
+      (`carry.target-blocked`). The refusal names the blocker, and no invitation or receipt is made.
+    - **Left to the commit.** People are not obstacles to the planner. Neither is a loose thing lying where the load
+      would go, since it can be moved. The commit waits on both.
+    - **Cost.** A refused route costs one bounded planner search, the same one a solo carry's admission runs.
   - **Too heavy alone.** The solo `carry:` refusal of a `shared-carry` load that needs more people
     (`carry.crew-too-small`) names its `carry-with:` offer.
   - **Readiness (PC05, [#684](https://github.com/genekogan/souls/issues/684)).** Once every role is accepted, the world

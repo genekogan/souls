@@ -99,10 +99,8 @@ export const ITEM_LIMITS = {perPlace: 12, placedWorld: 150, pickReach: 120, cons
 export const SHARED_LAPSE = 120;
 /** PC05 (#684, PC02 §1): a member is ready only on level 0 within this distance of the load (m); the native gather walks the rest. */
 export const SHARED_GATHER_RADIUS = 10;
-/** PC06 (#685): native carry answers about the formation's route or where the load would be laid, from the world's
- *  geometry and things (people in the way answer `*-occupied` and are waited on). Before anyone is asked, the proposal is
- *  refused with them. After agreement the commit still waits on `carry.target-blocked` (PC05), since a thing moved off
- *  the target can clear it before the lapse. */
+/** PC06 (#685): native carry planner answers about the formation's route or where the load would be laid, which the
+ *  proposal is refused with before anyone is asked (`sharedRoute` says what is left to the commit). */
 const SHARED_ROUTE_REFUSED = new Set(['carry.no-route', 'carry.clearance', 'carry.target-blocked']);
 const INVITE_RADIUS = 60, GESTURE_RADIUS = 8, APPROACH_RADIUS = 400, APPROACH_SECONDS = 240, FOLLOW_RADIUS = 20, FOLLOW_LOST = 45, CATCH_UP = 3;
 /** A shared walk is only "together" when the guest ends beside the host: follow standoff is 1.5 m, so 2.2 m leaves slack but not 2.8 m apart. */
@@ -193,6 +191,9 @@ export type TogetherPort = {
   note?(receiptId: string, code: string | null, reason: string | null): void;
   /** PC05: every member is ready; try the atomic commit (the ledger's guarded decision). */
   commitShared?(inviteId: string): void;
+  /** PC06 (#685): the native carry planner's answer for a crew carry, alone (no actor, programme or admission checks,
+   *  nothing submitted): the refusal with its subjects, or null. Main only (the act path). */
+  previewCarry?(params: {crew: string[]; item: string; to: {x: number; z: number; yaw: number}}): {code: string; message?: string; subjects?: string[]} | null;
   /** PC05: stop a Soul's running programme (best effort; the native carry sets its load down). */
   stopBody?(soul: EdgeSoul): void;
 };
@@ -735,7 +736,6 @@ export class Together {
     const crew = 1 + guests.length, [lo, hi] = tag.crew, names = guests.map(g => g.name).join(', ');
     if (!guests.length || crew < lo) return {code: 'carry.crew-too-small', reason: `${tag.name} needs at least ${lo} carriers; ask ${Math.max(1, lo - 1)} Soul${lo - 1 > 1 ? 's' : ''} to carry it with you.`};
     if (crew > hi) return {code: 'carry.crew-too-large', reason: `${tag.name} takes at most ${hi} carriers; ask fewer Souls.`};
-    const route = this.sharedRoute(soul, guests, tag, to); if (route) return route;
     const label = `Ask ${names} to carry ${tag.name} to ${to.name} together`;
     if (params.invite !== undefined) {
       const inv = typeof params.invite === 'string' ? this.invite(params.invite) : null;
@@ -746,9 +746,11 @@ export class Together {
       if (inv.guests.map(g => g.soulId).sort().join() !== guests.map(g => g.soulId).sort().join()) changes.push(`the crew is now ${soul.name} with ${names}`);
       // the same proposal again changes nothing: its host's receipt answers
       if (!changes.length) return {steps: [], existing: inv.hostReceipt ?? undefined};
+      const route = this.sharedRoute(soul, guests, tag, to); if (route) return route;
       // the amend answers with the host's one shared receipt, never a new "carry-with completed" one (PC02 §2)
       return {steps: [], existing: inv.hostReceipt ?? undefined, label, commit: () => this.amendShared(inv.id, soul, cap.id, tag, to, guests, changes)};
     }
+    const route = this.sharedRoute(soul, guests, tag, to); if (route) return route;
     const id = 'inv_' + randomUUID().slice(0, 12);
     return {steps: [], wait: true, label, detail: {sharedV1: {invite: id, revision: 1}}, commit: receipt => {
       const inv: Invite = {id, what: 'carry', kind: 'shared', host: {soulId: soul.soulId, name: soul.name}, guests, capability: cap.id, label: `asks you to carry ${tag.name} to ${to.name} together`,
@@ -758,19 +760,26 @@ export class Together {
       this.saveInvite(inv); this.announce(inv);
     }};
   }
-  /** PC06 (#685, PC02 §4) route preflight, before anyone is asked: the native planner plans the whole formation's carry
-   *  of the load to the place (the same `mars:carry` the commit submits). An answer about the route or the set-down (the
-   *  formation has no route there, or the load cannot be laid down there) refuses the proposal with the planner's code
-   *  and named blocker. Anything else (a body in the way, a guest still busy or far off) is not decided here: readiness and the
-   *  commit's own native check wait on it (PC05). Nothing is planned into the world and nothing moves. */
+  /** PC06 (#685, PC02 §4) route preflight, before anyone is asked: the native carry planner alone (the same `mars:carry`
+   *  the commit submits, without its actor and programme checks, so a guest busy with something else does not hide the
+   *  answer) plans the whole crew's carry of the load to the place. A refusal about the route or the set-down (no route
+   *  for the formation, `carry.no-route` / `carry.clearance`; the load cannot be laid down there, `carry.target-blocked`)
+   *  refuses the proposal with the planner's code and named blocker. Not here: people (they are not obstacles to the
+   *  planner) and a loose thing lying where the load would go (it can be moved; the commit waits on it, PC05). The crew's
+   *  positions only choose between `clearance` and `no-route`. Nothing is submitted and nothing moves. */
   private sharedRoute(soul: EdgeSoul, guests: {soulId: string; name: string}[], tag: Extract<Tag, {kind: 'shared'}>, to: {id: string; name: string}): {code: string; reason: string} | null {
-    const crew = [soul.entityId, ...guests.map(g => this.mindOf(g.soulId)?.entityId)];
-    const step = crew.every((e): e is string => !!e) ? this.sharedCarryStep(crew, tag.load, to.id) : null; if (!step) return null;
-    const issue = this.p.host.engine.canPerform({actor: soul.entityId, label: `Carry ${tag.name} to ${to.name}`, steps: [step]});
+    const members = [{entityId: soul.entityId, name: soul.name}, ...guests.map(g => ({entityId: this.mindOf(g.soulId)?.entityId, name: g.name}))];
+    if (!members.every((m): m is {entityId: string; name: string} => !!m.entityId) || !this.p.previewCarry) return null;
+    const step = this.sharedCarryStep(members.map(m => m.entityId), tag.load, to.id); if (!step) return null;
+    const issue = this.p.previewCarry(step.params as {crew: string[]; item: string; to: {x: number; z: number; yaw: number}});
     if (!issue || !SHARED_ROUTE_REFUSED.has(issue.code)) return null;
-    // the planner's own blocker, without its prefix naming the def by its description
-    const why = (issue.message ?? issue.code).replace(/^[^:]*?: /, '').replace(/\.$/, '');
-    return {code: issue.code, reason: `${tag.name} cannot be carried to ${to.name} by ${crew.length} people: ${why}. Nobody was asked; choose another place.`};
+    // the planner names the load itself first, and a thing's part as `<id>#<part>`
+    if (issue.code === 'carry.target-blocked' && (issue.subjects ?? []).some(id => {const e = id.split('#')[0]; return e !== tag.load && this.w.entities[e]?.kind === 'component';})) return null;
+    // the planner's named blocker (its own message names the def by its description and bodies by entity id)
+    const blk = /(?:intersect|overlap) '([^']+)'/.exec(issue.message ?? '')?.[1], n = members.length;
+    const why = issue.code === 'carry.target-blocked' ? `${tag.name} cannot be laid down in ${to.name}${blk ? ` (it would overlap ${blk})` : ''}`
+      : `${n} people carrying ${tag.name} cannot get it to ${to.name}${blk ? ` (the carrying formation would hit ${blk})` : ''}${issue.code === 'carry.clearance' ? '; each could walk there alone' : ''}`;
+    return {code: issue.code, reason: `${why}. Nobody was asked; choose another place.`};
   }
   /** The native crew `carry` of a shared operation: the crew in slot order lay the load down at the place's centre. */
   private sharedCarryStep(crew: string[], load: string, placeId: string): Steps[number] | null {

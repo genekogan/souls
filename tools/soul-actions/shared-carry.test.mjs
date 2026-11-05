@@ -45,6 +45,12 @@ async function world(t, sharedCarry) {
     {op: 'place', def: 'core/rack-upright@1', name: 'frame', p: [ax - 4, az + 5]},
     {op: 'place', def: 'core/garden-wall@1', name: 'pen-wall', shape: {path: [[ax + 1, az + 6], [ax + 1, az + 8.2], [ax + 3.2, az + 8.2], [ax + 3.2, az + 6], [ax + 2.6, az + 6]]}},
     {op: 'place', def: 'core/zone@1', name: 'pen', shape: {area: [[ax + 1.4, az + 6.4], [ax + 2.8, az + 6.4], [ax + 2.8, az + 7.8], [ax + 1.4, az + 7.8]]}},
+    // a court roomy enough to lay the beam in, whose only way in is a gate a person walks through but the crew's formation does not
+    {op: 'place', def: 'core/garden-wall@1', name: 'court-wall', shape: {path: [[ax - 5, az - 6], [ax - 5, az - 11], [ax - 11, az - 11], [ax - 11, az - 6], [ax - 6.1, az - 6]]}},
+    {op: 'place', def: 'core/zone@1', name: 'court', shape: {area: [[ax - 10.4, az - 10.4], [ax - 5.6, az - 10.4], [ax - 5.6, az - 6.6], [ax - 10.4, az - 6.6]]}},
+    // a walled garden with no way in at all, for nobody
+    {op: 'place', def: 'core/garden-wall@1', name: 'vault-wall', shape: {path: [[ax + 5, az - 6], [ax + 5, az - 11], [ax + 11, az - 11], [ax + 11, az - 6], [ax + 5, az - 6]]}},
+    {op: 'place', def: 'core/zone@1', name: 'vault', shape: {area: [[ax + 5.6, az - 10.4], [ax + 10.4, az - 10.4], [ax + 10.4, az - 6.6], [ax + 5.6, az - 6.6]]}},
   ]}));
   await tick(60);
   const idOf = (n) => god.model.get(n).id;
@@ -58,6 +64,7 @@ const read = (w, s, r) => w.edge.receipt(s.soulId, r.receipt?.id ?? r.id);
 const until = async (w, done, max) => { for (let n = 0; n < max && !done(); n++) await w.tick(1); };
 const inside = (poly, x, z) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, zi] = poly[i], [xj, zj] = poly[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
 const flat = (p) => Math.hypot(p[0], p[2]);
+const GRIPS = {g0: -1.09728, g1: 1.09728};   // core-rack-beam@2's grips for a crew of two (packages/world-compiler/src/core-kit/authoring/work.mjs)
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
 test('PC06: one consensual beam carry on the §7 fixture, one trajectory for the load and its crew, ordinary life around it', {timeout: 600000}, async (t) => {
@@ -73,7 +80,7 @@ test('PC06: one consensual beam carry on the §7 fixture, one trajectory for the
   const op = inviteOf(w, id).shared.op; assert.equal(inviteOf(w, id).state, 'committed', JSON.stringify(read(w, Ada, p)));
   // one authoritative trajectory: sample the world every tick until the operation ends
   const crew = [[Ada, p], [Bo, a]], last = {}, slots = new Set();
-  let both = 0, lifted = 0, maxStep = 0, maxLoadStep = 0, cyDoneDuring = false, spoke = false;
+  let both = 0, lifted = 0, maxReach = 0, maxStep = 0, maxLoadStep = 0, cyDoneDuring = false, spoke = false;
   for (let n = 0; n < 4000 && read(w, Ada, p).phase === 'started'; n++) {
     await w.tick(1);
     const b = E[beam].pose.p, g = crew.map(([s]) => E[s.entityId].human?.grip);
@@ -82,7 +89,12 @@ test('PC06: one consensual beam carry on the §7 fixture, one trajectory for the
     if (g.every((x) => x?.entity === beam)) {
       both++; for (const x of g) slots.add(x.slot);
       const qa = E[Ada.entityId].pose.p, qb = E[Bo.entityId].pose.p, mid = [(qa[0] + qb[0]) / 2, 0, (qa[2] + qb[2]) / 2];
-      for (const [s] of crew) assert.ok(flat(sub(E[s.entityId].pose.p, b)) < 2.2, `${s.name} stays within reach of the beam (tick ${eng.world.tick})`);
+      // each carrier stays within reach of their own grip (the def's two-carrier grips, ±1.097 m along the beam)
+      const yaw = E[beam].pose.yaw ?? 0;
+      for (const [i, [s]] of crew.entries()) {
+        const lx = GRIPS[g[i].slot], at = [b[0] + Math.cos(yaw) * lx, 0, b[2] - Math.sin(yaw) * lx], d = flat(sub(E[s.entityId].pose.p, at));
+        maxReach = Math.max(maxReach, d); assert.ok(d < 1, `${s.name} is ${d.toFixed(2)} m from grip ${g[i].slot} (tick ${eng.world.tick})`);
+      }
       assert.ok(flat(sub(b, mid)) < 0.75, `the beam stays between its carriers (tick ${eng.world.tick}: ${flat(sub(b, mid)).toFixed(2)} m)`);
       if (b[1] > lying + 0.3) lifted++;
     }
@@ -93,8 +105,8 @@ test('PC06: one consensual beam carry on the §7 fixture, one trajectory for the
       assert.ok(said.said?.heardBy >= 1, `Bo is heard mid-carry: ${JSON.stringify(said)}`);
     }
   }
-  t.diagnostic(`carry: ${both} ticks held by both on grips ${[...slots].join(', ')}, ${lifted} lifted; largest step carrier ${maxStep.toFixed(3)} m, load ${maxLoadStep.toFixed(3)} m; committed tick ${op.committedTick}, ended tick ${eng.world.tick}`);
-  assert.ok(both > 40, `both carriers held the beam together (${both} ticks)`); assert.equal(slots.size, 2, 'on two distinct grips');
+  t.diagnostic(`carry: ${both} ticks held by both on grips ${[...slots].join(', ')}, ${lifted} lifted, carriers at most ${maxReach.toFixed(2)} m from their grips; largest step carrier ${maxStep.toFixed(3)} m, load ${maxLoadStep.toFixed(3)} m; committed tick ${op.committedTick}, ended tick ${eng.world.tick}`);
+  assert.ok(both > 40, `both carriers held the beam together (${both} ticks)`); assert.equal(slots.size, 2, 'on two distinct grips'); assert.deepEqual(crew.map(([s]) => E[s.entityId].human?.grip?.slot ?? null), [null, null]);
   assert.ok(lifted > 20, `the beam was off the ground while carried (${lifted} ticks)`);
   assert.ok(maxStep < 0.5 && maxLoadStep < 0.5, `nothing jumped: largest carrier step ${maxStep.toFixed(2)} m, load step ${maxLoadStep.toFixed(2)} m per tick`);
   assert.ok(spoke, 'Bo spoke mid-carry');
@@ -121,9 +133,28 @@ test('PC06: preflight. An impossible destination is refused before anyone is ask
   // the pen: a person can step in, the beam cannot be laid down there. Refused with the planner's code, nobody asked
   const r = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'pen', with: 'Bo'}});
   assert.equal(code(r), 'carry.target-blocked', JSON.stringify(r));
-  assert.match(r.reason, /cannot be carried to pen by 2 people: .*pen-wall.*Nobody was asked/i, r.reason);
+  assert.match(r.reason, /beam cannot be laid down in pen \(it would overlap pen-wall.*\)\. Nobody was asked/i, r.reason);
   assert.equal(w.edge.together.invitesFor(Bo.soulId).length, 0, 'no invitation exists'); assert.ok(!streamKinds(Bo).includes('invite'), 'Bo was not asked');
   assert.deepEqual(w.edge.openReceipts(Ada.soulId), [], 'no receipt was opened');
+  // a court the beam fits in but the crew's formation cannot get through the gate of: carry.clearance, named
+  const court = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'court', with: 'Bo'}});
+  assert.equal(code(court), 'carry.clearance', JSON.stringify(court)); assert.match(court.reason, /cannot get it to court \(the carrying formation would hit court-wall.*\); each could walk there alone/i, court.reason);
+  assert.doesNotMatch(court.reason, /\b[he]_[0-9a-f]{6,}/, 'no entity ids in the reason');
+  // a garden nobody can enter: no route at all (or no standing room for the place itself), never a proposal
+  const vault = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'vault', with: 'Bo'}});
+  assert.equal(vault.accepted, false, JSON.stringify(vault)); assert.equal(w.edge.together.invitesFor(Bo.soulId).length, 0);
+  // Bo busy walking does not hide the verdict: the planner is asked alone, without anyone's programme
+  const boWalk = ok(await act(w, Bo, {capability: 'walk:yard'})); await w.tick(2); assert.ok(eng.programOf(Bo.entityId), 'Bo is walking');
+  const busy = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'pen', with: 'Bo'}});
+  assert.equal(code(busy), 'carry.target-blocked', JSON.stringify(busy)); assert.equal(w.edge.together.invitesFor(Bo.soulId).length, 0, 'busy Bo was not asked either');
+  await until(w, () => !['waiting', 'started'].includes(read(w, Bo, boWalk).phase), 1500); await w.at(Bo, w.pos(Ada)[0], w.pos(Ada)[2] + 3);
+  // transient blockers are not decided here: Cy standing at the shed's centre, or a loose beam lying there, still lets Ada ask
+  const shed = w.god.model.get('shed').shape.area, mid = [shed.reduce((a, q) => a + q[0], 0) / shed.length, shed.reduce((a, q) => a + q[1], 0) / shed.length];
+  await w.at(w.souls.Cy, mid[0], mid[1]);
+  let q = ok(await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'shed', with: 'Bo'}})); ok(await act(w, Ada, {capability: `withdraw:${q.receipt.shared.invite}`}));
+  await w.at(w.souls.Cy, mid[0] - 6, mid[1] - 6);
+  ok(w.god.act({ops: [{op: 'place', def: 'core/rack-beam@2', name: 'beam3', p: mid}]})); await w.tick(5);
+  q = ok(await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'shed', with: 'Bo'}})); ok(await act(w, Ada, {capability: `withdraw:${q.receipt.shared.invite}`}));
   // a possible proposal, then an amend to the pen: refused, and the open proposal is unchanged
   const p = ok(await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'shed', with: 'Bo'}})), id = p.receipt.shared.invite;
   const amend = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'pen', with: 'Bo', invite: id}});
@@ -142,9 +173,10 @@ test('PC06: preflight. An impossible destination is refused before anyone is ask
   assert.deepEqual(eng.runtime.violations, []);
 });
 
-test('PC06: with the flag off the solo refusal is unchanged and nothing shared is offered', {timeout: 300000}, async (t) => {
-  const w = await world(t, false), {Ada} = w.souls, frame = w.idOf('frame');
+test('PC06: with the flag off (the default) the solo refusal is unchanged and nothing shared is offered', {timeout: 300000}, async (t) => {
+  const w = await world(t, undefined), {Ada} = w.souls, frame = w.idOf('frame');
   const solo = w.edge.capabilities(Ada).find((c) => c.id === `carry:${frame}`);
   assert.equal(solo.blocked.code, 'carry.crew-too-small'); assert.doesNotMatch(solo.blocked.reason, /carry-with/);
   assert.ok(!w.edge.capabilities(Ada).some((c) => c.verb === 'carry-with'));
 });
+
