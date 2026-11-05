@@ -27,7 +27,7 @@ void test('a ride boarding summary names the ride, never its object id',()=>{
  assert.equal(join('ferris-wheel'),'Boarded the ferris wheel and seated; the ride has not left the ground yet and is not finished.');
  assert.match(String(join('carousel')),/^Boarded the carousel and seated/);
  assert.match(String(join('punt')),/^Boarded the punt and seated/);
- assert.match(String(join(undefined)),/^Boarded the balloon and seated/,'an older object without a vehicle is a balloon, as vehicleOf reads it');
+ assert.match(String(join(undefined)),/^Boarded the balloon and seated/,'an object without a vehicle is the balloon, the default carrier');
  for(const v of ['ferris-wheel','carousel','punt',undefined])assert.doesNotMatch(String(join(v)),RAW_ID);
 });
 

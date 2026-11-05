@@ -4,9 +4,11 @@ import {bodyEnd} from '../perception/here.ts';
 import type {OutcomeSnapshot,TerminalSection} from './store.ts';
 const object=(v:unknown):Record<string,unknown>=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 const clip=(v:unknown,max=300)=>typeof v==='string'?v.replace(/\s+/g,' ').trim().slice(0,max):'';
+/** F8: a place's display name for summary text; null when it has none or its "name" is only its id. */
+const placeNameOf=(ledger:EdgeLedger,id:string|null|undefined)=>{const name=id?ledger.places.byId.get(id)?.name:null;return name&&name!==id?name:null;};
 /** Privacy comes from existing public/entitled projections, never raw object or other-Soul stream tables. */
 export function terminalSnapshot(ledger:EdgeLedger,soul:EdgeSoul,kind:string):OutcomeSnapshot{
- const worldId=ledger.host.worldId,tick=ledger.host.engine.world.tick,end=bodyEnd(ledger,soul.soulId),full=['use-computer','listen'].includes(kind),places=full?ledger.map():[],walkable=full?places.filter(p=>p.walkable).map(p=>p.id):ledger.walkablePlaceIdsV1(),base={worldId,tick,place:end?.place??null,placeName:(end?.place&&ledger.places.byId.get(end.place)?.name)||null,placePath:ledger.placePathOf(soul.soulId).filter(p=>p.kind!=='occupier').map(p=>p.id),pos:end?.pos??null,walkable};
+ const worldId=ledger.host.worldId,tick=ledger.host.engine.world.tick,end=bodyEnd(ledger,soul.soulId),full=['use-computer','listen'].includes(kind),places=full?ledger.map():[],walkable=full?places.filter(p=>p.walkable).map(p=>p.id):ledger.walkablePlaceIdsV1(),base={worldId,tick,place:end?.place??null,placeName:placeNameOf(ledger,end?.place),placePath:ledger.placePathOf(soul.soulId).filter(p=>p.kind!=='occupier').map(p=>p.id),pos:end?.pos??null,walkable};
  if(!full)return{...base,sections:[],materials:[]};
  const visible=(ledger.comms?.objects.visibleTo(soul)??[]).map(object),sections:TerminalSection[]=[],materials:OutcomeSnapshot['materials']=[];
  const fact=(section:string,text:string,about=worldId,untrusted=false)=>({fact:text,about,source:`town:${section}:${worldId}:${tick}`,provenance:untrusted?'soul-text' as const:'world-fact' as const,untrusted});
