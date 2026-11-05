@@ -106,7 +106,7 @@ export function packageRun(runDir, { select = [] } = {}) {
   const measurements = e ? { evaluation: rel(join(ev.dir, 'evaluation.json')), measured: e.measures.filter((m) => m.status === 'measured').map((m) => ({ id: m.id, value: m.value ?? m.summary ?? null })),
     questions: [...(e.acceptance?.predeclared ?? []), ...(e.questions ?? [])].map((q) => ({ id: q.id, basis: q.basis, verdict: q.verdict })) } : null;
   const index = { package: 1, private: true, createdAt: new Date().toISOString(), outcome, measurements,
-    recordings: recordings.map((r) => ({ camera: r.camera, file: r.file ? rel(r.path) : null, bytes: r.bytes, sha256: r.sha256, durationSec: r.durationSec, videoSec: r.videoSec ?? null, partial: r.partial, requested: r.requested, actual: r.actual, pageErrors: r.pageErrors?.length ?? 0 })),
+    recordings: recordings.map((r) => ({ camera: r.camera, file: r.file ? rel(r.path) : null, bytes: r.bytes, sha256: r.sha256, durationSec: r.durationSec, videoSec: r.videoSec ?? null, encoding: r.encoding ?? null, mbPerMin: r.mbPerMin ?? null, partial: r.partial, requested: r.requested, actual: r.actual, pageErrors: r.pageErrors?.length ?? 0 })),
     previews: previews.map((p) => ({ file: rel(join(pdir, p.file)), sha256: p.sha256, fullProof: false, source: p.source })),
     diagnostics: receipt.diagnostics ? { requested: true, result: receipt.diagnostics.capture?.result ?? null } : { requested: false }, limits };
   // Selected projection: only what was named, run-relative, nothing that looks like a private path.
@@ -143,8 +143,8 @@ export function packageRun(runDir, { select = [] } = {}) {
 function renderIndex(ix) {
   const o = ix.outcome, L = [`# Soul Run ${o.runId}: ${o.status}`, '', `Spec ${o.spec.name ?? '-'} (${(o.spec.sha256 ?? '-').slice(0, 12)}), source ${(o.source?.commit ?? '-').slice(0, 12)}; ${o.startedAt} → ${o.endedAt}. Private local index: do not publish; publish only selected.json items with tools/proof/upload.mjs.`, ''];
   if (o.reason) L.push(`Reason: ${o.reason}`, '');
-  L.push('## Recordings (uncut, real speed)', '', '| camera | file | s | MB | partial | requested → actual |', '|---|---|---|---|---|---|');
-  for (const r of ix.recordings) L.push(`| ${r.camera} | ${r.file ?? '(none)'} | ${r.videoSec ?? r.durationSec ?? '-'} | ${r.bytes ? (r.bytes / 1e6).toFixed(1) : '-'} | ${r.partial ? 'yes' : 'no'} | ${r.requested?.kind ?? '-'} → ${r.actual?.mode ?? '-'} |`);
+  L.push('## Recordings (uncut, real speed)', '', '| camera | file | s | MB | MB/min | size | partial | requested → actual |', '|---|---|---|---|---|---|---|---|');
+  for (const r of ix.recordings) L.push(`| ${r.camera} | ${r.file ?? '(none)'} | ${r.videoSec ?? r.durationSec ?? '-'} | ${r.bytes ? (r.bytes / 1e6).toFixed(1) : '-'} | ${r.mbPerMin ?? '-'} | ${r.encoding ? `${r.encoding.size.width}×${r.encoding.size.height} ${r.encoding.setting}` : '-'} | ${r.partial ? 'yes' : 'no'} | ${r.requested?.kind ?? '-'} → ${r.actual?.mode ?? '-'} |`);
   if (ix.previews.length) { L.push('', '## Previews (derived, not full proof)', ''); for (const p of ix.previews) L.push(`- ${p.file}: ${p.source.fromSec}–${p.source.toSec} s of ${p.source.file}`); }
   if (ix.measurements) { L.push('', '## Measurements', ''); for (const m of ix.measurements.measured) L.push(`- ${m.id}: ${typeof m.value === 'object' ? JSON.stringify(m.value) : m.value}`); for (const q of ix.measurements.questions) L.push(`- question ${q.id}: ${q.verdict} (${q.basis})`); }
   L.push('', '## Limits', '', ...(ix.limits.length ? ix.limits.map((l) => `- ${l}`) : ['- none recorded']), '');
