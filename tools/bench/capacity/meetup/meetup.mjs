@@ -6,10 +6,14 @@
 //   node tools/bench/capacity/meetup/meetup.mjs [--profile even|meetup|even,meetup] [--seed cw1] [--repeats 1]
 //        [--out .local/bench/meetup/<stamp>] [--root <checkout>] [--port 4400] [--range 4401-4430] [--heap-mb 2048]
 //        [--host-class laptop] [--quiet-host] [--short] [--browser] [--join-concurrency 4]
+//        [--active-min 20] [--warmup-min 10] [--telemetry]
 //
 // --short: the same shape with 1 min quiet / 3 min activity (a smoke, never a measuring window).
 // --quiet-host: the operator asserts the host runs nothing else; without it every number is labelled not-quiet.
 // --browser: one real browser (Playwright Chromium, headless) holds world 0's page for the whole run.
+// --active-min N (CW8 A2, #955): an activity window of N minutes (20-240; default 20, the CW2 schedule unchanged), the same
+//   per-Soul rates, the meetups repeated in every 20-min block. --warmup-min: the start of the window the growth trends
+//   leave out (default 10). --telemetry: run the launcher's telemetry collector beside it, into <run>/telemetry.
 // Per run: <out>/<profile>-r<k>/{receipt.json, ops.jsonl, samples.jsonl, result.json, REPORT.md, launcher/, souls/}.
 // The receipt holds no host name, user, home path or token; souls/ holds tokens and stays local (.local is ignored).
 import { spawn, execFileSync } from 'node:child_process';
@@ -21,8 +25,9 @@ import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { FIXTURES, PROFILES, DEMAND, TICK_HZ, WORKLOAD, LOAD_FAILURES, phases, souls as soulsOf, schedule, scheduleId, scheduleCounts, account, outcomeOf, quantiles, clockWindow, rng } from './workload.mjs';
 import { report, verdictReport, OBJECTIVES } from './report.mjs';
-import { probe, threads, between, hotThreads } from './host.mjs';
+import { probe, threads, between, hotThreads, resourceSample } from './host.mjs';
 import { verdict, headroom, evidence } from './verdict.mjs';
+import { growth as growthOf } from './growth.mjs';
 
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf(`--${k}`); return i < 0 ? d : argv[i + 1]; }, flag = (k) => argv.includes(`--${k}`);
 const ROOT = resolve(opt('root', new URL('../../../..', import.meta.url).pathname)), SHORT = flag('short'), SEED = opt('seed', 'cw1');
@@ -36,7 +41,9 @@ const QUALIFYING = flag('qualifying-executor');
 // limits; the driver stays outside the allocation. Recorded in the receipt.
 const SLICE = opt('slice', '');
 const OUT = resolve(opt('out', join(ROOT, '.local/bench/meetup', new Date().toISOString().replace(/[:.]/g, '-'))));
-const PH = phases(SHORT), WARM_MS = SHORT ? 20_000 : 60_000, DRAIN_MS = 30_000, BASE = `http://127.0.0.1:${PORT}`;
+const ACTIVE_MIN = opt('active-min') == null ? null : Number(opt('active-min')), WARMUP_MS = Number(opt('warmup-min', 10)) * 60_000, TELEMETRY = flag('telemetry');
+if (!(WARMUP_MS >= 0)) throw new Error('--warmup-min: minutes, 0 or more');
+const PH = phases(SHORT, ACTIVE_MIN), WARM_MS = SHORT ? 20_000 : 60_000, DRAIN_MS = 30_000, BASE = `http://127.0.0.1:${PORT}`;
 for (const p of PROFILE_LIST) if (!PROFILES[p]) throw new Error(`--profile ${p}: even | meetup`);
 const { SOUL_CEILINGS } = await import(pathToFileURL(join(ROOT, 'tools/world-launcher/flood.mjs')).href);
 const sleep = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
@@ -70,6 +77,7 @@ function procStats(pids) {   // {pid: {cpuS, rssMb}}
   }
   return out;
 }
+const RES_EVERY_MS = 30_000;   // CW8 A2 (#955): resourceSample (host.mjs) cadence
 const otherSouls = (own) => (sh('pgrep', ['-f', 'apps/server/src/main.ts']) ?? '').split('\n').map(Number).filter((p) => p && !own.includes(p)).length;
 const hostFacts = () => ({ loadavg: loadavg().map((x) => +x.toFixed(2)), freeMemMb: Math.round(freemem() / 2 ** 20) });
 
@@ -116,6 +124,7 @@ async function launcherView() {
 }
 async function stopAll(run) {
   run.stopped = true;
+  try { run.telemetry?.kill('SIGTERM'); } catch { /* gone */ }
   for (const ws of run.sockets) try { ws.close(); } catch { /* closed */ }
   for (const a of [...run.aborts, ...run.opAborts]) try { a.abort(); } catch { /* done */ }
   for (const p of run.procs ?? []) try { p.kill('SIGKILL'); } catch { /* gone */ }   // CLI calls still in flight (join)
@@ -283,7 +292,9 @@ async function oneRun(profile, rep) {
     host: { os: `${platform()} ${release()}`, arch: arch(), cpu: cpus()[0]?.model ?? null, cores: cpus().length, memGb: Math.round(totalmem() / 2 ** 30) },
     fixtures: FIXTURES.map((f, w) => { const p = join(ROOT, 'worlds/templates', `${f.template}.json`), t = JSON.parse(readFileSync(p, 'utf8'));
       return { slug: f.slug, template: f.template, sha256: sha256(p), bytes: readFileSync(p).length, batches: t.batches?.length ?? 0, souls: PROFILES[profile][w] }; }),
-    configuration: { launcherEnv: LAUNCHER_ENV, launcherArgs: LAUNCHER_ARGS('<run>/launcher').map((a) => (a.startsWith(ROOT) ? rel(a) : a)), heapMb: HEAP_MB, slice: SLICE || null, soulCeilings: SOUL_CEILINGS, auth: 'dev identities (DEV_AUTH=1, the launcher default without --auth-env)', brain: 'BRAIN_MODE=fake (launcher child default)', eyes: 'off (EDGE_EYES* removed from the launcher environment)' },
+    configuration: { launcherEnv: LAUNCHER_ENV, launcherArgs: LAUNCHER_ARGS('<run>/launcher').map((a) => (a.startsWith(ROOT) ? rel(a) : a)), heapMb: HEAP_MB, slice: SLICE || null, soulCeilings: SOUL_CEILINGS, auth: 'dev identities (DEV_AUTH=1, the launcher default without --auth-env)', brain: 'BRAIN_MODE=fake (launcher child default)', eyes: 'off (EDGE_EYES* removed from the launcher environment)',
+      telemetry: TELEMETRY ? 'the launcher\'s collector (tools/world-launcher/telemetry.mjs collect) on its loopback /__sim/metrics, every 15 s, into <run>/telemetry' : 'off (--telemetry)',
+      resources: { everyS: RES_EVERY_MS / 1000, growthWarmupMs: WARMUP_MS } },
     workloadDefinition: { demand: DEMAND, phases: { joinThenWarmMs: WARM_MS, ...PH }, scheduleSha256: scheduleId(ops), counts: scheduleCounts(ops),
       accounts: Object.entries(ss.reduce((m, s) => (m[s.account] = (m[s.account] ?? 0) + 1, m), {})).filter(([, n]) => n > 1).map(([a, n]) => ({ account: a, souls: n })),
       sharedAddresses: Object.entries(ss.reduce((m, s) => (m[s.address] = (m[s.address] ?? 0) + 1, m), {})).filter(([, n]) => n > 1).map(([a, n]) => ({ address: a, souls: n })) },
@@ -316,7 +327,14 @@ async function oneRun(profile, rep) {
         driver: { cpuS: +((process.cpuUsage().user + process.cpuUsage().system) / 1e6).toFixed(2), rssMb: Math.round(process.memoryUsage().rss / 2 ** 20), lagP99Ms: +(lag.percentile(99) / 1e6).toFixed(1), lagMaxMs: +(lag.max / 1e6).toFixed(1) } }); lag.reset(); }, 2000);
     const ho = setInterval(() => { const a = probe(run.launcher.child.pid);
       write({ k: 'host', t: Math.round(mono()), ...hostFacts(), cgroupMemMb: a.memoryCurrentMb, cgroupSwapMb: a.swapCurrentMb, psiCpuSome10: a.pressure.cpu?.some?.avg10 ?? null, psiMemSome10: a.pressure.memory?.some?.avg10 ?? null }); }, 5000);
-    run.timers = [hz, pr, ho];
+    // resources (CW8 A2): heap, GC, queue, threads and disk per world every 30 s, from the world's own files and /proc
+    const rs = setInterval(() => { const k = kids(), st = procStats(ownPids());
+      write({ k: 'res', t: Math.round(mono()), ...resourceSample({ ldata: run.launcher.ldata, worlds: FIXTURES.map((f) => ({ slug: f.slug, pid: k[f.slug]?.pid ?? null, rssMb: st[k[f.slug]?.pid]?.rssMb ?? null })), telemetryDir: TELEMETRY ? join(dir, 'telemetry') : null }) }); }, RES_EVERY_MS);
+    run.timers = [hz, pr, ho, rs];
+    if (TELEMETRY) {   // the collector reads the launcher's Prometheus text, built from live.json: it never wakes a world
+      const t = spawn(process.execPath, [join(ROOT, 'tools/world-launcher/telemetry.mjs'), 'collect', '--url', `${BASE}/__sim/metrics`, '--dir', join(dir, 'telemetry')], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+      t.stdout.on('data', (b) => appendFileSync(join(dir, 'telemetry.log'), b)); t.stderr.on('data', (b) => appendFileSync(join(dir, 'telemetry.log'), b)); run.telemetry = t;
+    }
     // join (timed, not a measuring window)
     mark('join');
     for (let i = 0; i < ss.length; i += JOIN_PAR) await Promise.all(ss.slice(i, i + JOIN_PAR).map((s) => joinSoul(run, s)));
@@ -448,7 +466,8 @@ function summarize({ profile, rep, ss, ops, records, run, rates, views, cleanup,
       return [f.slug, { mainCores: hotW[f.slug]?.mainCores ?? null, hottestCores: hotW[f.slug]?.hottest?.cores ?? null, hottestThread: hotW[f.slug]?.hottest?.name ?? null, cpuCores: resources.active.worlds[f.slug]?.cpuCores ?? null,
         loopP99MsMax: Math.max(0, ...hz.filter((x) => x.w === f.slug && inW(x, win.active)).map((x) => x.loopP99Ms ?? 0)), queueMax: Math.max(0, ...hz.filter((x) => x.w === f.slug && inW(x, win.active)).map((x) => x.queue ?? 0)),
         met: (meets(r, O.readP95Ms, O.readP99Ms) ?? true) && (meets(st, O.actStartP95Ms, O.actStartP99Ms) ?? true) && (c.active.ratio ?? 0) >= O.clockMin }]; })) };
-  return { profile, rep, headline, qualification, marksS: Object.fromEntries(Object.entries(run.marks).map(([k, v]) => [k, +((v - run.marks.boot) / 1000).toFixed(1)])), bootS: run.launcher.bootS, rates,
+  const grown = growthOf(run.samples, { active: [run.marks.active, run.marks.drain], warmupMs: WARMUP_MS, slugs: FIXTURES.map((f) => f.slug) });
+  return { profile, rep, headline, qualification, growth: grown, marksS: Object.fromEntries(Object.entries(run.marks).map(([k, v]) => [k, +((v - run.marks.boot) / 1000).toFixed(1)])), bootS: run.launcher.bootS, rates,
     join: { ms: quantiles(ss.filter((s) => s.joinMs != null).map((s) => s.joinMs)), failed: ss.filter((s) => !s.token).map((s) => ({ soul: s.i, tries: s.joinTries })), retries: ss.reduce((n, s) => n + Math.max(0, (s.joinTries?.length ?? 1) - 2), 0) },
     worlds: run.worlds.map((w) => ({ slug: w.slug, placesInMenu: w.placesInMenu, meetup: w.meetup, sharedVerbs: w.sharedVerbs })), accounting, reactiveDemand, actionStartMs: q(start), sharedActionStartMs: quantiles(sharedStart.map(Math.round)), receiptDeliveryMs: q(delivery), plannedActivityMs: q(activity), actsWithoutStart: never,
     stream: { ...run.stream, batches: quantiles(run.stream.batches) }, viewers: run.viewers, browser: BROWSER ? { ...browser, ...run.browserStats } : null,

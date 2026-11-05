@@ -125,6 +125,34 @@ host names, users, home paths or tokens), `ops.jsonl` (one line per issued call)
 `REPORT.md`; `souls/` holds Soul tokens and stays local. Every owned process is stopped at the end (also on Ctrl-C)
 and the result records the cleanup. A run without `--quiet-host` is labelled `not-quiet`; no laptop run qualifies.
 
+### Long windows and resource growth (CW8 A2, #955)
+
+- **`--active-min N`** makes the activity window N minutes long, from 20 to 240.
+  - The per-Soul rates stay the same, and the meetups repeat in every 20-minute block, at 5, 11 and 17 minutes.
+  - Without the flag, the schedule is the CW2 baseline's: `workload.test.mjs` pins its sha256.
+  - Compare verdicts only between runs with the same window.
+- **The resource sampler** records each world every 30 s, from the moment the worlds are up. It reads:
+  - RSS;
+  - heap used and heap limit, GC % (10 s) and queue depth, from the world's own `live.json`;
+  - the thread count, from `/proc/<pid>/task`;
+  - the size of `sim.db`, `sim.db-wal` and `sim.db-shm`, and of the whole data directory.
+
+  It also reads free space on the data volume. These are `res` lines in `samples.jsonl`.
+- **External memory is not exposed** by the server, so it is reported as unknown, never estimated. The table shows `RSS − heap used` instead, and labels it as only that.
+- **`--telemetry`** runs the launcher's own collector (`tools/world-launcher/telemetry.mjs collect`) on its loopback `/__sim/metrics`, into `<run>/telemetry`. Its store size is then sampled too.
+- **`meetup/growth.mjs`** reduces the samples over the activity window.
+  - It leaves out an explicit warm-up: the first `--warmup-min` minutes, 10 by default.
+  - For each series it gives the medians of the residual window's first and last 5 minutes, their difference, a least-squares slope per hour, and R².
+  - It works per world and summed across worlds, and names the steepest world.
+  - A series that is too short or missing is unknown, never flat.
+  - `result.json` has it as `growth`, and REPORT.md has a "Growth over the activity window" table.
+  - Nothing is extrapolated. A window of an hour or two cannot show indefinite stability; that is CW6 #740's unattended proof.
+
+```bash
+# one 60-minute meetup window with telemetry on (about 80 min in all)
+node tools/bench/capacity/meetup/meetup.mjs --profile meetup --active-min 60 --telemetry [--warmup-min 10] [--quiet-host] --out .local/bench/meetup/<name>
+```
+
 ### Hardware qualification (CW2, #736)
 
 Each run also reads the allocation the worlds live in (`meetup/host.mjs`: the launcher's cgroup v2 `cpu.max`,
