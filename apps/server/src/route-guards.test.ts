@@ -8,6 +8,7 @@ import {buildApp, CLOCK_EXEMPT, clockExempt} from './http.ts';
 import {config} from './config.ts';
 import {GodMode} from './god/god.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';
+import {Hono} from 'hono';
 
 const UNAVAILABLE = {ok: false, code: 'world-unavailable', message: 'World temporarily unavailable.'};
 const haltClock = (host: unknown) => { (host as {clockFailure: unknown}).clockFailure = new Error('test: clock halted'); };
@@ -24,17 +25,36 @@ function world(t: {after(fn: () => void): void}) {
   return {f, app};
 }
 
-/** A concrete URL for a route pattern: `:name{regex}` and `:name` get a value their pattern accepts, `*` a segment. */
-const concrete = (path: string) => path
-  .replace(/:[A-Za-z]+\{([^}]*)\}/g, (_, re: string) => re.includes('[0-9a-f]{64}') ? 'a'.repeat(64) + (/\\\.\(([a-z0-9]+)/.exec(re) ? '.' + /\\\.\(([a-z0-9]+)/.exec(re)![1] : '') : re.includes('mjs') ? 'x.mjs' : 'x')
-  .replace(/:[A-Za-z]+/g, 'x').replace(/\*/g, 'x');
+/** A value a `:name{regex}` parameter accepts: 64 hex digits plus the first listed extension, an alternation's first word. */
+const sample = (re: string) => {
+  const ext = /\\\.\(?([a-z0-9]+)/.exec(re)?.[1];
+  if (re.includes('[0-9a-f]{64}')) return 'a'.repeat(64) + (ext ? '.' + ext : '');
+  return /^[a-z-]+(\|[a-z-]+)+$/.test(re) ? re.split('|')[0] : ext ? 'x.' + ext : 'x';
+};
+/** A concrete URL for a route pattern: each parameter gets a value its pattern accepts (regexes parsed with balanced
+ *  braces), `*` a segment. */
+const concrete = (path: string) => {
+  let out = '';
+  for (let i = 0; i < path.length;) {
+    const m = /^:[A-Za-z]+/.exec(path.slice(i));
+    if (!m) { out += path[i] === '*' ? 'x' : path[i]; i++; continue; }
+    i += m[0].length;
+    if (path[i] !== '{') { out += 'x'; continue; }
+    let depth = 0, j = i;
+    for (; j < path.length; j++) { if (path[j] === '{') depth++; else if (path[j] === '}' && --depth === 0) break; }
+    out += sample(path.slice(i + 1, j)); i = j + 1;
+  }
+  return out;
+};
+/** The generated URL reaches its own route: a one-route app with the same pattern matches it. */
+const reaches = async (method: string, path: string, url: string) => { const h = new Hono(); h.on(method === 'ALL' ? ['GET', 'POST'] : [method], path, c => c.text('hit')); return (await (await h.request(url, {method: method === 'ALL' ? 'GET' : method})).text()) === 'hit'; };
 
 /** Every distinct (method, path) the built app registers, middleware included ('ALL' is sent as GET and POST). */
 const table = (app: {routes: {method: string; path: string}[]}) => {
-  const seen = new Set<string>(), out: {method: string; url: string; path: string}[] = [];
+  const seen = new Set<string>(), out: {method: string; url: string; path: string; registered: string}[] = [];
   for (const r of app.routes) for (const method of r.method === 'ALL' ? ['GET', 'POST'] : [r.method]) {
     const url = concrete(r.path), key = `${method} ${url}`;
-    if (!seen.has(key)) { seen.add(key); out.push({method, url, path: r.path}); }
+    if (!seen.has(key)) { seen.add(key); out.push({method, url, path: r.path, registered: r.method}); }
   }
   return out;
 };
@@ -54,6 +74,7 @@ test('every route in the table carries the security headers, and answers 503 whi
   assert.ok(routes.length > 200, `the walk sees the whole table (${routes.length} entries)`);
   for (const early of ['/v1/edge/act', '/v1/god/act', '/v1/moderation/hide', '/v1/site/arrive', '/v1/edge/owner/:soulId/inbox', '/v1/souls/:soulId/command', '/v1/world/env', '/SKILL.md'])
     assert.ok(routes.some(r => r.path === early), `${early} is in the walk`);
+  for (const r of routes) assert.ok(await reaches(r.registered, r.path, r.url), `${r.url} reaches ${r.registered} ${r.path}`);
   for (const r of [...routes, {method: 'GET', url: '/v1/no-such-route', path: ''}, {method: 'GET', url: '/no-such-page', path: ''}]) secure(await call(app as never, r.method, r.url), `${r.method} ${r.url}`);
   haltClock(f.host);
   const exempt: string[] = [];
@@ -89,4 +110,7 @@ test("a route's own CSP keeps its directives and gains frame-ancestors; refusals
   secure(own, 'edge body asset');
   const big = await app.request('/v1/edge/say', {method: 'POST', headers: {'content-type': 'application/json', 'content-length': String(2 * 1024 * 1024)}, body: 'x'.repeat(2 * 1024 * 1024)});
   assert.equal(big.status, 413); secure(big, 'body ceiling 413');
+  let flood: Response | undefined;
+  for (let n = 0; n < 1000 && flood?.status !== 429; n++) flood = await app.request('/v1/moderation', {headers: {'x-forwarded-for': '203.0.113.9'}});
+  assert.equal(flood!.status, 429, 'the flood guard refuses a burst from one address'); secure(flood!, 'flood 429');
 });

@@ -11,11 +11,12 @@ the original worlds. The server strips the world path (`WORLD_PATH`) before rout
 - **Bodies.** `/v1/*` bodies are limited to 64 KB (larger: 413 `too-large`). Photo routes accept 360 KB; body and art
   uploads have their own limits.
 - **Halted clock.** While the world's clock is halted, every route answers 503 `world-unavailable` with
-  `Cache-Control: no-store`, before auth and before the body is read. That includes `/healthz`, whose 503 is the
+  `Cache-Control: no-store`, before auth and before the body is read; only the per-address flood limit (429) and the
+  1 MB body ceiling (413) can answer first. That includes `/healthz`, whose 503 is the
   health answer. The only exception is moderation (`/v1/moderation`, `/v1/moderation/*`): a takedown, a quarantine
   release and the veto list read only the moderation log, never the engine, so they keep working. The list is
   `CLOCK_EXEMPT` in `apps/server/src/http.ts`.
-- **Headers.** Every response, refusals and 404s included, sets `X-Robots-Tag: noindex, nofollow`,
+- **Headers.** Every answer from the app (`buildApp`), refusals and 404s included, sets `X-Robots-Tag: noindex, nofollow`,
   `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`. A route with its own CSP keeps it, and
   `frame-ancestors 'none'` is added to it. Both rules are mounted ahead of every route.
 - **Auth**, three kinds:
