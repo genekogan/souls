@@ -146,9 +146,9 @@ export class Spatial {
   private gridsLater: (() => GridSet) | null = null;
   epoch = 0;
   /** Paged-ground counters (cheap integers, read by the server's load stats): syncs, rebuilds because only the windows
-   *  moved / because the static world changed, the ms those rebuilds took, and window grids built (and their ms). */
-  /** Diagnostic counters. carry*: native carry formation searches run, the poses they expanded, and refused searches
-   *  answered from their kept verdict instead (carry/validate.ts, #1015). */
+   *  moved / because the static world changed, the ms those rebuilds took, and window grids built (and their ms).
+   *  carry*: native carry formation searches run, the poses they expanded, and refused searches answered from their
+   *  kept verdict instead (carryRefusals; carry/validate.ts, #1015). */
   readonly stats = { pagedSyncs: 0, pagedMoved: 0, pagedChanged: 0, pagedMs: 0, gridBuilds: 0, gridMs: 0, scans: 0, scanMs: 0, trusted: 0, carrySearches: 0, carryExpanded: 0, carryRefusalsKept: 0 };
   /** Diagnostic (SIM_L4_SCAN_SITES=1): scans per calling function (the first frame outside this file). */
   readonly scanSites: Map<string, number> | null = typeof process !== 'undefined' && (process as { env?: Record<string, string | undefined> }).env?.SIM_L4_SCAN_SITES === '1' ? new Map() : null;
@@ -165,7 +165,7 @@ export class Spatial {
     this.restoredEpoch = undefined;
     if (e === undefined || e === this.epoch) return;
     this.epoch = e;
-    this.aroundCache.clear(); this.outside.clear(); this.narrowCache.clear();
+    this.aroundCache.clear(); this.outside.clear(); this.narrowCache.clear(); this.dropCarryRefusals();
   }
   /** Set by `rt.profile = true`: wall ms per method (spatial.route includes its spatial.sync). */
   prof?: Profiler;
@@ -222,6 +222,7 @@ export class Spatial {
     this.trustToken = -1;
     this.aroundCache.clear();
     this.narrowCache.clear();
+    this.dropCarryRefusals();
     this.sync(world);
     return true;
   }
@@ -283,6 +284,7 @@ export class Spatial {
     this.trustToken = -1;
     this.aroundCache.clear();
     this.narrowCache.clear();
+    this.dropCarryRefusals();
     this.outside.clear();
     this.sync(world);
     this.epoch = s.navEpoch;
@@ -307,6 +309,7 @@ export class Spatial {
     this.trustToken = -1;
     this.aroundCache.clear();
     this.narrowCache.clear();
+    this.dropCarryRefusals();
     this.sync(world);
   }
 
@@ -813,6 +816,10 @@ export class Spatial {
   }
 
   private narrowCache = new Map<string, Int32Array>();
+  /** #1015: refused native carry formation searches, per searched level grid (by identity; grids are copy-on-write),
+   *  then by the rest of the search's inputs (carry/validate.ts). Derived data, dropped with the other caches. */
+  carryRefusals = new WeakMap<LevelGrid, Map<string, unknown>>();
+  private dropCarryRefusals() { this.carryRefusals = new WeakMap(); }
   /**
    * Connected components of "single-file" cells: standable for radius r but
    * too tight for two agents to pass (clearance < 2r + margin). Each component

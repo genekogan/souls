@@ -129,20 +129,21 @@ function gatherRoutes(sp: Spatial, item: Entity, people: Entity[], f: Formation,
  * searched, by identity (grids are copy-on-write: an unchanged level stays the same object, a changed one is new),
  * plus the navigation epoch, the grid variant, the load, the crew, the exact start and goal poses and the budget.
  * The planner is a pure function of those, so a kept refusal is the verdict a fresh search would give, returned as a
- * copy. Only failures are kept, a few per grid. Derived data only: nothing in the world changes.
+ * copy. Only failures are kept, a few per grid, on the spatial service (Spatial.carryRefusals, dropped with its other
+ * caches). Derived data only: nothing in the world changes. A request that differs at all (another target, another
+ * spot, a re-clustered paged window) is its own search.
  */
-const REFUSALS = new WeakMap<LevelGrid, Map<string, PlanFail>>();
 export const KEPT_REFUSALS_PER_GRID = 8;
 function searchOrKept(sp: Spatial, base: LevelGrid, variant: string, def: string, inp: PlanInput): PlanOk | PlanFail {
   // exact numbers: JSON keeps every double except the sign of zero, which atan2 can see, so -0 is spelled out
   const key = JSON.stringify([sp.epoch, variant, def, inp.carrierNames ?? [], inp.starts, inp.goals, inp.maxExpand ?? 'default'], (_k, v) => (Object.is(v, -0) ? '-0' : v));
-  const kept = REFUSALS.get(base)?.get(key);
+  const kept = sp.carryRefusals.get(base)?.get(key) as PlanFail | undefined;
   if (kept) { sp.stats.carryRefusalsKept++; return structuredClone(kept); }
   const r = planCarry(inp);
   sp.stats.carrySearches++; sp.stats.carryExpanded += r.expanded;
   if (!r.ok) {
-    let m = REFUSALS.get(base);
-    if (!m) REFUSALS.set(base, (m = new Map()));
+    let m = sp.carryRefusals.get(base);
+    if (!m) sp.carryRefusals.set(base, (m = new Map()));
     if (m.size >= KEPT_REFUSALS_PER_GRID) m.delete(m.keys().next().value!);
     m.set(key, structuredClone(r));
   }

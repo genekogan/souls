@@ -91,8 +91,11 @@ Code: `engine/carry/`; tests: `engine/test/carry.test.ts`, `carry-stairs.test.ts
   copy-on-write), the navigation epoch, the grid variant, the load, the crew, the exact start and goal poses and the
   budget, and at most 8 are kept per grid. The same refused request from the same spot gets the same verdict without
   searching again, so one agent repeating it at the act limit no longer stalls the act path once per try. Only
-  failures are kept, and any navigation change (a new grid or epoch) searches afresh. `Spatial.stats` counts the
-  searches run, the poses expanded and the refusals answered from what was kept.
+  failures are kept, on the spatial service (`Spatial.carryRefusals`, dropped with its other caches), and any
+  navigation change (a new grid or epoch) searches afresh. `Spatial.stats` counts the searches run, the poses
+  expanded and the refusals answered from what was kept. Limits: a request that differs at all (another target,
+  another spot) is its own full search, and on a paged ground world a window that re-clusters is a new grid, so the
+  first try after it searches again.
 
 ## Action contract (`carry`)
 - Params: `{ crew: string[] (distinct), item, to: { x, z, yaw, level? }, place?: 'lay' }`.

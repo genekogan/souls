@@ -47,9 +47,11 @@ test('#1015: the same refused carry searches once; 60 repeats return the fresh v
   // a fresh engine on the same world searches again and reaches the identical verdict (the cache is never the authority)
   const fresh = narrow(), r = fresh.rt.submit('carry', far);
   assert.deepEqual(r.diagnostic, first.diagnostic); assert.equal(fresh.sp.stats.carrySearches, 1);
-  // the copy handed out cannot change what is kept
-  (first.diagnostic as { message: string }).message = 'mutated by a caller';
-  assert.notEqual(rt.submit('carry', far).diagnostic!.message, 'mutated by a caller');
+  // a copy handed out cannot change what is kept: the planner's own details and position pass through to the caller
+  const hit = rt.submit('carry', far).diagnostic!, at0 = hit.at![0], details = JSON.stringify(hit.details);
+  (hit.at as number[])[0] = -999; (hit.details as { stuck: { x: number } }).stuck.x = -999;
+  const next = rt.submit('carry', far).diagnostic!;
+  assert.equal(next.at![0], at0); assert.equal(JSON.stringify(next.details), details);
 });
 
 test('#1015: a different request (another target, crew order or start) is its own search', () => {
@@ -68,7 +70,23 @@ test('#1015: a feasible carry is never kept; it plans every time', () => {
   assert.equal(sp.stats.carrySearches, 3); assert.equal(sp.stats.carryRefusalsKept, 0);
 });
 
-test('#1015: a navigation change searches afresh; a static obstacle anywhere is a new grid', () => {
+test('#1015: a refusal never outlives the change that opens the way: the blocker taken away, the same carry goes', () => {
+  // corridor A (2.5 m) runs straight east from yard A; a row of camp chairs across its mouth closes it
+  const chairs = [2.9, 3.45, 4.0, 4.55, 5.1].map((z, i) => component(`chair${i}`, 'camp-chair', [9, 0, z], 0));
+  const w = addAll(emptyWorld('carry-refusal-kept', carryCorridors()), upright19('u1', 4, 4), ...chairs, human('q1', 1, 1), human('q2', 7, 1), human('q3', 1, 7), human('q4', 7, 7));
+  const sp = new Spatial(carryCorridors()), rt = new Runtime(w, REG, { spatial: sp }, [...DEFAULT_INVARIANTS, ...CARRY_INVARIANTS]);
+  const east = { crew, item: 'u1', to: { x: 13, z: 4, yaw: 0 } };
+  const blocked = rt.submit('carry', east);
+  assert.equal(blocked.status, 'failed'); assert.ok(['carry.clearance', 'carry.no-route'].includes(blocked.diagnostic!.code), blocked.diagnostic!.message);
+  assert.equal(rt.submit('carry', east).status, 'failed');
+  assert.equal(sp.stats.carrySearches, 1); assert.equal(sp.stats.carryRefusalsKept, 1, 'the repeat was kept');
+  for (const c of chairs) delete rt.world.entities[c.id];
+  const open = rt.submit('carry', east);
+  assert.equal(open.status, 'executing', open.diagnostic?.message);
+  assert.equal(sp.stats.carrySearches, 2, 'searched afresh after the change');
+});
+
+test('#1015: a navigation change searches afresh; a load set down in another yard is a new grid', () => {
   const { rt, sp } = narrow();
   const first = rt.submit('carry', far); const epoch = sp.epoch;
   rt.world.entities.crate = component('crate', 'upright-19ft', [4, 0, 4], 0, { phase: 'stored' });
