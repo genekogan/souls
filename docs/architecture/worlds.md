@@ -30,6 +30,11 @@ The split camera control shows Broadcast, Free or Following a Soul (and loading/
 Its main segment switches Broadcast → Free or returns Free/Following → Broadcast in one click. The chevron offers
 explicit modes and Camera controls, including the existing movement guide, reset and device fullscreen option.
 Dragging, zooming and movement keys retain their existing camera behavior.
+On a touch screen in Free (`apps/web/src/touch/WorldTouchFree.ts`), a touch that starts in the lower-left 45 % of the
+view spawns a floating stick that walks the eye; one finger elsewhere looks in place, a pinch glides toward the point
+between the fingers, a two-finger vertical drag rises or lowers, and a double-tap flies there. Each gesture feeds the
+existing `WorldRtsCamera` path (WASD, Q/E, right-drag, wheel, double-click), so the same clamps hold. Follow and
+Broadcast keep OrbitControls' touch orbit and pinch.
 
 Audio opens independent Sound effects and Music switches plus a radio station selector. Stations curate the existing
 score playlist: All music, Quiet & ambient, Electronic and Upbeat. Choosing a station while music is off remembers
