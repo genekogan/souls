@@ -8,5 +8,5 @@
     "test": "node --test src/*.test.ts",
     "studio": "python3 source/tools/serve.py 4802"
   },
-  "devDependencies": { "@types/node": "^22.19.19" }
+  "devDependencies": { "@types/node": "^22.20.5" }
 }
