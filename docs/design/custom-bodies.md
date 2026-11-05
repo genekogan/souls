@@ -59,6 +59,43 @@ Reuse these paths. Audit their limits and consumers before extending them; do no
 replace all existing motion. The remaining world/name coupling belongs to
 [#579](https://github.com/genekogan/souls/issues/579).
 
+## Collections and public references (#717, body-library/1)
+
+Discovery is separate from authorship, secrecy and Soul control. An admitted definition (its immutable
+`body_<sha256>` content address and descriptor) is recorded with its creator Soul, owner, source world, licence and
+rights in a collection store beside the identity-only account registry (`BODY_COLLECTION_PATH`, else
+`body-collections.sqlite` next to `ACCOUNT_REGISTRY_PATH`; a standalone world keeps a local-only store in its own
+database). See [collections.ts](../../apps/server/src/edge/body/collections.ts).
+
+- `GET /v1/edge/body/library?scope=core|mine&q=&cursor=&limit=`: bounded pages (at most 20, search text at most 60
+  characters) of the shared presets this world admits, or of the caller owner's saved references across worlds.
+- `PUT|DELETE /v1/edge/body/library/<ref>/public`: the definition's owner publishes it as a public reference, or stops.
+  Uploads start unpublished: until published, a reference answers like an unknown one to everyone but its owner.
+- `GET /v1/edge/body/library/<ref>`: lookup by explicit reference (the owner's own, or a published one), with attribution,
+  status and whether this world can select it. Holding a reference grants no authorship, membership or control of
+  another Soul.
+- `PUT|DELETE /v1/edge/body/library/<ref>`: save or forget a visible reference in the caller owner's collection only.
+- `PUT /v1/edge/body {ref}`: select by explicit reference when the definition is the caller owner's own or published,
+  active, the world admits its type and the bytes are here or can be pulled. Unpublishing stops new selections; bodies
+  already worn stay. A definition withdrawn by its source world's moderation (written through to the
+  store when the moderation entry is appended), or hidden by this world's or the site's moderation, cannot be newly
+  selected.
+- Routine discovery (`GET /v1/edge/body`) carries only `library:{mine, next}`; catalogs load on request.
+- Each world imports its own owner uploads into the store at boot, idempotently; asset ids, descriptors and rights
+  are never rewritten. An upload enters its owner's collection once (an import marker per world, owner and
+  reference), so a forget survives restarts. Bytes stay in the admitting world. The source world is recorded by its
+  stable world id, never its public slug, so a reslug keeps withdrawals and pulls working.
+- Another world's definition is pulled through at selection, never on serve or observation, and only after the Soul's
+  authority, the safe-swap guard and a throttle (two fetches per Soul per minute) pass: the launcher's
+  `GET /__sim/site/body/<world id>/<ref>.glb` (it also resolves a slug or an alias) (site key and loopback only, binary, at most 4 MiB) reads the source world's
+  private `/v1/site/body/<ref>.glb`, which answers only for active admitted bytes. The selecting world checks the
+  sha256 against the reference, re-admits the bytes under its own policy and caches them once (no owner row, so no
+  quota is charged). Tampered, oversized, withdrawn or unreachable sources refuse with `body.source-unavailable` or
+  `body.withdrawn`. Pulled bytes are re-admitted but not re-classified: the source world's upload intake ran on them.
+  Forks (`BODY_COLLECTION_PATH=local`) and standalone worlds keep a local-only store; a shared store that cannot open
+  leaves the world on a local-only store with the diagnostic `body.collection-store-unavailable`, never down. Uploads
+  admitted before this store existed import with the creator Soul `unrecorded`.
+
 ## Capabilities, not an obligation to imitate a human
 
 Recommended contract: a small required core and explicit optional physical capabilities. Every action in the
