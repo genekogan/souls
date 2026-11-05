@@ -32,7 +32,7 @@ test('Eden 2026: a roof walk acted before navigation is warm waits and walks; ge
   assert.equal(ana.accepted, true, `the roof walk acted before warm is not refused: ${JSON.stringify(ana)}`);
   assert.equal(ana.receipt!.phase, 'waiting');
   assert.match(phase(w.soul, ana.receipt!.id).reason ?? '', /Navigation is still getting ready/);
-  assert.equal(E.navWarmV1(0), false, 'the act did not warm (drain) the labels');
+  assert.equal(E.navWarmV1(0), false, 'the act did not wait for the first build (it relabels for at most 150 ms)');
 
   // A3: a newer act replaces a waiting one; A2 (cold): the kitchen roof, which no stair reaches, waits too
   const first = await L.act(bob, { capability: roof }) as Out, second = await L.act(bob, { capability: kitchen }) as Out;
@@ -73,4 +73,15 @@ test('Eden 2026: a roof walk acted before navigation is warm waits and walks; ge
   // A2 (warm): the kitchen roof is refused at act time, with the reason it had before
   const warm = await L.act(bob, { capability: kitchen }) as Out;
   assert.equal(warm.accepted, false); assert.equal(warm.code, 'route.unreachable'); assert.equal(warm.reason, k.reason);
+  // after the first build, moving rides (balloons, carousel, ferris wheel) invalidate the labels; a roof walk bound while they
+  // are invalidated (its goal skipped roofReach) relabels in the request (the rescue's own relabel must not hide it), is
+  // planned again and starts at once, without a wait
+  for (let i = 0; i < 40 && E.navWarmV1(0); i++) await w.settle(1);
+  // (rides move on their own schedule; when none moved, the ferris wheel is turned a hair, as its own step would)
+  const wheel = w.host.engine.world.entities['resort-ferris-wheel'] as { pose: { p: number[] } } | undefined;
+  if (E.navWarmV1(0) && wheel) wheel.pose.p[1] += 0.01;
+  assert.equal(E.navWarmV1(0), false, 'a moving ride invalidated the labels');
+  const pr = L.act(cy, { capability: roof }) as Promise<Out>; await w.settle(2); const again = await pr;
+  assert.equal(again.accepted, true, JSON.stringify(again)); assert.notEqual(phase(cy, again.receipt!.id).phase, 'failed');
+  assert.doesNotMatch(phase(cy, again.receipt!.id).reason ?? '', /Navigation is still getting ready/, 'relabelled in the request, not waited');
 });
