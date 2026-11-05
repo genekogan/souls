@@ -11,7 +11,7 @@ the original worlds. The server strips the world path (`WORLD_PATH`) before rout
 - **Bodies.** `/v1/*` bodies are limited to 64 KB (larger: 413 `too-large`). Photo routes accept 360 KB; body and art
   uploads have their own limits.
 - **Halted clock.** While the world's clock is halted, every route answers 503 `world-unavailable` with
-  `Cache-Control: no-store`, before auth and before the body is read; only the per-address flood limit (429) and the
+  `Cache-Control: no-store`, before auth and before the body is read; only the flood limits (429) and the
   1 MB body ceiling (413) can answer first. That includes `/healthz`, whose 503 is the
   health answer. The only exception is moderation (`/v1/moderation`, `/v1/moderation/*`): a takedown, a quarantine
   release and the veto list read only the moderation log, never the engine, so they keep working. The list is
