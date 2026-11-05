@@ -177,7 +177,7 @@ const coffeeMug: DefInput = {
   actions: [{ name: 'brew', label: 'Make a cup of coffee', then: [{ op: 'set', field: 'tea', value: 1 }] },
     { name: 'drink', label: 'Drink the coffee', then: [{ op: 'set', field: 'tea', value: 0 }] },
     { name: 'sip', label: 'Take a sip of the coffee', then: [{ op: 'set', field: 'tea', value: 0 }] },
-    { name: 'wash', label: 'Wash the mug', then: [{ op: 'set', field: 'tea', value: 0 }] }] as DefInput['actions'],
+    { name: 'wash', label: 'Wash the coffee mug', then: [{ op: 'set', field: 'tea', value: 0 }] }] as DefInput['actions'],
 } as unknown as DefInput;
 
 export const TEA_DEFS: DefInput[] = [kettle, cup, campSink, coffeeMug];

@@ -4,7 +4,7 @@
   "findings": [
     {
       "def": "core-coffee-mug@1",
-      "hash": "549b42eee0b441f71a8c7259c9fe91efc59431cf8c73bf33e95ed47c216cb448",
+      "hash": "c87ab3bd6892863f738198b34acfb9d946bea33285891dcc1740be608d3e8d61",
       "stage": "budget",
       "code": "triangles",
       "detail": "528 > 400",

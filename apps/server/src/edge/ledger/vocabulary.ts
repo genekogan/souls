@@ -444,11 +444,12 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
       : /^(?:please\s+)?(?:(?:drink|finish)\s+(?:up\s+)?(?:(?:the|my|your|this|that)\s+)?(?:(?:cup|mug)\s+of\s+(?:tea|coffee)|tea|coffee|cup|mug|it)?|drink\s+up)[.!]?$/.test(text) ? 'drink'
       : /^(?:please\s+)?(?:(?:have|take)\s+(?:a\s+)?sip(?:\s+of\s+(?:(?:the|my|your)\s+)?(?:tea|coffee|it))?|sip\s+(?:(?:the|my|your)\s+)?(?:tea|coffee|it))[.!]?$/.test(text) ? 'sip'
       : /^(?:please\s+)?(?:(?:wash|rinse|clean)\s+(?:up|out)?\s*(?:(?:the|my|your|this|that)\s+)?(?:(?:tea\s*|coffee\s*)?cup|(?:coffee\s+)?mug|it)?(?:\s+(?:up|out))?|do\s+the\s+washing[- ]up|wash\s+up)[.!]?$/.test(text) ? 'wash' : null;
-    // #437 W078: words that name the drink ("make a cup of coffee", "drink the tea") take only a mug whose offer names it
-    // (its def's labels: "Make a cup of coffee", "Drink the tea", before the thing's name in brackets); "drink it", "wash the
-    // mug" take the nearest mug of either
+    // #437 W078: words that name the drink ("make a cup of coffee", "wash the coffee mug") take only a mug whose offer names
+    // it (its def's labels, before the thing's name in brackets: "Make a cup of coffee", "Wash the coffee mug"); a tea mug's
+    // "Wash the cup" names no drink and is tea's. "drink it", "wash the mug" take the nearest mug of either
     const drink = /\b(tea|coffee)\b/.exec(text)?.[1];
-    const pool = want ? acts.filter(c => c.action === want && (!drink || want === 'wash' || new RegExp(`\\b${drink}\\b`, 'i').test(c.label.replace(/\s*\(.*\)$/, '')))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id)) : [];
+    const names = (c: {label: string}, d: string) => new RegExp(`\\b${d}\\b`, 'i').test(c.label.replace(/\s*\(.*\)$/, ''));
+    const pool = want ? acts.filter(c => c.action === want && (!drink || names(c, drink) || (want === 'wash' && drink === 'tea' && !names(c, 'coffee')))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id)) : [];
     // entry 44: a bare "drink" or "wash up" near a mug nobody can use now keeps its old meaning; naming the tea or the cup
     // gets the mug's own answer (pick it up first, drink it first)
     if (pool.length && (want === 'drink' || want === 'sip' || want === 'wash') && !pool[0].available && !/\b(?:tea|coffee|cup|mug)\b/.test(text)) pool.length = 0;

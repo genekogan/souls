@@ -133,7 +133,7 @@ export function createTea(h: TeaHost) {
     const kAt = station(kettle, me, 0.16), held = ents()[kettle]?.support?.kind === 'in-hand';
     if (!kAt && !held) return { code: 'tea.kettle-not-down', reason: 'The kettle is not on the counter.' };
     const cAt = station(cup, me, -0.05);
-    if (!cAt) return { code: 'tea.cup-not-down', reason: 'Put the cup down on the counter first; then pour the tea into it.' };
+    if (!cAt) return { code: 'tea.cup-not-down', reason: `Put the cup down on the counter first; then pour the ${drinkOf(cup)} into it.` };
     if (!clear(cAt.st)) return { code: 'tea.counter-blocked', reason: 'There is no room to stand at the counter in front of the cup.' };
     const C = ents()[cup].pose.p as Vec3, f = cAt.f, r = cAt.r;
     // where the spout tip is, from the grip, at the middle of the stream's tilt; the stream's run from there to the tea

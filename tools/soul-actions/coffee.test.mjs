@@ -107,8 +107,8 @@ test('coffee: made on the tea faculty, served by hand, drunk to empty, rinsed cl
   const brewed = state('mug').brewedTick; assert.ok(brewed > 0);
   assert.deepEqual(w.bridge.tea.facts(id('mug')), {coffee: 1}, 'a full coffee mug');
   const fullHere = await here(ana), fullRow = fullHere.objects.find((o) => o.id === id('mug'));
-  if (fullRow) assert.deepEqual(fullRow.state, {coffee: 1});
-  report.contextBytes.nearbyFull = size(fullHere); report.contextBytes.coffeeFact = JSON.stringify({state: {coffee: 1}}).length - 2;
+  assert.deepEqual(fullRow?.state, {coffee: 1}, 'the nearby row says coffee: ' + JSON.stringify(fullHere.objects));
+  report.contextBytes.nearbyFull = size(fullHere); report.contextBytes.coffeeRow = JSON.stringify(fullRow).length; report.contextBytes.coffeeFact = JSON.stringify({state: fullRow.state}).length - 2;
   refused(ana, `object:${id('mug')}:brew`, 'tea.cup-full', /already has coffee in it/);
 
   // ---- "make a cup of tea" brews the tea mug, not the fresh coffee mug ----
@@ -147,6 +147,9 @@ test('coffee: made on the tea faculty, served by hand, drunk to empty, rinsed cl
   assert.deepEqual(w.bridge.tea.facts(id('mug')), {clean: true});
   refused(ben, `object:${id('mug')}:wash`, 'tea.cup-clean');
   refused(ana, `object:${id('mug')}:brew`, 'tea.no-bag', /has no coffee in it/);
+  // a fresh coffee mug on the table, more than 2.5 m from the kettle
+  const fm = god.act({ops: [{op: 'place', def: 'core/coffee-mug@1', name: 'mug-far', in: {parent: 'table', slot: 'top'}, p: [0.2, 0]}]}); assert.equal(fm.accepted, true); await tick(20);
+  refused(ana, `object:${id('mug-far')}:brew`, 'tea.no-kettle', /no kettle within/);
   report.checks.push('rinsed: "wash the mug" -> tea 0, brewedTick -1, bag false; facts empty then clean');
 
   // ---- an interrupted pour leaves only what was poured ----
