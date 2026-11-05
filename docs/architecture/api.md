@@ -9,8 +9,16 @@ the original worlds. The server strips the world path (`WORLD_PATH`) before rout
 - **Errors** are `{ ok: false, code, message, ...extra }` with a matching status. A 429 sets `Retry-After`. Unknown
   failures are 500 `{ code: 'internal' }`.
 - **Bodies.** `/v1/*` bodies are limited to 64 KB (larger: 413 `too-large`). Photo routes accept 360 KB; body and art
-  uploads have their own limits. While the world's clock is halted, requests answer 503 `world-unavailable`.
-- **Headers.** Every response sets `X-Robots-Tag: noindex` and refuses framing.
+  uploads have their own limits.
+- **Halted clock.** While the world's clock is halted, every route answers 503 `world-unavailable` with
+  `Cache-Control: no-store`, before auth and before the body is read; only the flood limits (429) and the
+  1 MB body ceiling (413) can answer first. That includes `/healthz`, whose 503 is the
+  health answer. The only exception is moderation (`/v1/moderation`, `/v1/moderation/*`): a takedown, a quarantine
+  release and the veto list read only the moderation log, never the engine, so they keep working. The list is
+  `CLOCK_EXEMPT` in `apps/server/src/http.ts`.
+- **Headers.** Every answer from the app (`buildApp`), refusals and 404s included, sets `X-Robots-Tag: noindex, nofollow`,
+  `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`. A route with its own CSP keeps it, and
+  `frame-ancestors 'none'` is added to it. Both rules are mounted ahead of every route.
 - **Auth**, three kinds:
   - **User:** `Authorization: Bearer <session token>` from the web app's sign-in. Production uses Clerk
     (`AUTH_PROVIDER=clerk` with `CLERK_PUBLISHABLE_KEY`, `CLERK_ISSUER_URL`, `CLERK_AUTHORIZED_PARTIES`,
@@ -81,9 +89,8 @@ They drive the central mind driver and the kernel's cards (see [brain](brain.md)
 `POST /v1/souls/:id/command` is one route with one handler per world mode, chosen when the app is built
 (`ownerCommandRoute` in `apps/server/src/inbox-routes.ts`). On an edge world it delivers the owner's text to the Soul's
 agent inbox, like `POST /v1/edge/owner/:id/inbox`: the same record, the same 20-a-minute owner bucket and an 8 KB
-body limit. On a central-mind world the central mind translates it. Only that world's handler is registered. Both
-answer `503 world-unavailable` while the world's clock is halted, and both carry the shared `X-Robots-Tag`,
-`X-Frame-Options` and `frame-ancestors 'none'` headers.
+body limit. On a central-mind world the central mind translates it. Only that world's handler is registered. Like
+every route, both follow the halted-clock and header rules above.
 
 ## MCP
 
