@@ -132,7 +132,7 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
     addEventListener('focus',mark);document.addEventListener('visibilitychange',mark);
     const stop=answerApprovalTabs(approvalChannelName(cfg.worldId),id=>{location.hash='approve/'+id;},()=>front);
     return()=>{stop();removeEventListener('focus',mark);document.removeEventListener('visibilitychange',mark);};},[cfg.worldId]);
-  useEffect(() => { const f = () => { if(approvalFromHash(location.hash))return; if(location.hash==='#advanced'){setAdvanced(true);setPanelOpen(false);setTab('watch');return;} const h = hashTab(); setTab(h.tab); if (!['watch', 'my soul'].includes(h.tab)) setAdvanced(true); else if(h.soul){setAdvanced(false);setPanelOpen(true);setNavigationOpen(false);} if(h.tab==='watch')setSelected(h.soul??null); if (h.pair) setPairCode(h.pair); else if(h.tab==='watch')setPairCode(null); }; addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
+  useEffect(() => { const f = () => { if(approvalFromHash(location.hash))return; if(location.hash==='#advanced'){setAdvanced(true);setPanelOpen(false);setTab('watch');return;} const h = hashTab(); setTab(h.tab); if (!['watch', 'my soul'].includes(h.tab)) setAdvanced(true); else if(h.soul&&h.soul!==chipRef.current){setAdvanced(false);setPanelOpen(true);setNavigationOpen(false);}  /* #892: the chip's own selection writes this hash; it keeps the card collapsed */ if(h.tab==='watch')setSelected(h.soul??null); if (h.pair) setPairCode(h.pair); else if(h.tab==='watch')setPairCode(null); }; addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
   const [lessonIndex,setLessonIndex]=useState(0);
   const [lessonOpen,setLessonOpen]=useState(false);
   // VF3 (Gene): Advanced is unlisted; reach it at #advanced (or any Advanced tab's hash).
@@ -191,10 +191,10 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   const newSoulAvailable=(!signinEnabled||auth.ready)&&(signinEnabled||cfg.accountAuthRequired!==true);
   const mine = new Set(currentMe?.souls ?? []);
   // #892: a touch that followed a Soul (a tap, a swipe, the Broadcast chip) collapses its card to the bottom chip.
-  const [chip,setChip]=useState<string|null>(null),[chipNote,setChipNote]=useState<{text:string;at:number}|null>(null);
+  const [chip,setChip]=useState<string|null>(null),chipRef=useRef<string|null>(null),[chipNote,setChipNote]=useState<{text:string;at:number}|null>(null);
   const [coarse]=useState(()=>{try{return matchMedia('(pointer: coarse)').matches;}catch{return false;}});
   useEffect(()=>{if(!chipNote)return;const t=setTimeout(()=>setChipNote(null),2500);return()=>clearTimeout(t);},[chipNote]);
-  const inspect = (id: string | null, how?: 'chip') => { setSelected(id); if(how==='chip'&&id){setChip(id);setPanelOpen(false);return;} setChip(null); if (id) revealPanel(); };
+  const inspect = (id: string | null, how?: 'chip') => { setSelected(id); if(how==='chip'&&id){chipRef.current=id;setChip(id);setPanelOpen(false);return;} chipRef.current=null;setChip(null); if (id) revealPanel(); };
   const accountSouls=(entry:ReactNode)=><MySouls key={JSON.stringify([worldKey,currentMe?.userId])} recencyKey={JSON.stringify(['sim.soul-recency',worldKey,currentMe?.userId??'public'])} selectedId={selected} newSoul={entry} api={api} bodies={soulBodies} ids={ownedIds} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} select={inspect} follow={requestFollowSoul}/>;
   const edenExpansion=edenExperienceEnabled(location.hostname,worldPath,cfg.worldId,sim.conn.welcome?.worldId,qualifiedEdenWorlds);
   // P1 phones (F12): the page that will show the old Eden town asks for its chunk before the welcome (it came ~1.3 s late)
@@ -231,7 +231,7 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
       </header>
       {!advanced&&!panelOpen&&(()=>{
         const following=chip&&selected===chip&&(viewerState?.cameraMode==='follow'||viewerState?.flyingTo===chip)?r.souls.get(chip):undefined;
-        if(following)return <SoulChip kind="follow" name={following.name} status={doingText(following.doing,(r.entities[following.entityId] as {activity?:string}|undefined)?.activity,following.id)} note={chipNote?.text} openCard={()=>{setChip(null);revealPanel();}}/>;
+        if(following)return <SoulChip kind="follow" name={following.name} status={doingText(following.doing,(r.entities[following.entityId] as {activity?:string}|undefined)?.activity,following.id)} note={chipNote?.text} openCard={()=>{chipRef.current=null;setChip(null);revealPanel();}}/>;
         const showing=coarse&&viewerState?.cameraMode==='broadcast'&&viewerState.shownTick!=null&&viewerState.broadcastSoulId?r.souls.get(viewerState.broadcastSoulId):undefined;
         return showing?<SoulChip kind="broadcast" name={showing.name} follow={()=>{viewerHandle?.flyToSoul?.(showing.id,{chip:true});}}/>:null;
       })()}
