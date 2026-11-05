@@ -88,6 +88,10 @@ after the cutoff are diagnostic only.
 - **Reviewer** (`review/reviewer.mjs`) scores each request H (hit), P (partial), M (honest miss) or W (wrong) using
   [`review/RUBRIC.md`](../../tools/playtest/review/RUBRIC.md). It writes issues in player terms only; causes, code
   areas and fixes are stripped. With `review.mode: "deterministic"` no model scores are made and only oracles count.
+- **Scenario-truth answers.** The `expect` oracles read only answers written by the cutoff; an answer that came only
+  after it is a fail. A direction is read from the sentences that name the target (the whole answer when none does),
+  and "can't tell" there is a fail. A description counts only after a `view` that started by the answer, and a
+  refused act to turn or face is a fail. The rubric never scores a claim that was true when written as W.
 - **Developer** (`review/developer.mjs`) reads the server source (read-only tools) and writes a spec per issue marked
   `DRAFT — NOT IMPLEMENTED`. It never edits files.
 

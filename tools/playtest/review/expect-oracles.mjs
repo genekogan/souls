@@ -43,6 +43,14 @@ export function namesIn(text, names) {
   return (names ?? []).filter((n) => { const A = words(n).trim(); return A && new RegExp(` ${A.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(s|es)? `).test(T); });
 }
 
+const CANT_TELL = /\b(?:can'?t|cannot|could ?n'?t|couldn't) tell\b|\bnot sure (?:which way|where)\b|\b(?:don'?t|do not) know (?:which way|where)\b|\bno idea\b|\bunable to (?:tell|say)\b/i;
+/** The sentences of an answer that name any of these names; the whole answer when none does (H1). */
+export function sentencesNaming(text, names) {
+  const all = String(text ?? '').split(/(?<=[.!?\n])\s+/).map((x) => x.trim()).filter(Boolean);
+  const naming = all.filter((x) => namesIn(x, names).length);
+  return naming.length ? naming : all;
+}
+
 /** The script entry (and its expect) that produced this evidence pack: same seat and text, k-th occurrence by sentAt. */
 export function expectFor(run, ev) {
   const script = run?.scenario?.director?.script ?? [];
@@ -102,16 +110,27 @@ export function expectOracles({ ev, expect: x, timely = [], replies = [], receip
   const T = targetsOf(x), out = [];
   const sp = (s) => `${P}#samples[${s.i}]`;
   const last = timely.at(-1);
-  const reply = replies.map((r) => r.text).join('\n');
-  const rptr = replies.map((r) => r.ptr).slice(0, 3);
   const cutoff = ms(ev.cutoffAt) ?? Infinity;
-  const late = replies.length && replies.every((r) => r.ms > cutoff) ? ' (the answer came after the cutoff)' : '';
+  // H2: only answers written by the cutoff are read; an answer that came only after it is a fail.
+  const inTime = replies.filter((r) => !(r.ms > cutoff));
+  const lateOnly = replies.length > 0 && !inTime.length;
+  const reply = inTime.map((r) => r.text).join('\n');
+  const rptr = (lateOnly ? replies : inTime).map((r) => r.ptr).slice(0, 3);
+  const answeredAt = Math.max(-Infinity, ...inTime.map((r) => (Number.isFinite(r.ms) ? r.ms : Infinity)));
+  const noAnswer = (id, extra = []) => (!replies.length ? o(id, 'fail', 'no answer to the owner', [`${P}#resultAt`, ...extra]) : lateOnly ? o(id, 'fail', 'answer came after the cutoff', [...rptr, ...extra]) : null);
   const nameCheck = (id) => {
     const a = x.answer ?? {}; const min = a.minHits ?? 1;
-    if (!replies.length) return o(id, 'fail', 'no answer to the owner', [`${P}#resultAt`]);
+    const none = noAnswer(id); if (none) return none;
     const hit = namesIn(reply, a.anyOf), bad = namesIn(reply, a.noneOf ?? []);
-    if (bad.length) return o(id, 'fail', `names ${bad.join(', ')}, which the world does not have there${late}`, rptr);
-    return hit.length >= min ? o(id, 'pass', `names ${hit.join(', ')} (${hit.length}/${min} needed)${late}`, rptr) : o(id, 'fail', `names none of ${a.anyOf.slice(0, 8).join(', ')}${a.anyOf.length > 8 ? '…' : ''}${late}`, rptr);
+    if (bad.length) return o(id, 'fail', `names ${bad.join(', ')}, which the world does not have there`, rptr);
+    if (hit.length < min) return o(id, 'fail', `names none of ${a.anyOf.slice(0, 8).join(', ')}${a.anyOf.length > 8 ? '…' : ''}`, rptr);
+    if (id === 'named-in-description') { // H3: a description counts only after the seat looked
+      const views = acts.filter((v) => /\beden(-agent)?\.mjs view\b/.test(v.cmd ?? ''));
+      const timed = views.filter((v) => Number.isFinite(v.startedAtMs ?? v.completedAtMs));
+      const looked = timed.length ? timed.some((v) => (v.startedAtMs ?? v.completedAtMs) <= answeredAt) : views.length > 0;
+      if (!looked) return o(id, 'fail', `names ${hit.join(', ')}, but named without looking (no view before the answer)`, rptr);
+    }
+    return o(id, 'pass', `names ${hit.join(', ')} (${hit.length}/${min} needed)`, rptr);
   };
   for (const id of ids) {
     if (id === 'target-arrival') {
@@ -126,10 +145,13 @@ export function expectOracles({ ev, expect: x, timely = [], replies = [], receip
       const d = dist(first.p, t.pos), want = bearing(first.p, t.pos), tol = x.toleranceDeg ?? 50;
       if (d < 8) { out.push(o(id, 'unknown', `${label(t)} is ${d.toFixed(1)} m away: no direction to judge`, [sp(first)])); continue; }
       if (!replies.length) { out.push(o(id, 'fail', `no answer (truth: ${compassName(want)}, ${Math.round(d)} m)`, [sp(first)])); continue; }
-      const said = compassWords(reply);
-      if (!said.length) { out.push(o(id, 'unknown', `answered without a compass direction (truth: ${compassName(want)}, ${Math.round(d)} m)${late}`, [...rptr, sp(first)])); continue; }
+      if (lateOnly) { out.push(o(id, 'fail', `answer came after the cutoff (truth: ${compassName(want)}, ${Math.round(d)} m)`, [...rptr, sp(first)])); continue; }
+      const read = sentencesNaming(reply, T.flatMap((k) => k.names)).join(' '); // H1: the sentences naming the target
+      if (CANT_TELL.test(read)) { out.push(o(id, 'fail', `said it can't tell (truth: ${compassName(want)}, ${Math.round(d)} m)`, [...rptr, sp(first)])); continue; }
+      const said = compassWords(read);
+      if (!said.length) { out.push(o(id, 'unknown', `answered without a compass direction (truth: ${compassName(want)}, ${Math.round(d)} m)`, [...rptr, sp(first)])); continue; }
       const ok = said.find((w) => angleDiff(w.deg, want) <= tol);
-      out.push(o(id, ok ? 'pass' : 'fail', `said ${said.map((w) => w.word).join(', ')}; truth ${compassName(want)} (${Math.round(want)}°, ${Math.round(d)} m to ${label(t)}; tolerance ${tol}°)${late}`, [...rptr, sp(first)]));
+      out.push(o(id, ok ? 'pass' : 'fail', `said ${said.map((w) => w.word).join(', ')}; truth ${compassName(want)} (${Math.round(want)}°, ${Math.round(d)} m to ${label(t)}; tolerance ${tol}°)`, [...rptr, sp(first)]));
     } else if (id === 'facing') {
       const gaze = acts.map((a) => /\bview\b.*--gaze\s+("?)([^"\s]+)\1/.exec(a.cmd ?? '')?.[2]).filter(Boolean).find((g) => T.some((t) => t.names.some((n) => norm(g).includes(norm(n)) || norm(n).includes(norm(g)))));
       const h = lastHeading(receipts, timely, inWindow);
@@ -139,7 +161,13 @@ export function expectOracles({ ev, expect: x, timely = [], replies = [], receip
         if (d < 1.5) { out.push(o(id, 'pass', `at ${label(t)} (${d.toFixed(1)} m): facing is moot`, [`${P}#receipts`])); continue; }
         if (diff <= tol || gaze) { out.push(o(id, 'pass', diff <= tol ? `body faces ${Math.round(h.heading)}°; ${label(t)} lies at ${Math.round(want)}° (${Math.round(diff)}° off, tolerance ${tol}°; ${h.capability ?? h.receipt})` : `eyes turned with view --gaze ${gaze} (body ${Math.round(diff)}° off)`, [`${P}#receipts`])); continue; }
         out.push(o(id, 'fail', `body faces ${Math.round(h.heading)}° (${compassName(h.heading)}); ${label(t)} lies at ${Math.round(want)}° (${compassName(want)}), ${Math.round(diff)}° off (tolerance ${tol}°)`, [`${P}#receipts`]));
-      } else out.push(gaze ? o(id, 'pass', `eyes turned with view --gaze ${gaze} (no body heading in the window)`) : o(id, 'unknown', 'no completed act with a heading in the request window'));
+      } else {
+        // a refused act to turn or face is a fail, not an unknown
+        const refused = acts.find((a) => a.output?.accepted === false && /\bact\b/.test(a.cmd ?? '') && /\b(turn|face|facing)\b/i.test(a.cmd ?? ''));
+        out.push(gaze ? o(id, 'pass', `eyes turned with view --gaze ${gaze} (no body heading in the window)`)
+          : refused ? o(id, 'fail', `facing refused (${refused.output.code ?? 'no code'}${refused.output.reason ? `: ${String(refused.output.reason).slice(0, 80)}` : ''})`, refused.turn != null ? [`seats/${ev.seat}/transcript.jsonl#turn${refused.turn}`] : [])
+          : o(id, 'unknown', 'no completed act with a heading in the request window'));
+      }
     } else if (id === 'view-used') {
       const views = acts.filter((a) => /\beden(-agent)?\.mjs view\b/.test(a.cmd ?? ''));
       const want = x.view ?? 'any';
