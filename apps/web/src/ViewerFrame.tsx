@@ -180,7 +180,7 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
           {progress !== null && <div className="viewer-arrival-progress"><progress aria-label="World loading progress" max={1000} value={Math.round(progress * 1000)} /><span>{inBytes ? megabytes({ loaded: Math.min(1, progress) * bytes.total, total: bytes.total }) : `${Math.round(progress * 100)}%`}</span></div>}</div></div>
     </div>}
     {followCue && !arriving && <div className="viewer-follow-hint" role="status" aria-live="polite" data-cue={followCue}>{followCue === 'follow'
-      ? coarse ? <>Following <b>{followName ?? 'a Soul'}</b> · drag to look around · move to stop</> : <>Following <b>{followName ?? 'a Soul'}</b> · drag to look around, scroll to zoom · press <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to look around freely</>
+      ? coarse ? <>Following <b>{followName ?? 'a Soul'}</b> · drag to look around · choose <b>Free</b> to take over</> : <>Following <b>{followName ?? 'a Soul'}</b> · drag to look around, scroll to zoom · press <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to look around freely</>
       : <>Your camera · <b>Return to Broadcast</b> is top left</>}</div>}
     {navigationOpen && <div className="camera-help-scrim" onPointerDown={e => { if (e.target === e.currentTarget) close(); }}>
       <div className="camera-help" role="dialog" aria-modal="true" aria-labelledby="camera-help-title" tabIndex={-1} ref={help}>
@@ -188,7 +188,7 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
         <h2 id="camera-help-title">Camera</h2>
         <p><b>Broadcast</b> directs itself, cutting between Souls and whatever is happening. Any drag, scroll or move key gives you the camera; <b>the camera button</b> (top left, beside Live) returns it.</p>
         {touch ? <><h3>Touch</h3>
-          <ul className="camera-keys"><li><span>One finger</span><span>orbit</span></li><li><span>Two fingers</span><span>pan · pinch to zoom</span></li><li><span>Double-tap</span><span>fly there</span></li><li><span>Tap a name plate</span><span>meet that Soul</span></li></ul></> : <><h3>Mouse</h3>
+          <ul className="camera-keys"><li><span>Thumb, lower left</span><span>walk (hold still first to keep walking)</span></li><li><span>One finger</span><span>look around in place</span></li><li><span>Pinch</span><span>glide toward or away</span></li><li><span>Two fingers up · down</span><span>rise · lower</span></li><li><span>Double-tap</span><span>fly there</span></li><li><span>Tap a name plate</span><span>meet that Soul</span></li></ul></> : <><h3>Mouse</h3>
           <ul className="camera-keys"><li><span>Drag</span><span>orbit around the centre</span></li><li><span>Right-drag</span><span>look around in place</span></li><li><span>Scroll</span><span>zoom toward the pointer</span></li><li><span>Double-click</span><span>fly there</span></li><li><span>Click a name plate</span><span>meet that Soul</span></li></ul>
           <h3>Keyboard</h3>
           <ul className="camera-keys"><li><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>forward · back · sideways, staying level</span></li><li><span>← → · ↑ ↓</span><span>turn · look up and down</span></li><li><span><kbd>Q</kbd><kbd>E</kbd></span><span>lower · raise</span></li><li><span><kbd>R</kbd><kbd>F</kbd></span><span>raise · lower, too</span></li><li><span><kbd>Shift</kbd></span><span>faster</span></li><li><span><kbd>Alt</kbd></span><span>slow precision movement</span></li></ul></>}
