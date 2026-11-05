@@ -88,7 +88,8 @@ export const clockExempt = (path: string) => CLOCK_EXEMPT.some(r => r.test(path)
 export const SECURITY_HEADERS: Readonly<Record<string, string>> = { 'X-Robots-Tag': 'noindex, nofollow', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'" };
 /** A response's own CSP keeps its directives, with frame-ancestors 'none' added; no CSP gets the shared one. */
 export const withFrameAncestors = (csp: string | null | undefined) => !csp ? SECURITY_HEADERS['Content-Security-Policy'] : /frame-ancestors/i.test(csp) ? csp : `${csp}; ${SECURITY_HEADERS['Content-Security-Policy']}`;
-/** The same headers on a Node response that never reaches Hono. Call it before the response is written. */
+/** The same headers on a Node response that never reaches Hono. Call it before the response is written. Its CSP is
+ *  the plain shared one: an answer that writes its own CSP header later replaces it (none does today). */
 export function secureNodeResponse(res: ServerResponse) { for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value); }
 type Deps = { cfg: Config; db: Db; host: WorldHost; auth: Auth; hub: Hub; brain: Brain; souls: Souls; takes?: TakeArchive; station?:CandidateStationV1; stationV2?:CandidateStationV2; intentV2?:IntentControlV2; edge?:EdgeLedger; god?: GodMode; contextReady?:()=>boolean; contextWait?:(signal:AbortSignal)=>Promise<void>; contextLevelAt?:(x:number,z:number,y:number)=>number; load?:{admission?:Admission;monitor:LoadMonitor;crowded?:(soulId:string)=>{position:number;eta_s:number}|null} };
 
