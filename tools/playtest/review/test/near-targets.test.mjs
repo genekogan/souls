@@ -29,6 +29,8 @@ test('N3: a word counts only when the genesis has it within radiusM of the targe
   assert.deepEqual(wordFromTargets(things, near.targets, 'commons'), { word: 'commons', placed: false }, 'a word that names nothing placed is an alias');
   assert.deepEqual(wordFromTargets(things, near.targets, 'pavilion'), { word: 'pavilion', placed: true, near: false, self: true, thing: 'bandstand', target: near.targets[0], d: 0 }, 'the target itself is not near itself');
   assert.equal(wordFromTargets(things, near.targets, 'benches').thing, 'street-bench-1', 'plural and singular both name a placed thing');
+  const tables = new Map([['dj-table', { name: 'dj-table', def: 'core/table@1', pos: [3, 0] }], ['showers', { name: 'showers', def: 'core/hall@1', pos: [4, 0] }]]);
+  for (const [w, thing] of [['tables', 'dj-table'], ['table', 'dj-table'], ['shower', 'showers'], ['showers', 'showers']]) assert.equal(wordFromTargets(tables, near.targets, w).thing, thing, w);
   assert.equal(score('The bandstand, a pavilion.', { expect: { ...near, answer: { anyOf: ['pavilion'] } } }).detail, 'names 0 thing(s) near bandstand (1 needed); not near bandstand: pavilion (names the place asked about)');
   const r = score('There is a violin by it.');
   assert.equal(r.status, 'pass'); assert.equal(r.detail, 'names violin (1/1 needed)');

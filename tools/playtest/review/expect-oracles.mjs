@@ -96,8 +96,8 @@ const defWords = (d) => String(d ?? '').replace(/^.*\//, '').replace(/@.*$/, '')
 export function placedNamed(things, word) {
   const w = words(word).trim();
   if (!w) return [];
-  const stem = w.replace(/(?<=[a-z]{3})(es|s)$/, '');
-  const re = new RegExp(` (?:${[w, stem].map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?:s|es)? `);
+  const forms = [...new Set([w, w.replace(/(?<=[a-z]{3})s$/, ''), w.replace(/(?<=[a-z]{3})es$/, '')])]; // tables → table, benches → bench
+  const re = new RegExp(` (?:${forms.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?:s|es)? `);
   return [...(things?.values?.() ?? [])].filter((n) => n.pos && (re.test(words(n.name)) || re.test(words(defWords(n.def)))));
 }
 
