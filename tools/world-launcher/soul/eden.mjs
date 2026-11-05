@@ -11,7 +11,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.7.1";
+const VERSION = "2.7.2";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -216,7 +216,7 @@ async function call(path, { method, body, as = "soul", timeoutMs, recoverRead = 
   if (cls === "keyed") headers["idempotency-key"] = randomUUID();   // one key for every try of this one write
   const t0 = Date.now();
   for (let failed = 0, busy = 0; ; ) {
-    const r = await callOnce(url, { method, headers, body, timeoutMs, recoverRead });
+    const r = await callOnce(url, { method, headers, body, timeoutMs, recoverRead, attempt: failed + busy + 1 });
     if (r.load && r.load !== "green") calm(`the world is under load (${r.load}); answers may be slow`);
     worldNote(r.data);
     const refused = r.status === 429 || r.status === 503, waitOut = isBusy(r.status, r.data) && cls !== "none" && busy < RETRY.busyWaits;
@@ -241,21 +241,37 @@ async function call(path, { method, body, as = "soul", timeoutMs, recoverRead = 
   }
 }
 
-async function callOnce(url, { method, headers, body, timeoutMs, recoverRead }) {
+// 2.7.2 (#371 H-b): EDEN_TRACE=1 writes one stderr line per HTTP attempt, `TRACE {method, path, status, ms, handlerMs,
+// attempt}`: this CLI's wall time (send to body read) beside the world's own x-handler-ms, so a late answer splits into
+// server time and client/network time. The path has no query and long opaque segments are redacted; stdout never changes.
+const TRACE = process.env.EDEN_TRACE === "1";
+export function traceLine(method, url, status, ms, handler, attempt = 1) {
+  let path = "?";
+  try { path = new URL(url).pathname.split("/").map((p) => (/^[\w-]{20,}$/.test(p) ? "<redacted>" : p)).join("/"); } catch { /* not a URL */ }
+  const h = handler == null || handler === "" ? null : Number(handler);
+  return `TRACE ${JSON.stringify({ method, path, status, ms: Math.round(ms * 10) / 10, handlerMs: Number.isFinite(h) ? h : null, attempt })}\n`;
+}
+function trace(method, url, status, t0, res, attempt) { if (TRACE) process.stderr.write(traceLine(method, url, status, performance.now() - t0, res?.headers?.get("x-handler-ms"), attempt)); }
+
+async function callOnce(url, { method, headers, body, timeoutMs, recoverRead, attempt }) {
   let r;
+  const t0 = performance.now();
   try {
     r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {
+    trace(method, url, 0, t0, null, attempt);
     return { status: 0, data: { error: { code: "unreachable", message: String(e.message) } } };
   }
   let text;
   try { text = await r.text(); }
   catch (e) {
+    trace(method, url, 0, t0, r, attempt);
     // Only listen opts in: a dropped read is safe to re-poll. A write's lost answer
     // must keep its existing semantics rather than encouraging an action retry.
     if (!recoverRead || (r.status >= 300 && r.status < 500 && r.status !== 429)) throw e;
     return { status: 0, data: { error: { code: "unreachable", message: String(e.message) } } };
   }
+  trace(method, url, r.status, t0, r, attempt);
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 200) }; }
   return { status: r.status, data, retryAfterMs: retryAfterMs(r.headers, data), load: r.headers.get("x-sim-load") ?? data?.world?.load ?? null };
@@ -605,10 +621,11 @@ async function view(...args) {
   const d = ok(await call("/v1/edge/view" + (String(q) ? "?" + q : "")), "view");
   const res = { alt: d.alt, heading: d.heading?.compass, sees: (d.seen?.souls ?? []).map((x) => `${x.name} · ${Math.round(x.distance)}m ${x.side}`), untrusted: true };
   if (d.url && !altOnly) {
-    const img = await fetch(load().world + d.url, { signal: AbortSignal.timeout(30_000) });
+    const t0 = performance.now(), img = await fetch(load().world + d.url, { signal: AbortSignal.timeout(30_000) });
     if (img.ok) {
-      const file = resolvePath(out ?? (isMap ? "map.jpg" : "view.jpg"));
-      writeFileSync(file, Buffer.from(await img.arrayBuffer()));
+      const file = resolvePath(out ?? (isMap ? "map.jpg" : "view.jpg")), bytes = Buffer.from(await img.arrayBuffer());
+      trace("GET", load().world + d.url, img.status, t0, img, 1);
+      writeFileSync(file, bytes);
       res.saved = file;
     } else res.picture = `could not download (HTTP ${img.status})`;
   }
@@ -644,9 +661,9 @@ async function views(...args) {
   const url = original ? data.targets[0]?.original?.url : refs.length === 1 ? data.views[0]?.url : data.sheet?.url;
   if (!url) return { ...data, saved: null, note: original ? "No admitted original image for this target." : "Picture pending or unavailable. Request these refs again when useful; text and live queries remain available." };
   if (!url.startsWith("/v1/world/context/")) throw new Error("Invalid context picture URL");
-  const state = load(), response = await fetch(state.world + url, { headers: state.token ? { authorization: `Bearer ${state.token}` } : {}, redirect: "error", signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw new Error(`Picture expired or inaccessible (HTTP ${response.status}); request current views.`);
-  const bytes = Buffer.from(await response.arrayBuffer()); if (bytes.length > 8 * 1024 * 1024) throw new Error("Picture exceeds download limit");
+  const t0 = performance.now(), state = load(), response = await fetch(state.world + url, { headers: state.token ? { authorization: `Bearer ${state.token}` } : {}, redirect: "error", signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) { trace("GET", state.world + url, response.status, t0, response, 1); throw new Error(`Picture expired or inaccessible (HTTP ${response.status}); request current views.`); }
+  const bytes = Buffer.from(await response.arrayBuffer()); trace("GET", state.world + url, response.status, t0, response, 1); if (bytes.length > 8 * 1024 * 1024) throw new Error("Picture exceeds download limit");
   const saved = resolvePath(out); writeFileSync(saved, bytes);
   return { ...data, saved, savedSource: original ? "original-image" : "architectural-context" };
 }

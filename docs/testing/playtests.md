@@ -138,6 +138,11 @@ screenshots or transcripts. Machines without the original run folders can then r
   default 30) and stops if it never clears. `--force-machine` continues and records the breach.
 - **Two repeats per arm.** Compare arms only on like-for-like repeats (scripted replay against scripted replay),
   and fix acceptance bars and budgets before the baseline is measured.
+- **Attribute a late answer before blaming the seat.** Every world response carries `x-handler-ms`: the server's own
+  wall time for that request. Run a seat's CLI with `EDEN_TRACE=1` and it writes one stderr line per HTTP attempt,
+  `TRACE {"method","path","status","ms","handlerMs","attempt"}`. `handlerMs` is server time. `ms` minus `handlerMs` is
+  network and client time. Time between commands is the seat's own thinking. The trace has no query strings or tokens,
+  and stdout does not change.
 - Preflight checks Claude plan usage through the script named by `PLAYTEST_USAGE_PY`. If that script is absent the
   check is skipped.
 
