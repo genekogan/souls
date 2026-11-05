@@ -1,12 +1,13 @@
 // #898: what the reference pages are generated from, read from the server's own code: a fresh launcher-style world (edge
 // Souls, god mode, fake minds, an in-memory database) is built with the same modules a world process loads, then asked.
-// Prints one JSON object: { routes, mcp, edge, intentVerbs, verbs, refusals }. generate.mjs runs this in a child process
-// with a clean environment, so the output never depends on the caller's shell. Nothing listens on a port and nothing is
-// written outside DATA_DIR (config.ts creates it when imported). The MCP handler is asked over a loopback
+// Prints one JSON object: { world, routes, beside, mcp, edge, intentVerbs, verbs, refusals }. generate.mjs runs this in a
+// child process with a clean environment, so the output never depends on the caller's shell. The database is in memory
+// and nothing is written outside DATA_DIR (config.ts creates it when imported). The MCP handler is asked over a loopback
 // server on an ephemeral port that only this process uses, closed before it exits.
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // The server's own log lines go to stderr; stdout carries only the JSON.
@@ -56,6 +57,15 @@ for (const r of app.routes) {
   if (!seen.has(k)) { seen.add(k); routes.push({ method: r.method, path: r.path }); }
 }
 
+// Served beside the route table: main.ts hands /mcp to handleMcp before Hono, and the Hub takes WebSocket upgrades (/ws for
+// the viewer; any other path, such as /v1/edge/events/ws, goes to the edge's own handler). Each is checked against the
+// source that serves it, so a moved endpoint fails here instead of vanishing from the page.
+const beside = [
+  { method: 'POST', path: '/mcp', what: 'MCP (Streamable HTTP, stateless): Authorization: Bearer <Soul token>, or /mcp/<Soul token> for clients that only take a URL', file: 'apps/server/src/main.ts', needle: "req.url?.startsWith('/mcp')" },
+  { method: 'GET', path: '/ws', what: 'WebSocket: the world viewer\'s live stream', file: 'apps/server/src/hub.ts', needle: "req.url?.startsWith('/ws')" },
+];
+for (const b of beside) if (!readFileSync(join(ROOT, b.file), 'utf8').includes(b.needle)) throw Error(`collect: ${b.file} no longer serves ${b.path} the way collect.mjs expects; update it`);
+
 // MCP: the tools the SDK lists, asked over the real handler (handleMcp) with stand-ins for the Soul and its token. Three
 // configurations: a world without edge Souls or soul-intent/2, an edge world, and an edge world with soul-intent/2 and
 // its history; each tool is labelled with the first one that has it. An eden_* tool call is recorded, not answered:
@@ -97,14 +107,17 @@ for (const t of mcp.filter((m) => m.name.startsWith('eden_'))) {
 
 // Refusal codes the edge source names (EdgeError(status, 'code', ...) and { code: 'family.reason' } literals), and the rule
 // that gives a failed body act `alternatives` (a fresh dry run of the same intent), read from intents.ts as written.
-const files = (d) => readdirSync(d).sort().flatMap((e) => { const f = join(d, e); return statSync(f).isDirectory() ? files(f) : /\.ts$/.test(f) && !/\.test\.ts$|fixture/.test(f) ? [f] : []; });
+// tracked files only, so an untracked scratch file on a laptop cannot change the page
+const files = execFileSync('git', ['ls-files', 'apps/server/src/edge'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.ts$/.test(f) && !/\.test\.ts$|fixture/.test(f)).sort();
 const codes = new Map();
-for (const f of files(join(ROOT, 'apps/server/src/edge'))) {
-  const src = readFileSync(f, 'utf8');
-  for (const m of src.matchAll(/new EdgeError\(\s*(\d{3})\s*,\s*'([a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+)'|\bcode:\s*'([a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+)'/g)) {
-    const code = m[2] ?? m[3], e = codes.get(code) ?? { code, status: null, files: [] };
+const CODE = "'([a-z][a-z0-9-]*(?:\\.[a-z0-9-]+)+)'";
+// EdgeError(status, 'code', ...), { code: 'code' } literals, and the ledger's refuse('code', ...) / fail('code') helpers
+const CODES = new RegExp(`new EdgeError\\(\\s*(\\d{3})\\s*,\\s*${CODE}|\\bcode:\\s*${CODE}|\\b(?:refuse|fail)\\(\\s*${CODE}`, 'g');
+for (const rel of files) {
+  const src = readFileSync(join(ROOT, rel), 'utf8');
+  for (const m of src.matchAll(CODES)) {
+    const code = m[2] ?? m[3] ?? m[4], e = codes.get(code) ?? { code, status: null, files: [] };
     if (m[1]) e.status = Number(m[1]);
-    const rel = relative(ROOT, f).split('\\').join('/');
     if (!e.files.includes(rel)) e.files.push(rel);
     codes.set(code, e);
   }
@@ -117,4 +130,4 @@ const refusals = { alternativesRule: alt[1], codes: [...codes.values()].sort((a,
 
 const verbs = host.engine.describeVerbs();
 server.close();
-process.stdout.write(JSON.stringify({ world: { slug, rulesVersion: host.engine.rulesVersion }, routes, mcp, edge: edgeSchema(), intentVerbs: [...INTENT_VERBS], verbs, refusals }), () => process.exit(0));   // exit once the pipe has it all (open handles would keep the process up)
+process.stdout.write(JSON.stringify({ world: { slug }, routes, beside: beside.map(({ method, path, what }) => ({ method, path, what })), mcp, edge: edgeSchema(), intentVerbs: [...INTENT_VERBS], verbs, refusals }), () => process.exit(0));   // exit once the pipe has it all (open handles would keep the process up)

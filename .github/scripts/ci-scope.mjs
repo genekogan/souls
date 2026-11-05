@@ -29,6 +29,10 @@ export const JOBS = [
   { name: 'native', kind: 'native', assets: true, steps: ['V3-mars-engine'] },
   { name: 'latency', kind: 'latency', assets: false, steps: ['V5-server-full'] },
   // the server inventory in SERVER_SHARDS duration-balanced shards (server-test-files.mjs)
+  // #898: the generated reference pages (docs/site actions, api, mcp) against the server's code. Server and package
+  // changes can change them; so can the generator and the pages themselves, which the gate's scope map leaves free
+  // (docs and tools never gate on Modal), so `paths` adds the job for those in CI only.
+  { name: 'docs-reference', kind: 'docs-reference', assets: false, steps: ['V5-server-full', 'V3-walk'], paths: /^(?:tools\/docs\/|docs\/site\/(?:actions|api|mcp)\.md$)/ },
   ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, steps: ['V5-server-full', 'V6-'] })),
 ];
 
@@ -36,8 +40,8 @@ const relevant = (job, steps) => job.steps.some(s => steps.some(step => s.endsWi
 
 export function jobsFor(files) {
   const scope = scopeFor(files);
-  const include = scope.resolved === 'full' ? JOBS : JOBS.filter(job => relevant(job, scope.steps));
-  return { scope: scope.resolved, steps: scope.steps, include: include.map(({ steps, ...job }) => job), diff: scope.diff };
+  const include = scope.resolved === 'full' ? JOBS : JOBS.filter(job => relevant(job, scope.steps) || (job.paths && files.some(f => job.paths.test(f))));
+  return { scope: scope.resolved, steps: scope.steps, include: include.map(({ steps, paths, ...job }) => job), diff: scope.diff };
 }
 
 /** The local smoke job: changes under apps/web, apps/server or e2e; null (no usable base) runs it too. */
@@ -58,7 +62,7 @@ function main(argv) {
   const opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
   const files = FULL_EVENTS.includes(opt('--event')) ? null
     : opt('--files') !== undefined ? opt('--files').split(',').filter(Boolean) : changedFiles(opt('--base'), opt('--head'));
-  const plan = files ? jobsFor(files) : { scope: 'full', steps: REQUIRED_STEPS, include: JOBS.map(({ steps, ...job }) => job), diff: { reason: FULL_EVENTS.includes(opt('--event')) ? `${opt('--event')} runs check everything` : 'no usable base' } };
+  const plan = files ? jobsFor(files) : { scope: 'full', steps: REQUIRED_STEPS, include: JOBS.map(({ steps, paths, ...job }) => job), diff: { reason: FULL_EVENTS.includes(opt('--event')) ? `${opt('--event')} runs check everything` : 'no usable base' } };
   const out = { matrix: JSON.stringify({ include: plan.include }), any: String(plan.include.length > 0), scope: plan.scope, smoke: String(smokeFor(files)) };
   console.log(JSON.stringify({ ...out, matrix: plan.include.map(j => j.name), diff: plan.diff }, null, 2));
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(out).map(([k, v]) => `${k}=${v}\n`).join(''));

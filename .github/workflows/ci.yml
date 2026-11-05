@@ -113,8 +113,6 @@ jobs:
           case "$CHECK_KIND" in
             types-web)
               pnpm typecheck
-              # #898: the generated reference pages (docs/site actions, api, mcp) still match the server's code
-              node --test tools/docs/generate.test.mjs
               pnpm --filter @sim/web build
               # The Mars viewer's static site holds the people's character set (/modular); without it no world
               # draws people (issue #395). Build it as the first run does, then fail if the set is missing.
@@ -130,6 +128,10 @@ jobs:
             web)
               # V4-web: every apps/web unit test, TSX included
               bash tools/test-harness/web-suite.sh
+              ;;
+            docs-reference)
+              # #898: the generated reference pages (docs/site actions, api, mcp) still match the server's code
+              node --test --test-concurrency=1 tools/docs/generate.test.mjs
               ;;
             launcher)
               # V3-launcher-unit; launcher.test.mjs takes its ports from LAUNCHER_TEST_PORT_BASE (default 6200)

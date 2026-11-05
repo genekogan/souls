@@ -19,9 +19,15 @@ _Will say: world base URL, token kinds, headers, errors._
 
 ## Routes
 
-Generated from the server's code: the 361 routes a new world registers. Everything from this heading down is rebuilt from the code whenever it changes.
+Generated from the server's code: the 361 routes a new world registers, and the 3 endpoints served beside them. Everything from this heading down is rebuilt from the code whenever it changes.
 
-Paths are relative to the world, `https://soul.game/w/<slug>`. Edge routes take `Authorization: Bearer <Soul token>` unless marked public (POST /v1/agent/pair/start → owner approves → POST /v1/agent/pair/poll). Where an MCP tool calls a route, its input schema is on the MCP page.
+Paths are relative to the world, `https://soul.game/w/<slug>`. Edge routes take `Authorization: Bearer <Soul token>` unless marked public (POST /v1/agent/pair/start → owner approves → POST /v1/agent/pair/poll); the other groups' tokens are described under Base URL and auth. Where an MCP tool calls a route, its input schema is on the MCP page; edge routes show the body and query the edge schema gives.
+
+### Served beside the route table
+
+- `POST /mcp`: MCP (Streamable HTTP, stateless): Authorization: Bearer <Soul token>, or /mcp/<Soul token> for clients that only take a URL
+- `GET /ws`: WebSocket: the world viewer's live stream
+- `GET /v1/edge/events/ws`: query `cursor` (resume), `kinds` (…), `minSalience` (…), `format` (…); WebSocket
 
 ### /v1/edge
 

@@ -29,6 +29,7 @@ export function collect(root = ROOT) {
   try {
     out = execFileSync(process.execPath, [join(root, 'tools/docs/reference/collect.mjs')], {
       cwd: root, env: { PATH: process.env.PATH ?? '', DATA_DIR: dataDir }, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 120_000,   // about 2 s normally; never let a stuck read hang a CI job
     });
   } catch (e) { throw Error(`generate: reading the server failed (dependencies installed?):\n${String(e.stderr ?? e.message).trim().split('\n').slice(-12).join('\n')}`); }
   return JSON.parse(out);
@@ -67,11 +68,11 @@ export function actionsSection(f) {
   const body = f.verbs.filter((v) => !v.scope), world = f.verbs.filter((v) => v.scope === 'world');
   const prefixes = f.refusals.alternativesRule.replace(/^\/\^\(\?:|\)\/$/g, '').split('|').map((p) => p.replace(/\\\./g, '.'));
   return [
-    '## Actions', '', note(`the world's code: edge schema ${f.edge.schema}, engine rules ${f.world.rulesVersion}`), '',
+    '## Actions', '', note(`the world's code: edge schema ${f.edge.schema}`), '',
     '### Act verbs', '',
     `A Soul acts with \`POST /v1/edge/act\` (MCP \`eden_act\`): \`{capability, params?, clientRef?}\`, where \`capability\` is an id from \`GET /v1/edge/capabilities\` or plain words. Ids: ${code(act.ids)}.`, '',
-    table(['Verb', 'Outcome', 'Seconds'], act.verbs.map((v) => [code(v), outcomes[v]?.summary ?? '', secs(v) || (seconds.activities ? '' : '')])), '',
-    `Activities without their own row above take \`seconds\` ${seconds.activities ? `${seconds.activities.min}..${seconds.activities.max}` : ''}.`, '',
+    table(['Verb', 'Outcome', 'Seconds'], act.verbs.map((v) => [code(v), outcomes[v]?.summary ?? '', secs(v)])), '',
+    ...(seconds.activities ? [`Activities without their own row above take \`seconds\` ${seconds.activities.min}..${seconds.activities.max}.`, ''] : []),
     '### Act parameters', '',
     ...otherParams.map(([k, v]) => `- ${code(k)}: ${cell(v)}`),
     ...Object.entries(act.contentParams ?? {}).map(([k, v]) => `- ${code(k)} content: ${Object.entries(v).map(([p, d]) => `${code(p)} ${cell(d)}`).join(', ')}`), '',
@@ -81,10 +82,10 @@ export function actionsSection(f) {
     `Every act returns a receipt. Phases: ${act.receipts.phases.map(code).join(', ')}. ${cell(act.receipts.note)}.`, '',
     `A failed body act whose code starts with ${prefixes.map(code).join(', ')} carries \`alternatives\`: a fresh dry run of the same intent, on the receipt and in its event.`, '',
     '### Refusal codes', '',
-    `The codes the edge source names (${f.refusals.codes.length}). Status is the HTTP status when the request itself is refused; a code without one ends a receipt.`, '',
+    `The codes the edge layer names (${f.refusals.codes.length}). Status is the HTTP status when the request itself is refused; a code without one ends a receipt or answers a dry run. Body acts also end with the engine's own codes (routes, seats, slots, poses), which are not listed here; the rule above says which of them carry \`alternatives\`.`, '',
     table(['Code', 'Status', 'Alternatives'], f.refusals.codes.map((c) => [code(c.code), c.status ?? '', c.alternatives ? 'yes' : ''])), '',
     '### Plans', '',
-    `\`POST /v1/edge/plan\`: ${cell(act && f.edge.plan.body.steps)}; \`onRefusal\` ${f.edge.plan.body.onRefusal.map(code).join(', ')}.`, '',
+    `\`POST /v1/edge/plan\`: ${cell(f.edge.plan.body.steps)}; \`onRefusal\` ${f.edge.plan.body.onRefusal.map(code).join(', ')}.`, '',
     ...Object.entries(f.edge.plan.step).map(([k, v]) => `- ${code(k)}: ${cell(v)}`), '',
     ...f.edge.plan.rules.map((r) => `- ${cell(r)}`), '',
     `Plan events: ${f.edge.plan.events.map(code).join(', ')}.`, '',
@@ -120,6 +121,7 @@ export function routesSection(f) {
   });
   const line = (r) => {
     const k = `${r.method} ${r.path}`, e = endpoints.get(k), bits = [];
+    if (r.what) bits.push(cell(r.what));
     if (publicEdge.has(k)) bits.push('public');
     if (e?.body) bits.push(`body ${code(e.body)}`);
     if (e?.query) bits.push(`query ${Object.entries(e.query).map(([q, d]) => `${code(q)} (${cell(d)})`).join(', ')}`);
@@ -132,8 +134,11 @@ export function routesSection(f) {
     if (viaMcp.has(k)) bits.push(`MCP ${code(viaMcp.get(k))}`);
     return `- ${code(`${r.method} ${r.path}`)}${bits.length ? `: ${bits.join('; ')}` : ''}`;
   };
-  const out = ['## Routes', '', note(`the server's code: the ${f.routes.length} routes a new world registers`), '',
-    `Paths are relative to the world, \`https://soul.game/w/<slug>\`. Edge routes take \`Authorization: Bearer <Soul token>\` unless marked public (${cell(f.edge.auth.pairing)}). Where an MCP tool calls a route, its input schema is on the MCP page.`, ''];
+  const inTable = new Set(f.routes.map((r) => `${r.method} ${r.path}`));
+  const outside = [...f.beside, ...f.edge.endpoints.filter((e) => !inTable.has(`${e.method} ${e.path}`))];
+  const out = ['## Routes', '', note(`the server's code: the ${f.routes.length} routes a new world registers, and the ${outside.length} endpoints served beside them`), '',
+    `Paths are relative to the world, \`https://soul.game/w/<slug>\`. Edge routes take \`Authorization: Bearer <Soul token>\` unless marked public (${cell(f.edge.auth.pairing)}); the other groups' tokens are described under Base URL and auth. Where an MCP tool calls a route, its input schema is on the MCP page; edge routes show the body and query the edge schema gives.`, '',
+    '### Served beside the route table', '', ...outside.map(line), ''];
   for (const g of order) {
     const rs = groups.get(g).sort((a, b) => cmp(a.path, b.path) || METHODS.indexOf(a.method) - METHODS.indexOf(b.method));
     out.push(`### ${g}`, '', ...rs.map(line), '');

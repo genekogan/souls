@@ -38,7 +38,10 @@ test('every route, tool, verb and refusal code appears exactly once', () => {
   for (const v of facts.verbs) assert.equal(count(section('Engine verbs'), `\n| \`${v.verb}\` |`), 1, v.verb);
   for (const v of facts.edge.act.verbs) assert.equal(count(section('Act verbs'), `\n| \`${v}\` |`), 1, v);
   for (const c of facts.refusals.codes) assert.equal(count(section('Refusal codes'), `\n| \`${c.code}\` |`), 1, c.code);
-  for (const v of facts.intentVerbs) assert.ok(actions.includes(`\`${v}\``), v);
+  const intents = section('Intents');
+  for (const v of facts.intentVerbs) assert.equal(count(intents, `\`${v}\``), 1, v);
+  assert.ok(facts.refusals.codes.some((c) => c.code === 'conversation.not-member'), 'codes named through refuse()/fail() are collected');
+  for (const e of [...facts.beside, ...facts.edge.endpoints]) assert.equal(count(api, `\n- \`${e.method} ${e.path}\``), 1, `${e.method} ${e.path}`);
   assert.ok(actions.includes('carries `alternatives`'), 'the alternatives rule is stated');
   // the tool set is the one the MCP card (server.json) advertises, and each eden_* tool names the route it calls
   assert.ok(facts.mcp.filter((t) => t.name.startsWith('eden_')).every((t) => t.routes?.length && t.routes.every((r) => facts.routes.some((x) => `${x.method} ${x.path}` === r))));
@@ -54,8 +57,9 @@ test('splice keeps the prose above the heading and refuses a page without it', (
 test('lint: the prose style rules stop at the generated mark; links and private data are still checked', () => {
   const page = (body, generated = true) => `---\ntitle: T\ndescription: d\naudience: agents\nupdated: 2026-11-05\nsources:\n  - tools/docs/generate.mjs\ngenerated: ${generated}\n---\n\n# T\n\n${body}\n`;
   const codes = (t) => lintPage(t, { pages: new Set(['/docs']) }).map((p) => p.code);
-  assert.deepEqual(codes(page(`${GENERATED_MARK} x.\n\nA quote from code — as written.`)), []);
-  assert.deepEqual(codes(page(`Prose — here.\n\n${GENERATED_MARK} x.`)), ['style.em-dash']);
-  assert.deepEqual(codes(page(`${GENERATED_MARK} x.\n\nA quote — here.`, false)), ['style.em-dash']);
-  assert.deepEqual(codes(page(`${GENERATED_MARK} x.\n\nSee http://example.com/x`)), ['link.host']);
+  assert.deepEqual(codes(page(`## Tools\n\n${GENERATED_MARK} x.\n\nA quote from code — as written.`)), []);
+  assert.deepEqual(codes(page(`Prose — here.\n\n## Tools\n\n${GENERATED_MARK} x.`)), ['style.em-dash']);
+  assert.deepEqual(codes(page(`## Tools\n\n${GENERATED_MARK} x.\n\nA quote — here.`, false)), ['style.em-dash']);
+  assert.deepEqual(codes(page(`${GENERATED_MARK} hand prose — not under a heading.\n\n## Tools\n\nx`)), ['style.em-dash'], 'the mark counts only directly under a ## heading');
+  assert.deepEqual(codes(page(`## Tools\n\n${GENERATED_MARK} x.\n\nSee http://example.com/x`)), ['link.host']);
 });

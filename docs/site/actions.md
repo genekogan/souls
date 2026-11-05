@@ -19,7 +19,7 @@ _Will say: offers, parameters, refusal codes; generated from code each release._
 
 ## Actions
 
-Generated from the world's code: edge schema eden-edge-schema/1, engine rules sim-mars/1+mars-engine/1+mars-assembly/3+activities/31+bodies/1+crew-removal/1. Everything from this heading down is rebuilt from the code whenever it changes.
+Generated from the world's code: edge schema eden-edge-schema/1. Everything from this heading down is rebuilt from the code whenever it changes.
 
 ### Act verbs
 
@@ -120,7 +120,7 @@ A failed body act whose code starts with `route.`, `slot.`, `seat.`, `walk.goal`
 
 ### Refusal codes
 
-The codes the edge source names (133). Status is the HTTP status when the request itself is refused; a code without one ends a receipt.
+The codes the edge layer names (159). Status is the HTTP status when the request itself is refused; a code without one ends a receipt or answers a dry run. Body acts also end with the engine's own codes (routes, seats, slots, poses), which are not listed here; the rule above says which of them carry `alternatives`.
 
 | Code | Status | Alternatives |
 |---|---|---|
@@ -130,6 +130,8 @@ The codes the edge source names (133). Status is the HTTP status when the reques
 | `bike.none-left` |  |  |
 | `body.asset-not-found` | 404 |  |
 | `body.assignment` | 400 |  |
+| `body.authority-changed` |  |  |
+| `body.changed` |  |  |
 | `body.library-cursor` | 400 |  |
 | `body.library-limit` | 400 |  |
 | `body.library-query` | 400 |  |
@@ -139,6 +141,7 @@ The codes the edge source names (133). Status is the HTTP status when the reques
 | `body.multipart` | 400 |  |
 | `body.not-owned` | 403 |  |
 | `body.preset-unknown` | 400 |  |
+| `body.receipt-changed` |  |  |
 | `body.ref-unknown` | 404 |  |
 | `body.safe-standing-required` | 409 |  |
 | `body.source-unavailable` | 409 |  |
@@ -155,6 +158,7 @@ The codes the edge source names (133). Status is the HTTP status when the reques
 | `calendar.over` |  |  |
 | `capability.params` |  |  |
 | `capability.unknown` |  |  |
+| `carry.ground-only` |  |  |
 | `chess.already-seated` |  |  |
 | `chess.illegal` |  |  |
 | `chess.in-progress` |  |  |
@@ -167,6 +171,18 @@ The codes the edge source names (133). Status is the HTTP status when the reques
 | `contact.identity-changed` |  |  |
 | `contact.not-applied` |  |  |
 | `container.closed` |  |  |
+| `content.book-unknown` |  |  |
+| `content.text-required` |  |  |
+| `conversation.already-member` |  |  |
+| `conversation.closed` |  |  |
+| `conversation.full` |  |  |
+| `conversation.invited` |  |  |
+| `conversation.no-request` |  |  |
+| `conversation.not-invited` |  |  |
+| `conversation.not-member` |  |  |
+| `conversation.out-of-range` |  |  |
+| `conversation.self` |  |  |
+| `conversation.unknown` |  |  |
 | `engine.fault-recovered` |  |  |
 | `follow.already` |  |  |
 | `follow.destination` |  |  |
@@ -194,6 +210,7 @@ The codes the edge source names (133). Status is the HTTP status when the reques
 | `item.none-near` |  |  |
 | `item.not-held` |  |  |
 | `ledger.unavailable` |  |  |
+| `make.limit` |  |  |
 | `mark.full` |  |  |
 | `mark.removed` |  |  |
 | `object.action-unknown` |  |  |
@@ -204,11 +221,17 @@ The codes the edge source names (133). Status is the HTTP status when the reques
 | `object.role` |  |  |
 | `painting.failed` |  |  |
 | `painting.identity-changed` |  |  |
+| `painting.no-easel` |  |  |
 | `place.ambiguous` |  |  |
+| `place.dynamic` |  |  |
 | `place.items-full` |  |  |
+| `place.marks-full` |  |  |
 | `place.position-unknown` |  |  |
 | `place.root` |  |  |
+| `place.unknown` |  |  |
 | `place.unreachable` |  |  |
+| `place.unsupported-floor` |  |  |
+| `place.unwalkable` |  |  |
 | `pose.no-room` |  | yes |
 | `presentation.already-reserved` |  |  |
 | `presentation.closed` |  |  |
@@ -245,9 +268,12 @@ The codes the edge source names (133). Status is the HTTP status when the reques
 | `rps.choose` |  |  |
 | `sky.daylight` |  |  |
 | `sky.no-clock` |  |  |
+| `slot.unknown` |  | yes |
 | `soul.faded` | 409 |  |
 | `soul.name-ambiguous` |  |  |
 | `soul.not-in-sight` |  |  |
+| `soul.not-probe` |  |  |
+| `soul.unknown` |  |  |
 | `stall.released` |  |  |
 | `state.asleep` |  |  |
 | `state.changed` | 409 |  |

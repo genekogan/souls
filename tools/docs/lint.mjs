@@ -99,7 +99,9 @@ export function lintPage(text, { pages = new Set(OUTLINE) } = {}) {
   }
   // bare URLs anywhere (code included): our hosts only
   for (const [raw] of fm.body.matchAll(/https?:\/\/[^\s)<>`"']+/g)) { const u = raw.replace(/[.,;:!?]+$/, ''); let h; try { h = new URL(u).hostname; } catch { continue; } if (!HOSTS.includes(h)) bad('link.host', `${u}: only ${HOSTS.join(', ')} may appear`); }
-  const mark = d.generated === true ? prose.indexOf(`\n${GENERATED_MARK} `) : -1, written = mark < 0 ? prose : prose.slice(0, mark);
+  // the generated part starts at the mark paragraph directly under a ## heading, nowhere else
+  const mark = d.generated === true ? new RegExp(`^## [^\\n]+\\n\\n(?=${GENERATED_MARK} )`, 'm').exec(prose) : null;
+  const written = mark ? prose.slice(0, mark.index) : prose;
   if (/\bSim\b/.test(prose)) bad('name.retired', '"Sim" is retired: the product is Souls');
   if (/\bEden worlds?\b|\bin Eden\b(?! \d)/.test(prose)) bad('name.eden', 'Eden is one world, never the product');
   if (/—/.test(written.replace(/^#.*$/gm, ''))) bad('style.em-dash', 'no em-dashes in body text (WRITING.md)');
