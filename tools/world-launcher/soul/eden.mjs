@@ -706,7 +706,8 @@ export function brief(out) {
   // F2 (#373): only a completed receipt is `done`; a failed or replaced one says `failed` with the world's reason, never
   // a success summary
   const failed = fin && rec.phase !== "completed", key = !fin ? "now" : failed ? "failed" : "done";
-  const sentence = !rec ? null : failed ? `${rec.capability} ${rec.phase}${rec.reason ? `: ${rec.reason.replace(/\.$/, "")}` : rec.code ? ` (${rec.code})` : ""}.`
+  const why = failed ? (rec.reason ? `: ${rec.reason}` : rec.code ? ` (${rec.code})` : "") : "";
+  const sentence = !rec ? null : failed ? `${rec.capability} ${rec.phase}${why}${/[.!?]$/.test(why) ? "" : "."}`
     : fin ? rec.done ?? rec.outcome?.summary ?? `${rec.capability} ${rec.phase}.`
     : rec.now ?? `${rec.capability} ${rec.phase}: under way, not finished.`;
   const o = {
