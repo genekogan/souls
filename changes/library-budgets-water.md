@@ -1,4 +1,4 @@
 ---
 type: perf
 ---
-New garden fountain and watering can revisions draw with half the triangles or fewer.
+New garden fountain and watering can revisions draw with about half the triangles.
