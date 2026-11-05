@@ -69,6 +69,7 @@ export function checkersMoveProblem(text: unknown, from: unknown, to: unknown): 
     if (i === -2) return { code: 'object.state', reason: `${v.trim().toLowerCase()} is a light square; the pieces stand on the dark squares only.` };
   }
   const piece = b.cells[a]!, side = sideOf(piece), fn = checkersName(a), tn = checkersName(z);
+  if (a === z) return { code: 'capability.params', reason: `${fn} to ${tn} does not move the piece: name the square it moves to.` };
   if (!side) return { code: 'object.state', reason: `There is no piece on ${fn}.` };
   if (side !== b.turn) return { code: 'object.state', reason: `The piece on ${fn} is ${side}'s; you play ${b.turn}.` };
   if (b.chain >= 0 && a !== b.chain) return { code: 'object.state', reason: `The piece on ${checkersName(b.chain)} is jumping and must jump again: ${legal.map(named).join(' or ')}.` };

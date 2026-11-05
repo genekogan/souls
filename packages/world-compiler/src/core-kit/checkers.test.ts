@@ -30,6 +30,7 @@ test('opening: X moves first and up, seven moves; a man never moves back or side
   assert.match(checkersMoveProblem('', 'b2', 'c3')!.reason, /c3 is taken/);
   assert.match(checkersMoveProblem('', 'c3', 'x9')!.reason, /not a square/);
   assert.equal(checkersMoveProblem('', '', 'd4')!.code, 'capability.params');
+  assert.match(checkersMoveProblem('', 'c3', 'c3')!.reason, /does not move the piece/);
   const r = play('', 'c3', 'd4'); assert.equal(r.captured, null); assert.equal(checkersBoard(r.text).turn, 'O');
   assert.match(checkersMoveProblem(board({ d4: 'x', h8: 'o' }, 'X'), 'd4', 'c3')!.reason, /forward only/);
 });

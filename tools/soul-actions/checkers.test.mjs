@@ -71,7 +71,7 @@ test('checkers: opening, compulsory jump, recapture, refusals, third player, int
  const interrupted={phase:ipf.phase,by:stop.capability??stop.receipt?.capability};await finish(ben,stop);
  await move(ben,'g7 to e5');assert.equal(at('f6'),'.');assert.equal(at('e5'),'o');
  const label=edge.capabilities(cy).find(c=>c.id===`read:${id('checkers')}`)?.label??'';assert.match(label,/a game of checkers, X to play/);assert.ok(!/Ana|Ben|x\.|o\./.test(label),'the offer names the state only');
- const r=await act(cy,`read:${id('checkers')}`);await finish(cy,r);const read=edge.receipt(cy.soulId,r.receipt.id).outcome?.summary??'';
+ const r=await act(cy,"read:checkers");words["Cy: read:checkers"]=r.receipt?.capability??r.capability;await finish(cy,r);const read=edge.receipt(cy.soulId,r.receipt.id).outcome?.summary??'';
  assert.match(read,/Ana \(X\) against Ben \(O\); Ana to move; X 11 pieces, O 11 pieces/);
  // ---- a multi-jump that wins: Ana's last X jumps twice, the turn stays hers between the jumps ----
  watch='end';
@@ -83,11 +83,17 @@ test('checkers: opening, compulsory jump, recapture, refusals, third player, int
  const over=await act(ben,end,{from:'f6',to:'g5'},false);reasons.over=over.reason;assert.match(over.reason,/over: Ana won/);
  const wipe=await done(cy,`object:${id('end')}:erase`);assert.equal(wipe.stroke.kind,'wipe');assert.equal(state('end').text,'');
  const fresh=await done(cy,end,{from:'c3',to:'d4'});assert.equal(state('end').players,'Cy');
+ // ---- crowning by hand at the top and bottom rows (rank 8 about 1.48 m, rank 1 about 1.02 m up) ----
+ watch='crown';
+ assert.equal(god.act({ops:[{op:'place',def:'core/checkers-board@1',name:'crown',p:[ax+6,az+2.6],r:Math.PI,state:{text:board({a7:'x',b2:'o',h4:'x'},'X'),textBy:`${ana.soulId},${ben.soulId}`,players:'Ana,Ben'}}]}).accepted,true);await tick(45);
+ const crown=`object:${id('crown')}:move`,c8=await done(ana,crown,{from:'a7',to:'b8'}),c1=await done(ben,crown,{from:'b2',to:'a1'});
+ const crowned=String(state('crown').text);assert.equal(crowned[checkersCellOf('b8')],'X');assert.equal(crowned[checkersCellOf('a1')],'O');assert.match(c8.summary,/it is crowned/);assert.match(c1.summary,/it is crowned/);
+ const back=await done(ana,crown,{from:'b8',to:'c7'});assert.equal(String(state('crown').text)[checkersCellOf('c7')],'X','the king moves back');
  // ---- a Soul outside a game in progress cannot wipe it ----
  const noWipe=await act(cy,`object:${id('checkers')}:erase`,undefined,false);reasons.noWipe=noWipe.reason;assert.match(noWipe.reason??'',/between Ana and Ben is in progress/);
  const restored=WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())),undefined,god.model.library);assert.equal(restored.get('checkers').state.text,state('checkers').text);assert.equal(restored.get('end').state.players,'Cy');
  assert.deepEqual(f.host.engine.runtime.violations,[]);
- const report={status:'pass',hereBytes:{absent:JSON.stringify(absent).length,distant100Boards:JSON.stringify(far).length,nearby:JSON.stringify(near).length},words,reasons,label,read,interrupted,summaries:{opening:m1.summary,jump:cap.summary,chain:[j1.summary,j2.summary],fresh:fresh.summary},stroke:m1.stroke,retries,makeWayRetries,
-  checks:['words: "move c3 to d4", "f6 to e5", "jump d4 to f6", "g7 to e5" name the nearest checkers board\'s move','the first mover plays X, the second O; turns enforced','a third Soul refused while a game is on','compulsory jump refused a plain move, for both sides','light, empty, opponent\'s squares refused','a jump takes the piece; the recapture','an interrupted move leaves the board unchanged','a multi-jump keeps the turn; the other player waits','the win is detected; moving after it refused','the read offer names the state only; the read names players, turn and counts','a wipe by anyone after the game sets it up again; the next mover plays X','a Soul outside a game in progress cannot wipe it','the noughts and crosses board keeps its own mark offer','100 distant boards in play: +0 bytes, no offers','snapshot persistence','zero native violations']};
+ const report={status:'pass',hereBytes:{absent:JSON.stringify(absent).length,distant100Boards:JSON.stringify(far).length,nearby:JSON.stringify(near).length},words,reasons,label,read,interrupted,summaries:{crown:[c8.summary,c1.summary,back.summary],opening:m1.summary,jump:cap.summary,chain:[j1.summary,j2.summary],fresh:fresh.summary},stroke:m1.stroke,retries,makeWayRetries,
+  checks:['words: "move c3 to d4", "f6 to e5", "jump d4 to f6", "g7 to e5" name the nearest checkers board\'s move','the first mover plays X, the second O; turns enforced','a third Soul refused while a game is on','compulsory jump refused a plain move, for both sides','light, empty, opponent\'s squares refused','a jump takes the piece; the recapture','an interrupted move leaves the board unchanged','a multi-jump keeps the turn; the other player waits','the win is detected; moving after it refused','crowning by hand on rank 8 and rank 1; the king moves back','the read offer names the state only; the read names players, turn and counts','a wipe by anyone after the game sets it up again; the next mover plays X','a Soul outside a game in progress cannot wipe it','the noughts and crosses board keeps its own mark offer','100 distant boards in play: +0 bytes, no offers','snapshot persistence','zero native violations']};
  if(out){mkdirSync(out,{recursive:true});writeFileSync(`${out}/summary.json`,JSON.stringify(report,null,2));}console.log(JSON.stringify(report));
 });

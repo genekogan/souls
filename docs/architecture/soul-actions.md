@@ -32,9 +32,29 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out | "carry the bench to the courtyard" (any place name), "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station. Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station" |
-| Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
+| Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses and checkers with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "move c3 to d4", "jump d4 to f6", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
+
+### Checkers (#439)
+
+A checkers board (`core-checkers-board@1`) is a standing chalk board on noughts and crosses' faculty: the hand works the
+move on the face in one level chalk stroke between the two squares (across their files, at the height midway between
+them; for a jump, across the jumped piece), and the piece moves only when the stroke ends. The world keeps
+turns: the first Soul to move plays X, from the bottom, and the second plays O; a third Soul waits for the next game.
+The player steps back afterwards, a reader reads it, and a wipe sets the board up again. The rules are English draughts
+(`packages/world-compiler/src/core-kit/checkers.ts`):
+
+- a man moves one square diagonally forward, and a jump over an opponent's piece captures it;
+- a jump that is open must be taken, and a piece that can jump again keeps the turn until it cannot;
+- a man that reaches the far row is crowned, which ends the turn, and a king moves both ways;
+- a side with no pieces or no legal move loses; there is no draw rule, so two players end a stalemate by wiping the board.
+
+Squares are named a1–h8, with a1 at the bottom left seen from the front. "move c3 to d4", "c3 to d4", "jump d4 to f6"
+or "c3-d4" is the nearest board's move with those squares. The read offer names only the state ("a game of checkers, X
+to play"). Reading gives the players, whose move it is or who won, the pieces left and the board as eight rows.
+"jump c3 to e5, then e5 to g7" makes the first jump now and says to act again for the rest. "read the checkers board"
+is still a walk to it, as with the other boards; `read:<board>` (or its offered read) reads it.
 
 ## What other Souls perceive
 

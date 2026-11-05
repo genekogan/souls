@@ -64,7 +64,8 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
     // Entry 27: a noughts-and-crosses mark goes to its own square (gameSquare, shared with the viewer's face)
     const mark=action==='mark'&&def.tags.includes('tictactoe')?gameSquareOf(input.square):-1;
     if(mark>=0){const [dx,dy]=gameSquare(mark).map(v=>v*wp.s);params.at=[centre[0]+dx*c+s*.04,centre[1]+dy,centre[2]-dx*s+c*.04];}
-    // #439 W093: a checkers move is one chalk stroke across its two squares (checkersSquare, shared with the viewer's face)
+    // #439 W093: a checkers move is one level chalk stroke between its two squares (across their files at the height midway
+    // between them; checkersSquare is shared with the viewer's face)
     const cm=action==='move'&&def.tags.includes('checkers')?[checkersCellOf(input.from),checkersCellOf(input.to)]:null,move=!!cm&&cm[0]>=0&&cm[1]>=0;
     if(move){const [a,b]=[checkersSquare(cm![0]),checkersSquare(cm![1])],dx=(a[0]+b[0])/2*wp.s,dy=(a[1]+b[1])/2*wp.s;params.at=[centre[0]+dx*c+s*.04,centre[1]+dy,centre[2]-dx*s+c*.04];}
     if(mark>=0)params.stroke={kind:'write',yaw:wp.yaw,stand,width:.1,height:.08,lines:1,seconds:1.2};

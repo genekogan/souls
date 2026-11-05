@@ -28,6 +28,12 @@ test('#439 checkers words: two squares are the nearest board\'s move', () => {
 test('#439 other words and worlds without checkers resolve as before', () => {
   const caps = [...board('e_near'), ...ttt];
   assert.notEqual((to('mark a square on the game board', caps) as {id: string}).id, 'object:e_near:move');
-  assert.equal(to('move c3 to d4', ttt) === 'unknown' || (to('move c3 to d4', ttt) as {id: string}).id !== 'object:e_near:move', true);
-  assert.notDeepEqual(to('move to the bench', caps), {id: 'object:e_near:move', params: {from: 'c3', to: 'd4'}});
+  const id = (w: string, c: EdgeCapability[]) => { const r = to(w, c); return r === 'unknown' ? r : r.id; };
+  assert.ok(!/:move$/.test(id('move c3 to d4', ttt)), 'no checkers board: no checkers move');
+  for (const w of ['move to the bench', 'move closer', 'move the chair', 'read the board', 'mark the centre']) assert.ok(!/:move$/.test(id(w, caps)), w);
+});
+
+test('#439 a chained multi-jump does its first jump now, with its squares', () => {
+  const r = to('jump c3 to e5, then e5 to g7', board('e_near'));
+  assert.deepEqual(r, {id: 'object:e_near:move', params: {from: 'c3', to: 'e5'}});
 });

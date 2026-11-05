@@ -341,7 +341,8 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
       if (via.length <= 4) return {kind: 'alias', cap: last.cap, params: {via}, note: `${input} is ${via.join(', then ')}, then ${last.cap.id} (one act: via ${via.join(', ')}).`};
     }
     const first = parts[0] as Exclude<VocabResult, {kind: 'unknown'}>;
-    return {kind: 'alias', cap: first.cap, note: `${'note' in first ? first.note : `${clauses[0]} is ${first.cap.id}.`} Doing the first part now; act again for "${clauses.slice(1).join(', then ')}" when its receipt completes.`};
+    // #439: the first part keeps its own params ("jump c3 to e5, then e5 to g7" moves c3 to e5 now)
+    return {kind: 'alias', cap: first.cap, ...(first.kind === 'alias' && first.params ? {params: first.params} : {}), note: `${'note' in first ? first.note : `${clauses[0]} is ${first.cap.id}.`} Doing the first part now; act again for "${clauses.slice(1).join(', then ')}" when its receipt completes.`};
   }
   const text = input.toLowerCase(), colon = text.indexOf(':'), head = colon >= 0 ? text.slice(0, colon) : '';
   const stow = colon < 0 ? storeWords(input, text, ctx) : null; if (stow) return stow;
