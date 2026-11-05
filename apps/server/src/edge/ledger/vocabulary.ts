@@ -334,7 +334,7 @@ function searchCaps(ctx: VocabContext, words: string[]): EdgeCapability[] {
 }
 function searchWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
   const m = SEARCH.exec(text); if (!m) return null;
-  const words = tokens(m[2] ?? '').filter(w => !['the', 'a', 'an', 'my', 'your', 'this', 'that', 'it', 'here', 'nearby', 'around', 'about', 'area', 'place', 'spot'].includes(w));
+  const words = tokens(m[2] ?? '').filter(w => !['the', 'a', 'an', 'my', 'your', 'this', 'that', 'it', 'old', 'tree', 'here', 'nearby', 'around', 'about', 'area', 'hiding', 'place', 'spot'].includes(w));
   if (!words.length && !/^(?:search|rummage)/.test(m[1])) return null;
   const hit = searchCaps(ctx, words)[0];
   return hit ? {kind: 'alias', cap: hit, note: `${input} is ${hit.id} (${hit.label}).`} : null;

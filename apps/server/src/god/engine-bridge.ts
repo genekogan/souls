@@ -299,7 +299,7 @@ export class EngineBridge {
     if(this.edge)this.edge.contactActuator=createContactActuatorService({model:()=>this.god.model,levelAt:(x,z,y)=>this.levelAt(x,z,y),
       clearance:(x,z,level)=>(this.host.engine as unknown as {clearanceAtV1?:(x:number,z:number,level?:number)=>number}).clearanceAtV1?.(x,z,level)??Infinity,
       body:id=>this.host.engine.world.entities[id] as never,access:(id,soul)=>this.layers.refusal(id,soul),owner,knock:(soul,id)=>this.knockHeard(soul,id),
-      moreFacts:id=>this.tea?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,beaten)=>this.searchOutcome(soul,spot,beaten),
+      moreFacts:id=>this.tea?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,failed)=>this.searchOutcome(soul,spot,failed),
       record:(soul,id,action,params={})=>{const r=this.edge!.comms?.objects.act?.(id,soul,{action,params}) as {accepted?:boolean}|undefined;if(!r?.accepted)throw Error('switch.object-record-refused');},
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
@@ -1822,7 +1822,7 @@ export class EngineBridge {
     caps.push({ id: 'pray', verb: 'pray', label: 'Pray to the god of this world (params: {"text": "…"}); answers come back under GET /v1/god/prayers/mine', available: true, params: { text: { type: 'string', maxLength: 2000 } } });
     const ents = this.mw.world.entities as Record<string, any>, me = ents[soul.entityId]; if (!me?.human) return;
     const here: Vec2 = [me.pose.p[0], me.pose.p[2]];
-    if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on')) {
+    if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on', 'put-in', 'search')) {
       const held = Object.values(ents).find((x: any) => x.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === soul.entityId) as any;
       const name = (id: string) => (this.model.entities.has(id) ? this.model.pathOf(id) : String(ents[id]?.label ?? id));
       // MARSLIVED: a thing resting on a table is reached from the table's floor (its top's height matched Mimos's 0.53 m
@@ -1946,11 +1946,13 @@ export class EngineBridge {
         if (inner.length && d <= STORE_NEAR) {
           const box = this.storage(x.id);
           if (box?.hidden) {
-            const block = this.storageRefusal(box, soul) ?? (held || me.human.grip ? { code: 'carry.hands-full', reason: `Put down what you are holding before searching ${box.label}.` } : null);
-            const id = `search:${x.id}`, label = `Search ${box.label} (${d} m)`;
+            const station = this.standAt(x, box, levelOf(x), soul.entityId);
+            const block = this.storageRefusal(box, soul) ?? (held || me.human.grip ? { code: 'carry.hands-full', reason: `Put down what you are holding before searching ${box.label}.` } : !station ? { code: 'container.no-room', reason: `There is no room to stand at ${box.label}.` } : null);
+            const id = `search:${x.id}`, label = `Search ${box.label} (a ${box.kind}, ${d} m)`;
             caps.push({ id, verb: 'search', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}) });
-            const found = Object.values(ents).find((o: any) => o.support?.kind === 'resting-on' && o.support.on === x.id && inner.some((sl) => sl.id === o.support.slot)) as any;
-            if (!block) plans.set(id, { label, steps: found ? [...stand, { verb: 'mars:let_go_v1', params: {} }, { verb: 'mars:take_item', params: { item: found.id, hand: 'right' } }] : [...stand, ...this.reachInto(x, box, levelOf(x), soul.entityId)] });
+            // a thing this Soul may not take (private, for sale, claimed) is as if it were not there: the same reach, and nothing leaks
+            const found = Object.values(ents).find((o: any) => o.support?.kind === 'resting-on' && o.support.on === x.id && inner.some((sl) => sl.id === o.support.slot) && !this.layers.takeRefusal(o.id, soul) && !this.claimRefusal(o.id, soul)) as any;
+            if (!block) plans.set(id, { label, steps: found ? [...stand, { verb: 'mars:let_go_v1', params: {} }, { verb: 'mars:take_item', params: { item: found.id, hand: 'right' } }] : [...stand, ...this.reachInto(x, box, station!, levelOf(x))] });
           }
         }
         if (held && inner.length && d <= STORE_NEAR) {
@@ -1964,7 +1966,7 @@ export class EngineBridge {
               ?? (!fits ? { code: 'item.does-not-fit', reason: `${name(held.id)} (${size!.map(m2).join(' × ')} m) does not fit in ${box.label} (up to ${fit.map(m2).join(' × ')} m).` } : null)
               ?? (lit ? { code: 'item.lit', reason: `${name(held.id)} is lit; switch it off before putting it away.` } : null)
               ?? (!free ? { code: 'container.full', reason: `${box.label} is full (${inner.length} ${inner.length === 1 ? 'thing' : 'things'}).` } : null);
-            const id = `put-in:${x.id}`, label = `Put ${name(held.id)} in ${box.label} (${d} m)`;
+            const id = `put-in:${x.id}`, label = `Put ${name(held.id)} in ${box.label} (${box.hidden ? `a ${box.kind}, ` : ''}${d} m)`;
             caps.push({ id, verb: 'put-in', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}) });
             if (free) plans.set(id, { label, steps: [...stand, { verb: 'mars:put_item', params: { item: held.id, surfaceSlot: `${x.id}#${free.id}` } }] });
           }
@@ -2001,21 +2003,25 @@ export class EngineBridge {
     const e = this.model.entities.get(id), def = e && this.model.resolvedDef(e.def), ins = containerInside(def);
     if (!e || !def || !ins) return null;
     const n = this.model.pathOf(id), word = ins.word;
-    return { id, ins, hidden: containerHidden(def), open: containerOpen(def, actuatedState(e, def)), label: n.toLowerCase().split(/[^a-z0-9]+/).includes(word) ? n : `${n} (${word})`, word, name: n };
+    return { id, ins, hidden: containerHidden(def), kind: def.name.replace(/^core-/, '').replace(/-/g, ' '), open: containerOpen(def, actuatedState(e, def)), label: n.toLowerCase().split(/[^a-z0-9]+/).includes(word) ? n : `${n} (${word})`, word, name: n };
   }
-  /** #435 (W068): an empty search's steps: to where a body stands at this place (the def's `stand`), and a hand over its lip. */
-  private reachInto(x: { id: string; pose: { p: number[]; yaw?: number } }, box: NonNullable<ReturnType<EngineBridge['storage']>>, level: number, body: string) {
-    const yw = -(x.pose.yaw ?? 0), at = (l: number, f: number): [number, number] => [x.pose.p[0] + l * Math.cos(yw) + f * Math.sin(yw), x.pose.p[2] - l * Math.sin(yw) + f * Math.cos(yw)];
-    const st = this.mw.standableNearV1!(at(box.ins.stand[0], box.ins.stand[1]), level, body, 0.4, 16), s = box.ins.slots[0].p, [hx, hz] = at(s[0], s[2]);
-    return [...(st ? [{ verb: 'mars:walk_to', params: { x: st[0], z: st[1], level } }] : []), { verb: 'mars:let_go_v1', params: {} },
-      { verb: 'mars:hand_actuator_v1', params: { target: x.id, at: [hx, x.pose.p[1] + Math.max(s[1] + 0.1, box.ins.lip + 0.02), hz].map(r3), hold: 1 } }];
+  /** #435 (W068): where a body stands to reach into a container (the def's `stand`, in the world), or null. */
+  private standAt(x: { pose: { p: number[]; yaw?: number } }, box: NonNullable<ReturnType<EngineBridge['storage']>>, level: number, body: string): [number, number] | null {
+    const yw = -(x.pose.yaw ?? 0), [l, f] = box.ins.stand;
+    return this.mw.standableNearV1!([x.pose.p[0] + l * Math.cos(yw) + f * Math.sin(yw), x.pose.p[2] - l * Math.sin(yw) + f * Math.cos(yw)], level, body, 0.4, 16);
+  }
+  /** #435 (W068): an empty search's steps: to where a body stands at this place, and a hand over its lip. */
+  private reachInto(x: { id: string; pose: { p: number[]; yaw?: number } }, box: NonNullable<ReturnType<EngineBridge['storage']>>, st: [number, number], level: number) {
+    const yw = -(x.pose.yaw ?? 0), s = box.ins.slots[0].p;
+    return [{ verb: 'mars:walk_to', params: { x: st[0], z: st[1], level } }, { verb: 'mars:let_go_v1', params: {} },
+      { verb: 'mars:hand_actuator_v1', params: { target: x.id, at: [x.pose.p[0] + s[0] * Math.cos(yw) + s[2] * Math.sin(yw), x.pose.p[1] + Math.max(s[1] + 0.1, box.ins.lip + 0.02), x.pose.p[2] - s[0] * Math.sin(yw) + s[2] * Math.cos(yw)].map(r3), hold: 1 } }];
   }
   /** #435 (W068): what a finished search of this place came to, told to the searcher (the receipt's outcome). */
-  searchOutcome(soul: { entityId: string }, spot: string, beaten = false): string | null {
+  searchOutcome(soul: { entityId: string }, spot: string, failed = false): string | null {
     const box = this.storage(spot); if (!box) return null;
-    if (beaten) return `Someone else got to ${box.label} first; you came away with nothing.`;
+    if (failed) return `You could not finish searching ${box.label}; you came away with nothing.`;
     const got = Object.values(this.engine.world.entities).find((o: any) => o.tags?.includes('entity-world') && o.support?.kind === 'in-hand' && o.support.by === soul.entityId) as { id: string } | undefined, e = got && this.model.entities.get(got.id);
-    return e ? `You found ${e.name ?? this.model.resolvedDef(e.def)?.name.replace(/^core-/, '') ?? 'something'} in ${box.label}.` : `You searched ${box.label} and found nothing there.`;
+    return e ? `You found ${e.name ?? this.model.resolvedDef(e.def)?.name.replace(/^core-/, '') ?? 'something'} in ${box.label}.` : `You searched ${box.label} and came away with nothing.`;
   }
   /** #435: what a Soul near a container that keeps a `leftBy` record is told about a thing in it: "left by Ana" (a swap
    *  shelf, W071); in one that gives things back to their owners (`claim: "owner"`, a lost-and-found, W072), whose it is and
@@ -2054,6 +2060,7 @@ export class EngineBridge {
   private storageRefusal(box: NonNullable<ReturnType<EngineBridge['storage']>>, soul: EdgeSoul): { code: string; reason: string } | null {
     const denied = this.layers.refusal(box.id, soul); if (denied) return denied;
     if (!box.open) return { code: 'container.closed', reason: `${box.label} is closed; open it first (object:${box.id}:open).` };
+    if (box.hidden) return null;   // #435: no door to wait for, and another Soul's reach into it (an empty search) must not show
     for (const b of Object.values(this.engine.world.entities) as any[]) if (b.human?.handActuator?.target === box.id) return { code: 'container.moving', reason: `${box.label} is being opened or closed; wait a moment.` };
     return null;
   }

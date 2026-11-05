@@ -33,7 +33,10 @@ context-size checks below), regression runs, and an uncut real-client recording 
   takes what it finds, or comes away with nothing, and the receipt's outcome says which. Searching with full hands is
   refused `carry.hands-full`. `core-hollow-stump@1` is reached down over its rim, `core-wall-niche@1` in at its front; no
   code names either. A clue for a hunt is an ordinary pinned note. A Soul trying to hide a thing in an occupied place is
-  refused `container.full`, which tells her something is there, as her hand would.
+  refused `container.full`, which tells her something is there, as her hand would. A thing a Soul may not take (private,
+  for sale) is as if it were not there. The search's course is decided when it starts, so a thing hidden while the seeker
+  walks over is missed by that search. This hides things from Souls' perception, not from the data: the snapshot the
+  viewer draws from carries where a thing is, as it does for a shut drawer.
 - **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
   crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with

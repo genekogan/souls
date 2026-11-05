@@ -50,6 +50,8 @@ test('hide and seek: hide, search empty and found, nothing told, words, refusals
   {op: 'place', def: 'core/hollow-stump@1', name: 'stump', p: [ax + 1, az + 2.6], r: Math.PI},
   {op: 'place', def: 'core/wall-niche@1', name: 'niche', p: [ax - 2, az + 3.4], r: Math.PI},
   {op: 'place', def: 'core/wall-niche@1', name: 'private-niche', p: [ax + 4.6, az + 3.4], r: Math.PI, access: 'private'},
+  {op: 'place', def: 'core/wall-niche@1', name: 'spare', p: [ax - 5.2, az + 1], r: Math.PI / 2},
+  {op: 'place', def: 'core/cup@2', name: 'anas-cup', in: {parent: 'spare', slot: 'in-1'}, p: [0, 0], owner: 'soul:Ana', access: 'private'},
   {op: 'place', def: 'core/notice-board@3', name: 'notes', p: [ax - 3, az - 2]}]}));
  await tick(60);
  const id = n => ent(n).id, item = n => f.host.engine.world.entities[id(n)], stumpId = id('stump'), nicheId = id('niche');
@@ -63,7 +65,7 @@ test('hide and seek: hide, search empty and found, nothing told, words, refusals
  const heldBy = who => Object.values(f.host.engine.world.entities).find(o => o.support?.kind === 'in-hand' && o.support.by === who.entityId)?.id ?? null;
  const tell = x => edge.receipt(x.receipt.soulId, x.receipt.id)?.outcome?.summary;
  const offer = (who, spot) => edge.capabilities(who).find(c => c.id === `search:${spot}`);
- const form = c => c.label.replace(/ \(\d+ m\)$/, '');
+ const form = c => c.label.replace(/, \d+ m\)$/, ')');
  const row = (h, spot) => h.objects.find(o => o.id === spot);
  const told = (h, word) => JSON.stringify(h).toLowerCase().includes(word);
 
@@ -78,7 +80,7 @@ test('hide and seek: hide, search empty and found, nothing told, words, refusals
   assert.equal(x.capability, `search:${stumpId}`); assert.equal(heldBy(souls.Ben), null);
   assert.ok(Math.hypot(body(souls.Ben).pose.p[0] - from[0], body(souls.Ben).pose.p[2] - from[2]) > 0.5, 'walked up');
   assert.ok(x.reach && x.reach[1] > 1, 'the hand reached up over the rim ' + JSON.stringify(x.reach));
-  assert.match(tell(x), /^You searched stump and found nothing there\.$/, tell(x)); results.empty = {capability: x.capability, phase: x.phase, reach: x.reach, told: tell(x)};}
+  assert.match(tell(x), /^You searched stump and came away with nothing\.$/, tell(x)); results.empty = {capability: x.capability, phase: x.phase, reach: x.reach, told: tell(x)};}
 
  // Ana hides the book
  results.anaPick = await done('pick up the book', souls.Ana);
@@ -107,7 +109,7 @@ test('hide and seek: hide, search empty and found, nothing told, words, refusals
   assert.equal(edge.receipt(souls.Ben.soulId, r.receipt.id).phase, 'replaced'); assert.equal(item('book').support.on, stumpId, 'still hidden'); assert.equal(ent('book').in.parent, stumpId); assert.equal(heldBy(souls.Ben), null); results.interrupted = 'book stayed hidden';}
 
  // the words for it (each is the search, stopped at once)
- for (const words of ['look in the stump', 'look inside the stump', 'search around here', 'search nearby', 'search for the book', 'take the book from the stump', 'search stump', `search:${stumpId}`]) {
+ for (const words of ['look in the stump', 'look inside the stump', 'search around here', 'search nearby', 'search for the book', 'take the book from the stump', 'search stump', `search:${stumpId}`, 'search the hollow stump', 'look in the hollow stump', 'search the tree stump', 'search the hiding place']) {
   const r = await act(words, true, souls.Ben); assert.equal(r.receipt.capability, `search:${stumpId}`, words); results[words] = r.receipt.capability;
   await accept(f.host, edge.act(souls.Ben, {capability: 'stand:here'})); await tick(40);
  }
@@ -135,15 +137,26 @@ test('hide and seek: hide, search empty and found, nothing told, words, refusals
  await refuse('hide the lantern in the stump', 'item.does-not-fit', souls.Ben);
  await done('put the lantern on the table', souls.Ben);
 
+ // a thing this Soul may not take is as if it were not there: the same search, the same words, nothing moved
+ {const cup = id('anas-cup'), spare = id('spare'); await done('walk to the spare', souls.Ben);
+  const x = await done(`search:${spare}`, souls.Ben); assert.equal(heldBy(souls.Ben), null); assert.match(tell(x), /^You searched spare \(niche\) and came away with nothing\.$/, tell(x)); assert.equal(f.host.engine.world.entities[cup].support.on, spare, 'still there');
+  await done('walk to the spare', souls.Ana); const y = await done(`search:${spare}`, souls.Ana); assert.equal(heldBy(souls.Ana), cup, 'its owner finds it'); results.privateThing = {ben: tell(x), ana: tell(y)};
+  await done('walk to the stump', souls.Ana); await done('put the cup on the table', souls.Ana);}
+ // another Soul's empty reach does not show in the offer, and a second seeker at an empty place ends with an outcome
+ {await done('walk to the niche', souls.Ana); await done('walk to the niche', souls.Ben); const a = await act(`search:${nicheId}`, true, souls.Ana); let saw = null;
+  for (let n = 0; n < 400 && !saw; n++) {if (body(souls.Ana).human?.handActuator?.target === nicheId) saw = offer(souls.Ben, nicheId); await tick(1);}
+  assert.ok(saw?.available, 'still available during her reach: ' + JSON.stringify(saw)); const b = await act(`search:${nicheId}`, true, souls.Ben), xa = await finish(a, souls.Ana), xb = await finish(b, souls.Ben); assert.equal(xa.phase, 'completed');
+  assert.match(xb.receipt.outcome.summary, /came away with nothing/, JSON.stringify(xb.receipt).slice(0, 300)); results.emptyTogether = {ana: xa.phase, ben: {phase: xb.phase, code: xb.receipt.code, told: xb.receipt.outcome.summary}};}
+
  // the second place, reached from the front, a different kind of thing
  results.bowlUp = await done('pick up the bowl', souls.Ana);
- const inNiche = await done('stash the bowl in the niche', souls.Ana);
+ const inNiche = await done('stash the bowl in the wall niche', souls.Ana);
  assert.equal(inNiche.capability, `put-in:${nicheId}`); assert.equal(item('bowl').support.on, nicheId); await tick(12);
  assert.ok(!told(await here(souls.Ben), 'bowl'), 'the niche says nothing of it');
  results.bookUp = await done('pick up the book', souls.Ana);
  await refuse(`put-in:${nicheId}`, 'container.full', souls.Ana); // the known limit: her hand finds it
  await done('put the book on the table', souls.Ana);
- {const x = await done('look in the niche', souls.Ben); assert.equal(x.capability, `search:${nicheId}`); assert.equal(heldBy(souls.Ben), id('bowl')); assert.match(tell(x), /^You found bowl in niche\.$/, tell(x)); results.niche = {capability: x.capability, told: tell(x)};}
+ {await done('walk to the niche', souls.Ben); const x = await done('look in the niche', souls.Ben); assert.equal(x.capability, `search:${nicheId}`); assert.equal(heldBy(souls.Ben), id('bowl')); assert.match(tell(x), /^You found bowl in niche\.$/, tell(x)); results.niche = {capability: x.capability, told: tell(x)};}
  await done('put the bowl on the table', souls.Ben);
 
  // two seekers at once: one gets it; never a duplicate, and the other's receipt ends honestly
