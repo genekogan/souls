@@ -417,7 +417,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       running: (sid, id) => {const m = this.host.minds.get(sid), r = this.rows('receipt_id=?', id)[0]; return !!m && !!r?.program_id && this.host.engine.programOf(m.entityId) === r.program_id;},
       programOf: id => this.host.engine.programOf(id),
       carryState: pid => {const a = this.host.engine.programAction?.(pid), d = a ? this.host.engine.runtime.records.get(a.action.id)?.diagnostic : undefined;
-        return a ? {status: a.action.status, ...(a.action.phase ? {phase: a.action.phase} : {}), ...(d ? {code: d.code, message: d.message, ...(d.subjects ? {subjects: [...d.subjects]} : {})} : {})} : null;},
+        return a ? {status: a.action.status, ...(a.action.phase ? {phase: a.action.phase} : {}), ...(d ? {code: d.code, message: d.message, ...(d.subjects ? {subjects: [...d.subjects]} : {}), ...(d.details ? {details: {...d.details}} : {})} : {})} : null;},
       stop: (sid, entityId, receipt) => {try {void this.host.enqueue('edge-stop', `edge:${sid}`, {soulId: sid, entityId, receipt}).catch(() => {/* best effort */});} catch {/* clock not ready */}},
       aboard: id => this.aboard(id), faded: id => this.faded.has(id), innermostPlace: id => {const m = this.host.minds.get(id); return m ? this.innermostPlace(m) : null;},
       deliver: (sid, kind, body) => {try {(this.comms as unknown as {streams?: {deliver?(s: string, k: string, t: number, b: object): void}} | undefined)?.streams?.deliver?.(sid, kind, this.host.engine.world.tick, body);} catch {/* events are best effort */}},
@@ -428,7 +428,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       note: (id, code, reason) => this.update(id, {code, reason}),
       stopBody: soul => {try {void this.host.enqueue('edge-stop', `edge:${soul.soulId}`, {soulId: soul.soulId, entityId: soul.entityId, why: 'shared.ended'}).catch(() => {/* best effort */});} catch {/* clock not ready */}},
       commitShared: id => {void this.commitShared(id).catch(e => console.error('[edge] shared commit', e instanceof Error ? e.message : e));},
-      previewCarry: params => (this.host.engine as {previewMarsVerbV1?(verb: string, params: unknown): {code: string; message?: string; subjects?: string[]} | null}).previewMarsVerbV1?.('carry', params) ?? null});
+      previewCarry: params => (this.host.engine as {previewMarsVerbV1?(verb: string, params: unknown): {code: string; message?: string; subjects?: string[]; details?: Record<string, unknown>} | null}).previewMarsVerbV1?.('carry', params) ?? null});
     this.receiptListeners.push(r => {if(!OPEN.includes(r.phase))this.menusChangedBy('receipt-closed', r.soulId, r.capability);});
     if (this.readOnly) return;
     // D1: the card's doing line names an edge act's approach ("walking to Kitchen chair") from this ledger's plans

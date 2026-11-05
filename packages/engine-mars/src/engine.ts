@@ -108,7 +108,7 @@ const RELEASE_TIMEOUT = 15 * TPS;          // how long a program waits for its a
 const KEEP_RECORDS = 120 * TPS;            // finished Mars action records are kept this long, then forgotten
 const SNAPSHOT_FORMAT = 'sim-mars-snapshot/1';
 
-type Diag = { code: string; message: string; subjects?: string[] };
+type Diag = { code: string; message: string; subjects?: string[]; details?: Record<string, unknown> };
 const SHARED_WATER_WAIT_POLICY = 'shared-water-wait/1';
 /** shared-water-wait/2 (prospective): /1 plus a mutual-wait courtesy. When two swimmers each wait on the other's
  * body, the one with the larger entity id steps aside (native make-way) so the other can go first. /1 programmes
@@ -534,7 +534,7 @@ export class MarsEngine implements Engine {
     const body=this.m.admitFloaters(verb,parsed.data,(id:string)=>this.ents[id]?.body);
     if(body.status==='refuses')return {code:body.reason,message:body.note};
     const r = def.plan(this.rt, parsed.data);
-    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])]}:{}) };
+    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])],...(r.diagnostic.details?{details:{...r.diagnostic.details}}:{})}:{}) };
   }
   /** VEHICLE-STEER: a pure check of a Mars verb (no `mars:` prefix) against the world now: the refusal it would meet, or null. */
   previewMarsVerbV1(verb: string, params: unknown): Diag | null { return this.plan(verb, params, true); }

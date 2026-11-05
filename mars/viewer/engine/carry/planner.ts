@@ -29,6 +29,8 @@ export type PlanInput = {
   carrierNames?: string[];
   maxExpand?: number;
 };
+/** The bounded search's default pose budget: a failure that expanded more poses than this stopped there, unproven. */
+export const PLAN_MAX_EXPAND = 150_000;
 export type PlanOk = { ok: true; traj: Trajectory; start: number; goal: number; expanded: number; keyposes: number };
 export type PlanFail = { ok: false; diagnostic: Diagnostic; expanded: number; stuck?: SE2; closest: number };
 
@@ -99,7 +101,7 @@ export function planCarry(inp: PlanInput): PlanOk | PlanFail {
   };
   starts.forEach((s, i) => add(s, kOf(s.th), 0, -1, null, i));
   const goalK = goals.map((q) => kOf(q.th));
-  const maxExpand = inp.maxExpand ?? 150_000;
+  const maxExpand = inp.maxExpand ?? PLAN_MAX_EXPAND;
   let expanded = 0, closest = -1, closestH = Infinity;
   let found: { node: number; goal: number; m: Motion } | null = null;
   while (heap.size && !found) {
@@ -236,7 +238,8 @@ function failure(inp: PlanInput, field: Float32Array, fieldOk: boolean, Q: SE2[]
       message,
       subjects: blocker ? [blocker] : [],
       at: hit ? [hit.p[0], 0, hit.p[1]] : [q.x, 0, q.z],
-      details: { stuck: q, blocker, part, expanded, field: fieldOk ? 'grid' : 'euclidean' },
+      // budget: a search that stopped there (expanded > budget) did not prove there is no way
+      details: { stuck: q, blocker, part, expanded, budget: inp.maxExpand ?? PLAN_MAX_EXPAND, field: fieldOk ? 'grid' : 'euclidean' },
     },
   };
 }

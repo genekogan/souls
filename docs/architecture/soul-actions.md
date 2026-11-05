@@ -82,11 +82,16 @@ context-size checks below), regression runs, and an uncut real-client recording 
     movement. It halts for people in its way and asks idle ones to step aside, and it replans when construction cuts its
     route. Each tick, the ledger reads the native action of each running operation; with none running, it does nothing.
     - **Blocked.** A hold-up of 0.5 s makes the operation `blocked`: someone in the way (`carry.path-occupied`), on a
-      grip or set-down spot, or a cut with no other way from here, not even back (`carry.route-blocked`). Every
-      member's started receipt carries that code, and a reason naming the blocker and what frees it. Each stream gets
-      `shared.blocked`. Moving again for 0.5 s sends `shared.resumed` and clears the reasons.
-    - **Kept afterwards.** Each interval goes to the operation's `blocks`, shown in every member's `shared` receipt
-      view. A replan to the same place counts as a detour (`detours`), and the revision stays the same.
+      grip or set-down spot, or a cut with no other way from here to the destination (`carry.route-blocked`). Every
+      member's receipt that is still `started` carries that code, and a reason naming the blocker and what frees it.
+      For a cut, the blocker is the labelled obstacle at the cut itself; an obstacle without a label is not named, and
+      no engine id reaches a reason. Each stream gets `shared.blocked`. Moving again for 0.5 s sends `shared.resumed`
+      and clears the reasons.
+    - **Unproven cut.** The replan after a cut searches from where the crew stands to the destination only. When it
+      stops at its pose budget, the reason says how many poses it searched and that this does not prove there is no
+      other way. The port passes the planner's own `expanded` and `budget`; nothing is read back from message text.
+    - **Kept afterwards.** Each interval goes to the operation's `blocks` (the most recent 20), shown in every member's
+      `shared` receipt view. A replan to the same place counts as a detour (`detours`), and the revision stays the same.
     - **Lasting.** After 30 s the hold-up is `lasting`, and each member's stream is told again. The crew still holds
       the load: nobody lets go on a timeout. Clearing the obstacle lets the carry go on, and the native carry rechecks
       the changed scene. A cut is searched once per scene change, not every tick. A supported stop and set-down come

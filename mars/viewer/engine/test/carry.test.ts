@@ -227,6 +227,41 @@ test('carry: cancel during gather releases the crew immediately; target on an ob
   assert.match(b.diagnostic!.message, /stack of 2x4s/);
 });
 
+test('carry: a construction cut with no other way holds the load; the cut is searched once per scene change (PC07)', () => {
+  const { rt, a } = cornerRun();
+  const s = audit(rt, 'b1', ['p1', 'p2']);
+  stepUntil(rt, () => a.phase === 'move' && centre(rt)[0] > 5);
+  // three wall blocks across corridor A's east arm, ahead of the load: the only way to the target is cut
+  for (const [i, z] of [3, 4, 5].entries()) rt.world.entities[`cut${i}`] = component(`cut${i}`, 'test-wall', [12, 0, z], 0, { phase: 'staged', label: 'cut block' });
+  stepUntil(rt, () => a.status === 'blocked', 40);
+  const d1 = a.diagnostic!;
+  assert.equal(d1.code, 'carry.route-blocked');
+  assert.match(d1.message, /blocked near \([\d.]+, [\d.]+\) by 'cut block' and no alternative exists/, d1.message);
+  assert.equal(d1.details?.cutLabel, 'cut block', 'the obstacle at the cut pose is named');
+  assert.equal(d1.details?.exhausted, false, 'a small search: proven');
+  assert.ok((d1.details?.expanded as number) <= (d1.details?.budget as number));
+  const held = centre(rt);
+  for (let i = 0; i < 40; i++) rt.step();
+  assert.equal(a.status, 'blocked');
+  assert.equal(a.diagnostic, d1, 'the same scene: held on the answer already found, without searching again');
+  // an unrelated edit elsewhere changes the scene: the cut is searched once more, then held on that answer
+  rt.world.entities.far = component('far', 'test-wall', [2, 0, 20], 0, { phase: 'staged' });
+  rt.step();
+  const d2 = a.diagnostic!;
+  assert.notEqual(d2, d1, 'a new scene epoch: rechecked');
+  assert.equal(d2.code, 'carry.route-blocked');
+  for (let i = 0; i < 40; i++) rt.step();
+  assert.equal(a.diagnostic, d2, 'held on the new answer');
+  assert.equal(rt.world.entities.b1.phase, 'carried', 'the load stays held');
+  assert.ok(hypot(centre(rt)[0] - held[0], centre(rt)[1] - held[1]) < 1e-6, 'held where it was');
+  // the cut cleared: the carry rechecks the changed scene and completes
+  for (const i of [0, 1, 2]) delete rt.world.entities[`cut${i}`];
+  assert.ok(rt.runUntilIdle(20 * 180));
+  assert.equal(a.status, 'completed', a.diagnostic?.message);
+  assert.deepEqual(rt.violations.map((v) => v.message), []);
+  assert.deepEqual(s.overlaps, [], 'load never overlaps a wall');
+});
+
 test('carry: determinism — same inputs give the same final state hash', () => {
   const run = () => {
     const { rt, a } = cornerRun();

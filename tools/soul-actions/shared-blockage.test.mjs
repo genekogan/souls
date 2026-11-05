@@ -101,19 +101,33 @@ test('PC07 A1: a turn the formation cannot make, a load nobody can take hold of,
   const nobody = (r, what) => { assert.ok(!asked(), `${what}: Bo was not asked`); assert.deepEqual(w.edge.openReceipts(Ada.soulId), [], `${what}: no receipt`); };
   // a load the crew cannot take hold of: walls just beyond its ends leave no room to stand at its grips
   const stuck = await act(w, Ada, {capability: `carry-with:${beam3}`, params: {to: 'shed', with: 'Bo'}});
-  assert.equal(code(stuck), 'carry.pickup-blocked', JSON.stringify(stuck)); assert.match(stuck.reason, /cannot take hold of beam3 where it lies.*Nobody was asked; choose another load/i, stuck.reason); nobody(stuck, 'pickup');
+  assert.equal(code(stuck), 'carry.pickup-blocked', JSON.stringify(stuck)); assert.match(stuck.reason, /cannot take hold of beam3 where it lies: there is no room to stand at its grips \(end-wall-[ab] wall is in the way\)\. Nobody was asked; choose another load\.$/i, stuck.reason); nobody(stuck, 'pickup');
   // a bounded search: a walled garden nobody can enter; the planner stops at its pose budget, which is said as such
   const vault = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'vault', with: 'Bo'}});
   assert.equal(code(vault), 'carry.search-exhausted', JSON.stringify(vault)); assert.match(vault.reason, /searched 150001 poses without finding a way.*vault-wall.*does not prove there is no way, but nobody was asked/i, vault.reason); nobody(vault, 'vault');
+  // a proven no-route: a beam in a small closed box. The planner's search from inside it is small and ends without a way,
+  // and nobody can walk into the sealed vault either: carry.no-route, not exhaustion
+  const bx0 = w.ax - 7.5, bz0 = w.az + 3.5;
+  ok(w.god.act({ops: [
+    {op: 'place', def: 'core/rack-beam@2', name: 'boxed', p: [bx0 + 2.5, bz0 + 2.5]},
+    {op: 'place', def: 'core/garden-wall@1', name: 'box-wall', shape: {path: [[bx0, bz0], [bx0 + 5, bz0], [bx0 + 5, bz0 + 5], [bx0, bz0 + 5], [bx0, bz0]]}},
+  ]}));
+  await w.tick(20);
+  const boxed = await act(w, Ada, {capability: `carry-with:${w.idOf('boxed')}`, params: {to: 'vault', with: 'Bo'}});
+  assert.equal(code(boxed), 'carry.no-route', JSON.stringify(boxed));
+  assert.match(boxed.reason, /^2 people carrying boxed cannot get it to vault \(the carrying formation would hit box-wall wall\)\. Nobody was asked; choose another place\.$/i, boxed.reason);
+  assert.doesNotMatch(boxed.reason, /does not prove|each could walk/i); nobody(boxed, 'boxed');
+  const proof = eng.previewMarsVerbV1('carry', {crew: [Ada.entityId, Bo.entityId], item: w.idOf('boxed'), to: {x: w.ax + 8, z: w.az - 8.5, yaw: 0}});
+  assert.equal(proof?.code, 'carry.no-route'); assert.ok(proof.details.expanded <= proof.details.budget, `a proof, not a budget (${proof.details.expanded} of ${proof.details.budget})`);
   // a turn the formation cannot make: the beam lies in the nook, whose only way out is a corridor with a right-angle bend.
   // Each person walks out alone; the planner proves (a small search) the carrying formation cannot turn the corner
   await w.at(Ada, w.ax + 5, w.az + 9); await w.at(Bo, w.ax + 6, w.az + 9.6);
   const native = eng.previewMarsVerbV1('carry', {crew: [Ada.entityId, Bo.entityId], item: inner, to: {x: w.ax + 8.5, z: w.az, yaw: 0}});
   assert.equal(native?.code, 'carry.clearance'); assert.match(native.message, /cannot turn .*'bend-wall wall'.*\((\d+) poses searched\)/, native.message);
-  assert.ok(Number(/\((\d+) poses searched\)/.exec(native.message)[1]) < 150000, 'a proof, not a budget');
+  assert.ok(native.details.expanded <= native.details.budget, 'a proof, not a budget');
   const turn = await act(w, Ada, {capability: `carry-with:${inner}`, params: {to: 'shed', with: 'Bo'}});
   assert.equal(code(turn), 'carry.clearance', JSON.stringify(turn)); assert.match(turn.reason, /cannot get it to shed \(the carrying formation would hit bend-wall.*\); each could walk there alone\. Nobody was asked/i, turn.reason); nobody(turn, 'bend');
-  t.diagnostic(`refusals: ${[stuck, vault, turn].map((r) => `${r.code}: ${r.reason}`).join(' | ')}`);
+  t.diagnostic(`refusals: ${[stuck, vault, boxed, turn].map((r) => `${r.code}: ${r.reason}`).join(' | ')}`);
 });
 
 const shedOf = (w) => w.edge.places.byId.get(w.god.model.get('shed').id)?.polygon ?? w.god.model.get('shed').shape.area;
@@ -177,7 +191,7 @@ test('PC07 A2/A3c: a ring of wall closes the way on and the way back; the crew h
   }, 9000);
   assert.ok(held && lasting && removed, `blocked ${!!held}, lasting ${!!lasting}, removed ${!!removed}`);
   // truthful supported blockage: the native code, the wall named, the load held where it is (not set down, not back to the start)
-  assert.equal(held.bo.code, 'carry.route-blocked'); assert.match(held.bo.reason, /^The way to Shed is now blocked by ring wall and there is no other way from here, not even back; Ada and Bo hold beam where they are \(it stays supported\); clearing ring wall lets the carry go on\.$/, held.bo.reason);
+  assert.equal(held.bo.code, 'carry.route-blocked'); assert.match(held.bo.reason, /^The way to Shed is now blocked by ring wall and there is no other way from here; Ada and Bo hold beam where they are \(it stays supported\); clearing ring wall lets the carry go on\.$/, held.bo.reason);
   assert.equal(lasting.op.blocked.code, 'carry.route-blocked'); assert.ok(lasting.tick - lasting.op.blocked.fromTick >= 600, 'lasting after 30 s');
   for (const x of [lasting.bo, lasting.ada]) { assert.equal(x.phase, 'started'); assert.match(x.reason, /It has lasted 30 s; nobody lets go on a timeout, and clearing ring wall lets the carry go on\.$/, x.reason); }
   assert.ok(liftedHeld > 600, `the beam stayed held off the ground by both grips while blocked (${liftedHeld} ticks)`);
@@ -190,4 +204,20 @@ test('PC07 A2/A3c: a ring of wall closes the way on and the way back; the crew h
   assert.ok(r.op.blocks[0].toTick >= removed && r.op.blocks[0].toTick - removed < 40, `resumed promptly after the wall went (${r.op.blocks[0].toTick - removed} ticks)`);
   arrived(w, r);
   t.diagnostic(`blocked ${r.op.blocks[0].toTick - r.op.blocks[0].fromTick} ticks (lasting at ${lasting.tick - lasting.op.blocked.fromTick}); held ${liftedHeld} ticks off the ground, drift ${maxDrift.toFixed(2)} m; Bo heard by ${spoke.said.heardBy}`);
+});
+
+test('PC07 A2: the destination walled in after lift on open ground; the replan stops at its pose budget, said as no proof, and it carries on once the wall is gone', {timeout: 900000}, async (t) => {
+  const w = await world(t), {ax, az} = w, {Bo} = w.souls; let placed = 0, held = null, removed = 0;
+  const r = await carry(w, t, async (c) => {
+    if (!placed && c.phase === 'move') { placed = c.tick; ok(w.god.act({ops: [{op: 'place', def: 'core/garden-wall@1', name: 'seal', shape: {path: [[ax + 6.4, az - 2.6], [ax + 10.6, az - 2.6], [ax + 10.6, az + 2.6], [ax + 6.4, az + 2.6], [ax + 6.4, az - 2.6]]}}]})); }
+    if (c.op.phase === 'blocked' && !held) held = {tick: c.tick, op: structuredClone(c.op), bo: read(w, Bo, c.a)};
+    if (held && !removed && c.tick - held.tick > 20) { removed = c.tick; ok(w.god.act({ops: [{op: 'remove', id: w.idOf('seal')}]})); }
+  });
+  assert.ok(held && removed, `blocked ${!!held}, removed ${!!removed}`);
+  assert.equal(held.bo.code, 'carry.route-blocked'); assert.equal(held.op.blocked.blocker, 'seal wall');
+  assert.match(held.bo.reason, /^The way to Shed is now blocked by seal wall; a search of \d+ poses found no other way from here, which does not prove there is none; Ada and Bo hold beam where they are \(it stays supported\); clearing seal wall lets the carry go on\.$/, held.bo.reason);
+  assert.doesNotMatch(held.bo.reason, /there is no other way/);
+  assert.deepEqual(r.op.blocks.map((b) => [b.code, b.blocker]), [['carry.route-blocked', 'seal wall']]);
+  arrived(w, r);
+  t.diagnostic(`held ${removed - held.tick} ticks; reason: ${held.bo.reason}`);
 });

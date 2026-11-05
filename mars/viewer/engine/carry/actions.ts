@@ -18,7 +18,8 @@ import { entityFootprint } from '../spatial/service.ts';
 import { carriedPose, carrierSpots, entityFrame, formationFor, laidPose, worldDiscs, isCarryLoad, type SE2 } from './formation.ts';
 import { poseHit } from './sweep.ts';
 import { labelOf, laidIssue, planCarryAction, type CarryParams, type CarryProgram } from './validate.ts';
-import { planCarry } from './planner.ts';
+import { PLAN_MAX_EXPAND, planCarry } from './planner.ts';
+import { nearestBlocker } from '../spatial/grid.ts';
 import { relevantEntities } from '../world/relevant.ts';
 import { MAX_LEVEL_ID } from '../spatial/types.ts';
 
@@ -346,7 +347,8 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
         if (ex.cut?.epoch === sp.epoch) return { status: 'blocked', diagnostic: ex.cut.diagnostic };
         ex.cut = undefined;
         const g = sp.level(p.level)!;
-        const k = p.traj.poses.findIndex((q, j) => j > ex.i && poseHit(g, p.f, q, 0) >= 0);
+        const cutAt = { p: [0, 0] as Vec2 };
+        const k = p.traj.poses.findIndex((q, j) => j > ex.i && poseHit(g, p.f, q, 0, cutAt) >= 0);
         if (k >= 0) {
           // replan the rest of the carry from the current formation pose (construction changed the topology)
           const here = poseAtU(ex, ex.u);
@@ -360,8 +362,17 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
             applyFormation(rt, ex, r.traj.poses[0]);
             return { status: 'running', phase: 'replan' };
           }
-          const q = p.traj.poses[k];
-          const diagnostic: Diagnostic = { code: 'carry.route-blocked', message: `the carry route of ${p.item} is now blocked near (${q.x.toFixed(1)}, ${q.z.toFixed(1)}) and no alternative exists: ${r.diagnostic.message}; the crew holds the load and waits`, subjects: [p.item, ...(r.diagnostic.subjects ?? [])], at: [q.x, p.levelY, q.z] };
+          // what cut the route is the obstacle at the first blocked pose (the replan's closest try may stop elsewhere);
+          // a replan that stopped at its pose budget did not prove there is no other way
+          const q = p.traj.poses[k], cut = nearestBlocker(g, cutAt.p, 1.0), exhausted = r.expanded > PLAN_MAX_EXPAND;
+          const label = cut ? sp.scene.obstacles.find((o) => o.id === cut)?.label : undefined;
+          const diagnostic: Diagnostic = {
+            code: 'carry.route-blocked',
+            message: `the carry route of ${p.item} is now blocked near (${q.x.toFixed(1)}, ${q.z.toFixed(1)})${cut ? ` by '${labelOf(sp, cut)}'` : ''} and ${exhausted ? `a search of ${r.expanded} poses found no alternative (not a proof)` : 'no alternative exists'}: ${r.diagnostic.message}; the crew holds the load and waits`,
+            subjects: [p.item, ...(cut ? [cut] : []), ...(r.diagnostic.subjects ?? []).filter((s) => s !== cut)],
+            at: [q.x, p.levelY, q.z],
+            details: { cut: cut ?? null, ...(label ? { cutLabel: label } : {}), expanded: r.expanded, budget: PLAN_MAX_EXPAND, exhausted },
+          };
           ex.cut = { epoch: sp.epoch, diagnostic };
           return { status: 'blocked', diagnostic };
         }
