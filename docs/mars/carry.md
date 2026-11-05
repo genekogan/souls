@@ -143,9 +143,13 @@ For every component in phase `carried`: support must be `held` by humans who
 are exactly the set gripping it (`carry.support`); while the crew's activity is
 `carry` (not lifting/setting down), every carrier is within 0.05 m of its
 slot-derived spot (`carry.grip-drift`) and the load's disc cover clears static geometry (`carry.load-static`).
-The spots are derived from the load's own frame. For a `keepYawV1` carry the whole crew may instead be on the
-spots of the load's reverse frame. That is how such a carry poses a reversed lift, and one displaced carrier
-still raises `carry.grip-drift`.
+The spots are derived from the load's own frame. For a `keepYawV1` carry whose load is posed in the reverse of
+its formation's frame, they are taken in the load's reverse frame; the carry's own heading decides which, so a
+displaced carrier, or a crew standing on the other frame's spots, still raises `carry.grip-drift`. Each carrier
+keeps the slot of its formation station: in a reversed `keepYawV1` carry a slot's authored grip point is at the
+other end of the load. Nothing in the engine or the web viewer reads loose-load grip points (the viewer takes the
+nearest point of the load), but the offline camera readability scoring (`camera/occluders.ts` `gripPoint`) does,
+and places such a carrier's contact at the far end.
 
 ## Deferred cancellation
 `CancelResult.deferred` (`actions/types.ts`) marks the live action `cancelling` (phase `cancelling`); its later

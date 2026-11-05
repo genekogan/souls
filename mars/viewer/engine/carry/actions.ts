@@ -110,18 +110,19 @@ export function activeLoadDiscs(rt: Runtime, braking = false): LoadDisc[] {
 /** Upright fixtures are held in front of each carrier; construction defaults face along the load. */
 const carryFacing = (ex: CarryExec, yaw:number, index=0) => wrapAngle(yaw - (ex.p.fixture ? ex.p.f.carriers[index].side * Math.PI / 2 : 0));
 
-/** Place load + carriers for formation pose q (the only way positions change while moving). */
 /**
  * #1031: the frame the load's pose is set in for formation pose q. Legacy carries set it in q itself, so a crew that
  * lifted facing the other way along the load turned it half a turn in their hands. With `keepYaw` the load is posed
  * in whichever of q and q + π is nearer its own current frame: the box is the same either way round (the formation's
  * discs and extents are symmetric), so the carriers simply stand at the other ends and the load never turns.
+ * Each carrier keeps the slot of its formation station (carry.grip-drift checks it in the carry's own frame).
  */
 export function loadFrame(item: Entity, p: Pick<CarryProgram, 'keepYaw'>, q: SE2): SE2 {
   if (!p.keepYaw) return q;
   return Math.abs(angleDelta(entityFrame(item).q.th, q.th)) > Math.PI / 2 ? { ...q, th: wrapAngle(q.th + Math.PI) } : q;
 }
 
+/** Place load + carriers for formation pose q (the only way positions change while moving). */
 function applyFormation(rt: Runtime, ex: CarryExec, q: SE2) {
   const item = itemOf(rt, ex);
   item.pose = carriedPose(ex.p.f, loadFrame(item, ex.p, q), ex.p.levelY);

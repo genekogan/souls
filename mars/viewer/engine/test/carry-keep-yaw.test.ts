@@ -9,6 +9,7 @@ import { Spatial } from '../spatial/service.ts';
 import { emptyWorld, human, addAll, component } from '../world/factory.ts';
 import { walkTo } from '../locomotion/walk.ts';
 import { carry } from '../carry/actions.ts';
+import type { CarryParams, CarryProgram } from '../carry/validate.ts';
 import { CARRY_INVARIANTS } from '../carry/invariants.ts';
 import { entityFrame, formationFor, laidPose } from '../carry/formation.ts';
 import { angleDelta } from '../core/math.ts';
@@ -96,6 +97,12 @@ test('#1031 grip drift: a carrier off its station in a keepYawV1 reversed carry 
       p1.pose.p[0] += 0.2;
       assert.deepEqual(inv(rt).map((d) => d.code), ['carry.grip-drift']);
       p1.pose.p[0] -= 0.2;
+      // the whole crew on the other frame's stations (each at the other's) is not this carry's formation either
+      const p2 = rt.world.entities.p2, a = structuredClone(p1.pose), b = structuredClone(p2.pose);
+      p1.pose = { ...b, p: [...b.p] }; p2.pose = { ...a, p: [...a.p] };
+      assert.deepEqual(inv(rt).map((d) => d.code), ['carry.grip-drift'], 'crew swapped onto the reverse frame');
+      p1.pose = a; p2.pose = b;
+      assert.deepEqual(inv(rt), [], 'back on station');
       poked = true;
     },
   });
@@ -105,7 +112,7 @@ test('#1031 grip drift: a carrier off its station in a keepYawV1 reversed carry 
 
 test('#1031 both runs lift in the reversed frame; only the keepYawV1 program carries the flag', () => {
   const programs: { keepYaw?: true }[] = [];
-  const spy: ActionDef = { ...carry, start: (rt, p, prog, id) => (programs.push(prog as { keepYaw?: true }), carry.start(rt, p, prog, id)) } as ActionDef;
+  const spy = { ...carry, start: (rt: Runtime, p: CarryParams, prog: CarryProgram, id: string) => (programs.push(prog), carry.start(rt, p, prog, id)) } as unknown as ActionDef;
   REG.set('carry', spy);
   try {
     const legacy = run('beam-9ft', 1, false), kept = run('beam-9ft', 1, true);
