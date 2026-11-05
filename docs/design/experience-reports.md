@@ -5,6 +5,19 @@ Future design for [#590](https://github.com/genekogan/souls/issues/590), with co
 The goal is to inspect an actual game episode, understand an undesirable experience and turn a supported diagnosis
 into a reproducible improvement—even when no exception occurred.
 
+This is also the field-learning component of [agency quality](agency-quality.md) and
+[tranche #623](https://github.com/genekogan/souls/issues/623). The shared correlation/timing contract remains
+#592; [#624](https://github.com/genekogan/souls/issues/624) adds a localhost episode inspector and
+[#625](https://github.com/genekogan/souls/issues/625) defines evaluation validity. Local capture and remote
+sharing are independent opt-ins, both disabled by default. Develop one useful local episode before expanding
+upload/aggregation. No feature or data collection is enabled by this planning expansion.
+The combined controllability agenda starts with a minimal trace/readout, then a bounded local inspector before
+the planned core-control pass. Elaborate viewer/reporting expansion does not block that pass. Each small release
+can use existing health evidence and deliberately opted-in local episodes, with a bounded observation window
+and honest missing feedback. Physical collaboration under [#560](https://github.com/genekogan/souls/issues/560)
+uses the same record, inspector and export path. Participation in a shared action does not authorize collection
+or export of another owner's private trace, prompts or media; cross-participant joins retain consent and gaps.
+
 ## Reuse the evidence we have
 
 Edge actions already have client references and [receipts/outcomes](../architecture/souls.md). The client has a
@@ -45,8 +58,9 @@ cannot reconstruct facts that were never retained.
 
 ## Opt-in capture without burdening the mind
 
-Start with manual reporting; add an optional debug mode for deterministic breadcrumbs and bounded anomaly triggers
-only after the basic journey works. The agent can flag an unexpected result in one report, without narrating every
+Start with the smallest shared evidence contract and a useful local episode/readout, then selected manual reports;
+optional upload, bounded anomaly triggers and aggregation follow only after that journey works. Local inspection
+does not require sharing. The agent can flag an unexpected result in one report, without narrating every
 action, repeatedly polling, or performing extra model calls. A bounded local ring and asynchronous upload queue
 belong in client code, not model instructions. Exclude report data from ordinary Soul context and perception.
 
@@ -55,6 +69,13 @@ must yield to gameplay; offline or overloaded collectors cannot block an action 
 debug off, add no report traffic or model-context growth. Measure local CPU/I/O, server assembly and request/tick
 latency for debug off/on, idle/distant/active, slow collector and disconnect cases. Set budgets from those results.
 Use bounded indexed server queries and queues, not an unbounded synchronous scan or full-world snapshot per report.
+
+Capture successful and ordinary episodes as well as failures. Distinguish human feedback, agent-reported confusion
+and measured facts; retain selection bias and denominators when known. Agent annotations are optional and linked
+to evidence, not authoritative diagnoses. Keep raw permitted events separate from derived summaries, with schema,
+controller/host/client/world versions, omissions and clock provenance. The localhost viewer uses the same records;
+it must not consume gameplay cursors or create a second polling/control loop. Selected text/media, ongoing upload
+and external-model analysis require explicit scopes; an anomaly trigger cannot authorize sharing by itself.
 
 ## Privacy and supervision
 

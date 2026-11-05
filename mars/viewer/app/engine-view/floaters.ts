@@ -15,7 +15,7 @@
 // stands in, so placement and selection work from the first frame.
 import * as THREE from 'three';
 import {admittedBodyUrl} from './recorded-body.ts';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 // direct modules, not the bodies index (its float.ts movement brings the spatial service onto a page's first frame)
 import { creatureOf } from '../../engine/bodies/creatures.ts';
@@ -31,6 +31,8 @@ export type FloaterViewOpts = {
   baseUrl: string;
   /** A configured loader (it must decode KHR_draco_mesh_compression and EXT_texture_webp). */
   loader?: GLTFLoader;
+  /** Prepare each cached model once, before clones become ready (e.g. fit textures to the client budget). */
+  prepareModel?: (g: GLTF) => Promise<void>;
   /** Where three's draco decoder files (three/examples/jsm/libs/draco/gltf/) are served; used when no loader is given. */
   dracoDecoderPath?: string;
   /** Tick length (s) when update() is not given one. Mars engine DT is 0.05. */
@@ -61,6 +63,7 @@ export class FloaterView {
   private readonly loader: GLTFLoader;
   private readonly base: string;
   private readonly dt: number;
+  private readonly prepareModel: FloaterViewOpts['prepareModel'];
   private readonly templates = new Map<string, Promise<THREE.Object3D>>();
   private readonly floaters = new Map<string, Floater>();
   private readonly pending = new Set<Promise<unknown>>();
@@ -74,6 +77,7 @@ export class FloaterView {
     parent.add(this.root);
     this.base = opts.baseUrl.endsWith('/') ? opts.baseUrl : `${opts.baseUrl}/`;
     this.dt = opts.dt ?? 0.05;
+    this.prepareModel = opts.prepareModel;
     if (opts.loader) this.loader = opts.loader;
     else {
       this.draco = new DRACOLoader().setDecoderPath(opts.dracoDecoderPath ?? '/draco/');
@@ -228,15 +232,7 @@ export class FloaterView {
     this.root.removeFromParent();
     this.standIn.dispose();
     for (const t of this.templates.values())
-      void t.then((s) => s.traverse((o) => {
-        if (o instanceof THREE.Mesh) {
-          o.geometry.dispose();
-          for (const m of [o.material].flat()) {
-            for (const v of Object.values(m)) if (v instanceof THREE.Texture) v.dispose();
-            m.dispose();
-          }
-        }
-      }), () => {});
+      void t.then(disposeModel, () => {});
     this.templates.clear();
     this.draco?.dispose();
   }
@@ -244,11 +240,31 @@ export class FloaterView {
   private template(file: string): Promise<THREE.Object3D> {
     let t = this.templates.get(file);
     if (!t) {
-      t = this.loader.loadAsync(file.startsWith('/')?file:this.base+file).then((g) => g.scene);
+      t = this.loader.loadAsync(file.startsWith('/')?file:this.base+file).then(async (g) => {
+        try { await this.prepareModel?.(g); }
+        catch (error) { disposeModel(g.scene); throw error; }
+        return g.scene;
+      });
       this.templates.set(file, t);
     }
     return t;
   }
+}
+
+/** Cached clones share resources; release each resource once, including a preparation failure before attachment. */
+function disposeModel(scene: THREE.Object3D): void {
+  const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>(), textures = new Set<THREE.Texture>();
+  scene.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    geometries.add(o.geometry);
+    for (const m of [o.material].flat()) {
+      materials.add(m);
+      for (const v of Object.values(m)) if (v instanceof THREE.Texture) textures.add(v);
+    }
+  });
+  for (const geometry of geometries) geometry.dispose();
+  for (const material of materials) material.dispose();
+  for (const texture of textures) texture.dispose();
 }
 
 /**
