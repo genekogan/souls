@@ -101,7 +101,7 @@ export function acceptsPrInput(yml) {
 /** The one comment a PR gets when its branch's ci.yml cannot take a requested run. */
 export const MERGE_FORWARD_MARKER = '<!-- ci-request:merge-forward -->';
 export const MERGE_FORWARD_COMMENT = `${MERGE_FORWARD_MARKER}
-CI request: this branch's \`ci.yml\` predates the CI window (#914) and has no \`pr\` input, so \`ci:run\` and \`merge:ready\` cannot start its CI (GitHub refuses the dispatch). **Merge main forward to enable \`ci:run\`**: merge or rebase main into the branch and push. That push runs this PR's CI in the window (any push does, while the PR merges cleanly), and later \`ci:run\` requests then work. A \`merge:ready\` PR is also rebased by the merge train's strict path. See docs/testing.md#ci-window.`;
+CI request: this branch's \`ci.yml\` predates the CI window (#914) and has no \`pr\` input, so \`ci:run\` and \`merge:ready\` cannot start its CI (GitHub refuses the dispatch). **Merge main forward to enable \`ci:run\`**: merge or rebase main into the branch and push. That push runs this PR's CI in the window (any push does, while the PR merges cleanly), and once main is merged in, later \`ci:run\` requests work. A \`merge:ready\` PR is also rebased by the merge train's strict path. See docs/testing.md#ci-window.`;
 export const hasMergeForwardComment = (comments = []) => comments.some(c => String(c.body ?? '').includes(MERGE_FORWARD_MARKER));
 
 const ZERO = /^0+$/;
