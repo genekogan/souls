@@ -29,8 +29,9 @@ export const config = {
   instructionsFile: (env.EDGE_INSTRUCTIONS_FILE || resolve(new URL('../../../tools/edge-skill/INSTRUCTIONS.md',import.meta.url).pathname)) as string | undefined,
   /** App's agent CLI served at /eden-agent.mjs (read per request). Unset: 404. */
   cliFile: env.EDGE_CLI_FILE || undefined as string | undefined,
-  /** Single-controller CLI, served separately so existing folders retain their legacy CLI. */
-  controllerCliFile: env.EDGE_CONTROLLER_CLI_FILE || undefined as string | undefined,
+  /** Single-controller CLI served at /eden.mjs, separate so existing folders retain their legacy CLI. Unset: the pinned
+   *  tools/world-launcher/soul/eden.mjs (SOURCES.json), so a world started without the launcher serves what its guide names (#983). */
+  controllerCliFile: (env.EDGE_CONTROLLER_CLI_FILE || resolve(new URL('../../../tools/world-launcher/soul/eden.mjs', import.meta.url).pathname)) as string | undefined,
   /** Who chooses Souls' actions: 'edge' (owners' own agents; the world runs no Soul mind) or 'central' (legacy brain, kept for a future NPC driver). */
   // Default 'edge'. Under node --test (NODE_TEST_CONTEXT) legacy suites keep 'central'; edge tests opt in explicitly.
   mindDriver: ((env.MIND_DRIVER ?? (env.NODE_TEST_CONTEXT ? 'central' : 'edge')) === 'central' ? 'central' : 'edge') as 'edge' | 'central',

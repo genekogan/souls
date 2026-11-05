@@ -26,3 +26,24 @@ test('single-controller CLI is distinct from retained legacy CLI and instruction
  assert.equal((await f.request('/eden.mjs')).status,404,'absence cannot serve the old CLI under the new name');
  assert.equal(await (await f.request('/eden-agent.mjs')).text(),legacy);
 });
+
+// #983: a world started without the launcher (no EDGE_CONTROLLER_CLI_FILE) serves the pinned controller CLI; the variable overrides it.
+test('controllerCliFile defaults to the pinned eden.mjs; EDGE_CONTROLLER_CLI_FILE overrides it', async t => {
+ const {execFileSync} = await import('node:child_process');
+ const {createHash} = await import('node:crypto');
+ const {readFileSync} = await import('node:fs');
+ const configTs = new URL('./config.ts', import.meta.url).pathname, soulDir = new URL('../../../tools/world-launcher/soul/', import.meta.url).pathname;
+ const configured = (value?: string) => { const env = {...process.env}; delete env.EDGE_CONTROLLER_CLI_FILE; if (value) env.EDGE_CONTROLLER_CLI_FILE = value;
+  return execFileSync(process.execPath, ['--input-type=module', '-e', `const {config} = await import(${JSON.stringify(configTs)}); process.stdout.write(String(config.controllerCliFile));`], {env, encoding: 'utf8'}); };
+ const pinned = JSON.parse(readFileSync(soulDir + 'SOURCES.json', 'utf8')).controllerCli;
+ const unset = configured();
+ assert.equal(unset, soulDir + pinned.file, 'unset: the pinned file');
+ const dir = mkdtempSync(join(tmpdir(), 'sim-controller-default-')), custom = join(dir, 'custom.mjs'); writeFileSync(custom, '// a custom controller\n');
+ assert.equal(configured(custom), custom, 'the variable overrides the default');
+ const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
+ f.souls.cfg.controllerCliFile = unset;
+ const served = await f.request('/eden.mjs'); assert.equal(served.status, 200);
+ assert.equal(createHash('sha256').update(Buffer.from(await served.arrayBuffer())).digest('hex'), pinned.sha256, 'the bytes SOURCES.json pins');
+ f.souls.cfg.controllerCliFile = configured(custom);
+ assert.equal(await (await f.request('/eden.mjs')).text(), '// a custom controller\n');
+});

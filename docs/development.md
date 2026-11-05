@@ -84,7 +84,8 @@ Read in `apps/server/src/config.ts` (and `thinking-budget.ts`, `auth.ts`). `.env
 | `BRAIN_BUDGET_USD_PER_DAY` | `0.5` | Per-world rolling 24 h model budget, clamped to the ceiling ($1) |
 | `TYPESAFE_API_KEY`, `ANTHROPIC_API_KEY` | none | Model providers; without a key that tier is fake or off |
 | `NARRATOR_MODEL`, `COMPILER_MODEL`, `TALK_MODEL` | `claude-haiku-4-5-20251001` | Models per role; the latter two default to the narrator |
-| `EDGE_SKILL_FILE`, `EDGE_INSTRUCTIONS_FILE`, `EDGE_CLI_FILE`, `EDGE_CONTROLLER_CLI_FILE` | built-in | Override the Soul skill, instructions and CLI the world serves |
+| `EDGE_SKILL_FILE`, `EDGE_INSTRUCTIONS_FILE`, `EDGE_CLI_FILE` | built-in | Override the Soul skill, instructions and legacy CLI (`/eden-agent.mjs`; unset: not served) the world serves |
+| `EDGE_CONTROLLER_CLI_FILE` | `tools/world-launcher/soul/eden.mjs` | The controller CLI served at `/eden.mjs`; the default is the pinned file in `SOURCES.json` |
 | `EDGE_EYES` | unset (off) | `world` renders Soul views in a headless browser ([Souls](architecture/souls.md#eyes)) |
 | `TAKES_PERSIST`, `ARCHIVE_TAKES` | off | Persist recorded takes; archive them to R2 (`R2_*`) |
 | `WEB_DIR`, `MARS_WEB_DIR`, `BUILD_ID` | built app dirs, `BUILD` file or `dev` | Static assets and the reported build |
