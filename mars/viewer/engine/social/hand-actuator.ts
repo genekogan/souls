@@ -18,7 +18,7 @@ const opening=z.object({floorY:z.number().finite().optional(),hinge:vec,yaw:z.nu
 // Soul Actions entry 38: a poster is put up (or taken down) with both hands: `width`/`height` are the sheet's, `at` its centre on
 // the wall's surface, and `sheet` what is printed on it (so every viewer draws the same paper in the hands as on the wall).
 const sheet=z.object({title:z.string().max(40),detail:z.string().max(80),name:z.string().max(40).optional(),paper:z.number().int().min(0).max(15),age:z.number().min(0).max(99).optional()}).strict();
-const stroke=z.object({kind:z.union([z.literal('write'),z.literal('wipe'),z.literal('poster'),z.literal('unposter')]),yaw:z.number().finite(),stand:z.number().min(.3).max(.7).optional(),width:z.number().min(.1).max(1.2),height:z.number().min(.05).max(.8),lines:z.number().int().min(1).max(3),seconds:z.number().min(.8).max(6),release:z.number().min(.7).max(1.6).optional(),lead:z.object({y:z.number().finite(),out:z.number().min(0).max(.5)}).strict().optional(),handoff:z.number().min(0).max(1.2).optional(),sheet:sheet.optional()}).strict();
+const stroke=z.object({kind:z.union([z.literal('write'),z.literal('wipe'),z.literal('poster'),z.literal('unposter')]),yaw:z.number().finite(),stand:z.number().min(.3).max(.7).optional(),width:z.number().min(.1).max(1.2),height:z.number().min(.05).max(.8),lines:z.number().int().min(1).max(3),seconds:z.number().min(.8).max(6),/** #428: the face's slope from vertical (radians; a notebook page on a lectern), 0/absent = an upright board */tilt:z.number().min(0).max(1.5).optional(),release:z.number().min(.7).max(1.6).optional(),lead:z.object({y:z.number().finite(),out:z.number().min(0).max(.5)}).strict().optional(),handoff:z.number().min(0).max(1.2).optional(),sheet:sheet.optional()}).strict();
 // Soul Actions entry 24: a drawer slides straight out along `dir` (the chest's front, world xz); `at` is the knob closed,
 // `from`/`to` the travel out (m). The hand stays on the knob; the body keeps half a metre in front of it, facing the chest.
 const slide=z.object({at:vec,dir:z.tuple([z.number().finite(),z.number().finite()]),travel:z.number().min(.05).max(.8),from:z.number().min(0).max(.8),to:z.number().min(0).max(.8),floorY:z.number().finite()}).strict();
@@ -155,6 +155,8 @@ export function strokePoint(at:Vec3,s:NonNullable<HandActuatorParams['stroke']>,
   const writing=f<.75,g=writing?f/.75:(f-.75)/.25;
   x=writing?(g-.5)*s.width:(.5-smooth(g))*s.width;y=top-row*step-(writing?0:step*smooth(g))+(writing?.012*dsin(g*Math.PI*14):0);lift=writing?0:.035*dsin(g*Math.PI);
   if(row===s.lines-1&&!writing){x=.5*s.width;y=top-row*step;lift=0;}}
+ // #428: on a sloped face (a notebook page) the rows run up the page, away from the writer, and the lift is off the page
+ if(s.tilt){const up=dcos(s.tilt),back=dsin(s.tilt),ly=y*up+lift*back,lo=lift*up-y*back;return [at[0]+right[0]*x+out[0]*lo,at[1]+ly,at[2]+right[1]*x+out[1]*lo];}
  return [at[0]+right[0]*x+out[0]*lift,at[1]+y,at[2]+right[1]*x+out[1]*lift];
 }
 /** Where a body stands to write on a face: square in front of `at`, `STROKE_STAND` metres out along the face's facing. */

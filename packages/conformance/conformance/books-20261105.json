@@ -1,0 +1,27 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 Soul Actions family #428 (books and notebooks, Lane S #903). Two new revisions reuse core-lectern@1's geometry unchanged: core-lectern@2 adds only the `book` parameter (a library catalogue id, '' by default) and core-notebook-stand@1 adds the notebook's writing face, tags, state and pin/unpin actions. Both therefore carry core-lectern@1's existing gallery draw findings (pinned in known-20261015.json): 9 > 4 draws in the construction view (the shared scaffold) and, for core-lectern@2, the same 9 > 4 at one seeded random sample. The writing face is a texture on one plane, so it adds no draw over budget in the samples measured. Lighter lectern meshes belong to the library budget work (#416, #494); these findings are pinned to the exact new revision hashes so the gate stays exact. No budgets, samples or gap checks were relaxed, and the rendering-gap list is unchanged.",
+  "findings": [
+    {
+      "def": "core-lectern@2",
+      "hash": "efb052927df8029edfd37dd3eae496e722793ee0e8634435832f41be8650e6b5",
+      "stage": "gallery-budget",
+      "code": "draws",
+      "detail": "9 > 4",
+      "fields": [
+        "params.condition=construction",
+        "random[0]"
+      ]
+    },
+    {
+      "def": "core-notebook-stand@1",
+      "hash": "60dde7002d118f490d7e3bce1306c49ef740bdd3e432d2d5b0c00a4afafbbde0",
+      "stage": "gallery-budget",
+      "code": "draws",
+      "detail": "9 > 4",
+      "fields": [
+        "params.condition=construction"
+      ]
+    }
+  ]
+}

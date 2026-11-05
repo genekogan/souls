@@ -61,3 +61,16 @@ for(const kind of ['write','wipe'] as const)for(const lines of [1,3])test(`board
   const dx=p[0]-1,dz=p[2]-2,off=dx*Math.sin(.4)+dz*Math.cos(.4);assert.ok(off>=-1e-9&&off<.04,'hand stays on (or just off) the face plane');assert.ok(Math.abs(p[1]-1.2)<=.2,'within the face height');}
  assert.ok(maxSpeed<1.8,`hand speed ${maxSpeed}`);
 });
+// #428: a stroke on a sloped page (a notebook on a lectern): tilt 0 is the upright stroke exactly; a tilted stroke stays on
+// the face's plane (rows up the page, away from the writer), continuous, at handwriting speed
+test('tilted write and wipe strokes lie on the sloped page',()=>{
+ const at:[number,number,number]=[1,1.2,2],tilt=Math.PI/2-.3,yaw=.7;
+ for(const kind of ['write','wipe'] as const){
+  const up={kind,yaw,width:.2,height:.05,lines:1,seconds:2},sl={...up,tilt},flat={...up,tilt:0};
+  // the page's normal: sin(tilt) up plus cos(tilt) toward the writer (out of the face along the yaw)
+  const n=[Math.cos(tilt)*Math.sin(yaw),Math.sin(tilt),Math.cos(tilt)*Math.cos(yaw)];let prev=strokePoint(at,sl,0),maxSpeed=0,offPlane=0;
+  for(let i=0;i<=40;i++){const u=i/40,a=strokePoint(at,up,u),b=strokePoint(at,flat,u),p=strokePoint(at,sl,u);assert.deepEqual(a,b,'tilt 0 = upright');
+   offPlane=Math.max(offPlane,Math.abs((p[0]-at[0])*n[0]+(p[1]-at[1])*n[1]+(p[2]-at[2])*n[2]));if(i){maxSpeed=Math.max(maxSpeed,Math.hypot(p[0]-prev[0],p[1]-prev[1],p[2]-prev[2])/.05);}prev=p;}
+  assert.ok(offPlane<=.036,`${kind}: within the stroke's lift of the page (${offPlane})`);assert.ok(maxSpeed<1.2,`${kind}: ${maxSpeed} m/s`);
+ }
+});

@@ -85,8 +85,13 @@ const SYNONYMS: Record<string, string[]> = {
 };
 /** VOCAB-MECH: everyday words for god things' actuator actions (only used when such an action is offered). */
 const ACT_ALIASES: Record<string, string> = {'turn-on': 'switch-on', 'turn-off': 'switch-off', shut: 'close', 'shut-off': 'switch-off', extinguish: 'put-out', 'blow-out': 'put-out', ignite: 'light', kindle: 'light', 'light-up': 'light', 'fill-up': 'fill', drain: 'empty', wipe: 'erase', 'wipe-off': 'erase', clean: 'erase', 'take-down': 'unpin', remove: 'unpin', 'put-up': 'pin', 'sign-up': 'sign', 'cross-off': 'unsign', 'cross-out': 'unsign', 'strike-off': 'unsign', answer: 'reply', 'reply-to': 'reply', 'write-back': 'reply', claim: 'take-on', 'take-up': 'take-on', 'put-up-poster': 'pin',
+  // #428: a notebook's line (the pinboard faculty's `pin`): "write in the notebook"
+  'write-in': 'pin', 'write-a-line-in': 'pin',
   // entry 37: a radio's station (only when a change-station action is offered)
   'change-the-station': 'change-station', 'change-the-radio-station': 'change-station', 'change-radio-station': 'change-station', 'switch-the-station': 'change-station', 'switch-station': 'change-station', 'next-station': 'change-station', tune: 'change-station', retune: 'change-station', 'tune-the-radio': 'change-station'};
+/** #428: a second meaning of an everyday word, used only when its ACT_ALIASES meaning is not on offer and this one is:
+ *  "cross out" a sign-up name (unsign) or a notebook line (the pinboard faculty's unpin). */
+const ACT_ALT: Record<string, string> = {'cross-out': 'unpin', 'cross-off': 'unpin', 'strike-out': 'unpin', 'strike-off': 'unpin'};
 // L3 (server reliability): a resolve tokenises every place's and offer's names on every call; the same few thousand names
 // repeat, so their tokens are kept (bounded; callers get their own copy, so an in-place sort never reaches the memo)
 const TOKEN_MEMO = new Map<string, string[]>(), TOKEN_MEMO_MAX = 50_000;
@@ -229,7 +234,7 @@ export function wordsFocusVerbsV1(input: string): Set<string> | null {
   for (let n = 1; n <= Math.min(4, words.length); n++) {const k = words.slice(0, n).join('-').toLowerCase().trim().replace(/[\s_]+/g, '-'); out.add(k); if (VERBS[k]) out.add(VERBS[k]);}
   for (const [re, v] of INTENTS) if (re.test(text)) out.add(v);
   if (LEISURE_LEAD.test(raw)) for (const [re, v] of LEISURE_OBJECTS) if (re.test(text)) out.add(v);
-  for (const v of [...out]) {if (ACT_ALIASES[v]) out.add(ACT_ALIASES[v]); for (const [k, a] of Object.entries(ACT_ALIASES)) if (a === v) out.add(k);}
+  for (const v of [...out]) {if (ACT_ALIASES[v]) out.add(ACT_ALIASES[v]); if (ACT_ALT[v]) out.add(ACT_ALT[v]); for (const [k, a] of Object.entries(ACT_ALIASES)) if (a === v) out.add(k); for (const [k, a] of Object.entries(ACT_ALT)) if (a === v) out.add(k);}
   if (out.has('stroll') || out.has('wander')) {out.add('stroll'); out.add('wander');}
   if (out.has('sit')) {out.add('rest'); out.add('sit-ground'); out.add('warm-by-fire');}
   if (/\b(?:fire|campfire|warm)\b/.test(text)) out.add('warm-by-fire');
@@ -435,6 +440,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const acts = ctx.caps.filter(c => c.verb === 'object' && c.action && /^e_/.test(c.object ?? ''));
   for (const c of acts) verbs.add(c.action!);
   for (const [k, v] of Object.entries(ACT_ALIASES)) if (verbs.has(v) && !verbs.has(k)) verbs.add(k);
+  for (const [k, v] of Object.entries(ACT_ALT)) if (verbs.has(v) && !verbs.has(k)) verbs.add(k);
   // Entry 43: a kettle's and a cup's everyday words, only where such an action is offered: "put the kettle on" (or switch /
   // turn it on, boil it) is the kettle's `boil`; "make a cup of tea" is the nearest offered cup's `brew` (an available one first)
   if (colon < 0) {
@@ -488,7 +494,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     if(offered)return {kind:'alias',cap:offered,note:`${input} is ${offered.id} (${place.name}), the nearest building by its edge within the requested direction.`};
     return {kind:'unknown',code:'place.unreachable',place:place.id,verb:'walk',places:[place.id],reason:`The nearest building is ${place.name}; its exact entry must be checked on demand. No farther building was substituted.`,didYouMean:[]};
   }
-  if (ACT_ALIASES[verb] && !ctx.caps.some(c => c.verb === verb)) verb = ACT_ALIASES[verb];
+  if (ACT_ALIASES[verb] && !ctx.caps.some(c => c.verb === verb)) verb = ACT_ALT[verb] && !verbs.has(ACT_ALIASES[verb]) && verbs.has(ACT_ALT[verb]) ? ACT_ALT[verb] : ACT_ALIASES[verb];
   // A real fire is a qualifier of the existing fire request, not a new seat name.
   // Keep explicit/named IDs intact and require an offered actual fire before dropping it.
   const realFire = colon < 0 && ['sit', 'warm-by-fire'].includes(verb) ? /^(?:by|near|beside)\s+(?:a|the)\s+real\s+(fire|campfire)[.!]?$/i.exec(rest) : null;

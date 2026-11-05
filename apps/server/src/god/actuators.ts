@@ -4,7 +4,7 @@
 // `object:<entity>:switch-off`, walks up to it, reaches out, and the lamp's state changes in the world (an engine edit:
 // in the ledger, broadcast to viewers, never the god's to undo). Nothing in the edge changes: the object framework's own
 // capabilities, admission, receipts and body plans carry it.
-import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, gameSquareOf, gameStatus, pollOptions, containerInside, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { NOTEBOOK_LINES_MAX, NOTEBOOK_PER_SOUL, NOTEBOOK_TEXT_MAX, PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, gameSquareOf, gameStatus, pollOptions, containerInside, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { isContactActuator, CONTACT_REACH } from './contact-actuator.ts';
 import { isPosterAction, isWantedAction, posterProblem, posterPatch, wantedProblem, wantedPatch } from './poster-boards.ts';
@@ -176,14 +176,18 @@ export function pinNotes(state: Record<string, unknown>): { text: string; by: st
   const lines = typeof state.text === 'string' && state.text ? state.text.split('\n') : [], by = typeof state.textBy === 'string' && state.textBy ? state.textBy.split(',') : [];
   return lines.map((text, i) => ({ text, by: by[i] ?? '' }));
 }
+/** #428: the same faculty's limits and words on a notebook (its lines) and on a pinboard (its notes). */
+const pinLimits = (def?: StoredDef) => def?.tags?.includes('notebook')
+  ? { max: NOTEBOOK_LINES_MAX, per: NOTEBOOK_PER_SOUL, text: NOTEBOOK_TEXT_MAX, none: 'You have no line in this notebook; only its writer crosses a line out.', full: `The notebook is full (${NOTEBOOK_LINES_MAX} lines); a line goes only when its writer crosses it out.`, mine: `You already have ${NOTEBOOK_PER_SOUL} lines in this notebook; cross one out first.`, one: 'A line in the notebook is one line.' }
+  : { max: PIN_NOTES_MAX, per: PIN_PER_SOUL, text: PIN_TEXT_MAX, none: 'You have no note on this board; only its author takes a note down.', full: `The board is full (${PIN_NOTES_MAX} notes); a note comes down only when its author takes it down.`, mine: `You already have ${PIN_PER_SOUL} notes on this board; take one down first.`, one: 'A note is one line.' };
 /** Why this Soul cannot pin (with these words) or take down a note here now; null = it can. `text` undefined = availability only. */
-export function pinProblem(a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, text?: unknown): Refusal | null {
-  const notes = pinNotes(state), mine = notes.filter(n => n.by === soul.soulId).length;
-  if (a.name === 'unpin') return mine ? null : { code: 'object.not-yours', reason: 'You have no note on this board; only its author takes a note down.' };
-  if (notes.length >= PIN_NOTES_MAX) return { code: 'object.state', reason: `The board is full (${PIN_NOTES_MAX} notes); a note comes down only when its author takes it down.` };
-  if (mine >= PIN_PER_SOUL) return { code: 'object.state', reason: `You already have ${PIN_PER_SOUL} notes on this board; take one down first.` };
+export function pinProblem(a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, text?: unknown, def?: StoredDef): Refusal | null {
+  const notes = pinNotes(state), mine = notes.filter(n => n.by === soul.soulId).length, l = pinLimits(def);
+  if (a.name === 'unpin') return mine ? null : { code: 'object.not-yours', reason: l.none };
+  if (notes.length >= l.max) return { code: 'object.state', reason: l.full };
+  if (mine >= l.per) return { code: 'object.state', reason: l.mine };
   if (text === undefined) return null;
-  const bad = boardTextProblem(text, PIN_TEXT_MAX, 1); if (bad) return bad.reason.startsWith('At most') ? { ...bad, reason: 'A note is one line.' } : bad;
+  const bad = boardTextProblem(text, l.text, 1); if (bad) return bad.reason.startsWith('At most') ? { ...bad, reason: l.one } : bad;
   return null;
 }
 /** The pinboard's next `text`/`textBy` after this Soul pins a signed note or takes down its latest one. */
@@ -215,7 +219,7 @@ export const pollLines = (state: Record<string, unknown>, votes = pollVotes(stat
 export function listProblem(def: StoredDef, a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, params?: Record<string, unknown>): Refusal | null {
   if (isPosterAction(def, a)) return posterProblem(a, state, soul, params);   // entry 38
   if (isWantedAction(def, a)) return wantedProblem(a, state, soul, params);
-  if (isPinAction(def, a)) return pinProblem(a, state, soul, a.name === 'pin' ? params?.text : undefined);
+  if (isPinAction(def, a)) return pinProblem(a, state, soul, a.name === 'pin' ? params?.text : undefined, def);
   if (isSignupAction(def, a)) {
     const names = pinNotes(state), mine = names.some(n => n.by === soul.soulId);
     if (a.name === 'unsign') return mine ? null : { code: 'object.not-yours', reason: 'Your name is not on this sheet; only a signer crosses their own name off.' };
