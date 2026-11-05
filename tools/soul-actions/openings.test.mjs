@@ -37,7 +37,8 @@ test('tent flap and field gate by hand: words, contact, refusal, interruption, p
  if(out){mkdirSync(out,{recursive:true});writeFileSync(`${out}/here-absent.json`,JSON.stringify(absent,null,1));writeFileSync(`${out}/here-far.json`,JSON.stringify(far,null,1));writeFileSync(`${out}/here-control.json`,JSON.stringify(control,null,1));}
  const farIds=new Set(distant.map(d=>god.model.get(d.name).id));
  assert.deepEqual(edge.capabilities(soul).filter(c=>c.object&&farIds.has(c.object)).map(c=>c.id),[],'no distant offers');
- assert.equal(JSON.stringify(far).length,JSON.stringify(control).length,'100 distant new tents and gates add 0 bytes over the frozen revisions');
+ const frame=h=>({...h,tick:0,doHereCoverage:{...h.doHereCoverage,byteBudget:0}});// (the offer byte budget is what is left after the frame, whose tick has more digits later)
+ assert.deepEqual(frame(far),frame(control),'100 distant new tents and gates: the same frame as the frozen revisions (far, farMore, offers)');
  assert.ok(!/"open"|distant-opening/.test(JSON.stringify(far.objects??[])),'no distant facts');
  const body=()=>f.host.engine.world.entities[soul.entityId],[ax,az]=[body().pose.p[0],body().pose.p[2]];
  // both face the Soul (their front, local +z, toward her: turned round), in plain sight and a few metres apart
@@ -83,6 +84,19 @@ test('tent flap and field gate by hand: words, contact, refusal, interruption, p
  let sawOpen=false;for(let n=0;n<2400;n++){if(state('yard-gate').open)sawOpen=true;const ph=edge.receipt(soul.soulId,walk.receipt.id)?.phase;if(['completed','failed','cancelled','replaced'].includes(ph))break;await tick(1);}
  const walked=edge.receipt(soul.soulId,walk.receipt.id);assert.equal(walked.phase,'completed',JSON.stringify(walked).slice(0,400));assert.ok(sawOpen,'opened by hand on the way');assert.equal(state('yard-gate').open,false,'shut behind');
  assert.ok(body().pose.p[2]>gz,'inside the yard');results.passage={phase:walked.phase,reason:walk.receipt.reason,openedOnTheWay:sawOpen,closedBehind:!state('yard-gate').open};
+ // the flap's swing never reaches her body: from straight in front of a shut tent, she stands clear of the flap's sweep
+ const relocate=async to=>{await accept(f.host,f.host.enqueue('edge-relocate','edge:'+soul.soulId,{soulId:soul.soulId,entityId:soul.entityId,to,why:'openings test: approach'}));await tick(10);};
+ const sweepClear=(name,sx=1,sz=1)=>{const e=god.model.get(name),wp=god.model.worldPose(e),p=body().pose.p,lx=(p[0]-wp.x)*Math.cos(wp.yaw)-(p[2]-wp.z)*Math.sin(wp.yaw),lz=(p[0]-wp.x)*Math.sin(wp.yaw)+(p[2]-wp.z)*Math.cos(wp.yaw);return +(Math.hypot(lx+.5*sx,lz-1.15*sz)-1*sx).toFixed(3);};
+ ok(god.act({ops:[{op:'set',id:'tent',state:{open:false}}]}));await tick(10);
+ {const wp=god.model.worldPose(god.model.get('tent'));await relocate([wp.x-Math.sin(wp.yaw)*-3.2,wp.z-Math.cos(wp.yaw)*-3.2]);}
+ {const r=await act('open the tent flap');const x=await finish(r,'tent',true);assert.equal(x.phase,'completed');assert.equal(x.early,false);x.clearOfSweep=sweepClear('tent');assert.ok(x.clearOfSweep>=.28,'front-on: clear of the flap sweep by a body radius: '+x.clearOfSweep);results['front-on:open the tent flap']=x;}
+ // a stretched tent (sx 1.5, sz 1.5): the hand goes to the stretched toggle, the body stands outside the stretched footprint
+ {const wp=god.model.worldPose(god.model.get('tent'));ok(god.act({ops:[{op:'place',def:'core/tent@2',name:'big-tent',p:[wp.x-7,wp.z],r:wp.yaw,params:{sx:1.5,sz:1.5}}]}));await tick(30);await relocate([wp.x-7-Math.sin(wp.yaw)*-4,wp.z-Math.cos(wp.yaw)*-4]);
+  const r=await act(`object:${id('big-tent')}:open`);const x=await finish(r,'big-tent',true);assert.equal(x.phase,'completed',JSON.stringify(edge.receipt(soul.soulId,r.receipt.id)).slice(0,400));assert.equal(x.early,false);
+  const m=f.host.engine.world.entities[soul.entityId];x.clearOfSweep=sweepClear('big-tent',1.5,1.5);assert.ok(x.clearOfSweep>=.28,'stretched: clear of the sweep '+x.clearOfSweep);results['stretched:open']=x;}
+ // an interrupted gate act changes nothing
+ {const cutGate=await act(`object:${id('field-gate')}:close`);for(let n=0;n<900&&!body().human?.handActuator;n++)await tick(1);await tick(2);
+  ok(await accept(f.host,edge.act(soul,{capability:'stand:here'})));await tick(60);assert.equal(state('field-gate').open,true,'interrupted before contact: the gate stays open');}
  // O7: a restored snapshot keeps both
  const restored=WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())),undefined,god.model.library);assert.equal(restored.get('tent').state.open,true);assert.equal(restored.get('field-gate').state.open,true);
  assert.deepEqual(f.host.engine.runtime.violations,[]);
@@ -90,6 +104,6 @@ test('tent flap and field gate by hand: words, contact, refusal, interruption, p
  assert.equal(isContactActuator(god.model.resolvedDef('core/tent@1'),{name:'open'}),false,'frozen tent@1 unchanged');
  assert.ok(isContactActuator(god.model.resolvedDef('core/gate@2'),{name:'open'}),'gate@2 still a hand contact');
  const report={status:'pass',hereBytes:{absent:JSON.stringify(absent).length,control100Frozen:JSON.stringify(control).length,distant100:JSON.stringify(far).length,nearby:JSON.stringify(near).length,nearbyOpen:JSON.stringify(open).length},rows,facts,results,
-  checks:['plain words resolve to the flap and gate offers','no distant offers, +0 bytes','interruption before contact keeps the flap shut','tent open/close/open at the toggle contact','field gate open/close/open on its hinge','an open flap or gate is not offered open again','no door solid across the tent; the field gate blocks its gap','a walk walled off by the shut field gate goes through it by hand and shuts it behind','snapshot keeps open','tent@1 frozen, gate@2 unchanged']};
+  checks:['plain words resolve to the flap and gate offers','no distant offers, +0 bytes','interruption before contact keeps the flap shut','tent open/close/open at the toggle contact','field gate open/close/open on its hinge','an open flap or gate is not offered open again','no door solid across the tent; the field gate blocks its gap','a walk walled off by the shut field gate goes through it by hand and shuts it behind','snapshot keeps open','front-on and stretched tents: the body stands clear of the flap sweep, the hand at the stretched toggle','an interrupted gate act leaves it open','tent@1 frozen, gate@2 unchanged']};
  if(out)writeFileSync(`${out}/summary.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report));
 });

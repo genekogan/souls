@@ -52,8 +52,9 @@ export const LOCKABLE_DOOR:DefInput=(()=>{const d=structuredClone(door2) as DefI
 // entry 23): no hinge component, so the tent gains no door solid; at the toggle's contact the flap swings on its pivot.
 const tentInput=vocabW3.find(d=>d.name==='core-tent')! as unknown as DefInput;
 export const TENT_FLAP:DefInput=(()=>{const d=structuredClone(tentInput) as DefInput&{make:{args:{shapes:unknown[]}};params:Record<string,unknown>;palette:Record<string,string>};
-  d.make.args.shapes.push({kind:'cyl',at:[.5,.56,1.15],r:.02,h:1.12,segments:5,tint:'pole'},
-    {kind:'cyl',at:[.47,.85,1.17],r:.012,h:.07,segments:5,tint:'valve',roll:Math.PI/2});
+  // the pole stands just in front of the canvas's front edge (z 1.2), so it never pokes through the sloped side
+  d.make.args.shapes.push({kind:'cyl',at:[.5,.56,1.24],r:.02,h:1.12,segments:5,tint:'pole'},
+    {kind:'cyl',at:[.47,.85,1.21],r:.012,h:.07,segments:5,tint:'valve',roll:Math.PI/2});
   d.params.valve={type:'color',default:'#e8dcc0',doc:'valve colour (the flap toggle; the hand goes here)'};d.palette.valve='#e8dcc0';
   return {...d,version:2,tags:[...(d.tags??[]),'hand-operated'],
     description:`${tentInput.description} A Soul opens and closes the flap by hand at the toggle on its doorway pole.`} as DefInput;})();
@@ -62,7 +63,7 @@ export const TENT_FLAP:DefInput=(()=>{const d=structuredClone(tentInput) as DefI
 const bar=(y:number)=>({kind:'box',at:[0,y,0],size:[1.3,.085,.04],round:0,tint:'leaf',role:'door',pivot:[-.66,0,0]});
 export const FIELD_GATE:DefInput={schema:'def/1',name:'core-field-gate',version:1,
   description:'A five-bar wooden field gate between two posts (a 1.3 m leaf with a diagonal brace). A Soul approaches, lifts the latch on its free end and swings it open or shut by hand; shut, it closes its gap.',
-  tags:['civic','gate','fence','garden','farm','door','hand-operated'],form:'point',
+  tags:['civic','gate','fence','garden','farm','door','hand-operated','local-fixture'],form:'point',
   make:{kind:'gen',gen:'kit/2',args:{round:.01,shapes:[
     {kind:'box',at:[-.73,.66,0],size:[.12,1.32,.12],round:.01,tint:'post'},
     {kind:'box',at:[.73,.66,0],size:[.12,1.32,.12],round:.01,tint:'post'},
@@ -74,7 +75,7 @@ export const FIELD_GATE:DefInput={schema:'def/1',name:'core-field-gate',version:
   ]}},
   params:{post:{type:'color',default:'#7a5c3e',doc:'post colour'},leaf:{type:'color',default:'#b08d62',doc:'leaf colour'},chrome:{type:'color',default:'#9aa0a3',doc:'chrome colour (the galvanised latch; the hand goes here)'}},
   palette:{post:'#7a5c3e',leaf:'#b08d62',chrome:'#9aa0a3'},
-  state:{open:{type:'bool',default:false}},components:{opening:{width:1.3,height:1.1,state:'closed'}},size:{box:[1.58,1.32,.16]},
+  state:{open:{type:'bool',default:false}},components:{opening:{width:1.3,height:1.1,state:'closed'}},size:{box:[1.58,1.32,.2]},
   actions:door.actions!.filter(a=>['open','close'].includes(a.name)).map(a=>({...structuredClone(a),label:a.label.replace('door','gate')})),
 } as unknown as DefInput;
 HAND_OPENINGS.push(TENT_FLAP,FIELD_GATE);

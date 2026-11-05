@@ -51,10 +51,13 @@ Both are data on contacts that already exist; neither has code of its own.
   the drawn covering's contact (the curtains' pull cord): the Soul stands in front of the tent, reaches the toggle, and the
   flap swings open or shut at the contact. It has no hinge component, so the tent adds no door solid to the walk graph.
   A tent is a place in `here` (an exit), not an object row, so its flap is perceived through its offers: open while
-  shut, close while open.
+  shut, close while open. A stretched tent (`sx`, `sz`) is worked at its stretched toggle, and the Soul stands clear of
+  the flap's sweep (a step further out when she must). Standing at the flap she is within the tent's own place, as anyone
+  near a thing-place is, so while she works it her nearby perception is the tent's.
 - `core-field-gate@1` is a five-bar wooden gate (a 1.3 m leaf) on `core-gate@2`'s hinge contact: the `opening`
   component, the leaf's pivot and a latch tinted `chrome` where the hand goes. Shut, it closes its gap; a walk it walls
-  off opens it by hand on the way and shuts it behind (entry 31). Nearby it says `open`.
+  off opens it by hand on the way and shuts it behind (entry 31). Nearby it says `open`. It is a local fixture, never a
+  far landmark.
 
 ## What other Souls perceive
 
