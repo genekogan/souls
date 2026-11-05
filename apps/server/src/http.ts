@@ -76,6 +76,12 @@ export function servingRead(method: string, path: string, view?: string): boolea
 export function servingWait(whenServing: () => Promise<void> | null): MiddlewareHandler {
   return async (c, next) => { const w = servingRead(c.req.method, c.req.path, c.req.query('view')) ? whenServing() : null; if (w) await w; return next(); };
 }
+/** #1006: the only routes that answer while the world's clock is halted; every other route answers 503 world-unavailable.
+ *  Moderation (`/v1/moderation`, `/v1/moderation/*`): a takedown, a quarantine release and the veto list read only the
+ *  moderation log, never the engine or the clock, and a safety action must not wait on an unrelated clock fault.
+ *  `/healthz` is deliberately not here: its 503 is the health answer for a halted world. */
+export const CLOCK_EXEMPT: readonly RegExp[] = [/^\/v1\/moderation(?:\/|$)/];
+export const clockExempt = (path: string) => CLOCK_EXEMPT.some(r => r.test(path));
 type Deps = { cfg: Config; db: Db; host: WorldHost; auth: Auth; hub: Hub; brain: Brain; souls: Souls; takes?: TakeArchive; station?:CandidateStationV1; stationV2?:CandidateStationV2; intentV2?:IntentControlV2; edge?:EdgeLedger; god?: GodMode; contextReady?:()=>boolean; contextWait?:(signal:AbortSignal)=>Promise<void>; contextLevelAt?:(x:number,z:number,y:number)=>number; load?:{admission?:Admission;monitor:LoadMonitor;crowded?:(soulId:string)=>{position:number;eta_s:number}|null} };
 
 export function buildApp(d: Deps) {
@@ -93,12 +99,23 @@ export function buildApp(d: Deps) {
   // P2 runaway-agent protection: overall buckets per god token and per visitor address, before anything else answers
   // (SIM_FLOOD=0 turns it off for a local experiment)
   const refusals = new RefusalLog();   // every 429/413 this world answers, in its log without flooding it
+  // #1006: the shared security headers come first, so every answer carries them: each route, a 404, and the flood and
+  // body-ceiling refusals below. A route's own CSP (the edge body asset's default-src 'none') keeps its directives.
+  const securityHeaders: MiddlewareHandler = async (c, next) => { await next(); c.header('X-Robots-Tag', 'noindex, nofollow'); c.header('X-Frame-Options', 'DENY'); const csp = c.res.headers.get('Content-Security-Policy'); c.header('Content-Security-Policy', !csp ? "frame-ancestors 'none'" : /frame-ancestors/i.test(csp) ? csp : `${csp}; frame-ancestors 'none'`); };
+  app.use('*', securityHeaders);
   if (process.env.SIM_FLOOD !== '0') app.use('*', floodGuard({ log: refusals, godPool: (t) => { const who = d.god?.godIdentity(t); return who ? poolOf(who) : hashToken(t); } }));
   // SEC2 2026-10-21: a ceiling on every request body before any route reads one. Routes mounted above the /v1/* 64 KB
   // limit below (edge, travel, art, moderation) otherwise read a chunked body (no content-length) without bound: one
   // anonymous 200 MB POST to /v1/edge/say grew a world by ~90-500 MB. Tighter route limits still apply; god routes keep
   // their own budget-sized limit. 1 MB is ~15x the largest normal JSON body; uploads (16 MB) get 16 MB + 1 MB.
   app.use('*',async(c,next)=>c.req.method==='GET'||c.req.method==='HEAD'||/\/v1\/god\//.test(c.req.path)?next():bodyLimit({maxSize:bodyCeiling(c.req.path),onError:(c)=>{refusals.note('size','too-large',`${c.req.method} ${c.req.path}`);return c.json({ok:false,code:'too-large',message:'request body is too large'},413);}})(c,next));
+  // A halted durable clock cannot serve an unacknowledged body/head or accept more control. Generic unavailable response
+  // carries no private row/error. #1006: mounted here, ahead of every route, before auth and before a body is read;
+  // only the CLOCK_EXEMPT routes answer while the clock is halted.
+  app.use('*', async (c, next) => {
+    if(!d.host.clockAvailable&&!clockExempt(c.req.path))return c.json({ok:false,code:'world-unavailable',message:'World temporarily unavailable.'},503,{'Cache-Control':'no-store'});
+    await next();
+  });
   // Continuity (warm after listen): right after a restart the menus' caches are built in slices (EdgeLedger.warmForServing);
   // a listing read waits for that (with a ceiling) instead of building them cold in its own turn. Keep it BEFORE admission.
   if (d.edge) { const edge = d.edge; app.use('/v1/edge/*', servingWait(() => edge.whenServing())); }
@@ -115,16 +132,6 @@ export function buildApp(d: Deps) {
   // inbox handler is mounted here, before the shared middleware below, as it always was; a central-mind world's
   // translator is mounted with the other owner routes further down. The other one is never registered.
   const commandRoute = ownerCommandRoute(!!d.edge);
-  // #1000: the shared headers and the halted-clock gate (defined once here, mounted on '*' below) are registered after
-  // this handler, so an edge world's command route gets them here first, the same answers the translator gets.
-  const securityHeaders: MiddlewareHandler = async (c, next) => { await next(); c.header('X-Robots-Tag', 'noindex, nofollow'); c.header('X-Frame-Options', 'DENY'); c.header('Content-Security-Policy', "frame-ancestors 'none'"); };
-  // A halted durable clock cannot serve an unacknowledged body/head or accept
-  // more control. Generic unavailable response carries no private row/error.
-  const clockGate: MiddlewareHandler = async (c, next) => {
-    if(!d.host.clockAvailable)return c.json({ok:false,code:'world-unavailable',message:'World temporarily unavailable.'},503,{'Cache-Control':'no-store'});
-    await next();
-  };
-  if (commandRoute === 'edge-inbox') { app.use('/v1/souls/:soulId/command', securityHeaders); app.use('/v1/souls/:soulId/command', clockGate); }
   const ownerInbox = mountAgentInbox(app, {db: d.db, worldId: d.host.worldId, souls: d.souls, god: d.god, edge: !!d.edge, command: commandRoute, requireUser: c => requireUser(c), ownerSoul: async (c, id) => { const u = await requireUser(c); d.souls.requireInvited(u); const s = ownSoul(u, id); if (!d.souls.owns(u.id, s)) throw new ApiError(403, 'forbidden', 'not your soul'); return s; }}); // invite gate as on the central /v1/souls/:id/command
   (app as unknown as {agentInbox?: unknown}).agentInbox = ownerInbox;   // Stage B mode 2 (main.ts): a read worker's here carries main's inbox block
   // Travel (M3, travel/): a Soul whose body is in another world acts there; here only its travel calls answer.
@@ -189,8 +196,6 @@ export function buildApp(d: Deps) {
     console.error('[http]', err);
     return c.json({ ok: false, code: 'internal', message: 'internal error' }, 500);
   });
-  app.use('*', securityHeaders);
-  app.use('*', clockGate);
   // Nothing a person or an agent sends is large: a command, an intent, a few cards.
   // Apply before parsing/auth/rate errors as well as successful secret responses.
   for (const path of ['/v1/agent/pair', '/v1/agent/pair/*', '/v1/pair/*', '/v1/souls/:id/pair'])
