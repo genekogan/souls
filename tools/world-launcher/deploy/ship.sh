@@ -39,11 +39,12 @@ TAG="${LABEL//./}"; BUILD="we-${SHA:0:12}"; OUT="${OUT:-$OUT_ROOT/$LABEL}"; PDIR
 HOST="$(deploy_target 2>/dev/null)" || HOST=""
 
 # ---- plumbing -------------------------------------------------------------------------------------------------------
-N=0; NSTEPS=12; CUR=""; STARTED=0; [ -z "$FROM" ] && STARTED=1; PROBLEMS=0; FAILED=""; PROBE_PID=""; PROBE_RC=""
+N=0; NSTEPS=12; CUR=""; STARTED=0; [ -z "$FROM" ] && STARTED=1; PROBLEMS=0; FAILED=""; PROBE_PID=""; PROBE_RC=""; DETAIL=""
 LIVE="nothing on the host has changed yet"
 say() { printf '%s\n' "$*"; }
 quote() { local a s=""; for a in "$@"; do s="$s $(printf '%q' "$a")"; done; printf '%s' "${s# }"; }
-# Both name the host only through deploy_target, so it never reaches a log or a dry-run plan. BatchMode: never a prompt.
+# Neither prints the host, so ship's own lines and the dry-run plan never name it. Tools tee'd into ship.log can (release.sh
+# prints its upload target, ssh its errors), so ship.log is private. BatchMode: never a prompt.
 rsh() { "$SSH" -o BatchMode=yes -o ConnectTimeout=20 "$HOST" "$@"; }
 rcp() { "$SCP" -q -o BatchMode=yes "$1" "$HOST:$2"; }
 step() {
@@ -60,7 +61,7 @@ stop_probe() { [ -n "$PROBE_PID" ] && kill -0 "$PROBE_PID" 2>/dev/null || return
 die() {
   say ""; say "STOPPED at step $CUR: $*"; say "   live now: $LIVE"; stop_probe
   [ -f "$OUT/ROLLBACK.txt" ] && { say "   rollback, only if you decide to:"; sed 's/^/     /' "$OUT/ROLLBACK.txt"; }
-  [ "$DRY" = 1 ] || { printf '%s STOPPED %s\n' "$CUR" "$(date -u +%H:%M:%SZ)" >> "$OUT/STEPS.txt"; result stopped "$CUR"; }
+  [ "$DRY" = 1 ] || { printf '%s STOPPED %s\n' "$CUR" "$(date -u +%H:%M:%SZ)" >> "$OUT/STEPS.txt"; result stopped "$CUR${DETAIL:+ $DETAIL}"; }
   exit 1
 }
 trap 'die "interrupted"' INT TERM
@@ -179,7 +180,18 @@ if step activate "one guarded --reload; a failed handover or health check rolls 
     A="$(node -p 'const fs=require("fs"),s=JSON.parse(fs.readFileSync(process.argv[1])),u=JSON.parse(fs.readFileSync(process.argv[2]));[s.previousBuild,u.manifestSha256,s.remote.worlds,s.remote.configurationSha256].join(" ")' "$OUT/snapshot.json" "$OUT/upload-receipt.json")"
   else A='<previous> <manifest sha256> <worlds> <config sha256>'; fi
   LIVE="the activation started: check healthz; the host rolls back by itself on failure"
-  x_in "$SHIPD/host-activate.sh" rsh "bash -s -- $(quote "$HOST_ROOT" "$HOST_DATA" "$HOST_CONF" "$HOST_UNIT" "$ORIGIN" "$BUILD") $A" || die "the activation failed; the host rolled code back"
+  rc=0; x_in "$SHIPD/host-activate.sh" rsh "bash -s -- $(quote "$HOST_ROOT" "$HOST_DATA" "$HOST_CONF" "$HOST_UNIT" "$ORIGIN" "$BUILD") $A" || rc=$?
+  # The host's exit is the only account of what happened (ship/host-activate.sh). Never claim a rollback it didn't report.
+  DETAIL="exit $rc"; WAS="${A%% *}"
+  case "$rc" in
+    0) DETAIL="";;
+    80) LIVE="$WAS: nothing changed"; die "a guard on the host refused the activation (exit 80); nothing changed";;
+    81) LIVE="$WAS, by the host's rollback: confirm with healthz"; die "the activation or its health check failed (exit 81); the host rolled code back to $WAS";;
+    82) LIVE="$WAS, by the stage link: confirm with healthz"; die "the activation failed (exit 82); the stage link is on $WAS, because activate.sh rolled back or never moved it, so no further rollback ran";;
+    90) LIVE="UNKNOWN: the rollback failed. Read the stage link and healthz now"; die "ROLLBACK FAILED (exit 90): the activation failed and so did the rollback to $WAS. Act now";;
+    91) LIVE="UNKNOWN: the stage link is neither $BUILD nor $WAS. Read it and healthz now"; die "the activation failed and the stage link is unexpected (exit 91); the host made no further change";;
+    *) LIVE="UNKNOWN: read the stage link and healthz now"; die "the host's outcome is unknown (exit $rc): the connection may have dropped mid-activation, and the host may have rolled back or be rolling back";;
+  esac
   LIVE="$BUILD is live"; x touch "$PDIR/released"; done_step
 fi
 

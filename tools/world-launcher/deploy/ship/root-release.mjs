@@ -8,7 +8,7 @@
 //   node root-release.mjs activation <snapshot.json> <backup-receipt.json> <upload-receipt.json> <manifest>
 //   node root-release.mjs health <healthz.json> <build> <worlds>
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const read = f => JSON.parse(readFileSync(f, 'utf8'));
@@ -33,8 +33,9 @@ export function receiptProblems(gate, ship, sha, gateSha256) {
   return out;
 }
 
-export function snapshotProblems(health, remote) {
+export function snapshotProblems(health, remote, sha = '') {
   const out = [], previous = remote.productionTarget.split('/').pop();
+  if (sha && previous === `we-${sha.slice(0, 12)}`) out.push('this commit is already live: a new snapshot would name it as the previous build');
   if (!health.ok || !health.hostOk) out.push('public healthz is not ok');
   if (health.build !== previous || remote.activeBuild !== previous) out.push(`stage link ${previous}, healthz ${health.build}, keeper ${remote.activeBuild} disagree`);
   if (health.worlds !== remote.worlds) out.push(`healthz has ${health.worlds} worlds, the registry ${remote.worlds}`);
@@ -82,7 +83,8 @@ export function main(argv) {
   const [cmd, ...a] = argv;
   if (cmd === 'receipts') { const p = receiptProblems(read(a[0]), read(a[1]), a[2], digest(a[0])); if (p.length) fail(p); console.log('gate and ship receipts are clean for this commit'); }
   else if (cmd === 'snapshot') {
-    const health = read(a[0]), remote = read(a[1]), p = snapshotProblems(health, remote); if (p.length) fail(p);
+    const health = read(a[0]), remote = read(a[1]), p = snapshotProblems(health, remote, a[2]); if (p.length) fail(p);
+    if (existsSync(a[3])) { const aside = `${a[3]}.${Date.now()}`; renameSync(a[3], aside); console.log(`kept the earlier snapshot as ${aside.split('/').pop()}`); }
     const publicHealth = Object.fromEntries(HEALTH_KEYS.map(k => [k, health[k]]));
     writeFileSync(a[3], JSON.stringify({ schema: 'ship-snapshot/1', at: new Date().toISOString(), candidate: a[2], previousBuild: remote.productionTarget.split('/').pop(), publicHealth, remote, databaseContentsRead: false }, null, 2) + '\n', { flag: 'wx' });
     console.log(`${remote.worlds} worlds, ${remote.databases} databases, previous ${remote.productionTarget.split('/').pop()}`);

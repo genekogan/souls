@@ -2,14 +2,22 @@
 # The guarded activation, run on the release host by ship.sh: bash -s -- <args> < host-activate.sh
 # Everything it needs is a positional argument. It runs under the host's environment, so it must not read a variable
 # that only the operator's machine sets (the 4.15 run stopped on exactly that).
-# On a failed reload or health check it rolls code back to the previous build and exits non-zero. Data is never touched.
+# On a failed reload or health check it rolls code back to the previous build. Data is never touched.
+# Its exit says what happened, and ship.sh reports exactly that:
+#   0   the build is active and healthy
+#   80  a guard refused: nothing changed
+#   81  the activation or its health check failed, and the rollback to the previous build returned success
+#   82  the activation failed, and the stage link is already on the previous build, so no rollback ran here
+#   90  the activation failed and the rollback failed too
+#   91  the activation failed and the stage link points somewhere unexpected: no further change was made
 set -euo pipefail
 root=$1; data=$2; conf=$3; unit=$4; origin=$5; build=$6; previous=$7; manifest=$8; worlds=$9; config=${10}
 rel=$root/releases/$build; old=$root/releases/$previous
 [ "$(readlink "$root/production")" = "$old" ] || { echo 'the stage link is not the expected previous release' >&2; exit 80; }
 [ "$(sha256sum "$rel/RELEASE-MANIFEST.json" | cut -d' ' -f1)" = "$manifest" ] || { echo 'host manifest differs from the upload' >&2; exit 80; }
 [ "$(sha256sum "$conf" | cut -d' ' -f1)" = "$config" ] || { echo 'host config changed since the snapshot' >&2; exit 80; }
-mainpid=$(systemctl show -p MainPID --value "$unit")
+mainpid=$(systemctl show -p MainPID --value "$unit") || { echo 'cannot read the service pid' >&2; exit 80; }
+set +e
 node --input-type=module - "$data" "$mainpid" "$old" "$previous" <<'JS'
 import fs from 'node:fs'; import crypto from 'node:crypto';
 const [data, pid, old, previous] = process.argv.slice(2);
@@ -19,15 +27,17 @@ const sha = crypto.createHash('sha256').update(fs.readFileSync(`${old}/tools/wor
 if (k.keeper?.sha !== sha || k.active?.build !== previous) throw Error('keeper, source or active build drifted');
 if (k.handover && !['done', 'failed', 'rolled-back'].includes(k.handover.state)) throw Error('another handover is active');
 JS
+guard=$?
+set -e
+[ "$guard" = 0 ] || exit 80
 rollback_on_error() {
   rc=$?; trap - EXIT INT TERM HUP
-  if [ "$rc" != 0 ]; then
-    echo "activation or health failed ($rc): code-only rollback to $previous; data and settings kept" >&2
-    target=$(readlink "$root/production")
-    if [ "$target" = "$rel" ]; then bash "$old/tools/world-launcher/deploy/activate.sh" production "$old" --reload || exit 90
-    elif [ "$target" != "$old" ]; then echo 'unexpected active target: no further change' >&2; exit 91; fi
-  fi
-  exit "$rc"
+  [ "$rc" != 0 ] || exit 0
+  echo "activation or health failed ($rc): code-only rollback to $previous; data and settings kept" >&2
+  target=$(readlink "$root/production") || target=""
+  if [ "$target" = "$rel" ]; then bash "$old/tools/world-launcher/deploy/activate.sh" production "$old" --reload || exit 90; exit 81; fi
+  if [ "$target" = "$old" ]; then exit 82; fi
+  echo 'unexpected active target: no further change' >&2; exit 91
 }
 trap rollback_on_error EXIT
 trap 'exit 130' INT

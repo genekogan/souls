@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync, execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -36,7 +36,7 @@ function setup() {
   };
   mkdirSync(receipts); writeReceipts();
   // the fake host: a previous release, the keeper's record, four databases including body-collections.sqlite
-  const keeperSource = 'keeper\n', activate = `printf 'activate\\t%s\\n' "$*" >> ${log}\nln -sfn "$2" ${root}/production\n[ ! -e ${t}/fail-activate ] || [ "$2" = ${root}/releases/${PREV} ] || exit 1`;
+  const keeperSource = 'keeper\n', activate = `printf 'activate\\t%s\\n' "$*" >> ${log}\n[ ! -e ${t}/fail-before-link ] || [ "$2" = ${root}/releases/${PREV} ] || exit 1\n[ ! -e ${t}/stray-link ] || { ln -sfn /elsewhere ${root}/production; exit 1; }\nln -sfn "$2" ${root}/production\n[ ! -e ${t}/fail-activate ] || [ "$2" = ${root}/releases/${PREV} ] || exit 1\n[ ! -e ${t}/fail-rollback ] || [ "$2" != ${root}/releases/${PREV} ] || exit 1`;
   const release = name => { mkdirSync(join(root, 'releases', name, 'tools/world-launcher/deploy'), { recursive: true }); writeFileSync(join(root, 'releases', name, 'tools/world-launcher/keeper.mjs'), keeperSource); script(join(root, 'releases', name, 'tools/world-launcher/deploy/activate.sh'), activate); };
   release(PREV); symlinkSync(join(root, 'releases', PREV), join(root, 'production'));
   for (const f of ['worlds/eden/sim.db', 'worlds/mars/sim.db', 'accounts.sqlite', 'body-collections.sqlite']) { mkdirSync(dirname(join(data, f)), { recursive: true }); writeFileSync(join(data, f), ''); }
@@ -47,7 +47,7 @@ function setup() {
   script(join(fakebin, 'curl'), `[ ! -e ${t}/fail-health ] || exit 1\nprintf '{"ok":true,"hostOk":true,"auth":"clerk","maxWorlds":100,"maxRunning":16,"worlds":2,"build":"%s"}' "$(basename "$(readlink ${root}/production)")"`);
   if (spawnSync('sh', ['-c', 'command -v sha256sum']).status !== 0) script(join(fakebin, 'sha256sum'), 'exec shasum -a 256 "$@"');
   // ssh and scp: an empty environment on the far side, proving the remote block needs nothing from the operator
-  script(join(t, 'stubs/ssh'), `printf 'ssh\\t%s\\n' "$*" >> ${log}\nwhile [ "\${1:-}" = -o ]; do shift 2; done; shift\ncase "$*" in true) exit 0;; *" verify "*) cat > /dev/null; echo ok; exit 0;; esac\nexec env -i PATH="${fakebin}:$PATH" HOME=/nonexistent bash -c "$*"`);
+  script(join(t, 'stubs/ssh'), `printf 'ssh\\t%s\\n' "$*" >> ${log}\nwhile [ "\${1:-}" = -o ]; do shift 2; done; shift\ncase "$*" in true) exit 0;; *" verify "*) cat > /dev/null; echo ok; exit 0;; "bash -s --"*) [ ! -e ${t}/ssh-drop ] || { cat > /dev/null; exit 255; }; [ ! -e ${t}/tamper-manifest ] || echo tampered >> ${root}/releases/${build}/RELEASE-MANIFEST.json; [ ! -e ${t}/tamper-keeper ] || echo '{"keeper":{"pid":1}}' > ${data}/keeper.json;; esac\nexec env -i PATH="${fakebin}:$PATH" HOME=/nonexistent bash -c "$*"`);
   script(join(t, 'stubs/scp'), `printf 'scp\\t%s\\n' "$*" >> ${log}\ndest="\${@: -1}"; dest="\${dest#*:}"\ncase "$dest" in\n*compact-backup.sh) cat > "$dest" <<'BK'\n#!/usr/bin/env bash\nB=$(mktemp -d ${t}/host/$1-$2-XXXXXX)\nfor f in worlds/eden/sim.db worlds/mars/sim.db accounts.sqlite body-collections.sqlite; do mkdir -p "$(dirname "$B/$f")"; : > "$B/$f"; echo '{"dropped":{}}'; done\necho "$B"\nBK\n;;\n*sim-quick-check.mjs) echo 'for (const f of process.argv.slice(2)) console.log("ok " + f);' > "$dest";;\n*) : > "$dest";;\nesac`);
   // build, browser and manifest tools
   script(join(t, 'stubs/node'), `printf 'node\\t%s\\n' "$*" >> ${log}\nif [ -n "\${STUB_FAIL:-}" ] && [[ "$*" == *"$STUB_FAIL"* ]]; then exit 1; fi\ncase "$1" in *release-probe.mjs)\n  while [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done\n  mkdir -p "$out"; touch "$out/ready"\n  for i in $(seq 1 600); do { [ -e "$out/released" ] || [ -e "$out/stop" ]; } && break; sleep 0.05; done\n  exit "\${STUB_PROBE_RC:-0}";;\nesac\nexit 0`);
@@ -122,7 +122,7 @@ test('there is no host option, and --sha must be the full commit', () => {
   assert.equal(s.calls(), '');
 });
 
-test('a full run on the fake host: every step in order, the host block under an empty environment, the host never logged', () => {
+test('a full run on the fake host: every step in order, the host block under an empty environment, ship never names the host', () => {
   const s = setup(), r = s.run(s.base);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.equal(readlinkSync(join(s.root, 'production')), join(s.root, 'releases', s.build));
@@ -156,6 +156,51 @@ test('a failed activation rolls code back on the host, stops the run and the pro
   assert.ok(existsSync(join(s.out, 'probe/stop')));
   assert.doesNotMatch(s.calls(), /walk\.mjs/);
   assert.equal(JSON.parse(readFileSync(join(s.out, 'ship-result.json'), 'utf8')).status, 'stopped');
+});
+
+test('the activation stop says what the host reported, and only a finished rollback is called one', () => {
+  const ROLLED = /host rolled code back/;
+  const cases = [
+    ['a guard: the manifest', ['tamper-manifest'], /refused the activation \(exit 80\); nothing changed/, /live now: we-0+: nothing changed/, 'exit 80', 0],
+    ['a guard: the keeper record', ['tamper-keeper'], /refused the activation \(exit 80\); nothing changed/, /live now: we-0+: nothing changed/, 'exit 80', 0],
+    ['the rollback ran', ['fail-activate'], /failed \(exit 81\); the host rolled code back to we-0+/, /live now: we-0+, by the host's rollback/, 'exit 81', 2],
+    ['no link moved', ['fail-before-link'], /failed \(exit 82\); the stage link is on we-0+/, /live now: we-0+, by the stage link/, 'exit 82', 1],
+    ['the rollback failed', ['fail-activate', 'fail-rollback'], /ROLLBACK FAILED \(exit 90\)/, /live now: UNKNOWN: the rollback failed/, 'exit 90', 2],
+    ['a stray link', ['stray-link'], /unexpected \(exit 91\); the host made no further change/, /live now: UNKNOWN: the stage link is neither/, 'exit 91', 1],
+    ['the connection dropped', ['ssh-drop'], /outcome is unknown \(exit 255\)/, /live now: UNKNOWN: read the stage link/, 'exit 255', 0],
+  ];
+  for (const [name, flags, stop, live, detail, activations] of cases) {
+    const s = setup(); for (const f of flags) writeFileSync(join(s.t, f), '');
+    const r = s.run(s.base);
+    assert.equal(r.status, 1, name);
+    assert.match(r.stdout, stop, name);
+    assert.match(r.stdout, live, name);
+    assert.equal(name === 'the rollback ran', ROLLED.test(r.stdout), name + ': the word rollback is earned');
+    assert.equal((s.calls().match(/^activate\t/gm) ?? []).length, activations, name);
+    assert.doesNotMatch(s.calls(), /walk\.mjs/, name);
+    assert.ok(existsSync(join(s.out, 'probe/stop')), name);
+    assert.equal(JSON.parse(readFileSync(join(s.out, 'ship-result.json'), 'utf8')).detail, `activate ${detail}`, name);
+  }
+});
+
+test('--from snapshot works after a stop: the old snapshot is kept, and a commit already live is refused', () => {
+  const s = setup(), drop = join(s.t, 'ssh-drop'); writeFileSync(drop, '');
+  assert.equal(s.run(s.base).status, 1);
+  const first = readFileSync(join(s.out, 'snapshot.json'), 'utf8');
+  rmSync(drop);
+  const r = s.run([...s.base, '--from', 'snapshot']);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const asides = readdirSync(s.out).filter(f => /^snapshot\.json\.\d+$/.test(f));
+  assert.equal(asides.length, 1);
+  assert.equal(readFileSync(join(s.out, asides[0]), 'utf8'), first);
+  assert.equal(readlinkSync(join(s.root, 'production')), join(s.root, 'releases', s.build));
+  // now the candidate is live: a further snapshot must not rename it "previous", or overwrite the rollback
+  const before = readFileSync(join(s.out, 'ROLLBACK.txt'), 'utf8'), snap = readFileSync(join(s.out, 'snapshot.json'), 'utf8');
+  const again = s.run([...s.base, '--from', 'snapshot']);
+  assert.equal(again.status, 1);
+  assert.match(again.stdout, /already live/);
+  assert.equal(readFileSync(join(s.out, 'ROLLBACK.txt'), 'utf8'), before);
+  assert.equal(readFileSync(join(s.out, 'snapshot.json'), 'utf8'), snap);
 });
 
 test('a failed post-live verdict is recorded and the later evidence still runs', () => {

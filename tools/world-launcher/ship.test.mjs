@@ -63,7 +63,7 @@ const key = (line) => {
   const m = args.match(/(release-probe|walk|poster|stall|cdn-walk|checks)\.(mjs|py)( \S+)?/) ?? args.match(/(poster-count)\.py/);
   if (m) return m[1] + (m[1] === 'checks' ? ' ' + args.split(' ')[1] : m[1] === 'walk' ? (args.includes('walk-phone') ? ' phone' : ' desktop') : '');
   if (name === 'release') return `release ${args}`;
-  if (name === 'scp') return `scp ${args.match(/(?:ship|old-worlds)\/(\S+)/)[1]}`;
+  if (name === 'scp') return `scp ${args.match(/(?:ship|old-worlds)\/([^\s/]+)(?:\s|$)/)[1]}`;
   for (const [re, k] of [[/readlink/, 'read links'], [/compact-backup\.sh pre-r999 production/, 'backup production'], [/compact-backup\.sh pre-r999 legacy/, 'backup legacy'],
     [/sim-quick-check/, 'quick-check'], [/sha256sum -c FILES\.sha256/, 'sha256 legacy'], [/activate\.sh legacy/, 'activate legacy']]) if (re.test(args)) return k;
   return `${name} ${args}`;
@@ -133,7 +133,7 @@ test('a failed production release stops before legacy, stops the probe, prints r
   assert.match(r.out, /live now: release\.sh production failed: activate\.sh hands back to we-prevprod0000/);
   assert.match(r.out, /rollback \(only if you decide to/);
   assert.match(r.out, /legacy: +\S+ root@stub-host bash \/srv\/sim-old\/releases\/we-prevprod0000-root\/tools\/world-launcher\/deploy\/activate\.sh legacy/);
-  assert.match(r.out, /after fixing: \S+ship\.sh --label 999 --from release$/m);
+  assert.match(r.out, /after fixing: \S+ship-dual-stage\.sh --label 999 --from release$/m);
   assert.ok(existsSync(join(s.out, 'probe/stop')), 'the probe was stopped');
   assert.ok(!existsSync(s.env.SHIP_LEGACY_RELEASE_FILE), 'LEGACY-RELEASE untouched');
   assert.match(readFileSync(join(s.out, 'STEPS.txt'), 'utf8'), /^release STOPPED /m);

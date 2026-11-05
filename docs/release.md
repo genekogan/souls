@@ -104,7 +104,7 @@ There is no host option. The host and operator paths come from the environment o
 
 | Variable | Default | Used for |
 |---|---|---|
-| `SIM_DEPLOY_HOST`, `SIM_DEPLOY_USER` | none / `root` | SSH target of the production host. It is never printed or written to the outputs |
+| `SIM_DEPLOY_HOST`, `SIM_DEPLOY_USER` | none / `root` | SSH target of the production host. ship.sh's own lines, the dry-run plan and `ROLLBACK.txt` never name it. Tools tee'd into `ship.log` can (`release.sh` prints its upload target, ssh its errors), so keep `ship.log` private |
 | `SHIP_RECEIPTS` | none; required | Folder holding the gate's `receipt.json` and `ship-receipt.json` for this commit |
 | `SHIP_PROBE_CLI` | none; required | God folder of the [release-probe world](#the-release-probe-world) |
 | `PLAYWRIGHT_BROWSERS_PATH` | none; required | Browsers folder. Preflight checks that it actually holds a Chromium executable |
@@ -123,7 +123,7 @@ There is no host option. The host and operator paths come from the environment o
 | stage | `release.sh production --no-activate` at base `/`; verifies the manifest locally and on the host; compares the host with the snapshot | Stops |
 | backup | Row-verified compact copy of every database, `quick_check` on each, the same filenames as the snapshot | Stops |
 | probe-start | Starts `release-probe.mjs` and waits for `<out>/probe/ready` | Stops |
-| activate | Checks that the snapshot and backup are under an hour old and that nothing drifted, then runs `ship/host-activate.sh` on the host: one `activate.sh --reload` and a health check | The host rolls code back to the previous build; stops |
+| activate | Checks that the snapshot and backup are under an hour old and that nothing drifted, then runs `ship/host-activate.sh` on the host: one `activate.sh --reload` and a health check | Stops and reports the host's exit (below) |
 | probe-check | Reads the probe's exit | 3 stops (the release rolled back). Anything else is recorded and the run continues |
 | healthz | Public healthz reports this build, every world and `hostOk` | Stops |
 | walks | `ship/walk.mjs` on desktop and phone at dpr 1 and 2, then `checks.mjs walks` | Recorded |
@@ -134,6 +134,25 @@ There is no host option. The host and operator paths come from the environment o
 The output folder holds `STEPS.txt`, `ship.log`, `POSTLIVE.txt` (each post-live check and its exit), each step's logs and
 `ship-result.json`: `live`, `live-with-failures` or `stopped`. The exit is 0 only when every step passed. `ROLLBACK.txt`
 has the manual rollback, with the host as `$SIM_DEPLOY_HOST`.
+
+The activation's stop reports what the host's exit says, and `ship-result.json`'s detail names that exit:
+
+| Exit | What happened | What is live |
+|---|---|---|
+| 80 | A guard on the host refused | The previous build; nothing changed |
+| 81 | The activation or its health check failed; the rollback returned success | The previous build; confirm with healthz |
+| 82 | The activation failed; the stage link is on the previous build, because `activate.sh` rolled back or never moved it | The previous build by the link; confirm with healthz |
+| 90 | The activation failed and the rollback failed | Unknown; act now |
+| 91 | The activation failed and the stage link is neither build; no further change | Unknown; read the link and healthz |
+| other | ssh dropped or the script died; the host may have rolled back or be rolling back | Unknown; read the link and healthz |
+
+`--from snapshot` keeps the earlier `snapshot.json` beside the new one and refuses once this commit is live, so it can't
+name the candidate as the previous build or overwrite `ROLLBACK.txt`. A resume from there takes a fresh backup and probe too.
+
+**A keeper change blocks the next release.** `--reload` keeps the old keeper running, so after a release that changes
+`keeper.mjs` the next `ship.sh` refuses (`keeper source differs`, `keeper, source or active build drifted`) until a planned
+`--restart`. That is the safe failure. **`SHIP_HOST_DATA` is only partly honoured:** it reaches the snapshot and the activation,
+but `compact-backup.sh` has its own hard-coded data path.
 
 Not done here: publishing new CDN assets first, the uncut live clip, the changelog PR, the tag and the GitHub Release.
 
