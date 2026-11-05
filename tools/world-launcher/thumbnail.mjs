@@ -48,12 +48,12 @@ export async function intakeThumbnail(input, { words = [], vetoed = () => false 
     return e.code === 'upload.image-format' ? refusal(415, 'thumbnail.type', e.message, FIX.type) : refusal(400, 'thumbnail.invalid', e.message, FIX.invalid);
   }
   // the site admin's veto, as at every upload's intake (moderation/intake.ts): by the stored and by the sent bytes
-  if (vetoed(up.sha) || vetoed(up.inputSha)) return refusal(451, 'thumbnail.vetoed', 'This image was removed by the site admin and cannot be uploaded again', FIX.vetoed);
+  if (vetoed(up.sha) || vetoed(up.inputSha)) return { ...refusal(451, 'thumbnail.vetoed', 'This image was removed by the site admin and cannot be uploaded again', FIX.vetoed), sha: up.sha };
   const { w, h } = up.images[0];
   if (w < THUMB.minWidth || w > THUMB.maxWidth || Math.abs(w / h - THUMB.aspect) / THUMB.aspect > THUMB.aspectTolerance)
-    return refusal(400, 'thumbnail.dimensions', `The image is ${w}×${h}; a thumbnail is 16:9 and ${THUMB.minWidth}–${THUMB.maxWidth} px wide`, FIX.dimensions);
+    return { ...refusal(400, 'thumbnail.dimensions', `The image is ${w}×${h}; a thumbnail is 16:9 and ${THUMB.minWidth}–${THUMB.maxWidth} px wide`, FIX.dimensions), sha: up.sha };
   const verdict = await classify({ surface: 'thumbnail', format: 'jpg', sha: up.sha, bytes: up.bytes.length, tris: 0, textures: 1, texPx: Math.max(w, h), text: [...words.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.slice(0, 300)), ...up.text], images: up.images });
-  if (verdict.action !== 'allow') return { ...refusal(422, 'thumbnail.moderation', 'The content check did not accept this image', FIX.moderation), verdict };
+  if (verdict.action !== 'allow') return { ...refusal(422, 'thumbnail.moderation', 'The content check did not accept this image', FIX.moderation), sha: up.sha, verdict };
   return { ok: true, sha: up.sha, bytes: up.bytes, width: w, height: h, stripped: { segments: up.stripped.segments, bytes: up.stripped.bytes }, verdict };
 }
 
