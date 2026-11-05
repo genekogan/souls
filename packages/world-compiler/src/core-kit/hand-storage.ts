@@ -38,7 +38,7 @@ const lockers: DefInput = {
 
 // #435 (W071): a swap shelf (a free shelf). The same storage with data only: no `open` state, so no door (always open,
 // containerOpen), and a declared `leftBy`, so it records who left each thing. One shelf at 1 m behind a low front rail, three
-// places on it (each up to 0.3 m across and 0.28 m tall); the body stands 0.4 m in front of the rail. The lower shelf is fixed.
+// places on it (each up to 0.3 m across and 0.28 m tall); the body stands 0.6 m clear of the footprint, so the engine's step in during a reach (at most 0.2 m) leaves it 0.4 m clear at every turn (0.35 m tripped a recovered fault at some turns, #1063). The lower shelf is fixed.
 const H = 1.55, W = 1.0, D = 0.4, rail = 0.195;
 const swapShelf: DefInput = {
   schema: 'def/1', name: 'core-swap-shelf', version: 1,
@@ -57,7 +57,7 @@ const swapShelf: DefInput = {
   params: { wood: { type: 'color', default: '#8a6240', doc: 'wood colour' }, back: { type: 'color', default: '#6f4d32', doc: 'back panel colour' }, sign: { type: 'color', default: '#2f6b5a', doc: 'header colour' } },
   state: { leftBy: { type: 'string', max: 240, default: '' } },
   slots: [shelf('in-1', [-0.3, 1.015, -0.01], 'shelf'), shelf('in-2', [0, 1.015, -0.01], 'shelf'), shelf('in-3', [0.3, 1.015, -0.01], 'shelf')] as DefInput['slots'],
-  components: { container: { capacity: 3, inside: { lip: 1.065, face: rail, stand: [0, rail + 0.4], fit: [0.3, 0.28, 0.3], word: 'shelf' } } } as DefInput['components'],
+  components: { container: { capacity: 3, inside: { lip: 1.065, face: rail, stand: [0, rail + 0.605], fit: [0.3, 0.28, 0.3], word: 'shelf' } } } as DefInput['components'],
   palette: { wood: '#8a6240', back: '#6f4d32', sign: '#2f6b5a', letters: '#f1ead8', b0: '#9a3b32', b1: '#3b5f8a' },
   size: { box: [W, H + 0.19, D] },
 } as DefInput;
