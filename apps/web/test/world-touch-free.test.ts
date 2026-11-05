@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { WorldTouchFree, inStickZone, stickDeflection, STICK_RADIUS, LONG_PRESS_MS, type TouchCamera } from '../src/touch/WorldTouchFree.ts';
-import { WorldRtsCamera, RISE_PER_PIXEL } from '../src/WorldRtsCamera.ts';
+import { WorldRtsCamera, RISE_PER_PIXEL, farLimit } from '../src/WorldRtsCamera.ts';
 import { createWorldOrbitControls, stickStep, manualCameraStep, type NavigationContext } from '../src/WorldNavigation.ts';
 
 // #891 touch Free camera. A 400 × 800 phone view: the stick zone is x ≤ 180, y ≥ 440.
@@ -217,7 +217,23 @@ test('a touch look ending on a far ground point at the map edge never moves the 
     f.rts.touchLookEnd();f.rts.setTouchHeld(false);for (let i = 0; i < 10; i++) f.frame();
     assert.ok(f.camera.position.distanceTo(eye) < 1e-9, `eye moved ${f.camera.position.distanceTo(eye).toFixed(2)} m`);
     assert.ok(f.camera.getWorldDirection(new THREE.Vector3()).angleTo(gaze) < 1e-6, 'the view does not turn');
-    assert.ok(Math.abs(f.controls.target.z) <= 160 && Math.abs(f.controls.target.x) <= 160, 'the pivot is inside the map plus margin');
+    assert.ok(Math.abs(f.controls.target.z) <= 100 + farLimit([-100, -100, 100, 100]) && Math.abs(f.controls.target.x) <= 100 + farLimit([-100, -100, 100, 100]), 'the pivot is inside the eye guard\'s rectangle');
+  } finally { f.rts.dispose(); }
+});
+
+// #660 x #891: past the old pivot wall (map edge + 60 m) the eye still walks (the eye guard is edge + farLimit), so a touch
+// look there must commit too; otherwise the next pinch swings the view back to the old head offset
+test('a touch look past the old pivot wall still commits: the next pinch does not swing the view', () => {
+  const f = rtsRig();try {
+    f.camera.position.set(0, 10, 260);f.controls.target.set(0, 0, 225);f.camera.lookAt(f.controls.target);f.camera.updateMatrixWorld();f.frame();
+    assert.ok(f.camera.position.z > 160 + 1, `the eye stands past the old wall (z ${f.camera.position.z.toFixed(1)})`);
+    f.rts.setTouchHeld(true);f.rts.touchLook(300, 0);f.frame();
+    f.rts.touchLookEnd();f.rts.setTouchHeld(false);f.frame();
+    const gaze = f.camera.getWorldDirection(new THREE.Vector3());
+    assert.equal(f.rts.headLook.yaw, 0, 'the look committed: no head offset left');
+    f.rts.touchPinch(500, 500, 1.5, true);for (let i = 0; i < 20; i++) f.frame(1 / 30);
+    const turn = f.camera.getWorldDirection(new THREE.Vector3()).angleTo(gaze);
+    assert.ok(turn < .02, `the pinch kept the view (turned ${turn.toFixed(3)} rad)`);
   } finally { f.rts.dispose(); }
 });
 

@@ -313,6 +313,8 @@ export function createSwarm({ cast, runDir, seats, world, owner, truth, plan, cl
 
   return {
     state, seats: S, submit, run, statusLine,
+    /** end(why): stop from outside the console (a Soul Run cancel); the loop closes as after `end`. */
+    end: (why = 'external-end') => stop(why),
     paired: (id, soul = null) => { const st = S[id]; if (st && st.pairing !== 'paired') markPaired(st, soul); },
     onboardFailed: (id) => { const st = S[id]; if (st && st.pairing === 'onboarding') { st.pairing = 'unpaired'; st.lastDirAt = null; timeline('unpaired', { seat: id }, `${id.padEnd(8)} onboarding ended unpaired`); } },
     onPaired: (fn) => { onPaired = fn; },

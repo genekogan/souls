@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-04 PC03 (#682) loose construction materials. These are new immutable revisions: core-rack-beam@2 (ddc83c9d0be5…), core-rack-upright@1 (0834a432f91e…) and core-plywood-sheet@1 (091d8bbcf0d8…). Each carries the native engine material's handling as components.carryable.handling (beam-9ft, upright-12ft, plywood-4x8), and size.box is the native size. Frozen core-rack-beam@1 (8e6154af4d4d…) is byte-identical in work.json. A narrow production K=2 run (`conformance.mjs --k 2 --filter core-rack-` and `--filter core-plywood-sheet`) baked, placed and rendered all 20 samples with 0 findings and 0 qualification gaps, so this supplement pins no finding. catalogue-checks: 837 items, every G2 failure held, 0 G3. No budgets, samples or gap checks were relaxed. Real carry and browser qualification are separate evidence in the PR.",
+  "findings": []
+}

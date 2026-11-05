@@ -19,7 +19,15 @@ export function report(receipt, r) {
   L.push(`| full clock, every world, quiet and active | ≥ ${O.clockMin} | quiet ${f(h.clockMinQuiet, 3)}, active ${f(h.clockMinActive, 3)} | ${mark(h.clockMinQuiet >= O.clockMin && h.clockMinActive >= O.clockMin)} |`);
   L.push(`| load failures (incl. reactive), overdue, unissued (incl. reactive) | 0 | ${h.loadFailures}, ${h.overdue}, ${h.unissued + (h.reactiveUnissued ?? 0)}${h.unissuedJoinFailed ? ` (${h.unissuedJoinFailed} of them belong to Souls that failed to join)` : ''} | ${mark(h.loadFailures === 0 && h.overdue === 0 && h.unissued === 0 && !h.reactiveUnissued)} |`);
   L.push(`| restarts, paused or dilated samples | 0 | ${h.restarts}, ${r.pausedSamples}, ${r.dilatedSamples} | ${mark(h.restarts === 0 && r.pausedSamples === 0 && r.dilatedSamples === 0)} |`);
-  L.push('', 'CPU and memory headroom (≥ 30 %) need the executor\'s entitlement and cgroup limits: #736.', '');
+  const Q = r.qualification;
+  if (Q) {
+    const a = Q.allocation, pct = (v) => (v == null ? 'unknown' : `${Math.round(v * 100)} %`);
+    L.push(`| CPU / cgroup-memory headroom, active | ≥ 30 % / ≥ 30 % | ${pct(Q.headroom.cpu)} of ${f(Q.headroom.cpuCapacityCores, 2)} cores (${Q.headroom.cpuCapacityFrom}) / ${pct(Q.headroom.memory)} | ${mark(Q.headroom.cpu == null || Q.headroom.memory == null ? null : Q.headroom.cpu >= 0.3 && Q.headroom.memory >= 0.3)} |`);
+    L.push('', '## Allocation (#736)', '', `cgroup v2 ${a.supported ? 'read' : 'not available on this host: entitlement, throttling, PSI and memory limit are unknown'}; cpu.max ${JSON.stringify(a.cpuMax)}, cpuset ${a.cpuset ?? 'unknown'}, memory.max ${a.memoryMaxMb ?? 'unknown'} MB, peak ${a.memoryPeakMb ?? 'unknown'} MB, swap peak ${Q.swapPeakMb} MB (max ${a.swapMaxMb ?? 'unknown'}). Used by worlds + launcher ${Q.cpuUsedCores} cores; cgroup CPU ${a.cgroupCpuCores ?? 'unknown'} cores; steal ${Q.stealShare ?? 'unknown'}; throttled periods ${Q.throttledPeriodShare ?? 'unknown'} (${a.throttledSecondsPerSecond ?? 'unknown'} s/s); PSI some cpu/memory/io ${JSON.stringify(Q.pressureSomeShare)}. Driver in the same cgroup as the worlds: ${a.driverSameCgroup ? '**yes (its CPU counts against the allocation)**' : 'no or unknown'}.`, '');
+    L.push('| world | process cores | main thread cores | hottest thread | loop p99 max ms | queue max | meets |', '|---|---|---|---|---|---|---|');
+    for (const [w, x] of Object.entries(Q.worlds)) L.push(`| ${w} | ${f(x.cpuCores, 3)} | ${f(x.mainCores, 3)} | ${x.hottestThread ? `${x.hottestThread} ${f(x.hottestCores, 3)}` : 'unknown (no /proc)'} | ${f(x.loopP99MsMax)} | ${f(x.queueMax)} | ${x.met ? 'yes' : '**no**'} |`);
+    L.push('');
+  } else L.push('', 'CPU and memory headroom (≥ 30 %) need the executor\'s entitlement and cgroup limits: #736.', '');
   L.push('## Offered demand and outcomes', '', 'Latency columns are p50 / p95 / p99 / max ms (n); `*` = p99 from fewer than 100 samples. End-to-end runs from the scheduled time; answered-only is diagnostic.', '');
   L.push('| group | offered | issued | unissued | overdue | load failures | outcomes | end-to-end | lateness at send | answered-only |', '|---|---|---|---|---|---|---|---|---|---|');
   for (const [k, x] of Object.entries(a)) L.push(`| ${k} | ${x.offered} | ${x.issued} | ${x.unissued} | ${x.overdue} | ${x.loadFailures} | ${Object.entries(x.outcomes).map(([o, n]) => `${o} ${n}`).join(', ')} | ${qs(x.e2eMs)} | ${qs(x.lateMs)} | ${qs(x.answeredOnlyServiceMs)} |`);
@@ -45,5 +53,16 @@ export function report(receipt, r) {
   L.push(`Real browser: ${r.browser ? JSON.stringify(r.browser) : 'not run'}.`);
   L.push(`Cleanup: ${JSON.stringify(r.cleanup)}.`, '');
   L.push('## Coverage', '', ...Object.entries(receipt.coverage).map(([k, v]) => `- ${k}: ${Array.isArray(v) ? v.join('; ') : v}`), '');
+  return L.join('\n') + '\n';
+}
+
+/** VERDICT.md over all runs of one invocation (#736 A5). */
+export function verdictReport(v, results) {
+  const L = [`# Capacity verdict: ${v.verdict}${v.qualifies ? '' : ' (indicative only, does not qualify)'}`, ''];
+  for (const x of v.reasons) L.push(`- ${x}`);
+  L.push('', '| run | read | action start | delivery | clock | failures | restarts | CPU headroom | memory headroom |', '|---|---|---|---|---|---|---|---|---|');
+  const b = (x) => (x == null ? '—' : x ? 'meets' : '**misses**'), pct = (x) => (x == null ? 'unknown' : `${Math.round(x * 100)} %`);
+  for (const r of results) { const q = r.qualification; if (!q) { L.push(`| ${r.profile} r${r.rep} | failed: ${r.failed} |||||||| `); continue; }
+    const o = q.objectives; L.push(`| ${r.profile} r${r.rep} | ${b(o.read)} | ${b(o.actionStart)} | ${b(o.delivery)} | ${b(o.clock)} | ${b(o.failures)} | ${b(o.restarts)} | ${pct(q.headroom.cpu)} | ${pct(q.headroom.memory)} |`); }
   return L.join('\n') + '\n';
 }

@@ -9,7 +9,7 @@ import { now, setAnchor } from '../../lib/clock.mjs';
 import { readJson, writeJson } from '../../lib/jsonl.mjs';
 import { sha256 } from '../../lib/hash.mjs';
 import { quota, quotaAllows } from '../../lib/quota.mjs';
-import { castToScenario, loadCast } from './cast.mjs';
+import { castPolicy, castToScenario, loadCast } from './cast.mjs';
 import { plan as makePlan } from './planner.mjs';
 import { createSwarm } from './orchestrator.mjs';
 import { parseScript, stdinConsole } from './console.mjs';
@@ -24,13 +24,25 @@ const infoOf = (s) => (typeof s?.info === 'function' ? s.info() : s?.info ?? {})
 
 /** Run fn over items with at most n in flight. */
 async function pool(items, n, fn) { const q = [...items]; await Promise.all(Array.from({ length: Math.max(1, n) }, async () => { while (q.length) await fn(q.shift()); })); }
+/** p, or undefined after ms; the timer is cleared either way so a finished session does not hold the process open. */
+const within = (p, ms) => { let t; return Promise.race([p, new Promise((r) => { t = setTimeout(r, ms); })]).finally(() => clearTimeout(t)); };
 
-export async function cmdDirect(a, { log = (...x) => console.error('[direct]', ...x) } = {}) {
+/** cmdDirect(args, hooks?, {log}) runs one directed session. hooks (tools/playtest/runs/, all optional) are cmdRun's:
+ *  own(kind, id, release, meta) registers each created resource, signal (AbortSignal) is checked between steps and ends
+ *  play when aborted, preflight is a result already computed, modules replaces the arena/observer imports (tests),
+ *  afterProvision runs after the world is up and before any seat. With hooks, live seats or a live planner are refused
+ *  before anything is created unless hooks.allowLiveModels is true. Without hooks the behavior is unchanged. */
+export async function cmdDirect(a, hooks = null, { log = (...x) => console.error('[direct]', ...x) } = {}) {
   const castPath = resolve(a._[1] ?? '');
   if (!existsSync(castPath)) { log(`usage: playtest.mjs direct <cast.json> [--server-root dir] [--world <url>] [--headless] [--script file] [--only a,b] [--out dir] [--no-planner] [--force-machine] [--keep-world]`); return 1; }
   let cast = loadCast(castPath);
   if (a.only) { const only = String(a.only).split(','); cast = { ...cast, seats: cast.seats.filter((s) => only.includes(s.id)), order: cast.order.filter((id) => only.includes(id)), console: { script: (cast.console?.script ?? []).filter((e) => { const m = String(e.line).match(/^redirect\s+([^:]+):/i); const at = String(e.at ?? '').split(':')[1]; return (!m || only.includes(m[1].trim().toLowerCase())) && (!at || only.includes(at)); }) } }; }
   if (a['no-planner']) cast = { ...cast, orchestrator: { ...cast.orchestrator, planner: null } };
+  const own = (kind, id, release, meta) => hooks?.own?.(kind, id, release, meta);
+  const checkAbort = (step) => { if (hooks?.signal?.aborted) throw Object.assign(new Error(`run cancelled before ${step}: ${hooks.signal.reason ?? 'aborted'}`), { code: 'RUN_CANCELLED' }); };
+  const policy = hooks ? castPolicy(cast) : null;
+  // An owning lifecycle admits live minds only when told to; refused here, before the run folder or any process exists.
+  if (policy?.live.length && hooks.allowLiveModels !== true) { log(`refused: live model roles ${policy.live.join(', ')} need controllers.allowLiveModels (explicit authorization); use scripted-owner seats and no planner`); return 2; }
   const serverRoot = resolve(a['server-root'] ?? DEFAULT_SERVER_ROOT);
   const headless = !!a.headless;
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
@@ -45,39 +57,46 @@ export async function cmdDirect(a, { log = (...x) => console.error('[direct]', .
 
   // 0 preflight
   const { preflight, onboardingText } = await import('../../playtest.mjs');
-  const pf = await preflight({ serverRoot });
+  const pf = hooks?.preflight ?? await preflight({ serverRoot, ...(policy ? { scenario: policy.scenario } : {}) });
   writeJson(join(runDir, 'preflight.json'), pf);
-  const pfOk = pf.ok || (a['force-machine'] && pf.checks.claude && pf.allow?.allowed !== false);
+  const pfOk = pf.ok || (a['force-machine'] && (policy ? pf.checks.providersOk : pf.checks.claude) && pf.allow?.allowed !== false);
   receipt(runDir, 0, 'preflight', { ok: !!pfOk, allow: pf.allow, machineOk: pf.checks.machineOk });
   if (!pfOk) { log('preflight failed', JSON.stringify(pf.checks)); return 2; }
 
-  const provision = await import('../../arena/provision.mjs');
-  const seatMod = await import('../../arena/seat.mjs');
-  const owner = await import('../../arena/owner.mjs');
-  const truthMod = await import('../../observer/world-truth.mjs');
-  const evidence = await import('../../observer/evidence.mjs');
-  const browserMod = await import('../../observer/browser.mjs');
+  const mods = hooks?.modules ?? {};
+  const provision = mods.provision ?? await import('../../arena/provision.mjs');
+  const seatMod = mods.seat ?? await import('../../arena/seat.mjs');
+  const owner = mods.owner ?? await import('../../arena/owner.mjs');
+  const truthMod = mods.truth ?? await import('../../observer/world-truth.mjs');
+  const evidence = mods.evidence ?? await import('../../observer/evidence.mjs');
+  const browserMod = mods.browser ?? await import('../../observer/browser.mjs');
+  const swarmTruth = mods.swarmTruth ?? worldTruth;
 
   let world = null, browser = null, sw = null, consoleIn = null; const seats = {}; const cameras = {};
   let code = 0;
+  let onAbort = null;
   try {
     // 1 world
+    checkAbort('provision');
     if (worldUrl) { world = { kind: 'url', base: worldUrl, startedAt: new Date().toISOString() }; }
     else {
       const slug = cast.world.slug ?? `pt-${cast.name}`.slice(0, 31);
-      world = await provision.startWorld({ serverRoot, slug, port: cast.world.port, genesis: join(serverRoot, cast.world.genesis), dataDir: join(runDir, 'server', 'data'), log: join(runDir, 'server', 'world.log'), fresh: true, natives: cast.world.natives === true });
+      world = await provision.startWorld({ serverRoot, slug, port: cast.world.port, genesis: join(serverRoot, cast.world.genesis), dataDir: join(runDir, 'server', 'data'), log: join(runDir, 'server', 'world.log'), fresh: true, natives: cast.world.natives === true, onSpawn: (child) => own('world', slug, () => provision.stopWorld({ pid: child.pid }), { pid: child.pid, port: cast.world.port, dataDir: join(runDir, 'server', 'data') }) });
       try { world = { ...world, ...(await provision.describeWorld({ base: world.base, slug, port: cast.world.port, pid: world.pid, build: world.build, startedAt: new Date().toISOString() })) }; } catch (e) { log('describeWorld failed', e.message); }
     }
     writeJson(join(runDir, 'world.json'), { ...world, child: undefined, healthz: undefined });
     try { writeJson(join(runDir, 'server', 'healthz-before.json'), await provision.healthz(world.base)); } catch { /* recorded as missing */ }
     receipt(runDir, 1, 'provision', { ok: true, base: world.base, build: world.build ?? null, kind: worldUrl ? 'url' : 'dev' });
+    if (hooks?.afterProvision) { checkAbort('setup'); await hooks.afterProvision({ world, runDir }); }
 
     // 2 seats: created now, onboarded in parallel while the planner writes the directions
     const codexHere = (() => { try { return spawnSync('codex', ['--version'], { stdio: 'ignore', timeout: 10000 }).status === 0; } catch { return false; } })();
     for (const s0 of cast.seats) {
+      checkAbort(`seat ${s0.id}`);
       let s = { ...s0, persona: null };
       if (s.adapter === 'codex-headless' && !codexHere) { s = { ...s, adapter: 'claude-headless', model: process.env.PLAYTEST_CODEX_SUBSTITUTE_MODEL ?? 'sonnet', wake: true, substitutedFrom: `codex-headless/${s0.model ?? 'default'}` }; log(`seat ${s.id}: codex not installed; played by claude-headless/${s.model}`); }
-      const seat = seatMod.createSeat({ runDir, seat: s, worldBase: world.base, serverRoot, rails: cast.rails });
+      const seat = await seatMod.createSeat({ runDir, seat: s, worldBase: world.base, serverRoot, rails: cast.rails });
+      own('controller', s.id, () => seat.stop(), { dir: seat.dir ?? null, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null });
       if (s.substitutedFrom) { seat.info.substitutedFrom = s.substitutedFrom; seat.save?.(); }
       seat.onboarding = true; seats[s.id] = seat;
     }
@@ -85,7 +104,8 @@ export async function cmdDirect(a, { log = (...x) => console.error('[direct]', .
 
     // cameras: one wide now, a follow camera per seat once it is paired
     const vpRaw = cast.observer.viewport; const vp = Array.isArray(vpRaw) ? { width: vpRaw[0], height: vpRaw[1] } : vpRaw;
-    try { browser = await browserMod.openBrowser({ headless: true, gpu: cast.observer.gpu ?? 'metal', serverRoot }); } catch (e) { log(`browser failed: ${e.message}`); }
+    if (browserMod) { try { checkAbort('browser'); browser = await browserMod.openBrowser({ headless: true, gpu: cast.observer.gpu ?? 'metal', serverRoot }); own('browser', 'observer', () => browser.close(), { gpu: browser.gpu ?? null }); } catch (e) { if (e.code === 'RUN_CANCELLED') throw e; log(`browser failed: ${e.message}`); } }
+    else log('observer browser unavailable: playing without cameras');
     const openCam = async (opts) => { if (!browser) return null; try { return await browser.openCamera({ ...opts, viewport: vp, dpr: cast.observer.dpr ?? 1, runDir, arrivalTimeoutMs: cast.observer.arrivalTimeoutMs ?? 180000 }); } catch (e) { log(`camera ${opts.name} failed: ${String(e.message).split('\n')[0]}`); return null; } };
     if (cast.observer.cameras.includes('wide')) openCam({ base: world.base, identity: null, kind: 'wide', name: 'wide' }).then((c) => { if (c) cameras.wide = c; });
     const followCam = (id) => { const i = infoOf(seats[id]); if (!cast.observer.cameras.includes('follow') || !i.soulId || cameras[id]) return; openCam({ base: world.base, identity: i.ownerIdentity, kind: 'follow', soulId: i.soulId, name: id }).then((c) => { if (c) cameras[id] = c; }); };
@@ -109,22 +129,26 @@ export async function cmdDirect(a, { log = (...x) => console.error('[direct]', .
 
     // 3 play
     const script = a.script ? parseScript(readFileSync(resolve(a.script), 'utf8')) : headless ? cast.console.script : [];
-    const quotaCheck = async () => quotaAllows(await quota(), { stopPct: cast.rails.quotaStopPct ?? 90 }).allowed;
-    sw = createSwarm({ cast, runDir, seats, world, owner, truth: worldTruth({ base: world.base }), plan, observer: { cameras, evidence, truth: truthMod }, script, print, quotaCheck, log: (m) => log(m) });
+    const quotaCheck = policy && !policy.claude ? null : async () => quotaAllows(await quota(), { stopPct: cast.rails.quotaStopPct ?? 90 }).allowed;
+    checkAbort('play');
+    sw = createSwarm({ cast, runDir, seats, world, owner, truth: swarmTruth({ base: world.base }), plan, observer: { cameras, evidence, truth: truthMod }, script, print, quotaCheck, log: (m) => log(m) });
     sw.onPaired(followCam);
+    // A lifecycle cancel during play ends the session the way the console's `end` does, so close and verdict still run.
+    if (hooks?.signal) { onAbort = () => sw.end('lifecycle-cancel'); if (hooks.signal.aborted) onAbort(); else hooks.signal.addEventListener('abort', onAbort, { once: true }); }
     for (const [id, ok, soul] of early.splice(0)) notify(id, ok, soul);
     if (!headless) { consoleIn = stdinConsole((l) => sw.submit(l)); print('console: type to all, "<seat>: …", "redirect <seat>: …", "economy <seat|all> lean|normal|rich", pause, resume, status, end'); }
     const summary = await sw.run();
     consoleIn?.close();
-    await Promise.race([onboardAll, new Promise((r) => setTimeout(r, 5000))]);
+    await within(onboardAll, 5000);
     receipt(runDir, 3, 'play', { ok: true, stoppedBy: summary.stopped, elapsedSec: summary.elapsedSec, phase: summary.phase, gateReason: summary.gateReason });
   } catch (e) {
     log('direct failed:', e.stack ?? e.message); code = 1;
-    receipt(runDir, 9, 'failure', { ok: false, error: String(e.stack ?? e.message) });
+    receipt(runDir, 9, 'failure', { ok: false, error: String(e.stack ?? e.message), ...(e.code ? { code: e.code } : {}) });
   } finally {
+    if (onAbort) hooks.signal.removeEventListener?.('abort', onAbort);
     consoleIn?.close();
     const closed = { seats: [] };
-    for (const seat of Object.values(seats)) { try { await Promise.race([seat.stop(), new Promise((r) => setTimeout(r, 300000))]); closed.seats.push(infoOf(seat)); } catch (e) { closed.seats.push({ error: e.message }); } }
+    for (const seat of Object.values(seats)) { try { await within(seat.stop(), 300000); closed.seats.push(infoOf(seat)); } catch (e) { closed.seats.push({ error: e.message }); } }
     if (browser) { try { await browser.close(); } catch { /* ignore */ } }
     try { if (world?.base) writeJson(join(runDir, 'server', 'healthz-after.json'), await provision.healthz(world.base)); } catch { /* recorded as missing */ }
     writeJson(join(runDir, 'close.json'), { ...now(), ...closed });
