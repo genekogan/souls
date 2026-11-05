@@ -8,15 +8,15 @@
 #
 #   scripts/bootstrap.sh [--no-media]
 set -uo pipefail
-cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)" || exit 0
+top=$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null) && [ -n "$top" ] && cd "$top" || exit 0
 
 media_wanted=1
 for arg in "$@"; do [ "$arg" = --no-media ] && media_wanted=0; done
 
 log="${TMPDIR:-/tmp}/sim-session-start.log"
 state=node_modules/.cache/sim-session-start
-if command -v sha256sum >/dev/null 2>&1; then hash() { sha256sum; }; else hash() { shasum -a 256; }; fi
-fingerprint() { git ls-files -s -- "$@" 2>/dev/null | hash | cut -c1-16; }
+if command -v sha256sum >/dev/null 2>&1; then sha() { sha256sum; }; else sha() { shasum -a 256; }; fi
+fingerprint() { git ls-files -s -- "$@" 2>/dev/null | sha | cut -c1-16; }
 stamp() { cat "$state/$1" 2>/dev/null; }
 limit() { if command -v timeout >/dev/null 2>&1; then timeout "$@"; else shift; "$@"; fi; }
 

@@ -12,4 +12,5 @@ if [ -d /opt/pw-browsers ]; then
   [ -n "${CLAUDE_ENV_FILE:-}" ] && echo "export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers" >> "$CLAUDE_ENV_FILE"
 fi
 
+[ -f "$root/scripts/bootstrap.sh" ] || exit 0
 exec bash "$root/scripts/bootstrap.sh"
