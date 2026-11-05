@@ -1,4 +1,4 @@
-// The security headers every answer carries (#1006), defined once. A leaf module with no imports, so the read worker
+// The security headers every answer carries (#1006), defined once. A leaf module with no runtime imports, so the read worker
 // (split/read-worker.ts, #1025) can set them without loading the HTTP app; http.ts re-exports all three.
 import type {ServerResponse} from 'node:http';
 
