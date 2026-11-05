@@ -78,9 +78,15 @@ export function servingWait(whenServing: () => Promise<void> | null): Middleware
 }
 /** Hono's bodyLimit, safe after a middleware has read the body (#1013). bodyLimit reads the request's own stream when
  *  there is no Content-Length; once a middleware has read the body through Hono's cache (the edge idempotency keys do),
- *  that stream is spent and getReader() throws "ReadableStream is locked", a 500. Then the cached body is measured. */
+ *  that stream is spent and getReader() throws "ReadableStream is locked", a 500. Then the cached body is measured; if
+ *  there is none to measure (an interrupted upload, or a raw read outside the cache) the answer is 400, not 500. */
 export function limitBody(maxSize: number, onError: (c: Context) => Response | Promise<Response>): MiddlewareHandler {
-  return async (c, next) => c.req.raw.bodyUsed ? ((await c.req.arrayBuffer()).byteLength > maxSize ? onError(c) : next()) : bodyLimit({maxSize, onError})(c, next);
+  return async (c, next) => {
+    if (!c.req.raw.bodyUsed) return bodyLimit({maxSize, onError})(c, next);
+    const bytes = await c.req.arrayBuffer().then(b => b.byteLength, () => -1);
+    if (bytes < 0) return c.json({ok: false, code: 'bad-body', message: 'request body could not be read'}, 400);
+    return bytes > maxSize ? onError(c) : next();
+  };
 }
 type Deps = { cfg: Config; db: Db; host: WorldHost; auth: Auth; hub: Hub; brain: Brain; souls: Souls; takes?: TakeArchive; station?:CandidateStationV1; stationV2?:CandidateStationV2; intentV2?:IntentControlV2; edge?:EdgeLedger; god?: GodMode; contextReady?:()=>boolean; contextWait?:(signal:AbortSignal)=>Promise<void>; contextLevelAt?:(x:number,z:number,y:number)=>number; load?:{admission?:Admission;monitor:LoadMonitor;crowded?:(soulId:string)=>{position:number;eta_s:number}|null} };
 

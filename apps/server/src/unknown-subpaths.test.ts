@@ -30,9 +30,9 @@ test('unknown plan and objects sub-paths answer 404, with or without Content-Len
   const app = world(t);
   for (const url of ['/v1/edge/plan/x', '/v1/edge/plan/x/y', '/v1/edge/objects/x', '/v1/edge/objects/x/y'])
     for (const method of ['POST', 'PATCH', 'DELETE']) for (const length of [false, true]) {
-      if (url === '/v1/edge/plan/x' && method !== 'POST') continue;             // PATCH and DELETE /v1/edge/plan/:id are routes
-      const r = await send(app as never, method, url, length);
-      assert.equal(r.status, 404, `${method} ${url} (Content-Length: ${length})`);
+      const r = await send(app as never, method, url, length), why = `${method} ${url} (Content-Length: ${length})`;
+      if (url === '/v1/edge/plan/x' && method !== 'POST') assert.equal(r.status, 401, why);   // PATCH and DELETE /v1/edge/plan/:id are routes
+      else assert.equal(r.status, 404, why);
     }
 });
 
@@ -57,6 +57,11 @@ test('the body limit still holds after a middleware has read the body', async t 
   assert.equal((await h.request('/', {method: 'POST', body: '12345'})).status, 200);
   assert.equal((await h.request('/', {method: 'POST', body: '12345678901234567890'})).status, 413);
   assert.deepEqual(seen, [5], 'the route reads the body the middleware read');
+  const raw = new Hono();
+  raw.use('*', async (c, next) => { await c.req.raw.text(); await next(); });   // a read outside Hono's cache leaves nothing to measure
+  raw.use('*', limitBody(10, c => c.json({code: 'too-large'}, 413)));
+  raw.post('*', c => c.text('ok'));
+  assert.equal((await raw.request('/', {method: 'POST', body: '12345'})).status, 400);
   const app = world(t), big = JSON.stringify({pad: 'x'.repeat(70 * 1024)});
   const r = await app.request('/v1/edge/plan/x', {method: 'POST', headers: {host: '127.0.0.1:5964', 'content-type': 'application/json'}, body: big});
   assert.equal(r.status, 413, 'the 64 KB /v1/* cap applies to a body idempotency already read');
