@@ -28,6 +28,8 @@ export type PlanInput = {
   labelOf: (id: string) => string;
   carrierNames?: string[];
   maxExpand?: number;
+  /** PC07 (#686), opt-in (a `holdCutV1` carry): a failure's details also give the pose budget it searched within. */
+  budgetDetail?: true;
 };
 /** The bounded search's default pose budget: a failure that expanded more poses than this stopped there, unproven. */
 export const PLAN_MAX_EXPAND = 150_000;
@@ -239,7 +241,7 @@ function failure(inp: PlanInput, field: Float32Array, fieldOk: boolean, Q: SE2[]
       subjects: blocker ? [blocker] : [],
       at: hit ? [hit.p[0], 0, hit.p[1]] : [q.x, 0, q.z],
       // budget: a search that stopped there (expanded > budget) did not prove there is no way
-      details: { stuck: q, blocker, part, expanded, budget: inp.maxExpand ?? PLAN_MAX_EXPAND, field: fieldOk ? 'grid' : 'euclidean' },
+      details: { stuck: q, blocker, part, expanded, ...(inp.budgetDetail ? { budget: inp.maxExpand ?? PLAN_MAX_EXPAND } : {}), field: fieldOk ? 'grid' : 'euclidean' },
     },
   };
 }

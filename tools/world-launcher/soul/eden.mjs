@@ -11,7 +11,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.7.1";
+const VERSION = "2.8.1";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -681,7 +681,7 @@ async function act(...argv) {
   if (implicit && r.status === 400 && /owner message/.test(r.data?.error?.message ?? "")) { save({ lastAcked: undefined, lastAckedAt: undefined, lastAckedActed: undefined }); r = await call("/v1/edge/act", { body }); }
   const d = ok(r, "act");
   if (d.accepted) { const t = load(); if (implicit && d.open) save({ lastAckedAt: now() }); else if (t.lastAcked && !t.lastAckedActed) save({ lastAckedActed: true }); }
-  if (!d.accepted) return { accepted: false, code: d.code, reason: d.reason, ...(d.did_you_mean?.length ? { did_you_mean: d.did_you_mean.slice(0, 8) } : {}), ...(d.retry_after ? { retry_after: d.retry_after } : {}) };
+  if (!d.accepted) return { accepted: false, code: d.code, reason: d.reason, ...(d.did_you_mean?.length ? { did_you_mean: d.did_you_mean.slice(0, 8) } : {}), ...(d.alternatives?.length ? { alternatives: d.alternatives.slice(0, 3) } : {}), ...(d.retry_after ? { retry_after: d.retry_after } : {}) };
   let out = { accepted: true, receipt: d.receipt, ...(d.resolved ? { resolved: d.resolved } : {}), ...(d.chosen ? { chosen: d.chosen } : {}), channel: d.channel, ...(d.for ? { for: d.for } : {}), ...(d.open ? { open: true } : {}) };
   if (d.receipt?.id && d.channel !== "attention" && d.channel !== "none") save({ lastReceipt: d.receipt.id, lastActAt: now() });
   if (waitFor && d.receipt?.id && !TERMINAL.has(d.receipt.phase)) out = { ...out, ...(await wait(waitFor, d.receipt.id, "--json")) };
@@ -703,17 +703,22 @@ function compactEvent(event) {
 }
 export function brief(out) {
   const rec = out.receipt && !out.receipt.error ? out.receipt : null, fin = !!rec && TERMINAL.has(rec.phase);
-  const sentence = !rec ? null : fin ? rec.done ?? rec.outcome?.summary ?? `${rec.capability} ${rec.phase}${rec.reason ? `: ${rec.reason}` : ""}.`
+  // F2 (#373): only a completed receipt is `done`; a failed or replaced one says `failed` with the world's reason, never
+  // a success summary
+  const failed = fin && rec.phase !== "completed", key = !fin ? "now" : failed ? "failed" : "done";
+  const why = failed ? (rec.reason ? `: ${rec.reason}` : rec.code ? ` (${rec.code})` : "") : "";
+  const sentence = !rec ? null : failed ? `${rec.capability} ${rec.phase}${why}${/[.!?]$/.test(why) ? "" : "."}`
+    : fin ? rec.done ?? rec.outcome?.summary ?? `${rec.capability} ${rec.phase}.`
     : rec.now ?? `${rec.capability} ${rec.phase}: under way, not finished.`;
   const o = {
     ...(out.accepted !== undefined ? { accepted: out.accepted } : {}), ...(out.waited ? { waited: out.waited } : {}),
-    ...(sentence ? (fin ? { done: sentence } : { now: sentence, done: false }) : {}),
+    ...(sentence ? (fin ? { [key]: sentence } : { now: sentence, done: false }) : {}),
     ...(rec ? { receipt: { id: rec.id, capability: rec.capability, phase: rec.phase, ...(rec.code ? { code: rec.code } : {}) } } : {}),
     ...(out.for ? { for: out.for } : {}), ...(out.open ? { open: true } : {}), ...(out.ownerMessages ? { ownerMessages: out.ownerMessages } : {}),
     ...(out.resolved?.to && out.resolved.to !== out.resolved.from ? { resolved: out.resolved.to } : {}),
   };
   for (const k of ["resolved", "receipt"]) if (JSON.stringify(o).length > 600) delete o[k];
-  const key = fin ? "done" : "now", over = JSON.stringify(o).length - 600;
+  const over = JSON.stringify(o).length - 600;
   if (over > 0 && o[key]) o[key] = o[key].slice(0, Math.max(40, o[key].length - over - 1)) + "…";
   if (out.events?.length || out.gap) {
     const events = out.events ?? [];
