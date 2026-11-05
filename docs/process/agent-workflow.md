@@ -3,7 +3,7 @@
 Several coding agents (and people) can work on Soul concurrently. A development owner selects independent work
 and handles dependencies; repository conventions isolate changes, and the merge train serializes integration.
 [Agent lifecycle](agent-lifecycle.md) is the path one piece of work takes; this page is how many of them share the
-repository.
+repository. The [coordinator contract](development-coordinator.md) defines intake, rolling dispatch and recovery.
 
 ## Working in parallel
 
@@ -38,12 +38,35 @@ Two PRs that both append to one shared file conflict every time. So nothing a PR
 
 ## The merge train
 
-When a PR is ready, label it `merge:ready`. From there the train takes over, one PR at a time:
+When a PR is ready, label it `merge:ready`. From there the train takes over, one PR at a time, and first picks how
+the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
+
+- **Non-strict**: a T0–T2 PR that touches no strict path, whose required checks are green on its current head, which
+  GitHub reports mergeable without conflict, and while `main`'s CI is green, is squash-merged as is, even when it is
+  behind `main`: steps 1 and 2 are skipped. `main`'s own CI is the safety net for the combination. Adding
+  `merge:ready` re-runs label-triggered required checks (`proof-ok`, `fragment`), so while the head's checks are
+  pending and could still land it non-strict, the train waits up to 15 minutes before choosing; still pending, it is
+  strict.
+- **Strict**: everything else goes through the steps below: T3–T4, a head that is not green yet, a conflict or
+  unknown mergeability, and the strict paths (`STRICT_PATHS`): the engine (`mars/`, `packages/engine-*`,
+  `packages/kernel`, `packages/world-compiler`), `packages/conformance`, `pnpm-lock.yaml`, the walk and bundle
+  baselines and `.github/workflows/`.
+- **Main red**: every push to `main` and every manual run runs every CI job (`FULL_EVENTS` in
+  `.github/scripts/ci-scope.mjs`; pull request runs stay path-scoped). The train merges with `GITHUB_TOKEN`, whose
+  pushes start no workflows, so after each merge it dispatches `ci.yml` on `main` (the `ci` concurrency group keeps
+  at most one pending `main` run), and merges leave a full-scope run. A narrower green run does not clear a failure: `main`
+  stays red from a failed run until a later full-scope run (a manual `ci` run, or one in which
+  every qualify job ran) is green, or the failed run is re-run green. With no green full-scope run among the last 50
+  runs, `main` is unproven, which counts as red. While it is red every PR is strict, and the train
+  says so once per red streak on the coordination issue (repository variable `MERGE_TRAIN_NOTIFY_ISSUE`); a failed
+  notice is logged and does not stop the train.
+
+The strict steps:
 
 1. **Rebase** the branch onto the current `main`.
 2. **Re-test**: the required checks (`ci-ok` from the `ci` workflow, `gitleaks`, `path-guard`, `scrub-guard`,
    `proof-ok` and `fragment`) run on the rebased head, and the train waits for them there (a personal-account repo
-   has no GitHub merge queue; `merge-train.yml` is the queue), so `main` never gets a commit tested only against an
+   has no GitHub merge queue; `merge-train.yml` is the queue), so a strict PR never lands tested only against an
    older base.
 3. **Merge**, by tier ([PROOF-POLICY.yml](PROOF-POLICY.yml), `node tools/proof/tier.mjs`):
    - **T0–T2** merge automatically once every required check is green.
@@ -82,7 +105,9 @@ A PR that fails a check leaves the train with its result in the PR; fix it and r
 
 ## Who starts agents
 
-There are no scheduled agents. Nothing wakes up on a timer to pick issues, open PRs or ship releases. The maintainer
+There are no scheduled agents. Nothing wakes up on a timer to pick issues, open PRs or ship releases. A coordinator's
+bounded, expiring in-session watch is a wait, not a scheduled agent
+([development coordinator](development-coordinator.md#intake-and-dispatch)). The maintainer
 sets priorities and may authorize a development owner to select and start bounded workers within that agenda.
 The maintainer still gives the required go-ahead for anything above T2 and for every release. Delegation does not
 waive proof, budget or production safeguards. The only automation

@@ -74,7 +74,7 @@ function publicUrl(value: unknown, media: boolean): string {
   // Canonical href equality above also rejects dot-segment/backslash normalization before allowlisting paths.
   const allowed = media
     ? (u.origin === 'https://assets.eden.art' && /^\/public-journal\/[A-Za-z0-9._/-]+$/.test(u.pathname)) ||
-      (u.origin === 'https://github.com' && /^\/genekogan\/souls\/releases\/download\/proofs\/[A-Za-z0-9._-]+$/.test(u.pathname))
+      (u.origin === 'https://github.com' && /^\/genekogan\/souls\/releases\/download\/proofs(?:-\d+)?\/[A-Za-z0-9._-]+$/.test(u.pathname))
     : u.origin === 'https://github.com' && /^\/genekogan\/souls\/(?:pull\/\d+|commit\/[a-f0-9]{40}|releases\/tag\/[A-Za-z0-9._-]+)$/.test(u.pathname);
   if (!allowed) throw Error('Public journal: URL outside publication allowlist');
   return value;
