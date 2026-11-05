@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runOracles, genesisThings } from '../oracles.mjs';
 import { wordFromTargets } from '../expect-oracles.mjs';
-import { checkNear, validateScenario } from '../../scenarios/lib/validate.mjs';
+import { checkNear, checkTargets, validateScenario, SCENARIOS } from '../../scenarios/lib/validate.mjs';
 
 const T0 = Date.parse('2026-11-05T10:00:00Z');
 const at = (s) => new Date(T0 + s * 1000).toISOString();
@@ -86,4 +86,20 @@ test('N1: every near expect in the scenario folder has targets and passes the te
     if (s.director?.script?.some((e) => e.expect?.kind === 'near')) assert.deepEqual(validateScenario(s), [], f);
   }
   assert.ok(n >= 18, `${n} near expects`);
+});
+
+// #1011: a missing genesis is named, with the scenario and every expect whose template checks it stops; never silent.
+test('L1, L2: a missing genesis fails loudly, naming the scenario, the genesis and each skipped expect', async () => {
+  const { readFileSync } = await import('node:fs');
+  const s = JSON.parse(readFileSync(`${SCENARIOS}/wayfind-hello-hamlet.json`, 'utf8')), missing = 'worlds/templates/no-such-template.json';
+  assert.deepEqual(validateScenario(s), [], 'the real scenario validates');
+  const errs = validateScenario({ ...s, world: { ...s.world, genesis: missing } });
+  assert.ok(errs.includes(`scenario ${s.name}: world.genesis ${missing} not found in the repo`), errs.join('\n'));
+  const checked = s.director.script.flatMap((e, i) => (e.expect?.targets?.length || e.expect?.kind === 'near' ? [i] : []));
+  assert.ok(checked.length >= 6, `${checked.length} expects with template checks`);
+  for (const i of checked) assert.ok(errs.includes(`script[${i}] template checks not run: scenario ${s.name} names world.genesis ${missing}, which is missing`), `script[${i}]`);
+  assert.ok(validateScenario({ ...s, world: { ...s.world, genesis: undefined } }).some((e) => /^script\[\d+\] template checks not run: .* names world\.genesis undefined/.test(e)), 'an unset genesis too');
+  const x = { kind: 'near', source: missing, targets: [{ ref: 'cottage', names: ['cottage'], pos: [44, 10], radiusM: 10 }], answer: { anyOf: ['knoll'] } };
+  for (const call of [() => checkNear(missing, x, 'w'), () => checkTargets(missing, x.targets, 'w')])
+    assert.throws(call, { message: `genesis ${missing} not found in the repo: template checks cannot run` });
 });

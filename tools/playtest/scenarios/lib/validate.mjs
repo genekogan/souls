@@ -16,7 +16,14 @@ export const REPO = resolve(HERE, '../../../..');
 const PERSONAS = resolve(HERE, '../../personas');
 const ADAPTERS = ['claude-headless', 'codex-headless', 'scripted-owner'];
 const names = new Map();
-const namesOf = (genesis) => { if (!names.has(genesis)) names.set(genesis, templateNames(join(REPO, genesis))); return names.get(genesis); };
+const namesOf = (genesis) => {
+  if (!names.has(genesis)) {
+    // #1011: a missing template is a loud failure, never a bare ENOENT or a skipped check
+    if (!genesis || !existsSync(join(REPO, genesis))) throw new Error(`genesis ${genesis} not found in the repo: template checks cannot run`);
+    names.set(genesis, templateNames(join(REPO, genesis)));
+  }
+  return names.get(genesis);
+};
 
 /** Truth check of target refs against the template: the ref exists and pos is the template's (±0.5 m). → [string] */
 export function checkTargets(genesis, targets, where) {
@@ -49,7 +56,8 @@ export function validateScenario(s) {
   const errs = [];
   if (!s?.name || !/^[a-z0-9-]+$/.test(s.name)) errs.push('name: lowercase letters, digits and -');
   if (s?.world?.kind !== 'dev') errs.push('world.kind must be "dev" (the only kind run provisions)');
-  if (!s?.world?.genesis || !existsSync(join(REPO, s.world.genesis))) errs.push(`world.genesis ${s?.world?.genesis} not found in the repo`);
+  const genesisOk = !!s?.world?.genesis && existsSync(join(REPO, s.world.genesis));
+  if (!genesisOk) errs.push(`scenario ${s?.name}: world.genesis ${s?.world?.genesis} not found in the repo`);
   if (!Number.isInteger(s?.world?.port)) errs.push('world.port required');
   if (!(s?.durationSec > 0)) errs.push('durationSec > 0');
   const ids = new Set();
@@ -78,7 +86,8 @@ export function validateScenario(s) {
       for (const id of e.seat === '*' ? ids : [e.seat]) (bySeat[id] ??= []).push(e);
       if (e.expect) {
         for (const m of validateExpect(e.expect)) errs.push(`script[${i}] ${m}`);
-        if (s.world?.genesis && existsSync(join(REPO, s.world.genesis))) { errs.push(...checkTargets(s.world.genesis, e.expect.targets, `script[${i}]`)); if (e.expect.kind === 'near') errs.push(...checkNear(s.world.genesis, e.expect, `script[${i}]`)); }
+        if (genesisOk) { errs.push(...checkTargets(s.world.genesis, e.expect.targets, `script[${i}]`)); if (e.expect.kind === 'near') errs.push(...checkNear(s.world.genesis, e.expect, `script[${i}]`)); }
+        else if (e.expect.targets?.length || e.expect.kind === 'near') errs.push(`script[${i}] template checks not run: scenario ${s?.name} names world.genesis ${s?.world?.genesis}, which is missing`);
       }
     }
     // Sequential direction waits for each request; non-sequential direction may overlap them (a mid-activity redirection).
