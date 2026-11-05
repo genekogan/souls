@@ -36,8 +36,8 @@ export function activePlan(seed, souls, activeMs) {
   });
 }
 /** A read is crowded when another Soul's call was scheduled less than this before it: it may wait for that call's turn.
- *  An indicator of bunching, not of waiting: it looks back to the nearest call only, so a queue chain (reads 300+ ms
- *  apart, each still repaying the earlier ones' frame credit) is not counted. */
+ *  An indicator of bunching, not of waiting: it looks back only CROWD_MS, so a queue chain (reads 300+ ms apart, each
+ *  still waiting on the earlier ones' frame credit) is not counted. */
 export const CROWD_MS = 300;
 /** How bursty a plan is: each Soul's read phase within the read period, and the share of reads that are crowded. */
 export function scheduleFacts(plan, seed) {
