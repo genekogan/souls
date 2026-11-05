@@ -11,7 +11,7 @@ import { findRoute, type Route } from '../spatial/path.ts';
 import { HUMAN_PROFILE } from '../spatial/types.ts';
 import { carrierSpots, CARRIER_RADIUS, checkCrew, entityFrame, formationFor, laidPose, REACH, shortName as shortNameOf, type Formation, type SE2 } from './formation.ts';
 import { poseHit } from './sweep.ts';
-import { planCarry, type Trajectory } from './planner.ts';
+import { planCarry, type PlanFail, type PlanInput, type PlanOk, type Trajectory } from './planner.ts';
 import { holdingDiagnostic } from '../construction/rules.ts';
 import { PLAN_MARGIN } from './sweep.ts';
 import { climbGeom, climbObstacles, climbPose, loadObstacleHit, stairClearance, STAIR_SIDE_MARGIN, type ClimbGeom } from './climb.ts';
@@ -123,6 +123,33 @@ function gatherRoutes(sp: Spatial, item: Entity, people: Entity[], f: Formation,
   return { ok: true, approach, gather };
 }
 
+/**
+ * #1015: a formation search that found no way is kept, so the same refused request from the same spot does not
+ * search again (a refusal spends the whole pose budget, about 1.4 s on the act path). The key is the level grid it
+ * searched, by identity (grids are copy-on-write: an unchanged level stays the same object, a changed one is new),
+ * plus the navigation epoch, the grid variant, the load, the crew, the exact start and goal poses and the budget.
+ * The planner is a pure function of those, so a kept refusal is the verdict a fresh search would give, returned as a
+ * copy. Only failures are kept, a few per grid, on the spatial service (Spatial.carryRefusals, dropped with its other
+ * caches). Derived data only: nothing in the world changes. A request that differs at all (another target, another
+ * spot, a re-clustered paged window) is its own search.
+ */
+export const KEPT_REFUSALS_PER_GRID = 8;
+function searchOrKept(sp: Spatial, base: LevelGrid, variant: string, def: string, inp: PlanInput): PlanOk | PlanFail {
+  // exact numbers: JSON keeps every double except the sign of zero, which atan2 can see, so -0 is spelled out
+  const key = JSON.stringify([sp.epoch, variant, def, inp.carrierNames ?? [], inp.starts, inp.goals, inp.maxExpand ?? 'default'], (_k, v) => (Object.is(v, -0) ? '-0' : v));
+  const kept = sp.carryRefusals.get(base)?.get(key) as PlanFail | undefined;
+  if (kept) { sp.stats.carryRefusalsKept++; return structuredClone(kept); }
+  const r = planCarry(inp);
+  sp.stats.carrySearches++; sp.stats.carryExpanded += r.expanded;
+  if (!r.ok) {
+    let m = sp.carryRefusals.get(base);
+    if (!m) sp.carryRefusals.set(base, (m = new Map()));
+    if (m.size >= KEPT_REFUSALS_PER_GRID) m.delete(m.keys().next().value!);
+    m.set(key, structuredClone(r));
+  }
+  return r;
+}
+
 export function planCarryAction(rt: Runtime, p: CarryParams, fixture = false): PlanResult<CarryProgram> {
   const w = rt.world;
   const sp = rt.services.spatial as Spatial;
@@ -153,6 +180,7 @@ export function planCarryAction(rt: Runtime, p: CarryParams, fixture = false): P
   sp.sync(w);
   let g = sp.level(level);
   if (!g) return bad({ code: 'route.unknown-level', message: `level ${level} does not exist` });
+  const synced = g;
   const levelY = g.y;
   // a tall-lying item would block its own pickup in the grid: plan on a grid without it
   const own = sp.scene.obstacles.find((o) => o.id === item.id);
@@ -203,7 +231,7 @@ export function planCarryAction(rt: Runtime, p: CarryParams, fixture = false): P
     });
   };
   if (!goals.length) return routeFail(`the ${f.name} formation does not fit at the target ${fmt(tq.x, tq.z)}: ${goalWhy[0]}`);
-  const r = planCarry({ g, f, starts, goals, labelOf: (id) => labelOf(sp, id), carrierNames: p.crew });
+  const r = searchOrKept(sp, synced, g === synced ? '' : `without:${item.id}`, item.def, { g, f, starts, goals, labelOf: (id) => labelOf(sp, id), carrierNames: p.crew });
   if (!r.ok) return routeFail(r.diagnostic.message, r.diagnostic);
   const pickup = starts[r.start], target = goals[r.goal];
   const gr = gatherRoutes(sp, item, people, f, pickup, lie.halfW, level, levelY);
