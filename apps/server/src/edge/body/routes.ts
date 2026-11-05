@@ -58,6 +58,11 @@ export function launcherBodySite(url:string|undefined,key:string|undefined):Body
     return Buffer.concat(parts,n);
   }:undefined};
 }
+/** A carried body reference resolved at a destination world (#795): the body to wear, and, when its bytes are not here
+ *  yet, the pull to run once the arriving Soul is ready to change bodies. A refusal names its code. */
+export type BodyRefResolution={ok:true;body:Entity['body'];fetch?:()=>Promise<{ok:true}|{ok:false;code:string;reason:string}>}|{ok:false;code:string;reason:string};
+/** Per world host: resolve a carried `body_<sha>` reference for its owner, by the same rules as PUT /v1/edge/body {ref}. */
+export const bodyRefResolvers=new WeakMap<object,(ref:string,owner:string)=>BodyRefResolution>();
 export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySite?:BodySite}){
   const db=deps.db.db,world=deps.host.worldId;
   const moderation=moderationFor(db,world);
@@ -121,6 +126,21 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
     if(!localBytes(d.ref))return pullable&&site.pull&&sourceKey(d.sourceWorld)&&d.sourceWorld!==here?{ok:true,pull:true}:{ok:false,code:'body.source-unavailable',reason:'This body was admitted in another world and cannot be fetched here'};
     return {ok:true};
   }
+  const bodyOfDefinition=(d:{ref:string;descriptor:Record<string,unknown>}):Entity['body']=>{const asset=d.descriptor as {type:string;actionProfile?:string;motion?:unknown},type=asset.type,modelUrl=`${prefix}/v1/edge/body/assets/${d.ref}.glb`;
+    return {family:type==='humanoid'?'humanoid':'floater',type,model:d.ref,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(asset.actionProfile?{actionProfile:asset.actionProfile}:{}),...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})} as Entity['body'];};
+  // #795: travel carries a body reference; the destination resolves it here. Shared presets need no pull; other
+  // definitions follow the ref rules (owner's own or published, active, admitted type) and pull only when asked to.
+  bodyRefResolvers.set(deps.host,(ref,owner):BodyRefResolution=>{
+    if(!ASSET.test(ref))return {ok:false,code:'body.ref-unknown',reason:'No body definition with that reference'};
+    const preset=SHARED_BODY_BYTES[ref]?BODY_PRESETS.find(p=>(p.body as {model?:string}|null)?.model===ref):undefined;
+    if(preset)return types.includes(preset.body?.type??preset.body?.family??'humanoid')?{ok:true,body:structuredClone(preset.body) as Entity["body"]}:{ok:false,code:'body.world-policy',reason:'This world does not admit that body type'};
+    const d=definition(ref);if(!d||!visible(d,owner))return {ok:false,code:'body.ref-unknown',reason:'No body definition with that reference'};
+    const ok=selectable(d);if(!ok.ok)return ok;
+    return {ok:true,body:bodyOfDefinition(d),...(ok.pull?{fetch:async()=>{
+      if(!deps.souls.limits.allow(`edge-body-pull-owner:${owner}`,2,60000).ok)return {ok:false,code:'rate-limited',reason:'At most two body fetches from other worlds per owner per minute'};
+      if(!await pull(d))return {ok:false,code:'body.source-unavailable',reason:'The source world could not supply verified bytes for this body'};
+      const again=selectable(definition(ref)??{...d,status:'withdrawn'},false);return again.ok?{ok:true}:again;}}:{})};
+  });
   const wrap=(fn:(c:Context)=>unknown|Promise<unknown>)=>async(c:Context)=>{
     c.header('Cache-Control','no-store');try{return c.json(edgeBody(await fn(c) as object));}
     catch(e){if(e instanceof BodyAdmissionError)return c.json({contract:EDGE_CONTRACT,error:{code:e.code,message:e.message,...(e.details?{details:e.details}:{})}},400);
@@ -202,8 +222,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
       const d=definition(raw.ref);if(!d||!visible(d,s.owner))throw new EdgeError(404,'body.ref-unknown','No body definition with that reference');
       const ok=selectable(d);if(ok.ok&&ok.pull)fetchFirst=d;   // bytes move only after authority, safety and the throttle pass (below)
       if(!ok.ok)throw new EdgeError(ok.code==='body.world-policy'?403:409,ok.code,ok.reason);
-      const asset=d.descriptor as {type:string;actionProfile?:string;motion?:unknown},type=asset.type,modelUrl=`${prefix}/v1/edge/body/assets/${d.ref}.glb`;
-      body={family:type==='humanoid'?'humanoid':'floater',type,model:d.ref,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(asset.actionProfile?{actionProfile:asset.actionProfile}:{}),...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})} as Entity['body'];
+      body=bodyOfDefinition(d);
     }else if(raw.look!==undefined){ // core/humanoid@2: edits over the current look (today's look when none), a preset, or {random:true,seed?}
       try{body=lookRequest(current(s.entityId),raw.look,{preset:legacyPreset(s.entityId)},()=>randomInt(0,2**32-1)) as Entity['body'];}
       catch(e){if(e instanceof LookError)throw new EdgeError(400,'body.look',e.message);throw e;}
