@@ -1,5 +1,6 @@
 // CW1 (#735): REPORT.md for one meetup run. The objectives are #443's initial qualification budgets, fixed before
 // any run; a run labelled not-quiet (or any run off the qualifying executor) is indicative and never qualifies.
+import { EDGE_MS } from './growth.mjs';
 export const OBJECTIVES = Object.freeze({ readP95Ms: 250, readP99Ms: 1000, actStartP95Ms: 500, actStartP99Ms: 1000, deliveryP95Ms: 250, deliveryP99Ms: 1000, clockMin: 0.99 });
 
 const f = (v, d = 0) => (v == null || Number.isNaN(v) ? '—' : typeof v === 'number' ? v.toFixed(d) : String(v));
@@ -52,6 +53,7 @@ export function report(receipt, r) {
   L.push(`Viewers: ${Object.entries(r.viewers).map(([w, v]) => `${w} ${v.opens} open / ${v.closes} closed / ${Math.round(v.bytes / 1024)} KB`).join('; ')}.`);
   L.push(`Real browser: ${r.browser ? JSON.stringify(r.browser) : 'not run'}.`);
   L.push(`Cleanup: ${JSON.stringify(r.cleanup)}.`, '');
+  if (r.growth) L.push(...growthLines(r.growth), '');
   L.push('## Coverage', '', ...Object.entries(receipt.coverage).map(([k, v]) => `- ${k}: ${Array.isArray(v) ? v.join('; ') : v}`), '');
   return L.join('\n') + '\n';
 }
@@ -65,4 +67,23 @@ export function verdictReport(v, results) {
   for (const r of results) { const q = r.qualification; if (!q) { L.push(`| ${r.profile} r${r.rep} | failed: ${r.failed} |||||||| `); continue; }
     const o = q.objectives; L.push(`| ${r.profile} r${r.rep} | ${b(o.read)} | ${b(o.actionStart)} | ${b(o.delivery)} | ${b(o.clock)} | ${b(o.failures)} | ${b(o.restarts)} | ${pct(q.headroom.cpu)} | ${pct(q.headroom.memory)} |`); }
   return L.join('\n') + '\n';
+}
+
+/** CW8 A2 (#955): the growth table. Trends are over the residual window only; nothing is extrapolated. */
+export function growthLines(g) {
+  const L = ['## Growth over the activity window', ''];
+  if (!g.residual) return [...L, `No growth: ${g.why ?? 'no activity window'}.`];
+  if (g.residual.toMs - g.residual.fromMs <= 2 * EDGE_MS) return [...L, `No trends: after the ${g.warmupMin} min warm-up the residual window is ${Math.round((g.residual.toMs - g.residual.fromMs) / 60_000)} min, not longer than two 5-minute edges. Use \`--active-min\` (CW8 A2: 60 or more).`];
+  L.push(`Warm-up: the first ${g.warmupMin} min of the activity window are left out. Residual window: ${Math.round(g.residual.fromMs / 60_000)}–${Math.round(g.residual.toMs / 60_000)} min, ${g.residual.samples} samples (every 30 s). First and last are the medians of its first and last 5 minutes; the slope is least squares. A window this long cannot show indefinite stability (CW6 #740).`, '');
+  L.push('| series | all worlds: first → last | change | slope per hour | R² | steepest world (slope per hour) |', '|---|---|---|---|---|---|');
+  const f = (x) => (x == null ? '—' : x), row = (name, t, w) => `| ${name} | ${t?.first == null ? `— (${t?.why ?? 'no samples'})` : `${t.first} → ${t.last}`} | ${f(t?.delta)} | ${f(t?.slopePerHour)} | ${f(t?.r2)} | ${w ? `${w.world} (${w.slopePerHour})` : '—'} |`;
+  for (const [k, name] of [['rssMb', 'RSS MB (sum)'], ['heapUsedMb', 'main-thread heap used MB (sum)'], ['nonHeapMb', 'RSS − main-thread heap MB (includes worker heaps, sum)'], ['threads', 'threads (sum)'], ['dbMb', 'sim.db MB (sum)'], ['walMb', 'WAL MB (sum)'], ['shmMb', 'shm MB (sum)'], ['dataDirMb', 'data directories MB (sum)']]) L.push(row(name, g.sum?.[k], g.worst?.[k]));
+  for (const [k, name] of [['gcPct', 'GC % (10 s)'], ['queueDepth', 'queue depth']]) {
+    const ws = Object.entries(g.worlds ?? {}).map(([w, t]) => [w, t[k]]).filter(([, t]) => t?.last != null);
+    const top = ws.length ? ws.reduce((m, x) => (x[1].last > m[1].last ? x : m)) : null;
+    L.push(`| ${name} (highest world: ${top ? top[0] : '—'}) | ${top ? `${top[1].first} → ${top[1].last}` : '—'} | ${f(top?.[1].delta)} | ${f(top?.[1].slopePerHour)} | ${f(top?.[1].r2)} | ${g.worst?.[k] ? `${g.worst[k].world} (${g.worst[k].slopePerHour})` : '—'} |`);
+  }
+  for (const [k, name] of [['telemetryMb', 'telemetry store MB'], ['diskFreeMb', 'free disk MB (data volume)']]) L.push(row(name, g.host?.[k], null));
+  L.push('', `External memory: ${g.external?.why ?? 'not reported'}.`);
+  return L;
 }
