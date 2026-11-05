@@ -5,7 +5,7 @@ import type {MeaningPart} from '../../god/meaning.ts';
 import {parseCapability,tokens,type VocabResult} from '../ledger/vocabulary.ts';
 import {knownPart} from './resolved-parts.ts';
 
-type Candidate={capability:string;name:string;place:string;target?:MeaningPart['target'];available:boolean;reason?:string;what?:string;matched?:string[];unverified?:string[]};
+type Candidate={capability:string;name:string;place:string;target?:MeaningPart['target'];available:boolean;reason?:string;code?:string;what?:string;matched?:string[];unverified?:string[]};
 const names=(p:Place)=>[p.name,...(p.aliases??[]),...(p.ref?[p.ref]:[])];
 const words=(xs:string[])=>new Set(xs.flatMap(tokens));
 const covers=(q:string[],set:Set<string>)=>q.every(w=>set.has(w));
@@ -29,15 +29,17 @@ function contexts(L:EdgeLedger,p:Place,soul:EdgeSoul):string[]{
 }
 function candidate(L:EdgeLedger,soul:EdgeSoul,capability:string,p:Place,name:string,target:MeaningPart['target'],caps:EdgeCapability[],plans:Parameters<EdgeLedger['resolveOnDemand']>[3]):Candidate{
  const r=L.resolveOnDemand(soul,capability,caps,plans).v;
- if(r.kind==='unknown'||r.cap.id!==capability)return {capability,name,place:p.id,...(target?{target}:{}),available:false,reason:r.kind==='unknown'?r.reason:'The exact action is not offered now.'};
- return {capability,name,place:p.id,...(target?{target}:{}),available:r.cap.available,...(r.cap.blocked?{reason:r.cap.blocked.reason}:{})};
+ if(r.kind==='unknown'||r.cap.id!==capability)return {capability,name,place:p.id,...(target?{target}:{}),available:false,reason:r.kind==='unknown'?r.reason:'The exact action is not offered now.',...(r.kind==='unknown'&&r.code?{code:r.code}:{})};
+ return {capability,name,place:p.id,...(target?{target}:{}),available:r.cap.available,...(r.cap.blocked?{reason:r.cap.blocked.reason,code:r.cap.blocked.code}:{})};
 }
 function choice(kind:string,requested:string,candidates:Candidate[],reason:string,extra:Record<string,unknown>={}):VocabResult{
  return {kind:'unknown',code:candidates.length?'capability.choose':'capability.unavailable',reason,didYouMean:candidates.map(c=>({id:c.capability,label:c.name,...c})),discovery:{kind,requested,candidates,...extra}};
 }
 
-/** Return options only. Never choose a fixture, invent an action, or reinterpret an interaction as travel. */
-export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:EdgeCapability[],plans:Parameters<EdgeLedger['resolveOnDemand']>[3]):VocabResult|null{
+/** Return options. Never guess a fixture, invent an action, or reinterpret an interaction as travel. #849: a sit request
+ * whose words name exactly one bound seat by its own title or alias (not only its place) takes it when it is available,
+ * and is refused with its own reason when it is not; `take: false` (a purpose question, "where can I sit ...") only lists. */
+export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:EdgeCapability[],plans:Parameters<EdgeLedger['resolveOnDemand']>[3],take=true):VocabResult|null{
  if(text.includes(':'))return null;
  const all=[...L.places.byId.values()],known=all.filter(p=>L.knowledge.knows(soul.soulId,p.id));
  const purpose=PURPOSE.exec(text.trim());
@@ -47,7 +49,7 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
   const existing=parseCapability(text,new Set(caps.map(c=>c.verb)));
   if(!tokens(existing.rest).length&&!['walk','sit'].includes(existing.verb)&&caps.some(c=>c.verb===existing.verb))return null;
   const requested=(purpose[1]??purpose[2]).trim();
-  if(parseCapability(requested,new Set([...caps.map(c=>c.verb),'sit'])).verb==='sit')return semanticDiscovery(L,soul,requested,caps,plans);
+  if(parseCapability(requested,new Set([...caps.map(c=>c.verb),'sit'])).verb==='sit')return semanticDiscovery(L,soul,requested,caps,plans,false);
   const scope=/\s+(?:in|at)\s+(.+)$/i.exec(requested),activity=scope?requested.slice(0,scope.index):requested;
   const q=tokens(activity).filter(w=>!PURPOSE_FILLER.has(w));if(!q.length)return choice('purpose',requested,[],'Name the activity or purpose you want a place for.');
   const scoped=scope?known.filter(p=>covers(tokens(scope[1]),words(names(p)))):[];
@@ -82,14 +84,22 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  const relevant=entries.length||known.some(p=>p.parts?.length&&q.some(w=>words([...contexts(L,p,soul),...p.parts!.filter(part=>knownPart(L,soul,p,part)).flatMap(x=>[x.title,...(x.aliases??[])])]).has(w)));
  if(!relevant)return null;
  const ranked=entries.sort((a,b)=>q.filter(w=>b.own.has(w)).length-q.filter(w=>a.own.has(w)).length||a.p.id.localeCompare(b.p.id)||a.part.id.localeCompare(b.part.id));
- const candidates=ranked.filter(x=>x.part.sit).slice(0,8).map(({p,part})=>({...candidate(L,soul,part.sit!,p,`${part.title} — ${p.name}`,part.target,caps,plans),...(part.what?{what:part.what}:{})}));
+ const seats=ranked.filter(x=>x.part.sit).slice(0,8);
+ const candidates=seats.map(({p,part})=>({...candidate(L,soul,part.sit!,p,`${part.title} — ${p.name}`,part.target,caps,plans),...(part.what?{what:part.what}:{})}));
+ // #849: one seat, named by a word of its own (title or alias) that its place names do not share: taken when available (the ledger binds
+ // it by its exact id and the act answer's `resolved` names it), refused with its own reason when not; never a one-entry choice
+ if(take&&seats.length===1&&q.some(w=>seats[0].own.has(w)&&!seats[0].scope.has(w))){
+  const c=candidates[0];
+  if(c.available)return {kind:'alias',cap:{id:c.capability,verb:'sit',label:c.name,available:true} as EdgeCapability,note:`The only seat these words name is ${c.name} (${c.capability}); it was taken.`};
+  return {kind:'unknown',code:c.code??'capability.unavailable',reason:`The only seat these words name, ${c.name} (${c.capability}), cannot be taken now: ${c.reason??'it is not offered.'} No other seat was chosen.`,didYouMean:[{id:c.capability,label:c.name,...c}],discovery:{kind:'interaction',requested:'sit',candidates}};
+ }
  return choice('interaction','sit',candidates,candidates.length?'Choose a bound seat by its exact sit capability ID. No seat has been selected.':'No bound sit action matches that named target; no nearby seat or walk was substituted.');
 }
 
 /** Explore accepts bare purpose words as well as sentences. Bare words must all be
  * supported by one candidate's authored facts; never discard a missing name/qualifier. */
 export function exploreDiscovery(L:EdgeLedger,soul:EdgeSoul,query:string,caps:EdgeCapability[],plans:Parameters<EdgeLedger['resolveOnDemand']>[3]):VocabResult|null{
- const direct=semanticDiscovery(L,soul,query,caps,plans);if(direct)return direct;
+ const direct=semanticDiscovery(L,soul,query,caps,plans,false);if(direct)return direct;
  if(query.includes(':'))return null;
  const result=semanticDiscovery(L,soul,`a place for ${query}`,caps,plans);
  if(!result||result.kind!=='unknown'||result.discovery?.kind!=='purpose')return null;

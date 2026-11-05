@@ -15,10 +15,23 @@ function setup(){
 }
 test('named interaction matrix preserves action and hard place/part constraints',()=>{
  const {run}=setup();
- for(const text of ['sit on the harbour west pier','take a seat at the west pier','sit on a bench in the harbour west pier','where can I sit on the harbour west pier']){const r=run(text);assert.equal(r.code,'capability.choose',text);assert.deepEqual(r.didYouMean.map((x:any)=>x.id),['sit:west-pier/part-view-seat']);}
- for(const text of ['sit at the podium desk in Chiba','sit down at the Chiba auditorium presenter desk','take a seat at the podium desk in Chiba to prepare a presentation']){const r=run(text);assert.deepEqual(r.didYouMean.map((x:any)=>x.id),['sit:chiba/part-podium'],text);}
+ // the place named, not the seat (a word the seat shares with its place, "pier", names the place): still a choice
+ for(const text of ['sit on the harbour west pier','take a seat at the west pier','where can I sit on the harbour west pier']){const r=run(text);assert.equal(r.code,'capability.choose',text);assert.deepEqual(r.didYouMean.map((x:any)=>x.id),['sit:west-pier/part-view-seat']);}
+ // #849: one available seat named by its own words is taken, its note naming it; a purpose question only lists it
+ for(const [text,id] of [['sit on a bench in the harbour west pier','sit:west-pier/part-view-seat'],['sit at the podium desk in Chiba','sit:chiba/part-podium'],['sit down at the Chiba auditorium presenter desk','sit:chiba/part-podium'],['take a seat at the podium desk in Chiba to prepare a presentation','sit:chiba/part-podium']]){
+  const r=run(text);assert.equal(r.kind,'alias',text);assert.equal(r.cap.id,id,text);assert.match(r.note,new RegExp(`The only seat these words name is .*\\(${id}\\); it was taken`),text);
+ }
+ for(const text of ['where can I sit at the podium desk in Chiba','where can I sit on a bench in the harbour west pier']){const r=run(text);assert.equal(r.code,'capability.choose',text);assert.equal(r.didYouMean.length,1,text);}
  for(const text of ['sit in the Chiba gallery','sit at the missing desk in Chiba','sit at the podium desk in the missing auditorium','sit at the west pier sunset view'])assert.equal(run(text).didYouMean.length,0,text);
  assert.equal(run('sit down'),null);assert.equal(run('sit:chiba/part-podium'),null);
+});
+test('#849: an unavailable single named seat is refused with its own reason, never taken; explore only lists',()=>{
+ const {run,L,unavailable}=setup();unavailable.add('sit:chiba/part-podium');
+ const r=run('sit at the podium desk in Chiba');assert.equal(r.kind,'unknown');assert.equal(r.code,'capability.unavailable');
+ assert.match(r.reason,/The only seat these words name, Podium Desk Seat — Chiba \(sit:chiba\/part-podium\), cannot be taken now: No reachable floor\. No other seat was chosen\./);
+ assert.deepEqual(r.didYouMean.map((x:any)=>[x.id,x.available]),[['sit:chiba/part-podium',false]]);
+ unavailable.clear();const e=exploreDiscovery(L,{soulId:'s'} as any,'sit at the podium desk in Chiba',[],new Map()) as any;
+ assert.equal(e.code,'capability.choose');assert.deepEqual(e.didYouMean.map((x:any)=>x.id),['sit:chiba/part-podium']);
 });
 test('ambiguous seats are choices; private and unavailable anchors never become available',()=>{
  const {run,L,secret,unavailable}=setup();const chiba=L.places.byId.get('chiba');
@@ -59,8 +72,10 @@ test('supported untargeted activity commands remain activities before venue disc
 test('#848: relation words between a seat and its place: inside reads as in, outside is a constraint (outdoor)',()=>{
  const {run,L}=setup();
  L.places.byId.set('cottage',{id:'cottage',ref:'cottage',name:'Knoll Cottage',aliases:['cottage'],parent:'world',parts:[{id:'outdoor-bench',title:'Outdoor Bench',aliases:['hill bench'],sit:'sit:cottage/part-outdoor-bench',target:{entity:'bench',ref:'bench',slot:'seat'}}]});
- assert.deepEqual(run('sit on the bench outside the cottage').didYouMean.map((x:any)=>x.id),['sit:cottage/part-outdoor-bench']);
- assert.deepEqual(run('sit at the podium desk inside Chiba').didYouMean.map((x:any)=>x.id),['sit:chiba/part-podium']);
+ // (#849: each names one available seat by its own words, so it is taken)
+ assert.equal(run('sit on the bench outside the cottage').cap.id,'sit:cottage/part-outdoor-bench');
+ assert.equal(run('sit on the bench by the cottage').cap.id,'sit:cottage/part-outdoor-bench');
+ assert.equal(run('sit at the podium desk inside Chiba').cap.id,'sit:chiba/part-podium');
  assert.equal(run('sit at the podium desk outside Chiba').didYouMean.length,0,'no outdoor seat in Chiba: the constraint is kept');
 });
 

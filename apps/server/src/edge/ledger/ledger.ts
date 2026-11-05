@@ -2496,7 +2496,10 @@ export class EdgeLedger implements EdgeLedgerHooks {
   resolveOnDemand(soul: EdgeSoul, text: string, caps: EdgeCapability[], plans: Plans, typos = true): {v: VocabResult; caps: EdgeCapability[]; plans: Plans} {
     const exact = caps.find(c => c.id === text);
     if(exact && this.secretOffer(soul,exact))return {v:{kind:'unknown',code:'capability.unknown',reason:'That action is not known here.',didYouMean:[]},caps,plans};
-    if(!exact){const discovery=semanticDiscovery(this,soul,text,caps,plans);if(discovery)return {v:discovery,caps,plans};}
+    if(!exact){const discovery=semanticDiscovery(this,soul,text,caps,plans);if(discovery){
+      // #849: the one seat the words name was taken: bind it by its exact id (offered on demand when the listing leaves it out)
+      if(discovery.kind==='alias'){const r=this.resolveOnDemand(soul,discovery.cap.id,caps,plans,typos);return r.v.kind==='unknown'?r:{...r,v:{kind:'alias',cap:r.v.cap,note:discovery.note}};}
+      return {v:discovery,caps,plans};}}
     // RESOLVE: a building's floor ("go upstairs", "go inside the cottage and go upstairs", "the top floor of the tower")
     const fl = exact || !this.floorOnDemand ? null : floorWords(text);
     if (fl) {
