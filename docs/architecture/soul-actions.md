@@ -82,8 +82,8 @@ Other known limits:
 - Lighter revisions within the library's triangle budgets (#494): drum kit, mic stand, jukebox, garden fountain and
   curtained window `@2`; watering can, drawer chest, bell pull, kettle and mug `@3`. The older revision keeps its bytes
   and its recorded hold, because published revisions are immutable. The mug `@3` shows its tea level in fifths. The
-  lockable door (`@3`) draws five parts because its lock's thumb-turn, bolt and key move on their own; that, and the
-  construction-view draw counts every def with a `condition` parameter has, stay pinned (see #494).
+  lockable door (`@3`) draws five parts because its lock's thumb-turn, bolt and key move on their own; that, and
+  construction-view draw overruns, stay pinned (see #494).
 - Portable lights were rebuilt as carry-and-set-down (entry 29); the earlier version is retired. Mixed-outfit seams
   (entry 11) remain parked.
 
