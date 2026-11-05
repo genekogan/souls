@@ -8,7 +8,7 @@ import { pointInObb, type Vec2 } from '../../../mars/viewer/engine/core/math.ts'
 import type { EntityPhysicsV1 } from '../../../mars/viewer/engine/spatial/edits.ts';
 import type { Level, Link, Obstacle, Surface } from '../../../mars/viewer/engine/spatial/types.ts';
 import type { Entity, WorldState } from '../../../mars/viewer/engine/world/types.ts';
-import { registerAssets } from './catalog-adapter.ts';
+import { isLooseCarryAsset, registerAssets } from './catalog-adapter.ts';
 import { prepareImmutableSnapshotData } from '../../../mars/viewer/engine/runtime/codec.ts';
 
 export type { EntityPhysicsV1 };
@@ -154,7 +154,7 @@ export function applyWorldEdit(world: WorldState, e: WorldEditV1): { physics: En
     if (heldByBody) { kept.push(id); continue; }
     const f = v.fixture;
     const next: Entity = {
-      id, def: f.def, kind: f.kind === 'item' ? 'component' : 'fixture', label: f.label, tags: ['entity-world', ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.recordedItemPoseV1 ? ['entity-world-item-pose'] : []), ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.fixtureCarry ? ['entity-world-transport'] : [])],
+      id, def: f.def, kind: f.kind === 'item' ? 'component' : 'fixture', label: f.label, tags: ['entity-world', ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.recordedItemPoseV1 ? ['entity-world-item-pose'] : []), ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.fixtureCarry || isLooseCarryAsset(physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined) ? ['entity-world-transport'] : [])],
       pose: { p: [f.p[0], f.p[1], f.p[2]], yaw: f.yaw },
       provenance: { origin: 'design-edit', confidence: 'hypothetical', note: 'placed by the world\'s god (entity world, world-edit/1)' },
       ...(f.support ? { support: structuredClone(f.support) } : {}),

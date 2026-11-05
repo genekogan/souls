@@ -35,17 +35,69 @@ test('summarizeChecks: latest run per name, statuses as fallback, missing counts
   assert.equal(summarizeChecks({ runs: [run(1, 'ci-ok', 'completed', 'success')], required }).state, 'pending');
   const all = summarizeChecks({ runs: [run(1, 'ci-ok', 'completed', 'success'), run(2, 'proof-ok', 'completed', 'failure'), run(3, 'proof-ok', 'completed', 'success')], statuses: [{ context: 'legacy', state: 'success' }], required });
   assert.equal(all.state, 'pass');
-  const fail = summarizeChecks({ runs: [run(1, 'ci-ok', 'completed', 'cancelled'), run(2, 'proof-ok', 'in_progress')], statuses: [{ context: 'legacy', state: 'success' }], required });
+  const fail = summarizeChecks({ runs: [run(1, 'ci-ok', 'completed', 'failure'), run(2, 'proof-ok', 'in_progress')], statuses: [{ context: 'legacy', state: 'success' }], required });
   assert.equal(fail.state, 'fail');
-  assert.deepEqual(fail.failed, ['ci-ok (cancelled)']);
+  assert.deepEqual(fail.failed, ['ci-ok (failure)']);
   assert.deepEqual(parseChecks(''), DEFAULT_CHECKS);
   assert.deepEqual(parseChecks('a, b c'), ['a', 'b', 'c']);
+});
+
+test('summarizeChecks: a cancelled or replaced workflow run leaves no failure behind (#909)', () => {
+  // #674 at cb6a3e35: two ci runs a second apart; the older was cancelled and its always-run ci-ok failed, the newer
+  // had not created ci-ok yet. The newer run decides; until it reports, ci-ok is pending.
+  const wf = (id, suite, status, conclusion, o = {}) => ({ id, workflow_id: 7, check_suite_id: suite, status, conclusion, run_attempt: 1, run_started_at: '2026-11-04T22:25:47Z', ...o });
+  const cr = (id, suite, status, conclusion, completed_at = null) => ({ id, name: 'ci-ok', status, conclusion, check_suite: { id: suite }, completed_at });
+  const required = ['ci-ok'];
+  const cancelledOld = wf(100, 10, 'completed', 'cancelled');
+  const inFlight = wf(101, 11, 'in_progress', null);
+  const staleFail = cr(1, 10, 'completed', 'failure', '2026-11-04T22:25:53Z');
+  // A1: the cancelled run's failure is ignored; nothing newer yet, so pending.
+  const a1 = summarizeChecks({ runs: [staleFail], workflowRuns: [cancelledOld], required });
+  assert.deepEqual([a1.state, a1.pending, a1.failed], ['pending', ['ci-ok'], []]);
+  // A2: a newer run of the same workflow replaces an older one even when the older was not cancelled.
+  const doneOld = wf(100, 10, 'completed', 'failure');
+  assert.equal(summarizeChecks({ runs: [staleFail], workflowRuns: [doneOld, inFlight], required }).state, 'pending');
+  assert.equal(summarizeChecks({ runs: [staleFail, cr(2, 11, 'completed', 'success')], workflowRuns: [cancelledOld, { ...inFlight, status: 'completed', conclusion: 'success' }], required }).state, 'pass');
+  // ...and its own failure still fails (A5).
+  const real = summarizeChecks({ runs: [staleFail, cr(2, 11, 'completed', 'failure')], workflowRuns: [cancelledOld, { ...inFlight, status: 'completed', conclusion: 'failure' }], required });
+  assert.deepEqual([real.state, real.failed], ['fail', ['ci-ok (failure)']]);
+  // A3: a re-run in progress: the earlier attempt's result predates the attempt and waits; one from this attempt counts.
+  const rerunning = wf(100, 10, 'in_progress', null, { run_attempt: 2, run_started_at: '2026-11-04T23:00:00Z' });
+  assert.equal(summarizeChecks({ runs: [staleFail], workflowRuns: [rerunning], required }).state, 'pending');
+  assert.equal(summarizeChecks({ runs: [staleFail, cr(3, 10, 'completed', 'failure', '2026-11-04T23:05:00Z')], workflowRuns: [rerunning], required }).state, 'fail');
+  // A4: a cancelled conclusion is pending, never a failure.
+  assert.equal(summarizeChecks({ runs: [cr(4, 12, 'completed', 'cancelled')], workflowRuns: [wf(102, 12, 'completed', 'failure')], required }).state, 'pending');
+  assert.equal(summarizeChecks({ runs: [{ id: 5, name: 'ci-ok', status: 'completed', conclusion: 'cancelled' }], required }).state, 'pending');
+  // A5: a check from another app or an unknown suite is judged on its own; statuses are unchanged.
+  assert.equal(summarizeChecks({ runs: [cr(6, 99, 'completed', 'failure')], workflowRuns: [cancelledOld], required }).state, 'fail');
+  assert.equal(summarizeChecks({ runs: [], statuses: [{ context: 'ci-ok', state: 'failure' }], workflowRuns: [cancelledOld], required }).state, 'fail');
+  // Other workflows are not replaced by this one's newer run.
+  const gl = { id: 7, name: 'gitleaks', status: 'completed', conclusion: 'success', check_suite: { id: 20 } };
+  assert.equal(summarizeChecks({ runs: [gl], workflowRuns: [wf(200, 20, 'completed', 'success', { workflow_id: 8 }), inFlight], required: ['gitleaks'] }).state, 'pass');
+});
+
+test('wait: a stale failure from a cancelled run does not eject; the replacing run decides (#909)', async () => {
+  let polls = 0;
+  const api = { ghAll: path => {
+    if (path.includes('/actions/runs?head_sha=s')) return [{ workflow_runs: [
+      { id: 100, workflow_id: 7, check_suite_id: 10, status: 'completed', conclusion: 'cancelled' },
+      { id: 101, workflow_id: 7, check_suite_id: 11, status: polls < 4 ? 'in_progress' : 'completed', conclusion: polls < 4 ? null : 'success' },
+    ] }];
+    if (!path.includes('/check-runs')) return [];
+    polls++;
+    const runs = [{ id: 1, name: 'ci-ok', status: 'completed', conclusion: 'failure', check_suite: { id: 10 } }];
+    if (polls >= 4) runs.push({ id: 2, name: 'ci-ok', status: 'completed', conclusion: 'success', check_suite: { id: 11 } });
+    return [{ check_runs: runs }];
+  } };
+  const r = await wait({ repo: 'o/r', sha: 's', required: ['ci-ok'], api, sleep: async () => {}, pollSec: 0 });
+  assert.equal(r.result, 'pass');
+  assert.equal(polls, 4);
 });
 
 test('wait polls until the checks conclude, and times out', async () => {
   let calls = 0;
   const api = { ghAll: path => {
-    if (path.includes('/statuses')) return [];
+    if (!path.includes('/check-runs')) return [];
     calls++;
     return [{ check_runs: [{ id: 1, name: 'ci-ok', status: calls < 3 ? 'in_progress' : 'completed', conclusion: calls < 3 ? null : 'success' }] }];
   } };
@@ -61,10 +113,10 @@ test('wait polls until the checks conclude, and times out', async () => {
 test('wait: a failure must hold for two polls, so a re-run started by an approval is not missed', async () => {
   let calls = 0;
   const run = (id, status, conclusion) => [{ check_runs: [{ id, name: 'proof-ok', status, conclusion }] }];
-  const rerun = { ghAll: path => path.includes('/statuses') ? [] : (++calls === 1 ? run(1, 'completed', 'failure') : calls === 2 ? run(2, 'queued', null) : run(2, 'completed', 'success')) };
+  const rerun = { ghAll: path => !path.includes('/check-runs') ? [] : (++calls === 1 ? run(1, 'completed', 'failure') : calls === 2 ? run(2, 'queued', null) : run(2, 'completed', 'success')) };
   assert.equal((await wait({ repo: 'o/r', sha: 's', required: ['proof-ok'], api: rerun, sleep: async () => {}, pollSec: 0 })).result, 'pass');
   calls = 0;
-  const failing = { ghAll: path => path.includes('/statuses') ? [] : (calls++, run(1, 'completed', 'failure')) };
+  const failing = { ghAll: path => !path.includes('/check-runs') ? [] : (calls++, run(1, 'completed', 'failure')) };
   const r = await wait({ repo: 'o/r', sha: 's', required: ['proof-ok'], api: failing, sleep: async () => {}, pollSec: 0 });
   assert.equal(r.result, 'fail');
   assert.equal(calls, 2);
