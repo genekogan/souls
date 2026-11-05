@@ -72,7 +72,8 @@ context-size checks below), regression runs, and an uncut real-client recording 
     recorded trajectory, and the members walk on afterwards. A solo carry of a load that one person can take is unchanged.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
-  the station" mean the radio's station. A word only applies when that action is on offer.
+  the station" mean the radio's station; "put on a record" or "play a record" mean the record player, with the
+  sleeve the Soul picks as the `record` param. A word only applies when that action is on offer.
 - **Contact, then change.** The body walks to a stand point clear of the thing, turns to face it, and reaches. The
   world changes at the recorded contact: at the end of a door's swing, at the click of a switch, at the first knock.
   If the hand cannot get there (something in the way, out of reach, already in use), the act is refused with a reason
@@ -89,7 +90,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
 | Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
-| Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station. Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station" |
+| Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
@@ -100,7 +101,7 @@ A Soul's `here` frame lists a few nearby things with compact facts, and only for
 within about 4 m and in plain sight:
 
 - switches and fire: `on`; doors, windows, curtains and drawers: `open` (and `locked` for lockable doors);
-- a radio that is on: its `station`; an open drawer or locker: what it `holds` (names only; nothing while shut);
+- a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut);
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
   a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;

@@ -21,7 +21,7 @@
 // event clock never fires a backlog of notes when it comes back.
 import {audioSettings,setAudioSettings,subscribeAudioSettings} from '../audio-settings.ts';
 import { kettleHeat, type WorldModel } from '@sim/world-compiler';
-import { accompanistOf, drumHits, PIANO_FADE, pianoEndAt, pianoNotes, pianoReadyAt, sungNotes, type Accompanist } from '../../../../mars/viewer/app/engine-view/piano-score.ts';
+import { accompanistOf, crackle, drumHits, PIANO_FADE, pianoEndAt, pianoNotes, pianoReadyAt, recordNotes, sungNotes, type Accompanist } from '../../../../mars/viewer/app/engine-view/piano-score.ts';
 import { RADIO_STATIONS, stationEvents, TUNE, type RadioEvent } from './radio-stations.ts';
 import { makeSinger, micChain, type Singer } from './voice.ts';
 import { ambienceAt, condition, distanceTo, emittersOf, exposureAt, falloff, Movement, notesToSound, QueuedNotes, treeIndex, treesOf, type Emitter, type Resident, type SoundKind, type Source, type TreeIndex } from './sound-plan.ts';
@@ -120,7 +120,11 @@ function playJukeboxes(host: Host, x: number, y: number, z: number) {
     if (!jukeboxIds.has(e.id) || !condition(e.spec.when, { ...e.state, ...model.entities.get(e.id)?.state }, night)) continue;
     const g = falloff(distanceTo(e, x, y, z), e.spec.radius, e.spec.volume); if (g <= 0.001) continue;
     jukeboxNear = true;
-    for (const n of pianoNotes('jukebox:' + e.id, now - 0.05, now + JUKEBOX_AHEAD)) {
+    // #431: a record player plays the record on its platter (the sleeve's song); a jukebox its own song
+    const st = { ...e.state, ...model.entities.get(e.id)?.state }, ent = model.entities.get(e.id), def = ent && model.resolvedDef(ent.def);
+    const sleeves = (def?.state as Record<string, { values?: unknown[] }> | undefined)?.record?.values, record = typeof st.record === 'string' && Array.isArray(sleeves) ? st.record : null;
+    const notes = record !== null ? recordNotes(sleeves!.map(String), record, now - 0.05, now + JUKEBOX_AHEAD) : pianoNotes('jukebox:' + e.id, now - 0.05, now + JUKEBOX_AHEAD);
+    for (const n of notes) {
       const key = `${e.id}:${n.t}:${n.hand}`; if (jukeboxDone.has(key)) continue; jukeboxDone.set(key, n.t);
       const at = ctx.currentTime + Math.max(0, n.t - now);
       pianoKey(ctx, master, at, n.midi, g * n.vel * 0.45);
@@ -130,6 +134,11 @@ function playJukeboxes(host: Host, x: number, y: number, z: number) {
     for (let k = Math.ceil((now - 0.05) / 0.5); k * 0.5 < now + JUKEBOX_AHEAD; k++) {
       const key = `${e.id}:b${k}`; if (jukeboxDone.has(key)) continue; jukeboxDone.set(key, k * 0.5);
       if (k % 2) burst(ctx, master, ctx.currentTime + Math.max(0, k * 0.5 - now), 0.07, g * 0.06, 5000);
+    }
+    // a record's surface crackle: a few soft clicks a second, the same for every listener (a pure function of world time)
+    if (record !== null) for (let k = Math.ceil((now - 0.05) / 0.125); k * 0.125 < now + JUKEBOX_AHEAD; k++) {
+      const key = `${e.id}:c${k}`; if (jukeboxDone.has(key)) continue; jukeboxDone.set(key, k * 0.125);
+      if (crackle(k)) burst(ctx, master, ctx.currentTime + Math.max(0, k * 0.125 - now), 0.006, g * 0.05, 3200);
     }
   }
   for (const [k, t] of jukeboxDone) if (t < now - 2) jukeboxDone.delete(k);

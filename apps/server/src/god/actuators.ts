@@ -254,9 +254,36 @@ function stepBack(def: StoredDef, a: Action, motion: { root: [number, number, nu
   if (!isListAction(def, a) || typeof yaw !== 'number') return [];
   return [{ verb: 'walk_to', params: { to: [motion.root[0] + Math.sin(yaw) * 0.8, motion.root[2] + Math.cos(yaw) * 0.8], standoff: 0 } }];
 }
+/** #431: the enum fields a def action sets from its params (a record player's `record` from `{param: 'record'}`). */
+function enumParamFields(def: StoredDef, a: Action): { param: string; field: string; values: string[] }[] {
+  const out: { param: string; field: string; values: string[] }[] = [];
+  for (const t of a.then) {
+    if (t.op !== 'set' || typeof t.value !== 'object' || t.value === null || !('param' in (t.value as object))) continue;
+    const f = (def.state as Record<string, { type?: string; values?: unknown[] }>)[t.field];
+    if (f?.type === 'enum' && Array.isArray(f.values)) out.push({ param: (t.value as { param: string }).param, field: t.field, values: f.values.map(String) });
+  }
+  return out;
+}
+const enumKey = (v: unknown) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+/** #431: a param set into an enum field must name one of its values (case and spacing forgiven); null when every one does. */
+export function enumParamProblem(def: StoredDef, a: Action, params: Record<string, unknown>, name: string): Refusal | null {
+  for (const e of enumParamFields(def, a)) {
+    if (e.values.some(v => enumKey(v) === enumKey(params[e.param]))) continue;
+    const said = String(params[e.param] ?? '').trim().slice(0, 40);
+    return { code: 'capability.params', reason: `${name} has no ${e.field} ${said ? `“${said}”` : 'named'}; choose one of: ${e.values.join(', ')}.` };
+  }
+  return null;
+}
+/** The params with each enum pick replaced by the field's own spelling of it. */
+function canonicalParams(def: StoredDef, a: Action, params: Record<string, unknown>): Record<string, unknown> {
+  const picks = enumParamFields(def, a); if (!picks.length) return params;
+  const out = { ...params };
+  for (const e of picks) { const v = e.values.find(v => enumKey(v) === enumKey(params[e.param])); if (v !== undefined) out[e.param] = v; }
+  return out;
+}
 /** A def action's state patch: the `then` ops, or a pinboard's composed list. */
 export function actionPatch(def: StoredDef, a: Action, state: Record<string, unknown>, params: Record<string, unknown>, soul: EdgeSoul): Record<string, unknown> {
-  return isListAction(def, a) ? listPatch(def, a, state, soul, params) : thenPatch(a, state, params);
+  return isListAction(def, a) ? listPatch(def, a, state, soul, params) : thenPatch(a, state, canonicalParams(def, a, params));
 }
 /** The Soul-facing params of a def action: its declared string params (board text). */
 function actionParams(a: Action): Record<string, { type: 'string'; maxLength: number; description?: string; optional?: true }> {
@@ -289,7 +316,7 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
     out[a.name] = {
       label: a.label, roles: 'anyone', reach: 'anywhere', params: actionParams(a), movesBody: true,
       available: (s: BuiltLike, ctx: any) => check(s, ctx),
-      validate: (s: BuiltLike, p: Record<string, unknown>, ctx: any) => check(s, ctx) ?? (isListAction(def, a) ? listProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (isGameAction(def, a) && a.name === 'mark' ? gameProblem(a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p?.square ?? '') : null) ?? (a.name === 'write' && 'text' in actionParams(a) ? boardTextProblem(p?.text, actionParams(a).text.maxLength) : null),
+      validate: (s: BuiltLike, p: Record<string, unknown>, ctx: any) => check(s, ctx) ?? (isListAction(def, a) ? listProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (isGameAction(def, a) && a.name === 'mark' ? gameProblem(a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p?.square ?? '') : null) ?? (a.name === 'write' && 'text' in actionParams(a) ? boardTextProblem(p?.text, actionParams(a).text.maxLength) : null) ?? enumParamProblem(def, a, p ?? {}, nameOf(s)),
       apply: (s: BuiltLike, params: Record<string, unknown>, ctx: any) => {
         const can = s.key && a.name === 'water' ? host.watering?.(ctx.soul, s.key, a.name) : null;
         if (can && !('code' in can)) return { state: s, result: { action: a.name, summary: can.summary }, bodies: [{ label: a.label, steps: can.steps }] };
