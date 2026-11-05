@@ -190,7 +190,7 @@
 .god-modal .cn-head > b { font-size: 16px; }
 .god-modal .cn-sec, .god-modal .cn-changed { border-color: var(--gm-line); }
 
-/* the God button (Shell's top bar, right of Explore): Explore's pill, plus the agent's dot and a pairing badge */
+/* the God button (Shell's top bar, right of Explore): Explore's pill, a green border while the agent is connected, and a pairing badge */
 .god-control { position: relative; display: inline-flex; flex: none; }
 .explore-open.god-open { position: relative; }
 .god-open[aria-expanded="true"] { background: var(--fg); color: var(--bg); }
@@ -216,9 +216,8 @@
   .gm-answer input, .gm-danger-row input { font-size: 16px; }
   .gm-tools { justify-content: flex-start; }
   .god-modal .gm-withdraw { margin-left: 0; }
-  .god-open kbd { display: none; }
 }
-@media (max-width: 460px) { .hud-explore-group .god-open > span { display: none; } }
+@media (max-width: 460px) { .hud-explore-group .god-open > span:not(.gp-badge) { display: none; } }  /* #662: the pairing badge stays on phones */
 
 .gm-listener-notice { margin: 8px 0; font-size: .85rem; line-height: 1.45; opacity: .85; }
 .gm-listener-notice p { margin: 0 0 4px; }

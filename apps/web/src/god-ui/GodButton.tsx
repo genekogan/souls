@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as G from './god-api.ts';
 import { openGod, toggleGod, useGod, watchInbox } from './god-store.ts';
+import { godAgentState } from './god-agent-state.ts';
 
 /** ⌘G / Ctrl+G opens God (see team/lanes/t4-g4.md "Key"): browsers let a page take it (it is only find-next), unlike ⌘L. */
 export const GOD_KEY = 'g';
@@ -17,7 +18,7 @@ const BOLT = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2 4.5 11
 
 export function GodButton() {
   const [status, setStatus] = useState<G.Status | null>(null);
-  const { open, inbox } = useGod();
+  const { open, inbox, inboxError } = useGod();
   const owner = status?.you === 'owner' || status?.you === 'god';
   const pendingSeen = useRef(0), ownerNow = useRef(false);
   ownerNow.current = owner;
@@ -39,15 +40,13 @@ export function GodButton() {
   // people and a godless world's claimant get no God button (nor ⌘G); claiming stays on the claim card (GodPanel).
   if (!status || !owner) return null;
   const paired = (status.agents ?? 0) > 0;
-  // the owner's agent: 'on' (green border) only when the inbox says it is connected; not paired, not connected or not
-  // known yet keep the neutral border, so a stale or loading state never looks connected
-  const live = !paired ? 'off' : inbox ? (inbox.connected ? 'on' : 'off') : null;
-  const state = live === 'on' ? 'agent connected' : live === 'off' ? 'agent not connected' : 'agent status loading';
+  // the owner's agent: 'on' (green border) only when the inbox says it is connected (godAgentState)
+  const { live, words } = godAgentState(paired, inbox, inboxError, status.pending.length);
   const title = `God mode: your agent and this world (${godKeyLabel()})`;
   return (
     <span className="god-control">
-      <button type="button" className="explore-open god-open" data-god-open="owner" data-agent={live ?? undefined}
-        aria-label={`God mode, ${state}`} data-tooltip={title} aria-haspopup="dialog" aria-expanded={open} title={title} onClick={() => toggleGod()}>
+      <button type="button" className="explore-open god-open" data-god-open="owner" data-agent={live}
+        aria-label={`God mode, ${words}`} data-tooltip={title} aria-haspopup="dialog" aria-expanded={open} title={title} onClick={() => toggleGod()}>
         {BOLT}
         {status.pending.length ? <span className="gp-badge" aria-label={`${status.pending.length} pairing request`}>{status.pending.length}</span> : null}
       </button>
