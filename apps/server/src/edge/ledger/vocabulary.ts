@@ -303,7 +303,8 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
 // The vessel's offer names what it picks ("Pick the ripe tomatoes into the basket", "Pick flowers for the vase"); an
 // available one first. Only while such an offer exists; other words, and "pick up", resolve as before. A planter named after
 // "from" is passed on as the act's `from`.
-const HARVEST_WORDS = /^(?:please\s+)?(?:(?:go\s+and\s+|go\s+)?(?:pick|harvest|gather|collect|cut))\s+(?:(?:the|some|a\s+few|a\s+bunch\s+of|a\s+handful\s+of|my|our)\s+)?(?:ripe\s+)?(tomatoes|tomato|fruit|flowers|flower|blooms|cosmos)(?:\s+(?:in|into|for|to\s+put\s+in)\s+(?:the|a|my)\s+(basket|vase))?(?:\s+from\s+(?:the\s+)?(?!basket\b|vase\b)([a-z][\w-]*(?:\s+(?!and\b|then\b|basket\b|vase\b)[a-z][\w-]*)?))?$/;
+const HARVEST_WORDS = /^(?:please\s+)?(?:(?:go\s+and\s+|go\s+)?(?:pick|harvest|gather|collect|cut))\s+(?:(?:the|some|a\s+few|a\s+bunch\s+of|a\s+handful\s+of|my|our)\s+)?(?:ripe\s+)?(tomatoes|tomato|fruit|flowers|flower|blooms|cosmos)(?:\s+(?:in|into|for|to\s+put\s+in)\s+(?:the|a|my)\s+(basket|vase))?(?:\s+from\s+(?:(?:the|my|our|a|this|that)\s+)?(?!basket\b|vase\b)([a-z][\w-]*(?:\s+(?!and\b|then\b|basket\b|vase\b)[a-z][\w-]*)?))?$/;
+const GENERIC_PLANTER = /^(?:(?:garden|raised|vegetable|veg|flower)\s+)?(?:planters?|beds?|garden|plants?|vines?|patch|plot)$/;
 function harvestWords(input: string, ctx: VocabContext): VocabResult | null {
   const m = HARVEST_WORDS.exec(input.toLowerCase().replace(/[.!?\s]+$/, '').trim()); if (!m) return null;
   const fruit = /^(?:tomato|fruit)/.test(m[1]), word = fruit ? /\btomato/i : /\bflowers?\b/i;
@@ -312,7 +313,9 @@ function harvestWords(input: string, ctx: VocabContext): VocabResult | null {
   const caps = ctx.caps.filter(c => c.verb === 'object' && c.action === 'harvest' && word.test(c.label.replace(/\s*\(.*\)$/, ''))); if (!caps.length) return null;
   const cap = [...caps].sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id))[0]!;
   // "... from the rose bed" names the planter: the act picks from that one (harvest.ts), never the nearest instead
-  return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label})${m[3] ? `, from ${m[3]}` : ''}.`, ...(m[3] ? {params: {from: m[3]}} : {})};
+  // ("from the bed", "from the garden", "from the plants" name no planter in particular: the nearest ripe one, as before)
+  const from = m[3] && !GENERIC_PLANTER.test(m[3]) ? m[3].slice(0, 48) : undefined;
+  return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label})${from ? `, from ${from}` : ''}.`, ...(from ? {params: {from}} : {})};
 }
 // Soul Actions entry 42: "put the bowl in the drawer" is put-in:<container>; "take the bowl out of the chest" is that
 // bowl's take from inside it. A shut container's contents are never offered: its words name its open offer instead.

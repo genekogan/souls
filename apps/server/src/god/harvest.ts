@@ -25,7 +25,7 @@ const INTO_BED = 0.13, HAND_LEFT = 0.17;
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const isGrowing = (def: StoredDef | undefined) => (def?.state as Record<string, { type?: string }> | undefined)?.growth?.type === 'number';
-const words = (s: string) => s.toLowerCase().replace(/[-_.]+/g, ' ').replace(/\s+/g, ' ').trim();
+const words = (s: string) => s.toLowerCase().replace(/[-_.]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(?:the|my|our|a|this|that) /, '');
 const stageOf = (growth: unknown) => GROWTH_STAGES[Math.max(0, Math.min(GROWTH_STAGES.length - 1, Math.round(num(growth))))];
 
 export type HarvestHost = {
@@ -102,9 +102,10 @@ export function createHarvest(h: HarvestHost) {
     const from = GROWTH_STAGES.indexOf(hv.from);
     let ripe: string | null = null, rd = HARVEST_REACH, any: string | null = null, ad = HARVEST_REACH, denied: Refusal | null = null;
     // "pick the tomatoes from the rose bed": only the planter so named (its name, hyphens as spaces); never the nearest instead
-    const named = typeof params.from === 'string' && params.from.trim() ? words(params.from) : null;
-    const called = (p: string) => { const n = words(m.entities.get(p)?.name ?? ''); return n === named || (!!named && named.split(' ').every((w) => n.split(' ').includes(w))); };
-    const pool = named ? planters().filter(called) : planters();
+    const named = typeof params.from === 'string' && words(params.from) ? words(params.from) : null;
+    // an exact name first ("bed" beside "bed-two"); else every named word in the planter's name
+    const nameOf = (p: string) => words(m.entities.get(p)?.name ?? ''), exact = named ? planters().filter((p) => nameOf(p) === named) : [];
+    const pool = !named ? planters() : exact.length ? exact : planters().filter((p) => named.split(' ').every((w) => nameOf(p).split(' ').includes(w)));
     if (named && !pool.some((p) => { const q = pose(p); return q && Math.hypot(q.x - me[0], q.z - me[1]) <= HARVEST_REACH; })) return { code: 'harvest.no-such-planter', reason: `There is no garden planter called "${params.from}" near enough to pick ${hv.word} from.` };
     for (const p of pool) {
       const q = pose(p); if (!q) continue; const d = Math.hypot(q.x - me[0], q.z - me[1]); if (d > HARVEST_REACH) continue;
@@ -114,6 +115,8 @@ export function createHarvest(h: HarvestHost) {
       if (d < ad && !no) { ad = d; any = p; }
     }
     if (!ripe && denied) return denied;
+    // a named planter that is someone else's private one, and not ripe: say so, not that no planter is near
+    if (!ripe && !any && named) { const p = pool.find((x) => pose(x)); const no = p && soul.soulId ? h.access?.(p, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null; if (no) return no; }
     if (!ripe) return any ? { code: 'harvest.not-ripe', reason: `Nothing in ${m.pathOf(any)} is ready to pick into ${name}: it is ${stageOf(stateOf(any).growth)}, and ${hv.word} are picked when it is ${hv.from}.` } : { code: 'harvest.no-planter', reason: `There is no garden planter near enough to pick ${hv.word} from.` };
     const wp = pose(ripe)!, pdef = defOf(ripe)!, half = pdef.size.box[2] / 2;
     // stand at the long side nearer the Soul, facing into the bed; the left hand goes to the plant on the body's left

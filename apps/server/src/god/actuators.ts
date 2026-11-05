@@ -274,7 +274,8 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
   const out: Record<string, any> = {};
   for (const a of actionsOf(def)) {
     if (!/^[a-z][a-z0-9_-]{0,39}$/.test(a.name)) continue;
-    const check = (s: BuiltLike, ctx: { soul: EdgeSoul }): Refusal | null => {
+    // #438: `params` (validate only) carries a picking act's named planter; availability checks without it
+    const check = (s: BuiltLike, ctx: { soul: EdgeSoul }, params?: Record<string, unknown>): Refusal | null => {
       if (s.removed || !s.at) return { code: 'object.gone', reason: 'It is not there any more.' };
       const me = host.bodyAt(ctx.soul); if (!me) return { code: 'body.unavailable', reason: 'Your body is unavailable.' };
       const d = Math.hypot(s.at[0] - me[0], s.at[1] - me[1]);
@@ -285,7 +286,7 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
       const policy = s.key ? host.policy?.(s.key, ctx.soul, a.name) : null; if (policy) return policy;
       const can = s.key && a.name === 'water' ? host.watering?.(ctx.soul, s.key, a.name) : null; if (can) return 'code' in can ? can : null;
       const tea = s.key ? host.tea?.(ctx.soul, s.key, a.name) : null; if (tea) return 'code' in tea ? tea : null;
-      const pick = s.key ? host.harvest?.(ctx.soul, s.key, a.name) : null; if (pick) return 'code' in pick ? pick : null;
+      const pick = s.key ? host.harvest?.(ctx.soul, s.key, a.name, params) : null; if (pick) return 'code' in pick ? pick : null;
       const water = s.key ? waterPlan(a, s.key, ctx.soul, host) : null; if (water) return isRefusal(water) ? water : null;
       const state = (s.key && host.stateOf?.(s.key)) || s.state || {};
       return whenRefusal(a, state, nameOf(s)) ?? (isListAction(def, a) ? listProblem(def, a, state, ctx.soul) : isGameAction(def, a) ? gameProblem(a, state, ctx.soul) : null);
@@ -293,7 +294,7 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
     out[a.name] = {
       label: a.label, roles: 'anyone', reach: 'anywhere', params: actionParams(a), movesBody: true,
       available: (s: BuiltLike, ctx: any) => check(s, ctx),
-      validate: (s: BuiltLike, p: Record<string, unknown>, ctx: any) => check(s, ctx) ?? (isListAction(def, a) ? listProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (isGameAction(def, a) && a.name === 'mark' ? gameProblem(a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p?.square ?? '') : null) ?? (a.name === 'write' && 'text' in actionParams(a) ? boardTextProblem(p?.text, actionParams(a).text.maxLength) : null) ?? (s.key && p?.from ? harvestRefusal(host.harvest?.(ctx.soul, s.key, a.name, p)) : null),
+      validate: (s: BuiltLike, p: Record<string, unknown>, ctx: any) => check(s, ctx, p) ?? (isListAction(def, a) ? listProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (isGameAction(def, a) && a.name === 'mark' ? gameProblem(a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p?.square ?? '') : null) ?? (a.name === 'write' && 'text' in actionParams(a) ? boardTextProblem(p?.text, actionParams(a).text.maxLength) : null),
       apply: (s: BuiltLike, params: Record<string, unknown>, ctx: any) => {
         const can = s.key && a.name === 'water' ? host.watering?.(ctx.soul, s.key, a.name) : null;
         if (can && !('code' in can)) return { state: s, result: { action: a.name, summary: can.summary }, bodies: [{ label: a.label, steps: can.steps }] };
@@ -322,9 +323,6 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
   }
   return out;
 }
-
-/** #438: a picking act's refusal for these params (a named planter), else null. */
-const harvestRefusal = (r: { code: string; reason: string } | object | null | undefined) => (r && 'code' in r ? r as Refusal : null);
 
 /** Wrap the framework's `act` (what the ledger's commit calls) so an accepted actuator action changes the world. */
 export function wrapAct(objects: { act(id: string, soul: EdgeSoul, input: Record<string, unknown>): any } & { __vocabAct?: boolean }, find: (id: string) => { def: StoredDef; state: Record<string, unknown>; name: string } | null, host: ActuatorHost, log: (m: string) => void) {
