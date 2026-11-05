@@ -27,6 +27,23 @@ plain humanoid profile) and Wisp the ghost (`tools/body-authoring/ghost/`, depen
 refuses drift from the pinned asset ids in `apps/server/src/edge/body/shared-bodies.ts`. They are appended to the
 presets, so existing preset ids and Pip's asset id are unchanged. The ghost's hover is appearance only.
 
+[#723](https://github.com/genekogan/souls/issues/723) adds Juniper, a compact centaur foal (`tools/body-authoring/centaur/`),
+under a second declared action profile, `quadruped-torso/1`. The profile has the same disposition as `rolling-gripper/1`,
+in its own words:
+- supported ground travel (walk gait only);
+- upright standby rest;
+- an authored standing dance;
+- canonical hands;
+- everything else refused.
+
+The canonical legs are the forelegs. Two extra hind chains replay the same-side foreleg half a stride later.
+
+Support stays the 0.28 m humanoid disc. Owner admission skins `Idle`, `Standby_Loop` and `Dance_Loop` at their key times
+(every key time; more than 64 distinct key times in a standing clip is refused, `body.too-complex`; so is a body needing more than
+1,000,000 vertex poses to measure, which bounds this synchronous check to well under a second). It centres on the Idle pose as the renderer stands the body, and refuses `body.footprint` when a
+lower-body vertex leaves the disc; vertices weighted only to arm joints are not counted. The hooves are visual and the
+walk's stride is not bounded. The shared preset `centaur` is pinned like the others.
+
 All 13 curated Little Martians presets share the authored motion definition and remain available to every owner;
 humanoids remain the default. Uploaded definitions remain owner-scoped and world-scoped, rediscoverable with
 `body list` by stable asset ID, name and description. Their rendered mesh is publicly retrievable; owner-scoped

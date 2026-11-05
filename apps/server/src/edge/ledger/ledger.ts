@@ -3,7 +3,7 @@ import {handActuatorFrame} from '../../../../../mars/viewer/engine/social/hand-a
 // and the read-only hooks Core-Comms routes events and speech with. No model calls.
 import {StallGuard} from './stall-guard.ts';
 import {randomUUID} from 'node:crypto';
-import {hasRollingProfile} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
+import {hasDeclaredProfile} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
 import {DT} from '../../../../../mars/viewer/engine/runtime/runtime.ts';
 import {bodyCapabilityProblem,bodyVerbProblem,isRigidBody,shapeRigidCapabilities} from '../body/actions.ts';
 import {interiorShellPolygon} from './nav.ts';
@@ -249,7 +249,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       createdAt: id => (this.db.soul(id) as {created_at?: number} | undefined)?.created_at ?? null,
       pose: id => {const b = this.body(id); return b ? {x: b.pose.p[0], z: b.pose.p[2], level: b.human?.level ?? 0} : null;},
       posture: id => this.posture(id),
-      standby:(s,seconds)=>hasRollingProfile(this.body(s.entityId)?.body)?[{verb:'mars:body_motion_v1',params:{motion:'rest',seconds:Math.min(seconds,600)}}]:null,
+      standby:(s,seconds)=>hasDeclaredProfile(this.body(s.entityId)?.body)?[{verb:'mars:body_motion_v1',params:{motion:'rest',seconds:Math.min(seconds,600)}}]:null,
       standbyLeftMs:id=>{const h=this.body(id)?.human,m=h?.bodyMotionV1;return h&&h.activity==='rest'&&m&&!m.release?Math.max(0,(m.until-1-this.host.engine.world.tick)*DT*1000):null;},   // to its last running tick
       agentBusy: id => this.pending.has(id) || this.openReceipts(id).length > 0 || this.together.awaiting(id) || this.holdingHands(id),
       running: id => !!this.host.engine.programOf(id),
@@ -292,7 +292,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (h.shore || st === 'swimming') return 'water';
     if (st === 'seated') return 'seated';
     if (st === 'lying' || st === 'sleeping' || ['stargaze', 'hammock'].includes(String(h.activity))) return 'lying';
-    if (hasRollingProfile(b.body) && h.activity === 'rest') return 'standby';
+    if (hasDeclaredProfile(b.body) && h.activity === 'rest') return 'standby';
     if (['walking', 'jogging', 'running', 'cycling'].includes(st)) return 'moving';
     return st === 'standing' ? 'standing' : 'other';
   }
@@ -1106,7 +1106,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (!focus || ride || focus.verbs.has('object') || objs!.size) {const outer = this.carrierPass; this.carrierPass = outer ?? {}; try {for (const p of this.providers) try {caps.push(...p(soul, objs, this.objectPlaces));} catch {/* a provider fault hides only its own entries */}} finally {this.carrierPass = outer;}}
     if (ride && !stepping) {const seated = this.rideStandRefusal(soul.entityId, caps), i = seated ? caps.findIndex(c => c.id === 'stand:here') : -1; if (i >= 0) caps[i] = {...caps[i]!, available: false, blocked: seated!};}
     shapeRigidCapabilities(me, caps, plans as never, {seconds: {type: 'integer', min: 1, max: 600, default: 60}});
-    if(me?.body?.motion?.dance||hasRollingProfile(me?.body))for(const c of caps){if(!['dance:here','rest:here','nap:here','lie:here'].includes(c.id))continue;const p=plans.get(c.id);if(p){const issue=this.mw.feasibility.canPerform({actor:soul.entityId,label:p.label,steps:p.steps});if(issue){c.available=false;c.blocked={code:issue.code,reason:issue.message};}}}
+    if(me?.body?.motion?.dance||hasDeclaredProfile(me?.body))for(const c of caps){if(!['dance:here','rest:here','nap:here','lie:here'].includes(c.id))continue;const p=plans.get(c.id);if(p){const issue=this.mw.feasibility.canPerform({actor:soul.entityId,label:p.label,steps:p.steps});if(issue){c.available=false;c.blocked={code:issue.code,reason:issue.message};}}}
     // knowledge/1: an offer that leads to (or names) a secret place this Soul has not been to or found is not offered
     if (this.knowledge.marked().size) for (let i = caps.length - 1; i >= 0; i--) {if (this.secretOffer(soul,caps[i]!)) {plans.delete(caps[i]!.id); caps.splice(i, 1);}}
     return {caps, plans};

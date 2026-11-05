@@ -19,9 +19,9 @@ const threeDir=dirname(dirname(require.resolve('three')));
 const media=resolve(process.env.CROWD_MEDIA??'.lane/mars-web');
 const models=resolve(process.env.CROWD_MARTIANS??'worlds/littlemartians/characters');
 const {pipBytes}=await import('../../../apps/server/src/edge/body/pip.ts');
-const {monsterBytes,ghostBytes,GHOST_PRESET,GHOST_ASSET}=await import('../../../apps/server/src/edge/body/shared-bodies.ts');
+const {monsterBytes,ghostBytes,centaurBytes,GHOST_PRESET,GHOST_ASSET}=await import('../../../apps/server/src/edge/body/shared-bodies.ts');
 // Shared bodies built and pinned exactly as the world serves them; the ghost loads from its admitted asset path.
-const shared={'/fixtures/pip.glb':pipBytes,'/fixtures/monster.glb':monsterBytes,[`/v1/edge/body/assets/${GHOST_ASSET}.glb`]:ghostBytes},built=new Map();
+const shared={'/fixtures/pip.glb':pipBytes,'/fixtures/monster.glb':monsterBytes,'/fixtures/centaur.glb':centaurBytes,[`/v1/edge/body/assets/${GHOST_ASSET}.glb`]:ghostBytes},built=new Map();
 const timings=process.argv.includes('--timings');
 let port=9290;
 while(!await portFree(port))port++;
@@ -76,7 +76,7 @@ async function open(context,budget='budgeted'){
  });
  report.rendererMode??=mode;assert.equal(mode,report.rendererMode,'renderer backend changed during run');return page;
 }
-const cases=[['none','budgeted'],['humanoid','budgeted'],['martians','full'],['martians','budgeted'],['pip','budgeted'],['monster','budgeted'],['ghost','budgeted']];
+const cases=[['none','budgeted'],['humanoid','budgeted'],['martians','full'],['martians','budgeted'],['pip','budgeted'],['monster','budgeted'],['ghost','budgeted'],['centaur','budgeted']];
 try{
  await server.listen();const pw=resolvePlaywright({serverRoot:root});
  const launch=launchArgs({gpu:'metal'});report.launchBackend=launch.gpu;
@@ -121,7 +121,7 @@ try{
  // Record separately, so video encoding cannot contaminate timing measurements. One context, uncut, real speed.
  const context=await browser.newContext({viewport:{width:1280,height:720},recordVideo:{dir:join(out,'video'),size:{width:1280,height:720}}});
  const page=await open(context),video=page.video(),marks=[],start=performance.now();
- for(const [arm,mode] of [['none','idle'],['humanoid','active'],['martians','active'],['pip','active'],['monster','active'],['ghost','active'],['ghost','distant']]){
+ for(const [arm,mode] of [['none','idle'],['humanoid','active'],['martians','active'],['pip','active'],['monster','active'],['ghost','active'],['ghost','distant'],['centaur','active']]){
   await select(page,arm,mode);marks.push({arm,mode,seconds:(performance.now()-start)/1000});await page.waitForTimeout(2000);
  }
  await context.close();report.proof={file:await video.path(),uncut:true,realSpeed:true,marks};

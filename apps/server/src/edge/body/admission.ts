@@ -2,7 +2,13 @@
 import {createHash} from 'node:crypto';
 import {inflateSync} from 'node:zlib';
 import {bodyMotionProblem,type BodyMotion} from '../../../../../mars/viewer/engine/bodies/motion.ts';
-import {ROLLING_GRIPPER,type ActionProfile} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
+import {QUADRUPED_TORSO,isActionProfile,type ActionProfile} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
+/** quadruped-torso/1 support: the lower body stays inside the humanoid navigation disc (world/catalog.ts HUMAN_RADIUS). */
+export const QUADRUPED_FOOTPRINT_RADIUS=.28;
+/** quadruped-torso/1: the most distinct key times a standing clip (Idle, Standby_Loop, Dance_Loop) may have; each is measured. */
+export const QUADRUPED_FOOTPRINT_KEYS=64;
+/** quadruped-torso/1: the most vertex poses (skinned vertices × measured key times) the footprint check performs. */
+export const QUADRUPED_FOOTPRINT_WORK=1_000_000;
 import {rigWorldPoints,rigWorldMatrices} from './rig.ts';
 export type BodyType='humanoid'|'ceramic'|'floater';
 export type BodyManifest={type:BodyType;license:'CC0'|'owned';rightsConfirmed:true;rig?:'quaternius/1';name?:string;description?:string;motion?:BodyMotion;actionProfile?:ActionProfile};
@@ -72,7 +78,7 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
  for(const key of Object.keys(m))if(!['type','license','rightsConfirmed','rig','name','description','motion','actionProfile'].includes(key))return no('body.manifest',`Unknown manifest field ${key}`);
  for(const [key,max]of [['name',80],['description',240]] as const)if(m[key]!==undefined&&(typeof m[key]!=='string'||m[key].length<1||m[key].length>max))return no('body.manifest',`${key} must be 1–${max} characters`);
  if(m.motion!==undefined){if(m.type==='humanoid')return no('body.motion','Authored rigid motion requires ceramic or floater type');const p=bodyMotionProblem(m.motion);if(p)return no('body.motion',p);}
- if(m.actionProfile!==undefined&&(m.actionProfile!==ROLLING_GRIPPER||m.type!=='humanoid'))return no('body.action-profile','Use rolling-gripper/1 only with the canonical contact rig');
+ if(m.actionProfile!==undefined&&(!isActionProfile(m.actionProfile)||m.type!=='humanoid'))return no('body.action-profile','Use rolling-gripper/1 or quadruped-torso/1 only with the canonical contact rig');
  const manifest=m as BodyManifest;
  bytes=bindBodyDefinition(bytes,manifest);
  if(bytes.length>BODY_LIMITS.bytes)return no('body.too-large','Body GLB exceeds 4 MiB');
@@ -144,6 +150,43 @@ export function admitBodyGLB(bytes:Buffer,raw:unknown){
    for(const channel of channels){const node=ref(nodes,channel.target?.node,'animation.target.node');void node;if(!['translation','rotation','scale'].includes(channel.target?.path))return no('body.clips','Unsupported animation target');const sampler=ref(as,channel.sampler,'animation.sampler');if(sampler.interpolation!==undefined&&!['LINEAR','STEP'].includes(sampler.interpolation))return no('body.clips','Only LINEAR/STEP clips are supported');const input=ref(accessors,sampler.input,'animation.input'),output=ref(accessors,sampler.output,'animation.output');if(input.type!=='SCALAR'||input.componentType!==5126||!input.count||output.componentType!==5126||output.count!==input.count||output.type!==(channel.target.path==='rotation'?'VEC4':'VEC3'))return no('body.clips','Invalid clip accessor');const times=values(input);if(times.some((v,i)=>v<0||(i>0&&v<=times[i-1])))return no('body.clips','Clip key times must increase and be nonnegative');positive ||= times[times.length-1]>0;}
    if(!positive)return no('body.clips','Clip must have positive finite duration');
    if(anim.name==='Walk')for(const side of ['L','R']){const c=channels.find(c=>c.target.node===named.get('Foot'+side)&&c.target.path==='translation');if(!c)return no('body.clips','Walk requires baked translation for both canonical feet');const v=values(accessors[as[c.sampler].output]);let low=Infinity,high=-Infinity;for(let i=2;i<v.length;i+=3){low=Math.min(low,v[i]);high=Math.max(high,v[i]);}if(high-low<=1e-6)return no('body.clips','Walk requires finite forward stride along Z');}
+  }
+  // Honest support for four legs: the renderer stands the body in its Idle pose (people.ts fit: Idle at 0.01 s, centred on
+  // that pose's x/z box, scaled to the canonical shoulder height). In that pose, and in the standing Standby_Loop and
+  // Dance_Loop it rests and dances in, every skinned vertex below the hips stays inside the disc the world navigates and
+  // collides with. A longer body would hide legs outside the admitted clearance. The gait's stride is not bounded here.
+  if(manifest.actionProfile===QUADRUPED_TORSO){
+   const posed=(name:string,time:number)=>{const clip=animations.find((a:any)=>a.name===name);const animated=nodes.map((n:any)=>({...n}));
+    if(clip)for(const ch of clip.channels){const smp=clip.samplers[ch.sampler],ts=values(accessors[smp.input]),w=ch.target.path==='rotation'?4:3,vs=values(accessors[smp.output]);let k=0;while(k<ts.length-2&&ts[k+1]<time)k++;
+     const f=ts.length<2||smp.interpolation==='STEP'?0:Math.max(0,Math.min(1,(time-ts[k])/(ts[k+1]-ts[k]||1))),a=vs.slice(k*w,k*w+w),b=vs.slice(Math.min(k+1,ts.length-1)*w,Math.min(k+1,ts.length-1)*w+w);
+     let v=a.map((x:number,j:number)=>x+((b[j]??x)-x)*f);if(w===4){const d=a.reduce((s:number,x:number,j:number)=>s+x*b[j],0);if(d<0)v=a.map((x:number,j:number)=>x+(-b[j]-x)*f);const n=Math.hypot(...v)||1;v=v.map((x:number)=>x/n);}
+     animated[ch.target.node][ch.target.path]=v;delete animated[ch.target.node].matrix;}
+    const world=rigWorldMatrices(animated,parents),out:number[][]=[];
+    // Arms are not lower body (the renderer refits them to the fixed reach): a vertex led by an arm joint is not measured.
+    const arm=new Set<number>();for(const side of ['L','R']){const top=named.get('Shoulder'+side)!;for(let j=0;j<nodes.length;j++)for(let k:number|undefined=j;k!==undefined;k=parents.get(k))if(k===top){arm.add(j);break;}}
+    const ident=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+    for(const i of seen){const node=nodes[i];if(node.mesh===undefined)continue;
+     if(node.skin===undefined){const m=world(i);for(const p of meshes[node.mesh].primitives){const pos=values(accessors[p.attributes.POSITION]);for(let k=0;k<pos.length;k+=3)out.push([0,1,2].map(ax=>m[ax]*pos[k]+m[4+ax]*pos[k+1]+m[8+ax]*pos[k+2]+m[12+ax]).concat(0));}continue;}
+     const skin=skins[node.skin],joints=skin.joints as number[],inv=skin.inverseBindMatrices===undefined?null:values(accessors[skin.inverseBindMatrices]);   // absent: identity (glTF)
+     const skinning=joints.map((j,q)=>{const m=world(j),b=inv?inv.slice(q*16,q*16+16):ident;return Array.from({length:16},(_,e)=>{const row=e%4,col=Math.floor(e/4);let s=0;for(let r=0;r<4;r++)s+=m[r*4+row]*b[col*4+r];return s;});});
+     for(const p of meshes[node.mesh].primitives){const pos=values(accessors[p.attributes.POSITION]),js=values(accessors[p.attributes.JOINTS_0]),wa=accessors[p.attributes.WEIGHTS_0],unit=wa.componentType===5121?255:wa.componentType===5123?65535:1,ws=values(wa).map((w:number)=>w/unit);
+      for(let k=0;k<pos.length/3;k++){const r=[0,0,0];let armOnly=1;for(let q=0;q<4;q++){const wt=ws[k*4+q];if(!wt)continue;if(!arm.has(joints[js[k*4+q]]))armOnly=0;const m=skinning[js[k*4+q]];for(let ax=0;ax<3;ax++)r[ax]+=wt*(m[ax]*pos[k*3]+m[4+ax]*pos[k*3+1]+m[8+ax]*pos[k*3+2]+m[12+ax]);}out.push([...r,armOnly]);}}}
+    return {out,hip:world(named.get('Hips')!)[13],shoulder:(world(named.get('UpperArmL')!)[13]+world(named.get('UpperArmR')!)[13])/2};};
+   const idle=posed('Idle',.01);if(!idle.out.length)return no('body.footprint','A quadruped-torso/1 body needs a skinned mesh');
+   const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(const v of idle.out)for(let a=0;a<3;a++){if(v[a]<lo[a])lo[a]=v[a];if(v[a]>hi[a])hi[a]=v[a];}   // a loop: vertex count is not bounded by the triangle cap
+   const cx=(lo[0]+hi[0])/2,cz=(lo[2]+hi[2])/2,fit=1.34/(idle.shoulder-lo[1]);
+   if(!(fit>0&&Number.isFinite(fit)))return no('body.footprint','The Idle pose needs shoulders above its lowest point');
+   // Throughout each standing clip: every key time of its samplers. A standing clip with more distinct key times than
+   // QUADRUPED_FOOTPRINT_KEYS is refused by name rather than sampled (an unsampled key could hide a kick).
+   const keyTimes=(name:string)=>{const clip=animations.find((a:any)=>a.name===name);if(!clip)return [0];const ts=new Set<number>();for(const smp of clip.samplers)for(const t of values(accessors[smp.input]))ts.add(t);
+    if(ts.size>QUADRUPED_FOOTPRINT_KEYS)return no('body.too-complex',`${name} has ${ts.size} distinct key times; quadruped-torso/1 measures standing clips with at most ${QUADRUPED_FOOTPRINT_KEYS}`,{field:'footprintKeys',measured:ts.size,limit:QUADRUPED_FOOTPRINT_KEYS});
+    return [...ts].sort((a,b)=>a-b);};
+   // Bounded work: skinned vertices × measured poses. Admission is synchronous, so a body whose footprint would take more
+   // than QUADRUPED_FOOTPRINT_WORK vertex skinnings to measure is refused by name instead of stalling the world.
+   const plan=(['Idle','Standby_Loop','Dance_Loop'] as const).map(name=>[name,keyTimes(name)] as const),work=idle.out.length*plan.reduce((n,[,ts])=>n+ts.length,0);
+   if(work>QUADRUPED_FOOTPRINT_WORK)return no('body.too-complex',`Measuring this body's standing footprint needs ${work} vertex poses; quadruped-torso/1 allows at most ${QUADRUPED_FOOTPRINT_WORK}`,{field:'footprintWork',measured:work,limit:QUADRUPED_FOOTPRINT_WORK});
+   let reach=0,where='Idle';for(const [name,times] of plan)for(const t of times){const pose=posed(name,t);for(const v of pose.out)if(v[1]<pose.hip&&!v[3]){const d=Math.hypot(v[0]-cx,v[2]-cz)*fit;if(d>reach){reach=d;where=`${name} at ${Math.round(t*100)/100} s`;}}}
+   if(reach>QUADRUPED_FOOTPRINT_RADIUS)return no('body.footprint',`In ${where} the lower body reaches ${reach.toFixed(3)} m from where the body stands; quadruped-torso/1 admits at most ${QUADRUPED_FOOTPRINT_RADIUS} m`,{field:'footprint',measured:Math.round(reach*1000)/1000,limit:QUADRUPED_FOOTPRINT_RADIUS});
   }
  }else if(skins.length||nodes.some(n=>n.skin!==undefined)||animations.length)return no('body.rigid','Ceramic and floater bodies must be rigid, without skins or animation clips');
  return{assetId:'body_'+createHash('sha256').update(bytes).digest('hex'),type:manifest.type,license:manifest.license,bytes:bytes.length,triangles,images:images.length,nodes:nodes.length,rig:manifest.type==='humanoid'?'quaternius/1':null,...(manifest.actionProfile?{actionProfile:manifest.actionProfile}:{}),...(manifest.motion?{motion:structuredClone(manifest.motion)}:{}),...(manifest.name?{name:manifest.name}:{}),...(manifest.description?{description:manifest.description}:{})};

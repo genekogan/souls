@@ -6,7 +6,7 @@
 import type { Body, Entity } from '../world/types.ts';
 import {bodyMotionProblem,type BodyMotion} from './motion.ts';
 import { humanoidParamsProblem } from './humanoid.ts';
-import {ROLLING_GRIPPER} from './action-profile.ts';
+import {isActionProfile} from './action-profile.ts';
 import { CREATURE_EYE_RANGE, creatureSpecies } from './creatures.ts';
 
 export type BodyFamily = Body['family'];
@@ -42,7 +42,7 @@ export function bodyProblem(body: unknown): string | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'body.not-object';
   const b = body as Record<string, unknown>;
   for (const k of Object.keys(b)) if (!['family', 'type', 'model', 'modelUrl', 'avatar', 'radius', 'hoverHeight', 'params', 'motion', 'actionProfile'].includes(k)) return `body.unknown-field:${k}`;
-  if(b.actionProfile!==undefined&&(b.actionProfile!==ROLLING_GRIPPER||b.family!=='humanoid'||typeof b.modelUrl!=='string'||b.params!==undefined))return 'body.action-profile';
+  if(b.actionProfile!==undefined&&(!isActionProfile(b.actionProfile)||b.family!=='humanoid'||typeof b.modelUrl!=='string'||b.params!==undefined))return 'body.action-profile';
   if(b.motion!==undefined){if(b.family!=='floater'||b.type==='creature')return 'body.motion-family';const p=bodyMotionProblem(b.motion);if(p)return p;}
   if (b.family !== 'humanoid' && b.family !== 'floater') return 'body.family';
   if (b.type !== undefined && !(b.family==='humanoid' ? b.type==='humanoid' : b.type==='ceramic'||b.type==='floater'||b.type==='creature')) return 'body.type';

@@ -1,7 +1,7 @@
 import type {Entity,Program} from '@sim/engine-contract';
 import type {EdgeCapability} from '../contract.ts';
 import {creatureOf,type CreatureSpecies} from '../../../../../mars/viewer/engine/bodies/creatures.ts';
-import {hasRollingProfile,rollingActionProblem} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
+import {hasDeclaredProfile,hasRollingProfile,profileActionProblem} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
 import {hasBodyDance,bodyDanceStep} from '../../../../../mars/viewer/engine/bodies/motion.ts';
 
 export const isRigidBody=(e:Pick<Entity,'body'>|undefined)=>e?.body?.family==='floater';
@@ -19,7 +19,7 @@ function creatureReason(c:CreatureSpecies,verb:string){
   return `${c.cannot.hands} (it cannot ${verb})`;
 }
 export function bodyVerbProblem(e:Entity|undefined,verb:string){
-  if(hasRollingProfile(e?.body)){const reason=rollingActionProblem(verb,undefined,'edge');return reason?{code:'body.unsupported',reason}:null;}
+  if(hasDeclaredProfile(e?.body)){const reason=profileActionProblem(e?.body,verb,undefined,'edge');return reason?{code:'body.unsupported',reason}:null;}
   if(verb==='dance'&&hasBodyDance(e?.body))return null;
   if(!isRigidBody(e)||rigidVerbs.has(verb))return null;
   const c=creatureOfEntity(e);
@@ -27,10 +27,10 @@ export function bodyVerbProblem(e:Entity|undefined,verb:string){
   return {code:'body.unsupported',reason:`${e?.body?.type==='ceramic'?'Ceramic':'Floater'} bodies cannot ${verb}; try glide, hover, settle or turn.`};
 }
 export function bodyCapabilityProblem(e:Entity|undefined,c:EdgeCapability,steps?:Program['steps']){
-  if(hasRollingProfile(e?.body)){
+  if(hasDeclaredProfile(e?.body)){
     if(c.verb==='object'&&['read','respond','add-step','endorse','interest','uninterest','state','history','inspect'].includes(c.action??''))return null;
     const v=bodyVerbProblem(e,c.verb);if(v)return v;
-    for(const step of steps??[]){if(['rest','stand','walk','go','face','turn'].includes(step.verb))continue;const reason=rollingActionProblem(step.verb,step.params);if(reason)return {code:'body.unsupported',reason};}
+    for(const step of steps??[]){if(['rest','stand','walk','go','face','turn'].includes(step.verb))continue;const reason=profileActionProblem(e?.body,step.verb,step.params);if(reason)return {code:'body.unsupported',reason};}
     return null;
   }
   if(!isRigidBody(e))return null;
@@ -45,10 +45,10 @@ type Plan={label:string;steps:Program['steps'];seconds?:boolean};
 /** Shape the capability list for a rigid body: drop what it cannot do, offer settle (and hover for floaters), and
  *  name its own way of moving (glide; a creature's waddle, slide or trot). */
 export function shapeRigidCapabilities(me:Entity|undefined,caps:EdgeCapability[],plans:Map<string,Plan>,secondsParam:EdgeCapability['params']){
-  if(hasRollingProfile(me?.body)){
-    for(const verb of ['rest','lie','nap']){const id=verb+':here',label=verb==='nap'?'Sleep upright (standby)':'Fold away upright (standby)';const old=caps.find(c=>c.id===id);if(old)Object.assign(old,{label,available:true,blocked:undefined});else caps.unshift({id,verb,label,available:true,params:secondsParam});plans.set(id,{label,steps:[{verb:'mars:body_motion_v1',params:{motion:'rest',seconds:60}}],seconds:true});}
+  if(hasDeclaredProfile(me?.body)){const rolling=hasRollingProfile(me?.body);
+    for(const verb of ['rest','lie','nap']){const id=verb+':here',label=rolling?(verb==='nap'?'Sleep upright (standby)':'Fold away upright (standby)'):(verb==='nap'?'Doze standing (standby)':'Rest standing (standby)');const old=caps.find(c=>c.id===id);if(old)Object.assign(old,{label,available:true,blocked:undefined});else caps.unshift({id,verb,label,available:true,params:secondsParam});plans.set(id,{label,steps:[{verb:'mars:body_motion_v1',params:{motion:'rest',seconds:60}}],seconds:true});}
     for(let i=caps.length-1;i>=0;i--)if(bodyCapabilityProblem(me,caps[i]!,plans.get(caps[i]!.id)?.steps)){plans.delete(caps[i]!.id);caps.splice(i,1);}
-    for(const c of caps)if(c.verb==='walk')c.label=c.label.replace(/walk/ig,'Roll');
+    if(rolling)for(const c of caps)if(c.verb==='walk')c.label=c.label.replace(/walk/ig,'Roll');
     return;
   }
   if(!isRigidBody(me))return;
