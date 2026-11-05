@@ -161,7 +161,7 @@ test('observer evidence packs answer the question that needs them', async () => 
   assert.equal(still.questions[0].verdict, 'fail');
 });
 
-test('the setup question: no setup is unknown; a seated Soul on an unlinked entity is unknown with the reason', async () => {
+test('the setup question: no setup or no recorded ids is unknown; a recorded setup entity passes, another entity fails', async () => {
   const sit = { accepted: true, waited: '61s', receipt: { id: 'r9', capability: 'sit:e_39', phase: 'started' }, for: 'msg_1', events: [{ kind: 'receipt', where: { place: 'Glazed Court' } }, { kind: 'activity.observed', receipt: { id: 'r9' }, action: { status: 'executing' }, body: { posture: 'seated' } }] };
   const calls = [[0.05, 'node eden.mjs ack msg_1 "Going to sit"', { acked: 'msg_1' }], [0.1, 'node eden.mjs act "sit on the bench" --wait 60', sit], [61, 'node eden.mjs result msg_1 done "Seated"', { reported: 'msg_1', outcome: 'done' }]];
   const setup = { ok: true, batches: [{ id: 'garden-bench', accepted: true, seq: 8 }] };
@@ -171,8 +171,13 @@ test('the setup question: no setup is unknown; a seated Soul on an unlinked enti
   assert.equal(unlinked.questions[0].verdict, 'unknown'); assert.match(unlinked.questions[0].uncertainty, /does not record the entity ids/);
   assert.match(unlinked.questions[0].notes[0], /e_39 in Glazed Court/);
   assert.equal(M(unlinked, 'requestsPhysicallyOngoing').value, 1, 'seated counts as ongoing, not completed');
-  const linked = (await evaluateRun(makeRun({ calls, setup: { ...setup, batches: [{ ...setup.batches[0], created: ['e_39'] }] } }), { questions: [Q('setup-bench-sat.mjs')], write: false })).evaluation;
-  assert.equal(linked.questions[0].verdict, 'pass');
+  // #784: setup.json lists the entities each accepted batch created; the question matches the sat-on id exactly.
+  const withEntities = (entities) => ({ ...setup, batches: [{ ...setup.batches[0], entities }] });
+  const linked = (await evaluateRun(makeRun({ calls, setup: withEntities([{ id: 'e_39', op: 'place', opIndex: 0, name: 'sr-court-bench', def: 'core/bench@1' }]) }), { questions: [Q('setup-bench-sat.mjs')], write: false })).evaluation;
+  assert.equal(linked.questions[0].verdict, 'pass'); assert.match(linked.questions[0].notes[0], /e_39, created by setup batch garden-bench \(place sr-court-bench\)/);
+  const other = (await evaluateRun(makeRun({ calls, setup: withEntities([{ id: 'e_390', op: 'place', opIndex: 0 }, { id: 'e_39', op: 'move', opIndex: 1 }]) }), { questions: [Q('setup-bench-sat.mjs')], write: false })).evaluation;
+  assert.equal(other.questions[0].verdict, 'fail', 'a different (or only moved) entity is not the setup bench; no substring match');
+  assert.match(other.questions[0].uncertainty, /not on an entity the setup created \(e_390\)/);
 });
 
 test('predeclared questions come from the spec and are kept apart from exploratory ones; a changed scorer is not trusted', async () => {
