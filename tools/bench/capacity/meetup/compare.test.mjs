@@ -8,7 +8,7 @@ const run = (profile, rep, h = {}, o = {}, w = {}) => ({ profile, rep,
   qualification: { qualifying: { executor: true, quiet: true, short: false }, objectives: { read: false, clock: false, failures: false, ...o },
     allocation: { cpuMax: null, memoryMaxMb: null }, worlds: { mw0: { hottestCores: 0.54, loopP99MsMax: 700, queueMax: 5, met: false, ...w } } } });
 const art = (runs, inputs = {}) => ({ summary: { verdict: { verdict: 'software bottleneck', qualifies: false, reasons: ['objectives missed'] }, runs },
-  qualify: { workflowRun: '1', commit: 'aaaaaaaa1', inputs: { hostClass: 'maintainer-self-hosted', short: false, quietDeclared: true, repeats: 2, slice: null, ...inputs }, before: { quiet: true }, after: { quiet: true } } });
+  qualify: { workflowRun: '1', commit: 'aaaaaaaa1', inputs: { hostClass: 'maintainer-self-hosted', short: false, quietDeclared: true, browser: false, repeats: 2, slice: null, ...inputs }, before: { quiet: true }, after: { quiet: true } } });
 
 test('direction: called only when the repeat ranges do not overlap; missing is never better', () => {
   assert.equal(direction([100, 200], [50, 90], 'lower'), 'better');
@@ -17,6 +17,7 @@ test('direction: called only when the repeat ranges do not overlap; missing is n
   assert.equal(direction([0.5, 0.6], [0.99, 1], 'higher'), 'better');
   assert.equal(direction(null, [1, 1], 'lower'), 'missing');
   assert.equal(direction([1, 1], null, 'lower'), 'missing');
+  assert.equal(direction([100, 200], Object.assign([10, 10], { partial: '1/2' }), 'lower'), 'partial');
 });
 
 test('an artifact compared with itself: like for like, no direction but overlaps, every cell present', () => {
@@ -27,7 +28,10 @@ test('an artifact compared with itself: like for like, no direction but overlaps
     assert.ok(P.headline.filter((h) => h.base).every((h) => h.dir === 'overlaps'));
     assert.ok(P.objectives.every((o) => o.state === 'still failing'));
   }
-  assert.match(compareText(x), /Conditions are like for like/);
+  // the fixtures record no cgroup limits: a null match is reported as not compared, not as like for like
+  assert.deepEqual(x.conditions.unknown, ['cpuMax', 'memoryMaxMb']);
+  assert.match(compareText(x), /like for like on the known conditions[\s\S]*not compared: `cpuMax`, `memoryMaxMb`/);
+  assert.match(compareText(x), /Verdict before:[^\n]*\n  - objectives missed/);
 });
 
 test('fixed, still failing and regressed objectives; a still-missed world stays bold', () => {
@@ -35,12 +39,15 @@ test('fixed, still failing and regressed objectives; a still-missed world stays 
   const cand = art([run('even', 1, { readE2eP95Ms: 200, restarts: 0 }, { read: true, clock: false, failures: true, delivery: false }, { hottestCores: 0.3 }),
     run('even', 2, { readE2eP95Ms: 220, restarts: 0 }, { read: true, clock: false, failures: true, delivery: false }, { hottestCores: 0.31 })]);
   const P = compare(base, cand).profiles.even, st = (rep, key) => P.objectives.find((o) => o.rep === rep && o.key === key).state;
-  assert.equal(st(1, 'read'), 'fixed'); assert.equal(st(1, 'clock'), 'still failing'); assert.equal(st(1, 'delivery'), 'regressed');
+  assert.equal(st(1, 'read'), 'fixed'); assert.equal(st(1, 'clock'), 'still failing'); assert.equal(st(1, 'delivery'), 'new, misses');
   assert.equal(P.headline.find((h) => h.key === 'readE2eP95Ms').dir, 'better');
   assert.equal(P.worlds[0].stillMissed, true); assert.equal(P.worlds[0].cells.find((c) => c.key === 'hottestCores').dir, 'better');
   const t = compareText(compare(base, cand));
   assert.match(t, /\| clock \| 1 \| misses \| \*\*misses\*\* \| \*\*still failing\*\* \|/);
-  assert.match(t, /\| delivery \| 1 \| missing \| \*\*misses\*\* \| \*\*regressed\*\* \|/);
+  assert.match(t, /\| delivery \| 1 \| missing \| \*\*misses\*\* \| \*\*new, misses\*\* \|/);
+  // an objective that met before and misses now is a regression
+  const reg = compare(art([run('even', 1, {}, { read: true })]), art([run('even', 1, {}, { read: false })])).profiles.even;
+  assert.equal(reg.objectives.find((o) => o.key === 'read').state, 'regressed');
   assert.match(t, /\| mw0 \| r1 missed, r2 missed \| \*\*r1 missed, r2 missed\*\* \|/);
 });
 
@@ -54,6 +61,9 @@ test('missing repeats, cells and worlds are listed, never read as better', () =>
   assert.equal(P.worlds[0].missing, true); assert.equal(P.worlds[0].cells[0].dir, 'missing');
   const t = compareText(x);
   assert.match(t, /\*\*Missing repeats:\*\* candidate r2/); assert.match(t, /\| readE2eP95Ms \| lower \| 2000 \| missing \| \*\*missing\*\* \|/);
+  // a value missing in one repeat of a present run is partial, never a direction
+  const half = compare(base, art([run('even', 1, { readE2eP95Ms: 10 }), run('even', 2, { readE2eP95Ms: undefined })])).profiles.even.headline.find((h) => h.key === 'readE2eP95Ms');
+  assert.equal(half.dir, 'partial'); assert.equal(half.cand.partial, '1/2');
   // a profile on one side only is still listed
   assert.deepEqual(compare(base, art([run('meetup', 1)])).profiles.meetup.missing, ['baseline r1']);
 });
@@ -61,5 +71,5 @@ test('missing repeats, cells and worlds are listed, never read as better', () =>
 test('changed run conditions are flagged as not like for like', () => {
   const runs = [run('even', 1), run('even', 2)], x = compare(art(runs), art(runs, { slice: { cpuQuota: '600%', memoryMax: '12G' }, quietDeclared: false }));
   assert.deepEqual(x.conditions.notLikeForLike.map((d) => d.key).sort(), ['quietDeclared', 'slice']);
-  assert.match(compareText(x), /\*\*Not like for like\.\*\*[\s\S]*`slice`: null → \{"cpuQuota":"600%","memoryMax":"12G"\}/);
+  assert.match(compareText(x), /\*\*Not like for like\.\*\*[\s\S]*`slice`: "none" → \{"cpuQuota":"600%","memoryMax":"12G"\}/);
 });

@@ -18,10 +18,12 @@ export const HEADLINE = Object.freeze([
 export const WORLD = Object.freeze([['hottestCores', 'lower'], ['loopP99MsMax', 'lower'], ['queueMax', 'lower']]);
 
 const num = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
-const range = (xs) => { const v = xs.map(num).filter((x) => x != null); return v.length ? [Math.min(...v), Math.max(...v)] : null; };
-/** Two repeat ranges → better | worse | overlaps | missing. Missing on either side is never better. */
+// the repeats' range; null when no repeat has the value. `partial` when some repeats lack it: never a direction then.
+const range = (xs) => { const v = xs.map(num).filter((x) => x != null); if (!v.length) return null; const rg = [Math.min(...v), Math.max(...v)]; if (v.length < xs.length) rg.partial = `${v.length}/${xs.length}`; return rg; };
+/** Two repeat ranges → better | worse | overlaps | partial | missing. Missing or partial on either side is never better. */
 export function direction(base, cand, better) {
   if (!base || !cand) return 'missing';
+  if (base.partial || cand.partial) return 'partial';
   const lower = better === 'lower';
   if (cand[1] < base[0]) return lower ? 'better' : 'worse';
   if (cand[0] > base[1]) return lower ? 'worse' : 'better';
@@ -34,7 +36,7 @@ export function conditions(art) {
   const uniq = (f) => [...new Set(runs.map(f).map((x) => JSON.stringify(x ?? null)))].sort().join(' | ');
   return {
     hostClass: i.hostClass ?? null, short: i.short ?? null, quietDeclared: i.quietDeclared ?? null, browser: i.browser ?? null, repeats: i.repeats ?? null,
-    slice: i.slice ?? null, quietBefore: q.before?.quiet ?? null, quietAfter: q.after?.quiet ?? null,
+    slice: 'slice' in i ? (i.slice ?? 'none') : null,   // recorded as null: the run had no slice quietBefore: q.before?.quiet ?? null, quietAfter: q.after?.quiet ?? null,
     executor: uniq((r) => r.qualification?.qualifying?.executor), cpuMax: uniq((r) => r.qualification?.allocation?.cpuMax), memoryMaxMb: uniq((r) => r.qualification?.allocation?.memoryMaxMb),
   };
 }
@@ -42,11 +44,13 @@ export function conditions(art) {
 /** {summary, qualify?} × 2 → the comparison (data). */
 export function compare(base, cand) {
   const bc = conditions(base), cc = conditions(cand);
+  const unknownish = (v) => v == null || v === 'null';   // not recorded: a match on it proves nothing
   const notLike = Object.keys(bc).filter((k) => JSON.stringify(bc[k]) !== JSON.stringify(cc[k])).map((k) => ({ key: k, base: bc[k], cand: cc[k] }));
+  const unknown = Object.keys(bc).filter((k) => unknownish(bc[k]) && unknownish(cc[k]));
   const bRuns = base.summary?.runs ?? [], cRuns = cand.summary?.runs ?? [];
   const profiles = [...new Set([...bRuns, ...cRuns].map((r) => r.profile))].sort();
   const out = { schema: COMPARE, source: { base: base.qualify?.commit ?? null, cand: cand.qualify?.commit ?? null, baseRun: base.qualify?.workflowRun ?? null, candRun: cand.qualify?.workflowRun ?? null },
-    verdicts: { base: base.summary?.verdict ?? null, cand: cand.summary?.verdict ?? null }, conditions: { base: bc, cand: cc, notLikeForLike: notLike }, profiles: {} };
+    verdicts: { base: base.summary?.verdict ?? null, cand: cand.summary?.verdict ?? null }, conditions: { base: bc, cand: cc, notLikeForLike: notLike, unknown }, profiles: {} };
   for (const p of profiles) {
     const b = bRuns.filter((r) => r.profile === p), c = cRuns.filter((r) => r.profile === p);
     const reps = [...new Set([...b, ...c].map((r) => r.rep))].sort((x, y) => x - y);
@@ -55,7 +59,7 @@ export function compare(base, cand) {
     const keys = [...new Set([...b, ...c].flatMap((r) => Object.keys(r.qualification?.objectives ?? {})))];
     const objectives = reps.flatMap((k) => keys.map((key) => {
       const bv = b.find((r) => r.rep === k)?.qualification?.objectives?.[key], cv = c.find((r) => r.rep === k)?.qualification?.objectives?.[key];
-      const state = typeof cv !== 'boolean' ? 'missing' : cv ? (bv === false ? 'fixed' : 'meets') : bv === false ? 'still failing' : 'regressed';
+      const state = typeof cv !== 'boolean' ? 'missing' : typeof bv !== 'boolean' ? (cv ? 'new, meets' : 'new, misses') : cv ? (bv ? 'meets' : 'fixed') : bv ? 'regressed' : 'still failing';
       return { rep: k, key, base: typeof bv === 'boolean' ? bv : null, cand: typeof cv === 'boolean' ? cv : null, state };
     }));
     const slugs = [...new Set([...b, ...c].flatMap((r) => Object.keys(r.qualification?.worlds ?? {})))].sort();
@@ -70,21 +74,22 @@ export function compare(base, cand) {
   return out;
 }
 
-const fmt = (rg) => (rg ? (rg[0] === rg[1] ? `${rg[0]}` : `${rg[0]}–${rg[1]}`) : 'missing');
-const mark = (d) => (d === 'worse' ? '**worse**' : d === 'missing' ? '**missing**' : d);
+const fmt = (rg) => (rg ? `${rg[0] === rg[1] ? rg[0] : `${rg[0]}–${rg[1]}`}${rg.partial ? ` (${rg.partial} repeats)` : ''}` : 'missing');
+const mark = (d) => (d === 'worse' || d === 'missing' || d === 'partial' ? `**${d}**` : d);
 /** The comparison → markdown. Numbers and labels only; no hosts or paths. */
 export function compareText(x) {
   const L = [], v = (s) => (s ? `${s.verdict}${s.qualifies ? '' : ' (indicative only, does not qualify)'}` : 'missing');
   L.push(`# Capacity comparison (${x.schema})`, '');
   L.push(`Baseline run ${x.source.baseRun ?? '?'} at \`${String(x.source.base ?? '?').slice(0, 8)}\` · candidate run ${x.source.candRun ?? '?'} at \`${String(x.source.cand ?? '?').slice(0, 8)}\`. Ranges are the repeats (min–max); a direction is called only when they do not overlap.`, '');
-  L.push(`- **Verdict before:** ${v(x.verdicts.base)}`, `- **Verdict after:** ${v(x.verdicts.cand)}`);
-  for (const r of x.verdicts.cand?.reasons ?? []) L.push(`  - ${r}`);
+  L.push(`- **Verdict before:** ${v(x.verdicts.base)}`); for (const r of x.verdicts.base?.reasons ?? []) L.push(`  - ${r}`);
+  L.push(`- **Verdict after:** ${v(x.verdicts.cand)}`); for (const r of x.verdicts.cand?.reasons ?? []) L.push(`  - ${r}`);
   L.push('');
   if (x.conditions.notLikeForLike.length) {
     L.push('**Not like for like.** These conditions differ; a difference below may come from them:', '');
     for (const d of x.conditions.notLikeForLike) L.push(`- \`${d.key}\`: ${JSON.stringify(d.base)} → ${JSON.stringify(d.cand)}`);
     L.push('');
-  } else L.push('Conditions are like for like.', '');
+  } else L.push(x.conditions.unknown.length ? 'Conditions are like for like on the known conditions.' : 'Conditions are like for like.', '');
+  if (x.conditions.unknown.length) L.push(`Not recorded on either side, so not compared: ${x.conditions.unknown.map((k) => `\`${k}\``).join(', ')}.`, '');
   for (const [p, P] of Object.entries(x.profiles)) {
     L.push(`## ${p}`, '');
     if (P.missing.length) L.push(`**Missing repeats:** ${P.missing.join(', ')}`, '');
@@ -92,7 +97,7 @@ export function compareText(x) {
     for (const h of P.headline) L.push(`| ${h.key} | ${h.better} | ${fmt(h.base)} | ${fmt(h.cand)} | ${mark(h.dir)} |`);
     L.push('', '| objective | rep | baseline | candidate | state |', '|---|---|---|---|---|');
     const yn = (b) => (b === true ? 'meets' : b === false ? 'misses' : 'missing');
-    for (const o of P.objectives) L.push(`| ${o.key} | ${o.rep} | ${yn(o.base)} | ${o.cand === false ? '**misses**' : yn(o.cand)} | ${o.state === 'meets' || o.state === 'fixed' ? o.state : `**${o.state}**`} |`);
+    for (const o of P.objectives) L.push(`| ${o.key} | ${o.rep} | ${yn(o.base)} | ${o.cand === false ? '**misses**' : yn(o.cand)} | ${['meets', 'fixed', 'new, meets'].includes(o.state) ? o.state : `**${o.state}**`} |`);
     L.push('', '| world | met (baseline) | met (candidate) | ' + WORLD.map(([k]) => `${k} before → after`).join(' | ') + ' |', '|---|---|---|' + WORLD.map(() => '---|').join(''));
     for (const w of P.worlds) L.push(`| ${w.slug}${w.missing ? ' (incomplete)' : ''} | ${w.metBase} | ${w.stillMissed ? `**${w.metCand}**` : w.metCand} | ${w.cells.map((c) => `${fmt(c.base)} → ${fmt(c.cand)} (${mark(c.dir)})`).join(' | ')} |`);
     L.push('');
@@ -107,8 +112,12 @@ export function readArtifact(dir) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const [baseDir, candDir] = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--out');
-  if (!baseDir || !candDir) { console.error('usage: compare.mjs <baseline-dir> <candidate-dir> [--out <file>]'); process.exit(2); }
-  const k = process.argv.indexOf('--out'), text = compareText(compare(readArtifact(baseDir), readArtifact(candDir)));
-  if (k > 0 && process.argv[k + 1]) writeFileSync(process.argv[k + 1], text + '\n'); else process.stdout.write(text + '\n');
+  const usage = () => { console.error('usage: compare.mjs <baseline-dir> <candidate-dir> [--out <file>]'); process.exit(2); };
+  const dirs = []; let out = null;
+  for (let a = process.argv.slice(2), i = 0; i < a.length; i++) {
+    if (a[i] === '--out') { out = a[++i]; if (!out || out.startsWith('--')) usage(); } else if (a[i].startsWith('--out=')) { out = a[i].slice(6); if (!out) usage(); } else if (a[i].startsWith('--')) usage(); else dirs.push(a[i]);
+  }
+  if (dirs.length !== 2) usage();
+  const text = compareText(compare(readArtifact(dirs[0]), readArtifact(dirs[1])));
+  if (out) writeFileSync(out, text + '\n'); else process.stdout.write(text + '\n');
 }
