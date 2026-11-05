@@ -84,13 +84,15 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  const relevant=entries.length||known.some(p=>p.parts?.length&&q.some(w=>words([...contexts(L,p,soul),...p.parts!.filter(part=>knownPart(L,soul,p,part)).flatMap(x=>[x.title,...(x.aliases??[])])]).has(w)));
  if(!relevant)return null;
  const ranked=entries.sort((a,b)=>q.filter(w=>b.own.has(w)).length-q.filter(w=>a.own.has(w)).length||a.p.id.localeCompare(b.p.id)||a.part.id.localeCompare(b.part.id));
- const seats=ranked.filter(x=>x.part.sit).slice(0,8);
+ // (one entry per seat: a seat bound under two known places is still one seat)
+ const sits=new Set<string>(),seats=ranked.filter(x=>x.part.sit&&!sits.has(x.part.sit)&&!!sits.add(x.part.sit)).slice(0,8);
  const candidates=seats.map(({p,part})=>({...candidate(L,soul,part.sit!,p,`${part.title} — ${p.name}`,part.target,caps,plans),...(part.what?{what:part.what}:{})}));
- // #849: one seat, named by a word of its own (title or alias) that its place names do not share: taken when available (the ledger binds
+ // #849: one seat, named by a word of its own (title or alias), as typed (a #848 relation word read as `outdoor` is not
+ // the seat's name: "sit outside the cottage" names a place), that its place names do not share: taken when available (the ledger binds
  // it by its exact id and the act answer's `resolved` names it), refused with its own reason when not; never a one-entry choice
- if(take&&seats.length===1&&q.some(w=>seats[0].own.has(w)&&!seats[0].scope.has(w))){
+ if(take&&seats.length===1&&raw.some(w=>seats[0].own.has(w)&&!seats[0].scope.has(w))){
   const c=candidates[0];
-  if(c.available)return {kind:'alias',cap:{id:c.capability,verb:'sit',label:c.name,available:true} as EdgeCapability,note:`The only seat these words name is ${c.name} (${c.capability}); it was taken.`};
+  if(c.available)return {kind:'alias',cap:{id:c.capability,verb:'sit',label:c.name,available:true} as EdgeCapability,note:`The only seat these words name is ${c.name} (${c.capability}); it is the seat chosen.`};
   return {kind:'unknown',code:c.code??'capability.unavailable',reason:`The only seat these words name, ${c.name} (${c.capability}), cannot be taken now: ${c.reason??'it is not offered.'} No other seat was chosen.`,didYouMean:[{id:c.capability,label:c.name,...c}],discovery:{kind:'interaction',requested:'sit',candidates}};
  }
  return choice('interaction','sit',candidates,candidates.length?'Choose a bound seat by its exact sit capability ID. No seat has been selected.':'No bound sit action matches that named target; no nearby seat or walk was substituted.');

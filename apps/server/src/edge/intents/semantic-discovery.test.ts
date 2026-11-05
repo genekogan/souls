@@ -10,7 +10,7 @@ function setup(){
   {id:'stage',ref:'stage',name:'Outdoor Stage',parent:'world',semanticKind:'stage',description:'Live music and performance gatherings.'},
   {id:'library',ref:'library',name:'Library',parent:'world',description:'A quiet room to read books.'},
  ];const unavailable=new Set<string>(),secret=new Set<string>();
- const L={places:{byId:new Map(places.map(p=>[p.id,p]))},knowledge:{knows:(_:string,id:string)=>!secret.has(id)},resolveOnDemand:(_:unknown,id:string)=>({v:{kind:'exact',cap:{id,available:!unavailable.has(id),...(unavailable.has(id)?{blocked:{reason:'No reachable floor.'}}:{})}}})} as any;
+ const L={places:{byId:new Map(places.map(p=>[p.id,p]))},knowledge:{knows:(_:string,id:string)=>!secret.has(id)},resolveOnDemand:(_:unknown,id:string)=>({v:{kind:'exact',cap:{id,available:!unavailable.has(id),...(unavailable.has(id)?{blocked:{code:'route.unreachable',reason:'No reachable floor.'}}:{})}}})} as any;
  const run=(s:string)=>semanticDiscovery(L,{soulId:'s'} as any,s,[],new Map()) as any;return{run,L,places,secret,unavailable};
 }
 test('named interaction matrix preserves action and hard place/part constraints',()=>{
@@ -19,7 +19,7 @@ test('named interaction matrix preserves action and hard place/part constraints'
  for(const text of ['sit on the harbour west pier','take a seat at the west pier','where can I sit on the harbour west pier']){const r=run(text);assert.equal(r.code,'capability.choose',text);assert.deepEqual(r.didYouMean.map((x:any)=>x.id),['sit:west-pier/part-view-seat']);}
  // #849: one available seat named by its own words is taken, its note naming it; a purpose question only lists it
  for(const [text,id] of [['sit on a bench in the harbour west pier','sit:west-pier/part-view-seat'],['sit at the podium desk in Chiba','sit:chiba/part-podium'],['sit down at the Chiba auditorium presenter desk','sit:chiba/part-podium'],['take a seat at the podium desk in Chiba to prepare a presentation','sit:chiba/part-podium']]){
-  const r=run(text);assert.equal(r.kind,'alias',text);assert.equal(r.cap.id,id,text);assert.match(r.note,new RegExp(`The only seat these words name is .*\\(${id}\\); it was taken`),text);
+  const r=run(text);assert.equal(r.kind,'alias',text);assert.equal(r.cap.id,id,text);assert.match(r.note,new RegExp(`The only seat these words name is .*\\(${id}\\); it is the seat chosen`),text);
  }
  for(const text of ['where can I sit at the podium desk in Chiba','where can I sit on a bench in the harbour west pier']){const r=run(text);assert.equal(r.code,'capability.choose',text);assert.equal(r.didYouMean.length,1,text);}
  for(const text of ['sit in the Chiba gallery','sit at the missing desk in Chiba','sit at the podium desk in the missing auditorium','sit at the west pier sunset view'])assert.equal(run(text).didYouMean.length,0,text);
@@ -27,7 +27,7 @@ test('named interaction matrix preserves action and hard place/part constraints'
 });
 test('#849: an unavailable single named seat is refused with its own reason, never taken; explore only lists',()=>{
  const {run,L,unavailable}=setup();unavailable.add('sit:chiba/part-podium');
- const r=run('sit at the podium desk in Chiba');assert.equal(r.kind,'unknown');assert.equal(r.code,'capability.unavailable');
+ const r=run('sit at the podium desk in Chiba');assert.equal(r.kind,'unknown');assert.equal(r.code,'route.unreachable','its own blocked code');
  assert.match(r.reason,/The only seat these words name, Podium Desk Seat — Chiba \(sit:chiba\/part-podium\), cannot be taken now: No reachable floor\. No other seat was chosen\./);
  assert.deepEqual(r.didYouMean.map((x:any)=>[x.id,x.available]),[['sit:chiba/part-podium',false]]);
  unavailable.clear();const e=exploreDiscovery(L,{soulId:'s'} as any,'sit at the podium desk in Chiba',[],new Map()) as any;
@@ -75,6 +75,8 @@ test('#848: relation words between a seat and its place: inside reads as in, out
  // (#849: each names one available seat by its own words, so it is taken)
  assert.equal(run('sit on the bench outside the cottage').cap.id,'sit:cottage/part-outdoor-bench');
  assert.equal(run('sit on the bench by the cottage').cap.id,'sit:cottage/part-outdoor-bench');
+ // ... but the relation word alone is not the seat's name: the place named, so still a choice (#849 review)
+ for(const text of ['sit outside the cottage','sit outside knoll cottage']){const r=run(text);assert.equal(r.code,'capability.choose',text);assert.deepEqual(r.didYouMean.map((x:any)=>x.id),['sit:cottage/part-outdoor-bench'],text);}
  assert.equal(run('sit at the podium desk inside Chiba').cap.id,'sit:chiba/part-podium');
  assert.equal(run('sit at the podium desk outside Chiba').didYouMean.length,0,'no outdoor seat in Chiba: the constraint is kept');
 });

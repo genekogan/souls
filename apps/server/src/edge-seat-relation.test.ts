@@ -14,7 +14,7 @@ test('#848: "outside"/"inside" name the right seat on hello-hamlet, and "outside
   const taken = (r: any) => r.accepted ? r.receipt?.capability : named(r);
   const outside = await act('sit on the bench outside the cottage');
   assert.equal(taken(outside), 'sit:cottage/part-outdoor-bench', JSON.stringify(outside));
-  assert.equal(outside.resolved?.to, 'sit:cottage/part-outdoor-bench'); assert.match(outside.resolved?.note ?? '', /^The only seat these words name is Outdoor Bench .*; it was taken\.$/);
+  assert.equal(outside.resolved?.to, 'sit:cottage/part-outdoor-bench'); assert.match(outside.resolved?.note ?? '', /^The only seat these words name is Outdoor Bench .*; it is the seat chosen\.$/);
   // #849 A1: "by the cottage" names the same one seat
   assert.equal(taken(await act('sit on the bench by the cottage')), 'sit:cottage/part-outdoor-bench');
   // A2: `inside` reads as `in`
