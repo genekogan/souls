@@ -67,6 +67,7 @@ export function validateScenario(s) {
     if (d.sequential !== false) for (const [seat, es] of Object.entries(bySeat)) { const o = [...es].sort((a, b) => a.atSec - b.atSec); for (let k = 1; k < o.length; k++) if (o[k].atSec < o[k - 1].atSec + (o[k - 1].budgetSec ?? 0)) errs.push(`seat ${seat}: "${o[k].text}" starts before "${o[k - 1].text}" has used its budget`); }
   }
   if (!Array.isArray(s?.observer?.viewport)) errs.push('observer.viewport required');
+  if (s?.observer?.recordStart != null && !['arrival', 'load'].includes(s.observer.recordStart)) errs.push('observer.recordStart must be arrival or load');
   if (s?.review?.mode !== 'deterministic' && !s?.review?.reviewerModel) errs.push('review.reviewerModel required');
   try { providerPolicy(s); } catch (e) { errs.push(e.message); }
   if (!s?.rails) errs.push('rails required');

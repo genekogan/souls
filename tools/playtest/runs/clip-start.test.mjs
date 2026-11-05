@@ -131,7 +131,15 @@ test('world time: midday with the clock paused by default, "keep" leaves it, an 
   assert.deepEqual(v({ timeScale: 2000 }).errors.map((e) => e.code), ['world.timeScale']);
   assert.deepEqual(v({}, { recordStart: 'whenever' }).errors.map((e) => e.code), ['observer.recordStart']);
   assert.equal(v({}, { cameras: ['wide'], record: ['wide'], recordStart: 'load' }).scenario.observer.recordStart, 'load');
-  assert.equal(v({}, { cameras: ['wide'], record: ['wide'] }).scenario.observer.recordStart, undefined, 'the arrival default leaves the scenario untouched');
+  assert.equal(v({}, { cameras: ['wide'], record: ['wide'] }).scenario.observer.recordStart, 'arrival');
+  assert.deepEqual(v({ timeScale: 0.05 }).errors.map((e) => e.code), ['world.timeScale'], 'below the server\'s slowest clock');
+  // A scenario's own recordStart stands unless the spec names one, and the effective spec says the same.
+  const sc = JSON.parse(readFileSync(join(f.dir, 'scenario.json'), 'utf8')); writeFileSync(join(f.dir, 'scenario.json'), JSON.stringify({ ...sc, observer: { ...sc.observer, recordStart: 'load' } }));
+  const fromScenario = v({}, { cameras: ['wide'], record: ['wide'] });
+  assert.deepEqual([fromScenario.effective.observer.recordStart, fromScenario.scenario.observer.recordStart], ['load', 'load']);
+  const overridden = v({}, { cameras: ['wide'], record: ['wide'], recordStart: 'arrival' });
+  assert.deepEqual([overridden.effective.observer.recordStart, overridden.scenario.observer.recordStart], ['arrival', 'arrival']);
+  writeFileSync(join(f.dir, 'scenario.json'), JSON.stringify(sc));
   assert.deepEqual([parseTimeOfDay('7pm'), parseTimeOfDay('12am'), parseTimeOfDay(24), parseTimeOfDay('x')], [19, 0, 0, null]);
   assert.equal(worldTimeRequest({ timeOfDay: 'keep', timeScale: 0 }).time.timeScale, 0, 'pause the clock without moving it');
 });
@@ -156,6 +164,24 @@ test('a run applies world time after provision and before seats or cameras; the 
   // A world that refuses is recorded, and the run goes on.
   const refused = await applyWorldTime({ base: NO_WORLD, time: { timeOfDay: 12 }, fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({ code: 'forbidden' }) }) });
   assert.deepEqual({ ok: refused.ok, error: refused.error }, { ok: false, error: 'god mint refused: HTTP 403 forbidden' });
+});
+
+test('a camera refuses a record start it does not know rather than record nothing', async () => {
+  const { browser } = fakeBrowser();
+  await assert.rejects(openCamera({ browser, base: NO_WORLD, kind: 'wide', record: { dir: tmp('clip-bad-'), start: 'Load' } }), /record\.start "Load": arrival or load/);
+});
+
+test('the proof recorder: arrival by default, --from-load, and a time-of-day plan only for a local world page', async () => {
+  const { parseArgs, worldTimePlan } = await import('../../../.claude/skills/proof/record.mjs');
+  const tools = { ...(await import('../lib/arrival.mjs')), ...(await import('./setup.mjs')) };
+  const d = parseArgs(['--url', 'http://127.0.0.1:4710/w/proof?dev=1', '--out', 'x.mp4']);
+  assert.deepEqual([d.fromLoad, d.timeOfDay, d.arrivalSeconds], [false, '12', 120]);
+  assert.equal(parseArgs(['--from-load']).fromLoad, true);
+  assert.deepEqual(worldTimePlan(d, tools), { base: 'http://127.0.0.1:4710/w/proof', time: { timeOfDay: 12, timeScale: 0 } });
+  assert.deepEqual(worldTimePlan({ ...d, timeOfDay: '7pm' }, tools).time, { timeOfDay: '7pm', timeScale: 0 });
+  assert.deepEqual(worldTimePlan({ ...d, timeOfDay: 'keep' }, tools), { why: 'keep' });
+  assert.deepEqual(worldTimePlan({ ...d, url: 'http://127.0.0.1:4720/' }, tools), { why: 'not a local world URL' });
+  assert.throws(() => worldTimePlan({ ...d, timeOfDay: '26' }, tools), /--time-of-day: 26/);
 });
 
 test('the proof recorder sets time only on a local world page', () => {

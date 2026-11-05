@@ -23,8 +23,9 @@ Get the tier of the current diff with `node tools/proof/tier.mjs --base origin/m
   `upload.mjs --proof` copies it into proof.json `media[]`.
 - **By day.** On a local world URL the recorder sets the world to midday with its clock paused before the page opens
   (`--time-of-day 12`, the default; the god env route as the dev owner). Dev worlds boot at 06:00 and run a world day
-  per real hour, so without it a world up for 40 minutes is at night. Pass another hour, or `--time-of-day keep` when
-  the clock or the light is what the change is about. The sidecar's `worldTime` says what was set.
+  per real hour, so without it a world up for 40 minutes is at night. Setting it is one `world` entry in the world's god
+  history, and the clock stays paused afterwards. Pass another hour, or `--time-of-day keep` when the clock, the light
+  or the god history is what the change is about. The sidecar's `worldTime` says what was set.
 - **Real input.** Drive with `page.mouse`, `page.keyboard`, `page.touchscreen` or locator clicks, the way a user
   would. Do not call app internals from `page.evaluate` to make things happen on camera.
 - **Fake minds, isolated data.** Local worlds only, `BRAIN_MODE=fake`, a fresh data dir. Never record against a
@@ -101,7 +102,7 @@ node .claude/skills/proof/record.mjs --url '...' --steps .e2e/proof/<slug>/steps
   `worldTime`, console errors, commit and dirty flag. A Playwright without `page.screencast` records from page creation
   even without `--from-load`; the sidecar says so in `startFallback`.
 - The page has `--arrival-seconds` (default 120) to arrive before the take starts; a page that never shows a world fails
-  with a hint to use `--from-load`.
+  (exit 1) with a hint to use `--from-load`, a still of where it stuck (`<clip>.open-failed.png`) and a sidecar.
   Console errors in the sidecar are findings: explain or fix them.
 
 The run takes well under the 10-minute foreground limit. For several clips in one go, run them in the background

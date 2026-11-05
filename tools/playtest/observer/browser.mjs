@@ -73,11 +73,13 @@ export function writeRecording({ name, o, cam = null, state = null, r = null, pa
   let bytes = null, sha256 = null;
   try { if (r?.video && existsSync(r.video)) { renameSync(r.video, file); bytes = statSync(file).size; sha256 = createHash('sha256').update(readFileSync(file)).digest('hex'); } } catch (e) { error ??= String(e?.message ?? e); }
   const opened = r?.opened ?? cam?.opened ?? null, closed = r?.closed ?? null;
+  // An arrival take begins at its startedAt, not at page creation: its length and MB/min are measured from there.
+  const from = cam?.start?.mono != null ? { mono: cam.start.mono } : opened;
   // The video's own length (ffprobe, when installed): it starts at the first painted frame, so it can be shorter than
   // the context's open-to-close time; the gap is lead-in before the page painted, not a cut.
   let videoSec = null;
   if (sha256) { const p = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:format_tags=DURATION:stream_tags=DURATION', '-of', 'json', file], { encoding: 'utf8' }); try { const j = JSON.parse(p.stdout); const d = Number(j.format?.duration); const tag = j.streams?.[0]?.tags?.DURATION ?? j.format?.tags?.DURATION; videoSec = Number.isFinite(d) ? +d.toFixed(2) : tag ? +tag.split(':').reduce((a, x) => a * 60 + Number(x), 0).toFixed(2) : null; } catch { /* no ffprobe */ } }
-  const sec = videoSec ?? (opened && closed ? (closed.mono - opened.mono) / 1000 : null); // MB per camera-minute basis
+  const sec = videoSec ?? (from && closed ? (closed.mono - from.mono) / 1000 : null); // MB per camera-minute basis
   // Where the take starts (#888): at arrival by default (the file begins on the arrived world), or at page creation.
   const start = cam?.start ?? { start: o.record.start ?? 'arrival', startRequested: o.record.start ?? 'arrival', startedAt: null, marks: [] };
   const meta = { recording: 1, camera: name, file: sha256 ? `${name}.webm` : null, bytes, sha256, uncut: true, realSpeed: true,
@@ -86,7 +88,7 @@ export function writeRecording({ name, o, cam = null, state = null, r = null, pa
     partial: !!partial || !!closedBy, ...(closedBy ? { closedBy } : {}), ...(error || r?.error ? { error: error ?? r.error } : {}),
     requested: { kind: o.kind ?? 'wide', soulId: o.soulId ?? null, identity: o.identity ? 'dev-owner' : 'public', viewport: o.viewport ?? null, ...(o.kind === 'free' ? { composition: o.composition ?? FREE_COMPOSITION } : {}) },
     actual: state?.actual ?? null, ready: state?.ready ?? false, arrivedMs: cam?.arrivedMs ?? null,
-    openedAt: opened?.at ?? null, closedAt: closed?.at ?? null, durationSec: opened && closed ? +((closed.mono - opened.mono) / 1000).toFixed(2) : null, videoSec,
+    openedAt: opened?.at ?? null, closedAt: closed?.at ?? null, durationSec: from && closed ? +((closed.mono - from.mono) / 1000).toFixed(2) : null, videoSec,
     encoding: cam?.encoding ?? recordEncoding(o.record.size ?? 'compact', o.viewport ?? undefined),
     mbPerMin: bytes != null && sec > 0 ? +(bytes / 1e6 / (sec / 60)).toFixed(2) : null,
     pageErrors: cam?.errors ?? [], ...(o.record.meta ?? {}) };
@@ -128,6 +130,7 @@ export async function openCamera({ browser, base, identity = null, kind = 'wide'
   const encoding = record?.dir ? recordEncoding(record.size ?? 'compact', viewport) : null;
   const camName = name ?? (kind === 'follow' ? soulId : kind);
   const startRequested = record?.start ?? 'arrival';
+  if (record?.dir && !['arrival', 'load'].includes(startRequested)) throw new Error(`record.start ${JSON.stringify(startRequested)}: arrival or load`);
   const newCtx = async (video) => {
     const c = await browser.newContext({ viewport, deviceScaleFactor: dpr, ...(video ? { recordVideo: { dir: record.dir, size: encoding.size } } : {}) });
     await c.addInitScript((id) => { try { if (id) localStorage.setItem('sim.dev', id); localStorage.setItem('skipgc', 't'); } catch { /* storage off */ } }, identity);
@@ -158,7 +161,7 @@ export async function openCamera({ browser, base, identity = null, kind = 'wide'
   }
   const arrivedMs = Math.round(performance.now() - t0);
   if (start) {
-    if (screencast) { Object.assign(start, await startScreencast(page, { path: screencast, size: encoding.size })); delete start.mono; start.marks.push({ label: 'arrived', atSec: 0 }); }
+    if (screencast) { const s = await startScreencast(page, { path: screencast, size: encoding.size }); start.startedAt = s.startedAt; start.mono = s.mono; start.marks.push({ label: 'arrived', atSec: 0 }); }
     else start.marks.push({ label: 'arrived', atSec: +(arrivedMs / 1000).toFixed(2), basis: 'since page creation; the video starts at its first painted frame' });
   }
   const cam = { name: camName, kind, soulId, page, context: ctx, errors, arrivedMs, follow: null, free: null, opened, recording: !!record?.dir, encoding, start,

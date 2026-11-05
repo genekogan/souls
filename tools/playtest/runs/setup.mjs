@@ -84,7 +84,8 @@ export function worldTimeRequest({ timeOfDay, timeScale } = {}) {
   const errors = [], tod = timeOfDay ?? WORLD_TIME_DEFAULTS.timeOfDay;
   const scale = timeScale ?? (tod === 'keep' ? 'keep' : WORLD_TIME_DEFAULTS.timeScale);
   if (tod !== 'keep' && parseTimeOfDay(tod) == null) errors.push({ code: 'world.timeOfDay', message: `world.timeOfDay ${JSON.stringify(tod)}: hours 0-24, "HH:MM" (or "7pm"), or "keep"` });
-  if (scale !== 'keep' && !(typeof scale === 'number' && scale >= 0 && scale <= 1440)) errors.push({ code: 'world.timeScale', message: `world.timeScale ${JSON.stringify(scale)}: world hours per real hour, 0 (paused) to 1440, or "keep"` });
+  // The server's own bound: a day of 1200 to 20,000,000 ticks, so 0 (paused) or 0.0864 to 1440 world hours per real hour.
+  if (scale !== 'keep' && !(typeof scale === 'number' && (scale === 0 || (scale >= 0.0864 && scale <= 1440)))) errors.push({ code: 'world.timeScale', message: `world.timeScale ${JSON.stringify(scale)}: world hours per real hour, 0 (paused) or 0.09 to 1440, or "keep"` });
   if (errors.length) return { time: null, errors };
   const time = { ...(tod !== 'keep' ? { timeOfDay: tod } : {}), ...(scale !== 'keep' ? { timeScale: scale } : {}) };
   return { time: Object.keys(time).length ? time : null, errors };
@@ -92,13 +93,13 @@ export function worldTimeRequest({ timeOfDay, timeScale } = {}) {
 
 /** applyWorldTime({base, time}) → {ok, requested, applied?, error?}: POST /v1/god/env as the dev owner, then the clock the
  *  world reports. Never throws: a run whose clock could not be set still runs, and its receipt says so. */
-export async function applyWorldTime({ base, time, fetchImpl = fetch, maxWallSec = 30, now = Date.now }) {
+export async function applyWorldTime({ base, time, fetchImpl = fetch, maxWallSec = 30, now = Date.now, note = 'run world time (#888)' }) {
   const t0 = now(), left = () => t0 + maxWallSec * 1000 - now();
   const out = { ok: false, requested: time, route: 'POST /v1/god/env (world owner, dev auth)' };
   try {
     const minted = await call(fetchImpl, `${base}/v1/god/mint`, { method: 'POST', headers: { authorization: `Bearer ${DEV_OWNER}`, 'content-type': 'application/json' }, body: JSON.stringify({ label: 'world-time' }) }, left);
     if (!minted.ok || !minted.body?.token) throw new Error(`god mint refused: HTTP ${minted.status} ${short(minted.body?.code ?? minted.body?.error)}`);
-    const r = await call(fetchImpl, `${base}/v1/god/env`, { method: 'POST', headers: { authorization: `Bearer ${minted.body.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ ...time, note: 'run world time (#888)' }) }, left);
+    const r = await call(fetchImpl, `${base}/v1/god/env`, { method: 'POST', headers: { authorization: `Bearer ${minted.body.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ ...time, note }) }, left);
     if (!r.ok || r.body?.accepted === false) throw new Error(`env refused: HTTP ${r.status} ${short(r.body?.code ?? r.body?.message ?? r.body?.failures?.[0]?.code)}`);
     const t = r.body?.env?.time ?? {};
     out.applied = { clock: t.clock ?? null, datetime: t.datetime ?? null, paused: t.paused ?? null, timeScale: t.timeScale ?? null };

@@ -9,7 +9,10 @@
 // (one uncut, real-speed take from there; the sidecar's `start` is "arrival" and its `arrived` mark is 0). --from-load
 // records from page creation instead, for a journey whose subject is loading or arrival, or a page that is not a world.
 // --time-of-day: on a local world URL (127.0.0.1/localhost …/w/<slug>) the world is set to that hour with its clock paused
-//          before the page opens (default 12, midday; the god env route as the dev owner). `keep` leaves the clock alone.
+//          before the page opens (default 12, midday; the god env route as the dev owner, one entry in the world's god
+//          history; the clock stays paused afterwards). `keep` leaves the clock alone (use it for god history/undo proofs).
+// --arrival-seconds: how long the page may take to arrive before the take starts (default 120). A page that never
+//          shows a world fails (exit 1) with a still of where it stuck (<out>.open-failed.png) and a sidecar.
 //
 // --steps: an ES module whose default export is `async (page, { url, viewport, mark }) => {}`. It drives the journey
 //          with real input (page.mouse / page.keyboard / page.touchscreen / locator clicks). `mark('label')` records a
@@ -30,7 +33,7 @@ const VIEWPORTS = {
   phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const a = { viewport: 'desktop', settleSeconds: 8, fromLoad: false, timeOfDay: '12', arrivalSeconds: 120 };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i], v = () => { if (i + 1 >= argv.length) throw Error(`${k} needs a value`); return argv[++i]; };
@@ -98,9 +101,20 @@ function burnIn(src, dst, { width, height, durationSec }) {
   return { ok: false };
 }
 
+/** worldTimePlan({url, timeOfDay}, tools) → {base, time} to set, or {why} when the clock is left alone. Throws on an
+ *  invalid --time-of-day. */
+export function worldTimePlan(a, tools) {
+  if (a.timeOfDay === 'keep') return { why: 'keep' };
+  if (!tools) return { why: 'tools/playtest not in this checkout' };
+  const req = tools.worldTimeRequest({ timeOfDay: /^\d+(\.\d+)?$/.test(a.timeOfDay) ? Number(a.timeOfDay) : a.timeOfDay });
+  if (req.errors.length) throw Error(`--time-of-day: ${req.errors[0].message.replace('world.timeOfDay ', '')}`);
+  const base = tools.worldBase(a.url);
+  return base ? { base, time: req.time } : { why: 'not a local world URL' };
+}
+
 async function main() {
   const a = parseArgs(process.argv.slice(2));
-  if (a.help || !a.url || !a.out) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 20).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(a.help ? 0 : 2); }
+  if (a.help || !a.url || !a.out) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 23).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(a.help ? 0 : 2); }
   const vp = VIEWPORTS[a.viewport];
   if (!vp) throw Error('--viewport must be desktop or phone');
   const cap = a.maxSeconds > 0 ? { value: a.maxSeconds, from: '--max-seconds' } : policyMaxSeconds();
@@ -110,14 +124,12 @@ async function main() {
   const out = resolve(a.out); mkdirSync(dirname(out), { recursive: true });
   const tools = await clipTools();
   // World time first (#888), before the page opens: a local world is shown at midday with its clock paused.
-  let worldTime = { requested: a.timeOfDay, applied: false, why: 'keep' };
-  if (a.timeOfDay !== 'keep') {
-    const base = tools?.worldBase(a.url);
-    const req = tools?.worldTimeRequest({ timeOfDay: /^\d+(\.\d+)?$/.test(a.timeOfDay) ? Number(a.timeOfDay) : a.timeOfDay });
-    if (req?.errors.length) throw Error(`--time-of-day: ${req.errors[0].message.replace('world.timeOfDay ', '')}`);
-    if (!base) worldTime = { requested: a.timeOfDay, applied: false, why: tools ? 'not a local world URL' : 'tools/playtest not in this checkout' };
-    else { const r = await tools.applyWorldTime({ base, time: req.time }); worldTime = { requested: req.time, applied: r.ok, ...(r.ok ? { clock: r.applied } : { why: r.error }) }; }
-    if (!worldTime.applied && base) console.error(`warn: world time not set (${worldTime.why}); the clip shows the world's own clock`);
+  const plan = worldTimePlan(a, tools);
+  let worldTime = { requested: plan.time ?? a.timeOfDay, applied: false, why: plan.why ?? null };
+  if (plan.base) {
+    const r = await tools.applyWorldTime({ base: plan.base, time: plan.time, note: 'proof recorder world time (#888)' });
+    worldTime = { requested: plan.time, applied: r.ok, ...(r.ok ? { clock: r.applied } : { why: r.error }) };
+    if (!r.ok) console.error(`warn: world time not set (${r.error}); the clip shows the world's own clock`);
   }
   const work = mkdtempSync(join(tmpdir(), 'proof-'));
   const { chromium, args, from } = await loadChromium();
@@ -160,7 +172,15 @@ async function main() {
     await page.waitForTimeout(800);                    // let the last frame land
   })().catch((e) => { stepError = String(e?.stack ?? e).slice(0, 2000); });
   await Promise.race([journey, capped]);
-  if (stepError && screencast && !marks.length) { await context.close(); await browser.close(); rmSync(work, { recursive: true, force: true }); console.error(stepError); process.exit(1); }
+  if (stepError && screencast && !marks.length) {
+    // Never arrived: no take was started. Keep a still of where it stuck and a sidecar saying so.
+    const still = `${out.replace(/\.[^./]*$/, '')}.open-failed.png`;
+    const shot = await page.screenshot({ path: still, timeout: 15000 }).then(() => basename(still), () => null);
+    await context.close(); await browser.close(); rmSync(work, { recursive: true, force: true });
+    writeFileSync(`${out}.json`, JSON.stringify({ file: null, url: a.url, viewport: a.viewport, start: 'arrival', startRequested: 'arrival', arrived: false, openFailedShot: shot, worldTime, stepError, consoleErrors,
+      commit: git('rev-parse', 'HEAD'), recordedAt: new Date().toISOString() }, null, 2) + '\n');
+    console.error(stepError); process.exit(1);
+  }
   const durationSec = +((Date.now() - t0) / 1000).toFixed(2);
   const video = screencast ? null : page.video();
   if (screencast) await page.screencast.stop();
@@ -194,4 +214,4 @@ async function main() {
   if (truncated) { console.error(`journey ran past ${cap.value}s (${cap.from}); clip cut at the cap: shorten the journey`); process.exit(3); }
 }
 
-main().catch((e) => { console.error(String(e?.stack ?? e)); process.exit(1); });
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((e) => { console.error(String(e?.stack ?? e)); process.exit(1); });

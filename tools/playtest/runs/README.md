@@ -200,7 +200,8 @@ A take starts at arrival (`observer.recordStart: "arrival"`, the default, #888):
 arrival card is gone, the page's own recording starts (Playwright `page.screencast`), so the file opens on the world and
 holds no loading. `"load"` records the context from page creation to close (Playwright's context video), for a run whose
 subject is loading or arrival. A Playwright without `page.screencast` falls back to `load`, and the sidecar says so in
-`startFallback`. The sidecar's `start`, `startRequested`, `startedAt` (wall clock of the file's first frame) and
+`startFallback`. The sidecar's `start`, `startRequested`, `startedAt` (an arrival take: when its recording started; a
+load take: when the context opened, just before its first painted frame), `durationSec` (from `startedAt`) and
 `marks` (`arrived`: 0 for an arrival start, its offset for a load start) say which, and `worldTime` holds the world clock
 read from `GET /v1/world/env` when the recording started (`worldTimeRequested` is the spec's). A camera that never
 arrives under the arrival start has no video; its sidecar names a still of the page it stuck on (`openFailedShot`).
@@ -230,8 +231,9 @@ Offline, after the run (reads the run folder, writes only under `<run>/derived/`
   `fullProof: false` and the source's file, sha256 and range. The source is hashed before and after; a recording that no
   longer matches its sidecar is refused. A preview is a pointer for reviewers, never the proof itself.
 - `preview <run> --camera <c> --auto [--seconds 20]` picks the range from the run's own events (#888): the first act
-  (the earliest seat turn that ran `eden.mjs act`, `say` or another action, timed at that call: the turn's start plus
-  the calls before it), else the first request the director delivered. A seat's follow camera uses that seat's events.
+  (the earliest seat turn that ran `eden.mjs act`, `say` or another action, at an estimated call time: the turn's start
+  plus the execution time of the calls before it; a model's thinking between calls is not in `turns.jsonl`, so for a
+  model seat this is a lower bound, while for `scripted-owner` seats it is within a few hundred ms), else the first request the director delivered. A seat's follow camera uses that seat's events.
   The event is mapped onto the recording by wall clock, `from = max(0, event − recording startedAt − 1 s)` (`openedAt`
   for recordings from page creation made before #888), and `to = from + seconds`. The preview sidecar's `auto` records
   the event (kind, seat, time, source file, the call), the recording's start basis, the offset and the rule.

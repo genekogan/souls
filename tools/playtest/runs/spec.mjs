@@ -111,6 +111,9 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   try { scenarioText = readFileSync(scenarioPath, 'utf8'); scenario = JSON.parse(scenarioText); } catch (e) { return { ok: false, errors: [{ code: 'scenario.unreadable', message: e.message }] }; }
   if (scenario.world?.kind !== 'dev') fail('world.kind', `world.kind "${scenario.world?.kind}" is not supported; only isolated dev worlds`);
   try { assertMeasurementReady(scenario); } catch (e) { fail('scenario.measurement', e.message); }
+  // A scenario's own recording start stands unless the spec names one.
+  if (spec.observer?.recordStart == null && scenario.observer?.recordStart != null) observer.recordStart = scenario.observer.recordStart;
+  if (!RECORD_STARTS.includes(observer.recordStart)) fail('observer.recordStart', `scenario observer.recordStart: ${RECORD_STARTS.join(' or ')}`);
 
   const base0 = specPath ? dirname(specPath) : cwd;
   const find = (p) => isAbsolute(p) ? p : [resolve(base0, p), resolve(cwd, p), resolve(REPO_ROOT, p)].find(existsSync) ?? null;
@@ -163,7 +166,7 @@ export function applyOverrides(scenario, { cast = 'scenario', world = null, dura
   if (world?.snapshot != null) out.world.snapshot = world.snapshot;
   if (durationSec != null) out.durationSec = durationSec;
   if (observer?.cameras != null) out.observer = { ...(out.observer ?? {}), cameras: observer.cameras };
-  for (const k of ['mode', 'record', 'recordSize', 'recordStart', 'freeComposition']) if (observer?.[k] != null && !(k === 'mode' && observer.mode === 'cameras') && !(k === 'recordStart' && (observer.recordStart === 'arrival' || observer.record == null))) out.observer = { ...(out.observer ?? {}), [k]: observer[k] };
+  for (const k of ['mode', 'record', 'recordSize', 'recordStart', 'freeComposition']) if (observer?.[k] != null && !(k === 'mode' && observer.mode === 'cameras') && !(k === 'recordStart' && observer.record == null)) out.observer = { ...(out.observer ?? {}), [k]: observer[k] };
   if (cast && typeof cast === 'object') {
     // A composed cast replaces the scenario's seats and/or scripted direction in their own formats (seat "*" is the
     // scripted director's broadcast).
