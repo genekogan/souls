@@ -58,7 +58,8 @@ switch independent. A previously saved master mute migrates to both switches off
 - **Thumbnails.** Each `worlds.json` row carries `thumbnail` (a URL or `null`) and `thumbnailSource` (`owner`,
   `template` or `null`). The owner sets the picture with a 16:9 JPEG
   ([API](api.md#world-owner-api-served-by-the-launcher)). It is checked and stripped by the upload gate in
-  `apps/server/src/moderation/` and stored as `<data>/worlds/<slug>/thumbs/<sha>.jpg`, so it moves with the world on
+  `apps/server/src/moderation/` (including the site admin's vetoes, which also stop a stored or default picture from
+  being listed or served) and stored as `<data>/worlds/<slug>/thumbs/<sha>.jpg`, so it moves with the world on
   archive and restore. A world without one shows its template's default, `worlds/templates/thumbs/<template>.jpg`
   (`empty.jpg` for the empty plain), which is media pulled from the asset CDN and not kept in git. When neither
   exists, the row has no picture. Both kinds are served immutable under content-hashed URLs

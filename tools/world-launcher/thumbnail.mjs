@@ -15,6 +15,8 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { UploadRejected, validateUpload } from '../../apps/server/src/moderation/validate.ts';
 import { classify } from '../../apps/server/src/moderation/classifier.ts';
+import { ModerationStore } from '../../apps/server/src/moderation/store.ts';
+import { DatabaseSync } from 'node:sqlite';
 
 export const THUMB = Object.freeze({ maxBytes: 512 * 1024, minWidth: 640, maxWidth: 1920, aspect: 16 / 9, aspectTolerance: 0.02, writesPerWindow: 6, windowMs: 10 * 60_000 });
 export const THUMB_CACHE = 'public, max-age=31536000, immutable';
@@ -26,6 +28,7 @@ const FIX = {
   dimensions: 'Crop or resize it to 16:9, 640–1920 px wide; 1280×720 is the default.',
   invalid: 'Re-save the image as a standard (baseline or progressive) JPEG and send it again.',
   moderation: 'Choose a different view of the world; the content check did not accept this image.',
+  vetoed: 'Choose a different view of the world; the site admin removed this image and it cannot be used again.',
 };
 const refusal = (status, code, message, fix) => ({ ok: false, status, body: { ok: false, code, message, fix } });
 
@@ -33,7 +36,7 @@ const refusal = (status, code, message, fix) => ({ ok: false, status, body: { ok
  * Check one thumbnail upload. Returns {ok: true, sha, bytes, width, height, stripped, verdict} for the stripped bytes,
  * or {ok: false, status, body} with a `fix` sentence the uploader can act on.
  */
-export async function intakeThumbnail(input, { words = [] } = {}) {
+export async function intakeThumbnail(input, { words = [], vetoed = () => false } = {}) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input ?? []);
   if (!bytes.length) return refusal(400, 'thumbnail.empty', 'The request carried no image', FIX.type);
   if (bytes.length > THUMB.maxBytes) return refusal(413, 'thumbnail.size', `The image is ${bytes.length} bytes; a thumbnail is at most ${THUMB.maxBytes}`, FIX.size);
@@ -44,6 +47,8 @@ export async function intakeThumbnail(input, { words = [] } = {}) {
     if (!(e instanceof UploadRejected)) throw e;
     return e.code === 'upload.image-format' ? refusal(415, 'thumbnail.type', e.message, FIX.type) : refusal(400, 'thumbnail.invalid', e.message, FIX.invalid);
   }
+  // the site admin's veto, as at every upload's intake (moderation/intake.ts): by the stored and by the sent bytes
+  if (vetoed(up.sha) || vetoed(up.inputSha)) return refusal(451, 'thumbnail.vetoed', 'This image was removed by the site admin and cannot be uploaded again', FIX.vetoed);
   const { w, h } = up.images[0];
   if (w < THUMB.minWidth || w > THUMB.maxWidth || Math.abs(w / h - THUMB.aspect) / THUMB.aspect > THUMB.aspectTolerance)
     return refusal(400, 'thumbnail.dimensions', `The image is ${w}×${h}; a thumbnail is 16:9 and ${THUMB.minWidth}–${THUMB.maxWidth} px wide`, FIX.dimensions);
@@ -106,10 +111,33 @@ export function templateThumbs(dir, { ttlMs = 5000 } = {}) {
   };
 }
 
-/** The card's picture: the owner's, else the template's default, else none. */
-export function thumbnailOf(w, { base = '', defaults }) {
+/** The card's picture: the owner's, else the template's default, else none; a picture the admin vetoed is skipped. */
+export function thumbnailOf(w, { base = '', defaults, vetoed = () => false }) {
   const sha = w.thumbnail?.sha;
-  if (typeof sha === 'string' && /^[0-9a-f]{64}$/.test(sha)) return { thumbnail: `${base}/__sim/thumbs/${w.slug}/${sha}.jpg`, thumbnailSource: 'owner' };
+  if (typeof sha === 'string' && /^[0-9a-f]{64}$/.test(sha) && !vetoed(sha, w)) return { thumbnail: `${base}/__sim/thumbs/${w.slug}/${sha}.jpg`, thumbnailSource: 'owner' };
   const d = w.fork ? null : defaults?.forTemplate(w.template ?? 'empty');
-  return d ? { thumbnail: `${base}/__sim/thumbs/_template/${d.sha}.jpg`, thumbnailSource: 'template' } : { thumbnail: null, thumbnailSource: null };
+  return d && !vetoed(d.sha, null) ? { thumbnail: `${base}/__sim/thumbs/_template/${d.sha}.jpg`, thumbnailSource: 'template' } : { thumbnail: null, thumbnailSource: null };
+}
+
+/**
+ * The site admin's veto of an image, read the way every world folds it (moderation/store.ts): the shared site log
+ * (`hide`/`unhide` by the admin, the latest wins) and, when it has no row for the sha, the world's own log (admin rows in
+ * its database, read-only; a world never shares writes with the launcher). Answers are cached for `ttlMs` unless `fresh`.
+ * @returns {(sha: string, world?: { file: string, worldId: string } | null, o?: { fresh?: boolean }) => boolean}
+ */
+export function adminVetoes({ siteLog, ttlMs = 5000 } = {}) {
+  const site = new ModerationStore(new DatabaseSync(':memory:'), 'launcher-thumbnails', siteLog);
+  const cache = new Map();
+  const worldVeto = (world, sha) => {
+    if (!world?.file || !existsSync(world.file)) return false;
+    let db; try { db = new DatabaseSync(world.file, { readOnly: true }); return db.prepare("SELECT action FROM moderation_log_v1 WHERE world_id=? AND sha=? AND role='admin' AND action IN ('hide','unhide') ORDER BY seq DESC LIMIT 1").get(world.worldId, sha)?.action === 'hide'; }
+    catch { return false; } finally { db?.close(); }
+  };
+  return (sha, world = null, { fresh = false } = {}) => {
+    const key = `${world?.file ?? ''}|${sha}`, hit = cache.get(key);
+    if (!fresh && hit && Date.now() - hit.at < ttlMs) return hit.v;
+    const v = site.log({ sha, site: 'all', limit: 1 }).length ? site.state(sha).adminVeto : worldVeto(world, sha);
+    cache.set(key, { at: Date.now(), v }); if (cache.size > 2048) cache.delete(cache.keys().next().value);
+    return v;
+  };
 }
