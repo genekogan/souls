@@ -1374,6 +1374,11 @@ export class WorldHost {
   private captureBody(runtime = this.engine.snapshot()): SnapshotBody {
     return { runtime, ...this.captureHostState() };
   }
+  /** BODY-v1 world body-type policy: live admission config, never snapshot or replay state, so the host re-applies it
+   *  to every engine it installs (a rolled-back transaction or recovery restores a fresh engine). */
+  private bodyTypesV1: string[] | null = null;
+  configureBodyTypesV1(types: readonly string[]) { this.bodyTypesV1 = [...types]; this.applyBodyTypesV1(); }
+  private applyBodyTypesV1() { if (this.bodyTypesV1) this.engine.configureBodyTypesV1?.(this.bodyTypesV1); }
   private restoreBody(body: SnapshotBody) {
     // Transaction rollback replaces the engine but must keep the latest owned
     // recovery boundary even if its deferred encoding had not finished yet.
@@ -1382,7 +1387,7 @@ export class WorldHost {
     catch (error) { failed = true; failure = error; }
     this.cancelPeriodicSnapshot(); this.recoveryCapture = null; this.recoveryBaseline = recovery;
     try {
-      this.engine = this.factory.restore(structuredClone(body.runtime)); this.minds.clear(); this.mindByEntity.clear();
+      this.engine = this.factory.restore(structuredClone(body.runtime)); this.applyBodyTypesV1(); this.minds.clear(); this.mindByEntity.clear();
       for (const m of structuredClone(body.minds)) this.addMind(m);
       this.kernel = structuredClone(body.kernel!); this.extra = structuredClone(body.extra); this.counts = {...body.counts};
       this.seq = body.seq;

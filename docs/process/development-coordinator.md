@@ -52,7 +52,9 @@ read the small manifest/current state and relevant issue evidence, not the entir
 
 An explicitly authorized agenda permits rolling dispatch within its scope and worker ceiling, without asking Gene
 about each issue. Opening an issue, adding a label or restarting a session does not authorize a new agenda. No
-scheduled launches or background polling agents. Use an available goal for a bounded agenda, not “finish the project.”
+scheduled launches or background polling agents. A bounded in-session watch that expires and is re-armed by the
+coordinator on wake (for example a 30-minute PR-change monitor) is an allowed wait, not a scheduled or polling
+agent; cron and scheduled agents remain forbidden. Use an available goal for a bounded agenda, not “finish the project.”
 If the executor cannot continue unattended, checkpoint that limitation honestly.
 
 While the authorized agenda is active, remain available for conversation and supervise work through completion
@@ -80,6 +82,12 @@ the coordinator before substantial scope expansion or out-of-scope prerequisites
 Required independent diagnosis/review uses the same capacity budget; workers must not recursively grow a pool.
 
 ## Operate with little coordination
+
+Keep every lane busy. A lane is either running or has a handoff the coordinator will be woken for; on every wake
+the coordinator reconciles every lane, and an idle lane is a coordinator failure. Mechanical repository work
+(review dispatch, merge-queue labelling, CI and merge-train triage, release-candidate summaries) belongs to a
+standing workhorse repo steward, not the frontier coordinator; the steward never deploys or runs a paid gate. Worker
+rules and per-harness mechanics: [sustaining lanes](coordinator-portability.md#sustaining-lanes).
 
 Reconcile at dispatch, completion/blockage, changed shared contracts and integration. Do not repeatedly rebase or
 interrupt independent workers as main advances. Workers fix ordinary rebase conflicts; the coordinator resolves

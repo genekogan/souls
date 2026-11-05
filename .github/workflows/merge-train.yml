@@ -1,5 +1,24 @@
-# The merge train: lands ready PRs on main one at a time, each re-tested on top of the main it will join. The repo
-# has no merge queue (personal account), so this workflow is the queue.
+# The merge train: lands ready PRs on main one at a time. The repo has no merge queue (personal account), so this
+# workflow is the queue.
+#
+# Landing mode (landingMode in .github/scripts/merge-train.mjs, decided by the pick step; decision PD10)
+#   non-strict           T0-T2, no strict path (STRICT_PATHS: mars/, packages/engine-*, kernel and world-compiler,
+#                        packages/conformance, pnpm-lock.yaml, the walk and bundle baselines, .github/workflows/),
+#                        required checks green on the current head, GitHub reports it mergeable without conflict, and
+#                        main's CI green: squash-merged as is, even when behind main (steps 1-2 skipped). Main's own
+#                        CI is the safety net for the combination: the train dispatches ci.yml on main after each merge
+#                        (see "Dispatch main CI"). Head checks still pending (adding merge:ready re-runs proof-ok and
+#                        fragment) are waited for, up to 15 minutes, before the mode is chosen; then pending is strict
+#   strict               everything else (T3-T4, strict paths, head not green yet, conflict or unknown mergeability):
+#                        steps 1-3 below. Main is green only when no ci.yml run failed after its newest green
+#                        full-scope run (every qualify job succeeded, or a manual run), or the failed run is re-run
+#                        green; a narrower green run does not clear a failure. ci.yml makes every push to main and
+#                        every manual run full scope (ci-scope.mjs FULL_EVENTS); the run the train dispatches after a
+#                        merge is a manual one, so merges leave that evidence.
+#                        With no green full-scope run among the last 50 runs main is unproven, which counts as red.
+#                        While main is red every PR is strict, and the
+#                        train says so once per red streak on the coordination issue (repo variable
+#                        MERGE_TRAIN_NOTIFY_ISSUE, default 755; a failed notice is logged and the train goes on)
 #
 # Label flow
 #   merge:ready          the author (or an agent) adds it when the PR is done; the train takes the oldest eligible one
@@ -89,11 +108,13 @@ jobs:
 
       - name: Pick the next PR
         id: pick
-        run: node .github/scripts/merge-train.mjs next --repo "$REPO" --maintainer "$MAINTAINER" --output "$GITHUB_OUTPUT"
+        env:
+          NOTIFY_ISSUE: ${{ vars.MERGE_TRAIN_NOTIFY_ISSUE || '755' }}
+        run: node .github/scripts/merge-train.mjs next --repo "$REPO" --maintainer "$MAINTAINER" --notify-issue "$NOTIFY_ISSUE" --output "$GITHUB_OUTPUT"
 
       - name: Rebase onto main
         id: rebase
-        if: steps.pick.outputs.pr != ''
+        if: steps.pick.outputs.pr != '' && steps.pick.outputs.mode != 'nonstrict'
         env:
           HEAD_REF: ${{ steps.pick.outputs.head_ref }}
           HEAD_SHA: ${{ steps.pick.outputs.head_sha }}
@@ -204,23 +225,39 @@ jobs:
         id: wait
         if: >-
           steps.pick.outputs.pr != '' && steps.needs_rebase.outcome == 'skipped' &&
-          (steps.rebase.outputs.status == 'current' || steps.push.outcome == 'success')
+          (steps.rebase.outputs.status == 'current' || steps.push.outcome == 'success' || steps.pick.outputs.mode == 'nonstrict')
         env:
           SHA: ${{ steps.push.outputs.sha || steps.pick.outputs.head_sha }}
         run: node .github/scripts/merge-train.mjs wait --repo "$REPO" --sha "$SHA" --timeout-min 60 --output "$GITHUB_OUTPUT"
 
       - name: Merge
+        id: merge
         if: steps.wait.outputs.result == 'pass'
         env:
           PR: ${{ steps.pick.outputs.pr }}
           SHA: ${{ steps.push.outputs.sha || steps.pick.outputs.head_sha }}
           TIER: ${{ steps.pick.outputs.tier }}
+          MODE: ${{ steps.pick.outputs.mode }}
+          MODE_WHY: ${{ steps.pick.outputs.mode_why }}
         run: |
-          echo "Merging #$PR ($TIER) at $SHA"
-          if ! node .github/scripts/merge-train.mjs merge --repo "$REPO" --pr "$PR" --sha "$SHA" 2> "$RUNNER_TEMP/merge.err"; then
+          echo "Merging #$PR ($TIER, $MODE: $MODE_WHY) at $SHA"
+          if node .github/scripts/merge-train.mjs merge --repo "$REPO" --pr "$PR" --sha "$SHA" 2> "$RUNNER_TEMP/merge.err"; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          else
             { echo "Merge train: the checks passed but GitHub refused the merge, so this PR left the train:"; echo; echo '```'; cat "$RUNNER_TEMP/merge.err"; echo '```'; echo; echo "Fix it and add \`merge:ready\` again."; } > "$RUNNER_TEMP/eject.md"
             node .github/scripts/merge-train.mjs eject --repo "$REPO" --pr "$PR" --message-file "$RUNNER_TEMP/eject.md"
           fi
+
+      # The merge was pushed with GITHUB_TOKEN, which starts no workflows, so ci.yml's push trigger never fires and
+      # mainCiState would read a stale window (every PR strict). A workflow_dispatch made with GITHUB_TOKEN does start a
+      # run, and a manual ci.yml run is full scope. Dispatched after every merge: ci.yml's concurrency group keeps at
+      # most one pending main run (a newer one replaces it), so runs cannot pile up and the last merge of a burst is
+      # tested. A failed dispatch is logged and the train goes on.
+      - name: Dispatch main CI
+        if: steps.merge.outputs.merged == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --repo "$REPO" --ref "$DEFAULT_BRANCH" || echo "::warning::could not dispatch ci.yml on $DEFAULT_BRANCH"
 
       - name: Checks failed or timed out
         if: steps.wait.outputs.result == 'fail' || steps.wait.outputs.result == 'timeout'
@@ -231,7 +268,7 @@ jobs:
           PENDING: ${{ steps.wait.outputs.pending }}
         run: |
           {
-            if [ "$RESULT" = fail ]; then echo "Merge train: required checks failed on the rebased head (\`$FAILED\`), so this PR left the train."
+            if [ "$RESULT" = fail ]; then echo "Merge train: required checks failed on the head it would merge (\`$FAILED\`), so this PR left the train."
             else echo "Merge train: required checks did not finish within 60 minutes (\`$PENDING\`), so this PR left the train."; fi
             echo; echo "Fix it and add \`merge:ready\` again."
           } > "$RUNNER_TEMP/eject.md"
