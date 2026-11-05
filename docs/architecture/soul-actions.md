@@ -84,12 +84,13 @@ context-size checks below), regression runs, and an uncut real-client recording 
     - **Blocked.** A hold-up of 0.5 s makes the operation `blocked`: someone in the way (`carry.path-occupied`), on a
       grip or set-down spot, or a cut with no other way from here to the destination (`carry.route-blocked`). Every
       member's receipt that is still `started` carries that code, and a reason naming the blocker and what frees it.
-      For a cut, the blocker is the labelled obstacle at the cut itself; an obstacle without a label is not named, and
-      no engine id reaches a reason. Each stream gets `shared.blocked`. Moving again for 0.5 s sends `shared.resumed`
+      For a cut, the blocker is the labelled obstacle at the cut itself. An obstacle without a label is not named, and a
+      name that looks like an entity or part id (`e_…`, `…#…`) is dropped. Each stream gets `shared.blocked`. Moving again for 0.5 s sends `shared.resumed`
       and clears the reasons.
     - **Unproven cut.** The replan after a cut searches from where the crew stands to the destination only. When it
       stops at its pose budget, the reason says how many poses it searched and that this does not prove there is no
-      other way. The port passes the planner's own `expanded` and `budget`; nothing is read back from message text.
+      other way. The port passes the planner's own `expanded` and `budget` in the diagnostic's details, not in message
+      text (the preflight still reads the blocker's quoted label from the planner's message).
     - **Kept afterwards.** Each interval goes to the operation's `blocks` (the most recent 20), shown in every member's
       `shared` receipt view. A replan to the same place counts as a detour (`detours`), and the revision stays the same.
     - **Lasting.** After 30 s the hold-up is `lasting`, and each member's stream is told again. The crew still holds
