@@ -15,14 +15,15 @@ export function contactStateKey(def:{tags?:readonly string[];components?:{light?
   // Opted-in drawn coverings without a hinge (curtains, a roller blind): open/close at a pull cord, the same contact.
   if(!def.components?.opening&&def.tags?.includes('hand-operated')&&def.state&&Object.hasOwn(def.state,'open')&&(!action||['open','close'].includes(action)))return 'open';
   // Opted-in hand switches without a light (a tap, a shower valve): the same on/off contact. Entry 37: a radio's
-  // tuning knob (`change-station`) is the same contact; the station it sets is depicted on the same clock.
-  if(!def.components?.opening&&def.tags?.includes('hand-operated')&&(!action||['switch-on','switch-off','change-station'].includes(action)))return 'on';
+  // tuning knob (`change-station`) is the same contact; the station it sets is depicted on the same clock. #431: so is a
+  // record player's tonearm (`put-on-record`), with the record it sets.
+  if(!def.components?.opening&&def.tags?.includes('hand-operated')&&(!action||['switch-on','switch-off','change-station','put-on-record'].includes(action)))return 'on';
   // Opted-in fire (a candle, a campfire): "light" / "put out" are the same on/off contact, under their own words.
   if(def.tags?.includes('hand-operated')&&action!==undefined&&['light','put-out'].includes(action))return 'on';
   return null;
 }
 /** Entry 37: besides `on`/`open`, the other fields a hand contact sets that viewers depict on the same clock. */
-export const CONTACT_EXTRA_FIELDS=['station'] as const;
+export const CONTACT_EXTRA_FIELDS=['station','record'] as const;
 /** Soul Actions entry 42: a hand-operated container's storage (its `shelf` slots, the mouth and what fits), else null.
  *  Shared by the server (offers, refusals, perception), the engine adapter (interior surface slots) and the viewer. */
 export type ContainerInside={lip:number;face:number;stand:[number,number];fit:[number,number,number];word:string;slots:{id:string;p:readonly number[]}[]};
