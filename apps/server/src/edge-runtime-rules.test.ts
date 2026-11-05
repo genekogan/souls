@@ -9,7 +9,7 @@ import {WorldHost} from './world.ts';
 import {marsFactory,GREEN_FIELD_WORLD,LITTLE_MARTIANS_WORLD} from '@sim/engine-mars';
 import {enableEdgeRuntimeRules,LITTLE_MARTIANS_WORLD_KEYS} from './edge-runtime-rules.ts';
 
-type Policy = {quietStallReleaseV1?:boolean;yieldTimeoutV1?:boolean;spreadV2?:boolean;occupiedLinkRoutingV1?:boolean;concurrentLinkEgressV1?:boolean};
+type Policy = {quietStallReleaseV1?:boolean;yieldTimeoutV1?:boolean;spreadV2?:boolean;routeReachV1?:boolean;occupiedLinkRoutingV1?:boolean;concurrentLinkEgressV1?:boolean};
 async function startup(worldKey:string,config:typeof GREEN_FIELD_WORLD){
  const db=new Db(':memory:'),host=new WorldHost(db,await marsFactory(config),'edge-rules',1e9,`${worldKey}-1`);
  try{
