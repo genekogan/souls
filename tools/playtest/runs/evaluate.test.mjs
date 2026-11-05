@@ -30,7 +30,9 @@ function makeRun(opts = {}) {
   const root = opts.root ?? mkdtempSync(join(tmpdir(), 'sr-eval-'));
   const dir = join(root, opts.name ?? 'trio-1'), p = join(dir, 'playtest');
   const script = opts.script ?? [{ seat: 'bo', atSec: 0, channel: 'card', text: 'Walk to the orchard', budgetSec: 100 }, { seat: 'bo', atSec: 9, channel: 'card', text: 'Change of plan: the pond hall instead', budgetSec: 100 }];
-  const scenario = { name: 'sr-trio', seed: 7, world: { kind: 'dev', genesis: 'worlds/templates/hello-hamlet.json', port: opts.port ?? 4321 }, durationSec: 60, seats: [{ id: 'bo', adapter: 'scripted-owner', soulName: 'Bo', script: { rules: [] } }], director: { mode: 'scripted', sequential: false, script } };
+  const scenario = { name: 'sr-trio', seed: 7, world: { kind: 'dev', genesis: 'worlds/templates/hello-hamlet.json', port: opts.port ?? 4321 }, durationSec: 60, seats: [{ id: 'bo', adapter: 'scripted-owner', soulName: 'Bo', script: { rules: [] } }], director: { mode: 'scripted', sequential: false, script },
+    // A recorded run's observer metadata, as lifecycle.mjs writes it: per-run identity next to the requested world time.
+    ...(opts.record ? { observer: { record: ['follow'], recordMeta: { runId: opts.name ?? 'trio-1', attempt: 1, worldTimeRequested: opts.record.time ?? { timeOfDay: 12, timeScale: 0 }, specSha256: 'spec', effectiveSpecSha256: `eff-${opts.port ?? 4321}`, source: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0 } } } } : {}) };
   w(join(dir, 'scenario.effective.json'), scenario);
   w(join(p, 'scenario.json'), { ...scenario, scenarioPath: join(dir, 'scenario.effective.json'), serverRoot: '/srv', scenarioSha256: 'x' });
   for (const [n, s] of ['0-preflight', '1-provision', '2-seats', '3-play', '4-close', '5-review', '7-report'].entries()) w(join(p, 'receipts', `${s}.json`), { step: s.slice(2), ok: true, ...(n === 5 ? { requests: 0 } : {}) });
@@ -115,7 +117,7 @@ test('offline rescore writes a new version and leaves sources and earlier evalua
   const a = await evaluateRun(dir, { questions: [Q('redirect-honoured.mjs')] });
   const first = readFileSync(join(a.dir, 'evaluation.json'), 'utf8');
   const b = await evaluateRun(dir, { questions: [Q('redirect-honoured.mjs'), Q('walk-seen.mjs')] });
-  assert.deepEqual(readdirSync(join(dir, 'evaluations')), ['001-v2', '002-v2']);
+  assert.deepEqual(readdirSync(join(dir, 'evaluations')), ['001-v3', '002-v3']);
   assert.equal(readFileSync(join(a.dir, 'evaluation.json'), 'utf8'), first);
   assert.deepEqual(indexSources(dir), before, 'evaluations/ is excluded and no source changed');
   assert.equal(b.evaluation.questions.length, 2);
@@ -270,6 +272,23 @@ test('compare separates runs served by a different server, tools checkout or CLI
   assert.deepEqual(pair(iq, 'lab-a', 'lab-b').differ, ['label']); assert.deepEqual(pair(iq, 'lab-a', 'lab-b').values.label, ['baseline', 'candidate']);
   assert.equal(armOf(iq, 'lab-a').label, 'baseline');
   assert.match(renderIndex(iq), /## Arm `[0-9a-f]{12}` \(candidate\)/);
+});
+
+test('compare groups recorded repeats by spec, server and label, not by run id, port or attempt: two arms of two repeats', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sr-rec-'));
+  const run = (name, port, commit, arm, time) => makeRun({ root, name, port, commit, arm, record: time ? { time } : {} });
+  const runs = [run('base-1', 4321, 'aaaa1111bbbb', 'baseline'), run('base-2', 4322, 'aaaa1111bbbb', 'baseline'), run('cand-1', 4323, 'cccc2222dddd', 'candidate'), run('cand-2', 4324, 'cccc2222dddd', 'candidate')];
+  const ix = await compareRunSet(runs);
+  assert.deepEqual(ix.arms.map((a) => a.repeats), [['base-1', 'base-2'], ['cand-1', 'cand-2']], 'each repeat joins its arm despite its own run id and port');
+  assert.deepEqual(ix.arms.map((a) => a.label), ['baseline', 'candidate']);
+  assert.equal(ix.incompatible.length, 1);
+  assert.deepEqual(ix.incompatible[0].differ, ['label', 'serverCommit'], 'the recorded server commit is condition identity, not a scenario difference');
+  assert.deepEqual(ix.arms.map((a) => a.caveats ?? []), [[], []], 'two completed repeats per arm');
+  assert.match(renderIndex(ix), /4 attempt\(s\), 2 arm\(s\)/);
+  // The requested world time is what ran: the same spec at another hour is a different arm.
+  const night = await compareRunSet([runs[0], run('night-1', 4325, 'aaaa1111bbbb', 'baseline', { timeOfDay: 0, timeScale: 0 })]);
+  assert.equal(night.arms.length, 2);
+  assert.deepEqual(night.incompatible[0].differ, ['scenario']);
 });
 
 test('directions: the direction journal is counted by command and outcome; each redirection says whether its target spoke after', () => {
