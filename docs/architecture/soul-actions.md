@@ -103,3 +103,28 @@ Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` 
 The loaded rig's standing arm-rest height is its shoulder height minus measured arm length. A hand actuator at or above that height prefers the existing standing solver rather than using hip height as the cutoff. The standing style preserves the landed 3 cm pelvis-drop bound; genuine targets below rest height retain their low-reach style. Actual limb lengths, extension/contact clamp, supported feet, native approach/admission and action clock remain authoritative. No renderer movement path or native field is added.
 
 The 0.93 m authored proof tap is an isolated variant of the existing garden tap; shipped immutable definitions and the product control catalogue are unchanged. Full-rig regressions cover right-hand contact, scaled bodies and a rotated elevated composed look, alongside existing cup wash contact affected by the shared standing style.
+
+### M05 wave transition (#635)
+
+The existing shared Wave clip uses its authored raised-hand band (normalized phase .36–.72), traversed smoothly on
+recorded world time. The full authored cycle lowered the palm by about .337 m in 50 ms before its loop endpoint;
+merely easing its weight did not fix that internal motion. A two-second entry and attained-weight release retain the
+native wave target and action duration. Release freezes the authored pose at the native stop. The procedural fallback
+receives the same envelope. No source animation, movement path or native authority changes.
+
+Recorded wave tails overlap when another wave begins during the return: the strongest envelope supplies the weight,
+and their weighted authored phases join the poses continuously. A new hand, seat or activity owner cancels the old
+tail. Wave's contributing mixer actions are reactivated in a stable order, using public animation APIs and the same
+recorded times/weights; quaternion accumulation otherwise depends on activation history and differs on a fresh seek.
+
+Take replay derives the wave intervals from a compatible contiguous recording chain, up to four seconds for entry
+plus early release. Wave history is separate from the legacy activity index. Unknown pre-window wave onset retains
+full attained weight rather than inventing a short entry. Entry/release use take history, never a client wall clock.
+Cached per-take wave discovery reuses the existing activity pass; older unseen takes are inspected once. Never-wave
+histories skip the deep chain/change scan after discovery. The native engine, events and Soul context are unchanged.
+Rendering adds eligibility branches, cached history lookups on updates, active/recent-wave arithmetic and active-wave
+mixer reactivation. These are explicit rendering costs, not a claim of overall render-cost equivalence.
+
+Cold joins receive about two seconds of socket takes while live depiction runs 1.5 seconds behind the server. A wave's release can therefore outlive the join prefix. The shared live view now requests a compatible initial four-second motion prefix through the existing history endpoint, once per view owner/epoch, with at most 12 chunks and a five-second abort/deadline. It gates first body depiction while that request settles. A bounded 14-chunk rolling client history retains subsequently observed live chunks; compatible hashes, rules, timestep and base identity prevent foreign or broken prefixes from being adopted. Missing or failed history keeps the existing unknown-prefix depiction; it does not certify equivalent wave recovery.
+
+This adds a one-time client HTTP lookup, possibly up to five seconds of initial depiction wait, and bounded history indexing on live/chunk updates, including worlds without waves. Stable frame inputs reuse the cached history prefix. These are explicit client arrival and rendering costs; there is no claim of arrival-latency or overall client-cost equivalence. Native world state, context, events, action timing and engine tick paths are unchanged.

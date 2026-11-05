@@ -1,3 +1,4 @@
+import {stationPlaylist,musicStation} from '../music-stations.ts';
 // Lane S3 (2026-10-20, Gene: "music sucks. didn't we make better music? check the tone.js task ... put those on a
 // playlist"): the world's music is a playlist of Gene's Sim Score pieces (score/playlist-runtime.mjs, Tone.js, composed in
 // the browser a few bars ahead, no samples). It replaces the old generative 'music' bed that sat at the listener and
@@ -40,7 +41,9 @@ export type MusicEvent = { t: number; ev: 'load' | 'loaded' | 'start' | 'fade' |
  *  give the same performance from that cycle. */
 export type Paused = { index: number; seed: number; cycle: number; remainingMs: number; positionS?: number; perf?: number };
 
-let want = false, volume = 0.3;
+let want = false, volume = 0.3, station = 'all';
+let fullOrder:readonly string[]=[];
+function setOrder(playlist:readonly string[]){fullOrder=playlist;order=stationPlaylist(fullOrder,station);}
 let Tone: ToneLike | null = null, Sim: ScoreNamespace | null = null, order: readonly string[] = [], loading = false, failed = false;
 let loadPiece: ((id: string) => Promise<ScorePieceModule>) | null = null;
 const pieceReady = new Map<string, Promise<void>>();
@@ -68,7 +71,7 @@ function loadFiles() {
   idle(() => {
     Promise.all([import('./music-file.ts'), import('../score/playlist/playlist-audio.json'), import('../score/playlist/order.mjs').then((m) => m.PLAYLIST as readonly string[])]).then(([mod, idx, playlist]) => {
       const index = (idx as { default: import('./music-file.ts').FileIndex }).default ?? (idx as unknown as import('./music-file.ts').FileIndex);
-      order = playlist; fileIndexSize = Object.keys(index.pieces ?? {}).length;
+      setOrder(playlist); fileIndexSize = Object.keys(index.pieces ?? {}).length;
       file = new mod.FilePlayer(mod.browserEnv(), index, (e) => onFileEvent(e));
       file.fadeS = FADE_S; file.prefetchS = PREFETCH_S; file.trackS = trackS; file.setVolume(musicDb(volume), 0.01);
       if (!fileIndexSize) fileOff = true;
@@ -84,7 +87,7 @@ function loadTone() {
     Promise.all([import('tone'), import('../score/playlist/engine.mjs')]).then(([tone, score]) => {
       // PERF-EDEN: a playback-latency context with a wider lookAhead, before the score engine touches Tone's context
       try { const T = tone as unknown as { Context: new (o: { latencyHint: string; lookAhead: number }) => unknown; setContext(c: unknown): void }; T.setContext(new T.Context({ latencyHint: 'playback', lookAhead: LOOK_AHEAD_S })); } catch (e) { note({ ev: 'error', reason: 'context: ' + String(e).slice(0, 120) }); }
-      Tone = tone as unknown as ToneLike; Sim = score.createPlaylistScore(tone); order = score.PLAYLIST; loadPiece = score.loadPiece;
+      Tone = tone as unknown as ToneLike; Sim = score.createPlaylistScore(tone); setOrder(score.PLAYLIST); loadPiece = score.loadPiece;
       conductor = new Sim.Conductor(); toneLoading = false; note({ ev: 'loaded', reason: `engine, ${order.length} pieces` });
     }, (e) => { toneLoading = false; failed = true; note({ ev: 'error', reason: String(e).slice(0, 200) }); });
   });
@@ -181,7 +184,9 @@ function setLevel(db: number, rampS: number) {
 
 /** Called by the sound layer every tick (100 ms) with the visitor's settings and whether sound is unlocked. `audible`:
  *  whether this tab may sound now (audio focus); false ducks the music for a grace, then stops it, remembering its place. */
-export function syncMusic(o: { on: boolean; volume: number; unlocked: boolean; audible?: boolean }) {
+export function syncMusic(o: { on: boolean; volume: number; unlocked: boolean; audible?: boolean; station?: string }) {
+  const selected=musicStation(o.station);
+  if(selected!==station){stop('station');station=selected;order=stationPlaylist(fullOrder,station);index=-1;paused=null;gapUntil=0;}
   want = o.on;
   const hear = o.audible ?? true, now = performance.now();
   if (o.volume !== volume) { volume = o.volume; if (playing && !graceUntil) setLevel(musicDb(volume), VOLUME_RAMP_S); }
@@ -229,7 +234,7 @@ export const musicPaused = () => paused;
 
 export function musicState() {
   let fileCtx = 'none'; try { fileCtx = file?.ctx.state ?? 'none'; } catch { /* not made yet */ }
-  return { want, loaded: !!file || !!Sim, loading: loading || toneLoading, failed, source, fetched: [...pieceReady.keys()], playing, starting, index, piece: order[index] ?? null, playlist: order.slice(),
+  return { want, station, loaded: !!file || !!Sim, loading: loading || toneLoading, failed, source, fetched: [...pieceReady.keys()], playing, starting, index, piece: order[index] ?? null, playlist: order.slice(),
     endsInS: playing ? Math.max(0, Math.round((endsAt - performance.now()) / 1000)) : null, toneCtx: Tone?.getContext().state ?? 'none', db: +musicDb(volume).toFixed(1),
     seed, paused, graceLeftS: graceUntil ? Math.max(0, Math.round((graceUntil - performance.now()) / 1000)) : null, lookAhead: (() => { try { return (Tone?.getContext() as unknown as { lookAhead?: number } | undefined)?.lookAhead ?? null; } catch { return null; } })(),
     file: { index: fileIndexSize, off: fileOff, failures: fileFailures, failed: [...fileFailed], ctx: fileCtx, positionS: source === 'file' && file ? +file.position().toFixed(1) : null, performance: source === 'file' && file ? (file.playing()?.perf ?? null) : null, performances: playing && file ? file.performances(playing) : 0, fading } };

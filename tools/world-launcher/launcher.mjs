@@ -226,7 +226,7 @@ export async function openLauncher(cfg = {}) {
   const pool = new ChildPool({ root, range, site: { url: `${origin}${prod.base}`, key: siteKey }, logDir: join(dataDir, 'logs'), pidFile: join(dataDir, 'children.json'), libraryDir: join(dataDir, 'library'), compileCache: cfg.compileCache === false || process.env.SIM_COMPILE_CACHE === '0' ? null : compileCacheDir(dataDir, BUILD), cobuilders: cfg.cobuilders ?? process.env.SIM_COBUILDERS === '1', idleMs: cfg.idleMs, marsWebDir, publicOrigin, auth: auth?.child, soulCliFile: resolve(cfg.soulCli ?? SOUL.cli), soulControllerCliFile: resolve(cfg.soulControllerCli ?? SOUL.controllerCli), soulSkillFile: resolve(cfg.soulSkill ?? SOUL.skill), soulInstructionsFile: resolve(cfg.soulInstructions ?? SOUL.instructions), command: cfg.command ?? ((w, p, o) => (w.fork ? forkCommand : defaultCommand)(w, p, o)), healthPath: (s) => `${wp(s)}/healthz`,
     maxRunning: prod.maxRunning, minFreeMb: prod.minFreeMb, /* handover pre-warm: only world commands that know SIM_STANDBY (this release's own) */ prewarm: cfg.prewarm ?? (!cfg.command && process.env.SIM_PREWARM !== '0'), busy: (slug) => (live.get(slug) ?? 0) > 0 || (httpLive.get(slug) ?? 0) > 0, sleepMs: cfg.sleepMs ?? SLEEP_MS, exitMs: cfg.exitMs ?? idleExitMs(), exitForks: cfg.exitForks ?? process.env.SIM_WORLD_IDLE_EXIT_FORKS === '1', decorate: (c, w) => { const d = decorateCommand({ ...c, env: { ...c.env, WEB_DIR: webDir } }, { ...prod, worldHeapMb: 0 }); withHeap(d, d.env.SIM_FORK ? (w?.worldHeapMb ?? cfg.forkHeapMb ?? 1536) : worldHeapMb(w, prod.worldHeapMb)); if (Number.isInteger(w?.loadBaselineMs) && w.loadBaselineMs >= 0) d.env.SIM_LOAD_BASELINE_MS = String(w.loadBaselineMs); /* LOAD-CONTRACT §1: per-world quiet-baseline pin (lane L2) */ if (d.env.SIM_FORK && oldRoot) Object.assign(d.env, { SIM_FORK_ROOT: '1', INVITE_REQUIRED: '0', SEED_NATIVES: '0' }); return d; }, /* lane L1: the guard (guard.mjs; cfg.guard overrides its numbers, false: off) and the watchdog port (real worlds, a range of 2 per running world) */ log, guard: cfg.guard || undefined, /* Stage B (lane B-port): read workers per world (registry readWorkers, SIM_READ_WORKER=1) */ readWorkers: (w) => readWorkersOf(w, cfg.readWorkerEnv ?? process.env), healthPorts: cfg.healthPorts ?? (!cfg.command && range[1] - range[0] + 1 >= 2 * prod.maxRunning),   /* (a second port per running world: only where the range has one for each) */
     /* worlds serve the same web build, with its --base */ onChange: (slug) => { const s = pool.status(slug); if (s.port && registry.get(slug) && registry.get(slug).port !== s.port) registry.update(slug, { port: s.port }); } });
-  const worldEnv = (w) => ({ ...w, dataDir: registry.worldDir(w.slug), templateFile: w.template && w.template !== 'empty' ? templateList({ all: true }).find((t) => t.id === w.template)?.file ?? null : null });
+  const worldEnv = (w) => ({ ...w, dataDir: registry.worldDir(w.slug), bodyCollectionPath: join(dataDir, 'body-collections.sqlite'), templateFile: w.template && w.template !== 'empty' ? templateList({ all: true }).find((t) => t.id === w.template)?.file ?? null : null });
 
   // ---------- reads
   async function refreshStats(w) {
@@ -878,6 +878,23 @@ export async function openLauncher(cfg = {}) {
       if (path.startsWith('/__sim/site/')) {
         // the worlds' travel relay: this machine only, with the run's site key
         if (!siteOk(req)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
+        // #717: another world's admitted body bytes, by content address: GET only, binary, at most 4 MiB, never JSON-parsed.
+        // The world answers only with the site key, only for active admitted bytes; the reader verifies the sha256 itself.
+        // The source is the definition's stable world id (a reslug keeps it); a slug or an alias still resolves.
+        const bodyRead = path.match(/^\/__sim\/site\/body\/([a-z][a-z0-9-]{0,63})\/(body_[a-f0-9]{64}\.glb)$/);
+        if (bodyRead && req.method === 'GET') {
+          const w = registry.worlds.find((x) => worldIdOf(x) === bodyRead[1]) ?? registry.get(registry.resolveSlug(bodyRead[1]));
+          if (!w || w.fork) { json(res, 404, { ok: false, code: 'body.source-unavailable' }); return; }
+          let p; try { p = await pool.ensure(worldEnv(w)); } catch { json(res, 503, { ok: false, code: 'body.source-unavailable' }); return; }
+          try {
+            const r = await fetch(`http://127.0.0.1:${p}${wp(w.slug)}/v1/site/body/${bodyRead[2]}`, { headers: { 'x-sim-site-key': siteKey }, signal: AbortSignal.timeout(30_000) });
+            if (!r.ok || r.headers.get('content-type') !== 'model/gltf-binary') { json(res, r.status === 410 ? 410 : 404, { ok: false, code: r.status === 410 ? 'body.withdrawn' : 'body.source-unavailable' }); return; }
+            const parts = []; let n = 0;
+            for await (const c of r.body) { n += c.length; if (n > 4 * 1024 * 1024) { json(res, 413, { ok: false, code: 'body.too-large' }); return; } parts.push(c); }
+            res.writeHead(200, { 'content-type': 'model/gltf-binary', 'content-length': n, 'cache-control': 'no-store' }); res.end(Buffer.concat(parts, n));
+          } catch { json(res, 504, { ok: false, code: 'body.source-unavailable' }); }
+          return;
+        }
         if (path === '/__sim/site/worlds' && req.method === 'GET') { json(res, 200, { worlds: registry.worlds.filter((w) => !w.fork).map((w) => ({ slug: w.slug, name: w.name })) }); return; }
         if (path === '/__sim/site/relay' && req.method === 'POST') {
           const chunks = []; let n = 0;
