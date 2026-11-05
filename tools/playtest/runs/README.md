@@ -57,7 +57,9 @@ applies the same preflight as `start`; `start` runs it once and hands the result
 `.local/soul-runs/<stamp>-<name>/` (or `--out`; `SIM_SCRATCH` moves `.local`):
 
 - `run-receipt.json`: the terminal receipt. `status` is `running` until the end, so a crash never reads as success.
-  It records the effective spec and its hash, the scenario path and hash, source commit and dirty tracked-file count,
+  It records the effective spec and its hash, the scenario path and hash, the source (`source.serverRoot` and
+  `source.tools`, each a commit and uncommitted tracked-file count; the tools checkout is the one whose runner,
+  adapters and director ran, often not the server root; top-level `source.commit` stays the server root's),
   Node version, controllers (adapter, model, effort), preflight checks, observer check, every resource with its owner
   and release state, retention, cost (`wallMs`, `executeMs`, `lifecycleOverheadMs`, runner CPU and max RSS, run
   directory bytes) and the scenario runner's evidence (receipts, report, build, CLI and skill versions, tick validity).
@@ -115,7 +117,10 @@ Setup batches are existing god-edit batches (`{ops: [...]}` as `eden-god.mjs act
 owner's own route: `POST /v1/god/mint` as the dev owner, then `POST /v1/god/act` per batch, the same validated
 `commitBatch` the god CLI uses. It runs after provision and before any seat exists, so it is never part of measured
 play. `setup.json` and the receipt record each batch's id, path, sha256 and outcome (edit seq, or the refusal code and
-failures) and the physical fixture hash before and after setup. A refused batch fails the run at stage `setup`; play
+failures) and the physical fixture hash before and after setup. An accepted batch also lists its `entities`: each
+created root entity id with the op that created it (`place` or `clone`, op index, tmp, name and def where given; just
+`created` when the ids cannot be matched to ops one to one, for example after a build-safe repair), and each entity an
+op changed by id, with that op's name. Parts inside a created entity are not listed. A refused batch fails the run at stage `setup`; play
 never starts. The minted god token is never written down.
 
 ## Ownership and retention
@@ -166,8 +171,8 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
 `run-index.json` and `COMPARE.md`). It accepts run folders and `replay-set.json` folders. Attempts are grouped into
 arms by exact identity: the scenario without its port and paths, the world source hash, setup batch hashes, the seats
 (adapter, model, effort, persona, script hash), the director script, seed and duration. Every attempt is listed,
-including cancelled, failed and missing ones; only completed attempts are repeats. Code commit, uncommitted tracked
-files, CLI/skill/Node versions, machine load and observer state are listed per attempt and flagged where they differ.
+including cancelled, failed and missing ones; only completed attempts are repeats. Server root and tools commits,
+uncommitted tracked files in each, CLI/skill/Node versions, machine load and observer state are listed per attempt and flagged where they differ.
 Arms are never pooled together; each pair of arms lists the identity parts that differ. A plain playtest folder has no
 hashed world source, so it forms its own arm.
 
