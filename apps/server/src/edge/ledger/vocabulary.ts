@@ -310,9 +310,11 @@ function storeWords(input: string, text: string, ctx: VocabContext): VocabResult
   const words = (x: string) => tokens(x).filter(w => !['the', 'a', 'an', 'my', 'your', 'it', 'its', 'of', 'top'].includes(w));
   const thing = words(m[1]), box = words(put ? m[3] : m[2]), hits = (c: EdgeCapability, ws: string[]) => {const t = ctx.target(c), all = tokens([c.id, c.label, ...t.names].join(' ')); return ws.every(w => tokenHit(w, all) || (SYNONYMS[w] ?? []).some(s => tokenHit(s, all)));};
   // a take from inside names its container (the label says "out of chest (drawer)"); a put names the container it goes in
+  // #435: a take names its container in the label's "out of …" part (never the "left by <Soul>" part before it)
+  const boxHit = (c: EdgeCapability) => put || !/ out of /.test(c.label) ? hits(c, box) : box.every(w => tokenHit(w, tokens(c.label.split(' out of ').slice(1).join(' '))) || (SYNONYMS[w] ?? []).some(s => tokenHit(s, tokens(c.label.split(' out of ').slice(1).join(' ')))));
   const on = !!put && /^on/.test(put[2]), door = (c: EdgeCapability) => ctx.caps.some(o => o.verb === 'object' && (o.action === 'open' || o.action === 'close') && o.object === c.target?.id);
   if (on && ctx.caps.some(c => c.verb === 'put-on' && hits(c, box))) return null;
-  const named = pool.filter(c => hits(c, box) && (put || hits(c, thing)) && !(on && door(c))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
+  const named = pool.filter(c => boxHit(c) && (put || hits(c, thing)) && !(on && door(c))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
   if (named[0] && (put || / out of /.test(named[0].label))) return {kind: 'alias', cap: named[0], note: `${input} is ${named[0].id} (${named[0].label}).`};
   if (put) return null;
   // nothing offered to take from there: a shut container named by these words says so (what is inside stays unseen)

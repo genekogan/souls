@@ -40,6 +40,13 @@ test('swap shelf: leave and take by plain words, no door, who left what, nearby 
  assert.ok(!Object.keys(idle.finish().tracks).some(id => farIds.has(id)), 'no idle tracks for distant shelves or their things');
 
  const body = (s = soul) => f.host.engine.world.entities[s.entityId], [ax, az] = [body().pose.p[0], body().pose.p[2]];
+ // nearby only: a shelf 6 m away (inside the 8 m take range, outside the 4 m facts range) offers its bowl without naming the leaver
+ ok(god.act({ops: [{op: 'place', def: 'core/swap-shelf@1', name: 'mid-shelf', p: [ax - 6, az]}, {op: 'place', def: 'core/bowl@2', name: 'mid-bowl', in: {parent: 'mid-shelf', slot: 'in-2'}, p: [0, 0]}]})); await tick(20);
+ ok(god.act({ops: [{op: 'set', id: ent('mid-shelf').id, state: {leftBy: `${ent('mid-bowl').id}=${souls.Ana.soulId}`}}]})); await tick(5);
+ const midTake = edge.capabilities(soul).find(c => c.id === `pick-up:${ent('mid-bowl').id}`), mid = await here();
+ assert.ok(midTake && !/left by/.test(midTake.label), 'a take 6 m away does not name the leaver: ' + midTake?.label);
+ assert.ok(!JSON.stringify(mid).includes('left by'), 'nor does here, 6 m away');
+ const midLabel = midTake.label; ok(god.act({ops: [{op: 'remove', id: ent('mid-shelf').id}]})); await tick(10);
  ok(god.act({ops: [
   {op: 'place', def: 'core/table@1', name: 'table', p: [ax + 2.4, az - 0.6]},
   {op: 'place', def: 'core/bowl@2', name: 'bowl', in: {parent: 'table', slot: 'top'}, p: [0.25, 0]},
@@ -73,7 +80,7 @@ test('swap shelf: leave and take by plain words, no door, who left what, nearby 
 
  // no door: nothing to open, and an empty shelf says nothing
  assert.ok(!edge.capabilities(soul).some(c => c.object === shelfId && ['open', 'close'].includes(c.action)), 'a swap shelf has no door to open');
- await refuse('open the swap shelf');
+ await refuse('open the swap shelf', 'capability.unknown');
  const emptyNear = await here();
  // Ana leaves the bowl
  results.pickUp = await done('pick up the bowl');
@@ -113,7 +120,7 @@ test('swap shelf: leave and take by plain words, no door, who left what, nearby 
  assert.equal(leftBy(), `${bowl}=${souls.Bea.soulId}`);
  // refused: the lantern does not fit; then a full shelf
  results.lanternUp = await done('pick up the lantern');
- await refuse('put the lantern on the swap shelf', 'item.does-not-fit');
+ {const b = await refuse('put the lantern on the swap shelf', 'item.does-not-fit'); assert.match(b.reason, /\(0\.22 × 0\.45 × 0\.22 m\) does not fit in swap-shelf \(up to 0\.30 × 0\.28 × 0\.30 m\)/);}
  results.lanternDown = await done('put the lantern on the table');
  assert.equal(item('lantern').support.on, id('table'), '"on the table" is still a surface put');
  ok(god.act({ops: [{op: 'place', def: 'core/cup@2', name: 'cup', in: {parent: 'swap-shelf', slot: 'in-1'}, p: [0, 0]}, {op: 'place', def: 'core/cup@2', name: 'mug', in: {parent: 'swap-shelf', slot: 'in-2'}, p: [0, 0]}].filter(o => !(ent('bowl').in.slot === o.in.slot)).concat(ent('bowl').in.slot === 'in-3' ? [] : [{op: 'place', def: 'core/cup@2', name: 'mug2', in: {parent: 'swap-shelf', slot: 'in-3'}, p: [0, 0]}])})); await tick(20);
@@ -124,8 +131,12 @@ test('swap shelf: leave and take by plain words, no door, who left what, nearby 
  // a book (an item-kind word, as cups and letters are): its take names the shelf, so storage words resolve it, not the kind
  ok(god.act({ops: [{op: 'remove', id: [...god.model.entities.values()].find(e => e.in.parent === shelfId && e.name !== 'bowl').id}]})); await tick(10);
  results.bookPut = await done('leave the book on the swap shelf');
+ assert.deepEqual(leftBy().split(',').sort(), [`${bowl}=${souls.Bea.soulId}`, `${id('book')}=${souls.Ana.soulId}`].sort(), 'the record: the bowl Bea left and the book Ana left');
+ // "from Ana" names a Soul, not the shelf: the leaver in the take label is not container words
+ {const prev = soul; soul = souls.Bea; try {const r = await (await app.request('/v1/edge/resolve', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability: 'take the book from Ana'})})).json(); results.fromAna = r.resolve?.capability ?? r.resolve?.code ?? null; assert.notEqual(r.resolve?.capability, `pick-up:${id('book')}`, JSON.stringify(r).slice(0, 300));} finally {soul = prev;}}
  results.bookTake = await done('take the book from the swap shelf', souls.Bea);
  assert.equal(results.bookTake.capability, `pick-up:${id('book')}`); assert.equal(item('book').support.by, souls.Bea.entityId);
+ assert.equal(leftBy(), `${bowl}=${souls.Bea.soulId}`, 'a thing taken off drops out of the record');
 
  // persistence: the world model keeps the contents and the record; the engine checkpoint replays
  const restored = WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())), undefined, god.model.library);
@@ -137,7 +148,7 @@ test('swap shelf: leave and take by plain words, no door, who left what, nearby 
  const brief = Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v && v.phase ? {capability: v.capability, phase: v.phase, ...(Number.isFinite(v.lip?.min) ? {lipMargin: +v.lip.min.toFixed(4)} : {})} : v]));
  const report = {status: 'pass',
   hereBytes: {absent: bytes(absent), distant100ShelvesWithBowls: bytes(far), nearbyEmptyShelf: bytes(emptyNear), nearbyHolding: bytes(holdingNear), nearbyWithBowl: bytes(withBowl), nearbyFull: bytes(full)},
-  rows: {withBowl: shelfRow(withBowl), full: shelfRow(full)}, takeLabel: takeCap.label, leftBy: leftBy(), results: brief, refusals};
+  rows: {withBowl: shelfRow(withBowl), full: shelfRow(full)}, takeLabel: takeCap.label, takeLabel6m: midLabel, leftBy: leftBy(), results: brief, refusals};
  if (out) {mkdirSync(out, {recursive: true}); writeFileSync(`${out}/summary.json`, JSON.stringify(report, null, 2)); for (const [k, v] of Object.entries({absent, far, emptyNear, holdingNear, withBowl, full})) writeFileSync(`${out}/here-${k}.json`, JSON.stringify(v, null, 1)); writeFileSync(`${out}/tracks.json`, JSON.stringify({put: put.track, take: take.track}));}
  console.log(JSON.stringify({hereBytes: report.hereBytes, results: report.results, refusals}));
 });

@@ -37,3 +37,8 @@ export function containerInside(def:{tags?:readonly string[];components?:{contai
 export function containerOpen(def:{state?:Record<string,unknown>},state:{open?:unknown}|undefined):boolean{
   return !(def.state&&Object.hasOwn(def.state,'open'))||state?.open===true;
 }
+/** #435: whether a thing in this slot is kept behind a door (a drawer, a locker) that can hide it and moves it with the
+ *  lid; a doorless container's contents (a swap shelf's) are ordinary things to the viewer. */
+export function keptBehindDoor(def:Parameters<typeof containerInside>[0]&{state?:Record<string,unknown>},slot:string|undefined):boolean{
+  return !!def&&!containerOpen(def,{})&&!!containerInside(def)?.slots.some(s=>s.id===slot);
+}

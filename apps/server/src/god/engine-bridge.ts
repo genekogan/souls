@@ -125,6 +125,7 @@ export class FloorCells {
 const NEAR = 60;               // capabilities: god things within this many metres
 const FAR_SEAT = 250, FAR_SEATS = 6; // F2: and the nearest FAR_SEATS seats out to FAR_SEAT m (sit only)
 const STORE_NEAR = 8;          // entry 42: put-in is offered for containers within this many metres of a Soul holding something
+const FACTS_NEAR = 4;          // #435: who left a kept thing is named only within here's compact-facts range (edge/perception/here.ts)
 const BODY_DEF = 'core/humanoid@1';
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
@@ -1438,6 +1439,9 @@ export class EngineBridge {
       const b = this.engine.world.entities[s.by];
       if (b) { ops.push({ op: 'move', id: s.by, p: [r3(b.pose.p[0]), r3(b.pose.p[1]), r3(b.pose.p[2])], r: r3(-b.pose.yaw), mode: 'strict' } as Op); body = s.by; }
       ops.push({ op: 'move', id, in: { parent: s.by, slot: 'carry' }, p: [0, 0, 0], r: 0, mode: 'strict' } as Op);
+      // #435: taken off a container that keeps a `leftBy` record (a swap shelf): its entry goes with it
+      const from = this.model.entities.get(e.in.parent), rec = from && keepsLeftBy(this.model.resolvedDef(from.def)) ? leftByOf(from.state) : null;
+      if (from && rec?.has(id)) { rec.delete(id); ops.push({ op: 'set', id: from.id, state: { leftBy: [...rec].map(([k, v]) => `${k}=${v}`).join(',') } } as Op); }
     } else if (s?.kind === 'resting-on') {
       const parent = this.model.entities.get(s.on); if (!parent) return;
       const slotId = String(s.slot).replace(/-r\d+c\d+$/, '');
@@ -1449,7 +1453,9 @@ export class EngineBridge {
       if (e.in.parent === s.on && (e.in.slot ?? '') === (slot ? slotId : '') && Math.hypot((have[0] ?? 0) - want[0], (have[have.length - 1] ?? 0) - want[2]) < 0.05) return;
       ops.push({ op: 'move', id, in: { parent: s.on, ...(slot ? { slot: slotId } : {}) }, p: want, r: r3(-(x.pose.yaw) - pp.yaw), mode: 'strict' } as Op);
       // #435 (W071): a container that keeps a `leftBy` record (a swap shelf) notes the Soul whose hand this came from, and
-      // forgets what is no longer inside it
+      // forgets what is no longer inside it. The record is read when the unit is planned: the scheduled (sliced) pass plans
+      // each unit just before applying it; the unsliced pass plans all first, so two leaves on one shelf in one such pass
+      // keep only the last record (the tick drain never batches that way).
       const pdef = this.model.resolvedDef(parent.def), ins = slot && keepsLeftBy(pdef) ? containerInside(pdef) : null;
       if (ins && e.in.parent !== s.on && ins.slots.some((q) => q.id === slotId)) {
         const from = e.in.parent, by = [...this.host.minds.values()].find((m) => m.entityId === from)?.soulId, inside = new Set(ins.slots.map((q) => q.id));
@@ -1923,7 +1929,7 @@ export class EngineBridge {
         // entry 42: a thing kept inside a container is seen, offered and named only while the container is open
         const kept = asset.category === 'item' && x.support?.kind === 'resting-on' ? this.keptIn(x) : null;
         if (asset.category === 'item' && !(loose && !loose.small) && x.support?.kind !== 'in-hand' && !held && (!kept || (kept.open && d <= STORE_NEAR))) {
-          const by = kept ? this.leftBy(kept.id, x.id) : null;
+          const by = kept && d <= FACTS_NEAR ? this.leftBy(kept.id, x.id) : null;
           const id = `pick-up:${x.id}`, label = kept ? `Take ${name(x.id)}${by ? ` (left by ${by})` : ''} out of ${kept.label} (${d} m)` : `Pick up ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
           const block = kept ? this.storageRefusal(kept, soul) : null;
           caps.push({ id, verb: 'pick-up', label, target: { id: x.id, kind: 'item' }, available: !block, ...(block ? { blocked: block } : {}) });
