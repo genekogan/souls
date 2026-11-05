@@ -1,0 +1,10 @@
+{
+ "soulRun": 1,
+ "name": "hamlet-trio-passive",
+ "scenario": "../../scenarios/soul-runs/hamlet-trio.json",
+ "world": { "port": 4325 },
+ "observer": { "check": true, "required": false, "mode": "passive", "timeoutMs": 60000 },
+ "limits": { "maxWallSec": 600, "maxControllers": 3, "cleanupWaitMs": 15000 },
+ "retention": { "worldData": "keep", "controllerState": "keep" },
+ "evaluation": { "questions": ["../questions/redirect-honoured.mjs", "../questions/walk-seen.mjs"] }
+}
