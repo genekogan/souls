@@ -140,15 +140,22 @@ function requestOf(route, n, run) {
   const a = ACTS[n % ACTS.length];
   return a === 'say' ? ['POST', '/v1/edge/say', { text: 'hello from the slopes bench' }] : act(a);
 }
+// The CLI's etiquette (as the meetup bench): a designed busy answer is waited out for its Retry-After, up to 3 times;
+// the waits are inside the call's time and counted (busyWaits, waitMs, refusals by code).
+const BUSY = /\b(world\.busy|world\.crowded|world\.starting|soul\.busy|soul\.slow-down|rate-limited|client\.rate|account\.rate)\b/;
 async function call(run, w, s, route, n) {
-  const [method, path, body] = requestOf(route, n, run), t = mono();
-  let status = 0, code = null, d = null, bytes = 0;
-  try {
-    const r = await fetch(`${w.origin}${path}`, { method, headers: { authorization: `Bearer ${s.token}`, 'content-type': 'application/json', 'x-forwarded-for': s.address, ...(route === 'act' && !body.capability ? { 'idempotency-key': `${run.id}-${run.seq++}` } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(60_000) });
-    const text = await r.text(); bytes = Buffer.byteLength(text); status = r.status; try { d = JSON.parse(text); } catch { d = null; } code = d?.error?.code ?? d?.code ?? null;
-  } catch (e) { status = e?.name === 'TimeoutError' ? -1 : 0; }
+  const [method, path, body] = requestOf(route, n, run), t = mono(), key = route === 'act' && !body.capability ? `${run.id}-${run.seq++}` : null;
+  let status = 0, code = null, d = null, bytes = 0, busy = 0, waitMs = 0; const refusals = [];
+  for (;;) {
+    try {
+      const r = await fetch(`${w.origin}${path}`, { method, headers: { authorization: `Bearer ${s.token}`, 'content-type': 'application/json', 'x-forwarded-for': s.address, ...(key ? { 'idempotency-key': key } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(60_000) });
+      const text = await r.text(); bytes = Buffer.byteLength(text); status = r.status; try { d = JSON.parse(text); } catch { d = null; } code = d?.error?.code ?? d?.code ?? null;
+      if ((status === 429 || status === 503) && BUSY.test(String(code)) && busy < 3) { busy++; refusals.push(code); const ra = Number(r.headers.get('retry-after')), w0 = mono(); await sleep(ra > 0 ? ra * 1000 : 1000 * 2 ** busy); waitMs += mono() - w0; continue; }
+    } catch (e) { status = e?.name === 'TimeoutError' ? -1 : 0; }
+    break;
+  }
   const accepted = route === 'resolve' ? d?.resolve?.ok : d?.accepted;
-  return { route, ms: Math.round(mono() - t), bytes, status, outcome: outcomeOf({ status, code, accepted }), ...(code ? { code } : {}) };
+  return { route, ms: Math.round(mono() - t), bytes, status, outcome: outcomeOf({ status, code, accepted }), ...(code ? { code } : {}), ...(busy ? { busyWaits: busy, waitMs: Math.round(waitMs), refusals } : {}) };
 }
 
 // ------------------------------------------------------------------ one arm
@@ -173,12 +180,13 @@ async function oneRun(arm, rep) {
     const mark = (k) => ({ k, t: mono(), w: proc(W.pid), q: worlds.length > 1 ? sumProc(worlds.slice(1).map((x) => proc(x.pid))) : null });
     const m = { quiet0: mark('quiet0') }; await sleep(QUIET_S * 1000); m.quiet1 = mark('quiet1');
     const quietCores = cores(m.quiet0.w, m.quiet1.w);
-    // the probe: Soul 0 alone, PROBE_N serial calls per route
+    // the probe: PROBE_N serial calls per route, one at a time, rotating over the registered Souls (each has its own
+    // CPU budget: one Soul alone runs out of it at 10,000 objects and is told soul.slow-down), nothing else active
     const prof = PROF ? await inspector(INSPECT) : null, profiles = {};
     if (prof) await prof.start();
     const probe = {};
     for (const route of PROBE_ROUTES) {
-      const a = proc(W.pid), cs = []; for (let n = 0; n < PROBE_N; n++) cs.push(await call(run, W, souls[0], route, n)); const b = proc(W.pid);
+      const a = proc(W.pid), cs = []; for (let n = 0; n < PROBE_N; n++) cs.push(await call(run, W, souls[n % souls.length], route, n)); const b = proc(W.pid);
       probe[route] = probeRoute(cs, { cpuS: a && b ? b.cpuS - a.cpuS : null, spanMs: b.t - a.t, quietCores });
       for (const c of cs) appendFileSync(join(dir, 'calls.jsonl'), JSON.stringify({ phase: 'probe', ...c }) + '\n');
     }

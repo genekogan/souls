@@ -140,7 +140,7 @@ and the result records the cleanup. A run without `--quiet-host` is labelled `no
   - boot and settle;
   - join through a loopback path-stripping proxy, because the CLI wants a `/w/<slug>` URL; the measured calls go straight to the world;
   - warm-up, then a quiet window;
-  - a per-route probe: `--probe-n` serial calls each of `here`, `observe`, `capabilities`, `resolve` and one non-moving act, from one Soul;
+  - a per-route probe: `--probe-n` serial calls each of `here`, `observe`, `capabilities`, `resolve` and one non-moving act, one at a time and rotating over the registered Souls, each with its own CPU budget. A busy answer (`soul.slow-down`, `world.busy`) is waited out for its Retry-After, up to 3 times, as the CLI does, and the waits are counted;
   - an active window at CW1's per-Soul rates (a read every 4 s, an act every 20 s, one call at a time). The acts never move a Soul, so the neighbourhood is the same in every arm, and walk planning (#454) is **not** exercised.
 - **CPU** is the world process's (`/proc` or `ps`). Per-call CPU nets out the quiet window's rate, so it is an upper bound. `--cpu-prof` records the main thread with the inspector during the probe and during the active window. The result keeps the top self-time and inclusive functions, which stand in for the counters the server does not have: rows examined, plan builds, invalidations.
 - **Output:** `<out>/{receipt.json, results.json, REPORT.md}`, with one `<arm>-r<k>/result.json` per run, plus local-only `calls.jsonl`, `live.jsonl`, `*.cpuprofile`, the world data and `souls/`, which holds tokens.

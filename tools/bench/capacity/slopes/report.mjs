@@ -12,7 +12,7 @@ export const AXES = Object.freeze({
   quiet: Object.freeze([{ id: 'quiet1', placed: null, registered: 5, active: 5, quiet: 0 }, { id: 'quiet10', placed: null, registered: 5, active: 5, quiet: 9 }]),
 });
 
-// The per-route probe (one Soul, serial, nothing else active) and the active window's per-Soul demand: CW1's rates
+// The per-route probe (serial, rotating over the registered Souls, nothing else active) and the active window's per-Soul demand: CW1's rates
 // (a read every 4 s, an act every 20 s, one call at a time) with acts that never move a Soul, so the neighbourhood
 // stays the same in every arm. Walk planning (#454) is not exercised here.
 export const PROBE_ROUTES = Object.freeze(['here', 'observe', 'capabilities', 'resolve', 'act']);
@@ -27,7 +27,8 @@ const r = (x, d = 1) => (x == null || !Number.isFinite(x) ? null : +x.toFixed(d)
 export function probeRoute(calls, { cpuS, spanMs, quietCores }) {
   const ok = calls.filter((c) => c.status >= 200 && c.status < 300), q = quantiles(ok.map((c) => c.ms));
   const extra = cpuS == null || quietCores == null ? null : cpuS - quietCores * spanMs / 1000;
-  return { n: calls.length, ok: ok.length, cpuMsPerCall: ok.length && extra != null ? r(1000 * extra / ok.length) : null, p50Ms: q.p50 ?? null, p95Ms: q.p95 ?? null, bytesMean: ok.length ? Math.round(ok.reduce((s, c) => s + c.bytes, 0) / ok.length) : null };
+  const waits = calls.reduce((m, c) => m + (c.busyWaits ?? 0), 0);
+  return { n: calls.length, ok: ok.length, ...(waits ? { busyWaits: waits } : {}), cpuMsPerCall: ok.length && extra != null ? r(1000 * extra / ok.length) : null, p50Ms: q.p50 ?? null, p95Ms: q.p95 ?? null, bytesMean: ok.length ? Math.round(ok.reduce((s, c) => s + c.bytes, 0) / ok.length) : null };
 }
 
 /** The active window's calls ({route, ms, lateMs, bytes, status, outcome}) → per-route latency and the CPU per served call. */
@@ -36,7 +37,7 @@ export function activeWindow(calls, { cpuS, spanMs, quietCores, offered }) {
   for (const c of calls) (routes[c.route] ??= []).push(c);
   const extra = cpuS == null || quietCores == null ? null : cpuS - quietCores * spanMs / 1000;
   return {
-    offered, issued: calls.length, unissued: offered - calls.length, served: served.length,
+    offered, issued: calls.length, busyWaits: calls.reduce((m, c) => m + (c.busyWaits ?? 0), 0), refusals: calls.flatMap((c) => c.refusals ?? []).reduce((m, k) => ({ ...m, [k]: (m[k] ?? 0) + 1 }), {}), unissued: offered - calls.length, served: served.length,
     outcomes: calls.reduce((m, c) => ({ ...m, [c.outcome]: (m[c.outcome] ?? 0) + 1 }), {}),
     servedPerS: r(served.length / (spanMs / 1000), 2), cpuMsPerServed: served.length && extra != null ? r(1000 * extra / served.length) : null,
     endToEnd: (({ n, p50, p95, max }) => ({ n, p50, p95, max }))(quantiles(calls.map((c) => c.ms + c.lateMs))),
