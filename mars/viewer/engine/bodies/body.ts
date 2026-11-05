@@ -4,13 +4,15 @@
 // humanoid's feet) is planned with the engine's ordinary ground collision, and it is drawn hovering
 // `hoverHeight` above that pose with a bob, tilt and yaw computed from the sampled tick (pose.ts).
 import type { Body, Entity } from '../world/types.ts';
+import {bodyMotionProblem,type BodyMotion} from './motion.ts';
 import { humanoidParamsProblem } from './humanoid.ts';
+import {ROLLING_GRIPPER} from './action-profile.ts';
 import { CREATURE_EYE_RANGE, creatureSpecies } from './creatures.ts';
 
 export type BodyFamily = Body['family'];
 
 /** A floater's body with every default filled in. */
-export type FloaterBody = { family: 'floater'; type?: 'ceramic' | 'floater' | 'creature'; model?: string; radius: number; hoverHeight: number };
+export type FloaterBody = { family: 'floater'; type?: 'ceramic' | 'floater' | 'creature'; model?: string; radius: number; hoverHeight: number; motion?: BodyMotion };
 
 /** Head radius (m): a 0.7 m head clears a 0.9 m door with margin and reads at human scale. */
 export const FLOATER_RADIUS = 0.35;
@@ -31,7 +33,7 @@ export const isFloater = (e: Pick<Entity, 'body'> | undefined): boolean => e?.bo
 /** Defaults for a floater body; throws on a non-floater (callers check isFloater first). */
 export function floaterBody(body: Body | undefined): FloaterBody {
   if (body?.family !== 'floater') throw new Error(`not a floater body: ${JSON.stringify(body)}`);
-  return { family: 'floater', ...(body.type === 'creature' ? { type: 'creature' as const } : {}), ...(body.model !== undefined ? { model: body.model } : {}), radius: body.radius ?? FLOATER_RADIUS, hoverHeight: body.hoverHeight ?? FLOATER_HOVER };
+  return { family: 'floater', ...(body.type === 'creature' ? { type: 'creature' as const } : {}), ...(body.model !== undefined ? { model: body.model } : {}), radius: body.radius ?? FLOATER_RADIUS, hoverHeight: body.hoverHeight ?? FLOATER_HOVER, ...(body.motion?{motion:body.motion}:{}) };
 }
 
 /** Structural check of a body value (for world edits / seeds); returns an error code or null. */
@@ -39,7 +41,9 @@ export function bodyProblem(body: unknown): string | null {
   if (body === undefined) return null;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'body.not-object';
   const b = body as Record<string, unknown>;
-  for (const k of Object.keys(b)) if (!['family', 'type', 'model', 'modelUrl', 'avatar', 'radius', 'hoverHeight', 'params'].includes(k)) return `body.unknown-field:${k}`;
+  for (const k of Object.keys(b)) if (!['family', 'type', 'model', 'modelUrl', 'avatar', 'radius', 'hoverHeight', 'params', 'motion', 'actionProfile'].includes(k)) return `body.unknown-field:${k}`;
+  if(b.actionProfile!==undefined&&(b.actionProfile!==ROLLING_GRIPPER||b.family!=='humanoid'||typeof b.modelUrl!=='string'||b.params!==undefined))return 'body.action-profile';
+  if(b.motion!==undefined){if(b.family!=='floater'||b.type==='creature')return 'body.motion-family';const p=bodyMotionProblem(b.motion);if(p)return p;}
   if (b.family !== 'humanoid' && b.family !== 'floater') return 'body.family';
   if (b.type !== undefined && !(b.family==='humanoid' ? b.type==='humanoid' : b.type==='ceramic'||b.type==='floater'||b.type==='creature')) return 'body.type';
   // creature bodies (bodies/creatures.ts): a known species, drawn procedurally (no model URL), eye height as hoverHeight

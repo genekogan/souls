@@ -5,6 +5,35 @@ work in [#591](https://github.com/genekogan/souls/issues/591). This is not a cla
 or body portability are implemented. Existing specialized behavior should become available to compatible worlds
 through explicit definitions, inert when unused, rather than disappear during repository cleanup.
 
+## First implementation: agent-local authoring
+
+[#667](https://github.com/genekogan/souls/issues/667) implements a bounded first slice: the downloadable
+[authoring skill](../../tools/body-authoring/SKILL.md), the server's identical local validator, and `body-motion/1`
+declarations for rigid bodies. Required idle/move/rest adapters and optional solo dance contain bounded numeric
+motion data. Ground navigation, support, stopping and effects stay authoritative. This is a visual hover over the
+existing ground-navigation disc, not a new 3D physics model. The native dance reserves the actor, keeps its root
+fixed and records a finite timeline for deterministic playback and interruption. Rigid hand actions remain refused.
+
+[#719](https://github.com/genekogan/souls/issues/719) adds the local kit: `body kit <dir>` in the Soul CLI copies the
+world's served contract, skill and validator modules with one starter (generated sculpture, canonical CC0 humanoid
+or shared Pip), and `validate.mjs --report` / `--preview` give a body-report/1 summary and a visual-only local
+preview. The served file list, server routes and web client are unchanged; the definition reference stays the
+content address `body_<sha256>`.
+
+All 13 curated Little Martians presets share the authored motion definition and remain available to every owner;
+humanoids remain the default. Uploaded definitions remain owner-scoped and world-scoped, rediscoverable with
+`body list` by stable asset ID, name and description. Their rendered mesh is publicly retrievable; owner-scoped
+selection does not imply confidential asset storage. Changing adapters creates a new definition ID. Upload storage
+and asset serving reuse the existing world database. Cross-world upload portability and a public body library remain
+separate work.
+
+New uploads are limited to 4 MiB, 10,000 instantiated triangles, two embedded images of at most 1024² / 1 MiB each,
+and four rigid or sixteen canonical-humanoid mesh draws. Existing admitted assets retain their bytes. A world may
+narrow admitted families with `WORLD_BODY_TYPES` (comma-separated supported types, including the default humanoid);
+the discovery API and assignment/upload admission use the same policy. Numeric ceilings are platform ceilings,
+not evidence of universal phone/crowd performance. Canonical humanoids still use their existing rig/contact adapters.
+The remainder of #589 below is future scope; this slice does not claim arbitrary rigs, handless carrying or a new CDN.
+
 ## Existing foundation
 
 Source inspected at `6134d3c8`:

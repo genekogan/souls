@@ -183,6 +183,7 @@ export interface Engine {
   actorBorrowed?(actor: string): boolean;
   /** Optional native-cast custody reader; null means participant scope is unqualified. */
   nativeProgramParticipantsV1?(program:Program):readonly string[]|null;
+  configureBodyTypesV1?(types:readonly string[]):void;
   bodyAssignmentProblemV1?(actor:string,body:import('./world.ts').Entity['body']|null):string|null;
   assignBodyV1?(actor:string,body:import('./world.ts').Entity['body']|null):boolean;
   configureRenderPlatformsV1?(metadata:import('./render-platforms-v1.ts').RenderPlatformsV1):void;

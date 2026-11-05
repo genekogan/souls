@@ -419,7 +419,7 @@ shared `accounts.sqlite`; memberships, grants and approvals live per world (`acc
 **Release and gates.** `deploy/release.sh` builds `git archive HEAD` with the web at `--base /worlds/`, build id
 `we-<sha12>`, pulls assets from the CDN, `activate.sh` reloads and health-checks. Gates: `release-gate.mjs` (V1–V6),
 `walk/walk.mjs` (walkability vs baseline), `bundle-budget/budget.mjs` (≥ 10 % growth fails), the Modal remote gate
-once per release head. CI picks jobs from changed paths (`.github/scripts/ci-scope.mjs`).
+once per release head. PR CI picks jobs from changed paths (`.github/scripts/ci-scope.mjs`); pushes to main run every job.
 
 ## 11. Contracts table
 
