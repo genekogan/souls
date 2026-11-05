@@ -2005,9 +2005,10 @@ export class EngineBridge {
     const n = this.model.pathOf(id), word = ins.word;
     return { id, ins, hidden: containerHidden(def), kind: def.name.replace(/^core-/, '').replace(/-/g, ' '), open: containerOpen(def, actuatedState(e, def)), label: n.toLowerCase().split(/[^a-z0-9]+/).includes(word) ? n : `${n} (${word})`, word, name: n };
   }
-  /** #435 (W068): where a body stands to reach into a container (the def's `stand`, in the world), or null. */
+  /** #435 (W068): where a body ends up to reach into a container (in the world), or null. */
   private standAt(x: { pose: { p: number[]; yaw?: number } }, box: NonNullable<ReturnType<EngineBridge['storage']>>, level: number, body: string): [number, number] | null {
-    const yw = -(x.pose.yaw ?? 0), [l, f] = box.ins.stand;
+    // where the engine's reach ends up (items/actions.ts insideLean): a step in from `stand`, at most 0.2 m, never within 0.35 m of the face
+    const yw = -(x.pose.yaw ?? 0), [l, s0] = box.ins.stand, p = box.ins.slots[0].p, f = Math.max(box.ins.face + 0.35, s0 - Math.min(0.2, Math.max(0, Math.hypot(p[0] - l, p[2] - s0) - 0.5)));
     return this.mw.standableNearV1!([x.pose.p[0] + l * Math.cos(yw) + f * Math.sin(yw), x.pose.p[2] - l * Math.sin(yw) + f * Math.cos(yw)], level, body, 0.4, 16);
   }
   /** #435 (W068): an empty search's steps: to where a body stands at this place, and a hand over its lip. */

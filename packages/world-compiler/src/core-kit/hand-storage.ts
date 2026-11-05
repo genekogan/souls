@@ -83,10 +83,9 @@ const lostAndFound: DefInput = {
 
 // #435 (W068): hiding places. Doorless containers with one place and `hidden: true`: what is in them is never named, offered
 // or drawn, and only a search finds it. Two reaches on one rule: down over a stump's rim, and in at the front of a wall's niche.
-// Both stand where the engine's lean stops (`face` + 0.35 m, items/actions.ts), so they take no step in: `face` here is set
-// that far out, past the real rim or lip. The body stays 0.4 m clear of the footprint at every turn (a step in left it short of
-// its radius at some turns, a recovered engine fault; tools/soul-actions/hide-and-seek-turns.test.mjs).
-const STUMP_R = 0.28, STUMP_RIM = 1.06, STUMP_FLOOR = 0.93, STUMP_FACE = STUMP_R + 0.09;
+// Both stand 0.6 m clear of the footprint. The engine's step in during a reach (at most 0.2 m, items/actions.ts) leaves the body
+// 0.4 m clear of it at every turn; 0.35 m tripped a recovered engine fault at some turns (tools/soul-actions/hide-and-seek-turns.test.mjs).
+const STUMP_R = 0.28, STUMP_RIM = 1.06, STUMP_FLOOR = 0.93;
 const hollowStump: DefInput = {
   schema: 'def/1', name: 'core-hollow-stump', version: 1,
   description: 'An old tree stump, chest high, gone hollow at the top. One small thing fits down inside it (up to 0.28 m across and 0.12 m tall), out of everyone\'s sight: a Soul can hide something there, and whoever searches the stump finds it.',
@@ -100,7 +99,7 @@ const hollowStump: DefInput = {
   params: { bark: { type: 'color', default: '#5b4632', doc: 'bark colour' }, hollow: { type: 'color', default: '#1f1711', doc: 'colour down inside the hollow' } },
   state: {},
   slots: [shelf('in-1', [0, STUMP_FLOOR, 0.04], 'stump')] as DefInput['slots'],
-  components: { container: { capacity: 1, hidden: true, inside: { lip: STUMP_RIM, face: STUMP_FACE, stand: [0, STUMP_FACE + 0.35], fit: [0.28, 0.12, 0.28], word: 'stump' } } } as DefInput['components'],
+  components: { container: { capacity: 1, hidden: true, inside: { lip: STUMP_RIM, face: STUMP_R, stand: [0, STUMP_R + 0.04 + 0.6], fit: [0.28, 0.12, 0.28], word: 'stump' } } } as DefInput['components'],
   palette: { bark: '#5b4632', hollow: '#1f1711' },
   size: { box: [(STUMP_R + 0.04) * 2, STUMP_RIM, (STUMP_R + 0.04) * 2] },
 } as DefInput;
@@ -119,7 +118,7 @@ const wallNiche: DefInput = {
   params: { stone: { type: 'color', default: '#8d8577', doc: 'stone colour' } },
   state: {},
   slots: [shelf('in-1', [0, 0.98, -0.03], 'niche')] as DefInput['slots'],
-  components: { container: { capacity: 1, hidden: true, inside: { lip: 1.03, face: ND / 2 + 0.05, stand: [0, ND / 2 + 0.4], fit: [0.3, 0.16, 0.3], word: 'niche' } } } as DefInput['components'],
+  components: { container: { capacity: 1, hidden: true, inside: { lip: 1.03, face: ND / 2, stand: [0, ND / 2 + 0.6], fit: [0.3, 0.16, 0.3], word: 'niche' } } } as DefInput['components'],
   palette: { stone: '#8d8577', shade: '#26221d' },
   size: { box: [NW, NH, ND] },
 } as DefInput;
