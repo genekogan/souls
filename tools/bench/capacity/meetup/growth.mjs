@@ -9,7 +9,7 @@ export const ADDITIVE = Object.freeze(['rssMb', 'heapUsedMb', 'nonHeapMb', 'thre
 export const HOST_SERIES = Object.freeze(['telemetryMb', 'diskFreeMb']);
 export const DEFAULT_WARMUP_MS = 10 * 60_000, EDGE_MS = 5 * 60_000, MIN_POINTS = 3;
 /** Not exposed by the server: live.json carries the V8 heap only (apps/server/src/load/shared.ts). Never estimated. */
-export const EXTERNAL = Object.freeze({ value: null, why: 'not exposed: live.json carries the V8 heap only; nonHeapMb (RSS - heap used) is shown instead and is only that' });
+export const EXTERNAL = Object.freeze({ value: null, why: 'not exposed: live.json carries the main thread\'s V8 heap only; nonHeapMb (RSS - main-thread heap used) is shown instead, and it includes worker threads\' heaps. Per-worker memory is not exposed either (see #859); workers are counted only as threads' });
 
 const median = (xs) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const r = (x, d = 2) => (x == null || !Number.isFinite(x) ? null : +x.toFixed(d));
@@ -20,6 +20,7 @@ const r = (x, d = 2) => (x == null || !Number.isFinite(x) ? null : +x.toFixed(d)
 export function trend(points, { edgeMs = EDGE_MS } = {}) {
   const p = points.filter((x) => Number.isFinite(x?.t) && Number.isFinite(x?.v)).sort((a, b) => a.t - b.t), n = p.length;
   const none = (why) => ({ n, spanMin: n ? r((p[n - 1].t - p[0].t) / 60_000, 1) : 0, first: null, last: null, delta: null, slopePerHour: null, r2: null, why });
+  if (!n) return none('not reported');
   if (n < MIN_POINTS) return none('too few samples');
   const t0 = p[0].t, t1 = p[n - 1].t;
   if (t1 - t0 < 2 * edgeMs) return none('window shorter than two 5-minute edges');

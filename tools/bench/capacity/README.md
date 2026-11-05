@@ -138,7 +138,11 @@ and the result records the cleanup. A run without `--quiet-host` is labelled `no
   - the size of `sim.db`, `sim.db-wal` and `sim.db-shm`, and of the whole data directory.
 
   It also reads free space on the data volume. These are `res` lines in `samples.jsonl`.
-- **External memory is not exposed** by the server, so it is reported as unknown, never estimated. The table shows `RSS − heap used` instead, and labels it as only that.
+- **What it cannot see:**
+  - The heap is the **main thread's** (`live.json`), so worker threads' heaps fall inside `RSS − main-thread heap`.
+  - Per-worker memory and external memory are not exposed by the server, so they are reported as unknown, never estimated (#859 adds process telemetry). Workers are counted as threads.
+  - GC is a share of time only, with no pause counts.
+- **With the default 20-minute window,** the 10-minute warm-up leaves too little for trends, so REPORT.md says so in one line instead of printing a table.
 - **`--telemetry`** runs the launcher's own collector (`tools/world-launcher/telemetry.mjs collect`) on its loopback `/__sim/metrics`, into `<run>/telemetry`. Its store size is then sampled too.
 - **`meetup/growth.mjs`** reduces the samples over the activity window.
   - It leaves out an explicit warm-up: the first `--warmup-min` minutes, 10 by default.

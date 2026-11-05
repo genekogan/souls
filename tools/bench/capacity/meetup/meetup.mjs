@@ -41,7 +41,8 @@ const QUALIFYING = flag('qualifying-executor');
 // limits; the driver stays outside the allocation. Recorded in the receipt.
 const SLICE = opt('slice', '');
 const OUT = resolve(opt('out', join(ROOT, '.local/bench/meetup', new Date().toISOString().replace(/[:.]/g, '-'))));
-const ACTIVE_MIN = opt('active-min') == null ? null : Number(opt('active-min')), WARMUP_MS = Number(opt('warmup-min', 10)) * 60_000, TELEMETRY = flag('telemetry');
+if (flag('active-min') && !/^\d+$/.test(opt('active-min') ?? '')) throw new Error('--active-min needs whole minutes, 20 to 240');
+const ACTIVE_MIN = flag('active-min') ? Number(opt('active-min')) : null, WARMUP_MS = Number(opt('warmup-min', 10)) * 60_000, TELEMETRY = flag('telemetry');
 if (!(WARMUP_MS >= 0)) throw new Error('--warmup-min: minutes, 0 or more');
 const PH = phases(SHORT, ACTIVE_MIN), WARM_MS = SHORT ? 20_000 : 60_000, DRAIN_MS = 30_000, BASE = `http://127.0.0.1:${PORT}`;
 for (const p of PROFILE_LIST) if (!PROFILES[p]) throw new Error(`--profile ${p}: even | meetup`);
@@ -124,7 +125,11 @@ async function launcherView() {
 }
 async function stopAll(run) {
   run.stopped = true;
-  try { run.telemetry?.kill('SIGTERM'); } catch { /* gone */ }
+  // the telemetry collector first (it checks for a stop after each 15 s scrape): SIGTERM, up to 20 s, then SIGKILL
+  const T = run.telemetry; let telemetry = null;
+  if (T) { try { T.kill('SIGTERM'); } catch { /* gone */ } for (let i = 0; i < 40 && T.exitCode == null && T.signalCode == null; i++) await sleep(500);
+    const killed = T.exitCode == null && T.signalCode == null; if (killed) try { T.kill('SIGKILL'); } catch { /* gone */ }
+    telemetry = { exitCode: T.exitCode, signal: T.signalCode, killed, earlyExit: run.telemetryEarlyExit ?? null }; }
   for (const ws of run.sockets) try { ws.close(); } catch { /* closed */ }
   for (const a of [...run.aborts, ...run.opAborts]) try { a.abort(); } catch { /* done */ }
   for (const p of run.procs ?? []) try { p.kill('SIGKILL'); } catch { /* gone */ }   // CLI calls still in flight (join)
@@ -141,8 +146,8 @@ async function stopAll(run) {
   await sleep(1000);
   // the recorded world pids, the launcher, the browser and any process still naming this run's data are checked again
   // after the kill (world processes get their data dir from the environment, so the pid list is the real check)
-  const owned = [...pids, L.child.pid, ...(browserPid ? [browserPid] : [])].filter(alive), named = (sh('pgrep', ['-f', L.ldata]) ?? '').split('\n').filter(Boolean).length;
-  return { launcherExited: L.child.exitCode != null, launcherExitCode: L.child.exitCode, worldPids: pids.length, survivedSigterm: survivors.length, browserPid: !!browserPid, ownedAliveAfter: owned.length, straysAfter: owned.length + named };
+  const owned = [...pids, L.child.pid, ...(browserPid ? [browserPid] : []), ...(T?.pid ? [T.pid] : [])].filter(alive), named = (sh('pgrep', ['-f', L.ldata]) ?? '').split('\n').filter(Boolean).length;
+  return { launcherExited: L.child.exitCode != null, launcherExitCode: L.child.exitCode, worldPids: pids.length, survivedSigterm: survivors.length, browserPid: !!browserPid, ownedAliveAfter: owned.length, straysAfter: owned.length + named, ...(telemetry ? { telemetry } : {}) };
 }
 
 // ------------------------------------------------------------------ Souls: join with the CLI, then raw HTTP with its etiquette
@@ -334,6 +339,7 @@ async function oneRun(profile, rep) {
     if (TELEMETRY) {   // the collector reads the launcher's Prometheus text, built from live.json: it never wakes a world
       const t = spawn(process.execPath, [join(ROOT, 'tools/world-launcher/telemetry.mjs'), 'collect', '--url', `${BASE}/__sim/metrics`, '--dir', join(dir, 'telemetry')], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
       t.stdout.on('data', (b) => appendFileSync(join(dir, 'telemetry.log'), b)); t.stderr.on('data', (b) => appendFileSync(join(dir, 'telemetry.log'), b)); run.telemetry = t;
+      t.on('exit', (code, signal) => { if (!run.stopped) { run.telemetryEarlyExit = { code, signal, atS: +((mono() - run.marks.boot) / 1000).toFixed(1) }; log(`${tag}: telemetry collector exited early (${code ?? signal}); see telemetry.log`); } });
     }
     // join (timed, not a measuring window)
     mark('join');

@@ -16,6 +16,7 @@ test('trend: OLS slope per hour, edge medians, R²; never extrapolated', () => {
 });
 
 test('trend: too few samples or too short a window gives nulls with a reason, never 0', () => {
+  assert.equal(trend([]).why, 'not reported'); assert.equal(trend(line(2, () => 1)).why, 'too few samples');
   for (const pts of [[], line(2, () => 1), line(20, () => 1)]) {   // 20 × 30 s = 9.5 min < two 5-minute edges
     const t = trend(pts); assert.equal(t.slopePerHour, null); assert.equal(t.delta, null); assert.ok(t.why);
   }
@@ -51,6 +52,9 @@ test('report: the growth table states the warm-up and residual window, and says 
   const text = growthLines(growth(s, { active: [0, 70 * MIN] })).join('\n');
   assert.match(text, /first 10 min of the activity window are left out/); assert.match(text, /Residual window: 10–70 min, 121 samples/);
   assert.match(text, /\| RSS MB \(sum\) \| 525 → 635 \| 110 \| 120 \| 1 \| a \(120\) \|/);
-  assert.match(text, /\| sim\.db MB \(sum\) \| — \(too few samples\) \|/); assert.match(text, /External memory: not exposed/);
+  assert.match(text, /\| sim\.db MB \(sum\) \| — \(not reported\) \|/); assert.match(text, /External memory: not exposed/);
   assert.match(growthLines(growth(s, {})).join('\n'), /No growth: no activity window/);
+  // the default 20-min window with a 10-min warm-up leaves 10 min: one line, not a table of unknowns
+  const short = growthLines(growth(s, { active: [0, 20 * MIN] })).join('\n');
+  assert.match(short, /No trends: after the 10 min warm-up the residual window is 10 min/); assert.doesNotMatch(short, /\| series \|/);
 });
