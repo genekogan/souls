@@ -1,6 +1,7 @@
 // 2.7.2 (#371 H-b): EDEN_TRACE=1 writes one stderr line per HTTP attempt with the CLI's wall ms and the world's
 // x-handler-ms, so a late answer splits into server and client/network time. Without the variable nothing changes.
 import test from 'node:test';
+import {randomBytes} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {execFile} from 'node:child_process';
@@ -34,8 +35,14 @@ async function world(t, {handler = true, busyFirst = 0} = {}) {
 const traces = (s) => s.split('\n').filter(l => l.startsWith('TRACE ')).map(l => JSON.parse(l.slice(6)));
 
 test('traceLine: method, query-free path with opaque segments redacted, status, ms to 0.1, handlerMs or null, attempt', () => {
-  const t = traces(traceLine('GET', 'http://h:1/w/x/v1/edge/view/img/AbCdEfGhIjKlMnOpQrStUv?sig=secret', 200, 12.345, '3.2', 2))[0];
-  assert.deepEqual(t, {method: 'GET', path: '/w/x/v1/edge/view/img/<redacted>', status: 200, ms: 12.3, handlerMs: 3.2, attempt: 2});
+  // the view image's real capability URL shape (eyes/routes.ts): /v1/edge/view/img/<randomBytes(16) hex>.jpg
+  const img = randomBytes(16).toString('hex');
+  const t = traces(traceLine('GET', `http://h:1/w/x/v1/edge/view/img/${img}.jpg?sig=secret`, 200, 12.345, '3.2', 2))[0];
+  assert.deepEqual(t, {method: 'GET', path: '/w/x/v1/edge/view/img/<redacted>.jpg', status: 200, ms: 12.3, handlerMs: 3.2, attempt: 2});
+  assert.ok(!JSON.stringify(t).includes(img.slice(0, 8)), 'no part of the capability value is traced');
+  for (const seg of [img, `${img}.png`, `${img.slice(0, 16)}.webp`, 'AbCdEfGhIjKlMnOpQrStUv', `v.${img}`, `${img}.tar.gz`])
+    assert.match(traces(traceLine('GET', `http://h:1/v1/edge/view/img/${seg}`, 200, 1, null))[0].path, /^\/v1\/edge\/view\/img\/<redacted>(\.[a-z]+)?$/, seg.length + ' chars');
+  assert.equal(traces(traceLine('GET', 'http://h:1/v1/edge/receipts/r_1a2b3c', 200, 1, null))[0].path, '/v1/edge/receipts/r_1a2b3c', 'short ids stay readable');
   assert.equal(traces(traceLine('POST', 'http://h:1/v1/edge/act', 0, 1, null))[0].handlerMs, null, 'no header: null');
   assert.equal(traces(traceLine('POST', 'http://h:1/v1/edge/act', 200, 1, ''))[0].handlerMs, null);
 });

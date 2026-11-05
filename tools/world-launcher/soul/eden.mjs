@@ -243,11 +243,15 @@ async function call(path, { method, body, as = "soul", timeoutMs, recoverRead = 
 
 // 2.7.2 (#371 H-b): EDEN_TRACE=1 writes one stderr line per HTTP attempt, `TRACE {method, path, status, ms, handlerMs,
 // attempt}`: this CLI's wall time (send to body read) beside the world's own x-handler-ms, so a late answer splits into
-// server time and client/network time. The path has no query and long opaque segments are redacted; stdout never changes.
+// server time and the rest (client, network, waiting for the world's event loop). The path has no query, and a segment
+// carrying an opaque value (a run of 20+ word characters, or 16+ hex digits) is redacted whatever its extension: the view
+// image's capability URL is `/v1/edge/view/img/<32 hex>.jpg`, traced as `/v1/edge/view/img/<redacted>.jpg`. stdout never changes.
 const TRACE = process.env.EDEN_TRACE === "1";
+const OPAQUE = /[\w-]{20,}|[0-9a-f]{16,}/i;
+const redactSegment = (p) => (OPAQUE.test(p) ? `<redacted>${/\.[A-Za-z0-9]{1,8}$/.exec(p)?.[0] ?? ""}` : p);
 export function traceLine(method, url, status, ms, handler, attempt = 1) {
   let path = "?";
-  try { path = new URL(url).pathname.split("/").map((p) => (/^[\w-]{20,}$/.test(p) ? "<redacted>" : p)).join("/"); } catch { /* not a URL */ }
+  try { path = new URL(url).pathname.split("/").map(redactSegment).join("/"); } catch { /* not a URL */ }
   const h = handler == null || handler === "" ? null : Number(handler);
   return `TRACE ${JSON.stringify({ method, path, status, ms: Math.round(ms * 10) / 10, handlerMs: Number.isFinite(h) ? h : null, attempt })}\n`;
 }
