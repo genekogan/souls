@@ -60,7 +60,9 @@ export class ActionOutcomes{
    }
    if(context.confirmedProduced?.length){out.produced=context.confirmedProduced;out.untrusted=true;}
    if(context.confirmedChanges?.length)out.changed=context.confirmedChanges;
-   for(const e of [context.confirmedEffects,effects])if(e){out.changed.push(...(e.changed??[]));out.met.push(...(e.met??[]));out.learned.push(...(e.learned??[]));Object.assign(out.detail,e.detail);if(e.summary)out.summary=clip(e.summary,160);out.untrusted||=e.untrusted===true;}
+   // F2 (#373): effects confirmed when the act was accepted (a ride join's "Boarded …") are a success line only for a
+   // receipt that completed; a failed or replaced one keeps the world's own phase line
+   for(const e of [context.confirmedEffects,effects])if(e){out.changed.push(...(e.changed??[]));out.met.push(...(e.met??[]));out.learned.push(...(e.learned??[]));Object.assign(out.detail,e.detail);if(e.summary&&completed)out.summary=clip(e.summary,160);out.untrusted||=e.untrusted===true;}
    if(!completed)out.detail.completedContent=false;
    const validated=edgeOutcomeV1Schema.parse(out);this.db.prepare('INSERT INTO edge_outcomes_v1(world_id,receipt_id,soul_id,body) VALUES(?,?,?,?)').run(this.worldId,receipt.id,context.soulId,JSON.stringify(validated));return validated;
   });
