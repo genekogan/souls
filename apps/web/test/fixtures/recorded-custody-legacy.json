@@ -1,0 +1,9 @@
+{
+  "source": "242678e8d0eeebaead839d15f5d42b808237340f",
+  "reason": "Preserve absent-policy handover world/event hash trace across prospective same-tick metadata publication; generated on unchanged intake before runtime edits.",
+  "samples": 180,
+  "traceHash": "2d16201632b8cf979f033f1f5a56d8a38f8eb72f630b271bc0167e05aa0e3ffe",
+  "staleMetadataTicks": [
+    59
+  ]
+}
