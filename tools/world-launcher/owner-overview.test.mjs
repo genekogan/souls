@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { collectOverview } from './owner-overview-collect.mjs';
-import { checkpointFrom, projectRecords, presentSnapshot, recordUrl, validateSnapshot, MAX_AGE_MS } from './owner-overview-data.mjs';
+import { checkpointFrom, domainFor, projectRecords, presentSnapshot, recordUrl, selectIssues, validateSnapshot, DEFAULT_ISSUES, MAX_AGE_MS, MAX_ITEMS, POPULATION_LABELS } from './owner-overview-data.mjs';
 import { productionSettings } from './production.mjs';
 import { slugFor } from './registry.mjs';
 import { ownerOverview, overviewShell } from './owner-overview.mjs';
@@ -69,7 +69,7 @@ test('schema strips extra fields and rejects invalid cache; proof media is never
 test('collector is deterministic, private and atomic; failed API call preserves last observation', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'owner-collect-')), file = join(dir, 'owner-overview.json');
   try {
-    const run = async args => args[0] === 'issue' ? issue(Number(args[2])) : [];
+    const run = async args => args[0] === 'issue' && args[1] === 'view' ? issue(Number(args[2])) : [];
     const s = await collectOverview(file, run, () => at); assert.equal(s.items.length, 6); assert.equal(statSync(file).mode & 0o777, 0o600);
     const before = readFileSync(file, 'utf8');
     await assert.rejects(collectOverview(file, async () => { throw new Error('offline'); }, () => '2026-11-03T10:00:00Z'));
@@ -122,4 +122,45 @@ test('the root overview namespace cannot be the launcher mount; similarly named 
   for (const base of ['/ops', '/ops/', '/ops/children']) assert.throws(() => productionSettings({ ...cfg, base }, 'http://127.0.0.1:19951'), /belongs to the existing release|one path segment/);
   for (const base of ['', '/worlds', '/ops-other']) assert.equal(productionSettings({ ...cfg, base }, 'http://127.0.0.1:19951').base, base);
   assert.equal(slugFor('Ops'), 'ops', 'world identity remains distinct at /w/ops');
+});
+
+test('population: initial records first, then maintainer decisions and open epics newest first, deduplicated and capped', () => {
+  assert.deepEqual(POPULATION_LABELS, ['needs:gene', 'type:epic']);
+  assert.deepEqual(selectIssues([26, 583], [[{ number: 521 }, { number: 'x' }], [{ number: 28 }, { number: 902 }, { number: 583 }]]), [26, 583, 521, 902, 28]);
+  const many = Array.from({ length: 50 }, (_, i) => ({ number: 1000 + i }));
+  const picked = selectIssues(DEFAULT_ISSUES, [many]);
+  assert.equal(picked.length, MAX_ITEMS);
+  assert.deepEqual(picked.slice(0, DEFAULT_ISSUES.length), DEFAULT_ISSUES, 'the initial records are never crowded out');
+  assert.deepEqual(picked.slice(DEFAULT_ISSUES.length, DEFAULT_ISSUES.length + 2), [1049, 1048], 'the cap drops the oldest');
+  assert.deepEqual(selectIssues([], [[{ number: 5 }], many]).slice(0, 2), [5, 1049], 'a pending decision is kept ahead of epics');
+});
+
+test('collector lists each population label (open only, bounded) and collects the union once per issue', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'owner-collect-')), file = join(dir, 'owner-overview.json'), calls = [];
+  try {
+    const listed = { 'type:epic': [{ number: 902 }, { number: 556 }], 'needs:gene': [{ number: 521 }] };
+    const run = async args => {
+      calls.push(args.join(' '));
+      if (args[0] === 'issue' && args[1] === 'list') return listed[args[args.indexOf('--label') + 1]];
+      if (args[0] === 'issue' && args[1] === 'view') return { ...issue(Number(args[2]), []), labels: Number(args[2]) === 902 ? [{ name: 'type:epic' }, { name: 'epic:dev-flow' }] : [{ name: 'needs:gene' }] };
+      return [];
+    };
+    const s = await collectOverview(file, run, () => at);
+    assert.deepEqual(s.items.map(i => i.number), [...DEFAULT_ISSUES, 521, 902]); // needs:gene, then epics newest first (556 already in)
+    for (const label of POPULATION_LABELS) assert.ok(calls.includes(`issue list --repo genekogan/souls --state open --label ${label} --limit ${MAX_ITEMS} --json number`), label);
+    assert.equal(calls.filter(c => c.startsWith('issue view 556 ')).length, 1, 'an initial record that is also an epic is fetched once');
+    assert.equal(s.items.find(i => i.number === 902).domain, 'Dev flow');
+    assert.equal(s.items.find(i => i.number === 521).group, 'Needs you');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('domains: initial records keep their names; others take their epic, then area, label; the cache keeps the projected name', () => {
+  assert.equal(domainFor({ number: 556, labels: [{ name: 'epic:perf' }] }), 'Performance');
+  assert.equal(domainFor({ number: 583, labels: [] }), 'Project visibility');
+  assert.equal(domainFor({ number: 902, labels: [{ name: 'area:ci' }, { name: 'epic:dev-flow' }] }), 'Dev flow');
+  assert.equal(domainFor({ number: 928, labels: [{ name: 'type:task' }, { name: 'area:ci' }] }), 'Ci');
+  assert.equal(domainFor({ number: 999, labels: [{ name: 'epic:<script>' }] }), 'Other', 'only plain slug labels name a domain');
+  const projected = projectRecords({ issues: [{ ...issue(902, []), labels: [{ name: 'epic:dev-flow' }] }], observedAt: at });
+  assert.equal(validateSnapshot(projected).items[0].domain, 'Dev flow');
+  assert.equal(validateSnapshot({ ...projected, items: [{ ...projected.items[0], domain: undefined }] }).items[0].domain, 'Other');
 });
