@@ -66,7 +66,7 @@ async function main() {
     if (flag('json')) { process.stdout.write(JSON.stringify(r, null, 1) + '\n'); return; }
     const line = (e) => `${new Date(e.t).toISOString()} ${e.rule}${e.world ? ` ${e.world}` : ''}: ${e.from} -> ${e.to} (${e.what} ${e.value ?? 'missing'}, threshold ${e.threshold})`;
     process.stdout.write([`${r.rows} new row(s), ${r.events.length} transition(s)`, ...r.events.map(line),
-      `open: ${r.open.length ? r.open.map((o) => `${o.rule}${o.world ? ` ${o.world}` : ''} ${o.state}`).join(', ') : 'none'}`, `not exported (unknown): ${r.notExported.join(', ')}`].join('\n') + '\n');
+      `open: ${r.open.length ? r.open.map((o) => `${o.rule}${o.world ? ` ${o.world}` : ''} ${o.state}`).join(', ') : 'none'}`, `not exported (unknown): ${r.notExported.join(', ') || 'none'}`, `exported, no rule yet: ${r.notJudged.join(', ') || 'none'}`].join('\n') + '\n');
     return;
   }
   throw new Error('usage: telemetry.mjs collect|report|close|alerts --dir <d> ...');
