@@ -5,6 +5,7 @@ import { whenAssetsSettled } from './gen-mesh/gltf-assets.ts';
 import {ALL_OPTIONAL_APPEARANCE_PROFILES,type OptionalAppearanceProfiles} from './optional-appearance-profiles-all.ts';
 import {historyTakePath,historyTakePage} from './WorldTakeTransport.ts';
 import {WorldAuthoredBoundaries} from './WorldAuthoredBoundaries.ts';
+import {WorldTouchFree} from './touch/WorldTouchFree.ts';
 import {exploreRoom} from './explore-data.ts';
 import {RendererDiagnostics} from './RendererDiagnostics.ts';
 import {EngineFixtureInstances} from './EngineFixtureInstances.ts';
@@ -365,6 +366,8 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     for(const type of ['pointerdown','keydown','wheel'] as const)window.addEventListener(type,stopSoulFlight,{capture:true,passive:true});
     const rts=new WorldRtsCamera(renderer.domElement,camera,{controls:()=>controls,mode:()=>context.current.cameraMode,takeOver:()=>{context.current.manualNavigation='orbit';context.current.cameraMode='manual';context.current.follow=false;if(!navigation?.sync(true))navigation?.release(false);context.current.setManualNavigation('orbit');context.current.setCameraMode('manual');},scene:()=>scene,pickRoots:()=>[floaters.root,kin.view.root,standIns,...(people?.pickingRoots()??[]),...visualObstructionRoots()],focusAt:(x,y)=>{const target=hover.pick(x,y);if(target){inspectHover(target);return {center:target.point,radius:target.radius};}return null;},enabled:()=>!(context.current.cameraMode==='manual'&&context.current.manualNavigation==='free'),
       extent:()=>(entityLayer.active?entityLayer.groundExtent():null)??(expansion?EDEN_TERRAIN_EXTENT:geometry.bounds),home:()=>{context.current.setCameraMode('manual');controlsApi.current?.overview();}});scene.add(rts.marker);  // VF2: your camera (keys, pivot, double-click)
+    // #891: on a touch screen in Free, the floating stick walks, one finger looks, pinch glides, two fingers rise, double-tap flies (all through rts)
+    const touchFree=new WorldTouchFree(renderer.domElement,host,{camera:rts,free:()=>context.current.cameraMode==='manual'&&context.current.manualNavigation==='orbit',soulAt:(x,y)=>hover.pick(x,y)?.kind==='soul'});
     const speechLayer=new SpectatorSpeechLayer();scene.add(speechLayer.group);let speeches:SpectatorSpeech[]=[];const speechHead=new THREE.Vector3();
     // W3 fading visuals: Core C9 state when it ships; meanwhile a ?fade= preview override.
     // W2/W5 preview: ?snapshots=1 exposes on-demand low-res JPEG eyes/overhead/map frames (steward queue C10 will call these).
@@ -1179,6 +1182,7 @@ if(entityBatchEnabled&&entityLayer.active&&entityLayer.freezeSettled)entityLayer
     };
     const onWheel = () => context.current.setCameraMode(cameraModeAfterGesture(context.current.cameraMode));
     const onUp = (e: PointerEvent) => {
+      if (touchFree.consumed(e.pointerId)) { down = null; return; }  // #891: a touch gesture (stick, look, pinch, rise, double-tap), not a tap
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) { down = null; return; }
       down = null;
       if (entityLayer.active && godFeature('flags') && (e.altKey || flagModeRef.current)) return;  // a flag drop (onFlagClick), not a selection: no place card over the god panel
@@ -1203,7 +1207,7 @@ if(entityBatchEnabled&&entityLayer.active&&entityLayer.freezeSettled)entityLayer
       hover.dispose();
       portraits.dispose();
       for(const type of ['pointerdown','keydown','wheel'] as const)window.removeEventListener(type,stopSoulFlight,{capture:true});
-      rts.dispose();
+      rts.dispose();touchFree.dispose();
       atmosphere.dispose();forkLand?.dispose();godLiving?.dispose();post?.dispose();godLightning?.dispose();
       speechLayer.dispose();
       fading.dispose();
