@@ -258,7 +258,7 @@ export class WorldRtsCamera {
     const eye=this.camera.position,gaze=this.camera.getWorldDirection(new THREE.Vector3()),d=Math.max(NEAR_LIMIT,eye.distanceTo(this.pivot));
     const ground=centreGround(this.camera,this.o.scene(),Math.max(600,d*1.5));
     let t=ground&&ground.distanceTo(eye)>=1?ground.distanceTo(eye):d;
-    // The new pivot stays over the map plus a margin (pivotRect), so a nearly level look never leaves it far past the edge.
+    // The new pivot stays inside the eye guard's rectangle (pivotRect), so a nearly level look never leaves it beyond reach.
     const ok=(k:number)=>this.pivotInBounds(eye.clone().addScaledVector(gaze,k));
     if(!ok(t)){
       if(!ok(NEAR_LIMIT))return;  // the eye is outside the map: keep the head offset
@@ -510,11 +510,11 @@ export class WorldRtsCamera {
     if(x===eye.x&&z===eye.z)return false;
     target.x+=x-eye.x;target.z+=z-eye.z;eye.x=x;eye.z=z;return true;
   }
-  /** #891: where a finished touch look may put the pivot: the map's ground rectangle plus a margin (null when the map is
-   * unknown). Only touchLookEnd reads it; the lost-camera guard (keepPivotInBounds, #660) holds the eye, not the pivot. */
+  /** #891: where a finished touch look may put the pivot: the eye guard's own rectangle (the map's ground rectangle plus
+   * farLimit, keepPivotInBounds #660; null when the map is unknown), so wherever the eye can walk a touch look commits. */
   private pivotRect():[number,number,number,number]|null{
     const e=this.o.extent?.();if(!e||!e.every(Number.isFinite))return null;
-    const m=Math.max(60,.25*Math.max(e[2]-e[0],e[3]-e[1]));return [e[0]-m,e[1]-m,e[2]+m,e[3]+m];
+    const m=farLimit(e);return [e[0]-m,e[1]-m,e[2]+m,e[3]+m];
   }
   private pivotInBounds(p:THREE.Vector3){const r=this.pivotRect();return !r||(p.x>=r[0]&&p.x<=r[2]&&p.z>=r[1]&&p.z<=r[3]);}
   /** Pivot := drawn ground under the screen centre; the camera does not move. */

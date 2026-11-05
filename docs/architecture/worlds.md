@@ -35,8 +35,9 @@ far-zoom limit (320–1,400 m) of the world's ground rectangle, far beyond the m
 On a touch screen in Free (`apps/web/src/touch/WorldTouchFree.ts`), a touch that starts in the lower-left 45 % of the
 view spawns a floating stick that walks the eye; one finger elsewhere looks in place, a pinch glides toward the point
 between the fingers, a two-finger vertical drag rises or lowers, and a double-tap flies there. Each gesture feeds the
-existing `WorldRtsCamera` path (WASD, Q/E, right-drag, wheel, double-click), so the same guard holds; a finished touch look keeps its new pivot within the map plus a margin. Follow and
-Broadcast keep OrbitControls' touch orbit and pinch.
+existing `WorldRtsCamera` path (WASD, Q/E, right-drag, wheel, double-click), so the same guard holds. A finished touch
+look always commits its new pivot, kept within that guard's rectangle. Follow and Broadcast keep OrbitControls' touch
+orbit and pinch.
 
 Audio opens independent Sound effects and Music switches plus a radio station selector. Stations curate the existing
 score playlist: All music, Quiet & ambient, Electronic and Upbeat. Choosing a station while music is off remembers
