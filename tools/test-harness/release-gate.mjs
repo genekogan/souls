@@ -137,6 +137,26 @@ export function validateQuarantine(manifest) {
   return new Map(manifest.entries.map(e => [key(e.step, e.id), e]));
 }
 
+/** renames.json: reviewed renames and replacements of baseline assertions. A listed baseline id that is gone from the
+ * candidate is satisfied only when every replacement id ran and passed there (compareRuns); nothing unlisted is. */
+export function validateRenames(manifest) {
+  if (manifest?.schemaVersion !== 1 || !Array.isArray(manifest.entries)) throw Error('renames.json must use schemaVersion 1 and entries[]');
+  const text = v => typeof v === 'string' && v.trim().length > 0;
+  const out = new Map();
+  for (const e of manifest.entries) {
+    const to = typeof e.to === 'string' ? [e.to] : e.to;
+    if (![e.step, e.from, e.reason].every(text) || !Array.isArray(to) || !to.length || !to.every(text)) throw Error('every rename needs step, from, to (an id or a list of ids) and reason');
+    if (typeof e.pr !== 'string' || !/^#\d+$/.test(e.pr)) throw Error(`rename ${e.step}/${e.from}: pr must be "#<number>"`);
+    if (!REQUIRED_STEPS.includes(e.step)) throw Error(`unknown rename step ${e.step}`);
+    if (CASE_STEPS.has(e.step)) throw Error(`V6 scenarios cannot be renamed away: ${e.step}`);
+    if (to.includes(e.from) || new Set(to).size !== to.length) throw Error(`rename ${e.step}/${e.from}: replacements must be distinct from it and from each other`);
+    const k = key(e.step, e.from);
+    if (out.has(k)) throw Error(`duplicate rename ${e.step}/${e.from}`);
+    out.set(k, { ...e, to });
+  }
+  return out;
+}
+
 /** Validate a returned Modal directory; exported for synthetic, port-free proof. */
 export function readRun(dir, expected, manifest, requiredSteps = REQUIRED_STEPS, options = {}) {
   const errors = [], steps = {}, evidence = {};
@@ -334,14 +354,17 @@ function recoverAssetCollisions(dir, m, requiredSteps, read, root) {
 }
 
 /** options.driverTestsChanged: the cached baseline ran other laptop-side driver files (same suite tree, see DRIVER_ONLY);
- * their own V3-harness self-tests may then be renamed or removed without that counting as lost coverage. */
+ * their own V3-harness self-tests may then be renamed or removed without that counting as lost coverage.
+ * options.renames: validateRenames() of renames.json; a listed baseline id gone from the candidate is renamed, not
+ * removed, only when every replacement id ran and passed in the candidate's same step. */
 export function compareRuns(baseline, candidate, manifest, candidateSourceFiles = new Set(), options = {}) {
   const q = validateQuarantine(manifest);
   const blockers = [...baseline.errors.map(e => `baseline: ${e}`), ...candidate.errors.map(e => `candidate: ${e}`)];
   if (baseline.metadata && candidate.metadata) for (const field of ['nodeVersion', 'pnpmVersion']) {
     if (baseline.metadata[field] !== candidate.metadata[field]) blockers.push(`baseline/candidate runtime mismatch: ${field}`);
   }
-  const fixed = [], quarantined = [], newFailures = [], removed = [], unexpectedSkips = [], added = [], driverTestsRemoved = [];
+  const fixed = [], quarantined = [], newFailures = [], removed = [], unexpectedSkips = [], added = [], driverTestsRemoved = [], renamed = [];
+  const renames = options.renames ?? new Map();
   for (const [step, b] of Object.entries(baseline.steps)) {
     const c = candidate.steps[step]; if (!c) continue;
     if (b.exit === 'QUARANTINE' || c.exit === 'QUARANTINE') {
@@ -361,8 +384,13 @@ export function compareRuns(baseline, candidate, manifest, candidateSourceFiles 
         continue;
       }
       if (!now) {
+        const rename = renames.get(key(step, t.id));
         if (options.driverTestsChanged && step === 'V3-harness' && DRIVER_ONLY.some(f => t.source === `tools/test-harness/${f}`)) driverTestsRemoved.push({ step, id: t.id, source: t.source });
-        else removed.push({ step, id: t.id });
+        else if (rename) {
+          const notPassing = rename.to.filter(id => ct.get(id)?.status !== 'pass');
+          if (notPassing.length) removed.push({ step, id: t.id, rename: { to: rename.to, notPassing } });
+          else renamed.push({ step, from: t.id, to: rename.to, reason: rename.reason, pr: rename.pr });
+        } else removed.push({ step, id: t.id });
         continue;
       }
       if (t.status === 'fail' && !t.aggregate) {
@@ -395,7 +423,7 @@ export function compareRuns(baseline, candidate, manifest, candidateSourceFiles 
   if (newFailures.length) blockers.push(`${newFailures.length} new test failure(s)`);
   if (removed.length) blockers.push(`${removed.length} baseline assertions removed`);
   if (unexpectedSkips.length) blockers.push(`${unexpectedSkips.length} unexpected test skip(s)/TODO(s)`);
-  return { status: blockers.length ? 'blocked' : quarantined.length ? 'quarantined' : 'pass', blockers, fixed, quarantined, newFailures, removed, unexpectedSkips, added, ...(options.driverTestsChanged && { driverTestsRemoved }) };
+  return { status: blockers.length ? 'blocked' : quarantined.length ? 'quarantined' : 'pass', blockers, fixed, quarantined, newFailures, removed, renamed, unexpectedSkips, added, ...(options.driverTestsChanged && { driverTestsRemoved }) };
 }
 
 const MAX_BUFFER = 64 * 1024 * 1024;
@@ -755,10 +783,14 @@ export async function main(args = process.argv.slice(2), deps = {}) {
     const manifestBytes = execFileSync('git', ['-C', root, 'show', `${harnessRef}:tools/test-harness/quarantine.json`]);
     const manifest = JSON.parse(manifestBytes);
     validateQuarantine(manifest);
+    // An older harness without renames.json has no reviewed renames; an empty list only ever keeps removals blocking.
+    let renamesBytes = Buffer.from('{"schemaVersion":1,"entries":[]}\n');
+    try { renamesBytes = execFileSync('git', ['-C', root, 'show', `${harnessRef}:tools/test-harness/renames.json`], { stdio: ['ignore', 'pipe', 'ignore'] }); } catch {}
+    const renames = validateRenames(JSON.parse(renamesBytes));
     const node = options['--node'] || '22';
     if (!['22', '26'].includes(node)) throw Error('supported Node versions: 22, 26');
     receipt = { ...receipt, refs: { baseline: { ref: baselineRef, sha: baselineSha }, candidate: { ref: candidateRef, sha: candidateSha } },
-      harness: { ref: harnessRef, tree: harnessTree, suiteTree: suite, archiveSha256: sha256(harnessArchive) }, quarantineSha256: sha256(manifestBytes), node, exclusions: EXPECTED_SKIP, scopeExclusions: manifest.scopeExclusions };
+      harness: { ref: harnessRef, tree: harnessTree, suiteTree: suite, archiveSha256: sha256(harnessArchive) }, quarantineSha256: sha256(manifestBytes), renamesSha256: sha256(renamesBytes), node, exclusions: EXPECTED_SKIP, scopeExclusions: manifest.scopeExclusions };
     const identity = { schemaVersion: 1, harnessRef, harnessTree, harnessArchiveSha256: sha256(harnessArchive), node };
     const scopeMode = options['--scope'] || 'full';
     const scope = scopeMode === 'full' ? { resolved: 'full', steps: [...REQUIRED_STEPS] }
@@ -828,7 +860,7 @@ export async function main(args = process.argv.slice(2), deps = {}) {
     const suiteReuse = base.source === 'cached' || (base.source === 'imported' && !base.exact);
     const driverTestsChanged = suiteReuse && !baseline.errors.length && baseline.suiteTree === suite && baseline.metadata?.harnessTree !== harnessTree;
     if (suiteReuse) receipt.baseline = { ...receipt.baseline, harnessRef: baseline.metadata?.harnessRef, harnessTree: baseline.metadata?.harnessTree, suiteTree: baseline.suiteTree, driverTestsChanged };
-    receipt = { ...receipt, ...compareRuns(bundleCarry ? bundleCarry.comparisonRun : baseline, candidate, manifest, candidateSourceFiles, { driverTestsChanged }), drivers,
+    receipt = { ...receipt, ...compareRuns(bundleCarry ? bundleCarry.comparisonRun : baseline, candidate, manifest, candidateSourceFiles, { driverTestsChanged, renames }), drivers,
       runs: { baseline, candidate } };
     // Cache what this gate proved: a fresh baseline run that validated, and the candidate of a passing gate
     // (the next gate's baseline once it becomes main).
