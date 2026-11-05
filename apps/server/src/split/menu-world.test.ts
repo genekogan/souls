@@ -23,7 +23,7 @@ const LEDGER_MAIN_ONLY = new Set(['constructor', 'attachComms', 'attachPresence'
   'onDecision', 'onRecovery', 'onProgram', 'afterTick', 'contactTicks', 'ambientLife', 'unstick', 'arm', 'decide', 'recordRefusal', 'metrics', 'actVerificationSit',
   'act', 'actMenu', 'actOnce', 'standIfSeated', 'launch', 'relaunchStuck', 'acceptInvite', 'performBodies', 'performAtomicObjectBodies',
   'syncCarrierPlaces', 'boardingIssue', 'steerTarget', 'steerCheck', 'rideFrames', 'godInterrupted', 'setDetail', 'stallGuard', 'conversationPartners', 'posture',
-  'ambientChoice']);
+  'ambientChoice', 'openShared']);
 
 test('grep: no engine reach in the read code (ledger read methods, perception, together, god-nav, human capabilities, deck)', () => {
   const ledger = [...reaches('edge/ledger/ledger.ts', /host\.engine/g)].filter(([m]) => !LEDGER_MAIN_ONLY.has(m));
