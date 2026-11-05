@@ -135,7 +135,7 @@ export function reportText(receipt, all) {
   }
   if (failed.length) {
     L.push('', `## Failed runs: ${failed.length} of ${all.length}`, '', 'These runs are in no mean or slope below (each section\'s `n` counts the runs it rests on).', '', '| arm | rep | error |', '|---|---|---|');
-    for (const x of failed) L.push(`| ${x.arm?.id ?? '?'} | ${x.rep ?? '?'} | ${String(x.error).replace(/\|/g, '\\|').replace(/\s+/g, ' ').slice(0, 300)} |`);
+    for (const x of failed) L.push(`| ${x.arm?.id ?? '?'} | ${x.rep ?? '?'} | ${String(x.error).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\s+/g, ' ').slice(0, 300)} |`);
   }
   L.push('', '## Slopes', '', '```json', JSON.stringify(s, null, 1), '```', '');
   for (const x of results) for (const [w, prof] of Object.entries(x.profiles ?? {})) if (prof) {
