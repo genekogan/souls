@@ -2,7 +2,7 @@
 // The join walks to the ride carrier with a 2.2 m standoff; on paged ground a long walk's plan checks only its first fine
 // hop, so the first standoff point, inside the wheel's own collider, passed the plan and failed at the last hop. A ride
 // join's walk is `stand: 'clear/1'` (engine goalNear): only a standoff point with standing room for the walker's body is
-// taken, else the nearest standable point within 4 m. An unmarked step keeps the goal it always chose (exact replay).
+// taken, else the nearest standable point at most 0.9 m beyond the standoff. An unmarked step keeps the goal it always chose (exact replay).
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
@@ -70,7 +70,7 @@ test('F3 (#374): a ride join from the Commons walks to a boarding point with sta
 const thicket = (name: string, cx: number, cz: number, half: number) => Array.from({length: Math.round(half / 0.3) + 1}, (_, i) => ({op: 'place', def: 'core/garden-wall@1', name: `${name}-${i}`,
   shape: {path: [[cx - half, cz - half + i * 0.6], [cx + half, cz - half + i * 0.6]]}}));
 
-test('F3 (#374) stand/1: every turn around the target without room falls back to a point at most 0.9 m further out, and the walk ends there; none is refused, named', {timeout: 900000}, async t => {
+test('F3 (#374) stand/1: every turn around the target without room falls back to a point at most 0.9 m further out, and the walk ends there; a patch with no room anywhere is refused, naming the blocker', {timeout: 900000}, async t => {
   const {w, god, tick, souls: [pip], engine} = await district(t, ['Pip']);
   const goalNear = (w.host.engine as unknown as {goalNear(a: string, to: unknown, off: number, stand?: unknown): {x: number; z: number} | 'here' | {code: string; message: string}}).goalNear.bind(w.host.engine);
   // each patch on the first open ground near the Commons that the god may build on (the template's trees are solid)
@@ -97,7 +97,7 @@ test('F3 (#374) stand/1: every turn around the target without room falls back to
   await tick(2000, () => !engine.programOf(pip.entityId));
   const end = engine.world.entities[pip.entityId].pose.p;
   assert.ok(Math.hypot(end[0] - small.x, end[2] - small.z) < 0.5, `the walk arrived at the chosen point: ${end} vs ${small.x},${small.z}`);
-  // the large patch: no standable point within 4 m of the first turn; refused as the walk's own goal refusal, named
+  // the large patch: no standable point up to 0.9 m beyond the standoff; refused as the walk's own goal refusal, named
   const large = goalNear(pip.entityId, B, 2.2, 'clear/1');
   assert.ok(typeof large === 'object' && 'code' in large, JSON.stringify(large));
   assert.equal(large.code, 'route.goal-blocked'); assert.match(large.message, /no standing room for a 0\.3\d m-radius body 2\.2 m from the target .* or up to 0\.9 m beyond it around the target \(blocked by e_[0-9a-f]+/, large.message);
