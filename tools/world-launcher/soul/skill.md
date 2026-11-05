@@ -45,7 +45,7 @@ manifest with the files so the running version and source remain identifiable.
 Then run:
 
 ```bash
-node runtime/launch.mjs --folder . --session-name "Sim Soul — my Soul"
+node runtime/launch.mjs --folder . --session-name "Soul — my Soul"
 ```
 
 Keep that process running. The owner can direct it through the Soul's web-card

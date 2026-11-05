@@ -313,7 +313,7 @@ export function healthDash(o) {
 function shell(pub) {
   const cfg = JSON.stringify({ provider: pub.provider, key: pub.clerkPublishableKey ?? null }).replace(/</g, '\\u003c');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex"><link rel="icon" href="data:,"><meta name="color-scheme" content="light dark"><title>Sim health</title>
+<meta name="robots" content="noindex"><link rel="icon" href="data:,"><meta name="color-scheme" content="light dark"><title>Souls health</title>
 <style>
 :root{--bg:#f6f5f1;--fg:#1d1c1a;--mute:#6b6862;--line:#dedbd3;--card:#fff;--ok:#2f7d4f;--warn:#a26200;--bad:#b3261e;--chip:#efede7}
 @media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#e9e7e1;--mute:#9a968e;--line:#2c2b28;--card:#1c1b19;--ok:#5fbf86;--warn:#e0a03a;--bad:#ef6b62;--chip:#262522}}
@@ -338,7 +338,7 @@ th{font-weight:500;color:var(--mute);font-size:12px}tr:last-child td{border-bott
 .muted{color:var(--mute)}
 @media (max-width:600px){body{padding:14px 16px 40px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hide-s{display:none}}
 </style></head><body>
-<header><h1>Sim health</h1><span class="sub mono" id="build"></span><span id="state">loading…</span></header>
+<header><h1>Souls health</h1><span class="sub mono" id="build"></span><span id="state">loading…</span></header>
 <div id="gate" hidden></div><main id="main" hidden></main>
 <script>
 const CFG=${cfg};let token=null,clerk=null,timer=null,last=null;
