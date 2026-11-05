@@ -3,7 +3,7 @@
 // machine summary against it, for the tier the change needs (docs/process/PROOF-POLICY.yml `pr_checks`).
 //
 //   node tools/proof/acceptance.mjs check --body pr.md [--issue issue.md] [--proof proof.json] [--tier T2 |
-//        --files a,b | --base <ref>] [--label tier:T3 ...] [--head <sha>] [--json] [--comment out.md]
+//        --files a,b | --base <ref>] [--label tier:T3 ...] [--head <sha>] [--repo owner/name] [--json] [--comment out.md]
 //   node tools/proof/acceptance.mjs init --issue issue.md [--pr <n>] [--tier T2] [--issue-number <n>] [--commit <sha>]
 //        > .e2e/journal/<n>/proof.json      (issue: from --issue-number or a .e2e/journal/<n>/ path; commit: the
 //                                            git HEAD of the current directory, so run it from the PR's worktree)
@@ -12,6 +12,10 @@
 //                                                   with `gh api`; prints the report; writes ok=true|false; T3-T4
 //                                                   also need the maintainer's sign-off, tools/proof/gate.mjs)
 //
+// Clip and proof.json links count only on a proof host (proofHostProblem, #765): this repository's proofs releases,
+// GitHub attachments, or the SIM_PROOF_PUBLIC_URL CDN. Others are ignored with a warning, and `pr` fetches proof.json
+// only from such a host. `check` without --repo accepts any repository's proofs releases.
+//
 // Exit codes: 0 proof-ok, 1 proof missing or invalid, 2 usage error. `pr` always exits 0 unless the tool itself
 // failed; it reports the verdict through --output so the workflow can post the comment first.
 //
@@ -19,6 +23,7 @@
 //   { schema, pr, issue, commit, tier,
 //     criteria:      [{ id, text, status: met|unmet|deferred, evidence: [url | "`command` -> result" | "#n"] }],
 //     media:         [{ file, url, kind: video|image, seconds, viewport, uncut, realSpeed, caption }],
+//     files?:        [{ file, url, caption }],          other uploads (logs, JSON); never counted as a clip
 //     checks:        [{ cmd, result: pass|fail|skip, note }],
 //     failedAttempts:[{ what, why, evidence }],          kept, never deleted; [] when there were none
 //     externalities: [{ what, result, ok }],             long-tail cost elsewhere: payload or context bytes when the
@@ -108,6 +113,37 @@ const IMAGE = /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i;
 export const isVideo = u => VIDEO.test(u) && !IMAGE.test(u);
 export const isImage = u => IMAGE.test(u);
 const isProofJson = u => /proof[^/]*\.json(\?|#|$)/i.test(u);
+
+/**
+ * Where a proof.json or clip link may live (#765): this repository's proofs releases (`releases/download/proofs/` or
+ * `proofs-<n>/`), GitHub user attachments, and the proof CDN (SIM_PROOF_PUBLIC_URL) when one is configured. A canonical
+ * https URL only: no userinfo, port, query or fragment. `repo` null (a local check with no repository known) accepts
+ * any repository's proofs releases; proof-check always passes its repository. Returns null when allowed, else why not.
+ */
+export function proofHostProblem(value, { repo = null, cdn = process.env.SIM_PROOF_PUBLIC_URL || null } = {}) {
+  let u;
+  try { u = new URL(value); } catch { return 'not a URL'; }
+  if (u.protocol !== 'https:') return 'not https';
+  if (u.username || u.password || u.port || u.search || u.hash) return 'userinfo, a port, a query or a fragment is not allowed';
+  const repoRe = repo ? repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '[\\w.-]+/[\\w.-]+';
+  if (u.origin === 'https://github.com') {
+    if (new RegExp(`^/${repoRe}/releases/download/proofs(?:-\\d+)?/[A-Za-z0-9._-]+$`).test(u.pathname)) return null;
+    if (/^\/user-attachments\/(?:assets|files)\/[A-Za-z0-9-]+(?:\/[A-Za-z0-9._-]+)?$/.test(u.pathname)) return null;
+    return `not this repository's proofs release${repo ? ` (${repo})` : ''} or a GitHub attachment`;
+  }
+  if (cdn) {
+    let c;
+    try { c = new URL(cdn); } catch { c = null; }
+    if (c && u.origin === c.origin && u.pathname.startsWith(c.pathname.replace(/\/?$/, '/'))) return null;
+  }
+  return `host ${u.host} is not a proof host (proofs releases, GitHub attachments${cdn ? ', the proof CDN' : ''})`;
+}
+/** Splits candidate links into allowed ones and ignored ones (with the reason). */
+export function allowedProofLinks(links, opts) {
+  const ok = [], ignored = [];
+  for (const u of links) { const why = proofHostProblem(u, opts); if (why) ignored.push({ url: u, why }); else ok.push(u); }
+  return { ok, ignored };
+}
 
 /** Issue references in a Problem section: closing keywords first (the PR's own issue, which proof-check reads), then
  *  bare #n and issue URLs in order. */
@@ -204,6 +240,13 @@ export function validateProof(proof, { tier = 'T0', checklist = null, knobs = {}
     if (m?.kind === 'video' && (m.uncut !== true || m.realSpeed !== true)) problems.push(`proof.json media ${i + 1}: a proof video must be uncut and real speed (uncut: true, realSpeed: true)`);
   }
   if (rank(tier) >= 2 && !media.some(m => m?.kind === 'video' && m.url)) problems.push('proof.json: no uploaded video for a T2+ change');
+  if (proof.files !== undefined) {
+    for (const [i, f] of arr('files').entries()) {
+      if (!f?.file) problems.push(`proof.json files ${i + 1}: needs a file name`);
+      if (f?.url && !/^https:\/\//.test(f.url)) problems.push(`proof.json files ${i + 1}: url must be https`);
+      if (!f?.url) warnings.push(`proof.json files ${i + 1} (${f?.file ?? '?'}): no url yet (not uploaded)`);
+    }
+  }
   const checks = arr('checks', rank(tier) >= 1 ? 1 : 0);
   for (const [i, c] of checks.entries()) if (!c?.cmd || !['pass', 'fail', 'skip'].includes(c?.result)) problems.push(`proof.json check ${i + 1}: needs cmd and result pass|fail|skip`);
   arr('failedAttempts');
@@ -240,7 +283,7 @@ function privacyFailure(tier, privacy) {
   return { ok: false, tier, rows: [{ name: 'publication privacy', ok: false, detail }], problems: [detail], warnings: [], checklist: [], links: { videos: [], images: [], proofJson: [] }, clips: [] };
 }
 
-export function checkPr({ body = '', tier = 'T0', issueBody = null, proof = undefined, head = null, policy = loadChecks() }) {
+export function checkPr({ body = '', tier = 'T0', issueBody = null, proof = undefined, head = null, policy = loadChecks(), repo = null }) {
   const privacy = publicationFindings({ body, issueBody, proof });
   if (privacy.length) return privacyFailure(tier, privacy);
   const s = sections(body);
@@ -288,17 +331,20 @@ export function checkPr({ body = '', tier = 'T0', issueBody = null, proof = unde
   }
 
   const links = urls(body);
-  const videos = links.filter(isVideo), images = links.filter(isImage), proofLinks = links.filter(isProofJson);
+  // Clip and proof.json links count only on a proof host (#765); every other one is named in the warnings.
+  const v = allowedProofLinks(links.filter(isVideo), { repo }), pj = allowedProofLinks(links.filter(isProofJson), { repo });
+  for (const x of [...v.ignored, ...pj.ignored]) warnings.push(`ignored proof link ${x.url}: ${x.why}`);
+  const videos = v.ok, images = links.filter(isImage), proofLinks = pj.ok;
   if (need.has('clip')) row('clip', videos.length > 0, videos.length ? `${videos.length} video link(s)${images.length ? `, ${images.length} image(s)` : ''}` : 'no video link: record an uncut, real-speed clip of the changed journey (proof skill) and upload it (tools/proof/upload.mjs)');
   if (need.has('proof_json')) {
     if (!proofLinks.length) row('proof.json', false, 'no proof.json link: write the machine summary and upload it with the media');
     else if (proof === undefined) row('proof.json', null, `linked (${proofLinks[0]}), not fetched`);
     else if (proof?.error) row('proof.json', false, `could not read ${proofLinks[0]}: ${proof.error}`);
     else {
-      const v = validateProof(proof, { tier, checklist, knobs: policy.knobs, head });
-      row('proof.json', v.problems.length === 0, v.problems.length ? `${v.problems.length} problem(s)` : 'valid and agrees with the checklist');
-      problems.push(...v.problems.filter(p => !problems.includes(p)));
-      warnings.push(...v.warnings);
+      const pv = validateProof(proof, { tier, checklist, knobs: policy.knobs, head });
+      row('proof.json', pv.problems.length === 0, pv.problems.length ? `${pv.problems.length} problem(s)` : 'valid and agrees with the checklist');
+      problems.push(...pv.problems.filter(p => !problems.includes(p)));
+      warnings.push(...pv.warnings);
       if (need.has('playtest')) row('playtest', Array.isArray(proof.playtest?.arms) && proof.playtest.arms.length >= 2, proof.playtest?.arms ? proof.playtest.arms.map(a => `${a.name}: ${a.passed ?? '?'}/${a.repeats ?? 0}`).join(', ') : 'none in proof.json');
       if (need.has('review')) row('reviewer pass', Boolean(proof.review?.verdict), proof.review?.verdict ? `${proof.review.by ?? 'reviewer'}: ${proof.review.verdict}` : 'none in proof.json');
     }
@@ -426,7 +472,8 @@ export async function prMode({ repo, pr, head, gh = ghJson, fetchImpl = fetch, p
   const issueNums = linkedIssues(sections(body).problem ?? '');
   let issueBody = null;
   if (issueNums.length) { try { const i = gh(`repos/${repo}/issues/${issueNums[0]}`); if (!i.pull_request) issueBody = i.body ?? ''; } catch { /* unreadable issue: skip the carry check */ } }
-  const proofUrl = urls(body).find(isProofJson);
+  // Only a proof.json on a proof host is ever fetched (#765): never a host chosen by PR text.
+  const proofUrl = allowedProofLinks(urls(body).filter(isProofJson), { repo }).ok[0];
   const proof = proofUrl ? await fetchProof(proofUrl, fetchImpl) : undefined;
   const privateInputs = publicationFindings({ body, issueBody, proof });
   if (privateInputs.length) {
@@ -438,7 +485,7 @@ export async function prMode({ repo, pr, head, gh = ghJson, fetchImpl = fetch, p
     const result = addGate({ ok: true, tier: t.tier, rows: [], problems: [], warnings: warningsOut, checklist: [], links: { videos: [], images: [], proofJson: [] } });
     return { result, comment: renderComment(result, { required, files: t.byFile, raisedByLabel: t.raisedByLabel, note: why }) };
   }
-  const result = addGate(checkPr({ body, tier: t.tier, issueBody, proof, head: headSha, policy }));
+  const result = addGate(checkPr({ body, tier: t.tier, issueBody, proof, head: headSha, policy, repo }));
   result.warnings.push(...warningsOut);
   return { result, comment: renderComment(result, { required, files: t.byFile, raisedByLabel: t.raisedByLabel, note: p.draft ? 'Draft PR: proof-check skips drafts and runs when the PR is marked ready for review.' : null }) };
 }
@@ -466,7 +513,7 @@ async function main(argv) {
     const policy = loadChecks();
     let proof;
     if (opt('--proof')) { try { proof = /^https:/.test(opt('--proof')) ? await fetchProof(opt('--proof')) : JSON.parse(read(opt('--proof'))); } catch (e) { proof = { error: e.message }; } }
-    const result = checkPr({ body: read(opt('--body')), tier, issueBody: opt('--issue') ? read(opt('--issue')) : null, proof, head: opt('--head'), policy });
+    const result = checkPr({ body: read(opt('--body')), tier, issueBody: opt('--issue') ? read(opt('--issue')) : null, proof, head: opt('--head'), policy, repo: opt('--repo') ?? null });
     if (opt('--comment')) writeFileSync(opt('--comment'), renderComment(result, { required: policy.required[tier], files: byFile, raisedByLabel: raised }));
     if (rest.includes('--json')) console.log(JSON.stringify(result, null, 2));
     else {

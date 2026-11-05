@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
   Blocked, blockedMessage, checkLocal, contentType, embedLine, githubTarget, httpTarget, linkMedia, makePreview, pickTarget, previewArgs, previewPath,
-  releaseAssetName, releaseTag, uniqueName, uploadAll, PREVIEW_MAX_BYTES,
+  releaseAssetName, releaseTag, uniqueName, uploadAll, PREVIEW_MAX_BYTES, previewStartFor,
 } from './upload.mjs';
+import { validateProof } from './acceptance.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'proof-upload-'));
 const clip = join(dir, 'desktop.mp4'), proofPath = join(dir, 'proof.json');
@@ -129,6 +130,35 @@ test('linkMedia leaves a new video for the author to assert uncut / real speed',
   assert.equal(p.media[0].uncut, null);
 });
 
+test('linkMedia: a mixed upload puts the clip in media[] and the log and JSON in files[]; old file entries move', () => {
+  const old = { media: [{ file: 'run.log', url: 'https://h/old.log', kind: 'file', caption: 'server log' }] };
+  const p = linkMedia(old, [
+    { file: '/x/desktop.mp4', url: 'https://h/pr-1.desktop.mp4' },
+    { file: '/x/run.log', url: 'https://h/pr-1.run.log' },
+    { file: '/x/summary.json', url: 'https://h/pr-1.summary.json' },
+  ]);
+  assert.deepEqual(p.media.map(m => [m.file, m.kind]), [['desktop.mp4', 'video']]);
+  assert.deepEqual(p.files, [
+    { file: 'run.log', url: 'https://h/pr-1.run.log', caption: 'server log' },
+    { file: 'summary.json', url: 'https://h/pr-1.summary.json', caption: '' },
+  ]);
+  assert.equal(linkMedia({}, [{ file: '/x/a.png', url: 'https://h/a.png' }]).files, undefined, 'no files[] when nothing needs it');
+});
+
+test('--proof with a clip, a log and a JSON summary yields a proof.json that passes acceptance at T2', async () => {
+  const log = join(dir, 'server.log'), summary = join(dir, 'summary.json');
+  writeFileSync(log, 'log'); writeFileSync(summary, '{}');
+  const criteria = [{ id: 'A1', text: 't', status: 'met', evidence: ['`node --test x` -> pass'] }];
+  writeFileSync(proofPath, JSON.stringify({ schema: 'sim-proof/1', tier: 'T2', criteria, media: [{ file: 'desktop.mp4', kind: 'video', uncut: true, realSpeed: true }],
+    checks: [{ cmd: 'node --test x', result: 'pass' }], failedAttempts: [], externalities: [{ what: 'bytes', result: '+0', ok: true }], limits: [] }));
+  const gh = fakeGh({ release: { id: 5 }, assets: [] });
+  await uploadAll({ pr: 8, files: [clip, log, summary], proofPath, target: githubTarget({ repo: 'o/r', run: gh.run }) });
+  const saved = JSON.parse(readFileSync(proofPath, 'utf8'));
+  assert.deepEqual(saved.media.map(m => m.file), ['desktop.mp4']);
+  assert.deepEqual(saved.files.map(f => f.file), ['server.log', 'summary.json']);
+  assert.deepEqual(validateProof(saved, { tier: 'T2' }).problems, []);
+});
+
 test('checkLocal refuses committed media and warns on unignored media in the tree', () => {
   const root = mkdtempSync(join(tmpdir(), 'proof-root-'));
   for (const d of ['.e2e', 'apps']) mkdirSync(join(root, d));
@@ -187,6 +217,26 @@ test('uploadAll: each video gets its preview uploaded beside it and recorded in 
   assert.match(warned[0], /no inline preview \(ffmpeg is not installed\)/);
 });
 
+test('previews start where the take opens on the world (#888): the arrived mark, or 0 for a take recorded from load on purpose', async () => {
+  assert.deepEqual(previewStartFor({ start: 'arrival', startRequested: 'arrival', marks: [{ label: 'arrived', atSec: 0 }] }), { start: 0, why: 'arrived mark' });
+  assert.deepEqual(previewStartFor({ start: 'load', startRequested: 'arrival', startFallback: 'no screencast', marks: [{ label: 'goto', atSec: 0 }, { label: 'arrived', atSec: 7.4 }] }), { start: 7.4, why: 'arrived mark' }, 'a fallback load take still previews from arrival');
+  assert.deepEqual(previewStartFor({ start: 'load', startRequested: 'load', marks: [{ label: 'arrived', atSec: 7.4 }] }), { start: 0, why: 'recorded from load on purpose' });
+  assert.deepEqual(previewStartFor(null), { start: 0, why: 'no sidecar' });
+  const d = mkdtempSync(join(tmpdir(), 'proof-start-')), fromLoad = join(d, 'load.mp4'), fallback = join(d, 'fallback.mp4'), proof = join(d, 'proof.json');
+  writeFileSync(fromLoad, 'v'); writeFileSync(fallback, 'v');
+  writeFileSync(`${fromLoad}.json`, JSON.stringify({ start: 'load', startRequested: 'load', marks: [{ label: 'arrived', atSec: 5 }] }));
+  writeFileSync(`${fallback}.json`, JSON.stringify({ start: 'load', startRequested: 'arrival', marks: [{ label: 'arrived', atSec: 6.5 }] }));
+  writeFileSync(proof, JSON.stringify({ schema: 'sim-proof/1', media: [{ file: 'load.mp4', kind: 'video' }] }));
+  const asked = [];
+  const preview = (file, at) => { asked.push([basename(file), at]); const out = previewPath(file); writeFileSync(out, 'gif'); return { file: out, bytes: 3 }; };
+  await uploadAll({ pr: 8, files: [fromLoad, fallback], proofPath: proof, target: githubTarget({ repo: 'o/r', run: fakeGh({ release: { id: 5 }, assets: [] }).run }), preview });
+  assert.deepEqual(asked, [['load.mp4', 0], ['fallback.mp4', 6.5]]);
+  const media = JSON.parse(readFileSync(proof, 'utf8')).media;
+  assert.deepEqual(media.map((m) => [m.file, m.start, m.previewStartSec]), [['load.mp4', 'load', 0], ['fallback.mp4', 'load', 6.5]], 'proof.json records which start each take used');
+  asked.length = 0;
+  await uploadAll({ pr: 8, files: [fallback], target: githubTarget({ repo: 'o/r', run: fakeGh({ release: { id: 5 }, assets: [] }).run }), preview, previewStart: 2 });
+  assert.deepEqual(asked, [['fallback.mp4', 2]], '--preview-start still wins');
+});
 
 test('all outgoing metadata is preflighted before any media network write', async () => {
   const home = ['', 'Users', 'private-person', 'work'].join('/');
