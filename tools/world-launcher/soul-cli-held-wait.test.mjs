@@ -1,6 +1,7 @@
-// F7 (#378): a sit, lie or ride keeps its receipt `started` while the body holds the pose, so `act … --wait 60` ran its
-// whole window. The world's activity.observed for that receipt now ends the wait; the receipt stays `started` and the
-// brief output carries the observed held phase. Timed activities, other receipts and terminal receipts behave as before.
+// F7 (#378): a sit or lie keeps its receipt `started` while the body holds the pose, so `act … --wait 60` ran its whole
+// window. The world's activity.observed for that receipt now ends the wait; the receipt stays `started` and the brief
+// output carries the observed held phase. Timed activities, an act with its own `seconds`, other receipts and terminal
+// receipts behave as before. (A ride join already completes when the rider is seated: the old terminal path.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -23,11 +24,8 @@ test('heldPhase: the act\'s own pose reached is held; timed activities, other re
   assert.equal(heldPhase(observed('sit-ground:here', SEATED, {verb: 'mars:pose_v1', status: 'executing'}), 'r_1'), 'seated');
   for (const posture of ['lying', 'sleeping']) assert.equal(heldPhase(observed('lie:bed', {posture, activity: 'lie', on: null}, {verb: 'mars:pose_v1', status: 'executing'}), 'r_1'), posture);
   assert.equal(heldPhase(observed('nap:here', {posture: 'sleeping', activity: 'nap', on: null}, {verb: 'mars:pose_v1', status: 'executing'}), 'r_1'), 'sleeping');
-  const aboard = {posture: 'riding', activity: 'sit', on: 'ferris wheel', aboard: 'seated', inWater: false};
-  assert.equal(heldPhase(observed('object:ride-ferris:join', aboard, {verb: 'ride', status: 'executing'}), 'r_1'), 'riding');
-  // Not held: still boarding, rowing (the Soul steers), another receipt, a timed activity, a pose the act did not ask for.
-  assert.equal(heldPhase(observed('object:ride-ferris:join', {...aboard, aboard: 'boarding'}), 'r_1'), null);
-  assert.equal(heldPhase(observed('object:punt-1:join', {...aboard, posture: 'rowing', activity: 'row'}), 'r_1'), null);
+  // Not held: a punt being rowed (the Soul steers), another receipt, a timed activity, a pose the act did not ask for.
+  assert.equal(heldPhase(observed('object:punt-1:join', {posture: 'rowing', activity: 'row', on: 'punt', aboard: 'seated'}, {verb: 'mars:carrier_ride', status: 'executing'}), 'r_1'), null);
   assert.equal(heldPhase(observed('sit:chair', SEATED), 'r_other'), null);
   assert.equal(heldPhase(observed('dance:here', {posture: 'busy', activity: 'dance'}, {verb: 'mars:pose_v1', status: 'executing'}), 'r_1'), null);
   assert.equal(heldPhase(observed('read:book', {posture: 'seated', activity: 'read'}, {verb: 'read', status: 'executing'}), 'r_1'), null, 'reading while seated is a timed activity');
@@ -71,7 +69,8 @@ test('act --wait returns once the sit holds its seat; the receipt stays started 
   assert.equal(w.waits.length, 1);
   assert.equal(d.done, false); assert.equal(d.now, 'sitting on the chair; not finished yet');
   assert.deepEqual(d.receipt, {id: 'r_1', capability: 'sit:chair', phase: 'started', observed: 'occupied'});
-  assert.ok(JSON.stringify(d).length <= 2000);
+  const {events: _e, eventWindow: _w, ...summary} = d;
+  assert.ok(JSON.stringify(summary).length <= 600, 'the action summary keeps its 600-character budget');
   // The cursor moved past that observation: a second wait does not end on it again.
   const again = await w.run(['wait', '2', 'r_1']);
   assert.equal(again.d.receipt.observed, undefined); assert.equal(again.d.done, false); assert.ok(w.waits.length >= 2); assert.equal(w.waits.at(-1), 'c_9');
@@ -88,4 +87,16 @@ test('a completed receipt is still reported done, never as held', async t => {
   const w = await world(t, {events: [observed('sit:chair', SEATED), {id: 'c_3', kind: 'receipt.terminal', receipt: {id: 'r_1', capability: 'sit:chair', phase: 'completed'}}], receipt: {capability: 'sit:chair', phase: 'completed', done: 'Sat on the chair.'}});
   const {d} = await w.run(['wait', '20', 'r_1']);
   assert.equal(d.done, 'Sat on the chair.'); assert.equal(d.receipt.phase, 'completed'); assert.equal(d.receipt.observed, undefined);
+});
+
+test('the latest observation decides: a held pose since left does not end the wait', async t => {
+  const w = await world(t, {events: [observed('sit:chair', SEATED), {...observed('sit:chair', {posture: 'busy', activity: 'climb-down'}, {verb: 'walk_to', status: 'executing', phase: 'climb'}), id: 'c_3'}], receipt: {capability: 'sit:chair', phase: 'started'}});
+  const {d} = await w.run(['wait', '2', 'r_1', '--json']);
+  assert.equal(d.waited, '2s'); assert.equal(d.held, undefined);
+});
+
+test('an act that asked for its own seconds is waited out as before, even once seated', async t => {
+  const w = await world(t, {events: [observed('sit:chair', SEATED)], receipt: {capability: 'sit:chair', phase: 'started'}});
+  const {d} = await w.run(['act', 'sit:chair', '{"seconds":30}', '--wait', '2', '--json']);
+  assert.equal(d.waited, '2s'); assert.equal(d.held, undefined); assert.equal(d.receipt.phase, 'started');
 });
