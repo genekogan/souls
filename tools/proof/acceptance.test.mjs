@@ -7,8 +7,10 @@ import {
 } from './acceptance.mjs';
 
 const policy = loadChecks();
-const VIDEO = 'https://github.com/o/r/releases/download/proofs/pr-7.desktop.mp4';
-const PROOF = 'https://github.com/o/r/releases/download/proofs/pr-7.proof.json';
+// tools/proof/upload.mjs hosts a PR's proof on its own prerelease `proofs-<n>`; older PRs link the shared `proofs`.
+const VIDEO = 'https://github.com/o/r/releases/download/proofs-7/pr-7.desktop.mp4';
+const PROOF = 'https://github.com/o/r/releases/download/proofs-7/pr-7.proof.json';
+const SHARED = url => url.replace('/proofs-7/', '/proofs/');
 
 const body = ({ problem = 'Visitors on phones cannot open the seat menu. Closes #12', acceptance, audit, proof = '' } = {}) => `## Problem
 <!-- a comment that must not count -->
@@ -127,6 +129,9 @@ test('T2 needs the issue link, a clip and a valid proof.json that agrees with th
   assert.ok(disagree.problems.some(p => /A2 Desktop click still works" is met in the PR but unmet in proof.json/.test(p)));
   const unreadable = checkPr({ body: withLinks, tier: 'T2', proof: { error: 'HTTP 404' }, policy });
   assert.ok(unreadable.problems.some(p => /HTTP 404/.test(p)));
+  const legacy = body({ proof: `- clip: ${SHARED(VIDEO)}\n- proof.json: ${SHARED(PROOF)}` });
+  const legacyProof = proofDoc({ media: proofDoc().media.map(m => ({ ...m, url: SHARED(m.url) })) });
+  assert.equal(checkPr({ body: legacy, tier: 'T2', proof: legacyProof, head: 'abc1234def', policy }).ok, true, 'links on the shared release still count');
 });
 
 test('validateProof: schema, evidence, uncut real-speed video, stale commit warning', () => {
@@ -178,8 +183,10 @@ test('prMode reads the PR, files, issue and proof.json through injected gh/fetch
     if (path.endsWith('/issues/12')) return { body: '### Acceptance criteria\n- [ ] **A1** Tapping a seat opens its menu' };
     throw Error(`unexpected ${path}`);
   };
-  const fetchImpl = async () => ({ ok: true, status: 200, text: async () => JSON.stringify(proofDoc()) });
+  const fetched = [];
+  const fetchImpl = async url => { fetched.push(url); return { ok: true, status: 200, text: async () => JSON.stringify(proofDoc()) }; };
   const { result, comment } = await prMode({ repo: 'o/r', pr: 7, gh, fetchImpl, policy });
+  assert.equal(fetched[0], PROOF, 'proof-check fetches proof.json from the per-PR release');
   assert.equal(result.tier, 'T2');
   assert.equal(result.ok, true, result.problems.join('\n'));
   assert.match(comment, /Tier T2/);
@@ -246,5 +253,44 @@ test('the comment embeds each clip\'s preview, linked to the clip (proof.json fi
   const c = renderComment(r, { required: [] });
   assert.ok(c.includes(`[![pr-7.desktop.mp4](${GIF})](${VIDEO})`), c);
   const plain = renderComment(checkPr({ body: body(), tier: 'T1', policy }), { required: [] });
-  assert.match(plain, /\[pr-7\.desktop\.mp4\]\(.*\) \(no inline preview/);
+  assert.match(plain, /\[Full-resolution video: pr-7\.desktop\.mp4\]\(.*\)/);
+  assert.match(c, /GIFs below are reduced previews/);
+});
+
+test('private PR/issue/proof values fail without being copied into the generated comment', () => {
+  const privatePath = ['', 'Users', 'private-person', 'workspace'].join('/');
+  for (const patch of [{ body: `## Problem\nFailure in ${privatePath}` }, { issueBody: privatePath }, { proof: { checks: [{ cmd: privatePath }] } }]) {
+    const r = checkPr({ body: body(), tier: 'T1', policy, ...patch });
+    assert.equal(r.ok, false);
+    assert.match(r.problems.join(' '), /device details detected/);
+    assert.ok(!JSON.stringify(r).includes('private-person'));
+    assert.ok(!renderComment(r).includes('private-person'));
+  }
+  const r = checkPr({ body: body(), tier: 'T1', policy });
+  r.warnings.push(privatePath);
+  assert.throws(() => renderComment(r), /Publication blocked/);
+});
+
+
+test('privacy is never waived or skipped for Dependabot, including linked issue and proof metadata', async () => {
+  const privatePath = ['', 'Users', 'fixture-person', 'workspace'].join('/');
+  for (const exempt of ['waived', 'dependabot']) for (const location of ['body', 'title', 'issue', 'proof']) {
+    const gh = path => {
+      if (path.endsWith('/pulls/7')) return {
+        title: location === 'title' ? privatePath : 'safe title',
+        body: location === 'body' ? 'CPU 50%. ' + encodeURIComponent(privatePath) : body({ proof: PROOF }),
+        labels: exempt === 'waived' ? [{ name: 'proof:waived' }] : [],
+        user: { login: exempt === 'dependabot' ? 'dependabot[bot]' : 'agent' },
+      };
+      if (path.includes('/files')) return [[{ filename: 'docs/a.md' }]];
+      if (path.includes('/events')) return [[{ event: 'labeled', label: { name: 'proof:waived' }, actor: { login: 'o' } }]];
+      if (path.endsWith('/issues/12')) return { body: location === 'issue' ? privatePath : '' };
+      throw Error('unexpected read');
+    };
+    const fetchImpl = async () => ({ ok: true, text: async () => JSON.stringify(location === 'proof' ? { cmd: privatePath } : proofDoc()) });
+    const r = await prMode({ repo: 'o/r', pr: 7, gh, fetchImpl, policy });
+    assert.equal(r.result.ok, false, exempt + '/' + location);
+    assert.match(r.comment, /device details detected/);
+    assert.ok(!r.comment.includes('fixture-person'));
+  }
 });

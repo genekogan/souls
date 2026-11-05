@@ -1,18 +1,30 @@
-# Application checks on isolated runners, scoped to what a change touches.
+# Application checks on isolated runners, scoped to what a change touches. Pushes to main and manual runs are full scope
+# (every qualify job and the local smoke): the merge train lands T0-T2 PRs without re-testing them only while main's
+# latest full-scope run is green (.github/scripts/merge-train.mjs, mainCiState).
 # The job matrix is the release gate's CPU contract split for GitHub runners; `scope` picks jobs with the same path
 # map as `tools/test-harness/release-gate.mjs --scope auto` (.github/scripts/ci-scope.mjs). Branch protection requires
 # the single `ci-ok` check. The full Modal gate still qualifies releases (release.yml); CI is the per-PR check.
+# CI window (docs/testing.md#ci-window): a pull request run does its heavy jobs (qualify, smoke) only for a ready PR
+# labelled merge:ready or ci:run; otherwise it runs scope and repo, and ci-ok fails as "full CI deferred" when heavy jobs
+# were selected. Adding either label requests the run (ci-request.yml dispatches this workflow with `pr`), as does
+# `gh workflow run ci.yml --ref <branch> -f pr=<n>`. A requested run is scoped by the PR's paths, not full scope.
 name: ci
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      pr:
+        description: Run this PR's path-scoped CI on its branch (the CI window); empty runs full scope
+        required: false
+        default: ''
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || inputs.pr || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   # Where tools/assets pull keeps its content-addressed download cache (restored by actions/cache below).
@@ -21,26 +33,40 @@ jobs:
   scope:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       matrix: ${{ steps.scope.outputs.matrix }}
       any: ${{ steps.scope.outputs.any }}
       scope: ${{ steps.scope.outputs.scope }}
       smoke: ${{ steps.scope.outputs.smoke }}
+      deferred: ${{ steps.scope.outputs.deferred }}
+      window: ${{ steps.scope.outputs.window }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 22 }
+      # A requested run queues behind any run already in its concurrency group; if that one passed at this head, the
+      # heavy work is done (never re-run a passing check on the same tree).
+      - id: green
+        name: Already green at this head
+        if: github.event_name == 'workflow_dispatch' && inputs.pr != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "green=$(node .github/scripts/ci-scope.mjs green --repo "$GITHUB_REPOSITORY" --sha "$GITHUB_SHA" --self "$GITHUB_RUN_ID")" >> "$GITHUB_OUTPUT"
       - id: scope
         name: Pick jobs from changed paths
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          BASE: ${{ inputs.pr && format('origin/{0}', github.event.repository.default_branch) || github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-          EVENT: ${{ github.event_name }}
-        run: |
-          # A manual run checks everything.
-          if [ "$EVENT" = workflow_dispatch ]; then BASE=; fi
-          node .github/scripts/ci-scope.mjs --base "$BASE" --head "$HEAD_SHA"
+          EVENT: ${{ inputs.pr && 'request' || github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft || false }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GREEN: ${{ steps.green.outputs.green || false }}
+        # A push to main and a manual run check everything (FULL_EVENTS); the merge train reads those runs.
+        run: node .github/scripts/ci-scope.mjs --base "$BASE" --head "$HEAD_SHA" --event "$EVENT" --draft "$DRAFT" --labels "$LABELS" --green-at-head "$GREEN"
 
   # Fast, dependency-free checks of the repo's own tooling; always runs.
   repo:
@@ -50,15 +76,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 22 }
-      - name: Media manifest, CI scope, proof, merge train, hooks, changelog and guard tests
+      - name: Media manifest, CI scope, proof, merge train, restack, hooks, changelog and guard tests
         run: >-
           node --test --test-concurrency=1
           tools/assets/manifest.test.mjs
           tools/assets/mars-web.test.mjs
           .github/scripts/ci-scope.test.mjs
           .github/scripts/server-test-files.test.mjs
+          .github/scripts/server-test-durations.test.mjs
           .github/scripts/guards.test.mjs
           .github/scripts/merge-train.test.mjs
+          .github/scripts/restack.test.mjs
           .github/scripts/install-hooks.test.mjs
           tools/proof/tier.test.mjs
           tools/proof/gate.test.mjs
@@ -71,9 +99,11 @@ jobs:
     name: ${{ matrix.name }}
     needs: scope
     if: needs.scope.outputs.any == 'true'
-    runs-on: ubuntu-latest
-    # The recursive server inventory can take about an hour before dependency/media setup.
-    timeout-minutes: ${{ matrix.kind == 'server' && 90 || 60 }}
+    # The qualify jobs (no browser) run on the repository variable CI_HEAVY_RUNNER when it is set, else ubuntu-latest.
+    # Its value is one runner label (`souls-ci`) or a JSON array of labels (`["self-hosted","souls-ci"]`).
+    runs-on: ${{ vars.CI_HEAVY_RUNNER && (startsWith(vars.CI_HEAVY_RUNNER, '[') && fromJSON(vars.CI_HEAVY_RUNNER) || vars.CI_HEAVY_RUNNER) || 'ubuntu-latest' }}
+    # The recursive server inventory (about an hour of tests in all) runs in duration-balanced shards of ~10 minutes each.
+    timeout-minutes: ${{ matrix.kind == 'server' && 45 || 60 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
@@ -140,13 +170,14 @@ jobs:
             server)
               node --input-type=module <<'NODE'
           import { spawnSync } from 'node:child_process';
-          import { serverTestFiles, serverShardFiles } from './.github/scripts/server-test-files.mjs';
+          import { serverTestFiles, serverShardPlan, SERVER_TEST_CONCURRENCY } from './.github/scripts/server-test-files.mjs';
           const all = serverTestFiles(), shard = Number(process.env.SERVER_SHARD);
-          const files = serverShardFiles(all, shard);
-          console.log(JSON.stringify({ shard, totalServerFiles: all.length, files }));
-          const result = spawnSync('pnpm', ['--filter', '@sim/server', 'exec', process.execPath, '--test', '--test-concurrency=1', ...files], { stdio: 'inherit' });
-          if (result.error) throw result.error;
-          process.exit(result.status ?? 1);
+          const { parallel, serial } = serverShardPlan(all, shard);
+          console.log(JSON.stringify({ shard, totalServerFiles: all.length, files: [...parallel, ...serial], parallel: parallel.length, serial: serial.length, concurrency: SERVER_TEST_CONCURRENCY }));
+          // ephemeral-port files in parallel, then the fixed-port files one at a time; both always run, either failing fails the job
+          const run = (files, n) => { if (!files.length) return 0; const r = spawnSync('pnpm', ['--filter', '@sim/server', 'exec', process.execPath, '--test', `--test-concurrency=${n}`, ...files], { stdio: 'inherit' }); if (r.error) throw r.error; return r.status ?? 1; };
+          const a = run(parallel, SERVER_TEST_CONCURRENCY), b = run(serial, 1);
+          process.exit(a || b);
           NODE
               ;;
             *) echo "unknown check kind: $CHECK_KIND"; exit 1 ;;
@@ -157,6 +188,8 @@ jobs:
   smoke:
     needs: scope
     if: needs.scope.outputs.smoke == 'true'
+    # Always GitHub-hosted, whatever CI_HEAVY_RUNNER says: `playwright install --with-deps` installs Chromium's system
+    # libraries through apt, which a self-hosted runner without root, or with an OS Playwright does not support, cannot do.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -198,12 +231,20 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # The one required check: passes when every selected job passed (or none was needed).
+  # The one required check: passes when every selected job passed (or none was needed). A deferred run (CI window
+  # closed, heavy jobs selected) fails it: skipped heavy jobs never count as passing.
   ci-ok:
     runs-on: ubuntu-latest
     needs: [scope, repo, qualify, smoke]
     if: always()
     steps:
+      - name: Full CI deferred
+        if: needs.scope.outputs.deferred == 'true'
+        env:
+          WINDOW: ${{ needs.scope.outputs.window }}
+        run: |
+          echo "::error title=Full CI deferred::The CI window is closed for this PR ($WINDOW), so its heavy jobs did not run. Mark it ready and add ci:run (or merge:ready) to run them: docs/testing.md#ci-window"
+          exit 1
       - env:
           SCOPE: ${{ needs.scope.result }}
           REPO: ${{ needs.repo.result }}

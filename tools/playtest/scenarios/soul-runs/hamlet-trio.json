@@ -1,0 +1,29 @@
+{
+  "name": "sr-hamlet-trio",
+  "version": 1,
+  "seed": 7510,
+  "providers": { "allowed": ["codex"] },
+  "world": { "kind": "dev", "genesis": "worlds/templates/hello-hamlet.json", "slug": "sr-hamlet-trio", "port": 4321, "natives": false },
+  "durationSec": 150,
+  "seats": [
+    { "id": "ada", "adapter": "scripted-owner", "soulName": "Ada", "script": { "rules": [
+      { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk to the orchard", "--wait", "100"]], "result": "At the orchard" },
+      { "match": "hello", "do": [["say", "Hello, everyone!"]], "result": "Said hello" } ] } },
+    { "id": "bo", "adapter": "scripted-owner", "soulName": "Bo", "script": { "rules": [
+      { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk to the orchard"]], "close": "open" },
+      { "match": "change of plan", "supersede": "My owner changed the plan before I arrived", "ack": "Turning around", "do": [["here"], ["act", "walk to the pond hall", "--wait", "100"]], "result": "At the pond hall" },
+      { "match": "hello", "do": [["say", "Hello from the pond hall!"]], "result": "Said hello" } ] } },
+    { "id": "cy", "adapter": "scripted-owner", "soulName": "Cy", "script": { "rules": [
+      { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk to the orchard", "--wait", "100"]], "result": "At the orchard" },
+      { "match": "hello", "do": [["say", "Hi all!"]], "result": "Said hello" } ] } }
+  ],
+  "god": null,
+  "director": { "mode": "scripted", "sequential": false, "script": [
+    { "seat": "*", "atSec": 5, "channel": "card", "text": "Walk to the orchard, please.", "budgetSec": 100 },
+    { "seat": "bo", "atSec": 14, "channel": "card", "text": "Change of plan: go to the pond hall instead.", "budgetSec": 100 },
+    { "seat": "*", "atSec": 120, "channel": "card", "text": "Say hello to everyone.", "budgetSec": 25 }
+  ] },
+  "observer": { "sampleSec": 3, "viewport": [1280, 800], "dpr": 1, "cameras": [] },
+  "review": { "mode": "deterministic", "developer": false },
+  "rails": { "maxTurnWallSec": 120, "onboardWallSec": 120, "onboardTimeoutSec": 90, "maxTurnsPerRequest": 4 }
+}

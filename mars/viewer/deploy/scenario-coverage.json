@@ -8230,7 +8230,7 @@
     "focusedPlayProofRef": "closingFocusedLibraryContact"
   },
   "successorSnapshotProof": {
-    "path": "~/Eden/.merge-work/proof/worlds-browser-focus/receipt.json",
+    "path": ".local/project/.merge-work/proof/worlds-browser-focus/receipt.json",
     "sha256": "c55e08f76e98d88799e614a2bafab849dedc59f97dab93949daab86efa6e213a",
     "scope": "Three actual ordinary directed moves, including tower level13; Play/Pause, Reset, reload exact tick/poses, zero server API requests or page errors. Live view assets/follow separately recorded. No broader snapshot activity claim."
   }

@@ -38,7 +38,41 @@ Tranches are useful groupings for product intent, review and changelogs. A tempo
 coupled work; permanent agent departments and a custom orchestration service are not required. Architecture
 contracts are durable; the agents assigned to them need not be.
 
+## Bounded execution
+
+An issue worker owns the requested outcome, not an open-ended engineering domain. Record the authorized endpoint
+(for example, a reviewed PR or a released change), acceptance and exclusions before editing. Prefer slices that
+normally take a single-digit number of hours including relevant checks and proof. This is a sizing guide, not a
+deadline or permission to omit evidence. Split larger outcomes into useful, independently reviewable slices; do not
+silently narrow the requested result or open every speculative child up front.
+
+Finish one active implementation before pulling another. A completed PR waiting for Gene's batch review does not
+prevent the next independent authorized item. Keep necessary stacks shallow and explicit; do not build on an
+unresolved product assumption. Review findings and routine compatibility repairs within the acceptance belong to
+the current task. Optional cleanup, general frameworks and substantial out-of-scope prerequisites need Gene's
+approval before implementation. Explain the exact blocker, smallest addition and cost; continue independent
+authorized work while that decision is pending. Record unrelated findings without starting them.
+
+For sustained work, use the executor's available goal mechanism with this same bounded endpoint. Resume an existing
+goal and jobs rather than creating duplicates. If no goal mechanism is available, use the issue checkpoint; do not
+claim unattended continuation has been enabled. Continue through routine milestones, focused checks, proof and
+review corrections without asking whether to continue. Stop at the endpoint, a requested review stop, an actual
+blocker needing access/decision, or the agreed budget. Record whether a time limit means active work or elapsed time;
+never substitute one for the other. A goal is complete only when its endpoint is met, and conveys no extra merge,
+release, spending or approval authority. A prepared T3 PR may await maintainer approval while independent batch work
+continues; the approval requirement itself is unchanged.
+
+The development/release coordinator selects independent work, dependency order and release contents. Workers own
+their issue, checks, review fixes and routine rebase repairs. Check coordination at dispatch, changed shared contracts
+and integration; do not continuously synchronize independent branches or repeatedly rebase just because main moved.
+Escalate semantic conflicts to the coordinator and relevant owner; text-only merge success is insufficient. If no
+coordinator is assigned, a worker finishes its bounded assignment and records an integration handoff without
+self-appointing as release owner. Only the appointed release owner freezes and qualifies a release head.
+
 ## Portable execution and handoff
+
+Use the [harness portability contract](coordinator-portability.md) when entering or transferring a coordinator.
+It maps the same agenda and evidence to native capabilities without requiring one provider's tool names or memory.
 
 Claude Code and Codex follow the same AGENTS.md, lifecycle and Markdown skills. Provider memory and local chat
 history must not be the only record of a decision or unfinished work. Before stopping or switching owners, leave
@@ -47,6 +81,8 @@ a short issue/PR checkpoint with:
 - Branch and base/current SHA; durable WIP ref or recoverable patch.
 - Acceptance already met, unresolved assumptions, failed/unverified checks and evidence links with environment identity.
 - Active jobs, output locations and resources in use; put private operational details in approved private records.
+- Public handoffs use relative paths and neutral resource labels. Run the [publication privacy check](publication-privacy.md)
+  on their exact outgoing payload; keep device paths, addresses and resource identifiers in private records.
 - Next action, blockers, approvals and stop conditions.
 
 For long work, include an ETA range with its scope, confidence and observation time, or state what prevents an

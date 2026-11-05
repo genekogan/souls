@@ -8,6 +8,7 @@
 //   node tools/god-skill/e2e/r4-live.mjs [--port 5494] [--keep] [--dpr 1,2]
 //
 // Report + screenshots under .lane/e2e-r4-live/<stamp>/.
+import { setCameraMode } from '../../browser/world-controls.mjs';
 import { spawn, execFile, execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -159,9 +160,8 @@ try {
         return { accepted: acted.data?.accepted, godOk: g1.code === 0 && g2.code === 0, stillFollowing: samples.every((x) => x.mode === 'follow'), maxGap: Math.max(...samples.map((x) => x.gap ?? 99)), end: h?.me?.pos, samples: samples.slice(-3) };
       }, (r) => r.accepted && r.godOk && r.stillFollowing && r.maxGap < 3);
       await step(`V6[${d}] back to broadcast; Ana and Ben converse (Soul CLI converse): the director cuts to the conversation, bubbles carry their words`, async () => {
-        // real input: stop following (×), then "Back to broadcast"
-        await page.getByRole('button', { name: 'Stop following' }).click({ timeout: 10000 }); await page.waitForTimeout(600);
-        await page.locator('button.viewer-broadcast').click({ timeout: 10000 }); await page.waitForTimeout(800);
+        // Real input: return directly from Following to Broadcast.
+        await setCameraMode(page, 'broadcast'); await page.waitForTimeout(800);
         // Ben's agent walks him over to Ana (go-near:<Soul>): conversations are within earshot, as on /w/eden
         const went = await soul('Ben', 'act', `go-near:${souls.Ana}`);
         for (let i = 0; i < 40; i++) { const a = (await hereOf('Ana'))?.me?.pos, b = (await hereOf('Ben'))?.me?.pos; if (a && b && Math.hypot(a[0] - b[0], a[1] - b[1]) < 3.5) break; await sleep(800); }

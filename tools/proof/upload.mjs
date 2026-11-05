@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // Hosts proof media (clips, images, logs, proof.json) for a PR, so the PR links it and the repo never stores it.
 //
-//   node tools/proof/upload.mjs --pr <n> [--repo owner/name] [--proof <proof.json>] [--dry-run] [--json]
-//        [--no-preview] [--preview-start <s>] [--preview-seconds <s>] <file>...
+//   node tools/proof/upload.mjs --pr <n> [--repo owner/name] [--release <tag>] [--proof <proof.json>] [--dry-run]
+//        [--json] [--no-preview] [--preview-start <s>] [--preview-seconds <s>] <file>...
 //
 // Targets:
-//   default   a GitHub release named `proofs` (a prerelease on tag `proofs`, created on first use), through `gh api`.
+//   default   the PR's own GitHub prerelease `proofs-<n>` (tag `proofs-<n>` on the default branch, created on first
+//             use), through `gh api`. One release per PR keeps every release under GitHub's 1000-asset limit, which the
+//             old shared `proofs` release reached. `--release <tag>` (or SIM_PROOF_RELEASE) names another release.
 //             Release asset names cannot hold "/", so the logical name `pr-<n>/<file>` is stored as `pr-<n>.<file>`.
 //   SIM_PROOF_UPLOAD_URL (+ SIM_PROOF_UPLOAD_TOKEN)
 //             any endpoint that takes `PUT <url>/pr-<n>/<file>` with `Authorization: Bearer <token>` and answers
@@ -29,9 +31,13 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertPublishable, readPublication } from './publication.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-export const RELEASE_TAG = 'proofs';
+/** The release a PR's proof goes to: `override` when given, else the PR's own `proofs-<n>` (the shared `proofs`
+ *  release every PR used before is full: GitHub caps a release at 1000 assets). */
+export const releaseTag = (pr, override) => override || `proofs-${pr}`;
+const TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const MAX_BYTES = 2 * 1024 ** 3, WARN_BYTES = 100 * 1024 ** 2;
 export const TYPES = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
@@ -75,37 +81,58 @@ export function checkLocal(files, git = (...a) => execFileSync('git', a, { cwd: 
 }
 
 // ── targets ─────────────────────────────────────────────────────────────────────────────────────────────────────
-/** GitHub release target through `gh api`. `run(args, opts)` returns stdout; injected in tests. */
-export function githubTarget({ repo, run, dryRun = false }) {
+/**
+ * GitHub release target through `gh api`: release `tag`, or the PR's own `proofs-<n>` when no tag is given. One target
+ * serves one release, so without a tag it uploads for one PR only (a second PR number throws; the CLI takes one --pr).
+ * `run(args, opts)` returns stdout; injected in tests.
+ */
+export function githubTarget({ repo, run, dryRun = false, tag = null }) {
+  if (tag && !TAG_RE.test(tag)) throw Error(`--release ${tag}: not a valid tag name`);
   const gh = (args, input) => {
     try { return run(['api', ...args], input); } catch (e) {
       const msg = `${e.stderr ?? ''} ${e.message ?? ''}`.trim();
       throw BLOCKED.test(msg) ? new Blocked(`gh api ${args[0] === '-X' ? args.slice(0, 3).join(' ') : args[0]}: ${msg.split('\n')[0]}`) : e;
     }
   };
-  let release = null, taken = null;
-  const ensure = () => {
-    if (release) return release;
-    try { release = JSON.parse(gh([`repos/${repo}/releases/tags/${RELEASE_TAG}`])); }
+  let release = null, taken = null, current = tag;
+  const ensure = (pr) => {
+    const want = releaseTag(pr, tag);
+    if (release && current === want) return release;
+    if (release) throw Error(`one upload run targets one release: ${current}, not also ${want}`);
+    current = want;
+    try { release = JSON.parse(gh([`repos/${repo}/releases/tags/${want}`])); }
     catch (e) {
       if (!(e instanceof Blocked) || !/404|Not Found/i.test(e.message)) throw e;
       if (dryRun) { release = { id: 0, assets: [] }; taken = new Set(); return release; }
-      release = JSON.parse(gh(['-X', 'POST', `repos/${repo}/releases`, '-f', `tag_name=${RELEASE_TAG}`, '-f', `name=${RELEASE_TAG}`,
-        '-F', 'prerelease=true', '-f', 'make_latest=false',
-        '-f', 'body=Proof media for pull requests (clips, images, proof.json), uploaded by tools/proof/upload.mjs. Assets are named pr-<n>.<file>. Not a release of the software.']));
+      // A new tag is created on the default branch; the release is a prerelease that never becomes "latest".
+      const body = tag
+        ? 'Proof media for pull requests (clips, images, proof.json), uploaded by tools/proof/upload.mjs. Assets are named pr-<n>.<file>. Not a release of the software.'
+        : `Proof media for PR #${pr} (clips, images, proof.json), uploaded by tools/proof/upload.mjs. Not a release of the software.`;
+      release = JSON.parse(gh(['-X', 'POST', `repos/${repo}/releases`, '-f', `tag_name=${want}`, '-f', `name=${tag ? want : `Proof for PR #${pr}`}`,
+        '-F', 'prerelease=true', '-f', 'make_latest=false', '-f', `body=${body}`]));
     }
     return release;
   };
   return {
-    name: `GitHub release "${RELEASE_TAG}" on ${repo}`,
+    get name() { return `GitHub release "${current ?? 'proofs-<pr>'}" on ${repo}`; },
     upload(pr, file) {
-      const rel = ensure();
+      const rel = ensure(pr);
       if (!taken) taken = new Set(JSON.parse(gh([`repos/${repo}/releases/${rel.id}/assets?per_page=100`, '--paginate', '--slurp'])).flat().map(a => a.name));
       const name = uniqueName(releaseAssetName(pr, file), taken);
       taken.add(name);
-      if (dryRun) return { name, url: `https://github.com/${repo}/releases/download/${RELEASE_TAG}/${name}`, dryRun: true };
-      const out = JSON.parse(gh(['-X', 'POST', `https://uploads.github.com/repos/${repo}/releases/${rel.id}/assets?name=${encodeURIComponent(name)}`,
-        '-H', `Content-Type: ${contentType(file)}`, '--input', file]));
+      if (dryRun) return { name, url: `https://github.com/${repo}/releases/download/${current}/${name}`, dryRun: true };
+      let out;
+      try {
+        out = JSON.parse(gh(['-X', 'POST', `https://uploads.github.com/repos/${repo}/releases/${rel.id}/assets?name=${encodeURIComponent(name)}`,
+          '-H', `Content-Type: ${contentType(file)}`, '--input', file]));
+      } catch (e) {
+        const msg = `${e.stderr ?? ''} ${e.message ?? ''}`;
+        // `taken` already holds this name, so a release that had 1000 assets now counts 1001.
+        if (/HTTP 422/.test(msg) && taken.size - 1 >= 1000) {
+          throw Error(`release "${current}" is at GitHub's 1000-asset limit; drop --release/SIM_PROOF_RELEASE to use the PR's own proofs-${pr}`);
+        }
+        throw e;
+      }
       return { name, url: out.browser_download_url };
     },
   };
@@ -135,10 +162,10 @@ export function httpTarget({ url, token, publicUrl, fetchImpl = fetch, read = re
   };
 }
 
-export function pickTarget({ env = process.env, repo, run, fetchImpl, dryRun }) {
+export function pickTarget({ env = process.env, repo, run, fetchImpl, dryRun, release = null }) {
   if (env.SIM_PROOF_UPLOAD_URL) return httpTarget({ url: env.SIM_PROOF_UPLOAD_URL, token: env.SIM_PROOF_UPLOAD_TOKEN, publicUrl: env.SIM_PROOF_PUBLIC_URL, fetchImpl, dryRun });
   if (!repo) throw new Blocked('no repository: pass --repo owner/name (or set GITHUB_REPOSITORY)');
-  return githubTarget({ repo, run, dryRun });
+  return githubTarget({ repo, run, dryRun, tag: release || env.SIM_PROOF_RELEASE || null });
 }
 
 // ── previews ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -171,7 +198,9 @@ export function makePreview(file, { start = 0, seconds = 6, ffmpeg = args => exe
 }
 
 /** The Markdown that embeds a clip's preview in a PR, linked to the full clip. */
-export const embedLine = (u, alt = basename(u.file)) => u.preview ? `[![${alt}](${u.preview})](${u.url})` : `[${alt}](${u.url})`;
+export const embedLine = (u, alt = basename(u.file)) => u.preview
+  ? `[Full-resolution video: ${alt}](${u.url}) — reduced GIF preview below.\n\n[![Reduced preview: ${alt}](${u.preview})](${u.url})`
+  : `[Full-resolution video: ${alt}](${u.url})`;
 
 /** Writes uploaded links into proof.json media[] (by file name); returns the updated object. */
 export function linkMedia(proof, uploaded) {
@@ -187,6 +216,11 @@ export function linkMedia(proof, uploaded) {
 
 /** Uploads `files` (each video with its preview when `preview(file)` makes one), then proof.json last. */
 export async function uploadAll({ pr, files, proofPath = null, target, read = readFileSync, write = writeFileSync, preview = null, warn = () => {} }) {
+  // Check the entire batch before the first network write, including a late proof/log payload.
+  for (const file of [...files, ...(proofPath ? [proofPath] : [])]) {
+    assertPublishable(basename(file));
+    if (file === proofPath || kindOf(file) === 'file') assertPublishable(readPublication(file, read, { json: file === proofPath }));
+  }
   const uploaded = [];
   for (const file of files) {
     const u = { file, ...(await target.upload(pr, file)) };
@@ -200,6 +234,7 @@ export async function uploadAll({ pr, files, proofPath = null, target, read = re
   let proofLink = null;
   if (proofPath) {
     const proof = linkMedia(JSON.parse(read(proofPath, 'utf8')), uploaded);
+    assertPublishable(proof);
     write(proofPath, `${JSON.stringify(proof, null, 2)}\n`);
     const r = await target.upload(pr, proofPath);
     proofLink = r.url;
@@ -229,11 +264,11 @@ function repoFromGit() {
 
 async function main(argv) {
   const opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
-  const valued = new Set(['--pr', '--repo', '--proof', '--preview-start', '--preview-seconds']);
+  const valued = new Set(['--pr', '--repo', '--release', '--proof', '--preview-start', '--preview-seconds']);
   const files = argv.filter((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const pr = opt('--pr'), proofPath = opt('--proof') ?? null, dryRun = argv.includes('--dry-run');
   if (!pr || !/^\d+$/.test(pr) || (!files.length && !proofPath)) {
-    console.error('usage: upload.mjs --pr <n> [--repo owner/name] [--proof proof.json] [--dry-run] [--json] [--no-preview] [--preview-start s] [--preview-seconds s] <file>...');
+    console.error('usage: upload.mjs --pr <n> [--repo owner/name] [--release tag] [--proof proof.json] [--dry-run] [--json] [--no-preview] [--preview-start s] [--preview-seconds s] <file>...');
     return 2;
   }
   const local = checkLocal([...files, ...(proofPath ? [proofPath] : [])]);
@@ -242,8 +277,10 @@ async function main(argv) {
   const repo = opt('--repo') ?? process.env.GITHUB_REPOSITORY ?? repoFromGit();
   const run = (args) => execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1 << 26 });
   try {
-    const target = pickTarget({ repo, run, dryRun });
-    console.error(`${dryRun ? 'dry run: would upload' : 'uploading'} ${files.length + (proofPath ? 1 : 0)} file(s) to ${target.name}`);
+    const release = opt('--release') ?? null;
+    const target = pickTarget({ repo, run, dryRun, release });
+    const where = process.env.SIM_PROOF_UPLOAD_URL ? target.name : `GitHub release "${releaseTag(pr, release || process.env.SIM_PROOF_RELEASE)}" on ${repo}`;
+    console.error(`${dryRun ? 'dry run: would upload' : 'uploading'} ${files.length + (proofPath ? 1 : 0)} file(s) to ${where}`);
     const previews = !dryRun && !argv.includes('--no-preview');
     const start = Number(opt('--preview-start') ?? 0), seconds = Number(opt('--preview-seconds') ?? 6);
     const out = await uploadAll({ pr: Number(pr), files, proofPath, target, write: dryRun ? () => {} : writeFileSync,

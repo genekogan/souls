@@ -104,11 +104,18 @@ new take; do not attach a clip that does not prove the claim.
 
 ## 5. Attach it to the PR (never commit it)
 
+Check every outgoing text/JSON payload with `node tools/proof/publication.mjs <payload files>` before publication.
+Inspect media pixels, audio, filenames and binary metadata separately. Device paths, hostnames, device/private IPs,
+local URLs and operational identifiers belong only in private records. Use relative paths and neutral capture
+labels. The uploader blocks detected text leaks before uploading the batch; this cannot certify media privacy.
+
 ```bash
 node tools/proof/upload.mjs --pr $N --proof .e2e/journal/$ISSUE/proof.json .e2e/proof/$SLUG/desktop.mp4 .e2e/proof/$SLUG/phone.mp4
 ```
 
-- The default target is the repo's `proofs` prerelease (it is created on first use). Assets are named
+- The default target is the PR's own prerelease `proofs-<n>` (tag on the default branch, created on first use);
+  one release per PR keeps each under GitHub's 1000-asset limit, which the old shared `proofs` release reached.
+  `--release <tag>` (or `SIM_PROOF_RELEASE`) names another release. Assets are named
   `pr-<n>.<file>`, and a re-take gets `-2`, `-3`, so earlier takes, including failed ones, stay linkable.
   `SIM_PROOF_UPLOAD_URL` (+ `SIM_PROOF_UPLOAD_TOKEN`) switches to another endpoint, such as a CDN.
 - With `--proof`, the links are written into proof.json `media[]`, and proof.json is uploaded last. Paste its link
@@ -119,9 +126,13 @@ node tools/proof/upload.mjs --pr $N --proof .e2e/journal/$ISSUE/proof.json .e2e/
   `[![desktop.mp4](…pr-412.desktop.preview.gif)](…pr-412.desktop.mp4)`. Paste that line: the preview plays in the
   PR and clicking it opens the full clip. When the change shows later in the clip, pick the window with
   `--preview-start <s>` (and `--preview-seconds <s>`). The preview is a pointer, not the proof: the uncut mp4 is.
+  Always put an explicit **Full-resolution uncut video** link before each preview, stating the actual encoded
+  dimensions and duration. Preserve capture resolution and frame the action so contact can be reviewed. Do not
+  upscale a capture or use the reduced GIF to claim motion proof.
 - **Exit 3: the upload is blocked** (no `gh`, not signed in, no permission, or no network, as in many cloud
   sessions). Tell the user which clips are waiting and where. Post a PR comment with each clip's duration,
-  viewport, sidecar summary (marks, console errors, commit), and the exact `record.mjs` command and steps file, so
+  viewport, sanitized sidecar summary (marks, console errors, commit), and a repository-relative `record.mjs`
+  command and steps file, so
   anyone can re-record it. Mark the proof "pending upload" in the PR body. Never paste video as base64, never
   commit it, and never push it to another branch.
 
