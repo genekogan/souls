@@ -33,14 +33,14 @@ test('watering can and growth stages', {timeout:600000}, async t=>{
 
  // ---- context: absent, then 100 distant growing planters (and 100 cans on hooks), then nearby ----
  const absent=await here();
- const distant=[];for(let i=0;i<100;i++){const x=120+i%10*3,z=120+Math.floor(i/10)*3;distant.push({op:'place',def:'core/garden-planter@2',name:`far-bed-${i}`,p:[x,z],state:{moisture:i%2?1:0.1,growth:i%5}},{op:'place',def:'core/can-hook@1',tmp:`$h${i}`,name:`far-hook-${i}`,p:[x+1.2,z]},{op:'place',def:'core/watering-can@2',name:`far-can-${i}`,in:{parent:`$h${i}`},p:HANG,state:{level:1}});}
+ const distant=[];for(let i=0;i<100;i++){const x=120+i%10*3,z=120+Math.floor(i/10)*3;distant.push({op:'place',def:'core/garden-planter@2',name:`far-bed-${i}`,p:[x,z],state:{moisture:i%2?1:0.1,growth:i%5}},{op:'place',def:'core/can-hook@1',tmp:`$h${i}`,name:`far-hook-${i}`,p:[x+1.2,z]},{op:'place',def:'core/watering-can@3',name:`far-can-${i}`,in:{parent:`$h${i}`},p:HANG,state:{level:1}});}
  for(let i=0;i<distant.length;i+=150){const placed=god.act({ops:distant.slice(i,i+150)});assert.equal(placed.accepted,true,JSON.stringify(placed.failures?.slice(0,3)));}await tick(45);
  const far=await here();
  const byName=n=>[...god.model.entities.values()].find(e=>e.name===n);
  const farIds=new Set(distant.filter(d=>d.name).map(d=>byName(d.name).id));
  assert.deepEqual(edge.capabilities(soul).filter(c=>c.object&&farIds.has(c.object)).map(c=>c.id),[],'no distant offers');
  // the scene beside Ana: a hook with an empty can, the garden tap, two planters@2
- const sc=god.act({ops:[{op:'place',def:'core/can-hook@1',tmp:'$hook',name:'can-hook',p:[ax+1.8,az-1.5]},{op:'place',def:'core/watering-can@2',name:'watering-can',in:{parent:'$hook'},p:HANG,r:Math.PI/2,state:{level:0}},
+ const sc=god.act({ops:[{op:'place',def:'core/can-hook@1',tmp:'$hook',name:'can-hook',p:[ax+1.8,az-1.5]},{op:'place',def:'core/watering-can@3',name:'watering-can',in:{parent:'$hook'},p:HANG,r:Math.PI/2,state:{level:0}},
   {op:'place',def:'core/garden-tap@1',name:'garden-tap',p:[ax-2.2,az-1.2]},{op:'place',def:'core/garden-planter@2',name:'rose-bed',p:[ax+0.6,az+2.6]},{op:'place',def:'core/garden-planter@2',name:'herb-bed',p:[ax-1.6,az+2.6],state:{growth:2,moisture:0.2}}]});
  assert.equal(sc.accepted,true,JSON.stringify(sc.failures?.slice(0,3)));await tick(45);
  const id=n=>byName(n).id,state=n=>byName(n).state??{},ent=n=>f.host.engine.world.entities[id(n)];

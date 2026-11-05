@@ -149,4 +149,45 @@ const campSink: DefInput = {
   actions: (vocab.find((d) => d.name === 'core-desk-lamp')! as unknown as DefInput).actions!.map((a) => ({ ...structuredClone(a), label: a.name === 'switch-on' ? 'Turn on the sink tap' : 'Turn off the sink tap' })) as DefInput['actions'],
 } as unknown as DefInput;
 
-export const TEA_DEFS: DefInput[] = [kettle, cup, campSink];
+// #494 / #416: kettle@2 and cup@2 above are immutable (worlds keep their geometry); @3 of each fits the 400-triangle
+// budget, as estimated and as drawn in every state, with @2's state, components, slots, actions and every point code
+// reads (KETTLE_GRIP, KETTLE_OPENING, KETTLE_SPOUT and its angle, KETTLE_SWITCH; the mug's MUG / CUP_RIM rim, radius,
+// floor and full height). @2's sweeps drew as tubes of four rings per path point (the kettle drew 1,044 triangles, a full
+// mug over 1,000); here the spout and handle are straight rods along @2's paths (two for the spout, four for the handle),
+// which never collide, like the sweeps. The kettle and the mug turn with 10 sides. The mug's tea surface steps by fifths (five discs instead of seven;
+// every level tea can reach is drawn within 0.067 of a cup of its true level, except 1/15, drawn at 0.2 as @2 did). Its
+// discs are 7-sided and kept inside the outer wall, so slim gaps show at the inner wall instead of corners outside.
+/** A cylinder from a to b (kit cylinders run along +y, turned by pitch then yaw). */
+const rod = (a: number[], b: number[], r: number, segments: number, tint: string) => {
+  const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], len = Math.hypot(d[0], d[1], d[2]);
+  return { kind: 'cyl', at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], r, h: len, segments, tint, pitch: Math.acos(d[1] / len), yaw: Math.atan2(d[0], d[2]), collide: false };
+};
+const kettle3: DefInput = { ...structuredClone(kettle), version: 3,
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.006, shapes: [
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0.012], [0.084, 0.012], [0.092, 0.07], [0.088, 0.16], [0.062, 0.226], [0, 0.229]], segments: 10, tint: 'shell' },
+    { kind: 'cyl', at: [0, 0.007, 0], r: 0.086, h: 0.014, segments: 10, tint: 'dark' },
+    { kind: 'cyl', at: [0, 0.229, 0], r: 0.058, h: 0.006, segments: 8, tint: 'steel' },
+    { kind: 'sphere', at: [0, 0.242, 0], r: 0.014, segments: 5, tint: 'dark' },
+    rod([0.082, 0.11, 0], [0.17, 0.14, 0], 0.016, 6, 'shell'), rod([0.17, 0.14, 0], [0.262, 0.192, 0], 0.015, 6, 'shell'),
+    { kind: 'cyl', at: [KETTLE_SPOUT[0], KETTLE_SPOUT[1], 0], r: 0.013, h: 0.006, segments: 6, tint: 'steel', roll: -(Math.PI / 2 - KETTLE_SPOUT_ANGLE) },
+    rod([-0.07, 0.212, 0], [-0.118, 0.222, 0], 0.013, 5, 'dark'), rod([-0.118, 0.222, 0], [-0.137, 0.19, 0], 0.013, 5, 'dark'),
+    rod([-0.137, 0.19, 0], [-0.137, 0.11, 0], 0.013, 5, 'dark'), rod([-0.137, 0.11, 0], [-0.084, 0.06, 0], 0.013, 5, 'dark'),
+    { kind: 'box', at: [KETTLE_SWITCH[0], KETTLE_SWITCH[1], 0], size: [0.03, 0.012, 0.02], round: 0.004, tint: 'switch' }] } } as unknown as DefInput['make'],
+} as DefInput;
+/** cup@3's tea surface: [shown while tea is above, the level drawn], by fifths of a cup. */
+const TEA_STEPS_3: [number, number][] = [[0.9, 1], [0.7, 0.8], [0.5, 0.6], [0.3, 0.4], [0.05, 0.2]];
+const cup3: DefInput = { ...structuredClone(cup), version: 3,
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.006, shapes: [
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0], [0.042, 0], [0.044, 0.1], [0.04, 0.1], [0.038, 0.014], [0, 0.014]], segments: 10, tint: 'glaze' },
+    { kind: 'torus', at: [0.05, 0.055, 0], r: 0.024, r2: 0.0065, segments: 6, tint: 'glaze' },
+    ...TEA_STEPS_3.map(([when, tea]) => ({ kind: 'cyl', at: [0, CUP_RIM.floor + (CUP_RIM.full - CUP_RIM.floor) * tea, 0], r: 0.0404 + 0.0012 * tea, h: 0.003, segments: 7, tint: 'tea', when: `@tea>${when}` })),
+    // drunk, a 5-sided tea stain at the bottom
+    { kind: 'cyl', at: [0, CUP_RIM.floor + 0.001, 0], r: 0.039, h: 0.002, segments: 5, tint: 'stain', when: '@tea<=0.05&@brewedTick>=0' },
+    { kind: 'box', at: [0.006, CUP_RIM.floor + 0.008, -0.01], size: [0.034, 0.012, 0.026], round: 0.004, tint: 'bag', when: '!@bag=false&@brewedTick>=0&@tea<=0.4' },
+    // the tea bag's string, from the bag up over the rim and down to its paper tag outside (@2's tag)
+    { ...rod([0.008, 0.03, -0.012], [0.012, 0.104, -0.044], 0.0012, 3, 'string'), when: '!@bag=false' },
+    { ...rod([0.012, 0.104, -0.044], [0.006, 0.087, -0.051], 0.0012, 3, 'string'), when: '!@bag=false' },
+    { kind: 'box', at: [0.006, 0.074, -0.051], size: [0.02, 0.026, 0.003], round: 0, tint: 'tag', when: '!@bag=false' }] } } as unknown as DefInput['make'],
+} as DefInput;
+
+export const TEA_DEFS: DefInput[] = [kettle, cup, campSink, kettle3, cup3];

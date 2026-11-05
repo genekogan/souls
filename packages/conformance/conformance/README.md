@@ -49,7 +49,11 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `bsgen-20261021.json` | re-pins for apartment block, office block and hospital revisions |
 | `seatdef-20261022.json` | re-pins for seat heights taken from model geometry |
 | `office-desk-20261028.json` | `core-office-desk@2` (no baked scenery chairs): one construction-view draw overrun |
-| `soul-actions-20261101.json` | Soul Actions 1–44 defs over their gallery budgets at the public cutover |
+| `soul-actions-20261101.json` | Soul Actions 1-44 defs over a gallery triangle or draw budget, pinned to their 2026-11-01 revisions |
+| `library-budgets-music-20261105.json` | in-budget music revisions (drum kit, mic stand, jukebox @2); pins nothing |
+| `library-budgets-water-20261105.json` | in-budget water and garden revisions (garden fountain @2, watering can @3); pins nothing |
+| `library-budgets-openings-20261105.json` | in-budget curtained window @2, drawer chest @3, bell @3; pins bell@3's construction-view overruns |
+| `library-budgets-tea-20261105.json` | in-budget kettle @3 and cup @3; pins nothing |
 | `gallery-state-20261105.json` | state-only overruns found once the gallery measures every declared state (#973) |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.

@@ -5,7 +5,7 @@
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
   },
   "core-bell@2": {
-   "why": "Soul Actions 1-44 (bell pull): clapper, pull rope and frame are separate shapes so the hand pull rings it; 470 tris over the layer.sound budget 400. Lighter mesh deferred to the Soul Actions follow-ups (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (bell pull): clapper, pull rope and frame are separate shapes so the hand pull rings it; 470 tris over the layer.sound budget 400. Lighter mesh deferred to the Soul Actions follow-ups (cutover hold, 2026-11-01)"
   },
   "core-bird@1": {
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
@@ -32,7 +32,7 @@
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
   },
   "core-cup@2": {
-   "why": "Soul Actions 1-44 (tea): the mug is a recorded carried item with a handle and inner wall for pouring and sipping; 508 tris over the object.tableware budget 400 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (tea): the mug is a recorded carried item with a handle and inner wall for pouring and sipping; 508 tris over the object.tableware budget 400 (cutover hold, 2026-11-01)"
   },
   "core-deer@1": {
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
@@ -47,13 +47,13 @@
    "why": "Soul Actions 1-44 (doors): leaf, frame, handle and lock plate are separate draws so the hand opens, knocks and locks; 5 draws over the 4 of its class (cutover hold, 2026-11-01)"
   },
   "core-drawer-chest@1": {
-   "why": "Soul Actions 1-44 (drawers): each drawer is its own shape so a hand opens it and items go inside; 628 tris over the furniture.storage budget 600 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (drawers): each drawer is its own shape so a hand opens it and items go inside; 628 tris over the furniture.storage budget 600 (cutover hold, 2026-11-01)"
   },
   "core-drawer-chest@2": {
-   "why": "Soul Actions 1-44 (drawers, storage-inside revision): each drawer is its own shape so a hand opens it and items go inside; 628 tris over the furniture.storage budget 600 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (drawers, storage-inside revision): each drawer is its own shape so a hand opens it and items go inside; 628 tris over the furniture.storage budget 600 (cutover hold, 2026-11-01)"
   },
   "core-drum-kit@1": {
-   "why": "Soul Actions 1-44 (music): drums, cymbals and stands are separate shapes so strikes animate per piece; 872 tris over the furniture.music budget 600 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @2 within budget (#494). Soul Actions 1-44 (music): drums, cymbals and stands are separate shapes so strikes animate per piece; 872 tris over the furniture.music budget 600 (cutover hold, 2026-11-01)"
   },
   "core-duck@1": {
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
@@ -86,7 +86,7 @@
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
   },
   "core-kettle@2": {
-   "why": "Soul Actions 1-44 (tea): body, lid, spout and switch are separate shapes so filling, boiling and pouring read by hand; 1044 tris over the object.tableware budget 400 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (tea): body, lid, spout and switch are separate shapes so filling, boiling and pouring read by hand; 1044 tris over the object.tableware budget 400 (cutover hold, 2026-11-01)"
   },
   "core-litter-scatter@1": {
    "why": "area/scatter generator: the bake estimate grows with the area and is held against a per-object class cap; not a wrong estimate (Z2, 2026-10-20)"
@@ -338,7 +338,7 @@
    "why": "lod1 18580 tris (cap 1200): smaller versions did not match at the switch distance (Z2, 2026-10-20)"
   },
   "core-mic-stand@1": {
-   "why": "Soul Actions 1-44 (music): base, boom, clip and microphone are separate shapes so singing at it animates; 668 tris over the furniture.music budget 600 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @2 within budget (#494). Soul Actions 1-44 (music): base, boom, clip and microphone are separate shapes so singing at it animates; 668 tris over the furniture.music budget 600 (cutover hold, 2026-11-01)"
   },
   "core-minaret-temple@1": {
    "why": "lod1 3102 tris (cap 400): smaller versions did not match at the switch distance (Z2, 2026-10-20)"
@@ -395,7 +395,7 @@
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
   },
   "core-watering-can@2": {
-   "why": "Soul Actions 1-44 (garden): can body, handle, spout and rose are separate shapes so filling at the tap and watering animate; 1272 tris over the object.tool budget 400 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (garden): can body, handle, spout and rose are separate shapes so filling at the tap and watering animate; 1272 tris over the object.tool budget 400 (cutover hold, 2026-11-01)"
   },
   "core-wetland@1": {
    "why": "area/scatter generator: the bake estimate grows with the area and is held against a per-object class cap; not a wrong estimate (Z2, 2026-10-20)"

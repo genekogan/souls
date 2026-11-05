@@ -109,6 +109,12 @@ therefore **windowed**:
   A requested run is scoped by the PR's paths against main, not full scope. It queues behind a CI run already going
   for the same PR, and does no heavy work if that run passes at the same head. Once a PR is in the window, its later
   pushes run in full as usual.
+- **A branch cut before the window (#914)** carries an old `ci.yml` with no `pr` input, and a dispatch runs the
+  branch's own copy, so GitHub would refuse the request. `ci-request.yml` checks the head's `ci.yml` first. When the
+  input is missing, it dispatches nothing and posts one comment on the PR: merge main forward (merge or rebase main
+  into the branch and push), and that push runs CI in the window. The merge train's strict path also rebases a
+  `merge:ready` PR. Dispatching main's `ci.yml` instead would not help: its checks would attach to main's commit, not
+  the PR head.
 - Pushes to main, manual runs without `pr`, and merge-group runs are never windowed. Main keeps its full-scope runs,
   which the merge train reads.
 
@@ -183,7 +189,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
 | Server or package logic | `node --test` on touched files, `tsc -p` of touched packages |
 | Anything that can move geometry, navigation or god builds | add the walk gate |
 | Web app | `pnpm --filter @sim/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
-| Library defs, generators, compiler | conformance, plus a supplement when a revision changes |
+| Library defs, generators, compiler | `library.test.ts` and `catalogue-checks.test.ts` (budgets and holds), conformance, plus a supplement when a revision changes |
 | Soul behaviour, navigation, engines | the above plus a scenario playtest with two repeats per arm |
 | Release head | the remote gate, then the release workflow (live walks and cdn-walk) |
 
