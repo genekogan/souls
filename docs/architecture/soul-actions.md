@@ -34,7 +34,29 @@ context-size checks below), regression runs, and an uncut real-client recording 
     host's receipt ends then, rather than at the lapse.
   - **Expiry.** A proposal lapses after 120 s (`invite.expired`). A late answer is refused `invite.gone`.
 
-  Nothing moves, commits or claims yet. The carry itself is PC05/PC06.
+  - **Distance.** Proposing or accepting from more than 10 m from the load is refused `shared.too-far` before any
+    receipt, because walking closer would be another body act and would leave.
+  - **Readiness (PC05, [#684](https://github.com/genekogan/souls/issues/684)).** Once every role is accepted, the world
+    checks readiness every second and never stores it. Every member must hold the current revision, have two free
+    hands, stand awake on level-zero ground within 10 m of the load and run nothing else. The load must be unchanged,
+    lying on the ground and not claimed by another carry. Until then each member's receipt stays `waiting` with
+    `shared.not-ready`, naming who and why.
+  - **Commit.** A ready proposal commits as one host decision with one native crew `carry`, in slot order. The
+    decision's guard re-derives readiness under the write lock. Its journal writes the operation
+    (`op_<invite>_r<revision>`), the `committed` state and every member's receipt `started` in that tick, or nothing.
+    Of two proposals for one load, exactly one commits. A native refusal that can pass (someone in the way) keeps
+    waiting. A permanent one (`carry.no-route`) ends every receipt `failed` with that diagnostic, and nothing is lifted.
+  - **Busy.** While the operation runs, a member's body act is refused `shared.busy` before any native check,
+    naming the operation and the claimed hands and walking. That includes proposing a carry or accepting any invitation.
+    Nothing is replaced and no receipt is created. Speech and reads still work, and the proposal's lapse no longer
+    applies.
+  - **Release.** When the native programme ends, every member's receipt ends together, in one transaction:
+    `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (a
+    fade, an engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the
+    host's programme is stopped. After a restart, guests of a carry that still runs keep their receipts. An operation
+    whose programme is gone is ended on the next sweeps.
+
+  The visible carry journey on the shared-execution fixture is PC06.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station. A word only applies when that action is on offer.
