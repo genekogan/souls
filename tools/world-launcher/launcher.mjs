@@ -157,6 +157,15 @@ export const eyesAgent = (ua) => typeof ua === 'string' && EYES_UA.test(ua);
 const PASSIVE_READ = /\/w\/[a-z][a-z0-9-]{0,31}\/(?:healthz|v1\/config|v1\/god\/status|v1\/world\/souls)\/?$/;
 export const SOUL = { controllerCli: join(here, 'soul/eden.mjs'), cli: join(here, 'soul/eden-agent.mjs'), skill: join(here, 'soul/skill.md'), instructions: join(here, 'soul/instructions.md') };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8' };
+/** #896: the web-build file for a docs or changelog path: /docs, /docs/<page>[/] -> its HTML (docs[/<page>]/index.html) or, at
+ *  <path>.md or for an Accept naming text/markdown ahead of text/html, its Markdown twin; /changelog.md -> changelog.md. */
+export function docFile(path, accept = '') {
+  const md = /\btext\/markdown\b/.test(accept) && !/^\s*text\/html\b/.test(accept);
+  if (path === '/changelog.md' || (md && (path === '/changelog' || path === '/changelog/'))) return 'changelog.md';
+  const m = /^\/docs((?:\/[a-z0-9-]+)*)(\.md|\/)?$/.exec(path);
+  if (!m) return null;
+  return m[2] === '.md' || md ? `docs${m[1]}.md` : `docs${m[1]}/index.html`;
+}
 const json = (res, status, body, headers = {}) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-robots-tag': NOINDEX, ...headers }).end(JSON.stringify(body)); };
 const BUILD = (() => { try { return readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../BUILD'), 'utf8').trim(); } catch { return 'dev'; } })();
 /** Direct requests from this machine (not through a reverse proxy, which adds x-forwarded-for). */
@@ -557,6 +566,13 @@ export async function openLauncher(cfg = {}) {
   // the client hung up while we waited (a world booting, a retry, a hand-back): nothing is sent on its behalf, or a
   // long-poll listen would reach the world as a ghost and could supersede the agent's real listener
   const clientGone = (req, res) => res.destroyed || req.socket.destroyed;
+  /** #896: the published docs pages the build lists (docs/pages.json), for the sitemap; re-read when the build changes. */
+  let docsList = { at: -1, pages: [] };
+  function docsPages() {
+    const f = join(webDir, 'docs', 'pages.json'); let m = -1; try { m = statSync(f).mtimeMs; } catch { return []; }
+    if (m !== docsList.at) { try { docsList = { at: m, pages: JSON.parse(readFileSync(f, 'utf8')).pages.map((p) => p.url).filter((u) => /^\/docs(\/[a-z0-9-]+)*$/.test(u)) }; } catch { docsList = { at: m, pages: [] }; } }
+    return docsList.pages;
+  }
   /** #894: every response of an unlisted world says noindex, whatever the world sent (listing read per response, so
    *  listing or unlisting a world applies at once); a listed world's own headers pass unchanged. */
   function robotsOf(slug, headers) { const w = slug ? registry.get(slug) : null; return w && isUnlisted(w) ? { ...headers, 'x-robots-tag': NOINDEX } : headers; }
@@ -966,8 +982,13 @@ export async function openLauncher(cfg = {}) {
         // #894: what crawlers are told (crawl.mjs); answered here, no world is woken. The sitemap is read from the registry
         // per request, so a world listed or unlisted appears or drops out at once.
         if (path === '/robots.txt') { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' }).end(req.method === 'HEAD' ? undefined : robotsTxt({ origin: publicOrigin, base: B })); return; }
-        if (path === '/sitemap.xml') { res.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'no-cache' }).end(req.method === 'HEAD' ? undefined : sitemapXml({ origin: publicOrigin, base: B, worlds: publicWorlds(registry.worlds.filter((w) => !closing.has(w.slug))) })); return; }
+        if (path === '/sitemap.xml') { res.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'no-cache' }).end(req.method === 'HEAD' ? undefined : sitemapXml({ origin: publicOrigin, base: B, pages: docsPages(), worlds: publicWorlds(registry.worlds.filter((w) => !closing.has(w.slug))) })); return; }
         if (path === '/' || path === '/index.html') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @sim/web build'); return; }
+        // #896: the docs, llms.txt and the changelog's Markdown twin, all built into the web build (apps/web/src/docs-site.ts).
+        // A page answers as HTML, or as its Markdown twin at <path>.md or for `Accept: text/markdown`.
+        if (path === '/llms.txt' || path === '/llms-full.txt') { if (serveFile(res, join(webDir, path.slice(1)), 'no-cache', req)) return; }
+        const doc = docFile(path, req.headers.accept);
+        if (doc) { res.setHeader('vary', 'Accept'); if (serveFile(res, join(webDir, doc), 'no-cache', req)) return; res.removeHeader('vary'); }
         // #388/#584: build-time changelog HTML, no script/API collection; reviewed optional journal media can load separately.
         if ((path === '/changelog' || path === '/changelog/') && serveFile(res, join(webDir, 'changelog.html'), 'no-cache', req)) return;
         // lane P4: the installable-app manifest beside the world list (apps/web/src/pwa-manifest.ts)
