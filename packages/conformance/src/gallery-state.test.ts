@@ -21,6 +21,10 @@ test('state variants: bools both ways, enums, numeric thresholds either side, te
   assert.ok(2 ** 7 > STATE_PRODUCT_CAP && capped.length === 1 + 7, 'over the cap: the defaults, then each field flipped alone');
   assert.ok(capped.every(s => Object.values(s).filter(Boolean).length <= 1));
   assert.deepEqual(stateVariants(def(many)), capped, 'deterministic');
+  const mixed = stateVariants(def({ ...many, lid: { type: 'bool', default: false }, tea: { type: 'number', default: 0, min: 0, max: 1 } }, [{ when: '@lid & @tea<=0.4' }, { when: '@tea>2' }]));
+  assert.ok(mixed.some(s => s.lid === true && s.tea === 0.401) && mixed.some(s => s.lid === true && s.tea === 1), 'over the cap, the when-tested fields still combine');
+  assert.ok(!mixed.some(s => s.tea === 2 || s.tea === 2.001), 'thresholds stay in the declared range');
+  assert.ok(mixed.some(s => s.b6 === true) && mixed.filter(s => s.b0 === true).length === 1, 'untested fields vary alone');
 });
 
 test('the sweep reports a state-gated overrun once per budget, and nothing when a state is within budget or no worse than stateless', async () => {

@@ -28,10 +28,14 @@ export function samplePoints(d: StoredDef, k = 2, seed = 'EF4'): SweepPoint[] {
 }
 /** The cartesian product of declared state values is measured up to this many assignments; above it, one field at a time. */
 export const STATE_PRODUCT_CAP = 64;
+/** Above STATE_PRODUCT_CAP, the product over only the fields a `when` term tests is still measured up to this many. */
+export const STATE_TESTED_CAP = 256;
 /** Declared entity-state assignments the gallery also measures (the stateless build is measured separately): bools both
  *  ways, enums every value, numbers at default/min/max and either side of each threshold a `when: "@field op N"` term
- *  tests; strings and colours (content, not switches) at their default, plus a non-empty value when a `when` term
- *  tests them. Deterministic; the full product up to STATE_PRODUCT_CAP, else each field varied alone from the defaults. */
+ *  tests (clamped to the declared range); strings and colours (content, not switches) at their default, plus a non-empty
+ *  value when a `when` term tests them. Deterministic: the full product up to STATE_PRODUCT_CAP; above it, the product
+ *  of the `when`-tested fields (so their conjunctions are measured) up to STATE_TESTED_CAP, then every field varied
+ *  alone from the defaults. */
 export function stateVariants(d: StoredDef): Record<string, unknown>[] {
   const fields = Object.entries((d as { state?: Record<string, { type: string; default?: unknown; values?: unknown[]; min?: number; max?: number }> }).state ?? {});
   if (!fields.length) return [];
@@ -45,22 +49,26 @@ export function stateVariants(d: StoredDef): Record<string, unknown>[] {
     else if (f.type === 'number' || f.type === 'int') {
       add(f.min); add(f.max);
       const step = f.type === 'int' ? 1 : 1e-3;
-      for (const [, , op, rhs] of tested) { const n = Number(rhs.trim()); if (op && op !== '=' && op !== '!=' && Number.isFinite(n)) { add(n); add(op === '>' || op === '<=' ? +(n + step).toFixed(6) : +(n - step).toFixed(6)); } }
+      const fit = (v: number) => { const r = f.type === 'int' ? Math.round(v) : +v.toFixed(6); return Math.min(f.max ?? Infinity, Math.max(f.min ?? -Infinity, r)); };
+      for (const [, , op, rhs] of tested) { const n = Number(rhs.trim()); if (op && op !== '=' && op !== '!=' && Number.isFinite(n)) { add(fit(n)); add(fit(op === '>' || op === '<=' ? n + step : n - step)); } }
     } else if (tested.length) {
       for (const [, , op, rhs] of tested) if (op === '=' || op === '!=') for (const v of rhs.split('|')) add(v.trim());
       if (!out.some(v => typeof v === 'string' && v !== '' && v !== 'none')) add('sample');
     }
-    return [name, out] as const;
+    return [name, out, tested.length > 0] as const;
   });
   const defaults = Object.fromEntries(candidates.map(([n, vs]) => [n, vs[0]]));
-  const product = candidates.reduce((n, [, vs]) => n * Math.max(1, vs.length), 1);
+  const productOf = (cs: typeof candidates) => cs.reduce((n, [, vs]) => n * Math.max(1, vs.length), 1);
+  const combos = (cs: typeof candidates, from: Record<string, unknown>) => cs.reduce<Record<string, unknown>[]>((acc, [name, vs]) => acc.flatMap(c => (vs.length ? vs.map(v => ({ ...c, [name]: v })) : [c])), [from]);
   const seen = new Set<string>(), variants: Record<string, unknown>[] = [];
   const push = (v: Record<string, unknown>) => { const key = JSON.stringify(v); if (!seen.has(key)) { seen.add(key); variants.push(v); } };
-  if (product <= STATE_PRODUCT_CAP) {
-    let combos: Record<string, unknown>[] = [{}];
-    for (const [name, vs] of candidates) combos = combos.flatMap(c => (vs.length ? vs : [undefined]).map(v => (v === undefined ? c : { ...c, [name]: v })));
-    combos.forEach(push);
-  } else { push(defaults); for (const [name, vs] of candidates) for (const v of vs) push({ ...defaults, [name]: v }); }
+  if (productOf(candidates) <= STATE_PRODUCT_CAP) combos(candidates, {}).forEach(push);
+  else {
+    push(defaults);
+    const tested = candidates.filter(([, , t]) => t);
+    if (tested.length > 1 && productOf(tested) <= STATE_TESTED_CAP) combos(tested, defaults).forEach(push);
+    for (const [name, vs] of candidates) for (const v of vs) push({ ...defaults, [name]: v });
+  }
   return variants;
 }
 export type RenderCheck = (d: StoredDef, params: Record<string, unknown>, baked: unknown, model: WorldModel, scale: number, state?: Record<string, unknown>) => Promise<{ tris: number; draws: number; materials: number } | void> | { tris: number; draws: number; materials: number } | void;
@@ -117,7 +125,8 @@ export async function conformance({ defs = coreLibrary().all(), library = coreLi
           const limits = { triangles: [cap, 'tris'], draws: [big ? Infinity : 4, 'draws'], materials: [big ? Infinity : 4, 'materials'] } as const;
           const worst: Partial<Record<keyof typeof limits, { value: number; state: Record<string, unknown> }>> = {};
           for (const state of states) {
-            const m = await render(def, params, baked, model, scale, state); if (!m) continue;
+            let m; try { m = await render(def, params, baked, model, scale, state); } catch (e) { fail('gallery-state', 'exception', `${String(e).slice(0, 400)} @${JSON.stringify(state)}`); continue; }
+            if (!m) continue;
             stateRendered++;
             for (const [code, [limit, key]] of Object.entries(limits) as [keyof typeof limits, readonly [number, 'tris' | 'draws' | 'materials']][]) {
               const v = m[key];

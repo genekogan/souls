@@ -25,6 +25,7 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(readFileSync(out, 'utf8')) as { defs: number; samples: number; rendered: number; findings: Finding[]; qualificationGaps: { def: string; kind: string; reason: string }[] };
   assert.equal(report.defs, coreLibrary().all().length); assert.ok(report.samples > report.defs * 3); assert.ok(report.rendered > 0);
+  assert.ok((report as { stateRendered?: number }).stateRendered! > 0, 'the gallery also builds declared entity states (#973)');
   const known = JSON.parse(readFileSync(new URL('../conformance/known-20261015.json', import.meta.url), 'utf8')) as { findings: (Omit<Finding, 'field'> & { fields: string[] })[]; qualificationGaps: typeof report.qualificationGaps };
   // M3: exact pre-E1 findings from B1's expanded parameter samples at the supplied integration head.
   const integration = JSON.parse(readFileSync(new URL('../conformance/integration-3baa4c51.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
