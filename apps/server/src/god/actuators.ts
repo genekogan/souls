@@ -264,11 +264,11 @@ function enumParamFields(def: StoredDef, a: Action): { param: string; field: str
   }
   return out;
 }
-const enumKey = (v: unknown) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const enumKey = (v: unknown) => String(v ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 /** #431: a param set into an enum field must name one of its values (case and spacing forgiven); null when every one does. */
 export function enumParamProblem(def: StoredDef, a: Action, params: Record<string, unknown>, name: string): Refusal | null {
   for (const e of enumParamFields(def, a)) {
-    if (e.values.some(v => enumKey(v) === enumKey(params[e.param]))) continue;
+    const k = enumKey(params[e.param]); if (k && e.values.some(v => enumKey(v) === k)) continue;
     const said = String(params[e.param] ?? '').trim().slice(0, 40);
     return { code: 'capability.params', reason: `${name} has no ${e.field} ${said ? `“${said}”` : 'named'}; choose one of: ${e.values.join(', ')}.` };
   }
@@ -278,7 +278,7 @@ export function enumParamProblem(def: StoredDef, a: Action, params: Record<strin
 function canonicalParams(def: StoredDef, a: Action, params: Record<string, unknown>): Record<string, unknown> {
   const picks = enumParamFields(def, a); if (!picks.length) return params;
   const out = { ...params };
-  for (const e of picks) { const v = e.values.find(v => enumKey(v) === enumKey(params[e.param])); if (v !== undefined) out[e.param] = v; }
+  for (const e of picks) { const k = enumKey(params[e.param]), v = k ? e.values.find(v => enumKey(v) === k) : undefined; if (v !== undefined) out[e.param] = v; }
   return out;
 }
 /** A def action's state patch: the `then` ops, or a pinboard's composed list. */

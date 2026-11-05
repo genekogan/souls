@@ -88,7 +88,7 @@ const ACT_ALIASES: Record<string, string> = {'turn-on': 'switch-on', 'turn-off':
   // entry 37: a radio's station (only when a change-station action is offered)
   'change-the-station': 'change-station', 'change-the-radio-station': 'change-station', 'change-radio-station': 'change-station', 'switch-the-station': 'change-station', 'switch-station': 'change-station', 'next-station': 'change-station', tune: 'change-station', retune: 'change-station', 'tune-the-radio': 'change-station',
   // #431: a record player's record (only when a put-on-record action is offered; the record itself is the `record` param)
-  'put-on-a-record': 'put-on-record', 'put-a-record-on': 'put-on-record', 'put-on-the-record': 'put-on-record', 'play-a-record': 'put-on-record', 'play-the-record': 'put-on-record', 'play-record': 'put-on-record', 'play-records': 'put-on-record', 'spin-a-record': 'put-on-record', 'stop-the-record': 'switch-off', 'lift-the-needle': 'switch-off'};
+  'put-on-a-record': 'put-on-record', 'put-a-record-on': 'put-on-record', 'put-on-the-record': 'put-on-record', 'play-a-record': 'put-on-record', 'play-the-record': 'put-on-record', 'play-record': 'put-on-record', 'play-records': 'put-on-record', 'spin-a-record': 'put-on-record', 'stop-the-record': 'switch-off'};
 // L3 (server reliability): a resolve tokenises every place's and offer's names on every call; the same few thousand names
 // repeat, so their tokens are kept (bounded; callers get their own copy, so an in-place sort never reaches the memo)
 const TOKEN_MEMO = new Map<string, string[]>(), TOKEN_MEMO_MAX = 50_000;

@@ -44,12 +44,14 @@ test('record player: pick a record at the tonearm, stop at the knob, refusal, in
  const finish=async(r,field,want,limit=600)=>{let motion=null,early=false,root=null;for(let n=0;n<limit;n++){const m=body().human?.handActuator;if(m){motion=m;root=[...body().pose.p];if((f.host.engine.world.tick-m.startTick)*f.host.engine.dt<(m.reach??0.65)-0.05&&state('player')[field]===want)early=true;}const ph=edge.receipt(soul.soulId,r.receipt.id)?.phase;if(['completed','failed','cancelled','replaced'].includes(ph))break;await tick(1);}return {motion,early,root,phase:edge.receipt(soul.soulId,r.receipt.id)?.phase};};
  // refused: stopping an off player, an unknown record, no record named
  const stopOff=await act('object:player:switch-off',false);
+ assert.match(JSON.stringify(stopOff),/object\.state/);assert.match(JSON.stringify(stopOff),/is off/,'stopping an off record player is refused as off');
  const unknown=await act('object:player:put-on-record',false,{record:'Abbey Road'});
  assert.match(JSON.stringify(unknown),/capability\.params/);assert.match(JSON.stringify(unknown),/Morning Waltz, Harbour Lights, Low Tide, Night Train/,'the refusal lists the sleeves');
  await tick(30);assert.equal(state('player').on??false,false,'a refused pick changes nothing');assert.equal(body().human?.handActuator,undefined,'nothing moved');
  // interruption before contact: nothing changes
- await act('object:player:put-on-record',true,{record:'Low Tide'});for(let n=0;n<300&&!body().human?.handActuator;n++)await tick(1);await tick(4);await accept(f.host,edge.act(soul,{capability:'stand:here'}));await tick(60);
+ const cut=await act('object:player:put-on-record',true,{record:'Low Tide'});for(let n=0;n<300&&!body().human?.handActuator;n++)await tick(1);await tick(4);await accept(f.host,edge.act(soul,{capability:'stand:here'}));await tick(60);
  assert.equal(state('player').on??false,false,'interrupted before contact: the record player stays off');
+ assert.ok(['replaced','cancelled'].includes(edge.receipt(soul.soulId,cut.receipt.id)?.phase),'the interrupted act ends replaced');assert.notEqual(state('player').record,'Low Tide','and the picked record was not set');
  const results=[];
  const run=async(cap,field,want,tint,params)=>{
   const before=state('player')[field],r=await act(cap,true,params);assert.equal(state('player')[field],before,'admission changes nothing remotely');
@@ -79,8 +81,8 @@ for(const w of ["put on a record","play a record","put a record on","play a reco
  const roots=results.map(r=>r.root),spread=Math.max(...roots.map(p=>Math.hypot(p[0]-roots[0][0],p[2]-roots[0][2])));
  assert.ok(spread<0.06,`one stand point for the tonearm and the knob (${spread.toFixed(3)} m) ${JSON.stringify(results)}`);
  // the radio beside it is unchanged: its tuning knob still steps the station
- const radioOffers=edge.capabilities(soul).filter(c=>c.object===id('radio')).map(c=>c.id.split(':').at(-1)).sort();
- assert.deepEqual(radioOffers,['change-station','switch-off','switch-on'].filter(a=>radioOffers.includes(a)),'radio offers');
+ const radioOffers=edge.capabilities(soul).filter(c=>c.object===id('radio')).map(c=>c.id.split(':').at(-1));
+ assert.ok(radioOffers.includes('switch-on')&&!radioOffers.includes('put-on-record'),`radio offers unchanged: ${radioOffers}`);
  const restored=WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())),undefined,god.model.library);
  assert.equal(restored.get('player').state.on,false);assert.equal(restored.get('player').state.record,'Morning Waltz');
  assert.deepEqual(f.host.engine.runtime.violations,[]);
