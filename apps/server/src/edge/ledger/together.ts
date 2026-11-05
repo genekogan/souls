@@ -1216,7 +1216,7 @@ export class Together {
         // #437: it comes before a prop source of the kind only when it is on offer and the words name it more closely than
         // the kind does (its exact name, or more than one word: "the coffee mug" by a tea room is the god-built coffee-mug,
         // while "a cup" in a café is still the café's cup, not a furnished cafe-cup-1); a lying prop still comes first
-        const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(), wre = w.replace(/[^a-z ]/g, '').trim().split(/\s+/).join('[^a-z]+');
+        const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(), wre = w.replace(/[-_]+/g, ' ').replace(/[^a-z ]/g, '').trim().split(/\s+/).join('[^a-z]+');
         const match = !lying ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
           return {c, rank: n === w || n.replace(/[-_]+/g, ' ') === w ? 0 : wre && new RegExp(`(^|[^a-z])${wre}([^a-z]|$)`).test(n) ? 1 : 9, d};}).filter(x => x.rank < 9).sort((a, b) => a.rank - b.rank || a.d - b.d)[0] : undefined;
         const source = caps.find(c => c.id === 'pick-up:' + kind);

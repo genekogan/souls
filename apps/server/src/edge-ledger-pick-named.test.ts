@@ -7,14 +7,13 @@ import assert from 'node:assert/strict';
 import {edenNavWorld} from '../test/eden-nav-fixture.ts';
 import type {EdgeCapability} from './edge/contract.ts';
 
-test('#437 pick-up words: a named world thing before a prop source, a bare kind word still the source', async () => {
-  const w = await edenNavWorld(1); const soul = w.souls[0] as never;
+test('#437 pick-up words: a named world thing before a prop source, a bare kind word still the source', async (t) => {
+  const w = await edenNavWorld(1); t.after(() => { w.f.host.stop(); w.f.db.close(); }); const soul = w.souls[0] as never;
   const together = (w.ledger as unknown as {together: {resolve(s: unknown, t: string, c: EdgeCapability[]): {capability?: string; code?: string} | null}}).together;
   const item = (id: string, path: string, d: number, available = true): EdgeCapability => ({id: `pick-up:${id}`, verb: 'pick-up', label: `Pick up ${path} (${d} m)`, available, target: {id, kind: 'item'}});
   const source: EdgeCapability = {id: 'pick-up:cup', verb: 'pick-up', label: 'Pick up a cup of tea (tea room, 3 m)', available: true, target: {id: 'src-tea', kind: 'source'}};
   const to = (t: string, caps: EdgeCapability[]) => { const r = together.resolve(soul, t, caps); return r?.capability ?? r?.code ?? null; };
   const mug = item('e_mug', 'counter/coffee-mug', 2), cafe = item('e_cafe', 'int-cafe/cafe-table-1/cafe-cup-1', 2);
-  try {
     assert.equal(to('pick up the coffee mug', [source, mug]), 'pick-up:e_mug', 'two words name the coffee-mug (space = hyphen)');
     assert.equal(to('pick up the coffee-mug', [source, mug]), 'pick-up:e_mug', 'its exact name');
     assert.equal(to('pick up a cup', [source, cafe]), 'pick-up:cup', 'a bare kind word keeps the source');
@@ -22,5 +21,5 @@ test('#437 pick-up words: a named world thing before a prop source, a bare kind 
     assert.equal(to('pick up the coffee mug', [source, item('e_mug', 'counter/coffee-mug', 2, false)]), 'pick-up:cup', 'a named thing not on offer does not block the source');
     assert.equal(to('pick up the mug', [mug]), 'pick-up:e_mug', 'no source: the named thing, as before');
     assert.equal(to('pick up the coffee mug', [mug]), 'pick-up:e_mug');
-  } finally { w.close?.(); }
+    assert.equal(to('pick up the blue coffee-mug', [source, item('e_blue', 'counter/blue-coffee-mug-2', 2)]), 'pick-up:e_blue', 'a hyphen in the words is a separator');
 });
