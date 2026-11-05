@@ -367,6 +367,15 @@ export function clipPreviews(videos = [], images = [], proof = null) {
   });
 }
 
+/** A note cut to the table's width, never mid-link: `https://gi` reads as a local host (#1055). checkPr has already scanned the whole note. */
+function clipNote(note, max = 120) {
+  const s = note || '';
+  if (s.length <= max) return s;
+  const start = s.slice(0, max).search(/\S*$/);
+  const word = s.slice(start).match(/^\S*/)[0];
+  return start + word.length > max && word.includes('://') ? s.slice(0, start).trimEnd() : s.slice(0, max);
+}
+
 /** The bot comment (updated in place by proof-check.yml). */
 export function renderComment(result, { required = [], files = [], raisedByLabel = null, note = null } = {}) {
   const mark = ok => ok === true ? 'ok' : ok === false ? '**missing**' : '-';
@@ -379,7 +388,7 @@ export function renderComment(result, { required = [], files = [], raisedByLabel
   for (const r of result.rows) out.push(`| ${r.name} | ${mark(r.ok)} | ${String(r.detail).replace(/\|/g, '\\|')} |`);
   if (result.checklist.length) {
     out.push('', '<details><summary>Acceptance criteria</summary>', '', '| | Criterion | Status | Evidence |', '|---|---|---|---|');
-    for (const c of result.checklist) out.push(`| ${c.checked ? '[x]' : '[ ]'} | ${label(c).replace(/\|/g, '\\|')} | ${c.status} | ${(c.note || '').slice(0, 120).replace(/\|/g, '\\|')} |`);
+    for (const c of result.checklist) out.push(`| ${c.checked ? '[x]' : '[ ]'} | ${label(c).replace(/\|/g, '\\|')} | ${c.status} | ${clipNote(c.note).replace(/\|/g, '\\|')} |`);
     out.push('', '</details>');
   }
   const { videos, images, proofJson } = result.links;
