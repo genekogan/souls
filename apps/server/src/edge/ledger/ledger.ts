@@ -1747,6 +1747,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
       const r=tx(this.db.db,()=>{this.comms!.objects.create({id, kind: make, name: title, placeId, params: {form: params.form, title, text, author: soul.soulId, at: b ? [b.pose.p[0], b.pose.p[2]] : null}});return this.insert(soul,capability,'completed',clientRef,true,{confirmedProduced:[{id,kind:make,title,where:placeId,visibility:'public'}]});});
       return {accepted: true, receipt: {...this.receipt(soul.soulId, r.id)!, object: id} as EdgeReceipt, ...resolved};
     }
+    // PC10 (#689): a member of a running shared carry who asks to stand / stop what they are doing asks to stop the carry
+    // safely (the same stop, or "already asked"); the stall guard's owner stand never cuts the crew's programme
+    if (plan.stop && this.sharedCarry) {const running = this.together.sharedRunning(soul.soulId); if (running) return {...await this.stopShared(soul, `stop-carry:${running.op}`, clientRef), ...resolved};}
     // RIDE-EXIT: a stop while stepping out of a landed ride would complete without moving the body; say how long instead.
     if (plan.stop) {const stepOut = this.stepOutRefusal(soul.entityId); if (stepOut) return {...refuse(stepOut.code, stepOut.reason), ...resolved};}
     if (plan.stop) {const seated = this.rideStandRefusal(soul.entityId, partial && this.aboard(soul.entityId) ? menu().caps : caps); if (seated) return {...refuse(seated.code, seated.reason), ...resolved};}

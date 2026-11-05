@@ -1162,7 +1162,8 @@ export class Together {
    *  the load again although nobody agreed to it. That programme is stopped safely (a logged `edge-stop` naming it), the
    *  members are told and an operator line says so; their ended receipts keep how it ended. Bounded to the latest ops. */
   private rewoundChecked = false;
-  /** The host runs this op's programme: the same id, and that programme is a native carry (ids are counters). */
+  /** The host runs this op's programme: the same id, and that programme is a native carry (ids are counters). No
+   *  reading of the action (between steps) counts as the carry on purpose: the commit tick check carries the weight. */
   private isOpCarry(hostEntity: string, programId: string): boolean {return this.p.programOf(hostEntity) === programId && (this.p.carryState?.(programId)?.verb ?? 'carry') === 'carry';}
   private sharedRewound() {
     if (this.rewoundChecked) return; this.rewoundChecked = true;

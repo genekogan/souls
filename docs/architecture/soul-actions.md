@@ -120,7 +120,8 @@ context-size checks below), regression runs, and an uncut real-client recording 
       own; nothing is resumed for them.
     - **Repeats.** The same member asking again gets the first stop's receipt. Another member's stop completes with
       `shared.stop-asked` and changes nothing. One stop event is logged.
-    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop.
+    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop. So is a
+      member's `stand:here` ("stand up / stop what I am doing"): it never releases the crew's programme as a stall (PC10).
     - **One transaction.** The stop's `edge-stop` and its journal (the op `stopping`, the stop's own receipt) are
       written together at the sequencer, or not at all. A second stop in the same drain logs nothing and is answered as
       already asked; a member's fade (below) is written the same way.
