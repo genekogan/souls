@@ -186,3 +186,47 @@ for (const eligible of [true, false])
             assert.ok(movement > .05);
         console.log(JSON.stringify({ case: 'current-point', eligible, walkChildren: walks.length, movement }));
     });
+// Review finding (#659): an unavailable comfort station (no room, or no route) must not refuse a contact the nearby
+// shortcut still allows; the Soul takes the bowl from where it stands, exactly as without the policy.
+const unavailable: {
+    name: string;
+    at: [
+        number,
+        number
+    ];
+    walls: [
+        string,
+        [
+            number,
+            number
+        ],
+        [
+            number,
+            number
+        ]
+    ][];
+}[] = [
+    { name: 'no-room', at: [1.12, .62], walls: [['north-wall', [-.2, .65], [1, .1]], ['east-wall', [1.35, -.2], [.1, .35]], ['south-wall', [0, -.65], [1.2, .1]], ['west-wall', [-1.35, 0], [.1, .6]]] },
+    { name: 'no-route', at: [1.25, .15], walls: [['pocket-east', [.95, .8], [.05, .45]], ['pocket-north', [0, 1.2], [1, .05]], ['pocket-west', [-1, .8], [.05, .45]]] }
+];
+for (const c of unavailable)
+    test(`comfort station ${c.name}: an actor in nearby reach takes from where it stands`, () => {
+        const outcome = (policy: boolean) => {
+            const scene = openGround();
+            scene.obstacles = c.walls.map(([id, at, half]) => ({ id, label: id.replace('-', ' '), obb: { c: at, half, yaw: 0 }, y0: 0, y1: 3 }));
+            const w = addAll(emptyWorld('unavailable-station', scene), { id: 'counter', kind: 'fixture', def: 'table-6ft', pose: { p: [0, 0, 0], yaw: 0 }, provenance: FIXTURE, support: { kind: 'ground' } }, human('a', c.at[0], c.at[1])), item = itemEntity('bowl', 'bowl', [.44, .75, .15]);
+            item.tags = ['entity-world-item-pose'];
+            item.support = { kind: 'resting-on', on: 'counter', slot: 'r0c0' };
+            delete item.phase;
+            w.entities.bowl = item;
+            const rt = new Runtime(w, createRegistry(), { spatial: new Spatial(scene) }, ENGINE_INVARIANTS), r = rt.submit('take_item', { actor: 'a', item: 'bowl', hand: 'right', ...(policy ? { reachPolicy: 'short-station-v1' } : {}) });
+            const walks = [...rt.records.values()].filter(x => x.parent === r.id && x.verb === 'walk_to').length;
+            for (let k = 0; k < 200; k++)
+                rt.step();
+            return { status: r.status as string, walks, root: [...w.entities.a.pose.p], support: item.support.kind, violations: rt.violations.length };
+        };
+        const marked = outcome(true), absent = outcome(false);
+        assert.deepEqual(marked, { status: 'completed', walks: 0, root: [c.at[0], 0, c.at[1]], support: 'in-hand', violations: 0 });
+        assert.deepEqual(marked, absent);
+        console.log(JSON.stringify({ case: 'unavailable-station', name: c.name, marked }));
+    });

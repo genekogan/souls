@@ -256,11 +256,13 @@ function planTake(rt: Runtime, p: TransferParams) {
   let st: Station | Diagnostic;
   if (stored) st = insideStation(owner!, stored);
   else if (p.reachPolicy === 'short-station-v1' && owner && presentedDepth(it) !== undefined) {
-    // The nearby shortcut must not bypass the presented item's existing comfortable side.
-    // An unavailable station stays a named refusal; never gain reach by moving the drawn root.
+    // The nearby shortcut must not bypass the presented item's existing comfortable side, and an unavailable
+    // comfort station (no room, no route) never refuses a contact the shortcut still allows. With neither, the
+    // station's named refusal stands; never gain reach by moving the drawn root.
     const preferred = reachStation(rt, a, target, owner, `${it.id} (${whereIs(rt.world, it)})`, presentedDepth(it));
     const here = fromHere(a, target);
-    st = 'code' in preferred ? preferred : here && reachOf(a, target) <= hypot(target[0] - preferred.p[0], target[2] - preferred.p[1]) + 1e-9 ? here : preferred;
+    if ('code' in preferred) st = here ?? preferred;
+    else st = here && (reachOf(a, target) <= hypot(target[0] - preferred.p[0], target[2] - preferred.p[1]) + 1e-9 || checkStations(rt, [{ actor: p.actor, p: preferred.p, level: a.human!.level }])) ? here : preferred;
   } else st = fromHere(a, target) ?? reachStation(rt, a, target, owner, `${it.id} (${whereIs(rt.world, it)})`, presentedDepth(it));
   if ('code' in st) return { ok: false as const, diagnostic: { ...st, subjects: [...new Set([...(st.subjects ?? []), it.id])] } };
   const here = Math.abs(st.p[0] - a.pose.p[0]) < 0.05 && Math.abs(st.p[1] - a.pose.p[2]) < 0.05;
