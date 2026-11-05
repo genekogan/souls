@@ -151,8 +151,9 @@ export const FREE_GOAL_V1 = 'goal/1', FREE_GOAL_GAP = 0.8, FREE_GOAL_PLANS = 8;
  *  long walk's plan checks only its first fine hop, so a standoff point inside a solid (a ride's own collider) passes the
  *  plan and fails at the last hop (`route.goal-blocked`). A marked step takes only a point with room for the walker's
  *  body (an exact clearance read) and, when no turn around the target has room and a route, the nearest standable point
- *  within STAND_CLEAR_RING half-metre rings of the first turn's. Unmarked steps keep the goal they always chose. */
-export const STAND_CLEAR_V1 = 'clear/1', STAND_CLEAR_RING = 8;
+ *  at most STAND_CLEAR_BEYOND metres beyond the standoff (a ride boards within 3.2 m of its carrier): STAND_CLEAR_SPOKES
+ *  points on each half-metre ring out to there, nearest the first turn first, at most FREE_GOAL_PLANS route plans. Unmarked steps keep the goal they always chose. */
+export const STAND_CLEAR_V1 = 'clear/1', STAND_CLEAR_BEYOND = 1, STAND_CLEAR_SPOKES = 16;
 const num = { type: 'number' }, str = { type: 'string' };
 const ref = { anyOf: [str, { type: 'array', items: num, minItems: 2, maxItems: 2 }] };
 /** The body language, as the card grammar and agents see it. The actor is always implied. */
@@ -570,12 +571,23 @@ export class MarsEngine implements Engine {
       last = no;
     }
     if (roomy) {
-      const q = this.nearestStandableV1([r3(t[0] + Math.cos(base) * off), r3(t[1] + Math.sin(base) * off)], actor, radius + .05, STAND_CLEAR_RING);
-      if (q) { const no = this.plan(this.movementVerb(actor, q[0], q[1]), { actor, x: q[0], z: q[1], level }); if (!no) return { x: q[0], z: q[1], level }; last = no; }
-      else if (last.code === 'route.unreachable' && last.message.startsWith('no reachable standing point')) {
+      // the fallback: points around the target (never further than STAND_CLEAR_BEYOND past the standoff) with room and no
+      // other body within 0.8 m, ring by ring from the standoff out, nearest the first turn first; the first that plans
+      const people = (listEntities(this.ents) as any[]).filter(o => o.kind === 'human' && o.id !== actor).map(o => [o.pose.p[0], o.pose.p[2]] as [number, number]);
+      const rings: number[] = []; for (let r = off === 0 ? .5 : off; r <= off + STAND_CLEAR_BEYOND + 1e-9; r += .5) rings.push(r);
+      let roomless = true, plans = 0;
+      for (const rr of rings) if (plans < FREE_GOAL_PLANS) for (const k of Array.from({ length: STAND_CLEAR_SPOKES }, (_, i) => i).sort((a, b) => Math.min(a, STAND_CLEAR_SPOKES - a) - Math.min(b, STAND_CLEAR_SPOKES - b) || a - b)) {
+        const ang = base + (k / STAND_CLEAR_SPOKES) * Math.PI * 2, x = r3(t[0] + dcos(ang) * rr), z = r3(t[1] + dsin(ang) * rr);
+        if (!roomy([x, z])) continue;
+        roomless = false;
+        if (people.some(([px, pz]) => hypot(px - x, pz - z) < .8)) continue;
+        if (++plans > FREE_GOAL_PLANS) break;
+        const no = this.plan(this.movementVerb(actor, x, z), { actor, x, z, level }); if (!no) return { x, z, level }; last = no;
+      }
+      if (roomless) {
         // nothing was planned: no point around the target has room. Said as the walk's own goal refusal, naming the blocker
         const p0: [number, number] = [r3(t[0] + Math.cos(base) * off), r3(t[1] + Math.sin(base) * off)], sp = this.rt.services.spatial as Spatial, g = sp.levelAt(0, p0), b = g ? nearestBlocker(g, p0, 1.5) : undefined;
-        last = { code: 'route.goal-blocked', message: `no standing room for a ${radius.toFixed(2)} m-radius body ${off ? `${off} m from the target` : 'at the target'} (${p0[0].toFixed(2)}, ${p0[1].toFixed(2)}) or within ${STAND_CLEAR_RING / 2} m of it${b ? ` (blocked by ${b})` : ''}`, ...(b ? { subjects: [b] } : {}) };
+        last = { code: 'route.goal-blocked', message: `no standing room for a ${radius.toFixed(2)} m-radius body ${off ? `${off} m from the target` : 'at the target'} (${p0[0].toFixed(2)}, ${p0[1].toFixed(2)}) or up to ${STAND_CLEAR_BEYOND} m beyond it around the target${b ? ` (blocked by ${b})` : ''}`, ...(b ? { subjects: [b] } : {}) };
       }
     }
     return last;

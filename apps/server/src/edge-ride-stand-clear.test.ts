@@ -15,6 +15,8 @@ import {GroundHost} from './god/ground-host.ts';
 import {Hono} from 'hono';
 import {mountEdgeRoutes} from './edge/routes.ts';
 
+/** The engine's goal check: the body's radius (0.28 m) plus the route's planning margin (0.06 m). */
+const ROOM = 0.34;
 const JOIN = 'object:ride-region-seaside-resort.ferris-wheel:join';
 async function district(t: TestContext, names: string[]) {
   const w = fixture(':memory:', factory, {durableClockV1: true}); w.brain.quiesce();
@@ -22,7 +24,7 @@ async function district(t: TestContext, names: string[]) {
   const god = new GodMode(w.db, {worldId: w.host.worldId, ownerId: 'owner', tick: () => w.host.engine.world.tick, emit() {}, genesis});
   new GroundHost(w.db, w.host, god);
   const edge = new EdgeLedger(w.host, w.db, undefined, {ambient: false});
-  const comms = mountEdgeRoutes(new Hono(), {host: w.host, db: w.db, souls: w.souls, ledger: edge, soul: () => undefined});
+  const comms = mountEdgeRoutes(new Hono(), {host: w.host, db: w.db, souls: w.souls, ledger: edge, soul: () => null as never});
   installEngineBridge({host: w.host, god, edge, log() {}, worldClock: false, worldLore: false});
   t.after(() => {w.brain.quiesce(); comms.close(); w.host.stop(); w.db.close();});
   const tick = async (n = 1, until?: () => boolean) => {for (let i = 0; i < n && !until?.(); i++) {w.host.tickOnce(); await setImmediate(); w.host.drainInputs();}};
@@ -52,21 +54,23 @@ test('F3 (#374): a ride join from the Commons walks to a boarding point with sta
   const goalNear = (w.host.engine as unknown as {goalNear(a: string, to: unknown, off: number, stand?: unknown): {x: number; z: number} | 'here' | {code: string}}).goalNear.bind(w.host.engine);
   const old = goalNear(pip.entityId, walk.params.to, 2.2), now = goalNear(pip.entityId, walk.params.to, 2.2, 'clear/1');
   assert.ok(typeof old === 'object' && 'x' in old && typeof now === 'object' && 'x' in now, JSON.stringify({old, now}));
-  const radius = 0.332;
+  const radius = ROOM;
   t.diagnostic(`unmarked goal (${old.x}, ${old.z}) clearance ${engine.clearanceAtV1(old.x, old.z).toFixed(2)}; marked goal (${now.x}, ${now.z}) clearance ${engine.clearanceAtV1(now.x, now.z).toFixed(2)}`);
   assert.ok(engine.clearanceAtV1(old.x, old.z) < radius, 'unmarked: the same goal as before, without room (exact replay keeps it)');
   assert.ok(engine.clearanceAtV1(now.x, now.z) >= radius, 'marked: a goal with standing room');
-  await tick(3000, () => edge.receipt(pip.soulId, id)?.phase !== 'started' && edge.receipt(pip.soulId, id)?.phase !== 'waiting');
+  let seated = false;
+  await tick(3000, () => {seated ||= (edge as unknown as {aboard(id: string): {riderPhase?: string} | null}).aboard(pip.entityId)?.riderPhase === 'seated'; return edge.receipt(pip.soulId, id)?.phase !== 'started' && edge.receipt(pip.soulId, id)?.phase !== 'waiting';});
   const rc = edge.receipt(pip.soulId, id)!;
   assert.equal(rc.phase, 'completed', JSON.stringify({phase: rc.phase, code: rc.code, reason: rc.reason}));
   assert.notEqual(rc.code, 'route.goal-blocked');
+  assert.ok(seated, 'Pip was seated in the wheel');
 });
 
 /** A patch of walls 0.6 m apart (no standing room between them), `half` metres around (cx, cz). */
 const thicket = (name: string, cx: number, cz: number, half: number) => Array.from({length: Math.round(half / 0.3) + 1}, (_, i) => ({op: 'place', def: 'core/garden-wall@1', name: `${name}-${i}`,
   shape: {path: [[cx - half, cz - half + i * 0.6], [cx + half, cz - half + i * 0.6]]}}));
 
-test('F3 (#374) stand/1: every turn around the target without room falls back to the nearest standable point; none near is refused, named', {timeout: 900000}, async t => {
+test('F3 (#374) stand/1: every turn around the target without room falls back to a point at most 1 m further out, and the walk ends there; none is refused, named', {timeout: 900000}, async t => {
   const {w, god, tick, souls: [pip], engine} = await district(t, ['Pip']);
   const goalNear = (w.host.engine as unknown as {goalNear(a: string, to: unknown, off: number, stand?: unknown): {x: number; z: number} | 'here' | {code: string; message: string}}).goalNear.bind(w.host.engine);
   // each patch on the first open ground near the Commons that the god may build on (the template's trees are solid)
@@ -79,17 +83,23 @@ test('F3 (#374) stand/1: every turn around the target without room falls back to
     }
     throw new Error(`no open ground for ${name}`);
   };
-  const A = build('small', 3), B = build('large', 10, A); await tick(40);
-  const radius = 0.332;
-  // the small patch: all 8 turns at 2.2 m from its centre lie inside it; the nearest standable point beside it is taken
+  const A = build('small', 2), B = build('large', 10, A); await tick(40);
+  const radius = ROOM;
+  // the small patch: no turn at 2.2 m from its centre has room; a point on a wider ring (at most 1 m further) is taken
   const small = goalNear(pip.entityId, A, 2.2, 'clear/1');
   assert.ok(typeof small === 'object' && 'x' in small, JSON.stringify(small));
   assert.ok(engine.clearanceAtV1(small.x, small.z) >= radius, `room at the fallback point ${small.x},${small.z}`);
   const d = Math.hypot(small.x - A[0], small.z - A[1]);
-  assert.ok(d > 2.9 && d < 2.2 + 4.5, `beside the patch, within 4 m of the first turn (${d.toFixed(2)} m from its centre)`);
+  assert.ok(d > 2.2 && d <= 2.2 + 1 + 1e-6, `beside the patch, no further than 1 m past the standoff (${d.toFixed(2)} m from its centre)`);
+  // and the walk itself ends there
+  await accept(w.host, w.host.enqueue('decision', `soul:${pip.soulId}`, {soulId: pip.soulId, entityId: pip.entityId, option: 'walk', label: 'walk',
+    steps: [{verb: 'walk_to', params: {to: A, standoff: 2.2, stand: 'clear/1'}}], reevalTicks: 10000, trigger: 'fixture', fallback: false}));
+  await tick(2000, () => !engine.programOf(pip.entityId));
+  const end = engine.world.entities[pip.entityId].pose.p;
+  assert.ok(Math.hypot(end[0] - small.x, end[2] - small.z) < 0.5, `the walk arrived at the chosen point: ${end} vs ${small.x},${small.z}`);
   // the large patch: no standable point within 4 m of the first turn; refused as the walk's own goal refusal, named
   const large = goalNear(pip.entityId, B, 2.2, 'clear/1');
   assert.ok(typeof large === 'object' && 'code' in large, JSON.stringify(large));
-  assert.equal(large.code, 'route.goal-blocked'); assert.match(large.message, /no standing room for a 0\.3\d m-radius body 2\.2 m from the target .* or within 4 m of it \(blocked by e_[0-9a-f]+/, large.message);
+  assert.equal(large.code, 'route.goal-blocked'); assert.match(large.message, /no standing room for a 0\.3\d m-radius body 2\.2 m from the target .* or up to 1 m beyond it around the target \(blocked by e_[0-9a-f]+/, large.message);
   t.diagnostic(`fallback (${small.x}, ${small.z}); refusal: ${large.message}`);
 });
