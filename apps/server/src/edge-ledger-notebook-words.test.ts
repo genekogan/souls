@@ -1,0 +1,23 @@
+// #428: the notebook's words ("write in", "cross out") apply only where a notebook's line (or a cross-out) is on offer, so
+// "write in the study" still reaches a desk beside a pinboard, and "cross out" keeps meaning a sign-up sheet's name.
+//   node --test apps/server/src/edge-ledger-notebook-words.test.ts
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { resolveCapability } from './edge/ledger/vocabulary.ts';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const mk = (obj: string, action: string, label: string, name: string) => ({ id: `object:${obj}:${action}`, verb: 'object', object: obj, action, label, available: true, target: { id: obj, kind: 'object' }, _name: name }) as any;
+const pin = mk('e_aaaa0001', 'pin', 'Pin a note on the notice board', 'notice board'), unpin = mk('e_aaaa0001', 'unpin', 'Take down your note from the notice board', 'notice board');
+const sign = mk('e_bbbb0002', 'sign', 'Sign the sign-up sheet', 'sign-up sheet'), unsign = mk('e_bbbb0002', 'unsign', 'Cross your name off the sign-up sheet', 'sign-up sheet');
+const nbPin = mk('e_cccc0003', 'pin', 'Write a line in the notebook', 'notebook'), nbUnpin = mk('e_cccc0003', 'unpin', 'Cross out your line in the notebook', 'notebook');
+const desk = { id: 'write:write.e_dddd0004', verb: 'write', label: 'Write (desk in the study)', available: true, target: { id: 'write.e_dddd0004', kind: 'spot' }, _name: 'desk' } as any;
+const resolve = (input: string, caps: any[]) => { const r: any = resolveCapability(input, { caps, target: (c: any) => ({ names: c._name ? [c._name] : [], around: c === desk ? ['study'] : [], at: [1, 1] }), places: [], root: [], me: [0, 0] } as any); return r.cap?.id ?? r.code ?? r.kind; };
+
+test('notebook words resolve only where a notebook is offered', () => {
+  assert.equal(resolve('write in the study', [desk]), desk.id);
+  assert.equal(resolve('write in the study', [desk, pin, unpin]), desk.id, 'a pinboard nearby does not turn "write in" into pinning');
+  assert.equal(resolve('write in the notebook', [desk, pin, unpin, nbPin, nbUnpin]), nbPin.id);
+  assert.equal(resolve('write a line in the notebook', [nbPin, nbUnpin]), nbPin.id);
+  assert.equal(resolve('cross out my line in the notebook', [nbPin, nbUnpin]), nbUnpin.id);
+  assert.equal(resolve('cross out my name on the sign-up sheet', [sign, unsign, nbPin, nbUnpin]), unsign.id, 'cross out keeps its sign-up meaning where that is offered');
+});

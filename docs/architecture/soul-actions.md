@@ -141,7 +141,11 @@ per-Soul progress as the library: the next read carries on, and another Soul sta
 only: up to 8 signed lines of 60 characters, 2 per Soul, and only a line's writer crosses it out (the line goes). The
 hand writes each line at its own ruling on the page (`notebookLine`, shared with the viewer). The stroke's `tilt` lays
 the existing write and wipe stroke on the sloped page, so the hand stays at the page and no second movement
-path exists. "write in" and "write a line in" mean the notebook's line, and "cross out" means the notebook's cross-out
-where no sign-up sheet is offered. Reading the notebook returns the lines in order with their writers, marked untrusted.
+path exists. Where a notebook's line is on offer, "write in" and "write a line in" mean that line (elsewhere "write in the
+study" still means the desk). "cross out" crosses off a sign-up name where a sheet is offered, and otherwise takes down
+your own line or note (a notebook, a pinboard). Crossing a line out removes it, and the lines after it move up a ruling.
+Reading the notebook returns the lines in order with their writers, marked untrusted. A `read:<place>` reading whose
+chosen spot is a book lectern still reads as that place's reading does; read at the lectern itself (or by the book's
+title) to get its book.
 Both revisions keep `core-lectern@1`'s geometry and its documented draw overrun (conformance supplement
 `books-20261105.json`). Native test: `tools/soul-actions/notebook.test.mjs`.

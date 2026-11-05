@@ -78,7 +78,7 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  const third=await act(ana,`object:${id('notebook')}:pin`,{text:'one too many'},false);assert.match(third.reason??'',/already have 2 lines/);
  const bd=await done(ben,`object:${id('notebook')}:unpin`);assert.equal(bd.stroke.kind,'wipe');
  assert.deepEqual(lines().lines,['Came by at noon, the tea was good — Ana','Choir at dusk, all welcome — Cy','Ben: thank you for the kite — Ana']);
- const benAgain=await act(ben,`object:${id('notebook')}:unpin`,undefined,false);assert.match(benAgain.reason??'',/only its writer/);
+ const benAgain=await act(ben,`object:${id('notebook')}:unpin`,undefined,false);assert.equal(benAgain.code,'object.not-yours');assert.match(benAgain.reason??'',/only its writer/);
  assert.equal(await words(ana,'cross out my line in the notebook'),`object:${id('notebook')}:unpin`,'"cross out" is the notebook\'s unpin where no sign-up sheet is offered');
  // fill it: eight lines, the ninth refused with a reason
  const dan=await join('dan','Dan'),eve=await join('eve','Eve');

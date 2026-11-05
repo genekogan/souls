@@ -18,7 +18,7 @@ const notebookMake = structuredClone(lecternV1.make) as unknown as { args: { sha
 notebookMake.args.faces = [{ at: [0, 1.177, 0.005], w: 0.4, h: 0.28, pitch: -NOTEBOOK_TILT, bg: '#f4eedc', ink: '#23305c' }];
 const notebookStand: DefInput = { ...structuredClone(lecternV1), name: 'core-notebook-stand', version: 1,
   description: `A wooden lectern holding an open notebook. Souls write in it by hand, one signed line each (up to ${NOTEBOOK_LINES_MAX} lines, ${NOTEBOOK_PER_SOUL} per Soul), and anyone nearby can read what is written; only a line's writer crosses it out.`,
-  tags: [...(lecternV1.tags ?? []), 'signage', 'hand-writable', 'pinboard', 'notebook'],
+  tags: [...(lecternV1.tags ?? []), 'signage', 'sign-text', 'hand-writable', 'pinboard', 'notebook'],
   make: notebookMake as unknown as DefInput['make'],
   state: { text: { type: 'string', max: NOTEBOOK_LINES_MAX * (NOTEBOOK_TEXT_MAX + 44), default: '' }, textBy: { type: 'string', max: NOTEBOOK_LINES_MAX * 41, default: '' } } as DefInput['state'],
   components: { sign: { lines: [] } } as DefInput['components'],

@@ -1,7 +1,9 @@
 // Soul Actions #428 (W016): a lectern that holds a book of the library catalogue (core-lectern@2, param `book`). Reading
 // at it (its derived reading spot, read:read.<lectern>, or read:here chosen at that spot) reads that book's next
 // passage with the library's own per-Soul progress, in any world. A lectern with no book ('', @1 and every other def)
-// reads exactly as before. Like world-lore.ts it wraps the ledger's outcome store and world profile, outermost.
+// reads exactly as before. Like world-lore.ts it wraps the ledger's outcome store and world profile (after world-lore;
+// governance wraps later still, for the constitution's own book only). Limit: a `read:<place>` that picks this lectern's
+// spot reads as that place's reading does (lore), not the lectern's book.
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { ActionOutcomes } from '../edge/outcomes/store.ts';
 import { EDEN_LIBRARY_CATALOGUE } from '../edge/content/eden-library-catalogue.ts';
@@ -30,7 +32,7 @@ export function installLecternBooks(L: EdgeLedger, god: GodMode) {
     for (const c of caps) {
       if (c.verb !== 'read') continue;
       const book = lecternBook(god, c.id, c.target?.kind === 'spot' ? c.target.id : undefined); if (!book) continue;
-      c.label = String(c.label).replace(/^Read (?:this world's constitution|about this world|a book|the book you carry)/i, `Read ${book.title}`);
+      c.label = String(c.label).replace(/^Read (?:this world's constitution|about this world|a book|the book you carry)/i, `Read ${book.title}`).replace(/; takes a book from the shelf and puts it back\)/, ')');
       const p = plans.get(c.id); if (p) p.label = `Read ${book.title}`;
     }
   };

@@ -364,7 +364,7 @@ export class EngineBridge {
     if (!R && (o.worldClock ?? (!config.livingWorld && !(KNOWN_WORLD_KEYS as readonly string[]).includes(config.worldKey)))) installWorldClock(this.host, this.god, this.log);
     // F3: a god's new world serves its constitution (or a neutral line) as lore, never Eden's (world-lore.ts)
     if (this.edge && (o.worldLore ?? !(KNOWN_WORLD_KEYS as readonly string[]).includes(config.worldKey))) installWorldLore(this.edge, this.god);
-    // #428: a lectern holding a catalogue book reads that book, in every world (lectern-books.ts; outermost)
+    // #428: a lectern holding a catalogue book reads that book, in every world (lectern-books.ts; after world lore)
     if (this.edge) installLecternBooks(this.edge, this.god);
   }
   private get engine(): EngineV1 { return this.host.engine as unknown as EngineV1; }
