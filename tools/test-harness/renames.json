@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "note": "Reviewed renames and replacements of baseline assertions (docs/testing/remote-gate.md#renames). A removed baseline id is satisfied only when every `to` id ran and passed in the candidate's same step. Ids are raw TAP leaf ids, as the receipt prints them.",
+  "note": "Reviewed renames and replacements of baseline assertions (docs/testing/remote-gate.md#renames). A removed baseline id is satisfied only when every `to` id is new (absent from the baseline) and ran and passed in the candidate's same step. Ids are exactly as the receipt prints them.",
   "entries": [
     {
       "step": "V5-server-full",

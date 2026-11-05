@@ -356,7 +356,7 @@ function recoverAssetCollisions(dir, m, requiredSteps, read, root) {
 /** options.driverTestsChanged: the cached baseline ran other laptop-side driver files (same suite tree, see DRIVER_ONLY);
  * their own V3-harness self-tests may then be renamed or removed without that counting as lost coverage.
  * options.renames: validateRenames() of renames.json; a listed baseline id gone from the candidate is renamed, not
- * removed, only when every replacement id ran and passed in the candidate's same step. */
+ * removed, only when every replacement id is new (absent from the baseline) and ran and passed in the candidate's same step. */
 export function compareRuns(baseline, candidate, manifest, candidateSourceFiles = new Set(), options = {}) {
   const q = validateQuarantine(manifest);
   const blockers = [...baseline.errors.map(e => `baseline: ${e}`), ...candidate.errors.map(e => `candidate: ${e}`)];
@@ -387,8 +387,9 @@ export function compareRuns(baseline, candidate, manifest, candidateSourceFiles 
         const rename = renames.get(key(step, t.id));
         if (options.driverTestsChanged && step === 'V3-harness' && DRIVER_ONLY.some(f => t.source === `tools/test-harness/${f}`)) driverTestsRemoved.push({ step, id: t.id, source: t.source });
         else if (rename) {
-          const notPassing = rename.to.filter(id => ct.get(id)?.status !== 'pass');
-          if (notPassing.length) removed.push({ step, id: t.id, rename: { to: rename.to, notPassing } });
+          // a replacement must be new: folding a deleted assertion onto one the baseline already ran is coverage loss
+          const notPassing = rename.to.filter(id => ct.get(id)?.status !== 'pass'), inBaseline = rename.to.filter(id => bt.has(id));
+          if (notPassing.length || inBaseline.length) removed.push({ step, id: t.id, rename: { to: rename.to, notPassing, inBaseline } });
           else renamed.push({ step, from: t.id, to: rename.to, reason: rename.reason, pr: rename.pr });
         } else removed.push({ step, id: t.id });
         continue;

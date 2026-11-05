@@ -59,18 +59,20 @@ receipt reports it as fixed).
 ### Renames
 
 `tools/test-harness/renames.json` lists reviewed renames and replacements of baseline assertions, with the same
-discipline as the quarantine. Each entry has `step`, `from` (the baseline's raw TAP leaf id), `to` (the replacement
+discipline as the quarantine. Each entry has `step`, `from` (the baseline's test id exactly as the receipt prints it:
+package prefix and ` > `-joined ancestors for a nested test, `\#` for a `#`), `to` (the replacement
 id, or a list of ids when one assertion became several), `reason` and `pr` (`#<number>`). The gate validates it
 strictly: a known step, never a V6 scenario step, non-empty fields and one entry per step and `from`.
 
-A baseline id that is gone from the candidate counts as `renamed`, not removed, only when every `to` id ran and passed
-in the candidate's same step. If a replacement is missing, failing, skipped or TODO, the id stays under `removed`
-with `rename.notPassing` naming it, and the gate still blocks. Anything unlisted blocks as before. The receipt lists
+A baseline id that is gone from the candidate counts as `renamed`, not removed, only when every `to` id is new (absent
+from the baseline) and ran and passed in the candidate's same step. If a replacement is missing, failing, skipped or
+TODO, or already ran in the baseline, the id stays under `removed` with `rename.notPassing` or `rename.inBaseline`
+naming it, and the gate still blocks. Several old ids may name the same new replacement (tests merged into one). Anything unlisted blocks as before. The receipt lists
 `renamed` and records `renamesSha256` beside `quarantineSha256`.
 
 Add an entry in the PR that renames or replaces the test, or when a gate reports the removal, citing the PR that made
-it. An entry whose `from` still runs has no effect, and an entry stays harmless once its baseline no longer has the
-old id. `renames.json` executes nowhere, but like `quarantine.json` it stays in the suite tree, so changing it re-runs
+it. An entry whose `from` still runs has no effect, and because a replacement must be absent from the baseline, an old
+entry cannot later excuse deleting a test that happens to reuse its `from` name. `renames.json` executes nowhere, but like `quarantine.json` it stays in the suite tree, so changing it re-runs
 the baseline once.
 
 ### Scope

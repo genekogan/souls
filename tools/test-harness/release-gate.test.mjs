@@ -89,7 +89,10 @@ test('renames: a listed rename is satisfied only when every replacement ran and 
   const many = renamesOf(rename('old name', ['new a', 'new b']));
   assert.equal(pairRenamed([{ name: 'old name' }], [{ name: 'new a' }, { name: 'new b' }], many).status, 'pass');
   const missing = pairRenamed([{ name: 'old name' }], [{ name: 'new a' }], many);
-  assert.equal(missing.status, 'blocked'); assert.deepEqual(missing.removed, [{ step: 'V4-web', id: 'old name', rename: { to: ['new a', 'new b'], notPassing: ['new b'] } }]);
+  assert.equal(missing.status, 'blocked'); assert.deepEqual(missing.removed, [{ step: 'V4-web', id: 'old name', rename: { to: ['new a', 'new b'], notPassing: ['new b'], inBaseline: [] } }]);
+  // a replacement the baseline already ran is not a rename: deleting A and pointing it at the existing B is coverage loss
+  const folded = pairRenamed([{ name: 'old name' }, { name: 'existing' }], [{ name: 'existing' }], renamesOf(rename('old name', 'existing')));
+  assert.equal(folded.status, 'blocked'); assert.deepEqual(folded.removed[0].rename.inBaseline, ['existing']); assert.deepEqual(folded.renamed, []);
   for (const status of ['fail', 'skip', 'todo']) {
     const r = pairRenamed([{ name: 'old name' }], [{ name: 'new name', status }], renamesOf(rename('old name', 'new name')));
     assert.equal(r.status, 'blocked'); assert.equal(r.removed[0].rename.notPassing[0], 'new name'); assert.equal(r.renamed.length, 0);
