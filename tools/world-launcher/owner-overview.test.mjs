@@ -163,4 +163,7 @@ test('domains: initial records keep their names; others take their epic, then ar
   const projected = projectRecords({ issues: [{ ...issue(902, []), labels: [{ name: 'epic:dev-flow' }] }], observedAt: at });
   assert.equal(validateSnapshot(projected).items[0].domain, 'Dev flow');
   assert.equal(validateSnapshot({ ...projected, items: [{ ...projected.items[0], domain: undefined }] }).items[0].domain, 'Other');
+  const hostile = validateSnapshot({ ...projected, items: [{ ...projected.items[0], domain: 'x\u0000\u001b' + 'y'.repeat(200) }] }).items[0].domain;
+  assert.equal(hostile.length, 80, 'a hand-edited cache domain is truncated');
+  assert.doesNotMatch(hostile, /[\u0000-\u001f]/, 'and stripped of control characters');
 });
