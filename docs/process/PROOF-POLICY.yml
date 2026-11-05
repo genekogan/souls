@@ -55,8 +55,14 @@ pr_checks:
   T4: [problem, issue, acceptance, self_audit, clip, proof_json, playtest, review]
 
 # First match wins for each file. `prefix` matches the start of a repo-relative path; `glob` supports * (within a
-# path segment) and ** (across segments).
+# path segment) and ** (across segments). A rule with `when: tests-only` applies only when every changed file is a test
+# (*.test.ts, *.test.mjs) or maps to T0 (docs, changelog fragments); otherwise the file falls through to the next rule.
 paths:
+  # Test-only fixes under the edge family (flake fixes such as #917 and #922): no product code changes, so there is
+  # no journey for a clip and nothing for a playtest to compare; T1's focused tests are the proof. Any other non-T0
+  # file in the change (product code, a shared fixture) keeps the T3 rule below (#928).
+  - { glob: "apps/server/src/edge*.test.{ts,mjs}", tier: T1, when: tests-only }
+  - { glob: "apps/server/src/edge/**/*.test.{ts,mjs}", tier: T1, when: tests-only }
   # T3: Soul behaviour, navigation, engines and the shared protocol
   - { glob: "apps/server/src/{edge,intent,soul,brain,body,purpose,lifecycle,nav}*", tier: T3 }
   # The original * keeps top-level names (edge-*.ts, soul-*.ts); nested family directories need **.

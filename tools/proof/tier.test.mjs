@@ -72,3 +72,20 @@ test('malformed rules are rejected', () => {
   assert.throws(() => loadPolicy('paths:\n  - prefix: docs/\ndefault_tier: T1\n'));
   assert.throws(() => loadPolicy('paths:\n  - { prefix: "docs/", tier: T9 }\ndefault_tier: T1\n'));
 });
+
+// #928: test-only fixes under the edge family are T1; anything else in the change keeps T3.
+test('edge tests compute T1 only when the change touches nothing but tests and T0 paths', () => {
+  assert.equal(tier(['apps/server/src/edge-read-browse-free.test.ts', 'changes/browse-west-shelf-fixture.md']), 'T1', '#917');
+  assert.equal(tier(['apps/server/src/edge-body-rolling.test.ts', 'changes/rolling-doze-pinned-id.md']), 'T1', '#922');
+  assert.equal(tier(['apps/server/src/edge/ledger/ledger.test.ts']), 'T1', 'nested edge/** tests');
+  assert.equal(tier(['apps/server/src/edge-x.test.mjs', 'docs/a.md', 'apps/server/src/edge-y.test.ts']), 'T1');
+  assert.equal(tier(['apps/server/src/edge-x.test.ts', 'apps/server/src/edge-x.ts']), 'T3', 'with product code under the edge family');
+  assert.equal(tier(['apps/server/src/edge-x.test.ts', 'apps/server/test/core-a-fixture.ts']), 'T3', 'with a shared fixture (T1, not a test)');
+  assert.equal(tier(['apps/server/src/edge-x.test.ts', 'apps/web/src/hud.ts']), 'T3', 'with any non-T0 file');
+  assert.equal(tier(['apps/server/src/edge-x.test.ts'], ['tier:T3']), 'T3', 'a label still raises');
+  for (const file of ['apps/server/src/soul-x.test.ts', 'apps/server/src/nav-x.test.ts', 'apps/server/src/body/x.test.ts', 'packages/kernel/src/x.test.ts', 'apps/server/src/split/menu-world.test.ts']) assert.equal(tier([file]), 'T3', `${file}: other families are unchanged`);
+  assert.deepEqual(tierForFile('apps/server/src/edge-x.test.ts', policy), { tier: 'T3', rule: 'apps/server/src/{edge,intent,soul,brain,body,purpose,lifecycle,nav}*' }, 'without the change context the T3 rule applies');
+  assert.equal(tierForFile('apps/server/src/edge-x.test.ts', policy, { testsOnly: true }).tier, 'T1');
+  assert.equal(tier(['apps/server/src/edge-x.spec.ts']), 'T3', 'only *.test.ts and *.test.mjs');
+  assert.throws(() => loadPolicy('paths:\n  - { prefix: "a/", tier: T1, when: sometimes }\ndefault_tier: T1\n'), /unknown when/);
+});
