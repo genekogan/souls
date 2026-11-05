@@ -84,7 +84,7 @@ const lostAndFound: DefInput = {
 // #435 (W068): hiding places. Doorless containers with one place and `hidden: true`: what is in them is never named, offered
 // or drawn, and only a search finds it. Two reaches on one rule: down over a stump's rim, and in at the front of a wall's niche.
 // Both stand 0.6 m clear of the footprint. The engine's step in during a reach (at most 0.2 m, items/actions.ts) leaves the body
-// 0.4 m clear of it at every turn; 0.35 m tripped a recovered engine fault at some turns (tools/soul-actions/hide-and-seek-turns.test.mjs).
+// 0.4 m clear of it at every turn; 0.35 m tripped a recovered engine fault at some turns (tools/soul-actions/container-turns.test.mjs).
 const STUMP_R = 0.28, STUMP_RIM = 1.06, STUMP_FLOOR = 0.93;
 const hollowStump: DefInput = {
   schema: 'def/1', name: 'core-hollow-stump', version: 1,
