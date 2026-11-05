@@ -113,6 +113,8 @@ jobs:
           case "$CHECK_KIND" in
             types-web)
               pnpm typecheck
+              # #898: the generated reference pages (docs/site actions, api, mcp) still match the server's code
+              node --test tools/docs/generate.test.mjs
               pnpm --filter @sim/web build
               # The Mars viewer's static site holds the people's character set (/modular); without it no world
               # draws people (issue #395). Build it as the first run does, then fail if the set is missing.

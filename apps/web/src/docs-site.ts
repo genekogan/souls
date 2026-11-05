@@ -108,7 +108,9 @@ export function markdownHtml(md: string, link: (href: string) => string = (h) =>
 /** Headings (level and text) and link targets of a page's Markdown, outside code: the twin's side of the parity test. */
 export function markdownOutline(md: string): { headings: string[]; links: string[] } {
   const prose = md.replace(/^ {0,3}(```|~~~)[\s\S]*?^ {0,3}\1\s*$/gm, '');
-  const headings = [...prose.matchAll(/^(#{1,3}) (.+)$/gm)].map((m) => `h${m[1]!.length} ${m[2]!.trim().replace(/[`*_]/g, '')}`);
+  // the text a heading renders to: code spans and emphasis lose their marks, a word's own underscore stays (world_query)
+  const plain = (t: string) => t.replace(/`([^`]*)`/g, '$1').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|[\s(])[_*]([^_*]+)[_*](?=$|[\s).,;:!?])/g, '$1$2');
+  const headings = [...prose.matchAll(/^(#{1,3}) (.+)$/gm)].map((m) => `h${m[1]!.length} ${plain(m[2]!.trim())}`);
   const links = [...prose.replace(/`[^`\n]*`/g, '').matchAll(/\]\(([^)\s]+)\)|<(https:\/\/[^>\s]+)>/g)].map((m) => (m[1] ?? m[2])!);
   return { headings, links };
 }

@@ -22,6 +22,9 @@ export const SERVED = Object.freeze(['/', '/changelog', '/llms.txt', '/llms-full
 /** A world's served files (per world, any slug). */
 export const WORLD_FILE = /^\/w\/(?:[a-z][a-z0-9-]{0,31}|<[a-z-]+>)\/(?:|SKILL\.md|skill\.md|instructions\.md|cards\.md|llms\.txt)$/;
 export const HOSTS = Object.freeze(['soul.game', 'github.com']);
+/** The paragraph that opens the generated part of a reference page (tools/docs/generate.mjs). The prose style rules
+ *  (em-dashes, issue numbers) stop there: what follows quotes the code's own text; links and private data are checked. */
+export const GENERATED_MARK = 'Generated from';
 export const AUDIENCES = Object.freeze(['agents', 'humans', 'both']);
 const PRIVATE = [
   [/(?:\/Users\/|\/home\/|(?:^|[\s(`'"=])~\/)/m, 'private.local-path'],
@@ -96,10 +99,11 @@ export function lintPage(text, { pages = new Set(OUTLINE) } = {}) {
   }
   // bare URLs anywhere (code included): our hosts only
   for (const [raw] of fm.body.matchAll(/https?:\/\/[^\s)<>`"']+/g)) { const u = raw.replace(/[.,;:!?]+$/, ''); let h; try { h = new URL(u).hostname; } catch { continue; } if (!HOSTS.includes(h)) bad('link.host', `${u}: only ${HOSTS.join(', ')} may appear`); }
+  const mark = d.generated === true ? prose.indexOf(`\n${GENERATED_MARK} `) : -1, written = mark < 0 ? prose : prose.slice(0, mark);
   if (/\bSim\b/.test(prose)) bad('name.retired', '"Sim" is retired: the product is Souls');
   if (/\bEden worlds?\b|\bin Eden\b(?! \d)/.test(prose)) bad('name.eden', 'Eden is one world, never the product');
-  if (/—/.test(prose.replace(/^#.*$/gm, ''))) bad('style.em-dash', 'no em-dashes in body text (WRITING.md)');
-  if (/(?:^|\s)#\d{2,}\b/.test(prose)) bad('text.issue-number', 'no issue numbers in page text');
+  if (/—/.test(written.replace(/^#.*$/gm, ''))) bad('style.em-dash', 'no em-dashes in body text (WRITING.md)');
+  if (/(?:^|\s)#\d{2,}\b/.test(written)) bad('text.issue-number', 'no issue numbers in page text');
   for (const [re, code] of PRIVATE) { const m = re.exec(text); if (m) bad(code, `"${m[0].trim()}" must not appear in a public page`); }
   return problems;
 }
