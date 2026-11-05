@@ -99,6 +99,7 @@ test('completed run releases owned resources, keeps evidence and applies delete 
   assert.equal(existsSync(rec.retention.controllerState.paths[0]), true);
   assert.equal(rec.retention.controllerState.sensitive, true);
   assert.ok(rec.cost.wallMs >= 0 && rec.cost.lifecycleOverheadMs >= 0);
+  assert.ok(['measured', 'unavailable'].includes(rec.cost.processes?.status), 'descendant process cost is recorded (#803)');
   assert.equal(existsSync(join(rec.references.runDir, 'scenario.effective.json')), true);
   const c = cleanupRun(rec.references.runDir, { controllerState: true });
   assert.equal(c.ok, true);
@@ -202,4 +203,17 @@ test('the scenario preflight runs once: its result reaches cmdRun through hooks'
   assert.equal(r.status, 'completed');
   assert.equal(calls, 1);
   assert.deepEqual(seen, { ok: true, checks: {}, allow: { allowed: true } });
+});
+
+test('process cost (#803): the sampler runs for the whole run and its summary lands in cost.processes; a throwing sampler never stops the run', async () => {
+  const f = fixture();
+  let started = 0, stopped = 0;
+  const fake = () => { started++; return { stop: async () => { stopped++; return { status: 'measured', intervalMs: 2000, samples: 3, classes: { browser: { cpuSec: 1, peakRssMb: 1, processes: 1 } } }; } }; };
+  const r = await startRun({ spec: f.spec(), serverRoot: f.serverRoot, outDir: f.out(), processSampler: fake, execute: async () => 0 });
+  assert.equal(r.status, 'completed');
+  assert.deepEqual([started, stopped], [1, 1]);
+  assert.equal(receiptOf(r).cost.processes.classes.browser.cpuSec, 1);
+  const bad = await startRun({ spec: f.spec(), serverRoot: f.serverRoot, outDir: f.out(), processSampler: () => { throw new Error('no ps'); }, execute: async () => 0 });
+  assert.equal(bad.status, 'completed');
+  assert.deepEqual(receiptOf(bad).cost.processes, { status: 'unavailable', reason: 'no ps' });
 });

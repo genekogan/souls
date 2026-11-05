@@ -51,10 +51,17 @@ description = "Named fake fixture values in tests (idempotency keys, steward sec
 regexes = [
   '''^(wren-idempotency-01|test-idempotency-0001|clerk-fixture-00001)$''',
   '''^steward-secret-123456$''',
+  '''^(site|wrong)-key-0123456789$''',   # #717 body-library test: the launcher site key fixture and its wrong-key probe
   '''^sim_SYNTHETIC_[A-Z0-9_]+$''',
   '''sk_live_abc(123def456ghi789|defghijkl)''',
   '''abcdefgh12345678''',
 ]
+
+[[allowlists]]
+description = "Synthetic Soul token default in the capacity-qualify test fixture (tok-FAKE-fixture-NNNN; tok-0123456789abcdef in b174a821)"
+condition = "AND"
+paths = ['''^\.github/scripts/capacity-qualify\.test\.mjs$''']
+regexes = ['''^tok-(0123456789abcdef|FAKE-fixture-[0-9]{4})$''']
 
 [[allowlists]]
 description = "localStorage key names flagged by generic-api-key"

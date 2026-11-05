@@ -55,6 +55,10 @@ test('live seats or a live planner are refused unless controllers.allowLiveModel
   assert.deepEqual(codes(validateSpec({ ...f.spec(), cast: { file: join(f.dir, 'nope.json') } }, { serverRoot: f.serverRoot })), ['cast.not-found']);
   assert.deepEqual(codes(validateSpec(f.spec({ setup: { batches: [join(f.dir, 'b.json')] } }), { serverRoot: f.serverRoot })), ['setup.batch-missing']);
   assert.deepEqual(codes(validateSpec(f.spec({ world: { genesis: 'other.json' } }), { serverRoot: f.serverRoot })), ['world.override']);
+  // Scenario-only fields main added (SR3 diagnostics, SR5 recording, observer modes) are refused for a cast, not ignored.
+  assert.deepEqual(codes(validateSpec(f.spec({ diagnostics: { trace: ['ann'] } }), { serverRoot: f.serverRoot })), ['diagnostics.directed']);
+  assert.deepEqual(codes(validateSpec(f.spec({ observer: { record: true, mode: 'off' } }), { serverRoot: f.serverRoot })), ['observer.directed', 'observer.directed']);
+  assert.deepEqual(codes(validateSpec(f.spec({ observer: { bogus: 1 } }), { serverRoot: f.serverRoot })), ['observer.unknown-field']);
   writeFileSync(join(f.dir, 'bad.json'), JSON.stringify({ ...f.cast, seats: [{ id: 'ann', soulName: 'Ann', character: 'c', adapter: 'scripted-owner', script: { rules: [] } }] }));
   assert.deepEqual(codes(validateSpec({ ...f.spec(), cast: { file: join(f.dir, 'bad.json') } }, { serverRoot: f.serverRoot })), ['cast.seat-script']);
   writeFileSync(join(f.dir, 'worse.json'), JSON.stringify({ ...f.cast, room: null }));

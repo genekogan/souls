@@ -1,6 +1,8 @@
 import type {Entity,Program} from '@sim/engine-contract';
 import type {EdgeCapability} from '../contract.ts';
 import {creatureOf,type CreatureSpecies} from '../../../../../mars/viewer/engine/bodies/creatures.ts';
+import {hasDeclaredProfile,hasRollingProfile,profileActionProblem} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
+import {hasBodyDance,bodyDanceStep} from '../../../../../mars/viewer/engine/bodies/motion.ts';
 
 export const isRigidBody=(e:Pick<Entity,'body'>|undefined)=>e?.body?.family==='floater';
 /** The creature species of an entity's body (duck, snail, dog), when it is one. */
@@ -17,25 +19,43 @@ function creatureReason(c:CreatureSpecies,verb:string){
   return `${c.cannot.hands} (it cannot ${verb})`;
 }
 export function bodyVerbProblem(e:Entity|undefined,verb:string){
+  if(hasDeclaredProfile(e?.body)){const reason=profileActionProblem(e?.body,verb,undefined,'edge');return reason?{code:'body.unsupported',reason}:null;}
+  if(verb==='dance'&&hasBodyDance(e?.body))return null;
   if(!isRigidBody(e)||rigidVerbs.has(verb))return null;
   const c=creatureOfEntity(e);
   if(c){if(verb==='swim'&&c.swimSpeed)return null;return {code:'body.unsupported',reason:`${creatureReason(c,verb)}. It can ${c.moves}, ${c.swims?'swim, ':''}settle, turn, look, follow and speak.`};}
   return {code:'body.unsupported',reason:`${e?.body?.type==='ceramic'?'Ceramic':'Floater'} bodies cannot ${verb}; try glide, hover, settle or turn.`};
 }
 export function bodyCapabilityProblem(e:Entity|undefined,c:EdgeCapability,steps?:Program['steps']){
+  if(hasDeclaredProfile(e?.body)){
+    if(c.verb==='object'&&['read','respond','add-step','endorse','interest','uninterest','state','history','inspect'].includes(c.action??''))return null;
+    const v=bodyVerbProblem(e,c.verb);if(v)return v;
+    for(const step of steps??[]){if(['rest','stand','walk','go','face','turn'].includes(step.verb))continue;const reason=profileActionProblem(e?.body,step.verb,step.params);if(reason)return {code:'body.unsupported',reason};}
+    return null;
+  }
   if(!isRigidBody(e))return null;
   // Information on a public object remains readable/writable; rides and physical hand actions are excluded.
   if(c.verb==='object'&&['read','respond','add-step','endorse','interest','uninterest','state','history','inspect'].includes(c.action??''))return null;
   const v=bodyVerbProblem(e,c.verb);if(v)return v;
   const creature=creatureOfEntity(e),allowed=creature?.swimSpeed?[...rigidSteps,...swimSteps]:rigidSteps;
-  if(steps?.some(s=>!allowed.includes(s.verb)))return {code:'body.unsupported',reason:creature?`This activity needs hands or a humanoid body; a ${creature.id} can ${creature.moves}, settle, turn and follow.`:'This activity needs a humanoid body; try glide, hover, settle or turn.'};
+  if(steps?.some(s=>!allowed.includes(s.verb)&&!bodyDanceStep(e?.body,s.verb,s.params)))return {code:'body.unsupported',reason:creature?`This activity needs hands or a humanoid body; a ${creature.id} can ${creature.moves}, settle, turn and follow.`:'This activity needs a humanoid body; try glide, hover, settle or turn.'};
   return null;
 }
 type Plan={label:string;steps:Program['steps'];seconds?:boolean};
 /** Shape the capability list for a rigid body: drop what it cannot do, offer settle (and hover for floaters), and
  *  name its own way of moving (glide; a creature's waddle, slide or trot). */
 export function shapeRigidCapabilities(me:Entity|undefined,caps:EdgeCapability[],plans:Map<string,Plan>,secondsParam:EdgeCapability['params']){
+  if(hasDeclaredProfile(me?.body)){const rolling=hasRollingProfile(me?.body);
+    for(const verb of ['rest','lie','nap']){const id=verb+':here',label=rolling?(verb==='nap'?'Sleep upright (standby)':'Fold away upright (standby)'):(verb==='nap'?'Doze standing (standby)':'Rest standing (standby)');const old=caps.find(c=>c.id===id);if(old)Object.assign(old,{label,available:true,blocked:undefined});else caps.unshift({id,verb,label,available:true,params:secondsParam});plans.set(id,{label,steps:[{verb:'mars:body_motion_v1',params:{motion:'rest',seconds:60}}],seconds:true});}
+    for(let i=caps.length-1;i>=0;i--)if(bodyCapabilityProblem(me,caps[i]!,plans.get(caps[i]!.id)?.steps)){plans.delete(caps[i]!.id);caps.splice(i,1);}
+    if(rolling)for(const c of caps)if(c.verb==='walk')c.label=c.label.replace(/walk/ig,'Roll');
+    return;
+  }
   if(!isRigidBody(me))return;
+  // Reuse the existing supported-ground discovery check, but execute the authored non-limb action.
+  if(hasBodyDance(me?.body)){const index=caps.findIndex(c=>c.id==='dance:here'),p=plans.get('dance:here');
+    if(index>=0&&p){const label='Dance here (wiggle in place)';caps[index]={...caps[index]!,label};plans.set('dance:here',{...p,label,steps:[{verb:'mars:body_motion_v1',params:{motion:'dance',seconds:60}}]});}
+  }
   for(let i=caps.length-1;i>=0;i--)if(bodyCapabilityProblem(me,caps[i]!,plans.get(caps[i]!.id)?.steps as Program['steps']|undefined)){plans.delete(caps[i]!.id);caps.splice(i,1);}
   const creature=creatureOfEntity(me);
   if(creature){
