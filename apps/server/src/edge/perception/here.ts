@@ -126,7 +126,8 @@ export class Perception {
       const d = this.dist(point); if (d > radius && !(here.has(o.placeId) && !at)) continue;
       // GodPerceive advances this public built state after completion/overwrite. Carry only its
       // painting line, never the immutable definition description or private drawing recipe.
-      const what = st?.def === 'core-easel@2' && typeof st.what === 'string' && st.what.startsWith('an easel with ')
+      // #430: a chalk drawing's line leads with its maker (a built thing's own line always leads with "a"/"an" and its kind)
+      const what = typeof st?.what === 'string' && (st.def === 'core-easel@2' && st.what.startsWith('an easel with ') || /^[^,“”]{1,40}’s chalk drawing “/.test(st.what))
         ? st.what.replace(/[\u0000-\u001f\u007f\u0085\u2028\u2029]+/g, ' ').slice(0, 230) : undefined;
       this.objectKinds.set(o.id, o.kind);
       out.push({kind: 'object', id: o.id, name: (o as {name?: string}).name ?? o.kind, at: point, distance: d, ...(what ? {what} : {})});
@@ -221,7 +222,7 @@ function skyOf(w: {clouds?: number; rain?: number; wind?: number; fog?: number; 
   return {sky, wind};
 }
 const POSE_WORDS: Record<string, string> = {walk: 'walking', wait: 'waiting', sit: 'seated', idle: 'standing', swim: 'swimming', tread: 'swimming', wade: 'wading', lie: 'lying down', nap: 'napping', read: 'reading', browse: 'at a shelf', write: 'writing', dance: 'dancing',
-  'play-piano': 'playing the piano', 'play-music': 'playing music', sing: 'singing at the microphone', paint: 'painting', cook: 'cooking', eat: 'eating', drink: 'drinking', 'sit-ground': 'sitting on the ground', wave: 'waving', hug: 'hugging', yoga: 'doing yoga', stretch: 'stretching',
+  'play-piano': 'playing the piano', 'play-music': 'playing music', sing: 'singing at the microphone', paint: 'painting', chalk: 'drawing in chalk', cook: 'cooking', eat: 'eating', drink: 'drinking', 'sit-ground': 'sitting on the ground', wave: 'waving', hug: 'hugging', yoga: 'doing yoga', stretch: 'stretching',
   'jumping-jacks': 'doing jumping jacks', pushups: 'doing push-ups', situps: 'doing sit-ups', jump: 'jumping', ride: 'riding', board: 'boarding', alight: 'stepping out'};
 const doingWord = (state: string, activity: string) => POSE_WORDS[activity] ?? (state === 'busy' ? activity.replace(/[-_]/g, ' ') : state);
 

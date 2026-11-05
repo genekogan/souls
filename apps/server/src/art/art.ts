@@ -57,14 +57,45 @@ export function paintingEasel(def: StoredDef | undefined): boolean {
   return !!disp && disp.slots === 1 && disp.withMaker && (def?.components as { workstation?: { kind?: string } } | undefined)?.workstation?.kind === 'painting';
 }
 
-/** Compact nearby projection; the private drawing recipe is never perception. */
-export function paintingLine(e: Entity, def: StoredDef | undefined): string | null {
+/** A painting workstation's canvas: its media face for slot 0 (def data, make.args.faces). */
+export type CanvasFace = { at?: number[]; w?: number; h?: number; pitch?: number; media?: boolean; slot?: number; fadeDays?: number };
+export function canvasFace(def: StoredDef | undefined): CanvasFace | null {
+  const faces = def?.make.kind === 'gen' && Array.isArray(def.make.args?.faces) ? def.make.args.faces as CanvasFace[] : [];
+  return faces.find(f => f && f.media && (f.slot ?? 0) === 0) ?? null;
+}
+/** #430: a canvas lying flat, facing up (pitch -90°), is on the ground: drawn in chalk, stooping. */
+export const flatCanvas = (face: CanvasFace | null | undefined) => !!face && typeof face.pitch === 'number' && Math.abs(Math.abs(face.pitch) - Math.PI / 2) < 0.05;
+/** #430: whole world days since a fading canvas was drawn (its state `day`), or null when it does not fade. */
+export function canvasAge(e: Entity, face: CanvasFace | null | undefined, today: number): number | null {
+  const days = face?.fadeDays;
+  if (typeof days !== 'number' || !(days > 0) || typeof e.state?.day !== 'number') return null;
+  return Math.max(0, Math.floor(today) - e.state.day);
+}
+/** #430: a fading canvas reads as washed away (blank) from `fadeDays` world days after it was drawn. */
+export const washedAway = (e: Entity, def: StoredDef | undefined, today: number) => { const face = canvasFace(def), age = canvasAge(e, face, today); return age !== null && age >= face!.fadeDays!; };
+
+/** #430: drawn fading canvases still within their fade (their perceived line changes with the world day). */
+export function fadingIds(model: WorldModel, today: number): string[] {
+  const ids: string[] = [];
+  for (const e of model.entities.values()) {
+    if (typeof e.state?.day !== 'number' || !e.state.media) continue;
+    const def = model.resolvedDef(e.def); if (!paintingEasel(def)) continue;
+    const face = canvasFace(def), age = canvasAge(e, face, today); if (age !== null && age <= face!.fadeDays!) ids.push(e.id);
+  }
+  return ids;
+}
+
+/** Compact nearby projection; the private drawing recipe is never perception. `today`: the world day (fading canvases). */
+export function paintingLine(e: Entity, def: StoredDef | undefined, today = 0): string | null {
   if (!paintingEasel(def) || typeof e.state?.media !== 'string' || !e.state.media || typeof e.state.maker !== 'string') return null;
   const parts = e.state.maker.split(':');
   if (parts[0] !== 'soul' || parts.length < 3) return null;
+  const face = canvasFace(def), age = canvasAge(e, face, today);
+  if (age !== null && age >= face!.fadeDays!) return null;
   const oneLine = (v: unknown, max: number) => clean(String(v ?? '').replace(/[\u0085\u2028\u2029]/g, ' '), max);
   const maker = oneLine(parts.slice(2).join(':'), 32) || 'a Soul', title = oneLine(e.state.title, 50) || 'Untitled';
-  return `an easel with ${maker}’s painting “${title}”`;
+  const wear = age === null || age < 1 ? '' : age >= face!.fadeDays! - 1 ? ', nearly washed away' : ', fading';
+  return flatCanvas(face) ? `${maker}’s chalk drawing “${title}” on the pavement${wear}` : `an easel with ${maker}’s painting “${title}”${wear}`;
 }
 
 function hang(model: WorldModel, caller: Caller, req: HangRequest, painting: boolean): ArtPlan | ArtFailure {

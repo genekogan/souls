@@ -24,7 +24,7 @@ import { heldGodThing } from './held.ts';
 import { waterRole, wordOf } from './water.ts';
 import { economyOn } from './layers.ts';
 import { supportY } from './nav.ts';
-import { posterStale } from './poster-boards.ts';
+import { posterStale, worldDay } from './poster-boards.ts';
 import { posterList, wantedList } from '@sim/world-compiler';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -249,7 +249,7 @@ export class GodPerceive {
     const near = this.h.namesNear(at, e.id).filter((n) => n !== name).slice(0, 2);
     const prefix = article(kind);
     const suffix = `${parent?.name ? ` in ${m.pathOf(parent.id)}` : ''}${near.length ? `, by ${near.join(' and ')}` : ''}${lay ? `; ${lay}` : ''}`;
-    const painting = paintingLine(e, def);
+    const painting = paintingLine(e, def, worldDay());
     // Keep the complete bounded painting credit plus exactly the suffix visible before it was painted.
     // Unpainted input is unchanged; only painted initialization opts into the 230-character bound.
     const what = painting ? painting + clip(prefix + suffix, 120).slice(prefix.length) : prefix + suffix;

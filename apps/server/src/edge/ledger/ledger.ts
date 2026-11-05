@@ -1754,7 +1754,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (contentParams.painting !== undefined) {
       const plan = this.bindOne(soul, capability)?.plan as {paintingTarget?: string;paintingLevel?:number} | undefined;
       if (!capability.startsWith('paint:') || !plan?.paintingTarget || !this.painting) return refuse('painting.no-easel', 'This capability has no real painting easel.');
-      const posed=steps.find(s=>s.verb==='mars:pose_v1'&&s.params.activity==='paint');
+      const posed=steps.find(s=>s.verb==='mars:pose_v1'&&(s.params.activity==='paint'||s.params.activity==='chalk'));
       const approach=steps.filter(s=>s.verb==='walk_to'||s.verb==='mars:walk_to').at(-1),stand=approach?.verb==='mars:walk_to'?[approach.params.x,approach.params.z]:approach?.params.to;
       const prepared = this.painting.prepare(soul, plan.paintingTarget, contentParams.painting,{face:posed?.params.face,stand,level:plan.paintingLevel??0});
       if ('ok' in prepared) return refuse(prepared.code, prepared.message);

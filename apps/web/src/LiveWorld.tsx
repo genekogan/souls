@@ -909,8 +909,8 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
           const datetime = clock ? shiftIso(clock, clockOffset) : null;
           light.update(shotClockAt(clock?shiftIso(clock,clockOffset,true):null,shotHour??visitorPreviewHour()));
           entityLayer.sites.setWorldClock(datetime,dayTicks?86400/(dayTicks*dt):1);
-          // Soul Actions entry 38: posters age by the world day shown (redrawn only when that day changes)
-          if(dayTicks&&dayOrigin!==null&&setPosterDay(Math.floor(Math.max(0,depictedTick-dayOrigin)/dayTicks)))entityLayer.redrawTagged('posters');
+          // Soul Actions entry 38: posters age by the world day shown (redrawn only when that day changes); #430 chalk fades by it too
+          if(dayTicks&&dayOrigin!==null&&setPosterDay(Math.floor(Math.max(0,depictedTick-dayOrigin)/dayTicks))){entityLayer.redrawTagged('posters');entityLayer.redrawTagged('fades');}
           const godLit=!!godLiving&&entityLayer.active;light.setNightLighting(!!expansion||godLit);if(!godLit)setNightLightStrength(expansion?light.daylight:1);houseWindows?.setNight(nightLightStrength());
           shown.current = { tick: depictedTick, datetime, take, entities: sampled.entities };
           brokenTake = null;

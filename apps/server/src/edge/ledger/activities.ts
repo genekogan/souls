@@ -26,6 +26,8 @@ export type Spot = {id: string; place?: string; activity: string; base: 'sit' | 
   title?: string;
   /** Bound only by the world adapter for a real painting easel. Never inferred from a label. */
   paintingTarget?: string;
+  /** #430: this spot's own body pose for its activity (chalk on the ground stoops), and the days its drawing fades over. */
+  pose?: string; fadeDays?: number;
   /** Entry 36: a mic stand's singer sings along with music within this many metres (the pose ends when it stops). */
   accompany?: number};
 export type Shelf = {id: string; place?: string; at: V2; faceTo?: V2; level?: number};
@@ -182,7 +184,7 @@ export function activityCapabilities(data: SpotsData, w: ActivityWorld): {caps: 
   const reach0 = data.spots.filter(s => d2(s.at, w.me) <= SPOT_REACH && w.enterable(s.place)), ok = (s: Spot) => !!clearAt(s);
   const live = data.nearest ? reach0 : reach0.filter(ok);
   const spotSteps = (s: Spot, seconds?: number, activity = s.activity, fromLevel = w.level): Program['steps'] => {
-    const def = SPOT_ACTIVITIES[activity], body = def.pose ?? activity, lying = s.base === 'lie', act = lying && !LYING_SPOT.has(body) ? 'lie' : body, prop = s.prop ?? def.prop;
+    const def = SPOT_ACTIVITIES[activity], body = (activity === s.activity && s.pose) || def.pose || activity, lying = s.base === 'lie', act = lying && !LYING_SPOT.has(body) ? 'lie' : body, prop = s.prop ?? def.prop;
     const reach = s.seat ? {verb: 'sit', params: {on: s.seat, seconds: 1}} : walk(clearAt(s) ?? s.at, s.level, fromLevel);
     // entry 36: at a mic stand the singer turns to the mic on arrival (the pose's own facing is a one-tick snap)
     const turn = act === 'sing' && s.accompany && s.faceTo && !s.seat ? [{verb: 'mars:face', params: {target: {point: s.faceTo}}}] : [];
@@ -305,7 +307,7 @@ export function activityCapabilities(data: SpotsData, w: ActivityWorld): {caps: 
       const needs = s.requires ? data.spots.find(x => x.id === s.requires) : undefined, missing = !!needs && !w.taken(needs.at, needs.id);
       const waiting = s.together ? w.groupSize(s.together.group) : 0, withWho = s.together ? (waiting ? `; ${waiting} waiting on the other end, join them` : (s.together.alone === 'start' ? `; starts after ${s.together.wait} s, others may join` : `; waits up to ${s.together.wait} s for someone to join`)) : '';
       const painting = activity === 'paint' && s.paintingTarget ? {paintingTarget: s.paintingTarget,paintingLevel:s.level??0} : {};
-      add({id, verb: activity, label: labelOf(s, activity) + withWho, available: !missing, ...(missing ? {blocked: {code: 'together.nobody-leading', reason: `Nobody is at ${needs!.label ?? needs!.id} yet; nothing to join. Start it yourself, or ask again later.`}} : {}), target: {id: s.id, kind: 'spot'}, params: {...secondsParam(def.seconds), ...('paintingTarget' in painting ? {painting: paintingParam()} : {})}}, {label: def.label, steps: activity === 'read' ? readAt(s) : spotSteps(s, undefined, activity), seconds: true, ...painting});
+      add({id, verb: activity, label: labelOf(s, activity) + withWho, available: !missing, ...(missing ? {blocked: {code: 'together.nobody-leading', reason: `Nobody is at ${needs!.label ?? needs!.id} yet; nothing to join. Start it yourself, or ask again later.`}} : {}), target: {id: s.id, kind: 'spot'}, params: {...secondsParam(def.seconds), ...('paintingTarget' in painting ? {painting: paintingParam(s.fadeDays)} : {})}}, {label: (activity === s.activity && s.title) || def.label, steps: activity === 'read' ? readAt(s) : spotSteps(s, undefined, activity), seconds: true, ...painting});
     }
   }
   // ---- CN5 choreographed games: each court's free places (its spots, then extra places beside them up to 6 players)
