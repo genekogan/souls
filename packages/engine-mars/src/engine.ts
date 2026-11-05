@@ -387,6 +387,11 @@ export class MarsEngine implements Engine {
     this.emit(p, kind, d);
   }
   private holders(actor: string): string[] { return this.rt.holder(`actor:${actor}`) as string[]; }
+  /** #423: an attention turn (`gradual-v1`) is the body's own reflex, never a program step: the Soul's next step or turn
+   *  ends it first, so it cannot hold the body against, or turn it against, whatever comes next. */
+  private endAttentionTurn(actor: string) {
+    for (const h of this.holders(actor)) if ((this.rt.records.get(h)?.params as { facingPolicy?: string } | undefined)?.facingPolicy === 'attention-v1' && this.rt.isActive(h)) this.rt.cancel(h, { code: 'attention.superseded', message: 'the next step or turn takes over' });
+  }
   /** Ask whatever holds this actor to let go. Returns true once nothing does (a seated person takes a moment to stand). */
   private release(actor: string, why: Diag): boolean {
     for (const h of this.holders(actor)) this.rt.cancel(h, { code: why.code, message: why.message });
@@ -500,6 +505,7 @@ export class MarsEngine implements Engine {
         p.ops = ops; continue;
       }
       if ('wait' in op) { p.until = tick + op.wait; continue; }
+      this.endAttentionTurn(p.actor);
       // Anything that needs the body free (all but standing up and raw Mars verbs, which know what they need) first leaves its seat or circle.
       if (op.verb !== 'stand' && !op.raw && this.holders(p.actor).length) {
         if (op.verb === 'face') continue;                                        // not worth standing up for
@@ -1281,18 +1287,18 @@ export class MarsEngine implements Engine {
    * and with `yaw` also turn a free standing body (no program, nothing holding it, awake, not seated/riding). Never cancels
    * or blocks anything the body is doing. Returns what turned.
    * `turn: 'gradual-v1'` (#423, prospective; absent on older events) turns that free body through the native `face`
-   * action at the ordinary turn rate instead of setting the yaw at once; the next act pre-empts it like any face. */
+   * action at the ordinary turn rate instead of setting the yaw at once; the Soul's next program step or turn ends it. */
   attendHumanV1(id: string, gaze: { target?: string; at?: [number, number]; until?: number; kind?: string } | null, yaw?: number, turn?: 'gradual-v1'): 'body' | 'head' | 'none' {
     const e = this.ents[id]; if (!e?.human) return 'none';
     if (gaze === null) { delete e.human.gaze; delete e.human.attention; return 'none'; }
     const g: any = { kind: gaze.kind ?? 'look' }; if (typeof gaze.target === 'string' && this.ents[gaze.target]) g.target = gaze.target; else if (Array.isArray(gaze.at)) g.at = [r3(gaze.at[0]), r3(gaze.at[1])];
     if (Number.isInteger(gaze.until)) g.until = gaze.until;
     let turned: 'body' | 'head' = 'head';
+    if (turn === 'gradual-v1' || typeof yaw === 'number') this.endAttentionTurn(id);
     const free = !this.byActor.has(id) && !this.holders(id).length && !e.human.sleepPose && !e.human.on && !e.human.riding && !e.human.carrier && !e.human.together && (e.human.activity === 'idle' || e.human.activity === 'wait');
     if (typeof yaw === 'number' && Number.isFinite(yaw) && free) {
-      if (turn === 'gradual-v1') this.rt.submit('face', { actor: id, target: { point: [r3(e.pose.p[0] + dcos(yaw) * 2), r3(e.pose.p[2] + dsin(yaw) * 2)] }, facingPolicy: 'social-v1' });
-      else e.pose.yaw = r3(yaw);
-      turned = 'body';
+      if (turn !== 'gradual-v1') { e.pose.yaw = r3(yaw); turned = 'body'; }
+      else if (this.rt.submit('face', { actor: id, target: { point: [r3(e.pose.p[0] + dcos(yaw) * 2), r3(e.pose.p[2] + dsin(yaw) * 2)] }, facingPolicy: 'attention-v1' }).status !== 'failed') turned = 'body';
     }
     if (g.target || g.at) { e.human.gaze = g; this.gazeAt(e); } else delete e.human.gaze;
     return turned;

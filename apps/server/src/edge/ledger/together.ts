@@ -15,6 +15,7 @@ import {afterCommit} from '../comms/store.ts';
 //   the visible prop (human.holding), changed when a pose completes, so both agree.
 import {menuWorldOf} from '../../split/menu-world.ts';
 import {randomUUID} from 'node:crypto';
+import {SOCIAL_FACING_ACTIVITIES} from '../../../../../mars/viewer/engine/social/pose.ts';
 import {bodyVerbProblem,isRigidBody} from '../body/actions.ts';
 import type {Program} from '@sim/engine-contract';
 import type {WorldState as NativeWorld} from '../../../../../mars/viewer/engine/world/types.ts';
@@ -104,6 +105,8 @@ const invitationSteps = (steps:Steps, policy:Invite['facingPolicy']):Steps => st
   .filter(s=>policy || !(s.verb==='mars:face' && s.params.facingPolicy==='social-v1'))
   .map(s=>{if(s.verb==='mars:pose_v1')delete s.params.facingPolicy;return s;});
 
+/** The guest's own pose takes the invitation's policy only where social-v1 is admitted (not lying, games or gestures). */
+const socialFacingPose = (p: Record<string, unknown>) => SOCIAL_FACING_ACTIVITIES.has(String(p.activity)) && !p.game && !p.gap && !p.pairedPolicy;
 const invitedPose = (steps: Steps) => [...steps].reverse().find(s => s.verb === 'mars:pose_v1' && s.params.activity !== 'browse')
   ?? [...steps].reverse().find(s => s.verb === 'mars:pose_v1');
 
@@ -735,13 +738,13 @@ export class Together {
       const near = ownCaps.filter(c => c.verb === verb && c.available && c.target?.kind === 'spot' && ownPlans.has(c.id)).map(c => ({c, d: to(c.id)})).filter(x => x.d <= 12).sort((a, b) => a.d - b.d || a.c.id.localeCompare(b.c.id))[0];
       if (near) {
         const steps = invitationSteps(ownPlans.get(near.c.id)!.steps,inv.facingPolicy), last = invitedPose(steps);
-        if (last) {if (Number.isFinite(inv.seconds) && inv.seconds! > 0) last.params.seconds = inv.seconds; last.params.group = inv.id; last.params.waitSeconds = 20; last.params.alone = 'start'; if (inv.windowPolicy) last.params.windowPolicy = inv.windowPolicy;if(inv.facingPolicy)last.params.facingPolicy=inv.facingPolicy;}
+        if (last) {if (Number.isFinite(inv.seconds) && inv.seconds! > 0) last.params.seconds = inv.seconds; last.params.group = inv.id; last.params.waitSeconds = 20; last.params.alone = 'start'; if (inv.windowPolicy) last.params.windowPolicy = inv.windowPolicy;if(inv.facingPolicy&&socialFacingPose(last.params))last.params.facingPolicy=inv.facingPolicy;}
         return {label: ownPlans.get(near.c.id)!.label, steps, capability: 'accept:' + inv.id, commit};
       }
     }
     if (!hostCap.endsWith(':here') && ownPlans.has(hostCap) && ownCaps.find(c => c.id === hostCap)?.available) {
       const own = (inv.meetAt && this.spotBeside(inv.meetAt, hb.human?.level ?? 0, me.human?.level ?? 0, verb, hostCap, ownCaps, ownPlans)) || ownPlans.get(hostCap)!, steps = invitationSteps(own.steps,inv.facingPolicy), last = invitedPose(steps);
-      if (last) {if (Number.isFinite(inv.seconds) && inv.seconds! > 0) last.params.seconds = inv.seconds; last.params.group = inv.id; last.params.waitSeconds = 20; last.params.alone = 'start'; if (inv.windowPolicy) last.params.windowPolicy = inv.windowPolicy;if(inv.facingPolicy)last.params.facingPolicy=inv.facingPolicy;}
+      if (last) {if (Number.isFinite(inv.seconds) && inv.seconds! > 0) last.params.seconds = inv.seconds; last.params.group = inv.id; last.params.waitSeconds = 20; last.params.alone = 'start'; if (inv.windowPolicy) last.params.windowPolicy = inv.windowPolicy;if(inv.facingPolicy&&socialFacingPose(last.params))last.params.facingPolicy=inv.facingPolicy;}
       return {label: own.label, steps, capability: 'accept:' + inv.id, commit};
     }
     if (verb === 'sit') {
@@ -754,7 +757,7 @@ export class Together {
     if (inv.activity) {
       const lying = ['lie', 'nap', 'yoga', 'pushups', 'situps'].includes(inv.activity);
       return {label: `${inv.activity} with ${inv.host.name}`, capability: 'accept:' + inv.id, commit,
-        steps: [...this.standFirst(soul.entityId), ...go(lying ? 1.8 : 1.4), pose(inv.activity, inv.seconds ?? 60, {group: inv.id, waitSeconds: 20, alone: 'start', ...(inv.windowPolicy ? {windowPolicy: inv.windowPolicy} : {}), ...(inv.facingPolicy?{facingPolicy:inv.facingPolicy}:{}), ...(inv.prop ? {prop: inv.prop} : {})})]};
+        steps: [...this.standFirst(soul.entityId), ...go(lying ? 1.8 : 1.4), pose(inv.activity, inv.seconds ?? 60, {group: inv.id, waitSeconds: 20, alone: 'start', ...(inv.windowPolicy ? {windowPolicy: inv.windowPolicy} : {}), ...(inv.facingPolicy&&socialFacingPose({activity:inv.activity})?{facingPolicy:inv.facingPolicy}:{}), ...(inv.prop ? {prop: inv.prop} : {})})]};
     }
     return {label: `Join ${inv.host.name}`, steps: [...this.standFirst(soul.entityId), {verb: 'walk_to', params: {to: host.entityId, standoff: 1.4}}], capability: 'accept:' + inv.id, commit};
   }

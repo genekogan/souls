@@ -212,7 +212,8 @@ export const poseV1: ActionDef<Params, true, Exec> = {
       if(ex.p.facingPolicy){
         // Courtesy movement changes the direction to a fixed object; only the recorded new policy retargets.
         if(ex.p.face){const d:Vec2=[ex.p.face[0]-a.pose.p[0],ex.p.face[1]-a.pose.p[2]];ex.yaw=hypot(...d)>.05?heading(d):null;}
-        // A grouped object overlay also prepares before publishing hands or joining its shared window.
+        // A grouped object overlay also prepares before publishing hands or joining its shared window. While it turns
+        // (at most pi / turn rate, under 0.8 s, e.g. after a courtesy step) the shared window is not evaluated for it.
         if(ex.yaw!==null && ex.base!=='sit' && !held(rt,ex.p.actor) && !stepFacing(a,ex.yaw,dt)){h.activity=ex.base;return {status:'running',phase:'facing'};}
       }
       return together(rt, ex, a, h, dt);

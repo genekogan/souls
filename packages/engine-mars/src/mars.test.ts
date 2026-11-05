@@ -142,4 +142,26 @@ else {
     e.removeEntity('h3'); run(e, 40);
     assert.equal(e.world.entities['h3'], undefined);
   });
+
+  // #423: a gradual attention turn (edge-attention `turn: 'gradual-v1'`) is the body's reflex; the Soul's next program
+  // step or turn ends it, so a face + social-v1 pose program right after it completes with one yaw writer.
+  for (const next of ['program', 'turn'] as const) test(`mars: a gradual attention turn yields to the next ${next}`, () => {
+    const e = factory.create(factory.genesis('t-attention')) as Engine & { attendHumanV1(id: string, g: unknown, yaw?: number, turn?: 'gradual-v1'): string };
+    e.spawnHuman({ id: 'a', label: 'A', soul: 's_a' }); run(e, 5);
+    const a = e.world.entities['a'], p = [a.pose.p[0], a.pose.p[2]], yaw0 = a.pose.yaw;
+    assert.equal(e.attendHumanV1('a', { at: [p[0] - 3, p[1]] }, yaw0 + Math.PI, 'gradual-v1'), 'body');
+    run(e, 2); const turning = e.world.entities['a'].pose.yaw; assert.notEqual(turning, yaw0, 'the reflex turn is under way');
+    if (next === 'turn') {
+      assert.equal(e.attendHumanV1('a', { at: [p[0] + 3, p[1]] }, yaw0, 'gradual-v1'), 'body', 'a newer turn replaces the reflex, not just the head');
+      run(e, 40); assert.ok(Math.abs(Math.atan2(Math.sin(e.world.entities['a'].pose.yaw - yaw0), Math.cos(e.world.entities['a'].pose.yaw - yaw0))) <= 0.03 + 1e-9);
+      return;
+    }
+    const r = e.perform({ actor: 'a', label: 'read facing east', steps: [{ verb: 'mars:face', params: { target: { point: [p[0] + 2, p[1]] } } }, { verb: 'mars:pose_v1', params: { activity: 'read', seconds: 1, face: [p[0] + 2, p[1]], facingPolicy: 'social-v1' } }] });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    let last = e.world.entities['a'].pose.yaw, maxStep = 0; const log: ProgramEvent[] = [];
+    for (let i = 0; i < 200 && !log.some((x) => x.id === r.id && x.kind !== 'step'); i++) { log.push(...e.step().programs); const y = e.world.entities['a'].pose.yaw; maxStep = Math.max(maxStep, Math.abs(Math.atan2(Math.sin(y - last), Math.cos(y - last)))); last = y; }
+    assert.equal(log.find((x) => x.id === r.id && x.kind !== 'step')?.kind, 'completed', JSON.stringify(log.filter((x) => x.id === r.id)));
+    assert.ok(maxStep <= 4 / 20 + 1e-9, String(maxStep));
+    assert.ok(Math.abs(Math.atan2(Math.sin(e.world.entities['a'].pose.yaw), Math.cos(e.world.entities['a'].pose.yaw))) <= 0.03 + 1e-9, 'faces east');
+  });
 }

@@ -376,7 +376,8 @@ export const stand: ActionDef<{ actor: string }, string, StandExec> = {
 
 // ---------- face ----------
 
-type FaceParams = { facingPolicy?: 'social-v1'; actor: string; target: { entity: string } | { point: [number, number] } };
+/** social-v1: a prepared turn in a plan; attention-v1: the same turn as the body's attention reflex (engine-submitted). */
+type FaceParams = { facingPolicy?: 'social-v1' | 'attention-v1'; actor: string; target: { entity: string } | { point: [number, number] } };
 type FaceExec = { id: string; actor: string; target: FaceParams['target'] };
 
 function targetYaw(rt: Runtime, actor: Entity, t: FaceParams['target']): number | Diagnostic {
@@ -395,7 +396,7 @@ export const face: ActionDef<FaceParams, number, FaceExec> = {
   verb: 'face',
   description: 'Turn a person in place to face an entity ({ entity }) or a ground point ({ point: [x, z] }); activity idle.',
   navPure: true, // L4 audit: the step turns its own actor only
-  schema: z.strictObject({ actor: id80, target: z.union([z.strictObject({ entity: id80 }), z.strictObject({ point: xz })]), facingPolicy:z.literal('social-v1').optional() }),
+  schema: z.strictObject({ actor: id80, target: z.union([z.strictObject({ entity: id80 }), z.strictObject({ point: xz })]), facingPolicy:z.enum(['social-v1','attention-v1']).optional() }),
   reservations: (_w, p) => [{ resource: `actor:${p.actor}`, mode: 'exclusive' }],
   plan(rt, p) {
     const a = readyActor(rt, p.actor);
