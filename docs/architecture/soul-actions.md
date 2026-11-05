@@ -42,9 +42,9 @@ context-size checks below), regression runs, and an uncut real-client recording 
     - **Refused.** A proposal or amend is refused when the formation has no way there (`carry.no-route`, or
       `carry.clearance` when each person could walk there alone) or when the load cannot be laid down there
       (`carry.target-blocked`). The refusal names the blocker, and no invitation or receipt is made.
-    - **Left to the commit.** People are not obstacles to the planner. Neither is a loose thing lying where the load
-      would go, since it can be moved. The commit waits on both.
-    - **Cost.** A refused route costs one bounded planner search, the same one a solo carry's admission runs.
+    - **Left to the commit.** People are not obstacles to the planner. Neither is a loose thing lying on the ground where
+      the load would go, since it can be moved. The commit waits on both.
+    - **Cost.** Each proposal or amend runs one bounded planner search, the same one a solo carry's admission runs.
   - **Too heavy alone.** The solo `carry:` refusal of a `shared-carry` load that needs more people
     (`carry.crew-too-small`) names its `carry-with:` offer.
   - **Readiness (PC05, [#684](https://github.com/genekogan/souls/issues/684)).** Once every role is accepted, the world

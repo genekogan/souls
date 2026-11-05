@@ -140,9 +140,10 @@ test('PC06: preflight. An impossible destination is refused before anyone is ask
   const court = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'court', with: 'Bo'}});
   assert.equal(code(court), 'carry.clearance', JSON.stringify(court)); assert.match(court.reason, /cannot get it to court \(the carrying formation would hit court-wall.*\); each could walk there alone/i, court.reason);
   assert.doesNotMatch(court.reason, /\b[he]_[0-9a-f]{6,}/, 'no entity ids in the reason');
-  // a garden nobody can enter: no route at all (or no standing room for the place itself), never a proposal
+  // a garden nobody can enter: no route at all, never a proposal
   const vault = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'vault', with: 'Bo'}});
-  assert.equal(vault.accepted, false, JSON.stringify(vault)); assert.equal(w.edge.together.invitesFor(Bo.soulId).length, 0);
+  assert.equal(code(vault), 'carry.no-route', JSON.stringify(vault)); assert.match(vault.reason, /cannot get it to vault \(the carrying formation would hit vault-wall/i);
+  assert.equal(w.edge.together.invitesFor(Bo.soulId).length, 0);
   // Bo busy walking does not hide the verdict: the planner is asked alone, without anyone's programme
   const boWalk = ok(await act(w, Bo, {capability: 'walk:yard'})); await w.tick(2); assert.ok(eng.programOf(Bo.entityId), 'Bo is walking');
   const busy = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'pen', with: 'Bo'}});

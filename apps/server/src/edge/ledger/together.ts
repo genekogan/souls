@@ -765,16 +765,18 @@ export class Together {
    *  answer) plans the whole crew's carry of the load to the place. A refusal about the route or the set-down (no route
    *  for the formation, `carry.no-route` / `carry.clearance`; the load cannot be laid down there, `carry.target-blocked`)
    *  refuses the proposal with the planner's code and named blocker. Not here: people (they are not obstacles to the
-   *  planner) and a loose thing lying where the load would go (it can be moved; the commit waits on it, PC05). The crew's
+   *  planner) and a loose thing lying on the ground where the load would go (it can be moved; the commit waits on it,
+   *  PC05). The planner names only its first overlap, so a loose thing reported before a wall leaves both to the commit. The crew's
    *  positions only choose between `clearance` and `no-route`. Nothing is submitted and nothing moves. */
   private sharedRoute(soul: EdgeSoul, guests: {soulId: string; name: string}[], tag: Extract<Tag, {kind: 'shared'}>, to: {id: string; name: string}): {code: string; reason: string} | null {
     const members = [{entityId: soul.entityId, name: soul.name}, ...guests.map(g => ({entityId: this.mindOf(g.soulId)?.entityId, name: g.name}))];
     if (!members.every((m): m is {entityId: string; name: string} => !!m.entityId) || !this.p.previewCarry) return null;
     const step = this.sharedCarryStep(members.map(m => m.entityId), tag.load, to.id); if (!step) return null;
-    const issue = this.p.previewCarry(step.params as {crew: string[]; item: string; to: {x: number; z: number; yaw: number}});
+    let issue: ReturnType<NonNullable<typeof this.p.previewCarry>>;
+    try {issue = this.p.previewCarry(step.params as {crew: string[]; item: string; to: {x: number; z: number; yaw: number}});} catch {return null;}   // the commit's own check stays the authority
     if (!issue || !SHARED_ROUTE_REFUSED.has(issue.code)) return null;
     // the planner names the load itself first, and a thing's part as `<id>#<part>`
-    if (issue.code === 'carry.target-blocked' && (issue.subjects ?? []).some(id => {const e = id.split('#')[0]; return e !== tag.load && this.w.entities[e]?.kind === 'component';})) return null;
+    if (issue.code === 'carry.target-blocked' && (issue.subjects ?? []).some(id => {const e = id.split('#')[0], x = this.w.entities[e] as {kind?: string; support?: {kind: string}} | undefined; return e !== tag.load && x?.kind === 'component' && x.support?.kind === 'ground';})) return null;
     // the planner's named blocker (its own message names the def by its description and bodies by entity id)
     const blk = /(?:intersect|overlap) '([^']+)'/.exec(issue.message ?? '')?.[1], n = members.length;
     const why = issue.code === 'carry.target-blocked' ? `${tag.name} cannot be laid down in ${to.name}${blk ? ` (it would overlap ${blk})` : ''}`
