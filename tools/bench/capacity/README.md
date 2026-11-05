@@ -148,6 +148,25 @@ node tools/bench/capacity/meetup/meetup.mjs --profile even,meetup --repeats 2 --
 The report states whether the driver shares the worlds' cgroup (it should not when `--slice` is used). With `--uid`, run the driver as
 root (so `systemd-run` may drop to the bench user) and give that user write access to `--out`.
 
+### Comparing a run with the baseline (CW8, #947)
+
+`meetup/compare.mjs` puts two downloaded `capacity-qualify` artifacts side by side, for example a confirmation run against
+the CW2 baseline:
+
+```bash
+gh run download <run> --repo genekogan/souls -D .local/qualify/<run>
+node tools/bench/capacity/meetup/compare.mjs .local/qualify/<baseline>/capacity-qualify-<baseline> .local/qualify/<run>/capacity-qualify-<run> [--out <file>]
+```
+
+- **What it shows:** both verdicts, then per profile:
+  - the headline cells as repeat ranges;
+  - each objective per repeat: `fixed`, `meets`, `still failing`, `regressed`, `new, meets`, `new, misses` or `missing`;
+  - per world: met, the hottest core, the loop p99 and the queue.
+- **When it calls a direction:** only when the two repeat ranges do not overlap.
+- **Missing values:** a cell, repeat or world missing on either side is shown as missing, never as better. A value that only some repeats have is `partial`, and gets no direction.
+- **Both verdicts:** they are printed with their reasons.
+- **Changed conditions:** a change in host class, quiet, short, slice or limits is listed as not like for like. A condition that neither side recorded is listed as not compared, not as a match.
+
 ## Recorded baseline (2026-10-31, before the server-reliability fixes)
 
 Fixture: the compact Eden 2026 copy, sha256 `d0921000a7ef…`, heap cap 768 MB unless noted; two repeats per arm, shown
