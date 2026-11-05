@@ -34,11 +34,11 @@ test('edge world: one command handler, the inbox; its answers are unchanged', as
   assert.deepEqual(commandPosts(app as never), ['/v1/souls/:soulId/command']);
   const req = (owner: string, data: unknown) => app.request(`/v1/souls/${a.id}/command`, {method: 'POST', headers: {host: '127.0.0.1:5963', authorization: `Bearer ${owner}`, 'content-type': 'application/json'}, body: JSON.stringify(data)});
   const bad = await req('dev:alice', {text: ''});
-  assert.equal(bad.status, 400); assert.equal((await bad.json() as {code: string}).code, 'invalid');
+  assert.equal(bad.status, 400); assert.deepEqual(await bad.json(), {ok: false, code: 'invalid', message: 'text is required (1–280 characters)'});
   assert.equal((await req('dev:bob', {text: 'wander'})).status, 403, 'not your soul');
   const r = await req('dev:alice', {text: 'wander'}); const j = await r.json() as {ok: boolean; inbox: {latest: {state: string; text: string}}};
   assert.equal(r.status, 200); assert.equal(j.ok, true); assert.equal(j.inbox.latest.state, 'sent'); assert.equal(j.inbox.latest.text, 'wander');
   assert.equal(r.headers.get('cache-control'), 'no-store');
   const big = await req('dev:alice', {text: 'x'.repeat(9000)});
-  assert.equal(big.status, 413, 'the inbox body limit still applies');
+  assert.equal(big.status, 413, 'the inbox body limit still applies'); assert.deepEqual(await big.json(), {ok: false, code: 'too-large', message: 'message is too large'});
 });
