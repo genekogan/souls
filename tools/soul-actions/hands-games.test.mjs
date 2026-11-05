@@ -44,7 +44,7 @@ test('rock-paper-scissors and holding hands with consent', {timeout:600000}, asy
  assert.equal(f.db.events(f.host.worldId,0).filter(e=>e.kind==='rules'&&e.payload?.recovery).length,0,'the distant scene raised no engine fault (nothing set aside): '+JSON.stringify(f.db.events(f.host.worldId,0).filter(e=>e.kind==='rules'&&e.payload?.recovery).map(e=>e.payload.recovery.reason)).slice(0,900));
  {const farIds=Object.keys(W().entities).filter(id=>id.startsWith('far_'));assert.equal(farIds.length,200,'the distant bodies are all still there');
   assert.equal(farIds.filter(id=>W().entities[id].human?.handHold).length,100,'100 distant bodies still hold hands');assert.equal(farIds.filter(id=>W().entities[id].human?.rps).length,100,'100 distant bodies are still mid-game');
-  distantScene={from:[FX,FZ],nearestSoul:+Math.min(...[ana,ben,cy].map(q=>Math.hypot(at(q)[0]-FX,at(q)[1]-FZ))).toFixed(1)};}
+  distantScene={from:[FX,FZ],nearestSoul:+Math.min(...[ana,ben,cy].map(q=>Math.hypot(at(q)[0]-FX,at(q)[1]-FZ))).toFixed(1)};assert.ok(distantScene.nearestSoul>15,'the distant scene is beyond the 15 m object radius from every Soul');}
  const far=await here(cy),farAna=await here(ana);
  assert.equal(sz(far),sz(absent),'100 distant pairs and their offers add nothing to here');assert.equal(sz(farAna),sz(absentAna));
  assert.ok(!/Far |far_|holding hands|offers you/.test(JSON.stringify(far)),'no names, no lines');
