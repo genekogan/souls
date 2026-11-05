@@ -56,6 +56,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 - [design/roadmap.md](design/roadmap.md): outcome themes and unresolved product questions
 - [design/physical-coordination.md](design/physical-coordination.md): proposed shared physical activities and reusable construction
 - [design/project-visibility.md](design/project-visibility.md): private progress overview and public visual release history
+- [design/cloud-workers.md](design/cloud-workers.md): proposed owner-dispatched cloud workers (not implemented)
 - [development/repository-layout.md](development/repository-layout.md): current folder responsibilities and staged first-party ownership
 - [process/planning.md](process/planning.md): intake, ready work and portable handoffs
 - [mars/](mars/README.md): the vendored deterministic engine
