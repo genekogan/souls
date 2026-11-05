@@ -137,9 +137,10 @@ export function foldEvent(engine: Engine, k: KState, e: LogEvent, counts: Record
     case 'edge-attention': {
       // attention/1: a Soul's own look / turn / face (or auto-face in a conversation). Head only, or a free standing body
       // turns; never stops, replaces or blocks the body's program (independent attention channel).
-      const p = e.payload as { entityId?: string; gaze?: { target?: string; at?: [number, number]; until?: number; kind?: string } | null; yaw?: number };
-      const attend = (engine as unknown as { attendHumanV1?: (id: string, g: unknown, yaw?: number) => string }).attendHumanV1;
-      if (p.entityId && attend && p.gaze !== undefined) attend.call(engine, p.entityId, p.gaze, typeof p.yaw === 'number' ? p.yaw : undefined);
+      const p = e.payload as { entityId?: string; gaze?: { target?: string; at?: [number, number]; until?: number; kind?: string } | null; yaw?: number; turn?: string };
+      const attend = (engine as unknown as { attendHumanV1?: (id: string, g: unknown, yaw?: number, turn?: 'gradual-v1') => string }).attendHumanV1;
+      // #423: `turn: 'gradual-v1'` is recorded on new events only; older events keep their at-once body turn.
+      if (p.entityId && attend && p.gaze !== undefined) attend.call(engine, p.entityId, p.gaze, typeof p.yaw === 'number' ? p.yaw : undefined, p.turn === 'gradual-v1' ? 'gradual-v1' : undefined);
       return {};
     }
     case 'edge-stop': {

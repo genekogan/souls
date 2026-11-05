@@ -38,3 +38,25 @@ test('live plan fallback requires both explicit development flags, with no Activ
   assert.equal(plan.steps.some(s=>s.params.facingPolicy==='social-v1'),enabled,JSON.stringify({dev,flag}));assert.equal(plan.steps.some(s=>s.verb==='mars:face'),enabled);
  }}finally{for(const [i,key]of ['DEV_AUTH','SOUL_SOCIAL_FACING'].entries()){if(previous[i]===undefined)delete process.env[key];else process.env[key]=previous[i];}}
 });
+
+// #423 A2: a forming conversation turns both free bodies gradually (native face) before the first reply is published.
+for(const on of [true,false])test(`social facing: conversation start and join ${on?'turn bodies gradually (flags on)':'keep legacy attention (flags off)'}`,{timeout:600000},async t=>{
+ const previous=[process.env.DEV_AUTH,process.env.SOUL_SOCIAL_FACING];process.env.DEV_AUTH='1';process.env.SOUL_SOCIAL_FACING=on?'1':'0';
+ const {Hono}=await import('hono'),{mountEdgeRoutes}=await import('./edge/routes.ts'),{setImmediate}=await import('node:timers/promises');
+ const f=fixture(':memory:',factory,{durableClockV1:true});f.brain.quiesce();const edge=new EdgeLedger(f.host,f.db,undefined,{ambient:false}),app=new Hono();
+ let comms:ReturnType<typeof mountEdgeRoutes>|undefined;
+ t.after(()=>{comms?.close();f.host.stop();f.db.close();for(const [i,key]of ['DEV_AUTH','SOUL_SOCIAL_FACING'].entries()){if(previous[i]===undefined)delete process.env[key];else process.env[key]=previous[i];}});
+ comms=mountEdgeRoutes(app,{host:f.host,db:f.db,souls:f.souls,ledger:edge,soul:()=>undefined as never});
+ const souls=[];for(const name of ['Ana','Ben']){await invite(f,name);const r=await accept(f.host,f.souls.create('dev:'+name,{name,description:'Facing conversation'}));souls.push({soulId:r.id,entityId:r.entity_id,name:r.name,owner:r.owner});}
+ const ents=()=>f.host.engine.world.entities,tick=async(n:number)=>{for(let i=0;i<n;i++){f.host.tickOnce();await setImmediate();f.host.drainInputs();}};
+ await tick(10);const [a,b]=souls,A=()=>ents()[a.entityId],B=()=>ents()[b.entityId];
+ // Turn both away from each other first, so a facing change is observable.
+ A().pose.yaw=Math.atan2(B().pose.p[2]-A().pose.p[2],B().pose.p[0]-A().pose.p[0])+1;B().pose.yaw=Math.atan2(A().pose.p[2]-B().pose.p[2],A().pose.p[0]-B().pose.p[0])-1;
+ const err=(x:typeof A,y:typeof A)=>Math.abs(Math.atan2(Math.sin(Math.atan2(y().pose.p[2]-x().pose.p[2],y().pose.p[0]-x().pose.p[0])-x().pose.yaw),Math.cos(Math.atan2(y().pose.p[2]-x().pose.p[2],y().pose.p[0]-x().pose.p[0])-x().pose.yaw)));
+ const cv=comms.conversations.handle(a as never,{op:'start',with:[b.soulId]}) as {accepted:boolean;conversation:{id:string}};assert.equal(cv.accepted,true);
+ assert.equal(comms.conversations.handle(b as never,{op:'accept',conversation:cv.conversation.id}).accepted,true);
+ let maxStep=0;for(let i=0;i<10;i++){const y=[A().pose.yaw,B().pose.yaw];await tick(1);const w=(d:number)=>Math.abs(Math.atan2(Math.sin(d),Math.cos(d)));maxStep=Math.max(maxStep,w(A().pose.yaw-y[0]),w(B().pose.yaw-y[1]));}
+ const events=f.db.events(f.host.worldId).filter(e=>e.kind===('edge-attention' as never)).map(e=>e.payload as {yaw?:number;turn?:string});
+ if(on){assert.ok(err(A,B)<=5*Math.PI/180&&err(B,A)<=5*Math.PI/180,JSON.stringify([err(A,B),err(B,A)]));assert.ok(maxStep<=4/20+1e-9,String(maxStep));assert.ok(events.some(e=>e.turn==='gradual-v1'&&typeof e.yaw==='number'));}
+ else{assert.ok(err(A,B)>.9&&err(B,A)>.9,'flags off: forming a conversation turns no body before its first turn');assert.equal(events.some(e=>e.turn!==undefined),false);}
+});

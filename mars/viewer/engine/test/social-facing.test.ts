@@ -93,3 +93,32 @@ test('a courtesy step recomputes fixed-target heading before hands resume at the
  for(let i=0;i<150;i++){rt.step();const a=body(rt);if(rt.records.get(nudge.id)?.status==='completed'&&a.human!.activity==='read'){resumed++;assert.ok(Math.abs(delta(Math.atan2(-a.pose.p[2],4-a.pose.p[0]),a.pose.yaw))<=FACING_TOLERANCE);}}
  assert.equal(nudge.status,'completed');assert.ok(resumed>20);assert.ok(body(rt).pose.p[2]>.5,'actual native courtesy changed the supported root');
 });
+test('an ordinary walk taking over an ungrouped social-v1 pose with no face target retains the native walk exactly',()=>{
+ const make=(withPose:boolean)=>{const rt=setup(human('a',0,0,{yaw:1}));const action=withPose?pose(rt,'a',{activity:'read',prop:'book'}):undefined;for(let i=0;i<4;i++)rt.step();return{rt,action};};
+ const candidate=make(true),control=make(false);assert.equal(candidate.action!.status,'executing');
+ for(const f of [candidate,control])assert.equal(f.rt.submit('walk_to',{actor:'a',x:-4,z:3}).status,'executing');
+ for(let i=0;i<120;i++){candidate.rt.step();control.rt.step();const c=body(candidate.rt),k=body(control.rt);assert.deepEqual(c.pose,k.pose);assert.equal(c.human!.activity,k.human!.activity);assert.equal(c.human!.speed,k.human!.speed);}
+ assert.equal(candidate.action!.status,'failed');assert.equal(candidate.action!.diagnostic?.code,'pose.not-still');assert.equal(candidate.rt.holder('pose:a').length,0);
+});
+// #423 A6: every social-v1 guard in pose_v1.step is gated behind a read of `facingPolicy`, so counting those reads per
+// executing step is the work-unit measure. The actual body-rule nap (`{activity:'nap',seconds:3600}`) must read it 0 times.
+function counted(){
+ const counter={reads:0,steps:0};
+ const def:ActionDef={...poseV1,start(rt,p,plan,id){const ex=(poseV1.start as Function)(rt,p,plan,id);ex.p=new Proxy(ex.p,{get(t,k,r){if(k==='facingPolicy')counter.reads++;return Reflect.get(t,k,r);}});return ex;},
+  step(rt,ex,dt){counter.steps++;return (poseV1.step as Function)(rt,ex,dt);}} as ActionDef;
+ const reg=new Map(registry);reg.set('pose_v1',def);
+ const make=(...entities:Entity[])=>{const world=addAll(emptyWorld('social-facing-a6',scene),...entities),spatial=new Spatial(scene,{cell:.1});spatial.sync(world);return new Runtime(world,reg,{spatial},[]);};
+ return {counter,make};
+}
+for(const mode of ['alone','distant-crowd'])test(`A6: the body-rule nap evaluates no social-facing guard per tick (${mode})`,()=>{
+ const {counter,make}=counted(),crowd=mode==='alone'?[]:Array.from({length:40},(_,i)=>human('c'+i,-9+(i%8)*.6,-9+Math.floor(i/8)*.6));
+ const rt=make(human('a',6,6),...crowd);
+ for(const id of ['a',...(mode==='alone'?[]:['c0','c1','c2'])])assert.equal(rt.submit('pose_v1',{actor:id,activity:'nap',seconds:3600}).status,'executing');
+ for(let i=0;i<1000;i++)rt.step();
+ assert.ok(counter.steps>=1000,JSON.stringify(counter));assert.equal(counter.reads,0,JSON.stringify(counter));console.log(JSON.stringify({a6:mode,...counter}));
+});
+test('A6 positive control: a grouped social-v1 pose does evaluate its guards',()=>{
+ const {counter,make}=counted(),rt=make(human('a',-1.5,0),human('b',1.5,0));
+ for(const id of ['a','b'])rt.submit('pose_v1',{actor:id,activity:'listen',seconds:8,group:'g',need:1,facingPolicy:'social-v1'});
+ for(let i=0;i<20;i++)rt.step();assert.ok(counter.reads>=counter.steps,JSON.stringify(counter));console.log(JSON.stringify({a6:'positive-control',...counter}));
+});

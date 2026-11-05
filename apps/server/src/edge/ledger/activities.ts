@@ -153,9 +153,12 @@ const secondsParam = (def: number, max = 1800) => ({seconds: {type: 'integer', m
 const seatSeconds = () => ({seconds: {type: 'integer', min: 1, max: 600, default: 60}});
 export const ACTIVITY_SECONDS_MAX = 1800;
 
+/** #423 social-v1 (unfinished, default off): new plans and conversation turns opt in only with both dev flags. */
+export const socialFacingEnabled = () => process.env.DEV_AUTH === '1' && process.env.SOUL_SOCIAL_FACING === '1';
+
 /** The activity capabilities and plans for one Soul right now. */
 export function activityCapabilities(data: SpotsData, w: ActivityWorld): {caps: EdgeCapability[]; plans: Map<string, Plan>} {
-  const socialFacing = w.socialFacing ?? (process.env.DEV_AUTH==='1' && process.env.SOUL_SOCIAL_FACING==='1');
+  const socialFacing = w.socialFacing ?? socialFacingEnabled();
   const pose = (activity:string,seconds:number,extra:Record<string,unknown>={})=>({verb:'mars:pose_v1',params:{activity,seconds,
     ...(socialFacing&&SOCIAL_FACING_ACTIVITIES.has(activity)&&!extra.group&&!extra.game?{facingPolicy:'social-v1'}:{}),...extra}});
   const caps: EdgeCapability[] = [], plans = new Map<string, Plan>();

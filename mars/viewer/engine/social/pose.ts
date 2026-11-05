@@ -147,6 +147,13 @@ const restore = (rt: Runtime, ex: Exec) => {
   // together/1: a carried item stays in the hand between activities
   if (h.holding) h.prop = h.holding; else delete h.prop;
 };
+/** social-v1: an ordinary (non-courtesy) walk now holds this body. */
+const walkOwns=(rt:Runtime,actor:string)=>rt.holder('actor:'+actor).some(id=>rt.records.get(id)?.verb==='walk_to'&&!nudge(id));
+/** Release the overlay to the walk without overwriting the walk's body state. */
+function walkTakeover(rt:Runtime,ex:Exec,h:NonNullable<Runtime['world']['entities'][string]['human']>){
+  const activity=h.activity,speed=h.speed;restore(rt,ex);h.activity=activity;if(speed!==undefined)h.speed=speed;
+  return {status:'failed' as const,diagnostic:issue('not-still','A walk took over; the stationary activity ended.',[ex.p.actor])};
+}
 /** Versioned cleanup releases the gesture without erasing an actual courtesy walk. */
 const restorePaired=(rt:Runtime,ex:Exec)=>{const h=rt.world.entities[ex.p.actor]?.human,moving=!!h&&nudged(rt,ex.p.actor),activity=h?.activity,speed=h?.speed;restore(rt,ex);if(h&&moving){h.activity=activity!;if(speed!==undefined)h.speed=speed;}};
 /** together/1: the other bodies posing with this group (sorted by id: deterministic), nearest first for the paired one. */
@@ -186,29 +193,34 @@ export const poseV1: ActionDef<Params, true, Exec> = {
   step(rt, ex, dt) {
     const a = rt.world.entities[ex.p.actor], h = a?.human;
     if (!h) return { status: 'failed', diagnostic: issue('not-human', 'the body is gone', [ex.p.actor]) };
-    if(ex.p.facingPolicy && rt.holder('actor:'+ex.p.actor).some(id=>rt.records.get(id)?.verb==='walk_to'&&!nudge(id))){
-      // A later ordinary walk owns heading. Release this overlay without overwriting the walk's body state.
-      const activity=h.activity,speed=h.speed;restore(rt,ex);h.activity=activity;if(speed!==undefined)h.speed=speed;
-      return {status:'failed',diagnostic:issue('not-still','A walk took over; the stationary activity ended.',[ex.p.actor])};
-    }
     if(ex.gameRelease)return releaseGameStep(rt,ex,dt);
-    if (ex.phase && nudged(rt, ex.p.actor)) {
-      if(ex.p.pairedPolicy){if(ex.phase==='active')ex.phase='waiting';delete ex.readyAt;h.together={group:ex.p.group!,phase:ex.phase,mobile:!!ex.mobile,pairedPolicy:ex.p.pairedPolicy,...(ex.until===undefined?{}:{until:ex.until})};if(ex.phase==='waiting'&&ex.until===undefined&&(ex.waited=(ex.waited??0)+1)>Math.round((ex.p.waitSeconds??30)/dt)){restorePaired(rt,ex);return {status:'failed',diagnostic:issue('pair-not-ready','The paired gesture could not settle in time.',[ex.p.actor])};}}
-      ex.at = [...a.pose.p]; return { status: 'running', phase: 'settling' }; }
-    if (ex.phase) ex.at = [...a.pose.p];   // a grouped pose carries on from wherever a courtesy step left the body
-    if (a.pose.p.some((n, i) => Math.abs(n - ex.at[i]) > 1e-6)) { restore(rt, ex); return { status: 'failed', diagnostic: issue('moved', 'The body moved; the activity ended.', [ex.p.actor]) }; }
-    if(ex.p.game?.flightPolicy==='clear-v1'&&ex.p.group){const blocked=frisbeeLaneIssue(rt,ex.p.group,ex.p.actor);if(blocked){if(beginGameRelease(rt,ex,dt,blocked))return releaseGameStep(rt,ex,dt);restore(rt,ex);return {status:'failed',diagnostic:blocked};}}
-    // Courtesy movement changes the direction to a fixed object; only the recorded new policy retargets.
-    if(ex.p.facingPolicy && ex.p.face){const d:Vec2=[ex.p.face[0]-a.pose.p[0],ex.p.face[1]-a.pose.p[2]];ex.yaw=hypot(...d)>.05?heading(d):null;}
-    // A grouped object overlay also prepares before publishing hands or joining its shared window.
-    if(ex.phase && ex.p.facingPolicy && ex.yaw!==null && ex.base!=='sit' && !held(rt,ex.p.actor) && !stepFacing(a,ex.yaw,dt)){
-      h.activity=ex.base;return {status:'running',phase:'facing'};
+    // social-v1 guards live only inside the group, displacement and fixed-yaw branches below, so a pose that
+    // cannot opt in (a body-rule nap: no group, no face) evaluates none of them (#423 A6).
+    if (ex.phase) {
+      // Before the reference root is refreshed: a later ordinary walk owns a grouped body's heading.
+      if(ex.p.facingPolicy && walkOwns(rt,ex.p.actor))return walkTakeover(rt,ex,h);
+      if (nudged(rt, ex.p.actor)) {
+        if(ex.p.pairedPolicy){if(ex.phase==='active')ex.phase='waiting';delete ex.readyAt;h.together={group:ex.p.group!,phase:ex.phase,mobile:!!ex.mobile,pairedPolicy:ex.p.pairedPolicy,...(ex.until===undefined?{}:{until:ex.until})};if(ex.phase==='waiting'&&ex.until===undefined&&(ex.waited=(ex.waited??0)+1)>Math.round((ex.p.waitSeconds??30)/dt)){restorePaired(rt,ex);return {status:'failed',diagnostic:issue('pair-not-ready','The paired gesture could not settle in time.',[ex.p.actor])};}}
+        ex.at = [...a.pose.p]; return { status: 'running', phase: 'settling' }; }
+      ex.at = [...a.pose.p];   // a grouped pose carries on from wherever a courtesy step left the body
     }
-    if (ex.phase) return together(rt, ex, a, h, dt);
+    if (a.pose.p.some((n, i) => Math.abs(n - ex.at[i]) > 1e-6)) {
+      if(ex.p.facingPolicy && walkOwns(rt,ex.p.actor))return walkTakeover(rt,ex,h);
+      restore(rt, ex); return { status: 'failed', diagnostic: issue('moved', 'The body moved; the activity ended.', [ex.p.actor]) }; }
+    if(ex.p.game?.flightPolicy==='clear-v1'&&ex.p.group){const blocked=frisbeeLaneIssue(rt,ex.p.group,ex.p.actor);if(blocked){if(beginGameRelease(rt,ex,dt,blocked))return releaseGameStep(rt,ex,dt);restore(rt,ex);return {status:'failed',diagnostic:blocked};}}
+    if (ex.phase) {
+      if(ex.p.facingPolicy){
+        // Courtesy movement changes the direction to a fixed object; only the recorded new policy retargets.
+        if(ex.p.face){const d:Vec2=[ex.p.face[0]-a.pose.p[0],ex.p.face[1]-a.pose.p[2]];ex.yaw=hypot(...d)>.05?heading(d):null;}
+        // A grouped object overlay also prepares before publishing hands or joining its shared window.
+        if(ex.yaw!==null && ex.base!=='sit' && !held(rt,ex.p.actor) && !stepFacing(a,ex.yaw,dt)){h.activity=ex.base;return {status:'running',phase:'facing'};}
+      }
+      return together(rt, ex, a, h, dt);
+    }
     if (ex.yaw !== null && !held(rt, ex.p.actor)) {
-      // Prospective preparation publishes no hand-bearing activity before native facing is ready.
-      // A seated base retains its seat direction even if it has no separate held sit action.
-      if(ex.p.facingPolicy){if(ex.base!=='sit'&&!stepFacing(a,ex.yaw,dt))return {status:'running',phase:'facing'};}
+      // Prospective preparation publishes no hand-bearing activity before native facing is ready; a walk that
+      // takes over before moving the body owns its heading. A seated base retains its seat direction.
+      if(ex.p.facingPolicy){if(walkOwns(rt,ex.p.actor))return walkTakeover(rt,ex,h);if(ex.base!=='sit'&&!stepFacing(a,ex.yaw,dt))return {status:'running',phase:'facing'};}
       else a.pose.yaw = ex.yaw;
     }
     h.activity = ex.p.activity;

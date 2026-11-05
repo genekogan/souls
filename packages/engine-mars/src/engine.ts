@@ -1279,15 +1279,21 @@ export class MarsEngine implements Engine {
   }
   /** attention/1 (logged 'edge-attention'): set or clear a body's gaze (head target: a body/fixture id or a point, until a tick),
    * and with `yaw` also turn a free standing body (no program, nothing holding it, awake, not seated/riding). Never cancels
-   * or blocks anything the body is doing. Returns what turned. */
-  attendHumanV1(id: string, gaze: { target?: string; at?: [number, number]; until?: number; kind?: string } | null, yaw?: number): 'body' | 'head' | 'none' {
+   * or blocks anything the body is doing. Returns what turned.
+   * `turn: 'gradual-v1'` (#423, prospective; absent on older events) turns that free body through the native `face`
+   * action at the ordinary turn rate instead of setting the yaw at once; the next act pre-empts it like any face. */
+  attendHumanV1(id: string, gaze: { target?: string; at?: [number, number]; until?: number; kind?: string } | null, yaw?: number, turn?: 'gradual-v1'): 'body' | 'head' | 'none' {
     const e = this.ents[id]; if (!e?.human) return 'none';
     if (gaze === null) { delete e.human.gaze; delete e.human.attention; return 'none'; }
     const g: any = { kind: gaze.kind ?? 'look' }; if (typeof gaze.target === 'string' && this.ents[gaze.target]) g.target = gaze.target; else if (Array.isArray(gaze.at)) g.at = [r3(gaze.at[0]), r3(gaze.at[1])];
     if (Number.isInteger(gaze.until)) g.until = gaze.until;
     let turned: 'body' | 'head' = 'head';
     const free = !this.byActor.has(id) && !this.holders(id).length && !e.human.sleepPose && !e.human.on && !e.human.riding && !e.human.carrier && !e.human.together && (e.human.activity === 'idle' || e.human.activity === 'wait');
-    if (typeof yaw === 'number' && Number.isFinite(yaw) && free) { e.pose.yaw = r3(yaw); turned = 'body'; }
+    if (typeof yaw === 'number' && Number.isFinite(yaw) && free) {
+      if (turn === 'gradual-v1') this.rt.submit('face', { actor: id, target: { point: [r3(e.pose.p[0] + dcos(yaw) * 2), r3(e.pose.p[2] + dsin(yaw) * 2)] }, facingPolicy: 'social-v1' });
+      else e.pose.yaw = r3(yaw);
+      turned = 'body';
+    }
     if (g.target || g.at) { e.human.gaze = g; this.gazeAt(e); } else delete e.human.gaze;
     return turned;
   }
