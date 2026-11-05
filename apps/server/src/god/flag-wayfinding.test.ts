@@ -8,7 +8,6 @@ import {coreRef} from '@sim/world-compiler';
 import {fixture, factory, invite, accept} from '../../test/native-owner-fixture.ts';
 import {EdgeLedger} from '../edge/ledger/ledger.ts';
 import {mountEdgeRoutes} from '../edge/routes.ts';
-import {routeFrame} from '../edge/perception/route.ts';
 import {GodMode} from './god.ts';
 import {GroundHost, installGroundCapabilities} from './ground-host.ts';
 import {installEngineBridge} from './engine-bridge.ts';
