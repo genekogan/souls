@@ -67,7 +67,10 @@ The strict steps:
 2. **Re-test**: the required checks (`ci-ok` from the `ci` workflow, `gitleaks`, `path-guard`, `scrub-guard`,
    `proof-ok` and `fragment`) run on the rebased head, and the train waits for them there (a personal-account repo
    has no GitHub merge queue; `merge-train.yml` is the queue), so a strict PR never lands tested only against an
-   older base.
+   older base. The newest workflow run at the head decides each check. A result from a run that was cancelled, that
+   a newer run of the same workflow replaced, or that predates a re-run in progress is ignored, and a `cancelled`
+   conclusion counts as pending, never as a failure. Until the replacing run reports, the check is pending within the
+   train's bounded waits.
 3. **Merge**, by tier ([PROOF-POLICY.yml](PROOF-POLICY.yml), `node tools/proof/tier.mjs`):
    - **T0–T2** merge automatically once every required check is green.
    - **T3–T4** wait for the maintainer's approval, then merge.
