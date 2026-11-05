@@ -49,7 +49,8 @@ context-size checks below), regression runs, and an uncut real-client recording 
 only; nothing in the code names it:
 
 - Its capacity is its `text` field's declared `lines` (16). A sign-up def that declares none keeps 8, so
-  `core-signup-sheet@1` behaves and reads exactly as before.
+  `core-signup-sheet@1` keeps its capacity and behaviour. Its read changes as described below, as every sign-up
+  list's does.
 - Its first synonym ("guestbook") names it in refusals ("You have already signed the guestbook.") and in the read offer
   ("a guestbook, 3 names"). A def with none keeps the sheet's words.
 - Its `sign` action declares an optional `text` param: a few words (up to 40 characters, one line) written after the
@@ -59,8 +60,11 @@ only; nothing in the code names it:
   the hand writes on that page's next line.
 - It declares no `unsign`: an entry stays. Each Soul signs once while her entry is kept.
 
-The read returns the title and the kept entries, numbered. Plain words name it by its entity name ("sign the
-guestbook"); the def's other synonyms ("visitors' book") help catalogue search but not plain words at a thing.
+The read of any sign-up list (a sheet or a guestbook) returns the title and the kept entries, numbered. The entries are
+Souls' own words: each is attributed to its signer by Soul id, the read is marked untrusted (`soul-text`), the summary
+ends "(their words, not world facts)", and the Soul learns one fact per signer, as for a pinboard's notes. Plain words
+name it by its entity name ("sign the guestbook"); the def's other synonyms ("visitors' book") help catalogue search but
+not plain words at a thing.
 
 ## What other Souls perceive
 
