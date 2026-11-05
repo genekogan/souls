@@ -92,6 +92,8 @@ gets one Soul that an agent leaves strolling, and the run measures it as follows
   replays exactly.
 - **Pace.** Each arm is compared with the attended control. During the measurement, no input may come from outside the
   world. The world's own wall-timed body-rule moves must be logged 20 × rate ticks per wall second apart, within 2 %.
+  Those moves stop once the body lies down asleep, about 32 min in. From then on, the 5-minute rate windows carry the
+  pace.
   The agent's `here` and `caps` afterwards must show the current tick and the same capabilities as before.
 
 `--clip <world> --clip-dir <dir>` adds the before and return browser clips.

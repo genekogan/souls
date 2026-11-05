@@ -72,7 +72,7 @@ async function soulOf(base, slug) {
   const made = /"id": "(s_[A-Za-z0-9_-]+)"/.exec(cli('create', `Walker ${slug}`))?.[1];
   if (!made) throw new Error(`${slug}: the Soul was not created`);
   const act = cli('act', 'wander:here', JSON.stringify({ seconds: WANDER_S }));
-  (out0.agentBefore ??= {})[slug] = { capsTotal: Number(/"total": (\d+)/.exec(cli('caps'))?.[1] ?? NaN) };
+  (out0.agentBefore ??= {})[slug] = { verbs: verbsOf(cli('caps', '--all', '--limit', '10000')) };
   return `Soul ${made} created; act wander:here ${WANDER_S} s -> ${act.trim().split('\n').filter((l) => /status|accepted|ok|code/.test(l)).slice(0, 3).join(' ').replace(/\s+/g, ' ')}`;
 }
 // one uncut clip of a world page (record.mjs); the browser is closed when it returns
@@ -85,11 +85,14 @@ function clip(base, slug, phase) {
   (out0.clips ??= []).push({ phase, world: slug, file: relative(ROOT, file), startedMin: +((t - T0) / 60_000).toFixed(2), tookS: Math.round((performance.now() - t) / 1000) });
   log(`clip ${phase} of ${slug} -> ${file}`);
 }
+// the capability verbs the whole menu offers (`caps --all`), without their targets: what is near changes as the body
+// moves, the vocabulary does not
+const verbsOf = (text) => [...new Set([...text.matchAll(/"id": "([^":]+)[:"]/g)].map((m) => m[1]))].sort();
 // the agent's own reads after the measurement: the tick it is told and the capabilities it is offered (M4)
 function agentRead(slug) {
   const sd = join(dir, 'souls', slug), cli = (...a) => { try { return execFileSync(process.execPath, ['eden.mjs', ...a], { cwd: sd, encoding: 'utf8', timeout: 120_000, env: { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR } }); } catch (e) { return String(e.stdout ?? e.message); } };
-  const here = cli('here'), caps = cli('caps'), live = liveOf(slug)?.tick?.world ?? null;
-  return { hereTick: Number(/"tick": (\d+)/.exec(here)?.[1] ?? NaN), liveTick: live, activity: /"activity": \{\s*"kind": "([^"]+)"/.exec(here)?.[1] ?? null, posture: /"posture": "([^"]+)"/.exec(here)?.[1] ?? null, now: /"now": "([^"]+)"/.exec(here)?.[1] ?? null, capsTotal: Number(/"total": (\d+)/.exec(caps)?.[1] ?? NaN) };
+  const here = cli('here'), caps = cli('caps', '--all', '--limit', '10000'), live = liveOf(slug)?.tick?.world ?? null;
+  return { hereTick: Number(/"tick": (\d+)/.exec(here)?.[1] ?? NaN), liveTick: live, activity: /"activity": \{\s*"kind": "([^"]+)"/.exec(here)?.[1] ?? null, posture: /"posture": "([^"]+)"/.exec(here)?.[1] ?? null, now: /"now": "([^"]+)"/.exec(here)?.[1] ?? null, verbs: verbsOf(caps) };
 }
 // each periodic snapshot row a world saves (it keeps only its latest 5), copied as it appears; read-only, never a visitor
 const snaps = {};
@@ -104,7 +107,7 @@ function captureSnapshots(slug) {
       if (have[tick]) continue;
       const r = row.get(w, tick); if (!r) continue;   // pruned between the two reads: kept rows are 20 s+ apart, the next pass has the next one
       have[tick] = { worldId: r.world_id, tick: r.tick, seq: r.seq, stateHash: r.state_hash, physicalHash: r.physical_hash, rulesVersion: r.rules_version, at: r.at, body: JSON.parse(r.snapshot) };
-      writeFileSync(join(keep, `${tick}.json`), JSON.stringify(have[tick]));   // re-verifiable later: matched-tick.mjs --snapshots
+      writeFileSync(join(keep, `${tick}.json`), JSON.stringify(have[tick]));   // re-verifiable later with copies/<w>/sim.db
     }
     return true;
   } catch (e) { log(`snapshot read ${slug}: ${e.message} (the next pass reads it)`); return false; } finally { try { db?.close(); } catch { /* closed */ } }
@@ -122,7 +125,7 @@ async function main() {
   log(`created ${slugs.join(', ')}; restarting the launcher so none has been visited in its run`);
   await stop(launcher); await sleep(1000);
   // S0: the state each world stopped with, which its boot restores
-  for (const s of slugs) if (SOULS && !captureSnapshots(s) && !captureSnapshots(s)) throw new Error(`${s}: could not read the snapshot its boot restores (S0)`);
+  for (const s of slugs) if (SOULS && !captureSnapshots(s) && !(await sleep(1000), captureSnapshots(s))) throw new Error(`${s}: could not read the snapshot its boot restores (S0)`);
   const s0Tick = Object.fromEntries(slugs.map((s) => [s, Math.max(-1, ...Object.keys(snaps[s] ?? {}).map(Number))]));
   T0 = performance.now(); T0wall = Date.now(); launcher = start(port, lo, hi); await up(base);
   const [control, ...alone] = slugs;
@@ -186,11 +189,11 @@ async function main() {
     const inputs = r.inputs ?? [], measured = inputs.filter((e) => e.at >= T0wall && e.at <= endWall);
     // the world's own inputs: the presence rule's moves (trigger edge-body) and the world's own rules; anything else
     // during the measurement came from an agent, a viewer or an operator
-    const external = measured.filter((e) => e.trigger !== 'edge-body' && !/^(world|system)/.test(e.author));
+    const external = measured.filter((e) => !e.own);
     const body = measured.filter((e) => e.trigger === 'edge-body'), b0 = body[0], b1 = body.at(-1);
     const asleep = body.find((e) => e.label === 'Sleeping');
     w.matched = { verdict: r.verdict, fails: r.fails, from: r.from, compared: runSamples.length, unattendedCompared: during.length, minMatched, spanTicks: during.length && r.from ? during.at(-1).tick - r.from.tick : 0, samples: runSamples, events: r.events,
-      external: external.length,
+      external: external.length, externalInputs: external.slice(0, 20), ownByKind: Object.fromEntries([...new Set(measured.filter((e) => e.own).map((e) => `${e.kind}:${e.trigger ?? e.why ?? ''}`))].map((k) => [k, measured.filter((e) => e.own && `${e.kind}:${e.trigger ?? e.why ?? ''}` === k).length])),
       bodyRule: { moves: body.length, labels: Object.fromEntries([...new Set(body.map((e) => e.label))].map((l) => [l, body.filter((e) => e.label === l).length])),
         // a wall-timed effect: its logged ticks advance 20 × rate per wall second when the clock keeps its rate
         ticksPerWallS: b0 && b1 && b1.at > b0.at ? +((b1.tick - b0.tick) / ((b1.at - b0.at) / 1000)).toFixed(3) : null,
@@ -202,8 +205,9 @@ async function main() {
     const tps = w.matched.bodyRule.ticksPerWallS;
     if (tps === null || Math.abs(tps / (TICK_HZ * RATE) - 1) > 0.02) w.fails.push(`body-rule moves ${tps} ticks per wall second, not ${TICK_HZ * RATE} ± 2 %`);
     const a = out.agentBefore?.[s], z = out.agentAfter?.[s];
-    w.agent = { capsBefore: a?.capsTotal ?? null, capsAfter: z?.capsTotal ?? null, hereTick: z?.hereTick ?? null, liveTick: z?.liveTick ?? null, posture: z?.posture ?? null };
-    if (!(a?.capsTotal > 0) || a.capsTotal !== z?.capsTotal) w.fails.push(`capabilities ${a?.capsTotal} before, ${z?.capsTotal} after`);
+    w.agent = { verbsBefore: a?.verbs ?? null, verbsAfter: z?.verbs ?? null, hereTick: z?.hereTick ?? null, liveTick: z?.liveTick ?? null, activity: z?.activity ?? null, posture: z?.posture ?? null, now: z?.now ?? null };
+    const lost = (a?.verbs ?? []).filter((v) => !(z?.verbs ?? []).includes(v));
+    if (!a?.verbs?.length || lost.length) w.fails.push(`capability verbs lost after the run: ${lost.join(', ') || 'none read before'}`);
     if (!(Math.abs((z?.hereTick ?? NaN) - (z?.liveTick ?? NaN)) <= 100)) w.fails.push(`the agent was told tick ${z?.hereTick}, the world was at ${z?.liveTick}`);
   }
   // the unattended arms against the control: the same tick rate of the world's own wall-timed moves
@@ -214,7 +218,7 @@ async function main() {
   out.verdict = ok ? 'pass' : 'fail';
   const file = flag('out') ?? join(dir, 'result.json'); writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
   log(`${out.verdict}: ${Object.entries(out.worlds).map(([s, w]) => `${s} ${w.role} ratio ${w.ratio} min window ${w.minWindow} gap ${w.maxGapS} s jumps ${w.catchUpJumps}`).join('; ')} -> ${file}`);
-  if (!has('keep')) for (const d of ['data', 'copies', 'souls']) rmSync(join(dir, d), { recursive: true, force: true });   // snapshots/ and result.json stay
+  if (!has('keep')) for (const d of ['data', 'souls']) rmSync(join(dir, d), { recursive: true, force: true });   // snapshots/, copies/ (the event logs) and result.json stay: matched-tick.mjs --db copies/<w>/sim.db --snapshots snapshots/<w>
   process.exitCode = ok ? 0 : 1;
 }
 main().catch(async (e) => { console.error(e); await stop(launcher); process.exitCode = 2; });

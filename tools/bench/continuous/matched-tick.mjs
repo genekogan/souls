@@ -76,7 +76,7 @@ export async function verifyMatchedTicks({ dbFile, worldId, samples }) {
     // the log after S0, from the run's own (copied) database
     { const d = new Db(dbFile); try { src = d.events(worldId, s0.seq); } finally { d.close(); } }
     for (const e of src) {
-      inputs.push({ seq: e.seq, tick: e.tick, at: e.at, kind: e.kind, author: e.author.replace(/s_[A-Za-z0-9_-]+/, 's_*'), trigger: e.payload?.trigger ?? null, label: e.payload?.label ?? null });
+      inputs.push({ seq: e.seq, tick: e.tick, at: e.at, kind: e.kind, author: e.author.replace(/s_[A-Za-z0-9_-]+/, 's_*'), trigger: e.payload?.trigger ?? null, label: e.payload?.label ?? null, why: e.payload?.why ?? null, receipt: !!e.payload?.receipt, own: worldOwn(e) });
       // a day-clock catch-up replays exactly, but it is the jump that substitutes for simulation
       if (e.kind === 'rules' && (e.payload?.dayConfig || /caught up/.test(e.payload?.why ?? ''))) fails.push(`day-clock catch-up logged at tick ${e.tick} (seq ${e.seq})`);
     }
@@ -114,6 +114,20 @@ export async function verifyMatchedTicks({ dbFile, worldId, samples }) {
   } catch (e) { fails.push(String(e?.message ?? e)); }
   finally { if (copy) { try { copy.db.close(); } catch { /* closed */ } rmSync(copy.dir, { recursive: true, force: true }); } }
   return { verdict: fails.length ? 'fail' : 'pass', fails, from: { tick: s0.tick, seq: s0.seq, stateHash: s0.stateHash.slice(0, 16) }, samples: out, events: { total: src.length, byKind }, inputs };
+}
+
+/** An input the world made itself, with nobody there: the presence rule's moves and stops (edge/ledger/body-rule.ts via
+ *  ledger.ts: decisions with trigger edge-body or edge-ambient, an edge-stop with why 'body' and no receipt), the ledger
+ *  stepping a body out of a solid footprint, and the world's own rules. Anything else came from an agent, a viewer, the
+ *  god or an operator. */
+export function worldOwn(e) {
+  const p = e.payload ?? {};
+  if (/^(world|system)/.test(e.author)) return true;
+  if (!/^edge:s_/.test(e.author)) return false;
+  if (e.kind === 'decision') return p.trigger === 'edge-body' || p.trigger === 'edge-ambient';
+  if (e.kind === 'edge-stop') return p.why === 'body' && !p.receipt;
+  if (e.kind === 'edge-relocate') return /solid footprint/.test(p.why ?? '');
+  return false;
 }
 
 /** Captured snapshot rows from a directory of <tick>.json files. */

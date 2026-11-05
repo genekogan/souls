@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { setImmediate as turn } from 'node:timers/promises';
-import { verifyMatchedTicks } from './matched-tick.mjs';
+import { verifyMatchedTicks, worldOwn } from './matched-tick.mjs';
 
 const ROOT = new URL('../../../', import.meta.url);
 const { Db } = await import(new URL('apps/server/src/db.ts', ROOT).href);
@@ -76,4 +76,17 @@ test('a logged day-clock catch-up fails even though it replays', async (t) => {
   const r = await verifyMatchedTicks({ dbFile: c, worldId, samples: rows.filter((x) => x.tick >= s0.tick) });
   assert.equal(r.verdict, 'fail');
   assert.match(r.fails.join(' '), /catch-up/);
+});
+
+test("the world's own inputs are told apart from an agent's, a viewer's or an operator's", () => {
+  const e = (kind, author, payload) => ({ kind, author, payload });
+  assert.equal(worldOwn(e('decision', 'edge:s_a', { trigger: 'edge-body', label: 'Shuffling about' })), true);
+  assert.equal(worldOwn(e('decision', 'edge:s_a', { trigger: 'edge-ambient' })), true);
+  assert.equal(worldOwn(e('edge-stop', 'edge:s_a', { why: 'body' })), true, 'the body rule settles a shuffle before lying down');
+  assert.equal(worldOwn(e('edge-relocate', 'edge:s_a', { why: 'stepped out of a solid footprint' })), true);
+  assert.equal(worldOwn(e('rules', 'world', { why: 'x' })), true);
+  assert.equal(worldOwn(e('edge-stop', 'edge:s_a', { why: 'body', receipt: 'r_1' })), false, 'a stop with a receipt answers an agent');
+  assert.equal(worldOwn(e('decision', 'edge:s_a', { trigger: 'edge-act:wander' })), false);
+  assert.equal(worldOwn(e('decision', 'soul:s_a', { trigger: 'edge-body' })), false);
+  assert.equal(worldOwn(e('rules', 'operator:x', {})), false);
 });
