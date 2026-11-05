@@ -48,7 +48,8 @@ context-size checks below), regression runs, and an uncut real-client recording 
 A harvest basket (`core-harvest-basket@1`) and a flower vase (`core-flower-vase@1`) pick from a growing planter
 (`core-garden-planter@2`, unchanged). "pick the tomatoes" (harvest the tomatoes, pick the fruit) is one act: the Soul picks
 up the basket in the right hand if it is not holding it, walks to the nearest fruiting planter, and reaches into the plants
-with the free left hand. At the hand's contact the planter goes back to flowering and the basket holds three tomatoes (it
+with the free left hand. "pick the tomatoes from the rose bed" goes to that planter (by its name, up to two words after
+"from") and never to a nearer one; a name no planter nearby has, or a named planter that is not ripe, is refused by name. At the hand's contact the planter goes back to flowering and the basket holds three tomatoes (it
 holds six). "pick flowers for the vase" (pick some flowers) is the same act with the vase: a flowering planter goes back to
 leafy and the vase holds a bunch of three. An act interrupted before the contact changes nothing. What a vessel picks (the
 stage it picks from and leaves, its state field, how many, where the hand goes) is one row of data per def
