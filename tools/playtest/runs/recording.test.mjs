@@ -35,6 +35,15 @@ test('cameras, recording and observer modes validate; unknown or inconsistent re
   assert.deepEqual(codes(validateSpec(f.spec({ mode: 'radio' }), { serverRoot: f.serverRoot })), ['observer.mode']);
   assert.deepEqual(codes(validateSpec(f.spec({ zoom: 2 }), { serverRoot: f.serverRoot })), ['observer.unknown-field']);
   assert.deepEqual(codes(validateSpec(f.spec({ cameras: ['free'], freeComposition: { drag: [1] } }), { serverRoot: f.serverRoot })), ['observer.freeComposition']);
+  // Recording size (#802): compact by default, viewport or an explicit size by option; bad values refused by field.
+  assert.equal(ok.scenario.observer.recordSize, 'compact', 'compact is the default');
+  const full = validateSpec(f.spec({ cameras: ['wide'], record: ['wide'], recordSize: 'viewport' }), { serverRoot: f.serverRoot });
+  assert.equal(full.ok, true, JSON.stringify(full.errors));
+  assert.equal(full.scenario.observer.recordSize, 'viewport');
+  assert.deepEqual(validateSpec(f.spec({ cameras: ['wide'], record: ['wide'], recordSize: { width: 640, height: 400 } }), { serverRoot: f.serverRoot }).scenario.observer.recordSize, { width: 640, height: 400 });
+  for (const bad of ['tiny', { width: 0, height: 400 }, { width: 640.5, height: 400 }, { width: 640 }, { width: 640, height: 400, fps: 10 }, 12])
+    assert.deepEqual(codes(validateSpec(f.spec({ cameras: ['wide'], record: ['wide'], recordSize: bad }), { serverRoot: f.serverRoot })), ['observer.recordSize'], JSON.stringify(bad));
+  assert.deepEqual(codes(validateSpec(f.spec({ cameras: ['wide'], recordSize: 'viewport' }), { serverRoot: f.serverRoot })), ['observer.recordSize'], 'a size without a recording');
   // The default mode leaves an existing scenario's observer untouched.
   assert.equal(applyOverrides({ world: {}, observer: { sampleSec: 3 } }, { observer: { mode: 'cameras' } }).observer.mode, undefined);
   assert.equal(applyOverrides({ world: {}, observer: {} }, { observer: { mode: 'off' } }).observer.mode, 'off');

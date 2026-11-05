@@ -8,6 +8,7 @@ import { sha256 } from '../lib/hash.mjs';
 import { REPO_ROOT } from '../../lib/paths.mjs';
 import { validateScenario } from '../scenarios/lib/validate.mjs';
 import { validateDiagnostics } from './diagnostics.mjs';
+import { RECORD_SIZES } from '../observer/browser.mjs';
 
 export const SPEC_VERSION = 1;
 const CAMERAS = ['wide', 'free'];
@@ -20,7 +21,7 @@ const RETAIN = ['keep', 'delete'];
 
 export const DEFAULTS = Object.freeze({
   cast: 'scenario',
-  observer: { check: true, required: false, cameras: null, timeoutMs: 60000, mode: 'cameras', record: null, freeComposition: null },
+  observer: { check: true, required: false, cameras: null, timeoutMs: 60000, mode: 'cameras', record: null, recordSize: 'compact', freeComposition: null },
   limits: { maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000 },
   controllers: { allowLiveModels: false },
   // Evidence is always kept. These apply only after a completed run; failed or cancelled runs keep everything.
@@ -85,6 +86,9 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (observer.record != null && observer.record !== true && !(Array.isArray(observer.record) && observer.record.every((c) => typeof c === 'string' && c))) fail('observer.record', 'observer.record: true (every camera) or a list of camera names (wide, free, follow for every seat, or a seat id)');
   if (observer.record != null && observer.mode !== 'cameras') fail('observer.record', `observer.record needs observer.mode "cameras" (got ${observer.mode})`);
   if (Array.isArray(observer.record)) for (const c of observer.record) if ((c === 'wide' || c === 'free') && !(observer.cameras ?? []).includes(c)) fail('observer.record', `observer.record names ${c}, which observer.cameras does not open`);
+  const rs = spec.observer?.recordSize;
+  if (rs != null && !(RECORD_SIZES.includes(rs) || (rs && typeof rs === 'object' && Object.keys(rs).every((k) => k === 'width' || k === 'height') && [rs.width, rs.height].every((n) => Number.isInteger(n) && n >= 16 && n <= 4096)))) fail('observer.recordSize', `observer.recordSize: ${RECORD_SIZES.join(' or ')}, or {width, height} in whole pixels 16..4096`);
+  if (rs != null && observer.record == null) fail('observer.recordSize', 'observer.recordSize needs observer.record');
   if (observer.freeComposition != null && !(Array.isArray(observer.freeComposition.drag) && observer.freeComposition.drag.length === 2 && observer.freeComposition.drag.every(Number.isFinite) && (observer.freeComposition.wheel == null || Number.isFinite(observer.freeComposition.wheel)))) fail('observer.freeComposition', 'observer.freeComposition: {drag: [dx, dy], wheel?: n}');
   for (const k of Object.keys(spec.world ?? {})) if (!['port', 'slug', 'genesis', 'snapshot'].includes(k)) fail('world.override', `world.${k} cannot be overridden here; reference a scenario with that world`);
   if (spec.world?.genesis != null && spec.world?.snapshot != null) fail('world.source', 'world: give genesis or snapshot, not both');
@@ -153,7 +157,7 @@ export function applyOverrides(scenario, { cast = 'scenario', world = null, dura
   if (world?.snapshot != null) out.world.snapshot = world.snapshot;
   if (durationSec != null) out.durationSec = durationSec;
   if (observer?.cameras != null) out.observer = { ...(out.observer ?? {}), cameras: observer.cameras };
-  for (const k of ['mode', 'record', 'freeComposition']) if (observer?.[k] != null && !(k === 'mode' && observer.mode === 'cameras')) out.observer = { ...(out.observer ?? {}), [k]: observer[k] };
+  for (const k of ['mode', 'record', 'recordSize', 'freeComposition']) if (observer?.[k] != null && !(k === 'mode' && observer.mode === 'cameras')) out.observer = { ...(out.observer ?? {}), [k]: observer[k] };
   if (cast && typeof cast === 'object') {
     // A composed cast replaces the scenario's seats and/or scripted direction in their own formats (seat "*" is the
     // scripted director's broadcast).
