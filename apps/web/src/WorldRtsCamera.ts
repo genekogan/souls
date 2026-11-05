@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { WorldCameraMode } from './WorldBroadcast.ts';
-import { editableEvent,manualCameraKeys,manualCameraStep,MANUAL_FAR_LIMIT } from './WorldNavigation.ts';
+import { editableEvent,manualCameraKeys,manualCameraStep,stickStep,MANUAL_FAR_LIMIT } from './WorldNavigation.ts';
 import { cameraGround, CAMERA_GROUND_MARGIN } from './WorldCameraGround.ts';
 
 /** One manual camera: default drag orbits, RMB looks in place, WASD moves horizontally (faster the higher the eye),
@@ -23,6 +23,8 @@ export type RtsOptions = {
   pickRoots: () => readonly THREE.Object3D[];
   /** Whether the user is in "your camera" with this module in charge (not Free, not Advanced). */
   enabled?: () => boolean;
+  /** #893: a flyTo glide (double-click, double-tap, ground tap) reached its point. */
+  arrived?: () => void;
   /** Subject centre and enclosing world-space radius, never a requested camera distance. */
   focusAt?:(x:number,y:number)=>{center:THREE.Vector3;radius:number}|null;
   /** C1: the world's ground rectangle [x0, z0, x1, z1] (far zoom limit, pivot bounds); null when unknown. */
@@ -75,6 +77,12 @@ export function orbitEye(eye: THREE.Vector3, pivot: THREE.Vector3, yaw: number, 
   const d = toPivot(eye, pivot), r = eye.distanceTo(pivot);
   return pivot.clone().addScaledVector(gazeFrom(yawOf(d) + yaw, Math.max(-PITCH_LIMIT, Math.min(0, pitchOf(d) + pitch))), -r);
 }
+/** #891 touch: a two-finger vertical drag rises this many metres per pixel (times the WASD height scale); a pinch's spread
+ * ratio r zooms like a wheel by -ln(r) × PINCH_GAIN (spreading the fingers glides in toward the point between them). */
+export const RISE_PER_PIXEL = .02, PINCH_GAIN = 1;
+/** #891: a browser's own dblclick that follows a touch double-tap is the same gesture (it does not fly twice). */
+const TOUCH_DBLCLICK_MS = 800;
+const unit = (v: number) => Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0;
 /** C1: metres the eye must be above the ground to move at the base WASD speed; higher multiplies it (up to 40x). */
 const SPEED_HEIGHT = 8, SPEED_MAX = 40;
 
@@ -145,6 +153,12 @@ export class WorldRtsCamera {
   /** B2: the head offset over the gaze at the pivot, and its blend back to zero. */
   private look: HeadLook = { yaw: 0, pitch: 0 };
   private lookBlend: { from: HeadLook; t: number } | null = null;
+  /** #891 touch Free camera (touch/WorldTouchFree.ts): the stick's deflection, metres still to rise, whether a finger is
+   * down (one take-over per gesture, as the right button keeps), and when a double-tap last flew. */
+  private stick = { forward: 0, right: 0 };
+  private riseBy = 0;
+  private touchHeld = false;
+  private touchFlewAt = -Infinity;
   private onStart = () => { this.dragging = true; this.markerAge = 0; this.dragFrom = this.boundControls?.target.clone() ?? null; this.startLookBlend(); };
   /** CAMERA-PIVOT: only a gesture that moved the pivot (pan, cursor zoom) re-anchors it; a pure orbit keeps the chosen point. */
   private onEnd = () => { const t = this.boundControls?.target; this.dragging = false; this.idle = 0; this.moved = !this.dragFrom || !t || t.distanceToSquared(this.dragFrom) > 1e-6; this.dragFrom = null; };
@@ -214,13 +228,66 @@ export class WorldRtsCamera {
       this.zoomLog = Math.max(-3, Math.min(3, this.zoomLog + Math.max(-.35, Math.min(.35, px * ZOOM_PER_PIXEL))));
       this.markerAge = 0; this.idle = 0; this.moved = true;
     }, { capture: true, passive: false });
-    listen(canvas, 'dblclick', (e: MouseEvent) => { this.cancelClick(); this.flyToPointer(e); });
+    listen(canvas, 'dblclick', (e: MouseEvent) => { this.cancelClick(); if (performance.now() - this.touchFlewAt < TOUCH_DBLCLICK_MS) return; this.flyToPointer(e); });
   }
   private releaseLook(){
     const id=this.rightPointer;this.rightHeld=false;this.rightPointer=null;this.lookPoint=null;
     if(id!==null&&this.canvas.hasPointerCapture?.(id))this.canvas.releasePointerCapture(id);
   }
-  private clearInput(){this.keys.clear();this.releaseLook();this.manualInput=false;this.flight=null;this.stopZoom();this.cancelClick();}
+  private clearInput(){this.keys.clear();this.releaseLook();this.manualInput=false;this.flight=null;this.stopZoom();this.cancelClick();this.stick={forward:0,right:0};this.riseBy=0;}
+  /** #891: touch drives your camera only (Follow and Broadcast keep OrbitControls' touch mapping). */
+  private touchable(){return this.enabledNow()!==false&&this.o.mode()==='manual';}
+  /** #891: the floating stick's deflection, forward/right in -1..1; WASD's path moves the eye (and pivot) each frame. */
+  setStick(forward:number,right:number){
+    this.stick={forward:unit(forward),right:unit(right)};
+    if(this.walking){this.flight=null;this.stopZoom();this.cancelClick();}
+  }
+  /** #891: the stick is deflected (walking, or the long-press auto-walk). */
+  get walking(){return !!(this.stick.forward||this.stick.right);}
+  /** #891: a finger is down in your camera: like the held right button, one take-over for the whole gesture. */
+  setTouchHeld(held:boolean){this.touchHeld=held;}
+  /** #891: one-finger look, as right-drag: the head turns over the fixed pivot. */
+  touchLook(dx:number,dy:number){
+    if(!this.touchable()||(!dx&&!dy))return;
+    this.flight=null;this.cancelClick();this.startManualInput();this.turnHead(dx*.004,-dy*.004);this.markerAge=0;
+  }
+  /** #891: a finished touch look keeps where you look: the pivot moves onto the gaze (the ground under the screen centre,
+   * else the point along the gaze at the old distance) and the head offset becomes zero, so the next pinch or orbit does not
+   * swing the view back. The eye and the view do not move. (Desktop right-drag keeps LOOK_MODEL's blend back.) */
+  touchLookEnd(){
+    if(!this.touchable()||!this.lookActive())return;
+    const c=this.adopt();this.camera.updateMatrixWorld();
+    const eye=this.camera.position,gaze=this.camera.getWorldDirection(new THREE.Vector3()),d=Math.max(NEAR_LIMIT,eye.distanceTo(this.pivot));
+    const ground=centreGround(this.camera,this.o.scene(),Math.max(600,d*1.5));
+    let t=ground&&ground.distanceTo(eye)>=1?ground.distanceTo(eye):d;
+    // The new pivot stays inside the eye guard's rectangle (pivotRect), so a nearly level look never leaves it beyond reach.
+    const ok=(k:number)=>this.pivotInBounds(eye.clone().addScaledVector(gaze,k));
+    if(!ok(t)){
+      if(!ok(NEAR_LIMIT))return;  // the eye is outside the map: keep the head offset
+      let lo=NEAR_LIMIT,hi=t;for(let i=0;i<20;i++){const m=(lo+hi)/2;if(ok(m))lo=m;else hi=m;}t=lo;
+    }
+    this.pivot.copy(eye).addScaledVector(gaze,t);
+    this.look={yaw:0,pitch:0};this.lookBlend=null;this.write(c);this.camera.up.set(0,1,0);this.camera.lookAt(this.pivot);this.moved=false;
+  }
+  /** #891: two-finger vertical drag (pixels, + down) rises or lowers the eye on the next frame, as Q/E. */
+  touchRise(dy:number){
+    if(!this.touchable()||!Number.isFinite(dy)||!dy)return;
+    this.flight=null;this.cancelClick();
+    this.riseBy=Math.max(-4,Math.min(4,this.riseBy-dy*RISE_PER_PIXEL*this.speedScale()));
+  }
+  /** #891: pinch, as the wheel: zoom toward the point between the fingers (fixed from the gesture's start). */
+  touchPinch(x:number,y:number,ratio:number,start:boolean){
+    if(!this.touchable()||!Number.isFinite(ratio)||ratio<=0||ratio===1)return;
+    this.flight=null;this.cancelClick();this.startLookBlend();
+    if(start||!this.zoomAt){this.zoomAt={x,y};this.zoomAnchor=null;}
+    this.zoomLog=Math.max(-3,Math.min(3,this.zoomLog-Math.log(ratio)*PINCH_GAIN));
+    this.markerAge=0;this.idle=0;this.moved=true;
+  }
+  /** #891: our own double-tap (iOS Safari does not fire dblclick reliably): fly there, as a double-click. */
+  touchFly(x:number,y:number){
+    if(!this.touchable())return;
+    this.cancelClick();this.touchFlewAt=performance.now();this.flyToPointer({clientX:x,clientY:y});
+  }
   private stopZoom(){this.zoomLog=0;this.zoomAnchor=null;this.zoomAt=null;}
   private cancelClick(){if(this.pendingClick!==null){clearTimeout(this.pendingClick);this.pendingClick=null;}}
   /** C1: the far zoom limit for this world. */
@@ -317,13 +384,22 @@ export class WorldRtsCamera {
   get following() { return this.o.mode() === 'follow'; }
 
   /** Double-click: fly to what is under the pointer and make it the pivot. */
-  flyToPointer(e: MouseEvent) {
+  flyToPointer(e: { clientX: number; clientY: number }) {
     if (this.enabledNow() === false) return;
     const focus=this.o.focusAt?.(e.clientX,e.clientY);if(focus){this.o.takeOver();this.frameSubject(focus.center,focus.radius);return;}
     const point = this.pickPoint(e.clientX, e.clientY);
     if (!point) return;
     this.o.takeOver();
     this.flyTo(point);
+  }
+  /** #892: a touch tap on the ground while following: take the camera (Free) and glide the pivot to the tapped point. */
+  flyToGround(e: { clientX: number; clientY: number }): boolean {
+    if (this.enabledNow() === false) return false;
+    const point = this.pickPoint(e.clientX, e.clientY);
+    if (!point) return false;
+    this.o.takeOver();
+    this.flyTo(point);
+    return true;
   }
   /** Glide the pivot to `point`, coming in to a comfortable distance (6–16 m) at the same angle. */
   frameSubject(center:THREE.Vector3,boundingRadius:number){
@@ -350,10 +426,16 @@ export class WorldRtsCamera {
       const f = this.flight; f.t = Math.min(1, f.t + dt / (f.seconds ?? FLY_SECONDS)); const k = f.t * f.t * (3 - 2 * f.t);
       pivot.lerpVectors(f.fromT, f.toT, k); this.camera.position.lerpVectors(f.fromP, f.toP, k); this.camera.lookAt(pivot);
       this.markerAge = 0; changed = true;
-      if (f.t >= 1) this.flight = null;
+      if (f.t >= 1) { this.flight = null; this.o.arrived?.(); }
     }
     if(this.zoomLog&&mode==='manual'&&this.enabledNow()!==false&&!this.flight)changed=this.stepZoom(dt,pivot)||changed;
-    const movement=manualCameraStep(this.keys,dt,this.keys.size?this.speedScale():1);
+    if((this.walking||this.riseBy)&&(mode!=='manual'||this.enabledNow()===false)){this.stick={forward:0,right:0};this.riseBy=0;}
+    const touch=this.walking||!!this.riseBy,scale=this.keys.size||touch?this.speedScale():1;
+    const movement=manualCameraStep(this.keys,dt,scale);
+    if(touch){  // #891: the stick and the two-finger rise take WASD's and Q/E's path (same clamps after it)
+      const s=stickStep(this.stick.forward,this.stick.right,dt,scale);
+      movement.forward=(movement.forward??0)+(s.forward??0);movement.right=(movement.right??0)+(s.right??0);const up=Math.max(-1,Math.min(1,this.riseBy));this.riseBy=Math.abs(this.riseBy-up)<1e-6?0:this.riseBy-up;movement.up=(movement.up??0)+up;  // at most 1 m a frame
+    }
     if(Object.values(movement).some(Boolean)&&this.enabledNow()!==false){
       c=this.startManualInput();
       const forward=this.camera.getWorldDirection(new THREE.Vector3());forward.y=0;
@@ -363,7 +445,7 @@ export class WorldRtsCamera {
       this.camera.position.add(delta);pivot.add(delta);this.write(c);
       this.turnHead(movement.yaw??0,movement.pitch??0);
       this.markerAge=0;this.idle=0;this.moved=false;changed=true;
-    }else{this.idle+=dt;if(!this.rightHeld)this.manualInput=false;}
+    }else{this.idle+=dt;if(!this.rightHeld&&!this.touchHeld)this.manualInput=false;}
     if(mode==='manual'&&this.enabledNow()!==false&&!this.flight)changed=this.keepPivotInBounds(pivot)||changed;
     if(mode==='manual')changed=this.stepLook(dt)||changed;
     // The pivot rule: shortly after any movement, re-anchor the pivot to the ground under the screen centre (once the
@@ -428,14 +510,24 @@ export class WorldRtsCamera {
     }
     return this.zoomAnchor=p??target.clone();
   }
-  /** Pan/WASD/zoom keep the pivot over the map (its ground rectangle plus a margin); the eye moves with it. */
+  /** A lost-camera guard: pan/WASD/zoom keep the eye within one far-zoom limit (farLimit, 320-1,400 m) of the map's
+   * ground rectangle; the pivot moves with it. #660: it used to clamp the pivot 60 m (or a quarter map) out, an invisible
+   * wall that WASD hit near the edge of what is drawn, sooner the farther ahead the pivot sat. It reads the eye, so a far
+   * pivot (a click near the horizon) never moves the camera by itself. */
   private keepPivotInBounds(target:THREE.Vector3):boolean{
     const e=this.o.extent?.();if(!e||!e.every(Number.isFinite))return false;
-    const m=Math.max(60,.25*Math.max(e[2]-e[0],e[3]-e[1]));
-    const x=Math.max(e[0]-m,Math.min(e[2]+m,target.x)),z=Math.max(e[1]-m,Math.min(e[3]+m,target.z));
-    if(x===target.x&&z===target.z)return false;
-    this.camera.position.x+=x-target.x;this.camera.position.z+=z-target.z;target.x=x;target.z=z;return true;
+    const m=farLimit(e),eye=this.camera.position;
+    const x=Math.max(e[0]-m,Math.min(e[2]+m,eye.x)),z=Math.max(e[1]-m,Math.min(e[3]+m,eye.z));
+    if(x===eye.x&&z===eye.z)return false;
+    target.x+=x-eye.x;target.z+=z-eye.z;eye.x=x;eye.z=z;return true;
   }
+  /** #891: where a finished touch look may put the pivot: the eye guard's own rectangle (the map's ground rectangle plus
+   * farLimit, keepPivotInBounds #660; null when the map is unknown), so wherever the eye can walk a touch look commits. */
+  private pivotRect():[number,number,number,number]|null{
+    const e=this.o.extent?.();if(!e||!e.every(Number.isFinite))return null;
+    const m=farLimit(e);return [e[0]-m,e[1]-m,e[2]+m,e[3]+m];
+  }
+  private pivotInBounds(p:THREE.Vector3){const r=this.pivotRect();return !r||(p.x>=r[0]&&p.x<=r[2]&&p.z>=r[1]&&p.z<=r[3]);}
   /** Pivot := drawn ground under the screen centre; the camera does not move. */
   reanchor(): boolean {
     const c = this.adopt(); this.camera.updateMatrixWorld();

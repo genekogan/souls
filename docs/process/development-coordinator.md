@@ -139,6 +139,18 @@ when evidence supports them. Gene-facing reports focus on milestones, releases, 
 not every PR; detailed task checkpoints stay in the records. Separate the next PR/release from the whole agenda. Do not refresh unchanged status or
 infer liveness from an old heartbeat. Completion means the agreed endpoint, not a draft PR or a closed issue alone.
 
+For the queue part of a heartbeat, run one read-only command: `node tools/coordinator/status.mjs --since <ISO time
+or 6h>` (`--json` for scripts). It prints:
+
+- merges since then, from the search API sorted by merge time (`gh pr list --state merged --limit N` misses late
+  merges of old PRs);
+- the `merge:ready` queue in train order, with each PR's tier, why it would wait, and its head's newest required
+  checks (stale results from cancelled or replaced runs dropped, as the train does);
+- the PRs labelled `needs:rebase`;
+- the Actions queue by workflow.
+
+It reads GitHub only. Worker liveness and private state still come from the coordinator's own records.
+
 Keep PR journals and changelog fragments consistent with actual acceptance, proof and release receipts. Link visual
 evidence where available and appropriate; never convert a merged-but-unreleased feature into a shipped claim or
 overwrite failed evidence. The coordinator owns completeness and publication review; workers supply the entries.
