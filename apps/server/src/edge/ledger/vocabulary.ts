@@ -446,8 +446,9 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
       : /^(?:please\s+)?(?:(?:wash|rinse|clean)\s+(?:up|out)?\s*(?:(?:the|my|your|this|that)\s+)?(?:(?:tea\s*|coffee\s*)?cup|(?:coffee\s+)?mug|it)?(?:\s+(?:up|out))?|do\s+the\s+washing[- ]up|wash\s+up)[.!]?$/.test(text) ? 'wash' : null;
     // #437 W078: words that name the drink ("make a cup of coffee", "wash the coffee mug") take only a mug whose offer names
     // it (its def's labels, before the thing's name in brackets: "Make a cup of coffee", "Wash the coffee mug"); a tea mug's
-    // "Wash the cup" names no drink and is tea's. "drink it", "wash the mug" take the nearest mug of either
-    const drink = /\b(tea|coffee)\b/.exec(text)?.[1];
+    // "Wash the cup" names no drink and is tea's. "drink it", "wash the mug" take the nearest mug of either. "the teacup"
+    // (one word) names tea as "the tea cup" does
+    const drink = /\b(tea|coffee)(?:cups?|mugs?)?\b/.exec(text)?.[1];
     const names = (c: {label: string}, d: string) => new RegExp(`\\b${d}\\b`, 'i').test(c.label.replace(/\s*\(.*\)$/, ''));
     const pool = want ? acts.filter(c => c.action === want && (!drink || names(c, drink) || (want === 'wash' && drink === 'tea' && !names(c, 'coffee')))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id)) : [];
     // entry 44: a bare "drink" or "wash up" near a mug nobody can use now keeps its old meaning; naming the tea or the cup

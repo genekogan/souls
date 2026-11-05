@@ -28,6 +28,10 @@ test('#437 words name the drink: coffee words take a coffee mug, tea words a tea
   assert.equal(to('wash the coffee mug', both), 'object:e_coffee:wash', 'the coffee mug, though the tea mug is nearer');
   assert.equal(to('rinse the tea cup', [...mug('e_coffee', 'coffee'), ...mug('e_tea2', 'tea')]), 'object:e_tea2:wash', 'the tea mug, though the coffee mug is nearer');
   assert.equal(to('wash the mug', both), 'object:e_tea:wash', 'no drink named: the nearest mug');
+  // "teacup" is one word: it names tea as "tea cup" does, so a nearer coffee mug is left alone
+  const coffeeNearer = [...mug('e_coffee', 'coffee'), ...mug('e_tea2', 'tea')];
+  for (const w of ['rinse the teacup', 'wash the teacup', 'wash my teacup', 'rinse the tea cup']) assert.equal(to(w, coffeeNearer), 'object:e_tea2:wash', w);
+  assert.equal(to('wash the mug', coffeeNearer), 'object:e_coffee:wash', 'no drink named: the nearest mug');
   // a coffee word with only tea mugs on offer is not a tea act
   assert.notEqual(to('make a cup of coffee', mug('e_tea', 'tea')), 'object:e_tea:brew');
 });
