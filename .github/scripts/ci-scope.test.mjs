@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { FULL_EVENTS, JOBS, WINDOW_LABELS, changedFiles, greenAtHead, jobsFor, smokeFor, windowFor, windowed } from './ci-scope.mjs';
+import { FULL_EVENTS, JOBS, MERGE_FORWARD_COMMENT, MERGE_FORWARD_MARKER, WINDOW_LABELS, acceptsPrInput, changedFiles, greenAtHead, hasMergeForwardComment, jobsFor, smokeFor, windowFor, windowed } from './ci-scope.mjs';
 import { SCOPE_RULES, scopeFor } from '../../tools/test-harness/release-gate.mjs';
 
 const names = files => jobsFor(files).include.map(j => j.name);
@@ -156,7 +156,51 @@ test('ci.yml: the window reaches the scope step, and a deferred run fails ci-ok'
   const request = readFileSync(fileURLToPath(new URL('../workflows/ci-request.yml', import.meta.url)), 'utf8');
   assert.match(request, /label\.name == 'ci:run' \|\| github\.event\.label\.name == 'merge:ready'/);
   assert.match(request, /gh workflow run ci\.yml --repo "\$REPO" --ref "\$HEAD_REF" -f pr="\$PR"/);
+  const [beforeDispatch] = request.split('gh workflow run');
+  assert.match(beforeDispatch, /dispatchable="\$\(node \.github\/scripts\/ci-scope\.mjs dispatchable --repo "\$REPO" --sha "\$HEAD_SHA"\)"\n\s+if \[ "\$dispatchable" != true \][\s\S]*merge-forward --repo "\$REPO" --pr "\$PR"\n\s+exit 0/, 'a branch without the pr input is never dispatched');
+  assert.doesNotMatch(request, /\[ "\$\(node/, 'a helper runs outside [ ], so bash -e fails the step when it fails');
   assert.doesNotMatch(request, /pull_request\.head\.sha \}\}\n\s+ref:|ref: \$\{\{ github\.event\.pull_request/, 'never checks out the PR');
   const labels = readFileSync(fileURLToPath(new URL('../labels.yml', import.meta.url)), 'utf8');
   for (const l of WINDOW_LABELS) assert.match(labels, new RegExp(`name: "${l}"`));
+});
+
+// A branch cut before #914 still has this ci.yml: dispatching it with `pr` is refused with HTTP 422.
+const PRE_WINDOW = `name: ci
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scope:
+    steps:
+      - uses: actions/checkout@v7
+        with: { inputs: pr }
+`;
+
+test('acceptsPrInput: main\'s ci.yml takes the pr input, a pre-window branch\'s does not', () => {
+  assert.equal(acceptsPrInput(readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8')), true);
+  assert.equal(acceptsPrInput(PRE_WINDOW), false);
+  assert.equal(acceptsPrInput(''), false, 'no ci.yml at the head');
+  assert.equal(acceptsPrInput(undefined), false);
+  const dispatch = inputs => `on:\n  push:\n  workflow_dispatch:\n${inputs}permissions:\n  contents: read\n`;
+  assert.equal(acceptsPrInput(dispatch('    inputs:\n      # the PR\n      pr:\n        required: false\n')), true);
+  assert.equal(acceptsPrInput(dispatch('    inputs:\n      "pr":\n        required: false\n')), true, 'a quoted key');
+  assert.equal(acceptsPrInput(dispatch('    inputs:\n      other:\n        description: pr\n')), false, 'another input only');
+  assert.equal(acceptsPrInput(dispatch('    inputs:\n      other:\n        pr:\n          x: 1\n')), false, 'pr nested under another input');
+  assert.equal(acceptsPrInput(dispatch('    branches: [main]\n') + 'jobs:\n  inputs:\n    pr:\n'), false, 'inputs outside workflow_dispatch');
+  assert.equal(acceptsPrInput(dispatch('    inputs:\n      prefix:\n        required: false\n')), false, 'a key that only starts with pr');
+});
+
+test('merge-forward: one comment per PR, naming the fix', () => {
+  assert.ok(MERGE_FORWARD_COMMENT.startsWith(MERGE_FORWARD_MARKER));
+  assert.match(MERGE_FORWARD_COMMENT, /Merge main forward to enable `ci:run`/);
+  assert.match(MERGE_FORWARD_COMMENT, /docs\/testing\.md#ci-window/);
+  assert.equal(hasMergeForwardComment([]), false);
+  assert.equal(hasMergeForwardComment(undefined), false);
+  assert.equal(hasMergeForwardComment([{ body: 'lgtm' }, { body: null }]), false);
+  assert.equal(hasMergeForwardComment([{ body: 'lgtm' }, { body: MERGE_FORWARD_COMMENT }]), true);
 });
