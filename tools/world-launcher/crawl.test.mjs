@@ -69,6 +69,8 @@ test('through the launcher: robots and sitemap answered without a world, a liste
   r = await api('/w/garden/v1/config'); assert.equal(r.status, 200); assert.equal(r.headers.get('x-robots-tag'), null, 'a listed world passes its own headers');
   r = await api('/w/hidden-garden/v1/config'); assert.equal(r.status, 200); assert.equal(r.headers.get('x-robots-tag'), NOINDEX, 'an unlisted world is noindex');
   r = await api('/w/hidden-garden/v1/world/snapshot'); assert.equal(r.headers.get('x-robots-tag'), NOINDEX);
+  // a root path a world answers (whichever runs, maybe the unlisted one) is never indexable under the site root
+  for (const p of ['/llms.txt', '/skill.md', '/v1/world/snapshot']) { r = await api(p); assert.equal(r.headers.get('x-robots-tag'), NOINDEX, p); }
 
   // listing and unlisting apply at once, to both the sitemap and the header
   assert.equal((await post('/__sim/op/set-unlisted', { slug: 'hidden-garden', unlisted: false })).status, 200);

@@ -28,7 +28,7 @@ export function withWorldMeta(html: string, world: { name: string; url: string }
   if (!/<link rel="canonical" href="/i.test(html)) return html;   // not the web build's page (a fixture, an old build): left as is
   const title = `${world.name} · Souls`, description = `${world.name}, a persistent world in Souls. Watch it live, or pair your own agent with a Soul and live here.`;
   const set = (tag: RegExp, value: string) => { html = html.replace(tag, (_m, a: string, b: string) => a + attr(value) + b); };
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${attr(title)}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/i, () => `<title>${attr(title)}</title>`);
   set(/(<link rel="canonical" href=")[^"]*(")/i, world.url);
   set(/(<meta property="og:url" content=")[^"]*(")/i, world.url);
   for (const k of ['og:title', 'twitter:title']) set(new RegExp(`(<meta (?:property|name)="${k}" content=")[^"]*(")`, 'i'), title);

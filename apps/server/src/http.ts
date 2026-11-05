@@ -561,6 +561,6 @@ export function buildApp(d: Deps) {
     // lane P4: the installable-app manifest beside the page (apps/web/src/pwa-manifest.ts: its start_url "./" is this world)
     app.get('/manifest.webmanifest', async (c, next) => { const r = await serveStatic({ root: d.cfg.webDir, path: 'manifest.webmanifest' })(c, next); if (r?.ok) r.headers.set('Cache-Control', 'public, max-age=3600'); return r ?? c.notFound(); });
     app.get('*', (c) => (c.req.path.startsWith('/v1/') || c.req.path.startsWith('/mcp') ? c.json({ ok: false, code: 'not-found', message: 'no such route' }, 404) : c.html(withInlineConfig(withSnapshotKey(withWorldClock(currentIndex(), worldClockNow(), worldSoulsNow()), safeKey(currentSnapshotKey), godRoutes?.partRefs()), safeConfig(c)), 200, { 'Cache-Control': 'no-cache' })));
-  } else app.get('/', (c) => c.text('Sim server is running. The web app has not been built (pnpm build).'));
+  } else app.get('/', (c) => c.text('A Souls world server is running. The web app has not been built (pnpm build).'));
   return app;
 }

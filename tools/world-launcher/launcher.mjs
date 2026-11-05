@@ -560,7 +560,7 @@ export async function openLauncher(cfg = {}) {
   /** #894: every response of an unlisted world says noindex, whatever the world sent (listing read per response, so
    *  listing or unlisting a world applies at once); a listed world's own headers pass unchanged. */
   function robotsOf(slug, headers) { const w = slug ? registry.get(slug) : null; return w && isUnlisted(w) ? { ...headers, 'x-robots-tag': NOINDEX } : headers; }
-  function proxyHttp(req, res, targetPort, { tee, path, retry, soul, maxBody = 0, slug = null } = {}) {
+  function proxyHttp(req, res, targetPort, { tee, path, retry, soul, maxBody = 0, slug = null, noindex = false } = {}) {
     if (clientGone(req, res)) return;
     // Behind Caddy (a public origin other than our own) keep the visitor's x-forwarded-for, so per-person limits in
     // the worlds see people, not the proxy; locally it is set to the connecting address as before.
@@ -571,7 +571,7 @@ export async function openLauncher(cfg = {}) {
       const { connection: _c, 'keep-alive': _k, 'x-sim-account': account, ...headers } = r.headers;
       if (soul && account) ceilings.learn(soul, account);   // lane L1: the account a Soul token belongs to (never shown to the client)
       if (slug) sawLoad(slug, r.headers['x-sim-load']);
-      res.writeHead(r.statusCode ?? 502, robotsOf(slug, headers));
+      res.writeHead(r.statusCode ?? 502, noindex ? { ...headers, 'x-robots-tag': NOINDEX } : robotsOf(slug, headers));
       if (tee && (r.statusCode ?? 0) < 300) { const chunks = []; r.on('data', (c) => { if (chunks.length < 64) chunks.push(c); }); r.on('end', () => { try { tee(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { /* not json */ } }); }
       r.pipe(res);
     });
@@ -786,7 +786,7 @@ export async function openLauncher(cfg = {}) {
       if (outside) {
         if (path === '/healthz' && direct(req)) { json(res, 200, { ok: true, service: 'world-launcher', base: B, build: BUILD }); return; }
         const p = (req.method === 'GET' || req.method === 'HEAD') && /^\/(modular|mars-assets|engine|browser|models|history|2020|world-assets)\/|^\/data\/manifest\.json$/.test(path) && anyRunning();
-        if (p) { proxyHttp(req, res, p); return; }
+        if (p) { proxyHttp(req, res, p, { noindex: true }); return; }
         json(res, 404, { ok: false, code: 'not-found', message: `this server answers under ${B}/` }); return;
       }
       // Independently proxyable primary sign-in route; never derives trusted settings from request headers.
@@ -984,7 +984,8 @@ export async function openLauncher(cfg = {}) {
       // Anything else a world page asks for (Mars assets, engine files, …): any running world serves it (base stripped).
       // Original worlds at the root: the world the laptop proxy sent that path to (woken if asleep), as before the move.
       const p = oldRoot ? await oldWorldPort(path) : anyRunning();
-      if (p) { proxyHttp(req, res, p, { path: B ? path + url.search : undefined }); return; }
+      // #894: whichever world answers a root path (it may be unlisted) is never indexed under the site's root
+      if (p) { proxyHttp(req, res, p, { path: B ? path + url.search : undefined, noindex: true }); return; }
       json(res, 404, { ok: false, code: 'not-found' });
     } catch (e) {
       log(`error ${req.method} ${path}: ${e.message}`);

@@ -17,7 +17,7 @@ export const NOINDEX = 'noindex, nofollow';
 export function robotsTxt({ origin, base = '' }) {
   return [
     '# Souls (soul.game): persistent worlds where every Soul is run by its owner\'s own agent.',
-    '# Agents: start at /llms.txt. Search and AI crawlers are welcome on public pages.',
+    '# Search and AI crawlers are welcome on public pages.',
     ...[...CRAWLERS, '*'].map((ua) => `User-agent: ${ua}`),
     `Allow: ${base}/`,
     ...PRIVATE_PATHS.map((p) => `Disallow: ${base}${p}`),
