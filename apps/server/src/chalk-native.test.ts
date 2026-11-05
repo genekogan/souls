@@ -83,8 +83,12 @@ test('chalk: draw on a chalk square by plain words, credited at completion, fadi
   lines.day10 = await lineOf(ben); is(lines.day10, 'Ana’s chalk drawing “Sun” on the pavement');
   await toDay(11); lines.day11 = await lineOf(ben); is(lines.day11, 'Ana’s chalk drawing “Sun” on the pavement, fading');
   // C7: drawing over replaces it, credited to the new Soul, drawn today; the old one is in the edit's note
-  // her body stands on its only drawing spot: Ben's plain words are refused, and the easel nearby is not chosen instead
-  { const busy = await act(ben, 'draw in chalk', { seconds: 5, painting: boat }); assert.equal(busy.accepted, false, JSON.stringify(busy)); results.busy = busy.reason; }
+  // her body stands on its only drawing spot: Ben's plain words are refused. With the easel free nearby it is not chosen
+  // instead (a generic no-match); with no free paint offer in reach the refusal names the square in chalk's own words
+  { const busy = await act(ben, 'draw in chalk', { seconds: 5, painting: boat }); assert.equal(busy.accepted, false, JSON.stringify(busy)); assert.match(busy.reason ?? '', /^Nothing offered matches "draw in chalk"/); results.busyEaselNear = busy.reason; }
+  assert.equal(god.act({ ops: [{ op: 'move', id: easel, p: [ax + 60, az + 2] }] as never }).accepted, true); await tick(45);
+  { const busy = await act(ben, 'draw in chalk', { seconds: 5, painting: boat }); assert.equal(busy.accepted, false, JSON.stringify(busy)); assert.match(busy.reason ?? '', /^Draw in chalk is not free right now: the nearest, .*is in use by someone/, JSON.stringify(busy)); results.busy = busy.reason; }
+  assert.equal(god.act({ ops: [{ op: 'move', id: easel, p: [ax - 3, az + 2] }] as never }).accepted, true); await tick(45);
   // Ana steps away from the square first (her body stands on its only drawing spot)
   { const w = await act(ana, 'walk:easel'); assert.equal(w.accepted, true, JSON.stringify(w)); assert.equal((await wait(ana, w.receipt.id)).phase, 'completed'); }
   const b = await act(ben, chalk.id, { seconds: 5, painting: boat }); assert.equal(b.accepted, true, JSON.stringify(b)); const bd = await wait(ben, b.receipt.id); assert.equal(bd.phase, 'completed', JSON.stringify(bd));
