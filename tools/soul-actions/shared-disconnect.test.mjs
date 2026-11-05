@@ -138,7 +138,7 @@ for (const [who, when] of [['Bo', 'move'], ['Ada', 'gather'], ['Bo', 'lift']]) {
     assert.equal(replay.receipt.id, r.a.receipt.id, 'the original accept replayed by clientRef is the same receipt');
     assert.equal(replay.receipt.shared.result, 'arrived');
     const stale = await act(w, Bo, {capability: `accept:${r.id}`, params: {revision: 1}});
-    assert.equal(stale.accepted, false, `a stale accept is refused: ${JSON.stringify(stale)}`); assert.ok(stale.code, 'with a named code');
+    assert.equal(stale.accepted, false, `a stale accept is refused: ${JSON.stringify(stale)}`); assert.equal(stale.code, 'invite.gone'); assert.match(stale.reason, /has ended \(arrived\); nothing was started/);
     t.diagnostic(`stale accept after the end: ${stale.code}: ${stale.reason}`);
     const stop = await act(w, away, {capability: `stop-carry:${r.op.id}`});
     assert.equal(stop.accepted, false); assert.equal(stop.code, 'shared.not-running');
