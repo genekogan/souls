@@ -9,7 +9,7 @@ export const HAND_BELL:DefInput={...old,version:2,description:'A bronze bell in 
  components:{...old.components,bell:{gripAt:[.375,1.25,.075],pullAngle:.4},sound:{kind:'bell',radius:40,volume:.7,when:'rings',mode:'change'}},
  actions:[{name:'ring',label:'Pull the bell rope once',roles:'anyone',reach:'touch',params:{},when:[{field:'rings',not:1000000000}],then:[{op:'increment',field:'rings',by:1}]}]};
 // #494 / #416: bell@2 above is immutable (worlds keep its geometry); @3 is @2 within the 400-triangle budget as drawn.
-// @2's two straight sweeps (the rope from the clapper to the pull arm, and the arm) drew as 16-ring tubes, 80 triangles
+// @2's two straight sweeps (the rope from the clapper to the pull arm, and the arm) drew as 8-segment, 5-sided tubes, 80 triangles
 // each; @3 draws them as the same straight rods, 5-sided cylinders between the same end points. The moving rope (role
 // rope), the grip and every other field are @2's.
 const rod3=(a:number[],b:number[],r:number,tint:string)=>{const d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],len=Math.hypot(...d);
