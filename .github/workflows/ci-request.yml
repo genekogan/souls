@@ -37,11 +37,14 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ "$(node .github/scripts/ci-scope.mjs green --repo "$REPO" --sha "$HEAD_SHA")" = true ]; then
+          # Captured first so `bash -e` fails the step when a helper fails (inside `[ "$(...)" ]` it would not).
+          green="$(node .github/scripts/ci-scope.mjs green --repo "$REPO" --sha "$HEAD_SHA")"
+          if [ "$green" = true ]; then
             echo "ci already passed at $HEAD_SHA; nothing to request"
             exit 0
           fi
-          if [ "$(node .github/scripts/ci-scope.mjs dispatchable --repo "$REPO" --sha "$HEAD_SHA")" != true ]; then
+          dispatchable="$(node .github/scripts/ci-scope.mjs dispatchable --repo "$REPO" --sha "$HEAD_SHA")"
+          if [ "$dispatchable" != true ]; then
             echo "::notice title=Merge main forward::ci.yml at $HEAD_SHA has no pr input (it predates #914); nothing dispatched"
             node .github/scripts/ci-scope.mjs merge-forward --repo "$REPO" --pr "$PR"
             exit 0

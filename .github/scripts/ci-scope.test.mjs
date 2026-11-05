@@ -157,7 +157,8 @@ test('ci.yml: the window reaches the scope step, and a deferred run fails ci-ok'
   assert.match(request, /label\.name == 'ci:run' \|\| github\.event\.label\.name == 'merge:ready'/);
   assert.match(request, /gh workflow run ci\.yml --repo "\$REPO" --ref "\$HEAD_REF" -f pr="\$PR"/);
   const [beforeDispatch] = request.split('gh workflow run');
-  assert.match(beforeDispatch, /dispatchable --repo "\$REPO" --sha "\$HEAD_SHA"\)" != true[\s\S]*merge-forward --repo "\$REPO" --pr "\$PR"\n\s+exit 0/, 'a branch without the pr input is never dispatched');
+  assert.match(beforeDispatch, /dispatchable="\$\(node \.github\/scripts\/ci-scope\.mjs dispatchable --repo "\$REPO" --sha "\$HEAD_SHA"\)"\n\s+if \[ "\$dispatchable" != true \][\s\S]*merge-forward --repo "\$REPO" --pr "\$PR"\n\s+exit 0/, 'a branch without the pr input is never dispatched');
+  assert.doesNotMatch(request, /\[ "\$\(node/, 'a helper runs outside [ ], so bash -e fails the step when it fails');
   assert.doesNotMatch(request, /pull_request\.head\.sha \}\}\n\s+ref:|ref: \$\{\{ github\.event\.pull_request/, 'never checks out the PR');
   const labels = readFileSync(fileURLToPath(new URL('../labels.yml', import.meta.url)), 'utf8');
   for (const l of WINDOW_LABELS) assert.match(labels, new RegExp(`name: "${l}"`));
