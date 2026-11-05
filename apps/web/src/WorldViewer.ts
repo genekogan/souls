@@ -18,7 +18,7 @@ export interface WorldViewerHandle {
   /** Select and frame the speakers together; presentation only. */
   frameSouls?(ids:readonly string[]):boolean;
   /** B3: select this Soul and fly the camera to its Follow shot, then follow it; false when it is not in the live picture. */
-  flyToSoul?(id:string):boolean;
+  flyToSoul?(id:string,opts?:{chip?:boolean}):boolean;
   /** Local current-world scenery tour; no simulation command or selection. */
   framePlace?(place:WorldPlaceId): boolean;
   placePreview?(place:WorldPlaceId):Promise<string|null>;
@@ -52,6 +52,10 @@ export interface WorldViewerState {
   cameraAuto?: boolean;
   /** Canonical selection only. Decorative kin inspection stays inside the viewer. */
   selection: { soulId: string | null; entityId: string | null; soulIds?:readonly string[] };
+  /** #892: the Soul Broadcast is showing now (its shot's subject), in Broadcast only. */
+  broadcastSoulId?: string | null;
+  /** #892: the Soul a flyToSoul glide is on its way to (the camera is 'manual' until it arrives and follows). */
+  flyingTo?: string | null;
   playback: 'live' | 'playing' | 'paused';
   loading: boolean;
   assetDownloads?:AssetDownloadProgress;
@@ -79,7 +83,7 @@ export interface WorldViewerPort {
   /** Select and frame the speakers together; presentation only. */
   frameSouls?(ids:readonly string[]):boolean;
   /** B3: select this Soul and fly the camera to its Follow shot, then follow it; false when it is not in the live picture. */
-  flyToSoul?(id:string):boolean;
+  flyToSoul?(id:string,opts?:{chip?:boolean}):boolean;
   /** Local current-world scenery tour; no simulation command or selection. */
   framePlace?(place:WorldPlaceId): boolean;
   placePreview?(place:WorldPlaceId):Promise<string|null>;
@@ -110,7 +114,7 @@ export function createWorldViewerHandle(current: () => WorldViewerPort): WorldVi
     setCameraMode: mode => { if (mode === 'broadcast' || mode === 'follow' || mode === 'manual') current().setCameraMode(mode); },
     frameAll: () => current().frameAll(),
     frameSouls: ids => current().frameSouls?.(ids) ?? false,
-    flyToSoul: id => current().flyToSoul?.(id) ?? false,
+    flyToSoul: (id,opts) => current().flyToSoul?.(id,opts) ?? false,
     framePlace: place => current().framePlace?.(place) ?? false,
     placePreview: place => current().placePreview?.(place) ?? Promise.resolve(null),
     locations:()=>current().locations?.()??[],
@@ -142,11 +146,15 @@ export function viewerPresentation(input: {
   room?:{id:string;name:string;soulIds:readonly string[]}|null;
   manualNavigation?: ManualNavigation; inputOwned?: boolean; soulIds?:readonly string[];
   speechAnchors?: readonly WorldSpeechAnchor[];
+  broadcastSoulId?: string | null;
+  flyingTo?: string | null;
 }): WorldViewerState {
   return {
     shownTick: input.drawnTick !== null && Number.isFinite(input.drawnTick) ? input.drawnTick : null,
     presentation: input.history ? 'history' : 'live', cameraMode: input.cameraMode, ...(input.cameraAuto ? { cameraAuto: true } : {}),
     selection: { ...(input.soulIds?.length?{soulIds:[...input.soulIds]}:{}),soulId: input.soulId, entityId: !input.soulId && input.entityId?.startsWith('kin:') ? null : input.entityId },
+    ...(input.broadcastSoulId&&input.cameraMode==='broadcast'?{broadcastSoulId:input.broadcastSoulId}:{}),
+    ...(input.flyingTo?{flyingTo:input.flyingTo}:{}),
     playback: input.history ? input.playing ? 'playing' : 'paused' : 'live',
     loading: input.loading, unavailableReason: input.unavailableReason,
     ...(input.assetDownloads?{assetDownloads:{...input.assetDownloads}}:{}),
