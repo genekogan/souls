@@ -16,6 +16,9 @@
 // the PR's paths against main). Outside the window a run that selected heavy jobs is deferred: none run and ci-ok fails,
 // so a skipped job never reads as a pass. A requested run whose head already has a green ci run (--green-at-head) has
 // nothing left to do. `green --repo o/r --sha <sha> [--self <run id>]` prints whether the head's newest ci run passed.
+// A dispatch runs the ci.yml of the branch it targets, so a branch cut before the window (#914) refuses `pr` (HTTP 422).
+// `dispatchable --repo o/r --sha <sha>` prints whether the head's ci.yml declares the `pr` input; when it does not,
+// `merge-forward --repo o/r --pr <n>` posts one comment asking to merge main forward (never a second one).
 import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -79,6 +82,28 @@ export function greenAtHead(runs = [], self = null) {
   return others[0]?.status === 'completed' && others[0].conclusion === 'success';
 }
 
+/** Whether a ci.yml's workflow_dispatch declares the `pr` input (block-style YAML, as ci.yml is written). */
+export function acceptsPrInput(yml) {
+  const lines = String(yml ?? '').split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+  const indent = l => l.length - l.trimStart().length;
+  const key = (l, k) => new RegExp(`^\\s*['"]?${k}['"]?:(\\s|$)`).test(l);
+  // The lines nested under the first `k:` line (at the block's own level when `level`), until the indentation returns.
+  const under = (block, k, level) => {
+    const i = block.findIndex(l => key(l, k) && (!level || indent(l) === indent(block[0])));
+    const out = [];
+    if (i >= 0) for (const l of block.slice(i + 1)) { if (indent(l) <= indent(block[i])) break; out.push(l); }
+    return out;
+  };
+  const inputs = under(under(lines, 'workflow_dispatch'), 'inputs', true);
+  return inputs.some(l => indent(l) === indent(inputs[0]) && key(l, 'pr'));
+}
+
+/** The one comment a PR gets when its branch's ci.yml cannot take a requested run. */
+export const MERGE_FORWARD_MARKER = '<!-- ci-request:merge-forward -->';
+export const MERGE_FORWARD_COMMENT = `${MERGE_FORWARD_MARKER}
+CI request: this branch's \`ci.yml\` predates the CI window (#914) and has no \`pr\` input, so \`ci:run\` and \`merge:ready\` cannot start its CI (GitHub refuses the dispatch). **Merge main forward to enable \`ci:run\`**: merge or rebase main into the branch and push. That push runs this PR's CI in the window (any push does, while the PR merges cleanly), and once main is merged in, later \`ci:run\` requests work. A \`merge:ready\` PR is also rebased by the merge train's strict path. See docs/testing.md#ci-window.`;
+export const hasMergeForwardComment = (comments = []) => comments.some(c => String(c.body ?? '').includes(MERGE_FORWARD_MARKER));
+
 const ZERO = /^0+$/;
 export function changedFiles(base, head = 'HEAD', git = (...a) => execFileSync('git', a, { encoding: 'utf8' })) {
   if (!base || ZERO.test(base)) return null; // a new branch or a missing base: run everything
@@ -91,6 +116,21 @@ function main(argv) {
   if (argv[0] === 'green') {
     const runs = JSON.parse(execFileSync('gh', ['api', `repos/${opt('--repo')}/actions/workflows/ci.yml/runs?head_sha=${opt('--sha')}&per_page=100`], { encoding: 'utf8' })).workflow_runs ?? [];
     console.log(String(greenAtHead(runs, opt('--self'))));
+    return;
+  }
+  if (argv[0] === 'dispatchable') {
+    let yml = '';
+    try { yml = execFileSync('gh', ['api', '-H', 'Accept: application/vnd.github.raw', `repos/${opt('--repo')}/contents/.github/workflows/ci.yml?ref=${opt('--sha')}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch (e) { if (!/HTTP 404/.test(String(e.stderr))) { process.stderr.write(String(e.stderr ?? e)); throw e; } } // 404: no ci.yml (or no such commit) at the head
+    console.log(String(acceptsPrInput(yml)));
+    return;
+  }
+  if (argv[0] === 'merge-forward') {
+    const path = `repos/${opt('--repo')}/issues/${opt('--pr')}/comments`;
+    const comments = JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', `${path}?per_page=100`], { encoding: 'utf8' })).flat();
+    if (hasMergeForwardComment(comments)) { console.log(`#${opt('--pr')} already has the merge-forward comment`); return; }
+    execFileSync('gh', ['api', '-X', 'POST', path, '-f', `body=${MERGE_FORWARD_COMMENT}`], { stdio: ['ignore', 'ignore', 'inherit'] });
+    console.log(`commented on #${opt('--pr')}: merge main forward to enable ci:run`);
     return;
   }
   const event = opt('--event');
