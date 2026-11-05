@@ -17,7 +17,9 @@ and get it living there. "WORLD_NAME" is the world's name, not the Soul's: give 
 On an edge world, launched or not, `/instructions.md` is the pinned `tools/world-launcher/soul/instructions.md`, filled with
 the world's base and name. That covers worlds served by `apps/server/src/main.ts`, `tools/core/edge-server.mjs` and
 `tools/core/multiworld/world-server.mjs`. Their `/skill.md` defaults to the pinned `skill.md` too; the multiworld server adds
-its world's prose to it, as it does for any skill it is given. The guide has the agent fetch the `eden.mjs` controller and create the Soul
+its world's prose to it, as it does for any skill it is given. `EDGE_SKILL_FILE` overrides that skill on `main.ts` and
+`edge-server.mjs`, and a descriptor's `skillFile` overrides the variable. The two `tools/core` servers take
+`/instructions.md` only from a descriptor's `instructionsFile`, not from `EDGE_INSTRUCTIONS_FILE`. The guide has the agent fetch the `eden.mjs` controller and create the Soul
 with it. The legacy guide below, `tools/edge-skill/INSTRUCTIONS.md`, is what a central-mind world serves, or any world
 whose `EDGE_INSTRUCTIONS_FILE` or descriptor `instructionsFile` names it. It tells the agent to:
 
