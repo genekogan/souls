@@ -48,7 +48,7 @@ import { disposeSkeletons } from '../../lib/three-resources.ts';
 import { seatHeight } from './fixtures.ts';
 import {blendWaterFoot} from './water-foot-blend.ts';
 import { BODY_MODEL, UP, ankleLocal, armLen, armTo, armsOf, clamp01, contact, curlHand, legTo, legsOf, palm, place, setWorldQuat, smooth, spineOf, swing, turn, type Arm, type Leg, type Spine } from './rig.ts';
-import { BEND_SHARE, KNEE_Y, KNEEL_SIDE, NEUTRAL, approach, kneelDrop, shoulderAt, solvePosture, styleFor, type Dims, type Posture, type Target } from './posture.ts';
+import { BEND_SHARE, KNEE_Y, KNEEL_SIDE, NEUTRAL, approach, kneelDrop, postureReaches, shoulderAt, solvePosture, styleFor, type Dims, type Posture, type Target } from './posture.ts';
 import { groundFootLift } from './ground-foot-fit.ts';
 import { flightOf, gaitAt, stairFootTarget, type Flight, type Gait } from './stair-gait.ts';
 import {measureStairRigContact,stairContactEnvelope,stairBearingRotation,type StairRigContact} from './stair-rig-contact.ts';
@@ -758,7 +758,11 @@ export class HumanViews {
     // A latch below standing arm-rest height keeps its low-reach style (`knees`).
     const style = styleFor(v.activity, walking), standing = style === 'knees' && !!v.handActuator && ts.length > 0 && ts.every((t) => t.up >= d.pivotH + d.sh.up - d.armLen);
     // entry 43: taking or putting a handle-held thing (a kettle) leans like the vessel stages: 'hips' flickered its hips 4 cm
-    const pz = solvePosture(d, ts, v.transfer && v.transfer.endTick === undefined && v.activity === 'reach' && !walking ? 'lean' : standing ? 'stand' : style);
+    // M05 #636 review: 'stand' caps the drop at 3 cm and never kneels, so a target above rest height but far out (0.85 m
+    // forward at 0.8 m) can be beyond a straight arm; then the low-reach style solves it as before rather than leaving the hand short.
+    const leanTransfer = v.transfer && v.transfer.endTick === undefined && v.activity === 'reach' && !walking;
+    const standPz = !leanTransfer && standing ? solvePosture(d, ts, 'stand') : null;
+    const pz = leanTransfer ? solvePosture(d, ts, 'lean') : standPz && postureReaches(d, standPz, ts) ? standPz : solvePosture(d, ts, style);
     // A low latch may need a small bend as well as a hand reach. Ease the whole
     // solved posture on the same timeline so the torso cannot pop in/out.
     if(v.handActuator){const k=handActuatorFrame(v.handActuator,(v.handActuatorTime??0)-v.handActuator.startTick*DT).weight;for(const key of ['drop','bend','rise','kneel'] as const)pz[key]*=k;}

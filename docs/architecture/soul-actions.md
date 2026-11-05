@@ -97,12 +97,11 @@ Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` 
 `tools/soul-actions/`; the viewer's motion units are under `apps/web/test/`, `apps/web/src/*.test.ts`,
 `mars/viewer/engine/test/` and `mars/viewer/app/engine-view/`.
 
-
 ### M05: standing contact at ordinary hand height (#636)
 
 The loaded rig's standing arm-rest height is its shoulder height minus measured arm length. A hand actuator at or above that height prefers the existing standing solver rather than using hip height as the cutoff. The standing style preserves the landed 3 cm pelvis-drop bound; genuine targets below rest height retain their low-reach style. Actual limb lengths, extension/contact clamp, supported feet, native approach/admission and action clock remain authoritative. No renderer movement path or native field is added.
 
-The 0.93 m authored proof tap is an isolated variant of the existing garden tap; shipped immutable definitions and the product control catalogue are unchanged. Full-rig regressions cover right-hand contact, scaled bodies and a rotated elevated composed look, alongside existing cup wash contact affected by the shared standing style.
+The 0.93 m authored proof tap is an isolated variant of the existing garden tap; shipped immutable definitions and the product control catalogue are unchanged. If the capped standing solve leaves a hand point beyond a straight arm (a target above rest height but far out, such as 0.8 m high at 0.85 m), the low-reach style solves it as before. Full-rig regressions cover right-hand contact, scaled bodies and a rotated elevated composed look, alongside existing cup wash contact affected by the shared standing style.
 
 ### M05 wave transition (#635)
 

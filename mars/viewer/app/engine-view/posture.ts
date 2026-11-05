@@ -124,6 +124,9 @@ function reachErr(d: Dims, p: Posture, ts: Target[]) {
   return { err, close };
 }
 
+/** Whether every target is within a straight arm of its shoulder under `p` (plan reach plus the arm's remaining extension). */
+export const postureReaches = (d: Dims, p: Posture, ts: Target[]) => reachErr(d, p, ts).err <= (1 - PLAN_REACH) * d.armLen * ts.length + 1e-9;
+
 /** Pelvis drop of a one-knee kneel for this rig: hip joints straight above a knee resting on the floor. */
 export const kneelDrop = (d: Dims) => Math.max(0, d.hipH - (KNEE_Y + d.thigh));
 

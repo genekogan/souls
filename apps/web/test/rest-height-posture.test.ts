@@ -50,6 +50,17 @@ for(const name of ['casual','punk','woman'])for(const height of [1.65,1.67,1.7,1
  });
 }
 
+// Review of #636: above rest height but beyond the capped standing reach, the low-reach style still solves the target.
+// Palm error on main before this change, where the hip-height cutoff chose the low-reach style: 0, .121 and .187 m.
+// (Their kneel entry's large palm step is the same on main; it is not this change's and is not asserted here.)
+for(const [name,height,forward,up,before] of [['woman',1.65,.85,.8,0],['woman',1.85,1.0,.93,.121],['casual',1.85,1.1,.93,.187]] as const)
+ test(`far ${up} m target ${name} ${height} at ${forward} m: no worse than the low-reach style`,async()=>{
+  const v=new HumanViews();v.setTemplates([await template(name,height)]);
+  const r=reach(v,`h_far_${name}_${height}_${forward}`,[forward,up,0]);
+  console.log(JSON.stringify({case:'far-reach',name,height,forward,up,...r}));
+  assert.ok(r.err<=before+.005,`palm left short of a target the low-reach style reaches: ${JSON.stringify(r)}`);
+ });
+
 for(const frame of ['masc','fem'] as const)test(`composed ${frame} tall look: rotated elevated standing contact`,async()=>{
  const kit=new HumanoidKit(new GLTFLoader(),'/modular/humanoid/',async url=>{const b=readFileSync(new URL('../../../mars/viewer/public'+url,import.meta.url));return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength) as ArrayBuffer;});
  const tpl=await kit.template({frame,preset:frame==='masc'?'casual':'woman',height:1.85,build:1.1});
