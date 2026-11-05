@@ -41,7 +41,7 @@ export const slug = (s: string) => s.toLowerCase().replace(/<[^>]*>/g, '').repla
 /** Inline Markdown -> HTML: code spans first (their content is literal), then links, autolinks, bold, italics. */
 /** A link target the docs may use: a site path, an in-page anchor, https, http or mailto. Anything else fails the build. */
 export function safeHref(h: string): string {
-  if (/^(?:\/(?!\/)|#|https?:\/\/|mailto:)/i.test(h)) return h;
+  if (/^(?:\/(?![/\\])|#|https?:\/\/|mailto:)/i.test(h)) return h;   // not //host or /\host (browsers read \ as /)
   throw Error(`docs: link target "${h}" is not a site path, an anchor, http(s) or mailto`);
 }
 /** Inline Markdown -> HTML: code spans first (their content is literal), then links (held aside so emphasis never runs over

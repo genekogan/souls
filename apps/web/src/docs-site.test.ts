@@ -66,7 +66,7 @@ test('the Markdown subset: headings with anchors, lists, ordered lists, tables, 
   assert.match(html, /<table><thead><tr><th>a<\/th><th>b<\/th><\/tr><\/thead><tbody><tr><td><a href="\/base\/changelog">x<\/a><\/td><td><code>y<\/code><\/td><\/tr><\/tbody><\/table>/);
   assert.match(html, /<pre><code class="language-bash">echo &quot;&lt;hi&gt;&quot;<\/code><\/pre>/);
   assert.match(html, /<blockquote><p>quoted<\/p><\/blockquote>/);
-  for (const bad of ['javascript:alert(1)', 'data:text/html,hi', 'vbscript:x', '//evil.example/x']) assert.throws(() => inline(`[x](${bad})`), /is not a site path/, bad);
+  for (const bad of ['javascript:alert(1)', 'data:text/html,hi', 'vbscript:x', '//evil.example/x', '/\\evil.example/x']) assert.throws(() => inline(`[x](${bad})`), /is not a site path/, bad);
   assert.equal(inline('[a **b](/c**d)'), '<a href="/c**d">a **b</a>', 'emphasis never runs across link markup');
   assert.match(markdownHtml('## Dup\n\n## Dup'), /id="dup"[\s\S]*id="dup-2"/);
   assert.equal(slug('Start in one line'), 'start-in-one-line');
