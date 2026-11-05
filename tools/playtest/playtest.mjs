@@ -362,7 +362,7 @@ async function main() {
   if (cmd === 'replay-set') process.exit(await cmdReplaySet(a));
   if (cmd === 'freeze-bundle') process.exit(await cmdFreezeBundle(a));
   // direct: a swarm-directed session from a cast file (director/swarm/, STATUS-SWARM.md at the worktree root)
-  if (cmd === 'direct') { const { cmdDirect } = await import('./director/swarm/run.mjs'); process.exit(await cmdDirect(a, { log })); }
+  if (cmd === 'direct') { const { cmdDirect } = await import('./director/swarm/run.mjs'); process.exit(await cmdDirect(a, null, { log })); }
   if (cmd === 'replay') {
     const src = resolve(a._[1]); const rp = readJson(join(src, 'replay.json')); if (!rp) { log('no replay.json'); process.exit(2); }
     const mode = a.mode ?? 'scripted';

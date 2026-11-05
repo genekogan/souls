@@ -1,9 +1,11 @@
+import {WorldMotionHistory} from './WorldMotionHistory.ts';
 import { setPosterDay } from '../../../mars/viewer/app/engine-view/poster-sheet.ts';
 import {WorldContextViews} from './WorldContextViews.ts';
 import { whenAssetsSettled } from './gen-mesh/gltf-assets.ts';
 import {ALL_OPTIONAL_APPEARANCE_PROFILES,type OptionalAppearanceProfiles} from './optional-appearance-profiles-all.ts';
 import {historyTakePath,historyTakePage} from './WorldTakeTransport.ts';
 import {WorldAuthoredBoundaries} from './WorldAuthoredBoundaries.ts';
+import {WorldTouchFree} from './touch/WorldTouchFree.ts';
 import {exploreRoom} from './explore-data.ts';
 import {RendererDiagnostics} from './RendererDiagnostics.ts';
 import {EngineFixtureInstances} from './EngineFixtureInstances.ts';
@@ -364,6 +366,8 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     for(const type of ['pointerdown','keydown','wheel'] as const)window.addEventListener(type,stopSoulFlight,{capture:true,passive:true});
     const rts=new WorldRtsCamera(renderer.domElement,camera,{controls:()=>controls,mode:()=>context.current.cameraMode,takeOver:()=>{context.current.manualNavigation='orbit';context.current.cameraMode='manual';context.current.follow=false;if(!navigation?.sync(true))navigation?.release(false);context.current.setManualNavigation('orbit');context.current.setCameraMode('manual');},scene:()=>scene,pickRoots:()=>[floaters.root,kin.view.root,standIns,...(people?.pickingRoots()??[]),...visualObstructionRoots()],focusAt:(x,y)=>{const target=hover.pick(x,y);if(target){inspectHover(target);return {center:target.point,radius:target.radius};}return null;},enabled:()=>!(context.current.cameraMode==='manual'&&context.current.manualNavigation==='free'),
       extent:()=>(entityLayer.active?entityLayer.groundExtent():null)??(expansion?EDEN_TERRAIN_EXTENT:geometry.bounds),home:()=>{context.current.setCameraMode('manual');controlsApi.current?.overview();}});scene.add(rts.marker);  // VF2: your camera (keys, pivot, double-click)
+    // #891: on a touch screen in Free, the floating stick walks, one finger looks, pinch glides, two fingers rise, double-tap flies (all through rts)
+    const touchFree=new WorldTouchFree(renderer.domElement,host,{camera:rts,free:()=>context.current.cameraMode==='manual'&&context.current.manualNavigation==='orbit',soulAt:(x,y)=>hover.pick(x,y)?.kind==='soul'});
     const speechLayer=new SpectatorSpeechLayer();scene.add(speechLayer.group);let speeches:SpectatorSpeech[]=[];const speechHead=new THREE.Vector3();
     // W3 fading visuals: Core C9 state when it ships; meanwhile a ?fade= preview override.
     // W2/W5 preview: ?snapshots=1 exposes on-demand low-res JPEG eyes/overhead/map frames (steward queue C10 will call these).
@@ -712,6 +716,8 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       return l;
     };
 
+    const initialMotionHistory=new WorldMotionHistory(fetchChunks,abort.signal);
+    const motionOwner=()=>JSON.stringify([context.current.sim.conn.welcome?.worldId,context.current.sim.conn.welcome?.epoch]);
     let liveArr: unknown = null, liveKey = '', live: Chunk[] = [], liveTick: number | null = null;
     const spot = new THREE.Vector3();
     const gaitContinuity=new RecordedGaitContinuity();
@@ -784,7 +790,8 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
         tick = liveTick;
       }
 
-      const candidate = chunkAt(chunks, tick);
+      if(initialMotionHistory&&!past.current&&initialMotionHistory.loading)void initialMotionHistory.start(liveList,serverNow(s)??liveList.at(-1)?.toTick??0,LIVE_DELAY,motionOwner(),motionOwner);
+      const candidate = initialMotionHistory?.loading&&!past.current ? null : chunkAt(chunks, tick);
       // the people renderer: at once on desktops and old worlds (no frame until it is here), after the arrival on a phone's
       // new world (WorldLightPeople until then); a failed fetch is retried every 5 s
       if(!peopleKit&&(!peopleLater||arrivalOver())&&now>=peopleKitRetryAt){peopleKitRetryAt=now+5000;void loadPeopleKit().catch(()=>{});}
@@ -797,6 +804,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
       if (pick) {
         const chunk = pick.chunk, take = chunk.take;
         const depictedTick = recordingTick(chunk, tick);
+        const motionHistory=!past.current&&initialMotionHistory?initialMotionHistory.history(chunks,chunk,depictedTick):chunks;
         try {
           if(people instanceof WorldLightPeople&&peopleKit){scene.remove(people.group);people.dispose();people=null;applied=null;}  // the renderer has loaded: the same take, drawn
           if (!people) {
@@ -842,7 +850,7 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
               people.setSupplementalStairs(entityLayer.supplementalStairs(s.edge??[],serverNow(s)),{liveTakeId:take.id});
             }else{entityLayer.clearSupplementalStairs();people.setSupplementalStairs([]);}
           }
-          people.setWaterHistory(chunks.map(c=>c.take));
+          people.setWaterHistory(motionHistory.map(c=>c.take));
           const floors=capturedPlatforms??(!past.current&&currentPlatforms&&currentPlatforms.worldId===s.conn.welcome?.worldId?currentPlatforms.platforms:[]);
           platformDraw.set(floors,base?.levels.find(l=>l.id===0)?.y??0,!!expansion&&!past.current);
           people.setPlatformFloors(floors,base?.levels.find(l=>l.id===0)?.y??0);
@@ -1174,6 +1182,7 @@ if(entityBatchEnabled&&entityLayer.active&&entityLayer.freezeSettled)entityLayer
     };
     const onWheel = () => context.current.setCameraMode(cameraModeAfterGesture(context.current.cameraMode));
     const onUp = (e: PointerEvent) => {
+      if (touchFree.consumed(e.pointerId)) { down = null; return; }  // #891: a touch gesture (stick, look, pinch, rise, double-tap), not a tap
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) { down = null; return; }
       down = null;
       if (entityLayer.active && godFeature('flags') && (e.altKey || flagModeRef.current)) return;  // a flag drop (onFlagClick), not a selection: no place card over the god panel
@@ -1198,7 +1207,7 @@ if(entityBatchEnabled&&entityLayer.active&&entityLayer.freezeSettled)entityLayer
       hover.dispose();
       portraits.dispose();
       for(const type of ['pointerdown','keydown','wheel'] as const)window.removeEventListener(type,stopSoulFlight,{capture:true});
-      rts.dispose();
+      rts.dispose();touchFree.dispose();
       atmosphere.dispose();forkLand?.dispose();godLiving?.dispose();post?.dispose();godLightning?.dispose();
       speechLayer.dispose();
       fading.dispose();
