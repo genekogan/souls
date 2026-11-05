@@ -23,6 +23,11 @@ pnpm build
 BRAIN_MODE=fake DEV_AUTH=1 DATA_DIR=.local/dev node --env-file=.env apps/server/src/main.ts
 ```
 
+In a cloud environment, CI runner or any other executor, use `scripts/bootstrap.sh` as the setup step in place of the
+first two commands. It installs locked dependencies and pulls media only when the lockfile, the `package.json` files or
+the media manifest changed since its last successful run, and `--no-media` skips the pull. It needs Node and pnpm
+already on the image. The Claude cloud SessionStart hook (`scripts/cloud-session-start.sh`) is a thin wrapper around it.
+
 Open <http://localhost:4500/w/toy/?dev=1>: a world is served under `WORLD_PATH` (`/w/<key>`), and the root `/` is the
 multi-world homepage, which lists only a launcher's worlds. With `DEV_AUTH=1` the page offers a dev sign-in; the name
 `admin` is an admin. `.env.example` sets `INVITE_REQUIRED=1`, so creating a Soul (**New Soul**, `POST /v1/souls`)
