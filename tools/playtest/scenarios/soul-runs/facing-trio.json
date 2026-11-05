@@ -1,0 +1,230 @@
+{
+  "name": "sr-facing-trio",
+  "version": 1,
+  "seed": 4230,
+  "providers": {
+    "allowed": []
+  },
+  "world": {
+    "kind": "dev",
+    "genesis": "worlds/templates/hello-hamlet.json",
+    "slug": "sr-facing-trio",
+    "port": 4331,
+    "natives": false
+  },
+  "durationSec": 95,
+  "seats": [
+    {
+      "id": "ana",
+      "adapter": "scripted-owner",
+      "soulName": "Ana",
+      "script": {
+        "rules": [
+          {
+            "match": "station",
+            "ack": "Going to my station",
+            "do": [
+              [
+                "act",
+                "walk to station-ana",
+                "--wait",
+                "60"
+              ]
+            ],
+            "result": "At my station"
+          },
+          {
+            "match": "invite",
+            "ack": "Inviting Ben and Cy",
+            "do": [
+              [
+                "act",
+                "read here",
+                "{\"seconds\":30,\"with\":[\"Ben\",\"Cy\"]}"
+              ]
+            ],
+            "result": "Invited them to read"
+          },
+          {
+            "match": "look around",
+            "ack": "Looking",
+            "do": [
+              [
+                "here"
+              ]
+            ],
+            "result": "Looked around"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ben",
+      "adapter": "scripted-owner",
+      "soulName": "Ben",
+      "script": {
+        "rules": [
+          {
+            "match": "station",
+            "ack": "Going to my station",
+            "do": [
+              [
+                "act",
+                "walk to station-ben",
+                "--wait",
+                "60"
+              ]
+            ],
+            "result": "At my station"
+          },
+          {
+            "match": "accept",
+            "ack": "Joining Ana",
+            "do": [
+              [
+                "act",
+                "accept"
+              ]
+            ],
+            "result": "Joined"
+          },
+          {
+            "match": "look around",
+            "ack": "Looking",
+            "do": [
+              [
+                "here"
+              ]
+            ],
+            "result": "Looked around"
+          }
+        ]
+      }
+    },
+    {
+      "id": "cy",
+      "adapter": "scripted-owner",
+      "soulName": "Cy",
+      "script": {
+        "rules": [
+          {
+            "match": "station",
+            "ack": "Going to my station",
+            "do": [
+              [
+                "act",
+                "walk to station-cy",
+                "--wait",
+                "60"
+              ]
+            ],
+            "result": "At my station"
+          },
+          {
+            "match": "accept",
+            "ack": "Joining Ana",
+            "do": [
+              [
+                "act",
+                "accept"
+              ]
+            ],
+            "result": "Joined"
+          },
+          {
+            "match": "look around",
+            "ack": "Looking",
+            "do": [
+              [
+                "here"
+              ]
+            ],
+            "result": "Looked around"
+          }
+        ]
+      }
+    }
+  ],
+  "god": null,
+  "director": {
+    "mode": "scripted",
+    "sequential": false,
+    "script": [
+      {
+        "seat": "*",
+        "atSec": 5,
+        "channel": "card",
+        "text": "Walk to your station, please.",
+        "budgetSec": 60
+      },
+      {
+        "seat": "ana",
+        "atSec": 50,
+        "channel": "card",
+        "text": "Invite Ben and Cy to read here with you.",
+        "budgetSec": 20
+      },
+      {
+        "seat": "ben",
+        "atSec": 58,
+        "channel": "card",
+        "text": "Please accept Ana's invitation.",
+        "budgetSec": 20
+      },
+      {
+        "seat": "cy",
+        "atSec": 58,
+        "channel": "card",
+        "text": "Please accept Ana's invitation.",
+        "budgetSec": 20
+      },
+      {
+        "seat": "*",
+        "atSec": 66,
+        "channel": "card",
+        "text": "Please look around and tell me what you see.",
+        "budgetSec": 4
+      },
+      {
+        "seat": "*",
+        "atSec": 71,
+        "channel": "card",
+        "text": "Please look around and tell me what you see.",
+        "budgetSec": 4
+      },
+      {
+        "seat": "*",
+        "atSec": 76,
+        "channel": "card",
+        "text": "Please look around and tell me what you see.",
+        "budgetSec": 4
+      },
+      {
+        "seat": "*",
+        "atSec": 81,
+        "channel": "card",
+        "text": "Please look around and tell me what you see.",
+        "budgetSec": 4
+      }
+    ]
+  },
+  "observer": {
+    "sampleSec": 1,
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1,
+    "cameras": []
+  },
+  "review": {
+    "mode": "deterministic",
+    "developer": false
+  },
+  "rails": {
+    "maxTurnWallSec": 120,
+    "onboardWallSec": 120,
+    "onboardTimeoutSec": 90,
+    "maxTurnsPerRequest": 4
+  }
+}
