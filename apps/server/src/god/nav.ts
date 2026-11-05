@@ -359,6 +359,10 @@ export class GodNav {
   goal(t: Thing, me: Vec2, except?: string): { p: Vec2; level: number } | null {
     this.refreshServicePoints();
     const E = this.E, tick = E.world.tick;
+    // #882: the warm reads this goal's own steps made; one that found navigation cold (it can go cold within a tick, after a
+    // god edit) makes the stored entry cold whatever this tick's memo says, so it is made again once warm
+    let sawCold = false;
+    const warmNow = () => { const w = !!E.navWarmV1?.(0); if (!w) sawCold = true; return w; };
     // a Soul-dependent goal (the shore nearest me, the nearest point of a road) is never cached
     // MARSLIVED: a room's goal is refined live round whoever already stands there (roomGoal itself is cached per version)
     const mine = t.kind === 'water' || t.kind === 'room' || (t.kind === 'path' && !t.deck?.length) || (t.stands?.length ?? 0) > 1 || t.level > 0;
@@ -376,7 +380,7 @@ export class GodNav {
     // nearest open spot of the main ground within r of it, else of `alt`; only once the engine's labels are ready (a
     // listing never waits for them)
     const toMain = (g: { p: Vec2; level: number } | null, r: number, ...alts: Vec2[]) => {
-      if (!g || g.level || !E.navCheckV1 || !E.navNearestMainV1 || !E.navWarmV1?.(0) || E.navCheckV1([{ id: t.ref, p: g.p, level: 0 }])[0]?.ok) return g;
+      if (!g || g.level || !E.navCheckV1 || !E.navNearestMainV1 || !warmNow() || E.navCheckV1([{ id: t.ref, p: g.p, level: 0 }])[0]?.ok) return g;
       // an area's spot must stay inside it: main ground outside a walled yard is not the yard (route truth)
       const ok = (v: Vec2 | null) => (v && (!t.area || inPoly(v[0], v[1], t.area)) ? v : null);
       let q = ok(E.navNearestMainV1(g.p, except, r));
@@ -460,7 +464,7 @@ export class GodNav {
       if (!t.stands?.length) goal = toMain(goal, t.big ? 80 : 3);
       // RESOLVE2: a thing up on a roof whose own patch is cut off (eden-house-3: its planters stand on a strip a ridge
       // parts from the terrace its roof stair lands on): the nearest connected standing room on that roof within 4 m
-      if (goal && goal.level > 0 && E.navCheckV1 && E.navWarmV1?.(0) && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) goal = this.roofReach(goal) ?? goal;
+      if (goal && goal.level > 0 && E.navCheckV1 && warmNow() && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) goal = this.roofReach(goal) ?? goal;
       // WALK3: a duck on the lake, a boat in the harbour: the shore of the water it floats on, nearest to it
       if (!goal && !t.level) for (const w of this.things()) {
         if (w.kind !== 'water' || !w.area || !inPoly(t.at[0], t.at[1], w.area)) continue;
@@ -491,7 +495,7 @@ export class GodNav {
       const room = t.kind === 'room' ? t : this.things().find(r => r.kind === 'room' && t.rooms?.includes(r.ref) && r.level === goal!.level && r.poly && inPoly(goal!.p[0], goal!.p[1], r.poly));
       if (room) goal = this.visitorGoal(room, goal, near);
     }
-    this.goals.set(key, { tick, key: positionKey, warm: this.navWarm(tick), goal });
+    this.goals.set(key, { tick, key: positionKey, warm: !sawCold && this.navWarm(tick), goal });
     return goal;
   }
 

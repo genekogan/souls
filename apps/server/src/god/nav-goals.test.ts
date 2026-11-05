@@ -164,3 +164,18 @@ test('#882: a roof goal cached before navigation warms is made again once warm (
   assert.deepEqual(nav.goal(planter, me), { p: [2, 0], level: 1 });
   assert.equal(nav0.checks, checks, 'a goal made warm keeps the 50-tick cache');
 });
+
+test('#882 review: a goal made while navigation went cold within a warm tick is stored cold, and made again once warm', () => {
+  const clock = { tick: 5 }, nav0 = { warm: true };
+  const nav = new GodNav({ model: { entities: new Map(), editSeq: 1, ground: () => ({ waters: [] }), resolvedDef: () => undefined, pathOf: () => '', get: () => undefined },
+    engine: { world: clock, standableNearV1: (at: Vec2) => at, navWarmV1: () => nav0.warm, navNearestMainV1: () => null,
+      navCheckV1: (xs: { id: string; p: Vec2 }[]) => xs.map(x => ({ id: x.id, ok: x.p[0] >= 2 })) },
+    levelAt: () => 1, engineOwned: () => false } as unknown as NavHost);
+  const roof = (ref: string, x: number) => ({ ref, id: ref, name: ref, words: [ref], kind: 'thing', at: [x, 0], level: 1, stands: [[x, 0]] } as unknown as Parameters<GodNav['goal']>[0]);
+  const me: Vec2 = [0, 20];
+  nav.goal(roof('house/other', 3), me);   // this tick's memo reads warm
+  nav0.warm = false;                      // a god edit sends navigation cold again within the same tick
+  assert.deepEqual(nav.goal(roof('house/roof-planter', 0), me), { p: [0, 0], level: 1 }, 'cold: roofReach skipped');
+  nav0.warm = true; clock.tick = 6;
+  assert.deepEqual(nav.goal(roof('house/roof-planter', 0), me), { p: [2, 0], level: 1 }, 'made again once warm, not served as a warm entry');
+});
