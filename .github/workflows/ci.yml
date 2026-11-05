@@ -92,6 +92,7 @@ jobs:
           tools/proof/gate.test.mjs
           tools/proof/acceptance.test.mjs
           tools/proof/upload.test.mjs
+          tools/coordinator/status.test.mjs
           tools/changelog/compile.test.mjs
           e2e/local-smoke.test.mjs
 
