@@ -72,7 +72,8 @@ migration, not the orientation-only first launch. Working root: <abs path to rep
 Read, in order: AGENTS.md, .claude/skills/coordinator-handoff/SKILL.md (Resume), then
 <abs path>/HANDOFF.md and INVENTORY.md in the same folder.
 Verify before acting: main at <sha>; open lane PRs and heads as listed; the release state (<one line>).
-Reply first with a 5-line read-back and any mismatch, then resume: relaunch the lanes from their brief files, re-arm
+Run the Resume preflight (step 0) first. Reply with a short read-back: the state, any mismatch, and each preflight
+check as pass, fail or refused. Then resume: relaunch the lanes from their brief files, re-arm
 the PR watch and your heartbeat, and continue with next step #1: <one line>.
 Standing directives: <the 3-4 that matter most, verbatim>.
 The previous workers are gone; their branches, worktrees and issue checkpoints are the record.
@@ -80,6 +81,31 @@ The previous workers are gone; their branches, worktrees and issue checkpoints a
 
 ## Resume (incoming coordinator)
 
+0. **Preflight before taking ownership.** Check each capability with a harmless command and record pass, fail or
+   refused in your read-back. Never work around a refusal; report it with the exact allow rule or login Gene needs.
+   Note which steps the outgoing harness could not do itself (INVENTORY.md lists them).
+   - **Repo and git:** working root is the canonical checkout on main; `git fetch` works; `git worktree list` shows the
+     lane worktrees; you can create a scratch worktree and push a branch (`git push --dry-run`).
+   - **GitHub:** `gh auth status`; read PRs and issues; write capability for comments, labels, PR edits, `gh pr
+     ready`, issue close, `gh workflow run`, and release uploads for proofs (`gh release view proofs-<n>`).
+   - **Toolchain:** Node 22 (`node -v`) and pnpm 10; `pnpm install --frozen-lockfile` is clean; assets pulled
+     (`pnpm assets:pull --offline` succeeds).
+   - **Proof and e2e:** Playwright Chromium launches (if the default cache is missing, set
+     `PLAYWRIGHT_BROWSERS_PATH` to a worktree's `.e2e/browsers`); `node tools/proof/tier.mjs`, `node
+     tools/proof/acceptance.mjs --help` and `node tools/proof/publication.mjs` run; ffmpeg is present for clips.
+   - **Soul Runs:** `apps/web/dist` and the viewer build exist (`pnpm --dir apps/web build`, `pnpm build:viewer`), or
+     note them as a lane's first step; no unknown process holds the dev ports.
+   - **Release:** sourcing the private release environment file named in the release owner's notes sets the env and
+     Node 22; the release-probe folder it names resolves; the Modal CLI is installed and logged in; the gate
+     dry-run plans (`tools/test-harness/release-gate.sh <sha> --baseline <tag> --scope full --cache "$SIM_GATE_CACHE"
+     --out <dir> --dry-run`). In some harnesses the gate, Modal and deploy steps are refused; then they are Gene's to
+     run, and you hand him the exact commands.
+   - **Workers:** you can start a background worker in this harness and message it
+     ([sustaining lanes](../../../docs/process/coordinator-portability.md#sustaining-lanes)); you can schedule a
+     heartbeat or watch.
+   - **Private records:** `.local/project/coordinator/` is readable and writable.
+   - **Plan usage:** check how much quota this harness has left with its own usage check, so you can plan the next
+     handoff before it runs out.
 1. Read the packet in the order the prompt gives. Treat it as a report: confirm against live state with
    `node tools/coordinator/status.mjs --since <pause time>`, the PR heads, the release receipts and `git worktree
    list`. Note any mismatch in your read-back.
