@@ -13,7 +13,7 @@ import { Auth } from './auth.ts';
 import { Brain } from './brain.ts';
 import { config, KNOWN_WORLD_KEYS } from './config.ts';
 import { Db } from './db.ts';
-import { buildApp } from './http.ts';
+import { buildApp, secureNodeResponse } from './http.ts';
 import { Hub } from './hub.ts';
 import { handleMcp } from './mcp.ts';
 import { Souls } from './souls.ts';
@@ -242,10 +242,11 @@ const listener = getRequestListener(app.fetch);
 const writesInFlight = new Set<Promise<void>>();
 const WRITE_DRAIN_MS = Number(process.env.WRITE_DRAIN_MS ?? 2000);
 server.on('request', (req, res) => {
-  if(edenCore&&closing){res.writeHead(503,{'Cache-Control':'no-store'}).end('Server restarting.');return;}
+  // #1017: the two answers written here, not by Hono, carry the same security headers.
+  if(edenCore&&closing){secureNodeResponse(res);res.writeHead(503,{'Cache-Control':'no-store'}).end('Server restarting.');return;}
   if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') { const done = new Promise<void>((r) => res.once('close', r)); writesInFlight.add(done); void done.then(() => writesInFlight.delete(done)); }
   req.url = stripWorldPath(req.url);
-  if (req.url?.startsWith('/mcp')) { handleMcp(req, res, souls, intentV2, edge ? (method: 'GET'|'POST', path: string, token: string, body?: unknown)=>Promise.resolve(app.request(path,{method,headers:{authorization:'Bearer '+token,'content-type':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})})).then(r=>r.json()) : undefined).catch((e) => { console.error('[mcp]', e); if (!res.headersSent) res.writeHead(500).end(); }); return; }
+  if (req.url?.startsWith('/mcp')) { secureNodeResponse(res); handleMcp(req, res, souls, intentV2, edge ? (method: 'GET'|'POST', path: string, token: string, body?: unknown)=>Promise.resolve(app.request(path,{method,headers:{authorization:'Bearer '+token,'content-type':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})})).then(r=>r.json()) : undefined).catch((e) => { console.error('[mcp]', e); if (!res.headersSent) res.writeHead(500).end(); }); return; }
   void listener(req, res);
 });
 
