@@ -53,6 +53,8 @@ export const config = {
   clerkSignInUrl: env.CLERK_SIGN_IN_URL ?? '',
   clerkAuthorizedParties: (env.CLERK_AUTHORIZED_PARTIES ?? '').split(',').map(s=>s.trim()).filter(Boolean),
   accountRegistryPath: env.ACCOUNT_REGISTRY_PATH ?? '',
+  // #717 body collections: cross-world membership and attribution, beside the account registry by default.
+  bodyCollectionPath: env.BODY_COLLECTION_PATH ?? '',
   privyAppId: env.PRIVY_APP_ID ?? '',
   privyAppSecret: env.PRIVY_APP_SECRET ?? '',
   typesafeKey: env.TYPESAFE_API_KEY || undefined,

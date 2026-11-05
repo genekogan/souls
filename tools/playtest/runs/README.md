@@ -3,8 +3,8 @@
 One owned lifecycle around an existing playtest scenario: validate, preflight, run through the scenario runner
 (`playtest.mjs` `cmdRun`), release what the run created, apply retention and write a terminal receipt. Tranche #749;
 SR1 (#750) is the lifecycle; SR2 (#751) adds world sources, setup and composed casts; SR3 (#752) attaches opt-in
-control diagnostics; SR4 (#753) evaluates completed runs offline and compares repeats. Recording (SR5) builds on the
-same receipt.
+control diagnostics; SR4 (#753) evaluates completed runs offline and compares repeats; SR5 (#754) records cameras and
+packages a run's evidence (see Recording).
 
 ```bash
 node tools/playtest/runs/run.mjs validate tools/playtest/runs/specs/smoke-world.json
@@ -14,6 +14,9 @@ node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio.
 node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/garden-setup.json  # another world, a setup batch, another cast
 node tools/playtest/runs/run.mjs cleanup  .local/soul-runs/<run> --world-data --controller-state
 node tools/playtest/runs/run.mjs evaluate .local/soul-runs/<run> --question tools/playtest/runs/questions/redirect-honoured.mjs
+node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio-recorded.json   # the trio, recorded: wide, free and follow cameras
+node tools/playtest/runs/run.mjs preview  .local/soul-runs/<run> --camera bo --from 10 --to 40   # a labelled excerpt, never full proof
+node tools/playtest/runs/run.mjs package  .local/soul-runs/<run> --select wide --select bo      # local index + selected projection
 node tools/playtest/runs/run.mjs compare  .local/soul-runs/<run-a> .local/soul-runs/<run-b> [--out dir] [--md]
 ```
 
@@ -36,7 +39,7 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 | `world.genesis` or `world.snapshot` | scenario's | World source: a genesis template or a frozen compiler snapshot (`arena/snapshot-seed.mjs`), a path under the server root. Its sha256 is in the receipt (`spec.effective.world.source`). |
 | `setup` | none | `{batches: [file or {id, ops, note}], maxWallSec: 120}`: god-edit batches applied after provision and before any seat (see Setup). |
 | `durationSec` | scenario's | Play duration override. |
-| `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000}` | Bounded observer check (import plus one browser launch and close). Failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras: ["wide"]` adds a wide camera. |
+| `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000, mode: "cameras", record: null, recordSize: "compact", freeComposition: null}` | `mode`: `cameras` (browser cameras, the default), `passive` (world-truth evidence packs, no browser) or `off`. Bounded observer check (import plus one browser launch and close) in `cameras` mode; failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras`: `wide` and/or `free` beside the per-seat follow cameras. `record`: `true` or camera names (`wide`, `free`, `follow` for every seat, or a seat id). `recordSize`: `compact`, `viewport` or `{width, height}` (needs `record`). See Recording. |
 | `limits` | `{maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000}` | Hard wall limit for the whole run, controller count, per-resource release wait. |
 | `controllers.allowLiveModels` | `false` | A scenario whose seats, persona director or model review need claude/codex is refused unless this is `true`. Set it only with explicit authorization for live models. |
 | `diagnostics` | none (off) | `{trace: true | [seat ids]}`: passive soul-trace capture for those seats (see Diagnostics). |
@@ -53,7 +56,9 @@ applies the same preflight as `start`; `start` runs it once and hands the result
 `.local/soul-runs/<stamp>-<name>/` (or `--out`; `SIM_SCRATCH` moves `.local`):
 
 - `run-receipt.json`: the terminal receipt. `status` is `running` until the end, so a crash never reads as success.
-  It records the effective spec and its hash, the scenario path and hash, source commit and dirty tracked-file count,
+  It records the effective spec and its hash, the scenario path and hash, the source (`source.serverRoot` and
+  `source.tools`, each a commit and uncommitted tracked-file count; the tools checkout is the one whose runner,
+  adapters and director ran, often not the server root; top-level `source.commit` stays the server root's),
   Node version, controllers (adapter, model, effort), preflight checks, observer check, every resource with its owner
   and release state, retention, cost (`wallMs`, `executeMs`, `lifecycleOverheadMs`, runner CPU and max RSS, run
   directory bytes) and the scenario runner's evidence (receipts, report, build, CLI and skill versions, tick validity).
@@ -88,7 +93,10 @@ Setup batches are existing god-edit batches (`{ops: [...]}` as `eden-god.mjs act
 owner's own route: `POST /v1/god/mint` as the dev owner, then `POST /v1/god/act` per batch, the same validated
 `commitBatch` the god CLI uses. It runs after provision and before any seat exists, so it is never part of measured
 play. `setup.json` and the receipt record each batch's id, path, sha256 and outcome (edit seq, or the refusal code and
-failures) and the physical fixture hash before and after setup. A refused batch fails the run at stage `setup`; play
+failures) and the physical fixture hash before and after setup. An accepted batch also lists its `entities`: each
+created root entity id with the op that created it (`place` or `clone`, op index, tmp, name and def where given; just
+`created` when the ids cannot be matched to ops one to one, for example after a build-safe repair), and each entity an
+op changed by id, with that op's name. Parts inside a created entity are not listed. A refused batch fails the run at stage `setup`; play
 never starts. The minted god token is never written down.
 
 ## Ownership and retention
@@ -137,8 +145,8 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
 `run-index.json` and `COMPARE.md`). It accepts run folders and `replay-set.json` folders. Attempts are grouped into
 arms by exact identity: the scenario without its port and paths, the world source hash, setup batch hashes, the seats
 (adapter, model, effort, persona, script hash), the director script, seed and duration. Every attempt is listed,
-including cancelled, failed and missing ones; only completed attempts are repeats. Code commit, uncommitted tracked
-files, CLI/skill/Node versions, machine load and observer state are listed per attempt and flagged where they differ.
+including cancelled, failed and missing ones; only completed attempts are repeats. Server root and tools commits,
+uncommitted tracked files in each, CLI/skill/Node versions, machine load and observer state are listed per attempt and flagged where they differ.
 Arms are never pooled together; each pair of arms lists the identity parts that differ. A plain playtest folder has no
 hashed world source, so it forms its own arm.
 
@@ -170,6 +178,66 @@ node tools/playtest/runs/run.mjs correlate <run>               # trace ↔ direc
 
 `correlate` keeps every original id and clock domain, never equates the seat's ack, the world's admission, the start
 tick and the terminal phase, and lists missing links (for example a delivery the trace did not see).
+
+## Recording (SR5)
+
+Cameras are the stock observer's (`observer/browser.mjs`): one browser context and page per camera, on the served web
+client, with real input only. They observe; none of them sends a Soul command.
+
+| camera | how | requested → actual |
+|---|---|---|
+| follow (one per seat, always in `cameras` mode) | the owner's page at `#soul/<id>`, then a real click on the card's Follow button | `follow` of that Soul, or `ok: false` with the reason |
+| `wide` | the public page on the viewer's broadcast camera | `broadcast` |
+| `free` | the public page, a real click on the viewer's own broadcast/free toggle, then its camera controls' "Reset view" (a fixed start pose instead of wherever broadcast had cut), then an optional fixed mouse drag and wheel (`observer.freeComposition`, default `{drag: [0, 0], wheel: 0}`: the reset pose, the whole settlement): the same composition every run | `manual` with `reset: true`, or `ok: false` with the reason |
+
+`observer.record` records the named cameras with Playwright's context video: one uncut, real-speed take from page
+creation to context close, under `playtest/recordings/<camera>.webm`. Each recording has a `<camera>.webm.json` sidecar:
+requested versus actual camera state (mode, selection, follow/free result), readiness and arrival time, wall-clock and
+monotonic open/close, duration, page errors, bytes and sha256, plus the run's provenance (run id, attempt, spec and
+effective-spec hashes, source commit, world slug and port). `playtest/cameras.json` lists every camera that was asked
+for, including those that failed to open. A camera that fails is recorded and the run goes on without it.
+
+Recording size (`observer.recordSize`, #802). Playwright's recorder encodes VP9 at a fixed 25 fps with a target bitrate
+of 1000 kbps × max(1, w·h / (800·450)); frame rate and bitrate are not exposed, the recorded frame size is. `compact`
+(the default) scales the recording to fit 800×450 pixels' worth of area with the viewport's aspect (758×474 for a
+1280×800 camera), where the target is its 1000 kbps floor. `viewport` records at the viewport size, the earlier quality
+(about 2840 kbps at 1280×800). `{width, height}` sets the size outright. The page keeps its viewport; only the video is
+scaled. Measured on the hamlet trio, five cameras: `compact` 7.3–7.9 MB per camera-minute; `viewport` 18.8–22.3 MB. Each
+sidecar records `encoding` (setting, size, fps, target kbps) and `mbPerMin`; the package index shows both.
+
+Every close path finalizes the recordings: the normal close, a failed run and a cancelled run's ledger release. A
+recording closed before play ended is labelled `partial`; a camera that never arrived keeps its partial video with
+`closedBy: "open-failed"`. The receipt's `recordings` summarizes them. Recordings are private run evidence like the rest
+of the run folder: they show dev owner pages and are never published by the runner.
+
+Offline, after the run (reads the run folder, writes only under `<run>/derived/`, which evaluation ignores):
+
+- `preview <run> --camera <c> --from <s> --to <s>` cuts one excerpt to `derived/previews/<c>-<from>-<to>.mp4` with a
+  burned-in label ("PREVIEW, not full proof", the source file, its hash and the range). Its sidecar has `derived: true`,
+  `fullProof: false` and the source's file, sha256 and range. The source is hashed before and after; a recording that no
+  longer matches its sidecar is refused. A preview is a pointer for reviewers, never the proof itself.
+- `package <run> [--select <camera|preview file>]…` writes `derived/package/index.json` and `index.md` (private: outcome,
+  cost, measurements and questions from the latest evaluation, recordings and previews with hashes, limits) and
+  `selected.json`, a projection with only the selected items, run-relative. Every field of it (evidence items,
+  measured values, question bases, limits, run id, spec name, commit) is screened for absolute, home-relative (`~/`),
+  parent-relative (`../`) and user-directory paths, file URLs and hosts (IPv4, `localhost`, `*.local`, `*.lan`, `*.internal`, mesh-VPN host names); a
+  hit is withheld and listed under `refused`. The screen does not recognise tokens or Soul ids: none of the projected
+  fields carries them, and the selected items should still be inspected before publishing. Nothing is selected by default. The package never uploads or posts: watch a recording before
+  selecting it, then publish it with `tools/proof/upload.mjs` (the PR's proof path).
+
+Observer cost: `observer.mode` `off` / `passive` / `cameras` separates passive evidence capture from browser cameras;
+within `cameras`, video encoding runs in Playwright's own ffmpeg processes. A recorded camera takes about 7.5–8 MB per
+camera-minute (median 7.7) at the default `compact` size and about 21 MB at `viewport` size (1280x800). Compare arms with two repeats each on a quiet machine (`docs/testing/playtests.md`).
+
+Four saved arms of the same hamlet trio compare observer cost (#803): `specs/hamlet-trio-off.json`,
+`hamlet-trio-passive.json`, `hamlet-trio-cameras.json` (the recorded arm's five cameras, recipes and viewports, with
+recording off) and `hamlet-trio-recorded.json`. The recording share is the difference between the last two. Every run's
+receipt has `cost.processes`: CPU seconds and peak RSS of the runner's descendant processes by class (`browser`,
+`encoder` for Playwright's ffmpeg, `world`, `other`), sampled with `ps` every 2 s. Only the class is kept, never a
+command line. Basis: only descendants of the runner's process are counted, so a process that is reparented or detached
+out of that tree is missed. A process that exits between samples loses up to one interval. Peak RSS is the largest
+sampled sum of RSS over the processes in each class, so memory they share can make it overstate actual use. If `ps`
+fails, the field is `unavailable` with the reason, and the run is unaffected.
 
 ## Scenario runner hooks
 

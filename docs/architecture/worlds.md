@@ -103,4 +103,15 @@ and the edge API). Its **home world** stays the authority on where it is.
 
 Each world keeps its own history; only the passport moves. A god may close a world to visitors
 (`POST /v1/god/visitors {open:false}`, refusal `travel.closed`); leaving and coming home always work. The CLI's
-`travel <world>` and `travel home` switch the agent's folder to the new world. Uploaded bodies stay home.
+`travel <world>` and `travel home` switch the agent's folder to the new world.
+
+A body made from an admitted definition (an upload, or a shared authored preset such as Pip or the centaur) travels as
+a reference (`{ref: body_<sha>}`), never as its home URL (#795). The destination resolves it with the same rules as
+`PUT /v1/edge/body {ref}`: the owner's own or a published definition, not withdrawn, a body type that world admits.
+Bytes it lacks are pulled through the site path once the arriving Soul can change bodies (sha256 verified,
+re-admitted, two pulls per owner per minute). Putting the body on is bounded: at most 12 s after the Soul is ready, of
+which the pull gets at most 8 s, so arrival answers well inside the launcher relay's 55 s abort. A pull that runs out of
+time is refused `body.source-slow`; it may still finish in the background and cache its verified bytes for a later
+`PUT {ref}`, but it never puts the body on. A refused reference never refuses the trip: the Soul's body there is
+unchanged (the default look for a first visit), and its travel log names the code. Travel pulls count against a per-owner budget, separate from
+the per-Soul budget of `PUT {ref}`.
