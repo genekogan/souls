@@ -20,6 +20,13 @@ or shared Pip), and `validate.mjs --report` / `--preview` give a body-report/1 s
 preview. The served file list, server routes and web client are unchanged; the definition reference stays the
 content address `body_<sha256>`.
 
+[#722](https://github.com/genekogan/souls/issues/722) adds two shared examples built exactly like Pip: Grumble the
+monster (`tools/body-authoring/monster/`, original geometry on the canonical rig with its core canonical clips: idle, walk, solo dance, seat, ground sit, lying and swimming; the
+plain humanoid profile) and Wisp the ghost (`tools/body-authoring/ghost/`, dependency-free rigid mesh with
+`body-motion/1` adapters). The server builds their bytes lazily from that source, through ordinary admission, and
+refuses drift from the pinned asset ids in `apps/server/src/edge/body/shared-bodies.ts`. They are appended to the
+presets, so existing preset ids and Pip's asset id are unchanged. The ghost's hover is appearance only.
+
 All 13 curated Little Martians presets share the authored motion definition and remain available to every owner;
 humanoids remain the default. Uploaded definitions remain owner-scoped and world-scoped, rediscoverable with
 `body list` by stable asset ID, name and description. Their rendered mesh is publicly retrievable; owner-scoped
