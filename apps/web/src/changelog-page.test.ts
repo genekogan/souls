@@ -123,6 +123,14 @@ await test('public journal preserves exact association, stable anchors, escaped 
   assert.match(html, /If media cannot load/);
 });
 
+await test('public journal accepts media on a PR\'s own proof release (proofs-<pr>, the upload.mjs default)', () => {
+  const perPr = 'https://github.com/genekogan/souls/releases/download/proofs-761/pr-761.tea.mp4';
+  const html = changelogHtml('<main><!--changelog--></main>', SAMPLE, '/', [{ ...JOURNAL, media: { ...JOURNAL.media, url: perPr,
+    poster: perPr.replace('.mp4', '.jpg') } }]);
+  assert.ok(html.includes(perPr), 'per-PR clip kept');
+  assert.ok(html.includes(perPr.replace('.mp4', '.jpg')), 'per-PR poster kept');
+});
+
 await test('public projection refuses unknown/private fields, wrong association, malformed provenance and unsafe URLs', () => {
   const bad = [
     { ...JOURNAL, owner: 'private' }, { ...JOURNAL, version: '99' }, { ...JOURNAL, date: '2026-11-01' },
@@ -136,6 +144,9 @@ await test('public projection refuses unknown/private fields, wrong association,
     'https://user:secret@github.com/genekogan/souls/releases/download/proofs/a.mp4',
     'https://github.com/genekogan/souls/releases/download/proofs/a.mp4?token=private',
     'https://assets.eden.art/private/a.mp4', 'https://assets.eden.art/public-journal/../private/a.mp4',
+    'https://github.com/genekogan/souls/releases/download/proofs-x/a.mp4',
+    'https://github.com/genekogan/souls/releases/download/proofs-761-extra/a.mp4',
+    'https://github.com/genekogan/souls/releases/download/v4.1/a.mp4',
   ]) bad.push({ ...JOURNAL, media: { ...JOURNAL.media, url } });
   for (const input of bad) assert.throws(() => parsePublicJournal([input], parseChangelog(SAMPLE)));
   assert.throws(() => parsePublicJournal([JOURNAL, JOURNAL], parseChangelog(SAMPLE)), /duplicate/);
