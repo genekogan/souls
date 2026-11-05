@@ -266,6 +266,14 @@ const PLACE_VERBS = new Set(['walk', 'jog', 'run', 'jog-around', 'run-around', '
 const SPOT_PLACE_VERBS = new Set(['read']);
 const GAIT_VERBS = new Set(['jog', 'run', 'jog-around', 'run-around', 'cycle', 'cycle-around']);
 
+// #441 (W107): "juggle", "juggle the balls" while holding a set; otherwise a plain refusal that says what is missing.
+function juggleWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
+  if (!/^(?:please\s+)?(?:(?:start|go|do\s+some|try)\s+)?juggl(?:e|es|ing)\b/.test(text.trim())) return null;
+  const cap = ctx.caps.find(c => c.verb === 'juggle');
+  if (cap) return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`};
+  const near = ctx.caps.find(c => c.verb === 'pick-up' && /\b(?:juggling|balls)\b/i.test([c.label, ...(c.aliases ?? [])].join(' ')));
+  return {kind: 'unknown', code: 'juggle.no-balls', reason: near ? `You are not holding anything to juggle. ${near.label} first (${near.id}).` : 'You are not holding anything to juggle, and there are no juggling balls within reach here.', didYouMean: near ? [{id: near.id, label: near.label}] : []};
+}
 export function resolveCapability(input: string, ctx: VocabContext): VocabResult {
   const r = resolveWords(input, ctx);
   // R2 stroll (longrun 2026-10-16: nobody moved for 70 minutes): a stroll named for the place the Soul is already in, whose
@@ -335,6 +343,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   }
   const text = input.toLowerCase(), colon = text.indexOf(':'), head = colon >= 0 ? text.slice(0, colon) : '';
   const stow = colon < 0 ? storeWords(input, text, ctx) : null; if (stow) return stow;
+  const juggling = colon < 0 ? juggleWords(input, text, ctx) : null; if (juggling) return juggling;
   // RESOLVE (SOULSIM-E "find a boat": no "find" capability): find / look for / search for X is a walk to the nearest X you
   // can reach, unless the words name an activity offered here ("find somewhere quiet to read", "find a seat" keep theirs)
   const find = colon < 0 ? FIND.exec(text.trim()) : null;

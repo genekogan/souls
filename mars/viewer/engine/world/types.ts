@@ -67,6 +67,8 @@ export type HumanState = {
   wateringV1?: import('../items/watering.ts').WateringMotion;
   /** Soul Actions 34: a handle-held item being taken or put by hand (the arm blends in and out on this timeline). */
   handTransferV1?: import('../items/watering.ts').HandTransfer;
+  /** #441 (W107): the juggling run on this body (items/juggle.ts); stays after it ended for the receipt's count. */
+  juggleV1?: import('../items/juggle.ts').JuggleV1;
   /** Soul Actions 43: the last let-go before a reach (an idle gesture fades out on it); never controller context. */
   letGoV1?: import('../items/let-go.ts').LetGoV1;
   /** Soul Actions 44: one recorded mug stage (drinking in sips, rinsing at a tap); never controller context. */

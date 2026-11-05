@@ -867,7 +867,7 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
           const beat=worldDepictionBeat(context.current.depictionBeatAt,s.conn.welcome?.worldId,take,depictedTick,past.current?'history':'live',pick.exact);
           if(!eyes&&!shotMode){camera.updateMatrixWorld();bodyViewer.frustum.setFromProjectionMatrix(bodyViewerM.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));bodyViewer.eye.copy(camera.position);people.setViewer(bodyViewer);entityLayer.viewer=bodyViewer;viewerLive=true;}else{people.setViewer(null);entityLayer.viewer=null;viewerLive=false;}  // PERF-EDEN: far / off-screen bodies are posed at a lower rate
           const sampled = people.show(local * take.dt, depictedTick * dt,beat,(depictedTick - take.startTick) * take.dt,!eyes&&!shotMode?rigBudget:undefined);
-          games.update(sampled.entities,depictedTick);
+          games.update(sampled.entities,depictedTick);entityLayer.setJuggled(games.juggledSets);
           bodyModels.sync(records,sampled.entities);
           const sampledFloaters=new Map(Object.entries(sampled.entities).flatMap(([id,e])=>{const body=recordedBody(records[id]?.body,e.state);if(body?.family!=='floater')return [];const url=admittedBodyUrl(body.modelUrl,apiPath('').replace(/\/$/,''));return [[id,{...body,...(url?{modelUrl:url}:{})} as NonNullable<Entity['body']>]] as [string,NonNullable<Entity['body']>][];}));
           floaters.sync(sampledFloaters);

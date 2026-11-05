@@ -931,7 +931,7 @@ export class WorldEntityLayer {
       const ride = cupHand ? undefined : this.overrides.get(id); if (ride) { d.obj.position.copy(ride); const yaw = this.overrideYaw.get(id); if (yaw !== undefined) d.obj.rotation.y = -yaw; }
       const s = d.from.s + (d.to.s - d.from.s) * t;
       d.obj.scale.setScalar(s);
-      const shown = this.interiorVisible(id, d);
+      const shown = this.interiorVisible(id, d) && !this.juggled?.has(id);
       const inHand = cupHand || (!ride && !d.removing && this.held.has(id) && (d.obj.userData.handleGrip ? this.handleHeld(id, d) : this.handPoint(this.held.get(id)!, d.obj.position)));
       if (!inHand || !d.obj.userData.cupShown) this.cupWater(id, null);
       if (!inHand && this.pours.has(id)) this.pours.get(id)!.visible = false;
@@ -1005,6 +1005,9 @@ export class WorldEntityLayer {
    *  the engine's hand point; the free one hangs lower), or between both palms when they are level (two-handed / seated).
    *  The figure is the native people view's rig, found in the scene by its name (= the body's engine id). False when the
    *  body has no figure here (no takes yet, or a stand-in): then the thing stays at the body entity's carry slot. */
+  /** #441: held sets drawn as flying balls this frame (WorldGames): each is drawn whole or as balls, never both. */
+  private juggled?: ReadonlySet<string>;
+  setJuggled(sets: ReadonlySet<string>) { this.juggled = sets; }
   private handPoint(body: string, out: THREE.Vector3): boolean {
     const f = this.figureOf(body); if (!f) return false;
     f.holder.updateWorldMatrix(true, true);

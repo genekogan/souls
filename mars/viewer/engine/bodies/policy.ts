@@ -101,6 +101,7 @@ export const FLOATER_POLICY: Readonly<Record<string, VerbPolicy>> = {
   // Soul Actions: hand contact with world things (entries 1-44)
   hand_actuator_v1: HANDS('working a switch, door, drawer, board or rope by hand'),
   let_go_v1: HANDS('letting an idle gesture go before a reach'),
+  juggle_v1: HANDS('juggling a held set of balls in both hands'),
   watering_can_v1: HANDS('carrying, filling and tilting a can by its handle'),
   cup_v1: HANDS('holding, drinking from and rinsing a mug'),
   hand_over_v1: HANDS('handing a held thing to another body'),
