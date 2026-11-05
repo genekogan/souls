@@ -124,7 +124,7 @@ export type HumanState = {
   /** together/1: the body this one is doing a paired gesture with (hug, handshake, high-five, give/take, dance together). */
   partner?: string;
   /** together/1: a grouped pose — waiting for partners or running in sync until the shared end tick. */
-  together?: { group: string; phase: 'waiting' | 'active'; until?: number; mobile: boolean; pairedPolicy?: 'ready-v1'; readyAt?: number; windowPolicy?: 'once-v1'; late?: true };
+  together?: { group: string; phase: 'waiting' | 'active'; until?: number; mobile: boolean; pairedPolicy?: 'ready-v1'; readyAt?: number; windowPolicy?: 'once-v1' | 'once-v2'; late?: true };
   /** CN5 (social/pose.ts): the instrument a play-music body plays. */
   instrument?: string;
   /** CN5 (social/pose.ts): a choreographed game's public turn state (who throws to whom and when). */

@@ -112,8 +112,9 @@ const INVITABLE = new Set(['walk', 'stroll', 'wander', 'hang-out', 'gather', 'wa
 
 export type Invite = {id: string; what: string; host: {soulId: string; name: string}; guests: {soulId: string; name: string}[]; capability: string; label: string;
   kind: 'paired' | 'give' | 'activity' | 'ride'; pairedPolicy?: 'ready-v1';
-  /** E2 #2 (2026-10-16): activity invitations carry the group window policy their poses use (absent on older invitations). */
-  windowPolicy?: 'once-v1'; activity?: string; seconds?: number; gap?: number; prop?: string; base?: string;
+  /** E2 #2 (2026-10-16): activity invitations carry the group window policy their poses use (absent on older invitations);
+   *  once-v2 from 2026-11-05 (#508), stored once-v1 invitations keep theirs. */
+  windowPolicy?: 'once-v1' | 'once-v2'; activity?: string; seconds?: number; gap?: number; prop?: string; base?: string;
   createdTick: number; expiresTick: number; state: 'pending' | 'closed'; responses: Record<string, 'accepted' | 'declined' | 'expired' | 'cancelled'>;
   hostReceipt: string | null; guestReceipts: Record<string, string>;
   /** F1 (2026-10-20): where the host will stand for a paired gesture or hand-over (its meet spot, or where it already
@@ -612,13 +613,13 @@ export class Together {
       const destination = lastMove?.verb === 'walk_to' ? lastMove.params.to : undefined;
       const meetAt: V2 | undefined = Array.isArray(destination) && destination.length === 2 && destination.every(Number.isFinite) ? [destination[0], destination[1]] : undefined;
       // CN5: a game keeps its court's group (the guest takes a free place at the same court)
-      if (last && !last.params.game) {last.params.group = id; last.params.waitSeconds = 20; last.params.alone = 'start'; last.params.need = 1; last.params.windowPolicy = 'once-v1';}  // E2 #2: one shared window
+      if (last && !last.params.game) {last.params.group = id; last.params.waitSeconds = 20; last.params.alone = 'start'; last.params.need = 1; last.params.windowPolicy = 'once-v2';}  // E2 #2, #508: one shared window
       const ride = cap.verb === 'object' ? out.find(s => s.verb === 'mars:carrier_ride') : undefined;
       if (ride) {ride.params.holdSeats = w.souls.length; ride.params.holdSeconds = 90;}
       const what = ride ? 'ride' : cap.verb, label = ride ? `invites you on ${cap.label.replace(/^.*\(/, '').replace(/\)$/, '') || 'the ride'}` : `invites you to join: ${cap.label}`;
       return {steps: out, commit: receipt => {
         const inv: Invite = {id, what, kind: ride ? 'ride' : 'activity', host: {soulId: soul.soulId, name: soul.name}, guests: w.souls.map(s => ({soulId: s.soulId, name: s.name})), capability: cap.id, label,
-          ...(meetAt ? {meetAt} : {}), ...(last?.params.windowPolicy ? {windowPolicy: 'once-v1' as const} : {}), ...(last ? {activity: String(last.params.activity), seconds: Number(last.params.seconds), ...(last.params.prop ? {prop: String(last.params.prop)} : {}), ...(last.params.base ? {base: String(last.params.base)} : {})} : {}),
+          ...(meetAt ? {meetAt} : {}), ...(last?.params.windowPolicy ? {windowPolicy: 'once-v2' as const} : {}), ...(last ? {activity: String(last.params.activity), seconds: Number(last.params.seconds), ...(last.params.prop ? {prop: String(last.params.prop)} : {}), ...(last.params.base ? {base: String(last.params.base)} : {})} : {}),
           ...(ride && cap.object ? {ride: {object: cap.object, carrier: String(ride.params.carrier)}} : {}), place: cap.target?.kind === 'place' ? cap.target.id : null,
           createdTick: this.tick, expiresTick: this.tick + (ride ? 90 : 90) * 20, state: 'pending', responses: {}, hostReceipt: receipt, guestReceipts: {}};
         this.saveInvite(inv); this.announce(inv);

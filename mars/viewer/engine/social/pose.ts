@@ -11,6 +11,10 @@
 // unchanged): a group opens its shared window once. A body whose window has passed (still settling after a courtesy step,
 // its `until` stale) is no partner and never seeds a second "shared" window. A guest who arrives after the window visibly
 // closed does the pose alone at once (no wait), marked `late` in its body state and its outputs.
+// Window policy `once-v2` (#508, prospective; set by edge invitations from 2026-11-05, so `once-v1` logs replay unchanged):
+// as once-v1, and the window also counts as closed when a member's grouped pose has already completed while no member is
+// in reach any more (the last settling body cleared its state before the guest arrived). once-v1 saw no one there, waited
+// 20 s and opened a second, unmarked window.
 import { z } from 'zod';
 import {frisbeeLaneIssue,FRISBEE_CLEAR_WINDUP} from './frisbee-clearance.ts';
 import type { ActionDef, Diagnostic } from '../actions/types.ts';
@@ -73,8 +77,9 @@ export const LIE_CLEARANCE = 0.9;
 /** An in-place dance keeps the standing body's root and ordinary standing footprint. */
 export const DANCE_CLEARANCE = HUMAN_RADIUS;
 
+type WindowPolicy = 'once-v1' | 'once-v2';
 type Params = { actor: string; activity: string; seconds: number; prop?: string; base?: 'sit' | 'idle'; seatHeight?: number; face?: Vec2;
-  group?: string; pairedPolicy?: 'ready-v1'; windowPolicy?: 'once-v1'; waitSeconds?: number; alone?: 'start' | 'fail'; gap?: number; need?: number; hold?: string; release?: boolean;
+  group?: string; pairedPolicy?: 'ready-v1'; windowPolicy?: WindowPolicy; waitSeconds?: number; alone?: 'start' | 'fail'; gap?: number; need?: number; hold?: string; release?: boolean;
   /** hotfix: stepping in or back for a paired gesture never brings this body closer to anyone else than it already is
    *  (once within arm's reach of them); prospective, set by edge plans, so earlier logs replay unchanged. */
   clear?: boolean;
@@ -98,7 +103,7 @@ type Exec = { id: string; p: Params; base: string; at: number[]; t: number; yaw:
   /** Entry 36 accompany: seconds since the last check found music (undefined: none heard yet), and whether any was. */
   quiet?: number; heard?: boolean; gameRelease?: {at:number; frame:number; from:number; diagnostic?:Diagnostic} };
 /** together/1 public body state while a grouped pose runs (the viewer may draw open arms while waiting). */
-export type TogetherState = { group: string; phase: 'waiting' | 'active'; until?: number; mobile: boolean; pairedPolicy?: 'ready-v1'; readyAt?: number; windowPolicy?: 'once-v1'; late?: true };
+export type TogetherState = { group: string; phase: 'waiting' | 'active'; until?: number; mobile: boolean; pairedPolicy?: 'ready-v1'; readyAt?: number; windowPolicy?: WindowPolicy; late?: true };
 const issue = (code: string, message: string, subjects: string[]): Diagnostic => ({ code: 'pose.' + code, message, subjects });
 
 function admission(rt: Runtime, p: Params): Diagnostic | null {
@@ -153,6 +158,13 @@ const partnersOf = (rt: Runtime, ex: Exec) => {
     && hypot(e.pose.p[0] - me.pose.p[0], e.pose.p[2] - me.pose.p[2]) <= (ex.p.game ? GAME_REACH : PAIR_REACH * (ex.p.gap ? 1 : 3)))
     .sort((a, b) => hypot(a.pose.p[0] - me.pose.p[0], a.pose.p[2] - me.pose.p[2]) - hypot(b.pose.p[0] - me.pose.p[0], b.pose.p[2] - me.pose.p[2]) || (a.id < b.id ? -1 : 1));
 };
+/** once-v2: another grouped pose of this group has completed, so its window has run. Records are snapshotted; a host that
+ *  prunes old records (engine-mars keeps about 120 s) forgets the window after that, and a guest arriving that late waits as under
+ *  once-v1 (invitations expire after 90 s). */
+const windowRan = (rt: Runtime, ex: Exec) => {
+  for (const r of rt.records.values()) if (r.verb === 'pose_v1' && r.status === 'completed' && r.id !== ex.id && (r.params as Params | undefined)?.group === ex.p.group) return true;
+  return false;
+};
 /** A native seat (sit / take_slot) this actor still holds. */
 const held = (rt: Runtime, actor: string) => rt.holder('actor:' + actor).some((id) => ['sit', 'take_slot'].includes(rt.records.get(id)?.verb ?? ''));
 
@@ -161,7 +173,7 @@ export const poseV1: ActionDef<Params, true, Exec> = {
   navPure: true, // L4 audit: the step writes only its own actor's body (pose, human fields); it submits and cancels nothing
   description: 'activities/1: take a generic activity pose where you are (read, browse, write, play-piano, play-music, paint, eat, drink, cook, play-game, craft, post-letter, wave, use-computer, sing, listen, lift-weights over a seat or standing; sit-ground, lie, nap, pushups, situps, yoga on open ground, bench-press on a bench; dance, jump, stretch, jumping-jacks, pull-ups, dips standing; play-frisbee, play-petanque, play-volleyball as choreographed group games) for a number of seconds, optionally holding a prop and facing a point, then return to the base posture.',
   schema: z.object({ actor: z.string().min(1).max(80), activity: z.enum(POSE_ACTIVITIES as [string, ...string[]]), seconds: z.number().min(0.5).max(3600), prop: z.enum(POSE_PROPS).optional(), base: z.enum(['sit', 'idle']).optional(), seatHeight: z.number().min(0.2).max(1.2).optional(), face: z.tuple([z.number(), z.number()]).optional(),
-    group: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(), pairedPolicy: z.literal('ready-v1').optional(), windowPolicy: z.literal('once-v1').optional(), waitSeconds: z.number().min(0).max(180).optional(), alone: z.enum(['start', 'fail']).optional(),
+    group: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(), pairedPolicy: z.literal('ready-v1').optional(), windowPolicy: z.enum(['once-v1', 'once-v2']).optional(), waitSeconds: z.number().min(0).max(180).optional(), alone: z.enum(['start', 'fail']).optional(),
     gap: z.number().min(0.5).max(2.5).optional(), need: z.number().int().min(1).max(8).optional(), hold: z.enum(POSE_PROPS).optional(), release: z.boolean().optional(), clear: z.boolean().optional(),
     instrument: z.enum(POSE_INSTRUMENTS).optional(), seatTogether: z.boolean().optional(), throw: z.enum(RPS_SHAPES).optional(),
     accompany: z.object({ radius: z.number().min(1).max(40), grace: z.number().min(0).max(30) }).strict().optional(),
@@ -170,7 +182,7 @@ export const poseV1: ActionDef<Params, true, Exec> = {
     .refine(p=>!p.game?.flightPolicy||p.game.kind==='frisbee',{message:'clear-v1 is only a frisbee policy'})
     .refine((p) => !p.game || (!!p.group && p.activity === 'play-' + p.game.kind), { message: 'a game needs a group and its own play-<game> activity' })
     .refine((p) => (p.activity === 'rps') === (p.throw !== undefined) && (p.activity !== 'rps' || p.pairedPolicy === 'ready-v1'), { message: 'rps needs a throw and the ready-v1 paired policy (and only rps has a throw)' })
-    .refine((p) => !p.windowPolicy || (!!p.group && !p.pairedPolicy && !p.game), { message: 'once-v1 is a group activity window (not a paired gesture or a game)' }),
+    .refine((p) => !p.windowPolicy || (!!p.group && !p.pairedPolicy && !p.game), { message: 'once-v1 and once-v2 are group activity windows (not a paired gesture or a game)' }),
   reservations: (_w, p) => [{ resource: 'hand:' + p.actor + ':left', mode: 'exclusive' }, { resource: 'hand:' + p.actor + ':right', mode: 'exclusive' }, { resource: 'pose:' + p.actor, mode: 'exclusive' }],
   plan(rt, p) { const d = admission(rt, p); return d ? { ok: false, diagnostic: d } : { ok: true, program: true }; },
   start(rt, p, _plan, id) {
@@ -249,33 +261,43 @@ function finish(rt: Runtime, ex: Exec) {
 /** together/1: wait for the group, start together, step in to `gap` facing the partner, end at the shared tick. */
 function together(rt: Runtime, ex: Exec, a: NonNullable<Runtime['world']['entities'][string]>, h: NonNullable<typeof a.human>, dt: number) {
   if(ex.p.pairedPolicy)return pairedReadyV1(rt,ex,a,h,dt);
-  const tick = rt.tick, ticks = (s: number) => Math.round(s / dt), once = ex.p.windowPolicy === 'once-v1';
+  const tick = rt.tick, ticks = (s: number) => Math.round(s / dt), once = !!ex.p.windowPolicy;
   // once-v1: a body whose window has passed is no partner (it may still be settling with its stale `until`)
   const near = partnersOf(rt, ex), others = once ? near.filter((o) => (o.human!.together!.until ?? Infinity) > tick) : near, partner = others[0];
-  const closed = once && !others.length && near.length > 0;
+  // once-v2: nobody in reach, but the window already ran (checked on arrival and before a timeout opens a window)
+  const ran = () => ex.p.windowPolicy === 'once-v2' && !near.length && windowRan(rt, ex);
   const faceTo = (q: number[]) => { if (!held(rt, ex.p.actor) && hypot(q[0] - a.pose.p[0], q[2] - a.pose.p[2]) > 0.05) a.pose.yaw = heading([q[0] - a.pose.p[0], q[2] - a.pose.p[2]]); };
   if (h.prop === undefined || ex.p.prop) { if (ex.p.prop) h.prop = ex.p.prop; else if (h.holding) h.prop = h.holding; }
   if (ex.phase === 'waiting') {
+    const closed = once && !others.length && (near.length > 0 || (!ex.waited && ran()));
     const going = others.find((o) => o.human!.together!.phase === 'active' && (o.human!.together!.until ?? 0) > tick);
-    if (going) { ex.phase = 'active'; ex.until = going.human!.together!.until!; }
-    else if (others.length >= (ex.p.need ?? 1)) { ex.phase = 'active'; ex.until = tick + ticks(ex.p.seconds); }
+    // once-v2: joining a late body's window, or opening one after the group's window ran, is late too (2+ late guests
+    // share one late window; they never hold a second unmarked deadline)
+    const v2 = ex.p.windowPolicy === 'once-v2';
+    if (going) { ex.phase = 'active'; ex.until = going.human!.together!.until!; if (v2 && going.human!.together!.late) ex.late = true; }
+    else if (others.length >= (ex.p.need ?? 1)) { ex.phase = 'active'; ex.until = tick + ticks(ex.p.seconds); if (v2 && windowRan(rt, ex)) ex.late = true; }
     else if (closed) {
       // once-v1: the group's window already closed before this body arrived: alone at once (or refused, alone:'fail')
       if (ex.p.alone !== 'start') { restore(rt, ex); return { status: 'failed' as const, diagnostic: issue('window-closed', 'They had already finished before you got there.', [ex.p.actor]) }; }
       ex.phase = 'active'; ex.until = tick + ticks(ex.p.seconds); ex.late = true;
     }
-    else if ((ex.waited = (ex.waited ?? 0) + 1) > ticks(ex.p.waitSeconds ?? 30)) {
+    else if ((ex.waited = (ex.waited ?? 0) + 1) > ticks(ex.p.waitSeconds ?? 30) && ran()) {
+      // once-v2: the window ran elsewhere while this body waited out of reach: late, never a second unmarked window
+      if (ex.p.alone !== 'start') { restore(rt, ex); return { status: 'failed' as const, diagnostic: issue('window-closed', 'They had already finished before you got there.', [ex.p.actor]) }; }
+      ex.phase = 'active'; ex.until = tick + ticks(ex.p.seconds); ex.late = true;
+    }
+    else if (ex.waited > ticks(ex.p.waitSeconds ?? 30)) {
       // a game: say why plainly (a late joiner finds the court empty when the last player's 30 s lonely wait ran out first)
       if (ex.p.alone !== 'start') { restore(rt, ex); return { status: 'failed' as const, diagnostic: issue('partner-absent', ex.p.game ? 'Nobody was playing here when you arrived and nobody came to play in time (a game ends 30 s after its last partner leaves).' : 'Nobody came to do it with you in time.', [ex.p.actor]) }; }
       ex.phase = 'active'; ex.until = tick + ticks(ex.p.seconds);
     } else {
-      h.together = { group: ex.p.group!, phase: 'waiting', mobile: !!ex.mobile, ...(once ? { windowPolicy: 'once-v1' as const } : {}) };
+      h.together = { group: ex.p.group!, phase: 'waiting', mobile: !!ex.mobile, ...(once ? { windowPolicy: ex.p.windowPolicy } : {}) };
       if (partner) faceTo(partner.pose.p); else if (ex.yaw !== null && !held(rt, ex.p.actor)) a.pose.yaw = ex.yaw;
       if (h.activity !== ex.base) h.activity = ex.base === 'sit' && !held(rt, ex.p.actor) ? 'idle' : ex.base;
       return { status: 'running' as const, phase: 'waiting-for-partner' };
     }
   }
-  h.together = { group: ex.p.group!, phase: 'active', until: ex.until, mobile: !!ex.mobile, ...(once ? { windowPolicy: 'once-v1' as const } : {}), ...(ex.late ? { late: true as const } : {}) };
+  h.together = { group: ex.p.group!, phase: 'active', until: ex.until, mobile: !!ex.mobile, ...(once ? { windowPolicy: ex.p.windowPolicy } : {}), ...(ex.late ? { late: true as const } : {}) };
   if (ex.p.game) return playGame(rt, ex, a, h, others, dt);
   if (ex.p.gap) {
     // a paired gesture ends when its partner has gone (no hugging the air)
