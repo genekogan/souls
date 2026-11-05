@@ -30,11 +30,14 @@ The split camera control shows Broadcast, Free or Following a Soul (and loading/
 Its main segment switches Broadcast → Free or returns Free/Following → Broadcast in one click. The chevron offers
 explicit modes and Camera controls, including the existing movement guide, reset and device fullscreen option.
 Dragging, zooming and movement keys retain their existing camera behavior.
+Free has no wall near the map's edge: a lost-camera guard (`WorldRtsCamera.keepPivotInBounds`) keeps the eye within one
+far-zoom limit (320–1,400 m) of the world's ground rectangle, far beyond the map; where the pivot sits does not matter.
 On a touch screen in Free (`apps/web/src/touch/WorldTouchFree.ts`), a touch that starts in the lower-left 45 % of the
 view spawns a floating stick that walks the eye; one finger elsewhere looks in place, a pinch glides toward the point
 between the fingers, a two-finger vertical drag rises or lowers, and a double-tap flies there. Each gesture feeds the
-existing `WorldRtsCamera` path (WASD, Q/E, right-drag, wheel, double-click), so the same clamps hold. Follow and
-Broadcast keep OrbitControls' touch orbit and pinch.
+existing `WorldRtsCamera` path (WASD, Q/E, right-drag, wheel, double-click), so the same guard holds. A finished touch
+look always commits its new pivot, kept within that guard's rectangle. Follow and Broadcast keep OrbitControls' touch
+orbit and pinch.
 On a touch screen, one tap on a Soul's body or name plate follows it at once, through the same `flyToSoul` glide as the
 card's Follow button; the Soul's card collapses to a bottom chip (`SoulChip.tsx`: name, status line, Card). While
 following, a fast one-finger sideways flick (`touch/soul-swipe.ts`: over 60 px, under 400 ms) goes to the next (left)
@@ -73,6 +76,17 @@ switch independent. A previously saved master mute migrates to both switches off
   (`apps/server/src/clock-catchup.ts`) without simulating the gap.
 - **Registry.** `<data>/worlds.json` records each world (slug, owner, template, flags). Reserved slugs include `toy`,
   `mars`, `littlemartians`, `eden`, `assets`, `api`, `god` and `launcher`.
+- **Thumbnails.** Each `worlds.json` row carries `thumbnail` (a URL or `null`) and `thumbnailSource` (`owner`,
+  `template` or `null`). The owner sets the picture with a 16:9 JPEG
+  ([API](api.md#world-owner-api-served-by-the-launcher)). It is checked and stripped by the upload gate in
+  `apps/server/src/moderation/` (including the site admin's vetoes, which also stop a stored or default picture from
+  being listed or served) and stored as `<data>/worlds/<slug>/thumbs/<sha>.jpg`, so it moves with the world on
+  archive and restore. A world without one shows its template's default, `worlds/templates/thumbs/<template>.jpg`
+  (`empty.jpg` for the empty plain), which is media pulled from the asset CDN and not kept in git. When neither
+  exists, the row has no picture. Both kinds are served immutable under content-hashed URLs
+  (`<base>/__sim/thumbs/<slug>/<sha>.jpg`, `<base>/__sim/thumbs/_template/<sha>.jpg`). Setting or clearing a
+  thumbnail never wakes the world (`tools/world-launcher/thumbnail.mjs`). Each card on the root page shows the picture in a
+  lazy-loaded 16:9 frame (`LauncherHome.tsx`). The owner's agent takes one with `eden-god thumbnail` (god SKILL.md, "Thumbnail").
 - **Owner and operator API.** Handoff, archive and unlisting, and the loopback-only `op.mjs` commands: see
   [API](api.md#world-owner-api-served-by-the-launcher).
 - **Keeper.** `keeper.mjs` holds the public port and hands over between launcher generations one world at a time, with

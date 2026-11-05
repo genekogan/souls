@@ -1,3 +1,4 @@
+import {WorldMotionHistory} from './WorldMotionHistory.ts';
 import { setPosterDay } from '../../../mars/viewer/app/engine-view/poster-sheet.ts';
 import {WorldContextViews} from './WorldContextViews.ts';
 import { whenAssetsSettled } from './gen-mesh/gltf-assets.ts';
@@ -451,7 +452,7 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
       let lifted=0;for(let i=0;i<4;i++){const l=cameraGround.apply(camera,scene);if(!(l>0))break;lifted+=l;camera.lookAt(controls.target);}
       const round=(v:number)=>Math.round(v*100)/100;
       const pin:ShotPin={eye:camera.position.toArray(),at:controls.target.toArray(),lifted:round(lifted),closer:round(fixed?.closer??0),raised:fixed?.raised??0};(window as unknown as {__shotCamera?:ShotPin}).__shotCamera=pin;return pin;};
-    renderer.domElement.addEventListener('click',onFlagClick);if(newWorld)(window as unknown as {__simEntity?:unknown}).__simEntity={layer:entityLayer,get depictedTick(){return shown.current.tick;},get worldSeconds(){const dt=shown.current.take?.dt;return dt?shown.current.tick*dt:null;},transportFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt,entities:shown.current.entities,bones:people&&!(people instanceof WorldLightPeople)?people.bones():null}),gameFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt??.05,entities:shown.current.entities,bones:(people as TakePeople|null)?.bones?.()??{},souls:[...context.current.sim.conn.replica.souls.values()].map(s=>({id:s.id,entityId:s.entityId,name:s.name})),props:games.group.children.map(o=>({key:o.name,p:o.position.toArray(),kind:o.userData.gameKind}))}),contactFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt,takeStart:shown.current.take?.startTick,entities:shown.current.entities,bones:people&&!(people instanceof WorldLightPeople)?people.contactDiagnostics():null}),shotCamera,labelScene,applyEdge:(msg:Parameters<WorldEntityLayer['applyEdge']>[0][number]|Parameters<WorldEntityLayer['applyEdge']>[0])=>entityLayer.applyEdge(Array.isArray(msg)?msg:[msg]),siteStyle:(style:string)=>entityLayer.sites.siteStyle(style),siteStats:()=>entityLayer.sites.inspect(),camera,get controls(){return controls;},residents:()=>{const out:{id:string;p:readonly[number,number,number];speaking?:boolean;body?:string;activity?:string;instrument?:string}[]=[],now=Date.now();for(const s of context.current.sim.conn.replica.souls.values()){const e=shown.current.entities[s.entityId];if(e)out.push({id:s.id,p:e.p as readonly[number,number,number],speaking:speeches.some(sp=>sp.speaker===s.id&&now-sp.at<Math.min(9000,1500+sp.text.length*55)),body:s.entityId,activity:(e as {activity?:string}).activity,instrument:people&&!(people instanceof WorldLightPeople)?people.instrumentOf(s.entityId):undefined});}return out;},scene,renderer,stats:()=>({draws:renderer.info.render.calls,tris:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,instances:entityLayer.instancer.instances,instanceDraws:entityLayer.instancer.draws,scatterDraws:entityLayer.scatterPools.draws,motionDraws:entityLayer.motionInstancer.draws,motionInstances:entityLayer.motionInstancer.instances,scatterInstances:entityLayer.scatterPools.instances,entities:entityLayer.entityCount,batches:entityBatches.inspection(),staticRevision:entityLayer.staticRevision,sunShadow:sunCache?{...sunCache.stats}:null}),batching:(on:boolean)=>{entityBatchDraw=on;}};  // the entity world (god mode), when this world has one
+    renderer.domElement.addEventListener('click',onFlagClick);if(newWorld)(window as unknown as {__simEntity?:unknown}).__simEntity={layer:entityLayer,get depictedTick(){return shown.current.tick;},get worldSeconds(){const dt=shown.current.take?.dt;return dt?shown.current.tick*dt:null;},transportFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt,entities:shown.current.entities,bones:people&&!(people instanceof WorldLightPeople)?people.bones():null}),gameFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt??.05,entities:shown.current.entities,bones:(people as TakePeople|null)?.bones?.()??{},souls:[...context.current.sim.conn.replica.souls.values()].map(s=>({id:s.id,entityId:s.entityId,name:s.name})),props:games.group.children.map(o=>({key:o.name,p:o.position.toArray(),kind:o.userData.gameKind}))}),contactFrame:()=>({tick:shown.current.tick,dt:shown.current.take?.dt,takeStart:shown.current.take?.startTick,entities:shown.current.entities,bones:people&&!(people instanceof WorldLightPeople)?people.contactDiagnostics():null}),shotCamera,labelScene,applyEdge:(msg:Parameters<WorldEntityLayer['applyEdge']>[0][number]|Parameters<WorldEntityLayer['applyEdge']>[0])=>entityLayer.applyEdge(Array.isArray(msg)?msg:[msg]),siteStyle:(style:string)=>entityLayer.sites.siteStyle(style),siteStats:()=>entityLayer.sites.inspect(),camera,get controls(){return controls;},residents:()=>{const out:{id:string;p:readonly[number,number,number];speaking?:boolean;body?:string;activity?:string;instrument?:string;activityAge?:number;activityLeft?:number}[]=[],now=Date.now();for(const s of context.current.sim.conn.replica.souls.values()){const e=shown.current.entities[s.entityId];if(e)out.push({id:s.id,p:e.p as readonly[number,number,number],speaking:speeches.some(sp=>sp.speaker===s.id&&now-sp.at<Math.min(9000,1500+sp.text.length*55)),body:s.entityId,activity:(e as {activity?:string}).activity,instrument:people&&!(people instanceof WorldLightPeople)?people.instrumentOf(s.entityId):undefined,activityAge:people&&!(people instanceof WorldLightPeople)?people.activityAgeOf(s.entityId):undefined,activityLeft:people&&!(people instanceof WorldLightPeople)?people.activityLeftOf(s.entityId):undefined});}return out;},scene,renderer,stats:()=>({draws:renderer.info.render.calls,tris:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,instances:entityLayer.instancer.instances,instanceDraws:entityLayer.instancer.draws,scatterDraws:entityLayer.scatterPools.draws,motionDraws:entityLayer.motionInstancer.draws,motionInstances:entityLayer.motionInstancer.instances,scatterInstances:entityLayer.scatterPools.instances,entities:entityLayer.entityCount,batches:entityBatches.inspection(),staticRevision:entityLayer.staticRevision,sunShadow:sunCache?{...sunCache.stats}:null}),batching:(on:boolean)=>{entityBatchDraw=on;}};  // the entity world (god mode), when this world has one
     const games=new WorldGames();scene.add(games.group);
     const platformDraw=new WorldPlatforms();scene.add(platformDraw.group);
     const placeActivity=new WorldPlaceActivity();scene.add(placeActivity.group);
@@ -724,6 +725,8 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
       return l;
     };
 
+    const initialMotionHistory=new WorldMotionHistory(fetchChunks,abort.signal);
+    const motionOwner=()=>JSON.stringify([context.current.sim.conn.welcome?.worldId,context.current.sim.conn.welcome?.epoch]);
     let liveArr: unknown = null, liveKey = '', live: Chunk[] = [], liveTick: number | null = null;
     const spot = new THREE.Vector3();
     const gaitContinuity=new RecordedGaitContinuity();
@@ -796,7 +799,8 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
         tick = liveTick;
       }
 
-      const candidate = chunkAt(chunks, tick);
+      if(initialMotionHistory&&!past.current&&initialMotionHistory.loading)void initialMotionHistory.start(liveList,serverNow(s)??liveList.at(-1)?.toTick??0,LIVE_DELAY,motionOwner(),motionOwner);
+      const candidate = initialMotionHistory?.loading&&!past.current ? null : chunkAt(chunks, tick);
       // the people renderer: at once on desktops and old worlds (no frame until it is here), after the arrival on a phone's
       // new world (WorldLightPeople until then); a failed fetch is retried every 5 s
       if(!peopleKit&&(!peopleLater||arrivalOver())&&now>=peopleKitRetryAt){peopleKitRetryAt=now+5000;void loadPeopleKit().catch(()=>{});}
@@ -809,6 +813,7 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
       if (pick) {
         const chunk = pick.chunk, take = chunk.take;
         const depictedTick = recordingTick(chunk, tick);
+        const motionHistory=!past.current&&initialMotionHistory?initialMotionHistory.history(chunks,chunk,depictedTick):chunks;
         try {
           if(people instanceof WorldLightPeople&&peopleKit){scene.remove(people.group);people.dispose();people=null;applied=null;}  // the renderer has loaded: the same take, drawn
           if (!people) {
@@ -854,7 +859,7 @@ export function LiveWorld({ sim, selected, onSelect, onChipNote, onViewerHandle,
               people.setSupplementalStairs(entityLayer.supplementalStairs(s.edge??[],serverNow(s)),{liveTakeId:take.id});
             }else{entityLayer.clearSupplementalStairs();people.setSupplementalStairs([]);}
           }
-          people.setWaterHistory(chunks.map(c=>c.take));
+          people.setWaterHistory(motionHistory.map(c=>c.take));
           const floors=capturedPlatforms??(!past.current&&currentPlatforms&&currentPlatforms.worldId===s.conn.welcome?.worldId?currentPlatforms.platforms:[]);
           platformDraw.set(floors,base?.levels.find(l=>l.id===0)?.y??0,!!expansion&&!past.current);
           people.setPlatformFloors(floors,base?.levels.find(l=>l.id===0)?.y??0);
