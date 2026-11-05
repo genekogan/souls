@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 22 }
-      - name: Media manifest, CI scope, proof, merge train, hooks, changelog and guard tests
+      - name: Media manifest, CI scope, proof, merge train, restack, hooks, changelog and guard tests
         run: >-
           node --test --test-concurrency=1
           tools/assets/manifest.test.mjs
@@ -86,6 +86,7 @@ jobs:
           .github/scripts/server-test-durations.test.mjs
           .github/scripts/guards.test.mjs
           .github/scripts/merge-train.test.mjs
+          .github/scripts/restack.test.mjs
           .github/scripts/install-hooks.test.mjs
           tools/proof/tier.test.mjs
           tools/proof/gate.test.mjs
