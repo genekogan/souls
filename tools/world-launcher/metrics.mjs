@@ -35,7 +35,9 @@ const REQ_CODES = ['soul.busy', 'soul.slow-down', 'world.busy', 'world.crowded']
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const esc = (v) => String(v).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');
-const fmt = (v, digits = 6) => (Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(digits))));
+// at least `digits` significant digits, and never coarser than a millisecond: a Unix-seconds gauge (1.8e9) at 6 digits
+// would round to 10,000 s, and every rate over it (the full-clock ratio's tick sample time) would be wrong
+const fmt = (v, digits = 6) => (Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(Math.min(17, Math.max(digits, Math.ceil(Math.log10(Math.abs(v))) + 3))))));
 
 /** The world's live.json (LOAD-CONTRACT §4), or null when absent, too big or not JSON. Never throws. */
 export function readLive(dataDir) {
