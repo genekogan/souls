@@ -2,16 +2,17 @@ import type {Entity} from '@sim/engine-contract';
 import {admitBodyGLB,bindBodyDefinition} from './admission.ts';
 import {validateUpload,BODY_UPLOAD_POLICY} from '../../moderation/validate.ts';
 import {PIP_ASSET,pipBytes} from './pip.ts';
+import {coreAsset} from './core-revisions.ts';
 import {QUADRUPED_TORSO} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
 import {GHOST_MANIFEST} from '../../../../../tools/body-authoring/ghost/author.mjs';
 
 // Immutable authored v1 shared examples (#722), built like Pip: lazily from their checked-in agent-local authoring
 // source, through the ordinary upload normalization and admission, and refused if the bytes drift from the pin.
-// A revision gets a new hash and preset revision; saves keep their original bytes and definition.
-export const MONSTER_ASSET='body_e7f634a0d090b71d85229a737bbf8bb9274ffadee38d4107a79b0db599c52b77';
+// Their addresses come from the append-only ledger (core-revisions.ts): a changed example is a new preset id.
+export const MONSTER_ASSET=coreAsset('monster');
 // The compact centaur foal (#723), declared quadruped-torso/1.
-export const CENTAUR_ASSET='body_955a6445d2d048035674ace76795b2a7403be127a6a33ad5bedfcb178c749b32';
-export const GHOST_ASSET='body_8111f1c4504c9c3b585fcc36d2590af26c3371aa7ce3390d8b7e7549f0e1a2bd';
+export const CENTAUR_ASSET=coreAsset('centaur');
+export const GHOST_ASSET=coreAsset('ghost');
 const url=(asset:string)=>`/v1/edge/body/assets/${asset}.glb`;
 export const MONSTER_PRESET={id:'monster',name:'Grumble the monster',body:{family:'humanoid',type:'humanoid',model:MONSTER_ASSET,modelUrl:url(MONSTER_ASSET),avatar:{kind:'body',modelUrl:url(MONSTER_ASSET),bodyType:'humanoid'}} as Entity['body']};
 export const CENTAUR_PRESET={id:'centaur',name:'Juniper the centaur foal',body:{family:'humanoid',type:'humanoid',actionProfile:QUADRUPED_TORSO,model:CENTAUR_ASSET,modelUrl:url(CENTAUR_ASSET),avatar:{kind:'body',modelUrl:url(CENTAUR_ASSET),bodyType:'humanoid'}} as Entity['body']};

@@ -8,6 +8,26 @@ import { physicalSnapshotSha256 } from '../lib/physical-fixture.mjs';
 // (`world.kind`, runs.test.mjs), so this owner never reaches a real world.
 const DEV_OWNER = 'dev:admin';
 const short = (x) => String(x ?? '').slice(0, 300);
+const CREATES = { place: () => 1, clone: (op) => Math.max(1, op.count ?? 1) };
+
+/** The entities an accepted batch created or changed (#784), from the act response's `ids` and the ops themselves.
+ * The compiler records each created root as ids[id] = id (and ids[tmp] = id) in op order, so created ids are attributed
+ * to the creating ops (place, clone) in that order; any other op that names an entity by `id` changed it. */
+export function batchEntities(ops, ids) {
+  const created = [...new Set(Object.values(ids ?? {}).filter((v) => typeof v === 'string'))];
+  const byTmp = new Map(Object.entries(ids ?? {}).filter(([k]) => k !== ids[k]).map(([k, v]) => [v, k]));
+  const slots = ops.flatMap((op, i) => (CREATES[op?.op] ? Array.from({ length: CREATES[op.op](op) }, () => ({ i, op })) : []));
+  const out = created.map((id, k) => {
+    const s = slots.length === created.length ? slots[k] : null;
+    return { id, op: s?.op.op ?? 'created', ...(s ? { opIndex: s.i } : {}), ...(byTmp.has(id) ? { tmp: byTmp.get(id) } : {}), ...(s?.op.name ? { name: s.op.name } : {}), ...(s?.op.def ? { def: s.op.def } : {}) };
+  });
+  ops.forEach((op, i) => {
+    if (op?.op === 'clone' || typeof op?.id !== 'string') return; // a clone's id is its source, not a change to it
+    const id = ids?.[op.id] ?? op.id;
+    if (!created.includes(id)) out.push({ id, op: op.op ?? null, opIndex: i });
+  });
+  return out;
+}
 
 async function call(fetchImpl, url, init, left) {
   const r = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(Math.max(1, left())) });
@@ -30,6 +50,7 @@ export async function applySetup({ base, setup, fetchImpl = fetch, now = Date.no
       const r = await call(fetchImpl, `${base}/v1/god/act`, { method: 'POST', headers: auth, body: JSON.stringify({ ops: b.ops, note: b.note ?? `soul-run setup ${b.id}` }) }, left);
       const accepted = r.ok && r.body?.accepted === true;
       const row = { id: b.id, path: b.path, sha256: b.sha256, ops: b.ops.length, status: r.status, accepted, seq: r.body?.seq ?? r.body?.edit?.seq ?? null,
+        ...(accepted ? { entities: batchEntities(b.ops, r.body?.ids) } : {}),
         ...(accepted ? {} : { refusal: { code: r.body?.code ?? r.body?.failures?.[0]?.code ?? null, failures: (r.body?.failures ?? []).slice(0, 10).map((f) => ({ op: f.op ?? null, code: f.code ?? null, detail: short(f.detail) })) } }) };
       out.batches.push(row);
       if (!accepted) throw new Error(`setup batch ${b.id} refused: ${row.refusal.code ?? `HTTP ${r.status}`}`);

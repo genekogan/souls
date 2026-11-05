@@ -63,7 +63,7 @@ function makeRun(opts = {}) {
   if (!opts.plain) w(join(dir, 'run-receipt.json'), {
     soulRun: 1, runId: opts.name ?? 'trio-1', status: opts.status ?? 'completed',
     spec: { sha256: 'spec', effective: { world: { source: { kind: 'genesis', path: 'worlds/templates/hello-hamlet.json', sha256: 'a'.repeat(64) } }, setup: null, ...(opts.evaluation ? { evaluation: opts.evaluation } : {}) } },
-    source: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0, node: 'v26' },
+    source: { commit: opts.commit ?? 'c0ffee', dirtyTrackedFiles: opts.dirty ?? 0, node: 'v26', ...(opts.noTools ? {} : { tools: { commit: opts.toolsCommit ?? 'c0ffee', dirtyTrackedFiles: opts.toolsDirty ?? 0 } }) },
     preflight: { scenario: { checks: { laptopLoad: [opts.load ?? 2], freeGb: 50, machineOk: true } } },
     observer: opts.observerOk ? { ok: true } : { ok: false, stage: 'import', owner: '#633' },
     evidence: { cli: '2.7.1', skill: '2.7.1', build: 'dev', ...(opts.noTick ? {} : { tickValidity: { valid: true, ticks: 1200, seconds: 60, clockRate: 1 } }) },
@@ -161,7 +161,7 @@ test('observer evidence packs answer the question that needs them', async () => 
   assert.equal(still.questions[0].verdict, 'fail');
 });
 
-test('the setup question: no setup is unknown; a seated Soul on an unlinked entity is unknown with the reason', async () => {
+test('the setup question: no setup or no recorded ids is unknown; a recorded setup entity passes, another entity fails', async () => {
   const sit = { accepted: true, waited: '61s', receipt: { id: 'r9', capability: 'sit:e_39', phase: 'started' }, for: 'msg_1', events: [{ kind: 'receipt', where: { place: 'Glazed Court' } }, { kind: 'activity.observed', receipt: { id: 'r9' }, action: { status: 'executing' }, body: { posture: 'seated' } }] };
   const calls = [[0.05, 'node eden.mjs ack msg_1 "Going to sit"', { acked: 'msg_1' }], [0.1, 'node eden.mjs act "sit on the bench" --wait 60', sit], [61, 'node eden.mjs result msg_1 done "Seated"', { reported: 'msg_1', outcome: 'done' }]];
   const setup = { ok: true, batches: [{ id: 'garden-bench', accepted: true, seq: 8 }] };
@@ -171,8 +171,13 @@ test('the setup question: no setup is unknown; a seated Soul on an unlinked enti
   assert.equal(unlinked.questions[0].verdict, 'unknown'); assert.match(unlinked.questions[0].uncertainty, /does not record the entity ids/);
   assert.match(unlinked.questions[0].notes[0], /e_39 in Glazed Court/);
   assert.equal(M(unlinked, 'requestsPhysicallyOngoing').value, 1, 'seated counts as ongoing, not completed');
-  const linked = (await evaluateRun(makeRun({ calls, setup: { ...setup, batches: [{ ...setup.batches[0], created: ['e_39'] }] } }), { questions: [Q('setup-bench-sat.mjs')], write: false })).evaluation;
-  assert.equal(linked.questions[0].verdict, 'pass');
+  // #784: setup.json lists the entities each accepted batch created; the question matches the sat-on id exactly.
+  const withEntities = (entities) => ({ ...setup, batches: [{ ...setup.batches[0], entities }] });
+  const linked = (await evaluateRun(makeRun({ calls, setup: withEntities([{ id: 'e_39', op: 'place', opIndex: 0, name: 'sr-court-bench', def: 'core/bench@1' }]) }), { questions: [Q('setup-bench-sat.mjs')], write: false })).evaluation;
+  assert.equal(linked.questions[0].verdict, 'pass'); assert.match(linked.questions[0].notes[0], /e_39, created by setup batch garden-bench \(place sr-court-bench\)/);
+  const other = (await evaluateRun(makeRun({ calls, setup: withEntities([{ id: 'e_390', op: 'place', opIndex: 0 }, { id: 'e_39', op: 'move', opIndex: 1 }]) }), { questions: [Q('setup-bench-sat.mjs')], write: false })).evaluation;
+  assert.equal(other.questions[0].verdict, 'fail', 'a different (or only moved) entity is not the setup bench; no substring match');
+  assert.match(other.questions[0].uncertainty, /not on an entity the setup created \(e_390\)/);
 });
 
 test('predeclared questions come from the spec and are kept apart from exploratory ones; a changed scorer is not trusted', async () => {
@@ -220,6 +225,24 @@ test('comparison keeps every attempt, pools completed repeats within an arm and 
   const traced = (name) => { const dir = makeRun({ root, name }); for (const f of ['scenario.effective.json', 'playtest/scenario.json']) { const sc = JSON.parse(readFileSync(join(dir, f), 'utf8')); sc.seats[0].diagnostics = { trace: { tap: 'file:///t.mjs', file: `${dir}/diagnostics/bo.trace.jsonl`, run: name, seat: 'bo' } }; writeFileSync(join(dir, f), JSON.stringify(sc)); } return dir; };
   const tx = await compareRunSet([a, traced('t-1'), traced('t-2')]);
   assert.deepEqual(tx.arms.map((x) => x.repeats), [['trio-1'], ['t-1', 't-2']]);
+});
+
+test('compare lists the tools checkout next to the server root and flags a tools-only difference (#785)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sr-tools-'));
+  const a = makeRun({ root, name: 'trio-1', port: 4321, toolsCommit: 'aaaa1111bbbb' });
+  const b = makeRun({ root, name: 'trio-2', port: 4322, toolsCommit: 'cccc2222dddd', toolsDirty: 3 });
+  const old = makeRun({ root, name: 'trio-old', port: 4323, noTools: true });
+  const ix = await compareRunSet([a, b, old], {});
+  assert.equal(ix.arms.length, 1, 'the tools checkout is a condition, not identity: the repeats still pool');
+  const arm = ix.arms[0];
+  assert.deepEqual([arm.conditions['trio-1'].commit, arm.conditions['trio-1'].toolsCommit], ['c0ffee', 'aaaa1111bbbb']);
+  assert.equal(arm.conditions['trio-old'].toolsCommit, null, 'an older receipt without tools reads as unrecorded');
+  assert.ok(arm.conditionsDiffer.includes('toolsCommit') && arm.conditionsDiffer.includes('toolsDirtyTrackedFiles'));
+  assert.ok(!arm.conditionsDiffer.includes('commit'), 'the server root is the same');
+  assert.match(arm.caveats.join(' '), /source not exactly identified for trio-2 \(tools\)/);
+  const md = renderIndex(ix);
+  assert.match(md, /Conditions differ: toolsCommit, toolsDirtyTrackedFiles/);
+  assert.match(md, /trio-1 \(server root c0ffee, tools aaaa1111\); trio-2 \(server root c0ffee, tools cccc2222\+3\); trio-old \(server root c0ffee, tools unrecorded\)/);
 });
 
 test('directions: the direction journal is counted by command and outcome; each redirection says whether its target spoke after', () => {

@@ -126,3 +126,27 @@ test('body-library/1: a forgotten own upload stays forgotten across restarts; pu
  for(const code of ['body.source-unavailable','body.source-unavailable','rate-limited'])assert.equal((await tarn.req(ta1,'body',{ref},'PUT')).json.error.code,code);
  assert.equal(pulls,2,'the third attempt never reaches the source');
 });
+
+test('#795: a carried body reference resolves at the destination by the ref rules; the pull runs only when asked',async t=>{
+ const {bodyRefResolvers}=await import('./edge/body/routes.ts');const {CENTAUR_ASSET}=await import('./edge/body/shared-bodies.ts');
+ const dir=mkdtempSync(join(tmpdir(),'body-library-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));const shared=join(dir,'body-collections.sqlite'),KEY='site-key-0123456789';
+ const fen=await world(t,dir,'fen',shared,undefined,{key:KEY}),[a1]=fen.ss;const ref=(await fen.upload(a1,{...RIGID_MANIFEST,name:'Carried Stone'})).json.asset.assetId;
+ let pulls=0;const pull=async(source:string,r:string)=>{pulls++;const res=await fen.app.request(`/v1/site/body/${r}.glb`,{headers:{'x-sim-site-key':KEY}});return res.ok?new Uint8Array(await res.arrayBuffer()):null;};
+ const tarn=await world(t,dir,'tarn',shared,undefined,{key:KEY,pull}),resolve=bodyRefResolvers.get(tarn.f.host)!;assert.ok(resolve,'registered per world host');
+ // another owner cannot carry an unpublished definition in: it answers like an unknown reference
+ assert.deepEqual(resolve(ref,'dev:b'),{ok:false,code:'body.ref-unknown',reason:'No body definition with that reference'});
+ assert.equal(resolve('not-a-ref','dev:a').ok,false);
+ // its owner can: the body is described without any bytes moving; the pull runs only when the caller asks
+ const own=resolve(ref,'dev:a');assert.ok(own.ok&&own.fetch,'needs a pull');if(!own.ok||!own.fetch)return;
+ assert.equal((own.body as any).model,ref);assert.equal((own.body as any).modelUrl,`/w/tarn/v1/edge/body/assets/${ref}.glb`,'served by the destination');assert.equal(pulls,0);
+ assert.deepEqual(await own.fetch(),{ok:true});assert.equal(pulls,1);
+ const again=resolve(ref,'dev:a');assert.ok(again.ok&&!again.fetch,'cached: no second pull');
+ // a shared preset carried by reference needs no pull
+ const centaur=resolve(CENTAUR_ASSET,'dev:b');assert.ok(centaur.ok&&!centaur.fetch);if(centaur.ok)assert.equal((centaur.body as any).actionProfile,'quadruped-torso/1');
+ // withdrawal at the source refuses a carried reference too
+ const {moderationFor}=await import('./moderation/store.ts');moderationFor(fen.f.db.db,fen.f.host.worldId).append({sha:ref.slice(5),action:'hide',actor:'dev:mod',role:'admin',reason:'test'} as never);
+ assert.equal((resolve(ref,'dev:a') as any).code,'body.withdrawn');
+ // a narrowed destination refuses by policy
+ const narrow=await world(t,dir,'narrow',shared,['humanoid']),ref2=(await fen.upload(fen.ss[0],{...RIGID_MANIFEST,name:'Second Carried'},rigidGLB((j:any)=>{j.nodes[0].name='Second';}))).json.asset.assetId;
+ assert.equal((bodyRefResolvers.get(narrow.f.host)!(ref2,'dev:a') as any).code,'body.world-policy');
+});
