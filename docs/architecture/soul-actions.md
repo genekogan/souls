@@ -48,7 +48,7 @@ The player steps back afterwards, a reader reads it, and a wipe sets the board u
 - a man moves one square diagonally forward, and a jump over an opponent's piece captures it;
 - a jump that is open must be taken, and a piece that can jump again keeps the turn until it cannot;
 - a man that reaches the far row is crowned, which ends the turn, and a king moves both ways;
-- a side with no pieces or no legal move loses; there is no draw rule, so two players end a stalemate by wiping the board.
+- a side with no pieces or no legal move loses; there is no draw rule, so two players end a drawn game by wiping the board.
 
 Squares are named a1–h8, with a1 at the bottom left seen from the front. "move c3 to d4", "c3 to d4", "jump d4 to f6"
 or "c3-d4" is the nearest board's move with those squares. The read offer names only the state ("a game of checkers, X

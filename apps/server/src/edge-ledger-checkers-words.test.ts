@@ -37,3 +37,8 @@ test('#439 a chained multi-jump does its first jump now, with its squares', () =
   const r = to('jump c3 to e5, then e5 to g7', board('e_near'));
   assert.deepEqual(r, {id: 'object:e_near:move', params: {from: 'c3', to: 'e5'}});
 });
+
+test('#439 the first part of "A, then B" keeps its params for steer words too', () => {
+  const steer: EdgeCapability[] = [{id: 'object:e_balloon:steer', verb: 'object', object: 'e_balloon', action: 'steer', label: 'Steer the balloon (balloon)', available: true, target: {id: 'e_balloon', kind: 'object'}}];
+  assert.deepEqual(to('fly north then fly east', steer), {id: 'object:e_balloon:steer', params: {direction: 'north', distance: 100}});
+});
