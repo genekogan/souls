@@ -97,3 +97,51 @@ test('things in a building room add no blocks of their own; the building still b
   assert.ok(seen.includes('house') && !seen.includes('chair'), seen.join());
   assert.equal(test(15, 15), true);
 });
+
+// #870: a footprinted kit's ground rooms are walkable floor, not colliders; ground cover and scatters must not grow there
+test('a footprinted kit blocks its ground rooms in world pose; a kit without rooms blocks only its colliders', async () => {
+  const { blockCellsOf, BLOCK_CELL } = await import('./ecology.mesh.ts');
+  const { blockTest } = await import('./block-test.ts');
+  const posts = [-2.8, 2.8].flatMap((x) => [-2.8, 2.8].map((z) => ({ kind: 'box', at: [x, 1.5, z], size: [0.2, 3, 0.2] })));
+  const kit = (name: string, footprint?: unknown) => ({ op: 'define', def: { schema: 'def/1', name, size: { box: [6, 3.2, 6], scale: [0.1, 3] }, make: { kind: 'gen', gen: 'kit/2', args: { shapes: [...posts, { kind: 'box', at: [0, 3.1, 0], size: [6, 0.2, 6] }], ...(footprint ? { footprint } : {}) } } } });
+  const w = world(), yaw = Math.PI / 5, s = 1.5;
+  const r = applyBatch(w, { ops: [kit('pavilion', 'open'), kit('canopy'),
+    { op: 'place', def: 'pavilion@1', name: 'studio', p: [40, -20], r: yaw, s },
+    { op: 'place', def: 'canopy@1', name: 'shade', p: [-40, 20] }] } as never, 'god', 0) as { result: { accepted: boolean } };
+  assert.equal(r.result.accepted, true, JSON.stringify(r.result));
+  const bakes = (w as unknown as { bakes: Map<string, unknown> }).bakes, before = bakes.size;
+  const cells = blockCellsOf(w), test = blockTest(cells, BLOCK_CELL, '\u0000cover');
+  assert.equal(bakes.size, before, 'A6: the room pass reads the memoised bake, no new one');
+  // the kit's local frame, checked against its own post colliders (footprint() is the world-pose reference)
+  const at = (e: string, lx: number, lz: number): [number, number] => { const p = w.worldPose(w.get(e)!), c = Math.cos(p.yaw), si = Math.sin(p.yaw); return [p.x + (lx * c + lz * si) * p.s, p.z + (-lx * si + lz * c) * p.s]; };
+  const post = w.footprint(w.get('studio')!).map((o) => o.c).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const mine = [[-2.8, -2.8], [-2.8, 2.8], [2.8, -2.8], [2.8, 2.8]].map(([x, z]) => at('studio', x, z)).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  for (const [i, c] of mine.entries()) { assert.ok(Math.abs(c[0] - post[i][0]) < 1e-6 && Math.abs(c[1] - post[i][1]) < 1e-6, `post ${i}`); }
+  // A1: the room floor is blocked everywhere inside, under the yawed, scaled pose
+  for (let lx = -2.9; lx <= 2.9; lx += 0.29) for (let lz = -2.9; lz <= 2.9; lz += 0.29) assert.equal(test(...at('studio', lx, lz)), true, `inside ${lx},${lz}`);
+  // A2: open ground beyond the room and the posts' pad stays open
+  for (const [lx, lz] of [[0, 3.1], [0, -3.1], [3.1, 0], [-3.1, 0], [0, 3.8], [3.4, 3.4]]) assert.equal(test(...at('studio', lx, lz)), false, `outside ${lx},${lz}`);
+  // A3: a kit without a footprint has no rooms: only its post colliders block, its middle stays meadow as before
+  assert.equal(test(-40, 20), false, 'no-room kit middle'); assert.equal(test(-40 + 2.8, 20 + 2.8), true, 'no-room kit post');
+  const polys = (id: string) => [...cells.values()].flat().filter((b) => b.id === id && b.kind === 'poly').length;
+  assert.ok(polys(w.get('studio')!.id) > 0); assert.equal(polys(w.get('shade')!.id), 0, 'A6: no room shapes for a kit without rooms');
+});
+
+test('a mesh with a footprint sidecar blocks its ground rooms, not its upper floors', async () => {
+  const { blockCellsOf, BLOCK_CELL } = await import('./ecology.mesh.ts');
+  const { blockTest } = await import('./block-test.ts');
+  const { footprintToBaked } = await import('@sim/generators');
+  const glb = 'a'.repeat(64), side = 'b'.repeat(64);
+  const baked = footprintToBaked({ schema: 'lm-building-footprint/1', bounds: { min: [-5, 0, -3], max: [5, 6, 3] },
+    rooms: [{ id: 'hall', level: 0, y0: 0, y1: 3, polygon: [[-5, -3], [0, -3], [0, 3], [-5, 3]] }, { id: 'loft', level: 1, y0: 3, y1: 6, polygon: [[0, -3], [5, -3], [5, 3], [0, 3]] }],
+    obstacles: [{ id: 'party-wall', kind: 'wall', obb: { c: [0, 0], half: [0.1, 3], yaw: 0 }, y0: 0, y1: 6 }] });
+  const w = new WorldModel({ constants: { extent: 1000, ground: 'land' }, seed: 'block', assets: (h) => h === side ? { baked } as never : h === glb ? { tris: 10 } as never : undefined });
+  w.defineDef({ schema: 'def/1', name: 'hut', size: { box: [10, 6, 6] }, make: { kind: 'mesh', asset: glb, footprint: side } } as never, 'god', 0);
+  const r = applyBatch(w, { ops: [{ op: 'place', def: 'hut@1', name: 'hut', p: [0, 0], r: Math.PI / 2 }] } as never, 'god', 0) as { result: { accepted: boolean } };
+  assert.equal(r.result.accepted, true, JSON.stringify(r.result));
+  const test = blockTest(blockCellsOf(w), BLOCK_CELL, '\u0000cover'), p = w.worldPose(w.get('hut')!);
+  const at = (lx: number, lz: number): [number, number] => [p.x + lx * Math.cos(p.yaw) + lz * Math.sin(p.yaw), p.z - lx * Math.sin(p.yaw) + lz * Math.cos(p.yaw)];
+  assert.equal(test(...at(-2.5, 0)), true, 'the ground hall is blocked');
+  assert.equal(test(...at(2.5, 0)), false, 'a floor-1 loft is not ground');
+  assert.equal(test(...at(-2.5, 4)), false, 'open ground beside the hall');
+});
