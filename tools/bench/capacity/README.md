@@ -85,6 +85,150 @@ node bench.mjs --root /srv/sim-bench/src-<sha> --fixture /srv/sim-bench/fixtures
 
 The exact eden2 recipe for a run is `eden2/run-stageb.sh` (`run-stageb-f.sh` for part F).
 
+## Meetup workload (CW1, #735: 50 Souls across 10 worlds)
+
+`meetup/` is the near-term product as a workload: ten substantial worlds from `worlds/templates/` behind the
+checkout's own launcher, fifty fake-mind Souls, quiet periods and coordinated meetups. It reuses this bench's
+approach (the launcher in the path, the Soul CLI to join, raw HTTP with the CLI's requests and retry etiquette
+afterwards) without changing `bench.mjs`.
+
+- `meetup/workload.mjs`: the workload as data, pure and seeded: fixtures, the two profiles (`even` = 5 per world;
+  `meetup` = 20 in world 0 and 30 across the other nine), account and address grouping (a three-Soul account in the
+  meetup world, a three-world account, five Souls behind one network address; documentation addresses only), the
+  declared demand (a rich read per Soul every 4 s; an act every 20 s cycling movement, attention, speech, a gesture, an
+  interrupting act and an invitation to a shared action that the partner's driver accepts from its own stream; three
+  meetups where all fifty act within 1 s and read twice within the next 2 s), the schedule, all-attempt accounting and the clock check. `workload.test.mjs` pins it.
+- `meetup/meetup.mjs`: the runner. `meetup/report.mjs`: `REPORT.md` against #443's initial objectives.
+
+```bash
+pnpm --filter @sim/web build && pnpm build:viewer      # once per checkout: the worlds refuse genesis without them
+node tools/bench/capacity/meetup/meetup.mjs --profile even,meetup [--repeats 2] [--browser] [--short] [--quiet-host] \
+  [--host-class <neutral label>] [--port 4400] [--out .local/bench/meetup/<name>]
+```
+
+Per run (about 35 min; `--short` about 6 min): boot and join (timed, not measured), warm-up, 5 min quiet-but-living
+(streams and viewers held, no commands), 20 min activity. The schedule is fixed before the run from the seed; a Soul
+sends one call at a time in schedule order; a call sent more than 1 s late is **overdue** and a call still queued when
+the window closes is **unissued**; neither is dropped from the totals. End-to-end latency runs from the scheduled time
+(queueing, Retry-After waits and backoff included); answered-only time is diagnostic. Action start and receipt delivery
+come from each Soul's own event stream (`/v1/edge/wait`, `receipt.*` events with server tick and time); travel and
+activity duration is its own column. The clock check samples every world's `/healthz` tick each second against
+monotonic time at the admin rate in the world's own database; nothing is clipped or reset.
+
+Full clock comes from existing switches only, set on the launcher: `SIM_UNWATCHED_PACE=1`,
+`SIM_WORLD_IDLE_EXIT_MIN=0`, `--sleep-ms 0`. The production defaults (quarter pace unwatched, sleep, idle exit) are
+#740's subject. Eyes rendering is off: image delivery is not covered here. The run is loopback through the launcher's
+proxy with dev auth: TLS, the public proxy, Clerk and the real network are not exercised.
+
+Outputs under `--out`: `receipt.json` (source, seed, schedule sha256, fixture sha256s, configuration, coverage; no
+host names, users, home paths or tokens), `ops.jsonl` (one line per issued call), `samples.jsonl`, `result.json`,
+`REPORT.md`; `souls/` holds Soul tokens and stays local. Every owned process is stopped at the end (also on Ctrl-C)
+and the result records the cleanup. A run without `--quiet-host` is labelled `not-quiet`; no laptop run qualifies.
+
+### Long windows and resource growth (CW8 A2, #955)
+
+- **`--active-min N`** makes the activity window N minutes long, from 20 to 240.
+  - The per-Soul rates stay the same, and the meetups repeat in every 20-minute block, at 5, 11 and 17 minutes.
+  - Without the flag, the schedule is the CW2 baseline's: `workload.test.mjs` pins its sha256.
+  - Compare verdicts only between runs with the same window.
+- **The resource sampler** records each world every 30 s, from the moment the worlds are up. It reads:
+  - RSS;
+  - heap used and heap limit, GC % (10 s) and queue depth, from the world's own `live.json`;
+  - the thread count, from `/proc/<pid>/task`;
+  - the size of `sim.db`, `sim.db-wal` and `sim.db-shm`, and of the whole data directory.
+
+  It also reads free space on the data volume. These are `res` lines in `samples.jsonl`.
+- **What it cannot see:**
+  - The heap is the **main thread's** (`live.json`), so worker threads' heaps fall inside `RSS − main-thread heap`.
+  - Per-worker memory and external memory are not exposed by the server, so they are reported as unknown, never estimated (#859 adds process telemetry). Workers are counted as threads.
+  - GC is a share of time only, with no pause counts.
+- **With the default 20-minute window,** the 10-minute warm-up leaves too little for trends, so REPORT.md says so in one line instead of printing a table.
+- **`--telemetry`** runs the launcher's own collector (`tools/world-launcher/telemetry.mjs collect`) on its loopback `/__sim/metrics`, into `<run>/telemetry`. Its store size is then sampled too.
+- **`meetup/growth.mjs`** reduces the samples over the activity window.
+  - It leaves out an explicit warm-up: the first `--warmup-min` minutes, 10 by default.
+  - For each series it gives the medians of the residual window's first and last 5 minutes, their difference, a least-squares slope per hour, and R².
+  - It works per world and summed across worlds, and names the steepest world.
+  - A series that is too short or missing is unknown, never flat.
+  - `result.json` has it as `growth`, and REPORT.md has a "Growth over the activity window" table.
+  - Nothing is extrapolated. A window of an hour or two cannot show indefinite stability; that is CW6 #740's unattended proof.
+
+```bash
+# one 60-minute meetup window with telemetry on (about 80 min in all)
+node tools/bench/capacity/meetup/meetup.mjs --profile meetup --active-min 60 --telemetry [--warmup-min 10] [--quiet-host] --out .local/bench/meetup/<name>
+```
+
+### Hardware qualification (CW2, #736)
+
+Each run also reads the allocation the worlds live in (`meetup/host.mjs`: the launcher's cgroup v2 `cpu.max`,
+cpuset, `cpu.stat` throttling, `memory.max`/`current`/`peak`, swap, PSI, `/proc/stat` steal; Linux only, `unknown`
+elsewhere) and each world's main and hottest thread. `meetup/verdict.mjs` turns the runs into `VERDICT.md`:
+`passes`, `insufficient resources`, `software bottleneck` or `inconclusive`. Only a complete matrix (both profiles,
+two repeats each, distinct repeats, full length) declared `--qualifying-executor --quiet-host`, with a known
+allocation, recorded objectives and readable swap, steal and throttling, can pass: evidence that is absent is
+unknown, never a pass. `--quiet-host` is the operator's assertion; the bench records load and other Soul processes
+but does not check them. The manual `capacity-qualify` workflow (#840) checks them before it passes the flag. A
+missed objective with spare allocation, or a hot world thread at ≥ 0.9 core, is a software bottleneck whatever the
+host. On the executor (the operator's private record holds the host binding; nothing here names it):
+
+```bash
+# quiet window; the launcher and its worlds inside the slice, the driver outside it
+node tools/bench/capacity/meetup/meetup.mjs --profile even,meetup --repeats 2 --browser \
+  --slice "systemd-run --quiet --scope -p AllowedCPUs=<cpus> -p MemoryMax=<limit> --uid=<bench user> --gid=<bench group>" \
+  --qualifying-executor --quiet-host --host-class production-class --out <scratch>/meetup-<sha>
+```
+
+The report states whether the driver shares the worlds' cgroup (it should not when `--slice` is used). With `--uid`, run the driver as
+root (so `systemd-run` may drop to the bench user) and give that user write access to `--out`.
+
+### Comparing a run with the baseline (CW8, #947)
+
+`meetup/compare.mjs` puts two downloaded `capacity-qualify` artifacts side by side, for example a confirmation run against
+the CW2 baseline:
+
+```bash
+gh run download <run> --repo genekogan/souls -D .local/qualify/<run>
+node tools/bench/capacity/meetup/compare.mjs .local/qualify/<baseline>/capacity-qualify-<baseline> .local/qualify/<run>/capacity-qualify-<run> [--out <file>]
+```
+
+- **What it shows:** both verdicts, then per profile:
+  - the headline cells as repeat ranges;
+  - each objective per repeat: `fixed`, `meets`, `still failing`, `regressed`, `new, meets`, `new, misses` or `missing`;
+  - per world: met, the hottest core, the loop p99 and the queue.
+- **When it calls a direction:** only when the two repeat ranges do not overlap.
+- **Missing values:** a cell, repeat or world missing on either side is shown as missing, never as better. A value that only some repeats have is `partial`, and gets no direction.
+- **Both verdicts:** they are printed with their reasons.
+- **Changed conditions:** a change in host class, quiet, short, slice or limits is listed as not like for like. A condition that neither side recorded is listed as not compared, not as a match.
+
+## Slopes: inventory versus activity (CW7, #741)
+
+`slopes/slopes.mjs` asks whether stable inventory is charged again on every request. It runs three orthogonal axes on one designated `eden-2026` world. This is not a sweep.
+
+| axis | arms | held fixed |
+|---|---|---|
+| `inventory` | 5,000 vs 10,000 placed objects | 5 Souls registered and active, the scene and the acts |
+| `activity` | 0, 5 or 10 of 10 registered Souls active | the scene as authored |
+| `quiet` | the designated world alone, or with 9 quiet ticking worlds (CW1 fixtures 1–9, no Souls) | 5 active Souls in the designated world |
+
+- **The distant inventory** (`slopes/inventory.mjs`, `cw7-distant/1`): deterministic copies of the template's own small furniture kinds, in the largest empty square at least 100 m from every authored object's edge. That is beyond sight (30 m) and go-near (60 m). The copies are applied as extra genesis batches of at most 256 ops each; the authored batches are unchanged.
+- **Per arm:**
+  - boot and settle;
+  - join through a loopback path-stripping proxy, because the CLI wants a `/w/<slug>` URL; the measured calls go straight to the world;
+  - warm-up, then a quiet window;
+  - a per-route probe: `--probe-n` serial calls each of `here`, `observe`, `capabilities`, `resolve` and one non-moving act, one at a time and rotating over the registered Souls, each with its own CPU budget. A busy answer (`soul.slow-down`, `world.busy`) is waited out for its Retry-After, up to 3 times, as the CLI does, and the waits are counted;
+  - an active window at CW1's per-Soul rates (a read every 4 s, an act every 20 s, one call at a time). The acts never move a Soul, so the neighbourhood is the same in every arm, and walk planning (#454) is **not** exercised.
+- **CPU** is the world process's (`/proc` or `ps`). Per-call CPU nets out the quiet window's rate, so it is an upper bound. `--cpu-prof` records the main thread with the inspector during the probe and during the active window. The result keeps the top self-time and inclusive functions, which stand in for the counters the server does not have: rows examined, plan builds, invalidations. It also keeps the inclusive time of the paths a decision names (`WATCH` in `slopes/report.mjs`: the menu build, the tick, the walk offers and their `goal()`, `navScan` and others) whatever their rank, because a top-15 list cannot show a mid-tree path's share.
+- **Output:** `<out>/{receipt.json, results.json, REPORT.md}`, with one `<arm>-r<k>/result.json` per run, plus local-only `calls.jsonl`, `live.jsonl`, `*.cpuprofile`, the world data and `souls/`, which holds tokens.
+
+```bash
+# laptop (functional only, INDICATIVE; one world at a time, so --quiet-worlds 1 keeps the quiet axis light)
+node tools/bench/capacity/slopes/slopes.mjs --root <built checkout> --axis inventory,activity --short --cpu-prof --port 4700
+# qualifying executor: the capacity-qualify workflow with profile=slopes (it adds --cpu-prof and, when quiet, --quiet-host --qualifying-executor)
+```
+
+- **What qualifies:** only a run on the qualifying executor that is declared quiet, full length (not `--short`) and has at least 2 repeats; every other run is labelled INDICATIVE. A failed arm or repeat is listed under "Failed runs" in REPORT.md, enters no mean (each section's `n` counts the runs its means rest on), and makes the bench exit 1.
+
+`--slice` wraps each world on its own, so a CPU quota there is per world, unlike the meetup bench. A qualifying slopes run needs no slice: it measures cost per call, not headroom.
+
 ## Recorded baseline (2026-10-31, before the server-reliability fixes)
 
 Fixture: the compact Eden 2026 copy, sha256 `d0921000a7ef…`, heap cap 768 MB unless noted; two repeats per arm, shown

@@ -20,7 +20,7 @@ export type UploadPolicy = {
   maxBytes: number; maxTris: number; maxTextures: number; maxTexPx: number; maxImageBytes: number;
 };
 /** Soul bodies: the BODY-v1 limits. Godmode assets: the world's budget is passed per call (see `assetPolicy`). */
-export const BODY_UPLOAD_POLICY: UploadPolicy = { formats: ['glb'], maxBytes: 16 * 1024 * 1024, maxTris: 100_000, maxTextures: 8, maxTexPx: 2048, maxImageBytes: 4 * 1024 * 1024 };
+export const BODY_UPLOAD_POLICY: UploadPolicy = { formats: ['glb'], maxBytes: 4 * 1024 * 1024, maxTris: 10_000, maxTextures: 2, maxTexPx: 1024, maxImageBytes: 1024 * 1024 };
 export function assetPolicy(budget: { tris: number; bytes: number; texPx: number }): UploadPolicy {
   return { formats: ['glb', 'png', 'jpg', 'json'], maxBytes: budget.bytes, maxTris: budget.tris, maxTextures: 64, maxTexPx: budget.texPx, maxImageBytes: Math.min(budget.bytes, 8 * 1024 * 1024) };
 }

@@ -3,7 +3,7 @@
 A passive trace of the thin Soul CLI (`tools/world-launcher/soul/eden.mjs`), the default control path the world
 serves: the owner's own chat runs one CLI process per command and a background `listen`. The trace shows where a
 short command or an interrupted activity waited. It is a diagnostic, not a speed claim, and a reconstruction, not a
-replay. Path selection and the inventory behind it: #732. Correlation and clock meaning: #592. Inspector: #624.
+replay. Path selection and the inventory behind it: #732. Correlation and clock meaning: #592. Inspector: #624 (below).
 
 ## Use
 
@@ -16,6 +16,23 @@ node tools/soul-trace/readout.mjs trace.jsonl --json   # same reconstruction as 
 Off by default: without `--import` nothing is loaded; with it but no `SOUL_TRACE_FILE`, nothing is installed. The
 served CLI bytes are unchanged. `SOUL_TRACE_RUN` / `SOUL_TRACE_SEAT` (opaque `[A-Za-z0-9._:-]{1,100}` ids) are
 copied onto each process-start record for Soul Runs (#749); the tap never invents or interprets them.
+
+## Inspector (#624)
+
+```bash
+node tools/soul-trace/inspect.mjs trace.jsonl [--port N]   # prints http://127.0.0.1:N/?token=…
+```
+
+A read-only page over the same reconstruction `readout.mjs --json` prints: episodes with send/delivery times, the
+unattributed host gap before the first command, each act's attempts and receipt ticks, acts with unknown origin,
+anomalies and processes. Filter by any text; each episode expands to its bounded JSON. It polls every 1.5 s and
+re-reads the file only when its size or mtime changed; traces over 16 MiB are refused.
+
+It only reads the trace file: no world calls, no runner or listener ownership, no write or control endpoint.
+Access: bound to 127.0.0.1; exact `Host` (refuses DNS rebinding), cross-site or foreign `Origin` refused; the printed
+per-run token is exchanged for an `HttpOnly; SameSite=Strict` cookie and dropped from the address bar; nonce CSP,
+`no-store`, `nosniff`, `frame-ancestors 'none'`. Every trace string is placed with text nodes, never as markup.
+Stop it with Ctrl-C; the trace and the world are unaffected.
 
 ## Contract `soul-trace/1`
 
