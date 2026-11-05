@@ -29,8 +29,8 @@ async function world(n: number, pinned?: string[]) {
   return {...w, comms, body, act, phase, events, gap, replayExact};
 }
 
-test('together: hug (accept), high-five (decline), handshake (lapses), hug back = accept, dance together, group jumping jacks, follow; conversation survives', {timeout: 900000}, async t => {
-  const w = await world(3); t.after(() => {w.comms.close(); w.f.host.stop(); w.f.db.close();});
+const gestures = (pinned?: string[]) => async (t: import('node:test').TestContext) => {
+  const w = await world(3, pinned); t.after(() => {w.comms.close(); w.f.host.stop(); w.f.db.close();});
   const [a, b, c] = w.souls;
   // everyone to the fire circle, near each other
   const walks = await Promise.all(w.souls.map(s => w.act(s, 'walk:social-eden-fire-circle'))) as any[];
@@ -122,7 +122,7 @@ test('together: hug (accept), high-five (decline), handshake (lapses), hug back 
   // defer the truthful terminal receipt until the actor safely settles.
   // This is not a claim of uninterrupted three-person exercise or equal
   // receipt deadlines (pose.ts checks nudged() before the shared-until rule).
-  // E2 #2 (once-v1, 2026-10-16): a guest who arrives after the shared window closed does it alone at once, marked late;
+  // E2 #2 (once-v1, 2026-10-16; once-v2 #508): a guest who arrives after the shared window closed, even after every member left, does it alone at once, marked late;
   // its own window is not the shared one, and it never borrows a settling body's stale deadline.
   const lateActors=new Set(frames.flatMap(f=>f.actors.filter(x=>x.late).map(x=>x.soulId)));
   assert.ok(lateActors.size<=1&&!lateActors.has(a.soulId),'only a guest can be late, never the host');
@@ -168,7 +168,12 @@ test('together: hug (accept), high-five (decline), handshake (lapses), hug back 
   const kiss: any = await w.act(a, 'kiss ' + b.name, undefined, false); assert.equal(kiss.accepted, false);
   assert.deepEqual(w.f.host.engine.runtime.violations, []); assert.equal(w.f.db.paidCost(), 0);
   await w.replayExact();
-});
+};
+test('together: hug (accept), high-five (decline), handshake (lapses), hug back = accept, dance together, group jumping jacks, follow; conversation survives', {timeout: 900000}, gestures());
+// #508 (2026-11-05): the ids a CI run failed with. The third Soul's approach nudges the second into a courtesy step; the host
+// and that settling body both clear their group state before the third arrives after the window. Under once-v1 it saw nobody,
+// waited 20 s and opened a second, unmarked window (two shared deadlines); under once-v2 it does it alone at once, marked late.
+test('together: the same scene with the #508 CI ids: a guest arriving after the group left is late, never a second window', {timeout: 900000}, gestures(['s_2ff1c5c8dc', 's_736fa001c3', 's_a375a2c19a']));
 
 // F1 (2026-10-20): with these soul ids the host's meet spot is a detour around the third soul, so the guest accepts while the
 // host is still walking. The guest used to plan against the moving host, walked across its path (nudging it aside) and
