@@ -62,8 +62,12 @@ test('edge world: the command route carries the security headers and answers 503
     ['not your soul', await req('dev:bob', JSON.stringify({text: 'wander'})), 403],
     ['too large', await req('dev:alice', JSON.stringify({text: 'x'.repeat(9000)})), 413],
   ] as const) { assert.equal(r.status, status, why); assert.deepEqual(headersOf(r), SECURITY, why); assert.equal(r.headers.get('cache-control'), 'no-store', why); }
+  // an agent token's answer is rewritten by the inbox (its `inbox` block added); the headers survive that
+  const agent = (f.souls as unknown as {mint(id: string, x: null): string}).mint(a.id, null);
+  const rewritten = await req(agent, JSON.stringify({text: 'x'.repeat(9000)})); const rj = await rewritten.json() as {code: string; inbox?: unknown};
+  assert.equal(rewritten.status, 413); assert.equal(rj.code, 'too-large'); assert.ok(rj.inbox, 'the inbox rewrote it'); assert.deepEqual(headersOf(rewritten), SECURITY);
   haltClock(f.host);
-  for (const [why, owner, body] of [['owner', 'dev:alice', JSON.stringify({text: 'halted'})], ['no auth, before auth', null, JSON.stringify({text: 'halted'})], ['before the body is read', 'dev:alice', '{not json']] as const) {
+  for (const [why, owner, body] of [['owner', 'dev:alice', JSON.stringify({text: 'halted'})], ['no auth, before auth', null, JSON.stringify({text: 'halted'})], ['before the body is read', 'dev:alice', '{not json'], ['before the inbox body limit', 'dev:alice', JSON.stringify({text: 'x'.repeat(9000)})]] as const) {
     const r = await req(owner, body);
     assert.equal(r.status, 503, why); assert.deepEqual(await r.json(), UNAVAILABLE, why);
     assert.equal(r.headers.get('cache-control'), 'no-store', why); assert.deepEqual(headersOf(r), SECURITY, why);
