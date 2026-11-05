@@ -1,7 +1,7 @@
 // G4 (Gene 2026-10-20): the God button right of Explore, styled like it ("God ⌘G"), on new worlds. It opens the one God
 // modal (GodModal, rendered by GodPanel in the world view). Only the world's god has it (U3); nobody else gets a God
-// view. A dot says whether their agent is connected
-// (green) or not (red), and a badge counts pairing requests waiting for approval. Replaces GODUI's lightning-bolt popover
+// view. #662: a green border says their agent is connected (neutral otherwise; no dot, so the bolt stays centred),
+// and a badge counts pairing requests waiting for approval. Replaces GODUI's lightning-bolt popover
 // and the separate Constitution chip.
 import { useEffect, useRef, useState } from 'react';
 import * as G from './god-api.ts';
@@ -39,15 +39,16 @@ export function GodButton() {
   // people and a godless world's claimant get no God button (nor ⌘G); claiming stays on the claim card (GodPanel).
   if (!status || !owner) return null;
   const paired = (status.agents ?? 0) > 0;
-  // the owner's agent: green when connected, red when not (or not paired yet: connecting it is the first thing to do)
+  // the owner's agent: 'on' (green border) only when the inbox says it is connected; not paired, not connected or not
+  // known yet keep the neutral border, so a stale or loading state never looks connected
   const live = !paired ? 'off' : inbox ? (inbox.connected ? 'on' : 'off') : null;
+  const state = live === 'on' ? 'agent connected' : live === 'off' ? 'agent not connected' : 'agent status loading';
   const title = `God mode: your agent and this world (${godKeyLabel()})`;
   return (
     <span className="god-control">
       <button type="button" className="explore-open god-open" data-god-open="owner" data-agent={live ?? undefined}
-        aria-label="God mode" data-tooltip={title} aria-haspopup="dialog" aria-expanded={open} title={title} onClick={() => toggleGod()}>
+        aria-label={`God mode, ${state}`} data-tooltip={title} aria-haspopup="dialog" aria-expanded={open} title={title} onClick={() => toggleGod()}>
         {BOLT}
-        {live && <i className={'god-dot ' + live} aria-label={live === 'on' ? 'agent connected' : 'agent not connected'} />}
         {status.pending.length ? <span className="gp-badge" aria-label={`${status.pending.length} pairing request`}>{status.pending.length}</span> : null}
       </button>
     </span>
