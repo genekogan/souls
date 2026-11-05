@@ -69,7 +69,8 @@ switch independent. A previously saved master mute migrates to both switches off
   (`empty.jpg` for the empty plain), which is media pulled from the asset CDN and not kept in git. When neither
   exists, the row has no picture. Both kinds are served immutable under content-hashed URLs
   (`<base>/__sim/thumbs/<slug>/<sha>.jpg`, `<base>/__sim/thumbs/_template/<sha>.jpg`). Setting or clearing a
-  thumbnail never wakes the world (`tools/world-launcher/thumbnail.mjs`).
+  thumbnail never wakes the world (`tools/world-launcher/thumbnail.mjs`). Each card on the root page shows the picture in a
+  lazy-loaded 16:9 frame (`LauncherHome.tsx`). The owner's agent takes one with `eden-god thumbnail` (god SKILL.md, "Thumbnail").
 - **Owner and operator API.** Handoff, archive and unlisting, and the loopback-only `op.mjs` commands: see
   [API](api.md#world-owner-api-served-by-the-launcher).
 - **Keeper.** `keeper.mjs` holds the public port and hands over between launcher generations one world at a time, with
