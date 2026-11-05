@@ -92,7 +92,7 @@ Other known limits:
 - At a hand-over the model's record of who holds the item lags the engine by a few samples.
 - The `here` frame lists at most two things of a kind (three seats); more appear only as a count under `more`.
 - Some new defs are over the library's geometry budgets: triangles for the fountain, jukebox, curtained window, drum kit,
-  drawer chests, watering can, mic stand, kettle, mug, coffee mug and bell pull, and draw calls for the newest door and locker
+  drawer chests, watering can, mic stand, kettle, mug and bell pull, and draw calls for the newest door and locker
   revisions. They need lighter meshes, or recorded budget holds with reasons, before release.
 - Portable lights were rebuilt as carry-and-set-down (entry 29); the earlier version is retired. Mixed-outfit seams
   (entry 11) remain parked.

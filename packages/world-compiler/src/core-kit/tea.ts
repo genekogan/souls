@@ -156,10 +156,11 @@ const campSink: DefInput = {
 // spoonful of ground coffee at the bottom where the tea mug has its bag, made into coffee by the kettle's hot water, drunk
 // in sips and rinsed clean the same way. The `coffee` tag names what it holds (cupDrink), so its words and facts say coffee.
 const coffeePalette = { glaze: '#33506e', coffee: '#3b2416', grounds: '#4a3020' };
-// lighter than the tea mug (#416 budgets; about half its triangles): the coffee drawn at five levels, one per sip (1, 0.8
-// .. 0.2; a third poured shows as 0.4, two thirds as 0.6), and one disc of grounds on the floor of the mug: the unbrewed
-// spoonful before the pour, the dregs once drunk, gone once rinsed (the tea mug's bag, stain and string in one)
-const SEG = { lathe: 12, torus: 6 } as Record<string, number>;
+// within the 400-triangle item budget (#416, #494; 376, about a third of the tea mug): the body and the coffee's discs at
+// eight sides, the handle at six; the coffee drawn at five levels, one per sip (1, 0.8 .. 0.2; a third poured shows as
+// 0.4, two thirds as 0.6), and one disc of grounds on the floor of the mug: the unbrewed spoonful before the pour, the
+// dregs once drunk, gone once rinsed (the tea mug's bag, stain and string in one). Rim, floor and levels are CUP_RIM's.
+const SEG = { lathe: 8, torus: 6 } as Record<string, number>;
 const COFFEE_STEPS: [number, number][] = [[0.9, 1], [0.7, 0.8], [0.5, 0.6], [0.3, 0.4], [0.05, 0.2]];
 /** A flat disc facing up (a one-band lathe drawn inward), on the mug body's own sides. */
 const disc = (y: number, r: number, tint: string, when: string) => ({ kind: 'lathe', at: [0, 0, 0], profile: [[r, y], [0, y]], segments: SEG.lathe, tint, when });

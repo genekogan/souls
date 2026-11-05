@@ -40,10 +40,6 @@
   "core-cup@2": {
    "tris": 1084,
    "why": "Soul Actions 1-44 (tea): a recorded carried mug with handle and inner wall for pouring and sipping (cutover hold, 2026-11-01)"
-  },
-  "core-coffee-mug@1": {
-   "tris": 528,
-   "why": "#437 W078 (coffee): the tea mug's body drawn lighter, with one disc per drawn coffee level (five, one per sip) and the grounds; about half core-cup@2 (2026-11-05)"
   }
  }
 }
