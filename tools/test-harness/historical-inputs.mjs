@@ -15,6 +15,8 @@ const specs = [
   ['4ecb87dc96133f180e03dc5bc336e6d9deba64c5', json('apps/server/test/fixtures/recorded-scene/codec-input.v1.json').files.map(f => f.path)],
   ['8748afe468211a59598822e92ae15ac37f9e9547', Object.keys(json('apps/server/test/fixtures/station-era/native-station-era.v1.json').producer)],
   ['ad8c2c4df48e43e767688392ec55964aa3c7bd7c', Object.keys(json('apps/server/test/fixtures/station/native-station.v1.json').producer.authoredSourceSha256)],
+  // The release-driver fixture verifies only the original collector's narrowly pinned recovery exception.
+  ['5dc672b8d53607e79f8d16eb9ec24c616f238e37', ['tools/test-harness/modal_suite.py']],
 ];
 const objects = new Set();
 for (const [commit, paths] of specs) {

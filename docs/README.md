@@ -8,11 +8,12 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 |---|---|
 | oversee work, review proof or change worker capacity | [owner playbook](process/owner-playbook.md) |
 | set direction or turn a request into work | [vision](design/vision.md), [roadmap](design/roadmap.md), [planning and intake](process/planning.md) |
+| improve agent control, diagnose delays and plan expressive collaboration | [agency quality design](design/agency-quality.md), [umbrella #623](https://github.com/genekogan/souls/issues/623) |
 | run Soul locally | [development](development.md) |
 | understand how it fits together | [architecture](architecture.md), then the [glossary](glossary.md) |
 | reason about contracts, performance or where a feature plugs in | [component and data-flow map](architecture/map.md) |
 | change the server API or protocol | [API](architecture/api.md), [protocol](architecture/protocol.md), [contracts](architecture/contracts.md) |
-| plan cooperative physical actions and construction | [physical coordination design](design/physical-coordination.md), [epic #560](https://github.com/genekogan/souls/issues/560) |
+| plan cooperative physical actions and construction within controllability | [physical coordination design](design/physical-coordination.md), [workstream #560](https://github.com/genekogan/souls/issues/560) under [#623](https://github.com/genekogan/souls/issues/623) |
 | understand folder ownership and ordinary commands | [repository layout](development/repository-layout.md), [development](development.md) |
 | understand project reporting and visual release history | [project visibility design](design/project-visibility.md), [contribution attribution](process/contribution-attribution.md) |
 | work on Souls or the Soul client | [Souls at the edge](architecture/souls.md) |
