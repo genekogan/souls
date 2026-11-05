@@ -50,8 +50,10 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   const budgetsMusic = JSON.parse(readFileSync(new URL('../conformance/library-budgets-music-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // #435 2026-11-05: core-swap-shelf@1 on the container faculty (no door, a leftBy record); the narrow run found nothing, so this pins no finding.
   const swapShelf = JSON.parse(readFileSync(new URL('../conformance/swap-shelf-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  // #435 2026-11-05: core-lost-and-found@1, the swap shelf's form with an owner claim; the narrow run found nothing, so this pins no finding.
+  const lostAndFound = JSON.parse(readFileSync(new URL('../conformance/lost-and-found-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   const signature = (f: Finding) => JSON.stringify([f.def, f.hash, f.field, f.stage, f.code, f.detail]);
-  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...swapShelf.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
+  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...swapShelf.findings, ...lostAndFound.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
   const newFindings = report.findings.filter(f => !allowed.has(signature(f)));
   assert.deepEqual(newFindings, [], `Undocumented conformance failures: ${JSON.stringify(newFindings.slice(0, 12))}`);
   assert.deepEqual(report.qualificationGaps, known.qualificationGaps, 'rendering gaps changed: qualify them or document the exact gap');

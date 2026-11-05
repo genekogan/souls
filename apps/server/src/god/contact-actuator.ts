@@ -7,7 +7,7 @@ import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
 import { opSchema, contactStateKey, DRAWER_TRAVEL, containerInside, containerOpen, pinSlot, signupSlot, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
 import { posterName, posterFreeSlot, posterTarget, posterAge, posterStale, wantedColumn, wantedFreeRow, wantedTarget } from './poster-boards.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
-import { actionPatch, actionsOf, actuatedState, keepsLeftBy, leftByOf, boardTextProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
+import { actionPatch, actionsOf, actuatedState, keepsLeftBy, boardTextProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
 export const CONTACT_REACH = .8;
 /** Entry 37: how long the hand stays on a radio's tuning knob after contact while the dial sweeps to the next station. */
 export const TUNE_HOLD_SECONDS = .9;
@@ -27,7 +27,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
  /** entry 32: the thing's owner (a name) and whether it is this Soul; null when nobody owns it */ owner?:(id:string,soul:EdgeSoul)=>{name:string;mine:boolean}|null;
  /** entry 32: a knock on the leaf landed (the first rap): tell those who hear it */ knock?:(soul:EdgeSoul,id:string)=>void;
  /** Entry 43: compact facts of things that are not contact actuators (a kettle, a cup of tea), or null. */ moreFacts?:(id:string)=>Record<string,unknown>|null;
- /** #435: a Soul's name by soul id (who left a thing on a swap shelf), or null. */ soulName?:(soulId:string)=>string|null;
+ /** #435: what a Soul nearby is told about a thing kept in a container with a `leftBy` record ("left by Ana"; "Ana's, found by Ben"), or null. */ keptNote?:(box:string,item:string,soul?:EdgeSoul)=>string|null;
  record:(soul:EdgeSoul,id:string,action:string,params?:Record<string,unknown>)=>void;commit:(ops:Op[],note:string,done:()=>void)=>{accepted:boolean}}){
  const binding=(id:string)=>{const m=d.model(),e=m.entities.get(id);return e?createHash('sha256').update(JSON.stringify([e,m.worldPose(e),m.resolvedDef(e.def)?.hash])).digest('hex'):null;};
  return {
@@ -172,7 +172,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    const p=m.worldPose(e);return (b.pose.p[0]-p.x)*Math.sin(p.yaw)+(b.pose.p[2]-p.z)*Math.cos(p.yaw)<0?'inside':'outside';
   },
   /** A few current public facts for compact nearby perception, never the full state. */
-  facts(target:string){
+  facts(target:string,soul?:EdgeSoul){
    const m=d.model(),e=m.entities.get(target),def=e&&m.resolvedDef(e.def),key=def&&contactStateKey(def);
    // Entry 18: a thirsty planter says so (only when dry; a watered garden adds nothing)
    if(e&&def&&!key&&(def.state as Record<string,{type?:string}>).moisture?.type==='number'){
@@ -187,9 +187,10 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    // Entry 37: a radio that is on says which station it plays ("radio: on, quiet piano"); off, only that it is off.
    if(state.on===true&&typeof state.station==='string')facts.station=state.station;
    // entry 42: what is inside an open container (names only, at most its few places); nothing while it is shut
-   // #435: a doorless container (a swap shelf) is always open, and one that keeps a `leftBy` record names who left each thing
-   const ins=containerOpen(def,state)?containerInside(def):null,left=keepsLeftBy(def)?leftByOf(e.state):null;
-   if(ins){const slots=new Set(ins.slots.map(s=>s.id)),holds:string[]=[];for(const c of m.children.get(target)??[]){const x=m.entities.get(c);if(!x||!slots.has(x.in.slot??''))continue;const n=x.name??(m.resolvedDef(x.def)?.name.replace(/^core-/,'')??'something'),by=left?.get(c);holds.push(by?`${n} (left by ${d.soulName?.(by)??'someone'})`:n);}if(holds.length)facts.holds=holds.sort();}
+   // #435: a doorless container (a swap shelf) is always open, and one that keeps a `leftBy` record names who left each
+   // thing (a lost-and-found: whose it is and who found it)
+   const ins=containerOpen(def,state)?containerInside(def):null,noted=keepsLeftBy(def);
+   if(ins){const slots=new Set(ins.slots.map(s=>s.id)),holds:string[]=[];for(const c of m.children.get(target)??[]){const x=m.entities.get(c);if(!x||!slots.has(x.in.slot??''))continue;const n=x.name??(m.resolvedDef(x.def)?.name.replace(/^core-/,'')??'something'),note=noted?d.keptNote?.(target,c,soul):null;holds.push(note?`${n} (${note})`:n);}if(holds.length)facts.holds=holds.sort();}
    return facts;
   },
   /** Entry 33: a neon sign's words for a Soul near it (the same nearby rule as `facts`): its owner's text, at most 32
