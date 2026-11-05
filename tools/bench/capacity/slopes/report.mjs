@@ -1,5 +1,5 @@
 // CW7 (#741): the slopes bench's pure parts: its arms, the reduction of a run's raw records and samples, CPU-profile
-// summaries, the slopes across arms and REPORT.md. No I/O, no clock. slopes.mjs runs the arms; report.test.mjs pins them.
+// summaries, the slopes across arms and REPORT.md. No I/O, no clock. slopes.mjs runs the arms; slopes.test.mjs pins them.
 import { DEMAND, quantiles, rng } from '../meetup/workload.mjs';
 
 // /2 (#951): the active window's plan is seeded by the repeat, not the arm (activePlan below)
@@ -35,7 +35,9 @@ export function activePlan(seed, souls, activeMs) {
     return ops.sort((a, b) => a.at - b.at);
   });
 }
-/** A read is crowded when another Soul's call was scheduled less than this before it: it may wait for that call's turn. */
+/** A read is crowded when another Soul's call was scheduled less than this before it: it may wait for that call's turn.
+ *  An indicator of bunching, not of waiting: it looks back to the nearest call only, so a queue chain (reads 300+ ms
+ *  apart, each still repaying the earlier ones' frame credit) is not counted. */
 export const CROWD_MS = 300;
 /** How bursty a plan is: each Soul's read phase within the read period, and the share of reads that are crowded. */
 export function scheduleFacts(plan, seed) {
