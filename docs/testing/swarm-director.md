@@ -66,21 +66,23 @@ Script entries are `{ "atSec": n, "line": "..." }` or `{ "at": "go:<seat>" | "pr
   "order": ["doc", "grumpy"],                    // presentation order (default: seat order)
   "seats": [{ "id": "doc", "soulName": "Doc", "character": "One paragraph.", "topic": "what they present",
               "adapter": "claude-headless", "model": "haiku", "effort": "low", "economy": "lean" }],
-  "economy": { "lean": { "maxTurnsPerDirection": 2, "maxTurnWallSec": 150, "guidance": "..." } },  // merged over defaults
+  "economy": { "lean": { "maxTurnsPerDirection": 2, "maxTurnWallSec": 480, "guidance": "..." } },  // merged over defaults
   "timing": { "truthPollSec": 5, "gatherMaxSec": 900, "nudgeAfterSec": 150, "maxNudges": 3, "quietSec": 25,
               "speakTimeoutSec": 240, "maxSpeakNudges": 1, "prepareAhead": true, "presentWaitSec": 120 },
   "orchestrator": { "planner": null, "plannerEffort": "medium" },   // planner: a model name, or null for templates
   "success": { "allPresent": true, "minChars": 40, "inOrder": true, "eachOnce": true, "fromPodium": false },
   "observer": { "sampleSec": 15, "cameras": ["follow", "wide"], "viewport": [1024, 640], "dpr": 1 },
   "rails": { "onboardWallSec": 600, "onboardTimeoutSec": 540, "onboardConcurrency": 4, "quotaStopPct": 90,
-             "maxTurnsPerRequest": 6, "maxTurnWallSec": 240 },
+             "maxTurnsPerRequest": 6, "maxTurnWallSec": 480 },
   "console": { "script": [{ "at": "go:doc", "line": "redirect grumpy: talk about the piano.", "expect": ["piano"] }] }
 }
 ```
 
 Required: `kind: "cast"`, a lowercase `name`, `world` (a `dev` world needs `genesis`), `brief`, `room.label` and
 `room.match`, and seats with a unique lowercase `id`, `soulName` and `character`. Seats default to `claude-headless`,
-`haiku`, `low` effort and `lean` economy. `success.fromPodium` needs a `podium`.
+`haiku`, `low` effort and `lean` economy. `success.fromPodium` needs a `podium`. Every economy level allows a seat
+turn 480 s of wall time; `lean`, `normal` and `rich` differ in turns per direction and in the words the direction
+carries. Shorter walls cut turns off mid-walk on a loaded host.
 
 How the orchestrator behaves:
 

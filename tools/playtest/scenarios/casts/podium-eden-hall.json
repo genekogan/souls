@@ -30,7 +30,7 @@
  "orchestrator": { "planner": "opus", "plannerEffort": "medium" },
  "success": { "allPresent": true, "minChars": 40, "inOrder": true, "eachOnce": true, "fromPodium": true },
  "observer": { "sampleSec": 15, "cameras": ["follow", "wide"], "viewport": [1024, 640], "dpr": 1, "arrivalTimeoutMs": 180000 },
- "rails": { "onboardWallSec": 600, "onboardTimeoutSec": 540, "onboardConcurrency": 3, "quotaStopPct": 90, "maxTurnsPerRequest": 4, "maxTurnWallSec": 240 },
+ "rails": { "onboardWallSec": 600, "onboardTimeoutSec": 540, "onboardConcurrency": 3, "quotaStopPct": 90, "maxTurnsPerRequest": 4, "maxTurnWallSec": 480 },
  "console": { "script": [] },
  "notes": "Playtest round 2 (team/PLAYTEST-ROUND2-20261026.md #6). Eden 2026 has no indoor podium: the presentation room is the classroom eden-classroom-1 (core/hall at 42,-8.5, one room 'Classroom' 16 x 19 m, nine desks and chairs facing north) and the podium is the front of the room between op classroom-teacher (office desk, 37.8,-15.0) and op classroom-court-screen (42,-17.1): pos [40,-16], radius 3 m, which leaves the nearest audience chair (classroom-chair-1-x, z -11.8) more than 4 m away. The outdoor op commons-podium (9,-2, on commons-deck by commons-pavilion) is the alternative if the classroom will not do. Presence: placePath names containing eden-classroom-1. fromPodium: each talk's lines were spoken with the speaker's last ended receipt within 3 m of pos."
 }

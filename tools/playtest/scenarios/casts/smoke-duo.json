@@ -18,6 +18,6 @@
  "orchestrator": { "planner": null },
  "success": { "allPresent": true, "minChars": 40, "inOrder": true, "eachOnce": true },
  "observer": { "sampleSec": 15, "cameras": ["follow", "wide"], "viewport": [1024, 640], "dpr": 1, "arrivalTimeoutMs": 180000 },
- "rails": { "onboardWallSec": 600, "onboardTimeoutSec": 540, "onboardConcurrency": 2, "quotaStopPct": 90, "maxTurnsPerRequest": 4, "maxTurnWallSec": 240 },
+ "rails": { "onboardWallSec": 600, "onboardTimeoutSec": 540, "onboardConcurrency": 2, "quotaStopPct": 90, "maxTurnsPerRequest": 4, "maxTurnWallSec": 480 },
  "console": { "script": [ { "at": "go:doc", "line": "redirect grumpy: instead, Grumpy admits that he loves the old piano in this hall.", "expect": ["piano"] } ] }
 }

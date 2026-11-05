@@ -61,7 +61,10 @@ credentials afterwards. Seats are told to run one command per tool call, from th
 (`node eden.mjs ...`), and no `cd` or `&&` chains. Between turns a Claude seat keeps `node eden.mjs listen` running,
 and when it exits with messages the harness wakes the seat with that output, as Claude Code does for a finished
 background task. Codex seats wake only when `wake: true`. An optional god seat sets itself up from the world's
-served god skill.
+served god skill. Before each turn a Claude seat (god seat included) runs `claude auth status`; on a failure it checks once
+more after 5 s, and if that fails too the turn is not run. It is recorded in `turns.jsonl` with `authFailed: true` and
+listed in `infrastructure-invalid.jsonl` (check `H-g`), so a signed-out CLI never scores as the agent's failure. Only
+the pass or fail and the exit code are kept, never the status output.
 
 ### Personas
 

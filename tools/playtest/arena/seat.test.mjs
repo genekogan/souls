@@ -68,3 +68,62 @@ test('chat onStart fires when the queued turn actually starts (after the running
   await Promise.all([a, b]);
   assert.deepEqual(log, ['run wake', 'end wake', 'start 2 chat', 'run sit down', 'end sit down']);
 });
+
+// H-g (#371): Claude seats check `claude auth status` before each turn, once more after a pause, and never run a signed-out turn.
+const fakeTurn = (log) => ({ turn: async ({ text }) => { log.push(`run ${text}`); return { stream: [], usage: {}, finalText: 'ok', toolCalls: [], exit: 0, wallMs: 1 }; }, renderChat: () => '' });
+const authSeat = (results, adapter = 'claude-headless') => {
+  const run = mkdtempSync(join(tmpdir(), 'pt-seat-auth-'));
+  const s = createSeat({ runDir: run, seat: { id: 'a', adapter }, worldBase: 'http://h' });
+  const log = []; const real = s.adapter;
+  s.adapter = { ...fakeTurn(log), ...(real.authStatus ? { authStatus: async () => { const r = results.shift() ?? { ok: true, exit: 0 }; log.push(`auth ${r.ok}`); return r; } } : {}) };
+  s.authRetryMs = 1;
+  return { s, log, run };
+};
+const infra = (run) => { try { return readFileSync(join(run, 'infrastructure-invalid.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } };
+
+test('G1: a signed-in Claude seat checks once and runs the turn', async () => {
+  const { s, log, run } = authSeat([{ ok: true, exit: 0 }]);
+  const rec = await s.chat('sit down');
+  assert.deepEqual(log, ['auth true', 'run sit down']); assert.equal(rec.exit, 0); assert.equal(rec.authFailed, undefined);
+  assert.deepEqual(infra(run), []);
+});
+
+test('G1: a failed check is retried once; a pass on the retry runs the turn', async () => {
+  const { s, log, run } = authSeat([{ ok: false, exit: 1 }, { ok: true, exit: 0 }]);
+  await s.chat('sit down');
+  assert.deepEqual(log, ['auth false', 'auth true', 'run sit down']);
+  assert.deepEqual(infra(run), []);
+});
+
+test('G1: two failed checks: no model call, the turn is recorded as an infrastructure failure, the seat keeps going', async () => {
+  const { s, log, run } = authSeat([{ ok: false, exit: 1 }, { ok: false, exit: 1 }, { ok: true, exit: 0 }]);
+  const rec = await s.chat('sit down');
+  assert.deepEqual(log, ['auth false', 'auth false']);
+  assert.deepEqual({ turn: rec.turn, exit: rec.exit, authFailed: rec.authFailed, authExit: rec.authExit, finalText: rec.finalText }, { turn: 1, exit: null, authFailed: true, authExit: 1, finalText: null });
+  const turns = readFileSync(join(run, 'seats/a/turns.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(turns.length, 1); assert.equal(turns[0].authFailed, true);
+  const bad = infra(run); assert.equal(bad.length, 1);
+  assert.deepEqual({ check: bad[0].check, seat: bad[0].seat, turn: bad[0].turn, authExit: bad[0].authExit }, { check: 'H-g', seat: 'a', turn: 1, authExit: 1 });
+  await s.chat('stand up'); // the next turn checks again and runs
+  assert.deepEqual(log.slice(2), ['auth true', 'run stand up']);
+});
+
+test('G1: codex and scripted-owner seats run no auth check', async () => {
+  for (const adapter of ['codex-headless', 'scripted-owner']) {
+    const { s, log } = authSeat([{ ok: false, exit: 1 }], adapter);
+    await s.chat('sit down');
+    assert.deepEqual(log, ['run sit down'], adapter);
+  }
+});
+
+test('G1: authStatus reads the exit code and loggedIn, and keeps none of the output', async () => {
+  const { authStatus } = await import('./adapters/claude-headless.mjs');
+  const calls = [];
+  const fake = (r) => async (cmd, args) => { calls.push([cmd, ...args]); return r; };
+  assert.deepEqual(await authStatus({ runFn: fake({ code: 0, stdout: '{"loggedIn":true,"account":"a-test-account"}' }) }), { ok: true, exit: 0 });
+  assert.deepEqual(await authStatus({ runFn: fake({ code: 0, stdout: '{"loggedIn":false}' }) }), { ok: false, exit: 0 });
+  assert.deepEqual(await authStatus({ runFn: fake({ code: 1, stdout: 'Not logged in' }) }), { ok: false, exit: 1 });
+  assert.deepEqual(await authStatus({ runFn: fake({ code: 0, stdout: 'Logged in' }) }), { ok: true, exit: 0 });
+  assert.deepEqual(await authStatus({ runFn: async () => { throw new Error('spawn claude ENOENT'); } }), { ok: false, exit: null });
+  assert.deepEqual(calls[0], ['claude', 'auth', 'status']);
+});
