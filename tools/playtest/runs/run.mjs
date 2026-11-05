@@ -7,6 +7,8 @@
 //   node tools/playtest/runs/run.mjs compare  <runDir|replay-set>… [--question q.mjs]… [--out dir] [--md]
 //   node tools/playtest/runs/run.mjs correlate <runDir>                 (diagnostics: trace ↔ run records, offline)
 //   node tools/playtest/runs/run.mjs inspect   <runDir> --seat <id>     (diagnostics: the local inspector, read-only)
+//   node tools/playtest/runs/run.mjs preview   <runDir> --camera <c> --from <s> --to <s>   (offline: labelled excerpt, never full proof)
+//   node tools/playtest/runs/run.mjs package   <runDir> [--select <camera|preview file>]…   (offline: local index + selected projection)
 // Exit: 0 completed/valid, 1 failed, 2 refused, 130 cancelled, 124 stopped at limits.maxWallSec.
 import { resolve } from 'node:path';
 import { readSpec, adHocSpec, validateSpec } from './spec.mjs';
@@ -75,6 +77,21 @@ async function main() {
     if (flag('out')) { const { writeFileSync, mkdirSync } = await import('node:fs'); const o = resolve(flag('out')); mkdirSync(o, { recursive: true }); writeFileSync(`${o}/run-index.json`, JSON.stringify(ix, null, 1) + '\n'); writeFileSync(`${o}/COMPARE.md`, renderIndex(ix)); print({ index: `${o}/run-index.json`, arms: ix.arms.length, attempts: ix.attempts.length }); }
     else process.stdout.write(has('md') ? renderIndex(ix) : JSON.stringify(ix, null, 1) + '\n');
     return 0;
+  }
+  if (cmd === 'preview') {
+    // Offline: a separately labelled excerpt of one camera's recording under <run>/derived/previews; the source is untouched.
+    const { previewRecording } = await import('./recording.mjs');
+    if (!argv[1] || !flag('camera') || flag('from') == null || flag('to') == null) throw new Error('preview <runDir> --camera <name> --from <s> --to <s>');
+    const r = await previewRecording(argv[1], { camera: flag('camera'), fromSec: Number(flag('from')), toSec: Number(flag('to')) });
+    print(r); return r.ok ? 0 : 1;
+  }
+  if (cmd === 'package') {
+    // Offline: local index plus a selected projection under <run>/derived/package. Never uploads or posts.
+    const { packageRun } = await import('./recording.mjs');
+    if (!argv[1]) throw new Error('package <runDir> [--select <camera|preview file>]…');
+    const select = []; for (let i = 2; i < argv.length; i++) if (argv[i] === '--select') select.push(argv[++i]);
+    const r = packageRun(argv[1], { select });
+    print(r); return r.ok ? 0 : 1;
   }
   if (cmd === 'correlate') {
     // Analysis of a finished run's traces against its own records; offline, reads only.

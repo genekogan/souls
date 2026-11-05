@@ -10,6 +10,8 @@ import { validateScenario } from '../scenarios/lib/validate.mjs';
 import { validateDiagnostics } from './diagnostics.mjs';
 
 export const SPEC_VERSION = 1;
+const CAMERAS = ['wide', 'free'];
+const OBSERVER_MODES = ['off', 'passive', 'cameras'];
 const TOP = new Set(['soulRun', 'name', 'scenario', 'cast', 'world', 'durationSec', 'observer', 'limits', 'controllers', 'retention', 'setup', 'evaluation', 'diagnostics']);
 const CASTS = ['scenario', 'none'];
 // The scripted director delivers cards and chat; it has no pause or resume (end is the run's own cancellation).
@@ -18,7 +20,7 @@ const RETAIN = ['keep', 'delete'];
 
 export const DEFAULTS = Object.freeze({
   cast: 'scenario',
-  observer: { check: true, required: false, cameras: null, timeoutMs: 60000 },
+  observer: { check: true, required: false, cameras: null, timeoutMs: 60000, mode: 'cameras', record: null, freeComposition: null },
   limits: { maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000 },
   controllers: { allowLiveModels: false },
   // Evidence is always kept. These apply only after a completed run; failed or cancelled runs keep everything.
@@ -77,7 +79,13 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   for (const k of Object.keys(retention)) if (!(k in DEFAULTS.retention)) fail('retention.unknown', `retention.${k} is unknown (evidence is always kept)`);
   if (!(limits.maxWallSec > 0)) fail('limits.maxWallSec', 'limits.maxWallSec must be positive');
   if (!(observer.timeoutMs > 0)) fail('observer.timeoutMs', 'observer.timeoutMs must be positive');
-  if (observer.cameras != null && !(Array.isArray(observer.cameras) && observer.cameras.every((c) => c === 'wide'))) fail('observer.cameras', 'observer.cameras: only ["wide"] or [] here (seat follow cameras come from the scenario)');
+  if (observer.cameras != null && !(Array.isArray(observer.cameras) && observer.cameras.every((c) => CAMERAS.includes(c)))) fail('observer.cameras', `observer.cameras: a list of ${CAMERAS.join(', ')} (seat follow cameras come from the scenario)`);
+  for (const k of Object.keys(spec.observer ?? {})) if (!(k in DEFAULTS.observer)) fail('observer.unknown-field', `observer.${k} is unknown`);
+  if (!OBSERVER_MODES.includes(observer.mode)) fail('observer.mode', `observer.mode: ${OBSERVER_MODES.join(', ')}`);
+  if (observer.record != null && observer.record !== true && !(Array.isArray(observer.record) && observer.record.every((c) => typeof c === 'string' && c))) fail('observer.record', 'observer.record: true (every camera) or a list of camera names (wide, free, follow for every seat, or a seat id)');
+  if (observer.record != null && observer.mode !== 'cameras') fail('observer.record', `observer.record needs observer.mode "cameras" (got ${observer.mode})`);
+  if (Array.isArray(observer.record)) for (const c of observer.record) if ((c === 'wide' || c === 'free') && !(observer.cameras ?? []).includes(c)) fail('observer.record', `observer.record names ${c}, which observer.cameras does not open`);
+  if (observer.freeComposition != null && !(Array.isArray(observer.freeComposition.drag) && observer.freeComposition.drag.length === 2 && observer.freeComposition.drag.every(Number.isFinite) && (observer.freeComposition.wheel == null || Number.isFinite(observer.freeComposition.wheel)))) fail('observer.freeComposition', 'observer.freeComposition: {drag: [dx, dy], wheel?: n}');
   for (const k of Object.keys(spec.world ?? {})) if (!['port', 'slug', 'genesis', 'snapshot'].includes(k)) fail('world.override', `world.${k} cannot be overridden here; reference a scenario with that world`);
   if (spec.world?.genesis != null && spec.world?.snapshot != null) fail('world.source', 'world: give genesis or snapshot, not both');
   if (spec.world?.port != null && !(Number.isInteger(spec.world.port) && spec.world.port > 1024 && spec.world.port < 65536)) fail('world.port', 'world.port must be an unprivileged port');
@@ -145,6 +153,7 @@ export function applyOverrides(scenario, { cast = 'scenario', world = null, dura
   if (world?.snapshot != null) out.world.snapshot = world.snapshot;
   if (durationSec != null) out.durationSec = durationSec;
   if (observer?.cameras != null) out.observer = { ...(out.observer ?? {}), cameras: observer.cameras };
+  for (const k of ['mode', 'record', 'freeComposition']) if (observer?.[k] != null && !(k === 'mode' && observer.mode === 'cameras')) out.observer = { ...(out.observer ?? {}), [k]: observer[k] };
   if (cast && typeof cast === 'object') {
     // A composed cast replaces the scenario's seats and/or scripted direction in their own formats (seat "*" is the
     // scripted director's broadcast).
