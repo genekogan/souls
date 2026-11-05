@@ -1897,7 +1897,7 @@ export class EngineBridge {
           const block=this.layers.refusal(x.id,soul)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
           const id=`carry:${x.id}`,label=`Carry ${name(x.id)} with both hands, then lay it down (to: a place name)${need>1?`; it needs ${need} carriers`:''}`;
           caps.push({id,verb:'carry',label,target:{id:x.id,kind:'object'},available:!block,...(block?{blocked:block}:{}),params:{to:{type:'string',maxLength:100}}});
-          if(!block)plans.set(id,{label,steps:[...stand,{verb:'mars:carry',params:{crew:[soul.entityId],item:x.id,to:{x:here[0],z:here[1],yaw:x.pose.yaw??0}}}]});
+          if(!block)plans.set(id,{label,steps:[...stand,{verb:'mars:carry',params:{crew:[soul.entityId],item:x.id,to:{x:here[0],z:here[1],yaw:x.pose.yaw??0},keepYawV1:true}}]});
         }
         // entry 42: a thing kept inside a container is seen, offered and named only while the container is open
         const kept = asset.category === 'item' && x.support?.kind === 'resting-on' ? this.keptIn(x) : null;

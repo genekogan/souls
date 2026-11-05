@@ -19,7 +19,10 @@ import type { Link } from '../spatial/types.ts';
 import { fragileFlightCheck } from './fragile.ts';
 
 /** `via`: the stair link to use when the target is on another level (default: the one a person would take). */
-export type CarryParams = { crew: string[]; item: string; to: { x: number; z: number; yaw: number; level?: number }; place?: 'lay'; via?: string };
+/** `keepYawV1` (#1031): the load keeps its own heading through the lift, the move and the set-down; a crew that lifts
+ *  facing the other way along it stands at the other ends instead of turning it half a turn in their hands. Off by
+ *  default, so a carry without it (and any recorded history) is unchanged; floor carries only (a climb keeps today's frame). */
+export type CarryParams = { crew: string[]; item: string; to: { x: number; z: number; yaw: number; level?: number }; place?: 'lay'; via?: string; keepYawV1?: true };
 
 /**
  * A carry between levels (single carrier): the ground leg (`traj`) ends at the climb start s0, the
@@ -46,6 +49,8 @@ export type CarryProgram = {
   stats: { expanded: number; keyposes: number };
   /** Present when the target is on another level; `level`/`levelY` then switch to the exit level after the climb. */
   climb?: ClimbPlan;
+  /** #1031: a floor carry asked with `keepYawV1`; the load's pose follows the formation either way round (actions.ts loadFrame). */
+  keepYaw?: true;
 };
 
 const STAND_TOL = 0.02;
@@ -213,7 +218,7 @@ export function planCarryAction(rt: Runtime, p: CarryParams, fixture = false): P
   const setdown = carrierSpots(f, target, entityFrame({ ...item, pose: laid }).halfW);
   return {
     ok: true,
-    program: { f, crew: [...p.crew], item: item.id, level, levelY, lying: item.pose, pickup, approach, gather, traj: r.traj, target, laid, setdown, stats: { expanded: r.expanded, keyposes: r.keyposes } },
+    program: { f, crew: [...p.crew], item: item.id, level, levelY, lying: item.pose, pickup, approach, gather, traj: r.traj, target, laid, setdown, stats: { expanded: r.expanded, keyposes: r.keyposes }, ...(p.keepYawV1 && !fixture ? { keepYaw: true as const } : {}) },
   };
 }
 
