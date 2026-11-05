@@ -1,5 +1,5 @@
 name: Tranche / epic
-description: A planned body of work in milestones, each its own issue and PR, with review stops
+description: A planned body of work in milestones, each its own issue and PR, with explicit review cadence
 labels: ["type:epic", "needs:gene"]
 body:
   - type: markdown
@@ -49,10 +49,11 @@ body:
     id: cadence
     attributes:
       label: Review cadence
-      description: When work stops for the maintainer's review. Never continue past a stop on unreviewed dependent work.
+      description: Default to one batch review; request intermediate stops when needed. Merge approvals remain required.
       options:
-        - "After every milestone"
-        - "After every 2 milestones (policy default, review_after_milestones)"
+        - "After the authorized batch (default; merge approvals still required)"
+        - "After every milestone (explicit stop)"
+        - "After every 2 milestones (explicit stop)"
         - "After a stated batch, reviewed together (say which below)"
     validations: { required: true }
   - type: textarea
