@@ -32,7 +32,7 @@
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
   },
   "core-cup@2": {
-   "why": "Soul Actions 1-44 (tea): the mug is a recorded carried item with a handle and inner wall for pouring and sipping; 508 tris over the object.tableware budget 400 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (tea): the mug is a recorded carried item with a handle and inner wall for pouring and sipping; 508 tris over the object.tableware budget 400 (cutover hold, 2026-11-01)"
   },
   "core-deer@1": {
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
@@ -86,7 +86,7 @@
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
   },
   "core-kettle@2": {
-   "why": "Soul Actions 1-44 (tea): body, lid, spout and switch are separate shapes so filling, boiling and pouring read by hand; 1044 tris over the object.tableware budget 400 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (tea): body, lid, spout and switch are separate shapes so filling, boiling and pouring read by hand; 1044 tris over the object.tableware budget 400 (cutover hold, 2026-11-01)"
   },
   "core-litter-scatter@1": {
    "why": "area/scatter generator: the bake estimate grows with the area and is held against a per-object class cap; not a wrong estimate (Z2, 2026-10-20)"

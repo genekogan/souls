@@ -35,11 +35,11 @@
   },
   "core-kettle@2": {
    "tris": 700,
-   "why": "Soul Actions 1-44 (tea): body, lid, spout and switch are separate shapes so filling, boiling and pouring read by hand (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (tea): body, lid, spout and switch are separate shapes so filling, boiling and pouring read by hand (cutover hold, 2026-11-01)"
   },
   "core-cup@2": {
    "tris": 1084,
-   "why": "Soul Actions 1-44 (tea): a recorded carried mug with handle and inner wall for pouring and sipping (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (tea): a recorded carried mug with handle and inner wall for pouring and sipping (cutover hold, 2026-11-01)"
   }
  }
 }

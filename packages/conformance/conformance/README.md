@@ -47,6 +47,7 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `library-budgets-music-20261105.json` | in-budget music revisions (drum kit, mic stand, jukebox @2); pins nothing |
 | `library-budgets-water-20261105.json` | in-budget water and garden revisions (garden fountain @2, watering can @3); pins nothing |
 | `library-budgets-openings-20261105.json` | in-budget curtained window @2, drawer chest @3, bell @3; pins bell@3's construction-view overruns |
+| `library-budgets-tea-20261105.json` | in-budget kettle @3 and cup @3; pins nothing |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
 Repair a range or budget in a new revision and pin what remains.
