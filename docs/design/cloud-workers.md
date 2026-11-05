@@ -53,13 +53,13 @@ and [AGENTS.md](../../AGENTS.md):
 Use **Route B** for #601: it is the only route that meets A1–A4 without Gene present, and its tests already cover
 input validation without a model call (A5, first half). Before reviving it:
 
-1. **Rebase it onto current `main` as a new PR.** #604 stays closed. Change the quota rule to the dispatched model's
-   meter (see Observations). Keep everything else.
+1. **Rebase it onto current `main` as a new PR.** #604 stays closed. Change the quota input's description so the
+   attested figure is the dispatched model's meter (see Observations); the validation logic stays. Keep everything else.
 2. **Gene's steps, which no agent can do:**
    - set the repository variable `CLAUDE_WORKER_MODEL` to one exact workhorse model ID that the subscription
      behind `CLAUDE_CODE_OAUTH_TOKEN` can use;
    - approve the workflow PR. It is T0 by path (`.github/`), and the coordinator may raise it. Changes under
-     `.github/` run the full CI matrix, so push it once.
+     `.github/` may run the full CI matrix, so push it once.
 
    No secret, permission or billing change is needed.
 3. **The live pilot (#601 A5, second half)** is one dispatch. The coordinator starts it only after Gene's go-ahead,
@@ -84,6 +84,6 @@ read, so naming the dispatched model's meter is a convention in the input descri
 |---|---|---|
 | A1 dispatch with issue/PR, full SHA, objective, model | `workflow_dispatch` JSON input, validated; no interpolation | merged workflow |
 | A2 pinned action, isolated runner, claims, no deploy/gates/recursion | the wrapper's preparation checks | merged workflow |
-| A3 bounded time/turns, serialize per target, ceiling and quota | job/step/turn caps, per-target concurrency, attested observation | per-model meter fix |
+| A3 bounded time/turns, serialize per target, ceiling and quota | job/step/turn caps, per-target concurrency, attested observation | per-model meter wording in the input description |
 | A4 durable handoff and run link | pre-run and result comments on the thread, plus an artifact | merged workflow |
 | A5 offline validation, then one live run | six offline tests; one live run | Gene's model variable and go-ahead |
