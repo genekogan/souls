@@ -756,13 +756,15 @@ export class HumanViews {
     // Entry 40: doors too (a door's knob at 1.04 m is above every rig's hips). Entry 31's close from the push side stands 3 cm
     // farther from the leaf for wall clearance; under `knees` that 0.63 m push dipped the hips 0.17 m (0.086 before 31).
     // A latch below standing arm-rest height keeps its low-reach style (`knees`).
-    const style = styleFor(v.activity, walking), standing = style === 'knees' && !!v.handActuator && ts.length > 0 && ts.every((t) => t.up >= d.pivotH + d.sh.up - d.armLen);
+    const style = styleFor(v.activity, walking), actuating = style === 'knees' && !!v.handActuator && ts.length > 0;
+    const aboveHips = actuating && ts.every((t) => t.up >= d.hipH), aboveRest = actuating && ts.every((t) => t.up >= d.pivotH + d.sh.up - d.armLen);
     // entry 43: taking or putting a handle-held thing (a kettle) leans like the vessel stages: 'hips' flickered its hips 4 cm
-    // M05 #636 review: 'stand' caps the drop at 3 cm and never kneels, so a target above rest height but far out (0.85 m
-    // forward at 0.8 m) can be beyond a straight arm; then the low-reach style solves it as before rather than leaving the hand short.
+    // M05 #636 review: between rest and hip height 'stand' (3 cm drop cap, no kneel) is used only while each hand point stays
+    // within the IK's longest arm; a far target there (0.8 m high at 0.85 m) keeps the low-reach style it had before.
+    // At or above the hips a target always stands, as before (Entry 40): kneeling there gains a few mm or loses ground.
     const leanTransfer = v.transfer && v.transfer.endTick === undefined && v.activity === 'reach' && !walking;
-    const standPz = !leanTransfer && standing ? solvePosture(d, ts, 'stand') : null;
-    const pz = leanTransfer ? solvePosture(d, ts, 'lean') : standPz && postureReaches(d, standPz, ts) ? standPz : solvePosture(d, ts, style);
+    const standPz = !leanTransfer && aboveRest ? solvePosture(d, ts, 'stand') : null;
+    const pz = leanTransfer ? solvePosture(d, ts, 'lean') : standPz && (aboveHips || postureReaches(d, standPz, ts)) ? standPz : solvePosture(d, ts, style);
     // A low latch may need a small bend as well as a hand reach. Ease the whole
     // solved posture on the same timeline so the torso cannot pop in/out.
     if(v.handActuator){const k=handActuatorFrame(v.handActuator,(v.handActuatorTime??0)-v.handActuator.startTick*DT).weight;for(const key of ['drop','bend','rise','kneel'] as const)pz[key]*=k;}

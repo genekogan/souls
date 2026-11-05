@@ -61,6 +61,18 @@ for(const [name,height,forward,up,before] of [['woman',1.65,.85,.8,0],['woman',1
   assert.ok(r.err<=before+.005,`palm left short of a target the low-reach style reaches: ${JSON.stringify(r)}`);
  });
 
+// At or above the hips an out-of-reach target stands upright as on main (Entry 40), never kneels to gain millimetres; and a
+// target the low-reach style reached on main between rest and hip height is still reached within the IK's longest arm.
+// Palm errors on main: .024, .925, 0 and 0 m.
+for(const [name,height,forward,up,before,upright] of [['casual',1.85,1.0,1.04,.024,true],['casual',1.65,1.1,.93,.925,true],['woman',1.85,.9,.93,0,false],['woman',1.85,.85,.8,0,false]] as const)
+ test(`boundary ${up} m target ${name} ${height} at ${forward} m: as main`,async()=>{
+  const v=new HumanViews();v.setTemplates([await template(name,height)]);
+  const r=reach(v,`h_edge_${name}_${height}_${forward}_${up}`,[forward,up,0]);
+  console.log(JSON.stringify({case:'boundary',name,height,forward,up,...r}));
+  if(upright)assert.equal(r.kneel,0,`kneeled for an out-of-reach target above the hips: ${JSON.stringify(r)}`);
+  assert.ok(r.err<=before+.005,`palm farther than main: ${JSON.stringify(r)}`);
+ });
+
 for(const frame of ['masc','fem'] as const)test(`composed ${frame} tall look: rotated elevated standing contact`,async()=>{
  const kit=new HumanoidKit(new GLTFLoader(),'/modular/humanoid/',async url=>{const b=readFileSync(new URL('../../../mars/viewer/public'+url,import.meta.url));return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength) as ArrayBuffer;});
  const tpl=await kit.template({frame,preset:frame==='masc'?'casual':'woman',height:1.85,build:1.1});
