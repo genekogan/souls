@@ -1,6 +1,7 @@
 import {PIP_PRESET} from './pip.ts';
 import {MONSTER_PRESET,GHOST_PRESET,CENTAUR_PRESET,SHARED_BODY_BYTES} from './shared-bodies.ts';
 import {mountBodyAuthoring} from './authoring.ts';
+import {coreRevision,versionOf} from './core-revisions.ts';
 import {BodyCollections,collectionPath,itemOf,LIBRARY_PAGE} from './collections.ts';
 import type {Context,Hono} from 'hono';
 import type {Entity} from '@sim/engine-contract';
@@ -30,6 +31,11 @@ MONSTER_PRESET,GHOST_PRESET,
 // The compact centaur (#723): appended after them.
 CENTAUR_PRESET];
 const ASSET=/^body_[a-f0-9]{64}$/;
+/** #795 A1: a core preset by id (`pip`) or by released version (`pip@1`). Versions name the authored, content-addressed
+ *  presets only; the engine-native presets (humanoid, Martians, creatures) are selected by id. */
+export function corePreset(ref:string){const r=coreRevision(ref);return r?BODY_PRESETS.find(p=>p.id===r.id):ref.includes('@')?undefined:BODY_PRESETS.find(p=>p.id===ref);}
+/** The released version and content address of a core preset, when it has one: `{version:'pip@1', asset:'body_…'}`. */
+export function coreVersion(id:string){const r=coreRevision(id);return r&&!id.includes('@')?{version:versionOf(r),asset:r.asset}:{};}
 const MAX_UPLOAD_REQUEST=BODY_LIMITS.bytes+64*1024;
 
 /** Read a bounded multipart request before invoking the platform's form parser. */
@@ -58,6 +64,11 @@ export function launcherBodySite(url:string|undefined,key:string|undefined):Body
     return Buffer.concat(parts,n);
   }:undefined};
 }
+/** A carried body reference resolved at a destination world (#795): the body to wear, and, when its bytes are not here
+ *  yet, the pull to run once the arriving Soul is ready to change bodies. A refusal names its code. */
+export type BodyRefResolution={ok:true;body:Entity['body'];fetch?:()=>Promise<{ok:true}|{ok:false;code:string;reason:string}>}|{ok:false;code:string;reason:string};
+/** Per world host: resolve a carried `body_<sha>` reference for its owner, by the same rules as PUT /v1/edge/body {ref}. */
+export const bodyRefResolvers=new WeakMap<object,(ref:string,owner:string)=>BodyRefResolution>();
 export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySite?:BodySite}){
   const db=deps.db.db,world=deps.host.worldId;
   const moderation=moderationFor(db,world);
@@ -121,6 +132,21 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
     if(!localBytes(d.ref))return pullable&&site.pull&&sourceKey(d.sourceWorld)&&d.sourceWorld!==here?{ok:true,pull:true}:{ok:false,code:'body.source-unavailable',reason:'This body was admitted in another world and cannot be fetched here'};
     return {ok:true};
   }
+  const bodyOfDefinition=(d:{ref:string;descriptor:Record<string,unknown>}):Entity['body']=>{const asset=d.descriptor as {type:string;actionProfile?:string;motion?:unknown},type=asset.type,modelUrl=`${prefix}/v1/edge/body/assets/${d.ref}.glb`;
+    return {family:type==='humanoid'?'humanoid':'floater',type,model:d.ref,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(asset.actionProfile?{actionProfile:asset.actionProfile}:{}),...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})} as Entity['body'];};
+  // #795: travel carries a body reference; the destination resolves it here. Shared presets need no pull; other
+  // definitions follow the ref rules (owner's own or published, active, admitted type) and pull only when asked to.
+  bodyRefResolvers.set(deps.host,(ref,owner):BodyRefResolution=>{
+    if(!ASSET.test(ref))return {ok:false,code:'body.ref-unknown',reason:'No body definition with that reference'};
+    const preset=SHARED_BODY_BYTES[ref]?BODY_PRESETS.find(p=>(p.body as {model?:string}|null)?.model===ref):undefined;
+    if(preset)return types.includes(preset.body?.type??preset.body?.family??'humanoid')?{ok:true,body:structuredClone(preset.body) as Entity["body"]}:{ok:false,code:'body.world-policy',reason:'This world does not admit that body type'};
+    const d=definition(ref);if(!d||!visible(d,owner))return {ok:false,code:'body.ref-unknown',reason:'No body definition with that reference'};
+    const ok=selectable(d);if(!ok.ok)return ok;
+    return {ok:true,body:bodyOfDefinition(d),...(ok.pull?{fetch:async()=>{
+      if(!deps.souls.limits.allow(`edge-body-pull-owner:${owner}`,2,60000).ok)return {ok:false,code:'rate-limited',reason:'At most two body fetches from other worlds per owner per minute'};
+      if(!await pull(d))return {ok:false,code:'body.source-unavailable',reason:'The source world could not supply verified bytes for this body'};
+      const again=selectable(definition(ref)??{...d,status:'withdrawn'},false);return again.ok?{ok:true}:again;}}:{})};
+  });
   const wrap=(fn:(c:Context)=>unknown|Promise<unknown>)=>async(c:Context)=>{
     c.header('Cache-Control','no-store');try{return c.json(edgeBody(await fn(c) as object));}
     catch(e){if(e instanceof BodyAdmissionError)return c.json({contract:EDGE_CONTRACT,error:{code:e.code,message:e.message,...(e.details?{details:e.details}:{})}},400);
@@ -146,10 +172,10 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
     if(cursor.length>80)throw new EdgeError(400,'body.library-cursor','Unknown cursor');
     if(scope==='core'){const all=BODY_PRESETS.filter(p=>types.includes(p.body?.type??'humanoid')).filter(p=>!q||(p.name+' '+p.id).toLowerCase().includes(q.toLowerCase()));
       const start=cursor?all.findIndex(p=>p.id===cursor)+1:0;if(cursor&&start===0)throw new EdgeError(400,'body.library-cursor','Unknown cursor');
-      const page=all.slice(start,start+limit);return {contract:'body-library/1',scope,items:page.map(p=>({ref:p.id,name:p.name,type:p.body?.type??'humanoid',...((p.body as {actionProfile?:string}|null)?.actionProfile?{actionProfile:(p.body as {actionProfile:string}).actionProfile}:{})})),next:start+limit<all.length?page.at(-1)!.id:null};}
+      const page=all.slice(start,start+limit);return {contract:'body-library/1',scope,items:page.map(p=>({ref:p.id,...coreVersion(p.id),name:p.name,type:p.body?.type??'humanoid',...((p.body as {actionProfile?:string}|null)?.actionProfile?{actionProfile:(p.body as {actionProfile:string}).actionProfile}:{})})),next:start+limit<all.length?page.at(-1)!.id:null};}
     return {contract:'body-library/1',scope,...library.mine(s.owner,{q:q||undefined,after:cursor||undefined,limit})};}));
   app.get('/v1/edge/body/library/:ref',wrap(c=>{const s=deps.soul(c),ref=c.req.param('ref')??'';
-    const preset=BODY_PRESETS.find(p=>p.id===ref);if(preset)return {contract:'body-library/1',definition:{ref,name:preset.name,type:preset.body?.type??'humanoid',core:true},selectable:types.includes(preset.body?.type??'humanoid')?{ok:true}:{ok:false,code:'body.world-policy',reason:'This world does not admit that body type'}};
+    const preset=corePreset(ref);if(preset)return {contract:'body-library/1',definition:{ref:preset.id,...coreVersion(preset.id),name:preset.name,type:preset.body?.type??'humanoid',core:true},selectable:types.includes(preset.body?.type??'humanoid')?{ok:true}:{ok:false,code:'body.world-policy',reason:'This world does not admit that body type'}};
     if(!ASSET.test(ref))throw new EdgeError(404,'body.ref-unknown','No body definition with that reference');
     const d=definition(ref);if(!d||!visible(d,s.owner))throw new EdgeError(404,'body.ref-unknown','No body definition with that reference');
     return {contract:'body-library/1',definition:{ref,...itemOf(d.descriptor),public:d.public,...(d.descriptor.motion?{motion:d.descriptor.motion}:{}),triangles:d.descriptor.triangles,bytes:d.descriptor.bytes,status:d.status,sourceWorld:d.sourceWorld,attribution:{creatorSoul:d.creatorSoul}},saved:library.saved(s.owner,ref),selectable:selectable(d)};}));
@@ -193,7 +219,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
   async function assign(s:{soulId:string;entityId:string;owner:string;name:string},raw:any,tokenBound:boolean){
     const source=deps.db.soul(s.soulId);if(!source)throw new EdgeError(401,'unauthorized','Soul owner is unavailable');if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).length!==1)throw new EdgeError(400,'body.assignment','Choose exactly one preset, assetId or look');
     let body:Entity['body']|null,fetchFirst:{ref:string;sourceWorld:string;descriptor:Record<string,unknown>;status:string}|null=null;
-    if(typeof raw.preset==='string'){const preset=BODY_PRESETS.find(p=>p.id===raw.preset);if(!preset)throw new EdgeError(400,'body.preset-unknown','Unknown body preset');body=preset.body;}
+    if(typeof raw.preset==='string'){const preset=corePreset(raw.preset);if(!preset)throw new EdgeError(400,'body.preset-unknown','Unknown body preset');body=preset.body;}
     else if(typeof raw.assetId==='string'&&ASSET.test(raw.assetId)){
       if(!db.prepare('SELECT 1 FROM edge_body_owners_v1 WHERE world_id=? AND owner=? AND asset_id=?').get(world,s.owner,raw.assetId))throw new EdgeError(403,'body.not-owned','This upload does not belong to the Soul owner');
       const row=record(raw.assetId,s.owner);if(!row)throw new EdgeError(404,'body.asset-not-found','No admitted body asset');const asset=JSON.parse(row.descriptor);
@@ -202,8 +228,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger;bodySi
       const d=definition(raw.ref);if(!d||!visible(d,s.owner))throw new EdgeError(404,'body.ref-unknown','No body definition with that reference');
       const ok=selectable(d);if(ok.ok&&ok.pull)fetchFirst=d;   // bytes move only after authority, safety and the throttle pass (below)
       if(!ok.ok)throw new EdgeError(ok.code==='body.world-policy'?403:409,ok.code,ok.reason);
-      const asset=d.descriptor as {type:string;actionProfile?:string;motion?:unknown},type=asset.type,modelUrl=`${prefix}/v1/edge/body/assets/${d.ref}.glb`;
-      body={family:type==='humanoid'?'humanoid':'floater',type,model:d.ref,modelUrl,avatar:{kind:'body',modelUrl,bodyType:type},...(asset.actionProfile?{actionProfile:asset.actionProfile}:{}),...(type==='humanoid'?{}:{radius:.35,hoverHeight:1.45,...(asset.motion?{motion:asset.motion}:{})})} as Entity['body'];
+      body=bodyOfDefinition(d);
     }else if(raw.look!==undefined){ // core/humanoid@2: edits over the current look (today's look when none), a preset, or {random:true,seed?}
       try{body=lookRequest(current(s.entityId),raw.look,{preset:legacyPreset(s.entityId)},()=>randomInt(0,2**32-1)) as Entity['body'];}
       catch(e){if(e instanceof LookError)throw new EdgeError(400,'body.look',e.message);throw e;}

@@ -135,7 +135,7 @@ type Prog = {
   readiedActors?:string[];
   build?: { phase: BuildPhase; crew: string[]; stopping?: Diag; reverse?: true };
 };
-export type MarsWorldConfig = { groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
+export type MarsWorldConfig = { groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; stairLandingClearanceV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
 export const LITTLE_MARTIANS_WORLD: MarsWorldConfig={scene:'littlemartians',arrival:[0,18],arrivalPlace:'garden',reference:[0,16],grounds:{id:'grounds',name:'Ceramic garden'}};
 export const GREEN_FIELD_WORLD:MarsWorldConfig={scene:'greenfield',arrival:[0,0],arrivalPlace:'field',reference:[2,0],grounds:{id:'grounds',name:'Green field'}};
 export const EDEN_COMMONS_WORLD:MarsWorldConfig={scene:'eden-commons',arrival:[14,4],arrivalPlace:'commons',reference:[9,5],grounds:{id:'grounds',name:'Eden commons'}};
@@ -255,6 +255,7 @@ export class MarsEngine implements Engine {
     if(this.cfg.walkSettleWaitV1===true)this.rt.services.walkSettleWaitV1=true;
     if(this.cfg.occupiedLinkRoutingV1===true)this.rt.services.occupiedLinkRoutingV1=true;
     if(this.cfg.concurrentLinkEgressV1===true)this.rt.services.concurrentLinkEgressV1=true;
+    if(this.cfg.stairLandingClearanceV1===true)this.rt.services.stairLandingClearanceV1=true;
     if(this.cfg.shoreDepartV1===true)this.rt.services.shoreDepartV1=true;
     this.rt.services.doorPassersV1=this.doorPassersV1;
     if(rt.world.authoredBoundariesV1)immutableAuthoredBoundaryFact(rt.world.authoredBoundariesV1);
@@ -297,7 +298,7 @@ export class MarsEngine implements Engine {
   stateHash(): string { return this.stateHashWithWorld(this.rt.stateHash()); }
   /** Reuse only the native hash captured synchronously by snapshot(); never cache a live world hash across calls. */
   private stateHashWithWorld(nativeStateHash: string): string { return hashOf(this.stateHashInputs(nativeStateHash)); }
-  private stateHashInputs(nativeStateHash: string) { return { ...(this.cfg.groundReclaimV1===true?{groundReclaimPolicy:'ground-reclaim/1'}:{}), ...(this.world.officeStairGuardsV1?{officeGuardPolicy:this.world.officeStairGuardsV1.version}:{}), ...(this.lecturePlacement?{lecturePolicy:this.lecturePlacement}:{}), ...(this.sleepSnapshotActive?{sleepSnapshotPolicy:NATIVE_SLEEP_SNAPSHOT_V1}:{}), ...(this.newcomerResources.length?{newcomerResources:this.newcomerResources}:{}), w: nativeStateHash, p: [...this.programs.values()], l: this.leaving, clock: this.cfg.clock ?? null, quiet: this.quiet, ...(this.cfg.safeCrewRemoval?{removalPolicy:'crew-removal/1'}:{}), ...(this.cfg.disassemblyV1?{disassemblyPolicy:DISASSEMBLY_POLICY}:{}), ...(this.cfg.fixtureGroundGoalsV1?{fixtureGoalPolicy:'ground-fixture-levels/1'}:{}), ...(this.cfg.nativeArrivalWitnessV1?{arrivalWitnessPolicy:'native-navigation-arrival/1'}:{}), ...(this.cfg.quietLandingCourtesyV1?{quietLandingPolicy:'idle-landing-courtesy/1'}:{}), ...(this.commonsProvisionsActive?{provisionsPolicy:'commons-provisions/1'}:{}), ...(this.commonsKitchenActive?{kitchenPolicy:this.commonsKitchenVersion}:{}), ...(this.greenLandmarkActive?{greenLandmarkPolicy:'existing-green-landmark/1'}:{}), ...(this.socialEdenActive?{socialPolicy:'social-eden/1'}:{}), ...(this.foodDeliveries.length?{foodDeliveryPolicy:'commons-food-delivery/1',foodDeliveries:this.foodDeliveries}:{}), ...(this.cfg.safeArrivalV1?{arrivalPolicy:'arrival-clearance/1'}:{}), ...(this.cfg.walkSettleWaitV1===true?{walkSettlePolicy:'walk-settle-wait/1'}:{}),...(this.cfg.occupiedLinkRoutingV1===true?{occupiedLinkPolicy:'occupied-link-routing/1'}:{}),...(this.cfg.concurrentLinkEgressV1===true?{concurrentLinkEgressPolicy:'concurrent-link-egress/1'}:{}), ...(this.cfg.walkBlockV1?{walkPolicy:'walk-block/1'}:{}), ...(this.physical?{physicalBinding:this.physical.rulesVersion,physicalPolicy:this.cfg}:{}) }; }
+  private stateHashInputs(nativeStateHash: string) { return { ...(this.cfg.groundReclaimV1===true?{groundReclaimPolicy:'ground-reclaim/1'}:{}), ...(this.world.officeStairGuardsV1?{officeGuardPolicy:this.world.officeStairGuardsV1.version}:{}), ...(this.lecturePlacement?{lecturePolicy:this.lecturePlacement}:{}), ...(this.sleepSnapshotActive?{sleepSnapshotPolicy:NATIVE_SLEEP_SNAPSHOT_V1}:{}), ...(this.newcomerResources.length?{newcomerResources:this.newcomerResources}:{}), w: nativeStateHash, p: [...this.programs.values()], l: this.leaving, clock: this.cfg.clock ?? null, quiet: this.quiet, ...(this.cfg.safeCrewRemoval?{removalPolicy:'crew-removal/1'}:{}), ...(this.cfg.disassemblyV1?{disassemblyPolicy:DISASSEMBLY_POLICY}:{}), ...(this.cfg.fixtureGroundGoalsV1?{fixtureGoalPolicy:'ground-fixture-levels/1'}:{}), ...(this.cfg.nativeArrivalWitnessV1?{arrivalWitnessPolicy:'native-navigation-arrival/1'}:{}), ...(this.cfg.quietLandingCourtesyV1?{quietLandingPolicy:'idle-landing-courtesy/1'}:{}), ...(this.commonsProvisionsActive?{provisionsPolicy:'commons-provisions/1'}:{}), ...(this.commonsKitchenActive?{kitchenPolicy:this.commonsKitchenVersion}:{}), ...(this.greenLandmarkActive?{greenLandmarkPolicy:'existing-green-landmark/1'}:{}), ...(this.socialEdenActive?{socialPolicy:'social-eden/1'}:{}), ...(this.foodDeliveries.length?{foodDeliveryPolicy:'commons-food-delivery/1',foodDeliveries:this.foodDeliveries}:{}), ...(this.cfg.safeArrivalV1?{arrivalPolicy:'arrival-clearance/1'}:{}), ...(this.cfg.walkSettleWaitV1===true?{walkSettlePolicy:'walk-settle-wait/1'}:{}),...(this.cfg.occupiedLinkRoutingV1===true?{occupiedLinkPolicy:'occupied-link-routing/1'}:{}),...(this.cfg.concurrentLinkEgressV1===true?{concurrentLinkEgressPolicy:'concurrent-link-egress/1'}:{}),...(this.cfg.stairLandingClearanceV1===true?{stairLandingPolicy:'stair-landing-clearance/1'}:{}), ...(this.cfg.walkBlockV1?{walkPolicy:'walk-block/1'}:{}), ...(this.physical?{physicalBinding:this.physical.rulesVersion,physicalPolicy:this.cfg}:{}) }; }
   // Preserve the contract serializer's exact bytes; only the Node digest implementation changes.
   physicalHash(): string { return createHash('sha256').update(stableStringify(physicalView(this.world))).digest('hex'); }
 
@@ -307,6 +308,7 @@ export class MarsEngine implements Engine {
     if(this.cfg.walkSettleWaitV1===true)this.rt.services.walkSettleWaitV1=true;
     if(this.cfg.occupiedLinkRoutingV1===true)this.rt.services.occupiedLinkRoutingV1=true;
     if(this.cfg.concurrentLinkEgressV1===true)this.rt.services.concurrentLinkEgressV1=true;
+    if(this.cfg.stairLandingClearanceV1===true)this.rt.services.stairLandingClearanceV1=true;
     if(this.cfg.shoreDepartV1===true)this.rt.services.shoreDepartV1=true;
     this.rt.services.doorPassersV1=this.doorPassersV1;
     // Reader wrappers finish restoring public policies after construction.
@@ -2304,10 +2306,11 @@ export class MarsEngine implements Engine {
   /** Prospective ground-reclaim/1 reader; cfg and its state hash preserve the activation in snapshots. */
   groundReclaimEnabledV1(): boolean { return this.cfg.groundReclaimV1 === true; }
   enableGroundReclaimV1(): void { this.cfg = { ...this.cfg, groundReclaimV1: true }; }
-  configureRuntimePolicy(policy: {sleepBlockTicks:number;walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean;quietSeatCourtesy?:boolean;fixtureGroundGoalsV1?:boolean;nativeArrivalWitnessV1?:boolean;quietLandingCourtesyV1?:boolean;quietStallReleaseV1?:boolean;stairMakeWayV1?:boolean;yieldTimeoutV1?:boolean;spreadV2?:boolean;shoreDepartV1?:boolean}) {
+  configureRuntimePolicy(policy: {sleepBlockTicks:number;walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean;stairLandingClearanceV1?:boolean;quietSeatCourtesy?:boolean;fixtureGroundGoalsV1?:boolean;nativeArrivalWitnessV1?:boolean;quietLandingCourtesyV1?:boolean;quietStallReleaseV1?:boolean;stairMakeWayV1?:boolean;yieldTimeoutV1?:boolean;spreadV2?:boolean;shoreDepartV1?:boolean}) {
     if(policy.walkSettleWaitV1!==undefined&&typeof policy.walkSettleWaitV1!=='boolean')throw Error('runtime-policy.walk-settle-wait');
     if(policy.occupiedLinkRoutingV1!==undefined&&typeof policy.occupiedLinkRoutingV1!=='boolean')throw Error('runtime-policy.occupied-link-routing');
     if(policy.concurrentLinkEgressV1!==undefined&&typeof policy.concurrentLinkEgressV1!=='boolean')throw Error('runtime-policy.concurrent-link-egress');
+    if(policy.stairLandingClearanceV1!==undefined&&typeof policy.stairLandingClearanceV1!=='boolean')throw Error('runtime-policy.stair-landing-clearance');
     if (!Number.isInteger(policy.sleepBlockTicks) || policy.sleepBlockTicks < 20 || policy.sleepBlockTicks > 72000) throw new Error('runtime-policy.sleep-limit');
     if(policy.quietSeatCourtesy !== undefined && typeof policy.quietSeatCourtesy !== "boolean") throw new Error("runtime-policy.quiet-seat-courtesy");
     if(policy.stairMakeWayV1===true)this.cfg={...this.cfg,stairMakeWayV1:true};
@@ -2325,6 +2328,8 @@ export class MarsEngine implements Engine {
     if(policy.walkSettleWaitV1===true){this.cfg={...this.cfg,walkSettleWaitV1:true};this.rt.services.walkSettleWaitV1=true;}
     if(policy.occupiedLinkRoutingV1===true){this.cfg={...this.cfg,occupiedLinkRoutingV1:true};this.rt.services.occupiedLinkRoutingV1=true;}
     if(policy.concurrentLinkEgressV1===true){this.cfg={...this.cfg,concurrentLinkEgressV1:true};this.rt.services.concurrentLinkEgressV1=true;}
+    // stairLandingClearanceV1 (prospective, #509): the last climb step refuses a landing occupied on its destination level.
+    if(policy.stairLandingClearanceV1===true){this.cfg={...this.cfg,stairLandingClearanceV1:true};this.rt.services.stairLandingClearanceV1=true;}
     this.cfg.sleepBlockTicks = policy.sleepBlockTicks;
     this.cfg.quietSeatCourtesy = policy.quietSeatCourtesy;
   }
@@ -2451,6 +2456,7 @@ export class MarsEngine implements Engine {
     if(this.cfg.walkSettleWaitV1===true)this.rt.services.walkSettleWaitV1=true;
     if(this.cfg.occupiedLinkRoutingV1===true)this.rt.services.occupiedLinkRoutingV1=true;
     if(this.cfg.concurrentLinkEgressV1===true)this.rt.services.concurrentLinkEgressV1=true;
+    if(this.cfg.stairLandingClearanceV1===true)this.rt.services.stairLandingClearanceV1=true;
     if(this.cfg.shoreDepartV1===true)this.rt.services.shoreDepartV1=true;
     this.startRecorder();
   }

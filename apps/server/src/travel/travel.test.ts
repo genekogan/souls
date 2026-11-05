@@ -3,7 +3,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Db} from '../db.ts';
-import {appendLog, portableBody, siteRequestOk, Travel, TravelError, type LogEntry, type Relay, type SiteWorld} from './travel.ts';
+import {appendLog, portableBody, siteRequestOk, Travel, TravelError, type BodyRef, type LogEntry, type Relay, type SiteWorld} from './travel.ts';
 import {siblingBase} from './routes.ts';
 
 type World = {slug: string; name: string; db: Db; travel: Travel; entities: Record<string, {body?: unknown}>; faded: string[]; arrived: string[]; down: boolean};
@@ -24,7 +24,7 @@ function site() {
     }
   };
   const list = async (): Promise<SiteWorld[]> => [...worlds.values()].map(w => ({slug: w.slug, name: w.name}));
-  function world(slug: string, name: string, opts: {alone?: boolean} = {}): World {
+  function world(slug: string, name: string, opts: {alone?: boolean; resolve?: (ref: string, owner: string) => BodyRef; pullMs?: number} = {}): World {
     const db = new Db(':memory:'), entities: Record<string, {body?: unknown}> = {}, minds = new Map<string, unknown>(), faded: string[] = [], arrived: string[] = [];
     const host = {worldId: `${slug}-world`, engine: {world: {entities}, bodyAssignmentProblemV1: () => null}, minds, quietBarrier: false,
       enqueueChecked: async (_k: string, _s: string, p: {entityId: string; body: unknown}, guard: () => true) => { guard(); entities[p.entityId] = {...entities[p.entityId], body: p.body}; }};
@@ -41,7 +41,7 @@ function site() {
     };
     const fading = {enabled: true, depart: (id: string) => { faded.push(id); return true; }, arrive: (id: string) => { arrived.push(id); return true; }, addAway: () => {}};
     const w: World = {slug, name, db, entities, faded, arrived, down: false,
-      travel: new Travel({host: host as never, db, souls: souls as never, fading, slug, name, site: opts.alone ? null : {worlds: list, relay}, sleep: async () => {}})};
+      travel: new Travel({host: host as never, db, souls: souls as never, fading, slug, name, site: opts.alone ? null : {worlds: list, relay}, sleep: async () => {}, ...(opts.resolve ? {resolveBodyRef: opts.resolve} : {}), ...(opts.pullMs ? {bodyPullMs: opts.pullMs} : {})})};
     worlds.set(slug, w);
     return w;
   }
@@ -64,9 +64,8 @@ test('portableBody keeps kit looks and presets, leaves uploaded bodies home', ()
   const look = {kit: 'humanoid', look: {hair: 'bob'}}, p = portableBody(look);
   assert.deepEqual(p, {body: look, note: null});
   assert.notEqual(p.body, look, 'a copy, never the live engine object');
-  const up = portableBody({model: `body_${'a'.repeat(64)}`});
-  assert.equal(up.body, null);
-  assert.match(up.note!, /stays in its home world/);
+  const up = portableBody({model: `body_${'a'.repeat(64)}`, modelUrl: '/w/alder/v1/edge/body/assets/x.glb'});
+  assert.deepEqual(up, {body: {ref: `body_${'a'.repeat(64)}`}, note: null}, '#795: an admitted definition travels as a reference, never its home URL');
 });
 
 test('appendLog keeps the 20 most recent entries', () => {
@@ -131,11 +130,49 @@ test('travel: same name, owner and body arrive; origin puts the Soul away; home 
   assert.equal(JSON.stringify(v).includes('dev:ana'), false);
 });
 
-test('an uploaded body stays home and the log says so', async () => {
+test('a world that cannot resolve a carried reference keeps the default look and says why', async () => {
   const {world} = site(), a = world('alder', 'Alder'), b = world('birch', 'Birch'), ana = born(a, 'dev:ana', 'Ana', {model: `body_${'b'.repeat(64)}`});
   const r = await trip(a, ana, 'birch');
   assert.deepEqual(b.entities[b.db.soul(r.soulId)!.entity_id].body, {kit: 'default'}, 'the destination default look');
-  assert.match(r.log.at(-1)!.note!, /uploaded body/);
+  assert.match(r.log.at(-1)!.note!, /body\.ref-unsupported/);
+});
+
+test('#795: a carried reference is resolved for its owner, pulled only when the body can change, and worn', async () => {
+  const ref = `body_${'c'.repeat(64)}`, worn = {family: 'floater', type: 'ceramic', model: ref, modelUrl: `/w/birch/v1/edge/body/assets/${ref}.glb`};
+  const calls: string[] = [];let ready = false;
+  const {world} = site(), a = world('alder', 'Alder'), b = world('birch', 'Birch', {resolve: (r, owner) => { calls.push(`resolve ${r} ${owner}`); return {ok: true, body: worn, fetch: async () => { calls.push(`fetch ready=${ready}`); return {ok: true}; }}; }});
+  // the destination engine refuses a change until the arriving body is standing (the guard), then allows it
+  const host = (b.travel as any).d.host;let checks = 0;host.engine.bodyAssignmentProblemV1 = () => { if (++checks > 3) { ready = true; return null; } return 'body.safe-standing-required'; };
+  const ana = born(a, 'dev:ana', 'Ana', {model: ref, modelUrl: `/w/alder/v1/edge/body/assets/${ref}.glb`});
+  const r = await trip(a, ana, 'birch');
+  assert.deepEqual(b.entities[b.db.soul(r.soulId)!.entity_id].body, worn, 'the same definition, served by the destination');
+  assert.deepEqual(calls, [`resolve ${ref} dev:ana`, 'fetch ready=true'], 'resolved for the owner; bytes fetched once, only after the guard passed');
+  assert.equal(r.log.at(-1)!.note, undefined);
+});
+
+test('#795: a refused reference (unpublished, withdrawn, policy, unreachable) keeps the default look and names the code', async () => {
+  for (const [code, fetchFails] of [['body.ref-unknown', false], ['body.withdrawn', false], ['body.world-policy', false], ['body.source-unavailable', true]] as const) {
+    const ref = `body_${'d'.repeat(64)}`;let fetched = 0;
+    const {world} = site(), a = world('alder', 'Alder'), b = world('birch', 'Birch', {resolve: () => fetchFails ? {ok: true, body: {family: 'floater', type: 'ceramic', model: ref}, fetch: async () => { fetched++; return {ok: false, code, reason: 'unreachable'}; }} : {ok: false, code, reason: 'refused'}});
+    const ana = born(a, 'dev:ana', 'Ana', {model: ref});
+    const r = await trip(a, ana, 'birch');
+    assert.equal(r.ok, true, 'travel itself is never refused because of the body');
+    assert.deepEqual(b.entities[b.db.soul(r.soulId)!.entity_id].body, {kit: 'default'}, code);
+    assert.match(r.log.at(-1)!.note!, new RegExp(code.replace('.', '\\.')), code);
+    assert.equal(fetched, fetchFails ? 1 : 0);
+  }
+});
+
+test('#795: a carried body whose source never answers is refused body.source-slow within the deadline; the trip succeeds', async () => {
+  const ref = `body_${'e'.repeat(64)}`;let fetched = 0;
+  const {world} = site(), a = world('alder', 'Alder'), b = world('birch', 'Birch', {pullMs: 50, resolve: () => ({ok: true, body: {family: 'floater', type: 'ceramic', model: ref}, fetch: () => { fetched++; return new Promise<never>(() => {}); }})});
+  const ana = born(a, 'dev:ana', 'Ana', {model: ref});
+  const started = Date.now(), r = await trip(a, ana, 'birch'), took = Date.now() - started;
+  assert.equal(r.ok, true, 'travel itself is never refused because of the body');
+  assert.ok(took < 2_000, `arrival answered within the pull deadline (${took} ms)`);
+  assert.deepEqual(b.entities[b.db.soul(r.soulId)!.entity_id].body, {kit: 'default'}, 'the default look is kept');
+  assert.match(r.log.at(-1)!.note!, /body\.source-slow/);
+  assert.equal(fetched, 1, 'one pull, not retried');
 });
 
 test('a closed world refuses newcomers; a resident can always leave and home never refuses its own', async () => {
@@ -228,4 +265,17 @@ test('reconcile settles a departure that was in flight when the origin stopped',
   a.db.db.prepare("UPDATE travel_incarnations_v1 SET state='departing', at='birch' WHERE soul_id=?").run(ana.id);
   assert.deepEqual(await a.travel.reconcile(), [`${ana.id}: stayed`]);
   assert.equal(a.travel.status(ana).state, 'present');
+});
+
+test('#795: a traveller in the default look arrives in it, also where an earlier visit left a carried body', async () => {
+  const ref = `body_${'e'.repeat(64)}`, worn = {family: 'floater', type: 'ceramic', model: ref};
+  const {world} = site(), a = world('alder', 'Alder'), b = world('birch', 'Birch', {resolve: () => ({ok: true, body: worn})});
+  const ana = born(a, 'dev:ana', 'Ana', {model: ref});
+  const first = await trip(a, ana, 'birch'), there = b.db.soul(first.soulId)!.entity_id;
+  assert.deepEqual(b.entities[there].body, worn);
+  await trip(b, b.db.soul(first.soulId)!, 'home');
+  a.entities[ana.entity_id] = {body: null};   // at home the owner chose the default look
+  const second = await trip(a, a.db.soul(ana.id)!, 'birch');
+  assert.equal(second.soulId, first.soulId, 'the same incarnation returns');
+  assert.equal(b.entities[there].body ?? null, null, 'the default look, not the body left from the first visit');
 });
