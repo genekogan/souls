@@ -38,7 +38,9 @@ Two PRs that both append to one shared file conflict every time. So nothing a PR
 
 ## The merge train
 
-When a PR is ready, label it `merge:ready`. From there the train takes over, one PR at a time, and first picks how
+When a PR is ready, label it `merge:ready`. Its heavy CI jobs run only inside the [CI window](../testing.md#ci-window)
+(a ready PR labelled `ci:run` or `merge:ready`), so open the window with `ci:run` and add `merge:ready` once `ci-ok`
+is green. From there the train takes over, one PR at a time, and first picks how
 the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
 
 - **Non-strict**: a T0–T2 PR that touches no strict path, whose required checks are green on its current head, which
