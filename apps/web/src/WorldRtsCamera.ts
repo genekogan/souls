@@ -23,6 +23,8 @@ export type RtsOptions = {
   pickRoots: () => readonly THREE.Object3D[];
   /** Whether the user is in "your camera" with this module in charge (not Free, not Advanced). */
   enabled?: () => boolean;
+  /** #893: a flyTo glide (double-click, double-tap, ground tap) reached its point. */
+  arrived?: () => void;
   /** Subject centre and enclosing world-space radius, never a requested camera distance. */
   focusAt?:(x:number,y:number)=>{center:THREE.Vector3;radius:number}|null;
   /** C1: the world's ground rectangle [x0, z0, x1, z1] (far zoom limit, pivot bounds); null when unknown. */
@@ -424,7 +426,7 @@ export class WorldRtsCamera {
       const f = this.flight; f.t = Math.min(1, f.t + dt / (f.seconds ?? FLY_SECONDS)); const k = f.t * f.t * (3 - 2 * f.t);
       pivot.lerpVectors(f.fromT, f.toT, k); this.camera.position.lerpVectors(f.fromP, f.toP, k); this.camera.lookAt(pivot);
       this.markerAge = 0; changed = true;
-      if (f.t >= 1) this.flight = null;
+      if (f.t >= 1) { this.flight = null; this.o.arrived?.(); }
     }
     if(this.zoomLog&&mode==='manual'&&this.enabledNow()!==false&&!this.flight)changed=this.stepZoom(dt,pivot)||changed;
     if((this.walking||this.riseBy)&&(mode!=='manual'||this.enabledNow()===false)){this.stick={forward:0,right:0};this.riseBy=0;}
