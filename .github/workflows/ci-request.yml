@@ -3,6 +3,9 @@
 # Nothing is dispatched when the head's newest ci run already passed. The dispatched run queues behind a ci run in
 # progress for the same PR (one concurrency group), and does no heavy work if that run passes at the same head.
 # pull_request_target runs main's copy of this file and checks out main only, never the PR's code.
+# A dispatch runs the branch's own ci.yml. A branch cut before the window (#914) has no `pr` input there, and GitHub
+# refuses the dispatch (HTTP 422), so such a PR gets one comment asking to merge main forward instead (the PR's ci.yml
+# is read as data through the contents API, never run).
 name: ci-request
 on:
   pull_request_target:
@@ -20,6 +23,7 @@ jobs:
     permissions:
       contents: read
       actions: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,6 +39,11 @@ jobs:
         run: |
           if [ "$(node .github/scripts/ci-scope.mjs green --repo "$REPO" --sha "$HEAD_SHA")" = true ]; then
             echo "ci already passed at $HEAD_SHA; nothing to request"
+            exit 0
+          fi
+          if [ "$(node .github/scripts/ci-scope.mjs dispatchable --repo "$REPO" --sha "$HEAD_SHA")" != true ]; then
+            echo "::notice title=Merge main forward::ci.yml at $HEAD_SHA has no pr input (it predates #914); nothing dispatched"
+            node .github/scripts/ci-scope.mjs merge-forward --repo "$REPO" --pr "$PR"
             exit 0
           fi
           gh workflow run ci.yml --repo "$REPO" --ref "$HEAD_REF" -f pr="$PR"
