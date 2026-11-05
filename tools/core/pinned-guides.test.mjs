@@ -3,6 +3,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';import {join,resolve} from 'node:path';
 import {openEdgeServerV1} from './edge-server.mjs';import {openWorldServer} from './multiworld/world-server.mjs';
+delete process.env.EDGE_SKILL_FILE;   // the no-option case is the pinned skill, whatever the shell exports
 const input=resolve(new URL('../../',import.meta.url).pathname),pinned=f=>readFileSync(join(input,'tools/world-launcher/soul',f),'utf8');
 const scratch=()=>{const root=join(input,'.local/test');mkdirSync(root,{recursive:true});return mkdtempSync(join(root,'pinned-guides-'));};
 const get=async url=>{const r=await fetch(url);return {status:r.status,text:await r.text()};};
