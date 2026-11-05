@@ -129,3 +129,22 @@ test('stage: refuses when a staged file holds a Soul token', () => {
   assert.throws(() => stage({ out, dest: join(out, 'artifact'), qualify: Q, scrubWith: { paths: [], names: [] } }), /even-r1\/result.json holds a Soul token/);
   rmSync(out, { recursive: true });
 });
+
+test('slopes (#741): profile slopes alone runs the slopes bench with CPU profiles; its summaries are staged, nothing else', () => {
+  const i = parseInputs({ ...ENV, INPUT_PROFILE: 'slopes' });
+  assert.equal(i.profile, 'slopes');
+  assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'slopes,even' }), /profile/);
+  const q = benchArgs(i, true, 'o'), n = benchArgs(i, false, 'o');
+  assert.ok(q.includes('--cpu-prof') && q.includes('--qualifying-executor') && q.includes('--quiet-host') && !q.includes('--profile'));
+  assert.ok(!n.includes('--qualifying-executor') && !n.includes('--quiet-host'));
+  const out = mkdtempSync(join(tmpdir(), 'cq-slopes-')), arm = join(out, 'inv5000-r1');
+  mkdirSync(join(arm, 'souls', 's0'), { recursive: true }); mkdirSync(join(arm, 'w0'), { recursive: true });
+  writeFileSync(join(arm, 'souls', 's0', '.eden-agent.json'), JSON.stringify({ token: 'tok-slopes-secret' }));
+  for (const f of ['calls.jsonl', 'live.jsonl', 'profile-probe.cpuprofile', 'template.json']) writeFileSync(join(arm, f), 'x');
+  writeFileSync(join(arm, 'result.json'), JSON.stringify({ load: { otherSoulsProcessesBefore: 2, otherSoulsProcessesAfter: 0 } }));
+  for (const f of ['REPORT.md', 'receipt.json', 'results.json']) writeFileSync(join(out, f), '{}');
+  assert.equal(benchOtherSouls(out), 2, 'the slopes bench reports other Soul servers like the meetup bench');
+  const copied = stage({ out, dest: join(out, 'artifact'), qualify: Q, scrubWith: { paths: [[out, '.']], names: [] } });
+  assert.deepEqual(copied.sort(), ['REPORT.md', 'inv5000-r1/result.json', 'qualify.json', 'receipt.json', 'results.json']);
+  rmSync(out, { recursive: true });
+});

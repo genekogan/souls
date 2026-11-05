@@ -135,6 +135,11 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
   decision and its facts), plus each run's `REPORT.md`, `receipt.json` and `result.json`. Workspace, home, host and
   user names are replaced with placeholders. The upload is refused if a file holds a Soul token. `souls/`,
   `launcher/` and logs never leave the runner and are deleted at the end of the job.
+- **Slopes (CW7, #741).** `profile=slopes`, alone, runs `tools/bench/capacity/slopes/slopes.mjs` instead, with
+  `--cpu-prof`; see the bench README's "Slopes" section. The ctl script comes from the workflow's own commit, so until
+  this lands on `main`, dispatch the workflow from the branch that carries it (`gh workflow run … --ref <branch>`).
+  The artifact holds the top-level `REPORT.md`, `receipt.json` and `results.json`, plus each arm's `result.json`. The
+  calls, live samples, CPU profiles, templates and `souls/` stay on the runner.
 - **What it qualifies.** The host is the maintainer's machine. Its verdict is labelled with `host_class` and is not
   a production-class result unless that host is the production class.
 

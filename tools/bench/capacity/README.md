@@ -125,6 +125,34 @@ host names, users, home paths or tokens), `ops.jsonl` (one line per issued call)
 `REPORT.md`; `souls/` holds Soul tokens and stays local. Every owned process is stopped at the end (also on Ctrl-C)
 and the result records the cleanup. A run without `--quiet-host` is labelled `not-quiet`; no laptop run qualifies.
 
+## Slopes: inventory versus activity (CW7, #741)
+
+`slopes/slopes.mjs` asks whether stable inventory is charged again on every request. It runs three orthogonal axes on one designated `eden-2026` world. This is not a sweep.
+
+| axis | arms | held fixed |
+|---|---|---|
+| `inventory` | 5,000 vs 10,000 placed objects | 5 Souls registered and active, the scene and the acts |
+| `activity` | 0, 5 or 10 of 10 registered Souls active | the scene as authored |
+| `quiet` | the designated world alone, or with 9 quiet ticking worlds (CW1 fixtures 1–9, no Souls) | 5 active Souls in the designated world |
+
+- **The distant inventory** (`slopes/inventory.mjs`, `cw7-distant/1`): deterministic copies of the template's own small furniture kinds, in the largest empty square at least 100 m from every authored object's edge. That is beyond sight (30 m) and go-near (60 m). The copies are applied as extra genesis batches of at most 256 ops each; the authored batches are unchanged.
+- **Per arm:**
+  - boot and settle;
+  - join through a loopback path-stripping proxy, because the CLI wants a `/w/<slug>` URL; the measured calls go straight to the world;
+  - warm-up, then a quiet window;
+  - a per-route probe: `--probe-n` serial calls each of `here`, `observe`, `capabilities`, `resolve` and one non-moving act, from one Soul;
+  - an active window at CW1's per-Soul rates (a read every 4 s, an act every 20 s, one call at a time). The acts never move a Soul, so the neighbourhood is the same in every arm, and walk planning (#454) is **not** exercised.
+- **CPU** is the world process's (`/proc` or `ps`). Per-call CPU nets out the quiet window's rate, so it is an upper bound. `--cpu-prof` records the main thread with the inspector during the probe and during the active window. The result keeps the top self-time and inclusive functions, which stand in for the counters the server does not have: rows examined, plan builds, invalidations.
+- **Output:** `<out>/{receipt.json, results.json, REPORT.md}`, with one `<arm>-r<k>/result.json` per run, plus local-only `calls.jsonl`, `live.jsonl`, `*.cpuprofile`, the world data and `souls/`, which holds tokens.
+
+```bash
+# laptop (functional only, INDICATIVE; one world at a time, so --quiet-worlds 1 keeps the quiet axis light)
+node tools/bench/capacity/slopes/slopes.mjs --root <built checkout> --axis inventory,activity --short --cpu-prof --port 4700
+# qualifying executor: the capacity-qualify workflow with profile=slopes (it adds --cpu-prof and, when quiet, --quiet-host --qualifying-executor)
+```
+
+`--slice` wraps each world on its own, so a CPU quota there is per world, unlike the meetup bench. A qualifying slopes run needs no slice: it measures cost per call, not headroom.
+
 ## Recorded baseline (2026-10-31, before the server-reliability fixes)
 
 Fixture: the compact Eden 2026 copy, sha256 `d0921000a7ef…`, heap cap 768 MB unless noted; two repeats per arm, shown

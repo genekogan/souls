@@ -33,6 +33,9 @@ export function sameRunnerSet(jobLabels, ours) {
 export const LOAD_PER_CORE_MAX = 0.25;   // 1-minute load per core that counts as settled
 export const SETTLE_WAIT_S = 300;
 const PROFILES = ['even', 'meetup'];
+// CW7 (#741): `slopes` alone runs the slopes bench (tools/bench/capacity/slopes/slopes.mjs: inventory, activity and
+// quiet-world axes, each world booted directly, with CPU profiles) instead of the meetup bench. It never mixes with them.
+const SLOPES = 'slopes';
 // The bench ref runs on a persistent self-hosted runner, so only this repository's own branches are accepted: `main`
 // or one `agent/<name>` branch. Tags, commit SHAs, other branches and anything else are refused before checkout.
 export const REF_ALLOWED = /^(main|agent\/[A-Za-z0-9][A-Za-z0-9._-]{0,150})$/;
@@ -45,7 +48,7 @@ export function parseInputs(env) {
   const ref = String(env.INPUT_REF ?? '');
   if (!REF_ALLOWED.test(ref) || ref.includes('..') || ref.endsWith('.') || ref.endsWith('.lock')) bad('ref', ref, 'main or an agent/<name> branch of this repository');
   const profile = String(env.INPUT_PROFILE ?? 'even,meetup'), list = profile.split(',');
-  if (!list.length || list.some((p) => !PROFILES.includes(p)) || new Set(list).size !== list.length) bad('profile', profile, 'even, meetup or even,meetup');
+  if (profile !== SLOPES && (!list.length || list.some((p) => !PROFILES.includes(p)) || new Set(list).size !== list.length)) bad('profile', profile, 'even, meetup, even,meetup or slopes');
   const repeats = String(env.INPUT_REPEATS ?? '2');
   if (!/^[1-3]$/.test(repeats)) bad('repeats', repeats, '1, 2 or 3');
   const hostClass = String(env.INPUT_HOST_CLASS ?? '');
@@ -61,6 +64,8 @@ export function parseInputs(env) {
 /** The bench's argument list for a decision. --quiet-host and --qualifying-executor go together, only when quiet.
  *  --browser (one headless Chromium on world 0) only when the dispatcher asked for it: off by default. */
 export function benchArgs(inp, quiet, out) {
+  if (inp.profile === SLOPES) return ['--repeats', String(inp.repeats), '--host-class', inp.hostClass, '--out', out, '--port', '4460', '--cpu-prof',
+    ...(inp.short ? ['--short'] : []), ...(inp.slice ? ['--slice', inp.slice] : []), ...(quiet ? ['--quiet-host', '--qualifying-executor'] : [])];
   return ['--profile', inp.profile, '--repeats', String(inp.repeats), '--host-class', inp.hostClass, '--out', out, '--port', '4460', '--range', '4461-4490',
     ...(inp.short ? ['--short'] : []), ...(inp.browser ? ['--browser'] : []), ...(inp.slice ? ['--slice', inp.slice] : []), ...(quiet ? ['--quiet-host', '--qualifying-executor'] : [])];
 }
@@ -103,7 +108,7 @@ export function benchOtherSouls(out) {
   }
   return n;
 }
-const runDirs = (out) => (existsSync(out) ? readdirSync(out, { withFileTypes: true }).filter((e) => e.isDirectory() && /^(even|meetup)-r\d+$/.test(e.name)).map((e) => e.name) : []);
+const runDirs = (out) => (existsSync(out) ? readdirSync(out, { withFileTypes: true }).filter((e) => e.isDirectory() && /^(even|meetup|inv\d+|act\d+|quiet\d+)-r\d+$/.test(e.name)).map((e) => e.name) : []);
 
 /** Replace host-identifying strings: paths verbatim, names only as whole words, short values never. */
 export function scrub(text, { paths = [], names = [] }) {
@@ -125,7 +130,7 @@ export function soulTokens(out) {
 
 /** Copy the allowlisted files into dest, scrubbed; refuse if any still holds a Soul token. Returns the copied list. */
 export function stage({ out, dest, qualify, scrubWith }) {
-  const files = [['VERDICT.md'], ['summary.json'], ...runDirs(out).flatMap((d) => ['REPORT.md', 'receipt.json', 'result.json'].map((f) => [d, f]))].filter((p) => existsSync(join(out, ...p)));
+  const files = [['VERDICT.md'], ['summary.json'], ['REPORT.md'], ['receipt.json'], ['results.json'], ...runDirs(out).flatMap((d) => ['REPORT.md', 'receipt.json', 'result.json'].map((f) => [d, f]))].filter((p) => existsSync(join(out, ...p)));
   const tokens = soulTokens(out), copied = [];
   mkdirSync(dest, { recursive: true });
   const write = (rel, text) => {
@@ -189,8 +194,9 @@ async function main(cmd) {
   if (cmd === 'bench') {   // fake minds, no GitHub token; signals reach the bench so it stops what it owns
     const q = readJ(qf), env = { ...process.env, BRAIN_MODE: 'fake' }; delete env.GH_TOKEN; delete env.GITHUB_TOKEN;
     const args = benchArgs(inp, !!q.before?.quiet, arg('out'));
-    console.log(`meetup.mjs ${args.join(' ')}`);
-    const child = spawn(process.execPath, ['tools/bench/capacity/meetup/meetup.mjs', ...args], { stdio: 'inherit', env });
+    const bench = inp.profile === SLOPES ? 'tools/bench/capacity/slopes/slopes.mjs' : 'tools/bench/capacity/meetup/meetup.mjs';
+    console.log(`${bench.split('/').at(-1)} ${args.join(' ')}`);
+    const child = spawn(process.execPath, [bench, ...args], { stdio: 'inherit', env });
     for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => child.kill(sig));
     process.exitCode = await new Promise((r) => child.on('exit', (code) => r(code ?? 1))); return;
   }
