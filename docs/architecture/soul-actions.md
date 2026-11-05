@@ -137,12 +137,16 @@ context-size checks below), regression runs, and an uncut real-client recording 
       `edge-stop` naming the op's programme, and the same `stopping` journal with `stop.away`, but no stop receipt is
       made in their name. Their shared receipt stays open and ends with everyone else's, as `stopped` or
       `stopped-at-destination`; it is never `soul.faded`. The words say who went away, and the streams'
-      `shared.stopping` carries `away`.
+      `shared.stopping` carries `away`. The fade line on the member's stream says the body stays in the carry, not
+      that it reclines.
     - **Back while it runs.** A faded member who acts again while their operation still runs or stops is not relocated
-      to a starting place, since the crew still moves their body. Their act gets the ordinary `shared.busy` answer.
+      to a starting place, since the crew still moves their body. A body act gets the ordinary `shared.busy` answer,
+      and the stream's return line says they are back where their body is.
     - **Reconnect.** The same receipt id answers with the operation's current phase or its final result, and the
       stream keeps what was delivered meanwhile. A replayed `clientRef` returns the original receipt. A stale
-      `accept:<invite>` or `stop-carry:<op>` after the end is refused and moves nobody.
+      `accept:<invite>` from a member while the operation runs gets its `shared.busy` refusal. After the end it is
+      refused `invite.gone` with how the operation ended, and `stop-carry:<op>` is refused `shared.not-running`;
+      neither moves anybody or makes a receipt.
     - **Not enlisted.** A faded Soul cannot be asked to carry: it is not perceived, so it is not near. A disconnected
       Soul can be asked, but it is never committed without its own `accept` of that revision: the proposal waits,
       names who has not answered, and lapses.

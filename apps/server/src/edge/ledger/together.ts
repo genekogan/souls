@@ -1014,7 +1014,7 @@ export class Together {
   }
   private stopLabel(inv: Invite): string {return `Stop carrying ${inv.shared!.load.name} (the crew sets it down safely first)`;}
   /** Who stopped the operation, in words: a member's own stop, or (PC09) a member who went away. */
-  stopWords(st: {name: string; away?: true}): string {return st.away ? `${st.name} went away (faded out after an hour without an accepted action)` : `${st.name} asked to stop`;}
+  stopWords(st: {name: string; away?: true}): string {return st.away ? `${st.name} went away (their mind left the world)` : `${st.name} asked to stop`;}
   /** PC09 (#688, PC02 §3): the running operation `soulId` is a member of (their receipt in it, and its stop plan), or null. */
   sharedRunning(soulId: string): {receipt: string; invite: string; op: string; programId: string; hostEntity: string; stopped: boolean} | null {
     for (const inv of this.committed()) {
@@ -1124,8 +1124,8 @@ export class Together {
     if (stopped) for (const m of this.sharedMembers(inv)) this.p.deliver(m.soulId, 'shared.stopped', {op: op.id, result, by: {soulId: op.stop!.by, name: op.stop!.name}, text: reason, untrusted: true});
     this.p.spectate({kind: 'shared', op: {id: op.id, invite: inv.id, load: s.load.entity, phase: 'ended', result: op.result}, untrusted: true});
   }
-  /** A member's receipt of a running operation ended another way (a fade, an engine-fault recovery, a god walkout, a
-   *  restart): the operation ends for every member, and the host's programme is stopped. */
+  /** A member's receipt of a running operation ended another way (an engine-fault recovery, a god walkout, a restart;
+   *  a fade is the member's stop instead, PC09): the operation ends for every member, and the host's programme is stopped. */
   private sharedMemberEnded(r: EdgeReceipt) {
     if (!r.capability.startsWith('carry-with:') && !r.capability.startsWith('accept:')) return;
     const inv = this.inviteForReceipt(r.id), op = inv?.shared?.op;
@@ -1230,7 +1230,7 @@ export class Together {
         ? `; a search of ${searched} poses found no other way from here, which does not prove there is none` : ' and there is no other way from here'}; ${crew} hold ${s.load.name} where they are (it stays supported)`
       : `${crew} carrying ${s.load.name} are held up (${code})`;
     const frees = code === 'carry.route-blocked' ? `clearing ${blocker ?? 'the obstacle'} lets the carry go on` : `the carry goes on once ${who} moves`;
-    const stop = s.op?.stop ? ` ${s.op.stop.name} asked to stop; the load is set down once the crew can move to a clear spot.` : '';
+    const stop = s.op?.stop ? ` ${this.stopWords(s.op.stop)}; the load is set down once the crew can move to a clear spot.` : '';
     return (lasting ? `${what}. It has lasted ${Math.round(SHARED_LASTING_TICKS / 20)} s; nobody lets go on a timeout, and ${frees}.` : `${what}; ${frees}.`) + stop;
   }
   /** Restart: a member's started receipt of an operation whose programme the snapshot still runs is still followed. */

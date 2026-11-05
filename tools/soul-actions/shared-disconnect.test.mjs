@@ -99,16 +99,24 @@ async function carry(w, t, during, max = 6000) {
 }
 const laidFree = (w, beam) => { const x = w.f.host.engine.world.entities[beam]; assert.equal(x.support?.kind, 'ground', 'the beam lies on the ground'); assert.equal(x.reservedBy ?? null, null, 'the load claim is gone'); };
 
-for (const [who, when] of [['Bo', 'move'], ['Ada', 'gather']]) {
+for (const [who, when] of [['Bo', 'move'], ['Ada', 'gather'], ['Bo', 'lift']]) {
   test(`PC09 A1a/A2/A3: ${who} stops listening during ${when}; the body keeps the accepted carry to its end, then the same receipt says so on reconnect`, {timeout: 300000}, async (t) => {
     const w = await world(t, {presence: true}), {Ada, Bo, Cy} = w.souls, away = w.souls[who], other = who === 'Bo' ? Ada : Bo;
     const cyWalk = ok(await act(w, Cy, {capability: walkOf(w, Cy)}));
     let gone = null, during = null;
     const r = await carry(w, t, async (c) => {
-      if (!gone && c.phase === when) { gone = c.n; w.listen(away, false); }
-      // still away while the crew carries: a body act from the other member is still refused, nothing is replaced
-      if (gone !== null && !during && c.op.phase === 'started' && c.n > gone + 200) during = {view: w.rule.view(away.soulId).state, receipt: read(w, away, away === Ada ? c.p : c.a)};
+      if (gone === null && c.phase === when) { gone = c.n; w.listen(away, false); }
+      // away while the crew carries: the receipt still says started; a fresh accept from a stale context is refused
+      // shared.busy naming the op, and makes no receipt for either member
+      if (gone !== null && !during && c.op.phase === 'started' && c.n > gone + 200) {
+        const counts = [receiptsOf(w, Ada), receiptsOf(w, Bo)];
+        const fresh = await act(w, Bo, {capability: `accept:${c.id}`, params: {revision: 1}});
+        during = {view: w.rule.view(away.soulId).state, receipt: read(w, away, away === Ada ? c.p : c.a), fresh, counts, after: [receiptsOf(w, Ada), receiptsOf(w, Bo)]};
+      }
     });
+    assert.ok(during, 'checked while the crew carried');
+    assert.equal(during.fresh.accepted, false); assert.equal(during.fresh.code, 'shared.busy', JSON.stringify(during.fresh)); assert.equal(during.fresh.op, r.op.id);
+    assert.deepEqual(during.after, during.counts, 'a refused accept makes no receipt');
     assert.ok(gone !== null, `${who} disconnected during ${when}`);
     // A1a: the body was left alone by the body rule (no reflex move or stop) and the accepted carry arrived
     assert.ok(r.seen.states[who].has('zombie') && r.seen.states[who].has('asleep'), `${who}'s body went zombie, then asleep, during the carry: ${[...r.seen.states[who]]}`);
@@ -125,15 +133,16 @@ for (const [who, when] of [['Bo', 'move'], ['Ada', 'gather']]) {
     assert.equal(back.id, mine.receipt.id); assert.equal(back.phase, 'completed'); assert.equal(back.shared.op, r.op.id); assert.equal(back.shared.result, 'arrived');
     t.diagnostic(`${who}'s stream on reconnect: ${[...new Set(streamOf(w, away).map((e) => e.kind))].join(', ')}`);
     // A2b: retries from a stale context move nothing and make no receipt
-    const before = {rc: receiptsOf(w, away), seq: lastSeq(w)};
+    const before = {rc: [receiptsOf(w, Ada), receiptsOf(w, Bo)], seq: lastSeq(w)};
     const replay = ok(await act(w, Bo, {capability: `accept:${r.id}`, params: {revision: 1}, clientRef: 'bo-accept-1'}));
     assert.equal(replay.receipt.id, r.a.receipt.id, 'the original accept replayed by clientRef is the same receipt');
     assert.equal(replay.receipt.shared.result, 'arrived');
     const stale = await act(w, Bo, {capability: `accept:${r.id}`, params: {revision: 1}});
-    assert.equal(stale.accepted, false, `a stale accept is refused: ${JSON.stringify(stale)}`);
+    assert.equal(stale.accepted, false, `a stale accept is refused: ${JSON.stringify(stale)}`); assert.ok(stale.code, 'with a named code');
+    t.diagnostic(`stale accept after the end: ${stale.code}: ${stale.reason}`);
     const stop = await act(w, away, {capability: `stop-carry:${r.op.id}`});
     assert.equal(stop.accepted, false); assert.equal(stop.code, 'shared.not-running');
-    assert.equal(receiptsOf(w, away), before.rc, 'no new receipt');
+    assert.deepEqual([receiptsOf(w, Ada), receiptsOf(w, Bo)], before.rc, 'no new receipt for either member');
     assert.deepEqual([...events(w, 'decision'), ...events(w, 'edge-stop')].filter((e) => e.seq > before.seq), [], 'no decision or stop was logged');
     assert.equal(events(w, 'decision').filter((e) => e.steps?.some((s) => s.verb === 'mars:carry')).length, 1, 'one carry decision for the op');
     // A3a: away again, the absent Soul is never enlisted: a new proposal waits for its own accept and commits nothing
@@ -145,6 +154,10 @@ for (const [who, when] of [['Bo', 'move'], ['Ada', 'gather']]) {
     assert.equal(inv.state, 'pending'); assert.equal(inv.shared.op, null, 'nothing committed without their accept');
     assert.deepEqual(read(w, host, again).awaitingAnswer?.waitingFor?.map((g) => g.name), [asked.name], `the proposal says who has not answered: ${JSON.stringify(read(w, host, again))}`);
     assert.deepEqual(events(w, 'decision').filter((e) => e.seq > before.seq && e.soulId === asked.soulId && e.trigger !== 'edge-body'), [], `${asked.name}'s body joined nothing`);
+    // it lapses: the host's receipt ends failed invite.expired, still with nothing committed
+    await until(w, () => read(w, host, again).phase !== 'waiting', 2600);
+    assert.deepEqual([read(w, host, again).phase, read(w, host, again).code], ['failed', 'invite.expired'], JSON.stringify(read(w, host, again)));
+    assert.equal(inviteOf(w, again.receipt.shared.invite).shared.op, null);
     // A3b: the other member and the unrelated Soul were never held up
     const next = ok(await act(w, other, {capability: walkOf(w, other, 'yard')}));
     await until(w, () => read(w, other, next).phase !== 'started' && read(w, other, next).phase !== 'waiting', 1200);
@@ -155,8 +168,10 @@ for (const [who, when] of [['Bo', 'move'], ['Ada', 'gather']]) {
   });
 }
 
-for (const [who, when] of [['Bo', 'move'], ['Ada', 'move'], ['Bo', 'lift'], ['Ada', 'gather']]) {
-  test(`PC09 A1b/A2c: ${who} fades during ${when}; the fade is ${who}'s stop with the supported cleanup, never a cut`, {timeout: 300000}, async (t) => {
+// `via`: how the faded member comes back while the crew sets the load down: a body act (refused shared.busy), or an
+// accepted act outside the ledger's act path (speech, conversation: Comms' touch and its 'reclaimed' event)
+for (const [who, when, via] of [['Bo', 'move', 'act'], ['Ada', 'move', 'touch'], ['Bo', 'lift', 'act'], ['Ada', 'gather', 'act']]) {
+  test(`PC09 A1b/A2c: ${who} fades during ${when}; the fade is ${who}'s stop with the supported cleanup, never a cut (back by ${via})`, {timeout: 300000}, async (t) => {
     const w = await world(t), {Ada, Bo, Cy} = w.souls, away = w.souls[who], other = who === 'Bo' ? Ada : Bo;
     let faded = null, reclaim = null, busy = null, stopping = null;
     const r = await carry(w, t, async (c) => {
@@ -170,7 +185,8 @@ for (const [who, when] of [['Bo', 'move'], ['Ada', 'move'], ['Bo', 'lift'], ['Ad
         // A2c: the faded member comes back while the crew sets the beam down: not relocated, refused shared.busy
         if (c.op.phase !== 'ended') {
           const rel = events(w, 'edge-relocate').length;
-          reclaim = await act(w, away, {capability: walkOf(w, away)});
+          if (via === 'act') reclaim = await act(w, away, {capability: walkOf(w, away)});
+          else { w.comms.fading.touch(away.soulId); await w.tick(2); reclaim = {touched: true}; }
           busy = {rel: events(w, 'edge-relocate').length - rel, faded: w.edge.faded.has(away.soulId)};
         }
       }
@@ -183,7 +199,7 @@ for (const [who, when] of [['Bo', 'move'], ['Ada', 'move'], ['Bo', 'lift'], ['Ad
     // a stop before anything was lifted ends in the tick it is asked (the walkers just stop); otherwise kept open
     if (stopping.op.phase !== 'ended') for (const x of [stopping.mine, stopping.theirs]) {
       assert.equal(x.phase, 'started', `kept open while it is set down: ${JSON.stringify(x)}`); assert.equal(x.code, 'shared.stopping');
-      assert.match(x.reason, new RegExp(`^${who} went away \\(faded out`), x.reason);
+      assert.match(x.reason, new RegExp(`^${who} went away \\(their mind left the world\\)`), x.reason);
     }
     for (const [s, rc] of r.crew) {
       const x = read(w, s, rc);
@@ -198,8 +214,13 @@ for (const [who, when] of [['Bo', 'move'], ['Ada', 'move'], ['Bo', 'lift'], ['Ad
     if (reclaim) {
       t.diagnostic(`reclaim while stopping: ${JSON.stringify({accepted: reclaim.accepted, code: reclaim.code})}`);
       assert.equal(busy.rel, 0, 'a reclaimed member of a running carry is not relocated'); assert.equal(busy.faded, false, 'they are back');
-      assert.equal(reclaim.accepted, false); assert.equal(reclaim.code, 'shared.busy');
-      assert.match(reclaim.reason, new RegExp(`${who} went away`));
+      if (via === 'act') { assert.equal(reclaim.accepted, false); assert.equal(reclaim.code, 'shared.busy'); assert.match(reclaim.reason, new RegExp(`${who} went away`)); }
+      else {
+        const fades = streamOf(w, away).filter((e) => e.kind === 'fade').map((e) => e.text);
+        t.diagnostic(`${who}'s fade lines: ${JSON.stringify(fades)}`);
+        assert.match(fades.at(-2) ?? '', /your body stays in the shared carry \(op_/, 'the fade says the body stays at work');
+        assert.match(fades.at(-1) ?? '', /^You are back, where your body is: it is still in the shared carry/, 'no starting-place promise');
+      }
     } else {
       // the stop ended it in the same tick (nothing lifted): an act now reclaims them where they are, an ordinary act
       assert.ok(w.edge.faded.has(away.soulId));

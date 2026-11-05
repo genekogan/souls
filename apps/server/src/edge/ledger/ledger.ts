@@ -205,9 +205,11 @@ export class EdgeLedger implements EdgeLedgerHooks {
       try {this.intents.onTurn(m.conversation, m.turn.from.soulId, members);} catch {/* attention is best effort */}
     });} catch {/* no spectator hook: auto-face off */}
     // C9 body effects (fading itself only runs when Comms' fading flag is on — Gene has not approved it).
-    const fading = (c as unknown as {fading?: {onFade?(l: (e: {soulId: string; change: string}) => void): void; gone?(): string[]; onTouch?(l: (soulId: string) => void): void}}).fading;
+    const fading = (c as unknown as {fading?: {onFade?(l: (e: {soulId: string; change: string}) => void): void; gone?(): string[]; onTouch?(l: (soulId: string) => void): void; addKept?(k: (soulId: string) => string | null): void}}).fading;
     // LINK BODY: every accepted action wakes the body (body-rule.ts)
     fading?.onTouch?.(id => {try {this.bodyRule?.touch(id);} catch {/* best effort */}});
+    // PC09: a member of a running shared carry neither reclines on fading nor lands at a starting place on return
+    fading?.addKept?.(id => {const r = this.sharedCarry ? this.together.sharedRunning(id) : null; return r ? `the shared carry (${r.op})` : null;});
     const fadeOut = (soulId: string) => {
       const m = this.host.minds.get(soulId); if (!m) return;
       this.faded.add(soulId); this.pending.delete(soulId);
@@ -1611,7 +1613,16 @@ export class EdgeLedger implements EdgeLedgerHooks {
     ({v, caps, plans} = bound.pre && !social && text === asked ? bound.pre : this.resolveOnDemand(soul, text, caps, plans));
     if (words) {plans = new Map(plans); v = this.exactWords(soul, words, text, v, plans);}
     // PC04 (#683): answering a shared proposal that has closed is refused as gone, not unknown
-    if (v.kind === 'unknown' && /^(?:accept|decline):inv_/.test(asked) && ((i) => i?.kind === 'shared' && (i.host.soulId === soul.soulId || i.guests.some(g => g.soulId === soul.soulId)))(this.together.invite(asked.slice(asked.indexOf(':') + 1)))) return refuse('invite.gone', 'That proposal is no longer open.');
+    if (v.kind === 'unknown' && /^(?:accept|decline):inv_/.test(asked)) {
+      const inv = this.together.invite(asked.slice(asked.indexOf(':') + 1));
+      if (inv?.kind === 'shared' && (inv.host.soulId === soul.soulId || inv.guests.some(g => g.soulId === soul.soulId))) {
+        // PC09 (#688): a stale answer from a member of the running operation is that operation's busy refusal; after it
+        // ended, the refusal says how it ended (nothing is started either way)
+        const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy)};
+        const op = inv.shared?.op;
+        return refuse('invite.gone', op?.phase === 'ended' ? `That proposal is no longer open: its shared carry (${op.id}) has ended (${op.result ?? 'ended'}); nothing was started.` : 'That proposal is no longer open.');
+      }
+    }
     if (v.kind === 'unknown') return {...refuse(v.code ?? 'capability.unknown', v.reason), did_you_mean: v.didYouMean};
     let cap = v.cap; capability = cap.id;
     const bodyIssue=bodyCapabilityProblem(this.body(soul.entityId),cap,plans.get(capability)?.steps);if(bodyIssue)return refuse(bodyIssue.code,bodyIssue.reason);
