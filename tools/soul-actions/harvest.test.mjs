@@ -150,3 +150,39 @@ test('harvest: tomatoes into the basket, flowers into the vase, at the hand cont
  if (out) { mkdirSync(out, {recursive: true}); writeFileSync(`${out}/harvest.json`, JSON.stringify(report, null, 2)); }
  console.log(JSON.stringify(report));
 });
+
+// "pick the tomatoes from the rose bed" picks from the rose bed, not the nearer ripe one; a planter by a name nobody has, or
+// one not ripe, is refused by name and nothing changes.
+test('harvest: two ripe beds, the named one is picked', {timeout: 300000}, async t => {
+ const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
+ const edge = new EdgeLedger(f.host, f.db, undefined, {ambient: false}), app = new Hono(); let soul;
+ const comms = mountEdgeRoutes(app, {host: f.host, db: f.db, souls: f.souls, ledger: edge, soul: () => soul});
+ t.after(() => { comms.close(); f.host.stop(); f.db.close(); });
+ const god = new GodMode(f.db, {worldId: f.host.worldId, ownerId: 'dev:admin', tick: () => f.host.engine.world.tick, emit() {}});
+ installEngineBridge({host: f.host, god, edge, log() {}, worldLore: false, worldClock: false});
+ const tick = async (n = 5) => { for (let i = 0; i < n; i++) { f.host.tickOnce(); await setImmediate(); f.host.drainInputs(); } };
+ await tick(); await invite(f, 'ana'); const row = await accept(f.host, f.souls.create('dev:ana', {name: 'Ana', description: 'Harvest two beds'}));
+ soul = {soulId: row.id, entityId: row.entity_id, name: row.name, owner: row.owner}; await tick();
+ const W = () => f.host.engine.world, me = W().entities[soul.entityId].pose.p, [ax, az] = [me[0], me[2]];
+ const byName = n => [...god.model.entities.values()].find(e => e.name === n), state = n => byName(n).state ?? {};
+ const sc = god.act({ops: [
+  {op: 'place', def: 'core/garden-planter@2', name: 'near-bed', p: [ax + 1.5, az + 2.4], state: {growth: 4, moisture: 1}},
+  {op: 'place', def: 'core/garden-planter@2', name: 'rose-bed', p: [ax - 3.5, az + 4.4], state: {growth: 4, moisture: 1}},
+  {op: 'place', def: 'core/garden-planter@2', name: 'herb-bed', p: [ax + 5.5, az + 2.4], state: {growth: 2, moisture: 1}},
+  {op: 'place', def: 'core/table@1', name: 'garden-table', p: [ax - 1.2, az - 1.4]},
+  {op: 'place', def: 'core/harvest-basket@1', name: 'basket', in: {parent: 'garden-table', slot: 'top'}, p: [0.2, 0.1]}]});
+ assert.equal(sc.accepted, true, JSON.stringify(sc.failures?.slice(0, 3))); await tick(60);
+ const act = async (capability) => { const r = await accept(f.host, app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability})})); return r.json(); };
+ const nothing = () => assert.deepEqual([state('near-bed').growth, state('rose-bed').growth, state('herb-bed').growth, state('basket').fruit ?? 0], [4, 4, 2, 0], 'nothing changed');
+ const no = await act('pick the tomatoes from the shed'); assert.equal(no.accepted, false, JSON.stringify(no).slice(0, 300));
+ assert.match(JSON.stringify(no), /no garden planter called \\"shed\\"/, JSON.stringify(no).slice(0, 300)); nothing();
+ const unripe = await act('pick the tomatoes from the herb bed'); assert.equal(unripe.accepted, false, JSON.stringify(unripe).slice(0, 300));
+ assert.match(JSON.stringify(unripe), /Nothing in herb-bed is ready/, JSON.stringify(unripe).slice(0, 300)); nothing();
+ const b = await act('pick the tomatoes from the rose bed'); assert.equal(b.accepted, true, JSON.stringify(b).slice(0, 400));
+ assert.match(JSON.stringify(b), /from rose-bed/, 'the summary names the rose bed');
+ for (let n = 0; n < 9000 && !['completed', 'failed', 'cancelled', 'replaced'].includes(edge.receipt(soul.soulId, b.receipt.id)?.phase); n++) await tick(1);
+ assert.equal(edge.receipt(soul.soulId, b.receipt.id).phase, 'completed', JSON.stringify(edge.receipt(soul.soulId, b.receipt.id)).slice(0, 400));
+ assert.equal(state('rose-bed').growth, 3, 'the named bed was picked'); assert.equal(state('near-bed').growth, 4, 'the nearer ripe bed keeps its tomatoes');
+ assert.equal(state('basket').fruit, 3); assert.deepEqual(W().runtime?.violations ?? f.host.engine.runtime.violations, []);
+ if (out) { mkdirSync(out, {recursive: true}); writeFileSync(`${out}/harvest-two-beds.json`, JSON.stringify({status: 'pass', refused: [no.code, unripe.code], picked: 'rose-bed', near: state('near-bed').growth}, null, 1)); }
+});

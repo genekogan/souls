@@ -25,6 +25,7 @@ const INTO_BED = 0.13, HAND_LEFT = 0.17;
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const isGrowing = (def: StoredDef | undefined) => (def?.state as Record<string, { type?: string }> | undefined)?.growth?.type === 'number';
+const words = (s: string) => s.toLowerCase().replace(/[-_.]+/g, ' ').replace(/\s+/g, ' ').trim();
 const stageOf = (growth: unknown) => GROWTH_STAGES[Math.max(0, Math.min(GROWTH_STAGES.length - 1, Math.round(num(growth))))];
 
 export type HarvestHost = {
@@ -83,7 +84,7 @@ export function createHarvest(h: HarvestHost) {
   }
 
   /** The act for a vessel's `harvest`: a refusal with its reason, the steps, or null (not a harvest vessel). */
-  function plan(soul: { entityId: string; soulId?: string; name?: string }, id: string, action: string): HarvestPlan | Refusal | null {
+  function plan(soul: { entityId: string; soulId?: string; name?: string }, id: string, action: string, params: Record<string, unknown> = {}): HarvestPlan | Refusal | null {
     const m = M(), def = defOf(id), hv = harvestOf(def as never);
     if (!hv || action !== 'harvest') return null;
     const body = ents()[soul.entityId]; if (!body?.human) return { code: 'body.unavailable', reason: 'Your body is unavailable.' };
@@ -100,7 +101,12 @@ export function createHarvest(h: HarvestHost) {
     // the nearest planter ripe for this vessel; else the nearest planter, to say what it is doing
     const from = GROWTH_STAGES.indexOf(hv.from);
     let ripe: string | null = null, rd = HARVEST_REACH, any: string | null = null, ad = HARVEST_REACH, denied: Refusal | null = null;
-    for (const p of planters()) {
+    // "pick the tomatoes from the rose bed": only the planter so named (its name, hyphens as spaces); never the nearest instead
+    const named = typeof params.from === 'string' && params.from.trim() ? words(params.from) : null;
+    const called = (p: string) => { const n = words(m.entities.get(p)?.name ?? ''); return n === named || (!!named && named.split(' ').every((w) => n.split(' ').includes(w))); };
+    const pool = named ? planters().filter(called) : planters();
+    if (named && !pool.some((p) => { const q = pose(p); return q && Math.hypot(q.x - me[0], q.z - me[1]) <= HARVEST_REACH; })) return { code: 'harvest.no-such-planter', reason: `There is no garden planter called "${params.from}" near enough to pick ${hv.word} from.` };
+    for (const p of pool) {
       const q = pose(p); if (!q) continue; const d = Math.hypot(q.x - me[0], q.z - me[1]); if (d > HARVEST_REACH) continue;
       // someone else's private planter is not picked from (ownership, layers.ts): it is skipped, and named if nothing else is ripe
       const no = soul.soulId ? h.access?.(p, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null;

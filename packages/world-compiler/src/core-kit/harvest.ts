@@ -37,7 +37,7 @@ const basket: DefInput = {
   components: { carryable: { mass: 0.6, grips: 1 }, container: { capacity: 1 } } as DefInput['components'],
   slots: [{ id: 'handle', kind: 'carry', p: BASKET_GRIP, yaw: 0 }] as DefInput['slots'],
   size: { box: [0.33, 0.31, 0.33] },
-  actions: [{ name: 'harvest', label: 'Pick the ripe tomatoes into the basket', then: [{ op: 'increment', field: 'fruit', by: 3 }] }] as DefInput['actions'],
+  actions: [{ name: 'harvest', label: 'Pick the ripe tomatoes into the basket', params: { from: { type: 'string', max: 48, default: '', doc: 'the planter to pick from, by its name; the nearest ripe one when empty' } }, then: [{ op: 'increment', field: 'fruit', by: 3 }] }] as DefInput['actions'],
 } as unknown as DefInput;
 
 const vasePalette = { glaze: '#5f86a6', mouth: '#2b2f33', stem: '#5a8636', petal: '#f39ac0', eye: '#e9b52c' };
@@ -60,7 +60,7 @@ const vase: DefInput = {
   state: { flowers: { type: 'number', min: 0, max: 3, default: 0 } } as DefInput['state'],
   components: { carryable: { mass: 0.5, grips: 1 }, container: { capacity: 1 } } as DefInput['components'],
   size: { box: [0.12, 0.22, 0.12] },
-  actions: [{ name: 'harvest', label: 'Pick flowers for the vase', then: [{ op: 'increment', field: 'flowers', by: 3 }] }] as DefInput['actions'],
+  actions: [{ name: 'harvest', label: 'Pick flowers for the vase', params: { from: { type: 'string', max: 48, default: '', doc: 'the planter to pick from, by its name; the nearest ripe one when empty' } }, then: [{ op: 'increment', field: 'flowers', by: 3 }] }] as DefInput['actions'],
 } as unknown as DefInput;
 
 export const HARVEST_DEFS: DefInput[] = [basket, vase];
