@@ -75,6 +75,10 @@ Fixes found in review and deferred to after the repository migration:
   with one reusable projection scratch vector. Existing instrument history is indexed only for piano-relevant transitions;
   unrelated actors have no new instrument arrays or reverse scan. Server work and perception are unchanged; overall
   client cost equivalence is unverified.
+  The sound follows the hands: a note sounds only from the moment the entry blend has put the hands on the keys
+  (depicted activity start + 0.8 s, from the same recorded activity age the pose uses; an unknown age counts as
+  settled for both). The absolute score clock is not shifted. When a pianist stops, notes scheduled ahead that have
+  not begun are cancelled, and notes already ringing decay naturally.
 - **Social facing in general.** Groups and conversations should face each other, and a Soul using an object should face
   it; today Souls often keep the heading they arrived with.
 

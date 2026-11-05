@@ -1656,6 +1656,8 @@ export class HumanViews {
   /** Per-person pose readout of the last render (lab hook `bones()`). */
   /** Entry 26: the instrument a body plays now (from its take frame), for the sound layer. */
   instrumentOf(id: string): string | undefined { return this.views.get(id)?.instrument; }
+  /** Seconds the depicted activity has run (the age the activity frames use); absent when it began before known history. */
+  activityAgeOf(id: string): number | undefined { return this.views.get(id)?.since; }
   bones(id?: string) {
     const out: Record<string, Diag & { activity: string; base: string; ankleH: number; armLen: number; walkW: number; variety: number; template: string; body: Record<string, number>; armFit: { k: number; before: number }[]; on: string | null; goal: Posture; dims: Dims | null }> = {};
     for (const [k, v] of this.views) {

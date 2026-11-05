@@ -34,6 +34,10 @@ export function pianoHands(seed: string, t: number): [{ press: number; along: nu
   }
   return hands;
 }
+/** The world second from which a pianist's notes may sound: the arm entry blend (`fade`) must have brought the hands
+ *  onto the keys first. `age` is how long the depicted activity has run at world second `now` (the same age the hand pose
+ *  uses); unknown (it began before the known history) means settled. The score clock itself never shifts. */
+export function pianoReadyAt(now:number,age:number|undefined,fade:number){return age===undefined?-Infinity:now-age+fade;}
 /** Move toward the next key before its onset, so pitch changes do not teleport a wrist.
  * At the onset the lane is exact; the audible note/strike clock is unchanged. */
 export function pianoLanes(seed:string,t:number):[number,number]{

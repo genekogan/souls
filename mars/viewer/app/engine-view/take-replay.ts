@@ -207,6 +207,7 @@ export class TakePeople {
   poseStats(){return this.humans.poseStats;}
   contactDiagnostics(){return this.humans.bones();}
   instrumentOf(id:string){return this.humans.instrumentOf(id);}
+  activityAgeOf(id:string){return this.humans.activityAgeOf(id);}
   appearanceStatus(){return this.humans.appearanceStatus();}
 
   constructor(take: Take, opts: { scene?: SpatialScene; commonsContrast?:boolean; humanPresets?:boolean; nativeBoat?:{layout:NativeBoatLayoutV1;proposal:ShoreDesign['boat']} } = {}) {
