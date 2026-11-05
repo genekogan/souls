@@ -42,7 +42,7 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
  assert.equal(god.act({ops:[
   {op:'place',def:'core/notebook-stand@1',name:'notebook',p:[ax,az+2.6],r:Math.PI},
-  {op:'place',def:'core/lectern@2',name:'reading-lectern',p:[ax+3.2,az+2.6],r:Math.PI,params:{book:'book:tea-cup'}},
+  {op:'place',def:'core/lectern@2',name:'oak-lectern',p:[ax+3.2,az+2.6],r:Math.PI,params:{book:'book:tea-cup'}},
   {op:'place',def:'core/lectern@1',name:'old-lectern',p:[ax-3.2,az+2.6],r:Math.PI},
   {op:'place',def:'core/notebook-stand@1',name:'private-journal',p:[ax-3.2,az-2.6],owner:'soul:someone-else',access:'private'}]}).accepted,true);
  assert.equal(god.act({ops:[{op:'place',def:'core/lectern@2',name:'bad-lectern',p:[ax+6,az-2],params:{book:'book:not-a-book'}}]}).accepted,false,'an unknown book is refused at placement');
@@ -100,18 +100,20 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  // ---- W016: the lectern's book
  const readers=edge.capabilities(ben).filter(c=>c.verb==='read');
  const atLectern=(s,n)=>edge.capabilities(s).find(c=>c.verb==='read'&&(c.id===`read:read.${id(n)}`.toLowerCase()||c.target?.id===`read.${id(n)}`.toLowerCase()));
- const lec=atLectern(ben,'reading-lectern');
+ const lec=atLectern(ben,'oak-lectern');
  assert.ok(lec,`a reading offer at the book lectern: ${JSON.stringify(readers.map(c=>[c.id,c.label]))}`);assert.match(lec.label,/^Read A Cup with Room for Silence/);
  const lecIds=[];const book=EDEN_LIBRARY_CATALOGUE.find(b=>b.id==='book:tea-cup');
  const readAt=async(s,cap)=>{const r=await act(s,cap.id,{seconds:20});const fr=await finish(s,r,1200);assert.equal(fr.phase,'completed',JSON.stringify(edge.receipt(s.soulId,r.receipt.id)).slice(0,500));return edge.receipt(s.soulId,r.receipt.id).outcome;};
+ assert.equal(await words(ben,'read a cup with room for silence'),`read:read.${id('oak-lectern')}`.toLowerCase(),'the book\'s title names its lectern');
+ assert.equal(await words(ben,'read the book on the oak lectern'),`read:read.${id('oak-lectern')}`.toLowerCase(),'"read the book on the oak lectern" is that lectern, not ambiguous with read:here at the same spot');
  const p1=await readAt(ben,lec);
  assert.equal(p1.detail.book.id,'book:tea-cup');assert.match(p1.summary,new RegExp(`^Read ${book.title}, passage 1 of 3`));assert.equal(p1.detail.passage,book.passages[0].text);
  const p2=await readAt(ben,lec);assert.match(p2.summary,/passage 2 of 3/);assert.equal(p2.detail.passage,book.passages[1].text);
  // one reader at a time: Ben steps over to read the notebook, which frees the lectern's reading place for Cy
  const bn=await act(ben,`read:${id('notebook')}`);assert.equal((await finish(ben,bn)).phase,'completed');
- const c1=await readAt(cy,atLectern(cy,'reading-lectern'));
+ const c1=await readAt(cy,atLectern(cy,'oak-lectern'));
  const cn=await act(cy,`read:${id('notebook')}`);assert.equal((await finish(cy,cn)).phase,'completed');assert.match(c1.summary,/passage 1 of 3/,'another Soul starts at the beginning');
- await readAt(ben,atLectern(ben,'reading-lectern'));const p4=await readAt(ben,atLectern(ben,'reading-lectern'));assert.match(p4.summary,/^Finished A Cup with Room for Silence/);
+ await readAt(ben,atLectern(ben,'oak-lectern'));const p4=await readAt(ben,atLectern(ben,'oak-lectern'));assert.match(p4.summary,/^Finished A Cup with Room for Silence/);
  // the old lectern reads as before: this world's constitution / lore, not a library book
  const old=atLectern(dan,'old-lectern');
  assert.ok(old,'the @1 lectern still has its reading offer');assert.doesNotMatch(old.label,/Cup with Room/);
@@ -119,7 +121,7 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  // persistence
  const restored=WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())),undefined,god.model.library);
  assert.equal(restored.get('notebook').state.text,state('notebook').text);assert.equal(restored.get('notebook').state.textBy,state('notebook').textBy);
- assert.equal(restored.get('reading-lectern').params.book,'book:tea-cup');
+ assert.equal(restored.get('oak-lectern').params.book,'book:tea-cup');
  assert.deepEqual(f.host.engine.runtime.violations,[]);
  const report={status:'pass',admissionRetries:retries,makeWayRetries,hereBytes:{absent:bytes(absent),distant100Each:bytes(far),nearBlank:bytes(nearBlank),nearFull:bytes(nearFull)},pageHand,bodyLocalZ:bodyZ,
   readSummary:outcome.summary,learned:outcome.learned.map(l=>l.fact),lecternReads:[p1.summary,p2.summary,c1.summary,p4.summary],oldLectern:o1.summary,lecternOffers:lecIds,strokes:runs.map(r=>({...r.stroke,bodyZ:r.bodyZ})),notebook:lines().lines,

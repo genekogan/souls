@@ -550,6 +550,8 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const placeIdOf = (c: EdgeCapability) => c.target?.kind === 'place' ? c.target.id : info.get(c.id)?.t.around[0];
   const one0 = (cs: EdgeCapability[], note: (c: EdgeCapability) => string): VocabResult | null => {
     cs=[...new Map(cs.map(c=>[c.id,c])).values()];
+    // #428: `<verb>:here` at a spot and that spot's own `<verb>:<spot>` are one destination ("read the book on the lectern")
+    cs=cs.filter(c=>!(c.id===`${c.verb}:here`&&c.target?.kind==='spot'&&cs.some(o=>o!==c&&o.id===`${c.verb}:${c.target!.id}`)));
     if (!cs.length) return null;
     const live = cs.filter(c => c.available), list = live.length ? live : cs;
     if (list.length === 1) return {kind: 'alias', cap: list[0], note: note(list[0])};
