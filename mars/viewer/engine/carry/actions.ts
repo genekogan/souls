@@ -8,7 +8,7 @@ import {CARRY_REACH_SECONDS, CARRY_RELEASE_SECONDS, carryContactWeight} from './
 import { blockedWait } from '../runtime/waits.ts';
 import { z } from 'zod';
 import { angleDelta, clamp, dcos, dsin, rot2, wrapAngle, type Vec2, hypot } from '../core/math.ts';
-import type { ActionDef, CancelResult, StepResult } from '../actions/types.ts';
+import type { ActionDef, CancelResult, Diagnostic, StepResult } from '../actions/types.ts';
 import { DT, type Runtime } from '../runtime/runtime.ts';
 import type { Entity, Pose } from '../world/types.ts';
 import type { Spatial } from '../spatial/service.ts';
@@ -46,6 +46,9 @@ export type CarryExec = {
   cancelling: boolean;
   epoch: number;
   replans?: number;
+  /** A construction cut with no alternative from here, at that scene epoch: held (blocked) without replanning again
+   *  until the scene changes (PC07). */
+  cut?: { epoch: number; diagnostic: Diagnostic };
   reachStart?: number;
   waited?: number;
   /** Climb (between levels): traversal parameter, whether the flight's traffic resource is held, done. */
@@ -339,6 +342,9 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
       const sp = rt.services.spatial as Spatial;
       sp.sync(rt.world);
       if (sp.epoch !== ex.epoch) {
+        // the scene has not changed since the last search found no way: still held, without searching again each tick
+        if (ex.cut?.epoch === sp.epoch) return { status: 'blocked', diagnostic: ex.cut.diagnostic };
+        ex.cut = undefined;
         const g = sp.level(p.level)!;
         const k = p.traj.poses.findIndex((q, j) => j > ex.i && poseHit(g, p.f, q, 0) >= 0);
         if (k >= 0) {
@@ -355,7 +361,9 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
             return { status: 'running', phase: 'replan' };
           }
           const q = p.traj.poses[k];
-          return { status: 'blocked', diagnostic: { code: 'carry.route-blocked', message: `the carry route of ${p.item} is now blocked near (${q.x.toFixed(1)}, ${q.z.toFixed(1)}) and no alternative exists: ${r.diagnostic.message}; the crew holds the load and waits`, subjects: [p.item, ...(r.diagnostic.subjects ?? [])], at: [q.x, p.levelY, q.z] } };
+          const diagnostic: Diagnostic = { code: 'carry.route-blocked', message: `the carry route of ${p.item} is now blocked near (${q.x.toFixed(1)}, ${q.z.toFixed(1)}) and no alternative exists: ${r.diagnostic.message}; the crew holds the load and waits`, subjects: [p.item, ...(r.diagnostic.subjects ?? [])], at: [q.x, p.levelY, q.z] };
+          ex.cut = { epoch: sp.epoch, diagnostic };
+          return { status: 'blocked', diagnostic };
         }
         ex.epoch = sp.epoch;
       }

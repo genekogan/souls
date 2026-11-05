@@ -41,7 +41,15 @@ context-size checks below), regression runs, and an uncut real-client recording 
     checks, so a guest busy walking does not hide the answer.
     - **Refused.** A proposal or amend is refused when the formation has no way there (`carry.no-route`, or
       `carry.clearance` when each person could walk there alone) or when the load cannot be laid down there
-      (`carry.target-blocked`). The refusal names the blocker, and no invitation or receipt is made.
+      (`carry.target-blocked`), or when the crew has no room to stand at the load's grips where it lies
+      (`carry.pickup-blocked`, PC07). The refusal names the blocker, and no invitation or receipt is made.
+    - **Bounded search (PC07, [#686](https://github.com/genekogan/souls/issues/686)).** The planner searches at most
+      150 000 poses. When it stops there, nothing is proven, so the refusal is `carry.search-exhausted`. It still names
+      the closest try's blocker, and says that this does not prove there is no way. On an open level this is the usual
+      answer for a walled place. Only a small search, such as a load in a room whose bent corridor the formation cannot
+      turn, proves `carry.no-route` or `carry.clearance`.
+    - **Height.** The planner is planar. Anything standing in the body band blocks the whole formation, so there is no
+      separate headroom check.
     - **Left to the commit.** People are not obstacles to the planner. Neither is a loose thing lying on the ground where
       the load would go, since it can be moved. The commit waits on both.
     - **Cost.** Each proposal or amend runs one bounded planner search, the same one a solo carry's admission runs.
@@ -70,6 +78,19 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **The journey (PC06).** On open level-0 ground, the native gather walks each member to their grip. The crew lifts
     the load and carries it as one formation, then lays it down at the place's centre. Every observer sees that one
     recorded trajectory, and the members walk on afterwards. A solo carry of a load that one person can take is unchanged.
+  - **Held up on the way (PC07, [#686](https://github.com/genekogan/souls/issues/686)).** The native carry owns every
+    movement. It halts for people in its way and asks idle ones to step aside, and it replans when construction cuts its
+    route. Each tick, the ledger reads the native action of each running operation; with none running, it does nothing.
+    - **Blocked.** A hold-up of 0.5 s makes the operation `blocked`: someone in the way (`carry.path-occupied`), on a
+      grip or set-down spot, or a cut with no other way from here, not even back (`carry.route-blocked`). Every
+      member's started receipt carries that code, and a reason naming the blocker and what frees it. Each stream gets
+      `shared.blocked`. Moving again for 0.5 s sends `shared.resumed` and clears the reasons.
+    - **Kept afterwards.** Each interval goes to the operation's `blocks`, shown in every member's `shared` receipt
+      view. A replan to the same place counts as a detour (`detours`), and the revision stays the same.
+    - **Lasting.** After 30 s the hold-up is `lasting`, and each member's stream is told again. The crew still holds
+      the load: nobody lets go on a timeout. Clearing the obstacle lets the carry go on, and the native carry rechecks
+      the changed scene. A cut is searched once per scene change, not every tick. A supported stop and set-down come
+      with PC08.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station. A word only applies when that action is on offer.
