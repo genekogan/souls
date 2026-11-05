@@ -64,23 +64,22 @@ export function canvasFace(def: StoredDef | undefined): CanvasFace | null {
   return faces.find(f => f && f.media && (f.slot ?? 0) === 0) ?? null;
 }
 /** #430: a canvas lying flat, facing up (pitch -90°), is on the ground: drawn in chalk, stooping. */
-export const flatCanvas = (face: CanvasFace | null | undefined) => !!face && typeof face.pitch === 'number' && Math.abs(Math.abs(face.pitch) - Math.PI / 2) < 0.05;
+export const flatCanvas = (face: CanvasFace | null | undefined) => !!face && typeof face.pitch === 'number' && Math.abs(face.pitch + Math.PI / 2) < 0.05;
 /** #430: whole world days since a fading canvas was drawn (its state `day`), or null when it does not fade. */
 export function canvasAge(e: Entity, face: CanvasFace | null | undefined, today: number): number | null {
   const days = face?.fadeDays;
   if (typeof days !== 'number' || !(days > 0) || typeof e.state?.day !== 'number') return null;
   return Math.max(0, Math.floor(today) - e.state.day);
 }
-/** #430: a fading canvas reads as washed away (blank) from `fadeDays` world days after it was drawn. */
-export const washedAway = (e: Entity, def: StoredDef | undefined, today: number) => { const face = canvasFace(def), age = canvasAge(e, face, today); return age !== null && age >= face!.fadeDays!; };
 
-/** #430: drawn fading canvases still within their fade (their perceived line changes with the world day). */
-export function fadingIds(model: WorldModel, today: number): string[] {
+/** #430: drawn fading canvases whose perceived line may differ between world day `prev` and `today` (either way: a clock
+ *  can jump several days forward on a catch-up, or be set back): those not yet washed away on one of the two days. */
+export function fadingIds(model: WorldModel, today: number, prev = today): string[] {
   const ids: string[] = [];
   for (const e of model.entities.values()) {
     if (typeof e.state?.day !== 'number' || !e.state.media) continue;
     const def = model.resolvedDef(e.def); if (!paintingEasel(def)) continue;
-    const face = canvasFace(def), age = canvasAge(e, face, today); if (age !== null && age <= face!.fadeDays!) ids.push(e.id);
+    const face = canvasFace(def), age = canvasAge(e, face, Math.min(today, prev)); if (age !== null && age <= face!.fadeDays!) ids.push(e.id);
   }
   return ids;
 }
@@ -107,6 +106,8 @@ function hang(model: WorldModel, caller: Caller, req: HangRequest, painting: boo
   const slot = req.slot ?? 0;
   if (!Number.isInteger(slot) || slot < 0 || slot >= disp.slots) return fail(400, 'art.slot', `slot must be 0..${disp.slots - 1}`);
   const clear = req.media === null || req.media === '' || req.media === undefined;
+  // #430: a fading canvas (chalk) holds only what was drawn on it; hanging an image there is refused (clearing is not)
+  if (!clear && !painting && typeof canvasFace(def)?.fadeDays === 'number') return fail(409, 'art.drawn-only', `${req.frame} takes only drawings made on it by hand; draw on it instead`);
   if (!clear && !mediaKind(req.media!)) return fail(400, 'art.media', 'media must be an https URL or a same-site path (images, or .mp4/.webm/.mov/.m4v video), at most 480 characters, no spaces');
   const st = e.state ?? {}, media = lines(st.media, disp.slots), title = lines(st.title, disp.slots), maker = lines(st.maker, disp.slots);
   if (caller.kind === 'soul' && !painting && !ownsIt(e, caller)) {

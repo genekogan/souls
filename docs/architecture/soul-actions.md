@@ -55,8 +55,13 @@ context-size checks below), regression runs, and an uncut real-client recording 
   chalk", the body stoops over it (the `chalk` pose), and the reach rule is the ground the Soul stands on. A canvas face
   with `fadeDays` fades: completion records the world `day` it was drawn on, and the viewer and perception read its age
   from the world day. The drawing is fainter each day and reads as washed away (a blank square, no perception line)
-  from `fadeDays` on. Nothing ticks and nothing is written while it fades. `core-chalk-square@1` is the first such def:
-  a 1 m paving square that fades over 4 world days.
+  from `fadeDays` on. Nothing ticks and nothing is written while it fades: on a world-day change (a jump forward or the
+  clock set back included) the bridge re-derives only the perceived lines of drawings still fading, and the viewer
+  redraws things tagged `fades` (a fading def carries that tag). `core-chalk-square@1` is the first such def: a 1 m
+  paving square that fades over 4 world days.
+- **Only drawn by hand.** The public hang route refuses an image on a fading canvas (`art.drawn-only`); the world's
+  creator may still clear one. A washed-away drawing stays in the square's state until it is drawn over, so the art
+  listing (`GET /v1/art`) still names it.
 
 ## What other Souls perceive
 

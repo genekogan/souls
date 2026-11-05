@@ -16,6 +16,7 @@ import { GodMode } from './god/god.ts';
 import { installEngineBridge } from './god/engine-bridge.ts';
 import { worldDay } from './god/poster-boards.ts';
 import { createPaintingService } from './art/painting-completion.ts';
+import { planHang } from './art/art.ts';
 
 const sun = { title: 'Sun', background: '#bdb8ad', shapes: [{ kind: 'ellipse', cx: 0.5, cy: 0.45, rx: 0.2, ry: 0.2, colour: '#ffd23f' }, { kind: 'line', x1: 0.2, y1: 0.85, x2: 0.8, y2: 0.85, width: 0.03, colour: '#ffffff' }] };
 const boat = { title: 'Boat', background: '#bdb8ad', shapes: [{ kind: 'rect', x: 0.25, y: 0.55, width: 0.5, height: 0.12, colour: '#3a7bd5' }] };
@@ -91,11 +92,19 @@ test('chalk: draw on a chalk square by plain words, credited at completion, fadi
   lines.boat0 = await lineOf(ana); is(lines.boat0, 'Ben’s chalk drawing “Boat” on the pavement');
   await toDay(drawn + 2); lines.boat2 = await lineOf(ana); is(lines.boat2, 'Ben’s chalk drawing “Boat” on the pavement, fading');
   await toDay(drawn + 3); lines.boat3 = await lineOf(ana); is(lines.boat3, 'Ben’s chalk drawing “Boat” on the pavement, nearly washed away');
+  // a clock that jumps (a catch-up after nobody was in the world) and one set back: the line follows the world day either way
+  const living = (f.host as unknown as { living: { origin: number; dayTicks: number } }).living, shift = (days: number) => Object.defineProperty(f.host, 'living', { configurable: true, value: { ...living, origin: (f.host as unknown as { living: { origin: number } }).living.origin - days * DAY } });
+  shift(3); await tick(30); assert.equal(worldDay(), drawn + 6); lines.jump6 = await lineOf(ana); assert.equal(lines.jump6, null, 'a three-day jump past the fade: washed away');
+  shift(-4); await tick(30); assert.equal(worldDay(), drawn + 2); lines.back2 = await lineOf(ana); is(lines.back2, 'Ben’s chalk drawing “Boat” on the pavement, fading');
   await toDay(drawn + 4); lines.boat4 = await lineOf(ana); assert.equal(lines.boat4, null, 'washed away: no drawing line, the square still there');
   assert.equal(state().media, s2.media, 'washing away writes nothing: the state keeps the drawing and its day'); results.lines = lines;
   // C5: out of reach publishes nothing; the drawing param elsewhere is refused
   const elsewhere = caps.find(c => c.verb !== 'paint' && c.available && c.id !== 'stand:here' && /^(read|sit|lie|nap|stretch):/.test(c.id));
-  if (elsewhere) { const r = await act(ana, elsewhere.id, { painting: sun }); assert.equal(r.accepted, false); results.elsewhere = r.code; }
+  assert.ok(elsewhere, 'an unrelated offer to try the drawing on'); { const r = await act(ana, elsewhere!.id, { painting: sun }); assert.equal(r.accepted, false); assert.equal(r.code, 'painting.no-easel', JSON.stringify(r)); results.elsewhere = r.code; }
+  // the public hang route cannot put an image on a chalk square; the world's creator may still clear one
+  const hung = planHang(god.model, { kind: 'soul', id: ana.soulId, name: 'Ana' }, { frame: sq, media: 'https://example.com/photo.png' }) as { ok: boolean; code?: string };
+  assert.equal(hung.ok, false); assert.equal(hung.code, 'art.drawn-only'); results.hang = hung.code;
+  assert.equal(planHang(god.model, { kind: 'creator', owner: 'dev:admin' }, { frame: sq, media: null }).ok, true, 'the creator can clear a drawing');
   const svc = edge.painting!; const intent = svc.prepare(ana, sq, sun);
   assert.ok(!('ok' in intent), JSON.stringify(intent));
   const p = god.model.worldPose(god.model.entities.get(sq)!);

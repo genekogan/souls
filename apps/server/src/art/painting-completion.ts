@@ -9,6 +9,8 @@ import { ACT_REACH } from '../god/actuators.ts';
 import { STATION_TOL } from '../../../../mars/viewer/engine/work/paint.ts';
 import { BODY_MODEL } from '../../../../mars/viewer/engine/body/model.ts';
 
+/** #430: how far below the feet a flat (ground) canvas may lie and still be drawn on, stooping (a 1 m square on a gentle slope). */
+const FLAT_BELOW = 0.15;
 type Soul = { soulId: string; entityId: string; name: string; owner: string };
 export type PaintingIntent = { target: string; binding: string; actor: string; owner: string; level: number; recipe: Painting; renderer: typeof PAINTING_RENDERER };
 export type PaintingPublished = { target: string; media: string; title: string; maker: string; renderer: typeof PAINTING_RENDERER };
@@ -52,7 +54,8 @@ export function createPaintingService(d: PaintingDeps) {
       const canvas=canvasFace(def);
       if (!canvas?.at||!Number.isFinite(canvas.at[1])||!Number.isFinite(canvas.h)||canvas.h!<=0) return fail('painting.not-reached','This easel has no reachable canvas face.');
       // #430: a flat canvas lies on the floor the Soul stands on and is reached stooping (at most the standing low reach up).
-      if (flatCanvas(canvas)) { const y=p.y+canvas.at[1]*p.s; return y<feet[1]-STATION_TOL||y>feet[1]+BODY_MODEL.lowReach*body.scale+STATION_TOL?fail('painting.not-reached','The drawing surface is not on the ground you finished on; the previous drawing has been preserved.'):null; }
+      // Gently sloping ground may leave the canvas a little below the feet (FLAT_BELOW).
+      if (flatCanvas(canvas)) { const y=p.y+canvas.at[1]*p.s; return y<feet[1]-FLAT_BELOW||y>feet[1]+BODY_MODEL.lowReach*body.scale+STATION_TOL?fail('painting.not-reached','The drawing surface is not on the ground you finished on; the previous drawing has been preserved.'):null; }
       const bottom=p.y+(canvas.at[1]-canvas.h!/2)*p.s,top=p.y+(canvas.at[1]+canvas.h!/2)*p.s;
       if (bottom<feet[1]+BODY_MODEL.lowReach*body.scale-STATION_TOL||top>feet[1]+BODY_MODEL.overheadMax*body.scale+STATION_TOL) return fail('painting.not-reached','The canvas is outside your standing painting reach; the previous canvas has been preserved.');
       return null;

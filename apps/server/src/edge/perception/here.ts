@@ -117,7 +117,7 @@ export class Perception {
     }
     let mine: Set<string> | undefined;   // the places I am in: the same for every object, so read once
     for (const o of this.L.comms?.objects.all() ?? []) {
-      const st = o.state as {at?: V2; removed?: boolean; carrier?: string; def?: string; what?: unknown}; if (st?.removed) continue;
+      const st = o.state as {at?: V2; removed?: boolean; carrier?: string; def?: string; what?: unknown; painting?: unknown}; if (st?.removed) continue;
       // RIDE-LABELS: a ride is where its carrier is now (the boat or basket), never its place's centroid
       const body = this.w.entities[o.id] ?? (o.kind === 'ride' && typeof st?.carrier === 'string' ? this.w.entities[st.carrier] : undefined);
       const at = Array.isArray(st?.at) ? st.at : body ? [body.pose.p[0], body.pose.p[2]] as V2 : null;
@@ -126,8 +126,8 @@ export class Perception {
       const d = this.dist(point); if (d > radius && !(here.has(o.placeId) && !at)) continue;
       // GodPerceive advances this public built state after completion/overwrite. Carry only its
       // painting line, never the immutable definition description or private drawing recipe.
-      // #430: a chalk drawing's line leads with its maker (a built thing's own line always leads with "a"/"an" and its kind)
-      const what = typeof st?.what === 'string' && (st.def === 'core-easel@2' && st.what.startsWith('an easel with ') || /^[^,“”]{1,40}’s chalk drawing “/.test(st.what))
+      // #430: GodPerceive marks a line that leads with a painting's or drawing's credit (`painting`), whatever the def
+      const what = typeof st?.what === 'string' && (st.def === 'core-easel@2' && st.what.startsWith('an easel with ') || (st as {painting?: unknown}).painting === true)
         ? st.what.replace(/[\u0000-\u001f\u007f\u0085\u2028\u2029]+/g, ' ').slice(0, 230) : undefined;
       this.objectKinds.set(o.id, o.kind);
       out.push({kind: 'object', id: o.id, name: (o as {name?: string}).name ?? o.kind, at: point, distance: d, ...(what ? {what} : {})});
