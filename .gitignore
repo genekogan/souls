@@ -91,3 +91,6 @@ deploy.env
 coverage/
 test-results/
 playwright-report/
+
+# Isolated local issue worktrees may live inside the chosen checkout root.
+/.worktrees/
