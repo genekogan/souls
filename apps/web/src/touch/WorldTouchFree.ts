@@ -32,6 +32,8 @@ export const STICK_RADIUS = 56, STICK_DEAD = .12;
 export const LONG_PRESS_MS = 700, LONG_PRESS_SLOP = 10;
 /** A tap moves at most TAP_SLOP px and lasts under TAP_MS; a second tap within DOUBLE_TAP_MS and DOUBLE_TAP_SLOP px flies. */
 export const TAP_SLOP = 6, TAP_MS = 350, DOUBLE_TAP_MS = 300, DOUBLE_TAP_SLOP = 30;
+/** A second finger within PAIR_JOIN_MS of a stick touch that has not moved yet makes both a two-finger gesture. */
+export const PAIR_JOIN_MS = 250;
 /** Two fingers decide pinch or rise once their spread or midpoint has moved this many pixels. */
 export const PAIR_LOCK = 12;
 
@@ -94,7 +96,13 @@ export class WorldTouchFree {
       }
     }
     if (!this.o.free()) return;
-    const live = [...this.fingers.values()].filter(f => f.role !== 'spent');
+    let live = [...this.fingers.values()].filter(f => f.role !== 'spent');
+    const early = live.length === 1 && live[0].role === 'stick' && !live[0].moved && e.timeStamp - live[0].t0 < PAIR_JOIN_MS ? live[0] : null;
+    if (early) {  // a pinch or rise that happened to start in the stick's corner
+      if (this.pressTimer !== null) { this.timers.clear(this.pressTimer); this.pressTimer = null; }
+      this.lockArmed = false; this.hideStick(); this.o.camera.setStick(0, 0); early.role = 'look';
+      live = [early];
+    }
     const stick = live.some(f => f.role === 'stick'), looks = live.filter(f => f.role === 'look'), paired = live.some(f => f.role === 'pair');
     const finger: Finger = { x, y, x0: x, y0: y, t0: e.timeStamp, role: 'look', moved: false, second: false };
     if (!live.length && inStickZone(x, y, this.canvas.getBoundingClientRect()) && !this.o.soulAt(x, y)) {

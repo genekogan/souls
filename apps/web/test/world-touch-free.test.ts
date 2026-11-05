@@ -92,7 +92,7 @@ test('one finger elsewhere looks once past the tap slop; a stick touch and a loo
   g.down(1, 300, 300);g.move(1, 303, 300);assert.equal(g.last('look'), undefined, 'within the tap slop');
   g.move(1, 320, 290);assert.deepEqual(g.last('look'), ['look', 17, -10]);assert.equal(g.touch.consumed(1), true, 'a look is not a tap');
   g.up(1, 320, 290);assert.deepEqual(g.calls.at(-2), ['lookEnd']);
-  g.down(2, 80, 700);g.down(3, 300, 300);g.move(2, 80, 640);g.move(3, 340, 300);
+  g.down(2, 80, 700);g.move(2, 80, 640);g.down(3, 300, 300);g.move(3, 340, 300);
   assert.ok(g.last('stick')![1] > .9);assert.deepEqual(g.last('look'), ['look', 40, 0], 'twin thumbs');
 });
 
@@ -105,6 +105,15 @@ test('pinch glides (ratio, fixed start point) and a two-finger vertical drag ris
   g.down(3, 150, 400);g.down(4, 250, 400);g.move(3, 150, 380);g.move(4, 250, 380);
   assert.equal(g.touch.state.pair, 'rise');assert.ok(g.calls.filter(c => c[0] === 'rise').reduce((a, c) => a + c[1], 0) === -20, 'fingers up 20 px: rise');
   assert.equal(g.touch.consumed(3), true);assert.equal(g.touch.consumed(4), true);
+});
+
+test('a pinch that starts in the stick corner is a pinch, not a stick and a look', () => {
+  const g = gestures();
+  g.down(1, 150, 600);assert.equal(g.touch.state.stick, true);g.tick(60);g.down(2, 250, 600);
+  assert.equal(g.touch.state.stick, false);assert.equal(g.touch.state.pair, 'pending');assert.deepEqual(g.last('stick'), ['stick', 0, 0]);
+  g.move(1, 100, 600);g.move(2, 300, 600);assert.ok(g.last('pinch'));assert.equal(g.last('look'), undefined);
+  g.up(1, 100, 600);g.up(2, 300, 600);
+  g.down(3, 80, 700);g.move(3, 80, 640);g.tick(60);g.down(4, 300, 300);assert.equal(g.touch.state.stick, true, 'a moving stick stays a stick: the second finger looks');
 });
 
 test('double-tap flies (own detector); a slow second tap does not', () => {
