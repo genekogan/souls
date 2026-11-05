@@ -11,8 +11,9 @@ import { newIdentity } from '../lib/hash.mjs';
 import { now, sleep } from '../lib/clock.mjs';
 import * as claude from './adapters/claude-headless.mjs';
 import * as codex from './adapters/codex-headless.mjs';
+import * as scriptedOwner from './adapters/scripted-owner.mjs';
 
-export const ADAPTERS = { 'claude-headless': claude, 'codex-headless': codex };
+export const ADAPTERS = { 'claude-headless': claude, 'codex-headless': codex, 'scripted-owner': scriptedOwner };
 export const onboardingText = (base, name) => `Make me a Soul in this world: ${base}/ . Call it ${name}. Start from ${base}/instructions.md.`;
 export const wakeText = (cmdLine, stdout) => `[background task] ${cmdLine} exited with output:\n${stdout}`;
 
@@ -95,7 +96,7 @@ export class Seat {
     const first = !this.info.sessionId;
     if (first && this.info.adapter === 'claude-headless') { this.info.sessionId = randomUUID(); this.save(); }
     const r = await this.adapter.turn({ cwd: this.folder, sessionId: this.info.sessionId, resume: !first, model: this.info.model ?? undefined, effort: this.info.effort,
-      text, allowedTools: this.allowedTools, maxWallSec: this.rails.maxTurnWallSec, prevCumulative: this.cumulative });
+      text, allowedTools: this.allowedTools, maxWallSec: this.rails.maxTurnWallSec, prevCumulative: this.cumulative, script: this.seat.script, diagnostics: this.seat.diagnostics });
     const ended = now();
     if (r.cumulative) this.cumulative = r.cumulative;
     if (r.sessionId && r.sessionId !== this.info.sessionId) { this.info.sessionId = r.sessionId; }
@@ -167,7 +168,10 @@ export class Seat {
     const args = [file, ...this.cli.listen(this.lastListenId)];
     const cmdLine = `node ${args.join(' ')}`;
     const startedAt = now();
-    const h = start('node', args, { cwd: this.folder, onExit: ({ code, signal, stdout, stderr }) => {
+    // Soul Runs diagnostics (#752): a traced seat's harness listen carries the same passive preload as its commands, so
+    // the trace sees each owner message's delivery. Untraced seats get no extra argument or environment.
+    const tr = this.seat.diagnostics?.trace;
+    const h = start('node', tr ? ['--import', tr.tap, ...args] : args, { cwd: this.folder, env: tr ? { SOUL_TRACE_FILE: tr.file, SOUL_TRACE_RUN: tr.run, SOUL_TRACE_SEAT: tr.seat } : undefined, onExit: ({ code, signal, stdout, stderr }) => {
       const killed = h.killedByUs; if (this.listener === h) this.listener = null;
       const msgs = listenMessages(stdout);
       appendJsonl(join(this.dir, 'listen.jsonl'), { ...now(), startMono: startedAt.mono, cmd: cmdLine, code, signal, killedByUs: !!killed, messages: msgs.map((m) => m.id), stdout: killed ? undefined : stdout, stderr: stderr.slice(-500) || undefined });
