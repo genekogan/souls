@@ -21,7 +21,7 @@ test('Eden 2026: a roof walk acted before navigation is warm waits and walks; ge
     const row = await accept(w.host, w.souls.create(`dev:${owner}`, { name, description: 'curious' })) as { id: string; entity_id: string; name: string; owner: string };
     return { soulId: row.id, entityId: row.entity_id, name: row.name, owner: row.owner };
   };
-  const bob = await soulOf('bob', 'Bob'), cy = await soulOf('cy', 'Cy');
+  const bob = await soulOf('bob', 'Bob'), cy = await soulOf('cy', 'Cy'), di = await soulOf('di', 'Di');
   await w.settle(2);
   const roof = 'walk:eden-house-3/eden-house-3-roof-planter-1', kitchen = 'walk:eden-house-3-kitchen/eden-house-3-kitchen-roof-planter-1';
   const phase = (s: { soulId: string }, id: string) => L.receipt(s.soulId, id)!;
@@ -49,6 +49,12 @@ test('Eden 2026: a roof walk acted before navigation is warm waits and walks; ge
   w.host.tickOnce();
   assert.equal(phase(cy, third.receipt!.id).phase, 'failed'); assert.equal(phase(cy, third.receipt!.id).code, 'nav.warm-timeout');
 
+  // a walk that waited for a safe stop (an ordinary wait) and is then refused while still cold waits on for navigation
+  const fourth = await L.act(di, { capability: roof }) as Out; assert.equal(fourth.receipt?.phase, 'waiting');
+  pending.get(di.soulId)!.navWarm = undefined;   // as the safe-stop path arms it
+  w.host.tickOnce();
+  assert.equal(phase(di, fourth.receipt!.id).phase, 'waiting', JSON.stringify(phase(di, fourth.receipt!.id)));
+  assert.equal(pending.get(di.soulId)?.navWarm, true, 'the ordinary wait became a navigation wait');
   // still cold: nothing starts
   w.host.tickOnce();
   assert.equal(phase(w.soul, ana.receipt!.id).phase, 'waiting');
@@ -57,6 +63,7 @@ test('Eden 2026: a roof walk acted before navigation is warm waits and walks; ge
   for (let i = 0; i < 40 && phase(w.soul, ana.receipt!.id).phase === 'waiting'; i++) await w.settle(1);
   // A1: planned again from the warm goal, it starts; A2: the kitchen roof is refused by the planner, as any walk
   assert.notEqual(phase(w.soul, ana.receipt!.id).phase, 'waiting'); assert.notEqual(phase(w.soul, ana.receipt!.id).phase, 'failed', JSON.stringify(phase(w.soul, ana.receipt!.id)));
+  assert.notEqual(phase(di, fourth.receipt!.id).phase, 'failed', JSON.stringify(phase(di, fourth.receipt!.id)));
   const k = phase(bob, second.receipt!.id); assert.equal(k.phase, 'failed'); assert.equal(k.code, 'route.unreachable');
   for (let i = 0; i < 4000 && phase(w.soul, ana.receipt!.id).phase !== 'completed'; i++) { w.host.tickOnce(); if (i % 20 === 0) await w.settle(1); }
   const done = phase(w.soul, ana.receipt!.id), body = w.host.engine.world.entities[w.soul.entityId] as { human?: { level?: number } };

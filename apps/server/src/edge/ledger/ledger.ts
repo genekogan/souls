@@ -71,6 +71,9 @@ const WAIT_CODES = new Set(['program.safe-stop-required', 'program.safe-stop-pen
 const WAIT_LIMIT_TICKS = 20 * 60;   // a waiting receipt that cannot start within a minute fails
 /** nav-warm-wait/1 (#884): a walk refused while navigation is still warming waits at most two minutes for it */
 const NAV_WARM_WAIT_TICKS = 20 * 120;
+/** nav-warm-wait/1: labels a moving ride invalidated relabel in ~70-150 ms on Eden (the first build takes 8-15 s): an act
+ *  refused while cold warms them for at most this long in the request; a waiting walk, this long per tick */
+const NAV_ACT_WARM_MS = 250, NAV_TICK_WARM_MS = 10;
 const NAV_WARM_REASON = 'Navigation is still getting ready after the world started: this walk is planned again and starts once it is ready.';
 const WALK_VERBS = new Set(['walk_to', 'mars:walk_to']);
 const NEAR_RADIUS = 20, GO_NEAR_RADIUS = 60;
@@ -699,8 +702,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
       if (this.host.quietBarrier) continue;
       // nav-warm-wait/1 (#884): a walk refused while navigation was cold starts from goals made again once it is warm
       if (p.navWarm) {
-        if (this.navCold()) continue;
-        p.navWarm = undefined; const steps = this.navReplan(p);
+        if (!this.navWarmTick(tick)) continue;
+        p.navWarm = undefined;
+        const steps = this.navReplan(p.soul, p.capability, p.steps);
         const said = this.rows('receipt_id=?', p.receipt)[0]?.reason;   // the wait's reason is over once it is warm
         if (said?.endsWith(NAV_WARM_REASON)) this.update(p.receipt, {reason: said.slice(0, -NAV_WARM_REASON.length).trim() || null});
         if (steps && !Array.isArray(steps)) {this.pending.delete(soulId); this.db.db.prepare('UPDATE edge_receipts_v1 SET plan=NULL WHERE world_id=? AND receipt_id=?').run(this.host.worldId, p.receipt); this.update(p.receipt, {phase: 'failed', code: steps.code, reason: steps.reason}); continue;}
@@ -708,6 +712,12 @@ export class EdgeLedger implements EdgeLedgerHooks {
       }
       const issue = this.host.engine.canPerform({actor: p.soul.entityId, label: p.label, steps: p.steps});
       if (issue && WAIT_CODES.has(issue.code)) continue;
+      // nav-warm-wait/1: a walk that waited for a safe stop (or a quiet renewal) and is then refused while navigation is
+      // still cold waits on for it too (a sleeping Soul's first walk after a restart lands at boot)
+      if (issue?.code === 'route.unreachable' && !p.navWarm && p.steps.some(s => WALK_VERBS.has(s.verb)) && !isVerificationProbe(soulId) && this.navCold()) {
+        p.navWarm = true; p.deadline = Math.max(p.deadline, tick + NAV_WARM_WAIT_TICKS); this.arm(p);
+        const said = this.rows('receipt_id=?', p.receipt)[0]?.reason; this.update(p.receipt, {reason: said ? `${said} ${NAV_WARM_REASON}` : NAV_WARM_REASON}); continue;
+      }
       this.pending.delete(soulId); this.db.db.prepare('UPDATE edge_receipts_v1 SET plan=NULL WHERE world_id=? AND receipt_id=?').run(this.host.worldId, p.receipt);
       if (issue) {this.update(p.receipt, {phase: 'failed', code: issue.code, reason: humanBlockedExplanationV1(issue.code, p.label)}); continue;}
       void this.decide(p.soul, p.receipt, p.capability, p.label, p.steps).catch(() => this.update(p.receipt, {phase: 'failed', code: 'ledger.unavailable', reason: 'The world could not record this action.'}));
@@ -806,20 +816,28 @@ export class EdgeLedger implements EdgeLedgerHooks {
   }
   /** nav-warm-wait/1 (#884): the engine's connectivity labels are not ready yet (navWarmV1(0): a poll, never a drain; the
    *  tick loop warms them in slices). An engine without labels is never cold. */
-  private navCold(): boolean {const e = this.host.engine as unknown as {navWarmV1?(ms: number): boolean}; return !!e.navWarmV1 && !e.navWarmV1(0);}
+  private navCold(): boolean {return !this.navWarmFor(0);}
+  /** The labels warmed for at most `ms` (the engine's own slices; true when complete). */
+  private navWarmFor(ms: number): boolean {const e = this.host.engine as unknown as {navWarmV1?(ms: number): boolean}; return !e.navWarmV1 || e.navWarmV1(ms);}
+  /** nav-warm-wait/1: while walks wait for navigation, one slice of labelling per tick (after the first build the engine-bridge
+   *  stops warming, and a moving ride invalidates the labels until some read relabels them). */
+  private navWarmTick(tick: number): boolean {if (this.navWarmSeen?.tick !== tick) this.navWarmSeen = {tick, warm: this.navWarmFor(NAV_TICK_WARM_MS)}; return this.navWarmSeen.warm;}
+  private navWarmSeen: {tick: number; warm: boolean} | null = null;
   /** nav-warm-wait/1: a cold-refused walk's steps with each walk goal made again from the warm state (the offer bound anew,
    *  as act binds it: the one offer, else made on demand, a far part's walk; RESOLVE2's roofReach and WALK3's main ground
    *  run only once navigation is warm). The warm offer's own refusal when it is no longer available (a roof no stair reaches);
    *  null when the offer is gone or its walks no longer line up with the plan's: the plan is then judged as it was. */
-  private navReplan(p: Pending): Program['steps'] | {code: string; reason: string} | null {
-    const one = this.bindOne(p.soul, p.capability), w = one ? null : this.wordsMenu(p.soul);
-    const od = one ? null : this.resolveOnDemand(p.soul, p.capability, [...w!.caps], new Map(w!.plans));
-    const cap = one ? one.cap : od!.caps.find(c => c.id === p.capability), plan = one ? one.plan : od!.plans.get(p.capability);
-    if (cap && !cap.available && cap.blocked && !WAIT_CODES.has(cap.blocked.code)) return cap.blocked;
-    const fresh = plan?.steps.filter(s => WALK_VERBS.has(s.verb));
-    if (!fresh || fresh.length !== p.steps.filter(s => WALK_VERBS.has(s.verb)).length) return null;
-    let k = 0;
-    return p.steps.map(s => {if (!WALK_VERBS.has(s.verb)) return s; const f = fresh[k++]!; return f.verb === s.verb ? {...s, params: {...s.params, ...f.params}} : structuredClone(f);});
+  private navReplan(soul: EdgeSoul, capability: string, steps: Program['steps']): Program['steps'] | {code: string; reason: string} | null {
+    try {
+      const one = this.bindOne(soul, capability), w = one ? null : this.wordsMenu(soul);
+      const od = one ? null : this.resolveOnDemand(soul, capability, [...w!.caps], new Map(w!.plans));
+      const cap = one ? one.cap : od!.caps.find(c => c.id === capability), plan = one ? one.plan : od!.plans.get(capability);
+      if (cap && !cap.available && cap.blocked && !WAIT_CODES.has(cap.blocked.code)) return cap.blocked;
+      const fresh = plan?.steps.filter(s => WALK_VERBS.has(s.verb));
+      if (!fresh || fresh.length !== steps.filter(s => WALK_VERBS.has(s.verb)).length) return null;
+      let k = 0;
+      return steps.map(s => {if (!WALK_VERBS.has(s.verb)) return s; const f = fresh[k++]!; return f.verb === s.verb ? {...s, params: {...s.params, ...f.params}} : structuredClone(f);});
+    } catch (e) {console.error('[edge] nav-warm re-plan', e instanceof Error ? e.message : e); return null;}   // a local failure: the plan is judged as it was
   }
   private async decide(soul: EdgeSoul, receipt: string, capability: string, label: string, steps: Program['steps']) {
     // entry 35: holding hands, a plain walk is a walk together and anything else lets go first
@@ -1772,7 +1790,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     return [{verb: 'stand', params: {}}, ...steps];
   }
   /** Start a body plan as the Soul's act: queued through a quiet renewal or a safe stop, else decided now. */
-  private async launch(soul: EdgeSoul, capability: string, label: string, steps: Program['steps'], clientRef: string | undefined, resolved: {resolved?: Resolved}, refuse: (code: string, reason: string) => {accepted: false; code: string; reason: string; capability: string}, commit?: (receipt: string) => void,contentParams:Record<string,unknown>={},chosen?:Record<string,unknown>) {
+  private async launch(soul: EdgeSoul, capability: string, label: string, steps: Program['steps'], clientRef: string | undefined, resolved: {resolved?: Resolved}, refuse: (code: string, reason: string) => {accepted: false; code: string; reason: string; capability: string}, commit?: (receipt: string) => void,contentParams:Record<string,unknown>={},chosen?:Record<string,unknown>,navReplanned=false): ReturnType<EdgeLedger['actOnce']> {
     // Freeze the binding before dispatch: semantic capability names are not
     // identities of the real native fixtures they invoke. This is selection,
     // not a claim that the body has reached or used the target.
@@ -1893,16 +1911,25 @@ export class EdgeLedger implements EdgeLedgerHooks {
       if (passage) {this.setDetail(id, {doorPassageV1: {door: passage.door, open: passage.open, applied: [], ...(passage.unlocked ? {unlocked: true} : {})}}); this.contactPending.add(id);}
       this.launched.set(id, {soul, capability, label, steps}); if (this.launched.size > 512) this.launched.delete(this.launched.keys().next().value!);
     };
-    // nav-warm-wait/1 (#884): while the connectivity labels are cold, a walk goal skipped RESOLVE2's roofReach and WALK3's
-    // main-ground move (they need the labels), so "no route" may be the cold goal's, not the place's: the eden-house-3 roof
-    // planter walk asked in the first ~35 s after boot was refused, the next ask accepted. It waits (receipt `waiting`,
-    // bounded, a newer act replaces it) and is planned again from the warm goals once the tick loop has warmed navigation;
-    // the planner then judges it as any walk. Never a wait inside the request, never a label drain here.
-    if (issue?.code === 'route.unreachable' && steps.some(s => WALK_VERBS.has(s.verb)) && !isVerificationProbe(soul.soulId) && this.navCold()) {
+    // nav-warm-wait/1 (#884): while the connectivity labels are cold, a walk goal skipped RESOLVE2's roofReach (and WALK3's
+    // main-ground move; a plain ground walk mostly took the closest approach above instead), which need the labels, so "no
+    // route" may be the cold goal's, not the place's: the eden-house-3 roof planter walk asked in the first ~35 s after boot
+    // was refused, the next ask accepted. Labels a moving ride invalidated relabel within NAV_ACT_WARM_MS: the walk is then
+    // planned again from the warm goals and launched again (every repair above runs on it). Labels that cannot be ready that
+    // soon (the first build after boot): it waits (receipt `waiting`, bounded, a newer act replaces it), one slice of
+    // labelling per tick, and is planned again once warm; the planner then judges it (canPerform only: the repairs above,
+    // such as the nav-connect rescue, are not run again on a waited walk).
+    if (issue?.code === 'route.unreachable' && !navReplanned && steps.some(s => WALK_VERBS.has(s.verb)) && !isVerificationProbe(soul.soulId) && this.navCold()) {
+      if (this.navWarmFor(NAV_ACT_WARM_MS)) {
+        const again = this.navReplan(soul, capability, steps);
+        if (again && !Array.isArray(again)) return {...refuse(again.code, again.reason), ...resolved};
+        if (again) return this.launch(soul, capability, label, again, clientRef, resolved, refuse, commit, contentParams, chosen, true);
+      } else {
       const r = this.insert(soul, capability, 'waiting', clientRef,false,detail,contentParams); commit?.(r.id); remember(r.id);
       this.update(r.id, {reason: note ? `${note} ${NAV_WARM_REASON}` : NAV_WARM_REASON});
       this.arm({receipt: r.id, soul, steps, label, deadline: this.host.engine.world.tick + NAV_WARM_WAIT_TICKS, capability, navWarm: true});
       return {accepted: true as const, receipt: this.receipt(soul.soulId, r.id)!, ...resolved};
+      }
     }
     // The verifier probe reports the engine's own diagnostic (what blocks the seat, how much room it needs) to the builder.
     if (issue && !WAIT_CODES.has(issue.code)) return {...refuse(issue.code, issue.code.startsWith('carrier.') || isVerificationProbe(soul.soulId) ? issue.message : humanBlockedExplanationV1(issue.code, label)), ...resolved};
