@@ -51,7 +51,7 @@ test('balloon ride: board, lift off, private speech + converse, no leaving aloft
  const ja=await call(0,'POST','/v1/edge/act',{capability:'object:ride-eden-balloon:join'});assert.equal(ja.accepted,true,JSON.stringify(ja));
  const jb=await call(1,'POST','/v1/edge/objects/ride-eden-balloon/act',{action:'join'});assert.equal(jb.accepted,true,JSON.stringify(jb));assert.ok(jb.receipt?.id,'object route returns a receipt');
  assert.ok(await run(3000,()=>(watch(),phase(0,ja.receipt.id).phase==='completed'&&phase(1,jb.receipt.id).phase==='completed')),`both seated: ${JSON.stringify([phase(0,ja.receipt.id),phase(1,jb.receipt.id)])}`);
- assert.match(String(phase(0,ja.receipt.id).outcome?.summary),/Boarded.*not left the ground yet and is not finished/,'a boarding receipt never reads as a finished ride: '+JSON.stringify(phase(0,ja.receipt.id).outcome));
+ assert.match(String(phase(0,ja.receipt.id).outcome?.summary),/^Boarded the balloon and seated;.*not left the ground yet and is not finished/,'a boarding receipt never reads as a finished ride: '+JSON.stringify(phase(0,ja.receipt.id).outcome));
  assert.equal(balloon().carrier.phase,'boarding');assert.equal(ent(0).human.carrier.phase,'seated');
  const path=ledger.placePathOf(rows[0].id).map(p=>p.id);assert.deepEqual(path.slice(0,2),['eden-balloon-'+ent(0).human.carrier.slot,'eden-balloon-basket'],JSON.stringify(path));
  // capacity: a third Soul is refused

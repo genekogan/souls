@@ -2,6 +2,7 @@ import type {EdgeLedger} from '../ledger/ledger.ts';
 import type {EdgeReceipt} from '../contract.ts';
 import type {Item} from '../ledger/together.ts';
 import type {ConfirmedEffects,HoldingFact} from './store.ts';
+import {rideName} from '../comms/objects/ride.ts';
 type ItemOp={soulId:string;op:string;item?:string;kind?:string;to?:string;invite?:string};
 export const holdingFact=(item:Item|null):HoldingFact|null=>item?{id:item.id,kind:item.kind,name:item.name,state:item.state,holder:item.holder,placeId:item.placeId}:null;
 /** Read only this receipt's operation before Together consumes it. */
@@ -37,6 +38,6 @@ export function confirmedObjectEffects(before:unknown,after:unknown,action:strin
  if(kind==='project'&&typeof state.progress==='number')detail.project={id,progress:state.progress,status:state.status};
  if(kind==='chess'){const game:Record<string,unknown>={id};for(const key of ['status','turn','fullmove','halfmove','check','winner'])if(typeof state[key]==='string'||typeof state[key]==='number'||typeof state[key]==='boolean')game[key]=state[key];detail.game=game;}
  // A joined ride is a boarding, not a finished ride: say so in the world's own verdict so a seated, parked body is never reported as "ride completed".
- if(kind==='ride'&&action==='join')return{changed,detail,untrusted:true,summary:`Boarded ${id} and seated; the ride has not left the ground yet and is not finished.`};
+ if(kind==='ride'&&action==='join')return{changed,detail,untrusted:true,summary:`Boarded ${rideName(state.vehicle)} and seated; the ride has not left the ground yet and is not finished.`};
  return{changed,detail,untrusted:true};
 }
