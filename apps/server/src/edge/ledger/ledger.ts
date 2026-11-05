@@ -1632,7 +1632,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       : refuse('capability.unknown', 'That capability is not offered to this Soul right now; read capabilities again.');
     if (params.painting !== undefined && (cap.verb !== 'paint' || !plan.paintingTarget || !this.painting)) return refuse('painting.no-easel', 'The optional painting field is offered only at a real painting easel.');
     let steps = structuredClone(plan.steps);
-    if(cap.verb==='carry'&&steps.some(s=>s.verb==='mars:move_fixture')){
+    if(cap.verb==='carry'&&steps.some(s=>s.verb==='mars:move_fixture'||s.verb==='mars:carry')){
       if(typeof params.to!=='string'||!params.to.trim()||params.to.length>100)return refuse('capability.params','Choose a named place for the upright carry (to).');
       const dest=resolvePlaceForVerb(this,soul,params.to);
       if(!dest.ok)return {...refuse(dest.code,dest.reason),did_you_mean:dest.did_you_mean};
@@ -1640,7 +1640,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       if(!place||place.level!==0)return refuse('carry.ground-only','Choose a place on level-zero ground.');
       if(this.secretOffer(soul,{id:'walk:'+place.id,verb:'walk',label:place.name,available:true,target:{id:place.id,kind:'place'}}))return refuse('place.unknown','That destination is not known.');
       const at=centroid(place.polygon);
-      for(const step of steps)if(step.verb==='mars:move_fixture')step.params.to={...(step.params.to as object),x:at[0],z:at[1]};
+      for(const step of steps)if(step.verb==='mars:move_fixture'||step.verb==='mars:carry')step.params.to={...(step.params.to as object),x:at[0],z:at[1]};
     }
     if (steps.length > 40) return refuse('capability.params', 'that plan is too long; act in shorter legs.');
     // CN5 (acceptance): a capability that takes no seconds (a swim) ignores them instead of refusing
