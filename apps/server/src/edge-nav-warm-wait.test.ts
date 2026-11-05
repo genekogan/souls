@@ -77,9 +77,10 @@ test('Eden 2026: a roof walk acted before navigation is warm waits and walks; ge
   // are invalidated (its goal skipped roofReach) relabels in the request (the rescue's own relabel must not hide it), is
   // planned again and starts at once, without a wait
   for (let i = 0; i < 40 && E.navWarmV1(0); i++) await w.settle(1);
-  // (rides move on their own schedule; when none moved, the ferris wheel is turned a hair, as its own step would)
-  const wheel = w.host.engine.world.entities['resort-ferris-wheel'] as { pose: { p: number[] } } | undefined;
-  if (E.navWarmV1(0) && wheel) wheel.pose.p[1] += 0.01;
+  // (rides move on their own schedule; when none moved, the carousel is moved a hair, as its own step does)
+  const ents = w.host.engine.world.entities as Record<string, { def?: string; pose: { p: number[] } }>;
+  const ride = ['resort-carousel', 'resort-ferris-wheel', 'eden-balloon'].map((id) => ents[id]).find(Boolean);
+  assert.ok(ride, 'Eden runs a ride'); if (E.navWarmV1(0)) ride.pose.p[0] += 0.01;
   assert.equal(E.navWarmV1(0), false, 'a moving ride invalidated the labels');
   const pr = L.act(cy, { capability: roof }) as Promise<Out>; await w.settle(2); const again = await pr;
   assert.equal(again.accepted, true, JSON.stringify(again)); assert.notEqual(phase(cy, again.receipt!.id).phase, 'failed');
