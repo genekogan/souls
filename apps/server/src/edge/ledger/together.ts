@@ -223,7 +223,7 @@ export type TogetherPort = {
    *  nothing submitted): the refusal with its subjects, or null. Main only (the act path). */
   previewCarry?(params: {crew: string[]; item: string; to: {x: number; z: number; yaw: number}}): CarryIssue | null;
   /** PC07: the native action a programme is on (status, phase and the diagnostic of a hold-up), read on the ledger's engine. */
-  carryState?(programId: string): ({status: string; phase?: string} & Partial<CarryIssue>) | null;
+  carryState?(programId: string): ({status: string; verb?: string; phase?: string} & Partial<CarryIssue>) | null;
   /** PC10 (#689): stop exactly this programme safely (`edge-stop` naming it, `untilSafe`), logged; false when the clock
    *  is not running. Used only for a programme the restored world replays after its operation had ended. */
   stopOp?(hostEntity: string, programId: string, op: string, why: string): boolean;
@@ -1143,7 +1143,13 @@ export class Together {
     for (const inv of this.committed()) {
       const op = inv.shared?.op; if (!op || op.phase === 'ended') continue;
       const host = this.mindOf(inv.host.soulId);
-      if (host && this.p.programOf(host.entityId) === op.programId) {this.staleOps.delete(inv.id); if (!this.watching.has(inv.id)) this.watching.set(inv.id, {programId: op.programId, held: 0, clear: 0, ...(op.stop ? {stopping: true as const, ...(op.stop.unsafe !== undefined ? {unsafe: true as const} : {})} : {}), ...(op.blocked ? {since: op.blocked.fromTick, code: op.blocked.code, ...(op.blocked.lasting ? {lasting: true as const} : {})} : {})}); continue;}
+      // a restored world older than the commit never has this op's programme, whatever programme now has its id
+      if (host && this.tick >= op.committedTick && this.isOpCarry(host.entityId, op.programId)) {
+        this.staleOps.delete(inv.id);
+        // a world restored to before the stop (an older backup than the journal) is asked to stop again; an exact
+        // resume has already replayed the stop, so this never logs a second one there
+        if (op.stop && !this.watching.has(inv.id) && op.stop.tick > this.tick && this.p.stopOp?.(host.entityId, op.programId, op.id, 'shared.stop') === false) continue;
+        if (!this.watching.has(inv.id)) this.watching.set(inv.id, {programId: op.programId, held: 0, clear: 0, ...(op.stop ? {stopping: true as const, ...(op.stop.unsafe !== undefined ? {unsafe: true as const} : {})} : {}), ...(op.blocked ? {since: op.blocked.fromTick, code: op.blocked.code, ...(op.blocked.lasting ? {lasting: true as const} : {})} : {})}); continue;}
       if (!this.staleOps.has(inv.id)) {this.staleOps.set(inv.id, this.tick); continue;}
       const load = inv.shared!.load.name;
       this.sharedEnd(inv, 'ended', 'shared.ended', this.tick < op.committedTick
@@ -1156,12 +1162,14 @@ export class Together {
    *  the load again although nobody agreed to it. That programme is stopped safely (a logged `edge-stop` naming it), the
    *  members are told and an operator line says so; their ended receipts keep how it ended. Bounded to the latest ops. */
   private rewoundChecked = false;
+  /** The host runs this op's programme: the same id, and that programme is a native carry (ids are counters). */
+  private isOpCarry(hostEntity: string, programId: string): boolean {return this.p.programOf(hostEntity) === programId && (this.p.carryState?.(programId)?.verb ?? 'carry') === 'carry';}
   private sharedRewound() {
     if (this.rewoundChecked) return; this.rewoundChecked = true;
     const rows = this.p.db.db.prepare(`SELECT body FROM edge_invites_v1 WHERE world_id=? AND state='closed' AND body LIKE '%"endedTick":%' ORDER BY created_at DESC LIMIT 50`).all(this.p.host.worldId) as {body: string}[];
     for (const {body} of rows) {
       const inv = JSON.parse(body) as Invite, s = inv.shared, op = s?.op, host = this.mindOf(inv.host.soulId);
-      if (!s || !op || op.phase !== 'ended' || (op.endedTick ?? 0) <= this.tick || !host || this.p.programOf(host.entityId) !== op.programId) continue;
+      if (!s || !op || op.phase !== 'ended' || (op.endedTick ?? 0) <= this.tick || op.committedTick > this.tick || !host || !this.isOpCarry(host.entityId, op.programId)) continue;
       if (this.p.stopOp?.(host.entityId, op.programId, op.id, 'shared.restored') === false) {this.rewoundChecked = false; continue;}
       console.error(`[edge] shared ${op.id}: the world was restored to tick ${this.tick}, before this carry ended (tick ${op.endedTick}, ${op.result}); its replayed programme is stopped safely. Operator: check where ${s.load.entity} lies.`);
       const text = `The world was restored to a moment before the shared carry of ${s.load.name} ended (${op.result}; ${op.id}). Nobody asked to carry it again, so the crew sets it down safely where it is now; your receipt keeps how it ended.`;
@@ -1179,6 +1187,7 @@ export class Together {
    *  destination is a detour. A hold-up of `SHARED_LASTING_TICKS` is `lasting`; the crew still holds the load and nobody
    *  lets go on a timeout. Reads only; the native carry owns every movement. */
   sharedWatch() {
+    this.sharedRewound();   // PC10: at the first tick after a boot, before a replayed ended op carries on
     if (!this.watching.size || !this.p.carryState) return;
     for (const [id, w] of this.watching) {
       const st = this.p.carryState(w.programId); if (!st) continue;

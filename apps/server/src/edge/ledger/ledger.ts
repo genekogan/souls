@@ -314,7 +314,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       const m = this.host.minds.get(id), b = m ? this.body(m.entityId) : undefined; if (!m) {lines.push(`${id} (no body: skipped)`); continue;}
       const p = b ? [b.pose.p[0], b.pose.p[2]] as [number, number] : null;
       // PC10 (#689): a member of a running shared carry stays in its crew (never relocated out of it; PC09 A2c)
-      const keep = this.inSharedCarry(id) || !!p && (b!.human?.level ?? 0) === 0 && (engine.dryGroundAtV1?.(p[0], p[1]) ?? true) && (!nav || !engine.clearanceUpToV1 || engine.clearanceUpToV1(p[0], p[1], 1) >= 0.27) && this.places.containing(p[0], p[1]).length > 0;
+      const keep = !!p && (this.inSharedCarry(id) || (b!.human?.level ?? 0) === 0 && (engine.dryGroundAtV1?.(p[0], p[1]) ?? true) && (!nav || !engine.clearanceUpToV1 || engine.clearanceUpToV1(p[0], p[1], 1) >= 0.27) && this.places.containing(p[0], p[1]).length > 0);
       const to = keep ? p! : this.startingPoint(id);
       lines.push(`${id} ${JSON.stringify(m.name)} ${keep ? 'stays' : 'to the arrival point'} at ${to.map(v => Math.round(v * 10) / 10).join(',')}`);
       if (dry) continue;
@@ -424,7 +424,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       running: (sid, id) => {const m = this.host.minds.get(sid), r = this.rows('receipt_id=?', id)[0]; return !!m && !!r?.program_id && this.host.engine.programOf(m.entityId) === r.program_id;},
       programOf: id => this.host.engine.programOf(id),
       carryState: pid => {const a = this.host.engine.programAction?.(pid), d = a ? this.host.engine.runtime.records.get(a.action.id)?.diagnostic : undefined;
-        return a ? {status: a.action.status, ...(a.action.phase ? {phase: a.action.phase} : {}), ...(d ? {code: d.code, message: d.message, ...(d.subjects ? {subjects: [...d.subjects]} : {}), ...(d.details ? {details: {...d.details}} : {})} : {})} : null;},
+        return a ? {status: a.action.status, verb: a.action.verb, ...(a.action.phase ? {phase: a.action.phase} : {}), ...(d ? {code: d.code, message: d.message, ...(d.subjects ? {subjects: [...d.subjects]} : {}), ...(d.details ? {details: {...d.details}} : {})} : {})} : null;},
       stop: (sid, entityId, receipt) => {try {void this.host.enqueue('edge-stop', `edge:${sid}`, {soulId: sid, entityId, receipt}).catch(() => {/* best effort */});} catch {/* clock not ready */}},
       aboard: id => this.aboard(id), faded: id => this.faded.has(id), innermostPlace: id => {const m = this.host.minds.get(id); return m ? this.innermostPlace(m) : null;},
       deliver: (sid, kind, body) => {try {(this.comms as unknown as {streams?: {deliver?(s: string, k: string, t: number, b: object): void}} | undefined)?.streams?.deliver?.(sid, kind, this.host.engine.world.tick, body);} catch {/* events are best effort */}},
@@ -2065,7 +2065,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
     // transaction at the sequencer, so a restart finds both or neither. The guard re-reads the op under the write lock:
     // a second stop in the same drain, or an op that ended meanwhile, logs nothing and is answered from the op as it is.
     const id = 'r_' + randomUUID();
-    const guard = (): true => {const p = this.together.sharedStopPlan(soul.soulId, opId); if ('code' in p) throw new EdgeError(409, p.code, p.reason); if (p.again) throw new EdgeError(409, 'shared.stop-asked', 'Already asked.'); return true;};
+    let seen: ReturnType<Together['sharedStopPlan']> | null = null;
+    const guard = (): true => {const p = seen = this.together.sharedStopPlan(soul.soulId, opId); if ('code' in p) throw new EdgeError(409, p.code, p.reason); if (p.again) throw new EdgeError(409, 'shared.stop-asked', 'Already asked.'); return true;};
     try {
       await this.host.enqueueChecked('edge-stop', `edge:${soul.soulId}`, {soulId: soul.soulId, entityId: plan.hostEntity, programId: plan.programId, op: plan.op, why: 'shared.stop'}, guard, () => {
         this.insert(soul, capability, 'waiting', clientRef, true, {stopCarryV1: {op: plan.op}}, {}, id);
@@ -2073,11 +2074,14 @@ export class EdgeLedger implements EdgeLedgerHooks {
         this.update(id, {phase: 'completed'});
         return true;
       });
-    } catch {
-      const now = this.together.sharedStopPlan(soul.soulId, opId);
-      if ('code' in now) return refuse(now.code, now.reason);
-      if (now.again) return again(now);
-      return refuse('state.changed', 'The world clock is not running; ask to stop again in a moment.');
+    } catch (error) {
+      // answered from the op as the guard saw it under the write lock (it may have ended since)
+      const now = error instanceof EdgeError ? seen as ReturnType<Together['sharedStopPlan']> | null : null;
+      if (now && 'code' in now) return refuse(now.code, now.reason);
+      if (now?.again) return again(now);
+      if (clientRef) {const old = this.rows('soul_id=? AND client_ref=?', soul.soulId, clientRef)[0]; if (old) return {accepted: true, receipt: this.view(old)};}
+      if (!(error instanceof EdgeError) && !/clock/.test(String((error as Error)?.message))) console.error('[edge] stop-carry not recorded', error instanceof Error ? error.message : error);
+      return refuse('state.changed', 'The stop could not be recorded (the world clock may not be running); nothing was stopped. Ask to stop again in a moment.');
     }
     return {accepted: true, receipt: this.receipt(soul.soulId, id)!};
   }

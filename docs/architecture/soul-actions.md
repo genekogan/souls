@@ -163,8 +163,10 @@ context-size checks below), regression runs, and an uncut real-client recording 
     - **Restored to an earlier moment.** An op whose programme the restored world no longer runs ends `shared.ended`
       for every member, saying so when the world is from before it started. If a world without the durable clock is
       restored to before an op ended, the engine would replay its programme: that programme is stopped safely with a
-      logged `edge-stop` (`shared.restored`), the members' streams get `shared.restored`, and an operator line is
-      logged. The ended receipts keep how it ended.
+      logged `edge-stop` (`shared.restored`) at the first tick after the boot, the members' streams get
+      `shared.restored`, and an operator line is logged. The ended receipts keep how it ended. A world restored to
+      before a stop the journal already has (an older backup) is asked to stop again. A programme is taken for the
+      op's only when it has the op's id, is a native carry, and the world is not older than the commit.
     - **LINK migration.** A Soul the old beam took that is still in a running carry's crew stays where the crew has its
       body; it is never relocated to a starting place.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and

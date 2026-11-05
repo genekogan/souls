@@ -164,11 +164,19 @@ for (const phase of ['gather', 'lift', 'move', 'set-down']) for (const clean of 
   });
 }
 
-test('PC10 A1/A2b: a restart during the stop\'s cleanup resumes it; the stop is not asked again; stopped', {timeout: 300000}, async (t) => {
-  const w = await world(t);
-  const r = await carry(w, t, {clean: false, stopWhen: (c) => c.phase === 'move' && c.n > 40, restartWhen: (c) => !!c.stop && c.op.phase === 'stopping'});
+for (const clean of [true, false]) test(`PC10 A1/A2b/A3: a ${clean ? 'clean restart (no durable clock)' : 'crash (durable clock)'} during the stop's cleanup resumes it; the stop is not asked again; stopped`, {timeout: 300000}, async (t) => {
+  const w = await world(t, {durable: !clean}), {Bo} = w.souls;
+  let replay = null;
+  const r = await carry(w, t, {clean, stopWhen: (c) => c.phase === 'move' && c.n > 40, restartWhen: (c) => !!c.stop && c.op.phase === 'stopping', afterRestart: async ({op}) => {
+    // the same stop, retried after the boot with its clientRef: the original receipt, nothing logged or written
+    const receipts0 = count(w, 'SELECT COUNT(*) n FROM edge_receipts_v1');
+    replay = ok(await act(w, Bo, {capability: `stop-carry:${op.id}`, clientRef: 'bo-stop'}));
+    assert.equal(count(w, 'SELECT COUNT(*) n FROM edge_receipts_v1'), receipts0, 'no new receipt'); assert.equal(stops(w).length, 1);
+  }});
   assert.equal(r.before.stops, 1, 'the stop was logged with its journal');
   assert.equal(r.before.inv.shared.op.phase, 'stopping'); assert.equal(r.before.stop.phase, 'completed'); assert.equal(r.before.stop.code, 'shared.stop-requested');
+  assert.equal(replay.receipt.id, r.stop.receipt.id, 'the stop replay is the same receipt');
+  if (clean) assert.equal(checkpoints(w), 1);
   restored(w, r); ended(w, r, 'stopped');
   for (const [s, rc] of r.crew) assert.equal(read(w, s, rc).code, 'shared.stopped');
 });
@@ -239,6 +247,7 @@ test('PC10 A3b(i): a world restored to before the op started ends it for every m
   for (const s of [w.souls.Ada, w.souls.Bo]) {
     const rid = w.db.db.prepare("SELECT receipt_id FROM edge_receipts_v1 WHERE soul_id=? AND capability LIKE '%' AND (capability LIKE 'carry-with:%' OR capability LIKE 'accept:%')").get(s.soulId).receipt_id, x = w.edge.receipt(s.soulId, rid);
     assert.equal(x.phase, 'failed', s.name); assert.equal(x.code, 'shared.ended'); assert.match(x.reason, /restored to a moment before the shared carry of beam started/);
+    assert.ok(streamOf(w, s).some((e) => e.kind === 'receipt' && e.receipt?.id === rid && e.receipt.code === 'shared.ended'), `${s.name}'s stream is told`);
   }
   assert.equal(w.host.engine.programAction?.(op.programId) ?? null, null, 'nothing is carried');
   t.diagnostic(`restored before the commit: ${r instanceof Error ? 'no carry ran on' : 'carry ran'}; op ${op.code}`);
@@ -251,6 +260,7 @@ test('PC10 A3b(ii): a world restored to before an op ended does not carry it aga
   for (let n = 0; n < 6000 && inviteOf(w, id).shared.op?.phase !== 'ended'; n++) await w.tick(1);
   const op = inviteOf(w, id).shared.op; assert.equal(op.result, 'arrived');
   // a crash on a world without the durable clock: the boot replays only to the last logged event, before the end
+  const lines = []; t.mock.method(console, 'error', (...a) => lines.push(a.join(' ')));
   const boot = await restart(w, false), tick = w.host.engine.world.tick;
   assert.ok(tick < op.endedTick, `restored to tick ${tick}, before the end at ${op.endedTick}`);
   assert.equal(w.host.engine.programOf(Ada.entityId), op.programId, 'the engine replays the ended op\'s programme');
@@ -261,6 +271,7 @@ test('PC10 A3b(ii): a world restored to before an op ended does not carry it aga
     const x = read(w, s, rc); assert.equal(x.phase, 'completed'); assert.equal(x.shared.result, 'arrived', 'the ended receipt keeps its truth');
     assert.ok(streamOf(w, s).some((e) => e.kind === 'shared.restored' && /restored to a moment before the shared carry of beam ended/.test(e.text)), `${s.name} is told`);
   }
+  assert.ok(lines.some((l) => l.includes(op.id) && /restored to tick .* before this carry ended/.test(l)), 'an operator line is logged');
   const E = w.host.engine.world.entities;
   assert.equal(E[beam].support?.kind, 'ground', 'the beam lies on the ground'); assert.equal(decisions(w, op.id), 1, 'no new carry decision');
   for (const s of [Ada, Bo]) assert.equal(E[s.entityId].human.grip ?? null, null, `${s.name}'s hands are free`);
@@ -286,4 +297,19 @@ test('PC10 A3c: the LINK migration after a restart does not relocate a member of
   // the restarted ledger re-learns that Bo was gone: his fade is his stop (PC09), once; the crew sets the beam down
   assert.equal(r.op.stop?.away, true); assert.equal(r.op.stop?.name, 'Bo');
   ended(w, r, r.op.result, 1); assert.match(r.op.result, /^stopped/);
+});
+
+test('PC10 A3b: a world restored to before a stop (an older backup than the journal) is asked to stop again; it ends stopped', {timeout: 300000}, async (t) => {
+  const w = await world(t, {durable: false});
+  const r = await carry(w, t, {clean: false, stopWhen: (c) => c.phase === 'move' && c.n > 40, restartWhen: (c) => !!c.stop && c.op.phase === 'stopping', offline: (db) => {
+    const seq = db.db.prepare("SELECT MIN(seq) s FROM events WHERE kind='edge-stop' AND payload LIKE '%shared.stop%'").get().s;
+    db.db.prepare('DELETE FROM events WHERE seq >= ?').run(seq); db.db.prepare('DELETE FROM snapshots').run();
+  }}).catch((e) => e);
+  // the bodies are back where the older world had them, so the helper's restored-carry checks do not hold here
+  assert.ok(r instanceof Error && /teleports|restored/.test(r.message) || r?.op, String(r?.message ?? ''));
+  const id = w.db.db.prepare("SELECT invite_id FROM edge_invites_v1 WHERE body LIKE '%\"op\":{%'").get().invite_id;
+  for (let n = 0; n < 3000 && inviteOf(w, id).shared.op.phase !== 'ended'; n++) await w.tick(1);
+  const op = inviteOf(w, id).shared.op;
+  assert.equal(stops(w).length, 1, 'the stop is logged again, once'); assert.equal(op.result, 'stopped'); assert.equal(op.stop.name, 'Bo');
+  t.diagnostic(`restored before the stop: re-stopped once, ${op.result}`);
 });
