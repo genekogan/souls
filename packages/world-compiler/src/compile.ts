@@ -351,9 +351,9 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
         const before = sub.map((sid) => scratch.entities.get(sid)!);
         // PC12: a removed part takes its joints with it; each part it was joined to loses that half (and must still be
         // held up: the support check at the end). Undo restores the part verbatim, which puts the halves back.
-        for (const e of before) for (const [c, j] of Object.entries(e.joins ?? {})) {
+        for (const e of before) for (const j of Object.values(e.joins ?? {})) {
           const o = scratch.entities.get(j.to); if (!o || sub.includes(o.id) || o.joins?.[j.at]?.to !== e.id) continue;
-          setJoins(withoutHalf(o, j.at)); void c;
+          setJoins(withoutHalf(o, j.at));
         }
         for (const sid of [...sub].reverse()) {
           const e = scratch.entities.get(sid)!;
@@ -616,15 +616,21 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
         const a = scratch.entities.get(aid)!;
         if (op.op === 'disconnect') {
           const j = a.joins?.[op.a.connector];
-          if (!j) { failures.push({ ...fail(i, 'connector.free', `${scratch.pathOf(aid)} ${op.a.connector} is not joined`), entity: aid, field: 'connector' }); return; }
-          const o = scratch.entities.get(j.to)!;
+          if (!j) {
+            const known = scratch.resolvedDef(a.def)?.components.connectors?.some((c) => c.id === op.a.connector);
+            failures.push({ ...fail(i, known ? 'connector.free' : 'connector.unknown', `${scratch.pathOf(aid)} ${known ? `${op.a.connector} is not joined` : `has no connector ${op.a.connector}`}`), entity: aid, field: 'connector' }); return;
+          }
+          const o = scratch.entities.get(j.to);
+          if (o?.joins?.[j.at]?.to !== aid) { failures.push(fail(i, 'undo.conflict', `${scratch.pathOf(aid)} ${op.a.connector} names ${j.to} ${j.at}, which does not join it back`)); return; }
           setJoins(withoutHalf(a, op.a.connector));
-          if (o.joins?.[j.at]?.to === aid) setJoins(withoutHalf(scratch.entities.get(o.id)!, j.at));
+          setJoins(withoutHalf(scratch.entities.get(o.id)!, j.at));
           inverse.unshift({ op: 'connect', a: { id: aid, connector: op.a.connector }, b: { id: o.id, connector: j.at } });
           return;
         }
         const bid = resolveId(op.b.id, i); if (!bid || bid === 'world') { if (bid === 'world') failures.push(fail(i, 'entity.unknown', 'world')); return; }
         const b = scratch.entities.get(bid)!;
+        // a part a Soul is using (carrying it, standing or sitting on it) is not joined under them
+        if (inUse(aid, i) || inUse(bid, i)) return;
         const problem = joinProblem(scratch, a, op.a.connector, b, op.b.connector, i);
         if (problem) { failures.push(problem); return; }
         setJoins(withHalf(a, op.a.connector, bid, op.b.connector));
@@ -928,7 +934,8 @@ function admit(w: WorldModel, e: Entity, def: StoredDef, i: number, mode: 'stric
       if (anchor === 'base' && st.needsPad && (def.components.foundation?.kind ?? 'pad') === 'pad') {
         (e as Entity & { _pad?: Landform })._pad = padFor(`${e.id}:pad`, fp, st.y, padGrading(w, baked, p[0], p[1], yaw, s));
       }
-    } else if (p.length === 3 && (e.anchor ?? def.anchor) === 'base' && def.layer !== 'volume' && !baked.landform && (def.components.foundation?.kind ?? 'pad') === 'pad') {
+    // PC12 (#691): a part with connectors is held up by its joints or lies on the ground; it never raises the ground under it
+    } else if (p.length === 3 && (e.anchor ?? def.anchor) === 'base' && def.layer !== 'volume' && !baked.landform && (def.components.foundation?.kind ?? 'pad') === 'pad' && !def.components.connectors) {
       // a pre-settled pose (restore after undo, or an explicit y): keep y, but a building on a slope still needs its terrace
       const yaw = typeof e.r === 'number' ? e.r : Array.isArray(e.r) ? e.r[0] : 0;
       const fp = footprintOf(p[0], p[2], (baked.box[0] * s) / 2, (baked.box[2] * s) / 2, yaw);

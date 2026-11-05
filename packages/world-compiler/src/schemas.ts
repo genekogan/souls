@@ -424,7 +424,7 @@ export const refusalCodes = [
   'size.range', 'size.furnished', 'extent.outside', 'overlap.solid', 'support.none', 'body.protected',
   'constant.immutable', 'float.no-water', 'constraint.unsatisfied', 'architecture', 'architecture.sealed', 'architecture.unreachable', 'architecture.headroom', 'entity.unknown', 'entity.limit', 'name.taken', 'params.invalid', 'state.invalid', 'undo.conflict',
   'wallet.insufficient', 'relation.invalid', 'handling.crew', 'handling.grips', 'handling.mass', 'handling.reach',
-  'connector.unknown', 'connector.incompatible', 'connector.taken', 'connector.apart', 'connector.joined', 'connector.free',
+  'connector.unknown', 'connector.incompatible', 'connector.taken', 'connector.apart', 'connector.joined', 'connector.free', 'connector.pose',
   'request.conflict', 'request.budget', 'revision.stale', 'asset.invalid', 'asset.budget', 'budget.world', 'budget.region',
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];

@@ -20,15 +20,15 @@ const refused = (r: Result, code: string, why?: RegExp) => {
   if (why) assert.match(r.failures[0].detail, why);
 };
 /** Two uprights standing face to face, a beam's length apart, and four beams at seats 4 and 12 on both columns, joined. */
-function bayOps(x0 = 0): unknown[] {
+function bayOps(x0 = 0, lift = 0, pitch = 0): unknown[] {
   const bx = x0 - 2 * T - BEAM_L - 2 * GAP, ops: unknown[] = [
-    { op: 'place', tmp: '$a', def: 'core/rack-upright@2', p: [x0, UP_L / 2, 0], r: [0, 0, Math.PI / 2], anchor: 'center' },
-    { op: 'place', tmp: '$b', def: 'core/rack-upright@2', p: [bx, UP_L / 2, 0], r: [Math.PI, 0, Math.PI / 2], anchor: 'center' },
+    { op: 'place', tmp: '$a', def: 'core/rack-upright@2', p: [x0, UP_L / 2 + lift, 0], r: [0, pitch, Math.PI / 2], anchor: 'center' },
+    { op: 'place', tmp: '$b', def: 'core/rack-upright@2', p: [bx, UP_L / 2 + lift, 0], r: [Math.PI, 0, Math.PI / 2], anchor: 'center' },
   ];
   const k = 0;
   for (const i of [4, 12]) for (const [z, aSide, bSide] of [[-ZC, 'l', 'r'], [ZC, 'r', 'l']] as const) {
     const t = `$b${i}${aSide}`;
-    ops.push({ op: 'place', tmp: t, def: 'core/rack-beam@3', p: [x0 - T - GAP - BEAM_L / 2, seat(i) - BEAM_H / 2, z], r: k, anchor: 'center' });
+    ops.push({ op: 'place', tmp: t, def: 'core/rack-beam@3', p: [x0 - T - GAP - BEAM_L / 2, seat(i) + lift - BEAM_H / 2, z], r: k, anchor: 'center' });
     ops.push({ op: 'connect', a: { id: t, connector: 'end-r' }, b: { id: '$a', connector: `front-${aSide}-${i}` } });
     ops.push({ op: 'connect', a: { id: t, connector: 'end-l' }, b: { id: '$b', connector: `front-${bSide}-${i}` } });
   }
@@ -59,9 +59,8 @@ test('PC12 A1a/A1b: a god joins two standing uprights and four beams; both halve
   assert.equal(Object.keys(a.joins!).length, 4); assert.equal(Object.keys(b.joins!).length, 4);
   assert.equal(jointId(a.id, 'front-l-4', 'e_x', 'end-r'), jointId('e_x', 'end-r', a.id, 'front-l-4'), 'the same id from either end');
   assert.ok(r.warnings.some((x) => x.startsWith('joint ')), 'the batch names its joints');
-  // the standing upright collides as its standing box (3.66 m tall, 7.6 cm thick), so the two face each other unrefused
-  const fp = w.footprint(a);
-  assert.ok(fp.every((o) => o.y1 - o.y0 > 3.6 && o.y0 > -0.01), JSON.stringify(fp[0]));
+  // loose materials have no compiler collider (as before PC12): the engine's own box is their obstacle (server test)
+  assert.equal(w.footprint(a).length, 0);
 });
 
 test('PC12 A2a: refusals before anything changes, naming the parts', () => {
@@ -82,8 +81,15 @@ test('PC12 A2a: refusals before anything changes, naming the parts', () => {
   // a bearing part placed in the air unjoined
   refused(run(w, [{ op: 'place', def: 'core/rack-beam@3', p: [30, 1.5, 0], r: 0, anchor: 'center' }]), 'support.none', /above the ground with none of its bearing connectors/);
   refused(run(w, [{ op: 'disconnect', a: { id: a, connector: 'back-l-3' } }]), 'connector.free');
+  refused(run(w, [{ op: 'disconnect', a: { id: a, connector: 'back-x-3' } }]), 'connector.unknown', /has no connector back-x-3/);
+  // the default anchor keeps y for a part with connectors and builds no pad under it, so it is refused too
+  refused(run(w, [{ op: 'place', def: 'core/rack-beam@3', p: [30, 1.5, 0], r: 0 }]), 'support.none', /above the ground/);
   assert.equal(JSON.stringify([...w.entities.values()]), before, 'nothing changed');
   void b;
+  // an upright held a metre in the air does not hold beams up; a part pitched about x does not join (the engine would
+  // stand it straight)
+  refused(run(world(), bayOps(0, 1)), 'support.none', /holds joined parts up but its foot is 1 m above the ground/);
+  refused(run(world(), bayOps(0, 0, 0.4)), 'connector.pose', /tilted 0.4 rad about x/);
 });
 
 test('PC12 A2a/A2b: a safe release order is accepted; undo and redo are exact', () => {
@@ -98,13 +104,20 @@ test('PC12 A2a/A2b: a safe release order is accepted; undo and redo are exact', 
   const b = w.entities.get(r.ids.$b)!;
   assert.equal(b.joins, undefined, 'the other upright lost its halves with the beams');
   // undo: everything back, both halves of every joint
-  ok(applyBatch(w, { ops: res.inverse! }, 'god', 3, { trusted: true }).result);
+  const undo = applyBatch(w, { ops: res.inverse! }, 'god', 3, { trusted: true });
+  ok(undo.result);
   assert.deepEqual(snap(), built, 'undo restores the parts and both halves of each joint');
+  // redo, then undo again
+  const redo = applyBatch(w, { ops: undo.inverse! }, 'god', 4, { trusted: true });
+  ok(redo.result);
+  assert.equal(w.entities.get(a), undefined); assert.equal(w.entities.get(r.ids.$b)!.joins, undefined);
+  ok(applyBatch(w, { ops: redo.inverse! }, 'god', 5, { trusted: true }).result);
+  assert.deepEqual(snap(), built, 'redo then undo again');
   // disconnect then reconnect via the inverse
   const one = beams[0], end = Object.keys(one.joins!)[0];
-  const off = applyBatch(w, { ops: [{ op: 'disconnect', a: { id: one.id, connector: end } }, { op: 'remove', id: one.id }] }, 'god', 4);
+  const off = applyBatch(w, { ops: [{ op: 'disconnect', a: { id: one.id, connector: end } }, { op: 'remove', id: one.id }] }, 'god', 6);
   ok(off.result);
-  ok(applyBatch(w, { ops: off.inverse! }, 'god', 5, { trusted: true }).result);
+  ok(applyBatch(w, { ops: off.inverse! }, 'god', 7, { trusted: true }).result);
   assert.deepEqual(snap(), built);
 });
 
@@ -133,7 +146,7 @@ test('PC12 A3a: a second, unrelated kit joins through the same interface; mixing
     { op: 'connect', a: { id: '$x', connector: 'end-l' }, b: { id: post.id, connector: 'hole' } }]), 'connector.incompatible', /beam-end.*does not mate.*peg-hole/);
   // a connector off its part is refused on define
   refused(run(w, [{ op: 'define', def: { schema: 'def/1', name: 'bad-post', version: 1, tags: [], ...box([0.1, 1, 0.1], [{ kind: 'box', at: [0, 0.5, 0], size: [0.1, 1, 0.1] }]),
-    components: { connectors: [{ id: 'hole', kind: 'peg-hole', at: [0, 2, 0], mates: ['peg'] }] } } }]), 'connector.unknown', /off the part/);
+    components: { connectors: [{ id: 'hole', kind: 'peg-hole', at: [0, 2, 0], mates: ['peg'] }] } } }]), 'def.invalid', /off the part/);
 });
 
 test('PC12 A3b: defs without connectors are unchanged; slot parenting still works; copies are loose', () => {

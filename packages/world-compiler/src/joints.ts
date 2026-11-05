@@ -17,9 +17,10 @@ const bearing = (def: StoredDef | undefined) => connectorsOf(def).filter((c) => 
 
 /** A connector's point in the world: the part's world pose with its tilt (r = [yaw, x, z], three.js XYZ order, the
  *  order the client draws it in), at its scale. */
-export function connectorPoint(w: WorldModel, e: Entity, c: Connector): [number, number, number] {
+export function connectorPoint(w: WorldModel, e: Entity, c: Connector): [number, number, number] { return localToWorld(w, e, c.at); }
+function localToWorld(w: WorldModel, e: Entity, at: readonly number[]): [number, number, number] {
   const wp = w.worldPose(e), rx = Array.isArray(e.r) ? e.r[1] : 0, rz = Array.isArray(e.r) ? e.r[2] : 0;
-  let [x, y, z] = [c.at[0] * wp.s, c.at[1] * wp.s, c.at[2] * wp.s];
+  let [x, y, z] = [at[0] * wp.s, at[1] * wp.s, at[2] * wp.s];
   { const k = Math.cos(rz), s = Math.sin(rz); [x, y] = [x * k - y * s, x * s + y * k]; }
   { const k = Math.cos(wp.yaw), s = Math.sin(wp.yaw); [x, z] = [x * k + z * s, -x * s + z * k]; }
   { const k = Math.cos(rx), s = Math.sin(rx); [y, z] = [y * k - z * s, y * s + z * k]; }
@@ -45,6 +46,12 @@ export function joinProblem(w: WorldModel, a: Entity, ca: string, b: Entity, cb:
     const j = e.joins?.[id];
     if (j) return fail(i, 'connector.taken', `${name(e)} ${id} is already joined to ${w.pathOf(j.to)} ${j.at} (joint ${jointId(e.id, id, j.to, j.at)})`, { entity: e.id, field: 'connector', fix: 'Disconnect it first, or use a free connector.' });
   }
+  // the engine takes a joined part's yaw and its roll about its own z, at scale 1: a part pitched about x or scaled would
+  // meet here and not there, so it does not join
+  for (const e of [a, b]) {
+    const rx = Array.isArray(e.r) ? e.r[1] : 0;
+    if (Math.abs(rx) > 1e-6 || (e.s ?? 1) !== 1) return fail(i, 'connector.pose', `${name(e)} is ${Math.abs(rx) > 1e-6 ? `tilted ${r2(rx)} rad about x` : `scaled ${e.s}`}; joined parts stand at scale 1 with r = [yaw, 0, roll]`, { entity: e.id, field: Math.abs(rx) > 1e-6 ? 'r' : 's', fix: 'Place it with r = [yaw, 0, roll] and no scale, then connect.' });
+  }
   for (const e of [a, b]) if (e.in.parent !== 'world') return fail(i, 'connector.apart', `${name(e)} is inside ${w.pathOf(e.in.parent)}; joined parts stand in the world itself`, { entity: e.id, field: 'in', fix: 'Move it out to the world first.' });
   const pa = connectorPoint(w, a, xa!), pb = connectorPoint(w, b, xb!), d = Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]);
   if (d > JOIN_TOL_M) return fail(i, 'connector.apart', `${name(a)} ${ca} at ${at(pa)} and ${name(b)} ${cb} at ${at(pb)} are ${d.toFixed(2)} m apart (at most ${JOIN_TOL_M} m)`, { field: 'p', measured: +d.toFixed(3), limit: JOIN_TOL_M, fix: 'Place the parts so the two connectors meet, then connect.' });
@@ -59,10 +66,30 @@ export function withoutHalf(e: Entity, c: string): Entity {
   return next;
 }
 
-/** Why a part is not held up, or null. `seen` breaks cycles: parts that only hold each other up are unsupported. */
-function unsupported(w: WorldModel, e: Entity, seen: Set<string>): string | null {
+/** The lowest point of a part's box in the world (its tilt applied). */
+function lowest(w: WorldModel, e: Entity): number {
+  const box = w.resolvedDef(e.def)?.size.box; if (!box) return w.worldPose(e).y;
+  let y = Infinity;
+  for (const x of [-box[0] / 2, box[0] / 2]) for (const h of [0, box[1]]) for (const z of [-box[2] / 2, box[2] / 2]) y = Math.min(y, localToWorld(w, e, [x, h, z])[1]);
+  return y;
+}
+/** Why a part is not held up, or null. `memo` holds each part's answer for one check; a part met again while its own
+ *  answer is being worked out is in a cycle, and parts that only hold each other up are unsupported. */
+function unsupported(w: WorldModel, e: Entity, memo: Map<string, string | null>): string | null {
+  if (memo.has(e.id)) return memo.get(e.id) ?? null;
+  memo.set(e.id, `${w.pathOf(e.id)} is held up only by parts it holds up`);
+  const why = unsupportedNow(w, e, memo);
+  memo.set(e.id, why);
+  return why;
+}
+function unsupportedNow(w: WorldModel, e: Entity, memo: Map<string, string | null>): string | null {
   const bears = bearing(w.resolvedDef(e.def));
-  if (!bears.length) return null;
+  if (!bears.length) {
+    // a part that holds others up (an upright) stands on the ground itself: its lowest point on it
+    if (!e.joins || e.in.parent !== 'world') return null;
+    const wp = w.worldPose(e), gap = lowest(w, e) - w.terrain.sample(wp.x, wp.z);
+    return Math.abs(gap) <= GROUND_TOL_M ? null : `${w.pathOf(e.id)} holds joined parts up but its foot is ${r2(Math.abs(gap))} m ${gap > 0 ? 'above' : 'below'} the ground`;
+  }
   const joined = bears.filter((c) => e.joins?.[c.id]);
   if (!joined.length) {
     if (e.in.parent !== 'world') return null;   // held by what it sits in or on, as any placed thing
@@ -71,15 +98,12 @@ function unsupported(w: WorldModel, e: Entity, seen: Set<string>): string | null
   }
   const free = bears.filter((c) => !e.joins?.[c.id]);
   if (free.length) return `${w.pathOf(e.id)} hangs by ${joined.map((c) => c.id).join(', ')} with ${free.map((c) => c.id).join(', ')} joined to nothing`;
-  if (seen.has(e.id)) return `${w.pathOf(e.id)} is held up only by parts it holds up`;
-  seen.add(e.id);
   for (const c of joined) {
     const j = e.joins![c.id]!, o = w.entities.get(j.to);
     if (!o) return `${w.pathOf(e.id)} ${c.id} is joined to ${j.to}, which is gone`;
-    const why = unsupported(w, o, seen);
+    const why = unsupported(w, o, memo);
     if (why) return `${w.pathOf(e.id)} rests on ${w.pathOf(o.id)}, and ${why}`;
   }
-  seen.delete(e.id);
   return null;
 }
 
@@ -93,9 +117,10 @@ export function supportProblem(w: WorldModel, ids: Iterable<string>, opOf: (id: 
     check.add(id);
     for (const j of Object.values(e.joins ?? {})) queue.push(j.to);
   }
+  const memo = new Map<string, string | null>();
   for (const id of [...check].sort()) {
     const e = w.entities.get(id)!;
-    const why = unsupported(w, e, new Set());
+    const why = unsupported(w, e, memo);
     if (why) return fail(opOf(id), 'support.none', why, { entity: id, field: 'joins', fix: 'Join every bearing connector to a supported part, set the part on the ground, or remove what it would hold up first.' });
   }
   return null;
@@ -109,7 +134,7 @@ export function connectorProblem(def: { size?: { box?: number[] }; components?: 
   for (const c of cs) {
     const [x, y, z] = c.at;
     if (Math.abs(x) > L / 2 + slack || Math.abs(z) > W / 2 + slack || y < -slack || y > H + slack)
-      return { code: 'connector.unknown', field: `components.connectors.${c.id}`, message: `connector ${c.id} at (${c.at.join(', ')}) is off the part (${L} × ${H} × ${W} m)`, fix: 'Put each connector on the part\'s own box (x along it, y up from its base, z across).' };
+      return { code: 'def.invalid', field: `components.connectors.${c.id}`, message: `connector ${c.id} at (${c.at.join(', ')}) is off the part (${L} × ${H} × ${W} m)`, fix: 'Put each connector on the part\'s own box (x along it, y up from its base, z across).' };
   }
   return null;
 }

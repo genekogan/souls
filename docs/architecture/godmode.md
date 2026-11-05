@@ -84,17 +84,22 @@ A def may declare typed structural connectors (`components.connectors`: `id`, `k
 - **`disconnect`.** `{op: 'disconnect', a: {id, connector}}` undoes a joint by either end. Undo is exact, and undoing
   the removal of a joined part brings back both halves.
 - **Support.** A part with `bears` connectors is held up through them. Once one is joined, all must be, to parts
-  that are themselves held up. With none joined, a part at the world root must lie on the ground.
+  that are themselves held up. With none joined, a part at the world root must lie on the ground. A part without
+  bearing connectors that holds joined parts up (an upright) must have its lowest point on the ground. A part with
+  connectors never gets a foundation pad: the default anchor keeps its height.
 - **Refusals.** Each comes before anything changes:
   - `connector.unknown`: no such connector, or one off the part on `define`;
   - `connector.incompatible`: the kinds do not mate;
   - `connector.taken`: the connector is already joined;
   - `connector.apart`: the points are more than 5 cm apart, or a part is inside another;
+  - `connector.pose`: a part tilted about x (`r[1]`) or scaled, which the engine would not hold the same way;
   - `connector.joined`: a `move`, or a params change, of a joined part;
   - `connector.free`: a `disconnect` of a free connector;
-  - `support.none`: a bearing part would hang or float. This covers a beam placed in the air unjoined, one end
-    released, or the upright under it removed. Take the beams down first.
-- **Stood on end.** A part with connectors stood on end (`r = [yaw, 0, roll]`) collides as its rolled box.
+  - `support.none`: a bearing part would hang or float, or an upright holding parts up is not standing on the
+    ground. This covers a beam placed in the air unjoined, one end released, or the upright under it removed. Take
+    the beams down first.
+- **Not yet.** Loose materials have no compiler collider (as before), so the god's overlap check does not see a
+  standing bay; the engine's box is its obstacle. A terrain edit under a joined or bearing part is not re-checked.
 
 The core revisions `core-rack-upright@2` (88 beam seats, `front|back-l|r-<n>` every 6 in from 12 in) and
 `core-rack-beam@3` (`end-l`, `end-r`, bearing) build a bay. Stand the upright with `r = [yaw, 0, π/2]` and
