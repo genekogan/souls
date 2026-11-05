@@ -47,7 +47,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
     Of two proposals for one load, exactly one commits. A native refusal that can pass (someone in the way) keeps
     waiting. A permanent one (`carry.no-route`) ends every receipt `failed` with that diagnostic, and nothing is lifted.
   - **Busy.** While the operation runs, a member's body act is refused `shared.busy` before any native check,
-    naming the operation and the claimed hands and walking. That includes proposing or accepting another carry.
+    naming the operation and the claimed hands and walking. That includes proposing a carry or accepting any invitation.
     Nothing is replaced and no receipt is created. Speech and reads still work, and the proposal's lapse no longer
     applies.
   - **Release.** When the native programme ends, every member's receipt ends together, in one transaction:

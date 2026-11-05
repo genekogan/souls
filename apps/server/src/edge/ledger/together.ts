@@ -958,7 +958,7 @@ export class Together {
     if (!inv || !op || inv.state !== 'committed' || op.phase === 'ended' || inv.hostReceipt !== r.id && inv.guestReceipts[r.soulId] !== r.id) return;
     const host = this.mindOf(inv.host.soulId), live = !!host && this.p.host.engine.programOf(host.entityId) === op.programId, who = this.mindOf(r.soulId)?.name ?? 'A member';
     this.sharedEnd(inv, false, 'shared.ended', `${who} stopped (${r.code ?? r.phase}), so the shared carry of ${inv.shared!.load.name} ended for everyone.`);
-    if (live && host) this.p.stopBody?.({soulId: host.soulId, entityId: host.entityId, name: host.name, owner: host.owner});
+    if (live && host) afterCommit(this.p.db.db, () => this.p.stopBody?.({soulId: host.soulId, entityId: host.entityId, name: host.name, owner: host.owner}));
   }
   /** Each sweep: a running operation whose programme is gone on two checks in a row (its end was never seen, e.g. across
    *  a restart) is ended for every member. */
