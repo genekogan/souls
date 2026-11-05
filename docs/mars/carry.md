@@ -89,7 +89,14 @@ Code: `engine/carry/`; tests: `engine/test/carry.test.ts`, `carry-stairs.test.ts
   cannot: …"); otherwise `carry.no-route`.
 
 ## Action contract (`carry`)
-- Params: `{ crew: string[] (distinct), item, to: { x, z, yaw, level? }, place?: 'lay' }`.
+- Params: `{ crew: string[] (distinct), item, to: { x, z, yaw, level? }, place?: 'lay', keepYawV1?: true }`.
+- `keepYawV1` ([#1031](https://github.com/genekogan/souls/issues/1031)): the planner may lift facing either way along
+  the load (θ₀ or θ₀+π). Without the flag the load is posed in the formation's frame, so a lift in the reversed frame
+  turns it half a turn in the crew's hands. With it, the load is posed in whichever of the formation's frame and its
+  reverse is nearer the load's own frame (`loadFrame` in `actions.ts`), in the lift, the move, a replan, a cancel and
+  the set-down. The carriers stand at the other ends, the box and its disc cover are the same either way round, and
+  the load never turns. Floor carries only: a stair carry ignores it. The server's loose-material carries set it. A
+  carry without it, including all recorded history, is unchanged (the rules version cannot take a new suffix).
 - Reservations: `actor:<id>` exclusive per crew member, `entity:<item>` exclusive.
 - Validation (all before anything moves): known humans on one level; item is a
   component lying on the ground (`stored|staged`, support `ground`); crew rules;
@@ -136,6 +143,13 @@ For every component in phase `carried`: support must be `held` by humans who
 are exactly the set gripping it (`carry.support`); while the crew's activity is
 `carry` (not lifting/setting down), every carrier is within 0.05 m of its
 slot-derived spot (`carry.grip-drift`) and the load's disc cover clears static geometry (`carry.load-static`).
+The spots are derived from the load's own frame. For a `keepYawV1` carry whose load is posed in the reverse of
+its formation's frame, they are taken in the load's reverse frame; the carry's own heading decides which, so a
+displaced carrier, or a crew standing on the other frame's spots, still raises `carry.grip-drift`. Each carrier
+keeps the slot of its formation station: in a reversed `keepYawV1` carry a slot's authored grip point is at the
+other end of the load. Nothing in the engine or the web viewer reads loose-load grip points (the viewer takes the
+nearest point of the load), but the offline camera readability scoring (`camera/occluders.ts` `gripPoint`) does,
+and places such a carrier's contact at the far end.
 
 ## Deferred cancellation
 `CancelResult.deferred` (`actions/types.ts`) marks the live action `cancelling` (phase `cancelling`); its later

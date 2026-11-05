@@ -60,6 +60,7 @@ export const carrySchema = z.strictObject({
   to: z.strictObject({ x: z.number().min(-500).max(500), z: z.number().min(-500).max(500), yaw: z.number().min(-7).max(7), level: z.number().int().min(0).max(MAX_LEVEL_ID).optional() }),
   place: z.literal('lay').optional(),
   via: z.string().max(80).optional(),
+  keepYawV1: z.literal(true).optional(),
 });
 
 const smooth = (t: number) => t * t * (3 - 2 * t);
@@ -109,10 +110,22 @@ export function activeLoadDiscs(rt: Runtime, braking = false): LoadDisc[] {
 /** Upright fixtures are held in front of each carrier; construction defaults face along the load. */
 const carryFacing = (ex: CarryExec, yaw:number, index=0) => wrapAngle(yaw - (ex.p.fixture ? ex.p.f.carriers[index].side * Math.PI / 2 : 0));
 
+/**
+ * #1031: the frame the load's pose is set in for formation pose q. Legacy carries set it in q itself, so a crew that
+ * lifted facing the other way along the load turned it half a turn in their hands. With `keepYaw` the load is posed
+ * in whichever of q and q + π is nearer its own current frame: the box is the same either way round (the formation's
+ * discs and extents are symmetric), so the carriers simply stand at the other ends and the load never turns.
+ * Each carrier keeps the slot of its formation station (carry.grip-drift checks it in the carry's own frame).
+ */
+export function loadFrame(item: Entity, p: Pick<CarryProgram, 'keepYaw'>, q: SE2): SE2 {
+  if (!p.keepYaw) return q;
+  return Math.abs(angleDelta(entityFrame(item).q.th, q.th)) > Math.PI / 2 ? { ...q, th: wrapAngle(q.th + Math.PI) } : q;
+}
+
 /** Place load + carriers for formation pose q (the only way positions change while moving). */
 function applyFormation(rt: Runtime, ex: CarryExec, q: SE2) {
   const item = itemOf(rt, ex);
-  item.pose = carriedPose(ex.p.f, q, ex.p.levelY);
+  item.pose = carriedPose(ex.p.f, loadFrame(item, ex.p, q), ex.p.levelY);
   const spots = carrierSpots(ex.p.f, q);
   crewOf(rt, ex).forEach((h, i) => {
     h.pose = { p: [spots[i][0], ex.p.levelY, spots[i][1]], yaw: carryFacing(ex, q.th, i) };
@@ -217,7 +230,7 @@ function stepTransition(rt: Runtime, ex: CarryExec, dt: number, dur: number): bo
 }
 
 function startSetDown(rt: Runtime, ex: CarryExec, q: SE2) {
-  const laid = laidPose(ex.p.f, q, ex.p.levelY);
+  const laid = laidPose(ex.p.f, loadFrame(itemOf(rt, ex), ex.p, q), ex.p.levelY);
   const halfW = entityFrame({ ...itemOf(rt, ex), pose: laid }).halfW;
   beginTransition(rt, ex, 'set-down', laid, carrierSpots(ex.p.f, q, halfW), q.th, ex.p.fixture ? ex.p.fixture.restingPhase : 'staged');
 }
@@ -322,7 +335,7 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
       item.phase = 'carried';
       item.support = { kind: 'held', by: [...p.crew] };
       crewOf(rt, ex).forEach((h, i) => (h.human!.grip = { entity: p.item, slot: p.f.carriers[i].slot }));
-      beginTransition(rt, ex, 'lift', carriedPose(p.f, p.pickup, p.levelY), carrierSpots(p.f, p.pickup), wrapAngle(p.pickup.th), p.fixture ? p.fixture.restingPhase : 'stored');
+      beginTransition(rt, ex, 'lift', carriedPose(p.f, loadFrame(item, p, p.pickup), p.levelY), carrierSpots(p.f, p.pickup), wrapAngle(p.pickup.th), p.fixture ? p.fixture.restingPhase : 'stored');
       return { status: 'running', phase: 'lift' };
     }
     if (ex.phase === 'lift') {
@@ -400,7 +413,7 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
           makeWay(rt, bystander, [p.target.x, p.target.z]);
           return blockedWait(rt, ex.id, p.item, [bystander], { code: 'carry.setdown-occupied', message: `the crew holds ${p.item} at its destination: ${bystander} is standing where it must be set down`, subjects: [p.item, bystander], at: [p.target.x, p.levelY, p.target.z] }, p.crew);
         }
-        beginTransition(rt, ex, 'set-down', p.laid, p.setdown, wrapAngle(p.target.th), p.fixture ? p.fixture.restingPhase : 'staged');
+        beginTransition(rt, ex, 'set-down', p.keepYaw ? laidPose(p.f, loadFrame(itemOf(rt, ex), p, p.target), p.levelY) : p.laid, p.setdown, wrapAngle(p.target.th), p.fixture ? p.fixture.restingPhase : 'staged');
       }
       return { status: 'running', phase: ex.phase };
     }

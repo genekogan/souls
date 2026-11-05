@@ -1,14 +1,15 @@
 // Carry invariants (spec §11, §31), checked at the end of every tick from the
-// world state alone (no action internals): a carried load is held by exactly
+// world state alone (no action internals, except that a `keepYawV1` carry's own
+// heading picks which frame along the load's axis its stations are in, #1031): a carried load is held by exactly
 // its crew; while the crew is moving it ('carry' activity) every carrier is on
 // its slot-derived position and the load's footprint clears static geometry.
-import type { Vec2 } from '../core/math.ts';
+import { angleDelta, type Vec2 } from '../core/math.ts';
 import type { Diagnostic } from '../actions/types.ts';
 import type { Invariant, Runtime } from '../runtime/runtime.ts';
 import type { Spatial } from '../spatial/service.ts';
 import { entityFrame, formationFor, gripError, isCarryLoad, toWorld } from './formation.ts';
 import { poseHit } from './sweep.ts';
-import { activeLoadDiscs } from './actions.ts';
+import { activeLoadDiscs, carryExecsOf } from './actions.ts';
 import { HAND_REACH, LIFT_APEX_MAX } from '../construction/liftcrew.ts';
 import { CATALOG, HUMAN_RADIUS } from '../world/catalog.ts';
 import { linkUnder, stairClearance } from './climb.ts';
@@ -43,7 +44,11 @@ export const carryIntegrity: Invariant = (rt: Runtime) => {
     const slotIdx = crew.map((c) => f.carriers.findIndex((k) => k.slot === ents[c].human!.grip!.slot));
     const actual = Array.from<Vec2>({ length: crew.length });
     crew.forEach((c, j) => (actual[slotIdx[j]] = [ents[c].pose.p[0], ents[c].pose.p[2]]));
-    const ge = gripError(f, q, actual);
+    // #1031: a `keepYawV1` carry may pose the load in the reverse of its formation's frame; the crew's stations are then
+    // those of the load's other frame along its axis, chosen by the carry's own heading (never by whichever fits better)
+    const ex = e.reservedBy ? (rt.services.carryExecs as ReturnType<typeof carryExecsOf> | undefined)?.get(e.reservedBy) : undefined;
+    const frame = ex?.p.keepYaw && Math.abs(angleDelta(ex.q.th, q.th)) > Math.PI / 2 ? { ...q, th: q.th + Math.PI } : q;
+    const ge = gripError(f, frame, actual);
     if (ge.max > GRIP_TOL) {
       const who = crew[slotIdx.indexOf(ge.carrier)];
       out.push({ code: 'carry.grip-drift', message: `${who} is ${ge.max.toFixed(3)} m off grip ${f.carriers[ge.carrier].slot} of ${e.id}`, subjects: [e.id, who], at: e.pose.p });
