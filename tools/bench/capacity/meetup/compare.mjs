@@ -36,7 +36,9 @@ export function conditions(art) {
   const uniq = (f) => [...new Set(runs.map(f).map((x) => JSON.stringify(x ?? null)))].sort().join(' | ');
   return {
     hostClass: i.hostClass ?? null, short: i.short ?? null, quietDeclared: i.quietDeclared ?? null, browser: i.browser ?? null, repeats: i.repeats ?? null,
-    slice: 'slice' in i ? (i.slice ?? 'none') : null,   // recorded as null: the run had no slice quietBefore: q.before?.quiet ?? null, quietAfter: q.after?.quiet ?? null,
+    // a slice recorded as null: the run had no slice
+    slice: 'slice' in i ? (i.slice ?? 'none') : null,
+    quietBefore: q.before?.quiet ?? null, quietAfter: q.after?.quiet ?? null,
     executor: uniq((r) => r.qualification?.qualifying?.executor), cpuMax: uniq((r) => r.qualification?.allocation?.cpuMax), memoryMaxMb: uniq((r) => r.qualification?.allocation?.memoryMaxMb),
   };
 }

@@ -71,5 +71,8 @@ test('missing repeats, cells and worlds are listed, never read as better', () =>
 test('changed run conditions are flagged as not like for like', () => {
   const runs = [run('even', 1), run('even', 2)], x = compare(art(runs), art(runs, { slice: { cpuQuota: '600%', memoryMax: '12G' }, quietDeclared: false }));
   assert.deepEqual(x.conditions.notLikeForLike.map((d) => d.key).sort(), ['quietDeclared', 'slice']);
+  // a busy host on one side is not like for like either
+  const busy = art(runs); busy.qualify.before = { quiet: false };
+  assert.deepEqual(compare(art(runs), busy).conditions.notLikeForLike.map((d) => d.key), ['quietBefore']);
   assert.match(compareText(x), /\*\*Not like for like\.\*\*[\s\S]*`slice`: "none" → \{"cpuQuota":"600%","memoryMax":"12G"\}/);
 });
