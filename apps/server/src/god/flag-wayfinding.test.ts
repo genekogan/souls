@@ -30,25 +30,40 @@ async function world(t: test.TestContext) {
     {op: 'place', def: coreRef('pavilion'), name: 'orchard-house', p: [25, 20]},
     {op: 'place', def: coreRef('pavilion'), name: 'pond-hall', p: [-25, 20]},
     {op: 'place', def: coreRef('flag'), name: 'pond-hall-flag', p: [10, -25], state: {label: 'pond hall'}},
+    {op: 'place', def: coreRef('flag'), name: 'red-flag', p: [30, -30]},
+    {op: 'place', def: coreRef('flag'), name: 'well', p: [-30, 30], state: {label: 'well'}},
+    {op: 'place', def: coreRef('flag'), name: 'well-2', p: [-35, 35], state: {label: 'well'}},
   ]} as never); assert.equal(built.accepted, true, JSON.stringify(built)); await tick(8);
   await invite(f, 'walker'); const row = await accept(f.host, f.souls.create('dev:walker', {name: 'Walker', description: 'Flag wayfinding test'}));
-  const soul: EdgeSoul = {soulId: row.id, entityId: row.entity_id, name: row.name, owner: row.owner}; current = soul; await tick(4); edge.map();
-  return {f, edge, app, soul, tick};
+  const soul: EdgeSoul = {soulId: row.id, entityId: row.entity_id, name: row.name, owner: row.owner}; current = soul;
+  await invite(f, 'keeper'); await accept(f.host, f.souls.create('dev:keeper', {name: 'Orchard Keeper', description: 'A Soul whose name contains a flag name'}));
+  await tick(4); edge.map();
+  // through the route, as a Soul asks: `around` records the places it finds, so places compete with flags from here on
+  const around = async (q: string) => ((await (await app.request(`/v1/edge/around?to=${encodeURIComponent(q)}`)).json()) as {route: Record<string, unknown>}).route;
+  return {f, edge, app, soul, tick, around};
 }
 
-test('F4 (#375): around finds a named flag with or without the word, an exact flag beats a partial place, an exact place keeps the answer', async (t) => {
+test('F4 (#375): around finds a named flag with or without the word, an exact flag beats a partial place and a partial Soul name, an exact place keeps the answer', async (t) => {
   const w = await world(t), p = w.f.host.engine.world.entities[w.soul.entityId]!.pose.p;
+  await w.around('house'); await w.around('hall');
+  const house = await w.around('house');
+  assert.equal((house.place as {id: string})?.id, 'g-orchard-house', `the Soul knows orchard-house, a partial match for "orchard": ${JSON.stringify(house)}`);
   for (const q of ['orchard', 'the orchard flag', 'Orchard Flag']) {
-    const r = routeFrame(w.edge, w.soul, q) as Record<string, unknown>;
+    const r = await w.around(q);
     assert.equal(r.found, true, `${q}: ${JSON.stringify(r)}`);
-    assert.deepEqual(r.flag, {name: 'orchard', walk: 'walk:flag-orchard'}, q);
-    assert.equal(r.walk, 'walk:flag-orchard'); assert.equal(r.place, undefined, `${q}: not the orchard-house`);
+    assert.deepEqual(r.flag, {name: 'orchard', walk: 'walk:flag-orchard'}, `${q}: ${JSON.stringify(r)}`);
+    assert.equal(r.walk, 'walk:flag-orchard'); assert.equal(r.place, undefined, `${q}: not the orchard-house`); assert.equal(r.soul, undefined, `${q}: not Orchard Keeper`);
     assert.equal(r.m, Math.round(Math.hypot(-12 - p[0], -9 - p[2])), q);
     assert.match(String(r.say), /^The orchard flag: \d+ m [a-z-]+ \(~.+\)(, (past|near) .+)?\. To go: act walk:flag-orchard\.$/, String(r.say));
   }
-  const hall = routeFrame(w.edge, w.soul, 'pond hall') as Record<string, unknown>;
+  const hall = await w.around('pond hall');
   assert.equal(hall.flag, undefined, 'an exact place match keeps the answer'); assert.equal((hall.place as {id: string})?.id, 'g-pond-hall', JSON.stringify(hall));
-  const none = routeFrame(w.edge, w.soul, 'lighthouse') as Record<string, unknown>;
+  assert.equal(((await w.around('orchard keeper')).soul as {name: string})?.name, 'Orchard Keeper', 'an exact Soul name still wins');
+  const red = await w.around('red flag');
+  assert.deepEqual(red.flag, {name: 'red-flag', walk: 'walk:flag-red-flag'}, `an unlabelled flag goes by its name: ${JSON.stringify(red)}`);
+  const well = await w.around('well');
+  assert.equal(well.code, 'place.ambiguous', JSON.stringify(well)); assert.deepEqual((well.candidates as {walk: string}[]).map(c => c.walk).sort(), ['walk:flag-well', 'walk:flag-well-2']);
+  const none = await w.around('lighthouse');
   assert.equal(none.flag, undefined); assert.notEqual(none.found, true, JSON.stringify(none));
 });
 
@@ -56,10 +71,16 @@ test('F4 (#375): map lists the named flags beside the places; a walk that reache
   const w = await world(t);
   const map = await (await w.app.request('/v1/edge/map')).json() as {places: unknown[]; flags: {name: string; walk: string; at: number[]}[]};
   assert.ok(map.places.length > 0);
-  assert.deepEqual(map.flags.map(f => [f.name, f.walk, f.at]).sort(), [['orchard', 'walk:flag-orchard', [-12, -9]], ['pond hall', 'walk:flag-pond-hall-flag', [10, -25]]]);
+  assert.deepEqual(map.flags.map(f => [f.name, f.walk, f.at]).sort(), [['orchard', 'walk:flag-orchard', [-12, -9]], ['pond hall', 'walk:flag-pond-hall-flag', [10, -25]], ['red-flag', 'walk:flag-red-flag', [30, -30]], ['well', 'walk:flag-well', [-30, 30]], ['well', 'walk:flag-well-2', [-35, 35]]]);
   const r = await accept(w.f.host, w.edge.act(w.soul, {capability: 'walk:flag-orchard'})) as {receipt: {id: string}};
   for (let i = 0; i < 4000 && ['waiting', 'started'].includes(w.edge.receipt(w.soul.soulId, r.receipt.id)!.phase); i++) await w.tick(1);
   const done = w.edge.receipt(w.soul.soulId, r.receipt.id) as {phase: string; outcome?: {summary: string}};
   assert.equal(done.phase, 'completed', JSON.stringify(done));
   assert.equal(done.outcome?.summary, 'walk completed at the orchard flag.', JSON.stringify(done.outcome));
+  const r2 = await accept(w.f.host, w.edge.act(w.soul, {capability: 'walk:flag-pond-hall-flag'})) as {receipt: {id: string}};
+  for (let i = 0; i < 4000 && ['waiting', 'started'].includes(w.edge.receipt(w.soul.soulId, r2.receipt.id)!.phase); i++) await w.tick(1);
+  assert.equal((w.edge.receipt(w.soul.soulId, r2.receipt.id) as {outcome?: {summary: string}}).outcome?.summary, 'walk completed at the pond hall flag.', 'a name ending in -flag says flag once');
+  const r3 = await accept(w.f.host, w.edge.act(w.soul, {capability: 'walk:pond-hall'})) as {receipt: {id: string}};
+  for (let i = 0; i < 4000 && ['waiting', 'started'].includes(w.edge.receipt(w.soul.soulId, r3.receipt.id)!.phase); i++) await w.tick(1);
+  assert.match(String((w.edge.receipt(w.soul.soulId, r3.receipt.id) as {outcome?: {summary: string}}).outcome?.summary), /^walk completed at (?!the ).*\.$/, 'other walks keep their text');
 });

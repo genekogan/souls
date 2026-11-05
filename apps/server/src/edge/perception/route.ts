@@ -51,7 +51,8 @@ export function routeFrame(ledger: EdgeLedger, soul: EdgeSoul, query: string) {
   const parts=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(ledger,soul,ledger.places.byId.get(p.id)!,part)).map(part=>{const named=matches([part.title,...(part.aliases??[])]);return{p,part,exact:named===0,tier:named<9?named:matches([part.title,...(part.aliases??[]),p.name,...(p.aliases??[])])+0.5};})).filter(x=>x.tier<9).sort((a,b)=>a.tier-b.tier);
   // F4 (#375): a named god flag ("orchard", "the orchard flag") answers like a place; flags are public markers. An exact
   // flag name beats a partial place match; a place that matches as well as a flag keeps the answer.
-  const flagAsk=ask.filter(w=>w!=='flag'&&w!=='flags'),flags=flagAsk.length?((ledger as {namedFlagsV1?:()=>NamedFlagV1[]}).namedFlagsV1?.()??[]).map(f=>{const n=tokens(f.name);return{f,tier:n.join(' ')===flagAsk.join(' ')?0:flagAsk.every(w=>n.includes(w))?1:9,d:dist2(pos,f.at)};}).filter(x=>x.tier<9).sort((a,b)=>a.tier-b.tier||a.d-b.d):[];
+  const noFlag=(w:string)=>w!=='flag'&&w!=='flags',flagAsk=ask.filter(noFlag),flagTier=(n:string[])=>n.join(' ')===flagAsk.join(' ')?0:flagAsk.every(w=>n.includes(w))?1:9;
+  const flags=flagAsk.length?((ledger as {namedFlagsV1?:()=>NamedFlagV1[]}).namedFlagsV1?.()??[]).map(f=>({f,tier:Math.min(...[f.name,...(f.aliases??[])].map(n=>flagTier(tokens(n).filter(noFlag)))),d:dist2(pos,f.at)})).filter(x=>x.tier<9).sort((a,b)=>a.tier-b.tier||a.d-b.d):[];
   // Keep exact Soul lookup, but a known exact destination must not be stolen by
   // a Soul whose longer name merely contains it. Withheld places/parts do not
   // participate in this choice; their names must not change a visible result.
@@ -68,6 +69,8 @@ export function routeFrame(ledger: EdgeLedger, soul: EdgeSoul, query: string) {
       say: `${soulHit.name} is at ${where?.name ?? 'an open spot'}, ${l.m} m ${l.dir} of you (${l.eta})${lm ? `, ${lm.how} ${lm.name}` : ''}.`};
   }
   if(flags.length&&flags[0].tier<Math.min(scored[0]?.tier??9,parts[0]?.tier??9)){
+    const same=flags.filter(x=>x.tier===flags[0].tier&&x.f.name===flags[0].f.name);
+    if(same.length>1)return{query,found:false,code:'place.ambiguous',reason:`Several flags are called ${flags[0].f.name}; choose one by its walk.`,candidates:same.slice(0,5).map(({f})=>({name:f.name,walk:f.walk,...leg(f.at,false)}))};
     const {f}=flags[0],l=leg(f.at,false),lm=landmark(f.at,new Set()),problem=l.m<=2?null:ledger.routeProblem(soul,f.walk);
     return{query,found:true,flag:{name:f.name,walk:f.walk},...(l.m<=2?{m:l.m}:l),...(lm?{[lm.how]:lm.name}:{}),...(l.m<=2?{here:true}:{walk:f.walk,...(problem?{reachable:false,why:problem.code}:{})}),
       say:l.m<=2?`You are at the ${f.name} flag now.`:`The ${f.name} flag: ${l.m} m ${l.dir} (${l.eta})${lm?`, ${lm.how} ${lm.name}`:''}. To go: act ${f.walk}.`};

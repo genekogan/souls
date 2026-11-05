@@ -81,7 +81,7 @@ export function mountEdgeRoutes(app: Hono, deps: EdgeDeps & {ledger: EdgeLedger}
   app.get('/v1/edge/metrics', wrap(c => {const m = Number(c.req.query('minutes') ?? 60); return L.metrics(Number.isFinite(m) && m >= 1 && m <= 10080 ? m * 60_000 : 3600_000);}));
   // Public: map knowledge (names, kinds, enclosure, capacity, public schedule) never lists occupants (§5).
   // F4 (#375): the named god flags beside the places (name, the walk that goes there, where it stands)
-  app.get('/v1/edge/map', wrap(() => {const flags = (L as {namedFlagsV1?: () => {name: string; walk: string; at: [number, number]}[]}).namedFlagsV1?.(); return {places: L.map(), ...(flags ? {flags: flags.map(({name, walk, at}) => ({name, walk, at}))} : {})};}));
+  app.get('/v1/edge/map', wrap(() => {const flags = (L as {namedFlagsV1?: () => {name: string; walk: string; at: [number, number]}[]}).namedFlagsV1?.(); return {places: L.map(), flags: (flags ?? []).map(({name, walk, at}) => ({name, walk, at}))};}));
   app.get('/v1/edge/platforms',wrap(()=>({worldId:deps.host.worldId,tick:deps.host.engine.world.tick,...livePlatforms(L)})));
   // Public: rides (carrier/1) for viewers — position, phase, route, riders' public names; no owner data.
   app.get('/v1/edge/rides', wrap(() => ({tick: deps.host.engine.world.tick, rides: L.rides()})));
