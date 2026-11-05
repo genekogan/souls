@@ -649,8 +649,8 @@ export function defaultCommand(world, port, o) {
     ...eyesEnv(world.slug),
     // measurement only (lane SLEEP): log the engine state hash at boot and at stop
     ...(process.env.SIM_BOOT_HASH === '1' ? { SIM_BOOT_HASH: '1' } : {}),
-    // Soul mode of the world's one skill (/SKILL.md) points at Codex's Soul skill (/skill.md) and CLI (/eden-agent.mjs),
-    // served as is from the published files when the launcher is given them (--soul-skill, --soul-cli).
+    // Soul mode of the world's one skill (/SKILL.md) points at the Soul skill (/skill.md) and the current CLI (/eden.mjs);
+    // the retained legacy CLI stays at /eden-agent.mjs for existing folders. All served as is from the published files.
     ...(o.soulSkillFile && existsSync(o.soulSkillFile) ? { EDGE_SKILL_FILE: resolve(o.soulSkillFile) } : {}),
     ...(o.soulCliFile && existsSync(o.soulCliFile) ? { EDGE_CLI_FILE: resolve(o.soulCliFile) } : {}),
     ...(o.soulControllerCliFile && existsSync(o.soulControllerCliFile) ? { EDGE_CONTROLLER_CLI_FILE: resolve(o.soulControllerCliFile) } : {}),
