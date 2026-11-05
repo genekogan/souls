@@ -1,5 +1,5 @@
 // #1008 follow-up: tools/core/edge-server.mjs honors EDGE_SKILL_FILE (through config.ts's defaults.skillFile, as cliFile
-// honors EDGE_CONTROLLER_CLI_FILE); an explicit skillFile option still wins. Its own file: config.ts reads the environment
+// honors EDGE_CLI_FILE); an explicit skillFile option still wins. Its own file: config.ts reads the environment
 // once, when it is first imported in a process.
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,rmSync,writeFileSync} from 'node:fs';import {join,resolve} from 'node:path';

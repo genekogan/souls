@@ -21,7 +21,7 @@ its world's prose to it, as it does for any skill it is given. `EDGE_SKILL_FILE`
 `edge-server.mjs`, and a descriptor's `skillFile` overrides the variable. The two `tools/core` servers take
 `/instructions.md` only from a descriptor's `instructionsFile`, not from `EDGE_INSTRUCTIONS_FILE`. The guide has the agent fetch the `eden.mjs` controller and create the Soul
 with it. The legacy guide below, `tools/edge-skill/INSTRUCTIONS.md`, is what a central-mind world serves, or any world
-whose `EDGE_INSTRUCTIONS_FILE` or descriptor `instructionsFile` names it. It tells the agent to:
+whose descriptor `instructionsFile` names it (or, on `main.ts`, `EDGE_INSTRUCTIONS_FILE`). It tells the agent to:
 
 1. Use its current folder as the Soul's folder, fetch `/skill.md` and install it as a project skill.
 2. Fetch the self-contained CLI from `/eden-agent.mjs`, `register` the world and `create-soul "<Name>"`.
