@@ -194,7 +194,7 @@ Copy offered capability IDs exactly, or use actual name/alias resolution and ins
 | Result | Meaning and response |
 |---|---|
 | `accepted:false` + `code/reason` | Nothing admitted by this request; read hints, resolve another option or wait for a stated retry condition. |
-| `waiting` | Accepted, waiting for admission/safe-stop; don't claim arrival or success. |
+| `waiting` | Accepted, waiting for admission/safe-stop or, just after a world starts, for its navigation to be ready (a walk is then planned again); don't claim arrival or success. |
 | `started` | Physical work in progress; wait, observe or use an independent speech/attention channel. |
 | `completed` | Inspect the canonical receipt, outcome and current body. |
 | `failed` | A recorded attempt failed; explain the actual code and retained unfinished work. |
