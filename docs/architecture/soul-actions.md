@@ -36,6 +36,17 @@ context-size checks below), regression runs, and an uncut real-client recording 
 
   - **Distance.** Proposing or accepting from more than 10 m from the load is refused `shared.too-far` before any
     receipt, because walking closer would be another body act and would leave.
+  - **Route preflight (PC06, [#685](https://github.com/genekogan/souls/issues/685)).** Before anyone is asked, the native
+    carry planner alone plans the whole crew's carry of the load to the place's centre. It skips everyone's programme
+    checks, so a guest busy walking does not hide the answer.
+    - **Refused.** A proposal or amend is refused when the formation has no way there (`carry.no-route`, or
+      `carry.clearance` when each person could walk there alone) or when the load cannot be laid down there
+      (`carry.target-blocked`). The refusal names the blocker, and no invitation or receipt is made.
+    - **Left to the commit.** People are not obstacles to the planner. Neither is a loose thing lying on the ground where
+      the load would go, since it can be moved. The commit waits on both.
+    - **Cost.** Each proposal or amend runs one bounded planner search, the same one a solo carry's admission runs.
+  - **Too heavy alone.** The solo `carry:` refusal of a `shared-carry` load that needs more people
+    (`carry.crew-too-small`) names its `carry-with:` offer.
   - **Readiness (PC05, [#684](https://github.com/genekogan/souls/issues/684)).** Once every role is accepted, the world
     checks readiness every second and never stores it. Every member must hold the current revision, have two free
     hands, stand awake on level-zero ground within 10 m of the load and run nothing else. The load must be unchanged,
@@ -56,7 +67,9 @@ context-size checks below), regression runs, and an uncut real-client recording 
     host's programme is stopped. After a restart, guests of a carry that still runs keep their receipts. An operation
     whose programme is gone is ended on the next sweeps.
 
-  The visible carry journey on the shared-execution fixture is PC06.
+  - **The journey (PC06).** On open level-0 ground, the native gather walks each member to their grip. The crew lifts
+    the load and carries it as one formation, then lays it down at the place's centre. Every observer sees that one
+    recorded trajectory, and the members walk on afterwards. A solo carry of a load that one person can take is unchanged.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station. A word only applies when that action is on offer.
