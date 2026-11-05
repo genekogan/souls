@@ -84,7 +84,9 @@ receipt completed or the world shows that receipt's activity under way; output w
 form drops it past 600 characters) is a failure, never a claimed success. Rules are matched in order by a
 case-insensitive regular expression on the card text; `close: "open"` leaves a request open while its activity
 continues, and `supersede` closes requests still open as failed when a later rule fires (an owner redirection). It has
-no provider and no cost, and its transcript renders like a model seat's. Live casts stay on `playtest.mjs direct` and
+no provider and no cost, and its transcript renders like a model seat's. Each CLI output is kept whole in the
+transcript up to 1 MiB; past that the tool result ends with a `[scripted-owner: output truncated: …]` line and carries
+`truncated: true`, which the scorer's `seatActs` passes on. Live casts stay on `playtest.mjs direct` and
 the sim-director skill.
 
 ## Setup
