@@ -225,8 +225,9 @@ html.phone-tidy .human-world:not(.has-advanced) [data-god-panel-toggle],html.pho
 .human-world:not(.has-advanced) .world-hud.slim>.hud-actions{grid-column:2;grid-row:1;display:flex;align-items:center;gap:8px;margin-left:0}
 .human-world:not(.has-advanced) .world-hud.slim>.local-integration,.human-world:not(.has-advanced) .world-hud.slim>.local-connection-help{grid-column:1/-1}
 .human-world:not(.has-advanced) .world-hud.slim .explore-open{width:38px;height:38px;min-height:38px;padding:0!important;justify-content:center;box-sizing:border-box}
-/* The Souls halo (EdenMark.tsx), top left, in the existing glass home button. */
-.human-world .eden-mark{display:grid;place-items:center;flex:none;width:38px;height:38px;box-sizing:border-box;border-radius:50%;border:1px solid var(--glass-line,var(--line));background:var(--glass,var(--panel));-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:var(--glass-shadow,none)}
+/* The Souls halo (EdenMark.tsx), top left, always in a solid black circle (#1034): never a theme token, which made it
+   white in the light scheme and hid the halo. */
+.human-world .eden-mark{display:grid;place-items:center;flex:none;width:38px;height:38px;box-sizing:border-box;border-radius:50%;border:1px solid var(--glass-line,var(--line));background:#000;box-shadow:var(--glass-shadow,none)}
 .human-world .eden-mark img{display:block;width:32px;height:32px}
 .human-world .eden-mark:hover{border-color:color-mix(in srgb,var(--fg) 30%,transparent)}
 @media(max-width:700px){
