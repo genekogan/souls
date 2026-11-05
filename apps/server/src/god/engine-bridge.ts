@@ -1894,14 +1894,15 @@ export class EngineBridge {
         const loose=asset.category==='item'&&(asset as {handling?:{carryCrew:[number,number];small?:true}}).handling;
         if(loose&&!loose.small&&x.support?.kind!=='in-hand'){
           const mass=(asset as {massKg?:number}).massKg??0,need=Math.max(loose.carryCrew[0],Math.ceil(mass/MAX_KG_PER_CARRIER));
-          const block=this.layers.refusal(x.id,soul)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
+          // PC04 (#683, PC02 §1): a `shared-carry` load can be proposed as a carry with other Souls (behind the sharedCarry flag)
+          const sharedDef=this.edge?.sharedCarry?this.model.entities.get(x.id):undefined,sdef=sharedDef&&this.model.resolvedDef(sharedDef.def),shareable=!!sharedDef&&!!sdef?.tags.includes('shared-carry');
+          // PC06 (#685, PC02 §4): the solo refusal names the way to carry it with others when that is on offer
+          const block=this.layers.refusal(x.id,soul)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.${shareable&&need<=Math.min(loose.carryCrew[1],8)?` Ask others to carry it with you: carry-with:${x.id} (to: a place, with: who).`:''}`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
           const id=`carry:${x.id}`,label=`Carry ${name(x.id)} with both hands, then lay it down (to: a place name)${need>1?`; it needs ${need} carriers`:''}`;
           caps.push({id,verb:'carry',label,target:{id:x.id,kind:'object'},available:!block,...(block?{blocked:block}:{}),params:{to:{type:'string',maxLength:100}}});
           if(!block)plans.set(id,{label,steps:[...stand,{verb:'mars:carry',params:{crew:[soul.entityId],item:x.id,to:{x:here[0],z:here[1],yaw:x.pose.yaw??0}}}]});
-          // PC04 (#683, PC02 §1): a `shared-carry` load can be proposed as a carry with other Souls (behind the
-          // sharedCarry flag). Proposing moves nobody: it is a together invitation, so the plan has no body steps.
-          const sharedDef=this.edge?.sharedCarry?this.model.entities.get(x.id):undefined,sdef=sharedDef&&this.model.resolvedDef(sharedDef.def);
-          if(sharedDef&&sdef?.tags.includes('shared-carry')){
+          // Proposing moves nobody: it is a together invitation, so the plan has no body steps.
+          if(sharedDef&&shareable){
             const crew:[number,number]=[need,Math.min(loose.carryCrew[1],8)],sid=`carry-with:${x.id}`;
             const sblock=this.layers.refusal(x.id,soul)??(need>crew[1]?{code:'carry.crew-too-large',reason:`${name(x.id)} needs more carriers than it has grips.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
             const slabel=`Carry ${name(x.id)} with other Souls (asks them first; ${crew[0]}–${crew[1]} carriers; to: a place name, with: who)`;

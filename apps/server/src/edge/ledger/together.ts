@@ -99,6 +99,11 @@ export const ITEM_LIMITS = {perPlace: 12, placedWorld: 150, pickReach: 120, cons
 export const SHARED_LAPSE = 120;
 /** PC05 (#684, PC02 §1): a member is ready only on level 0 within this distance of the load (m); the native gather walks the rest. */
 export const SHARED_GATHER_RADIUS = 10;
+/** PC06 (#685): native carry answers about the formation's route or where the load would be laid, from the world's
+ *  geometry and things (people in the way answer `*-occupied` and are waited on). Before anyone is asked, the proposal is
+ *  refused with them. After agreement the commit still waits on `carry.target-blocked` (PC05), since a thing moved off
+ *  the target can clear it before the lapse. */
+const SHARED_ROUTE_REFUSED = new Set(['carry.no-route', 'carry.clearance', 'carry.target-blocked']);
 const INVITE_RADIUS = 60, GESTURE_RADIUS = 8, APPROACH_RADIUS = 400, APPROACH_SECONDS = 240, FOLLOW_RADIUS = 20, FOLLOW_LOST = 45, CATCH_UP = 3;
 /** A shared walk is only "together" when the guest ends beside the host: follow standoff is 1.5 m, so 2.2 m leaves slack but not 2.8 m apart. */
 export const TOGETHER_RADIUS = 2.2;
@@ -730,6 +735,7 @@ export class Together {
     const crew = 1 + guests.length, [lo, hi] = tag.crew, names = guests.map(g => g.name).join(', ');
     if (!guests.length || crew < lo) return {code: 'carry.crew-too-small', reason: `${tag.name} needs at least ${lo} carriers; ask ${Math.max(1, lo - 1)} Soul${lo - 1 > 1 ? 's' : ''} to carry it with you.`};
     if (crew > hi) return {code: 'carry.crew-too-large', reason: `${tag.name} takes at most ${hi} carriers; ask fewer Souls.`};
+    const route = this.sharedRoute(soul, guests, tag, to); if (route) return route;
     const label = `Ask ${names} to carry ${tag.name} to ${to.name} together`;
     if (params.invite !== undefined) {
       const inv = typeof params.invite === 'string' ? this.invite(params.invite) : null;
@@ -751,6 +757,26 @@ export class Together {
           roles: [{role: 'carrier', slot: 0, soulId: soul.soulId}, ...guests.map((_, i) => ({role: 'carrier' as const, slot: i + 1, soulId: null}))], crew: tag.crew, cleanup: 'set-down-here', op: null}};
       this.saveInvite(inv); this.announce(inv);
     }};
+  }
+  /** PC06 (#685, PC02 §4) route preflight, before anyone is asked: the native planner plans the whole formation's carry
+   *  of the load to the place (the same `mars:carry` the commit submits). An answer about the route or the set-down (the
+   *  formation has no route there, or the load cannot be laid down there) refuses the proposal with the planner's code
+   *  and named blocker. Anything else (a body in the way, a guest still busy or far off) is not decided here: readiness and the
+   *  commit's own native check wait on it (PC05). Nothing is planned into the world and nothing moves. */
+  private sharedRoute(soul: EdgeSoul, guests: {soulId: string; name: string}[], tag: Extract<Tag, {kind: 'shared'}>, to: {id: string; name: string}): {code: string; reason: string} | null {
+    const crew = [soul.entityId, ...guests.map(g => this.mindOf(g.soulId)?.entityId)];
+    const step = crew.every((e): e is string => !!e) ? this.sharedCarryStep(crew, tag.load, to.id) : null; if (!step) return null;
+    const issue = this.p.host.engine.canPerform({actor: soul.entityId, label: `Carry ${tag.name} to ${to.name}`, steps: [step]});
+    if (!issue || !SHARED_ROUTE_REFUSED.has(issue.code)) return null;
+    // the planner's own blocker, without its prefix naming the def by its description
+    const why = (issue.message ?? issue.code).replace(/^[^:]*?: /, '').replace(/\.$/, '');
+    return {code: issue.code, reason: `${tag.name} cannot be carried to ${to.name} by ${crew.length} people: ${why}. Nobody was asked; choose another place.`};
+  }
+  /** The native crew `carry` of a shared operation: the crew in slot order lay the load down at the place's centre. */
+  private sharedCarryStep(crew: string[], load: string, placeId: string): Steps[number] | null {
+    const place = this.p.places.byId.get(placeId), x = this.w.entities[load]; if (!place?.polygon?.length || !x) return null;
+    const at = centroid(place.polygon);
+    return {verb: 'mars:carry', params: {crew, item: load, to: {x: at[0], z: at[1], yaw: x.pose.yaw ?? 0}}};
   }
   /** PC02 §1 amend: a new revision clears every acceptance; whoever had accepted is told by their own receipt. */
   private amendShared(id: string, soul: EdgeSoul, capability: string, tag: Extract<Tag, {kind: 'shared'}>, to: {id: string; name: string}, guests: {soulId: string; name: string}[], changes: string[]) {
@@ -879,13 +905,13 @@ export class Together {
   }
   /** What the commit submits: the host's decision with one native crew `carry` (crew in slot order) to the destination. */
   sharedCommitPlan(id: string): {host: EdgeSoul; capability: string; label: string; steps: Steps; revision: number; opId: string} | null {
-    const inv = this.invite(id), s = inv?.shared, m = inv ? this.mindOf(inv.host.soulId) : undefined, x = s ? this.w.entities[s.load.entity] : undefined;
-    const place = s ? this.p.places.byId.get(s.destination.place) : undefined;
-    if (!inv || !s || s.op || inv.state !== 'pending' || !m || !x || !place?.polygon?.length) return null;
-    const crew = this.sharedMembers(inv).map(x => this.mindOf(x.soulId)?.entityId).filter((e): e is string => !!e), at = centroid(place.polygon);
+    const inv = this.invite(id), s = inv?.shared, m = inv ? this.mindOf(inv.host.soulId) : undefined;
+    if (!inv || !s || s.op || inv.state !== 'pending' || !m) return null;
+    const crew = this.sharedMembers(inv).map(x => this.mindOf(x.soulId)?.entityId).filter((e): e is string => !!e), step = this.sharedCarryStep(crew, s.load.entity, s.destination.place);
+    if (!step) return null;
     const others = this.sharedMembers(inv).filter(x => x.soulId !== inv.host.soulId).map(x => x.name).join(', ');
     return {host: {soulId: m.soulId, entityId: m.entityId, name: m.name, owner: m.owner}, capability: inv.capability, revision: s.revision, opId: `op_${inv.id}_r${s.revision}`,
-      label: `Carry ${s.load.name} to ${s.destination.name} with ${others}`, steps: [{verb: 'mars:carry', params: {crew, item: s.load.entity, to: {x: at[0], z: at[1], yaw: x.pose.yaw ?? 0}}}]};
+      label: `Carry ${s.load.name} to ${s.destination.name} with ${others}`, steps: [step]};
   }
   /** The commit guard (under the write lock): the same revision, still pending, no operation yet, everyone ready. */
   sharedCommitGuard(id: string, revision: number): true {
