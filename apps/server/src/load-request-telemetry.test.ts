@@ -7,7 +7,7 @@ import {mkdirSync, mkdtempSync, rmSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {join} from 'node:path';
 import {Hono} from 'hono';
-import {Admission, admissionMiddleware} from './load/admission.ts';
+import {Admission, admissionMiddleware, admissionPort, type PortDone} from './load/admission.ts';
 import {histSlot, liveOf, newSharedLoad, observe, S, type LiveJson} from './load/shared.ts';
 // @ts-expect-error untyped launcher module (plain .mjs)
 import {metricsText, readLive} from '../../../tools/world-launcher/metrics.mjs';
@@ -137,4 +137,18 @@ test('a fake-mind world writes the S2 blocks; a real edge request is counted; th
   const text = metricsText({now: Date.now(), worlds: [{slug: 'req-telemetry', status: 'running', live: after}]});
   for (const name of ['sim_world_process_cpu_seconds_total', 'sim_world_clock_admin_rate', 'sim_world_tick_sampled_seconds', 'sim_world_requests_total', 'sim_world_request_run_seconds_bucket', 'sim_world_db_bytes', 'sim_world_souls_resident', 'sim_world_ws_connections_total'])
     assert.ok(rows(text, name).length > 0, `${name} missing from /__sim/metrics`);
+});
+
+test('admissionPort: a reply that throws becomes an error reply, never an unhandled rejection', async () => {
+  let handler: (m: unknown) => void = () => {};
+  const sent: PortDone[] = [], port = {on: (_: 'message', f: (m: unknown) => void) => { handler = f; }, postMessage: (d: unknown) => { const x = d as PortDone; if ('result' in x) throw new Error('could not be cloned'); sent.push(x); }};
+  const unhandled: unknown[] = [], on = (e: unknown) => unhandled.push(e); process.on('unhandledRejection', on);
+  try {
+    const stats = admissionPort(undefined, port, async () => ({result: {status: 200}}));
+    handler({t: 'job', id: 7, key: 'k', god: false, route: null, payload: null});
+    for (let i = 0; i < 5; i++) await tick();
+    assert.deepEqual(sent, [{t: 'done', id: 7, error: 'could not be cloned'}]);
+    assert.equal(stats.jobs, 1);
+    assert.deepEqual(unhandled, []);
+  } finally { process.off('unhandledRejection', on); }
 });

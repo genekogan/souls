@@ -337,6 +337,7 @@ export type PortJob = {t: 'job'; id: number; key: string; god: boolean; route: R
 export type PortClosed = {t: 'closed'; id: number};
 export type PortDone = {t: 'done'; id: number; refusal?: Refusal; dropped?: true; result?: unknown; error?: string};
 type PortLike = {on(ev: 'message', f: (m: unknown) => void): unknown; postMessage(m: unknown, transfer?: readonly ArrayBuffer[]): void};
+const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function admissionPort(adm: Admission | undefined, port: PortLike, run: (payload: unknown, job: PortJob) => Promise<{result: unknown; transfer?: ArrayBuffer[]}>) {
   const closed = new Set<number>(), stats = {jobs: 0, refused: 0, dropped: 0, failed: 0};
   const reply = (d: PortDone, transfer?: ArrayBuffer[]) => { closed.delete(d.id); port.postMessage(d, transfer); };
@@ -344,10 +345,13 @@ export function admissionPort(adm: Admission | undefined, port: PortLike, run: (
     const counted = !!adm && !!m.route && (m.route.cls === 'C1' || m.route.cls === 'C2'), ranAt = performance.now();
     let r: {result: unknown; transfer?: ArrayBuffer[]};
     try { r = await run(m.payload, m); }
-    catch (e) { stats.failed++; if (counted) adm!.answered(m.route!.cls, 500, performance.now() - ranAt); try { reply({t: 'done', id: m.id, error: e instanceof Error ? e.message : String(e)}); } finally { done?.(); } return; }
+    catch (e) { stats.failed++; if (counted) adm!.answered(m.route!.cls, 500, performance.now() - ranAt); try { reply({t: 'done', id: m.id, error: msg(e)}); } catch { /* the port is gone: nothing to answer */ } finally { done?.(); } return; }
     // counted once, before the reply (a reply that throws is not a second outcome)
     if (counted) { const st = (r.result as {status?: unknown} | null)?.status; adm!.answered(m.route!.cls, typeof st === 'number' ? st : 200, performance.now() - ranAt); }
-    try { reply({t: 'done', id: m.id, result: r.result}, r.transfer); } finally { done?.(); }
+    // a reply that throws (an uncloneable result, a closed port) becomes an error reply, never an unhandled rejection
+    try { reply({t: 'done', id: m.id, result: r.result}, r.transfer); }
+    catch (e) { try { reply({t: 'done', id: m.id, error: msg(e)}); } catch { /* the port is gone */ } }
+    finally { done?.(); }
   };
   port.on('message', (x) => {
     const m = x as PortJob | PortClosed;
