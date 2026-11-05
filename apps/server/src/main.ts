@@ -242,7 +242,7 @@ const listener = getRequestListener(app.fetch);
 const writesInFlight = new Set<Promise<void>>();
 const WRITE_DRAIN_MS = Number(process.env.WRITE_DRAIN_MS ?? 2000);
 server.on('request', (req, res) => {
-  if(edenCore&&closing){res.writeHead(503,{'Cache-Control':'no-store'}).end('Server restarting.');return;}
+  if(edenCore&&closing){res.writeHead(503,{'Cache-Control':'no-store','x-handler-ms':'0.0'}).end('Server restarting.');return;}
   if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') { const done = new Promise<void>((r) => res.once('close', r)); writesInFlight.add(done); void done.then(() => writesInFlight.delete(done)); }
   req.url = stripWorldPath(req.url);
   if (req.url?.startsWith('/mcp')) { handleMcp(req, res, souls, intentV2, edge ? (method: 'GET'|'POST', path: string, token: string, body?: unknown)=>Promise.resolve(app.request(path,{method,headers:{authorization:'Bearer '+token,'content-type':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})})).then(r=>r.json()) : undefined).catch((e) => { console.error('[mcp]', e); if (!res.headersSent) res.writeHead(500).end(); }); return; }

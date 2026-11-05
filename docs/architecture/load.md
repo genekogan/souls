@@ -90,6 +90,7 @@ A held listen waits for any listen on the same world to end; when the key it is 
 ## 3. The busy signal
 
 - Every edge response carries `X-Sim-Load: green|amber|red|black`. At amber and above, every refusal carries `Retry-After` (seconds, integer ≥ 1).
+- Every answer from the world's HTTP app and its read workers carries `x-handler-ms`: the world's own wall time for the request in milliseconds, from its first middleware to the answer (#371 H-b). It leaves out the time a request waits for a busy event loop, HTTP parsing and writing the answer out. Launcher-made answers and `/mcp` don't carry it. `eden.mjs` prints it beside its own time with `EDEN_TRACE=1` ([playtests](../testing/playtests.md#measuring-well)).
 - JSON refusals and frames add `world: {load, retry_after_s?, note?}`. `note` states a fact about the world in world language ("It is crowded here right now; things take a little longer."), never a suggestion of what the Soul should do (no server-side mind).
 - Codes (HTTP): `world.busy` 503 · `soul.busy` 429 (a previous request from this Soul is still being answered) · `soul.slow-down` 429 (budget; Retry-After = refill time) · `world.crowded` 503 (waking limit, flag-gated; body `{position, eta_s}`) · `world.starting` 503 (launcher, during boot; Retry-After ≤ 5).
 - Accepted acts under load carry `delayed: true` and `eta_s`. Stale reads carry `stale: true, asOfTick`.

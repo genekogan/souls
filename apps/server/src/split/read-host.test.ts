@@ -152,11 +152,13 @@ test('read worker mode 2: here?view= is main\'s (body view answered by main\'s h
   // the rich frame stays the worker's
   const rich = await get('here');
   assert.equal(rich.r.headers.get('x-sim-read'), 'worker');
+  assert.match(rich.r.headers.get('x-handler-ms') ?? '', /^\d+\.\d$/, '#371 H-b: the worker times its own answer');
   assert.deepEqual(forwarded, []);
   // view=body: main answers with the body projection, not the worker's rich frame
   const body = await get('here?view=body');
   assert.equal(body.r.status, 200);
   assert.equal(body.r.headers.get('x-sim-read'), null, 'not the worker\'s own answer');
+  assert.match(body.r.headers.get('x-handler-ms') ?? '', /^\d+\.\d$/, '#371 H-b: a relayed answer carries the worker\'s whole time');
   const here = body.j.here as Record<string, unknown>;
   assert.deepEqual(Object.keys(here), ['tick', 'view', 'me']);
   assert.equal(here.view, 'body');

@@ -90,9 +90,13 @@ export function buildApp(d: Deps) {
   // resident looks v2: automatic portraits for humanoid looks (SIM_AUTO_PORTRAITS=0 turns them off)
   const portraits=new AutoPortraits(d.host);profiles.autoBytes=(id,hash)=>portraits.bytes(id,hash);
   const bearer = (c: Context) => c.req.header('authorization')?.replace(/^Bearer\s+/i, '');
-  // P2 runaway-agent protection: overall buckets per god token and per visitor address, before anything else answers
+  // P2 runaway-agent protection: overall buckets per god token and per visitor address, before anything else answers.
+  // The x-handler-ms timing just below is mounted first, so it wraps the guard.
   // (SIM_FLOOD=0 turns it off for a local experiment)
   const refusals = new RefusalLog();   // every 429/413 this world answers, in its log without flooding it
+  // #371 H-b: the server's own wall time for each request (first middleware to response, ms), so a late answer can be
+  // split into server and client/network time (the CLI prints it with EDEN_TRACE=1). Refusals and errors carry it too.
+  app.use('*', async (c, next) => { const t0 = performance.now(); await next(); if (c.res.status !== 101) c.header('x-handler-ms', (performance.now() - t0).toFixed(1)); });
   if (process.env.SIM_FLOOD !== '0') app.use('*', floodGuard({ log: refusals, godPool: (t) => { const who = d.god?.godIdentity(t); return who ? poolOf(who) : hashToken(t); } }));
   // SEC2 2026-10-21: a ceiling on every request body before any route reads one. Routes mounted above the /v1/* 64 KB
   // limit below (edge, travel, art, moderation) otherwise read a chunked body (no content-length) without bound: one

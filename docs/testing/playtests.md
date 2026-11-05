@@ -138,6 +138,19 @@ screenshots or transcripts. Machines without the original run folders can then r
   default 30) and stops if it never clears. `--force-machine` continues and records the breach.
 - **Two repeats per arm.** Compare arms only on like-for-like repeats (scripted replay against scripted replay),
   and fix acceptance bars and budgets before the baseline is measured.
+- **Attribute a late answer before blaming the seat.** Every answer from a world's HTTP app and its read workers carries
+  `x-handler-ms`: the server's own wall time for that request. Run a seat's CLI with `EDEN_TRACE=1` and it writes one
+  stderr line per HTTP attempt, `TRACE {"method","path","status","ms","handlerMs","attempt"}`. `handlerMs` is server
+  time from the world's first middleware to its answer. `ms` minus `handlerMs` is everything else: network and client
+  time, and also server time the header does not count: waiting for a busy world's event loop (a long tick, garbage
+  collection, a synchronous write) before the handler runs, HTTP parsing and writing the answer out. So on a nearby or
+  loopback seat, a large `ms` minus `handlerMs` gap with an amber or red `x-sim-load` points at the server, not the
+  client. Time between commands is the seat's own thinking.
+  - A null `handlerMs` means something in front of the world answered, such as the launcher's `world.starting` or
+    `world.busy` or its size refusal. `/mcp` answers carry no header.
+  - A launcher micro-cache hit (`x-sim-cache: hit`) repeats the original answer's value, so it can exceed `ms`.
+  - For a streamed answer, the value covers the time until the headers were sent.
+  - The trace has no query strings or tokens, and stdout does not change.
 - Preflight checks Claude plan usage through the script named by `PLAYTEST_USAGE_PY`. If that script is absent the
   check is skipped.
 
