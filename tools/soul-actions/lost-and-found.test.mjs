@@ -150,7 +150,7 @@ test('lost-and-found: hand in, owner claim, finder named nearby only, group and 
   assert.equal(item('mug').support.on, boxId, 'the refused wash leaves the mug on the shelf'); assert.equal(leftBy(), '');
   const washAna = edge.capabilities(souls.Ana).find(c => c.id === `object:${id('mug')}:wash`), washBen = edge.capabilities(souls.Ben).find(c => c.id === `object:${id('mug')}:wash`);
   results.wash = {ana: washAna ? {available: washAna.available, blocked: washAna.blocked?.code ?? null} : null, ben: washBen ? {available: washBen.available, blocked: washBen.blocked?.code ?? null} : null};
-  assert.notEqual(washAna?.blocked?.code, 'item.not-yours', 'the owner may wash it: ' + JSON.stringify(results.wash));}
+  assert.equal(washAna?.available, true, 'the owner may wash it: ' + JSON.stringify(results.wash));}
  ok(god.act({ops: [{op: 'remove', id: id('mug')}]})); await tick(10);
 
  // refused: the lantern does not fit; then a full box
@@ -164,7 +164,11 @@ test('lost-and-found: hand in, owner claim, finder named nearby only, group and 
  await refuse('put the bowl in the lost and found', 'container.full', souls.Ana);
  // Ana hands her own bowl in: the record names her; her claim is hers
  ok(god.act({ops: [{op: 'remove', id: id('found-cup-0')}]})); await tick(10);
- results.ownHandIn = await done('put the bowl in the lost and found', souls.Ana);
+ // the claim holds from the moment the engine sets it down, before the model catches up at write-back
+ {const r = await act('put the bowl in the lost and found', true, souls.Ana); let race = null;
+  for (let n = 0; n < 1600 && !race; n++) {const sp = item('bowl').support; if (sp?.kind === 'resting-on' && sp.on === boxId) {const c = edge.capabilities(souls.Ben).find(c => c.id === `pick-up:${bowl}`); race = {modelInBox: ent('bowl').in.parent === boxId, offered: !!c, available: c?.available ?? null, code: c?.blocked?.code ?? null};} else await tick(1);}
+  assert.ok(race && race.offered && race.available === false && race.code === 'item.not-yours', 'refused at once: ' + JSON.stringify(race));
+  const x = await finish(r, souls.Ana); assert.equal(x.phase, 'completed'); results.ownHandIn = {capability: r.receipt.capability, phase: x.phase}; results.atSetDown = race;}
  assert.ok(leftBy().split(',').includes(`${bowl}=${souls.Ana.soulId}`));
  assert.ok((row(await here(souls.Ana))?.state?.holds ?? []).includes('bowl (yours, found by Ana)'));
 

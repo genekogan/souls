@@ -2003,9 +2003,17 @@ export class EngineBridge {
    *  container) back only to that owner or a member of that group; nobody else may take or handle it (a take, a wash at the
    *  tap: every object action's access check), the finder included. The finder is named only `near` (the facts range). */
   claimRefusal(item: string, soul: EdgeSoul, near = false): { code: string; reason: string } | null {
-    const x = this.model.entities.get(item), owner = x?.owner; if (!x || !owner || x.in.parent === 'world') return null;
-    const box = this.storage(x.in.parent), be = this.model.entities.get(x.in.parent);
-    if (!box || !be || !box.ins.slots.some((q) => q.id === x.in.slot) || !containerClaims(this.model.resolvedDef(be.def)) || this.layers.isOf(owner, soul)) return null;
+    const x = this.model.entities.get(item), owner = x?.owner; if (!x || !owner || this.layers.isOf(owner, soul)) return null;
+    // where it is kept: the engine's support (at once) or the model's containment (it catches up at write-back, up to ten
+    // ticks later), whichever puts it in a claiming container's place
+    const sup = (this.engine.world.entities[item] as { support?: { kind: string; on?: string; slot?: string } } | undefined)?.support;
+    const at = [sup?.kind === 'resting-on' ? [sup.on, sup.slot] : null, [x.in.parent, x.in.slot]].map((w) => {
+      const [pid, slot] = w ?? []; if (!pid || pid === 'world') return null;
+      const box = this.storage(pid), be = this.model.entities.get(pid);
+      return box && be && containerClaims(this.model.resolvedDef(be.def)) && box.ins.slots.some((q) => q.id === slot) ? { box, be } : null;
+    }).find(Boolean);
+    if (!at) return null;
+    const { box, be } = at;
     const n = this.layers.nameOf(owner), id = near ? leftByOf(be.state).get(item) : undefined, by = id ? (id === soul.soulId ? 'you' : this.host.minds.get(id)?.name ?? 'someone') : null;
     return { code: 'item.not-yours', reason: `${this.model.pathOf(item)} is ${possessive(n)}${by ? `; ${by} handed it in` : ''}. Only ${n} can claim it from ${box.label}.` };
   }
