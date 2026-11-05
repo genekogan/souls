@@ -46,9 +46,9 @@ test('an asleep rolling body keeps one upright standby across settle intervals (
 });
 
 // The idle reflex draws its moves and step lengths from the Soul id (body-rule.ts mix/jitter), so the share of dozing
-// looks is a function of the id; random birth ids made it vary from 316 (CI) to 1100 of 1100 (#866). The id is pinned
+// looks is a function of the id; random birth ids made it vary from 316 (CI) to 1100 of 1100, about 7 % of ids under 400 (#866). The id is pinned
 // through the normal create/birth path (only the five-byte id randomness is stubbed, as edge-ledger-swim.test.ts does).
-const DOZE_SOUL_ID='s_d0ce0d0ce0';
+const DOZE_SOUL_ID='s_3e36c56e14';   // 630/1100, decisions doze, stand, doze, idle-shuffle, doze: covers moves between dozes
 async function pinnedBirth<T extends {id:string}>(t:any,id:string,birth:()=>Promise<T>):Promise<T>{
  const original=crypto.randomBytes;let calls=0;const stub=t.mock.method(crypto,'randomBytes',(...args:any[])=>{if(args[0]===5&&!calls++)return Buffer.from(id.slice(2),'hex');return (original as any)(...args);});syncBuiltinESMExports();
  try{const row=await birth();assert.equal(row.id,id,'the pinned birth id is used');return row;}finally{stub.mock.restore();syncBuiltinESMExports();}
