@@ -10,7 +10,8 @@ export type HoldingFact={id:string;kind:string;name:string;state:string;holder:s
 export type ConfirmedEffects={changed?:EdgeOutcomeV1['changed'];met?:EdgeOutcomeV1['met'];learned?:EdgeOutcomeV1['learned'];detail?:Record<string,unknown>;summary?:string;untrusted?:boolean};
 export type OutcomeContext={soulId:string;capability:string;params:Record<string,string>;acceptedTick:number;readSpot?:`read.${string}`;confirmedProduced?:EdgeOutcomeV1['produced'];confirmedChanges?:EdgeOutcomeV1['changed'];holdingBefore?:HoldingFact|null;confirmedEffects?:ConfirmedEffects};
 export type TerminalSection={section:string;rows:Record<string,unknown>[];learned:EdgeOutcomeV1['learned']};
-export type OutcomeSnapshot={worldId:string;tick:number;place:string|null;placePath:string[];pos:readonly number[]|null;walkable:string[];sections:TerminalSection[];materials:{id:string;version:number;title:string;text:string;source:string}[]};
+/** placeName: the place's display name for summary text (F8: a summary never names a place by its id). */
+export type OutcomeSnapshot={worldId:string;tick:number;place:string|null;placeName?:string|null;placePath:string[];pos:readonly number[]|null;walkable:string[];sections:TerminalSection[];materials:{id:string;version:number;title:string;text:string;source:string}[]};
 const clip=(value:unknown,max:number)=>typeof value==='string'?value.replace(/\s+/g,' ').trim().slice(0,max):'';
 export function outcomeParams(raw:unknown):Record<string,string>{
  const p=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:{};return Object.fromEntries([['book',100],['query',200],['title',100],['text',2000],['to',100],['recipientName',100]].flatMap(([key,max])=>{const value=p[String(key)];if(value===undefined)return[];if(typeof value!=='string'||value.length>Number(max))throw Error(`outcome.params:${key}`);return[[String(key),value]];}));
@@ -42,7 +43,7 @@ export class ActionOutcomes{
   const row=this.db.prepare('SELECT body FROM edge_outcome_contexts_v1 WHERE world_id=? AND receipt_id=?').get(this.worldId,receipt.id) as {body:string}|undefined;if(!row)return; // pre-feature receipts stay untouched
   const context=JSON.parse(row.body) as OutcomeContext;
   return tx(this.db,()=>{
-   const kind=context.capability.split(':')[0],completed=receipt.phase==='completed',out:EdgeOutcomeV1={contract:EDGE_OUTCOME_CONTRACT,kind,summary:clip(`${kind} ${receipt.phase}${snapshot.place?` at ${snapshot.place}`:''}${receipt.code?` (${receipt.code})`:''}.`,160),learned:[],produced:[],changed:[],met:[],detail:{phase:receipt.phase,sourceTick:snapshot.tick},untrusted:false};
+   const kind=context.capability.split(':')[0],completed=receipt.phase==='completed',out:EdgeOutcomeV1={contract:EDGE_OUTCOME_CONTRACT,kind,summary:clip(`${kind} ${receipt.phase}${snapshot.placeName?` at ${snapshot.placeName}`:''}${receipt.code?` (${receipt.code})`:''}.`,160),learned:[],produced:[],changed:[],met:[],detail:{phase:receipt.phase,sourceTick:snapshot.tick},untrusted:false};
    if(completed&&kind==='read'&&!effects.detail?.sign)this.readPassage(context,out);
    if(completed&&kind==='use-computer'){
     const query=context.params.query??'',terms=query.toLowerCase(),wanted=terms.includes('letter')?['letters']:terms.includes('project')||terms.includes('help')?['projects']:terms.includes('who')||terms.includes('people')||terms.includes('directory')?['directory']:terms.includes('schedule')||terms.includes('today')||terms.includes("what's on")?['schedule']:terms.includes('lost')||terms.includes('found')?['lost-found']:terms.includes('notice')?['notices']:terms.includes('digest')?['digest']:snapshot.sections.map(s=>s.section);

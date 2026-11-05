@@ -29,7 +29,12 @@ test('a guest who accepts a ride invitation is told they boarded, not that the r
     guestReceipts: {s_guest: 'r_guest'}, hostReceipt: 'r_host', ride: {object: 'ride-eden-balloon', carrier: 'eden-balloon'}};
   const ledger: any = {outcomes: {context: () => null}, together: {heldBy: () => null, item: () => null, inviteForReceipt: (id: string) => id === 'r_guest' ? inv : null}};
   const guest = confirmedTogetherEffects(ledger, {id: 'r_guest', soulId: 's_guest', capability: 'accept:inv_x', phase: 'completed', programId: 'p1'} as any, null);
-  assert.match(String(guest.summary), /boarded ride-eden-balloon; the ride has not left the ground yet and is not finished/);
+  assert.match(String(guest.summary), /boarded the ride; the ride has not left the ground yet and is not finished/, 'no readable ride: "the ride", never its object id');
+  // F8 (#379): the guest reads the ride by its public vehicle, as the host's own join does
+  const minds = new Map([['s_guest', {soulId: 's_guest', entityId: 'h_guest', name: 'Liora Venn', owner: 'u'}]]);
+  const named: any = {...ledger, host: {minds}, comms: {objects: {get: (id: string) => id === 'ride-eden-balloon' ? {object: {id, kind: 'ride', state: {vehicle: 'ferris-wheel'}}} : null}}};
+  const wheel = confirmedTogetherEffects(named, {id: 'r_guest', soulId: 's_guest', capability: 'accept:inv_x', phase: 'completed', programId: 'p1'} as any, null);
+  assert.match(String(wheel.summary), /^Accepted Sage Vale's invitation and boarded the ferris wheel; the ride has not left the ground yet/);
   const other = confirmedTogetherEffects(ledger, {id: 'r_other', soulId: 's_guest', capability: 'walk:x', phase: 'completed', programId: 'p2'} as any, null);
   assert.equal(other.summary, undefined);
 });

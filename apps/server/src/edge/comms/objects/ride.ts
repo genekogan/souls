@@ -30,6 +30,8 @@ export function vehicleOf(v: {def?: string; id?: string; route?: {id?: string}} 
   if (prior) return prior;
   return /ferris/.test(v?.id ?? '') ? 'ferris-wheel' : /carousel/.test(v?.id ?? '') ? 'carousel' : 'balloon';
 }
+/** F8: the ride as a Soul reads it in text, never by its object or carrier id. */
+export const rideName = (vehicle: unknown) => vehicle === 'ferris-wheel' ? 'the ferris wheel' : vehicle === 'carousel' ? 'the carousel' : vehicle === 'punt' ? 'the punt' : 'the balloon';
 const attraction = (s: RideState) => s.vehicle === 'ferris-wheel' ? 'ferris wheel' : s.vehicle === 'carousel' ? 'carousel' : null;
 
 const view = (ctx: TimeCtx | ActionCtx, id: string): CarrierView | null => ctx.carrier?.(id) ?? null;
