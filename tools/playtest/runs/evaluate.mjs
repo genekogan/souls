@@ -298,7 +298,10 @@ export function runIdentity(sr) {
   const pre = sr.receipt?.preflight?.scenario?.checks ?? (sr.playtestDir ? readJson(join(sr.playtestDir, 'preflight.json'), null)?.checks : null) ?? null;
   const ev = sr.receipt?.evidence ?? {};
   const conditions = {
-    commit: sr.receipt?.source?.commit ?? null, dirtyTrackedFiles: sr.receipt?.source?.dirtyTrackedFiles ?? null, node: sr.receipt?.source?.node ?? null,
+    commit: sr.receipt?.source?.commit ?? null, dirtyTrackedFiles: sr.receipt?.source?.dirtyTrackedFiles ?? null,
+    // #785: the tools checkout (runner, adapters, director) can differ from the server root; null on older receipts.
+    toolsCommit: sr.receipt?.source?.tools?.commit ?? null, toolsDirtyTrackedFiles: sr.receipt?.source?.tools?.dirtyTrackedFiles ?? null,
+    node: sr.receipt?.source?.node ?? null,
     cli: ev.cli ?? null, skill: ev.skill ?? null, build: ev.build ?? null,
     machine: pre ? { load1: pre.laptopLoad?.[0] ?? null, freeGb: pre.freeGb ?? null, machineOk: pre.machineOk ?? null } : null,
     observer: sr.receipt?.observer ? { ok: sr.receipt.observer.ok, stage: sr.receipt.observer.stage ?? null } : null,
@@ -430,11 +433,12 @@ export async function compareRunSet(dirs, { questions = [], now = () => new Date
       const versions = [...new Set(Object.values(v).filter(Boolean).map((x) => x.version))];
       return [id, { verdicts: v, pass: Object.values(v).filter((x) => x?.verdict === 'pass').length, fail: Object.values(v).filter((x) => x?.verdict === 'fail').length, unknown: Object.values(v).filter((x) => !x || x.verdict === 'unknown').length, ...(versions.length > 1 ? { flag: `scorer versions differ: ${versions.join(', ')}` } : {}) }];
     }));
-    const keys = ['commit', 'dirtyTrackedFiles', 'node', 'cli', 'skill', 'build', 'machine', 'observer'];
+    const keys = ['commit', 'dirtyTrackedFiles', 'toolsCommit', 'toolsDirtyTrackedFiles', 'node', 'cli', 'skill', 'build', 'machine', 'observer'];
     const all = attempts.filter((t) => t.arm === arm.arm);
     arm.conditions = Object.fromEntries(all.map((t) => [t.runId, t.conditions]));
     arm.conditionsDiffer = keys.filter((k) => new Set(all.map((t) => JSON.stringify(k === 'machine' ? { ok: t.conditions?.machine?.machineOk } : t.conditions?.[k]))).size > 1);
-    if (all.some((t) => t.conditions?.dirtyTrackedFiles)) arm.caveats = [`source not exactly identified for ${all.filter((t) => t.conditions?.dirtyTrackedFiles).map((t) => t.runId).join(', ')} (uncommitted tracked files)`];
+    const dirty = all.filter((t) => t.conditions?.dirtyTrackedFiles || t.conditions?.toolsDirtyTrackedFiles);
+    if (dirty.length) arm.caveats = [`source not exactly identified for ${dirty.map((t) => `${t.runId}${t.conditions?.toolsDirtyTrackedFiles ? (t.conditions?.dirtyTrackedFiles ? ' (server root and tools)' : ' (tools)') : ''}`).join(', ')} (uncommitted tracked files)`];
     if (reps.length < 2) arm.caveats = [...(arm.caveats ?? []), `${reps.length} completed repeat(s): no spread can be read`];
   }
   const incompatible = [];
@@ -449,6 +453,8 @@ export function renderIndex(ix) {
   const L = [`# Run comparison`, '', `${ix.attempts.length} attempt(s), ${ix.arms.length} arm(s). ${ix.pooled}.`, ''];
   for (const a of ix.arms) {
     L.push(`## Arm \`${a.arm}\``, '', `Attempts: ${a.attempts.map((t) => `${t.runId} (${t.status})`).join(', ')}. Completed repeats: ${a.repeats.length}.${a.conditionsDiffer.length ? ` Conditions differ: ${a.conditionsDiffer.join(', ')}.` : ''}${a.caveats ? ` Caveats: ${a.caveats.join('; ')}.` : ''}`, '');
+    const src = (c) => `server root ${c?.commit?.slice(0, 8) ?? '?'}${c?.dirtyTrackedFiles ? `+${c.dirtyTrackedFiles}` : ''}, tools ${c?.toolsCommit?.slice(0, 8) ?? 'unrecorded'}${c?.toolsDirtyTrackedFiles ? `+${c.toolsDirtyTrackedFiles}` : ''}`;
+    L.push(`Source: ${Object.entries(a.conditions ?? {}).map(([id, c]) => `${id} (${src(c)})`).join('; ')}.`, '');
     if (a.repeats.length) {
       L.push(`| measure | unit | ${a.repeats.join(' | ')} | measured / unavailable |`, `|---|---|${a.repeats.map(() => '---').join('|')}|---|`);
       for (const [id, m] of Object.entries(a.measures)) L.push(`| ${id} | ${m.unit} | ${a.repeats.map((r) => fmt(m.values[r])).join(' | ')} | ${m.measured} / ${m.unavailable} |`);
