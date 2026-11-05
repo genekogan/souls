@@ -77,3 +77,19 @@ test('round2.json names the eight slots (nine runs), every file loads and valida
   assert.ok(r.runs.every((x) => (x.kind === 'direct') === !!x.cast && x.estMin > 0));
   assert.ok(validateRound({ kind: 'round', runs: [{ label: 'x', scenario: 'nope.json' }] }).some((e) => /not found/.test(e)));
 });
+
+test('a frozen snapshot alone names the world; a genesis is optional beside it (#883)', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join: j } = await import('node:path');
+  const { worldFiles } = await import('../../playtest.mjs');
+  const s = structuredClone(read('wayfind-hello-hamlet.json'));
+  const snap = j(mkdtempSync(j(tmpdir(), 'pt-snap-')), 'snapshot.json'); writeFileSync(snap, '{}');
+  const only = structuredClone(s); delete only.world.genesis; only.world.snapshot = snap;
+  assert.doesNotMatch(validateScenario(only).join('\n'), /world\.(genesis|snapshot)/);
+  const neither = structuredClone(s); delete neither.world.genesis;
+  assert.match(validateScenario(neither).join('\n'), /world\.genesis undefined not found/);
+  assert.match(validateScenario({ ...only, world: { ...only.world, snapshot: j(tmpdir(), 'no-such-snapshot.json') } }).join('\n'), /world\.snapshot .* not found/);
+  assert.deepEqual(worldFiles({ snapshot: 'a/s.json' }, '/root'), { genesis: undefined, snapshot: '/root/a/s.json' });
+  assert.deepEqual(worldFiles({ genesis: 'g.json' }, '/root'), { genesis: '/root/g.json', snapshot: undefined });
+});

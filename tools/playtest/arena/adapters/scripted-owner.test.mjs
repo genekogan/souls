@@ -124,3 +124,26 @@ console.log(JSON.stringify(a[0] === 'act' ? { accepted: true, receipt: { id: 'r1
   assert.deepEqual(calls(d).at(-1), ['result', 'm1', 'done', 'At the pond']);
   assert.deepEqual(JSON.parse(readFileSync(join(d, '.scripted-owner.json'), 'utf8')).handled, ['m1']);
 });
+
+test('a long --json act output stays cut for display and whole for scorers (#883)', async () => {
+  const { OUTPUT_CUT } = await import('./scripted-owner.mjs');
+  const { seatSteps, actOutcome } = await import('../../runs/evaluate.mjs');
+  const { seatActs } = await import('../../review/run.mjs');
+  const d = folder();
+  const events = Array.from({ length: 200 }, (_, i) => ({ kind: 'activity.observed', note: `step ${i} `.repeat(4) }));
+  writeFileSync(join(d, 'eden.mjs'), `const a = process.argv.slice(2);\nif (a[0] === 'act') console.log(JSON.stringify({ accepted: true, receipt: { id: 'r1', phase: 'completed' }, events: ${JSON.stringify(events)} }));\nelse console.log(JSON.stringify({ ok: true }));`);
+  const r = await turn({ cwd: d, text: wake([{ id: 'm2', text: 'change of plan: the pond' }]), script: SCRIPT });
+  const results = r.stream.flatMap((e) => e.message?.content ?? []).filter((c) => c.type === 'tool_result');
+  const long = results.find((c) => c.fullContent);
+  assert.ok(long, 'the long act output is kept whole');
+  assert.equal(long.content.length, OUTPUT_CUT);
+  assert.ok(long.fullContent.length > OUTPUT_CUT && long.fullContent.startsWith(long.content));
+  assert.ok(results.filter((c) => c !== long).every((c) => !('fullContent' in c)), 'short outputs carry no copy');
+  assert.equal(renderChat(r.stream).includes(long.fullContent), false, 'the chat render stays cut');
+  const file = join(d, 'transcript.jsonl'); writeFileSync(file, r.stream.map((e) => JSON.stringify({ turn: 1, ...e })).join('\n') + '\n');
+  const act = seatSteps(file, 'a').find((s) => s.verb === 'act' && s.args.includes('--wait'));
+  assert.equal(act.out.receipt.phase, 'completed', 'scorers parse the whole JSON');
+  assert.equal(actOutcome(act).outcome, 'completed');
+  const acts = seatActs({ seats: { a: { turns: [{ turn: 1 }], transcript: readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) } } }, 'a', [1]);
+  assert.equal(acts.find((x) => /--wait/.test(x.cmd)).output.receipt.phase, 'completed');
+});

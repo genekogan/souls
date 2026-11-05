@@ -46,6 +46,20 @@ export function compilerSnapshot(snapshot) {
   if (!Number.isSafeInteger(seq)||seq<0) throw Error('snapshot fixture has invalid entity counter');
   return structuredClone({constants:snapshot.constants,state:snapshot.state,seed:snapshot.seed,seq,editSeq:0,defs:snapshot.defs,defRefs:snapshot.defRefs,entities:snapshot.entities,ground:snapshot.ground});
 }
+/**
+ * physicalSnapshotSha256 for comparing a seeded fixture with the world it booted (arena/provision.mjs): Soul-body defs
+ * (humanoid, soul-body) that no entity uses are left out on both sides, because boot drops such a def (#883). Every
+ * other def, entity, ground and state difference still counts. Frozen pins keep physicalSnapshotSha256.
+ */
+export function bootPhysicalSha256(snapshot) {
+  const s = structuredClone(snapshot), used = new Set((s.entities ?? []).map(e => e.def).filter(Boolean));
+  const alias = r => [r, r.startsWith('core-') ? 'core/' + r.slice(5) : r.startsWith('core/') ? 'core-' + r.slice(5) : r];
+  const unusedSoul = r => SOUL_DEF.test(r) && !alias(r).some(x => used.has(x));
+  if (Array.isArray(s.defs)) s.defs = s.defs.filter(d => !unusedSoul(String(d.ref ?? '')));
+  if (s.defRefs) s.defRefs = Object.fromEntries(Object.entries(s.defRefs).filter(([r]) => !unusedSoul(r)));
+  return physicalSnapshotSha256(s);
+}
+const SOUL_DEF = /humanoid|soul-body/;
 export function physicalSnapshotSha256(snapshot) {
   const s=compilerSnapshot(snapshot); delete s.seq;delete s.editSeq;delete s.seed;
   if(!s.defRefs){s.defRefs={};for(const d of s.defs){s.defRefs[d.ref]=d.hash;if(d.ref.startsWith('core-'))s.defRefs['core/'+d.ref.slice(5)]=d.hash;}}

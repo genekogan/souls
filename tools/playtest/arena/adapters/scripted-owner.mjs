@@ -78,6 +78,8 @@ export function stepOutcome(r, { waited = false } = {}) {
 }
 const firstLine = (s) => String(s ?? '').split('\n').find((l) => l.trim())?.slice(0, 120) ?? '';
 const clip = (s) => String(s).slice(0, 140);
+/** Transcript display cut for one CLI output. */
+export const OUTPUT_CUT = 4000;
 
 /** turn({cwd, text, script, maxWallSec}) → the same record shape as the model adapters, with zero usage. */
 export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = null }) {
@@ -93,7 +95,9 @@ export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = 
     stream.push({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] }, _rx: Date.now() });
     const r = left > 0 ? await run('node', [...pre, 'eden.mjs', ...args], { cwd, env, maxWallMs: left }) : { code: null, stdout: '', stderr: 'turn wall reached' };
     if (r.timedOut || left <= 0) timedOut = true;
-    stream.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: (r.stdout || r.stderr || '').slice(0, 4000), is_error: r.code !== 0 }] }, _rx: Date.now() });
+    // `content` keeps the display cut; a longer output is kept whole in `fullContent` for scorers (#883).
+    const output = r.stdout || r.stderr || '';
+    stream.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: output.slice(0, OUTPUT_CUT), ...(output.length > OUTPUT_CUT ? { fullContent: output } : {}), is_error: r.code !== 0 }] }, _rx: Date.now() });
     return r;
   };
   const errs = validateScript(script);

@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { Db } from '../../../apps/server/src/db.ts';
 import { WorldStore } from '../../../apps/server/src/god/store.ts';
 import { WorldModel } from '../../../packages/world-compiler/src/model.ts';
-import { compilerSnapshot, physicalSnapshotSha256 } from '../lib/physical-fixture.mjs';
+import { bootPhysicalSha256, compilerSnapshot, physicalSnapshotSha256 } from '../lib/physical-fixture.mjs';
 import { sha256 } from '../lib/hash.mjs';
 
 export async function seedSnapshot({ snapshotPath, dataDir, worldId }) {
@@ -20,6 +20,6 @@ export async function seedSnapshot({ snapshotPath, dataDir, worldId }) {
       {seq:1,by:'fixture',at:0,note:`Frozen isolated playtest snapshot ${sha256(bytes)}`,ops:[],inverse:[],kind:'engine'});
     if(result)throw Error(`snapshot seed refused: ${JSON.stringify(result)}`);
     if(physicalSnapshotSha256(store.load().model.snapshot())!==physicalSnapshotSha256(source))throw Error('snapshot seed round-trip changed physical state');
-    return {path,snapshotSha256:sha256(bytes),physicalSnapshotSha256:physicalSnapshotSha256(source),entities:model.entities.size,worldId,method:'WorldModel.fromSnapshot + WorldStore.init/commit before boot; owner null; no account/Soul/token rows copied'};
+    return {path,snapshotSha256:sha256(bytes),physicalSnapshotSha256:physicalSnapshotSha256(source),bootPhysicalSha256:bootPhysicalSha256(source),entities:model.entities.size,worldId,method:'WorldModel.fromSnapshot + WorldStore.init/commit before boot; owner null; no account/Soul/token rows copied'};
   } finally {db.db.close();}
 }

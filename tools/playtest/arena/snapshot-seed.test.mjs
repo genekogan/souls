@@ -36,3 +36,18 @@ test('snapshot seed rejects Soul bodies and private wallets; transport extras ne
  assert.throws(()=>compilerSnapshot({...s,state:{layers:{wallets:{someone:1}}}}),/private layer wallets/);
  assert.equal(compilerSnapshot({...s,accounts:[{email:'not-copied'}],tokens:['not-copied']}).accounts,undefined);
 });
+test('boot comparison ignores only Soul-body defs no entity uses; pins keep the plain hash (#883)', async t => {
+ const { bootPhysicalSha256 } = await import('../lib/physical-fixture.mjs');
+ const s=model();s.entities=[{id:'e_chair',def:'chair@1',in:{parent:'world'},p:[1,0,2]}];
+ s.defs=[{ref:'chair@1',hash:'c1'},{ref:'core-humanoid',hash:'h1'}];s.defRefs={'chair@1':'c1','core-humanoid':'h1','core/humanoid':'h1'};
+ const booted=structuredClone(s);booted.defs=booted.defs.filter(d=>d.ref!=='core-humanoid');booted.defRefs={'chair@1':'c1'};
+ assert.notEqual(physicalSnapshotSha256(s),physicalSnapshotSha256(booted),'the pinned hash still sees the dropped def');
+ assert.equal(bootPhysicalSha256(s),bootPhysicalSha256(booted),'boot dropping an unused humanoid def is not a change');
+ const moved=structuredClone(booted);moved.entities[0].p=[1,0,3];assert.notEqual(bootPhysicalSha256(s),bootPhysicalSha256(moved),'an entity change still counts');
+ const lostChair=structuredClone(booted);lostChair.defs=[];lostChair.defRefs={};assert.notEqual(bootPhysicalSha256(s),bootPhysicalSha256(lostChair),'a non-Soul def still counts');
+ const newDef=structuredClone(booted);newDef.defs.push({ref:'lamp@1',hash:'l1'});newDef.defRefs['lamp@1']='l1';assert.notEqual(bootPhysicalSha256(s),bootPhysicalSha256(newDef),'an added def still counts');
+ const dir=mkdtempSync(join(tmpdir(),'sim-seed-boot-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const plain=model();plain.entities=[{id:'e_chair',def:'chair@1',in:{parent:'world'},p:[1,0,2]}];writeFileSync(join(dir,'snapshot.json'),JSON.stringify(plain));
+ const receipt=await seedSnapshot({snapshotPath:join(dir,'snapshot.json'),dataDir:dir,worldId:'seed-1'});
+ assert.deepEqual([receipt.physicalSnapshotSha256,receipt.bootPhysicalSha256],[physicalSnapshotSha256(plain),bootPhysicalSha256(plain)],'the seed receipt carries the boot comparison hash provision checks');
+});

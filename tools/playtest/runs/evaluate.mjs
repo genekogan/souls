@@ -63,7 +63,7 @@ export function seatSteps(file, seat) {
         const s = { seat, line: i + 1, resultLine: null, turn: ev.turn ?? null, cmd, verb: args[0] ?? null, args: args.slice(1), atMs: ev._rx ?? null, doneMs: null, out: null, isError: null };
         open.set(c.id, s); steps.push(s);
       } else if (c.type === 'tool_result' && open.has(c.tool_use_id)) {
-        const s = open.get(c.tool_use_id), raw = typeof c.content === 'string' ? c.content : JSON.stringify(c.content ?? '');
+        const s = open.get(c.tool_use_id), body = c.fullContent ?? c.content, raw = typeof body === 'string' ? body : JSON.stringify(body ?? ''); // uncut output when the display was cut (#883)
         let out = raw; try { out = JSON.parse(raw); } catch { /* plain text */ }
         Object.assign(s, { resultLine: i + 1, doneMs: ev._rx ?? null, out, isError: !!c.is_error });
       }

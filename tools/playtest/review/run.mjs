@@ -95,7 +95,7 @@ export function seatActs(run, seatId, turnIds) {
     if (!want.has(turn)) continue;
     for (const c of ev.message?.content ?? []) {
       if (c.type === 'tool_use') { const a = { turn, cmd: c.input?.command ?? JSON.stringify(c.input ?? {}), tool: c.name, output: null, startedAtMs: ev._rx ?? null }; pending.set(c.id, a); acts.push(a); }
-      if (c.type === 'tool_result' && pending.has(c.tool_use_id)) Object.assign(pending.get(c.tool_use_id), { output: parseOut(c.content), completedAtMs: ev._rx ?? null });
+      if (c.type === 'tool_result' && pending.has(c.tool_use_id)) Object.assign(pending.get(c.tool_use_id), { output: parseOut(c.fullContent ?? c.content), completedAtMs: ev._rx ?? null }); // uncut when cut for display (#883)
     }
     if (ev.type === 'item.completed' && ev.item?.type === 'command_execution') acts.push({ turn, cmd: ev.item.command, tool: 'shell', output: parseOut(ev.item.aggregated_output), completedAtMs: ev._rx ?? null });
   }
