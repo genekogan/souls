@@ -8,7 +8,8 @@
 #   node tools/proof/tier.mjs                      tier of the working tree's diff against origin/main
 #   node tools/proof/tier.mjs --base <ref> [--label tier:T3] [--json]
 #
-# Changing a knob or a mapping is a reviewed one-line PR, not a new brief.
+# Changing a knob or a mapping is a reviewed one-line PR, not a new brief. It computes T3 (the first `paths` rule), so
+# it waits for the maintainer, who lands it with an approval and `proof:waived`.
 version: 1
 
 tiers:
