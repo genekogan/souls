@@ -1,4 +1,4 @@
 ---
 type: fix
 ---
-A chair whose front is boxed in by the table can be walked to again: Souls go to the open floor beside it.
+A dining chair boxed in by its table can now be walked to: Souls go to the open floor of the room beside it instead of stopping outside.

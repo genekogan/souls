@@ -454,7 +454,7 @@ export class GodNav {
       if (goal && goal.level > 0 && E.navCheckV1 && E.navWarmV1?.(0) && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) goal = this.roofReach(goal) ?? goal;
       // #875: a seat whose stand point is in a pocket furniture closes off (a dining chair pushed in between the table and
       // the wall) while the room's main floor is beside it: another stand point of it that is connected, else the nearest
-      // connected standing spot within 2.5 m (inside THING_REACH_M); with none the goal stays, refused honestly
+      // connected standing spot in its own room within 2.5 m of that stand point; with none the goal stays, refused honestly
       if (goal && t.seat && E.navCheckV1 && E.navWarmV1?.(0) && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) {
         let other: { p: Vec2; level: number } | null = null;
         for (const s of stands) { const g = near(s, t.level, 6); if (g && E.navCheckV1([{ id: t.ref, ...g }])[0]?.ok) { other = g; break; } }
