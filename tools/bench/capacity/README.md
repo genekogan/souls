@@ -151,6 +151,8 @@ node tools/bench/capacity/slopes/slopes.mjs --root <built checkout> --axis inven
 # qualifying executor: the capacity-qualify workflow with profile=slopes (it adds --cpu-prof and, when quiet, --quiet-host --qualifying-executor)
 ```
 
+- **What qualifies:** only a run on the qualifying executor that is declared quiet, full length (not `--short`) and has at least 2 repeats; every other run is labelled INDICATIVE. A failed arm or repeat is listed under "Failed runs" in REPORT.md, enters no mean (each section's `n` counts the runs its means rest on), and makes the bench exit 1.
+
 `--slice` wraps each world on its own, so a CPU quota there is per world, unlike the meetup bench. A qualifying slopes run needs no slice: it measures cost per call, not headroom.
 
 ## Recorded baseline (2026-10-31, before the server-reliability fixes)

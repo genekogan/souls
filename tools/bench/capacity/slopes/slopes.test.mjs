@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { COPY_DEFS, CLEARANCE_M, emptySquare, withDistantInventory } from './inventory.mjs';
-import { AXES, activeWindow, cores, liveWindow, probeRoute, reportText, slopes, summarizeProfile } from './report.mjs';
+import { AXES, activeWindow, cores, liveWindow, probeRoute, qualifies, reportText, slopes, summarizeProfile } from './report.mjs';
 
 const ROOT = new URL('../../../../', import.meta.url).pathname;
 const EDEN = JSON.parse(readFileSync(`${ROOT}worlds/templates/eden-2026.json`, 'utf8'));
@@ -85,4 +85,24 @@ test('slopes: deltas across arms, each with its repeats; a missing arm gives no 
   assert.equal(s.quiet.coresPerQuietWorld, 0.1);
   assert.deepEqual(slopes([res('inv5000', 1, 100, 150, 0.4)]), {});
   assert.match(reportText({ indicative: true, host: { class: 'laptop', cores: 8 }, repeats: 1, windows: {}, coverage: ['x'] }, [res('inv5000', 1, 100, 150, 0.4)]), /INDICATIVE[\s\S]*\| inv5000 \| 1 \|/);
+});
+
+test('#911 review: a failed run is listed in REPORT.md, enters no mean, and every section says how many runs it rests on', () => {
+  const res = (id, rep, here) => ({ arm: Object.values(AXES).flat().find((a) => a.id === id), rep, probe: { here: { cpuMsPerCall: here } }, active: { cpuMsPerServed: 100, servedPerS: 1, endToEnd: { p95: 300 } }, windows: { quiet: { cores: 0.1 }, active: { cores: 0.4, rssMbMax: 900 } }, boot: { seconds: 10, dbMb: 5 } });
+  const all = [res('inv5000', 1, 100), res('inv5000', 2, 110), res('inv10000', 1, 160), { arm: AXES.inventory[1], rep: 2, error: 'sw0 did not answer /healthz in 15 min | boot' }];
+  const s = slopes(all);
+  assert.deepEqual(s.inventory.n, { inv5000: 2, inv10000: 1 });
+  assert.deepEqual(s.inventory.probeCpuMsPerCall.here, { at5000: 105, at10000: 160, delta: 55, spread: [10, null] }, 'the failed repeat is not a value');
+  const text = reportText({ indicative: true, host: {}, windows: {}, source: {} }, all);
+  assert.match(text, /## Failed runs: 1 of 4/);
+  assert.match(text, /\| inv10000 \| 2 \| sw0 did not answer \/healthz in 15 min \\\| boot \|/, 'the error is printed, its pipe escaped');
+  assert.equal(text.split('\n').filter((l) => /^\| inv10000 \| 2 \| 10000 \|/.test(l)).length, 0, 'not a row of the arm table');
+  assert.doesNotMatch(reportText({ indicative: true, host: {}, windows: {}, source: {} }, all.slice(0, 3)), /Failed runs/);
+  assert.deepEqual(slopes([...all.slice(0, 2), { arm: AXES.quiet[0], rep: 1, error: 'x' }, res('quiet10', 1, 90)]).quiet, undefined, 'a failed arm is a missing arm');
+});
+
+test('#911 review: only a quiet, full-length, two-repeat run on the qualifying executor qualifies', () => {
+  const ok = { executor: true, quiet: true, short: false, repeats: 2 };
+  assert.equal(qualifies(ok), true); assert.equal(qualifies({ ...ok, repeats: 3 }), true);
+  for (const bad of [{ executor: false }, { quiet: false }, { short: true }, { repeats: 1 }, { repeats: undefined }]) assert.equal(qualifies({ ...ok, ...bad }), false, JSON.stringify(bad));
 });
