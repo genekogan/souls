@@ -167,7 +167,14 @@ const article = (w: string) => (/^[aeiou]/.test(w) ? `an ${w}` : `a ${w}`);
 export class GodNav {
   private h: NavHost;
   private cache: { key: string; things: Thing[]; byRef: Map<string, Thing> } | null = null;
-  private goals = new Map<string, { tick: number; key: string; goal: { p: Vec2; level: number } | null }>();
+  private goals = new Map<string, { tick: number; key: string; warm: boolean; goal: { p: Vec2; level: number } | null }>();
+  /** #882: whether the engine's connectivity labels are ready (navWarmV1(0)), read at most once per tick: a read syncs
+   *  the paged spatial service. A goal made before they were ready skipped RESOLVE2's roofReach and WALK3's main ground. */
+  private warmSeen: { tick: number; warm: boolean } | null = null;
+  private navWarm(tick: number): boolean {
+    if (this.warmSeen?.tick !== tick) this.warmSeen = { tick, warm: !!this.E.navWarmV1?.(0) };
+    return this.warmSeen.warm;
+  }
   constructor(h: NavHost) { this.h = h; }
   /** B-facade: the world this read code reaches (split/menu-world.ts); `h.engine` may be the engine or a MenuWorld. */
   private get E(): MenuWorld { return menuWorldOf(this.h); }
@@ -361,7 +368,9 @@ export class GodNav {
     // Area arrivals depend on exact current position, but movement must replace
     // the actor's entry rather than retain a new cache entry for every position.
     const positionKey = t.kind === 'area' ? `${me[0]},${me[1]}` : key;
-    const hit = this.goals.get(key); if (hit && hit.key === positionKey && tick - hit.tick < 50) return hit.goal;
+    // (#882: a goal made while navigation was still cold is made again once it is warm, not kept for the rest of its 50
+    // ticks: the roof planter walk asked just after boot was refused as cut, its cold goal never moved to the stair's side)
+    const hit = this.goals.get(key); if (hit && hit.key === positionKey && tick - hit.tick < 50 && (hit.warm || !this.navWarm(tick))) return hit.goal;
     const near = (at: Vec2, level: number, ring = 24) => { const p = E.standableNearV1!(at, level, except, 0.4, ring); return p ? { p: [r2(p[0]), r2(p[1])] as Vec2, level } : null; };
     // WALK3: a ground goal off the main walkable ground (a fenced court, a dense wood, a mountain band, a hill) moves to the
     // nearest open spot of the main ground within r of it, else of `alt`; only once the engine's labels are ready (a
@@ -482,7 +491,7 @@ export class GodNav {
       const room = t.kind === 'room' ? t : this.things().find(r => r.kind === 'room' && t.rooms?.includes(r.ref) && r.level === goal!.level && r.poly && inPoly(goal!.p[0], goal!.p[1], r.poly));
       if (room) goal = this.visitorGoal(room, goal, near);
     }
-    this.goals.set(key, { tick, key: positionKey, goal });
+    this.goals.set(key, { tick, key: positionKey, warm: this.navWarm(tick), goal });
     return goal;
   }
 
