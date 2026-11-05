@@ -21,14 +21,14 @@ import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { FIXTURES, outcomeOf } from '../meetup/workload.mjs';
 import { withDistantInventory } from './inventory.mjs';
-import { AXES, ACTS, PROBE_ROUTES, SLOPES, activePlan, cores, planSeed, probeRoute, activeWindow, liveWindow, scheduleFacts, summarizeProfile, reportText } from './report.mjs';
+import { AXES, ACTS, PROBE_ROUTES, SLOPES, activePlan, cores, planSeed, probeRoute, qualifies, activeWindow, liveWindow, scheduleFacts, summarizeProfile, reportText } from './report.mjs';
 
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf(`--${k}`); return i < 0 ? d : argv[i + 1]; }, flag = (k) => argv.includes(`--${k}`);
 const ROOT = resolve(opt('root', new URL('../../../..', import.meta.url).pathname)), SHORT = flag('short');
 const PORT = Number(opt('port', 4600)), INSPECT = PORT + 50, HEAP_MB = Number(opt('heap-mb', 2048)), REPEATS = Number(opt('repeats', 1));
 const QUIET_N = Number(opt('quiet-worlds', 9)), PROBE_N = Number(opt('probe-n', SHORT ? 5 : 20)), PROF = flag('cpu-prof'), SLICE = opt('slice', '');
 const WARM_S = Number(opt('warm-s', SHORT ? 10 : 30)), QUIET_S = Number(opt('quiet-s', SHORT ? 20 : 60)), ACTIVE_S = Number(opt('active-s', SHORT ? 40 : 180));
-const HOST_CLASS = opt('host-class', 'laptop'), QUIET = flag('quiet-host'), QUALIFYING = flag('qualifying-executor') && QUIET;
+const HOST_CLASS = opt('host-class', 'laptop'), QUIET = flag('quiet-host'), QUALIFYING = qualifies({ executor: flag('qualifying-executor'), quiet: QUIET, short: SHORT, repeats: REPEATS });
 const AXIS_LIST = opt('axis', 'inventory,activity,quiet').split(',');
 for (const a of AXIS_LIST) if (!AXES[a]) throw new Error(`--axis ${a}: inventory | activity | quiet`);
 const OUT = resolve(opt('out', join(ROOT, '.local/bench/slopes', new Date().toISOString().replace(/[:.]/g, '-'))));
@@ -247,5 +247,7 @@ for (let rep = 1; rep <= REPEATS; rep++) for (const axis of AXIS_LIST) for (cons
   writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1) + '\n');
 }
 receipt.host.loadavgEnd = loadavg().map((x) => +x.toFixed(2)); writeFileSync(join(OUT, 'receipt.json'), JSON.stringify(receipt, null, 1) + '\n');
-writeFileSync(join(OUT, 'REPORT.md'), reportText(receipt, results.filter((x) => !x.error)));
-log(`done: ${rel(join(OUT, 'REPORT.md'))}`);
+writeFileSync(join(OUT, 'REPORT.md'), reportText(receipt, results));
+const failed = results.filter((x) => x.error);
+log(`done: ${rel(join(OUT, 'REPORT.md'))}${failed.length ? `; ${failed.length} of ${results.length} runs FAILED` : ''}`);
+if (failed.length) process.exitCode = 1;   // a run with a failed arm is never a clean result

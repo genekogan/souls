@@ -124,12 +124,18 @@ export function summarizeProfile(p, root = '', top = 15, watch = WATCH) {
 const mean = (xs) => { const v = xs.filter((x) => typeof x === 'number' && Number.isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
 const spread = (xs) => { const v = xs.filter((x) => typeof x === 'number' && Number.isFinite(x)); return v.length > 1 ? r(Math.max(...v) - Math.min(...v), 2) : null; };
 
-/** Results (one per arm and repeat) → the slopes, each with its repeats' spread. Missing arms give null, never 0. */
-export function slopes(results) {
+/** Can this run qualify? The qualifying executor, declared quiet, full-length windows and at least two repeats per arm
+ *  (#911 review). Anything else is indicative, whatever the host. */
+export const qualifies = ({ executor, quiet, short, repeats }) => !!executor && !!quiet && !short && Number(repeats) >= 2;
+
+/** Results (one per arm and repeat) → the slopes, each with its repeats' spread. Missing arms give null, never 0. Failed
+ *  runs ({error}) never enter a mean; each section's `n` gives how many runs of each arm its means rest on. */
+export function slopes(all) {
+  const results = all.filter((x) => !x.error), n = (ids) => Object.fromEntries(ids.map((id) => [id, of(id).length]));
   const of = (id) => results.filter((x) => x.arm.id === id), m = (id, f) => mean(of(id).map(f)), sp = (id, f) => spread(of(id).map(f));
   const out = {};
   if (of('inv5000').length && of('inv10000').length) {
-    out.inventory = { per: '5,000 more distant placed objects', probeCpuMsPerCall: {}, activeCpuMsPerServed: null, quietCores: null, rssMb: null, bootS: null };
+    out.inventory = { per: '5,000 more distant placed objects', n: n(['inv5000', 'inv10000']), probeCpuMsPerCall: {}, activeCpuMsPerServed: null, quietCores: null, rssMb: null, bootS: null };
     for (const k of PROBE_ROUTES) { const f = (x) => x.probe?.[k]?.cpuMsPerCall; const a = m('inv5000', f), b = m('inv10000', f); out.inventory.probeCpuMsPerCall[k] = { at5000: r(a), at10000: r(b), delta: a == null || b == null ? null : r(b - a), spread: [sp('inv5000', f), sp('inv10000', f)] }; }
     const d = (f, dd = 2) => { const a = m('inv5000', f), b = m('inv10000', f); return a == null || b == null ? null : { at5000: r(a, dd), at10000: r(b, dd), delta: r(b - a, dd) }; };
     out.inventory.activeCpuMsPerServed = d((x) => x.active?.cpuMsPerServed, 1); out.inventory.quietCores = d((x) => x.windows?.quiet?.cores, 3);
@@ -139,25 +145,29 @@ export function slopes(results) {
   if (acts.length >= 2) {
     const pts = acts.map((id) => ({ active: of(id)[0].arm.active, cores: m(id, (x) => x.windows?.active?.cores), cpuMsPerServed: m(id, (x) => x.active?.cpuMsPerServed), servedPerS: m(id, (x) => x.active?.servedPerS), loopP99MsMax: m(id, (x) => x.live?.active?.loopP99MsMax), spread: sp(id, (x) => x.windows?.active?.cores) }));
     const [a, b] = [pts[0], pts.at(-1)];
-    out.activity = { points: pts.map((p) => ({ ...p, cores: r(p.cores, 3), cpuMsPerServed: r(p.cpuMsPerServed), servedPerS: r(p.servedPerS, 2) })), coresPerActiveSoul: a.cores == null || b.cores == null ? null : r((b.cores - a.cores) / (b.active - a.active), 4) };
+    out.activity = { n: n(acts), points: pts.map((p) => ({ ...p, cores: r(p.cores, 3), cpuMsPerServed: r(p.cpuMsPerServed), servedPerS: r(p.servedPerS, 2) })), coresPerActiveSoul: a.cores == null || b.cores == null ? null : r((b.cores - a.cores) / (b.active - a.active), 4) };
   }
   if (of('quiet1').length && of('quiet10').length) {
     const f = (x) => x.active?.cpuMsPerServed, g = (x) => x.active?.endToEnd?.p95, h = (x) => x.quietWorlds?.cores;
-    out.quiet = { designatedCpuMsPerServed: { alone: r(m('quiet1', f)), with9: r(m('quiet10', f)) }, designatedE2eP95Ms: { alone: m('quiet1', g), with9: m('quiet10', g) },
+    out.quiet = { n: n(['quiet1', 'quiet10']), designatedCpuMsPerServed: { alone: r(m('quiet1', f)), with9: r(m('quiet10', f)) }, designatedE2eP95Ms: { alone: m('quiet1', g), with9: m('quiet10', g) },
       quietWorldsCores: r(m('quiet10', h), 3), coresPerQuietWorld: m('quiet10', h) == null ? null : r(m('quiet10', h) / 9, 4) };
   }
   return out;
 }
 
 /** REPORT.md: the receipt line, the per-arm table, the slopes and the profile tops. Numbers only; no host names or paths. */
-export function reportText(receipt, results) {
-  const s = slopes(results), L = [];
+export function reportText(receipt, all) {
+  const s = slopes(all), L = [], results = all.filter((x) => !x.error), failed = all.filter((x) => x.error);
   L.push(`# Slopes bench (${SLOPES}) — ${receipt.indicative ? 'INDICATIVE (not a qualifying run)' : 'qualifying executor'}`, '');
   L.push(`Source ${receipt.source?.commit ?? '?'}${receipt.source?.dirty ? ' (dirty)' : ''} · host class ${receipt.host?.class} · ${receipt.host?.cores} cores · quiet declared ${!!receipt.host?.quietDeclared} · repeats ${receipt.repeats} · windows quiet ${receipt.windows?.quietS} s / active ${receipt.windows?.activeS} s · fake minds`, '');
   L.push('| arm | rep | placed | reg/active | quiet worlds | quiet cores | active cores | CPU-ms/served | served/s | e2e p95 ms | crowded reads | probe CPU-ms here/observe/caps/resolve/act | loop p99 max ms | RSS max MB | boot s |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const x of results) {
     const p = (k) => x.probe?.[k]?.cpuMsPerCall ?? '?';
     L.push(`| ${x.arm.id} | ${x.rep} | ${x.facts?.placed ?? '?'} | ${x.arm.registered}/${x.arm.active} | ${x.arm.quiet} | ${x.windows?.quiet?.cores ?? '?'} | ${x.windows?.active?.cores ?? '?'} | ${x.active?.cpuMsPerServed ?? '—'} | ${x.active?.servedPerS ?? '—'} | ${x.active?.endToEnd?.p95 ?? '—'} | ${x.schedule?.crowdedReadFrac ?? '—'} | ${PROBE_ROUTES.map(p).join(' / ')} | ${x.live?.active?.loopP99MsMax ?? '?'} | ${x.windows?.active?.rssMbMax ?? '?'} | ${x.boot?.seconds ?? '?'} |`);
+  }
+  if (failed.length) {
+    L.push('', `## Failed runs: ${failed.length} of ${all.length}`, '', 'These runs are in no mean or slope below (each section\'s `n` counts the runs it rests on).', '', '| arm | rep | error |', '|---|---|---|');
+    for (const x of failed) L.push(`| ${x.arm?.id ?? '?'} | ${x.rep ?? '?'} | ${String(x.error).replace(/\|/g, '\\|').replace(/\s+/g, ' ').slice(0, 300)} |`);
   }
   L.push('', '## Slopes', '', '```json', JSON.stringify(s, null, 1), '```', '');
   for (const x of results) for (const [w, prof] of Object.entries(x.profiles ?? {})) if (prof) {
