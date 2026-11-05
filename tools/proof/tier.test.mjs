@@ -41,6 +41,15 @@ test('shared god navigation/perception and split read-facade code require T3', (
   }
 });
 
+test('a change to the proof policy itself is T3, and only the policy file', () => {
+  assert.deepEqual(tierForFile('docs/process/PROOF-POLICY.yml', policy), { tier: 'T3', rule: 'docs/process/PROOF-POLICY.yml' });
+  assert.equal(tier(['docs/process/PROOF-POLICY.yml', 'changes/x.md', 'docs/process/agent-workflow.md']), 'T3');
+  assert.equal(tier(['docs/process/PROOF-POLICY.yml'], ['tier:T0']), 'T3', 'labels never lower it');
+  for (const file of ['docs/process/agent-workflow.md', 'docs/process/PROOF-POLICY.md', 'docs/process/PROOF-POLICY.yml.bak']) {
+    assert.deepEqual(tierForFile(file, policy), { tier: 'T0', rule: 'docs/' }, file);
+  }
+});
+
 test('path policy keeps first-match precedence, independent of tier rank', () => {
   const custom = loadPolicy('paths:\n  - { prefix: "specific/", tier: T1 }\n  - { glob: "**", tier: T3 }\ndefault_tier: T1\n');
   assert.deepEqual(tierForFile('specific/file.ts', custom), { tier: 'T1', rule: 'specific/' });
