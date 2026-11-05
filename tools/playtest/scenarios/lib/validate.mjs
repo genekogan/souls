@@ -38,7 +38,8 @@ export function checkNear(genesis, x, where) {
   const N = namesOf(genesis);
   for (const w of x.answer?.anyOf ?? []) {
     const j = wordFromTargets(N, x.targets, w);
-    if (j.placed && !j.near) errs.push(`${where} answer.anyOf "${w}": the nearest placed ${j.thing} is ${j.d.toFixed(1)} m from ${j.target.ref ?? j.target.names[0]} (radiusM ${j.target.radiusM})`);
+    if (j.self) errs.push(`${where} answer.anyOf "${w}" names only the place asked about (${j.thing})`);
+    else if (j.placed && !j.near) errs.push(`${where} answer.anyOf "${w}": the nearest placed ${j.thing} is ${j.d.toFixed(1)} m from ${j.target.ref ?? j.target.names[0]} (radiusM ${j.target.radiusM})`);
   }
   return errs;
 }

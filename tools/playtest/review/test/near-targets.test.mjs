@@ -27,7 +27,9 @@ test('N3: a word counts only when the genesis has it within radiusM of the targe
   assert.equal(wordFromTargets(things, near.targets, 'windmill').near, false);
   assert.equal(wordFromTargets(things, near.targets, 'bench').thing, 'street-bench-1', 'the bench nearest the target, not the one by the Soul');
   assert.deepEqual(wordFromTargets(things, near.targets, 'commons'), { word: 'commons', placed: false }, 'a word that names nothing placed is an alias');
-  assert.equal(wordFromTargets(things, near.targets, 'pavilion').placed, false, 'the target itself is not near itself');
+  assert.deepEqual(wordFromTargets(things, near.targets, 'pavilion'), { word: 'pavilion', placed: true, near: false, self: true, thing: 'bandstand', target: near.targets[0], d: 0 }, 'the target itself is not near itself');
+  assert.equal(wordFromTargets(things, near.targets, 'benches').thing, 'street-bench-1', 'plural and singular both name a placed thing');
+  assert.equal(score('The bandstand, a pavilion.', { expect: { ...near, answer: { anyOf: ['pavilion'] } } }).detail, 'names 0 thing(s) near bandstand (1 needed); not near bandstand: pavilion (names the place asked about)');
   const r = score('There is a violin by it.');
   assert.equal(r.status, 'pass'); assert.equal(r.detail, 'names violin (1/1 needed)');
 });
@@ -41,6 +43,9 @@ test('N3: names that are only near the Soul do not count, and the row fails with
   assert.match(mixed.detail, /^names bench \(1\/1 needed\); not near bandstand: windmill/);
   assert.equal(score('The commons.').status, 'pass', 'an alias still counts');
   assert.equal(score('A windmill.', { pos: [null, null] }).detail.includes('from the Soul'), false, 'no Soul distance without a position');
+  const walked = { ...pack(0, 0), samples: [sample(1, 0, 0), sample(20, 60, 2), sample(60, 0, 0)] }; // at the windmill when it answered (30 s)
+  const w = row(runOracles(walked, { expect: near, things, acts: [], turns: [{ turn: 3, finalText: 'A windmill.', endedAt: at(30) }] }), 'answer-names');
+  assert.match(w.detail, /2\.0 m from the Soul\)$/, 'measured from where the Soul stood when it answered');
 });
 
 test('N4: without targets or without a genesis the old scoring holds, and the detail says so', () => {
@@ -66,6 +71,7 @@ test('N1, N2: the validator wants targets with radiusM on near and holds anyOf w
   assert.match(checkNear(G, { ...x, targets: undefined }, 'w')[0], /targets\[\] required for near/);
   assert.match(checkNear(G, { ...x, targets: [{ ...x.targets[0], radiusM: undefined }] }, 'w')[0], /radiusM required for near/);
   assert.match(checkNear(G, { ...x, answer: { anyOf: ['knoll', 'pond'] } }, 'w')[0], /anyOf "pond": the nearest placed .* m from cottage \(radiusM 10\)/);
+  assert.match(checkNear(G, { ...x, answer: { anyOf: ['cottage'] } }, 'w')[0], /anyOf "cottage" names only the place asked about/);
 });
 
 test('N1: every near expect in the scenario folder has targets and passes the template truth', async () => {

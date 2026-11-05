@@ -91,24 +91,30 @@ const targetsOf = (x) => (x.targets ?? []).map((t) => ({ ...t, radiusM: t.radius
 const label = (t) => t.ref ?? t.names[0];
 const defWords = (d) => String(d ?? '').replace(/^.*\//, '').replace(/@.*$/, '');
 
-/** Placed things (templateNames values: {name, def, pos}) that a word names: whole words of the name or the def. */
+/** Placed things (templateNames values: {name, def, pos}) that a word names: whole words of the name or the def, singular
+ *  or plural ("shower" names `showers`, "benches" names `street-bench-1`). */
 export function placedNamed(things, word) {
-  const w = words(word);
-  if (!w.trim()) return [];
-  return [...(things?.values?.() ?? [])].filter((n) => n.pos && (words(n.name).includes(w) || words(defWords(n.def)).includes(w)));
+  const w = words(word).trim();
+  if (!w) return [];
+  const stem = w.replace(/(?<=[a-z]{3})(es|s)$/, '');
+  const re = new RegExp(` (?:${[w, stem].map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?:s|es)? `);
+  return [...(things?.values?.() ?? [])].filter((n) => n.pos && (re.test(words(n.name)) || re.test(words(defWords(n.def)))));
 }
 
 /** H4: an answer word measured from the targets, not the Soul. → {word, placed: false} for a word that names nothing placed
- *  (an alias), else {word, placed: true, near, thing, target, d}: the placed thing nearest a target (the targets themselves
- *  excluded), its distance and whether it lies within that target's radiusM. */
+ *  (an alias); {word, placed: true, near: false, self: true} for a word that names only the place asked about; else
+ *  {word, placed: true, near, thing, target, d}: the placed thing nearest a target (the targets themselves excluded), its
+ *  distance and whether it lies within that target's radiusM. */
 export function wordFromTargets(things, targets, word) {
   const own = new Set(targets.flatMap((t) => [t.ref, ...(t.names ?? [])]).filter(Boolean));
+  const placed = placedNamed(things, word);
   let best = null;
-  for (const n of placedNamed(things, word)) {
+  for (const n of placed) {
     if (own.has(n.name)) continue;
     for (const t of targets) { const d = dist(n.pos, t.pos), over = d - (t.radiusM ?? 5); if (!best || over < best.over) best = { thing: n.name, target: t, d, over }; }
   }
-  return best ? { word, placed: true, near: best.over <= 0, thing: best.thing, target: best.target, d: best.d } : { word, placed: false };
+  if (best) return { word, placed: true, near: best.over <= 0, thing: best.thing, target: best.target, d: best.d };
+  return placed.length ? { word, placed: true, near: false, self: true, thing: placed[0].name, target: targets[0], d: 0 } : { word, placed: false };
 }
 const NEAR_AT = /^(here|at|close)$/i;
 const sampleNames = (s) => [s.place, ...(s.placePath ?? []), ...(s.near ?? []).filter((n) => NEAR_AT.test(String(n.distance ?? ''))).flatMap((n) => [n.who, n.id])].filter(Boolean);
@@ -159,10 +165,10 @@ export function expectOracles({ ev, expect: x, timely = [], replies = [], receip
       if (!T.length || !things) note = `; names not measured from the target (${T.length ? 'genesis not loaded' : 'no targets'})`;
       else {
         const judged = hit.map((w) => wordFromTargets(things, T, w)), far = judged.filter((j) => j.placed && !j.near);
-        const soul = timely.find((s) => s.p)?.p ?? null;
+        const soul = (timely.filter((s) => s.p && !(s.ms > answeredAt)).at(-1) ?? timely.find((s) => s.p))?.p ?? null; // where the Soul answered
         const fromSoul = (w) => { if (!soul) return ''; const d = Math.min(...placedNamed(things, w).map((n) => dist(n.pos, soul))); return Number.isFinite(d) ? `, ${d.toFixed(1)} m from the Soul` : ''; };
         hit = judged.filter((j) => !j.placed || j.near).map((j) => j.word); farOnly = far.length > 0;
-        if (far.length) note = `; not near ${label(T[0])}: ${far.map((j) => `${j.word} (nearest ${j.d.toFixed(1)} m from ${label(j.target)}, radius ${j.target.radiusM} m${fromSoul(j.word)})`).join(', ')}`;
+        if (far.length) note = `; not near ${label(T[0])}: ${far.map((j) => (j.self ? `${j.word} (names the place asked about)` : `${j.word} (nearest ${j.d.toFixed(1)} m from ${label(j.target)}, radius ${j.target.radiusM} m${fromSoul(j.word)})`)).join(', ')}`;
       }
     }
     if (hit.length < min) return o(id, 'fail', `${farOnly ? `names ${hit.length} thing(s) near ${label(T[0])} (${min} needed)` : `names none of ${a.anyOf.slice(0, 8).join(', ')}${a.anyOf.length > 8 ? '…' : ''}`}${note}`, rptr);
