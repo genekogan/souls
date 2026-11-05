@@ -97,7 +97,7 @@ import { setFleeSources, AFLOAT } from './gen-mesh/motion.ts';
 import { WorldLightning } from './WorldLightning.ts';
 import { worldArrivalPose } from './arrival-shot.ts';
 import { anyPersonInView } from './people-in-view.ts';
-import { setAssetLoader } from './gen-mesh/gltf-assets.ts';import { worldResolution } from './adaptive-resolution.ts';import { browserQuality } from './quality-tier.ts';import { WorldDistanceDetail } from './WorldDistanceDetail.ts';import { WorldMeshLod, PHONE_MESH_LOD, DESKTOP_MESH_LOD, workerSimplifier, type Simplifier } from './WorldMeshLod.ts';import { WorldFarStandIns, PHONE_STAND_INS, rendererSnapshotter } from './WorldFarStandIns.ts';import { captureTexturePreparation, compileSceneAsync, setTextureRenderer, warmReadyProgramMetadata } from './gen-mesh/texture-budget.ts';
+import { setAssetLoader } from './gen-mesh/gltf-assets.ts';import { worldResolution } from './adaptive-resolution.ts';import { browserQuality } from './quality-tier.ts';import { WorldDistanceDetail } from './WorldDistanceDetail.ts';import { WorldMeshLod, PHONE_MESH_LOD, DESKTOP_MESH_LOD, workerSimplifier, type Simplifier } from './WorldMeshLod.ts';import { WorldFarStandIns, PHONE_STAND_INS, rendererSnapshotter } from './WorldFarStandIns.ts';import { captureTexturePreparation, fitTextures, compileSceneAsync, setTextureRenderer, warmReadyProgramMetadata } from './gen-mesh/texture-budget.ts';
 // P1 phones: the god panel and the constitution card are lazy chunks, mounted once the arrival card has gone (20 s cap), or
 // at once when the landing URL carries something for the panel (#join, #approve/…, an offer or pairing link, a preview)
 const GodPanel=lazy(()=>import('./GodPanel.tsx').then(m=>({default:m.GodPanel})));
@@ -568,14 +568,14 @@ export function LiveWorld({ sim, selected, onSelect, onViewerHandle, onViewerSta
     const releaseTexturePreparation = newWorld ? setTextureRenderer(renderer,scene,camera) : () => {};
     if(newWorld){MeshoptDecoder.useWorkers?.(2);renderer.debug.checkShaderErrors=false;}  // lane PERF: paced GLB texture uploads, meshopt decoding in 2 workers, no sync link-status reads (new worlds only)
     else if(quality.tier==='phone'&&!import.meta.env.DEV)renderer.debug.checkShaderErrors=false;  // F12: an old world on a phone skips the sync link-status/info-log reads too (~0.2 s of /w/eden's first compile at 4x)
-    const floaters = new FloaterView(scene, { baseUrl: '/world-assets/littlemartians/characters/', loader });
+    const floaters = new FloaterView(scene, { baseUrl: '/world-assets/littlemartians/characters/', loader, prepareModel: fitTextures });
     const bodyModels=new WorldBodyModels(loader,problem);bodyModels.held=peopleLater;
     let capturedPlatforms:readonly PlatformFloor[]|null=null;
     let currentPlatforms:{worldId:string;platforms:PlatformFloor[]}|null=null;
     void fetch(apiPath('/v1/edge/platforms'),{signal:abort.signal}).then(r=>r.ok?r.json():null).then(meta=>{
       if(!abort.signal.aborted&&meta?.contract==='eden-edge/1'&&meta.active===true&&meta.provenance?.contract==='render-platforms/1'&&typeof meta.worldId==='string')currentPlatforms={worldId:meta.worldId,platforms:parsePlatformFloors(meta.platforms)};
     }).catch(()=>{});
-    const kin = new KinScenery(scene, { baseUrl: '/world-assets/littlemartians/characters/', loader });
+    const kin = new KinScenery(scene, { baseUrl: '/world-assets/littlemartians/characters/', loader, prepareModel: fitTextures });
     let templates: Awaited<ReturnType<typeof loadTemplates>> = Object.assign([],{stableOrder:PEOPLE});
     type TemplateLoad={promise:Promise<void>;resolve:()=>void;reject:(error:Error)=>void;failed:boolean};
     const templateLoads=new Map<string,TemplateLoad>();

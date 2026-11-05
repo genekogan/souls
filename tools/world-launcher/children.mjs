@@ -628,6 +628,8 @@ export function defaultCommand(world, port, o) {
     WORLD_KEY: world.worldKey ?? world.slug, WORLD_ID: worldIdOf(world), WORLD_SLUG: world.slug, WORLD_NAME: world.name ?? '', ENGINE: 'mars', PORT: String(port), HOST: '127.0.0.1',
     DEV_AUTH: clerk ? '0' : '1', SEED_NATIVES: '0', DATA_DIR: world.dataDir, PUBLIC_URL: o.publicOrigin, ENABLE_WORLD_ENGINE: '1',
     WORLD_PATH: `/w/${world.slug}`,
+    // #717: every world of this launcher shares one body-collection store (membership and attribution; bytes stay per world)
+    ...(world.bodyCollectionPath ? { BODY_COLLECTION_PATH: world.bodyCollectionPath } : {}),
     // The launcher verifies signed-in creators before genesis, then confirms the same principal by claiming.
     ...(clerk ? { ...publicAuthEnvironment(clerk), AUTH_PROVIDER: 'clerk', ACCOUNT_AUTH_REQUIRED: '1', ACCOUNT_REGISTRY_PATH: clerk.registryPath, CLERK_SATELLITE_DOMAIN: clerk.satellite?.domain ?? '', CLERK_SIGN_IN_URL: clerk.satellite?.signInUrl ?? '', INVITE_REQUIRED: '0', WORLD_OWNER_ID: '' } : {}),
     // Verified creator or loopback operator account only; user JSON cannot supply this value.
@@ -682,7 +684,7 @@ export function forkCommand(world, port, o) {
     PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR, LANG: process.env.LANG,
     ANTHROPIC_API_KEY: '', TYPESAFE_API_KEY: '', OPENAI_API_KEY: '', BRAIN_MODE: 'fake', MIND_DRIVER: 'edge',
     WORLD_KEY: world.slug, PORT: String(port), HOST: '127.0.0.1', DATA_DIR: world.dataDir, PUBLIC_URL: o.publicOrigin,
-    ...publicAuthEnvironment(clerk), WORLD_PATH: `/w/${world.slug}`, DEV_AUTH: '0', AUTH_PROVIDER: 'clerk', ACCOUNT_AUTH_REQUIRED: '1', ACCOUNT_REGISTRY_PATH: world.fork.accounts, CLERK_SATELLITE_DOMAIN: clerk.satellite?.domain ?? '', CLERK_SIGN_IN_URL: clerk.satellite?.signInUrl ?? '',
+    ...publicAuthEnvironment(clerk), WORLD_PATH: `/w/${world.slug}`, DEV_AUTH: '0', AUTH_PROVIDER: 'clerk', ACCOUNT_AUTH_REQUIRED: '1', BODY_COLLECTION_PATH: 'local', ACCOUNT_REGISTRY_PATH: world.fork.accounts, CLERK_SATELLITE_DOMAIN: clerk.satellite?.domain ?? '', CLERK_SIGN_IN_URL: clerk.satellite?.signInUrl ?? '',
     SIM_FORK: world.slug,
     ...(o.compileCache ? { NODE_COMPILE_CACHE: o.compileCache } : {}),
     ...(o.soulCliFile && existsSync(o.soulCliFile) ? { EDGE_CLI_FILE: resolve(o.soulCliFile) } : {}),

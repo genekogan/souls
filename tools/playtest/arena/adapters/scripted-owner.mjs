@@ -115,7 +115,9 @@ const firstLine = (s) => String(s ?? '').split('\n').find((l) => l.trim())?.slic
 const clip = (s) => String(s).slice(0, 140);
 
 /** turn({cwd, text, script, maxWallSec}) → the same record shape as the model adapters, with zero usage. */
-export async function turn({ cwd, text, script, maxWallSec = 240 }) {
+export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = null }) {
+  // Opt-in passive trace (#752 → #733 tap): the preload and its env are added to this seat's CLI processes only.
+  const tr = diagnostics?.trace, pre = tr ? ['--import', tr.tap] : [], env = tr ? { SOUL_TRACE_FILE: tr.file, SOUL_TRACE_RUN: tr.run, SOUL_TRACE_SEAT: tr.seat } : undefined;
   const t0 = Date.now(), end = t0 + maxWallSec * 1000;
   const stream = [{ type: 'harness_user', text, _rx: t0 }];
   let n = 0, timedOut = false;
@@ -124,7 +126,7 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
     const id = `so_${++n}`, left = end - Date.now();
     const command = `node eden.mjs ${args.map((a) => (/^[\w./:@-]+$/.test(a) ? a : JSON.stringify(a))).join(' ')}`;
     stream.push({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] }, _rx: Date.now() });
-    const r = left > 0 ? await run('node', ['eden.mjs', ...args], { cwd, maxWallMs: left }) : { code: null, stdout: '', stderr: 'turn wall reached' };
+    const r = left > 0 ? await run('node', [...pre, 'eden.mjs', ...args], { cwd, env, maxWallMs: left }) : { code: null, stdout: '', stderr: 'turn wall reached' };
     if (r.timedOut || left <= 0) timedOut = true;
     stream.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: (r.stdout || r.stderr || '').slice(0, 4000), is_error: r.code !== 0 }] }, _rx: Date.now() });
     return r;
