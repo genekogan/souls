@@ -1,4 +1,5 @@
-import {PIP_PRESET,PIP_ASSET,pipBytes} from './pip.ts';
+import {PIP_PRESET} from './pip.ts';
+import {MONSTER_PRESET,GHOST_PRESET,SHARED_BODY_BYTES} from './shared-bodies.ts';
 import {mountBodyAuthoring} from './authoring.ts';
 import type {Context,Hono} from 'hono';
 import type {Entity} from '@sim/engine-contract';
@@ -21,7 +22,9 @@ export const BODY_PRESETS=[{id:'humanoid',name:'Humanoid',body:null},PIP_PRESET,
   return {id:m.id,name:m.name,body:{family:'floater',type:'ceramic',model:m.id,modelUrl,avatar:{kind:'body',modelUrl,bodyType:'ceramic'},radius:.35,hoverHeight:1.45,motion:structuredClone(LITTLE_MARTIANS_MOTION)} as Entity['body']};
 }),
 // Creatures (R11a): procedurally drawn animals with their own gait, speed and abilities (bodies/creatures.ts).
-...CREATURE_IDS.map(id=>{const c=CREATURES[id];return {id,name:c.name,body:creatureBody(id) as Entity['body'],creature:{moves:c.moves,speed:c.speed,swims:c.swimSpeed!==null,swimSpeed:c.swimSpeed,settles:c.settles,cannot:c.cannot}};})];
+...CREATURE_IDS.map(id=>{const c=CREATURES[id];return {id,name:c.name,body:creatureBody(id) as Entity['body'],creature:{moves:c.moves,speed:c.speed,swims:c.swimSpeed!==null,swimSpeed:c.swimSpeed,settles:c.settles,cannot:c.cannot}};}),
+// Shared authored examples (#722): appended so existing preset ids and order are unchanged.
+MONSTER_PRESET,GHOST_PRESET];
 const ASSET=/^body_[a-f0-9]{64}$/;
 const MAX_UPLOAD_REQUEST=BODY_LIMITS.bytes+64*1024;
 
@@ -121,7 +124,7 @@ export function mountBodyRoutes(app:Hono,deps:EdgeDeps&{ledger:EdgeLedger}){
   }
   app.get('/v1/edge/body/assets/:file',async c=>{
     const file=c.req.param('file');if(!/^body_[a-f0-9]{64}\.glb$/.test(file))return c.notFound();
-    if(file===PIP_ASSET+'.glb'){try{return c.body(new Uint8Array(await pipBytes()),200,{'Content-Type':'model/gltf-binary','Cache-Control':'public, max-age=31536000, immutable','X-Content-Type-Options':'nosniff'});}catch{return c.body('Shared body is temporarily unavailable',503);}}
+    const shared=SHARED_BODY_BYTES[file.slice(0,-4)];if(shared){try{return c.body(new Uint8Array(await shared()),200,{'Content-Type':'model/gltf-binary','Cache-Control':'public, max-age=31536000, immutable','X-Content-Type-Options':'nosniff'});}catch{return c.body('Shared body is temporarily unavailable',503);}}
     const row=db.prepare('SELECT content FROM edge_body_assets_v1 WHERE world_id=? AND asset_id=?').get(world,file.slice(0,-4)) as {content:Uint8Array}|undefined;if(!row)return c.notFound();
     return c.body(new Uint8Array(row.content),200,{'Content-Type':'model/gltf-binary','Cache-Control':'public, max-age=31536000, immutable','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'"});
   });
