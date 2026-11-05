@@ -49,6 +49,8 @@ import {publishSession,type SessionMode} from './auth-session.ts';
 import {getStatus as godStatus} from './god-ui/god-api.ts';
 import {worldTitle} from './world-title.ts';
 import { GodButton } from './god-ui/GodButton.tsx';
+import {SoulChip} from './SoulChip.tsx';
+import {doingText} from './place-names.ts';
 // P1 phones: the advanced surface's panels are lazy chunks, fetched the first time the advanced surface shows them
 // (never on a world's arrival)
 const lazyNamed=<M,K extends keyof M>(load:()=>Promise<M>,name:K)=>lazy(()=>load().then(m=>({default:m[name] as ComponentType<any>})));
@@ -130,7 +132,7 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
     addEventListener('focus',mark);document.addEventListener('visibilitychange',mark);
     const stop=answerApprovalTabs(approvalChannelName(cfg.worldId),id=>{location.hash='approve/'+id;},()=>front);
     return()=>{stop();removeEventListener('focus',mark);document.removeEventListener('visibilitychange',mark);};},[cfg.worldId]);
-  useEffect(() => { const f = () => { if(approvalFromHash(location.hash))return; if(location.hash==='#advanced'){setAdvanced(true);setPanelOpen(false);setTab('watch');return;} const h = hashTab(); setTab(h.tab); if (!['watch', 'my soul'].includes(h.tab)) setAdvanced(true); else if(h.soul){setAdvanced(false);setPanelOpen(true);setNavigationOpen(false);} if(h.tab==='watch')setSelected(h.soul??null); if (h.pair) setPairCode(h.pair); else if(h.tab==='watch')setPairCode(null); }; addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
+  useEffect(() => { const f = () => { if(approvalFromHash(location.hash))return; if(location.hash==='#advanced'){setAdvanced(true);setPanelOpen(false);setTab('watch');return;} const h = hashTab(); setTab(h.tab); if (!['watch', 'my soul'].includes(h.tab)) setAdvanced(true); else if(h.soul&&h.soul!==chipRef.current){setAdvanced(false);setPanelOpen(true);setNavigationOpen(false);}  /* #892: the chip's own selection writes this hash; it keeps the card collapsed */ if(h.tab==='watch')setSelected(h.soul??null); if (h.pair) setPairCode(h.pair); else if(h.tab==='watch')setPairCode(null); }; addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
   const [lessonIndex,setLessonIndex]=useState(0);
   const [lessonOpen,setLessonOpen]=useState(false);
   // VF3 (Gene): Advanced is unlisted; reach it at #advanced (or any Advanced tab's hash).
@@ -188,7 +190,11 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   const signinEnabled=AUTH_UI&&configuredSignIn(cfg,launcherWorld);  // new worlds: local dev sign-in too
   const newSoulAvailable=(!signinEnabled||auth.ready)&&(signinEnabled||cfg.accountAuthRequired!==true);
   const mine = new Set(currentMe?.souls ?? []);
-  const inspect = (id: string | null) => { setSelected(id); if (id) revealPanel(); };
+  // #892: a touch that followed a Soul (a tap, a swipe, the Broadcast chip) collapses its card to the bottom chip.
+  const [chip,setChip]=useState<string|null>(null),chipRef=useRef<string|null>(null),[chipNote,setChipNote]=useState<{text:string;at:number}|null>(null);
+  const [coarse]=useState(()=>{try{return matchMedia('(pointer: coarse)').matches;}catch{return false;}});
+  useEffect(()=>{if(!chipNote)return;const t=setTimeout(()=>setChipNote(null),2500);return()=>clearTimeout(t);},[chipNote]);
+  const inspect = (id: string | null, how?: 'chip') => { setSelected(id); if(how==='chip'&&id){chipRef.current=id;setChip(id);setPanelOpen(false);return;} chipRef.current=null;setChip(null); if (id) revealPanel(); };
   const accountSouls=(entry:ReactNode)=><MySouls key={JSON.stringify([worldKey,currentMe?.userId])} recencyKey={JSON.stringify(['sim.soul-recency',worldKey,currentMe?.userId??'public'])} selectedId={selected} newSoul={entry} api={api} bodies={soulBodies} ids={ownedIds} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} select={inspect} follow={requestFollowSoul}/>;
   const edenExpansion=edenExperienceEnabled(location.hostname,worldPath,cfg.worldId,sim.conn.welcome?.worldId,qualifiedEdenWorlds);
   // P1 phones (F12): the page that will show the old Eden town asks for its chunk before the welcome (it came ~1.3 s late)
@@ -204,10 +210,10 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   return (
     <div ref={frame} className={`human-world ${advanced ? 'has-advanced' : ''}`}>
       {!launcherWorld&&<OldWorldApprovals linkId={approvalId} auth={auth} accountAuthRequired={cfg.accountAuthRequired===true} onLinkDone={()=>{setApprovalId(null);history.replaceState(null,'',location.pathname+location.search+'#watch');}}/>}
-      <div className="world-scene"><LiveWorld sim={sim} selected={selected} onSelect={inspect} embedded bootWorldId={launcherWorld?cfg.worldId:undefined} {...{edenExpansion,edenExpected,localClassroomPresentation,publishSpeechAnchors:!advanced,humanPresets:humanPresetsEnabled&&edenExpansion}} hideControls={!advanced} hideSoulInfo={!advanced} viewportInsets={viewportInsets} onViewerHandle={receiveHandle} onViewerState={receiveState} onInitialProgress={advanced ? undefined : setInitialProgress} /></div>
+      <div className="world-scene"><LiveWorld sim={sim} selected={selected} onSelect={inspect} onChipNote={text=>setChipNote({text,at:Date.now()})} embedded bootWorldId={launcherWorld?cfg.worldId:undefined} {...{edenExpansion,edenExpected,localClassroomPresentation,publishSpeechAnchors:!advanced,humanPresets:humanPresetsEnabled&&edenExpansion}} hideControls={!advanced} hideSoulInfo={!advanced} viewportInsets={viewportInsets} onViewerHandle={receiveHandle} onViewerState={receiveState} onInitialProgress={advanced ? undefined : setInitialProgress} /></div>
       <VisitorWelcome key={privatePanelKey} api={api} siteApi={siteApi} worldPath={worldPath} ownerId={currentMe?.userId??null} worldId={cfg.worldId} worldName={worldName} build={cfg.build} handle={viewerHandle} state={viewerState}/>
       <WorldSpeechOverlay root={frame} sim={sim} state={viewerState} active={!advanced} handle={viewerHandle}/>
-      {!advanced && <ViewerFrame handle={viewerHandle} state={viewerState} dt={sim.conn.welcome?.dt ?? 0.05} navigationOpen={navigationOpen} onNavigationChange={setNavigationOpen} onNavigationOpen={openNavigation} worldTime={worldTimeText(worldClockAt((sim as Sim&{takes?:{chunks?:unknown[]}|null}).takes?.chunks,viewerState?.shownTick))} connected={!connectionLost(sim.conn)} connecting={!sim.conn.welcome} worldName={worldName} followName={viewerState?.cameraMode === 'follow' ? r.souls.get(viewerState.selection.soulId ?? '')?.name ?? null : null} slots={{ status: statusSlot, camera: cameraSlot }} initial={initialProgress} />}
+      {!advanced && <ViewerFrame handle={viewerHandle} state={viewerState} dt={sim.conn.welcome?.dt ?? 0.05} navigationOpen={navigationOpen} onNavigationChange={setNavigationOpen} onNavigationOpen={openNavigation} worldTime={worldTimeText(worldClockAt((sim as Sim&{takes?:{chunks?:unknown[]}|null}).takes?.chunks,viewerState?.shownTick))} connected={!connectionLost(sim.conn)} connecting={!sim.conn.welcome} worldName={worldName} followName={viewerState?.cameraMode === 'follow' || viewerState?.flyingTo ? r.souls.get(viewerState.flyingTo ?? viewerState.selection.soulId ?? '')?.name ?? null : null} slots={{ status: statusSlot, camera: cameraSlot }} initial={initialProgress} />}
       <header className={`world-hud${advanced ? '' : ' slim'}`}>
         {advanced && <>
         <a href="/" className="world-home">SIM</a>
@@ -223,6 +229,12 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
 
         </div>
       </header>
+      {!advanced&&!panelOpen&&(()=>{
+        const following=chip&&selected===chip&&(viewerState?.cameraMode==='follow'||viewerState?.flyingTo===chip)?r.souls.get(chip):undefined;
+        if(following)return <SoulChip kind="follow" name={following.name} status={doingText(following.doing,(r.entities[following.entityId] as {activity?:string}|undefined)?.activity,following.id)} note={chipNote?.text} openCard={()=>{chipRef.current=null;setChip(null);revealPanel();}}/>;
+        const showing=coarse&&viewerState?.cameraMode==='broadcast'&&viewerState.shownTick!=null&&viewerState.broadcastSoulId?r.souls.get(viewerState.broadcastSoulId):undefined;
+        return showing?<SoulChip kind="broadcast" name={showing.name} follow={()=>{viewerHandle?.flyToSoul?.(showing.id,{chip:true});}}/>:null;
+      })()}
       <aside id="soul-panel" tabIndex={-1} className="human-panel" hidden={advanced || !panelOpen || tab === 'my soul'} aria-label="Selected Soul">
         <button className="panel-close" aria-label="Close panel" title="Close" onClick={() => setPanelOpen(false)}>×</button>
         {lessonOpen&&localClassroomPresentation&&<ClassroomPresentation worldId={localClassroomPresentation.worldId} screenEntityId={localClassroomPresentation.screenEntityId} index={lessonIndex} onSelect={setLessonIndex}/>}
