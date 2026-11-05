@@ -20,6 +20,7 @@ import { adminSchema, commandSchema, inviteSchema, ownerLifecycleCapabilitySchem
 import { hashToken, newId, type Auth } from './auth.ts';
 import type { Brain } from './brain.ts';
 import { publicWorldBase, type Config } from './config.ts';
+import { requestWorldBase } from './world-base.ts';
 import type { Db, SoulRow, UserRow } from './db.ts';
 import { publicTakes, type Hub } from './hub.ts';
 import { cardGrammar } from '@sim/brain';
@@ -53,6 +54,7 @@ import { mountEnvRoutes } from './god/world-env.ts';
 import { mountJoinRoutes, PUBLISHED_SOUL_CLI, safeWorldName } from './god/join.ts';
 import type { GodMode } from './god/god.ts';
 import {Travel,TravelError,launcherSite,TRAVEL_CONTRACT} from './travel/travel.ts';
+import { bodyRefResolvers } from './edge/body/routes.ts';
 import {mountTravelRoutes} from './travel/routes.ts';
 import { intentArrivalReadError,intentHistoryReadError,intentTransportError, intentLookupError, type IntentControlV2, type IntentIdentityV2 } from './intent-control.ts';
 import {mountAgentInbox} from './inbox-routes.ts';
@@ -118,7 +120,8 @@ export function buildApp(d: Deps) {
   if (d.edge && d.god) {
     const comms = (d.edge as unknown as {comms?: {fading?: ConstructorParameters<typeof Travel>[0]['fading']}}).comms, god = d.god;
     travel = new Travel({ host: d.host, db: d.db, souls: d.souls, fading: comms?.fading ?? null, slug: d.cfg.worldKey, name: process.env.WORLD_NAME?.slice(0, 60) || d.cfg.worldKey,
-      site: launcherSite(process.env.SIM_SITE_URL, process.env.SIM_SITE_KEY), invalidateBodies: () => d.edge?.invalidateBodies() });
+      site: launcherSite(process.env.SIM_SITE_URL, process.env.SIM_SITE_KEY), invalidateBodies: () => d.edge?.invalidateBodies(),
+      resolveBodyRef: (ref, owner) => bodyRefResolvers.get(d.host)?.(ref, owner) ?? {ok: false, code: 'body.ref-unsupported', reason: 'This world cannot resolve carried body references'} });
     mountTravelRoutes(app, { travel, siteKey: process.env.SIM_SITE_KEY, baseOf: (c) => baseOf(c),
       tokenSoul: (c) => { const s = d.souls.soulFromToken(bearer(c)); if (!s) { const r = d.souls.controlRefusal(bearer(c)); throw new TravelError(401, r.code, r.message, r.extra); } return s; },
       ownerSoul: async (c, id) => { const u = await requireUser(c); return ownSoul(u, id); },
@@ -145,7 +148,7 @@ export function buildApp(d: Deps) {
     const result=await run();if(guard)checkAcceptanceGuard(guard);return c.json(result);
   };
   /** Public base URL as the caller reached us (works on any hostname pointing at the box). */
-  const baseOf = (c: Context) => { const host = c.req.header('x-forwarded-host') ?? c.req.header('host'); const proto = c.req.header('x-forwarded-proto') ?? (host?.startsWith('localhost') || host?.startsWith('127.') ? 'http' : 'https'); return host ? `${proto}://${host}${d.cfg.worldPath}` : publicWorldBase(d.cfg); };
+  const baseOf = (c: Context) => requestWorldBase(d.cfg.worldPath, (name) => c.req.header(name), () => publicWorldBase(d.cfg));
   /** A whole number from the query string, clamped at both ends (to SQLite, LIMIT -1 means no limit at all). */
   const intQ = (c: Context, name: string, def: number, min: number, max: number) => { const n = Math.floor(Number(c.req.query(name) ?? def)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def; };
   const body = async (c: Context) => { try { return await c.req.json(); } catch { throw new ApiError(400, 'bad-json', 'body must be JSON'); } };

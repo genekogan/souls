@@ -1,5 +1,5 @@
 /** Additive BODY-v1 reader: recorded discrete state wins, including explicit legacy resets. */
-export type RenderBody={family:'humanoid'|'floater';type?:'humanoid'|'ceramic'|'floater';model?:string;modelUrl?:string;radius?:number;hoverHeight?:number;params?:Record<string,string|number>};
+export type RenderBody={family:'humanoid'|'floater';type?:'humanoid'|'ceramic'|'floater';model?:string;modelUrl?:string;radius?:number;hoverHeight?:number;params?:Record<string,string|number>;motion?:import('../../engine/bodies/motion.ts').BodyMotion};
 export function recordedBody(fallback:unknown,state:Readonly<Record<string,unknown>>):RenderBody|null{
  const value=Object.hasOwn(state,'body')?state.body:fallback;
  if(!value||typeof value!=='object'||Array.isArray(value))return null;const b=value as Record<string,unknown>;

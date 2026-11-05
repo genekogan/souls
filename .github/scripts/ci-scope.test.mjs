@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { JOBS, changedFiles, jobsFor, smokeFor } from './ci-scope.mjs';
+import { execFileSync } from 'node:child_process';
+import { FULL_EVENTS, JOBS, changedFiles, jobsFor, smokeFor } from './ci-scope.mjs';
 import { SCOPE_RULES, scopeFor } from '../../tools/test-harness/release-gate.mjs';
 
 const names = files => jobsFor(files).include.map(j => j.name);
@@ -69,4 +70,25 @@ test('the local smoke runs for web, server and e2e changes, or with no base', ()
 test('owned music source selects web build, web tests and package checks', () => {
   const names = jobsFor(['packages/music/source/site/pieces/pixel-town.js']).include.map(j => j.name);
   assert.deepEqual(names.sort(), ['packages', 'types-web', 'web']);
+});
+
+test('pushes to main and manual runs check everything; pull request runs stay scoped', () => {
+  const script = fileURLToPath(new URL('./ci-scope.mjs', import.meta.url));
+  const plan = event => JSON.parse(execFileSync(process.execPath, [script, '--files', 'docs/a.md', '--event', event], { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: '', GITHUB_STEP_SUMMARY: '' } }));
+  assert.deepEqual(FULL_EVENTS, ['push', 'workflow_dispatch']);
+  for (const event of FULL_EVENTS) {
+    const p = plan(event);
+    assert.equal(p.scope, 'full', event);
+    assert.deepEqual(p.matrix, JOBS.map(j => j.name), event);
+    assert.equal(p.smoke, 'true', event);
+  }
+  for (const event of ['pull_request', 'merge_group']) {
+    const p = plan(event);
+    assert.equal(p.scope, 'none', event);
+    assert.deepEqual(p.matrix, [], event);
+  }
+  // ci.yml passes the event to the scope step, and only takes pushes to main.
+  const workflow = readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8');
+  assert.match(workflow, /ci-scope\.mjs --base "\$BASE" --head "\$HEAD_SHA" --event "\$EVENT"/);
+  assert.match(workflow, /push:\n\s+branches: \[main\]/);
 });
