@@ -225,7 +225,7 @@ export type TogetherPort = {
   carryState?(programId: string): ({status: string; phase?: string} & Partial<CarryIssue>) | null;
   /** PC08: a stop asked before a restart is logged again for the replayed programme (a stop is idempotent natively), so
    *  a stop whose event never reached the log is not lost. */
-  restop?(hostEntity: string, programId: string, op: string): void;
+  restop?(hostEntity: string, programId: string, op: string): boolean;
   /** PC05: stop a Soul's running programme (best effort; the native carry sets its load down). */
   stopBody?(soul: EdgeSoul): void;
 };
@@ -1061,10 +1061,11 @@ export class Together {
     if (!inv) return;
     for (const m of this.sharedMembers(inv)) this.p.deliver(m.soulId, 'shared.stopping', {op: inv.shared!.op!.id, by: {soulId: inv.shared!.op!.stop!.by, name: inv.shared!.op!.stop!.name}, deferred: true, text, untrusted: true});
   }
-  /** The load lies on the ground, carried and reserved by nobody. */
+  /** The load rests on its support again (the ground, or what it lay on before a stop before the lift), carried and
+   *  reserved by nobody. */
   private laidFree(entity: string): boolean {
     const x = this.w.entities[entity] as (NativeWorld['entities'][string] & {support?: {kind: string}; phase?: string}) | undefined;
-    return !!x && x.support?.kind === 'ground' && x.phase !== 'carried' && !x.reservedBy;
+    return !!x && !!x.support && x.phase !== 'carried' && !x.reservedBy;
   }
   /** A stopped operation ended: where the native cleanup left the load decides `stopped` or `stopped-at-destination`. */
   private sharedStopped(inv: Invite) {
@@ -1127,7 +1128,7 @@ export class Together {
     for (const inv of this.committed()) {
       const op = inv.shared?.op; if (!op || op.phase === 'ended') continue;
       const host = this.mindOf(inv.host.soulId);
-      if (host && this.p.programOf(host.entityId) === op.programId) {this.staleOps.delete(inv.id); if (!this.watching.has(inv.id) && op.stop) this.p.restop?.(host.entityId, op.programId, op.id); if (!this.watching.has(inv.id)) this.watching.set(inv.id, {programId: op.programId, held: 0, clear: 0, ...(op.stop ? {stopping: true as const, ...(op.stop.unsafe !== undefined ? {unsafe: true as const} : {})} : {}), ...(op.blocked ? {since: op.blocked.fromTick, code: op.blocked.code, ...(op.blocked.lasting ? {lasting: true as const} : {})} : {})}); continue;}
+      if (host && this.p.programOf(host.entityId) === op.programId) {this.staleOps.delete(inv.id); if (!this.watching.has(inv.id) && op.stop && this.p.restop?.(host.entityId, op.programId, op.id) === false) continue; if (!this.watching.has(inv.id)) this.watching.set(inv.id, {programId: op.programId, held: 0, clear: 0, ...(op.stop ? {stopping: true as const, ...(op.stop.unsafe !== undefined ? {unsafe: true as const} : {})} : {}), ...(op.blocked ? {since: op.blocked.fromTick, code: op.blocked.code, ...(op.blocked.lasting ? {lasting: true as const} : {})} : {})}); continue;}
       if (!this.staleOps.has(inv.id)) {this.staleOps.set(inv.id, this.tick); continue;}
       this.sharedEnd(inv, 'ended', 'shared.ended', `The shared carry of ${inv.shared!.load.name} is no longer running.`);
     }
@@ -1631,7 +1632,7 @@ export class Together {
     const raw = text.trim(), t = raw.toLowerCase().replace(/[!?.]+$/, '').replace(/^(?:please|ok|okay|sure|yes,?|let'?s|lets|i'?d like to|i want to|go and|go)\s+/, '').trim();
     if (raw.includes(':') && caps.some(c => c.id === raw)) return null;
     // PC08: "stop carrying", "put it down", "stop the carry" by a member of a running shared carry is its safe stop
-    if (/^(?:stop|quit|halt)\b.*\bcarry(?:ing)?\b|^(?:put|set) (?:it|the \S+|\S+) down\b|^let'?s? (?:put|set) it down\b/.test(t)) {const stop = caps.find(c => c.verb === 'stop-carry'); if (stop) return {capability: stop.id, note: 'Stop the shared carry: the crew sets the load down safely first.'};}
+    if (/^(?:stop|quit|halt)\s+(?:the\s+)?carry(?:ing)?\b|^(?:put|set) (?:it|the \S+|\S+) down\b|^let'?s? (?:put|set) it down\b/.test(t)) {const stop = caps.find(c => c.verb === 'stop-carry'); if (stop) return {capability: stop.id, note: 'Stop the shared carry: the crew sets the load down safely first.'};}
     const near = this.p.perceived(soul.soulId, INVITE_RADIUS);
     const who = (words: string): NearbyBody | null => {
       const w = words.trim().replace(/^(?:to|with|at|the|my friend)\s+/, '').replace(/['’]s\b.*$/, '').trim(); if (!w) return null;

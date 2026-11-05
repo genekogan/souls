@@ -427,7 +427,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       start: (id, programId) => this.update(id, {phase: 'started', program_id: programId, code: null, reason: null}),
       note: (id, code, reason) => this.update(id, {code, reason}),
       stopBody: soul => {try {void this.host.enqueue('edge-stop', `edge:${soul.soulId}`, {soulId: soul.soulId, entityId: soul.entityId, why: 'shared.ended'}).catch(() => {/* best effort */});} catch {/* clock not ready */}},
-      restop: (entityId, programId, op) => {try {void this.host.enqueue('edge-stop', 'edge:shared', {entityId, programId, op, why: 'shared.stop'}).catch(() => {/* best effort */});} catch {/* clock not ready: the next sweep asks again */}},
+      restop: (entityId, programId, op) => {try {void this.host.enqueue('edge-stop', 'edge:shared', {entityId, programId, op, why: 'shared.stop'}).catch(() => {/* best effort */}); return true;} catch {return false;   /* clock not ready: the op stays unwatched, so the next sweep asks again */}},
       commitShared: id => {void this.commitShared(id).catch(e => console.error('[edge] shared commit', e instanceof Error ? e.message : e));},
       previewCarry: params => (this.host.engine as {previewMarsVerbV1?(verb: string, params: unknown): {code: string; message?: string; subjects?: string[]; details?: Record<string, unknown>} | null}).previewMarsVerbV1?.('carry', params) ?? null});
     this.receiptListeners.push(r => {if(!OPEN.includes(r.phase))this.menusChangedBy('receipt-closed', r.soulId, r.capability);});
