@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { insertSection, parseFragment, readFragments, renderSection } from './compile.mjs';
+import { HEADER, insertSection, parseFragment, readFragments, renderSection } from './compile.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./compile.mjs', import.meta.url));
 const frag = (type, line, extra = '') => `---\ntype: ${type}\n${extra}---\n${line}\n`;
@@ -33,10 +33,14 @@ test('renders sections by type, PR order, and leaves internal out', () => {
   assert.match(renderSection('1.2.1', '2026-11-02', [parseFragment('ci.md', frag('internal', 'x'))]), /Internal changes only/);
 });
 
-test('inserts above the newest release and keeps the intro', () => {
-  const old = '# Changelog\n\nIntro.\n\n## 1.0.0 (2026-10-01)\n\n- Old.\n';
-  assert.equal(insertSection(old, '## 1.1.0 (2026-11-01)\n\n- New.\n'), '# Changelog\n\nIntro.\n\n## 1.1.0 (2026-11-01)\n\n- New.\n\n## 1.0.0 (2026-10-01)\n\n- Old.\n');
-  assert.match(insertSection('', '## 1.0.0 (x)\n'), /^# Changelog\n[\s\S]*## 1\.0\.0/);
+test('inserts above the newest release; the intro is the header (an old one is replaced); releases kept byte for byte', () => {
+  const old = '# Changelog\n\nUser-facing changes to Sim, newest first.\n\n## 1.0.0 (2026-10-01)\n\n- Old.\n\n## 0.9.0 (2026-09-01)\n\n- Older.\n';
+  const out = insertSection(old, '## 1.1.0 (2026-11-01)\n\n- New.\n');
+  assert.equal(out, `${HEADER}\n## 1.1.0 (2026-11-01)\n\n- New.\n\n## 1.0.0 (2026-10-01)\n\n- Old.\n\n## 0.9.0 (2026-09-01)\n\n- Older.\n`);
+  assert.ok(out.endsWith(old.slice(old.indexOf('## 1.0.0'))), 'every earlier release unchanged');
+  assert.match(HEADER, /changes to Souls, newest first/); assert.doesNotMatch(out, /\bSim\b/);
+  assert.equal(insertSection('', '## 1.0.0 (x)\n'), `${HEADER}\n## 1.0.0 (x)\n`);
+  assert.equal(insertSection('# Changelog\n\nNo releases yet.\n', '## 1.0.0 (x)\n'), `${HEADER}\n## 1.0.0 (x)\n`);
 });
 
 test('CLI: --check validates, --version compiles, writes notes and removes fragments', () => {

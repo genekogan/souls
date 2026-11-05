@@ -8,7 +8,7 @@
 //   ---
 //   Souls keep their seat when a reader leaves the library.
 //
-// One line of body, written for people who use Sim. `internal` fragments are validated but left out of the
+// One line of body, written for people who use Souls. `internal` fragments are validated but left out of the
 // public changelog. A PR with nothing to say carries the `no-changelog` label instead.
 //
 //   node tools/changelog/compile.mjs --check                       validate every fragment (CI)
@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 export const TYPES = ['feature', 'fix', 'perf', 'docs', 'internal'];
 const HEADINGS = { feature: 'Features', fix: 'Fixes', perf: 'Performance', docs: 'Documentation' };
 const NOT_FRAGMENTS = new Set(['README.md', '_template.md']);
-const HEADER = '# Changelog\n\nUser-facing changes to Sim, newest first. Each release is compiled from `changes/` fragments.\n';
+export const HEADER = '# Changelog\n\nUser-facing changes to Souls, newest first. Each release is compiled from `changes/` fragments.\n';
 
 export function parseFragment(name, text) {
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(text);
@@ -63,12 +63,13 @@ export function renderSection(version, date, fragments) {
   return out.join('\n');
 }
 
-/** Inserts the section above the first existing release (`## `), keeping any intro text. */
+/** Inserts the section above the first existing release (`## `). The intro above it is HEADER: the compiler owns it, so
+ *  a changed header (#949: the product is Souls) reaches CHANGELOG.md at the next release without a hand edit to this
+ *  append-only file. Every release section is kept byte for byte. */
 export function insertSection(changelog, section) {
-  if (!changelog.trim()) return `${HEADER}\n${section}`;
   const i = changelog.search(/^## /m);
-  if (i < 0) return `${changelog.trimEnd()}\n\n${section}`;
-  return `${changelog.slice(0, i)}${section}\n${changelog.slice(i)}`;
+  if (i < 0) return `${HEADER}\n${section}`;
+  return `${HEADER}\n${section}\n${changelog.slice(i)}`;
 }
 
 function main(argv) {
