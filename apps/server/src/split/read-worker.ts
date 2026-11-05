@@ -17,6 +17,7 @@ import {ReadModel, type WorldDelta, type WorldInit} from './read-model.ts';
 import {classify, worldBlock, type PortDone, type Refusal} from '../load/admission.ts';
 import {LEVELS, S, type Level} from '../load/shared.ts';
 import {stripWorldRequestPath} from '../world-request-path.ts';
+import {SECURITY_HEADERS} from '../security-headers.ts';
 import {readFileSync} from 'node:fs';
 import type {ReplicaWorld as RWT} from './replica-world.ts';
 import type {ReadOnlyHost as RHT, MainOnly as MOT} from './read-host.ts';
@@ -227,7 +228,9 @@ const level = (): Level => (load ? LEVELS[load[S.level]] : undefined) ?? 'green'
 const bearer = (req: IncomingMessage) => req.headers.authorization?.replace(/^Bearer\s+/i, '');
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
   if (res.headersSent || res.destroyed) return;
-  res.writeHead(status, {'content-type': 'application/json', 'cache-control': 'no-store', 'x-sim-load': level(), 'x-sim-read': 'worker', ...headers}).end(JSON.stringify(body));
+  // The worker's own answers never pass through buildApp, so they set the shared security headers here (#1025).
+  // Forwarded answers are main's own response, headers included, relayed as they are.
+  res.writeHead(status, {...SECURITY_HEADERS, 'content-type': 'application/json', 'cache-control': 'no-store', 'x-sim-load': level(), 'x-sim-read': 'worker', ...headers}).end(JSON.stringify(body));
 }
 function health(res: ServerResponse) {
   const mainGen = lag[0];

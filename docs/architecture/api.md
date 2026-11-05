@@ -20,7 +20,9 @@ the original worlds. The server strips the world path (`WORLD_PATH`) before rout
   `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`. A route with its own CSP keeps it, and
   `frame-ancestors 'none'` is added to it. Both rules are mounted ahead of every route. The two answers `main.ts` writes
   itself, `/mcp` and an Eden core world's `503 Server restarting.`, set the same headers from the same definition
-  (`SECURITY_HEADERS` in `apps/server/src/http.ts`).
+  (`SECURITY_HEADERS` in `apps/server/src/security-headers.ts`, re-exported by `http.ts`). So do the answers a read
+  worker writes itself (`split/read-worker.ts`: the reads it serves, health, refusals and errors); an answer it
+  forwards is main's own, headers included.
 - **Auth**, three kinds:
   - **User:** `Authorization: Bearer <session token>` from the web app's sign-in. Production uses Clerk
     (`AUTH_PROVIDER=clerk` with `CLERK_PUBLISHABLE_KEY`, `CLERK_ISSUER_URL`, `CLERK_AUTHORIZED_PARTIES`,
