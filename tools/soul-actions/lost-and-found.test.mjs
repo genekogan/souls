@@ -168,6 +168,7 @@ test('lost-and-found: hand in, owner claim, finder named nearby only, group and 
  {const r = await act('put the bowl in the lost and found', true, souls.Ana); let race = null;
   for (let n = 0; n < 1600 && !race; n++) {const sp = item('bowl').support; if (sp?.kind === 'resting-on' && sp.on === boxId) {const c = edge.capabilities(souls.Ben).find(c => c.id === `pick-up:${bowl}`); race = {modelInBox: ent('bowl').in.parent === boxId, offered: !!c, available: c?.available ?? null, code: c?.blocked?.code ?? null};} else await tick(1);}
   assert.ok(race && race.offered && race.available === false && race.code === 'item.not-yours', 'refused at once: ' + JSON.stringify(race));
+  assert.equal(race.modelInBox, false, 'checked inside the write-back gap (the model still has it in her hand)');
   const x = await finish(r, souls.Ana); assert.equal(x.phase, 'completed'); results.ownHandIn = {capability: r.receipt.capability, phase: x.phase}; results.atSetDown = race;}
  assert.ok(leftBy().split(',').includes(`${bowl}=${souls.Ana.soulId}`));
  assert.ok((row(await here(souls.Ana))?.state?.holds ?? []).includes('bowl (yours, found by Ana)'));
