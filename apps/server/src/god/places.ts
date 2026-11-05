@@ -18,7 +18,7 @@
 // Eden/Mars/LM) says they are walkable although they are not native engine regions. Pure reads of the entity model.
 import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
-import { decorateMeaning, humanTitle } from './meaning.ts';
+import { decorateMeaning, displayName, humanTitle, kindWords } from './meaning.ts';
 import type { Place } from '../edge/ledger/places.ts';
 import type { GodNav, Thing } from './nav.ts';
 
@@ -40,9 +40,10 @@ const LANDMARK_MIN = 1.5;          // a named point thing at least this wide (m)
 const NOT_LANDMARKS = /^(sign|signpost|notice-board|lamp-post|lantern|flagpole|bollard|bin|wheelie-bin|mailbox|hydrant|crate|barrel|sack|flower-pot|poster|banner|picture-frame|screen|chalkboard|power-line|poster-wall|wanted-board)$/;   // entry 38: boards stay things, as notice-board does
 const WORDS = ['no', 'a', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 const shortDef = (def: StoredDef) => def.name.replace(/^core-/, '').replace(/^ew-/, '').replace(/-pack$/, '');
-const article = (w: string) => (/^[aeiou]/.test(w) ? `an ${w}` : `a ${w}`);
+// F8 (#958): a kind as a Soul reads it ("a long table", never "a long-table" or "a mars-tier-2")
+const article = (w: string) => { const k = kindWords(w); return /^[aeiou]/.test(k) ? `an ${k}` : `a ${k}`; };
 function plural(w: string) { return /(s|sh|ch|x|z)$/.test(w) ? `${w}es` : /[^aeiou]y$/.test(w) ? `${w.slice(0, -1)}ies` : `${w}s`; }
-function counted(kind: string, n: number) { return n === 1 ? article(kind) : `${WORDS[n] ?? n} ${plural(kind)}`; }
+function counted(kind: string, n: number) { return n === 1 ? article(kind) : `${WORDS[n] ?? n} ${plural(kindWords(kind))}`; }
 function listed(parts: string[]) { return parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`; }
 export function inPoly(x: number, z: number, poly: Vec2[]) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, zi] = poly[i], [xj, zj] = poly[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; }
 const areaOf = (p: Vec2[]) => Math.abs(p.reduce((s, [x, z], i) => { const [x2, z2] = p[(i + 1) % p.length]; return s + x * z2 - x2 * z; }, 0)) / 2;
@@ -366,7 +367,7 @@ export class GodPlaces {
       if (!p) { const wp = m.worldPose(e); p = out.filter((q) => q.of !== 'shore' && inPoly(wp.x, wp.z, q.polygon)).sort((a, b) => areaOf(a.polygon) - areaOf(b.polygon))[0]; }
       if (!p) continue;
       // a place's own opening hours are its slots; a thing inside (a door that follows the café's hours) adds only its events
-      const label = e.name ? m.pathOf(e.id) : p.name, slots = L.slotsFor(e, label).filter((s) => own || !s.id.startsWith('open-')).map((s) => ({ ...s, id: own ? s.id : `${e.id}-${s.id}`.slice(0, 60) }));
+      const label = (e.name ? displayName(e) : undefined) ?? p.name, slots = L.slotsFor(e, label).filter((s) => own || !s.id.startsWith('open-')).map((s) => ({ ...s, id: own ? s.id : `${e.id}-${s.id}`.slice(0, 60) }));
       if (slots.length) p.schedule = [...(p.schedule ?? []), ...slots];
       // EVENTS: an event on now with its set up leads the description (whatson shows its first words)
       const on = L.onNow?.(e); if (on) p.description = `${on}; ${p.description ?? ''}`.replace(/; $/, '').slice(0, 600);
@@ -422,7 +423,7 @@ export class GodPlaces {
       return `${t?.what ?? p.ref} (${article(kind)})${items.length ? `, with ${listed(items)}` : ', empty'}${n ? `; seats ${n}` : ''}; ${p.enclosed ? 'indoors' : 'open-sided'}, about ${Math.round(w)} by ${Math.round(d)} m`;
     }
     if (p.of === 'building') {
-      const t = things.find((x) => x.ref === p.ref), rooms = all.filter((q) => q.of === 'room' && q.entity === p.entity).map((q) => q.ref);
+      const t = things.find((x) => x.ref === p.ref), rooms = all.filter((q) => q.of === 'room' && q.entity === p.entity).map((q) => humanTitle(q.ref.split('/').at(-1)!));   // F8 (#958): its rooms by name, never their paths
       const entrance = t?.doorOpen === undefined ? 'open-sided, with no front door' : `its front door is ${t.doorOpen ? 'open' : 'closed'}`;
       return `${article(kind)} with ${counted('room', rooms.length)} (${rooms.join(', ')}); ${entrance}`;
     }
@@ -440,10 +441,10 @@ export class GodPlaces {
       return `${article(kind)} about ${Math.round(w)} by ${Math.round(d)} m, ${top} m up${items.length ? `, with ${listed(items)}` : ''}`;
     }
     if (p.of === 'land') return `land the god added to the world, about ${Math.round(w)} by ${Math.round(d)} m${items.length ? `, with ${listed(items)}` : ', still empty'}`;
-    if (p.of === 'shore') return `the bank round ${p.ref}: walk:${p.ref} ends here, and a swim starts from here`;
+    if (p.of === 'shore') return `the bank round ${this.h.nav.displayOf?.(p.ref) ?? humanTitle(p.ref)}: walk:${p.ref} ends here, and a swim starts from here`;
     if (p.of === 'water') return `${article(kind)} you can swim in, about ${Math.round(Math.max(w, d))} m across${items.length ? `, with ${listed(items)}` : ''}`;
     if (p.of === 'thing') return `${article(kind)}${p.capacity ? ` for ${p.capacity}` : ''}${items.length ? `, with ${listed(items)}` : ''}${p.enclosed ? '; indoors' : ''}`;
-    if (p.of === 'landmark') { const t = things.find((x) => x.ref === p.ref), by = t ? this.h.nav.namesNear(t.at, p.entity, 2, 15) : [];
+    if (p.of === 'landmark') { const t = things.find((x) => x.ref === p.ref), by = t ? this.h.nav.namesNear(t.at, p.entity, 2, 15).map((r) => this.h.nav.displayOf?.(r) ?? r) : [];
       return `${article(kind)} standing on its own${by.length ? ` by ${listed(by)}` : ''}${items.length ? `, with ${listed(items)} round it` : ''}; a landmark`; }
     return `${article(kind)}${items.length ? ` with ${listed(items)}` : ''}, about ${Math.round(w)} by ${Math.round(d)} m`;
   }

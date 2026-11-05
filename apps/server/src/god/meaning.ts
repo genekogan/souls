@@ -4,8 +4,18 @@ import type { GodPlace } from './places.ts';
 import { centroid, inPoly } from '../edge/ledger/places.ts';
 
 export function humanTitle(ref: string): string {
-  const text = ref.replace(/^(land|place|region|g)-/, '').replace(/[-_]+/g, ' ').replace(/\//g, ' / ');
+  // F8 (#958): a dotted name (`region-seaside-resort.ferris-wheel`) reads as words, never `Seaside resort.ferris wheel`
+  const text = ref.replace(/^(land|place|region|g)-/, '').replace(/[-_.]+/g, ' ').replace(/\//g, ' / ');
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+/** F8 (#958): a def's kind in words, for what a Soul reads ("a long table", "a presenter timber box"): no namespace
+ *  prefix, no variant number, no hyphens. Words and matching keep the def's own name. */
+export function kindWords(name: string): string {
+  return name.replace(/^(core|ew|mars|eden)-/, '').replace(/-\d+$/, '').replace(/[-_]+/g, ' ');
+}
+/** F8 (#958): what a Soul reads for an entity: its authored title, else a readable form of its own name. */
+export function displayName(e: {name?: string; about?: {title?: string}} | undefined): string | undefined {
+  return e?.about?.title ?? (e?.name ? humanTitle(e.name) : undefined);
 }
 export type MeaningPart = Omit<AboutPart, 'anchor'> & {
   anchor?: AboutPart['anchor'];

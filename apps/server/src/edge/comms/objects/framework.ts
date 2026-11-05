@@ -106,6 +106,12 @@ export class Objects {
       return o;
     });
   }
+  /** F8 (#958): an existing projection takes the display name its source now has (create() keeps a row as it is, so a
+   *  world made before a naming change kept showing the old name). A new version, logged; nothing when it already reads so. */
+  rename(id: string, name: string): void {
+    const want = name.slice(0, 100);
+    tx(this.core.db, () => { const cur = this.row(id); if (!cur || cur.name === want) return; const o = {...cur, name: want, version: cur.version + 1}; this.save(o); this.log(o, null, 'rename', {name: want}); });
+  }
   remove(id: string) { this.core.db.prepare('DELETE FROM edge_comms_objects WHERE world_id = ? AND id = ?').run(this.core.worldId, id); this.table.removed(id); }
 
   private inPlace(soulId: string, placeId: string): boolean {

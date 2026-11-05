@@ -24,6 +24,7 @@ import { heldGodThing } from './held.ts';
 import { waterRole, wordOf } from './water.ts';
 import { economyOn } from './layers.ts';
 import { supportY } from './nav.ts';
+import { displayName, kindWords } from './meaning.ts';
 import { posterStale } from './poster-boards.ts';
 import { posterList, wantedList } from '@sim/world-compiler';
 
@@ -92,6 +93,8 @@ export type PerceiveHost = {
   engine: { world: { entities: Record<string, any> } };
   engineOwned(e: Entity): boolean;
   namesNear(at: Vec2, except: string): string[];
+  /** F8 (#958): a thing's display name by its ref (nav.displayOf); unset: the ref. */
+  displayOf?(ref: string): string;
   /** The named things (nav.ts): an edit re-derives the objects within 12 m of the ones it touched. Without it every
    *  catch-up re-derives every thing. */
   things?(): { id: string; at: Vec2; area?: Vec2[]; path?: Vec2[]; poly?: Vec2[]; width?: number }[];
@@ -119,6 +122,8 @@ export const GOD_PLACES = process.env.GOD_PLACES !== '0';
 export class GodPerceive {
   private h: PerceiveHost;
   private sigs = new Map<string, string>();
+  /** F8 (#958): each built object's stored name, as last seen or written. */
+  private names = new Map<string, string>();
   /** What each `built` object's state should be now (its kind's advance reads this). */
   private desired = new Map<string, BuiltState>();
   private signs = new Map<string, SignRow>();
@@ -154,7 +159,7 @@ export class GodPerceive {
     if (!this.objs!.kindOf(k)) this.objs!.register(builtKindFor(key => this.desired.get(key), k,
       def && actionsOf(def).length && this.h.commit ? kindActions(def, this.actHost(), st => {
         const id = (st as BuiltState).key, e = id ? this.h.model.entities.get(id) : undefined;
-        return e?.name ? this.h.model.pathOf(e.id) : short;
+        return (e?.name ? displayName(e) : undefined) ?? short;   // F8 (#958): its display name, never its path
       }) : {}));
     this.kinds.add(k);
   }
@@ -245,10 +250,11 @@ export class GodPerceive {
     { const sh = e.shape as { area?: unknown; path?: unknown } | undefined; if (GOD_PLACES && this.h.places && def.form !== 'point' && e.in.parent === 'world' && sh && text === null) return null; }
     const at = this.at(e, def); if (!at) return null;
     const kind = shortDef(def), parent = e.in.parent !== 'world' ? m.entities.get(e.in.parent) : undefined;
-    const name = e.name ? m.pathOf(e.id) : `${kind} ${e.id.slice(2, 6)}`;
-    const near = this.h.namesNear(at, e.id).filter((n) => n !== name).slice(0, 2);
-    const prefix = article(kind);
-    const suffix = `${parent?.name ? ` in ${m.pathOf(parent.id)}` : ''}${near.length ? `, by ${near.join(' and ')}` : ''}${lay ? `; ${lay}` : ''}`;
+    // F8 (#958): a built object is named by its display name, and by the names of what it is in and by; never its path
+    const name = (e.name ? displayName(e) : undefined) ?? `${kindWords(kind)} ${e.id.slice(2, 6)}`;
+    const near = this.h.namesNear(at, e.id).map((r) => this.h.displayOf?.(r) ?? r).filter((n) => n !== name).slice(0, 2);
+    const prefix = article(kindWords(kind));
+    const suffix = `${parent?.name ? ` in ${displayName(parent)}` : ''}${near.length ? `, by ${near.join(' and ')}` : ''}${lay ? `; ${lay}` : ''}`;
     const painting = paintingLine(e, def);
     // Keep the complete bounded painting credit plus exactly the suffix visible before it was painted.
     // Unpainted input is unchanged; only painted initialization opts into the 230-character bound.
@@ -334,7 +340,7 @@ export class GodPerceive {
   private begin(): Run | null {
     const objs = this.objects(); if (!objs) return null;
     const root = this.rootPlace(); if (!root) return null;
-    if (!this.sigs.size) for (const o of objs.all()) if (this.kinds.has(o.kind) || (o.state as BuiltState)?.key === o.id) { this.sigs.set(o.id, stateDigest(o.state)); if (!this.kinds.has(o.kind)) { const e = this.h.model.entities.get(o.id), def = e && this.h.model.resolvedDef(e.def); this.registerBuiltKind(o.kind, def ?? undefined); } }
+    if (!this.sigs.size) for (const o of objs.all()) if (this.kinds.has(o.kind) || (o.state as BuiltState)?.key === o.id) { this.sigs.set(o.id, stateDigest(o.state)); this.names.set(o.id, o.name); if (!this.kinds.has(o.kind)) { const e = this.h.model.entities.get(o.id), def = e && this.h.model.resolvedDef(e.def); this.registerBuiltKind(o.kind, def ?? undefined); } }
     const layersOn = !!this.h.layers?.active();
     // L4 item 5: the layers switching on or off changes only what wantOne's `lay` reads: things with a layer field
     if (layersOn !== this.layersOn) { this.layersOn = layersOn; for (const e of this.h.model.entities.values()) if (layered(e)) this.retag.add(e.id); }
@@ -362,7 +368,7 @@ export class GodPerceive {
     return { queue: [...ids], i: 0, changed: [], made: 0, root, layersOn, full, ms: 0 };
   }
   /** Recompute one id and bring its object in line. */
-  private apply(r: Run, id: string, objs: { create(i: unknown): unknown; refresh?(ids: string[]): void }) {
+  private apply(r: Run, id: string, objs: { create(i: unknown): unknown; refresh?(ids: string[]): void; rename?(id: string, name: string): void }) {
     const e = this.h.model.entities.get(id), x = e ? this.wantOne(e, r.layersOn) : null;
     const old = this.entries.get(id);
     if (old) { this.cellDel(id, old.at); this.entries.delete(id); this.signs.delete(id); }
@@ -375,13 +381,15 @@ export class GodPerceive {
     }
     const at = x.w.params.at as Vec2;
     this.entries.set(id, { ...x, at }); this.cellAdd(id, at); if (x.sign) this.signs.set(id, x.sign);
+    // F8 (#958): an object made before its name was derived as now (a path, on an older world) takes the current name
+    if (this.sigs.has(id) && this.names.get(id) !== x.w.name) { try { objs.rename?.(id, x.w.name); this.names.set(id, x.w.name); } catch (err) { this.h.log(`built object ${id}: ${(err as Error).message}`); } }
     const state = builtKind.initial({ ...x.w.params, key: id } as never), sig = canonicalJson(state);
     if (this.sigs.get(id) === sig) return;
     this.desired.set(id, state);
     try {
       // L8: a changed object is brought in line at once, not at the end of the (sliced) catch-up: built kinds' advance is
       // refresh-only, so a listing between slices would otherwise show the old state of an object already recomputed
-      if (!this.sigs.has(id)) { objs.create({ id, kind: x.w.kind, name: x.w.name, description: x.w.description, placeId: r.root, params: { ...x.w.params, key: id } }); r.made++; } else { r.changed.push(id); objs.refresh?.([id]); }
+      if (!this.sigs.has(id)) { this.names.set(id, x.w.name); objs.create({ id, kind: x.w.kind, name: x.w.name, description: x.w.description, placeId: r.root, params: { ...x.w.params, key: id } }); r.made++; } else { r.changed.push(id); objs.refresh?.([id]); }
       this.sigs.set(id, sig);
     } catch (err) { this.h.log(`built object ${id}: ${(err as Error).message}`); }
   }

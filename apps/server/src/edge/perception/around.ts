@@ -12,7 +12,12 @@ import {compassOf, compassPoint, dist2, durationWord, walkSeconds} from './geome
 export const AROUND_RADIUS = 60;
 /** Places within this many metres (centre) are described. */
 export const PLACES_RADIUS = 160;
-const clip = (s: string, n: number) => s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s;
+/** At most `n` characters, cut at the last word boundary (F8 #958: never `… the separ…`); one word longer than that is cut. */
+export const clip = (s: string, n: number) => {
+  if (s.length <= n) return s;
+  const cut = s.slice(0, n - 1), at = /[\p{L}\p{N}_]/u.test(s[n - 1] ?? '') ? cut.search(/[^\p{L}\p{N}_][\p{L}\p{N}_]*$/u) : cut.length;
+  return (at > 0 ? cut.slice(0, at) : cut).replace(/[\s,;:'’–—-]+$/, '') + '…';
+};
 
 export function aroundFrame(ledger: EdgeLedger, soul: EdgeSoul) {
   const P = new Perception(ledger, soul), K = ledger.knowledge, tick = P.tick, pos = P.pos;

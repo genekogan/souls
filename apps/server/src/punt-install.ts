@@ -11,6 +11,8 @@ const SEARCH_SLICE_MS=8;
 const STATS=process.env.SIM_L4_STATS==='1';
 
 /** `onInstalled` runs after an install run that added at least one punt (and published its ride). */
+/** F8 (#958): the engine labels a punt by its water's id (`e_00caa734 rowing punt`); a Soul reads `Rowing punt`. */
+export const puntName=(label:string)=>{const t=label.replace(/^e_[0-9a-f]{8}\s+/,'');return t.charAt(0).toUpperCase()+t.slice(1);};
 export function installPuntActivities(host:WorldHost,edge:EdgeLedger,log:(text:string)=>void=()=>{},onInstalled?:()=>void){
   const current=()=>host.engine as typeof host.engine&{puntCandidatesV1?():CarrierInstallSpec[];puntCandidatesJobV1?():SearchJob;carriers?():{id:string;def:string;label:string;state:{bank?:{door:number[]}}}[];staticEpochV1?():number};
   if(!current().puntCandidatesV1)return {close(){}};
@@ -26,7 +28,7 @@ export function installPuntActivities(host:WorldHost,edge:EdgeLedger,log:(text:s
       const door=c.state.bank?.door,place=door?edge.places.containing(door[0],door[2],0)[0]:null;
       const parent=place?.id??[...edge.places.byId.values()].find(p=>p.parent===null)?.id;
       // S1: create() keeps an existing object, so an existing ride is skipped by its id alone (no transaction, no parse)
-      if(parent&&!edge.comms.objects.has?.(`ride-${c.id}`))edge.comms.objects.create({id:`ride-${c.id}`,kind:'ride',name:c.label,placeId:parent,params:{carrier:c.id,vehicle:'punt'}});
+      if(parent&&!edge.comms.objects.has?.(`ride-${c.id}`))edge.comms.objects.create({id:`ride-${c.id}`,kind:'ride',name:puntName(c.label),placeId:parent,params:{carrier:c.id,vehicle:'punt'}});
     }
   };
   const install=(candidates:CarrierInstallSpec[],engine:typeof host.engine)=>{

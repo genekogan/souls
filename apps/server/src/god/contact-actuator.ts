@@ -8,6 +8,7 @@ import { opSchema, contactStateKey, DRAWER_TRAVEL, containerInside, pinSlot, sig
 import { posterName, posterFreeSlot, posterTarget, posterAge, posterStale, wantedColumn, wantedFreeRow, wantedTarget } from './poster-boards.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { actionPatch, actionsOf, actuatedState, boardTextProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
+import { displayName } from './meaning.ts';
 export const CONTACT_REACH = .8;
 /** Entry 37: how long the hand stays on a radio's tuning knob after contact while the dial sweeps to the next station. */
 export const TUNE_HOLD_SECONDS = .9;
@@ -217,7 +218,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    const state=actuatedState(e,def);
    // entry 32: a walk's thumb-turn on a door somebody unlocked meanwhile has nothing left to do
    if(intent.passage&&a.name==='unlock'&&state.locked!==true){done();return {ok:true as const};}
-   const bad=whenRefusal(a,state,e.name??'object');if(bad)return fail(bad.code,bad.reason);
+   const bad=whenRefusal(a,state,displayName(e)??'object');if(bad)return fail(bad.code,bad.reason);
    // entry 32: a knock changes nothing in the world; those who hear it are told once
    if(a.name==='knock'&&def.tags.includes('lockable')){d.knock?.(soul,e.id);d.record(soul,e.id,a.name);done();return {ok:true as const};}
    const text=isGameAction(def,a)?gameProblem(a,state,soul,a.name==='mark'?intent.params?.square??'':undefined):isListAction(def,a)?listProblem(def,a,state,soul,intent.params??{}):contactStateKey(def,a.name)==='text'&&a.name==='write'?boardTextProblem(intent.params?.text):null;if(text)return fail(text.code,text.reason);
