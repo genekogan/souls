@@ -81,7 +81,9 @@ They drive the central mind driver and the kernel's cards (see [brain](brain.md)
 `POST /v1/souls/:id/command` is one route with one handler per world mode, chosen when the app is built
 (`ownerCommandRoute` in `apps/server/src/inbox-routes.ts`). On an edge world it delivers the owner's text to the Soul's
 agent inbox, like `POST /v1/edge/owner/:id/inbox`: the same record, the same 20-a-minute owner bucket and an 8 KB
-body limit. On a central-mind world the central mind translates it. Only that world's handler is registered.
+body limit. On a central-mind world the central mind translates it. Only that world's handler is registered. Both
+answer `503 world-unavailable` while the world's clock is halted, and both carry the shared `X-Robots-Tag`,
+`X-Frame-Options` and `frame-ancestors 'none'` headers.
 
 ## MCP
 

@@ -115,6 +115,16 @@ export function buildApp(d: Deps) {
   // inbox handler is mounted here, before the shared middleware below, as it always was; a central-mind world's
   // translator is mounted with the other owner routes further down. The other one is never registered.
   const commandRoute = ownerCommandRoute(!!d.edge);
+  // #1000: the shared headers and the halted-clock gate (defined once here, mounted on '*' below) are registered after
+  // this handler, so an edge world's command route gets them here first, the same answers the translator gets.
+  const securityHeaders: MiddlewareHandler = async (c, next) => { await next(); c.header('X-Robots-Tag', 'noindex, nofollow'); c.header('X-Frame-Options', 'DENY'); c.header('Content-Security-Policy', "frame-ancestors 'none'"); };
+  // A halted durable clock cannot serve an unacknowledged body/head or accept
+  // more control. Generic unavailable response carries no private row/error.
+  const clockGate: MiddlewareHandler = async (c, next) => {
+    if(!d.host.clockAvailable)return c.json({ok:false,code:'world-unavailable',message:'World temporarily unavailable.'},503,{'Cache-Control':'no-store'});
+    await next();
+  };
+  if (commandRoute === 'edge-inbox') { app.use('/v1/souls/:soulId/command', securityHeaders); app.use('/v1/souls/:soulId/command', clockGate); }
   const ownerInbox = mountAgentInbox(app, {db: d.db, worldId: d.host.worldId, souls: d.souls, god: d.god, edge: !!d.edge, command: commandRoute, requireUser: c => requireUser(c), ownerSoul: async (c, id) => { const u = await requireUser(c); d.souls.requireInvited(u); const s = ownSoul(u, id); if (!d.souls.owns(u.id, s)) throw new ApiError(403, 'forbidden', 'not your soul'); return s; }}); // invite gate as on the central /v1/souls/:id/command
   (app as unknown as {agentInbox?: unknown}).agentInbox = ownerInbox;   // Stage B mode 2 (main.ts): a read worker's here carries main's inbox block
   // Travel (M3, travel/): a Soul whose body is in another world acts there; here only its travel calls answer.
@@ -179,13 +189,8 @@ export function buildApp(d: Deps) {
     console.error('[http]', err);
     return c.json({ ok: false, code: 'internal', message: 'internal error' }, 500);
   });
-  app.use('*', async (c, next) => { await next(); c.header('X-Robots-Tag', 'noindex, nofollow'); c.header('X-Frame-Options', 'DENY'); c.header('Content-Security-Policy', "frame-ancestors 'none'"); });
-  // A halted durable clock cannot serve an unacknowledged body/head or accept
-  // more control. Generic unavailable response carries no private row/error.
-  app.use('*',async(c,next)=>{
-    if(!d.host.clockAvailable)return c.json({ok:false,code:'world-unavailable',message:'World temporarily unavailable.'},503,{'Cache-Control':'no-store'});
-    await next();
-  });
+  app.use('*', securityHeaders);
+  app.use('*', clockGate);
   // Nothing a person or an agent sends is large: a command, an intent, a few cards.
   // Apply before parsing/auth/rate errors as well as successful secret responses.
   for (const path of ['/v1/agent/pair', '/v1/agent/pair/*', '/v1/pair/*', '/v1/souls/:id/pair'])
