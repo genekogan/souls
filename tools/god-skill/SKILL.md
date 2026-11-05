@@ -257,7 +257,8 @@ started from. Take one once the world has a recognisable centre, and retake it w
 - `thumbnail --file <image.jpg|png>` sends your own 16:9 image (640–1920 px wide; PNG is re-encoded). `thumbnail --clear`
   goes back to the template's default. Without a local Chrome, add `--remote`, as you would for `look`.
 - A refusal names its fix (`thumbnail.dimensions`: make it 16:9; `thumbnail.rate`: at most 6 changes in 10 minutes).
-  Sending a picture never wakes a sleeping world. Only the world's owner can set it.
+  Sending or clearing a picture never wakes a sleeping world; taking one is a look, so it does. Only the world's owner
+  can set it. `--dry` sends nothing, `--clear` included.
 
 ## New kinds of things (kits)
 

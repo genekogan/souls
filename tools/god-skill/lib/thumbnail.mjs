@@ -46,6 +46,9 @@ const refused = (verb, r, e) => Error(`thumbnail ${verb} refused: ${e.code ?? r.
 export async function thumbnail(flags = {}, runtime = {}) {
   const st = (runtime.load ?? load)(), send = runtime.fetch ?? fetch;
   const { url, slug, site } = thumbnailEndpoint(st.world);
+  for (const k of ['out', 'file']) if (flags[k] === true) throw Error(`thumbnail --${k} takes a file name`);
+  if (flags.clear && (flags.file || flags.out)) throw Error('thumbnail --clear takes no picture: drop --file/--out');
+  if (flags.clear && flags.dry) return `thumbnail (dry): --clear would send ${slug} back to its template's default picture; nothing sent`;
   if (!st.token && !flags.dry) throw Error('thumbnail: this folder has no god token; run pair first');
   const headers = { authorization: `Bearer ${st.token}` };
   if (flags.clear) {

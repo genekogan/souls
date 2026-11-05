@@ -103,6 +103,9 @@ test('thumbnail: --file (JPEG as is, PNG re-encoded), --dry --out sends nothing,
   assert.equal(sent.length, 0); assert.match(dry, /nothing sent/); assert.deepEqual([...readFileSync(keep).subarray(0, 2)], [0xff, 0xd8]);
   assert.match(await thumbnail({ clear: true }, { load: () => state, fetch }), /cleared for hollow; the world list shows the template's default picture/);
   assert.equal(sent[0].method, 'DELETE');
+  sent = []; assert.match(await thumbnail({ clear: true, dry: true }, { load: () => state, fetch }), /nothing sent/); assert.equal(sent.length, 0, '--clear --dry sends nothing');
+  await assert.rejects(thumbnail({ clear: true, file: jpg }, { load: () => state, fetch }), /--clear takes no picture/);
+  await assert.rejects(thumbnail({ out: true, dry: true }, { load: () => state, fetch }), /--out takes a file name/);
   assert.equal(toJpeg(readFileSync(jpg)).quality, null);
   assert.throws(() => toJpeg(Buffer.from('GIF89a')), /JPEG or PNG/);
 });
