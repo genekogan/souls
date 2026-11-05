@@ -237,6 +237,13 @@ test("the site admin's veto: a vetoed image is refused at upload (451) and no lo
   assert.equal(r.status, 451); assert.equal(b.code, 'thumbnail.vetoed'); assert.ok(b.fix);
   // the veto is by content: the same picture with EXIF added (different input bytes, same stripped bytes) is refused too
   r = await put('second-plain', jpeg(1280, 720, { pad: 31, exif: true }), 'dev:gene'); assert.equal(r.status, 451);
+  // each refused image leaves an audit row naming who, why and which bytes (sent and stripped)
+  const dirty31 = jpeg(1280, 720, { pad: 31, exif: true });
+  const refusedRows = readFileSync(join(data, 'audit.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((x) => x.op === 'thumbnail-refused' && x.slug === 'second-plain');
+  assert.deepEqual(refusedRows.slice(-2).map((x) => [x.code, x.by, x.via, x.sha, x.inputSha]), [['thumbnail.vetoed', 'dev:gene', 'session', s1, s1], ['thumbnail.vetoed', 'dev:gene', 'session', s1, sha(dirty31)]]);
+  r = await put('second-plain', Buffer.from('\x89PNG\r\n\x1a\n' + 'x'.repeat(64), 'latin1'), 'dev:gene'); assert.equal(r.status, 415);
+  const last = readFileSync(join(data, 'audit.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
+  assert.deepEqual([last.op, last.code, last.sha, typeof last.inputSha], ['thumbnail-refused', 'thumbnail.type', null, 'string'], 'a refusal before validation still records the bytes sent');
   admin(s1, 'unhide');
   assert.equal((await api(url)).status, 200, 'lifted: served again');
   // a world-scope admin veto, from the world's own log (read-only)

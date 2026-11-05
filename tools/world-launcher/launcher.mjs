@@ -509,10 +509,11 @@ export async function openLauncher(cfg = {}) {
       return [200, { ok: true, slug: w.slug, ...thumbView(rest) }];
     }
     const bytes = await readBody();
-    if (bytes === null) return TOO_BIG;
+    if (bytes === null) { audit(dataDir, { op: 'thumbnail-refused', slug: w.slug, by: a.account, via: a.via, code: 'thumbnail.size', inputSha: null, sha: null }); return TOO_BIG; }   // not kept whole, so no sha
     const t = await intakeThumbnail(bytes, { words: [w.name], vetoed: (sha) => vetoed(sha, worldModeration(w), { fresh: true }) });
     if (gone()) return GONE;
-    if (!t.ok) { if (t.verdict) audit(dataDir, { op: 'thumbnail-refused', slug: w.slug, by: a.account, code: t.body.code, classifier: t.verdict.classifier, labels: t.verdict.labels }); return [t.status, t.body]; }
+    // every refusal of an image is on the record, with what was sent (inputSha) and, once validated, the stripped sha a veto names
+    if (!t.ok) { audit(dataDir, { op: 'thumbnail-refused', slug: w.slug, by: a.account, via: a.via, code: t.body.code, inputSha: createHash('sha256').update(bytes).digest('hex'), sha: t.sha ?? null, ...(t.verdict ? { classifier: t.verdict.classifier, labels: t.verdict.labels } : {}) }); return [t.status, t.body]; }
     const dir = registry.worldDir(w.slug);
     writeThumbnail(dir, t.sha, t.bytes);   // the new file first, then the row, then the old file goes
     registry.update(w.slug, { thumbnail: { sha: t.sha, at: Date.now() } });
