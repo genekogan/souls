@@ -208,10 +208,31 @@ test('uploadAll: each video gets its preview uploaded beside it and recorded in 
   const base = 'https://github.com/o/r/releases/download/proofs-8/';
   assert.equal(out.uploaded[0].preview, `${base}pr-8.desktop.preview.gif`);
   assert.equal(JSON.parse(readFileSync(proofPath, 'utf8')).media[0].preview, `${base}pr-8.desktop.preview.gif`);
-  assert.equal(embedLine(out.uploaded[0]), `[![desktop.mp4](${base}pr-8.desktop.preview.gif)](${base}pr-8.desktop.mp4)`);
-  assert.equal(embedLine({ file: 'a.mp4', url: 'https://h/a.mp4' }), '[a.mp4](https://h/a.mp4)');
+  assert.match(embedLine(out.uploaded[0]), /\[Full-resolution video: desktop\.mp4\]/);
+  assert.ok(embedLine(out.uploaded[0]).includes(`[![Reduced preview: desktop.mp4](${base}pr-8.desktop.preview.gif)](${base}pr-8.desktop.mp4)`));
+  assert.equal(embedLine({ file: 'a.mp4', url: 'https://h/a.mp4' }), '[Full-resolution video: a.mp4](https://h/a.mp4)');
   assert.deepEqual(warned, []);
   const skipped = await uploadAll({ pr: 9, files: [clip], target: githubTarget({ repo: 'o/r', run: fakeGh({ release: { id: 5 } }).run }), preview: () => ({ skipped: 'ffmpeg is not installed' }), warn: m => warned.push(m) });
   assert.equal(skipped.uploaded[0].preview, undefined);
   assert.match(warned[0], /no inline preview \(ffmpeg is not installed\)/);
+});
+
+
+test('all outgoing metadata is preflighted before any media network write', async () => {
+  const home = ['', 'Users', 'private-person', 'work'].join('/');
+  const dir = mkdtempSync(join(tmpdir(), 'publication-batch-'));
+  const media = join(dir, 'candidate.mp4'), proof = join(dir, 'proof.json'), log = join(dir, 'late.log');
+  writeFileSync(media, 'media');
+  writeFileSync(proof, JSON.stringify({ checks: [{ cmd: home }] }).replaceAll('/', '\\u002f'));
+  writeFileSync(log, home);
+  const calls = [];
+  const target = { upload: async (...args) => { calls.push(args); return { url: 'https://example.com/proof' }; } };
+  await assert.rejects(uploadAll({ pr: 7, files: [media], proofPath: proof, target }), /Publication blocked/);
+  await assert.rejects(uploadAll({ pr: 7, files: [media, log], target }), /Publication blocked/);
+  const unusualProof = join(dir, 'proof.data'), jsonl = join(dir, 'events.jsonl');
+  writeFileSync(unusualProof, readFileSync(proof));
+  writeFileSync(jsonl, readFileSync(proof) + '\n');
+  await assert.rejects(uploadAll({ pr: 7, files: [media], proofPath: unusualProof, target }), /Publication blocked/);
+  await assert.rejects(uploadAll({ pr: 7, files: [media, jsonl], target }), /Publication blocked/);
+  assert.deepEqual(calls, [], 'a late leaking file must prevent the first media upload');
 });

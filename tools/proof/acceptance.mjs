@@ -3,7 +3,7 @@
 // machine summary against it, for the tier the change needs (docs/process/PROOF-POLICY.yml `pr_checks`).
 //
 //   node tools/proof/acceptance.mjs check --body pr.md [--issue issue.md] [--proof proof.json] [--tier T2 |
-//        --files a,b | --base <ref>] [--label tier:T3 ...] [--head <sha>] [--json] [--comment out.md]
+//        --files a,b | --base <ref>] [--label tier:T3 ...] [--head <sha>] [--repo owner/name] [--json] [--comment out.md]
 //   node tools/proof/acceptance.mjs init --issue issue.md [--pr <n>] [--tier T2] [--issue-number <n>] [--commit <sha>]
 //        > .e2e/journal/<n>/proof.json      (issue: from --issue-number or a .e2e/journal/<n>/ path; commit: the
 //                                            git HEAD of the current directory, so run it from the PR's worktree)
@@ -11,6 +11,10 @@
 //        [--summary file] [--output file]          (proof-check.yml: reads the PR, its files, issue and proof.json
 //                                                   with `gh api`; prints the report; writes ok=true|false; T3-T4
 //                                                   also need the maintainer's sign-off, tools/proof/gate.mjs)
+//
+// Clip and proof.json links count only on a proof host (proofHostProblem, #765): this repository's proofs releases,
+// GitHub attachments, or the SIM_PROOF_PUBLIC_URL CDN. Others are ignored with a warning, and `pr` fetches proof.json
+// only from such a host. `check` without --repo accepts any repository's proofs releases.
 //
 // Exit codes: 0 proof-ok, 1 proof missing or invalid, 2 usage error. `pr` always exits 0 unless the tool itself
 // failed; it reports the verdict through --output so the workflow can post the comment first.
@@ -33,6 +37,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { POLICY_PATH, loadPolicy as loadTierPolicy, tierFor } from './tier.mjs';
 import { APPROVED_LABEL, labelAddedBy, maintainerSignOff, needsSignOff } from './gate.mjs';
+import { assertPublishable, publicationFindings } from './publication.mjs';
 
 export { labelAddedBy };
 
@@ -108,6 +113,37 @@ const IMAGE = /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i;
 export const isVideo = u => VIDEO.test(u) && !IMAGE.test(u);
 export const isImage = u => IMAGE.test(u);
 const isProofJson = u => /proof[^/]*\.json(\?|#|$)/i.test(u);
+
+/**
+ * Where a proof.json or clip link may live (#765): this repository's proofs releases (`releases/download/proofs/` or
+ * `proofs-<n>/`), GitHub user attachments, and the proof CDN (SIM_PROOF_PUBLIC_URL) when one is configured. A canonical
+ * https URL only: no userinfo, port, query or fragment. `repo` null (a local check with no repository known) accepts
+ * any repository's proofs releases; proof-check always passes its repository. Returns null when allowed, else why not.
+ */
+export function proofHostProblem(value, { repo = null, cdn = process.env.SIM_PROOF_PUBLIC_URL || null } = {}) {
+  let u;
+  try { u = new URL(value); } catch { return 'not a URL'; }
+  if (u.protocol !== 'https:') return 'not https';
+  if (u.username || u.password || u.port || u.search || u.hash) return 'userinfo, a port, a query or a fragment is not allowed';
+  const repoRe = repo ? repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '[\\w.-]+/[\\w.-]+';
+  if (u.origin === 'https://github.com') {
+    if (new RegExp(`^/${repoRe}/releases/download/proofs(?:-\\d+)?/[A-Za-z0-9._-]+$`).test(u.pathname)) return null;
+    if (/^\/user-attachments\/(?:assets|files)\/[A-Za-z0-9-]+(?:\/[A-Za-z0-9._-]+)?$/.test(u.pathname)) return null;
+    return `not this repository's proofs release${repo ? ` (${repo})` : ''} or a GitHub attachment`;
+  }
+  if (cdn) {
+    let c;
+    try { c = new URL(cdn); } catch { c = null; }
+    if (c && u.origin === c.origin && u.pathname.startsWith(c.pathname.replace(/\/?$/, '/'))) return null;
+  }
+  return `host ${u.host} is not a proof host (proofs releases, GitHub attachments${cdn ? ', the proof CDN' : ''})`;
+}
+/** Splits candidate links into allowed ones and ignored ones (with the reason). */
+export function allowedProofLinks(links, opts) {
+  const ok = [], ignored = [];
+  for (const u of links) { const why = proofHostProblem(u, opts); if (why) ignored.push({ url: u, why }); else ok.push(u); }
+  return { ok, ignored };
+}
 
 /** Issue references in a Problem section: closing keywords first (the PR's own issue, which proof-check reads), then
  *  bare #n and issue URLs in order. */
@@ -242,7 +278,14 @@ const label = c => `${c.id ? `${c.id} ` : ''}${String(c.text ?? '').slice(0, 70)
  * Everything proof-check needs to say about one PR. `proof` is the parsed proof.json (or {error}) when the PR links
  * one; `issueBody` is the linked issue's body when there is one.
  */
-export function checkPr({ body = '', tier = 'T0', issueBody = null, proof = undefined, head = null, policy = loadChecks() }) {
+function privacyFailure(tier, privacy) {
+  const detail = `device details detected (${privacy.join(', ')}); sanitize source text/metadata before publication`;
+  return { ok: false, tier, rows: [{ name: 'publication privacy', ok: false, detail }], problems: [detail], warnings: [], checklist: [], links: { videos: [], images: [], proofJson: [] }, clips: [] };
+}
+
+export function checkPr({ body = '', tier = 'T0', issueBody = null, proof = undefined, head = null, policy = loadChecks(), repo = null }) {
+  const privacy = publicationFindings({ body, issueBody, proof });
+  if (privacy.length) return privacyFailure(tier, privacy);
   const s = sections(body);
   const need = new Set(policy.prChecks[tier] ?? policy.prChecks.T0);
   const problems = [], warnings = [], rows = [];
@@ -288,17 +331,20 @@ export function checkPr({ body = '', tier = 'T0', issueBody = null, proof = unde
   }
 
   const links = urls(body);
-  const videos = links.filter(isVideo), images = links.filter(isImage), proofLinks = links.filter(isProofJson);
+  // Clip and proof.json links count only on a proof host (#765); every other one is named in the warnings.
+  const v = allowedProofLinks(links.filter(isVideo), { repo }), pj = allowedProofLinks(links.filter(isProofJson), { repo });
+  for (const x of [...v.ignored, ...pj.ignored]) warnings.push(`ignored proof link ${x.url}: ${x.why}`);
+  const videos = v.ok, images = links.filter(isImage), proofLinks = pj.ok;
   if (need.has('clip')) row('clip', videos.length > 0, videos.length ? `${videos.length} video link(s)${images.length ? `, ${images.length} image(s)` : ''}` : 'no video link: record an uncut, real-speed clip of the changed journey (proof skill) and upload it (tools/proof/upload.mjs)');
   if (need.has('proof_json')) {
     if (!proofLinks.length) row('proof.json', false, 'no proof.json link: write the machine summary and upload it with the media');
     else if (proof === undefined) row('proof.json', null, `linked (${proofLinks[0]}), not fetched`);
     else if (proof?.error) row('proof.json', false, `could not read ${proofLinks[0]}: ${proof.error}`);
     else {
-      const v = validateProof(proof, { tier, checklist, knobs: policy.knobs, head });
-      row('proof.json', v.problems.length === 0, v.problems.length ? `${v.problems.length} problem(s)` : 'valid and agrees with the checklist');
-      problems.push(...v.problems.filter(p => !problems.includes(p)));
-      warnings.push(...v.warnings);
+      const pv = validateProof(proof, { tier, checklist, knobs: policy.knobs, head });
+      row('proof.json', pv.problems.length === 0, pv.problems.length ? `${pv.problems.length} problem(s)` : 'valid and agrees with the checklist');
+      problems.push(...pv.problems.filter(p => !problems.includes(p)));
+      warnings.push(...pv.warnings);
       if (need.has('playtest')) row('playtest', Array.isArray(proof.playtest?.arms) && proof.playtest.arms.length >= 2, proof.playtest?.arms ? proof.playtest.arms.map(a => `${a.name}: ${a.passed ?? '?'}/${a.repeats ?? 0}`).join(', ') : 'none in proof.json');
       if (need.has('review')) row('reviewer pass', Boolean(proof.review?.verdict), proof.review?.verdict ? `${proof.review.by ?? 'reviewer'}: ${proof.review.verdict}` : 'none in proof.json');
     }
@@ -341,13 +387,18 @@ export function renderComment(result, { required = [], files = [], raisedByLabel
   const clips = result.clips ?? [];
   if (clips.length) {
     const name = u => decodeURIComponent(String(u).split(/[?#]/)[0].split('/').pop());
-    out.push('', '**Clips** (a preview plays here; click it for the full, uncut clip):', '');
-    for (const c of clips) out.push(c.preview ? `[![${name(c.video)}](${c.preview})](${c.video})` : `- [${name(c.video)}](${c.video}) (no inline preview: \`tools/proof/upload.mjs\` makes one)`);
+    out.push('', '**Full-resolution videos** — use the original clips and their proof metadata for motion/contact review. GIFs below are reduced previews.', '');
+    for (const c of clips) {
+      out.push(`- [Full-resolution video: ${name(c.video)}](${c.video})`);
+      if (c.preview) out.push('', `[![${name(c.video)}](${c.preview})](${c.video})`, '');
+    }
   }
   if (result.problems.length) out.push('', '**To fix**', ...result.problems.map(p => `- ${p}`));
   if (result.warnings.length) out.push('', '**Warnings**', ...result.warnings.map(w => `- ${w}`));
   out.push('', '<sub>Updated on every edit, push, label and review. How to fill it: `.claude/skills/journal/SKILL.md`. T3-T4 also need the maintainer\'s sign-off (`tools/proof/gate.mjs`). A maintainer can waive with the `proof:waived` label.</sub>');
-  return out.join('\n');
+  const comment = out.join('\n');
+  assertPublishable(comment);
+  return comment;
 }
 
 /** A proof.json skeleton from an issue's checklist, for the journal skill. */
@@ -412,18 +463,29 @@ export async function prMode({ repo, pr, head, gh = ghJson, fetchImpl = fetch, p
     if (!gate.ok) { result.problems.unshift(`maintainer sign-off: ${gate.detail}`); result.ok = false; }
     return result;
   };
+  const body = p.body ?? '';
+  const titlePrivacy = publicationFindings({ title: p.title, body });
+  if (titlePrivacy.length) {
+    const result = addGate(privacyFailure(t.tier, titlePrivacy));
+    return { result, comment: renderComment(result) };
+  }
+  const issueNums = linkedIssues(sections(body).problem ?? '');
+  let issueBody = null;
+  if (issueNums.length) { try { const i = gh(`repos/${repo}/issues/${issueNums[0]}`); if (!i.pull_request) issueBody = i.body ?? ''; } catch { /* unreadable issue: skip the carry check */ } }
+  // Only a proof.json on a proof host is ever fetched (#765): never a host chosen by PR text.
+  const proofUrl = allowedProofLinks(urls(body).filter(isProofJson), { repo }).ok[0];
+  const proof = proofUrl ? await fetchProof(proofUrl, fetchImpl) : undefined;
+  const privateInputs = publicationFindings({ body, issueBody, proof });
+  if (privateInputs.length) {
+    const result = addGate(privacyFailure(t.tier, privateInputs));
+    return { result, comment: renderComment(result) };
+  }
   if (waived || author === 'dependabot[bot]') {
     const why = waived ? `Waived by the maintainer with the \`proof:waived\` label.` : 'Dependency update from Dependabot: CI is its proof.';
     const result = addGate({ ok: true, tier: t.tier, rows: [], problems: [], warnings: warningsOut, checklist: [], links: { videos: [], images: [], proofJson: [] } });
     return { result, comment: renderComment(result, { required, files: t.byFile, raisedByLabel: t.raisedByLabel, note: why }) };
   }
-  const body = p.body ?? '';
-  const issueNums = linkedIssues(sections(body).problem ?? '');
-  let issueBody = null;
-  if (issueNums.length) { try { const i = gh(`repos/${repo}/issues/${issueNums[0]}`); if (!i.pull_request) issueBody = i.body ?? ''; } catch { /* unreadable issue: skip the carry check */ } }
-  const proofUrl = urls(body).find(isProofJson);
-  const proof = proofUrl ? await fetchProof(proofUrl, fetchImpl) : undefined;
-  const result = addGate(checkPr({ body, tier: t.tier, issueBody, proof, head: headSha, policy }));
+  const result = addGate(checkPr({ body, tier: t.tier, issueBody, proof, head: headSha, policy, repo }));
   result.warnings.push(...warningsOut);
   return { result, comment: renderComment(result, { required, files: t.byFile, raisedByLabel: t.raisedByLabel, note: p.draft ? 'Draft PR: proof-check skips drafts and runs when the PR is marked ready for review.' : null }) };
 }
@@ -451,7 +513,7 @@ async function main(argv) {
     const policy = loadChecks();
     let proof;
     if (opt('--proof')) { try { proof = /^https:/.test(opt('--proof')) ? await fetchProof(opt('--proof')) : JSON.parse(read(opt('--proof'))); } catch (e) { proof = { error: e.message }; } }
-    const result = checkPr({ body: read(opt('--body')), tier, issueBody: opt('--issue') ? read(opt('--issue')) : null, proof, head: opt('--head'), policy });
+    const result = checkPr({ body: read(opt('--body')), tier, issueBody: opt('--issue') ? read(opt('--issue')) : null, proof, head: opt('--head'), policy, repo: opt('--repo') ?? null });
     if (opt('--comment')) writeFileSync(opt('--comment'), renderComment(result, { required: policy.required[tier], files: byFile, raisedByLabel: raised }));
     if (rest.includes('--json')) console.log(JSON.stringify(result, null, 2));
     else {
