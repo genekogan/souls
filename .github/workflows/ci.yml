@@ -157,7 +157,7 @@ jobs:
           process.exit(a || b);
           NODE
               god=0
-              if [ "$GOD_SKILL" = true ]; then node --test --test-concurrency=1 tools/god-skill/*.test.mjs || god=$?; fi
+              if [ "$GOD_SKILL" = true ]; then node --test --test-concurrency=1 tools/god-skill/*.test.mjs tools/god-skill/lib/*.test.mjs tools/god-skill/scripts/*.test.mjs tools/god-skill/e2e/*.test.mjs || god=$?; fi
               exit $(( server || god ))
               ;;
             *) echo "unknown check kind: $CHECK_KIND"; exit 1 ;;

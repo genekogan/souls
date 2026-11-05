@@ -24,9 +24,9 @@ pnpm test:client                             # Soul client and client-eval suite
 pnpm test                                    # everything (slow; prefer the focused forms)
 ```
 
-In CI, the god-skill unit tests (`node --test tools/god-skill/*.test.mjs`, the replay corpus among them) run on the
-`server-0` job (`godSkill` in `.github/scripts/ci-scope.mjs`), which any `apps/server/` or `tools/god-skill/` change
-selects.
+In CI, every god-skill unit test (each `*.test.mjs` under `tools/god-skill/`, its `lib/`, `scripts/` and `e2e/`, the
+replay corpus among them; none needs a browser or a live server) runs on the `server-0` job (`godSkill` and
+`GOD_SKILL_TESTS` in `.github/scripts/ci-scope.mjs`), which any `apps/server/` or `tools/god-skill/` change selects.
 
 The Pip authoring example's renderer test is manual, not part of CI: it needs pulled media and loads renderer code
 with parameter properties, so run `node --experimental-transform-types --test tools/body-authoring/robot/robot.test.mjs`

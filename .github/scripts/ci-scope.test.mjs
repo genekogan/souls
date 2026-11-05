@@ -94,7 +94,7 @@ test('pushes to main and manual runs check everything; pull request runs stay sc
 });
 
 // #918: the god-skill unit tests (replay corpus included) run on the one job carrying godSkill.
-test('god-skill unit tests: one job runs them, and god or god-skill changes select it', () => {
+test('god-skill unit tests: one job runs them, and god or god-skill changes select it', async () => {
   assert.deepEqual(JOBS.filter(j => j.godSkill).map(j => j.name), ['server-0']);
   assert.equal(JOBS.find(j => j.godSkill).assets, true, 'glb and upload tests read pulled media');
   const god = files => jobsFor(files).include.filter(j => j.godSkill).map(j => j.name);
@@ -104,4 +104,10 @@ test('god-skill unit tests: one job runs them, and god or god-skill changes sele
   assert.match(workflow, /GOD_SKILL: \$\{\{ matrix\.godSkill \|\| false \}\}/);
   assert.ok(workflow.includes(`if [ "$GOD_SKILL" = true ]; then node --test --test-concurrency=1 ${GOD_SKILL_TESTS} || god=$?; fi`));
   assert.match(workflow, /exit \$\(\( server \|\| god \)\)/);
+  // every god-skill *.test.mjs is covered by the globs (the e2e/*.test.mjs are fixture unit tests: no browser)
+  const { readdirSync } = await import('node:fs');
+  const root = fileURLToPath(new URL('../../tools/god-skill/', import.meta.url));
+  const all = readdirSync(root, { recursive: true }).filter(f => /\.test\.mjs$/.test(f) && !f.includes('node_modules')).map(f => `tools/god-skill/${f}`);
+  const covered = f => GOD_SKILL_TESTS.split(' ').some(g => new RegExp(`^${g.replace(/\./g, '\\.').replace('*', '[^/]*')}$`).test(f));
+  assert.deepEqual(all.filter(f => !covered(f)), [], 'god-skill tests outside GOD_SKILL_TESTS');
 });
