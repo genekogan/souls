@@ -338,7 +338,8 @@ export function wrapAct(objects: { act(id: string, soul: EdgeSoul, input: Record
     // Entry 43: so does a tea act (tea.ts)
     if (host.tea?.(soul, id, a.name)) { host.teaBegun?.(soul); return out; }
     // #438: and a picking act (harvest.ts)
-    if (host.harvest?.(soul, id, a.name)) { host.harvestBegun?.(soul); return out; }
+    const pick = host.harvest?.(soul, id, a.name);
+    if (pick) { if (!('code' in pick)) host.harvestBegun?.(soul); return out; }
     // W5: water moves between two things (tank → can, can → planter) in one commit, planned again at commit time
     const water = waterPlan(a, id, soul, host);
     if (water) {

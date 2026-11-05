@@ -307,7 +307,7 @@ export class EngineBridge {
     // Entry 43: the tea acts (tea.ts), the same way
     this.tea = createTea({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
     // #438: the picking acts (harvest.ts), the same way
-    this.harvest = createHarvest({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
+    this.harvest = createHarvest({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m), access: (id, soul) => this.layers.refusal(id, soul) });
     this.perceive = new GodPerceive({ model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea, harvest: this.harvest });
     // L3 (server reliability): kept Soul menus read god state the ledger does not version (ownership, construction sites)
     // the bridge runs without an edge ledger too (toy/engine-only hosts): guard the ledger, not only the method

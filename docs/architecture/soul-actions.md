@@ -55,7 +55,8 @@ stage it picks from and leaves, its state field, how many, where the hand goes) 
 (`packages/world-compiler/src/core-kit/harvest.ts`); the faculty is `apps/server/src/god/harvest.ts`. A picked planter
 fruits or flowers again through the daily growth pass while it stays watered. "put the basket on the counter" is the
 ordinary put-on. Refusals say why: nothing ripe (with the nearest planter's stage), the vessel full, in someone else's
-hand, or the Soul's hands full. A planter offers nothing new: the picking offer belongs to the basket and the vase.
+hand, someone else's private planter, or the Soul's hands full. A planter offers nothing new: the picking offer belongs to
+the basket and the vase. Nothing takes the tomatoes or the flowers out yet, so a full basket or vase stays full.
 
 ## What other Souls perceive
 

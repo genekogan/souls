@@ -33,6 +33,8 @@ export type HarvestHost = {
   engine: { world: { entities: Record<string, any>; tick: number }; dt?: number; clearanceAtV1?(x: number, z: number, level?: number): number };
   commit(ops: Op[], note: string): { accepted: boolean };
   log(m: string): void;
+  /** Why this Soul may not use a thing (a private planter of someone else's), or null (layers.ts `refusal`). */
+  access?(id: string, soul: { soulId: string; name: string }): Refusal | null;
 };
 
 export function createHarvest(h: HarvestHost) {
@@ -71,6 +73,7 @@ export function createHarvest(h: HarvestHost) {
       }
     }
     if (s?.kind === 'in-hand') return { code: 'harvest.vessel-held', reason: `Someone else is holding ${name}.` };
+    if (s?.kind !== 'ground') return { code: 'harvest.vessel-not-down', reason: `${name} is not on a table, a counter or the ground; take it out first.` };
     const d = Math.hypot(me[0] - it[0], me[1] - it[2]) || 1, u: Vec2 = [(me[0] - it[0]) / d, (me[1] - it[2]) / d];
     for (const g of [0.45, 0.55, 0.65]) {
       const st: Vec3 = [it[0] + u[0] * g, 0, it[2] + u[1] * g];
@@ -80,26 +83,30 @@ export function createHarvest(h: HarvestHost) {
   }
 
   /** The act for a vessel's `harvest`: a refusal with its reason, the steps, or null (not a harvest vessel). */
-  function plan(soul: { entityId: string }, id: string, action: string): HarvestPlan | Refusal | null {
+  function plan(soul: { entityId: string; soulId?: string; name?: string }, id: string, action: string): HarvestPlan | Refusal | null {
     const m = M(), def = defOf(id), hv = harvestOf(def as never);
     if (!hv || action !== 'harvest') return null;
     const body = ents()[soul.entityId]; if (!body?.human) return { code: 'body.unavailable', reason: 'Your body is unavailable.' };
     const name = m.pathOf(id), have = Math.round(num(stateOf(id)[hv.field])), me: Vec2 = [body.pose.p[0], body.pose.p[2]];
-    if (have + hv.take > hv.holds) return { code: 'harvest.vessel-full', reason: have >= hv.holds ? `${name} is full (${have} ${hv.word}); take them out or put it down first.` : `${name} has no room for ${hv.take} more ${hv.word} (it holds ${have} of ${hv.holds}).` };
+    if (have + hv.take > hv.holds) return { code: 'harvest.vessel-full', reason: have >= hv.holds ? `${name} is full: it already holds ${have} ${hv.word} and has no room for more.` : `${name} has no room for ${hv.take} more ${hv.word} (it holds ${have} of ${hv.holds}).` };
     const support = ents()[id]?.support, held = support?.kind === 'in-hand' && support.by === soul.entityId;
     if (support?.kind === 'in-hand' && !held) return { code: 'harvest.vessel-held', reason: `Someone else is holding ${name}.` };
     if (held && support.hand !== 'right') return { code: 'harvest.wrong-hand', reason: `Hold ${name} in your right hand to pick with the left.` };
     const other = Object.values(ents()).find((x: any) => x?.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === soul.entityId && x.id !== id);
     if (other) return { code: 'harvest.hands-full', reason: `You are holding ${m.pathOf(other.id)}; put it down first.` };
+    if (!held && (body.human.holding || body.human.carrier || body.human.grip)) return { code: 'harvest.hands-full', reason: 'Your hands are busy carrying something; set it down first.' };
     if (!held) { const q = ents()[id]?.pose?.p as Vec3 | undefined; if (!q || Math.hypot(q[0] - me[0], q[2] - me[1]) > HARVEST_REACH) return { code: 'harvest.vessel-far', reason: `${name} is too far away; walk closer first.` }; }
     // the nearest planter ripe for this vessel; else the nearest planter, to say what it is doing
     const from = GROWTH_STAGES.indexOf(hv.from);
-    let ripe: string | null = null, rd = HARVEST_REACH, any: string | null = null, ad = HARVEST_REACH;
+    let ripe: string | null = null, rd = HARVEST_REACH, any: string | null = null, ad = HARVEST_REACH, denied: Refusal | null = null;
     for (const p of planters()) {
       const q = pose(p); if (!q) continue; const d = Math.hypot(q.x - me[0], q.z - me[1]); if (d > HARVEST_REACH) continue;
-      if (Math.round(num(stateOf(p).growth)) === from && d < rd) { rd = d; ripe = p; }
-      if (d < ad) { ad = d; any = p; }
+      // someone else's private planter is not picked from (ownership, layers.ts): it is skipped, and named if nothing else is ripe
+      const no = soul.soulId ? h.access?.(p, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null;
+      if (Math.round(num(stateOf(p).growth)) === from && d < rd) { if (no) { denied ??= no; continue; } rd = d; ripe = p; }
+      if (d < ad && !no) { ad = d; any = p; }
     }
+    if (!ripe && denied) return denied;
     if (!ripe) return any ? { code: 'harvest.not-ripe', reason: `Nothing in ${m.pathOf(any)} is ready to pick into ${name}: it is ${stageOf(stateOf(any).growth)}, and ${hv.word} are picked when it is ${hv.from}.` } : { code: 'harvest.no-planter', reason: `There is no garden planter near enough to pick ${hv.word} from.` };
     const wp = pose(ripe)!, pdef = defOf(ripe)!, half = pdef.size.box[2] / 2;
     // stand at the long side nearer the Soul, facing into the bed; the left hand goes to the plant on the body's left
@@ -109,7 +116,7 @@ export function createHarvest(h: HarvestHost) {
     const at = points.sort((a, b) => (a[0] * right[0] + a[2] * right[1]) - (b[0] * right[0] + b[2] * right[1]))[0];
     let st: Vec3 | null = null;
     for (const g of [STAND_GAP, STAND_GAP + 0.05, STAND_GAP + 0.1]) {
-      const edge = toWorld(wp, [0, 0, side * (half + g)]), lat = (at[0] - edge[0]) * right[0] + (at[2] - edge[2]) * right[1];
+      const edge = toWorld(wp, [0, 0, side * (half + g / wp.s)]), lat = (at[0] - edge[0]) * right[0] + (at[2] - edge[2]) * right[1];
       const s: Vec3 = [edge[0] + right[0] * (lat + HAND_LEFT), 0, edge[2] + right[1] * (lat + HAND_LEFT)];
       if (clear(s)) { st = s; break; }
     }
@@ -118,7 +125,8 @@ export function createHarvest(h: HarvestHost) {
     if (!held) { const f = fetchSteps(id, me); if ('code' in f) return f; steps.push(LET_GO, ...f); }
     steps.push(walk(st, face), LET_GO, { verb: 'mars:hand_actuator_v1', params: { target: ripe, at: at.map(r3), hand: 'left', hold: PICK_HOLD_SECONDS } });
     planned.set(soul.entityId, { vessel: id, planter: ripe });
-    return { steps, summary: `Picked ${hv.take} ${hv.word} from ${m.pathOf(ripe)} into ${name}.` };
+    // the pick happens at the hand's contact (and is checked again there): the summary says what the act does
+    return { steps, summary: `Picks ${hv.take} ${hv.word} from ${m.pathOf(ripe)} into ${name} at the hand's touch.` };
   }
 
   /** Compact nearby facts (here.ts, ≤ 4 m): what a vessel holds, once it holds some. Never the stored state. */
@@ -151,6 +159,9 @@ export function createHarvest(h: HarvestHost) {
     for (const [body, until] of watching) {
       visits++;
       const p = acting.get(body), am = ents()[body]?.human?.handActuator as HandActuatorMotion | undefined;
+      // a long fetch and walk keeps the watch while the vessel is in this body's hand (tea.ts, watering.ts)
+      const s = p ? ents()[p.vessel]?.support : undefined;
+      if (p && s?.kind === 'in-hand' && s.by === body && !(am && am.target === p.planter)) watching.set(body, now + GRACE_TICKS);
       if (p && am && am.target === p.planter) {
         watching.set(body, now + GRACE_TICKS);
         const key = am.actionId ?? `${body}:${am.startTick}`;

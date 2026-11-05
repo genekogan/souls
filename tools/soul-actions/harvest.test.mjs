@@ -54,6 +54,8 @@ test('harvest: tomatoes into the basket, flowers into the vase, at the hand cont
  const sc = god.act({ops: [
   {op: 'place', def: 'core/garden-planter@2', name: 'bed', p: [ax, az + 2.6], state: {growth: 4, moisture: 1}},
   {op: 'place', def: 'core/garden-planter@2', name: 'bed-two', p: [ax + 4, az + 2.6], state: {growth: 2, moisture: 1}},
+  {op: 'place', def: 'core/garden-planter@2', name: 'private-bed', p: [ax + 7, az + 2.6], access: 'private', state: {growth: 4, moisture: 1}},
+  {op: 'place', def: 'core/harvest-basket@1', name: 'full-basket', p: [ax - 4.5, az - 1.5], state: {fruit: 6}},
   {op: 'place', def: 'core/table@1', name: 'garden-table', p: [ax - 2.2, az + 0.6]},
   {op: 'place', def: 'core/harvest-basket@1', name: 'basket', in: {parent: 'garden-table', slot: 'top'}, p: [0.2, 0.1]},
   {op: 'place', def: 'core/flower-vase@1', name: 'vase', in: {parent: 'garden-table', slot: 'top'}, p: [-0.25, 0.1]},
@@ -97,11 +99,16 @@ test('harvest: tomatoes into the basket, flowers into the vase, at the hand cont
  assert.equal(state('bed').growth, 3, 'the bed is flowering'); assert.equal(state('basket').fruit, 3, 'three tomatoes in the basket');
  assert.ok(p1.contact !== null && p1.changed !== null && p1.changed >= p1.contact, `the bed changed at the contact (contact ${p1.contact}, changed ${p1.changed})`);
  assert.equal(ent('basket').support?.by, ana.entityId); assert.equal(ent('basket').support?.hand, 'right');
- assert.match(report.summaries['Ana: pick the tomatoes'] ?? '', /Picked 3 tomatoes from bed into .*basket/);
+ assert.match(report.summaries['Ana: pick the tomatoes'] ?? '', /Picks 3 tomatoes from bed into .*basket at the hand's touch/);
+ assert.equal(state('private-bed').growth, 4, 'the private bed, though fruiting, was not picked');
  assert.deepEqual(bridge.harvest.facts(id('basket')), {fruit: 3});
- const fullHere = await here(ana), row = fullHere.objects?.find(o => o.id === id('basket'));
- report.hereBytes.nearbyWithTomatoes = size(fullHere); report.basketRow = row ?? null;
- refused(ana, basketPick, 'harvest.not-ripe', /Nothing in bed is ready .*: it is flowering/);
+ const fullHere = await here(ana), row = fullHere.objects?.find(o => o.id === id('basket')), bedRow = fullHere.objects?.find(o => o.id === id('bed'));
+ report.hereBytes.nearbyWithTomatoes = size(fullHere); report.basketRow = row ?? null; report.bedRow = bedRow ?? null;
+ assert.deepEqual(row?.state, {fruit: 3}, 'nearby, the basket says fruit: 3');
+ assert.equal(bedRow?.state?.stage, 'flowering', 'nearby, the bed says flowering');
+ // the only fruiting bed left is someone else's and private: it is named, never picked
+ refused(ana, basketPick, 'object.private', /private-bed is not yours and private/);
+ refused(ana, `object:${id('full-basket')}:harvest`, 'harvest.vessel-full', /already holds 6 tomatoes and has no room for more/);
  refused(ben, basketPick, 'harvest.vessel-held', /Someone else is holding/);
  report.checks.push('pick: the bed fruiting -> flowering and the basket 0 -> 3 at the hand contact, not before; then refused: nothing ripe; Ben: in someone else\'s hand');
 
@@ -120,7 +127,9 @@ test('harvest: tomatoes into the basket, flowers into the vase, at the hand cont
  assert.equal(state('bed').growth, 2, 'the bed is leafy'); assert.equal(state('vase').flowers, 3, 'a bunch in the vase');
  assert.ok(p2.contact !== null && p2.changed >= p2.contact, 'at the contact');
  assert.equal(state('bed-two').growth, 2, 'the other bed is untouched');
- refused(ana, vasePick, 'harvest.vessel-full', /full \(3 flowers\)/);
+ refused(ana, vasePick, 'harvest.vessel-full', /already holds 3 flowers and has no room for more/);
+ const vaseRow = (await here(ana)).objects?.find(o => o.id === id('vase')); report.vaseRow = vaseRow ?? null;
+ assert.deepEqual(vaseRow?.state, {flowers: 3}, 'nearby, the vase says flowers: 3');
  await done(ana, 'put the vase on the table');
  assert.equal(ent('vase').support?.on, id('garden-table')); assert.equal(state('vase').flowers, 3);
  report.checks.push('flowers: the vase from the table, the bed flowering -> leafy and the vase 0 -> 3 at the contact; full refused; set back on the table with its flowers');
@@ -128,9 +137,6 @@ test('harvest: tomatoes into the basket, flowers into the vase, at the hand cont
  // ---- hands full: Ben holds the vase; the basket (room for 3 more) is refused to him ----
  await done(ben, 'pick up the vase');
  refused(ben, basketPick, 'harvest.hands-full', /You are holding .*vase; put it down first/);
- // more words resolve to the same offers
- const vocab = (s, w) => { as(s); return edge.resolve ? edge.resolve(s, w) : null; };
- void vocab;
 
  // ---- persistence ----
  const restored = WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())), undefined, god.model.library);
@@ -138,6 +144,6 @@ test('harvest: tomatoes into the basket, flowers into the vase, at the hand cont
  report.checks.push('persistence: a restored snapshot keeps the basket\'s tomatoes, the vase\'s flowers and the bed\'s stage');
  assert.deepEqual(f.host.engine.runtime.violations, []);
  report.status = 'pass'; report.retries = retries; report.logs = logs.slice(0, 20);
- if (out) { mkdirSync(out, {recursive: true}); writeFileSync(`${out}/summary.json`, JSON.stringify(report, null, 2)); }
+ if (out) { mkdirSync(out, {recursive: true}); writeFileSync(`${out}/harvest.json`, JSON.stringify(report, null, 2)); }
  console.log(JSON.stringify(report));
 });

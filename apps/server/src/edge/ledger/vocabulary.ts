@@ -302,10 +302,12 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
 // nearest offered basket; "pick flowers for the vase" (pick some flowers, pick the flowers) that of the nearest offered vase.
 // The vessel's offer names what it picks ("Pick the ripe tomatoes into the basket", "Pick flowers for the vase"); an
 // available one first. Only while such an offer exists; other words, and "pick up", resolve as before.
-const HARVEST_WORDS = /^(?:please\s+)?(?:(?:go\s+and\s+|go\s+)?(?:pick|harvest|gather|collect|cut))\s+(?:(?:the|some|a\s+few|a\s+bunch\s+of|a\s+handful\s+of|my|our)\s+)?(?:ripe\s+)?(tomatoes|tomato|fruit|flowers|flower|blooms|cosmos)(?:\s+(?:in|into|for|to\s+put\s+in)\s+(?:the|a|my)\s+(?:basket|vase))?(?:\s+from\s+(?:the\s+)?[a-z][\w -]*)?$/;
+const HARVEST_WORDS = /^(?:please\s+)?(?:(?:go\s+and\s+|go\s+)?(?:pick|harvest|gather|collect|cut))\s+(?:(?:the|some|a\s+few|a\s+bunch\s+of|a\s+handful\s+of|my|our)\s+)?(?:ripe\s+)?(tomatoes|tomato|fruit|flowers|flower|blooms|cosmos)(?:\s+(?:in|into|for|to\s+put\s+in)\s+(?:the|a|my)\s+(basket|vase))?(?:\s+from\s+(?:the\s+)?(?!basket\b|vase\b)[a-z][\w-]*(?:\s+(?!and\b|then\b|basket\b|vase\b)[a-z][\w-]*)?)?$/;
 function harvestWords(input: string, ctx: VocabContext): VocabResult | null {
   const m = HARVEST_WORDS.exec(input.toLowerCase().replace(/[.!?\s]+$/, '').trim()); if (!m) return null;
-  const word = /^(?:tomato|fruit)/.test(m[1]) ? /\btomato/i : /\bflowers?\b/i;
+  const fruit = /^(?:tomato|fruit)/.test(m[1]), word = fruit ? /\btomato/i : /\bflowers?\b/i;
+  // "pick tomatoes for the vase" or "flowers into the basket" names a vessel that does not pick them: not these words
+  if (m[2] && (m[2] === 'basket') !== fruit) return null;
   const caps = ctx.caps.filter(c => c.verb === 'object' && c.action === 'harvest' && word.test(c.label.replace(/\s*\(.*\)$/, ''))); if (!caps.length) return null;
   const cap = [...caps].sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id))[0]!;
   return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`};

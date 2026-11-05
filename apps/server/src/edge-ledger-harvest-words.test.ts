@@ -33,4 +33,9 @@ test('#438 "pick up" and worlds without a vessel resolve as before', () => {
   assert.notEqual(to('pick the flowers', basket()), 'object:e_basket:harvest', 'a basket does not pick flowers');
   assert.notEqual(to('pick the tomatoes', vase), 'object:e_vase:harvest', 'a vase does not pick tomatoes');
   assert.equal(to('pick the tomatoes', []), 'unknown');
+  // review: a second clause is never swallowed, flowers are not taken out of the vase, and a vessel that does not pick them
+  assert.notEqual(to('pick the tomatoes from the bed and put the basket on the counter', caps), 'object:e_basket:harvest');
+  assert.equal(to('pick the tomatoes from the bed, then put the basket on the counter', caps), 'object:e_basket:harvest', 'the first part now');
+  for (const w of ['collect the flowers from the vase', 'cut the flowers from the vase', 'pick tomatoes for the vase', 'pick flowers into the basket']) assert.ok(!/:harvest$/.test(to(w, caps)), w);
+  assert.equal(to('pick the tomatoes from the garden bed', caps), 'object:e_basket:harvest');
 });
