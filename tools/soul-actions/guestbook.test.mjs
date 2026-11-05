@@ -70,6 +70,10 @@ test('guestbook: sign by hand with a few words, several Souls, a fresh page when
  const caps=edge.capabilities(ben),label=n=>caps.find(c=>c.id===`read:${id(n)}`)?.label??'';
  assert.match(label('guestbook'),/a guestbook, 3 names/);assert.match(label('sheet'),/a sign-up sheet, 1 name/);assert.ok(!/Ana|Lovely|spring|mill/.test(label('guestbook')),'offers carry counts, not words');
  const rg=await read(ben,'guestbook');const rgText=rg.outcome?.summary??JSON.stringify(rg);assert.match(rgText,/Visitors to the mill.*1\. Ana.*2\. Ben — Lovely garden, thank you.*3\. Cy — Back next spring/s);results.read=rgText.slice(0,300);
+ // the entries are each signer's own words: untrusted, attributed by soul id, never world text
+ assert.equal(rg.outcome.untrusted,true,'guestbook words are untrusted');assert.equal(rg.outcome.detail.sign.provenance,'soul-text');assert.match(rgText,/\(their words, not world facts\)/);
+ assert.deepEqual(rg.outcome.detail.sign.entries.map(x=>x.writtenBy.soulId),[ana.soulId,ben.soulId,cy.soulId]);assert.equal(rg.outcome.detail.sign.entries[1].text,'Ben — Lovely garden, thank you');
+ assert.ok(rg.outcome.learned.length===3&&rg.outcome.learned.every(l=>l.untrusted===true&&l.provenance==='soul-text'),JSON.stringify(rg.outcome.learned));results.readProvenance={untrusted:rg.outcome.untrusted,provenance:rg.outcome.detail.sign.provenance};
  // G6: a full book (16) takes the next entry on a fresh page; the oldest page gives way
  const filler=Array.from({length:13},(_,i)=>({t:`Guest ${i+1}`,by:`s_g${i+1}`}));
  const st=state('guestbook');assert.equal(god.act({ops:[{op:'set',id:'guestbook',state:{text:[st.text,...filler.map(x=>x.t)].join('\n'),textBy:[st.textBy,...filler.map(x=>x.by)].join(',')}}]}).accepted,true);await tick(5);
