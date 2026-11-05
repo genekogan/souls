@@ -115,7 +115,8 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
     : settledReason ? heldLabel(settledReason)
     : state!.presentation === 'history' ? 'Recorded' : 'Live';
   const statusClass = arriving || state?.loading ? 'loading' : !lost && !settledReason && current && connected ? 'ok' : 'warn';
-  const kind = state?.cameraMode === 'follow' ? 'follow' : state?.cameraMode === 'manual' ? 'yours' : 'broadcast';
+  // #892: a glide to a Soul (flyToSoul) is Follow on its way, not your camera (no "Free" flash between two Souls)
+  const kind = state?.cameraMode === 'follow' || state?.flyingTo ? 'follow' : state?.cameraMode === 'manual' ? 'yours' : 'broadcast';
   // Touch gestures on phones/tablets, read when the help is shown (the window may have been resized since).
   const touch = navigationOpen && (() => { try { return matchMedia('(pointer: coarse)').matches || matchMedia('(max-width: 700px)').matches; } catch { return false; } })();
   const close = () => { onNavigationChange(false); setCameraNote(''); document.querySelector<HTMLElement>('.camera-menu .navbar-menu-trigger')?.focus(); };
