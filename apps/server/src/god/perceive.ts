@@ -12,7 +12,7 @@
 // The object id is the entity id. Objects follow the entity world: re-derived on each god edit, removed with the thing.
 // No edge file changes: the kind registers on the ledger's comms objects when they exist; the read capability goes in
 // through the ledger's world-profile hook (as nav.ts's `walk:<path>`).
-import { containerInside, gameStatus, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { checkersStatus, containerInside, gameStatus, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
 import { paintingLine } from '../art/art.ts';
 import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
@@ -33,6 +33,8 @@ type Plans = Map<string, { label: string; steps: { verb: string; params: Record<
 type Want = { name: string; kind: string; description: string; params: BuiltState & { paintingWhat?: true } };
 /** Entry 27: a game board's read offer names only its state, never the grid or the players. */
 function gameLabel(state: Record<string, unknown>): string { const st = gameStatus(String(state.text ?? '')); return st.moves === 0 ? 'a game of noughts and crosses, not started' : st.winner ? `a game of noughts and crosses, won by ${st.winner}` : st.draw ? 'a game of noughts and crosses, a draw' : `a game of noughts and crosses, ${st.turn} to play`; }
+/** #439 W093: a checkers board's read offer names only its state, never the board or the players. */
+function checkersLabel(state: Record<string, unknown>): string { const st = checkersStatus(state.text); return st.fresh ? 'a game of checkers, not started' : st.winner ? `a game of checkers, won by ${st.winner}` : `a game of checkers, ${st.turn} to play`; }
 type SignRow = { id: string; at: Vec2; front: Vec2; name: string; text: string; writable?: boolean; pinboard?: boolean; list?: 'signup' | 'poll' | 'posters' | 'wanted'; votes?: number; game?: string; state?: Record<string, unknown> };
 /** x0, z0, x1, z1 */
 type Box = [number, number, number, number];
@@ -259,7 +261,7 @@ export class GodPerceive {
     const w: Want = { name, kind: this.kindFor(text !== null && !def.tags.includes('hand-writable') ? 'sign' : kind, def), description: clip(def.description || kind, 400), params: { what, ...(painting ? { paintingWhat: true as const } : {}), text: text ?? '', near, at: [Math.round(at[0] * 100) / 100, Math.round(at[1] * 100) / 100], def: def.ref, ...(acts ? { state: actuatedState(e, def), front } : {}) } };
     if (text === null) return { w };
     // read from in front of its face (entity frame: the front is +z, turned by the yaw)
-    const d = 1.4; return { w, sign: { id: e.id, at, front: [at[0] + Math.sin(wp0.yaw) * d, at[1] + Math.cos(wp0.yaw) * d], name, text, ...(def.tags.includes('hand-writable') ? { writable: true } : {}), ...(def.tags.includes('pinboard') ? { pinboard: true } : {}), ...(def.tags.includes('posters') ? { list: 'posters' as const, state: e.state ?? {} } : def.tags.includes('wanted') ? { list: 'wanted' as const, state: e.state ?? {} } : def.tags.includes('signup') ? { list: 'signup' as const } : def.tags.includes('poll') ? { list: 'poll' as const, votes: typeof e.state?.textBy === 'string' && e.state.textBy ? e.state.textBy.split(',').length : 0 } : {}), ...(def.tags.includes('tictactoe') ? { game: gameLabel(e.state ?? {}) } : {}) } };
+    const d = 1.4; return { w, sign: { id: e.id, at, front: [at[0] + Math.sin(wp0.yaw) * d, at[1] + Math.cos(wp0.yaw) * d], name, text, ...(def.tags.includes('hand-writable') ? { writable: true } : {}), ...(def.tags.includes('pinboard') ? { pinboard: true } : {}), ...(def.tags.includes('posters') ? { list: 'posters' as const, state: e.state ?? {} } : def.tags.includes('wanted') ? { list: 'wanted' as const, state: e.state ?? {} } : def.tags.includes('signup') ? { list: 'signup' as const } : def.tags.includes('poll') ? { list: 'poll' as const, votes: typeof e.state?.textBy === 'string' && e.state.textBy ? e.state.textBy.split(',').length : 0 } : {}), ...(def.tags.includes('tictactoe') ? { game: gameLabel(e.state ?? {}) } : def.tags.includes('checkers') ? { game: checkersLabel(e.state ?? {}) } : {}) } };
   }
   private at(e: Entity, def: StoredDef): Vec2 | null {
     const sh = e.shape as { area?: Vec2[]; path?: Vec2[] } | undefined;

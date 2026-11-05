@@ -298,6 +298,15 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
   }
   return null;
 }
+// #439 W093: a checkers move named by its two squares ("move c3 to d4", "jump from c3 to e5", "c3 to d4", "c3-d4") is the
+// nearest offered checkers board's move with those squares. Only while a checkers move is offered; the board's rules judge it.
+const CHECKERS_MOVE = /^(?:(?:please\s+)?(?:move|jump|play|take|capture|go)\s+)?(?:(?:the|my)\s+(?:piece|man|king|checker)\s+)?(?:(?:on|at|from)\s+)?([a-h][1-8])\s*(?:-|x|to|onto|over\s+to|and\s+jump\s+to|jumping\s+to|\s)\s*([a-h][1-8])(?:\s+on\s+the\s+(?:checkers\s+|game\s+)?board)?$/;
+function checkersWords(input: string, ctx: VocabContext): VocabResult | null {
+  const caps = ctx.caps.filter(c => c.verb === 'object' && c.action === 'move' && /checkers/i.test(c.label)); if (!caps.length) return null;
+  const m = CHECKERS_MOVE.exec(input.toLowerCase().replace(/[.!?\s]+$/, '').trim()); if (!m) return null;
+  const cap = [...caps].sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id))[0]!;
+  return {kind: 'alias', cap, params: {from: m[1], to: m[2]}, note: `${input} is ${cap.id} (${cap.label}: ${m[1]} to ${m[2]}).`};
+}
 // Soul Actions entry 42: "put the bowl in the drawer" is put-in:<container>; "take the bowl out of the chest" is that
 // bowl's take from inside it. A shut container's contents are never offered: its words name its open offer instead.
 const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip)\s+(?:away\s+)?(.+?)\s+(?:in|into|inside|in\s+to|away\s+in)\s+(.+?)[.!]?$/;
@@ -319,6 +328,7 @@ function storeWords(input: string, text: string, ctx: VocabContext): VocabResult
 function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const exact = ctx.caps.find(c => c.id === input); if (exact) return {kind: 'exact', cap: exact};
   const steered = steerWords(input, ctx); if (steered) return steered;
+  const checkers = checkersWords(input, ctx); if (checkers) return checkers;
   // CN5 (acceptance): "A, then B" is two things. Walks and strolls chain (the earlier ones become `via` legs of the last);
   // anything else does the first and says to act again for the rest (never a mix-up of the two).
   // r3 quality case 35: "pick up a book and give it to X" is two steps too (the give is offered only once holding it).
