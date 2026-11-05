@@ -44,7 +44,9 @@ refusals and nearby fact (`coffee: 0.4`) say coffee. It starts with a spoonful o
 has its bag; a rinsed mug has none, so it can't make coffee again. Words that name a drink take only a mug whose offer
 names it, nearest first: "make a cup of tea" leaves a nearer coffee mug alone. Words that name neither ("drink it",
 "wash the mug") take the nearest mug of either kind. "pour the tea" from a kettle fills the nearest empty mug, which may
-be a coffee mug, and then says coffee.
+be a coffee mug, and then says coffee. "pick up the coffee mug" takes the god-built mug even beside a tea room
+that hands out prop cups: words that name a world thing more closely than its kind (its exact name, or more than one
+word) come before a prop source, while "pick up a cup" in a café still takes the café's cup.
 
 ## What other Souls perceive
 

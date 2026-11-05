@@ -1212,11 +1212,16 @@ export class Together {
         if (held) return {code: 'hands.full', reason: `You are holding ${held.name}; put it down or give it away first.`, did_you_mean: caps.filter(c => c.id === 'put-down:here' || c.verb === 'give').slice(0, 4).map(c => ({id: c.id, label: c.label}))};
         const lying = caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && this.item(c.target.id)?.kind === kind)[0];
         // entry 43: a world thing of that word lying near (a god-built mug): the one called exactly that first, then one whose
-        // name has the word, nearest first (labels end "(N m)"). #437: it comes before a prop source of the kind, so "pick up
-        // the coffee mug" by a tea room takes the god-built coffee-mug, not a prop cup of tea; a lying prop still comes first
-        const named = !lying ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
-          const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(); return {c, rank: n === w ? 0 : new RegExp(`(^|[^a-z])${w.replace(/[^a-z ]/g, '')}([^a-z]|$)`).test(n) ? 1 : 9, d};}).filter(x => x.rank < 9).sort((a, b) => a.rank - b.rank || a.d - b.d)[0]?.c : undefined;
-        const c = lying ?? (named ? undefined : caps.find(c => c.id === 'pick-up:' + kind));
+        // name has the words, nearest first (labels end "(N m)"); a space in the words matches a name's hyphen or underscore.
+        // #437: it comes before a prop source of the kind only when it is on offer and the words name it more closely than
+        // the kind does (its exact name, or more than one word: "the coffee mug" by a tea room is the god-built coffee-mug,
+        // while "a cup" in a café is still the café's cup, not a furnished cafe-cup-1); a lying prop still comes first
+        const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(), wre = w.replace(/[^a-z ]/g, '').trim().split(/\s+/).join('[^a-z]+');
+        const match = !lying ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
+          return {c, rank: n === w || n.replace(/[-_]+/g, ' ') === w ? 0 : wre && new RegExp(`(^|[^a-z])${wre}([^a-z]|$)`).test(n) ? 1 : 9, d};}).filter(x => x.rank < 9).sort((a, b) => a.rank - b.rank || a.d - b.d)[0] : undefined;
+        const source = caps.find(c => c.id === 'pick-up:' + kind);
+        const named = match && (!source || (match.c.available && (match.rank === 0 || /\s/.test(w)))) ? match.c : undefined;
+        const c = lying ?? (named ? undefined : source);
         if (!c && named) return {capability: named.id, note: `${raw} is ${named.id} (${named.label})`};
         if (!c) {
           const me = this.posOf(soul.soulId), far = me ? this.sources().filter(s => s.kind === kind && s.place).map(s => ({s, d: Math.hypot(s.at[0] - me[0], s.at[1] - me[1])})).sort((a, b) => a.d - b.d) : [];
