@@ -4,13 +4,17 @@
 // heard only by a fixture occupant. A browse walk is `free: 'goal/1'` (engine freeGoalV1): when it begins with another
 // body on its goal it ends at a free standing point within 1.5 m in the shelf's own room whose route keeps clear of every
 // body near the goal, or it is skipped and the reader browses where it stands. Either way no bystander is moved.
-// Deterministic: the reader is put at a fixed point before it asks to read (its 'go' arrival varies with load).
+// Deterministic: the reader is put at a fixed point before it asks to read (its 'go' arrival varies with load). A put
+// lands "about" its point: relocateHumanV1 refuses a busy body and moves off a point within 0.8 m of another body, so
+// every Soul first settles (no programme, no live action) and each put must land exactly (#653). The read takes the
+// reading spot nearest the reader; the third case starts west of the midpoint between the two tables' south seats
+// (2.61 m from each at x = 74), so it reads by the west shelf by distance, not by an id tie-break.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {coreAWorld} from '../test/core-a-fixture.ts';
 
 type V2 = [number, number];
-for (const [label, startX] of [['a bystander on the west shelf point', 74], ['a bystander on the east shelf point', 76.5], ['every free point near the reader blocked: the free point lies beyond the bystanders', 74]] as const)
+for (const [label, startX] of [['a bystander on the west shelf point', 74], ['a bystander on the east shelf point', 76.5], ['every free point near the reader blocked: the free point lies beyond the bystanders', 73.9]] as const)
   test(`a read's return browse never moves a Soul standing idle near the shelf (${label}); the reader ends clear, in the shelf's room`, {timeout: 600000}, async t => {
     const w = await coreAWorld(4), [a, b, c, d] = w.souls; t.after(w.close);
     const place = 'eden-library-1', beyond = label.startsWith('every');
@@ -21,9 +25,15 @@ for (const [label, startX] of [['a bystander on the west shelf point', 74], ['a 
       assert.equal(w.receipt(s, go.body.receipt.id).phase, 'completed', 'initial library walk completes');
     }
     // fixed starting points: the reader in the reading room, the others out of its way until placed
-    await w.put(a, [72, -10]); await w.put(c, [76, -10]); await w.put(d, [74, -10]); await w.ticks(20);
+    const E = w.engine as unknown as {programOf(actor: string): string | null; runtime: {records: Map<string, {status: string; params?: {actor?: string}}>}};
+    const busy = (s: typeof a) => E.programOf(s.entityId) !== null || [...E.runtime.records.values()].some(r => r.params?.actor === s.entityId && !['completed', 'failed', 'cancelled'].includes(r.status));
+    await w.ticks(2400, () => ![a, b, c, d].some(busy));
+    assert.deepEqual([a, b, c, d].filter(busy).map(s => s.name), [], 'every Soul has settled after its library walk');
+    const placed = async (s: typeof a, at: V2) => {await w.put(s, at); await w.ticks(20); assert.ok(Math.hypot(w.pos(s)[0] - at[0], w.pos(s)[1] - at[1]) < 0.05, `${s.name} lands where placed: ${w.pos(s)} vs ${at}`);};
+    await placed(a, [72, -10]); await placed(c, [76, -10]); await placed(d, [74, -10]);
     await w.put(b, [startX, -6.5]); await w.ticks(40);
-    assert.ok(Math.hypot(w.pos(b)[0] - startX, w.pos(b)[1] + 6.5) < 1, `the reader starts where placed: ${w.pos(b)}`);
+    // The east case's start lies against a table, so its put lands on the nearest clear point (static geometry).
+    assert.ok(Math.hypot(w.pos(b)[0] - startX, w.pos(b)[1] + 6.5) < (label.includes('east') ? 1 : 0.05), `the reader starts where placed: ${w.pos(b)}`);
     const read = await w.http(b, 'POST', '/v1/edge/act', {verb: 'read', target: {place, seconds: 20}});
     assert.equal(read.body.accepted, true, JSON.stringify(read.body));
     const engine = w.engine as unknown as {programs: Map<string, {steps: {verb: string; params: Record<string, unknown>}[]}>; programOf(actor: string): string | null};
