@@ -3,11 +3,11 @@
  "holds": {
   "core-garden-fountain@1": {
    "tris": 848,
-   "why": "Soul Actions 1-44 (water): basin, column, spout and moving-water shapes are separate so the hand turns it on and the water animates (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @2 within budget (#494). Soul Actions 1-44 (water): basin, column, spout and moving-water shapes are separate so the hand turns it on and the water animates (cutover hold, 2026-11-01)"
   },
   "core-watering-can@2": {
    "tris": 788,
-   "why": "Soul Actions 1-44 (garden): body, handle, spout and rose are separate shapes so filling at the tap and watering animate (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (garden): body, handle, spout and rose are separate shapes so filling at the tap and watering animate (cutover hold, 2026-11-01)"
   },
   "core-jukebox@1": {
    "tris": 500,
