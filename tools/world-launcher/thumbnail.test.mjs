@@ -199,3 +199,24 @@ test('Clerk sign-in: the owner’s verified session sets it, another account’s
     assert.equal(r.status, 200, JSON.stringify(b)); assert.equal(b.thumbnailSource, 'owner');
   } finally { await C.close(); }
 });
+
+test('archived while an upload is being checked: nothing is written into the moved folder, and restore still works', async () => {
+  await L.close(); L = await open();
+  assert.equal((await post('/__sim/op/create-world', { name: 'Brief', template: 'plain', owner: 'dev:gene' })).status, 201);
+  let release; const held = new Promise((r) => { release = r; });
+  setUploadClassifier({ name: 'slow', classify: async () => { await held; return { action: 'allow', labels: [] }; } });
+  try {
+    const pending = put('brief', jpeg(1280, 720, { pad: 21 }), 'dev:gene');
+    await new Promise((r) => setTimeout(r, 200));
+    const r = await post('/__sim/worlds/brief/archive', { confirm: 'brief' }, { authorization: 'Bearer dev:gene' }); const a = await r.json(); assert.equal(r.status, 200, JSON.stringify(a));
+    release();
+    const late = await pending; assert.equal(late.status, 404); assert.equal((await late.json()).code, 'not-found');
+    assert.equal(existsSync(join(data, 'worlds/brief')), false, 'no stray folder');
+    assert.equal((await post('/__sim/op/restore-world', { id: a.id })).status, 200);
+    assert.equal((await row('brief')).thumbnailSource, 'template');
+  } finally { setUploadClassifier(null); }
+  // a declared body over the limit is refused before anyone is asked or anything is read
+  const big = await api('/__sim/worlds/brief/thumbnail', { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: Buffer.alloc(THUMB.maxBytes + 1, 1) });
+  assert.equal(big.status, 413); assert.equal((await big.json()).code, 'thumbnail.size');
+  assert.equal((await put('brief', jpeg(1280, 720), null)).status, 401);
+});
