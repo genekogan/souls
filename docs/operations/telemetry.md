@@ -182,14 +182,17 @@ platform spend, and their amount is `unknown` unless one is given.
 
 ### The context packet
 
-`packet` prints ten lines (or JSON, `sim-context-packet/1`):
+`packet` prints at most ten lines (or JSON, `sim-context-packet/1`):
 
 - **source:** the launcher build label and the tools commit;
 - **window and coverage**;
 - **what is active:** worlds and Souls;
 - **the top bottleneck:** firing alerts first, in rule order; otherwise the world with the worst loop and tick p99;
-- **the alert counts**;
-- **cost provenance:** billed, the estimate ranges, unknowns, rate sources and dates, and external costs;
+- **the alert counts**, from `alerts-state.json`. A state whose last evaluated row is more than 5 minutes before the
+  window's end reads as **stale**, and an unreadable one as **unreadable**. Neither counts as "0 firing": the next
+  decision is to re-evaluate;
+- **cost provenance:** billed amounts with their invoice periods (an invoice for a whole month is not prorated to a
+  24 h window), the estimate ranges, unknowns, rate sources and dates, and external costs;
 - **headroom:** host memory minimum; CPU is unknown, because it is not exported; and the capacity qualification. That is
   the #736 bench verdict when `--bench` names a capacity-qualify artifact directory. Only a qualifying `passes` reads
   as qualified, and without `--bench` it says "unqualified (no capacity verdict given)";
@@ -201,7 +204,9 @@ platform spend, and their amount is `unknown` unless one is given.
   5. review memory if the host went below 1.5 GiB;
   6. otherwise, no capacity action.
 
-The packet holds world slugs and numbers only: no Soul names, messages or user content. It involves no model, UI or
+Without `--cost` the packet holds world slugs and numbers only: no Soul names, messages or user content. With `--cost`
+it also carries the operator's real cost figures, free-text rate sources and the build label, so it is **private**:
+its first line says `PRIVATE`, and the JSON has a `private` field. Do not publish it. It involves no model, UI or
 vendor account.
 
 ## Unit costs and scenarios
@@ -216,8 +221,9 @@ node tools/world-launcher/telemetry.mjs scenarios --cost <private>/cost.json --b
 
 `units` divides one numerator by three denominators and prints each of them:
 
-- **the numerator:** the window estimate from `cost`, over the covered part of the window. It includes every platform
-  item. Shared fixed overhead is not dropped: its share is printed. An open high end stays open.
+- **the numerator:** the window estimate from `cost`, over the covered part of the window, divided unrounded. It
+  includes every platform item. Shared fixed overhead is not dropped: its share is printed. An open high end stays
+  open. Its `provenance` names the window, the billing period and each item's rate source and source date.
 - **per world-hour:** running world-hours (status share × covered time).
 - **per active-Soul-hour:** for each world, mean `sim_world_active_souls` × that world's covered hours. Souls are not
   humans.
@@ -227,18 +233,22 @@ node tools/world-launcher/telemetry.mjs scenarios --cost <private>/cost.json --b
 A denominator that is not exported is unknown, with the reason. One that is zero has no unit cost. Fixed rent does not
 fall when activity does, so a lower unit cost at higher activity is not an invoice saving.
 
-`scenarios` projects resources and a monthly platform total for each world count:
+`scenarios` projects resources and a platform total per cost period (`perPeriod`) for each world count. The period is
+the cost file's billing period, printed with its length in days. Amounts are not normalised to a month:
 
 - **The per-world footprint** is measured. It comes from the capacity-qualify artifact's runs (`*/result.json`): the
   mean over runs of the fleet's mean active and quiet CPU cores and RSS per world, with the largest single world
   alongside. RSS is each world's maximum, so the sums are upper bounds. Quiet is the cost of a world that ticks with
-  nobody acting, which is the continuous-world baseline.
+  nobody acting, which is the continuous-world baseline. A phase or field the bench did not record is unknown
+  (null), never 0.
 - **The host count** keeps 30 % headroom. It uses the optional `host: {cores, memGiB}` on the fixed compute item of
   the cost file. Each host's usable share is 70 % of its shape, less one launcher. Without a host shape, hosts and
   compute cost are unknown.
-- **The monthly total** is hosts × the compute amount, plus the other platform items unchanged. Metered items are
+- **The per-period total** is hosts × the compute amount, plus the other platform items unchanged. Metered items are
   listed as not scaled, because nothing ties their usage to the number of worlds. Owner-paid items stay external.
-- **Every row carries the bench verdict.** Only a qualifying `passes` lifts the "unqualified" label. A scenario is a
+- **Every row carries the bench verdict.** Only a qualifying `passes` lifts the "unqualified" label, and only for rows
+  at or below the number of worlds the bench measured (`worldsMeasured`). A larger row is marked `extrapolated`
+  ("per-world footprint measured at N worlds") and stays unqualified. A scenario is a
   cost projection, not a capacity. More hosts pack independent worlds, but they do not fix a world whose main thread
   is the bottleneck. The #736 verdict on run 41915686991 is exactly that case.
 

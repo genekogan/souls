@@ -86,17 +86,43 @@ test('scenarios: measured footprint, 30 % headroom, hosts from the host shape, v
   assert.deepEqual(ten.active, { cores: 5.5, memGiB: 9.766, withHeadroom: { cores: 7.857, memGiB: 13.951 } });
   // usable per host: 8 × 0.7 − 0.04 = 5.56 cores, 16 × 0.7 − 0.125 = 11.075 GiB → memory binds: ceil(9.766 / 11.075) = 1
   assert.equal(ten.hosts, 1); assert.equal(fifty.hosts, 5, 'ceil(48.83 / 11.075)');
-  assert.deepEqual(fifty.monthly, { compute: 1500, low: 1510, high: 1510 });
+  assert.deepEqual(fifty.perPeriod, { compute: 1500, low: 1510, high: 1510 }); assert.equal(s.period.days, 30); assert.match(s.amounts, /per cost period/); assert.equal(fifty.monthly, undefined, 'never labelled monthly');
   assert.equal(ten.souls, 50); assert.equal(ten.qualified, false);
   assert.match(s.label, /^unqualified: the bench verdict is inconclusive \(run 123\)/); assert.match(s.label, /serialized hot world/);
   assert.deepEqual(s.notScaled, ['backups: not scaled (no per-world usage driver)']); assert.deepEqual(s.external, ['edge']);
   assert.match(scenariosText(s), /unqualified/);
   // no host shape: hosts and cost unknown, never 0; only a qualifying `passes` lifts the label
   const c = base(); delete c.items[0].host; const u = scenarios(parseCost(c), z, [10]);
-  assert.equal(u.rows[0].hosts, null); assert.deepEqual(u.rows[0].monthly, { compute: null, low: null, high: null }); assert.match(u.host, /^unknown/);
-  assert.equal(scenarios(parseCost(base()), sizingFromBench(bench(t, 'passes', true)), [10]).rows[0].qualified, true);
+  assert.equal(u.rows[0].hosts, null); assert.deepEqual(u.rows[0].perPeriod, { compute: null, low: null, high: null }); assert.match(u.host, /^unknown/);
+  // a passing verdict qualifies only rows at or below the 2 worlds the bench measured; a larger row is an extrapolation
+  const pass = scenarios(parseCost(base()), sizingFromBench(bench(t, 'passes', true)), [2, 10, 400]);
+  assert.deepEqual(pass.rows.map((r) => r.qualified), [true, false, false]); assert.equal(pass.sizing.worldsMeasured, 2);
+  assert.equal(pass.rows[2].extrapolated, 'per-world footprint measured at 2 worlds'); assert.match(pass.label, /for rows up to the 2 worlds it measured/);
+  assert.match(scenariosText(pass), /^ {3}400 .*extrapolated/m);
   assert.equal(scenarios(parseCost(base()), sizingFromBench(bench(t, 'passes', false)), [10]).rows[0].qualified, false, 'passes on a non-qualifying run stays unqualified');
-  const open = base(); open.items[1].rate = null; assert.equal(scenarios(parseCost(open), z, [10]).rows[0].monthly.high, null);
+  const open = base(); open.items[1].rate = null; assert.equal(scenarios(parseCost(open), z, [10]).rows[0].perPeriod.high, null);
+});
+
+test('scenarios: a phase the bench did not record is unknown (null), never 0 or -Infinity', (t) => {
+  const dir = tmp(t);
+  writeFileSync(join(dir, 'summary.json'), JSON.stringify({ verdict: { verdict: 'inconclusive', qualifies: false } }));
+  mkdirSync(join(dir, 'even-r1')); writeFileSync(join(dir, 'even-r1', 'result.json'), JSON.stringify({ resources: { active: { worlds: { w0: { cpuCores: 0.5 }, w1: { cpuCores: 0.3 } } } } }));
+  const z = sizingFromBench(dir);
+  assert.deepEqual(z.perWorld.quietCores, { mean: null, max: null }, 'no quiet phase'); assert.deepEqual(z.perWorld.activeRssMb, { mean: null, max: null }, 'no rssMbMax field');
+  assert.deepEqual(z.perWorld.activeCores, { mean: 0.4, max: 0.5 });
+  const [row] = scenarios(parseCost(base()), z, [10]).rows;
+  assert.deepEqual(row.quiet, { cores: null, memGiB: null, withHeadroom: { cores: null, memGiB: null } });
+  assert.equal(row.active.cores, 4); assert.equal(row.active.memGiB, null); assert.equal(row.hosts, null, 'no memory footprint: hosts unknown');
+  assert.doesNotMatch(scenariosText(scenarios(parseCost(base()), z, [10])), /Infinity|NaN/);
+});
+
+test('unit costs: the numerator carries its provenance and divides the unrounded estimate', () => {
+  const r = costReport(parseCost(base()), { from: NOV, to: NOV + 7 * 60 * 1000, coveredHours: 7 / 60, busyHours: 7 / 60, worldHours: { a: 7 / 60 } });
+  const u = unitCosts(r, { worldHours: { a: 7 / 60 } });
+  assert.equal(r.estimated.window.low, 0.05, 'rounded for display'); assert.equal(JSON.stringify(r.estimated.window), '{"low":0.05,"high":0.05}', 'raw stays out of the JSON');
+  assert.equal(u.perWorldHour.low, 0.4306, '(300 + 10) / 720 h, not 0.05 / (7/60)');
+  assert.deepEqual(u.numerator.provenance.window, r.window); assert.deepEqual(u.numerator.provenance.billingPeriod, r.billingPeriod);
+  assert.deepEqual(u.numerator.provenance.rateSources, [{ id: 'host', source: 'invoice', sourceDate: '2026-11-01' }, { id: 'backups', source: 'price list', sourceDate: '2026-10-15' }]);
 });
 
 test('cost file: a host shape must be positive and only on a fixed compute item', () => {

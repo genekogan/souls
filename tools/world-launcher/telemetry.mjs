@@ -111,9 +111,10 @@ async function main() {
     if (cmd === 'cost' && !opt('cost')) throw new Error('--cost <private cost file> is required');
     const cost = opt('cost') ? costFor(r, opt('cost'), s.o.everyMs) : null;
     if (cmd === 'cost') { process.stdout.write(JSON.stringify(cost, null, 1) + '\n'); return; }
-    let open = null; try { open = openAlerts(JSON.parse(readFileSync(join(dir, 'alerts-state.json'), 'utf8'))); } catch { /* alerts never evaluated here */ }
+    let open = null, alertsThrough = null, alertsUnreadable = false; const af = join(dir, 'alerts-state.json');
+    if (existsSync(af)) { try { const st = JSON.parse(readFileSync(af, 'utf8')); open = openAlerts(st); alertsThrough = st.lastT ?? null; } catch { alertsUnreadable = true; } }   // absent: alerts never evaluated here
     const b = opt('bench') ? sizingFromBench(opt('bench')) : null, capacity = b ? { verdict: b.verdict, qualifies: b.qualifies, run: b.source.run } : null;
-    const p = packet({ r, open, cost, capacity, build: { launcher: launcherBuild(dir, Date.parse(r.range.from), Date.parse(r.range.to)), tools: toolsCommit() } });
+    const p = packet({ r, open, alertsThrough, alertsUnreadable, cost, capacity, build: { launcher: launcherBuild(dir, Date.parse(r.range.from), Date.parse(r.range.to)), tools: toolsCommit() } });
     process.stdout.write(flag('json') ? JSON.stringify(p, null, 1) + '\n' : packetText(p)); return;
   }
   throw new Error('usage: telemetry.mjs collect|report|close|alerts|cost|packet|units|scenarios ...');

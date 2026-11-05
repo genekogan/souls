@@ -42,7 +42,8 @@ export function parseCost(o) {
   return { currency: o.currency, period, items };
 }
 
-const strip = ({ raw, ...x }) => x;
+// the unrounded amount stays readable for unit costs (units.mjs) but out of the JSON and of equality checks
+const strip = ({ raw, ...x }) => Object.defineProperty(x, 'raw', { value: raw, enumerable: false });
 const overlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
 const iso = (t) => new Date(t).toISOString();
 
