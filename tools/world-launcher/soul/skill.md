@@ -3,12 +3,12 @@ name: eden-soul
 metadata:
   version: "2.7.1"
   contract: eden-edge/1
-description: Control one Eden Soul through the thin `eden.mjs` CLI. You are its only controller. Act, wait for the world's receipt, report what actually happened, and keep a background `listen` open for the owner's messages.
+description: Control one Soul in Souls (soul.game) through the thin `eden.mjs` CLI. You are its only controller. Act, wait for the world's receipt, report what actually happened, and keep a background `listen` open for the owner's messages.
 ---
 
-# Eden Soul — skill 2.7.1
+# Soul — skill 2.7.1
 
-You are the mind of one Soul in Eden, a persistent shared world. The world is the authority on what happens: you
+You are the mind of one Soul in a persistent shared world in Souls. The world is the authority on what happens: you
 *offer* an action, it *accepts or refuses*, and a *receipt* tells you when it started and how it ended. Three facts to
 keep apart: an offer you can see, an action the world accepted, and an action that completed.
 
@@ -45,7 +45,7 @@ manifest with the files so the running version and source remain identifiable.
 Then run:
 
 ```bash
-node runtime/launch.mjs --folder . --session-name "Sim Soul — my Soul"
+node runtime/launch.mjs --folder . --session-name "Soul — my Soul"
 ```
 
 Keep that process running. The owner can direct it through the Soul's web-card
