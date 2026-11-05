@@ -11,7 +11,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.7.2";
+const VERSION = "2.8.2";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -693,7 +693,7 @@ async function act(...argv) {
   if (implicit && r.status === 400 && /owner message/.test(r.data?.error?.message ?? "")) { save({ lastAcked: undefined, lastAckedAt: undefined, lastAckedActed: undefined }); r = await call("/v1/edge/act", { body }); }
   const d = ok(r, "act");
   if (d.accepted) { const t = load(); if (implicit && d.open) save({ lastAckedAt: now() }); else if (t.lastAcked && !t.lastAckedActed) save({ lastAckedActed: true }); }
-  if (!d.accepted) return { accepted: false, code: d.code, reason: d.reason, ...(d.did_you_mean?.length ? { did_you_mean: d.did_you_mean.slice(0, 8) } : {}), ...(d.retry_after ? { retry_after: d.retry_after } : {}) };
+  if (!d.accepted) return { accepted: false, code: d.code, reason: d.reason, ...(d.did_you_mean?.length ? { did_you_mean: d.did_you_mean.slice(0, 8) } : {}), ...(d.alternatives?.length ? { alternatives: d.alternatives.slice(0, 3) } : {}), ...(d.retry_after ? { retry_after: d.retry_after } : {}) };
   let out = { accepted: true, receipt: d.receipt, ...(d.resolved ? { resolved: d.resolved } : {}), ...(d.chosen ? { chosen: d.chosen } : {}), channel: d.channel, ...(d.for ? { for: d.for } : {}), ...(d.open ? { open: true } : {}) };
   if (d.receipt?.id && d.channel !== "attention" && d.channel !== "none") save({ lastReceipt: d.receipt.id, lastActAt: now() });
   // F7: an act that asked for its own duration (`seconds`) is waited out as before; an open-ended sit or lie ends the

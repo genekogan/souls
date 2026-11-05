@@ -12,6 +12,13 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Opt-in things.** Hand contact belongs to library defs tagged for it (`hand-operated`, `hand-writable`, `hand-rung`,
   `upright-carry`, containers with an `inside`, the tea defs, and so on). Older revisions of a def keep their old,
   hand-free behaviour, so existing worlds do not change until a god places the new revision.
+- **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
+  and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
+  crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with
+  a place (`to`), never a one-hand `pick-up`. The native `carry` moves it on level-zero ground, and the viewer follows
+  it as a recorded transport. A load that needs more people than one is offered unavailable, with
+  `carry.crew-too-small` naming the crew, and acting it is refused before any motion. Shared carries come with
+  [shared execution](../design/shared-execution.md). `core-rack-beam@1` keeps its one-hand item path.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station. A word only applies when that action is on offer.
@@ -29,7 +36,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
 | Doors and openings | Open and close doors, windows, cupboard and locker doors, fridge doors, curtains, blinds and drawers; doors open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "knock on the door", "lock the door" |
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
-| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out | "carry the bench to the courtyard" (any place name), "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest" |
+| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station. Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station" |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
@@ -74,8 +81,20 @@ Fixes found in review and deferred to after the repository migration:
   or each other between turns.
 - **Rock-paper-scissors hand path.** Readying the hand can pass through the body; it needs a path clear of the torso.
 - **Holding hands.** The clasp curls the fingers back and the right hand reads as a left (thumb on the wrong side).
-- **Piano hands.** The pianist's hands sit below the keys; they should rest on and strike the keys at keyboard height
-  (also for the piano duet).
+- **Piano hands (#422).** The seated piano overlay fits the actual hand skin to the immutable `core/piano@1` white
+  and black key surfaces after a 0.8 s entry blend, with each hand lifting on the shared audible score. Key changes
+  ease toward the next pitch before its onset; entry, interruption and return use recorded activity history. The existing arm IK owns reach; roots,
+  seats, native actions and score timing stay unchanged. Active rendering adds one bounded hand-skin pass per hand
+  with one reusable projection scratch vector. Existing instrument history is indexed only for piano-relevant transitions;
+  unrelated actors have no new instrument arrays or reverse scan. Server work and perception are unchanged; overall
+  client cost equivalence is unverified.
+  The sound follows the hands: a note sounds only from the moment the entry blend has put the hands on the keys
+  (depicted activity start + 0.8 s, from the same recorded activity age the pose uses; an unknown age counts as
+  settled for both). No note after the run's recorded end sounds (the release pose freezes the score there, holding a note struck at that
+  instant, which sounds),
+  and a note silenced once is never revived. A singer accompanying the piano follows the same window. The absolute
+  score clock is not shifted. When a pianist stops before the end is known, notes scheduled ahead that have not begun
+  are cancelled, and notes already ringing decay naturally.
 - **Social facing in general.** Groups and conversations should face each other, and a Soul using an object should face
   it; today Souls often keep the heading they arrived with.
 
