@@ -1,10 +1,11 @@
 import type {Entity} from '@sim/engine-contract';
 import {admitBodyGLB,bindBodyDefinition} from './admission.ts';
 import {validateUpload,BODY_UPLOAD_POLICY} from '../../moderation/validate.ts';
+import {coreAsset} from './core-revisions.ts';
 import {ROLLING_GRIPPER} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';
 
-// Immutable authored v1. A body revision gets a new hash; saves keep their original bytes and definition.
-export const PIP_ASSET='body_0ac8dd17fab38e64b9367357232b819847bad25254252b5a47921ff1afa23b0f';
+// Immutable authored pip@1 (core-revisions.ts). A changed Pip is a new preset id (pip-2); saves keep their original bytes.
+export const PIP_ASSET=coreAsset('pip');
 export const PIP_PRESET={id:'pip',name:'Pip the rolling robot',body:{family:'humanoid',type:'humanoid',actionProfile:ROLLING_GRIPPER,model:PIP_ASSET,modelUrl:`/v1/edge/body/assets/${PIP_ASSET}.glb`,avatar:{kind:'body',modelUrl:`/v1/edge/body/assets/${PIP_ASSET}.glb`,bodyType:'humanoid'}} as Entity['body']};
 let pending:Promise<Uint8Array>|undefined;
 /** No eager Three import, upload row, per-world blob or permanent generated file. One bounded build per process. */

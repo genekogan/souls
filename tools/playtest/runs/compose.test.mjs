@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateSpec } from './spec.mjs';
-import { applySetup } from './setup.mjs';
+import { applySetup, batchEntities } from './setup.mjs';
 import { startRun, RECEIPT } from './lifecycle.mjs';
 import { REPO_ROOT } from '../../lib/paths.mjs';
 
@@ -68,14 +68,14 @@ test('world source and setup batches are resolved, hashed and declared before pl
   assert.deepEqual(bad({ batches: ['bench.json'], when: 'later' }), ['setup.unknown-field']);
 });
 
-const fakeWorld = ({ refuse = false } = {}) => {
+const fakeWorld = ({ refuse = false, ids = undefined } = {}) => {
   const seen = [];
   const fetchImpl = async (url, init = {}) => {
     const path = new URL(url).pathname; seen.push({ path, auth: init.headers?.authorization ?? null });
     const json = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
     if (path.endsWith('/v1/world/snapshot')) return json({ entities: [], defs: [], ground: {}, constants: {}, state: {}, seed: 's', seq: 1 });
     if (path.endsWith('/v1/god/mint')) return json({ ok: true, token: 'god-token-secret' });
-    if (path.endsWith('/v1/god/act')) return json(refuse ? { accepted: false, failures: [{ op: 0, code: 'overlap.solid', detail: 'bench overlaps cottage' }] } : { accepted: true, seq: 2 });
+    if (path.endsWith('/v1/god/act')) return json(refuse ? { accepted: false, failures: [{ op: 0, code: 'overlap.solid', detail: 'bench overlaps cottage' }] } : { accepted: true, seq: 2, ...(ids ? { ids } : {}) });
     return json({}, 404);
   };
   return { seen, fetchImpl };
@@ -89,6 +89,25 @@ test('applySetup mints as the dev owner, acts per batch and never records the go
   assert.equal(w.seen[1].auth, 'Bearer dev:admin');
   assert.equal(JSON.stringify(r).includes('god-token-secret'), false);
   assert.match(r.fixture.physicalAfterSetupSha256, /^[0-9a-f]{64}$/);
+});
+
+test('an accepted setup batch records the entities it created and changed, attributed to their ops (#784)', async () => {
+  // ids as the world compiler returns them: ids[tmp] = id and ids[id] = id per created root, in op order.
+  const ids = { e_40: 'e_40', $twin: 'e_41', e_41: 'e_41', e_42: 'e_42' };
+  const w = fakeWorld({ ids });
+  const ops = [{ op: 'place', def: 'core/bench@1', name: 'sr-bench', p: [0, 4] }, { op: 'clone', id: 'e_40', tmp: '$twin', count: 2 }, { op: 'move', id: 'e_7', p: [1, 1] }, { op: 'set', id: '$twin', name: 'twin' }];
+  const r = await applySetup({ base: 'http://127.0.0.1:1/w/x', setup: { batches: [{ id: 'bench', path: null, sha256: 'h', ops }] }, fetchImpl: w.fetchImpl });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.batches[0].entities, [
+    { id: 'e_40', op: 'place', opIndex: 0, name: 'sr-bench', def: 'core/bench@1' },
+    { id: 'e_41', op: 'clone', opIndex: 1, tmp: '$twin' },
+    { id: 'e_42', op: 'clone', opIndex: 1 },
+    { id: 'e_7', op: 'move', opIndex: 2 },
+  ]);
+  // Unattributable (e.g. a build-safe repair added a root): ids are kept, the op is only "created".
+  assert.deepEqual(batchEntities([{ op: 'place', def: 'core/bench@1' }], { e_1: 'e_1', e_2: 'e_2' }).map((e) => e.op), ['created', 'created']);
+  const refused = await applySetup({ base: 'http://127.0.0.1:1/w/x', setup: { batches: [{ id: 'bench', path: null, sha256: 'h', ops }] }, fetchImpl: fakeWorld({ refuse: true }).fetchImpl });
+  assert.equal('entities' in refused.batches[0], false, 'a refused batch lists no entities');
 });
 
 test('a refused setup batch fails the run at stage setup with the refusal recorded; play never starts', async () => {

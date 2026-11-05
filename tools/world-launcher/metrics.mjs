@@ -25,7 +25,8 @@ const LIVE_MAX_BYTES = 64 * 1024;
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const esc = (v) => String(v).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');
-const fmt = (v) => (Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(6))));
+// 15 significant digits: a Unix time in seconds keeps its milliseconds (6 digits rounded it to ±5000 s), small values stay short
+const fmt = (v) => (Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(15))));
 
 /** The world's live.json (LOAD-CONTRACT §4), or null when absent, too big or not JSON. Never throws. */
 export function readLive(dataDir) {
