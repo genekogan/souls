@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 library budgets, water and garden family (#494, #416): new revisions core-garden-fountain@2 and core-watering-can@3 fit the 400-triangle kit budget (estimated 392 and 342; v1 fountain 848; v2 can 788 estimated and 1272 drawn empty or 1328 full, v3 376 drawn empty and 400 full). They keep the previous revision's valve, nozzle, water surfaces, CAN_GRIP, CAN_ROSE, CAN_OPENING, slots, components, state and actions. Published revisions are immutable, so core-garden-fountain@1 and core-watering-can@2 keep their bytes, their pinned findings in soul-actions-20261101.json (hashes unchanged) and their holds, now marked superseded. A filtered K=2 sweep baked, placed and rendered every new sample with no finding, so this record pins nothing. No budgets, samples or gap checks were relaxed; the rendering-gap list is unchanged.",
+  "findings": []
+}

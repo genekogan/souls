@@ -25,14 +25,14 @@ try {
   if (!shard || +shard[1] < 1 || +shard[1] > +shard[2] || +shard[2] > 776) throw Error('--shard needs i/n, 1 <= i <= n <= 776');
   const defs = coreLibrary().all().filter((_, i) => i % +shard[2] === +shard[1] - 1).filter(d => !flag('filter', '') || d.ref.includes(flag('filter', '')));
   const gaps = new Map();
-  const render = (def, params, baked, model, scale) => {
+  const render = (def, params, baked, model, scale, state) => {
     if (def.make.kind === 'gen' && /^(landform|brush)\/1$/.test(def.make.gen)) { gaps.set(def.ref, { def: def.ref, kind: 'ground', reason: 'terrain mutation is drawn by shared ground, not standalone gallery geometry' }); return; }
     if (def.make.kind === 'none' || def.make.kind === 'parts' || def.make.kind === 'mesh') return; // semantic, prefab and async GLB: reported as qualification gaps below
     const builder = gallery.meshFor(def);
     if (!builder) throw Error(`no gallery builder for ${def.make.gen}`);
     const materials = new gallery.MaterialLib();
     // Canonical buildings retain source faces without auxiliary render-time shadow copies.
-    let obj; try { obj = builder.build({ ...(builder.gen === 'building/1' ? { canonicalContext: true } : {}), def, params, baked, model, materials, entity: { id: 'sweep', def: def.ref, in: { parent: 'world' }, p: [0, 0], seed: 7, params }, args: def.make.args ?? {}, tint: (key, fallback) => params[key] ?? def.palette?.[key] ?? fallback }); } catch (e) { if (/document is not defined|window is not defined/.test(String(e))) { gaps.set(def.ref, { def: def.ref, kind: 'browser-only', reason: String(e) }); return; } throw e; }
+    let obj; try { obj = builder.build({ ...(builder.gen === 'building/1' ? { canonicalContext: true } : {}), def, params, baked, model, materials, entity: { id: 'sweep', def: def.ref, in: { parent: 'world' }, p: [0, 0], seed: 7, params, ...(state ? { state } : {}) }, args: def.make.args ?? {}, tint: (key, fallback) => params[key] ?? def.palette?.[key] ?? fallback }); } catch (e) { if (/document is not defined|window is not defined/.test(String(e))) { gaps.set(def.ref, { def: def.ref, kind: 'browser-only', reason: String(e) }); return; } throw e; }
     if (!obj && (baked.parts?.length || def.form !== 'point')) { gaps.set(def.ref, { def: def.ref, kind: 'world-fixture', reason: 'expanded children/shared surfaces require a world gallery fixture' }); return; }
     if (!obj) throw Error('gallery returned no object');
     // Other builders keep their normal context; their owned shadow copies are auxiliary to this geometry measurement too.

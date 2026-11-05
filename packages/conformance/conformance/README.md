@@ -10,6 +10,12 @@ endpoints and K seeded joint samples. Each point gets an isolated world (with a 
 bakes and attempts placement, runs the real furnishing planner for room-bearing buildings, and builds every gallery mesh
 to check finite vertices and budgets. It needs no service or network.
 
+The gallery mesh is built stateless and again in each declared entity state (`stateVariants`): bools both ways, enum
+values, numbers at their endpoints and either side of each threshold a `when: "@field op N"` term tests. Up to 64
+assignments are measured as a full product, more one field at a time. That way geometry gated by `when: "@state"`
+(a light on, a lid open, a cup full) cannot hide an overrun. A state that exceeds a budget and is worse than the stateless
+build is reported under stage `gallery-state-budget`, with the state in its detail.
+
 ```sh
 node packages/conformance/bin/conformance.mjs --k 32 --out /tmp/conformance.json
 ```
@@ -45,6 +51,10 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `office-desk-20261028.json` | `core-office-desk@2` (no baked scenery chairs): one construction-view draw overrun |
 | `soul-actions-20261101.json` | Soul Actions 1-44 defs over a gallery triangle or draw budget, pinned to their 2026-11-01 revisions |
 | `library-budgets-music-20261105.json` | in-budget music revisions (drum kit, mic stand, jukebox @2); pins nothing |
+| `library-budgets-water-20261105.json` | in-budget water and garden revisions (garden fountain @2, watering can @3); pins nothing |
+| `library-budgets-openings-20261105.json` | in-budget curtained window @2, drawer chest @3, bell @3; pins bell@3's construction-view overruns |
+| `library-budgets-tea-20261105.json` | in-budget kettle @3 and cup @3; pins nothing |
+| `gallery-state-20261105.json` | state-only overruns found once the gallery measures every declared state (#973) |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
 Repair a range or budget in a new revision and pin what remains.

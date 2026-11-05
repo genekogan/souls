@@ -1,0 +1,231 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 #973: the gallery budget check now also builds each sample in every declared entity state (stateVariants in src/conformance.ts), because kit shapes gated by when:@state were measured only stateless. A K=2 sweep finds these state-only overruns. Each is worse than the same sample's stateless build and is reported once per sample and budget, with the worst state. They are pinned as found, not fixed: published revisions are immutable, and a repair is a new revision with its own record. All but two defs' findings are construction-view samples (condition=construction, including the random samples listed). A light is on, or a radio or fountain is playing: draws, plus a few triangle (drinking-fountain 410 and 458 > 400) and material (drinks-fridge@2, spawn-point 5 > 4) overruns. Outside the construction view, two defs overrun: core-cup@2 at full tea with a bag (1012 > 400 triangles) and core-watering-can@2 when filled (1328 > 400). In-budget successors (cup@3, watering-can@3) are pending in #494's PRs, and they measure within budget in every state. A K=32 state sweep flags the same 16 defs and no others. No stateless finding, budget, sample or rendering gap changed.",
+  "findings": [
+    {
+      "def": "core-arcade-cabinet@1",
+      "hash": "20a0e42c907636d9dfe1618d403852b65bc653896ffeaba404035e95daa5fdde",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "10 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-cup@2",
+      "hash": "ec44321d9fd67b144ba871ed384913393a3172ba5323f75a7475bcb58ee01581",
+      "stage": "gallery-state-budget",
+      "code": "triangles",
+      "detail": "1012 > 400 @{\"tea\":1,\"brewedTick\":-1,\"bag\":true}",
+      "fields": [
+        "defaults",
+        "size.scale.min",
+        "size.scale.max",
+        "random[0]",
+        "random[1]"
+      ]
+    },
+    {
+      "def": "core-drinking-fountain@1",
+      "hash": "f32b853fae1c4a82a5253426f22d0f3475706616fec0b93f77ce92cb53333a03",
+      "stage": "gallery-state-budget",
+      "code": "triangles",
+      "detail": "410 > 400 @{\"playing\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-drinking-fountain@1",
+      "hash": "f32b853fae1c4a82a5253426f22d0f3475706616fec0b93f77ce92cb53333a03",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "6 > 4 @{\"playing\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-drinking-fountain@1",
+      "hash": "f32b853fae1c4a82a5253426f22d0f3475706616fec0b93f77ce92cb53333a03",
+      "stage": "gallery-state-budget",
+      "code": "triangles",
+      "detail": "458 > 400 @{\"playing\":true}",
+      "fields": [
+        "random[0]"
+      ]
+    },
+    {
+      "def": "core-drinking-fountain@1",
+      "hash": "f32b853fae1c4a82a5253426f22d0f3475706616fec0b93f77ce92cb53333a03",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "10 > 4 @{\"playing\":true}",
+      "fields": [
+        "random[0]"
+      ]
+    },
+    {
+      "def": "core-drinks-fridge@1",
+      "hash": "d539bcb3d016b0f0fed74dae362bd44ca2b258e370a8151c73201e44ba676c48",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "11 > 4 @{\"open\":false,\"on\":true}",
+      "fields": [
+        "params.condition=construction",
+        "random[0]",
+        "random[1]"
+      ]
+    },
+    {
+      "def": "core-drinks-fridge@2",
+      "hash": "48e353e1a2ad430829de870d1f318584a04955c1fff659eea3961da5a599dfdd",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "12 > 4 @{\"open\":false,\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-drinks-fridge@2",
+      "hash": "48e353e1a2ad430829de870d1f318584a04955c1fff659eea3961da5a599dfdd",
+      "stage": "gallery-state-budget",
+      "code": "materials",
+      "detail": "5 > 4 @{\"open\":false,\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-floodlight@1",
+      "hash": "da811b822de92693ddf1241218d90217f0d6ac473b5b48b02f4e735f6e6c12d1",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "26 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-fuel-pump@1",
+      "hash": "fb9086113b0772cbbf794bbd082e0bd225e9f43c30e058b593b568971564315f",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "10 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-office-desk@1",
+      "hash": "d1639b7357bef81463874090868c25984d9d66ca13cbeece43c1711591214bdd",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "10 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction",
+        "random[0]",
+        "random[1]"
+      ]
+    },
+    {
+      "def": "core-office-desk@2",
+      "hash": "6583bddfe6454990c9611d4c9d3c267eee8cde061a1378c00ceccddbea4e9f0a",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "10 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-radio@1",
+      "hash": "f1ffcfde1e064bb8626e994797a2197b162784f5877412c2b5f63b3efabe3a15",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "6 > 4 @{\"playing\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-shower@1",
+      "hash": "a4a577e1be17caf1cbd56b7005c10e3dabcbe9fb33528c7cfb054ca971400488",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "10 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction",
+        "random[1]"
+      ]
+    },
+    {
+      "def": "core-spawn-point@1",
+      "hash": "5a3c4357d5bda0ac7d0a9f464c3ce236bef781ccd4101b7b329b41bd95541238",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "11 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-spawn-point@1",
+      "hash": "5a3c4357d5bda0ac7d0a9f464c3ce236bef781ccd4101b7b329b41bd95541238",
+      "stage": "gallery-state-budget",
+      "code": "materials",
+      "detail": "5 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-string-lights@1",
+      "hash": "5137a90ef1898cfff6b29da22c5576ce120b4c5ec2339bf47b9f4d4dd28e800e",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "16 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-string-lights@2",
+      "hash": "45055ba32bde0e87b0f93436a11529bec78e2cc42682d8d3a6a236462a7d5f9d",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "16 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-vending-machine@1",
+      "hash": "8b3d272b0ba90c9fc162c41e941f386fe3a59488115f94985da5c9bb121b3332",
+      "stage": "gallery-state-budget",
+      "code": "draws",
+      "detail": "10 > 4 @{\"on\":true}",
+      "fields": [
+        "params.condition=construction"
+      ]
+    },
+    {
+      "def": "core-watering-can@2",
+      "hash": "2426bac0db20d021348b3af6050951eb63c46f4bb504ab8a3409d75e4a8e7ada",
+      "stage": "gallery-state-budget",
+      "code": "triangles",
+      "detail": "1328 > 400 @{\"level\":1}",
+      "fields": [
+        "defaults",
+        "params.litres.min",
+        "params.litres.max",
+        "size.scale.min",
+        "size.scale.max",
+        "random[0]",
+        "random[1]"
+      ]
+    }
+  ]
+}

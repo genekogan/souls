@@ -55,9 +55,9 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
   const t0 = W().tick, ox = ax > 0 ? ax - 24 : ax + 17, oz = az > 0 ? az - 24 : az + 17, far = [], mid = [];
   const mugState = (i) => [{tea: 1, brewedTick: t0}, {tea: 0.4, brewedTick: t0}, {tea: 0, brewedTick: t0}, {tea: 0, brewedTick: -1, bag: false}][i % 4];
   for (let i = 0; i < 20; i++) { const x = ox + (i % 5) * 1.5, z = oz + Math.floor(i / 5) * 1.5;
-   mid.push({op: 'place', def: 'core/kettle@2', name: `mid-kettle-${i}`, p: [x, z], state: {level: 1, heatTick: i % 2 ? t0 : -1}}, {op: 'place', def: 'core/cup@2', name: `mid-cup-${i}`, p: [x + 0.3, z], state: mugState(i)}); }
+   mid.push({op: 'place', def: 'core/kettle@3', name: `mid-kettle-${i}`, p: [x, z], state: {level: 1, heatTick: i % 2 ? t0 : -1}}, {op: 'place', def: 'core/cup@3', name: `mid-cup-${i}`, p: [x + 0.3, z], state: mugState(i)}); }
   for (let i = 0; i < 100; i++) { const x = 120 + (i % 10) * 0.75, z = 120 + Math.floor(i / 10) * 0.75;
-   far.push({op: 'place', def: 'core/kettle@2', name: `far-kettle-${i}`, p: [x, z], state: {level: 1, heatTick: i % 2 ? t0 : -1}}, {op: 'place', def: 'core/cup@2', name: `far-cup-${i}`, p: [x + 0.3, z], state: mugState(i)}); }
+   far.push({op: 'place', def: 'core/kettle@3', name: `far-kettle-${i}`, p: [x, z], state: {level: 1, heatTick: i % 2 ? t0 : -1}}, {op: 'place', def: 'core/cup@3', name: `far-cup-${i}`, p: [x + 0.3, z], state: mugState(i)}); }
   for (let i = 0; i < far.length; i += 100) { const r = god.act({ops: far.slice(i, i + 100)}); assert.equal(r.accepted, true, JSON.stringify(r.failures?.slice(0, 3))); }
   await tick(60);
   const distant = await bytes(ana), farIds = new Set(far.map((d) => id(d.name)));
@@ -79,9 +79,9 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
   const hot = W().tick; // switched on as the kitchen is placed: "make a cup of tea" waits for the boil, then pours
   const sc = god.act({ops: [
    {op: 'place', def: 'core/counter@1', name: 'counter', p: [cx, cz]},
-   {op: 'place', def: 'core/kettle@2', name: 'kettle', in: {parent: 'counter', slot: 'top'}, p: [0.3, 0.1], r: Math.PI / 2, state: {level: 1, heatTick: hot}},
-   {op: 'place', def: 'core/cup@2', name: 'cup', in: {parent: 'counter', slot: 'top'}, p: [-0.12, 0.19]},
-   {op: 'place', def: 'core/cup@2', name: 'cup-two', in: {parent: 'counter', slot: 'top'}, p: [-0.42, 0.19]},
+   {op: 'place', def: 'core/kettle@3', name: 'kettle', in: {parent: 'counter', slot: 'top'}, p: [0.3, 0.1], r: Math.PI / 2, state: {level: 1, heatTick: hot}},
+   {op: 'place', def: 'core/cup@3', name: 'cup', in: {parent: 'counter', slot: 'top'}, p: [-0.12, 0.19]},
+   {op: 'place', def: 'core/cup@3', name: 'cup-two', in: {parent: 'counter', slot: 'top'}, p: [-0.42, 0.19]},
    {op: 'place', def: 'core/camp-sink@1', name: 'sink', p: [cx + 2.2, cz + 0.1], r: Math.PI / 2},
    {op: 'place', def: 'core/table@1', name: 'table', p: [cx - 2.4, cz + 1.8]}]});
   assert.equal(sc.accepted, true, JSON.stringify(sc.failures?.slice(0, 3))); await tick(60);
@@ -174,7 +174,7 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
   refused(ana, `object:${benCup}:brew`, 'tea.no-bag');
 
   // ---- a sip, and the nearby tea fact at a part-drunk level: Ana makes tea in the clean... no: in a fresh mug ----
-  const s3 = god.act({ops: [{op: 'place', def: 'core/cup@2', name: 'cup-three', in: {parent: 'counter', slot: 'top'}, p: [0.0, 0.19]}]}); assert.equal(s3.accepted, true); await tick(20);
+  const s3 = god.act({ops: [{op: 'place', def: 'core/cup@3', name: 'cup-three', in: {parent: 'counter', slot: 'top'}, p: [0.0, 0.19]}]}); assert.equal(s3.accepted, true); await tick(20);
   await done(ana, 'make a cup of tea'); assert.equal(state('cup-three').tea, 1);
   await done(ana, `pick-up:${id('cup-three')}`); assert.equal(ent('cup-three').support.by, ana.entityId);
   await done(ana, 'have a sip'); assert.equal(state('cup-three').tea, 0.8, 'one sip');

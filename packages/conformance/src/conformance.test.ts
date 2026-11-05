@@ -25,6 +25,7 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(readFileSync(out, 'utf8')) as { defs: number; samples: number; rendered: number; findings: Finding[]; qualificationGaps: { def: string; kind: string; reason: string }[] };
   assert.equal(report.defs, coreLibrary().all().length); assert.ok(report.samples > report.defs * 3); assert.ok(report.rendered > 0);
+  assert.ok((report as { stateRendered?: number }).stateRendered! > 0, 'the gallery also builds declared entity states (#973)');
   const known = JSON.parse(readFileSync(new URL('../conformance/known-20261015.json', import.meta.url), 'utf8')) as { findings: (Omit<Finding, 'field'> & { fields: string[] })[]; qualificationGaps: typeof report.qualificationGaps };
   // M3: exact pre-E1 findings from B1's expanded parameter samples at the supplied integration head.
   const integration = JSON.parse(readFileSync(new URL('../conformance/integration-3baa4c51.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
@@ -48,8 +49,16 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   const looseMaterials = JSON.parse(readFileSync(new URL('../conformance/loose-materials-20261104.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // 2026-11-05 library budgets (#494): the music family's new in-budget revisions; nothing left to pin (see the record's note).
   const budgetsMusic = JSON.parse(readFileSync(new URL('../conformance/library-budgets-music-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  // 2026-11-05 library budgets (#494): the water and garden family's new in-budget revisions; nothing left to pin.
+  const budgetsWater = JSON.parse(readFileSync(new URL('../conformance/library-budgets-water-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  // 2026-11-05 library budgets (#494): openings, drawers and bell; bell@3 keeps only its construction-view overruns.
+  const budgetsOpenings = JSON.parse(readFileSync(new URL('../conformance/library-budgets-openings-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  // 2026-11-05 library budgets (#494): the tea family's new in-budget revisions; nothing left to pin.
+  const budgetsTea = JSON.parse(readFileSync(new URL('../conformance/library-budgets-tea-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  // #973: the gallery also measures every declared entity state; state-only overruns found by that, pinned as found.
+  const galleryState = JSON.parse(readFileSync(new URL('../conformance/gallery-state-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   const signature = (f: Finding) => JSON.stringify([f.def, f.hash, f.field, f.stage, f.code, f.detail]);
-  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
+  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...budgetsWater.findings, ...budgetsOpenings.findings, ...budgetsTea.findings, ...galleryState.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
   const newFindings = report.findings.filter(f => !allowed.has(signature(f)));
   assert.deepEqual(newFindings, [], `Undocumented conformance failures: ${JSON.stringify(newFindings.slice(0, 12))}`);
   assert.deepEqual(report.qualificationGaps, known.qualificationGaps, 'rendering gaps changed: qualify them or document the exact gap');

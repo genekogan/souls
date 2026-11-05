@@ -26,15 +26,61 @@ export function samplePoints(d: StoredDef, k = 2, seed = 'EF4'): SweepPoint[] {
   }
   return points;
 }
-export type RenderCheck = (d: StoredDef, params: Record<string, unknown>, baked: unknown, model: WorldModel, scale: number) => Promise<{ tris: number; draws: number; materials: number } | void> | { tris: number; draws: number; materials: number } | void;
+/** The cartesian product of declared state values is measured up to this many assignments; above it, one field at a time. */
+export const STATE_PRODUCT_CAP = 64;
+/** Above STATE_PRODUCT_CAP, the product over only the fields a `when` term tests is still measured up to this many. */
+export const STATE_TESTED_CAP = 256;
+/** Declared entity-state assignments the gallery also measures (the stateless build is measured separately): bools both
+ *  ways, enums every value, numbers at default/min/max and either side of each threshold a `when: "@field op N"` term
+ *  tests (clamped to the declared range); strings and colours (content, not switches) at their default, plus a non-empty
+ *  value when a `when` term tests them. Deterministic: the full product up to STATE_PRODUCT_CAP; above it, the product
+ *  of the `when`-tested fields (so their conjunctions are measured) up to STATE_TESTED_CAP, then every field varied
+ *  alone from the defaults. */
+export function stateVariants(d: StoredDef): Record<string, unknown>[] {
+  const fields = Object.entries((d as { state?: Record<string, { type: string; default?: unknown; values?: unknown[]; min?: number; max?: number }> }).state ?? {});
+  if (!fields.length) return [];
+  const make = JSON.stringify(d.make), terms = [...make.matchAll(/@([A-Za-z][\w-]*)\s*(!=|=|>=|<=|>|<)?\s*([^&"\\]*)/g)];
+  const candidates = fields.map(([name, f]) => {
+    const tested = terms.filter(m => m[1] === name), out: unknown[] = [];
+    const add = (v: unknown) => { if (v !== undefined && !out.some(o => JSON.stringify(o) === JSON.stringify(v))) out.push(v); };
+    add(f.default);
+    if (f.type === 'bool') { add(false); add(true); }
+    else if (f.type === 'enum') for (const v of f.values ?? []) add(v);
+    else if (f.type === 'number' || f.type === 'int') {
+      add(f.min); add(f.max);
+      const step = f.type === 'int' ? 1 : 1e-3;
+      const fit = (v: number) => { const r = f.type === 'int' ? Math.round(v) : +v.toFixed(6); return Math.min(f.max ?? Infinity, Math.max(f.min ?? -Infinity, r)); };
+      for (const [, , op, rhs] of tested) { const n = Number(rhs.trim()); if (op && op !== '=' && op !== '!=' && Number.isFinite(n)) { add(fit(n)); add(fit(op === '>' || op === '<=' ? n + step : n - step)); } }
+    } else if (tested.length) {
+      for (const [, , op, rhs] of tested) if (op === '=' || op === '!=') for (const v of rhs.split('|')) add(v.trim());
+      if (!out.some(v => typeof v === 'string' && v !== '' && v !== 'none')) add('sample');
+    }
+    return [name, out, tested.length > 0] as const;
+  });
+  const defaults = Object.fromEntries(candidates.map(([n, vs]) => [n, vs[0]]));
+  const productOf = (cs: typeof candidates) => cs.reduce((n, [, vs]) => n * Math.max(1, vs.length), 1);
+  const combos = (cs: typeof candidates, from: Record<string, unknown>) => cs.reduce<Record<string, unknown>[]>((acc, [name, vs]) => acc.flatMap(c => (vs.length ? vs.map(v => ({ ...c, [name]: v })) : [c])), [from]);
+  const seen = new Set<string>(), variants: Record<string, unknown>[] = [];
+  const push = (v: Record<string, unknown>) => { const key = JSON.stringify(v); if (!seen.has(key)) { seen.add(key); variants.push(v); } };
+  if (productOf(candidates) <= STATE_PRODUCT_CAP) combos(candidates, {}).forEach(push);
+  else {
+    push(defaults);
+    const tested = candidates.filter(([, , t]) => t);
+    if (tested.length > 1 && productOf(tested) <= STATE_TESTED_CAP) combos(tested, defaults).forEach(push);
+    for (const [name, vs] of candidates) for (const v of vs) push({ ...defaults, [name]: v });
+  }
+  return variants;
+}
+export type RenderCheck = (d: StoredDef, params: Record<string, unknown>, baked: unknown, model: WorldModel, scale: number, state?: Record<string, unknown>) => Promise<{ tris: number; draws: number; materials: number } | void> | { tris: number; draws: number; materials: number } | void;
 export async function conformance({ defs = coreLibrary().all(), library = coreLibrary(), k = 2, seed = 'EF4', render, onDef }: { defs?: readonly StoredDef[]; library?: DefLibrary; k?: number; seed?: string; render?: RenderCheck; onDef?: (ref: string) => void } = {}) {
-  const findings: Finding[] = []; let samples = 0, placed = 0, bakedCount = 0, furnished = 0, rendered = 0;
+  const findings: Finding[] = []; let samples = 0, placed = 0, bakedCount = 0, furnished = 0, rendered = 0, stateRendered = 0;
   const furnishPath = '../../../tools/god-skill/lib/furnish.mjs';
   const { furnishBatch } = await import(furnishPath);
   for (const d of [...defs].sort((a, b) => a.ref.localeCompare(b.ref))) {
     const base = new WorldModel({ constants: { ground: 'land', extent: 16_000 }, seed, assets: assetLookup }); base.library = library;
     const def = base.resolvedDef(d.ref) ?? d, shape = shapeFor(def);
     const defaults = Object.fromEntries(Object.entries(def.params).filter(([, p]) => p.default !== undefined).map(([n, p]) => [n, p.default]));
+    const states = render ? stateVariants(def) : [];
     for (const point of samplePoints(def, k, seed)) {
       samples++;
       const fail = (stage: string, code: string, detail: unknown) => findings.push({ def: d.ref, hash: d.hash, field: point.field, stage, code, detail: String(detail).slice(0, 500) });
@@ -74,6 +120,20 @@ export async function conformance({ defs = coreLibrary().all(), library = coreLi
           const big = /^(building|public|transport|terrain|water)(\.|$)/.test(vocab.categoryOf(def));
           if (!big && drawn.draws > 4) fail('gallery-budget', 'draws', `${drawn.draws} > 4`);
           if (!big && drawn.materials > 4) fail('gallery-budget', 'materials', `${drawn.materials} > 4`);
+          // #973: `when: "@state"` geometry is absent from the stateless build. Measure every declared state; report, per
+          // budget, the worst assignment that is over it and worse than the stateless build (whose findings stand as before).
+          const limits = { triangles: [cap, 'tris'], draws: [big ? Infinity : 4, 'draws'], materials: [big ? Infinity : 4, 'materials'] } as const;
+          const worst: Partial<Record<keyof typeof limits, { value: number; state: Record<string, unknown> }>> = {};
+          for (const state of states) {
+            let m; try { m = await render(def, params, baked, model, scale, state); } catch (e) { fail('gallery-state', 'exception', `${String(e).slice(0, 400)} @${JSON.stringify(state)}`); continue; }
+            if (!m) continue;
+            stateRendered++;
+            for (const [code, [limit, key]] of Object.entries(limits) as [keyof typeof limits, readonly [number, 'tris' | 'draws' | 'materials']][]) {
+              const v = m[key];
+              if ((!Number.isFinite(v) || v > limit) && !(v <= drawn[key]) && !(v <= (worst[code]?.value ?? -Infinity))) worst[code] = { value: v, state };
+            }
+          }
+          for (const [code, w] of Object.entries(worst)) if (w) fail('gallery-state-budget', code, `${w.value} > ${limits[code as keyof typeof limits][0]} @${JSON.stringify(w.state)}`);
         }
       } catch (e) { fail('gallery', 'exception', e); }
       else if (def.make.kind === 'gen' && def.make.gen === 'kit/2') {
@@ -82,5 +142,5 @@ export async function conformance({ defs = coreLibrary().all(), library = coreLi
     }
     onDef?.(d.ref);
   }
-  return { schema: 'library-conformance/1', seed, k, defs: defs.length, samples, placed, baked: bakedCount, furnished, rendered, findings };
+  return { schema: 'library-conformance/1', seed, k, defs: defs.length, samples, placed, baked: bakedCount, furnished, rendered, stateRendered, findings };
 }
