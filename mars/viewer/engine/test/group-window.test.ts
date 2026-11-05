@@ -12,8 +12,8 @@ import {poseV1} from '../social/pose.ts';
 import type {ActionDef} from '../actions/types.ts';
 import {walkTo} from '../locomotion/walk.ts';
 
-function fixture() {
-  const scene = provingGround(), world = addAll(emptyWorld('proving-ground', scene), human('a', -6, -6), human('b', -4, -6), human('c', -5, -4), human('d', 6, 6));
+function fixture(extra = false) {
+  const scene = provingGround(), world = addAll(emptyWorld('proving-ground', scene), human('a', -6, -6), human('b', -4, -6), human('c', -5, -4), human('d', 6, 6), ...(extra ? [human('e', -4, -3)] : []));
   const registry = new Map<string, ActionDef>([[poseV1.verb, poseV1], [walkTo.verb, walkTo]]), spatial = new Spatial(scene); spatial.sync(world);
   return new Runtime(world, registry, {spatial}, DEFAULT_INVARIANTS);
 }
@@ -149,4 +149,34 @@ test('once-v2 with nobody ever there: the lone first arrival still waits, then s
   const rt = fixture(), d = rt.submit('pose_v1', jj('d', 'once-v2'));
   for (let i = 0; i < 1200 && rt.isActive(d.id); i++) rt.step();
   assert.equal(d.status, 'completed'); assert.deepEqual(d.outputs, {seconds: 6, group: 'inv_g'});
+});
+
+// #980 review: with two or more late guests, the second must not join the first late guest's window unmarked (nor two
+// guests arriving together open a fresh unmarked window): every late guest is late, and the group keeps one unmarked deadline.
+function twoAfterAllLeft(policy: Policy, delay: number) {
+  const rt = fixture(true), a = rt.submit('pose_v1', jj('a', policy)), b = rt.submit('pose_v1', jj('b', policy));
+  for (let i = 0; i < 20 && rt.world.entities.a.human!.together?.phase !== 'active'; i++) rt.step();
+  const until = rt.world.entities.a.human!.together!.until!;
+  while (rt.isActive(a.id) || rt.isActive(b.id)) rt.step();
+  for (let i = 0; i < 10; i++) rt.step();
+  const c = rt.submit('pose_v1', jj('c', policy));
+  for (let i = 0; i < delay; i++) rt.step();
+  const e = rt.submit('pose_v1', jj('e', policy)), unmarked = new Set<number>([until]), late = new Set<string>();
+  for (let i = 0; i < 1500 && [c, e].some(r => rt.isActive(r.id)); i++) {
+    rt.step();
+    for (const id of ['c', 'e']) { const t = rt.world.entities[id].human!.together; if (t?.until !== undefined) (t.late ? late.add(id) : unmarked.add(t.until)); }
+  }
+  return {c, e, unmarked, late};
+}
+
+for (const delay of [0, 3, 60]) test(`once-v2 (#508): two guests after every member left (the second ${delay} ticks later) are both late; one unmarked deadline`, () => {
+  const r = twoAfterAllLeft('once-v2', delay);
+  assert.deepEqual([...r.unmarked], [[...r.unmarked][0]], 'only the shared window is unmarked: ' + [...r.unmarked].join(','));
+  assert.deepEqual([...r.late].sort(), ['c', 'e'], 'both marked late in their body state');
+  for (const x of [r.c, r.e]) { assert.equal(x.status, 'completed'); assert.deepEqual(x.outputs, {seconds: 6, group: 'inv_g', late: true}); }
+});
+
+test('once-v1 (unchanged): two guests after every member left open a second, unmarked window together', () => {
+  const r = twoAfterAllLeft('once-v1', 0);
+  assert.equal(r.unmarked.size, 2, 'the #508 symptom, kept for older logs'); assert.equal(r.late.size, 0);
 });

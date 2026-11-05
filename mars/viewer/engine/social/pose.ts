@@ -271,8 +271,11 @@ function together(rt: Runtime, ex: Exec, a: NonNullable<Runtime['world']['entiti
   if (ex.phase === 'waiting') {
     const closed = once && !others.length && (near.length > 0 || (!ex.waited && ran()));
     const going = others.find((o) => o.human!.together!.phase === 'active' && (o.human!.together!.until ?? 0) > tick);
-    if (going) { ex.phase = 'active'; ex.until = going.human!.together!.until!; }
-    else if (others.length >= (ex.p.need ?? 1)) { ex.phase = 'active'; ex.until = tick + ticks(ex.p.seconds); }
+    // once-v2: joining a late body's window, or opening one after the group's window ran, is late too (2+ late guests
+    // share one late window; they never hold a second unmarked deadline)
+    const v2 = ex.p.windowPolicy === 'once-v2';
+    if (going) { ex.phase = 'active'; ex.until = going.human!.together!.until!; if (v2 && going.human!.together!.late) ex.late = true; }
+    else if (others.length >= (ex.p.need ?? 1)) { ex.phase = 'active'; ex.until = tick + ticks(ex.p.seconds); if (v2 && windowRan(rt, ex)) ex.late = true; }
     else if (closed) {
       // once-v1: the group's window already closed before this body arrived: alone at once (or refused, alone:'fail')
       if (ex.p.alone !== 'start') { restore(rt, ex); return { status: 'failed' as const, diagnostic: issue('window-closed', 'They had already finished before you got there.', [ex.p.actor]) }; }
