@@ -114,7 +114,8 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
     : settledReason ? heldLabel(settledReason)
     : state!.presentation === 'history' ? 'Recorded' : 'Live';
   const statusClass = arriving || state?.loading ? 'loading' : !lost && !settledReason && current && connected ? 'ok' : 'warn';
-  const kind = state?.cameraMode === 'follow' ? 'follow' : state?.cameraMode === 'manual' ? 'yours' : 'broadcast';
+  // #892: a glide to a Soul (flyToSoul) is Follow on its way, not your camera (no "Free" flash between two Souls)
+  const kind = state?.cameraMode === 'follow' || state?.flyingTo ? 'follow' : state?.cameraMode === 'manual' ? 'yours' : 'broadcast';
   // Touch gestures on phones/tablets, read when the help is shown (the window may have been resized since).
   const touch = navigationOpen && (() => { try { return matchMedia('(pointer: coarse)').matches || matchMedia('(max-width: 700px)').matches; } catch { return false; } })();
   const close = () => { onNavigationChange(false); setCameraNote(''); document.querySelector<HTMLElement>('.camera-menu .navbar-menu-trigger')?.focus(); };
@@ -180,7 +181,7 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
           {progress !== null && <div className="viewer-arrival-progress"><progress aria-label="World loading progress" max={1000} value={Math.round(progress * 1000)} /><span>{inBytes ? megabytes({ loaded: Math.min(1, progress) * bytes.total, total: bytes.total }) : `${Math.round(progress * 100)}%`}</span></div>}</div></div>
     </div>}
     {followCue && !arriving && <div className="viewer-follow-hint" role="status" aria-live="polite" data-cue={followCue}>{followCue === 'follow'
-      ? coarse ? <>Following <b>{followName ?? 'a Soul'}</b> · drag to look around · choose <b>Free</b> to take over</> : <>Following <b>{followName ?? 'a Soul'}</b> · drag to look around, scroll to zoom · press <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to look around freely</>
+      ? coarse ? <>Following <b>{followName ?? 'a Soul'}</b> · swipe for the next Soul · tap the ground to take over</> : <>Following <b>{followName ?? 'a Soul'}</b> · drag to look around, scroll to zoom · press <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to look around freely</>
       : <>Your camera · <b>Return to Broadcast</b> is top left</>}</div>}
     {navigationOpen && <div className="camera-help-scrim" onPointerDown={e => { if (e.target === e.currentTarget) close(); }}>
       <div className="camera-help" role="dialog" aria-modal="true" aria-labelledby="camera-help-title" tabIndex={-1} ref={help}>
@@ -188,11 +189,11 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
         <h2 id="camera-help-title">Camera</h2>
         <p><b>Broadcast</b> directs itself, cutting between Souls and whatever is happening. Any drag, scroll or move key gives you the camera; <b>the camera button</b> (top left, beside Live) returns it.</p>
         {touch ? <><h3>Touch</h3>
-          <ul className="camera-keys"><li><span>Thumb, lower left</span><span>walk (hold still first to keep walking)</span></li><li><span>One finger</span><span>look around in place</span></li><li><span>Pinch</span><span>glide toward or away</span></li><li><span>Two fingers up · down</span><span>rise · lower</span></li><li><span>Double-tap</span><span>fly there</span></li><li><span>Tap a name plate</span><span>meet that Soul</span></li></ul></> : <><h3>Mouse</h3>
+          <ul className="camera-keys"><li><span>Thumb, lower left</span><span>walk (hold still first to keep walking)</span></li><li><span>One finger</span><span>look around in place</span></li><li><span>Pinch</span><span>glide toward or away</span></li><li><span>Two fingers up · down</span><span>rise · lower</span></li><li><span>Double-tap</span><span>fly there</span></li><li><span>Tap a Soul or its name plate</span><span>follow it</span></li><li><span>Swipe sideways while following</span><span>the next Soul</span></li><li><span>Tap the ground while following</span><span>your camera, there</span></li></ul></> : <><h3>Mouse</h3>
           <ul className="camera-keys"><li><span>Drag</span><span>orbit around the centre</span></li><li><span>Right-drag</span><span>look around in place</span></li><li><span>Scroll</span><span>zoom toward the pointer</span></li><li><span>Double-click</span><span>fly there</span></li><li><span>Click a name plate</span><span>meet that Soul</span></li></ul>
           <h3>Keyboard</h3>
           <ul className="camera-keys"><li><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>forward · back · sideways, staying level</span></li><li><span>← → · ↑ ↓</span><span>turn · look up and down</span></li><li><span><kbd>Q</kbd><kbd>E</kbd></span><span>lower · raise</span></li><li><span><kbd>R</kbd><kbd>F</kbd></span><span>raise · lower, too</span></li><li><span><kbd>Shift</kbd></span><span>faster</span></li><li><span><kbd>Alt</kbd></span><span>slow precision movement</span></li></ul></>}
-        <p className="camera-help-follow"><b>Follow</b> a Soul from its card: the camera stays on it. Drag orbits around it, scroll zooms{touch ? ', pinch zooms' : ''}. {touch ? 'Choose Free to stop following' : 'Right-drag, a navigation key, or Free stops following'}, right where you are.</p>
+        <p className="camera-help-follow"><b>Follow</b> a Soul from its card{touch ? ' (or tap it)' : ''}: the camera stays on it. Drag orbits around it, scroll zooms{touch ? ', pinch zooms' : ''}. {touch ? 'Tap the ground or choose Free to stop following' : 'Right-drag, a navigation key, or Free stops following'}, right where you are.</p>
         <div className="camera-help-actions">
           <button type="button" disabled={kind === 'broadcast' || !handle} onClick={() => { toBroadcast(); close(); }}>Back to broadcast</button>
           <button type="button" disabled={kind === 'broadcast' || !current || !handle?.resetView} onClick={() => setCameraNote(handle?.resetView?.() ? '' : 'The current view could not be reset.')}>Reset view</button>
