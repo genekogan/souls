@@ -5,6 +5,8 @@
 //   node tools/playtest/runs/run.mjs cleanup  <runDir> [--world-data] [--controller-state]
 //   node tools/playtest/runs/run.mjs evaluate <runDir>… [--question q.mjs]…            (offline; new versioned evaluations/)
 //   node tools/playtest/runs/run.mjs compare  <runDir|replay-set>… [--question q.mjs]… [--out dir] [--md]
+//   node tools/playtest/runs/run.mjs correlate <runDir>                 (diagnostics: trace ↔ run records, offline)
+//   node tools/playtest/runs/run.mjs inspect   <runDir> --seat <id>     (diagnostics: the local inspector, read-only)
 // Exit: 0 completed/valid, 1 failed, 2 refused, 130 cancelled, 124 stopped at limits.maxWallSec.
 import { resolve } from 'node:path';
 import { readSpec, adHocSpec, validateSpec } from './spec.mjs';
@@ -74,7 +76,29 @@ async function main() {
     else process.stdout.write(has('md') ? renderIndex(ix) : JSON.stringify(ix, null, 1) + '\n');
     return 0;
   }
-  console.error('usage: run.mjs validate|start <spec.json> | --scenario <file> [--cast none] [--port n] [--duration s] [--out dir] | cleanup <runDir> [--world-data] [--controller-state] | evaluate <runDir>… [--question q.mjs]… | compare <runDir|replay-set>… [--question q.mjs]… [--out dir] [--md]');
+  if (cmd === 'correlate') {
+    // Analysis of a finished run's traces against its own records; offline, reads only.
+    if (!argv[1]) throw new Error('correlate <runDir>');
+    const { correlateRun } = await import('./diagnostics.mjs');
+    print(await correlateRun(resolve(argv[1]))); return 0;
+  }
+  if (cmd === 'inspect') {
+    // The viewer is a separate choice: the existing local inspector (#624) over one seat's trace file. It reads the file
+    // only; it does not start, stop or listen for any controller or world.
+    if (!argv[1] || !flag('seat')) throw new Error('inspect <runDir> --seat <id> [--port n]');
+    const { traceCapability, TRACE } = await import('./diagnostics.mjs');
+    const { readJson } = await import('../lib/jsonl.mjs');
+    const rd = resolve(argv[1]), rc = readJson(`${rd}/run-receipt.json`, null);
+    const entry = rc?.diagnostics?.capture?.seats?.[flag('seat')];
+    if (!entry) { print({ ok: false, error: `no trace for seat ${flag('seat')} in this run (diagnostics off or seat not traced)` }); return 2; }
+    const cap = traceCapability();
+    if (!cap.inspector) { print({ ok: false, error: cap.inspectorReason }); return 2; }
+    const { startInspector } = await import(`${REPO_ROOT}/${TRACE.inspector}`);
+    const h = await startInspector({ file: `${rd}/${entry.file}`, port: flag('port') ? Number(flag('port')) : 0 });
+    log(`inspector for ${rc.runId}/${flag('seat')}: ${h.url ?? h}`); log('Ctrl-C stops the inspector; the run and its trace are unaffected');
+    await new Promise((r) => process.on('SIGINT', r)); await h.close?.(); return 0;
+  }
+  console.error('usage: run.mjs validate|start <spec.json> | --scenario <file> [--cast none] [--port n] [--duration s] [--out dir] | cleanup <runDir> [--world-data] [--controller-state] | evaluate <runDir>… [--question q.mjs]… | compare <runDir|replay-set>… [--question q.mjs]… [--out dir] [--md] | correlate <runDir> | inspect <runDir> --seat <id> [--port n]');
   return 2;
 }
 main().then((code) => process.exit(code), (e) => { log(e.stack ?? e.message); process.exit(1); });
