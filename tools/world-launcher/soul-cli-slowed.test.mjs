@@ -80,7 +80,7 @@ test('429 without a message: the built-in sentence per code; refused, then answe
   const f = await fixture(t, (req, res, n) => n <= 2 ? world429(res, 'soul.slow-down', 4) : req.url === '/v1/edge/act'
     ? json(res, 200, { accepted: true, receipt: { id: 'r_1', phase: 'running', capability: 'wave:here', now: 'waving' }, channel: 'body' })
     : json(res, 200, { here: {} }));
-  const got = await f.run('act', 'wave');
+  const got = await f.run('act', 'wave:here');
   assert.equal(got.code, 0, got.stderr);
   assert.match(got.d.slowed, /^The world asked me to slow down twice \(soul\.slow-down: I asked for a lot in a short time\); it answered after \d+ s\.$/);
   assert.equal(Object.keys(got.d)[0], 'slowed', 'the first thing the agent reads');

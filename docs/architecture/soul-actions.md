@@ -18,6 +18,40 @@ context-size checks below), regression runs, and an uncut real-client recording 
   and the viewer draws it as an ordinary thing. A container whose def declares a `leftBy` state field records who left
   each thing in it (item id = Soul id, set when the thing comes to rest from a Soul's hand, pruned to what is still
   inside). Nearby perception and the take offer name the leaver; god-placed things have none.
+- **Litter and bins ([#1088](https://github.com/genekogan/souls/issues/1088), W065).** `core-bin@2` and `core-wheelie-bin@2`
+  are the street bins, open at the top, on the same container faculty with data only: three places down inside at the
+  level of the rubbish already in them, reached over the rim. `core-wrapper@1` is a small thing to pick up. "put the
+  wrapper in the bin", "throw it away", "throw away the wrapper", "bin it" and "throw it in the bin" put a held thing in
+  the nearest bin with room; a full bin named by its id is refused `container.full`, and a book is too big for one.
+- **Lost-and-found ([#435](https://github.com/genekogan/souls/issues/435)).** A container whose def declares
+  `components.container.claim: "owner"` gives a thing that has an owner of its own (the layers `owner` on the thing, a
+  Soul or a group) back only to that owner or a member of that group. Anyone else, the finder included, is offered the
+  take as blocked `item.not-yours`, with a reason that names the owner, and every other action on it (a wash at the tap)
+  is refused the same way. Things nobody owns are anyone's to take, and anyone may hand a thing in; a thing the god owns
+  stays until the god moves it. An owner ref by name (`soul:Ana`) follows whoever has that name, so a god that sets owners
+  for a lost-and-found should prefer Soul ids. `core-lost-and-found@1` is the swap shelf's form with this claim; its `leftBy` record
+  reads as who found each thing, and nearby Souls are told "bowl (Ana's, found by Ben)" ("yours, …" to the owner).
+- **Hiding places ([#435](https://github.com/genekogan/souls/issues/435)).** A doorless container whose def declares
+  `components.container.hidden: true` keeps what is in it out of everyone's sight, the hider's included: it has no `holds`
+  fact, no offers of its own, no name nearby and no walk target, and the viewer does not draw it. The only way to it is a
+  search: `search:<id>` is offered within 8 m and reads the same whether or not anything is there. The hand reaches in and
+  takes what it finds, or comes away with nothing, and the receipt's outcome says which. Searching with full hands is
+  refused `carry.hands-full`. `core-hollow-stump@1` is reached down over its rim, `core-wall-niche@1` in at its front; no
+  code names either. A clue for a hunt is an ordinary pinned note. A Soul trying to hide a thing in an occupied place is
+  refused `container.full`, which tells her something is there, as her hand would. A thing a Soul may not take (private,
+  for sale) is as if it were not there. The search's course is decided when it starts, so a thing hidden while the seeker
+  walks over is missed by that search. This hides things from Souls' perception, not from the data: the snapshot the
+  viewer draws from carries where a thing is, as it does for a shut drawer.
+- **A pantry holds real things ([#435](https://github.com/genekogan/souls/issues/435)).** `core-pantry@1` is the same doorless
+  storage with data only: four places, each for one small thing, so the stock is what you can see and count. Drawing from it
+  is by hand, through the entry that already handles the thing. Words go ahead rather than refuse: "make a cup of tea" or "pour
+  the tea" with a fresh mug kept in an open pantry takes it out and stands it on a free place on the kettle's counter first, and
+  "eat the apple" takes the apple from wherever it is, then eats it. `core-apple@1` and `core-bun@1` are tagged `edible`,
+  with `left` and `bites` in their state, and are eaten from the hand on entry 44's cup motion; `left` falls at each bite's own
+  moment and what is left stays in the hand. A bare "eat it" or "have a bite" means the food in the hand. Another thing already in her
+  hand is set down on the nearest free table place (or at her feet) first, and a kept mug comes out in her left hand when the
+  kettle is in her right. A mug that is not hers to take (private, for sale, or claimed in a lost-and-found) is never fetched.
+  Refused only when the act truly can't happen: `food.eaten` and `food.in-use` (in someone else's hand). The ledger's `food` and a kitchen's portions are separate systems and are untouched.
 - **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
   crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with
@@ -25,8 +59,100 @@ context-size checks below), regression runs, and an uncut real-client recording 
   it as a recorded transport. A load that needs more people than one is offered unavailable, with
   `carry.crew-too-small` naming the crew, and acting it is refused before any motion. Shared carries come with
   [shared execution](../design/shared-execution.md). `core-rack-beam@1` keeps its one-hand item path.
+- **A table and larger crews (PC11, [#690](https://github.com/genekogan/souls/issues/690)).** `core-work-table@1` is a
+  table-shaped load: 75 kg, a 2.44 × 0.91 m top, 0.76 m tall. Its handling is crew [3, 4] (three by mass at 30 kg
+  each), with grips for three and four at its legs, and it is carried level on its legs. Nothing in the shared code
+  names a def, load or Soul: a crew of three or four goes through the same invitation, op and receipts as two.
+  - **Checked on define.** A def's handling must fit together, or `define` refuses it with a named code:
+    - `handling.crew`: an inverted crew range;
+    - `handling.grips`: a crew size in range without a grip layout, or a layout of the wrong count or outside the range
+      (stricter than the native carry, which ignores a layout outside the range);
+    - `handling.mass`: a mass the largest crew cannot lift at 30 kg each;
+    - `handling.reach`: a grip outside the load's own box (`packages/world-compiler/src/handling.ts`).
+  - **Set down along its axis.** A shared carry lays the load down along its own axis, either way round, whichever is
+    nearer the way it travels, so the crew never turns it while setting it down.
+  - **Known limit ([#1031](https://github.com/genekogan/souls/issues/1031)).** The native planner may lift facing
+    either way along the load. When it lifts facing the other way, the load turns half a turn in the crew's hands
+    during the lift, because the native lift interpolates its yaw. This happens for any load.
+- **Joined into an assembly (PC12, [#691](https://github.com/genekogan/souls/issues/691)).** `core-rack-upright@2` and
+  `core-rack-beam@3` are the same loose upright and beam, plus typed structural connectors. The world's god joins them
+  into a bay with `connect` (see [god mode](godmode.md#joints)).
+  - **One graph.** The entity world holds each joint as two halves (`joins`), one on each part. With
+    `SIM_SHARED_CARRY=1` the engine mirrors it for parts adapted as items (anything `carryable`, so both rack parts)
+    as its own `connections`: a joined part is `installed`, and a beam is supported (`connected`) by the uprights its
+    ends join. A joined part that isn't carryable (a god's fixed rail) reaches the engine as a fixture on the ground,
+    with no connections. With the flag off, `world-edit/1` is exactly as before PC12: no `roll`, `connections`,
+    `connected` support or asset `sockets`. The native rack rules (`construction/rules.ts`, `campus/assembly.ts`) read
+    `beam-seat` sockets only on catalog `rack-upright` defs and campus frames, never on these adapted items. An upright stood on end (`r = [yaw, 0, π/2]`) reaches the engine with that roll, so its box stands. Its
+    connectors are the adapted asset's sockets. The beams stay at the world root, because their support is their
+    joints, not a parent. The client draws each part once, from the entity world.
+  - **Not carried while joined.** `carry:<id>`, and `pick-up:<id>` of a small part, of a joined part is offered unavailable, `carry.joined`, naming what it
+    is joined to and at which connectors, and acting it is refused before any motion. The engine refuses it on its
+    own too when it mirrors the joints (`carry.item-unavailable`: an installed part is not a load lying on the ground). The entity world's refusal holds with the flag off. A free beam of the same
+    revision is carried as before.
+  - **Restart.** Nothing new is snapshotted: the joints ride the entity rows and the logged `world-edit` events, so a
+    clean or crash restart brings back the same graph in both.
+  - **Souls and beams (PC14).** Souls seat beams between raised, held uprights (below). The native rack stability rule
+    (`construction/rules.ts`) is read for these parts from their connectors, by `packages/engine-mars/src/beam-connect.ts`:
+    the engine treats them as items, and a god's joins still depend only on a part's own bearing connectors.
+- **Raising and holding (PC13, [#692](https://github.com/genekogan/souls/issues/692); off unless `SIM_SHARED_CARRY=1`).**
+  A loose upright lying free is also offered `raise-with:<id>`, which takes `with`. It goes through the same invitation,
+  revision, acceptance and receipts as `carry-with` below, with no destination.
+  - **Commit.** One programme, `mars:raise_hold_v1` (`packages/engine-mars/src/raise-hold.ts`): the crew walks to its
+    stations, takes hold, walks it up about its base edge and holds it. It ends in the pose a joined upright has
+    (`r = [yaw, 0, ±π/2]`, PC12). The geometry and choreography are the native raise's (`construction/raise.ts`); the base
+    is the end nearer the host, or the other if only that one has room.
+  - **Held.** Holding isn't an end: the receipts stay `started`, with `shared.holding`, `shared.holding: true` and a
+    `shared.holding` stream event once. A member's body act is `shared.busy`; speech and looking work.
+  - **Stop.** `stop-carry:<op>` from any member, or a member going away. Before the grip they let go. After it they lower it
+    along the same arc, to its exact starting pose. If something or someone is in the way (`raise.cancel-unsafe`) they
+    keep holding, the receipts name it, and it retries with no timeout.
+  - **Refused before anyone is asked:** `raise.arc-blocked`, `raise.station-blocked`, `raise.station-unreachable`,
+    `raise.not-lying`, `raise.joined`, `raise.crew-too-small`, `raise.crew-too-large`.
+  - **Invariant.** `looseFramesHeld` (a part it turned is held by its crew, hands on it) is checked at every tick end.
+  - **Joined (PC14).** Once a beam joins a raised frame, a stop never lowers it. The crew lets go only once the frame
+    stands on its own (below). `stop-carry` keeps its name.
+- **Seating beams (PC14, [#693](https://github.com/genekogan/souls/issues/693); off unless `SIM_SHARED_CARRY=1`).** A loose
+  beam lying under a bay between two standing, supported uprights is offered `connect-beam-with:<id>`. It takes `column`
+  (`l` or `r`, each upright's own side), `height` (a seat height in metres) and `with` (one other Soul).
+  - **Which seats.** Only the seat pairs both uprights have free are offered. Each pair is level, a beam's span apart,
+    square to both frames, on the faces toward each other, and within standing reach (`beamBays`). Supported means held
+    by its raise crew, or standing in a frame that stands on its own.
+  - **Session.** It goes through the same invitation, revision, acceptance and receipts as `carry-with`, with exactly two
+    members.
+  - **Commit.** One programme, `mars:connect_beam_v1`. It brings the native `connect_beam`'s checks, choreography and lift
+    (`construction/beam.ts`) to PC12's connectors (`beam-seat`, `beam-end`). The two walk to the beam's ends, grip it, lift
+    it along its swept path, and its ends join both seats as reciprocal engine connections.
+    - Both ends are checked again at the lift.
+    - The write-back then puts the joints into the entity world, with the uprights' standing poses, in one edit
+      (`connect` ops after `move`s).
+    - The receipts end `completed` with `shared.seated`.
+  - **Stop.** Before the lift they let go where it lies. During the lift they lower it back along its path to exactly where
+    it lay; a beam is never left half seated.
+  - **Release.** A stop on a raise whose upright beams join lets go only if its frame stands on its own, by the native
+    Mars v1 rule:
+    - at least two standing uprights;
+    - each upright has beams on both columns at N or more heights, with N = 2 for a 12 ft frame;
+    - another upright still held by its own crew is carried by them and not counted.
+
+    Until then the native cancel refuses `support.release-premature`. The crew keeps holding, the receipts name the
+    missing beams, and the stop is asked again each tick, so they let go as soon as the frame stands. The released upright
+    stays standing and installed, held up by its beams (support `connected`, as the native `release_support`). A god's
+    joined upright stands on the ground by the god's say (PC12) and is not judged by this rule.
+  - **Refused before anyone is asked:** `beam.misaligned`, `beam.seat-taken`, `beam.not-staged`, `beam.upright-unsupported`,
+    `reach.too-high`, `lift.path-blocked`, `beam.station-unreachable`, `beam.crew`. A Soul holding an upright has no hand
+    free (`carry.hands-full`).
+  - **Invariant.** `framesStand` is checked at every tick end. An installed beam has both ends joined in standing uprights,
+    and a joined upright nobody holds is in a frame that stands on its own.
+  - **Rules version.** The flag adds `+shared-raise/1+shared-beam/1`, so a journal that names these verbs is never replayed
+    without them.
+  - **Not yet.** Where the uprights stand comes from where they were laid; Souls can't move a raised frame into line.
+    No disconnecting, and no joists or decks.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
-  A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who).
+  A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
+  comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one
+  Soul). A refused crew too small for the load's mass says
+  the arithmetic.
   - **Propose.** Acting it is a together invitation of kind `shared` at revision 1. The host's receipt is `waiting`,
     and its `awaitingAnswer` names who is undecided.
   - **Accept.** Only the invited Souls are offered `accept:<invite>`, which needs `{"revision": n}`. Accepting opens
@@ -38,6 +164,11 @@ context-size checks below), regression runs, and an uncut real-client recording 
     everyone.
   - **Closing early.** A decline or leave that leaves the proposal unable to reach its crew minimum closes it. The
     host's receipt ends then, rather than at the lapse.
+  - **One of a larger crew out (PC11).** When a guest of a crew of three or four declines or leaves, and the rest still
+    meet the minimum, that revision can never start, because a role is never filled without asking. Each member's
+    waiting receipt is noted `shared.not-ready`, saying who declined or left. The host's note also gives the exact
+    amend (`carry-with` with `invite` and the rest named), and a guest's says the host can ask again. The amend's new
+    revision clears the note, and the rest accept it again.
   - **Expiry.** A proposal lapses after 120 s (`invite.expired`). A late answer is refused `invite.gone`.
 
   - **Distance.** Proposing or accepting from more than 10 m from the load is refused `shared.too-far` before any
@@ -76,10 +207,9 @@ context-size checks below), regression runs, and an uncut real-client recording 
     Nothing is replaced and no receipt is created. Speech and reads still work, and the proposal's lapse no longer
     applies. The refusal offers the safe stop, `stop-carry:<op>`, in `alternatives` (PC08).
   - **Release.** When the native programme ends, every member's receipt ends together, in one transaction:
-    `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (a
-    fade, an engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the
-    host's programme is stopped. After a restart, guests of a carry that still runs keep their receipts. An operation
-    whose programme is gone is ended on the next sweeps.
+    `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (an
+    engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the host's
+    programme is stopped. A fade is not that: it is the member's stop (PC09, below). A restart is covered under "Restart" below.
 
   - **The journey (PC06).** On open level-0 ground, the native gather walks each member to their grip. The crew lifts
     the load and carries it as one formation, then lays it down at the place's centre. Every observer sees that one
@@ -128,11 +258,56 @@ context-size checks below), regression runs, and an uncut real-client recording 
       own; nothing is resumed for them.
     - **Repeats.** The same member asking again gets the first stop's receipt. Another member's stop completes with
       `shared.stop-asked` and changes nothing. One stop event is logged.
-    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop.
-    - **Restart.** A stop asked before a restart is logged again for the replayed programme; a native stop is
-      idempotent. Full restart qualification is PC10.
+    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop. So is a
+      member's `stand:here` ("stand up / stop what I am doing"): it never releases the crew's programme as a stall (PC10).
+    - **One transaction.** The stop's `edge-stop` and its journal (the op `stopping`, the stop's own receipt) are
+      written together at the sequencer, or not at all. A second stop in the same drain logs nothing and is answered as
+      already asked; a member's fade (below) is written the same way.
     - **Refusals.** A stop after the end is refused `shared.not-running`, one from a non-member `shared.not-member`,
       and an unknown op `shared.unknown-op`.
+  - **A member's mind goes away (PC09, [#688](https://github.com/genekogan/souls/issues/688)).** A disconnected mind's
+    body keeps its accepted carry to its end and joins nothing new.
+    - **Not listening.** When an agent stops listening, the body rule makes its body `zombie` and later `asleep`. A
+      member's open shared receipt makes the agent busy, so the rule never moves or stops a member's body while the
+      operation runs; the carry ends as accepted.
+    - **Held.** A started shared receipt holds the fading clock for every member, the borrowed guest as well as the host
+      (`postureHold`), so an accepted carry is not abandonment.
+    - **Fade.** If a member fades anyway (`SIM_BEAM`, past the 12 h hold), the fade is that member's stop. It is the same
+      `edge-stop` naming the op's programme, and the same `stopping` journal with `stop.away`, but no stop receipt is
+      made in their name. Their shared receipt stays open and ends with everyone else's, as `stopped` or
+      `stopped-at-destination`; it is never `soul.faded`. The words say who went away, and the streams'
+      `shared.stopping` carries `away`. The fade line on the member's stream says the body stays in the carry, not
+      that it reclines.
+    - **Back while it runs.** A faded member who acts again while their operation still runs or stops is not relocated
+      to a starting place, since the crew still moves their body. A body act gets the ordinary `shared.busy` answer,
+      and the stream's return line says they are back where their body is.
+    - **Reconnect.** The same receipt id answers with the operation's current phase or its final result, and the
+      stream keeps what was delivered meanwhile. A replayed `clientRef` returns the original receipt. A stale
+      `accept:<invite>` from a member while the operation runs gets its `shared.busy` refusal. After the end it is
+      refused `invite.gone` with how the operation ended, and `stop-carry:<op>` is refused `shared.not-running`;
+      neither moves anybody or makes a receipt.
+    - **Not enlisted.** A faded Soul cannot be asked to carry: it is not perceived, so it is not near. A disconnected
+      Soul can be asked, but it is never committed without its own `accept` of that revision: the proposal waits,
+      names who has not answered, and lapses.
+  - **Restart (PC10, [#689](https://github.com/genekogan/souls/issues/689)).** Nothing new is serialized: the native
+    carry rides the engine's history and the operation rides its invitation row.
+    - **Exact resume.** A running carry has no exact engine snapshot, so a clean shutdown logs its checkpoint
+      (`unsnappable-head`) and the boot replays to it; a durable-clock world also replays a crash to its last persisted
+      tick. In every phase (gather, lift, move, set-down, a stop's cleanup) the op, its revision, claims and load, both
+      receipts and the engine state are what they were, and the carry ends as it would have. There is one carry
+      decision and at most one stop event; a stop is never asked again after a boot.
+    - **Retries.** The same receipt ids read the same state; a `clientRef` replay returns the original receipt; a stale
+      `accept` is `shared.busy` while it runs. A member's started receipt is left to the shared sweep at boot, never
+      lost alone.
+    - **Restored to an earlier moment.** An op whose programme the restored world no longer runs ends `shared.ended`
+      for every member, saying so when the world is from before it started. If a world without the durable clock is
+      restored to before an op ended, the engine would replay its programme: that programme is stopped safely with a
+      logged `edge-stop` (`shared.restored`) at the first tick after the boot, the members' streams get
+      `shared.restored`, and an operator line is logged. The ended receipts keep how it ended. A world restored to
+      before a stop the journal already has (an older backup) is asked to stop again. A programme is taken for the
+      op's only when it has the op's id, is a native carry, and the world is not older than the commit.
+    - **LINK migration.** A Soul the old beam took that is still in a running carry's crew stays where the crew has its
+      body; it is never relocated to a starting place.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station; "put on a record" or "play a record" mean the record player, with the
@@ -151,10 +326,10 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
 | Doors and openings | Open and close doors, gates (a picket gate and a five-bar field gate), windows, cupboard and locker doors, fridge doors, curtains, blinds, drawers and a tent flap; doors and gates open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "open the tent flap", "close the field gate", "knock on the door", "lock the door" |
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
-| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf" |
+| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it; hide a small thing in a hollow stump or a wall niche, and search one to find what is there; stock a pantry and take things out of it; eat an apple or a bun from the hand, bite by bite | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found", "hide the book in the stump", "search the stump", "look in the niche", "search around here" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
-| Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
+| Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses and checkers with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "move c3 to d4", "jump d4 to f6", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
 | Making | Paint a picture at an easel and leave it there with a title and credit; draw a picture in chalk on a chalk square, which fades over four world days and washes away | "paint at the easel", "draw in chalk" |
@@ -177,6 +352,29 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Only drawn by hand.** The public hang route refuses an image on a fading canvas (`art.drawn-only`); the world's
   creator may still clear one. A washed-away drawing stays in the square's state until it is drawn over, so the art
   listing (`GET /v1/art`) still names it.
+
+### Checkers (#439)
+
+A checkers board (`core-checkers-board@1`) is a standing chalk board on noughts and crosses' faculty: the hand works the
+move on the face in one level chalk stroke between the two squares (across their files, at the height midway between
+them; for a jump, across the jumped piece), and the piece moves only when the stroke ends. The world keeps
+turns: the first Soul to move plays X, from the bottom, and the second plays O; a third Soul waits for the next game.
+The player steps back afterwards, a reader reads it, and a wipe sets the board up again. The rules are English draughts
+(`packages/world-compiler/src/core-kit/checkers.ts`):
+
+- a man moves one square diagonally forward, and a jump over an opponent's piece captures it;
+- a jump that is open must be taken, and a piece that can jump again keeps the turn until it cannot;
+- a man that reaches the far row is crowned, which ends the turn, and a king moves both ways;
+- a side with no pieces or no legal move loses; there is no draw rule, so two players end a drawn game by wiping the board.
+
+Squares are named a1–h8, with a1 at the bottom left seen from the front. "move c3 to d4", "c3 to d4", "jump d4 to f6"
+or "c3-d4" is the move with those squares on the board where it can be played. A Soul with a game in progress plays that game:
+her own board's move reads "…, in your game", her words go to it (to the game where it is her turn, if she has two), and out
+of turn they are refused with whose turn it is, never a new game on another board. With no game of hers, the nearest open
+board takes the move. A second game is hers to start, by acting on that board's own move. The read offer names only the state ("a game of checkers, X
+to play"). Reading gives the players, whose move it is or who won, the pieces left and the board as eight rows.
+"jump c3 to e5, then e5 to g7" makes the first jump now and says to act again for the rest. "read the checkers board"
+is still a walk to it, as with the other boards; `read:<board>` (or its offered read) reads it.
 
 ### Openings: a tent flap and a field gate (#427)
 
@@ -224,7 +422,9 @@ within about 4 m and in plain sight:
 
 - switches and fire: `on`; doors, windows, curtains and drawers: `open` (and `locked` for lockable doors);
 - a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut); a
-  swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)");
+  swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)"); a
+  lost-and-found: whose each thing is and who found it ("bowl (Ana's, found by Ben)");
+- a pantry: what it `holds` (names only); a food in the hand or bitten: its `bites` left, then `eaten`;
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
   a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;

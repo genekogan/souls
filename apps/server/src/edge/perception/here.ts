@@ -2,6 +2,7 @@
 // perceive from where it stands. Strictly local: Souls and things in the same enclosed place (or, outdoors, not
 // inside one) within sight radius and with a clear sightline (nav/1 solids); never other places, never conversation
 // content, never owner data. Read-only; deterministic for a given world state. No model calls.
+import {compactParams, paramsByVerb} from '../intents/offer-schema.ts';
 import {menuWorldOf} from '../../split/menu-world.ts';
 import {entityPhysicsContribution} from '../../../../../mars/viewer/engine/spatial/edits.ts';
 import {whereLine} from './semantic-location.ts';
@@ -228,14 +229,37 @@ const doingWord = (state: string, activity: string) => POSE_WORDS[activity] ?? (
 
 /** Public current offers only, in a bounded local frame. Parameter descriptors
  * stay exact; an oversized offer is omitted rather than changing its schema. */
+/** CTRL-2 (#1094): what can be done here, by verb, at most `budget` bytes: solo acts on the spot by verb name (`<verb>:here`),
+ *  the rest as a count and the nearest few ids (the menu is nearest first). An agent drills down with `inspect`. A far
+ *  offer adds nothing: only local targets and this Soul's exits count. */
+export function groupedOffers(caps: readonly EdgeCapability[], localTargets: ReadonlySet<string>, exits: number, budget = 500, nearest = 3) {
+ const solo: string[] = [], by = new Map<string, {count: number; nearest: string[]}>();
+ for (const c of caps) {
+  if (!c.available || c.verb === 'walk' || c.verb === 'stroll') continue;
+  if (c.id === c.verb + ':here') {solo.push(c.verb); continue;}
+  if (!(c.id.endsWith(':here') || c.verb === 'accept' || c.verb === 'decline' || (!!c.target && localTargets.has(c.target.id)))) continue;
+  const g = by.get(c.verb) ?? {count: 0, nearest: []}; g.count++; if (g.nearest.length < nearest) g.nearest.push(c.id); by.set(c.verb, g);
+ }
+ const out = {...(exits ? {walk: exits} : {}), ...(solo.length ? {here: solo} : {}), ...Object.fromEntries(by)};
+ // over budget: the nearest ids go first, farthest verb first, then the solo list; every count stays
+ const size = () => Buffer.byteLength(JSON.stringify(out));
+ for (const g of [...by.values()].reverse()) {while (size() > budget && g.nearest.length) g.nearest.pop();}
+ while (size() > budget && solo.length > 3) solo.pop();
+ return out;
+}
+
 export function compactDoHere(caps:readonly EdgeCapability[],localTargets:ReadonlySet<string>,byteBudget=1800){
  const eligible=caps.filter(c=>c.available&&c.verb!=='walk'&&c.verb!=='stroll'&&(c.id.endsWith(':here')||c.verb==='accept'||c.verb==='decline'||!!c.target&&localTargets.has(c.target.id)));
  const selected:{id:string;verb:string;label:string;available:true;params?:Record<string,unknown>}[]=[];
+ // CTRL-1 (#1093): the verbs' shared parameters once, counted in the budget; an offer's own stay on it
+ const verbs=new Set<string>(),shared=()=>compactParams(paramsByVerb(verbs));
  for(const c of eligible){
-  const offer={id:c.id,verb:c.verb,label:c.label,available:true as const,...(c.params?{params:structuredClone(c.params)}:{})};
-  if(selected.length<12&&Buffer.byteLength(JSON.stringify([...selected,offer]))<=byteBudget)selected.push(offer);
+  const offer={id:c.id,verb:c.verb,label:c.label,available:true as const,...(c.params?{params:structuredClone(c.params)}:{})},had=verbs.has(c.verb);
+  verbs.add(c.verb);
+  if(selected.length<12&&Buffer.byteLength(JSON.stringify([selected,offer,shared()]))<=byteBudget)selected.push(offer);
+  else if(!had)verbs.delete(c.verb);
  }
- return {doHere:selected,doHereCoverage:{localOffers:eligible.length,listed:selected.length,omitted:eligible.length-selected.length,byteBudget,complete:eligible.length===selected.length,fullCapabilities:'/v1/edge/capabilities'}};
+ return {doHere:selected,doHereParams:shared(),doHereCoverage:{localOffers:eligible.length,listed:selected.length,omitted:eligible.length-selected.length,byteBudget,complete:eligible.length===selected.length,fullCapabilities:'/v1/edge/capabilities'}};
 }
 
 /** L3 item 4: the places an exit may lead to (as the exits below choose them: a place's centroid within 150 m, not one
@@ -302,12 +326,16 @@ export function hereFrame(ledger: EdgeLedger, soul: EdgeSoul,options:{doHere?:bo
   // things: a few of each kind, nearest first (≤ 3 seats, ≤ 2 of any other kind); the rest are counted in `more`
   const all = P.things(), kindOf = (t: Located) => t.kind === 'spot' ? (t.capability?.split(':')[0] ?? 'spot') : t.kind === 'object' ? (P.objectKinds.get(t.id) ?? 'object') : t.kind;
   const taken = new Map<string, number>(), picked: Located[] = [], more: Record<string, number> = {};
-  for (const t of all) {const k = kindOf(t), n = taken.get(k) ?? 0; if (n < (k === 'seat' ? LIMITS.seats : 2) && picked.length < LIMITS.objects) {picked.push(t); taken.set(k, n + 1);} else more[k] = (more[k] ?? 0) + 1;}
+  for (const t of all) {
+    // #442: a broken bench is a seat with a repair offer on it: its one row says so, not a second object row with the same fact
+    if (t.kind === 'object' && picked.some(p => p.kind === 'seat' && p.id === t.id) && ledger.contactActuator?.facts(t.id)?.broken) continue;
+    const k = kindOf(t), n = taken.get(k) ?? 0; if (n < (k === 'seat' ? LIMITS.seats : 2) && picked.length < LIMITS.objects) {picked.push(t); taken.set(k, n + 1);} else more[k] = (more[k] ?? 0) + 1;
+  }
   // Only six selected objects, at most 4 m away and in sight. No stored-state dump.
   const objects = picked.map(t => {
     // M01: the few facts first; enclosure and sightline (entity-world walls) only for a thing that has some.
     // entry 43: a kettle or a cup (items) has a fact or two as well: "boiling", a cup of tea
-    const facts=(t.kind==='object'||t.kind==='item')&&t.distance<=4?ledger.contactActuator?.facts(t.id):null;
+    const facts=(t.kind==='object'||t.kind==='item'||t.kind==='seat')&&t.distance<=4?ledger.contactActuator?.facts(t.id,soul):null;
     const state=facts&&Object.keys(facts).length&&P.sameEnclosure(t.at)&&P.sees(t.at,t.id)?facts:null;
     // entry 33: a neon sign's words, only for a Soul this near it; attributed and untrusted (never in offers)
     const said=state?ledger.contactActuator?.words?.(t.id):null;
@@ -343,6 +371,9 @@ export function hereFrame(ledger: EdgeLedger, soul: EdgeSoul,options:{doHere?:bo
     untrusted: true,
   };
   if(!options.doHere)return frame;
-  const baseBytes=Buffer.byteLength(JSON.stringify(frame)),budget=Math.max(0,Math.min(1800,2600-baseBytes-240));
-  return {...frame,...compactDoHere(P.menu().caps,new Set([...ledger.placePathOf(soul.soulId).map(p=>p.id),...objects.map(o=>o.id),...near.filter(n=>n.dist<=8).map(n=>n.id)]),budget)};
+  const local=new Set([...ledger.placePathOf(soul.soulId).map(p=>p.id),...objects.map(o=>o.id),...near.filter(n=>n.dist<=8).map(n=>n.id)]);
+  // CTRL-2 (#1094): the grouped view comes first, so a big room with no budget left for doHere still says what can be done
+  const offers=groupedOffers(P.menu().caps,local,exits.length);
+  const baseBytes=Buffer.byteLength(JSON.stringify({...frame,offers})),budget=Math.max(0,Math.min(1800,2600-baseBytes-240));
+  return {...frame,offers,...compactDoHere(P.menu().caps,local,budget)};
 }

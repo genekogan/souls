@@ -58,6 +58,8 @@ import { constructionPlan, unsafeConstruction, type BuildPhase } from './constru
 import { disassemblyPlan, DISASSEMBLY_POLICY } from './disassembly.ts';
 import { MARS_2026_MAP, withMars2026Map } from './mars-2026-map.ts';
 import { disassemblyRegistry } from '../../../mars/viewer/engine/construction/disassembly.ts';
+import { raiseHold, looseFramesHeld } from './raise-hold.ts';
+import { connectBeamV1, framesStand } from './beam-connect.ts';
 import { captureRenderScene, commonsSceneMetadataV1Schema, type RenderSceneCaptureV1, type RenderScene } from '@sim/engine-contract';
 import {readLocalClassroomV1} from './classroom-observation.ts';
 import { readNativeGathering } from './gathering-observation.ts';
@@ -137,7 +139,7 @@ type Prog = {
   readiedActors?:string[];
   build?: { phase: BuildPhase; crew: string[]; stopping?: Diag; reverse?: true };
 };
-export type MarsWorldConfig = { groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; stairLandingClearanceV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
+export type MarsWorldConfig = { /** PC13 (#692): the shared raise (raise_hold_v1 and its invariant); absent, SIM_SHARED_CARRY=1 decides. */ sharedCarryV1?:boolean; groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; stairLandingClearanceV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
 export const LITTLE_MARTIANS_WORLD: MarsWorldConfig={scene:'littlemartians',arrival:[0,18],arrivalPlace:'garden',reference:[0,16],grounds:{id:'grounds',name:'Ceramic garden'}};
 export const GREEN_FIELD_WORLD:MarsWorldConfig={scene:'greenfield',arrival:[0,0],arrivalPlace:'field',reference:[2,0],grounds:{id:'grounds',name:'Green field'}};
 export const EDEN_COMMONS_WORLD:MarsWorldConfig={scene:'eden-commons',arrival:[14,4],arrivalPlace:'commons',reference:[9,5],grounds:{id:'grounds',name:'Eden commons'}};
@@ -2618,19 +2620,32 @@ function checkedTable(t: EntityTable): EntityTable {
 }
 
 function centroid(poly: [number, number][]): [number, number] { let x = 0, z = 0; for (const p of poly) { x += p[0]; z += p[1]; } return [r3(x / poly.length), r3(z / poly.length)]; }
-function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}`;}
+function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}${cfg.sharedCarryV1?'+'+SHARED_RAISE_POLICY+'+'+SHARED_BEAM_POLICY:''}`;}
+/** PC13 (#692): a world whose engine has the shared raise (SIM_SHARED_CARRY) says so in its rules version: a journal that
+ *  names raise_hold_v1 does not replay, nor a snapshot restore, where the verb is not registered. */
+export const SHARED_RAISE_POLICY = 'shared-raise/1';
+/** PC14 (#693): the same flag adds connect_beam_v1 and the frame invariant: a journal that seats a beam needs them. */
+export const SHARED_BEAM_POLICY = 'shared-beam/1';
 
 /** The factory is made once the Mars engine has been loaded (an async import); after that everything is synchronous. */
 export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promise<EngineFactory> {
-  const m = cfg.map===MARS_2026_MAP?withMars2026Map(await loadMars()):await loadMars();if(cfg.map&&cfg.map!==MARS_2026_MAP)throw new Error('mars.unknown-map');
+  const loaded = cfg.map===MARS_2026_MAP?withMars2026Map(await loadMars()):await loadMars();if(cfg.map&&cfg.map!==MARS_2026_MAP)throw new Error('mars.unknown-map');
+  // PC13 (#692): the shared raise's verb and its invariant exist only behind SIM_SHARED_CARRY (the shared-carry ledger
+  // flag, the same default); without it the registry and the invariants are exactly what they were before PC13.
+  const sharedCarry = cfg.sharedCarryV1 ?? process.env.SIM_SHARED_CARRY === '1';
+  // resolved once here, so the engine's own rules version (this.cfg) says what the factory registered; off adds no key
+  if (sharedCarry && cfg.sharedCarryV1 !== true) cfg = {...cfg, sharedCarryV1: true};
+  const m = sharedCarry ? {...loaded, invariants: [...loaded.invariants, looseFramesHeld, framesStand]} : loaded;
   // disassembly/1 adds its reverse verbs to this engine's registry only; the default registry is unchanged.
   const registry = cfg.disassemblyV1 ? disassemblyRegistry(m.createRegistry) : m.createRegistry(), services = m.servicesFor(m.scenes);
+  if (sharedCarry) { registry.set(raiseHold.verb, raiseHold as any); registry.set(connectBeamV1.verb, connectBeamV1 as any); }   // PC13 (#692), PC14 (#693)
   return {
     rulesVersion: nativeRulesVersion(m.rulesVersion,cfg),
     // A failed cross-policy checkpoint restore must not turn into replay under
     // another removal policy. An explicit, qualified transition is separate.
     canReplayHistory: version => {
-      if((cfg.walkBlockV1||cfg.safeArrivalV1||cfg.scene==='eden-commons'||cfg.disassemblyV1||cfg.map)&&version!==nativeRulesVersion(m.rulesVersion,cfg))return false;
+      if((cfg.walkBlockV1||cfg.safeArrivalV1||cfg.scene==='eden-commons'||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1)&&version!==nativeRulesVersion(m.rulesVersion,cfg))return false;
+      if(!cfg.sharedCarryV1&&/\+shared-(?:raise|beam)\//.test(version))return false;
       if(!cfg.map&&/\+mars-2026-map\//.test(version))return false;
       if(!cfg.disassemblyV1&&/\+disassembly\//.test(version))return false;
       const walk=version.match(/\+walk-block\/[^+]+/g)??[];
@@ -2644,7 +2659,7 @@ export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promis
     },
     // Candidate removal changes controller behavior: restore only its exact
     // policy/version. Legacy activities31 compatibility remains unchanged.
-    canRestoreSnapshot: version => cfg.walkBlockV1||cfg.safeArrivalV1||cfg.safeCrewRemoval||cfg.disassemblyV1||cfg.map||cfg.scene==='eden-commons'?version===nativeRulesVersion(m.rulesVersion,cfg):[m.rulesVersion,m.rulesVersion.replace('+bodies/1',''),m.rulesVersion.replace('+bodies/1','').replace('activities/31','activities/29')].some(v=>version===nativeRulesVersion(v,cfg)),
+    canRestoreSnapshot: version => cfg.walkBlockV1||cfg.safeArrivalV1||cfg.safeCrewRemoval||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1||cfg.scene==='eden-commons'?version===nativeRulesVersion(m.rulesVersion,cfg):[m.rulesVersion,m.rulesVersion.replace('+bodies/1',''),m.rulesVersion.replace('+bodies/1','').replace('activities/31','activities/29')].some(v=>version===nativeRulesVersion(v,cfg)),
     /** The synthetic proving ground (a campfire, two benches, a lawn), emptied of its test people: Souls arrive by being born. */
     genesis(seed: string): WorldState {
       if (cfg.scene === 'littlemartians') return m.littleMartiansWorld(seed);

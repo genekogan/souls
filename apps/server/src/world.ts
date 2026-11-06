@@ -606,9 +606,9 @@ export class WorldHost {
       if (p.journal) {
         // Accepted log fact and its private request reference either both exist
         // or neither does. Check current DB authority under the same write lock.
+        // A tracked transaction, so a journal's after-commit notices (edge receipts, streams) run once it commits.
         try {
-          this.db.db.exec('BEGIN IMMEDIATE');
-          try {
+          tx(this.db.db, () => {
             checkAcceptanceGuard(p.guard!);
             if(p.stationEra)stationEra=this.stationEraEvent(e);
             if (p.purpose) {
@@ -619,9 +619,8 @@ export class WorldHost {
             if (admission) this.db.appendEvent(this.worldId, admission);
             if(stationEra)this.db.appendEvent(this.worldId,stationEra);
             if(arrival){this.db.appendEvent(this.worldId,arrival);journalIntentArrivalV1(this,arrival);}
-            if (p.journal(e) !== true) throw new TypeError('acceptance journal must synchronously return true');
-            this.db.db.exec('COMMIT');
-          } catch (error) { this.db.db.exec('ROLLBACK'); throw error; }
+            if (p.journal!(e) !== true) throw new TypeError('acceptance journal must synchronously return true');
+          }, {immediate: true});
         } catch (error) { p.reject!(error); continue; }
       } else if(arrival){this.db.db.exec('BEGIN IMMEDIATE');try{this.db.appendEvent(this.worldId,e);this.db.appendEvent(this.worldId,arrival);journalIntentArrivalV1(this,arrival);this.db.db.exec('COMMIT');}catch(error){this.db.db.exec('ROLLBACK');this.clockFailure=error;this.paused=true;this.stop();for(const listener of this.listeners)try{listener.onClockUnavailable?.();}catch{}throw error;}}else this.db.appendEvent(this.worldId, e);
       this.seq = arrival?.seq ?? stationEra?.seq ?? admission?.seq ?? e.seq;

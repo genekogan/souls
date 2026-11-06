@@ -7,12 +7,13 @@
 // The derived physics is plain data in the logged event, so the engine's replay never reads the entity model.
 // Fastest working path on the engine's existing structures (nav/1-style static scene re-base, CATALOG fixtures);
 // the per-tile patch follows L8's tiled Spatial.
+import { handReachSeconds, handReleaseSeconds, handSwingSeconds, type HandActuatorMotion } from '../../../../mars/viewer/engine/social/hand-actuator.ts';
 import { menuWorldOf, type MenuWorld } from '../split/menu-world.ts';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
 import { deckRaised, railGaps, rasterOf } from '@sim/generators';
-import { applyBatch, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
-import { assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
+import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
+import { beamBays, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
 import { createHash } from 'node:crypto';
 import type { WorldHost } from '../world.ts';
 import type { LogEvent } from '@sim/protocol';
@@ -28,6 +29,7 @@ import { doorInGap, freeDoorOpening, isDoorDef, isShut } from './doors.ts';
 import { dryingOps } from './garden.ts';
 import { fadingIds } from '../art/art.ts';
 import { createWatering, type Watering } from './watering.ts';
+import { createMending, type Mending } from './mending.ts';
 import { createTea, type Tea } from './tea.ts';
 import { createContactActuatorService } from './contact-actuator.ts';
 import { createDoorPassage } from './door-passage.ts';
@@ -126,6 +128,7 @@ export class FloorCells {
 const NEAR = 60;               // capabilities: god things within this many metres
 const FAR_SEAT = 250, FAR_SEATS = 6; // F2: and the nearest FAR_SEATS seats out to FAR_SEAT m (sit only)
 const STORE_NEAR = 8;          // entry 42: put-in is offered for containers within this many metres of a Soul holding something
+const possessive = (n: string) => `${n}${n.endsWith('s') ? "'" : "'s"}`; // "Ana's", "the bakers'"
 const FACTS_NEAR = 4;          // #435: who left a kept thing is named only within here's compact-facts range (edge/perception/here.ts)
 const BODY_DEF = 'core/humanoid@1';
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
@@ -215,9 +218,11 @@ export type LoadLevel = keyof typeof PERCEIVE_DIAL;
 /** Build notices that change nothing a Soul perceives (no step label, no closure): they never start a catch-up. */
 const PERCEPTION_QUIET_BUILD = new Set<string>(['alive', 'claimed', 'released', 'taken']);
 const WRITE_BACK_SLICE_MS = 8;
-type WriteBackUnit = { key: string; ops: Op[]; body?: string };
+/** `atomic` (PC14): the ops are one engine edit (moves and the joints they make), never applied one by one. */
+type WriteBackUnit = { key: string; ops: Op[]; body?: string; atomic?: true };
 type WriteBackBody = { pose: string; entity: Entity | undefined };
 
+const listed2 = (n: [string, string]) => n[0] === n[1] ? `two ${n[0]}s` : `${n[0]} and ${n[1]}`;
 export class EngineBridge {
   readonly host: WorldHost; readonly god: GodMode; readonly edge?: EdgeLedger;
   /** B-facade: the read worker's bridge (BridgeOptions.read) */
@@ -296,18 +301,29 @@ export class EngineBridge {
     const owner=(id:string,soul:EdgeSoul)=>{const o=this.layers.ownership(id);return o?.owner?{name:this.layers.nameOf(o.owner),mine:this.layers.isOf(o.owner,soul)}:null;};
     // Entry 38: posters know the world day they went up (age on demand; no per-day pass)
     setWorldDaySource(()=>{const l=this.host.living;return l&&l.dayTicks>0?Math.floor(Math.max(0,this.host.engine.world.tick-l.origin)/l.dayTicks):0;});
+    if(this.edge){
+      // CTRL-2 (#1094): `inspect` shows what the offers show: a kept thing only while its container is open and not a hiding place
+      this.edge.concealedThing=(id)=>{const x=this.engine.world.entities[id] as {support?:{kind:string;on?:string;slot?:string}}|undefined;if(x?.support?.kind!=='resting-on')return false;const box=this.keptIn(x);return !!box&&(box.hidden||!box.open);};
+      this.edge.thingName=(id)=>this.model.entities.has(id)?this.model.pathOf(id):null;
+    }
+    if(this.edge)this.edge.thingAbout=(id)=>{try{const e=this.model.entities.get(id)??this.model.get(id);return (e as {about?:{title?:string;what?:string;aliases?:string[]}}|undefined)?.about??null;}catch{return null;}};
     if(this.edge)this.edge.contactActuator=createContactActuatorService({model:()=>this.god.model,levelAt:(x,z,y)=>this.levelAt(x,z,y),
       clearance:(x,z,level)=>(this.host.engine as unknown as {clearanceAtV1?:(x:number,z:number,level?:number)=>number}).clearanceAtV1?.(x,z,level)??Infinity,
       body:id=>this.host.engine.world.entities[id] as never,access:(id,soul)=>this.layers.refusal(id,soul),owner,knock:(soul,id)=>this.knockHeard(soul,id),
-      moreFacts:id=>this.tea?.facts(id)??null,soulName:id=>this.host.minds.get(id)?.name??null,
+      moreFacts:id=>this.tea?.facts(id)??this.mending?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,failed,overlapped)=>this.searchOutcome(soul,spot,failed,overlapped),
       record:(soul,id,action,params={})=>{const r=this.edge!.comms?.objects.act?.(id,soul,{action,params}) as {accepted?:boolean}|undefined;if(!r?.accepted)throw Error('switch.object-record-refused');},
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
+    // #442: repair with a tool in hand (mending.ts): the world changes when the receipt completes, no tick work
+    this.mending = createMending({ model: this.god.model, engine: this.host.engine as never, levelAt: (x, z, y) => this.levelAt(x, z, y), occupied: (id) => this.seatTakers(id).length > 0, denied: (id, soul) => this.layers.takeRefusal(id, soul) ?? this.claimRefusal(id, soul as never),
+      reserved: (id, actor) => { const rt = (this.host.engine as unknown as { rt?: { holder(r: string): string[]; records: Map<string, { params?: { actor?: string } }> } }).rt; return !!rt?.holder(`entity:${id}`).some((r) => rt.records.get(r)?.params?.actor !== actor); }, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
+    if (this.edge) this.edge.repairEffects = (r) => this.mending?.effects(r) ?? {};
+    this.edge?.onReceipt((r) => { try { this.mending?.onReceipt(r); } catch (e) { this.log(`mending: ${(e as Error).message}`); } });
     // Entry 34: the watering-can act (watering.ts): planned for perceive's offers, its moments committed per tick
     this.watering = createWatering({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
     // Entry 43: the tea acts (tea.ts), the same way
-    this.tea = createTea({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
-    this.perceive = new GodPerceive({ model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea });
+    this.tea = createTea({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m), denied: (id, soul) => this.layers.takeRefusal(id, soul) ?? this.claimRefusal(id, soul) });
+    this.perceive = new GodPerceive({ mending: this.mending, model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea, claim: (id, soul) => this.claimRefusal(id, soul) });
     // L3 (server reliability): kept Soul menus read god state the ledger does not version (ownership, construction sites)
     // the bridge runs without an edge ledger too (toy/engine-only hosts): guard the ledger, not only the method
     if (!R) (this.edge as { addMenuInput?(f: () => string): void } | undefined)?.addMenuInput?.(() => `${this.version}|${this.god.builds.closingSites().map((x) => x.id).join(',')}`);
@@ -432,6 +448,7 @@ export class EngineBridge {
     });
   }
   private watering?: Watering;
+  private mending?: Mending;
   /** Entry 43: the tea acts; read by perception for a kettle's and a cup's compact facts. */
   tea?: Tea;
   /** Entry 18: when the world day changes, gardens dry by the days passed (capped at 3; time set backwards restarts the count). */
@@ -606,6 +623,16 @@ export class EngineBridge {
     return (this.doorSpotsCache = out);
   }
 
+  /** PC12 (#691): a part joined into an assembly is not carried off: it names what it is joined to (by joint), so the
+   *  Soul knows why and the god knows what to disconnect. */
+  private joinedRefusal(id: string): { code: string; reason: string } | null {
+    const e = this.model.entities.get(id), js = Object.entries(e?.joins ?? {});
+    if (!e || !js.length) return null;
+    const nameOf = (x: string) => { const o = this.model.entities.get(x); return String((o && (o.name ?? titleOf(o) ?? this.model.resolvedDef(o.def)?.name.replace(/^core-/, ''))) ?? x).replace(/-/g, ' '); };
+    const to = [...new Set(js.map(([, j]) => nameOf(j.to)))];
+    return { code: 'carry.joined', reason: `${nameOf(id)} is joined to ${to.length > 1 ? `${to.slice(0, -1).join(', ')} and ${to.at(-1)}` : to[0]} (${js.map(([c, j]) => `${c} to ${j.at}`).join(', ')}); a joined part is not carried until it is disconnected.` };
+  }
+
   /** The engine physics of one entity: its solids, floors and stairs, or its fixture registration. */
   derive(e: Entity, assets: Record<string, unknown>, known: Record<string, unknown>): Part | null {
     const def = this.model.resolvedDef(e.def); if (!def) return null;
@@ -622,7 +649,7 @@ export class EngineBridge {
       // a floating boat's asset carries no obstacle (catalog-adapter isFloatingDef): a new id, so worlds that registered
       // the old one (an obstacle) are sent the new one
       const aid = assetIdFor(facts, JSON.stringify(e.params ?? {}) + (isFloatingDef(def) ? '|afloat' : '') + (walkableKit ? '|ground-kit/1' : ''));
-      if (!known[aid] && !assets[aid]) { const asset = assetFromDef(aid, facts); if (walkableKit) { delete asset.obstacle; asset.seatApproach = 'slot'; for (const slot of asset.slots ?? []) delete slot.approachPolicy; } assets[aid] = asset; } // XP5: seats retain slots; kit solids supply the obstacle geometry. Their exact slot approach stays (lane walk's
+      if (!known[aid] && !assets[aid]) { const asset = assetFromDef(aid, facts, { connectors: !!this.edge?.sharedCarry }); if (walkableKit) { delete asset.obstacle; asset.seatApproach = 'slot'; for (const slot of asset.slots ?? []) delete slot.approachPolicy; } assets[aid] = asset; } // XP5: seats retain slots; kit solids supply the obstacle geometry. Their exact slot approach stays (lane walk's
       // reachable/1 sweep would cross the kit's own solids).
       part.fixture = this.fixtureSpec(e, def, aid, (assets[aid] ?? known[aid]) as any, wp);
       if (!walkableKit) return part;
@@ -854,7 +881,7 @@ export class EngineBridge {
     const pdef = parent ? this.model.resolvedDef(parent.def) : undefined;
     if (parent && pdef && isFixtureDef(pdef)) {
       const pfacts = factsOf(pdef, this.model.bake(pdef, parent.params ?? {}, parent.seed ?? 0, parent.shape), this.model.worldPose(parent).s);
-      const passet = assetFromDef(assetIdFor(pfacts, JSON.stringify(parent.params ?? {})), pfacts);
+      const passet = assetFromDef(assetIdFor(pfacts, JSON.stringify(parent.params ?? {})), pfacts, { connectors: !!this.edge?.sharedCarry });
       const pp = this.model.worldPose(parent), c = Math.cos(pp.yaw), s = Math.sin(pp.yaw), dx = wp.x - pp.x, dz = wp.z - pp.z;
       const local: [number, number, number] = [dx * c - dz * s, wp.y - pp.y, dx * s + dz * c];
       const slot = nearestSurfaceSlot(passet, local);
@@ -863,6 +890,18 @@ export class EngineBridge {
         const wx = pp.x + sl.local[0] * c + sl.local[2] * s, wz = pp.z - sl.local[0] * s + sl.local[2] * c;
         return { ...spec, p: [r3(wx), r3(pp.y + sl.local[1]), r3(wz)], support: { kind: 'resting-on', on: parent.id, slot } };
       }
+    }
+    // PC12 (#691): a part with connectors keeps its tilt about its own z (an upright stood on end) and its joints: the
+    // engine's own reciprocal connections; a part held up by bearing connectors is supported by what they join
+    // Behind SIM_SHARED_CARRY (the shared-carry ledger flag): off, the world-edit is exactly what it was before PC12 (no roll,
+    // connections or connected support); the entity world still keeps the joints and refuses carrying a joined part.
+    const cs = def.components.connectors;
+    if (cs && e.in.parent === 'world' && this.edge?.sharedCarry) {
+      const roll = Array.isArray(e.r) && e.r[2] ? r3(e.r[2]) : 0;
+      const joins = Object.entries(e.joins ?? {}).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+      const bears = new Set(cs.filter((c) => c.bears).map((c) => c.id)), on = [...new Set(joins.filter(([c]) => bears.has(c)).map(([, j]) => j.to))];
+      return { ...spec, ...(roll ? { roll } : {}), support: on.length ? { kind: 'connected', to: on } : { kind: 'ground' },
+        ...(joins.length ? { connections: joins.map(([c, j]) => ({ socket: c, to: j.to, toSocket: j.at })) } : {}) };
     }
     return { ...spec, support: { kind: 'ground' } };
   }
@@ -1438,6 +1477,8 @@ export class EngineBridge {
     // result (also after safe cancellation) through the existing item write-back.
     if (x.kind !== 'component' && !(x.kind === 'fixture' && CATALOG[x.def]?.capabilities?.fixtureCarry && x.support?.kind === 'ground' && x.phase !== 'carried')) return;
     const e = this.model.entities.get(id); if (!e) return;
+    // PC14 (#693): a beam a crew seated: its joints, and the standing poses of what it joins, reach the entity world
+    if (x.phase === 'installed' && x.support?.kind === 'connected' && x.connections?.length) return this.writeBackJoints(x, e);
     const ops: Op[] = []; let body: string | undefined;
     const s = x.support;
     if (s?.kind === 'in-hand') {
@@ -1479,6 +1520,22 @@ export class EngineBridge {
     if (ops.length) return { key: `component:${id}`, ops, ...(body ? { body } : {}) };
   }
 
+  /** PC14 (#693): an installed beam's joints, written as `connect` ops after `move`s that put it and each part it joins where
+   *  the engine has them (a stood-on-end upright as r = [yaw, 0, roll], PC12), in one unit. Nothing when they are there. */
+  private writeBackJoints(x: { id: string; connections: { socket: string; to: string; toSocket: string }[] }, e: Entity): WriteBackUnit | undefined {
+    const missing = x.connections.filter((c) => { const j = e.joins?.[c.socket]; return !(j?.to === c.to && j.at === c.toSocket); });
+    if (!missing.length) return;
+    const ops: Op[] = [];
+    for (const id of [x.id, ...new Set(x.connections.map((c) => c.to))]) {
+      const ex = this.engine.world.entities[id] as { pose: { p: number[]; yaw: number; roll?: number } } | undefined, me = this.model.entities.get(id);
+      if (!ex || !me) return;
+      const r: [number, number, number] = [r3(-ex.pose.yaw), 0, r3(ex.pose.roll ?? 0)], p: [number, number, number] = [r3(ex.pose.p[0]), r3(ex.pose.p[1]), r3(ex.pose.p[2])];
+      if (JSON.stringify(me.p) !== JSON.stringify(p) || JSON.stringify(me.r) !== JSON.stringify(r) || me.in.parent !== 'world') ops.push({ op: 'move', id, in: { parent: 'world' }, p, r, mode: 'strict' } as Op);
+    }
+    for (const c of missing) ops.push({ op: 'connect', a: { id: x.id, connector: c.socket }, b: { id: c.to, connector: c.toSocket } } as Op);
+    return { key: `component:${x.id}`, ops, atomic: true };
+  }
+
   private writeBackBody(id: string, holder: boolean): WriteBackUnit | undefined {
     const b = this.engine.world.entities[id], e = this.model.entities.get(id);
     if (!b?.human || !e) return;
@@ -1490,6 +1547,13 @@ export class EngineBridge {
   }
 
   private applyWriteBackUnit(unit: WriteBackUnit, bodies: Map<string, WriteBackBody>) {
+    if (unit.atomic) {
+      // a refused one is not retried with the same ops (as a refused pose)
+      const key = `${unit.key}@${JSON.stringify(unit.ops)}`; if (this.refusedPose.has(key)) return;
+      const r = this.engineAct(unit.ops, `engine: ${unit.ops.map((o) => describeOp(o, this.model)).join('; ')}`);
+      if (r.accepted) this.stats.writeBacks++; else { this.refusedPose.add(key); this.log(`write-back refused for ${unit.key}: ${JSON.stringify(r.failures).slice(0, 300)}`); }
+      return;
+    }
     for (let i = 0; i < unit.ops.length; i++) {
       const op = unit.ops[i];
       // Several items can share a holder. Match the full drain's one prerequisite per unchanged pose,
@@ -1825,10 +1889,10 @@ export class EngineBridge {
     // the object scans read every entity of the world (three passes) and perceive/layers scan signs and stalls
     const named = (...verbs: string[]) => !focus || focus.targets.size > 0 || verbs.some((v) => wantsPrefix(focus, v + ':', v));
     if (named('read')) try { this.perceive.capabilities(soul, caps, plans); } catch (e) { this.log(`perceive capabilities: ${(e as Error).message}`); }
-    caps.push({ id: 'pray', verb: 'pray', label: 'Pray to the god of this world (params: {"text": "…"}); answers come back under GET /v1/god/prayers/mine', available: true, params: { text: { type: 'string', maxLength: 2000 } } });
+    caps.push({ id: 'pray', verb: 'pray', label: 'Pray to the god of this world (params: {"text": "…"}); answers come back under GET /v1/god/prayers/mine', available: true, params: { text: { type: 'string', required: true, maxLength: 2000 } } });
     const ents = this.mw.world.entities as Record<string, any>, me = ents[soul.entityId]; if (!me?.human) return;
     const here: Vec2 = [me.pose.p[0], me.pose.p[2]];
-    if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on')) {
+    if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on', 'put-in', 'search')) {
       const held = Object.values(ents).find((x: any) => x.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === soul.entityId) as any;
       const name = (id: string) => (this.model.entities.has(id) ? this.model.pathOf(id) : String(ents[id]?.label ?? id));
       // MARSLIVED: a thing resting on a table is reached from the table's floor (its top's height matched Mimos's 0.53 m
@@ -1850,6 +1914,8 @@ export class EngineBridge {
       // floors (2026-10-26): a seat the body cannot use names the nearest one it can (or the ground)
       const unusable: number[] = [], usable: { id: string; label: string; d: number }[] = [];
       for (const x of near) {
+        // #435 (W068): a thing in a hiding place has no offers of its own, of any kind; only the place's search finds it
+        if (x.support?.kind === 'resting-on' && this.keptIn(x)?.hidden) continue;
         const asset = (this.physics?.assets[x.def] ?? {}) as { slots?: { kind: string }[]; surfaceSlots?: { id: string; inside?: unknown }[]; category?: string };
         const d = Math.round(Math.hypot(x.pose.p[0] - here[0], x.pose.p[2] - here[1]));
         if (asset.slots?.some((s) => s.kind === 'seat')) {
@@ -1919,33 +1985,71 @@ export class EngineBridge {
           // PC04 (#683, PC02 §1): a `shared-carry` load can be proposed as a carry with other Souls (behind the sharedCarry flag)
           const sharedDef=this.edge?.sharedCarry?this.model.entities.get(x.id):undefined,sdef=sharedDef&&this.model.resolvedDef(sharedDef.def),shareable=!!sharedDef&&!!sdef?.tags.includes('shared-carry');
           // PC06 (#685, PC02 §4): the solo refusal names the way to carry it with others when that is on offer
-          const block=this.layers.refusal(x.id,soul)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.${shareable&&need<=Math.min(loose.carryCrew[1],8)?` Ask others to carry it with you: carry-with:${x.id} (to: a place, with: who).`:''}`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
+          const block=this.layers.refusal(x.id,soul)??this.joinedRefusal(x.id)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.${shareable&&need<=Math.min(loose.carryCrew[1],8)?` Ask others to carry it with you: carry-with:${x.id} (to: a place, with: who).`:''}`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
           const id=`carry:${x.id}`,label=`Carry ${name(x.id)} with both hands, then lay it down (to: a place name)${need>1?`; it needs ${need} carriers`:''}`;
           caps.push({id,verb:'carry',label,target:{id:x.id,kind:'object'},available:!block,...(block?{blocked:block}:{}),params:{to:{type:'string',maxLength:100}}});
           if(!block)plans.set(id,{label,steps:[...stand,{verb:'mars:carry',params:{crew:[soul.entityId],item:x.id,to:{x:here[0],z:here[1],yaw:x.pose.yaw??0}}}]});
           // Proposing moves nobody: it is a together invitation, so the plan has no body steps.
           if(sharedDef&&shareable){
             const crew:[number,number]=[need,Math.min(loose.carryCrew[1],8)],sid=`carry-with:${x.id}`;
-            const sblock=this.layers.refusal(x.id,soul)??(need>crew[1]?{code:'carry.crew-too-large',reason:`${name(x.id)} needs more carriers than it has grips.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
+            const sblock=this.layers.refusal(x.id,soul)??this.joinedRefusal(x.id)??(need>crew[1]?{code:'carry.crew-too-large',reason:`${name(x.id)} needs more carriers than it has grips.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
             const slabel=`Carry ${name(x.id)} with other Souls (asks them first; ${crew[0]}–${crew[1]} carriers; to: a place name, with: who)`;
-            caps.push({id:sid,verb:'carry-with',label:slabel,target:{id:x.id,kind:'object'},available:!sblock,...(sblock?{blocked:sblock}:{}),params:{to:{type:'string',maxLength:100},with:{type:'string',maxLength:300,description:'the Souls who carry it with you (names or ids, comma-separated)'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
+            caps.push({id:sid,verb:'carry-with',label:slabel,target:{id:x.id,kind:'object'},available:!sblock,...(sblock?{blocked:sblock}:{}),params:{to:{type:'string',maxLength:100},with:{type:'string',maxLength:300,description:'the Souls who carry it with you (names or ids: "Bo and Cy", "Bo, Cy and Dee")'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
             // `def` is the placed def ref with its revision (for example core/rack-beam@2): the load's identity (PC02 §4)
-            const splan={label:slabel,steps:[],together:{kind:'shared' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew}};
+            const splan={label:slabel,steps:[],together:{kind:'shared' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew,mass:{kg:mass,each:MAX_KG_PER_CARRIER}}};
             if(!sblock)plans.set(sid,splan);
+            // PC13 (#692): an upright lying free can be raised and held by the crew, standing where it lies (asks first, like a carry)
+            if(sdef!.tags.includes('upright')){
+              const rid=`raise-with:${x.id}`,rlabel=`Raise ${name(x.id)} upright with other Souls and hold it until one of you stops (asks them first; ${crew[0]}–${crew[1]} people; with: who)`;
+              const rblock=sblock??(x.pose.roll?{code:'raise.not-lying',reason:`${name(x.id)} is not lying flat on the ground.`}:null);
+              caps.push({id:rid,verb:'raise-with',label:rlabel,target:{id:x.id,kind:'object'},available:!rblock,...(rblock?{blocked:rblock}:{}),params:{with:{type:'string',maxLength:300,description:'the Souls who raise it with you (names or ids: "Bo and Cy", "Bo, Cy and Dee")'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
+              const rplan={label:rlabel,steps:[],together:{kind:'shared' as const,template:'raise-hold' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew,mass:{kg:mass,each:MAX_KG_PER_CARRIER}}};
+              if(!rblock)plans.set(rid,rplan);
+            }
+            // PC14 (#693): a loose beam lying under a bay between two standing, supported uprights can be seated by two Souls in a
+            // seat pair both uprights have free (engine-mars beamBays: level, a beam's span apart, within standing reach)
+            const bays=sdef!.tags.includes('beam')?beamBays(this.mw.world as never,x.id):[];
+            if(bays.length){
+              const tagged=bays.map(b=>({...b,names:[name(b.a),name(b.b)] as [string,string]})),cols=[...new Set(bays.map(b=>b.column))],free=cols.map(c=>`${c}: ${bays.filter(b=>b.column===c).map(b=>b.height.toFixed(2)).join(', ')} m`).join('; ');
+              const pair=listed2(tagged[0]!.names),bid=`connect-beam-with:${x.id}`,blabel=`Seat ${name(x.id)} between ${pair} with one other Soul, one at each end (asks them first; column: ${cols.join(' or ')}; height: a free seat height in metres, ${free}; with: who)`;
+              const bblock=sblock&&sblock.code!=='carry.crew-too-small'?sblock:null;
+              caps.push({id:bid,verb:'connect-beam-with',label:blabel,target:{id:x.id,kind:'object'},available:!bblock,...(bblock?{blocked:bblock}:{}),params:{column:{type:'string',enum:cols,description:"the uprights' column the beam goes into (each upright's own l or r side)"},height:{type:'number',min:0.1,max:2.1,description:`the seat height in metres above the ground, free on both uprights (the nearest free seat within 8 cm): ${free}`},with:{type:'string',maxLength:300,description:'the one Soul who seats it with you'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
+              const bplan={label:blabel,steps:[],together:{kind:'shared' as const,template:'connect-beam' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew:[2,2] as [number,number],bays:tagged}};
+              if(!bblock)plans.set(bid,bplan);
+            }
           }
         }
         // entry 42: a thing kept inside a container is seen, offered and named only while the container is open
         const kept = asset.category === 'item' && x.support?.kind === 'resting-on' ? this.keptIn(x) : null;
         if (asset.category === 'item' && !(loose && !loose.small) && x.support?.kind !== 'in-hand' && !held && (!kept || (kept.open && d <= STORE_NEAR))) {
-          const by = kept && d <= FACTS_NEAR ? this.leftBy(kept.id, x.id) : null;
-          const id = `pick-up:${x.id}`, label = kept ? `Take ${name(x.id)}${by ? ` (left by ${by})` : ''} out of ${kept.label} (${d} m)` : `Pick up ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
-          const block = kept ? this.storageRefusal(kept, soul) : null;
+          const note = kept && d <= FACTS_NEAR ? this.keptNote(kept.id, x.id, soul) : null;
+          const id = `pick-up:${x.id}`, label = kept ? `Take ${name(x.id)}${note ? ` (${note})` : ''} out of ${kept.label} (${d} m)` : `Pick up ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
+          // PC12 (#691): a small part joined into an assembly is not picked up off its joints either
+          const block = (kept ? this.storageRefusal(kept, soul) ?? this.claimRefusal(x.id, soul, d <= FACTS_NEAR) : null) ?? this.joinedRefusal(x.id);
           caps.push({ id, verb: 'pick-up', label, target: { id: x.id, kind: 'item' }, available: !block, ...(block ? { blocked: block } : {}) });
           const precise=(this.physics?.assets[x.def] as {capabilities?:{recordedItemPoseV1?:boolean}})?.capabilities?.recordedItemPoseV1&&levelOf(x)===(me.human.level??0);
           // entry 43: an opted-in pick-up lets an idle gesture go before the hand reaches (entry 41's M04 finding)
           plans.set(id, { label, steps: [...stand, ...(precise?[{ verb: 'mars:let_go_v1', params: {} }]:kept?[]:approach(x)), { verb: 'mars:take_item', params: { item: x.id, hand: 'right' } }] });
         }
         const inner = (asset.surfaceSlots as { id: string; inside?: { fit: number[] } }[] | undefined)?.filter((sl) => sl.inside) ?? [];
+        // #435 (W068): search a hiding place. The offer reads the same whether or not anything is there: the hand reaches in,
+        // and takes what it finds; an empty place gets the same walk and a reach, and the hand comes away with nothing
+        if (inner.length && d <= STORE_NEAR) {
+          const box = this.storage(x.id);
+          if (box?.hidden) {
+            const station = this.standAt(x, box, levelOf(x), soul.entityId);
+            const block = this.storageRefusal(box, soul) ?? (held || me.human.grip ? { code: 'carry.hands-full', reason: `Put down what you are holding before searching ${box.label}.` } : !station ? { code: 'container.no-room', reason: `There is no room to stand at ${box.label}.` } : null);
+            const id = `search:${x.id}`, label = `Search ${box.label} (a ${box.kind}, ${d} m)`;
+            caps.push({ id, verb: 'search', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}) });
+            // a thing this Soul may not take (private, for sale, claimed) is as if it were not there: the same reach, and nothing leaks
+            const found = Object.values(ents).find((o: any) => o.support?.kind === 'resting-on' && o.support.on === x.id && inner.some((sl) => sl.id === o.support.slot) && !this.layers.takeRefusal(o.id, soul) && !this.claimRefusal(o.id, soul)) as any;
+            // #435: a second seeker while another Soul's hand is in the place waits her turn there, then reaches in: an answer,
+            // not a refusal. Two who reach for a thing at once: one hand gets it, and the other's search ends with nothing and
+            // why (the ledger, from the receipts)
+            const turn = this.reachLeft(x.id, soul.entityId);
+            if (!block) plans.set(id, { label, steps: found && !turn ? [...stand, { verb: 'mars:let_go_v1', params: {} }, { verb: 'mars:take_item', params: { item: found.id, hand: 'right' } }] : [...stand, ...this.reachInto(x, box, station!, levelOf(x), turn)] });
+          }
+        }
         if (held && inner.length && d <= STORE_NEAR) {
           const box = this.storage(x.id);
           if (box) {
@@ -1957,7 +2061,7 @@ export class EngineBridge {
               ?? (!fits ? { code: 'item.does-not-fit', reason: `${name(held.id)} (${size!.map(m2).join(' × ')} m) does not fit in ${box.label} (up to ${fit.map(m2).join(' × ')} m).` } : null)
               ?? (lit ? { code: 'item.lit', reason: `${name(held.id)} is lit; switch it off before putting it away.` } : null)
               ?? (!free ? { code: 'container.full', reason: `${box.label} is full (${inner.length} ${inner.length === 1 ? 'thing' : 'things'}).` } : null);
-            const id = `put-in:${x.id}`, label = `Put ${name(held.id)} in ${box.label} (${d} m)`;
+            const id = `put-in:${x.id}`, label = `Put ${name(held.id)} in ${box.label} (${box.hidden ? `a ${box.kind}, ` : ''}${d} m)`;
             caps.push({ id, verb: 'put-in', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}) });
             if (free) plans.set(id, { label, steps: [...stand, { verb: 'mars:put_item', params: { item: held.id, surfaceSlot: `${x.id}#${free.id}` } }] });
           }
@@ -1994,12 +2098,67 @@ export class EngineBridge {
     const e = this.model.entities.get(id), def = e && this.model.resolvedDef(e.def), ins = containerInside(def);
     if (!e || !def || !ins) return null;
     const n = this.model.pathOf(id), word = ins.word;
-    return { id, ins, open: containerOpen(def, actuatedState(e, def)), label: n.toLowerCase().split(/[^a-z0-9]+/).includes(word) ? n : `${n} (${word})`, word, name: n };
+    return { id, ins, hidden: containerHidden(def), kind: def.name.replace(/^core-/, '').replace(/-/g, ' '), open: containerOpen(def, actuatedState(e, def)), label: n.toLowerCase().split(/[^a-z0-9]+/).includes(word) ? n : `${n} (${word})`, word, name: n };
   }
-  /** #435 (W071): the name of the Soul who left this thing in a container that keeps a `leftBy` record, else null. */
-  leftBy(box: string, item: string): string | null {
-    const e = this.model.entities.get(box); if (!e || !keepsLeftBy(this.model.resolvedDef(e.def))) return null;
-    const by = leftByOf(e.state).get(item); return by ? this.host.minds.get(by)?.name ?? 'someone' : null;
+  /** #435 (W068): where a body ends up to reach into a container (in the world), or null. */
+  private standAt(x: { pose: { p: number[]; yaw?: number } }, box: NonNullable<ReturnType<EngineBridge['storage']>>, level: number, body: string): [number, number] | null {
+    // where the engine's reach ends up (items/actions.ts insideLean): a step in from `stand`, at most 0.2 m, never within 0.35 m of the face
+    const yw = -(x.pose.yaw ?? 0), [l, s0] = box.ins.stand, p = box.ins.slots[0].p, f = Math.max(box.ins.face + 0.35, s0 - Math.min(0.2, Math.max(0, Math.hypot(p[0] - l, p[2] - s0) - 0.5)));
+    return this.mw.standableNearV1!([x.pose.p[0] + l * Math.cos(yw) + f * Math.sin(yw), x.pose.p[2] - l * Math.sin(yw) + f * Math.cos(yw)], level, body, 0.4, 16);
+  }
+  /** #435 (W068): seconds until another Soul's hand is out of this place (its hand actuator holds the place for the whole
+   *  reach), with a little margin; 0 when no other hand is in it. */
+  private reachLeft(placeId: string, me: string): number {
+    const dt = (this.engine as { dt?: number }).dt ?? 0.05; let left = 0;
+    for (const b of Object.values(this.engine.world.entities) as any[]) {
+      const m = b.human?.handActuator as HandActuatorMotion | undefined; if (!m || b.id === me || m.target !== placeId) continue;
+      left = Math.max(left, handReachSeconds(m) + handSwingSeconds(m) + handReleaseSeconds(m) - (this.engine.world.tick - m.startTick) * dt);
+    }
+    return left > 0 ? left + 0.4 : 0;
+  }
+  /** #435 (W068): an empty search's steps: to where a body stands at this place, and a hand over its lip. */
+  private reachInto(x: { id: string; pose: { p: number[]; yaw?: number } }, box: NonNullable<ReturnType<EngineBridge['storage']>>, st: [number, number], level: number, wait = 0) {
+    const yw = -(x.pose.yaw ?? 0), s = box.ins.slots[0].p;
+    return [{ verb: 'mars:walk_to', params: { x: st[0], z: st[1], level } }, ...(wait > 0 ? [{ verb: 'rest', params: { seconds: r3(wait) } }] : []), { verb: 'mars:let_go_v1', params: {} },
+      { verb: 'mars:hand_actuator_v1', params: { target: x.id, at: [x.pose.p[0] + s[0] * Math.cos(yw) + s[2] * Math.sin(yw), x.pose.p[1] + Math.max(s[1] + 0.1, box.ins.lip + 0.02), x.pose.p[2] - s[0] * Math.sin(yw) + s[2] * Math.cos(yw)].map(r3), hold: 1 } }];
+  }
+  /** #435 (W068): what a finished search of this place came to, told to the searcher (the receipt's outcome). */
+  searchOutcome(soul: { entityId: string }, spot: string, failed = false, overlapped = false): string | null {
+    const box = this.storage(spot); if (!box) return null;
+    if (failed) return `You could not finish searching ${box.label}; you came away with nothing.`;
+    // with nothing in her hand, a search that ran alongside another Soul's says so (read from the receipts, not offer state)
+    const holds = Object.values(this.engine.world.entities).some((o: any) => o.tags?.includes('entity-world') && o.support?.kind === 'in-hand' && o.support.by === soul.entityId);
+    if (overlapped && !holds) return `Someone else was searching ${box.label} too; you came away with nothing.`;
+    const got = Object.values(this.engine.world.entities).find((o: any) => o.tags?.includes('entity-world') && o.support?.kind === 'in-hand' && o.support.by === soul.entityId) as { id: string } | undefined, e = got && this.model.entities.get(got.id);
+    return e ? `You found ${e.name ?? this.model.resolvedDef(e.def)?.name.replace(/^core-/, '') ?? 'something'} in ${box.label}.` : `You searched ${box.label} and came away with nothing.`;
+  }
+  /** #435: what a Soul near a container that keeps a `leftBy` record is told about a thing in it: "left by Ana" (a swap
+   *  shelf, W071); in one that gives things back to their owners (`claim: "owner"`, a lost-and-found, W072), whose it is and
+   *  who found it: "Ana's, found by Ben" ("yours, …" to Ana). Null when there is nothing to say. */
+  keptNote(box: string, item: string, soul?: { soulId: string; name: string }): string | null {
+    const e = this.model.entities.get(box), def = e && this.model.resolvedDef(e.def); if (!e || !def) return null;
+    const id = keepsLeftBy(def) ? leftByOf(e.state).get(item) : undefined, by = id ? this.host.minds.get(id)?.name ?? 'someone' : null;
+    if (!containerClaims(def)) return by ? `left by ${by}` : null;
+    const owner = this.model.entities.get(item)?.owner, whose = owner ? (soul && !owner.startsWith('group:') && this.layers.isOf(owner, soul) ? 'yours' : possessive(this.layers.nameOf(owner))) : null;
+    return [whose, by && `found by ${by}`].filter(Boolean).join(', ') || null;
+  }
+  /** #435 (W072): a container with `claim: "owner"` gives a thing that has an owner of its own (not inherited from the
+   *  container) back only to that owner or a member of that group; nobody else may take or handle it (a take, a wash at the
+   *  tap: every object action's access check), the finder included. The finder is named only `near` (the facts range). */
+  claimRefusal(item: string, soul: EdgeSoul, near = false): { code: string; reason: string } | null {
+    const x = this.model.entities.get(item), owner = x?.owner; if (!x || !owner || this.layers.isOf(owner, soul)) return null;
+    // where it is kept: the engine's support (at once) or the model's containment (it catches up at write-back, up to ten
+    // ticks later), whichever puts it in a claiming container's place
+    const sup = (this.engine.world.entities[item] as { support?: { kind: string; on?: string; slot?: string } } | undefined)?.support;
+    const at = [sup?.kind === 'resting-on' ? [sup.on, sup.slot] : null, [x.in.parent, x.in.slot]].map((w) => {
+      const [pid, slot] = w ?? []; if (!pid || pid === 'world') return null;
+      const box = this.storage(pid), be = this.model.entities.get(pid);
+      return box && be && containerClaims(this.model.resolvedDef(be.def)) && box.ins.slots.some((q) => q.id === slot) ? { box, be } : null;
+    }).find(Boolean);
+    if (!at) return null;
+    const { box, be } = at;
+    const n = this.layers.nameOf(owner), id = near ? leftByOf(be.state).get(item) : undefined, by = id ? (id === soul.soulId ? 'you' : this.host.minds.get(id)?.name ?? 'someone') : null;
+    return { code: 'item.not-yours', reason: `${this.model.pathOf(item)} is ${possessive(n)}${by ? `; ${by} handed it in` : ''}. Only ${n} can claim it from ${box.label}.` };
   }
   /** Entry 42: the container an engine item rests inside, or null (a table top, the ground). */
   keptIn(x: { support?: { kind: string; on?: string; slot?: string } }) {
@@ -2010,6 +2169,7 @@ export class EngineBridge {
   private storageRefusal(box: NonNullable<ReturnType<EngineBridge['storage']>>, soul: EdgeSoul): { code: string; reason: string } | null {
     const denied = this.layers.refusal(box.id, soul); if (denied) return denied;
     if (!box.open) return { code: 'container.closed', reason: `${box.label} is closed; open it first (object:${box.id}:open).` };
+    if (box.hidden) return null;   // #435: no door to wait for, and another Soul's reach into it (an empty search) must not show
     for (const b of Object.values(this.engine.world.entities) as any[]) if (b.human?.handActuator?.target === box.id) return { code: 'container.moving', reason: `${box.label} is being opened or closed; wait a moment.` };
     return null;
   }
