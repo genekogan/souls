@@ -12,7 +12,10 @@ import type {LoadMonitor} from './load/monitor.ts';
 /** SEC2: the absolute request-body ceiling for a non-god route (uploads 17 MB, everything else 1 MB). */
 export const bodyCeiling=(path:string)=>/\/v1\/(?:edge\/body\/uploads|art\/media)$/.test(path)?17*1024*1024:1024*1024;
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { schemaReference } from './edge/intents/offer-schema.ts';
+import { EDGE_ACT_VERBS } from './edge/events/schema.ts';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { decodeJwt } from 'jose';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -279,6 +282,13 @@ export function buildApp(d: Deps) {
     return d.cfg.mindDriver === 'edge' ? edgeSkillStub(base) : skillMd(base);
   };
   const skill = (c: Context) => c.text(skillText(baseOf(c)), 200, { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'public, max-age=60' });
+  // CTRL-7 (#1099): the reference the skill links, read once: its notes beside the skill file, then the generated schema
+  app.get('/schema.md', c => {
+    let notes = ''; try { if (d.cfg.skillFile) notes = readFileSync(join(dirname(d.cfg.skillFile), 'schema-notes.md'), 'utf8') + '\n'; } catch { /* a world with no notes still has the generated part */ }
+    const text = notes + schemaReference(EDGE_ACT_VERBS), etag = `"${createHash('sha256').update(text).digest('hex').slice(0, 32)}"`;
+    if (c.req.header('if-none-match') === etag) return c.body(null, 304, { etag, 'cache-control': 'public, max-age=300' });
+    return c.text(text, 200, { 'content-type': 'text/markdown; charset=utf-8', etag, 'cache-control': 'public, max-age=300' });
+  });
   app.get('/skill.md', skill);
   app.get('/instructions.md',c=>{if(!d.cfg.instructionsFile)return c.json({ok:false,code:'instructions-unavailable'},503);
     // lane PUX: ?for=<window code> (the signed-in page's New Soul prompt) names the code in the guide; never cached shared

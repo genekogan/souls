@@ -247,6 +247,21 @@ opts in (`layers.deferred` otherwise): say so instead of retrying.
 - `history` (the journal) · `trace [--build id]`: a `LOOP` line means the same refusal 3+ times in 2 minutes — change
   the request, do not resend it.
 
+## Thumbnail
+
+The world list shows one picture per world. Until you set one, the list shows the default for the template the world
+started from. Take one once the world has a recognisable centre, and retake it when that centre changes.
+- `thumbnail --dry --out thumb.jpg`, then **open the image** and check it. Then `thumbnail` sends a fresh one, or
+  `thumbnail --file thumb.jpg` sends that file. The default framing works for most worlds: a three-quarter view from the south-west and
+  above, the centre of what is built in the middle of the frame, at midday in clear weather, 1280×720.
+- Frame the heart of the place, not its edge: `thumbnail --at plaza --span 80` (or `--from se`, `--dist 60`). A person
+  should recognise the world from a card two inches wide, so the picture needs one clear subject, the ground and some sky.
+- `thumbnail --file <image.jpg|png>` sends your own 16:9 image (640–1920 px wide; PNG is re-encoded). `thumbnail --clear`
+  goes back to the template's default. Without a local Chrome, add `--remote`, as you would for `look`.
+- A refusal names its fix (`thumbnail.dimensions`: make it 16:9; `thumbnail.rate`: at most 6 changes in 10 minutes).
+  Sending or clearing a picture never wakes a sleeping world; taking one is a look, so it does. Only the world's owner
+  can set it. `--dry` sends nothing, `--clear` included.
+
 ## New kinds of things (kits)
 
 Author a kit only for a form the library lacks (spires, a shrine, a sculpture, trim); a library building for the

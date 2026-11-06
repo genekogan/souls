@@ -18,3 +18,13 @@ test('slim viewer carries only tracked loads grip geometry and no static catalog
  const chunk={take:{tracks:{body:[],load:[]},finalState:{entities:{body:{def:'human'},load:{def:'opted-load'},distant:{def:'irrelevant-load'}},entityPhysicsV1:{assets:{'opted-load':{capabilities:{fixtureCarry:{handling}}},'irrelevant-load':{capabilities:{fixtureCarry:{handling}}},hugeStatic:{geometry:'x'.repeat(100000)}}}}}};
  const live=viewerChunk(chunk) as any;assert.deepEqual(live.take.fixtureCarryHandlingV1,{'opted-load':handling});assert.equal(live.take.finalState.entityPhysicsV1,undefined);assert.ok(JSON.stringify(live).length<1000);assert.ok(chunk.take.finalState.entityPhysicsV1.assets.hugeStatic);
 });
+
+test('PC03: a tracked loose-material transport ships its adapted asset and handling; untracked or one-hand items do not', () => {
+ const handling = {carryCrew: [1, 2], carryPose: 'edge', carryHeight: .85, grips: {1: [{id: 'mid', local: [0, 0, 0]}]}};
+ const loose = {id: 'ew:beam', label: 'beam', category: 'item', size: [2.74, .1, .05], massKg: 19, handling};
+ const bowl = {id: 'ew:bowl', label: 'bowl', category: 'item', size: [.2, .1, .2], massKg: .5, handling: {...handling, small: true}};
+ const chunk = {take: {tracks: {beam: [], bowl: []}, finalState: {entities: {beam: {def: 'ew:beam'}, bowl: {def: 'ew:bowl'}, far: {def: 'ew:far'}}, entityPhysicsV1: {assets: {'ew:beam': loose, 'ew:bowl': bowl, 'ew:far': loose}}}}};
+ const live = viewerChunk(chunk) as any;
+ assert.deepEqual(live.take.transportAssetsV1, {'ew:beam': loose});
+ assert.deepEqual(live.take.fixtureCarryHandlingV1, {'ew:beam': handling});
+});

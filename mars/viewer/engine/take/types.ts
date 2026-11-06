@@ -86,6 +86,9 @@ export type Take = {
   /** Display-only metadata on slim live chunks: grip geometry for recorded
    * world transports, never the omitted multi-megabyte static physics. */
   fixtureCarryHandlingV1?: Record<string, import('../world/catalog.ts').Handling>;
+  /** PC03 (#682), additive: the adapted asset of each recorded loose-material transport (a library def the viewer's
+   *  native catalog does not know), so the live view can pose its carriers. Live chunks only; absent otherwise. */
+  transportAssetsV1?: Record<string, import('../world/catalog.ts').AssetDef>;
   /** mars-take/4: entities removed during the take and the tick (the `present: false` change), in tick order. */
   removed?: { id: string; t: number }[];
 };

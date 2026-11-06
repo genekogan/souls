@@ -79,6 +79,20 @@ type Ledger=Pick<EdgeLedger,'worldProfile'>&Partial<Pick<EdgeLedger,'registerExa
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'flag';
 const centroid = (pts: [number, number][]) => { let x = 0, z = 0; for (const p of pts) { x += p[0]; z += p[1]; } return [x / pts.length, z / pts.length] as [number, number]; };
 
+/** F4 (#375): a named god flag as wayfinding sees it: its label, the walk that goes there, and where it stands. */
+export type NamedFlagV1 = { name: string; walk: string; entity: string; at: [number, number]; aliases: string[] };
+// the core flag def defaults its label to '': an unlabelled flag goes by its entity name
+const flagLabel = (e: { state?: Record<string, unknown>; name?: string; id: string }) => String(e.state?.label || e.name || e.id);
+export function namedFlagsV1(god: GodMode): NamedFlagV1[] {
+  const out: NamedFlagV1[] = [];
+  for (const e of god.model.entities.values()) {
+    if (!/^core[-/]flag@/.test(god.model.def(e.def)?.ref ?? e.def)) continue;
+    const wp = god.model.worldPose(e), label = flagLabel(e);
+    out.push({ name: label, walk: `walk:flag-${slug(e.name ?? label)}`, entity: e.id, at: [Math.round(wp.x * 10) / 10, Math.round(wp.z * 10) / 10], aliases: e.name && e.name !== label ? [e.name] : [] });
+  }
+  return out;
+}
+
 /** Offer `walk:flag-<name>` and `swim:<water>` capabilities from the god world (chains any profile already installed). */
 const DEEP_MIDDLE = new Map<string, boolean>();
 /** B-facade (read worker): what main's swim offers read besides the god model, shipped with the delta: the ground recipe
@@ -89,13 +103,14 @@ export function installGroundCapabilities(ledger: Ledger, god: GodMode, host: Wo
     const me=host.engine.world.entities[soul.entityId];if(!me)return;
     for (const e of god.model.entities.values()) {
       if (!/^core[-/]flag@/.test(god.model.def(e.def)?.ref ?? e.def)) continue;
-      const wp = god.model.worldPose(e), label = String(e.state?.label ?? e.name ?? e.id), id = `walk:flag-${slug(e.name ?? label)}`;
+      const wp = god.model.worldPose(e), label = flagLabel(e), id = `walk:flag-${slug(e.name ?? label)}`;
       if ((only!==undefined&&id!==only)||caps.some((c) => c.id === id)) continue;
       caps.push({ id, verb: 'walk', label: `Walk to the flag "${label}" (${Math.round(Math.hypot(wp.x - me.pose.p[0], wp.z - me.pose.p[2]))} m)`, available: true, target: { id: e.id, kind: 'object' } });
       plans.set(id, { label: `Walk to ${label}`, steps: [{ verb: 'walk_to', params: { to: [wp.x, wp.z], standoff: 0.8 } }] });
     }
   };
   const prev = ledger.worldProfile;
+  (ledger as { namedFlagsV1?: () => NamedFlagV1[] }).namedFlagsV1 = () => namedFlagsV1(god);   // F4: `around` and `map` name the flags
   if (!read) (ledger as { groundEnvV1?: () => GroundEnvV1 }).groundEnvV1 = () => ({ recipe: (host.engine.world as unknown as { groundV1?: { recipeHash: string } }).groundV1?.recipeHash ?? null, middles: Object.fromEntries(DEEP_MIDDLE) });
   ledger.worldProfile = (soul, caps, plans) => {
     prev?.(soul, caps, plans);

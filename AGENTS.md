@@ -32,6 +32,9 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
   under an ignored path (`.local/`).
 - Never commit secrets, `.env`, `deploy.env`, databases, run outputs or media. Never bypass the secret scanner or
   commit hooks (`--no-verify`).
+- Never publish device details (personal paths, usernames, hosts, private IPs, SSH targets, local URLs, resource ids)
+  in GitHub text, commits, proof or media. Run `node tools/proof/publication.mjs` on outgoing text/JSON; it cannot
+  read pixels, audio or media metadata, so inspect those yourself. [Publication privacy](docs/process/publication-privacy.md)
 
 ## Engine invariants
 
@@ -106,7 +109,8 @@ contract; fresh sessions recover its dated agenda and assignments before dispatc
 - Issues state the problem and acceptance criteria before work starts. The PR is the journal entry: acceptance with
   evidence, proof, self-audit. [docs/process/agent-lifecycle.md](docs/process/agent-lifecycle.md#5-pull-request)
 - Repo skills in `.claude/skills/` (plain Markdown, readable by any agent): `journal`, `epic`, `triage`, `finish`,
-  `proof`, `e2e`, `sim-director`. Agent definitions in `.claude/agents/`: `coordinator`, `lane`, `reviewer`.
+  `proof`, `e2e`, `sim-director`, `coordinator-handoff`. Agent definitions in `.claude/agents/`: `coordinator`,
+  `lane`, `reviewer`.
 
 ## Release and operations
 

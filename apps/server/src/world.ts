@@ -191,7 +191,7 @@ export class WorldHost {
   private durableClockV1:boolean;
   private clockFailure:unknown;
   get clockAvailable(){return !this.clockFailure;}
-  assertClockReady():void {if(this.clockFailure)throw new Error('clock-frontier.unavailable');}
+  assertClockReady():void {if(this.clockFailure)throw new Error('clock-frontier.unavailable', { cause: this.clockFailure });}
 
   constructor(db: Db, factory: EngineFactory, seed: string, snapshotEvery: number, worldId = 'toy-1',options?:{durableClockV1?:boolean}) {
     this.worldId = worldId;
@@ -606,9 +606,9 @@ export class WorldHost {
       if (p.journal) {
         // Accepted log fact and its private request reference either both exist
         // or neither does. Check current DB authority under the same write lock.
+        // A tracked transaction, so a journal's after-commit notices (edge receipts, streams) run once it commits.
         try {
-          this.db.db.exec('BEGIN IMMEDIATE');
-          try {
+          tx(this.db.db, () => {
             checkAcceptanceGuard(p.guard!);
             if(p.stationEra)stationEra=this.stationEraEvent(e);
             if (p.purpose) {
@@ -619,9 +619,8 @@ export class WorldHost {
             if (admission) this.db.appendEvent(this.worldId, admission);
             if(stationEra)this.db.appendEvent(this.worldId,stationEra);
             if(arrival){this.db.appendEvent(this.worldId,arrival);journalIntentArrivalV1(this,arrival);}
-            if (p.journal(e) !== true) throw new TypeError('acceptance journal must synchronously return true');
-            this.db.db.exec('COMMIT');
-          } catch (error) { this.db.db.exec('ROLLBACK'); throw error; }
+            if (p.journal!(e) !== true) throw new TypeError('acceptance journal must synchronously return true');
+          }, {immediate: true});
         } catch (error) { p.reject!(error); continue; }
       } else if(arrival){this.db.db.exec('BEGIN IMMEDIATE');try{this.db.appendEvent(this.worldId,e);this.db.appendEvent(this.worldId,arrival);journalIntentArrivalV1(this,arrival);this.db.db.exec('COMMIT');}catch(error){this.db.db.exec('ROLLBACK');this.clockFailure=error;this.paused=true;this.stop();for(const listener of this.listeners)try{listener.onClockUnavailable?.();}catch{}throw error;}}else this.db.appendEvent(this.worldId, e);
       this.seq = arrival?.seq ?? stationEra?.seq ?? admission?.seq ?? e.seq;
@@ -1532,6 +1531,14 @@ export class WorldHost {
   private haltOnFault(error: unknown, why: string) {
     console.error(`[world] engine fault could not be recovered (${why}); the world is paused, the process stays up:`, String(error).slice(0, 800));
     this.paused = true; this.engineFault = String(error).slice(0, 800);
+    // A failed recovery leaves the host half-replayed: its seq can sit behind the log (a plan skipped the newest decisions) and its
+    // state need not match any logged prefix (#1120). Nothing durable may be written from it, so every later tick, drain and
+    // snapshot refuses, naming this fault; a restart boots from the log. The process stays up, as before.
+    if (this.clockFailure) return;
+    this.clockFailure = new Error(`engine.halted: ${why}: ${this.engineFault}`, { cause: error });
+    // as for the other clock failures: viewers are told the world is unavailable (hub: close 1013), not left asking a host
+    // that refuses snapshots
+    for (const listener of this.listeners) try { listener.onClockUnavailable?.(); } catch { /* the engine fault remains the cause */ }
   }
   /** The fault that paused this world (edge worlds), if any. */
   engineFault: string | null = null;
@@ -1541,6 +1548,7 @@ export class WorldHost {
     void this.enqueue('rules', author, { clockRate: rate, why });
   }
   setPaused(p: boolean, author: string) {
+    this.assertClockReady();   // a halted or clock-failed host stays as it is (#1120)
     this.cancelFrameBatch();
     if (p) { void this.enqueue('admin', author, { action: 'pause' }); this.tickOnceForQueue(); this.paused = true; this.flush(); this.heartbeat(); }   // tell clients now: no tick will
     else { this.paused = false; this.last = performance.now(); this.carry = 0; void this.enqueue('admin', author, { action: 'resume' }); }

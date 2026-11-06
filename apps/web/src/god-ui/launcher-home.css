@@ -8,6 +8,9 @@
 .lh-cards > a.lh-card { display: flex; flex-direction: column; text-decoration: none; min-height: 170px; }
 .lh-card h2 { margin: 0 0 10px; font-size: 18px; overflow-wrap: anywhere; }
 .lh-card p { margin: 0 0 6px; }
+/* #887: a 16:9 picture across the top of the card (the card's 24px padding is bled out); its box is fixed before it loads */
+.lh-cards > a.lh-card > .lh-thumb { display: block; flex: none; width: calc(100% + 48px); max-width: none; height: auto; aspect-ratio: 16 / 9; object-fit: cover; margin: -24px -24px 16px; border-radius: 11px 11px 0 0; background: var(--line); }
+.lh-cards > a.lh-card > .lh-thumb[hidden] { display: none; }
 .lh-meta { color: var(--fg); }
 .lh-claimed { color: var(--accent); }
 .lh-unclaimed { color: var(--warn); }
@@ -65,7 +68,8 @@
 .lh-footer a:hover{color:var(--fg);text-decoration:underline}
 
 .lh-title{display:flex;align-items:center;gap:10px}
-.lh-title .eden-mark{display:flex;flex:none;width:38px;height:38px}
+/* Same black circle as in a world (#1034), so the halo shows on the light page. */
+.lh-title .eden-mark{display:flex;flex:none;width:38px;height:38px;border-radius:50%;background:#000}
 .lh-title .eden-mark img{display:block;width:38px;height:38px}
 /* #897: the For agents prompt under the world list */
 .lh-agents{margin-top:44px}
