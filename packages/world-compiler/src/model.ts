@@ -305,6 +305,17 @@ export class WorldModel {
     this.entities.set(e.id, e);
     const parts = this.safetyParts(); if (parts) this.safetyKey = { parts, key };
   }
+  /** PC12 (#691): replace a part's joint halves only, preserving every geometry, name, slot and safety index (joints never
+   *  move anything: `connect` only joins connectors that already meet). */
+  replaceJoins(e: Entity) {
+    const prev = this.entities.get(e.id);
+    if (!prev) throw new Error('joint target missing');
+    const { joins: _old, v: _v, ...before } = prev, { joins: _new, v: _nv, ...after } = e;
+    if (stableStringify(before) !== stableStringify(after)) throw new Error('replaceJoins cannot change structure');
+    const key = this.safetyCacheKey();
+    this.entities.set(e.id, e);
+    const parts = this.safetyParts(); if (parts) this.safetyKey = { parts, key };
+  }
   delete(id: string) {
     this.slotMemo?.clear();
     const e = this.entities.get(id); if (!e) return;
@@ -524,3 +535,4 @@ function genParams(gen: string): StoredDef['params'] | undefined {
   }
   return genParamsCache.get(gen) ?? undefined;
 }
+
