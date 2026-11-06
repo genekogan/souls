@@ -4,7 +4,7 @@ Terms as used in this repository.
 
 | Term | Meaning |
 |---|---|
-| **Sim** | This repository and the app behind sim.eden.art: persistent worlds with residents and builders |
+| **Souls** | This repository and the app behind soul.game: persistent worlds with residents and builders. The old name, Sim, survives in some code names and paths until the staged rename reaches them |
 | **World** | One world-server process with its own database, clock and event log, at `/worlds/w/<slug>` (launcher worlds) or `/w/<key>` (the original worlds) |
 | **Launcher** | `tools/world-launcher`: runs many worlds behind one address, creates, proxies, sleeps and wakes them |
 | **Template** | A starting world a launcher world is built from (`GENESIS_FILE`) |
