@@ -160,6 +160,46 @@ hashed world source, so it forms its own arm.
 Answers are retrospective: they describe what the records show and do not establish motivation, causality or that a
 replay would repeat it.
 
+## Controllability scorecard
+
+`evaluate` also writes `scorecard.json` beside `evaluation.json` (#1097), and `compare` lists the same numbers per repeat as
+`controllability` measures. It works on any finished run, whichever director ran it, because it reads the seat's side:
+`transcript.jsonl`, `turns.jsonl` and `listen.jsonl`, the world's answers in them, and evidence packs when present. Every
+metric has its denominator and a `missing` count; a metric with no source has `value: null` and a reason, never 0.
+
+| id | meaning | how it is read |
+|---|---|---|
+| M1 | first-try act success | `act` and `object` calls after onboarding (not `travel`): 1 - offer refusals / classified acts |
+| M2 | model turns per intention | median assistant messages attributed to an owner message with a body act that the seat closed with `result done` |
+| M3 | turns with no act or say | decisions that only read, wait or ran a non-CLI tool; `ack`, `result` and a closing line are not counted |
+| M4 | owner message to start, upper bound | first reached the seat (listen, or the output carrying it) to the receipt's started event, else the act call returning |
+| M5 | owner corrections per intention | script entries marked `correction: true`, else messages opening with correcting words |
+| M6 | context bytes per turn | wake text and tool results after onboarding, per decision; `onboardingBytes` is the skill and boot reads |
+| M7 | intent retention | intentions another owner message reached while under way: chat keeps them, a cancel starts nothing new (the predeclared questions check the body stopped), a newer body request replaces them |
+| G1 | truthful receipts | `result done` claims whose last accepted act the world records as failed or cut short |
+| G2 | unrelated Souls' progress | seats with an accepted act and no receipt completed or held (needs two or more seats) |
+| G3 | tick health | tick-validity from the run receipt |
+
+An **intention** is an owner message with at least one body act. A message closed by `result` with no act is a **spoken
+request** and is reported apart. Each model decision is attributed to one message (the id it names, else the rest of its
+wake, else the latest open intention), so nothing counts twice.
+
+**Refusal classes** (M1) come from the code alone (`classifyRefusal`). `offer` (the world could not read the command, or
+named a place it has no way to) counts against M1, with `route` listed separately inside it. `state` (a seat taken, a ride
+departed, hands full; listed one code at a time) and `admission` (`soul.busy` and the like) do not. A code in no list is
+`unclassified`, including a new code in a family the table knows: out of the denominator, counted and named, so add it to the
+table rather than guess.
+
+Three limits are stated in the card. Turns come from the seat log even with the trace tap on: `soul-trace/1` can carry
+`host.turn` (`tools/soul-trace/host.mjs`), but nothing in `tools/playtest` writes it yet and this scorer does not read it (#1097 A3 stays open for that). Receipts carry no first-motion tick, so M4 ends at the world's `started`, which is not observed
+displacement (`observedFirstBodyChangeSec` is, with an observer). Under a scripted director M5 is the script's own number and
+cannot move between arms; a `scripted-owner` seat's "turns" are scripted steps at no model cost, so M2 and M3 describe the
+script there.
+
+**Predeclared:** `controllability.mjs` holds the definitions and the refusal table. Its sha256 goes into every run's effective
+spec (`scorer`). The card says `predeclared: true` only when that hash still matches at evaluation; otherwise it scores
+anyway and says why not.
+
 ## Diagnostics (opt-in trace capture)
 
 `diagnostics.trace` turns on the passive control-episode trace owned by #733 (`tools/soul-trace/tap.mjs`, contract
