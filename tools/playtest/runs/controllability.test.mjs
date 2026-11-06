@@ -139,6 +139,106 @@ test('M4 names the sent-at fallback when the message reached the seat after the 
   assert.equal(m4.value, 12, 'sent at 0, started at 12; the seat read it at 20');
 });
 
+const planCall = (steps, out) => [`node eden.mjs plan '${JSON.stringify(steps)}' --for msg_p`, out];
+const planView = (state, steps) => ({ id: 'p_1', state, for: 'msg_p', steps });
+
+test('plans: one decision for M2, every step a row for M1, and the client closes the message', () => {
+  const dir = run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [listen(0, 'msg_p', 'Mill, bench, then the pond')],
+    transcript: events(1, [
+      { sec: 1, tools: [ack('msg_p')] },
+      { sec: 2, tools: [planCall(['walk:mill', 'sit:bench', 'walk:pond'], { accepted: true, plan: planView('running', [{ n: 1, id: 'walk:mill', state: 'pending' }, { n: 2, id: 'sit:bench', state: 'pending' }, { n: 3, id: 'walk:pond', state: 'pending' }]) })] },
+      { sec: 60, tools: [['node eden.mjs pending', { ownerMessages: [], planEnded: [planView('done', [{ n: 1, id: 'walk:mill', state: 'done', receipt: 'r1' }, { n: 2, id: 'sit:bench', state: 'held', receipt: 'r2' }, { n: 3, id: 'walk:pond', state: 'done', receipt: 'r3' }])] }]] },
+    ]),
+  } } });
+  const c = scoreRun(loadSoulRun(dir));
+  assert.equal(c.metrics.M1.denominator, 3, 'each step of the plan');
+  assert.equal(c.metrics.M1.value, 1);
+  assert.equal(c.metrics.M1.firstActOfIntention.value, 1);
+  assert.equal(c.metrics.M2.value, 3, 'the ack, the plan and one read: three decisions for three steps');
+  assert.equal(c.metrics.M3.byKind.act, 1, 'the plan call is an act decision');
+  assert.equal(c.metrics.M3.value, 1, 'only the pending read counts as no act or say');
+});
+
+test('plans: a refused step counts against M1 even when its replacement works, and a plan refused before it ran counts too', () => {
+  const dir = run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [listen(0, 'msg_p', 'Mill then the pond')],
+    transcript: events(1, [
+      { sec: 1, tools: [ack('msg_p')] },
+      { sec: 2, tools: [planCall(['walk:nowhere', 'walk:pond'], { accepted: false, code: 'capability.unknown', reason: 'No step ran', problems: [{ id: 'walk:nowhere', code: 'capability.unknown' }] })] },
+      { sec: 3, tools: [planCall(['walk:mill', 'walk:pond'], { accepted: true, plan: planView('running', [{ n: 1, id: 'walk:mill', state: 'pending' }, { n: 2, id: 'walk:pond', state: 'pending' }]) })] },
+      { sec: 4, tools: [['node eden.mjs pending', { plan: planView('stopped', [{ n: 1, id: 'walk:mill', state: 'refused', code: 'route.unreachable' }, { n: 2, id: 'walk:pond', state: 'pending' }]) }]] },
+      { sec: 5, tools: [[`node eden.mjs plan '[{"id":"walk:orchard","fixes":1}]'`, { accepted: true, plan: planView('running', [{ n: 1, id: 'walk:orchard', state: 'pending' }, { n: 2, id: 'walk:pond', state: 'pending' }]) }]] },
+      { sec: 9, tools: [['node eden.mjs plan --status', { plan: planView('running', [{ n: 1, id: 'walk:orchard', state: 'running', receipt: 'r1' }, { n: 2, id: 'walk:pond', state: 'pending' }]) }]] },
+      { sec: 40, tools: [['node eden.mjs pending', { planEnded: [planView('done', [{ n: 1, id: 'walk:orchard', state: 'done', receipt: 'r1' }, { n: 2, id: 'walk:pond', state: 'done', receipt: 'r2' }])] }]] },
+    ]),
+  } } });
+  const m = scoreRun(loadSoulRun(dir)).metrics;
+  assert.deepEqual(m.M1.classes, { offer: 2, offerResolution: 1, offerRoute: 1, state: 0, admission: 0 }, 'the id on no offer, and the route');
+  assert.equal(m.M1.denominator, 4, 'walk:nowhere, walk:mill, walk:orchard, walk:pond');
+  assert.equal(m.M1.value, 0.5);
+  assert.equal(m.M1.firstActOfIntention.value, 0);
+  assert.equal(m.M3.byKind.read, 3, 'pending twice, and plan --status only reads');
+});
+
+test('plans: a refusal scores the same whether the seat learned of it through pending or through the listen wake', () => {
+  const planned = { accepted: true, plan: planView('running', [{ n: 1, id: 'walk:mill', state: 'pending' }, { n: 2, id: 'walk:pond', state: 'pending' }]) };
+  const stopped = planView('stopped', [{ n: 1, id: 'walk:mill', state: 'refused', code: 'route.unreachable' }, { n: 2, id: 'walk:pond', state: 'pending' }]);
+  const fixed = { accepted: true, plan: planView('running', [{ n: 1, id: 'walk:orchard', state: 'pending' }, { n: 2, id: 'walk:pond', state: 'pending' }]) };
+  const ended = { planEnded: [planView('done', [{ n: 1, id: 'walk:orchard', state: 'done', receipt: 'r1' }, { n: 2, id: 'walk:pond', state: 'done', receipt: 'r2' }])] };
+  const card = (read, wake) => scoreRun(loadSoulRun(run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [listen(0, 'msg_p', 'Mill then the pond'), ...wake],
+    transcript: events(1, [
+      { sec: 1, tools: [ack('msg_p')] },
+      { sec: 2, tools: [planCall(['walk:mill', 'walk:pond'], planned)] },
+      ...read,
+      { sec: 5, tools: [[`node eden.mjs plan '[{"id":"walk:orchard","fixes":1}]'`, fixed]] },
+      { sec: 40, tools: [['node eden.mjs pending', ended]] },
+    ]),
+  } } }))).metrics.M1;
+  const viaPending = card([{ sec: 4, tools: [['node eden.mjs pending', { plan: stopped }]] }], []);
+  const viaWake = card([], [{ t: new Date(at(3)).toISOString(), messages: [], stdout: JSON.stringify({ messages: [], plan: stopped, next: 'Step 1 was refused.' }) }]);
+  assert.deepEqual(viaPending.classes, { offer: 1, offerResolution: 0, offerRoute: 1, state: 0, admission: 0 });
+  for (const k of ['value', 'denominator', 'classes', 'missing', 'firstActOfIntention']) assert.deepEqual(viaWake[k], viaPending[k], k);
+  assert.equal(viaWake.value, 0.667);
+});
+
+test('plans: a replacement with the refused step\'s own id does not hide the refusal', () => {
+  const dir = run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [listen(0, 'msg_p', 'Sit on the bench')],
+    transcript: events(1, [
+      { sec: 1, tools: [ack('msg_p')] },
+      { sec: 2, tools: [planCall(['sit:bench'], { accepted: true, plan: planView('running', [{ n: 1, id: 'sit:bench', state: 'pending' }]) })] },
+      { sec: 3, tools: [['node eden.mjs pending', { plan: planView('stopped', [{ n: 1, id: 'sit:bench', state: 'refused', code: 'seat.too-high' }]) }]] },
+      { sec: 4, tools: [[`node eden.mjs plan '[{"id":"sit:bench","fixes":1}]'`, { accepted: true, plan: planView('running', [{ n: 1, id: 'sit:bench', state: 'pending' }]) }]] },
+      { sec: 30, tools: [['node eden.mjs pending', { planEnded: [planView('done', [{ n: 1, id: 'sit:bench', state: 'held', receipt: 'r1' }])] }]] },
+    ]),
+  } } });
+  const m1 = scoreRun(loadSoulRun(dir)).metrics.M1;
+  assert.equal(m1.denominator, 2);
+  assert.equal(m1.classes.offer, 1);
+  assert.equal(m1.value, 0.5);
+});
+
+test('plans: a step no report covers is unreadable, and an unread end is no claim of success', () => {
+  const dir = run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [listen(0, 'msg_p', 'Mill then the pond')],
+    transcript: events(1, [
+      { sec: 1, tools: [ack('msg_p')] },
+      { sec: 2, tools: [planCall(['walk:mill', 'walk:pond'], { accepted: true, plan: planView('running', [{ n: 1, id: 'walk:mill', state: 'pending' }, { n: 2, id: 'walk:pond', state: 'pending' }]) })] },
+    ]),
+  } } });
+  const c = scoreRun(loadSoulRun(dir));
+  assert.equal(c.metrics.M1.value, null);
+  assert.equal(c.metrics.M1.missing.unreadable, 2);
+  assert.equal(c.metrics.M1.firstActOfIntention.unknown, 1);
+});
+
 test('one assistant message split over stream events is one model decision; onboarding is left out', () => {
   const dir = run({ seats: { ada: {
     turns: [{ turn: 1, reason: 'onboard' }, { turn: 2, reason: 'wake' }],
