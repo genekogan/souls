@@ -2404,10 +2404,12 @@ export class EdgeLedger implements EdgeLedgerHooks {
     // offer whose own title or alias its description names comes first, under whatever verb, since walking there was only the
     // way to the activity. It only partly serves, and says so (coordinator's exception to A1 on #1095)
     if (blocked) {
-      const tail = (c: EdgeCapability) => c.id.slice(c.id.indexOf(':') + 1), said = this.thingAbout?.(tail(blocked))?.what?.toLowerCase();
+      // a part of a closed room says nothing itself: what its room says holds for it too
+      const aboutOf = (id: string): ReturnType<NonNullable<EdgeLedger['thingAbout']>> => this.thingAbout?.(id) ?? (id.includes('/') ? aboutOf(id.slice(0, id.lastIndexOf('/'))) : null);
+      const tail = (c: EdgeCapability) => c.id.slice(c.id.indexOf(':') + 1), told = aboutOf(tail(blocked)), said = told?.what?.toLowerCase();
       if (said) for (const c of nearest(caps.filter(x => x.available && x.id !== blocked.id && !x.id.endsWith(':here')))) {
         const a = this.thingAbout?.(tail(c));
-        if (a && [a.title, ...(a.aliases ?? [])].some(n => n && said.includes(n.toLowerCase()))) add(c, `${this.thingAbout?.(tail(blocked))?.title ?? 'that place'} names ${a.title ?? 'it'} as somewhere else to go`, true);
+        if (a && [a.title, ...(a.aliases ?? [])].some(n => n && said.includes(n.toLowerCase()))) add(c, `${told?.title ?? 'that place'} names ${a.title ?? 'it'} as somewhere else to go`, true);
       }
     }
     if (verb !== 'sit' && named) {
@@ -2420,16 +2422,20 @@ export class EdgeLedger implements EdgeLedgerHooks {
         const beside = menu('walk').filter(c => c.verb === 'walk' && c.target?.kind === 'place' && c.target.id !== place!.id && (this.places.byId.get(c.target.id)?.parent === place!.id || c.target.id === place!.parent));
         for (const c of nearest(beside)) add(c, `inside or beside ${place.name}`, true);
       }
-    } else if (verb) {
-      // the same act on something else in this room or place
+    } else if (verb && verb !== 'walk') {
+      // the same act on something else in this room or place. A walk naming no place has no such thing: another place is a
+      // different destination (`candidates` already carry the closest ids)
       const room = this.placePathOf(soul.soulId).find(p => p.kind !== 'occupier')?.id ?? null;
       const here = (c: EdgeCapability) => {if (c.id.endsWith(':here')) return true; const at = ctx.target(c).at; return !!at && (!room || this.places.containing(at[0], at[1]).some(p => p.id === room));};
-      for (const c of nearest(menu(verb).filter(c => c.verb === verb && here(c)))) add(c, verb === 'sit' ? 'another free seat here' : `${verb} on something else here`);
+      const same = nearest(menu(verb).filter(c => c.verb === verb && here(c)));
+      for (const c of same.filter(c => !c.id.endsWith(':here'))) add(c, verb === 'sit' ? 'another free seat here' : `${verb} on something else here`);
+      // the same verb with nothing to do it on (sit:here is the ground) is not what was named: last, and it says so
+      for (const c of same.filter(c => c.id.endsWith(':here'))) add(c, verb === 'sit' ? 'on the ground here, not a seat' : `${verb} right here, not on what you named`, true);
     }
     // nothing named and nothing beside it: the walks nearest that place, not nearest the Soul (#850)
     if (blocked && !picks.length) {
       const at = ctx.target(blocked).at, away = (c: EdgeCapability) => {const t = ctx.target(c).at; return at && t ? Math.hypot(t[0] - at[0], t[1] - at[1]) : Infinity;};
-      for (const c of caps.filter(x => x.verb === 'walk' && x.id !== blocked.id).map(c => [c, away(c)] as const).sort((a, b) => a[1] - b[1]).map(x => x[0])) add(c, `near ${blocked.label.replace(/^\w+ (?:to |into )?/, '').split(' [')[0]}`, true);
+      for (const c of caps.filter(x => x.verb === 'walk' && x.id !== blocked.id).map(c => [c, away(c)] as const).sort((a, b) => a[1] - b[1]).map(x => x[0])) add(c, `near ${blocked.label.replace(/^\w+ (?:to |into )?/, '').split(/ \[|, | \(/)[0]}`, true);
     }
     // the menu read may be a kept words menu (approximate availability), and the named walk may come from it: every pick
     // is rebuilt exactly (bindOne) and kept only if it is available now

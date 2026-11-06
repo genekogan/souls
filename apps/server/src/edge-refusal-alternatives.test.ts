@@ -105,6 +105,29 @@ test('#850: a place no walk reaches names available alternatives', {timeout: 300
   assert.ok(room.alternatives.some((x: any) => x.id.startsWith('sit:')), `and the sit it is for: ${JSON.stringify(room.alternatives)}`);
   const house = await accept(w.host, w.edge.act(w.soul, {capability: 'walk:closed-house/bedroom'})) as any;
   assert.equal(house.alternatives[0].id, 'walk:closed-house', JSON.stringify(house.alternatives));
+  // a part of the closed room says nothing itself: its room's hint holds for it too, and a fallback's why is one clause
+  const part = await accept(w.host, w.edge.act(w.soul, {capability: 'walk:lab-reading-room/hall'})) as any;
+  assert.equal(part.alternatives[0].id, 'walk:cottage/bench', `the room's hint: ${JSON.stringify(part.alternatives)}`);
+  for (const x of [...part.alternatives, ...house.alternatives]) assert.doesNotMatch(x.why, /,|\(/, `one clause: ${x.why}`);
+});
+
+// steward on #1108: A1 says never a different destination; the ground is not "another free seat"
+for (const template of ['hello-hamlet', 'mars-two']) test(`#1095: on ${template} a walk naming no place offers no other destination, and sit:here comes last and says what it is`, {timeout: 300000}, async t => {
+  const w = await bootEden(() => {}, new URL(`../../../worlds/templates/${template}.json`, import.meta.url)); t.after(w.close);
+  for (const id of ['walk:oak-grove', 'walk:nowhere-at-all']) {
+    const r = await accept(w.host, w.edge.act(w.soul, {capability: id})) as any;
+    assert.equal(r.accepted, false, id);
+    assert.equal(r.alternatives, undefined, `${id}: ${JSON.stringify(r.alternatives)}`);
+  }
+  const sit = await accept(w.host, w.edge.act(w.soul, {capability: 'sit:ghost-bench'})) as any;
+  assert.equal(sit.accepted, false);
+  const alts: any[] = sit.alternatives ?? [], ground = alts.findIndex(x => x.id === 'sit:here');
+  assert.ok(ground >= 0, JSON.stringify(sit)); t.diagnostic(JSON.stringify(alts.map(x => [x.id, x.why, x.partial ?? false])));
+  for (const [i, x] of alts.entries()) {
+    assert.match(x.id, /^sit:/, JSON.stringify(alts));
+    if (i === ground) {assert.equal(x.partial, true); assert.match(x.why, /ground/); assert.equal(i, alts.length - 1, 'after the real seats');}
+    else {assert.equal(x.partial, undefined, x.id); assert.match(x.why, /seat/);}
+  }
 });
 
 // ROUTE_DEAD's other codes take the same path; other blocked offers still carry no alternatives (#850 A3)
