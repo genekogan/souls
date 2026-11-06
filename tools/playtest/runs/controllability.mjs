@@ -18,8 +18,30 @@ const RESOLUTION = new Set(['params.invalid', 'place.unknown', 'place.ambiguous'
 // The world named or accepted the place and then found no way there. Not a state change unless the world moved, and the
 // world's own offer is what failed, so it counts against M1 under its own label (the #874 geometry sample folds in here).
 const ROUTE = new Set(['place.unreachable', 'route.unreachable', 'travel.unreachable', 'place.unwalkable', 'place.unsupported-floor', 'place.no-standing-room', 'room.no-standing-room', 'carry.no-route', 'carry.search-exhausted', 'use.no-approach', 'object.out-of-reach', 'tea.cup-unreachable']);
-// Families whose other codes are the world's state answering: a seat taken, a ride gone, hands full, a game in progress.
-const STATE_FAMILIES = new Set(['bed', 'bike', 'body', 'build', 'calendar', 'carry', 'chess', 'contact', 'container', 'conversation', 'door', 'fire', 'floor', 'follow', 'game', 'gesture', 'give', 'ground', 'hands', 'invite', 'item', 'lookout', 'make', 'mark', 'meal', 'object', 'painting', 'place', 'pose', 'presentation', 'project', 'receipt', 'revision', 'ride', 'room', 'rps', 'seat', 'shared', 'site', 'sky', 'slot', 'soul', 'stall', 'state', 'steer', 'surface', 'swim', 'takes', 'tea', 'together', 'travel', 'walk', 'wallet', 'water', 'action', 'activity']);
+// The world's state answering: a seat taken, a ride gone, hands full, a game in progress. Listed one by one on purpose, so a
+// new code is unclassified and named on the card until someone decides. Left out for that reason: carry.crew-too-small,
+// carry.crew-too-large, carry.too-tall and carry.ground-only, which an agent could read before asking.
+const STATE = new Set(`action.interrupted activity.not-reached bed.attachment-unavailable bed.native-berth-required bed.taken bed.yours bike.no-dock bike.none-left
+body.authority-changed body.changed body.moderated body.protected body.receipt-changed body.safe-standing-required body.source-slow body.source-unavailable body.unavailable body.withdrawn body.world-policy
+calendar.already-interested calendar.full calendar.over carry.hands-full carry.in-use carry.occupied
+chess.already-seated chess.illegal chess.in-progress chess.not-playing chess.not-your-piece chess.not-your-turn chess.seat-taken chess.seats-taken
+contact.commit-refused contact.failed contact.identity-changed contact.not-applied contact.not-reached contact.out-of-reach contact.target-changed
+container.closed container.full container.in-use container.moving container.no-room
+conversation.already-member conversation.closed conversation.full conversation.invited conversation.no-request conversation.not-invited conversation.not-member conversation.out-of-range conversation.self
+door.inside door.locked door.not-yours fire.out floor.no-body floor.no-building floor.none follow.already follow.destination follow.none follow.unavailable gait.no-bank-loop
+game.elsewhere game.full gesture.no-room gesture.partner-unavailable gesture.too-far give.other-item ground.unsettled hands.empty hands.full hands.holding hands.not-holding
+invite.absent invite.gone invite.none invite.not-near item.does-not-fit item.gone item.lit item.no-room item.none-near item.not-held item.not-yours lookout.prerequisite make.limit mark.full mark.removed meal.none
+object.admission-failed object.body-unavailable object.for-sale object.gone object.not-yours object.private object.role object.state
+painting.failed painting.identity-changed painting.no-easel painting.not-reached painting.offer-stale painting.refused painting.renderer painting.target-changed
+place.dynamic place.items-full place.marks-full pose.no-room
+presentation.already-reserved presentation.closed presentation.doors-closed presentation.ended presentation.entered presentation.full presentation.no-ticket presentation.not-open presentation.presenter presentation.standby-wait
+project.done project.unfinished receipt.lost-on-restart revision.stale
+ride.aboard ride.aloft ride.already-aboard ride.automatic ride.blocked ride.closed ride.departed ride.full ride.keeping-place ride.landing ride.not-aboard ride.not-boarding ride.on-ground ride.seated ride.steered ride.unavailable
+seat.inside seat.taken seat.yours shared.busy shared.full shared.left shared.not-member shared.not-running shared.revision-changed shared.stop-asked shared.stop-requested shared.too-far
+site.under-construction sky.daylight sky.no-clock slot.none-free soul.faded soul.not-in-sight stall.released state.asleep state.changed state.safe-stop-timeout steer.unavailable surface.full swim.no-deep-middle
+tea.counter-blocked tea.cup-clean tea.cup-empty tea.cup-full tea.cup-not-down tea.cup-not-empty tea.hands-full tea.kettle-cold tea.kettle-empty tea.kettle-full tea.kettle-hot tea.kettle-not-down tea.kettle-on tea.no-bag tea.no-cup tea.no-kettle tea.no-tap tea.not-boiled tea.not-holding tea.tap-blocked
+together.nobody-leading travel.failed walk.stuck wallet.insufficient
+water.hands-full water.no-source water.no-tap water.no-vessel water.plant-blocked water.plant-wet water.source-empty water.tap-blocked water.vessel-empty water.vessel-full`.split(/\s+/));
 
 /** One refusal code → {class: 'offer'|'state'|'admission'|'unclassified', sub?}. A code nobody listed stays unclassified. */
 export function classifyRefusal(code) {
@@ -27,7 +49,7 @@ export function classifyRefusal(code) {
   if (ADMISSION.has(code)) return { class: 'admission' };
   if (code.startsWith('capability.') || RESOLUTION.has(code)) return { class: 'offer', sub: 'resolution' };
   if (ROUTE.has(code)) return { class: 'offer', sub: 'route' };
-  if (STATE_FAMILIES.has(code.split('.')[0])) return { class: 'state' };
+  if (STATE.has(code)) return { class: 'state' };
   return { class: 'unclassified' };
 }
 
@@ -214,6 +236,7 @@ function scoreSeat(sr, seat, packs) {
     const delivered = m.deliveredMs ?? m.sentAtMs;
     const startMs = firstAccepted?.receipt ? startedAt(firstAccepted.receipt, steps, seatPacks) : null;
     const m4At = startMs ?? firstAccepted?.doneMs ?? null;
+    const m4From = delivered != null && m4At != null && delivered > m4At ? m.sentAtMs : delivered;
     const acts = mine.map((r) => ({ words: r.words, state: r.state, code: r.code ?? null, class: r.class ?? null, sub: r.sub ?? null, receipt: r.receipt ?? null, capability: r.capability ?? null, world: r.state !== 'accepted' ? null : r.receipt ? receiptOutcome(r.receipt, steps, seatPacks) : 'unknown', line: r.line }));
     const declared = scriptEntries.find((e) => e.text === m.text);
     return {
@@ -224,7 +247,8 @@ function scoreSeat(sr, seat, packs) {
       acts,
       turns: turns.length, turnsByKind: turns.reduce((a, r) => ({ ...a, [r.kind]: (a[r.kind] ?? 0) + 1 }), {}),
       firstActSucceeded: mine.length ? !(mine[0].state === 'refused' && mine[0].class === 'offer') && mine[0].state !== 'unknown' : null,
-      m4Sec: delivered != null && m4At != null ? sec(m4At - delivered) : null,
+      // A message first seen in the output of the act that started the receipt was seen after the start: count from when it was sent.
+      m4Sec: m4From != null && m4At != null && m4At >= m4From ? sec(m4At - m4From) : null,
       m4Basis: startMs != null ? 'receipt started event' : m4At != null ? 'act call returned' : null,
       correction: declared?.correction === true || (declared?.correction == null && m.text != null && CORRECTION.test(m.text)),
       correctionBasis: declared?.correction != null ? 'spec' : 'text',
@@ -298,7 +322,7 @@ export function scoreRun(sr, { answers = [], scorer = null } = {}) {
     unclassifiedCodes: [...new Set(unclassified)], refusedCodes: refused.reduce((a, r) => ({ ...a, [r.code ?? 'none']: (a[r.code ?? 'none'] ?? 0) + 1 }), {}),
     firstActOfIntention: { value: ratio(withAct.filter((i) => i.firstActSucceeded).length, withAct.length), denominator: withAct.length },
     acceptedThenFailed: acts.filter((a) => a.state === 'accepted' && a.receipt).filter((a) => { const s = seen.find((x) => x.actRows.includes(a)); return receiptOutcome(a.receipt, sr.steps[s.seat], packs) === 'failed'; }).length,
-    basis: 'act and object calls after onboarding, from the world\'s answer to each call; 1 - offer refusals / classified acts. State and admission refusals stay in the denominator and do not count against it. A repair attempt is a new act, so firstActOfIntention is the stricter reading.',
+    basis: 'act and object calls after onboarding (a travel call counts as an act for M2 and M3, not here), from the world\'s answer to each call; 1 - offer refusals / classified acts. State and admission refusals stay in the denominator and do not count against it. A repair attempt is a new act, so firstActOfIntention is the stricter reading.',
     ...(none ? { reason: none } : !denom ? { reason: 'no act in this run' } : {}),
   });
 
@@ -306,7 +330,7 @@ export function scoreRun(sr, { answers = [], scorer = null } = {}) {
   // (M2) but not a poll (M3); ack and result answer the owner, so they are not polls either.
   const source = 'seat log (transcript.jsonl assistant messages, turns.jsonl wake reasons)';
   const traced = !!sr.receipt?.diagnostics?.capture;
-  const sourceNote = `${traced ? 'The trace tap was on, but soul-trace/1 records no host.turn: it captures the CLI side only (tools/soul-trace/README.md), so turns still come from the seat log. ' : ''}${modelFree ? 'Every seat is model-free (scripted-owner): a "turn" is a scripted CLI step and costs no model call, so turn counts describe the script.' : ''}`.trim();
+  const sourceNote = `${traced ? 'The trace tap was on. Turns still come from the seat log: soul-trace/1 can carry host.turn (tools/soul-trace/host.mjs), but nothing in tools/playtest writes it yet and this scorer does not read it. ' : ''}${modelFree ? 'Every seat is model-free (scripted-owner): a "turn" is a scripted CLI step and costs no model call, so turn counts describe the script.' : ''}`.trim();
   const done = bodyIntentions.filter((i) => i.result === 'done');
   const notDone = bodyIntentions.filter((i) => i.result !== 'done');
   const spokenDone = spoken.filter((i) => i.result === 'done');
@@ -362,7 +386,7 @@ export function scoreRun(sr, { answers = [], scorer = null } = {}) {
   const related = answers.filter((a) => RETENTION_QUESTIONS.has(a.id)).map((a) => ({ id: a.id, verdict: a.verdict, basis: a.basis }));
   const M7 = metric({
     value: kept + lost ? ratio(kept, kept + lost) : null, kept, lost, denominator: kept + lost, missing: { unknown: unknownRet, ...missing }, replaced: disturbed.filter((i) => i.retention.state === 'replaced').length, questions: related,
-    basis: 'intentions another owner message reached while they were under way. Chat: kept if the last act completed or is held in the world. Cancel: kept if the seat started nothing new for it afterwards. A newer body request replaces it and leaves the denominator. Predeclared questions on retention stand beside the number.',
+    basis: 'intentions another owner message reached while they were under way. Chat: kept if the last act completed or is held in the world. Cancel: kept if the seat started nothing new for it afterwards; this does not check that the body stopped, which the predeclared questions cover. A newer body request replaces it and leaves the denominator. Predeclared questions on retention stand beside the number.',
     ...(none ? { reason: none } : !(kept + lost) ? { reason: 'no owner message arrived while an intention was under way' } : {}),
   });
 

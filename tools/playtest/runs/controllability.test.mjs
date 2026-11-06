@@ -64,6 +64,9 @@ test('refusal classes: only offer counts against M1, and a code nobody listed st
   assert.deepEqual(classifyRefusal('soul.busy'), { class: 'admission' });
   assert.deepEqual(classifyRefusal('world.crowded'), { class: 'admission' });
   assert.deepEqual(classifyRefusal('zebra.striped'), { class: 'unclassified' });
+  assert.deepEqual(classifyRefusal('carry.brand-new'), { class: 'unclassified' }, 'a new code in a known family is named, not filed as state');
+  assert.deepEqual(classifyRefusal('place.brand-new'), { class: 'unclassified' });
+  assert.deepEqual(classifyRefusal('carry.crew-too-small'), { class: 'unclassified' }, 'an agent could read the crew size first: undecided, and visible');
   assert.deepEqual(classifyRefusal(null), { class: 'unclassified' });
 });
 
@@ -161,6 +164,22 @@ test('M7: chat keeps an errand, a cancel is honoured, a newer body request repla
   assert.equal(c.metrics.M2.spokenRequests.denominator, 1, 'chat closed by result is reported apart from body intentions');
   assert.equal(c.metrics.M5.corrections, 1, 'only the message opening with correcting words');
   assert.equal(by.msg_s.correctionBasis, 'text');
+});
+
+test('M4 is never negative: a message first seen in the output of the act that started the receipt counts from when it was sent', () => {
+  const dir = run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    transcript: events(1, [{ sec: 1, tools: [act('walk to the hall', { accepted: true, for: 'msg_a', receipt: { id: 'r_a', capability: 'walk:hall', phase: 'started' }, ownerMessages: [{ id: 'msg_a', text: 'Walk to the hall', sentAt: at(0) }], events: [{ kind: 'receipt', at: at(0.5), receipt: { id: 'r_a', phase: 'started' } }] })] }]),
+  } } });
+  assert.equal(scoreRun(loadSoulRun(dir)).metrics.M4.value, 0.5);
+});
+
+test('a traced run says why its turns come from the seat log', () => {
+  const dir = run({ receipt: { diagnostics: { capture: { seats: {} } } }, seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }], listen: [listen(0, 'msg_a', 'Walk')],
+    transcript: events(1, [{ sec: 1, tools: [ack('msg_a')] }]),
+  } } });
+  assert.match(scoreRun(loadSoulRun(dir)).sourceNote, /nothing in tools\/playtest writes it yet/);
 });
 
 test('words in the middle of a brief are neither a correction nor a cancel', () => {

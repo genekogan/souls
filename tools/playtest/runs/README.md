@@ -169,13 +169,13 @@ metric has its denominator and a `missing` count; a metric with no source has `v
 
 | id | meaning | how it is read |
 |---|---|---|
-| M1 | first-try act success | `act` and `object` calls after onboarding: 1 - offer refusals / classified acts |
+| M1 | first-try act success | `act` and `object` calls after onboarding (not `travel`): 1 - offer refusals / classified acts |
 | M2 | model turns per intention | median assistant messages attributed to an owner message with a body act that the seat closed with `result done` |
 | M3 | turns with no act or say | decisions that only read, wait or ran a non-CLI tool; `ack`, `result` and a closing line are not counted |
 | M4 | owner message to start, upper bound | first reached the seat (listen, or the output carrying it) to the receipt's started event, else the act call returning |
 | M5 | owner corrections per intention | script entries marked `correction: true`, else messages opening with correcting words |
 | M6 | context bytes per turn | wake text and tool results after onboarding, per decision; `onboardingBytes` is the skill and boot reads |
-| M7 | intent retention | intentions another owner message reached while under way: chat keeps them, a cancel starts nothing new, a newer body request replaces them |
+| M7 | intent retention | intentions another owner message reached while under way: chat keeps them, a cancel starts nothing new (the predeclared questions check the body stopped), a newer body request replaces them |
 | G1 | truthful receipts | `result done` claims whose last accepted act the world records as failed or cut short |
 | G2 | unrelated Souls' progress | seats with an accepted act and no receipt completed or held (needs two or more seats) |
 | G3 | tick health | tick-validity from the run receipt |
@@ -186,11 +186,12 @@ wake, else the latest open intention), so nothing counts twice.
 
 **Refusal classes** (M1) come from the code alone (`classifyRefusal`). `offer` (the world could not read the command, or
 named a place it has no way to) counts against M1, with `route` listed separately inside it. `state` (a seat taken, a ride
-departed, hands full) and `admission` (`soul.busy` and the like) do not. A code in no list is `unclassified`: out of the
-denominator, counted and named, so add it to the table rather than guess.
+departed, hands full; listed one code at a time) and `admission` (`soul.busy` and the like) do not. A code in no list is
+`unclassified`, including a new code in a family the table knows: out of the denominator, counted and named, so add it to the
+table rather than guess.
 
-Three limits are stated in the card. Turns come from the seat log even with the trace tap on, because `soul-trace/1` does not
-capture host turns. Receipts carry no first-motion tick, so M4 ends at the world's `started`, which is not observed
+Three limits are stated in the card. Turns come from the seat log even with the trace tap on: `soul-trace/1` can carry
+`host.turn` (`tools/soul-trace/host.mjs`), but nothing in `tools/playtest` writes it yet and this scorer does not read it (#1097 A3 stays open for that). Receipts carry no first-motion tick, so M4 ends at the world's `started`, which is not observed
 displacement (`observedFirstBodyChangeSec` is, with an observer). Under a scripted director M5 is the script's own number and
 cannot move between arms; a `scripted-owner` seat's "turns" are scripted steps at no model cost, so M2 and M3 describe the
 script there.
