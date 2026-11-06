@@ -111,7 +111,7 @@ export const rideKind: ObjectKind<RideState> = {
       validate(s, _p, ctx) { return rideKind.actions.join.available!(s, ctx); },
       apply(s, _p, _ctx) {
         return {state: s, result: {boarding: s.carrier}, bodies: [{label: s.rowing ? 'Row the punt loop and disembark' : attraction(s) ? `Ride the ${attraction(s)}` : 'Board the balloon', steps: [
-          ...(!s.rowing ? [{verb: 'stand', params: {}}] : []), {verb: 'walk_to', params: {to: s.rowing ? s.door : s.carrier, standoff: s.rowing ? 0 : 2.2}}, {verb: 'mars:carrier_ride', params: {carrier: s.carrier, ...(s.rowing ? {throughReturn: true} : {})}}]}]};
+          ...(!s.rowing ? [{verb: 'stand', params: {}}] : []), {verb: 'walk_to', params: {to: s.rowing ? s.door : s.carrier, standoff: s.rowing ? 0 : 2.2, ...(s.rowing ? {} : {stand: 'clear/1'})}}, {verb: 'mars:carrier_ride', params: {carrier: s.carrier, ...(s.rowing ? {throughReturn: true} : {})}}]}]};
       },
     },
     leave: {
