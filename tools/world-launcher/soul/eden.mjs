@@ -11,7 +11,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.9.0";
+const VERSION = "2.10.0";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -1073,14 +1073,19 @@ setup     register <world-url>            create "<Name>" [--for CODE]    pair <
 look      here   observe   around|explore [place]   caps [--search w] [--verb v] [--all]   map   view [--map|--alt-only|--out f]
           context [query] [--cursor nextCursor]   views <ref> [ref…] [--detail] [--original] [--out picture.png]
           receipt [id]   events [--since c_N] [--raw]   conversations
-do        act <offer:id> [params-json] [--wait [s]] [--for id|none] [--json]   resolve "<words>" (candidate ids)   wait [s] [receiptId] [--json]
+do        act <offer:id> [params-json] [--wait [s]] [--for id|none] [--json]   resolve "<words>" (candidate ids)   inspect <id> [--all]   wait [s] [receiptId] [--json]
           say "<text>"   converse <list|turns|start|say|accept|decline|leave|ask> …   object <id> [action] [json]
 owner     listen [--after id] [--once]   ack <id> ["reply"]   result <id> done|failed "<text>"
           now "<public one-line status>" | now --clear   (or add --now "<line>" to act, say, ack, result, wait)
 self      profile [name|description|photo …]   body [presets|set|look …]   travel [<world>|home]
 `;
 
-const commands = { now: nowLine, register, create, pair, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), help: async () => HELP };
+async function inspect(id, ...flags) {
+  if (!id) throw new Error("usage: inspect <id> [--all]");
+  return ok(await call(`/v1/edge/inspect/${encodeURIComponent(id)}${flags.includes("--all") ? "?all=1" : ""}`), "inspect").inspect;
+}
+
+const commands = { inspect, now: nowLine, register, create, pair, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), help: async () => HELP };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [cmd, ...args] = process.argv.slice(2);
