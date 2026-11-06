@@ -155,6 +155,11 @@ Keep PR journals and changelog fragments consistent with actual acceptance, proo
 evidence where available and appropriate; never convert a merged-but-unreleased feature into a shipped claim or
 overwrite failed evidence. The coordinator owns completeness and publication review; workers supply the entries.
 
+For a planned switch (for example a provider's usage limit), follow the
+[coordinator-handoff skill](../../.claude/skills/coordinator-handoff/SKILL.md): it winds the workers down to
+checkpoints, writes the private packet and ends with a takeover prompt. That prompt is a migration: it authorizes the
+incoming coordinator to resume the named agenda at once, unlike the orientation-only starter below.
+
 Before replacing the coordinator, leave the agenda checkpoint, PR/head refs, evidence, failures, active jobs,
 remaining authority and exact next action. Confirm the old owner stopped before takeover. Preserve ongoing gates
 and builds; a provider switch is not a reason to restart them. If every remaining item requires a missing decision

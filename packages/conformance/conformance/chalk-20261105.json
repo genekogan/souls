@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 making family (#430, W054): pavement chalk. core-chalk-square@1 (69e2c8253e606326…) is a new def on the painting faculty with data only: a 1 m paving square whose painting canvas lies flat (pitch -90°) and declares fadeDays 4, with a drawn-day state field. 68 triangles, 1 draw, 1 material (object.art budget 400). Frozen core-easel@1 (d8f8aa972c99…) and core-easel@2 (526710e13d81…) are byte-identical. A narrow production K=2 run (`conformance.mjs --k 2 --filter core-chalk-square`) baked, placed and rendered all 5 samples with 0 findings and 0 qualification gaps, so this supplement pins no finding. No budgets, samples or gap checks were relaxed.",
+  "findings": []
+}
