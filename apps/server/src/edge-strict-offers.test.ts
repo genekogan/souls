@@ -163,7 +163,7 @@ test('rollback through the real CLI: words exit 2 with no act until the flag is 
 test('a candidate resolve names is an id strict act takes, on or off the menu', async t => {
   const w = await bootEden(); t.after(() => w.close());
   const {soul, edge} = w;
-  const off = [];
+  const off: string[] = [];
   for (const words of ['go to the orchard', 'go to the kitchen', 'go to the plaza', 'go to the bandstand']) {
     const id = (edge.intents.dryRun(soul, {capability: words}) as {would?: {capability?: string}}).would?.capability;
     assert.ok(id, words);
@@ -174,4 +174,7 @@ test('a candidate resolve names is an id strict act takes, on or off the menu', 
   const name = edge.offerGate(soul, {capability: 'walk:orchard'});
   assert.equal(name?.code, 'capability.unknown', 'a name that reads as another id stays refused');
   assert.equal(edge.offerGate(soul, {capability: 'fly:eden-bandstand'})?.code, 'capability.unknown', 'and so does an id that is not on offer');
+  // params are checked off the menu too
+  assert.ok(off.length && off[0]!.startsWith('walk:'), off[0]);
+  assert.equal(edge.offerGate(soul, {capability: off[0], params: {seconds: 5}})?.code, 'capability.params', 'a walk takes no seconds, on the menu or off it');
 });

@@ -75,26 +75,29 @@ export function resolveCandidates(L: EdgeLedger, soul: EdgeSoul, d: Record<strin
 
 export type OfferRefusal = {accepted: false; code: string; reason: string; capability: string; did_you_mean?: {id: string; label: string}[]; candidates?: Candidate[]; params?: ParamSchema};
 
+const paramsRefusal = (cap: Pick<EdgeCapability, 'id' | 'verb' | 'params'>, params: unknown, asked: string): OfferRefusal | null => {
+  const problem = paramsProblem(cap, params);
+  return problem ? {accepted: false, code: 'capability.params', reason: problem, capability: asked, params: offerParams(cap)} : null;
+};
+
 /** A strict act: null when `capability` is an id on offer to this Soul and its params fit, else why not. */
 export function offerCheck(L: EdgeLedger, soul: EdgeSoul, input: {capability?: unknown; params?: unknown; verb?: unknown; target?: unknown; clientRef?: unknown}): OfferRefusal | null {
   const asked = typeof input.capability === 'string' ? input.capability.trim() : '';
   if (typeof input.clientRef === 'string' && input.clientRef.length <= 100 && L.coreA.byClientRef(soul.soulId, input.clientRef)) return null;   // a retry returns the first result
+  // an offer's id is whatever the menu calls it: `pray` and `propose-amendment` have no target, so look it up before any shape
   if (OFFER_ID.test(asked)) {
     const verb = asked.slice(0, asked.indexOf(':'));
     if (ATTENTION_ID.test(asked) || ANSWER_ID.test(asked) || L.bodyVerbProblem(soul, verb)) return null;
-    const cap = L.bindOne(soul, asked)?.cap ?? L.coreA.binds(soul).caps.find(c => c.id === asked);
-    if (cap) {
-      const problem = paramsProblem(cap, input.params);
-      return problem ? {accepted: false, code: 'capability.params', reason: problem, capability: asked, params: offerParams(cap)} : null;
-    }
-    // far offers the page leaves out, and places that refuse for a reason of their own: by id only, never by a name
-    const target = asked.slice(asked.indexOf(':') + 1);
-    if (ON_DEMAND_VERB.test(verb) && knownIds(L, []).has(target)) return null;
   }
+  const cap = asked ? L.bindOne(soul, asked)?.cap ?? L.coreA.binds(soul).caps.find(c => c.id === asked) : undefined;
+  if (cap) return paramsRefusal(cap, input.params, asked);
+  // far offers the page leaves out, and places that refuse for a reason of their own: by id only, never by a name
+  const byId = {id: asked, verb: asked.slice(0, Math.max(0, asked.indexOf(':')))};
+  if (OFFER_ID.test(asked) && ON_DEMAND_VERB.test(byId.verb) && knownIds(L, []).has(asked.slice(asked.indexOf(':') + 1))) return paramsRefusal(byId, input.params, asked);
   const body = input.capability !== undefined ? {capability: asked, ...(input.params ? {params: input.params} : {})} : input;
   const d = asked || input.verb !== undefined ? L.intents.dryRun(soul, body as Parameters<EdgeLedger['intents']['dryRun']>[1]) : {};
   // an id `resolve` itself reads as this very act is an offer, on or off the menu's page; a candidate is always takeable
-  if (OFFER_ID.test(asked) && (d as {would?: {capability?: unknown}}).would?.capability === asked) return null;
+  if (asked && (d as {would?: {capability?: unknown}}).would?.capability === asked) return paramsRefusal(byId, input.params, asked);
   const candidates = resolveCandidates(L, soul, d);
   const label = asked || String(input.verb ?? '');
   return {accepted: false, code: 'capability.unknown', capability: label,
