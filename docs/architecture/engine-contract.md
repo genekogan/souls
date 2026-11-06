@@ -75,10 +75,11 @@ venue. A seated Soul still stands first; active movement and occupied support ke
 Direct `pose_v1` admission reads clearance at the actor's position, independently of the last paged ground window
 queried. Lying poses retain their larger clearance requirement.
 
-A body step an action owns (a reach's lean into a container, a stroke's step to a board) goes through
-`runtime/static-step.ts`, the walker's rule: a step that would put the body below the `collision.human-static` limit,
-and worse than where it stands, is not taken, and the hand works from where the body is. Invariants run at the end of
-every tick, so a held step would have been a violation on that same tick; every other step moves as it always did.
+A reach's lean into a container and a stroke's step to a board go through `runtime/static-step.ts`, the walker's rule:
+a step that would put the body below the `collision.human-static` limit, and worse than where it stands, is not taken,
+and the hand works from where the body is. A stroke stays held for the rest of the stroke; a lean follows its path back
+out. Invariants run at the end of every tick, so a held step would have been a violation on that same tick, and every
+earlier step moves as it did. Other body steps owned by actions, such as a door handle's reach, do not go through it yet.
 
 ## Conformance
 

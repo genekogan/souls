@@ -38,3 +38,25 @@ for (const {ref, door} of defs) test(`${ref}: put in and take out at every turn`
  }
  assert.deepEqual(f.host.engine.runtime.violations, []);
 });
+// A reach cancelled after its lean was held comes back out to where the body stood, with nothing faulting (#1063).
+test('core/lockers@3: a reach cancelled at a turn where the lean is held comes back out', {timeout: 300000}, async t => {
+ const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
+ const edge = new EdgeLedger(f.host, f.db, undefined, {ambient: false}), app = new Hono(); let soul;
+ const comms = mountEdgeRoutes(app, {host: f.host, db: f.db, souls: f.souls, ledger: edge, soul: () => soul});
+ t.after(() => {comms.close(); f.host.stop(); f.db.close();});
+ const god = new GodMode(f.db, {worldId: f.host.worldId, ownerId: 'dev:admin', tick: () => f.host.engine.world.tick, emit() {}});
+ installEngineBridge({host: f.host, god, edge, log() {}, worldLore: false, worldClock: false});
+ const tick = async (n = 5) => {for (let i = 0; i < n; i++) {f.host.tickOnce(); await setImmediate(); f.host.drainInputs();}};
+ await tick(); await invite(f, 'ana'); const row = await accept(f.host, f.souls.create('dev:ana', {name: 'Ana', description: 'Turns test'})); soul = {soulId: row.id, entityId: row.entity_id, name: row.name, owner: row.owner}; await tick();
+ const b = f.host.engine.world.entities[soul.entityId], [ax, az] = [b.pose.p[0], b.pose.p[2]];
+ const ok = r => {assert.equal(r.accepted, true, JSON.stringify(r).slice(0, 400)); return r;};
+ ok(god.act({ops: [{op: 'place', def: 'core/table@1', name: 'table', p: [ax + 2.4, az - 1.2]}, {op: 'place', def: 'core/bowl@2', name: 'bowl', in: {parent: 'table', slot: 'top'}, p: [0, 0]}, {op: 'place', def: 'core/lockers@3', name: 'spot', p: [ax + 1, az + 3], r: 0.785, state: {open: true}}]})); await tick(40);
+ const ent = n => [...god.model.entities.values()].find(e => e.name === n).id, act = async capability => (await accept(f.host, app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability})}))).json();
+ const up = ok(await act(`pick-up:${ent('bowl')}`)); for (let n = 0; n < 1600 && edge.receipt(soul.soulId, up.receipt.id)?.phase !== 'completed'; n++) await tick(1);
+ const put = ok(await act(`put-in:${ent('spot')}`)); let n = 0; while (b.human?.activity !== 'reach' && n++ < 1600) await tick(1); assert.equal(b.human.activity, 'reach');
+ const [sx, sz] = [b.pose.p[0], b.pose.p[2]]; await tick(24); const stepped = Math.hypot(b.pose.p[0] - sx, b.pose.p[2] - sz); assert.ok(stepped > 0.01, 'the lean began');
+ ok(await act('stand:here')); await tick(120);
+ assert.notEqual(edge.receipt(soul.soulId, put.receipt.id).code, 'engine.fault-recovered');
+ assert.ok(Math.hypot(b.pose.p[0] - sx, b.pose.p[2] - sz) < 0.05, 'back where it stood');
+ assert.deepEqual(f.host.engine.runtime.violations, []);
+});
