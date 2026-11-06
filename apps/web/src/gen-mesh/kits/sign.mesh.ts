@@ -9,10 +9,10 @@ import { registerMesh } from '../registry.ts';
 import { bindMotionModel } from '../motion.ts';
 import { apiPath } from '../../world-path.ts';
 import { artOf, brokenLinkLines, coverWhenReady, imageBroken, imageFailed, imageLoaded, videoTexture, whenImageFails } from '../art-media.ts';
-import { frameMediaKind, gameSquare, gameStatus, pinSlot, signupSlot, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@sim/world-compiler';
+import { frameMediaKind, gameSquare, gameStatus, pinSlot, signupSlot, signupPageStart, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@sim/world-compiler';
 import { posterMesh, posterAgeDays } from '../../../../../mars/viewer/app/engine-view/poster-sheet.ts';
 
-type Face = { at: [number, number, number]; w: number; h: number; yaw?: number; pitch?: number; bg?: string; ink?: string; font?: string; line?: number; media?: boolean; slot?: number };
+type Face = { at: [number, number, number]; w: number; h: number; yaw?: number; pitch?: number; bg?: string; ink?: string; font?: string; line?: number; media?: boolean; slot?: number; fadeDays?: number };
 const texCache = new Map<string, THREE.Texture>();
 const loader = typeof document !== 'undefined' ? new THREE.TextureLoader() : null;
 
@@ -249,7 +249,9 @@ registerMesh({
         plane.position.set(...f.at);plane.rotation.set(f.pitch??0,f.yaw??0,0,'YXZ');plane.name='sign-face';plane.userData.poweredOff=true;root.add(plane);continue;
       }
       // W6: a media face shows its slot's image or looping video; a gallery wall's empty slots stay plain
-      const found = f.media ? artOf(ctx.entity.id, st, f.slot) : null, src = found ? signMediaPath(found.url) : null;
+      // #430: a fading canvas (chalk) ages by the world day shown from the day it was drawn; from fadeDays it is washed away
+      const age = f.media && f.fadeDays && typeof st.day === 'number' ? posterAgeDays(st.day) : null, washed = age !== null && age >= f.fadeDays!;
+      const found = f.media && !washed ? artOf(ctx.entity.id, st, f.slot) : null, src = found ? signMediaPath(found.url) : null;
       const art = found && src ? { ...found, url: src } : null;
       // a link the page cannot load (most often a web host without a CORS header, which WebGL needs) says so on the
       // face instead of staying black; hover still names the piece and its maker
@@ -257,19 +259,21 @@ registerMesh({
       if (art && art.kind === 'video') map = videoTexture(art.url, plane, broken);
       else if (art && loader && imageBroken(art.url)) { map = textTexture(brokenLinkLines(art.url), { ...f, bg: '#2f2a26', ink: '#e8dcc8' }); art.broken = true; }
       else if (art && loader) { const url = art.url; map = texCache.get(url) ?? loader.load(url, () => imageLoaded(url), undefined, () => { texCache.delete(url); imageFailed(url); }); map.colorSpace = THREE.SRGBColorSpace; texCache.set(url, map); whenImageFails(url, broken); }
-      else if (f.media && f.slot !== undefined) map = textTexture([''], f);
+      else if (f.media && (f.slot !== undefined || f.fadeDays)) map = textTexture([''], f);
       else if (f.media && text.length && typeof st.text === 'string' && st.text.trim()) map = textTexture(text.slice(0, 6), f);
       else if (f.media) map = paintingTexture(ctx.def.name.length + (ctx.entity.seed ?? 0), f.bg ?? '#7fa7c9');
       else if (ctx.def.tags.includes('tictactoe')) map = tictactoeTexture(typeof st.text === 'string' ? st.text : '', f);
       else if (ctx.def.tags.includes('posters')) map = posterWallTexture(f);
       else if (ctx.def.tags.includes('wanted')) map = wantedTexture(wantedList(st), f);
       else if (ctx.def.tags.includes('pinboard')) map = pinboardTexture(typeof st.text === 'string' ? st.text.split('\n') : [], f);
-      else if (ctx.def.tags.includes('signup')) map = signupTexture(String(st.title ?? ''), typeof st.text === 'string' && st.text ? st.text.split('\n') : [], f);
+      else if (ctx.def.tags.includes('signup')) { const names = typeof st.text === 'string' && st.text ? st.text.split('\n') : []; map = signupTexture(String(st.title ?? ''), names.slice(signupPageStart(names.length)), f); }   // #429: a guestbook shows its current page
       else if (ctx.def.tags.includes('poll')) { const opts = pollOptions(st), votes = typeof st.textBy === 'string' && st.textBy ? st.textBy.split(',').map((v) => Number(v.split(':')[1])) : []; map = pollTexture(String(st.title ?? ''), opts, opts.map((_, i) => votes.filter((v) => v === i).length), f); }
       else if (ctx.def.tags.includes('chalkboard') && ctx.def.tags.includes('hand-writable')) map = chalkTexture(text, f);
       else map = textTexture((f.line !== undefined ? [text[f.line] ?? ''] : text).slice(0, 6), f);
       // video and images glow a little so art reads in dim rooms; text keeps the matte board look
       plane.material = faceMaterialFor(map, !!art);
+      // #430: fainter by a share of its fade per world day (its own material: the shared one may serve a fresher copy)
+      if (art && age !== null && age > 0) plane.material = new THREE.MeshBasicMaterial({ map, toneMapped: false, transparent: true, depthWrite: false, opacity: Math.max(0.1, 1 - age / f.fadeDays!) });
       plane.position.set(...f.at); plane.rotation.set(f.pitch ?? 0, f.yaw ?? 0, 0, 'YXZ'); plane.name = 'sign-face';
       if (art) { plane.userData.art = art; coverWhenReady(map, plane.geometry as THREE.PlaneGeometry, f.w / f.h); }
       root.add(plane);
