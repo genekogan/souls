@@ -175,3 +175,21 @@ test('use-check: seats Souls sit on today stay sittable for every look, retired 
   assert.equal(r.accepted, true, JSON.stringify(r));
   assert.ok(await w.until(() => w.human().activity === 'sit'), 'the shortest look sits on the retired bus seat');
 });
+
+// #1083: seated on one god-built seat, a sit on another stands first (the bare walk from inside the first seat's footprint
+// was refused route.start-blocked); found by the seat-height Soul Run, with a 1.6 m stool and a 0.1 m seat.
+test('use-check: from a 1.6 m god stool to a 0.1 m god seat, by their offers', { timeout: 180_000 }, async (t) => {
+  const w = await setup(t);
+  const me = w.host.engine.world.entities[w.soul.entityId] as any, [x, z] = [me.pose.p[0], me.pose.p[2]];
+  const seat = (name: string, h: number, box: number[]) => ({ schema: 'def/1', name, version: 1, tags: ['furniture', 'seat'], form: 'point', size: { box },
+    make: { kind: 'gen', gen: 'kit/2', args: { shapes: [{ kind: 'box', at: [0, h / 2, 0], size: [box[0], h, box[2]] }] } },
+    slots: [{ id: 'seat', kind: 'seat', p: [0, h, 0], yaw: 0, height: h, accepts: { tags: ['body'] }, capacity: 1 }], components: { seat: { height: h } } });
+  w.act([{ op: 'define', def: seat('tall-stool', 1.6, [0.5, 1.6, 0.5]) }, { op: 'define', def: seat('floor-seat', 0.1, [0.6, 0.1, 0.6]) },
+    { op: 'place', def: 'tall-stool@1', name: 'tall', p: [x + 4, z] }, { op: 'place', def: 'floor-seat@1', name: 'floor', p: [x - 6, z] }]);
+  await w.settle(4);
+  const sit = async (n: string) => { const r = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${w.god.model.get(n)!.id}`, params: { seconds: 2 } })) as any;
+    assert.equal(r.accepted, true, `${n}: ${JSON.stringify(r).slice(0, 300)}`);
+    assert.ok(await w.until(() => w.edge.receipt(w.soul.soulId, r.receipt.id)?.phase === 'completed'), `${n}: ${JSON.stringify(w.edge.receipt(w.soul.soulId, r.receipt.id)).slice(0, 300)}`); };
+  await sit('tall'); await sit('floor');
+  assert.deepEqual(w.E.rt?.violations ?? [], []);
+});

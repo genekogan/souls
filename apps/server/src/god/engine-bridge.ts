@@ -1877,7 +1877,8 @@ export class EngineBridge {
           const label = labelOf(onTop);
           if (block?.code === 'seat.inside') unusable.push(caps.length); else if (!block) usable.push({ id, label, d });
           caps.push({ id, verb: 'sit', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}), params: { seconds: { type: 'integer', min: 1, max: 600, default: 60 } } });
-          plans.set(id, { label, steps: [{ verb: 'sit', params: { on: x.id, seconds: 60 } }], seconds: true });
+          // #1083: seated elsewhere, she stands first (from inside a god-built seat's footprint a bare walk to another seat was refused route.start-blocked)
+          plans.set(id, { label, steps: [...stand, { verb: 'sit', params: { on: x.id, seconds: 60 } }], seconds: true });
         }
         if (d > NEAR) continue; // F2: a far seat is offered for sitting only
         // beds/1: a bed with native berths is lain on through the engine's take_slot (walk to its side, lie down on the
