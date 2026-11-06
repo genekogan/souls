@@ -305,6 +305,12 @@ no destination: its `destination` is a placeholder and its `cleanup` is `lower-h
 itself. Holding is a phase, so the claims and receipts stay for as long as it is held, and the only way out is the stop.
 See [soul actions](../architecture/soul-actions.md).
 
+`connect-beam` (PC14, [#693](https://github.com/genekogan/souls/issues/693)) keeps the same session and op, with exactly two
+members. Its `destination` names the two uprights, the column and the seat height. Its `beam` field holds the two uprights
+and their seat connectors. It ends `arrived` (the receipts' `shared.seated`) once the beam is seated. A stop lowers a
+lifted beam back where it lay. A raise whose upright a beam joins changes its stop: the crew lets go only when the frame
+stands on its own, and until then keeps holding.
+
 ## Exclusions
 
 - No universal animation language, all-body support, scheduler or building bridge.

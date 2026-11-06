@@ -92,8 +92,9 @@ context-size checks below), regression runs, and an uncut real-client recording 
     revision is carried as before.
   - **Restart.** Nothing new is snapshotted: the joints ride the entity rows and the logged `world-edit` events, so a
     clean or crash restart brings back the same graph in both.
-  - **Not yet.** Souls do not connect beams (PC14). The native rack stability rule (`construction/rules.ts`) does not
-    apply to these parts, which are items to the engine. Only a part's own bearing connectors decide its support.
+  - **Souls and beams (PC14).** Souls seat beams between raised, held uprights (below). The native rack stability rule
+    (`construction/rules.ts`) is read for these parts from their connectors, by `packages/engine-mars/src/beam-connect.ts`:
+    the engine treats them as items, and a god's joins still depend only on a part's own bearing connectors.
 - **Raising and holding (PC13, [#692](https://github.com/genekogan/souls/issues/692); off unless `SIM_SHARED_CARRY=1`).**
   A loose upright lying free is also offered `raise-with:<id>`, which takes `with`. It goes through the same invitation,
   revision, acceptance and receipts as `carry-with` below, with no destination.
@@ -109,7 +110,44 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Refused before anyone is asked:** `raise.arc-blocked`, `raise.station-blocked`, `raise.station-unreachable`,
     `raise.not-lying`, `raise.joined`, `raise.crew-too-small`, `raise.crew-too-large`.
   - **Invariant.** `looseFramesHeld` (a part it turned is held by its crew, hands on it) is checked at every tick end.
-  - **Not yet.** A raised frame can only come back down. Joining it where it stands is PC14. `stop-carry` keeps its name.
+  - **Joined (PC14).** Once a beam joins a raised frame, a stop never lowers it. The crew lets go only once the frame
+    stands on its own (below). `stop-carry` keeps its name.
+- **Seating beams (PC14, [#693](https://github.com/genekogan/souls/issues/693); off unless `SIM_SHARED_CARRY=1`).** A loose
+  beam lying under a bay between two standing, supported uprights is offered `connect-beam-with:<id>`. It takes `column`
+  (`l` or `r`, each upright's own side), `height` (a seat height in metres) and `with` (one other Soul).
+  - **Which seats.** Only the seat pairs both uprights have free are offered. Each pair is level, a beam's span apart,
+    square to both frames, on the faces toward each other, and within standing reach (`beamBays`). Supported means held
+    by its raise crew, or standing in a frame that stands on its own.
+  - **Session.** It goes through the same invitation, revision, acceptance and receipts as `carry-with`, with exactly two
+    members.
+  - **Commit.** One programme, `mars:connect_beam_v1`. It brings the native `connect_beam`'s checks, choreography and lift
+    (`construction/beam.ts`) to PC12's connectors (`beam-seat`, `beam-end`). The two walk to the beam's ends, grip it, lift
+    it along its swept path, and its ends join both seats as reciprocal engine connections.
+    - Both ends are checked again at the lift.
+    - The write-back then puts the joints into the entity world, with the uprights' standing poses, in one edit
+      (`connect` ops after `move`s).
+    - The receipts end `completed` with `shared.seated`.
+  - **Stop.** Before the lift they let go where it lies. During the lift they lower it back along its path to exactly where
+    it lay; a beam is never left half seated.
+  - **Release.** A stop on a raise whose upright beams join lets go only if its frame stands on its own, by the native
+    Mars v1 rule:
+    - at least two standing uprights;
+    - each upright has beams on both columns at N or more heights, with N = 2 for a 12 ft frame;
+    - another upright still held by its own crew is carried by them and not counted.
+
+    Until then the native cancel refuses `support.release-premature`. The crew keeps holding, the receipts name the
+    missing beams, and the stop is asked again each tick, so they let go as soon as the frame stands. The released upright
+    stays standing and installed, held up by its beams (support `connected`, as the native `release_support`). A god's
+    joined upright stands on the ground by the god's say (PC12) and is not judged by this rule.
+  - **Refused before anyone is asked:** `beam.misaligned`, `beam.seat-taken`, `beam.not-staged`, `beam.upright-unsupported`,
+    `reach.too-high`, `lift.path-blocked`, `beam.station-unreachable`, `beam.crew`. A Soul holding an upright has no hand
+    free (`carry.hands-full`).
+  - **Invariant.** `framesStand` is checked at every tick end. An installed beam has both ends joined in standing uprights,
+    and a joined upright nobody holds is in a frame that stands on its own.
+  - **Rules version.** The flag adds `+shared-raise/1+shared-beam/1`, so a journal that names these verbs is never replayed
+    without them.
+  - **Not yet.** Where the uprights stand comes from where they were laid; Souls can't move a raised frame into line.
+    No disconnecting, and no joists or decks.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
   A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
   comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one

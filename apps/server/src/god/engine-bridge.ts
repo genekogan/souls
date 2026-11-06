@@ -13,7 +13,7 @@ import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
 import { deckRaised, railGaps, rasterOf } from '@sim/generators';
 import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
-import { assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
+import { beamBays, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
 import { createHash } from 'node:crypto';
 import type { WorldHost } from '../world.ts';
 import type { LogEvent } from '@sim/protocol';
@@ -218,9 +218,11 @@ export type LoadLevel = keyof typeof PERCEIVE_DIAL;
 /** Build notices that change nothing a Soul perceives (no step label, no closure): they never start a catch-up. */
 const PERCEPTION_QUIET_BUILD = new Set<string>(['alive', 'claimed', 'released', 'taken']);
 const WRITE_BACK_SLICE_MS = 8;
-type WriteBackUnit = { key: string; ops: Op[]; body?: string };
+/** `atomic` (PC14): the ops are one engine edit (moves and the joints they make), never applied one by one. */
+type WriteBackUnit = { key: string; ops: Op[]; body?: string; atomic?: true };
 type WriteBackBody = { pose: string; entity: Entity | undefined };
 
+const listed2 = (n: [string, string]) => n[0] === n[1] ? `two ${n[0]}s` : `${n[0]} and ${n[1]}`;
 export class EngineBridge {
   readonly host: WorldHost; readonly god: GodMode; readonly edge?: EdgeLedger;
   /** B-facade: the read worker's bridge (BridgeOptions.read) */
@@ -1475,6 +1477,8 @@ export class EngineBridge {
     // result (also after safe cancellation) through the existing item write-back.
     if (x.kind !== 'component' && !(x.kind === 'fixture' && CATALOG[x.def]?.capabilities?.fixtureCarry && x.support?.kind === 'ground' && x.phase !== 'carried')) return;
     const e = this.model.entities.get(id); if (!e) return;
+    // PC14 (#693): a beam a crew seated: its joints, and the standing poses of what it joins, reach the entity world
+    if (x.phase === 'installed' && x.support?.kind === 'connected' && x.connections?.length) return this.writeBackJoints(x, e);
     const ops: Op[] = []; let body: string | undefined;
     const s = x.support;
     if (s?.kind === 'in-hand') {
@@ -1516,6 +1520,22 @@ export class EngineBridge {
     if (ops.length) return { key: `component:${id}`, ops, ...(body ? { body } : {}) };
   }
 
+  /** PC14 (#693): an installed beam's joints, written as `connect` ops after `move`s that put it and each part it joins where
+   *  the engine has them (a stood-on-end upright as r = [yaw, 0, roll], PC12), in one unit. Nothing when they are there. */
+  private writeBackJoints(x: { id: string; connections: { socket: string; to: string; toSocket: string }[] }, e: Entity): WriteBackUnit | undefined {
+    const missing = x.connections.filter((c) => { const j = e.joins?.[c.socket]; return !(j?.to === c.to && j.at === c.toSocket); });
+    if (!missing.length) return;
+    const ops: Op[] = [];
+    for (const id of [x.id, ...new Set(x.connections.map((c) => c.to))]) {
+      const ex = this.engine.world.entities[id] as { pose: { p: number[]; yaw: number; roll?: number } } | undefined, me = this.model.entities.get(id);
+      if (!ex || !me) return;
+      const r: [number, number, number] = [r3(-ex.pose.yaw), 0, r3(ex.pose.roll ?? 0)], p: [number, number, number] = [r3(ex.pose.p[0]), r3(ex.pose.p[1]), r3(ex.pose.p[2])];
+      if (JSON.stringify(me.p) !== JSON.stringify(p) || JSON.stringify(me.r) !== JSON.stringify(r) || me.in.parent !== 'world') ops.push({ op: 'move', id, in: { parent: 'world' }, p, r, mode: 'strict' } as Op);
+    }
+    for (const c of missing) ops.push({ op: 'connect', a: { id: x.id, connector: c.socket }, b: { id: c.to, connector: c.toSocket } } as Op);
+    return { key: `component:${x.id}`, ops, atomic: true };
+  }
+
   private writeBackBody(id: string, holder: boolean): WriteBackUnit | undefined {
     const b = this.engine.world.entities[id], e = this.model.entities.get(id);
     if (!b?.human || !e) return;
@@ -1527,6 +1547,13 @@ export class EngineBridge {
   }
 
   private applyWriteBackUnit(unit: WriteBackUnit, bodies: Map<string, WriteBackBody>) {
+    if (unit.atomic) {
+      // a refused one is not retried with the same ops (as a refused pose)
+      const key = `${unit.key}@${JSON.stringify(unit.ops)}`; if (this.refusedPose.has(key)) return;
+      const r = this.engineAct(unit.ops, `engine: ${unit.ops.map((o) => describeOp(o, this.model)).join('; ')}`);
+      if (r.accepted) this.stats.writeBacks++; else { this.refusedPose.add(key); this.log(`write-back refused for ${unit.key}: ${JSON.stringify(r.failures).slice(0, 300)}`); }
+      return;
+    }
     for (let i = 0; i < unit.ops.length; i++) {
       const op = unit.ops[i];
       // Several items can share a holder. Match the full drain's one prerequisite per unchanged pose,
@@ -1978,6 +2005,17 @@ export class EngineBridge {
               caps.push({id:rid,verb:'raise-with',label:rlabel,target:{id:x.id,kind:'object'},available:!rblock,...(rblock?{blocked:rblock}:{}),params:{with:{type:'string',maxLength:300,description:'the Souls who raise it with you (names or ids: "Bo and Cy", "Bo, Cy and Dee")'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
               const rplan={label:rlabel,steps:[],together:{kind:'shared' as const,template:'raise-hold' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew,mass:{kg:mass,each:MAX_KG_PER_CARRIER}}};
               if(!rblock)plans.set(rid,rplan);
+            }
+            // PC14 (#693): a loose beam lying under a bay between two standing, supported uprights can be seated by two Souls in a
+            // seat pair both uprights have free (engine-mars beamBays: level, a beam's span apart, within standing reach)
+            const bays=sdef!.tags.includes('beam')?beamBays(this.mw.world as never,x.id):[];
+            if(bays.length){
+              const tagged=bays.map(b=>({...b,names:[name(b.a),name(b.b)] as [string,string]})),cols=[...new Set(bays.map(b=>b.column))],free=cols.map(c=>`${c}: ${bays.filter(b=>b.column===c).map(b=>b.height.toFixed(2)).join(', ')} m`).join('; ');
+              const pair=listed2(tagged[0]!.names),bid=`connect-beam-with:${x.id}`,blabel=`Seat ${name(x.id)} between ${pair} with one other Soul, one at each end (asks them first; column: ${cols.join(' or ')}; height: a free seat height in metres, ${free}; with: who)`;
+              const bblock=sblock&&sblock.code!=='carry.crew-too-small'?sblock:null;
+              caps.push({id:bid,verb:'connect-beam-with',label:blabel,target:{id:x.id,kind:'object'},available:!bblock,...(bblock?{blocked:bblock}:{}),params:{column:{type:'string',enum:cols,description:"the uprights' column the beam goes into (each upright's own l or r side)"},height:{type:'number',min:0.1,max:2.1,description:`the seat height in metres above the ground, free on both uprights (the nearest free seat within 8 cm): ${free}`},with:{type:'string',maxLength:300,description:'the one Soul who seats it with you'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
+              const bplan={label:blabel,steps:[],together:{kind:'shared' as const,template:'connect-beam' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew:[2,2] as [number,number],bays:tagged}};
+              if(!bblock)plans.set(bid,bplan);
             }
           }
         }

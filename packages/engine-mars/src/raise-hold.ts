@@ -14,6 +14,7 @@ import { entityFootprint, type Spatial } from '../../../mars/viewer/engine/spati
 import { makeWay } from '../../../mars/viewer/engine/locomotion/walk.ts';
 import { holdingDiagnostic } from '../../../mars/viewer/engine/construction/rules.ts';
 import { checkStations, childrenState, walkCrew, type Children } from '../../../mars/viewer/engine/construction/children.ts';
+import { frameStability } from './beam-connect.ts';
 import { LIFT_SPEED, RAISE_BYSTANDER_GAP, RAISE_RATE, raiseAlong, raiseBystander, raiseChoreoBlocked, raiseFaceCol, raiseLifterAt, raiseNextPitch, raisePathLen, raiseReach, raiseRoles, raiseStandBlocked, raiseStepPath, raiseTransitionPitch, type RaiseGeo, type RaiseRole } from '../../../mars/viewer/engine/construction/raise.ts';
 
 type P = { crew: string[]; item: string };
@@ -230,6 +231,16 @@ export const raiseHold: ActionDef<P, Plan, RaiseHoldExec> = {
   cancel(rt, ex) {
     const u = rt.world.entities[ex.p.item]!;
     if (ex.lowering) return { ok: true, deferred: true };
+    if (u.connections?.length) {
+      // PC14 (#693): beams join it into a frame, so it is never lowered; the crew lets go only once that frame stands on its
+      // own (the native v1 rule), and stands it there. Until then the stop is refused, and asked again each tick.
+      const st = frameStability(rt.world, u);
+      if (!st.stable) return { ok: false, diagnostic: { code: 'support.release-premature', message: `the crew cannot let go of ${u.id}: beams join it into a frame that does not stand on its own yet (${st.missing.join('; ')})`, subjects: [u.id, ...ex.p.crew] } };
+      for (const c of ex.p.crew) Object.assign(rt.world.entities[c]!.human!, { grip: undefined, task: undefined, activity: 'idle' });
+      // as the native release_support: held up by its beams now (a god's joined upright stands on the ground instead)
+      u.support = { kind: 'connected', to: [...new Set(u.connections.map((c) => c.to))] }; u.phase = 'installed'; u.reservedBy = undefined;
+      return { ok: true };
+    }
     if (ex.phase === 'approach' || ex.phase === 'grip') {
       for (const r of ex.children?.recs ?? []) if (rt.isActive(r.id)) rt.cancel(r.id);
       release(rt, ex, u);
