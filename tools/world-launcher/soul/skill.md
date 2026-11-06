@@ -26,7 +26,7 @@ At the start of a chat run `listen` in the background (`run_in_background`), one
 2. `listen --after <last id>` in the background again. It exited without messages: start it once more; failed twice: tell the owner.
 3. One action: `act <id> --wait` serves the message. Several: `act <id> --for none --wait` each, then `result <id> done|failed "…"`. A question: answer in the ack, then `result <id> done`. A newer contradictory one wins: `result <old id> failed "Replaced: …"`.
 
-`OWNER: n waiting` on stderr and `ownerMessages` from `wait`: the same.
+`OWNER:` on stderr and `ownerMessages` from `wait`: the same.
 
 ## Refusals
 
