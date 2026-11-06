@@ -206,7 +206,7 @@ function validateDirected(spec, { specPath, cwd, serverRoot, errors }) {
   if (errors.length) return { ok: false, errors };
   const effective = { soulRun: SPEC_VERSION, kind: 'cast', name: spec.name ?? cast.name, cast: { path: castPath, sha256: sha256(castText), name: cast.name, seats: eff.seats.length, consoleScript: eff.console.script.length },
     world: { port: eff.world.port, slug: eff.world.slug ?? null, genesis: eff.world.genesis, snapshot: null, source: { kind: 'genesis', path: eff.world.genesis, sha256: sha256(readFileSync(sourcePath)) } },
-    setup: null, durationSec: eff.durationSec, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}) };
+    setup: null, durationSec: eff.durationSec, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), scorer: { id: SCORER.id, version: SCORER.version, path: SCORER.path, sha256: sha256(readFileSync(new URL('./controllability.mjs', import.meta.url))) } };
   // scenario: the shape the playtest preflight reads, so it checks exactly the providers this cast needs.
   return { ok: true, errors: [], effective, scenario: policy.scenario, cast: eff, controllers: controllerList, policy, setup: null };
 }
