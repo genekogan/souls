@@ -8,7 +8,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setImmediate} from 'node:timers/promises';
 import {Hono} from '../../apps/server/node_modules/hono/dist/index.js';
-import {fixture, invite, accept, factory, seed, worldId} from '../../apps/server/test/native-owner-fixture.ts';
+import {fixture, invite, accept, factory as plainFactory, seed, worldId} from '../../apps/server/test/native-owner-fixture.ts';
+import {marsFactory, GREEN_FIELD_WORLD} from '../../packages/engine-mars/src/engine.ts';
+import {looseFramesHeld} from '../../packages/engine-mars/src/raise-hold.ts';
 import {Db} from '../../apps/server/src/db.ts';
 import {EdgeLedger} from '../../apps/server/src/edge/ledger/ledger.ts';
 import {registerEdgeComms} from '../../apps/server/src/edge/comms/index.ts';
@@ -17,6 +19,8 @@ import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
 import {WorldHost} from '../../apps/server/src/world.ts';
 
 const STEP_MS = 50, UP_L = 3.6576;
+// the shared raise's engine verb exists only behind the flag (engine.ts marsFactory), as the ledger's offers do
+const factory = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true});
 function mount(w, host, db, sharedCarry = true) {
   const edge = new EdgeLedger(host, db, undefined, {ambient: false, sharedCarry, now: w.now}), app = new Hono();
   const comms = registerEdgeComms(app, {host, db, souls: w.f.souls, ledger: edge, soul: () => w.current}, {fading: true, beam: true, now: w.now, sweepMs: 0});
@@ -27,7 +31,7 @@ function mount(w, host, db, sharedCarry = true) {
 }
 async function world(t, {names = ['Ada', 'Bo', 'Cy', 'Dee', 'Eve'], sharedCarry = true, extra = () => []} = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'pc13-raise-')), path = join(dir, 'sim.db'), opts = {durableClockV1: true};
-  const f = fixture(path, factory, opts); f.brain.quiesce();
+  const f = fixture(path, sharedCarry ? factory : plainFactory, opts); f.brain.quiesce();
   const clock = {now: 1_700_000_000_000}, w = {f, path, opts, clock, now: () => clock.now, current: null, hosts: [f.host]};
   t.after(() => {try {w.comms?.close();} catch {} for (const h of w.hosts) try {h.stop();} catch {} try {if (w.db.db.isOpen) w.db.close();} catch {} rmSync(dir, {recursive: true, force: true});});
   mount(w, f.host, f.db, sharedCarry);
@@ -183,6 +187,20 @@ test('R8: while held: speech, a member\'s act is shared.busy, another Soul is fr
   // the owner's plain "stop what you are doing" is the same safe stop, in any member's stream
   const stand = await act(w, Bo, {capability: 'stand:here'}); assert.equal(stand.accepted, true, JSON.stringify(stand)); assert.equal(inviteOf(w, c.id).shared.op.phase, 'stopping'); await toEnd(w, c, frame);
   const off = await world(t, {sharedCarry: false}); assert.equal(offer(off, off.souls.Ada, `raise-with:${off.idOf('frame')}`), undefined);
+});
+
+test('flag off: no raise_hold_v1 verb and no loose-frame invariant; on, both', async () => {
+  const was = process.env.SIM_SHARED_CARRY; delete process.env.SIM_SHARED_CARRY;
+  try {
+    for (const [cfg, on] of [[GREEN_FIELD_WORLD, false], [{...GREEN_FIELD_WORLD, sharedCarryV1: false}, false], [{...GREEN_FIELD_WORLD, sharedCarryV1: true}, true]]) {
+      const f = await marsFactory(cfg), e = f.create(f.genesis('flag'));
+      assert.equal(e.describeVerbs().some((v) => v.verb === 'mars:raise_hold_v1'), on, JSON.stringify(cfg));
+      assert.equal(e.rt.invariants.includes(looseFramesHeld), on, JSON.stringify(cfg));
+    }
+    process.env.SIM_SHARED_CARRY = '1';   // the server's flag, read where no config names it (main.ts)
+    const f = await marsFactory(GREEN_FIELD_WORLD), e = f.create(f.genesis('flag'));
+    assert.ok(e.describeVerbs().some((v) => v.verb === 'mars:raise_hold_v1') && e.rt.invariants.includes(looseFramesHeld));
+  } finally {if (was === undefined) delete process.env.SIM_SHARED_CARRY; else process.env.SIM_SHARED_CARRY = was;}
 });
 
 /** A new process on the same database (shared-restart.test.mjs). `clean`: a final snapshot first; else only what was logged. */
