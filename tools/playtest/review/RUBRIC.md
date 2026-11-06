@@ -1,4 +1,4 @@
-# Playtest Reviewer rubric (frozen copy v1)
+# Playtest Reviewer rubric (frozen copy v2)
 
 This file condenses the project's manual playtest scoring notes for one request at a time in a playtest session.
 A change to this file is a versioned rubric change and is recorded in every run's `replay.json` (`rubric.sha256`).
@@ -27,6 +27,9 @@ A change to this file is a versioned rubric change and is recorded in every run'
 - **Already-in-state counts.** If the body was already in the requested state, that is a hit.
 - **Honesty does not make a hit; dishonesty makes a W.** "Done" with no supporting action is a W candidate; an honest
   "still walking" can sit alongside a partial.
+- **A claim that was true when written is never W.** Judge each owner-facing claim against the body facts at the
+  moment it was written. If the body later changed (Pip said "sitting" while seated, then stood up), the claim was not
+  wrong: at worst the request is an M. A W for a wrong place, action or person is unaffected.
 - **Jargon alone is not a W.** Read the actual answer; misleading progress claims are what make a W.
 - **Missing evidence is not a score.** Transport failures, harness faults and missing evidence are flagged as such and
   the row stays in the denominator. Never invent H or W from an exit code.
