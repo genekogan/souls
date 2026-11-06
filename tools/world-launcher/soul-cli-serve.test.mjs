@@ -7,17 +7,18 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { foldEvents, foldMessages, takePending } from './soul/eden.mjs';
+import { foldEvents, foldMessages, reconcileMessages, takePending } from './soul/eden.mjs';
 
 const cli = fileURLToPath(new URL('./soul/eden.mjs', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** A world with an inbox and an event stream: a listen hands each waiting message once, as the real one does. */
+/** A world with an inbox and an event stream. As the real one does (Inbox.takeBacklog): a listen returns every message not
+ *  acknowledged after its cursor, and with no cursor every message not acknowledged. */
 async function world(t) {
   const dir = mkdtempSync(join(tmpdir(), 'sim-serve-'));
   const w = { dir, inbox: [], events: [], calls: [], acts: 0, keys: [], busyNext: 0, heavyNow: 0, heavyMax: 0, listens: 0, parked: [] };
   const flush = () => { const p = w.parked; w.parked = []; for (const f of p) f(); };
-  w.owner = (id, text) => { w.inbox.push({ id, text, sentAt: Date.now(), handed: false }); flush(); };
+  w.owner = (id, text) => { w.inbox.push({ id, text, sentAt: Date.now(), acked: false }); flush(); };
   w.event = (e) => { w.events.push({ id: `c_${w.events.length + 1}`, ...e }); flush(); };
   const hold = (ms) => new Promise((done) => { const x = setTimeout(done, ms); w.parked.push(() => { clearTimeout(x); done(); }); });
   const server = createServer(async (req, res) => {
@@ -29,9 +30,10 @@ async function world(t) {
     const json = (status, v, h = {}) => { if (res.destroyed) return; res.writeHead(status, { 'content-type': 'application/json', ...h }); res.end(JSON.stringify(v)); };
     if (p === '/v1/edge/inbox/listen') {
       w.listens++;
-      if (!w.inbox.some((m) => !m.handed)) await hold(Math.min(Number(url.searchParams.get('timeoutMs')), 200));
+      const waiting = () => { const from = w.inbox.findIndex((m) => m.id === url.searchParams.get('after')) + 1; return w.inbox.slice(from).filter((m) => !m.acked); };
+      if (!waiting().length) await hold(Math.min(Number(url.searchParams.get('timeoutMs')), 200));
       if (req.socket.destroyed) return undefined; // the real route hands nothing to a caller that hung up (inbox-routes.ts)
-      const backlog = w.inbox.filter((m) => !m.handed); for (const m of backlog) m.handed = true;
+      const backlog = waiting();
       return json(200, { inbox: { connected: true, latest: backlog[0] }, backlog: backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt })) });
     }
     if (p === '/v1/edge/wait') {
@@ -45,7 +47,7 @@ async function world(t) {
     await sleep(10); w.heavyNow--;
     if (w.busyNext > 0) { w.busyNext--; return json(429, { error: { code: 'soul.busy', message: 'one at a time' } }, { 'retry-after': '0' }); }
     if (p === '/v1/edge/act') { w.acts++; w.keys.push(req.headers['idempotency-key']); return json(200, { accepted: true, receipt: { id: `r_${w.acts}`, capability: 'walk:x', phase: 'started' } }); }
-    if (/\/ack$|\/result$/.test(p)) return json(200, { inbox: {} });
+    if (/\/ack$|\/result$/.test(p)) { const m = w.inbox.find((x) => x.id === decodeURIComponent(p.split('/').at(-2))); if (m) m.acked = true; return json(200, { inbox: {} }); }
     if (p === '/v1/edge/here') return json(200, { place: 'green' });
     if (p.startsWith('/v1/edge/receipts/')) return json(200, { receipt: { id: decodeURIComponent(p.split('/').pop()), phase: 'completed', capability: 'walk:x' } });
     return json(404, { error: { code: 'nope', message: p } });
@@ -121,6 +123,44 @@ test('A3: act returns the receipt at acceptance; pending lists open receipts, ev
   assert.deepEqual((await w.cli('pending')).json.endedReceipts, [], 'an ended receipt is reported once');
 });
 
+test('A5: a message the world handed over just before a kill, unsaved, comes back on restart', async (t) => {
+  const w = await world(t);
+  w.owner('msg_1', 'Lost in the window'); w.owner('msg_2', 'Saved as the cursor only');
+  // The state of a serve killed after the world answered: the cursor moved on, the messages were never kept.
+  writeFileSync(join(w.dir, '.eden-serve.json'), JSON.stringify({ inboxAfter: 'msg_2', messages: [] }));
+  await w.cli('serve');
+  const p = await until(async () => { const x = (await w.cli('pending')).json; return x.ownerMessages?.length === 2 ? x : null; });
+  assert.deepEqual(p?.ownerMessages.map((m) => m.id), ['msg_1', 'msg_2']);
+  w.owner('msg_3', 'And a new one');
+  const next = await until(async () => { const x = (await w.cli('pending')).json; return x.ownerMessages?.length === 3 ? x : null; });
+  assert.deepEqual(next?.ownerMessages.map((m) => m.id), ['msg_1', 'msg_2', 'msg_3'], 'each once, oldest first');
+});
+
+test('A5: a message acked while no serve was up leaves the queue on restart', async (t) => {
+  const w = await world(t);
+  w.owner('msg_1', 'Acked by hand'); w.inbox[0].acked = true;
+  w.owner('msg_2', 'Still open');
+  writeFileSync(join(w.dir, '.eden-serve.json'), JSON.stringify({ inboxAfter: 'msg_1', messages: [{ id: 'msg_1', text: 'Acked by hand', handed: true, acked: false, closed: false }] }));
+  await w.cli('serve');
+  const p = await until(async () => { const x = (await w.cli('pending')).json; return x.ownerMessages?.some((m) => m.id === 'msg_2') ? x : null; });
+  assert.deepEqual(p?.ownerMessages.map((m) => m.id), ['msg_2']);
+});
+
+test('listen does not hand over a message already read through pending or already acked', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.owner('msg_1', 'Read through pending');
+  assert.ok(await until(async () => (await w.cli('pending')).json.ownerMessages?.length === 1));
+  w.owner('msg_2', 'Acked before any read');
+  assert.ok(await until(async () => (await w.cli('serve', '--status')).json.unacked === 2), 'the serve holds both');
+  await w.cli('ack', 'msg_2', 'On it');
+  const r = await w.cli('listen', '--once');
+  assert.deepEqual((r.json.messages ?? []).map((m) => m.id), [], r.out);
+  w.owner('msg_3', 'New');
+  const next = await w.cli('listen');
+  assert.deepEqual(next.json.messages.map((m) => m.id), ['msg_3']);
+});
+
 test('the harness listen keeps working through serve: same output, delivered once, and it never races the serve', async (t) => {
   const w = await world(t);
   await w.cli('serve');
@@ -189,6 +229,8 @@ test('pure state: an event is read once across a cut, a long tail hands over in 
   assert.equal(takePending(st).events[0].id, 'c_101');
   assert.equal(foldMessages(st, [{ id: 'msg_1', text: 'a' }, { id: 'msg_1', text: 'a' }]), 1);
   assert.equal(foldMessages(st, [{ id: 'msg_1', text: 'a' }]), 0);
+  st.messages.push({ id: 'msg_acked', acked: true }, { id: 'msg_gone', acked: false });
+  assert.deepEqual(reconcileMessages(st, [{ id: 'msg_1' }]).messages.map((m) => m.id), ['msg_1', 'msg_acked'], 'held and open stays; acked here stays until closed; gone from the world leaves');
   foldEvents(st, Array.from({ length: 1100 }, (_, i) => ({ id: `c_${i + 151}`, kind: 'x' })), 'c_1250');
   const c = takePending(st);
   assert.ok(c.omitted > 0, 'events cut from the buffer before they were read are counted');

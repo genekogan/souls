@@ -1152,6 +1152,13 @@ export function foldMessages(st, messages, at = Date.now()) {
   if (messages?.length) st.inboxAfter = messages.at(-1).id ?? st.inboxAfter;
   return added;
 }
+/** Pure: the world keeps a message until it is acknowledged, and a listen with no cursor returns all of those. A message we
+ *  hold as unacknowledged that is not among them was acknowledged while no serve was up, so nothing is left to do for it. */
+export function reconcileMessages(st, unacked) {
+  const open = new Set((unacked ?? []).map((m) => m?.id));
+  st.messages = st.messages.filter((m) => m.acked || open.has(m.id));
+  return st;
+}
 /** Pure: everything since the last read, and the read cursor moves past it. Nothing is lost across agent turns. */
 export function takePending(st) {
   const from = readIndex(st), rest = st.events.slice(from).filter((e) => !["receipt", "activity.observed"].includes(e?.kind));
@@ -1167,6 +1174,7 @@ export function takePending(st) {
     ...(st.gap ? { gap: true, gapNote: "The stream had a gap: read here again; some events were not seen." } : {}),
     cursor: st.cursor,
   };
+  for (const m of st.messages) m.handed = true; // a later listen does not hand over what this read already showed
   for (const r of receipts) if (ENDED.has(r.phase)) r.read = true;
   // A long unread tail hands over in pieces: move the read cursor only past what was shown.
   const last = rest.length > shown.length ? shown.at(-1) : st.events.at(-1);
@@ -1192,9 +1200,10 @@ async function serveForeground() {
   const log = (line) => process.stderr.write(`${now()} ${line}\n`);
 
   async function inboxLoop() {
-    let attempt = 0, code;
+    // The first listen of this process asks with no cursor: a message the world handed over just before a kill, unsaved, comes back.
+    let attempt = 0, code, recovered = false;
     while (!stopping && !terminal) {
-      const q = new URLSearchParams({ timeoutMs: "50000", ...(st.inboxAfter ? { after: st.inboxAfter } : {}) });
+      const q = new URLSearchParams({ timeoutMs: recovered ? "50000" : "0", ...(recovered && st.inboxAfter ? { after: st.inboxAfter } : {}) });
       const r = await worldOnce(`${world}/v1/edge/inbox/listen?${q}`, { method: "GET", headers: auth, timeoutMs: 60_000, recoverRead: true });
       if (r.status === 401 || r.status === 403) { terminal = r; log(`inbox: control ended (${codeOf(r.data) ?? r.status})`); wake(); return; }
       if (r.status === 0 || r.status === 429 || r.status === 409 || r.status >= 500) {
@@ -1204,7 +1213,11 @@ async function serveForeground() {
         code = next; await pause(ms); continue;
       }
       attempt = 0; code = undefined;
-      if (r.status >= 200 && r.status < 300) { if (foldMessages(st, messagesOf(r.data).filter((m) => m.id !== st.inboxAfter))) { persist(); wake(); } }
+      if (r.status >= 200 && r.status < 300) {
+        const got = messagesOf(r.data);
+        if (!recovered) { recovered = true; if (Array.isArray(r.data?.backlog)) { reconcileMessages(st, got); persist(); } }
+        if (foldMessages(st, got)) { persist(); wake(); }
+      }
       else { log(`inbox: HTTP ${r.status}`); await pause(5_000); }
     }
   }
@@ -1254,7 +1267,7 @@ async function serveForeground() {
     const q = new URL(url).searchParams, until = Date.now() + Math.min(Number(q.get("timeoutMs") ?? 25_000), 55_000);
     for (;;) {
       if (terminal) return terminal;
-      const backlog = st.messages.filter((m) => !m.handed);
+      const backlog = st.messages.filter((m) => !m.handed && !m.acked);
       if (backlog.length) {
         for (const m of backlog) m.handed = true;
         persist();
