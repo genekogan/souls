@@ -49,6 +49,13 @@ test('HTTP: the real published files are served by hash; the guide uses configur
   assert.equal(sha(Buffer.from(await (await f.request('/eden.mjs')).arrayBuffer())), sources.controllerCli.sha256);
   assert.equal(sha(Buffer.from(await (await f.request('/eden-agent.mjs')).arrayBuffer())), sources.cli.sha256);
   assert.equal(sha(await (await f.request('/skill.md')).text()), sources.skill.sha256, 'the 2.1 skill has no templates');
+  // CTRL-7 (#1099): a short core; the reference is its notes plus the generated schema, cacheable by ETag
+  const core = await (await f.request('/skill.md')).text();
+  assert.ok(Buffer.byteLength(core) <= 3072, 'core skill ' + Buffer.byteLength(core));
+  assert.doesNotMatch(core, /\b(cannot|can't|must not)\b/i, 'the offers say what is possible');
+  const ref = await f.request('/schema.md'), refText = await ref.text(), etag = ref.headers.get('etag')!;
+  assert.match(refText, /\| walk \| via \|/); assert.match(refText, /When things go wrong/);
+  assert.equal((await f.request('/schema.md', {headers: {'if-none-match': etag}})).status, 304);
   const get = (q: string) => f.app.request('/instructions.md' + q, {headers: {host: 'evil.test', 'x-forwarded-host': 'evil.test'}});
   const mine = await get('?for=K7QX-M2PA'), text = await mine.text();
   assert.equal(mine.status, 200); assert.equal(mine.headers.get('cache-control'), 'no-store');
