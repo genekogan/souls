@@ -60,7 +60,8 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
      else{const n=wantedTarget(st,soul,input.note,action==='unpin'?'own':'any');col=n?.c==='o'?1:0;row=n?.r??0;if(action==='reply'){dx=.06;dy=-.075-.03*(n?.re.length??0);}if(action==='take-on'){dx=.1;dy=-.01;}}
      const [sx,sy]=wantedSlot(col,row);params.at=local(sx+dx,sy+dy,.04);}
     // Stand clear of the board's own footprint (its depth beyond the face) with a body radius to spare.
-    const stand=Math.min(.7,Math.max(STROKE_STAND,(def.size.box[2]/2-(face.at[2]??0))*wp.s+HUMAN_RADIUS+.06-.04));
+    // #439: a checkers board leaves more room, so at any turn the raster still reads a body clear there (#1063: the older boards' bytes stay).
+    const stand=Math.min(.7,Math.max(STROKE_STAND,(def.size.box[2]/2-(face.at[2]??0))*wp.s+HUMAN_RADIUS+(def.tags.includes('checkers')?.12:.06-.04)));
     // Entry 27: a noughts-and-crosses mark goes to its own square (gameSquare, shared with the viewer's face)
     const mark=action==='mark'&&def.tags.includes('tictactoe')?gameSquareOf(input.square):-1;
     if(mark>=0){const [dx,dy]=gameSquare(mark).map(v=>v*wp.s);params.at=[centre[0]+dx*c+s*.04,centre[1]+dy,centre[2]-dx*s+c*.04];}
