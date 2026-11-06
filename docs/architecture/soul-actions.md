@@ -68,7 +68,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Busy.** While the operation runs, a member's body act is refused `shared.busy` before any native check,
     naming the operation and the claimed hands and walking. That includes proposing a carry or accepting any invitation.
     Nothing is replaced and no receipt is created. Speech and reads still work, and the proposal's lapse no longer
-    applies.
+    applies. The refusal offers the safe stop, `stop-carry:<op>`, in `alternatives` (PC08).
   - **Release.** When the native programme ends, every member's receipt ends together, in one transaction:
     `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (a
     fade, an engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the
@@ -96,8 +96,37 @@ context-size checks below), regression runs, and an uncut real-client recording 
     - **Lasting.** After 30 s the hold-up is `lasting`, and each member's stream is told again. The crew still holds
       the load: nobody lets go on a timeout. Clearing the obstacle lets the carry go on, and the native carry rechecks
       the changed scene. A cut is searched once per scene change, not every tick (the shared carry's opt-in `holdCutV1`;
-      every other carry is unchanged). A supported stop and set-down come
-      with PC08.
+      every other carry is unchanged).
+  - **Stopping (PC08, [#687](https://github.com/genekogan/souls/issues/687)).** Any member, host or guest, can act
+    `stop-carry:<op>`; members of a running operation are offered it. The native carry's own cancel is the only cleanup.
+    - **Acknowledged at once.** The stop's own receipt completes in that tick (`shared.stop-requested`). It never touches
+      the member's shared receipt. The operation becomes `stopping`, and every member's started receipt
+      (`shared.stopping`) says what the crew does now. Each stream gets `shared.stopping`.
+    - **Logged by programme.** The stop is an `edge-stop` event carrying the op's `programId`. Its fold stops that
+      programme with `untilSafe`, so the programme, and with it the crew's borrowed bodies, stays until the native
+      cleanup has landed. Older `edge-stop` events without `programId` replay through the body's own programme, as before.
+    - **Cleanup by phase.** During the gather or the grasp, the crew lets go where the load lies, and nothing was lifted.
+      During the lift, the load is lowered back where it lay. During the move, it is set down where it is if that ground
+      is clear. During the final lowering, that set-down finishes.
+    - **Ground not clear.** When the native cancel refuses (`carry.cancel-unsafe`), the receipts say so once (the
+      stream gets `shared.stopping` with `deferred`). The crew carries on along its validated route and sets the load
+      down at the first clear spot, or at the destination.
+    - **Held up while stopping.** That is `blocked`, as above, with the claims kept. The reason says a stop was asked,
+      and moving again returns the operation to `stopping`, never `started`.
+    - **Claims.** The claims stay until the load is set down. Until then, a member's body act is refused `shared.busy`,
+      and the refusal still offers `stop-carry:<op>` (asking again changes nothing).
+    - **Release.** Once the programme has ended and the load lies on the ground, held by nobody, every member's receipt
+      ends together, `completed` with code `shared.stopped`, the same `op` and
+      `stop`, and `shared.result` either `stopped` (set down short of the destination, or never lifted) or
+      `stopped-at-destination`. It is never `arrived`. Each stream gets `shared.stopped`, and each Soul then acts on its
+      own; nothing is resumed for them.
+    - **Repeats.** The same member asking again gets the first stop's receipt. Another member's stop completes with
+      `shared.stop-asked` and changes nothing. One stop event is logged.
+    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop.
+    - **Restart.** A stop asked before a restart is logged again for the replayed programme; a native stop is
+      idempotent. Full restart qualification is PC10.
+    - **Refusals.** A stop after the end is refused `shared.not-running`, one from a non-member `shared.not-member`,
+      and an unknown op `shared.unknown-op`.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station; "put on a record" or "play a record" mean the record player, with the

@@ -130,6 +130,8 @@ type Prog = {
   trafficSince?: number;
   trafficTries?: number;
   stopping?: Diag;
+  /** PC08: stopped with `untilSafe` (a shared carry): a held-up action keeps its own hold-up diagnostic, not a retry's. */
+  stopUntilSafe?: true;
   ops: Op[]; action?: string; settle?: 'done' | 'held'; soft?: boolean; until?: number;
   controlOf?:string;
   readiedActors?:string[];
@@ -404,7 +406,9 @@ export class MarsEngine implements Engine {
   private advance(p: Prog) {
     const tick: number = this.rt.tick;
     if(p.stopping){
-      if(p.action&&this.rt.isActive(p.action)){this.rt.cancel(p.action,p.stopping);return;}
+      // PC08: while an `untilSafe` stop's action is held up it stands still, so a retry would refuse again and only hide
+      // the hold-up's own diagnostic (who is in the way); it is retried once the action moves again
+      if(p.action&&this.rt.isActive(p.action)){if(!(p.stopUntilSafe&&this.rt.records.get(p.action)?.status==='blocked'))this.rt.cancel(p.action,p.stopping);return;}
       return this.end(p,'cancelled',p.stopping);
     }
     for (let guard = 0; guard < 12; guard++) {
@@ -1025,12 +1029,14 @@ export class MarsEngine implements Engine {
     this.programs.set(id, p); this.byActor.set(p.actor, id);
     return result;
   }
-  stop(programId: string) {
+  stop(programId: string, opts?: { untilSafe?: boolean }) {
     const p = this.programs.get(programId); if (!p) return;
     if (p.build) { p.build.stopping={code:'program.stopped',message:'Construction interruption requested; finishing the committed segment safely.'}; return; }
     if (p.action && this.rt.isActive(p.action)) {
       this.rt.cancel(p.action, { code: 'program.stopped', message: 'stopped' });
-      if(this.physical&&this.rt.isActive(p.action)){p.stopping={code:'program.stopped',message:'Stopped after native movement reaches safe support.'};return;}
+      // PC08 (#687): a shared carry's stop keeps its programme (and so the crew's borrowed bodies) until the native
+      // cleanup lands, as a physical runtime does: `advance` retries a refused cancel each tick
+      if((this.physical||opts?.untilSafe===true)&&this.rt.isActive(p.action)){p.stopping={code:'program.stopped',message:'Stopped after native movement reaches safe support.'};if(opts?.untilSafe===true)p.stopUntilSafe=true;return;}
     }
     this.end(p, 'cancelled', { code: 'program.stopped', message: 'stopped' });
   }
