@@ -52,7 +52,7 @@ test('fly the kite: it climbs, sways and comes back; the same kite in the same h
  assert.ok(await until(()=>flying(w,ana),400)>=0,'it started');const p0=[...body(ana).pose.p];
  let top=0,both=0,saw=false,moved=0;
  for(let n=0;n<800&&receipt(ana,b)?.phase!=='completed';n++){await tick(1);
-  const s=body(ana).human.kiteV1,T=W().tick,sampled={[ana.entityId]:{state:{kiteV1:s,activity:body(ana).human.activity},p:body(ana).pose.p,yaw:body(ana).pose.yaw}},r=recordedKites(sampled,T);
+  const s=body(ana).human.kiteV1,T=W().tick,sampled={[ana.entityId]:{state:{kiteV1:s},activity:body(ana).human.activity,p:body(ana).pose.p,yaw:body(ana).pose.yaw}},r=recordedKites(sampled,T);
   if(r.kites.length){top=Math.max(top,r.kites[0].p[1]);if(!r.items.has(id))both++;saw=true;}
   moved=Math.max(moved,Math.hypot(body(ana).pose.p[0]-p0[0],body(ana).pose.p[2]-p0[2]));
   if(n===100){assert.equal(body(ana).human.activity,'kite');const h=await here(ben);assert.match(JSON.stringify(h.near),/flying a kite/,'Ben sees it: '+JSON.stringify(h.near).slice(0,200));}
@@ -105,7 +105,7 @@ test('interrupted by a real walk: reeled in first, then she goes, the kite in ha
  // removed mid-flight
  b=await act(ana,cap(),{seconds:60});assert.equal(b.accepted,true,JSON.stringify(b).slice(0,300));assert.ok(await until(()=>flying(w,ana),800)>=0);await tick(60);
  place([{op:'remove',id:named('kite').id}]);const gone=await finish(ana,b);assert.equal(gone.phase,'failed',JSON.stringify(gone).slice(0,300));
- await tick(5);console.log('DBG',JSON.stringify({s:body(ana).human.kiteV1,tick:W().tick,act:body(ana).human.activity,gone:JSON.stringify(gone).slice(0,260),hands:body(ana).human.hands,rec:f.host.engine.rt.holder('actor:'+ana.entityId).map(i=>f.host.engine.rt.records.get(i)?.verb)}));await tick(5);assert.equal(recordedKites({[ana.entityId]:{state:{kiteV1:body(ana).human.kiteV1,activity:body(ana).human.activity},p:body(ana).pose.p,yaw:body(ana).pose.yaw}},W().tick).kites.length,0,'nothing left in the air');await tick(10);assert.equal(body(ana).human.activity,'idle');
+ await tick(5);console.log('DBG',JSON.stringify({s:body(ana).human.kiteV1,tick:W().tick,act:body(ana).human.activity,gone:JSON.stringify(gone).slice(0,260),hands:body(ana).human.hands,rec:f.host.engine.rt.holder('actor:'+ana.entityId).map(i=>f.host.engine.rt.records.get(i)?.verb)}));await tick(5);assert.equal(recordedKites({[ana.entityId]:{state:{kiteV1:body(ana).human.kiteV1},activity:body(ana).human.activity,p:body(ana).pose.p,yaw:body(ana).pose.yaw}},W().tick).kites.length,0,'nothing left in the air');await tick(10);assert.equal(body(ana).human.activity,'idle');
  assert.deepEqual(f.host.engine.rt.violations,[]);
 });
 

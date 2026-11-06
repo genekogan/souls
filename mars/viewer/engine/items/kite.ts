@@ -7,7 +7,7 @@ import type {ActionDef,Diagnostic,StepResult} from '../actions/types.ts';
 import type {Runtime} from '../runtime/runtime.ts';
 import type {Entity} from '../world/types.ts';
 import type {Vec3} from '../core/math.ts';
-import {dcos,dsin} from '../core/math.ts';
+import {dcos,dsin,hypot} from '../core/math.ts';
 import {at as atBody,carryHand,sideOf,smooth,type BodyFrame,type Hand} from './body.ts';
 import {followHand,heldBy,isItem} from './model.ts';
 
@@ -39,7 +39,7 @@ export function kiteOut(s:KiteV1|undefined,tick:number):boolean{
 export type KitePlace={p:Vec3;hand:Vec3;yaw:number;roll:number};
 /** The kite in the air and the hand its string runs to, or null while it is in the hand. */
 export function kiteAt(s:KiteV1|undefined,tick:number,p:readonly number[],yaw:number):KitePlace|null{
- if(!s||!kiteOut(s,tick)||Math.hypot(p[0]-s.at[0],p[2]-s.at[1])>.01)return null;
+ if(!s||!kiteOut(s,tick)||hypot(p[0]-s.at[0],p[2]-s.at[1])>.01)return null;
  const t=tick-s.startTick,k=out(s,t),b=frame(p,yaw),hand=kiteHand(s,tick,p,yaw),w=clamp01(s.wind);
  const ahead=lerp(KITE.NEAR,KITE.FAR,w)*k,up=lerp(KITE.LOW,KITE.HIGH,w)*k,sway=(.5+1.3*w)*k*dsin(2*Math.PI*t/90),bob=(.2+.4*w)*k*dsin(2*Math.PI*t/57);
  return {p:[hand[0]+b.f[0]*ahead+b.r[0]*sway,hand[1]+up+bob,hand[2]+b.f[1]*ahead+b.r[1]*sway],hand,yaw,roll:.3*k*dsin(2*Math.PI*t/90+.6)};

@@ -22,7 +22,7 @@ export function gameContact(kind:RecordedGame['kind']){return kind==='volleyball
 /** #441 (W108): every kite in the air, and the items they stand in for (each is drawn in the hand or in the air, never both). */
 export function recordedKites(entities:Readonly<Record<string,SampledEntity>>,absoluteTick:number):{kites:(KitePlace&{key:string;color?:string})[];items:Set<string>}{
  const kites:(KitePlace&{key:string;color?:string})[]=[],items=new Set<string>();
- for(const [id,e] of Object.entries(entities)){const s=e.state.kiteV1 as KiteV1|undefined;if(!s||e.state.activity!=='kite')continue; // a forced end (a god walk-out) runs no cleanup: the activity says it is over
+ for(const [id,e] of Object.entries(entities)){const s=e.state.kiteV1 as KiteV1|undefined;if(!s||e.activity!=='kite')continue; // a forced end (a god walk-out) runs no cleanup: the activity says it is over
   const at=kiteAt(s,absoluteTick,e.p,e.yaw);if(!at)continue;items.add(s.item);kites.push({...at,key:id+':kite',...(s.color?{color:s.color}:{})});}
  return {kites,items};
 }
