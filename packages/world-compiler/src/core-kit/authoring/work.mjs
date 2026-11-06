@@ -65,6 +65,33 @@ const JOINED = [
     [-1, 1].map((sx) => ({ id: sx < 0 ? 'end-l' : 'end-r', kind: 'beam-end', at: [r5(sx * BEAM_L / 2), r5(BEAM_H / 2), 0], mates: ['beam-seat'], bears: true }))),
 ];
 
+// PC15 (#694): a deck on a rack bay, from library parts joined by connectors (PC12). Mars decks are plywood on 2x4
+// framing on rack beams (native construction/deck.ts); here the framing sits in the beams as on real step beams: each
+// beam face has a step ledge 1 5/8 in under its top, and a joist cut to the bay rests on the ledges of the two beams
+// that face each other across it, so the deck's top stays a step above the ground on the lowest beams (12 in). Joist
+// seats every 24 in along the beam, the native 3/4 in plywood span; a 4×8 sheet across five of them bears on all five.
+// Older revisions keep their bytes: the beam's `@3` stays the beam PC14 seats, and `@4` adds only the ledge seats.
+const LEDGE = 1.625 * IN, JOIST_H = 3.5 * IN, JOIST_T = 1.5 * IN, SPAN = 24 * IN;
+// the bay's beams sit on the upright's columns, (UP_W - COL) apart centre to centre; a joist spans face to face
+const JOIST_L = UP_W - COL - BEAM_D;
+const JOIST_SEATS = [];
+for (const [face, z] of [['a', -BEAM_D / 2], ['b', BEAM_D / 2]]) for (let i = 0; i < 5; i++)
+  JOIST_SEATS.push({ id: `joist-${face}-${i}`, kind: 'joist-seat', at: [r5((i - 2) * SPAN), r5(BEAM_H - LEDGE), r5(z)], mates: ['joist-end'] });
+const DECK = [
+  withConnectors(LOOSE[0], 4, 'A loose orange 9 ft step beam (2.74 m, 19 kg) with hook clips at each end that join an upright\'s beam seats, and a step ledge along each face that takes deck joists every 24 in; one person carries it with both hands, or two.',
+    [...JOINED[1].components.connectors, ...JOIST_SEATS]),
+  { ...loose(work('deck-joist', 'A loose 2x4 deck joist cut to a 4 ft rack bay (1.09 m, 1.6 kg), lying on edge. Its ends rest on the step ledges of the two beams across a bay; a plywood sheet rests on its top.', ['joist', 'timber', '2x4', 'deck', 'construction', 'material', 'loose-material', 'shared-carry', 'connectors'],
+    [cbox([0, JOIST_H / 2, 0], [JOIST_L, JOIST_H, JOIST_T], 'timber')], { timber: TIMBER }, { components: { carryable: { mass: 1.6, grips: 2 } } }), 1,
+    { crew: [1, 2], pose: 'edge', height: 0.8, grips: { 1: [[0, 0, 0]], 2: [[-0.45, 0, 0], [0.45, 0, 0]] } }, [JOIST_L, JOIST_H, JOIST_T]) },
+];
+DECK[1].components.connectors = [
+  ...[-1, 1].map((sx) => ({ id: sx < 0 ? 'end-l' : 'end-r', kind: 'joist-end', at: [r5(sx * JOIST_L / 2), 0, 0], mates: ['joist-seat'], bears: true })),
+  { id: 'top', kind: 'sheet-seat', at: [0, r5(JOIST_H), 0], mates: ['sheet-bearing'] },
+];
+DECK.push(withConnectors(LOOSE[2], 2, 'One loose 4×8 ft plywood sheet (2.44 × 1.22 m, 19 mm, 27 kg); one person carries it on edge with both hands, or two. Laid across five deck joists 24 in apart it bears on all five, and its top is a floor once it does.',
+  Array.from({ length: 5 }, (_, i) => ({ id: `on-${i}`, kind: 'sheet-bearing', at: [r5((i - 2) * SPAN), 0, 0], mates: ['sheet-seat'], bears: true }))));
+DECK[2].components.floor = { level: 0, y: r5(PLY_T) };
+
 export default [
   work('pallet-rack', 'A pallet-rack bay (2.7 m wide, 3 m tall): two upright frames with beam sockets every 15 cm on the front face (slots beam-l-N / beam-r-N); two beam levels fitted with shelf slots.', ['rack', 'storage', 'pallet', 'warehouse', 'construction'],
     [...[-W / 2, W / 2].flatMap((x) => [cbox([x, H / 2, D / 2], [0.08, H, 0.06], 'upright'), cbox([x, H / 2, -D / 2], [0.08, H, 0.06], 'upright'), ...[0.3, 1.2, 2.1, 2.9].map((y) => box([x, y, 0], [0.04, 0.04, D], 'brace'))]),
@@ -104,4 +131,5 @@ export default [
     { stump: '#6b4a2f', iron: '#3b3d40' }, { components: { workstation: { kind: 'smithing' } } }),
   ...LOOSE,
   ...JOINED,
+  ...DECK,
 ];

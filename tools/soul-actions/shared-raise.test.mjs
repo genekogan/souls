@@ -199,7 +199,7 @@ test('flag off: no raise_hold_v1 verb and no loose-frame invariant; on, both', a
     }
     // a journal or snapshot from a world with the flag is not replayed or restored without it, nor the other way round
     const off = await marsFactory(GREEN_FIELD_WORLD), on = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true});
-    assert.ok(!off.rulesVersion.includes('+shared-raise/1') && on.rulesVersion.endsWith('+shared-raise/1+shared-beam/1'), on.rulesVersion);
+    assert.ok(!off.rulesVersion.includes('+shared-raise/1') && on.rulesVersion.endsWith('+shared-raise/1+shared-beam/1+shared-deck/1'), on.rulesVersion);
     assert.equal(on.create(on.genesis('v')).rulesVersion, on.rulesVersion, 'the engine says what its factory registered');
     for (const [f, own, other] of [[off, off.rulesVersion, on.rulesVersion], [on, on.rulesVersion, off.rulesVersion]]) {
       assert.equal(f.canReplayHistory(own), true); assert.equal(f.canRestoreSnapshot(own), true);
