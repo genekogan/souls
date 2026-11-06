@@ -17,10 +17,12 @@ export async function supportsEffort() {
   return effortSupport;
 }
 
-export function buildArgs({ sessionId, resume, model, effort, text, allowedTools = DEFAULT_ALLOWED, effortOk = false }) {
+export function buildArgs({ sessionId, resume, model, effort, text, allowedTools = DEFAULT_ALLOWED, effortOk = false, maxBudgetUsd = null }) {
   const args = ['-p', text, '--model', model, resume ? '--resume' : '--session-id', sessionId, '--setting-sources', 'project', '--strict-mcp-config',
     '--mcp-config', '{"mcpServers":{}}', '--output-format', 'stream-json', '--verbose'];
   if (effort && effortOk) args.push('--effort', effort);
+  // #1098: the CLI stops a turn once its own spend (since this call started, not the resumed session's total) passes this
+  if (maxBudgetUsd != null) args.push('--max-budget-usd', String(maxBudgetUsd));
   if (allowedTools.length) args.push('--allowedTools', ...allowedTools);
   return args;
 }
@@ -30,7 +32,8 @@ export const isFinalResult = (e) => e?.type === 'result' && (e.stop_reason != nu
 
 export function parseLine(line) { if (!line.trim()) return null; try { return JSON.parse(line); } catch { return { type: 'unparsed', raw: line.slice(0, 2000) }; } }
 
-/** From a turn's stream: {usage:{inputTokens, cachedTokens, cacheCreationTokens, outputTokens, costUsd}, finalText, sessionId, toolCalls}. */
+/** From a turn's stream: {usage:{inputTokens, cachedTokens, cacheCreationTokens, outputTokens, costUsd}, finalText, sessionId, toolCalls}.
+ *  costUsd is the result's total_cost_usd: on a resumed session that is the session's total so far, not this turn's (#1098). */
 export function summarize(stream) {
   const result = stream.findLast((e) => e?.type === 'result') ?? null;
   const u = result?.usage ?? {};
@@ -78,9 +81,9 @@ export function renderChat(stream) {
 }
 
 /** turn({cwd, sessionId, resume, model, effort, text, allowedTools, maxWallSec}) → {stream, usage, finalText, sessionId, exit, wallMs, timedOut, toolCalls, effortApplied} */
-export async function turn({ cwd, sessionId, resume = false, model = 'haiku', effort = null, text, allowedTools = DEFAULT_ALLOWED, maxWallSec = 240, resultGraceMs = 3000 }) {
+export async function turn({ cwd, sessionId, resume = false, model = 'haiku', effort = null, text, allowedTools = DEFAULT_ALLOWED, maxWallSec = 240, resultGraceMs = 3000, maxBudgetUsd = null }) {
   const effortOk = effort ? await supportsEffort() : false;
-  const args = buildArgs({ sessionId, resume, model, effort, text, allowedTools, effortOk });
+  const args = buildArgs({ sessionId, resume, model, effort, text, allowedTools, effortOk, maxBudgetUsd });
   // CLAUDE_CODE_DISABLE_CLAUDE_MDS: a seat must not load the user's or a parent folder's CLAUDE.md (--setting-sources does not stop it).
   const env = { ...process.env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: '1' }; delete env.CLAUDECODE; delete env.CLAUDE_CODE_ENTRYPOINT;
   const stream = [{ type: 'harness_user', text, _rx: Date.now() }];
