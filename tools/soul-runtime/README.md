@@ -146,6 +146,17 @@ or transport failures, reconciling pending effects before inference; repeated
 failure produces an explicit blocked status with task state retained. It does
 not retry authentication failures or silently discard an uncertain operation.
 
+`--evidence <local-jsonl>` appends probe-only metadata (world-read timing, host
+RPC acknowledgements, selected host events; never prompts, output, credentials
+or config). It is an observer: if a write or the final flush fails, recording
+stops (one `evidence-disabled` line on stderr), the run, world reads and host
+calls continue unchanged, the file gets no `closed` row and the final
+`controller-closed` line reports `evidence: {complete: false, code, dropped}`
+(#733 A4). `--evidence-required` restores fail-closed recording for
+qualification runs: the first failure aborts the run and reads fail with
+`EVIDENCE_IO`. Records are written synchronously, so a slow disk can still
+delay the controller's event loop.
+
 Finite body actions and sustained activities differ. Walking has a terminal
 receipt; reading may also have a native finite duration, while sitting can
 persist until replaced. A duration-based wait
