@@ -116,7 +116,8 @@ function peakStep(span: number, dur: number): number {
  *  further than the engine's per-tick limit (a seat whose approach point is far from it, e.g. a café chair tucked under a
  *  parasol table: 1.5 m faulted motion.teleport); then just long enough to stay inside it. Spans that fit are unchanged. */
 /** #1083: how far the body's seated height moves from a standard seat's (0.45 m) onto this seat's top: part of the span a
- *  sit-down covers, so a high seat's lift, drawn with the blend, stays within a human's per-tick step too. */
+ *  sit-down covers, so the lift onto a high seat stays within a human's per-tick step. The engine body itself stays at
+ *  its floor point; the client draws no rise from this yet (#1090 draws it). */
 export const SEAT_STANDARD_TOP = 0.45;
 export const seatRise = (slot: { kind: string; height?: number }) => (slot.kind === 'seat' && typeof slot.height === 'number' ? Math.abs(slot.height - SEAT_STANDARD_TOP) : 0);
 export function sitDuration(span: number): number {
