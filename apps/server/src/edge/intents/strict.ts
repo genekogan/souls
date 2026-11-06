@@ -44,7 +44,8 @@ export function strictCheck(ledger: EdgeLedger, soul: EdgeSoul, input: string, c
 }
 
 // ------------------------------------------------------------------ CTRL-1 (#1093): strict offers
-/** Rollback for one release: `EDGE_FREE_TEXT_ACT=1` lets a strict client's words execute again. */
+/** Rollback for one release: `EDGE_FREE_TEXT_ACT=1` lets a strict client's words execute again. The CLI refuses words before
+ *  it posts them, so `resolve` tells it the flag is on (`freeTextAct`), and it then posts them. */
 export const freeTextAct = () => process.env.EDGE_FREE_TEXT_ACT === '1';
 /** An offered id is `<verb>:<target>` with no spaces. */
 export const OFFER_ID = /^[a-z][\w-]*:\S+$/i;

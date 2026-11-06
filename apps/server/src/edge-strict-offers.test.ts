@@ -2,11 +2,15 @@
 // candidates and never execute; a client that doesn't ask for strict keeps the legacy path; a server flag rolls it back.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, rmSync} from 'node:fs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setImmediate} from 'node:timers/promises';
+import {execFile} from 'node:child_process';
+import {createServer} from 'node:http';
+import {fileURLToPath} from 'node:url';
 import {Hono} from 'hono';
+import {getRequestListener} from '@hono/node-server';
 import {fixture, invite, accept, factory} from '../test/native-owner-fixture.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {mountEdgeRoutes} from './edge/routes.ts';
@@ -121,4 +125,34 @@ test('offer schema: only what it states refuses', () => {
   assert.equal(paramsProblem(carry, {to: 'shed'}), null);
   assert.match(paramsProblem({id: 'x:y', verb: 'x', params: {side: {type: 'string', enum: ['l', 'r'], required: true}}}, {})!, /needs side/);
   assert.deepEqual(Object.keys(offerParams(carry)), ['to']);
+});
+
+test('rollback through the real CLI: words exit 2 with no act until the flag is on, then they act; off again, they refuse', async t => {
+  const w = await world(t), {capabilities} = await w.get('/v1/edge/capabilities');
+  const walk = capabilities.find((c: any) => c.verb === 'walk' && c.available), words = `walk to ${walk.label}`;
+  const server = createServer(getRequestListener(w.app.fetch)); await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
+  const dir = mkdtempSync(join(tmpdir(), 'strict-cli-'));
+  t.after(() => {server.close(); rmSync(dir, {recursive: true, force: true});});
+  writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({world: `http://127.0.0.1:${(server.address() as {port: number}).port}`, token: 'tok'}));
+  const CLI = fileURLToPath(new URL('../../../tools/world-launcher/soul/eden.mjs', import.meta.url));
+  // the CLI is its own process; the world keeps ticking so its act can be admitted
+  const cli = async (...args: string[]) => {
+    let done = false, out = '', exit = 0;
+    const p = new Promise<void>(r => execFile(process.execPath, [CLI, ...args], {cwd: dir}, (e, stdout) => {out = stdout; exit = typeof e?.code === 'number' ? e.code : 0; done = true; r();}));
+    while (!done) {await w.tick(1); await new Promise(r => setTimeout(r, 5));}
+    await p; return {...JSON.parse(out), exit};
+  };
+  const before = w.receipts();
+  const refused = await cli('act', words);
+  assert.equal(refused.exit, 2); assert.equal(refused.code, 'act.not-an-id'); assert.equal(refused.accepted, false);
+  assert.ok(refused.candidates.some((c: any) => c.id === walk.id), JSON.stringify(refused.candidates));
+  assert.equal(w.receipts(), before, 'nothing happened');
+  process.env.EDGE_FREE_TEXT_ACT = '1';
+  try {
+    const flagged = await cli('act', words);
+    assert.equal(flagged.accepted, true, JSON.stringify(flagged)); assert.equal(flagged.exit, 0);
+    assert.equal(w.receipts(), before + 1, 'the words acted');
+  } finally {delete process.env.EDGE_FREE_TEXT_ACT;}
+  const after = await cli('act', words);
+  assert.equal(after.exit, 2, 'off again'); assert.equal(w.receipts(), before + 1);
 });
