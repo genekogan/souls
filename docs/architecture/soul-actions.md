@@ -289,10 +289,10 @@ The player steps back afterwards, a reader reads it, and a wipe sets the board u
 - a side with no pieces or no legal move loses; there is no draw rule, so two players end a drawn game by wiping the board.
 
 Squares are named a1–h8, with a1 at the bottom left seen from the front. "move c3 to d4", "c3 to d4", "jump d4 to f6"
-or "c3-d4" is the move with those squares on the board where it can be played. A Soul with a game in progress on a board in
-sight plays that game: another board refuses it a second game, so its words go to its own board, and out of turn they are
-refused with whose turn it is. With no game in progress and more than one board that would take the move, the words are
-refused naming the boards, and the Soul acts on the chosen board's move. The read offer names only the state ("a game of checkers, X
+or "c3-d4" is the move with those squares on the board where it can be played. A Soul with a game in progress plays that game:
+her own board's move reads "…, in your game", her words go to it (to the game where it is her turn, if she has two), and out
+of turn they are refused with whose turn it is, never a new game on another board. With no game of hers, the nearest open
+board takes the move. A second game is hers to start, by acting on that board's own move. The read offer names only the state ("a game of checkers, X
 to play"). Reading gives the players, whose move it is or who won, the pieces left and the board as eight rows.
 "jump c3 to e5, then e5 to g7" makes the first jump now and says to act again for the rest. "read the checkers board"
 is still a walk to it, as with the other boards; `read:<board>` (or its offered read) reads it.
