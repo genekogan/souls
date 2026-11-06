@@ -54,6 +54,7 @@ async function world(t) {
       w.acts++; w.keys.push(req.headers['idempotency-key']);
       const out = { accepted: true, channel: /^(look|turn):/.test(cap) ? 'attention' : 'body', receipt: { id: `r_${w.acts}`, capability: cap, phase: 'started' } };
       if (b.clientRef) w.byRef.set(b.clientRef, out);
+      if (w.endsBeforeAnswer) { w.endsBeforeAnswer = false; w.event({ kind: 'receipt', receipt: { id: out.receipt.id, capability: cap, phase: 'completed' } }); await sleep(250); }
       return json(200, out);
     }
     if (p === '/v1/edge/resolve') {
@@ -348,6 +349,14 @@ test('plan A2: the replacement runs in the refused step\'s place and the plan go
   ended(w, 'r_1');
   assert.ok(await until(() => w.acts === 2));
   assert.equal(w.bodies.at(-1).capability, 'walk:pond');
+});
+
+test('plan: a step that ends on the stream before its answer is back still moves on', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.endsBeforeAnswer = true;
+  await w.cli('plan', JSON.stringify(['walk:mill', 'walk:pond']), '--for', 'none');
+  assert.ok(await until(() => w.acts === 2), 'without waiting for the slow poll');
 });
 
 test('plan: a refused step wakes a listening agent, once', async (t) => {
