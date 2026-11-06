@@ -70,6 +70,7 @@ import {posePianoHand} from './piano-hands.ts';
 import { handGameActive, handGameGestureClock, handGameSuppress, poseHandGames, type HandGameDiag } from './hand-games.ts';
 import type { HandHoldState } from '../../engine/social/hand-hold.ts';
 import type { RpsState } from '../../engine/social/rps.ts';
+import { sitDuration, SEAT_STANDARD_TOP } from '../../engine/social/actions.ts';
 import {recordedGame,type RecordedGame} from './recorded-games.ts';
 import {runningGaitAt} from './running-gait.ts';
 import {PLAY_MOTION, playSeatAt, rideSeat} from './play-motion.ts';
@@ -338,6 +339,18 @@ const WALK_EPS = 0.08; // m/s: Walk plays iff ground speed ≥ this (engine loco
 const SEAT_DEFAULT = 0.45; // m, when the seat fixture is unknown (take replay)
 /** #1090: the highest seat top drawn (a tall body's standing reach, the engine's seat.out-of-reach bound, with margin). */
 const SEAT_TOP_MAX = 2.5;
+/** #1090: the sit blend from the take's own clock (activity age): over 0.4 s as before, or longer for a high seat's rise, so
+ *  the climb onto it is drawn continuously from the sit-down into the sit (and back down over the stand-up into idle). */
+export function seatBlend(base: string, act: string, age: number | undefined, prevAct: string | undefined, prevDur: number | undefined, seat: number): number {
+  // the engine's own transition time for this rise (social/actions.ts: a typical half-metre approach plus the rise), so the
+  // drawn climb ends with the engine's sit-down / stand-up
+  const dur = Math.max(0.4, seat > SEAT_LIFT_FROM ? sitDuration(Math.hypot(0.5, seat - SEAT_STANDARD_TOP)) : 0), a = typeof age === 'number' && age >= 0 ? age : undefined;
+  if (a === undefined) return base === 'sit' ? 1 : SEATED.has(base) ? 0.5 : 0;   // no clock in this frame: as before
+  if (act === 'sit-down') return clamp01(a / dur);
+  if (act === 'stand-up') return 1 - clamp01(a / dur);
+  if (base === 'sit') return prevAct === 'sit-down' && typeof prevDur === 'number' ? clamp01((prevDur + a) / dur) : 1;
+  return 0;
+}
 /** #1090: seats higher than this lift the drawn body onto them (lower ones only lower it, as before). */
 const SEAT_LIFT_FROM = 0.6;
 const SEAT_MATCH = 0.8; // m, body point to nearest seat point (covers the sit-down / stand-up approach line)
@@ -884,7 +897,7 @@ export class HumanViews {
       v.on = f.on;
       v.frame = frameCtx(f.on, act, (id) => parts[id], this.climbs);
       v.seat = act==='cycle'?BIKE_SADDLE:SEATED.has(base)&&!f.on&&!f.grip&&!f.hands?.left&&!f.hands?.right&&typeof f.seatHeight==='number'&&Number.isFinite(f.seatHeight)&&f.seatHeight>0&&f.seatHeight<=SEAT_TOP_MAX?f.seatHeight:SEAT_DEFAULT;
-      v.bench = LYING.has(act)||act==='bench-press'?(typeof f.seatHeight==='number'&&Number.isFinite(f.seatHeight)&&f.seatHeight>0&&f.seatHeight<=1.2?f.seatHeight:0):0;
+      v.bench = LYING.has(act)||act==='bench-press'?(typeof f.seatHeight==='number'&&Number.isFinite(f.seatHeight)&&f.seatHeight>0&&f.seatHeight<=SEAT_TOP_MAX?f.seatHeight:0):0;
       v.groundSeat = onGround(act, f.baseActivity);
       if (v.groundSeat) v.seat = GROUND_SEAT;
       v.propWanted = f.prop;
@@ -916,7 +929,7 @@ export class HumanViews {
         walkW: walk,
         walkT: ((f.walkDist / v.rig.template.walkSpeed) % walkDur + walkDur) % walkDur,
         idleT: (t + (f.id.length * 0.37) % 1) % idleDur,
-        sitW: base === 'sit' ? 1 : SEATED.has(base) ? 0.5 : 0, // sit-down / stand-up: halfway (no timing here)
+        sitW: seatBlend(base, act, f.activityAge, v.prevAct, v.prevDuration, v.seat), // #1090: the climb onto a high seat over its own time
         expressionT: t,
         warmW: 0, // no fire position in a take frame
         pose: this.postureGoal(v, e, world, walk > 0.5),
