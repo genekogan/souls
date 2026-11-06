@@ -16,7 +16,7 @@ type UseEngine = { useCheckV1(opts?: { of?: string[]; keep?: (at: [number, numbe
 const WHY: Record<string, string> = {
   'use.no-approach': 'there is no room to stand beside it',
   'use.transition-blocked': 'getting on and off it would pass through something solid',
-  'use.seat-fit': 'its seat is the wrong height for a body',
+  'use.seat-out-of-reach': 'its seat is above the standing reach a body needs to get onto it',
   'nav.disconnected': 'where a body stands to use it is cut off from the rest of the world',
   'nav.one-way': 'where a body stands to use it can be reached one way only',
   'nav.no-standing-room': 'where a body stands to use it has no room to stand',

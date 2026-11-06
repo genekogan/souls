@@ -73,6 +73,7 @@ test('use-check: a seat or bed is usable exactly when a body can sit or lie on i
   // all fixtures by default (the walls have no slots), and the seat-top read: the bench's 0.465 m seat fits the standard body
   assert.equal(useCheck(w.E).length, all.length);
   assert.deepEqual(w.E.useCheckV1({ of: [id('free-bench')], seatTop: () => 1.3 }).map((v: any) => v.ok), [true, true], '#1083: a 1.3 m seat top is no finding (any declared seat is sat on)');
+  assert.deepEqual(w.E.useCheckV1({ of: [id('free-bench')], seatTop: () => 2.3 }).map((v: any) => v.code), ['use.seat-out-of-reach', 'use.seat-out-of-reach'], 'above the 2.06 m standing reach: out of reach');
   // what a body actually does: sits on the free bench and lies on the free bed, never gets onto the others
   const send = async (cap: string) => { const out = await accept(w.host, w.edge.act(w.soul, { capability: cap, params: { seconds: 2 } })) as any; return out; };
   const done = async (r: any) => { if (r.accepted) await w.until(() => ['completed', 'failed', 'cancelled'].includes(w.edge.receipt(w.soul.soulId, r.receipt.id)?.phase ?? '')); };
@@ -191,5 +192,28 @@ test('use-check: from a 1.6 m god stool to a 0.1 m god seat, by their offers', {
     assert.equal(r.accepted, true, `${n}: ${JSON.stringify(r).slice(0, 300)}`);
     assert.ok(await w.until(() => w.edge.receipt(w.soul.soulId, r.receipt.id)?.phase === 'completed'), `${n}: ${JSON.stringify(w.edge.receipt(w.soul.soulId, r.receipt.id)).slice(0, 300)}`); };
   await sit('tall'); await sit('floor');
+  assert.deepEqual(w.E.rt?.violations ?? [], []);
+});
+
+// #1083 (steward's review): up to the standing reach a seat is sat on, at that height; above it the sit is refused with the
+// physical reason, by offer and by act
+test('use-check: a 2.05 m god stool is sat on; a 2.2 m one is out of reach', { timeout: 180_000 }, async (t) => {
+  const w = await setup(t);
+  const me = w.host.engine.world.entities[w.soul.entityId] as any, [x, z] = [me.pose.p[0], me.pose.p[2]];
+  const stool = (name: string, h: number) => ({ schema: 'def/1', name, version: 1, tags: ['furniture', 'seat'], form: 'point', size: { box: [0.5, h, 0.5] },
+    make: { kind: 'gen', gen: 'kit/2', args: { shapes: [{ kind: 'box', at: [0, h / 2, 0], size: [0.5, h, 0.5] }] } },
+    slots: [{ id: 'seat', kind: 'seat', p: [0, h, 0], yaw: 0, height: h, accepts: { tags: ['body'] }, capacity: 1 }], components: { seat: { height: h } } });
+  w.act([{ op: 'define', def: stool('reach-stool', 2.05) }, { op: 'define', def: stool('over-stool', 2.2) },
+    { op: 'place', def: 'reach-stool@1', name: 'reach', p: [x + 4, z] }, { op: 'place', def: 'over-stool@1', name: 'over', p: [x - 4, z] }]);
+  await w.settle(4);
+  const cap = (n: string) => w.edge.capabilities(w.soul).find((c: any) => c.id === `sit:${w.god.model.get(n)!.id}`) as any;
+  assert.equal(cap('reach')?.available, true, JSON.stringify(cap('reach')));
+  assert.equal(cap('over')?.blocked?.code, 'seat.out-of-reach', JSON.stringify(cap('over')));
+  assert.match(cap('over').blocked.reason, /2\.20 m high, above the 2\.06 m this body can reach/);
+  const no = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${w.god.model.get('over')!.id}`, params: { seconds: 2 } })) as any;
+  assert.equal(no.accepted, false); assert.equal(no.code, 'seat.out-of-reach');
+  const r = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${w.god.model.get('reach')!.id}`, params: { seconds: 2 } })) as any;
+  assert.equal(r.accepted, true, JSON.stringify(r).slice(0, 300));
+  assert.ok(await w.until(() => w.edge.receipt(w.soul.soulId, r.receipt.id)?.phase === 'completed'), 'sat on the 2.05 m stool');
   assert.deepEqual(w.E.rt?.violations ?? [], []);
 });

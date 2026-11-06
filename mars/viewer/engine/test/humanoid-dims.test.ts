@@ -50,6 +50,9 @@ test('height and build change radius, height, eyes and seat fit; walk speed chan
   // #1083: the comfortable seat range still scales with the body (drawing reads it), but nothing refuses a seat by height
   assert.deepEqual(humanoidDims(look({ height: 1.65 })).seat.map((x) => x <= 1.2), [true, true]);
   assert.equal((humanoid as Record<string, unknown>).seatFitProblem, undefined, 'no seat-fit refusal is exported');
+  // only a seat above the standing reach (overheadMax 2.06 m, scaled) is out of reach
+  assert.equal(humanoid.seatReach(undefined), 2.06); assert.equal(humanoid.seatReach(look({ height: 1.65 })), 1.942);
+  assert.equal(humanoid.seatOutOfReach(look({ height: 1.65 }), 1.94), null); assert.equal(humanoid.seatOutOfReach(look({ height: 1.65 }), 1.95)?.code, 'seat.out-of-reach');
 });
 
 test('bodyProblem accepts looks in range, refuses out-of-range dims; withBody keeps a look', () => {

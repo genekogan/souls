@@ -7,6 +7,7 @@
 // The derived physics is plain data in the logged event, so the engine's replay never reads the entity model.
 // Fastest working path on the engine's existing structures (nav/1-style static scene re-base, CATALOG fixtures);
 // the per-tile patch follows L8's tiled Spatial.
+import { seatOutOfReach } from '../../../../mars/viewer/engine/bodies/humanoid.ts';
 import { menuWorldOf, type MenuWorld } from '../split/menu-world.ts';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
@@ -1862,8 +1863,8 @@ export class EngineBridge {
           const id = `sit:${x.id}`, labelOf = (seatWords: string) => `${name(x.id)} (${kind && !name(x.id).split('/').pop()!.includes(kind) ? `a ${kind}, ` : ''}${seatWords}${by.length ? `by ${by.join(' and ')}; ` : ''}${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
           // F1: a bench for two stays free while one of its seats is; the seat a Soul sits on is not free to itself
           const full = others.length >= seats || (!!u && !mine && seats <= 1);
-          // #1083 (Gene, 2026-11-06): any seat a def declares is sat on, whatever its height. SEATDEF: the heights are the def's
-          // seat heights as the use-check reads them; they only label the offer now
+          // #1083 (Gene, 2026-11-06): any seat a def declares is sat on up to the body's standing reach (seat.out-of-reach above
+          // it: the body would have to climb). SEATDEF: the heights are the def's seat heights as the use-check reads them
           const tops = [...seatTopsOf(this.model, x.id).values()].filter((y) => Number.isFinite(y));
           // floors (2026-10-26): the sitter's feet rest on the floor under the seat (the terrain, or a floor plate on it); a
           // thing standing higher than that floor (on a deck the world does not walk on) would seat the body inside it
@@ -1871,11 +1872,12 @@ export class EngineBridge {
           // a floating thing (a moored canoe, party S8) rides above the pond floor by design and is boarded from its side
           const afloat = !!ent && isFloatingDef(this.model.resolvedDef(ent.def) as { components: Record<string, unknown> });
           const inside = !afloat && lift > SEAT_LIFT ? { code: 'seat.inside', reason: `${name(x.id)} stands ${lift.toFixed(2)} m above the floor you would stand on there, on something the world does not walk on: sitting on it would put you inside it.` } : null;
+          const far = tops.length && tops.every((y) => seatOutOfReach(me.body, y)) ? seatOutOfReach(me.body, Math.min(...tops)) : null;
           const top = tops.length ? Math.min(...tops) : undefined, ownDef = ent ? this.model.resolvedDef(ent.def) : undefined;
           const onTop = top !== undefined && ownDef && ownDef.size.box[1] > 0 && top >= ownDef.size.box[1] * (ent ? this.model.worldPose(ent).s : 1) - 0.05 ? `sit on top, ${top.toFixed(2)} m high; ` : top !== undefined ? `seat ${top.toFixed(2)} m high; ` : '';
-          const block = mine ? { code: 'seat.yours', reason: `You are sitting on ${name(x.id)} already; stand:here to get up.` } : full ? { code: 'seat.taken', reason: `${(others.length ? others : [u!.body]).map((b) => this.soulName(b)).join(' and ')} ${others.length > 1 ? 'are' : 'is'} sitting there.` } : inside;
+          const block = mine ? { code: 'seat.yours', reason: `You are sitting on ${name(x.id)} already; stand:here to get up.` } : far ? { code: far.code, reason: `${name(x.id)} is out of reach: ${far.message}.` } : full ? { code: 'seat.taken', reason: `${(others.length ? others : [u!.body]).map((b) => this.soulName(b)).join(' and ')} ${others.length > 1 ? 'are' : 'is'} sitting there.` } : inside;
           const label = labelOf(onTop);
-          if (block?.code === 'seat.inside') unusable.push(caps.length); else if (!block) usable.push({ id, label, d });
+          if (block?.code === 'seat.inside' || block?.code === 'seat.out-of-reach') unusable.push(caps.length); else if (!block) usable.push({ id, label, d });
           caps.push({ id, verb: 'sit', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}), params: { seconds: { type: 'integer', min: 1, max: 600, default: 60 } } });
           // #1083: seated elsewhere, she stands first (from inside a god-built seat's footprint a bare walk to another seat was refused route.start-blocked)
           plans.set(id, { label, steps: [...stand, { verb: 'sit', params: { on: x.id, seconds: 60 } }], seconds: true });

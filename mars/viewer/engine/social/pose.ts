@@ -12,6 +12,7 @@
 // its `until` stale) is no partner and never seeds a second "shared" window. A guest who arrives after the window visibly
 // closed does the pose alone at once (no wait), marked `late` in its body state and its outputs.
 import { z } from 'zod';
+import { seatOutOfReach } from '../bodies/humanoid.ts';
 import {frisbeeLaneIssue,FRISBEE_CLEAR_WINDUP} from './frisbee-clearance.ts';
 import type { ActionDef, Diagnostic } from '../actions/types.ts';
 import {DT, type Runtime} from '../runtime/runtime.ts';
@@ -106,8 +107,8 @@ function admission(rt: Runtime, p: Params): Diagnostic | null {
   const a = rt.world.entities[p.actor], h = a?.human;
   if (!h || a.kind !== 'human') return issue('not-human', `${p.actor} is not a person`, [p.actor]);
   if (h.grip || h.riding || h.on || h.shore || h.carrier || h.sleepPose || (h as { boatPassenger?: unknown }).boatPassenger) return issue('occupied-support', 'Leave the climb, load, water, ride or mat first.', [p.actor]);
-  // #1083 (Gene, 2026-11-06): a body sits on any seat a def declares, whatever its height; the sit transition takes as long
-  // as it needs so no tick's step exceeds a human's (social/actions.ts sitTransition)
+  // #1083 (Gene, 2026-11-06): a body sits on any seat a def declares up to its standing reach; above that it can't get on
+  if (p.seatHeight !== undefined && !LYING.has(p.activity) && p.activity !== 'picnic') { const far = seatOutOfReach(a.body, p.seatHeight); if (far) return issue('seat-out-of-reach', `This seat is out of reach: ${far.message}.`, [p.actor]); }
   // together/1: a grouped pose may start while someone's make-way nudge steps this body aside (it settles first)
   if (rt.holder('actor:' + p.actor).some((id) => rt.records.get(id)?.verb === 'walk_to' && !(p.group && nudge(id)))) return issue('not-still', 'Finish walking first.', [p.actor]);
   const seated = h.activity === 'sit' || (h.baseActivity === 'sit' && OVERLAY.has(h.activity));
@@ -160,7 +161,7 @@ export const poseV1: ActionDef<Params, true, Exec> = {
   verb: 'pose_v1',
   navPure: true, // L4 audit: the step writes only its own actor's body (pose, human fields); it submits and cancels nothing
   description: 'activities/1: take a generic activity pose where you are (read, browse, write, play-piano, play-music, paint, eat, drink, cook, play-game, craft, post-letter, wave, use-computer, sing, listen, lift-weights over a seat or standing; sit-ground, lie, nap, pushups, situps, yoga on open ground, bench-press on a bench; dance, jump, stretch, jumping-jacks, pull-ups, dips standing; play-frisbee, play-petanque, play-volleyball as choreographed group games) for a number of seconds, optionally holding a prop and facing a point, then return to the base posture.',
-  schema: z.object({ actor: z.string().min(1).max(80), activity: z.enum(POSE_ACTIVITIES as [string, ...string[]]), seconds: z.number().min(0.5).max(3600), prop: z.enum(POSE_PROPS).optional(), base: z.enum(['sit', 'idle']).optional(), seatHeight: z.number().min(0).max(50).optional(), face: z.tuple([z.number(), z.number()]).optional(),
+  schema: z.object({ actor: z.string().min(1).max(80), activity: z.enum(POSE_ACTIVITIES as [string, ...string[]]), seconds: z.number().min(0.5).max(3600), prop: z.enum(POSE_PROPS).optional(), base: z.enum(['sit', 'idle']).optional(), seatHeight: z.number().min(0).max(10).optional(), face: z.tuple([z.number(), z.number()]).optional(),
     group: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(), pairedPolicy: z.literal('ready-v1').optional(), windowPolicy: z.literal('once-v1').optional(), waitSeconds: z.number().min(0).max(180).optional(), alone: z.enum(['start', 'fail']).optional(),
     gap: z.number().min(0.5).max(2.5).optional(), need: z.number().int().min(1).max(8).optional(), hold: z.enum(POSE_PROPS).optional(), release: z.boolean().optional(), clear: z.boolean().optional(),
     instrument: z.enum(POSE_INSTRUMENTS).optional(), seatTogether: z.boolean().optional(), throw: z.enum(RPS_SHAPES).optional(),
