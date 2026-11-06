@@ -46,6 +46,7 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `soul-actions-20261101.json` | Soul Actions 1-44 defs over a gallery triangle or draw budget, pinned to their 2026-11-01 revisions |
 | `library-budgets-music-20261105.json` | in-budget music revisions (drum kit, mic stand, jukebox @2); pins nothing |
 | `juggling-balls-20261105.json` | `core-juggling-balls@1` (three balls carried as one thing; the `juggling` tag offers `juggle:<id>`); pins nothing |
+| `record-player-20261105.json` | the new record player (#431, 368 triangles); pins nothing |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
 Repair a range or budget in a new revision and pin what remains.
