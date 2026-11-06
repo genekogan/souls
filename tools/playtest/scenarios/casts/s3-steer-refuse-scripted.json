@@ -1,0 +1,200 @@
+{
+ "kind": "cast",
+ "name": "s3-steer-refuse-scripted",
+ "version": 1,
+ "seed": 6231,
+ "world": {
+  "kind": "dev",
+  "genesis": "worlds/templates/hello-hamlet.json",
+  "slug": "s3-steer-refuse",
+  "port": 4252,
+  "natives": false
+ },
+ "durationSec": 300,
+ "brief": "Two neighbours meet in the pond hall and each gives one short talk. On the way, Ada's owner changes her route and Bo's owner asks for something the world cannot do; Bo recovers with what the refusal names instead.",
+ "room": {
+  "label": "the pond hall",
+  "match": [
+   "waterside",
+   "pond-hall",
+   "pond hall"
+  ]
+ },
+ "order": [
+  "ada",
+  "bo"
+ ],
+ "seats": [
+  {
+   "id": "ada",
+   "soulName": "Ada",
+   "adapter": "scripted-owner",
+   "economy": "lean",
+   "character": "Ada is cheerful and keeps bees.",
+   "topic": "the apple trees",
+   "script": {
+    "rules": [
+     {
+      "match": "^Your turn",
+      "ack": "My turn",
+      "do": [
+       [
+        "say",
+        "Hello everyone, I am Ada. I came the long way, past the village green, and the apple trees there are in flower."
+       ]
+      ],
+      "result": "Gave my talk"
+     },
+     {
+      "match": "village green",
+      "ack": "Going by the village green first",
+      "supersede": "Changed: going by the village green first",
+      "do": [
+       [
+        "act",
+        "walk to the village green",
+        "--wait",
+        "60"
+       ],
+       [
+        "act",
+        "walk to the pond hall",
+        "--wait",
+        "100"
+       ]
+      ],
+      "result": "At the pond hall, by way of the green"
+     },
+     {
+      "match": "now and wait there with everyone|Walk there now|Go back there now",
+      "ack": "Walking to the pond hall",
+      "close": "open",
+      "do": [
+       [
+        "act",
+        "walk to the pond hall"
+       ]
+      ]
+     },
+     {
+      "match": ".",
+      "ack": "Noted",
+      "do": [],
+      "result": "Noted"
+     }
+    ]
+   }
+  },
+  {
+   "id": "bo",
+   "soulName": "Bo",
+   "adapter": "scripted-owner",
+   "economy": "lean",
+   "character": "Bo is shy and plays music.",
+   "topic": "the pond",
+   "script": {
+    "rules": [
+     {
+      "match": "^Your turn",
+      "ack": "My turn",
+      "do": [
+       [
+        "say",
+        "Hello, I am Bo. I tried to fly here, but there is nothing to fly in, so I walked, and the pond was very still."
+       ]
+      ],
+      "result": "Gave my talk"
+     },
+     {
+      "match": "fly",
+      "ack": "Trying to fly up there",
+      "do": [
+       [
+        "act",
+        "fly up to the pond hall",
+        {
+         "onRefused": "continue"
+        }
+       ],
+       [
+        "act",
+        "{{prev.alternatives[0].id}}",
+        "--wait",
+        "100"
+       ]
+      ],
+      "result": "No ride here, so I walked to the pond hall"
+     },
+     {
+      "match": "now and wait there with everyone|Walk there now|Go back there now",
+      "ack": "Walking to the pond hall",
+      "do": [
+       [
+        "act",
+        "walk to the pond hall",
+        "--wait",
+        "100"
+       ]
+      ],
+      "result": "At the pond hall"
+     },
+     {
+      "match": ".",
+      "ack": "Noted",
+      "do": [],
+      "result": "Noted"
+     }
+    ]
+   }
+  }
+ ],
+ "timing": {
+  "truthPollSec": 2,
+  "gatherMaxSec": 180,
+  "nudgeAfterSec": 45,
+  "maxNudges": 2,
+  "quietSec": 8,
+  "speakTimeoutSec": 60,
+  "maxSpeakNudges": 1,
+  "prepareAhead": true,
+  "presentWaitSec": 30
+ },
+ "orchestrator": {
+  "planner": null
+ },
+ "success": {
+  "allPresent": true,
+  "minChars": 40,
+  "inOrder": true,
+  "eachOnce": true
+ },
+ "observer": {
+  "sampleSec": 10,
+  "cameras": [],
+  "viewport": [
+   1024,
+   640
+  ],
+  "dpr": 1
+ },
+ "rails": {
+  "onboardWallSec": 120,
+  "onboardTimeoutSec": 90,
+  "onboardConcurrency": 2,
+  "quotaStopPct": 90,
+  "maxTurnsPerRequest": 4,
+  "maxTurnWallSec": 120
+ },
+ "console": {
+  "script": [
+   {
+    "atSec": 6,
+    "line": "redirect ada: instead, stop by the village green first, then go on to the pond hall."
+   },
+   {
+    "atSec": 8,
+    "line": "bo: fly up to the pond hall"
+   }
+  ]
+ }
+}
