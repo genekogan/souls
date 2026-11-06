@@ -4,7 +4,7 @@
 // `object:<entity>:switch-off`, walks up to it, reaches out, and the lamp's state changes in the world (an engine edit:
 // in the ledger, broadcast to viewers, never the god's to undo). Nothing in the edge changes: the object framework's own
 // capabilities, admission, receipts and body plans carry it.
-import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, signupCapacity, signupNoun, gameSquareOf, gameStatus, pollOptions, containerInside, containerOpen, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, signupCapacity, signupNoun, checkersMoveProblem, checkersPlay, checkersStatus, gameSquareOf, gameStatus, pollOptions, containerInside, containerOpen, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { isContactActuator, CONTACT_REACH } from './contact-actuator.ts';
 import { isPosterAction, isWantedAction, posterProblem, posterPatch, wantedProblem, wantedPatch } from './poster-boards.ts';
@@ -102,6 +102,8 @@ export type ActuatorHost = {
   /** Entry 43 (tea.ts): "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea" as acts of native steps. */
   tea?(soul: EdgeSoul, thing: string, action: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | Refusal | null;
   teaBegun?(soul: EdgeSoul): void;
+  /** #439: the name of another checkers board in sight where this Soul has a game in progress, or null. */
+  gameElsewhere?(soul: EdgeSoul, id: string): string | null;
 };
 export type Thing = { id: string; name: string; def: StoredDef; state: Record<string, unknown>; params: Record<string, unknown> };
 export type WaterHost = {
@@ -132,32 +134,46 @@ export function waterPlan(a: Action, id: string, soul: EdgeSoul, host: ActuatorH
 const isRefusal = (x: Transfer | Refusal | null): x is Refusal => !!x && 'code' in x;
 type BuiltLike = { at: Vec2 | null; state?: Record<string, unknown>; removed?: boolean; key?: string; front?: Vec2 | null };
 
-/** Entry 27: noughts and crosses with honest turns. The first Soul to mark plays X, the second O; then the world keeps turns. */
-export const isGameAction = (def: StoredDef, a: { name: string }) => !!def.tags?.includes('tictactoe') && (a.name === 'mark' || a.name === 'erase');
+/** Entry 27: noughts and crosses with honest turns. The first Soul to mark plays X, the second O; then the world keeps turns.
+ *  #439 W093: checkers on the same faculty (the first Soul to move plays X); only its rules (checkers.ts) differ. */
+export const isGameAction = (def: StoredDef, a: { name: string }) => !!def.tags?.includes('tictactoe') && (a.name === 'mark' || a.name === 'erase') || !!def.tags?.includes('checkers') && (a.name === 'move' || a.name === 'erase');
 const gameGrid = (state: Record<string, unknown>) => (typeof state.text === 'string' && state.text ? state.text : '').padEnd(9, '.').slice(0, 9);
 const gamePlayers = (state: Record<string, unknown>) => ({ ids: typeof state.textBy === 'string' && state.textBy ? state.textBy.split(',') : [], names: typeof state.players === 'string' && state.players ? state.players.split(',') : [] });
-/** Why this Soul cannot mark (this square) or wipe the game now; null = it can. `square` undefined = availability only. */
-export function gameProblem(a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, square?: unknown): Refusal | null {
-  const g = gameGrid(state), st = gameStatus(g), { ids, names } = gamePlayers(state), me = ids.indexOf(soul.soulId);
+/** The game's state for turns: whose turn, the winner (null while it is on), a draw, and how a won game reads. */
+function gameTurns(def: StoredDef, state: Record<string, unknown>) {
+  if (def.tags?.includes('checkers')) { const st = checkersStatus(state.text); return { turn: st.turn, winner: st.winner, draw: false }; }
+  const st = gameStatus(gameGrid(state)); return { turn: st.turn, winner: st.winner, draw: st.draw };
+}
+/** Why this Soul cannot play (this move) or wipe the game now; null = it can. `params` undefined = availability only. */
+export function gameProblem(def: StoredDef, a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, params?: Record<string, unknown>): Refusal | null {
+  const st = gameTurns(def, state), { ids, names } = gamePlayers(state), me = ids.indexOf(soul.soulId);
   if (a.name === 'erase') return st.winner || st.draw || me >= 0 || ids.length < 2 ? null : { code: 'object.not-yours', reason: `A game between ${names.join(' and ')} is in progress; only they wipe it before it ends.` };
   if (st.winner) return { code: 'object.state', reason: `The game is over: ${names[st.winner === 'X' ? 0 : 1] ?? st.winner} won. Wipe the board for a new game.` };
   if (st.draw) return { code: 'object.state', reason: 'The game is over: a draw. Wipe the board for a new game.' };
   if (ids.length >= 2 && me < 0) return { code: 'object.not-yours', reason: `This game is between ${names.join(' and ')}; wait for the next one.` };
-  const mine = me >= 0 ? (me === 0 ? 'X' : 'O') : ids.length === 0 ? 'X' : 'O';
-  if (mine !== st.turn) return { code: 'object.state', reason: names[st.turn === 'X' ? 0 : 1] ? `It is ${names[st.turn === 'X' ? 0 : 1]}'s turn.` : `It is O's turn: the next Soul to mark plays O against ${names[0]}.` };
-  if (square === undefined) return null;
-  const i = gameSquareOf(square);
+  const mine = me >= 0 ? (me === 0 ? 'X' : 'O') : ids.length === 0 ? 'X' : 'O', next = def.tags?.includes('checkers') ? 'move' : 'mark';
+  if (mine !== st.turn) return { code: def.tags?.includes('checkers') ? 'game.turn' : 'object.state', reason: names[st.turn === 'X' ? 0 : 1] ? `It is ${names[st.turn === 'X' ? 0 : 1]}'s turn.` : `It is O's turn: the next Soul to ${next} plays O against ${names[0]}.` };
+  if (params === undefined) return null;
+  if (def.tags?.includes('checkers')) return checkersMoveProblem(state.text, params.from, params.to);
+  const g = gameGrid(state), i = gameSquareOf(params.square ?? '');
   if (i < 0) return { code: 'capability.params', reason: 'Say which square: 1-9 (top left is 1), or words like "top left", "centre", "bottom right".' };
   if (g[i] !== '.') return { code: 'object.state', reason: 'That square is taken.' };
   return null;
 }
-/** The game board's next state after this Soul's mark (or a wipe). */
-export function gamePatch(a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, square: unknown): Record<string, unknown> {
+/** The game board's next state after this Soul's move (or a wipe). */
+export function gamePatch(def: StoredDef, a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, params: Record<string, unknown>): Record<string, unknown> {
   if (a.name === 'erase') return { text: '', textBy: '', players: '' };
-  const g = [...gameGrid(state)], { ids, names } = gamePlayers(state), i = gameSquareOf(square), name = (soul.name || 'a Soul').replace(/[,\n]/g, ' ').slice(0, 40);
+  const { ids, names } = gamePlayers(state), name = (soul.name || 'a Soul').replace(/[,\n]/g, ' ').slice(0, 40);
   if (!ids.includes(soul.soulId)) { ids.push(soul.soulId); names.push(name); }
+  if (def.tags?.includes('checkers')) return { text: checkersPlay(state.text, params.from, params.to).text, textBy: ids.join(','), players: names.join(',') };
+  const g = [...gameGrid(state)], i = gameSquareOf(params.square);
   if (i >= 0 && g[i] === '.') g[i] = ids.indexOf(soul.soulId) === 0 ? 'X' : 'O';
   return { text: g.join(''), textBy: ids.join(','), players: names.join(',') };
+}
+/** #439 W093: what a checkers move did, from the board before it: the squares, a capture, a crowning, a jump to come. */
+function checkersSummary(state: Record<string, unknown>, params: Record<string, unknown>, name: string): string {
+  const r = checkersPlay(state.text, params.from, params.to), from = String(params.from ?? '').trim().toLowerCase(), to = String(params.to ?? '').trim().toLowerCase();
+  return `Moved the piece on ${from} to ${to} on ${name}${r.captured ? `, jumping the piece on ${r.captured}` : ''}${r.crowned ? '; it is crowned' : ''}${r.again ? '; it must jump again' : ''}${!r.again && checkersStatus(r.text).winner ? '; the game is won' : ''}.`;
 }
 /** After a move a player steps back from the board, so the other can reach it and both can see the game (entry 27). */
 function gameStepBack(def: StoredDef, a: Action, motion: { root: [number, number, number]; params: Record<string, unknown> }) {
@@ -325,12 +341,17 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
       const tea = s.key ? host.tea?.(ctx.soul, s.key, a.name) : null; if (tea) return 'code' in tea ? tea : null;
       const water = s.key ? waterPlan(a, s.key, ctx.soul, host) : null; if (water) return isRefusal(water) ? water : null;
       const state = (s.key && host.stateOf?.(s.key)) || s.state || {};
-      return whenRefusal(a, state, nameOf(s)) ?? (isListAction(def, a) ? listProblem(def, a, state, ctx.soul) : isGameAction(def, a) ? gameProblem(a, state, ctx.soul) : null);
+      const base = whenRefusal(a, state, nameOf(s)) ?? (isListAction(def, a) ? listProblem(def, a, state, ctx.soul) : isGameAction(def, a) ? gameProblem(def, a, state, ctx.soul) : null);
+      // #439: a Soul with a game of checkers in progress on another board in sight plays that one; it starts or joins no
+      // second game here (an out-of-turn move never silently becomes a new game on the next board)
+      if (base || a.name !== 'move' || !def.tags?.includes('checkers') || !s.key || gamePlayers(state).ids.includes(ctx.soul.soulId)) return base;
+      const other = host.gameElsewhere?.(ctx.soul, s.key);
+      return other ? { code: 'game.elsewhere', reason: `You have a game of checkers in progress on ${other}; play it there, or wipe that board first.` } : null;
     };
     out[a.name] = {
       label: a.label, roles: 'anyone', reach: 'anywhere', params: actionParams(a), movesBody: true,
       available: (s: BuiltLike, ctx: any) => check(s, ctx),
-      validate: (s: BuiltLike, p: Record<string, unknown>, ctx: any) => check(s, ctx) ?? (isListAction(def, a) ? listProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (isGameAction(def, a) && a.name === 'mark' ? gameProblem(a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p?.square ?? '') : null) ?? (a.name === 'write' && 'text' in actionParams(a) ? boardTextProblem(p?.text, actionParams(a).text.maxLength) : null) ?? enumParamProblem(def, a, p ?? {}, nameOf(s)),
+      validate: (s: BuiltLike, p: Record<string, unknown>, ctx: any) => check(s, ctx) ?? (isListAction(def, a) ? listProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (isGameAction(def, a) && a.name !== 'erase' ? gameProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (a.name === 'write' && 'text' in actionParams(a) ? boardTextProblem(p?.text, actionParams(a).text.maxLength) : null) ?? enumParamProblem(def, a, p ?? {}, nameOf(s)),
       apply: (s: BuiltLike, params: Record<string, unknown>, ctx: any) => {
         const can = s.key && a.name === 'water' ? host.watering?.(ctx.soul, s.key, a.name) : null;
         if (can && !('code' in can)) return { state: s, result: { action: a.name, summary: can.summary }, bodies: [{ label: a.label, steps: can.steps }] };
@@ -339,7 +360,7 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
         const contact = host.deferContacts && isContactActuator(def, a);
         const motion=contact&&s.key?host.contactPlan?.(ctx.soul,s.key,a.name,params):null;
         if(motion){const me=host.bodyAt(ctx.soul)!,far=(motion.level??0)>0||Math.hypot(me[0]-motion.root[0],me[1]-motion.root[2])>.1;
-          return {state:s,result:{action:a.name,set:actionPatch(def,a,(s.key&&host.stateOf?.(s.key))||s.state||{},params,ctx.soul)},bodies:[{label:a.label,steps:[{verb:'stand',params:{}},...(far?[(motion.level??0)>0||motion.params.stroke?{verb:'mars:walk_to',params:{x:motion.root[0],z:motion.root[2],level:motion.level}}:{verb:'walk_to',params:{to:[motion.root[0],motion.root[2]],standoff:0}}]:[]),...(motion.face?[{verb:'mars:face',params:{target:{point:motion.face}}}]:[]),{verb:'mars:hand_actuator_v1',params:motion.params},...stepBack(def,a,motion),...gameStepBack(def,a,motion),...(motion.after?[{verb:'walk_to',params:{to:motion.after,standoff:0}}]:[])]}]};}
+          return {state:s,result:{action:a.name,set:actionPatch(def,a,(s.key&&host.stateOf?.(s.key))||s.state||{},params,ctx.soul),...(def.tags?.includes('checkers')&&a.name==='move'?{summary:checkersSummary((s.key&&host.stateOf?.(s.key))||s.state||{},params,nameOf(s))}:{})},bodies:[{label:a.label,steps:[{verb:'stand',params:{}},...(far?[(motion.level??0)>0||motion.params.stroke?{verb:'mars:walk_to',params:{x:motion.root[0],z:motion.root[2],level:motion.level}}:{verb:'walk_to',params:{to:[motion.root[0],motion.root[2]],standoff:0}}]:[]),...(motion.face?[{verb:'mars:face',params:{target:{point:motion.face}}}]:[]),{verb:'mars:hand_actuator_v1',params:motion.params},...stepBack(def,a,motion),...gameStepBack(def,a,motion),...(motion.after?[{verb:'walk_to',params:{to:motion.after,standoff:0}}]:[])]}]};}
 
         const me = host.bodyAt(ctx.soul)!, to = s.front ?? s.at!, far = Math.hypot(s.at![0] - me[0], s.at![1] - me[1]) > (contact ? CONTACT_REACH : ACT_REACH);
         const water = s.key ? waterPlan(a, s.key, ctx.soul, host) : null;

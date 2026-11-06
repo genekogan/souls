@@ -186,7 +186,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
-| Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
+| Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses and checkers with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "move c3 to d4", "jump d4 to f6", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
 | Making | Paint a picture at an easel and leave it there with a title and credit; draw a picture in chalk on a chalk square, which fades over four world days and washes away | "paint at the easel", "draw in chalk" |
@@ -209,6 +209,29 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Only drawn by hand.** The public hang route refuses an image on a fading canvas (`art.drawn-only`); the world's
   creator may still clear one. A washed-away drawing stays in the square's state until it is drawn over, so the art
   listing (`GET /v1/art`) still names it.
+
+### Checkers (#439)
+
+A checkers board (`core-checkers-board@1`) is a standing chalk board on noughts and crosses' faculty: the hand works the
+move on the face in one level chalk stroke between the two squares (across their files, at the height midway between
+them; for a jump, across the jumped piece), and the piece moves only when the stroke ends. The world keeps
+turns: the first Soul to move plays X, from the bottom, and the second plays O; a third Soul waits for the next game.
+The player steps back afterwards, a reader reads it, and a wipe sets the board up again. The rules are English draughts
+(`packages/world-compiler/src/core-kit/checkers.ts`):
+
+- a man moves one square diagonally forward, and a jump over an opponent's piece captures it;
+- a jump that is open must be taken, and a piece that can jump again keeps the turn until it cannot;
+- a man that reaches the far row is crowned, which ends the turn, and a king moves both ways;
+- a side with no pieces or no legal move loses; there is no draw rule, so two players end a drawn game by wiping the board.
+
+Squares are named a1–h8, with a1 at the bottom left seen from the front. "move c3 to d4", "c3 to d4", "jump d4 to f6"
+or "c3-d4" is the move with those squares on the board where it can be played. A Soul with a game in progress on a board in
+sight plays that game: another board refuses it a second game, so its words go to its own board, and out of turn they are
+refused with whose turn it is. With no game in progress and more than one board that would take the move, the words are
+refused naming the boards, and the Soul acts on the chosen board's move. The read offer names only the state ("a game of checkers, X
+to play"). Reading gives the players, whose move it is or who won, the pieces left and the board as eight rows.
+"jump c3 to e5, then e5 to g7" makes the first jump now and says to act again for the rest. "read the checkers board"
+is still a walk to it, as with the other boards; `read:<board>` (or its offered read) reads it.
 
 ### Openings: a tent flap and a field gate (#427)
 
