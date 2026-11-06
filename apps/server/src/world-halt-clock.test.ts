@@ -30,11 +30,14 @@ test('#1120: a halted host refuses every later tick, drain and snapshot, naming 
   const { db, host, control } = fixture();
   t.after(() => { host.stop(); db.close(); });
   t.mock.method(console, 'error', () => {});
+  let unavailable = 0;
+  host.listeners.push({ onClockUnavailable: () => { unavailable++; } });
   host.tickOnce(); host.tickOnce();
   control.fault = new Error('fixture.unrepairable');
   host.tickOnce();
   assert.equal(host.paused, true);
   assert.match(host.engineFault!, /fixture\.unrepairable/);
+  assert.equal(unavailable, 1, 'listeners (the hub) hear once that the world is unavailable, as for the other clock failures');
   const seq = db.lastSeq(worldId), frontier = frontierRow(db)?.body, tick = host.engine.world.tick;
   for (const [name, run] of [['enqueue', () => host.enqueue('admin', 'test', { action: 'note' })], ['tickOnce', () => host.tickOnce()], ['drainInputs', () => host.drainInputs()], ['saveSnapshot', () => host.saveSnapshot(true)], ['resume', () => host.setPaused(false, 'admin')]] as const) {
     assert.throws(run, (e: Error) => e.message === 'clock-frontier.unavailable' && /engine\.halted: .*fixture\.unrepairable/.test(String((e.cause as Error)?.message)), name);

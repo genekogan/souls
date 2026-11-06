@@ -58,7 +58,7 @@ test('an actual unrecoverable first step pauses the host and refuses startup rea
   t.mock.method(globalThis, 'clearTimeout', (value: unknown) => { assert.equal(value, handle); cancelled++; });
   let settled = false;
   const waiting = bridge.waitForInitialProjection();
-  const rejected = assert.rejects(waiting, /bridge\.readiness\.timeout/).then(() => { settled = true; });
+  const rejected = assert.rejects(waiting, /bridge\.readiness\.clock-unavailable/).then(() => { settled = true; });
   await turns(); // The initial check ran before the fault: this is an already-pending waiter.
   assert.equal(deadlineMs, 60_000, 'the ordinary startup waiter has a bounded default deadline');
   w.control.fault = new Error('fixture.first-step-unrecoverable');
@@ -71,9 +71,9 @@ test('an actual unrecoverable first step pauses the host and refuses startup rea
   assert.match(w.host.engineFault!, /fixture\.first-step-unrecoverable/);
   assert.ok(errors.some(args => String(args[0]).includes('no resumable recovery baseline')));
   assert.throws(() => bridge.initialProjectionReady(), /clock-unavailable/);
-  assert.equal(settled, false, 'haltOnFault does not currently notify an already-pending waiter');
+  assert.equal(settled, true, 'haltOnFault tells listeners the clock is unavailable (#1120), so an already-pending waiter fails at once');
   timer.frame(); assert.equal(w.control.steps, 1, 'the real timer loop respects the paused fault');
-  deadline(); await rejected;
+  await rejected; assert.equal(typeof deadline, 'function');
   assert.equal(cancelled, 1, 'deadline settlement releases its timer');
   const frontier = { tick: w.host.engine.world.tick, seq: w.host.seq };
   w.host.stop(); assert.equal(w.host.running, false); assert.equal(timer.cleared, 1);

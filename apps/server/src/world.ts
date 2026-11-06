@@ -1534,7 +1534,11 @@ export class WorldHost {
     // A failed recovery leaves the host half-replayed: its seq can sit behind the log (a plan skipped the newest decisions) and its
     // state need not match any logged prefix (#1120). Nothing durable may be written from it, so every later tick, drain and
     // snapshot refuses, naming this fault; a restart boots from the log. The process stays up, as before.
-    this.clockFailure ??= new Error(`engine.halted: ${why}: ${this.engineFault}`, { cause: error });
+    if (this.clockFailure) return;
+    this.clockFailure = new Error(`engine.halted: ${why}: ${this.engineFault}`, { cause: error });
+    // as for the other clock failures: viewers are told the world is unavailable (hub: close 1013), not left asking a host
+    // that refuses snapshots
+    for (const listener of this.listeners) try { listener.onClockUnavailable?.(); } catch { /* the engine fault remains the cause */ }
   }
   /** The fault that paused this world (edge worlds), if any. */
   engineFault: string | null = null;
