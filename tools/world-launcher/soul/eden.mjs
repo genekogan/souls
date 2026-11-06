@@ -11,7 +11,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.8.2";
+const VERSION = "2.9.0";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -674,13 +674,21 @@ export function parseActionArgs(input) {
   return { capability: args.join(" "), params };
 }
 
-// act <offer-id | plain words> [params-json] [--wait [seconds]]
-// The server resolves words to an offer, so this is one POST. With --wait it then
-// long-polls until the receipt ends or an owner/social notification interrupts.
+// act <offer-id> [params-json] [--wait [seconds]]
+// CTRL-1 (#1093): the world executes offered ids only. Words are not sent to act: they print what `resolve` reads them as
+// and exit 2, and the agent sends the id it chooses. With --wait it then long-polls until the receipt ends or an
+// owner/social notification interrupts.
+const OFFER_ID = /^[a-z][\w-]*:\S+$/i;
 async function act(...argv) {
   const { args, wait: waitFor, json, for: forArg } = waitOption(argv);
-  if (!args.length) throw new Error('usage: act "<what to do>" [params-json] [--wait [seconds]] [--for <message-id>|none] [--json]');
-  const body = { ...parseActionArgs(args), clientRef: randomUUID() };
+  if (!args.length) throw new Error('usage: act <offered id> [params-json] [--wait [seconds]] [--for <message-id>|none] [--json]');
+  const parsed = parseActionArgs(args);
+  if (typeof parsed.capability === "string" && !OFFER_ID.test(parsed.capability.trim())) {
+    const r = ok(await call("/v1/edge/resolve", { body: parsed }), "resolve").resolve;
+    process.exitCode = 2;
+    return { accepted: false, code: "act.not-an-id", reason: `act takes an offered id, so "${parsed.capability}" was not acted on. Send one of these ids, or report that nothing fits.`, candidates: r.candidates ?? [], ...(r.ok === false && r.reason ? { why: r.reason } : {}) };
+  }
+  const body = { ...parsed, strict: true, clientRef: randomUUID() };
   // D3: the owner message this act serves; the world writes its result line when the act ends, unless you write one first.
   // D3b (cloud fix-r3 trio tam-003: a later walk closed "walk with Mira" as Done): by default only the first act the world
   // accepts after an ack, within IMPLICIT_FOR_MS of it, serves that message; later acts serve one only with --for <id>.
@@ -693,7 +701,7 @@ async function act(...argv) {
   if (implicit && r.status === 400 && /owner message/.test(r.data?.error?.message ?? "")) { save({ lastAcked: undefined, lastAckedAt: undefined, lastAckedActed: undefined }); r = await call("/v1/edge/act", { body }); }
   const d = ok(r, "act");
   if (d.accepted) { const t = load(); if (implicit && d.open) save({ lastAckedAt: now() }); else if (t.lastAcked && !t.lastAckedActed) save({ lastAckedActed: true }); }
-  if (!d.accepted) return { accepted: false, code: d.code, reason: d.reason, ...(d.did_you_mean?.length ? { did_you_mean: d.did_you_mean.slice(0, 8) } : {}), ...(d.alternatives?.length ? { alternatives: d.alternatives.slice(0, 3) } : {}), ...(d.retry_after ? { retry_after: d.retry_after } : {}) };
+  if (!d.accepted) return { accepted: false, code: d.code, reason: d.reason, ...(d.did_you_mean?.length ? { did_you_mean: d.did_you_mean.slice(0, 8) } : {}), ...(d.alternatives?.length ? { alternatives: d.alternatives.slice(0, 3) } : {}), ...(d.candidates?.length ? { candidates: d.candidates.slice(0, 5) } : {}), ...(d.params ? { params: d.params } : {}), ...(d.retry_after ? { retry_after: d.retry_after } : {}) };
   let out = { accepted: true, receipt: d.receipt, ...(d.resolved ? { resolved: d.resolved } : {}), ...(d.chosen ? { chosen: d.chosen } : {}), channel: d.channel, ...(d.for ? { for: d.for } : {}), ...(d.open ? { open: true } : {}) };
   if (d.receipt?.id && d.channel !== "attention" && d.channel !== "none") save({ lastReceipt: d.receipt.id, lastActAt: now() });
   // F7: an act that asked for its own duration (`seconds`) is waited out as before; an open-ended sit or lie ends the
@@ -1028,9 +1036,8 @@ background: \`${CLI} listen\` (Claude Code: Bash run_in_background). It exits wh
 (\`${CLI} ack <id> "Got it: …"\`), restart \`${CLI} listen --after <last id>\` in the background first, then do what
 I asked, then \`${CLI} result <id> done|failed "<what happened>"\`.
 
-**Doing things:** \`${CLI} act "<my words>" --wait\` (e.g. \`act "walk to the library" --wait\`, \`act "sit down"\`,
-\`act "dance"\`). The server resolves plain words to an offer; read \`accepted\`, \`code\`/\`reason\` and \`did_you_mean\`
-if refused. \`--wait\` returns when the receipt ends, when a sit or lie without a requested duration holds its pose (the receipt stays \`started\`; \`receipt.observed\` says so), or when the wait window expires; check its phase and current body. A long action: \`act\` without
+**Doing things:** \`${CLI} act <offered id> --wait\` (e.g. \`act walk:library --wait\`, \`act dance:here\`). Ids come
+from \`here\`, \`caps\` and \`resolve "<my words>"\`; read \`accepted\`, \`code\`/\`reason\` and \`candidates\` if refused. \`--wait\` returns when the receipt ends, when a sit or lie without a requested duration holds its pose (the receipt stays \`started\`; \`receipt.observed\` says so), or when the wait window expires; check its phase and current body. A long action: \`act\` without
 --wait, then \`${CLI} wait 60\` as needed. \`${CLI} caps --search "<thing>"\` lists current offers.
 
 For “take a seat” with no requested duration, use a durable fixture's exact sit offer with \`'{"seconds":1}' --for none --wait --json\` if it supports seconds. Verify \`here\` posture is seated and its seat matches the receipt's chosen slot before reporting. The seat stays occupied after the timed action; keep listening, without standing or canceling. Preserve requested durations; this does not apply to temporary ground poses. Default sitting receipts can stay open for ten minutes while already seated.
@@ -1066,7 +1073,7 @@ setup     register <world-url>            create "<Name>" [--for CODE]    pair <
 look      here   observe   around|explore [place]   caps [--search w] [--verb v] [--all]   map   view [--map|--alt-only|--out f]
           context [query] [--cursor nextCursor]   views <ref> [ref…] [--detail] [--original] [--out picture.png]
           receipt [id]   events [--since c_N] [--raw]   conversations
-do        act "<words or offer:id>" [params-json] [--wait [s]] [--for id|none] [--json]   resolve "<words>"   wait [s] [receiptId] [--json]
+do        act <offer:id> [params-json] [--wait [s]] [--for id|none] [--json]   resolve "<words>" (candidate ids)   wait [s] [receiptId] [--json]
           say "<text>"   converse <list|turns|start|say|accept|decline|leave|ask> …   object <id> [action] [json]
 owner     listen [--after id] [--once]   ack <id> ["reply"]   result <id> done|failed "<text>"
           now "<public one-line status>" | now --clear   (or add --now "<line>" to act, say, ack, result, wait)
