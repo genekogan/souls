@@ -71,7 +71,7 @@ import {retainedCommonsShoreV1Schema,type RetainedCommonsShoreV1,type RetainedCo
 import { decodeSnapshot, type RuntimeSnapshot, type RuntimeSnapshotCapture } from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import {encode} from '../../../mars/viewer/engine/runtime/codec.ts';
 import { dcos,dsin,hypot } from '../../../mars/viewer/engine/core/math.ts';
-import { clearanceAt } from '../../../mars/viewer/engine/spatial/grid.ts';
+import { clearanceAt, nearestBlocker } from '../../../mars/viewer/engine/spatial/grid.ts';
 import { acknowledgeRelocation } from '../../../mars/viewer/engine/runtime/invariants.ts';
 import { listTable, stableIndices, withEntityList, type EntityTable } from '../../../mars/viewer/engine/world/entity-list.ts';
 import { CATALOG, HUMAN_RADIUS } from '../../../mars/viewer/engine/world/catalog.ts';
@@ -109,7 +109,7 @@ const RELEASE_TIMEOUT = 15 * TPS;          // how long a program waits for its a
 const KEEP_RECORDS = 120 * TPS;            // finished Mars action records are kept this long, then forgotten
 const SNAPSHOT_FORMAT = 'sim-mars-snapshot/1';
 
-type Diag = { code: string; message: string; subjects?: string[] };
+type Diag = { code: string; message: string; subjects?: string[]; details?: Record<string, unknown> };
 const SHARED_WATER_WAIT_POLICY = 'shared-water-wait/1';
 /** shared-water-wait/2 (prospective): /1 plus a mutual-wait courtesy. When two swimmers each wait on the other's
  * body, the one with the larger entity id steps aside (native make-way) so the other can go first. /1 programmes
@@ -130,6 +130,8 @@ type Prog = {
   trafficSince?: number;
   trafficTries?: number;
   stopping?: Diag;
+  /** PC08: stopped with `untilSafe` (a shared carry): a held-up action keeps its own hold-up diagnostic, not a retry's. */
+  stopUntilSafe?: true;
   ops: Op[]; action?: string; settle?: 'done' | 'held'; soft?: boolean; until?: number;
   controlOf?:string;
   readiedActors?:string[];
@@ -147,6 +149,13 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
 /** free-goal/1: the walk-step marker (`free`, with an optional room polygon `freeWithin`), the gap (m) another body leaves a
  *  goal free by (as birth-near/1) and the most route plans one step tries. */
 export const FREE_GOAL_V1 = 'goal/1', FREE_GOAL_GAP = 0.8, FREE_GOAL_PLANS = 8;
+/** stand/1 (#374, prospective): the walk-step marker (`stand`) for a standoff point with standing room. On paged ground a
+ *  long walk's plan checks only its first fine hop, so a standoff point inside a solid (a ride's own collider) passes the
+ *  plan and fails at the last hop (`route.goal-blocked`). A marked step takes only a point with room for the walker's
+ *  body (an exact clearance read) and, when no turn around the target has room and a route, the nearest standable point
+ *  at most STAND_CLEAR_BEYOND metres beyond the standoff (a ride boards within 3.2 m of its carrier): STAND_CLEAR_SPOKES
+ *  points on each half-metre ring out to there, nearest the first turn first, at most FREE_GOAL_PLANS route plans. Unmarked steps keep the goal they always chose. */
+export const STAND_CLEAR_V1 = 'clear/1', STAND_CLEAR_BEYOND = 0.9, STAND_CLEAR_SPOKES = 16;
 const num = { type: 'number' }, str = { type: 'string' };
 const ref = { anyOf: [str, { type: 'array', items: num, minItems: 2, maxItems: 2 }] };
 /** The body language, as the card grammar and agents see it. The actor is always implied. */
@@ -397,7 +406,9 @@ export class MarsEngine implements Engine {
   private advance(p: Prog) {
     const tick: number = this.rt.tick;
     if(p.stopping){
-      if(p.action&&this.rt.isActive(p.action)){this.rt.cancel(p.action,p.stopping);return;}
+      // PC08: while an `untilSafe` stop's action is held up it stands still, so a retry would refuse again and only hide
+      // the hold-up's own diagnostic (who is in the way); it is retried once the action moves again
+      if(p.action&&this.rt.isActive(p.action)){if(!(p.stopUntilSafe&&this.rt.records.get(p.action)?.status==='blocked'))this.rt.cancel(p.action,p.stopping);return;}
       return this.end(p,'cancelled',p.stopping);
     }
     for (let guard = 0; guard < 12; guard++) {
@@ -537,12 +548,13 @@ export class MarsEngine implements Engine {
     const body=this.m.admitFloaters(verb,parsed.data,(id:string)=>this.ents[id]?.body);
     if(body.status==='refuses')return {code:body.reason,message:body.note};
     const r = def.plan(this.rt, parsed.data);
-    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])]}:{}) };
+    // PC07: a preview of a `holdCutV1` carry also returns the planner's details (its search size and budget); others unchanged
+    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])],...(r.diagnostic.details&&(parsed.data as {holdCutV1?:true}).holdCutV1?{details:{...r.diagnostic.details}}:{})}:{}) };
   }
   /** VEHICLE-STEER: a pure check of a Mars verb (no `mars:` prefix) against the world now: the refusal it would meet, or null. */
   previewMarsVerbV1(verb: string, params: unknown): Diag | null { return this.plan(verb, params, true); }
   /** A reachable standing point `standoff` metres from a target, on the side the actor comes from if possible. 'here' if already there. */
-  private goalNear(actor: string, to: unknown, standoff: number): { x: number; z: number; level: number } | 'here' | Diag {
+  private goalNear(actor: string, to: unknown, standoff: number, stand?: unknown): { x: number; z: number; level: number } | 'here' | Diag {
     const me = this.pos(actor)!, t = this.pointOf(to);
     if (!t) return { code: 'target.unknown', message: `nothing to walk to: ${JSON.stringify(to)}` };
     const level = typeof to === 'string' ? (this.rt.world.regions[to]?.level ?? this.ents[to]?.human?.level ?? (this.cfg.fixtureGroundGoalsV1&&this.ents[to]?.support?.kind==='ground'?0:this.ents[actor].human.level)) : this.ents[actor].human.level;
@@ -553,11 +565,37 @@ export class MarsEngine implements Engine {
     if (d <= off + 0.4 && level === this.ents[actor].human.level) return 'here';
     const base = Math.atan2(dz, dx);
     let last: Diag = { code: 'route.unreachable', message: 'no reachable standing point near the target' };
+    // stand/1: an exact read of standing room for this body before a point is planned (null: no grid there, unchanged)
+    const marked = stand === STAND_CLEAR_V1 && level === 0, radius = marked ? bodyProfile(this.ents[actor]).radius + PLAN_MARGIN : 0;   // the route's own goal check (spatial/path.ts prepare)
+    const roomy = marked ? (() => { const sp = this.rt.services.spatial as Spatial; sp.sync(this.rt.world); return sp.clearTester(0, [t[0], t[1]], radius); })() : null;
+    let turnRoom = false;
     for (const turn of off === 0 ? [0] : [0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9, Math.PI]) {
       const x = r3(t[0] + Math.cos(base + turn) * off), z = r3(t[1] + Math.sin(base + turn) * off);
+      if (roomy && !roomy([x, z])) continue;
+      turnRoom = true;
       const no = this.plan(this.movementVerb(actor,x,z), { actor, x, z, level });
       if (!no) return { x, z, level };
       last = no;
+    }
+    if (roomy) {
+      // the fallback: points around the target (never further than STAND_CLEAR_BEYOND past the standoff) with room and no
+      // other body within 0.8 m, ring by ring from the standoff out, nearest the first turn first; the first that plans
+      const people = (listEntities(this.ents) as any[]).filter(o => o.kind === 'human' && o.id !== actor).map(o => [o.pose.p[0], o.pose.p[2]] as [number, number]);
+      const rings: number[] = []; for (const r of off === 0 ? [.5, STAND_CLEAR_BEYOND] : [off, off + .5, off + STAND_CLEAR_BEYOND]) rings.push(r);   // below the 3.2 m boarding reach after rounding
+      let roomless = !turnRoom, plans = 0;
+      for (const rr of rings) if (plans < FREE_GOAL_PLANS) for (const k of Array.from({ length: STAND_CLEAR_SPOKES }, (_, i) => i).sort((a, b) => Math.min(a, STAND_CLEAR_SPOKES - a) - Math.min(b, STAND_CLEAR_SPOKES - b) || a - b)) {
+        const ang = base + (k / STAND_CLEAR_SPOKES) * Math.PI * 2, x = r3(t[0] + dcos(ang) * rr), z = r3(t[1] + dsin(ang) * rr);
+        if (!roomy([x, z])) continue;
+        roomless = false;
+        if (people.some(([px, pz]) => hypot(px - x, pz - z) < .8)) continue;
+        if (++plans > FREE_GOAL_PLANS) break;
+        const no = this.plan(this.movementVerb(actor, x, z), { actor, x, z, level }); if (!no) return { x, z, level }; last = no;
+      }
+      if (roomless) {
+        // nothing was planned: no point around the target has room. Said as the walk's own goal refusal, naming the blocker
+        const p0: [number, number] = [r3(t[0] + Math.cos(base) * off), r3(t[1] + Math.sin(base) * off)], sp = this.rt.services.spatial as Spatial, g = sp.levelAt(0, p0), b = g ? nearestBlocker(g, p0, 1.5) : undefined;
+        last = { code: 'route.goal-blocked', message: `no standing room for a ${radius.toFixed(2)} m-radius body ${off ? `${off} m from the target` : 'at the target'} (${p0[0].toFixed(2)}, ${p0[1].toFixed(2)}) or up to ${STAND_CLEAR_BEYOND} m beyond it around the target${b ? ` (blocked by ${b})` : ''}`, ...(b ? { subjects: [b] } : {}) };
+      }
     }
     return last;
   }
@@ -770,7 +808,7 @@ export class MarsEngine implements Engine {
       case 'control_classroom_v1': return [{verb:'classroom_control',params:{session:a.session,intent:{kind:a.kind}},settle:'done',raw:true}];
       case 'walk_to': {
         const gaitIssue = this.gaitIssue(me, a); if (gaitIssue) return gaitIssue;
-        let g = (a.spread === 'pond/1' || a.spread === 'region/1' || a.spread === 'pond-lap/1') && typeof a.to === 'string' && this.rt.world.regions[a.to] ? this.spreadGoalV1(me, a.to, a.spread,this.sharedWaterStep(step),a.regionOutside) : this.goalNear(me, a.doorQueueV1 ? this.doorQueueGoalV1(p, a) : a.to, typeof a.standoff === 'number' ? a.standoff : 0);
+        let g = (a.spread === 'pond/1' || a.spread === 'region/1' || a.spread === 'pond-lap/1') && typeof a.to === 'string' && this.rt.world.regions[a.to] ? this.spreadGoalV1(me, a.to, a.spread,this.sharedWaterStep(step),a.regionOutside) : this.goalNear(me, a.doorQueueV1 ? this.doorQueueGoalV1(p, a) : a.to, typeof a.standoff === 'number' ? a.standoff : 0, a.stand);
         if (g === 'here') return [];
         if ('code' in g) return g;
         if (a.free === FREE_GOAL_V1) { const f = this.freeGoalV1(me, g, a.freeWithin); if (!f) return []; g = f; }
@@ -934,7 +972,7 @@ export class MarsEngine implements Engine {
     if (first.verb.startsWith('mars:')) { const r = this.raw(program.actor, first); return 'code' in r ? r : this.plan(r.verb, r.params); }
     if (!BODY.has(first.verb)) return { code: 'action.unknown-verb', message: `no body verb "${first.verb}"` };
     if (first.verb === 'walk_to') {
-      const g = (first.params.spread === 'pond/1' || first.params.spread === 'region/1' || first.params.spread === 'pond-lap/1') && typeof first.params.to === 'string' && this.rt.world.regions[first.params.to] ? this.spreadGoalV1(program.actor, first.params.to, first.params.spread,this.sharedWaterStep(first),first.params.regionOutside) : this.goalNear(program.actor, first.params.to, typeof first.params.standoff === 'number' ? first.params.standoff : 0);
+      const g = (first.params.spread === 'pond/1' || first.params.spread === 'region/1' || first.params.spread === 'pond-lap/1') && typeof first.params.to === 'string' && this.rt.world.regions[first.params.to] ? this.spreadGoalV1(program.actor, first.params.to, first.params.spread,this.sharedWaterStep(first),first.params.regionOutside) : this.goalNear(program.actor, first.params.to, typeof first.params.standoff === 'number' ? first.params.standoff : 0, first.params.stand);
       if(g==='here')return null;if('code' in g)return g;
       if(first.params.gait&&first.params.gait!=='walk'){
         if(this.movementVerb(program.actor,g.x,g.z)!=='walk_to')return {code:'gait.dry-ground-required',message:'This shore or water route does not support jogging or running; return to dry ground first.'};
@@ -991,12 +1029,14 @@ export class MarsEngine implements Engine {
     this.programs.set(id, p); this.byActor.set(p.actor, id);
     return result;
   }
-  stop(programId: string) {
+  stop(programId: string, opts?: { untilSafe?: boolean }) {
     const p = this.programs.get(programId); if (!p) return;
     if (p.build) { p.build.stopping={code:'program.stopped',message:'Construction interruption requested; finishing the committed segment safely.'}; return; }
     if (p.action && this.rt.isActive(p.action)) {
       this.rt.cancel(p.action, { code: 'program.stopped', message: 'stopped' });
-      if(this.physical&&this.rt.isActive(p.action)){p.stopping={code:'program.stopped',message:'Stopped after native movement reaches safe support.'};return;}
+      // PC08 (#687): a shared carry's stop keeps its programme (and so the crew's borrowed bodies) until the native
+      // cleanup lands, as a physical runtime does: `advance` retries a refused cancel each tick
+      if((this.physical||opts?.untilSafe===true)&&this.rt.isActive(p.action)){p.stopping={code:'program.stopped',message:'Stopped after native movement reaches safe support.'};if(opts?.untilSafe===true)p.stopUntilSafe=true;return;}
     }
     this.end(p, 'cancelled', { code: 'program.stopped', message: 'stopped' });
   }

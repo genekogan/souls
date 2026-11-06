@@ -40,7 +40,7 @@ function serverFor(souls: Souls, soul: SoulRow,guard?:AcceptanceGuard,candidate?
     s.registerTool('eden_converse',{description:'Private conversation: {op:start,with:[soulId],text?} | {op:accept|decline,conversation} | {op:say,conversation,text} | {op:leave|ask,conversation}.',inputSchema:{op:z.enum(['start','accept','decline','say','leave','ask']),with:z.array(z.string()).max(8).optional(),conversation:z.string().max(100).optional(),soul:z.string().max(100).optional(),text:z.string().max(500).optional()}},async(a)=>e('POST','/v1/edge/converse',a));
     s.registerTool('eden_object',{description:'Read an object (no action) or act on it ({action, params}). Object actions also appear in capabilities as object:<id>:<action>.',inputSchema:{id:z.string().min(1).max(100),action:z.string().max(100).optional(),params:z.record(z.string(),z.unknown()).optional(),clientRef:z.string().max(100).optional()}},async({id,...rest})=>rest.action?e('POST','/v1/edge/objects/'+encodeURIComponent(id)+'/act',rest):e('GET','/v1/edge/objects/'+encodeURIComponent(id)));
     s.registerTool('eden_digest',{description:'The latest public digest written by the world steward.',inputSchema:{},annotations:{readOnlyHint:true}},async()=>e('GET','/v1/edge/digest'));
-    s.registerTool('eden_map',{description:'Every place: names, kinds, enclosed, capacity, schedule. Never occupants.',inputSchema:{},annotations:{readOnlyHint:true}},async()=>e('GET','/v1/edge/map'));
+    s.registerTool('eden_map',{description:'Every place: names, kinds, enclosed, capacity, schedule; and the named flags (name, walk, position). Never occupants.',inputSchema:{},annotations:{readOnlyHint:true}},async()=>e('GET','/v1/edge/map'));
   }
   const reply=async(run:()=>unknown)=>{
     try{

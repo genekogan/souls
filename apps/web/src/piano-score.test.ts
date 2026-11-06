@@ -38,3 +38,21 @@ test('seated piano lanes arrive at each scored pitch on its onset, with bounded 
   let prev=pianoLanes(seed,100);for(let k=2001;k<=2320;k++){const now=pianoLanes(seed,k*.05);for(let h=0;h<2;h++)assert.ok(Math.abs(now[h]-prev[h])<=.06,'no sideways wrist teleport');prev=now;}
  }
 });
+// #431: a record player plays the picked sleeve's piece on the same clock; every sleeve its own piece, the same for every viewer.
+import { recordNotes, pieceNotes, crackle, PIECE_COUNT } from '../../../mars/viewer/app/engine-view/piano-score.ts';
+import { RECORD_SLEEVES } from '../../../packages/world-compiler/src/core-kit/hand-music.ts';
+test('records: each sleeve is its own piece on the piano clock, a pure function of (sleeve, world seconds)', () => {
+  const sleeves = [...RECORD_SLEEVES], tune = (r: string) => recordNotes(sleeves, r, 200, 208).map(n => [n.t, n.midi, n.hand]);
+  assert.ok(sleeves.length <= PIECE_COUNT, 'no two sleeves share a piece');
+  for (const r of sleeves) {
+    assert.ok(recordNotes(sleeves, r, 200, 208).length > 20, `${r} plays a real tune`);
+    assert.deepEqual(tune(r), recordNotes(sleeves, r, 200, 204).concat(recordNotes(sleeves, r, 204, 208)).map(n => [n.t, n.midi, n.hand]), 'windows compose');
+    assert.ok(recordNotes(sleeves, r, 200, 208).every(n => Math.abs(n.t / PIANO_STEP - Math.round(n.t / PIANO_STEP)) < 1e-9), 'on the piano grid');
+  }
+  for (let i = 0; i < sleeves.length; i++) for (let j = i + 1; j < sleeves.length; j++) assert.notDeepEqual(tune(sleeves[i]).map(x => x[1]), tune(sleeves[j]).map(x => x[1]), `${sleeves[i]} and ${sleeves[j]} differ`);
+  assert.deepEqual(recordNotes(sleeves, 'Abbey Road', 200, 208), [], 'a record it does not have plays nothing');
+  assert.deepEqual(recordNotes(sleeves, 'Low Tide', 50, 60), pieceNotes(2, 50, 60), 'the third sleeve is the third piece');
+  const clicks = Array.from({ length: 800 }, (_, k) => crackle(k)).filter(Boolean).length;
+  assert.ok(clicks > 60 && clicks < 180, `a sparse crackle (${clicks} of 800 steps)`);
+  assert.equal(crackle(1234), crackle(1234));
+});
