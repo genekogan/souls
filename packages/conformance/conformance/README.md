@@ -48,6 +48,7 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `openings-20261105.json` | `core-tent@2` and `core-field-gate@1` (openings worked by hand); pins nothing |
 | `chalk-20261105.json` | `core-chalk-square@1` (pavement chalk on the painting faculty); pins nothing |
 | `record-player-20261105.json` | the new record player (#431, 368 triangles); pins nothing |
+| `swap-shelf-20261105.json` | `core-swap-shelf@1` (an open shelf on the container faculty, no door, a `leftBy` record); pins nothing |
 | `guestbook-20261105.json` | `core-guestbook@1` (a visitors' book on the sign-up faculty); pins nothing |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
