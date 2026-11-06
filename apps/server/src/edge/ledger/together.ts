@@ -931,6 +931,23 @@ export class Together {
       target, available: true, params: {revision: {type: 'integer', min: 1, description: `the proposal revision you agree to (now ${s.revision})`}}}, {label: 'Accept the shared carry', steps: [], together: {kind: 'accept', invite: inv.id}});
     add({id: 'decline:' + inv.id, verb: 'decline', label: mine ? `Leave: ${what} (before it starts)` : `Decline ${inv.host.name}'s proposal to ${what}`, target, available: true}, {label: mine ? 'Leave the shared carry' : 'Decline the proposal', steps: [], together: {kind: 'decline', invite: inv.id}});
   }
+  /** CTRL-2 (#1094 A1, #681 A7): one shared operation as a member of it sees it, by its invitation or operation id; null
+   *  for anyone else, so a proposal stays between the Souls it names. Readiness is the same check the commit makes. */
+  sharedView(id: string, soulId: string) {
+    const inv = this.invite(id) ?? this.committed().find(i => i.shared?.op?.id === id) ?? null, s = inv?.shared;
+    if (!inv || !s || (inv.host.soulId !== soulId && !inv.guests.some(g => g.soulId === soulId))) return null;
+    const op = s.op, blockers = inv.state === 'pending' ? this.sharedBlockers(inv) : [];
+    const slotOf = (who: string) => s.roles.find(r => r.soulId === who)?.slot ?? null;
+    const members = [inv.host, ...inv.guests].map(m => {
+      const accepted = m.soulId === inv.host.soulId || inv.responses[m.soulId] === 'accepted', why = blockers.find(b => b.soulId === m.soulId)?.why;
+      return {soulId: m.soulId, name: this.mindOf(m.soulId)?.name ?? m.name, role: 'carrier', slot: slotOf(m.soulId), accepted, ...(inv.responses[m.soulId] && !accepted ? {answer: inv.responses[m.soulId]} : {}), ...(op ? {} : {ready: accepted && !why, ...(why ? {why} : {})})};
+    });
+    const waitingFor = blockers.filter(b => !b.soulId).map(b => `${b.name} ${b.why}`);
+    return {id: inv.id, op: op?.id ?? null, load: s.load.entity, name: `${s.template.id} ${s.load.name} to ${s.destination.name}`, members, state: {
+      template: s.template, revision: s.revision, load: {id: s.load.entity, name: s.load.name, def: s.load.def}, destination: {id: s.destination.place, name: s.destination.name}, crew: s.crew,
+      phase: op?.phase ?? (inv.state === 'pending' ? 'proposed' : 'closed'), ...(op?.id ? {op: op.id} : {}), ...(op?.result ? {result: op.result} : {}), ...(op?.blocked ? {blocked: op.blocked} : {}),
+      ...(op?.stop ? {stop: {by: op.stop.name, tick: op.stop.tick}} : {}), ...(waitingFor.length ? {waitingFor} : {}), ...(inv.state === 'pending' ? {expiresInSec: Math.max(0, Math.round((inv.expiresTick - this.tick) / 20))} : {})}};
+  }
   /** End the open receipts of every guest who had accepted (the invitation is closed or superseded first). */
   private failShared(inv: Invite, code: string, reason: string) {
     if (inv.kind !== 'shared') return;

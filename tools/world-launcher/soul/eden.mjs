@@ -5,13 +5,14 @@
 // no guards. Every command is one or two HTTP calls to the world and prints JSON.
 // Private state (world URL, Soul id, bearer token) lives in .eden-agent.json.
 
-import { existsSync, readFileSync, writeFileSync, renameSync, lstatSync, openSync, closeSync, unlinkSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readlinkSync, realpathSync, writeFileSync, renameSync, lstatSync, openSync, closeSync, unlinkSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { createConnection, createServer } from "node:net";
 import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.9.0";
+const VERSION = "2.12.0";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -253,7 +254,17 @@ async function call(path, { method, body, as = "soul", timeoutMs, recoverRead = 
   }
 }
 
-async function callOnce(url, { method, headers, body, timeoutMs, recoverRead }) {
+// With `serve` up in this folder every request goes through it; with no serve (no socket, or nobody on it) it goes straight
+// to the world as before. A request the serve took but did not answer is reported like a world that did not answer.
+async function callOnce(url, o) {
+  if (!IS_SERVE) {
+    const a = await askServe({ op: "http", url, method: o.method, headers: o.headers, body: o.body, timeoutMs: o.timeoutMs }, o.timeoutMs + 5_000);
+    if (a?.lost) return { status: 0, data: { error: { code: "unreachable", message: "the serve process stopped before it answered" } } };
+    if (a) return a;
+  }
+  return worldOnce(url, o);
+}
+async function worldOnce(url, { method, headers, body, timeoutMs, recoverRead }) {
   let r;
   try {
     r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeoutMs) });
@@ -1068,6 +1079,345 @@ async function guide() {
   return { wrote: ["CLAUDE.md", "AGENTS.md"] };
 }
 
+// ---------------------------------------------------------------- serve: one resident client per folder
+
+// `serve` keeps one detached process per Soul folder: the owner's inbox drained (this is the listen the card shows), the event
+// stream followed by cursor, receipts cached, one heavy request at a time so the world's soul.busy is waited out here. Every
+// other command still prints the same JSON; callOnce sends its requests over a local socket when a serve is up. It runs no
+// model and decides nothing: it holds what arrived until the agent reads it. Everything needed to resume is in SERVE_STATE.
+const SERVE_SOCK = ".eden-serve.sock", SERVE_LOCK = ".eden-serve.lock", SERVE_STATE = ".eden-serve.json", SERVE_LOG = ".eden-serve.log";
+const SERVE_EVENTS_MAX = 1000, PENDING_EVENTS_MAX = 100; // the world keeps 1000 events per Soul; a read hands over at most 100
+const SERVE_BEAT_MS = 20_000, SERVE_STALE_MS = 60_000, SERVE_CLOSED_KEEP = 50;
+const ENDED = new Set(["completed", "failed", "refused", "cancelled", "interrupted", "replaced"]);
+const HELD_PATH = /^\/v1\/edge\/(wait|events)(\?|$|\/)/;  // long-polls and streams: never queued behind a heavy request
+let IS_SERVE = false;
+
+/** One request over the local socket: null when no serve is there to take it, {lost:true} when it took it and went away. */
+function askServe(msg, timeoutMs = 5_000) {
+  if (!existsSync(SERVE_SOCK)) return Promise.resolve(null);
+  return new Promise((done) => {
+    let sent = false, text = "";
+    const c = createConnection(SERVE_SOCK);
+    const end = (v) => { c.destroy(); clearTimeout(timer); done(v); };
+    const timer = setTimeout(() => end(sent ? { lost: true } : null), timeoutMs);
+    c.on("connect", () => { sent = true; c.write(JSON.stringify(msg) + "\n"); });
+    c.on("data", (b) => { text += b; const i = text.indexOf("\n"); if (i >= 0) { try { end(JSON.parse(text.slice(0, i))); } catch { end({ lost: true }); } } });
+    c.on("error", () => end(sent ? { lost: true } : null));
+    c.on("close", () => end(sent ? { lost: true } : null));
+  });
+}
+const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const readServeLock = () => { try { return JSON.parse(readFileSync(SERVE_LOCK, "utf8")); } catch { return null; } };
+/** Pure: is this command line and working directory this folder's serve? cwd null means it could not be read: the absolute script
+ *  path the serve is spawned with has to say it instead. */
+export function isServeOf(folder, command, cwd) {
+  if (!/eden\.mjs serve --foreground\s*$/.test(String(command ?? "").trim())) return false;
+  return cwd != null ? cwd === folder : String(command).includes(`${folder}/eden.mjs`);
+}
+const quietly = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+function cwdOf(pid) {
+  try { return realpathSync(readlinkSync(`/proc/${pid}/cwd`)); } catch { /* not Linux */ }
+  try { const n = quietly("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"]).split("\n").find((l) => l.startsWith("n")); return n ? realpathSync(n.slice(1)) : null; } catch { return null; }
+}
+/** true: this pid is this folder's serve. false: it is something else, which a lock left by a kill can name after a reboot or a long
+ *  gap. null: `ps` could not say. Only true may be signalled. */
+function serveIdentity(pid) {
+  let command; try { command = quietly("ps", ["-o", "command=", "-p", String(pid)]); } catch { return null; }
+  return isServeOf(realpathSync(process.cwd()), command, cwdOf(pid));
+}
+function serveHolder() {
+  const h = readServeLock();
+  if (!h?.pid || !pidAlive(h.pid) || serveIdentity(h.pid) === false) return null;
+  return Date.now() - (h.beatAt ?? 0) < SERVE_STALE_MS ? h : null;
+}
+function writeServeLock(start) { writeFileSync(SERVE_LOCK + ".tmp", JSON.stringify({ pid: process.pid, start, beatAt: Date.now() })); renameSync(SERVE_LOCK + ".tmp", SERVE_LOCK); }
+function takeServeLock(start) {
+  try { closeSync(openSync(SERVE_LOCK, "wx", 0o600)); }
+  catch (e) {
+    if (e.code !== "EEXIST") throw e;
+    if (serveHolder()) return false;
+    const h = readServeLock(); if (h?.pid && h.pid !== process.pid && pidAlive(h.pid) && serveIdentity(h.pid) === true) { try { process.kill(h.pid, "SIGTERM"); } catch { /* gone */ } }
+  }
+  writeServeLock(start);
+  return true;
+}
+
+export function loadServeState() {
+  const d = loadServeState.fresh();
+  try { return { ...d, ...JSON.parse(readFileSync(SERVE_STATE, "utf8")) }; } catch { return d; }
+}
+loadServeState.fresh = () => {
+  const d = { cursor: null, inboxAfter: null, readCursor: null, messages: [], receipts: {}, events: [], omitted: 0, gap: false };
+  return d;
+};
+/** Pure: fold what the stream delivered into the state. */
+export function foldEvents(st, events, cursor) {
+  for (const e of events ?? []) {
+    st.events.push(e);
+    if (e?.receipt?.id) noteReceipt(st, e.receipt, e.at);
+  }
+  if (st.events.length > SERVE_EVENTS_MAX) {
+    const cut = st.events.length - SERVE_EVENTS_MAX, unread = readIndex(st);
+    if (unread >= 0 && cut > unread) st.omitted += cut - unread;
+    st.events.splice(0, cut);
+  }
+  if (cursor) st.cursor = cursor;
+  return st;
+}
+const readIndex = (st) => (st.readCursor ? st.events.findIndex((e) => e?.id === st.readCursor) + 1 : 0);
+function noteReceipt(st, r, at) {
+  const x = st.receipts[r.id] ?? { id: r.id, capability: r.capability ?? null, phase: null, firstSeen: at ?? Date.now(), read: false };
+  if (r.capability) x.capability = r.capability;
+  if (r.phase && !ENDED.has(x.phase)) { x.phase = r.phase; if (ENDED.has(r.phase)) x.read = false; }
+  if (r.reason) x.reason = r.reason;
+  st.receipts[r.id] = x;
+}
+/** Pure: fold the owner's messages in, once each, oldest first. Returns how many were new. */
+export function foldMessages(st, messages, at = Date.now()) {
+  let added = 0;
+  for (const m of messages ?? []) {
+    if (!m?.id || st.messages.some((x) => x.id === m.id)) continue;
+    st.messages.push({ id: m.id, text: m.text ?? null, sentAt: m.sentAt ?? null, seenAt: at, acked: false, closed: false });
+    added++;
+  }
+  if (messages?.length) st.inboxAfter = messages.at(-1).id ?? st.inboxAfter;
+  return added;
+}
+/** Pure: the world keeps a message until it is acknowledged, and a listen with no cursor returns all of those. A message we
+ *  hold as unacknowledged that is not among them was acknowledged while no serve was up, so nothing is left to do for it. */
+export function reconcileMessages(st, unacked) {
+  const open = new Set((unacked ?? []).map((m) => m?.id));
+  st.messages = st.messages.filter((m) => m.acked || open.has(m.id));
+  return st;
+}
+/** Pure: everything since the last read, and the read cursor moves past it. Nothing is lost across agent turns. */
+export function takePending(st) {
+  const from = readIndex(st), rest = st.events.slice(from).filter((e) => !["receipt", "activity.observed"].includes(e?.kind));
+  const shown = rest.slice(0, PENDING_EVENTS_MAX);
+  const receipts = Object.values(st.receipts);
+  const out = {
+    ownerMessages: st.messages.filter((m) => !m.acked).map(({ id, text, sentAt }) => ({ id, text, sentAt })),
+    openReceipts: receipts.filter((r) => !ENDED.has(r.phase)).map(({ id, capability, phase }) => ({ id, capability, phase })),
+    endedReceipts: receipts.filter((r) => ENDED.has(r.phase) && !r.read).map(({ id, capability, phase, reason }) => ({ id, capability, phase, ...(reason ? { reason } : {}) })),
+    events: shown,
+    ...(rest.length > shown.length ? { moreEvents: rest.length - shown.length } : {}),
+    ...(st.omitted ? { omitted: st.omitted } : {}),
+    ...(st.gap ? { gap: true, gapNote: "The stream had a gap: read here again; some events were not seen." } : {}),
+    cursor: st.cursor,
+  };
+  for (const r of receipts) if (ENDED.has(r.phase)) r.read = true;
+  // A long unread tail hands over in pieces: move the read cursor only past what was shown.
+  const last = rest.length > shown.length ? shown.at(-1) : st.events.at(-1);
+  if (last?.id) st.readCursor = last.id;
+  st.omitted = 0; st.gap = false;
+  // What is finished and read needs no keeping: acked and closed messages, and ended receipts past the newest 200.
+  // The newest finished ones stay, so `listen --after` can still place them; an id past that counts as unknown, as in the world.
+  const finished = st.messages.filter((m) => m.acked && m.closed), gone = new Set(finished.slice(0, Math.max(0, finished.length - SERVE_CLOSED_KEEP)));
+  st.messages = st.messages.filter((m) => !gone.has(m));
+  const ended = Object.values(st.receipts).filter((r) => ENDED.has(r.phase) && r.read);
+  for (const r of ended.slice(0, Math.max(0, ended.length - 200))) delete st.receipts[r.id];
+  return out;
+}
+
+async function serveForeground() {
+  IS_SERVE = true;
+  const start = now();
+  if (!takeServeLock(start)) { process.stderr.write("serve: already running in this folder\n"); process.exit(0); }
+  // What this serve answers for: the state is one world's and one Soul's. A move starts clean.
+  const folderKey = (x) => `${x.world ?? ""}|${x.soul ?? ""}`, soulToken = (x) => x.token ?? "";
+  let st = loadServeState();
+  const persist = () => { writeFileSync(SERVE_STATE + ".tmp", JSON.stringify(st), { mode: 0o600 }); renameSync(SERVE_STATE + ".tmp", SERVE_STATE); };
+  const s = load(), world = need(s, "world", `Run: ${CLI} register <world-url>`);
+  const auth = { "content-type": "application/json", authorization: `Bearer ${need(s, "token", "No Soul yet.")}` };
+  if (st.folder && st.folder !== folderKey(s)) st = loadServeState.fresh();
+  st.folder = folderKey(s);
+  /** The folder's world, Soul or token changed under this process (travel, create, pair, by any route): it no longer speaks for it. */
+  const moved = () => { const now = load(); return folderKey(now) !== folderKey(s) || soulToken(now) !== soulToken(s); };
+  let waiters = [], terminal = null, stopping = false, gateTail = Promise.resolve(), busyWaited = 0, lastEventAt = null;
+  const wake = () => { const w = waiters; waiters = []; for (const f of w) f(); };
+  const log = (line) => process.stderr.write(`${now()} ${line}\n`);
+
+  async function inboxLoop() {
+    // The first listen of this process asks with no cursor: a message the world handed over just before a kill, unsaved, comes back.
+    let attempt = 0, code, recovered = false;
+    while (!stopping && !terminal) {
+      const q = new URLSearchParams({ timeoutMs: recovered ? "50000" : "0", ...(recovered && st.inboxAfter ? { after: st.inboxAfter } : {}) });
+      const r = await worldOnce(`${world}/v1/edge/inbox/listen?${q}`, { method: "GET", headers: auth, timeoutMs: 60_000, recoverRead: true });
+      if (r.status === 401 || r.status === 403) { terminal = r; log(`inbox: control ended (${codeOf(r.data) ?? r.status})`); wake(); return; }
+      if (r.status === 0 || r.status === 429 || r.status === 409 || r.status >= 500) {
+        const next = codeOf(r.data) ?? `http-${r.status}`, ms = r.retryAfterMs != null ? statedJitter(r.retryAfterMs) : fullJitter(attempt);
+        attempt = Math.min(attempt + 1, 6);
+        if (next !== code) log(`inbox: ${next}; next try in ${secs(ms)}`);
+        code = next; await pause(ms); continue;
+      }
+      attempt = 0; code = undefined;
+      if (r.status >= 200 && r.status < 300) {
+        const got = messagesOf(r.data);
+        if (!recovered) { recovered = true; if (Array.isArray(r.data?.backlog)) { reconcileMessages(st, got); persist(); } }
+        if (foldMessages(st, got)) { persist(); wake(); }
+      }
+      else { log(`inbox: HTTP ${r.status}`); await pause(5_000); }
+    }
+  }
+  async function eventLoop() {
+    let attempt = 0, code;
+    while (!stopping && !terminal) {
+      const r = await worldOnce(`${world}/v1/edge/wait?timeout=55&after=${encodeURIComponent(st.cursor ?? s.cursor ?? "c_0")}`, { method: "GET", headers: auth, timeoutMs: 65_000, recoverRead: true });
+      if (r.status === 401 || r.status === 403) { terminal = r; wake(); return; }
+      if (r.status < 200 || r.status >= 300) {
+        const next = codeOf(r.data) ?? `http-${r.status}`, ms = r.retryAfterMs != null ? statedJitter(r.retryAfterMs) : fullJitter(attempt);
+        attempt = Math.min(attempt + 1, 6);
+        if (next !== code) log(`stream: ${next}; next try in ${secs(ms)}`);
+        code = next; await pause(ms); continue;
+      }
+      attempt = 0; code = undefined;
+      const d = r.data, had = st.cursor;
+      if (d.gap) st.gap = true;
+      foldEvents(st, d.gap ? [] : d.events, d.cursor);
+      if ((d.events?.length && !d.gap) || d.gap || d.cursor !== had) { if (d.events?.length) lastEventAt = Date.now(); persist(); wake(); }
+    }
+  }
+  // One heavy request at a time, and soul.busy waited out here instead of handed back. Only reads and keyed writes repeat.
+  function gated(fn) { const p = gateTail.then(fn, fn); gateTail = p.catch(() => {}); return p; }
+  // A world's routes sit under its base path (/w/<slug> behind the launcher); match them without it.
+  const basePath = new URL(world).pathname.replace(/\/$/, "");
+  const routeOf = (url) => { const p = new URL(url).pathname; return p.startsWith(basePath) ? p.slice(basePath.length) : p; };
+  async function forward(m) {
+    const pathOf = routeOf(m.url) + new URL(m.url).search;
+    // A response cut off partway is a world that did not answer, not a reason for this process to die.
+    const once = () => worldOnce(m.url, { method: m.method, headers: m.headers, body: m.body, timeoutMs: m.timeoutMs }).catch((e) => ({ status: 0, data: { error: { code: "unreachable", message: String(e?.message ?? e) } } }));
+    const repeatable = m.method === "GET" || m.headers?.["idempotency-key"];
+    const r = HELD_PATH.test(pathOf) ? await once() : await gated(async () => {
+      let a = await once();
+      for (let tries = 0; repeatable && tries < RETRY.busyWaits && isBusy(a.status, a.data); tries++) { busyWaited++; await pause(statedJitter(a.retryAfterMs ?? 1_000)); a = await once(); }
+      return a;
+    });
+    const p = pathOf.split("?")[0], inboxWrite = /^\/v1\/edge\/inbox\/([^/]+)\/(ack|result)$/.exec(p);
+    if (r.status >= 200 && r.status < 300) {
+      if (r.data?.receipt?.id) { noteReceipt(st, r.data.receipt, Date.now()); persist(); }
+      if (inboxWrite) {
+        const x = st.messages.find((y) => y.id === decodeURIComponent(inboxWrite[1]));
+        if (x) { x.acked = true; if (inboxWrite[2] === "result") x.closed = true; persist(); }
+      }
+    }
+    return r;
+  }
+  async function localListen(url) {
+    // The world's own rule (Inbox.takeBacklog): every message not acknowledged after the cursor, however often it has been seen.
+    // A wait's timeoutMs=0 peek comes through here too, and must not take a message from the listener waiting for it.
+    const q = new URL(url).searchParams, after = q.get("after"), until = Date.now() + Math.min(Number(q.get("timeoutMs") ?? 25_000), 55_000);
+    for (;;) {
+      if (terminal) return terminal;
+      const backlog = st.messages.slice(after ? st.messages.findIndex((m) => m.id === after) + 1 : 0).filter((m) => !m.acked);
+      if (backlog.length) {
+        const out = backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt, state: "delivered" }));
+        return { status: 200, data: { inbox: { connected: true, latest: out[0], queued: 0 }, backlog: out } };
+      }
+      const left = until - Date.now();
+      if (left <= 0) return { status: 200, data: { inbox: { connected: true, queued: 0 }, backlog: [] } };
+      await new Promise((done) => { const t = setTimeout(done, left); waiters.push(() => { clearTimeout(t); done(); }); });
+    }
+  }
+  async function handle(m) {
+    if (moved()) { log("the folder's world, Soul or token changed: stopping"); setTimeout(() => shutdown(0), 10); return m.op === "http" ? { status: 0, data: { error: { code: "unreachable", message: "this serve stopped: the folder moved to another world or Soul" } } } : { serving: false, stopping: true, moved: true }; }
+    if (m.op === "pending") { const out = takePending(st); persist(); return out; }
+    if (m.op === "status") return { serving: true, pid: process.pid, since: start, cursor: st.cursor, inboxAfter: st.inboxAfter, unacked: st.messages.filter((x) => !x.acked).length, openReceipts: Object.values(st.receipts).filter((r) => !ENDED.has(r.phase)).length, unreadEvents: st.events.length - readIndex(st), busyWaited, lastEventAt, ...(terminal ? { ended: codeOf(terminal.data) ?? terminal.status } : {}) };
+    if (m.op === "stop") { setTimeout(() => shutdown(0), 10); return { stopping: true, pid: process.pid }; }
+    if (m.op === "http") {
+      const path = routeOf(m.url);
+      if (path === "/v1/edge/inbox/listen") return localListen(m.url);
+      const cached = m.method === "GET" && /^\/v1\/edge\/receipts\/([^/]+)$/.exec(path);
+      const known = cached ? st.receipts[decodeURIComponent(cached[1])] : null;
+      if (known?.full && ENDED.has(known.phase)) return { status: 200, data: { receipt: known.full } };
+      const r = await forward(m);
+      if (cached && r.status === 200 && r.data?.receipt?.id) { noteReceipt(st, r.data.receipt, Date.now()); if (ENDED.has(r.data.receipt.phase)) st.receipts[r.data.receipt.id].full = r.data.receipt; persist(); }
+      return r;
+    }
+    return { error: `unknown op ${m.op}` };
+  }
+  const server = createServer((c) => {
+    let text = "";
+    c.on("error", () => {});
+    c.on("data", (b) => {
+      text += b; const i = text.indexOf("\n"); if (i < 0) return;
+      let m; try { m = JSON.parse(text.slice(0, i)); } catch { c.destroy(); return; }
+      text = "";
+      handle(m).then((out) => c.end(JSON.stringify(out) + "\n"), (e) => { log(`request: ${e.message}`); c.end(JSON.stringify({ status: 0, data: { error: { code: "unreachable", message: String(e.message) } } }) + "\n"); });
+    });
+  });
+  const shutdown = (code) => {
+    stopping = true; persist();
+    try { unlinkSync(SERVE_SOCK); } catch { /* gone */ }
+    try { if (readServeLock()?.pid === process.pid) unlinkSync(SERVE_LOCK); } catch { /* gone */ }
+    process.exit(code);
+  };
+  for (const [sig, n] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) process.once(sig, () => shutdown(n));
+  try { unlinkSync(SERVE_SOCK); } catch { /* none */ }
+  // The socket answers `pending` with the owner's messages: as private as the state file.
+  const umask = process.umask(0o177);
+  server.listen(SERVE_SOCK, () => { process.umask(umask); log(`serving pid ${process.pid}, cursor ${st.cursor ?? s.cursor ?? "c_0"}`); });
+  setInterval(() => { if (moved()) { log("the folder's world, Soul or token changed: stopping"); shutdown(0); } else writeServeLock(start); }, SERVE_BEAT_MS);
+  // A resident client outlives what goes wrong around it: a loop that throws is logged and started again, and nothing unhandled ends the process.
+  process.on("unhandledRejection", (e) => log(`unhandled: ${e?.message ?? e}`));
+  process.on("uncaughtException", (e) => log(`uncaught: ${e?.message ?? e}`));
+  const keep = (name, loop) => { loop().catch((e) => { log(`${name}: ${e?.message ?? e}; starting it again`); setTimeout(() => keep(name, loop), 1_000); }); };
+  keep("inbox", inboxLoop); keep("stream", eventLoop);
+  await new Promise(() => {});
+}
+
+// serve [--status|--stop]: start the detached process for this folder, or ask it how it is, or end it.
+async function serve(...args) {
+  if (args[0] === "--foreground") return serveForeground();
+  if (args[0] === "--status") return (await askServe({ op: "status" })) ?? { serving: false, next: `${CLI} serve` };
+  if (args[0] === "--stop") return (await askServe({ op: "stop" })) ?? { serving: false };
+  if (args.length) throw new Error("usage: serve [--status|--stop]");
+  need(load(), "token", `Create or pair a Soul first: ${CLI} create "<Name>"`);
+  const running = await askServe({ op: "status" });
+  if (running?.serving) return { ...running, alreadyServing: true };
+  const logFd = openSync(SERVE_LOG, "a", 0o600);
+  const child = spawn(process.execPath, [process.argv[1], "serve", "--foreground"], { detached: true, stdio: ["ignore", logFd, logFd] });
+  child.unref(); closeSync(logFd);
+  for (let i = 0; i < 100; i++) {
+    await sleep(50);
+    const a = await askServe({ op: "status" });
+    if (a?.serving) return { ...a, next: `Every command now goes through it. ${CLI} pending lists what arrived since you last read.` };
+  }
+  throw new Error(`serve did not start; see ${SERVE_LOG}`);
+}
+
+// travel, create and pair change who this folder speaks for. A serve up for the old one stops, and a new one starts for the new one.
+const FOLDER_MOVES = new Set(["travel", "create", "pair", "approval"]);
+const folderOf = () => { const s = load(); return `${s.world ?? ""}|${s.soul ?? ""}|${s.token ?? ""}`; };
+async function followFolder() {
+  const up = await askServe({ op: "status" });
+  if (up?.lost || !(up?.serving || up?.moved)) return {};
+  for (let i = 0; i < 100 && existsSync(SERVE_SOCK); i++) { await askServe({ op: "stop" }); await sleep(50); }
+  const again = await serve();
+  return { serve: { restarted: true, pid: again.pid } };
+}
+
+// pending: what arrived since the last read, from the serve's queue, with no world call.
+async function pending() {
+  const a = await askServe({ op: "pending" });
+  if (!a || a.lost) throw new Error(`No serve in this folder. Start one: ${CLI} serve`);
+  return a;
+}
+
+// batch '[{"here":{}},{"receipt":"r_1"}]': several reads in one call; each answer or error stands on its own.
+const BATCH_READS = new Set(["here", "observe", "around", "explore", "caps", "capabilities", "map", "context", "inspect", "receipt", "events", "conversations", "status", "pending"]);
+async function batch(json) {
+  let list; try { list = JSON.parse(json); } catch { list = null; }
+  if (!Array.isArray(list) || !list.length || !list.every((x) => x && typeof x === "object" && Object.keys(x).length === 1)) throw new Error(`usage: batch '[{"here":{}},{"receipt":"<id>"}]'`);
+  const results = [];
+  for (const item of list) {
+    const [name, arg] = Object.entries(item)[0];
+    if (!BATCH_READS.has(name) || !commands[name]) { results.push({ [name]: null, error: `batch runs reads only: ${[...BATCH_READS].filter((k) => commands[k]).join(", ")}` }); continue; }
+    const args = arg == null || (typeof arg === "object" && !Array.isArray(arg)) ? [] : Array.isArray(arg) ? arg.map(String) : [String(arg)];
+    try { results.push({ [name]: await commands[name](...args) }); } catch (e) { results.push({ [name]: null, error: String(e.message) }); }
+  }
+  return { results };
+}
+
 // ---------------------------------------------------------------- help and dispatch
 
 const HELP = `eden ${VERSION} — one Soul, one controller. Commands print JSON.
@@ -1077,14 +1427,21 @@ setup     register <world-url>            create "<Name>" [--for CODE]    pair <
 look      here   observe   around|explore [place]   caps [--search w] [--verb v] [--all]   map   view [--map|--alt-only|--out f]
           context [query] [--cursor nextCursor]   views <ref> [ref…] [--detail] [--original] [--out picture.png]
           receipt [id]   events [--since c_N] [--raw]   conversations
-do        act <offer:id> [params-json] [--wait [s]] [--for id|none] [--json]   resolve "<words>" (candidate ids)   wait [s] [receiptId] [--json]
+do        act <offer:id> [params-json] [--wait [s]] [--for id|none] [--json]   resolve "<words>" (candidate ids)   inspect <id> [--all]   wait [s] [receiptId] [--json]
           say "<text>"   converse <list|turns|start|say|accept|decline|leave|ask> …   object <id> [action] [json]
 owner     listen [--after id] [--once]   ack <id> ["reply"]   result <id> done|failed "<text>"
           now "<public one-line status>" | now --clear   (or add --now "<line>" to act, say, ack, result, wait)
 self      profile [name|description|photo …]   body [presets|set|look …]   travel [<world>|home]
+resident  serve [--status|--stop]   (one detached process per folder: holds inbox, stream and receipts; everything else still works without it)
+          pending   (what arrived since you last read, no world call)   batch '[{"here":{}},{"receipt":"<id>"}]'   (several reads, one call)
 `;
 
-const commands = { now: nowLine, register, create, pair, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), help: async () => HELP };
+async function inspect(id, ...flags) {
+  if (!id) throw new Error("usage: inspect <id> [--all]");
+  return ok(await call(`/v1/edge/inspect/${encodeURIComponent(id)}${flags.includes("--all") ? "?all=1" : ""}`), "inspect").inspect;
+}
+
+const commands = { inspect, now: nowLine, register, create, pair, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), serve, pending, batch, help: async () => HELP };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [cmd, ...args] = process.argv.slice(2);
@@ -1092,7 +1449,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!fn) { process.stdout.write(HELP); process.exit(cmd ? 1 : 0); }
   let argv = args;
   try { argv = ["act", "say", "ack", "result", "wait"].includes(cmd) ? takeNowFlag(args) : args; } catch (e) { process.stderr.write(`error: ${e.message}\n`); process.exit(1); }
+  const before = FOLDER_MOVES.has(cmd) ? folderOf() : null;
   fn(...argv).then(async (out) => {
+    if (before !== null && folderOf() !== before && out && typeof out === "object" && !Array.isArray(out)) out = { ...out, ...(await followFolder()) };
     await flushNow();
     const slowed = out && typeof out === "object" && !Array.isArray(out) ? slowedLine() : null;
     if (slowed) out = { slowed, ...out };
