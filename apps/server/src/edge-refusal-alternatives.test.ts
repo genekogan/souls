@@ -82,3 +82,49 @@ test('#824: a named walk from the kept words menu is named only if it is still o
   assert.ok(!(stale.alternatives ?? []).some((x: {id: string}) => x.id === 'walk:lab-pond-hall'), `stale walk named: ${JSON.stringify(stale.alternatives)}`);
   for (const x of stale.alternatives ?? []) assert.ok(bindOne(w.soul, x.id)?.cap.available, `${x.id} is available now`);
 });
+
+// #850, folded into #1095: a place no walk reaches names what this Soul can do instead, never the blocked walk itself. The
+// hello-hamlet reading room's description names the cottage bench, so that comes first (A5); a house a god placed with its
+// front door closed says nothing, so its room offers what is nearest that room, not nearest the Soul (#850 A2).
+test('#850: a place no walk reaches names available alternatives', {timeout: 300000}, async t => {
+  const w = await bootEden(() => {}, new URL('../../../worlds/templates/hello-hamlet.json', import.meta.url)); t.after(w.close);
+  const {ref: _r, hash: _h, by: _b, born: _bo, ...definition} = (w.god.model as any).resolvedDef('core/cottage@1');
+  const placed = (w.god as any).act({ops: [
+    {op: 'define', def: {...definition, name: 'closed-cottage-control', state: {...definition.state, doors: {type: 'json', default: {}}}}},
+    {op: 'place', def: 'closed-cottage-control@1', name: 'closed-house', p: [20, -30], state: {doors: {'front-door': 'closed'}}}]});
+  assert.equal(placed.accepted, true, JSON.stringify(placed)); await w.settle(6);
+  const avail = new Set((w.edge.capabilitiesPage(w.soul, {all: true}).capabilities as {id: string; available: boolean}[]).filter(c => c.available).map(c => c.id));
+  for (const [words, blocked] of [['go into the reading room', 'walk:lab-reading-room'], ['walk:lab-reading-room', 'walk:lab-reading-room'], ['walk:closed-house/bedroom', 'walk:closed-house/bedroom']]) {
+    const r = await accept(w.host, w.edge.act(w.soul, {capability: words})) as any;
+    assert.equal(r.code, 'route.unreachable', `${words}: ${JSON.stringify(r)}`);
+    assert.ok(r.alternatives?.length >= 1 && r.alternatives.length <= 3, `${words}: 1-3 alternatives ${JSON.stringify(r.alternatives)}`);
+    for (const x of r.alternatives) {assert.ok(avail.has(x.id), `${words}: ${x.id} is available now`); assert.notEqual(x.id, blocked); assert.ok(x.why, 'each says why'); assert.equal(x.partial, true, 'none is the place asked for');}
+  }
+  const room = await accept(w.host, w.edge.act(w.soul, {capability: 'walk:lab-reading-room'})) as any;
+  assert.equal(room.alternatives[0].id, 'walk:cottage/bench', `the authored hint comes first: ${JSON.stringify(room.alternatives)}`);
+  assert.ok(room.alternatives.some((x: any) => x.id.startsWith('sit:')), `and the sit it is for: ${JSON.stringify(room.alternatives)}`);
+  const house = await accept(w.host, w.edge.act(w.soul, {capability: 'walk:closed-house/bedroom'})) as any;
+  assert.equal(house.alternatives[0].id, 'walk:closed-house', JSON.stringify(house.alternatives));
+});
+
+// ROUTE_DEAD's other codes take the same path; other blocked offers still carry no alternatives (#850 A3)
+test('#850: every route-dead code names alternatives; a blocked offer of another kind names none', {timeout: 300000}, async t => {
+  const w = await bootEden(() => {}, new URL('../../../worlds/templates/hello-hamlet.json', import.meta.url)); t.after(w.close);
+  const edge = w.edge as any, real = edge.withAlternatives.bind(edge), seen: string[] = [];
+  edge.withAlternatives = (...a: any[]) => {seen.push(a[2].code); return real(...a);};
+  const bound = edge.resolveOnDemand.bind(edge);
+  for (const [code, named] of [['route.goal-blocked', true], ['route.link-unusable', true], ['route.unknown-level', true], ['seat.none-free', false], ['soul.busy', false]] as const) {
+    edge.resolveOnDemand = (soul: unknown, text: string, caps: any[], plans: Map<string, unknown>) => {
+      const r = bound(soul, text, caps, plans), cap = r.v?.cap;
+      if (cap) {r.v = {...r.v, cap: {...cap, available: false, blocked: {code, reason: 'test'}}}; r.plans = new Map(r.plans); r.plans.delete(cap.id);}
+      return r;
+    };
+    seen.length = 0;
+    const r = await accept(w.host, edge.act(w.soul, {capability: 'walk:lab-pond-hall'})) as any;
+    edge.resolveOnDemand = bound;
+    assert.equal(r.code, code, JSON.stringify(r).slice(0, 200));
+    assert.equal(seen.includes(code), named, `${code}: ${JSON.stringify(seen)}`);
+    if (!named) assert.equal(r.alternatives, undefined, code);
+  }
+});
+

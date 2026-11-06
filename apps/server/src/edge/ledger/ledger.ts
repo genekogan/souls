@@ -166,6 +166,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   contactActuator?: ContactActuatorService;
   /** CTRL-2 (#1094): a thing its container keeps out of sight (shut, or a hiding place); set by the engine bridge. */
   concealedThing?: (id: string) => boolean;
+  /** #1095 A5: what a built thing's author said about it; set by the engine bridge. */
+  thingAbout?: (id: string) => {title?: string; what?: string; aliases?: string[]} | null;
   /** CTRL-2 (#1094): a built thing's own name, as offers call it; set by the engine bridge. */
   thingName?: (id: string) => string | null;
   /** Soul Actions entry 31 (god worlds, god/door-passage.ts): a plain walk a closed, permitted door walls off goes through it. */
@@ -1716,7 +1718,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
       return {accepted: true, receipt: {...this.receipt(soul.soulId, r.id)!, object: cap.object} as EdgeReceipt, ...(out.result ? {result: out.result} : {}), ...resolved};
     }
     const plan = plans.get(capability) as TogetherPlan & {stop?: boolean; paintingTarget?: string} | undefined;
-    if (!plan) return cap && cap.available === false && cap.blocked ? refuse(cap.blocked.code, cap.blocked.reason)
+    // #850 (#1095 A5): an offer blocked because no walk reaches it now names what this Soul can do instead
+    if (!plan) return cap && cap.available === false && cap.blocked ? (ROUTE_DEAD.has(cap.blocked.code) ? this.withAlternatives(soul, asked, refuse(cap.blocked.code, cap.blocked.reason), this.wordsMenu(soul).caps, cap) : refuse(cap.blocked.code, cap.blocked.reason))
       : refuse('capability.unknown', 'That capability is not offered to this Soul right now; read capabilities again.');
     if (params.painting !== undefined && (cap.verb !== 'paint' || !plan.paintingTarget || !this.painting)) return refuse('painting.no-easel', 'The optional painting field is offered only at a real painting easel.');
     let steps = structuredClone(plan.steps);
@@ -2385,7 +2388,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
    *  already read (one per verb). Nothing available: no field. */
   /** CTRL-3 (#1095): what serves the same intent with a different binding, at most 3, nearest first within that class: never
    *  a different verb, never a different destination, never the refused act. Information for the agent, never a default. */
-  private withAlternatives<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, words: string, out: T, caps: EdgeCapability[]): T & {alternatives?: Alternative[]} {
+  private withAlternatives<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, words: string, out: T, caps: EdgeCapability[], blocked?: EdgeCapability): T & {alternatives?: Alternative[]} {
     const asked = words.trim(), seen = new Set([asked, ...(out.did_you_mean ?? []).map(d => d.id)]), picks: {c: EdgeCapability; why: string; partial?: true}[] = [];
     const add = (c: EdgeCapability | undefined, why: string, partial?: boolean) => {if (c?.available && !seen.has(c.id) && picks.length < ALTERNATIVES * 2) {seen.add(c.id); picks.push({c, why, ...(partial ? {partial: true as const} : {})});}};
     const ctx = this.vocabulary(soul, caps), w = tokens(words), head = (asked.includes(':') ? asked.slice(0, asked.indexOf(':')) : w[0] ?? '').toLowerCase();
@@ -2397,6 +2400,16 @@ export class EdgeLedger implements EdgeLedgerHooks {
     let named: string[] | undefined, place: Place | undefined;
     for (let i = Math.max(1, w.length - 4); i < w.length && !named; i++) {const m = placeMatchTier(w.slice(i), ctx.places, ctx.withheld); if (m.tier >= 0 && m.tier <= 1 && m.found.length) {named = w.slice(i); place = this.places.byId.get(m.found[0]!.id);}}
     const menu = (wanted: string) => caps.some(c => c.verb === wanted && c.id !== asked) ? caps : this.wordsMenu(soul).caps;
+    // a place no walk reaches may say itself what to do instead ("the outdoor cottage bench is another place to pause"): an
+    // offer whose own title or alias its description names comes first, under whatever verb, since walking there was only the
+    // way to the activity. It only partly serves, and says so (coordinator's exception to A1 on #1095)
+    if (blocked) {
+      const tail = (c: EdgeCapability) => c.id.slice(c.id.indexOf(':') + 1), said = this.thingAbout?.(tail(blocked))?.what?.toLowerCase();
+      if (said) for (const c of nearest(caps.filter(x => x.available && x.id !== blocked.id && !x.id.endsWith(':here')))) {
+        const a = this.thingAbout?.(tail(c));
+        if (a && [a.title, ...(a.aliases ?? [])].some(n => n && said.includes(n.toLowerCase()))) add(c, `${this.thingAbout?.(tail(blocked))?.title ?? 'that place'} names ${a.title ?? 'it'} as somewhere else to go`, true);
+      }
+    }
     if (verb !== 'sit' && named) {
       // the walk those words resolve to, as `walk <words>` would (a named region's walk is often its building's: "the pond
       // hall" is walk:lab-pond-hall). Walking is only part of "fly there".
@@ -2412,6 +2425,11 @@ export class EdgeLedger implements EdgeLedgerHooks {
       const room = this.placePathOf(soul.soulId).find(p => p.kind !== 'occupier')?.id ?? null;
       const here = (c: EdgeCapability) => {if (c.id.endsWith(':here')) return true; const at = ctx.target(c).at; return !!at && (!room || this.places.containing(at[0], at[1]).some(p => p.id === room));};
       for (const c of nearest(menu(verb).filter(c => c.verb === verb && here(c)))) add(c, verb === 'sit' ? 'another free seat here' : `${verb} on something else here`);
+    }
+    // nothing named and nothing beside it: the walks nearest that place, not nearest the Soul (#850)
+    if (blocked && !picks.length) {
+      const at = ctx.target(blocked).at, away = (c: EdgeCapability) => {const t = ctx.target(c).at; return at && t ? Math.hypot(t[0] - at[0], t[1] - at[1]) : Infinity;};
+      for (const c of caps.filter(x => x.verb === 'walk' && x.id !== blocked.id).map(c => [c, away(c)] as const).sort((a, b) => a[1] - b[1]).map(x => x[0])) add(c, `near ${blocked.label.replace(/^\w+ (?:to |into )?/, '').split(' [')[0]}`, true);
     }
     // the menu read may be a kept words menu (approximate availability), and the named walk may come from it: every pick
     // is rebuilt exactly (bindOne) and kept only if it is available now
