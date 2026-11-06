@@ -81,11 +81,12 @@ export function renderChat(stream) {
 }
 
 /** turn({cwd, sessionId, resume, model, effort, text, allowedTools, maxWallSec}) → {stream, usage, finalText, sessionId, exit, wallMs, timedOut, toolCalls, effortApplied} */
-export async function turn({ cwd, sessionId, resume = false, model = 'haiku', effort = null, text, allowedTools = DEFAULT_ALLOWED, maxWallSec = 240, resultGraceMs = 3000, maxBudgetUsd = null }) {
+export async function turn({ cwd, sessionId, resume = false, model = 'haiku', effort = null, text, allowedTools = DEFAULT_ALLOWED, maxWallSec = 240, resultGraceMs = 3000, maxBudgetUsd = null, maxOutputTokens = null }) {
   const effortOk = effort ? await supportsEffort() : false;
   const args = buildArgs({ sessionId, resume, model, effort, text, allowedTools, effortOk, maxBudgetUsd });
   // CLAUDE_CODE_DISABLE_CLAUDE_MDS: a seat must not load the user's or a parent folder's CLAUDE.md (--setting-sources does not stop it).
   const env = { ...process.env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: '1' }; delete env.CLAUDECODE; delete env.CLAUDE_CODE_ENTRYPOINT;
+  if (maxOutputTokens != null) env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(maxOutputTokens);   // #1098: bounds the one call that can land past the turn's cap
   const stream = [{ type: 'harness_user', text, _rx: Date.now() }];
   // `claude -p` does not exit while the agent's own background Bash tasks (its `listen`) run: the turn is over at the final
   // result event, so after a short grace the harness ends the process group (the wake loop's listen takes over).

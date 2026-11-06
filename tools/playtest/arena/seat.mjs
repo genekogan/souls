@@ -97,7 +97,9 @@ export class Seat {
     this.inTurn = true;
     const n = ++this.turnN, started = now();
     try { onStart?.({ turn: n, reason, startedAt: started.t, startMono: started.mono }); } catch { /* observer hook is best effort */ }
-    const hold = this.budget ? this.budget.reserve(this.seat.id) : null;
+    // #1098: a live seat with no real cost report (Codex) can't be held to the world budget, so under one it is refused
+    const noCost = this.budget && this.info.adapter !== 'claude-headless' ? { ok: false, reason: `world budget: ${this.info.adapter} reports no turn cost, so it can't run under a world budget` } : null;
+    const hold = noCost ?? (this.budget ? await this.budget.reserve(this.seat.id) : null);
     if (hold && !hold.ok) {   // #1098: refused before any provider call; recorded as a turn with no model use
       const ended = now(); this.budgetRefused = hold.reason; this.inTurn = false;
       const rec = { turn: n, reason, startedAt: started.t, endedAt: ended.t, startMono: started.mono, endMono: ended.mono, wallMs: 0, usage: null, finalText: null, toolCalls: [], exit: null, timedOut: false, endedAfterResult: null, refused: 'world-budget', refusedReason: hold.reason };
@@ -111,7 +113,7 @@ export class Seat {
     try {
       r = await this.adapter.turn({ cwd: this.folder, sessionId: this.info.sessionId, resume: !first, model: this.info.model ?? undefined, effort: this.info.effort,
         text, allowedTools: this.allowedTools, maxWallSec: this.rails.maxTurnWallSec, prevCumulative: this.cumulative, script: this.seat.script,
-        ...(hold ? { maxBudgetUsd: this.budget.turnCapUsd } : {}) });
+        ...(hold ? { maxBudgetUsd: this.budget.turnCapUsd, maxOutputTokens: this.budget.maxOutputTokens } : {}) });
     } catch (e) { if (hold) this.budget.settle(hold, null); throw e; }
     const ended = now();
     // #1098: `claude -p --resume` reports total_cost_usd for the whole session so far, so this turn's cost is the difference
@@ -123,7 +125,14 @@ export class Seat {
       turnCost = sessionCost >= prev ? sessionCost - prev : null;
       this.info.sessionCostUsd = { ...(this.info.sessionCostUsd ?? {}), [sid]: Math.max(prev, sessionCost) };
     }
-    if (hold) this.budget.settle(hold, turnCost);
+    if (hold) {
+      this.budget.settle(hold, turnCost);
+      // the margin assumes no call past maxContextTokens of context or maxOutputTokens of output; a bigger one ends the world's turns
+      const calls = (r.stream ?? []).filter((e) => e?.type === 'assistant').map((e) => e.message?.usage ?? {});
+      const ctx = Math.max(0, ...calls.map((u) => (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)));
+      const outTok = Math.max(0, ...calls.map((u) => u.output_tokens ?? 0));
+      if (ctx > this.budget.maxContextTokens || outTok > this.budget.maxOutputTokens) this.budget.exceeded(this.seat.id, `context ${ctx}, output ${outTok} tokens in one call`);
+    }
     if (r.cumulative) this.cumulative = r.cumulative;
     if (r.sessionId && r.sessionId !== this.info.sessionId) { this.info.sessionId = r.sessionId; }
     if (this.info.effortApplied === undefined && r.effortApplied !== null) this.info.effortApplied = r.effortApplied;
@@ -227,7 +236,7 @@ export class Seat {
 /** createSeat({runDir, seat, worldBase, rails}) → Seat: an empty folder holding only the identity seed. */
 export function createSeat({ runDir, seat, worldBase, rails }) {
   const dir = join(runDir, 'seats', seat.id);
-  const budget = worldBudgetFor(runDir, { capUsd: rails?.worldBudgetUsd, turnCapUsd: rails?.turnBudgetUsd });   // one per run (one world)
+  const budget = worldBudgetFor(runDir, { capUsd: rails?.worldBudgetUsd, turnCapUsd: rails?.turnBudgetUsd, file: rails?.worldBudgetFile ?? null });   // one per world
   const s = new Seat({ dir, seat, worldBase, rails, budget });
   mkdirSync(s.folder, { recursive: true });
   if (!s.info.ownerIdentity) {
