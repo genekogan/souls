@@ -1,0 +1,144 @@
+{
+  "name": "sr-eden-chained-steer",
+  "version": 1,
+  "seed": 1020,
+  "providers": {
+    "allowed": [
+      "codex"
+    ]
+  },
+  "world": {
+    "kind": "dev",
+    "genesis": "worlds/templates/eden-2026.json",
+    "slug": "sr-eden-chained-steer",
+    "port": 4331,
+    "natives": false
+  },
+  "durationSec": 300,
+  "seats": [
+    {
+      "id": "ana",
+      "adapter": "scripted-owner",
+      "soulName": "Ana",
+      "script": {
+        "rules": [
+          {
+            "match": "balloon ride",
+            "ack": "Boarding the balloon",
+            "do": [
+              [
+                "caps",
+                "--search",
+                "balloon"
+              ],
+              [
+                "act",
+                "join the balloon ride",
+                "--wait",
+                "120"
+              ]
+            ],
+            "result": "Aboard the balloon"
+          },
+          {
+            "match": "start the balloon",
+            "ack": "Starting it",
+            "do": [
+              [
+                "act",
+                "start the balloon",
+                "--wait",
+                "60"
+              ]
+            ],
+            "result": "The balloon is up"
+          },
+          {
+            "match": "then fly north",
+            "ack": "Steering",
+            "do": [
+              [
+                "resolve",
+                "fly to the library then fly north"
+              ],
+              [
+                "act",
+                "fly to the library then fly north",
+                "--wait",
+                "30"
+              ]
+            ],
+            "result": "Steering toward the library"
+          },
+          {
+            "match": "where you are",
+            "ack": "Looking",
+            "do": [
+              [
+                "here"
+              ]
+            ],
+            "result": "Reported where I am"
+          }
+        ]
+      }
+    }
+  ],
+  "god": null,
+  "director": {
+    "mode": "scripted",
+    "sequential": false,
+    "script": [
+      {
+        "seat": "ana",
+        "atSec": 5,
+        "channel": "card",
+        "text": "Take the balloon ride, please.",
+        "budgetSec": 130
+      },
+      {
+        "seat": "ana",
+        "atSec": 10,
+        "after": "result",
+        "channel": "card",
+        "text": "Now start the balloon.",
+        "budgetSec": 70
+      },
+      {
+        "seat": "ana",
+        "atSec": 15,
+        "after": "result",
+        "channel": "card",
+        "text": "Fly to the library then fly north.",
+        "budgetSec": 40
+      },
+      {
+        "seat": "ana",
+        "atSec": 85,
+        "after": "result",
+        "channel": "card",
+        "text": "Tell me where you are in a little while.",
+        "budgetSec": 60
+      }
+    ]
+  },
+  "observer": {
+    "sampleSec": 3,
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1,
+    "cameras": []
+  },
+  "review": {
+    "mode": "deterministic",
+    "developer": false
+  },
+  "rails": {
+    "maxTurnWallSec": 150,
+    "onboardWallSec": 120,
+    "onboardTimeoutSec": 90,
+    "maxTurnsPerRequest": 4
+  }
+}
