@@ -2093,7 +2093,7 @@ export class EngineBridge {
             // PC15 (#694): a loose deck joist lying under a bay whose two beams can carry it is set across it by two Souls onto a
             // free ledge seat of each (engine-mars joistBays); a loose sheet lying beside a row of five joists is laid across them
             const dblock=sblock&&sblock.code!=='carry.crew-too-small'?sblock:null;
-            const jbays=sdef!.tags.includes('joist')?joistBays(this.engine.world as never,x.id):[];
+            const jbays=sdef!.tags.includes('joist')?joistBays(this.mw.world as never,x.id):[];
             if(jbays.length){
               const beams=listed2([name(jbays[0]!.beams[0]),name(jbays[0]!.beams[1])]),ats=jbays.map(b=>b.at.toFixed(2)).join(', ');
               const jid=`install-joist-with:${x.id}`,jlabel=`Set ${name(x.id)} across the bay onto ${beams} with one other Soul, one at each end (asks them first; at: where along the bay, in metres from its middle, free: ${ats}; with: who)`;
@@ -2102,7 +2102,7 @@ export class EngineBridge {
               const jplan={label:jlabel,steps:[],together:{kind:'shared' as const,template:'install-joist' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew:[2,2] as [number,number],choices}};
               if(!dblock)plans.set(jid,jplan);
             }
-            const rows=sdef!.tags.includes('plywood')?sheetBays(this.engine.world as never,x.id):[];
+            const rows=sdef!.tags.includes('plywood')?sheetBays(this.mw.world as never,x.id):[];
             if(rows.length){
               const on=`${name(rows[0]![0]!)} to ${name(rows[0]![rows[0]!.length-1]!)}`,lid=`lay-sheet-with:${x.id}`,llabel=`Lay ${name(x.id)} across the ${rows[0]!.length} joists from ${on} with one other Soul, one at each end (asks them first; with: who)`;
               caps.push({id:lid,verb:'lay-sheet-with',label:llabel,target:{id:x.id,kind:'object'},available:!dblock,...(dblock?{blocked:dblock}:{}),params:{with:{type:'string',maxLength:300,description:'the one Soul who lays it with you'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
