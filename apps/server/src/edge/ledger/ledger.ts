@@ -444,7 +444,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
       stopOp: (entityId, programId, op, why) => {try {void this.host.enqueue('edge-stop', 'edge:shared', {entityId, programId, op, why}).catch(() => {/* best effort */}); return true;} catch {return false;   /* clock not ready: asked again at the next sweep */}},
       stopBody: soul => {try {void this.host.enqueue('edge-stop', `edge:${soul.soulId}`, {soulId: soul.soulId, entityId: soul.entityId, why: 'shared.ended'}).catch(() => {/* best effort */});} catch {/* clock not ready */}},
       commitShared: id => {void this.commitShared(id).catch(e => console.error('[edge] shared commit', e instanceof Error ? e.message : e));},
-      previewCarry: params => (this.host.engine as {previewMarsVerbV1?(verb: string, params: unknown): {code: string; message?: string; subjects?: string[]; details?: Record<string, unknown>} | null}).previewMarsVerbV1?.('carry', params) ?? null});
+      previewCarry: params => (this.host.engine as {previewMarsVerbV1?(verb: string, params: unknown): {code: string; message?: string; subjects?: string[]; details?: Record<string, unknown>} | null}).previewMarsVerbV1?.('carry', params) ?? null,
+      previewRaise: params => (this.host.engine as {previewMarsVerbV1?(verb: string, params: unknown): {code: string; message?: string; subjects?: string[]} | null}).previewMarsVerbV1?.('raise_hold_v1', params) ?? null});
     this.receiptListeners.push(r => {if(!OPEN.includes(r.phase))this.menusChangedBy('receipt-closed', r.soulId, r.capability);});
     if (this.readOnly) return;
     // D1: the card's doing line names an edge act's approach ("walking to Kitchen chair") from this ledger's plans
@@ -496,7 +497,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   private rows(where: string, ...args: (string | number | null)[]): Row[] {return this.db.db.prepare(`SELECT * FROM edge_receipts_v1 WHERE world_id=? AND ${where}`).all(this.host.worldId, ...args) as Row[];}
   private view(r: Row): EdgeReceipt {const outcome=this.outcomes.read(r.receipt_id);
     // An invitation nobody has answered yet is not a shared activity: the host's receipt stays `waiting` (quality case 32).
-    const awaiting=r.phase==='started'||r.phase==='waiting'&&r.capability.startsWith('carry-with:')?this.together?.awaitingAnswer(r.receipt_id,r.capability)??null:null;
+    const awaiting=r.phase==='started'||r.phase==='waiting'&&/^(?:carry|raise)-with:/.test(r.capability)?this.together?.awaitingAnswer(r.receipt_id,r.capability)??null:null;
     // PC04 (#683): a shared receipt shows its own Soul the invitation, revision, role and phase it was made for
     const made=r.detail?.includes('"sharedV1"')?(JSON.parse(r.detail) as {sharedV1?:{invite:string;revision:number}}).sharedV1:undefined,shared=made&&this.together?this.together.sharedReceipt(r.receipt_id,r.soul_id,made):undefined;
     return {id: r.receipt_id, soulId: r.soul_id, capability: r.capability, phase: awaiting?'waiting':r.phase, acceptedTick: r.accepted_tick, startedTick: r.started_tick, endedTick: r.ended_tick, code: r.code, reason: r.reason, programId: r.program_id, ...detailOf(r),...(outcome?{outcome}:{}),...(awaiting?{awaitingAnswer:{...awaiting,note:`Invitation sent; ${listed(awaiting.waitingFor.map(g=>g.name))} ${awaiting.waitingFor.length>1?'have':'has'} not accepted yet. Nothing shared has started.`}}:{}),...(shared?{shared}:{}),...(OPEN.includes(r.phase)?this.bodyFacts(r,!!awaiting):{})};}
@@ -1813,7 +1814,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (this.sharedCarry && capability.startsWith('stop-carry:')) return {...await this.stopShared(soul, capability, clientRef), ...resolved};
     // PC05: a member of a running shared operation cannot propose or accept another (the body checks below would
     // otherwise answer with their own codes, e.g. hands.full)
-    if (/^(carry-with|accept):/.test(capability)) {const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy), ...resolved};}
+    if (/^(carry-with|raise-with|accept):/.test(capability)) {const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy), ...resolved};}
     // together/1: invitations (params.with), paired gestures, gifts, follows and items check and adjust their plan here
     const prep = this.together.prepare(soul, cap, plan, params, steps);
     if ('code' in prep) return {...refuse(prep.code, prep.reason), ...(prep.did_you_mean ? {did_you_mean: prep.did_you_mean} : {}), ...resolved};
@@ -2135,7 +2136,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const {host, label, steps, revision, opId} = plan, inv = this.together.invite(id)!;
     const issue = this.host.engine.canPerform({actor: host.entityId, label, steps});
     const wait = (code: string, message?: string) => this.together.sharedNotReady(inv, [{soulId: host.soulId, name: 'The carry', why: `cannot start yet (${code}${message ? `: ${message}` : ''})`}]);
-    if (issue) {if (WAIT_CODES.has(issue.code) || SHARED_CARRY_WAIT.has(issue.code) || !issue.code.startsWith('carry.')) wait(issue.code, issue.message); else this.together.sharedRefused(id, issue.code, issue.message ?? humanBlockedExplanationV1(issue.code, label)); return;}
+    if (issue) {if (WAIT_CODES.has(issue.code) || SHARED_CARRY_WAIT.has(issue.code) || !/^(?:carry|raise)\./.test(issue.code)) wait(issue.code, issue.message); else this.together.sharedRefused(id, issue.code, issue.message ?? humanBlockedExplanationV1(issue.code, label)); return;}
     const guard = (): true => {
       this.together.sharedCommitGuard(id, revision);
       if (this.host.quietBarrier) throw new EdgeError(409, 'state.changed', 'The world entered a quiet barrier; retry.');
@@ -2151,7 +2152,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     } catch (error) {
       // nothing was committed (the transaction rolled back); a native refusal at the fold is handled as at the check above
       const code = error instanceof Error ? /^object\.native-admission-refused:(.+)$/.exec(error.message)?.[1] : undefined;
-      if (code && code.startsWith('carry.') && !SHARED_CARRY_WAIT.has(code)) this.together.sharedRefused(id, code, humanBlockedExplanationV1(code, label));
+      if (code && /^(?:carry|raise)\./.test(code) && !SHARED_CARRY_WAIT.has(code)) this.together.sharedRefused(id, code, humanBlockedExplanationV1(code, label));
     }
   }
   private async performAtomicObjectBodies(soul:EdgeSoul,capability:string,label:string,steps:Program['steps'],clientRef:string|undefined,admission:ObjectBodyAdmission){

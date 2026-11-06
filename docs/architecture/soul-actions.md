@@ -92,9 +92,24 @@ context-size checks below), regression runs, and an uncut real-client recording 
     revision is carried as before.
   - **Restart.** Nothing new is snapshotted: the joints ride the entity rows and the logged `world-edit` events, so a
     clean or crash restart brings back the same graph in both.
-  - **Not yet.** Souls do not raise uprights or connect beams (PC13, PC14). The native rack stability rule
-    (`construction/rules.ts`) does not apply to these parts, which are items to the engine. Only a part's own
-    bearing connectors decide its support.
+  - **Not yet.** Souls do not connect beams (PC14). The native rack stability rule (`construction/rules.ts`) does not
+    apply to these parts, which are items to the engine. Only a part's own bearing connectors decide its support.
+- **Raising and holding (PC13, [#692](https://github.com/genekogan/souls/issues/692); off unless `SIM_SHARED_CARRY=1`).**
+  A loose upright lying free is also offered `raise-with:<id>`, which takes `with`. It goes through the same invitation,
+  revision, acceptance and receipts as `carry-with` below, with no destination.
+  - **Commit.** One programme, `mars:raise_hold_v1` (`packages/engine-mars/src/raise-hold.ts`): the crew walks to its
+    stations, takes hold, walks it up about its base edge and holds it. It ends in the pose a joined upright has
+    (`r = [yaw, 0, ±π/2]`, PC12). The geometry and choreography are the native raise's (`construction/raise.ts`); the base
+    is the end nearer the host, or the other if only that one has room.
+  - **Held.** Holding isn't an end: the receipts stay `started`, with `shared.holding`, `shared.holding: true` and a
+    `shared.holding` stream event once. A member's body act is `shared.busy`; speech and looking work.
+  - **Stop.** `stop-carry:<op>` from any member, or a member going away. Before the grip they let go. After it they lower it
+    along the same arc, to its exact starting pose. If something or someone is in the way (`raise.cancel-unsafe`) they
+    keep holding, the receipts name it, and it retries with no timeout.
+  - **Refused before anyone is asked:** `raise.arc-blocked`, `raise.station-blocked`, `raise.station-unreachable`,
+    `raise.not-lying`, `raise.joined`, `raise.crew-too-small`, `raise.crew-too-large`.
+  - **Invariant.** `looseFramesHeld` (a part it turned is held by its crew, hands on it) is checked at every tick end.
+  - **Not yet.** A raised frame can only come back down. Joining it where it stands is PC14. `stop-carry` keeps its name.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
   A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
   comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one

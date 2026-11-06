@@ -58,6 +58,7 @@ import { constructionPlan, unsafeConstruction, type BuildPhase } from './constru
 import { disassemblyPlan, DISASSEMBLY_POLICY } from './disassembly.ts';
 import { MARS_2026_MAP, withMars2026Map } from './mars-2026-map.ts';
 import { disassemblyRegistry } from '../../../mars/viewer/engine/construction/disassembly.ts';
+import { raiseHold } from './raise-hold.ts';
 import { captureRenderScene, commonsSceneMetadataV1Schema, type RenderSceneCaptureV1, type RenderScene } from '@sim/engine-contract';
 import {readLocalClassroomV1} from './classroom-observation.ts';
 import { readNativeGathering } from './gathering-observation.ts';
@@ -2625,6 +2626,7 @@ export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promis
   const m = cfg.map===MARS_2026_MAP?withMars2026Map(await loadMars()):await loadMars();if(cfg.map&&cfg.map!==MARS_2026_MAP)throw new Error('mars.unknown-map');
   // disassembly/1 adds its reverse verbs to this engine's registry only; the default registry is unchanged.
   const registry = cfg.disassemblyV1 ? disassemblyRegistry(m.createRegistry) : m.createRegistry(), services = m.servicesFor(m.scenes);
+  registry.set(raiseHold.verb, raiseHold as any);   // PC13 (#692): offered only behind SIM_SHARED_CARRY; no logged history names it
   return {
     rulesVersion: nativeRulesVersion(m.rulesVersion,cfg),
     // A failed cross-policy checkpoint restore must not turn into replay under

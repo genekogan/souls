@@ -1958,6 +1958,14 @@ export class EngineBridge {
             // `def` is the placed def ref with its revision (for example core/rack-beam@2): the load's identity (PC02 §4)
             const splan={label:slabel,steps:[],together:{kind:'shared' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew,mass:{kg:mass,each:MAX_KG_PER_CARRIER}}};
             if(!sblock)plans.set(sid,splan);
+            // PC13 (#692): an upright lying free can be raised and held by the crew, standing where it lies (asks first, like a carry)
+            if(sdef!.tags.includes('upright')){
+              const rid=`raise-with:${x.id}`,rlabel=`Raise ${name(x.id)} upright with other Souls and hold it until one of you stops (asks them first; ${crew[0]}–${crew[1]} people; with: who)`;
+              const rblock=sblock??(x.pose.roll?{code:'raise.not-lying',reason:`${name(x.id)} is not lying flat on the ground.`}:null);
+              caps.push({id:rid,verb:'raise-with',label:rlabel,target:{id:x.id,kind:'object'},available:!rblock,...(rblock?{blocked:rblock}:{}),params:{with:{type:'string',maxLength:300,description:'the Souls who raise it with you (names or ids: "Bo and Cy", "Bo, Cy and Dee")'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
+              const rplan={label:rlabel,steps:[],together:{kind:'shared' as const,template:'raise-hold' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew,mass:{kg:mass,each:MAX_KG_PER_CARRIER}}};
+              if(!rblock)plans.set(rid,rplan);
+            }
           }
         }
         // entry 42: a thing kept inside a container is seen, offered and named only while the container is open

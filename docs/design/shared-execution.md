@@ -298,6 +298,13 @@ creates the first claimed receipts.
 
 The PC06 proof is this journey on the real client at real speed. PC08 reuses it, with Bo acting `stop-carry` mid-move.
 
+## Later templates
+
+`raise-hold` (PC13, [#692](https://github.com/genekogan/souls/issues/692)) uses this session, op and stop as they are, with
+no destination: its `destination` is a placeholder and its `cleanup` is `lower-here`. Its native programme doesn't end by
+itself. Holding is a phase, so the claims and receipts stay for as long as it is held, and the only way out is the stop.
+See [soul actions](../architecture/soul-actions.md).
+
 ## Exclusions
 
 - No universal animation language, all-body support, scheduler or building bridge.
