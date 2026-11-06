@@ -306,7 +306,8 @@ export class EngineBridge {
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
     // #442: repair with a tool in hand (mending.ts): the world changes when the receipt completes, no tick work
-    this.mending = createMending({ model: this.god.model, engine: this.host.engine as never, levelAt: (x, z, y) => this.levelAt(x, z, y), occupied: (id) => this.seatTakers(id).length > 0, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
+    this.mending = createMending({ model: this.god.model, engine: this.host.engine as never, levelAt: (x, z, y) => this.levelAt(x, z, y), occupied: (id) => this.seatTakers(id).length > 0, denied: (id, soul) => this.layers.takeRefusal(id, soul) ?? this.claimRefusal(id, soul as never),
+      reserved: (id, actor) => { const rt = (this.host.engine as unknown as { rt?: { holder(r: string): string[]; records: Map<string, { params?: { actor?: string } }> } }).rt; return !!rt?.holder(`entity:${id}`).some((r) => rt.records.get(r)?.params?.actor !== actor); }, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
     if (this.edge) this.edge.repairEffects = (r) => this.mending?.effects(r) ?? {};
     this.edge?.onReceipt((r) => { try { this.mending?.onReceipt(r); } catch (e) { this.log(`mending: ${(e as Error).message}`); } });
     // Entry 34: the watering-can act (watering.ts): planned for perceive's offers, its moments committed per tick

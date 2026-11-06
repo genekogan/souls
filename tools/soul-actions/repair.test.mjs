@@ -297,3 +297,35 @@ test('the words: only repair words that name an offer are a repair',{timeout:300
  for(const words of ['fix it','fix the cracked slat','repair the bench with the hammer']){const b=await act(ana,words);assert.equal(b.accepted,true,words+' '+JSON.stringify(b).slice(0,300));assert.equal(b.receipt.capability,cap(),words);const stop=await act(ana,'stand:here');assert.equal(stop.accepted,true);await finish(ana,stop);await tick(20);}
  assert.equal(named('bench').state.broken,true,'none of them was left to finish');void edge;
 });
+
+test('the fetch takes only a tool she may take: a private hammer is passed over, and named when it is the only one',{timeout:300000},async t=>{
+ const w=await world(t,['Ana','Ben']),{souls:{Ana:ana,Ben:ben},tick,act,finish,place,named,body,W}=w;await tick(10);
+ const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
+ place([{op:'place',def:BENCH,name:'bench',p:[ax+2,az-1.5],state:{broken:true}},{op:'place',def:HAMMER,name:'bens-hammer',p:[ax+.8,az],owner:`soul:${ben.name}`,access:'private'}]);await tick(30);
+ const cap=`object:${named('bench').id}:repair`;
+ const only=await act(ana,cap);assert.equal(only.accepted,false,JSON.stringify(only).slice(0,300));assert.equal(only.code,'repair.no-tool');
+ assert.match(only.reason,/bens-hammer, 1 m away, is not one you can take: bens-hammer is Ben's and private/,only.reason);
+ place([{op:'place',def:HAMMER,name:'shed-hammer',p:[ax-4,az+3]}]);await tick(30);
+ const b=await act(ana,cap);assert.equal(b.accepted,true,JSON.stringify(b).slice(0,300));const r=await finish(ana,b);assert.equal(r.phase,'completed',JSON.stringify(r).slice(0,300));
+ assert.equal(W().entities[named('shed-hammer').id].support?.by,ana.entityId,'she fetched the public hammer');
+ assert.notEqual(W().entities[named('bens-hammer').id].support?.kind,'in-hand','Ben\'s private hammer stays put');
+ assert.deepEqual(w.f.host.engine.rt.violations,[]);
+});
+
+test('two repairers: a hammer someone is already taking is passed over for another, or named',{timeout:300000},async t=>{
+ const w=await world(t,['Ana','Ben']),{souls:{Ana:ana,Ben:ben},tick,act,finish,place,named,body,W,relocate}=w;await tick(10);
+ const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
+ const [bx,bz]=[body(ben).pose.p[0],body(ben).pose.p[2]];
+ // the near hammer beside Ben (no relocation: an edge-relocate just before a reach trips motion.overspeed, a separate finding)
+ place([{op:'place',def:BENCH,name:'bench',p:[ax+2,az-1.5],state:{broken:true}},{op:'place',def:HAMMER,name:'near-hammer',p:[bx+.8,bz]},{op:'place',def:HAMMER,name:'far-hammer',p:[ax-5,az-4]}]);await tick(30);
+ assert.ok(Math.hypot(bx+.8-ax,bz-az)<Math.hypot(5,4),'the near hammer is the nearer one to Ana');
+ // Ben reaches for the near hammer (beside him: the take starts at once and holds it)
+ const g=await act(ben,'pick-up:'+named('near-hammer').id);assert.equal(g.accepted,true,JSON.stringify(g).slice(0,300));
+ assert.ok(await w.until(()=>w.f.host.engine.rt.holder('entity:'+named('near-hammer').id).length>0,200)>=0,'Ben\'s take holds the near hammer');
+ const b=await act(ana,`object:${named('bench').id}:repair`);assert.equal(b.accepted,true,JSON.stringify(b).slice(0,300));
+
+ const r=await finish(ana,b);assert.equal(r.phase,'completed',JSON.stringify(r).slice(0,300));await finish(ben,g);
+ assert.equal(W().entities[named('far-hammer').id].support?.by,ana.entityId,'Ana fetched the other hammer');
+ assert.equal(W().entities[named('near-hammer').id].support?.by,ben.entityId,'Ben has the one he reached for');
+ assert.deepEqual(w.f.host.engine.rt.violations,[]);
+});

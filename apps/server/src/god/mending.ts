@@ -27,6 +27,10 @@ export type MendingHost = {
   levelAt(x: number, z: number, y: number): number;
   /** Is someone sitting on or lying on it? */
   occupied(id: string): boolean;
+  /** Why this Soul may not take this thing (private, for sale, a lost-and-found claim): the pick-up offer's own answer. */
+  denied?(id: string, soul: { soulId: string; entityId: string; name: string }): Refusal | null;
+  /** Is someone else already taking it (a running take on it)? */
+  reserved?(id: string, actor: string): boolean;
   commit(ops: Op[], note: string): { accepted: boolean };
   log(m: string): void;
 };
@@ -37,7 +41,7 @@ export function createMending(h: MendingHost) {
   const toolTag = (rep: Repairable) => `tool-${rep.tool}`;
   /** god local → world (the contact actuator's convention) */
   const toWorld = (wp: { x: number; y: number; z: number; yaw: number; s: number }, l: Vec3): Vec3 => { const c = Math.cos(wp.yaw), s = Math.sin(wp.yaw); return [wp.x + (l[0] * c + l[2] * s) * wp.s, wp.y + l[1] * wp.s, wp.z + (-l[0] * s + l[2] * c) * wp.s]; };
-  function plan(soul: { entityId: string }, id: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | Refusal | null {
+  function plan(soul: { entityId: string; soulId?: string; name?: string }, id: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | Refusal | null {
     const m = M(), e = m.entities.get(id), def = e && m.resolvedDef(e.def), rep = repairableOf(def); if (!e || !def || !rep) return null;
     const name = e.name ? m.pathOf(id) : `the ${def.name.replace(/^core-/, '').replace(/-/g, ' ')}`;
     if (!isBroken(id)) return { code: 'repair.not-broken', reason: `${name} is not broken.` };
@@ -52,16 +56,23 @@ export function createMending(h: MendingHost) {
     let tool: string | undefined = keep?.id;
     if (!tool) {
       // only a tool she could go and pick up: not in someone's hand, not kept in something shut
+      // nor one she may not take (private, for sale, someone's claim), nor one someone else is already taking
       let best = Infinity, near: string | null = null, bestAt: { x: number; z: number; level: number } | null = null;
+      let barred: { id: string; d: number; why: string } | null = null;
       for (const o of m.entities.values()) {
         if (!m.resolvedDef(o.def)?.tags.includes(tag) || keptShut(m, o) || ents()[o.id]?.support?.kind === 'in-hand') continue;
         const q = m.worldPose(o), d = Math.hypot(q.x - body.pose.p[0], q.z - body.pose.p[2]);
-        if (d < best) { best = d; near = o.id; bestAt = { x: q.x, z: q.z, level: h.levelAt(q.x, q.z, q.y) }; }
+        if (d >= best) continue;
+        const no = soul.soulId ? h.denied?.(o.id, { soulId: soul.soulId, entityId: soul.entityId, name: soul.name ?? '' }) : null;
+        const why = no ? no.reason : h.reserved?.(o.id, soul.entityId) ? `someone else is already taking ${m.pathOf(o.id)}` : null;
+        if (why) { if (!barred || d < barred.d) barred = { id: o.id, d, why }; continue; }
+        best = d; near = o.id; bestAt = { x: q.x, z: q.z, level: h.levelAt(q.x, q.z, q.y) };
       }
       const at = near && bestAt && best <= TOOL_NEAR ? h.engine.standableNearV1?.([bestAt.x, bestAt.z], bestAt.level, soul.entityId, 0.4, 16) ?? null : null;
       if (!near || !bestAt || best > TOOL_NEAR || !at) {
         const where = near ? `The nearest ${rep.tool} is ${m.pathOf(near)}, ${Math.round(best)} m away${best > TOOL_NEAR ? `, further than ${TOOL_NEAR} m` : ', with no clear ground beside it'}.` : `There is no ${rep.tool} in this world that you could pick up.`;
-        return { code: 'repair.no-tool', reason: `${name} needs a ${rep.tool} in your hand, and there is no ${rep.tool} within reach here. ${where}` };
+        const also = barred && (!near || barred.d < best) ? ` (${m.pathOf(barred.id)}, ${Math.round(barred.d)} m away, is not one you can take: ${barred.why.replace(/\.$/, '')}.)` : '';
+        return { code: 'repair.no-tool', reason: `${name} needs a ${rep.tool} in your hand, and there is no ${rep.tool} within reach here. ${where}${also}` };
       }
       pre.push({ verb: 'mars:walk_to', params: { x: r3(at[0]), z: r3(at[1]), level: bestAt.level } }, { verb: 'mars:take_item', params: { item: near, hand: 'right' } });
       tool = near;

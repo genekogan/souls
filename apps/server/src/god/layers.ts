@@ -283,6 +283,10 @@ export class GodLayers {
     }
     return null;
   }
+  /** #435: the same answer a `pick-up` offer gets, for a plan that takes a thing on the way to using it. */
+  takeRefusal(id: string, soul: { soulId: string; name: string }): Refusal | null {
+    return this.refusal(id, soul) ?? (economyOn() ? this.forSale(id, soul) : null);
+  }
   /** Can this Soul use (open, sit on, take) this thing? Owners, owner-group members and those who work at it may. */
   refusal(id: string, soul: { soulId: string; name: string }): Refusal | null {
     const building = this.buildingRefusal(id, soul); if (building) return building;
