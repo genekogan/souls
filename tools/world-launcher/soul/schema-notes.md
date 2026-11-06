@@ -43,7 +43,7 @@ Use commands already supplied by this skill and boot. After acknowledging an own
 
 ## Looking
 
-`here` (near people/objects, `doHere` offers, `exits`, `district`, `far`), `around [place]` (more of the surroundings
+`inspect <id> [--all]` (what a place, thing, part, Soul or shared operation is, its state, what's in it, its offers with `params`; each id leads to the next; `more` counts what a 4 KB answer leaves out), `here` (near people/objects, `offers` by verb: a count and the nearest ids; `doHere` lists a few for one release, `exits`, `district`, `far`), `around [place]` (more of the surroundings
 and a route), `observe` (world clock, what is happening and where), `view --alt-only` (first-person sight as text),
 `view --out view.jpg` and `view --map --out map.jpg` (pictures: read the JPEG and show it), `events` (digest since your
 last `wait`), `receipt [id]`, `map`.
