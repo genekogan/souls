@@ -54,9 +54,11 @@ test('core/lockers@3: a reach cancelled at a turn where the lean is held comes b
  const ent = n => [...god.model.entities.values()].find(e => e.name === n).id, act = async capability => (await accept(f.host, app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability})}))).json();
  const up = ok(await act(`pick-up:${ent('bowl')}`)); for (let n = 0; n < 1600 && edge.receipt(soul.soulId, up.receipt.id)?.phase !== 'completed'; n++) await tick(1);
  const put = ok(await act(`put-in:${ent('spot')}`)); let n = 0; while (b.human?.activity !== 'reach' && n++ < 1600) await tick(1); assert.equal(b.human.activity, 'reach');
- const [sx, sz] = [b.pose.p[0], b.pose.p[2]]; await tick(24); const stepped = Math.hypot(b.pose.p[0] - sx, b.pose.p[2] - sz); assert.ok(stepped > 0.01, 'the lean began');
+ const [sx, sz] = [b.pose.p[0], b.pose.p[2]], exec = () => [...f.host.engine.rt.live.values()].find(l => l.exec?.lean)?.exec;
+ let held = false; for (let k = 0; k < 200 && !held; k++) {const [x, z] = [b.pose.p[0], b.pose.p[2]]; await tick(1); const ex = exec(); assert.equal(ex?.phase, 'reach', 'still reaching'); held = b.pose.p[0] === x && b.pose.p[2] === z && ex.t > 1;}
+ assert.ok(held && Math.hypot(b.pose.p[0] - sx, b.pose.p[2] - sz) > 0.01, 'the lean began and was held'); assert.ok(Math.hypot(b.pose.p[0] - exec().lean.in[0], b.pose.p[2] - exec().lean.in[1]) > 0.001, 'short of its end');
  ok(await act('stand:here')); await tick(120);
- assert.notEqual(edge.receipt(soul.soulId, put.receipt.id).code, 'engine.fault-recovered');
+ assert.equal(edge.receipt(soul.soulId, put.receipt.id).phase, 'replaced');
  assert.ok(Math.hypot(b.pose.p[0] - sx, b.pose.p[2] - sz) < 0.05, 'back where it stood');
  assert.deepEqual(f.host.engine.runtime.violations, []);
 });
