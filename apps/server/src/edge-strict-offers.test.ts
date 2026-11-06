@@ -173,4 +173,5 @@ test('a candidate resolve names is an id strict act takes, on or off the menu', 
   assert.ok(off.length, 'at least one of them is off the menu, which is the case this covers');
   const name = edge.offerGate(soul, {capability: 'walk:orchard'});
   assert.equal(name?.code, 'capability.unknown', 'a name that reads as another id stays refused');
+  assert.equal(edge.offerGate(soul, {capability: 'fly:eden-bandstand'})?.code, 'capability.unknown', 'and so does an id that is not on offer');
 });
