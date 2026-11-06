@@ -1,5 +1,5 @@
 // PC15 (#694): install_joist_v1 and lay_sheet_v1 on the bare runtime. Two loose uprights raised and held by their crews
-// (PC13), the two low beams seated between them (PC14), five deck joists set onto the beams' step ledges and a sheet laid
+// (PC13), four beams seated between them so the frames stand and the crews let go (PC14), five deck joists set onto the beams' step ledges and a sheet laid
 // across them through PC12's connectors; a snapshot in every phase; the deck invariant.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,8 +36,10 @@ CATALOG['test-pc15-sheet'] = { id: 'test-pc15-sheet', label: 'plywood sheet', ca
 const base = { bounds: [-15, -15, 15, 15], levels: [{ id: 0, y: 0, label: 'ground' }], surfaces: [{ id: 'ground', level: 0, y: 0, obb: { c: [0, 0], half: [15, 15], yaw: 0 } }], obstacles: [], links: [] } as never;
 const invariants = [...DEFAULT_INVARIANTS, looseFramesHeld as never, framesStand as never, decksBear as never];
 const registry = () => new Map([[walkTo.verb, walkTo as never], [raiseHold.verb, raiseHold as never], [connectBeamV1.verb, connectBeamV1 as never], [installJoistV1.verb, installJoistV1 as never], [laySheetV1.verb, laySheetV1 as never]]);
-/** The bay as PC14's: a lies toward −x with its base at x = 0, b toward +x; two step beams lie in it; five joists across
- *  it under their seats; a sheet beside it (+z). */
+/** The bay as PC14's: a lies toward −x with its base at x = 0, b toward +x; four step beams lie in it; five joists across
+ *  it under their seats; a sheet beside it (+z). The crews raise and hold the uprights, the beams go in at seat 0 and seat
+ *  8 on both columns (two heights: a 12 ft frame then stands on its own), the holders let go and walk clear, as a deck goes
+ *  onto a bay that stands (a holder at a column would stand where the sheet's crew stands at its corner). */
 const D = BL + 2 * T, XM = D / 2;
 const runTo = (rt: Runtime, r: ActionRecord, phase: string, extra = 4) => {
   for (let i = 0; i < 6000 && r.phase !== phase && rt.isActive(r.id); i++) rt.step();
@@ -47,21 +49,25 @@ const done = (rt: Runtime, r: ActionRecord) => { assert.notEqual(r.status, 'fail
 function site() {
   const lying = (id: string, x: number) => ({ id, kind: 'item', def: 'test-pc15-upright', pose: { p: [x, 0, 0], yaw: 0 }, support: { kind: 'ground' }, phase: 'staged' });
   const item = (id: string, def: string, x: number, z: number, yaw = 0) => ({ id, kind: 'item', def, pose: { p: [x, 0, z], yaw }, support: { kind: 'ground' }, phase: 'staged' });
-  const people = [human('a1', 0.6, -1.6), human('a2', 0.6, 1.6), human('b1', D - 0.6, -1.6), human('b2', D - 0.6, 1.6), human('i1', XM - 0.8, -1.8), human('i2', XM - 0.8, 3.0)];
+  const people = [human('a1', 0.6, -1.6), human('a2', 0.6, 1.6), human('b1', D - 0.6, -1.6), human('b2', D - 0.6, 1.6), human('i1', XM, -2.0), human('i2', XM - 0.8, 3.0)];
   const world = addAll(emptyWorld('deck-install', base), lying('A', -L / 2) as never, lying('B', D + L / 2) as never, item('bl', 'test-pc15-beam', XM, -0.42) as never, item('br', 'test-pc15-beam', XM, 0.42) as never,
+    item('ul', 'test-pc15-beam', XM, -0.85) as never, item('ur', 'test-pc15-beam', XM, 0.85) as never,
     ...[0, 1, 2, 3, 4].map((k) => item(`j${k}`, 'test-pc15-joist', XM + (k - 2) * SPAN, 0, Math.PI / 2) as never), item('S', 'test-pc15-sheet', XM, 1.7) as never, ...people);
   const rt = new Runtime(world, registry(), { spatial: new Spatial(base) }, invariants);
   const ra = rt.submit('raise_hold_v1', { crew: ['a1', 'a2'], item: 'A' }), rb = rt.submit('raise_hold_v1', { crew: ['b1', 'b2'], item: 'B' });
   runTo(rt, ra, 'hold', 0); runTo(rt, rb, 'hold', 4);
-  for (const [beam, column] of [['bl', 'l'], ['br', 'r']] as const) {
-    const b = beamBays(rt.world, beam).find((x) => x.column === column && x.height < 0.4)!;
+  for (const [beam, column, height] of [['bl', 'l', 0.3048], ['br', 'r', 0.3048], ['ul', 'l', 1.524], ['ur', 'r', 1.524]] as const) {
+    const b = beamBays(rt.world, beam).find((x) => x.column === column && Math.abs(x.height - height) < 0.01)!;
+    assert.ok(b, `${beam}: ${JSON.stringify(beamBays(rt.world, beam))}`);
     done(rt, rt.submit('connect_beam_v1', { crew: ['i1', 'i2'], beam, a: b.a, b: b.b, seats: b.seats }));
   }
+  for (const r of [ra, rb]) { rt.cancel(r.id); assert.equal(r.status, 'cancelled', JSON.stringify(r.diagnostic)); }
+  for (const [c, x] of [['a1', -2.5], ['a2', -2.5], ['b1', D + 2.5], ['b2', D + 2.5]] as const) done(rt, rt.submit('walk_to', { actor: c, x, z: rt.world.entities[c]!.pose.p[2] }));
   return { rt, ra, rb };
 }
 const joist = (rt: Runtime, k: number) => { const b = joistBays(rt.world, `j${k}`).find((x) => Math.abs(x.at - (k - 2) * SPAN) < 0.01)!; assert.ok(b, `j${k}: ${JSON.stringify(joistBays(rt.world, `j${k}`))}`); return rt.submit('install_joist_v1', { crew: ['i1', 'i2'], joist: `j${k}`, beams: b.beams, seats: b.seats }); };
 
-test('five joists onto the held frames\' beams, a sheet across them: every connector joined both ways, nothing fires', () => {
+test('five joists onto the standing frames\' beams, a sheet across them: every connector joined both ways, nothing fires', () => {
   const { rt } = site(), w = rt.world;
   for (const k of [0, 1, 2, 3, 4]) done(rt, joist(rt, k));
   for (const k of [0, 1, 2, 3, 4]) {
@@ -87,6 +93,7 @@ test('a saved world resumes in every phase, to the same state as one never saved
     assert.deepEqual(snap.dropped ?? [], [], `${verb} ${phase}: nothing dropped`);
     for (const rt of [a.rt, b]) rt.runUntilIdle(6000, [r.id]);
     assert.equal(b.stateHash(), a.rt.stateHash(), `${verb} ${phase}: same state`);
+    assert.equal(r.status, phase === 'lower' ? 'cancelled' : 'completed', `${verb} ${phase}: ${JSON.stringify(r.diagnostic)}`);
   }
 });
 
