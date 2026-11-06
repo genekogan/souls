@@ -197,6 +197,32 @@ const tictactoe: DefInput = {
       then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }, { op: 'set', field: 'players', value: '' }] },
   ] as NonNullable<DefInput['actions']> } as DefInput;
 
+// #439 W093: checkers on the same chalk-board game faculty (entry 27): the hand works the move on the face, the world keeps
+// turns, captures, crowning and the win (checkers.ts), the player steps back, a reader reads it and a wipe sets it up
+// again. `text` is the board (checkers.ts), `textBy` the two players' soul ids (X first), `players` their names.
+const checkers: DefInput = {
+  schema: 'def/1', name: 'core-checkers-board', version: 1,
+  description: 'A standing chalk board with a checkers board drawn on it, twelve pieces a side. Two Souls play by hand, taking turns (the first to move plays X, from the bottom); jumps capture and a man reaching the far row is crowned. Wiping it sets it up for a new game.',
+  tags: ['signage', 'sign-text', 'board', 'game', 'checkers', 'hand-writable'], form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: [post(-0.42), post(0.42), foot(-0.42), foot(0.42),
+    { kind: 'box', at: [0, 1.25, 0], size: [0.8, 0.7, 0.04], round: 0.01, tint: 'frame' },
+    { kind: 'box', at: [0, 1.25, 0.021], size: [0.74, 0.64, 0.006], round: 0, tint: 'board' },
+    { kind: 'box', at: [0, 0.88, 0.05], size: [0.6, 0.025, 0.07], round: 0.005, tint: 'frame' }],
+    faces: [{ at: [0, 1.25, 0.026], w: 0.7, h: 0.6, bg: '#2b322e', ink: '#f4f2e8' }] } } as unknown as DefInput['make'],
+  params: { frame: { type: 'color', default: '#7d5a3a', doc: 'frame colour' }, board: { type: 'color', default: '#2b322e', doc: 'slate colour' } },
+  palette: { frame: '#7d5a3a', board: '#2b322e' },
+  state: { text: { type: 'string', max: 35, default: '' }, textBy: { type: 'string', max: 82, default: '' }, players: { type: 'string', max: 82, default: '' } } as DefInput['state'],
+  components: { readable: { pages: 1 }, sign: { lines: [] } } as DefInput['components'],
+  size: { box: [0.9, 1.68, 0.3] },
+  actions: [
+    { name: 'move', label: 'Move a piece on the checkers board', params: {
+      from: { type: 'string', max: 4, doc: 'the square the piece is on, a1-h8 (a1 is the bottom left, seen from the front), like "c3"' },
+      to: { type: 'string', max: 4, doc: 'the square it moves to, like "d4"; two squares on along a diagonal to jump a piece' } },
+      then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }, { op: 'set', field: 'players', value: '' }] },
+    { name: 'erase', label: 'Wipe the checkers board for a new game', when: [{ field: 'text', not: '' }],
+      then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }, { op: 'set', field: 'players', value: '' }] },
+  ] as NonNullable<DefInput['actions']> } as DefInput;
+
 // Entry 38: a poster wall and a wanted/offered board (the rest of packet 34). Like the boards above, `text` is what a reader
 // reads and `textBy` is who wrote each part, here as a small JSON list (posters: slot, title, detail, author, world day; notes:
 // column, row, words, author, replies, taker). The hand actuator composes both (apps/server/src/god/actuators.ts).
@@ -266,4 +292,4 @@ const wantedBoard: DefInput = {
     { name: 'take-on', label: 'Take on a note on the wanted/offered board ("I\'ll do it")', params: { note: { type: 'string', max: 40, doc: 'words of the note, or its author\'s name' } }, when: [{ field: 'text', not: '' }], then: naive },
   ] as NonNullable<DefInput['actions']> } as DefInput;
 
-export const WRITABLE_BOARDS: DefInput[] = [whiteboard, noticeBoard, pinBoard, chalkboard, signupSheet, pollBoard, tictactoe, posterWall, wantedBoard, guestbook];
+export const WRITABLE_BOARDS: DefInput[] = [whiteboard, noticeBoard, pinBoard, chalkboard, signupSheet, pollBoard, tictactoe, posterWall, wantedBoard, checkers, guestbook];
