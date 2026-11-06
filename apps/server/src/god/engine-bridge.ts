@@ -11,6 +11,7 @@ import { menuWorldOf, type MenuWorld } from '../split/menu-world.ts';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
 import {JUGGLE} from '../../../../mars/viewer/engine/items/juggle.ts';
+import {KITE} from '../../../../mars/viewer/engine/items/kite.ts';
 import { deckRaised, railGaps, rasterOf } from '@sim/generators';
 import { applyBatch, containerInside, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
 import { assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
@@ -1807,7 +1808,7 @@ export class EngineBridge {
     caps.push({ id: 'pray', verb: 'pray', label: 'Pray to the god of this world (params: {"text": "…"}); answers come back under GET /v1/god/prayers/mine', available: true, params: { text: { type: 'string', maxLength: 2000 } } });
     const ents = this.mw.world.entities as Record<string, any>, me = ents[soul.entityId]; if (!me?.human) return;
     const here: Vec2 = [me.pose.p[0], me.pose.p[2]];
-    if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on', 'juggle')) {
+    if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on', 'juggle', 'kite', 'fly-kite')) {
       const held = Object.values(ents).find((x: any) => x.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === soul.entityId) as any;
       const name = (id: string) => (this.model.entities.has(id) ? this.model.pathOf(id) : String(ents[id]?.label ?? id));
       // MARSLIVED: a thing resting on a table is reached from the table's floor (its top's height matched Mimos's 0.53 m
@@ -1836,6 +1837,17 @@ export class EngineBridge {
           const palette = jd.palette as Record<string, string> | undefined, tint = (k: string) => String(jm!.params?.[k] ?? palette?.[k] ?? '').slice(0, 16), colors = ['one', 'two', 'three'].map(tint);
           caps.push({ id, verb: 'juggle', label, target: { id: set.id, kind: 'item' }, available: !second, ...(second ? { blocked: { code: 'juggle.hand-full', reason: 'Juggling needs the other hand free; put the other thing down first.' } } : {}), params: { seconds: { type: 'integer', min: JUGGLE.MIN_SECONDS, max: JUGGLE.MAX_SECONDS, default: 20 } } });
           if (!second) plans.set(id, { label, steps: [...stand, { verb: 'mars:juggle_v1', params: { item: set.id, seconds: 20, ...(colors.every(Boolean) ? { colors } : {}) } }], seconds: true });
+        }
+      }
+      // #441 (W108): a held kite can be flown, standing up first if seated; only while it is held
+      {
+        const inHands = held ? Object.values(ents).filter((x: any) => x.support?.kind === 'in-hand' && x.support.by === soul.entityId) as any[] : [];
+        const kiteOf = inHands.find((x) => { const m = this.model.entities.get(x.id); return m && this.model.resolvedDef(m.def)?.tags.includes('kite'); });
+        const km = kiteOf && this.model.entities.get(kiteOf.id), kd = km && this.model.resolvedDef(km.def);
+        if (kd) {
+          const second = inHands.length > 1, id = `kite:${kiteOf.id}`, label = `Fly ${name(kiteOf.id)}`, palette = kd.palette as Record<string, string> | undefined, color = String(km!.params?.sail ?? palette?.sail ?? '').slice(0, 16);
+          caps.push({ id, verb: 'fly-kite', label, target: { id: kiteOf.id, kind: 'item' }, available: !second, ...(second ? { blocked: { code: 'kite.hand-full', reason: 'Flying a kite needs the other hand free; put the other thing down first.' } } : {}), params: { seconds: { type: 'integer', min: KITE.MIN_SECONDS, max: KITE.MAX_SECONDS, default: 20 } } });
+          if (!second) plans.set(id, { label, steps: [...stand, { verb: 'mars:kite_v1', params: { item: kiteOf.id, seconds: 20, ...(color ? { color } : {}) } }], seconds: true });
         }
       }
       // floors (2026-10-26): a seat the body cannot use names the nearest one it can (or the ground)

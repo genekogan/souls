@@ -220,7 +220,7 @@ function skyOf(w: {clouds?: number; rain?: number; wind?: number; fog?: number; 
   const wind = (w.wind ?? 0) > 0.6 ? 'windy' : (w.wind ?? 0) > 0.3 ? 'breezy' : (w.wind ?? 0) > 0.1 ? 'light' : 'calm';
   return {sky, wind};
 }
-const POSE_WORDS: Record<string, string> = {walk: 'walking', wait: 'waiting', sit: 'seated', idle: 'standing', swim: 'swimming', tread: 'swimming', wade: 'wading', lie: 'lying down', nap: 'napping', read: 'reading', browse: 'at a shelf', write: 'writing', dance: 'dancing',
+const POSE_WORDS: Record<string, string> = {kite: 'flying a kite', walk: 'walking', wait: 'waiting', sit: 'seated', idle: 'standing', swim: 'swimming', tread: 'swimming', wade: 'wading', lie: 'lying down', nap: 'napping', read: 'reading', browse: 'at a shelf', write: 'writing', dance: 'dancing',
   'play-piano': 'playing the piano', 'play-music': 'playing music', sing: 'singing at the microphone', paint: 'painting', cook: 'cooking', eat: 'eating', drink: 'drinking', 'sit-ground': 'sitting on the ground', wave: 'waving', hug: 'hugging', yoga: 'doing yoga', stretch: 'stretching',
   'jumping-jacks': 'doing jumping jacks', pushups: 'doing push-ups', situps: 'doing sit-ups', jump: 'jumping', ride: 'riding', board: 'boarding', alight: 'stepping out'};
 const doingWord = (state: string, activity: string) => POSE_WORDS[activity] ?? (state === 'busy' ? activity.replace(/[-_]/g, ' ') : state);

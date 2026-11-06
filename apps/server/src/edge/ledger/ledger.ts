@@ -568,7 +568,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (patch.phase && patch.phase !== cur.phase) this.emit(this.view(next));
   }
   /** Called only inside the original terminal phase transaction. Replay only reads the immutable result. */
-  private finishOutcome(row:Row){if(this.outcomes.read(row.receipt_id))return;const receipt=this.view(row),op=receiptItemOp(this,receipt.id);this.together.onReceipt(receipt);const mind=this.host.minds.get(row.soul_id);if(!mind)return;const soul={soulId:mind.soulId,entityId:mind.entityId,name:mind.name,owner:mind.owner};this.outcomes.terminal(receipt,terminalSnapshot(this,soul,row.capability.split(':')[0]),{...confirmedTogetherEffects(this,receipt,op),...this.signReadEffects(receipt),...this.juggleEffects(receipt,soul)});this.notifyMail();}
+  private finishOutcome(row:Row){if(this.outcomes.read(row.receipt_id))return;const receipt=this.view(row),op=receiptItemOp(this,receipt.id);this.together.onReceipt(receipt);const mind=this.host.minds.get(row.soul_id);if(!mind)return;const soul={soulId:mind.soulId,entityId:mind.entityId,name:mind.name,owner:mind.owner};this.outcomes.terminal(receipt,terminalSnapshot(this,soul,row.capability.split(':')[0]),{...confirmedTogetherEffects(this,receipt,op),...this.signReadEffects(receipt),...this.juggleEffects(receipt,soul),...this.kiteEffects(receipt,soul)});this.notifyMail();}
+  /** #441 (W108): a finished flight says how the wind took it; the wind is the body's own record. */
+  private kiteEffects(r:EdgeReceipt,soul:EdgeSoul):ConfirmedEffects{if(r.phase!=='completed'||!r.capability.startsWith('kite:'))return {};const s=this.body(soul.entityId)?.human?.kiteV1;return s?.item===r.capability.slice(5)?{summary:`Flew the kite ${s.wind>.3?'high in the wind':'low in the still air'} and reeled it back in; it is still in your hand.`}:{};}
   /** #441 (W107): a finished juggling run says how it went; the count is the body's own record. */
   private juggleEffects(r:EdgeReceipt,soul:EdgeSoul):ConfirmedEffects{if(r.phase!=='completed'||!r.capability.startsWith('juggle:'))return {};const s=this.body(soul.entityId)?.human?.juggleV1;return s?.item===r.capability.slice(7)?{summary:`Juggled ${s.throws} throws in a row and caught them all; the balls are back in hand.`}:{};}
   /** A completed `read:<sign>` reports the sign's own words (a Soul's board text attributed and untrusted), never a library passage. */
@@ -1691,7 +1693,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       // an activity's own pose takes the seconds (not the short shelf visits); otherwise the resting/strolling step does
       if (posed) {for (const s of steps) if (s.verb === 'mars:pose_v1' && s.params.activity !== 'browse') s.params.seconds = params.seconds;}
       else if (cap.verb !== 'follow') {
-        const timed = steps.filter(s => s.verb === 'rest' || s.verb === 'ambient_wander' || s.verb === 'gather' || s.verb === 'mars:body_motion_v1' || s.verb === 'mars:juggle_v1');
+        const timed = steps.filter(s => s.verb === 'rest' || s.verb === 'ambient_wander' || s.verb === 'gather' || s.verb === 'mars:body_motion_v1' || s.verb === 'mars:juggle_v1' || s.verb === 'mars:kite_v1');
         // SOUL3: a seat plan with no rest after it (a god-built seat: one sit step) is timed by the sit step itself; its
         // seconds count once seated, so the walk to the seat does not use them up
         for (const s of timed.length ? timed : steps.filter(s => s.verb === 'sit')) s.params.seconds = params.seconds;

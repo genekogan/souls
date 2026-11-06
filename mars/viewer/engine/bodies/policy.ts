@@ -102,6 +102,7 @@ export const FLOATER_POLICY: Readonly<Record<string, VerbPolicy>> = {
   hand_actuator_v1: HANDS('working a switch, door, drawer, board or rope by hand'),
   let_go_v1: HANDS('letting an idle gesture go before a reach'),
   juggle_v1: HANDS('juggling a held set of balls in both hands'),
+  kite_v1: HANDS('flying a held kite on its string'),
   watering_can_v1: HANDS('carrying, filling and tilting a can by its handle'),
   cup_v1: HANDS('holding, drinking from and rinsing a mug'),
   hand_over_v1: HANDS('handing a held thing to another body'),

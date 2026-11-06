@@ -412,8 +412,8 @@ export class MarsEngine implements Engine {
       if (!p.started) {
         // A program whose first step moves the body first leaves whatever seat, circle or borrowed conversation holds it.
         // One that only waits, turns, or uses this world's own verbs (eating while seated) keeps what it has.
-        // #441: whatever comes next while the balls are up waits for them to land (juggle_v1's deferred stop) before it plans.
-        if ((NEEDS_BODY.has(p.steps[0]?.verb) || this.ents[p.actor]?.human?.activity === 'juggle') && !this.release(p.actor, { code: 'program.replaced', message: `replaced by ${p.label}` })) {
+        // #441: whatever comes next while the balls or the kite are up waits for them to come down (their deferred stops) before it plans.
+        if ((NEEDS_BODY.has(p.steps[0]?.verb) || this.ents[p.actor]?.human?.activity === 'juggle' || this.ents[p.actor]?.human?.activity === 'kite') && !this.release(p.actor, { code: 'program.replaced', message: `replaced by ${p.label}` })) {
           if (tick - p.since > RELEASE_TIMEOUT) return this.end(p, 'failed', { code: 'actor.busy', message: 'the actor was not released in time' });
           return;
         }

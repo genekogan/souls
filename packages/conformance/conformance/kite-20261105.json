@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 dexterity family (#441, W108): a kite. core-kite@2 is a new revision, a kite and its spool carried as one thing, tagged `kite` (what offers kite:<id> while it is held). core-kite@1, the standing decor kite, keeps its bytes. A narrow production K=2 run (`conformance.mjs --k 2 --filter core-kite`) found nothing, so this pins no finding.",
+  "findings": []
+}

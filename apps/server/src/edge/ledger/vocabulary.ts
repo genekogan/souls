@@ -280,6 +280,19 @@ function juggleWords(input: string, text: string, ctx: VocabContext): VocabResul
   const held = ctx.caps.some(c => c.verb === 'put-down' || c.verb === 'put-on' || c.verb === 'put-in');
   return {kind: 'unknown', code: 'juggle.no-balls', reason: held ? 'What you are holding cannot be juggled. Put it down first; to juggle you need a set of juggling balls in your hand.' : 'You are not holding anything to juggle, and there are no juggling balls within reach here.', didYouMean: []};
 }
+// #441 (W108): "fly the kite", "fly a kite for 30 seconds" while holding one; otherwise a refusal that says what is missing.
+// Nothing else after the verb is these words: "fly to the moon" and "kite surfing" fall through.
+const KITE_WORDS = /^(?:please\s+)?(?:(?:go|start|try)\s+)?fly(?:ing)?\s+(?:(?:the|a|my|your)\s+)?kite(?:\s+for\s+(\d{1,3})\s*(s|secs?|seconds?|mins?|minutes?))?[.!]*$/;
+function kiteWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
+  const m = KITE_WORDS.exec(text.trim()); if (!m) return null;
+  const cap = ctx.caps.find(c => c.verb === 'fly-kite');
+  if (cap) return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`, ...(m[1] ? {params: {seconds: Number(m[1]) * (m[2].startsWith('m') ? 60 : 1)}} : {})};
+  const near = ctx.caps.find(c => c.verb === 'pick-up' && /\bkite\b/i.test([c.label, ...(c.aliases ?? [])].join(' ')));
+  if (near) return {kind: 'unknown', code: 'kite.no-kite', reason: `You are not holding a kite. ${near.label} first (${near.id}).`, didYouMean: [{id: near.id, label: near.label}]};
+  const held = ctx.caps.some(c => c.verb === 'put-down' || c.verb === 'put-on' || c.verb === 'put-in');
+  return {kind: 'unknown', code: 'kite.no-kite', reason: held ? 'What you are holding is not a kite. Put it down first; to fly one you need a kite in your hand.' : 'You are not holding a kite, and there is none within reach here.', didYouMean: []};
+}
+
 export function resolveCapability(input: string, ctx: VocabContext): VocabResult {
   const r = resolveWords(input, ctx);
   // R2 stroll (longrun 2026-10-16: nobody moved for 70 minutes): a stroll named for the place the Soul is already in, whose
@@ -350,6 +363,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const text = input.toLowerCase(), colon = text.indexOf(':'), head = colon >= 0 ? text.slice(0, colon) : '';
   const stow = colon < 0 ? storeWords(input, text, ctx) : null; if (stow) return stow;
   const juggling = colon < 0 ? juggleWords(input, text, ctx) : null; if (juggling) return juggling;
+  const flying = colon < 0 ? kiteWords(input, text, ctx) : null; if (flying) return flying;
   // RESOLVE (SOULSIM-E "find a boat": no "find" capability): find / look for / search for X is a walk to the nearest X you
   // can reach, unless the words name an activity offered here ("find somewhere quiet to read", "find a seat" keep theirs)
   const find = colon < 0 ? FIND.exec(text.trim()) : null;

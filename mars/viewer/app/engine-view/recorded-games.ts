@@ -1,5 +1,6 @@
 import type {SampledEntity} from '../../engine/take/replay.ts';
 import {juggleBalls,type JuggleV1} from '../../engine/items/juggle.ts';
+import {kiteAt,type KiteV1,type KitePlace} from '../../engine/items/kite.ts';
 export type RecordedGame={kind:'frisbee'|'petanque'|'volleyball';group:string;players:string[];flightPolicy?:'clear-v1';since?:number;joinedAt?:number;releaseTick?:number;releaseFrameTick?:number;releaseFrom?:number;waiting?:boolean;from?:string;to?:string|null;throwTick?:number;landTick?:number;turn?:number;end?:number;jack?:[number,number];at?:[number,number];boules?:{by:string;at:[number,number]}[]};
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
@@ -18,6 +19,13 @@ export function recordedGame(value:unknown):RecordedGame|null{
 export type GameObject={key:string;kind:RecordedGame['kind']|'jack';p:[number,number,number];flight:boolean;progress:number};
 /** Release/catch landmarks fit the shared1.34m shoulder/0.62m arm model. */
 export function gameContact(kind:RecordedGame['kind']){return kind==='volleyball'?{forward:.2,height:1.85}:kind==='petanque'?{forward:.32,height:.92}:{forward:.43,height:1.05};}
+/** #441 (W108): every kite in the air, and the items they stand in for (each is drawn in the hand or in the air, never both). */
+export function recordedKites(entities:Readonly<Record<string,SampledEntity>>,absoluteTick:number):{kites:(KitePlace&{key:string;color?:string})[];items:Set<string>}{
+ const kites:(KitePlace&{key:string;color?:string})[]=[],items=new Set<string>();
+ for(const [id,e] of Object.entries(entities)){const s=e.state.kiteV1 as KiteV1|undefined;if(!s||e.state.activity!=='kite')continue; // a forced end (a god walk-out) runs no cleanup: the activity says it is over
+  const at=kiteAt(s,absoluteTick,e.p,e.yaw);if(!at)continue;items.add(s.item);kites.push({...at,key:id+':kite',...(s.color?{color:s.color}:{})});}
+ return {kites,items};
+}
 export type JuggledBall={key:string;p:[number,number,number];color?:string};
 /** #441: the balls of every juggling body, and the sets they stand in for (each set is drawn whole or as balls, never both). */
 export function recordedJuggles(entities:Readonly<Record<string,SampledEntity>>,absoluteTick:number):{balls:JuggledBall[];sets:Set<string>}{

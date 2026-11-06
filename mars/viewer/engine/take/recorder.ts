@@ -65,6 +65,7 @@ const FIELDS: [string, (e: Entity) => unknown][] = [
   ['handActuator', e=>e.human?.handActuator], // one finite native contact timeline; never controller context
   ['wateringV1', e=>e.human?.wateringV1],
   ['letGoV1', e=>e.human?.letGoV1], // Soul Actions 43: a let-go before a reach
+  ['kiteV1', e=>e.human?.kiteV1], // #441: a kite flight; the kite and the hand are pure functions of it and the tick
   ['juggleV1', e=>e.human?.juggleV1], // #441: a juggling run; balls and hands are pure functions of it and the tick
   ['cupV1', e=>e.human?.cupV1], // Soul Actions 44: a mug drunk from or rinsed
   ['handTransferV1', e=>e.human?.handTransferV1], // Soul Actions 34: a handle-held item's reach / release timeline // Soul Actions 34: one finite watering-can stage; never controller context
