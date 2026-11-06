@@ -19,7 +19,7 @@ async function world(t,names=['Ana']){
  const comms=mountEdgeRoutes(app,{host:f.host,db:f.db,souls:f.souls,ledger:edge,soul:()=>current});
  t.after(()=>{comms.close();f.host.stop();f.db.close();});
  const god=new GodMode(f.db,{worldId:f.host.worldId,ownerId:'dev:admin',tick:()=>f.host.engine.world.tick,emit(){}});
- installEngineBridge({host:f.host,god,edge,log(){},worldLore:false,worldClock:false});
+ const bridge=installEngineBridge({host:f.host,god,edge,log(){},worldLore:false,worldClock:false});
  const tick=async(n=5)=>{for(let i=0;i<n;i++){f.host.tickOnce();await setImmediate();f.host.drainInputs();}};await tick();
  const souls={};for(const name of names){const id=name.toLowerCase();await invite(f,id);const row=await accept(f.host,f.souls.create('dev:'+id,{name,description:'Repair test'}));souls[name]={soulId:row.id,entityId:row.entity_id,name:row.name,owner:row.owner};await tick();}
  const W=()=>f.host.engine.world,body=s=>W().entities[s.entityId],named=n=>[...god.model.entities.values()].find(e=>e.name===n);
@@ -31,7 +31,7 @@ async function world(t,names=['Ana']){
  const finish=async(s,b)=>{assert.ok(await until(()=>ended(s,b))>=0,'the receipt ends');return receipt(s,b);};
  const place=ops=>{const r=god.act({ops});assert.equal(r.accepted,true,JSON.stringify(r.failures?.slice(0,3)));};
  const relocate=async(s,x,z)=>{await accept(f.host,f.host.enqueue('edge-relocate','edge:'+s.soulId,{soulId:s.soulId,entityId:s.entityId,to:[x,z],why:'test placement'}));await tick(6);};
- return {f,edge,god,tick,souls,W,body,named,here,act,receipt,until,finish,place,relocate};
+ return {f,edge,god,bridge,tick,souls,W,body,named,here,act,receipt,until,finish,place,relocate};
 }
 const strip=h=>JSON.stringify(h).replace(/"(tick|t|at|now|time|clock)":[^,}]*/g,'');
 const refused=b=>JSON.stringify(b);
@@ -127,12 +127,14 @@ test('the creator moves or removes it mid-repair: failed, the hammer in hand; tw
  place([{op:'move',id:named('bench').id,p:[ax+6,az+6]}]);let r=await finish(ana,b);assert.equal(r.phase,'failed',JSON.stringify(r).slice(0,300));assert.match(JSON.stringify(r),/repair\.target-moved/);assert.equal(named('bench').state.broken,true);
  assert.equal(W().entities[named('hammer').id].support.by,ana.entityId);
  await tick(20);b=await act(ana,cap());assert.equal(b.accepted,true,JSON.stringify(b).slice(0,300));assert.ok(await until(()=>working(w,ana),800)>=0);await tick(20);
- place([{op:'remove',id:named('bench').id}]);r=await finish(ana,b);assert.notEqual(r.phase,'completed',JSON.stringify(r).slice(0,300));assert.equal(W().entities[named('hammer').id].support.by,ana.entityId);
+ place([{op:'remove',id:named('bench').id}]);r=await finish(ana,b);assert.equal(r.phase,'failed',JSON.stringify(r).slice(0,300));assert.match(JSON.stringify(r),/repair\.target/);assert.equal(W().entities[named('hammer').id].support.by,ana.entityId);
  await tick(20);place([{op:'place',def:BENCH,name:'bench',p:[ax+2,az-1.5],state:{broken:true}},{op:'place',def:HAMMER,name:'hammer2',p:[ax+1.2,az+.8]}]);await tick(30);
  await relocate(ben,ax+1.2,az+2.6);const pb=await act(ben,'pick-up:'+named('hammer2').id);const rp=await finish(ben,pb);assert.equal(rp.phase,'completed',JSON.stringify(rp).slice(0,400));
  const a1=await act(ana,cap()),b1=await act(ben,cap());assert.equal(a1.accepted,true,JSON.stringify(a1).slice(0,300));
  const ra=await finish(ana,a1);assert.equal(ra.phase,'completed',JSON.stringify(ra).slice(0,300));await tick(2);assert.equal(named('bench').state.broken,false,'whole');
- const rb=b1.accepted?await finish(ben,b1):null;console.log(JSON.stringify({two:{ana:ra.phase,ben:rb?{phase:rb.phase,code:rb.code}:{refused:b1.code}}}));
+ assert.equal(b1.accepted,true,JSON.stringify(b1).slice(0,300));const rb=await finish(ben,b1);assert.equal(rb.phase,'completed',JSON.stringify(rb).slice(0,300));
+ // whoever got there first did it, and is told so; the other is told it was whole by then
+ const said=[a1,b1].map(x=>w.edge.outcomes.read(x.receipt.id).summary).sort();assert.match(said[0],/^Repaired bench with the hammer; the hammer is still in your hand/,said[0]);assert.match(said[1],/^bench was already whole by the time you finished, so you repaired nothing/,said[1]);
  await tick(20);assert.notEqual(w.body(ben).human.activity,'reach','Ben is not stuck');assert.deepEqual(f.host.engine.rt.violations,[]);
 });
 
@@ -152,7 +154,7 @@ test('refused: the engine\'s own checks, the other hand full, no room to stand',
  assert.equal(named('bench').state.broken,true);
 });
 
-test('placement turns: repair completes at 11 turns and the hand reaches the work; a fixture dropped on the worker doesn\'t fault',{timeout:600000},async t=>{
+test('placement turns: repair completes at 11 turns and the hand reaches the work; a fixture dropped on the worker ends the repair with the hammer in hand',{timeout:600000},async t=>{
  const w=await world(t),{souls:{Ana:ana},tick,act,finish,place,named,relocate,body,until,god,f}=w;await tick(10);
  const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]],bad=[];
  let k=0;
@@ -193,7 +195,15 @@ test('second case, data only: a flat tyre on a cart, pumped up with a pump, thro
  assert.equal(w.receipt(ana,b).phase,'completed',JSON.stringify(w.receipt(ana,b)).slice(0,300));assert.equal(motion,'pump','the pump\'s own motion');await tick(2);assert.equal(named('cart').state.broken,false);
  // no code names a repairable def: only the data file does
  for(const file of ['apps/server/src/god/mending.ts','mars/viewer/engine/items/repair.ts']){const src=readFileSync(new URL('../../'+file,import.meta.url),'utf8');assert.doesNotMatch(src,/\b(?:bench|cart|hammer|tyre)\b/i,file+' names no def');}
- void relocate;void god;
+ // the cart's stand points and hand at the same 11 turns: the same data under every placement
+ for(const [k,r] of TURNS.entries()){const x=ax+4+(k%4)*6,z=az+6+Math.floor(k/4)*6,g=`cart-${k}`;await relocate(ana,x-3,z-3);
+  place([{op:'place',def:'core/cart@2',name:g,p:[x,z],r,state:{broken:true}}]);await tick(25);
+  const c=await act(ana,`object:${named(g).id}:repair`);assert.equal(c.accepted,true,g+' '+JSON.stringify(c).slice(0,300));
+  let low=Infinity;for(let n=0;n<1000&&!['completed','failed','replaced','cancelled'].includes(w.receipt(ana,c)?.phase);n++){await tick(1);const rec=working(w,ana),hh=body(ana).human.hands?.right,tg=rec?.params?.hand;if(hh&&tg)low=Math.min(low,Math.hypot(hh[0]-tg[0],hh[1]-tg[1],hh[2]-tg[2]));}
+  assert.equal(w.receipt(ana,c).phase,'completed',g+' '+JSON.stringify(w.receipt(ana,c)).slice(0,300));await tick(2);assert.equal(named(g).state.broken,false,g);assert.ok(low<.1,g+' the hand reaches the tyre: '+low);
+ }
+ assert.deepEqual(w.f.host.engine.rt.violations,[],'no violation');
+ void god;
 });
 
 test('a restart mid-repair: never stuck, the hammer held; a repair survives a restart; a broken bench stays broken',{timeout:300000},async()=>{
@@ -205,8 +215,9 @@ test('a restart mid-repair: never stuck, the hammer held; a repair survives a re
   const tick=async(n=5)=>{for(let i=0;i<n;i++){f.host.tickOnce();await setImmediate();f.host.drainInputs();}};
   const act=async(capability,params)=>(await accept(f.host,edge.act(soul,{capability,...(params?{params}:{})})));const W=()=>f.host.engine.world,me=()=>W().entities[soul.entityId];
   try{await tick();
+   if(boot>0)assert.equal(god.model.get('other').state.broken,true,'a bench nobody repaired is still broken after boot '+boot);
    if(boot===0){await invite(f,'ana');const row=await accept(f.host,f.souls.create('dev:ana',{name:'Ana',description:'Repair test'}));soul={soulId:row.id,entityId:row.entity_id,name:row.name,owner:row.owner};await tick(10);
-    const p=me().pose.p;assert.equal(god.act({ops:[{op:'place',def:BENCH,name:'bench',p:[p[0]+2,p[2]-1.5],state:{broken:true}},{op:'place',def:HAMMER,name:'hammer',p:[p[0]+.8,p[2]]}]}).accepted,true);await tick(30);
+    const p=me().pose.p;assert.equal(god.act({ops:[{op:'place',def:BENCH,name:'bench',p:[p[0]+2,p[2]-1.5],state:{broken:true}},{op:'place',def:HAMMER,name:'hammer',p:[p[0]+.8,p[2]]},{op:'place',def:BENCH,name:'other',p:[p[0]-3,p[2]+3],state:{broken:true}}]}).accepted,true);await tick(30);
     ham=[...god.model.entities.values()].find(e=>e.name==='hammer').id;bench=[...god.model.entities.values()].find(e=>e.name==='bench').id;
     const pk=await act('pick-up:'+ham);for(let n=0;n<400&&edge.receipt(soul.soulId,pk.receipt.id)?.phase!=='completed';n++)await tick(1);
     const b=await act(`object:${bench}:repair`);assert.equal(b.accepted,true,JSON.stringify(b).slice(0,300));receiptId=b.receipt.id;
@@ -221,4 +232,65 @@ test('a restart mid-repair: never stuck, the hammer held; a repair survives a re
    }else{await tick(20);assert.equal(god.model.get('bench').state.broken,false,'repaired stays repaired across a restart');}
   }finally{comms.close();f.host.stop();f.db.close();}
  }}finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('occupied: repair.occupied exactly, with a hammer in hand, and when she sits on it herself with the hammer',{timeout:300000},async t=>{
+ const w=await kit(t,['Ana','Ben'],{state:{broken:false}}),{souls:{Ana:ana,Ben:ben},tick,act,finish,place,named,grab,cap,relocate,ax,az,f}=w,bench=()=>named('bench').id;await grab();
+ await relocate(ben,ax+1,az-3);const sat=await act(ben,'sit:'+bench());assert.equal(sat.accepted,true,JSON.stringify(sat).slice(0,300));await tick(140);assert.equal(f.host.engine.bodyUsesV1(bench())?.body,ben.entityId,'Ben sits');
+ place([{op:'set',id:bench(),state:{broken:true}}]);await tick(30);
+ const other=await act(ana,cap());assert.equal(other.accepted,false);assert.equal(other.code,'repair.occupied',JSON.stringify(other).slice(0,300));assert.match(other.reason,/Someone is sitting on bench/);
+ const up=await act(ben,'stand:here');await finish(ben,up);await tick(30);
+ // whole again, she sits on it with the hammer, it breaks under her: no repairing it from the seat
+ place([{op:'set',id:bench(),state:{broken:false}}]);await tick(30);
+ const self=await act(ana,'sit:'+bench());assert.equal(self.accepted,true,JSON.stringify(self).slice(0,300));await tick(140);assert.equal(f.host.engine.bodyUsesV1(bench())?.body,ana.entityId,'Ana sits with the hammer');
+ place([{op:'set',id:bench(),state:{broken:true}}]);await tick(30);
+ const own=await act(ana,cap());assert.equal(own.accepted,false);assert.equal(own.code,'repair.occupied',JSON.stringify(own).slice(0,300));
+ assert.equal(w.W().entities[named('hammer').id].support.by,ana.entityId,'the hammer stays in hand');assert.deepEqual(f.host.engine.rt.violations,[]);
+});
+
+test('a broken seat is refused through a reading spot, not only by name',{timeout:300000},async t=>{
+ const w=await world(t),{souls:{Ana:ana},tick,act,place,named,body,edge,until}=w;await tick(10);const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
+ place([{op:'place',def:'core/bookcase@1',name:'shelves',p:[ax+5,az+4]},{op:'place',def:BENCH,name:'reading-bench',p:[ax+5,az+1.8],state:{broken:false}}]);await tick(60);
+ const bench=named('reading-bench').id,spot=()=>edge.capabilities(ana).find(c=>c.verb==='read'&&JSON.stringify(c).includes(bench)&&c.available!==false)??edge.capabilities(ana).find(c=>/^read/.test(c.id)&&c.id.includes(bench));
+ assert.ok(await until(()=>spot(),600)>=0,'a whole bench by a bookcase is a place to read: '+JSON.stringify(edge.capabilities(ana).filter(c=>/read/.test(c.id)).map(c=>c.id)));
+ const id=spot().id;
+ place([{op:'set',id:bench,state:{broken:true}}]);await tick(60);
+ const r=await act(ana,id);assert.equal(r.accepted,false,JSON.stringify(r).slice(0,300));assert.equal(r.code,'seat.broken',JSON.stringify(r).slice(0,300));
+ assert.equal(body(ana).human.seat,undefined);
+});
+
+test('R9: the same body at the same spot, whole against broken, hammer in hand: one fact and one offer, under 300 B',{timeout:300000},async t=>{
+ const w=await kit(t,['Ana'],{state:{broken:false}}),{ana,tick,here,place,named,grab,edge}=w;await grab();await tick(60);
+ const bench=named('bench').id,p0=[...w.body(ana).pose.p],whole=await here(ana);
+ assert.equal(whole.objects?.find(o=>o.id===bench)?.state?.broken,undefined,'no fact while whole');assert.equal(edge.capabilities(ana).filter(c=>/:repair$/.test(c.id)).length,0,'no offer while whole');
+ place([{op:'set',id:bench,state:{broken:true}}]);await tick(60);
+ assert.deepEqual([...w.body(ana).pose.p],p0,'the same spot');
+ const broken=await here(ana),frame=h=>{const {doHere,doHereCoverage,...rest}=h;return JSON.stringify(rest).length;},added=frame(broken)-frame(whole);
+ assert.equal(broken.objects.filter(o=>o.id===bench).length,1,'one row for the bench: '+JSON.stringify(broken.objects));
+ assert.equal(broken.objects?.find(o=>o.id===bench)?.state?.broken,'a cracked slat','one fact');assert.equal(edge.capabilities(ana).filter(c=>c.id===`object:${bench}:repair`&&c.available!==false).length,1,'one offer, available with the hammer');
+ assert.ok(added>0&&added<300,'adds under 300 B: '+added);assert.ok(JSON.stringify(broken).length<=JSON.stringify(whole).length+300,'the doHere budget holds the whole frame too');console.log(JSON.stringify({r9:{whole:frame(whole),broken:frame(broken),added}}));
+});
+
+test('a receipt announced again: it can\'t clear a later break, and a repair is noted once',{timeout:300000},async t=>{
+ const w=await kit(t),{ana,act,finish,place,named,grab,cap,tick,bridge,god}=w;await grab();
+ const b=await act(ana,cap());assert.equal(b.accepted,true,JSON.stringify(b).slice(0,300));const end=await finish(ana,b);assert.equal(end.phase,'completed',JSON.stringify(end).slice(0,300));await tick(2);
+ assert.equal(named('bench').state.broken,false);assert.equal(named('bench').state.repairedBy,end.id);
+ const version=()=>god.model.get('bench').state;bridge.mending.onReceipt(end);await tick(2);assert.deepEqual(version(),named('bench').state);
+ // the creator breaks it again, then the old receipt is announced again after a restart: it stays broken
+ place([{op:'set',id:named('bench').id,state:{broken:true}}]);await tick(5);bridge.mending.onReceipt(end);await tick(2);
+ assert.equal(named('bench').state.broken,true,'the old receipt does not clear a new break');
+ // a new repair still works, once
+ const again=await act(ana,cap());assert.equal(again.accepted,true,JSON.stringify(again).slice(0,300));assert.equal((await finish(ana,again)).phase,'completed');await tick(2);assert.equal(named('bench').state.broken,false);
+});
+
+test('the words: only repair words that name an offer are a repair',{timeout:300000},async t=>{
+ const w=await kit(t),{ana,act,grab,cap,finish,named,tick,edge}=w;
+ // "fix dinner" names nothing here: it falls through to whatever the words mean otherwise
+ const dinner=await act(ana,'fix dinner');assert.doesNotMatch(JSON.stringify(dinner),/repair[.:]/,JSON.stringify(dinner).slice(0,300));
+ assert.equal((await act(ana,'fix it')).code,'repair.no-tool','"fix it" is the one offer here');
+ assert.equal((await act(ana,'fix the cracked slat')).code,'repair.no-tool','the offer\'s own words');
+ assert.equal((await act(ana,'mend the bench')).code,'repair.no-tool');
+ await grab();
+ for(const words of ['fix it','fix the cracked slat','repair the bench with the hammer']){const b=await act(ana,words);assert.equal(b.accepted,true,words+' '+JSON.stringify(b).slice(0,300));assert.equal(b.receipt.capability,cap(),words);const stop=await act(ana,'stand:here');assert.equal(stop.accepted,true);await finish(ana,stop);await tick(20);}
+ assert.equal(named('bench').state.broken,true,'none of them was left to finish');void edge;
 });
