@@ -12,7 +12,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.12.0";
+const VERSION = "2.14.0";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -264,10 +264,11 @@ async function callOnce(url, o) {
   }
   return worldOnce(url, o);
 }
-async function worldOnce(url, { method, headers, body, timeoutMs, recoverRead }) {
+async function worldOnce(url, { method, headers, body, timeoutMs, recoverRead, signal }) {
   let r;
+  const timeout = AbortSignal.timeout(timeoutMs);
   try {
-    r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeoutMs) });
+    r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: signal && AbortSignal.any ? AbortSignal.any([timeout, signal]) : signal ?? timeout });
   } catch (e) {
     return { status: 0, data: { error: { code: "unreachable", message: String(e.message) } } };
   }
@@ -751,7 +752,7 @@ export function brief(out) {
     ...(out.accepted !== undefined ? { accepted: out.accepted } : {}), ...(out.waited ? { waited: out.waited } : {}),
     ...(sentence ? (fin ? { [key]: sentence } : { now: sentence, done: false }) : {}),
     ...(rec ? { receipt: { id: rec.id, capability: rec.capability, phase: rec.phase, ...(rec.code ? { code: rec.code } : {}), ...(!fin && out.held ? { observed: out.held } : {}) } } : {}),
-    ...(out.for ? { for: out.for } : {}), ...(out.open ? { open: true } : {}), ...(out.ownerMessages ? { ownerMessages: out.ownerMessages } : {}),
+    ...(out.for ? { for: out.for } : {}), ...(out.open ? { open: true } : {}), ...(out.ownerMessages ? { ownerMessages: out.ownerMessages } : {}), ...(out.addressed ? { addressed: out.addressed } : {}),
     ...(out.resolved?.to && out.resolved.to !== out.resolved.from ? { resolved: out.resolved.to } : {}),
   };
   for (const k of ["resolved", "receipt"]) if (JSON.stringify(o).length > 600) delete o[k];
@@ -799,10 +800,10 @@ async function waitRaw(seconds = 45, receiptId, { untilHeld = true } = {}) {
   let cursor = s.cursor ?? "c_0", ownerMark = s.ownerMark, ownerWrote = 0, gap = false;
   const since = cursor;
   const seen = [];
-  let terminal = null, held = null;
+  let terminal = null, held = null, addressed = null, addressedSince = null;
   while (Date.now() < until) {
     const t = Math.max(1, Math.min(55, Math.round((until - Date.now()) / 1000)));
-    const q = `timeout=${t}&after=${encodeURIComponent(cursor)}` + (Number.isSafeInteger(ownerMark) ? `&ownerSince=${ownerMark}` : "");
+    const q = `timeout=${t}&after=${encodeURIComponent(cursor)}` + (Number.isSafeInteger(ownerMark) ? `&ownerSince=${ownerMark}` : "") + (addressedSince != null ? `&addressedSince=${addressedSince}` : "");
     const r = await call(`/v1/edge/wait?${q}`, { timeoutMs: (t + 10) * 1000 });
     if (isBusy(r.status, r.data) || r.status === 429) {
       const ms = statedJitter(r.retryAfterMs ?? 5_000);
@@ -817,6 +818,8 @@ async function waitRaw(seconds = 45, receiptId, { untilHeld = true } = {}) {
     if (d.ownerWrote > 0) ownerWrote = d.ownerWrote;
     if (d.gap) { gap = true; break; }
     if (ownerWrote) break;
+    if (Number.isSafeInteger(d.addressedSeq)) addressedSince = d.addressedSeq;   // this wait is one wait across its requests: the serve holds it from the first
+    if (d.addressed?.length) { addressed = d.addressed; break; }   // said to this Soul; a serve hears it mid-turn (#476)
     terminal = seen.find((e) => e.receipt?.id === receiptId && TERMINAL.has(e.receipt?.phase));
     if (terminal) break;
     const latest = untilHeld ? seen.findLast((e) => e.kind === "activity.observed" && e.receipt?.id === receiptId) : null;
@@ -825,7 +828,7 @@ async function waitRaw(seconds = 45, receiptId, { untilHeld = true } = {}) {
     if (seen.some((e) => /^(invite|conversation\.(invite|turn))/.test(e.kind ?? ""))) break;
     if (!receiptId && seen.length) break;
   }
-  const out = { waited: `${Math.round((Date.now() - t0) / 1000)}s`, since, cursor, receivedAt: now(), events: seen, ...(gap ? {gap: true} : {}) };
+  const out = { waited: `${Math.round((Date.now() - t0) / 1000)}s`, since, cursor, receivedAt: now(), events: seen, ...(gap ? {gap: true} : {}), ...(addressed ? { addressed } : {}) };
   if (receiptId) {
     const rec = await receipt(receiptId).catch((e) => ({ id: receiptId, error: String(e.message) }));
     out.receipt = rec;
@@ -955,6 +958,8 @@ async function listen(...args) {
     const d = ok(r, "listen");
     attempt = 0; lastCode = undefined;
     const messages = messagesOf(d).filter((m) => m.id !== after);
+    if (d.plan) return { messages, plan: d.plan, ...(d.addressed?.length ? { addressed: d.addressed } : {}), next: d.plan.next ?? `${CLI} pending shows the plan.` };
+    if (d.addressed?.length && !messages.length) return { messages, addressed: d.addressed, next: `Said to you. Answer with say or converse if it suits; what your body is doing goes on. Restart listen${after ? ` --after ${after}` : ""} in the background.` };
     if (messages.length || once) {
       return { messages, next: messages.length ? `ack each (ack <id> "Got it: …"), restart listen --after ${messages.at(-1).id} in the background, then do them in order and result <id> done|failed "…"` : "nothing waiting" };
     }
@@ -1087,6 +1092,7 @@ async function guide() {
 // model and decides nothing: it holds what arrived until the agent reads it. Everything needed to resume is in SERVE_STATE.
 const SERVE_SOCK = ".eden-serve.sock", SERVE_LOCK = ".eden-serve.lock", SERVE_STATE = ".eden-serve.json", SERVE_LOG = ".eden-serve.log";
 const SERVE_EVENTS_MAX = 1000, PENDING_EVENTS_MAX = 100; // the world keeps 1000 events per Soul; a read hands over at most 100
+const ADDRESSED_KEEP = 20, ADDRESSED_IDLE_MS = 45_000, ADDRESSED_BYE_MS = 60_000;   // the world beats every 15 s; a slot taken by a newer stream is left alone a while
 const SERVE_BEAT_MS = 20_000, SERVE_STALE_MS = 60_000, SERVE_CLOSED_KEEP = 50;
 const ENDED = new Set(["completed", "failed", "refused", "cancelled", "interrupted", "replaced"]);
 const HELD_PATH = /^\/v1\/edge\/(wait|events)(\?|$|\/)/;  // long-polls and streams: never queued behind a heavy request
@@ -1147,7 +1153,7 @@ export function loadServeState() {
   try { return { ...d, ...JSON.parse(readFileSync(SERVE_STATE, "utf8")) }; } catch { return d; }
 }
 loadServeState.fresh = () => {
-  const d = { cursor: null, inboxAfter: null, readCursor: null, messages: [], receipts: {}, events: [], omitted: 0, gap: false };
+  const d = { cursor: null, inboxAfter: null, readCursor: null, messages: [], receipts: {}, events: [], omitted: 0, gap: false, plan: null, planEnded: [], addressed: [], addressedSeq: 0, addressedCursor: null };
   return d;
 };
 /** Pure: fold what the stream delivered into the state. */
@@ -1163,6 +1169,36 @@ export function foldEvents(st, events, cursor) {
   }
   if (cursor) st.cursor = cursor;
   return st;
+}
+/** Pure: one line of the world's classified stream, speech it counts as said to this Soul. Once each; the newest few are kept. */
+export function foldAddressed(st, env, at = Date.now()) {
+  st.addressed ??= [];
+  if (env?.kind !== "speech.to-me" || !env.id || st.addressed.some((x) => x.id === env.id)) return false;
+  st.addressedSeq = (st.addressedSeq ?? 0) + 1;
+  st.addressed.push({ seq: st.addressedSeq, id: env.id, from: env.about?.name ?? null, soulId: env.about?.soulId ?? null, text: env.data?.text ?? env.text ?? null, at: env.at ?? at, heard: false });
+  if (st.addressed.length > ADDRESSED_KEEP) st.addressed.splice(0, st.addressed.length - ADDRESSED_KEEP);
+  return true;
+}
+const addressedView = ({ id, from, soulId, text, at }) => ({ id, from, soulId, text, at, untrusted: true });
+/** Pure: what a request should hear: anything nobody has heard yet, and anything that came while this request was held, so a
+ *  wait and a listen held at the same moment both hear it. A peek looks and leaves it unheard. */
+export function takeAddressed(st, heldFromSeq, { peek = false } = {}) {
+  const fresh = (st.addressed ?? []).filter((x) => !x.heard || x.seq > heldFromSeq);
+  if (!peek) for (const x of fresh) x.heard = true;
+  return fresh.map(addressedView);
+}
+/** Pure: Server-Sent Events text into frames, and the rest to keep for the next chunk. */
+export function sseFrames(text) {
+  const parts = text.replace(/\r\n/g, "\n").split("\n\n"), rest = parts.pop();
+  return { rest, frames: parts.map((part) => {
+    const f = { event: null, id: null, data: "" };
+    for (const line of part.split("\n")) {
+      if (line.startsWith(":")) continue;
+      const i = line.indexOf(":"), k = i < 0 ? line : line.slice(0, i), v = i < 0 ? "" : line.slice(i + 1).replace(/^ /, "");
+      if (k === "event") f.event = v; else if (k === "id") f.id = v; else if (k === "data") f.data += (f.data ? "\n" : "") + v;
+    }
+    return f;
+  }) };
 }
 const readIndex = (st) => (st.readCursor ? st.events.findIndex((e) => e?.id === st.readCursor) + 1 : 0);
 function noteReceipt(st, r, at) {
@@ -1200,11 +1236,15 @@ export function takePending(st) {
     openReceipts: receipts.filter((r) => !ENDED.has(r.phase)).map(({ id, capability, phase }) => ({ id, capability, phase })),
     endedReceipts: receipts.filter((r) => ENDED.has(r.phase) && !r.read).map(({ id, capability, phase, reason }) => ({ id, capability, phase, ...(reason ? { reason } : {}) })),
     events: shown,
+    ...(() => { const a = (st.addressed ?? []).filter((x) => !x.read); for (const x of a) { x.read = x.heard = true; } return a.length ? { addressed: a.map(addressedView) } : {}; })(),
     ...(rest.length > shown.length ? { moreEvents: rest.length - shown.length } : {}),
     ...(st.omitted ? { omitted: st.omitted } : {}),
     ...(st.gap ? { gap: true, gapNote: "The stream had a gap: read here again; some events were not seen." } : {}),
     cursor: st.cursor,
+    ...(st.plan ? { plan: planView(st.plan) } : {}),
+    ...(st.planEnded?.length ? { planEnded: st.planEnded } : {}),
   };
+  st.planEnded = [];
   for (const r of receipts) if (ENDED.has(r.phase)) r.read = true;
   // A long unread tail hands over in pieces: move the read cursor only past what was shown.
   const last = rest.length > shown.length ? shown.at(-1) : st.events.at(-1);
@@ -1219,6 +1259,107 @@ export function takePending(st) {
   return out;
 }
 
+// ---------------------------------------------------------------- plan: an errand serve runs with no model call between steps
+
+// `plan` hands serve an ordered list of offered ids. Serve acts on one, reconciles its receipt, then acts on the next. A refused
+// step stops the plan and waits for the agent; nothing is substituted. Talk never replaces a plan; a newer body act does. The
+// plan lives in SERVE_STATE and each step keeps its clientRef, so a killed serve carries on and the world acts once.
+const PLAN_STEPS_MAX = 24, PLAN_FIX_WAIT_MS = 120_000, PLAN_ENDED_MAX = 20, PLAN_STEP_ID = /^[a-z][\w-]*(?::\S+)?$/i;   // some offers have no target: pray
+const PLAN_OVER = new Set(["done", "failed", "replaced"]);
+const plainObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** '["walk:mill",{"id":"sit:bench","params":{"seconds":30}}]' → {steps, fixes}. Throws what is wrong. */
+export function parsePlanSteps(text) {
+  const usage = `usage: plan '["walk:mill",{"id":"sit:bench","params":{"seconds":30}}]' [--for <message-id>|none], or plan '[{"id":"walk:pond","fixes":2}]' to replace refused step 2`;
+  let list; try { list = JSON.parse(text); } catch { throw new Error(usage); }
+  if (!Array.isArray(list) || !list.length) throw new Error(usage);
+  if (list.length > PLAN_STEPS_MAX) throw new Error(`a plan has at most ${PLAN_STEPS_MAX} steps`);
+  let fixes;
+  const steps = list.map((x) => {
+    const s = typeof x === "string" ? { id: x } : x;
+    if (!plainObject(s) || typeof s.id !== "string") throw new Error(usage);
+    if (!PLAN_STEP_ID.test(s.id)) throw new Error(`"${s.id}" is not an offered id. Ids come from here, caps and resolve "<my words>".`);
+    if (s.params !== undefined && !plainObject(s.params)) throw new Error(`${s.id}: params must be a JSON object`);
+    if (s.fixes !== undefined) { if (list.length !== 1 || !Number.isInteger(s.fixes) || s.fixes < 1) throw new Error("fixes names one refused step, by its number, in a list of one"); fixes = s.fixes; }
+    return { id: s.id, ...(s.params ? { params: s.params } : {}) };
+  });
+  return { steps, ...(fixes ? { fixes } : {}) };
+}
+/** The offer's published schema against these params, for the checks a client can make. The world still decides at the step. */
+export function stepParamsProblem(schema, params = {}) {
+  for (const [name, spec] of Object.entries(schema ?? {})) if (spec?.required && params[name] == null) return `needs ${name}`;
+  for (const [name, v] of Object.entries(params)) {
+    const spec = schema?.[name]; if (!spec || v == null) continue;
+    const kind = { integer: Number.isInteger(v), number: typeof v === "number", string: typeof v === "string", boolean: typeof v === "boolean", array: Array.isArray(v) }[spec.type];
+    if (kind === false) return `${name} must be ${spec.type === "integer" ? "an integer" : `a ${spec.type}`}`;
+    if (spec.enum && !spec.enum.includes(v)) return `${name} must be one of ${spec.enum.join(", ")}`;
+    if (typeof v === "number" && ((spec.min != null && v < spec.min) || (spec.max != null && v > spec.max))) return `${name} must be ${spec.min ?? "any"}..${spec.max ?? "any"}`;
+    if (typeof v === "string" && spec.maxLength != null && v.length > spec.maxLength) return `${name} takes at most ${spec.maxLength} characters`;
+    if (Array.isArray(v) && spec.maxItems != null && v.length > spec.maxItems) return `${name} takes at most ${spec.maxItems}`;
+  }
+  return null;
+}
+/** Pure: what `resolve` says about one step, before anything runs. A step the world's state blocks now may be open by its turn,
+ *  so only an id on no offer or params that don't fit stop the plan here. */
+export function planStepProblem(step, r) {
+  if (r?.ok === false && String(r.code ?? "").startsWith("capability.") && r.code !== "capability.unavailable") return { id: step.id, code: r.code, reason: r.reason ?? null, ...(r.did_you_mean?.length ? { did_you_mean: r.did_you_mean.slice(0, 5) } : {}), ...(r.candidates?.length ? { candidates: r.candidates.slice(0, 5) } : {}) };
+  if (r?.ok !== false && r?.would?.capability && r.would.capability !== step.id) return { id: step.id, code: "capability.unknown", reason: `"${step.id}" is not an offer on this Soul right now.`, ...(r.candidates?.length ? { candidates: r.candidates.slice(0, 5) } : {}) };
+  const c = r?.candidates?.find((x) => x.id === step.id), problem = c ? stepParamsProblem(c.params, step.params) : null;
+  return problem ? { id: step.id, code: "capability.params", reason: `${step.id}: ${problem}`, ...(c.params ? { params: c.params } : {}) } : null;
+}
+export function newPlan(steps, forId, at = Date.now()) {
+  return { id: `p_${randomUUID()}`, for: forId ?? null, state: "running", at: 0, since: at, steps: steps.map((s) => ({ ...s, clientRef: randomUUID(), state: "pending", receipt: null })) };
+}
+function planOver(p, state, at) { p.state = state; p.endedAt = at; return p; }
+function planRefused(p, s, why, at) {
+  s.state = "refused"; s.why = why;
+  if (s.replacement) return planOver(p, "failed", at);   // one replacement per step: a second refusal ends the plan
+  p.state = "stopped"; p.stoppedAt = at; p.announced = false;
+  return p;
+}
+function planNext(p, s, state, at) { s.state = state; p.at++; return p.at >= p.steps.length ? planOver(p, "done", at) : p; }
+/** Pure: the world's answer to the current step's act. */
+export function planAnswer(p, d, at = Date.now()) {
+  const s = p.steps[p.at];
+  if (!d?.accepted || !d.receipt?.id) {
+    const { code = null, reason = null, did_you_mean, alternatives, candidates } = d ?? {};
+    return planRefused(p, s, { code, reason, ...(did_you_mean?.length ? { did_you_mean: did_you_mean.slice(0, 5) } : {}), ...(alternatives?.length ? { alternatives: alternatives.slice(0, 3) } : {}), ...(candidates?.length ? { candidates: candidates.slice(0, 5) } : {}) }, at);
+  }
+  s.state = "running"; s.receipt = d.receipt.id;
+  return planPhase(p, d.receipt, at);
+}
+/** Pure: the current step's receipt moved. Any other receipt is none of the plan's business. */
+export function planPhase(p, r, at = Date.now()) {
+  const s = p.steps[p.at];
+  if (p.state !== "running" || !s || !r?.id || s.receipt !== r.id || !ENDED.has(r.phase)) return p;
+  if (r.phase === "completed") return planNext(p, s, "done", at);
+  if (r.phase === "replaced") { s.state = "replaced"; return planOver(p, "replaced", at); }
+  return planRefused(p, s, { code: r.code ?? null, reason: r.reason ?? null, phase: r.phase }, at);
+}
+/** Pure: a sit or lie with no duration keeps its receipt open while the body holds the pose. That step has done its work. */
+export function planHeld(p, e, at = Date.now()) {
+  const s = p.steps[p.at];
+  return p.state === "running" && s?.receipt && heldPhase(e, s.receipt) ? planNext(p, s, "held", at) : p;
+}
+/** Pure: the one replacement for the refused step. A string says why not. */
+export function planFix(p, fixes, step) {
+  if (p?.state !== "stopped") return "no step is waiting for a replacement";
+  if (fixes !== p.at + 1) return `step ${p.at + 1} is the refused one`;
+  p.steps[p.at] = { ...step, clientRef: randomUUID(), state: "pending", receipt: null, replacement: true, replaces: p.steps[p.at].id };
+  p.state = "running"; delete p.stoppedAt;
+  return null;
+}
+/** Pure: a refused step nobody replaced ends the plan, so the owner hears. */
+export function planExpired(p, at = Date.now(), waitMs = PLAN_FIX_WAIT_MS) { return p?.state === "stopped" && at - p.stoppedAt >= waitMs ? planOver(p, "failed", at) : p; }
+export function planView(p) {
+  const refused = p.steps.find((s) => s.state === "refused");
+  return {
+    id: p.id, state: p.state, step: Math.min(p.at + 1, p.steps.length), of: p.steps.length, ...(p.for ? { for: p.for } : {}),
+    steps: p.steps.map((s, i) => ({ n: i + 1, id: s.id, state: s.state, ...(s.receipt ? { receipt: s.receipt } : {}), ...(s.why ? s.why : {}) })),
+    ...(p.state === "stopped" && refused ? { next: `Step ${p.at + 1} was refused. Send one replacement: plan '[{"id":"<offered id>","fixes":${p.at + 1}}]'. Otherwise the plan ends failed.` } : {}),
+  };
+}
+
 async function serveForeground() {
   IS_SERVE = true;
   const start = now();
@@ -1229,7 +1370,11 @@ async function serveForeground() {
   const persist = () => { writeFileSync(SERVE_STATE + ".tmp", JSON.stringify(st), { mode: 0o600 }); renameSync(SERVE_STATE + ".tmp", SERVE_STATE); };
   const s = load(), world = need(s, "world", `Run: ${CLI} register <world-url>`);
   const auth = { "content-type": "application/json", authorization: `Bearer ${need(s, "token", "No Soul yet.")}` };
-  if (st.folder && st.folder !== folderKey(s)) st = loadServeState.fresh();
+  if (st.folder && st.folder !== folderKey(s)) {
+    const old = st.plan, ended = st.planEnded ?? [];
+    st = loadServeState.fresh();
+    st.planEnded = old ? [...ended, planView({ ...old, state: "replaced" })].slice(-PLAN_ENDED_MAX) : ended;
+  }
   st.folder = folderKey(s);
   /** The folder's world, Soul or token changed under this process (travel, create, pair, by any route): it no longer speaks for it. */
   const moved = () => { const now = load(); return folderKey(now) !== folderKey(s) || soulToken(now) !== soulToken(s); };
@@ -1274,7 +1419,47 @@ async function serveForeground() {
       const d = r.data, had = st.cursor;
       if (d.gap) st.gap = true;
       foldEvents(st, d.gap ? [] : d.events, d.cursor);
+      if (!d.gap) for (const e of d.events ?? []) if (st.plan) { planHeld(st.plan, e); if (e?.receipt?.id) planPhase(st.plan, e.receipt); }
       if ((d.events?.length && !d.gap) || d.gap || d.cursor !== had) { if (d.events?.length) lastEventAt = Date.now(); persist(); wake(); }
+      tick();
+    }
+  }
+  // The world's own classified stream names what is said to this Soul, by its rule (speech.to-me); this client doesn't repeat that rule.
+  async function addressedLoop() {
+    let attempt = 0, code;
+    while (!stopping && !terminal) {
+      const ac = new AbortController();
+      let idle, gone = false, ms = null;
+      const beat = () => { clearTimeout(idle); idle = setTimeout(() => ac.abort(), ADDRESSED_IDLE_MS); };
+      try {
+        beat();
+        const q = new URLSearchParams({ kinds: "speech.to-me", ...(st.addressedCursor ? { after: st.addressedCursor } : {}) });
+        const r = await fetch(`${world}/v1/edge/events?${q}`, { headers: { authorization: auth.authorization, accept: "text/event-stream" }, signal: ac.signal });
+        if (r.status === 404) { log("addressed speech: this world has no classified stream; speech still reaches pending"); return; }
+        if (r.status === 401 || r.status === 403) return;   // the inbox loop says so and ends things
+        if (!r.ok) { code = `http-${r.status}`; ms = retryAfterMs(r.headers, null); throw new Error(code); }
+        attempt = 0; code = undefined;
+        let text = ""; const dec = new TextDecoder();
+        for await (const chunk of r.body) {
+          beat();
+          const { frames, rest } = sseFrames(text + dec.decode(chunk, { stream: true }));
+          text = rest;
+          let woke = false;
+          for (const f of frames) {
+            if (f.event === "bye") { gone = true; continue; }
+            if (f.event === "hello" && !st.addressedCursor) { try { st.addressedCursor = JSON.parse(f.data).cursor ?? null; persist(); } catch { /* the next id does */ } continue; }
+            if (f.id) st.addressedCursor = f.id;
+            if (f.event !== "speech.to-me") continue;
+            let env; try { env = JSON.parse(f.data); } catch { continue; }
+            if (foldAddressed(st, env)) woke = true;
+          }
+          if (woke) { persist(); wake(); }
+        }
+      } catch (e) { if (!code && !ac.signal.aborted) log(`addressed speech: ${e?.message ?? e}`); }
+      finally { clearTimeout(idle); }
+      if (stopping || terminal) return;
+      attempt = Math.min(attempt + 1, 6);
+      await pause(gone ? ADDRESSED_BYE_MS : ms != null ? statedJitter(ms) : fullJitter(attempt));
     }
   }
   // One heavy request at a time, and soul.busy waited out here instead of handed back. Only reads and keyed writes repeat.
@@ -1302,34 +1487,152 @@ async function serveForeground() {
     }
     return r;
   }
+  // A wait held through this serve ends when something is said to this Soul. The cursor stays where it was, so the next wait
+  // still gets the events, and the world's own wait, no longer wanted, is dropped. Nothing about the body changes.
+  async function heldWait(m) {
+    // The speech is on the world's wait too, so that request can answer and the next begin just as the classified stream says so.
+    // A wait's requests all count from the first, or a listener hearing it in that moment would leave this wait with nothing.
+    const url = new URL(m.url), since = Number(url.searchParams.get("addressedSince") ?? NaN);
+    url.searchParams.delete("addressedSince");
+    const heldFrom = Number.isSafeInteger(since) ? since : st.addressedSeq ?? 0, cursor = url.searchParams.get("after");
+    const ended = (addressed) => { persist(); return { status: 200, data: { events: [], ...(cursor ? { cursor } : {}), addressed, addressedSeq: heldFrom } }; };
+    const now = takeAddressed(st, heldFrom);
+    if (now.length) return ended(now);
+    const ac = new AbortController();
+    let onSpeech;
+    const said = new Promise((done) => { onSpeech = () => { const a = takeAddressed(st, heldFrom); if (a.length) done(a); else waiters.push(onSpeech); }; waiters.push(onSpeech); });
+    const asked = worldOnce(url.href, { method: m.method, headers: m.headers, timeoutMs: m.timeoutMs, signal: ac.signal }).catch((e) => ({ status: 0, data: { error: { code: "unreachable", message: String(e?.message ?? e) } } }));
+    const first = await Promise.race([asked.then((r) => ({ r })), said.then((a) => ({ a }))]);
+    if (first.a) { ac.abort(); return ended(first.a); }
+    waiters = waiters.filter((f) => f !== onSpeech);
+    return first.r.data && typeof first.r.data === "object" ? { ...first.r, data: { ...first.r.data, addressedSeq: heldFrom } } : first.r;
+  }
   async function localListen(url) {
     // The world's own rule (Inbox.takeBacklog): every message not acknowledged after the cursor, however often it has been seen.
     // A wait's timeoutMs=0 peek comes through here too, and must not take a message from the listener waiting for it.
     const q = new URL(url).searchParams, after = q.get("after"), until = Date.now() + Math.min(Number(q.get("timeoutMs") ?? 25_000), 55_000);
+    const peek = !(Number(q.get("timeoutMs")) > 0), heldFrom = st.addressedSeq ?? 0;
     for (;;) {
       if (terminal) return terminal;
       const backlog = st.messages.slice(after ? st.messages.findIndex((m) => m.id === after) + 1 : 0).filter((m) => !m.acked);
-      if (backlog.length) {
+      const stopped = st.plan?.state === "stopped" && !st.plan.announced ? st.plan : null;   // a refused step wakes the agent
+      const addressed = takeAddressed(st, heldFrom, { peek });   // said to this Soul: a wake too, and a peek doesn't use it up either
+      if (backlog.length || stopped || addressed.length) {
+        if (stopped && !peek) stopped.announced = true;   // a peek shows it but doesn't use up the wake
+        if ((stopped && !peek) || (addressed.length && !peek)) persist();
         const out = backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt, state: "delivered" }));
-        return { status: 200, data: { inbox: { connected: true, latest: out[0], queued: 0 }, backlog: out } };
+        return { status: 200, data: { inbox: { connected: true, ...(out[0] ? { latest: out[0] } : {}), queued: 0 }, backlog: out, ...(stopped ? { plan: planView(stopped) } : {}), ...(addressed.length ? { addressed } : {}) } };
       }
       const left = until - Date.now();
       if (left <= 0) return { status: 200, data: { inbox: { connected: true, queued: 0 }, backlog: [] } };
       await new Promise((done) => { const t = setTimeout(done, left); waiters.push(() => { clearTimeout(t); done(); }); });
     }
   }
+  // One plan step at a time, through the same gate as every heavy request. A step the world did not answer is asked again with
+  // its own clientRef and key, so it acts once however many tries it takes.
+  let planBusy = false, planReadAt = 0;
+  const tick = () => { planTick().catch((e) => log(`plan: ${e?.message ?? e}`)); };
+  const closeLater = (p) => { closePlan(p).then((sent) => { if (!sent) pendingClose.push(p); }, (e) => { log(`plan: ${e?.message ?? e}`); pendingClose.push(p); }); };
+  async function closePlan(p) {
+    if (p.servedByAct > 0) return false;   // that act's answer decides; the next tick looks again
+    if (p.for && !p.resultSent) {
+      const failedAt = p.steps.find((s) => s.state === "refused"), line = p.state === "done" ? `Finished all ${p.steps.length} steps.` : p.state === "replaced" ? "Replaced by a newer request." : `Stopped at step ${p.at + 1}: ${failedAt?.why?.reason ?? failedAt?.why?.code ?? "refused"}`;
+      const r = await forward({ url: `${world}/v1/edge/inbox/${encodeURIComponent(p.for)}/result`, method: "POST", headers: { ...auth, "idempotency-key": `${p.id}:result` }, body: { outcome: p.state === "done" ? "done" : "failed", text: line.slice(0, 140) }, timeoutMs: 40_000 });
+      if (r.status === 0 || r.status === 429 || r.status >= 500) return false;   // the next tick tries again
+      if (r.status === 409 && codeOf(r.data) !== "finished") return false;
+      p.resultSent = true;
+    }
+    st.planEnded = [...(st.planEnded ?? []), planView(p)].slice(-PLAN_ENDED_MAX);
+    if (st.plan === p) st.plan = null;
+    persist();
+    return true;
+  }
+  async function planTick() {
+    if (planBusy) return;
+    planBusy = true;
+    try {
+      for (;;) {
+        const p = st.plan;
+        if (!p) return;
+        planExpired(p);
+        if (PLAN_OVER.has(p.state)) { if (!(await closePlan(p))) return; continue; }
+        if (p.state !== "running") return;
+        const s = p.steps[p.at];
+        if (s.state !== "pending") return;
+        const last = p.at === p.steps.length - 1;
+        // Only the last step closes the owner's message; an earlier one posts progress and the card stays open (the world's D3c).
+        const r = await forward({ url: `${world}/v1/edge/act`, method: "POST", headers: { ...auth, "idempotency-key": s.clientRef }, timeoutMs: 40_000,
+          body: { capability: s.id, ...(s.params ? { params: s.params } : {}), clientRef: s.clientRef, strict: true, ...(p.for ? { for: p.for, ...(last ? {} : { forDefault: true }) } : {}) } });
+        if (st.plan !== p || s.state !== "pending") return;   // replaced while it was asking
+        if (r.status === 0 || r.status === 429 || r.status >= 500 || isBusy(r.status, r.data)) return;   // the next tick tries again
+        const wasStopped = p.state;
+        planAnswer(p, r.status >= 200 && r.status < 300 ? r.data : { accepted: false, code: codeOf(r.data) ?? `http-${r.status}`, reason: r.data?.error?.message ?? null });
+        // A short act can end on the stream before its answer is back.
+        const seen = s.receipt ? st.receipts[s.receipt] : null;
+        if (seen?.phase) planPhase(p, { id: s.receipt, phase: seen.phase, reason: seen.reason });
+        for (const ev of st.events.slice(-20)) planHeld(p, ev);
+        persist();
+        if (p.state === "stopped" && wasStopped !== "stopped") { log(`plan: step ${p.at + 1} refused (${s.why?.code})`); wake(); }
+      }
+    } finally { planBusy = false; }
+  }
+  // The stream reports each receipt; a read every so often covers a gap in it.
+  async function planPoll() {
+    const p = st.plan, s = p?.steps[p.at];
+    if (p?.state === "running" && s?.receipt && Date.now() - planReadAt >= 15_000) {
+      planReadAt = Date.now();
+      const r = await worldOnce(`${world}/v1/edge/receipts/${encodeURIComponent(s.receipt)}`, { method: "GET", headers: auth, timeoutMs: 25_000 });
+      if (st.plan === p && r.status === 200 && r.data?.receipt) { planPhase(p, r.data.receipt); persist(); }
+    }
+    await planTick();
+  }
+  function startPlan(m) {
+    const old = st.plan;
+    if (m.fixes) {
+      const no = planFix(old, m.fixes, m.steps[0]);
+      if (no) return { accepted: false, code: "plan.no-fix", reason: no, ...(old ? { plan: planView(old) } : {}) };
+    } else {
+      if (old) {
+        // A plan already over keeps how it ended, even while its result is still being sent.
+        if (!PLAN_OVER.has(old.state)) { if (old.for && old.for === m.for) old.resultSent = true; planOver(old, "replaced", Date.now()); }
+        pendingClose.push(old);
+      }
+      st.plan = newPlan(m.steps, m.for);
+    }
+    persist();
+    for (const p of pendingClose.splice(0)) closeLater(p);
+    tick();
+    return { accepted: true, plan: planView(st.plan), next: `Serve runs it now, with no model call between steps. ${CLI} pending shows how it goes.` };
+  }
+  const pendingClose = [];
   async function handle(m) {
     if (moved()) { log("the folder's world, Soul or token changed: stopping"); setTimeout(() => shutdown(0), 10); return m.op === "http" ? { status: 0, data: { error: { code: "unreachable", message: "this serve stopped: the folder moved to another world or Soul" } } } : { serving: false, stopping: true, moved: true }; }
+    if (m.op === "plan") return startPlan(m);
+    if (m.op === "planStatus") return st.plan ? { plan: planView(st.plan) } : { plan: null, ...(st.planEnded?.length ? { planEnded: st.planEnded } : {}) };
     if (m.op === "pending") { const out = takePending(st); persist(); return out; }
     if (m.op === "status") return { serving: true, pid: process.pid, since: start, cursor: st.cursor, inboxAfter: st.inboxAfter, unacked: st.messages.filter((x) => !x.acked).length, openReceipts: Object.values(st.receipts).filter((r) => !ENDED.has(r.phase)).length, unreadEvents: st.events.length - readIndex(st), busyWaited, lastEventAt, ...(terminal ? { ended: codeOf(terminal.data) ?? terminal.status } : {}) };
     if (m.op === "stop") { setTimeout(() => shutdown(0), 10); return { stopping: true, pid: process.pid }; }
     if (m.op === "http") {
       const path = routeOf(m.url);
       if (path === "/v1/edge/inbox/listen") return localListen(m.url);
+      if (path === "/v1/edge/wait" && m.method !== "POST") return heldWait(m);
       const cached = m.method === "GET" && /^\/v1\/edge\/receipts\/([^/]+)$/.exec(path);
       const known = cached ? st.receipts[decodeURIComponent(cached[1])] : null;
       if (known?.full && ENDED.has(known.phase)) return { status: 200, data: { receipt: known.full } };
+      // An act for the plan's own message serves it, so the plan won't close it. Noted before the request: on a real world the step's
+      // replaced comes down the stream before this act's answer comes back.
+      const planActFor = path === "/v1/edge/act" && m.method === "POST" && st.plan && m.body?.for && m.body.for === st.plan.for ? st.plan : null;
+      if (planActFor) planActFor.servedByAct = (planActFor.servedByAct ?? 0) + 1;
       const r = await forward(m);
+      if (planActFor) { planActFor.servedByAct--; if (r.data?.accepted && r.data.receipt?.id) planActFor.resultSent = true; }
+      // A newer body act replaces the plan; talk and attention don't. A body act's answer names no channel: the receipt says what
+      // isn't one (attention for a look, none for a prayer or a mark). Swept on a real world: every other accepted act replaced a
+      // running walk, a wave and a stand included. (The plan's own acts don't come through here.)
+      if (path === "/v1/edge/act" && m.method === "POST" && st.plan && !PLAN_OVER.has(st.plan.state) && r.data?.accepted && r.data.receipt?.id && !["attention", "none"].includes(r.data.channel ?? r.data.receipt.channel)) {
+        const p = st.plan;
+        if (p.for && p.for === m.body?.for) p.resultSent = true;
+        planOver(p, "replaced", Date.now()); persist(); tick();
+      }
       if (cached && r.status === 200 && r.data?.receipt?.id) { noteReceipt(st, r.data.receipt, Date.now()); if (ENDED.has(r.data.receipt.phase)) st.receipts[r.data.receipt.id].full = r.data.receipt; persist(); }
       return r;
     }
@@ -1353,6 +1656,8 @@ async function serveForeground() {
   };
   for (const [sig, n] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) process.once(sig, () => shutdown(n));
   try { unlinkSync(SERVE_SOCK); } catch { /* none */ }
+  // Without its socket this process can do nothing: it stops rather than hold the lock.
+  server.on("error", (e) => { log(`socket: ${e?.message ?? e}; stopping`); shutdown(1); });
   // The socket answers `pending` with the owner's messages: as private as the state file.
   const umask = process.umask(0o177);
   server.listen(SERVE_SOCK, () => { process.umask(umask); log(`serving pid ${process.pid}, cursor ${st.cursor ?? s.cursor ?? "c_0"}`); });
@@ -1361,7 +1666,9 @@ async function serveForeground() {
   process.on("unhandledRejection", (e) => log(`unhandled: ${e?.message ?? e}`));
   process.on("uncaughtException", (e) => log(`uncaught: ${e?.message ?? e}`));
   const keep = (name, loop) => { loop().catch((e) => { log(`${name}: ${e?.message ?? e}; starting it again`); setTimeout(() => keep(name, loop), 1_000); }); };
-  keep("inbox", inboxLoop); keep("stream", eventLoop);
+  keep("inbox", inboxLoop); keep("stream", eventLoop); keep("addressed", addressedLoop);
+  setInterval(() => { for (const p of pendingClose.splice(0)) closeLater(p); planPoll().catch((e) => log(`plan: ${e?.message ?? e}`)); }, 5_000);
+  tick();
   await new Promise(() => {});
 }
 
@@ -1403,6 +1710,36 @@ async function pending() {
   return a;
 }
 
+// plan '<ordered offered ids>' [--for <id>|none]: checked here before any step runs, then run by the serve.
+async function plan(...argv) {
+  if (argv[0] === "--status") {
+    const a = await askServe({ op: "planStatus" });
+    if (!a || a.lost) throw new Error(`No serve in this folder. Start one: ${CLI} serve`);
+    return a;
+  }
+  const { args, for: forArg } = waitOption(argv);
+  const { steps, fixes } = parsePlanSteps(args[0] ?? "");
+  const up = await askServe({ op: "status" });
+  if (!up?.serving) throw new Error(`A plan runs in serve, and none is up in this folder. Start one: ${CLI} serve`);
+  const problems = [];
+  for (const step of steps) {
+    const r = ok(await call("/v1/edge/resolve", { body: { capability: step.id, ...(step.params ? { params: step.params } : {}) } }), "resolve").resolve;
+    const no = planStepProblem(step, r);
+    if (no) problems.push(no);
+  }
+  if (problems.length) {
+    process.exitCode = 2;
+    return { accepted: false, code: problems[0].code, reason: `No step ran: ${problems[0].reason ?? problems[0].id}`, problems, note: "Every step is checked against what is offered from here, before anything moves. A step offered only once an earlier one is done can't be checked yet: plan up to there, and send it after." };
+  }
+  const s = load(), implicit = forArg === undefined && s.lastAcked && !s.lastAckedActed && Date.now() - Date.parse(s.lastAckedAt ?? 0) < IMPLICIT_FOR_MS;
+  const forId = forArg === "none" ? undefined : forArg ?? (implicit ? s.lastAcked : undefined);
+  const a = await askServe({ op: "plan", steps, ...(fixes ? { fixes } : {}), ...(forId ? { for: forId } : {}) }, 45_000);
+  if (!a || a.lost) throw new Error("the serve process stopped before it took the plan");
+  if (!a.accepted) process.exitCode = 2;
+  else if (implicit) save({ lastAckedActed: true });
+  return a;
+}
+
 // batch '[{"here":{}},{"receipt":"r_1"}]': several reads in one call; each answer or error stands on its own.
 const BATCH_READS = new Set(["here", "observe", "around", "explore", "caps", "capabilities", "map", "context", "inspect", "receipt", "events", "conversations", "status", "pending"]);
 async function batch(json) {
@@ -1432,7 +1769,8 @@ do        act <offer:id> [params-json] [--wait [s]] [--for id|none] [--json]   r
 owner     listen [--after id] [--once]   ack <id> ["reply"]   result <id> done|failed "<text>"
           now "<public one-line status>" | now --clear   (or add --now "<line>" to act, say, ack, result, wait)
 self      profile [name|description|photo …]   body [presets|set|look …]   travel [<world>|home]
-resident  serve [--status|--stop]   (one detached process per folder: holds inbox, stream and receipts; everything else still works without it)
+resident  serve [--status|--stop]   (one detached process per folder: holds inbox, stream and receipts; wakes listen and ends a wait when something is said to you; everything else still works without it)
+          plan '["walk:mill",{"id":"sit:bench","params":{"seconds":30}}]' [--for id|none]   (serve runs the steps in order, no model call between them; a refused step stops it: pending shows why, plan '[{"id":"<id>","fixes":<step>}]' replaces it once)
           pending   (what arrived since you last read, no world call)   batch '[{"here":{}},{"receipt":"<id>"}]'   (several reads, one call)
 `;
 
@@ -1441,7 +1779,7 @@ async function inspect(id, ...flags) {
   return ok(await call(`/v1/edge/inspect/${encodeURIComponent(id)}${flags.includes("--all") ? "?all=1" : ""}`), "inspect").inspect;
 }
 
-const commands = { inspect, now: nowLine, register, create, pair, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), serve, pending, batch, help: async () => HELP };
+const commands = { plan, inspect, now: nowLine, register, create, pair, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), serve, pending, batch, help: async () => HELP };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [cmd, ...args] = process.argv.slice(2);
