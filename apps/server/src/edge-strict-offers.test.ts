@@ -11,6 +11,7 @@ import {fixture, invite, accept, factory} from '../test/native-owner-fixture.ts'
 import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {mountEdgeRoutes} from './edge/routes.ts';
 import {paramsProblem, offerParams} from './edge/intents/offer-schema.ts';
+import {compactDoHere} from './edge/perception/here.ts';
 
 async function world(t: {after(fn: () => void): void}) {
   const dir = mkdtempSync(join(tmpdir(), 'strict-offers-'));
@@ -102,6 +103,10 @@ test('here carries the shared parameters of the verbs it lists, inside its budge
   const {here} = await w.get('/v1/edge/here?include=doHere');
   for (const o of here.doHere) if (here.doHereParams[o.verb]) assert.ok(Object.keys(here.doHereParams[o.verb]).length);
   assert.ok(Object.keys(here.doHereParams).every((v: string) => here.doHere.some((o: any) => o.verb === v)));
+  // the map must not push the offers out: seen on a real world, where the budget left after the frame is about 650 bytes
+  const tight = compactDoHere(Array.from({length: 29}, (_, i) => ({id: `dance:here${i}`, verb: i % 2 ? 'dance' : 'sit', label: 'Do a thing here', available: true})).map(c => ({...c, id: c.id.replace(/\d+$/, '') + (c.id.endsWith('here0') ? '' : '')})) as never, new Set(), 652);
+  assert.ok(tight.doHere.length >= 5, JSON.stringify(tight));
+  assert.ok(Buffer.byteLength(JSON.stringify([tight.doHere, tight.doHereParams])) <= 652);
   assert.ok(Buffer.byteLength(JSON.stringify(here)) <= 2600 + 400, 'the frame stays small');
 });
 

@@ -38,6 +38,10 @@ export function paramsByVerb(verbs: Iterable<string>): Record<string, ParamSchem
   for (const v of new Set(verbs)) if (VERB_PARAMS[v]) out[v] = VERB_PARAMS[v]!;
   return out;
 }
+/** The schema without its prose, for the budgeted `here`: name, type, bounds, enum. */
+export function compactParams(by: Record<string, ParamSchema>): Record<string, ParamSchema> {
+  return Object.fromEntries(Object.entries(by).map(([v, sch]) => [v, Object.fromEntries(Object.entries(sch).map(([n, {description: _d, items: _i, ...spec}]) => [n, spec]))]));
+}
 /** One offer's whole schema: its verb's parameters, then its own. */
 export function offerParams(cap: Pick<EdgeCapability, 'verb' | 'params'>): ParamSchema {
   return {...VERB_PARAMS[cap.verb], ...(cap.params as ParamSchema | undefined)};
