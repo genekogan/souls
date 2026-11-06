@@ -324,10 +324,13 @@ function checkersWords(input: string, ctx: VocabContext): VocabResult | null {
 // bowl's take from inside it. A shut container's contents are never offered: its words name its open offer instead.
 // #435: an open shelf a Soul keeps things on (a swap shelf) is a container too: "leave the bowl on the swap shelf" and
 // "take the bowl off the swap shelf". "on" is a put-in only when no surface by those words is on offer (a table stays put-on).
-const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
+const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip|throw|chuck|toss)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
 const UNSTOW = /^(?:please\s+)?(?:take|get|fetch|remove|grab|lift|pull|pick\s+up|pick)\s+(.+?)\s+(?:out\s+of|out\s+from|from\s+inside|from\s+in|from|off\s+of|off)\s+(.+?)[.!]?$/;
+// #1088 (W065): "throw the wrapper away", "throw away the litter", "bin it" put a held thing in the nearest bin on offer
+const THROW_AWAY = /^(?:please\s+)?(?:(?:throw|chuck|toss)\s+(?:away\s+(.+?)|(.+?)\s+away)|bin\s+(.+?))[.!]?$/;
 function storeWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
-  const put = STOW.exec(text), take = put ? null : UNSTOW.exec(text), m = put ?? take; if (!m) return null;
+  const away = THROW_AWAY.exec(text);
+  const put = away ? [text, away[1] ?? away[2] ?? away[3] ?? 'it', 'in', 'bin'] : STOW.exec(text), take = put ? null : UNSTOW.exec(text), m = put ?? take; if (!m) return null;
   const verb = put ? 'put-in' : 'pick-up', pool = ctx.caps.filter(c => c.verb === verb); if (!pool.length && put) return null;
   const words = (x: string) => tokens(x).filter(w => !['the', 'a', 'an', 'my', 'your', 'it', 'its', 'of', 'top'].includes(w));
   const thing = words(m[1]), box = words(put ? m[3] : m[2]), hits = (c: EdgeCapability, ws: string[]) => {const t = ctx.target(c), all = tokens([c.id, c.label, ...t.names].join(' ')); return ws.every(w => tokenHit(w, all) || (SYNONYMS[w] ?? []).some(s => tokenHit(s, all)));};

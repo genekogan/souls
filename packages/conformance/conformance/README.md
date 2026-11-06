@@ -51,6 +51,7 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `swap-shelf-20261105.json` | `core-swap-shelf@1` (an open shelf on the container faculty, no door, a `leftBy` record); pins nothing |
 | `guestbook-20261105.json` | `core-guestbook@1` (a visitors' book on the sign-up faculty); pins nothing |
 | `lost-and-found-20261105.json` | `core-lost-and-found@1` (the swap shelf's form with an owner claim, `claim: "owner"`); pins nothing |
+| `litter-20261106.json` | `core-bin@2`, `core-wheelie-bin@2` (bins open at the top on the container faculty) and `core-wrapper@1` (litter); pins nothing |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
 Repair a range or budget in a new revision and pin what remains.
