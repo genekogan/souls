@@ -2,6 +2,49 @@
 
 User-facing changes to Sim, newest first. Each release is compiled from `changes/` fragments.
 
+## 4.15 (2026-11-05)
+
+### Features
+
+- God mode can bring your own 3D models and images into a world (`upload`, one file or a manifest), tells you before sending when a file is over the world's budget, and ships a reducer that fits heavy scans to it without touching the originals. (#760)
+- Agents can set up a local body-authoring folder with one command, start from a sculpture, humanoid or rolling robot, and preview and check a body before uploading it.
+- Souls can rediscover their bodies across worlds. `body library` pages through your saved bodies and the shared core, and `body show`, `body save` and `body forget` work by reference. Your uploads start private: `body publish` lets other owners look one up and wear it by its reference, until you `body unpublish` it or moderation withdraws it.
+- Add Juniper, a compact centaur foal, as a shared Soul body. It walks on four legs, dances in place, rests standing and picks things up with its hands. Sitting, lying down, swimming, rides and paired contact acts are refused with its reason. Owners can author their own four-legged bodies with the new `quadruped-torso/1` profile, whose lower body must fit the ordinary footprint.
+- Shared body presets such as Pip, the monster, the ghost and the centaur now show a version and content address in the core body library (`pip@1 → body_…`), and a Soul can select an exact version (`body set pip@1`). A released preset never changes: a new design ships under a new name, and the old one stays available.
+- Agents can author and validate named custom bodies locally, rediscover their uploads, and select Little Martians that glide and dance in place. Uploaded body files now have tighter ceilings: 4 MiB (was 16 MiB), 10,000 triangles (was 100,000), 2 images (was 8) of at most 1024 px (was 2048) and 1 MiB each (was 4 MiB). The served authoring skill's download links keep the world's public https address behind the proxy.
+- Gods can place a loose rack beam, a 12 ft rack frame and a single plywood sheet; a Soul carries the beam or sheet with both hands and lays it down, and is told the frame needs two carriers.
+- Two new shared bodies: Grumble the monster, who walks, dances and carries things like any humanoid, and Wisp the ghost, who glides and dances but cannot hold things.
+- On a phone, the first touch shows how the thumbs work, the camera menu opens as a bottom sheet with Follow, the controls stay clear of the notch and home bar, and following or arriving gives a small vibration where the phone supports it.
+- Make Pip a shared robot Soul preset with an explicit rolling/gripper action profile, upright standby and safe refusal of sitting and unsupported actions. Paired acts with Pip (give, holding hands, high-fives, handshakes, hugs, partner dance, rock-paper-scissors) are shown as unavailable with Pip's reason, on either side.
+- When a Soul is asked to do something the world cannot match (such as flying), the refusal now names up to three things it can do right there instead.
+- Add a reproducible locally authored rolling robot body example, with visible grippers, wheel animation and counter-rotating head/torso dance.
+- On a phone, one tap on a Soul follows it with a small chip at the bottom, a sideways swipe switches to the next Soul, a tap on the ground gives you the camera there, and Broadcast says who it is showing with a Follow button.
+- On a phone, the Free camera now walks with a thumb stick in the lower left, looks around with one finger, glides with a pinch and rises with two fingers.
+- A Soul that travels now keeps its uploaded or authored body (for example Pip or the centaur) when the destination admits it: the body travels as a reference and the bytes are fetched and checked there. If the destination cannot admit it, or cannot fetch it within a few seconds, the Soul arrives in the default look and its travel log says why.
+- The world list shows a picture of each world, and a world's god can take one from god mode with `eden-god thumbnail` (a framed view of the world at midday) and retake it at any time.
+- A world's owner can give it a picture for the world list (a 16:9 JPEG, checked and stripped of metadata like every upload), and a world without one shows its template's default.
+
+### Fixes
+
+- Mixed humanoid trousers and shoes gain calf skin where the original outfit left a gap.
+- A Soul whose action failed or was replaced is told it failed, with the reason, instead of seeing a success line such as "Boarded …".
+- Named flags are wayfinding destinations. `around orchard` (or "the orchard flag") answers with the flag's distance, direction and walk, `map` lists the flags, and a walk to a flag ends "walk completed at the orchard flag." instead of "at world". (#375)
+- The Free camera no longer stops at an invisible wall near the edge of the world when you move with WASD.
+- The God button's lightning bolt is centred, and its border turns green while your god agent is connected (the red and green dot is gone).
+- Grass and wildflowers no longer grow on the floors of rooms inside uploaded or kit-built buildings.
+- The Souls halo at the top left always sits in a black circle, so it shows in the light theme and on the world list.
+- The merge train keeps going after a merge: the Next PR dispatch now uses the workflow token, which the fine-grained PAT was refused for.
+- Keep seated pianists' hands on the keyboard through solo, duet and singing performances, with key strikes following the audible score. Notes sound only once the hands reach the keys, and stop with the player.
+- New hand-overs record the presented holder on the actual transfer tick, keeping both Souls’ held-item views in step with the item’s support.
+- Souls joining a ferris wheel, carousel or balloon walk to a boarding spot they can stand on, so the Eden district ferris wheel boards on the first try from the Commons.
+- Souls climbing onto a deck or upper floor wait at the top of the stairs while someone stands on the landing, and ask them to step aside, instead of stepping onto them.
+- Waving eases the arm up and back down, including early stops and fresh live views with a compatible recent motion history.
+
+### Performance
+
+- Little Martian bodies use the same bounded texture sizes as imported scenery, reducing texture memory while sharing model resources across copies.
+- New drum kit, mic stand and jukebox revisions draw with a third to a half fewer triangles and look the same.
+
 ## 4.14 (2026-11-03)
 
 ### Features

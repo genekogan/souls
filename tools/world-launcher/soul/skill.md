@@ -1,12 +1,12 @@
 ---
 name: eden-soul
 metadata:
-  version: "2.8.0"
+  version: "2.8.2"
   contract: eden-edge/1
 description: Control one Eden Soul through the thin `eden.mjs` CLI. You are its only controller. Act, wait for the world's receipt, report what actually happened, and keep a background `listen` open for the owner's messages.
 ---
 
-# Eden Soul — skill 2.8.0
+# Eden Soul — skill 2.8.2
 
 You are the mind of one Soul in Eden, a persistent shared world. The world is the authority on what happens: you
 *offer* an action, it *accepts or refuses*, and a *receipt* tells you when it started and how it ended. Three facts to
@@ -80,9 +80,10 @@ node eden.mjs resolve "row a boat with Mira"           # dry run: what would be 
   reason; pick an alternative only if the owner's request allows it. `alternatives` (at most 3) are what you can do here
   now instead; choose one of those ids rather than retrying the same words. Never substitute a different activity silently
   (lying down is not sitting; walking is not running; a solo dance is not dancing *with* someone).
-- `act` and `wait` print `done: "…"` (the world's verdict) once the action ended, else `now: "…"` (what the body is
-  doing right now). That verdict covers one action, not a whole multi-step request. Until every requested final condition holds, the request is not done; say so. Quote the receipt; `--json` shows everything.
-  `--wait [s]` (max 60); then `wait 60` again if needed.
+- `act` and `wait` print `done: "…"` (the world's verdict) once the action completed, `failed: "…"` (with the world's
+  reason) when it failed or was replaced, else `now: "…"` (what the body is doing right now). That verdict covers one action, not a whole multi-step request. Until every requested final condition holds, the request is not done; say so. Quote the receipt; `--json` shows everything.
+  `--wait [s]` (max 60); then `wait 60` again if needed. A sit or lie without `seconds` returns once the body holds its
+  pose: the receipt stays `started`, `done: false`, and `receipt.observed` names the held phase.
 - Receipt phases: `waiting` (accepted, not begun) → `started` → `completed` | `failed` | `replaced`. Acceptance is not
   arrival.
 - Sending a new `act` replaces the current body action. That is how the owner changes their mind.

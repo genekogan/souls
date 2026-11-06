@@ -1,5 +1,6 @@
 // PC04 (#683): a shared physical operation is proposed, accepted and left through ordinary together offers, each Soul
-// against the same revision on its own stream. Nothing commits, claims or moves (commit is PC05).
+// against the same revision on its own stream. Nothing commits, claims or moves before every role is accepted (the
+// commit itself is PC05, tools/soul-actions/shared-commit.test.mjs).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
@@ -46,7 +47,7 @@ async function world(t, sharedCarry) {
   ]}));
   await tick(60);
   const idOf = (n) => god.model.get(n).id;
-  return {f, edge, god, app, tick, souls, pos, idOf, setCurrent: (s) => { current = s; }};
+  return {f, edge, god, app, tick, souls, pos, idOf, at, setCurrent: (s) => { current = s; }};
 }
 const ok = (r) => { assert.notEqual(r.accepted, false, JSON.stringify(r)); return r; };
 const caps = (w, s) => w.edge.capabilities(s);
@@ -54,7 +55,7 @@ const act = async (w, s, input) => accept(w.f.host, w.edge.act(s, input));
 const code = (r) => r.error?.code ?? r.code;
 const inviteOf = (w, id) => w.edge.together.invite(id);
 
-test('PC04: propose, accept against the revision, and nothing moves', {timeout: 240000}, async (t) => {
+test('PC04: propose, accept against the revision, and nothing moves before the acceptance', {timeout: 240000}, async (t) => {
   const w = await world(t, true), {Ada, Bo, Cy, Fy} = w.souls, beam = w.idOf('beam');
   // Fy is a floater (a body that cannot carry); Cy is not invited
   assert.equal(w.f.host.engine.assignBodyV1(Fy.entityId, {family: 'floater', type: 'floater', radius: 0.35, hoverHeight: 1.45}), true);
@@ -88,6 +89,12 @@ test('PC04: propose, accept against the revision, and nothing moves', {timeout: 
   assert.equal((await converse(Bo, {op: 'accept', conversation: cv.conversation?.id ?? cv.conversation})).accepted, true);
   ok(await converse(Bo, {op: 'say', conversation: cv.conversation?.id ?? cv.conversation, text: 'Yes, happy to.'}));
   assert.equal(inviteOf(w, inv.id).responses[Bo.soulId], undefined, 'a conversation, even a yes in it, is not an acceptance');
+  // nothing moves through the proposal while a role is open: no programme, the same feet (PC05 commits once all accept)
+  await w.tick(200);
+  for (const s of [Ada, Bo]) {
+    assert.equal(w.f.host.engine.programOf(s.entityId), null, `${s.name} runs nothing`);
+    assert.ok(Math.hypot(w.pos(s)[0] - before[s.name][0], w.pos(s)[2] - before[s.name][2]) < 1e-6, `${s.name} did not move`);
+  }
   // the revision is the agreement (A2): none, stale, then the current one; a repeat returns the same receipt
   assert.equal(code(await act(w, Bo, {capability: `accept:${inv.id}`})), 'capability.params');
   const stale = await act(w, Bo, {capability: `accept:${inv.id}`, params: {revision: 2}});
@@ -98,13 +105,9 @@ test('PC04: propose, accept against the revision, and nothing moves', {timeout: 
   assert.equal(w.edge.receipt(Ada.soulId, a.receipt.id), null, 'Bo\'s receipt is read only by Bo');
   assert.equal(inviteOf(w, inv.id).guestReceipts[Bo.soulId], a.receipt.id);
   assert.equal(w.edge.receipt(Ada.soulId, p.receipt.id).awaitingAnswer, undefined, 'nobody is undecided');
-  // nothing moves through proposal and acceptance: no programme, the same feet
-  await w.tick(200);
-  for (const s of [Ada, Bo]) {
-    assert.equal(w.f.host.engine.programOf(s.entityId), null, `${s.name} runs nothing`);
-    assert.ok(Math.hypot(w.pos(s)[0] - before[s.name][0], w.pos(s)[2] - before[s.name][2]) < 1e-6, `${s.name} did not move`);
-  }
-  assert.equal(w.edge.receipt(Bo.soulId, a.receipt.id).phase, 'waiting');
+  // acceptance is not start: until the next readiness check (no tick has passed) Bo's receipt waits and nothing runs
+  assert.equal(w.edge.receipt(Bo.soulId, a.receipt.id).phase, 'waiting'); assert.equal(inviteOf(w, inv.id).shared.op, null);
+  for (const s of [Ada, Bo]) assert.equal(w.f.host.engine.programOf(s.entityId), null, `${s.name} runs nothing yet`);
   // a floater cannot accept a carry; full hands cannot either
   const pf = ok(await act(w, Ada, {capability: `carry-with:${w.idOf('beam2')}`, params: {to: 'shed', with: 'Fy'}}));
   assert.equal(w.edge.receipt(Ada.soulId, p.receipt.id).code, 'shared.left', 'a new proposal of Ada\'s ended the first');
@@ -166,9 +169,13 @@ test('PC04: decline, leave, amend, expiry and other acts end shared receipts det
   assert.equal(inviteOf(w, id).shared.revision, 4); assert.match(inviteOf(w, id).shared.changed, /crew/); assert.equal(read(Bo, a).code, 'shared.revision-changed');
   assert.ok(!caps(w, Bo).some((c) => c.id.endsWith(id)), 'Bo is no longer asked');
   a = ok(await act(w, w.souls.Cy, {capability: `accept:${id}`, params: {revision: 4}}));
+  // PC05 would commit a ready crew; Cy is moved 13 m from the load (a test relocate, not an act) so it lapses unready
+  const b2 = w.f.host.engine.world.entities[w.idOf('beam2')].pose.p; await w.at(w.souls.Cy, b2[0] - 13, b2[2]);
   const still = {Ada: [...w.pos(Ada)], Cy: [...w.pos(w.souls.Cy)]};
+  await w.tick(40);
+  assert.match(read(Ada, p).reason ?? '', /Cy is 1\d m from/, 'the host\'s receipt says who is not ready'); assert.equal(read(w.souls.Cy, a).code, 'shared.not-ready');
   // expiry: every open member receipt lapses; a late acceptance is refused
-  await w.tick(SHARED_LAPSE * 20 + 40);
+  await w.tick(SHARED_LAPSE * 20);
   assert.equal(inviteOf(w, id).state, 'closed');
   for (const [s, r] of [[Ada, p], [w.souls.Cy, a]]) assert.equal(read(s, r).code, 'invite.expired', s.name);
   for (const s of [Ada, w.souls.Cy]) {

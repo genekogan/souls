@@ -48,7 +48,7 @@ import {humanoidDims} from '../../../../../mars/viewer/engine/bodies/humanoid.ts
 import {Together, PAIRED, togetherMayOffer, type TogetherPlan} from './together.ts';
 import {semanticDiscovery, PURPOSE} from '../intents/semantic-discovery.ts';
 import {knownPart} from '../intents/resolved-parts.ts';
-import {Intents,walkWithDestinationWords,walkWithFallback, attentionWords, type IntentInput} from '../intents/intents.ts';
+import {Intents,walkWithDestinationWords,walkWithFallback, attentionWords, offeredAttention, type IntentInput} from '../intents/intents.ts';
 import {classWords} from '../intents/class-words.ts';
 import {strictCheck} from '../intents/strict.ts';
 import {bodyEnd} from '../perception/here.ts';
@@ -68,6 +68,9 @@ import {BodyRule, BODY_PATH_SAMPLE_M, type BodyKnobs, type BodySoul, type Postur
 
 type Resolved = {from: string; to: string; note: string};
 const WAIT_CODES = new Set(['program.safe-stop-required', 'program.safe-stop-pending']);
+/** PC05 (#684): native carry refusals that can pass (someone in the way, the load reserved); a shared commit waits on them.
+ *  Any other `carry.*` refusal is permanent; any other code waits until the proposal lapses. */
+const SHARED_CARRY_WAIT = new Set(['carry.item-unavailable', 'carry.path-occupied', 'carry.pickup-occupied', 'carry.setdown-occupied', 'carry.route-blocked', 'carry.target-blocked']);
 const WAIT_LIMIT_TICKS = 20 * 60;   // a waiting receipt that cannot start within a minute fails
 const NEAR_RADIUS = 20, GO_NEAR_RADIUS = 60;
 /** srv-act-words (C): the destination words of a focus-shaped walk (vocabulary WORDS_FOCUS_SHAPE's walk arm). */
@@ -419,12 +422,21 @@ export class EdgeLedger implements EdgeLedgerHooks {
       body: id => this.body(id), perceived: (id, r) => this.perceivedBodies(id, r), receipt: (sid, id) => this.receipt(sid, id),
       fail: (id, code, reason) => this.update(id, {phase: 'failed', code, reason}), complete: id => this.update(id, {phase: 'completed'}),
       running: (sid, id) => {const m = this.host.minds.get(sid), r = this.rows('receipt_id=?', id)[0]; return !!m && !!r?.program_id && this.host.engine.programOf(m.entityId) === r.program_id;},
+      programOf: id => this.host.engine.programOf(id),
+      carryState: pid => {const a = this.host.engine.programAction?.(pid), d = a ? this.host.engine.runtime.records.get(a.action.id)?.diagnostic : undefined;
+        return a ? {status: a.action.status, ...(a.action.phase ? {phase: a.action.phase} : {}), ...(d ? {code: d.code, message: d.message, ...(d.subjects ? {subjects: [...d.subjects]} : {}), ...(d.details ? {details: {...d.details}} : {})} : {})} : null;},
       stop: (sid, entityId, receipt) => {try {void this.host.enqueue('edge-stop', `edge:${sid}`, {soulId: sid, entityId, receipt}).catch(() => {/* best effort */});} catch {/* clock not ready */}},
       aboard: id => this.aboard(id), faded: id => this.faded.has(id), innermostPlace: id => {const m = this.host.minds.get(id); return m ? this.innermostPlace(m) : null;},
       deliver: (sid, kind, body) => {try {(this.comms as unknown as {streams?: {deliver?(s: string, k: string, t: number, b: object): void}} | undefined)?.streams?.deliver?.(sid, kind, this.host.engine.world.tick, body);} catch {/* events are best effort */}},
       spectate: m => {try {(this.comms as unknown as {core?: {spectate(m: object): void}} | undefined)?.core?.spectate({tick: this.host.engine.world.tick, ...m});} catch {/* spectators never break the ledger */}},
       touch: id => this.comms?.fading.touch?.(id),
-      decide: (soul, receipt, capability, label, steps) => this.decide(soul, receipt, capability, label, steps), sharedCarry: this.sharedCarry});
+      decide: (soul, receipt, capability, label, steps) => this.decide(soul, receipt, capability, label, steps), sharedCarry: this.sharedCarry,
+      start: (id, programId) => this.update(id, {phase: 'started', program_id: programId, code: null, reason: null}),
+      note: (id, code, reason) => this.update(id, {code, reason}),
+      stopBody: soul => {try {void this.host.enqueue('edge-stop', `edge:${soul.soulId}`, {soulId: soul.soulId, entityId: soul.entityId, why: 'shared.ended'}).catch(() => {/* best effort */});} catch {/* clock not ready */}},
+      restop: (entityId, programId, op) => {try {void this.host.enqueue('edge-stop', 'edge:shared', {entityId, programId, op, why: 'shared.stop'}).catch(() => {/* best effort */}); return true;} catch {return false;   /* clock not ready: the op stays unwatched, so the next sweep asks again */}},
+      commitShared: id => {void this.commitShared(id).catch(e => console.error('[edge] shared commit', e instanceof Error ? e.message : e));},
+      previewCarry: params => (this.host.engine as {previewMarsVerbV1?(verb: string, params: unknown): {code: string; message?: string; subjects?: string[]; details?: Record<string, unknown>} | null}).previewMarsVerbV1?.('carry', params) ?? null});
     this.receiptListeners.push(r => {if(!OPEN.includes(r.phase))this.menusChangedBy('receipt-closed', r.soulId, r.capability);});
     if (this.readOnly) return;
     // D1: the card's doing line names an edge act's approach ("walking to Kitchen chair") from this ledger's plans
@@ -435,6 +447,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       const detail=r.detail?JSON.parse(r.detail):{};if(detail.contactActuatorV1?.motionV1&&!detail.contactAppliedV1||detail.doorPassageV1)this.contactPending.add(r.receipt_id);
       const m = host.minds.get(r.soul_id);
       if (r.phase === 'started' && r.program_id && m && host.engine.programOf(m.entityId) === r.program_id) continue;
+      if (r.phase === 'started' && this.together.sharedLive(r.receipt_id)) continue;   // PC05: a guest's share of a running carry
       const plan = r.phase === 'waiting' && r.plan ? JSON.parse(r.plan) as {label: string; steps: Program['steps']} : null;
       if (plan && m && !this.pending.has(r.soul_id)) {this.pending.set(r.soul_id, {receipt: r.receipt_id, soul: {soulId: m.soulId, entityId: m.entityId, name: m.name, owner: m.owner}, steps: plan.steps, label: plan.label, deadline: host.engine.world.tick + WAIT_LIMIT_TICKS, capability: r.capability}); continue;}
       this.update(r.receipt_id, {phase: 'failed', code: 'receipt.lost-on-restart', reason: 'The server restarted before this action could be followed to its end.'});
@@ -526,6 +539,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   openReceipts(soulId: string): EdgeReceipt[] {return this.rows("soul_id=? AND phase IN ('waiting','started') ORDER BY accepted_tick", soulId).map(r => this.view(r));}
   private insert(soul: EdgeSoul, capability: string, phase: EdgeReceipt['phase'], clientRef?: string, keepActivity = false, detail: Record<string, unknown> = {},contentParams:Record<string,unknown>={},receiptId?:string): EdgeReceipt {
     const id = receiptId??'r_' + randomUUID(), tick = this.host.engine.world.tick,content=['read','write','use-computer','listen','paint','craft','post-letter'].includes(capability.split(':')[0])?outcomeParams(contentParams):{};
+    // PC05 (#684, PC02 §3): a body act of a member of a running shared operation is refused, never a replacement
+    if (!keepActivity) {const open = this.openReceipts(soul.soulId); for (const old of open) {const busy = this.together.sharedBusyFor(old); if (busy) throw new EdgeError(409, 'shared.busy', busy.reason, {op: busy.op, ...(busy.alternatives ? {alternatives: busy.alternatives} : {})});}}
     if (!keepActivity) {for (const old of this.openReceipts(soul.soulId)) {const left=this.together.sharedLeave(old);this.update(old.id, left?{phase:'failed',code:left.code,reason:left.reason}:{phase: 'replaced', reason: 'A newer action from this Soul replaced it.'});} afterCommit(this.db.db,()=>this.pending.delete(soul.soulId));}
     tx(this.db.db,()=>{this.db.db.prepare('INSERT INTO edge_receipts_v1 (world_id,receipt_id,soul_id,capability,phase,accepted_tick,ended_tick,client_ref,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(this.host.worldId, id, soul.soulId, capability, phase, tick,OPEN.includes(phase)?null:tick, clientRef ?? null, Date.now());
     // The generic read alias can select a real shelf-reading spot. Preserve that
@@ -573,6 +588,14 @@ export class EdgeLedger implements EdgeLedgerHooks {
       return {summary:ns.length?`Read ${sign.name}: ${w} wanted, ${ns.length-w} offered, by ${list([...new Set(ns.map(n=>n.name))])} (their words, not world facts).`:`Read ${sign.name}; nothing is pinned on it.`,
         learned:[...new Set(ns.map(n=>n.by))].slice(0,5).map(by=>{const mine=ns.filter(n=>n.by===by);return {fact:`${mine[0].name}'s note${mine.length>1?'s':''} on ${sign.name}: ${mine.map(words).join(' / ')}`.slice(0,300),about:sign.id,source:`${sign.id}:note:${by}`,provenance:'soul-text' as const,untrusted:true};}),
         detail:{sign:{id:sign.id,name:sign.name,notes:ns.map(n=>({column:n.c==='w'?'wanted':'offered',text:n.t,writtenBy:{soulId:n.by,name:n.name},replies:n.re.map(r=>({text:r.t,writtenBy:{soulId:r.by,name:r.name}})),...(n.tk?{takenBy:{soulId:n.tk.by,name:n.tk.name}}:{})})),provenance:'soul-text'}},untrusted:ns.length>0};}
+    // #429: a sign-up list (a sheet, a guestbook) reads as its title and numbered entries, each a Soul's own name and words:
+    // attributed to its signer (soul id) and untrusted, like a pinboard's notes; one learned fact per signer, all in the detail.
+    const su=(sign as {signups?:{text:string;by:string}[]}).signups;
+    if(su){const es=su.map(n=>({text:n.text,by:n.by,name:n.by?nameOf(n.by):'another Soul'})),title=String((sign as {title?:string}).title??'')||'Sign up',tail=es.length?' (their words, not world facts)':'';
+      const words=[title,...es.map((n,i)=>`${i+1}. ${n.text}`)].join(' / '),room=160-`Read ${sign.name}: "".`.length-tail.length,quoted=words.length>room?words.slice(0,Math.max(0,room-1))+'…':words;
+      return {summary:es.length?`Read ${sign.name}: "${quoted}"${tail}.`:`Read ${sign.name}: "${title}"; nobody has signed it yet.`,
+        learned:es.filter(n=>n.by).slice(0,5).map(n=>({fact:`${n.name} signed ${sign.name}: "${n.text}"`.slice(0,300),about:sign.id,source:`${sign.id}:entry:${n.by}`,provenance:'soul-text' as const,untrusted:true})),
+        detail:{passage:sign.text,sign:{id:sign.id,name:sign.name,title,entries:es.map((n,i)=>({line:i+1,text:n.text,writtenBy:{soulId:n.by,name:n.name}})),provenance:'soul-text'}},untrusted:es.length>0};}
     // Entry 19: a pinboard reads as its notes, each attributed to its author (by soul id, not the signature line).
     if(sign.notes){const notes=sign.notes.map(n=>({text:n.text.replace(/ — [^—]*$/,''),by:n.by,name:nameOf(n.by)})),names=[...new Set(notes.map(n=>n.name))];
       return {summary:notes.length?`Read ${sign.name}: ${notes.length} note${notes.length>1?'s':''}, by ${names.length>1?names.slice(0,-1).join(', ')+' and '+names.at(-1):names[0]} (their words, not world facts).`:`Read ${sign.name}; nothing is pinned on it.`,
@@ -602,6 +625,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   private onProgram(ev: {id: string; kind: string; code?: string; message?: string}) {
     if (ev.kind === 'step') return;
     const r = this.rows("program_id=? AND phase IN ('waiting','started')", ev.id)[0]; if (!r) return;
+    // PC05: a shared operation's programme ended; every member's receipt ends with it
+    if (this.together.sharedProgramEnded(r.receipt_id, ev)) return;
     if (ev.kind === 'completed') {
       const unsupported = this.nativeUseRefusal?.(r.capability);
       if (unsupported) { this.update(r.receipt_id, {phase: 'failed', code: unsupported.code, reason: unsupported.reason}); return; }
@@ -709,6 +734,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (this.bodyRule && tick % 20 === 0) {if (!this.bodyMigrated && this.bodyPlacesReady()) {this.bodyMigrated = true; this.migrateGone();} this.bodyRule.sweep();}
     if (tick % 100 === 0) this.unstick(tick);
     if (tick % 20 === 0) try {this.together.sweep();} catch (e) {console.error('[edge] together sweep', e instanceof Error ? e.message : e);}
+    try {this.together.sharedWatch();} catch (e) {console.error('[edge] shared watch', e instanceof Error ? e.message : e);}
     if (tick % 10 === 0) this.rideFrames(tick);
     if (tick % 10 === 0) for (const m of this.host.minds.values()) {
       const to = this.innermostPlace(m), from = this.lastPlace.has(m.soulId) ? this.lastPlace.get(m.soulId)! : to;
@@ -1501,6 +1527,19 @@ export class EdgeLedger implements EdgeLedgerHooks {
   }
 
   async act(soul: EdgeSoul, input: {capability?: unknown; params?: unknown; clientRef?: unknown; verb?: unknown; target?: unknown}): Promise<{accepted: true; receipt: EdgeReceipt; resolved?: Resolved; result?: unknown} | {accepted: false; code: string; reason: string; capability: string; retry_after?: number; did_you_mean?: {id: string; label: string}[]; resolved?: Resolved}> {
+    // PC05 (#684, PC02 §3): `shared.busy` (from insert) is the act's refusal: no receipt, nothing replaced, the owner's
+    // message stays unacked; the agent decides what to do
+    try {return await this.actWork(soul, input);}
+    catch (e) {
+      if (!(e instanceof EdgeError) || e.code !== 'shared.busy') throw e;
+      const capability = typeof input.capability === 'string' ? input.capability : String(input.verb ?? '');
+      this.recordRefusal(soul.soulId, 'act', capability, e.code, e.message);
+      return {accepted: false, code: e.code, reason: e.message, capability, ...(e.extra ?? {})};
+    }
+  }
+  private async actWork(soul: EdgeSoul, input: {capability?: unknown; params?: unknown; clientRef?: unknown; verb?: unknown; target?: unknown}): Promise<{accepted: true; receipt: EdgeReceipt; resolved?: Resolved; result?: unknown} | {accepted: false; code: string; reason: string; capability: string; retry_after?: number; did_you_mean?: {id: string; label: string}[]; resolved?: Resolved}> {
+    // PC08 (#687, PC02 §3): a member's safe stop of a running shared operation never touches the member's own receipt
+    if (this.sharedCarry && typeof input.capability === 'string' && input.capability.startsWith('stop-carry:')) return this.stopShared(soul, input.capability, typeof input.clientRef === 'string' && input.clientRef.length <= 100 ? input.clientRef : undefined);
     // intents/1 (Core-A): {verb, target} is resolved now and acted on as the concrete choice it reports
     if (input.capability === undefined && input.verb !== undefined) {const out = await this.intents.act(soul, input as IntentInput); if (out.accepted) this.menusChangedBy('act-intent', soul.soulId, out.receipt.capability); return out;}
     let exactWalk:ExactWalkBindings|null=null;
@@ -1563,7 +1602,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     let params = (input.params && typeof input.params === 'object' && !Array.isArray(input.params) ? {...input.params as Record<string, unknown>} : {}) as Record<string, unknown>;
     if(['read','write','use-computer','listen','paint','craft','post-letter'].includes(askedVerb)){try{outcomeParams(params);}catch{return refuse('capability.params','Content parameters must be bounded strings (book100, query200, title100, text2000).');}if(params.book!==undefined&&!EDEN_LIBRARY_CATALOGUE.some(b=>b.id===params.book))return refuse('content.book-unknown','Choose a book id from the published catalogue.');}
     // intents/1: plain words for the attention channel ("look at the fire", "turn to Bill") and face:<soul> never touch the body
-    if (!caps.some(c => c.id === asked)) {const plain = attentionWords(asked); if (plain) return this.intents.act(soul, {...plain, ...(clientRef ? {clientRef} : {})});}
+    if (!offeredAttention(caps, asked)) {const plain = attentionWords(asked); if (plain) return this.intents.act(soul, {...plain, ...(clientRef ? {clientRef} : {})});}
     // W8: "attend the lecture", "go to class": an audience seat in the classroom (the existing seat-in-room intent)
     if (!caps.some(c => c.id === asked)) {const cls = classWords(asked, this.places.byId.values()); if (cls) return this.intents.act(soul, {...cls, ...(clientRef ? {clientRef} : {})});}
     if (asked.startsWith('face:') && caps.some(c => c.id === asked && c.target?.kind === 'soul')) return this.intents.act(soul, {verb: 'turn', face: caps.find(c => c.id === asked)!.target!.id, ...(clientRef ? {clientRef} : {})});
@@ -1735,6 +1774,11 @@ export class EdgeLedger implements EdgeLedgerHooks {
       if (program) this.update(r.id, {phase: 'completed'});
       return {accepted: true, receipt: this.receipt(soul.soulId, r.id)!, ...resolved};
     }
+    // PC08: a stop offer reached through words or a bare verb is the same stop (never an ordinary body act)
+    if (this.sharedCarry && capability.startsWith('stop-carry:')) return {...await this.stopShared(soul, capability, clientRef), ...resolved};
+    // PC05: a member of a running shared operation cannot propose or accept another (the body checks below would
+    // otherwise answer with their own codes, e.g. hands.full)
+    if (/^(carry-with|accept):/.test(capability)) {const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy), ...resolved};}
     // together/1: invitations (params.with), paired gestures, gifts, follows and items check and adjust their plan here
     const prep = this.together.prepare(soul, cap, plan, params, steps);
     if ('code' in prep) return {...refuse(prep.code, prep.reason), ...(prep.did_you_mean ? {did_you_mean: prep.did_you_mean} : {}), ...resolved};
@@ -1757,6 +1801,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   }
   /** Start a body plan as the Soul's act: queued through a quiet renewal or a safe stop, else decided now. */
   private async launch(soul: EdgeSoul, capability: string, label: string, steps: Program['steps'], clientRef: string | undefined, resolved: {resolved?: Resolved}, refuse: (code: string, reason: string) => {accepted: false; code: string; reason: string; capability: string}, commit?: (receipt: string) => void,contentParams:Record<string,unknown>={},chosen?:Record<string,unknown>) {
+    // PC08: an intent's launch of the stop offer (`{verb: 'stop-carry'}`) is the same stop
+    if (this.sharedCarry && capability.startsWith('stop-carry:')) return {...await this.stopShared(soul, capability, clientRef), ...resolved};
     // Freeze the binding before dispatch: semantic capability names are not
     // identities of the real native fixtures they invoke. This is selection,
     // not a claim that the body has reached or used the target.
@@ -1765,13 +1811,14 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (contentParams.painting !== undefined) {
       const plan = this.bindOne(soul, capability)?.plan as {paintingTarget?: string;paintingLevel?:number} | undefined;
       if (!capability.startsWith('paint:') || !plan?.paintingTarget || !this.painting) return refuse('painting.no-easel', 'This capability has no real painting easel.');
-      const posed=steps.find(s=>s.verb==='mars:pose_v1'&&s.params.activity==='paint');
+      const posed=steps.find(s=>s.verb==='mars:pose_v1'&&(s.params.activity==='paint'||s.params.activity==='chalk'));
       const approach=steps.filter(s=>s.verb==='walk_to'||s.verb==='mars:walk_to').at(-1),stand=approach?.verb==='mars:walk_to'?[approach.params.x,approach.params.z]:approach?.params.to;
       const prepared = this.painting.prepare(soul, plan.paintingTarget, contentParams.painting,{face:posed?.params.face,stand,level:plan.paintingLevel??0});
       if ('ok' in prepared) return refuse(prepared.code, prepared.message);
       painting = prepared;
     }
     const detail={...((chosen||typeof seatSlot==='string')?{chosen:{...structuredClone(chosen??{}),...(typeof seatSlot==='string'?{seat:seatSlot.split('#')[0],slot:seatSlot}:{})}}:{}), ...(painting ? {paintingV1: painting} : {})};
+    const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy), ...resolved};
     const nativeUse = this.nativeUseRefusal?.(capability, steps);
     if (nativeUse) return {...refuse(nativeUse.code, nativeUse.reason), ...resolved};
     const stepOut = this.stepOutRefusal(soul.entityId); if (stepOut) return {...refuse(stepOut.code, stepOut.reason), ...resolved};
@@ -1966,6 +2013,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   async performBodies(soul: EdgeSoul, capability: string, label: string, steps: Program['steps'], clientRef?: string,effects?:ConfirmedEffects,admission?:ObjectBodyAdmission): Promise<{accepted: true; receipt: EdgeReceipt} | {accepted: false; code: string; reason: string}> {
     if (clientRef) {const old = this.rows('soul_id=? AND client_ref=?', soul.soulId, clientRef)[0]; if (old) return {accepted: true, receipt: this.view(old)};}
     const refuse = (code: string, reason: string) => {this.recordRefusal(soul.soulId, 'object', capability, code, reason); return {accepted: false as const, code, reason};};
+    const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy)};
     const nativeUse = this.nativeUseRefusal?.(capability, steps);
     if (nativeUse) return refuse(nativeUse.code, nativeUse.reason);
     const stepOut = this.stepOutRefusal(soul.entityId); if (stepOut) return refuse(stepOut.code, stepOut.reason);
@@ -1984,6 +2032,71 @@ export class EdgeLedger implements EdgeLedgerHooks {
     return {accepted: true, receipt: this.receipt(soul.soulId, r.id)!};
   }
 
+  /** PC08 (#687, PC02 §3): `stop-carry:<op>` from any member. The stop is logged as `edge-stop` naming the op's programme
+   *  (so it replays by that programme, not by the member's body); the op's `stopping` and the stop's own receipt are
+   *  written with it, and that receipt completes at once ("stop requested": the prompt acknowledgment, not the release). The
+   *  native cancel is the only cleanup; the claims stay until the programme ends (`sharedProgramEnded`). A repeat changes
+   *  nothing: the same member gets the first stop's receipt, another member a completed receipt saying it was asked. */
+  private async stopShared(soul: EdgeSoul, capability: string, clientRef: string | undefined): Promise<{accepted: true; receipt: EdgeReceipt} | {accepted: false; code: string; reason: string; capability: string}> {
+    const refuse = (code: string, reason: string) => {this.recordRefusal(soul.soulId, 'act', capability, code, reason); return {accepted: false as const, code, reason, capability};};
+    if (clientRef) {const old = this.rows('soul_id=? AND client_ref=?', soul.soulId, clientRef)[0]; if (old) return {accepted: true, receipt: this.view(old)};}
+    const opId = capability.slice('stop-carry:'.length);
+    const again = (plan: {again?: {by: string; name: string; tick: number; receipt: string}}) => {
+      const first = plan.again!;
+      if (first.by === soul.soulId) {const r = this.receipt(soul.soulId, first.receipt); if (r) return {accepted: true as const, receipt: r};}
+      const r = tx(this.db.db, () => {const r = this.insert(soul, capability, 'waiting', clientRef, true, {stopCarryV1: {op: opId, repeat: true}}); this.update(r.id, {code: 'shared.stop-asked', reason: `${first.name} already asked to stop (${opId}); nothing more was done. The crew sets the load down safely, and you are free once it is down.`}); this.update(r.id, {phase: 'completed'}); return r;});
+      return {accepted: true as const, receipt: this.receipt(soul.soulId, r.id)!};
+    };
+    const plan = this.together.sharedStopPlan(soul.soulId, opId);
+    if ('code' in plan) return refuse(plan.code, plan.reason);
+    if (plan.again) return again(plan);
+    if (this.host.quietBarrier) return refuse('state.changed', 'The world is pausing; ask to stop again in a moment.');
+    // The stop event is queued and the op marked `stopping` in the same synchronous step (no other request runs between
+    // them), so a second stop finds this one; the event folds at the next drain and stops the op's programme.
+    let folded: Promise<unknown>;
+    try {folded = this.host.enqueue('edge-stop', `edge:${soul.soulId}`, {soulId: soul.soulId, entityId: plan.hostEntity, programId: plan.programId, op: plan.op, why: 'shared.stop'});}
+    catch {return refuse('state.changed', 'The world clock is not running; ask to stop again in a moment.');}
+    const receipt = tx(this.db.db, () => {
+      const r = this.insert(soul, capability, 'waiting', clientRef, true, {stopCarryV1: {op: plan.op}});
+      this.update(r.id, {code: 'shared.stop-requested', reason: this.together.sharedStopping(plan.invite, {soulId: soul.soulId, name: soul.name}, r.id)});
+      this.update(r.id, {phase: 'completed'});
+      return r.id;
+    });
+    await folded;
+    return {accepted: true, receipt: this.receipt(soul.soulId, receipt)!};
+  }
+  /** PC05 (#684, PC02 §3): the shared.busy refusal of a member of a running operation, before any native check. */
+  /** PC08: what a `shared.busy` refusal carries besides its reason: the op, and the safe stop on offer. */
+  private busyExtra(busy: NonNullable<ReturnType<Together['sharedBusyFor']>>): {op?: string; alternatives?: {id: string; label: string}[]} {return {op: busy.op, ...(busy.alternatives ? {alternatives: busy.alternatives} : {})};}
+  private sharedBusy(soulId: string): ReturnType<Together['sharedBusyFor']> {for (const r of this.openReceipts(soulId)) {const b = this.together.sharedBusyFor(r); if (b) return b;} return null;}
+  /** PC05 (#684, PC02 §2): the atomic commit of a ready shared proposal. One host decision with one native crew `carry`,
+   *  through the atomic object decision: its guard re-derives readiness under the write lock and requires no operation
+   *  yet; its journal writes the operation, `committed` and every member's `started` receipt with the event, or nothing.
+   *  A stale guard (someone left, moved away, or it already started) commits nothing; the next check re-derives. */
+  private async commitShared(id: string) {
+    const plan = this.together.sharedCommitPlan(id); if (!plan || this.host.quietBarrier) return;
+    const {host, label, steps, revision, opId} = plan, inv = this.together.invite(id)!;
+    const issue = this.host.engine.canPerform({actor: host.entityId, label, steps});
+    const wait = (code: string, message?: string) => this.together.sharedNotReady(inv, [{soulId: host.soulId, name: 'The carry', why: `cannot start yet (${code}${message ? `: ${message}` : ''})`}]);
+    if (issue) {if (WAIT_CODES.has(issue.code) || SHARED_CARRY_WAIT.has(issue.code) || !issue.code.startsWith('carry.')) wait(issue.code, issue.message); else this.together.sharedRefused(id, issue.code, issue.message ?? humanBlockedExplanationV1(issue.code, label)); return;}
+    const guard = (): true => {
+      this.together.sharedCommitGuard(id, revision);
+      if (this.host.quietBarrier) throw new EdgeError(409, 'state.changed', 'The world entered a quiet barrier; retry.');
+      const fresh = this.host.engine.canPerform({actor: host.entityId, label, steps}); if (fresh) throw new EdgeError(409, fresh.code, fresh.message ?? fresh.code);
+      return true;
+    };
+    try {
+      await this.host.enqueueObjectDecision(`edge:${host.soulId}`, {soulId: host.soulId, entityId: host.entityId, option: plan.capability, label, steps, reevalTicks: 1e9, fallback: false, trigger: `shared-commit:${opId}`}, guard, e => {
+        const program = (this.host.engine as {instantProgramV1?(a: string): string | null}).instantProgramV1?.(host.entityId) ?? this.host.engine.programOf(host.entityId);
+        if (!program) throw Error('shared.native-program-missing');
+        this.together.sharedCommitted(id, revision, program, e.seq); return true;
+      });
+    } catch (error) {
+      // nothing was committed (the transaction rolled back); a native refusal at the fold is handled as at the check above
+      const code = error instanceof Error ? /^object\.native-admission-refused:(.+)$/.exec(error.message)?.[1] : undefined;
+      if (code && code.startsWith('carry.') && !SHARED_CARRY_WAIT.has(code)) this.together.sharedRefused(id, code, humanBlockedExplanationV1(code, label));
+    }
+  }
   private async performAtomicObjectBodies(soul:EdgeSoul,capability:string,label:string,steps:Program['steps'],clientRef:string|undefined,admission:ObjectBodyAdmission){
     const refuse=(code:string,reason:string)=>{this.recordRefusal(soul.soulId,'object',capability,code,reason);return {accepted:false as const,code,reason};};
     const source=this.db.soul(soul.soulId),id='r_'+randomUUID();
@@ -2307,10 +2420,10 @@ export class EdgeLedger implements EdgeLedgerHooks {
       const marks = rideMarks ?? (verb === 'cycle' ? (this.spots.docks ?? []).map(k => ({at: k.at, label: k.label ?? 'a bicycle dock', place: k.place}))
         // VERBS: ducks or swans to feed (a feed spot whose title or label names birds), for "feed the ducks"
         : verb === 'feed-birds' ? this.spots.spots.filter(x => x.activity === 'feed' && /\b(?:ducks?|swans?|geese|goose|birds?)\b/i.test(`${x.title ?? ''} ${x.label ?? ''}`)).map(x => ({at: x.at, label: x.label ?? 'a duck-feeding bank', place: x.place}))
-        : verb in SPOT_ACTIVITIES ? this.spots.spots.filter(x => x.activity === verb || x.also?.includes(verb)).map(x => ({at: x.at, label: x.label ?? `a ${verb} spot`, place: x.place})) : undefined);
+        : verb in SPOT_ACTIVITIES ? this.spots.spots.filter(x => x.activity === verb || x.also?.includes(verb)).map(x => ({at: x.at, label: x.label ?? `a ${verb} spot`, place: x.place, ...(x.activity === verb && x.paintingTarget && x.title ? {title: x.title} : {})})) : undefined);
       if (!marks) return undefined;
       const best = marks.map(m => {const placeId = m.place ?? around(m.at[0], m.at[1])[0], pl = placeId ? this.places.byId.get(placeId) : undefined;
-        return {label: m.label, at: m.at, distance: here ? Math.hypot(m.at[0] - here[0], m.at[1] - here[1]) : 0, ...(pl && known.includes(pl) ? {place: pl.name, placeId: pl.id} : {})};})
+        return {label: m.label, ...('title' in m && m.title ? {title: m.title as string} : {}), at: m.at, distance: here ? Math.hypot(m.at[0] - here[0], m.at[1] - here[1]) : 0, ...(pl && known.includes(pl) ? {place: pl.name, placeId: pl.id} : {})};})
         .sort((a, b) => a.distance - b.distance || a.label.localeCompare(b.label))[0];
       if (!best) return null;
       // entry 36: who is singing at the nearest mic (a sing spot is one singer's), for a polite refusal that names them
