@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { classifyRefusal, decisionKind, receiptOutcome, seatDecisions, ownerMessages, SCORER, scoreRun } from './controllability.mjs';
+import { actOutput, classifyRefusal, decisionKind, firstActResult, receiptOutcome, seatDecisions, ownerMessages, SCORER, scoreRun } from './controllability.mjs';
 import { evaluateRun, loadSoulRun, seatSteps } from './evaluate.mjs';
 import { sha256 } from '../lib/hash.mjs';
 
@@ -68,6 +68,74 @@ test('refusal classes: only offer counts against M1, and a code nobody listed st
   assert.deepEqual(classifyRefusal('place.brand-new'), { class: 'unclassified' });
   assert.deepEqual(classifyRefusal('carry.crew-too-small'), { class: 'unclassified' }, 'an agent could read the crew size first: undecided, and visible');
   assert.deepEqual(classifyRefusal(null), { class: 'unclassified' });
+});
+
+test('the codes the steward named, and the engine codes that reach an act\'s answer, have a class', () => {
+  for (const c of ['act.not-an-id', 'seat.none-in-place', 'seat.none-near', 'target.not-in-sight', 'action.invalid-params']) assert.deepEqual(classifyRefusal(c), { class: 'offer', sub: 'resolution' }, c);
+  for (const c of ['route.goal-blocked', 'route.start-blocked', 'use.transition-blocked', 'seat.too-high']) assert.deepEqual(classifyRefusal(c), { class: 'offer', sub: 'route' }, c);
+  for (const c of ['seat.none-free', 'seat.approach-busy', 'gait.dry-ground-required', 'physical.unavailable', 'object.refused', 'ride.refused']) assert.deepEqual(classifyRefusal(c), { class: 'state' }, c);
+});
+
+test('a refused first act of an unknown class, or an unreadable one, is unknown and never a success', () => {
+  assert.equal(firstActResult({ state: 'accepted' }), true);
+  assert.equal(firstActResult({ state: 'refused', class: 'state' }), true);
+  assert.equal(firstActResult({ state: 'refused', class: 'admission' }), true);
+  assert.equal(firstActResult({ state: 'refused', class: 'offer' }), false);
+  assert.equal(firstActResult({ state: 'refused', class: 'unclassified' }), null);
+  assert.equal(firstActResult({ state: 'unknown' }), null);
+  assert.equal(firstActResult(undefined), null);
+  const dir = run({ seats: { bo: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [listen(0, 'msg_u', 'Sit on the bench')],
+    transcript: events(1, [{ sec: 1, tools: [ack('msg_u')] }, { sec: 2, tools: [act('sit:bench', no('zebra.striped'))] }, { sec: 3, tools: [act('sit:bench2', ok('r_u', 'sit:bench2', 'completed', 'msg_u'))] }, { sec: 4, tools: [result('msg_u')] }]),
+  } } });
+  const first = scoreRun(loadSoulRun(dir)).metrics.M1.firstActOfIntention;
+  assert.equal(first.value, null);
+  assert.deepEqual([first.denominator, first.unknown], [0, 1]);
+});
+
+test('a model seat\'s non-zero exit is read: the refusal stays in M1, in every shape it can arrive', () => {
+  const refusal = no('act.not-an-id');
+  assert.deepEqual(actOutput(refusal), refusal);
+  assert.deepEqual(actOutput(JSON.stringify(refusal)), refusal);
+  assert.deepEqual(actOutput(`Exit code 2\n${JSON.stringify(refusal)}`), refusal);
+  assert.deepEqual(actOutput([{ type: 'text', text: `Exit code 2\n${JSON.stringify(refusal)}` }]), refusal);
+  for (const bad of ['Exit code 1\nboom', 'not json', '', null, 7, '3', []]) assert.equal(actOutput(bad), null, String(bad));
+});
+
+test('the same mistake scores the same on both contracts', () => {
+  // One intention: words the world cannot use, then the offered id. Only the wire differs: the words contract answers
+  // capability.unknown with exit 0; the strict CLI answers act.not-an-id with exit 2, as a model seat sees it.
+  const card = (refused) => scoreRun(loadSoulRun(run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [listen(0, 'msg_m', 'Walk to the orchard')],
+    transcript: events(1, [
+      { sec: 1, tools: [ack('msg_m')] },
+      { sec: 2, tools: [act('go to that orchard', ...refused)] },
+      { sec: 3, tools: [act('walk:orchard', ok('r_m', 'walk:orchard', 'completed', 'msg_m'))] },
+      { sec: 4, tools: [result('msg_m')] },
+    ]),
+  } } })));
+  const words = card([no('capability.unknown')]), strict = card([`Exit code 2\n${JSON.stringify(no('act.not-an-id'))}`, true]);
+  assert.equal(words.metrics.M1.value, 0.5);
+  for (const k of ['value', 'denominator', 'classes', 'missing']) assert.deepEqual(strict.metrics.M1[k], words.metrics.M1[k], k);
+  assert.deepEqual(strict.metrics.M1.firstActOfIntention, words.metrics.M1.firstActOfIntention);
+  assert.equal(strict.metrics.M1.firstActOfIntention.value, 0);
+});
+
+test('M4 names the sent-at fallback when the message reached the seat after the start, or left no record', () => {
+  const dir = run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [{ t: new Date(at(20)).toISOString(), messages: ['msg_late'], stdout: JSON.stringify({ messages: [{ id: 'msg_late', text: 'Walk to the orchard', sentAt: at(0) }] }) }],
+    transcript: events(1, [
+      { sec: 1, tools: [act('walk:orchard', ok('r_l', 'walk:orchard', 'started', 'msg_late', { events: [{ kind: 'receipt', at: at(12), receipt: { id: 'r_l', phase: 'started' } }] }))] },
+      { sec: 21, tools: [ack('msg_late')] },
+      { sec: 22, tools: [result('msg_late')] },
+    ]),
+  } } });
+  const m4 = scoreRun(loadSoulRun(dir)).metrics.M4;
+  assert.deepEqual(m4.bases, { 'receipt started event, from when it was sent': 1 });
+  assert.equal(m4.value, 12, 'sent at 0, started at 12; the seat read it at 20');
 });
 
 test('one assistant message split over stream events is one model decision; onboarding is left out', () => {
