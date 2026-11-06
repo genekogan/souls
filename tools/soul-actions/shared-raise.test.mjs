@@ -197,9 +197,18 @@ test('flag off: no raise_hold_v1 verb and no loose-frame invariant; on, both', a
       assert.equal(e.describeVerbs().some((v) => v.verb === 'mars:raise_hold_v1'), on, JSON.stringify(cfg));
       assert.equal(e.rt.invariants.includes(looseFramesHeld), on, JSON.stringify(cfg));
     }
+    // a journal or snapshot from a world with the flag is not replayed or restored without it, nor the other way round
+    const off = await marsFactory(GREEN_FIELD_WORLD), on = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true});
+    assert.ok(!off.rulesVersion.includes('+shared-raise/1') && on.rulesVersion.endsWith('+shared-raise/1'), on.rulesVersion);
+    assert.equal(on.create(on.genesis('v')).rulesVersion, on.rulesVersion, 'the engine says what its factory registered');
+    for (const [f, own, other] of [[off, off.rulesVersion, on.rulesVersion], [on, on.rulesVersion, off.rulesVersion]]) {
+      assert.equal(f.canReplayHistory(own), true); assert.equal(f.canRestoreSnapshot(own), true);
+      assert.equal(f.canReplayHistory(other), false, other); assert.equal(f.canRestoreSnapshot(other), false, other);
+    }
     process.env.SIM_SHARED_CARRY = '1';   // the server's flag, read where no config names it (main.ts)
     const f = await marsFactory(GREEN_FIELD_WORLD), e = f.create(f.genesis('flag'));
     assert.ok(e.describeVerbs().some((v) => v.verb === 'mars:raise_hold_v1') && e.rt.invariants.includes(looseFramesHeld));
+    assert.equal(f.rulesVersion, on.rulesVersion);
   } finally {if (was === undefined) delete process.env.SIM_SHARED_CARRY; else process.env.SIM_SHARED_CARRY = was;}
 });
 
