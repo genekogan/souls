@@ -61,6 +61,7 @@ import { disassemblyRegistry } from '../../../mars/viewer/engine/construction/di
 import { raiseHold, looseFramesHeld } from './raise-hold.ts';
 import { connectBeamV1, framesStand } from './beam-connect.ts';
 import { decksBear, installJoistV1, laySheetV1 } from './deck-install.ts';
+import { installFlightV1, installTreadV1, stairsBear } from './stair-install.ts';
 import { captureRenderScene, commonsSceneMetadataV1Schema, type RenderSceneCaptureV1, type RenderScene } from '@sim/engine-contract';
 import {readLocalClassroomV1} from './classroom-observation.ts';
 import { readNativeGathering } from './gathering-observation.ts';
@@ -2621,7 +2622,7 @@ function checkedTable(t: EntityTable): EntityTable {
 }
 
 function centroid(poly: [number, number][]): [number, number] { let x = 0, z = 0; for (const p of poly) { x += p[0]; z += p[1]; } return [r3(x / poly.length), r3(z / poly.length)]; }
-function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}${cfg.sharedCarryV1?'+'+SHARED_RAISE_POLICY+'+'+SHARED_BEAM_POLICY+'+'+SHARED_DECK_POLICY:''}`;}
+function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}${cfg.sharedCarryV1?'+'+SHARED_RAISE_POLICY+'+'+SHARED_BEAM_POLICY+'+'+SHARED_DECK_POLICY+'+'+SHARED_STAIRS_POLICY:''}`;}
 /** PC13 (#692): a world whose engine has the shared raise (SIM_SHARED_CARRY) says so in its rules version: a journal that
  *  names raise_hold_v1 does not replay, nor a snapshot restore, where the verb is not registered. */
 export const SHARED_RAISE_POLICY = 'shared-raise/1';
@@ -2629,6 +2630,8 @@ export const SHARED_RAISE_POLICY = 'shared-raise/1';
 export const SHARED_BEAM_POLICY = 'shared-beam/1';
 /** PC15 (#694): the same flag adds install_joist_v1, lay_sheet_v1 and the deck invariant: a journal that builds a deck needs them. */
 export const SHARED_DECK_POLICY = 'shared-deck/1';
+/** PC16 (#695): the same flag adds install_flight_v1, install_tread_v1 and the stair invariant: a journal that builds stairs needs them. */
+export const SHARED_STAIRS_POLICY = 'shared-stairs/1';
 
 /** The factory is made once the Mars engine has been loaded (an async import); after that everything is synchronous. */
 export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promise<EngineFactory> {
@@ -2638,17 +2641,17 @@ export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promis
   const sharedCarry = cfg.sharedCarryV1 ?? process.env.SIM_SHARED_CARRY === '1';
   // resolved once here, so the engine's own rules version (this.cfg) says what the factory registered; off adds no key
   if (sharedCarry && cfg.sharedCarryV1 !== true) cfg = {...cfg, sharedCarryV1: true};
-  const m = sharedCarry ? {...loaded, invariants: [...loaded.invariants, looseFramesHeld, framesStand, decksBear]} : loaded;
+  const m = sharedCarry ? {...loaded, invariants: [...loaded.invariants, looseFramesHeld, framesStand, decksBear, stairsBear]} : loaded;
   // disassembly/1 adds its reverse verbs to this engine's registry only; the default registry is unchanged.
   const registry = cfg.disassemblyV1 ? disassemblyRegistry(m.createRegistry) : m.createRegistry(), services = m.servicesFor(m.scenes);
-  if (sharedCarry) { registry.set(raiseHold.verb, raiseHold as any); registry.set(connectBeamV1.verb, connectBeamV1 as any); registry.set(installJoistV1.verb, installJoistV1 as any); registry.set(laySheetV1.verb, laySheetV1 as any); }   // PC13 (#692), PC14 (#693), PC15 (#694)
+  if (sharedCarry) { registry.set(raiseHold.verb, raiseHold as any); registry.set(connectBeamV1.verb, connectBeamV1 as any); registry.set(installJoistV1.verb, installJoistV1 as any); registry.set(laySheetV1.verb, laySheetV1 as any); registry.set(installFlightV1.verb, installFlightV1 as any); registry.set(installTreadV1.verb, installTreadV1 as any); }   // PC13 (#692), PC14 (#693), PC15 (#694), PC16 (#695)
   return {
     rulesVersion: nativeRulesVersion(m.rulesVersion,cfg),
     // A failed cross-policy checkpoint restore must not turn into replay under
     // another removal policy. An explicit, qualified transition is separate.
     canReplayHistory: version => {
       if((cfg.walkBlockV1||cfg.safeArrivalV1||cfg.scene==='eden-commons'||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1)&&version!==nativeRulesVersion(m.rulesVersion,cfg))return false;
-      if(!cfg.sharedCarryV1&&/\+shared-(?:raise|beam|deck)\//.test(version))return false;
+      if(!cfg.sharedCarryV1&&/\+shared-(?:raise|beam|deck|stairs)\//.test(version))return false;
       if(!cfg.map&&/\+mars-2026-map\//.test(version))return false;
       if(!cfg.disassemblyV1&&/\+disassembly\//.test(version))return false;
       const walk=version.match(/\+walk-block\/[^+]+/g)??[];

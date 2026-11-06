@@ -92,6 +92,38 @@ DECK.push(withConnectors(LOOSE[2], 2, 'One loose 4×8 ft plywood sheet (2.44 × 
   Array.from({ length: 5 }, (_, i) => ({ id: `on-${i}`, kind: 'sheet-bearing', at: [r5((i - 2) * SPAN), 0, 0], mates: ['sheet-seat'], bears: true }))));
 DECK[2].components.floor = { level: 0, y: r5(PLY_T) };
 
+// PC16 (#695): stairs up to a rack deck, from library parts joined by connectors. A deck on step beams at seat 4 (36 in)
+// has its top 40 5/8 in (1.03 m) above the ground, out of a step's reach; a site-built flight goes up to it (native
+// construction/stairs.ts): two 2x12 stringers and a header that hangs on the ledge of the bay's outer beam face (the
+// ledge the joists use on the inside), five 2x10 treads set one by one into it, six equal risers. The flight stands on
+// its stringers, ascending along +x, its foot at x = -RUN/2 on the ground and its header's face at x = +RUN/2. A step
+// beam's ledge seats take a joist end or a stair hook: `@5`; older revisions keep their bytes.
+const STAIR_N = 5, STAIR_GO = 0.27, STAIR_RUN = STAIR_N * STAIR_GO, STAIR_W = 3 * FT, STRINGER_T = 1.5 * IN, TREAD_T = 1.5 * IN, TREAD_D = 9.25 * IN;
+// the deck's top over the ground on beams at seat 4: the seat, half a beam down to its bottom, up to the ledge, a joist, the ply
+const STAIR_HOOK = 12 * IN + 6 * IN * 4 - BEAM_H / 2 + (BEAM_H - LEDGE), STAIR_RISE = STAIR_HOOK + JOIST_H + PLY_T, RISER = STAIR_RISE / (STAIR_N + 1);
+// a stringer: a 2x12 cut to stay inside the flight's run, its lower edge on the ground at the foot
+const SLOPE = Math.atan2(STAIR_HOOK, STAIR_RUN), STR_D = 0.2, STR_L = (STAIR_RUN - STR_D * Math.sin(SLOPE)) / Math.cos(SLOPE);
+const STR_Y = (STR_L / 2) * Math.sin(SLOPE) + (STR_D / 2) * Math.cos(SLOPE);
+const STAIRS = [
+  { ...loose(work('stair-flight', `A loose site-built stair flight (${STAIR_N} treads, ${STAIR_RISE.toFixed(2)} m rise over ${STAIR_RUN.toFixed(2)} m, 0.91 m wide, 16 kg): two 2x12 stringers and a header that hangs on a rack beam's step ledge. It stands on its stringers; two people carry it. Its treads go in one by one.`,
+    ['stair', 'stairs', 'flight', 'timber', '2x12', 'construction', 'material', 'loose-material', 'shared-carry', 'connectors'],
+    [...[-1, 1].map((s) => box([0, STR_Y, s * (STAIR_W / 2 - STRINGER_T / 2)], [STR_L, STR_D, STRINGER_T], 'timber', { roll: r5(SLOPE) })),
+      box([STAIR_RUN / 2 - STRINGER_T / 2, STAIR_HOOK - 0.09, 0], [STRINGER_T, 0.18, STAIR_W - 2 * STRINGER_T], 'timber')],
+    { timber: TIMBER }, { components: { carryable: { mass: 16, grips: 2 } } }), 1,
+    { crew: [2, 2], pose: 'flat', height: 0.8, grips: { 2: [[-0.5, 0, 0], [0.5, 0, 0]] } }, [STAIR_RUN, STR_Y * 2, STAIR_W]) },
+  { ...loose(work('stair-tread', `A loose 2x10 stair tread cut to fit between a flight's stringers (${(STAIR_W - 2 * STRINGER_T).toFixed(2)} m, 2.3 kg). It rests on the stringers' cleats; one person sets it, or two.`,
+    ['tread', 'stair', 'timber', '2x10', 'construction', 'material', 'loose-material', 'connectors'],
+    [box([0, TREAD_T / 2, 0], [STAIR_W - 2 * STRINGER_T, TREAD_T, TREAD_D], 'timber')], { timber: TIMBER }, { components: { carryable: { mass: 2.3, grips: 2 } } }), 1,
+    { crew: [1, 2], pose: 'flat', height: 0.8, grips: { 1: [[0, 0, 0]], 2: [[-0.3, 0, 0], [0.3, 0, 0]] } }, [STAIR_W - 2 * STRINGER_T, TREAD_T, TREAD_D]) },
+  withConnectors(LOOSE[0], 5, 'A loose orange 9 ft step beam (2.74 m, 19 kg) with hook clips at each end that join an upright\'s beam seats, and a step ledge along each face that takes deck joists, or a stair flight\'s header, every 24 in; one person carries it with both hands, or two.',
+    [...JOINED[1].components.connectors, ...JOIST_SEATS.map((s) => ({ ...s, mates: ['joist-end', 'stair-hook'] }))]),
+];
+STAIRS[0].components.connectors = [
+  { id: 'hook', kind: 'stair-hook', at: [r5(STAIR_RUN / 2), r5(STAIR_HOOK), 0], mates: ['joist-seat'], bears: true },
+  ...Array.from({ length: STAIR_N }, (_, i) => ({ id: `tread-${i + 1}`, kind: 'tread-seat', at: [r5(-STAIR_RUN / 2 + (i + 0.5) * STAIR_GO), r5((i + 1) * RISER - TREAD_T), 0], mates: ['tread-bearing'] })),
+];
+STAIRS[1].components.connectors = [{ id: 'seat', kind: 'tread-bearing', at: [0, 0, 0], mates: ['tread-seat'], bears: true }];
+
 export default [
   work('pallet-rack', 'A pallet-rack bay (2.7 m wide, 3 m tall): two upright frames with beam sockets every 15 cm on the front face (slots beam-l-N / beam-r-N); two beam levels fitted with shelf slots.', ['rack', 'storage', 'pallet', 'warehouse', 'construction'],
     [...[-W / 2, W / 2].flatMap((x) => [cbox([x, H / 2, D / 2], [0.08, H, 0.06], 'upright'), cbox([x, H / 2, -D / 2], [0.08, H, 0.06], 'upright'), ...[0.3, 1.2, 2.1, 2.9].map((y) => box([x, y, 0], [0.04, 0.04, D], 'brace'))]),
@@ -132,4 +164,5 @@ export default [
   ...LOOSE,
   ...JOINED,
   ...DECK,
+  ...STAIRS,
 ];
