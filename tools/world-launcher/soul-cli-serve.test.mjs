@@ -32,7 +32,7 @@ async function world(t) {
     if (p === '/v1/edge/inbox/listen') {
       w.listens++; w.listenAuth = req.headers.authorization;
       const waiting = () => { const from = w.inbox.findIndex((m) => m.id === url.searchParams.get('after')) + 1; return w.inbox.slice(from).filter((m) => !m.acked); };
-      if (!waiting().length) await hold(Math.min(Number(url.searchParams.get('timeoutMs')), 200));
+      if (!waiting().length) await hold(Number(url.searchParams.get('timeoutMs')) > 0 ? 200 : 0);
       if (req.socket.destroyed) return undefined; // the real route hands nothing to a caller that hung up (inbox-routes.ts)
       const backlog = waiting();
       return json(200, { inbox: { connected: true, latest: backlog[0] }, backlog: backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt })) });
