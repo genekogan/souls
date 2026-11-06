@@ -876,15 +876,17 @@ export class Together {
     if (who && st.code !== 'actor.holding') return `${who} is in the way`;
     let m = st.message ?? st.code;
     if (bay?.names) m = m.split(bay.a).join(bay.names[0]).split(bay.b).join(bay.names[1]);
-    return m;
+    return this.namesIn(m);
   }
+  /** A native message with the world's entity ids in it, with each thing's name in their place. */
+  private namesIn(text: string): string {return text.replace(/\b[a-z]_[0-9a-f]{6,}\b/g, id => this.w.entities[id] ? this.thingName?.(id) ?? String((this.w.entities[id] as {label?: string}).label ?? id) : id);}
   /** What the native raise says is in the way, in words (it names a Soul's body by entity id). */
   private raiseWhy(st: {code: string; message?: string; subjects?: string[]}): string {
+    // PC14 (#693): a joined upright is let go only once its frame stands on its own; the native rule names the missing beams
+    if (st.code === 'support.release-premature') return `beams join it into a frame that does not stand on its own yet (${this.namesIn(/\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*$/.exec(st.message ?? '')?.[1] ?? 'more beams are needed')})`;
     const who = (st.subjects ?? []).map(id => [...this.p.host.minds.values()].find(m => m.entityId === id)?.name).find(Boolean);
     if (who) return `${who} is in the way`;
     const meets = /(?:it meets|blocked by) ([^(]+?)(?: \(|$)/.exec(st.message ?? '')?.[1];
-    // PC14 (#693): a joined upright is let go only once its frame stands on its own; the native rule names the missing beams
-    if (st.code === 'support.release-premature') return `beams join it into a frame that does not stand on its own yet (${/\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*$/.exec(st.message ?? '')?.[1] ?? 'more beams are needed'})`;
     return meets ? `${meets} is in the way` : st.code === 'raise.station-unreachable' ? 'there is no way to the places the crew must stand' : st.code === 'raise.not-lying' ? 'it is not lying flat on the ground' : st.code === 'raise.joined' ? 'it is joined into a frame' : (st.message ?? st.code);
   }
   /** PC06 (#685, PC02 §4) route preflight, before anyone is asked: the native carry planner alone (the same `mars:carry`
@@ -1196,7 +1198,7 @@ export class Together {
       const how = st.unsafe !== undefined && joined ? `${crew} keep holding ${load}: ${st.unsafe}; they let go as soon as it does, and it is never lowered`
         : joined ? `beams join ${load} into a frame that stands on its own, so ${crew} let go and it stands there`
         : st.unsafe !== undefined ? `${load} cannot come down yet (${st.unsafe}), so ${crew} keep holding it and lower it as soon as it is clear` : before ? `${load} has not been lifted, so ${crew} let go of it where it lies` : `${crew} lower ${load} back where it lay, along the way it came up`;
-      return `${this.stopWords(st)} (${op.id}): ${how}. Your hands and walking stay committed until it is down; you can still talk and look around.`;
+      return `${this.stopWords(st)} (${op.id}): ${how}. Your hands and walking stay committed until ${joined ? 'it stands on its own' : 'it is down'}; you can still talk and look around.`;
     }
     const what = st.unsafe !== undefined ? `${load} cannot be set down here (${st.unsafe}), so ${crew} carry on along the agreed way to ${s.destination.name} and set it down at the first clear spot`
       : st.phase === 'gather' || st.phase === 'reach' || st.phase === 'gather-cancel' ? `${load} has not been lifted, so ${crew} let go of it where it lies`
@@ -1252,6 +1254,8 @@ export class Together {
     // (anything else, e.g. a programme ended another way while the load is still held, is reported as it is: `ended`)
     if (op.stop && ev.kind !== 'failed' && this.laidFree(s.load.entity)) {this.sharedStopped(inv); return true;}
     const arrived = ev.kind === 'completed';
+    // PC14 (#693): a seated beam says where it is and what that means for the uprights' crews
+    if (arrived && seats(s)) {this.sharedEnd(inv, 'arrived', 'shared.seated', `${cap1(s.load.name)} is seated ${s.destination.name}: both its ends are joined. Whoever holds the uprights lets go once the frame stands on its own.`); return true;}
     this.sharedEnd(inv, arrived ? 'arrived' : 'ended', ev.code ?? 'action.failed', raises(s) ? `The shared raise of ${s.load.name} ended${ev.message ? ` (${ev.message})` : ''}.` : seats(s) ? `The shared beam seating of ${s.load.name} ended before it was seated${ev.message ? ` (${this.beamWhy({code: ev.code ?? '', message: ev.message})})` : ''}; it lies where it was.` : `The shared carry of ${s.load.name} ended before ${s.destination.name}${ev.message ? ` (${ev.message})` : ''}.`);
     return true;
   }
@@ -1267,7 +1271,7 @@ export class Together {
       this.saveInvite(inv);
       for (const m of this.sharedMembers(inv)) {
         const r = m.receipt ? this.p.receipt(m.soulId, m.receipt) : null; if (!r || (r.phase !== 'waiting' && r.phase !== 'started')) continue;
-        if (result === 'arrived') this.p.complete(r.id);
+        if (result === 'arrived') {if (code === 'shared.seated') this.p.note?.(r.id, code, reason); this.p.complete(r.id);}
         else if (stopped) {this.p.note?.(r.id, code, reason); this.p.complete(r.id);}
         else this.p.fail(r.id, code, reason);
       }
