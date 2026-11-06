@@ -16,7 +16,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *  acknowledged after its cursor, and with no cursor every message not acknowledged. */
 async function world(t) {
   const dir = mkdtempSync(join(tmpdir(), 'sim-serve-'));
-  const w = { dir, inbox: [], events: [], calls: [], acts: 0, keys: [], busyNext: 0, heavyNow: 0, heavyMax: 0, listens: 0, parked: [], bodies: [], refuse: {}, results: [], byRef: new Map(), offers: { 'sit:bench': { seconds: { type: 'integer', optional: true, min: 1, max: 600 } } } };
+  const w = { dir, inbox: [], events: [], calls: [], acts: 0, keys: [], busyNext: 0, heavyNow: 0, heavyMax: 0, listens: 0, parked: [], bodies: [], refuse: {}, results: [], byRef: new Map(), cut: new Set(), offers: { 'sit:bench': { seconds: { type: 'integer', optional: true, min: 1, max: 600 } } } };
   const flush = () => { const p = w.parked; w.parked = []; for (const f of p) f(); };
   w.owner = (id, text) => { w.inbox.push({ id, text, sentAt: Date.now(), acked: false }); flush(); };
   w.event = (e) => { w.events.push({ id: `c_${w.events.length + 1}`, ...e }); flush(); };
@@ -27,6 +27,7 @@ async function world(t) {
     const p = url.pathname.slice('/w/test'.length);
     let body = ''; for await (const c of req) body += c;
     w.calls.push([req.method, p]);
+    if (w.cut.delete(p)) { res.writeHead(200, { 'content-type': 'application/json', 'content-length': '4096' }); res.write('{"accepted":tr'); setTimeout(() => res.destroy(), 10); return undefined; }
     const json = (status, v, h = {}) => { if (res.destroyed) return; res.writeHead(status, { 'content-type': 'application/json', ...h }); res.end(JSON.stringify(v)); };
     if (p === '/v1/edge/inbox/listen') {
       w.listens++; w.listenAuth = req.headers.authorization;
@@ -52,8 +53,10 @@ async function world(t) {
       if (b.clientRef && w.byRef.has(b.clientRef)) return json(200, w.byRef.get(b.clientRef));   // a retry returns the first result
       if (w.refuse[cap]) return json(200, { accepted: false, code: w.refuse[cap], reason: `${cap} refused`, alternatives: [{ id: 'walk:pond', label: 'Walk to the pond' }] });
       w.acts++; w.keys.push(req.headers['idempotency-key']);
-      const out = { accepted: true, channel: /^(look|turn):/.test(cap) ? 'attention' : 'body', receipt: { id: `r_${w.acts}`, capability: cap, phase: 'started' } };
+      const out = { accepted: true, ...(/^(look|turn):/.test(cap) ? { channel: 'attention' } : w.noChannel?.has(cap) ? {} : { channel: 'body' }), receipt: { id: `r_${w.acts}`, capability: cap, phase: 'started' } };
       if (b.clientRef) w.byRef.set(b.clientRef, out);
+      if (w.cutAfterAct) { w.cutAfterAct = false; res.writeHead(200, { 'content-type': 'application/json', 'content-length': '4096' }); res.write('{"accepted":tr'); setTimeout(() => res.destroy(), 10); return undefined; }
+      if (w.holdsBeforeAnswer) { w.holdsBeforeAnswer = false; w.event({ id: 'held', kind: 'activity.observed', receipt: { id: out.receipt.id, capability: cap, phase: 'started' }, action: { status: 'executing', phase: 'occupied' }, body: { posture: 'seated' } }); await sleep(250); }
       if (w.endsBeforeAnswer) { w.endsBeforeAnswer = false; w.event({ kind: 'receipt', receipt: { id: out.receipt.id, capability: cap, phase: 'completed' } }); await sleep(250); }
       return json(200, out);
     }
@@ -63,6 +66,7 @@ async function world(t) {
       if (id.includes('taken')) return json(200, { resolve: { ok: false, code: 'seat.taken', reason: 'someone is there' } });
       return json(200, { resolve: { ok: true, would: { capability: id, available: true }, candidates: [{ id, params: w.offers[id] }] } });
     }
+    if (/\/result$/.test(p) && w.resultDown) return json(500, { error: { code: 'down', message: 'down' } });
     if (/\/result$/.test(p)) { const m = w.inbox.find((x) => x.id === decodeURIComponent(p.split('/').at(-2))); if (m) m.acked = true; w.results.push({ id: m?.id, ...JSON.parse(body) }); return json(200, { inbox: {} }); }
     if (/\/ack$|\/result$/.test(p)) { const m = w.inbox.find((x) => x.id === decodeURIComponent(p.split('/').at(-2))); if (m) m.acked = true; return json(200, { inbox: {} }); }
     if (p === '/v1/edge/here') return json(200, { place: 'green' });
@@ -81,6 +85,7 @@ async function world(t) {
   t.after(async () => { await w.cli('serve', '--stop'); await sleep(50); server.closeAllConnections(); server.close(); rmSync(dir, { recursive: true, force: true }); });
   return w;
 }
+const flushWorld = (w) => { const p = w.parked; w.parked = []; for (const f of p) f(); };
 const until = async (f, ms = 3000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await f(); if (v) return v; await sleep(30); } return null; };
 
 test('A1: without serve every command goes straight to the world and the folder gains nothing', async (t) => {
@@ -140,6 +145,35 @@ test('A3: act returns the receipt at acceptance; pending lists open receipts, ev
   assert.deepEqual(done.endedReceipts.map((r) => [r.id, r.phase]), [['r_1', 'completed']]);
   assert.deepEqual(done.openReceipts, []);
   assert.deepEqual((await w.cli('pending')).json.endedReceipts, [], 'an ended receipt is reported once');
+});
+
+test('a cut-off response never ends the serve, on any path', async (t) => {
+  const w = await world(t);
+  const up = await w.cli('serve');
+  const alive = () => { try { process.kill(up.json.pid, 0); return true; } catch { return false; } };
+  for (const p of ['/v1/edge/here', '/v1/edge/inbox/listen', '/v1/edge/wait']) {
+    w.cut.add(p);
+    if (p === '/v1/edge/here') await w.cli('here');
+    else { flushWorld(w); assert.ok(await until(() => !w.cut.has(p), 5000), `the world saw ${p}`); }
+    await sleep(300);
+    assert.ok(alive(), `alive after ${p} was cut off`);
+  }
+  assert.equal((await w.cli('here')).json.place, 'green');
+  w.owner('msg_1', 'After the faults');
+  assert.ok(await until(async () => (await w.cli('pending')).json.ownerMessages?.some((m) => m.id === 'msg_1')), 'the inbox hold came back');
+  w.event({ kind: 'approach', text: 'After the faults' });
+  assert.ok(await until(async () => (await w.cli('pending')).json.events?.some((e) => e.text === 'After the faults')), 'and so did the stream');
+  assert.equal((await w.cli('serve', '--status')).json.pid, up.json.pid);
+});
+
+test('a keyed write cut off partway is asked again with its key, and the world acts once it answers', async (t) => {
+  const w = await world(t);
+  const up = await w.cli('serve');
+  w.cut.add('/v1/edge/act');
+  const r = await w.cli('act', 'walk:mill', '--for', 'none');
+  assert.equal(r.json?.accepted, true, r.out + r.err);
+  assert.equal(w.acts, 1);
+  assert.equal((await w.cli('serve', '--status')).json.pid, up.json.pid);
 });
 
 test('a stale lock never signals a process that is not this folder\'s serve', async (t) => {
@@ -470,6 +504,86 @@ test('plan: a step that ends on the stream before its answer is back still moves
   assert.ok(await until(() => w.acts === 2), 'without waiting for the slow poll');
 });
 
+test('plan: a response cut off before or after the world acted never ends the serve, and the world acts once', async (t) => {
+  const w = await world(t);
+  const up = await w.cli('serve');
+  const alive = () => { try { process.kill(up.json.pid, 0); return true; } catch { return false; } };
+  w.cut.add('/v1/edge/act');            // before it acted
+  await w.cli('plan', JSON.stringify(['walk:mill', 'walk:pond']), '--for', 'none');
+  await sleep(300); assert.ok(alive(), 'alive after the first cut');
+  assert.ok(await until(() => w.acts === 1, 8000), 'the next tick asks again');
+  w.cutAfterAct = true;                 // after it acted, the answer lost
+  ended(w, 'r_1');
+  assert.ok(await until(() => !w.cutAfterAct && w.acts === 2, 8000));
+  await sleep(300); assert.ok(alive(), 'alive after the second cut');
+  assert.ok(await until(async () => (await w.cli('plan', '--status')).json.plan?.steps?.[1]?.receipt === 'r_2', 8000), 'the same clientRef brings back the first answer');
+  assert.equal(w.acts, 2, 'the world acted once for each step');
+  assert.equal(new Set(w.bodies.filter((b) => b.capability === 'walk:pond').map((b) => b.clientRef)).size, 1);
+});
+
+test('plan: a result that fails is sent again, and a new plan does not rewrite how the old one ended', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.owner('msg_1', 'Mill'); w.owner('msg_2', 'Pond');
+  await w.cli('plan', '["walk:mill"]', '--for', 'msg_1');
+  assert.ok(await until(() => w.acts === 1));
+  w.resultDown = true;
+  ended(w, 'r_1');
+  await sleep(300);
+  assert.equal((await w.cli('plan', '["walk:pond"]', '--for', 'msg_2')).json.accepted, true);
+  w.resultDown = false;
+  assert.ok(await until(() => w.results.some((x) => x.id === 'msg_1'), 8000), 'sent when the world is back');
+  const r = w.results.find((x) => x.id === 'msg_1');
+  assert.equal(r.outcome, 'done');
+  assert.match(r.text, /Finished/);
+});
+
+test('plan: an offer with no target can be a step, and an act with no channel leaves a plan alone', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.noChannel = new Set(['pray', 'wave:here', 'stand:here']);
+  await w.cli('plan', JSON.stringify(['walk:mill', 'pray']), '--for', 'none');
+  assert.ok(await until(() => w.acts === 1));
+  for (const id of ['pray', 'wave:here']) await w.cli('act', id, '--for', 'none');
+  assert.equal((await w.cli('plan', '--status')).json.plan.state, 'running', 'the world did not replace the step, so the plan goes on');
+  ended(w, 'r_1');
+  assert.ok(await until(() => w.bodies.at(-1).capability === 'pray' && w.bodies.at(-1).strict === true));
+  assert.deepEqual(parsePlanSteps('["pray"]').steps, [{ id: 'pray' }]);
+});
+
+test('plan: a body act the answer does not name still ends the plan, when the world replaces the step', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.noChannel = new Set(['stand:here']);
+  await w.cli('plan', JSON.stringify(['walk:mill', 'walk:pond']), '--for', 'none');
+  assert.ok(await until(() => w.acts === 1));
+  await w.cli('act', 'stand:here', '--for', 'none');
+  ended(w, 'r_1', 'replaced');
+  assert.ok(await until(async () => (await w.cli('pending')).json.planEnded?.[0]?.state === 'replaced'));
+  await sleep(150);
+  assert.equal(w.acts, 2, 'no further step');
+});
+
+test('plan: a held sit seen before the act is answered still moves on', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.holdsBeforeAnswer = true;
+  await w.cli('plan', JSON.stringify(['sit:bench', 'walk:pond']), '--for', 'none');
+  assert.ok(await until(() => w.acts === 2), 'without waiting out the sit');
+});
+
+test('plan: a peek shows a refused step but does not use up the wake', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.refuse['walk:mill'] = 'route.unreachable';
+  await w.cli('plan', '["walk:mill"]', '--for', 'none');
+  assert.ok(await until(async () => (await w.cli('plan', '--status')).json.plan?.state === 'stopped'));
+  assert.equal((await w.cli('listen', '--once')).json.plan.state, 'stopped', 'what a wait does');
+  const held = await w.cli('listen');
+  assert.equal(held.json.plan?.state, 'stopped', 'the seat\'s listener still hears it');
+  assert.equal((await w.cli('listen', '--once')).json.plan, undefined, 'and now it has been heard');
+});
+
 test('plan: a refused step wakes a listening agent, once', async (t) => {
   const w = await world(t);
   await w.cli('serve');
@@ -480,7 +594,10 @@ test('plan: a refused step wakes a listening agent, once', async (t) => {
   const r = await held;
   assert.equal(r.json.plan.state, 'stopped', r.out);
   assert.match(r.json.next, /fixes/);
-  assert.equal((await w.cli('listen', '--once')).json.plan, undefined);
+  const later = w.cli('listen'); await sleep(300);
+  w.owner('msg_9', 'Anything else'); const next = await later;
+  assert.deepEqual(next.json.messages.map((m) => m.id), ['msg_9'], 'it does not wake again for the same stop');
+  assert.notEqual(next.json.next?.includes('fixes'), true);
 });
 
 test('plan A3: talk and attention leave the plan alone; a newer body act replaces it and says so', async (t) => {
@@ -574,6 +691,7 @@ test('plan: pure: parsing, params and transitions', () => {
   assert.match(stepParamsProblem({ k: { type: 'string', required: true } }, {}), /needs k/);
   assert.equal(stepParamsProblem(undefined, { any: 1 }), null);
   assert.equal(planStepProblem({ id: 'sit:b' }, { ok: false, code: 'seat.taken' }), null, 'state is for the step to find out');
+  assert.equal(planStepProblem({ id: 'sit:b' }, { ok: false, code: 'capability.unavailable' }), null, 'so is an offer that is unavailable right now');
   assert.equal(planStepProblem({ id: 'walk:a' }, { ok: true, would: { capability: 'walk:b' } }).code, 'capability.unknown', 'an id read as something else is not that offer');
   const p = newPlan([{ id: 'walk:a' }, { id: 'walk:b' }], 'msg', 0);
   const a = p.steps[0].clientRef; assert.ok(a); assert.notEqual(a, p.steps[1].clientRef);
