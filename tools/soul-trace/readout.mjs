@@ -79,7 +79,7 @@ export function reconstruct(text) {
   for (const r of http.filter(r => r.method === 'POST' && ACT.test(r.route?.split('?')[0] ?? ''))) {
     const key = r.op ?? r.proc + ':' + r.seq, a = acts.get(key) ?? {op: r.op ?? null, proc: r.proc, route: r.route, attempts: [], for: null, linkSource: 'world', receipt: null};
     acts.set(key, a);
-    a.attempts.push({attempt: r.attempt ?? 1, status: r.status, accepted: r.facts?.accepted ?? null, code: r.facts?.code ?? null, durationMs: r.durationMs ?? null, at: r.at});
+    a.attempts.push({attempt: r.attempt ?? 1, status: r.status, accepted: r.facts?.accepted ?? null, code: r.facts?.code ?? null, ...(r.facts?.alternatives?.length ? {alternatives: r.facts.alternatives} : {}), durationMs: r.durationMs ?? null, at: r.at});
     if (r.facts?.for) { a.for = r.facts.for; a.linkSource = 'world'; }
     else if (r.requestedFor && !a.for) { a.for = r.requestedFor; a.linkSource = 'requested'; }
     if (r.facts?.receipt?.id) a.receipt = r.facts.receipt.id;
@@ -205,7 +205,7 @@ export function render(t) {
   const actLines = (a, from) => {
     const lines = [];
     if (a.link === 'requested') lines.push('    (linked by the CLI\'s requested `for`; the world returned no link)');
-    for (const x of a.attempts) lines.push(`    act ${a.op ? 'op ' + a.op.slice(0, 8) + ' ' : ''}attempt ${x.attempt} → ${x.status}${x.accepted === false ? ' refused' : ''}${x.code ? ' ' + x.code : ''} in ${x.durationMs ?? '?'} ms (process clock)  @+${secs(x.at - from)} local`);
+    for (const x of a.attempts) lines.push(`    act ${a.op ? 'op ' + a.op.slice(0, 8) + ' ' : ''}attempt ${x.attempt} → ${x.status}${x.accepted === false ? ' refused' : ''}${x.code ? ' ' + x.code : ''}${x.alternatives ? ' (alternatives: ' + x.alternatives.join(', ') + ')' : ''} in ${x.durationMs ?? '?'} ms (process clock)  @+${secs(x.at - from)} local`);
     if (a.receipt) {
       const r = a.receipt, k = r.ticks;
       lines.push(`    receipt ${r.id} ${r.capability ?? ''}: accepted t${k.accepted ?? '?'} → started t${k.started ?? '?'} → ended t${k.ended ?? '?'} = ${r.terminal ?? 'no terminal observed'}${r.code ? ' (' + r.code + ')' : ''}  [world ticks]`);

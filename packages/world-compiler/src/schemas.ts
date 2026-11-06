@@ -37,9 +37,15 @@ export const componentsSchema = z.object({
   surface: z.object({ height: num }).optional(),
   /** Soul Actions entry 42: `inside` makes a hand-operated container's `shelf` slots real storage places (contact.ts
    *  containerInside): its mouth in the def frame at scale 1 (the lip a stored thing passes over, the front face, where a
-   *  body stands to reach in), what fits (`fit`, m) and the word for its inside ("drawer"). */
-  container: z.object({ capacity: num.positive(), of: z.array(z.string()).optional(), inside: z.object({ lip: num, face: num, stand: v2, fit: v3, word: z.string().max(24) }).strict().optional() }).optional(),
-  carryable: z.object({ mass: num.positive(), grips: z.number().int().min(1).max(4).default(1) }).optional(),
+   *  body stands to reach in), what fits (`fit`, m) and the word for its inside ("drawer"). #435 (W072): `claim: "owner"`
+   *  gives a thing kept in it that has an owner of its own back only to that owner (a lost-and-found). */
+  container: z.object({ capacity: num.positive(), of: z.array(z.string()).optional(), claim: z.literal('owner').optional(), inside: z.object({ lip: num, face: num, stand: v2, fit: v3, word: z.string().max(24) }).strict().optional() }).optional(),
+  /** PC03 (#682): `handling` is a loose material's native carry data (the engine catalog's `handling`, in the def frame:
+   *  +x the long axis, y up from the base, z across): the crew range, grips for each crew size, carry pose and hand
+   *  height. Absent, a carryable keeps the one-hand item path (or `upright-carry`). */
+  carryable: z.object({ mass: num.positive(), grips: z.number().int().min(1).max(4).default(1),
+    handling: z.object({ crew: z.tuple([z.number().int().min(1).max(8), z.number().int().min(1).max(8)]), pose: z.enum(['edge', 'flat']), height: num.positive().max(2),
+      grips: z.record(z.string().regex(/^[1-8]$/), z.array(v3).min(1).max(8)) }).strict().optional() }).optional(),
   opening: z.object({ width: num.positive(), height: num.positive(), state: z.enum(['open', 'closed', 'always']).default('always') }).optional(),
   floor: z.object({ level: z.number().int().default(0), y: num.default(0) }).optional(),
   stairs: z.object({ rise: num.positive(), run: num.positive(), treads: z.number().int().min(1) }).optional(),

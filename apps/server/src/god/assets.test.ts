@@ -158,13 +158,17 @@ test('routes: upload a GLB, define it, place it, fetch it immutable; refuse junk
   assert.equal(anon.status, 401);
 });
 
-function syntheticGlb(options: { invalidAccessor?: boolean; missingAccessor?: boolean; compressed?: boolean; meshopt?: boolean; truncatedView?: boolean; extension?: string } = {}) {
+function syntheticGlb(options: { invalidAccessor?: boolean; missingAccessor?: boolean; compressed?: boolean; meshopt?: boolean; truncatedView?: boolean; extension?: string; skinned?: boolean } = {}) {
+  // skinned (#760): a skin whose inverse-bind matrices sit in a meshopt-compressed view of the virtual fallback buffer,
+  // at an offset past the end of the BIN chunk, as gltf-transform writes every rigged file
+  const skinned = options.skinned && options.meshopt;
   const json = {
-    asset: { version: '2.0' }, buffers: [{ byteLength: 36 }, ...(options.meshopt ? [{ byteLength: 36, extensions: { EXT_meshopt_compression: { fallback: true } } }] : [])],
-    bufferViews: [{ buffer: options.meshopt ? 1 : 0, byteLength: 36, ...(options.meshopt ? { extensions: { EXT_meshopt_compression: { buffer: 0, byteOffset: 0, byteLength: options.truncatedView ? 100 : 36, byteStride: 12, count: 3, mode: 'ATTRIBUTES' } } } : options.truncatedView ? { byteLength: 100 } : {}) }],
-    accessors: [{ bufferView: 0, componentType: options.invalidAccessor ? 9999 : 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 1] }],
+    asset: { version: '2.0' }, buffers: [{ byteLength: 36 }, ...(options.meshopt ? [{ byteLength: skinned ? 100 : 36, extensions: { EXT_meshopt_compression: { fallback: true } } }] : [])],
+    bufferViews: [{ buffer: options.meshopt ? 1 : 0, byteLength: 36, ...(options.meshopt ? { extensions: { EXT_meshopt_compression: { buffer: 0, byteOffset: 0, byteLength: options.truncatedView ? 100 : 36, byteStride: 12, count: 3, mode: 'ATTRIBUTES' } } } : options.truncatedView ? { byteLength: 100 } : {}) },
+      ...(skinned ? [{ buffer: 1, byteOffset: 36, byteLength: 64, extensions: { EXT_meshopt_compression: { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 64, count: 1, mode: 'ATTRIBUTES' } } }] : [])],
+    accessors: [{ bufferView: 0, componentType: options.invalidAccessor ? 9999 : 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 1] }, ...(skinned ? [{ bufferView: 1, componentType: 5126, count: 1, type: 'MAT4' }] : [])],
     meshes: [{ primitives: [{ attributes: { POSITION: 0 }, ...(options.missingAccessor ? { indices: 99 } : {}), ...(options.compressed ? { extensions: { KHR_draco_mesh_compression: { bufferView: 0, attributes: { POSITION: 0 } } } } : {}) }] }],
-    nodes: [{ mesh: 0 }], scenes: [{ nodes: [0] }],
+    nodes: [{ mesh: 0, ...(skinned ? { skin: 0 } : {}) }], scenes: [{ nodes: [0] }], ...(skinned ? { skins: [{ joints: [0], inverseBindMatrices: 1 }] } : {}),
     ...(options.compressed || options.meshopt || options.extension ? { extensionsRequired: [options.extension ?? (options.meshopt ? 'EXT_meshopt_compression' : 'KHR_draco_mesh_compression')], extensionsUsed: [options.extension ?? (options.meshopt ? 'EXT_meshopt_compression' : 'KHR_draco_mesh_compression')] } : {}),
   };
   const text = new TextEncoder().encode(JSON.stringify(json)), padded = Math.ceil(text.length / 4) * 4;
@@ -178,6 +182,10 @@ function syntheticGlb(options: { invalidAccessor?: boolean; missingAccessor?: bo
 test('compressed GLB containers check meshopt source ranges while allowing virtual fallback buffers', () => {
   assert.equal(measureGlb(syntheticGlb({ meshopt: true })).tris, 1);
   assert.throws(() => measureGlb(syntheticGlb({ meshopt: true, truncatedView: true })), /EXT_meshopt_compression is outside its buffer/);
+  // #760: a rigged meshopt file measures (the matrices are compressed, so the joint's rest matrix stands in) instead of
+  // being refused as invalid for a BIN read past its end
+  const rigged = measureGlb(syntheticGlb({ meshopt: true, skinned: true }));
+  assert.equal(rigged.skins, 1); assert.equal(rigged.tris, 1); assert.deepEqual(rigged.box, [1, 1, 1]);
 });
 
 test('invalid GLB parser, height, footprint and unsupported extensions are refused before store.put', async () => {
