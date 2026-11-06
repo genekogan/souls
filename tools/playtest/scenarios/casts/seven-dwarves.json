@@ -35,7 +35,7 @@
  "orchestrator": { "planner": "opus", "plannerEffort": "medium" },
  "success": { "allPresent": true, "minChars": 40, "inOrder": true, "eachOnce": true },
  "observer": { "sampleSec": 15, "cameras": ["follow", "wide"], "viewport": [1024, 640], "dpr": 1, "arrivalTimeoutMs": 180000 },
- "rails": { "onboardWallSec": 600, "onboardTimeoutSec": 540, "onboardConcurrency": 4, "quotaStopPct": 90, "maxTurnsPerRequest": 4, "maxTurnWallSec": 240 },
+ "rails": { "onboardWallSec": 600, "onboardTimeoutSec": 540, "onboardConcurrency": 4, "quotaStopPct": 90, "maxTurnsPerRequest": 4, "maxTurnWallSec": 480 },
  "console": {
   "script": [
    { "at": "go:sleepy", "line": "redirect grumpy: instead of grumbling about show-and-tell, Grumpy admits, grudgingly, that he loves the old piano in this hall and says why.", "expect": ["piano"] }

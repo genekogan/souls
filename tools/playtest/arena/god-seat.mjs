@@ -24,7 +24,7 @@ export const GOD_CLI = { file: 'eden-god.mjs', fallbackFile: null, status: ['sta
  *  the world does not serve /god/eden-god.mjs). */
 export function createGodSeat({ runDir, god, worldBase, serverRoot, rails, preinstall = false }) {
   const dir = join(runDir, 'god');
-  const s = new Seat({ dir, seat: { id: 'god', soulName: null, ...god }, worldBase, rails, cli: GOD_CLI, allowedTools: GOD_ALLOWED, kind: 'god' });
+  const s = new Seat({ dir, seat: { id: 'god', soulName: null, ...god }, worldBase, rails, cli: GOD_CLI, allowedTools: GOD_ALLOWED, kind: 'god', infraFile: join(runDir, 'infrastructure-invalid.jsonl') });
   mkdirSync(s.folder, { recursive: true });
   if (preinstall) {
     const src = [join(serverRoot, 'tools/god-skill/build/eden-god.mjs'), join(serverRoot, 'tools/god-skill/eden-god.mjs')].find(existsSync);

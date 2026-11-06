@@ -36,7 +36,7 @@ export function splitRendered(md) {
 export const SOUL_CLI = { file: 'eden.mjs', fallbackFile: 'eden-agent.mjs', listen: (after) => ['listen', ...(after ? ['--after', after] : [])], status: ['status'], parseStatus: parseJsonStatus };
 
 export class Seat {
-  constructor({ dir, seat, worldBase, rails = {}, cli = SOUL_CLI, allowedTools, kind = 'soul' }) {
+  constructor({ dir, seat, worldBase, rails = {}, cli = SOUL_CLI, allowedTools, kind = 'soul', infraFile = null }) {
     this.dir = dir; this.folder = join(dir, 'folder'); this.seat = seat; this.base = worldBase; this.kind = kind; this.cli = cli;
     this.adapter = ADAPTERS[seat.adapter ?? 'claude-headless']; if (!this.adapter) throw new Error(`unknown adapter ${seat.adapter}`);
     this.rails = { maxTurnsPerRequest: 6, maxTurnWallSec: 240, ...rails };
@@ -46,6 +46,8 @@ export class Seat {
       `Write(${this.folder}/.claude/**)`, `Edit(${this.folder}/.claude/**)`, 'Write(./.claude/**)', 'Edit(./.claude/**)'];
     this.turnN = 0; this.chain = Promise.resolve(); this.listener = null; this.waking = false; this.stopped = false;
     this.lastListenId = null; this.wakesSinceRequest = 0; this.cumulative = null; this.listenFailures = 0;
+    // H-g (#371): an adapter with authStatus (Claude) is checked before each turn, once more after authRetryMs on a failure.
+    this.authCheck = undefined; this.authRetryMs = 5000; this.infraFile = infraFile; // authCheck undefined → the adapter's authStatus, read at each turn
     this.info = readJson(join(dir, 'seat.json'), null) ?? { id: seat.id, kind, adapter: seat.adapter ?? 'claude-headless', model: seat.model ?? null, effort: seat.effort ?? null,
       soulName: seat.soulName ?? null, worldBase, folder: this.folder, createdAt: now().t, sessionId: null, soulId: null, ownerIdentity: null, assisted: false,
       wake: (seat.adapter ?? 'claude-headless') === 'codex-headless' ? seat.wake === true : seat.wake !== false };
@@ -88,6 +90,20 @@ export class Seat {
 
   async _turn(text, reason, onStart = null) {
     if (this.stopped && reason !== 'final') throw new Error('seat stopped');
+    const check = this.authCheck !== undefined ? this.authCheck : this.adapter.authStatus;
+    if (check) {
+      let a = await check();
+      if (!a?.ok) { await sleep(this.authRetryMs); a = await check(); }
+      if (!a?.ok) {
+        // Signed out twice: no model call. The turn is recorded as an infrastructure failure, never as the agent's.
+        const n = ++this.turnN, t = now();
+        const rec = { turn: n, reason, startedAt: t.t, endedAt: t.t, startMono: t.mono, endMono: t.mono, wallMs: 0, usage: null, finalText: null, toolCalls: [], exit: null, timedOut: false, endedAfterResult: null, authFailed: true, authExit: a?.exit ?? null };
+        appendJsonl(join(this.dir, 'turns.jsonl'), rec);
+        if (this.infraFile) appendJsonl(this.infraFile, { t: t.t, check: 'H-g', seat: this.seat.id, turn: n, reason: 'claude auth status failed twice before the turn; no model call', authExit: a?.exit ?? null });
+        if (this.waking && !this.stopped) this.startListen(); // as a turn's end does: a skipped wake turn must not leave the seat deaf
+        return rec;
+      }
+    }
     // Fidelity: Claude Code keeps a background `listen` alive across turns, so the harness one keeps running during a turn.
     // The agent's own `listen` supersedes it (the old one prints `listen: superseded` and exits); ours restarts at turn end.
     this.inTurn = true;
@@ -203,7 +219,7 @@ export class Seat {
 /** createSeat({runDir, seat, worldBase, rails}) → Seat: an empty folder holding only the identity seed. */
 export function createSeat({ runDir, seat, worldBase, rails }) {
   const dir = join(runDir, 'seats', seat.id);
-  const s = new Seat({ dir, seat, worldBase, rails });
+  const s = new Seat({ dir, seat, worldBase, rails, infraFile: join(runDir, 'infrastructure-invalid.jsonl') });
   mkdirSync(s.folder, { recursive: true });
   if (!s.info.ownerIdentity) {
     if (readdirSync(s.folder).length) throw new Error(`seat folder not empty: ${s.folder}`);

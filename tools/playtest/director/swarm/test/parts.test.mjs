@@ -96,3 +96,15 @@ test('verify: out-of-order talks and missing presence fail; a clean session pass
   const late = verifySession({ cast, directions: [directions[0], { seat: 'bob', kind: 'go', t: at(200) }, { seat: 'cy', kind: 'go', t: at(201) }], presence, speech: [sp('ann', 130), sp('cy', 210), sp('bob', 205)] });
   assert.equal(late.checks.eachPresented.pass, false);
 });
+
+test('H-h (#371): cast seats get 480 s turns at every economy level, by default and in the shipped casts', async () => {
+  const { ECONOMY, loadCast } = await import('../cast.mjs');
+  const { readdirSync } = await import('node:fs');
+  const { join: j } = await import('node:path');
+  for (const [k, v] of Object.entries(ECONOMY)) assert.equal(v.maxTurnWallSec, 480, k);
+  assert.deepEqual(Object.fromEntries(Object.entries(ECONOMY).map(([k, v]) => [k, v.maxTurnsPerDirection])), { lean: 2, normal: 4, rich: 6 }, 'turn caps unchanged');
+  const dir = new URL('../../../scenarios/casts/', import.meta.url).pathname;
+  const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  assert.ok(files.length >= 4);
+  for (const f of files) { const c = loadCast(j(dir, f)); assert.equal(c.rails.maxTurnWallSec, 480, f); for (const [k, v] of Object.entries(c.economy)) assert.equal(v.maxTurnWallSec, 480, `${f} ${k}`); }
+});

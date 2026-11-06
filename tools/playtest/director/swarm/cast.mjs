@@ -4,11 +4,12 @@ import { readFileSync } from 'node:fs';
 import { providerPolicy } from '../../lib/provider-policy.mjs';
 
 export const ECONOMY = {
-  // How much a seat may spend per direction: wake-turn cap (Seat.rails.maxTurnsPerRequest), turn wall, and the words
+  // How much a seat may spend per direction: wake-turn cap (Seat.rails.maxTurnsPerRequest), turn wall (480 s for every
+  // level, #371 H-h: shorter walls cut turns off mid-walk on a loaded host), and the words
   // the direction carries so the agent knows to be brief.
-  lean: { maxTurnsPerDirection: 2, maxTurnWallSec: 150, guidance: 'Keep it cheap: do just this with one or two commands, no exploring, then wait for my next message.' },
-  normal: { maxTurnsPerDirection: 4, maxTurnWallSec: 240, guidance: 'Do just this, then wait for my next message.' },
-  rich: { maxTurnsPerDirection: 6, maxTurnWallSec: 300, guidance: 'Take the time you need to do this well, then wait for my next message.' },
+  lean: { maxTurnsPerDirection: 2, maxTurnWallSec: 480, guidance: 'Keep it cheap: do just this with one or two commands, no exploring, then wait for my next message.' },
+  normal: { maxTurnsPerDirection: 4, maxTurnWallSec: 480, guidance: 'Do just this, then wait for my next message.' },
+  rich: { maxTurnsPerDirection: 6, maxTurnWallSec: 480, guidance: 'Take the time you need to do this well, then wait for my next message.' },
 };
 
 export const TIMING = { truthPollSec: 5, gatherMaxSec: 900, nudgeAfterSec: 150, maxNudges: 3, quietSec: 25, speakTimeoutSec: 240, maxSpeakNudges: 1, prepareAhead: true, presentWaitSec: 120 };
@@ -53,7 +54,7 @@ export function normalizeCast(raw) {
   c.success = { ...SUCCESS, ...(c.success ?? {}) };
   c.orchestrator = { planner: null, plannerEffort: 'medium', ...(c.orchestrator ?? {}) };
   c.observer = { sampleSec: 15, cameras: ['follow', 'wide'], viewport: [1024, 640], dpr: 1, ...(c.observer ?? {}) };
-  c.rails = { onboardWallSec: 600, onboardTimeoutSec: 540, onboardConcurrency: 4, quotaStopPct: 90, maxTurnsPerRequest: 6, maxTurnWallSec: 240, ...(c.rails ?? {}) };
+  c.rails = { onboardWallSec: 600, onboardTimeoutSec: 540, onboardConcurrency: 4, quotaStopPct: 90, maxTurnsPerRequest: 6, maxTurnWallSec: 480, ...(c.rails ?? {}) };
   c.console = { script: [], ...(c.console ?? {}) };
   c.seats = (c.seats ?? []).map((s) => ({ adapter: 'claude-headless', model: 'haiku', effort: 'low', economy: 'lean', ...s }));
   if (errs.length) throw new Error(`cast ${c.name ?? '?'}: ${errs.join('; ')}`);

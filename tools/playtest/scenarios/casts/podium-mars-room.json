@@ -30,7 +30,7 @@
  "orchestrator": { "planner": null },
  "success": { "allPresent": true, "minChars": 40, "inOrder": true, "eachOnce": true, "fromPodium": true },
  "observer": { "sampleSec": 15, "cameras": ["follow", "wide"], "viewport": [1024, 640], "dpr": 1, "arrivalTimeoutMs": 180000 },
- "rails": { "onboardWallSec": 600, "onboardTimeoutSec": 540, "onboardConcurrency": 3, "quotaStopPct": 90, "maxTurnsPerRequest": 4, "maxTurnWallSec": 240 },
+ "rails": { "onboardWallSec": 600, "onboardTimeoutSec": 540, "onboardConcurrency": 3, "quotaStopPct": 90, "maxTurnsPerRequest": 4, "maxTurnWallSec": 480 },
  "console": { "script": [] },
  "notes": "Playtest round 2 (team/PLAYTEST-ROUND2-20261026.md #7). Mars College (worlds/templates/mars-two.json): the room is op chiba (core/mars-chiba, the auditorium, at -14.8,-30.2; footprint 38.6 x 27 m with the raised gallery deck) and the podium is op presenter-timber-box (-15.9,-20.6; 'the presenter box' in the batch note 'Chiba and the field'), next to op projector-table (1 m). Radius 1.8 m: the nearest audience seats, the tier cushions (op tier 2.1 m, tier-2 2.4 m), stay outside. Planner off (templated directions), haiku x5 as the round plan sets. Chiba has no rooms in its footprint, so its place is probably the landmark circle (radius about 22 m) and presence may also count the kitchen next door; the order/once/podium checks do not depend on it."
 }
