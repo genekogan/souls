@@ -164,6 +164,10 @@ export class EdgeLedger implements EdgeLedgerHooks {
   /** World-engine easels only; installed alongside the existing art media routes. */
   painting?: PaintingService;
   contactActuator?: ContactActuatorService;
+  /** CTRL-2 (#1094): a thing its container keeps out of sight (shut, or a hiding place); set by the engine bridge. */
+  concealedThing?: (id: string) => boolean;
+  /** CTRL-2 (#1094): a built thing's own name, as offers call it; set by the engine bridge. */
+  thingName?: (id: string) => string | null;
   /** Soul Actions entry 31 (god worlds, god/door-passage.ts): a plain walk a closed, permitted door walls off goes through it. */
   doorPassage?: (soul: EdgeSoul, steps: Program['steps'], what: string) => DoorPassage | DoorPassageRefusal | null;
   /** World-engine worlds only (god/places.ts): places walkable without being native engine regions (a god's plaza, a
