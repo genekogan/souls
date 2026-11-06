@@ -168,6 +168,10 @@ jobs:
             latency)
               pnpm --filter @sim/server exec node --test --test-concurrency=1 src/owner-response-milestones.test.ts
               ;;
+            soul-actions)
+              # #1061: not a gate step; picked by ci-scope.mjs from its own paths
+              node --test --test-concurrency=4 tools/soul-actions/*.test.mjs
+              ;;
             server)
               node --input-type=module <<'NODE'
           import { spawnSync } from 'node:child_process';

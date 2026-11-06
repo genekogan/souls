@@ -18,6 +18,25 @@ context-size checks below), regression runs, and an uncut real-client recording 
   and the viewer draws it as an ordinary thing. A container whose def declares a `leftBy` state field records who left
   each thing in it (item id = Soul id, set when the thing comes to rest from a Soul's hand, pruned to what is still
   inside). Nearby perception and the take offer name the leaver; god-placed things have none.
+- **Lost-and-found ([#435](https://github.com/genekogan/souls/issues/435)).** A container whose def declares
+  `components.container.claim: "owner"` gives a thing that has an owner of its own (the layers `owner` on the thing, a
+  Soul or a group) back only to that owner or a member of that group. Anyone else, the finder included, is offered the
+  take as blocked `item.not-yours`, with a reason that names the owner, and every other action on it (a wash at the tap)
+  is refused the same way. Things nobody owns are anyone's to take, and anyone may hand a thing in; a thing the god owns
+  stays until the god moves it. An owner ref by name (`soul:Ana`) follows whoever has that name, so a god that sets owners
+  for a lost-and-found should prefer Soul ids. `core-lost-and-found@1` is the swap shelf's form with this claim; its `leftBy` record
+  reads as who found each thing, and nearby Souls are told "bowl (Ana's, found by Ben)" ("yours, …" to the owner).
+- **Hiding places ([#435](https://github.com/genekogan/souls/issues/435)).** A doorless container whose def declares
+  `components.container.hidden: true` keeps what is in it out of everyone's sight, the hider's included: it has no `holds`
+  fact, no offers of its own, no name nearby and no walk target, and the viewer does not draw it. The only way to it is a
+  search: `search:<id>` is offered within 8 m and reads the same whether or not anything is there. The hand reaches in and
+  takes what it finds, or comes away with nothing, and the receipt's outcome says which. Searching with full hands is
+  refused `carry.hands-full`. `core-hollow-stump@1` is reached down over its rim, `core-wall-niche@1` in at its front; no
+  code names either. A clue for a hunt is an ordinary pinned note. A Soul trying to hide a thing in an occupied place is
+  refused `container.full`, which tells her something is there, as her hand would. A thing a Soul may not take (private,
+  for sale) is as if it were not there. The search's course is decided when it starts, so a thing hidden while the seeker
+  walks over is missed by that search. This hides things from Souls' perception, not from the data: the snapshot the
+  viewer draws from carries where a thing is, as it does for a shut drawer.
 - **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
   crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with
@@ -195,10 +214,10 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
 | Doors and openings | Open and close doors, gates (a picket gate and a five-bar field gate), windows, cupboard and locker doors, fridge doors, curtains, blinds, drawers and a tent flap; doors and gates open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "open the tent flap", "close the field gate", "knock on the door", "lock the door" |
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
-| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf" |
+| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it; hide a small thing in a hollow stump or a wall niche, and search one to find what is there | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found", "hide the book in the stump", "search the stump", "look in the niche", "search around here" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
-| Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
+| Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses and checkers with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "move c3 to d4", "jump d4 to f6", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
 | Making | Paint a picture at an easel and leave it there with a title and credit; draw a picture in chalk on a chalk square, which fades over four world days and washes away | "paint at the easel", "draw in chalk" |
@@ -221,6 +240,29 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Only drawn by hand.** The public hang route refuses an image on a fading canvas (`art.drawn-only`); the world's
   creator may still clear one. A washed-away drawing stays in the square's state until it is drawn over, so the art
   listing (`GET /v1/art`) still names it.
+
+### Checkers (#439)
+
+A checkers board (`core-checkers-board@1`) is a standing chalk board on noughts and crosses' faculty: the hand works the
+move on the face in one level chalk stroke between the two squares (across their files, at the height midway between
+them; for a jump, across the jumped piece), and the piece moves only when the stroke ends. The world keeps
+turns: the first Soul to move plays X, from the bottom, and the second plays O; a third Soul waits for the next game.
+The player steps back afterwards, a reader reads it, and a wipe sets the board up again. The rules are English draughts
+(`packages/world-compiler/src/core-kit/checkers.ts`):
+
+- a man moves one square diagonally forward, and a jump over an opponent's piece captures it;
+- a jump that is open must be taken, and a piece that can jump again keeps the turn until it cannot;
+- a man that reaches the far row is crowned, which ends the turn, and a king moves both ways;
+- a side with no pieces or no legal move loses; there is no draw rule, so two players end a drawn game by wiping the board.
+
+Squares are named a1–h8, with a1 at the bottom left seen from the front. "move c3 to d4", "c3 to d4", "jump d4 to f6"
+or "c3-d4" is the move with those squares on the board where it can be played. A Soul with a game in progress on a board in
+sight plays that game: another board refuses it a second game, so its words go to its own board, and out of turn they are
+refused with whose turn it is. With no game in progress and more than one board that would take the move, the words are
+refused naming the boards, and the Soul acts on the chosen board's move. The read offer names only the state ("a game of checkers, X
+to play"). Reading gives the players, whose move it is or who won, the pieces left and the board as eight rows.
+"jump c3 to e5, then e5 to g7" makes the first jump now and says to act again for the rest. "read the checkers board"
+is still a walk to it, as with the other boards; `read:<board>` (or its offered read) reads it.
 
 ### Openings: a tent flap and a field gate (#427)
 
@@ -268,7 +310,8 @@ within about 4 m and in plain sight:
 
 - switches and fire: `on`; doors, windows, curtains and drawers: `open` (and `locked` for lockable doors);
 - a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut); a
-  swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)");
+  swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)"); a
+  lost-and-found: whose each thing is and who found it ("bowl (Ana's, found by Ben)");
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
   a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
