@@ -33,6 +33,11 @@ export const lightSchema = z.object({
 });
 export const componentsSchema = z.object({
   seat: z.object({ height: num.default(0.45) }).optional(),
+  /** #442: this thing can break (state `broken`) and be repaired by hand with a carried tool: a held thing tagged `tool-<tool>`.
+   *  `label` is the offer; `says` the nearby fact's word; `hand` where the working hand goes at the end of each stroke and
+   *  `stands` where the body may stand for that (own local frame, first clear one wins); `motion`: a `strike` falls on it from
+   *  `lift` metres up, a `pump` works back and forth over `lift` metres along the facing. */
+  repairable: z.object({ tool: z.string().regex(/^[a-z][a-z-]{0,23}$/), label: z.string().max(80), says: z.string().max(40), hand: v3, stands: z.array(v2).min(1).max(4), strokes: z.number().int().min(1).max(20), lift: num.positive().max(0.5), motion: z.enum(['strike', 'pump']) }).strict().optional(),
   bed: z.object({ height: num.default(0.5) }).optional(),
   surface: z.object({ height: num }).optional(),
   /** Soul Actions entry 42: `inside` makes a hand-operated container's `shelf` slots real storage places (contact.ts
