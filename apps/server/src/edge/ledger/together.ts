@@ -811,7 +811,9 @@ export class Together {
     // PC13 (#692): raising has no destination: it stands where it lies, and comes down there
     const raising = tag.template === 'raise-hold', beaming = tag.template === 'connect-beam';
     // PC14 (#693): a beam goes into the seat pair its column and height name, between the two uprights there
-    const bays = tag.bays ?? [], bay = beaming ? bays.find(b => b.column === params.column && b.height.toFixed(2) === String(params.height)) : undefined;
+    const bays = tag.bays ?? [], h = Number(params.height);
+    // the free seat in that column nearest the height asked, within 8 cm (the native snapSeat's hole tolerance)
+    const bay = beaming && Number.isFinite(h) ? bays.filter(b => b.column === params.column && Math.abs(b.height - h) <= 0.08).sort((x, y) => Math.abs(x.height - h) - Math.abs(y.height - h))[0] : undefined;
     if (beaming && !bay) return {code: 'capability.params', reason: `Choose a column and a seat height for ${tag.name}: ${[...new Set(bays.map(b => b.column))].map(c => `column ${c} at ${bays.filter(b => b.column === c).map(b => b.height.toFixed(2)).join(', ')} m`).join('; ')} (column, height).`};
     const to = raising ? {id: '', name: 'where it lies'} : bay ? {id: '', name: `between ${bay.names[0]} and ${bay.names[1]}, in column ${bay.column} at ${bay.height.toFixed(2)} m`} : params.toPlace as {id: string; name: string} | undefined;
     if (!to) return {code: 'capability.params', reason: 'Choose a named place to carry it to (to).'};

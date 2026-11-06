@@ -99,7 +99,7 @@ async function seat(w, beam, column, height) {
   return c;
 }
 /** The offered seat height nearest `h` (the ground under the bay sets the exact numbers). */
-const nearest = (o, h) => {const e = o.params.height.enum, best = [...e].sort((x, y) => Math.abs(x - h) - Math.abs(y - h))[0]; assert.ok(Math.abs(best - h) < 0.05, `${h} among ${e}`); return best;};
+const nearest = (o, h) => {const e = [...o.params.height.description.matchAll(/\d+\.\d\d/g)].map((m) => +m[0]), best = [...e].sort((x, y) => Math.abs(x - h) - Math.abs(y - h))[0]; assert.ok(Math.abs(best - h) < 0.05, `${h} among ${e}`); return best;};
 const hOf = (w, s, beam, h) => nearest(offer(w, s, `connect-beam-with:${w.idOf(beam)}`), h);
 const joinsOf = (w, n) => w.god.model.get(n).joins ?? {};
 
@@ -108,7 +108,7 @@ test('R1 R2 R4: two held frames take four beams; the frame is let go only once i
   assert.equal(offer(w, Eve, `connect-beam-with:${w.idOf('beam1')}`), undefined, 'nothing to seat it in while the uprights lie');
   const {a, b} = await frames(w);
   const o = offer(w, Eve, `connect-beam-with:${w.idOf('beam1')}`);
-  assert.equal(o?.available, true, JSON.stringify(o)); assert.deepEqual(o.params.column.enum, ['l', 'r']); assert.ok(o.params.height.enum.every((h) => +h <= 2.07), o.params.height.enum.join());
+  assert.equal(o?.available, true, JSON.stringify(o)); assert.deepEqual(o.params.column.enum, ['l', 'r']); assert.equal(o.params.height.type, 'number'); assert.ok([...o.label.matchAll(/\d+\.\d\d/g)].every((m) => +m[0] <= 2.07), o.label);
   assert.match(o.label, /^Seat beam1 between fa and fb with one other Soul, one at each end/);
   assert.equal(offer(w, Ada, `connect-beam-with:${w.idOf('beam1')}`)?.available, false, 'a Soul holding an upright has no hand free');
 
@@ -149,7 +149,7 @@ test('R3 R6: refused before anyone is asked, and a beam on a claimed load or a t
   const code = async (s, cap, params) => {const r = await act(w, s, {capability: cap, params}); assert.equal(r.accepted, false, JSON.stringify(r)); return r;};
   assert.equal((await code(Eve, `connect-beam-with:${beam}`, {column: 'l', height: hOf(w, Eve, 'beam1', 0.76), with: 'Fay and Ada'})).code, 'beam.crew');
   assert.equal((await code(Eve, `connect-beam-with:${beam}`, {column: 'l', with: 'Fay'})).code, 'capability.params');
-  assert.match((await code(Eve, `connect-beam-with:${beam}`, {column: 'l', height: '2.90', with: 'Fay'})).reason, /column l at /);
+  assert.match((await code(Eve, `connect-beam-with:${beam}`, {column: 'l', height: 2.9, with: 'Fay'})).reason, /column l at /);
   assert.equal((await code(Ada, `connect-beam-with:${beam}`, {column: 'l', height: hOf(w, Eve, 'beam1', 0.76), with: 'Fay'})).code, 'carry.hands-full');
   // one proposal at a time on a load; a second is refused while the first is open or running
   const h76 = hOf(w, Eve, 'beam1', 0.76), first = ok(await act(w, Eve, {capability: `connect-beam-with:${beam}`, params: {column: 'l', height: h76, with: 'Fay'}})), id = first.receipt.shared.invite;
