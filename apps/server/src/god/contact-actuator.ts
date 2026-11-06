@@ -114,7 +114,9 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
     const shapes=def.make.kind==='gen'?(def.make.args as {shapes?:{tint?:string;at?:number[]}[]})?.shapes:undefined,valve=shapes?.find(s=>s.tint==='valve'&&s.at);
     // #431: any hand action but on/off goes to the second control when the def has one (a record player's tonearm).
     const part=!['switch-on','switch-off'].includes(action)?shapes?.find(s=>s.tint==='tuner'&&s.at)??valve:valve;
-    const placeOf=(at:number[]):[number,number,number]=>{const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[vx,vy,vz]=at.map(v=>v*wp.s);return [wp.x+vx*c+vz*s,wp.y+vy,wp.z-vx*s+vz*c];};
+    // #427: a stretched def (sx, sy, sz, as the viewer draws it) has its valve and its footprint stretched with it
+    const stretch=(key:string)=>Number(e.params?.[key]??def.params[key]?.default??1),[sx,sy,sz]=[stretch('sx'),stretch('sy'),stretch('sz')];
+    const placeOf=(at:number[]):[number,number,number]=>{const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[vx,vy,vz]=[at[0]*sx,at[1]*sy,at[2]*sz].map(v=>v*wp.s);return [wp.x+vx*c+vz*s,wp.y+vy,wp.z-vx*s+vz*c];};
     if(valve?.at)params.at=placeOf(valve.at);
     if(part&&part!==valve&&part.at)params.hold=TUNE_HOLD_SECONDS;
     const dx=me[0]-params.at[0],dz=me[2]-params.at[2],n=Math.hypot(dx,dz)||1;root=[params.at[0]+dx/n*.5,wp.y,params.at[2]+dz/n*.5];
@@ -122,9 +124,18 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
      // Stand beside the valve, clear of the thing's own footprint (a basin, a tray) by a body radius: of eight
      // directions around the valve, the one nearest the Soul's approach whose stand point is outside. Entry 33: and clear
      // of the world's other obstacles (a wall behind a wall torch), so the body never walks into one to reach a valve.
-     const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[hx,,hz]=def.size.box.map(v=>v*wp.s/2),outside=(p:number[])=>{const lx=(p[0]-wp.x)*c-(p[2]-wp.z)*s,lz=(p[0]-wp.x)*s+(p[2]-wp.z)*c;return Math.abs(lx)>hx+HUMAN_RADIUS||Math.abs(lz)>hz+HUMAN_RADIUS;};
+     const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[hx,,hz]=[def.size.box[0]*sx,0,def.size.box[2]*sz].map(v=>v*wp.s/2),outside=(p:number[])=>{const lx=(p[0]-wp.x)*c-(p[2]-wp.z)*s,lz=(p[0]-wp.x)*s+(p[2]-wp.z)*c;return Math.abs(lx)>hx+HUMAN_RADIUS||Math.abs(lz)>hz+HUMAN_RADIUS;};
+     // #427: a pivoted leaf worked at a valve (a tent's flap at its toggle) swings clear of the body: no stand point within
+     // the leaf's reach of its pivot, plus a body radius
+     const leaf=(shapes as {role?:string;pivot?:number[];at?:number[];size?:number[]}[]|undefined)?.filter(q=>q.role==='door'&&q.pivot&&q.at),pivot=leaf?.[0]?.pivot;
+     const swing=pivot?Math.max(...leaf!.map(q=>Math.hypot((q.at![0]-pivot[0])*sx,(q.at![2]-pivot[2])*sz)+(q.size?.[0]??0)*sx/2))*wp.s+HUMAN_RADIUS:0;
+     const swingClear=(p:number[])=>{if(!pivot)return true;const lx=(p[0]-wp.x)*c-(p[2]-wp.z)*s,lz=(p[0]-wp.x)*s+(p[2]-wp.z)*c;return Math.hypot(lx-pivot[0]*sx*wp.s,lz-pivot[2]*sz*wp.s)>=swing;};
      const clear=(p:number[])=>!d.clearance||d.clearance(p[0],p[2],d.levelAt?.(p[0],p[2],wp.y)??0)>=HUMAN_RADIUS+.04;
-     const want=Math.atan2(dz,dx),best=Array.from({length:8},(_,i)=>i*Math.PI/4).map(a=>[params.at[0]+Math.cos(a)*.55,wp.y,params.at[2]+Math.sin(a)*.55,Math.abs(((a-want+Math.PI*3)%(Math.PI*2))-Math.PI)]).filter(outside).filter(clear).sort((p,q)=>p[3]-q[3])[0];
+     const want=Math.atan2(dz,dx),ring=(r:number)=>Array.from({length:8},(_,i)=>i*Math.PI/4).map(a=>[params.at[0]+Math.cos(a)*r,wp.y,params.at[2]+Math.sin(a)*r,Math.abs(((a-want+Math.PI*3)%(Math.PI*2))-Math.PI)]).filter(outside).filter(clear).filter(swingClear).sort((p,q)=>p[3]-q[3])[0];
+     // #427: beside a pivoted leaf, a step further out when the near ring is all in the sweep or against the thing
+     // (0.7 m is at the edge of a standing reach: the body bends a little to a low toggle). With neither ring clear (walls
+     // or a crowd right at the front) she stands at the default point and the leaf may sweep her: a known limit
+     const best=ring(.55)??(pivot?ring(.7):undefined);
      if(best)root=[best[0],best[1],best[2]];
      // Entry 37: a panel of knobs (a def with a tuning knob as well as the power knob) is worked from straight in front of
      // the panel, centred between the knobs, from wherever the Soul comes: never from the side or a diagonal, and never a

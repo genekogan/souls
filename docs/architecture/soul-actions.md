@@ -4,7 +4,7 @@ Souls now use the things in a world with their own hands. Ask in plain words and
 thing changes at the moment the hand touches it: a lamp lights, a door swings, water runs, the kettle clicks on. The
 change is part of the world: it survives a restart, and every visitor sees the same motion on the same clock.
 
-This page covers Soul Actions entries 1–44 and the everyday-life families that follow them (public writing: a guestbook). Each entry was accepted with a deterministic native test (including the
+This page covers Soul Actions entries 1–44 and the everyday-life families that follow them (openings: a tent flap and a field gate; public writing: a guestbook). Each entry was accepted with a deterministic native test (including the
 context-size checks below), regression runs, and an uncut real-client recording driven by plain words.
 
 ## How it works
@@ -143,7 +143,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Family | What a Soul can do | Plain words that work |
 |---|---|---|
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
-| Doors and openings | Open and close doors, windows, cupboard and locker doors, fridge doors, curtains, blinds and drawers; doors open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "knock on the door", "lock the door" |
+| Doors and openings | Open and close doors, gates (a picket gate and a five-bar field gate), windows, cupboard and locker doors, fridge doors, curtains, blinds, drawers and a tent flap; doors and gates open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "open the tent flap", "close the field gate", "knock on the door", "lock the door" |
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
 | Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
@@ -171,6 +171,22 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Only drawn by hand.** The public hang route refuses an image on a fading canvas (`art.drawn-only`); the world's
   creator may still clear one. A washed-away drawing stays in the square's state until it is drawn over, so the art
   listing (`GET /v1/art`) still names it.
+
+### Openings: a tent flap and a field gate (#427)
+
+Both are data on contacts that already exist; neither has code of its own.
+
+- `core-tent@2` is `core-tent@1` with a doorway pole on the flap's free side and a toggle on it, tinted `valve`. It uses
+  the drawn covering's contact (the curtains' pull cord): the Soul stands in front of the tent, reaches the toggle, and the
+  flap swings open or shut at the contact. It has no hinge component, so the tent adds no door solid to the walk graph.
+  A tent is a place in `here` (an exit), not an object row, so its flap is perceived through its offers: open while
+  shut, close while open. A stretched tent (`sx`, `sz`) is worked at its stretched toggle, and the Soul stands clear of
+  the flap's sweep (a step further out when she must). Standing at the flap she is within the tent's own place, as anyone
+  near a thing-place is, so while she works it her nearby perception is the tent's.
+- `core-field-gate@1` is a five-bar wooden gate (a 1.3 m leaf) on `core-gate@2`'s hinge contact: the `opening`
+  component, the leaf's pivot and a latch tinted `chrome` where the hand goes. Shut, it closes its gap; a walk it walls
+  off opens it by hand on the way and shuts it behind (entry 31). Nearby it says `open`. It is a local fixture, never a
+  far landmark.
 
 ### Public writing: a guestbook (#429)
 
