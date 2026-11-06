@@ -191,6 +191,16 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
   report.contextBytes.teaRow = partRow ? JSON.stringify(partRow).length : null; report.contextBytes.teaFact = JSON.stringify({state: {tea: 0.4}}).length - 2;
   report.hereObjectsAtPart = partHere.objects.map((o) => [o.name, o.state ?? null]);
   report.checks.push('"have a sip" x3: tea 1 -> 0.8 -> 0.6 -> 0.4; set on the table, nearby {"tea":0.4}');
+  // #628 T2: with something else in hand, a tea act plans the put-down first instead of refusing. Plan level: a native
+  // fixture has no ground to put it on (item.no-room); `held.ts` puts down the same way on a real world.
+  await done(ana, `pick-up:${id('cup-two')}`); assert.equal(ent('cup-two').support.by, ana.entityId);
+  for (const [thing, action] of [['kettle', 'fill'], ['cup-three', 'drink']]) {
+   const p = w.bridge.tea.plan(ana, id(thing), action);
+   assert.ok(p?.steps, `${action}: ${JSON.stringify(p)}`);
+   assert.deepEqual(p.steps[0], {verb: 'mars:put_item', params: {item: id('cup-two'), surfaceSlot: 'ground'}}, `${action} puts the mug down first`);
+  }
+  report.checks.push('hands full: filling the kettle and drinking another cup each plan the held mug down first');
+  await done(ana, 'put the cup on the table');
   assert.deepEqual(f.host.engine.runtime.violations, []);
   report.final = {cup: {id: benCup, ...state('cup'), parent: byName('cup').in.parent}, cup2: {id: id('cup-two'), ...state('cup-two'), parent: byName('cup-two').in.parent}, tick: W().tick};
   report.retries = retries;
