@@ -58,7 +58,8 @@ export const SERVING = 0.25;
 /** Serve phases (s): serving hand to the pot, to the bowl (fills it), back. */
 export const SERVE_PHASES = { toPot: 0.6, toBowl: 0.6, back: 0.4 } as const;
 /** Activities a person may eat / serve from (seated, or standing still). */
-export const STILL_ACTIVITIES: ReadonlySet<string> = new Set(['sit', 'idle', 'talk', 'watch', 'listen', 'warm']);
+// 'juggle' (#441): an item act planned during a juggling run replaces it, and its hand reservations make it wait for the landing.
+export const STILL_ACTIVITIES: ReadonlySet<string> = new Set(['sit', 'idle', 'talk', 'watch', 'listen', 'warm', 'juggle']);
 const OVERLAYS: ReadonlySet<string> = new Set(['eat', 'serve']);
 
 const fail = (code: string, message: string, subjects: string[], extra: Partial<Diagnostic> = {}) => ({ ok: false as const, diagnostic: { code, message, subjects, ...extra } });

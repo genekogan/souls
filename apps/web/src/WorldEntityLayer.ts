@@ -1001,13 +1001,13 @@ export class WorldEntityLayer {
     for (const id of this.glowAnim) { const d = this.drawn.get(id)!; if (d.obj.visible && ((d.k! + frame) & (d.offscreen ? 15 : 3)) === 0) this.syncGlow(d, nowMs); }
   }
   private syncGlow(d: Drawn, nowMs: number) { animate(d.obj, d.motion!.entity, d.motion!.def, nowMs / 1000, { y: d.to.p.y, yaw: d.motion!.yaw }); d.glowStale = false; }
+  /** #441: held sets drawn as flying balls this frame (WorldGames): each is drawn whole or as balls, never both. */
+  private juggled?: ReadonlySet<string>;
+  setJuggled(sets: ReadonlySet<string>) { this.juggled = sets; }
   /** Viewer B7: where a body's figure holds a carried thing — the palm of its raised hand (the carrying arm is posed to
    *  the engine's hand point; the free one hangs lower), or between both palms when they are level (two-handed / seated).
    *  The figure is the native people view's rig, found in the scene by its name (= the body's engine id). False when the
    *  body has no figure here (no takes yet, or a stand-in): then the thing stays at the body entity's carry slot. */
-  /** #441: held sets drawn as flying balls this frame (WorldGames): each is drawn whole or as balls, never both. */
-  private juggled?: ReadonlySet<string>;
-  setJuggled(sets: ReadonlySet<string>) { this.juggled = sets; }
   private handPoint(body: string, out: THREE.Vector3): boolean {
     const f = this.figureOf(body); if (!f) return false;
     f.holder.updateWorldMatrix(true, true);

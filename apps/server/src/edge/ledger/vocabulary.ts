@@ -268,13 +268,17 @@ const PLACE_VERBS = new Set(['walk', 'jog', 'run', 'jog-around', 'run-around', '
 const SPOT_PLACE_VERBS = new Set(['read']);
 const GAIT_VERBS = new Set(['jog', 'run', 'jog-around', 'run-around', 'cycle', 'cycle-around']);
 
-// #441 (W107): "juggle", "juggle the balls" while holding a set; otherwise a plain refusal that says what is missing.
+// #441 (W107): "juggle", "juggle the balls", "juggle for 30 seconds" while holding a set; otherwise a refusal that says what
+// is missing. Anything else after the verb ("juggling yard", "juggle the knives") is not these words.
+const JUGGLE_WORDS = /^(?:please\s+)?(?:(?:start|go|do\s+some|try)\s+)?juggl(?:e|ing)(?:\s+(?:(?:the|my|your|some|these|those)\s+)?(?:juggling\s+)?(?:balls?|them|set))?(?:\s+for\s+(\d{1,3})\s*(s|secs?|seconds?|mins?|minutes?))?[.!]*$/;
 function juggleWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
-  if (!/^(?:please\s+)?(?:(?:start|go|do\s+some|try)\s+)?juggl(?:e|es|ing)\b/.test(text.trim())) return null;
+  const m = JUGGLE_WORDS.exec(text.trim()); if (!m) return null;
   const cap = ctx.caps.find(c => c.verb === 'juggle');
-  if (cap) return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`};
+  if (cap) return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`, ...(m[1] ? {params: {seconds: Number(m[1]) * (m[2].startsWith('m') ? 60 : 1)}} : {})};
   const near = ctx.caps.find(c => c.verb === 'pick-up' && /\b(?:juggling|balls)\b/i.test([c.label, ...(c.aliases ?? [])].join(' ')));
-  return {kind: 'unknown', code: 'juggle.no-balls', reason: near ? `You are not holding anything to juggle. ${near.label} first (${near.id}).` : 'You are not holding anything to juggle, and there are no juggling balls within reach here.', didYouMean: near ? [{id: near.id, label: near.label}] : []};
+  if (near) return {kind: 'unknown', code: 'juggle.no-balls', reason: `You are not holding anything to juggle. ${near.label} first (${near.id}).`, didYouMean: [{id: near.id, label: near.label}]};
+  const held = ctx.caps.some(c => c.verb === 'put-down' || c.verb === 'put-on' || c.verb === 'put-in');
+  return {kind: 'unknown', code: 'juggle.no-balls', reason: held ? 'What you are holding cannot be juggled. Put it down first; to juggle you need a set of juggling balls in your hand.' : 'You are not holding anything to juggle, and there are no juggling balls within reach here.', didYouMean: []};
 }
 export function resolveCapability(input: string, ctx: VocabContext): VocabResult {
   const r = resolveWords(input, ctx);

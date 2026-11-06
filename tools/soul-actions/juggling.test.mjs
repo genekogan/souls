@@ -8,7 +8,9 @@ import {EdgeLedger} from '../../apps/server/src/edge/ledger/ledger.ts';
 import {mountEdgeRoutes} from '../../apps/server/src/edge/routes.ts';
 import {GodMode} from '../../apps/server/src/god/god.ts';
 import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
-import {JUGGLE,juggleBalls,juggleBallsOut,juggleHand,juggleTimes} from '../../mars/viewer/engine/items/juggle.ts';
+import {JUGGLE,juggleBalls,juggleBallsOut,juggleHand,juggleThrows,juggleTimes} from '../../mars/viewer/engine/items/juggle.ts';
+import {recordedJuggles} from '../../mars/viewer/app/engine-view/recorded-games.ts';
+import {makeWay} from '../../mars/viewer/engine/locomotion/walk.ts';
 
 // #441 (W107): juggling three balls with real custody. The set is one held item before, during and after; the cascade is a
 // pure function of the recorded run and the tick; a stop lets what is in the air land; 100 distant sets cost nothing.
@@ -26,7 +28,7 @@ async function world(t,names=['Ana']){
  const souls={};for(const name of names){const id=name.toLowerCase();await invite(f,id);const row=await accept(f.host,f.souls.create('dev:'+id,{name,description:'Juggling test'}));souls[name]={soulId:row.id,entityId:row.entity_id,name:row.name,owner:row.owner};await tick();}
  const W=()=>f.host.engine.world,body=s=>W().entities[s.entityId],named=n=>[...god.model.entities.values()].find(e=>e.name===n);
  const here=async s=>{current=s;const r=await app.request('/v1/edge/here?include=doHere');assert.equal(r.status,200);return (await r.json()).here;};
- const act=async(s,capability,params)=>{current=s;const r=await accept(f.host,app.request('/v1/edge/act',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability,...(params?{params}:{})})}));return r.json();};
+ const act=(s,capability,params)=>accept(f.host,edge.act(s,{capability,...(params?{params}:{})}));
  const receipt=(s,b)=>edge.receipt(s.soulId,b.receipt.id);
  const ended=(s,b)=>['completed','failed','cancelled','replaced'].includes(receipt(s,b)?.phase);
  const until=async(cond,limit=2400)=>{for(let n=0;n<limit;n++){if(cond())return n;await tick(1);}return -1;};
@@ -56,6 +58,14 @@ test('the cascade is a pure function of the record: three balls, each thrown fro
   const caught=juggleBalls(s,100+at+JUGGLE.FLIGHT,p,yaw)[ball],catcher=juggleHand(s,to,100+at+JUGGLE.FLIGHT,p,yaw);assert.ok(Math.hypot(caught[0]-catcher[0],caught[1]-catcher[1]-.045,caught[2]-catcher[2])<.08,`throw ${k} lands in ${to}`);}
 });
 
+test('the viewer draws what the record says: three balls or the whole set, never both, and nothing for a body without a run',()=>{
+ const s={item:'set',hand:'right',startTick:100,throws:6},T=juggleTimes(s),ents=st=>({a:{p:[1,0,2],yaw:.3,state:st},b:{p:[9,0,9],yaw:0,state:{}}});
+ for(const [at,out] of [[100,false],[100+JUGGLE.RAISE-JUGGLE.PART,true],[100+T.lastCatch,true],[100+T.gathered,false],[100+T.end,false]]){
+  const {balls,sets}=recordedJuggles(ents({juggleV1:s}),at);assert.equal(balls.length,out?3:0,String(at));assert.equal(sets.has('set'),out,String(at));}
+ assert.equal(recordedJuggles(ents({juggleV1:{...s,endTick:100+20}}),100+21).balls.length,0,'a run that ended draws nothing');
+ assert.deepEqual(recordedJuggles(ents({juggleV1:{...s,colors:['#111111','#222222','#333333']}}),100+20).balls.map(b=>b.color),['#111111','#222222','#333333']);
+});
+
 test('juggling: effect, custody, offers, refusals, stop, and nothing for the far away',{timeout:600000},async t=>{
  const w=await world(t,['Ana','Ben']),{souls:{Ana:ana,Ben:ben},tick,body,here,act,finish,place,named,edge,W}=w,sz=x=>Buffer.byteLength(JSON.stringify(x));
  await tick(10);const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
@@ -78,7 +88,6 @@ test('juggling: effect, custody, offers, refusals, stop, and nothing for the far
  const offers=s=>edge.capabilities(s).filter(c=>c.verb==='juggle');
  const near=await here(ana);assert.deepEqual(offers(ana),[],'no offer until held');assert.ok(edge.capabilities(ana).some(c=>c.id==='pick-up:'+set));
  const notHeld=await act(ana,'juggle the balls');assert.equal(notHeld.accepted,false);assert.equal(notHeld.code,'juggle.no-balls');assert.match(notHeld.reason,/pick-up:/);
- assert.ok(near);
  // effect: pick up, juggle by words, the receipt, custody all along
  assert.equal((await finish(ana,await act(ana,'pick-up:'+set))).phase,'completed');
  assert.equal(W().entities[set].support.by,ana.entityId);const hand=W().entities[set].support.hand;
@@ -98,37 +107,54 @@ test('juggling: effect, custody, offers, refusals, stop, and nothing for the far
  const again=await act(ana,'juggle:'+set,{seconds:60});assert.equal(again.accepted,true);await w.until(()=>body(ana).human.activity==='juggle');await tick(30);
  await accept(w.f.host,w.f.host.enqueue('edge-relocate','edge:'+ben.soulId,{soulId:ben.soulId,entityId:ben.entityId,to:[ax,az+3],why:'test placement'}));await tick(6);
  const seen=await here(ben);assert.equal(seen.near.find(s=>s.name==='Ana').doing,'juggle','a nearby Soul sees it');
- // interrupted: a walk during the juggling: the balls land within 1.5 s, the set in hand, no ball left, receipt not completed
- const s0=body(ana).human.juggleV1,tStop=W().tick,walk=await act(ana,'stand:here');
- report.interruptReceipt=walk.accepted;
- const landed=await w.until(()=>!juggleBallsOut(body(ana).human.juggleV1,W().tick),200);assert.ok(landed>=0&&landed<=30,`gathered in hand within 1.5 s: ${landed} ticks`);
- assert.ok(W().tick-tStop<=30);assert.equal(W().entities[set].support.by,ana.entityId);
- await w.until(()=>body(ana).human.activity!=='juggle',200);
- const st=w.receipt(ana,again);assert.equal(st.phase,'replaced',JSON.stringify(st).slice(0,300));assert.ok(body(ana).human.juggleV1.throws<s0.throws,'the run was shortened');
- assert.equal(w.receipt(ana,walk).phase==='failed',false,'the act that interrupted went ahead');
- await w.until(()=>['completed','failed'].includes(w.receipt(ana,walk).phase),200);
- // seated: she stands up first, then juggles (as every hand act here does)
- await w.until(()=>['completed','failed'].includes(w.receipt(ana,walk).phase),200);await tick(10);
- const sat=await finish(ana,await act(ana,'sit-ground:here',{seconds:5}));assert.ok(sat);
- const sit2=await act(ana,'sit-ground:here',{seconds:60});await w.until(()=>['sit-ground','sit'].includes(body(ana).human.activity)||body(ana).human.baseActivity==='sit',200);await tick(30);
- const up=await finish(ana,await act(ana,'juggle:'+set,{seconds:1}));assert.equal(up.phase,'completed',JSON.stringify(up).slice(0,300));assert.ok(sit2.accepted);assert.equal(body(ana).human.activity,'idle');
- const rt=w.f.host.engine.rt;
- // refused at the engine: not held, the other hand holding something, seated (all without moving anything)
+ // nobody's make-way moves a juggler
+ const rt=w.f.host.engine.rt,yards=rt.records.size;
+ makeWay(rt,ana.entityId,[body(ana).pose.p[0]+.2,body(ana).pose.p[2]]);await tick(5);
+ assert.equal(rt.records.size,yards,'no make-way walk was started');assert.equal(body(ana).human.activity,'juggle');
+ // interrupted by a real walk: the balls land, then she goes, the set in hand; the receipt is honest
+ place([{op:'place',def:'core/table@1',name:'far-table',p:[ax+9,az+1]},{op:'place',def:'core/bowl@2',name:'far-table-bowl',in:{parent:'far-table',slot:'top'},p:[-.3,0]}]);await tick(20);
+ const s0=body(ana).human.juggleV1,p0=[...body(ana).pose.p],tStop=W().tick,walk=await act(ana,'walk:far-table');assert.equal(walk.accepted,true,JSON.stringify(walk).slice(0,300));
+ let movedAt=-1,gatheredAt=-1;
+ for(let n=0;n<300&&(movedAt<0||gatheredAt<0);n++){const h=body(ana).human,now=W().tick;if(gatheredAt<0&&!juggleBallsOut(h.juggleV1,now))gatheredAt=now-tStop;if(movedAt<0&&Math.hypot(body(ana).pose.p[0]-p0[0],body(ana).pose.p[2]-p0[2])>.001)movedAt=now-tStop;await tick(1);}
+ assert.ok(gatheredAt>=0&&gatheredAt<=30,`in hand within 1.5 s: ${gatheredAt} ticks`);assert.ok(movedAt>=gatheredAt,`the body stays until the balls are in hand: moved at ${movedAt}, gathered at ${gatheredAt}`);
+ assert.equal(w.receipt(ana,again).phase,'replaced');assert.ok(body(ana).human.juggleV1.throws<s0.throws,'the run was shortened');
+ assert.equal((await finish(ana,walk)).phase,'completed','the walk that interrupted went ahead');assert.equal(W().entities[set].support.by,ana.entityId,'the set came along');
+ // the same with an item act and with a second run: they wait for the landing and then happen
+ await tick(10);const r1=await act(ana,'juggle:'+set,{seconds:60});await w.until(()=>body(ana).human.activity==='juggle',200);await tick(40);
+ const r2=await act(ana,'juggle:'+set,{seconds:1});assert.equal(r2.accepted,true,JSON.stringify(r2).slice(0,300));assert.equal((await finish(ana,r2)).phase,'completed',JSON.stringify(w.receipt(ana,r2)).slice(0,300));assert.equal(w.receipt(ana,r1).phase,'replaced');
+ const r3=await act(ana,'juggle:'+set,{seconds:60});await w.until(()=>body(ana).human.activity==='juggle',200);await tick(40);
+ const r4=await act(ana,'put-on:'+named('far-table').id);assert.equal(r4.accepted,true,JSON.stringify(r4).slice(0,300));assert.equal((await finish(ana,r4)).phase,'completed',JSON.stringify(w.receipt(ana,r4)).slice(0,300));assert.equal(w.receipt(ana,r3).phase,'replaced');
+ assert.notEqual(W().entities[set].support?.kind,'in-hand');
+ // words: only these words are juggling; the duration is honoured
+ assert.equal((await finish(ana,await act(ana,'pick-up:'+named('far-table-bowl').id))).phase,'completed');await tick(10);
+ const other=await act(ana,'juggle');assert.equal(other.code,'juggle.no-balls');assert.match(other.reason,/Put it down first/);assert.doesNotMatch(other.reason,/not holding anything/);
+ assert.equal((await finish(ana,await act(ana,'put-on:'+named('far-table').id))).phase,'completed');await tick(10);
+ assert.equal((await finish(ana,await act(ana,'pick-up:'+set))).phase,'completed');await tick(10);
+ const knives=await act(ana,'juggle the knives');assert.notEqual(body(ana).human.activity,'juggle');assert.equal(knives.accepted,false,JSON.stringify(knives).slice(0,200));
+ const three=await act(ana,'juggle for 3 seconds');assert.equal(three.accepted,true,JSON.stringify(three).slice(0,200));assert.equal((await finish(ana,three)).phase,'completed');assert.equal(body(ana).human.juggleV1.throws,juggleThrows(3));
+ place([{op:'place',def:'core/table@1',name:'juggling-yard',p:[ax-8,az+1]}]);await tick(20);
+ const yard=await act(ana,'juggling yard');assert.notEqual(yard.code,'juggle.no-balls','a thing named for it is not these words');
+ await w.until(()=>['completed','failed','replaced','cancelled'].includes(yard.receipt?w.receipt(ana,yard)?.phase:'completed'),600);await tick(20);
+ // seated or lying: she stands up first, as every hand act here does; the engine itself refuses (below)
+ for(const pose of ['sit-ground:here','lie:here']){const sat=await act(ana,pose,{seconds:60});assert.equal(sat.accepted,true);await w.until(()=>body(ana).human.activity!=='idle',200);await tick(30);
+  const up=await finish(ana,await act(ana,'juggle:'+set,{seconds:1}));assert.equal(up.phase,'completed',pose+JSON.stringify(up).slice(0,300));assert.equal(body(ana).human.activity,'idle');await tick(10);}
+ // refused at the engine, nothing moved: not held, seated, lying, mid-walk, the other hand holding something
  const refused=(p,code)=>{const r=rt.submit('juggle_v1',{actor:ana.entityId,seconds:5,...p});assert.equal(r.status,'failed',code);assert.equal(r.diagnostic.code,code);};
  refused({item:bowl},'juggle.not-held');
- await tick(10);const left=rt.submit('take_item',{actor:ana.entityId,item:bowl,hand:'left'});assert.notEqual(left.status,'failed',JSON.stringify(left).slice(0,300));
- await w.until(()=>W().entities[bowl].support?.kind==='in-hand',200);await tick(40);
+ for(const pose of ['sit-ground:here','lie:here']){const sat=await act(ana,pose,{seconds:60});await w.until(()=>body(ana).human.activity!=='idle',200);await tick(30);refused({item:set},'juggle.not-still');assert.ok(sat.accepted);await finish(ana,await act(ana,'stand:here'));await tick(20);}
+ const goes=await act(ana,'walk:juggling-yard');assert.equal(goes.accepted,true);assert.ok(await w.until(()=>body(ana).human.activity==='walk',100)>=0,'she is walking');refused({item:set},'juggle.not-still');await finish(ana,goes);await tick(10);
+ await accept(w.f.host,w.f.host.enqueue('edge-relocate','edge:'+ana.soulId,{soulId:ana.soulId,entityId:ana.entityId,to:[ax,az+.6],why:'test placement'}));await tick(10);
+ const left=rt.submit('take_item',{actor:ana.entityId,item:bowl,hand:'left'});assert.notEqual(left.status,'failed',JSON.stringify(left).slice(0,300));assert.ok(await w.until(()=>W().entities[bowl].support?.kind==='in-hand',400)>=0,JSON.stringify(rt.records.get(left.id)?.diagnostic??left).slice(0,300));await tick(40);
  const blockedOffer=offers(ana)[0];assert.equal(blockedOffer.available,false);assert.equal(blockedOffer.blocked.code,'juggle.hand-full');
- refused({item:set},'juggle.hand-full');
- const noHand=await act(ana,'juggle');assert.equal(noHand.accepted,false);assert.equal(noHand.code,'juggle.hand-full',JSON.stringify(noHand).slice(0,300));
- assert.equal(body(ana).human.activity,'idle');
+ refused({item:set},'juggle.hand-full');const noHand=await act(ana,'juggle');assert.equal(noHand.accepted,false);assert.equal(noHand.code,'juggle.hand-full',JSON.stringify(noHand).slice(0,300));
+ assert.deepEqual(rt.violations,[],'no violation in the whole run');
  report.status='pass';if(out){mkdirSync(out,{recursive:true});writeFileSync(out+'/juggling-native.json',JSON.stringify(report,null,1));}
  console.log(JSON.stringify(report));
 });
 
 test('placement turns: picks up, juggles and puts back at 11 turns, on the ground and on a turned table',{timeout:600000},async t=>{
  const w=await world(t),{souls:{Ana:ana},tick,body,finish,place,named,edge}=w;await tick(10);
- const act=(s,capability,params)=>accept(w.f.host,edge.act(s,{capability,...(params?{params}:{})}));
+ const {act}=w;
  const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]],bad=[];
  const run=async(label,set,back)=>{
   const go=async(what,cap,params)=>{const b=await act(ana,cap,params);if(!b.accepted){bad.push([label,what,JSON.stringify(b).slice(0,300)]);return false;}const r=await finish(ana,b);if(r.phase!=='completed'){bad.push([label,what,r.phase,JSON.stringify(r.failure??r.reason??r.outcome??r).slice(0,200)]);return false;}return true;};
@@ -143,7 +169,7 @@ test('placement turns: picks up, juggles and puts back at 11 turns, on the groun
   await go(x-1.4,z+3);place([{op:'place',def:'core/table@1',name:tb,p:[x,z+3],r},{op:'place',def:DEF,name:on,in:{parent:tb,slot:'top'},p:[.1,0],r}]);await tick(20);
   await run(tb,named(on).id,()=>'put-on:'+named(tb).id);
   k++;}
- assert.deepEqual(bad,[],'every turn passes');
+ assert.deepEqual(bad,[],'every turn passes');assert.deepEqual(w.f.host.engine.rt.violations,[],'and no violation');
  // another palette through the def's params: the same action, the balls in its own colours; nothing in code names an instance
  await go(ax-2,az);place([{op:'place',def:DEF,name:'blue',p:[ax-1,az],params:{one:'#102030',two:'#203040',three:'#304050'}}]);await tick(20);
  const blue=named('blue').id;assert.equal((await finish(ana,await act(ana,'pick-up:'+blue))).phase,'completed');

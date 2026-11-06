@@ -569,9 +569,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
   }
   /** Called only inside the original terminal phase transaction. Replay only reads the immutable result. */
   private finishOutcome(row:Row){if(this.outcomes.read(row.receipt_id))return;const receipt=this.view(row),op=receiptItemOp(this,receipt.id);this.together.onReceipt(receipt);const mind=this.host.minds.get(row.soul_id);if(!mind)return;const soul={soulId:mind.soulId,entityId:mind.entityId,name:mind.name,owner:mind.owner};this.outcomes.terminal(receipt,terminalSnapshot(this,soul,row.capability.split(':')[0]),{...confirmedTogetherEffects(this,receipt,op),...this.signReadEffects(receipt),...this.juggleEffects(receipt,soul)});this.notifyMail();}
-  /** A completed `read:<sign>` reports the sign's own words (a Soul's board text attributed and untrusted), never a library passage. */
   /** #441 (W107): a finished juggling run says how it went; the count is the body's own record. */
   private juggleEffects(r:EdgeReceipt,soul:EdgeSoul):ConfirmedEffects{if(r.phase!=='completed'||!r.capability.startsWith('juggle:'))return {};const s=this.body(soul.entityId)?.human?.juggleV1;return s?.item===r.capability.slice(7)?{summary:`Juggled ${s.throws} throws in a row and caught them all; the balls are back in hand.`}:{};}
+  /** A completed `read:<sign>` reports the sign's own words (a Soul's board text attributed and untrusted), never a library passage. */
   private signReadEffects(r:EdgeReceipt):ConfirmedEffects{
     if(r.phase!=='completed'||!r.capability.startsWith('read:'))return{};const sign=this.contactActuator?.sign(r.capability.slice(5));if(!sign)return{};
     const nameOf=(id:string)=>this.host.minds.get(id)?.name??(this.db.soul(id) as {name?:string}|undefined)?.name??'another Soul';

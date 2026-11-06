@@ -42,8 +42,8 @@ function loopHand(s:JuggleV1,hand:Hand,t:number):Local{
  const last=first+2*Math.floor((s.throws-1-first)/2),since=t-throwAt(first);
  let u=since%(2*JUGGLE.BEAT);if(t>=throwAt(last))u=Math.min(t-throwAt(last),2*JUGGLE.BEAT-4);
  const travel=2*JUGGLE.BEAT-4;
- if(u<travel){const k=u/travel;return {f:FWD,x:lerp(INNER,OUTER,smooth(k)),y:lerp(THROW_UP,CATCH_UP,k)+RISE*Math.sin(Math.PI*k)};}
- const k=(u-travel)/4;return {f:FWD,x:lerp(OUTER,INNER,smooth(k)),y:lerp(CATCH_UP,THROW_UP,k)-SCOOP*Math.sin(Math.PI*k)};
+ if(u<travel){const k=u/travel;return {f:FWD,x:lerp(INNER,OUTER,smooth(k)),y:lerp(THROW_UP,CATCH_UP,k)+RISE*dsin(Math.PI*k)};}
+ const k=(u-travel)/4;return {f:FWD,x:lerp(OUTER,INNER,smooth(k)),y:lerp(CATCH_UP,THROW_UP,k)-SCOOP*dsin(Math.PI*k)};
 }
 function localHand(s:JuggleV1,hand:Hand,t:number,rest:Local):Local{
  const T=juggleTimes(s),meetAt=JUGGLE.RAISE-JUGGLE.PART;
@@ -87,14 +87,15 @@ export function juggleBalls(s:JuggleV1|undefined,tick:number,p:readonly number[]
 type Params={actor:string;item:string;seconds:number;colors?:[string,string,string]};
 type Plan={hand:Hand};
 type Exec={id:string;p:Params;hand:Hand;at:Vec3;level:number;base:string;stopping:boolean};
-const still=new Set(['idle','gather','converse','listen','watch']);
+/** 'juggle': a new act planned during a run replaces it; the reservations make the new act wait for the landing. */
+const still=new Set(['idle','gather','converse','listen','watch','juggle']);
 const issue=(code:string,message:string,subjects:string[]):Diagnostic=>({code:'juggle.'+code,message,subjects});
 function admission(rt:Runtime,p:Params,running=false):{actor:Entity;item:Entity;hand:Hand}|Diagnostic{
  const actor=rt.world.entities[p.actor],item=rt.world.entities[p.item],h=actor?.human;
  if(!h||actor.kind!=='human'||actor.body&&actor.body.family!=='humanoid')return issue('body-family','Juggling needs humanoid hands.',[p.actor]);
  if(h.grip||h.riding||h.on||h.shore||h.boatPassenger||h.boatTransit||h.sleepPose)return issue('occupied','Let go of what is supporting you before juggling.',[p.actor]);
  if(!running&&rt.holder('actor:'+p.actor).some(id=>rt.records.get(id)?.verb==='walk_to'))return issue('not-still','Stop walking before juggling.',[p.actor]);
- if(!(still.has(h.activity)||running&&h.activity==='juggle'))return issue('not-still','Stand still and clear before juggling.',[p.actor]);
+ if(!still.has(h.activity))return issue('not-still','Stand still and clear before juggling.',[p.actor]);
  if(!item||!isItem(item)||item.support?.kind!=='in-hand'||item.support.by!==p.actor)return issue('not-held','Hold the balls before juggling.',[p.actor,p.item]);
  if(heldBy(rt.world,p.actor).length!==1)return issue('hand-full','Juggling needs the other hand free.',[p.actor]);
  return {actor,item,hand:item.support.hand};
@@ -109,7 +110,8 @@ export const juggle:ActionDef<Params,Plan,Exec>={
  verb:'juggle_v1',
  description:'Juggle a held set of three balls in a cascade, standing still with the other hand free. Recorded on the world tick; a cancel stops the throws, lets what is in the air land and lowers the hands, with the set still in hand.',
  schema:z.object({actor:z.string().min(1).max(80),item:z.string().min(1).max(80),seconds:z.number().min(JUGGLE.MIN_SECONDS).max(JUGGLE.MAX_SECONDS),colors:z.tuple([z.string().max(16),z.string().max(16),z.string().max(16)]).optional()}).strict(),
- reservations:(_w,p)=>[{resource:'hand:'+p.actor+':left',mode:'exclusive'},{resource:'hand:'+p.actor+':right',mode:'exclusive'},{resource:'entity:'+p.item,mode:'exclusive'}],
+ // actor: the body holds its place while the balls are up (nobody's make-way moves it) and a new act waits for the landing
+ reservations:(_w,p)=>[{resource:'actor:'+p.actor,mode:'exclusive'},{resource:'hand:'+p.actor+':left',mode:'exclusive'},{resource:'hand:'+p.actor+':right',mode:'exclusive'},{resource:'entity:'+p.item,mode:'exclusive'}],
  plan(rt,p){const a=admission(rt,p);return 'code' in a?{ok:false,diagnostic:a}:{ok:true,program:{hand:a.hand}};},
  start(rt,p,plan,id){
   const actor=rt.world.entities[p.actor],h=actor.human!;
