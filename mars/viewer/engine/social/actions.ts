@@ -115,6 +115,10 @@ function peakStep(span: number, dur: number): number {
 /** How long sitting down over (or standing up from) `span` metres takes: SIT_TRANSITION, unless that would move the body
  *  further than the engine's per-tick limit (a seat whose approach point is far from it, e.g. a café chair tucked under a
  *  parasol table: 1.5 m faulted motion.teleport); then just long enough to stay inside it. Spans that fit are unchanged. */
+/** #1083: how far the body's seated height moves from a standard seat's (0.45 m) onto this seat's top: part of the span a
+ *  sit-down covers, so a high seat's lift, drawn with the blend, stays within a human's per-tick step too. */
+export const SEAT_STANDARD_TOP = 0.45;
+export const seatRise = (slot: { kind: string; height?: number }) => (slot.kind === 'seat' && typeof slot.height === 'number' ? Math.abs(slot.height - SEAT_STANDARD_TOP) : 0);
 export function sitDuration(span: number): number {
   if (!(span > 0) || peakStep(span, SIT_TRANSITION) <= MAX_HUMAN_STEP_PER_TICK) return SIT_TRANSITION;
   let dur = SIT_TRANSITION;
@@ -283,7 +287,7 @@ function slotAction(verb: string, description: string, kinds: SlotKind[] | null,
           a.pose.yaw = turnToward(a.pose.yaw, ex.slot.yaw, HUMAN_PROFILE.turnRate * dt);
           return { status: 'running', phase: 'turn' };
         }
-        if (ex.approach) { ex.phase = 'sit-down'; ex.from = pos2(a); ex.t = 0; ex.dur = sitDuration(dist2(ex.from, ex.slot.p)); }
+        if (ex.approach) { ex.phase = 'sit-down'; ex.from = pos2(a); ex.t = 0; ex.dur = sitDuration(Math.hypot(dist2(ex.from, ex.slot.p), seatRise(ex.slot))); }
         else { ex.phase = 'occupied'; if (ex.slot.kind === 'berth') { a.human!.berth = ex.slot.id; a.human!.seatHeight = ex.slot.height ?? 0.5; } }
       }
       if (ex.phase === 'sit-down') {
@@ -302,10 +306,10 @@ function slotAction(verb: string, description: string, kinds: SlotKind[] | null,
       // SIT_TRANSITION the body has left to cover; the seat claim is held until they are off it
       if (ex.approach && (ex.phase === 'sit-down' || ex.phase === 'occupied')) {
         const here = pos2(rt.world.entities[ex.actor]);
-        const span = dist2(ex.slot.p, ex.approach);
+        const flat = dist2(ex.slot.p, ex.approach), span = Math.hypot(flat, seatRise(ex.slot));
         const left = dist2(here, ex.approach);
         if (left > 1e-6) {
-          ex.phase = 'stand-up'; ex.from = here; ex.t = 0; ex.dur = span > 1e-9 ? sitDuration(span) * Math.min(1, left / span) : 0;
+          ex.phase = 'stand-up'; ex.from = here; ex.t = 0; ex.dur = span > 1e-9 ? sitDuration(span) * Math.min(1, flat > 1e-9 ? left / flat : 1) : 0;
           return { ok: true, deferred: true };
         }
       }
