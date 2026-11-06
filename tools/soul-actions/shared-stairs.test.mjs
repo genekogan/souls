@@ -175,7 +175,7 @@ test('PC16 R1 R2 R4 R5: two Souls set the flight, one Soul its five treads; walk
   if (half?.available) {
     const r = await act(w, Eve, {capability: half.id}); t.diagnostic(`walk with the treads missing: ${JSON.stringify(r).slice(0, 400)}`);
     assert.equal(r.accepted, false, JSON.stringify(r)); assert.equal(r.code, 'route.link-unusable'); assert.match(r.reason, /The way there needs stairs that are not finished: treads 1–5 missing\./);
-  } else assert.match(JSON.stringify(half.blocked), /treads 1–5 missing|no stair or ramp/, JSON.stringify(half));
+  } else assert.match(JSON.stringify(half.blocked), /only unfinished stairs reach: treads 1–5 missing/, JSON.stringify(half));
   assert.equal(w.E()[Eve.entityId].human.level ?? 0, 0, 'still on the ground');
   // R1 R2: Cy sets the treads, bottom up
   for (const i of [1, 2, 3]) { const to = await setTread(w, i); assert.match(to.label, new RegExp(`^Set tread-${i} into flight as tread ${i}`)); }
