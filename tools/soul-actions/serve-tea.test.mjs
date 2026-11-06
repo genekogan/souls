@@ -86,7 +86,8 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
    {op: 'place', def: 'core/table@1', name: 'table', p: [cx - 2.4, cz + 1.8]}]});
   assert.equal(sc.accepted, true, JSON.stringify(sc.failures?.slice(0, 3))); await tick(60);
   const cap = (s, c) => { as(s); return edge.capabilities(s).find((x) => x.id === c); };
-  const refused = (s, c, code) => { const x = cap(s, c); assert.ok(x && !x.available, c + ' should be refused ' + JSON.stringify(x)); assert.equal(x.blocked?.code, code, JSON.stringify(x)); report.checks.push(`refused ${c.split(':').pop()} (${s.name}): ${code}`); };
+  const refused = async (s, c, code, limit = 2000) => { let x; for (let n = 0; n < limit; n++) { x = cap(s, c); if (x && !x.available && x.blocked?.code === code) break; await tick(1); }   // #1077: bounded wait for perception (see offered)
+   assert.ok(x && !x.available, c + ' should be refused ' + JSON.stringify(x)); assert.equal(x.blocked?.code, code, JSON.stringify(x)); report.checks.push(`refused ${c.split(':').pop()} (${s.name}): ${code}`); };
   let retries = 0;
   const act = async (s, capability, want = true) => { let b; for (let k = 0; k < 20; k++) { as(s); const r = await accept(f.host, app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability})})); b = await r.json(); if (b.code !== 'object.admission-failed') break; retries++; await tick(10); } assert.equal(b.accepted, want, capability + ' ' + JSON.stringify(b).slice(0, 700)); if (want) report.words[`${s.name}: ${capability}`] = b.receipt?.capability ?? b.capability ?? b.resolved ?? b.receipt?.label ?? null; return b; };
   const phase = (s, r) => edge.receipt(s.soulId, r.receipt.id)?.phase;
@@ -95,13 +96,18 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
    const key = JSON.stringify({...s, tick: 0}); if (key !== lastKey) report.timeline.push(s); lastKey = key; return s; };
   const until = async (pairs, limit = 9000, each) => { for (let n = 0; n < limit; n++) { const s = sample(); each?.(s); const ph = pairs.map(([q, r]) => phase(q, r)); if (ph.every((p) => ['completed', 'failed', 'cancelled', 'replaced'].includes(p))) { pairs.forEach(([q, r], i) => assert.equal(ph[i], 'completed', `${q.name} ${r.receipt.id} ${ph[i]} ${JSON.stringify(edge.receipt(q.soulId, r.receipt.id)).slice(0, 600)}\n${w.logs.slice(-5).join('\n')}`)); return; } await tick(1); } assert.fail('timeout ' + JSON.stringify(pairs.map(([q, r]) => phase(q, r)))); };
   const done = async (s, words, each) => { const r = await act(s, words); await until([[s, r]], 9000, each); return edge.receipt(s.soulId, r.receipt.id); };
+  // #1077: offers and their place labels come from background perception, which runs in wall-clock slices (PERCEIVE_SLICE_MS).
+  // On a slow runner it can still show a mug where it was before it moved, and a plain-words act then resolves to the stale
+  // offer. Wait, bounded, until what Ana is offered matches the world before acting on words.
+  const offered = async (s, checks, limit = 2000) => { for (let n = 0; n < limit; n++) { as(s); if (checks.every(([c, want]) => (edge.capabilities(s).find((x) => x.id === c)?.available === true) === want)) return n; await tick(1); }
+   assert.fail(`offers not settled within ${limit} ticks: ${JSON.stringify(checks.map(([c]) => [c, cap(s, c)?.available ?? null, cap(s, c)?.blocked?.code ?? null]))}`); };
 
   // ---- Ana makes a cup of tea and picks it up ----
-  refused(ana, `object:${id('cup')}:drink`, 'tea.cup-empty');
-  refused(ana, `object:${id('cup')}:wash`, 'tea.cup-clean'.replace('clean', 'clean'));
+  await refused(ana, `object:${id('cup')}:drink`, 'tea.cup-empty');
+  await refused(ana, `object:${id('cup')}:wash`, 'tea.cup-clean'.replace('clean', 'clean'));
   await done(ana, 'make a cup of tea');
   assert.equal(state('cup').tea, 1, 'a cup of tea'); const brewed = state('cup').brewedTick; assert.ok(brewed > 0);
-  refused(ana, `object:${id('cup')}:wash`, 'tea.cup-not-empty');
+  await refused(ana, `object:${id('cup')}:wash`, 'tea.cup-not-empty');
   // #628: a full cup on the counter is drunk by taking it first (a step, not a refusal)
   { const d = cap(ana, `object:${id('cup')}:drink`); assert.equal(d?.available, true, JSON.stringify(d)); report.checks.push('drink offered with the cup on the counter'); }
   await done(ana, 'pick up the cup');
@@ -149,7 +155,7 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
   assert.ok(visits <= 2 * ticks + 10, `tea visits only the two drinkers: ${visits} in ${ticks} ticks`);
   report.drinkAt = {ana: pa.map(r3), ben: pb.map(r3), apart: r3(apart), visits, ticks};
   report.checks.push(`both drank at the table at once: 5 sips each, tea 1 -> 0 in steps, each at the lips and equal to drinkTea; ${r3(apart)} m apart; ${visits} tea visits in ${ticks} ticks`);
-  refused(ben, `object:${id('cup')}:drink`, 'tea.cup-empty');
+  await refused(ben, `object:${id('cup')}:drink`, 'tea.cup-empty');
 
   // ---- part-drunk context: a sip from a fresh third cup would do; instead read Ben's here at a part-drunk state ----
   const nearRow = (h, n) => h.objects.find((o) => o.id === id(n));
@@ -173,11 +179,12 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
   report.contextBytes.cleanRow = cleanRow ? JSON.stringify(cleanRow).length : null; report.contextBytes.cleanFact = cleanRow ? JSON.stringify({state: cleanRow.state}).length - 2 : null;
   if (cleanRow) assert.deepEqual(cleanRow.state, {clean: true});
   report.checks.push('wash: "wash the cup" took it from the table, tap on/off at the valve, rinsed, back on the table clean: ' + (wash.summary ?? wash.phase));
-  refused(ben, `object:${benCup}:wash`, 'tea.cup-clean');
-  refused(ana, `object:${benCup}:brew`, 'tea.no-bag');
+  await refused(ben, `object:${benCup}:wash`, 'tea.cup-clean');
+  await refused(ana, `object:${benCup}:brew`, 'tea.no-bag');
 
   // ---- a sip, and the nearby tea fact at a part-drunk level: Ana makes tea in the clean... no: in a fresh mug ----
   const s3 = god.act({ops: [{op: 'place', def: 'core/cup@2', name: 'cup-three', in: {parent: 'counter', slot: 'top'}, p: [0.0, 0.19]}]}); assert.equal(s3.accepted, true); await tick(20);
+  await offered(ana, [[`object:${id('cup-three')}:brew`, true], [`object:${id('cup-two')}:brew`, false]]);
   await done(ana, 'make a cup of tea'); assert.equal(state('cup-three').tea, 1);
   await done(ana, `pick-up:${id('cup-three')}`); assert.equal(ent('cup-three').support.by, ana.entityId);
   await done(ana, 'have a sip'); assert.equal(state('cup-three').tea, 0.8, 'one sip');
