@@ -103,8 +103,6 @@ export type ActuatorHost = {
   /** Entry 43 (tea.ts): "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea" as acts of native steps. */
   tea?(soul: EdgeSoul, thing: string, action: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | Refusal | null;
   teaBegun?(soul: EdgeSoul): void;
-  /** #439: the name of another checkers board in sight where this Soul has a game in progress, or null. */
-  gameElsewhere?(soul: EdgeSoul, id: string): string | null;
   /** #442 (mending.ts): "repair <thing>" with the tool in hand, as native steps; the world changes when the receipt completes. */
   repair?(soul: EdgeSoul, thing: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | Refusal | null;
 };
@@ -345,15 +343,15 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
       const tea = s.key ? host.tea?.(ctx.soul, s.key, a.name) : null; if (tea) return 'code' in tea ? tea : null;
       const water = s.key ? waterPlan(a, s.key, ctx.soul, host) : null; if (water) return isRefusal(water) ? water : null;
       const state = (s.key && host.stateOf?.(s.key)) || s.state || {};
-      const base = whenRefusal(a, state, nameOf(s)) ?? (isListAction(def, a) ? listProblem(def, a, state, ctx.soul) : isGameAction(def, a) ? gameProblem(def, a, state, ctx.soul) : null);
-      // #439: a Soul with a game of checkers in progress on another board in sight plays that one; it starts or joins no
-      // second game here (an out-of-turn move never silently becomes a new game on the next board)
-      if (base || a.name !== 'move' || !def.tags?.includes('checkers') || !s.key || gamePlayers(state).ids.includes(ctx.soul.soulId)) return base;
-      const other = host.gameElsewhere?.(ctx.soul, s.key);
-      return other ? { code: 'game.elsewhere', reason: `You have a game of checkers in progress on ${other}; play it there, or wipe that board first.` } : null;
+      return whenRefusal(a, state, nameOf(s)) ?? (isListAction(def, a) ? listProblem(def, a, state, ctx.soul) : isGameAction(def, a) ? gameProblem(def, a, state, ctx.soul) : null);
     };
+    // #1084: a checkers board's move says when the game on it is this Soul's own, so her words reach the game she is playing
+    // (a second game on another board is hers to start; no refusal stands in for that)
+    const mineLabel = a.name === 'move' && def.tags?.includes('checkers')
+      ? (s: BuiltLike, ctx?: { soul: EdgeSoul }) => { const st = (s.key && host.stateOf?.(s.key)) || s.state || {}; return ctx && gamePlayers(st).ids.includes(ctx.soul.soulId) && !checkersStatus(st.text).winner ? `${a.label}, in your game` : a.label; }
+      : undefined;
     out[a.name] = {
-      label: a.label, roles: 'anyone', reach: 'anywhere', params: actionParams(a), movesBody: true,
+      label: a.label, ...(mineLabel ? { labelFor: mineLabel } : {}), roles: 'anyone', reach: 'anywhere', params: actionParams(a), movesBody: true,
       available: (s: BuiltLike, ctx: any) => check(s, ctx),
       validate: (s: BuiltLike, p: Record<string, unknown>, ctx: any) => check(s, ctx) ?? (isListAction(def, a) ? listProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (isGameAction(def, a) && a.name !== 'erase' ? gameProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (a.name === 'write' && 'text' in actionParams(a) ? boardTextProblem(p?.text, actionParams(a).text.maxLength) : null) ?? enumParamProblem(def, a, p ?? {}, nameOf(s)),
       apply: (s: BuiltLike, params: Record<string, unknown>, ctx: any) => {

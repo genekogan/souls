@@ -319,21 +319,15 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
 }
 // #439 W093: a checkers move named by its two squares ("move c3 to d4", "jump from c3 to e5", "c3 to d4", "c3-d4") is the
 // move with those squares on the board where it can be played. Only while a checkers move is offered; the board's rules judge
-// it. A Soul with a game in progress plays it there: its other boards refuse a second game (`game.elsewhere`), so its own
-// board is the one available, or, out of turn, the one that says whose turn it is (`game.turn`). With no game in progress and
-// several boards that would take the move, the words name no board: they are refused with the choice, never a new game on
-// the nearest one.
+// it. #1084: a Soul with a game in progress plays it there: her own board's move says "in your game", and the words go to it,
+// or, out of turn, to the one that says whose turn it is (`game.turn`), never to a new game elsewhere. With no game of hers,
+// the nearest open board takes the move. A second game is started by acting on that board's own move.
 const CHECKERS_MOVE = /^(?:(?:please\s+)?(?:move|jump|play|take|capture|go)\s+)?(?:(?:the|my)\s+(?:piece|man|king|checker)\s+)?(?:(?:on|at|from)\s+)?([a-h][1-8])\s*(?:-|x|to|onto|over\s+to|and\s+jump\s+to|jumping\s+to|\s)\s*([a-h][1-8])(?:\s+on\s+the\s+(?:checkers\s+|game\s+)?board)?$/;
 function checkersWords(input: string, ctx: VocabContext): VocabResult | null {
   const caps = ctx.caps.filter(c => c.verb === 'object' && c.action === 'move' && /checkers/i.test(c.label)); if (!caps.length) return null;
   const m = CHECKERS_MOVE.exec(input.toLowerCase().replace(/[.!?\s]+$/, '').trim()); if (!m) return null;
-  const open = caps.filter(c => c.available);
-  if (open.length > 1) {
-    const named = [...open].sort((a, b) => dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
-    const which = named.map(c => /\(([^()]*)\)$/.exec(c.label)?.[1] ?? c.id);
-    return {kind: 'unknown', code: 'game.which-board', reason: `${named.length} checkers boards here would start a game with ${m[1]} to ${m[2]}: ${which.join(', ')}. Say which: act on that board's move with from ${m[1]} and to ${m[2]}.`, didYouMean: named.map(c => ({id: c.id, label: c.label}))};
-  }
-  const rank = (c: EdgeCapability) => (c.available ? 0 : c.blocked?.code === 'game.turn' ? 1 : c.blocked?.code === 'game.elsewhere' ? 3 : 2);
+  const mine = (c: EdgeCapability) => /, in your game \([^()]*\)$/.test(c.label);
+  const rank = (c: EdgeCapability) => (mine(c) ? (c.available ? 0 : c.blocked?.code === 'game.turn' ? 1 : 2) : c.available ? 3 : c.blocked?.code === 'game.turn' ? 4 : 5);
   const cap = [...caps].sort((a, b) => rank(a) - rank(b) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id))[0]!;
   return {kind: 'alias', cap, params: {from: m[1], to: m[2]}, note: `${input} is ${cap.id} (${cap.label}: ${m[1]} to ${m[2]}).`};
 }
