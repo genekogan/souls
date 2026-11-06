@@ -1,5 +1,5 @@
 export * from './schemas.ts';
-export {contactStateKey,DRAWER_TRAVEL,CONTACT_EXTRA_FIELDS,containerInside,type ContainerInside} from './contact.ts';
+export {contactStateKey,DRAWER_TRAVEL,CONTACT_EXTRA_FIELDS,containerInside,containerOpen,keptBehindDoor,type ContainerInside} from './contact.ts';
 export { gameSquare, gameSquareOf, gameStatus, GAME_LINES } from './core-kit/writable-boards.ts'; // Soul Actions entry 27
 export { CHECKERS_CELL, CHECKERS_START, checkersBoard, checkersCellOf, checkersMoveProblem, checkersMoves, checkersName, checkersPlay, checkersRows, checkersSquare, checkersStatus } from './core-kit/checkers.ts'; // #439 W093
 export { WorldModel, definitionRefs, nearHash, obbOverlap, type OBB, type AssetInfo, type AssetLookup } from './model.ts';
