@@ -40,26 +40,45 @@ const lockers: DefInput = {
 // containerOpen), and a declared `leftBy`, so it records who left each thing. One shelf at 1 m behind a low front rail, three
 // places on it (each up to 0.3 m across and 0.28 m tall); the body stands 0.6 m clear of the footprint, so the engine's step in during a reach (at most 0.2 m) leaves it 0.4 m clear at every turn (0.35 m tripped a recovered fault at some turns, #1063). The lower shelf is fixed.
 const H = 1.55, W = 1.0, D = 0.4, rail = 0.195;
+const shelfShapes = () => [
+  box([-W / 2 + 0.015, H / 2, 0], [0.03, H, D], 'wood'), box([W / 2 - 0.015, H / 2, 0], [0.03, H, D], 'wood'),
+  box([0, H / 2, -D / 2 + 0.01], [W - 0.06, H, 0.02], 'back'), box([0, H - 0.015, 0], [W, 0.03, D], 'wood'),
+  box([0, 0.06, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 0.52, 0], [W - 0.06, 0.03, D - 0.02], 'wood'),
+  box([0, 1.0, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 1.04, rail - 0.01], [W - 0.06, 0.05, 0.02], 'wood'),
+  box([0, H + 0.1, 0], [0.84, 0.17, 0.03], 'sign'), box([0, H + 0.1, 0.016], [0.6, 0.05, 0.004], 'letters'),
+  box([-0.28, 0.66, -0.04], [0.3, 0.25, 0.22], 'b0'), box([0.12, 0.64, -0.04], [0.22, 0.21, 0.22], 'b1'),
+];
+const shelfSlots = () => [shelf('in-1', [-0.3, 1.015, -0.01], 'shelf'), shelf('in-2', [0, 1.015, -0.01], 'shelf'), shelf('in-3', [0.3, 1.015, -0.01], 'shelf')] as DefInput['slots'];
 const swapShelf: DefInput = {
   schema: 'def/1', name: 'core-swap-shelf', version: 1,
   description: 'An open wooden swap shelf (1 × 0.4 m, 1.55 m tall) under a painted header: take something, leave something. One shelf at 1 m behind a low front rail holds up to three small things (each up to 0.3 m across and 0.28 m tall), and it remembers who left each one; nearby you see what is on it and who left it. The lower shelf is fixed.',
   tags: ['furniture', 'storage', 'shelf', 'swap', 'hand-operated', 'storage-inside'],
   synonyms: ['swap shelf', 'free shelf', 'giveaway shelf', 'take one leave one'],
   form: 'point',
-  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: [
-    box([-W / 2 + 0.015, H / 2, 0], [0.03, H, D], 'wood'), box([W / 2 - 0.015, H / 2, 0], [0.03, H, D], 'wood'),
-    box([0, H / 2, -D / 2 + 0.01], [W - 0.06, H, 0.02], 'back'), box([0, H - 0.015, 0], [W, 0.03, D], 'wood'),
-    box([0, 0.06, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 0.52, 0], [W - 0.06, 0.03, D - 0.02], 'wood'),
-    box([0, 1.0, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 1.04, rail - 0.01], [W - 0.06, 0.05, 0.02], 'wood'),
-    box([0, H + 0.1, 0], [0.84, 0.17, 0.03], 'sign'), box([0, H + 0.1, 0.016], [0.6, 0.05, 0.004], 'letters'),
-    box([-0.28, 0.66, -0.04], [0.3, 0.25, 0.22], 'b0'), box([0.12, 0.64, -0.04], [0.22, 0.21, 0.22], 'b1'),
-  ] } },
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: shelfShapes() } },
   params: { wood: { type: 'color', default: '#8a6240', doc: 'wood colour' }, back: { type: 'color', default: '#6f4d32', doc: 'back panel colour' }, sign: { type: 'color', default: '#2f6b5a', doc: 'header colour' } },
   state: { leftBy: { type: 'string', max: 240, default: '' } },
-  slots: [shelf('in-1', [-0.3, 1.015, -0.01], 'shelf'), shelf('in-2', [0, 1.015, -0.01], 'shelf'), shelf('in-3', [0.3, 1.015, -0.01], 'shelf')] as DefInput['slots'],
+  slots: shelfSlots(),
   components: { container: { capacity: 3, inside: { lip: 1.065, face: rail, stand: [0, rail + 0.605], fit: [0.3, 0.28, 0.3], word: 'shelf' } } } as DefInput['components'],
   palette: { wood: '#8a6240', back: '#6f4d32', sign: '#2f6b5a', letters: '#f1ead8', b0: '#9a3b32', b1: '#3b5f8a' },
   size: { box: [W, H + 0.19, D] },
 } as DefInput;
 
-export const HAND_STORAGE: DefInput[] = [drawerChest, lockers, swapShelf];
+// #435 (W072): a lost-and-found. The swap shelf's form with data only: no door, a `leftBy` record (here, who found and
+// handed in each thing), and `claim: "owner"`, so a thing that has an owner of its own is given back only to that owner.
+const lostAndFound: DefInput = {
+  schema: 'def/1', name: 'core-lost-and-found', version: 1,
+  description: 'An open wooden lost-and-found shelf (1 × 0.4 m, 1.55 m tall) under a blue "lost & found" header. One shelf at 1 m behind a low front rail holds up to three small things that Souls found and handed in (each up to 0.3 m across and 0.28 m tall). It remembers who handed each one in, and a thing that belongs to someone is given back only to its owner; nearby you see whose each thing is and who found it. The lower shelf is fixed.',
+  tags: ['furniture', 'storage', 'shelf', 'lost-and-found', 'hand-operated', 'storage-inside'],
+  synonyms: ['lost and found', 'lost-and-found', 'lost property', 'lost property shelf'],
+  form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: shelfShapes() } },
+  params: { wood: { type: 'color', default: '#7a6a55', doc: 'wood colour' }, back: { type: 'color', default: '#5c5042', doc: 'back panel colour' }, sign: { type: 'color', default: '#2f4f7f', doc: 'header colour' } },
+  state: { leftBy: { type: 'string', max: 240, default: '' } },
+  slots: shelfSlots(),
+  components: { container: { capacity: 3, claim: 'owner', inside: { lip: 1.065, face: rail, stand: [0, rail + 0.605], fit: [0.3, 0.28, 0.3], word: 'shelf' } } } as DefInput['components'],
+  palette: { wood: '#7a6a55', back: '#5c5042', sign: '#2f4f7f', letters: '#f1ead8', b0: '#c9a227', b1: '#6b3f6f' },
+  size: { box: [W, H + 0.19, D] },
+} as DefInput;
+
+export const HAND_STORAGE: DefInput[] = [drawerChest, lockers, swapShelf, lostAndFound];

@@ -37,8 +37,9 @@ export const componentsSchema = z.object({
   surface: z.object({ height: num }).optional(),
   /** Soul Actions entry 42: `inside` makes a hand-operated container's `shelf` slots real storage places (contact.ts
    *  containerInside): its mouth in the def frame at scale 1 (the lip a stored thing passes over, the front face, where a
-   *  body stands to reach in), what fits (`fit`, m) and the word for its inside ("drawer"). */
-  container: z.object({ capacity: num.positive(), of: z.array(z.string()).optional(), inside: z.object({ lip: num, face: num, stand: v2, fit: v3, word: z.string().max(24) }).strict().optional() }).optional(),
+   *  body stands to reach in), what fits (`fit`, m) and the word for its inside ("drawer"). #435 (W072): `claim: "owner"`
+   *  gives a thing kept in it that has an owner of its own back only to that owner (a lost-and-found). */
+  container: z.object({ capacity: num.positive(), of: z.array(z.string()).optional(), claim: z.literal('owner').optional(), inside: z.object({ lip: num, face: num, stand: v2, fit: v3, word: z.string().max(24) }).strict().optional() }).optional(),
   /** PC03 (#682): `handling` is a loose material's native carry data (the engine catalog's `handling`, in the def frame:
    *  +x the long axis, y up from the base, z across): the crew range, grips for each crew size, carry pose and hand
    *  height. Absent, a carryable keeps the one-hand item path (or `upright-carry`). */
