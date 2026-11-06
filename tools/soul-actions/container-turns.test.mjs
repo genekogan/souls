@@ -13,6 +13,7 @@ import {CORE_KIT, containerHidden, containerInside} from '../../packages/world-c
 // recovered fault, no violation. Every library def with an inside is covered without being listed, so a new one gets this too.
 // (A body too close at the reach trips collision.human-static at some turns only: #435, #1063.)
 // core/lockers@3 is frozen and does fault: #1063 removes this exclusion.
+// #1088: a container too narrow for a bowl (a bin, the pantry) is tested with an apple, which fits them all.
 const KNOWN_FAULT = new Set(['core/lockers@3']);
 const defs = CORE_KIT.filter(d => containerInside(d)).map(d => ({ref: `core/${d.name.replace(/^core-/, '')}@${d.version}`, door: !!d.state && Object.hasOwn(d.state, 'open'), hidden: containerHidden(d), small: containerInside(d).fit[0] < 0.25})).filter(d => !KNOWN_FAULT.has(d.ref));
 const turns = [0, 0.4, 0.785, 1.2, 1.571, 1.9, 2.356, 2.9, 3.7, 4.712, 5.5];

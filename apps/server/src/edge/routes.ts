@@ -1,4 +1,5 @@
 // Mounts the EDGE-CONTRACT-v1 surface under /v1/edge. Ledger verbs here; Comms registers its own.
+import {freeTextAct, resolveCandidates} from './intents/strict.ts';
 import type {Context, Hono} from 'hono';
 import {EDGE_CONTRACT, EdgeError, edgeBody, type EdgeDeps, type EdgeReceipt, type EdgeSoul, edgeErrorOf} from './contract.ts';
 import type {EdgeLedger} from './ledger/ledger.ts';
@@ -60,7 +61,9 @@ export function mountEdgeRoutes(app: Hono, deps: EdgeDeps & {ledger: EdgeLedger}
   const limit = (s: EdgeSoul, key: string, n: number) => {const r = deps.souls.limits.allow(`edge-${key}:${s.soulId}`, n, 60_000); if (!r.ok) throw new EdgeError(429, 'rate-limited', 'too many requests; slow down');};
   app.get('/v1/edge/observe', wrap(c => {const s = deps.soul(c); limit(s, 'observe', 240); return L.observe(s, new Set((c.req.query('include') ?? '').split(',').filter(Boolean)));}));
   app.get('/v1/edge/capabilities', wrap(c => {const s = deps.soul(c); limit(s, 'capabilities', 240); return {tick: deps.host.engine.world.tick, ...L.capabilitiesPage(s, {all: c.req.query('all') === '1'})};}));
-  app.post('/v1/edge/act', wrap(async c => {const s = deps.soul(c); limit(s, 'act', 60); const body = await c.req.json().catch(() => { throw new EdgeError(400, 'invalid', 'body must be JSON {capability, params?, clientRef?} or {verb, target, …}'); }); const {for: forMessage, forDefault, ...input} = (body ?? {}) as Record<string, unknown>;
+  app.post('/v1/edge/act', wrap(async c => {const s = deps.soul(c); limit(s, 'act', 60); const body = await c.req.json().catch(() => { throw new EdgeError(400, 'invalid', 'body must be JSON {capability, params?, clientRef?} or {verb, target, …}'); }); const {for: forMessage, forDefault, strict, ...input} = (body ?? {}) as Record<string, unknown>;
+    // CTRL-1 (#1093): a strict client (eden 2.9+) acts on offered ids only; words go through /v1/edge/resolve
+    if (strict === true && !freeTextAct()) {const no = L.offerGate(s, input); if (no) return no;}
     if (forMessage !== undefined && loop) {const no = loop.check(s, forMessage); if (no) throw new EdgeError(400, 'invalid', no);}
     const out = await L.act(s, input) as {accepted?: boolean; receipt?: EdgeReceipt};
     // D3c: `forDefault` = the CLI linked it by default; `open` = this act is not the message's last step (the card stays open)
@@ -75,7 +78,7 @@ export function mountEdgeRoutes(app: Hono, deps: EdgeDeps & {ledger: EdgeLedger}
     return {tick: deps.host.engine.world.tick,here:view==='body'?hereBodyFrame(L,s):hereFrame(L,s,{doHere:modern}),...(modern?{apiContract:'eden-edge/1.1'}:{})};}));
   // knowledge/1: look around / explore — more of what is near, places close by, and secret places found (remembered).
   app.get('/v1/edge/around', wrap(c => {const s = deps.soul(c); limit(s, 'around', 30); const to = c.req.query('to'); return {tick: deps.host.engine.world.tick, around: aroundFrame(L, s), ...(to !== undefined ? {route: routeFrame(L, s, to)} : {})};}));
-  app.post('/v1/edge/resolve', wrap(async c => {const s = deps.soul(c); limit(s, 'resolve', 120); const body = await c.req.json().catch(() => { throw new EdgeError(400, 'invalid', 'body must be JSON {verb, target} or {capability}'); }); if (!body || typeof body !== 'object' || (body.verb === undefined && body.capability === undefined)) throw new EdgeError(400, 'invalid', 'body must be JSON {verb, target} or {capability}'); return {tick: deps.host.engine.world.tick, resolve: L.intents.dryRun(s, body)};}));
+  app.post('/v1/edge/resolve', wrap(async c => {const s = deps.soul(c); limit(s, 'resolve', 120); const body = await c.req.json().catch(() => { throw new EdgeError(400, 'invalid', 'body must be JSON {verb, target} or {capability}'); }); if (!body || typeof body !== 'object' || (body.verb === undefined && body.capability === undefined)) throw new EdgeError(400, 'invalid', 'body must be JSON {verb, target} or {capability}'); const resolve = L.intents.dryRun(s, body); return {tick: deps.host.engine.world.tick, resolve: {...resolve, candidates: resolveCandidates(L, s, resolve), ...(freeTextAct() ? {freeTextAct: true} : {})}};}));
   app.get('/v1/edge/receipts/:id', wrap(c => {const s = deps.soul(c); const r = L.receipt(s.soulId, c.req.param('id') ?? ''); if (!r) throw new EdgeError(404, 'not-found', 'no such receipt for this Soul'); return {receipt: r};}));
   app.get('/v1/edge/public/souls/:soulId', wrap(c => L.publicSoul(c.req.param('soulId') ?? '')));
   app.get('/v1/edge/metrics', wrap(c => {const m = Number(c.req.query('minutes') ?? 60); return L.metrics(Number.isFinite(m) && m >= 1 && m <= 10080 ? m * 60_000 : 3600_000);}));

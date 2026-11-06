@@ -45,12 +45,13 @@ import type {ContactActuatorIntent,ContactActuatorService} from '../../god/conta
 import type {DoorPassage,DoorPassageRefusal} from '../../god/door-passage.ts';
 import type {PaintingIntent, PaintingService} from '../../art/painting-completion.ts';
 import {humanoidDims} from '../../../../../mars/viewer/engine/bodies/humanoid.ts';
-import {Together, PAIRED, togetherMayOffer, type TogetherPlan} from './together.ts';
+import {Together, PAIRED, listed, togetherMayOffer, type TogetherPlan} from './together.ts';
 import {semanticDiscovery, PURPOSE} from '../intents/semantic-discovery.ts';
 import {knownPart} from '../intents/resolved-parts.ts';
 import {Intents,walkWithDestinationWords,walkWithFallback, attentionWords, offeredAttention, type IntentInput} from '../intents/intents.ts';
 import {classWords} from '../intents/class-words.ts';
-import {strictCheck} from '../intents/strict.ts';
+import {offerCheck, strictCheck, type OfferRefusal} from '../intents/strict.ts';
+import {paramsByVerb, type ParamSchema} from '../intents/offer-schema.ts';
 import {bodyEnd} from '../perception/here.ts';
 import {bootAliases,explicitPlaceCapability,knownBootPlaces,lookupPlaceIdentity,resolvePlaceForVerb} from '../boot/world-places.ts';
 import {ActionOutcomes,outcomeParams,type ConfirmedEffects} from '../outcomes/store.ts';
@@ -500,7 +501,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const awaiting=r.phase==='started'||r.phase==='waiting'&&r.capability.startsWith('carry-with:')?this.together?.awaitingAnswer(r.receipt_id,r.capability)??null:null;
     // PC04 (#683): a shared receipt shows its own Soul the invitation, revision, role and phase it was made for
     const made=r.detail?.includes('"sharedV1"')?(JSON.parse(r.detail) as {sharedV1?:{invite:string;revision:number}}).sharedV1:undefined,shared=made&&this.together?this.together.sharedReceipt(r.receipt_id,r.soul_id,made):undefined;
-    return {id: r.receipt_id, soulId: r.soul_id, capability: r.capability, phase: awaiting?'waiting':r.phase, acceptedTick: r.accepted_tick, startedTick: r.started_tick, endedTick: r.ended_tick, code: r.code, reason: r.reason, programId: r.program_id, ...detailOf(r),...(outcome?{outcome}:{}),...(awaiting?{awaitingAnswer:{...awaiting,note:`Invitation sent; ${awaiting.waitingFor.map(g=>g.name).join(', ')} has not accepted yet. Nothing shared has started.`}}:{}),...(shared?{shared}:{}),...(OPEN.includes(r.phase)?this.bodyFacts(r,!!awaiting):{})};}
+    return {id: r.receipt_id, soulId: r.soul_id, capability: r.capability, phase: awaiting?'waiting':r.phase, acceptedTick: r.accepted_tick, startedTick: r.started_tick, endedTick: r.ended_tick, code: r.code, reason: r.reason, programId: r.program_id, ...detailOf(r),...(outcome?{outcome}:{}),...(awaiting?{awaitingAnswer:{...awaiting,note:`Invitation sent; ${listed(awaiting.waitingFor.map(g=>g.name))} ${awaiting.waitingFor.length>1?'have':'has'} not accepted yet. Nothing shared has started.`}}:{}),...(shared?{shared}:{}),...(OPEN.includes(r.phase)?this.bodyFacts(r,!!awaiting):{})};}
   /** D1: an open receipt's body (what the engine has the body doing now, not the plan) and one `now` sentence built from it. */
   private bodyFacts(r: Row, awaiting = false): {body?: BodyStateV1; now?: string} {
     const m = this.host.minds.get(r.soul_id); if (!m) return {};
@@ -1190,7 +1191,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       plans.set('make:mark', {label: 'Make a mark', steps: [], make: 'mark'} as never); plans.set('make:project', {label: 'Start a project', steps: [], make: 'project'} as never);
     }
     // Social and expressive native verbs: visible, deterministic, shared by many Souls at once.
-    const secondsOf = (def: number, max: number) => ({seconds: {type: 'integer', min: 5, max, default: def}});
+    const secondsOf = (def: number, max: number) => ({seconds: {type: 'integer', min: Math.min(5, def), max, default: def}});
     // CN5 (acceptance): a solo wave, with nobody in particular near (or facing someone/something: {"to": …})
     caps.push({id: 'wave:here', verb: 'wave', label: 'Wave (to nobody in particular, or {"to": a name} to face someone)', available: true, params: {to: {type: 'string', optional: true, description: 'a Soul, place or thing to face'}}});
     plans.set('wave:here', {label: 'Wave', steps: [{verb: 'mars:pose_v1', params: {activity: 'wave', seconds: 3}}]});
@@ -1433,10 +1434,10 @@ export class EdgeLedger implements EdgeLedgerHooks {
   /** Walks and ride boardings advertise `with` (quality cases 21/27: the invitation was there but undiscoverable). */
   /** L3 item 5: the page of this Soul's menu a listing shows (`all`: the whole menu), and what it leaves out. Act and
    *  resolve read the whole menu, so an offer left out stays reachable by id and by words. */
-  capabilitiesPage(soul: EdgeSoul, opts: {all?: boolean} = {}): {capabilities: EdgeCapability[]; omitted?: Omitted} {
-    const caps = this.capabilities(soul); if (opts.all) return {capabilities: caps};
+  capabilitiesPage(soul: EdgeSoul, opts: {all?: boolean} = {}): {capabilities: EdgeCapability[]; paramsByVerb: Record<string, ParamSchema>; omitted?: Omitted} {
+    const caps = this.capabilities(soul), schemas = (list: EdgeCapability[]) => paramsByVerb(list.map(c => c.verb)); if (opts.all) return {capabilities: caps, paramsByVerb: schemas(caps)};
     const b = this.body(soul.entityId), {listed, omitted} = pageCapabilities(caps, this.listingWhere(soul), b ? [b.pose.p[0], b.pose.p[2]] : null, this.loadLevel);
-    return {capabilities: listed, ...(omitted ? {omitted} : {})};
+    return {capabilities: listed, paramsByVerb: schemas(listed), ...(omitted ? {omitted} : {})};
   }
   /** LOAD-CONTRACT §1 dial "menu listing radius" (listing.ts LISTING.radius: green the nearest of all, amber 64 m, red 32 m). */
   private loadLevel: LoadLevel = 'green';
@@ -1553,6 +1554,12 @@ export class EdgeLedger implements EdgeLedgerHooks {
       this.recordRefusal(soul.soulId, 'act', capability, e.code, e.message);
       return {accepted: false, code: e.code, reason: e.message, capability, ...(e.extra ?? {})};
     }
+  }
+  /** CTRL-1 (#1093): a strict client's act: null when it is an offered id with fitting params, else the refusal. */
+  offerGate(soul: EdgeSoul, input: {capability?: unknown; params?: unknown; verb?: unknown; target?: unknown; clientRef?: unknown}): OfferRefusal | null {
+    const no = offerCheck(this, soul, input); if (!no) return null;
+    this.recordRefusal(soul.soulId, 'act', no.capability, no.code, no.reason);
+    return no.code === 'capability.unknown' ? this.withAlternatives(soul, no.capability, no, this.wordsMenu(soul).caps) : no;
   }
   private async actWork(soul: EdgeSoul, input: {capability?: unknown; params?: unknown; clientRef?: unknown; verb?: unknown; target?: unknown}): Promise<{accepted: true; receipt: EdgeReceipt; resolved?: Resolved; result?: unknown} | {accepted: false; code: string; reason: string; capability: string; retry_after?: number; did_you_mean?: {id: string; label: string}[]; resolved?: Resolved}> {
     // PC08 (#687, PC02 §3): a member's safe stop of a running shared operation never touches the member's own receipt

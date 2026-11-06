@@ -18,6 +18,11 @@ context-size checks below), regression runs, and an uncut real-client recording 
   and the viewer draws it as an ordinary thing. A container whose def declares a `leftBy` state field records who left
   each thing in it (item id = Soul id, set when the thing comes to rest from a Soul's hand, pruned to what is still
   inside). Nearby perception and the take offer name the leaver; god-placed things have none.
+- **Litter and bins ([#1088](https://github.com/genekogan/souls/issues/1088), W065).** `core-bin@2` and `core-wheelie-bin@2`
+  are the street bins, open at the top, on the same container faculty with data only: three places down inside at the
+  level of the rubbish already in them, reached over the rim. `core-wrapper@1` is a small thing to pick up. "put the
+  wrapper in the bin", "throw it away", "throw away the wrapper", "bin it" and "throw it in the bin" put a held thing in
+  the nearest bin with room; a full bin named by its id is refused `container.full`, and a book is too big for one.
 - **Lost-and-found ([#435](https://github.com/genekogan/souls/issues/435)).** A container whose def declares
   `components.container.claim: "owner"` gives a thing that has an owner of its own (the layers `owner` on the thing, a
   Soul or a group) back only to that owner or a member of that group. Anyone else, the finder included, is offered the
@@ -54,8 +59,26 @@ context-size checks below), regression runs, and an uncut real-client recording 
   it as a recorded transport. A load that needs more people than one is offered unavailable, with
   `carry.crew-too-small` naming the crew, and acting it is refused before any motion. Shared carries come with
   [shared execution](../design/shared-execution.md). `core-rack-beam@1` keeps its one-hand item path.
+- **A table and larger crews (PC11, [#690](https://github.com/genekogan/souls/issues/690)).** `core-work-table@1` is a
+  table-shaped load: 75 kg, a 2.44 × 0.91 m top, 0.76 m tall. Its handling is crew [3, 4] (three by mass at 30 kg
+  each), with grips for three and four at its legs, and it is carried level on its legs. Nothing in the shared code
+  names a def, load or Soul: a crew of three or four goes through the same invitation, op and receipts as two.
+  - **Checked on define.** A def's handling must fit together, or `define` refuses it with a named code:
+    - `handling.crew`: an inverted crew range;
+    - `handling.grips`: a crew size in range without a grip layout, or a layout of the wrong count or outside the range
+      (stricter than the native carry, which ignores a layout outside the range);
+    - `handling.mass`: a mass the largest crew cannot lift at 30 kg each;
+    - `handling.reach`: a grip outside the load's own box (`packages/world-compiler/src/handling.ts`).
+  - **Set down along its axis.** A shared carry lays the load down along its own axis, either way round, whichever is
+    nearer the way it travels, so the crew never turns it while setting it down.
+  - **Known limit ([#1031](https://github.com/genekogan/souls/issues/1031)).** The native planner may lift facing
+    either way along the load. When it lifts facing the other way, the load turns half a turn in the crew's hands
+    during the lift, because the native lift interpolates its yaw. This happens for any load.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
-  A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who).
+  A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
+  comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one
+  Soul). A refused crew too small for the load's mass says
+  the arithmetic.
   - **Propose.** Acting it is a together invitation of kind `shared` at revision 1. The host's receipt is `waiting`,
     and its `awaitingAnswer` names who is undecided.
   - **Accept.** Only the invited Souls are offered `accept:<invite>`, which needs `{"revision": n}`. Accepting opens
@@ -67,6 +90,11 @@ context-size checks below), regression runs, and an uncut real-client recording 
     everyone.
   - **Closing early.** A decline or leave that leaves the proposal unable to reach its crew minimum closes it. The
     host's receipt ends then, rather than at the lapse.
+  - **One of a larger crew out (PC11).** When a guest of a crew of three or four declines or leaves, and the rest still
+    meet the minimum, that revision can never start, because a role is never filled without asking. Each member's
+    waiting receipt is noted `shared.not-ready`, saying who declined or left. The host's note also gives the exact
+    amend (`carry-with` with `invite` and the rest named), and a guest's says the host can ask again. The amend's new
+    revision clears the note, and the rest accept it again.
   - **Expiry.** A proposal lapses after 120 s (`invite.expired`). A late answer is refused `invite.gone`.
 
   - **Distance.** Proposing or accepting from more than 10 m from the load is refused `shared.too-far` before any
