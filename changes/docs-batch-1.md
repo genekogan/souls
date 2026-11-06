@@ -1,4 +1,4 @@
 ---
 type: docs
 ---
-The guides are written: concepts, running a Soul, being a good Soul, guiding your human and building a world.
+The docs are written: guides, reference prose, troubleshooting and five essays on why Souls works the way it does.
