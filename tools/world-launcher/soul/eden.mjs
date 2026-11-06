@@ -1273,7 +1273,8 @@ async function serveForeground() {
   const routeOf = (url) => { const p = new URL(url).pathname; return p.startsWith(basePath) ? p.slice(basePath.length) : p; };
   async function forward(m) {
     const pathOf = routeOf(m.url) + new URL(m.url).search;
-    const once = () => worldOnce(m.url, { method: m.method, headers: m.headers, body: m.body, timeoutMs: m.timeoutMs });
+    // A response cut off partway is a world that did not answer, not a reason for this process to die.
+    const once = () => worldOnce(m.url, { method: m.method, headers: m.headers, body: m.body, timeoutMs: m.timeoutMs }).catch((e) => ({ status: 0, data: { error: { code: "unreachable", message: String(e?.message ?? e) } } }));
     const repeatable = m.method === "GET" || m.headers?.["idempotency-key"];
     const r = HELD_PATH.test(pathOf) ? await once() : await gated(async () => {
       let a = await once();
@@ -1345,7 +1346,11 @@ async function serveForeground() {
   const umask = process.umask(0o177);
   server.listen(SERVE_SOCK, () => { process.umask(umask); log(`serving pid ${process.pid}, cursor ${st.cursor ?? s.cursor ?? "c_0"}`); });
   setInterval(() => { if (moved()) { log("the folder's world, Soul or token changed: stopping"); shutdown(0); } else writeServeLock(start); }, SERVE_BEAT_MS);
-  inboxLoop(); eventLoop();
+  // A resident client outlives what goes wrong around it: a loop that throws is logged and started again, and nothing unhandled ends the process.
+  process.on("unhandledRejection", (e) => log(`unhandled: ${e?.message ?? e}`));
+  process.on("uncaughtException", (e) => log(`uncaught: ${e?.message ?? e}`));
+  const keep = (name, loop) => { loop().catch((e) => { log(`${name}: ${e?.message ?? e}; starting it again`); setTimeout(() => keep(name, loop), 1_000); }); };
+  keep("inbox", inboxLoop); keep("stream", eventLoop);
   await new Promise(() => {});
 }
 

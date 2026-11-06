@@ -16,7 +16,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *  acknowledged after its cursor, and with no cursor every message not acknowledged. */
 async function world(t) {
   const dir = mkdtempSync(join(tmpdir(), 'sim-serve-'));
-  const w = { dir, inbox: [], events: [], calls: [], acts: 0, keys: [], busyNext: 0, heavyNow: 0, heavyMax: 0, listens: 0, parked: [] };
+  const w = { dir, inbox: [], events: [], calls: [], acts: 0, keys: [], busyNext: 0, heavyNow: 0, heavyMax: 0, listens: 0, parked: [], cut: new Set() };
   const flush = () => { const p = w.parked; w.parked = []; for (const f of p) f(); };
   w.owner = (id, text) => { w.inbox.push({ id, text, sentAt: Date.now(), acked: false }); flush(); };
   w.event = (e) => { w.events.push({ id: `c_${w.events.length + 1}`, ...e }); flush(); };
@@ -27,6 +27,7 @@ async function world(t) {
     const p = url.pathname.slice('/w/test'.length);
     let body = ''; for await (const c of req) body += c;
     w.calls.push([req.method, p]);
+    if (w.cut.delete(p)) { res.writeHead(200, { 'content-type': 'application/json', 'content-length': '4096' }); res.write('{"accepted":tr'); setTimeout(() => res.destroy(), 10); return undefined; }
     const json = (status, v, h = {}) => { if (res.destroyed) return; res.writeHead(status, { 'content-type': 'application/json', ...h }); res.end(JSON.stringify(v)); };
     if (p === '/v1/edge/inbox/listen') {
       w.listens++; w.listenAuth = req.headers.authorization;
@@ -64,6 +65,7 @@ async function world(t) {
   t.after(async () => { await w.cli('serve', '--stop'); await sleep(50); server.closeAllConnections(); server.close(); rmSync(dir, { recursive: true, force: true }); });
   return w;
 }
+const flushWorld = (w) => { const p = w.parked; w.parked = []; for (const f of p) f(); };
 const until = async (f, ms = 3000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await f(); if (v) return v; await sleep(30); } return null; };
 
 test('A1: without serve every command goes straight to the world and the folder gains nothing', async (t) => {
@@ -123,6 +125,35 @@ test('A3: act returns the receipt at acceptance; pending lists open receipts, ev
   assert.deepEqual(done.endedReceipts.map((r) => [r.id, r.phase]), [['r_1', 'completed']]);
   assert.deepEqual(done.openReceipts, []);
   assert.deepEqual((await w.cli('pending')).json.endedReceipts, [], 'an ended receipt is reported once');
+});
+
+test('a cut-off response never ends the serve, on any path', async (t) => {
+  const w = await world(t);
+  const up = await w.cli('serve');
+  const alive = () => { try { process.kill(up.json.pid, 0); return true; } catch { return false; } };
+  for (const p of ['/v1/edge/here', '/v1/edge/inbox/listen', '/v1/edge/wait']) {
+    w.cut.add(p);
+    if (p === '/v1/edge/here') await w.cli('here');
+    else { flushWorld(w); assert.ok(await until(() => !w.cut.has(p), 5000), `the world saw ${p}`); }
+    await sleep(300);
+    assert.ok(alive(), `alive after ${p} was cut off`);
+  }
+  assert.equal((await w.cli('here')).json.place, 'green');
+  w.owner('msg_1', 'After the faults');
+  assert.ok(await until(async () => (await w.cli('pending')).json.ownerMessages?.some((m) => m.id === 'msg_1')), 'the inbox hold came back');
+  w.event({ kind: 'approach', text: 'After the faults' });
+  assert.ok(await until(async () => (await w.cli('pending')).json.events?.some((e) => e.text === 'After the faults')), 'and so did the stream');
+  assert.equal((await w.cli('serve', '--status')).json.pid, up.json.pid);
+});
+
+test('a keyed write cut off partway is asked again with its key, and the world acts once it answers', async (t) => {
+  const w = await world(t);
+  const up = await w.cli('serve');
+  w.cut.add('/v1/edge/act');
+  const r = await w.cli('act', 'walk:mill', '--for', 'none');
+  assert.equal(r.json?.accepted, true, r.out + r.err);
+  assert.equal(w.acts, 1);
+  assert.equal((await w.cli('serve', '--status')).json.pid, up.json.pid);
 });
 
 test('a stale lock never signals a process that is not this folder\'s serve', async (t) => {
