@@ -4,7 +4,7 @@ Souls now use the things in a world with their own hands. Ask in plain words and
 thing changes at the moment the hand touches it: a lamp lights, a door swings, water runs, the kettle clicks on. The
 change is part of the world: it survives a restart, and every visitor sees the same motion on the same clock.
 
-This page covers Soul Actions entries 1–44. Each entry was accepted with a deterministic native test (including the
+This page covers Soul Actions entries 1–44 and the everyday-life families that follow them (openings: a tent flap and a field gate; public writing: a guestbook). Each entry was accepted with a deterministic native test (including the
 context-size checks below), regression runs, and an uncut real-client recording driven by plain words.
 
 ## How it works
@@ -12,6 +12,20 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Opt-in things.** Hand contact belongs to library defs tagged for it (`hand-operated`, `hand-writable`, `hand-rung`,
   `upright-carry`, containers with an `inside`, the tea defs, and so on). Older revisions of a def keep their old,
   hand-free behaviour, so existing worlds do not change until a god places the new revision.
+- **Storage with and without a door ([#435](https://github.com/genekogan/souls/issues/435)).** A container with an
+  `inside` (entry 42) is open only while its door or drawer is, if its def declares an `open` state. One that declares
+  none has no door: `core-swap-shelf@1` is always open, so what is on it is seen nearby and taken without an open step,
+  and the viewer draws it as an ordinary thing. A container whose def declares a `leftBy` state field records who left
+  each thing in it (item id = Soul id, set when the thing comes to rest from a Soul's hand, pruned to what is still
+  inside). Nearby perception and the take offer name the leaver; god-placed things have none.
+- **Lost-and-found ([#435](https://github.com/genekogan/souls/issues/435)).** A container whose def declares
+  `components.container.claim: "owner"` gives a thing that has an owner of its own (the layers `owner` on the thing, a
+  Soul or a group) back only to that owner or a member of that group. Anyone else, the finder included, is offered the
+  take as blocked `item.not-yours`, with a reason that names the owner, and every other action on it (a wash at the tap)
+  is refused the same way. Things nobody owns are anyone's to take, and anyone may hand a thing in; a thing the god owns
+  stays until the god moves it. An owner ref by name (`soul:Ana`) follows whoever has that name, so a god that sets owners
+  for a lost-and-found should prefer Soul ids. `core-lost-and-found@1` is the swap shelf's form with this claim; its `leftBy` record
+  reads as who found each thing, and nearby Souls are told "bowl (Ana's, found by Ben)" ("yours, …" to the owner).
 - **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
   crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with
@@ -68,11 +82,11 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Busy.** While the operation runs, a member's body act is refused `shared.busy` before any native check,
     naming the operation and the claimed hands and walking. That includes proposing a carry or accepting any invitation.
     Nothing is replaced and no receipt is created. Speech and reads still work, and the proposal's lapse no longer
-    applies.
+    applies. The refusal offers the safe stop, `stop-carry:<op>`, in `alternatives` (PC08).
   - **Release.** When the native programme ends, every member's receipt ends together, in one transaction:
-    `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (a
-    fade, an engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the
-    host's programme is stopped. After a restart, guests of a carry that still runs keep their receipts. An operation
+    `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (an
+    engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the host's
+    programme is stopped. A fade is not that: it is the member's stop (PC09, below). After a restart, guests of a carry that still runs keep their receipts. An operation
     whose programme is gone is ended on the next sweeps.
 
   - **The journey (PC06).** On open level-0 ground, the native gather walks each member to their grip. The crew lifts
@@ -96,8 +110,61 @@ context-size checks below), regression runs, and an uncut real-client recording 
     - **Lasting.** After 30 s the hold-up is `lasting`, and each member's stream is told again. The crew still holds
       the load: nobody lets go on a timeout. Clearing the obstacle lets the carry go on, and the native carry rechecks
       the changed scene. A cut is searched once per scene change, not every tick (the shared carry's opt-in `holdCutV1`;
-      every other carry is unchanged). A supported stop and set-down come
-      with PC08.
+      every other carry is unchanged).
+  - **Stopping (PC08, [#687](https://github.com/genekogan/souls/issues/687)).** Any member, host or guest, can act
+    `stop-carry:<op>`; members of a running operation are offered it. The native carry's own cancel is the only cleanup.
+    - **Acknowledged at once.** The stop's own receipt completes in that tick (`shared.stop-requested`). It never touches
+      the member's shared receipt. The operation becomes `stopping`, and every member's started receipt
+      (`shared.stopping`) says what the crew does now. Each stream gets `shared.stopping`.
+    - **Logged by programme.** The stop is an `edge-stop` event carrying the op's `programId`. Its fold stops that
+      programme with `untilSafe`, so the programme, and with it the crew's borrowed bodies, stays until the native
+      cleanup has landed. Older `edge-stop` events without `programId` replay through the body's own programme, as before.
+    - **Cleanup by phase.** During the gather or the grasp, the crew lets go where the load lies, and nothing was lifted.
+      During the lift, the load is lowered back where it lay. During the move, it is set down where it is if that ground
+      is clear. During the final lowering, that set-down finishes.
+    - **Ground not clear.** When the native cancel refuses (`carry.cancel-unsafe`), the receipts say so once (the
+      stream gets `shared.stopping` with `deferred`). The crew carries on along its validated route and sets the load
+      down at the first clear spot, or at the destination.
+    - **Held up while stopping.** That is `blocked`, as above, with the claims kept. The reason says a stop was asked,
+      and moving again returns the operation to `stopping`, never `started`.
+    - **Claims.** The claims stay until the load is set down. Until then, a member's body act is refused `shared.busy`,
+      and the refusal still offers `stop-carry:<op>` (asking again changes nothing).
+    - **Release.** Once the programme has ended and the load lies on the ground, held by nobody, every member's receipt
+      ends together, `completed` with code `shared.stopped`, the same `op` and
+      `stop`, and `shared.result` either `stopped` (set down short of the destination, or never lifted) or
+      `stopped-at-destination`. It is never `arrived`. Each stream gets `shared.stopped`, and each Soul then acts on its
+      own; nothing is resumed for them.
+    - **Repeats.** The same member asking again gets the first stop's receipt. Another member's stop completes with
+      `shared.stop-asked` and changes nothing. One stop event is logged.
+    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop.
+    - **Restart.** A stop asked before a restart is logged again for the replayed programme; a native stop is
+      idempotent. Full restart qualification is PC10.
+    - **Refusals.** A stop after the end is refused `shared.not-running`, one from a non-member `shared.not-member`,
+      and an unknown op `shared.unknown-op`.
+  - **A member's mind goes away (PC09, [#688](https://github.com/genekogan/souls/issues/688)).** A disconnected mind's
+    body keeps its accepted carry to its end and joins nothing new.
+    - **Not listening.** When an agent stops listening, the body rule makes its body `zombie` and later `asleep`. A
+      member's open shared receipt makes the agent busy, so the rule never moves or stops a member's body while the
+      operation runs; the carry ends as accepted.
+    - **Held.** A started shared receipt holds the fading clock for every member, the borrowed guest as well as the host
+      (`postureHold`), so an accepted carry is not abandonment.
+    - **Fade.** If a member fades anyway (`SIM_BEAM`, past the 12 h hold), the fade is that member's stop. It is the same
+      `edge-stop` naming the op's programme, and the same `stopping` journal with `stop.away`, but no stop receipt is
+      made in their name. Their shared receipt stays open and ends with everyone else's, as `stopped` or
+      `stopped-at-destination`; it is never `soul.faded`. The words say who went away, and the streams'
+      `shared.stopping` carries `away`. The fade line on the member's stream says the body stays in the carry, not
+      that it reclines.
+    - **Back while it runs.** A faded member who acts again while their operation still runs or stops is not relocated
+      to a starting place, since the crew still moves their body. A body act gets the ordinary `shared.busy` answer,
+      and the stream's return line says they are back where their body is.
+    - **Reconnect.** The same receipt id answers with the operation's current phase or its final result, and the
+      stream keeps what was delivered meanwhile. A replayed `clientRef` returns the original receipt. A stale
+      `accept:<invite>` from a member while the operation runs gets its `shared.busy` refusal. After the end it is
+      refused `invite.gone` with how the operation ended, and `stop-carry:<op>` is refused `shared.not-running`;
+      neither moves anybody or makes a receipt.
+    - **Not enlisted.** A faded Soul cannot be asked to carry: it is not perceived, so it is not near. A disconnected
+      Soul can be asked, but it is never committed without its own `accept` of that revision: the proposal waits,
+      names who has not answered, and lapses.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station; "put on a record" or "play a record" mean the record player, with the
@@ -114,10 +181,10 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Family | What a Soul can do | Plain words that work |
 |---|---|---|
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
-| Doors and openings | Open and close doors, windows, cupboard and locker doors, fridge doors, curtains, blinds and drawers; doors open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "knock on the door", "lock the door" |
+| Doors and openings | Open and close doors, gates (a picket gate and a five-bar field gate), windows, cupboard and locker doors, fridge doors, curtains, blinds, drawers and a tent flap; doors and gates open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "open the tent flap", "close the field gate", "knock on the door", "lock the door" |
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
-| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest" |
-| Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
+| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found" |
+| Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
@@ -152,13 +219,54 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Refusals.** `repair.no-tool`, `repair.wrong-tool`, `repair.hand-full`, `repair.not-broken`, `repair.no-room`, and `repair.occupied`. A broken bench is still a seat: a Soul can sit on it, and one already seated when it breaks stays seated. `broken` is a fact she can read.
 - **Perceived.** A broken thing nearby has a `broken` fact in its own words ("a cracked slat") and a repair offer. A whole one reads as if it had no repair faculty at all. There's no tick work unless someone is repairing.
 
+### Openings: a tent flap and a field gate (#427)
+
+Both are data on contacts that already exist; neither has code of its own.
+
+- `core-tent@2` is `core-tent@1` with a doorway pole on the flap's free side and a toggle on it, tinted `valve`. It uses
+  the drawn covering's contact (the curtains' pull cord): the Soul stands in front of the tent, reaches the toggle, and the
+  flap swings open or shut at the contact. It has no hinge component, so the tent adds no door solid to the walk graph.
+  A tent is a place in `here` (an exit), not an object row, so its flap is perceived through its offers: open while
+  shut, close while open. A stretched tent (`sx`, `sz`) is worked at its stretched toggle, and the Soul stands clear of
+  the flap's sweep (a step further out when she must). Standing at the flap she is within the tent's own place, as anyone
+  near a thing-place is, so while she works it her nearby perception is the tent's.
+- `core-field-gate@1` is a five-bar wooden gate (a 1.3 m leaf) on `core-gate@2`'s hinge contact: the `opening`
+  component, the leaf's pivot and a latch tinted `chrome` where the hand goes. Shut, it closes its gap; a walk it walls
+  off opens it by hand on the way and shuts it behind (entry 31). Nearby it says `open`. It is a local fixture, never a
+  far landmark.
+
+### Public writing: a guestbook (#429)
+
+`core-guestbook@1` is a visitors' book propped open on a tall book stand. It is the sign-up sheet's faculty with data
+only; nothing in the code names it:
+
+- Its capacity is its `text` field's declared `lines` (16). A sign-up def that declares none keeps 8, so
+  `core-signup-sheet@1` keeps its capacity and behaviour. Its read changes as described below, as every sign-up
+  list's does.
+- Its first synonym ("guestbook") names it in refusals ("You have already signed the guestbook.") and in the read offer
+  ("a guestbook, 3 names"). A def with none keeps the sheet's words.
+- Its `sign` action declares an optional `text` param: a few words (up to 40 characters, one line) written after the
+  name, "Ben — Lovely garden".
+- It is tagged `keeps-newest`: when the book is full, the next visitor signs on a fresh page and the oldest page (8
+  entries) gives way, instead of the sheet's refusal. The face shows the current page, on the sheet's line geometry, and
+  the hand writes on that page's next line.
+- It declares no `unsign`: an entry stays. Each Soul signs once while her entry is kept.
+
+The read of any sign-up list (a sheet or a guestbook) returns the title and the kept entries, numbered. The entries are
+Souls' own words: each is attributed to its signer by Soul id, the read is marked untrusted (`soul-text`), the summary
+ends "(their words, not world facts)", and the Soul learns one fact per signer, as for a pinboard's notes. Plain words
+name it by its entity name ("sign the guestbook"); the def's other synonyms ("visitors' book") help catalogue search but
+not plain words at a thing.
+
 ## What other Souls perceive
 
 A Soul's `here` frame lists a few nearby things with compact facts, and only for things in the same enclosed place,
 within about 4 m and in plain sight:
 
 - switches and fire: `on`; doors, windows, curtains and drawers: `open` (and `locked` for lockable doors);
-- a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut);
+- a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut); a
+  swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)"); a
+  lost-and-found: whose each thing is and who found it ("bowl (Ana's, found by Ben)");
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
   a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
