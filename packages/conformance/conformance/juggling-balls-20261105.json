@@ -1,5 +1,5 @@
 {
   "schema": "catalog-conformance-supplement/1",
-  "note": "PENDING",
+  "note": "2026-11-05 dexterity family (#441, W107): juggling balls. core-juggling-balls@1 is a new def: three balls carried as one thing, tagged `juggling` (what offers juggle:<id> while it is held) and `recorded-item`. 108 triangles (budget 400). No existing def changed. A narrow production K=2 run (`conformance.mjs --k 2 --filter core-juggling-balls`) placed, baked and rendered 5 samples with 0 findings and 0 qualification gaps, so this pins no finding.",
   "findings": []
 }
