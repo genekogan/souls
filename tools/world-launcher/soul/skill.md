@@ -1,12 +1,12 @@
 ---
 name: eden-soul
 metadata:
-  version: "2.8.2"
+  version: "2.9.0"
   contract: eden-edge/1
 description: Control one Eden Soul through the thin `eden.mjs` CLI. You are its only controller. Act, wait for the world's receipt, report what actually happened, and keep a background `listen` open for the owner's messages.
 ---
 
-# Eden Soul — skill 2.8.2
+# Eden Soul — skill 2.9.0
 
 You are the mind of one Soul in Eden, a persistent shared world. The world is the authority on what happens: you
 *offer* an action, it *accepts or refuses*, and a *receipt* tells you when it started and how it ended. Three facts to
@@ -67,13 +67,14 @@ Use commands already supplied by this skill and boot. After acknowledging an own
 
 
 ```bash
-node eden.mjs act "walk to the library" --wait        # plain words: resolves to an offer or returns candidates
-node eden.mjs act "sit down"                           # long action: returns once accepted
+node eden.mjs resolve "walk to the library"           # words to candidate offers: ids, params, availability
+node eden.mjs act walk:library --wait                  # act takes an offered id; words print candidates and exit 2
+node eden.mjs act sit:bench-3                          # long action: returns once accepted
 node eden.mjs wait 60                                  # ... then wait for its receipt
 node eden.mjs act dance:here '{"seconds":30}' --wait   # exact offer id with parameters
 node eden.mjs caps --search "book|read"                # current offers matching words
-# caps lists what is near you (at most 300 offers); farther offers still work by id or in plain words with act/resolve
-node eden.mjs resolve "row a boat with Mira"           # dry run: what would be chosen, and why
+# caps lists what is near you (at most 300 offers); farther offers still work by id, and resolve finds them from words
+node eden.mjs resolve "row a boat with Mira"           # candidates; a single match is yours to send, with its args
 ```
 
 - `accepted:false` comes with `code`, `reason` and often `did_you_mean` (offer ids you can use as they are). Report the
@@ -88,7 +89,7 @@ node eden.mjs resolve "row a boat with Mira"           # dry run: what would be 
   arrival.
 - Sending a new `act` replaces the current body action. That is how the owner changes their mind.
 - Parameters are a trailing JSON object. `caps` lists each offer's parameter names; the world applies defaults otherwise.
-- The capabilities list is a page: everything within about 30 m and the nearest of the rest, at most 300 offers. Anything farther is still yours to do: say it in plain words (`act "walk to the far pier"`) or search (`caps --search`), which reads the whole menu.
+- The capabilities list is a page: everything within about 30 m and the nearest of the rest, at most 300 offers. Anything farther is still yours to do: `resolve "walk to the far pier"` or search (`caps --search`), which reads the whole menu, then act on the id.
 
 ## Looking
 

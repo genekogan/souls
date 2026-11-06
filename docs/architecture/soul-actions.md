@@ -18,6 +18,11 @@ context-size checks below), regression runs, and an uncut real-client recording 
   and the viewer draws it as an ordinary thing. A container whose def declares a `leftBy` state field records who left
   each thing in it (item id = Soul id, set when the thing comes to rest from a Soul's hand, pruned to what is still
   inside). Nearby perception and the take offer name the leaver; god-placed things have none.
+- **Litter and bins ([#1088](https://github.com/genekogan/souls/issues/1088), W065).** `core-bin@2` and `core-wheelie-bin@2`
+  are the street bins, open at the top, on the same container faculty with data only: three places down inside at the
+  level of the rubbish already in them, reached over the rim. `core-wrapper@1` is a small thing to pick up. "put the
+  wrapper in the bin", "throw it away", "throw away the wrapper", "bin it" and "throw it in the bin" put a held thing in
+  the nearest bin with room; a full bin named by its id is refused `container.full`, and a book is too big for one.
 - **Lost-and-found ([#435](https://github.com/genekogan/souls/issues/435)).** A container whose def declares
   `components.container.claim: "owner"` gives a thing that has an owner of its own (the layers `owner` on the thing, a
   Soul or a group) back only to that owner or a member of that group. Anyone else, the finder included, is offered the
@@ -37,6 +42,16 @@ context-size checks below), regression runs, and an uncut real-client recording 
   for sale) is as if it were not there. The search's course is decided when it starts, so a thing hidden while the seeker
   walks over is missed by that search. This hides things from Souls' perception, not from the data: the snapshot the
   viewer draws from carries where a thing is, as it does for a shut drawer.
+- **A pantry holds real things ([#435](https://github.com/genekogan/souls/issues/435)).** `core-pantry@1` is the same doorless
+  storage with data only: four places, each for one small thing, so the stock is what you can see and count. Drawing from it
+  is by hand, through the entry that already handles the thing. Words go ahead rather than refuse: "make a cup of tea" or "pour
+  the tea" with a fresh mug kept in an open pantry takes it out and stands it on a free place on the kettle's counter first, and
+  "eat the apple" takes the apple from wherever it is, then eats it. `core-apple@1` and `core-bun@1` are tagged `edible`,
+  with `left` and `bites` in their state, and are eaten from the hand on entry 44's cup motion; `left` falls at each bite's own
+  moment and what is left stays in the hand. A bare "eat it" or "have a bite" means the food in the hand. Another thing already in her
+  hand is set down on the nearest free table place (or at her feet) first, and a kept mug comes out in her left hand when the
+  kettle is in her right. A mug that is not hers to take (private, for sale, or claimed in a lost-and-found) is never fetched.
+  Refused only when the act truly can't happen: `food.eaten` and `food.in-use` (in someone else's hand). The ledger's `food` and a kitchen's portions are separate systems and are untouched.
 - **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
   crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with
@@ -44,8 +59,26 @@ context-size checks below), regression runs, and an uncut real-client recording 
   it as a recorded transport. A load that needs more people than one is offered unavailable, with
   `carry.crew-too-small` naming the crew, and acting it is refused before any motion. Shared carries come with
   [shared execution](../design/shared-execution.md). `core-rack-beam@1` keeps its one-hand item path.
+- **A table and larger crews (PC11, [#690](https://github.com/genekogan/souls/issues/690)).** `core-work-table@1` is a
+  table-shaped load: 75 kg, a 2.44 × 0.91 m top, 0.76 m tall. Its handling is crew [3, 4] (three by mass at 30 kg
+  each), with grips for three and four at its legs, and it is carried level on its legs. Nothing in the shared code
+  names a def, load or Soul: a crew of three or four goes through the same invitation, op and receipts as two.
+  - **Checked on define.** A def's handling must fit together, or `define` refuses it with a named code:
+    - `handling.crew`: an inverted crew range;
+    - `handling.grips`: a crew size in range without a grip layout, or a layout of the wrong count or outside the range
+      (stricter than the native carry, which ignores a layout outside the range);
+    - `handling.mass`: a mass the largest crew cannot lift at 30 kg each;
+    - `handling.reach`: a grip outside the load's own box (`packages/world-compiler/src/handling.ts`).
+  - **Set down along its axis.** A shared carry lays the load down along its own axis, either way round, whichever is
+    nearer the way it travels, so the crew never turns it while setting it down.
+  - **Known limit ([#1031](https://github.com/genekogan/souls/issues/1031)).** The native planner may lift facing
+    either way along the load. When it lifts facing the other way, the load turns half a turn in the crew's hands
+    during the lift, because the native lift interpolates its yaw. This happens for any load.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
-  A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who).
+  A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
+  comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one
+  Soul). A refused crew too small for the load's mass says
+  the arithmetic.
   - **Propose.** Acting it is a together invitation of kind `shared` at revision 1. The host's receipt is `waiting`,
     and its `awaitingAnswer` names who is undecided.
   - **Accept.** Only the invited Souls are offered `accept:<invite>`, which needs `{"revision": n}`. Accepting opens
@@ -57,6 +90,11 @@ context-size checks below), regression runs, and an uncut real-client recording 
     everyone.
   - **Closing early.** A decline or leave that leaves the proposal unable to reach its crew minimum closes it. The
     host's receipt ends then, rather than at the lapse.
+  - **One of a larger crew out (PC11).** When a guest of a crew of three or four declines or leaves, and the rest still
+    meet the minimum, that revision can never start, because a role is never filled without asking. Each member's
+    waiting receipt is noted `shared.not-ready`, saying who declined or left. The host's note also gives the exact
+    amend (`carry-with` with `invite` and the rest named), and a guest's says the host can ask again. The amend's new
+    revision clears the note, and the rest accept it again.
   - **Expiry.** A proposal lapses after 120 s (`invite.expired`). A late answer is refused `invite.gone`.
 
   - **Distance.** Proposing or accepting from more than 10 m from the load is refused `shared.too-far` before any
@@ -214,7 +252,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
 | Doors and openings | Open and close doors, gates (a picket gate and a five-bar field gate), windows, cupboard and locker doors, fridge doors, curtains, blinds, drawers and a tent flap; doors and gates open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "open the tent flap", "close the field gate", "knock on the door", "lock the door" |
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
-| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it; hide a small thing in a hollow stump or a wall niche, and search one to find what is there | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found", "hide the book in the stump", "search the stump", "look in the niche", "search around here" |
+| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it; hide a small thing in a hollow stump or a wall niche, and search one to find what is there; stock a pantry and take things out of it; eat an apple or a bun from the hand, bite by bite | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found", "hide the book in the stump", "search the stump", "look in the niche", "search around here" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses and checkers with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "move c3 to d4", "jump d4 to f6", "play rock-paper-scissors with Bea" then "accept" |
@@ -256,10 +294,10 @@ The player steps back afterwards, a reader reads it, and a wipe sets the board u
 - a side with no pieces or no legal move loses; there is no draw rule, so two players end a drawn game by wiping the board.
 
 Squares are named a1–h8, with a1 at the bottom left seen from the front. "move c3 to d4", "c3 to d4", "jump d4 to f6"
-or "c3-d4" is the move with those squares on the board where it can be played. A Soul with a game in progress on a board in
-sight plays that game: another board refuses it a second game, so its words go to its own board, and out of turn they are
-refused with whose turn it is. With no game in progress and more than one board that would take the move, the words are
-refused naming the boards, and the Soul acts on the chosen board's move. The read offer names only the state ("a game of checkers, X
+or "c3-d4" is the move with those squares on the board where it can be played. A Soul with a game in progress plays that game:
+her own board's move reads "…, in your game", her words go to it (to the game where it is her turn, if she has two), and out
+of turn they are refused with whose turn it is, never a new game on another board. With no game of hers, the nearest open
+board takes the move. A second game is hers to start, by acting on that board's own move. The read offer names only the state ("a game of checkers, X
 to play"). Reading gives the players, whose move it is or who won, the pieces left and the board as eight rows.
 "jump c3 to e5, then e5 to g7" makes the first jump now and says to act again for the rest. "read the checkers board"
 is still a walk to it, as with the other boards; `read:<board>` (or its offered read) reads it.
@@ -312,6 +350,7 @@ within about 4 m and in plain sight:
 - a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut); a
   swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)"); a
   lost-and-found: whose each thing is and who found it ("bowl (Ana's, found by Ben)");
+- a pantry: what it `holds` (names only); a food in the hand or bitten: its `bites` left, then `eaten`;
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
   a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
