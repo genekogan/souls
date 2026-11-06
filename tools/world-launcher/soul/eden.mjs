@@ -1228,8 +1228,11 @@ async function serveForeground() {
   }
   // One heavy request at a time, and soul.busy waited out here instead of handed back. Only reads and keyed writes repeat.
   function gated(fn) { const p = gateTail.then(fn, fn); gateTail = p.catch(() => {}); return p; }
+  // A world's routes sit under its base path (/w/<slug> behind the launcher); match them without it.
+  const basePath = new URL(world).pathname.replace(/\/$/, "");
+  const routeOf = (url) => { const p = new URL(url).pathname; return p.startsWith(basePath) ? p.slice(basePath.length) : p; };
   async function forward(m) {
-    const pathOf = new URL(m.url).pathname + new URL(m.url).search;
+    const pathOf = routeOf(m.url) + new URL(m.url).search;
     const once = () => worldOnce(m.url, { method: m.method, headers: m.headers, body: m.body, timeoutMs: m.timeoutMs });
     const repeatable = m.method === "GET" || m.headers?.["idempotency-key"];
     const r = HELD_PATH.test(pathOf) ? await once() : await gated(async () => {
@@ -1268,7 +1271,7 @@ async function serveForeground() {
     if (m.op === "status") return { serving: true, pid: process.pid, since: start, cursor: st.cursor, inboxAfter: st.inboxAfter, unacked: st.messages.filter((x) => !x.acked).length, openReceipts: Object.values(st.receipts).filter((r) => !ENDED.has(r.phase)).length, unreadEvents: st.events.length - readIndex(st), busyWaited, lastEventAt, ...(terminal ? { ended: codeOf(terminal.data) ?? terminal.status } : {}) };
     if (m.op === "stop") { setTimeout(() => shutdown(0), 10); return { stopping: true, pid: process.pid }; }
     if (m.op === "http") {
-      const path = new URL(m.url).pathname;
+      const path = routeOf(m.url);
       if (path === "/v1/edge/inbox/listen") return localListen(m.url);
       const cached = m.method === "GET" && /^\/v1\/edge\/receipts\/([^/]+)$/.exec(path);
       const known = cached ? st.receipts[decodeURIComponent(cached[1])] : null;

@@ -21,7 +21,9 @@ async function world(t) {
   w.event = (e) => { w.events.push({ id: `c_${w.events.length + 1}`, ...e }); flush(); };
   const hold = (ms) => new Promise((done) => { const x = setTimeout(done, ms); w.parked.push(() => { clearTimeout(x); done(); }); });
   const server = createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://w'), p = url.pathname;
+    const url = new URL(req.url, 'http://w');
+    assert.ok(url.pathname.startsWith('/w/test/'), `a world's routes sit under its base path: ${url.pathname}`);
+    const p = url.pathname.slice('/w/test'.length);
     let body = ''; for await (const c of req) body += c;
     w.calls.push([req.method, p]);
     const json = (status, v, h = {}) => { if (res.destroyed) return; res.writeHead(status, { 'content-type': 'application/json', ...h }); res.end(JSON.stringify(v)); };
@@ -49,7 +51,7 @@ async function world(t) {
     return json(404, { error: { code: 'nope', message: p } });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({ world: `http://127.0.0.1:${server.address().port}`, soul: 's', token: 'synthetic-serve-token' }), { mode: 0o600 });
+  writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({ world: `http://127.0.0.1:${server.address().port}/w/test`, soul: 's', token: 'synthetic-serve-token' }), { mode: 0o600 });
   w.cli = (...args) => new Promise((done) => {
     const child = spawn(process.execPath, [cli, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', err = ''; child.stdout.on('data', (c) => { out += c; }); child.stderr.on('data', (c) => { err += c; });
