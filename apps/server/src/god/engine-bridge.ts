@@ -29,6 +29,7 @@ import { doorInGap, freeDoorOpening, isDoorDef, isShut } from './doors.ts';
 import { dryingOps } from './garden.ts';
 import { fadingIds } from '../art/art.ts';
 import { createWatering, type Watering } from './watering.ts';
+import { createMending, type Mending } from './mending.ts';
 import { createTea, type Tea } from './tea.ts';
 import { createContactActuatorService } from './contact-actuator.ts';
 import { createDoorPassage } from './door-passage.ts';
@@ -301,15 +302,20 @@ export class EngineBridge {
     if(this.edge)this.edge.contactActuator=createContactActuatorService({model:()=>this.god.model,levelAt:(x,z,y)=>this.levelAt(x,z,y),
       clearance:(x,z,level)=>(this.host.engine as unknown as {clearanceAtV1?:(x:number,z:number,level?:number)=>number}).clearanceAtV1?.(x,z,level)??Infinity,
       body:id=>this.host.engine.world.entities[id] as never,access:(id,soul)=>this.layers.refusal(id,soul),owner,knock:(soul,id)=>this.knockHeard(soul,id),
-      moreFacts:id=>this.tea?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,failed,overlapped)=>this.searchOutcome(soul,spot,failed,overlapped),
+      moreFacts:id=>this.tea?.facts(id)??this.mending?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,failed,overlapped)=>this.searchOutcome(soul,spot,failed,overlapped),
       record:(soul,id,action,params={})=>{const r=this.edge!.comms?.objects.act?.(id,soul,{action,params}) as {accepted?:boolean}|undefined;if(!r?.accepted)throw Error('switch.object-record-refused');},
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
+    // #442: repair with a tool in hand (mending.ts): the world changes when the receipt completes, no tick work
+    this.mending = createMending({ model: this.god.model, engine: this.host.engine as never, levelAt: (x, z, y) => this.levelAt(x, z, y), occupied: (id) => this.seatTakers(id).length > 0, denied: (id, soul) => this.layers.takeRefusal(id, soul) ?? this.claimRefusal(id, soul as never),
+      reserved: (id, actor) => { const rt = (this.host.engine as unknown as { rt?: { holder(r: string): string[]; records: Map<string, { params?: { actor?: string } }> } }).rt; return !!rt?.holder(`entity:${id}`).some((r) => rt.records.get(r)?.params?.actor !== actor); }, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
+    if (this.edge) this.edge.repairEffects = (r) => this.mending?.effects(r) ?? {};
+    this.edge?.onReceipt((r) => { try { this.mending?.onReceipt(r); } catch (e) { this.log(`mending: ${(e as Error).message}`); } });
     // Entry 34: the watering-can act (watering.ts): planned for perceive's offers, its moments committed per tick
     this.watering = createWatering({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
     // Entry 43: the tea acts (tea.ts), the same way
     this.tea = createTea({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m), denied: (id, soul) => this.layers.takeRefusal(id, soul) ?? this.claimRefusal(id, soul) });
-    this.perceive = new GodPerceive({ model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea, claim: (id, soul) => this.claimRefusal(id, soul) });
+    this.perceive = new GodPerceive({ mending: this.mending, model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea, claim: (id, soul) => this.claimRefusal(id, soul) });
     // L3 (server reliability): kept Soul menus read god state the ledger does not version (ownership, construction sites)
     // the bridge runs without an edge ledger too (toy/engine-only hosts): guard the ledger, not only the method
     if (!R) (this.edge as { addMenuInput?(f: () => string): void } | undefined)?.addMenuInput?.(() => `${this.version}|${this.god.builds.closingSites().map((x) => x.id).join(',')}`);
@@ -434,6 +440,7 @@ export class EngineBridge {
     });
   }
   private watering?: Watering;
+  private mending?: Mending;
   /** Entry 43: the tea acts; read by perception for a kettle's and a cup's compact facts. */
   tea?: Tea;
   /** Entry 18: when the world day changes, gardens dry by the days passed (capped at 3; time set backwards restarts the count). */
