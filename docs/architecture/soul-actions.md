@@ -18,6 +18,11 @@ context-size checks below), regression runs, and an uncut real-client recording 
   and the viewer draws it as an ordinary thing. A container whose def declares a `leftBy` state field records who left
   each thing in it (item id = Soul id, set when the thing comes to rest from a Soul's hand, pruned to what is still
   inside). Nearby perception and the take offer name the leaver; god-placed things have none.
+- **Litter and bins ([#1088](https://github.com/genekogan/souls/issues/1088), W065).** `core-bin@2` and `core-wheelie-bin@2`
+  are the street bins, open at the top, on the same container faculty with data only: three places down inside at the
+  level of the rubbish already in them, reached over the rim. `core-wrapper@1` is a small thing to pick up. "put the
+  wrapper in the bin", "throw it away", "throw away the wrapper", "bin it" and "throw it in the bin" put a held thing in
+  the nearest bin with room; a full bin named by its id is refused `container.full`, and a book is too big for one.
 - **Lost-and-found ([#435](https://github.com/genekogan/souls/issues/435)).** A container whose def declares
   `components.container.claim: "owner"` gives a thing that has an owner of its own (the layers `owner` on the thing, a
   Soul or a group) back only to that owner or a member of that group. Anyone else, the finder included, is offered the
