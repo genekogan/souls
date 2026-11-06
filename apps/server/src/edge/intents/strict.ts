@@ -93,6 +93,8 @@ export function offerCheck(L: EdgeLedger, soul: EdgeSoul, input: {capability?: u
   }
   const body = input.capability !== undefined ? {capability: asked, ...(input.params ? {params: input.params} : {})} : input;
   const d = asked || input.verb !== undefined ? L.intents.dryRun(soul, body as Parameters<EdgeLedger['intents']['dryRun']>[1]) : {};
+  // an id `resolve` itself reads as this very act is an offer, on or off the menu's page; a candidate is always takeable
+  if (OFFER_ID.test(asked) && (d as {would?: {capability?: unknown}}).would?.capability === asked) return null;
   const candidates = resolveCandidates(L, soul, d);
   const label = asked || String(input.verb ?? '');
   return {accepted: false, code: 'capability.unknown', capability: label,
