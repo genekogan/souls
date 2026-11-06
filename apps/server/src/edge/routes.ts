@@ -1,4 +1,5 @@
 // Mounts the EDGE-CONTRACT-v1 surface under /v1/edge. Ledger verbs here; Comms registers its own.
+import {inspectFrame} from './perception/inspect.ts';
 import {freeTextAct, resolveCandidates} from './intents/strict.ts';
 import type {Context, Hono} from 'hono';
 import {EDGE_CONTRACT, EdgeError, edgeBody, type EdgeDeps, type EdgeReceipt, type EdgeSoul, edgeErrorOf} from './contract.ts';
@@ -76,6 +77,8 @@ export function mountEdgeRoutes(app: Hono, deps: EdgeDeps & {ledger: EdgeLedger}
     if(view==='body'&&include)throw new EdgeError(400,'invalid','body view cannot include rich context');
     const modern=(include??'').split(',').includes('doHere');
     return {tick: deps.host.engine.world.tick,here:view==='body'?hereBodyFrame(L,s):hereFrame(L,s,{doHere:modern}),...(modern?{apiContract:'eden-edge/1.1'}:{})};}));
+  // CTRL-2 (#1094): any id: its state, what is in it, and the offers on it with their schemas
+  app.get('/v1/edge/inspect/:id', wrap(c => {const s = deps.soul(c); limit(s, 'inspect', 120); return {tick: deps.host.engine.world.tick, inspect: inspectFrame(L, s, c.req.param('id') ?? '', {all: c.req.query('all') === '1'})};}));
   // knowledge/1: look around / explore — more of what is near, places close by, and secret places found (remembered).
   app.get('/v1/edge/around', wrap(c => {const s = deps.soul(c); limit(s, 'around', 30); const to = c.req.query('to'); return {tick: deps.host.engine.world.tick, around: aroundFrame(L, s), ...(to !== undefined ? {route: routeFrame(L, s, to)} : {})};}));
   app.post('/v1/edge/resolve', wrap(async c => {const s = deps.soul(c); limit(s, 'resolve', 120); const body = await c.req.json().catch(() => { throw new EdgeError(400, 'invalid', 'body must be JSON {verb, target} or {capability}'); }); if (!body || typeof body !== 'object' || (body.verb === undefined && body.capability === undefined)) throw new EdgeError(400, 'invalid', 'body must be JSON {verb, target} or {capability}'); const resolve = L.intents.dryRun(s, body); return {tick: deps.host.engine.world.tick, resolve: {...resolve, candidates: resolveCandidates(L, s, resolve), ...(freeTextAct() ? {freeTextAct: true} : {})}};}));

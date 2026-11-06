@@ -7,9 +7,10 @@ import { CREATION_LIMITS, GENERATORS, kitFootprintIssues, prepareFor, queryOf } 
 import { z } from 'zod';
 import { hashOf } from './hash.ts';
 import { handlingProblem } from './handling.ts';
+import { connectorProblem, joinProblem, supportProblem, withHalf, withoutHalf } from './joints.ts';
 import { offsetPolyline, pointAlong } from '@sim/generators';
 import { BakeError, WorldModel, definitionRefs, obbOverlap, type OBB } from './model.ts';
-import { batchSchema, trustedBatchSchema, type Batch, type Entity, type Failure, type Field, type Op, type Result, type StoredDef, type Value, worldStateSchema, SKY_PALETTES } from './schemas.ts';
+import { batchSchema, trustedBatchSchema, jointId, type Batch, type Entity, type Failure, type Field, type Op, type Result, type StoredDef, type Value, worldStateSchema, SKY_PALETTES } from './schemas.ts';
 import { layersStateSchema, type LayersState, type Schedule } from './layers.ts';
 import { sealedRouteFailure } from './architecture.ts';
 import { overlapNotWorse } from './overlap.ts';
@@ -147,6 +148,9 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
   const touchedAt = new Map<string, number>(), tileAt = new Map<string, number>(), removedAt = new Map<string, number>();
   let activeOp = 0;
   let layersTouched = false;
+  /** PC12 (#691): parts whose joints this batch made, released or removed, and the op that did it (the support check). */
+  const jointsTouched = new Map<string, number>();
+  const setJoins = (e: Entity) => { scratch.replaceJoins(e); upsert(e, false); jointsTouched.set(e.id, activeOp); };
   const upsert = (e: Entity, geometry = true) => {
     if (geometry) geometryTouched.add(e.id);
     touched.add(e.id); touchedAt.set(e.id, activeOp);
@@ -345,12 +349,20 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
         }
         // children first for the forward diff; parents first for the inverse (restore in dependency order)
         const before = sub.map((sid) => scratch.entities.get(sid)!);
+        // PC12: a removed part takes its joints with it; each part it was joined to loses that half (and must still be
+        // held up: the support check at the end). Undo restores the part verbatim, which puts the halves back.
+        for (const e of before) for (const j of Object.values(e.joins ?? {})) {
+          const o = scratch.entities.get(j.to); if (!o || sub.includes(o.id) || o.joins?.[j.at]?.to !== e.id) continue;
+          setJoins(withoutHalf(o, j.at));
+        }
         for (const sid of [...sub].reverse()) {
           const e = scratch.entities.get(sid)!;
           scratch.delete(sid); clearGround(scratch, e, diff);
           diff.removes.push(sid); touched.delete(sid);
         }
-        for (const e of [...before].reverse()) inverse.unshift({ op: 'restore', entity: world.entities.get(e.id) ?? e });
+        // PC12: a part's joints are restored as they stood when it was removed (an earlier op may have released some)
+        const asRemoved = (e: Entity): Entity => { const o = world.entities.get(e.id) ?? e; if (o === e || JSON.stringify(o.joins ?? null) === JSON.stringify(e.joins ?? null)) return o; const x = { ...o }; if (e.joins) x.joins = e.joins; else delete x.joins; return x; };
+        for (const e of [...before].reverse()) inverse.unshift({ op: 'restore', entity: asRemoved(e) });
         return;
       }
       case 'move': {
@@ -358,6 +370,8 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
         if (inUse(id, i)) return;
         const prev = scratch.entities.get(id)!;
         const def = scratch.resolvedDef(prev.def)!;
+        // PC12: a joined part never moves under its joints (they would no longer meet); disconnect it first
+        { const f = joinedProblem(scratch, id, i); if (f) { failures.push(f); return; } }
         const next: Entity = { ...prev, v: prev.v + 1 };
         if (op.in) { const pid = resolveId(op.in.parent, i); if (!pid) return; if (scratch.subtree(id).includes(pid)) { failures.push(fail(i, 'parent.unknown', 'cannot move a thing into itself')); return; } next.in = { parent: pid, ...(op.in.slot ? { slot: op.in.slot } : {}) }; }
         if (op.p) next.p = op.p; if (op.r !== undefined) next.r = op.r; if (op.s !== undefined) next.s = op.s; if (op.shape) next.shape = op.shape;
@@ -396,6 +410,7 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
           }
         }
         if (op.params && inUse(id, i)) return;
+        if (op.params) { const f = joinedProblem(scratch, id, i); if (f) { failures.push(f); return; } }
         if (op.state) {
           const ok = checkFields(def.state, op.state, false); if (!ok.ok) { failures.push(fail(i, 'state.invalid', ok.detail)); return; }
           inv.state = Object.fromEntries(Object.keys(op.state).map((k) => [k, prev.state?.[k] ?? (def.state[k]?.default as Value) ?? null]));
@@ -462,6 +477,7 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
             const isRoot = orig.id === srcId;
             const copy: Entity = { ...structuredClone(orig), id: map.get(orig.id)!, by, born: tick, v: 1, in: isRoot ? { parent: parentId, ...(op.in?.slot ? { slot: op.in.slot } : {}) } : { ...orig.in, parent: map.get(orig.in.parent) ?? orig.in.parent } };
             if (copy.about) copy.about = remapAbout(canonicalAbout(scratch, copy.about, ids), map);
+            delete copy.joins;   // PC12: a copy is a loose part; joints are made with `connect`
             if (isRoot) {
               if (rootName) copy.name = rootName; else delete copy.name;
               const x = base[0] + step[0] * (op.p || op.count > 1 ? k : k + 1), z = base[base.length - 1] + step[1] * (op.p || op.count > 1 ? k : k + 1);
@@ -582,7 +598,46 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
         const problem = admit(scratch, e, def, i, 'strict', false, world);
         if (problem) { failures.push({ ...problem, code: 'undo.conflict' }); return; }
         scratch.insert(e); indexAndGround(scratch, e, def, diff); upsert(e);
+        // PC12: a restored part's joints come back with it: each part it was joined to gets its half again (a part
+        // restored later in the batch brings its own); a connector taken meanwhile is a conflict
+        for (const [c, j] of Object.entries(e.joins ?? {})) {
+          jointsTouched.set(e.id, i);
+          const o = scratch.entities.get(j.to); if (!o) continue;
+          const h = o.joins?.[j.at];
+          if (h?.to === e.id && h.at === c) continue;
+          if (h) { failures.push(fail(i, 'undo.conflict', `${scratch.pathOf(o.id)} ${j.at} is now joined to ${scratch.pathOf(h.to)} ${h.at}`)); return; }
+          setJoins(withHalf(o, j.at, e.id, c));
+        }
         inverse.unshift({ op: 'remove', id: e.id, cascade: true });
+        return;
+      }
+      case 'connect': case 'disconnect': {
+        const aid = resolveId(op.a.id, i); if (!aid || aid === 'world') { if (aid === 'world') failures.push(fail(i, 'entity.unknown', 'world')); return; }
+        const a = scratch.entities.get(aid)!;
+        if (op.op === 'disconnect') {
+          const j = a.joins?.[op.a.connector];
+          if (!j) {
+            const known = scratch.resolvedDef(a.def)?.components.connectors?.some((c) => c.id === op.a.connector);
+            failures.push({ ...fail(i, known ? 'connector.free' : 'connector.unknown', `${scratch.pathOf(aid)} ${known ? `${op.a.connector} is not joined` : `has no connector ${op.a.connector}`}`), entity: aid, field: 'connector' }); return;
+          }
+          const o = scratch.entities.get(j.to);
+          if (o?.joins?.[j.at]?.to !== aid) { failures.push(fail(i, 'undo.conflict', `${scratch.pathOf(aid)} ${op.a.connector} names ${j.to} ${j.at}, which does not join it back`)); return; }
+          setJoins(withoutHalf(a, op.a.connector));
+          setJoins(withoutHalf(scratch.entities.get(o.id)!, j.at));
+          inverse.unshift({ op: 'connect', a: { id: aid, connector: op.a.connector }, b: { id: o.id, connector: j.at } });
+          return;
+        }
+        const bid = resolveId(op.b.id, i); if (!bid || bid === 'world') { if (bid === 'world') failures.push(fail(i, 'entity.unknown', 'world')); return; }
+        const b = scratch.entities.get(bid)!;
+        // a part with a Soul's body in it (sitting or standing on it) is not joined under them; a part in a Soul's hands is
+        // not checked here (it can still be at the world root in the entity world while carried: a limit)
+        if (inUse(aid, i) || inUse(bid, i)) return;
+        const problem = joinProblem(scratch, a, op.a.connector, b, op.b.connector, i);
+        if (problem) { failures.push(problem); return; }
+        setJoins(withHalf(a, op.a.connector, bid, op.b.connector));
+        setJoins(withHalf(scratch.entities.get(bid)!, op.b.connector, aid, op.a.connector));
+        warnings.push(`joint ${jointId(aid, op.a.connector, bid, op.b.connector)}`);
+        inverse.unshift({ op: 'disconnect', a: { id: aid, connector: op.a.connector } });
         return;
       }
     }
@@ -601,6 +656,17 @@ export function plan(world: WorldModel, input: unknown, by: string, tick: number
   });
 
   if (failures.length) return { ok: false, failures: heldBack.length && heldBack[0].op <= failures[0].op ? [heldBack[0]] : failures };
+  // PC12 (#691): every part whose joints changed, and what it holds up or rests on, is still held up, and every half
+  // has its mirror (an undo that brought back one end without the other is a conflict)
+  for (const id of placedBearing(scratch, touched)) jointsTouched.set(id, touchedAt.get(id) ?? ops.length - 1);
+  if (jointsTouched.size) {
+    for (const [id, at] of jointsTouched) for (const [c, j] of Object.entries(scratch.entities.get(id)?.joins ?? {})) {
+      const h = scratch.entities.get(j.to)?.joins?.[j.at];
+      if (h?.to !== id || h.at !== c) return { ok: false, failures: [fail(at, 'undo.conflict', `${scratch.pathOf(id)} ${c} is joined to ${j.to} ${j.at}, which does not join it back`)] };
+    }
+    const failure = supportProblem(scratch, jointsTouched.keys(), (id) => jointsTouched.get(id) ?? ops.length - 1);
+    if (failure) return { ok: false, failures: [failure] };
+  }
   // Body/state writebacks do not scan every meaning record; structural/meaning edits validate the final graph.
   const meaningTouched = ops.some(op => ['place','clone','remove','restore','define','restore-def'].includes(op.op) || (op.op==='set' && (op.about!==undefined||op.name!==undefined||op.params!==undefined)) || (op.op==='world' && op.state.about!==undefined));
   // Canonicalize late references after all placements; reject dangling references/cycles atomically.
@@ -726,6 +792,9 @@ function checkDef(w: WorldModel, def: Parameters<WorldModel['defineDef']>[0], i:
   // PC11 (#690): a loose material's handling must fit together (crew range, grips per crew, mass, reach)
   const handling = handlingProblem(def as never);
   if (handling) return { ...fail(i, handling.code, handling.message), field: handling.field, fix: handling.fix };
+  // PC12 (#691): connectors lie on the part
+  const conn = connectorProblem(def as never);
+  if (conn) return { ...fail(i, conn.code, conn.message), field: conn.field, fix: conn.fix };
   if (def.make.kind === 'mesh') {
     const info = w.assets(def.make.asset);
     if (!info) return fail(i, 'def.invalid', `asset ${def.make.asset.slice(0, 12)}… not uploaded`);
@@ -863,10 +932,11 @@ function admit(w: WorldModel, e: Entity, def: StoredDef, i: number, mode: 'stric
       const st = settle(w.terrain, fp, anchor, { maxTiltRad: def.tilt ? (def.tilt.maxDeg * Math.PI) / 180 : 0 });
       e.p = [p[0], st.y, p[1]];
       if (anchor === 'conform' && st.pitch !== undefined) e.r = [yaw, st.pitch, st.roll ?? 0];
-      if (anchor === 'base' && st.needsPad && (def.components.foundation?.kind ?? 'pad') === 'pad') {
+      if (anchor === 'base' && st.needsPad && (def.components.foundation?.kind ?? 'pad') === 'pad' && !def.components.connectors) {
         (e as Entity & { _pad?: Landform })._pad = padFor(`${e.id}:pad`, fp, st.y, padGrading(w, baked, p[0], p[1], yaw, s));
       }
-    } else if (p.length === 3 && (e.anchor ?? def.anchor) === 'base' && def.layer !== 'volume' && !baked.landform && (def.components.foundation?.kind ?? 'pad') === 'pad') {
+    // PC12 (#691): a part with connectors is held up by its joints or lies on the ground; it never raises the ground under it
+    } else if (p.length === 3 && (e.anchor ?? def.anchor) === 'base' && def.layer !== 'volume' && !baked.landform && (def.components.foundation?.kind ?? 'pad') === 'pad' && !def.components.connectors) {
       // a pre-settled pose (restore after undo, or an explicit y): keep y, but a building on a slope still needs its terrace
       const yaw = typeof e.r === 'number' ? e.r : Array.isArray(e.r) ? e.r[0] : 0;
       const fp = footprintOf(p[0], p[2], (baked.box[0] * s) / 2, (baked.box[2] * s) / 2, yaw);
@@ -1278,4 +1348,17 @@ export function aimOf(w: WorldModel, ref: Entity): { x: number; z: number } {
   if (!local) return pose;
   const c = Math.cos(pose.yaw), sn = Math.sin(pose.yaw);
   return { x: pose.x + local[0] * c + local[1] * sn, z: pose.z - local[0] * sn + local[1] * c };
+}
+
+/** PC12 (#691): a joined part is refused an edit that would move its connectors. */
+function joinedProblem(w: WorldModel, id: string, i: number): Failure | null {
+  const e = w.entities.get(id), js = Object.entries(e?.joins ?? {});
+  if (!js.length) return null;
+  return { ...fail(i, 'connector.joined', `${w.pathOf(id)} is joined (${js.map(([c, j]) => `${c} to ${w.pathOf(j.to)} ${j.at}`).join('; ')}); it does not move while joined`), entity: id, field: 'joins', fix: 'Disconnect its joints first (what it holds up must be held up another way).' };
+}
+/** PC12: placed or moved parts with bearing connectors get the support check too (a beam placed in the air unjoined). */
+function placedBearing(w: WorldModel, touched: Set<string>): string[] {
+  const out: string[] = [];
+  for (const id of touched) { const e = w.entities.get(id); if (e && w.resolvedDef(e.def)?.components.connectors?.some((c) => c.bears)) out.push(id); }
+  return out;
 }

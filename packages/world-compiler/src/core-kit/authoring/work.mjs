@@ -49,6 +49,22 @@ const LOOSE = [
     { crew: [3, 4], pose: 'flat', height: 0.75, grips: { 3: [[-TBL_LX, 0, TBL_LZ], [-TBL_LX, 0, -TBL_LZ], [TBL_LX, 0, 0]], 4: [[-TBL_LX, 0, TBL_LZ], [-TBL_LX, 0, -TBL_LZ], [TBL_LX, 0, TBL_LZ], [TBL_LX, 0, -TBL_LZ]] } }, [TBL_L, TBL_H, TBL_W]),
 ];
 
+// PC12 (#691): the same loose upright and beam as new revisions with typed structural connectors (components.connectors),
+// so a god can join them into an assembly whose graph the entities hold reciprocally and the engine mirrors. Older
+// revisions keep their bytes. The upright's seats: both columns, both faces, every 6 in from 12 in up its length (the
+// native upright-12ft's seat pitch); it stands with r = [yaw, 0, pi/2] (its +x up), its top face (y = UP_T) then facing
+// -x. The beam's two ends bear: once one is joined both must be, or it would hang.
+const r5 = (v) => +v.toFixed(5);
+const UP_SEATS = [];
+for (const [face, y] of [['front', UP_T], ['back', 0]]) for (const [side, z] of [['l', -(UP_W / 2 - COL / 2)], ['r', UP_W / 2 - COL / 2]])
+  for (let i = 0; 12 * IN + 6 * IN * i < UP_L - 3 * IN; i++) UP_SEATS.push({ id: `${face}-${side}-${i}`, kind: 'beam-seat', at: [r5(-UP_L / 2 + 12 * IN + 6 * IN * i), r5(y), r5(z)], mates: ['beam-end'] });
+const withConnectors = (def, version, description, connectors) => ({ ...structuredClone(def), version, description, tags: [...def.tags, 'connectors'], components: { ...structuredClone(def.components), connectors } });
+const JOINED = [
+  withConnectors(LOOSE[1], 2, 'A loose 12 ft pallet-rack upright frame (3.66 m, 38 kg): two blue columns joined by bracing, with beam seats on both columns of both faces every 6 in from 12 in. It needs two to four carriers lying flat; standing, rack beams join its seats.', UP_SEATS),
+  withConnectors(LOOSE[0], 3, 'A loose orange 9 ft rack beam (2.74 m, 19 kg) with hook clips at each end that join an upright\'s beam seats; one person carries it with both hands, or two.',
+    [-1, 1].map((sx) => ({ id: sx < 0 ? 'end-l' : 'end-r', kind: 'beam-end', at: [r5(sx * BEAM_L / 2), r5(BEAM_H / 2), 0], mates: ['beam-seat'], bears: true }))),
+];
+
 export default [
   work('pallet-rack', 'A pallet-rack bay (2.7 m wide, 3 m tall): two upright frames with beam sockets every 15 cm on the front face (slots beam-l-N / beam-r-N); two beam levels fitted with shelf slots.', ['rack', 'storage', 'pallet', 'warehouse', 'construction'],
     [...[-W / 2, W / 2].flatMap((x) => [cbox([x, H / 2, D / 2], [0.08, H, 0.06], 'upright'), cbox([x, H / 2, -D / 2], [0.08, H, 0.06], 'upright'), ...[0.3, 1.2, 2.1, 2.9].map((y) => box([x, y, 0], [0.04, 0.04, D], 'brace'))]),
@@ -87,4 +103,5 @@ export default [
     [cyl([0, 0.3, 0], 0.28, 0.6, 'stump', { r2: 0.26, seg: 8 }), cbox([0, 0.68, 0], [0.22, 0.16, 0.42], 'iron'), cbox([0, 0.8, 0], [0.3, 0.1, 0.56], 'iron'), cone([0, 0.8, 0.42], 0.06, 0.3, 'iron', { pitch: Math.PI / 2, seg: 5 })],
     { stump: '#6b4a2f', iron: '#3b3d40' }, { components: { workstation: { kind: 'smithing' } } }),
   ...LOOSE,
+  ...JOINED,
 ];

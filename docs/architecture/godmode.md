@@ -63,7 +63,8 @@ parameters, slots and actions.
 
 ## How an edit works
 
-1. **Compile.** A batch is a list of ops (`place`, `move`, `set`, `remove`, `clone`, `define`, `world`, …;
+1. **Compile.** A batch is a list of ops (`place`, `move`, `set`, `remove`, `clone`, `define`, `world`, `connect`,
+   `disconnect`, …;
    `packages/world-compiler/src/schemas.ts`). `plan` simulates it on a scratch copy; a commit returns the diff and its
    inverse, or a refusal with a code and reason. Placement relations (`--near`, `--inside house/room`, `--on table`,
    `--along road`) are solved before commit.
@@ -72,6 +73,44 @@ parameters, slots and actions.
 3. **Physics.** The engine bridge (`god/engine-bridge.ts`) turns the changed entities into a logged `world-edit` event,
    so Souls walk around, sit on and use what was built, and replay reproduces it. Residents in the way are walked out.
 4. **Viewers.** The commit is broadcast as a `world-diff` message to every viewer and on the god's SSE stream.
+
+### Joints
+
+A def may declare typed structural connectors (`components.connectors`: `id`, `kind`, `at` in its own frame, `mates`,
+`bears`; `packages/world-compiler/src/joints.ts`). PC12 ([#691](https://github.com/genekogan/souls/issues/691)).
+- **`connect`.** `{op: 'connect', a: {id, connector}, b: {id, connector}}` joins two parts whose connectors mate (each
+  one's `mates` names the other's `kind`) and meet, within 5 cm. Both parts record their half of the joint (`joins`).
+  The joint's id is `<a>.<connector>~<b>.<connector>`, with the lesser end first, so it is the same from either end.
+- **`disconnect`.** `{op: 'disconnect', a: {id, connector}}` undoes a joint by either end. Undo is exact, and undoing
+  the removal of a joined part brings back both halves.
+- **Support.** A part with `bears` connectors is held up through them. Once one is joined, all must be, to parts
+  that are themselves held up. With none joined, a part at the world root must lie on the ground. A part without
+  bearing connectors that holds joined parts up (an upright) must have its lowest point on the ground. A part with
+  connectors never gets a foundation pad: the default anchor keeps its height.
+- **Refusals.** Each comes before anything changes:
+  - `connector.unknown`: no such connector, or one off the part on `define`;
+  - `connector.incompatible`: the kinds do not mate;
+  - `connector.taken`: the connector is already joined;
+  - `connector.apart`: the points are more than 5 cm apart, or a part is inside another;
+  - `connector.pose`: a part tilted about x (`r[1]`) or scaled, which the engine would not hold the same way;
+  - `connector.joined`: a `move`, or a params change, of a joined part;
+  - `connector.free`: a `disconnect` of a free connector;
+  - `support.none`: a bearing part would hang or float, or an upright holding parts up is not standing on the
+    ground. This covers a beam placed in the air unjoined, one end released, or the upright under it removed. Take
+    the beams down first.
+- **Not yet.**
+  - Loose materials have no compiler collider (as before), so the god's overlap check does not see a standing bay. The
+    engine's box is its obstacle.
+  - A terrain edit under a joined or bearing part is not re-checked.
+  - An upright must stand on the terrain itself, not on a floor or a deck.
+  - A loose part that a Soul is carrying is not refused `connect`.
+  - The engine mirrors the joints only with `SIM_SHARED_CARRY=1`, and only for parts it adapts as items (`carryable`
+    defs). A joined fixture-like part (no `carryable`) is a plain fixture on the ground to the engine, with no
+    connections. The entity world holds every joint either way.
+
+The core revisions `core-rack-upright@2` (88 beam seats, `front|back-l|r-<n>` every 6 in from 12 in) and
+`core-rack-beam@3` (`end-l`, `end-r`, bearing) build a bay. Stand the upright with `r = [yaw, 0, π/2]` and
+`anchor: 'center'` at half its length; its front face then faces −x before the yaw.
 
 **Undo and redo.** Undo reverts the newest edit that is not undone; redo reverts the newest undo; a new edit clears the
 redo stack. `undo --group <name>` reverts a whole group. Changes Souls make to things (opening a door) are engine edits

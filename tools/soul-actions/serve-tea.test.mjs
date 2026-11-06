@@ -97,11 +97,13 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
   const done = async (s, words, each) => { const r = await act(s, words); await until([[s, r]], 9000, each); return edge.receipt(s.soulId, r.receipt.id); };
 
   // ---- Ana makes a cup of tea and picks it up ----
-  refused(ana, `object:${id('cup')}:drink`, 'tea.not-holding');
+  refused(ana, `object:${id('cup')}:drink`, 'tea.cup-empty');
   refused(ana, `object:${id('cup')}:wash`, 'tea.cup-clean'.replace('clean', 'clean'));
   await done(ana, 'make a cup of tea');
   assert.equal(state('cup').tea, 1, 'a cup of tea'); const brewed = state('cup').brewedTick; assert.ok(brewed > 0);
   refused(ana, `object:${id('cup')}:wash`, 'tea.cup-not-empty');
+  // #628: a full cup on the counter is drunk by taking it first (a step, not a refusal)
+  { const d = cap(ana, `object:${id('cup')}:drink`); assert.equal(d?.available, true, JSON.stringify(d)); report.checks.push('drink offered with the cup on the counter'); }
   await done(ana, 'pick up the cup');
   assert.equal(ent('cup').support.by, ana.entityId, 'Ana holds the cup of tea');
 
@@ -121,9 +123,10 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
 
   // ---- Ana makes a second cup and picks it up; both drink at the table at once ----
   await done(ana, 'make a cup of tea'); assert.equal(state('cup-two').tea, 1);
-  await done(ana, 'pick up the cup'); assert.equal(ent('cup-two').support.by, ana.entityId);
+  // #628: she drinks it without picking it up first: the drink takes it from the counter as a step, not a refusal
+  assert.notEqual(ent('cup-two').support.kind, 'in-hand');
   const v0 = w.bridge.tea.visits(), tk0 = W().tick;
-  const da = await act(ana, 'drink the tea'), db = await act(ben, 'drink the tea');
+  const da = await act(ana, `object:${id('cup-two')}:drink`), db = await act(ben, 'drink the tea');
   const seen = {ana: [], ben: []}, motion = {}, tableP = W().entities[id('table')].pose.p;
   let midHereBen = null;
   await until([[ana, da], [ben, db]], 9000, (s) => {
@@ -188,6 +191,16 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
   report.contextBytes.teaRow = partRow ? JSON.stringify(partRow).length : null; report.contextBytes.teaFact = JSON.stringify({state: {tea: 0.4}}).length - 2;
   report.hereObjectsAtPart = partHere.objects.map((o) => [o.name, o.state ?? null]);
   report.checks.push('"have a sip" x3: tea 1 -> 0.8 -> 0.6 -> 0.4; set on the table, nearby {"tea":0.4}');
+  // #628 T2: with something else in hand, a tea act plans the put-down first instead of refusing. Plan level: a native
+  // fixture has no ground to put it on (item.no-room); `held.ts` puts down the same way on a real world.
+  await done(ana, `pick-up:${id('cup-two')}`); assert.equal(ent('cup-two').support.by, ana.entityId);
+  for (const [thing, action] of [['kettle', 'fill'], ['cup-three', 'drink']]) {
+   const p = w.bridge.tea.plan(ana, id(thing), action);
+   assert.ok(p?.steps, `${action}: ${JSON.stringify(p)}`);
+   assert.deepEqual(p.steps[0], {verb: 'mars:put_item', params: {item: id('cup-two'), surfaceSlot: 'ground'}}, `${action} puts the mug down first`);
+  }
+  report.checks.push('hands full: filling the kettle and drinking another cup each plan the held mug down first');
+  await done(ana, 'put the cup on the table');
   assert.deepEqual(f.host.engine.runtime.violations, []);
   report.final = {cup: {id: benCup, ...state('cup'), parent: byName('cup').in.parent}, cup2: {id: id('cup-two'), ...state('cup-two'), parent: byName('cup-two').in.parent}, tick: W().tick};
   report.retries = retries;
