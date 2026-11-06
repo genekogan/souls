@@ -55,7 +55,7 @@ test('HTTP: the real published files are served by hash; the guide uses configur
   assert.doesNotMatch(core, /\b(cannot|can't|must not)\b/i, 'the offers say what is possible');
   const ref = await f.request('/schema.md'), refText = await ref.text(), etag = ref.headers.get('etag')!;
   assert.match(refText, /\| walk \| via \|/); assert.match(refText, /When things go wrong/);
-  assert.equal((await f.request('/schema.md', {headers: {'if-none-match': etag}})).status, 304);
+  assert.equal((await f.app.request('/schema.md', {headers: {'if-none-match': etag}})).status, 304);
   const get = (q: string) => f.app.request('/instructions.md' + q, {headers: {host: 'evil.test', 'x-forwarded-host': 'evil.test'}});
   const mine = await get('?for=K7QX-M2PA'), text = await mine.text();
   assert.equal(mine.status, 200); assert.equal(mine.headers.get('cache-control'), 'no-store');
