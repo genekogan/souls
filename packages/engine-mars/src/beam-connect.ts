@@ -50,6 +50,8 @@ export function worldPoint(e: { pose: Pose }, local: readonly number[]): Vec3 {
 const seatOf = (e: Entity, id: string) => socketsOf(e).find((s) => s.id === id && s.kind === SEAT);
 /** The connector of `e` that `socket` is joined at, if any. */
 const takenBy = (e: Entity, socket: string) => (e.connections ?? []).find((c) => c.socket === socket);
+/** A beam's joints at its two ends (PC15: a step beam also holds deck joists, which are not what it is seated in). */
+export const endJoints = (b: Entity) => { const ends = new Set(socketsOf(b).filter((s) => s.kind === END).map((s) => s.id)); return (b.connections ?? []).filter((c) => ends.has(c.socket)); };
 /** A seat's column, `l` (−z) or `r` (+z): the def's own side of the frame. */
 export const columnOf = (s: Socket): 'l' | 'r' => (s.local[2] < 0 ? 'l' : 'r');
 
@@ -67,7 +69,7 @@ export function links(w: WorldState, u: Entity): Link[] {
   for (const c of u.connections ?? []) {
     const s = seatOf(u, c.socket), b = w.entities[c.to];
     if (!s || !isBeamPart(b) || b.phase !== 'installed') continue;
-    const other = (b.connections ?? []).find((x) => x.to !== u.id)?.to;
+    const other = endJoints(b).find((x) => x.to !== u.id)?.to;
     if (other) out.push({ beam: b.id, col: columnOf(s), level: s.local[0], other });
   }
   return out;
@@ -291,7 +293,7 @@ export function framesStand(rt: Runtime): Diagnostic[] {
   const w = rt.world, out: Diagnostic[] = [];
   for (const e of Object.values(w.entities)) {
     if (e.phase === 'installed' && isBeamPart(e) && e.support?.kind === 'connected') {
-      const to = (e.connections ?? []).map((c) => w.entities[c.to]);
+      const to = endJoints(e).map((c) => w.entities[c.to]);
       if (to.length !== 2 || to.some((u) => !isFrame(u) || !standing(u) || !(u.connections ?? []).some((c) => c.to === e.id)))
         out.push({ code: 'beam.unseated', message: `${e.id} is installed but not seated at both ends in standing uprights`, subjects: [e.id] });
     } else if (e.phase === 'installed' && isFrame(e) && e.support?.kind === 'connected' && standing(e)) {

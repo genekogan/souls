@@ -105,6 +105,8 @@ const RELEASED = '"released"';
 const SEAT_LIFT = 0.15;       // floors: a seat's thing standing this far above the sitter's floor would seat the body inside it
 const GROUND_BAND = 0.35;      // a floor within this of the ground is level 0 (the engine's ground is flat at y 0 until L8's tiles)
 const LEVEL_MATCH = 0.12;      // floors this close in height share an engine level
+/** PC15 (#694): the highest step up onto a laid deck sheet from the ground (m): a deck on a rack's lowest beams. */
+const DECK_STEP = 0.5;
 const FLOOR_NEAR = 0.6;        // levelAt: a level counts at a point within this of one of its floors (thresholds, stair heads)
 /** hasFloorAt's floors of one level, bucketed by FLOOR_CELL squares (a floor in every cell its FLOOR_NEAR-grown bounding
  *  circle touches), so a point checks only the floors near it, not every floor of the level (GODLIST: levelAt per thing
@@ -638,6 +640,8 @@ export class EngineBridge {
     const heightAt = (y: number, at: Vec2, abs?: boolean) => r3(worldFrame ? (abs ? y : this.model.terrain.sample(at[0], at[1]) + y) : wp.y + y * wp.s);
     const part: Part = {};
     const walkableKit = def.make.kind === 'gen' && def.make.gen === 'kit/2' && !!def.make.args?.footprint; // XP5 hook
+    // PC15 (#694): a deck sheet is an item that is also a floor once laid (below)
+    const deckSheet = !!def.components.floor && (def.components.connectors ?? []).some((c) => c.bears);
     if (isFixtureDef(def)) {
       const facts = factsOf(def, baked, wp.s);
       // a floating boat's asset carries no obstacle (catalog-adapter isFloatingDef): a new id, so worlds that registered
@@ -646,10 +650,10 @@ export class EngineBridge {
       if (!known[aid] && !assets[aid]) { const asset = assetFromDef(aid, facts, { connectors: !!this.edge?.sharedCarry }); if (walkableKit) { delete asset.obstacle; asset.seatApproach = 'slot'; for (const slot of asset.slots ?? []) delete slot.approachPolicy; } assets[aid] = asset; } // XP5: seats retain slots; kit solids supply the obstacle geometry. Their exact slot approach stays (lane walk's
       // reachable/1 sweep would cross the kit's own solids).
       part.fixture = this.fixtureSpec(e, def, aid, (assets[aid] ?? known[aid]) as any, wp);
-      if (!walkableKit) return part;
+      if (!walkableKit && !deckSheet) return part;
     }
     // solids: wall segments and blocks (solid layer only; a def's own stair treads are walked by its links)
-    if ((def.layer === 'solid' || def.layer === 'surface') && baked.colliders.length) {
+    if ((def.layer === 'solid' || def.layer === 'surface') && baked.colliders.length && !deckSheet) {
       const fp = this.model.footprint(e, def);
       const solids = fp.map((o, i) => ({ o, local: baked.colliders[i] })).filter(({ local }) => !(baked.links?.some(l => !l.id.startsWith('mesh-step:')) && local.y1 - local.y0 <= 0.5));
       // E-life B7: a god balloon is depiction; its body on the ground is the native ride installed at its spot (rides.ts)
@@ -685,7 +689,10 @@ export class EngineBridge {
     // floors (2026-10-26): a mesh def's measured floor plates (floor-plates.ts: the Chiba deck), walked onto as a step
     const plates = new Set<object>();
     if (!worldFrame && def.make.kind === 'mesh') for (const f of floorPlatesOf(def.name, def.make.asset)) { const s = { level: 0, y: f.y, polygon: f.polygon, tag: f.id }; plates.add(s); surfaces.push(s); }
-    if (!surfaces.length && def.components.floor) { const [w, , d] = baked.box; surfaces.push({ level: 0, y: def.components.floor.y ?? baked.box[1], polygon: [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]] }); }
+    // PC15 (#694): a part that bears on connectors (a deck sheet) is a floor only while every bearing connector is joined:
+    // laid, not loose or carried, and nothing half laid (deckSteps: how it is walked onto)
+    const laid = !deckSheet || (def.components.connectors ?? []).filter((c) => c.bears).every((c) => e.joins?.[c.id]);
+    if (!surfaces.length && def.components.floor && laid) { const [w, , d] = baked.box; const s = { level: 0, y: def.components.floor.y ?? baked.box[1], polygon: [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]] as Vec2[] }; surfaces.push(s); }
     // ground cover (roads, lawns, plazas: ground-relative level-0 surfaces of world-frame shapes) is the ground itself
     const floors = surfaces.filter((x) => !(worldFrame && !(x as { abs?: boolean }).abs && x.level === 0));
     const raisedDeck = this.isRaisedDeck(e, def);
@@ -744,6 +751,7 @@ export class EngineBridge {
       if (l.to.level > 0) (part.surfaces ??= []).push({ id: `${l.id}:head`, level: l.to.level, y: l.to.y, obb: { c: [r3(l.to.p[0] - d[0] * 0.25), r3(l.to.p[1] - d[1] * 0.25)], half: [0.35, r3(l.width / 2)], yaw: l.heading }, label: `${this.model.pathOf(e.id)} ${lid} head`.slice(0, 100) });
     }
     if (raisedDeck) this.deckAccess(e, part);
+    if (deckSheet) this.deckSteps(e, part);
     // F1: a decoration (a fountain, a lamp, a sign, a statue, a house) is also a fixture Souls perceive: views list it,
     // `look` finds it. No slots and no obstacle of its own: its solids above are what blocks, exactly as before.
     if (this.seenOnly(e, def)) {
@@ -848,6 +856,22 @@ export class EngineBridge {
     }
     let ground = Infinity; for (const [x, z] of [...area, [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2] as Vec2]) ground = Math.min(ground, this.model.terrain.sample(x, z));
     if (floor.y - ground < 2.1) (part.solids ??= []).push({ id: `${e.id}#under`, obb: structuredClone(floor.obb), y0: r3(ground - 0.5), y1: r3(floor.y - 0.1), kind: 'fixture' as const, label: `${this.model.pathOf(e.id)} under the deck`.slice(0, 100) });
+  }
+  /** PC15 (#694): a laid deck sheet above the ground's band is a floor of its own; a body steps up onto it from the ground
+   *  at the middle of each long side (a step at most DECK_STEP high: a low rack deck, no stair). Higher, no step is made:
+   *  only stairs, ramps or ladders would reach it, which a deck alone does not have. */
+  private deckSteps(e: Entity, part: Part) {
+    const floor = part.surfaces?.find((s) => s.id === `${e.id}#f0`); if (!floor || floor.level === 0) return;
+    const [cx, cz] = floor.obb.c, ground = this.model.terrain.sample(cx, cz), rise = floor.y - ground;
+    if (rise > DECK_STEP) return;
+    for (const side of [1, -1]) {
+      // across the sheet's width (its obb's second axis), from the ground beside it to on it
+      const n: Vec2 = [-Math.sin(floor.obb.yaw) * side, Math.cos(floor.obb.yaw) * side], hw = floor.obb.half[1];
+      const a: Vec2 = [r3(cx + n[0] * (hw + 0.45)), r3(cz + n[1] * (hw + 0.45))], b: Vec2 = [r3(cx + n[0] * (hw - 0.4)), r3(cz + n[1] * (hw - 0.4))];
+      const ya = r3(this.model.terrain.sample(a[0], a[1]));
+      (part.links ??= []).push({ id: `${e.id}#step-${side > 0 ? 'b' : 'a'}`, kind: 'climb', from: { level: 0, p: a, y: ya }, to: { level: floor.level, p: b, y: floor.y }, width: 0.9,
+        heading: r3(Math.atan2(b[1] - a[1], b[0] - a[0])), path: [[a[0], ya, a[1]], [r3((a[0] + b[0]) / 2), floor.y, r3((a[1] + b[1]) / 2)], [b[0], floor.y, b[1]]], usable: true });
+    }
   }
   /** A god-built point thing that is not otherwise an engine fixture or item, and not a creature, a body or a flag. */
   seenOnly(e: Entity, def: StoredDef): boolean {
