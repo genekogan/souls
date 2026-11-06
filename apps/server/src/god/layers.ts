@@ -356,7 +356,7 @@ export class GodLayers {
         continue;
       }
       if (!c.target || !this.m.entities.has(c.target.id) || !['sit', 'lie', 'sleep', 'pick-up', 'put-on'].includes(c.verb)) continue;
-      const r = this.refusal(c.target.id, soul) ?? (c.verb === 'pick-up' && economyOn() ? this.forSale(c.target.id, soul) : null);
+      const r = c.verb === 'pick-up' ? this.takeRefusal(c.target.id, soul) : this.refusal(c.target.id, soul);
       if (r) { c.available = false; (c as any).blocked = r; plans.delete(c.id); }
     }
     if (!offers || !here || !economyOn()) return;
