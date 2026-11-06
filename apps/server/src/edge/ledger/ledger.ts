@@ -126,7 +126,9 @@ export const SERVING_WAIT_MS = 15_000;
 const nextTurn = () => new Promise<void>(r => setImmediate(r));
 
 /** #824: how many offers a "nothing matches" refusal names as `alternatives`, and verbs never offered as one. */
-const ALTERNATIVES = 3, ATTENTION_ONLY = new Set(['look', 'turn', 'face']), NOTHING_MATCHES = new Set(['capability.unknown', 'place.unknown']);
+const ALTERNATIVES = 3, NOTHING_MATCHES = new Set(['capability.unknown', 'place.unknown']);
+const SIT_WORDS = new Set(['sit', 'seat', 'sit-ground']), WALK_WORDS = new Set(['walk', 'go', 'head', 'jog', 'run', 'stroll', 'go-near']);
+type Alternative = {id: string; label: string; why: string; partial?: true};
 export class EdgeLedger implements EdgeLedgerHooks {
   places: PlaceIndex;
   private receiptListeners: ((r: EdgeReceipt) => void)[] = [];
@@ -2377,24 +2379,39 @@ export class EdgeLedger implements EdgeLedgerHooks {
    *  available offers, never a catalog and never a repeat of did_you_mean. First the offered walk to a place its own words
    *  name ("fly up to the field" -> walk:field, one bindOne), then the nearest available offers of the menu the refusal
    *  already read (one per verb). Nothing available: no field. */
-  private withAlternatives<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, words: string, out: T, caps: EdgeCapability[]): T & {alternatives?: {id: string; label: string}[]} {
-    const seen = new Set((out.did_you_mean ?? []).map(d => d.id)), picks: EdgeCapability[] = [], verbs = new Set<string>();
-    const add = (c: EdgeCapability | undefined) => {if (c?.available && !seen.has(c.id) && !verbs.has(c.verb) && picks.length < ALTERNATIVES * 2) {seen.add(c.id); verbs.add(c.verb); picks.push(c);}};
-    const ctx = this.vocabulary(soul, caps), w = tokens(words);
+  /** CTRL-3 (#1095): what serves the same intent with a different binding, at most 3, nearest first within that class: never
+   *  a different verb, never a different destination, never the refused act. Information for the agent, never a default. */
+  private withAlternatives<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, words: string, out: T, caps: EdgeCapability[]): T & {alternatives?: Alternative[]} {
+    const asked = words.trim(), seen = new Set([asked, ...(out.did_you_mean ?? []).map(d => d.id)]), picks: {c: EdgeCapability; why: string; partial?: true}[] = [];
+    const add = (c: EdgeCapability | undefined, why: string, partial?: boolean) => {if (c?.available && !seen.has(c.id) && picks.length < ALTERNATIVES * 2) {seen.add(c.id); picks.push({c, why, ...(partial ? {partial: true as const} : {})});}};
+    const ctx = this.vocabulary(soul, caps), w = tokens(words), head = (asked.includes(':') ? asked.slice(0, asked.indexOf(':')) : w[0] ?? '').toLowerCase();
+    const verb = SIT_WORDS.has(head) ? 'sit' : WALK_WORDS.has(head) ? 'walk' : head;
+    const near = (c: EdgeCapability) => {if (c.id.endsWith(':here')) return -1; const at = ctx.target(c).at ?? ctx.me; return at && ctx.me ? Math.hypot(at[0] - ctx.me[0], at[1] - ctx.me[1]) : Infinity;};
+    const nearest = (list: EdgeCapability[]) => list.map((c, i) => [c, near(c), i] as const).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0]);
     // the place its words end on ("fly up to the field": the field) by its own name or id words (tier <= 1), the last few
     // words only, longest first
-    let named: string[] | undefined;
-    for (let i = Math.max(1, w.length - 4); i < w.length && !named; i++) {const m = placeMatchTier(w.slice(i), ctx.places, ctx.withheld); if (m.tier >= 0 && m.tier <= 1 && m.found.length) named = w.slice(i);}
-    // the walk those words resolve to, as `walk <words>` would (a named region's walk is often its building's: "the pond
-    // hall" is walk:lab-pond-hall), on the kept words menu only when the refusal's own menu has no walks
-    if (named) {const own = caps.some(c => c.verb === 'walk'), r = resolveCapability(`walk:${named.join(' ')}`, own ? ctx : this.vocabulary(soul, this.wordsMenu(soul).caps)); if (r.kind !== 'unknown' && r.cap.verb === 'walk') add(r.cap);}
-    // then the nearest available offers (offers here first), in the menu's own order on a tie, one per verb
-    const near = (c: EdgeCapability) => {if (c.id.endsWith(':here')) return -1; const at = ctx.target(c).at ?? ctx.me; return at && ctx.me ? Math.hypot(at[0] - ctx.me[0], at[1] - ctx.me[1]) : Infinity;};
-    for (const c of caps.filter(c => c.available && !ATTENTION_ONLY.has(c.verb)).map((c, i) => [c, near(c), i] as const).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0])) {if (picks.length >= ALTERNATIVES * 2) break; add(c);}
+    let named: string[] | undefined, place: Place | undefined;
+    for (let i = Math.max(1, w.length - 4); i < w.length && !named; i++) {const m = placeMatchTier(w.slice(i), ctx.places, ctx.withheld); if (m.tier >= 0 && m.tier <= 1 && m.found.length) {named = w.slice(i); place = this.places.byId.get(m.found[0]!.id);}}
+    const menu = (wanted: string) => caps.some(c => c.verb === wanted && c.id !== asked) ? caps : this.wordsMenu(soul).caps;
+    if (verb !== 'sit' && named) {
+      // the walk those words resolve to, as `walk <words>` would (a named region's walk is often its building's: "the pond
+      // hall" is walk:lab-pond-hall). Walking is only part of "fly there".
+      const r = resolveCapability(`walk:${named.join(' ')}`, caps.some(c => c.verb === 'walk') ? ctx : this.vocabulary(soul, this.wordsMenu(soul).caps));
+      if (r.kind !== 'unknown' && r.cap.verb === 'walk') add(r.cap, `walks to ${named.join(' ')}`, verb !== 'walk');
+      // that walk is what was refused: somewhere inside or beside the same place, which only partly serves
+      if (place && !picks.length) {
+        const beside = menu('walk').filter(c => c.verb === 'walk' && c.target?.kind === 'place' && c.target.id !== place!.id && (this.places.byId.get(c.target.id)?.parent === place!.id || c.target.id === place!.parent));
+        for (const c of nearest(beside)) add(c, `inside or beside ${place.name}`, true);
+      }
+    } else if (verb) {
+      // the same act on something else in this room or place
+      const room = this.placePathOf(soul.soulId).find(p => p.kind !== 'occupier')?.id ?? null;
+      const here = (c: EdgeCapability) => {if (c.id.endsWith(':here')) return true; const at = ctx.target(c).at; return !!at && (!room || this.places.containing(at[0], at[1]).some(p => p.id === room));};
+      for (const c of nearest(menu(verb).filter(c => c.verb === verb && here(c)))) add(c, verb === 'sit' ? 'another free seat here' : `${verb} on something else here`);
+    }
     // the menu read may be a kept words menu (approximate availability), and the named walk may come from it: every pick
-    // is rebuilt exactly (bindOne) and kept only if it is available now. Verbs are claimed as picks are added, so a named
-    // walk dropped here is not replaced by another walk.
-    const alt = picks.map(c => this.bindOne(soul, c.id)?.cap).filter((c): c is EdgeCapability => !!c?.available).slice(0, ALTERNATIVES).map(c => ({id: c.id, label: c.label}));
+    // is rebuilt exactly (bindOne) and kept only if it is available now
+    const alt = picks.map(p => ({...p, c: this.bindOne(soul, p.c.id)?.cap})).filter((p): p is typeof p & {c: EdgeCapability} => !!p.c?.available).slice(0, ALTERNATIVES).map(({c, why, partial}) => ({id: c.id, label: c.label, why, ...(partial ? {partial} : {})}));
     return alt.length ? {...out, alternatives: alt} : out;
   }
   /** R2 stroll (longrun 2026-10-16): a construction refusal names what the Soul can do where it stands instead (wander

@@ -18,7 +18,7 @@ test('#824: refusals name bounded, available alternatives; other answers carry n
   const check = (out: any, what: string) => {
     assert.equal(out.accepted, false, what);
     assert.ok(Array.isArray(out.alternatives) && out.alternatives.length >= 1 && out.alternatives.length <= 3, `${what}: 1-3 alternatives ${JSON.stringify(out.alternatives)}`);
-    for (const x of out.alternatives) {assert.ok(available.has(x.id), `${what}: ${x.id} is available now`); assert.equal(typeof x.label, 'string'); assert.deepEqual(Object.keys(x).sort(), ['id', 'label']);}
+    for (const x of out.alternatives) {assert.ok(available.has(x.id), `${what}: ${x.id} is available now`); assert.equal(typeof x.label, 'string'); assert.deepEqual(Object.keys(x).filter(k => k !== 'partial').sort(), ['id', 'label', 'why']);}
     assert.equal(new Set(out.alternatives.map((x: any) => x.id)).size, out.alternatives.length, 'no repeats');
     for (const d of out.did_you_mean ?? []) assert.ok(!out.alternatives.some((x: any) => x.id === d.id), `${what}: ${d.id} is already in did_you_mean`);
   };
@@ -28,15 +28,22 @@ test('#824: refusals name bounded, available alternatives; other answers carry n
   assert.equal(fly.alternatives[0].id, 'walk:field');
   // the named place's walk comes from the walk resolver ("to the field" -> walk:field), the same as `walk to the field`
   const flyTo = await edge.act(soul, {capability: 'fly to the green field'}) as any; check(flyTo, 'fly to'); assert.equal(flyTo.alternatives[0].id, 'walk:field');
-  // A2: a materially different case (an unknown verb, no place named): the nearest available offers, one per verb
+  // CTRL-3 (#1095): an unknown verb with no place named has no same-intent alternative: other acts are not offered
   const unknown = await edge.act(soul, {capability: 'teleport somewhere nice'}) as any;
-  assert.equal(unknown.code, 'capability.unknown'); check(unknown, 'unknown verb');
-  const verbs = unknown.alternatives.map((x: any) => x.id.split(':')[0]); assert.equal(new Set(verbs).size, verbs.length, 'one per verb');
-  assert.ok(!unknown.alternatives[0].id.startsWith('walk:'), 'no place named: the first alternative is not a walk');
-  assert.ok(unknown.alternatives.some((x: any) => x.id.endsWith(':here')), `offers here rank nearest: ${JSON.stringify(unknown.alternatives)}`);
+  assert.equal(unknown.code, 'capability.unknown'); assert.equal(unknown.alternatives, undefined, JSON.stringify(unknown.alternatives));
+  // walking is only part of flying there
+  assert.equal(fly.alternatives[0].partial, true); assert.match(fly.alternatives[0].why, /field/);
+  // the same verb on something else here, and never another verb
+  const dance = await edge.act(soul, {capability: 'dance with Zed'}) as any;
+  for (const x of dance.alternatives ?? []) assert.equal(x.id.split(':')[0], 'dance', JSON.stringify(dance.alternatives));
+  // a sit's alternatives are seats: never a walk or a stroll
+  const seat = await edge.act(soul, {capability: 'sit:no-such-seat-here'}) as any;
+  for (const x of seat.alternatives ?? []) {assert.equal(x.id.split(':')[0], 'sit', JSON.stringify(seat.alternatives)); assert.equal(typeof x.why, 'string');}
+  assert.ok((seat.alternatives ?? []).length <= 3);
   // A1 (review): an unknown place id (the explicit place path) and an unknown Soul name (together/1) are covered too
   for (const asked of ['walk:atlantis', 'gather:no-such-place', 'hug Nobody', 'dance with Zed']) {
-    const out = await edge.act(soul, {capability: asked}) as any; assert.equal(out.code, 'capability.unknown', `${asked}: ${JSON.stringify(out)}`); check(out, asked);
+    const out = await edge.act(soul, {capability: asked}) as any; assert.equal(out.code, 'capability.unknown', `${asked}: ${JSON.stringify(out)}`);
+    const verb = asked.split(/[: ]/)[0]; for (const x of out.alternatives ?? []) assert.equal(x.id.split(':')[0], verb, `${asked}: ${JSON.stringify(out.alternatives)}`);
   }
   // A3 (review): a description-only word never names the place ("teleport somewhere nice" names no walk)
   // A3: a refusal that is not "nothing matches" and an accepted act carry no alternatives
@@ -45,7 +52,7 @@ test('#824: refusals name bounded, available alternatives; other answers carry n
   const ok = await accept(f.host, edge.act(soul, {capability: 'wave'})) as any;
   assert.equal(ok.accepted, true, JSON.stringify(ok)); assert.equal(ok.alternatives, undefined);
   // A6: the field's size is bounded (3 entries, labels as offered)
-  for (const out of [fly, unknown]) assert.ok(JSON.stringify({alternatives: out.alternatives}).length <= 600, 'bounded bytes');
+  for (const out of [fly]) assert.ok(JSON.stringify({alternatives: out.alternatives}).length <= 600, 'bounded bytes');
 });
 
 // Review of 6d48ceb1: the motivating case. "The pond hall" names a region with no walk of its own; `walk the pond hall`
