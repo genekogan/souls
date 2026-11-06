@@ -56,6 +56,8 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   const chalk = JSON.parse(readFileSync(new URL('../conformance/chalk-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // #435 2026-11-05: core-swap-shelf@1 on the container faculty (no door, a leftBy record); the narrow run found nothing, so this pins no finding.
   const swapShelf = JSON.parse(readFileSync(new URL('../conformance/swap-shelf-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  // #435 2026-11-05: core-pantry@1, core-apple@1 and core-bun@1; the narrow run found nothing, so this pins no finding.
+  const pantry = JSON.parse(readFileSync(new URL('../conformance/pantry-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // #429 2026-11-05: core-guestbook@1 on the sign-up faculty; the narrow run found nothing, so this pins no finding.
   const guestbook = JSON.parse(readFileSync(new URL('../conformance/guestbook-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // #435 2026-11-05: core-lost-and-found@1, the swap shelf's form with an owner claim; the narrow run found nothing, so this pins no finding.
@@ -65,7 +67,7 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   // #435 2026-11-05: core-hollow-stump@1 and core-wall-niche@1, hiding places (a doorless container with `hidden: true`); the narrow run found nothing, so this pins no finding.
   const hidingPlaces = JSON.parse(readFileSync(new URL('../conformance/hiding-places-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   const signature = (f: Finding) => JSON.stringify([f.def, f.hash, f.field, f.stage, f.code, f.detail]);
-  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...recordPlayer.findings, ...chalk.findings, ...guestbook.findings, ...lostAndFound.findings, ...swapShelf.findings, ...repairDefs.findings, ...openings.findings, ...hidingPlaces.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
+  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...recordPlayer.findings, ...chalk.findings, ...guestbook.findings, ...lostAndFound.findings, ...swapShelf.findings, ...repairDefs.findings, ...openings.findings, ...hidingPlaces.findings, ...pantry.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
   const newFindings = report.findings.filter(f => !allowed.has(signature(f)));
   assert.deepEqual(newFindings, [], `Undocumented conformance failures: ${JSON.stringify(newFindings.slice(0, 12))}`);
   assert.deepEqual(report.qualificationGaps, known.qualificationGaps, 'rendering gaps changed: qualify them or document the exact gap');

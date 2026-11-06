@@ -223,10 +223,10 @@ export type TogetherPort = {
    *  nothing submitted): the refusal with its subjects, or null. Main only (the act path). */
   previewCarry?(params: {crew: string[]; item: string; to: {x: number; z: number; yaw: number}}): CarryIssue | null;
   /** PC07: the native action a programme is on (status, phase and the diagnostic of a hold-up), read on the ledger's engine. */
-  carryState?(programId: string): ({status: string; phase?: string} & Partial<CarryIssue>) | null;
-  /** PC08: a stop asked before a restart is logged again for the replayed programme (a stop is idempotent natively), so
-   *  a stop whose event never reached the log is not lost. */
-  restop?(hostEntity: string, programId: string, op: string): boolean;
+  carryState?(programId: string): ({status: string; verb?: string; phase?: string} & Partial<CarryIssue>) | null;
+  /** PC10 (#689): stop exactly this programme safely (`edge-stop` naming it, `untilSafe`), logged; false when the clock
+   *  is not running. Used only for a programme the restored world replays after its operation had ended. */
+  stopOp?(hostEntity: string, programId: string, op: string, why: string): boolean;
   /** PC05: stop a Soul's running programme (best effort; the native carry sets its load down). */
   stopBody?(soul: EdgeSoul): void;
 };
@@ -236,6 +236,8 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 
 /** A deterministic item source (sources()): a shelf, a writing desk or a walkable place by kind. */
 type ItemSource = {id: string; kind: ItemKind; label: string; at: V2; face?: V2; place: string | null};
+/** #435: how near (m) a real thing must be to come before a place's prop of the kind: the reach of a storage offer. */
+const REAL_THING_NEAR = 8;
 export class Together {
   private p: TogetherPort;
   private follows = new Map<string, Follow>();          // receipt id → follow
@@ -1144,15 +1146,47 @@ export class Together {
     if (live && host) afterCommit(this.p.db.db, () => this.p.stopBody?.({soulId: host.soulId, entityId: host.entityId, name: host.name, owner: host.owner}));
   }
   /** Each sweep: a running operation whose programme is gone on two checks in a row (its end was never seen, e.g. across
-   *  a restart) is ended for every member. */
+   *  a restart) is ended for every member. PC10 (#689): the stop's event and its journal are one transaction, so a
+   *  restarted world that runs a stopping operation's programme has already replayed its stop; nothing is asked again. */
   private staleOps = new Map<string, number>();
   private sharedReconcile() {
+    this.sharedRewound();
     for (const inv of this.committed()) {
       const op = inv.shared?.op; if (!op || op.phase === 'ended') continue;
       const host = this.mindOf(inv.host.soulId);
-      if (host && this.p.programOf(host.entityId) === op.programId) {this.staleOps.delete(inv.id); if (!this.watching.has(inv.id) && op.stop && this.p.restop?.(host.entityId, op.programId, op.id) === false) continue; if (!this.watching.has(inv.id)) this.watching.set(inv.id, {programId: op.programId, held: 0, clear: 0, ...(op.stop ? {stopping: true as const, ...(op.stop.unsafe !== undefined ? {unsafe: true as const} : {})} : {}), ...(op.blocked ? {since: op.blocked.fromTick, code: op.blocked.code, ...(op.blocked.lasting ? {lasting: true as const} : {})} : {})}); continue;}
+      // a restored world older than the commit never has this op's programme, whatever programme now has its id
+      if (host && this.tick >= op.committedTick && this.isOpCarry(host.entityId, op.programId)) {
+        this.staleOps.delete(inv.id);
+        // a world restored to before the stop (an older backup than the journal) is asked to stop again; an exact
+        // resume has already replayed the stop, so this never logs a second one there
+        if (op.stop && !this.watching.has(inv.id) && op.stop.tick > this.tick && this.p.stopOp?.(host.entityId, op.programId, op.id, 'shared.stop') === false) continue;
+        if (!this.watching.has(inv.id)) this.watching.set(inv.id, {programId: op.programId, held: 0, clear: 0, ...(op.stop ? {stopping: true as const, ...(op.stop.unsafe !== undefined ? {unsafe: true as const} : {})} : {}), ...(op.blocked ? {since: op.blocked.fromTick, code: op.blocked.code, ...(op.blocked.lasting ? {lasting: true as const} : {})} : {})}); continue;}
       if (!this.staleOps.has(inv.id)) {this.staleOps.set(inv.id, this.tick); continue;}
-      this.sharedEnd(inv, 'ended', 'shared.ended', `The shared carry of ${inv.shared!.load.name} is no longer running.`);
+      const load = inv.shared!.load.name;
+      this.sharedEnd(inv, 'ended', 'shared.ended', this.tick < op.committedTick
+        ? `The world was restored to a moment before the shared carry of ${load} started (${op.id}), so it is not running; nothing is carried.`
+        : `The shared carry of ${load} is no longer running.`);
+    }
+  }
+  /** PC10 (#689, A3b): once after a boot. An operation that ended later than the restored clock (a world without the
+   *  durable clock, restored to a moment before that end) has its programme replayed by the engine, which would carry
+   *  the load again although nobody agreed to it. That programme is stopped safely (a logged `edge-stop` naming it), the
+   *  members are told and an operator line says so; their ended receipts keep how it ended. Bounded to the latest ops. */
+  private rewoundChecked = false;
+  /** The host runs this op's programme: the same id, and that programme is a native carry (ids are counters). No
+   *  reading of the action (between steps) counts as the carry on purpose: the commit tick check carries the weight. */
+  private isOpCarry(hostEntity: string, programId: string): boolean {return this.p.programOf(hostEntity) === programId && (this.p.carryState?.(programId)?.verb ?? 'carry') === 'carry';}
+  private sharedRewound() {
+    if (this.rewoundChecked) return; this.rewoundChecked = true;
+    const rows = this.p.db.db.prepare(`SELECT body FROM edge_invites_v1 WHERE world_id=? AND state='closed' AND body LIKE '%"endedTick":%' ORDER BY created_at DESC LIMIT 50`).all(this.p.host.worldId) as {body: string}[];
+    for (const {body} of rows) {
+      const inv = JSON.parse(body) as Invite, s = inv.shared, op = s?.op, host = this.mindOf(inv.host.soulId);
+      if (!s || !op || op.phase !== 'ended' || (op.endedTick ?? 0) <= this.tick || op.committedTick > this.tick || !host || !this.isOpCarry(host.entityId, op.programId)) continue;
+      if (this.p.stopOp?.(host.entityId, op.programId, op.id, 'shared.restored') === false) {this.rewoundChecked = false; continue;}
+      console.error(`[edge] shared ${op.id}: the world was restored to tick ${this.tick}, before this carry ended (tick ${op.endedTick}, ${op.result}); its replayed programme is stopped safely. Operator: check where ${s.load.entity} lies.`);
+      const text = `The world was restored to a moment before the shared carry of ${s.load.name} ended (${op.result}; ${op.id}). Nobody asked to carry it again, so the crew sets it down safely where it is now; your receipt keeps how it ended.`;
+      for (const m of this.sharedMembers(inv)) this.p.deliver(m.soulId, 'shared.restored', {op: op.id, text, untrusted: true});
+      this.p.spectate({kind: 'shared', op: {id: op.id, invite: inv.id, load: s.load.entity, phase: 'restored'}, untrusted: true});
     }
   }
   /** PC07 (#686): the running operations the main tick watches (in memory: nothing to do while none runs). `held` and
@@ -1165,6 +1199,7 @@ export class Together {
    *  destination is a detour. A hold-up of `SHARED_LASTING_TICKS` is `lasting`; the crew still holds the load and nobody
    *  lets go on a timeout. Reads only; the native carry owns every movement. */
   sharedWatch() {
+    this.sharedRewound();   // PC10: at the first tick after a boot, before a replayed ended op carries on
     if (!this.watching.size || !this.p.carryState) return;
     for (const [id, w] of this.watching) {
       const st = this.p.carryState(w.programId); if (!st) continue;
@@ -1242,10 +1277,12 @@ export class Together {
     const stop = s.op?.stop ? ` ${this.stopWords(s.op.stop)}; the load is set down once the crew can move to a clear spot.` : '';
     return (lasting ? `${what}. It has lasted ${Math.round(SHARED_LASTING_TICKS / 20)} s; nobody lets go on a timeout, and ${frees}.` : `${what}; ${frees}.`) + stop;
   }
-  /** Restart: a member's started receipt of an operation whose programme the snapshot still runs is still followed. */
+  /** Restart: a member's started receipt of an operation the journal still runs is left to the shared reconcile, which
+   *  follows it while the restored world runs its programme and otherwise ends it for every member with the reason
+   *  (PC10, #689), never as a lone receipt lost on restart. */
   sharedLive(receiptId: string): boolean {
-    const inv = this.inviteForReceipt(receiptId), op = inv?.shared?.op, host = inv ? this.mindOf(inv.host.soulId) : undefined;
-    return !!inv && !!op && inv.state === 'committed' && op.phase !== 'ended' && !!host && this.p.programOf(host.entityId) === op.programId;
+    const inv = this.inviteForReceipt(receiptId), op = inv?.shared?.op;
+    return !!inv && !!op && inv.state === 'committed' && op.phase !== 'ended';
   }
 
   /** BROWSE-COURTESY: a guest joining a place-bound activity (read in the library) takes its own free spot of that activity
@@ -1827,7 +1864,8 @@ export class Together {
     }
     if (held && ((held.kind === 'food' && /^(?:eat|have|finish)\b/.test(t) && (/\b(?:it|this|that|food|snack|bread|apple|cake)\b/.test(t) || t === 'eat')) || (held.kind === 'cup' && /^(?:drink|sip|have|finish)\b/.test(t) && (/\b(?:it|this|that|tea|coffee|cup|drink)\b/.test(t) || t === 'drink'))))
       return {capability: (held.kind === 'food' ? 'eat' : 'drink') + ':held', note: `${raw}: ${held.name} you are holding`};
-    const pick = /^(?:pick\s+up|take|grab|get|fetch|collect|pluck|borrow)\s+(?:me\s+)?(?:(?:a|an|some|the|one)\s+)?(.+)$/.exec(t);
+    // #435: "take a bite of the bun" is a bite, not a take
+    const pick = /^(?!take\s+(?:a\s+)?bite\b)(?:pick\s+up|take|grab|get|fetch|collect|pluck|borrow)\s+(?:me\s+)?(?:(?:a|an|some|the|one)\s+)?(.+)$/.exec(t);
     // #435: "take the book from the swap shelf" names the container it is kept in; when a take out of that container is on
     // offer, the storage words (vocabulary storeWords) resolve it, not the item-kind words below
     const from = pick && /^.+?\s+(?:out\s+of|out\s+from|from|off\s+of|off)\s+(.+)$/.exec(pick[1]), boxWords = from ? from[1].split(/\s+/).filter(w => !['the', 'a', 'an', 'my', 'your'].includes(w)) : [];
@@ -1841,10 +1879,12 @@ export class Together {
         const lying = caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && this.item(c.target.id)?.kind === kind)[0];
         const c = lying ?? caps.find(c => c.id === 'pick-up:' + kind);
         // entry 43: a world thing of that word lying near (a god-built mug) when no prop of the kind is: the one called
-        // exactly that first, then one whose name has the word, nearest first (labels end "(N m)")
-        const named = !c ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
-          const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(); return {c, rank: n === w ? 0 : new RegExp(`(^|[^a-z])${w.replace(/[^a-z ]/g, '')}([^a-z]|$)`).test(n) ? 1 : 9, d};}).filter(x => x.rank < 9).sort((a, b) => a.rank - b.rank || a.d - b.d)[0]?.c : undefined;
-        if (!c && named) return {capability: named.id, note: `${raw} is ${named.id} (${named.label})`};
+        // exactly that first, then one whose name has the word, nearest first (labels end "(N m)"). #435: a real thing called
+        // that, free to take and within REAL_THING_NEAR, also comes before a place's prop of the kind ("pick up the apple" is
+        // the apple on the table); one further off or not hers does not take a Soul away from the prop beside her
+        const named = !lying ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
+          const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(); return {c, rank: n === w ? 0 : new RegExp(`(^|[^a-z])${w.replace(/[^a-z ]/g, '')}([^a-z]|$)`).test(n) ? 1 : 9, d};}).filter(x => x.rank < 9 && (!c || (x.c.available && x.d <= REAL_THING_NEAR))).sort((a, b) => a.rank - b.rank || a.d - b.d)[0]?.c : undefined;
+        if (named) return {capability: named.id, note: `${raw} is ${named.id} (${named.label})`};
         if (!c) {
           const me = this.posOf(soul.soulId), far = me ? this.sources().filter(s => s.kind === kind && s.place).map(s => ({s, d: Math.hypot(s.at[0] - me[0], s.at[1] - me[1])})).sort((a, b) => a.d - b.d) : [];
           const hit = far.map(f => ({f, w: caps.find(c => c.verb === 'walk' && c.target && (c.target.id === f.s.place || this.p.places.byId.get(f.s.place!)?.parent === c.target.id))})).find(x => x.w), walk = hit?.w;

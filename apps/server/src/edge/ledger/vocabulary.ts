@@ -28,6 +28,8 @@ export type VocabContext = {
   withheld?: string[];
   root: string[];
   me: [number, number] | null;
+  /** #435: whether this world thing is in this Soul's hand (a bare "eat it" means the food in her hand). */
+  holds?: (id: string) => boolean;
   /** Body yaw in world radians, facing (cos yaw, sin yaw); absence is unknown. */
   yaw?: number;
   /** Ids of the places the Soul is standing in (innermost first), when known: a stroll named for one of them is in place. */
@@ -339,10 +341,12 @@ function checkersWords(input: string, ctx: VocabContext): VocabResult | null {
 // bowl's take from inside it. A shut container's contents are never offered: its words name its open offer instead.
 // #435: an open shelf a Soul keeps things on (a swap shelf) is a container too: "leave the bowl on the swap shelf" and
 // "take the bowl off the swap shelf". "on" is a put-in only when no surface by those words is on offer (a table stays put-on).
-const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip|hide|stash)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
+const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip|hide|stash|stock)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
 const UNSTOW = /^(?:please\s+)?(?:take|get|fetch|remove|grab|lift|pull|pick\s+up|pick)\s+(.+?)\s+(?:out\s+of|out\s+from|from\s+inside|from\s+in|from|off\s+of|off)\s+(.+?)[.!]?$/;
+// #435: "stock the pantry with the apple" is a put of the apple in the pantry
+const STOCK = /^(?:please\s+)?(?:re)?stock\s+(.+?)\s+with\s+(.+?)[.!]?$/;
 function storeWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
-  const put = STOW.exec(text), take = put ? null : UNSTOW.exec(text), m = put ?? take; if (!m) return null;
+  const stock = STOCK.exec(text), put: string[] | null = stock ? [text, stock[2], 'in', stock[1]] : STOW.exec(text), take = put ? null : UNSTOW.exec(text), m = put ?? take; if (!m) return null;
   const verb = put ? 'put-in' : 'pick-up', pool = ctx.caps.filter(c => c.verb === verb); if (!pool.length && put) return null;
   const words = (x: string) => tokens(x).filter(w => !['the', 'a', 'an', 'my', 'your', 'it', 'its', 'of', 'top'].includes(w));
   const thing = words(m[1]), box = words(put ? m[3] : m[2]), hits = (c: EdgeCapability, ws: string[]) => {const t = ctx.target(c), all = tokens([c.id, c.label, ...t.names].join(' ')); return ws.every(w => tokenHit(w, all) || (SYNONYMS[w] ?? []).some(s => tokenHit(s, all)));};
@@ -518,6 +522,15 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     // gets the mug's own answer (pick it up first, drink it first)
     if (pool.length && (want === 'drink' || want === 'sip' || want === 'wash') && !pool[0].available && !/\b(?:tea|cup|mug)\b/.test(text)) pool.length = 0;
     if (pool.length) return {kind: 'alias', cap: pool[0], note: `${input} is ${pool[0].id} (${pool[0].label}).`};
+    // #435: "eat the apple", "finish the apple", "have the bun", "take a bite of the bun" name a food wherever it is; "eat it"
+    // and "have a bite" mean the food in her hand. Nothing in the hand and no food named keeps the word's old meaning (a table's
+    // eat, the ledger's held food).
+    const bite = /^(?:please\s+)?(?:(?:have|take)\s+(?:a\s+)?bite(?:\s+(?:of|out\s+of)\s+(.+?))?|bite\s+(?:into\s+)?(.+?))[.!]?$/.exec(text), eat = bite ? null : /^(?:please\s+)?(?:eat|finish|have)(?:\s+(?:up|off))?(?:\s+(.+?))?[.!]?$/.exec(text);
+    if (bite || eat) {
+      const words = tokens(bite?.[1] ?? bite?.[2] ?? eat?.[1] ?? '').filter(w => !['the', 'a', 'an', 'my', 'your', 'this', 'that', 'it', 'up', 'off', 'of'].includes(w));
+      const foods = acts.filter(c => c.action === (bite ? 'bite' : 'eat') && (words.length ? (t => words.every(w => tokenHit(w, t)))(tokens([c.label, ...ctx.target(c).names].join(' '))) : c.available && !!c.object && !!ctx.holds?.(c.object))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
+      if (foods[0]) return {kind: 'alias', cap: foods[0], note: `${input} is ${foods[0].id} (${foods[0].label}).`};
+    }
     // entry 44: "offer Ben the tea", "give the cup of tea to Ben": the hand-over of the held mug to that Soul (entry 41's
     // give:<soul>, offered only while a world thing is held and the Soul is in sight)
     const serve = /^(?:please\s+)?(?:offer|give|hand|pass|serve|bring)\s+(?:(?!the\b|my\b|this\b|that\b|your\b)([a-z][\w' -]*?)\s+(?:(?:the|my|this|that|your|a)\s+)?(?:(?:cup|mug)\s+of\s+tea|tea|cup|mug|it)|(?:(?:the|my|this|that|your|a)\s+)?(?:(?:cup|mug)\s+of\s+tea|tea|cup|mug|it)\s+to\s+([a-z][\w' -]*?))[.!]?$/.exec(text);
