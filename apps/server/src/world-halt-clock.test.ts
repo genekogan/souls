@@ -2,8 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Engine, EngineFactory } from '@sim/engine-contract';
 import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import type { AddressInfo } from 'node:net';
+import { getRequestListener } from '@hono/node-server';
+import { WebSocket } from 'ws';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
+import { config } from './config.ts';
+import { Auth } from './auth.ts';
+import { Brain } from './brain.ts';
+import { Souls } from './souls.ts';
+import { Hub } from './hub.ts';
+import { buildApp } from './http.ts';
 
 // #1120: a fault that edge recovery cannot repair halts the world. The halted host may be half-replayed (its seq behind the
 // log, its state matching no logged prefix), so nothing durable is written from it afterwards: ticks, drains and snapshots
@@ -47,4 +58,34 @@ test('#1120: a halted host refuses every later tick, drain and snapshot, naming 
   assert.equal(frontierRow(db)?.body, frontier, 'the clock frontier is the one from before the fault');
   assert.equal(host.engine.world.tick, tick);
   assert.equal(host.paused, true, 'a refused resume leaves it paused');
+});
+
+test('#1120: after an engine halt the world answers 503 world-unavailable and closes viewer sockets, as other clock failures already do', async (t) => {
+  const { db, host, control } = fixture();
+  t.mock.method(console, 'error', () => {});
+  const cfg = { ...config, worldId, worldKey: 'eden', brainMode: 'fake' as const, budgetUsdPerDay: 0, typesafeKey: undefined, anthropicKey: undefined, privyAppId: '', privyAppSecret: '', publicUrl: 'http://127.0.0.1' };
+  const auth = new Auth(cfg, db), brain = new Brain(host, db, cfg, { clients: () => 0, onCall() {}, onCamera() {}, onTicker() {}, onNarrative() {} });
+  const souls = new Souls(host, db, brain, cfg); let app!: ReturnType<typeof buildApp>;
+  const server = createServer((req, res) => getRequestListener(app.fetch)(req, res));
+  const timers: ReturnType<typeof setInterval>[] = [], interval = globalThis.setInterval;
+  const capture = t.mock.method(globalThis, 'setInterval', (...args: Parameters<typeof setInterval>) => { const timer = interval(...args); timers.push(timer); return timer; });
+  const hub = new Hub(server, host, auth, db); capture.mock.restore(); hub.brain = brain;
+  app = buildApp({ cfg, db, host, auth, hub, brain, souls });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const ws = new WebSocket(`ws://${base}/ws`);
+  t.after(async () => { host.stop(); for (const timer of timers) clearInterval(timer); ws.terminate(); hub.wss.close(); await new Promise<void>((resolve) => server.close(() => resolve())); db.close(); });
+  await once(ws, 'open');
+  const greeting = once(ws, 'message', { signal: AbortSignal.timeout(2000) }); ws.send(JSON.stringify({ t: 'hello', proto: 1 })); await greeting;
+  host.tickOnce(); host.tickOnce();
+  assert.equal((await fetch(`http://${base}/healthz`)).status, 200, 'served before the halt');
+  const closed = once(ws, 'close', { signal: AbortSignal.timeout(2000) });
+  control.fault = new Error('fixture.unrepairable');
+  host.tickOnce();
+  assert.equal(host.clockAvailable, false);
+  const [code, reason] = await closed;
+  assert.deepEqual([code, String(reason)], [1013, 'world unavailable'], 'the viewer socket is closed as for other clock failures');
+  const response = await fetch(`http://${base}/healthz`);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { ok: false, code: 'world-unavailable', message: 'World temporarily unavailable.' });
 });
