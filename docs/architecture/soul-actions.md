@@ -20,10 +20,12 @@ context-size checks below), regression runs, and an uncut real-client recording 
   inside). Nearby perception and the take offer name the leaver; god-placed things have none.
 - **A pantry holds real things ([#435](https://github.com/genekogan/souls/issues/435)).** `core-pantry@1` is the same doorless
   storage with data only: four places, each for one small thing, so the stock is what you can see and count. Drawing from it
-  is by hand, through the entry that already handles the thing. A mug kept in a container is not a counter cup (`brew` refuses
-  `tea.in-storage`, `pour` refuses `tea.no-cup` and says where one is). `core-apple@1` and `core-bun@1` are tagged `edible`,
+  is by hand, through the entry that already handles the thing. Words go ahead rather than refuse: "make a cup of tea" or "pour
+  the tea" with a fresh mug kept in an open pantry takes it out and stands it on a free place on the kettle's counter first, and
+  "eat the apple" takes the apple from wherever it is, then eats it. `core-apple@1` and `core-bun@1` are tagged `edible`,
   with `left` and `bites` in their state, and are eaten from the hand on entry 44's cup motion; `left` falls at each bite's own
-  moment and what is left stays in the hand. The ledger's `food` and a kitchen's portions are separate systems and are untouched.
+  moment and what is left stays in the hand. A bare "eat it" or "have a bite" means the food in the hand. Refused only when the act
+  truly can't happen: `food.eaten` and `food.in-use` (in someone else's hand). The ledger's `food` and a kitchen's portions are separate systems and are untouched.
 - **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
   crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with

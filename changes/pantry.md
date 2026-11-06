@@ -1,4 +1,4 @@
 ---
 type: feature
 ---
-Souls keep real things in a pantry and take them out by hand: an apple or a bun is eaten from the hand, bite by bite, and a mug kept there goes on the counter for tea.
+Souls keep real things in a pantry: "eat the apple" takes it from wherever it is and eats it bite by bite, and "make a cup of tea" takes a kept mug out to the counter first.

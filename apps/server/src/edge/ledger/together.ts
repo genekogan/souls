@@ -236,6 +236,8 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 
 /** A deterministic item source (sources()): a shelf, a writing desk or a walkable place by kind. */
 type ItemSource = {id: string; kind: ItemKind; label: string; at: V2; face?: V2; place: string | null};
+/** #435: how near (m) a real thing must be to come before a place's prop of the kind: the reach of a storage offer. */
+const REAL_THING_NEAR = 8;
 export class Together {
   private p: TogetherPort;
   private follows = new Map<string, Follow>();          // receipt id → follow
@@ -1841,9 +1843,10 @@ export class Together {
         const c = lying ?? caps.find(c => c.id === 'pick-up:' + kind);
         // entry 43: a world thing of that word lying near (a god-built mug) when no prop of the kind is: the one called
         // exactly that first, then one whose name has the word, nearest first (labels end "(N m)"). #435: a real thing called
-        // that within reach also comes before a place's prop of the kind ("pick up the apple" is the apple on the table)
+        // that, free to take and within REAL_THING_NEAR, also comes before a place's prop of the kind ("pick up the apple" is
+        // the apple on the table); one further off or not hers does not take a Soul away from the prop beside her
         const named = !lying ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
-          const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(); return {c, rank: n === w ? 0 : new RegExp(`(^|[^a-z])${w.replace(/[^a-z ]/g, '')}([^a-z]|$)`).test(n) ? 1 : 9, d};}).filter(x => x.rank < 9).sort((a, b) => a.rank - b.rank || a.d - b.d)[0]?.c : undefined;
+          const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(); return {c, rank: n === w ? 0 : new RegExp(`(^|[^a-z])${w.replace(/[^a-z ]/g, '')}([^a-z]|$)`).test(n) ? 1 : 9, d};}).filter(x => x.rank < 9 && (!c || (x.c.available && x.d <= REAL_THING_NEAR))).sort((a, b) => a.rank - b.rank || a.d - b.d)[0]?.c : undefined;
         if (named) return {capability: named.id, note: `${raw} is ${named.id} (${named.label})`};
         if (!c) {
           const me = this.posOf(soul.soulId), far = me ? this.sources().filter(s => s.kind === kind && s.place).map(s => ({s, d: Math.hypot(s.at[0] - me[0], s.at[1] - me[1])})).sort((a, b) => a.d - b.d) : [];

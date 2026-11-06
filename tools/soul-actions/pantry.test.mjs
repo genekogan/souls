@@ -60,7 +60,6 @@ test('pantry: stock and draw by hand, food eaten bite by bite, a kept mug is not
 
  // ---- P6: the words for a food not in the hand; a pantry has no door
  assert.ok(!edge.capabilities(soul).some(c => c.object === pantryId && ['open', 'close'].includes(c.action)), 'a pantry has no door');
- await refuse('eat the apple', 'food.not-holding');
  assert.equal(row(await here())?.state?.holds, undefined, 'an empty pantry says nothing');
 
  // ---- P1: stocking by plain words
@@ -133,20 +132,51 @@ test('pantry: stock and draw by hand, food eaten bite by bite, a kept mug is not
  // ---- P8: with no food held the old meanings stand
  assert.equal(await resolved('eat it') === `object:${id('second-apple')}:eat`, false, '"eat it" with nothing held is not the apple on the table');
 
- // ---- P3: a mug kept in the pantry; the tea faculty's own steps
+ // ---- P2: a food not in the hand is taken first, from a table or the pantry, as one act; a bare word means the one in the hand
+ results.eatFromTable = await done('eat the apple'); assert.equal(results.eatFromTable.capability, `object:${id('second-apple')}:eat`);
+ assert.ok(held('second-apple')); assert.equal(ent('second-apple').state.left, 0);
+ ok(god.act({ops: [{op: 'place', def: 'core/bun@1', name: 'kept-bun', in: {parent: 'pantry', slot: inside().length ? ['in-1', 'in-2', 'in-3', 'in-4'].find(s => !inside().some(e => e.in.slot === s)) : 'in-1'}, p: [0, 0]}]})); await tick(60);
+ await refuse(`object:${id('kept-bun')}:eat`, 'tea.hands-full');
+ await done('put the apple on the table');
+ results.eatFromPantry = await done('eat the bun'); assert.equal(results.eatFromPantry.capability, `object:${id('kept-bun')}:eat`);
+ assert.ok(held('kept-bun')); assert.equal(ent('kept-bun').state.left, 0); assert.ok(!inside().some(e => e.name === 'kept-bun'));
+ await done('put the bun on the table');
+ // in someone else's hand: this is the one food refusal that stays, with nothing left to eat
+ ok(god.act({ops: [{op: 'place', def: 'core/apple@1', name: 'her-apple', in: {parent: 'table', slot: 'top'}, p: [0.1, 0.25]}]})); await tick(60);
+ await invite(f, 'bea');
+ {const r = await accept(f.host, f.souls.create('dev:bea', {name: 'Bea', description: 'Pantry test'})), bea = {soulId: r.id, entityId: r.entity_id, name: r.name, owner: r.owner}; await tick();
+  const taken = await accept(f.host, edge.act(bea, {capability: `pick-up:${id('her-apple')}`})); assert.equal(taken.accepted, true, JSON.stringify(taken));
+  for (let n = 0; n < 2400 && item('her-apple').support?.kind !== 'in-hand'; n++) await tick(1);
+  assert.equal(item('her-apple').support.by, bea.entityId);}
+ await refuse(`object:${id('her-apple')}:eat`, 'food.in-use');
+
+ // ---- P3: a mug kept in the pantry is taken out, stood on the counter and used; only no mug at all stays a refusal
  ok(god.act({ops: [
   {op: 'place', def: 'core/table@1', name: 'counter', p: [ax - 2.2, az + 1.2]},
   {op: 'place', def: 'core/kettle@2', name: 'kettle', in: {parent: 'counter', slot: 'top'}, p: [0.3, 0], state: {level: 1}},
   {op: 'place', def: 'core/camp-sink@1', name: 'sink', p: [ax - 5, az + 1.2]},
-  {op: 'place', def: 'core/cup@2', name: 'mug', in: {parent: 'pantry', slot: 'in-1'}, p: [0, 0]},
  ]})); await tick(60);
- {const b = await refuse('make a cup of tea', 'tea.in-storage'); assert.match(b.reason, /pantry/);}
- {const b = await refuse('pour the tea', 'tea.no-cup'); assert.match(b.reason, /pantry/, b.reason);}
- assert.ok((row(await here())?.state?.holds ?? []).includes('mug'));
- results.takeMug = await done('take the mug from the pantry'); assert.ok(held('mug'));
- results.putMug = await done('put the mug on the counter'); assert.equal(item('mug').support.on, id('counter'));
- results.brew = await done('make a cup of tea'); assert.equal(ent('mug').state.tea, 1, 'tea in the mug, by the faculty');
- results.drink = await done('put the mug on the counter').catch(() => null);
+ await refuse('pour the tea', 'tea.no-cup');
+ const freeSlot = () => ['in-1', 'in-2', 'in-3', 'in-4'].find(s => !inside().some(e => e.in.slot === s));
+ ok(god.act({ops: [{op: 'place', def: 'core/cup@2', name: 'mug', in: {parent: 'pantry', slot: freeSlot()}, p: [0, 0]}]})); await tick(60);
+ assert.ok(inside().some(e => e.name === 'mug'));
+ results.brew = await done('make a cup of tea'); assert.equal(results.brew.capability, `object:${id('mug')}:brew`);
+ assert.equal(item('mug').support.on, id('counter'), 'the mug came out of the pantry onto the counter'); assert.equal(ent('mug').state.tea, 1, 'tea in the mug, by the faculty');
+ assert.ok(!inside().some(e => e.name === 'mug'), 'and it is no longer in the pantry');
+ // the kettle is hot now: "pour the tea" takes the next kept mug the same way, by the pour's own steps
+ ok(god.act({ops: [{op: 'place', def: 'core/cup@2', name: 'mug-two', in: {parent: 'pantry', slot: freeSlot()}, p: [0, 0]}]})); await tick(60);
+ results.pour = await done('pour the tea'); assert.equal(item('mug-two').support.on, id('counter')); assert.equal(ent('mug-two').state.tea, 1);
+ // a mug behind a shut door or in a private pantry is not taken: those are other refusals' business
+ ok(god.act({ops: [
+  {op: 'place', def: 'core/drawer-chest@2', name: 'shut-chest', p: [ax - 2.2, az + 4], state: {open: false}},
+  {op: 'place', def: 'core/cup@2', name: 'shut-mug', in: {parent: 'shut-chest', slot: 'in-1'}, p: [0, 0]},
+ ]})); await tick(60);
+ await refuse('pour the tea', 'tea.no-cup');
+ ok(god.act({ops: [
+  {op: 'place', def: 'core/pantry@1', name: 'private-pantry', p: [ax - 5, az + 4], access: 'private'},
+  {op: 'place', def: 'core/cup@2', name: 'private-mug', in: {parent: 'private-pantry', slot: 'in-1'}, p: [0, 0]},
+ ]})); await tick(60);
+ await refuse('pour the tea', 'tea.no-cup');
 
  // ---- persistence and replay; a clean engine
  const clone = factory.restore(f.host.engine.snapshot()); assert.equal(clone.stateHash(), f.host.engine.stateHash());

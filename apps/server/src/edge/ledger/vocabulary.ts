@@ -28,6 +28,8 @@ export type VocabContext = {
   withheld?: string[];
   root: string[];
   me: [number, number] | null;
+  /** #435: whether this world thing is in this Soul's hand (a bare "eat it" means the food in her hand). */
+  holds?: (id: string) => boolean;
   /** Body yaw in world radians, facing (cos yaw, sin yaw); absence is unknown. */
   yaw?: number;
   /** Ids of the places the Soul is standing in (innermost first), when known: a stroll named for one of them is in place. */
@@ -459,13 +461,13 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     // gets the mug's own answer (pick it up first, drink it first)
     if (pool.length && (want === 'drink' || want === 'sip' || want === 'wash') && !pool[0].available && !/\b(?:tea|cup|mug)\b/.test(text)) pool.length = 0;
     if (pool.length) return {kind: 'alias', cap: pool[0], note: `${input} is ${pool[0].id} (${pool[0].label}).`};
-    // #435: food in the hand: "eat it", "eat the apple", "finish the apple", "have the bun", "have a bite", "take a bite of the
-    // bun". Nothing in the hand and no food named keeps the word's old meaning (a table's eat, the ledger's held food); a food
-    // named but not in the hand gets its own answer (pick it up first)
+    // #435: "eat the apple", "finish the apple", "have the bun", "take a bite of the bun" name a food wherever it is; "eat it"
+    // and "have a bite" mean the food in her hand. Nothing in the hand and no food named keeps the word's old meaning (a table's
+    // eat, the ledger's held food).
     const bite = /^(?:please\s+)?(?:(?:have|take)\s+(?:a\s+)?bite(?:\s+(?:of|out\s+of)\s+(.+?))?|bite\s+(?:into\s+)?(.+?))[.!]?$/.exec(text), eat = bite ? null : /^(?:please\s+)?(?:eat|finish|have)(?:\s+(?:up|off))?(?:\s+(.+?))?[.!]?$/.exec(text);
     if (bite || eat) {
       const words = tokens(bite?.[1] ?? bite?.[2] ?? eat?.[1] ?? '').filter(w => !['the', 'a', 'an', 'my', 'your', 'this', 'that', 'it', 'up', 'off', 'of'].includes(w));
-      const foods = acts.filter(c => c.action === (bite ? 'bite' : 'eat') && (words.length ? (t => words.every(w => tokenHit(w, t)))(tokens([c.label, ...ctx.target(c).names].join(' '))) : c.available)).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
+      const foods = acts.filter(c => c.action === (bite ? 'bite' : 'eat') && (words.length ? (t => words.every(w => tokenHit(w, t)))(tokens([c.label, ...ctx.target(c).names].join(' '))) : c.available && !!c.object && !!ctx.holds?.(c.object))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
       if (foods[0]) return {kind: 'alias', cap: foods[0], note: `${input} is ${foods[0].id} (${foods[0].label}).`};
     }
     // entry 44: "offer Ben the tea", "give the cup of tea to Ben": the hand-over of the held mug to that Soul (entry 41's
