@@ -15,8 +15,8 @@ Get the tier of the current diff with `node tools/proof/tier.mjs --base origin/m
 ## Rules
 - **Uncut and real speed.** One browser context, one take. Never trim, splice, speed up or slow down. If the journey
   is longer than the policy's `max_seconds`, record a shorter journey that still shows the change, not a faster one.
-- **The take starts at arrival** (the default): the recording begins once the world is on screen and the arrival card
-  is gone, so the clip opens on the world, not on loading. From there it is one uncut, real-speed take of the journey,
+- **The take starts at arrival** (the default): the recording begins once the world is on screen, the arrival card
+  is gone and the page has painted that (two frames), so the clip opens on the world, not on loading. From there it is one uncut, real-speed take of the journey,
   which is what the policy asks. When loading or arrival is itself what the change is about (the arrival card, a
   loading screen, first paint), or the journey is not on a world page (the world list, sign-in), pass `--from-load`:
   the take then starts at page creation. The sidecar's `start` (`arrival` or `load`) says which was used, and
