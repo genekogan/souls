@@ -35,7 +35,7 @@ let served = await eden('serve'); line({ ev: 'serve', pid: served.json?.pid });
 
 const t0 = Date.now(), end = t0 + hours * 3600_000, killAt = t0 + hours * 1800_000;
 const sent = new Map(), received = new Map(), acts = [], unexpectedReceipts = new Set(), bodies = {}, bad = [];
-let nextBusy = t0 + 45_000, nextMsg = t0 + 5000, nextTurn = t0 + 10_000, nextAct = t0 + 30_000, nextSample = t0, killed = false, down = null, n = 0, turns = 0, gaps = 0, seenReceipts = new Set(), targets = ['walk to the orchard', 'walk to the pond hall', 'walk to the village green'];
+let nextBusy = t0 + 45_000, nextMsg = t0 + 5000, nextTurn = t0 + 10_000, nextAct = t0 + 30_000, nextSample = t0, killed = false, down = null, n = 0, turns = 0, gaps = 0, seenReceipts = new Set(), targets = ['walk:flag-orchard', 'walk:lab-pond-hall'];
 
 // The seat's listener: one `listen --after <last>` at a time, relaunched when it ends, as the harness keeps one.
 const heard = new Map(); let listenAfter = null, listener = null, listening = false;
@@ -116,7 +116,7 @@ const report = {
   body: { samples: bodies, zombieOrAsleepWhileServing: bad.length, examples: bad.slice(0, 5) },
   turns, streamGaps: gaps, killed, serveStatus: status.json,
 };
-report.pass = !report.messages.missed.length && !report.messages.duplicates && !report.messages.notHeardByListener.length && !lateHeard.length && !report.acts.notIssuedByTheAgent.length && !report.body.zombieOrAsleepWhileServing && killed;
+report.pass = !report.messages.missed.length && !report.messages.duplicates && !report.messages.notHeardByListener.length && !lateHeard.length && !report.acts.notIssuedByTheAgent.length && report.acts.issued > 0 && report.acts.accepted === report.acts.issued && !report.body.zombieOrAsleepWhileServing && killed;
 writeFileSync(join(out, 'soak.json'), JSON.stringify(report, null, 1) + '\n');
 await eden('serve', '--stop');
 await stopWorld({ pid: w.pid });

@@ -5,7 +5,7 @@
 // no guards. Every command is one or two HTTP calls to the world and prints JSON.
 // Private state (world URL, Soul id, bearer token) lives in .eden-agent.json.
 
-import { existsSync, readFileSync, writeFileSync, renameSync, lstatSync, openSync, closeSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, readlinkSync, realpathSync, writeFileSync, renameSync, lstatSync, openSync, closeSync, unlinkSync } from "node:fs";
 import { execFileSync, spawn } from "node:child_process";
 import { createConnection, createServer } from "node:net";
 import { randomUUID, randomBytes } from "node:crypto";
@@ -1076,7 +1076,7 @@ async function guide() {
 // model and decides nothing: it holds what arrived until the agent reads it. Everything needed to resume is in SERVE_STATE.
 const SERVE_SOCK = ".eden-serve.sock", SERVE_LOCK = ".eden-serve.lock", SERVE_STATE = ".eden-serve.json", SERVE_LOG = ".eden-serve.log";
 const SERVE_EVENTS_MAX = 1000, PENDING_EVENTS_MAX = 100; // the world keeps 1000 events per Soul; a read hands over at most 100
-const SERVE_BEAT_MS = 20_000, SERVE_STALE_MS = 60_000;
+const SERVE_BEAT_MS = 20_000, SERVE_STALE_MS = 60_000, SERVE_CLOSED_KEEP = 50;
 const ENDED = new Set(["completed", "failed", "refused", "cancelled", "interrupted", "replaced"]);
 const HELD_PATH = /^\/v1\/edge\/(wait|events)(\?|$|\/)/;  // long-polls and streams: never queued behind a heavy request
 let IS_SERVE = false;
@@ -1097,10 +1097,26 @@ function askServe(msg, timeoutMs = 5_000) {
 }
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const readServeLock = () => { try { return JSON.parse(readFileSync(SERVE_LOCK, "utf8")); } catch { return null; } };
+/** Pure: is this command line and working directory this folder's serve? cwd null means it could not be read: the absolute script
+ *  path the serve is spawned with has to say it instead. */
+export function isServeOf(folder, command, cwd) {
+  if (!/eden\.mjs serve --foreground\s*$/.test(String(command ?? "").trim())) return false;
+  return cwd != null ? cwd === folder : String(command).includes(`${folder}/eden.mjs`);
+}
+const quietly = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+function cwdOf(pid) {
+  try { return realpathSync(readlinkSync(`/proc/${pid}/cwd`)); } catch { /* not Linux */ }
+  try { const n = quietly("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"]).split("\n").find((l) => l.startsWith("n")); return n ? realpathSync(n.slice(1)) : null; } catch { return null; }
+}
+/** true: this pid is this folder's serve. false: it is something else, which a lock left by a kill can name after a reboot or a long
+ *  gap. null: `ps` could not say. Only true may be signalled. */
+function serveIdentity(pid) {
+  let command; try { command = quietly("ps", ["-o", "command=", "-p", String(pid)]); } catch { return null; }
+  return isServeOf(realpathSync(process.cwd()), command, cwdOf(pid));
+}
 function serveHolder() {
   const h = readServeLock();
-  if (!h?.pid || !pidAlive(h.pid)) return null;
-  try { if (!/serve/.test(execFileSync("ps", ["-o", "command=", "-p", String(h.pid)], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }))) return null; } catch { /* no ps: trust the pid */ }
+  if (!h?.pid || !pidAlive(h.pid) || serveIdentity(h.pid) === false) return null;
   return Date.now() - (h.beatAt ?? 0) < SERVE_STALE_MS ? h : null;
 }
 function writeServeLock(start) { writeFileSync(SERVE_LOCK + ".tmp", JSON.stringify({ pid: process.pid, start, beatAt: Date.now() })); renameSync(SERVE_LOCK + ".tmp", SERVE_LOCK); }
@@ -1109,16 +1125,20 @@ function takeServeLock(start) {
   catch (e) {
     if (e.code !== "EEXIST") throw e;
     if (serveHolder()) return false;
-    const h = readServeLock(); if (h?.pid && pidAlive(h.pid) && h.pid !== process.pid) { try { process.kill(h.pid, "SIGTERM"); } catch { /* gone */ } }
+    const h = readServeLock(); if (h?.pid && h.pid !== process.pid && pidAlive(h.pid) && serveIdentity(h.pid) === true) { try { process.kill(h.pid, "SIGTERM"); } catch { /* gone */ } }
   }
   writeServeLock(start);
   return true;
 }
 
 export function loadServeState() {
-  const d = { cursor: null, inboxAfter: null, readCursor: null, messages: [], receipts: {}, events: [], omitted: 0, gap: false };
+  const d = loadServeState.fresh();
   try { return { ...d, ...JSON.parse(readFileSync(SERVE_STATE, "utf8")) }; } catch { return d; }
 }
+loadServeState.fresh = () => {
+  const d = { cursor: null, inboxAfter: null, readCursor: null, messages: [], receipts: {}, events: [], omitted: 0, gap: false };
+  return d;
+};
 /** Pure: fold what the stream delivered into the state. */
 export function foldEvents(st, events, cursor) {
   for (const e of events ?? []) {
@@ -1180,7 +1200,9 @@ export function takePending(st) {
   if (last?.id) st.readCursor = last.id;
   st.omitted = 0; st.gap = false;
   // What is finished and read needs no keeping: acked and closed messages, and ended receipts past the newest 200.
-  st.messages = st.messages.filter((m) => !(m.acked && m.closed));
+  // The newest finished ones stay, so `listen --after` can still place them; an id past that counts as unknown, as in the world.
+  const finished = st.messages.filter((m) => m.acked && m.closed), gone = new Set(finished.slice(0, Math.max(0, finished.length - SERVE_CLOSED_KEEP)));
+  st.messages = st.messages.filter((m) => !gone.has(m));
   const ended = Object.values(st.receipts).filter((r) => ENDED.has(r.phase) && r.read);
   for (const r of ended.slice(0, Math.max(0, ended.length - 200))) delete st.receipts[r.id];
   return out;
@@ -1190,10 +1212,16 @@ async function serveForeground() {
   IS_SERVE = true;
   const start = now();
   if (!takeServeLock(start)) { process.stderr.write("serve: already running in this folder\n"); process.exit(0); }
-  const st = loadServeState();
+  // What this serve answers for: the state is one world's and one Soul's. A move starts clean.
+  const folderKey = (x) => `${x.world ?? ""}|${x.soul ?? ""}`, soulToken = (x) => x.token ?? "";
+  let st = loadServeState();
   const persist = () => { writeFileSync(SERVE_STATE + ".tmp", JSON.stringify(st), { mode: 0o600 }); renameSync(SERVE_STATE + ".tmp", SERVE_STATE); };
   const s = load(), world = need(s, "world", `Run: ${CLI} register <world-url>`);
   const auth = { "content-type": "application/json", authorization: `Bearer ${need(s, "token", "No Soul yet.")}` };
+  if (st.folder && st.folder !== folderKey(s)) st = loadServeState.fresh();
+  st.folder = folderKey(s);
+  /** The folder's world, Soul or token changed under this process (travel, create, pair, by any route): it no longer speaks for it. */
+  const moved = () => { const now = load(); return folderKey(now) !== folderKey(s) || soulToken(now) !== soulToken(s); };
   let waiters = [], terminal = null, stopping = false, gateTail = Promise.resolve(), busyWaited = 0, lastEventAt = null;
   const wake = () => { const w = waiters; waiters = []; for (const f of w) f(); };
   const log = (line) => process.stderr.write(`${now()} ${line}\n`);
@@ -1279,6 +1307,7 @@ async function serveForeground() {
     }
   }
   async function handle(m) {
+    if (moved()) { log("the folder's world, Soul or token changed: stopping"); setTimeout(() => shutdown(0), 10); return m.op === "http" ? { status: 0, data: { error: { code: "unreachable", message: "this serve stopped: the folder moved to another world or Soul" } } } : { serving: false, stopping: true, moved: true }; }
     if (m.op === "pending") { const out = takePending(st); persist(); return out; }
     if (m.op === "status") return { serving: true, pid: process.pid, since: start, cursor: st.cursor, inboxAfter: st.inboxAfter, unacked: st.messages.filter((x) => !x.acked).length, openReceipts: Object.values(st.receipts).filter((r) => !ENDED.has(r.phase)).length, unreadEvents: st.events.length - readIndex(st), busyWaited, lastEventAt, ...(terminal ? { ended: codeOf(terminal.data) ?? terminal.status } : {}) };
     if (m.op === "stop") { setTimeout(() => shutdown(0), 10); return { stopping: true, pid: process.pid }; }
@@ -1312,8 +1341,10 @@ async function serveForeground() {
   };
   for (const [sig, n] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) process.once(sig, () => shutdown(n));
   try { unlinkSync(SERVE_SOCK); } catch { /* none */ }
-  server.listen(SERVE_SOCK, () => { log(`serving pid ${process.pid}, cursor ${st.cursor ?? s.cursor ?? "c_0"}`); });
-  setInterval(() => writeServeLock(start), SERVE_BEAT_MS);
+  // The socket answers `pending` with the owner's messages: as private as the state file.
+  const umask = process.umask(0o177);
+  server.listen(SERVE_SOCK, () => { process.umask(umask); log(`serving pid ${process.pid}, cursor ${st.cursor ?? s.cursor ?? "c_0"}`); });
+  setInterval(() => { if (moved()) { log("the folder's world, Soul or token changed: stopping"); shutdown(0); } else writeServeLock(start); }, SERVE_BEAT_MS);
   inboxLoop(); eventLoop();
   await new Promise(() => {});
 }
@@ -1336,6 +1367,17 @@ async function serve(...args) {
     if (a?.serving) return { ...a, next: `Every command now goes through it. ${CLI} pending lists what arrived since you last read.` };
   }
   throw new Error(`serve did not start; see ${SERVE_LOG}`);
+}
+
+// travel, create and pair change who this folder speaks for. A serve up for the old one stops, and a new one starts for the new one.
+const FOLDER_MOVES = new Set(["travel", "create", "pair", "approval"]);
+const folderOf = () => { const s = load(); return `${s.world ?? ""}|${s.soul ?? ""}|${s.token ?? ""}`; };
+async function followFolder() {
+  const up = await askServe({ op: "status" });
+  if (up?.lost || !(up?.serving || up?.moved)) return {};
+  for (let i = 0; i < 100 && existsSync(SERVE_SOCK); i++) { await askServe({ op: "stop" }); await sleep(50); }
+  const again = await serve();
+  return { serve: { restarted: true, pid: again.pid } };
 }
 
 // pending: what arrived since the last read, from the serve's queue, with no world call.
@@ -1386,7 +1428,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!fn) { process.stdout.write(HELP); process.exit(cmd ? 1 : 0); }
   let argv = args;
   try { argv = ["act", "say", "ack", "result", "wait"].includes(cmd) ? takeNowFlag(args) : args; } catch (e) { process.stderr.write(`error: ${e.message}\n`); process.exit(1); }
+  const before = FOLDER_MOVES.has(cmd) ? folderOf() : null;
   fn(...argv).then(async (out) => {
+    if (before !== null && folderOf() !== before && out && typeof out === "object" && !Array.isArray(out)) out = { ...out, ...(await followFolder()) };
     await flushNow();
     const slowed = out && typeof out === "object" && !Array.isArray(out) ? slowedLine() : null;
     if (slowed) out = { slowed, ...out };
