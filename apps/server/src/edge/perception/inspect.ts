@@ -29,9 +29,11 @@ function identify(L: EdgeLedger, soul: EdgeSoul, id: string, caps: EdgeCapabilit
   const entity = world.entities[id];
   if (!item && !object && !entity && !caps.some(c => on(c, id))) return null;
   const facts = L.contactActuator?.facts(id, soul) ?? null;
-  const name = item?.name ?? (object as {name?: string} | undefined)?.name ?? caps.find(c => on(c, id))?.target?.id ?? id;
+  // a part's offers target its parent entity, so its own name is the one its offer label gives ("Sit at Audience Bench [ref]")
+  const labelled = caps.find(c => on(c, id))?.label.match(/\bat ([^[]+?) \[/)?.[1] ?? caps.find(c => on(c, id))?.label.match(/^Walk to ([^[]+?) \[/)?.[1];
+  const name = item?.name ?? (object as {name?: string} | undefined)?.name ?? entity?.name ?? labelled ?? caps.find(c => on(c, id))?.label ?? id;
   const contents = Object.entries(world.entities).filter(([, e]) => e.support?.on === id).map(([cid, e]) => ({id: cid, kind: 'item', name: L.together.publicItems().find(i => i.id === cid)?.name ?? e.name ?? cid}));
-  return {id, kind: item ? 'item' : 'object', name, ...(facts && Object.keys(facts).length ? {state: facts} : {}), ...(contents.length ? {contents} : {})};
+  return {id, kind: item ? 'item' : id.includes('/') ? 'part' : 'object', name, ...(facts && Object.keys(facts).length ? {state: facts} : {}), ...(contents.length ? {contents} : {})};
 }
 
 /** `GET /v1/edge/inspect/:id`: at most INSPECT_BYTES unless `all`, with `more` counting what was left out. */

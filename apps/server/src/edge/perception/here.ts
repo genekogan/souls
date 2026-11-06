@@ -229,17 +229,23 @@ const doingWord = (state: string, activity: string) => POSE_WORDS[activity] ?? (
 
 /** Public current offers only, in a bounded local frame. Parameter descriptors
  * stay exact; an oversized offer is omitted rather than changing its schema. */
-/** CTRL-2 (#1094): what can be done here, by verb: how many, and the nearest few (the menu is nearest first). Small on purpose;
- *  an agent drills down with `inspect`. A far offer adds nothing: only local targets and this Soul's exits count. */
-export function groupedOffers(caps: readonly EdgeCapability[], localTargets: ReadonlySet<string>, exits: number, nearest = 3) {
- const by = new Map<string, {verb: string; count: number; nearest: string[]}>();
+/** CTRL-2 (#1094): what can be done here, by verb, at most `budget` bytes: solo acts on the spot by verb name (`<verb>:here`),
+ *  the rest as a count and the nearest few ids (the menu is nearest first). An agent drills down with `inspect`. A far
+ *  offer adds nothing: only local targets and this Soul's exits count. */
+export function groupedOffers(caps: readonly EdgeCapability[], localTargets: ReadonlySet<string>, exits: number, budget = 500, nearest = 3) {
+ const solo: string[] = [], by = new Map<string, {count: number; nearest: string[]}>();
  for (const c of caps) {
   if (!c.available || c.verb === 'walk' || c.verb === 'stroll') continue;
+  if (c.id === c.verb + ':here') {solo.push(c.verb); continue;}
   if (!(c.id.endsWith(':here') || c.verb === 'accept' || c.verb === 'decline' || (!!c.target && localTargets.has(c.target.id)))) continue;
-  const g = by.get(c.verb) ?? {verb: c.verb, count: 0, nearest: []}; g.count++; if (g.nearest.length < nearest) g.nearest.push(c.id); by.set(c.verb, g);
+  const g = by.get(c.verb) ?? {count: 0, nearest: []}; g.count++; if (g.nearest.length < nearest) g.nearest.push(c.id); by.set(c.verb, g);
  }
- const groups = [...by.values()];
- return exits ? [{verb: 'walk', count: exits, nearest: []}, ...groups] : groups;
+ const out = {...(exits ? {walk: exits} : {}), ...(solo.length ? {here: solo} : {}), ...Object.fromEntries(by)};
+ // over budget: the nearest ids go first, farthest verb first, then the solo list; every count stays
+ const size = () => Buffer.byteLength(JSON.stringify(out));
+ for (const g of [...by.values()].reverse()) {while (size() > budget && g.nearest.length) g.nearest.pop();}
+ while (size() > budget && solo.length > 3) solo.pop();
+ return out;
 }
 
 export function compactDoHere(caps:readonly EdgeCapability[],localTargets:ReadonlySet<string>,byteBudget=1800){

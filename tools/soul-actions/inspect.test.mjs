@@ -29,7 +29,8 @@ test('inspect drills place -> object -> item, and here groups its offers', {time
  const here = async () => (await (await app.request('/v1/edge/here?include=doHere')).json()).here;
  const inspect = async (id, q = '') => {const r = await app.request(`/v1/edge/inspect/${encodeURIComponent(id)}${q}`); return {status: r.status, body: await r.json()};};
  const before = await here(), bytes = (h) => JSON.stringify({...h, tick: 0}).length;
- assert.ok(Array.isArray(before.offers), 'here has grouped offers');
+ assert.ok(before.offers && typeof before.offers === 'object', 'here has grouped offers');
+ assert.ok(JSON.stringify(before.offers).length <= 500, 'within its budget');
 
  const far = []; for (let i = 0; i < 100; i++) far.push({op: 'place', def: 'core/table@1', name: `far-${i}`, p: [100 + (i % 10) * 2, 100 + Math.floor(i / 10) * 2]});
  assert.equal(god.act({ops: far}).accepted, true); await tick(30);
@@ -44,7 +45,7 @@ test('inspect drills place -> object -> item, and here groups its offers', {time
  const id = (n) => [...god.model.entities.values()].find((e) => e.name === n).id;
 
  const grouped = (await here()).offers;
- assert.ok(grouped.every((g) => g.count >= g.nearest.length && g.nearest.length <= 3), JSON.stringify(grouped));
+ for (const [verb, g] of Object.entries(grouped)) if (g && g.count) assert.ok(g.count >= g.nearest.length && g.nearest.length <= 3, verb + JSON.stringify(g));
  const place = edge.placeIdOf?.(soul.soulId) ?? (await here()).me.place;
  const level1 = await inspect(place);
  assert.equal(level1.status, 200, JSON.stringify(level1.body)); assert.equal(level1.body.inspect.kind, 'place');
