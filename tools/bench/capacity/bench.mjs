@@ -234,7 +234,7 @@ function runCli(soul, args, deadlineMs, rec) {
       clearTimeout(k);
       // an act the world answers `accepted: false` is a refusal, whatever the exit code (#1093: words would refuse every act)
       const outcome = killed ? 'timeout' : /"accepted":\s*false/.test(out) ? 'refused' : code === 0 ? 'ok' : /unreachable/.test(err) ? 'unreachable' : BUSY.test(err) ? 'refused' : 'error';
-      const r = { soul: soul.i, cmd: args[0], cls: CLASS[args[0]] ?? 'C0', at: t, ms: now() - t, code, outcome, ...(outcome === 'error' ? { err: err.trim().split('\n').at(-1)?.slice(0, 200) } : {}) };
+      const r = { soul: soul.i, cmd: args[0], cls: CLASS[args[0]] ?? 'C0', at: t, ms: now() - t, code, outcome, ...(outcome === 'refused' && out ? { refusal: /"code":\s*"([^"]+)"/.exec(out)?.[1], target: args[1] } : {}), ...(outcome === 'error' ? { err: err.trim().split('\n').at(-1)?.slice(0, 200) } : {}) };
       rec?.(r); done(r);
     });
   });
@@ -262,10 +262,13 @@ async function join_(run, i) {
 // What `go to <target>` reads as in this world, through the CLI's own resolve. Empty is an error: the bench would measure refusals.
 let WALK_IDS = [];
 async function learnWalkIds(soul) {
-  const read = (words) => new Promise((done) => execFile(process.execPath, ['eden.mjs', 'resolve', words], { cwd: soul.dir, timeout: 60_000 }, (_e, out) => { try { done(JSON.parse(out).candidates?.find((c) => c.available)?.id ?? null); } catch { done(null); } }));
-  WALK_IDS = [...new Set((await Promise.all(TARGETS.map((t) => read(`go to ${t}`)))).filter(Boolean))];
-  if (!WALK_IDS.length) throw new Error(`no offered id for any of ${TARGETS.join(', ')}: the act load would only measure refusals`);
-  log(`act load walks to: ${WALK_IDS.join(', ')}`);
+  const read = (words) => new Promise((done) => execFile(process.execPath, ['eden.mjs', 'resolve', words], { cwd: soul.dir, timeout: 60_000 }, (_e, out) => { try { const d = JSON.parse(out); done({ id: d.candidates?.find((c) => c.available)?.id ?? null, why: d.code ?? null }); } catch { done({ id: null, why: String(out).slice(0, 80) }); } }));
+  // one after another, as an agent would: the world's read limits are not what this measures
+  const ids = new Set(), misses = [];
+  for (const t of TARGETS) { const r = await read(`go to ${t}`); if (r.id) ids.add(r.id); else misses.push(`${t}: ${r.why ?? 'no available candidate'}`); }
+  WALK_IDS = [...ids];
+  if (!WALK_IDS.length) throw new Error(`no offered id for any of ${TARGETS.join(', ')}: the act load would only measure refusals (${misses.join('; ')})`);
+  log(`act load walks to: ${WALK_IDS.join(', ')}${misses.length ? `; no id for ${misses.join('; ')}` : ''}`);
 }
 const MINUTE = ['here', 'observe', 'here', 'observe', 'here', 'observe', 'caps', 'caps', 'resolve', 'resolve', 'around', 'act', 'act', 'say'];
 function argsFor(op, n) {
@@ -533,7 +536,7 @@ async function calibrate(soul, w, proc, idleWin, setPhase) {   // M7: CPU-s per 
     setPhase(`calib-${op}`);
     const a = procStats(w.pid), t = now(), ms = [];
     let refused = 0;
-    for (let i = 0; i < PH.calib; i++) { const r = await runCli(soul, argsFor(op, i), 60_000); ms.push(r.ms); if (r.outcome === 'refused') refused++; }
+    for (let i = 0; i < PH.calib; i++) { const r = await runCli(soul, argsFor(op, i), 60_000); ms.push(r.ms); if (r.outcome === 'refused') { refused++; log(`calibration act refused: ${r.target} ${r.refusal}`); } }
     const b = procStats(w.pid), el = (now() - t) / 1000;
     out[op] = { cpuSPerReq: +(((b.cpuS - a.cpuS) - idleRate * el) / PH.calib).toFixed(4), p50Ms: pct(ms, 0.5), ...(refused ? { refused } : {}) };
   }
