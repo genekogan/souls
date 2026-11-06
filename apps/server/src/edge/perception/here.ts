@@ -229,6 +229,25 @@ const doingWord = (state: string, activity: string) => POSE_WORDS[activity] ?? (
 
 /** Public current offers only, in a bounded local frame. Parameter descriptors
  * stay exact; an oversized offer is omitted rather than changing its schema. */
+/** CTRL-2 (#1094): what can be done here, by verb, at most `budget` bytes: solo acts on the spot by verb name (`<verb>:here`),
+ *  the rest as a count and the nearest few ids (the menu is nearest first). An agent drills down with `inspect`. A far
+ *  offer adds nothing: only local targets and this Soul's exits count. */
+export function groupedOffers(caps: readonly EdgeCapability[], localTargets: ReadonlySet<string>, exits: number, budget = 500, nearest = 3) {
+ const solo: string[] = [], by = new Map<string, {count: number; nearest: string[]}>();
+ for (const c of caps) {
+  if (!c.available || c.verb === 'walk' || c.verb === 'stroll') continue;
+  if (c.id === c.verb + ':here') {solo.push(c.verb); continue;}
+  if (!(c.id.endsWith(':here') || c.verb === 'accept' || c.verb === 'decline' || (!!c.target && localTargets.has(c.target.id)))) continue;
+  const g = by.get(c.verb) ?? {count: 0, nearest: []}; g.count++; if (g.nearest.length < nearest) g.nearest.push(c.id); by.set(c.verb, g);
+ }
+ const out = {...(exits ? {walk: exits} : {}), ...(solo.length ? {here: solo} : {}), ...Object.fromEntries(by)};
+ // over budget: the nearest ids go first, farthest verb first, then the solo list; every count stays
+ const size = () => Buffer.byteLength(JSON.stringify(out));
+ for (const g of [...by.values()].reverse()) {while (size() > budget && g.nearest.length) g.nearest.pop();}
+ while (size() > budget && solo.length > 3) solo.pop();
+ return out;
+}
+
 export function compactDoHere(caps:readonly EdgeCapability[],localTargets:ReadonlySet<string>,byteBudget=1800){
  const eligible=caps.filter(c=>c.available&&c.verb!=='walk'&&c.verb!=='stroll'&&(c.id.endsWith(':here')||c.verb==='accept'||c.verb==='decline'||!!c.target&&localTargets.has(c.target.id)));
  const selected:{id:string;verb:string;label:string;available:true;params?:Record<string,unknown>}[]=[];
@@ -352,6 +371,9 @@ export function hereFrame(ledger: EdgeLedger, soul: EdgeSoul,options:{doHere?:bo
     untrusted: true,
   };
   if(!options.doHere)return frame;
-  const baseBytes=Buffer.byteLength(JSON.stringify(frame)),budget=Math.max(0,Math.min(1800,2600-baseBytes-240));
-  return {...frame,...compactDoHere(P.menu().caps,new Set([...ledger.placePathOf(soul.soulId).map(p=>p.id),...objects.map(o=>o.id),...near.filter(n=>n.dist<=8).map(n=>n.id)]),budget)};
+  const local=new Set([...ledger.placePathOf(soul.soulId).map(p=>p.id),...objects.map(o=>o.id),...near.filter(n=>n.dist<=8).map(n=>n.id)]);
+  // CTRL-2 (#1094): the grouped view comes first, so a big room with no budget left for doHere still says what can be done
+  const offers=groupedOffers(P.menu().caps,local,exits.length);
+  const baseBytes=Buffer.byteLength(JSON.stringify({...frame,offers})),budget=Math.max(0,Math.min(1800,2600-baseBytes-240));
+  return {...frame,offers,...compactDoHere(P.menu().caps,local,budget)};
 }
