@@ -326,12 +326,16 @@ export function hereFrame(ledger: EdgeLedger, soul: EdgeSoul,options:{doHere?:bo
   // things: a few of each kind, nearest first (≤ 3 seats, ≤ 2 of any other kind); the rest are counted in `more`
   const all = P.things(), kindOf = (t: Located) => t.kind === 'spot' ? (t.capability?.split(':')[0] ?? 'spot') : t.kind === 'object' ? (P.objectKinds.get(t.id) ?? 'object') : t.kind;
   const taken = new Map<string, number>(), picked: Located[] = [], more: Record<string, number> = {};
-  for (const t of all) {const k = kindOf(t), n = taken.get(k) ?? 0; if (n < (k === 'seat' ? LIMITS.seats : 2) && picked.length < LIMITS.objects) {picked.push(t); taken.set(k, n + 1);} else more[k] = (more[k] ?? 0) + 1;}
+  for (const t of all) {
+    // #442: a broken bench is a seat with a repair offer on it: its one row says so, not a second object row with the same fact
+    if (t.kind === 'object' && picked.some(p => p.kind === 'seat' && p.id === t.id) && ledger.contactActuator?.facts(t.id)?.broken) continue;
+    const k = kindOf(t), n = taken.get(k) ?? 0; if (n < (k === 'seat' ? LIMITS.seats : 2) && picked.length < LIMITS.objects) {picked.push(t); taken.set(k, n + 1);} else more[k] = (more[k] ?? 0) + 1;
+  }
   // Only six selected objects, at most 4 m away and in sight. No stored-state dump.
   const objects = picked.map(t => {
     // M01: the few facts first; enclosure and sightline (entity-world walls) only for a thing that has some.
     // entry 43: a kettle or a cup (items) has a fact or two as well: "boiling", a cup of tea
-    const facts=(t.kind==='object'||t.kind==='item')&&t.distance<=4?ledger.contactActuator?.facts(t.id,soul):null;
+    const facts=(t.kind==='object'||t.kind==='item'||t.kind==='seat')&&t.distance<=4?ledger.contactActuator?.facts(t.id,soul):null;
     const state=facts&&Object.keys(facts).length&&P.sameEnclosure(t.at)&&P.sees(t.at,t.id)?facts:null;
     // entry 33: a neon sign's words, only for a Soul this near it; attributed and untrusted (never in offers)
     const said=state?ledger.contactActuator?.words?.(t.id):null;
