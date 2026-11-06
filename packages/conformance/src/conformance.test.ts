@@ -60,6 +60,8 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   const guestbook = JSON.parse(readFileSync(new URL('../conformance/guestbook-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // #435 2026-11-05: core-lost-and-found@1, the swap shelf's form with an owner claim; the narrow run found nothing, so this pins no finding.
   const lostAndFound = JSON.parse(readFileSync(new URL('../conformance/lost-and-found-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  // #442 2026-11-05: repairable bench and cart revisions and their tools; the narrow runs found nothing, so this pins no finding.
+  const repairDefs = JSON.parse(readFileSync(new URL('../conformance/repair-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   const signature = (f: Finding) => JSON.stringify([f.def, f.hash, f.field, f.stage, f.code, f.detail]);
   const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...recordPlayer.findings, ...chalk.findings, ...guestbook.findings, ...lostAndFound.findings, ...swapShelf.findings, ...openings.findings, ...repairDefs.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
   const newFindings = report.findings.filter(f => !allowed.has(signature(f)));
