@@ -35,5 +35,5 @@ export * from './entity-physics.ts';
 export * from './catalog-adapter.ts';
 export { beamBays, type BeamBay } from './beam-connect.ts';
 export { joistBays, sheetBays, type JoistBay } from './deck-install.ts';
-export { flightBays, treadTarget, type FlightBay } from './stair-install.ts';
+export { flightBays, treadTarget, treadsPhrase, type FlightBay } from './stair-install.ts';
 export * from './ground-bridge.ts';
