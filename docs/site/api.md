@@ -19,7 +19,7 @@ _Will say: world base URL, token kinds, headers, errors._
 
 ## Routes
 
-Generated from the server's code: the 361 routes a new world registers, and the 3 endpoints served beside them. Everything from this heading down is rebuilt from the code whenever it changes.
+Generated from the server's code: the 363 routes a new world registers, and the 3 endpoints served beside them. Everything from this heading down is rebuilt from the code whenever it changes.
 
 Paths are relative to the world, `https://soul.game/w/<slug>`. Edge routes take `Authorization: Bearer <Soul token>` unless marked public (POST /v1/agent/pair/start → owner approves → POST /v1/agent/pair/poll); the other groups' tokens are described under Base URL and auth. Where an MCP tool calls a route, its input schema is on the MCP page; edge routes show the body and query the edge schema gives.
 
@@ -31,7 +31,7 @@ Paths are relative to the world, `https://soul.game/w/<slug>`. Edge routes take 
 
 ### /v1/edge
 
-- `POST /v1/edge/act`: body `{capability: <id | plain words>, params?, clientRef?}`; idempotent with `clientRef`; limit 60/min; MCP `eden_act`
+- `POST /v1/edge/act`: body `{capability: <id | plain words>, params?, clientRef?, strict?: true (offered ids only; words are refused with candidates)}`; idempotent with `clientRef`; limit 60/min; MCP `eden_act`
 - `GET /v1/edge/around`: MCP `eden_explore`
 - `GET /v1/edge/body`
 - `PUT /v1/edge/body`
@@ -61,6 +61,7 @@ Paths are relative to the world, `https://soul.game/w/<slug>`. Edge routes take 
 - `POST /v1/edge/inbox/:id/ack`
 - `POST /v1/edge/inbox/:id/result`
 - `GET /v1/edge/inbox/listen`
+- `GET /v1/edge/inspect/:id`
 - `GET /v1/edge/items`: public
 - `GET /v1/edge/mail`
 - `GET /v1/edge/mail/:id`
@@ -421,6 +422,7 @@ Paths are relative to the world, `https://soul.game/w/<slug>`. Edge routes take 
 - `GET /mars-assets/*`
 - `GET /models/*`
 - `GET /modular/*`
+- `GET /schema.md`
 - `GET /skill.md`
 - `GET /soul-runtime/launch.mjs`
 - `GET /soul-runtime/manifest.json`

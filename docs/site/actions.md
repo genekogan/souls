@@ -120,12 +120,13 @@ A failed body act whose code starts with `route.`, `slot.`, `seat.`, `walk.goal`
 
 ### Refusal codes
 
-The codes the edge layer names (159). Status is the HTTP status when the request itself is refused; a code without one ends a receipt or answers a dry run. Body acts also end with the engine's own codes (routes, seats, slots, poses), which are not listed here; the rule above says which of them carry `alternatives`.
+The codes the edge layer names (178). Status is the HTTP status when the request itself is refused; a code without one ends a receipt or answers a dry run. Body acts also end with the engine's own codes (routes, seats, slots, poses), which are not listed here; the rule above says which of them carry `alternatives`.
 
 | Code | Status | Alternatives |
 |---|---|---|
 | `action.interrupted` |  |  |
 | `activity.not-reached` |  |  |
+| `beam.crew` |  |  |
 | `bike.no-dock` |  |  |
 | `bike.none-left` |  |  |
 | `body.asset-not-found` | 404 |  |
@@ -157,8 +158,12 @@ The codes the edge layer names (159). Status is the HTTP status when the request
 | `calendar.full` |  |  |
 | `calendar.over` |  |  |
 | `capability.params` |  |  |
-| `capability.unknown` |  |  |
+| `capability.unknown` | 404 |  |
+| `carry.crew-too-large` |  |  |
+| `carry.crew-too-small` |  |  |
 | `carry.ground-only` |  |  |
+| `carry.hands-full` |  |  |
+| `carry.search-exhausted` |  |  |
 | `chess.already-seated` |  |  |
 | `chess.illegal` |  |  |
 | `chess.in-progress` |  |  |
@@ -245,9 +250,12 @@ The codes the edge layer names (159). Status is the HTTP status when the request
 | `presentation.standby-wait` |  |  |
 | `project.done` |  |  |
 | `project.unfinished` |  |  |
+| `raise.crew-too-large` |  |  |
+| `raise.crew-too-small` |  |  |
 | `receipt.lost-on-restart` |  |  |
 | `recipient.invalid` |  |  |
 | `reminder.invalid` | 400 |  |
+| `repair.not-broken` |  |  |
 | `ride.aboard` |  |  |
 | `ride.aloft` |  |  |
 | `ride.already-aboard` |  |  |
@@ -266,6 +274,17 @@ The codes the edge layer names (159). Status is the HTTP status when the request
 | `ride.steered` |  |  |
 | `ride.unavailable` |  |  |
 | `rps.choose` |  |  |
+| `shared.busy` | 409 |  |
+| `shared.full` |  |  |
+| `shared.left` |  |  |
+| `shared.not-member` |  |  |
+| `shared.not-ready` | 409 |  |
+| `shared.not-running` | 409 |  |
+| `shared.revision-changed` |  |  |
+| `shared.stop-asked` | 409 |  |
+| `shared.stop-requested` |  |  |
+| `shared.too-far` |  |  |
+| `shared.unknown-op` |  |  |
 | `sky.daylight` |  |  |
 | `sky.no-clock` |  |  |
 | `slot.unknown` |  | yes |
@@ -383,7 +402,7 @@ The body verbs a card's `approach` and `during` steps use (cards: `/w/<slug>/car
 | `perform` | what?: string, seconds?: number | Perform where you stand for a number of seconds. |
 | `ambient_wander` | seconds?: number, radius?: number | Stroll between nearby points, pausing, for a number of seconds within a radius in metres. |
 
-This world's engine also has 104 verbs of its own, for cards that belong to the world:
+This world's engine also has 105 verbs of its own, for cards that belong to the world:
 
 | Verb | What it does |
 |---|---|
@@ -415,6 +434,7 @@ This world's engine also has 104 verbs of its own, for cards that belong to the 
 | `mars:eat` | A seated (or still-standing) person eats from a bowl held in one hand with a spoon in the other: bowl held 0.25 m in front of the chest; each 2.4000000000000004 s cycle is dip 0.6 → lift to the mouth 0.6 → pause 0.4 → return 0.8 s and takes 0.2 of the bowl, until it is empty or `cycles` are done. |
 | `mars:hold_items` | Internal, started by take_item on a grasp: every tick keeps the small items a person holds at their hands (carry points in front of the hips while walking, standing or seated; or wherever take_item / put_item / serve / eat drive that hand) and publishes human.hands. |
 | `mars:let_go_v1` | Stand still a moment and let an idle gesture go before a hand reaches for something (recorded; no world change). |
+| `mars:repair_v1` | With a tool in hand, work a few strokes at a thing: a strike falls on it, a pump works back and forth. |
 | `mars:watering_can_v1` | With a watering can held by its handle in the right hand: fill it under a garden tap (the left hand turns the valve on and off) or tilt it and pour through the rose over a planter. |
 | `mars:hand_over_v1` | Hand a held small item to someone who agreed (offer: face them and hold it out; receive: take it from their hand, both hands on it, then they let go). |
 | `mars:cup_v1` | With a mug held in one hand: drink from it in sips (raised to the lips, tilted, lowered to a chest hold between sips), or rinse it under a tap (the free hand turns the valve on and off, a swirl, tipped out over the basin). |

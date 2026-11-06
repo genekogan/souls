@@ -38,7 +38,9 @@ Two PRs that both append to one shared file conflict every time. So nothing a PR
 
 ## The merge train
 
-When a PR is ready, label it `merge:ready`. From there the train takes over, one PR at a time, and first picks how
+When a PR is ready, label it `merge:ready`. Its heavy CI jobs run only inside the [CI window](../testing.md#ci-window)
+(a ready PR labelled `ci:run` or `merge:ready`), so open the window with `ci:run` and add `merge:ready` once `ci-ok`
+is green. From there the train takes over, one PR at a time, and first picks how
 the PR lands (`landingMode` in `.github/scripts/merge-train.mjs`):
 
 - **Non-strict**: a T0–T2 PR that touches no strict path, whose required checks are green on its current head, which
@@ -88,6 +90,15 @@ The strict steps:
    and relabels `merge:ready`.
 
 A PR that fails a check leaves the train with its result in the PR; fix it and relabel.
+
+**Stacked PRs.** When a PR squash-merges, the `restack` workflow (`.github/workflows/restack.yml`,
+`.github/scripts/restack.mjs`) handles the PRs stacked on it. It retargets each one to the merged PR's base (GitHub
+already does this when it deletes the merged branch) and merges that base forward. A child still carries the old
+branch's commits, so a plain `git merge main` diffs from the old `main` fork point and conflicts on files the child
+never changed. The restack merge is 3-way against the child's fork point from the old base instead: files the child's
+own diff doesn't touch take the squashed content. The result is an ordinary merge commit, pushed as a fast-forward with
+`MERGE_TRAIN_TOKEN` (never forced), so CI runs on it. A real conflict pushes nothing; the child gets `needs:rebase`
+and a comment naming the files. To redo one by hand, run `gh workflow run restack.yml -f pr=<merged PR>`.
 
 ## Review
 

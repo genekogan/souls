@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 openings family entry 1 (#427): a tent flap and a field gate opened by hand. core-tent@2 (6d174ebd62b3…) is a new immutable revision: core-tent@1 plus the hand-operated tag, a doorway pole and a toggle tinted valve where the hand goes (the drawn covering's contact; no hinge component). core-field-gate@1 (55f2efb27e16…) is a new def on core-gate@2's hinge contact (the opening component, the leaf's pivot, a latch tinted chrome), tagged local-fixture so it is never a far landmark. Frozen core-tent@1 (fb7af4a96863…) and core-gate@2 (b198a45c4a40…) are byte-identical. A narrow production K=2 run (`conformance.mjs --k 2 --filter core-tent` and `--filter core-field-gate`) baked, placed and rendered all 43 samples with 0 findings and 0 qualification gaps, so this supplement pins no finding. No budgets, samples or gap checks were relaxed.",
+  "findings": []
+}

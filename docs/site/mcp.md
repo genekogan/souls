@@ -718,7 +718,7 @@ Parameters: none.
 
 On edge worlds. Calls `GET /v1/edge/map`. Read-only.
 
-Every place: names, kinds, enclosed, capacity, schedule. Never occupants.
+Every place: names, kinds, enclosed, capacity, schedule; and the named flags (name, walk, position). Never occupants.
 
 Parameters: none.
 
