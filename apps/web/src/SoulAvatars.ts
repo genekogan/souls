@@ -14,7 +14,8 @@ export function soulPortraitView(root:THREE.Object3D,rigid:boolean){
 export class WorldSoulAvatars{
  private target:THREE.WebGLRenderTarget|null=null;private failed=false;private last=0;private keys=new Map<string,string>();
  private scene=new THREE.Scene();private camera=new THREE.PerspectiveCamera(28,1,.01,100);
- constructor(private renderer:THREE.WebGLRenderer){this.scene.background=new THREE.Color('#e9e6dc');this.scene.add(new THREE.HemisphereLight(0xffffff,0x67543f,3));const light=new THREE.DirectionalLight(0xffffff,3);light.position.set(2,4,3);this.scene.add(light);}
+ private renderer:THREE.WebGLRenderer;
+ constructor(renderer:THREE.WebGLRenderer){this.renderer=renderer;this.scene.background=new THREE.Color('#e9e6dc');this.scene.add(new THREE.HemisphereLight(0xffffff,0x67543f,3));const light=new THREE.DirectionalLight(0xffffff,3);light.position.set(2,4,3);this.scene.add(light);}
  capture(id:string,key:string,body:THREE.Object3D|null,rigid:boolean,now:number){
   if(!body||this.failed||now-this.last<300)return;const surfaces:string[]=[];body.traverse(o=>{const m=o as THREE.Mesh;if(m.isMesh&&!activityProp(o))surfaces.push(m.geometry.uuid+':'+[m.material].flat().map(material=>material.uuid+':'+((material as THREE.MeshStandardMaterial).map?.uuid??'')).join(','));});key+='|'+surfaces.join(';');if(this.keys.get(id)===key)return;this.last=now;
   let portrait:THREE.Object3D|null=null;

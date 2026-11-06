@@ -33,6 +33,8 @@ export { schemaMarkdown };
 
 import { aboutValue, missingAbout, exactAboutTarget } from './lib/about.mjs';
 import { SKILL_VERSION } from './lib/version.mjs';
+import { upload } from './lib/upload.mjs';
+import { thumbnail, THUMBNAIL_HELP } from './lib/thumbnail.mjs';
 import { godFeature } from './lib/features.mjs';
 export { SKILL_VERSION };
 
@@ -1377,7 +1379,7 @@ export async function status() { const s = load(); const st = ok(await call('/v1
 /** Flags that never take a value (the next word stays a positional argument). */
 const BOOL = new Set(['missing', 'clear', 'fix', 'helper', 'local', 'remote' /* W2 remote looks */, 'no-build', 'done', 'force', 'undo', 'float', 'dry', 'plan', 'nudge', 'json', 'all', 'keep', 'hide-roofs', 'stop', 'site', 'unused', 'off', 'md', 'fresh', 'remove', 'free', 'list', ...ENV_BOOLS, ...LAYERS_BOOLS]);
 // listen --once/--follow are switches; `hours --follow field@open=…` takes a value, so they are listen-only.
-const boolsFor = (cmd) => (cmd === 'look' ? new Set([...BOOL, 'inside']) : cmd === 'listen' ? new Set([...BOOL, 'once', 'follow']) : cmd === 'ack' ? new Set([...BOOL, 'failed']) : BOOL);
+const boolsFor = (cmd) => (cmd === 'look' ? new Set([...BOOL, 'inside']) : cmd === 'listen' ? new Set([...BOOL, 'once', 'follow']) : cmd === 'ack' ? new Set([...BOOL, 'failed']) : cmd === 'upload' ? new Set([...BOOL, 'define']) : BOOL);
 export function parseFlags(argv, bools = BOOL) {
   const flags = {}, rest = [];
   for (let i = 0; i < argv.length; i++) {
@@ -1406,11 +1408,13 @@ const FLAGS = {
   move: `${REL} by in local nudge note dry plan`, look: 'at from dist inside floor keep remote out span height width h hide-roofs stop hour weather views site frames every', kit: 'hour weather beside out width h', defs: 'tag all unused remove', where: 'at offset', reach: '', clear: 'size', free: 'near radius count slope',
   select: 'def tag name in area near radius all remove by set-state set-param recolor yaw part note', set: 'state param name constraints about note', about: 'set clear missing kind limit note', recolor: 'part', clone: 'name count step yaw at offset nudge note',
   sky: 'palette sun list', ...ENV_FLAGS, group: 'off', undo: 'group', map: 'all', furnish: 'style dry group', 'define-kit': 'dry', register: 'identity', mirror: 'fresh', export: 'name', import: 'group', flag: 'at offset', schema: 'md', act: 'note request-ref', prayers: 'all',
+  upload: 'name height tags license source description layer footprint define dry',
+  thumbnail: 'from at dist span hour weather remote out dry file clear',
   catalog: 'category has tag page per', find: 'category has tag all', parts: '', recommend: 'per', taxonomy: '',
   ...LAYERS_FLAGS, ...GOV_FLAGS,
 };
 // how many positional words each command takes (Infinity: free text or a list)
-const POS = { ...GOV_POS, listen: 0, ack: 2, doctor: 0, trace: 0, kit: 2, build: 2, 'verify-use': 1, ...LAYERS_POS, catalog: 0, taxonomy: 0, time: 2, strike: 0, land: 3, place: 1, terrain: 1, move: 1, set: 1, about: 1, recolor: 2, clone: 1, describe: 1, where: 1, reach: 2, clear: 1, free: 1, look: 0, sky: 0, weather: 0, select: 0, group: 1, undo: 0, redo: 0, history: 1, map: 0, furnish: 1, mint: 1, pair: 1, register: 2, status: 0, flags: 0, prayers: 0, schema: 0, snapshot: 0, examples: 1, expand: 1, import: 1, export: 1, define: 1, 'define-kit': 1, act: 1, dryrun: 1, plan: 1, preview: 1, commit: 1, request: 1, query: 1, stream: 1, follow: 1, mirror: 0, gallery: 0, help: 1 };
+const POS = { ...GOV_POS, listen: 0, ack: 2, doctor: 0, trace: 0, kit: 2, build: 2, 'verify-use': 1, ...LAYERS_POS, catalog: 0, taxonomy: 0, time: 2, strike: 0, land: 3, place: 1, terrain: 1, move: 1, set: 1, about: 1, recolor: 2, clone: 1, describe: 1, where: 1, reach: 2, clear: 1, free: 1, look: 0, sky: 0, weather: 0, select: 0, group: 1, undo: 0, redo: 0, history: 1, map: 0, furnish: 1, mint: 1, pair: 1, register: 2, status: 0, flags: 0, prayers: 0, schema: 0, snapshot: 0, examples: 1, expand: 1, import: 1, export: 1, define: 1, 'define-kit': 1, upload: 1, thumbnail: 0, act: 1, dryrun: 1, plan: 1, preview: 1, commit: 1, request: 1, query: 1, stream: 1, follow: 1, mirror: 0, gallery: 0, help: 1 };
 // `side` is a word for place/terrain/move (--along road --side left|right|both) and a number only for `land cliff --side 1|-1`.
 const NUMERIC = new Set(['dist', 'count', 't', 'setback', 'row', 'spacing', 'width', 'span', 'radius', 'sun', 'clouds', 'wind', 'rain', 'fog', 'intensity', 'speed', 'amount', 'level', 'depth', 'metres', 'peak', 'edge', 'face', 'steps', 'scale', 'floor', 'height', 'h', 'frames', 'every', 'slope', 'gap', 'yaw']);
 const SIDES = ['left', 'right', 'both', 'center', 'centre'];
@@ -1463,7 +1467,7 @@ export const COMMANDS = { doctor: (r, f) => doctor(f), trace: (r, f) => trace(f)
   place: (r, f) => place(r[0], f), terrain: (r, f) => place(r[0], f), move: (r, f) => move(r[0], f), set: (r, f) => set(r[0], f), recolor: (r, f) => recolor(r[0], r[1], f), remove: (r) => remove(r), clone: (r, f) => clone(r[0], f),
   act: (r, f) => act(JSON.parse(readArg(r)), f.note, f['request-ref']), dryrun: (r) => dryrun(JSON.parse(readArg(r))), plan: (r) => planBatch(readArg(r)), preview: (r) => preview(readArg(r)), commit: (r) => commit(r[0]), request: (r) => request(r[0]),
   select: (r, f) => select(f), group: (r, f) => group(r[0], f), undo: (r, f) => undo(f), redo, history: (r, f) => history(r[0] ? Number(r[0]) : 20, f), resolve: (r, f) => resolveCmd(r, f),
-  look: (r, f) => look(f), 'look-keeper': (r, f) => keeper(r[0], Number(r[1]), { warm: f.warm !== undefined }), 'look-shot': async (r) => { const res = await shoot(JSON.parse(r[0])); console.log(JSON.stringify(res)); process.exit(0); }, export: (r, f) => exportWorld(r[0], f), import: (r, f) => importWorld(r[0], f), define: (r) => define(readArg(r)), 'define-kit': (r, f) => defineKit(readArg(r), f),
+  look: (r, f) => look(f), 'look-keeper': (r, f) => keeper(r[0], Number(r[1]), { warm: f.warm !== undefined }), 'look-shot': async (r) => { const res = await shoot(JSON.parse(r[0])); console.log(JSON.stringify(res)); process.exit(0); }, export: (r, f) => exportWorld(r[0], f), import: (r, f) => importWorld(r[0], f), define: (r) => define(readArg(r)), 'define-kit': (r, f) => defineKit(readArg(r), f), upload: (r, f) => upload(r[0], f), thumbnail: (r, f) => thumbnail(f, { look }),
   furnish: (r, f) => furnish(r[0], f), gallery, examples: (r) => examples(r[0]),
   catalog: (r, f) => catalog(f), find: (r, f) => find(r.join(' ') || undefined, f), parts: (r, f) => parts(r.join(' '), f), recommend: (r, f) => recommend(r.join(' '), f), taxonomy: (r, f) => taxonomy(f),
   sky: (r, f) => sky(f), weather: (r, f) => envWeather(f), time: (r, f) => envTime(r, f), strike: (r, f) => envStrike(f), land: (r, f) => envLand(r, f), constitution: (r) => constitution(r.join(' ')), expand: (r) => expand(r[0]),
@@ -1497,6 +1501,8 @@ resume: omit id to resume the only paused build or active build with a dead lead
 mass:   site-local metres; h = wall/eave height, not total height. Gable/pyramid roofs add half the shorter side; flat adds none. Example: 26x12 h15 gable = 15 m walls + 6 m roof = 21 m total.
 batch:  plan '<batch>' · preview '<batch>' · commit <preview-id> · act '<batch>' · dryrun '<batch>' · request <clientRef>
 world:  sky [--palette p --sun s] · time [19:30|7pm] [--speed h/h] [--pause|--resume] · weather [--kind storm|rain|fog|wind|cloudy|clear|auto] [--intensity i] [--clouds --wind --rain --fog] [--minutes m] · strike [--at x,z|thing] ${godFeature('constitution') ? '· constitution <md> ' : ''}· expand <m> · export [file] · import <genesis.json> · define <def.json> · define-kit <kit.json> · furnish <house>[/room]
+models: upload <file.glb|png|jpg> --name n [--height m] [--tags a,b] [--license text] [--source text] [--description text] [--layer solid|decor] [--footprint fp.json] [--define] [--dry] · upload <manifest.json> [--dry] (god-upload-manifest/1: one entry per asset with file, name, height, tags, license, source, description, layer, footprint, define; budget 80 000 tris, 3 MB, 2048 px per file — reduce heavy GLBs first with tools/god-skill/scripts/optimize-glb.mjs; SKILL.md "Importing your own models")
+thumb:  ${THUMBNAIL_HELP}
 inbox:  listen [--after message-id] [--timeout 25] [--once|--follow] · ack <message-id> [reply] [--failed] (a reply of up to 140 characters; --failed when it could not be done)
 pair:   register <world-url> · pair · ${godFeature('flags') ? 'flags · flag <label> --at x,z · ' : ''}prayers [--all] (answered too) · answer <id> <text> · status
 ${LAND_HELP}

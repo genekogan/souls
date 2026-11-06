@@ -13,7 +13,7 @@ import { snapshotModel } from './snapshot-model.ts';
 import type { SnapshotDecoder, SnapshotDelta } from './snapshot-delta.ts';
 import * as THREE from 'three';
 import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@sim/ground';
-import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
+import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, keptBehindDoor, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
 import { GENERATORS } from '@sim/generators';
 import { meshFor, type MeshCtx } from './gen-mesh/index.ts';
 import { clearBuildingPrefetch, prefetchBuilding } from './gen-mesh/building.mesh.ts';
@@ -849,7 +849,9 @@ export class WorldEntityLayer {
       const grip = entities[body]?.state.grip as {entity?: string} | undefined;
       const contact = entities[body]?.state.carryContactV1 as {item?: string} | undefined;
       const id = grip?.entity ?? contact?.item, e = id && this.model?.entities.get(id);
-      if (e && this.model?.resolvedDef(e.def)?.tags.includes('upright-carry')) { held.add(e.id); this.transported.add(e.id); }
+      // PC03 (#682): a loose material carried by the native crew carry follows its recorded pose the same way
+      const tags = e && this.model?.resolvedDef(e.def)?.tags;
+      if (e && (tags?.includes('upright-carry') || tags?.includes('loose-material'))) { held.add(e.id); this.transported.add(e.id); }
     }
     for (const id of this.transported) {
       const e = entities[id], d = this.drawn.get(id);
@@ -1596,7 +1598,9 @@ export class WorldEntityLayer {
     if (def.tags.includes('horizon')) this.horizonBy.add(e.id); else this.horizonBy.delete(e.id);
     const parent = e.in.parent !== 'world' ? m.entities.get(e.in.parent) : undefined;
     if (parent && m.resolvedDef(parent.def)?.components.body) this.held.set(e.id, parent.id); else this.held.delete(e.id);
-    if (parent && containerInside(m.resolvedDef(parent.def))?.slots.some((s) => s.id === e.in.slot)) this.keptIn.set(e.id, parent.id); else this.keptIn.delete(e.id);
+    // #435: a doorless container (a swap shelf) hides nothing and has no lid to follow, so its contents are ordinary things
+    const pdef = parent && m.resolvedDef(parent.def);
+    if (pdef && keptBehindDoor(pdef, e.in.slot)) this.keptIn.set(e.id, parent!.id); else this.keptIn.delete(e.id);
     const existing = this.drawn.get(e.id);
     const defHash = def.hash + ':' + JSON.stringify(e.params ?? {}) + ':' + JSON.stringify(e.state ?? {}) + ':' + JSON.stringify(e.shape ?? null) + ':' + JSON.stringify(e.r ?? 0);
     const builder = meshFor(def);

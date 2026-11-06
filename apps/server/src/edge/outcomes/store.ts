@@ -42,7 +42,8 @@ export class ActionOutcomes{
   const row=this.db.prepare('SELECT body FROM edge_outcome_contexts_v1 WHERE world_id=? AND receipt_id=?').get(this.worldId,receipt.id) as {body:string}|undefined;if(!row)return; // pre-feature receipts stay untouched
   const context=JSON.parse(row.body) as OutcomeContext;
   return tx(this.db,()=>{
-   const kind=context.capability.split(':')[0],completed=receipt.phase==='completed',out:EdgeOutcomeV1={contract:EDGE_OUTCOME_CONTRACT,kind,summary:clip(`${kind} ${receipt.phase}${snapshot.place?` at ${snapshot.place}`:''}${receipt.code?` (${receipt.code})`:''}.`,160),learned:[],produced:[],changed:[],met:[],detail:{phase:receipt.phase,sourceTick:snapshot.tick},untrusted:false};
+   // F4 (#375): a walk that reached a flag says so ("at the orchard flag"), not the open ground it stands on ("at world")
+   const kind=context.capability.split(':')[0],completed=receipt.phase==='completed',flag=completed?/^walk:flag-(.+)$/.exec(context.capability)?.[1]:undefined,at=flag?`the ${flag.replace(/^flag-|-flag$/g,'').replace(/-/g,' ')} flag`:snapshot.place,out:EdgeOutcomeV1={contract:EDGE_OUTCOME_CONTRACT,kind,summary:clip(`${kind} ${receipt.phase}${at?` at ${at}`:''}${receipt.code?` (${receipt.code})`:''}.`,160),learned:[],produced:[],changed:[],met:[],detail:{phase:receipt.phase,sourceTick:snapshot.tick},untrusted:false};
    if(completed&&kind==='read'&&!effects.detail?.sign)this.readPassage(context,out);
    if(completed&&kind==='use-computer'){
     const query=context.params.query??'',terms=query.toLowerCase(),wanted=terms.includes('letter')?['letters']:terms.includes('project')||terms.includes('help')?['projects']:terms.includes('who')||terms.includes('people')||terms.includes('directory')?['directory']:terms.includes('schedule')||terms.includes('today')||terms.includes("what's on")?['schedule']:terms.includes('lost')||terms.includes('found')?['lost-found']:terms.includes('notice')?['notices']:terms.includes('digest')?['digest']:snapshot.sections.map(s=>s.section);
@@ -60,7 +61,9 @@ export class ActionOutcomes{
    }
    if(context.confirmedProduced?.length){out.produced=context.confirmedProduced;out.untrusted=true;}
    if(context.confirmedChanges?.length)out.changed=context.confirmedChanges;
-   for(const e of [context.confirmedEffects,effects])if(e){out.changed.push(...(e.changed??[]));out.met.push(...(e.met??[]));out.learned.push(...(e.learned??[]));Object.assign(out.detail,e.detail);if(e.summary)out.summary=clip(e.summary,160);out.untrusted||=e.untrusted===true;}
+   // F2 (#373): effects confirmed when the act was accepted (a ride join's "Boarded …") are a success line only for a
+   // receipt that completed; a failed or replaced one keeps the world's own phase line
+   for(const e of [context.confirmedEffects,effects])if(e){out.changed.push(...(e.changed??[]));out.met.push(...(e.met??[]));out.learned.push(...(e.learned??[]));Object.assign(out.detail,e.detail);if(e.summary&&completed)out.summary=clip(e.summary,160);out.untrusted||=e.untrusted===true;}
    if(!completed)out.detail.completedContent=false;
    const validated=edgeOutcomeV1Schema.parse(out);this.db.prepare('INSERT INTO edge_outcomes_v1(world_id,receipt_id,soul_id,body) VALUES(?,?,?,?)').run(this.worldId,receipt.id,context.soulId,JSON.stringify(validated));return validated;
   });

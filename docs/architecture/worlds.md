@@ -30,6 +30,27 @@ The split camera control shows Broadcast, Free or Following a Soul (and loading/
 Its main segment switches Broadcast → Free or returns Free/Following → Broadcast in one click. The chevron offers
 explicit modes and Camera controls, including the existing movement guide, reset and device fullscreen option.
 Dragging, zooming and movement keys retain their existing camera behavior.
+Free has no wall near the map's edge: a lost-camera guard (`WorldRtsCamera.keepPivotInBounds`) keeps the eye within one
+far-zoom limit (320–1,400 m) of the world's ground rectangle, far beyond the map; where the pivot sits does not matter.
+On a touch screen in Free (`apps/web/src/touch/WorldTouchFree.ts`), a touch that starts in the lower-left 45 % of the
+view spawns a floating stick that walks the eye; one finger elsewhere looks in place, a pinch glides toward the point
+between the fingers, a two-finger vertical drag rises or lowers, and a double-tap flies there. Each gesture feeds the
+existing `WorldRtsCamera` path (WASD, Q/E, right-drag, wheel, double-click), so the same guard holds. A finished touch
+look always commits its new pivot, kept within that guard's rectangle. Follow and Broadcast keep OrbitControls' touch
+orbit and pinch.
+On a touch screen, one tap on a Soul's body or name plate follows it at once, through the same `flyToSoul` glide as the
+card's Follow button; the Soul's card collapses to a bottom chip (`SoulChip.tsx`: name, status line, Card). While
+following, a fast one-finger sideways flick (`touch/soul-swipe.ts`: over 60 px, under 400 ms) goes to the next (left)
+or previous (right) Soul here; slower drags still orbit. The order is a ring made on a swipe only: the followed Soul,
+then the others by the director's interest score, then by distance. A tap on the ground while following hands you the
+camera (Free) and glides it to that point (`WorldRtsCamera.flyToGround`). In Broadcast a touch screen's chip reads
+"Now showing <name>" with a Follow button. Mouse clicks keep the card-and-button flow.
+The first touch of a page on a touch screen shows three glyphs (stick, drag, pinch; `touch/hints.tsx`) that fade on
+the first drag, a second finger or after 3 s. The device remembers it in `localStorage` (`sim.touch-hints`). `?shot`
+and automation (`navigator.webdriver`) never show it. `?hints=1` overrides `navigator.webdriver` only, for recording
+proof of the hint. Phones get the camera menu as a bottom sheet (Broadcast, Free, Follow for a selected Soul or Stop
+following, Camera controls, Fullscreen) clear of `env(safe-area-inset-*)`. A device with `navigator.vibrate` ticks for
+12 ms when Follow starts and when a fly-to arrives (`touch/haptics.ts`).
 
 Audio opens independent Sound effects and Music switches plus a radio station selector. Stations curate the existing
 score playlist: All music, Quiet & ambient, Electronic and Upbeat. Choosing a station while music is off remembers
@@ -55,6 +76,17 @@ switch independent. A previously saved master mute migrates to both switches off
   (`apps/server/src/clock-catchup.ts`) without simulating the gap.
 - **Registry.** `<data>/worlds.json` records each world (slug, owner, template, flags). Reserved slugs include `toy`,
   `mars`, `littlemartians`, `eden`, `assets`, `api`, `god` and `launcher`.
+- **Thumbnails.** Each `worlds.json` row carries `thumbnail` (a URL or `null`) and `thumbnailSource` (`owner`,
+  `template` or `null`). The owner sets the picture with a 16:9 JPEG
+  ([API](api.md#world-owner-api-served-by-the-launcher)). It is checked and stripped by the upload gate in
+  `apps/server/src/moderation/` (including the site admin's vetoes, which also stop a stored or default picture from
+  being listed or served) and stored as `<data>/worlds/<slug>/thumbs/<sha>.jpg`, so it moves with the world on
+  archive and restore. A world without one shows its template's default, `worlds/templates/thumbs/<template>.jpg`
+  (`empty.jpg` for the empty plain), which is media pulled from the asset CDN and not kept in git. When neither
+  exists, the row has no picture. Both kinds are served immutable under content-hashed URLs
+  (`<base>/__sim/thumbs/<slug>/<sha>.jpg`, `<base>/__sim/thumbs/_template/<sha>.jpg`). Setting or clearing a
+  thumbnail never wakes the world (`tools/world-launcher/thumbnail.mjs`). Each card on the root page shows the picture in a
+  lazy-loaded 16:9 frame (`LauncherHome.tsx`). The owner's agent takes one with `eden-god thumbnail` (god SKILL.md, "Thumbnail").
 - **Owner and operator API.** Handoff, archive and unlisting, and the loopback-only `op.mjs` commands: see
   [API](api.md#world-owner-api-served-by-the-launcher).
 - **Keeper.** `keeper.mjs` holds the public port and hands over between launcher generations one world at a time, with
@@ -103,4 +135,15 @@ and the edge API). Its **home world** stays the authority on where it is.
 
 Each world keeps its own history; only the passport moves. A god may close a world to visitors
 (`POST /v1/god/visitors {open:false}`, refusal `travel.closed`); leaving and coming home always work. The CLI's
-`travel <world>` and `travel home` switch the agent's folder to the new world. Uploaded bodies stay home.
+`travel <world>` and `travel home` switch the agent's folder to the new world.
+
+A body made from an admitted definition (an upload, or a shared authored preset such as Pip or the centaur) travels as
+a reference (`{ref: body_<sha>}`), never as its home URL (#795). The destination resolves it with the same rules as
+`PUT /v1/edge/body {ref}`: the owner's own or a published definition, not withdrawn, a body type that world admits.
+Bytes it lacks are pulled through the site path once the arriving Soul can change bodies (sha256 verified,
+re-admitted, two pulls per owner per minute). Putting the body on is bounded: at most 12 s after the Soul is ready, of
+which the pull gets at most 8 s, so arrival answers well inside the launcher relay's 55 s abort. A pull that runs out of
+time is refused `body.source-slow`; it may still finish in the background and cache its verified bytes for a later
+`PUT {ref}`, but it never puts the body on. A refused reference never refuses the trip: the Soul's body there is
+unchanged (the default look for a first visit), and its travel log names the code. Travel pulls count against a per-owner budget, separate from
+the per-Soul budget of `PUT {ref}`.
