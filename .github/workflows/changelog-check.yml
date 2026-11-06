@@ -7,6 +7,10 @@ on:
   merge_group:
 permissions:
   contents: read
+concurrency:
+  # Label and push events on one PR replace its older run; merge_group runs are never cancelled.
+  group: changelog-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   fragment:
     runs-on: ubuntu-latest
