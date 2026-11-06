@@ -4,10 +4,13 @@ import {actuatorPoint,actuatorHand,tugPoint,opPoint,slidePoint,strokePoint,strok
 import { createHash } from 'node:crypto';
 import { isDry, stageWord } from './garden.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
-import { opSchema, contactStateKey, DRAWER_TRAVEL, containerInside, pinSlot, signupSlot, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
+import { opSchema, contactStateKey, CONTACT_EXTRA_FIELDS, DRAWER_TRAVEL, containerInside, containerOpen, pinSlot, signupSlot, signupCapacity, signupPageStart, SIGNUP_MAX, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
 import { posterName, posterFreeSlot, posterTarget, posterAge, posterStale, wantedColumn, wantedFreeRow, wantedTarget } from './poster-boards.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
-import { actionPatch, actionsOf, actuatedState, boardTextProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
+import { actionPatch, actionsOf, actuatedState, keepsLeftBy, leftByOf, boardTextProblem, enumParamProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
+/** #429: the line a new sign-up name goes on: the next line of the face's page, or a fresh page's first when a full list
+ *  tagged keeps-newest turns its page (listPatch drops its oldest page). The sheet's next line as before. */
+const signupNextLine=(def:StoredDef,count:number)=>{const n=def.tags?.includes('keeps-newest')&&count>=signupCapacity(def)?count-Math.min(count,SIGNUP_MAX):count;return n-signupPageStart(n+1);};
 export const CONTACT_REACH = .8;
 /** Entry 37: how long the hand stays on a radio's tuning knob after contact while the dial sweeps to the next station. */
 export const TUNE_HOLD_SECONDS = .9;
@@ -27,6 +30,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
  /** entry 32: the thing's owner (a name) and whether it is this Soul; null when nobody owns it */ owner?:(id:string,soul:EdgeSoul)=>{name:string;mine:boolean}|null;
  /** entry 32: a knock on the leaf landed (the first rap): tell those who hear it */ knock?:(soul:EdgeSoul,id:string)=>void;
  /** Entry 43: compact facts of things that are not contact actuators (a kettle, a cup of tea), or null. */ moreFacts?:(id:string)=>Record<string,unknown>|null;
+ /** #435: a Soul's name by soul id (who left a thing on a swap shelf), or null. */ soulName?:(soulId:string)=>string|null;
  record:(soul:EdgeSoul,id:string,action:string,params?:Record<string,unknown>)=>void;commit:(ops:Op[],note:string,done:()=>void)=>{accepted:boolean}}){
  const binding=(id:string)=>{const m=d.model(),e=m.entities.get(id);return e?createHash('sha256').update(JSON.stringify([e,m.worldPose(e),m.resolvedDef(e.def)?.hash])).digest('hex'):null;};
  return {
@@ -44,7 +48,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
     const lift=Math.min(.12,(face.h??.4)*wp.s*.2);params.at=[centre[0]+s*.04,centre[1]+lift,centre[2]+c*.04];
     // A pinned note goes to (or comes down from) its own place on the cork, the slot the viewer draws it in.
     // Entry 25: a sign-up name goes on the sheet's next line (or comes off its own); a vote is a tally mark beside the option.
-    if(list){const st=actuatedState(e,def),names=pinNotes(st),i=action==='vote'?Math.max(0,pollChoice(st,input.choice)):action==='sign'?names.length:Math.max(0,names.map(n=>n.by).indexOf(soul.soulId)),[dx,dy]=(action==='vote'?pollSlot(i):signupSlot(i)).map(v=>v*wp.s);params.at=[centre[0]+dx*c+s*.04,centre[1]+dy,centre[2]-dx*s+c*.04];}
+    if(list){const st=actuatedState(e,def),names=pinNotes(st),i=action==='vote'?Math.max(0,pollChoice(st,input.choice)):action==='sign'?signupNextLine(def,names.length):Math.max(0,names.map(n=>n.by).indexOf(soul.soulId))%SIGNUP_MAX,[dx,dy]=(action==='vote'?pollSlot(i):signupSlot(i)).map(v=>v*wp.s);params.at=[centre[0]+dx*c+s*.04,centre[1]+dy,centre[2]-dx*s+c*.04];}
     if(pin){const notes=pinNotes(actuatedState(e,def)),i=action==='pin'?notes.length:notes.map(n=>n.by).lastIndexOf(soul.soulId),[dx,dy]=pinSlot(Math.max(0,i)).map(v=>v*wp.s);params.at=[centre[0]+dx*c+s*.04,centre[1]+dy,centre[2]-dx*s+c*.04];}
     // Entry 38: a poster goes up at (or comes down from) its slot with both hands; a wanted/offered note at its column and row,
     // a reply on the note's lower half, "taken by" across the note.
@@ -67,7 +71,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
     if(mark>=0)params.stroke={kind:'write',yaw:wp.yaw,stand,width:.1,height:.08,lines:1,seconds:1.2};
     else if(posters)params.stroke={kind:action==='unpin'?'unposter':'poster',yaw:wp.yaw,stand:Math.max(.4,stand),width:POSTER_W*wp.s,height:POSTER_H*wp.s,lines:1,seconds:action==='unpin'?4.2:5.6,release:1.1,handoff:.1,lead:{y:wp.y+1.05,out:.2},...(sheet?{sheet}:{})};
     else if(wanted)params.stroke={kind:action==='unpin'?'wipe':'write',yaw:wp.yaw,stand,width:action==='take-on'?.14:action==='reply'?.16:.22,height:.05,lines:1,seconds:action==='unpin'||action==='take-on'?1.8:2.2,release:1.1,handoff:.1,lead:{y:wp.y+1.1,out:.26}};
-    else params.stroke=list?{kind:action==='unsign'?'wipe':'write',yaw:wp.yaw,stand,width:action==='vote'?.1:Math.min(.16,(face.w??.4)*wp.s*.45),height:.05,lines:1,seconds:action==='unsign'?1.0:1.4}:pin?{kind:action==='unpin'?'wipe':'write',yaw:wp.yaw,stand,width:Math.min(.22,(face.w??.6)*wp.s*.25),height:.06,lines:1,seconds:action==='unpin'?1.2:1.6}:{kind:action==='erase'?'wipe':'write',yaw:wp.yaw,stand,width:Math.min(.55,(face.w??.6)*wp.s*.6),height:Math.min(.3,(face.h??.4)*wp.s*.5),lines,seconds:action==='erase'?2.4:Math.min(6,1.2+1.6*lines)};   // 1.2+1.6*3 is 6.000000000000001 in floating point; the schema caps a stroke at 6 s (a three-line note failed)
+    else params.stroke=list?{kind:action==='unsign'?'wipe':'write',yaw:wp.yaw,stand,width:action==='vote'?.1:Math.min(text?.22:.16,(face.w??.4)*wp.s*(text?.7:.45)),height:.05,lines:1,seconds:action==='unsign'?1.0:text?2.2:1.4}:pin?{kind:action==='unpin'?'wipe':'write',yaw:wp.yaw,stand,width:Math.min(.22,(face.w??.6)*wp.s*.25),height:.06,lines:1,seconds:action==='unpin'?1.2:1.6}:{kind:action==='erase'?'wipe':'write',yaw:wp.yaw,stand,width:Math.min(.55,(face.w??.6)*wp.s*.6),height:Math.min(.3,(face.h??.4)*wp.s*.5),lines,seconds:action==='erase'?2.4:Math.min(6,1.2+1.6*lines)};   // 1.2+1.6*3 is 6.000000000000001 in floating point; the schema caps a stroke at 6 s (a three-line note failed)
     root=strokeRoot(params.at,params.stroke,wp.y);
     // Entry 38 (take 2): a Soul arriving along the wall turned to it during the reach and swung an arm out wide; posters and
     // wanted/offered notes turn to face the board on arrival first (entry 33's turn-then-reach), then the hands come up
@@ -109,8 +113,11 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
     // Entry 37: a radio's tuning knob (tinted `tuner`) is where the hand goes to change the station; she stands where she
     // works the power knob (the `valve`), so both knobs are worked from one place, and holds the tuning knob while it turns.
     const shapes=def.make.kind==='gen'?(def.make.args as {shapes?:{tint?:string;at?:number[]}[]})?.shapes:undefined,valve=shapes?.find(s=>s.tint==='valve'&&s.at);
-    const part=action==='change-station'?shapes?.find(s=>s.tint==='tuner'&&s.at)??valve:valve;
-    const placeOf=(at:number[]):[number,number,number]=>{const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[vx,vy,vz]=at.map(v=>v*wp.s);return [wp.x+vx*c+vz*s,wp.y+vy,wp.z-vx*s+vz*c];};
+    // #431: any hand action but on/off goes to the second control when the def has one (a record player's tonearm).
+    const part=!['switch-on','switch-off'].includes(action)?shapes?.find(s=>s.tint==='tuner'&&s.at)??valve:valve;
+    // #427: a stretched def (sx, sy, sz, as the viewer draws it) has its valve and its footprint stretched with it
+    const stretch=(key:string)=>Number(e.params?.[key]??def.params[key]?.default??1),[sx,sy,sz]=[stretch('sx'),stretch('sy'),stretch('sz')];
+    const placeOf=(at:number[]):[number,number,number]=>{const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[vx,vy,vz]=[at[0]*sx,at[1]*sy,at[2]*sz].map(v=>v*wp.s);return [wp.x+vx*c+vz*s,wp.y+vy,wp.z-vx*s+vz*c];};
     if(valve?.at)params.at=placeOf(valve.at);
     if(part&&part!==valve&&part.at)params.hold=TUNE_HOLD_SECONDS;
     const dx=me[0]-params.at[0],dz=me[2]-params.at[2],n=Math.hypot(dx,dz)||1;root=[params.at[0]+dx/n*.5,wp.y,params.at[2]+dz/n*.5];
@@ -118,9 +125,18 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
      // Stand beside the valve, clear of the thing's own footprint (a basin, a tray) by a body radius: of eight
      // directions around the valve, the one nearest the Soul's approach whose stand point is outside. Entry 33: and clear
      // of the world's other obstacles (a wall behind a wall torch), so the body never walks into one to reach a valve.
-     const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[hx,,hz]=def.size.box.map(v=>v*wp.s/2),outside=(p:number[])=>{const lx=(p[0]-wp.x)*c-(p[2]-wp.z)*s,lz=(p[0]-wp.x)*s+(p[2]-wp.z)*c;return Math.abs(lx)>hx+HUMAN_RADIUS||Math.abs(lz)>hz+HUMAN_RADIUS;};
+     const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[hx,,hz]=[def.size.box[0]*sx,0,def.size.box[2]*sz].map(v=>v*wp.s/2),outside=(p:number[])=>{const lx=(p[0]-wp.x)*c-(p[2]-wp.z)*s,lz=(p[0]-wp.x)*s+(p[2]-wp.z)*c;return Math.abs(lx)>hx+HUMAN_RADIUS||Math.abs(lz)>hz+HUMAN_RADIUS;};
+     // #427: a pivoted leaf worked at a valve (a tent's flap at its toggle) swings clear of the body: no stand point within
+     // the leaf's reach of its pivot, plus a body radius
+     const leaf=(shapes as {role?:string;pivot?:number[];at?:number[];size?:number[]}[]|undefined)?.filter(q=>q.role==='door'&&q.pivot&&q.at),pivot=leaf?.[0]?.pivot;
+     const swing=pivot?Math.max(...leaf!.map(q=>Math.hypot((q.at![0]-pivot[0])*sx,(q.at![2]-pivot[2])*sz)+(q.size?.[0]??0)*sx/2))*wp.s+HUMAN_RADIUS:0;
+     const swingClear=(p:number[])=>{if(!pivot)return true;const lx=(p[0]-wp.x)*c-(p[2]-wp.z)*s,lz=(p[0]-wp.x)*s+(p[2]-wp.z)*c;return Math.hypot(lx-pivot[0]*sx*wp.s,lz-pivot[2]*sz*wp.s)>=swing;};
      const clear=(p:number[])=>!d.clearance||d.clearance(p[0],p[2],d.levelAt?.(p[0],p[2],wp.y)??0)>=HUMAN_RADIUS+.04;
-     const want=Math.atan2(dz,dx),best=Array.from({length:8},(_,i)=>i*Math.PI/4).map(a=>[params.at[0]+Math.cos(a)*.55,wp.y,params.at[2]+Math.sin(a)*.55,Math.abs(((a-want+Math.PI*3)%(Math.PI*2))-Math.PI)]).filter(outside).filter(clear).sort((p,q)=>p[3]-q[3])[0];
+     const want=Math.atan2(dz,dx),ring=(r:number)=>Array.from({length:8},(_,i)=>i*Math.PI/4).map(a=>[params.at[0]+Math.cos(a)*r,wp.y,params.at[2]+Math.sin(a)*r,Math.abs(((a-want+Math.PI*3)%(Math.PI*2))-Math.PI)]).filter(outside).filter(clear).filter(swingClear).sort((p,q)=>p[3]-q[3])[0];
+     // #427: beside a pivoted leaf, a step further out when the near ring is all in the sweep or against the thing
+     // (0.7 m is at the edge of a standing reach: the body bends a little to a low toggle). With neither ring clear (walls
+     // or a crowd right at the front) she stands at the default point and the leaf may sweep her: a known limit
+     const best=ring(.55)??(pivot?ring(.7):undefined);
      if(best)root=[best[0],best[1],best[2]];
      // Entry 37: a panel of knobs (a def with a tuning knob as well as the power knob) is worked from straight in front of
      // the panel, centred between the knobs, from wherever the Soul comes: never from the side or a diagonal, and never a
@@ -151,7 +167,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    if(def.tags?.includes('tictactoe')){const g=String(e.state?.text??'').padEnd(9,'.').slice(0,9),st=gameStatus(g),names=String(e.state?.players??'').split(',').filter(Boolean),who=(m:'X'|'O')=>names[m==='X'?0:1]??m;
     const head=names.length?`Noughts and crosses: ${who('X')} (X)${names[1]?` against ${names[1]} (O)`:''}; ${st.winner?`${who(st.winner)} won`:st.draw?'a draw':`${who(st.turn)} to play`}`:'Noughts and crosses: a new game, X to play';
     return {id:e.id,name:e.name??def.name.replace(/^core-/,''),text:[head,...[0,1,2].map(r=>[...g.slice(r*3,r*3+3)].map(ch=>ch==='.'?'·':ch).join(' '))].join('\n'),by:null,writable:true};}
-   return {id:e.id,name:e.name??def.name.replace(/^core-/,''),text,...(def.tags?.includes('pinboard')?{notes:pinNotes(e.state??{})}:{}),...(def.tags?.includes('signup')?{title:String(e.state?.title??''),text:[String(e.state?.title??'Sign up'),...pinNotes(e.state??{}).map((n,i)=>`${i+1}. ${n.text}`)].join('\n')}:{}),...(def.tags?.includes('poll')?{title:String(e.state?.title??''),text:[String(e.state?.title??''),pollLines(e.state??{})].join('\n')}:{}),...(def.tags?.includes('posters')?{posters:posterList(e.state??{}).map(p=>({...p,age:posterAge(p),stale:posterStale(p)}))}:{}),...(def.tags?.includes('wanted')?{wanted:wantedList(e.state??{})}:{}),by:typeof e.state?.textBy==='string'&&e.state.textBy&&!def.tags?.some(t=>t==='poll'||t==='signup'||t==='posters'||t==='wanted')?e.state.textBy:null,writable:!!def.tags?.includes('hand-writable')};
+   return {id:e.id,name:e.name??def.name.replace(/^core-/,''),text,...(def.tags?.includes('pinboard')?{notes:pinNotes(e.state??{})}:{}),...(def.tags?.includes('signup')?{title:String(e.state?.title??''),signups:pinNotes(e.state??{}),text:[String(e.state?.title??'Sign up'),...pinNotes(e.state??{}).map((n,i)=>`${i+1}. ${n.text}`)].join('\n')}:{}),...(def.tags?.includes('poll')?{title:String(e.state?.title??''),text:[String(e.state?.title??''),pollLines(e.state??{})].join('\n')}:{}),...(def.tags?.includes('posters')?{posters:posterList(e.state??{}).map(p=>({...p,age:posterAge(p),stale:posterStale(p)}))}:{}),...(def.tags?.includes('wanted')?{wanted:wantedList(e.state??{})}:{}),by:typeof e.state?.textBy==='string'&&e.state.textBy&&!def.tags?.some(t=>t==='poll'||t==='signup'||t==='posters'||t==='wanted')?e.state.textBy:null,writable:!!def.tags?.includes('hand-writable')};
   },
   /** Entry 32: who may lock, unlock and knock on a lockable door. Its owner locks and unlocks it (key outside, thumb-turn
    *  inside); a door nobody owns locks for anyone. Knocking is for the outside (the front) of a closed door. A non-owner
@@ -184,10 +200,12 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    if(typeof state[key]==='boolean')facts[key]=state[key] as boolean;
    if(key==='open'&&typeof state.locked==='boolean')facts.locked=state.locked;
    // Entry 37: a radio that is on says which station it plays ("radio: on, quiet piano"); off, only that it is off.
-   if(state.on===true&&typeof state.station==='string')facts.station=state.station;
+   // #431: a record player that is on says which record it plays, the same way.
+   if(state.on===true)for(const f of CONTACT_EXTRA_FIELDS)if(typeof state[f]==='string')facts[f]=state[f] as string;
    // entry 42: what is inside an open container (names only, at most its few places); nothing while it is shut
-   const ins=state.open===true?containerInside(def):null;
-   if(ins){const slots=new Set(ins.slots.map(s=>s.id)),holds:string[]=[];for(const c of m.children.get(target)??[]){const x=m.entities.get(c);if(x&&slots.has(x.in.slot??''))holds.push(x.name??(m.resolvedDef(x.def)?.name.replace(/^core-/,'')??'something'));}if(holds.length)facts.holds=holds.sort();}
+   // #435: a doorless container (a swap shelf) is always open, and one that keeps a `leftBy` record names who left each thing
+   const ins=containerOpen(def,state)?containerInside(def):null,left=keepsLeftBy(def)?leftByOf(e.state):null;
+   if(ins){const slots=new Set(ins.slots.map(s=>s.id)),holds:string[]=[];for(const c of m.children.get(target)??[]){const x=m.entities.get(c);if(!x||!slots.has(x.in.slot??''))continue;const n=x.name??(m.resolvedDef(x.def)?.name.replace(/^core-/,'')??'something'),by=left?.get(c);holds.push(by?`${n} (left by ${d.soulName?.(by)??'someone'})`:n);}if(holds.length)facts.holds=holds.sort();}
    return facts;
   },
   /** Entry 33: a neon sign's words for a Soul near it (the same nearby rule as `facts`): its owner's text, at most 32
@@ -220,7 +238,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    const bad=whenRefusal(a,state,e.name??'object');if(bad)return fail(bad.code,bad.reason);
    // entry 32: a knock changes nothing in the world; those who hear it are told once
    if(a.name==='knock'&&def.tags.includes('lockable')){d.knock?.(soul,e.id);d.record(soul,e.id,a.name);done();return {ok:true as const};}
-   const text=isGameAction(def,a)?gameProblem(a,state,soul,a.name==='mark'?intent.params?.square??'':undefined):isListAction(def,a)?listProblem(def,a,state,soul,intent.params??{}):contactStateKey(def,a.name)==='text'&&a.name==='write'?boardTextProblem(intent.params?.text):null;if(text)return fail(text.code,text.reason);
+   const text=isGameAction(def,a)?gameProblem(a,state,soul,a.name==='mark'?intent.params?.square??'':undefined):isListAction(def,a)?listProblem(def,a,state,soul,intent.params??{}):contactStateKey(def,a.name)==='text'&&a.name==='write'?boardTextProblem(intent.params?.text):enumParamProblem(def,a,intent.params??{},e.name??'object');if(text)return fail(text.code,text.reason);
    const patch=isGameAction(def,a)?gamePatch(a,state,soul,intent.params?.square):actionPatch(def,a,state,intent.params??{},soul);if(contactStateKey(def,a.name)==='text'&&a.name==='write')patch.textBy=soul.soulId;
    // entry 32: a passage's close re-locks the latch
    if(intent.relock&&a.name==='close'&&typeof state.locked==='boolean')patch.locked=true;

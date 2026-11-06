@@ -22,7 +22,7 @@ function fakeBrowser({ screencast = true } = {}) {
     const c = { opts, addInitScript: async () => {}, close: async () => { log.push('close'); },
       newPage: async () => {
         const page = { on: () => {}, goto: async () => { log.push('goto'); }, waitForFunction: async () => { log.push('arrived'); },
-          evaluate: async () => ({}), screenshot: async () => {},
+          evaluate: async (fn) => { if (fn?.name === 'twoPaintedFrames') log.push('painted'); return {}; }, screenshot: async () => {},
           video: () => (opts.recordVideo ? { path: async () => { const f = join(opts.recordVideo.dir, 'pw-video.webm'); writeFileSync(f, 'load-video'); return f; } } : null),
           ...(screencast ? { screencast: { start: async ({ path }) => { log.push('screencast'); page.cast = path; }, stop: async () => { log.push('stop'); writeFileSync(page.cast, 'arrival-video'); } } } : {}) };
         return page;
@@ -38,7 +38,7 @@ test('a run camera records from arrival by default: no video before the world is
   const cam = await openCamera({ ...o, browser });
   assert.equal(browser.contexts.length, 1);
   assert.equal(browser.contexts[0].opts.recordVideo, undefined, 'the context does not record from page creation');
-  assert.deepEqual(log, ['goto', 'arrived', 'screencast'], 'the take starts only after arrival');
+  assert.deepEqual(log, ['goto', 'arrived', 'painted', 'screencast'], 'the take starts only after arrival, at the first frame painted after it (#1040)');
   const meta = writeRecording({ name: cam.name, o, cam, state: await cam.state(), r: await cam.close() });
   assert.equal(readFileSync(join(dir, 'wide.webm'), 'utf8'), 'arrival-video');
   assert.deepEqual({ start: meta.start, startRequested: meta.startRequested, marks: meta.marks, uncut: meta.uncut, realSpeed: meta.realSpeed }, { start: 'arrival', startRequested: 'arrival', marks: [{ label: 'arrived', atSec: 0 }], uncut: true, realSpeed: true });

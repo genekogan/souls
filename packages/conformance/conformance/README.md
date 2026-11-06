@@ -45,6 +45,11 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `office-desk-20261028.json` | `core-office-desk@2` (no baked scenery chairs): one construction-view draw overrun |
 | `soul-actions-20261101.json` | Soul Actions 1-44 defs over a gallery triangle or draw budget, pinned to their 2026-11-01 revisions |
 | `library-budgets-music-20261105.json` | in-budget music revisions (drum kit, mic stand, jukebox @2); pins nothing |
+| `openings-20261105.json` | `core-tent@2` and `core-field-gate@1` (openings worked by hand); pins nothing |
+| `chalk-20261105.json` | `core-chalk-square@1` (pavement chalk on the painting faculty); pins nothing |
+| `record-player-20261105.json` | the new record player (#431, 368 triangles); pins nothing |
+| `swap-shelf-20261105.json` | `core-swap-shelf@1` (an open shelf on the container faculty, no door, a `leftBy` record); pins nothing |
+| `guestbook-20261105.json` | `core-guestbook@1` (a visitors' book on the sign-up faculty); pins nothing |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
 Repair a range or budget in a new revision and pin what remains.
