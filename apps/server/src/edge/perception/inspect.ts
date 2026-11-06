@@ -18,6 +18,8 @@ const unknown = (id: string) => new EdgeError(404, 'capability.unknown', `"${id}
 const on = (c: EdgeCapability, id: string) => c.target?.id === id || c.object === id || c.id.slice(c.id.indexOf(':') + 1) === id;
 const offerOf = (c: EdgeCapability): Offer => {const params = offerParams(c); return {id: c.id, verb: c.verb, label: c.label, available: c.available, ...(c.blocked ? {why: c.blocked.reason} : {}), ...(Object.keys(params).length ? {params} : {})};};
 
+const partName = (c?: EdgeCapability) => c?.label.match(/\bat ([^[]+?) \[/)?.[1] ?? c?.label.match(/^Walk to ([^[]+?) \[/)?.[1];
+
 /** The thing's identity and children, or null. Only what this Soul may know: a secret place is unknown until found. */
 function identify(L: EdgeLedger, soul: EdgeSoul, id: string, caps: EdgeCapability[]): (Omit<Inspected, 'offers' | 'more'> & {cutOff?: number}) | null {
   const world = L.host.engine.world as {entities: Record<string, {tags?: string[]; human?: unknown; pose?: {p: number[]}; def?: string; support?: {kind?: string; on?: string; by?: string}; name?: string}>};
@@ -52,11 +54,18 @@ function identify(L: EdgeLedger, soul: EdgeSoul, id: string, caps: EdgeCapabilit
   if (!item && !object && !entity && !caps.some(c => on(c, id))) return null;
   const facts = L.contactActuator?.facts(id, soul) ?? null;
   // a part's offers target its parent entity, so its own name is the one its offer label gives ("Sit at Audience Bench [ref]")
-  const labelled = caps.find(c => on(c, id))?.label.match(/\bat ([^[]+?) \[/)?.[1] ?? caps.find(c => on(c, id))?.label.match(/^Walk to ([^[]+?) \[/)?.[1];
+  const labelled = partName(caps.find(c => on(c, id)));
   const name = item?.name ?? (object as {name?: string} | undefined)?.name ?? L.thingName?.(id) ?? entity?.name ?? labelled ?? caps.find(c => on(c, id))?.label ?? id;
   // what rests on it, except what its container keeps out of sight (a shut drawer, a hiding place)
   const contents = Object.entries(world.entities).filter(([cid, e]) => e.support?.on === id && !L.concealedThing?.(cid)).map(([cid, e]) => ({...child(cid, e), kind: 'item'}));
-  return {id, kind: item || entity?.support?.on || caps.some(c => c.verb === 'pick-up' && on(c, id)) ? 'item' : id.includes('/') ? 'part' : 'object', name, ...(facts && Object.keys(facts).length ? {state: facts} : {}), ...(contents.length ? {contents} : {})};
+  // its parts are the ids its offers name under it (`cottage/part-outdoor-bench`), so a drill goes on from here
+  const seen = new Map<string, Child>();
+  for (const c of caps) {
+    const tail = c.id.slice(c.id.indexOf(':') + 1);
+    if (tail.startsWith(id + '/') && !seen.has(tail)) seen.set(tail, {id: tail, kind: 'part', name: partName(c) ?? tail});
+  }
+  const parts = [...seen.values()];
+  return {id, kind: item || entity?.support?.on || caps.some(c => c.verb === 'pick-up' && on(c, id)) ? 'item' : id.includes('/') ? 'part' : 'object', name, ...(facts && Object.keys(facts).length ? {state: facts} : {}), ...(parts.length ? {parts} : {}), ...(contents.length ? {contents} : {})};
 }
 
 /** `GET /v1/edge/inspect/:id`: at most INSPECT_BYTES unless `all`, with `more` counting what was left out. */
