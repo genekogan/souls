@@ -21,10 +21,10 @@
 // event clock never fires a backlog of notes when it comes back.
 import {audioSettings,setAudioSettings,subscribeAudioSettings} from '../audio-settings.ts';
 import { kettleHeat, type WorldModel } from '@sim/world-compiler';
-import { accompanistOf, drumHits, pianoNotes, sungNotes, type Accompanist } from '../../../../mars/viewer/app/engine-view/piano-score.ts';
+import { accompanistOf, crackle, drumHits, PIANO_FADE, pianoEndAt, pianoNotes, pianoReadyAt, recordNotes, sungNotes, type Accompanist } from '../../../../mars/viewer/app/engine-view/piano-score.ts';
 import { RADIO_STATIONS, stationEvents, TUNE, type RadioEvent } from './radio-stations.ts';
 import { makeSinger, micChain, type Singer } from './voice.ts';
-import { ambienceAt, condition, distanceTo, emittersOf, exposureAt, falloff, Movement, treeIndex, treesOf, type Emitter, type Resident, type SoundKind, type Source, type TreeIndex } from './sound-plan.ts';
+import { ambienceAt, condition, distanceTo, emittersOf, exposureAt, falloff, Movement, notesToSound, QueuedNotes, treeIndex, treesOf, type Emitter, type Resident, type SoundKind, type Source, type TreeIndex } from './sound-plan.ts';
 import { nightOf } from './motion.ts';
 import { sharedCoverProbe, type CoverProbe } from '../world-env.ts';
 import { arrivalOver } from '../arrival-marks.ts';
@@ -63,6 +63,7 @@ function tone(c: AudioContext, out: AudioNode, at: number, f0: number, f1: numbe
   o.frequency.setValueAtTime(f0, at); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), at + dur);
   g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(peak, at + Math.min(0.02, dur / 4)); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
   o.connect(g).connect(out); o.start(at); o.stop(at + dur + 0.05);
+  return o;
 }
 function burst(c: AudioContext, out: AudioNode, at: number, dur: number, peak: number, hp: number, type: BiquadFilterType = 'highpass') {
   const s = c.createBufferSource(); s.buffer = noiseBuf; const f = filt(c, type, hp), g = c.createGain();
@@ -72,27 +73,32 @@ function burst(c: AudioContext, out: AudioNode, at: number, dur: number, peak: n
 /** A piano key: a triangle fundamental with a quieter octave, struck and decaying. */
 function pianoKey(c: AudioContext, out: AudioNode, at: number, midi: number, peak: number) {
   const f = 440 * 2 ** ((midi - 69) / 12);
-  tone(c, out, at, f, f, midi < 60 ? 1.8 : 1.3, peak, 'triangle'); tone(c, out, at, f * 2, f * 2, 0.6, peak * 0.22, 'sine');
+  return [tone(c, out, at, f, f, midi < 60 ? 1.8 : 1.3, peak, 'triangle'), tone(c, out, at, f * 2, f * 2, 0.6, peak * 0.22, 'sine')];
 }
 // Entry 14: Souls playing the piano, heard where they are. Notes come from the shared score at depicted world seconds
-// (the hands strike the same onsets); scheduled a short way ahead, each note once.
+// (the hands strike the same onsets); scheduled a short way ahead, each note once. A note sounds only once the arm entry
+// blend has put the hands on the keys (#422), and a note scheduled but not yet started is cancelled when its player stops.
 const PIANO_RADIUS = 24, PIANO_VOLUME = 0.55, PIANO_AHEAD = 0.35, pianoDone = new Map<string, number>();
+const pianoQueued = new QueuedNotes<OscillatorNode>();
 let pianoNear = false, audioNow = 0;
 function playPianos(host: Host, x: number, y: number, z: number) {
   pianoNear = false;
   const now = host.worldSeconds; if (typeof now !== 'number' || !ctx || !master) return;
+  const playing = new Set<string>();
   for (const r of host.residents?.() ?? []) {
     if (r.activity !== 'play-piano' || !r.body) continue;
+    playing.add(r.body);
     const g = falloff(Math.hypot(r.p[0] - x, r.p[1] - y, r.p[2] - z), PIANO_RADIUS, PIANO_VOLUME); if (g <= 0.001) continue;
     pianoNear = true;
-    for (const n of pianoNotes(r.body, now - 0.05, now + PIANO_AHEAD)) {
-      // entry 36: keyed by hand too (the bass and the melody often start together: keyed by time alone, the melody note
-      // on every half bar was dropped since entry 14)
-      const key = `${r.body}:${n.t}:${n.hand}`; if (pianoDone.has(key)) continue; pianoDone.set(key, n.t);
+    // silent while still reaching for the keys and from the run's recorded end; entry 36: keyed by hand too (the bass and the
+    // melody often start together: keyed by time alone, the melody note on every half bar was dropped since entry 14)
+    const ready = pianoReadyAt(now, r.activityAge, PIANO_FADE), end = pianoEndAt(now, r.activityLeft), body = r.body;
+    for (const n of notesToSound(pianoNotes(body, now - 0.05, now + PIANO_AHEAD), ready, end, pianoDone, n => `${body}:${n.t}:${n.hand}`)) {
       const at = audioNow + Math.max(0, n.t - now);
-      pianoKey(ctx, master, at, n.midi, g * n.vel * 0.5); if (n.hand === 1) pianoAt.set(`${r.body}:${n.t}`, at);
+      pianoQueued.add(r.body, at, pianoKey(ctx, master, at, n.midi, g * n.vel * 0.5)); if (n.hand === 1) pianoAt.set(`${r.body}:${n.t}`, at);
     }
   }
+  for (const o of pianoQueued.settle(audioNow, playing)) o.disconnect(); // the player stopped before this note began: it never sounds
   for (const [k, t] of pianoDone) if (t < now - 2) pianoDone.delete(k);
   for (const [k] of pianoAt) if (Number(k.slice(k.lastIndexOf(':') + 1)) < now - 4) pianoAt.delete(k);
 }
@@ -114,7 +120,11 @@ function playJukeboxes(host: Host, x: number, y: number, z: number) {
     if (!jukeboxIds.has(e.id) || !condition(e.spec.when, { ...e.state, ...model.entities.get(e.id)?.state }, night)) continue;
     const g = falloff(distanceTo(e, x, y, z), e.spec.radius, e.spec.volume); if (g <= 0.001) continue;
     jukeboxNear = true;
-    for (const n of pianoNotes('jukebox:' + e.id, now - 0.05, now + JUKEBOX_AHEAD)) {
+    // #431: a record player plays the record on its platter (the sleeve's song); a jukebox its own song
+    const st = { ...e.state, ...model.entities.get(e.id)?.state }, ent = model.entities.get(e.id), def = ent && model.resolvedDef(ent.def);
+    const sleeves = (def?.state as Record<string, { values?: unknown[] }> | undefined)?.record?.values, record = typeof st.record === 'string' && Array.isArray(sleeves) ? st.record : null;
+    const notes = record !== null ? recordNotes(sleeves!.map(String), record, now - 0.05, now + JUKEBOX_AHEAD) : pianoNotes('jukebox:' + e.id, now - 0.05, now + JUKEBOX_AHEAD);
+    for (const n of notes) {
       const key = `${e.id}:${n.t}:${n.hand}`; if (jukeboxDone.has(key)) continue; jukeboxDone.set(key, n.t);
       const at = ctx.currentTime + Math.max(0, n.t - now);
       pianoKey(ctx, master, at, n.midi, g * n.vel * 0.45);
@@ -124,6 +134,11 @@ function playJukeboxes(host: Host, x: number, y: number, z: number) {
     for (let k = Math.ceil((now - 0.05) / 0.5); k * 0.5 < now + JUKEBOX_AHEAD; k++) {
       const key = `${e.id}:b${k}`; if (jukeboxDone.has(key)) continue; jukeboxDone.set(key, k * 0.5);
       if (k % 2) burst(ctx, master, ctx.currentTime + Math.max(0, k * 0.5 - now), 0.07, g * 0.06, 5000);
+    }
+    // a record's surface crackle: a few soft clicks a second, the same for every listener (a pure function of world time)
+    if (record !== null) for (let k = Math.ceil((now - 0.05) / 0.125); k * 0.125 < now + JUKEBOX_AHEAD; k++) {
+      const key = `${e.id}:c${k}`; if (jukeboxDone.has(key)) continue; jukeboxDone.set(key, k * 0.125);
+      if (crackle(k)) burst(ctx, master, ctx.currentTime + Math.max(0, k * 0.125 - now), 0.006, g * 0.05, 3200);
     }
   }
   for (const [k, t] of jukeboxDone) if (t < now - 2) jukeboxDone.delete(k);
@@ -276,8 +291,12 @@ function playSingers(host: Host, x: number, y: number, z: number) {
       if (s && s.with !== who.seed) { s.voice.silence(ctx.currentTime); s.done.clear(); s.with = who.seed; }
       if (!s) { mic ??= micChain(ctx, master); s = { voice: makeSinger(ctx, mic), done: new Set(), with: who.seed }; singers.set(r.body, s); }
       s.voice.out.gain.setTargetAtTime(g, ctx.currentTime, 0.08);
+      // with a piano, the voice keeps to the pianist's audible notes: silent while the hands reach for the keys (#422)
+      const pianist = who.kind === 'piano' ? rs.find(q => q.body === who.seed) : undefined;
+      const ready = pianist ? pianoReadyAt(now, pianist.activityAge, PIANO_FADE) : -Infinity, end = pianist ? pianoEndAt(now, pianist.activityLeft) : Infinity;
       for (const n of sungNotes(who, now - 0.05, now + PIANO_AHEAD)) {
         if (s.done.has(n.t)) continue; s.done.add(n.t);
+        if (n.t < ready - 1e-6 || n.t > end + 1e-6) continue;
         // the moment the piano's note of that second sounds, when it is already scheduled (a singer who starts mid-song
         // joins on the piano's own note: scheduled a tick later from the world clock, it landed 5–10 ms off in take 3)
         const at = pianoAt.get(`${who.seed}:${n.t}`) ?? audioNow + Math.max(0, n.t - now);

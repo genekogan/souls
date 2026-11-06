@@ -2,12 +2,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, linkSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Op, WorldModel } from '@sim/world-compiler';
-import { paintingEasel, planFinishedPainting, type ArtFailure } from './art.ts';
+import { canvasFace, flatCanvas, paintingEasel, planFinishedPainting, type ArtFailure } from './art.ts';
+import { worldDay } from '../god/poster-boards.ts';
 import { PAINTING_RENDERER, PaintingRejected, rasterizePainting, validatePainting, type Painting } from './painting.ts';
 import { ACT_REACH } from '../god/actuators.ts';
 import { STATION_TOL } from '../../../../mars/viewer/engine/work/paint.ts';
 import { BODY_MODEL } from '../../../../mars/viewer/engine/body/model.ts';
 
+/** #430: how far below the feet a flat (ground) canvas may lie and still be drawn on, stooping (a 1 m square on a gentle slope). */
+const FLAT_BELOW = 0.15;
 type Soul = { soulId: string; entityId: string; name: string; owner: string };
 export type PaintingIntent = { target: string; binding: string; actor: string; owner: string; level: number; recipe: Painting; renderer: typeof PAINTING_RENDERER };
 export type PaintingPublished = { target: string; media: string; title: string; maker: string; renderer: typeof PAINTING_RENDERER };
@@ -48,9 +51,11 @@ export function createPaintingService(d: PaintingDeps) {
       if (!e||!def||binding(model,intent.target)!==intent.binding) return fail('painting.target-changed','The easel or its canvas changed while you painted; the current picture has been preserved.');
       const p=model.worldPose(e),feet=body.position;
       if (feet.length!==3||!feet.every(Number.isFinite)||!Number.isFinite(body.scale)||body.scale<=0||body.level!==intent.level||Math.hypot(feet[0]-p.x,feet[2]-p.z)>ACT_REACH) return fail('painting.not-reached','Your body did not finish within reach of the original easel on its admitted level; the previous canvas has been preserved.');
-      const faces=def.make.kind==='gen'&&Array.isArray(def.make.args?.faces)?def.make.args.faces as {media?:boolean;slot?:number;at?:number[];h?:number}[]:[];
-      const canvas=faces.find(f=>f.media&&(f.slot??0)===0);
+      const canvas=canvasFace(def);
       if (!canvas?.at||!Number.isFinite(canvas.at[1])||!Number.isFinite(canvas.h)||canvas.h!<=0) return fail('painting.not-reached','This easel has no reachable canvas face.');
+      // #430: a flat canvas lies on the floor the Soul stands on and is reached stooping (at most the standing low reach up).
+      // Gently sloping ground may leave the canvas a little below the feet (FLAT_BELOW).
+      if (flatCanvas(canvas)) { const y=p.y+canvas.at[1]*p.s; return y<feet[1]-FLAT_BELOW||y>feet[1]+BODY_MODEL.lowReach*body.scale+STATION_TOL?fail('painting.not-reached','The drawing surface is not on the ground you finished on; the previous drawing has been preserved.'):null; }
       const bottom=p.y+(canvas.at[1]-canvas.h!/2)*p.s,top=p.y+(canvas.at[1]+canvas.h!/2)*p.s;
       if (bottom<feet[1]+BODY_MODEL.lowReach*body.scale-STATION_TOL||top>feet[1]+BODY_MODEL.overheadMax*body.scale+STATION_TOL) return fail('painting.not-reached','The canvas is outside your standing painting reach; the previous canvas has been preserved.');
       return null;
@@ -67,13 +72,17 @@ export function createPaintingService(d: PaintingDeps) {
       const png = rasterizePainting(recipe, publication), sha = digest(png), path = join(d.dir, `${sha}.png`), media = `${base}/art/${sha}.png`;
       const plan = planFinishedPainting(model, { kind: 'soul', id: soul.soulId, name: soul.name }, { frame: intent.target, media, title: recipe.title });
       if (!plan.ok) return plan;
-      const state = (plan.ops[0] as unknown as { state: { maker: string } }).state;
+      const state = (plan.ops[0] as unknown as { state: { maker: string; day?: number } }).state;
+      // #430: a fading canvas records the world day it was drawn on (its age is read from it; nothing ticks).
+      const targetDef = model.resolvedDef(model.entities.get(intent.target)!.def);
+      const fades = typeof canvasFace(targetDef)?.fadeDays === 'number' && targetDef?.state?.day?.type === 'number';
+      if (fades) state.day = worldDay();
       const published: PaintingPublished = { target: intent.target, media, title: recipe.title, maker: state.maker, renderer: PAINTING_RENDERER };
       // Immutable PNGs remain in the existing art store. One current pointer per
       // easel; every finished painting adds a small retained file. Identity in
       // the PNG keeps rollback cleanup independent of other world processes.
       const previous = model.entities.get(intent.target)!.state;
-      const note = `painting/1 ${JSON.stringify({ receipt, target: intent.target, maker: state.maker, media, renderer: PAINTING_RENDERER, publication, recipe, previous: { media: previous?.media ?? '', title: previous?.title ?? '', maker: previous?.maker ?? '' } })}`;
+      const note = `painting/1 ${JSON.stringify({ receipt, target: intent.target, maker: state.maker, media, renderer: PAINTING_RENDERER, publication, recipe, previous: { media: previous?.media ?? '', title: previous?.title ?? '', maker: previous?.maker ?? '', ...(fades ? { day: previous?.day ?? 0 } : {}) } })}`;
       let created = false, committed = false;
       try {
         if (!existsSync(path)) {

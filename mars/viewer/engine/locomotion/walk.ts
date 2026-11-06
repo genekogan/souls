@@ -1079,7 +1079,8 @@ function stepWalk(rt: Runtime, ex: Exec, dt: number): StepResult {
     if (ex.detour?.stage === 'going') {
       releaseAll(rt, ex);
       ex.detour.stage = 'waiting';
-      a.human!.activity = 'wait';
+      // #1120: this tick's step reached the aside spot at walking pace, so it stays a walk; the waiting stage says 'wait'
+      // from the next tick, when the body is still (a 'wait' published with this tick's speed broke W21's wait cap).
       return { status: 'running', phase: 'step-aside' };
     }
     if (ex.face !== undefined && Math.abs(angleDelta(a.pose.yaw, ex.face)) > 0.03) {

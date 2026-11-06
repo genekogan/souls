@@ -3,7 +3,7 @@
 The classes, concepts and contracts that make up a Soul world, and how data moves between them.
 [architecture.md](../architecture.md) is the overview by component; this page maps boundaries for reasoning about
 contracts, performance and feature integration.
-For the proposed extraction boundaries and direct imports, see the [Mars dependency inventory](mars-import-inventory.md).
+For the proposed extraction boundaries and direct imports, see the [Mars dependency inventory](mars-import-inventory.md); for a destination per Mars-specific behaviour, asset and tool, the [world-as-data inventory](world-as-data-inventory.md).
 
 This detailed source map was assembled before the public cutover. Line numbers, defaults, performance observations
 and the comparisons with older docs below are historical leads, not current measurements or operational instructions.

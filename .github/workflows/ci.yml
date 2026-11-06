@@ -4,17 +4,27 @@
 # The job matrix is the release gate's CPU contract split for GitHub runners; `scope` picks jobs with the same path
 # map as `tools/test-harness/release-gate.mjs --scope auto` (.github/scripts/ci-scope.mjs). Branch protection requires
 # the single `ci-ok` check. The full Modal gate still qualifies releases (release.yml); CI is the per-PR check.
+# CI window (docs/testing.md#ci-window): a pull request run does its heavy jobs (qualify, smoke) only for a ready PR
+# labelled merge:ready or ci:run; otherwise it runs scope and repo, and ci-ok fails as "full CI deferred" when heavy jobs
+# were selected. Adding either label requests the run (ci-request.yml dispatches this workflow with `pr`), as does
+# `gh workflow run ci.yml --ref <branch> -f pr=<n>`. A requested run is scoped by the PR's paths, not full scope.
 name: ci
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      pr:
+        description: Run this PR's path-scoped CI on its branch (the CI window); empty runs full scope
+        required: false
+        default: ''
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || inputs.pr || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   # Where tools/assets pull keeps its content-addressed download cache (restored by actions/cache below).
@@ -23,24 +33,40 @@ jobs:
   scope:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       matrix: ${{ steps.scope.outputs.matrix }}
       any: ${{ steps.scope.outputs.any }}
       scope: ${{ steps.scope.outputs.scope }}
       smoke: ${{ steps.scope.outputs.smoke }}
+      deferred: ${{ steps.scope.outputs.deferred }}
+      window: ${{ steps.scope.outputs.window }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 22 }
+      # A requested run queues behind any run already in its concurrency group; if that one passed at this head, the
+      # heavy work is done (never re-run a passing check on the same tree).
+      - id: green
+        name: Already green at this head
+        if: github.event_name == 'workflow_dispatch' && inputs.pr != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "green=$(node .github/scripts/ci-scope.mjs green --repo "$GITHUB_REPOSITORY" --sha "$GITHUB_SHA" --self "$GITHUB_RUN_ID")" >> "$GITHUB_OUTPUT"
       - id: scope
         name: Pick jobs from changed paths
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          BASE: ${{ inputs.pr && format('origin/{0}', github.event.repository.default_branch) || github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-          EVENT: ${{ github.event_name }}
+          EVENT: ${{ inputs.pr && 'request' || github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft || false }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GREEN: ${{ steps.green.outputs.green || false }}
         # A push to main and a manual run check everything (FULL_EVENTS); the merge train reads those runs.
-        run: node .github/scripts/ci-scope.mjs --base "$BASE" --head "$HEAD_SHA" --event "$EVENT"
+        run: node .github/scripts/ci-scope.mjs --base "$BASE" --head "$HEAD_SHA" --event "$EVENT" --draft "$DRAFT" --labels "$LABELS" --green-at-head "$GREEN"
 
   # Fast, dependency-free checks of the repo's own tooling; always runs.
   repo:
@@ -50,7 +76,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 22 }
-      - name: Media manifest, CI scope, proof, merge train, hooks, changelog and guard tests
+      - name: Media manifest, CI scope, proof, merge train, restack, hooks, changelog and guard tests
         run: >-
           node --test --test-concurrency=1
           tools/assets/manifest.test.mjs
@@ -60,11 +86,13 @@ jobs:
           .github/scripts/server-test-durations.test.mjs
           .github/scripts/guards.test.mjs
           .github/scripts/merge-train.test.mjs
+          .github/scripts/restack.test.mjs
           .github/scripts/install-hooks.test.mjs
           tools/proof/tier.test.mjs
           tools/proof/gate.test.mjs
           tools/proof/acceptance.test.mjs
           tools/proof/upload.test.mjs
+          tools/coordinator/status.test.mjs
           tools/changelog/compile.test.mjs
           e2e/local-smoke.test.mjs
 
@@ -140,6 +168,10 @@ jobs:
             latency)
               pnpm --filter @sim/server exec node --test --test-concurrency=1 src/owner-response-milestones.test.ts
               ;;
+            soul-actions)
+              # #1061: not a gate step; picked by ci-scope.mjs from its own paths
+              node --test --test-concurrency=4 tools/soul-actions/*.test.mjs
+              ;;
             server)
               node --input-type=module <<'NODE'
           import { spawnSync } from 'node:child_process';
@@ -204,12 +236,20 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # The one required check: passes when every selected job passed (or none was needed).
+  # The one required check: passes when every selected job passed (or none was needed). A deferred run (CI window
+  # closed, heavy jobs selected) fails it: skipped heavy jobs never count as passing.
   ci-ok:
     runs-on: ubuntu-latest
     needs: [scope, repo, qualify, smoke]
     if: always()
     steps:
+      - name: Full CI deferred
+        if: needs.scope.outputs.deferred == 'true'
+        env:
+          WINDOW: ${{ needs.scope.outputs.window }}
+        run: |
+          echo "::error title=Full CI deferred::The CI window is closed for this PR ($WINDOW), so its heavy jobs did not run. Mark it ready and add ci:run (or merge:ready) to run them: docs/testing.md#ci-window"
+          exit 1
       - env:
           SCOPE: ${{ needs.scope.result }}
           REPO: ${{ needs.repo.result }}
