@@ -79,6 +79,18 @@ export function servingRead(method: string, path: string, view?: string): boolea
 export function servingWait(whenServing: () => Promise<void> | null): MiddlewareHandler {
   return async (c, next) => { const w = servingRead(c.req.method, c.req.path, c.req.query('view')) ? whenServing() : null; if (w) await w; return next(); };
 }
+/** Hono's bodyLimit, safe after a middleware has read the body (#1013). bodyLimit reads the request's own stream when
+ *  there is no Content-Length; once a middleware has read the body through Hono's cache (the edge idempotency keys do),
+ *  that stream is spent and getReader() throws "ReadableStream is locked", a 500. Then the cached body is measured; if
+ *  there is none to measure (an interrupted upload, or a raw read outside the cache) the answer is 400, not 500. */
+export function limitBody(maxSize: number, onError: (c: Context) => Response | Promise<Response>): MiddlewareHandler {
+  return async (c, next) => {
+    if (!c.req.raw.bodyUsed) return bodyLimit({maxSize, onError})(c, next);
+    const bytes = await c.req.arrayBuffer().then(b => b.byteLength, () => -1);
+    if (bytes < 0) return c.json({ok: false, code: 'bad-body', message: 'request body could not be read'}, 400);
+    return bytes > maxSize ? onError(c) : next();
+  };
+}
 type Deps = { cfg: Config; db: Db; host: WorldHost; auth: Auth; hub: Hub; brain: Brain; souls: Souls; takes?: TakeArchive; station?:CandidateStationV1; stationV2?:CandidateStationV2; intentV2?:IntentControlV2; edge?:EdgeLedger; god?: GodMode; contextReady?:()=>boolean; contextWait?:(signal:AbortSignal)=>Promise<void>; contextLevelAt?:(x:number,z:number,y:number)=>number; load?:{admission?:Admission;monitor:LoadMonitor;crowded?:(soulId:string)=>{position:number;eta_s:number}|null} };
 
 export function buildApp(d: Deps) {
@@ -101,7 +113,7 @@ export function buildApp(d: Deps) {
   // limit below (edge, travel, art, moderation) otherwise read a chunked body (no content-length) without bound: one
   // anonymous 200 MB POST to /v1/edge/say grew a world by ~90-500 MB. Tighter route limits still apply; god routes keep
   // their own budget-sized limit. 1 MB is ~15x the largest normal JSON body; uploads (16 MB) get 16 MB + 1 MB.
-  app.use('*',async(c,next)=>c.req.method==='GET'||c.req.method==='HEAD'||/\/v1\/god\//.test(c.req.path)?next():bodyLimit({maxSize:bodyCeiling(c.req.path),onError:(c)=>{refusals.note('size','too-large',`${c.req.method} ${c.req.path}`);return c.json({ok:false,code:'too-large',message:'request body is too large'},413);}})(c,next));
+  app.use('*',async(c,next)=>c.req.method==='GET'||c.req.method==='HEAD'||/\/v1\/god\//.test(c.req.path)?next():limitBody(bodyCeiling(c.req.path),(c)=>{refusals.note('size','too-large',`${c.req.method} ${c.req.path}`);return c.json({ok:false,code:'too-large',message:'request body is too large'},413);})(c,next));
   // Continuity (warm after listen): right after a restart the menus' caches are built in slices (EdgeLedger.warmForServing);
   // a listing read waits for that (with a ceiling) instead of building them cold in its own turn. Keep it BEFORE admission.
   if (d.edge) { const edge = d.edge; app.use('/v1/edge/*', servingWait(() => edge.whenServing())); }
@@ -195,7 +207,7 @@ export function buildApp(d: Deps) {
   for(const path of ['/v1/lifecycle','/v1/lifecycle/*','/v1/me','/v1/account/*','/v1/souls','/v1/souls/*','/v1/agent/*'])
     app.use(path,async(c,next)=>{if(d.souls.lifecycle)c.header('Cache-Control','no-store');await next();});
   app.use('/v1/brain',async(c,next)=>{if(d.souls.lifecycle)c.header('Cache-Control','no-store');await next();});
-  app.use('/v1/*',async(c,next)=>bodyLimit({ maxSize: /^\/v1\/(?:souls\/[^/]+\/photo|agent\/photo)$/.test(c.req.path)?360*1024:64*1024, onError: (c) => { refusals.note('size', 'too-large', `${c.req.method} ${c.req.path}`); return c.json({ ok: false, code: 'too-large', message: 'request body is too large' }, 413); } })(c,next));
+  app.use('/v1/*',async(c,next)=>limitBody(/^\/v1\/(?:souls\/[^/]+\/photo|agent\/photo)$/.test(c.req.path)?360*1024:64*1024, (c) => { refusals.note('size', 'too-large', `${c.req.method} ${c.req.path}`); return c.json({ ok: false, code: 'too-large', message: 'request body is too large' }, 413); })(c,next));
 
   // ---- public
   mountWelcomeRoutes(app,d);
