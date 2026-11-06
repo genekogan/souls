@@ -98,6 +98,9 @@ export function createTea(h: TeaHost) {
   // entry 44: an act that starts with a walk lets an idle gesture go first, standing (a hand at the hair after giving a cup
   // dropped 0.10 m per 50 ms as the walk's own gesture fade took it in 0.4 s; the let-go takes 1.1 s)
   const letGoFirst = (steps: Step[]): Step[] => (steps[0]?.verb === 'mars:walk_to' ? [LET_GO, ...steps] : steps);
+  // #628 (Gene, 2026-11-06): what a Soul can do on the way is a step, not a refusal. Whatever else is in hand goes down first.
+  const putDown = (ids: string[]): Step[] => ids.map((id) => ({ verb: 'mars:put_item', params: { item: id, surfaceSlot: 'ground' } }));
+  const heldOther = (body: string, keep: (id: string) => boolean) => Object.values(ents()).filter((x: any) => x?.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === body && !keep(x.id)).map((x: any) => x.id as string);
 
   /** Fill steps for a kettle on a counter: take it, fill it under the nearest tap, put it back where it was. */
   function fillSteps(kettle: string, me: Vec2): Step[] | Refusal {
@@ -236,14 +239,21 @@ export function createTea(h: TeaHost) {
     return best;
   }
   function drinkPlan(body: string, cup: string, me: Vec2, one: boolean): TeaPlan | Refusal {
-    const m = M(), name = m.pathOf(cup), hand = heldBy(cup, body), tea = num(stateOf(cup).tea);
-    if (!hand) return { code: 'tea.not-holding', reason: `Pick up ${name} first; then drink the tea.` };
+    const m = M(), name = m.pathOf(cup), held = heldBy(cup, body), tea = num(stateOf(cup).tea);
     if (tea <= 0.05) return { code: 'tea.cup-empty', reason: `${name} is empty.` };
+    // not in hand: she puts down what else she holds and takes it from where it stands first
+    const pre: Step[] = [];
+    if (!held) {
+      const at = station(cup, me, -0.05);
+      if (!at || !clear(at.st)) return { code: 'tea.not-holding', reason: `${name} is not where you can take it from; pick it up first, then drink the tea.` };
+      pre.push(...putDown(heldOther(body, (id) => id === cup)), walk(at.st, at.face), LET_GO, { verb: 'mars:take_item', params: { item: cup, hand: 'right' } });
+    }
     const sips = one ? 1 : Math.max(1, Math.round(tea / SIP_TEA)), sip = one ? Math.min(tea, SIP_TEA) : tea / sips;
     const spot = tableSpot(body, me), steps: Step[] = [];
     const yaw = ents()[body].pose.yaw as number;
     let face = yaw;
-    if (spot) { drinkers.set(body, spot.st); face = spot.face; if (Math.hypot(spot.st[0] - me[0], spot.st[2] - me[1]) > 0.15) steps.push(walk(spot.st, spot.face)); }
+    steps.push(...pre);
+    if (spot) { drinkers.set(body, spot.st); face = spot.face; if (pre.length || Math.hypot(spot.st[0] - me[0], spot.st[2] - me[1]) > 0.15) steps.push(walk(spot.st, spot.face)); }
     steps.push(LET_GO, { verb: 'mars:cup_v1', params: { item: cup, stage: 'drink', face: r3(face), sips, from: r3(tea), sip: Math.round(sip * 10000) / 10000 } });
     const left = Math.max(0, Math.round((tea - sips * sip) * 1000) / 1000);
     return { steps, summary: `${one ? 'Took a sip of' : 'Drank'} the tea in ${name}${spot ? ` at ${m.pathOf(spot.table)}` : ''} (${sips} sip${sips > 1 ? 's' : ''}); ${left > 0.05 ? `about ${Math.round(left * 10) / 10} of a cup is left` : 'the cup is empty'}.` };
@@ -267,12 +277,11 @@ export function createTea(h: TeaHost) {
     const m = M(), name = m.pathOf(cup), st = stateOf(cup), held = heldBy(cup, body);
     if (num(st.tea) > 0.05) return { code: 'tea.cup-not-empty', reason: `There is still tea in ${name}; drink it first.` };
     if (num(st.brewedTick, -1) < 0) return { code: 'tea.cup-clean', reason: `${name} is already clean.` };
-    const other = Object.values(ents()).find((x: any) => x?.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === body && x.id !== cup);
-    if (other) return { code: 'tea.hands-full', reason: `You are holding ${m.pathOf(other.id)}; put it down first.` };
+    const others = heldOther(body, (id) => id === cup);
     const cp = ents()[cup].pose.p as Vec3; let tap: string | null = null, best = TAP_REACH;
     for (const t of things().taps) { const q = pose(t); if (!q) continue; const d = Math.hypot(q.x - cp[0], q.z - cp[2]); if (d < best) { best = d; tap = t; } }
     if (!tap) return { code: 'tea.no-tap', reason: `There is no tap within ${TAP_REACH} m of ${name} to rinse it at.` };
-    const steps: Step[] = [];
+    const steps: Step[] = putDown(others);
     // from where it stands (a table, a counter) and back there; a mug in hand goes to the nearest table afterwards
     const at = held ? null : station(cup, me, -0.05);
     if (!held && !at) return { code: 'tea.cup-not-down', reason: `${name} is not on a table or counter.` };
@@ -327,15 +336,14 @@ export function createTea(h: TeaHost) {
       planned.delete(soul.entityId);
       return { ...r, steps: letGoFirst(r.steps) };
     }
-    const busy = Object.values(ents()).find((x: any) => x?.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === soul.entityId && !things().kettles.includes(x.id));
-    if (busy) return { code: 'tea.hands-full', reason: `You are holding ${m.pathOf(busy.id)}; put it down first.` };
+    const busy = heldOther(soul.entityId, (x) => things().kettles.includes(x));
     // entry 44: a washed mug has no tea bag in it (said before where the kettle is)
     if (isTeaCupDef(def as never) && stateOf(id).bag === false) return { code: 'tea.no-bag', reason: `${m.pathOf(id)} has been washed and has no tea bag in it.` };
     const kettle = isKettleDef(def as never) ? id : isTeaCupDef(def as never) ? (keptIn(id) ? kettleWithin(id, TABLE_NEAR) : kettleNear(id)) : null;
     if (!kettle) return isTeaCupDef(def as never) ? { code: 'tea.no-kettle', reason: `There is no kettle within ${NEAR_CUP} m of ${m.pathOf(id)}.` } : null;
     const k = heat(kettle), level = num(stateOf(kettle).level), litres = litresOf(defOf(kettle)!, (m.entities.get(kettle)?.params ?? {}) as Record<string, unknown>) || KETTLE_LITRES, cupL = CUP_LITRES / litres;
     const kname = m.pathOf(kettle);
-    const ok = (steps: Step[] | Refusal, summary: string): TeaPlan | Refusal => ('code' in steps ? steps : (planned.set(soul.entityId, kettle), { steps: letGoFirst(steps), summary }));
+    const ok = (steps: Step[] | Refusal, summary: string): TeaPlan | Refusal => ('code' in steps ? steps : (planned.set(soul.entityId, kettle), { steps: [...putDown(busy), ...letGoFirst(steps)], summary }));
     if (action === 'fill') {
       if (level >= 0.98) return { code: 'tea.kettle-full', reason: `${kname} is already full.` };
       return ok(fillSteps(kettle, me), `Filled ${kname} at the tap and put it back on the counter.`);

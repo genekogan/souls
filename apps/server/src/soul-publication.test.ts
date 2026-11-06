@@ -12,11 +12,11 @@ const sources = JSON.parse(readFileSync(dir + 'SOURCES.json', 'utf8'));
 const sha = (b: string | Buffer) => createHash('sha256').update(b).digest('hex');
 const capture = readFileSync(dir + 'instructions.md', 'utf8');
 
-// Keep the historical test identity for release-gate comparison; this release publishes polite + continuity controller 2.12.0 (2.7.0 on R4 plus R5's slowed sentence and lifecycle-pending create wait; 2.8.0 prints refusal alternatives, #824; 2.8.1 prints `failed` for a failed or replaced receipt, #373; 2.8.2 ends a wait once a sit, lie or ride holds its pose, #378; 2.9.0 sends offered ids only, #1093; 2.10.0 adds the resident client, #1096; 2.11.0 adds durable plans, #1100; 2.12.0 wakes on addressed speech, #476).
+// Keep the historical test identity for release-gate comparison; this release publishes polite + continuity controller 2.14.0 (2.7.0 on R4 plus R5's slowed sentence and lifecycle-pending create wait; 2.8.0 prints refusal alternatives, #824; 2.8.1 prints `failed` for a failed or replaced receipt, #373; 2.8.2 ends a wait once a sit, lie or ride holds its pose, #378; 2.9.0 sends offered ids only, #1093; 2.11.0 adds inspect, #1094; 2.12.0 adds the resident client, #1096; 2.13.0 adds durable plans, #1100; 2.14.0 wakes on addressed speech, #476).
 test('SOURCES.json pins every published Soul file by sha: the 2.2.1 controller and guides (soul fix round 1 release candidate), and the retained 1.9 CLI', () => {
   for (const k of ['controllerCli', 'cli', 'skill', 'instructions']) assert.equal(sha(readFileSync(dir + sources[k].file)), sources[k].sha256, k);
-  assert.equal(sources.controllerCli.file, 'eden.mjs'); assert.equal(sources.controllerCli.version, '2.12.0');
-  assert.match(readFileSync(dir + 'eden.mjs', 'utf8'), /const VERSION = "2\.12\.0";/);
+  assert.equal(sources.controllerCli.file, 'eden.mjs'); assert.equal(sources.controllerCli.version, '2.14.0');
+  assert.match(readFileSync(dir + 'eden.mjs', 'utf8'), /const VERSION = "2\.14\.0";/);
   assert.equal(sources.cli.file, 'eden-agent.mjs'); assert.equal(sources.cli.version, '1.9', 'the legacy CLI keeps its version');
   assert.deepEqual(sources.instructions.capture, CAPTURE, 'the server recognises exactly the recorded capture');
   assert.ok(sources.legacy.skill.sha256 && sources.legacy.instructions.sha256, 'the 1.9 guide provenance is kept');
@@ -49,6 +49,15 @@ test('HTTP: the real published files are served by hash; the guide uses configur
   assert.equal(sha(Buffer.from(await (await f.request('/eden.mjs')).arrayBuffer())), sources.controllerCli.sha256);
   assert.equal(sha(Buffer.from(await (await f.request('/eden-agent.mjs')).arrayBuffer())), sources.cli.sha256);
   assert.equal(sha(await (await f.request('/skill.md')).text()), sources.skill.sha256, 'the 2.1 skill has no templates');
+  assert.equal(sha(readFileSync(dir + 'schema-notes.md')), sources.schemaNotes.sha256, 'the reference\'s notes are pinned too');
+  // CTRL-7 (#1099): a short core; the reference is its notes plus the generated schema, cacheable by ETag
+  const core = await (await f.request('/skill.md')).text();
+  assert.ok(Buffer.byteLength(core) <= 3072, 'core skill ' + Buffer.byteLength(core));
+  assert.doesNotMatch(core, /\b(cannot|can't|must not)\b/i, 'the offers say what is possible');
+  const ref = await f.request('/schema.md'), refText = await ref.text(), etag = ref.headers.get('etag')!;
+  assert.match(refText, /\| walk \| via \|/); assert.match(refText, /When things go wrong/);
+  assert.doesNotMatch(refText, /structured intent/, 'a strict act takes offered ids only');
+  assert.equal((await f.app.request('/schema.md', {headers: {'if-none-match': etag}})).status, 304);
   const get = (q: string) => f.app.request('/instructions.md' + q, {headers: {host: 'evil.test', 'x-forwarded-host': 'evil.test'}});
   const mine = await get('?for=K7QX-M2PA'), text = await mine.text();
   assert.equal(mine.status, 200); assert.equal(mine.headers.get('cache-control'), 'no-store');

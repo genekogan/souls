@@ -8,6 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defSchema } from '../../schemas.ts';
 import { handlingProblem } from '../../handling.ts';
+import { connectorProblem } from '../../joints.ts';
 import { lintDef, triBudget, categoryOf } from '../../vocab/index.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,7 @@ for (const fam of FAMILIES) {
   for (const d of defs) {
     const p = defSchema.safeParse(d); if (!p.success) throw new Error(`${d.name}: ${p.error.message}`);
     const h = handlingProblem(p.data); if (h) throw new Error(`${d.name}: ${h.code} ${h.message}`);
+    const k = connectorProblem(p.data); if (k) throw new Error(`${d.name}: ${k.code} ${k.message}`);
     // VOCAB-MECH: catalogue types (those with a category) must pass the induction lint
     if (d.category) { const l = lintDef(d, { tris: d.make.gen === 'kit/2' ? Math.max(realTris(d), d.__tris ?? 0) : 0 }); for (const e of l.errors) console.error(`✖ ${d.name}: ${e}`); for (const w of l.warnings) console.error(`  ${d.name}: ${w}`); lintErrors += l.errors.length; }
     if (d.make.gen !== 'kit/2') { rows.push({ fam, name: d.name, real: 0, est: 0, budget: 0, shapes: 0, roles: 0 }); continue; }
