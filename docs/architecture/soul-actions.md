@@ -4,7 +4,7 @@ Souls now use the things in a world with their own hands. Ask in plain words and
 thing changes at the moment the hand touches it: a lamp lights, a door swings, water runs, the kettle clicks on. The
 change is part of the world: it survives a restart, and every visitor sees the same motion on the same clock.
 
-This page covers Soul Actions entries 1–44. Each entry was accepted with a deterministic native test (including the
+This page covers Soul Actions entries 1–44 and the everyday-life families that follow them (openings: a tent flap and a field gate; public writing: a guestbook). Each entry was accepted with a deterministic native test (including the
 context-size checks below), regression runs, and an uncut real-client recording driven by plain words.
 
 ## How it works
@@ -12,6 +12,12 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Opt-in things.** Hand contact belongs to library defs tagged for it (`hand-operated`, `hand-writable`, `hand-rung`,
   `upright-carry`, containers with an `inside`, the tea defs, and so on). Older revisions of a def keep their old,
   hand-free behaviour, so existing worlds do not change until a god places the new revision.
+- **Storage with and without a door ([#435](https://github.com/genekogan/souls/issues/435)).** A container with an
+  `inside` (entry 42) is open only while its door or drawer is, if its def declares an `open` state. One that declares
+  none has no door: `core-swap-shelf@1` is always open, so what is on it is seen nearby and taken without an open step,
+  and the viewer draws it as an ordinary thing. A container whose def declares a `leftBy` state field records who left
+  each thing in it (item id = Soul id, set when the thing comes to rest from a Soul's hand, pruned to what is still
+  inside). Nearby perception and the take offer name the leaver; god-placed things have none.
 - **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
   crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with
@@ -167,10 +173,10 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Family | What a Soul can do | Plain words that work |
 |---|---|---|
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
-| Doors and openings | Open and close doors, windows, cupboard and locker doors, fridge doors, curtains, blinds and drawers; doors open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "knock on the door", "lock the door" |
+| Doors and openings | Open and close doors, gates (a picket gate and a five-bar field gate), windows, cupboard and locker doors, fridge doors, curtains, blinds, drawers and a tent flap; doors and gates open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "open the tent flap", "close the field gate", "knock on the door", "lock the door" |
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
-| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest" |
-| Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
+| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf" |
+| Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
@@ -196,13 +202,53 @@ context-size checks below), regression runs, and an uncut real-client recording 
   creator may still clear one. A washed-away drawing stays in the square's state until it is drawn over, so the art
   listing (`GET /v1/art`) still names it.
 
+### Openings: a tent flap and a field gate (#427)
+
+Both are data on contacts that already exist; neither has code of its own.
+
+- `core-tent@2` is `core-tent@1` with a doorway pole on the flap's free side and a toggle on it, tinted `valve`. It uses
+  the drawn covering's contact (the curtains' pull cord): the Soul stands in front of the tent, reaches the toggle, and the
+  flap swings open or shut at the contact. It has no hinge component, so the tent adds no door solid to the walk graph.
+  A tent is a place in `here` (an exit), not an object row, so its flap is perceived through its offers: open while
+  shut, close while open. A stretched tent (`sx`, `sz`) is worked at its stretched toggle, and the Soul stands clear of
+  the flap's sweep (a step further out when she must). Standing at the flap she is within the tent's own place, as anyone
+  near a thing-place is, so while she works it her nearby perception is the tent's.
+- `core-field-gate@1` is a five-bar wooden gate (a 1.3 m leaf) on `core-gate@2`'s hinge contact: the `opening`
+  component, the leaf's pivot and a latch tinted `chrome` where the hand goes. Shut, it closes its gap; a walk it walls
+  off opens it by hand on the way and shuts it behind (entry 31). Nearby it says `open`. It is a local fixture, never a
+  far landmark.
+
+### Public writing: a guestbook (#429)
+
+`core-guestbook@1` is a visitors' book propped open on a tall book stand. It is the sign-up sheet's faculty with data
+only; nothing in the code names it:
+
+- Its capacity is its `text` field's declared `lines` (16). A sign-up def that declares none keeps 8, so
+  `core-signup-sheet@1` keeps its capacity and behaviour. Its read changes as described below, as every sign-up
+  list's does.
+- Its first synonym ("guestbook") names it in refusals ("You have already signed the guestbook.") and in the read offer
+  ("a guestbook, 3 names"). A def with none keeps the sheet's words.
+- Its `sign` action declares an optional `text` param: a few words (up to 40 characters, one line) written after the
+  name, "Ben — Lovely garden".
+- It is tagged `keeps-newest`: when the book is full, the next visitor signs on a fresh page and the oldest page (8
+  entries) gives way, instead of the sheet's refusal. The face shows the current page, on the sheet's line geometry, and
+  the hand writes on that page's next line.
+- It declares no `unsign`: an entry stays. Each Soul signs once while her entry is kept.
+
+The read of any sign-up list (a sheet or a guestbook) returns the title and the kept entries, numbered. The entries are
+Souls' own words: each is attributed to its signer by Soul id, the read is marked untrusted (`soul-text`), the summary
+ends "(their words, not world facts)", and the Soul learns one fact per signer, as for a pinboard's notes. Plain words
+name it by its entity name ("sign the guestbook"); the def's other synonyms ("visitors' book") help catalogue search but
+not plain words at a thing.
+
 ## What other Souls perceive
 
 A Soul's `here` frame lists a few nearby things with compact facts, and only for things in the same enclosed place,
 within about 4 m and in plain sight:
 
 - switches and fire: `on`; doors, windows, curtains and drawers: `open` (and `locked` for lockable doors);
-- a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut);
+- a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut); a
+  swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)");
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
   a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
