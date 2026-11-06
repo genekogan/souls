@@ -138,11 +138,12 @@ test('PC06: preflight. An impossible destination is refused before anyone is ask
   assert.deepEqual(w.edge.openReceipts(Ada.soulId), [], 'no receipt was opened');
   // a court the beam fits in but the crew's formation cannot get through the gate of: carry.clearance, named
   const court = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'court', with: 'Bo'}});
-  assert.equal(code(court), 'carry.clearance', JSON.stringify(court)); assert.match(court.reason, /cannot get it to court \(the carrying formation would hit court-wall.*\); each could walk there alone/i, court.reason);
+  // PC07 (#686): the planner stops at its pose budget on this open level, so it is said as a bounded search, with its closest try
+  assert.equal(code(court), 'carry.search-exhausted', JSON.stringify(court)); assert.match(court.reason, /cannot get it to court \(the carrying formation would hit court-wall.*\); each could walk there alone\. That does not prove/i, court.reason);
   assert.doesNotMatch(court.reason, /\b[he]_[0-9a-f]{6,}/, 'no entity ids in the reason');
   // a garden nobody can enter: no route at all, never a proposal
   const vault = await act(w, Ada, {capability: `carry-with:${beam}`, params: {to: 'vault', with: 'Bo'}});
-  assert.equal(code(vault), 'carry.no-route', JSON.stringify(vault)); assert.match(vault.reason, /cannot get it to vault \(the carrying formation would hit vault-wall/i);
+  assert.equal(code(vault), 'carry.search-exhausted', JSON.stringify(vault)); assert.match(vault.reason, /cannot get it to vault \(the carrying formation would hit vault-wall/i);
   assert.equal(w.edge.together.invitesFor(Bo.soulId).length, 0);
   // Bo busy walking does not hide the verdict: the planner is asked alone, without anyone's programme
   const boWalk = ok(await act(w, Bo, {capability: 'walk:yard'})); await w.tick(2); assert.ok(eng.programOf(Bo.entityId), 'Bo is walking');
