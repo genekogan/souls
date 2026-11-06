@@ -53,7 +53,9 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   // #430 2026-11-05: core-chalk-square@1 on the painting faculty; the narrow run found nothing, so this pins no finding.
   const chalk = JSON.parse(readFileSync(new URL('../conformance/chalk-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   const signature = (f: Finding) => JSON.stringify([f.def, f.hash, f.field, f.stage, f.code, f.detail]);
-  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...recordPlayer.findings, ...chalk.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
+  // #442 2026-11-05: repairable bench and cart revisions and their tools; the narrow runs found nothing, so this pins no finding.
+  const repairDefs = JSON.parse(readFileSync(new URL('../conformance/repair-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...recordPlayer.findings, ...chalk.findings, ...repairDefs.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
   const newFindings = report.findings.filter(f => !allowed.has(signature(f)));
   assert.deepEqual(newFindings, [], `Undocumented conformance failures: ${JSON.stringify(newFindings.slice(0, 12))}`);
   assert.deepEqual(report.qualificationGaps, known.qualificationGaps, 'rendering gaps changed: qualify them or document the exact gap');

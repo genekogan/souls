@@ -94,6 +94,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
+| Repair | Fix what's broken with the right tool in hand: a cracked bench slat with a hammer, a flat tyre on a cart with a pump. A broken bench can't take a new sitter until it's repaired. | "repair the bench", "fix the bench", "pump up the flat tyre" |
 | Making | Paint a picture at an easel and leave it there with a title and credit; draw a picture in chalk on a chalk square, which fades over four world days and washes away | "paint at the easel", "draw in chalk" |
 
 ## Making: paintings and chalk
@@ -114,6 +115,14 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Only drawn by hand.** The public hang route refuses an image on a fading canvas (`art.drawn-only`); the world's
   creator may still clear one. A washed-away drawing stays in the square's state until it is drawn over, so the art
   listing (`GET /v1/art`) still names it.
+
+## Repair ([#442](https://github.com/genekogan/souls/issues/442))
+
+- **All data.** A def opts in with `components.repairable`: the tool (a held thing tagged `tool-<tool>`), where the hand works, where the body may stand (the first clear spot wins), the strokes and a `strike` or `pump` motion. It also needs the state `broken`. No code names a def. `core-bench@2` (hammer) and `core-cart@2` (pump) are the first two.
+- **Who breaks things.** Only a world's creator, with the state op (`set` with `broken: true`, or placing it broken). Nothing breaks by itself yet, and a Soul can't break things.
+- **The act.** With the tool in hand, a Soul walks to a stand point and `repair_v1` drives that hand through the strokes on the world tick. The tool never leaves the hand. `broken` clears when the receipt completes, so an interrupted repair leaves the thing broken. A new act waits until the hand has come back.
+- **Refusals.** `repair.no-tool`, `repair.wrong-tool`, `repair.hand-full`, `repair.not-broken`, `repair.no-room`, `repair.occupied`, and `seat.broken` for sitting on a broken bench. A Soul already seated when it breaks stays seated.
+- **Perceived.** A broken thing nearby has a `broken` fact in its own words ("a cracked slat") and a repair offer. A whole one reads as if it had no repair faculty at all. There's no tick work unless someone is repairing.
 
 ## What other Souls perceive
 
