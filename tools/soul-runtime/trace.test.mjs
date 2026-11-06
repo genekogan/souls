@@ -91,6 +91,9 @@ test('managed host trace is off without SOUL_TRACE_FILE, refuses links, and a fa
 test('managed host trace close is bounded: a trace sink that never calls back cannot hold shutdown', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'sim-managed-trace-stall-'));
   t.after(() => rmSync(dir, {recursive: true, force: true}));
+  // close()'s wait timer is unref'd so it can't hold a real shutdown; with a sink that holds nothing open, this keeps the test's own loop alive to see it fire
+  const keep = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(keep));
   let syncWrites = 0;
   const rec = hostRecorder({file: join(dir, 'stall.jsonl'), queued: true, append: () => {}, appendSync: () => { syncWrites++; }, limits: {queuedBytes: 4096, exitBytes: 4096, flushMs: 0}});
   const trace = createHostTrace(rec, {closeWaitMs: 50}), host = fakeHost();

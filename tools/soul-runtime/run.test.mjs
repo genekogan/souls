@@ -157,6 +157,8 @@ test('default evidence (#733 A4): a failed sink disables recording and never cha
 });
 test('default evidence (#733 S2) is queued: no write per row, a stalled sink delays nothing, overflow counts as dropped',async t=>{
  const directory=mkdtempSync(join(tmpdir(),'sim-evidence-queue-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ // close()'s wait timer is unref'd so it can't hold a real shutdown; with a sink that holds nothing open, this keeps the test's own loop alive to see it fire
+ const keep=setInterval(()=>{},1000);t.after(()=>clearInterval(keep));
  let writes=0;const file=join(directory,'evidence.jsonl');
  const recorder=openEvidenceRecorder(file,{writeRecord:()=>{throw Error('no synchronous write in default mode');},appendRecord:(fd,data,_o,done)=>{writes++;appendFile(fd,data,done);}});
  const wrapped=recorder.wrapWorld({read:async()=>({ok:true})});
