@@ -72,7 +72,8 @@ test('refusal classes: only offer counts against M1, and a code nobody listed st
 
 test('the codes the steward named, and the engine codes that reach an act\'s answer, have a class', () => {
   for (const c of ['act.not-an-id', 'seat.none-in-place', 'seat.none-near', 'target.not-in-sight', 'action.invalid-params']) assert.deepEqual(classifyRefusal(c), { class: 'offer', sub: 'resolution' }, c);
-  for (const c of ['route.goal-blocked', 'route.start-blocked', 'use.transition-blocked', 'seat.too-high']) assert.deepEqual(classifyRefusal(c), { class: 'offer', sub: 'route' }, c);
+  for (const c of ['route.goal-blocked', 'route.start-blocked', 'use.transition-blocked', 'seat.too-high', 'seat.out-of-reach', 'seat.inside']) assert.deepEqual(classifyRefusal(c), { class: 'offer', sub: 'route' }, c);
+  assert.deepEqual(classifyRefusal('use.seat-fit'), { class: 'unclassified' }, 'nothing an act can hear; #1087 deletes it');
   for (const c of ['seat.none-free', 'seat.approach-busy', 'gait.dry-ground-required', 'physical.unavailable', 'object.refused', 'ride.refused']) assert.deepEqual(classifyRefusal(c), { class: 'state' }, c);
 });
 
