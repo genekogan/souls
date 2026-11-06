@@ -97,8 +97,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Release.** When the native programme ends, every member's receipt ends together, in one transaction:
     `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (an
     engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the host's
-    programme is stopped. A fade is not that: it is the member's stop (PC09, below). After a restart, guests of a carry that still runs keep their receipts. An operation
-    whose programme is gone is ended on the next sweeps.
+    programme is stopped. A fade is not that: it is the member's stop (PC09, below). A restart is covered under "Restart" below.
 
   - **The journey (PC06).** On open level-0 ground, the native gather walks each member to their grip. The crew lifts
     the load and carries it as one formation, then lays it down at the place's centre. Every observer sees that one
@@ -147,9 +146,11 @@ context-size checks below), regression runs, and an uncut real-client recording 
       own; nothing is resumed for them.
     - **Repeats.** The same member asking again gets the first stop's receipt. Another member's stop completes with
       `shared.stop-asked` and changes nothing. One stop event is logged.
-    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop.
-    - **Restart.** A stop asked before a restart is logged again for the replayed programme; a native stop is
-      idempotent. Full restart qualification is PC10.
+    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop. So is a
+      member's `stand:here` ("stand up / stop what I am doing"): it never releases the crew's programme as a stall (PC10).
+    - **One transaction.** The stop's `edge-stop` and its journal (the op `stopping`, the stop's own receipt) are
+      written together at the sequencer, or not at all. A second stop in the same drain logs nothing and is answered as
+      already asked; a member's fade (below) is written the same way.
     - **Refusals.** A stop after the end is refused `shared.not-running`, one from a non-member `shared.not-member`,
       and an unknown op `shared.unknown-op`.
   - **A member's mind goes away (PC09, [#688](https://github.com/genekogan/souls/issues/688)).** A disconnected mind's
@@ -176,6 +177,25 @@ context-size checks below), regression runs, and an uncut real-client recording 
     - **Not enlisted.** A faded Soul cannot be asked to carry: it is not perceived, so it is not near. A disconnected
       Soul can be asked, but it is never committed without its own `accept` of that revision: the proposal waits,
       names who has not answered, and lapses.
+  - **Restart (PC10, [#689](https://github.com/genekogan/souls/issues/689)).** Nothing new is serialized: the native
+    carry rides the engine's history and the operation rides its invitation row.
+    - **Exact resume.** A running carry has no exact engine snapshot, so a clean shutdown logs its checkpoint
+      (`unsnappable-head`) and the boot replays to it; a durable-clock world also replays a crash to its last persisted
+      tick. In every phase (gather, lift, move, set-down, a stop's cleanup) the op, its revision, claims and load, both
+      receipts and the engine state are what they were, and the carry ends as it would have. There is one carry
+      decision and at most one stop event; a stop is never asked again after a boot.
+    - **Retries.** The same receipt ids read the same state; a `clientRef` replay returns the original receipt; a stale
+      `accept` is `shared.busy` while it runs. A member's started receipt is left to the shared sweep at boot, never
+      lost alone.
+    - **Restored to an earlier moment.** An op whose programme the restored world no longer runs ends `shared.ended`
+      for every member, saying so when the world is from before it started. If a world without the durable clock is
+      restored to before an op ended, the engine would replay its programme: that programme is stopped safely with a
+      logged `edge-stop` (`shared.restored`) at the first tick after the boot, the members' streams get
+      `shared.restored`, and an operator line is logged. The ended receipts keep how it ended. A world restored to
+      before a stop the journal already has (an older backup) is asked to stop again. A programme is taken for the
+      op's only when it has the op's id, is a native carry, and the world is not older than the commit.
+    - **LINK migration.** A Soul the old beam took that is still in a running carry's crew stays where the crew has its
+      body; it is never relocated to a starting place.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station; "put on a record" or "play a record" mean the record player, with the
