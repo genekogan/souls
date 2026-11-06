@@ -181,6 +181,8 @@ type View = {
   /** Library clip layer (clip-library.ts): seconds since `activity` began (undefined: before the record), the activity
    *  and base before it (crossfade), the paired-gesture partner and where it is, metres walked, speaking now. */
   since?: number;
+  /** #1090: this view's own clock for the seat climb: the activity it last saw, when it began, and how long the one before lasted. */
+  climbAct?: string; climbAt?: number; climbPrevAct?: string; climbPrevDur?: number; climbNow?: number;
   prevAct?: string;
   waveSamples?: readonly WaveSample[];
   waveClock?: number;
@@ -905,6 +907,8 @@ export class HumanViews {
       v.running = act === 'jog' || act === 'run' || (typeof f.speed === 'number' && f.speed > RUN_SPEED);
       v.speed = typeof f.speed === 'number' ? f.speed : 0;
       v.since = f.activityAge;
+      v.climbNow = t;
+      if (v.climbAct !== act) { if (v.climbAct !== undefined && v.climbAt !== undefined) { v.climbPrevAct = v.climbAct; v.climbPrevDur = t - v.climbAt; } v.climbAct = act; v.climbAt = t; }
       if (f.restAge !== undefined) v.restFrom = t - f.restAge;
       else if (!REST_ACTS.has(act) && !GAIT_ACTS.has(act)) v.restFrom = t;
       v.restAge = v.restFrom !== undefined && t >= v.restFrom ? t - v.restFrom : undefined;
@@ -929,7 +933,7 @@ export class HumanViews {
         walkW: walk,
         walkT: ((f.walkDist / v.rig.template.walkSpeed) % walkDur + walkDur) % walkDur,
         idleT: (t + (f.id.length * 0.37) % 1) % idleDur,
-        sitW: seatBlend(base, act, f.activityAge, v.prevAct, v.prevDuration, v.seat), // #1090: the climb onto a high seat over its own time
+        sitW: seatBlend(base, act, v.climbAt !== undefined ? t - v.climbAt : undefined, v.climbPrevAct, v.climbPrevDur, v.seat), // #1090: the climb onto a high seat over its own time
         expressionT: t,
         warmW: 0, // no fire position in a take frame
         pose: this.postureGoal(v, e, world, walk > 0.5),
@@ -1573,7 +1577,11 @@ export class HumanViews {
       if (!one || wgt <= 1e-4) continue;
       const body = one.pick.body;
       if (body === 'seat' || body === 'ground-seat') {
-        const d = one.act.getClip().duration, k = one.clip === 'Sitting_Enter' ? smooth(one.time / d) : one.clip === 'Sitting_Exit' ? 1 - smooth(one.time / d) : 1;
+        // #1090: onto (or down from) a high seat the climb follows the engine's own transition time (the take's activity
+        // age), not the clip's: the clip cross-fades in late and would leave the body up there until it snaps down
+        const climb = one === lib.cur && v.seat > SEAT_LIFT_FROM && typeof v.climbAt === 'number' && typeof v.climbNow === 'number' && (one.clip === 'Sitting_Enter' || one.clip === 'Sitting_Exit')
+          ? seatBlend(one.clip === 'Sitting_Enter' ? 'sit-down' : 'stand-up', one.clip === 'Sitting_Enter' ? 'sit-down' : 'stand-up', v.climbNow - v.climbAt, undefined, undefined, v.seat) : null;
+        const d = one.act.getClip().duration, k = climb ?? (one.clip === 'Sitting_Enter' ? smooth(one.time / d) : one.clip === 'Sitting_Exit' ? 1 - smooth(one.time / d) : 1);
         const rest = clipProbe(t, body === 'seat' ? 'Sitting_Idle_Loop' : 'GroundSit_Idle_Loop', 0);
         const seat = body === 'ground-seat' ? GROUND_SEAT : v.seat;
         if (rest) {
