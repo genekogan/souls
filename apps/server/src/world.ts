@@ -191,7 +191,7 @@ export class WorldHost {
   private durableClockV1:boolean;
   private clockFailure:unknown;
   get clockAvailable(){return !this.clockFailure;}
-  assertClockReady():void {if(this.clockFailure)throw new Error('clock-frontier.unavailable');}
+  assertClockReady():void {if(this.clockFailure)throw new Error('clock-frontier.unavailable', { cause: this.clockFailure });}
 
   constructor(db: Db, factory: EngineFactory, seed: string, snapshotEvery: number, worldId = 'toy-1',options?:{durableClockV1?:boolean}) {
     this.worldId = worldId;
@@ -1531,6 +1531,10 @@ export class WorldHost {
   private haltOnFault(error: unknown, why: string) {
     console.error(`[world] engine fault could not be recovered (${why}); the world is paused, the process stays up:`, String(error).slice(0, 800));
     this.paused = true; this.engineFault = String(error).slice(0, 800);
+    // A failed recovery leaves the host half-replayed: its seq can sit behind the log (a plan skipped the newest decisions) and its
+    // state need not match any logged prefix (#1120). Nothing durable may be written from it, so every later tick, drain and
+    // snapshot refuses, naming this fault; a restart boots from the log. The process stays up, as before.
+    this.clockFailure ??= new Error(`engine.halted: ${why}: ${this.engineFault}`, { cause: error });
   }
   /** The fault that paused this world (edge worlds), if any. */
   engineFault: string | null = null;
@@ -1540,6 +1544,7 @@ export class WorldHost {
     void this.enqueue('rules', author, { clockRate: rate, why });
   }
   setPaused(p: boolean, author: string) {
+    this.assertClockReady();   // a halted or clock-failed host stays as it is (#1120)
     this.cancelFrameBatch();
     if (p) { void this.enqueue('admin', author, { action: 'pause' }); this.tickOnceForQueue(); this.paused = true; this.flush(); this.heartbeat(); }   // tell clients now: no tick will
     else { this.paused = false; this.last = performance.now(); this.carry = 0; void this.enqueue('admin', author, { action: 'resume' }); }
