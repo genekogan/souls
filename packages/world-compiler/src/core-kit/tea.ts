@@ -62,6 +62,8 @@ export const kettleWord = (p: KettlePhase) => p;
 export type Vessel = { grip: [number, number, number]; opening: [number, number, number]; outlet: [number, number, number]; outletAngle: number; pour: 'rose' | 'spout' };
 export const isKettleDef = (def: { name?: string; version?: number; tags?: readonly string[]; slots?: readonly { kind: string }[] } | undefined) => !!def && !!def.tags?.includes('kettle') && !!def.slots?.some((s) => s.kind === 'carry');
 export const isTeaCupDef = (def: { tags?: readonly string[]; state?: Record<string, unknown> } | undefined) => !!def && !!def.tags?.includes('tea-cup') && !!def.state?.tea;
+/** #435: a thing eaten from the hand, bite by bite: tagged `edible`, with its `left` (0..1) and `bites` in its state. */
+export const isFoodDef = (def: { tags?: readonly string[]; state?: Record<string, unknown> } | undefined) => !!def && !!def.tags?.includes('edible') && !!def.state?.left && !!def.state?.bites;
 
 const kettlePalette = { shell: '#e6dfcf', steel: '#b9bfc3', dark: '#2f2b29', switch: '#d0621f' };
 const kettle: DefInput = {
@@ -149,4 +151,49 @@ const campSink: DefInput = {
   actions: (vocab.find((d) => d.name === 'core-desk-lamp')! as unknown as DefInput).actions!.map((a) => ({ ...structuredClone(a), label: a.name === 'switch-on' ? 'Turn on the sink tap' : 'Turn off the sink tap' })) as DefInput['actions'],
 } as unknown as DefInput;
 
-export const TEA_DEFS: DefInput[] = [kettle, cup, campSink];
+// #435: food eaten from the hand on entry 44's cup motion. Each is no wider than the mug (the palm's side hold is MUG.wrapOut
+// from the axis) and about as tall (the top comes to the lips). `left` falls at each bite's own moment; what is left is drawn
+// by `when` shapes on it and stays in the hand. Everything that differs between two foods is here, in the def.
+const foodActions = (word: string) => [{ name: 'eat', label: `Eat the ${word}`, then: [{ op: 'set', field: 'left', value: 0 }] }, { name: 'bite', label: `Take a bite of the ${word}`, then: [{ op: 'set', field: 'left', value: 0 }] }] as DefInput['actions'];
+const foodState = (bites: number) => ({ left: { type: 'number', min: 0, max: 1, default: 1 }, bites: { type: 'number', min: 1, max: 8, default: bites } }) as DefInput['state'];
+const applePalette = { skin: '#b5322a', flesh: '#efe4c0', stem: '#5a3d22', leaf: '#4f7a32' };
+const apple: DefInput = {
+  schema: 'def/1', name: 'core-apple', version: 1,
+  description: 'A red apple, carried and eaten from the hand in three bites. It looks bitten after a bite and is a core at the end.',
+  tags: ['kitchen', 'item', 'food', 'edible', 'recorded-item'], synonyms: ['apple', 'red apple'], form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.004, shapes: [
+    // whole, and once bitten: the round apple (a pale bite in its side once bitten)
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0.002], [0.026, 0], [0.041, 0.024], [0.04, 0.06], [0.022, 0.084], [0, 0.078]], segments: 9, tint: 'skin', when: '@left>0.5' },
+    { kind: 'sphere', at: [0.031, 0.048, 0], r: 0.024, segments: 5, tint: 'flesh', when: '@left>0.5&@left<=0.8' },
+    // twice bitten: a pale waist between what is left of the skin
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0.024, 0.018], [0.018, 0.04], [0.022, 0.068]], segments: 7, tint: 'flesh', when: '@left>0.05&@left<=0.5' },
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0], [0.032, 0.008], [0, 0.02]], segments: 7, tint: 'skin', when: '@left>0.05&@left<=0.5' },
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0.066], [0.03, 0.074], [0, 0.086]], segments: 7, tint: 'skin', when: '@left>0.05&@left<=0.5' },
+    // the core: a thin pale stalk with a dark foot and crown
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0], [0.019, 0.012], [0.009, 0.034], [0.009, 0.056], [0.019, 0.074], [0, 0.084]], segments: 6, tint: 'flesh', when: '@left<=0.05' },
+    // always: the stem; the leaf falls with the first bite
+    { kind: 'cyl', at: [0, 0.092, 0], r: 0.0024, h: 0.02, segments: 5, tint: 'stem' },
+    { kind: 'box', at: [0.012, 0.094, 0], size: [0.022, 0.002, 0.012], round: 0, tint: 'leaf', when: '@left>0.8' }] } } as unknown as DefInput['make'],
+  params: Object.fromEntries(Object.entries(applePalette).map(([k, v]) => [k, { type: 'color', default: v, doc: `${k} colour` }])) as DefInput['params'], palette: applePalette,
+  state: foodState(3), components: { carryable: { mass: 0.15, grips: 1 } } as DefInput['components'],
+  size: { box: [0.09, 0.1, 0.09] }, actions: foodActions('apple'),
+} as unknown as DefInput;
+const bunPalette = { crust: '#c98a3e', crumb: '#f3e3bd', seed: '#f4edd8' };
+const bun: DefInput = {
+  schema: 'def/1', name: 'core-bun', version: 1,
+  description: 'A tall round bun, carried and eaten from the hand in two bites. It looks bitten after the first and only a heel of crust is left at the end.',
+  tags: ['kitchen', 'item', 'food', 'edible', 'recorded-item'], synonyms: ['bun', 'bread roll', 'roll'], form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.004, shapes: [
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0], [0.036, 0], [0.043, 0.014], [0.044, 0.042], [0.034, 0.07], [0.014, 0.08], [0, 0.081]], segments: 10, tint: 'crust', when: '@left>0.6' },
+    { kind: 'box', at: [0.01, 0.079, 0.006], size: [0.007, 0.003, 0.004], round: 0, tint: 'seed', when: '@left>0.6' }, { kind: 'box', at: [-0.008, 0.079, -0.01], size: [0.007, 0.003, 0.004], round: 0, tint: 'seed', when: '@left>0.6' },
+    // bitten: the lower half with its pale crumb open on top
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0], [0.036, 0], [0.043, 0.014], [0.042, 0.042], [0, 0.042]], segments: 10, tint: 'crust', when: '@left>0.05&@left<=0.6' },
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0.042], [0.038, 0.042], [0.016, 0.066], [0, 0.07]], segments: 8, tint: 'crumb', when: '@left>0.05&@left<=0.6' },
+    // the heel of crust left at the end
+    { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0], [0.03, 0], [0.034, 0.012], [0, 0.02]], segments: 8, tint: 'crust', when: '@left<=0.05' }] } } as unknown as DefInput['make'],
+  params: Object.fromEntries(Object.entries(bunPalette).map(([k, v]) => [k, { type: 'color', default: v, doc: `${k} colour` }])) as DefInput['params'], palette: bunPalette,
+  state: foodState(2), components: { carryable: { mass: 0.08, grips: 1 } } as DefInput['components'],
+  size: { box: [0.09, 0.085, 0.09] }, actions: foodActions('bun'),
+} as unknown as DefInput;
+
+export const TEA_DEFS: DefInput[] = [kettle, cup, campSink, apple, bun];
