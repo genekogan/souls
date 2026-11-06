@@ -34,7 +34,7 @@ export type VocabContext = {
   here?: string[];
   /** r3 quality (cases 23/29): where the nearest thing for a spot-based verb (swing, fish, cycle = a bicycle dock…) is anywhere in
    *  this world, ignoring offer reach. `null`: none exists in this world (the refusal is terminal); `undefined`: not spot-based. */
-  elsewhere?: (verb: string) => {label: string; place?: string; placeId?: string; distance: number; by?: string} | null | undefined;
+  elsewhere?: (verb: string) => {label: string; title?: string; place?: string; placeId?: string; distance: number; by?: string} | null | undefined;
   /** ROUTE-RECHECK: whether a place (or a place inside it) has a spot for this verb anywhere in the world (a reading spot),
    *  offered or not; unset: unknown (every named place counts). */
   hasSpot?: (verb: string, placeId: string) => boolean;
@@ -86,7 +86,9 @@ const SYNONYMS: Record<string, string[]> = {
 /** VOCAB-MECH: everyday words for god things' actuator actions (only used when such an action is offered). */
 const ACT_ALIASES: Record<string, string> = {'turn-on': 'switch-on', 'turn-off': 'switch-off', shut: 'close', 'shut-off': 'switch-off', extinguish: 'put-out', 'blow-out': 'put-out', ignite: 'light', kindle: 'light', 'light-up': 'light', 'fill-up': 'fill', drain: 'empty', wipe: 'erase', 'wipe-off': 'erase', clean: 'erase', 'take-down': 'unpin', remove: 'unpin', 'put-up': 'pin', 'sign-up': 'sign', 'cross-off': 'unsign', 'cross-out': 'unsign', 'strike-off': 'unsign', answer: 'reply', 'reply-to': 'reply', 'write-back': 'reply', claim: 'take-on', 'take-up': 'take-on', 'put-up-poster': 'pin',
   // entry 37: a radio's station (only when a change-station action is offered)
-  'change-the-station': 'change-station', 'change-the-radio-station': 'change-station', 'change-radio-station': 'change-station', 'switch-the-station': 'change-station', 'switch-station': 'change-station', 'next-station': 'change-station', tune: 'change-station', retune: 'change-station', 'tune-the-radio': 'change-station'};
+  'change-the-station': 'change-station', 'change-the-radio-station': 'change-station', 'change-radio-station': 'change-station', 'switch-the-station': 'change-station', 'switch-station': 'change-station', 'next-station': 'change-station', tune: 'change-station', retune: 'change-station', 'tune-the-radio': 'change-station',
+  // #431: a record player's record (only when a put-on-record action is offered; the record itself is the `record` param)
+  'put-on-a-record': 'put-on-record', 'put-a-record-on': 'put-on-record', 'put-on-the-record': 'put-on-record', 'play-a-record': 'put-on-record', 'play-the-record': 'put-on-record', 'play-record': 'put-on-record', 'play-records': 'put-on-record', 'spin-a-record': 'put-on-record', 'stop-the-record': 'switch-off'};
 // L3 (server reliability): a resolve tokenises every place's and offer's names on every call; the same few thousand names
 // repeat, so their tokens are kept (bounded; callers get their own copy, so an in-place sort never reaches the memo)
 const TOKEN_MEMO = new Map<string, string[]>(), TOKEN_MEMO_MAX = 50_000;
@@ -152,7 +154,7 @@ const INTENTS: [RegExp, string, ('keep')?][] = [
   [/^(?:please\s+)?garden\b|\b(?:gardening|weed(?:ing)?|(?:tend|tending|water|watering|plant|planting) (?:the |some |my )?(?:garden )?(?:beds?|seeds?|flowers?|vegetables?|plots?|plants?|crops?))\b/, 'garden'],
   [/\byoga\b/, 'yoga'], [/\bstretch(?:es|ing)?\b/, 'stretch'], [/\bdanc(?:e|es|ing)\b|\bboogie\b/, 'dance'], [/\bjump(?:s|ing)?\b|\bhop\b/, 'jump'],
   [/\b(?:read|reading|reads)\b/, 'read'], [/\b(?:write|writing)\b/, 'write'],
-  [/\bpiano\b/, 'play-piano'], [/\b(?:paint|painting|easel)\b/, 'paint'], [/\b(?:cook|cooking|bake|baking)\b/, 'cook'],
+  [/\bpiano\b/, 'play-piano'], [/\b(?:paint|painting|easel|chalk)\b/, 'paint'], [/\b(?:cook|cooking|bake|baking)\b/, 'cook'],
   [/\b(?:music|instrument|sing|singing)\b/, 'play-music'], [/\b(?:craft|crafts|carve|carving|woodwork|pottery|weave|weaving|whittle)\b/, 'craft'],
   [/\b(?:game|games|cards|board game|play a game)\b/, 'play-game'],
   [/\b(?:eat|eating|meal|lunch|dinner|breakfast|snack)\b/, 'eat'], [/\b(?:drink|coffee|tea)\b/, 'drink'],
@@ -750,7 +752,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     const e = ctx.elsewhere?.(v); if (e === undefined) break;
     // within offer reach but not offered: every such spot is taken (another body is at the gym's dumbbells)
     if (e && e.distance <= SPOT_REACH && v === 'sing' && e.by) return unknown(`${e.by} is already singing at the nearest microphone, ${e.label}${e.place && !e.label.endsWith(` in ${e.place}`) ? ` in ${e.place}` : ''} (about ${Math.round(e.distance)} m away), and a microphone takes one singer at a time. Ask again when ${e.by} has finished; nothing else was chosen.`);
-    if (e && e.distance <= SPOT_REACH) return unknown(`${SPOT_ACTIVITIES[v].label} is not free right now: the nearest, ${e.label}${e.place && !e.label.endsWith(` in ${e.place}`) ? ` in ${e.place}` : ''} (about ${Math.round(e.distance)} m away), is in use by someone. Ask again in a minute or two; nothing else was chosen.`);
+    if (e && e.distance <= SPOT_REACH) return unknown(`${e.title ?? SPOT_ACTIVITIES[v].label} is not free right now: the nearest, ${e.label}${e.place && !e.label.endsWith(` in ${e.place}`) ? ` in ${e.place}` : ''} (about ${Math.round(e.distance)} m away), is in use by someone. Ask again in a minute or two; nothing else was chosen.`);
     return unknown(elsewhereReason(v, ctx, `${SPOT_ACTIVITIES[v].label} is not offered within reach of where you are.`));
   }
   if (!pool.length) return unknown(`No "${verb}" capability is offered to this Soul right now. Things you can do: ${ctx.caps.filter(c => c.id.endsWith(':here')).map(c => c.id).slice(0, 12).join(', ')} (and walk:<place>, stroll:<place>, read:<place>); read capabilities again.`, ctx.caps.filter(c => c.id.endsWith(':here')));
