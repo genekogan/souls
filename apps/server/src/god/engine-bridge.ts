@@ -26,6 +26,7 @@ import { tokenHit } from '../edge/ledger/vocabulary.ts';
 import {outdoorRegionExclusions} from '../edge/ledger/region-arrival.ts';
 import { doorInGap, freeDoorOpening, isDoorDef, isShut } from './doors.ts';
 import { dryingOps } from './garden.ts';
+import { fadingIds } from '../art/art.ts';
 import { createWatering, type Watering } from './watering.ts';
 import { createTea, type Tea } from './tea.ts';
 import { createContactActuatorService } from './contact-actuator.ts';
@@ -439,11 +440,17 @@ export class EngineBridge {
   private gardenTick(tick: number) {
     const l = this.host.living; if (!l || !(l.dayTicks > 0)) return;
     const day = Math.floor(Math.max(0, tick - l.origin) / l.dayTicks);
+    // #430: the clock set back also changes how far a drawing has faded
+    if (this.gardenDay !== null && day < this.gardenDay) this.noteFading(day, this.gardenDay);
     if (this.gardenDay === null || day < this.gardenDay) { this.gardenDay = day; return; }
     if (day === this.gardenDay) return;
-    const days = Math.min(3, day - this.gardenDay); this.gardenDay = day;
-    setImmediate(() => { try { const ops = dryingOps(this.god.model, days); if (ops.length) this.god.engineAct(ops as never, `garden: ${days} day(s) of drying`, () => {}); } catch (e) { this.log(`garden drying: ${(e as Error).message}`); } });
+    const days = Math.min(3, day - this.gardenDay), prev = this.gardenDay; this.gardenDay = day;
+    setImmediate(() => { try { const ops = dryingOps(this.god.model, days); if (ops.length) this.god.engineAct(ops as never, `garden: ${days} day(s) of drying`, () => {}); } catch (e) { this.log(`garden drying: ${(e as Error).message}`); }
+      // #430: a fading drawing's perceived line follows the world day (no edit: its age is read from its drawn day)
+      this.noteFading(day, prev); });
   }
+  /** #430: re-derive the perceived line of every drawing whose fade may differ between these two world days (writes nothing). */
+  private noteFading(day: number, prev: number) { try { const ids = fadingIds(this.god.model, day, prev); if (ids.length) this.notePerceive(ids, false); } catch (e) { this.log(`fading: ${(e as Error).message}`); } }
   private checkProjectionSoon() {
     if (!this.readinessChecks.size || this.readinessQueued) return;
     this.readinessQueued = true;
@@ -1912,14 +1919,15 @@ export class EngineBridge {
         const loose=asset.category==='item'&&(asset as {handling?:{carryCrew:[number,number];small?:true}}).handling;
         if(loose&&!loose.small&&x.support?.kind!=='in-hand'){
           const mass=(asset as {massKg?:number}).massKg??0,need=Math.max(loose.carryCrew[0],Math.ceil(mass/MAX_KG_PER_CARRIER));
-          const block=this.layers.refusal(x.id,soul)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
+          // PC04 (#683, PC02 §1): a `shared-carry` load can be proposed as a carry with other Souls (behind the sharedCarry flag)
+          const sharedDef=this.edge?.sharedCarry?this.model.entities.get(x.id):undefined,sdef=sharedDef&&this.model.resolvedDef(sharedDef.def),shareable=!!sharedDef&&!!sdef?.tags.includes('shared-carry');
+          // PC06 (#685, PC02 §4): the solo refusal names the way to carry it with others when that is on offer
+          const block=this.layers.refusal(x.id,soul)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.${shareable&&need<=Math.min(loose.carryCrew[1],8)?` Ask others to carry it with you: carry-with:${x.id} (to: a place, with: who).`:''}`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
           const id=`carry:${x.id}`,label=`Carry ${name(x.id)} with both hands, then lay it down (to: a place name)${need>1?`; it needs ${need} carriers`:''}`;
           caps.push({id,verb:'carry',label,target:{id:x.id,kind:'object'},available:!block,...(block?{blocked:block}:{}),params:{to:{type:'string',maxLength:100}}});
           if(!block)plans.set(id,{label,steps:[...stand,{verb:'mars:carry',params:{crew:[soul.entityId],item:x.id,to:{x:here[0],z:here[1],yaw:x.pose.yaw??0}}}]});
-          // PC04 (#683, PC02 §1): a `shared-carry` load can be proposed as a carry with other Souls (behind the
-          // sharedCarry flag). Proposing moves nobody: it is a together invitation, so the plan has no body steps.
-          const sharedDef=this.edge?.sharedCarry?this.model.entities.get(x.id):undefined,sdef=sharedDef&&this.model.resolvedDef(sharedDef.def);
-          if(sharedDef&&sdef?.tags.includes('shared-carry')){
+          // Proposing moves nobody: it is a together invitation, so the plan has no body steps.
+          if(sharedDef&&shareable){
             const crew:[number,number]=[need,Math.min(loose.carryCrew[1],8)],sid=`carry-with:${x.id}`;
             const sblock=this.layers.refusal(x.id,soul)??(need>crew[1]?{code:'carry.crew-too-large',reason:`${name(x.id)} needs more carriers than it has grips.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
             const slabel=`Carry ${name(x.id)} with other Souls (asks them first; ${crew[0]}–${crew[1]} carriers; to: a place name, with: who)`;

@@ -4,7 +4,7 @@
 // `object:<entity>:switch-off`, walks up to it, reaches out, and the lamp's state changes in the world (an engine edit:
 // in the ledger, broadcast to viewers, never the god's to undo). Nothing in the edge changes: the object framework's own
 // capabilities, admission, receipts and body plans carry it.
-import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, gameSquareOf, gameStatus, pollOptions, containerInside, containerOpen, containerHidden, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, signupCapacity, signupNoun, gameSquareOf, gameStatus, pollOptions, containerInside, containerOpen, containerHidden, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { isContactActuator, CONTACT_REACH } from './contact-actuator.ts';
 import { isPosterAction, isWantedAction, posterProblem, posterPatch, wantedProblem, wantedPatch } from './poster-boards.ts';
@@ -199,6 +199,8 @@ export function pinPatch(a: { name: string }, state: Record<string, unknown>, so
 }
 /** Entry 25: a sign-up sheet (one line per signer: their own name) and a poll (one vote per Soul). */
 const signerName = (soul: EdgeSoul) => (soul.name || 'a Soul').replace(/[\n,—|:]/g, ' ').trim().slice(0, 40);
+/** #429: the few words a sign action takes with the name, when its def declares a `text` param (the guestbook). */
+const signupWordsField = (def: StoredDef, a: { name: string }) => { const f = def.actions?.find(x => x.name === a.name)?.params?.text; return a.name === 'sign' && f?.type === 'string' ? f : null; };
 export const isSignupAction = (def: StoredDef, a: { name: string }) => !!def.tags?.includes('signup') && (a.name === 'sign' || a.name === 'unsign');
 export const isPollAction = (def: StoredDef, a: { name: string }) => !!def.tags?.includes('poll') && a.name === 'vote';
 /** A board whose lines several Souls own (pinboard notes, sign-up names, poll votes). */
@@ -221,10 +223,15 @@ export function listProblem(def: StoredDef, a: { name: string }, state: Record<s
   if (isWantedAction(def, a)) return wantedProblem(a, state, soul, params);
   if (isPinAction(def, a)) return pinProblem(a, state, soul, a.name === 'pin' ? params?.text : undefined);
   if (isSignupAction(def, a)) {
-    const names = pinNotes(state), mine = names.some(n => n.by === soul.soulId);
-    if (a.name === 'unsign') return mine ? null : { code: 'object.not-yours', reason: 'Your name is not on this sheet; only a signer crosses their own name off.' };
-    if (mine) return { code: 'object.state', reason: 'Your name is already on this sheet.' };
-    if (names.length >= SIGNUP_MAX) return { code: 'object.state', reason: `The sheet is full (${SIGNUP_MAX} names).` };
+    // #429: capacity, noun and page turning come from the def (signupCapacity / signupNoun / `keeps-newest`); the sheet's words stay
+    const names = pinNotes(state), mine = names.some(n => n.by === soul.soulId), noun = signupNoun(def), cap = signupCapacity(def);
+    if (a.name === 'unsign') return mine ? null : { code: 'object.not-yours', reason: noun ? `Your name is not in the ${noun}; only a signer crosses their own name off.` : 'Your name is not on this sheet; only a signer crosses their own name off.' };
+    if (mine) return { code: 'object.state', reason: noun ? `You have already signed the ${noun}.` : 'Your name is already on this sheet.' };
+    if (names.length >= cap && !def.tags.includes('keeps-newest')) return { code: 'object.state', reason: `The ${noun ?? 'sheet'} is full (${cap} names).` };
+    const field = signupWordsField(def, a);
+    // optional words: blank is no words; inner line breaks collapse (listPatch), so only length and control characters refuse
+    const w = typeof params?.text === 'string' ? params.text.replace(/[\r\n]+/g, ' ').trim() : params?.text;
+    if (field && w !== undefined && w !== '') { const bad = boardTextProblem(w, field.max, 1); return bad && noun ? { ...bad, reason: bad.reason.replace('the board', `the ${noun}`) } : bad; }
     return null;
   }
   if (isPollAction(def, a)) {
@@ -244,8 +251,11 @@ export function listPatch(def: StoredDef, a: { name: string }, state: Record<str
   if (isWantedAction(def, a)) return wantedPatch(a, state, soul, params);
   if (isPinAction(def, a)) return pinPatch(a, state, soul, params.text);
   if (isSignupAction(def, a)) {
-    const names = pinNotes(state).filter(n => n.by !== soul.soulId);
-    if (a.name === 'sign') names.push({ text: signerName(soul), by: soul.soulId });
+    let names = pinNotes(state).filter(n => n.by !== soul.soulId);
+    // #429: a full list tagged keeps-newest turns to a fresh page: its oldest page gives way
+    if (a.name === 'sign' && def.tags.includes('keeps-newest') && names.length >= signupCapacity(def)) names = names.slice(Math.min(names.length, SIGNUP_MAX));
+    const words = signupWordsField(def, a) && typeof params.text === 'string' ? params.text.replace(/\s+/g, ' ').trim() : '';
+    if (a.name === 'sign') names.push({ text: words ? `${signerName(soul)} — ${words}` : signerName(soul), by: soul.soulId });
     return { text: names.map(n => n.text).join('\n'), textBy: names.map(n => n.by).join(',') };
   }
   const votes = pollVotes(state).filter(v => v.by !== soul.soulId), i = pollChoice(state, params.choice);
@@ -258,9 +268,36 @@ function stepBack(def: StoredDef, a: Action, motion: { root: [number, number, nu
   if (!isListAction(def, a) || typeof yaw !== 'number') return [];
   return [{ verb: 'walk_to', params: { to: [motion.root[0] + Math.sin(yaw) * 0.8, motion.root[2] + Math.cos(yaw) * 0.8], standoff: 0 } }];
 }
+/** #431: the enum fields a def action sets from its params (a record player's `record` from `{param: 'record'}`). */
+function enumParamFields(def: StoredDef, a: Action): { param: string; field: string; values: string[] }[] {
+  const out: { param: string; field: string; values: string[] }[] = [];
+  for (const t of a.then) {
+    if (t.op !== 'set' || typeof t.value !== 'object' || t.value === null || !('param' in (t.value as object))) continue;
+    const f = (def.state as Record<string, { type?: string; values?: unknown[] }>)[t.field];
+    if (f?.type === 'enum' && Array.isArray(f.values)) out.push({ param: (t.value as { param: string }).param, field: t.field, values: f.values.map(String) });
+  }
+  return out;
+}
+const enumKey = (v: unknown) => String(v ?? '').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim();
+/** #431: a param set into an enum field must name one of its values (case and spacing forgiven); null when every one does. */
+export function enumParamProblem(def: StoredDef, a: Action, params: Record<string, unknown>, name: string): Refusal | null {
+  for (const e of enumParamFields(def, a)) {
+    const k = enumKey(params[e.param]); if (k && e.values.some(v => enumKey(v) === k)) continue;
+    const said = String(params[e.param] ?? '').trim().slice(0, 40);
+    return { code: 'capability.params', reason: `${name} has no ${e.field} ${said ? `“${said}”` : 'named'}; choose one of: ${e.values.join(', ')}.` };
+  }
+  return null;
+}
+/** The params with each enum pick replaced by the field's own spelling of it. */
+function canonicalParams(def: StoredDef, a: Action, params: Record<string, unknown>): Record<string, unknown> {
+  const picks = enumParamFields(def, a); if (!picks.length) return params;
+  const out = { ...params };
+  for (const e of picks) { const k = enumKey(params[e.param]), v = k ? e.values.find(v => enumKey(v) === k) : undefined; if (v !== undefined) out[e.param] = v; }
+  return out;
+}
 /** A def action's state patch: the `then` ops, or a pinboard's composed list. */
 export function actionPatch(def: StoredDef, a: Action, state: Record<string, unknown>, params: Record<string, unknown>, soul: EdgeSoul): Record<string, unknown> {
-  return isListAction(def, a) ? listPatch(def, a, state, soul, params) : thenPatch(a, state, params);
+  return isListAction(def, a) ? listPatch(def, a, state, soul, params) : thenPatch(a, state, canonicalParams(def, a, params));
 }
 /** The Soul-facing params of a def action: its declared string params (board text). */
 function actionParams(a: Action): Record<string, { type: 'string'; maxLength: number; description?: string; optional?: true }> {
@@ -293,7 +330,7 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
     out[a.name] = {
       label: a.label, roles: 'anyone', reach: 'anywhere', params: actionParams(a), movesBody: true,
       available: (s: BuiltLike, ctx: any) => check(s, ctx),
-      validate: (s: BuiltLike, p: Record<string, unknown>, ctx: any) => check(s, ctx) ?? (isListAction(def, a) ? listProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (isGameAction(def, a) && a.name === 'mark' ? gameProblem(a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p?.square ?? '') : null) ?? (a.name === 'write' && 'text' in actionParams(a) ? boardTextProblem(p?.text, actionParams(a).text.maxLength) : null),
+      validate: (s: BuiltLike, p: Record<string, unknown>, ctx: any) => check(s, ctx) ?? (isListAction(def, a) ? listProblem(def, a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p ?? {}) : null) ?? (isGameAction(def, a) && a.name === 'mark' ? gameProblem(a, (s.key && host.stateOf?.(s.key)) || s.state || {}, ctx.soul, p?.square ?? '') : null) ?? (a.name === 'write' && 'text' in actionParams(a) ? boardTextProblem(p?.text, actionParams(a).text.maxLength) : null) ?? enumParamProblem(def, a, p ?? {}, nameOf(s)),
       apply: (s: BuiltLike, params: Record<string, unknown>, ctx: any) => {
         const can = s.key && a.name === 'water' ? host.watering?.(ctx.soul, s.key, a.name) : null;
         if (can && !('code' in can)) return { state: s, result: { action: a.name, summary: can.summary }, bodies: [{ label: a.label, steps: can.steps }] };
