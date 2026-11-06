@@ -1814,7 +1814,8 @@ export class Together {
     }
     if (held && ((held.kind === 'food' && /^(?:eat|have|finish)\b/.test(t) && (/\b(?:it|this|that|food|snack|bread|apple|cake)\b/.test(t) || t === 'eat')) || (held.kind === 'cup' && /^(?:drink|sip|have|finish)\b/.test(t) && (/\b(?:it|this|that|tea|coffee|cup|drink)\b/.test(t) || t === 'drink'))))
       return {capability: (held.kind === 'food' ? 'eat' : 'drink') + ':held', note: `${raw}: ${held.name} you are holding`};
-    const pick = /^(?:pick\s+up|take|grab|get|fetch|collect|pluck|borrow)\s+(?:me\s+)?(?:(?:a|an|some|the|one)\s+)?(.+)$/.exec(t);
+    // #435: "take a bite of the bun" is a bite, not a take
+    const pick = /^(?!take\s+(?:a\s+)?bite\b)(?:pick\s+up|take|grab|get|fetch|collect|pluck|borrow)\s+(?:me\s+)?(?:(?:a|an|some|the|one)\s+)?(.+)$/.exec(t);
     // #435: "take the book from the swap shelf" names the container it is kept in; when a take out of that container is on
     // offer, the storage words (vocabulary storeWords) resolve it, not the item-kind words below
     const from = pick && /^.+?\s+(?:out\s+of|out\s+from|from|off\s+of|off)\s+(.+)$/.exec(pick[1]), boxWords = from ? from[1].split(/\s+/).filter(w => !['the', 'a', 'an', 'my', 'your'].includes(w)) : [];
