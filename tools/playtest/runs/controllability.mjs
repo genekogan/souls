@@ -8,16 +8,28 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonl } from '../lib/jsonl.mjs';
 
-export const SCORER = Object.freeze({ id: 'controllability', version: '1', path: 'tools/playtest/runs/controllability.mjs' });
+export const SCORER = Object.freeze({ id: 'controllability', version: '3', path: 'tools/playtest/runs/controllability.mjs' });
 export const SCORECARD_SCHEMA = 'soul-run-scorecard/1';
 
 // ---- refusal classes (#1097 A2, #628). Only `offer` counts against M1.
 const ADMISSION = new Set(['world.busy', 'world.crowded', 'world.starting', 'world.unavailable', 'soul.busy', 'soul.slow-down', 'rate-limited', 'client.rate', 'account.rate', 'budget.world', 'request.budget', 'lifecycle-pending']);
 // The world could not read the command: the agent's words or parameters named nothing it offers.
-const RESOLUTION = new Set(['params.invalid', 'place.unknown', 'place.ambiguous', 'place.root', 'place.position-unknown', 'soul.unknown', 'soul.name-ambiguous', 'steer.unknown-place', 'steer.params', 'ride.steer-params', 'body.ref-unknown', 'body.ref-unsupported', 'body.unsupported', 'object.action-unknown', 'shared.unknown-op', 'recipient.invalid', 'rps.choose', 'slot.unknown', 'content.book-unknown', 'content.text-required', 'conversation.unknown', 'entity.unknown', 'actor.unknown', 'control.unknown', 'game.which-board', 'gesture.policy-unsupported']);
+const RESOLUTION = new Set(['params.invalid', 'place.unknown', 'place.ambiguous', 'place.root', 'place.position-unknown', 'soul.unknown', 'soul.name-ambiguous', 'steer.unknown-place', 'steer.params', 'ride.steer-params', 'body.ref-unknown', 'body.ref-unsupported', 'body.unsupported', 'object.action-unknown', 'shared.unknown-op', 'recipient.invalid', 'rps.choose', 'slot.unknown', 'content.book-unknown', 'content.text-required', 'conversation.unknown', 'entity.unknown', 'actor.unknown', 'control.unknown', 'game.which-board', 'gesture.policy-unsupported',
+  // Words sent to the strict act (#1093): the same mistake as capability.unknown on the words contract, so it scores the same.
+  'act.not-an-id',
+  // The words asked for a seat, water or a target the world does not have there; the answer offers the alternatives. seat.none-near
+  // also covers "no free seat near", which is a judgement: a seat's being taken has its own code, seat.none-free.
+  'seat.none-in-place', 'seat.none-near', 'target.not-in-sight', 'swim.not-swimmable', 'swim.unavailable',
+  // Engine codes that reach an act's answer through canPerform (ledger launch): the steps the world compiled from the command.
+  'target.unknown', 'action.invalid-params', 'action.unknown-verb', 'gait.invalid', 'body.motion-unavailable']);
 // The world named or accepted the place and then found no way there. Not a state change unless the world moved, and the
 // world's own offer is what failed, so it counts against M1 under its own label (the #874 geometry sample folds in here).
-const ROUTE = new Set(['place.unreachable', 'route.unreachable', 'travel.unreachable', 'place.unwalkable', 'place.unsupported-floor', 'place.no-standing-room', 'room.no-standing-room', 'carry.no-route', 'carry.search-exhausted', 'use.no-approach', 'object.out-of-reach', 'tea.cup-unreachable']);
+const ROUTE = new Set(['place.unreachable', 'route.unreachable', 'travel.unreachable', 'place.unwalkable', 'place.unsupported-floor', 'place.no-standing-room', 'room.no-standing-room', 'carry.no-route', 'carry.search-exhausted', 'use.no-approach', 'object.out-of-reach', 'tea.cup-unreachable',
+  // Engine codes on the same path. Those that only end a started receipt (route.blocked, route.occupied, action.failed,
+  // actor.busy, walk.goal-occupied) are not answers to an act, so they are not here; WAIT_CODES hold the act and never refuse it.
+  'route.goal-blocked', 'route.link-unusable', 'route.unknown-level', 'route.region-geometry-invalid', 'route.start-blocked', 'body.no-clearance', 'use.transition-blocked',
+  // A fixed fact about this seat and this body, not something that moved. seat.out-of-reach is #1087's replacement for seat.too-high.
+  'seat.too-high', 'seat.out-of-reach', 'seat.inside']);
 // The world's state answering: a seat taken, a ride gone, hands full, a game in progress. Listed one by one on purpose, so a
 // new code is unclassified and named on the card until someone decides. Left out for that reason: carry.crew-too-small,
 // carry.crew-too-large, carry.too-tall and carry.ground-only, which an agent could read before asking.
@@ -37,11 +49,14 @@ place.dynamic place.items-full place.marks-full pose.no-room
 presentation.already-reserved presentation.closed presentation.doors-closed presentation.ended presentation.entered presentation.full presentation.no-ticket presentation.not-open presentation.presenter presentation.standby-wait
 project.done project.unfinished receipt.lost-on-restart revision.stale
 ride.aboard ride.aloft ride.already-aboard ride.automatic ride.blocked ride.closed ride.departed ride.full ride.keeping-place ride.landing ride.not-aboard ride.not-boarding ride.on-ground ride.seated ride.steered ride.unavailable
-seat.inside seat.taken seat.yours shared.busy shared.full shared.left shared.not-member shared.not-running shared.revision-changed shared.stop-asked shared.stop-requested shared.too-far
+seat.approach-busy seat.none-free seat.taken seat.yours shared.busy shared.full shared.left shared.not-member shared.not-ready shared.not-running shared.revision-changed shared.stop-asked shared.stop-requested shared.too-far
 site.under-construction sky.daylight sky.no-clock slot.none-free soul.faded soul.not-in-sight stall.released state.asleep state.changed state.safe-stop-timeout steer.unavailable surface.full swim.no-deep-middle
 tea.counter-blocked tea.cup-clean tea.cup-empty tea.cup-full tea.cup-not-down tea.cup-not-empty tea.hands-full tea.kettle-cold tea.kettle-empty tea.kettle-full tea.kettle-hot tea.kettle-not-down tea.kettle-on tea.no-bag tea.no-cup tea.no-kettle tea.no-tap tea.not-boiled tea.not-holding tea.tap-blocked
 together.nobody-leading travel.failed walk.stuck wallet.insufficient
-water.hands-full water.no-source water.no-tap water.no-vessel water.plant-blocked water.plant-wet water.source-empty water.tap-blocked water.vessel-empty water.vessel-full`.split(/\s+/));
+water.hands-full water.no-source water.no-tap water.no-vessel water.plant-blocked water.plant-wet water.source-empty water.tap-blocked water.vessel-empty water.vessel-full
+activity.readiness-committed carrier.aloft carrier.busy classroom.owned-host-control-required construction.committed construction.one-job construction.site-busy disassembly.one-job
+eat.bowl-empty food.service-in-use food.unavailable gait.dry-ground-required gait.unsupported-body object.changed object.refused physical.unavailable punt.unsupported-water
+rest.native-seat-required ride.refused route.region-full serve.bowl-not-empty shuffle.dry-ground-required stand.seat-claim-changed stand.unsupported`.split(/\s+/));
 
 /** One refusal code → {class: 'offer'|'state'|'admission'|'unclassified', sub?}. A code nobody listed stays unclassified. */
 export function classifyRefusal(code) {
@@ -54,7 +69,7 @@ export function classifyRefusal(code) {
 }
 
 // ---- what a model decision did (M2, M3)
-const ACT_VERBS = new Set(['act', 'object', 'travel']);
+const ACT_VERBS = new Set(['act', 'object', 'travel', 'plan']);
 const SAY_VERBS = new Set(['say', 'converse']);
 const REPLY_VERBS = new Set(['ack', 'result']);
 const WAIT_VERBS = new Set(['wait', 'listen']);
@@ -86,7 +101,8 @@ export function seatDecisions(file) {
   return { decisions, wakeBytes };
 }
 
-const verbsOf = (d, stepAt) => d.toolLines.map((n) => stepAt.get(n)?.verb ?? null);
+const isPlanCall = (s) => s.verb === 'plan' && s.args[0] !== '--status';   // plan --status only reads
+const verbsOf = (d, stepAt) => d.toolLines.map((n) => { const s = stepAt.get(n); return s?.verb === 'plan' && !isPlanCall(s) ? 'plan-status' : s?.verb ?? null; });
 /** act > say > reply > read > wait > other > text: what the decision is counted as. */
 export function decisionKind(verbs, hasText = false) {
   if (verbs.some((v) => ACT_VERBS.has(v))) return 'act';
@@ -154,9 +170,68 @@ function startedAt(id, steps, packs = []) {
   return at.length ? Math.min(...at) : null;
 }
 
+/** What an act call printed, as an object or null. A model seat sees a non-zero exit as "Exit code 2\n<stdout>", sometimes in
+ *  text blocks, and the strict contract's act.not-an-id exits 2: unread, that refusal would leave M1's denominator. */
+export function actOutput(out) {
+  const text = Array.isArray(out) ? out.filter((b) => b?.type === 'text').map((b) => b.text).join('') : out;
+  if (text && typeof text === 'object') return text;
+  if (typeof text !== 'string') return null;
+  try { const o = JSON.parse(text.replace(/^Exit code \d+\n/, '')); return o && typeof o === 'object' ? o : null; } catch { return null; }
+}
+
+/** Did an intention's first act work? Accepted, or refused by the world's state or admission: yes. An offer refusal: no.
+ *  An unclassified refusal or an unreadable answer: unknown, never a success. */
+export function firstActResult(a) {
+  if (!a || a.state === 'unknown' || (a.state === 'refused' && a.class === 'unclassified')) return null;
+  return !(a.state === 'refused' && a.class === 'offer');
+}
+
+// ---- plans (#1100): one model decision hands the resident client several steps, and the client closes the owner's message.
+const PLAN_OVER = new Set(['done', 'failed', 'replaced']);
+/** Every plan this seat saw reported, in time order: the `plan` call itself, pending, plan --status, and the listen that woke it
+ *  (a refused step's designed path, which the harness logs in listen.jsonl and not in the transcript). Each step's latest state,
+ *  and how the plan ended. A step and its replacement are two steps, so a repaired refusal still counts, even with the same id. */
+function planReports(steps, listenRows = []) {
+  const plans = new Map(), parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
+  const reports = [
+    ...steps.filter((s) => ['plan', 'pending', 'listen'].includes(s.verb)).map((s) => ({ at: s.doneMs ?? s.atMs ?? 0, o: actOutput(s.out), s })),
+    ...listenRows.map((r) => ({ at: Date.parse(r.t) || 0, o: parse(r.stdout), s: null })),
+  ].sort((a, b) => a.at - b.at);
+  for (const { o, s } of reports) {
+    for (const v of [o?.plan, ...(Array.isArray(o?.planEnded) ? o.planEnded : [])]) {
+      if (!v?.id) continue;
+      if (!plans.has(v.id)) plans.set(v.id, { for: v.for ?? null, steps: new Map(), ended: null });
+      const rec = plans.get(v.id);
+      for (const x of v.steps ?? []) { const key = `${x.n}:${x.id}`, again = rec.steps.get(key)?.state === 'refused' && x.state !== 'refused'; rec.steps.set(again ? `${key}:again` : key, x); }
+      if (s && PLAN_OVER.has(v.state)) rec.ended = { state: v.state, step: s };   // a wake only ever reports a stopped plan
+    }
+  }
+  return plans;
+}
+const planStepRow = (x) => {
+  if (x.state === 'refused') return { state: 'refused', code: x.code ?? null, ...classifyRefusal(x.code) };
+  if (x.receipt) return { state: 'accepted', receipt: x.receipt, capability: x.id };
+  return { state: 'unknown', why: 'no later report of this plan step' };
+};
+/** One `plan` call → a row per step, as an act call is one row. A plan refused before it ran counts each step it named as wrong. */
+function readPlan(s, plans, counted) {
+  const o = actOutput(s.out), base = { line: s.resultLine ?? s.line, atMs: s.atMs, doneMs: s.doneMs, viaPlan: true };
+  if (!o) return [{ ...base, words: s.args[0] ?? null, state: 'unknown', why: s.isError ? 'CLI error' : 'output not JSON' }];
+  if (o.accepted === false) {
+    if (o.code === 'plan.no-fix') return [];   // nothing was asked of the world
+    const wrong = o.problems?.length ? o.problems : [o];
+    return wrong.map((p) => ({ ...base, words: p.id ?? s.args[0] ?? null, state: 'refused', code: p.code ?? null, ...classifyRefusal(p.code) }));
+  }
+  const id = o.plan?.id;
+  if (!id) return [{ ...base, words: s.args[0] ?? null, state: 'unknown', why: 'no plan in the answer' }];
+  if (counted.has(id)) return [];   // a replacement step: already a row of its plan
+  counted.add(id);
+  return [...plans.get(id).steps.values()].map((x) => ({ ...base, words: x.id, for: plans.get(id).for, ...planStepRow(x) }));
+}
+
 // One act call → accepted, refused with its class, or unknown (a CLI error or output we cannot read).
 function readAct(s) {
-  const o = s.out && typeof s.out === 'object' ? s.out : null;
+  const o = actOutput(s.out);
   if (o?.accepted === false) return { state: 'refused', code: o.code ?? null, ...classifyRefusal(o.code) };
   if (!s.isError && o && (o.accepted === true || o.receipt?.id)) return { state: 'accepted', receipt: o.receipt?.id ?? null, capability: o.receipt?.capability ?? o.resolved ?? null, for: o.for ?? null };
   return { state: 'unknown', why: s.isError ? 'CLI error' : o ? 'no accepted or receipt field' : 'output not JSON' };
@@ -182,13 +257,21 @@ function scoreSeat(sr, seat, packs) {
   const seatPacks = packs.filter((p) => p.seat === seat);
 
   const acts = steps.filter((s) => (s.verb === 'act' || s.verb === 'object') && !(reasons.get(s.turn) === 'onboard'));
+  const plans = planReports(steps, readJsonl(join(sr.playtestDir, 'seats', seat, 'listen.jsonl'))), planCounted = new Set();
   const actRows = acts.map((s) => ({ line: s.resultLine ?? s.line, atMs: s.atMs, doneMs: s.doneMs, words: s.args[0] ?? null, ...readAct(s) }));
+  for (const s of steps) if (isPlanCall(s) && reasons.get(s.turn) !== 'onboard') actRows.push(...readPlan(s, plans, planCounted));
 
   // Which message each act and reply belongs to: the world's `for`, the id the seat named, or the seat's latest ack.
   const closedAt = new Map(), resultOf = new Map(), ackAt = new Map();
   for (const s of steps) {
     if (s.verb === 'ack' && MSG.test(s.args[0] ?? '')) { if (!ackAt.has(s.args[0])) ackAt.set(s.args[0], s); }
     if (s.verb === 'result' && MSG.test(s.args[0] ?? '') && !resultOf.has(s.args[0])) { resultOf.set(s.args[0], s); closedAt.set(s.args[0], s.line); }
+  }
+  // The client closes a plan's message itself. The seat knows only once a report says so; until then it is an open intention.
+  for (const p of plans.values()) if (p.for && p.ended && !resultOf.has(p.for)) {
+    const outcome = p.ended.state === 'done' ? 'done' : 'failed', s = p.ended.step;
+    resultOf.set(p.for, { verb: 'result', args: [p.for, outcome], out: { outcome }, line: s.line, resultLine: s.resultLine, atMs: s.atMs, doneMs: s.doneMs, viaPlan: true });
+    closedAt.set(p.for, s.line);
   }
   let current = null;
   const actFor = new Map();
@@ -198,6 +281,7 @@ function scoreSeat(sr, seat, packs) {
       const r = actRows.find((x) => x.line === (s.resultLine ?? s.line));
       if (r) { r.intention = r.for ?? current; actFor.set(r.line, r.intention); }
     }
+    if (isPlanCall(s)) for (const r of actRows.filter((x) => x.viaPlan && x.line === (s.resultLine ?? s.line))) { r.intention = r.for ?? current; actFor.set(r.line, r.intention); }
     if (s.verb === 'result' && s.args[0] === current) current = null;
   }
 
@@ -214,7 +298,7 @@ function scoreSeat(sr, seat, packs) {
     if (row.onboarding) return row;
     for (const n of d.toolLines) {
       const s = stepAt.get(n); if (!s) continue;
-      const named = REPLY_VERBS.has(s.verb) ? s.args[0] : (s.verb === 'act' || s.verb === 'object') ? actFor.get(s.resultLine ?? s.line) : null;
+      const named = REPLY_VERBS.has(s.verb) ? s.args[0] : (s.verb === 'act' || s.verb === 'object' || isPlanCall(s)) ? actFor.get(s.resultLine ?? s.line) : null;
       if (named) { row.message = named; break; }
     }
     if (!row.message && prev?.turn === d.turn && prev.message) row.message = prev.message;
@@ -236,7 +320,9 @@ function scoreSeat(sr, seat, packs) {
     const delivered = m.deliveredMs ?? m.sentAtMs;
     const startMs = firstAccepted?.receipt ? startedAt(firstAccepted.receipt, steps, seatPacks) : null;
     const m4At = startMs ?? firstAccepted?.doneMs ?? null;
-    const m4From = delivered != null && m4At != null && delivered > m4At ? m.sentAtMs : delivered;
+    // Reached the seat only after the start, or no record of reaching it: count from when the owner sent it.
+    const m4FromSent = m.deliveredMs == null || (m4At != null && delivered > m4At);
+    const m4From = m4FromSent ? m.sentAtMs : delivered;
     const acts = mine.map((r) => ({ words: r.words, state: r.state, code: r.code ?? null, class: r.class ?? null, sub: r.sub ?? null, receipt: r.receipt ?? null, capability: r.capability ?? null, world: r.state !== 'accepted' ? null : r.receipt ? receiptOutcome(r.receipt, steps, seatPacks) : 'unknown', line: r.line }));
     const declared = scriptEntries.find((e) => e.text === m.text);
     return {
@@ -246,10 +332,9 @@ function scoreSeat(sr, seat, packs) {
       result: outcome,
       acts,
       turns: turns.length, turnsByKind: turns.reduce((a, r) => ({ ...a, [r.kind]: (a[r.kind] ?? 0) + 1 }), {}),
-      firstActSucceeded: mine.length ? !(mine[0].state === 'refused' && mine[0].class === 'offer') && mine[0].state !== 'unknown' : null,
-      // A message first seen in the output of the act that started the receipt was seen after the start: count from when it was sent.
+      firstActSucceeded: firstActResult(mine[0]),
       m4Sec: m4From != null && m4At != null && m4At >= m4From ? sec(m4At - m4From) : null,
-      m4Basis: startMs != null ? 'receipt started event' : m4At != null ? 'act call returned' : null,
+      m4Basis: m4At == null ? null : `${startMs != null ? 'receipt started event' : 'act call returned'}${m4FromSent ? ', from when it was sent' : ''}`,
       correction: declared?.correction === true || (declared?.correction == null && m.text != null && CORRECTION.test(m.text)),
       correctionBasis: declared?.correction != null ? 'spec' : 'text',
       cancel: m.text != null && CANCEL.test(m.text),
@@ -320,7 +405,7 @@ export function scoreRun(sr, { answers = [], scorer = null } = {}) {
   const M1 = metric({
     value: denom ? ratio(denom - classes.offer, denom) : null, numerator: denom - classes.offer, denominator: denom, missing: { unclassified: unclassified.length, unreadable: unknownActs, ...missing }, classes,
     unclassifiedCodes: [...new Set(unclassified)], refusedCodes: refused.reduce((a, r) => ({ ...a, [r.code ?? 'none']: (a[r.code ?? 'none'] ?? 0) + 1 }), {}),
-    firstActOfIntention: { value: ratio(withAct.filter((i) => i.firstActSucceeded).length, withAct.length), denominator: withAct.length },
+    firstActOfIntention: { value: ratio(withAct.filter((i) => i.firstActSucceeded).length, withAct.length), denominator: withAct.length, unknown: bodyIntentions.filter((i) => i.acts.length && i.firstActSucceeded == null).length },
     acceptedThenFailed: acts.filter((a) => a.state === 'accepted' && a.receipt).filter((a) => { const s = seen.find((x) => x.actRows.includes(a)); return receiptOutcome(a.receipt, sr.steps[s.seat], packs) === 'failed'; }).length,
     basis: 'act and object calls after onboarding (a travel call counts as an act for M2 and M3, not here), from the world\'s answer to each call; 1 - offer refusals / classified acts. State and admission refusals stay in the denominator and do not count against it. A repair attempt is a new act, so firstActOfIntention is the stricter reading.',
     ...(none ? { reason: none } : !denom ? { reason: 'no act in this run' } : {}),
