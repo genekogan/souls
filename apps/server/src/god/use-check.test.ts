@@ -217,3 +217,25 @@ test('use-check: a 2.05 m god stool is sat on; a 2.2 m one is out of reach', { t
   assert.ok(await w.until(() => w.edge.receipt(w.soul.soulId, r.receipt.id)?.phase === 'completed'), 'sat on the 2.05 m stool');
   assert.deepEqual(w.E.rt?.violations ?? [], []);
 });
+
+// #1090: a god seat's top reaches the engine body while seated (what the client draws the hips at) and is cleared on rising
+test('seat render height: seated on a god seat, the body carries the seat top; standing clears it', { timeout: 180_000 }, async (t) => {
+  const w = await setup(t);
+  const me = w.host.engine.world.entities[w.soul.entityId] as any, [x, z] = [me.pose.p[0], me.pose.p[2]];
+  const seat = (name: string, h: number) => ({ schema: 'def/1', name, version: 1, tags: ['furniture', 'seat'], form: 'point', size: { box: [0.5, h, 0.5] },
+    make: { kind: 'gen', gen: 'kit/2', args: { shapes: [{ kind: 'box', at: [0, h / 2, 0], size: [0.5, h, 0.5] }] } },
+    slots: [{ id: 'seat', kind: 'seat', p: [0, h, 0], yaw: 0, height: h, accepts: { tags: ['body'] }, capacity: 1 }], components: { seat: { height: h } } });
+  w.act([{ op: 'define', def: seat('tall-stool', 1.6) }, { op: 'define', def: seat('floor-seat', 0.1) },
+    { op: 'place', def: 'tall-stool@1', name: 'tall', p: [x + 4, z] }, { op: 'place', def: 'floor-seat@1', name: 'floor', p: [x - 4, z] }]);
+  await w.settle(4);
+  for (const [n, h] of [['tall', 1.6], ['floor', 0.1]] as const) {
+    const r = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${w.god.model.get(n)!.id}` })) as any;
+    assert.equal(r.accepted, true, JSON.stringify(r).slice(0, 300));
+    assert.ok(await w.until(() => w.human().activity === 'sit'), `${n}: seated`);
+    assert.equal(w.human().seatHeight, h, `${n}: the body carries the seat top`);
+    const up = await accept(w.host, w.edge.act(w.soul, { capability: 'stand:here' })) as any;
+    assert.ok(await w.until(() => w.edge.receipt(w.soul.soulId, up.receipt.id)?.phase === 'completed' && w.human().activity !== 'sit' && w.human().activity !== 'stand-up'), `${n}: stood up`);
+    assert.equal(w.human().seatHeight, undefined, `${n}: cleared on rising`);
+  }
+  assert.deepEqual(w.E.rt?.violations ?? [], []);
+});

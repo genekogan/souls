@@ -336,6 +336,10 @@ const BLEND = DT / 0.2; // Walk↔Idle crossfade: a stopped walker is standing w
 const POSE_BLEND = DT / 0.4; // sit / warm / postures in and out over 0.4 s
 const WALK_EPS = 0.08; // m/s: Walk plays iff ground speed ≥ this (engine locomotion/walk.ts WALK_MIN, MOVEMENT.md §3)
 const SEAT_DEFAULT = 0.45; // m, when the seat fixture is unknown (take replay)
+/** #1090: the highest seat top drawn (a tall body's standing reach, the engine's seat.out-of-reach bound, with margin). */
+const SEAT_TOP_MAX = 2.5;
+/** #1090: seats higher than this lift the drawn body onto them (lower ones only lower it, as before). */
+const SEAT_LIFT_FROM = 0.6;
 const SEAT_MATCH = 0.8; // m, body point to nearest seat point (covers the sit-down / stand-up approach line)
 const SEATED = new Set(['sit', 'sit-down', 'stand-up']);
 const OVERLAYS = new Set(['eat', 'serve', 'drink', ...ACTIVITY_OVERLAYS]);
@@ -879,7 +883,7 @@ export class HumanViews {
       v.carryWeight = f.carryWeight;
       v.on = f.on;
       v.frame = frameCtx(f.on, act, (id) => parts[id], this.climbs);
-      v.seat = act==='cycle'?BIKE_SADDLE:SEATED.has(base)&&!f.on&&!f.grip&&!f.hands?.left&&!f.hands?.right&&typeof f.seatHeight==='number'&&Number.isFinite(f.seatHeight)&&f.seatHeight>0&&f.seatHeight<=1.2?f.seatHeight:SEAT_DEFAULT;
+      v.seat = act==='cycle'?BIKE_SADDLE:SEATED.has(base)&&!f.on&&!f.grip&&!f.hands?.left&&!f.hands?.right&&typeof f.seatHeight==='number'&&Number.isFinite(f.seatHeight)&&f.seatHeight>0&&f.seatHeight<=SEAT_TOP_MAX?f.seatHeight:SEAT_DEFAULT;
       v.bench = LYING.has(act)||act==='bench-press'?(typeof f.seatHeight==='number'&&Number.isFinite(f.seatHeight)&&f.seatHeight>0&&f.seatHeight<=1.2?f.seatHeight:0):0;
       v.groundSeat = onGround(act, f.baseActivity);
       if (v.groundSeat) v.seat = GROUND_SEAT;
@@ -2476,7 +2480,9 @@ function sitPose(v: View, w: number, ground: number) {
     return _hip.distanceTo(_knee);
   });
   const hipY = legs.reduce((s, l) => s + l.upper.getWorldPosition(_hip).y, 0) / legs.length;
-  const drop = Math.max(0, hipY - (ground + v.seat + PELVIS * (v.rig.template.bodyScale ?? 1))) * w; // a composed look's thighs scale with its height
+  // #1090: down onto a low seat, or up onto a high one (a seat above the clip's seated hips: the body is lifted with the blend)
+  const gap = hipY - (ground + v.seat + PELVIS * (v.rig.template.bodyScale ?? 1)); // a composed look's thighs scale with its height
+  const drop = (gap >= 0 || v.seat > SEAT_LIFT_FROM ? gap : 0) * w;   // seats up to SEAT_LIFT_FROM keep today's drawing exactly
   v.spine.body.getWorldPosition(_c);
   _c.y -= drop;
   place(v.spine.body, _c.clone());
@@ -2490,7 +2496,8 @@ function sitPose(v: View, w: number, ground: number) {
     l.upper.getWorldPosition(_hip);
     // sitting target: under the knee of a horizontal thigh, at the clip's ankle height
     const sitGoal = V().copy(_hip).addScaledVector(_fwd, lens[i] * 0.95);
-    sitGoal.y = foot0.y;
+    // feet on the ground, or hanging below the knee when the seat is too high to reach the ground from
+    sitGoal.y = Math.max(foot0.y, _hip.y - lens[i] * 1.9);
     const goal = foot0.clone().lerp(sitGoal, w);
     let kp = pole;
     if (crossW > 0 && l.side < 0) {

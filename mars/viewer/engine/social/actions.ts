@@ -265,7 +265,7 @@ function slotAction(verb: string, description: string, kinds: SlotKind[] | null,
         a.human!.task = ex.id;
         a.human!.activity = 'stand-up';
         if (!transition(rt, ex, ex.approach!, dt)) return { status: 'running', phase: 'stand-up' };
-        if (rt.world.entities[ex.slot.owner]?.tags?.includes('entity-world-transport')) delete a.human!.seatHeight;
+        if (rt.world.entities[ex.slot.owner]?.tags?.includes('entity-world')) delete a.human!.seatHeight;
         idle(rt, [ex.actor], ex.id);
         return { status: 'completed', outputs: { stoodAt: ex.approach } };
       }
@@ -277,7 +277,8 @@ function slotAction(verb: string, description: string, kinds: SlotKind[] | null,
       }
       if (ex.phase === 'turn') {
         a.human!.task = ex.id;
-        if (ex.slot.kind==='seat' && ex.slot.height!==undefined && rt.world.entities[ex.slot.owner]?.tags?.includes('entity-world-transport')) a.human!.seatHeight=ex.slot.height;
+        // #1090: a god-built seat (an entity-world fixture or transport) with a top height draws the body on it while seated
+        if (ex.slot.kind==='seat' && ex.slot.height!==undefined && rt.world.entities[ex.slot.owner]?.tags?.includes('entity-world')) a.human!.seatHeight=ex.slot.height;
         if (Math.abs(angleDelta(a.pose.yaw, ex.slot.yaw)) > FACE_DONE) {
           a.pose.yaw = turnToward(a.pose.yaw, ex.slot.yaw, HUMAN_PROFILE.turnRate * dt);
           return { status: 'running', phase: 'turn' };
@@ -308,7 +309,7 @@ function slotAction(verb: string, description: string, kinds: SlotKind[] | null,
           return { ok: true, deferred: true };
         }
       }
-      if (rt.world.entities[ex.slot.owner]?.tags?.includes('entity-world-transport')) delete rt.world.entities[ex.actor].human!.seatHeight;
+      if (rt.world.entities[ex.slot.owner]?.tags?.includes('entity-world')) delete rt.world.entities[ex.actor].human!.seatHeight;
       idle(rt, [ex.actor], ex.id);
       return { ok: true };
     },
