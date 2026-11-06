@@ -41,6 +41,7 @@ Do not mutate old definitions to reinterpret existing worlds; introduce compatib
 ## Agreement and execution contract
 
 These are proposed semantics, not new endpoint names. Extend existing invitations, receipts and activity clocks.
+The first concrete contract, for one shared ground carry, is [shared-execution.md](shared-execution.md) (PC02).
 Keep conversation membership distinct from physical participation: discussing help is not accepting a grip,
 and leaving a conversation does not drop a load.
 
