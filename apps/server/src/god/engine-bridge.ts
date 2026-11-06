@@ -301,7 +301,7 @@ export class EngineBridge {
     if(this.edge)this.edge.contactActuator=createContactActuatorService({model:()=>this.god.model,levelAt:(x,z,y)=>this.levelAt(x,z,y),
       clearance:(x,z,level)=>(this.host.engine as unknown as {clearanceAtV1?:(x:number,z:number,level?:number)=>number}).clearanceAtV1?.(x,z,level)??Infinity,
       body:id=>this.host.engine.world.entities[id] as never,access:(id,soul)=>this.layers.refusal(id,soul),owner,knock:(soul,id)=>this.knockHeard(soul,id),
-      moreFacts:id=>this.tea?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,failed)=>this.searchOutcome(soul,spot,failed),
+      moreFacts:id=>this.tea?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,failed,overlapped)=>this.searchOutcome(soul,spot,failed,overlapped),
       record:(soul,id,action,params={})=>{const r=this.edge!.comms?.objects.act?.(id,soul,{action,params}) as {accepted?:boolean}|undefined;if(!r?.accepted)throw Error('switch.object-record-refused');},
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
@@ -1961,12 +1961,11 @@ export class EngineBridge {
             caps.push({ id, verb: 'search', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}) });
             // a thing this Soul may not take (private, for sale, claimed) is as if it were not there: the same reach, and nothing leaks
             const found = Object.values(ents).find((o: any) => o.support?.kind === 'resting-on' && o.support.on === x.id && inner.some((sl) => sl.id === o.support.slot) && !this.layers.takeRefusal(o.id, soul) && !this.claimRefusal(o.id, soul)) as any;
-            // #435: a second seeker while another Soul's hand is in the place waits her turn there, then reaches in: an answer, not a
-            // refusal
-            // and one who comes while another Soul's search of it is under way leaves it to them and is told so: one finds it
-            const turn = this.reachLeft(x.id, soul.entityId), rival = !!found && !turn && !!this.edge?.openByOthers(id, soul.soulId);
-            if (rival) this.yielded.add(`${soul.entityId}:${x.id}`); else this.yielded.delete(`${soul.entityId}:${x.id}`);
-            if (!block) plans.set(id, { label, steps: rival ? [...stand, { verb: 'rest', params: { seconds: 1 } }] : found && !turn ? [...stand, { verb: 'mars:let_go_v1', params: {} }, { verb: 'mars:take_item', params: { item: found.id, hand: 'right' } }] : [...stand, ...this.reachInto(x, box, station!, levelOf(x), turn)] });
+            // #435: a second seeker while another Soul's hand is in the place waits her turn there, then reaches in: an answer,
+            // not a refusal. Two who reach for a thing at once: one hand gets it, and the other's search ends with nothing and
+            // why (the ledger, from the receipts)
+            const turn = this.reachLeft(x.id, soul.entityId);
+            if (!block) plans.set(id, { label, steps: found && !turn ? [...stand, { verb: 'mars:let_go_v1', params: {} }, { verb: 'mars:take_item', params: { item: found.id, hand: 'right' } }] : [...stand, ...this.reachInto(x, box, station!, levelOf(x), turn)] });
           }
         }
         if (held && inner.length && d <= STORE_NEAR) {
@@ -2027,8 +2026,6 @@ export class EngineBridge {
   }
   /** #435 (W068): seconds until another Soul's hand is out of this place (its hand actuator holds the place for the whole
    *  reach), with a little margin; 0 when no other hand is in it. */
-  /** #435 (W068): body:place pairs whose search was left to another seeker already at it (told so at the end). */
-  private readonly yielded = new Set<string>();
   private reachLeft(placeId: string, me: string): number {
     const dt = (this.engine as { dt?: number }).dt ?? 0.05; let left = 0;
     for (const b of Object.values(this.engine.world.entities) as any[]) {
@@ -2044,10 +2041,12 @@ export class EngineBridge {
       { verb: 'mars:hand_actuator_v1', params: { target: x.id, at: [x.pose.p[0] + s[0] * Math.cos(yw) + s[2] * Math.sin(yw), x.pose.p[1] + Math.max(s[1] + 0.1, box.ins.lip + 0.02), x.pose.p[2] - s[0] * Math.sin(yw) + s[2] * Math.cos(yw)].map(r3), hold: 1 } }];
   }
   /** #435 (W068): what a finished search of this place came to, told to the searcher (the receipt's outcome). */
-  searchOutcome(soul: { entityId: string }, spot: string, failed = false): string | null {
+  searchOutcome(soul: { entityId: string }, spot: string, failed = false, overlapped = false): string | null {
     const box = this.storage(spot); if (!box) return null;
     if (failed) return `You could not finish searching ${box.label}; you came away with nothing.`;
-    if (this.yielded.delete(`${soul.entityId}:${spot}`)) return `Someone else was already searching ${box.label}; you left it to them and came away with nothing.`;
+    // with nothing in her hand, a search that ran alongside another Soul's says so (read from the receipts, not offer state)
+    const holds = Object.values(this.engine.world.entities).some((o: any) => o.tags?.includes('entity-world') && o.support?.kind === 'in-hand' && o.support.by === soul.entityId);
+    if (overlapped && !holds) return `Someone else was searching ${box.label} too; you came away with nothing.`;
     const got = Object.values(this.engine.world.entities).find((o: any) => o.tags?.includes('entity-world') && o.support?.kind === 'in-hand' && o.support.by === soul.entityId) as { id: string } | undefined, e = got && this.model.entities.get(got.id);
     return e ? `You found ${e.name ?? this.model.resolvedDef(e.def)?.name.replace(/^core-/, '') ?? 'something'} in ${box.label}.` : `You searched ${box.label} and came away with nothing.`;
   }

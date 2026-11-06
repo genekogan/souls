@@ -167,6 +167,7 @@ test('hide and seek: hide, search empty and found, nothing told, words, refusals
   const loser = holders[0] === souls.Ana ? xb : xa; results.twoSeekers = {winner: holders[0].name, loser: {phase: loser.phase, code: loser.receipt.code, reason: loser.receipt.reason, told: loser.receipt.outcome?.summary}}; console.log(JSON.stringify(results.twoSeekers));
   assert.match(loser.receipt.outcome.summary, /nothing/, 'the other ends honestly: ' + JSON.stringify(results.twoSeekers.loser));
   assert.equal(loser.phase, 'completed', 'the other gets an answer, not a refusal: ' + JSON.stringify(results.twoSeekers.loser));
+  assert.match(loser.receipt.outcome.summary, /^Someone else was searching stump too; you came away with nothing\.$/, loser.receipt.outcome.summary);
   await done('put the book on the table', holders[0]);}
 
  // persistence: hidden again, it stays in place and hidden after a restore; the engine checkpoint replays

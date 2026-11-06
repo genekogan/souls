@@ -542,8 +542,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
     return bodyState(this.host, m.entityId, r ? this.approachFor(m, r.receipt_id) : null);
   }
   receipt(soulId: string, id: string): EdgeReceipt | null {const r = this.rows('receipt_id=? AND soul_id=?', id, soulId)[0]; return r ? this.view(r) : null;}
-  /** #435 (W068): whether another Soul has this capability under way (a second seeker of one hiding place). */
-  openByOthers(capability: string, soulId: string): boolean {return !!this.db.db.prepare("SELECT 1 FROM edge_receipts_v1 WHERE world_id=? AND capability=? AND soul_id<>? AND phase IN ('waiting','started') LIMIT 1").get(this.host.worldId, capability, soulId);}
+  /** #435 (W068): whether another Soul's search of the same place ran while this one did (read from the receipts, so any
+   *  process that answers outcomes sees the same). */
+  private searchOverlapped(r: {capability: string; soulId: string; acceptedTick: number; endedTick?: number | null}): boolean {return !!this.db.db.prepare('SELECT 1 FROM edge_receipts_v1 WHERE world_id=? AND capability=? AND soul_id<>? AND accepted_tick<=? AND (ended_tick IS NULL OR ended_tick>=?) LIMIT 1').get(this.host.worldId, r.capability, r.soulId, r.endedTick ?? 2 ** 31, r.acceptedTick);}
   openReceipts(soulId: string): EdgeReceipt[] {return this.rows("soul_id=? AND phase IN ('waiting','started') ORDER BY accepted_tick", soulId).map(r => this.view(r));}
   private insert(soul: EdgeSoul, capability: string, phase: EdgeReceipt['phase'], clientRef?: string, keepActivity = false, detail: Record<string, unknown> = {},contentParams:Record<string,unknown>={},receiptId?:string): EdgeReceipt {
     const id = receiptId??'r_' + randomUUID(), tick = this.host.engine.world.tick,content=['read','write','use-computer','listen','paint','craft','post-letter'].includes(capability.split(':')[0])?outcomeParams(contentParams):{};
@@ -581,7 +582,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   /** Called only inside the original terminal phase transaction. Replay only reads the immutable result. */
   private finishOutcome(row:Row){if(this.outcomes.read(row.receipt_id))return;const receipt=this.view(row),op=receiptItemOp(this,receipt.id);this.together.onReceipt(receipt);const mind=this.host.minds.get(row.soul_id);if(!mind)return;const soul={soulId:mind.soulId,entityId:mind.entityId,name:mind.name,owner:mind.owner};this.outcomes.terminal(receipt,terminalSnapshot(this,soul,row.capability.split(':')[0]),{...confirmedTogetherEffects(this,receipt,op),...this.signReadEffects(receipt),...this.searchEffects(receipt,soul)});this.notifyMail();}
   /** #435 (W068): a finished `search:<place>` says what it came to; the offer itself never does. */
-  private searchEffects(r:EdgeReceipt,soul:EdgeSoul):ConfirmedEffects{const summary=(r.phase==='completed'||r.phase==='failed')&&r.capability.startsWith('search:')?this.contactActuator?.searched(soul,r.capability.slice(7),r.phase==='failed'):null;return summary?{summary}:{};}
+  private searchEffects(r:EdgeReceipt,soul:EdgeSoul):ConfirmedEffects{const summary=(r.phase==='completed'||r.phase==='failed')&&r.capability.startsWith('search:')?this.contactActuator?.searched(soul,r.capability.slice(7),r.phase==='failed',this.searchOverlapped(r)):null;return summary?{summary}:{};}
   /** A completed `read:<sign>` reports the sign's own words (a Soul's board text attributed and untrusted), never a library passage. */
   private signReadEffects(r:EdgeReceipt):ConfirmedEffects{
     if(r.phase!=='completed'||!r.capability.startsWith('read:'))return{};const sign=this.contactActuator?.sign(r.capability.slice(5));if(!sign)return{};
@@ -697,6 +698,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
     // before the old programme is cancelled. A receipt still open here was ended by something else: report it failed.
     else if (ev.kind === 'cancelled' && (ev.code === 'program.replaced' || ev.code === 'program.stopped')) this.update(r.receipt_id, {phase: 'failed', code: 'action.interrupted', reason: 'Something else in the world interrupted this before it finished; choose again.'});
     else if (ev.code === 'walk.stuck') {if (!this.relaunchStuck(r)) this.update(r.receipt_id, {phase: 'failed', code: 'walk.stuck', reason: STUCK_REASON});}
+    // #435 (W068): two Souls searched one hiding place at once and the other's hand took what was in it first: this search
+    // has its answer (nothing, and why), not a refusal
+    else if (r.capability.startsWith('search:') && ev.code === 'reservation.conflict' && this.searchOverlapped({capability: r.capability, soulId: r.soul_id, acceptedTick: r.accepted_tick})) this.update(r.receipt_id, {phase: 'completed'});
     else this.update(r.receipt_id, {phase: 'failed', code: ev.code ?? 'action.failed', reason: ev.message ?? humanBlockedExplanationV1(ev.code, 'That action')});
   }
   private contactPending=new Set<string>();
