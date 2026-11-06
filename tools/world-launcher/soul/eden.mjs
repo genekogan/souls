@@ -12,7 +12,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.11.0";
+const VERSION = "2.12.0";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -264,10 +264,11 @@ async function callOnce(url, o) {
   }
   return worldOnce(url, o);
 }
-async function worldOnce(url, { method, headers, body, timeoutMs, recoverRead }) {
+async function worldOnce(url, { method, headers, body, timeoutMs, recoverRead, signal }) {
   let r;
+  const timeout = AbortSignal.timeout(timeoutMs);
   try {
-    r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeoutMs) });
+    r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: signal && AbortSignal.any ? AbortSignal.any([timeout, signal]) : signal ?? timeout });
   } catch (e) {
     return { status: 0, data: { error: { code: "unreachable", message: String(e.message) } } };
   }
@@ -751,7 +752,7 @@ export function brief(out) {
     ...(out.accepted !== undefined ? { accepted: out.accepted } : {}), ...(out.waited ? { waited: out.waited } : {}),
     ...(sentence ? (fin ? { [key]: sentence } : { now: sentence, done: false }) : {}),
     ...(rec ? { receipt: { id: rec.id, capability: rec.capability, phase: rec.phase, ...(rec.code ? { code: rec.code } : {}), ...(!fin && out.held ? { observed: out.held } : {}) } } : {}),
-    ...(out.for ? { for: out.for } : {}), ...(out.open ? { open: true } : {}), ...(out.ownerMessages ? { ownerMessages: out.ownerMessages } : {}),
+    ...(out.for ? { for: out.for } : {}), ...(out.open ? { open: true } : {}), ...(out.ownerMessages ? { ownerMessages: out.ownerMessages } : {}), ...(out.addressed ? { addressed: out.addressed } : {}),
     ...(out.resolved?.to && out.resolved.to !== out.resolved.from ? { resolved: out.resolved.to } : {}),
   };
   for (const k of ["resolved", "receipt"]) if (JSON.stringify(o).length > 600) delete o[k];
@@ -799,10 +800,10 @@ async function waitRaw(seconds = 45, receiptId, { untilHeld = true } = {}) {
   let cursor = s.cursor ?? "c_0", ownerMark = s.ownerMark, ownerWrote = 0, gap = false;
   const since = cursor;
   const seen = [];
-  let terminal = null, held = null;
+  let terminal = null, held = null, addressed = null, addressedSince = null;
   while (Date.now() < until) {
     const t = Math.max(1, Math.min(55, Math.round((until - Date.now()) / 1000)));
-    const q = `timeout=${t}&after=${encodeURIComponent(cursor)}` + (Number.isSafeInteger(ownerMark) ? `&ownerSince=${ownerMark}` : "");
+    const q = `timeout=${t}&after=${encodeURIComponent(cursor)}` + (Number.isSafeInteger(ownerMark) ? `&ownerSince=${ownerMark}` : "") + (addressedSince != null ? `&addressedSince=${addressedSince}` : "");
     const r = await call(`/v1/edge/wait?${q}`, { timeoutMs: (t + 10) * 1000 });
     if (isBusy(r.status, r.data) || r.status === 429) {
       const ms = statedJitter(r.retryAfterMs ?? 5_000);
@@ -817,6 +818,8 @@ async function waitRaw(seconds = 45, receiptId, { untilHeld = true } = {}) {
     if (d.ownerWrote > 0) ownerWrote = d.ownerWrote;
     if (d.gap) { gap = true; break; }
     if (ownerWrote) break;
+    if (Number.isSafeInteger(d.addressedSeq)) addressedSince = d.addressedSeq;   // this wait is one wait across its requests: the serve holds it from the first
+    if (d.addressed?.length) { addressed = d.addressed; break; }   // said to this Soul; a serve hears it mid-turn (#476)
     terminal = seen.find((e) => e.receipt?.id === receiptId && TERMINAL.has(e.receipt?.phase));
     if (terminal) break;
     const latest = untilHeld ? seen.findLast((e) => e.kind === "activity.observed" && e.receipt?.id === receiptId) : null;
@@ -825,7 +828,7 @@ async function waitRaw(seconds = 45, receiptId, { untilHeld = true } = {}) {
     if (seen.some((e) => /^(invite|conversation\.(invite|turn))/.test(e.kind ?? ""))) break;
     if (!receiptId && seen.length) break;
   }
-  const out = { waited: `${Math.round((Date.now() - t0) / 1000)}s`, since, cursor, receivedAt: now(), events: seen, ...(gap ? {gap: true} : {}) };
+  const out = { waited: `${Math.round((Date.now() - t0) / 1000)}s`, since, cursor, receivedAt: now(), events: seen, ...(gap ? {gap: true} : {}), ...(addressed ? { addressed } : {}) };
   if (receiptId) {
     const rec = await receipt(receiptId).catch((e) => ({ id: receiptId, error: String(e.message) }));
     out.receipt = rec;
@@ -955,7 +958,8 @@ async function listen(...args) {
     const d = ok(r, "listen");
     attempt = 0; lastCode = undefined;
     const messages = messagesOf(d).filter((m) => m.id !== after);
-    if (d.plan) return { messages, plan: d.plan, next: d.plan.next ?? `${CLI} pending shows the plan.` };
+    if (d.plan) return { messages, plan: d.plan, ...(d.addressed?.length ? { addressed: d.addressed } : {}), next: d.plan.next ?? `${CLI} pending shows the plan.` };
+    if (d.addressed?.length && !messages.length) return { messages, addressed: d.addressed, next: `Said to you. Answer with say or converse if it suits; what your body is doing goes on. Restart listen${after ? ` --after ${after}` : ""} in the background.` };
     if (messages.length || once) {
       return { messages, next: messages.length ? `ack each (ack <id> "Got it: …"), restart listen --after ${messages.at(-1).id} in the background, then do them in order and result <id> done|failed "…"` : "nothing waiting" };
     }
@@ -1088,6 +1092,7 @@ async function guide() {
 // model and decides nothing: it holds what arrived until the agent reads it. Everything needed to resume is in SERVE_STATE.
 const SERVE_SOCK = ".eden-serve.sock", SERVE_LOCK = ".eden-serve.lock", SERVE_STATE = ".eden-serve.json", SERVE_LOG = ".eden-serve.log";
 const SERVE_EVENTS_MAX = 1000, PENDING_EVENTS_MAX = 100; // the world keeps 1000 events per Soul; a read hands over at most 100
+const ADDRESSED_KEEP = 20, ADDRESSED_IDLE_MS = 45_000, ADDRESSED_BYE_MS = 60_000;   // the world beats every 15 s; a slot taken by a newer stream is left alone a while
 const SERVE_BEAT_MS = 20_000, SERVE_STALE_MS = 60_000, SERVE_CLOSED_KEEP = 50;
 const ENDED = new Set(["completed", "failed", "refused", "cancelled", "interrupted", "replaced"]);
 const HELD_PATH = /^\/v1\/edge\/(wait|events)(\?|$|\/)/;  // long-polls and streams: never queued behind a heavy request
@@ -1148,7 +1153,7 @@ export function loadServeState() {
   try { return { ...d, ...JSON.parse(readFileSync(SERVE_STATE, "utf8")) }; } catch { return d; }
 }
 loadServeState.fresh = () => {
-  const d = { cursor: null, inboxAfter: null, readCursor: null, messages: [], receipts: {}, events: [], omitted: 0, gap: false, plan: null, planEnded: [] };
+  const d = { cursor: null, inboxAfter: null, readCursor: null, messages: [], receipts: {}, events: [], omitted: 0, gap: false, plan: null, planEnded: [], addressed: [], addressedSeq: 0, addressedCursor: null };
   return d;
 };
 /** Pure: fold what the stream delivered into the state. */
@@ -1164,6 +1169,36 @@ export function foldEvents(st, events, cursor) {
   }
   if (cursor) st.cursor = cursor;
   return st;
+}
+/** Pure: one line of the world's classified stream, speech it counts as said to this Soul. Once each; the newest few are kept. */
+export function foldAddressed(st, env, at = Date.now()) {
+  st.addressed ??= [];
+  if (env?.kind !== "speech.to-me" || !env.id || st.addressed.some((x) => x.id === env.id)) return false;
+  st.addressedSeq = (st.addressedSeq ?? 0) + 1;
+  st.addressed.push({ seq: st.addressedSeq, id: env.id, from: env.about?.name ?? null, soulId: env.about?.soulId ?? null, text: env.data?.text ?? env.text ?? null, at: env.at ?? at, heard: false });
+  if (st.addressed.length > ADDRESSED_KEEP) st.addressed.splice(0, st.addressed.length - ADDRESSED_KEEP);
+  return true;
+}
+const addressedView = ({ id, from, soulId, text, at }) => ({ id, from, soulId, text, at, untrusted: true });
+/** Pure: what a request should hear: anything nobody has heard yet, and anything that came while this request was held, so a
+ *  wait and a listen held at the same moment both hear it. A peek looks and leaves it unheard. */
+export function takeAddressed(st, heldFromSeq, { peek = false } = {}) {
+  const fresh = (st.addressed ?? []).filter((x) => !x.heard || x.seq > heldFromSeq);
+  if (!peek) for (const x of fresh) x.heard = true;
+  return fresh.map(addressedView);
+}
+/** Pure: Server-Sent Events text into frames, and the rest to keep for the next chunk. */
+export function sseFrames(text) {
+  const parts = text.replace(/\r\n/g, "\n").split("\n\n"), rest = parts.pop();
+  return { rest, frames: parts.map((part) => {
+    const f = { event: null, id: null, data: "" };
+    for (const line of part.split("\n")) {
+      if (line.startsWith(":")) continue;
+      const i = line.indexOf(":"), k = i < 0 ? line : line.slice(0, i), v = i < 0 ? "" : line.slice(i + 1).replace(/^ /, "");
+      if (k === "event") f.event = v; else if (k === "id") f.id = v; else if (k === "data") f.data += (f.data ? "\n" : "") + v;
+    }
+    return f;
+  }) };
 }
 const readIndex = (st) => (st.readCursor ? st.events.findIndex((e) => e?.id === st.readCursor) + 1 : 0);
 function noteReceipt(st, r, at) {
@@ -1201,6 +1236,7 @@ export function takePending(st) {
     openReceipts: receipts.filter((r) => !ENDED.has(r.phase)).map(({ id, capability, phase }) => ({ id, capability, phase })),
     endedReceipts: receipts.filter((r) => ENDED.has(r.phase) && !r.read).map(({ id, capability, phase, reason }) => ({ id, capability, phase, ...(reason ? { reason } : {}) })),
     events: shown,
+    ...(() => { const a = (st.addressed ?? []).filter((x) => !x.read); for (const x of a) { x.read = x.heard = true; } return a.length ? { addressed: a.map(addressedView) } : {}; })(),
     ...(rest.length > shown.length ? { moreEvents: rest.length - shown.length } : {}),
     ...(st.omitted ? { omitted: st.omitted } : {}),
     ...(st.gap ? { gap: true, gapNote: "The stream had a gap: read here again; some events were not seen." } : {}),
@@ -1388,6 +1424,44 @@ async function serveForeground() {
       tick();
     }
   }
+  // The world's own classified stream names what is said to this Soul, by its rule (speech.to-me); this client doesn't repeat that rule.
+  async function addressedLoop() {
+    let attempt = 0, code;
+    while (!stopping && !terminal) {
+      const ac = new AbortController();
+      let idle, gone = false, ms = null;
+      const beat = () => { clearTimeout(idle); idle = setTimeout(() => ac.abort(), ADDRESSED_IDLE_MS); };
+      try {
+        beat();
+        const q = new URLSearchParams({ kinds: "speech.to-me", ...(st.addressedCursor ? { after: st.addressedCursor } : {}) });
+        const r = await fetch(`${world}/v1/edge/events?${q}`, { headers: { authorization: auth.authorization, accept: "text/event-stream" }, signal: ac.signal });
+        if (r.status === 404) { log("addressed speech: this world has no classified stream; speech still reaches pending"); return; }
+        if (r.status === 401 || r.status === 403) return;   // the inbox loop says so and ends things
+        if (!r.ok) { code = `http-${r.status}`; ms = retryAfterMs(r.headers, null); throw new Error(code); }
+        attempt = 0; code = undefined;
+        let text = ""; const dec = new TextDecoder();
+        for await (const chunk of r.body) {
+          beat();
+          const { frames, rest } = sseFrames(text + dec.decode(chunk, { stream: true }));
+          text = rest;
+          let woke = false;
+          for (const f of frames) {
+            if (f.event === "bye") { gone = true; continue; }
+            if (f.event === "hello" && !st.addressedCursor) { try { st.addressedCursor = JSON.parse(f.data).cursor ?? null; persist(); } catch { /* the next id does */ } continue; }
+            if (f.id) st.addressedCursor = f.id;
+            if (f.event !== "speech.to-me") continue;
+            let env; try { env = JSON.parse(f.data); } catch { continue; }
+            if (foldAddressed(st, env)) woke = true;
+          }
+          if (woke) { persist(); wake(); }
+        }
+      } catch (e) { if (!code && !ac.signal.aborted) log(`addressed speech: ${e?.message ?? e}`); }
+      finally { clearTimeout(idle); }
+      if (stopping || terminal) return;
+      attempt = Math.min(attempt + 1, 6);
+      await pause(gone ? ADDRESSED_BYE_MS : ms != null ? statedJitter(ms) : fullJitter(attempt));
+    }
+  }
   // One heavy request at a time, and soul.busy waited out here instead of handed back. Only reads and keyed writes repeat.
   function gated(fn) { const p = gateTail.then(fn, fn); gateTail = p.catch(() => {}); return p; }
   // A world's routes sit under its base path (/w/<slug> behind the launcher); match them without it.
@@ -1413,18 +1487,41 @@ async function serveForeground() {
     }
     return r;
   }
+  // A wait held through this serve ends when something is said to this Soul. The cursor stays where it was, so the next wait
+  // still gets the events, and the world's own wait, no longer wanted, is dropped. Nothing about the body changes.
+  async function heldWait(m) {
+    // The speech is on the world's wait too, so that request can answer and the next begin just as the classified stream says so.
+    // A wait's requests all count from the first, or a listener hearing it in that moment would leave this wait with nothing.
+    const url = new URL(m.url), since = Number(url.searchParams.get("addressedSince") ?? NaN);
+    url.searchParams.delete("addressedSince");
+    const heldFrom = Number.isSafeInteger(since) ? since : st.addressedSeq ?? 0, cursor = url.searchParams.get("after");
+    const ended = (addressed) => { persist(); return { status: 200, data: { events: [], ...(cursor ? { cursor } : {}), addressed, addressedSeq: heldFrom } }; };
+    const now = takeAddressed(st, heldFrom);
+    if (now.length) return ended(now);
+    const ac = new AbortController();
+    let onSpeech;
+    const said = new Promise((done) => { onSpeech = () => { const a = takeAddressed(st, heldFrom); if (a.length) done(a); else waiters.push(onSpeech); }; waiters.push(onSpeech); });
+    const asked = worldOnce(url.href, { method: m.method, headers: m.headers, timeoutMs: m.timeoutMs, signal: ac.signal }).catch((e) => ({ status: 0, data: { error: { code: "unreachable", message: String(e?.message ?? e) } } }));
+    const first = await Promise.race([asked.then((r) => ({ r })), said.then((a) => ({ a }))]);
+    if (first.a) { ac.abort(); return ended(first.a); }
+    waiters = waiters.filter((f) => f !== onSpeech);
+    return first.r.data && typeof first.r.data === "object" ? { ...first.r, data: { ...first.r.data, addressedSeq: heldFrom } } : first.r;
+  }
   async function localListen(url) {
     // The world's own rule (Inbox.takeBacklog): every message not acknowledged after the cursor, however often it has been seen.
     // A wait's timeoutMs=0 peek comes through here too, and must not take a message from the listener waiting for it.
     const q = new URL(url).searchParams, after = q.get("after"), until = Date.now() + Math.min(Number(q.get("timeoutMs") ?? 25_000), 55_000);
+    const peek = !(Number(q.get("timeoutMs")) > 0), heldFrom = st.addressedSeq ?? 0;
     for (;;) {
       if (terminal) return terminal;
       const backlog = st.messages.slice(after ? st.messages.findIndex((m) => m.id === after) + 1 : 0).filter((m) => !m.acked);
       const stopped = st.plan?.state === "stopped" && !st.plan.announced ? st.plan : null;   // a refused step wakes the agent
-      if (backlog.length || stopped) {
-        if (stopped && Number(q.get("timeoutMs")) > 0) { stopped.announced = true; persist(); }   // a peek shows it but doesn't use up the wake
+      const addressed = takeAddressed(st, heldFrom, { peek });   // said to this Soul: a wake too, and a peek doesn't use it up either
+      if (backlog.length || stopped || addressed.length) {
+        if (stopped && !peek) stopped.announced = true;   // a peek shows it but doesn't use up the wake
+        if ((stopped && !peek) || (addressed.length && !peek)) persist();
         const out = backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt, state: "delivered" }));
-        return { status: 200, data: { inbox: { connected: true, ...(out[0] ? { latest: out[0] } : {}), queued: 0 }, backlog: out, ...(stopped ? { plan: planView(stopped) } : {}) } };
+        return { status: 200, data: { inbox: { connected: true, ...(out[0] ? { latest: out[0] } : {}), queued: 0 }, backlog: out, ...(stopped ? { plan: planView(stopped) } : {}), ...(addressed.length ? { addressed } : {}) } };
       }
       const left = until - Date.now();
       if (left <= 0) return { status: 200, data: { inbox: { connected: true, queued: 0 }, backlog: [] } };
@@ -1518,6 +1615,7 @@ async function serveForeground() {
     if (m.op === "http") {
       const path = routeOf(m.url);
       if (path === "/v1/edge/inbox/listen") return localListen(m.url);
+      if (path === "/v1/edge/wait" && m.method !== "POST") return heldWait(m);
       const cached = m.method === "GET" && /^\/v1\/edge\/receipts\/([^/]+)$/.exec(path);
       const known = cached ? st.receipts[decodeURIComponent(cached[1])] : null;
       if (known?.full && ENDED.has(known.phase)) return { status: 200, data: { receipt: known.full } };
@@ -1568,7 +1666,7 @@ async function serveForeground() {
   process.on("unhandledRejection", (e) => log(`unhandled: ${e?.message ?? e}`));
   process.on("uncaughtException", (e) => log(`uncaught: ${e?.message ?? e}`));
   const keep = (name, loop) => { loop().catch((e) => { log(`${name}: ${e?.message ?? e}; starting it again`); setTimeout(() => keep(name, loop), 1_000); }); };
-  keep("inbox", inboxLoop); keep("stream", eventLoop);
+  keep("inbox", inboxLoop); keep("stream", eventLoop); keep("addressed", addressedLoop);
   setInterval(() => { for (const p of pendingClose.splice(0)) closeLater(p); planPoll().catch((e) => log(`plan: ${e?.message ?? e}`)); }, 5_000);
   tick();
   await new Promise(() => {});
@@ -1671,7 +1769,7 @@ do        act <offer:id> [params-json] [--wait [s]] [--for id|none] [--json]   r
 owner     listen [--after id] [--once]   ack <id> ["reply"]   result <id> done|failed "<text>"
           now "<public one-line status>" | now --clear   (or add --now "<line>" to act, say, ack, result, wait)
 self      profile [name|description|photo …]   body [presets|set|look …]   travel [<world>|home]
-resident  serve [--status|--stop]   (one detached process per folder: holds inbox, stream and receipts; everything else still works without it)
+resident  serve [--status|--stop]   (one detached process per folder: holds inbox, stream and receipts; wakes listen and ends a wait when something is said to you; everything else still works without it)
           plan '["walk:mill",{"id":"sit:bench","params":{"seconds":30}}]' [--for id|none]   (serve runs the steps in order, no model call between them; a refused step stops it: pending shows why, plan '[{"id":"<id>","fixes":<step>}]' replaces it once)
           pending   (what arrived since you last read, no world call)   batch '[{"here":{}},{"receipt":"<id>"}]'   (several reads, one call)
 `;

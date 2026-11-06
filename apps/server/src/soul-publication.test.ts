@@ -12,11 +12,11 @@ const sources = JSON.parse(readFileSync(dir + 'SOURCES.json', 'utf8'));
 const sha = (b: string | Buffer) => createHash('sha256').update(b).digest('hex');
 const capture = readFileSync(dir + 'instructions.md', 'utf8');
 
-// Keep the historical test identity for release-gate comparison; this release publishes polite + continuity controller 2.11.0 (2.7.0 on R4 plus R5's slowed sentence and lifecycle-pending create wait; 2.8.0 prints refusal alternatives, #824; 2.8.1 prints `failed` for a failed or replaced receipt, #373; 2.8.2 ends a wait once a sit, lie or ride holds its pose, #378; 2.9.0 sends offered ids only, #1093; 2.10.0 adds the resident client, #1096; 2.11.0 adds durable plans, #1100).
+// Keep the historical test identity for release-gate comparison; this release publishes polite + continuity controller 2.12.0 (2.7.0 on R4 plus R5's slowed sentence and lifecycle-pending create wait; 2.8.0 prints refusal alternatives, #824; 2.8.1 prints `failed` for a failed or replaced receipt, #373; 2.8.2 ends a wait once a sit, lie or ride holds its pose, #378; 2.9.0 sends offered ids only, #1093; 2.10.0 adds the resident client, #1096; 2.11.0 adds durable plans, #1100; 2.12.0 wakes on addressed speech, #476).
 test('SOURCES.json pins every published Soul file by sha: the 2.2.1 controller and guides (soul fix round 1 release candidate), and the retained 1.9 CLI', () => {
   for (const k of ['controllerCli', 'cli', 'skill', 'instructions']) assert.equal(sha(readFileSync(dir + sources[k].file)), sources[k].sha256, k);
-  assert.equal(sources.controllerCli.file, 'eden.mjs'); assert.equal(sources.controllerCli.version, '2.11.0');
-  assert.match(readFileSync(dir + 'eden.mjs', 'utf8'), /const VERSION = "2\.11\.0";/);
+  assert.equal(sources.controllerCli.file, 'eden.mjs'); assert.equal(sources.controllerCli.version, '2.12.0');
+  assert.match(readFileSync(dir + 'eden.mjs', 'utf8'), /const VERSION = "2\.12\.0";/);
   assert.equal(sources.cli.file, 'eden-agent.mjs'); assert.equal(sources.cli.version, '1.9', 'the legacy CLI keeps its version');
   assert.deepEqual(sources.instructions.capture, CAPTURE, 'the server recognises exactly the recorded capture');
   assert.ok(sources.legacy.skill.sha256 && sources.legacy.instructions.sha256, 'the 1.9 guide provenance is kept');
