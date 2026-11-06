@@ -234,3 +234,88 @@ test('PC15 R1 R2 R4 R7 R8: two crews set five joists, a sheet is laid across the
   ok(await act(w, Eve, {capability: 'walk:field'})); await until(w, () => (w.E()[Eve.entityId].human.level ?? 0) === 0, 2000); await w.tick(40);
   const r = w.god.act({ops: [{op: 'remove', id: 'joist-2'}]}); assert.equal(r.accepted, false); assert.equal(r.failures[0].code, 'support.none', JSON.stringify(r));
 });
+
+test('PC15 R3: refused before anyone is asked: wrong crew, a position with no free seat, full hands, a frame that does not stand, a seat taken', {timeout: 600000}, async (t) => {
+  const w = await site(t), {Ada, Bo, Cy, Dee} = w.souls, j1 = w.idOf('joist-1'), cap = `install-joist-with:${j1}`;
+  const refused = async (s, c, params) => {const r = await act(w, s, {capability: c, params}); assert.equal(r.accepted, false, JSON.stringify(r)); return r;};
+  assert.equal((await refused(Ada, cap, {at: -0.61, with: 'Bo and Cy'})).code, 'joist.crew');
+  assert.equal((await refused(Ada, cap, {with: 'Bo'})).code, 'capability.params');
+  assert.match((await refused(Ada, cap, {at: 0.3, with: 'Bo'})).reason, /Choose where along the bay joist-1 goes \(at: metres from the bay's middle\): -1\.22, -0\.61, 0\.00, 0\.61, 1\.22/);
+  // the engine's own plan names what is wrong, nobody asked: a beam whose frame does not stand on its own
+  const eng = w.host.engine, beams = [w.idOf('bay-beam-0l'), w.idOf('bay-beam-0r')];
+  const seats = (k) => [`joist-b-${k}`, `joist-a-${k}`];
+  assert.equal(eng.previewMarsVerbV1('install_joist_v1', {crew: [Ada.entityId, Bo.entityId], joist: j1, beams, seats: seats(1)}), null, 'the plan is clear');
+  assert.equal(eng.previewMarsVerbV1('install_joist_v1', {crew: [Ada.entityId], joist: j1, beams, seats: seats(1)})?.code, 'joist.crew');
+  assert.equal(eng.previewMarsVerbV1('install_joist_v1', {crew: [Ada.entityId, Bo.entityId], joist: j1, beams, seats: ['joist-a-1', 'joist-a-1']})?.code, 'joist.no-beams', 'a face away from the bay does not fit');
+  assert.equal(eng.previewMarsVerbV1('install_joist_v1', {crew: [Ada.entityId, Bo.entityId], joist: j1, beams: [beams[0], w.idOf('bay-beam-14r')], seats: seats(1)})?.code, 'joist.no-beams', 'beams at two heights do not fit');
+  assert.equal(eng.previewMarsVerbV1('lay_sheet_v1', {crew: [Ada.entityId, Bo.entityId], sheet: w.idOf('sheet'), joists: [0, 1, 2, 3, 4].map((k) => w.idOf(`joist-${k}`))})?.code, 'plywood.support-unsupported', 'loose joists carry nothing');
+  // a seat taken meanwhile: Cy and Dee set joist-2 into the seats joist-1 was asked for, so joist-1's proposal there is refused
+  const c = await commit(w, Cy, [Dee], `install-joist-with:${w.idOf('joist-2')}`, {at: -0.61});
+  await toEnd(w, c); assert.equal(inviteOf(w, c.id).shared.op.result, 'arrived');
+  await w.tick(10);
+  assert.match((await refused(Ada, cap, {at: -0.61, with: 'Bo'})).reason, /Choose where along the bay/, 'the taken position is no longer offered');
+  assert.equal(eng.previewMarsVerbV1('install_joist_v1', {crew: [Ada.entityId, Bo.entityId], joist: j1, beams, seats: seats(1)})?.code, 'joist.occupied');
+  // a frame that does not stand on its own: the god takes the high beams off (the low ones stay seated)
+  await home(w);
+  ok(w.god.act({ops: ['bay-beam-14l', 'bay-beam-14r'].flatMap((n) => [{op: 'disconnect', a: {id: n, connector: 'end-l'}}, {op: 'disconnect', a: {id: n, connector: 'end-r'}}, {op: 'move', id: n, in: {parent: 'world'}, p: [w.xm, w.z0 - 3 - (n.endsWith('l') ? 0 : 0.4)], r: 0}])}));
+  await w.tick(30);
+  assert.equal(offer(w, Ada, cap), undefined, 'nothing offered on beams whose frame does not stand');
+  assert.equal(eng.previewMarsVerbV1('install_joist_v1', {crew: [Ada.entityId, Bo.entityId], joist: j1, beams, seats: seats(3)})?.code, 'joist.beam-unsupported');
+});
+
+test('PC15 R5: a stop before the lift lets go; during it the joist or the sheet comes back down where it lay; nothing joined, no floor', {timeout: 600000}, async (t) => {
+  const w = await site(t), {Ada, Bo} = w.souls;
+  for (const [n, cap, params, run] of [['joist-0', 'install-joist-with', {at: -1.22}, null], ['sheet', 'lay-sheet-with', {}, async () => buildDeck(w, {sheet: false})]]) {
+    if (run) await run();
+    const id = w.idOf(n), start = structuredClone(w.E()[id].pose);
+    for (const when of ['approach', 'lift']) {
+      const c = await commit(w, Ada, [Bo], `${cap}:${id}`, params);
+      await runTo(w, c, when); if (when === 'lift') {await w.tick(15); assert.ok(w.E()[id].pose.p[1] > start.p[1] + 0.03, `${n} off the ground`);}
+      ok(await act(w, Bo, {capability: `stop-carry:${c.op.id}`}));
+      assert.match(read(w, Ada, c.p).reason, when === 'lift' ? /lower .* back where it lay/ : /let go of it where it lies/);
+      await toEnd(w, c);
+      const x = w.E()[id]; assert.deepEqual(x.pose, start, `${n} ${when}`); assert.deepEqual(x.support, {kind: 'ground'}); assert.equal(x.phase, 'staged'); assert.equal(x.connections, undefined);
+      assert.equal(inviteOf(w, c.id).shared.op.result, 'stopped'); assert.match(read(w, Ada, c.p).reason, when === 'lift' ? /lowered back where it lay/ : /never lifted/);
+      for (const s of [Ada, Bo]) assert.equal(w.E()[s.entityId].human.grip, undefined, `${when}: ${s.name} let go`);
+      await w.tick(20);
+      assert.deepEqual(joinsOf(w, n), {}, 'no joint in the entity world'); assert.deepEqual(floorsOf(w, w.idOf('sheet')), [], 'no floor');
+      assert.equal([...w.god.model.entities.values()].filter((e) => e.name === n).length, 1, 'one part, no copy');
+      await home(w);
+    }
+  }
+  assert.deepEqual((w.host.engine.rt?.violations ?? []).filter((v) => /^(beam|support|deck)\./.test(v.code)), []);
+});
+
+/** A new process on the same database. `clean`: a final snapshot first; else only what was logged. */
+async function restart(w, clean) {
+  w.comms.close(); w.host.stop();
+  if (clean) {w.host.drainInputs(); w.host.saveSnapshot(true);}
+  w.db.close();
+  const db = new Db(w.path), h = new WorldHost(db, factory, seed, 1e9, worldId, w.opts), boot = h.boot(); h.drainInputs();
+  w.hosts.push(h); mount(w, h, db); await w.tick(5);
+  return boot;
+}
+for (const clean of [true, false]) test(`PC15 R6: a ${clean ? 'clean' : 'crash'} restart during the sheet's lift and after it is laid keeps the programme, joints and floor`, {timeout: 900000}, async (t) => {
+  const w = await site(t), {Ada, Bo} = w.souls, sheet = w.idOf('sheet');
+  await buildDeck(w, {sheet: false});
+  const c = await commit(w, Ada, [Bo], `lay-sheet-with:${sheet}`, {});
+  await runTo(w, c, 'lift'); await w.tick(15);
+  await restart(w, clean);
+  assert.equal(w.host.engine.programOf(Ada.entityId), c.op.programId, 'the same programme');
+  assert.equal(w.E()[sheet].support.kind, 'held', 'still in their hands'); assert.deepEqual(floorsOf(w, sheet), []);
+  await toEnd(w, c); assert.equal(inviteOf(w, c.id).shared.op.result, 'arrived');
+  await w.tick(30);
+  const before = floorsOf(w, sheet); assert.equal(before.length, 1);
+  await restart(w, clean); await w.tick(20);
+  assert.equal(w.E()[sheet].phase, 'installed'); assert.equal(w.E()[sheet].connections.length, 5);
+  assert.deepEqual(floorsOf(w, sheet), before, 'the same floor');
+  assert.equal(Object.keys(joinsOf(w, 'sheet')).length, 5);
+  assert.equal([...w.god.model.entities.values()].filter((e) => e.name === 'sheet').length, 1, 'one sheet');
+});
+
+test('PC15 R9: with the flag off nothing is offered and the rules version has no deck suffix', {timeout: 300000}, async (t) => {
+  const w = await site(t, {sharedCarry: false});
+  assert.equal(offer(w, w.souls.Ada, `install-joist-with:${w.idOf('joist-0')}`), undefined);
+  assert.doesNotMatch(w.host.engine.rulesVersion ?? '', /shared-deck/);
+  assert.match(factory.rulesVersion, /\+shared-raise\/1\+shared-beam\/1\+shared-deck\/1$/);
+});
