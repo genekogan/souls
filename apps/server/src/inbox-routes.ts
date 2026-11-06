@@ -7,10 +7,15 @@ import {AgentInbox, type InboxScope, type TicketFocus} from './inbox.ts';
 import {soulLink} from './soul-link.ts';
 import type {WorldModel} from '@sim/world-compiler';
 
-type Deps = {db: Db; worldId: string; souls: Souls; god?: GodMode; edge?: boolean; requireUser(c: Context): Promise<UserRow>; ownerSoul(c: Context, id: string): Promise<{id: string; owner: string}>; now?: () => number};
+/** Who answers POST /v1/souls/<id>/command in a world (#982): one route, one handler per world mode. An edge world
+ *  delivers the owner's text to the Soul's agent inbox (this file); a central-mind world translates it (http.ts). */
+export type OwnerCommandRoute = 'edge-inbox' | 'central-translator';
+export const ownerCommandRoute = (edge: boolean): OwnerCommandRoute => (edge ? 'edge-inbox' : 'central-translator');
+type Deps = {db: Db; worldId: string; souls: Souls; god?: GodMode; edge?: boolean; command?: OwnerCommandRoute; requireUser(c: Context): Promise<UserRow>; ownerSoul(c: Context, id: string): Promise<{id: string; owner: string}>; now?: () => number};
 type Agent = {kind: 'god' | 'soul'; scope: InboxScope};
 export function mountAgentInbox(app: Hono, d: Deps) {
   const inbox = new AgentInbox(d.db, d.worldId, d.now);
+  const ownsCommand = (d.command ?? ownerCommandRoute(!!d.edge)) === 'edge-inbox';
   if (d.god) {
     const god = d.god;
     // G4: the edits that commit while the god holds a command are that command's; its ack records where they are.
@@ -76,7 +81,7 @@ export function mountAgentInbox(app: Hono, d: Deps) {
     const headers = new Headers(c.res.headers); headers.set('Cache-Control', 'no-store'); headers.delete('ETag'); headers.delete('Content-Length');
     c.res = new Response(JSON.stringify({...payload, inbox: carry((payload as {inbox?: unknown}).inbox)}), {status: c.res.status, headers});
   });
-  for (const path of ['/v1/god/inbox', '/v1/god/inbox/*', '/v1/edge/inbox/*', '/v1/edge/owner/:soulId/inbox', ...(d.edge ? ['/v1/souls/:soulId/command'] : [])]) {
+  for (const path of ['/v1/god/inbox', '/v1/god/inbox/*', '/v1/edge/inbox/*', '/v1/edge/owner/:soulId/inbox', ...(ownsCommand ? ['/v1/souls/:soulId/command'] : [])]) {
     app.use(path, async (c, next) => { c.header('Cache-Control', 'no-store'); await next(); });
     app.use(path, bodyLimit({maxSize: 8192, onError: c => c.json({ok: false, code: 'too-large', message: 'message is too large'}, 413)}));
   }
@@ -118,9 +123,9 @@ export function mountAgentInbox(app: Hono, d: Deps) {
   }
   ownerRoutes('/v1/edge/owner/:soulId/inbox', soulOwner, 'cmd');
   // Edge Souls use the existing owner command channel; the new box endpoint is
-  // an alias over its same latest record and 20/min owner bucket. Central minds
-  // keep their existing translator route in http.ts.
-  if (d.edge) ownerRoutes('/v1/souls/:soulId/command', soulOwner, 'cmd', true);
+  // an alias over its same latest record and 20/min owner bucket. On a central-mind
+  // world http.ts mounts the translator instead (ownerCommandRoute, #982).
+  if (ownsCommand) ownerRoutes('/v1/souls/:soulId/command', soulOwner, 'cmd', true);
   const agentRoutes = (path: string, kind: Agent['kind']) => {
     app.get(`${path}/listen`, async c => {
       const s = requireAgent(c, kind), raw = c.req.query('timeoutMs'), timeout = raw === undefined ? 25_000 : Number(raw), after = c.req.query('after');
