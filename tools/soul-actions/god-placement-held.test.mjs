@@ -48,13 +48,45 @@ test('other fixtures and turns, a move as well as a place: no fault at any of th
  const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];let k=0;
  const ready=async(x,z)=>{await go(x,z);if(!holding()){const n=`bowl-${k}`;assert.equal(god.act({ops:[{op:'place',def:'core/bowl@2',name:n,p:[x+1,z]}]}).accepted,true);await tick(20);const p=await finish(ana,await act(ana,'pick-up:'+named(n).id));assert.equal(p.phase,'completed',JSON.stringify(p).slice(0,300));await tick(10);}
   const rest=await act(ana,'rest:here',{seconds:60});assert.equal(rest.accepted,true);await tick(20);assert.ok(f.host.engine.programOf(ana.entityId));return [body(ana).pose.p[0],body(ana).pose.p[2]];};
- for(const def of ['core/table@1','core/bench@1','core/lockers@3','core/drawer-chest@2'])for(const r of [0,.785,2.356]){
-  const [bx,bz]=await ready(ax-9+(k%4)*6,az-9+Math.floor(k/4)*6);k++;
+ // a top over a body (table, bed, bookshelf, workbench), a low seat, a container: the engine's box is what counts for all of them
+ for(const def of ['core/table@1','core/bench@1','core/bench-seat@1','core/bed@1','core/bookshelf@1','core/workbench@1','core/stool@1','core/lockers@3','core/drawer-chest@2'])for(const r of [0,.785]){
+  const [bx,bz]=await ready(ax-12+(k%5)*6,az-12+Math.floor(k/5)*6);k++;
   assert.equal(god.act({ops:[{op:'place',def,name:`f${k}`,p:[bx,bz],r}]}).accepted,true,def);await tick(30);
   assert.equal(f.host.paused,false,`${def} r=${r}: not paused`);assert.deepEqual(f.host.engine.rt.violations,[],`${def} r=${r}`);
  }
  // a table moved over her, from nearby
- assert.equal(god.act({ops:[{op:'place',def:'core/table@1',name:'mover',p:[ax-4,az-16]}]}).accepted,true);await tick(10);
- const [mx,mz]=await ready(ax,az-16);assert.equal(god.act({ops:[{op:'move',id:named('mover').id,p:[mx,mz]}]}).accepted,true);await tick(30);
+ assert.equal(god.act({ops:[{op:'place',def:'core/table@1',name:'mover',p:[ax-4,az+14]}]}).accepted,true);await tick(10);
+ const [mx,mz]=await ready(ax,az+14);assert.equal(god.act({ops:[{op:'move',id:named('mover').id,p:[mx,mz]}]}).accepted,true);await tick(30);
  assert.equal(f.host.paused,false,'a move: not paused');assert.deepEqual(f.host.engine.rt.violations,[]);
+});
+
+for(const [label,pose] of [['sitting on the ground','sit-ground:here'],['lying down','lie:here']]){
+ test(`a table placed over a Soul ${label}, holding a bowl: she is walked clear`,{timeout:120000},async t=>{
+  const w=await world(t),{souls:{Ana:ana},tick,god,body,act,finish,named,f}=w;await tick(10);const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
+  assert.equal(god.act({ops:[{op:'place',def:'core/bowl@2',name:'bowl',p:[ax+1,az]}]}).accepted,true);await tick(20);assert.equal((await finish(ana,await act(ana,'pick-up:'+named('bowl').id))).phase,'completed');await tick(10);
+  const b=await act(ana,pose,{seconds:60});assert.equal(b.accepted,true,JSON.stringify(b).slice(0,200));await tick(40);
+  const [x,z]=[body(ana).pose.p[0],body(ana).pose.p[2]];assert.equal(god.act({ops:[{op:'place',def:'core/table@1',name:'over-her',p:[x,z]}]}).accepted,true);await tick(40);
+  assert.equal(f.host.paused,false);assert.deepEqual(f.host.engine.rt.violations,[]);assert.ok(Math.hypot(body(ana).pose.p[0]-x,body(ana).pose.p[2]-z)>.4,'clear of the top');
+ });
+}
+test('an undo that brings a table back over a Soul walks her clear too',{timeout:120000},async t=>{
+ const w=await world(t),{souls:{Ana:ana},tick,god,body,act,finish,named,f}=w;await tick(10);const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
+ assert.equal(god.act({ops:[{op:'place',def:'core/bowl@2',name:'bowl',p:[ax+1,az]},{op:'place',def:'core/table@1',name:'tb',p:[ax+5,az]}]}).accepted,true);await tick(20);
+ assert.equal((await finish(ana,await act(ana,'pick-up:'+named('bowl').id))).phase,'completed');await tick(10);
+ const id=named('tb').id,rm=god.act({ops:[{op:'remove',id}]});assert.equal(rm.accepted,true);await tick(10);
+ await accept(f.host,f.host.enqueue('edge-relocate','edge:'+ana.soulId,{soulId:ana.soulId,entityId:ana.entityId,to:[ax+5,az],why:'test placement'}));await tick(10);
+ assert.equal((await act(ana,'rest:here',{seconds:60})).accepted,true);await tick(20);
+ const u=god.undo();assert.notEqual(u?.accepted,false,JSON.stringify(u).slice(0,200));assert.ok(named('tb'),'the undo brought it back');await tick(40);
+ assert.equal(f.host.paused,false);assert.deepEqual(f.host.engine.rt.violations,[]);assert.ok(Math.hypot(body(ana).pose.p[0]-(ax+5),body(ana).pose.p[2]-az)>.4,'clear of the top');
+});
+for(const busy of [false,true])test(`not a god route: a Soul carries a chair onto another Soul ${busy?'resting with a bowl in hand':'standing empty-handed'}, and nothing faults`,{timeout:120000},async t=>{
+ const w=await world(t),{souls:{Ana:ana,Ben:ben},tick,god,body,named,f,W,act,finish}=w;await tick(10);const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
+ await accept(f.host,f.host.enqueue('edge-relocate','edge:'+ben.soulId,{soulId:ben.soulId,entityId:ben.entityId,to:[ax+6,az],why:'test placement'}));await tick(6);
+ assert.equal(god.act({ops:[{op:'place',def:'core/chair@2',name:'stool',p:[ax+1.2,az]},...(busy?[{op:'place',def:'core/bowl@2',name:'bowl',p:[ax+7,az]}]:[])]}).accepted,true,'setup');await tick(20);
+ if(busy){assert.equal((await finish(ben,await act(ben,'pick-up:'+named('bowl').id))).phase,'completed');await tick(10);assert.equal((await act(ben,'rest:here',{seconds:120})).accepted,true);await tick(20);assert.ok(f.host.engine.programOf(ben.entityId));}
+ // the step `carry:` plans, aimed straight at Ben: the engine's own route and admission are what's under test
+ const [bx,bz]=[body(ben).pose.p[0],body(ben).pose.p[2]],stool=named('stool').id,res=f.host.engine.perform({actor:ana.entityId,label:'carry the chair onto Ben',steps:[{verb:'mars:move_fixture',params:{fixture:stool,to:{x:bx,z:bz,yaw:0}}}]});
+ await tick(500);const at=W().entities[stool].pose.p,gap=Math.hypot(at[0]-bx,at[2]-bz),clear=Math.hypot(body(ben).pose.p[0]-at[0],body(ben).pose.p[2]-at[2]);
+ console.log('CARRY',busy,JSON.stringify({res,gap:+gap.toFixed(2),benToChair:+clear.toFixed(2),rec:f.host.engine.programOf(ana.entityId)}).slice(0,260));
+ assert.equal(f.host.paused,false);assert.deepEqual(f.host.engine.rt.violations,[]);assert.ok(gap>.3||clear>.3,'the chair and Ben are not in one place');
 });
