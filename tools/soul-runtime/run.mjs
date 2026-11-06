@@ -2,7 +2,7 @@
 // Opt-in managed controller for an already paired folder. Never pairs, takes
 // ownership, or changes a CLI credential. Stop any other controller first.
 import {parseArgs} from 'node:util';
-import {readFileSync,mkdirSync,writeFileSync,renameSync,lstatSync,openSync,closeSync,fstatSync,fchmodSync,fsyncSync,constants} from 'node:fs';
+import {readFileSync,mkdirSync,writeFileSync,renameSync,lstatSync,openSync,closeSync,fstatSync,fchmodSync,fsyncSync,appendFile,constants} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {resolve,join} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -14,6 +14,8 @@ import {openJournal} from './journal.mjs';
 import {createWorldClient} from './world-client.mjs';
 import {runManaged} from './managed.mjs';
 import {abortableSleep} from './receiver.mjs';
+import {createSink} from '../soul-trace/sink.mjs';
+import {openHostTrace} from './trace.mjs';
 const evidenceError=e=>({code:typeof e?.code==='string'&&/^[A-Za-z0-9._:-]{1,100}$/.test(e.code)?e.code:'unclassified',status:Number.isInteger(e?.status)&&e.status>=100&&e.status<=599?e.status:null});
 const metadataId=value=>typeof value==='string'&&/^[A-Za-z0-9._:-]{1,200}$/.test(value)?value:null;
 const itemTypes=new Set(['userMessage','agentMessage','reasoning','commandExecution','fileChange','mcpToolCall','dynamicToolCall','webSearch','imageView','collabAgentToolCall','enteredReviewMode','exitedReviewMode','contextCompaction']);
@@ -33,29 +35,37 @@ const hostErrorMetadata=error=>{
  return {category:'unknown'};
 };
 // Probe-only append evidence. No receiver wrapping, request arguments, config,
-// credentials, model output or error messages. Writes happen per record; fsync
-// is deferred to closure so observation latency excludes a per-row disk flush.
+// credentials, model output or error messages. fsync is deferred to closure so
+// observation latency excludes a per-row disk flush.
+// By default rows go through soul-trace's bounded asynchronous queue (#733 S2):
+// no synchronous write per row, one batch in flight, at most EVIDENCE_LIMITS
+// queued; an overflow is counted as dropped. A crash can lose the last flushMs.
 // A write failure is sticky. By default it only disables recording (#733 A4: an
 // observer failure never changes gameplay): world reads and host calls keep their
 // own results and errors, and close() reports {complete:false}. `required` keeps
-// the fail-closed contract for qualification runs: appends, reads and close throw.
-export function openEvidenceRecorder(path,{scope={},now=Date.now,onFailure=()=>{},writeRecord=writeFileSync,syncFile=fsyncSync,required=false}={}){
- let fd,closed=false,failure=null,dropped=0;const detach=[],sessionId=randomUUID(),base={sessionId,controllerPid:process.pid,worldId:scope.worldId??null,soulId:scope.soulId??null};
+// the fail-closed contract for qualification runs: synchronous appends; appends,
+// reads and close throw. close() is async: it waits for the queue before fsync.
+export const EVIDENCE_LIMITS=Object.freeze({queuedBytes:4*1024*1024,exitBytes:0,flushMs:100});
+export function openEvidenceRecorder(path,{scope={},now=Date.now,onFailure=()=>{},writeRecord=writeFileSync,appendRecord=(fd,data,_options,done)=>appendFile(fd,data,done),syncFile=fsyncSync,required=false,limits=EVIDENCE_LIMITS,closeWaitMs=2000}={}){
+ let fd,sink=null,closed=false,failure=null,dropped=0;const detach=[],sessionId=randomUUID(),base={sessionId,controllerPid:process.pid,worldId:scope.worldId??null,soulId:scope.soulId??null},sinkStats={dropped:0,sinkFailures:0};
  const fail=cause=>{if(!failure){failure=Object.assign(Error('Local evidence recording failed'),{code:'EVIDENCE_IO',cause});onFailure(failure);}return failure;};
  const append=row=>{
   if(failure){dropped++;if(required)throw failure;return;}
   if(closed){dropped++;if(required)throw fail(Error('Evidence recorder is closed'));return;}
-  try{writeRecord(fd,JSON.stringify({...row,at:row.at??now(),...base})+'\n');}catch(e){dropped++;fail(e);if(required)throw failure;}
+  const line=JSON.stringify({...row,at:row.at??now(),...base})+'\n';
+  if(sink){sink.push(line);return;}
+  try{writeRecord(fd,line);}catch(e){dropped++;fail(e);if(required)throw failure;}
  };
  try{
   const file=resolve(path);let old;try{old=lstatSync(file);}catch(e){if(e.code!=='ENOENT')throw e;}
   if(old&&(old.isSymbolicLink()||!old.isFile()||old.nlink!==1))throw Error('Evidence path must be a regular unlinked file');
   fd=openSync(file,constants.O_WRONLY|constants.O_APPEND|constants.O_CREAT|constants.O_NOFOLLOW|constants.O_NONBLOCK,0o600);
   const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1)throw Error('Evidence path must be a regular unlinked file');fchmodSync(fd,0o600);
+  if(!required)sink=createSink({target:fd,append:appendRecord,appendSync:()=>{},limits,stats:sinkStats,onFailure:e=>fail(e)});
   append({kind:'evidence-session',state:'started'});
  }catch(e){if(fd!==undefined)try{closeSync(fd)}catch{}throw fail(e);}
  return {
-  append,get failure(){return failure;},get dropped(){return dropped;},
+  append,get failure(){return failure;},get dropped(){return dropped+sinkStats.dropped;},
   wrapWorld(world){return {...world,read:async function(...args){
    if(required){if(failure)throw failure;if(closed)throw fail(Error('Evidence recorder is closed'));}
    const command=args[0],requestedAt=now();let response;
@@ -98,11 +108,19 @@ export function openEvidenceRecorder(path,{scope={},now=Date.now,onFailure=()=>{
    const notice=n=>record({kind:'host-notice',at:Number.isFinite(n?.receivedAt)?n.receivedAt:now(),...identity(host.threadId,host.activeTurnId),method:typeof n?.method==='string'&&/^[A-Za-z0-9_./-]{1,100}$/.test(n.method)?n.method:'unknown'});
    host.on('event',event);host.on('notice',notice);host.on('unsupportedRequest',unsupported);detach.push(()=>{host.off('event',event);host.off('notice',notice);host.off('unsupportedRequest',unsupported);host.connect=connect;});return host;
   },
-  close(details={}){
-   const summary=()=>failure?{complete:false,code:failure.code,dropped}:{complete:true};
+  async close(details={}){
+   const summary=()=>{const lost=dropped+sinkStats.dropped;return failure?{complete:false,code:failure.code,dropped:lost}:lost?{complete:false,code:'EVIDENCE_DROPPED',dropped:lost}:{complete:true};};
    if(closed){if(failure&&required)throw failure;return summary();}
-   try{if(!failure){append({...details,kind:'evidence-session',state:'closed'});if(!failure)syncFile(fd);}}catch(e){fail(e);}
-   finally{closed=true;for(const stop of detach)stop();try{closeSync(fd)}catch(e){fail(e);}}
+   try{if(!failure)append({...details,kind:'evidence-session',state:'closed'});}catch(e){fail(e);}
+   closed=true;for(const stop of detach)stop();
+   // A stalled sink must not hang shutdown; its fd stays open so a late write can never land in a reused fd.
+   let stalled=false;
+   try{
+    if(sink)stalled=await Promise.race([sink.drain().then(()=>false),new Promise(done=>{const h=setTimeout(()=>done(true),closeWaitMs);h.unref?.();})]);
+    if(stalled){dropped+=sink.queued+sink.inFlight;fail(Error('Evidence sink did not drain before close'));}
+    else if(!failure)syncFile(fd);
+   }catch(e){fail(e);}
+   finally{if(!stalled)try{closeSync(fd)}catch(e){fail(e);}}
    if(failure&&required)throw failure;
    return summary();
   },
@@ -133,7 +151,7 @@ export async function main(argv=process.argv.slice(2),{signal,leaseWaitMs=65000,
  const seconds=values.seconds===undefined?null:Number(values.seconds);if(seconds!==null&&(!Number.isFinite(seconds)||seconds<1||seconds>7*86400))throw Error('seconds must be1..604800');
  const stop=new AbortController(),quit=()=>stop.abort(),externalAbort=()=>stop.abort(signal?.reason);
  process.once('SIGINT',quit);process.once('SIGTERM',quit);signal?.addEventListener('abort',externalAbort,{once:true});if(signal?.aborted)externalAbort();
- let journal,ownership,owner,ownerRenewal,timer,evidence,runFailure=null,ownershipFailure=null,evidenceFailure=null;const ownedHosts=new Set();
+ let journal,ownership,owner,ownerRenewal,timer,evidence,trace=null,runFailure=null,ownershipFailure=null,evidenceFailure=null;const ownedHosts=new Set();
  try{
  if(stop.signal.aborted)return;
  const credential=join(folder,'.eden-agent.json');if(lstatSync(credential).isSymbolicLink())throw Error('Linked pairing file refused');
@@ -154,6 +172,8 @@ export async function main(argv=process.argv.slice(2),{signal,leaseWaitMs=65000,
   }});
   world=evidence.wrapWorld(world);
  }
+ // Opt-in soul-trace/1 host boundaries (SOUL_TRACE_FILE); nothing without it.
+ trace=openHostTrace();
  journal=openJournal(state,scope);
  ownership=openJournal(join(folder,'.soul-runtime-owner'),scope);
  timer=seconds?setTimeout(quit,seconds*1000):null;
@@ -166,12 +186,12 @@ export async function main(argv=process.argv.slice(2),{signal,leaseWaitMs=65000,
  const inventory=await openControllerInventory();
  if(inventory?.reentryProof?.snapshot){const recoveryFence=await claimStartupLease(journal.control,{signal:stop.signal,maxWaitMs:leaseWaitMs,onWait:saveStatus});if(!recoveryFence)return;try{const admitted=admitControllerReentry(journal,recoveryFence,inventory.reentryProof,{journalPath:join(state,'continuity.sqlite'),scope});saveStatus({state:'controller-reentry',proofId:admitted.proofId,charged:admitted.charged});}finally{journal.control.release(recoveryFence);}}
  const cwd=join(state,'host');mkdirSync(cwd,{recursive:true,mode:0o700});
-  await runManaged({journal,world,instruction,signal:stop.signal,onState:saveStatus,createHost:()=>{
+  await runManaged({journal,world,instruction,signal:stop.signal,onState:trace?s=>{trace.state(s);saveStatus(s);}:saveStatus,createHost:()=>{
    const reservation=inventory?.reserveHost();
    const host=new Host({cwd,model,effort:values.effort,name:values['session-name']??`Sim Soul — ${paired.soul}`});
    ownedHosts.add(host);
    if(inventory){try{inventory.registerHost(reservation,host.pid);}catch(e){void host.close().catch(()=>{});throw e;}host.on('lifecycle',s=>{if(s.state==='host-closed')inventory.hostClosed(reservation,s);});}
-   evidence?.bindHost(host);
+   evidence?.bindHost(host);trace?.bindHost(host);
    host.on('lifecycle',saveStatus);
    host.on('event',e=>{if(e.method==='thread/tokenUsage/updated'){writeFileSync(join(state,'usage.json'),JSON.stringify({at:new Date().toISOString(),threadId:host.threadId,model:host.model,usage:e.params.tokenUsage},null,2),{mode:0o600});}if(host.model)model=host.model;});
    return host;
@@ -182,8 +202,9 @@ export async function main(argv=process.argv.slice(2),{signal,leaseWaitMs=65000,
   stop.abort();clearInterval(ownerRenewal);await Promise.allSettled([...ownedHosts].map(host=>host.close()));
   const proofs=[...ownedHosts].map(host=>host.closeProof??{hostPid:host.pid??null,threadId:host.threadId,groupClosed:false,groupVerification:'unverified'});
   if(owner)try{ownership.control.release(owner)}catch{}ownership?.close();clearTimeout(timer);process.removeListener('SIGINT',quit);process.removeListener('SIGTERM',quit);signal?.removeEventListener('abort',externalAbort);journal?.close();
+  await trace?.close();
   let evidenceSummary,evidenceCloseError;
-  try{evidenceSummary=evidence?.close({failed:!!runFailure,ownedProcessesExited:proofs.every(p=>p.groupClosed===true)});}catch(e){evidenceCloseError=e;evidenceSummary={complete:false,code:e.code??'EVIDENCE_IO'};}
+  try{evidenceSummary=await evidence?.close({failed:!!runFailure,ownedProcessesExited:proofs.every(p=>p.groupClosed===true)});}catch(e){evidenceCloseError=e;evidenceSummary={complete:false,code:e.code??'EVIDENCE_IO'};}
   console.log(JSON.stringify({state:'controller-closed',controllerPid:process.pid,ownedHosts:proofs,ownedProcessesExited:proofs.every(p=>p.groupClosed===true),...(evidenceSummary?{evidence:evidenceSummary}:{})}));
   if(evidenceCloseError)throw evidenceCloseError;
  }

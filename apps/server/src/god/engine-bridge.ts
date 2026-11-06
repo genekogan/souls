@@ -1937,9 +1937,9 @@ export class EngineBridge {
             const crew:[number,number]=[need,Math.min(loose.carryCrew[1],8)],sid=`carry-with:${x.id}`;
             const sblock=this.layers.refusal(x.id,soul)??(need>crew[1]?{code:'carry.crew-too-large',reason:`${name(x.id)} needs more carriers than it has grips.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
             const slabel=`Carry ${name(x.id)} with other Souls (asks them first; ${crew[0]}–${crew[1]} carriers; to: a place name, with: who)`;
-            caps.push({id:sid,verb:'carry-with',label:slabel,target:{id:x.id,kind:'object'},available:!sblock,...(sblock?{blocked:sblock}:{}),params:{to:{type:'string',maxLength:100},with:{type:'string',maxLength:300,description:'the Souls who carry it with you (names or ids, comma-separated)'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
+            caps.push({id:sid,verb:'carry-with',label:slabel,target:{id:x.id,kind:'object'},available:!sblock,...(sblock?{blocked:sblock}:{}),params:{to:{type:'string',maxLength:100},with:{type:'string',maxLength:300,description:'the Souls who carry it with you (names or ids: "Bo and Cy", "Bo, Cy and Dee")'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
             // `def` is the placed def ref with its revision (for example core/rack-beam@2): the load's identity (PC02 §4)
-            const splan={label:slabel,steps:[],together:{kind:'shared' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew}};
+            const splan={label:slabel,steps:[],together:{kind:'shared' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew,mass:{kg:mass,each:MAX_KG_PER_CARRIER}}};
             if(!sblock)plans.set(sid,splan);
           }
         }

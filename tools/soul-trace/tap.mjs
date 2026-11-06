@@ -6,6 +6,7 @@
 import {performance} from 'node:perf_hooks';
 import {randomBytes, createHash} from 'node:crypto';
 import {readFileSync, appendFile, appendFileSync, lstatSync} from 'node:fs';
+import {createSink} from './sink.mjs';
 import {basename} from 'node:path';
 
 export const SCHEMA = 'soul-trace/1';
@@ -68,36 +69,21 @@ export function createTap({file, env = process.env, argv = process.argv, now = D
   const proc = randomBytes(8).toString('hex'), started = mono();
   const stats = {records: 0, dropped: 0, truncated: 0, sinkFailures: 0, inFlightAtExit: 0, bodyOmitted: 0, bodiesPendingAtExit: 0};
   let pendingBodies = 0;
-  let seq = 0, queue = [], queuedBytes = 0, inFlight = 0, disabled = false, closed = false, timer = null;
+  let seq = 0, closed = false;
   const attempts = new Map();
-
-  const flush = () => {
-    timer = null;
-    if (disabled || inFlight || !queue.length) return;
-    const batch = queue.join(''), n = queue.length;
-    queue = []; queuedBytes = 0; inFlight = n;
-    try {
-      append(file, batch, {mode: 0o600}, err => {
-        inFlight = 0;
-        if (err) { stats.sinkFailures++; stats.dropped += n; disabled = true; queue = []; queuedBytes = 0; return; }
-        if (queue.length) schedule();
-      });
-    } catch { inFlight = 0; stats.sinkFailures++; stats.dropped += n; disabled = true; }
-  };
-  const schedule = () => { if (!timer && !closed) { timer = setTimeout(flush, limits.flushMs); timer.unref?.(); } };
+  const sink = createSink({target: file, append, appendSync, limits, stats});
+  const flush = sink.flush;
 
   const record = (kind, fields) => {
     if (closed) return;
-    if (disabled || stats.records >= limits.records) { stats.dropped++; return; }
+    if (sink.disabled || stats.records >= limits.records) { stats.dropped++; return; }
     let line = JSON.stringify({v: SCHEMA, kind, proc, seq: ++seq, at: now(), mono: Math.round((mono() - started) * 1000) / 1000, ...fields}) + '\n';
     if (Buffer.byteLength(line) > limits.recordBytes) {
       stats.truncated++;
       const {facts: _f, ...rest} = fields;
       line = JSON.stringify({v: SCHEMA, kind, proc, seq, at: now(), mono: Math.round((mono() - started) * 1000) / 1000, ...rest, omitted: ['facts:size']}) + '\n';
     }
-    if (queuedBytes + Buffer.byteLength(line) > limits.queuedBytes) { stats.dropped++; return; }
-    queue.push(line); queuedBytes += Buffer.byteLength(line); stats.records++;
-    schedule();
+    if (sink.push(line)) stats.records++;
   };
 
   const start = () => {
@@ -148,14 +134,10 @@ export function createTap({file, env = process.env, argv = process.argv, now = D
 
   const close = exitCode => {
     if (closed) return;
-    record('proc.end', {exitCode: int(exitCode) ?? null, durationMs: Math.round((mono() - started) * 1000) / 1000, stats: {...stats, inFlightAtExit: inFlight, bodiesPendingAtExit: pendingBodies}});
+    record('proc.end', {exitCode: int(exitCode) ?? null, durationMs: Math.round((mono() - started) * 1000) / 1000, stats: {...stats, inFlightAtExit: sink.inFlight, bodiesPendingAtExit: pendingBodies}});
     closed = true;
-    if (timer) clearTimeout(timer);
-    stats.inFlightAtExit = inFlight; stats.bodiesPendingAtExit = pendingBodies;
-    if (disabled || !queue.length) return;
-    if (queuedBytes > limits.exitBytes) { stats.dropped += queue.length; queue = []; return; }
-    try { appendSync(file, queue.join(''), {mode: 0o600}); } catch { stats.sinkFailures++; }
-    queue = [];
+    stats.inFlightAtExit = sink.inFlight; stats.bodiesPendingAtExit = pendingBodies;
+    sink.closeSync();
   };
 
   return {proc, stats, record, start, wrapFetch, close, flush};
