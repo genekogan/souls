@@ -284,8 +284,9 @@ export function beamBays(w: WorldState, beamId: string, near = 3.5): BeamBay[] {
   return out.sort((x, y) => x.height - y.height || (x.column < y.column ? -1 : 1));
 }
 
-/** Every tick: an installed loose beam has both ends joined to standing frames, and a joined frame nobody holds stands in a
- *  frame that stands on its own. */
+/** Every tick: an installed loose beam has both ends joined to standing frames, and an upright a crew let go into its beams
+ *  (support `connected`, as the native release) stands in a frame that stands on its own. A god's joined upright stands on
+ *  the ground by the god's authority (PC12) and is not this. */
 export function framesStand(rt: Runtime): Diagnostic[] {
   const w = rt.world, out: Diagnostic[] = [];
   for (const e of Object.values(w.entities)) {
@@ -293,7 +294,7 @@ export function framesStand(rt: Runtime): Diagnostic[] {
       const to = (e.connections ?? []).map((c) => w.entities[c.to]);
       if (to.length !== 2 || to.some((u) => !isFrame(u) || !standing(u) || !(u.connections ?? []).some((c) => c.to === e.id)))
         out.push({ code: 'beam.unseated', message: `${e.id} is installed but not seated at both ends in standing uprights`, subjects: [e.id] });
-    } else if (e.phase === 'installed' && isFrame(e) && e.connections?.length && standing(e) && !heldUp(w, e)) {
+    } else if (e.phase === 'installed' && isFrame(e) && e.support?.kind === 'connected' && standing(e)) {
       const st = frameStability(w, e);
       if (!st.stable) out.push({ code: 'support.frame-unstable', message: `${e.id} stands unheld in a frame that does not stand on its own: ${st.missing.join('; ')}`, subjects: [e.id] });
     }

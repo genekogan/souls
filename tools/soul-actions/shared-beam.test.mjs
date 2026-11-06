@@ -131,7 +131,7 @@ test('R1 R2 R4: two held frames take four beams; the frame is let go only once i
   assert.equal(w.E()[fa].support.kind, 'held', 'three beams: not yet');
   await seat(w, 'beam4', 'r', 1.37);
   await toEnd(w, a);
-  const A = w.E()[fa]; assert.equal(A.phase, 'installed'); assert.deepEqual(A.support, {kind: 'ground'}); assert.ok(standing(A));
+  const A = w.E()[fa]; assert.equal(A.phase, 'installed'); assert.equal(A.support.kind, 'connected'); assert.equal(A.support.to.length, 4); assert.ok(standing(A));
   assert.equal(inviteOf(w, a.id).shared.op.result, 'stopped'); assert.match(read(w, Ada, a.p).reason, /stands on its own/);
   for (const s of [Ada, Bo]) assert.equal(w.E()[s.entityId].human.grip, undefined, `${s.name} let go`);
   assert.equal(w.E()[fb].support.kind, 'held', 'fb is still held by its own crew');

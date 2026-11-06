@@ -96,7 +96,7 @@ test('support is released only once the frame stands on its own; until then the 
   // b is still held by its crew: it carries itself, so a is judged on its own beams, and they are enough
   assert.deepEqual(frameStability(w, w.entities.A!), { stable: true, group: ['A', 'B'], missing: [] });
   rt.cancel(ra.id); assert.equal(ra.status, 'cancelled', JSON.stringify(ra.diagnostic));
-  assert.deepEqual(w.entities.A!.support, { kind: 'ground' }); assert.equal(w.entities.A!.phase, 'installed');
+  assert.deepEqual(w.entities.A!.support, { kind: 'connected', to: ['beam1', 'beam2', 'beam3', 'beam4'] }); assert.equal(w.entities.A!.phase, 'installed');
   assert.ok(Math.abs(Math.abs(w.entities.A!.pose.roll!) - Math.PI / 2) < 1e-9, 'standing where it was held');
   for (const c of ['a1', 'a2']) assert.equal(w.entities[c]!.human!.grip, undefined);
   rt.cancel(rb.id); assert.equal(rb.status, 'cancelled', JSON.stringify(rb.diagnostic));
@@ -180,7 +180,11 @@ test('the invariant notices a beam seated at one end, and a joined frame let go 
   const { rt, ra } = raised(1), w = rt.world;
   seat(rt, 'beam1', 'l', 0.76);
   assert.deepEqual(framesStand(rt), []);
+  // as a god builds it (PC12): joined, on the ground, nobody holding it; the god's say, not this rule
   const A = w.entities.A!; A.support = { kind: 'ground' }; A.phase = 'installed';
+  for (const c of ['a1', 'a2']) w.entities[c]!.human!.grip = undefined;
+  assert.deepEqual(framesStand(rt), []);
+  A.support = { kind: 'connected', to: ['beam1'] };
   for (const c of ['a1', 'a2']) w.entities[c]!.human!.grip = undefined;
   assert.equal(framesStand(rt)[0]?.code, 'support.frame-unstable');
   w.entities.beam1!.connections = w.entities.beam1!.connections!.slice(0, 1);

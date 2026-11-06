@@ -237,7 +237,8 @@ export const raiseHold: ActionDef<P, Plan, RaiseHoldExec> = {
       const st = frameStability(rt.world, u);
       if (!st.stable) return { ok: false, diagnostic: { code: 'support.release-premature', message: `the crew cannot let go of ${u.id}: beams join it into a frame that does not stand on its own yet (${st.missing.join('; ')})`, subjects: [u.id, ...ex.p.crew] } };
       for (const c of ex.p.crew) Object.assign(rt.world.entities[c]!.human!, { grip: undefined, task: undefined, activity: 'idle' });
-      u.support = { kind: 'ground' }; u.phase = 'installed'; u.reservedBy = undefined;
+      // as the native release_support: held up by its beams now (a god's joined upright stands on the ground instead)
+      u.support = { kind: 'connected', to: [...new Set(u.connections.map((c) => c.to))] }; u.phase = 'installed'; u.reservedBy = undefined;
       return { ok: true };
     }
     if (ex.phase === 'approach' || ex.phase === 'grip') {

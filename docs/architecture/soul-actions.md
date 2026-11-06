@@ -137,7 +137,8 @@ context-size checks below), regression runs, and an uncut real-client recording 
 
     Until then the native cancel refuses `support.release-premature`. The crew keeps holding, the receipts name the
     missing beams, and the stop is asked again each tick, so they let go as soon as the frame stands. The released upright
-    stays standing, installed, on the ground.
+    stays standing and installed, held up by its beams (support `connected`, as the native `release_support`). A god's
+    joined upright stands on the ground by the god's say (PC12) and is not judged by this rule.
   - **Refused before anyone is asked:** `beam.misaligned`, `beam.seat-taken`, `beam.not-staged`, `beam.upright-unsupported`,
     `reach.too-high`, `lift.path-blocked`, `beam.station-unreachable`, `beam.crew`. A Soul holding an upright has no hand
     free (`carry.hands-full`).
