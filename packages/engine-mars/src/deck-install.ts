@@ -14,7 +14,7 @@ import { angleDelta, datan2, hypot, rot2, wrapAngle, type Vec2, type Vec3 } from
 import { holdingDiagnostic, STANDING_REACH } from '../../../mars/viewer/engine/construction/rules.ts';
 import { childrenState, walkCrew, type Children } from '../../../mars/viewer/engine/construction/children.ts';
 import { findStations, liftDuration, liftStep, sweptLiftPath } from '../../../mars/viewer/engine/construction/access.ts';
-import { pickupPlan, STATION_SLOT } from '../../../mars/viewer/engine/construction/liftcrew.ts';
+import { followTarget, handPoint, pickupPlan, roomFor, STATION_SLOT } from '../../../mars/viewer/engine/construction/liftcrew.ts';
 import { frameSupported, isBeamPart, isFrame, worldPoint } from './beam-connect.ts';
 
 export const JOIST_END = 'joist-end', JOIST_SEAT = 'joist-seat', SHEET_BEARING = 'sheet-bearing', SHEET_SEAT = 'sheet-seat';
@@ -128,6 +128,24 @@ function letGo(rt: Runtime, ex: SeatExec) {
   for (const c of ex.crew) if (rt.world.entities[c]?.human) Object.assign(rt.world.entities[c]!.human!, { activity: 'idle', grip: undefined, task: undefined });
 }
 
+/** A sheet comes in over the bay's side, so its crew holds the two corners of its long edge toward where it lies (they
+ *  stay outside the bay all the way; the native ends would be inside it, by the uprights), each standing beside theirs. */
+function sheetPickup(rt: Runtime, crew: string[], part: Entity, to: Pose): { moves: { actor: string; p: Vec2; yaw: number; level: number }[]; slots: string[] } | Diagnostic {
+  const side = rot2([part.pose.p[0] - to.p[0], part.pose.p[2] - to.p[2]], -to.yaw)[1] >= 0 ? '1' : '0';
+  const ends = crew.map((c) => rt.world.entities[c]!), here = (i: number): Vec2 => [ends[i]!.pose.p[0], ends[i]!.pose.p[2]];
+  const hand = (e: string) => handPoint(part, part.pose, `lift-corner-${e}${side}`)!;
+  // whoever is nearer end 0 takes it
+  const d = (p: Vec2, h: { p: Vec3 }) => hypot(p[0] - h.p[0], p[1] - h.p[2]);
+  const swap = d(here(0), hand('0')) + d(here(1), hand('1')) > d(here(0), hand('1')) + d(here(1), hand('0'));
+  const slots = crew.map((_, i) => `lift-corner-${(i === 0) !== swap ? '0' : '1'}${side}`), moves = [];
+  for (const [i, c] of crew.entries()) {
+    const room = roomFor(rt, c, crew), h = handPoint(part, part.pose, slots[i]!)!, at = room && followTarget(room, h, here(i));
+    if (!at) return { code: 'plywood.station-unreachable', message: `no room to stand beside ${part.id} to take hold of it where it lies`, subjects: [part.id, c] };
+    moves.push({ actor: c, p: at, yaw: datan2(h.p[2] - at[1], h.p[0] - at[0]), level: ends[i]!.human?.level ?? 0 });
+  }
+  return { moves, slots };
+}
+
 /** The shared programme of both verbs: walk to it and take hold, check again, lift along the path, set it into its seats. */
 function seatAction<P extends { crew: string[] }>(o: { verb: string; kind: Kind; description: string; schema: z.ZodType<P>; part: (p: P) => string; hosts: (p: P) => string[];
   plan: (rt: Runtime, p: P) => { ok: true; program: Prog } | { ok: false; diagnostic: Diagnostic } }): ActionDef<P, Prog, SeatExec> {
@@ -145,7 +163,7 @@ function seatAction<P extends { crew: string[] }>(o: { verb: string; kind: Kind;
       const w = rt.world, part = w.entities[ex.part]!;
       if (ex.phase === 'approach') {
         if (!ex.children) {
-          const pk = pickupPlan(rt, ex.crew, part, ex.prog.target, ex.prog.stations);
+          const pk = ex.kind === 'plywood' ? sheetPickup(rt, ex.crew, part, ex.prog.target) : pickupPlan(rt, ex.crew, part, ex.prog.target, ex.prog.stations);
           if ('code' in pk) { part.phase = 'staged'; part.reservedBy = undefined; return { status: 'failed', diagnostic: pk }; }
           ex.slots = pk.slots;
           const r = walkCrew(rt, ex.id, pk.moves);
@@ -231,7 +249,7 @@ function withParams<P extends { crew: string[] }>(a: ActionDef<P, Prog, SeatExec
 
 /** The joist seat pairs a loose joist lying here could go into: one free `joist-seat` on each of two seated beams that
  *  can carry it, a joist's length apart, level and facing each other across a bay. One entry per position along it. */
-export type JoistBay = { beams: [string, string]; seats: [string, string]; at: number };
+export type JoistBay = { beams: [string, string]; seats: [string, string]; at: number; height: number };
 export function joistBays(w: WorldState, joistId: string, near = 3): JoistBay[] {
   const j = w.entities[joistId];
   if (!isJoistPart(j) || j.support?.kind !== 'ground' || j.phase !== 'staged' || j.reservedBy || j.connections?.length) return [];
@@ -243,14 +261,16 @@ export function joistBays(w: WorldState, joistId: string, near = 3): JoistBay[] 
     const free = (x: Entity) => ofKind(x, JOIST_SEAT).filter((s) => !takenBy(x, s.id)).map((s) => ({ s, q: worldPoint(x, s.local) }));
     const fb = free(b);
     for (const sa of free(a)) for (const sb of fb) {
-      if (Math.abs(sa.q[1] - sb.q[1]) > 0.02 || Math.abs(hypot(sb.q[0] - sa.q[0], sb.q[2] - sa.q[2]) - len) > SEAT_TOL) continue;
+      if (sa.q[1] - j.pose.p[1] > STANDING_REACH || Math.abs(sa.q[1] - sb.q[1]) > 0.02 || Math.abs(hypot(sb.q[0] - sa.q[0], sb.q[2] - sa.q[2]) - len) > SEAT_TOL) continue;
       const mid: Vec2 = [(sa.q[0] + sb.q[0]) / 2, (sa.q[2] + sb.q[2]) / 2];
       if (hypot(mid[0] - j.pose.p[0], mid[1] - j.pose.p[2]) > near) continue;
       // along the bay: how far from the first beam's middle, its own x
-      out.push({ beams: [a.id, b.id], seats: [sa.s.id, sb.s.id], at: +sa.s.local[0].toFixed(2) });
+      out.push({ beams: [a.id, b.id], seats: [sa.s.id, sb.s.id], at: +sa.s.local[0].toFixed(2), height: +(sa.q[1] - j.pose.p[1]).toFixed(2) });
     }
   }
-  return out.sort((x, y) => x.at - y.at);
+  // one place per position along the bay: the lowest pair of beams there (a deck goes on the bay's lowest beams)
+  out.sort((x, y) => x.at - y.at || x.height - y.height);
+  return out.filter((b, i) => !i || out[i - 1]!.at !== b.at);
 }
 /** The installed joists a loose sheet lying here could be laid across: one free `sheet-seat` per bearing connector,
  *  in a row the sheet's connectors fit, every joist able to carry it. */

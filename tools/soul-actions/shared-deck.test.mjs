@@ -60,7 +60,7 @@ function mount(w, host, db, sharedCarry = true) {
   const comms = registerEdgeComms(app, {host, db, souls: w.f.souls, ledger: edge, soul: () => w.current}, {fading: true, beam: true, now: w.now, sweepMs: 0});
   edge.attachComms(comms); comms.fading.addHold((id) => edge.postureHold(id));
   const god = new GodMode(db, {worldId: host.worldId, ownerId: 'dev:admin', tick: () => host.engine.world.tick, emit() {}});
-  const bridge = installEngineBridge({host, god, edge, log() {}, worldLore: false, worldClock: false});
+  const bridge = installEngineBridge({host, god, edge, log: process.env.DECK_LOG ? (m) => console.log("[bridge]", m) : () => {}, worldLore: false, worldClock: false});
   Object.assign(w, {host, db, edge, app, comms, god, bridge});
 }
 async function world(t, {sharedCarry = true, names = ['Ada', 'Bo', 'Cy', 'Dee', 'Eve']} = {}) {
@@ -87,12 +87,70 @@ const act = async (w, s, input) => accept(w.host, w.edge.act(s, input));
 const read = (w, s, r) => w.edge.receipt(s.soulId, r.receipt?.id ?? r.id);
 const until = async (w, done, max) => {for (let n = 0; n < max && !done(); n++) await w.tick(1);};
 const floorsOf = (w, id) => w.host.engine.world.entityPhysicsV1?.byEntity?.[id]?.surfaces ?? [];
+const inviteOf = (w, id) => w.edge.together.invite(id);
+const offer = (w, s, id) => w.edge.capabilitiesPage(s, {all: true}).capabilities.find((c) => c.id === id);
+const phaseOf = (w, c) => w.host.engine.programAction?.(c.op.programId)?.action.phase;
+const joinsOf = (w, n) => w.god.model.get(n).joins ?? {};
 async function walkTo(w, s, place) {
-  const cap = w.edge.capabilities(s).find((c) => c.verb === 'walk' && c.id === `walk:${place}`) ?? w.edge.capabilities(s).find((c) => c.verb === 'walk' && new RegExp(place, 'i').test(c.label));
+  const cap = w.edge.capabilities(s).find((c) => c.verb === 'walk' && c.id === `walk:${place}`);
   assert.ok(cap?.available, JSON.stringify(w.edge.capabilities(s).filter((c) => c.verb === 'walk').map((c) => [c.id, c.label, c.available])));
   const r = ok(await act(w, s, {capability: cap.id}));
   await until(w, () => ['completed', 'failed', 'replaced'].includes(read(w, s, r)?.phase), 3000);
   return read(w, s, r);
+}
+/** Propose `cap` with `params`, the guest accepts revision 1, the world commits. */
+async function commit(w, host, guests, cap, params) {
+  const p = ok(await act(w, host, {capability: cap, params: {...params, with: guests.map((g) => g.name).join(' and ')}})), id = p.receipt.shared.invite;
+  const accepts = [];
+  for (const g of guests) accepts.push(ok(await act(w, g, {capability: `accept:${id}`, params: {revision: 1}})));
+  await until(w, () => inviteOf(w, id).state !== 'pending', 60);
+  assert.equal(inviteOf(w, id).state, 'committed', JSON.stringify(read(w, host, p)));
+  return {p, id, crew: [[host, p], ...guests.map((g, i) => [g, accepts[i]])], op: inviteOf(w, id).shared.op};
+}
+async function runTo(w, c, phase, max = 3000) {
+  for (let n = 0; n < max && phaseOf(w, c) !== phase; n++) await w.tick(1);
+  assert.equal(phaseOf(w, c), phase, JSON.stringify(w.host.engine.programAction?.(c.op.programId)?.action));
+}
+async function toEnd(w, c, max = 4000) {for (let n = 0; n < max && inviteOf(w, c.id).shared.op.phase !== 'ended'; n++) await w.tick(1); assert.equal(inviteOf(w, c.id).shared.op.phase, 'ended', JSON.stringify(inviteOf(w, c.id).shared.op));}
+/** A stable bay (god-built), five loose joists lying in it under their seats and a loose sheet lying beside it; the crews
+ *  stand outside the bay's long sides, Eve further off. */
+async function site(t, opts = {}) {
+  const w = await world(t, opts), x0 = w.ax + 6, z0 = w.az, xm = bayMid(x0);
+  ok(w.god.act({ops: [...bay(x0, z0),
+    ...[0, 1, 2, 3, 4].map((k) => ({op: 'place', def: 'core/deck-joist@1', name: `joist-${k}`, p: [xm + (k - 2) * SPAN, z0], r: Math.PI / 2})),
+    {op: 'place', def: 'core/plywood-sheet@2', name: 'sheet', p: [xm, z0 + 1.7], r: 0}]}));
+  await w.tick(40);
+  Object.assign(w, {x0, z0, xm});
+  await home(w); await w.at(w.souls.Eve, xm, z0 - 4); await w.tick(5);
+  return w;
+}
+/** The crews step back out to where they started (a crew done with one joist stands where the next one's crew would). */
+async function home(w) {
+  const {Ada, Bo, Cy, Dee} = w.souls;
+  await w.at(Ada, w.xm - 0.8, w.z0 - 1.6); await w.at(Bo, w.xm - 0.8, w.z0 + 2.9); await w.at(Cy, w.xm + 0.8, w.z0 - 1.6); await w.at(Dee, w.xm + 0.8, w.z0 + 2.9);
+  await w.tick(5);
+}
+/** A crew sets joist k at its offered position. */
+async function setJoist(w, host, guest, k) {
+  const id = w.idOf(`joist-${k}`), o = offer(w, host, `install-joist-with:${id}`);
+  assert.equal(o?.available, true, JSON.stringify(o));
+  const at = +((k - 2) * SPAN).toFixed(2);
+  return commit(w, host, [guest], `install-joist-with:${id}`, {at});
+}
+/** All five joists, two crews at a time, then the sheet. */
+async function buildDeck(w, {sheet = true, rounds = [[0, 1], [2, 3], [4]]} = {}) {
+  const {Ada, Bo, Cy, Dee} = w.souls;
+  for (const [a, b] of rounds) {
+    const cs = [await setJoist(w, Ada, Bo, a), ...(b !== undefined ? [await setJoist(w, Cy, Dee, b)] : [])];
+    for (const c of cs) {await toEnd(w, c); assert.equal(inviteOf(w, c.id).shared.op.result, 'arrived', JSON.stringify(inviteOf(w, c.id).shared.op));}
+    await home(w);
+  }
+  await w.tick(20);
+  if (!sheet) return null;
+  const c = await commit(w, Ada, [Bo], `lay-sheet-with:${w.idOf('sheet')}`, {});
+  await toEnd(w, c); assert.equal(inviteOf(w, c.id).shared.op.result, 'arrived', JSON.stringify(inviteOf(w, c.id).shared.op));
+  await w.tick(20);
+  return c;
 }
 
 test('PC15 R4 R7 (god-built): the sheet is a floor only once laid on all five joists, and a Soul walks onto it', {timeout: 240000}, async (t) => {
@@ -126,4 +184,53 @@ test('PC15 R4 R7 (god-built): the sheet is a floor only once laid on all five jo
   const after = await walkTo(w, w.souls.Ada, 'bay-sheet');
   const pa = w.E()[w.souls.Ada.entityId].pose.p;
   t.diagnostic(`walk after: ${JSON.stringify(after).slice(0, 1500)} at ${pa} level ${w.E()[w.souls.Ada.entityId].human?.level}`);
+});
+
+test('PC15 R1 R2 R4 R7 R8: two crews set five joists, a sheet is laid across them, a Soul who built none of it walks on; removing it under her is refused', {timeout: 900000}, async (t) => {
+  const w = await site(t), {Ada, Bo, Eve} = w.souls, sheet = w.idOf('sheet');
+  // R1: joists offered with their free positions; no sheet offer while there is nothing to lay it on
+  const o = offer(w, Ada, `install-joist-with:${w.idOf('joist-0')}`);
+  assert.equal(o?.available, true, JSON.stringify(o)); assert.match(o.label, /^Set joist-0 across the bay onto bay-beam-0[lr] and bay-beam-0[lr] with one other Soul/);
+  assert.deepEqual([...o.params.at.description.matchAll(/-?\d+\.\d\d/g)].map((m) => +m[0]), [-1.22, -0.61, 0, 0.61, 1.22]);
+  assert.equal(offer(w, Ada, `lay-sheet-with:${sheet}`), undefined);
+  assert.deepEqual(floorsOf(w, sheet), [], 'a loose sheet is no floor');
+
+  const c0 = await setJoist(w, Ada, Bo, 0);
+  await runTo(w, c0, 'lift'); await w.tick(10);
+  const j0 = w.E()[w.idOf('joist-0')]; assert.equal(j0.support.kind, 'held'); assert.deepEqual(j0.support.by.sort(), [Ada.entityId, Bo.entityId].sort());
+  for (const s of [Ada, Bo]) assert.equal(w.E()[s.entityId].human.grip?.entity, j0.id, `${s.name} has a hand on it`);
+  await toEnd(w, c0); await home(w);
+  assert.equal(read(w, Ada, c0.p).code, 'shared.seated'); assert.match(read(w, Ada, c0.p).reason, /is set across the bay onto .* -1\.22 m from its middle: both its ends rest on the beams' ledges/);
+  const J0 = w.E()[w.idOf('joist-0')]; assert.equal(J0.phase, 'installed'); assert.equal(J0.support.kind, 'connected'); assert.equal(J0.connections.length, 2);
+  for (const c of J0.connections) assert.ok(w.E()[c.to].connections.some((x) => x.to === J0.id && x.socket === c.toSocket && x.toSocket === c.socket), 'reciprocal in the engine');
+  assert.ok(Math.abs(J0.pose.p[1] - (seat(0) - BEAM_H / 2 + LEDGE_Y)) < 1e-3, `on the ledges: ${J0.pose.p[1]}`);
+  await w.tick(20);
+  assert.equal(Object.keys(joinsOf(w, 'joist-0')).length, 2, 'the entity world keeps both joints');
+
+  await buildDeck(w, {sheet: false, rounds: [[1, 3], [2, 4]]});   // two crews at once, a joist apart
+  assert.equal(offer(w, Ada, `install-joist-with:${w.idOf('joist-0')}`), undefined, 'an installed joist is not offered again');
+  const lo = offer(w, Ada, `lay-sheet-with:${sheet}`); assert.equal(lo?.available, true, JSON.stringify(lo)); assert.match(lo.label, /^Lay sheet across the 5 joists from joist-[04] to joist-[04]/);
+  const cs = await commit(w, Ada, [Bo], `lay-sheet-with:${sheet}`, {});
+  await runTo(w, cs, 'lift'); await w.tick(10);
+  assert.deepEqual(floorsOf(w, sheet), [], 'no floor while it is in their hands');
+  await toEnd(w, cs);
+  assert.match(read(w, Ada, cs.p).reason, /is laid across the joists from joist-[04] to joist-[04]: it bears on every joist under it, and its top is a floor now/);
+  await w.tick(30);
+  const f = floorsOf(w, sheet); assert.equal(f.length, 1, JSON.stringify(f)); assert.ok(f[0].level > 0 && Math.abs(f[0].y - (seat(0) - BEAM_H / 2 + LEDGE_Y + JOIST_H + PLY_T)) < 0.002, JSON.stringify(f));
+  assert.equal(Object.keys(joinsOf(w, 'sheet')).length, 5, 'the sheet bears on all five in the entity world');
+  assert.deepEqual((w.host.engine.rt?.violations ?? []).filter((v) => /^(beam|support|deck)\./.test(v.code)), [], 'no frame, beam or deck invariant fired');
+
+  // R7: Eve, who built none of it, walks onto it
+  const walk = await walkTo(w, Eve, 'sheet');
+  const E = w.E()[Eve.entityId]; assert.equal(walk.phase, 'completed', JSON.stringify(walk));
+  assert.equal(E.human.level, f[0].level); assert.ok(Math.abs(E.pose.p[1] - f[0].y) < 0.01, `stands on the deck: ${E.pose.p}`);
+  // R8: nothing under her is taken away: the sheet, a joist, a beam
+  for (const op of [{op: 'remove', id: 'sheet'}, {op: 'move', id: 'sheet', in: {parent: 'world'}, p: [w.xm, w.z0 + 4], r: 0}, {op: 'disconnect', a: {id: 'sheet', connector: 'on-2'}}, {op: 'remove', id: 'joist-2'}, {op: 'remove', id: 'bay-beam-0l'}]) {
+    const r = w.god.act({ops: [op]}); assert.equal(r.accepted, false, JSON.stringify(op)); assert.equal(r.failures[0].code, 'deck.occupied', JSON.stringify(r)); assert.match(r.failures[0].detail, /Eve is standing on sheet/);
+  }
+  // a Soul is never offered to take an installed part
+  for (const n of ['joist-2', 'sheet']) {const c = offer(w, Ada, `carry:${w.idOf(n)}`); assert.ok(!c?.available, `${n}: ${JSON.stringify(c)}`);}
+  // once she is off it, the support rule still refuses taking a joist from under the sheet
+  ok(await act(w, Eve, {capability: 'walk:field'})); await until(w, () => (w.E()[Eve.entityId].human.level ?? 0) === 0, 2000); await w.tick(40);
+  const r = w.god.act({ops: [{op: 'remove', id: 'joist-2'}]}); assert.equal(r.accepted, false); assert.equal(r.failures[0].code, 'support.none', JSON.stringify(r));
 });
