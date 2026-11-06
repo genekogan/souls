@@ -40,14 +40,16 @@ export const JOBS = [
   { name: 'latency', kind: 'latency', assets: false, steps: ['V5-server-full'] },
   // the server inventory in SERVER_SHARDS duration-balanced shards (server-test-files.mjs)
   ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, steps: ['V5-server-full', 'V6-'] })),
+  // No gate step on purpose: picked by its own paths, so the gate's suite tree and cached baseline stay as they are (#1061).
+  { name: 'soul-actions', kind: 'soul-actions', assets: false, steps: [], paths: /^(tools\/soul-actions|apps\/server|packages\/world-compiler|packages\/engine-[^/]+)\// },
 ];
 
 const relevant = (job, steps) => job.steps.some(s => steps.some(step => s.endsWith('-') ? step.startsWith(s) : step === s));
 
 export function jobsFor(files) {
   const scope = scopeFor(files);
-  const include = scope.resolved === 'full' ? JOBS : JOBS.filter(job => relevant(job, scope.steps));
-  return { scope: scope.resolved, steps: scope.steps, include: include.map(({ steps, ...job }) => job), diff: scope.diff };
+  const include = scope.resolved === 'full' ? JOBS : JOBS.filter(job => relevant(job, scope.steps) || files?.some(f => job.paths?.test(f)));
+  return { scope: scope.resolved, steps: scope.steps, include: include.map(({ steps, paths, ...job }) => job), diff: scope.diff };
 }
 
 /** The local smoke job: changes under apps/web, apps/server or e2e; null (no usable base) runs it too. */

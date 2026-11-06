@@ -42,6 +42,13 @@ test('server changes run server shards and latency, not native', () => {
   assert.ok(!picked.includes('native'));
 });
 
+test('the soul-actions job runs on its own paths, full scope included, and on nothing else (#1061)', () => {
+  for (const f of ['tools/soul-actions/shared-crew.test.mjs', 'apps/server/src/edge/ledger/together.ts', 'apps/server/test/native-owner-fixture.ts', 'packages/world-compiler/src/model.ts', 'packages/engine-mars/src/x.ts']) assert.ok(names([f]).includes('soul-actions'), f);
+  for (const f of ['apps/web/src/App.tsx', 'docs/testing.md', 'tools/world-launcher/launcher.mjs', 'packages/edge-cli/x.ts']) assert.ok(!names([f]).includes('soul-actions'), f);
+  assert.ok(names(['pnpm-lock.yaml']).includes('soul-actions'));
+  assert.ok(!('paths' in jobsFor(['tools/soul-actions/x.test.mjs']).include.find(j => j.name === 'soul-actions')));
+});
+
 test('unmapped paths (lockfile, .github, mars) run every job', () => {
   for (const f of ['pnpm-lock.yaml', '.github/workflows/ci.yml', 'mars/viewer/x.js']) assert.equal(names([f]).length, JOBS.length, f);
 });
