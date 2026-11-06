@@ -1827,10 +1827,11 @@ export class Together {
         const lying = caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && this.item(c.target.id)?.kind === kind)[0];
         const c = lying ?? caps.find(c => c.id === 'pick-up:' + kind);
         // entry 43: a world thing of that word lying near (a god-built mug) when no prop of the kind is: the one called
-        // exactly that first, then one whose name has the word, nearest first (labels end "(N m)")
-        const named = !c ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
+        // exactly that first, then one whose name has the word, nearest first (labels end "(N m)"). #435: a real thing called
+        // that within reach also comes before a place's prop of the kind ("pick up the apple" is the apple on the table)
+        const named = !lying ? caps.filter(c => c.verb === 'pick-up' && c.target?.kind === 'item' && /^e_/.test(c.target.id)).map(c => {const n = (c.label.replace(/^Pick up\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').split('/').pop() ?? '').toLowerCase(), d = Number(/\(([\d.]+) m/.exec(c.label)?.[1] ?? 99);
           const w = what.replace(/^(?:the|a|an|my|that|this)\s+/, '').trim(); return {c, rank: n === w ? 0 : new RegExp(`(^|[^a-z])${w.replace(/[^a-z ]/g, '')}([^a-z]|$)`).test(n) ? 1 : 9, d};}).filter(x => x.rank < 9).sort((a, b) => a.rank - b.rank || a.d - b.d)[0]?.c : undefined;
-        if (!c && named) return {capability: named.id, note: `${raw} is ${named.id} (${named.label})`};
+        if (named) return {capability: named.id, note: `${raw} is ${named.id} (${named.label})`};
         if (!c) {
           const me = this.posOf(soul.soulId), far = me ? this.sources().filter(s => s.kind === kind && s.place).map(s => ({s, d: Math.hypot(s.at[0] - me[0], s.at[1] - me[1])})).sort((a, b) => a.d - b.d) : [];
           const hit = far.map(f => ({f, w: caps.find(c => c.verb === 'walk' && c.target && (c.target.id === f.s.place || this.p.places.byId.get(f.s.place!)?.parent === c.target.id))})).find(x => x.w), walk = hit?.w;
