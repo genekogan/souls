@@ -183,6 +183,47 @@ test('plans: a refused step counts against M1 even when its replacement works, a
   assert.equal(m.M3.byKind.read, 3, 'pending twice, and plan --status only reads');
 });
 
+test('plans: a refusal scores the same whether the seat learned of it through pending or through the listen wake', () => {
+  const planned = { accepted: true, plan: planView('running', [{ n: 1, id: 'walk:mill', state: 'pending' }, { n: 2, id: 'walk:pond', state: 'pending' }]) };
+  const stopped = planView('stopped', [{ n: 1, id: 'walk:mill', state: 'refused', code: 'route.unreachable' }, { n: 2, id: 'walk:pond', state: 'pending' }]);
+  const fixed = { accepted: true, plan: planView('running', [{ n: 1, id: 'walk:orchard', state: 'pending' }, { n: 2, id: 'walk:pond', state: 'pending' }]) };
+  const ended = { planEnded: [planView('done', [{ n: 1, id: 'walk:orchard', state: 'done', receipt: 'r1' }, { n: 2, id: 'walk:pond', state: 'done', receipt: 'r2' }])] };
+  const card = (read, wake) => scoreRun(loadSoulRun(run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [listen(0, 'msg_p', 'Mill then the pond'), ...wake],
+    transcript: events(1, [
+      { sec: 1, tools: [ack('msg_p')] },
+      { sec: 2, tools: [planCall(['walk:mill', 'walk:pond'], planned)] },
+      ...read,
+      { sec: 5, tools: [[`node eden.mjs plan '[{"id":"walk:orchard","fixes":1}]'`, fixed]] },
+      { sec: 40, tools: [['node eden.mjs pending', ended]] },
+    ]),
+  } } }))).metrics.M1;
+  const viaPending = card([{ sec: 4, tools: [['node eden.mjs pending', { plan: stopped }]] }], []);
+  const viaWake = card([], [{ t: new Date(at(3)).toISOString(), messages: [], stdout: JSON.stringify({ messages: [], plan: stopped, next: 'Step 1 was refused.' }) }]);
+  assert.deepEqual(viaPending.classes, { offer: 1, offerResolution: 0, offerRoute: 1, state: 0, admission: 0 });
+  for (const k of ['value', 'denominator', 'classes', 'missing', 'firstActOfIntention']) assert.deepEqual(viaWake[k], viaPending[k], k);
+  assert.equal(viaWake.value, 0.667);
+});
+
+test('plans: a replacement with the refused step\'s own id does not hide the refusal', () => {
+  const dir = run({ seats: { ada: {
+    turns: [{ turn: 1, reason: 'wake' }],
+    listen: [listen(0, 'msg_p', 'Sit on the bench')],
+    transcript: events(1, [
+      { sec: 1, tools: [ack('msg_p')] },
+      { sec: 2, tools: [planCall(['sit:bench'], { accepted: true, plan: planView('running', [{ n: 1, id: 'sit:bench', state: 'pending' }]) })] },
+      { sec: 3, tools: [['node eden.mjs pending', { plan: planView('stopped', [{ n: 1, id: 'sit:bench', state: 'refused', code: 'seat.too-high' }]) }]] },
+      { sec: 4, tools: [[`node eden.mjs plan '[{"id":"sit:bench","fixes":1}]'`, { accepted: true, plan: planView('running', [{ n: 1, id: 'sit:bench', state: 'pending' }]) }]] },
+      { sec: 30, tools: [['node eden.mjs pending', { planEnded: [planView('done', [{ n: 1, id: 'sit:bench', state: 'held', receipt: 'r1' }])] }]] },
+    ]),
+  } } });
+  const m1 = scoreRun(loadSoulRun(dir)).metrics.M1;
+  assert.equal(m1.denominator, 2);
+  assert.equal(m1.classes.offer, 1);
+  assert.equal(m1.value, 0.5);
+});
+
 test('plans: a step no report covers is unreadable, and an unread end is no claim of success', () => {
   const dir = run({ seats: { ada: {
     turns: [{ turn: 1, reason: 'wake' }],

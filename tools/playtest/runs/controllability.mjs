@@ -188,19 +188,22 @@ export function firstActResult(a) {
 
 // ---- plans (#1100): one model decision hands the resident client several steps, and the client closes the owner's message.
 const PLAN_OVER = new Set(['done', 'failed', 'replaced']);
-/** Every plan this seat saw reported, from the `plan` call itself and from pending, listen and plan --status: each step's latest
- *  state, and how the plan ended. A step and its replacement are two steps, so a repaired refusal still counts. */
-function planReports(steps) {
-  const plans = new Map();
-  for (const s of steps) {
-    if (!['plan', 'pending', 'listen'].includes(s.verb)) continue;
-    const o = actOutput(s.out);
+/** Every plan this seat saw reported, in time order: the `plan` call itself, pending, plan --status, and the listen that woke it
+ *  (a refused step's designed path, which the harness logs in listen.jsonl and not in the transcript). Each step's latest state,
+ *  and how the plan ended. A step and its replacement are two steps, so a repaired refusal still counts, even with the same id. */
+function planReports(steps, listenRows = []) {
+  const plans = new Map(), parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
+  const reports = [
+    ...steps.filter((s) => ['plan', 'pending', 'listen'].includes(s.verb)).map((s) => ({ at: s.doneMs ?? s.atMs ?? 0, o: actOutput(s.out), s })),
+    ...listenRows.map((r) => ({ at: Date.parse(r.t) || 0, o: parse(r.stdout), s: null })),
+  ].sort((a, b) => a.at - b.at);
+  for (const { o, s } of reports) {
     for (const v of [o?.plan, ...(Array.isArray(o?.planEnded) ? o.planEnded : [])]) {
       if (!v?.id) continue;
       if (!plans.has(v.id)) plans.set(v.id, { for: v.for ?? null, steps: new Map(), ended: null });
       const rec = plans.get(v.id);
-      for (const x of v.steps ?? []) rec.steps.set(`${x.n}:${x.id}`, x);
-      if (PLAN_OVER.has(v.state)) rec.ended = { state: v.state, step: s };
+      for (const x of v.steps ?? []) { const key = `${x.n}:${x.id}`, again = rec.steps.get(key)?.state === 'refused' && x.state !== 'refused'; rec.steps.set(again ? `${key}:again` : key, x); }
+      if (s && PLAN_OVER.has(v.state)) rec.ended = { state: v.state, step: s };   // a wake only ever reports a stopped plan
     }
   }
   return plans;
@@ -254,7 +257,7 @@ function scoreSeat(sr, seat, packs) {
   const seatPacks = packs.filter((p) => p.seat === seat);
 
   const acts = steps.filter((s) => (s.verb === 'act' || s.verb === 'object') && !(reasons.get(s.turn) === 'onboard'));
-  const plans = planReports(steps), planCounted = new Set();
+  const plans = planReports(steps, readJsonl(join(sr.playtestDir, 'seats', seat, 'listen.jsonl'))), planCounted = new Set();
   const actRows = acts.map((s) => ({ line: s.resultLine ?? s.line, atMs: s.atMs, doneMs: s.doneMs, words: s.args[0] ?? null, ...readAct(s) }));
   for (const s of steps) if (isPlanCall(s) && reasons.get(s.turn) !== 'onboard') actRows.push(...readPlan(s, plans, planCounted));
 

@@ -193,8 +193,8 @@ contract, so the same mistake scores the same on both. An intention whose first 
 unknown first-act result (`firstActOfIntention.unknown`), not a success.
 
 **Plans** (#1100): a `plan` call is one act decision for M2 and M3, and each of its steps is a row for M1, including a step and its
-replacement. The client closes the owner's message, so a plan's outcome comes from the reports the seat read (`pending`, `listen`,
-`plan --status`). A step no report covers is unreadable, and a plan nobody read the end of stays an open intention.
+replacement. The client closes the owner's message, so a plan's outcome comes from the reports the seat read (`pending`, `plan --status`, and the `listen`
+that woke it, logged in `listen.jsonl`). A step no report covers is unreadable, and a plan nobody read the end of stays an open intention.
 
 Three limits are stated in the card. Turns come from the seat log even with the trace tap on: `soul-trace/1` can carry
 `host.turn` (`tools/soul-trace/host.mjs`), but nothing in `tools/playtest` writes it yet and this scorer does not read it (#1097 A3 stays open for that). Receipts carry no first-motion tick, so M4 ends at the world's `started`, which is not observed
