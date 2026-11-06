@@ -12,7 +12,8 @@ import { HUMAN_PROFILE } from '../spatial/types.ts';
 import { HUMAN_RADIUS } from '../world/catalog.ts';
 import { bodyProfile } from '../bodies/navigation.ts';
 import { bodyProblem, withBody } from '../bodies/body.ts';
-import { HUMANOID_DIM_RANGES, HUMANOID_RADIUS_RANGE, dimsOf, humanoidDims, humanoidProfile, humanRadius, seatFitProblem } from '../bodies/humanoid.ts';
+import * as humanoid from '../bodies/humanoid.ts';
+import { HUMANOID_DIM_RANGES, HUMANOID_RADIUS_RANGE, dimsOf, humanoidDims, humanoidProfile, humanRadius } from '../bodies/humanoid.ts';
 import type { ActionDef } from '../actions/types.ts';
 import type { Body } from '../world/types.ts';
 import { hypot } from '../core/math.ts';
@@ -46,11 +47,9 @@ test('height and build change radius, height, eyes and seat fit; walk speed chan
   assert.notEqual(p, HUMAN_PROFILE); assert.equal(p.speed, 1.0); assert.equal(p.height, 1.903); assert.equal(p.radius, HUMAN_RADIUS);
   assert.equal(humanoidProfile(look({ height: 1.85, walkSpeed: 1.0 })), p, 'profiles are shared per dims');
   assert.equal(humanoidProfile(look({ headSize: 1.08 })), HUMAN_PROFILE, 'head size is drawn only');
-  // seat fit scales today's 0.2–1.2 m range: a 1.15 m stool is too high for the shortest body (≤ 1.131), fine for today's
-  assert.equal(seatFitProblem(undefined, 1.15), null);
-  assert.equal(seatFitProblem(look({ height: 1.65 }), 1.15)?.code, 'seat.too-high');
-  assert.equal(seatFitProblem(look({ height: 1.85 }), 0.2)?.code, 'seat.too-low');
-  assert.equal(seatFitProblem(look({ height: 1.85 }), 0.45), null);
+  // #1083: the comfortable seat range still scales with the body (drawing reads it), but nothing refuses a seat by height
+  assert.deepEqual(humanoidDims(look({ height: 1.65 })).seat.map((x) => x <= 1.2), [true, true]);
+  assert.equal((humanoid as Record<string, unknown>).seatFitProblem, undefined, 'no seat-fit refusal is exported');
 });
 
 test('bodyProblem accepts looks in range, refuses out-of-range dims; withBody keeps a look', () => {

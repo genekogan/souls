@@ -47,6 +47,8 @@ is a **deferred** stop: **`stand-up`** (activity `stand-up`, 0.6 s, or the remai
 back to the approach point, then idle; the action ends `cancelled` and the seat claim is held until
 the body is off the seat. `stand` completes when that stand-up has finished.
 
+**Any seat height ([#1083](https://github.com/genekogan/souls/issues/1083)).** A body sits on every seat a def declares, however high or low; nothing refuses a seat by its height (`seat.too-high`, `pose.seat-too-low` and the use-check's `use.seat-fit` are gone). The transition is the same horizontal smoothstep as any seat, so no tick's step exceeds a human's.
+
 Invariant exemption (`runtime/invariants.ts` `SEATED_ACTIVITIES`): like `climb-*`, a person whose
 activity is `sit`, `sit-down` or `stand-up` (or the item overlays `eat` / `serve`, [items.md](items.md)) is exempt from `collision.human-static` — the seated
 body is inside its own chair's footprint by design. The exemption is by activity, so it relies on

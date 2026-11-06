@@ -86,7 +86,7 @@ import type {NativeBoatControlsV1} from '@sim/engine-contract';
 import type {BodyLocationV1} from '@sim/engine-contract';
 import {bodyDanceStep} from '../../../mars/viewer/engine/bodies/motion.ts';
 import {bodyProblem} from '../../../mars/viewer/engine/bodies/body.ts';
-import {humanRadius,seatFitProblem} from '../../../mars/viewer/engine/bodies/humanoid.ts';
+import {humanRadius} from '../../../mars/viewer/engine/bodies/humanoid.ts';
 import {slotTransitionIssue,obstacleIndex,type ObstacleIndex} from '../../../mars/viewer/engine/social/actions.ts';
 import {PLAN_MARGIN} from '../../../mars/viewer/engine/spatial/path.ts';
 import {creatureOf} from '../../../mars/viewer/engine/bodies/creatures.ts';
@@ -2150,8 +2150,6 @@ export class MarsEngine implements Engine {
           continue;}
         const at:[number,number]=[a[0],a[1]];
         if(slot.approachPolicy!=='reachable/1'&&!joined(at)){const v=navIssue!;out.push({...base,ok:false,code:v.code??'nav.disconnected',message:`${slot.id} cannot be ${verb(slot.kind)}: where a body stands to get on it (${at[0].toFixed(2)}, ${at[1].toFixed(2)}) ${v.code==='nav.no-standing-room'?'has no standing room on the walk raster':v.code==='nav.one-way'?'is joined to the main ground one way only':'is cut off from the main ground'}`,at});continue;}
-        const top=slot.kind==='seat'?opts.seatTop?.({id:slot.id,of:id}):undefined,fit=top!==undefined?seatFitProblem(undefined,top):null;
-        if(fit){out.push({...base,ok:false,code:'use.seat-fit',message:`${slot.id}: ${fit.message}`,at});continue;}
         out.push({...base,ok:true,at});}}
     return per.flat();
   }

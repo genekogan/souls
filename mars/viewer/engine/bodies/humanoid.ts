@@ -109,15 +109,6 @@ export function humanRadius(e: Pick<Entity, 'body'> | undefined): number {
   return humanoidDims(b).radius;
 }
 
-/** Whether a seat top `seatTop` m above the feet fits this body; null = it fits. */
-export function seatFitProblem(body: Body | undefined | null, seatTop: number): { code: 'seat.too-high' | 'seat.too-low'; message: string } | null {
-  if (body?.family === 'floater') return null;
-  const d = humanoidDims(body), [lo, hi] = d.seat;
-  if (seatTop > hi + 1e-9) return { code: 'seat.too-high', message: `the seat is ${seatTop.toFixed(2)} m high; a ${d.height.toFixed(2)} m body sits on seats up to ${hi.toFixed(2)} m` };
-  if (seatTop < lo - 1e-9) return { code: 'seat.too-low', message: `the seat is ${seatTop.toFixed(2)} m high; a ${d.height.toFixed(2)} m body sits on seats from ${lo.toFixed(2)} m` };
-  return null;
-}
-
 /** Structural check of a humanoid look's params (bodyProblem): shape, and the physical dims in range. */
 export function humanoidParamsProblem(params: unknown): string | null {
   if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).length > 48) return 'body.params';

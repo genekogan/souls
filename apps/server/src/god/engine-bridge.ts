@@ -46,7 +46,6 @@ import { installWorldLore } from './world-lore.ts';
 import { installHeld } from './held.ts';
 import { installWorldClock } from './world-clock.ts';
 import { config, KNOWN_WORLD_KEYS } from '../config.ts';
-import { seatFitProblem } from '../../../../mars/viewer/engine/bodies/humanoid.ts';
 import { floorPlatesOf, plateIsStep } from './floor-plates.ts';
 import { isVerificationProbe } from '../verification-probe.ts';
 import { planWalkouts, dropReleased, unhand, stuckWarning, type StuckResident } from './walkout.ts';
@@ -1863,11 +1862,9 @@ export class EngineBridge {
           const id = `sit:${x.id}`, labelOf = (seatWords: string) => `${name(x.id)} (${kind && !name(x.id).split('/').pop()!.includes(kind) ? `a ${kind}, ` : ''}${seatWords}${by.length ? `by ${by.join(' and ')}; ` : ''}${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
           // F1: a bench for two stays free while one of its seats is; the seat a Soul sits on is not free to itself
           const full = others.length >= seats || (!!u && !mine && seats <= 1);
-          // seat fit (engine bodies/humanoid.ts): a body whose look sets its height cannot get onto a seat too high for it.
-          // SEATDEF: the heights are the def's seat heights as the use-check reads them (seatTopsOf: engine seat slots carry
-          // none, so this read nothing before). Only too-high blocks: a seat lower than a body likes (a floor cushion) is sat on.
+          // #1083 (Gene, 2026-11-06): any seat a def declares is sat on, whatever its height. SEATDEF: the heights are the def's
+          // seat heights as the use-check reads them; they only label the offer now
           const tops = [...seatTopsOf(this.model, x.id).values()].filter((y) => Number.isFinite(y));
-          const misfit = tops.length && tops.every((y) => seatFitProblem(me.body, y)?.code === 'seat.too-high') ? seatFitProblem(me.body, Math.min(...tops)) : null;
           // floors (2026-10-26): the sitter's feet rest on the floor under the seat (the terrain, or a floor plate on it); a
           // thing standing higher than that floor (on a deck the world does not walk on) would seat the body inside it
           const feet = levelOf(x) === 0 ? this.mw.standYAtV1?.(x.pose.p[0], x.pose.p[2], 0) : undefined, lift = typeof feet === 'number' ? x.pose.p[1] - feet : 0;
@@ -1876,9 +1873,9 @@ export class EngineBridge {
           const inside = !afloat && lift > SEAT_LIFT ? { code: 'seat.inside', reason: `${name(x.id)} stands ${lift.toFixed(2)} m above the floor you would stand on there, on something the world does not walk on: sitting on it would put you inside it.` } : null;
           const top = tops.length ? Math.min(...tops) : undefined, ownDef = ent ? this.model.resolvedDef(ent.def) : undefined;
           const onTop = top !== undefined && ownDef && ownDef.size.box[1] > 0 && top >= ownDef.size.box[1] * (ent ? this.model.worldPose(ent).s : 1) - 0.05 ? `sit on top, ${top.toFixed(2)} m high; ` : top !== undefined ? `seat ${top.toFixed(2)} m high; ` : '';
-          const block = mine ? { code: 'seat.yours', reason: `You are sitting on ${name(x.id)} already; stand:here to get up.` } : full ? { code: 'seat.taken', reason: `${(others.length ? others : [u!.body]).map((b) => this.soulName(b)).join(' and ')} ${others.length > 1 ? 'are' : 'is'} sitting there.` } : misfit ? { code: misfit.code, reason: `${name(x.id)} does not fit your body: ${misfit.message}.` } : inside;
+          const block = mine ? { code: 'seat.yours', reason: `You are sitting on ${name(x.id)} already; stand:here to get up.` } : full ? { code: 'seat.taken', reason: `${(others.length ? others : [u!.body]).map((b) => this.soulName(b)).join(' and ')} ${others.length > 1 ? 'are' : 'is'} sitting there.` } : inside;
           const label = labelOf(onTop);
-          if (block?.code === 'seat.inside' || block?.code === 'seat.too-high') unusable.push(caps.length); else if (!block) usable.push({ id, label, d });
+          if (block?.code === 'seat.inside') unusable.push(caps.length); else if (!block) usable.push({ id, label, d });
           caps.push({ id, verb: 'sit', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}), params: { seconds: { type: 'integer', min: 1, max: 600, default: 60 } } });
           plans.set(id, { label, steps: [{ verb: 'sit', params: { on: x.id, seconds: 60 } }], seconds: true });
         }

@@ -62,7 +62,7 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
 - **BUILDSAFE:** god `commitBatch` repairs what an edit newly cuts off, in the same batch
   (`apps/server/src/god/buildsafe-rule.ts`). Never add a separate after-the-fact walk fix.
 - **SEATDEF:** seat heights come from the def's model geometry. A change is a new def revision; old revisions keep
-  their bytes. Sitting refuses only `seat.too-high`.
+  their bytes. No seat is refused for its height.
 
 ## Playtests and the swarm director
 
