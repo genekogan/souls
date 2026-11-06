@@ -61,6 +61,8 @@ test('public boards II: chalkboard, sign-up sheet, poll', {timeout:300000}, asyn
  assert.match(label('poll'),/a poll, 3 votes/);assert.match(label('sheet'),/a sign-up sheet, 2 names/);assert.ok(!/Ana|Salad|Lunch/.test(label('poll')+label('sheet')),'offers carry counts, not words');
  const rp=await read(ben,'poll'),rs=await read(ben,'sheet'),rm=await read(ben,'menu');
  assert.match(rp.outcome?.summary??JSON.stringify(rp),/Lunch tomorrow\?.*Salad — 2 votes/);assert.match(rs.outcome?.summary??JSON.stringify(rs),/Volleyball at five.*1\. Ana.*2\. Cy/);assert.match(rm.outcome?.summary??JSON.stringify(rm),/Soup 3/);
+ // #429: a sign-up sheet's names are the signers' own: untrusted, attributed
+ assert.equal(rs.outcome.untrusted,true);assert.equal(rs.outcome.detail.sign.provenance,'soul-text');assert.equal(rs.outcome.detail.sign.entries.length,2);
  const restored=WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())),undefined,god.model.library);assert.equal(restored.get('poll').state.textBy.split(',').length,3);assert.equal(restored.get('sheet').state.text,'Ana\nCy');
  assert.deepEqual(f.host.engine.runtime.violations,[]);
  const nearFull=await here(ana);

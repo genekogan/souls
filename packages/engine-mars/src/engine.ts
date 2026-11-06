@@ -109,7 +109,7 @@ const RELEASE_TIMEOUT = 15 * TPS;          // how long a program waits for its a
 const KEEP_RECORDS = 120 * TPS;            // finished Mars action records are kept this long, then forgotten
 const SNAPSHOT_FORMAT = 'sim-mars-snapshot/1';
 
-type Diag = { code: string; message: string; subjects?: string[] };
+type Diag = { code: string; message: string; subjects?: string[]; details?: Record<string, unknown> };
 const SHARED_WATER_WAIT_POLICY = 'shared-water-wait/1';
 /** shared-water-wait/2 (prospective): /1 plus a mutual-wait courtesy. When two swimmers each wait on the other's
  * body, the one with the larger entity id steps aside (native make-way) so the other can go first. /1 programmes
@@ -130,6 +130,8 @@ type Prog = {
   trafficSince?: number;
   trafficTries?: number;
   stopping?: Diag;
+  /** PC08: stopped with `untilSafe` (a shared carry): a held-up action keeps its own hold-up diagnostic, not a retry's. */
+  stopUntilSafe?: true;
   ops: Op[]; action?: string; settle?: 'done' | 'held'; soft?: boolean; until?: number;
   controlOf?:string;
   readiedActors?:string[];
@@ -404,7 +406,9 @@ export class MarsEngine implements Engine {
   private advance(p: Prog) {
     const tick: number = this.rt.tick;
     if(p.stopping){
-      if(p.action&&this.rt.isActive(p.action)){this.rt.cancel(p.action,p.stopping);return;}
+      // PC08: while an `untilSafe` stop's action is held up it stands still, so a retry would refuse again and only hide
+      // the hold-up's own diagnostic (who is in the way); it is retried once the action moves again
+      if(p.action&&this.rt.isActive(p.action)){if(!(p.stopUntilSafe&&this.rt.records.get(p.action)?.status==='blocked'))this.rt.cancel(p.action,p.stopping);return;}
       return this.end(p,'cancelled',p.stopping);
     }
     for (let guard = 0; guard < 12; guard++) {
@@ -545,7 +549,8 @@ export class MarsEngine implements Engine {
     const body=this.m.admitFloaters(verb,parsed.data,(id:string)=>this.ents[id]?.body);
     if(body.status==='refuses')return {code:body.reason,message:body.note};
     const r = def.plan(this.rt, parsed.data);
-    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])]}:{}) };
+    // PC07: a preview of a `holdCutV1` carry also returns the planner's details (its search size and budget); others unchanged
+    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])],...(r.diagnostic.details&&(parsed.data as {holdCutV1?:true}).holdCutV1?{details:{...r.diagnostic.details}}:{})}:{}) };
   }
   /** VEHICLE-STEER: a pure check of a Mars verb (no `mars:` prefix) against the world now: the refusal it would meet, or null. */
   previewMarsVerbV1(verb: string, params: unknown): Diag | null { return this.plan(verb, params, true); }
@@ -1025,12 +1030,14 @@ export class MarsEngine implements Engine {
     this.programs.set(id, p); this.byActor.set(p.actor, id);
     return result;
   }
-  stop(programId: string) {
+  stop(programId: string, opts?: { untilSafe?: boolean }) {
     const p = this.programs.get(programId); if (!p) return;
     if (p.build) { p.build.stopping={code:'program.stopped',message:'Construction interruption requested; finishing the committed segment safely.'}; return; }
     if (p.action && this.rt.isActive(p.action)) {
       this.rt.cancel(p.action, { code: 'program.stopped', message: 'stopped' });
-      if(this.physical&&this.rt.isActive(p.action)){p.stopping={code:'program.stopped',message:'Stopped after native movement reaches safe support.'};return;}
+      // PC08 (#687): a shared carry's stop keeps its programme (and so the crew's borrowed bodies) until the native
+      // cleanup lands, as a physical runtime does: `advance` retries a refused cancel each tick
+      if((this.physical||opts?.untilSafe===true)&&this.rt.isActive(p.action)){p.stopping={code:'program.stopped',message:'Stopped after native movement reaches safe support.'};if(opts?.untilSafe===true)p.stopUntilSafe=true;return;}
     }
     this.end(p, 'cancelled', { code: 'program.stopped', message: 'stopped' });
   }

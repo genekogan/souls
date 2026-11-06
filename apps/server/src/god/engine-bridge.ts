@@ -12,7 +12,7 @@ import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
 import {JUGGLE} from '../../../../mars/viewer/engine/items/juggle.ts';
 import { deckRaised, railGaps, rasterOf } from '@sim/generators';
-import { applyBatch, containerInside, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
+import { applyBatch, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
 import { assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
 import { createHash } from 'node:crypto';
 import type { WorldHost } from '../world.ts';
@@ -27,12 +27,13 @@ import { tokenHit } from '../edge/ledger/vocabulary.ts';
 import {outdoorRegionExclusions} from '../edge/ledger/region-arrival.ts';
 import { doorInGap, freeDoorOpening, isDoorDef, isShut } from './doors.ts';
 import { dryingOps } from './garden.ts';
+import { fadingIds } from '../art/art.ts';
 import { createWatering, type Watering } from './watering.ts';
 import { createTea, type Tea } from './tea.ts';
 import { createContactActuatorService } from './contact-actuator.ts';
 import { createDoorPassage } from './door-passage.ts';
 import { setWorldDaySource } from './poster-boards.ts';
-import { actuatedState } from './actuators.ts';
+import { actuatedState, keepsLeftBy, leftByOf } from './actuators.ts';
 import { GodPerceive } from './perceive.ts';
 import { GodPlaces, inPoly } from './places.ts';
 import { GodLayers } from './layers.ts';
@@ -126,6 +127,7 @@ export class FloorCells {
 const NEAR = 60;               // capabilities: god things within this many metres
 const FAR_SEAT = 250, FAR_SEATS = 6; // F2: and the nearest FAR_SEATS seats out to FAR_SEAT m (sit only)
 const STORE_NEAR = 8;          // entry 42: put-in is offered for containers within this many metres of a Soul holding something
+const FACTS_NEAR = 4;          // #435: who left a kept thing is named only within here's compact-facts range (edge/perception/here.ts)
 const BODY_DEF = 'core/humanoid@1';
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
@@ -298,7 +300,7 @@ export class EngineBridge {
     if(this.edge)this.edge.contactActuator=createContactActuatorService({model:()=>this.god.model,levelAt:(x,z,y)=>this.levelAt(x,z,y),
       clearance:(x,z,level)=>(this.host.engine as unknown as {clearanceAtV1?:(x:number,z:number,level?:number)=>number}).clearanceAtV1?.(x,z,level)??Infinity,
       body:id=>this.host.engine.world.entities[id] as never,access:(id,soul)=>this.layers.refusal(id,soul),owner,knock:(soul,id)=>this.knockHeard(soul,id),
-      moreFacts:id=>this.tea?.facts(id)??null,
+      moreFacts:id=>this.tea?.facts(id)??null,soulName:id=>this.host.minds.get(id)?.name??null,
       record:(soul,id,action,params={})=>{const r=this.edge!.comms?.objects.act?.(id,soul,{action,params}) as {accepted?:boolean}|undefined;if(!r?.accepted)throw Error('switch.object-record-refused');},
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
@@ -438,11 +440,17 @@ export class EngineBridge {
   private gardenTick(tick: number) {
     const l = this.host.living; if (!l || !(l.dayTicks > 0)) return;
     const day = Math.floor(Math.max(0, tick - l.origin) / l.dayTicks);
+    // #430: the clock set back also changes how far a drawing has faded
+    if (this.gardenDay !== null && day < this.gardenDay) this.noteFading(day, this.gardenDay);
     if (this.gardenDay === null || day < this.gardenDay) { this.gardenDay = day; return; }
     if (day === this.gardenDay) return;
-    const days = Math.min(3, day - this.gardenDay); this.gardenDay = day;
-    setImmediate(() => { try { const ops = dryingOps(this.god.model, days); if (ops.length) this.god.engineAct(ops as never, `garden: ${days} day(s) of drying`, () => {}); } catch (e) { this.log(`garden drying: ${(e as Error).message}`); } });
+    const days = Math.min(3, day - this.gardenDay), prev = this.gardenDay; this.gardenDay = day;
+    setImmediate(() => { try { const ops = dryingOps(this.god.model, days); if (ops.length) this.god.engineAct(ops as never, `garden: ${days} day(s) of drying`, () => {}); } catch (e) { this.log(`garden drying: ${(e as Error).message}`); }
+      // #430: a fading drawing's perceived line follows the world day (no edit: its age is read from its drawn day)
+      this.noteFading(day, prev); });
   }
+  /** #430: re-derive the perceived line of every drawing whose fade may differ between these two world days (writes nothing). */
+  private noteFading(day: number, prev: number) { try { const ids = fadingIds(this.god.model, day, prev); if (ids.length) this.notePerceive(ids, false); } catch (e) { this.log(`fading: ${(e as Error).message}`); } }
   private checkProjectionSoon() {
     if (!this.readinessChecks.size || this.readinessQueued) return;
     this.readinessQueued = true;
@@ -1439,6 +1447,9 @@ export class EngineBridge {
       const b = this.engine.world.entities[s.by];
       if (b) { ops.push({ op: 'move', id: s.by, p: [r3(b.pose.p[0]), r3(b.pose.p[1]), r3(b.pose.p[2])], r: r3(-b.pose.yaw), mode: 'strict' } as Op); body = s.by; }
       ops.push({ op: 'move', id, in: { parent: s.by, slot: 'carry' }, p: [0, 0, 0], r: 0, mode: 'strict' } as Op);
+      // #435: taken off a container that keeps a `leftBy` record (a swap shelf): its entry goes with it
+      const from = this.model.entities.get(e.in.parent), rec = from && keepsLeftBy(this.model.resolvedDef(from.def)) ? leftByOf(from.state) : null;
+      if (from && rec?.has(id)) { rec.delete(id); ops.push({ op: 'set', id: from.id, state: { leftBy: [...rec].map(([k, v]) => `${k}=${v}`).join(',') } } as Op); }
     } else if (s?.kind === 'resting-on') {
       const parent = this.model.entities.get(s.on); if (!parent) return;
       const slotId = String(s.slot).replace(/-r\d+c\d+$/, '');
@@ -1449,6 +1460,17 @@ export class EngineBridge {
       const have = e.p ?? [0, 0, 0];
       if (e.in.parent === s.on && (e.in.slot ?? '') === (slot ? slotId : '') && Math.hypot((have[0] ?? 0) - want[0], (have[have.length - 1] ?? 0) - want[2]) < 0.05) return;
       ops.push({ op: 'move', id, in: { parent: s.on, ...(slot ? { slot: slotId } : {}) }, p: want, r: r3(-(x.pose.yaw) - pp.yaw), mode: 'strict' } as Op);
+      // #435 (W071): a container that keeps a `leftBy` record (a swap shelf) notes the Soul whose hand this came from, and
+      // forgets what is no longer inside it. The record is read when the unit is planned: the scheduled (sliced) pass plans
+      // each unit just before applying it; the unsliced pass plans all first, so two leaves on one shelf in one such pass
+      // keep only the last record (the tick drain never batches that way).
+      const pdef = this.model.resolvedDef(parent.def), ins = slot && keepsLeftBy(pdef) ? containerInside(pdef) : null;
+      if (ins && e.in.parent !== s.on && ins.slots.some((q) => q.id === slotId)) {
+        const from = e.in.parent, by = [...this.host.minds.values()].find((m) => m.entityId === from)?.soulId, inside = new Set(ins.slots.map((q) => q.id));
+        const kept = new Set([...(this.model.children.get(parent.id) ?? [])].filter((c) => c !== id && inside.has(this.model.entities.get(c)?.in.slot ?? '')));
+        const rec = [...leftByOf(parent.state)].filter(([k]) => kept.has(k)); if (by) rec.push([id, by]);
+        ops.push({ op: 'set', id: parent.id, state: { leftBy: rec.map(([k, v]) => `${k}=${v}`).join(',') } } as Op);
+      }
     } else if (s?.kind === 'ground') {
       if (e.in.parent === 'world') { const p = e.p ?? [0, 0]; if (Math.hypot(p[0] - x.pose.p[0], p[p.length - 1] - x.pose.p[2]) < 0.05) return; }
       // A thing placed in a room, on a pier or balcony stays there until a Soul moves it away.
@@ -1928,7 +1950,8 @@ export class EngineBridge {
         // entry 42: a thing kept inside a container is seen, offered and named only while the container is open
         const kept = asset.category === 'item' && x.support?.kind === 'resting-on' ? this.keptIn(x) : null;
         if (asset.category === 'item' && !(loose && !loose.small) && x.support?.kind !== 'in-hand' && !held && (!kept || (kept.open && d <= STORE_NEAR))) {
-          const id = `pick-up:${x.id}`, label = kept ? `Take ${name(x.id)} out of ${kept.label} (${d} m)` : `Pick up ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
+          const by = kept && d <= FACTS_NEAR ? this.leftBy(kept.id, x.id) : null;
+          const id = `pick-up:${x.id}`, label = kept ? `Take ${name(x.id)}${by ? ` (left by ${by})` : ''} out of ${kept.label} (${d} m)` : `Pick up ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
           const block = kept ? this.storageRefusal(kept, soul) : null;
           const pm = this.model.entities.get(x.id), juggling = pm && this.model.resolvedDef(pm.def)?.tags.includes('juggling');
           caps.push({ id, verb: 'pick-up', label, target: { id: x.id, kind: 'item' }, available: !block, ...(block ? { blocked: block } : {}), ...(juggling ? { aliases: ['juggling balls'] } : {}) });
@@ -1985,7 +2008,12 @@ export class EngineBridge {
     const e = this.model.entities.get(id), def = e && this.model.resolvedDef(e.def), ins = containerInside(def);
     if (!e || !def || !ins) return null;
     const n = this.model.pathOf(id), word = ins.word;
-    return { id, ins, open: actuatedState(e, def).open === true, label: n.toLowerCase().split(/[^a-z0-9]+/).includes(word) ? n : `${n} (${word})`, word, name: n };
+    return { id, ins, open: containerOpen(def, actuatedState(e, def)), label: n.toLowerCase().split(/[^a-z0-9]+/).includes(word) ? n : `${n} (${word})`, word, name: n };
+  }
+  /** #435 (W071): the name of the Soul who left this thing in a container that keeps a `leftBy` record, else null. */
+  leftBy(box: string, item: string): string | null {
+    const e = this.model.entities.get(box); if (!e || !keepsLeftBy(this.model.resolvedDef(e.def))) return null;
+    const by = leftByOf(e.state).get(item); return by ? this.host.minds.get(by)?.name ?? 'someone' : null;
   }
   /** Entry 42: the container an engine item rests inside, or null (a table top, the ground). */
   keptIn(x: { support?: { kind: string; on?: string; slot?: string } }) {
