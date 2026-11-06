@@ -1177,11 +1177,8 @@ export function takePending(st) {
     ...(st.plan ? { plan: planView(st.plan) } : {}),
     ...(st.planEnded?.length ? { planEnded: st.planEnded } : {}),
   };
-      const backlog = st.messages.slice(after ? st.messages.findIndex((m) => m.id === after) + 1 : 0).filter((m) => !m.acked);
-      const stopped = st.plan?.state === "stopped" && !st.plan.announced ? st.plan : null;   // a refused step wakes the agent
-      if (backlog.length || stopped) {
-        if (stopped) { stopped.announced = true; persist(); }
-        const out =  for (const r of receipts) if (ENDED.has(r.phase)) r.read = true;
+  st.planEnded = [];
+  for (const r of receipts) if (ENDED.has(r.phase)) r.read = true;
   // A long unread tail hands over in pieces: move the read cursor only past what was shown.
   const last = rest.length > shown.length ? shown.at(-1) : st.events.at(-1);
   if (last?.id) st.readCursor = last.id;
@@ -1382,7 +1379,7 @@ async function serveForeground() {
       const stopped = st.plan?.state === "stopped" && !st.plan.announced ? st.plan : null;   // a refused step wakes the agent
       if (backlog.length || stopped) {
         if (stopped) { stopped.announced = true; persist(); }
-        const out =        const out = backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt, state: "delivered" }));
+        const out = backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt, state: "delivered" }));
         return { status: 200, data: { inbox: { connected: true, ...(out[0] ? { latest: out[0] } : {}), queued: 0 }, backlog: out, ...(stopped ? { plan: planView(stopped) } : {}) } };
       }
       const left = until - Date.now();
