@@ -82,7 +82,7 @@ test('act and say retry with the same Idempotency-Key and body after a busy refu
     if (req.url === '/v1/edge/act') return json(res, 200, { accepted: true, receipt: { id: 'r_1', phase: 'running' }, channel: 'body' });
     return json(res, 200, { said: true });
   });
-  const got = await f.run('act', 'wave');
+  const got = await f.run('act', 'wave:here');
   assert.equal(got.code, 0, got.stderr);
   const acts = f.seen.filter(s => s.url === '/v1/edge/act');
   assert.equal(acts.length, 3);

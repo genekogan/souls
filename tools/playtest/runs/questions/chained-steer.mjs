@@ -4,13 +4,13 @@
 const CHAINED = /then fly north/i;
 export default {
   id: 'chained-steer',
-  version: 2,
+  version: 3,
   question: 'Was the rider\'s chained steer accepted as a steer toward its first clause\'s place, with the second clause left for a later act?',
-  assumptions: ['The seat ran `resolve` and then `act` with the same chained words; the resolve output carries the params and the note.'],
+  assumptions: ['The seat ran `resolve` with the chained words and then sent the steer id it read, with those params (strict offers, v3); the resolve output carries the params and the note.'],
   score(ctx) {
-    const steps = ctx.seats.flatMap((s) => ctx.steps(s).filter((x) => (x.verb === 'act' || x.verb === 'resolve') && x.args.some((a) => CHAINED.test(a))));
-    const act = steps.find((x) => x.verb === 'act'), look = steps.find((x) => x.verb === 'resolve');
-    const evidence = steps.map(ctx.stepRef);
+    const all = ctx.seats.flatMap((s) => ctx.steps(s)), at = all.findIndex((x) => x.verb === 'resolve' && x.args.some((a) => CHAINED.test(a)));
+    const look = at >= 0 ? all[at] : undefined, act = at >= 0 ? all.slice(at + 1).find((x) => x.verb === 'act') : undefined;
+    const evidence = [look, act].filter(Boolean).map(ctx.stepRef);
     if (!act) return { verdict: 'unknown', uncertainty: 'no seat sent the chained steer', evidence };
     if (!look?.out?.would) return { verdict: 'unknown', uncertainty: 'the seat sent the chained steer but no resolve output records its params and note', evidence };
     const would = look.out.would, cap = act.out?.receipt?.capability ?? act.out?.resolved ?? null;
