@@ -943,6 +943,7 @@ async function listen(...args) {
     const d = ok(r, "listen");
     attempt = 0; lastCode = undefined;
     const messages = messagesOf(d).filter((m) => m.id !== after);
+    if (d.plan) return { messages, plan: d.plan, next: d.plan.next ?? `${CLI} pending shows the plan.` };
     if (messages.length || once) {
       return { messages, next: messages.length ? `ack each (ack <id> "Got it: …"), restart listen --after ${messages.at(-1).id} in the background, then do them in order and result <id> done|failed "…"` : "nothing waiting" };
     }
@@ -1116,7 +1117,7 @@ function takeServeLock(start) {
 }
 
 export function loadServeState() {
-  const d = { cursor: null, inboxAfter: null, readCursor: null, messages: [], receipts: {}, events: [], omitted: 0, gap: false };
+  const d = { cursor: null, inboxAfter: null, readCursor: null, messages: [], receipts: {}, events: [], omitted: 0, gap: false, plan: null, planEnded: [] };
   try { return { ...d, ...JSON.parse(readFileSync(SERVE_STATE, "utf8")) }; } catch { return d; }
 }
 /** Pure: fold what the stream delivered into the state. */
@@ -1173,7 +1174,10 @@ export function takePending(st) {
     ...(st.omitted ? { omitted: st.omitted } : {}),
     ...(st.gap ? { gap: true, gapNote: "The stream had a gap: read here again; some events were not seen." } : {}),
     cursor: st.cursor,
+    ...(st.plan ? { plan: planView(st.plan) } : {}),
+    ...(st.planEnded?.length ? { planEnded: st.planEnded } : {}),
   };
+  st.planEnded = [];
   for (const m of st.messages) m.handed = true; // a later listen does not hand over what this read already showed
   for (const r of receipts) if (ENDED.has(r.phase)) r.read = true;
   // A long unread tail hands over in pieces: move the read cursor only past what was shown.
@@ -1185,6 +1189,107 @@ export function takePending(st) {
   const ended = Object.values(st.receipts).filter((r) => ENDED.has(r.phase) && r.read);
   for (const r of ended.slice(0, Math.max(0, ended.length - 200))) delete st.receipts[r.id];
   return out;
+}
+
+// ---------------------------------------------------------------- plan: an errand serve runs with no model call between steps
+
+// `plan` hands serve an ordered list of offered ids. Serve acts on one, reconciles its receipt, then acts on the next. A refused
+// step stops the plan and waits for the agent; nothing is substituted. Talk never replaces a plan; a newer body act does. The
+// plan lives in SERVE_STATE and each step keeps its clientRef, so a killed serve carries on and the world acts once.
+const PLAN_STEPS_MAX = 24, PLAN_FIX_WAIT_MS = 120_000, PLAN_ENDED_MAX = 20, PLAN_STEP_ID = /^[a-z][\w-]*:\S+$/i;
+const PLAN_OVER = new Set(["done", "failed", "replaced"]);
+const plainObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** '["walk:mill",{"id":"sit:bench","params":{"seconds":30}}]' → {steps, fixes}. Throws what is wrong. */
+export function parsePlanSteps(text) {
+  const usage = `usage: plan '["walk:mill",{"id":"sit:bench","params":{"seconds":30}}]' [--for <message-id>|none], or plan '[{"id":"walk:pond","fixes":2}]' to replace refused step 2`;
+  let list; try { list = JSON.parse(text); } catch { throw new Error(usage); }
+  if (!Array.isArray(list) || !list.length) throw new Error(usage);
+  if (list.length > PLAN_STEPS_MAX) throw new Error(`a plan has at most ${PLAN_STEPS_MAX} steps`);
+  let fixes;
+  const steps = list.map((x) => {
+    const s = typeof x === "string" ? { id: x } : x;
+    if (!plainObject(s) || typeof s.id !== "string") throw new Error(usage);
+    if (!PLAN_STEP_ID.test(s.id)) throw new Error(`"${s.id}" is not an offered id. Ids come from here, caps and resolve "<my words>".`);
+    if (s.params !== undefined && !plainObject(s.params)) throw new Error(`${s.id}: params must be a JSON object`);
+    if (s.fixes !== undefined) { if (list.length !== 1 || !Number.isInteger(s.fixes) || s.fixes < 1) throw new Error("fixes names one refused step, by its number, in a list of one"); fixes = s.fixes; }
+    return { id: s.id, ...(s.params ? { params: s.params } : {}) };
+  });
+  return { steps, ...(fixes ? { fixes } : {}) };
+}
+/** The offer's published schema against these params, for the checks a client can make. The world still decides at the step. */
+export function stepParamsProblem(schema, params = {}) {
+  for (const [name, spec] of Object.entries(schema ?? {})) if (spec?.required && params[name] == null) return `needs ${name}`;
+  for (const [name, v] of Object.entries(params)) {
+    const spec = schema?.[name]; if (!spec || v == null) continue;
+    const kind = { integer: Number.isInteger(v), number: typeof v === "number", string: typeof v === "string", boolean: typeof v === "boolean", array: Array.isArray(v) }[spec.type];
+    if (kind === false) return `${name} must be ${spec.type === "integer" ? "an integer" : `a ${spec.type}`}`;
+    if (spec.enum && !spec.enum.includes(v)) return `${name} must be one of ${spec.enum.join(", ")}`;
+    if (typeof v === "number" && ((spec.min != null && v < spec.min) || (spec.max != null && v > spec.max))) return `${name} must be ${spec.min ?? "any"}..${spec.max ?? "any"}`;
+    if (typeof v === "string" && spec.maxLength != null && v.length > spec.maxLength) return `${name} takes at most ${spec.maxLength} characters`;
+    if (Array.isArray(v) && spec.maxItems != null && v.length > spec.maxItems) return `${name} takes at most ${spec.maxItems}`;
+  }
+  return null;
+}
+/** Pure: what `resolve` says about one step, before anything runs. A step the world's state blocks now may be open by its turn,
+ *  so only an id on no offer or params that don't fit stop the plan here. */
+export function planStepProblem(step, r) {
+  if (r?.ok === false && String(r.code ?? "").startsWith("capability.")) return { id: step.id, code: r.code, reason: r.reason ?? null, ...(r.did_you_mean?.length ? { did_you_mean: r.did_you_mean.slice(0, 5) } : {}), ...(r.candidates?.length ? { candidates: r.candidates.slice(0, 5) } : {}) };
+  if (r?.ok !== false && r?.would?.capability && r.would.capability !== step.id) return { id: step.id, code: "capability.unknown", reason: `"${step.id}" is not an offer on this Soul right now.`, ...(r.candidates?.length ? { candidates: r.candidates.slice(0, 5) } : {}) };
+  const c = r?.candidates?.find((x) => x.id === step.id), problem = c ? stepParamsProblem(c.params, step.params) : null;
+  return problem ? { id: step.id, code: "capability.params", reason: `${step.id}: ${problem}`, ...(c.params ? { params: c.params } : {}) } : null;
+}
+export function newPlan(steps, forId, at = Date.now()) {
+  return { id: `p_${randomUUID()}`, for: forId ?? null, state: "running", at: 0, since: at, steps: steps.map((s) => ({ ...s, clientRef: randomUUID(), state: "pending", receipt: null })) };
+}
+function planOver(p, state, at) { p.state = state; p.endedAt = at; return p; }
+function planRefused(p, s, why, at) {
+  s.state = "refused"; s.why = why;
+  if (s.replacement) return planOver(p, "failed", at);   // one replacement per step: a second refusal ends the plan
+  p.state = "stopped"; p.stoppedAt = at; p.announced = false;
+  return p;
+}
+function planNext(p, s, state, at) { s.state = state; p.at++; return p.at >= p.steps.length ? planOver(p, "done", at) : p; }
+/** Pure: the world's answer to the current step's act. */
+export function planAnswer(p, d, at = Date.now()) {
+  const s = p.steps[p.at];
+  if (!d?.accepted || !d.receipt?.id) {
+    const { code = null, reason = null, did_you_mean, alternatives, candidates } = d ?? {};
+    return planRefused(p, s, { code, reason, ...(did_you_mean?.length ? { did_you_mean: did_you_mean.slice(0, 5) } : {}), ...(alternatives?.length ? { alternatives: alternatives.slice(0, 3) } : {}), ...(candidates?.length ? { candidates: candidates.slice(0, 5) } : {}) }, at);
+  }
+  s.state = "running"; s.receipt = d.receipt.id;
+  return planPhase(p, d.receipt, at);
+}
+/** Pure: the current step's receipt moved. Any other receipt is none of the plan's business. */
+export function planPhase(p, r, at = Date.now()) {
+  const s = p.steps[p.at];
+  if (p.state !== "running" || !s || !r?.id || s.receipt !== r.id || !ENDED.has(r.phase)) return p;
+  if (r.phase === "completed") return planNext(p, s, "done", at);
+  if (r.phase === "replaced") { s.state = "replaced"; return planOver(p, "replaced", at); }
+  return planRefused(p, s, { code: r.code ?? null, reason: r.reason ?? null, phase: r.phase }, at);
+}
+/** Pure: a sit or lie with no duration keeps its receipt open while the body holds the pose. That step has done its work. */
+export function planHeld(p, e, at = Date.now()) {
+  const s = p.steps[p.at];
+  return p.state === "running" && s?.receipt && heldPhase(e, s.receipt) ? planNext(p, s, "held", at) : p;
+}
+/** Pure: the one replacement for the refused step. A string says why not. */
+export function planFix(p, fixes, step) {
+  if (p?.state !== "stopped") return "no step is waiting for a replacement";
+  if (fixes !== p.at + 1) return `step ${p.at + 1} is the refused one`;
+  p.steps[p.at] = { ...step, clientRef: randomUUID(), state: "pending", receipt: null, replacement: true, replaces: p.steps[p.at].id };
+  p.state = "running"; delete p.stoppedAt;
+  return null;
+}
+/** Pure: a refused step nobody replaced ends the plan, so the owner hears. */
+export function planExpired(p, at = Date.now(), waitMs = PLAN_FIX_WAIT_MS) { return p?.state === "stopped" && at - p.stoppedAt >= waitMs ? planOver(p, "failed", at) : p; }
+export function planView(p) {
+  const refused = p.steps.find((s) => s.state === "refused");
+  return {
+    id: p.id, state: p.state, step: Math.min(p.at + 1, p.steps.length), of: p.steps.length, ...(p.for ? { for: p.for } : {}),
+    steps: p.steps.map((s, i) => ({ n: i + 1, id: s.id, state: s.state, ...(s.receipt ? { receipt: s.receipt } : {}), ...(s.why ? s.why : {}) })),
+    ...(p.state === "stopped" && refused ? { next: `Step ${p.at + 1} was refused. Send one replacement: plan '[{"id":"<offered id>","fixes":${p.at + 1}}]'. Otherwise the plan ends failed.` } : {}),
+  };
 }
 
 async function serveForeground() {
@@ -1236,7 +1341,9 @@ async function serveForeground() {
       const d = r.data, had = st.cursor;
       if (d.gap) st.gap = true;
       foldEvents(st, d.gap ? [] : d.events, d.cursor);
+      if (!d.gap) for (const e of d.events ?? []) if (st.plan) { planHeld(st.plan, e); if (e?.receipt?.id) planPhase(st.plan, e.receipt); }
       if ((d.events?.length && !d.gap) || d.gap || d.cursor !== had) { if (d.events?.length) lastEventAt = Date.now(); persist(); wake(); }
+      planTick();
     }
   }
   // One heavy request at a time, and soul.busy waited out here instead of handed back. Only reads and keyed writes repeat.
@@ -1268,18 +1375,91 @@ async function serveForeground() {
     for (;;) {
       if (terminal) return terminal;
       const backlog = st.messages.filter((m) => !m.handed && !m.acked);
-      if (backlog.length) {
+      const stopped = st.plan?.state === "stopped" && !st.plan.announced ? st.plan : null;   // a refused step wakes the agent
+      if (backlog.length || stopped) {
         for (const m of backlog) m.handed = true;
+        if (stopped) stopped.announced = true;
         persist();
         const out = backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt, state: "delivered" }));
-        return { status: 200, data: { inbox: { connected: true, latest: out[0], queued: 0 }, backlog: out } };
+        return { status: 200, data: { inbox: { connected: true, ...(out[0] ? { latest: out[0] } : {}), queued: 0 }, backlog: out, ...(stopped ? { plan: planView(stopped) } : {}) } };
       }
       const left = until - Date.now();
       if (left <= 0) return { status: 200, data: { inbox: { connected: true, queued: 0 }, backlog: [] } };
       await new Promise((done) => { const t = setTimeout(done, left); waiters.push(() => { clearTimeout(t); done(); }); });
     }
   }
+  // One plan step at a time, through the same gate as every heavy request. A step the world did not answer is asked again with
+  // its own clientRef and key, so it acts once however many tries it takes.
+  let planBusy = false, planReadAt = 0;
+  async function closePlan(p) {
+    if (p.for && !p.resultSent) {
+      const failedAt = p.steps.find((s) => s.state === "refused"), line = p.state === "done" ? `Finished all ${p.steps.length} steps.` : p.state === "replaced" ? "Replaced by a newer request." : `Stopped at step ${p.at + 1}: ${failedAt?.why?.reason ?? failedAt?.why?.code ?? "refused"}`;
+      const r = await forward({ url: `${world}/v1/edge/inbox/${encodeURIComponent(p.for)}/result`, method: "POST", headers: { ...auth, "idempotency-key": `${p.id}:result` }, body: { outcome: p.state === "done" ? "done" : "failed", text: line.slice(0, 140) }, timeoutMs: 40_000 });
+      if (r.status === 0 || r.status === 429 || r.status >= 500) return false;   // the next tick tries again
+      if (r.status === 409 && codeOf(r.data) !== "finished") return false;
+      p.resultSent = true;
+    }
+    st.planEnded = [...(st.planEnded ?? []), planView(p)].slice(-PLAN_ENDED_MAX);
+    if (st.plan === p) st.plan = null;
+    persist();
+    return true;
+  }
+  async function planTick() {
+    if (planBusy) return;
+    planBusy = true;
+    try {
+      for (;;) {
+        const p = st.plan;
+        if (!p) return;
+        planExpired(p);
+        if (PLAN_OVER.has(p.state)) { if (!(await closePlan(p))) return; continue; }
+        if (p.state !== "running") return;
+        const s = p.steps[p.at];
+        if (s.state !== "pending") return;
+        const last = p.at === p.steps.length - 1;
+        // Only the last step closes the owner's message; an earlier one posts progress and the card stays open (the world's D3c).
+        const r = await forward({ url: `${world}/v1/edge/act`, method: "POST", headers: { ...auth, "idempotency-key": s.clientRef }, timeoutMs: 40_000,
+          body: { capability: s.id, ...(s.params ? { params: s.params } : {}), clientRef: s.clientRef, strict: true, ...(p.for ? { for: p.for, ...(last ? {} : { forDefault: true }) } : {}) } });
+        if (st.plan !== p || s.state !== "pending") return;   // replaced while it was asking
+        if (r.status === 0 || r.status === 429 || r.status >= 500 || isBusy(r.status, r.data)) return;   // the next tick tries again
+        const wasStopped = p.state;
+        planAnswer(p, r.status >= 200 && r.status < 300 ? r.data : { accepted: false, code: codeOf(r.data) ?? `http-${r.status}`, reason: r.data?.error?.message ?? null });
+        // A short act can end on the stream before its answer is back.
+        const seen = s.receipt ? st.receipts[s.receipt] : null;
+        if (seen?.phase) planPhase(p, { id: s.receipt, phase: seen.phase, reason: seen.reason });
+        persist();
+        if (p.state === "stopped" && wasStopped !== "stopped") { log(`plan: step ${p.at + 1} refused (${s.why?.code})`); wake(); }
+      }
+    } finally { planBusy = false; }
+  }
+  // The stream reports each receipt; a read every so often covers a gap in it.
+  async function planPoll() {
+    const p = st.plan, s = p?.steps[p.at];
+    if (p?.state === "running" && s?.receipt && Date.now() - planReadAt >= 15_000) {
+      planReadAt = Date.now();
+      const r = await worldOnce(`${world}/v1/edge/receipts/${encodeURIComponent(s.receipt)}`, { method: "GET", headers: auth, timeoutMs: 25_000 });
+      if (st.plan === p && r.status === 200 && r.data?.receipt) { planPhase(p, r.data.receipt); persist(); }
+    }
+    await planTick();
+  }
+  function startPlan(m) {
+    const old = st.plan;
+    if (m.fixes) {
+      const no = planFix(old, m.fixes, m.steps[0]);
+      if (no) return { accepted: false, code: "plan.no-fix", reason: no, ...(old ? { plan: planView(old) } : {}) };
+    } else {
+      if (old) { if (old.for && old.for === m.for) old.resultSent = true; planOver(old, "replaced", Date.now()); pendingClose.push(old); }
+      st.plan = newPlan(m.steps, m.for);
+    }
+    persist();
+    for (const p of pendingClose.splice(0)) closePlan(p).then((sent) => { if (!sent) pendingClose.push(p); });
+    planTick();
+    return { accepted: true, plan: planView(st.plan), next: `Serve runs it now, with no model call between steps. ${CLI} pending shows how it goes.` };
+  }
+  const pendingClose = [];
   async function handle(m) {
+    if (m.op === "plan") return startPlan(m);
+    if (m.op === "planStatus") return st.plan ? { plan: planView(st.plan) } : { plan: null, ...(st.planEnded?.length ? { planEnded: st.planEnded } : {}) };
     if (m.op === "pending") { const out = takePending(st); persist(); return out; }
     if (m.op === "status") return { serving: true, pid: process.pid, since: start, cursor: st.cursor, inboxAfter: st.inboxAfter, unacked: st.messages.filter((x) => !x.acked).length, openReceipts: Object.values(st.receipts).filter((r) => !ENDED.has(r.phase)).length, unreadEvents: st.events.length - readIndex(st), busyWaited, lastEventAt, ...(terminal ? { ended: codeOf(terminal.data) ?? terminal.status } : {}) };
     if (m.op === "stop") { setTimeout(() => shutdown(0), 10); return { stopping: true, pid: process.pid }; }
@@ -1290,6 +1470,12 @@ async function serveForeground() {
       const known = cached ? st.receipts[decodeURIComponent(cached[1])] : null;
       if (known?.full && ENDED.has(known.phase)) return { status: 200, data: { receipt: known.full } };
       const r = await forward(m);
+      // A newer body act replaces the plan; talk and attention don't. (The plan's own acts don't come through here.)
+      if (path === "/v1/edge/act" && m.method === "POST" && st.plan && !PLAN_OVER.has(st.plan.state) && r.data?.accepted && r.data.channel !== "attention" && r.data.channel !== "none") {
+        const p = st.plan;
+        if (p.for && p.for === m.body?.for) p.resultSent = true;
+        planOver(p, "replaced", Date.now()); persist(); planTick();
+      }
       if (cached && r.status === 200 && r.data?.receipt?.id) { noteReceipt(st, r.data.receipt, Date.now()); if (ENDED.has(r.data.receipt.phase)) st.receipts[r.data.receipt.id].full = r.data.receipt; persist(); }
       return r;
     }
@@ -1316,6 +1502,8 @@ async function serveForeground() {
   server.listen(SERVE_SOCK, () => { log(`serving pid ${process.pid}, cursor ${st.cursor ?? s.cursor ?? "c_0"}`); });
   setInterval(() => writeServeLock(start), SERVE_BEAT_MS);
   inboxLoop(); eventLoop();
+  setInterval(() => { for (const p of pendingClose.splice(0)) closePlan(p).then((sent) => { if (!sent) pendingClose.push(p); }); planPoll().catch((e) => log(`plan: ${e.message}`)); }, 5_000);
+  planTick().catch((e) => log(`plan: ${e.message}`));
   await new Promise(() => {});
 }
 
@@ -1343,6 +1531,36 @@ async function serve(...args) {
 async function pending() {
   const a = await askServe({ op: "pending" });
   if (!a || a.lost) throw new Error(`No serve in this folder. Start one: ${CLI} serve`);
+  return a;
+}
+
+// plan '<ordered offered ids>' [--for <id>|none]: checked here before any step runs, then run by the serve.
+async function plan(...argv) {
+  if (argv[0] === "--status") {
+    const a = await askServe({ op: "planStatus" });
+    if (!a || a.lost) throw new Error(`No serve in this folder. Start one: ${CLI} serve`);
+    return a;
+  }
+  const { args, for: forArg } = waitOption(argv);
+  const { steps, fixes } = parsePlanSteps(args[0] ?? "");
+  const up = await askServe({ op: "status" });
+  if (!up?.serving) throw new Error(`A plan runs in serve, and none is up in this folder. Start one: ${CLI} serve`);
+  const problems = [];
+  for (const step of steps) {
+    const r = ok(await call("/v1/edge/resolve", { body: { capability: step.id, ...(step.params ? { params: step.params } : {}) } }), "resolve").resolve;
+    const no = planStepProblem(step, r);
+    if (no) problems.push(no);
+  }
+  if (problems.length) {
+    process.exitCode = 2;
+    return { accepted: false, code: problems[0].code, reason: `No step ran: ${problems[0].reason ?? problems[0].id}`, problems };
+  }
+  const s = load(), implicit = forArg === undefined && s.lastAcked && !s.lastAckedActed && Date.now() - Date.parse(s.lastAckedAt ?? 0) < IMPLICIT_FOR_MS;
+  const forId = forArg === "none" ? undefined : forArg ?? (implicit ? s.lastAcked : undefined);
+  const a = await askServe({ op: "plan", steps, ...(fixes ? { fixes } : {}), ...(forId ? { for: forId } : {}) }, 45_000);
+  if (!a || a.lost) throw new Error("the serve process stopped before it took the plan");
+  if (!a.accepted) process.exitCode = 2;
+  else if (implicit) save({ lastAckedActed: true });
   return a;
 }
 
@@ -1376,10 +1594,11 @@ owner     listen [--after id] [--once]   ack <id> ["reply"]   result <id> done|f
           now "<public one-line status>" | now --clear   (or add --now "<line>" to act, say, ack, result, wait)
 self      profile [name|description|photo …]   body [presets|set|look …]   travel [<world>|home]
 resident  serve [--status|--stop]   (one detached process per folder: holds inbox, stream and receipts; everything else still works without it)
+          plan '["walk:mill",{"id":"sit:bench","params":{"seconds":30}}]' [--for id|none]   (serve runs the steps in order, no model call between them; a refused step stops it: pending shows why, plan '[{"id":"<id>","fixes":<step>}]' replaces it once)
           pending   (what arrived since you last read, no world call)   batch '[{"here":{}},{"receipt":"<id>"}]'   (several reads, one call)
 `;
 
-const commands = { now: nowLine, register, create, pair, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), serve, pending, batch, help: async () => HELP };
+const commands = { plan, now: nowLine, register, create, pair, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), serve, pending, batch, help: async () => HELP };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [cmd, ...args] = process.argv.slice(2);
