@@ -1426,6 +1426,7 @@ async function serveForeground() {
   const tick = () => { planTick().catch((e) => log(`plan: ${e?.message ?? e}`)); };
   const closeLater = (p) => { closePlan(p).then((sent) => { if (!sent) pendingClose.push(p); }, (e) => { log(`plan: ${e?.message ?? e}`); pendingClose.push(p); }); };
   async function closePlan(p) {
+    if (p.servedByAct > 0) return false;   // that act's answer decides; the next tick looks again
     if (p.for && !p.resultSent) {
       const failedAt = p.steps.find((s) => s.state === "refused"), line = p.state === "done" ? `Finished all ${p.steps.length} steps.` : p.state === "replaced" ? "Replaced by a newer request." : `Stopped at step ${p.at + 1}: ${failedAt?.why?.reason ?? failedAt?.why?.code ?? "refused"}`;
       const r = await forward({ url: `${world}/v1/edge/inbox/${encodeURIComponent(p.for)}/result`, method: "POST", headers: { ...auth, "idempotency-key": `${p.id}:result` }, body: { outcome: p.state === "done" ? "done" : "failed", text: line.slice(0, 140) }, timeoutMs: 40_000 });
@@ -1509,11 +1510,16 @@ async function serveForeground() {
       const cached = m.method === "GET" && /^\/v1\/edge\/receipts\/([^/]+)$/.exec(path);
       const known = cached ? st.receipts[decodeURIComponent(cached[1])] : null;
       if (known?.full && ENDED.has(known.phase)) return { status: 200, data: { receipt: known.full } };
+      // An act for the plan's own message serves it, so the plan won't close it. Noted before the request: on a real world the step's
+      // replaced comes down the stream before this act's answer comes back.
+      const planActFor = path === "/v1/edge/act" && m.method === "POST" && st.plan && m.body?.for && m.body.for === st.plan.for ? st.plan : null;
+      if (planActFor) planActFor.servedByAct = (planActFor.servedByAct ?? 0) + 1;
       const r = await forward(m);
-      // A newer body act replaces the plan; talk and attention don't. Not every act's answer names a channel (pray, wave and stand
-      // don't), so only an answer that says "body" counts here. Otherwise the world decides: a body act that takes over shows
-      // as the step's receipt going replaced on the stream. (The plan's own acts don't come through here.)
-      if (path === "/v1/edge/act" && m.method === "POST" && st.plan && !PLAN_OVER.has(st.plan.state) && r.data?.accepted && r.data.channel === "body") {
+      if (planActFor) { planActFor.servedByAct--; if (r.data?.accepted && r.data.receipt?.id) planActFor.resultSent = true; }
+      // A newer body act replaces the plan; talk and attention don't. A body act's answer names no channel: the receipt says what
+      // isn't one (attention for a look, none for a prayer or a mark). Swept on a real world: every other accepted act replaced a
+      // running walk, a wave and a stand included. (The plan's own acts don't come through here.)
+      if (path === "/v1/edge/act" && m.method === "POST" && st.plan && !PLAN_OVER.has(st.plan.state) && r.data?.accepted && r.data.receipt?.id && !["attention", "none"].includes(r.data.channel ?? r.data.receipt.channel)) {
         const p = st.plan;
         if (p.for && p.for === m.body?.for) p.resultSent = true;
         planOver(p, "replaced", Date.now()); persist(); tick();
@@ -1541,6 +1547,8 @@ async function serveForeground() {
   };
   for (const [sig, n] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) process.once(sig, () => shutdown(n));
   try { unlinkSync(SERVE_SOCK); } catch { /* none */ }
+  // Without its socket this process can do nothing: it stops rather than hold the lock.
+  server.on("error", (e) => { log(`socket: ${e?.message ?? e}; stopping`); shutdown(1); });
   // The socket answers `pending` with the owner's messages: as private as the state file.
   const umask = process.umask(0o177);
   server.listen(SERVE_SOCK, () => { process.umask(umask); log(`serving pid ${process.pid}, cursor ${st.cursor ?? s.cursor ?? "c_0"}`); });

@@ -53,8 +53,13 @@ async function world(t) {
       if (b.clientRef && w.byRef.has(b.clientRef)) return json(200, w.byRef.get(b.clientRef));   // a retry returns the first result
       if (w.refuse[cap]) return json(200, { accepted: false, code: w.refuse[cap], reason: `${cap} refused`, alternatives: [{ id: 'walk:pond', label: 'Walk to the pond' }] });
       w.acts++; w.keys.push(req.headers['idempotency-key']);
-      const out = { accepted: true, ...(/^(look|turn):/.test(cap) ? { channel: 'attention' } : w.noChannel?.has(cap) ? {} : { channel: 'body' }), receipt: { id: `r_${w.acts}`, capability: cap, phase: 'started' } };
+      // As the real route answers (swept on hello-hamlet): a body act names no channel at all, a look says attention, and a prayer's receipt says none.
+      const out = /^(look|turn):/.test(cap) ? { accepted: true, channel: 'attention', receipt: { id: `r_${w.acts}`, capability: cap, phase: 'completed', channel: 'attention' } }
+        : /^(pray|make:mark)/.test(cap) ? { accepted: true, receipt: { id: `r_${w.acts}`, capability: cap, phase: 'completed', channel: 'none' } }
+          : { accepted: true, receipt: { id: `r_${w.acts}`, capability: cap, phase: cap === 'stand:here' ? 'completed' : 'started' } };
       if (b.clientRef) w.byRef.set(b.clientRef, out);
+      // The real order: the old receipt's replaced is on the stream before this act's answer comes back.
+      if (w.replacesFirst && out.receipt.phase === 'started' && w.acts > 1) { w.event({ kind: 'receipt', receipt: { id: `r_${w.acts - 1}`, capability: 'walk:x', phase: 'replaced' } }); await sleep(400); }
       if (w.cutAfterAct) { w.cutAfterAct = false; res.writeHead(200, { 'content-type': 'application/json', 'content-length': '4096' }); res.write('{"accepted":tr'); setTimeout(() => res.destroy(), 10); return undefined; }
       if (w.holdsBeforeAnswer) { w.holdsBeforeAnswer = false; w.event({ id: 'held', kind: 'activity.observed', receipt: { id: out.receipt.id, capability: cap, phase: 'started' }, action: { status: 'executing', phase: 'occupied' }, body: { posture: 'seated' } }); await sleep(250); }
       if (w.endsBeforeAnswer) { w.endsBeforeAnswer = false; w.event({ kind: 'receipt', receipt: { id: out.receipt.id, capability: cap, phase: 'completed' } }); await sleep(250); }
@@ -538,30 +543,66 @@ test('plan: a result that fails is sent again, and a new plan does not rewrite h
   assert.match(r.text, /Finished/);
 });
 
-test('plan: an offer with no target can be a step, and an act with no channel leaves a plan alone', async (t) => {
+test('plan: an offer with no target can be a step, and what is not a body act leaves a plan alone', async (t) => {
   const w = await world(t);
   await w.cli('serve');
-  w.noChannel = new Set(['pray', 'wave:here', 'stand:here']);
   await w.cli('plan', JSON.stringify(['walk:mill', 'pray']), '--for', 'none');
   assert.ok(await until(() => w.acts === 1));
-  for (const id of ['pray', 'wave:here']) await w.cli('act', id, '--for', 'none');
-  assert.equal((await w.cli('plan', '--status')).json.plan.state, 'running', 'the world did not replace the step, so the plan goes on');
+  await w.cli('act', 'pray', '--for', 'none'); await w.cli('act', 'make:mark', '--for', 'none'); await w.cli('act', 'look:pond', '--for', 'none');
+  assert.equal((await w.cli('plan', '--status')).json.plan.state, 'running', 'a prayer, a mark and a look are not body acts');
   ended(w, 'r_1');
   assert.ok(await until(() => w.bodies.at(-1).capability === 'pray' && w.bodies.at(-1).strict === true));
   assert.deepEqual(parsePlanSteps('["pray"]').steps, [{ id: 'pray' }]);
 });
 
-test('plan: a body act the answer does not name still ends the plan, when the world replaces the step', async (t) => {
+test('plan: a body act names no channel and still ends the plan, even a wave or a stand', async (t) => {
+  for (const id of ['stand:here', 'wave:here', 'walk:here']) {
+    const w = await world(t);
+    await w.cli('serve');
+    await w.cli('plan', JSON.stringify(['walk:mill', 'walk:pond']), '--for', 'none');
+    assert.ok(await until(() => w.acts === 1));
+    await w.cli('act', id, '--for', 'none');
+    assert.ok(await until(async () => (await w.cli('pending')).json.planEnded?.[0]?.state === 'replaced'), id);
+    await sleep(150);
+    assert.equal(w.acts, 2, `${id}: no further step`);
+    await w.cli('serve', '--stop');
+  }
+});
+
+test('plan: a newer act for the same message leaves no failed line, and the agent still answers it', async (t) => {
   const w = await world(t);
   await w.cli('serve');
-  w.noChannel = new Set(['stand:here']);
-  await w.cli('plan', JSON.stringify(['walk:mill', 'walk:pond']), '--for', 'none');
+  w.owner('msg_1', 'Mill then pond');
+  await w.cli('plan', JSON.stringify(['walk:mill', 'walk:pond']), '--for', 'msg_1');
   assert.ok(await until(() => w.acts === 1));
-  await w.cli('act', 'stand:here', '--for', 'none');
-  ended(w, 'r_1', 'replaced');
+  w.replacesFirst = true;
+  await w.cli('act', 'walk:orchard', '--for', 'msg_1');
   assert.ok(await until(async () => (await w.cli('pending')).json.planEnded?.[0]?.state === 'replaced'));
-  await sleep(150);
-  assert.equal(w.acts, 2, 'no further step');
+  await sleep(300);
+  assert.deepEqual(w.results, [], 'the plan does not close a message its replacement serves');
+});
+
+test('plan: a body act during a stopped plan replaces it at once, not at the 120 s expiry', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.owner('msg_1', 'Mill'); w.owner('msg_2', 'Come back');
+  w.refuse['walk:mill'] = 'route.unreachable';
+  await w.cli('plan', JSON.stringify(['walk:mill', 'walk:pond']), '--for', 'msg_1');
+  assert.ok(await until(async () => (await w.cli('plan', '--status')).json.plan?.state === 'stopped'));
+  await w.cli('act', 'walk:home', '--for', 'msg_2');
+  assert.ok(await until(() => w.results.some((x) => x.id === 'msg_1')), 'the old message hears');
+  assert.match(w.results.find((x) => x.id === 'msg_1').text, /Replaced/);
+  assert.equal((await w.cli('pending')).json.planEnded[0].state, 'replaced');
+});
+
+test('plan: a prayer during a stopped plan does not end it', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.refuse['walk:mill'] = 'route.unreachable';
+  await w.cli('plan', JSON.stringify(['walk:mill']), '--for', 'none');
+  assert.ok(await until(async () => (await w.cli('plan', '--status')).json.plan?.state === 'stopped'));
+  await w.cli('act', 'pray', '--for', 'none');
+  assert.equal((await w.cli('plan', '--status')).json.plan.state, 'stopped');
 });
 
 test('plan: a held sit seen before the act is answered still moves on', async (t) => {
