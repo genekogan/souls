@@ -26,6 +26,7 @@ import { tokenHit } from '../edge/ledger/vocabulary.ts';
 import {outdoorRegionExclusions} from '../edge/ledger/region-arrival.ts';
 import { doorInGap, freeDoorOpening, isDoorDef, isShut } from './doors.ts';
 import { dryingOps } from './garden.ts';
+import { fadingIds } from '../art/art.ts';
 import { createWatering, type Watering } from './watering.ts';
 import { createTea, type Tea } from './tea.ts';
 import { createContactActuatorService } from './contact-actuator.ts';
@@ -438,11 +439,17 @@ export class EngineBridge {
   private gardenTick(tick: number) {
     const l = this.host.living; if (!l || !(l.dayTicks > 0)) return;
     const day = Math.floor(Math.max(0, tick - l.origin) / l.dayTicks);
+    // #430: the clock set back also changes how far a drawing has faded
+    if (this.gardenDay !== null && day < this.gardenDay) this.noteFading(day, this.gardenDay);
     if (this.gardenDay === null || day < this.gardenDay) { this.gardenDay = day; return; }
     if (day === this.gardenDay) return;
-    const days = Math.min(3, day - this.gardenDay); this.gardenDay = day;
-    setImmediate(() => { try { const ops = dryingOps(this.god.model, days); if (ops.length) this.god.engineAct(ops as never, `garden: ${days} day(s) of drying`, () => {}); } catch (e) { this.log(`garden drying: ${(e as Error).message}`); } });
+    const days = Math.min(3, day - this.gardenDay), prev = this.gardenDay; this.gardenDay = day;
+    setImmediate(() => { try { const ops = dryingOps(this.god.model, days); if (ops.length) this.god.engineAct(ops as never, `garden: ${days} day(s) of drying`, () => {}); } catch (e) { this.log(`garden drying: ${(e as Error).message}`); }
+      // #430: a fading drawing's perceived line follows the world day (no edit: its age is read from its drawn day)
+      this.noteFading(day, prev); });
   }
+  /** #430: re-derive the perceived line of every drawing whose fade may differ between these two world days (writes nothing). */
+  private noteFading(day: number, prev: number) { try { const ids = fadingIds(this.god.model, day, prev); if (ids.length) this.notePerceive(ids, false); } catch (e) { this.log(`fading: ${(e as Error).message}`); } }
   private checkProjectionSoon() {
     if (!this.readinessChecks.size || this.readinessQueued) return;
     this.readinessQueued = true;
