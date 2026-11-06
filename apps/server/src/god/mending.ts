@@ -23,7 +23,7 @@ export function repairActions(def: StoredDef) {
 }
 export type MendingHost = {
   model: WorldModel;
-  engine: { world: { entities: Record<string, any> }; clearanceAtV1?(x: number, z: number, level?: number): number };
+  engine: { world: { entities: Record<string, any> }; clearanceAtV1?(x: number, z: number, level?: number): number; standableNearV1?(p: [number, number], level: number, actor: string, clear: number, radius: number): [number, number] | null };
   levelAt(x: number, z: number, y: number): number;
   /** Is someone sitting on or lying on it? */
   occupied(id: string): boolean;
@@ -43,15 +43,29 @@ export function createMending(h: MendingHost) {
     if (!isBroken(id)) return { code: 'repair.not-broken', reason: `${name} is not broken.` };
     const body = ents()[soul.entityId]; if (!body?.human) return null;
     const held = Object.values(ents()).filter((x: any) => x?.support?.kind === 'in-hand' && x.support.by === soul.entityId) as any[];
-    const tag = toolTag(rep), tools = held.filter((x) => defOf(x.id)?.tags.includes(tag));
-    if (!tools.length) {
-      if (held.length) return { code: 'repair.wrong-tool', reason: `${name} needs a ${rep.tool} in your hand; put down what you are holding first.` };
-      let best = TOOL_NEAR, near: string | null = null;
+    const tag = toolTag(rep), isTool = (x: any) => !!defOf(x.id)?.tags.includes(tag);
+    // Gene, 2026-11-06: what she can do on the way is a step, not a refusal. Anything else in hand goes down first; with no
+    // tool in hand she fetches the nearest one within reach. Refused only when there is none she could go and get.
+    const pre: { verb: string; params: Record<string, unknown> }[] = [];
+    const keep = held.find(isTool);
+    for (const x of held) if (x !== keep) pre.push({ verb: 'mars:put_item', params: { item: x.id, surfaceSlot: 'ground' } });
+    let tool: string | undefined = keep?.id;
+    if (!tool) {
       // only a tool she could go and pick up: not in someone's hand, not kept in something shut
-      for (const o of m.entities.values()) { if (!m.resolvedDef(o.def)?.tags.includes(tag) || keptShut(m, o) || ents()[o.id]?.support?.kind === 'in-hand') continue; const q = m.worldPose(o), d = Math.hypot(q.x - body.pose.p[0], q.z - body.pose.p[2]); if (d < best) { best = d; near = o.id; } }
-      return { code: 'repair.no-tool', reason: `${name} needs a ${rep.tool} in your hand. ${near ? `Pick up ${m.pathOf(near)} first.` : `There is no ${rep.tool} within reach here.`}` };
+      let best = Infinity, near: string | null = null, bestAt: { x: number; z: number; level: number } | null = null;
+      for (const o of m.entities.values()) {
+        if (!m.resolvedDef(o.def)?.tags.includes(tag) || keptShut(m, o) || ents()[o.id]?.support?.kind === 'in-hand') continue;
+        const q = m.worldPose(o), d = Math.hypot(q.x - body.pose.p[0], q.z - body.pose.p[2]);
+        if (d < best) { best = d; near = o.id; bestAt = { x: q.x, z: q.z, level: h.levelAt(q.x, q.z, q.y) }; }
+      }
+      const at = near && bestAt && best <= TOOL_NEAR ? h.engine.standableNearV1?.([bestAt.x, bestAt.z], bestAt.level, soul.entityId, 0.4, 16) ?? null : null;
+      if (!near || !bestAt || best > TOOL_NEAR || !at) {
+        const where = near ? `The nearest ${rep.tool} is ${m.pathOf(near)}, ${Math.round(best)} m away${best > TOOL_NEAR ? `, further than ${TOOL_NEAR} m` : ', with no clear ground beside it'}.` : `There is no ${rep.tool} in this world that you could pick up.`;
+        return { code: 'repair.no-tool', reason: `${name} needs a ${rep.tool} in your hand, and there is no ${rep.tool} within reach here. ${where}` };
+      }
+      pre.push({ verb: 'mars:walk_to', params: { x: r3(at[0]), z: r3(at[1]), level: bestAt.level } }, { verb: 'mars:take_item', params: { item: near, hand: 'right' } });
+      tool = near;
     }
-    if (held.length > 1) return { code: 'repair.hand-full', reason: `Repairing ${name} needs your other hand free; put down what else you are holding first.` };
     if (h.occupied(id)) return { code: 'repair.occupied', reason: `Someone is sitting on ${name}; it can't be repaired under them.` };
     const wp = m.worldPose(e), level = h.levelAt(wp.x, wp.z, wp.y), hand = toWorld(wp, rep.hand);
     const clear = (p: Vec3) => (h.engine.clearanceAtV1 ? h.engine.clearanceAtV1(p[0], p[2], level) : Infinity) >= HUMAN_RADIUS + 0.02;
@@ -61,8 +75,8 @@ export function createMending(h: MendingHost) {
     const face = r3(Math.atan2(hand[2] - stand[2], hand[0] - stand[0]));
     return {
       summary: `Repaired ${name} with the ${rep.tool}.`,
-      steps: [{ verb: 'stand', params: {} }, { verb: 'mars:walk_to', params: { x: r3(stand[0]), z: r3(stand[2]), level, face } },
-        { verb: 'mars:repair_v1', params: { item: tools[0].id, target: id, face, hand: hand.map(r3), strokes: rep.strokes, lift: rep.lift, motion: rep.motion } }],
+      steps: [{ verb: 'stand', params: {} }, ...pre, { verb: 'mars:walk_to', params: { x: r3(stand[0]), z: r3(stand[2]), level, face } },
+        { verb: 'mars:repair_v1', params: { item: tool, target: id, face, hand: hand.map(r3), strokes: rep.strokes, lift: rep.lift, motion: rep.motion } }],
     };
   }
   /** A receipt ended: a completed repair clears `broken`. Receipts can be announced again after a restart, and the creator

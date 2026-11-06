@@ -66,17 +66,17 @@ test('repair: broken, perceived, refused without the tool, repaired with it',{ti
  const sit=edge.capabilities(ana).find(c=>c.id==='sit:'+bench);assert.equal(sit?.available,true,JSON.stringify(sit));
  const sat=await act(ana,'sit:'+bench);assert.equal(sat.accepted,true,JSON.stringify(sat).slice(0,300));await tick(140);assert.equal(f.host.engine.bodyUsesV1(bench)?.body,ana.entityId,'she sits on the broken bench');
  assert.equal((await act(ana,'stand:here')).accepted,true);await tick(40);
- // refused: no tool (names what to get), the wrong tool, the other hand full
+ // refused only with no tool to fetch (Gene, 2026-11-06: what she can do on the way is a step)
  const none=await act(ana,cap);assert.equal(none.accepted,false);assert.match(refused(none),/repair\.no-tool/);assert.match(refused(none),/no hammer within reach/,refused(none).slice(0,300));
+ // a hammer too far to fetch (over 30 m) is named, with how far it is
+ place([{op:'place',def:HAMMER,name:'far-hammer',p:[ax+45,az]}]);await tick(20);
+ const far2=await act(ana,cap);assert.equal(far2.accepted,false);assert.match(refused(far2),/repair\.no-tool/);assert.match(refused(far2),/nearest hammer is far-hammer, 4\d m away, further than 30 m/,refused(far2).slice(0,300));
  place([{op:'place',def:HAMMER,name:'hammer',p:[ax+1,az]},{op:'place',def:'core/bowl@2',name:'bowl',p:[ax+1,az+1]}]);await tick(20);
- const hint=await act(ana,cap);assert.match(refused(hint),/Pick up hammer first/,refused(hint).slice(0,300));
  const got=async id=>{const b=await act(ana,'pick-up:'+id);assert.equal(b.accepted,true,refused(b).slice(0,300));assert.equal((await finish(ana,b)).phase,'completed');};
  await got(named('bowl').id);
- const wrong=await act(ana,cap);assert.equal(wrong.accepted,false);assert.match(refused(wrong),/repair\.wrong-tool/);
- const putb=await act(ana,'put-down');await finish(ana,putb);
- await got(named('hammer').id);
- const ham=named('hammer').id,hand0=w.W().entities[ham].support.hand;
- // the act: nothing before completion, hand reaches the work, body still, same hammer in the same hand
+ const ham=named('hammer').id,bowl=named('bowl').id,hand0='right';
+ // the bowl in hand, the hammer a metre off: one act puts the bowl down, fetches the hammer and repairs
+ // the act: nothing before completion, hand reaches the work, body still while striking
  const b=await act(ana,cap);assert.equal(b.accepted,true,refused(b).slice(0,300));
  let working=null,lowest=Infinity,moved=0,early=false,strokes=0,was=null;
  const job=()=>w.f.host.engine.rt.holder('actor:'+ana.entityId).map(id=>w.f.host.engine.rt.records.get(id)).find(r=>r?.verb==='repair_v1');
@@ -91,7 +91,8 @@ test('repair: broken, perceived, refused without the tool, repaired with it',{ti
  assert.ok(working,'repair_v1 ran');assert.equal(early,false,'nothing changes before completion');assert.ok(moved<.05,'the body stays put: '+moved);
  assert.ok(lowest<.1,'the hand reaches the work: '+lowest);assert.equal(strokes,7,'the hand comes in, then six strokes land');report.strokesSeen=strokes;
  await tick(2);assert.equal(named('old').state.broken,false,'repaired on completion');
- assert.equal(w.W().entities[ham].support.by,ana.entityId);assert.equal(w.W().entities[ham].support.hand,hand0,'same hammer in the same hand');
+ assert.equal(w.W().entities[ham].support.by,ana.entityId);assert.equal(w.W().entities[ham].support.hand,hand0,'the fetched hammer in her right hand');
+ assert.notEqual(w.W().entities[bowl].support?.kind,'in-hand','the bowl was put down first');
  await tick(10);assert.notEqual(body(ana).human.activity,'reach','the body is back to idle');
  assert.match(JSON.stringify(end),/Repaired old with the hammer/,JSON.stringify(end).slice(0,400));
  // perceived after: no fact, no offer, the seat works
@@ -139,15 +140,16 @@ test('the creator moves or removes it mid-repair: failed, the hammer in hand; tw
  await tick(20);assert.notEqual(w.body(ben).human.activity,'reach','Ben is not stuck');assert.deepEqual(f.host.engine.rt.violations,[]);
 });
 
-test('refused: the engine\'s own checks, the other hand full, no room to stand',{timeout:300000},async t=>{
- const w=await kit(t),{ana,ax,az,tick,act,place,named,grab,cap,f,body,god,W}=w;await grab();
+test('refused: the engine\'s own checks, no room to stand; the other hand full is a step',{timeout:300000},async t=>{
+ const w=await kit(t),{ana,ax,az,tick,act,place,named,grab,cap,f,body,god,W,edge}=w;await grab();
  const steps=(item,hand)=>[{verb:'mars:repair_v1',params:{item,target:named('bench').id,face:0,hand,strokes:2,lift:.1,motion:'strike'}}];
  assert.equal(f.host.engine.canPerform({actor:ana.entityId,label:'x',steps:steps(named('hammer').id,[body(ana).pose.p[0]+5,.5,body(ana).pose.p[2]])})?.code,'repair.too-far');
  place([{op:'place',def:HAMMER,name:'loose',p:[ax+3,az+3]}]);await tick(20);
  assert.equal(f.host.engine.canPerform({actor:ana.entityId,label:'x',steps:steps(named('loose').id,[body(ana).pose.p[0]+.3,.5,body(ana).pose.p[2]])})?.code,'repair.not-held');
  // the other hand full: injected, since a Soul's pick-up takes the right hand
  const loose=W().entities[named('loose').id],keep=structuredClone(loose.support);loose.support={kind:'in-hand',by:ana.entityId,hand:'left'};
- const full=await act(ana,cap());assert.equal(full.accepted,false);assert.match(JSON.stringify(full),/repair\.hand-full/);loose.support=keep;
+ // the other hand full is no refusal now: the offer stays available, and the act puts the other thing down first
+ const offer=edge.capabilities(ana).find(c=>c.id===cap());assert.equal(offer?.available,true,JSON.stringify(offer));assert.equal(offer?.blocked,undefined);loose.support=keep;
  // no room: something solid at each stand point
  const wp=god.model.worldPose(named('bench'));
  place([{op:'place',def:'core/table@1',name:'in-the-way',p:[wp.x,wp.z+.85]}]);await tick(30);
@@ -189,12 +191,12 @@ test('second case, data only: a flat tyre on a cart, pumped up with a pump, thro
  place([{op:'place',def:'core/cart@2',name:'cart',p:[ax+3,az+3],r:.6,state:{broken:true}},{op:'place',def:'core/tyre-pump@1',name:'pump',p:[ax+.8,az]},{op:'place',def:HAMMER,name:'hammer',p:[ax-.8,az]}]);await tick(30);
  const id=named('cart').id,cap=`object:${id}:repair`;
  assert.match(JSON.stringify(edge.capabilities(ana).find(c=>c.id===cap)),/Pump up the flat tyre/);
- const h=await act(ana,'pick-up:'+named('hammer').id);await finish(ana,h);const wrong=await act(ana,cap);assert.equal(wrong.accepted,false);assert.match(JSON.stringify(wrong),/repair\.wrong-tool/,'a hammer does not pump a tyre');
- const dn=await act(ana,'put-down');await finish(ana,dn);
- const p=await act(ana,'pick-up:'+named('pump').id);assert.equal((await finish(ana,p)).phase,'completed');
+ // a hammer in hand and the pump on the ground: one act puts the hammer down, fetches the pump and pumps
+ const h=await act(ana,'pick-up:'+named('hammer').id);await finish(ana,h);
  const b=await act(ana,'pump up the flat tyre');assert.equal(b.accepted,true,JSON.stringify(b).slice(0,300));
  let motion=null;for(let n=0;n<1000&&w.receipt(ana,b)?.phase!=='completed';n++){await tick(1);motion??=working(w,ana)?.params?.motion;if(['failed','replaced'].includes(w.receipt(ana,b)?.phase))break;}
  assert.equal(w.receipt(ana,b).phase,'completed',JSON.stringify(w.receipt(ana,b)).slice(0,300));assert.equal(motion,'pump','the pump\'s own motion');await tick(2);assert.equal(named('cart').state.broken,false);
+ assert.equal(w.W().entities[named('pump').id].support?.by,ana.entityId,'the pump is in hand');assert.notEqual(w.W().entities[named('hammer').id].support?.kind,'in-hand','the hammer was put down');
  // no code names a repairable def: only the data file does
  for(const file of ['apps/server/src/god/mending.ts','mars/viewer/engine/items/repair.ts']){const src=readFileSync(new URL('../../'+file,import.meta.url),'utf8');assert.doesNotMatch(src,/\b(?:bench|cart|hammer|tyre)\b/i,file+' names no def');}
  // the cart's stand points and hand at the same 11 turns: the same data under every placement
@@ -289,9 +291,8 @@ test('the words: only repair words that name an offer are a repair',{timeout:300
  const w=await kit(t),{ana,act,grab,cap,finish,named,tick,edge}=w;
  // "fix dinner" names nothing here: it falls through to whatever the words mean otherwise
  const dinner=await act(ana,'fix dinner');assert.doesNotMatch(JSON.stringify(dinner),/repair[.:]/,JSON.stringify(dinner).slice(0,300));
- assert.equal((await act(ana,'fix it')).code,'repair.no-tool','"fix it" is the one offer here');
- assert.equal((await act(ana,'fix the cracked slat')).code,'repair.no-tool','the offer\'s own words');
- assert.equal((await act(ana,'mend the bench')).code,'repair.no-tool');
+ // with the hammer a step away and not yet in hand, each is the repair (fetching it first): stopped at once
+ for(const words of ['fix it','fix the cracked slat','mend the bench']){const r=await act(ana,words);assert.equal(r.accepted,true,words+' '+JSON.stringify(r).slice(0,300));assert.equal(r.receipt.capability,cap(),words);const st=await act(ana,'stand:here');assert.equal(st.accepted,true);await finish(ana,st);await tick(20);if(named('hammer')&&w.W().entities[named('hammer').id].support?.kind==='in-hand'){const dn=await act(ana,'put-down');await finish(ana,dn);await tick(10);}}
  await grab();
  for(const words of ['fix it','fix the cracked slat','repair the bench with the hammer']){const b=await act(ana,words);assert.equal(b.accepted,true,words+' '+JSON.stringify(b).slice(0,300));assert.equal(b.receipt.capability,cap(),words);const stop=await act(ana,'stand:here');assert.equal(stop.accepted,true);await finish(ana,stop);await tick(20);}
  assert.equal(named('bench').state.broken,true,'none of them was left to finish');void edge;
