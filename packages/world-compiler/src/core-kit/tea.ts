@@ -172,7 +172,7 @@ const apple: DefInput = {
     // the core: a thin pale stalk with a dark foot and crown
     { kind: 'lathe', at: [0, 0, 0], profile: [[0, 0], [0.019, 0.012], [0.009, 0.034], [0.009, 0.056], [0.019, 0.074], [0, 0.084]], segments: 6, tint: 'flesh', when: '@left<=0.05' },
     // always: the stem; the leaf falls with the first bite
-    { kind: 'cyl', at: [0, 0.092, 0], r: 0.0024, h: 0.02, segments: 5, tint: 'stem' },
+    { kind: 'cyl', at: [0, 0.092, 0], r: 0.0024, h: 0.02, segments: 5, tint: 'stem', when: '@left>=0' },
     { kind: 'box', at: [0.012, 0.094, 0], size: [0.022, 0.002, 0.012], round: 0, tint: 'leaf', when: '@left>0.8' }] } } as unknown as DefInput['make'],
   params: Object.fromEntries(Object.entries(applePalette).map(([k, v]) => [k, { type: 'color', default: v, doc: `${k} colour` }])) as DefInput['params'], palette: applePalette,
   state: foodState(3), components: { carryable: { mass: 0.15, grips: 1 } } as DefInput['components'],
