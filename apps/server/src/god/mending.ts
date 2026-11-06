@@ -93,17 +93,6 @@ export function createMending(h: MendingHost) {
     facts(id: string) { const rep = repairableOf(defOf(id)); return rep && isBroken(id) ? { broken: rep.says } : null; },
     /** A repairable thing that is whole: nothing to offer, so it reads as it would without the faculty. */
     whole(id: string) { return !!repairableOf(defOf(id)) && !isBroken(id); },
-    /** One gate for every plan: a step that would sit on a broken thing (a reading or listening spot's seat, a named seat part). */
-    stepsRefusal(steps: { verb: string; params?: Record<string, unknown> }[]): Refusal | null {
-      for (const s of steps) {
-        if (s.verb !== 'sit' && s.verb !== 'mars:sit' && s.verb !== 'take_slot' && s.verb !== 'mars:take_slot') continue;
-        const on = typeof s.params?.on === 'string' ? s.params.on : typeof s.params?.slot === 'string' ? s.params.slot.split('#')[0] : null;
-        const no = on ? this.seatRefusal(on) : null; if (no) return no;
-      }
-      return null;
-    },
-    /** Why this seat can't take anyone now, or null. */
-    seatRefusal(id: string): Refusal | null { const rep = repairableOf(defOf(id)); return rep && isBroken(id) ? { code: 'seat.broken', reason: `It is broken (${rep.says}); nobody can sit on it until it is repaired.` } : null; },
   };
 }
 export type Mending = ReturnType<typeof createMending>;

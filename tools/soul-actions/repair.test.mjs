@@ -62,9 +62,10 @@ test('repair: broken, perceived, refused without the tool, repaired with it',{ti
  const near=await here(ana);report.hereBroken=JSON.stringify(near).length;
  const row=near.objects?.find(o=>o.id===bench);assert.equal(row?.state?.broken,'a cracked slat','the nearby fact says what is broken: '+JSON.stringify(row));
  const offer=edge.capabilities(ana).find(c=>c.id===cap);assert.ok(offer,'the repair offer is there');assert.equal(offer.available,false,'unavailable without the tool');assert.match(offer.blocked?.code??'',/repair\.no-tool/);
- // seat refused, by offer and by words
- const sit=edge.capabilities(ana).find(c=>c.id==='sit:'+bench);assert.equal(sit?.blocked?.code,'seat.broken',JSON.stringify(sit));
- const sat=await act(ana,'sit:'+bench);assert.equal(sat.accepted,false);assert.match(refused(sat),/seat\.broken/);
+ // a broken bench is still a seat (Gene, 2026-11-06: no refusal for what a body can do): offered, and she sits and stands again
+ const sit=edge.capabilities(ana).find(c=>c.id==='sit:'+bench);assert.equal(sit?.available,true,JSON.stringify(sit));
+ const sat=await act(ana,'sit:'+bench);assert.equal(sat.accepted,true,JSON.stringify(sat).slice(0,300));await tick(140);assert.equal(f.host.engine.bodyUsesV1(bench)?.body,ana.entityId,'she sits on the broken bench');
+ assert.equal((await act(ana,'stand:here')).accepted,true);await tick(40);
  // refused: no tool (names what to get), the wrong tool, the other hand full
  const none=await act(ana,cap);assert.equal(none.accepted,false);assert.match(refused(none),/repair\.no-tool/);assert.match(refused(none),/no hammer within reach/,refused(none).slice(0,300));
  place([{op:'place',def:HAMMER,name:'hammer',p:[ax+1,az]},{op:'place',def:'core/bowl@2',name:'bowl',p:[ax+1,az+1]}]);await tick(20);
@@ -249,15 +250,15 @@ test('occupied: repair.occupied exactly, with a hammer in hand, and when she sit
  assert.equal(w.W().entities[named('hammer').id].support.by,ana.entityId,'the hammer stays in hand');assert.deepEqual(f.host.engine.rt.violations,[]);
 });
 
-test('a broken seat is refused through a reading spot, not only by name',{timeout:300000},async t=>{
+test('a broken bench is still a place to read: the reading spot sits her on it',{timeout:300000},async t=>{
  const w=await world(t),{souls:{Ana:ana},tick,act,place,named,body,edge,until}=w;await tick(10);const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
  place([{op:'place',def:'core/bookcase@1',name:'shelves',p:[ax+5,az+4]},{op:'place',def:BENCH,name:'reading-bench',p:[ax+5,az+1.8],state:{broken:false}}]);await tick(60);
  const bench=named('reading-bench').id,spot=()=>edge.capabilities(ana).find(c=>c.verb==='read'&&JSON.stringify(c).includes(bench)&&c.available!==false)??edge.capabilities(ana).find(c=>/^read/.test(c.id)&&c.id.includes(bench));
  assert.ok(await until(()=>spot(),600)>=0,'a whole bench by a bookcase is a place to read: '+JSON.stringify(edge.capabilities(ana).filter(c=>/read/.test(c.id)).map(c=>c.id)));
  const id=spot().id;
  place([{op:'set',id:bench,state:{broken:true}}]);await tick(60);
- const r=await act(ana,id);assert.equal(r.accepted,false,JSON.stringify(r).slice(0,300));assert.equal(r.code,'seat.broken',JSON.stringify(r).slice(0,300));
- assert.equal(body(ana).human.seat,undefined);
+ const r=await act(ana,id);assert.equal(r.accepted,true,JSON.stringify(r).slice(0,300));
+ assert.ok(await until(()=>w.f.host.engine.bodyUsesV1(bench)?.body===ana.entityId,900)>=0,'she sits on the broken bench to read');
 });
 
 test('R9: the same body at the same spot, whole against broken, hammer in hand: one fact and one offer, under 300 B',{timeout:300000},async t=>{

@@ -149,7 +149,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **All data.** A def opts in with `components.repairable`: the tool (a held thing tagged `tool-<tool>`), where the hand works, where the body may stand (the first clear spot wins), the strokes and a `strike` or `pump` motion. It also needs the state `broken`. No code names a def. `core-bench@2` (hammer) and `core-cart@2` (pump) are the first two.
 - **Who breaks things.** Only a world's creator, with the state op (`set` with `broken: true`, or placing it broken). Nothing breaks by itself yet, and a Soul can't break things.
 - **The act.** With the tool in hand, a Soul walks to a stand point and `repair_v1` drives that hand through the strokes on the world tick. The tool never leaves the hand. `broken` clears when the receipt completes, so an interrupted repair leaves the thing broken. A new act waits until the hand has come back.
-- **Refusals.** `repair.no-tool`, `repair.wrong-tool`, `repair.hand-full`, `repair.not-broken`, `repair.no-room`, `repair.occupied`, and `seat.broken` for sitting on a broken bench. A Soul already seated when it breaks stays seated.
+- **Refusals.** `repair.no-tool`, `repair.wrong-tool`, `repair.hand-full`, `repair.not-broken`, `repair.no-room`, and `repair.occupied`. A broken bench is still a seat: a Soul can sit on it, and one already seated when it breaks stays seated. `broken` is a fact she can read.
 - **Perceived.** A broken thing nearby has a `broken` fact in its own words ("a cracked slat") and a repair offer. A whole one reads as if it had no repair faculty at all. There's no tick work unless someone is repairing.
 
 ## What other Souls perceive
