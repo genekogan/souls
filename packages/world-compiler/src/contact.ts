@@ -11,7 +11,7 @@ export function contactStateKey(def:{tags?:readonly string[];components?:{light?
   // Soul Actions entry 32: a lockable door's key / thumb-turn and a knock on its leaf are hand contact too.
   if(def.components?.opening&&def.tags?.includes('hand-operated')&&def.tags.includes('lockable')&&(action==='lock'||action==='unlock'))return 'locked';
   if(def.components?.opening&&def.tags?.includes('hand-operated')&&def.tags.includes('lockable')&&action==='knock')return 'open';
-  if(def.components?.sign&&def.tags?.includes('hand-writable')&&(!action||['write','erase','pin','unpin','sign','unsign','vote','mark','reply','take-on'].includes(action)))return 'text';
+  if(def.components?.sign&&def.tags?.includes('hand-writable')&&(!action||['write','erase','pin','unpin','sign','unsign','vote','mark','reply','take-on'].includes(action)||action==='move'&&def.tags.includes('checkers')))return 'text';
   // Opted-in drawn coverings without a hinge (curtains, a roller blind): open/close at a pull cord, the same contact.
   if(!def.components?.opening&&def.tags?.includes('hand-operated')&&def.state&&Object.hasOwn(def.state,'open')&&(!action||['open','close'].includes(action)))return 'open';
   // Opted-in hand switches without a light (a tap, a shower valve): the same on/off contact. Entry 37: a radio's

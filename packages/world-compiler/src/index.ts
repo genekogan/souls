@@ -1,6 +1,7 @@
 export * from './schemas.ts';
 export {contactStateKey,DRAWER_TRAVEL,CONTACT_EXTRA_FIELDS,containerInside,containerOpen,containerClaims,containerHidden,keptBehindDoor,type ContainerInside} from './contact.ts';
 export { gameSquare, gameSquareOf, gameStatus, GAME_LINES } from './core-kit/writable-boards.ts'; // Soul Actions entry 27
+export { CHECKERS_CELL, CHECKERS_START, checkersBoard, checkersCellOf, checkersMoveProblem, checkersMoves, checkersName, checkersPlay, checkersRows, checkersSquare, checkersStatus } from './core-kit/checkers.ts'; // #439 W093
 export { WorldModel, definitionRefs, nearHash, obbOverlap, type OBB, type AssetInfo, type AssetLookup } from './model.ts';
 export { plan, applyBatch, checkFields, aimOf, boundsOf, onAbsoluteDeck, type Plan, type PlanOptions, type UsesHook, type Diff } from './compile.ts';
 export { padResettle, RESETTLE_TOL_M } from './pad-resettle.ts';
