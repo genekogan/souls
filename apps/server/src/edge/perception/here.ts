@@ -2,6 +2,7 @@
 // perceive from where it stands. Strictly local: Souls and things in the same enclosed place (or, outdoors, not
 // inside one) within sight radius and with a clear sightline (nav/1 solids); never other places, never conversation
 // content, never owner data. Read-only; deterministic for a given world state. No model calls.
+import {compactParams, paramsByVerb} from '../intents/offer-schema.ts';
 import {menuWorldOf} from '../../split/menu-world.ts';
 import {entityPhysicsContribution} from '../../../../../mars/viewer/engine/spatial/edits.ts';
 import {whereLine} from './semantic-location.ts';
@@ -231,11 +232,15 @@ const doingWord = (state: string, activity: string) => POSE_WORDS[activity] ?? (
 export function compactDoHere(caps:readonly EdgeCapability[],localTargets:ReadonlySet<string>,byteBudget=1800){
  const eligible=caps.filter(c=>c.available&&c.verb!=='walk'&&c.verb!=='stroll'&&(c.id.endsWith(':here')||c.verb==='accept'||c.verb==='decline'||!!c.target&&localTargets.has(c.target.id)));
  const selected:{id:string;verb:string;label:string;available:true;params?:Record<string,unknown>}[]=[];
+ // CTRL-1 (#1093): the verbs' shared parameters once, counted in the budget; an offer's own stay on it
+ const verbs=new Set<string>(),shared=()=>compactParams(paramsByVerb(verbs));
  for(const c of eligible){
-  const offer={id:c.id,verb:c.verb,label:c.label,available:true as const,...(c.params?{params:structuredClone(c.params)}:{})};
-  if(selected.length<12&&Buffer.byteLength(JSON.stringify([...selected,offer]))<=byteBudget)selected.push(offer);
+  const offer={id:c.id,verb:c.verb,label:c.label,available:true as const,...(c.params?{params:structuredClone(c.params)}:{})},had=verbs.has(c.verb);
+  verbs.add(c.verb);
+  if(selected.length<12&&Buffer.byteLength(JSON.stringify([selected,offer,shared()]))<=byteBudget)selected.push(offer);
+  else if(!had)verbs.delete(c.verb);
  }
- return {doHere:selected,doHereCoverage:{localOffers:eligible.length,listed:selected.length,omitted:eligible.length-selected.length,byteBudget,complete:eligible.length===selected.length,fullCapabilities:'/v1/edge/capabilities'}};
+ return {doHere:selected,doHereParams:shared(),doHereCoverage:{localOffers:eligible.length,listed:selected.length,omitted:eligible.length-selected.length,byteBudget,complete:eligible.length===selected.length,fullCapabilities:'/v1/edge/capabilities'}};
 }
 
 /** L3 item 4: the places an exit may lead to (as the exits below choose them: a place's centroid within 150 m, not one
@@ -307,7 +312,7 @@ export function hereFrame(ledger: EdgeLedger, soul: EdgeSoul,options:{doHere?:bo
   const objects = picked.map(t => {
     // M01: the few facts first; enclosure and sightline (entity-world walls) only for a thing that has some.
     // entry 43: a kettle or a cup (items) has a fact or two as well: "boiling", a cup of tea
-    const facts=(t.kind==='object'||t.kind==='item')&&t.distance<=4?ledger.contactActuator?.facts(t.id):null;
+    const facts=(t.kind==='object'||t.kind==='item')&&t.distance<=4?ledger.contactActuator?.facts(t.id,soul):null;
     const state=facts&&Object.keys(facts).length&&P.sameEnclosure(t.at)&&P.sees(t.at,t.id)?facts:null;
     // entry 33: a neon sign's words, only for a Soul this near it; attributed and untrusted (never in offers)
     const said=state?ledger.contactActuator?.words?.(t.id):null;

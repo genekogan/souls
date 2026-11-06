@@ -49,7 +49,11 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `chalk-20261105.json` | `core-chalk-square@1` (pavement chalk on the painting faculty); pins nothing |
 | `record-player-20261105.json` | the new record player (#431, 368 triangles); pins nothing |
 | `swap-shelf-20261105.json` | `core-swap-shelf@1` (an open shelf on the container faculty, no door, a `leftBy` record); pins nothing |
+| `pantry-20261105.json` | `core-pantry@1`, `core-apple@1` and `core-bun@1` (a doorless container, food eaten from the hand); pins nothing |
 | `guestbook-20261105.json` | `core-guestbook@1` (a visitors' book on the sign-up faculty); pins nothing |
+| `lost-and-found-20261105.json` | `core-lost-and-found@1` (the swap shelf's form with an owner claim, `claim: "owner"`); pins nothing |
+| `hiding-places-20261105.json` | `core-hollow-stump@1` and `core-wall-niche@1` (doorless containers with `hidden: true`); pins nothing |
+| `litter-20261106.json` | `core-bin@2`, `core-wheelie-bin@2` (bins open at the top on the container faculty) and `core-wrapper@1` (litter); pins nothing |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
 Repair a range or budget in a new revision and pin what remains.
