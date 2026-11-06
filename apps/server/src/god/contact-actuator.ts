@@ -4,10 +4,10 @@ import {actuatorPoint,actuatorHand,tugPoint,opPoint,slidePoint,strokePoint,strok
 import { createHash } from 'node:crypto';
 import { isDry, stageWord } from './garden.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
-import { opSchema, contactStateKey, DRAWER_TRAVEL, containerInside, containerOpen, pinSlot, signupSlot, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
+import { opSchema, contactStateKey, CONTACT_EXTRA_FIELDS, DRAWER_TRAVEL, containerInside, containerOpen, pinSlot, signupSlot, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
 import { posterName, posterFreeSlot, posterTarget, posterAge, posterStale, wantedColumn, wantedFreeRow, wantedTarget } from './poster-boards.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
-import { actionPatch, actionsOf, actuatedState, keepsLeftBy, leftByOf, boardTextProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
+import { actionPatch, actionsOf, actuatedState, keepsLeftBy, leftByOf, boardTextProblem, enumParamProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
 export const CONTACT_REACH = .8;
 /** Entry 37: how long the hand stays on a radio's tuning knob after contact while the dial sweeps to the next station. */
 export const TUNE_HOLD_SECONDS = .9;
@@ -110,7 +110,8 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
     // Entry 37: a radio's tuning knob (tinted `tuner`) is where the hand goes to change the station; she stands where she
     // works the power knob (the `valve`), so both knobs are worked from one place, and holds the tuning knob while it turns.
     const shapes=def.make.kind==='gen'?(def.make.args as {shapes?:{tint?:string;at?:number[]}[]})?.shapes:undefined,valve=shapes?.find(s=>s.tint==='valve'&&s.at);
-    const part=action==='change-station'?shapes?.find(s=>s.tint==='tuner'&&s.at)??valve:valve;
+    // #431: any hand action but on/off goes to the second control when the def has one (a record player's tonearm).
+    const part=!['switch-on','switch-off'].includes(action)?shapes?.find(s=>s.tint==='tuner'&&s.at)??valve:valve;
     const placeOf=(at:number[]):[number,number,number]=>{const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[vx,vy,vz]=at.map(v=>v*wp.s);return [wp.x+vx*c+vz*s,wp.y+vy,wp.z-vx*s+vz*c];};
     if(valve?.at)params.at=placeOf(valve.at);
     if(part&&part!==valve&&part.at)params.hold=TUNE_HOLD_SECONDS;
@@ -185,7 +186,8 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    if(typeof state[key]==='boolean')facts[key]=state[key] as boolean;
    if(key==='open'&&typeof state.locked==='boolean')facts.locked=state.locked;
    // Entry 37: a radio that is on says which station it plays ("radio: on, quiet piano"); off, only that it is off.
-   if(state.on===true&&typeof state.station==='string')facts.station=state.station;
+   // #431: a record player that is on says which record it plays, the same way.
+   if(state.on===true)for(const f of CONTACT_EXTRA_FIELDS)if(typeof state[f]==='string')facts[f]=state[f] as string;
    // entry 42: what is inside an open container (names only, at most its few places); nothing while it is shut
    // #435: a doorless container (a swap shelf) is always open, and one that keeps a `leftBy` record names who left each thing
    const ins=containerOpen(def,state)?containerInside(def):null,left=keepsLeftBy(def)?leftByOf(e.state):null;
@@ -222,7 +224,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    const bad=whenRefusal(a,state,e.name??'object');if(bad)return fail(bad.code,bad.reason);
    // entry 32: a knock changes nothing in the world; those who hear it are told once
    if(a.name==='knock'&&def.tags.includes('lockable')){d.knock?.(soul,e.id);d.record(soul,e.id,a.name);done();return {ok:true as const};}
-   const text=isGameAction(def,a)?gameProblem(a,state,soul,a.name==='mark'?intent.params?.square??'':undefined):isListAction(def,a)?listProblem(def,a,state,soul,intent.params??{}):contactStateKey(def,a.name)==='text'&&a.name==='write'?boardTextProblem(intent.params?.text):null;if(text)return fail(text.code,text.reason);
+   const text=isGameAction(def,a)?gameProblem(a,state,soul,a.name==='mark'?intent.params?.square??'':undefined):isListAction(def,a)?listProblem(def,a,state,soul,intent.params??{}):contactStateKey(def,a.name)==='text'&&a.name==='write'?boardTextProblem(intent.params?.text):enumParamProblem(def,a,intent.params??{},e.name??'object');if(text)return fail(text.code,text.reason);
    const patch=isGameAction(def,a)?gamePatch(a,state,soul,intent.params?.square):actionPatch(def,a,state,intent.params??{},soul);if(contactStateKey(def,a.name)==='text'&&a.name==='write')patch.textBy=soul.soulId;
    // entry 32: a passage's close re-locks the latch
    if(intent.relock&&a.name==='close'&&typeof state.locked==='boolean')patch.locked=true;
