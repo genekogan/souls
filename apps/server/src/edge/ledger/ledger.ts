@@ -1193,7 +1193,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       plans.set('make:mark', {label: 'Make a mark', steps: [], make: 'mark'} as never); plans.set('make:project', {label: 'Start a project', steps: [], make: 'project'} as never);
     }
     // Social and expressive native verbs: visible, deterministic, shared by many Souls at once.
-    const secondsOf = (def: number, max: number) => ({seconds: {type: 'integer', min: 5, max, default: def}});
+    const secondsOf = (def: number, max: number) => ({seconds: {type: 'integer', min: Math.min(5, def), max, default: def}});
     // CN5 (acceptance): a solo wave, with nobody in particular near (or facing someone/something: {"to": …})
     caps.push({id: 'wave:here', verb: 'wave', label: 'Wave (to nobody in particular, or {"to": a name} to face someone)', available: true, params: {to: {type: 'string', optional: true, description: 'a Soul, place or thing to face'}}});
     plans.set('wave:here', {label: 'Wave', steps: [{verb: 'mars:pose_v1', params: {activity: 'wave', seconds: 3}}]});

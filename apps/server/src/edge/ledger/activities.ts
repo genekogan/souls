@@ -149,7 +149,8 @@ const pose = (activity: string, seconds: number, extra: Record<string, unknown> 
 // plain walk_to keeps the body's current level and would seat it on the floor above the spot
 const walk = (to: V2, level?: number, from = 0) => level || (level === 0 && from) ? {verb: 'mars:walk_to', params: {x: to[0], z: to[1], level}} : {verb: 'walk_to', params: {to: [to[0], to[1]]}};
 const standFirst = (w: ActivityWorld): Program['steps'] => w.seated ? [{verb: 'stand', params: {}}] : [];
-const secondsParam = (def: number, max = 1800) => ({seconds: {type: 'integer', min: 5, max, default: def}});
+// the bounds hold the default: a four-second letter is not below its own minimum, so a client can send what the schema says
+const secondsParam = (def: number, max = 1800) => ({seconds: {type: 'integer', min: Math.min(5, def), max, default: def}});
 /** A seat's sit (no pose): the ledger times its rest or sit step, 1..600 s, 60 by default, like every sit:<seat>. */
 const seatSeconds = () => ({seconds: {type: 'integer', min: 1, max: 600, default: 60}});
 export const ACTIVITY_SECONDS_MAX = 1800;

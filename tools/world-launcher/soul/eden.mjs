@@ -685,8 +685,9 @@ async function act(...argv) {
   const parsed = parseActionArgs(args);
   if (typeof parsed.capability === "string" && !OFFER_ID.test(parsed.capability.trim())) {
     const r = ok(await call("/v1/edge/resolve", { body: parsed }), "resolve").resolve;
-    // the world's rollback (EDGE_FREE_TEXT_ACT=1): it says so here, and the words go to act as they used to
-    if (!r.freeTextAct) {
+    // the world's rollback (EDGE_FREE_TEXT_ACT=1): it says so here, and the words go to act as they used to. An offer whose
+    // id has no target (`pray`) reads as an id with no colon: when it is exactly a candidate's id, it is an id.
+    if (!r.freeTextAct && !r.candidates?.some((c) => c.id === parsed.capability.trim())) {
       process.exitCode = 2;
       return { accepted: false, code: "act.not-an-id", reason: `act takes an offered id, so "${parsed.capability}" was not acted on. Send one of these ids, or report that nothing fits.`, candidates: r.candidates ?? [], ...(r.ok === false && r.reason ? { why: r.reason } : {}) };
     }
