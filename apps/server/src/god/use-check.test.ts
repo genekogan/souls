@@ -232,10 +232,10 @@ test('seat render height: seated on a god seat, the body carries the seat top; s
     const r = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${w.god.model.get(n)!.id}` })) as any;
     assert.equal(r.accepted, true, JSON.stringify(r).slice(0, 300));
     assert.ok(await w.until(() => w.human().activity === 'sit'), `${n}: seated`);
-    assert.equal(w.human().seatHeight, h, `${n}: the body carries the seat top`);
+    assert.equal((w.human() as any).seatHeight, h, `${n}: the body carries the seat top`);
     const up = await accept(w.host, w.edge.act(w.soul, { capability: 'stand:here' })) as any;
     assert.ok(await w.until(() => w.edge.receipt(w.soul.soulId, up.receipt.id)?.phase === 'completed' && w.human().activity !== 'sit' && w.human().activity !== 'stand-up'), `${n}: stood up`);
-    assert.equal(w.human().seatHeight, undefined, `${n}: cleared on rising`);
+    assert.equal((w.human() as any).seatHeight, undefined, `${n}: cleared on rising`);
   }
   assert.deepEqual(w.E.rt?.violations ?? [], []);
 });
