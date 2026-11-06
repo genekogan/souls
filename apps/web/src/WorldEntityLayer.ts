@@ -758,6 +758,8 @@ export class WorldEntityLayer {
   private overrides = new Map<string, THREE.Vector3>();
   /** BALLOON-BODY: the native twin's yaw (Core convention: rotation.y = -yaw), so the drawn cabin's door is Core's door. */
   private overrideYaw = new Map<string, number>();
+  /** PC13 (#692): a loose part a crew raises turns about its own z; the recording owns that too, while their hands are on it. */
+  private overrideRoll = new Map<string, number>();
   private recordedItems = new Set<string>();
   private missingItemAt = new Map<string,number>();
   private lightMoves = new Set<string>();
@@ -843,7 +845,7 @@ export class WorldEntityLayer {
   private transported = new Set<string>();
   /** The recorded native load owns its airborne pose, not the slower world-edit
    * stream. Only active human grips and their settling loads are visited. */
-  transportPoses(entities: Record<string, {p: readonly number[]; yaw: number; state: Record<string, unknown>}>, bodies: readonly string[]) {
+  transportPoses(entities: Record<string, {p: readonly number[]; yaw: number; roll?: number; state: Record<string, unknown>}>, bodies: readonly string[]) {
     const held = new Set<string>();
     for (const body of bodies) {
       const grip = entities[body]?.state.grip as {entity?: string} | undefined;
@@ -855,13 +857,13 @@ export class WorldEntityLayer {
     }
     for (const id of this.transported) {
       const e = entities[id], d = this.drawn.get(id);
-      if (!e || !d) { this.transported.delete(id); this.overrides.delete(id); this.overrideYaw.delete(id); continue; }
+      if (!e || !d) { this.transported.delete(id); this.overrides.delete(id); this.overrideYaw.delete(id); this.overrideRoll.delete(id); continue; }
       const p = e.p;
       if (!held.has(id) && d.to.p.distanceToSquared(new THREE.Vector3(p[0], p[1], p[2])) < .0001) {
-        this.transported.delete(id); this.overrides.delete(id); this.overrideYaw.delete(id); d.settled = false; continue;
+        this.transported.delete(id); this.overrides.delete(id); this.overrideYaw.delete(id); if (this.overrideRoll.delete(id)) { const r = this.model?.entities.get(id)?.r; d.obj.rotation.z = Array.isArray(r) ? r[2] : 0; } d.settled = false; continue;
       }
       const pose = this.overrides.get(id) ?? new THREE.Vector3();
-      pose.set(p[0], p[1], p[2]); this.overrides.set(id, pose); this.overrideYaw.set(id, e.yaw); this.live.add(id);
+      pose.set(p[0], p[1], p[2]); this.overrides.set(id, pose); this.overrideYaw.set(id, e.yaw); if (e.roll || this.overrideRoll.has(id)) this.overrideRoll.set(id, e.roll ?? 0); this.live.add(id);
     }
   }
 
@@ -928,7 +930,7 @@ export class WorldEntityLayer {
       // entry 44: a mug being drunk from or rinsed follows the drawn hand (its figure's cup pose), not the recorded item pose:
       // the engine's mug is the same timeline resolved on a 1.75 m body, the drawn one on this rig's own lips
       const cupHand = !d.removing && this.held.has(id) && !d.obj.userData.handleGrip && this.cupHeld(id, d);
-      const ride = cupHand ? undefined : this.overrides.get(id); if (ride) { d.obj.position.copy(ride); const yaw = this.overrideYaw.get(id); if (yaw !== undefined) d.obj.rotation.y = -yaw; }
+      const ride = cupHand ? undefined : this.overrides.get(id); if (ride) { d.obj.position.copy(ride); const yaw = this.overrideYaw.get(id); if (yaw !== undefined) d.obj.rotation.y = -yaw; const roll = this.overrideRoll.get(id); if (roll !== undefined) d.obj.rotation.z = roll; }
       const s = d.from.s + (d.to.s - d.from.s) * t;
       d.obj.scale.setScalar(s);
       const shown = this.interiorVisible(id, d);

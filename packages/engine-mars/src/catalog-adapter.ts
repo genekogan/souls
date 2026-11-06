@@ -144,6 +144,9 @@ export function assetFromDef(id: string, d: DefFacts, o: { seen?: boolean; conne
     const h = c.carryable.handling as { crew: [number, number]; pose: 'edge' | 'flat'; height: number; grips: Record<string, [number, number, number][]> };
     out.handling = { carryCrew: [h.crew[0], h.crew[1]], carryPose: h.pose, carryHeight: h.height,
       grips: Object.fromEntries(Object.entries(h.grips).map(([n, gs]) => [Number(n), gs.map((local, i) => ({ id: gs.length === 1 ? 'mid' : `g${i}`, local: [r4(local[0]), r4(local[1]), r4(local[2])] as [number, number, number] }))])) };
+    // PC13 (#692): an upright's two long edges are where a crew holds it while raising it (hands slide along them, kept in
+    // reach: humans.ts slotPoint); crew size 0 is never a carry layout. Only where the host mirrors joints, as above.
+    if (o.connectors && d.tags.includes('upright')) out.handling.grips[0] = [-1, 1].map((sz: number) => ({ id: sz > 0 ? 'column-pos' : 'column-neg', local: [0, r4(out.size[1] / 2), r4(sz * dd / 2)] as [number, number, number], span: [r4(w), 0, 0] as [number, number, number] }));
   } else if (c.carryable) {
     // one hand, palm under the base (catalog-items.ts hand1): the engine's take_item / put_item / serve verbs
     out.handling = { carryCrew: [1, 1], carryPose: 'flat', grips: { 1: [{ id: 'hand', local: [0, 0, 0] }] }, carryHeight: 0.95, hands: 1, small: true };
