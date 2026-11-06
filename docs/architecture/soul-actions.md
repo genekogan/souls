@@ -144,10 +144,39 @@ context-size checks below), regression runs, and an uncut real-client recording 
     free (`carry.hands-full`).
   - **Invariant.** `framesStand` is checked at every tick end. An installed beam has both ends joined in standing uprights,
     and a joined upright nobody holds is in a frame that stands on its own.
-  - **Rules version.** The flag adds `+shared-raise/1+shared-beam/1`, so a journal that names these verbs is never replayed
-    without them.
+  - **Rules version.** The flag adds `+shared-raise/1+shared-beam/1` (and `+shared-deck/1`, below), so a journal that
+    names these verbs is never replayed without them.
   - **Not yet.** Where the uprights stand comes from where they were laid; Souls can't move a raised frame into line.
-    No disconnecting, and no joists or decks.
+    No disconnecting.
+- **Joists and a deck (PC15, [#694](https://github.com/genekogan/souls/issues/694); off unless `SIM_SHARED_CARRY=1`).**
+  Three appended revisions carry it: `core-rack-beam@4` (`@3` plus `joist-seat` connectors on a step ledge along both
+  faces every 24 in), `core-deck-joist@1` (a loose 2x4 on edge: a bearing `joist-end` under each end, a `sheet-seat` on
+  top) and `core-plywood-sheet@2` (`@1` plus five bearing `sheet-bearing` connectors every 24 in and a walkable top).
+  - **Offers.** A loose joist lying by a bay whose two beams (one per column, the same height, seated in supported frames)
+    have a free `joist-seat` pair is offered `install-joist-with:<id>`, with `at` (metres along the bay from its middle,
+    snapped to the nearest free pair within 10 cm; the free positions are listed) and `with`. A loose sheet lying beside a
+    bay whose five installed joists are 24 in apart and free on top is offered `lay-sheet-with:<id>`, with `with`. Crew
+    exactly two, through the same invitation, revision and receipts as `connect-beam-with`.
+  - **Commit.** One programme each, `mars:install_joist_v1` and `mars:lay_sheet_v1`
+    (`packages/engine-mars/src/deck-install.ts`). They bring the native `install_joist` and `install_plywood`
+    (`construction/deck.ts`) to connectors matched by kind. A joist's crew stands at its ends; a sheet's holds the two
+    corners of its long edge toward where it lies and lifts it over from the side. Every bearing connector joins its seat
+    as reciprocal connections, checked again at the lift, and the write-back puts the bearing joints and the pose into the
+    entity world in one edit. The receipts end `completed` with `shared.seated`.
+  - **Walkable.** A laid sheet's top is a floor only while every bearing connector is joined to an installed joist that
+    rests on two supported beams. On a rack's lowest beams its top is at 0.42 m: a floor of its own level, entered by a
+    climb link (a step up of at most 0.5 m) at the middle of each long side. A loose or carried sheet has no floor, and a
+    higher deck gets no step.
+  - **Stop.** Before the lift they let go where it lies. During it they lower it back along its path to exactly where it
+    lay; a part is never left half seated.
+  - **Refused before anyone is asked:** `joist.no-beams`, `joist.beam-unsupported`, `joist.occupied`, `joist.not-staged`,
+    `plywood.too-few-supports`, `plywood.span`, `plywood.overlap`, `plywood.support-unsupported`, `plywood.not-staged`,
+    `reach.too-high`, `lift.path-blocked`, `joist.station-unreachable`, `plywood.station-unreachable`, `joist.crew`,
+    `plywood.crew`. A god's edit that would move or remove a sheet someone stands on is refused `deck.occupied`; under a
+    joist or sheet, PC12's `support.none` holds.
+  - **Invariant.** `decksBear` is checked at every tick end: an installed joist or sheet has every bearing connector
+    joined to an installed support (`deck.unsupported`).
+  - **Rules version.** `+shared-deck/1`, after PC14's suffix.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
   A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
   comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one

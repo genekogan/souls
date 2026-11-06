@@ -311,6 +311,11 @@ and their seat connectors. It ends `arrived` (the receipts' `shared.seated`) onc
 lifted beam back where it lay. A raise whose upright a beam joins changes its stop: the crew lets go only when the frame
 stands on its own, and until then keeps holding.
 
+`install-joist` and `lay-sheet` (PC15, [#694](https://github.com/genekogan/souls/issues/694)) keep the same session and op,
+with exactly two members. The session's `seat` field holds the engine step it commits (`install_joist_v1` or
+`lay_sheet_v1` and its params, the crew added at commit) and, for a joist, where along the bay it goes. They end
+`arrived` (`shared.seated`) once every bearing connector is joined; a stop lowers a lifted part back where it lay.
+
 ## Exclusions
 
 - No universal animation language, all-body support, scheduler or building bridge.

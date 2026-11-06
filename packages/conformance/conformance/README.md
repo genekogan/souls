@@ -55,6 +55,7 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `lost-and-found-20261105.json` | `core-lost-and-found@1` (the swap shelf's form with an owner claim, `claim: "owner"`); pins nothing |
 | `hiding-places-20261105.json` | `core-hollow-stump@1` and `core-wall-niche@1` (doorless containers with `hidden: true`); pins nothing |
 | `litter-20261106.json` | `core-bin@2`, `core-wheelie-bin@2` (bins open at the top on the container faculty) and `core-wrapper@1` (litter); pins nothing |
+| `deck-20261106.json` | `core-rack-beam@4` (step-ledge joist seats), `core-deck-joist@1` and `core-plywood-sheet@2` (bearing connectors, a floor) (#694); pins nothing |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
 Repair a range or budget in a new revision and pin what remains.
