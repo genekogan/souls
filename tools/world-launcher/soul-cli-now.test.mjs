@@ -68,5 +68,5 @@ test('now sets the line alone, --clear clears it; a too-long line refuses before
   const before = m.seen.length; const r = await m.run(['act', 'wander:here', '--now', 'y'.repeat(141)], 1);
   assert.match(r.err, /at most 140/); assert.equal(m.seen.length, before, 'no call made');
   const {d} = await m.run(['status']);
-  assert.deepEqual(d.link, {state: 'connected', reason: 'listening', since: 3}); assert.deepEqual(d.now, {text: 'Rowing', at: 7}); assert.equal(d.client, '2.13.0');
+  assert.deepEqual(d.link, {state: 'connected', reason: 'listening', since: 3}); assert.deepEqual(d.now, {text: 'Rowing', at: 7}); assert.equal(d.client, '2.14.0');
 });
