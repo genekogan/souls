@@ -3,11 +3,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { foldEvents, foldMessages, newPlan, parsePlanSteps, planAnswer, planExpired, planFix, planHeld, planPhase, planStepProblem, reconcileMessages, stepParamsProblem, takePending } from './soul/eden.mjs';
+import { foldEvents, foldMessages, isServeOf, newPlan, parsePlanSteps, planAnswer, planExpired, planFix, planHeld, planPhase, planStepProblem, reconcileMessages, stepParamsProblem, takePending } from './soul/eden.mjs';
 
 const cli = fileURLToPath(new URL('./soul/eden.mjs', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -29,7 +29,7 @@ async function world(t) {
     w.calls.push([req.method, p]);
     const json = (status, v, h = {}) => { if (res.destroyed) return; res.writeHead(status, { 'content-type': 'application/json', ...h }); res.end(JSON.stringify(v)); };
     if (p === '/v1/edge/inbox/listen') {
-      w.listens++;
+      w.listens++; w.listenAuth = req.headers.authorization;
       const waiting = () => { const from = w.inbox.findIndex((m) => m.id === url.searchParams.get('after')) + 1; return w.inbox.slice(from).filter((m) => !m.acked); };
       if (!waiting().length) await hold(Math.min(Number(url.searchParams.get('timeoutMs')), 200));
       if (req.socket.destroyed) return undefined; // the real route hands nothing to a caller that hung up (inbox-routes.ts)
@@ -66,6 +66,8 @@ async function world(t) {
     if (/\/result$/.test(p)) { const m = w.inbox.find((x) => x.id === decodeURIComponent(p.split('/').at(-2))); if (m) m.acked = true; w.results.push({ id: m?.id, ...JSON.parse(body) }); return json(200, { inbox: {} }); }
     if (/\/ack$|\/result$/.test(p)) { const m = w.inbox.find((x) => x.id === decodeURIComponent(p.split('/').at(-2))); if (m) m.acked = true; return json(200, { inbox: {} }); }
     if (p === '/v1/edge/here') return json(200, { place: 'green' });
+    if (p === '/v1/edge/travel') { w.inbox.length = 0; w.events.length = 0; w.listens = 0; flush(); }   // arriving at another world: its inbox and stream are its own
+    if (p === '/v1/edge/travel') return json(200, { ok: true, base: `http://127.0.0.1:${server.address().port}/w/test`, soulId: 's2', token: 'synthetic-second-token' });
     if (p.startsWith('/v1/edge/receipts/')) return json(200, { receipt: { id: decodeURIComponent(p.split('/').pop()), phase: 'completed', capability: 'walk:x' } });
     return json(404, { error: { code: 'nope', message: p } });
   });
@@ -138,6 +140,103 @@ test('A3: act returns the receipt at acceptance; pending lists open receipts, ev
   assert.deepEqual(done.endedReceipts.map((r) => [r.id, r.phase]), [['r_1', 'completed']]);
   assert.deepEqual(done.openReceipts, []);
   assert.deepEqual((await w.cli('pending')).json.endedReceipts, [], 'an ended receipt is reported once');
+});
+
+test('a stale lock never signals a process that is not this folder\'s serve', async (t) => {
+  const w = await world(t);
+  const other = mkdtempSync(join(tmpdir(), 'sim-other-'));
+  writeFileSync(join(other, 'eden.mjs'), 'setInterval(() => {}, 1000);');
+  const bystanders = [
+    spawn('tail', ['-f', '/dev/null'], { stdio: 'ignore' }),                                                  // anything that reused the pid
+    spawn(process.execPath, ['eden.mjs', 'serve', '--foreground'], { cwd: other, stdio: 'ignore' }),          // another folder's serve
+  ];
+  t.after(() => { for (const b of bystanders) b.kill('SIGKILL'); rmSync(other, { recursive: true, force: true }); });
+  await sleep(300);
+  for (const b of bystanders) {
+    writeFileSync(join(w.dir, '.eden-serve.lock'), JSON.stringify({ pid: b.pid, start: 'x', beatAt: Date.now() - 3_600_000 }));
+    const up = await w.cli('serve');
+    assert.equal(up.json.serving, true, up.err);
+    assert.notEqual(up.json.pid, b.pid);
+    await sleep(200);
+    assert.equal(b.exitCode, null, 'still running');
+    assert.equal(b.signalCode, null, 'never signalled');
+    await w.cli('serve', '--stop');
+    assert.ok(await until(() => !existsSync(join(w.dir, '.eden-serve.sock'))));
+  }
+});
+
+test('a hung serve of this folder is still replaced when its beat is stale', async (t) => {
+  const w = await world(t);
+  const a = await w.cli('serve');
+  process.kill(a.json.pid, 'SIGSTOP');
+  t.after(() => { try { process.kill(a.json.pid, 'SIGKILL'); } catch { /* gone */ } });
+  writeFileSync(join(w.dir, '.eden-serve.lock'), JSON.stringify({ pid: a.json.pid, start: 'x', beatAt: Date.now() - 3_600_000 }));
+  const gone = (() => { try { process.kill(a.json.pid, 0); return false; } catch { return true; } });
+  rmSync(join(w.dir, '.eden-serve.sock'));
+  const b = spawn(process.execPath, [cli, 'serve', '--foreground'], { cwd: w.dir, stdio: 'ignore' });
+  t.after(() => b.kill('SIGKILL'));
+  assert.ok(await until(() => existsSync(join(w.dir, '.eden-serve.sock'))), 'the new one is up');
+  process.kill(a.json.pid, 'SIGCONT');
+  assert.ok(await until(gone), 'the old one got the signal');
+});
+
+test('isServeOf: the command line and the folder both have to match', () => {
+  const f = '/w/soul-a';
+  assert.equal(isServeOf(f, 'node /w/soul-a/eden.mjs serve --foreground', f), true);
+  assert.equal(isServeOf(f, 'node eden.mjs serve --foreground', f), true);
+  assert.equal(isServeOf(f, 'node /w/soul-b/eden.mjs serve --foreground', '/w/soul-b'), false, 'another Soul');
+  assert.equal(isServeOf(f, 'tail -f /dev/null', f), false);
+  assert.equal(isServeOf(f, 'nginx: master process serve', f), false);
+  assert.equal(isServeOf(f, 'node /w/soul-a/eden.mjs serve --foreground', null), true, 'no cwd: the absolute path says it');
+  assert.equal(isServeOf(f, 'node eden.mjs serve --foreground', null), false, 'no cwd and no path: not proved, so not signalled');
+  assert.equal(isServeOf(f, '', f), false);
+});
+
+test('travel stops the old world\'s serve and starts one for the new world, with clean state', async (t) => {
+  const w = await world(t);
+  const a = await w.cli('serve');
+  w.owner('msg_1', 'From the old world');
+  w.event({ kind: 'approach', text: 'Old news' });
+  assert.ok(await until(async () => (await w.cli('serve', '--status')).json.unacked === 1));
+  const r = await w.cli('travel', 'other');
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.json.serve.restarted, true, r.out);
+  assert.notEqual(r.json.serve.pid, a.json.pid);
+  assert.ok(await until(() => { try { process.kill(a.json.pid, 0); return false; } catch { return true; } }), 'the old serve is gone');
+  assert.ok(await until(() => w.listens > 0 && w.listenAuth === 'Bearer synthetic-second-token'), 'it listens with the new token');
+  const p = (await w.cli('pending')).json;
+  assert.deepEqual(p.ownerMessages, [], 'nothing of the old world\'s is held for the new one');
+  assert.deepEqual(p.events, []);
+});
+
+test('a folder changed behind the serve\'s back stops it at the next request, and commands go to the world', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  const s = JSON.parse(readFileSync(join(w.dir, '.eden-agent.json'), 'utf8'));
+  writeFileSync(join(w.dir, '.eden-agent.json'), JSON.stringify({ ...s, soul: 's9', token: 'synthetic-other-token' }), { mode: 0o600 });
+  const r = await w.cli('here');
+  assert.equal(r.json?.place, 'green', r.err || r.out);
+  assert.ok(await until(() => !existsSync(join(w.dir, '.eden-serve.sock'))), 'the serve stopped');
+});
+
+test('the socket is private: it answers pending with the owner\'s messages', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  assert.equal(statSync(join(w.dir, '.eden-serve.sock')).mode & 0o777, 0o600);
+});
+
+test('listen --after a finished message places it, as the world does, so an older open one is not handed over again', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  w.owner('msg_1', 'Still open'); w.owner('msg_2', 'Finished');
+  assert.ok(await until(async () => (await w.cli('serve', '--status')).json.unacked === 2));
+  await w.cli('ack', 'msg_2', 'Yes'); await w.cli('result', 'msg_2', 'done', 'Done');
+  await w.cli('pending');                 // a read prunes what is finished
+  assert.deepEqual((await w.cli('listen', '--once', '--after', 'msg_2')).json.messages, []);
+  const st = { messages: Array.from({ length: 60 }, (_, i) => ({ id: `m${i}`, acked: true, closed: true })), receipts: {}, events: [], omitted: 0 };
+  takePending(st);
+  assert.equal(st.messages.length, 50, 'the newest finished ones stay');
+  assert.equal(st.messages[0].id, 'm10');
 });
 
 test('A5: a message the world handed over just before a kill, unsaved, comes back on restart', async (t) => {
@@ -418,6 +517,21 @@ test('plan A3: a new plan replaces the old one; for the same message there is no
   assert.ok(await until(() => w.results.length === 1));
   assert.equal(w.results[0].outcome, 'done');
   assert.deepEqual((await w.cli('pending')).json.planEnded.map((x) => x.state), ['replaced', 'done']);
+});
+
+test('plan: a move ends the plan: its steps are in the old world, and the report stays', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  await w.cli('plan', JSON.stringify(['walk:mill', 'walk:pond']), '--for', 'none');
+  assert.ok(await until(() => w.acts === 1));
+  const r = await w.cli('travel', 'other');
+  assert.equal(r.json.serve.restarted, true, r.out);
+  await sleep(200);
+  const p = (await w.cli('pending')).json;
+  assert.equal(p.plan, undefined);
+  assert.equal(p.planEnded[0].state, 'replaced');
+  ended(w, 'r_1'); await sleep(150);
+  assert.equal(w.acts, 1, 'no further step');
 });
 
 test('plan: durable: a killed serve carries on at the same step and the world acts once per step', async (t) => {
