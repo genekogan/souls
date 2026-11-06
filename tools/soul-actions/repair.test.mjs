@@ -269,7 +269,7 @@ test('R9: the same body at the same spot, whole against broken, hammer in hand: 
  assert.equal(whole.objects?.find(o=>o.id===bench)?.state?.broken,undefined,'no fact while whole');assert.equal(edge.capabilities(ana).filter(c=>/:repair$/.test(c.id)).length,0,'no offer while whole');
  place([{op:'set',id:bench,state:{broken:true}}]);await tick(60);
  assert.deepEqual([...w.body(ana).pose.p],p0,'the same spot');
- const broken=await here(ana),frame=h=>{const {doHere,doHereCoverage,...rest}=h;return JSON.stringify(rest).length;},added=frame(broken)-frame(whole);
+ const broken=await here(ana),frame=h=>{const {doHere,doHereCoverage,doHereParams,...rest}=h;return JSON.stringify(rest).length;},added=frame(broken)-frame(whole);
  assert.equal(broken.objects.filter(o=>o.id===bench).length,1,'one row for the bench: '+JSON.stringify(broken.objects));
  assert.equal(broken.objects?.find(o=>o.id===bench)?.state?.broken,'a cracked slat','one fact');assert.equal(edge.capabilities(ana).filter(c=>c.id===`object:${bench}:repair`&&c.available!==false).length,1,'one offer, available with the hammer');
  assert.ok(added>0&&added<300,'adds under 300 B: '+added);assert.ok(JSON.stringify(broken).length<=JSON.stringify(whole).length+300,'the doHere budget holds the whole frame too');console.log(JSON.stringify({r9:{whole:frame(whole),broken:frame(broken),added}}));
