@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonl } from '../lib/jsonl.mjs';
 
-export const SCORER = Object.freeze({ id: 'controllability', version: '2', path: 'tools/playtest/runs/controllability.mjs' });
+export const SCORER = Object.freeze({ id: 'controllability', version: '3', path: 'tools/playtest/runs/controllability.mjs' });
 export const SCORECARD_SCHEMA = 'soul-run-scorecard/1';
 
 // ---- refusal classes (#1097 A2, #628). Only `offer` counts against M1.
@@ -69,7 +69,7 @@ export function classifyRefusal(code) {
 }
 
 // ---- what a model decision did (M2, M3)
-const ACT_VERBS = new Set(['act', 'object', 'travel']);
+const ACT_VERBS = new Set(['act', 'object', 'travel', 'plan']);
 const SAY_VERBS = new Set(['say', 'converse']);
 const REPLY_VERBS = new Set(['ack', 'result']);
 const WAIT_VERBS = new Set(['wait', 'listen']);
@@ -101,7 +101,8 @@ export function seatDecisions(file) {
   return { decisions, wakeBytes };
 }
 
-const verbsOf = (d, stepAt) => d.toolLines.map((n) => stepAt.get(n)?.verb ?? null);
+const isPlanCall = (s) => s.verb === 'plan' && s.args[0] !== '--status';   // plan --status only reads
+const verbsOf = (d, stepAt) => d.toolLines.map((n) => { const s = stepAt.get(n); return s?.verb === 'plan' && !isPlanCall(s) ? 'plan-status' : s?.verb ?? null; });
 /** act > say > reply > read > wait > other > text: what the decision is counted as. */
 export function decisionKind(verbs, hasText = false) {
   if (verbs.some((v) => ACT_VERBS.has(v))) return 'act';
@@ -185,6 +186,46 @@ export function firstActResult(a) {
   return !(a.state === 'refused' && a.class === 'offer');
 }
 
+// ---- plans (#1100): one model decision hands the resident client several steps, and the client closes the owner's message.
+const PLAN_OVER = new Set(['done', 'failed', 'replaced']);
+/** Every plan this seat saw reported, from the `plan` call itself and from pending, listen and plan --status: each step's latest
+ *  state, and how the plan ended. A step and its replacement are two steps, so a repaired refusal still counts. */
+function planReports(steps) {
+  const plans = new Map();
+  for (const s of steps) {
+    if (!['plan', 'pending', 'listen'].includes(s.verb)) continue;
+    const o = actOutput(s.out);
+    for (const v of [o?.plan, ...(Array.isArray(o?.planEnded) ? o.planEnded : [])]) {
+      if (!v?.id) continue;
+      if (!plans.has(v.id)) plans.set(v.id, { for: v.for ?? null, steps: new Map(), ended: null });
+      const rec = plans.get(v.id);
+      for (const x of v.steps ?? []) rec.steps.set(`${x.n}:${x.id}`, x);
+      if (PLAN_OVER.has(v.state)) rec.ended = { state: v.state, step: s };
+    }
+  }
+  return plans;
+}
+const planStepRow = (x) => {
+  if (x.state === 'refused') return { state: 'refused', code: x.code ?? null, ...classifyRefusal(x.code) };
+  if (x.receipt) return { state: 'accepted', receipt: x.receipt, capability: x.id };
+  return { state: 'unknown', why: 'no later report of this plan step' };
+};
+/** One `plan` call → a row per step, as an act call is one row. A plan refused before it ran counts each step it named as wrong. */
+function readPlan(s, plans, counted) {
+  const o = actOutput(s.out), base = { line: s.resultLine ?? s.line, atMs: s.atMs, doneMs: s.doneMs, viaPlan: true };
+  if (!o) return [{ ...base, words: s.args[0] ?? null, state: 'unknown', why: s.isError ? 'CLI error' : 'output not JSON' }];
+  if (o.accepted === false) {
+    if (o.code === 'plan.no-fix') return [];   // nothing was asked of the world
+    const wrong = o.problems?.length ? o.problems : [o];
+    return wrong.map((p) => ({ ...base, words: p.id ?? s.args[0] ?? null, state: 'refused', code: p.code ?? null, ...classifyRefusal(p.code) }));
+  }
+  const id = o.plan?.id;
+  if (!id) return [{ ...base, words: s.args[0] ?? null, state: 'unknown', why: 'no plan in the answer' }];
+  if (counted.has(id)) return [];   // a replacement step: already a row of its plan
+  counted.add(id);
+  return [...plans.get(id).steps.values()].map((x) => ({ ...base, words: x.id, for: plans.get(id).for, ...planStepRow(x) }));
+}
+
 // One act call → accepted, refused with its class, or unknown (a CLI error or output we cannot read).
 function readAct(s) {
   const o = actOutput(s.out);
@@ -213,13 +254,21 @@ function scoreSeat(sr, seat, packs) {
   const seatPacks = packs.filter((p) => p.seat === seat);
 
   const acts = steps.filter((s) => (s.verb === 'act' || s.verb === 'object') && !(reasons.get(s.turn) === 'onboard'));
+  const plans = planReports(steps), planCounted = new Set();
   const actRows = acts.map((s) => ({ line: s.resultLine ?? s.line, atMs: s.atMs, doneMs: s.doneMs, words: s.args[0] ?? null, ...readAct(s) }));
+  for (const s of steps) if (isPlanCall(s) && reasons.get(s.turn) !== 'onboard') actRows.push(...readPlan(s, plans, planCounted));
 
   // Which message each act and reply belongs to: the world's `for`, the id the seat named, or the seat's latest ack.
   const closedAt = new Map(), resultOf = new Map(), ackAt = new Map();
   for (const s of steps) {
     if (s.verb === 'ack' && MSG.test(s.args[0] ?? '')) { if (!ackAt.has(s.args[0])) ackAt.set(s.args[0], s); }
     if (s.verb === 'result' && MSG.test(s.args[0] ?? '') && !resultOf.has(s.args[0])) { resultOf.set(s.args[0], s); closedAt.set(s.args[0], s.line); }
+  }
+  // The client closes a plan's message itself. The seat knows only once a report says so; until then it is an open intention.
+  for (const p of plans.values()) if (p.for && p.ended && !resultOf.has(p.for)) {
+    const outcome = p.ended.state === 'done' ? 'done' : 'failed', s = p.ended.step;
+    resultOf.set(p.for, { verb: 'result', args: [p.for, outcome], out: { outcome }, line: s.line, resultLine: s.resultLine, atMs: s.atMs, doneMs: s.doneMs, viaPlan: true });
+    closedAt.set(p.for, s.line);
   }
   let current = null;
   const actFor = new Map();
@@ -229,6 +278,7 @@ function scoreSeat(sr, seat, packs) {
       const r = actRows.find((x) => x.line === (s.resultLine ?? s.line));
       if (r) { r.intention = r.for ?? current; actFor.set(r.line, r.intention); }
     }
+    if (isPlanCall(s)) for (const r of actRows.filter((x) => x.viaPlan && x.line === (s.resultLine ?? s.line))) { r.intention = r.for ?? current; actFor.set(r.line, r.intention); }
     if (s.verb === 'result' && s.args[0] === current) current = null;
   }
 
@@ -245,7 +295,7 @@ function scoreSeat(sr, seat, packs) {
     if (row.onboarding) return row;
     for (const n of d.toolLines) {
       const s = stepAt.get(n); if (!s) continue;
-      const named = REPLY_VERBS.has(s.verb) ? s.args[0] : (s.verb === 'act' || s.verb === 'object') ? actFor.get(s.resultLine ?? s.line) : null;
+      const named = REPLY_VERBS.has(s.verb) ? s.args[0] : (s.verb === 'act' || s.verb === 'object' || isPlanCall(s)) ? actFor.get(s.resultLine ?? s.line) : null;
       if (named) { row.message = named; break; }
     }
     if (!row.message && prev?.turn === d.turn && prev.message) row.message = prev.message;
