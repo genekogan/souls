@@ -172,12 +172,16 @@ test('R4: a stop during the raise and before the grip; a member going away', {ti
 test('R8: while held: speech, a member\'s act is shared.busy, another Soul is free; flag off: nothing offered', {timeout: 300000}, async (t) => {
   const w = await world(t), frame = w.idOf('frame'), {Ada, Bo, Cy} = w.souls;
   const c = await commit(w, Ada, [Bo], frame); await runTo(w, c, frame, 'hold');
+  // a long hold: a minute of ticks, no guard or timeout ends it, and the world can still be saved
+  await w.tick(1200); assert.ok(raised(w.E()[frame]), 'still standing'); assert.equal(w.host.engine.canSnapshot(), true);
+  assert.equal(read(w, Ada, c.p).phase, 'started'); assert.ok(!w.db.db.prepare("SELECT count(*) n FROM events WHERE kind='edge-stop'").get().n, 'nothing stopped it');
   const spoken = await say(w, Bo, 'Got it, I have this side.'); assert.ok(spoken.said ?? spoken.id, JSON.stringify(spoken));
   const walk = w.edge.capabilities(Ada).find((x) => x.verb === 'walk' && x.available)?.id ?? 'walk:field';
   const busy = await act(w, Ada, {capability: walk}); assert.equal(busy.accepted, false); assert.equal(busy.code, 'shared.busy', JSON.stringify(busy)); assert.match(busy.reason, /committed to holding/); assert.equal(busy.alternatives[0].id, `stop-carry:${c.op.id}`);
   assert.equal(read(w, Ada, c.p).phase, 'started', 'the hold goes on');
   const free = w.edge.capabilities(Cy).find((x) => x.verb === 'walk' && x.available).id; const r = ok(await act(w, Cy, {capability: free})); assert.ok(['waiting', 'started', 'completed'].includes(read(w, Cy, r).phase));
-  ok(await act(w, Ada, {capability: `stop-carry:${c.op.id}`})); await toEnd(w, c, frame);
+  // the owner's plain "stop what you are doing" is the same safe stop, in any member's stream
+  const stand = await act(w, Bo, {capability: 'stand:here'}); assert.equal(stand.accepted, true, JSON.stringify(stand)); assert.equal(inviteOf(w, c.id).shared.op.phase, 'stopping'); await toEnd(w, c, frame);
   const off = await world(t, {sharedCarry: false}); assert.equal(offer(off, off.souls.Ada, `raise-with:${off.idOf('frame')}`), undefined);
 });
 
