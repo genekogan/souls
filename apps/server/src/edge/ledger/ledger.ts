@@ -588,6 +588,14 @@ export class EdgeLedger implements EdgeLedgerHooks {
       return {summary:ns.length?`Read ${sign.name}: ${w} wanted, ${ns.length-w} offered, by ${list([...new Set(ns.map(n=>n.name))])} (their words, not world facts).`:`Read ${sign.name}; nothing is pinned on it.`,
         learned:[...new Set(ns.map(n=>n.by))].slice(0,5).map(by=>{const mine=ns.filter(n=>n.by===by);return {fact:`${mine[0].name}'s note${mine.length>1?'s':''} on ${sign.name}: ${mine.map(words).join(' / ')}`.slice(0,300),about:sign.id,source:`${sign.id}:note:${by}`,provenance:'soul-text' as const,untrusted:true};}),
         detail:{sign:{id:sign.id,name:sign.name,notes:ns.map(n=>({column:n.c==='w'?'wanted':'offered',text:n.t,writtenBy:{soulId:n.by,name:n.name},replies:n.re.map(r=>({text:r.t,writtenBy:{soulId:r.by,name:r.name}})),...(n.tk?{takenBy:{soulId:n.tk.by,name:n.tk.name}}:{})})),provenance:'soul-text'}},untrusted:ns.length>0};}
+    // #429: a sign-up list (a sheet, a guestbook) reads as its title and numbered entries, each a Soul's own name and words:
+    // attributed to its signer (soul id) and untrusted, like a pinboard's notes; one learned fact per signer, all in the detail.
+    const su=(sign as {signups?:{text:string;by:string}[]}).signups;
+    if(su){const es=su.map(n=>({text:n.text,by:n.by,name:n.by?nameOf(n.by):'another Soul'})),title=String((sign as {title?:string}).title??'')||'Sign up',tail=es.length?' (their words, not world facts)':'';
+      const words=[title,...es.map((n,i)=>`${i+1}. ${n.text}`)].join(' / '),room=160-`Read ${sign.name}: "".`.length-tail.length,quoted=words.length>room?words.slice(0,Math.max(0,room-1))+'…':words;
+      return {summary:es.length?`Read ${sign.name}: "${quoted}"${tail}.`:`Read ${sign.name}: "${title}"; nobody has signed it yet.`,
+        learned:es.filter(n=>n.by).slice(0,5).map(n=>({fact:`${n.name} signed ${sign.name}: "${n.text}"`.slice(0,300),about:sign.id,source:`${sign.id}:entry:${n.by}`,provenance:'soul-text' as const,untrusted:true})),
+        detail:{passage:sign.text,sign:{id:sign.id,name:sign.name,title,entries:es.map((n,i)=>({line:i+1,text:n.text,writtenBy:{soulId:n.by,name:n.name}})),provenance:'soul-text'}},untrusted:es.length>0};}
     // Entry 19: a pinboard reads as its notes, each attributed to its author (by soul id, not the signature line).
     if(sign.notes){const notes=sign.notes.map(n=>({text:n.text.replace(/ — [^—]*$/,''),by:n.by,name:nameOf(n.by)})),names=[...new Set(notes.map(n=>n.name))];
       return {summary:notes.length?`Read ${sign.name}: ${notes.length} note${notes.length>1?'s':''}, by ${names.length>1?names.slice(0,-1).join(', ')+' and '+names.at(-1):names[0]} (their words, not world facts).`:`Read ${sign.name}; nothing is pinned on it.`,
