@@ -24,6 +24,10 @@ pnpm test:client                             # Soul client and client-eval suite
 pnpm test                                    # everything (slow; prefer the focused forms)
 ```
 
+The Pip authoring example's renderer test is manual, not part of CI: it needs pulled media and loads renderer code
+with parameter properties, so run `node --experimental-transform-types --test tools/body-authoring/robot/robot.test.mjs`
+when you change `tools/body-authoring/robot/` or the humanoid renderer it fits.
+
 `pretest` checks that the media the tests read is in place (`pnpm assets:pull` fixes it). Server tests run with
 `--test-concurrency=1`. Prefer `node --test` on the files you touched while iterating; the full suite belongs to CI
 and the remote gate.
@@ -87,12 +91,98 @@ node e2e/local-smoke.mjs --build                 # any free port; --port N or E2
 runs and authors them. Rendering diagnostics for camera follow and temporal stability are in `tools/render-checks/`.
 The engine's own browser tests are in `mars/viewer/e2e/`.
 
+## CI window
+
+Per-PR CI (`ci.yml`) shares GitHub's hosted-runner cap, about 20 concurrent jobs. A server change selects about ten
+heavy legs, so with several workers pushing, unready PRs used to starve the merge path. Pull request runs are
+therefore **windowed**:
+
+- **Every PR push** runs the cheap jobs, `scope` and `repo` (the tooling tests), and the separate `security` (gitleaks,
+  path-guard, scrub-guard), `proof` and `changelog` workflows.
+- **Heavy jobs** (the `qualify` matrix and the browser `smoke`) run only inside the window: the PR is not a draft
+  and carries `merge:ready` or `ci:run`. Outside the window, a run whose paths selected heavy jobs is **deferred**.
+  The heavy jobs are skipped and `ci-ok` fails with "Full CI deferred". A deferred `ci-ok` is a real failure, so
+  skipped heavy jobs never count toward merging, and branch protection still requires a green `ci-ok`. Docs or
+  tools-only PRs select no heavy jobs and are never deferred.
+- **To request full CI**, add `ci:run` (or `merge:ready`) to a ready PR. `ci-request.yml` then dispatches `ci.yml`
+  for it, unless the head's newest CI run already passed. By hand: `gh workflow run ci.yml --ref <branch> -f pr=<n>`.
+  A requested run is scoped by the PR's paths against main, not full scope. It queues behind a CI run already going
+  for the same PR, and does no heavy work if that run passes at the same head. Once a PR is in the window, its later
+  pushes run in full as usual.
+- **A branch cut before the window (#914)** carries an old `ci.yml` with no `pr` input, and a dispatch runs the
+  branch's own copy, so GitHub would refuse the request. `ci-request.yml` checks the head's `ci.yml` first. When the
+  input is missing, it dispatches nothing and posts one comment on the PR: merge main forward (merge or rebase main
+  into the branch and push), and that push runs CI in the window. The merge train's strict path also rebases a
+  `merge:ready` PR. Dispatching main's `ci.yml` instead would not help: its checks would attach to main's commit, not
+  the PR head.
+- Pushes to main, manual runs without `pr`, and merge-group runs are never windowed. Main keeps its full-scope runs,
+  which the merge train reads.
+
+Steward procedure: give `ci:run` to the PRs entering the window, normally the next two in merge order. Add
+`merge:ready` once a head's `ci-ok` is green, and remove `ci:run` from PRs that leave the window. A PR labelled
+`merge:ready` straight from a deferred head still works: the request replaces the deferred run, and the train reads
+the replaced failure as stale (#909). But the train's 15-minute head wait is shorter than a server run, so a PR that
+is behind main can still leave with `needs:rebase`. The decision is `windowFor` and `windowed` in
+`.github/scripts/ci-scope.mjs`.
+
+**Soul Action tests.** `tools/soul-actions/*.test.mjs` runs as the CI job `soul-actions`, about 76 s measured on a
+loaded laptop. It is picked by its own paths (`tools/soul-actions`, `apps/server`, `packages/world-compiler`,
+`packages/engine-*`) and by every full-scope run, including each push to main, and a failure blocks through `ci-ok`. It
+is not a gate step, so the gate's suite tree and cached baseline don't change.
+
 ## Remote gate
 
 [testing/remote-gate.md](testing/remote-gate.md): `tools/test-harness/release-gate.sh` runs the complete suite for a
 candidate and its baseline on Modal and compares them. Clean means 0 new failures, 0 blockers and 0 unexpected skips.
 The release head always takes the full scope; candidates may use `--scope auto`. The baseline comes from a cache, and
 docs/tools-only changes are never gated ([Modal policy](process/modal-policy.md)).
+
+## Capacity qualification workflow
+
+`.github/workflows/capacity-qualify.yml` runs the meetup bench (`tools/bench/capacity/meetup/meetup.mjs`, CW1/CW2)
+on a self-hosted runner. It is manual only, and one run at a time. The runner's labels come from the
+`QUALIFY_RUNNER` repository variable, a JSON array such as `["self-hosted","<neutral label>"]`; the default is
+`["self-hosted"]`. Keep labels, the runner name and the machine name neutral, because the public job log prints the
+runner and machine names. Someone with write access dispatches it with `ref` set to a branch that carries the bench.
+`ref` must be `main` or one `agent/<name>` branch of this repository; tags, commit SHAs and any other branch are
+refused before checkout. Until #791 and #793 merge, the bench is on `agent/736-hardware-qualification`:
+
+```bash
+gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
+  [-f profile=even,meetup] [-f repeats=2] [-f short=false] [-f browser=false] [-f slice_cpu_quota=400%] [-f slice_memory_max=8G] \
+  [-f active_min=60] [-f telemetry=true]
+```
+
+- **Quiet.** The bench gets `--quiet-host --qualifying-executor` only when four things hold: the dispatcher sets
+  `quiet_host`; the Actions API shows no other job in progress on the same runner set; no other Soul server
+  process runs on the host; and the host's 1-minute load per core settles below 0.25 within 5 minutes. Otherwise the
+  run still measures, but it is labelled not-quiet, and every failing reason is recorded. The same checks run again
+  after the bench. If they fail then, the artifact's `VERDICT.md` carries a "not quiet after the fact" banner.
+  Before dispatching, turn off anything else that can use the runner, such as the `CI_HEAVY_RUNNER` variable.
+- **Nothing shared between runs.** The runner is persistent and the bench ref's code runs on it, so pnpm itself,
+  its store, cache and state, the media cache and any Chromium download live in a per-run directory under the job's
+  temp dir, and the last step deletes it. No step uses `actions/cache`. Each run therefore downloads its packages and
+  the web and runtime media again.
+- **Browser.** The bench's real browser (`--browser`: one headless Chromium holding world 0's page) is off by default
+  (`browser=false`). Browser-dependent measurements need a host that already has Playwright's Chromium system
+  libraries: the workflow downloads Chromium but never installs system packages (no `--with-deps`, no sudo). The
+  default self-hosted runner does not have them, because Playwright cannot install them for its OS, so leave
+  `browser` off there; if Chromium cannot start, the bench records the browser as unavailable.
+- **Allocation.** `slice_cpu_quota` and `slice_memory_max` run the worlds inside a `systemd-run --user --scope` with
+  those limits, and the run is refused if the host cannot apply them. Without them the allocation is the runner's
+  own cgroup. A memory limit it does not set leaves headroom unknown, so the verdict cannot be `passes`.
+- **Artifact** `capacity-qualify-<run id>`. It holds `VERDICT.md`, `summary.json` and `qualify.json` (the quiet
+  decision and its facts), plus each run's `REPORT.md`, `receipt.json` and `result.json`. Workspace, home, host and
+  user names are replaced with placeholders. The upload is refused if a file holds a Soul token. `souls/`,
+  `launcher/` and logs never leave the runner and are deleted at the end of the job.
+- **Slopes (CW7, #741).** `profile=slopes`, alone, runs `tools/bench/capacity/slopes/slopes.mjs` instead, with
+  `--cpu-prof`; see the bench README's "Slopes" section. The ctl script comes from the workflow's own commit, so until
+  this lands on `main`, dispatch the workflow from the branch that carries it (`gh workflow run … --ref <branch>`).
+  The artifact holds the top-level `REPORT.md`, `receipt.json` and `results.json`, plus each arm's `result.json`. The
+  calls, live samples, CPU profiles, templates and `souls/` stay on the runner.
+- **Long windows (CW8 A2, #955).** `active_min` sets the activity window, from 20 to 240 minutes; blank means 20. It is refused unless `(minutes + 15) × runs ≤ 280`, so the run fits the job's 300 min: for example, `profile=meetup repeats=1 active_min=60`. `telemetry=true` runs the launcher's collector beside the worlds. Each run's `result.json` carries `growth`, the trends after an explicit warm-up; see the bench README's "Long windows" section.
+- **What it qualifies.** The host is the maintainer's machine. Its verdict is labelled with `host_class` and is not
+  a production-class result unless that host is the production class.
 
 ## Playtests and the swarm director
 
@@ -111,7 +201,7 @@ docs/tools-only changes are never gated ([Modal policy](process/modal-policy.md)
 | Server or package logic | `node --test` on touched files, `tsc -p` of touched packages |
 | Anything that can move geometry, navigation or god builds | add the walk gate |
 | Web app | `pnpm --filter @sim/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
-| Library defs, generators, compiler | conformance, plus a supplement when a revision changes |
+| Library defs, generators, compiler | `library.test.ts` and `catalogue-checks.test.ts` (budgets and holds), conformance, plus a supplement when a revision changes |
 | Soul behaviour, navigation, engines | the above plus a scenario playtest with two repeats per arm |
 | Release head | the remote gate, then the release workflow (live walks and cdn-walk) |
 
