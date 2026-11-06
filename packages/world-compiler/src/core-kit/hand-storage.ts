@@ -123,4 +123,29 @@ const wallNiche: DefInput = {
   size: { box: [NW, NH, ND] },
 } as DefInput;
 
-export const HAND_STORAGE: DefInput[] = [drawerChest, lockers, swapShelf, lostAndFound, hollowStump, wallNiche];
+// #435 (W071): a pantry. The same doorless storage as data only, with no `leftBy`: four places on the shelf at 1 m, each
+// for one small thing (a mug, an apple, a bun; a loaf is too wide), and jars and a sack on the fixed shelf below. What is
+// in it is what you can see and count: a thing leaves it by hand, and is used through the entry that already handles it.
+const pantry: DefInput = {
+  schema: 'def/1', name: 'core-pantry', version: 1,
+  description: 'An open wooden pantry (1 × 0.4 m, 1.55 m tall). One shelf at 1 m behind a low front rail keeps up to four small things (each up to 0.2 m across and 0.28 m tall), such as a mug, an apple or a bun, taken out by hand; nearby you see what is in it. Jars and a sack stand on the fixed shelf below.',
+  tags: ['furniture', 'storage', 'shelf', 'pantry', 'kitchen', 'hand-operated', 'storage-inside'],
+  synonyms: ['pantry', 'larder', 'food shelf', 'kitchen shelf'],
+  form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: [
+    box([-W / 2 + 0.015, H / 2, 0], [0.03, H, D], 'wood'), box([W / 2 - 0.015, H / 2, 0], [0.03, H, D], 'wood'),
+    box([0, H / 2, -D / 2 + 0.01], [W - 0.06, H, 0.02], 'back'), box([0, H - 0.015, 0], [W, 0.03, D], 'wood'),
+    box([0, 0.06, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 0.52, 0], [W - 0.06, 0.03, D - 0.02], 'wood'),
+    box([0, 1.0, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 1.04, rail - 0.01], [W - 0.06, 0.05, 0.02], 'wood'),
+    { kind: 'cyl', at: [-0.3, 0.63, -0.04], r: 0.055, h: 0.19, segments: 10, tint: 'jar' }, { kind: 'cyl', at: [-0.3, 0.735, -0.04], r: 0.058, h: 0.02, segments: 10, tint: 'lid' },
+    { kind: 'cyl', at: [-0.14, 0.6, -0.04], r: 0.05, h: 0.13, segments: 10, tint: 'jar2' }, { kind: 'cyl', at: [-0.14, 0.675, -0.04], r: 0.053, h: 0.02, segments: 10, tint: 'lid' },
+    box([0.22, 0.66, -0.04], [0.3, 0.25, 0.22], 'sack'),
+  ] } },
+  params: { wood: { type: 'color', default: '#9a7448', doc: 'wood colour' }, back: { type: 'color', default: '#7c5a38', doc: 'back panel colour' } },
+  slots: [shelf('in-1', [-0.33, 1.015, -0.01], 'shelf'), shelf('in-2', [-0.11, 1.015, -0.01], 'shelf'), shelf('in-3', [0.11, 1.015, -0.01], 'shelf'), shelf('in-4', [0.33, 1.015, -0.01], 'shelf')] as DefInput['slots'],
+  components: { container: { capacity: 4, inside: { lip: 1.065, face: rail, stand: [0, rail + 0.605], fit: [0.2, 0.28, 0.3], word: 'pantry' } } } as DefInput['components'],
+  palette: { wood: '#9a7448', back: '#7c5a38', jar: '#c9a24a', jar2: '#a8493a', lid: '#3a3a3a', sack: '#c8b48a' },
+  size: { box: [W, H, D] },
+} as DefInput;
+
+export const HAND_STORAGE: DefInput[] = [drawerChest, lockers, swapShelf, lostAndFound, hollowStump, wallNiche, pantry];

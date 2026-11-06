@@ -20,6 +20,7 @@ const loose = (def, version, handling, box) => Object.assign(def, { version, siz
 const BEAM_L = 9 * FT, BEAM_H = 4 * IN, BEAM_D = 2 * IN;
 const UP_L = 12 * FT, UP_W = 4 * FT, UP_T = 3 * IN, COL = 3 * IN;
 const PLY_L = 8 * FT, PLY_W = 4 * FT, PLY_T = 0.75 * IN;
+const TBL_L = 8 * FT, TBL_W = 3 * FT, TBL_H = 30 * IN, TBL_TOP = 1.5 * IN, TBL_LX = 1.1, TBL_LZ = 0.38;
 const LOOSE = [
   loose(work('rack-beam', 'A loose orange 9 ft rack beam (2.74 m, 19 kg) with hook clips at each end; one person carries it with both hands, or two.', ['beam', 'rack', 'construction', 'material', 'loose-material', 'shared-carry'],
     [cbox([0, BEAM_H / 2, 0], [BEAM_L - 0.06, BEAM_H, BEAM_D], 'beam'), box([-(BEAM_L / 2 - 0.03), BEAM_H / 2, 0], [0.06, BEAM_H, BEAM_D], 'clip'), box([BEAM_L / 2 - 0.03, BEAM_H / 2, 0], [0.06, BEAM_H, BEAM_D], 'clip')],
@@ -36,6 +37,16 @@ const LOOSE = [
   loose(work('plywood-sheet', 'One loose 4×8 ft plywood sheet (2.44 × 1.22 m, 19 mm, 27 kg); one person carries it on edge with both hands, or two.', ['plywood', 'sheet', 'construction', 'material', 'loose-material', 'shared-carry'],
     [cbox([0, PLY_T / 2, 0], [PLY_L, PLY_T, PLY_W], 'ply')], { ply: PLY }, { components: { carryable: { mass: 27, grips: 4 } } }), 1,
     { crew: [1, 2], pose: 'edge', height: 0.75, grips: { 1: [[0, 0, 0]], 2: [[-1, 0, 0], [1, 0, 0]] } }, [PLY_L, PLY_T, PLY_W]),
+  // PC11 (#690): a table-shaped load. A heavy 8 ft work table (75 kg) needs three carriers by mass (30 kg each) and has
+  // room for four, one at each leg; it is carried level on its legs (the 'flat' pose keeps its height vertical) with
+  // hands at its leg corners. Grips for three: the two legs at one end, and one at the middle of the other end's
+  // width, which the native carry takes from a long side near that end (formation.ts: a centreline grip is a side slot).
+  loose(work('work-table', 'A heavy 8 ft work table (2.44 × 0.91 m top, 0.76 m tall, 75 kg) on four steel legs; it needs three or four carriers.', ['table', 'workbench', 'furniture', 'construction', 'loose-material', 'shared-carry'],
+    [cbox([0, TBL_H - TBL_TOP / 2, 0], [TBL_L, TBL_TOP, TBL_W], 'top'),
+      ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => box([sx * TBL_LX, (TBL_H - TBL_TOP) / 2, sz * TBL_LZ], [0.05, TBL_H - TBL_TOP, 0.05], 'leg'))),
+      ...[-1, 1].map((sz) => box([0, TBL_H - TBL_TOP - 0.04, sz * TBL_LZ], [2 * TBL_LX, 0.08, 0.03], 'leg')), box([0, 0.15, 0], [2 * TBL_LX, 0.03, 0.03], 'leg')],
+    { top: TIMBER, leg: STEEL }, { components: { carryable: { mass: 75, grips: 4 } } }), 1,
+    { crew: [3, 4], pose: 'flat', height: 0.75, grips: { 3: [[-TBL_LX, 0, TBL_LZ], [-TBL_LX, 0, -TBL_LZ], [TBL_LX, 0, 0]], 4: [[-TBL_LX, 0, TBL_LZ], [-TBL_LX, 0, -TBL_LZ], [TBL_LX, 0, TBL_LZ], [TBL_LX, 0, -TBL_LZ]] } }, [TBL_L, TBL_H, TBL_W]),
 ];
 
 export default [

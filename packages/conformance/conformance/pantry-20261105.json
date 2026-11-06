@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 storage family (#435, W071): a pantry and two foods. core-pantry@1 is a new def on entry 42's container faculty with data only: an open shelf with no `open` state, four shelf places behind a low front rail, and no `leftBy`. core-apple@1 and core-bun@1 are new carryable things tagged `edible` with `left` and `bites` state, drawn in stages by `when` shapes. Frozen core-swap-shelf@1, core-drawer-chest@2, core-lockers@3, core-kettle@2 and core-cup@2 are byte-identical. A narrow production K=2 run (`conformance.mjs --k 2 --filter <name>`) baked, placed and rendered all 5 samples of each with 0 findings and 0 qualification gaps, so this supplement pins no finding. No budgets, samples or gap checks were relaxed.",
+  "findings": []
+}
