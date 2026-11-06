@@ -685,8 +685,11 @@ async function act(...argv) {
   const parsed = parseActionArgs(args);
   if (typeof parsed.capability === "string" && !OFFER_ID.test(parsed.capability.trim())) {
     const r = ok(await call("/v1/edge/resolve", { body: parsed }), "resolve").resolve;
-    process.exitCode = 2;
-    return { accepted: false, code: "act.not-an-id", reason: `act takes an offered id, so "${parsed.capability}" was not acted on. Send one of these ids, or report that nothing fits.`, candidates: r.candidates ?? [], ...(r.ok === false && r.reason ? { why: r.reason } : {}) };
+    // the world's rollback (EDGE_FREE_TEXT_ACT=1): it says so here, and the words go to act as they used to
+    if (!r.freeTextAct) {
+      process.exitCode = 2;
+      return { accepted: false, code: "act.not-an-id", reason: `act takes an offered id, so "${parsed.capability}" was not acted on. Send one of these ids, or report that nothing fits.`, candidates: r.candidates ?? [], ...(r.ok === false && r.reason ? { why: r.reason } : {}) };
+    }
   }
   const body = { ...parsed, strict: true, clientRef: randomUUID() };
   // D3: the owner message this act serves; the world writes its result line when the act ends, unless you write one first.
