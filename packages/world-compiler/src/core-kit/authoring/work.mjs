@@ -105,13 +105,13 @@ const STAIR_HOOK = 12 * IN + 6 * IN * 4 - BEAM_H / 2 + (BEAM_H - LEDGE), STAIR_R
 const SLOPE = Math.atan2(STAIR_HOOK, STAIR_RUN), STR_D = 0.2, STR_L = (STAIR_RUN - STR_D * Math.sin(SLOPE)) / Math.cos(SLOPE);
 const STR_Y = (STR_L / 2) * Math.sin(SLOPE) + (STR_D / 2) * Math.cos(SLOPE);
 const STAIRS = [
-  { ...loose(work('stair-flight', `A loose site-built stair flight (${STAIR_N} treads, ${STAIR_RISE.toFixed(2)} m rise over ${STAIR_RUN.toFixed(2)} m, 0.91 m wide, 16 kg): two 2x12 stringers and a header that hangs on a rack beam's step ledge. It stands on its stringers; two people carry it. Its treads go in one by one.`,
+  { ...loose(work('deck-stair', `A loose site-built stair flight (${STAIR_N} treads, ${STAIR_RISE.toFixed(2)} m rise over ${STAIR_RUN.toFixed(2)} m, 0.91 m wide, 16 kg): two 2x12 stringers and a header that hangs on a rack beam's step ledge. It stands on its stringers; two people carry it. Its treads go in one by one.`,
     ['stair', 'stairs', 'flight', 'timber', '2x12', 'construction', 'material', 'loose-material', 'shared-carry', 'connectors'],
     [...[-1, 1].map((s) => box([0, STR_Y, s * (STAIR_W / 2 - STRINGER_T / 2)], [STR_L, STR_D, STRINGER_T], 'timber', { roll: r5(SLOPE) })),
       box([STAIR_RUN / 2 - STRINGER_T / 2, STAIR_HOOK - 0.09, 0], [STRINGER_T, 0.18, STAIR_W - 2 * STRINGER_T], 'timber')],
     { timber: TIMBER }, { components: { carryable: { mass: 16, grips: 2 } } }), 1,
     { crew: [2, 2], pose: 'flat', height: 0.8, grips: { 2: [[-0.5, 0, 0], [0.5, 0, 0]] } }, [STAIR_RUN, STR_Y * 2, STAIR_W]) },
-  { ...loose(work('stair-tread', `A loose 2x10 stair tread cut to fit between a flight's stringers (${(STAIR_W - 2 * STRINGER_T).toFixed(2)} m, 2.3 kg). It rests on the stringers' cleats; one person sets it, or two.`,
+  { ...loose(work('deck-stair-tread', `A loose 2x10 stair tread cut to fit between a flight's stringers (${(STAIR_W - 2 * STRINGER_T).toFixed(2)} m, 2.3 kg). It rests on the stringers' cleats; one person sets it, or two.`,
     ['tread', 'stair', 'timber', '2x10', 'construction', 'material', 'loose-material', 'connectors'],
     [box([0, TREAD_T / 2, 0], [STAIR_W - 2 * STRINGER_T, TREAD_T, TREAD_D], 'timber')], { timber: TIMBER }, { components: { carryable: { mass: 2.3, grips: 2 } } }), 1,
     { crew: [1, 2], pose: 'flat', height: 0.8, grips: { 1: [[0, 0, 0]], 2: [[-0.3, 0, 0], [0.3, 0, 0]] } }, [STAIR_W - 2 * STRINGER_T, TREAD_T, TREAD_D]) },

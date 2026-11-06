@@ -315,6 +315,9 @@ stands on its own, and until then keeps holding.
 with exactly two members. The session's `seat` field holds the engine step it commits (`install_joist_v1` or
 `lay_sheet_v1` and its params, the crew added at commit) and, for a joist, where along the bay it goes. They end
 `arrived` (`shared.seated`) once every bearing connector is joined; a stop lowers a lifted part back where it lay.
+`install-flight` (PC16, [#695](https://github.com/genekogan/souls/issues/695)) is the same template for a stair flight,
+with `at` along the beam it hangs on; its `seat` is `install_flight_v1`. A flight's treads are set by one Soul each, an
+ordinary solo action (`install-tread:<id>`), not a shared session.
 
 ## Exclusions
 

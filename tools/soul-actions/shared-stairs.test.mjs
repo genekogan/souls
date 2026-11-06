@@ -108,8 +108,8 @@ export function stock(x0, z0, {flight = true, treads = true} = {}) {
   }
   ops.push({op: 'place', tmp: '$s', name: 'bay-sheet', def: 'core/plywood-sheet@2', p: [xm, LEDGE_AT + JOIST_H, z0], r: 0, anchor: 'center'});
   for (const k of [0, 1, 2, 3, 4]) ops.push({op: 'connect', a: {id: '$s', connector: `on-${k}`}, b: {id: `$j${k}`, connector: 'top'}});
-  if (flight) ops.push({op: 'place', def: 'core/stair-flight@1', name: 'flight', p: [xm + 1.7, z0 + 2.6], r: Math.PI / 2});
-  if (treads) for (const i of [1, 2, 3, 4, 5]) ops.push({op: 'place', def: 'core/stair-tread@1', name: `tread-${i}`, p: [xm - 1.5, z0 + 1.3 + 0.4 * i], r: 0});
+  if (flight) ops.push({op: 'place', def: 'core/deck-stair@1', name: 'flight', p: [xm + 1.7, z0 + 2.6], r: Math.PI / 2});
+  if (treads) for (const i of [1, 2, 3, 4, 5]) ops.push({op: 'place', def: 'core/deck-stair-tread@1', name: `tread-${i}`, p: [xm - 1.5, z0 + 1.3 + 0.4 * i], r: 0});
   return ops;
 }
 const linkOf = (w, id) => (w.host.engine.world.entityPhysicsV1?.byEntity?.[id]?.links ?? []).find((l) => l.kind === 'stairs');
