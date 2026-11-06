@@ -16,6 +16,7 @@ node tools/playtest/runs/run.mjs cleanup  .local/soul-runs/<run> --world-data --
 node tools/playtest/runs/run.mjs evaluate .local/soul-runs/<run> --question tools/playtest/runs/questions/redirect-honoured.mjs
 node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio-recorded.json   # the trio, recorded: wide, free and follow cameras
 node tools/playtest/runs/run.mjs preview  .local/soul-runs/<run> --camera bo --from 10 --to 40   # a labelled excerpt, never full proof
+node tools/playtest/runs/run.mjs preview  .local/soul-runs/<run> --camera bo --auto              # the same, starting at the run's first act
 node tools/playtest/runs/run.mjs package  .local/soul-runs/<run> --select wide --select bo      # local index + selected projection
 node tools/playtest/runs/run.mjs compare  .local/soul-runs/<run-a> .local/soul-runs/<run-b> [--out dir] [--md]
 ```
@@ -36,10 +37,11 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 | `name` | scenario name | Run name in the run directory. |
 | `cast` | `scenario` | `scenario` runs its seats; `none` removes seats, god and their script events (world, director, observer and review only); an object `{seats, script}` replaces the scenario's seats and/or scripted direction, each in the scenario's own format (see Composed casts). |
 | `world.port`, `world.slug` | scenario's | Use a free port; a busy port is refused, never taken over. |
+| `world.timeOfDay`, `world.timeScale` | `12`, `0` | The world's time of day (hours 0-24, `"HH:MM"`, `"7pm"`) and clock speed (world hours per real hour; `0` pauses it), set through the god env route (`POST /v1/god/env` as the dev owner) right after provision, before any seat or camera, so every clip of the run is by day. `"keep"` leaves the world's own clock (06:00 at boot, one world day per real hour). The receipt's `worldTime` has what was asked and the clock the world reported; a clock that could not be set is recorded there and the run goes on. |
 | `world.genesis` or `world.snapshot` | scenario's | World source: a genesis template or a frozen compiler snapshot (`arena/snapshot-seed.mjs`), a path under the server root. Its sha256 is in the receipt (`spec.effective.world.source`). |
 | `setup` | none | `{batches: [file or {id, ops, note}], maxWallSec: 120}`: god-edit batches applied after provision and before any seat (see Setup). |
 | `durationSec` | scenario's | Play duration override. |
-| `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000, mode: "cameras", record: null, recordSize: "compact", freeComposition: null}` | `mode`: `cameras` (browser cameras, the default), `passive` (world-truth evidence packs, no browser) or `off`. Bounded observer check (import plus one browser launch and close) in `cameras` mode; failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras`: `wide` and/or `free` beside the per-seat follow cameras. `record`: `true` or camera names (`wide`, `free`, `follow` for every seat, or a seat id). `recordSize`: `compact`, `viewport` or `{width, height}` (needs `record`). See Recording. |
+| `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000, mode: "cameras", record: null, recordSize: "compact", recordStart: "arrival", freeComposition: null}` | `mode`: `cameras` (browser cameras, the default), `passive` (world-truth evidence packs, no browser) or `off`. Bounded observer check (import plus one browser launch and close) in `cameras` mode; failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras`: `wide` and/or `free` beside the per-seat follow cameras. `record`: `true` or camera names (`wide`, `free`, `follow` for every seat, or a seat id). `recordSize`: `compact`, `viewport` or `{width, height}` (needs `record`). `recordStart`: `arrival` or `load`. See Recording. |
 | `limits` | `{maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000}` | Hard wall limit for the whole run, controller count, per-resource release wait. |
 | `controllers.allowLiveModels` | `false` | A scenario whose seats, persona director or model review need claude/codex is refused unless this is `true`. Set it only with explicit authorization for live models. |
 | `diagnostics` | none (off) | `{trace: true | [seat ids]}`: passive soul-trace capture for those seats (see Diagnostics). |
@@ -73,7 +75,10 @@ applies the same preflight as `start`; `start` runs it once and hands the result
 live adapters still need `controllers.allowLiveModels`. `cast.script` uses the scripted director's entries (`seat`,
 `atSec`, `channel` card|chat, `text`, `budgetSec`); `seat: "*"` is a broadcast the director delivers to every seat, each
 on its own record. Use `director.sequential: false` (in the scenario) when a later entry must reach a seat while an
-earlier request is still open, as a mid-activity redirection does. The scripted director has no pause or resume: an
+earlier request is still open, as a mid-activity redirection does. An entry with `after: "result"` waits for that
+seat's own open requests to close and goes as soon as they have (`atSec` is then the earliest it can go), so direction
+follows results instead of a fixed clock (#888: the hamlet trio's "Say hello" follows each Soul's arrival, and the run
+ends when the last request closes). The scripted director has no pause or resume: an
 entry with `command` is refused at validation; end a run by cancelling it.
 
 `scripted-owner` (`arena/adapters/scripted-owner.mjs`) is a model-free seat adapter: it plays a Soul only through the
@@ -84,7 +89,9 @@ receipt completed or the world shows that receipt's activity under way; output w
 form drops it past 600 characters) is a failure, never a claimed success. Rules are matched in order by a
 case-insensitive regular expression on the card text; `close: "open"` leaves a request open while its activity
 continues, and `supersede` closes requests still open as failed when a later rule fires (an owner redirection). It has
-no provider and no cost, and its transcript renders like a model seat's. Live casts stay on `playtest.mjs direct` and
+no provider and no cost, and its transcript renders like a model seat's. Each CLI output is kept whole in the
+transcript up to 1 MiB; past that the tool result ends with a `[scripted-owner: output truncated: …]` line and carries
+`truncated: true`, which the scorer's `seatActs` passes on. Live casts stay on `playtest.mjs direct` and
 the sim-director skill.
 
 ## Setup
@@ -153,6 +160,52 @@ hashed world source, so it forms its own arm.
 Answers are retrospective: they describe what the records show and do not establish motivation, causality or that a
 replay would repeat it.
 
+## Controllability scorecard
+
+`evaluate` also writes `scorecard.json` beside `evaluation.json` (#1097), and `compare` lists the same numbers per repeat as
+`controllability` measures. It works on any finished run, whichever director ran it, because it reads the seat's side:
+`transcript.jsonl`, `turns.jsonl` and `listen.jsonl`, the world's answers in them, and evidence packs when present. Every
+metric has its denominator and a `missing` count; a metric with no source has `value: null` and a reason, never 0.
+
+| id | meaning | how it is read |
+|---|---|---|
+| M1 | first-try act success | `act` and `object` calls and each step of a `plan` after onboarding (not `travel`): 1 - offer refusals / classified acts |
+| M2 | model turns per intention | median assistant messages attributed to an owner message with a body act that the seat closed with `result done` |
+| M3 | turns with no act or say | decisions that only read, wait or ran a non-CLI tool; `ack`, `result` and a closing line are not counted |
+| M4 | owner message to start, upper bound | first reached the seat (listen, or the output carrying it) to the receipt's started event, else the act call returning; from when the owner sent it if the seat has no record of it arriving, or it arrived after the start. `m4Basis` names each |
+| M5 | owner corrections per intention | script entries marked `correction: true`, else messages opening with correcting words |
+| M6 | context bytes per turn | wake text and tool results after onboarding, per decision; `onboardingBytes` is the skill and boot reads |
+| M7 | intent retention | intentions another owner message reached while under way: chat keeps them, a cancel starts nothing new (the predeclared questions check the body stopped), a newer body request replaces them |
+| G1 | truthful receipts | `result done` claims whose last accepted act the world records as failed or cut short |
+| G2 | unrelated Souls' progress | seats with an accepted act and no receipt completed or held (needs two or more seats) |
+| G3 | tick health | tick-validity from the run receipt |
+
+An **intention** is an owner message with at least one body act. A message closed by `result` with no act is a **spoken
+request** and is reported apart. Each model decision is attributed to one message (the id it names, else the rest of its
+wake, else the latest open intention), so nothing counts twice.
+
+**Refusal classes** (M1) come from the code alone (`classifyRefusal`). `offer` (the world could not read the command, or
+named a place it has no way to) counts against M1, with `route` listed separately inside it. `state` (a seat taken, a ride
+departed, hands full; listed one code at a time) and `admission` (`soul.busy` and the like) do not. A code in no list is
+`unclassified`, including a new code in a family the table knows: out of the denominator, counted and named, so add it to the
+table rather than guess. `act.not-an-id` (words sent to the strict `act`) is `offer`, like `capability.unknown` on the words
+contract, so the same mistake scores the same on both. An intention whose first act is unclassified or unreadable has an
+unknown first-act result (`firstActOfIntention.unknown`), not a success.
+
+**Plans** (#1100): a `plan` call is one act decision for M2 and M3, and each of its steps is a row for M1, including a step and its
+replacement. The client closes the owner's message, so a plan's outcome comes from the reports the seat read (`pending`, `plan --status`, and the `listen`
+that woke it, logged in `listen.jsonl`). A step no report covers is unreadable, and a plan nobody read the end of stays an open intention.
+
+Three limits are stated in the card. Turns come from the seat log even with the trace tap on: `soul-trace/1` can carry
+`host.turn` (`tools/soul-trace/host.mjs`), but nothing in `tools/playtest` writes it yet and this scorer does not read it (#1097 A3 stays open for that). Receipts carry no first-motion tick, so M4 ends at the world's `started`, which is not observed
+displacement (`observedFirstBodyChangeSec` is, with an observer). Under a scripted director M5 is the script's own number and
+cannot move between arms; a `scripted-owner` seat's "turns" are scripted steps at no model cost, so M2 and M3 describe the
+script there.
+
+**Predeclared:** `controllability.mjs` holds the definitions and the refusal table. Its sha256 goes into every run's effective
+spec (`scorer`). The card says `predeclared: true` only when that hash still matches at evaluation; otherwise it scores
+anyway and says why not.
+
 ## Diagnostics (opt-in trace capture)
 
 `diagnostics.trace` turns on the passive control-episode trace owned by #733 (`tools/soul-trace/tap.mjs`, contract
@@ -190,8 +243,17 @@ client, with real input only. They observe; none of them sends a Soul command.
 | `wide` | the public page on the viewer's broadcast camera | `broadcast` |
 | `free` | the public page, a real click on the viewer's own broadcast/free toggle, then its camera controls' "Reset view" (a fixed start pose instead of wherever broadcast had cut), then an optional fixed mouse drag and wheel (`observer.freeComposition`, default `{drag: [0, 0], wheel: 0}`: the reset pose, the whole settlement): the same composition every run | `manual` with `reset: true`, or `ok: false` with the reason |
 
-`observer.record` records the named cameras with Playwright's context video: one uncut, real-speed take from page
-creation to context close, under `playtest/recordings/<camera>.webm`. Each recording has a `<camera>.webm.json` sidecar:
+`observer.record` records the named cameras: one uncut, real-speed take each, under `playtest/recordings/<camera>.webm`.
+A take starts at arrival (`observer.recordStart: "arrival"`, the default, #888): once the world is on screen and the
+arrival card is gone, the page's own recording starts (Playwright `page.screencast`), so the file opens on the world and
+holds no loading. `"load"` records the context from page creation to close (Playwright's context video), for a run whose
+subject is loading or arrival. A Playwright without `page.screencast` falls back to `load`, and the sidecar says so in
+`startFallback`. The sidecar's `start`, `startRequested`, `startedAt` (an arrival take: when its recording started; a
+load take: when the context opened, just before its first painted frame), `durationSec` (from `startedAt`) and
+`marks` (`arrived`: 0 for an arrival start, its offset for a load start) say which, and `worldTime` holds the world clock
+read from `GET /v1/world/env` when the recording started (`worldTimeRequested` is the spec's). A camera that never
+arrives under the arrival start has no video; its sidecar names a still of the page it stuck on (`openFailedShot`).
+Each recording has a `<camera>.webm.json` sidecar:
 requested versus actual camera state (mode, selection, follow/free result), readiness and arrival time, wall-clock and
 monotonic open/close, duration, page errors, bytes and sha256, plus the run's provenance (run id, attempt, spec and
 effective-spec hashes, source commit, world slug and port). `playtest/cameras.json` lists every camera that was asked
@@ -216,6 +278,13 @@ Offline, after the run (reads the run folder, writes only under `<run>/derived/`
   burned-in label ("PREVIEW, not full proof", the source file, its hash and the range). Its sidecar has `derived: true`,
   `fullProof: false` and the source's file, sha256 and range. The source is hashed before and after; a recording that no
   longer matches its sidecar is refused. A preview is a pointer for reviewers, never the proof itself.
+- `preview <run> --camera <c> --auto [--seconds 20]` picks the range from the run's own events (#888): the first act
+  (the earliest seat turn that ran `eden.mjs act`, `say` or another action, at an estimated call time: the turn's start
+  plus the execution time of the calls before it; a model's thinking between calls is not in `turns.jsonl`, so for a
+  model seat this is a lower bound, while for `scripted-owner` seats it is within a few hundred ms), else the first request the director delivered. A seat's follow camera uses that seat's events.
+  The event is mapped onto the recording by wall clock, `from = max(0, event − recording startedAt − 1 s)` (`openedAt`
+  for recordings from page creation made before #888), and `to = from + seconds`. The preview sidecar's `auto` records
+  the event (kind, seat, time, source file, the call), the recording's start basis, the offset and the rule.
 - `package <run> [--select <camera|preview file>]…` writes `derived/package/index.json` and `index.md` (private: outcome,
   cost, measurements and questions from the latest evaluation, recordings and previews with hashes, limits) and
   `selected.json`, a projection with only the selected items, run-relative. Every field of it (evidence items,

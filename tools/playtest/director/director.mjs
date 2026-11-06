@@ -285,7 +285,9 @@ export async function runPlay({ runDir, scenario, world, seats, god = null, obse
     const sequential = scenario.director?.sequential !== false; // a person waits for the result before the next basic instruction
     for (const e of entries) {
       await sleepUntil(start + e.atSec * 1000);
-      if (sequential) { while (live() && (ctx.open.size > 0 || ctx.pending > 0)) await clock.sleep(Math.min(pollMs, Math.max(1, endAt - clock.now()))); }
+      // after "result" (#888): this entry waits for the seat's own open requests to close, so direction follows results
+      // instead of a fixed clock; atSec is then the earliest time it can go.
+      if (sequential || e.after === 'result') { while (live() && (ctx.open.size > 0 || ctx.pending > 0)) await clock.sleep(Math.min(pollMs, Math.max(1, endAt - clock.now()))); }
       if (!live()) break;
       ctx.step += 1;
       if (e.setup) {
@@ -298,7 +300,7 @@ export async function runPlay({ runDir, scenario, world, seats, god = null, obse
       const shown = await gatherShown(ctx);
       saveShown(ctx, shown);
       const delivered = await deliver(ctx, { channel: e.channel ?? 'card', text: e.text }, { budgetSec: e.budgetSec ?? null, journey: !!e.expect?.journey });
-      record(ctx, { step: ctx.step, scripted: { atSec: e.atSec, channel: e.channel, text: e.text, budgetSec: e.budgetSec ?? null, ...(e.seat === '*' ? { broadcast: true } : {}) }, delivered });
+      record(ctx, { step: ctx.step, scripted: { atSec: e.atSec, ...(e.after ? { after: e.after } : {}), channel: e.channel, text: e.text, budgetSec: e.budgetSec ?? null, ...(e.seat === '*' ? { broadcast: true } : {}) }, delivered });
     }
   }
 

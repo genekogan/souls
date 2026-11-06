@@ -107,7 +107,7 @@ export function stepToward(r: Room, cur: Vec2, T: Vec2, dt: number): Vec2 | null
 
 // ---- runtime: rooms, pickup (where the crew goes to take hold), per-tick follow ----
 
-function roomFor(rt: Runtime, id: string, skip: string[] = []): Room | null {
+export function roomFor(rt: Runtime, id: string, skip: string[] = []): Room | null {
   const sp = rt.services.spatial as Spatial;
   sp.sync(rt.world);
   const h = rt.world.entities[id];

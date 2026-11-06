@@ -23,6 +23,8 @@ export type RtsOptions = {
   pickRoots: () => readonly THREE.Object3D[];
   /** Whether the user is in "your camera" with this module in charge (not Free, not Advanced). */
   enabled?: () => boolean;
+  /** #893: a flyTo glide (double-click, double-tap, ground tap) reached its point. */
+  arrived?: () => void;
   /** Subject centre and enclosing world-space radius, never a requested camera distance. */
   focusAt?:(x:number,y:number)=>{center:THREE.Vector3;radius:number}|null;
   /** C1: the world's ground rectangle [x0, z0, x1, z1] (far zoom limit, pivot bounds); null when unknown. */
@@ -258,7 +260,7 @@ export class WorldRtsCamera {
     const eye=this.camera.position,gaze=this.camera.getWorldDirection(new THREE.Vector3()),d=Math.max(NEAR_LIMIT,eye.distanceTo(this.pivot));
     const ground=centreGround(this.camera,this.o.scene(),Math.max(600,d*1.5));
     let t=ground&&ground.distanceTo(eye)>=1?ground.distanceTo(eye):d;
-    // The new pivot stays where keepPivotInBounds would leave it: otherwise the next frame pulls it back and the eye with it.
+    // The new pivot stays inside the eye guard's rectangle (pivotRect), so a nearly level look never leaves it beyond reach.
     const ok=(k:number)=>this.pivotInBounds(eye.clone().addScaledVector(gaze,k));
     if(!ok(t)){
       if(!ok(NEAR_LIMIT))return;  // the eye is outside the map: keep the head offset
@@ -390,6 +392,15 @@ export class WorldRtsCamera {
     this.o.takeOver();
     this.flyTo(point);
   }
+  /** #892: a touch tap on the ground while following: take the camera (Free) and glide the pivot to the tapped point. */
+  flyToGround(e: { clientX: number; clientY: number }): boolean {
+    if (this.enabledNow() === false) return false;
+    const point = this.pickPoint(e.clientX, e.clientY);
+    if (!point) return false;
+    this.o.takeOver();
+    this.flyTo(point);
+    return true;
+  }
   /** Glide the pivot to `point`, coming in to a comfortable distance (6–16 m) at the same angle. */
   frameSubject(center:THREE.Vector3,boundingRadius:number){
     const vfov=this.camera.fov*Math.PI/180,hfov=2*Math.atan(Math.tan(vfov/2)*this.camera.aspect);
@@ -415,7 +426,7 @@ export class WorldRtsCamera {
       const f = this.flight; f.t = Math.min(1, f.t + dt / (f.seconds ?? FLY_SECONDS)); const k = f.t * f.t * (3 - 2 * f.t);
       pivot.lerpVectors(f.fromT, f.toT, k); this.camera.position.lerpVectors(f.fromP, f.toP, k); this.camera.lookAt(pivot);
       this.markerAge = 0; changed = true;
-      if (f.t >= 1) this.flight = null;
+      if (f.t >= 1) { this.flight = null; this.o.arrived?.(); }
     }
     if(this.zoomLog&&mode==='manual'&&this.enabledNow()!==false&&!this.flight)changed=this.stepZoom(dt,pivot)||changed;
     if((this.walking||this.riseBy)&&(mode!=='manual'||this.enabledNow()===false)){this.stick={forward:0,right:0};this.riseBy=0;}
@@ -499,19 +510,24 @@ export class WorldRtsCamera {
     }
     return this.zoomAnchor=p??target.clone();
   }
-  /** The pivot's allowed rectangle: the map's ground rectangle plus a margin (null when the map is unknown). */
+  /** A lost-camera guard: pan/WASD/zoom keep the eye within one far-zoom limit (farLimit, 320-1,400 m) of the map's
+   * ground rectangle; the pivot moves with it. #660: it used to clamp the pivot 60 m (or a quarter map) out, an invisible
+   * wall that WASD hit near the edge of what is drawn, sooner the farther ahead the pivot sat. It reads the eye, so a far
+   * pivot (a click near the horizon) never moves the camera by itself. */
+  private keepPivotInBounds(target:THREE.Vector3):boolean{
+    const e=this.o.extent?.();if(!e||!e.every(Number.isFinite))return false;
+    const m=farLimit(e),eye=this.camera.position;
+    const x=Math.max(e[0]-m,Math.min(e[2]+m,eye.x)),z=Math.max(e[1]-m,Math.min(e[3]+m,eye.z));
+    if(x===eye.x&&z===eye.z)return false;
+    target.x+=x-eye.x;target.z+=z-eye.z;eye.x=x;eye.z=z;return true;
+  }
+  /** #891: where a finished touch look may put the pivot: the eye guard's own rectangle (the map's ground rectangle plus
+   * farLimit, keepPivotInBounds #660; null when the map is unknown), so wherever the eye can walk a touch look commits. */
   private pivotRect():[number,number,number,number]|null{
     const e=this.o.extent?.();if(!e||!e.every(Number.isFinite))return null;
-    const m=Math.max(60,.25*Math.max(e[2]-e[0],e[3]-e[1]));return [e[0]-m,e[1]-m,e[2]+m,e[3]+m];
+    const m=farLimit(e);return [e[0]-m,e[1]-m,e[2]+m,e[3]+m];
   }
   private pivotInBounds(p:THREE.Vector3){const r=this.pivotRect();return !r||(p.x>=r[0]&&p.x<=r[2]&&p.z>=r[1]&&p.z<=r[3]);}
-  /** Pan/WASD/zoom keep the pivot over the map (its ground rectangle plus a margin); the eye moves with it. */
-  private keepPivotInBounds(target:THREE.Vector3):boolean{
-    const r=this.pivotRect();if(!r)return false;
-    const x=Math.max(r[0],Math.min(r[2],target.x)),z=Math.max(r[1],Math.min(r[3],target.z));
-    if(x===target.x&&z===target.z)return false;
-    this.camera.position.x+=x-target.x;this.camera.position.z+=z-target.z;target.x=x;target.z=z;return true;
-  }
   /** Pivot := drawn ground under the screen centre; the camera does not move. */
   reanchor(): boolean {
     const c = this.adopt(); this.camera.updateMatrixWorld();

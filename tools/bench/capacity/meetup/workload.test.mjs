@@ -107,3 +107,17 @@ test('clock proof: full clock is 1; a stall is neither clipped nor reset; rate c
   assert.equal(clockWindow(full.map((x) => ({ ...x, tick: x.tick / 2 })), { from: 0, to: 60_000, rate: 0.5 }).ratio, 1);
   assert.equal(clockWindow(full.slice(0, 1), { from: 0, to: 60_000 }).ratio, null);
 });
+
+test('phases --active-min (#955): the default is the CW2 baseline schedule; a long window keeps rates and repeats meetups', () => {
+  // the schedule sha256 of capacity-qualify run 41915686991 (the CW2 baseline), both profiles, seed cw1
+  const BASE = { even: 'ae3dfd508b0c5f68315eaab8d99c0d6c1083291c685dd5615b052cb831814572', meetup: 'e077d9f729165e0cbf640fa5d9a3ada1c893ce342665d9921338cb602dda8ff8' };
+  for (const p of ['even', 'meetup']) { assert.equal(scheduleId(schedule(p, 'cw1', phases())), BASE[p]); assert.equal(scheduleId(schedule(p, 'cw1', phases(false, 20))), BASE[p]); }
+  const L = phases(false, 60);
+  assert.equal(L.activeMs, 60 * 60_000); assert.equal(L.quietMs, phases().quietMs);
+  assert.deepEqual(L.meetupsMs.map((m) => m / 60_000), [5, 11, 17, 25, 31, 37, 45, 51, 57]);
+  assert.deepEqual(phases(false, 70).meetupsMs.map((m) => m / 60_000).slice(9), [65], 'a partial block keeps the meetups that fit');
+  const per = (ph, cls) => schedule('even', 'cw1', ph).filter((o) => o.soul === 0 && o.cls === cls && o.burst == null).length;
+  assert.equal(per(L, 'read'), 3 * per(phases(), 'read'), 'the same read rate, three times as long');
+  for (const bad of [19, 241, 30.5, NaN]) assert.throws(() => phases(false, bad), /--active-min/);
+  assert.throws(() => phases(true, 60), /--short/);
+});

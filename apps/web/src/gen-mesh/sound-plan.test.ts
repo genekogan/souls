@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { componentsSchema } from '@sim/world-compiler';
-import { ambienceAt, condition, DEFAULT_SETTINGS, distanceTo, emittersOf, exposureAt, impliedSpecs, treeIndex, treesOf, loadSettings, Movement, saveSettings, SETTINGS_KEY, specsOf, variantOf, VARIANTS, KINDS, MASTER_DEFAULT } from './sound-plan.ts';
+import { ambienceAt, condition, DEFAULT_SETTINGS, distanceTo, emittersOf, exposureAt, impliedSpecs, treeIndex, treesOf, loadSettings, Movement, saveSettings, SETTINGS_KEY, specsOf, variantOf, VARIANTS, KINDS, MASTER_DEFAULT, QueuedNotes } from './sound-plan.ts';
 
 test('a def may carry one sound or a list; unknown kinds are dropped; the schema accepts both', () => {
   assert.equal(specsOf({ components: { sound: { kind: 'water', radius: 10, volume: 0.5 } } } as never).length, 1);
@@ -142,4 +142,15 @@ test('a resident who is speaking murmurs where they stand, alone or not; silent 
   const talk = out.filter((e) => e.id.startsWith('res:talk:'));
   assert.deepEqual(talk.map((e) => e.id), ['res:talk:a']);
   assert.equal(talk[0].spec.kind, 'chatter'); assert.equal(talk[0].state.size, 1); assert.equal(talk[0].pts[0][1], 1.6);
+});
+
+// #422: a piano note scheduled ahead never sounds once its player has stopped; a begun note keeps its decay.
+test('queued notes: a stopped player loses only the notes that have not begun', () => {
+  const q = new QueuedNotes<string>();
+  q.add('a', 10.0, ['a-begun']); q.add('a', 10.2, ['a-next', 'a-next-octave']); q.add('b', 10.3, ['b-next']);
+  assert.deepEqual(q.settle(10.1, new Set(['a', 'b'])), [], 'both playing: nothing cancelled');
+  assert.equal(q.size, 2, 'the begun note is forgotten, not cancelled');
+  assert.deepEqual(q.settle(10.15, new Set(['b'])), ['a-next', 'a-next-octave'], 'a stopped: its not-yet-begun note is silenced');
+  assert.deepEqual(q.settle(10.35, new Set()), [], 'b had begun before it stopped');
+  assert.equal(q.size, 0);
 });

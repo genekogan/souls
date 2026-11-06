@@ -47,7 +47,9 @@ export class WorldLightning {
   private core = new THREE.MeshBasicMaterial({ color: 0xf4f7ff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false });
   private glow = new THREE.MeshBasicMaterial({ color: 0x9db4ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false });
 
-  constructor(private layer: LayerLike) {
+  private layer: LayerLike;
+  constructor(layer: LayerLike) {
+    this.layer = layer;
     this.group.name = 'god-lightning';
     this.group.add(this.flash);
     for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, this.unlock, { passive: true });
