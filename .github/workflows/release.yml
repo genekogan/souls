@@ -10,7 +10,8 @@
 #
 # Secrets: MODAL_TOKEN_ID, MODAL_TOKEN_SECRET (repo); DEPLOY_SSH_KEY, SIM_DEPLOY_KNOWN_HOSTS (production environment);
 #          optional SIM_PROBE_GOD_JSON (the release-probe world's god file; without it the probe is skipped).
-# Vars or secrets: SIM_DEPLOY_HOST, SIM_DEPLOY_USER. Optional vars: SIM_ORIGIN (default https://sim.eden.art),
+# Vars or secrets: SIM_DEPLOY_HOST, SIM_DEPLOY_USER. Required vars: SIM_ORIGIN, SIM_DEPLOY_TOPOLOGY,
+#          SIM_RELEASE_AUTOMATION_ENABLED=reviewed (only after the operational review in docs/release.md). Optional:
 #          MODAL_CLIENT_VERSION (pip pin for the modal client).
 # Safe to commit before any of these exist: preflight fails with the list of what to add.
 name: release
@@ -36,7 +37,8 @@ concurrency:
   group: release
   cancel-in-progress: false
 env:
-  SIM_ORIGIN: ${{ vars.SIM_ORIGIN || 'https://sim.eden.art' }}
+  SIM_ORIGIN: ${{ vars.SIM_ORIGIN }}
+  SHIP_TOPOLOGY: ${{ vars.SIM_DEPLOY_TOPOLOGY }}
 jobs:
   preflight:
     runs-on: ubuntu-latest
@@ -47,6 +49,14 @@ jobs:
       label: ${{ steps.refs.outputs.label }}
       date: ${{ steps.refs.outputs.date }}
     steps:
+      - name: Reviewed release configuration
+        env:
+          AUTOMATION_ENABLED: ${{ vars.SIM_RELEASE_AUTOMATION_ENABLED }}
+        run: |
+          # This switch is an operator attestation, not a substitute for environment protection.
+          [ "$AUTOMATION_ENABLED" = reviewed ] || { echo "::error::Automation is disabled until mirror proof, source/cache mapping, the shared gate budget and deployment access have been reviewed (docs/release.md)."; exit 1; }
+          case "$SHIP_TOPOLOGY" in root-only|dual-prefix) ;; *) echo "::error::Set SIM_DEPLOY_TOPOLOGY to root-only or dual-prefix explicitly"; exit 1;; esac
+          [ -n "$SIM_ORIGIN" ] || { echo "::error::Set SIM_ORIGIN explicitly for this deployment"; exit 1; }
       - name: Required secrets and variables
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
@@ -90,7 +100,8 @@ jobs:
   gate:
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Provider functions allow 4h; the driver allows 4h10, plus setup/artifact time.
+    timeout-minutes: 270
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: '${{ needs.preflight.outputs.sha }}', fetch-depth: 0 }
@@ -212,7 +223,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ship"
           ( while sleep 300; do echo "ship still running ($(date -u +%H:%MZ))"; done ) & beat=$!
           set +e
-          tools/world-launcher/deploy/ship.sh --label "$LABEL" ${SHIP_PROBE_FLAG:-}
+          tools/world-launcher/deploy/ship.sh --topology "$SHIP_TOPOLOGY" --label "$LABEL" ${SHIP_PROBE_FLAG:-}
           status=$?
           kill $beat
           exit $status
@@ -220,7 +231,8 @@ jobs:
         env:
           SHA: ${{ needs.preflight.outputs.sha }}
         run: |
-          body=$(curl -sSf --retry 5 --retry-delay 10 --retry-all-errors "$SIM_ORIGIN/worlds/__sim/healthz")
+          base=/worlds; [ "$SHIP_TOPOLOGY" != root-only ] || base=""
+          body=$(curl -sSf --retry 5 --retry-delay 10 --retry-all-errors "$SIM_ORIGIN$base/__sim/healthz")
           echo "$body" | head -c 2000; echo
           echo "$body" | grep -q "we-${SHA:0:12}" || { echo "::error::healthz does not name we-${SHA:0:12}"; exit 1; }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

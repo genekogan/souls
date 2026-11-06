@@ -62,13 +62,14 @@ listen and WebSocket connection; a synthetic proxy test alone is not live pairin
 The probe and CDN tools accept explicit URLs, so choose the canonical paths:
 
 ```sh
-node tools/world-launcher/deploy/swap-probe.mjs --origin https://souls.game --base / \
+node tools/world-launcher/deploy/swap-probe.mjs --origin https://soul.game --base / \
   --slugs eden,mars-college-2026,mars-college-2027 --out .local/root-probe.json
-node tools/cdn/cdn-walk.mjs .local/root-cdn-walk https://souls.game/w/eden/ \
-  https://souls.game/w/mars-college-2026/ https://souls.game/w/mars-college-2027/
+node tools/cdn/cdn-walk.mjs .local/root-cdn-walk https://soul.game/w/eden/ \
+  https://soul.game/w/mars-college-2026/ https://soul.game/w/mars-college-2027/
 ```
 
-`ship.sh` still describes a combined legacy-plus-prefixed-host release. Do not run that default legacy ceremony on a
-root-only host; use `release.sh` and the root host's runsheet with explicit probe/walk URLs. If using prebuilt web
+`ship.sh --topology root-only` selects the production-only ceremony with canonical probe/walk URLs. The old
+combined ceremony requires explicit `--topology dual-prefix`. See [release](../release.md) for the required mirror
+rehearsal and review before enabling workflow automation. If using prebuilt web
 artifacts, `modal-web-build.py --base /` produces the production build with a root base; its receipt is checked against
 `release.sh`'s source SHA, build ID and base. Never substitute a prefixed web artifact for a root build.

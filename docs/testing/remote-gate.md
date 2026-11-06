@@ -115,6 +115,33 @@ directory or from a bare `remote-suite.sh` run, after validating the same identi
 and runs only the candidate. Adding `--candidate-results <dir>` imports a completed pair, which must share the exact
 harness commit, tree and archive. Runs restricted with `--server-files` or `--skip` never qualify a release.
 
+## Revalidate retained results without a new gate
+
+`--no-remote` refuses every planned Modal call before execution, including any baseline fallback. Use it when
+checking transferred evidence or preparing a release without authorization for a new gate. It does not reserve a
+budget slot, create a shared cache, waive failures or qualify another source commit.
+
+Transfer the complete original gate directory (`receipt.json`, `baseline/out/`, `candidate/out/`, raw suite logs
+and metadata), preserving the original evidence. Keep the original harness/source commits available locally.
+From a clean tooling checkout, name the **original gate harness commit**, candidate and baseline explicitly:
+
+```sh
+tools/test-harness/release-gate.sh "$CANDIDATE" --baseline "$ACTUAL_BASELINE" \
+  --baseline-results "$RETAINED_GATE/baseline" --candidate-results "$RETAINED_GATE/candidate" \
+  --no-remote --results-harness "$ORIGINAL_HARNESS" --no-cache --out "$NEW_REVALIDATION_DIR"
+```
+
+This writes a separate comparison receipt and rechecks the full raw contract; a copied summary alone is insufficient.
+Mismatched source/harness/runtime, incomplete logs or failed assertions remain blocked. If the original gate used a
+cached baseline, transfer that baseline's complete `out/` directory to the explicit baseline-results path instead;
+never substitute a tag with an author-rewritten SHA or edit execution metadata to make it match.
+The receipt retains the original harness identity. `--results-harness` requires both imports and `--no-remote`;
+it cannot select a different harness for a new execution. A new candidate requires its own qualification.
+
+A validated retained run can seed a cache with `release-gate.sh cache-add <completed-run-dir> --cache <cache-dir>`.
+Cache seeding is local validation, not cross-host once-per-head or daily-budget accounting. Revalidating CPU results
+also leaves V7 and the live release proof outstanding; combine the exact-source V7 receipt below.
+
 ## V7 and the ship receipt
 
 From a clean checkout of the same candidate commit:
