@@ -1,0 +1,21 @@
+{
+ "soulRun": 1,
+ "name": "s3-steer-refuse-dry",
+ "cast": {
+  "file": "s3-steer-refuse-dry.cast.json"
+ },
+ "observer": {
+  "check": false
+ },
+ "limits": {
+  "maxWallSec": 1200,
+  "maxControllers": 2
+ },
+ "evaluation": {
+  "questions": [
+   "../../questions/steer-honoured.mjs",
+   "../../questions/refusal-recovered.mjs",
+   "../../questions/scene-finished.mjs"
+  ]
+ }
+}
