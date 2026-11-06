@@ -6,6 +6,7 @@ import { footprintOf, padFor, pointInPoly, settle, waterLevelAt, SKIRT_MAX_M as 
 import { CREATION_LIMITS, GENERATORS, kitFootprintIssues, prepareFor, queryOf } from '@sim/generators';
 import { z } from 'zod';
 import { hashOf } from './hash.ts';
+import { handlingProblem } from './handling.ts';
 import { offsetPolyline, pointAlong } from '@sim/generators';
 import { BakeError, WorldModel, definitionRefs, obbOverlap, type OBB } from './model.ts';
 import { batchSchema, trustedBatchSchema, type Batch, type Entity, type Failure, type Field, type Op, type Result, type StoredDef, type Value, worldStateSchema, SKY_PALETTES } from './schemas.ts';
@@ -722,6 +723,9 @@ function checkDef(w: WorldModel, def: Parameters<WorldModel['defineDef']>[0], i:
   if (!box) return fail(i, 'def.invalid', 'size.box required');
   if (box[0] > lim.sizeMax[0] || box[1] > lim.sizeMax[1] || box[2] > lim.sizeMax[2]) return fail(i, 'size.range', `box ${box.join('×')} exceeds world limit ${lim.sizeMax.join('×')}`);
   if (Math.min(...box) < lim.sizeMin) return fail(i, 'size.range', `box below ${lim.sizeMin} m`);
+  // PC11 (#690): a loose material's handling must fit together (crew range, grips per crew, mass, reach)
+  const handling = handlingProblem(def as never);
+  if (handling) return { ...fail(i, handling.code, handling.message), field: handling.field, fix: handling.fix };
   if (def.make.kind === 'mesh') {
     const info = w.assets(def.make.asset);
     if (!info) return fail(i, 'def.invalid', `asset ${def.make.asset.slice(0, 12)}… not uploaded`);
