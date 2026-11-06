@@ -140,13 +140,13 @@ test('A5: a message acked while no serve was up leaves the queue on restart', as
   const w = await world(t);
   w.owner('msg_1', 'Acked by hand'); w.inbox[0].acked = true;
   w.owner('msg_2', 'Still open');
-  writeFileSync(join(w.dir, '.eden-serve.json'), JSON.stringify({ inboxAfter: 'msg_1', messages: [{ id: 'msg_1', text: 'Acked by hand', handed: true, acked: false, closed: false }] }));
+  writeFileSync(join(w.dir, '.eden-serve.json'), JSON.stringify({ inboxAfter: 'msg_1', messages: [{ id: 'msg_1', text: 'Acked by hand', acked: false, closed: false }] }));
   await w.cli('serve');
   const p = await until(async () => { const x = (await w.cli('pending')).json; return x.ownerMessages?.some((m) => m.id === 'msg_2') ? x : null; });
   assert.deepEqual(p?.ownerMessages.map((m) => m.id), ['msg_2']);
 });
 
-test('listen does not hand over a message already read through pending or already acked', async (t) => {
+test('listen follows the world\'s rule: every message not acked after the cursor, however often it was seen', async (t) => {
   const w = await world(t);
   await w.cli('serve');
   w.owner('msg_1', 'Read through pending');
@@ -154,14 +154,26 @@ test('listen does not hand over a message already read through pending or alread
   w.owner('msg_2', 'Acked before any read');
   assert.ok(await until(async () => (await w.cli('serve', '--status')).json.unacked === 2), 'the serve holds both');
   await w.cli('ack', 'msg_2', 'On it');
-  const r = await w.cli('listen', '--once');
-  assert.deepEqual((r.json.messages ?? []).map((m) => m.id), [], r.out);
+  assert.deepEqual((await w.cli('listen', '--once')).json.messages.map((m) => m.id), ['msg_1'], 'not acked: still there; acked: gone');
+  assert.deepEqual((await w.cli('listen', '--once', '--after', 'msg_1')).json.messages, [], 'nothing after the cursor');
   w.owner('msg_3', 'New');
-  const next = await w.cli('listen');
+  const next = await w.cli('listen', '--after', 'msg_1');
   assert.deepEqual(next.json.messages.map((m) => m.id), ['msg_3']);
 });
 
-test('the harness listen keeps working through serve: same output, delivered once, and it never races the serve', async (t) => {
+test('a peek does not take a message from the listener waiting for it (A6: "Your turn" never reached the seat)', async (t) => {
+  const w = await world(t);
+  await w.cli('serve');
+  const held = w.cli('listen');       // the seat's listener, waiting
+  await sleep(150);
+  w.owner('msg_1', 'Your turn');
+  assert.ok(await until(async () => (await w.cli('serve', '--status')).json.unacked === 1));
+  const peek = await w.cli('listen', '--once');   // what a wait's owner interrupt does
+  assert.deepEqual(peek.json.messages.map((m) => m.id), ['msg_1']);
+  assert.deepEqual((await held).json.messages.map((m) => m.id), ['msg_1'], 'the listener gets it too');
+});
+
+test('the harness listen keeps working through serve: same output, by cursor, and it never races the serve', async (t) => {
   const w = await world(t);
   await w.cli('serve');
   const held = w.cli('listen');
