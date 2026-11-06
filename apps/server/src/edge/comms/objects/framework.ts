@@ -207,7 +207,7 @@ export class Objects {
     return Object.entries(kind.actions).flatMap(([name, a]) => {
       if (a.roles !== 'anyone' && !a.roles.some(r => ctx.roles.includes(r))) return [];
       const blocked: Refusal | null = a.reach === 'place' && !ctx.inPlace ? {code: 'object.out-of-reach', reason: `Go to ${o.placeId} first.`} : a.available?.(o.state, ctx) ?? null;
-      return [{action: name, label: a.labelFor?.(o.state) ?? a.label, params: a.params, available: !blocked, ...(blocked ? {blocked} : {})}];
+      return [{action: name, label: a.labelFor?.(o.state, ctx) ?? a.label, params: a.params, available: !blocked, ...(blocked ? {blocked} : {})}];
     });
   }
 
