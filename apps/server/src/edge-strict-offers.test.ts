@@ -16,6 +16,7 @@ import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {mountEdgeRoutes} from './edge/routes.ts';
 import {paramsProblem, offerParams} from './edge/intents/offer-schema.ts';
 import {compactDoHere} from './edge/perception/here.ts';
+import {bootEden} from '../test/eden-capabilities-timing.ts';
 
 async function world(t: {after(fn: () => void): void}) {
   const dir = mkdtempSync(join(tmpdir(), 'strict-offers-'));
@@ -155,4 +156,25 @@ test('rollback through the real CLI: words exit 2 with no act until the flag is 
   } finally {delete process.env.EDGE_FREE_TEXT_ACT;}
   const after = await cli('act', words);
   assert.equal(after.exit, 2, 'off again'); assert.equal(w.receipts(), before + 1);
+});
+
+// Found by the capacity bench on eden-2026: `resolve` named `walk:place-region-vineyard-orchard`, available, and the strict
+// act refused that same id, naming it as the closest candidate, because the place was not on the Soul's menu.
+test('a candidate resolve names is an id strict act takes, on or off the menu', async t => {
+  const w = await bootEden(); t.after(() => w.close());
+  const {soul, edge} = w;
+  const off: string[] = [];
+  for (const words of ['go to the orchard', 'go to the kitchen', 'go to the plaza', 'go to the bandstand']) {
+    const id = (edge.intents.dryRun(soul, {capability: words}) as {would?: {capability?: string}}).would?.capability;
+    assert.ok(id, words);
+    if (!edge.capabilities(soul).some(c => c.id === id)) off.push(id);
+    assert.equal(edge.offerGate(soul, {capability: id}), null, `${words} reads as ${id}, so the strict act takes it`);
+  }
+  assert.ok(off.length, 'at least one of them is off the menu, which is the case this covers');
+  const name = edge.offerGate(soul, {capability: 'walk:orchard'});
+  assert.equal(name?.code, 'capability.unknown', 'a name that reads as another id stays refused');
+  assert.equal(edge.offerGate(soul, {capability: 'fly:eden-bandstand'})?.code, 'capability.unknown', 'and so does an id that is not on offer');
+  // params are checked off the menu too
+  assert.ok(off.length && off[0]!.startsWith('walk:'), off[0]);
+  assert.equal(edge.offerGate(soul, {capability: off[0], params: {seconds: 5}})?.code, 'capability.params', 'a walk takes no seconds, on the menu or off it');
 });
