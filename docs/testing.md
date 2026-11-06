@@ -130,6 +130,14 @@ loaded laptop. It is picked by its own paths (`tools/soul-actions`, `apps/server
 `packages/engine-*`) and by every full-scope run, including each push to main, and a failure blocks through `ci-ok`. It
 is not a gate step, so the gate's suite tree and cached baseline don't change.
 
+**Self-hosted runners.** The heavy `qualify` legs run on the runners named by the repository variable
+`CI_HEAVY_RUNNER` when it is set (one label, such as `souls-ci`), else on GitHub-hosted runners; the browser `smoke`
+leg always stays GitHub-hosted. One runner instance takes one job at a time, so routing is only worth it with several
+instances online. `tools/ci/setup-runners.sh` sets them up on one Linux host, run there as root: N instances, each a
+systemd service under one dedicated unprivileged user, with the label, and Playwright's Chromium system packages when
+the OS has them (not Ubuntu 20.04). It is idempotent, takes the registration token as an argument and names no host;
+its header shows the one-line invocation from a workstation. The steward sets and clears `CI_HEAVY_RUNNER`.
+
 ## Remote gate
 
 [testing/remote-gate.md](testing/remote-gate.md): `tools/test-harness/release-gate.sh` runs the complete suite for a
