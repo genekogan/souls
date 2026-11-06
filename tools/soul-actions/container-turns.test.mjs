@@ -7,16 +7,16 @@ import {EdgeLedger} from '../../apps/server/src/edge/ledger/ledger.ts';
 import {mountEdgeRoutes} from '../../apps/server/src/edge/routes.ts';
 import {GodMode} from '../../apps/server/src/god/god.ts';
 import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
-import {CORE_KIT, containerInside} from '../../packages/world-compiler/src/index.ts';
+import {CORE_KIT, containerHidden, containerInside} from '../../packages/world-compiler/src/index.ts';
 
 // A god places a storage def at any turn. At each one a Soul puts a thing in and takes it out, and the engine stays clean: no
 // recovered fault, no violation. Every library def with an inside is covered without being listed, so a new one gets this too.
 // (A body too close at the reach trips collision.human-static at some turns only: #435, #1063.)
 // core/lockers@3 is frozen and does fault: #1063 removes this exclusion.
 const KNOWN_FAULT = new Set(['core/lockers@3']);
-const defs = CORE_KIT.filter(d => containerInside(d)).map(d => ({ref: `core/${d.name.replace(/^core-/, '')}@${d.version}`, door: !!d.state && Object.hasOwn(d.state, 'open'), small: containerInside(d).fit[0] < 0.25})).filter(d => !KNOWN_FAULT.has(d.ref));
+const defs = CORE_KIT.filter(d => containerInside(d)).map(d => ({ref: `core/${d.name.replace(/^core-/, '')}@${d.version}`, door: !!d.state && Object.hasOwn(d.state, 'open'), hidden: containerHidden(d), small: containerInside(d).fit[0] < 0.25})).filter(d => !KNOWN_FAULT.has(d.ref));
 const turns = [0, 0.4, 0.785, 1.2, 1.571, 1.9, 2.356, 2.9, 3.7, 4.712, 5.5];
-for (const {ref, door, small} of defs) test(`${ref}: put in and take out at every turn`, {timeout: 900000}, async t => {
+for (const {ref, door, hidden, small} of defs) test(`${ref}: put in and take out at every turn`, {timeout: 900000}, async t => {
  const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
  const edge = new EdgeLedger(f.host, f.db, undefined, {ambient: false}), app = new Hono(); let soul;
  const comms = mountEdgeRoutes(app, {host: f.host, db: f.db, souls: f.souls, ledger: edge, soul: () => soul});
@@ -35,8 +35,10 @@ for (const {ref, door, small} of defs) test(`${ref}: put in and take out at ever
  for (const [i, r] of turns.entries()) {
   const name = `spot-${i}`; ok(god.act({ops: [{op: 'place', def: ref, name, p: [ax + 1, az + 3], r, ...(door ? {state: {open: true}} : {})}]})); await tick(40); const spot = ent(name).id;
   await done(`pick-up:${bowl}`); await done(`put-in:${spot}`); assert.equal(support().on, spot, `r=${r}`);
-  await tick(12); await done(`pick-up:${bowl}`); assert.equal(support().kind, 'in-hand', `r=${r}`);
-  await done(`put-on:${table}`); await tick(12); ok(god.act({ops: [{op: 'remove', id: spot}]})); await tick(20);
+  await tick(12); await done(hidden ? `search:${spot}` : `pick-up:${bowl}`); assert.equal(support().kind, 'in-hand', `r=${r}`);
+  await done(`put-on:${table}`); await tick(12);
+  // a hiding place's search of an empty place is a walk and a reach of its own
+  if (hidden) {await done(`search:${spot}`); assert.notEqual(support().kind, 'in-hand', `r=${r}`);} ok(god.act({ops: [{op: 'remove', id: spot}]})); await tick(20);
  }
  assert.deepEqual(f.host.engine.runtime.violations, []);
 });

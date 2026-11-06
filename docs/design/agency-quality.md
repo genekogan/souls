@@ -330,6 +330,46 @@ transfer beyond tuned examples. Small samples can justify a narrow reversible tr
 and rollback conditions, not a universal claim. Stop at the declared resource budget rather than running an
 endless study. Existing safety/security/proof/release requirements remain; no gate waiver is proposed.
 
+## Direction revision — November 6, 2026: strict offers, layered perception, one resident client
+
+Recorded after S1–S3 of #623 and the owner's reading of the 5 November primer. The one measurement so far (thin
+CLI, fake-mind world, loaded host) put the world at tens of milliseconds per call and the model at about two
+seconds per decision: latency is the number of model turns an intention costs, not world time. The S3 resolver
+defects were all cases of the world executing English it should not have been asked to execute. Nothing yet
+measured the quantities that matter. The direction below is design intent; issues [#1093](https://github.com/genekogan/souls/issues/1093)–[#1100](https://github.com/genekogan/souls/issues/1100) (CTRL-1 to CTRL-8) under #623
+hold the acceptance and evidence, and the phase is S3b.
+
+**Contract.**
+
+1. **Strict offers.** The agent is responsible for sending valid commands. The world executes only offered
+   capabilities with declared parameter schemas and refuses the rest. The English resolver becomes advisory
+   (`resolve` returns candidates and never executes). Target: at least 90 % of acts succeed first try (95 %
+   stretch). The remainder are refusals caused by state that changed between observation and act; those are
+   normal, and the alternatives below are their repair.
+2. **Layered perception.** `here` shows a grouped, byte-budgeted view of what is here and what can be done now;
+   `inspect <id>` drills into any place, part, object, item, Soul or shared operation and returns its state, its
+   children and its own offers with schemas. Discovery is just-in-time by level: a library before its shelves,
+   a shelf before a book. Not a catalogue dump, and not a prose skill that enumerates what a Soul cannot do.
+3. **Same-intent alternatives.** A refusal names up to three alternatives that serve the same intent (other free
+   seats in the room, not another lake), ranked by distance only within that class, marked `partial` when the
+   intent is only partly served. The agent treats them as information, never as a default.
+4. **One resident client.** A long-lived `serve` process per Soul keeps the stream, drains the inbox, caches
+   receipts and batches reads; agent commands return in milliseconds; a durable plan of offered steps runs
+   without further model calls, and conversation never replaces it. A Soul can be driven for hours by any agent.
+5. **Measured.** A predeclared Soul Runs scorecard (M1 first-try success, M2 model turns per intention, M3
+   polling turns, M4 time to first motion, M5 owner repair burden, M6 context bytes, M7 intent retention;
+   guardrails for truthful receipts, unrelated Souls and tick health) runs on baseline and candidate for every
+   S3b change, including the live-model arm on both contracts.
+
+**What is kept.** Receipts and their truth fixes, reachability fixes, the carry contract (already offer-shaped),
+consent, budgets, the engine. The merged S3 resolver changes stay and become `resolve` quality. #627 and #628
+are adopted in this concrete form; #626's minimal Soul bridge is the resident client; host-loop comparisons
+wait for evidence that turns per intention are still dominated by the host afterwards.
+
+**What is not assumed.** That 100 % first-try success is worth its cost (it is not; state changes), that a
+smaller payload is better by itself (one that hides the needed action fails), or that any of this is proven
+before the scorecard says so on a real agent.
+
 ## Ownership and implementation handoff
 
 Follow the [development coordinator contract](https://github.com/genekogan/souls/blob/main/docs/process/development-coordinator.md)

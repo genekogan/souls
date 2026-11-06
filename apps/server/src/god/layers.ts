@@ -283,10 +283,6 @@ export class GodLayers {
     }
     return null;
   }
-  /** #435: the same answer a `pick-up` offer gets, for a plan that takes a thing on the way to using it. */
-  takeRefusal(id: string, soul: { soulId: string; name: string }): Refusal | null {
-    return this.refusal(id, soul) ?? (economyOn() ? this.forSale(id, soul) : null);
-  }
   /** Can this Soul use (open, sit on, take) this thing? Owners, owner-group members and those who work at it may. */
   refusal(id: string, soul: { soulId: string; name: string }): Refusal | null {
     const building = this.buildingRefusal(id, soul); if (building) return building;
@@ -356,7 +352,7 @@ export class GodLayers {
         continue;
       }
       if (!c.target || !this.m.entities.has(c.target.id) || !['sit', 'lie', 'sleep', 'pick-up', 'put-on'].includes(c.verb)) continue;
-      const r = this.refusal(c.target.id, soul) ?? (c.verb === 'pick-up' && economyOn() ? this.forSale(c.target.id, soul) : null);
+      const r = c.verb === 'pick-up' ? this.takeRefusal(c.target.id, soul) : this.refusal(c.target.id, soul);
       if (r) { c.available = false; (c as any).blocked = r; plans.delete(c.id); }
     }
     if (!offers || !here || !economyOn()) return;
@@ -377,6 +373,8 @@ export class GodLayers {
   }
   /** A building (it has rooms): walking into a private one is refused; open ground (a private garden) is not fenced by words. */
   private enclosed(e: Entity): boolean { const d = this.m.resolvedDef(e.def); if (!d) return false; try { return (this.m.bake(d, e.params ?? {}, e.seed ?? 0, e.shape).rooms?.length ?? 0) > 0; } catch { return false; } }
+  /** Why this Soul may not take this thing: whose it is, or that it is for sale. */
+  takeRefusal(id: string, soul: { soulId: string; name: string }): Refusal | null { return this.refusal(id, soul) ?? (economyOn() ? this.forSale(id, soul) : null); }
   private forSale(id: string, soul: { soulId: string; name: string }): Refusal | null {
     const e = this.m.entities.get(id); if (!e?.price || e.price.service) return null;
     if (this.isOf(this.ownership(id)?.owner ?? 'god', soul)) return null;

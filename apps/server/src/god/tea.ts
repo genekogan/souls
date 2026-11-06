@@ -7,6 +7,7 @@
 // the tap at the valve contacts, the kettle's water at the second contact, `heatTick` at the switch contact, the cup's
 // tea in thirds while the stream runs, the kettle's level when the pour ends. The heat itself is never committed: it is
 // kettleHeat(state, tick), a pure function of world time.
+import { keptShut } from './actuators.ts';
 import { opSchema, cupSteam, kettleHeat, spoutRun, KETTLE_CLOCK, containerInside, containerOpen, isFoodDef, isKettleDef, isTeaCupDef, CUP_LITRES, CUP_RIM, KETTLE_GRIP, KETTLE_LITRES, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
 import { canPoint, wateringEvents, type WateringMotion } from '../../../../mars/viewer/engine/items/watering.ts';
 import { cupEvents, MUG, type CupMotion } from '../../../../mars/viewer/engine/items/cup.ts';
@@ -167,7 +168,7 @@ export function createTea(h: TeaHost) {
   const keptIn = (id: string) => { const s = ents()[id]?.support; if (s?.kind !== 'resting-on') return null; const o = M().entities.get(s.on), d = o && M().resolvedDef(o.def), ins = d ? containerInside(d) : null; return ins?.slots.some((x) => x.id === s.slot) ? o!.id : null; };
   const cupNear = (kettle: string) => {
     const k = ents()[kettle]?.pose?.p as Vec3 | undefined; if (!k) return null; let best = NEAR_CUP, c: string | null = null;
-    for (const id of things().cups) { const e = ents()[id], p = e?.pose?.p as Vec3 | undefined; if (!p || e.support?.kind !== 'resting-on' || keptIn(id) || num(stateOf(id).tea) > 0.05 || stateOf(id).bag === false) continue; const d = Math.hypot(p[0] - k[0], p[2] - k[2]); if (d < best) { best = d; c = id; } }
+    for (const id of things().cups) { const e = ents()[id], p = e?.pose?.p as Vec3 | undefined; const me = h.model.entities.get(id); if (!p || e.support?.kind !== 'resting-on' || keptIn(id) || (me && keptShut(h.model, me)) || num(stateOf(id).tea) > 0.05 || stateOf(id).bag === false) continue; const d = Math.hypot(p[0] - k[0], p[2] - k[2]); if (d < best) { best = d; c = id; } }
     return c;
   };
   /** #435: a fresh mug kept in an open container near the kettle, which she can take out and stand on the counter. */

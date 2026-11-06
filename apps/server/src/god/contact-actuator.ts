@@ -4,7 +4,7 @@ import {actuatorPoint,actuatorHand,tugPoint,opPoint,slidePoint,strokePoint,strok
 import { createHash } from 'node:crypto';
 import { isDry, stageWord } from './garden.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
-import { opSchema, contactStateKey, CONTACT_EXTRA_FIELDS, DRAWER_TRAVEL, containerInside, containerOpen, pinSlot, signupSlot, signupCapacity, signupPageStart, SIGNUP_MAX, pollSlot, gameSquare, gameSquareOf, gameStatus, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
+import { opSchema, contactStateKey, CONTACT_EXTRA_FIELDS, DRAWER_TRAVEL, containerInside, containerOpen, containerHidden, pinSlot, signupSlot, signupCapacity, signupPageStart, SIGNUP_MAX, pollSlot, gameSquare, gameSquareOf, gameStatus, checkersCellOf, checkersSquare, checkersStatus, checkersRows, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
 import { posterName, posterFreeSlot, posterTarget, posterAge, posterStale, wantedColumn, wantedFreeRow, wantedTarget } from './poster-boards.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { actionPatch, actionsOf, actuatedState, keepsLeftBy, boardTextProblem, enumParamProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
@@ -31,6 +31,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
  /** entry 32: a knock on the leaf landed (the first rap): tell those who hear it */ knock?:(soul:EdgeSoul,id:string)=>void;
  /** Entry 43: compact facts of things that are not contact actuators (a kettle, a cup of tea), or null. */ moreFacts?:(id:string)=>Record<string,unknown>|null;
  /** #435: what a Soul nearby is told about a thing kept in a container with a `leftBy` record ("left by Ana"; "Ana's, found by Ben"), or null. */ keptNote?:(box:string,item:string,soul?:EdgeSoul)=>string|null;
+ /** #435 (W068): what a finished search of a hiding place came to. */ searchOutcome?:(soul:EdgeSoul,spot:string,failed?:boolean,overlapped?:boolean)=>string|null;
  record:(soul:EdgeSoul,id:string,action:string,params?:Record<string,unknown>)=>void;commit:(ops:Op[],note:string,done:()=>void)=>{accepted:boolean}}){
  const binding=(id:string)=>{const m=d.model(),e=m.entities.get(id);return e?createHash('sha256').update(JSON.stringify([e,m.worldPose(e),m.resolvedDef(e.def)?.hash])).digest('hex'):null;};
  return {
@@ -64,11 +65,17 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
      else{const n=wantedTarget(st,soul,input.note,action==='unpin'?'own':'any');col=n?.c==='o'?1:0;row=n?.r??0;if(action==='reply'){dx=.06;dy=-.075-.03*(n?.re.length??0);}if(action==='take-on'){dx=.1;dy=-.01;}}
      const [sx,sy]=wantedSlot(col,row);params.at=local(sx+dx,sy+dy,.04);}
     // Stand clear of the board's own footprint (its depth beyond the face) with a body radius to spare.
-    const stand=Math.min(.7,Math.max(STROKE_STAND,(def.size.box[2]/2-(face.at[2]??0))*wp.s+HUMAN_RADIUS+.06-.04));
+    // #439: a checkers board leaves more room, so at any turn the raster still reads a body clear there (#1063: the older boards' bytes stay).
+    const stand=Math.min(.7,Math.max(STROKE_STAND,(def.size.box[2]/2-(face.at[2]??0))*wp.s+HUMAN_RADIUS+(def.tags.includes('checkers')?.12:.06-.04)));
     // Entry 27: a noughts-and-crosses mark goes to its own square (gameSquare, shared with the viewer's face)
     const mark=action==='mark'&&def.tags.includes('tictactoe')?gameSquareOf(input.square):-1;
     if(mark>=0){const [dx,dy]=gameSquare(mark).map(v=>v*wp.s);params.at=[centre[0]+dx*c+s*.04,centre[1]+dy,centre[2]-dx*s+c*.04];}
+    // #439 W093: a checkers move is one level chalk stroke between its two squares (across their files at the height midway
+    // between them; checkersSquare is shared with the viewer's face)
+    const cm=action==='move'&&def.tags.includes('checkers')?[checkersCellOf(input.from),checkersCellOf(input.to)]:null,move=!!cm&&cm[0]>=0&&cm[1]>=0;
+    if(move){const [a,b]=[checkersSquare(cm![0]),checkersSquare(cm![1])],dx=(a[0]+b[0])/2*wp.s,dy=(a[1]+b[1])/2*wp.s;params.at=[centre[0]+dx*c+s*.04,centre[1]+dy,centre[2]-dx*s+c*.04];}
     if(mark>=0)params.stroke={kind:'write',yaw:wp.yaw,stand,width:.1,height:.08,lines:1,seconds:1.2};
+    else if(move){const [a,b]=[checkersSquare(cm![0]),checkersSquare(cm![1])];params.stroke={kind:'write',yaw:wp.yaw,stand,width:(Math.abs(b[0]-a[0])+.04)*wp.s,height:.05,lines:1,seconds:1.4};}
     else if(posters)params.stroke={kind:action==='unpin'?'unposter':'poster',yaw:wp.yaw,stand:Math.max(.4,stand),width:POSTER_W*wp.s,height:POSTER_H*wp.s,lines:1,seconds:action==='unpin'?4.2:5.6,release:1.1,handoff:.1,lead:{y:wp.y+1.05,out:.2},...(sheet?{sheet}:{})};
     else if(wanted)params.stroke={kind:action==='unpin'?'wipe':'write',yaw:wp.yaw,stand,width:action==='take-on'?.14:action==='reply'?.16:.22,height:.05,lines:1,seconds:action==='unpin'||action==='take-on'?1.8:2.2,release:1.1,handoff:.1,lead:{y:wp.y+1.1,out:.26}};
     else params.stroke=list?{kind:action==='unsign'?'wipe':'write',yaw:wp.yaw,stand,width:action==='vote'?.1:Math.min(text?.22:.16,(face.w??.4)*wp.s*(text?.7:.45)),height:.05,lines:1,seconds:action==='unsign'?1.0:text?2.2:1.4}:pin?{kind:action==='unpin'?'wipe':'write',yaw:wp.yaw,stand,width:Math.min(.22,(face.w??.6)*wp.s*.25),height:.06,lines:1,seconds:action==='unpin'?1.2:1.6}:{kind:action==='erase'?'wipe':'write',yaw:wp.yaw,stand,width:Math.min(.55,(face.w??.6)*wp.s*.6),height:Math.min(.3,(face.h??.4)*wp.s*.5),lines,seconds:action==='erase'?2.4:Math.min(6,1.2+1.6*lines)};   // 1.2+1.6*3 is 6.000000000000001 in floating point; the schema caps a stroke at 6 s (a three-line note failed)
@@ -167,6 +174,11 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    if(def.tags?.includes('tictactoe')){const g=String(e.state?.text??'').padEnd(9,'.').slice(0,9),st=gameStatus(g),names=String(e.state?.players??'').split(',').filter(Boolean),who=(m:'X'|'O')=>names[m==='X'?0:1]??m;
     const head=names.length?`Noughts and crosses: ${who('X')} (X)${names[1]?` against ${names[1]} (O)`:''}; ${st.winner?`${who(st.winner)} won`:st.draw?'a draw':`${who(st.turn)} to play`}`:'Noughts and crosses: a new game, X to play';
     return {id:e.id,name:e.name??def.name.replace(/^core-/,''),text:[head,...[0,1,2].map(r=>[...g.slice(r*3,r*3+3)].map(ch=>ch==='.'?'·':ch).join(' '))].join('\n'),by:null,writable:true};}
+   // #439 W093: a checkers board reads as its players, whose turn or who won, the pieces left and the board's eight rows
+   if(def.tags?.includes('checkers')){const st=checkersStatus(e.state?.text),names=String(e.state?.players??'').split(',').filter(Boolean),who=(m:'X'|'O')=>names[m==='X'?0:1]??m;
+    const count=(m:'X'|'O')=>`${m} ${st.men[m]+st.kings[m]} piece${st.men[m]+st.kings[m]===1?'':'s'}${st.kings[m]?` (${st.kings[m]} king${st.kings[m]===1?'':'s'})`:''}`;
+    const head=st.fresh?'Checkers: a new game, X (the bottom side) to move':`Checkers: ${who('X')} (X)${names[1]?` against ${names[1]} (O)`:''}; ${st.winner?`${who(st.winner)} won`:`${who(st.turn)} to move${st.chain>=0?', jumping on':''}`}; ${count('X')}, ${count('O')}`;
+    return {id:e.id,name:e.name??def.name.replace(/^core-/,''),text:[head,...checkersRows(e.state?.text)].join('\n'),by:null,writable:true};}
    return {id:e.id,name:e.name??def.name.replace(/^core-/,''),text,...(def.tags?.includes('pinboard')?{notes:pinNotes(e.state??{})}:{}),...(def.tags?.includes('signup')?{title:String(e.state?.title??''),signups:pinNotes(e.state??{}),text:[String(e.state?.title??'Sign up'),...pinNotes(e.state??{}).map((n,i)=>`${i+1}. ${n.text}`)].join('\n')}:{}),...(def.tags?.includes('poll')?{title:String(e.state?.title??''),text:[String(e.state?.title??''),pollLines(e.state??{})].join('\n')}:{}),...(def.tags?.includes('posters')?{posters:posterList(e.state??{}).map(p=>({...p,age:posterAge(p),stale:posterStale(p)}))}:{}),...(def.tags?.includes('wanted')?{wanted:wantedList(e.state??{})}:{}),by:typeof e.state?.textBy==='string'&&e.state.textBy&&!def.tags?.some(t=>t==='poll'||t==='signup'||t==='posters'||t==='wanted')?e.state.textBy:null,writable:!!def.tags?.includes('hand-writable')};
   },
   /** Entry 32: who may lock, unlock and knock on a lockable door. Its owner locks and unlocks it (key outside, thumb-turn
@@ -205,10 +217,11 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    // entry 42: what is inside an open container (names only, at most its few places); nothing while it is shut
    // #435: a doorless container (a swap shelf) is always open, and one that keeps a `leftBy` record names who left each
    // thing (a lost-and-found: whose it is and who found it)
-   const ins=containerOpen(def,state)?containerInside(def):null,noted=keepsLeftBy(def);
+   const ins=containerOpen(def,state)&&!containerHidden(def)?containerInside(def):null,noted=keepsLeftBy(def); // #435: a hiding place says nothing of what it holds
    if(ins){const slots=new Set(ins.slots.map(s=>s.id)),holds:string[]=[];for(const c of m.children.get(target)??[]){const x=m.entities.get(c);if(!x||!slots.has(x.in.slot??''))continue;const n=x.name??(m.resolvedDef(x.def)?.name.replace(/^core-/,'')??'something'),note=noted?d.keptNote?.(target,c,soul):null;holds.push(note?`${n} (${note})`:n);}if(holds.length)facts.holds=holds.sort();}
    return facts;
   },
+  searched:(soul:EdgeSoul,spot:string,failed?:boolean,overlapped?:boolean)=>d.searchOutcome?.(soul,spot,failed,overlapped)??null,
   /** Entry 33: a neon sign's words for a Soul near it (the same nearby rule as `facts`): its owner's text, at most 32
    *  characters on two lines, control characters removed, with the owner ref that set it. Untrusted text. */
   words(target:string){
@@ -239,8 +252,8 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    const bad=whenRefusal(a,state,e.name??'object');if(bad)return fail(bad.code,bad.reason);
    // entry 32: a knock changes nothing in the world; those who hear it are told once
    if(a.name==='knock'&&def.tags.includes('lockable')){d.knock?.(soul,e.id);d.record(soul,e.id,a.name);done();return {ok:true as const};}
-   const text=isGameAction(def,a)?gameProblem(a,state,soul,a.name==='mark'?intent.params?.square??'':undefined):isListAction(def,a)?listProblem(def,a,state,soul,intent.params??{}):contactStateKey(def,a.name)==='text'&&a.name==='write'?boardTextProblem(intent.params?.text):enumParamProblem(def,a,intent.params??{},e.name??'object');if(text)return fail(text.code,text.reason);
-   const patch=isGameAction(def,a)?gamePatch(a,state,soul,intent.params?.square):actionPatch(def,a,state,intent.params??{},soul);if(contactStateKey(def,a.name)==='text'&&a.name==='write')patch.textBy=soul.soulId;
+   const text=isGameAction(def,a)?gameProblem(def,a,state,soul,a.name==='erase'?undefined:intent.params??{}):isListAction(def,a)?listProblem(def,a,state,soul,intent.params??{}):contactStateKey(def,a.name)==='text'&&a.name==='write'?boardTextProblem(intent.params?.text):enumParamProblem(def,a,intent.params??{},e.name??'object');if(text)return fail(text.code,text.reason);
+   const patch=isGameAction(def,a)?gamePatch(def,a,state,soul,intent.params??{}):actionPatch(def,a,state,intent.params??{},soul);if(contactStateKey(def,a.name)==='text'&&a.name==='write')patch.textBy=soul.soulId;
    // entry 32: a passage's close re-locks the latch
    if(intent.relock&&a.name==='close'&&typeof state.locked==='boolean')patch.locked=true;
    // A sprinkler coming on soaks the planters (things with numeric moisture) in its forward arc within reach, in the same commit:

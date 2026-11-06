@@ -98,7 +98,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em;background:var(-
 .row{margin:.15em 0}.mono{font-family:ui-monospace,monospace}
 </style>
 <h1>Soul trace inspector</h1>
-<p class="muted">Read-only view of a local trace. A reconstruction from captured records, not a replay. Times marked ≈ cross clocks and are approximate; host time between delivery and the next command is unattributed.</p>
+<p class="muted">Read-only view of a local trace. A reconstruction from captured records, not a replay. Times marked ≈ cross clocks and are approximate; host time between delivery and the next command is unattributed unless the host recorded its turn, tool call and spawn.</p>
 <p id="status" class="muted">Loading…</p>
 <input id="filter" type="search" placeholder="Filter episodes (id, capability, code, command)" aria-label="Filter episodes">
 <h2 id="epH">Episodes</h2><div id="episodes"></div>
@@ -125,6 +125,13 @@ function actRows(a,from){
     box.append(h('div','row','Receipt ',h('span','mono',r.id),' ',r.capability??'',': accepted t'+(k.accepted??'?')+' → started t'+(k.started??'?')+' → ended t'+(k.ended??'?')+' = ',h('b',r.terminal==='completed'?'ok':'warn',r.terminal??'no terminal observed'),r.code?' ('+r.code+')':'',' [world ticks]'));
     if(k.accepted!=null&&k.started!=null)box.append(h('div','row muted','accepted→started '+(k.started-k.accepted)+' ticks; started→ended '+(k.ended!=null?(k.ended-k.started)+' ticks':'open')));}
   return box;}
+function hostRows(g){
+  const box=h('div');
+  box.append(h('div','row','Host turn ',h('span','mono',g.turn),g.tool?[', tool call ',h('span','mono',g.tool),' → ',h('span','mono',g.command??'?')]:' (no linked command)'));
+  for(const b of g.before)box.append(h('div','row muted',b.boundary+' was '+secs(b.msBeforeDelivery)+' before the delivery (turn already running; not subtracted)'));
+  const t=h('table');t.append(h('tr',null,h('th',null,'interval'),h('th',null,'ms'),h('th',null,'what'),h('th',null,'clock')));
+  for(const x of g.segments)t.append(h('tr',null,h('td','mono',x.from+' → '+x.to),h('td',null,String(x.ms)),h('td',/^unattributed/.test(x.label)?'warn':null,x.label),h('td','muted',x.clock)));
+  box.append(t);return box;}
 function actSummary(a){return a.receipt?(a.receipt.capability??a.receipt.id)+' → '+(a.receipt.terminal??'open'):(a.outcome+(a.code?' '+a.code:''));}
 function episode(e){
   const id=e.origin.id,d=h('details');d.open=open.has(id);d.ontoggle=()=>{d.open?open.add(id):open.delete(id);};
@@ -132,7 +139,8 @@ function episode(e){
   d.append(h('summary',null,h('b','mono',id),'  sent '+(e.origin.sentAt?clock(e.origin.sentAt)+' (server)':'— time missing'),
     ' · '+(e.acts.length?e.acts.map(actSummary).join(', '):'no linked act')));
   d.append(h('div','row','Delivered '+clock(e.deliveredAt)+' local'+(e.origin.sentAt?' ≈ +'+secs(e.deliveredAt-e.origin.sentAt)+' after send (server→local clocks, skew unknown)':'')));
-  d.append(h('div','row',e.firstCommand?['First command ',h('span','mono',e.firstCommand.command??'?'),' +'+secs(gap)+' later: ',h('b',null,'unattributed host time'),' (reasoning, tools, process spawn)']:'No later command captured.'));
+  if(e.host)d.append(hostRows(e.host));
+  else d.append(h('div','row',e.firstCommand?['First command ',h('span','mono',e.firstCommand.command??'?'),' +'+secs(gap)+' later: ',h('b',null,'unattributed host time'),' (reasoning, tools, process spawn)']:'No later command captured.'));
   for(const x of e.inbox)d.append(h('div','row muted','inbox '+x.verb+' → '+x.status+' +'+secs(x.at-e.deliveredAt)));
   if(!e.acts.length)d.append(h('div','row muted','No act linked by for to this message.'));
   for(const a of e.acts)d.append(actRows(a,e.deliveredAt));

@@ -35,12 +35,17 @@ const hostErrorMetadata=error=>{
 // Probe-only append evidence. No receiver wrapping, request arguments, config,
 // credentials, model output or error messages. Writes happen per record; fsync
 // is deferred to closure so observation latency excludes a per-row disk flush.
-export function openEvidenceRecorder(path,{scope={},now=Date.now,onFailure=()=>{},writeRecord=writeFileSync,syncFile=fsyncSync}={}){
- let fd,closed=false,failure=null;const detach=[],sessionId=randomUUID(),base={sessionId,controllerPid:process.pid,worldId:scope.worldId??null,soulId:scope.soulId??null};
+// A write failure is sticky. By default it only disables recording (#733 A4: an
+// observer failure never changes gameplay): world reads and host calls keep their
+// own results and errors, and close() reports {complete:false}. `required` keeps
+// the fail-closed contract for qualification runs: appends, reads and close throw.
+export function openEvidenceRecorder(path,{scope={},now=Date.now,onFailure=()=>{},writeRecord=writeFileSync,syncFile=fsyncSync,required=false}={}){
+ let fd,closed=false,failure=null,dropped=0;const detach=[],sessionId=randomUUID(),base={sessionId,controllerPid:process.pid,worldId:scope.worldId??null,soulId:scope.soulId??null};
  const fail=cause=>{if(!failure){failure=Object.assign(Error('Local evidence recording failed'),{code:'EVIDENCE_IO',cause});onFailure(failure);}return failure;};
  const append=row=>{
-  if(failure)throw failure;if(closed)throw fail(Error('Evidence recorder is closed'));
-  try{writeRecord(fd,JSON.stringify({...row,at:row.at??now(),...base})+'\n');}catch(e){throw fail(e);}
+  if(failure){dropped++;if(required)throw failure;return;}
+  if(closed){dropped++;if(required)throw fail(Error('Evidence recorder is closed'));return;}
+  try{writeRecord(fd,JSON.stringify({...row,at:row.at??now(),...base})+'\n');}catch(e){dropped++;fail(e);if(required)throw failure;}
  };
  try{
   const file=resolve(path);let old;try{old=lstatSync(file);}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -50,9 +55,9 @@ export function openEvidenceRecorder(path,{scope={},now=Date.now,onFailure=()=>{
   append({kind:'evidence-session',state:'started'});
  }catch(e){if(fd!==undefined)try{closeSync(fd)}catch{}throw fail(e);}
  return {
-  append,get failure(){return failure;},
+  append,get failure(){return failure;},get dropped(){return dropped;},
   wrapWorld(world){return {...world,read:async function(...args){
-   if(failure)throw failure;if(closed)throw fail(Error('Evidence recorder is closed'));
+   if(required){if(failure)throw failure;if(closed)throw fail(Error('Evidence recorder is closed'));}
    const command=args[0],requestedAt=now();let response;
    try{response=await Reflect.apply(world.read,world,args);}
    catch(error){append({kind:'world-read',origin:'agent',command,requestedAt,receivedAt:now(),error:evidenceError(error)});throw error;}
@@ -62,7 +67,7 @@ export function openEvidenceRecorder(path,{scope={},now=Date.now,onFailure=()=>{
    const hostId=randomUUID(),connect=host.connect;let actualModel=null;
    const identity=(threadId=host.threadId,turnId=null)=>({hostId,hostPid:Number.isSafeInteger(host.pid)?host.pid:null,threadId:metadataId(threadId),turnId:metadataId(turnId)});
    const record=row=>{try{append(row);}catch{}};
-   host.connect=async function(...args){const connected=await Reflect.apply(connect,this,args);actualModel=typeof connected?.model==='string'?connected.model:null;append({kind:'host-session',state:'connected',hostId,hostPid:host.pid??null,threadId:host.threadId??null,model:actualModel,resumed:typeof args[0]?.threadId==='string'});return connected;};
+   host.connect=async function(...args){const connected=await Reflect.apply(connect,this,args);actualModel=typeof connected?.model==='string'?connected.model:null;(required?append:record)({kind:'host-session',state:'connected',hostId,hostPid:host.pid??null,threadId:host.threadId??null,model:actualModel,resumed:typeof args[0]?.threadId==='string'});return connected;};
    // Only the existing begin/steer ACK is timed; never await completed, change
    // arguments, introduce a timeout, retry, interrupt or replace an error/result.
    for(const operation of ['begin','steer']){
@@ -94,10 +99,12 @@ export function openEvidenceRecorder(path,{scope={},now=Date.now,onFailure=()=>{
    host.on('event',event);host.on('notice',notice);host.on('unsupportedRequest',unsupported);detach.push(()=>{host.off('event',event);host.off('notice',notice);host.off('unsupportedRequest',unsupported);host.connect=connect;});return host;
   },
   close(details={}){
-   if(closed){if(failure)throw failure;return;}
-   try{if(!failure){append({...details,kind:'evidence-session',state:'closed'});syncFile(fd);}}catch(e){fail(e);}
+   const summary=()=>failure?{complete:false,code:failure.code,dropped}:{complete:true};
+   if(closed){if(failure&&required)throw failure;return summary();}
+   try{if(!failure){append({...details,kind:'evidence-session',state:'closed'});if(!failure)syncFile(fd);}}catch(e){fail(e);}
    finally{closed=true;for(const stop of detach)stop();try{closeSync(fd)}catch(e){fail(e);}}
-   if(failure)throw failure;
+   if(failure&&required)throw failure;
+   return summary();
   },
  };
 }
@@ -119,8 +126,9 @@ export async function claimStartupLease(control,{signal,maxWaitMs=65000,pollMs=2
  return null;
 }
 export async function main(argv=process.argv.slice(2),{signal,leaseWaitMs=65000,Host=CodexHost}={}){
- const {values}=parseArgs({args:argv,options:{folder:{type:'string'},state:{type:'string'},instruction:{type:'string'},model:{type:'string'},effort:{type:'string',default:'low'},seconds:{type:'string'},'session-name':{type:'string'},evidence:{type:'string'},help:{type:'boolean'}}});
- if(values.help){console.log('node tools/soul-runtime/run.mjs --folder <paired-folder> [--instruction <text-file>] [--model <advertised-model>] [--seconds <bounded-run>] [--evidence <local-jsonl>]');return;}
+ const {values}=parseArgs({args:argv,options:{folder:{type:'string'},state:{type:'string'},instruction:{type:'string'},model:{type:'string'},effort:{type:'string',default:'low'},seconds:{type:'string'},'session-name':{type:'string'},evidence:{type:'string'},'evidence-required':{type:'boolean'},help:{type:'boolean'}}});
+ if(values.help){console.log('node tools/soul-runtime/run.mjs --folder <paired-folder> [--instruction <text-file>] [--model <advertised-model>] [--seconds <bounded-run>] [--evidence <local-jsonl> [--evidence-required]]');return;}
+ if(values['evidence-required']&&!values.evidence)throw Error('--evidence-required needs --evidence <local-jsonl>');
  const folder=resolve(values.folder??process.cwd()),state=resolve(values.state??join(folder,'.soul-runtime'));
  const seconds=values.seconds===undefined?null:Number(values.seconds);if(seconds!==null&&(!Number.isFinite(seconds)||seconds<1||seconds>7*86400))throw Error('seconds must be1..604800');
  const stop=new AbortController(),quit=()=>stop.abort(),externalAbort=()=>stop.abort(signal?.reason);
@@ -137,7 +145,15 @@ export async function main(argv=process.argv.slice(2),{signal,leaseWaitMs=65000,
  const instruction=values.instruction?readFileSync(resolve(values.instruction),'utf8'):undefined;
  if(instruction&&Buffer.byteLength(JSON.stringify(instruction))>16000)throw Error('Initial instruction exceeds16000 JSON-encoded bytes');
  const scope={worldId:config.worldId,soulId:paired.soul};
- if(values.evidence){evidence=openEvidenceRecorder(values.evidence,{scope,onFailure:e=>{evidenceFailure=e;stop.abort(e);}});world=evidence.wrapWorld(world);}
+ if(values.evidence){
+  const required=!!values['evidence-required'];
+  // Default: a failed sink stops recording, not the Soul (#733 A4). --evidence-required aborts as before.
+  evidence=openEvidenceRecorder(values.evidence,{scope,required,onFailure:e=>{
+   if(required){evidenceFailure=e;stop.abort(e);return;}
+   console.error(JSON.stringify({state:'evidence-disabled',code:e.code,reason:'Local evidence recording failed; the run continues and this evidence file is incomplete'}));
+  }});
+  world=evidence.wrapWorld(world);
+ }
  journal=openJournal(state,scope);
  ownership=openJournal(join(folder,'.soul-runtime-owner'),scope);
  timer=seconds?setTimeout(quit,seconds*1000):null;
@@ -166,8 +182,10 @@ export async function main(argv=process.argv.slice(2),{signal,leaseWaitMs=65000,
   stop.abort();clearInterval(ownerRenewal);await Promise.allSettled([...ownedHosts].map(host=>host.close()));
   const proofs=[...ownedHosts].map(host=>host.closeProof??{hostPid:host.pid??null,threadId:host.threadId,groupClosed:false,groupVerification:'unverified'});
   if(owner)try{ownership.control.release(owner)}catch{}ownership?.close();clearTimeout(timer);process.removeListener('SIGINT',quit);process.removeListener('SIGTERM',quit);signal?.removeEventListener('abort',externalAbort);journal?.close();
-  console.log(JSON.stringify({state:'controller-closed',controllerPid:process.pid,ownedHosts:proofs,ownedProcessesExited:proofs.every(p=>p.groupClosed===true)}));
-  evidence?.close({failed:!!runFailure,ownedProcessesExited:proofs.every(p=>p.groupClosed===true)});
+  let evidenceSummary,evidenceCloseError;
+  try{evidenceSummary=evidence?.close({failed:!!runFailure,ownedProcessesExited:proofs.every(p=>p.groupClosed===true)});}catch(e){evidenceCloseError=e;evidenceSummary={complete:false,code:e.code??'EVIDENCE_IO'};}
+  console.log(JSON.stringify({state:'controller-closed',controllerPid:process.pid,ownedHosts:proofs,ownedProcessesExited:proofs.every(p=>p.groupClosed===true),...(evidenceSummary?{evidence:evidenceSummary}:{})}));
+  if(evidenceCloseError)throw evidenceCloseError;
  }
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)main().catch(e=>{console.error(JSON.stringify({state:'blocked',code:e.code??'runtime.failure',reason:e.message}));process.exitCode=1;});
