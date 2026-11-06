@@ -154,7 +154,7 @@ test('refused: the engine\'s own checks, the other hand full, no room to stand',
  assert.equal(named('bench').state.broken,true);
 });
 
-test('placement turns: repair completes at 11 turns and the hand reaches the work; a fixture dropped on the worker ends the repair with the hammer in hand',{timeout:600000},async t=>{
+test('placement turns: repair completes at 11 turns and the hand reaches the work; a fixture dropped on the worker: she steps aside, no fault',{timeout:600000},async t=>{
  const w=await world(t),{souls:{Ana:ana},tick,act,finish,place,named,relocate,body,until,god,f}=w;await tick(10);
  const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]],bad=[];
  let k=0;
@@ -177,8 +177,9 @@ test('placement turns: repair completes at 11 turns and the hand reaches the wor
  const x=ax-9,z=az-8;await relocate(ana,x-2,z-2);place([{op:'place',def:BENCH,name:'last',p:[x,z],state:{broken:true}}]);await tick(25);
  const b=await act(ana,`object:${named('last').id}:repair`);assert.equal(b.accepted,true,JSON.stringify(b).slice(0,300));assert.ok(await until(()=>working(w,ana),800)>=0,JSON.stringify(w.receipt(ana,b)).slice(0,300));await tick(20);
  const at=body(ana).pose.p;place([{op:'place',def:'core/table@1',name:'dropped',p:[at[0],at[2]]}]);await tick(60);
- console.log(JSON.stringify({dropped:{phase:w.receipt(ana,b)?.phase,code:w.receipt(ana,b)?.code,paused:f.host.engine.paused??null}}));
- assert.deepEqual(f.host.engine.rt.violations,[],'no violation after the drop');assert.equal(w.W().entities[named('h').id].support?.by,ana.entityId,'the hammer is still in hand');
+ const dropped=w.receipt(ana,b);assert.equal(dropped?.phase,'failed',JSON.stringify(dropped).slice(0,300));assert.equal(dropped.code,'god.walkout','she steps aside, no recovered fault: '+JSON.stringify(dropped).slice(0,300));
+ assert.equal(f.host.paused,false,'the world runs on');assert.equal(f.host.engineFault??null,null,'no engine fault');assert.deepEqual(f.host.engine.rt.violations,[],'no violation after the drop');
+ assert.equal(w.named('last').state.broken,true,'still broken');assert.notEqual(body(ana).human.activity,'reach','not stuck');
 });
 
 test('second case, data only: a flat tyre on a cart, pumped up with a pump, through the same action',{timeout:300000},async t=>{
