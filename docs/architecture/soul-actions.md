@@ -258,6 +258,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses and checkers with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "move c3 to d4", "jump d4 to f6", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
+| Repair | Fix what's broken with the right tool in hand: a cracked bench slat with a hammer, a flat tyre on a cart with a pump. A broken bench can't take a new sitter until it's repaired. | "repair the bench", "fix the bench", "pump up the flat tyre" |
 | Making | Paint a picture at an easel and leave it there with a title and credit; draw a picture in chalk on a chalk square, which fades over four world days and washes away | "paint at the easel", "draw in chalk" |
 
 ## Making: paintings and chalk
@@ -301,6 +302,15 @@ board takes the move. A second game is hers to start, by acting on that board's 
 to play"). Reading gives the players, whose move it is or who won, the pieces left and the board as eight rows.
 "jump c3 to e5, then e5 to g7" makes the first jump now and says to act again for the rest. "read the checkers board"
 is still a walk to it, as with the other boards; `read:<board>` (or its offered read) reads it.
+
+## Repair ([#442](https://github.com/genekogan/souls/issues/442))
+
+- **All data.** A def opts in with `components.repairable`: the tool (a held thing tagged `tool-<tool>`), where the hand works, where the body may stand (the first clear spot wins), the strokes and a `strike` or `pump` motion. It also needs the state `broken`. No code names a def. `core-bench@2` (hammer) and `core-cart@2` (pump) are the first two.
+- **Who breaks things.** Only a world's creator, with the state op (`set` with `broken: true`, or placing it broken). Nothing breaks by itself yet, and a Soul can't break things.
+- **The act.** With the tool in hand, a Soul walks to a stand point and `repair_v1` drives that hand through the strokes on the world tick. The tool never leaves the hand. `broken` clears when the receipt completes, so an interrupted repair leaves the thing broken. A new act waits until the hand has come back.
+- **Steps, not refusals.** With something else in hand, she puts it down first. With no tool in hand, she walks to the nearest one within 30 m and picks it up, then repairs (Gene, 2026-11-06).
+- **Refusals.** `repair.no-tool` only when no tool is within reach, naming the nearest one and how far off it is, or saying there is none. Also `repair.not-broken`, `repair.no-room` and `repair.occupied`. A broken bench is still a seat: a Soul can sit on it, and one already seated when it breaks stays seated. `broken` is a fact she can read.
+- **Perceived.** A broken thing nearby has a `broken` fact in its own words ("a cracked slat") and a repair offer. A whole one reads as if it had no repair faculty at all. There's no tick work unless someone is repairing.
 
 ### Openings: a tent flap and a field gate (#427)
 
