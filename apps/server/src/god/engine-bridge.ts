@@ -1845,7 +1845,7 @@ export class EngineBridge {
         const kiteOf = inHands.find((x) => { const m = this.model.entities.get(x.id); return m && this.model.resolvedDef(m.def)?.tags.includes('kite'); });
         const km = kiteOf && this.model.entities.get(kiteOf.id), kd = km && this.model.resolvedDef(km.def);
         if (kd) {
-          const second = inHands.length > 1, id = `kite:${kiteOf.id}`, label = `Fly ${name(kiteOf.id)}`, palette = kd.palette as Record<string, string> | undefined, color = String(km!.params?.sail ?? palette?.sail ?? '').slice(0, 16);
+          const second = inHands.length > 1, id = `kite:${kiteOf.id}`, label = 'Fly the kite', palette = kd.palette as Record<string, string> | undefined, color = String(km!.params?.sail ?? palette?.sail ?? '').slice(0, 16);
           caps.push({ id, verb: 'fly-kite', label, target: { id: kiteOf.id, kind: 'item' }, available: !second, ...(second ? { blocked: { code: 'kite.hand-full', reason: 'Flying a kite needs the other hand free; put the other thing down first.' } } : {}), params: { seconds: { type: 'integer', min: KITE.MIN_SECONDS, max: KITE.MAX_SECONDS, default: 20 } } });
           if (!second) plans.set(id, { label, steps: [...stand, { verb: 'mars:kite_v1', params: { item: kiteOf.id, seconds: 20, ...(color ? { color } : {}) } }], seconds: true });
         }

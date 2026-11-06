@@ -28,7 +28,7 @@ export class WorldGames{
   // #441 (W108): a kite in the air, its string from the hand, the spool in the hand
   for(const k of recordedKites(entities,tick).kites){
    const sail=this.kiteMesh(k.key,this.kiteSail,this.juggleMaterial(k.color??'d9483b'),seen),line=this.kiteMesh(k.key+':string',this.kiteString,this.stringMaterial,seen),spool=this.kiteMesh(k.key+':spool',this.ball,this.spoolMaterial,seen);
-   sail.position.set(...k.p);sail.rotation.set(0,-k.yaw+Math.PI/2,k.roll);
+   sail.position.set(...k.p);sail.rotation.set(0,-k.yaw+Math.PI/2+.7,k.roll);sail.scale.setScalar(1.4);
    const dx=k.p[0]-k.hand[0],dy=k.p[1]-k.hand[1],dz=k.p[2]-k.hand[2],len=Math.hypot(dx,dy,dz)||1e-3;
    line.position.set(k.hand[0]+dx/2,k.hand[1]+dy/2,k.hand[2]+dz/2);line.scale.set(1,len,1);line.quaternion.setFromUnitVectors(UP,new THREE.Vector3(dx/len,dy/len,dz/len));
    spool.position.set(...k.hand);spool.scale.setScalar(.035);}
