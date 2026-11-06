@@ -876,8 +876,10 @@ export class EngineBridge {
     }
     // PC12 (#691): a part with connectors keeps its tilt about its own z (an upright stood on end) and its joints: the
     // engine's own reciprocal connections; a part held up by bearing connectors is supported by what they join
+    // Behind SIM_SHARED_CARRY (the shared-carry ledger flag): off, the world-edit is exactly what it was before PC12 (no roll,
+    // connections or connected support); the entity world still keeps the joints and refuses carrying a joined part.
     const cs = def.components.connectors;
-    if (cs && e.in.parent === 'world') {
+    if (cs && e.in.parent === 'world' && this.edge?.sharedCarry) {
       const roll = Array.isArray(e.r) && e.r[2] ? r3(e.r[2]) : 0;
       const joins = Object.entries(e.joins ?? {}).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
       const bears = new Set(cs.filter((c) => c.bears).map((c) => c.id)), on = [...new Set(joins.filter(([c]) => bears.has(c)).map(([, j]) => j.to))];
@@ -1959,7 +1961,8 @@ export class EngineBridge {
         if (asset.category === 'item' && !(loose && !loose.small) && x.support?.kind !== 'in-hand' && !held && (!kept || (kept.open && d <= STORE_NEAR))) {
           const by = kept && d <= FACTS_NEAR ? this.leftBy(kept.id, x.id) : null;
           const id = `pick-up:${x.id}`, label = kept ? `Take ${name(x.id)}${by ? ` (left by ${by})` : ''} out of ${kept.label} (${d} m)` : `Pick up ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
-          const block = kept ? this.storageRefusal(kept, soul) : null;
+          // PC12 (#691): a small part joined into an assembly is not picked up off its joints either
+          const block = (kept ? this.storageRefusal(kept, soul) : null) ?? this.joinedRefusal(x.id);
           caps.push({ id, verb: 'pick-up', label, target: { id: x.id, kind: 'item' }, available: !block, ...(block ? { blocked: block } : {}) });
           const precise=(this.physics?.assets[x.def] as {capabilities?:{recordedItemPoseV1?:boolean}})?.capabilities?.recordedItemPoseV1&&levelOf(x)===(me.human.level??0);
           // entry 43: an opted-in pick-up lets an idle gesture go before the hand reaches (entry 41's M04 finding)

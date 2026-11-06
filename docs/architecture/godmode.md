@@ -104,6 +104,9 @@ A def may declare typed structural connectors (`components.connectors`: `id`, `k
   - A terrain edit under a joined or bearing part is not re-checked.
   - An upright must stand on the terrain itself, not on a floor or a deck.
   - A loose part that a Soul is carrying is not refused `connect`.
+  - The engine mirrors the joints only with `SIM_SHARED_CARRY=1`, and only for parts it adapts as items (`carryable`
+    defs). A joined fixture-like part (no `carryable`) is a plain fixture on the ground to the engine, with no
+    connections. The entity world holds every joint either way.
 
 The core revisions `core-rack-upright@2` (88 beam seats, `front|back-l|r-<n>` every 6 in from 12 in) and
 `core-rack-beam@3` (`end-l`, `end-r`, bearing) build a bay. Stand the upright with `r = [yaw, 0, π/2]` and

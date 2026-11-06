@@ -43,14 +43,17 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Joined into an assembly (PC12, [#691](https://github.com/genekogan/souls/issues/691)).** `core-rack-upright@2` and
   `core-rack-beam@3` are the same loose upright and beam, plus typed structural connectors. The world's god joins them
   into a bay with `connect` (see [god mode](godmode.md#joints)).
-  - **One graph.** The entity world holds each joint as two halves (`joins`), one on each part. The engine mirrors it as
-    its own `connections`: a joined part is `installed`, and a beam is supported (`connected`) by the uprights its
-    ends join. An upright stood on end (`r = [yaw, 0, π/2]`) reaches the engine with that roll, so its box stands. Its
+  - **One graph.** The entity world holds each joint as two halves (`joins`), one on each part. With
+    `SIM_SHARED_CARRY=1` the engine mirrors it for parts adapted as items (anything `carryable`, so both rack parts)
+    as its own `connections`: a joined part is `installed`, and a beam is supported (`connected`) by the uprights its
+    ends join. A joined part that isn't carryable (a god's fixed rail) reaches the engine as a fixture on the ground,
+    with no connections. With the flag off, `world-edit/1` is exactly as before PC12: no `roll`, `connections` or
+    `connected` support. An upright stood on end (`r = [yaw, 0, π/2]`) reaches the engine with that roll, so its box stands. Its
     connectors are the adapted asset's sockets. The beams stay at the world root, because their support is their
     joints, not a parent. The client draws each part once, from the entity world.
-  - **Not carried while joined.** `carry:<id>` of a joined part is offered unavailable, `carry.joined`, naming what it
+  - **Not carried while joined.** `carry:<id>`, and `pick-up:<id>` of a small part, of a joined part is offered unavailable, `carry.joined`, naming what it
     is joined to and at which connectors, and acting it is refused before any motion. The engine refuses it on its
-    own too (`carry.item-unavailable`: an installed part is not a load lying on the ground). A free beam of the same
+    own too when it mirrors the joints (`carry.item-unavailable`: an installed part is not a load lying on the ground). The entity world's refusal holds with the flag off. A free beam of the same
     revision is carried as before.
   - **Restart.** Nothing new is snapshotted: the joints ride the entity rows and the logged `world-edit` events, so a
     clean or crash restart brings back the same graph in both.

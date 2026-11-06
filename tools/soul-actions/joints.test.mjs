@@ -36,16 +36,16 @@ function bay(x0, z0, name = 'bay') {
   return ops;
 }
 function mount(w, host, db) {
-  const edge = new EdgeLedger(host, db, undefined, {ambient: false}), app = new Hono();
+  const edge = new EdgeLedger(host, db, undefined, {ambient: false, sharedCarry: w.sharedCarry ?? true}), app = new Hono();
   const comms = mountEdgeRoutes(app, {host, db, souls: w.f.souls, ledger: edge, soul: () => w.soul});
   const god = new GodMode(db, {worldId: host.worldId, ownerId: 'dev:admin', tick: () => host.engine.world.tick, emit() {}});
   installEngineBridge({host, god, edge, log() {}, worldLore: false, worldClock: false});
   Object.assign(w, {host, db, edge, comms, god});
 }
-async function world(t) {
+async function world(t, sharedCarry = true) {
   const dir = mkdtempSync(join(tmpdir(), 'pc12-joints-')), path = join(dir, 'sim.db'), opts = {durableClockV1: true};
   const f = fixture(path, factory, opts); f.brain.quiesce();
-  const w = {f, path, opts, hosts: [f.host]};
+  const w = {f, path, opts, hosts: [f.host], sharedCarry};
   t.after(() => { try { w.comms?.close(); } catch {} for (const h of w.hosts) try { h.stop(); } catch {} try { if (w.db.db.isOpen) w.db.close(); } catch {} rmSync(dir, {recursive: true, force: true}); });
   mount(w, f.host, f.db);
   w.tick = async (n = 5) => { for (let i = 0; i < n; i++) { w.host.tickOnce(); await setImmediate(); w.host.drainInputs(); } };
@@ -150,4 +150,47 @@ for (const clean of [true, false]) test(`PC12 A2c: a ${clean ? 'clean' : 'crash'
   const u = w.idOf('bay-upright-a');
   const removed = w.god.act({ops: [{op: 'remove', id: u}]});
   assert.equal(removed.accepted, false); assert.equal(removed.failures[0].code, 'support.none');
+});
+
+const kitBox = (b, shapes) => ({make: {kind: 'gen', gen: 'kit/2', args: {shapes}}, size: {box: b}});
+/** A god's own kit: a small carryable post (one hole) and a rail that bears on two of them. */
+const postKit = (x, z) => [
+  {op: 'define', def: {schema: 'def/1', name: 'lift-post', version: 1, tags: ['post'], ...kitBox([0.1, 1.2, 0.1], [{kind: 'box', at: [0, 0.6, 0], size: [0.1, 1.2, 0.1]}]),
+    components: {carryable: {mass: 1, grips: 1}, connectors: [{id: 'hole', kind: 'peg-hole', at: [0.05, 1.0, 0], mates: ['peg']}]}}},
+  {op: 'define', def: {schema: 'def/1', name: 'lift-rail', version: 1, tags: ['shelf'], ...kitBox([1.0, 0.05, 0.3], [{kind: 'box', at: [0, 0.025, 0], size: [1.0, 0.05, 0.3]}]),
+    components: {connectors: [{id: 'west', kind: 'peg', at: [-0.5, 0.025, 0], mates: ['peg-hole'], bears: true}, {id: 'east', kind: 'peg', at: [0.5, 0.025, 0], mates: ['peg-hole'], bears: true}]}}},
+  {op: 'place', tmp: '$w', name: 'post-w', def: 'lift-post@1', p: [x - 0.55, z], r: 0}, {op: 'place', tmp: '$e', name: 'post-e', def: 'lift-post@1', p: [x + 0.55, z], r: Math.PI},
+  {op: 'place', tmp: '$s', name: 'rail', def: 'lift-rail@1', p: [x, 1.0 - 0.025, z], r: 0, anchor: 'center'},
+  {op: 'connect', a: {id: '$s', connector: 'west'}, b: {id: '$w', connector: 'hole'}}, {op: 'connect', a: {id: '$s', connector: 'east'}, b: {id: '$e', connector: 'hole'}},
+];
+
+test('PC12 review: a small joined part is not picked up off its joints; once disconnected it is', {timeout: 180000}, async (t) => {
+  const w = await world(t);
+  ok(w.god.act({ops: postKit(w.ax + 1.2, w.az)})); await w.tick(30);
+  const post = w.idOf('post-w'), cap = () => w.edge.capabilities(w.soul).find((c) => c.id === `pick-up:${post}`);
+  assert.equal(cap()?.available, false, JSON.stringify(cap())); assert.equal(cap().blocked.code, 'carry.joined');
+  assert.match(cap().blocked.reason, /post w is joined to rail \(hole to west\)/);
+  const before = structuredClone(w.host.engine.world.entities[post].pose);
+  const refused = await accept(w.host, w.edge.act(w.soul, {capability: `pick-up:${post}`}));
+  assert.equal(refused.accepted, false, JSON.stringify(refused).slice(0, 300)); assert.equal(refused.code, 'carry.joined');
+  await w.tick(20);
+  assert.deepEqual(w.host.engine.world.entities[post].pose, before, 'nothing moved'); assert.notEqual(w.host.engine.world.entities[post].support?.kind, 'in-hand');
+  assert.equal(w.god.model.entities.get(post).joins.hole.to, w.idOf('rail'));
+  // disconnected (and the rail lifted off with it, so nothing hangs): offered and picked up as before
+  ok(w.god.act({ops: [{op: 'disconnect', a: {id: post, connector: 'hole'}}, {op: 'remove', id: w.idOf('rail')}]})); await w.tick(30);
+  assert.equal(cap()?.available, true, JSON.stringify(cap()));
+});
+
+test('PC12 review: with SIM_SHARED_CARRY off the world-edit carries no joint fields; the entity world still refuses a joined part', {timeout: 180000}, async (t) => {
+  const w = await world(t, false);
+  const n0 = worldEdits(w).length;
+  ok(w.god.act({ops: [...bay(w.ax - 2, w.az - 4), ...postKit(w.ax + 1.2, w.az)]})); await w.tick(30);
+  const edits = worldEdits(w).slice(n0);
+  assert.ok(edits.length > 0 && edits.every((p) => !/"connections"|"roll"|"connected"/.test(p)), 'no joint fields in world-edit/1 with the flag off');
+  const ents = w.host.engine.world.entities, beam = w.idOf('bay-beam-4l');
+  assert.equal(ents[beam].connections, undefined);
+  assert.ok(Object.keys(w.god.model.entities.get(beam).joins).length === 2, 'the entity world keeps the joints');
+  const caps = w.edge.capabilities(w.soul);
+  assert.equal(caps.find((c) => c.id === `carry:${beam}`)?.blocked?.code, 'carry.joined');
+  assert.equal(caps.find((c) => c.id === `pick-up:${w.idOf('post-w')}`)?.blocked?.code, 'carry.joined');
 });
