@@ -1832,6 +1832,8 @@ export class Together {
     // offer, the storage words (vocabulary storeWords) resolve it, not the item-kind words below
     const from = pick && /^.+?\s+(?:out\s+of|out\s+from|from|off\s+of|off)\s+(.+)$/.exec(pick[1]), boxWords = from ? from[1].split(/\s+/).filter(w => !['the', 'a', 'an', 'my', 'your'].includes(w)) : [];
     if (from && boxWords.length && caps.some(c => c.verb === 'pick-up' && / out of /.test(c.label) && boxWords.every(w => c.label.toLowerCase().split(' out of ').slice(1).join(' ').split(/[^a-z0-9]+/).includes(w)))) return null;
+    // #435 (W068): the same for a hiding place named by those words: what is in it is found by its search
+    if (from && boxWords.length && caps.some(c => c.verb === 'search' && boxWords.every(w => c.label.toLowerCase().split(/[^a-z0-9]+/).includes(w)))) return null;
     if (pick && !/^(?:a\s+)?(?:walk|stroll|nap|seat|rest|break|swim|ride|look|dip|turn|picture|down\s|on\s)/.test(pick[1]) && !/\b(?:read|reading|write|writing)\b/.test(pick[1])) {
       const what = pick[1], kind = ITEM_WORDS.find(([, re]) => re.test(' ' + what + ' '))?.[0];
       if (kind) {

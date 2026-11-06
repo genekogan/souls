@@ -9,7 +9,7 @@ import { registerMesh } from '../registry.ts';
 import { bindMotionModel } from '../motion.ts';
 import { apiPath } from '../../world-path.ts';
 import { artOf, brokenLinkLines, coverWhenReady, imageBroken, imageFailed, imageLoaded, videoTexture, whenImageFails } from '../art-media.ts';
-import { frameMediaKind, gameSquare, gameStatus, pinSlot, signupSlot, signupPageStart, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@sim/world-compiler';
+import { CHECKERS_CELL, checkersBoard, checkersSquare, frameMediaKind, gameSquare, gameStatus, pinSlot, signupSlot, signupPageStart, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@sim/world-compiler';
 import { posterMesh, posterAgeDays } from '../../../../../mars/viewer/app/engine-view/poster-sheet.ts';
 
 type Face = { at: [number, number, number]; w: number; h: number; yaw?: number; pitch?: number; bg?: string; ink?: string; font?: string; line?: number; media?: boolean; slot?: number; fadeDays?: number };
@@ -150,6 +150,33 @@ export function tictactoeTexture(grid: string, f: Face): THREE.Texture {
   if (st.line) { const [a, , b] = st.line, [ax, ay] = gameSquare(a), [bx, by] = gameSquare(b), ex = (bx - ax) * 0.18, ey = (by - ay) * 0.18; g.strokeStyle = 'rgba(232,120,96,0.95)'; g.lineWidth = 9; g.beginPath(); g.moveTo(X(ax - ex), Y(ay - ey)); g.lineTo(X(bx + ex), Y(by + ey)); g.stroke(); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; texCache.set(key, t); return t;
 }
+/** #439 W093: checkers in chalk: the 8x8 grid with its dark squares shaded, X's men as filled discs and O's as rings at
+ *  their squares (checkersSquare, where the hand went), a king with a crown on it, and the files and ranks along the edge. */
+export function checkersTexture(text: string, f: Face): THREE.Texture {
+  const key = JSON.stringify(['checkers', text, f.w, f.h, f.bg]); const hit = texCache.get(key); if (hit) return hit;
+  const c = document.createElement('canvas'); c.width = 1024; c.height = Math.round(1024 * f.h / f.w); const g = c.getContext('2d')!, cw = c.width, ch = c.height, px = cw / f.w;
+  let seed = 11; const rnd = () => ((seed = Math.imul(seed ^ (seed >>> 13), 1103515245) + 12345 | 0) >>> 0) / 4294967296;
+  g.fillStyle = f.bg ?? '#2b322e'; g.fillRect(0, 0, cw, ch);
+  for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(240,240,230,${0.03 + rnd() * 0.06})`; g.fillRect(rnd() * cw, rnd() * ch, 1.5, 1.5); }
+  const X = (fx: number) => (fx / f.w + 0.5) * cw, Y = (fy: number) => (0.5 - fy / f.h) * ch, cell = CHECKERS_CELL * px, half = 4 * CHECKERS_CELL;
+  // the dark squares, shaded in chalk strokes, then the grid
+  for (let i = 0; i < 32; i++) { const [sx, sy] = checkersSquare(i), x = X(sx), y = Y(sy); g.fillStyle = 'rgba(236,232,214,0.16)'; g.fillRect(x - cell / 2, y - cell / 2, cell, cell);
+    g.strokeStyle = 'rgba(236,232,214,0.13)'; g.lineWidth = 2; for (let k = -2; k <= 2; k++) { g.beginPath(); g.moveTo(x - cell * 0.45, y + k * cell * 0.18 + cell * 0.1); g.lineTo(x + cell * 0.45, y + k * cell * 0.18 - cell * 0.1); g.stroke(); } }
+  g.strokeStyle = 'rgba(244,242,232,0.85)'; g.lineCap = 'round'; g.lineWidth = 4;
+  for (let k = 0; k <= 8; k++) { const v = -half + k * CHECKERS_CELL; g.beginPath(); g.moveTo(X(v) + (rnd() - 0.5) * 3, Y(half)); g.lineTo(X(v) + (rnd() - 0.5) * 3, Y(-half)); g.stroke(); g.beginPath(); g.moveTo(X(-half), Y(v) + (rnd() - 0.5) * 3); g.lineTo(X(half), Y(v) + (rnd() - 0.5) * 3); g.stroke(); }
+  g.fillStyle = 'rgba(244,242,232,0.8)'; g.font = `${Math.round(cell * 0.32)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let k = 0; k < 8; k++) { g.fillText(String.fromCharCode(97 + k), X(-half + (k + 0.5) * CHECKERS_CELL), Y(-half) + cell * 0.32); g.fillText(String(k + 1), X(-half) - cell * 0.3, Y(-half + (k + 0.5) * CHECKERS_CELL)); }
+  const b = checkersBoard(text);
+  for (let i = 0; i < 32; i++) {
+    const p = b.cells[i]!; if (p === '.') continue;
+    const [sx, sy] = checkersSquare(i), x = X(sx), y = Y(sy), r = cell * 0.34, j = () => (rnd() - 0.5) * 3, xs = p === 'x' || p === 'X';
+    g.lineWidth = 6; g.strokeStyle = xs ? '#f6efe0' : '#f0c870'; g.fillStyle = 'rgba(246,239,224,0.82)';
+    g.beginPath(); g.ellipse(x + j(), y + j(), r * 1.03, r * 0.97, rnd(), 0, Math.PI * 2); if (xs) g.fill(); g.stroke();
+    if (p === 'X' || p === 'O') { const k = r * 0.55; g.lineWidth = 5; g.strokeStyle = xs ? '#2b322e' : '#f0c870';
+      g.beginPath(); g.moveTo(x - k, y + k * 0.5); g.lineTo(x - k, y - k * 0.5); g.lineTo(x - k * 0.5, y); g.lineTo(x, y - k * 0.7); g.lineTo(x + k * 0.5, y); g.lineTo(x + k, y - k * 0.5); g.lineTo(x + k, y + k * 0.5); g.closePath(); g.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; texCache.set(key, t); return t;
+}
 /** Soul Actions entry 38: the poster wall's own face: painted vertical boards with gaps, the torn scraps and staple marks of
  *  older posters, a little grime toward the foot. The posters themselves are separate meshes (poster-sheet.ts). */
 export function posterWallTexture(f: Face): THREE.Texture {
@@ -263,6 +290,7 @@ registerMesh({
       else if (f.media && text.length && typeof st.text === 'string' && st.text.trim()) map = textTexture(text.slice(0, 6), f);
       else if (f.media) map = paintingTexture(ctx.def.name.length + (ctx.entity.seed ?? 0), f.bg ?? '#7fa7c9');
       else if (ctx.def.tags.includes('tictactoe')) map = tictactoeTexture(typeof st.text === 'string' ? st.text : '', f);
+      else if (ctx.def.tags.includes('checkers')) map = checkersTexture(typeof st.text === 'string' ? st.text : '', f);
       else if (ctx.def.tags.includes('posters')) map = posterWallTexture(f);
       else if (ctx.def.tags.includes('wanted')) map = wantedTexture(wantedList(st), f);
       else if (ctx.def.tags.includes('pinboard')) map = pinboardTexture(typeof st.text === 'string' ? st.text.split('\n') : [], f);

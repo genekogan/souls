@@ -111,22 +111,45 @@ test('host error notifications retain only verified retry/category/HTTP metadata
  notify({responseTooManyFailedAttempts:{httpStatusCode:secret}});notify({activeTurnNotSteerable:{turnKind:'review',message:secret}},false);notify({activeTurnNotSteerable:{turnKind:'compact'}});notify({activeTurnNotSteerable:{turnKind:secret}});notify(secret);notify({[secret]:{httpStatusCode:500}});notify({httpConnectionFailed:{httpStatusCode:500},[secret]:1},secret);notify(null);recorder.close();
  const raw=readFileSync(file,'utf8'),rows=raw.trim().split('\n').map(JSON.parse).filter(r=>r.kind==='host-error');assert.equal(rows.length,27);assert.ok(rows.every(r=>r.method==='error'&&r.threadId==='thread-1'&&r.turnId==='turn-1'&&r.at===123));assert.deepEqual(rows.slice(15,19).map(r=>r.error.httpStatusCode),[429,429,429,429]);assert.equal(rows[19].error.httpStatusCode,null);assert.deepEqual(rows[20].error,{category:'activeTurnNotSteerable',turnKind:'review'});assert.equal(rows[20].willRetry,false);assert.equal(rows[21].error.turnKind,'compact');assert.equal(rows[22].error.turnKind,null);assert.ok(rows.slice(23).every(r=>r.error.category==='unknown'));assert.equal(rows[25].willRetry,null);assert.ok(!raw.includes(secret));assert.ok(!raw.includes('additionalDetails'));assert.ok(!raw.includes('message'));
 });
-test('RPC evidence write failure is sticky but preserves an already acknowledged result and original rejection',async t=>{
+test('required evidence: RPC write failure is sticky but preserves an already acknowledged result and original rejection',async t=>{
  const directory=mkdtempSync(join(tmpdir(),'sim-evidence-rpc-fail-')),file=join(directory,'evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));let failures=0;
- const recorder=openEvidenceRecorder(file,{onFailure:()=>failures++,writeRecord:(fd,data)=>{if(data.includes('host-rpc'))throw Error('disk failure');writeFileSync(fd,data);}}),host=new EventEmitter(),result={turnId:'turn-1',completed:new Promise(()=>{})},error=Error('original refusal');host.connect=async()=>({});host.begin=async()=>result;host.steer=async()=>{throw error;};recorder.bindHost(host);
+ const recorder=openEvidenceRecorder(file,{required:true,onFailure:()=>failures++,writeRecord:(fd,data)=>{if(data.includes('host-rpc'))throw Error('disk failure');writeFileSync(fd,data);}}),host=new EventEmitter(),result={turnId:'turn-1',completed:new Promise(()=>{})},error=Error('original refusal');host.connect=async()=>({});host.begin=async()=>result;host.steer=async()=>{throw error;};recorder.bindHost(host);
  assert.equal(await host.begin('private'),result);await assert.rejects(host.steer('private','turn-1'),actual=>actual===error);assert.equal(failures,1);assert.equal(recorder.failure.code,'EVIDENCE_IO');assert.throws(()=>recorder.close(),{code:'EVIDENCE_IO'});
 });
-test('evidence refuses linked/nonregular targets and reports write/sync failures explicitly',async t=>{
+test('evidence refuses linked/nonregular targets; required evidence reports write/sync failures by throwing',async t=>{
  const directory=mkdtempSync(join(tmpdir(),'sim-evidence-fail-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));const target=join(directory,'target'),link=join(directory,'link'),hard=join(directory,'hard');writeFileSync(target,'UNTOUCHED');symlinkSync(target,link);linkSync(target,hard);
  for(const path of [link,hard,directory])assert.throws(()=>openEvidenceRecorder(path),{code:'EVIDENCE_IO'});assert.equal(readFileSync(target,'utf8'),'UNTOUCHED');
- let failWrites=false,failures=0,reads=0;const file=join(directory,'write-failure.jsonl'),recorder=openEvidenceRecorder(file,{onFailure:()=>failures++,writeRecord:(fd,data)=>{if(failWrites)throw Object.assign(Error('disk full'),{code:'ENOSPC'});writeFileSync(fd,data);}}),wrapped=recorder.wrapWorld({read:async()=>{reads++;return {native:true}}});failWrites=true;
+ let failWrites=false,failures=0,reads=0;const file=join(directory,'write-failure.jsonl'),recorder=openEvidenceRecorder(file,{required:true,onFailure:()=>failures++,writeRecord:(fd,data)=>{if(failWrites)throw Object.assign(Error('disk full'),{code:'ENOSPC'});writeFileSync(fd,data);}}),wrapped=recorder.wrapWorld({read:async()=>{reads++;return {native:true}}});failWrites=true;
  await assert.rejects(wrapped.read('observe',{}),{code:'EVIDENCE_IO'});await assert.rejects(wrapped.read('observe',{}),{code:'EVIDENCE_IO'});assert.equal(reads,1);assert.equal(failures,1);assert.throws(()=>recorder.close(),{code:'EVIDENCE_IO'});assert.ok(!readFileSync(file,'utf8').includes('"state":"closed"'));
- const hostFile=join(directory,'host-failure.jsonl');let hostFailure;const hostRecorder=openEvidenceRecorder(hostFile,{onFailure:e=>{hostFailure=e;},writeRecord:(fd,data)=>{if(data.includes('host-event'))throw Error('write failed');writeFileSync(fd,data);}}),host=new EventEmitter();host.connect=async()=>({model:'actual'});hostRecorder.bindHost(host);host.emit('event',{method:'turn/started',params:{turn:{id:'turn-1'}}});assert.equal(hostFailure.code,'EVIDENCE_IO');assert.throws(()=>hostRecorder.close(),{code:'EVIDENCE_IO'});
- const syncRecorder=openEvidenceRecorder(join(directory,'sync-failure.jsonl'),{syncFile:()=>{throw Error('flush failed')}});assert.throws(()=>syncRecorder.close(),{code:'EVIDENCE_IO'});
+ const hostFile=join(directory,'host-failure.jsonl');let hostFailure;const hostRecorder=openEvidenceRecorder(hostFile,{required:true,onFailure:e=>{hostFailure=e;},writeRecord:(fd,data)=>{if(data.includes('host-event'))throw Error('write failed');writeFileSync(fd,data);}}),host=new EventEmitter();host.connect=async()=>({model:'actual'});hostRecorder.bindHost(host);host.emit('event',{method:'turn/started',params:{turn:{id:'turn-1'}}});assert.equal(hostFailure.code,'EVIDENCE_IO');assert.throws(()=>hostRecorder.close(),{code:'EVIDENCE_IO'});
+ const syncRecorder=openEvidenceRecorder(join(directory,'sync-failure.jsonl'),{required:true,syncFile:()=>{throw Error('flush failed')}});assert.throws(()=>syncRecorder.close(),{code:'EVIDENCE_IO'});
 });
 test('--evidence appends scoped lifecycle records across failed startups without stdout payloads or extra world calls',async t=>{
  const folder=mkdtempSync(join(tmpdir(),'sim-run-evidence-')),file=join(folder,'agent-evidence.jsonl');writeFileSync(join(folder,'.eden-agent.json'),JSON.stringify({world:'http://127.0.0.1:1/w/test',soul:'test-soul',token:'CREDENTIAL_CANARY'}),{mode:0o600});
  const lock=openJournal(join(folder,'.soul-runtime-owner'),{worldId:'test-world',soulId:'test-soul'}),owner=lock.control.claim();let calls=0;const fetch=globalThis.fetch,log=console.log,stdout=[];globalThis.fetch=async url=>{calls++;assert.ok(url.endsWith('/v1/config'));return Response.json({worldId:'test-world',privateConfig:'CONFIG_CANARY'});};console.log=text=>stdout.push(text);t.after(()=>{globalThis.fetch=fetch;console.log=log;lock.control.release(owner);lock.close();rmSync(folder,{recursive:true,force:true});});
  for(let attempt=0;attempt<2;attempt++)await assert.rejects(main(['--folder',folder,'--evidence',file],{leaseWaitMs:0}),{code:'CONTROLLER_BUSY_TIMEOUT'});
  assert.equal(calls,2);const raw=readFileSync(file,'utf8'),rows=raw.trim().split('\n').map(JSON.parse);assert.deepEqual(rows.map(r=>r.state),['started','closed','started','closed']);assert.ok(rows.every(r=>r.worldId==='test-world'&&r.soulId==='test-soul'));assert.ok(rows.filter(r=>r.state==='closed').every(r=>r.failed));assert.ok(!raw.includes('CREDENTIAL_CANARY')&&!raw.includes('CONFIG_CANARY'));assert.ok(!stdout.join('').includes('CREDENTIAL_CANARY')&&!stdout.join('').includes('CONFIG_CANARY'));assert.equal(existsSync(join(folder,'.soul-runtime','host')),false);lock.control.assertOwner(owner);
+ const closedLines=stdout.filter(l=>String(l).includes('controller-closed'));assert.equal(closedLines.length,2);assert.ok(closedLines.every(l=>JSON.parse(l).evidence?.complete===true),'controller-closed reports the evidence outcome');
+ await assert.rejects(main(['--folder',folder,'--evidence-required'],{leaseWaitMs:0}),/--evidence-required needs --evidence/);
+});
+test('default evidence (#733 A4): a failed sink disables recording and never changes world reads, host calls or the run',async t=>{
+ const directory=mkdtempSync(join(tmpdir(),'sim-evidence-open-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ let failWrites=false,failures=0,reads=0;const file=join(directory,'evidence.jsonl');
+ const recorder=openEvidenceRecorder(file,{onFailure:()=>failures++,writeRecord:(fd,data)=>{if(failWrites)throw Object.assign(Error('disk full'),{code:'ENOSPC'});writeFileSync(fd,data);}});
+ const worldError=Object.assign(Error('world refused'),{code:'soul.busy'});
+ const wrapped=recorder.wrapWorld({read:async cmd=>{reads++;if(cmd==='fail')throw worldError;return {native:reads}}});
+ failWrites=true;
+ assert.deepEqual(await wrapped.read('observe',{}),{native:1},'the world response survives the failed write');
+ assert.deepEqual(await wrapped.read('observe',{}),{native:2},'later reads still reach the world');
+ await assert.rejects(wrapped.read('fail',{}),e=>e===worldError,'the world error is passed through unchanged');
+ assert.equal(reads,3);assert.equal(failures,1,'one notice, sticky');assert.equal(recorder.failure.code,'EVIDENCE_IO');
+ const host=new EventEmitter(),result={turnId:'turn-1'};host.connect=async()=>({model:'m'});host.begin=async()=>result;host.steer=async()=>({ok:true});recorder.bindHost(host);
+ assert.deepEqual(await host.connect(),{model:'m'});assert.equal(await host.begin('private'),result);assert.deepEqual(await host.steer('private','turn-1'),{ok:true});
+ host.emit('event',{method:'turn/started',params:{turn:{id:'turn-1'}}});
+ const summary=recorder.close();
+ assert.equal(summary.complete,false);assert.equal(summary.code,'EVIDENCE_IO');assert.ok(summary.dropped>=5,String(summary.dropped));
+ assert.deepEqual(recorder.close(),summary,'closing twice is quiet');
+ assert.ok(!readFileSync(file,'utf8').includes('"state":"closed"'),'an incomplete file has no closed row');
+ const ok=openEvidenceRecorder(join(directory,'ok.jsonl'));assert.deepEqual(ok.close(),{complete:true});
+ const syncFail=openEvidenceRecorder(join(directory,'sync.jsonl'),{syncFile:()=>{throw Error('flush failed')}});assert.equal(syncFail.close().complete,false);
 });

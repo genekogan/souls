@@ -40,26 +40,87 @@ const lockers: DefInput = {
 // containerOpen), and a declared `leftBy`, so it records who left each thing. One shelf at 1 m behind a low front rail, three
 // places on it (each up to 0.3 m across and 0.28 m tall); the body stands 0.6 m clear of the footprint, so the engine's step in during a reach (at most 0.2 m) leaves it 0.4 m clear at every turn (0.35 m tripped a recovered fault at some turns, #1063). The lower shelf is fixed.
 const H = 1.55, W = 1.0, D = 0.4, rail = 0.195;
+const shelfShapes = () => [
+  box([-W / 2 + 0.015, H / 2, 0], [0.03, H, D], 'wood'), box([W / 2 - 0.015, H / 2, 0], [0.03, H, D], 'wood'),
+  box([0, H / 2, -D / 2 + 0.01], [W - 0.06, H, 0.02], 'back'), box([0, H - 0.015, 0], [W, 0.03, D], 'wood'),
+  box([0, 0.06, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 0.52, 0], [W - 0.06, 0.03, D - 0.02], 'wood'),
+  box([0, 1.0, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 1.04, rail - 0.01], [W - 0.06, 0.05, 0.02], 'wood'),
+  box([0, H + 0.1, 0], [0.84, 0.17, 0.03], 'sign'), box([0, H + 0.1, 0.016], [0.6, 0.05, 0.004], 'letters'),
+  box([-0.28, 0.66, -0.04], [0.3, 0.25, 0.22], 'b0'), box([0.12, 0.64, -0.04], [0.22, 0.21, 0.22], 'b1'),
+];
+const shelfSlots = () => [shelf('in-1', [-0.3, 1.015, -0.01], 'shelf'), shelf('in-2', [0, 1.015, -0.01], 'shelf'), shelf('in-3', [0.3, 1.015, -0.01], 'shelf')] as DefInput['slots'];
 const swapShelf: DefInput = {
   schema: 'def/1', name: 'core-swap-shelf', version: 1,
   description: 'An open wooden swap shelf (1 × 0.4 m, 1.55 m tall) under a painted header: take something, leave something. One shelf at 1 m behind a low front rail holds up to three small things (each up to 0.3 m across and 0.28 m tall), and it remembers who left each one; nearby you see what is on it and who left it. The lower shelf is fixed.',
   tags: ['furniture', 'storage', 'shelf', 'swap', 'hand-operated', 'storage-inside'],
   synonyms: ['swap shelf', 'free shelf', 'giveaway shelf', 'take one leave one'],
   form: 'point',
-  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: [
-    box([-W / 2 + 0.015, H / 2, 0], [0.03, H, D], 'wood'), box([W / 2 - 0.015, H / 2, 0], [0.03, H, D], 'wood'),
-    box([0, H / 2, -D / 2 + 0.01], [W - 0.06, H, 0.02], 'back'), box([0, H - 0.015, 0], [W, 0.03, D], 'wood'),
-    box([0, 0.06, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 0.52, 0], [W - 0.06, 0.03, D - 0.02], 'wood'),
-    box([0, 1.0, 0], [W - 0.06, 0.03, D - 0.02], 'wood'), box([0, 1.04, rail - 0.01], [W - 0.06, 0.05, 0.02], 'wood'),
-    box([0, H + 0.1, 0], [0.84, 0.17, 0.03], 'sign'), box([0, H + 0.1, 0.016], [0.6, 0.05, 0.004], 'letters'),
-    box([-0.28, 0.66, -0.04], [0.3, 0.25, 0.22], 'b0'), box([0.12, 0.64, -0.04], [0.22, 0.21, 0.22], 'b1'),
-  ] } },
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: shelfShapes() } },
   params: { wood: { type: 'color', default: '#8a6240', doc: 'wood colour' }, back: { type: 'color', default: '#6f4d32', doc: 'back panel colour' }, sign: { type: 'color', default: '#2f6b5a', doc: 'header colour' } },
   state: { leftBy: { type: 'string', max: 240, default: '' } },
-  slots: [shelf('in-1', [-0.3, 1.015, -0.01], 'shelf'), shelf('in-2', [0, 1.015, -0.01], 'shelf'), shelf('in-3', [0.3, 1.015, -0.01], 'shelf')] as DefInput['slots'],
+  slots: shelfSlots(),
   components: { container: { capacity: 3, inside: { lip: 1.065, face: rail, stand: [0, rail + 0.605], fit: [0.3, 0.28, 0.3], word: 'shelf' } } } as DefInput['components'],
   palette: { wood: '#8a6240', back: '#6f4d32', sign: '#2f6b5a', letters: '#f1ead8', b0: '#9a3b32', b1: '#3b5f8a' },
   size: { box: [W, H + 0.19, D] },
 } as DefInput;
 
-export const HAND_STORAGE: DefInput[] = [drawerChest, lockers, swapShelf];
+// #435 (W072): a lost-and-found. The swap shelf's form with data only: no door, a `leftBy` record (here, who found and
+// handed in each thing), and `claim: "owner"`, so a thing that has an owner of its own is given back only to that owner.
+const lostAndFound: DefInput = {
+  schema: 'def/1', name: 'core-lost-and-found', version: 1,
+  description: 'An open wooden lost-and-found shelf (1 × 0.4 m, 1.55 m tall) under a blue "lost & found" header. One shelf at 1 m behind a low front rail holds up to three small things that Souls found and handed in (each up to 0.3 m across and 0.28 m tall). It remembers who handed each one in, and a thing that belongs to someone is given back only to its owner; nearby you see whose each thing is and who found it. The lower shelf is fixed.',
+  tags: ['furniture', 'storage', 'shelf', 'lost-and-found', 'hand-operated', 'storage-inside'],
+  synonyms: ['lost and found', 'lost-and-found', 'lost property', 'lost property shelf'],
+  form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: shelfShapes() } },
+  params: { wood: { type: 'color', default: '#7a6a55', doc: 'wood colour' }, back: { type: 'color', default: '#5c5042', doc: 'back panel colour' }, sign: { type: 'color', default: '#2f4f7f', doc: 'header colour' } },
+  state: { leftBy: { type: 'string', max: 240, default: '' } },
+  slots: shelfSlots(),
+  components: { container: { capacity: 3, claim: 'owner', inside: { lip: 1.065, face: rail, stand: [0, rail + 0.605], fit: [0.3, 0.28, 0.3], word: 'shelf' } } } as DefInput['components'],
+  palette: { wood: '#7a6a55', back: '#5c5042', sign: '#2f4f7f', letters: '#f1ead8', b0: '#c9a227', b1: '#6b3f6f' },
+  size: { box: [W, H + 0.19, D] },
+} as DefInput;
+
+// #435 (W068): hiding places. Doorless containers with one place and `hidden: true`: what is in them is never named, offered
+// or drawn, and only a search finds it. Two reaches on one rule: down over a stump's rim, and in at the front of a wall's niche.
+// Both stand 0.6 m clear of the footprint. The engine's step in during a reach (at most 0.2 m, items/actions.ts) leaves the body
+// 0.4 m clear of it at every turn; 0.35 m tripped a recovered engine fault at some turns (tools/soul-actions/container-turns.test.mjs).
+const STUMP_R = 0.28, STUMP_RIM = 1.06, STUMP_FLOOR = 0.93;
+const hollowStump: DefInput = {
+  schema: 'def/1', name: 'core-hollow-stump', version: 1,
+  description: 'An old tree stump, chest high, gone hollow at the top. One small thing fits down inside it (up to 0.28 m across and 0.12 m tall), out of everyone\'s sight: a Soul can hide something there, and whoever searches the stump finds it.',
+  tags: ['furniture', 'storage', 'hiding-place', 'hand-operated', 'storage-inside'],
+  synonyms: ['stump', 'hollow stump', 'tree stump', 'hiding place'],
+  form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: [
+    { kind: 'lathe', at: [0, 0, 0], profile: [[STUMP_R + 0.04, 0], [STUMP_R + 0.02, 0.12], [STUMP_R, 0.5], [STUMP_R - 0.02, STUMP_RIM - 0.03], [STUMP_R - 0.02, STUMP_RIM], [STUMP_R - 0.04, STUMP_RIM], [STUMP_R - 0.04, STUMP_FLOOR + 0.01], [0, STUMP_FLOOR]], segments: 14, tint: 'bark', collide: true },
+    { kind: 'lathe', at: [0, 0, 0], profile: [[STUMP_R - 0.041, STUMP_FLOOR + 0.005], [0, STUMP_FLOOR + 0.002]], segments: 14, tint: 'hollow' },
+  ] } },
+  params: { bark: { type: 'color', default: '#5b4632', doc: 'bark colour' }, hollow: { type: 'color', default: '#1f1711', doc: 'colour down inside the hollow' } },
+  state: {},
+  slots: [shelf('in-1', [0, STUMP_FLOOR, 0.04], 'stump')] as DefInput['slots'],
+  components: { container: { capacity: 1, hidden: true, inside: { lip: STUMP_RIM, face: STUMP_R, stand: [0, STUMP_R + 0.04 + 0.6], fit: [0.28, 0.12, 0.28], word: 'stump' } } } as DefInput['components'],
+  palette: { bark: '#5b4632', hollow: '#1f1711' },
+  size: { box: [(STUMP_R + 0.04) * 2, STUMP_RIM, (STUMP_R + 0.04) * 2] },
+} as DefInput;
+const NW = 1.2, NH = 1.35, ND = 0.42;
+const wallNiche: DefInput = {
+  schema: 'def/1', name: 'core-wall-niche', version: 1,
+  description: 'A short length of old stone wall (1.2 m long, 1.35 m tall) with a dark niche at waist height behind a low lip of stone. One small thing fits at the back of it (up to 0.3 m across and 0.16 m tall), out of everyone\'s sight: a Soul can hide something there, and whoever searches the niche finds it.',
+  tags: ['furniture', 'storage', 'hiding-place', 'hand-operated', 'storage-inside'],
+  synonyms: ['niche', 'wall niche', 'stone wall', 'hiding place'],
+  form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: [
+    box([0, 0.49, 0], [NW, 0.98, ND], 'stone'), box([0, 1.285, 0], [NW, 0.13, ND], 'stone'),
+    box([-0.42, 1.1, 0], [0.36, 0.25, ND], 'stone'), box([0.42, 1.1, 0], [0.36, 0.25, ND], 'stone'),
+    box([0, 1.1, -ND / 2 + 0.02], [0.5, 0.25, 0.04], 'shade'), box([0, 1.005, ND / 2 - 0.02], [0.5, 0.05, 0.04], 'stone'),
+  ] } },
+  params: { stone: { type: 'color', default: '#8d8577', doc: 'stone colour' } },
+  state: {},
+  slots: [shelf('in-1', [0, 0.98, -0.03], 'niche')] as DefInput['slots'],
+  components: { container: { capacity: 1, hidden: true, inside: { lip: 1.03, face: ND / 2, stand: [0, ND / 2 + 0.6], fit: [0.3, 0.16, 0.3], word: 'niche' } } } as DefInput['components'],
+  palette: { stone: '#8d8577', shade: '#26221d' },
+  size: { box: [NW, NH, ND] },
+} as DefInput;
+
+export const HAND_STORAGE: DefInput[] = [drawerChest, lockers, swapShelf, lostAndFound, hollowStump, wallNiche];
