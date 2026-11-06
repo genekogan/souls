@@ -719,7 +719,10 @@ test('plan: durable: a killed serve carries on at the same step and the world ac
   assert.ok(await until(() => w.results.length === 1));
   assert.equal(w.results[0].outcome, 'done');
   assert.equal(w.acts, 2);
-  assert.deepEqual(w.bodies.map((b) => b.capability), ['walk:mill', 'walk:pond']);
+  // A kill between sending a step and saving its answer re-sends that step with the same clientRef; the world answers it from
+  // the first result and doesn't act again. So count what was acted, one per clientRef, not what was asked.
+  const steps = new Map(); for (const b of w.bodies) { assert.equal(steps.get(b.clientRef) ?? b.capability, b.capability, 'a clientRef names one step'); steps.set(b.clientRef, b.capability); }
+  assert.deepEqual([...steps.values()], ['walk:mill', 'walk:pond']);
 });
 
 test('plan: a step retried after a kill keeps its clientRef, so the world acts once', async (t) => {
