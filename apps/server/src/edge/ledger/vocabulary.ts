@@ -363,12 +363,14 @@ function searchWords(input: string, text: string, ctx: VocabContext): VocabResul
 }
 function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const exact = ctx.caps.find(c => c.id === input); if (exact) return {kind: 'exact', cap: exact};
-  const steered = steerWords(input, ctx); if (steered) return steered;
   const checkers = checkersWords(input, ctx); if (checkers) return checkers;
   // CN5 (acceptance): "A, then B" is two things. Walks and strolls chain (the earlier ones become `via` legs of the last);
   // anything else does the first and says to act again for the rest (never a mix-up of the two).
   // r3 quality case 35: "pick up a book and give it to X" is two steps too (the give is offered only once holding it).
   const clauses = input.includes(':') ? [input] : input.split(/\s*(?:,|;)?\s+(?:and\s+)?then\s+|\s*;\s*|\s*,\s*and\s+then\s+|\s*,?\s+and\s+(?=(?:give|hand|pass|offer|bring)\s)/i).map(x => x.trim()).filter(Boolean);
+  // #1020: the steer words read one clause, after the split, so "fly to X then fly north" is two steers, never one toward
+  // "X then fly north". A steer's own land tail ("fly to X, then land there") is still part of its one clause.
+  if (clauses.length === 1 || (clauses.length === 2 && /^(?:then\s+)?land(?:\s+(?:there|it))?[.!?\s]*$/i.test(clauses[1]))) { const steered = steerWords(input, ctx); if (steered) return steered; }
   if (clauses.length > 1) {
     const parts = clauses.map(c => resolveCapability(c, ctx)), moves = ['walk', 'stroll'];
     if (parts[0].kind === 'unknown') return parts[0];
