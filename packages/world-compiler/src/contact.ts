@@ -43,3 +43,8 @@ export function containerOpen(def:{state?:Record<string,unknown>},state:{open?:u
 export function keptBehindDoor(def:Parameters<typeof containerInside>[0]&{state?:Record<string,unknown>},slot:string|undefined):boolean{
   return !!def&&!containerOpen(def,{})&&!!containerInside(def)?.slots.some(s=>s.id===slot);
 }
+/** #435 (W072): whether a container gives a thing that has an owner of its own back only to that owner (`claim: "owner"`,
+ *  a lost-and-found); things nobody owns are anyone's to take, as on a swap shelf. */
+export function containerClaims(def:{components?:{container?:unknown}}|undefined):boolean{
+  return (def?.components?.container as {claim?:unknown}|undefined)?.claim==='owner';
+}

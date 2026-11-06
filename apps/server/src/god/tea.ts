@@ -173,7 +173,7 @@ export function createTea(h: TeaHost) {
   /** #435: a fresh mug kept in an open container near the kettle, which she can take out and stand on the counter. */
   const keptCupNear = (kettle: string, soul: { entityId: string }) => {
     const k = ents()[kettle]?.pose?.p as Vec3 | undefined; if (!k) return null; let best = TABLE_NEAR, c: string | null = null;
-    for (const id of things().cups) { const box = keptIn(id), p = ents()[id]?.pose?.p as Vec3 | undefined; if (!box || !p || !containerOpen(defOf(box)!, stateOf(box)) || h.denied?.(box, soul as never) || num(stateOf(id).tea) > 0.05 || stateOf(id).bag === false) continue; const d = Math.hypot(p[0] - k[0], p[2] - k[2]); if (d < best) { best = d; c = id; } }
+    for (const id of things().cups) { const box = keptIn(id), p = ents()[id]?.pose?.p as Vec3 | undefined; if (!box || !p || !containerOpen(defOf(box)!, stateOf(box)) || h.denied?.(box, soul as never) || h.denied?.(id, soul as never) || num(stateOf(id).tea) > 0.05 || stateOf(id).bag === false) continue; const d = Math.hypot(p[0] - k[0], p[2] - k[2]); if (d < best) { best = d; c = id; } }
     return c;
   };
   const kettleWithin = (cup: string, range: number) => {
@@ -181,16 +181,29 @@ export function createTea(h: TeaHost) {
     for (const id of things().kettles) { const p = ents()[id]?.pose?.p as Vec3 | undefined; if (!p) continue; const d = Math.hypot(p[0] - c[0], p[2] - c[2]); if (d < best) { best = d; k = id; } }
     return k;
   };
+  /** #435: the free places on a table's top (not its hooks or an inside place). */
+  const freeSlots = (owner: string) => {
+    const taken = new Set(Object.values(ents()).filter((o: any) => o.support?.kind === 'resting-on' && o.support.on === owner).map((o: any) => o.support.slot));
+    return surfaceSlotsOf(h.engine.world as never, owner).filter((x) => !x.inside && !x.hang && !taken.has(x.slot));
+  };
+  /** #435 (Gene's rule): what is in her hand is set down first rather than refused: on the nearest free table place, else
+   *  at her feet. */
+  function setDownSteps(item: string, me: Vec2): Step[] {
+    let best: { place: CounterPlace; d: number } | null = null;
+    for (const t of things().tables) for (const x of freeSlots(t)) { const d = Math.hypot(x.p[0] - me[0], x.p[2] - me[1]); if (d <= TABLE_NEAR && (!best || d < best.d)) best = { place: { owner: t, slot: x.slot, at: x.p }, d }; }
+    const at = best ? station(item, me, -0.05, best.place) : null;
+    if (best && at && clear(at.st)) return [LET_GO, walk(at.st, at.face), { verb: 'mars:put_item', params: { item, surfaceSlot: `${best.place.owner}#${best.place.slot}` } }];
+    return [LET_GO, { verb: 'mars:put_item', params: { item, surfaceSlot: 'ground' } }];
+  }
   /** #435: the free place on the kettle's counter, nearest the kettle, that a pour can reach, with that pour. */
   function counterPlace(kettle: string, cup: string, me: Vec2, level: number): { place: CounterPlace; pour: Step[] } | null {
     const s = ents()[kettle]?.support, k = ents()[kettle]?.pose?.p as Vec3 | undefined; if (s?.kind !== 'resting-on' || !k) return null;
-    const taken = new Set(Object.values(ents()).filter((o: any) => o.support?.kind === 'resting-on' && o.support.on === s.on).map((o: any) => o.support.slot));
-    const free = surfaceSlotsOf(h.engine.world as never, s.on).filter((x) => !x.inside && !x.hang && !taken.has(x.slot)).map((x) => ({ x, d: Math.hypot(x.p[0] - k[0], x.p[2] - k[2]) })).filter((o) => o.d < NEAR_CUP).sort((a, b) => a.d - b.d);
+    const free = freeSlots(s.on).map((x) => ({ x, d: Math.hypot(x.p[0] - k[0], x.p[2] - k[2]) })).filter((o) => o.d < NEAR_CUP).sort((a, b) => a.d - b.d);
     for (const { x } of free) { const place: CounterPlace = { owner: s.on, slot: x.slot, at: x.p }, pour = pourSteps(kettle, cup, me, level, place); if (!('code' in pour)) return { place, pour }; }
     return null;
   }
-  /** #435: a kept thing or one lying somewhere, taken in the right hand; the item action plans its own station. */
-  const takeSteps = (item: string): Step[] => [LET_GO, { verb: 'mars:take_item', params: { item, hand: 'right' } }];
+  /** #435: a kept thing or one lying somewhere, taken in a hand; the item action plans its own station. */
+  const takeSteps = (item: string, hand: 'left' | 'right' = 'right'): Step[] => [LET_GO, { verb: 'mars:take_item', params: { item, hand } }];
   /** Why this Soul cannot take this thing by hand, if so: it stays a refusal only when the act truly can't happen. */
   function cannotTake(soul: { entityId: string }, item: string): Refusal | null {
     const s = ents()[item]?.support, m = M();
@@ -199,7 +212,6 @@ export function createTea(h: TeaHost) {
     if (box && !containerOpen(defOf(box)!, stateOf(box))) return { code: 'container.closed', reason: `${m.pathOf(box)} is closed; open it first (object:${box}:open).` };
     return (box ? h.denied?.(box, soul as never) : null) ?? h.denied?.(item, soul as never) ?? null;
   }
-  const otherHeld = (body: string, except: string) => Object.values(ents()).find((x: any) => x?.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === body && x.id !== except && !things().kettles.includes(x.id)) as { id: string } | undefined;
 
   // ---- entry 44: drinking at a table, washing up at the sink ----
   const heldBy = (cup: string, body: string) => { const s = ents()[cup]?.support; return s?.kind === 'in-hand' && s.by === body ? (s.hand as 'left' | 'right') : null; };
@@ -283,7 +295,9 @@ export function createTea(h: TeaHost) {
     let face = b.pose.yaw as number;
     if (!hand) {
       const no = cannotTake(soul, food); if (no) return no;
-      const other = otherHeld(body, food); if (other) return { code: 'tea.hands-full', reason: `You are holding ${M().pathOf(other.id)}; put it down first.` };
+      // Gene's rule: what else is in her hand is set down first, rather than a refusal
+      const other = Object.values(ents()).find((x: any) => x?.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === body && x.id !== food) as { id: string } | undefined;
+      if (other) { const at = b.pose.p as Vec3; steps.push(...setDownSteps(other.id, [at[0], at[2]])); }
       // she faces it as she takes it, so the motion does not turn her back the way she came
       const it = ents()[food].pose.p as Vec3, me = b.pose.p as Vec3;
       if (Math.hypot(it[0] - me[0], it[2] - me[2]) > 0.3) face = Math.atan2(it[2] - me[2], it[0] - me[0]);
@@ -338,11 +352,13 @@ export function createTea(h: TeaHost) {
     if (num(stateOf(cup).tea) > 0.05) return { code: 'tea.cup-full', reason: `${m.pathOf(cup)} already has tea in it.` };
     if (stateOf(cup).bag === false) return { code: 'tea.no-bag', reason: `${m.pathOf(cup)} has been washed and has no tea bag in it.` };
     const box = keptIn(cup);
-    if (box) { const no = cannotTake(soul, cup); if (no) return no; if (ents()[kettle]?.support?.kind === 'in-hand') return { code: 'tea.hands-full', reason: `You are holding ${kname}; put it down first.` }; }
+    // a kettle already in her right hand: the kept mug comes out in her left
+    const kettleHand = ents()[kettle]?.support?.kind === 'in-hand' ? 'left' : 'right';
+    if (box) { const no = cannotTake(soul, cup); if (no) return no; }
     const fetched = box ? counterPlace(kettle, cup, me, num(stateOf(kettle).level)) : null;
     if (box && !fetched) return { code: 'surface.full', reason: `There is no free place by ${kname} to stand ${m.pathOf(cup)}.` };
     const fetch: Step[] = [];
-    if (fetched) { const at = station(cup, me, -0.05, fetched.place)!; fetch.push(...takeSteps(cup), walk(at.st, at.face), { verb: 'mars:put_item', params: { item: cup, surfaceSlot: `${fetched.place.owner}#${fetched.place.slot}` } }); }
+    if (fetched) { const at = station(cup, me, -0.05, fetched.place)!; fetch.push(...takeSteps(cup, kettleHand), walk(at.st, at.face), { verb: 'mars:put_item', params: { item: cup, surfaceSlot: `${fetched.place.owner}#${fetched.place.slot}` } }); }
     const out = fetched ? `took ${m.pathOf(cup)} out of ${m.pathOf(box!)} and stood it on the counter` : '';
     if (action === 'pour') {
       if (k.phase === 'empty' || level < cupL * 0.9) return { code: 'tea.kettle-empty', reason: `${kname} has not enough water for a cup; fill it first.` };

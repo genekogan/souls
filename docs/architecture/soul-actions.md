@@ -18,14 +18,24 @@ context-size checks below), regression runs, and an uncut real-client recording 
   and the viewer draws it as an ordinary thing. A container whose def declares a `leftBy` state field records who left
   each thing in it (item id = Soul id, set when the thing comes to rest from a Soul's hand, pruned to what is still
   inside). Nearby perception and the take offer name the leaver; god-placed things have none.
+- **Lost-and-found ([#435](https://github.com/genekogan/souls/issues/435)).** A container whose def declares
+  `components.container.claim: "owner"` gives a thing that has an owner of its own (the layers `owner` on the thing, a
+  Soul or a group) back only to that owner or a member of that group. Anyone else, the finder included, is offered the
+  take as blocked `item.not-yours`, with a reason that names the owner, and every other action on it (a wash at the tap)
+  is refused the same way. Things nobody owns are anyone's to take, and anyone may hand a thing in; a thing the god owns
+  stays until the god moves it. An owner ref by name (`soul:Ana`) follows whoever has that name, so a god that sets owners
+  for a lost-and-found should prefer Soul ids. `core-lost-and-found@1` is the swap shelf's form with this claim; its `leftBy` record
+  reads as who found each thing, and nearby Souls are told "bowl (Ana's, found by Ben)" ("yours, …" to the owner).
 - **A pantry holds real things ([#435](https://github.com/genekogan/souls/issues/435)).** `core-pantry@1` is the same doorless
   storage with data only: four places, each for one small thing, so the stock is what you can see and count. Drawing from it
   is by hand, through the entry that already handles the thing. Words go ahead rather than refuse: "make a cup of tea" or "pour
   the tea" with a fresh mug kept in an open pantry takes it out and stands it on a free place on the kettle's counter first, and
   "eat the apple" takes the apple from wherever it is, then eats it. `core-apple@1` and `core-bun@1` are tagged `edible`,
   with `left` and `bites` in their state, and are eaten from the hand on entry 44's cup motion; `left` falls at each bite's own
-  moment and what is left stays in the hand. A bare "eat it" or "have a bite" means the food in the hand. Refused only when the act
-  truly can't happen: `food.eaten` and `food.in-use` (in someone else's hand). The ledger's `food` and a kitchen's portions are separate systems and are untouched.
+  moment and what is left stays in the hand. A bare "eat it" or "have a bite" means the food in the hand. Another thing already in her
+  hand is set down on the nearest free table place (or at her feet) first, and a kept mug comes out in her left hand when the
+  kettle is in her right. A mug that is not hers to take (private, for sale, or claimed in a lost-and-found) is never fetched.
+  Refused only when the act truly can't happen: `food.eaten` and `food.in-use` (in someone else's hand). The ledger's `food` and a kitchen's portions are separate systems and are untouched.
 - **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
   crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with
@@ -183,7 +193,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
 | Doors and openings | Open and close doors, gates (a picket gate and a five-bar field gate), windows, cupboard and locker doors, fridge doors, curtains, blinds, drawers and a tent flap; doors and gates open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "open the tent flap", "close the field gate", "knock on the door", "lock the door" |
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
-| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; stock a pantry and take things out of it; eat an apple or a bun from the hand, bite by bite | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "stock the pantry with the apple", "take the apple from the pantry", "eat the apple", "have a bite" |
+| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it; stock a pantry and take things out of it; eat an apple or a bun from the hand, bite by bite | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "play rock-paper-scissors with Bea" then "accept" |
@@ -256,7 +266,8 @@ within about 4 m and in plain sight:
 
 - switches and fire: `on`; doors, windows, curtains and drawers: `open` (and `locked` for lockable doors);
 - a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut); a
-  swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)");
+  swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)"); a
+  lost-and-found: whose each thing is and who found it ("bowl (Ana's, found by Ben)");
 - a pantry: what it `holds` (names only); a food in the hand or bitten: its `bites` left, then `eaten`;
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
   a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;

@@ -136,10 +136,13 @@ test('pantry: stock and draw by hand, food eaten bite by bite, a kept mug is not
  results.eatFromTable = await done('eat the apple'); assert.equal(results.eatFromTable.capability, `object:${id('second-apple')}:eat`);
  assert.ok(held('second-apple')); assert.equal(ent('second-apple').state.left, 0);
  ok(god.act({ops: [{op: 'place', def: 'core/bun@1', name: 'kept-bun', in: {parent: 'pantry', slot: inside().length ? ['in-1', 'in-2', 'in-3', 'in-4'].find(s => !inside().some(e => e.in.slot === s)) : 'in-1'}, p: [0, 0]}]})); await tick(60);
- await refuse(`object:${id('kept-bun')}:eat`, 'tea.hands-full');
- await done('put the apple on the table');
- results.eatFromPantry = await done('eat the bun'); assert.equal(results.eatFromPantry.capability, `object:${id('kept-bun')}:eat`);
- assert.ok(held('kept-bun')); assert.equal(ent('kept-bun').state.left, 0); assert.ok(!inside().some(e => e.name === 'kept-bun'));
+ // another thing in her hand (the eaten apple) is set down at her feet first, rather than a refusal
+ results.eatHandsFull = await done(`object:${id('kept-bun')}:eat`);
+ assert.ok(held('kept-bun')); assert.equal(ent('kept-bun').state.left, 0); assert.notEqual(item('second-apple').support?.kind, 'in-hand', 'the apple was set down first'); assert.equal(item('second-apple').support?.on, id('table'), 'on the table');
+ await done('put the bun on the table');
+ ok(god.act({ops: [{op: 'place', def: 'core/bun@1', name: 'larder-bun', in: {parent: 'pantry', slot: ['in-1', 'in-2', 'in-3', 'in-4'].find(s => !inside().some(e => e.in.slot === s))}, p: [0, 0]}]})); await tick(60);
+ results.eatFromPantry = await done('eat the bun'); assert.equal(results.eatFromPantry.capability, `object:${id('larder-bun')}:eat`);
+ assert.ok(held('larder-bun')); assert.equal(ent('larder-bun').state.left, 0); assert.ok(!inside().some(e => e.name === 'larder-bun'));
  await done('put the bun on the table');
  // in someone else's hand: this is the one food refusal that stays, with nothing left to eat
  ok(god.act({ops: [{op: 'place', def: 'core/apple@1', name: 'her-apple', in: {parent: 'table', slot: 'top'}, p: [0.1, 0.25]}]})); await tick(60);
@@ -168,10 +171,13 @@ test('pantry: stock and draw by hand, food eaten bite by bite, a kept mug is not
  results.pour = await done('pour the tea'); assert.equal(item('mug-two').support.on, id('counter')); assert.equal(ent('mug-two').state.tea, 1);
  // a mug behind a shut door or in a private pantry is not taken: those are other refusals' business
  ok(god.act({ops: [
+  {op: 'place', def: 'core/lost-and-found@1', name: 'lost-and-found', p: [ax - 2.2, az - 1.6]},
+  {op: 'place', def: 'core/cup@2', name: 'beas-mug', in: {parent: 'lost-and-found', slot: 'in-1'}, p: [0, 0], owner: 'soul:Bea'},
   {op: 'place', def: 'core/drawer-chest@2', name: 'shut-chest', p: [ax - 2.2, az + 4], state: {open: false}},
   {op: 'place', def: 'core/cup@2', name: 'shut-mug', in: {parent: 'shut-chest', slot: 'in-1'}, p: [0, 0]},
  ]})); await tick(60);
  await refuse('pour the tea', 'tea.no-cup');
+ assert.equal(item('beas-mug').support.on, id('lost-and-found'), "Bea's mug in the lost-and-found is not hers to take");
  ok(god.act({ops: [
   {op: 'place', def: 'core/pantry@1', name: 'private-pantry', p: [ax - 5, az + 4], access: 'private'},
   {op: 'place', def: 'core/cup@2', name: 'private-mug', in: {parent: 'private-pantry', slot: 'in-1'}, p: [0, 0]},
