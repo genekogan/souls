@@ -2487,7 +2487,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       if (!set) {set = new Set(); for (const s of this.spots.spots) if (s.place && (s.activity === verb || s.also?.includes(verb))) for (let p: string | undefined = s.place, n = 0; p && n < 20; p = this.places.byId.get(p)?.parent ?? undefined, n++) set.add(p); spotPlaces.set(verb, set);}
       return set.has(placeId);
     };
-    return {caps, me: here, ...(me ? {yaw:me.pose.yaw} : {}), root, elsewhere, hasSpot, withheld: [...withheld], places: [...places],
+    return {caps, me: here, ...(me ? {yaw:me.pose.yaw, holds: (id: string) => {const su = (w.entities as Record<string, {support?: {kind: string; by?: string}}>)[id]?.support; return su?.kind === 'in-hand' && su.by === me.id;}} : {}), root, elsewhere, hasSpot, withheld: [...withheld], places: [...places],
       target: c => {
         const t = c.target; if (!t) return {names: [], around: [], at: null};
         if (t.kind === 'spot') {
