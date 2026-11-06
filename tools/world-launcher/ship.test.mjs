@@ -43,7 +43,7 @@ exit 0
 function setup() {
   const t = mkdtempSync(join(tmpdir(), 'ship-test-'));
   const env = { PATH: process.env.PATH, HOME: process.env.HOME, SHIP_TEST: '1', SHIP_BUILD: BUILD, STUB_LOG: join(t, 'calls.log'),
-    SIM_WORLDS_HOST: 'root@stub-host', SHIP_ORIGIN: 'https://sim.stub', SHIP_PROBE_CLI: join(t, 'god'), SHIP_LEGACY_RELEASE_FILE: join(t, 'bin/LEGACY-RELEASE'),
+    SIM_WORLDS_HOST: 'user@stub-host', SHIP_ORIGIN: 'https://sim.stub', SHIP_PROBE_CLI: join(t, 'god'), SHIP_LEGACY_RELEASE_FILE: join(t, 'bin/LEGACY-RELEASE'),
     SHIP_DEPLOY_LOCK: join(t, 'no-lock'), SHIP_OUT_ROOT: join(t, 'out'), MARS_WEB_SRC: join(t, 'mars-web') };
   for (const d of ['god', 'bin', 'mars-web', 'stubs']) mkdirSync(join(t, d));
   for (const [k, name] of [['SHIP_SSH', 'ssh'], ['SHIP_SCP', 'scp'], ['SHIP_NODE', 'node'], ['SHIP_PYTHON', 'python'], ['SHIP_RELEASE_SH', 'release']]) {
@@ -132,7 +132,7 @@ test('a failed production release stops before legacy, stops the probe, prints r
   assert.match(r.out, /STOPPED at step release: release\.sh production failed/);
   assert.match(r.out, /live now: release\.sh production failed: activate\.sh hands back to we-prevprod0000/);
   assert.match(r.out, /rollback \(only if you decide to/);
-  assert.match(r.out, /legacy: +\S+ root@stub-host bash \/srv\/sim-old\/releases\/we-prevprod0000-root\/tools\/world-launcher\/deploy\/activate\.sh legacy/);
+  assert.match(r.out, /legacy: +\S+ user@stub-host bash \/srv\/sim-old\/releases\/we-prevprod0000-root\/tools\/world-launcher\/deploy\/activate\.sh legacy/);
   assert.match(r.out, /after fixing: \S+ship\.sh --label 999 --topology dual-prefix --out \S+ --from release$/m);
   assert.ok(existsSync(join(s.out, 'probe/stop')), 'the probe was stopped');
   assert.ok(!existsSync(s.env.SHIP_LEGACY_RELEASE_FILE), 'LEGACY-RELEASE untouched');
@@ -319,7 +319,7 @@ test('root-only resume refuses a missing run and changes of build, target, origi
   const s = setup();
   assert.equal(s.run([...rootArgs, '--from', 'walks']).code, 2);
   assert.equal(s.run([...rootArgs, '--no-probe']).code, 0);
-  for (const extra of [{ SHIP_BUILD: 'we-111111111111' }, { SIM_WORLDS_HOST: 'other@stub-host' }, { SHIP_ORIGIN: 'https://another.stub' }]) {
+  for (const extra of [{ SHIP_BUILD: 'we-111111111111' }, { SIM_WORLDS_HOST: 'someone@stub-host' }, { SHIP_ORIGIN: 'https://another.stub' }]) {
     writeFileSync(s.env.STUB_LOG, '');
     const r = s.run([...rootArgs, '--no-probe', '--from', 'walks'], extra);
     assert.equal(r.code, 2, r.out); assert.match(r.out, /mismatched RUN.identity/); assert.deepEqual(r.calls, []);

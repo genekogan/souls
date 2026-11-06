@@ -2,7 +2,7 @@
 
 The canonical site is `https://soul.game`, with production built and launched at base `/`; `souls.game` redirects
 to it. Internal service/data names stay `sim-*`. Root-only releases use one `production` launcher at `/`, build
-`we-<sha12>`, stored in `/srv/sim-worlds/releases/we-<sha12>`, under the `sim-worlds@production` keeper unit.
+`we-<sha12>`, stored in `/srv/sim-worlds/releases/we-<sha12>`, under the production keeper unit (`sim-worlds@<stage>` with the stage `production`).
 
 The root-only workflow remains draft [#523](https://github.com/genekogan/souls/pull/523), tracked by
 [#519](https://github.com/genekogan/souls/issues/519). Shared gate accounting/cache, restricted deployment
@@ -123,7 +123,7 @@ Use the existing approved runsheet for the actual host; never substitute the pro
 2. Provision an isolated nonproduction mirror with fake/test worlds, the production-shaped root launcher and
    independent data paths. Configure `SIM_DEPLOY_HOST`, `SIM_DEPLOY_USER`, `SHIP_ORIGIN` and `SIM_WORLDS_BASE=/` for
    that mirror. The deploy identity needs only the intended release directories, backup tools and activation of its
-   own `sim-worlds@production` unit on the mirror; no unrelated services, accounts, DNS or proxies. Verify its
+   own production unit (`sim-worlds@<stage>`) on the mirror; no unrelated services, accounts, DNS or proxies. Verify its
    known-hosts pin independently. The existing loopback `staging` stage alone does not rehearse this topology.
 3. From a clean exact-source checkout with dependencies, existing assets and the dedicated probe world configured,
    inspect the root-only plan. This example bypasses any local deploy.env and contacts no host:
@@ -291,7 +291,7 @@ The handover:
      `SIM_HANDOVER_CANARY=0` turns it off.
 5. **exit**: the old launcher finishes its last responses and exits.
 
-After the handover activate.sh waits up to 60 s for `http://127.0.0.1:<port><base>/__sim/healthz` to report the new
+After the handover activate.sh waits up to 60 s for `http://<loopback>:<port><base>/__sim/healthz` to report the new
 build, then requires every world in `<data>/worlds.json` to answer `<base>/w/<slug>/v1/config` within 90 s. On a
 canary roll-back it moves the link back and exits 1. On any other failure it moves the link back to
 `<stage>.previous` and reloads (or restarts) again, which runs the same handover in reverse; a failed reverse reload
@@ -366,7 +366,7 @@ Dry run is the default; `--apply` deletes and should be run only after reading t
 
 ## Measuring a handover
 
-`deploy/swap-probe.mjs --origin http://127.0.0.1:<port> --base /worlds --slugs a,b --out probe.json [--posts]` GETs the
+`deploy/swap-probe.mjs --origin http://<loopback>:<port> --base /worlds --slugs a,b --out probe.json [--posts]` GETs the
 homepage and each world every 100 ms, holds one viewer socket per world, and reports refused connections, 5xx, the
 longest error run, the slowest request and each socket's downtime. `--posts` adds a POST per world, which catches a
 connection closed under a request. Run it through a reverse proxy with production-like transport settings to see
