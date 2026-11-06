@@ -146,6 +146,7 @@ test('hide and seek: hide, search empty and found, nothing told, words, refusals
  {await done('walk to the niche', souls.Ana); await done('walk to the niche', souls.Ben); const a = await act(`search:${nicheId}`, true, souls.Ana); let saw = null;
   for (let n = 0; n < 400 && !saw; n++) {if (body(souls.Ana).human?.handActuator?.target === nicheId) saw = offer(souls.Ben, nicheId); await tick(1);}
   assert.ok(saw?.available, 'still available during her reach: ' + JSON.stringify(saw)); const b = await act(`search:${nicheId}`, true, souls.Ben), xa = await finish(a, souls.Ana), xb = await finish(b, souls.Ben); assert.equal(xa.phase, 'completed');
+  assert.equal(xb.phase, 'completed', 'the second seeker waits her turn, not refused: ' + JSON.stringify(xb.receipt).slice(0, 300)); assert.equal(xb.receipt.code ?? null, null);
   assert.match(xb.receipt.outcome.summary, /came away with nothing/, JSON.stringify(xb.receipt).slice(0, 300)); results.emptyTogether = {ana: xa.phase, ben: {phase: xb.phase, code: xb.receipt.code, told: xb.receipt.outcome.summary}};}
 
  // the second place, reached from the front, a different kind of thing
@@ -165,6 +166,7 @@ test('hide and seek: hide, search empty and found, nothing told, words, refusals
   const holders = [souls.Ana, souls.Ben].filter(s => heldBy(s) === book); assert.equal(holders.length, 1, 'exactly one holds it: ' + JSON.stringify([xa.phase, xb.phase]));
   const loser = holders[0] === souls.Ana ? xb : xa; results.twoSeekers = {winner: holders[0].name, loser: {phase: loser.phase, code: loser.receipt.code, reason: loser.receipt.reason, told: loser.receipt.outcome?.summary}}; console.log(JSON.stringify(results.twoSeekers));
   assert.match(loser.receipt.outcome.summary, /nothing/, 'the other ends honestly: ' + JSON.stringify(results.twoSeekers.loser));
+  assert.equal(loser.phase, 'completed', 'the other gets an answer, not a refusal: ' + JSON.stringify(results.twoSeekers.loser));
   await done('put the book on the table', holders[0]);}
 
  // persistence: hidden again, it stays in place and hidden after a restore; the engine checkpoint replays

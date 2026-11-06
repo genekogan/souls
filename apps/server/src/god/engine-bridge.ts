@@ -7,6 +7,7 @@
 // The derived physics is plain data in the logged event, so the engine's replay never reads the entity model.
 // Fastest working path on the engine's existing structures (nav/1-style static scene re-base, CATALOG fixtures);
 // the per-tile patch follows L8's tiled Spatial.
+import { handReachSeconds, handReleaseSeconds, handSwingSeconds, type HandActuatorMotion } from '../../../../mars/viewer/engine/social/hand-actuator.ts';
 import { menuWorldOf, type MenuWorld } from '../split/menu-world.ts';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
@@ -1960,7 +1961,12 @@ export class EngineBridge {
             caps.push({ id, verb: 'search', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}) });
             // a thing this Soul may not take (private, for sale, claimed) is as if it were not there: the same reach, and nothing leaks
             const found = Object.values(ents).find((o: any) => o.support?.kind === 'resting-on' && o.support.on === x.id && inner.some((sl) => sl.id === o.support.slot) && !this.layers.takeRefusal(o.id, soul) && !this.claimRefusal(o.id, soul)) as any;
-            if (!block) plans.set(id, { label, steps: found ? [...stand, { verb: 'mars:let_go_v1', params: {} }, { verb: 'mars:take_item', params: { item: found.id, hand: 'right' } }] : [...stand, ...this.reachInto(x, box, station!, levelOf(x))] });
+            // #435: a second seeker while another Soul's hand is in the place waits her turn there, then reaches in: an answer, not a
+            // refusal
+            // and one who comes while another Soul's search of it is under way leaves it to them and is told so: one finds it
+            const turn = this.reachLeft(x.id, soul.entityId), rival = !!found && !turn && !!this.edge?.openByOthers(id, soul.soulId);
+            if (rival) this.yielded.add(`${soul.entityId}:${x.id}`); else this.yielded.delete(`${soul.entityId}:${x.id}`);
+            if (!block) plans.set(id, { label, steps: rival ? [...stand, { verb: 'rest', params: { seconds: 1 } }] : found && !turn ? [...stand, { verb: 'mars:let_go_v1', params: {} }, { verb: 'mars:take_item', params: { item: found.id, hand: 'right' } }] : [...stand, ...this.reachInto(x, box, station!, levelOf(x), turn)] });
           }
         }
         if (held && inner.length && d <= STORE_NEAR) {
@@ -2019,16 +2025,29 @@ export class EngineBridge {
     const yw = -(x.pose.yaw ?? 0), [l, s0] = box.ins.stand, p = box.ins.slots[0].p, f = Math.max(box.ins.face + 0.35, s0 - Math.min(0.2, Math.max(0, Math.hypot(p[0] - l, p[2] - s0) - 0.5)));
     return this.mw.standableNearV1!([x.pose.p[0] + l * Math.cos(yw) + f * Math.sin(yw), x.pose.p[2] - l * Math.sin(yw) + f * Math.cos(yw)], level, body, 0.4, 16);
   }
+  /** #435 (W068): seconds until another Soul's hand is out of this place (its hand actuator holds the place for the whole
+   *  reach), with a little margin; 0 when no other hand is in it. */
+  /** #435 (W068): body:place pairs whose search was left to another seeker already at it (told so at the end). */
+  private readonly yielded = new Set<string>();
+  private reachLeft(placeId: string, me: string): number {
+    const dt = (this.engine as { dt?: number }).dt ?? 0.05; let left = 0;
+    for (const b of Object.values(this.engine.world.entities) as any[]) {
+      const m = b.human?.handActuator as HandActuatorMotion | undefined; if (!m || b.id === me || m.target !== placeId) continue;
+      left = Math.max(left, handReachSeconds(m) + handSwingSeconds(m) + handReleaseSeconds(m) - (this.engine.world.tick - m.startTick) * dt);
+    }
+    return left > 0 ? left + 0.4 : 0;
+  }
   /** #435 (W068): an empty search's steps: to where a body stands at this place, and a hand over its lip. */
-  private reachInto(x: { id: string; pose: { p: number[]; yaw?: number } }, box: NonNullable<ReturnType<EngineBridge['storage']>>, st: [number, number], level: number) {
+  private reachInto(x: { id: string; pose: { p: number[]; yaw?: number } }, box: NonNullable<ReturnType<EngineBridge['storage']>>, st: [number, number], level: number, wait = 0) {
     const yw = -(x.pose.yaw ?? 0), s = box.ins.slots[0].p;
-    return [{ verb: 'mars:walk_to', params: { x: st[0], z: st[1], level } }, { verb: 'mars:let_go_v1', params: {} },
+    return [{ verb: 'mars:walk_to', params: { x: st[0], z: st[1], level } }, ...(wait > 0 ? [{ verb: 'rest', params: { seconds: r3(wait) } }] : []), { verb: 'mars:let_go_v1', params: {} },
       { verb: 'mars:hand_actuator_v1', params: { target: x.id, at: [x.pose.p[0] + s[0] * Math.cos(yw) + s[2] * Math.sin(yw), x.pose.p[1] + Math.max(s[1] + 0.1, box.ins.lip + 0.02), x.pose.p[2] - s[0] * Math.sin(yw) + s[2] * Math.cos(yw)].map(r3), hold: 1 } }];
   }
   /** #435 (W068): what a finished search of this place came to, told to the searcher (the receipt's outcome). */
   searchOutcome(soul: { entityId: string }, spot: string, failed = false): string | null {
     const box = this.storage(spot); if (!box) return null;
     if (failed) return `You could not finish searching ${box.label}; you came away with nothing.`;
+    if (this.yielded.delete(`${soul.entityId}:${spot}`)) return `Someone else was already searching ${box.label}; you left it to them and came away with nothing.`;
     const got = Object.values(this.engine.world.entities).find((o: any) => o.tags?.includes('entity-world') && o.support?.kind === 'in-hand' && o.support.by === soul.entityId) as { id: string } | undefined, e = got && this.model.entities.get(got.id);
     return e ? `You found ${e.name ?? this.model.resolvedDef(e.def)?.name.replace(/^core-/, '') ?? 'something'} in ${box.label}.` : `You searched ${box.label} and came away with nothing.`;
   }

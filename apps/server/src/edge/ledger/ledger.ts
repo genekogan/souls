@@ -542,6 +542,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
     return bodyState(this.host, m.entityId, r ? this.approachFor(m, r.receipt_id) : null);
   }
   receipt(soulId: string, id: string): EdgeReceipt | null {const r = this.rows('receipt_id=? AND soul_id=?', id, soulId)[0]; return r ? this.view(r) : null;}
+  /** #435 (W068): whether another Soul has this capability under way (a second seeker of one hiding place). */
+  openByOthers(capability: string, soulId: string): boolean {return !!this.db.db.prepare("SELECT 1 FROM edge_receipts_v1 WHERE world_id=? AND capability=? AND soul_id<>? AND phase IN ('waiting','started') LIMIT 1").get(this.host.worldId, capability, soulId);}
   openReceipts(soulId: string): EdgeReceipt[] {return this.rows("soul_id=? AND phase IN ('waiting','started') ORDER BY accepted_tick", soulId).map(r => this.view(r));}
   private insert(soul: EdgeSoul, capability: string, phase: EdgeReceipt['phase'], clientRef?: string, keepActivity = false, detail: Record<string, unknown> = {},contentParams:Record<string,unknown>={},receiptId?:string): EdgeReceipt {
     const id = receiptId??'r_' + randomUUID(), tick = this.host.engine.world.tick,content=['read','write','use-computer','listen','paint','craft','post-letter'].includes(capability.split(':')[0])?outcomeParams(contentParams):{};
