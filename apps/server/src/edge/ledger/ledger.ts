@@ -645,6 +645,17 @@ export class EdgeLedger implements EdgeLedgerHooks {
       this.pending.delete(soulId);
       for (const r of this.openReceipts(soulId)) this.update(r.id, {phase: 'failed', code: 'engine.fault-recovered', reason: 'That would have pushed bodies into each other, so the world set it aside and carried on; choose again.'});
     }
+    // #1086: every other Soul's decisions were replayed onto the recovered head, and the engine numbers programmes as it
+    // runs them, so a replayed one can carry a new id: follow it. An open receipt whose programme is not running any more
+    // ends truthfully instead of staying started with nothing behind it (a receipt left open forever stops its Soul).
+    const set = new Set(edge.souls);
+    for (const r of this.rows("phase IN ('waiting','started') AND program_id IS NOT NULL")) {
+      if (set.has(r.soul_id)) continue;
+      const m = this.host.minds.get(r.soul_id), now = m ? this.host.engine.programOf(m.entityId) : null;
+      if (now === r.program_id) continue;
+      if (now && !this.rows("phase IN ('waiting','started') AND program_id=? AND receipt_id<>?", now, r.receipt_id).length) this.update(r.receipt_id, {program_id: now});
+      else this.update(r.receipt_id, {phase: 'failed', code: 'engine.fault-recovered', reason: 'The world set aside a fault nearby and carried on, and this act could not be resumed; choose again.'});
+    }
     this.dropMenus('engine-recovery');
   }
   private onProgram(ev: {id: string; kind: string; code?: string; message?: string}) {
