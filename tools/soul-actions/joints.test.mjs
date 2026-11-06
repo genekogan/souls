@@ -186,7 +186,7 @@ test('PC12 review: with SIM_SHARED_CARRY off the world-edit carries no joint fie
   const n0 = worldEdits(w).length;
   ok(w.god.act({ops: [...bay(w.ax - 2, w.az - 4), ...postKit(w.ax + 1.2, w.az)]})); await w.tick(30);
   const edits = worldEdits(w).slice(n0);
-  assert.ok(edits.length > 0 && edits.every((p) => !/"connections"|"roll"|"connected"/.test(p)), 'no joint fields in world-edit/1 with the flag off');
+  assert.ok(edits.length > 0 && edits.every((p) => !/"connections"|"roll"|"connected"|"sockets"/.test(p)), 'no joint fields or connector sockets in world-edit/1 with the flag off');
   const ents = w.host.engine.world.entities, beam = w.idOf('bay-beam-4l');
   assert.equal(ents[beam].connections, undefined);
   assert.ok(Object.keys(w.god.model.entities.get(beam).joins).length === 2, 'the entity world keeps the joints');

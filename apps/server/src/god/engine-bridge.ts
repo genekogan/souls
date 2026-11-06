@@ -632,7 +632,7 @@ export class EngineBridge {
       // a floating boat's asset carries no obstacle (catalog-adapter isFloatingDef): a new id, so worlds that registered
       // the old one (an obstacle) are sent the new one
       const aid = assetIdFor(facts, JSON.stringify(e.params ?? {}) + (isFloatingDef(def) ? '|afloat' : '') + (walkableKit ? '|ground-kit/1' : ''));
-      if (!known[aid] && !assets[aid]) { const asset = assetFromDef(aid, facts); if (walkableKit) { delete asset.obstacle; asset.seatApproach = 'slot'; for (const slot of asset.slots ?? []) delete slot.approachPolicy; } assets[aid] = asset; } // XP5: seats retain slots; kit solids supply the obstacle geometry. Their exact slot approach stays (lane walk's
+      if (!known[aid] && !assets[aid]) { const asset = assetFromDef(aid, facts, { connectors: !!this.edge?.sharedCarry }); if (walkableKit) { delete asset.obstacle; asset.seatApproach = 'slot'; for (const slot of asset.slots ?? []) delete slot.approachPolicy; } assets[aid] = asset; } // XP5: seats retain slots; kit solids supply the obstacle geometry. Their exact slot approach stays (lane walk's
       // reachable/1 sweep would cross the kit's own solids).
       part.fixture = this.fixtureSpec(e, def, aid, (assets[aid] ?? known[aid]) as any, wp);
       if (!walkableKit) return part;
@@ -864,7 +864,7 @@ export class EngineBridge {
     const pdef = parent ? this.model.resolvedDef(parent.def) : undefined;
     if (parent && pdef && isFixtureDef(pdef)) {
       const pfacts = factsOf(pdef, this.model.bake(pdef, parent.params ?? {}, parent.seed ?? 0, parent.shape), this.model.worldPose(parent).s);
-      const passet = assetFromDef(assetIdFor(pfacts, JSON.stringify(parent.params ?? {})), pfacts);
+      const passet = assetFromDef(assetIdFor(pfacts, JSON.stringify(parent.params ?? {})), pfacts, { connectors: !!this.edge?.sharedCarry });
       const pp = this.model.worldPose(parent), c = Math.cos(pp.yaw), s = Math.sin(pp.yaw), dx = wp.x - pp.x, dz = wp.z - pp.z;
       const local: [number, number, number] = [dx * c - dz * s, wp.y - pp.y, dx * s + dz * c];
       const slot = nearestSurfaceSlot(passet, local);

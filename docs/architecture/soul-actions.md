@@ -47,8 +47,9 @@ context-size checks below), regression runs, and an uncut real-client recording 
     `SIM_SHARED_CARRY=1` the engine mirrors it for parts adapted as items (anything `carryable`, so both rack parts)
     as its own `connections`: a joined part is `installed`, and a beam is supported (`connected`) by the uprights its
     ends join. A joined part that isn't carryable (a god's fixed rail) reaches the engine as a fixture on the ground,
-    with no connections. With the flag off, `world-edit/1` is exactly as before PC12: no `roll`, `connections` or
-    `connected` support. An upright stood on end (`r = [yaw, 0, π/2]`) reaches the engine with that roll, so its box stands. Its
+    with no connections. With the flag off, `world-edit/1` is exactly as before PC12: no `roll`, `connections`,
+    `connected` support or asset `sockets`. The native rack rules (`construction/rules.ts`, `campus/assembly.ts`) read
+    `beam-seat` sockets only on catalog `rack-upright` defs and campus frames, never on these adapted items. An upright stood on end (`r = [yaw, 0, π/2]`) reaches the engine with that roll, so its box stands. Its
     connectors are the adapted asset's sockets. The beams stay at the world root, because their support is their
     joints, not a parent. The client draws each part once, from the entity world.
   - **Not carried while joined.** `carry:<id>`, and `pick-up:<id>` of a small part, of a joined part is offered unavailable, `carry.joined`, naming what it
