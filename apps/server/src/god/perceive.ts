@@ -24,7 +24,7 @@ import { heldGodThing } from './held.ts';
 import { waterRole, wordOf } from './water.ts';
 import { economyOn } from './layers.ts';
 import { supportY } from './nav.ts';
-import { posterStale } from './poster-boards.ts';
+import { posterStale, worldDay } from './poster-boards.ts';
 import { posterList, wantedList } from '@sim/world-compiler';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -49,7 +49,7 @@ function boxOf(t: { at: Vec2; area?: Vec2[]; path?: Vec2[]; poly?: Vec2[]; width
   for (const [x, z] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
   return x0 <= x1 && z0 <= z1 && Number.isFinite(x0 + x1 + z0 + z1 + pad) ? [x0 - pad, z0 - pad, x1 + pad, z1 + pad] : null;
 }
-export type BuiltState = { what: string; text: string; near: string[]; at: Vec2 | null; def: string; removed?: boolean; key?: string; /** VOCAB-MECH: actuator state (open, on, locked, lit, level …) */ state?: Record<string, unknown>; front?: Vec2 | null };
+export type BuiltState = { what: string; text: string; near: string[]; at: Vec2 | null; def: string; removed?: boolean; key?: string; /** #430: `what` leads with a finished painting's or drawing's credit line */ painting?: true; /** VOCAB-MECH: actuator state (open, on, locked, lit, level …) */ state?: Record<string, unknown>; front?: Vec2 | null };
 
 export const BUILT_KIND = 'built';
 const clip = (v: unknown, n: number) => String(v ?? '').replace(/\r/g, '').trim().slice(0, n);
@@ -68,7 +68,7 @@ export const builtKind = {
     what: { type: 'string', visibility: 'public' }, text: { type: 'string', visibility: 'public' }, near: { type: 'string[]', visibility: 'public' },
     at: { type: 'json', visibility: 'public' }, def: { type: 'string', visibility: 'public' },
   },
-  initial: (p: Record<string, unknown>): BuiltState => ({ what: clip(p.what, p.paintingWhat === true ? 230 : 120), text: clip(p.text, 600), near: Array.isArray(p.near) ? p.near.map((x) => clip(x, 80)).slice(0, 4) : [], at: Array.isArray(p.at) && p.at.length === 2 ? [Number(p.at[0]), Number(p.at[1])] : null, def: clip(p.def, 80), ...(p.removed ? { removed: true } : {}), ...(typeof p.key === 'string' ? { key: p.key } : {}), ...(p.state && typeof p.state === 'object' ? { state: { ...(p.state as Record<string, unknown>) } } : {}), ...(Array.isArray(p.front) && p.front.length === 2 ? { front: [Number(p.front[0]), Number(p.front[1])] as Vec2 } : {}) }),
+  initial: (p: Record<string, unknown>): BuiltState => ({ what: clip(p.what, p.paintingWhat === true ? 230 : 120), text: clip(p.text, 600), near: Array.isArray(p.near) ? p.near.map((x) => clip(x, 80)).slice(0, 4) : [], at: Array.isArray(p.at) && p.at.length === 2 ? [Number(p.at[0]), Number(p.at[1])] : null, def: clip(p.def, 80), ...(p.paintingWhat === true ? { painting: true as const } : {}), ...(p.removed ? { removed: true } : {}), ...(typeof p.key === 'string' ? { key: p.key } : {}), ...(p.state && typeof p.state === 'object' ? { state: { ...(p.state as Record<string, unknown>) } } : {}), ...(Array.isArray(p.front) && p.front.length === 2 ? { front: [Number(p.front[0]), Number(p.front[1])] as Vec2 } : {}) }),
   rolesOf: () => [] as string[],
   actions: {},
 };
@@ -267,7 +267,7 @@ export class GodPerceive {
     const near = this.h.namesNear(at, e.id).filter((n) => n !== name).slice(0, 2);
     const prefix = article(kind);
     const suffix = `${parent?.name ? ` in ${m.pathOf(parent.id)}` : ''}${near.length ? `, by ${near.join(' and ')}` : ''}${lay ? `; ${lay}` : ''}`;
-    const painting = paintingLine(e, def);
+    const painting = paintingLine(e, def, worldDay());
     // Keep the complete bounded painting credit plus exactly the suffix visible before it was painted.
     // Unpainted input is unchanged; only painted initialization opts into the 230-character bound.
     const what = painting ? painting + clip(prefix + suffix, 120).slice(prefix.length) : prefix + suffix;

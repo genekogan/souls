@@ -21,8 +21,19 @@ test('brief: done when the receipt ended, now while it runs; at most 600 charact
   assert.equal(end.done, 'sit completed at commons.'); assert.equal(end.now, undefined);
   const long = brief({receipt: {id: 'r_2', capability: 'walk:x', phase: 'failed', reason: 'r'.repeat(2000)}, events: Array.from({length: 9}, () => ({text: 'e'.repeat(200)}))});
   const {events, eventWindow, ...action} = long;
-  assert.ok(JSON.stringify(action).length <= 601, String(JSON.stringify(action).length)); assert.match(long.done, /^walk:x failed: r+…$/);
+  assert.ok(JSON.stringify(action).length <= 601, String(JSON.stringify(action).length)); assert.match(long.failed, /^walk:x failed: r+…$/); assert.equal(long.done, undefined);
   assert.equal(events.length, 4); assert.equal(eventWindow.omitted, 5, 'event omissions are explicit, separate from the compact action summary');
+});
+
+test('brief F2 (#373): a failed or replaced receipt prints failed with the reason, never its success summary as done', () => {
+  const failed = brief({accepted: true, receipt: {id: 'r_3', capability: 'object:ride-x:join', phase: 'failed', code: 'ride.departed', reason: 'The ride left before you boarded.', outcome: {summary: 'Boarded ride-x and seated; the ride has not left the ground yet and is not finished.'}}});
+  assert.equal(failed.done, undefined); assert.equal(failed.failed, 'object:ride-x:join failed: The ride left before you boarded.');
+  const replaced = brief({receipt: {id: 'r_4', capability: 'object:ride-x:join', phase: 'replaced', reason: 'A newer action from this Soul replaced it.', outcome: {summary: 'Boarded ride-x and seated.'}}});
+  assert.equal(replaced.done, undefined); assert.equal(replaced.failed, 'object:ride-x:join replaced: A newer action from this Soul replaced it.');
+  const coded = brief({receipt: {id: 'r_5', capability: 'walk:x', phase: 'failed', code: 'route.blocked'}});
+  assert.equal(coded.failed, 'walk:x failed (route.blocked).');
+  const boarded = brief({receipt: {id: 'r_6', capability: 'object:ride-x:join', phase: 'completed', outcome: {summary: 'Boarded ride-x and seated.'}}});
+  assert.equal(boarded.done, 'Boarded ride-x and seated.'); assert.equal(boarded.failed, undefined);
 });
 
 test('act --for: by default the first accepted act within 120 s of an ack serves it; an explicit id, none, and a stale default dropped', async t => {

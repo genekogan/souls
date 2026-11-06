@@ -152,7 +152,7 @@ export type SightInput = {
 };
 const clean = (s: string, n = 48) => s.replace(/[\u0000-\u001f\u007f<>`]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 const ACTIVITY: Record<string, string> = {
-  warm: 'warming by the fire', 'warm-by-fire': 'warming by the fire', read: 'reading', write: 'writing', paint: 'painting', talk: 'talking', listen: 'listening', dance: 'dancing',
+  warm: 'warming by the fire', 'warm-by-fire': 'warming by the fire', read: 'reading', write: 'writing', paint: 'painting', chalk: 'drawing in chalk', talk: 'talking', listen: 'listening', dance: 'dancing',
   'play-piano': 'playing the piano', 'play-music': 'playing music', sing: 'singing at the microphone', eat: 'eating', drink: 'drinking', cook: 'cooking', hug: 'hugging someone', 'high-five': 'high-fiving someone', wave: 'waving',
   swim: 'swimming', tread: 'treading water', wade: 'wading', walk: 'walking', run: 'running', jog: 'jogging', sleep: 'asleep', nap: 'napping', lie: 'lying down', 'sit-ground': 'sitting on the ground',
   yoga: 'doing yoga', stretch: 'stretching', craft: 'making something', 'play-game': 'playing a game', clap: 'clapping', bow: 'bowing', cheer: 'cheering', point: 'pointing', wait: 'waiting',

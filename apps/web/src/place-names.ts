@@ -42,7 +42,7 @@ export function placeName(raw:string,known?:(id:string)=>string|null|undefined):
  }
  return cap(words(tokens));
 }
-const POSES:Record<string,string>={sit:'Sitting',walk:'Walking',idle:'Standing around',settle:'Settling',stand:'Standing',sleep:'Sleeping',warm:'Warming up',tread:'Swimming',swim:'Swimming',eat:'Eating',lie:'Lying down',nap:'Napping',read:'Reading',dance:'Dancing','sit-ground':'Sitting on the grass',talk:'Talking',listen:'Listening',wave:'Waving',paint:'Painting',write:'Writing',cook:'Cooking',drink:'Drinking',browse:'Browsing the shelves',yoga:'Doing yoga',stretch:'Stretching',
+const POSES:Record<string,string>={sit:'Sitting',walk:'Walking',idle:'Standing around',settle:'Settling',stand:'Standing',sleep:'Sleeping',warm:'Warming up',tread:'Swimming',swim:'Swimming',eat:'Eating',lie:'Lying down',nap:'Napping',read:'Reading',dance:'Dancing','sit-ground':'Sitting on the grass',talk:'Talking',listen:'Listening',wave:'Waving',paint:'Painting',chalk:'Drawing in chalk',write:'Writing',cook:'Cooking',drink:'Drinking',browse:'Browsing the shelves',yoga:'Doing yoga',stretch:'Stretching',
  /* D1: a body on a carrier (ferris wheel, balloon, punt) is riding, rowing, boarding or stepping out, never the idle doing */
  ride:'Riding',row:'Rowing',board:'Boarding',alight:'Stepping out'};
 /** The body's activity in words ("sit" → "Sitting"); ids become plain words, never raw. */

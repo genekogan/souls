@@ -38,6 +38,8 @@ export function factsOf(data) {
   return prune({
     accepted: typeof data.accepted === 'boolean' ? data.accepted : undefined,
     code: ref(data.error?.code ?? data.code),
+    // #824: the ids a refusal offers instead (offer ids only; labels are world text and are omitted)
+    alternatives: Array.isArray(data.alternatives) && data.alternatives.length ? data.alternatives.slice(0, 3).map(a => ref(a?.id)).filter(Boolean) : undefined,
     receipt: receiptFact(data.receipt),
     for: ref(typeof data.for === 'string' ? data.for : data.for?.id),
     channel: ref(data.channel),
