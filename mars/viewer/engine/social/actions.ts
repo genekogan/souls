@@ -287,7 +287,7 @@ function slotAction(verb: string, description: string, kinds: SlotKind[] | null,
           a.pose.yaw = turnToward(a.pose.yaw, ex.slot.yaw, HUMAN_PROFILE.turnRate * dt);
           return { status: 'running', phase: 'turn' };
         }
-        if (ex.approach) { ex.phase = 'sit-down'; ex.from = pos2(a); ex.t = 0; ex.dur = sitDuration(Math.hypot(dist2(ex.from, ex.slot.p), seatRise(ex.slot))); }
+        if (ex.approach) { ex.phase = 'sit-down'; ex.from = pos2(a); ex.t = 0; ex.dur = sitDuration(hypot(dist2(ex.from, ex.slot.p), seatRise(ex.slot))); }
         else { ex.phase = 'occupied'; if (ex.slot.kind === 'berth') { a.human!.berth = ex.slot.id; a.human!.seatHeight = ex.slot.height ?? 0.5; } }
       }
       if (ex.phase === 'sit-down') {
@@ -306,7 +306,7 @@ function slotAction(verb: string, description: string, kinds: SlotKind[] | null,
       // SIT_TRANSITION the body has left to cover; the seat claim is held until they are off it
       if (ex.approach && (ex.phase === 'sit-down' || ex.phase === 'occupied')) {
         const here = pos2(rt.world.entities[ex.actor]);
-        const flat = dist2(ex.slot.p, ex.approach), span = Math.hypot(flat, seatRise(ex.slot));
+        const flat = dist2(ex.slot.p, ex.approach), span = hypot(flat, seatRise(ex.slot));
         const left = dist2(here, ex.approach);
         if (left > 1e-6) {
           ex.phase = 'stand-up'; ex.from = here; ex.t = 0; ex.dur = span > 1e-9 ? sitDuration(span) * Math.min(1, flat > 1e-9 ? left / flat : 1) : 0;
