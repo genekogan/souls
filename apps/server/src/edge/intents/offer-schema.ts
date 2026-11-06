@@ -81,3 +81,10 @@ export function paramsProblem(cap: Pick<EdgeCapability, 'id' | 'verb' | 'params'
   for (const [name, spec] of Object.entries(schema)) if (spec.required && (p[name] === undefined || p[name] === null)) return `${cap.id} needs ${name} (${shown(spec)}).`;
   return null;
 }
+
+/** CTRL-7 (#1099): the generated half of `/schema.md`: every verb with shared parameters, from this table. */
+export function schemaReference(verbs: readonly string[]): string {
+  const cell = (spec: ParamSpec) => [spec.type, spec.enum ? spec.enum.join(' | ') : null, spec.min !== undefined || spec.max !== undefined ? `${spec.min ?? ''}..${spec.max ?? ''}` : null, spec.maxLength ? `≤${spec.maxLength} chars` : null, spec.maxItems ? `≤${spec.maxItems}` : null, spec.default !== undefined ? `default ${String(spec.default)}` : null, spec.required ? 'required' : null, spec.description ?? null].filter(Boolean).join(', ');
+  const rows = Object.keys(VERB_PARAMS).sort().flatMap(v => Object.entries(VERB_PARAMS[v]!).map(([n, spec]) => `| ${v} | ${n} | ${cell(spec)} |`));
+  return ['## Offers', '', 'An id is `<verb>:<target>`. An offer\'s own `params` add to or override its verb\'s, listed here. Parameters are optional unless marked required.', '', `Verbs: ${verbs.join(', ')}; a world and its objects add their own, with their \`params\` on the offer.`, '', '| verb | param | type |', '|---|---|---|', ...rows, ''].join('\n');
+}

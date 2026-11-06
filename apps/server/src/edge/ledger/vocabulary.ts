@@ -61,7 +61,7 @@ export type VocabResult =
     verb?: string; places?: string[]};
 
 const STOP = new Set(['the', 'a', 'an', 'to', 'of', 'in', 'at', 'by', 'on', 'into', 'near', 'with', 'my', 'some', 'through', 'thru', 'around', 'across', 'over', 'back', 'please', 'little', 'bit', 'for', 'while', 'and', 'then', 'there']);
-const VERBS: Record<string, string> = {go: 'walk', goto: 'walk', 'go-to': 'walk', 'walk-to': 'walk', visit: 'walk', 'go-inside': 'walk', 'go-into': 'walk', 'go-in': 'walk', enter: 'walk', 'step-inside': 'walk', 'step-into': 'walk', 'walk-into': 'walk', 'walk-inside': 'walk', move: 'walk', head: 'walk', travel: 'walk', 'come-back': 'walk', return: 'walk', 'go-back': 'walk', 'head-back': 'walk', 'walk-back': 'walk', running: 'run', sprint: 'run', sprinting: 'run', hurry: 'run', jogging: 'jog', 'go-over': 'walk',
+const VERBS: Record<string, string> = {fix: 'repair', mend: 'repair', 'pump-up': 'repair', go: 'walk', goto: 'walk', 'go-to': 'walk', 'walk-to': 'walk', visit: 'walk', 'go-inside': 'walk', 'go-into': 'walk', 'go-in': 'walk', enter: 'walk', 'step-inside': 'walk', 'step-into': 'walk', 'walk-into': 'walk', 'walk-inside': 'walk', move: 'walk', head: 'walk', travel: 'walk', 'come-back': 'walk', return: 'walk', 'go-back': 'walk', 'head-back': 'walk', 'walk-back': 'walk', running: 'run', sprint: 'run', sprinting: 'run', hurry: 'run', jogging: 'jog', 'go-over': 'walk',
   hangout: 'hang-out', 'hang-around': 'hang-out', linger: 'hang-out', 'go-near': 'go-near', approach: 'go-near', join: 'go-near',
   'sit-on': 'sit', 'sit-at': 'sit', 'sit-down': 'sit', 'take-a-seat': 'sit', 'have-a-seat': 'sit', 'take-seat': 'sit', 'be-seated': 'sit', seat: 'sit', relax: 'rest',
   stroll: 'stroll', 'take-a-walk': 'stroll', 'take-a-stroll': 'stroll', 'go-for-a-walk': 'stroll', 'go-for-a-stroll': 'stroll', 'walk-through': 'stroll', 'stroll-through': 'stroll', wander: 'stroll', ramble: 'stroll', meander: 'stroll', explore: 'stroll',
@@ -270,6 +270,21 @@ const PLACE_VERBS = new Set(['walk', 'jog', 'run', 'jog-around', 'run-around', '
 const SPOT_PLACE_VERBS = new Set(['read']);
 const GAIT_VERBS = new Set(['jog', 'run', 'jog-around', 'run-around', 'cycle', 'cycle-around']);
 
+// #442: "repair the bench", "fix the cracked slat", "fix it", "pump up the tyre with the pump": the repair offer these words
+// name. "fix dinner" and "pump up the music" are not these words: nothing here is called that, so they fall through. A thing
+// that's here but not broken gets a refusal that says so.
+const REPAIR_WORDS = /^(?:please\s+)?(repair|fix|mend|pump\s+up)\s+(?:(?:the|that|this|my|a)\s+)?(.{1,60}?)(?:\s+with\s+(?:(?:the|a|my)\s+)?[a-z -]{1,30})?[.!]*$/;
+function repairWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
+  const m = REPAIR_WORDS.exec(text.trim()); if (!m) return null;
+  const ws = tokens(m[2]), offers = ctx.caps.filter(c => c.id.endsWith(':repair')), lone = /^(?:it|this|that)$/.test(m[2].trim());
+  if (lone && offers.length === 1) return {kind: 'alias', cap: offers[0], note: `${input} is ${offers[0].id} (${offers[0].label}).`};
+  const cap = offers.find(c => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')); return ws.every(w => tokenHit(w, all));});
+  if (cap) return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`};
+  if (m[1].startsWith('pump') || !ws.length) return null;
+  const here = ctx.caps.some(c => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')); return ws.every(w => tokenHit(w, all));});
+  return here ? {kind: 'unknown', code: 'repair.not-broken', reason: `That is not broken${offers.length ? `; what is: ${offers.map(c => c.label).join(', ')}` : ''}.`, didYouMean: offers.map(c => ({id: c.id, label: c.label}))} : null;
+}
+
 export function resolveCapability(input: string, ctx: VocabContext): VocabResult {
   const r = resolveWords(input, ctx);
   // R2 stroll (longrun 2026-10-16: nobody moved for 70 minutes): a stroll named for the place the Soul is already in, whose
@@ -385,6 +400,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   }
   const text = input.toLowerCase(), colon = text.indexOf(':'), head = colon >= 0 ? text.slice(0, colon) : '';
   const stow = colon < 0 ? storeWords(input, text, ctx) : null; if (stow) return stow;
+  const mend = colon < 0 ? repairWords(input, text, ctx) : null; if (mend) return mend;
   const searching = colon < 0 ? searchWords(input, text, ctx) : null; if (searching) return searching;
   // RESOLVE (SOULSIM-E "find a boat": no "find" capability): find / look for / search for X is a walk to the nearest X you
   // can reach, unless the words name an activity offered here ("find somewhere quiet to read", "find a seat" keep theirs)
