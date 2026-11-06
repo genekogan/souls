@@ -6,7 +6,7 @@ import { tmpdir, homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cacheAdd, cacheKey, compareRuns, lookupCache, prepareBundleBaselineCarry, readSuiteRun, suiteTree, DRIVER_ONLY, main, parseArgs, parseTap, readRun, scopeFor, storeCache, validateQuarantine, REQUIRED_PACKAGES, REQUIRED_STEPS } from './release-gate.mjs';
+import { cacheAdd, cacheKey, compareRuns, lookupCache, prepareBundleBaselineCarry, readSuiteRun, suiteTree, DRIVER_ONLY, main, parseArgs, parseTap, readRun, scopeFor, storeCache, validateQuarantine, validateRenames, REQUIRED_PACKAGES, REQUIRED_STEPS } from './release-gate.mjs';
 import { combineReceipts } from './ship-receipt.mjs';
 
 // Preserve fixture artifacts under the same no-delete rule as release work.
@@ -77,6 +77,49 @@ test('removing either a passing or a failing baseline assertion blocks coverage 
     const r = pair([{ name: 'keep' }, { name: 'deleted', status }], [{ name: 'keep' }], [entry('deleted')]);
     assert.equal(r.status, 'blocked'); assert.equal(r.removed[0].id, 'deleted'); assert.equal(r.fixed.length, 0);
   }
+});
+const rename = (from, to, extra = {}) => ({ step: 'V4-web', from, to, reason: 'Fixture: the same check under its reviewed new name', pr: '#1', ...extra });
+const renamesOf = (...entries) => validateRenames({ schemaVersion: 1, entries });
+const pairRenamed = (baselineNodes, candidateNodes, renames, entries = []) => compareRuns(run(tap(baselineNodes)), run(tap(candidateNodes)), manifest(entries), new Set(), { renames });
+test('renames: a listed rename is satisfied only when every replacement ran and passed; anything unlisted still blocks', () => {
+  const ok = pairRenamed([{ name: 'keep' }, { name: 'old name' }], [{ name: 'keep' }, { name: 'new name' }], renamesOf(rename('old name', 'new name')));
+  assert.equal(ok.status, 'pass', ok.blockers.join('\n')); assert.deepEqual(ok.removed, []);
+  assert.deepEqual(ok.renamed, [{ step: 'V4-web', from: 'old name', to: ['new name'], reason: 'Fixture: the same check under its reviewed new name', pr: '#1' }]);
+  // one old assertion replaced by several: all of them must pass
+  const many = renamesOf(rename('old name', ['new a', 'new b']));
+  assert.equal(pairRenamed([{ name: 'old name' }], [{ name: 'new a' }, { name: 'new b' }], many).status, 'pass');
+  const missing = pairRenamed([{ name: 'old name' }], [{ name: 'new a' }], many);
+  assert.equal(missing.status, 'blocked'); assert.deepEqual(missing.removed, [{ step: 'V4-web', id: 'old name', rename: { to: ['new a', 'new b'], notPassing: ['new b'], inBaseline: [] } }]);
+  // a replacement the baseline already ran is not a rename: deleting A and pointing it at the existing B is coverage loss
+  const folded = pairRenamed([{ name: 'old name' }, { name: 'existing' }], [{ name: 'existing' }], renamesOf(rename('old name', 'existing')));
+  assert.equal(folded.status, 'blocked'); assert.deepEqual(folded.removed[0].rename.inBaseline, ['existing']); assert.deepEqual(folded.renamed, []);
+  for (const status of ['fail', 'skip', 'todo']) {
+    const r = pairRenamed([{ name: 'old name' }], [{ name: 'new name', status }], renamesOf(rename('old name', 'new name')));
+    assert.equal(r.status, 'blocked'); assert.equal(r.removed[0].rename.notPassing[0], 'new name'); assert.equal(r.renamed.length, 0);
+  }
+  // unlisted, another step's entry, or no list at all: still a removed assertion
+  assert.equal(pairRenamed([{ name: 'old name' }], [{ name: 'new name' }], renamesOf(rename('other', 'new name'))).removed[0].id, 'old name');
+  assert.equal(pairRenamed([{ name: 'old name' }], [{ name: 'new name' }], renamesOf(rename('old name', 'new name', { step: 'V2-build-root' }))).status, 'blocked');
+  assert.equal(pair([{ name: 'old name' }], [{ name: 'new name' }]).status, 'blocked');
+  // an entry whose old id still runs changes nothing
+  const stale = pairRenamed([{ name: 'old name' }], [{ name: 'old name' }, { name: 'new name' }], renamesOf(rename('old name', 'new name')));
+  assert.equal(stale.status, 'pass'); assert.deepEqual(stale.renamed, []);
+});
+test('renames: the list is strict about its fields, steps, PR and duplicates', () => {
+  assert.throws(() => validateRenames({ entries: [] }), /schemaVersion 1/);
+  for (const bad of [{ reason: ' ' }, { to: [] }, { to: ['ok', ''] }, { from: undefined }]) assert.throws(() => renamesOf(rename('a', 'b', bad)), /step, from, to/);
+  for (const pr of ['867', '#', 1, undefined]) assert.throws(() => renamesOf(rename('a', 'b', { pr })), /pr must be/);
+  assert.throws(() => renamesOf(rename('a', 'b', { step: 'V9-nope' })), /unknown rename step/);
+  assert.throws(() => renamesOf(rename('a', 'b', { step: REQUIRED_STEPS.find(s => s.startsWith('V6-')) })), /V6 scenarios/);
+  assert.throws(() => renamesOf(rename('a', ['b', 'a'])), /distinct/);
+  assert.throws(() => renamesOf(rename('a', ['b', 'b'])), /distinct/);
+  assert.throws(() => renamesOf(rename('a', 'b'), rename('a', 'c')), /duplicate rename/);
+  assert.deepEqual(renamesOf(rename('a', 'b')).get(`V4-web\u0000a`).to, ['b']);
+});
+test('renames: the committed list validates, and stays in the suite cache key like quarantine.json', () => {
+  const list = JSON.parse(readFileSync(new URL('./renames.json', import.meta.url), 'utf8'));
+  assert.ok(validateRenames(list).size >= 1);
+  assert.ok(!DRIVER_ONLY.includes('renames.json'));
 });
 test('skip and TODO changes cannot turn failures into success', () => {
   for (const status of ['skip', 'todo']) {
@@ -516,6 +559,17 @@ test('baseline reuse: a miss runs main once and caches it; the next gate on the 
   assert.equal(r2.runs.baseline.metadata.harnessRef, c1); assert.notEqual(r2.runs.baseline.metadata.harnessArchiveSha256, r2.harness.archiveSha256);
   assert.deepEqual(r2.cache.stored.map(s => s.label), ['candidate']); assert.equal(r2.status, 'pass');
   assert.ok(existsSync(join(cache, `${c2}-${r2.harness.suiteTree}-node22/CACHE.json`)));
+});
+test('the receipt hashes the harness rename list, and an invalid list stops the gate before Modal', async t => {
+  const repo = gateRepo(t), list = JSON.stringify({ schemaVersion: 1, entries: [{ step: 'V4-web', from: 'gone', to: 'works', reason: 'fixture rename', pr: '#2' }] }) + '\n';
+  repo.commit('tools/test-harness/renames.json', list);
+  const c1 = repo.commit('apps/web/src/a.ts', 'one\n'), calls = [], out1 = join(repo.dir, '.lane/r1');
+  const first = await gate(repo, [c1, '--baseline', repo.base, '--out', out1, '--no-cache'], fakeModal(calls));
+  assert.equal(first.rc, 0, receiptOf(out1).blockers.join('\n')); assert.equal(receiptOf(out1).renamesSha256, shaOf(Buffer.from(list)));
+  repo.commit('tools/test-harness/renames.json', JSON.stringify({ schemaVersion: 1, entries: [{ step: 'V4-web', from: 'gone', to: 'works', reason: 'no pr' }] }));
+  calls.length = 0; const out2 = join(repo.dir, '.lane/r2');
+  const second = await gate(repo, [c1, '--baseline', repo.base, '--out', out2, '--no-cache'], fakeModal(calls));
+  assert.equal(second.rc, 1); assert.deepEqual(calls, []); assert.match(receiptOf(out2).blockers.join('\n'), /pr must be/);
 });
 test('a modified cache entry or another harness tree is a miss, never a silent reuse', async t => {
   const repo = gateRepo(t), cache = mkdtempSync(join(dirname(repo.dir), 'sim-gate-cache-')); t.after(() => retireFixture(cache));
