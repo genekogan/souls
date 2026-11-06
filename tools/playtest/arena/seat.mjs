@@ -99,7 +99,8 @@ export class Seat {
     try { onStart?.({ turn: n, reason, startedAt: started.t, startMono: started.mono }); } catch { /* observer hook is best effort */ }
     // #1098: a live seat with no real cost report (Codex) can't be held to the world budget, so under one it is refused
     const noCost = this.budget && this.info.adapter !== 'claude-headless' ? { ok: false, reason: `world budget: ${this.info.adapter} reports no turn cost, so it can't run under a world budget` } : null;
-    const hold = noCost ?? (this.budget ? await this.budget.reserve(this.seat.id) : null);
+    const ctxBefore = this.info.sessionContextTokens ?? null;   // the session's context at its last call (null: no call yet)
+    const hold = noCost ?? (this.budget ? await this.budget.reserve(this.seat.id, { contextTokens: ctxBefore }) : null);
     if (hold && !hold.ok) {   // #1098: refused before any provider call; recorded as a turn with no model use
       const ended = now(); this.budgetRefused = hold.reason; this.inTurn = false;
       const rec = { turn: n, reason, startedAt: started.t, endedAt: ended.t, startMono: started.mono, endMono: ended.mono, wallMs: 0, usage: null, finalText: null, toolCalls: [], exit: null, timedOut: false, endedAfterResult: null, refused: 'world-budget', refusedReason: hold.reason };
@@ -113,7 +114,7 @@ export class Seat {
     try {
       r = await this.adapter.turn({ cwd: this.folder, sessionId: this.info.sessionId, resume: !first, model: this.info.model ?? undefined, effort: this.info.effort,
         text, allowedTools: this.allowedTools, maxWallSec: this.rails.maxTurnWallSec, prevCumulative: this.cumulative, script: this.seat.script, diagnostics: this.seat.diagnostics,
-        ...(hold ? { maxBudgetUsd: this.budget.turnCapUsd, maxOutputTokens: this.budget.maxOutputTokens } : {}) });
+        ...(hold ? { maxBudgetUsd: hold.capUsd, maxOutputTokens: this.budget.maxOutputTokens } : {}) });
     } catch (e) { if (hold) this.budget.settle(hold, null); throw e; }
     const ended = now();
     // #1098: `claude -p --resume` reports total_cost_usd for the whole session so far, so this turn's cost is the difference
@@ -127,11 +128,26 @@ export class Seat {
     }
     if (hold) {
       this.budget.settle(hold, turnCost);
-      // the margin assumes no call past maxContextTokens of context or maxOutputTokens of output; a bigger one ends the world's turns
-      const calls = (r.stream ?? []).filter((e) => e?.type === 'assistant').map((e) => e.message?.usage ?? {});
-      const ctx = Math.max(0, ...calls.map((u) => (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)));
-      const outTok = Math.max(0, ...calls.map((u) => u.output_tokens ?? 0));
-      if (ctx > this.budget.maxContextTokens || outTok > this.budget.maxOutputTokens) this.budget.exceeded(this.seat.id, `context ${ctx}, output ${outTok} tokens in one call`);
+      // the reservation assumed: no output past maxOutputTokens in a call; context growing by at most one observation plus one
+      // output between calls (from the session's last context, or from maxContextTokens on the first call); and the turn
+      // costing no more than it reserved. Anything past that ends the world's turns.
+      const calls = [], seen = new Set();
+      for (const e of r.stream ?? []) {
+        if (e?.type !== 'assistant') continue;
+        const u = e.message?.usage ?? {}, key = e.message?.id ?? JSON.stringify(u); if (seen.has(key)) continue; seen.add(key);
+        calls.push({ ctx: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0), out: u.output_tokens ?? 0 });
+      }
+      const step = this.budget.maxObservationTokens + this.budget.maxOutputTokens;
+      let prev = ctxBefore, broke = null;
+      for (const c of calls) {
+        if (c.out > this.budget.maxOutputTokens) broke = `output ${c.out} tokens in one call`;
+        else if (prev == null && c.ctx > this.budget.maxContextTokens) broke = `first-call context ${c.ctx} tokens`;
+        else if (prev != null && c.ctx > prev + step) broke = `context grew ${c.ctx - prev} tokens between calls`;
+        if (broke) break; prev = c.ctx + c.out;
+      }
+      if (!broke && turnCost != null && turnCost > hold.usd) broke = `turn cost $${turnCost} past its reservation $${hold.usd}`;
+      if (broke) this.budget.exceeded(this.seat.id, broke);
+      const last = calls.at(-1); if (last) { this.info.sessionContextTokens = last.ctx + last.out; this.save(); }
     }
     if (r.cumulative) this.cumulative = r.cumulative;
     if (r.sessionId && r.sessionId !== this.info.sessionId) { this.info.sessionId = r.sessionId; }
