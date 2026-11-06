@@ -97,11 +97,13 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
   const done = async (s, words, each) => { const r = await act(s, words); await until([[s, r]], 9000, each); return edge.receipt(s.soulId, r.receipt.id); };
 
   // ---- Ana makes a cup of tea and picks it up ----
-  refused(ana, `object:${id('cup')}:drink`, 'tea.not-holding');
+  refused(ana, `object:${id('cup')}:drink`, 'tea.cup-empty');
   refused(ana, `object:${id('cup')}:wash`, 'tea.cup-clean'.replace('clean', 'clean'));
   await done(ana, 'make a cup of tea');
   assert.equal(state('cup').tea, 1, 'a cup of tea'); const brewed = state('cup').brewedTick; assert.ok(brewed > 0);
   refused(ana, `object:${id('cup')}:wash`, 'tea.cup-not-empty');
+  // #628: a full cup on the counter is drunk by taking it first (a step, not a refusal)
+  { const d = cap(ana, `object:${id('cup')}:drink`); assert.equal(d?.available, true, JSON.stringify(d)); report.checks.push('drink offered with the cup on the counter'); }
   await done(ana, 'pick up the cup');
   assert.equal(ent('cup').support.by, ana.entityId, 'Ana holds the cup of tea');
 
@@ -121,9 +123,10 @@ test('serve, share, drink and wash up: a real cup of tea from hand to hand to em
 
   // ---- Ana makes a second cup and picks it up; both drink at the table at once ----
   await done(ana, 'make a cup of tea'); assert.equal(state('cup-two').tea, 1);
-  await done(ana, 'pick up the cup'); assert.equal(ent('cup-two').support.by, ana.entityId);
+  // #628: she drinks it without picking it up first: the drink takes it from the counter as a step, not a refusal
+  assert.notEqual(ent('cup-two').support.kind, 'in-hand');
   const v0 = w.bridge.tea.visits(), tk0 = W().tick;
-  const da = await act(ana, 'drink the tea'), db = await act(ben, 'drink the tea');
+  const da = await act(ana, `object:${id('cup-two')}:drink`), db = await act(ben, 'drink the tea');
   const seen = {ana: [], ben: []}, motion = {}, tableP = W().entities[id('table')].pose.p;
   let midHereBen = null;
   await until([[ana, da], [ben, db]], 9000, (s) => {
