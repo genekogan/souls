@@ -268,3 +268,9 @@ test('#1098: console.clockFrom "paired" starts the script clock once every seat 
   const early = readJsonl(join(plain.runDir, 'director', 'commands.jsonl')).find((c) => c.cmd === 'say');
   assert.deepEqual([early.outcome, early.reason], ['refused', 'seat not paired']);
 });
+
+test('#1098: a seat turn refused by the world budget ends the scene', async () => {
+  const r = await play({ during: (sw, clock, w) => { (async () => { await clock.sleep(20_000); w.seats.bob.budgetRefused = 'world budget: would pass $0.9'; })(); } });
+  assert.equal(r.summary.stopped, 'world-budget');
+  assert.ok(readJsonl(join(r.runDir, 'director', 'timeline.jsonl')).some((e) => e.kind === 'budget' && e.seat === 'bob'));
+});

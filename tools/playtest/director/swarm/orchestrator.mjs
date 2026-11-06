@@ -32,9 +32,9 @@ export function createSwarm({ cast, runDir, seats, world, owner, truth, plan, cl
   const dir = join(runDir, 'director');
   mkdirSync(dir, { recursive: true });
   const feeder = scriptFeeder(script ?? cast.console?.script ?? []);
-  // #1098 amendment: `console.clockFrom: "paired"` starts the cast clock (console offsets and durationSec) once every seat is
-  // paired and the director has its first world observation of it (or the seat was dropped), so a live seat's onboarding
-  // can't swallow the script's first lines. Without it the clock starts at the swarm's start, as before.
+  // #1098: `console.clockFrom: "paired"` starts the cast clock (console offsets and durationSec) once every seat is paired
+  // and the director has its first world observation of it (or the seat was dropped), so a live seat's onboarding can't
+  // swallow the script's first lines. Without it the clock starts at the swarm's start, as before.
   let castStart = cast.console?.clockFrom === 'paired' ? null : start;
   const castElapsed = () => (castStart == null ? -1 : (clock.now() - castStart) / 1000);
   const events = new Set();
@@ -336,6 +336,9 @@ export function createSwarm({ cast, runDir, seats, world, owner, truth, plan, cl
       if (state.stopped) break;
       if (!state.paused) { if (state.phase === 'gather') await stepGather(); else if (state.phase === 'turns') await stepTurns(); }
       if (castElapsed() >= cast.durationSec) stop('duration');
+      // #1098: a live seat's turn refused by the world budget ends the scene; nothing is asked of a model past the cap
+      const broke = Object.values(S).find((st) => st.seat?.budgetRefused);
+      if (broke) { timeline('budget', { seat: broke.id, reason: broke.seat.budgetRefused }, `${broke.id.padEnd(8)} turn refused: ${broke.seat.budgetRefused}`); stop('world-budget'); }
       if (quotaCheck && clock.now() >= nextQuota) { nextQuota += 300000; try { const q = await quotaCheck(); if (q === false || q?.allowed === false) stop('quota'); } catch { /* keep going */ } }
       writeJson(join(dir, 'state.json'), snapshot());
       if (!state.stopped) await clock.sleep(Math.max(200, T.truthPollSec * 1000 - (clock.now() - t0)));
