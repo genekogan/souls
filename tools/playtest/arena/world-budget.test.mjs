@@ -3,13 +3,35 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { worldBudgetFor, worstCallUsd } from './world-budget.mjs';
+import { worldBudgetFor, worstCallUsd, turnReservation, WORLD_BUDGET_DEFAULTS as K } from './world-budget.mjs';
 import { createSeat } from './seat.mjs';
 import * as claude from './adapters/claude-headless.mjs';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'pt-budget-'));
 const rows = (file) => readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const kinds = (file) => rows(file).map((r) => r.kind);
+
+test('#1098 on the live turns, every reservation covers the turn\'s real cost, and the next-call assumptions held', () => {
+  const { sessions } = JSON.parse(readFileSync(new URL('./fixtures/1098-live-turns.json', import.meta.url), 'utf8'));
+  let checked = 0;
+  for (const [name, turns] of Object.entries(sessions)) {
+    let ctx = null;
+    for (const t of turns) {
+      const plan = turnReservation(ctx, K);
+      assert.ok(t.costUsd <= plan.usd, `${name} turn ${t.turn}: cost ${t.costUsd} > reservation ${plan.usd} (${plan.basis})`);
+      assert.ok(plan.capUsd < plan.usd && plan.capUsd >= K.minTurnCapUsd, `${name} turn ${t.turn}: CLI cap ${plan.capUsd}`);
+      let prev = ctx;
+      for (const [c, out] of t.calls) {
+        assert.ok(out <= K.maxOutputTokens, `${name}: output ${out}`);
+        if (prev == null) assert.ok(c <= K.maxContextTokens, `${name}: first-call context ${c}`);
+        else assert.ok(c <= prev + K.maxObservationTokens + K.maxOutputTokens, `${name}: context grew ${c - prev}`);
+        prev = c + out;
+      }
+      ctx = prev; checked++;
+    }
+  }
+  assert.equal(checked, 12);
+});
 
 test('#1098 the margin is a worst-case uncached Sonnet call: every context token written to the 1 h cache, plus the most output', () => {
   assert.equal(worstCallUsd({ maxContextTokens: 60_000, maxOutputTokens: 4_096 }), 0.42144);   // 60k x $6/M + 4096 x $15/M
@@ -54,7 +76,9 @@ test('#1098 a claude seat: per-turn cost from the session total, the CLI capped 
   const run2 = tmp(), t = createSeat({ runDir: run2, seat: { id: 'bo', adapter: 'claude-headless' }, worldBase: 'http://h', rails: {} });
   t.adapter = s.adapter; calls.length = 0;
   await t.chat('one'); await t.chat('two');
-  assert.ok(calls.every((c) => c.maxBudgetUsd === 0.2 && c.maxOutputTokens === 4096), 'each call carries the turn cap and the output bound');
+  assert.ok(calls.every((c) => c.maxOutputTokens === 4096), 'each call carries the output bound');
+  assert.equal(calls[0].maxBudgetUsd, 0.2, 'the first call of a session: the fixed turn cap');
+  assert.equal(calls[1].maxBudgetUsd, turnReservation(30_205).capUsd, 'later calls: the cap priced from the session\'s last context (30,005 + 200 output)');
   assert.deepEqual(rows(join(run2, 'seats', 'bo', 'cost.jsonl')).map((r) => [Math.round(r.costUsd * 100) / 100, r.sessionCostUsd]), [[0.12, 0.12], [0.12, 0.24]], 'rows sum to the session total');
   assert.equal(t.budgetRefused, null, '0.24 spent + 0.62 = 0.86 <= 0.90');
   assert.equal(claude.buildArgs({ sessionId: 'u', resume: true, model: 'sonnet', text: 'x', maxBudgetUsd: 0.2 }).join(' ').includes('--max-budget-usd 0.2'), true);
@@ -65,7 +89,7 @@ test('#1098 a call bigger than the sized worst case ends the world\'s turns; a C
   let n = 0;
   s.adapter = { turn: async () => { n++; return { stream: [{ type: 'assistant', message: { usage: { input_tokens: 2, cache_read_input_tokens: 70_000, output_tokens: 10 } } }], usage: { costUsd: 0.05 }, finalText: 'ok', toolCalls: [], exit: 0, wallMs: 1 }; }, renderChat: () => '' };
   await s.chat('one'); const second = await s.chat('two');
-  assert.equal(n, 1); assert.equal(second.refused, 'world-budget'); assert.match(s.budgetRefused, /exceeded the sized worst case \(context 70002/);
+  assert.equal(n, 1); assert.equal(second.refused, 'world-budget'); assert.match(s.budgetRefused, /exceeded the sized worst case \(first-call context 70002 tokens/);
   const c = createSeat({ runDir: tmp(), seat: { id: 'cx', adapter: 'codex-headless' }, worldBase: 'http://h', rails: {} });
   let called = false; c.adapter = { turn: async () => { called = true; return { stream: [], usage: {}, toolCalls: [] }; }, renderChat: () => '' };
   const r = await c.chat('hi'); assert.equal(called, false); assert.equal(r.refused, 'world-budget'); assert.match(c.budgetRefused, /reports no turn cost/);
