@@ -13,7 +13,7 @@ import { snapshotModel } from './snapshot-model.ts';
 import type { SnapshotDecoder, SnapshotDelta } from './snapshot-delta.ts';
 import * as THREE from 'three';
 import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@sim/ground';
-import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
+import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, keptBehindDoor, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
 import { GENERATORS } from '@sim/generators';
 import { meshFor, type MeshCtx } from './gen-mesh/index.ts';
 import { clearBuildingPrefetch, prefetchBuilding } from './gen-mesh/building.mesh.ts';
@@ -1598,7 +1598,9 @@ export class WorldEntityLayer {
     if (def.tags.includes('horizon')) this.horizonBy.add(e.id); else this.horizonBy.delete(e.id);
     const parent = e.in.parent !== 'world' ? m.entities.get(e.in.parent) : undefined;
     if (parent && m.resolvedDef(parent.def)?.components.body) this.held.set(e.id, parent.id); else this.held.delete(e.id);
-    if (parent && containerInside(m.resolvedDef(parent.def))?.slots.some((s) => s.id === e.in.slot)) this.keptIn.set(e.id, parent.id); else this.keptIn.delete(e.id);
+    // #435: a doorless container (a swap shelf) hides nothing and has no lid to follow, so its contents are ordinary things
+    const pdef = parent && m.resolvedDef(parent.def);
+    if (pdef && keptBehindDoor(pdef, e.in.slot)) this.keptIn.set(e.id, parent!.id); else this.keptIn.delete(e.id);
     const existing = this.drawn.get(e.id);
     const defHash = def.hash + ':' + JSON.stringify(e.params ?? {}) + ':' + JSON.stringify(e.state ?? {}) + ':' + JSON.stringify(e.shape ?? null) + ':' + JSON.stringify(e.r ?? 0);
     const builder = meshFor(def);
