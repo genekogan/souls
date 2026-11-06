@@ -9,6 +9,7 @@ import {dcos,dsin,heading,hypot,type Vec2,type Vec3} from '../core/math.ts';
 import {HUMAN_RADIUS} from '../world/catalog.ts';
 import {clearanceAt} from '../spatial/grid.ts';
 import {makeWay} from '../locomotion/walk.ts';
+import {staticStepClear} from '../runtime/static-step.ts';
 export const HAND_REACH_SECONDS=.65,HAND_SWING_SECONDS=2.2,HAND_RELEASE_SECONDS=.7;
 export const HAND_IDLE_HANDOFF_SECONDS=1.2;
 export const HAND_OPEN_ANGLE=-Math.PI*.48;
@@ -350,7 +351,7 @@ export const handActuator:ActionDef<HandActuatorParams,true,Exec>={
   if(ex.p.opening&&hypot(ex.root[0]-actuatorPoint(ex.p.opening,ex.p.opening.from).root[0],ex.root[2]-actuatorPoint(ex.p.opening,ex.p.opening.from).root[2])>.22){clear(rt,ex);return {status:'failed',diagnostic:issue('not-at-handle','Walk to the actual handle before operating it.',[ex.p.target])};}
   if(ex.p.slide&&hypot(ex.root[0]-slidePoint(ex.p.slide,ex.p.slide.from).root[0],ex.root[2]-slidePoint(ex.p.slide,ex.p.slide.from).root[2])>.22){clear(rt,ex);return {status:'failed',diagnostic:issue('not-at-handle','Walk to the actual handle before operating it.',[ex.p.target])};}
   if(ex.p.stroke){const goal=strokeRoot(ex.p.at,ex.p.stroke,ex.root[1]);if(hypot(goal[0]-ex.root[0],goal[2]-ex.root[2])>.5){clear(rt,ex);return {status:'failed',diagnostic:issue('not-at-board','Walk up to the board before writing on it.',[ex.p.target])};}
-   const k=smooth(Math.min(1,ex.t/HAND_REACH_SECONDS));point.root=[ex.root[0]+(goal[0]-ex.root[0])*k,ex.root[1],ex.root[2]+(goal[2]-ex.root[2])*k];}
+   const k=smooth(Math.min(1,ex.t/HAND_REACH_SECONDS));point.root=[ex.root[0]+(goal[0]-ex.root[0])*k,ex.root[1],ex.root[2]+(goal[2]-ex.root[2])*k];if(!staticStepClear(rt,a,[point.root[0],point.root[2]]))point.root=[...a.pose.p];}
   if((ex.p.opening||ex.p.slide)&&ex.t<handReachSeconds(ex.p)){const k=smooth(ex.t/handReachSeconds(ex.p));point.root=[ex.root[0]+(point.root[0]-ex.root[0])*k,ex.root[1]+(point.root[1]-ex.root[1])*k,ex.root[2]+(point.root[2]-ex.root[2])*k];}
   const bad=blocked(rt,ex,point.root,f.angle);if(bad){clear(rt,ex);return {status:'failed',diagnostic:bad};}
   const before=[...a.pose.p];a.pose.p=[...point.root];

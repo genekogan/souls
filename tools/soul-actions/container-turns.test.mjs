@@ -11,10 +11,8 @@ import {CORE_KIT, containerInside} from '../../packages/world-compiler/src/index
 
 // A god places a storage def at any turn. At each one a Soul puts a thing in and takes it out, and the engine stays clean: no
 // recovered fault, no violation. Every library def with an inside is covered without being listed, so a new one gets this too.
-// (A body too close at the reach trips collision.human-static at some turns only: #435, #1063.)
-// core/lockers@3 is frozen and does fault: #1063 removes this exclusion.
-const KNOWN_FAULT = new Set(['core/lockers@3']);
-const defs = CORE_KIT.filter(d => containerInside(d)).map(d => ({ref: `core/${d.name.replace(/^core-/, '')}@${d.version}`, door: !!d.state && Object.hasOwn(d.state, 'open')})).filter(d => !KNOWN_FAULT.has(d.ref));
+// (A body too close at the reach used to trip collision.human-static at some turns only: #435, #1063.)
+const defs = CORE_KIT.filter(d => containerInside(d)).map(d => ({ref: `core/${d.name.replace(/^core-/, '')}@${d.version}`, door: !!d.state && Object.hasOwn(d.state, 'open')}));
 const turns = [0, 0.4, 0.785, 1.2, 1.571, 1.9, 2.356, 2.9, 3.7, 4.712, 5.5];
 for (const {ref, door} of defs) test(`${ref}: put in and take out at every turn`, {timeout: 900000}, async t => {
  const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
