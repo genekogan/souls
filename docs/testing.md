@@ -125,6 +125,11 @@ the replaced failure as stale (#909). But the train's 15-minute head wait is sho
 is behind main can still leave with `needs:rebase`. The decision is `windowFor` and `windowed` in
 `.github/scripts/ci-scope.mjs`.
 
+**Soul Action tests.** `tools/soul-actions/*.test.mjs` runs as the CI job `soul-actions`, about 76 s measured on a
+loaded laptop. It is picked by its own paths (`tools/soul-actions`, `apps/server`, `packages/world-compiler`,
+`packages/engine-*`) and by every full-scope run, including each push to main, and a failure blocks through `ci-ok`. It
+is not a gate step, so the gate's suite tree and cached baseline don't change.
+
 ## Remote gate
 
 [testing/remote-gate.md](testing/remote-gate.md): `tools/test-harness/release-gate.sh` runs the complete suite for a

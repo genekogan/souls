@@ -300,11 +300,31 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
   }
   return null;
 }
+// #439 W093: a checkers move named by its two squares ("move c3 to d4", "jump from c3 to e5", "c3 to d4", "c3-d4") is the
+// move with those squares on the board where it can be played. Only while a checkers move is offered; the board's rules judge
+// it. A Soul with a game in progress plays it there: its other boards refuse a second game (`game.elsewhere`), so its own
+// board is the one available, or, out of turn, the one that says whose turn it is (`game.turn`). With no game in progress and
+// several boards that would take the move, the words name no board: they are refused with the choice, never a new game on
+// the nearest one.
+const CHECKERS_MOVE = /^(?:(?:please\s+)?(?:move|jump|play|take|capture|go)\s+)?(?:(?:the|my)\s+(?:piece|man|king|checker)\s+)?(?:(?:on|at|from)\s+)?([a-h][1-8])\s*(?:-|x|to|onto|over\s+to|and\s+jump\s+to|jumping\s+to|\s)\s*([a-h][1-8])(?:\s+on\s+the\s+(?:checkers\s+|game\s+)?board)?$/;
+function checkersWords(input: string, ctx: VocabContext): VocabResult | null {
+  const caps = ctx.caps.filter(c => c.verb === 'object' && c.action === 'move' && /checkers/i.test(c.label)); if (!caps.length) return null;
+  const m = CHECKERS_MOVE.exec(input.toLowerCase().replace(/[.!?\s]+$/, '').trim()); if (!m) return null;
+  const open = caps.filter(c => c.available);
+  if (open.length > 1) {
+    const named = [...open].sort((a, b) => dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
+    const which = named.map(c => /\(([^()]*)\)$/.exec(c.label)?.[1] ?? c.id);
+    return {kind: 'unknown', code: 'game.which-board', reason: `${named.length} checkers boards here would start a game with ${m[1]} to ${m[2]}: ${which.join(', ')}. Say which: act on that board's move with from ${m[1]} and to ${m[2]}.`, didYouMean: named.map(c => ({id: c.id, label: c.label}))};
+  }
+  const rank = (c: EdgeCapability) => (c.available ? 0 : c.blocked?.code === 'game.turn' ? 1 : c.blocked?.code === 'game.elsewhere' ? 3 : 2);
+  const cap = [...caps].sort((a, b) => rank(a) - rank(b) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id))[0]!;
+  return {kind: 'alias', cap, params: {from: m[1], to: m[2]}, note: `${input} is ${cap.id} (${cap.label}: ${m[1]} to ${m[2]}).`};
+}
 // Soul Actions entry 42: "put the bowl in the drawer" is put-in:<container>; "take the bowl out of the chest" is that
 // bowl's take from inside it. A shut container's contents are never offered: its words name its open offer instead.
 // #435: an open shelf a Soul keeps things on (a swap shelf) is a container too: "leave the bowl on the swap shelf" and
 // "take the bowl off the swap shelf". "on" is a put-in only when no surface by those words is on offer (a table stays put-on).
-const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
+const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip|hide|stash)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
 const UNSTOW = /^(?:please\s+)?(?:take|get|fetch|remove|grab|lift|pull|pick\s+up|pick)\s+(.+?)\s+(?:out\s+of|out\s+from|from\s+inside|from\s+in|from|off\s+of|off)\s+(.+?)[.!]?$/;
 function storeWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
   const put = STOW.exec(text), take = put ? null : UNSTOW.exec(text), m = put ?? take; if (!m) return null;
@@ -319,18 +339,38 @@ function storeWords(input: string, text: string, ctx: VocabContext): VocabResult
   const named = pool.filter(c => boxHit(c) && (put || hits(c, thing)) && !(on && door(c))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
   if (named[0] && (put || / out of /.test(named[0].label))) return {kind: 'alias', cap: named[0], note: `${input} is ${named[0].id} (${named[0].label}).`};
   if (put) return null;
+  // #435 (W068): "take the book from the stump": what is in a hiding place is not on offer by name, so this is its search
+  const place = box.length ? searchCaps(ctx, box)[0] : undefined;
+  if (place) return {kind: 'alias', cap: place, note: `${input} is ${place.id} (${place.label}).`};
   // nothing offered to take from there: a shut container named by these words says so (what is inside stays unseen)
   const shut = ctx.caps.filter(c => c.verb === 'object' && c.action === 'open' && c.available && /^e_/.test(c.object ?? '') && hits(c, box));
   if (shut[0]) return {kind: 'unknown', code: 'container.closed', reason: `${shut[0].label.replace(/^Open /, '').replace(/^the /i, 'The ')} is shut, so nothing inside it can be seen or taken; open it first (${shut[0].id}).`, didYouMean: [{id: shut[0].id, label: shut[0].label}]};
   return null;
 }
+// #435 (W068): "search the stump", "look in the niche", "search around here" are a hiding place's search; with no place named,
+// the nearest one. Words that name nothing on offer here fall through to the rest of the vocabulary.
+const SEARCH = /^(?:please\s+)?(search(?:\s+(?:around|about|through|in|inside))?|rummage(?:\s+(?:around|about|through|in|inside))?|look\s+(?:in|inside|into)|check(?:\s+(?:in|inside))?|feel\s+(?:in|inside))(?:\s+(.*?))?[.!?]*$/;
+function searchCaps(ctx: VocabContext, words: string[]): EdgeCapability[] {
+  return ctx.caps.filter(c => c.verb === 'search' && words.every(w => {const all = tokens([c.id, c.label, ...ctx.target(c).names].join(' ')); return tokenHit(w, all) || (SYNONYMS[w] ?? []).some(s => tokenHit(s, all));}))
+    .sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
+}
+function searchWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
+  const m = SEARCH.exec(text); if (!m) return null;
+  const words = tokens(m[2] ?? '').filter(w => !['the', 'a', 'an', 'my', 'your', 'this', 'that', 'it', 'old', 'tree', 'here', 'nearby', 'around', 'about', 'area', 'hiding', 'place', 'spot'].includes(w));
+  if (!words.length && !/^(?:search|rummage)/.test(m[1])) return null;
+  const hit = searchCaps(ctx, words)[0];
+  return hit ? {kind: 'alias', cap: hit, note: `${input} is ${hit.id} (${hit.label}).`} : null;
+}
 function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const exact = ctx.caps.find(c => c.id === input); if (exact) return {kind: 'exact', cap: exact};
-  const steered = steerWords(input, ctx); if (steered) return steered;
+  const checkers = checkersWords(input, ctx); if (checkers) return checkers;
   // CN5 (acceptance): "A, then B" is two things. Walks and strolls chain (the earlier ones become `via` legs of the last);
   // anything else does the first and says to act again for the rest (never a mix-up of the two).
   // r3 quality case 35: "pick up a book and give it to X" is two steps too (the give is offered only once holding it).
   const clauses = input.includes(':') ? [input] : input.split(/\s*(?:,|;)?\s+(?:and\s+)?then\s+|\s*;\s*|\s*,\s*and\s+then\s+|\s*,?\s+and\s+(?=(?:give|hand|pass|offer|bring)\s)/i).map(x => x.trim()).filter(Boolean);
+  // #1020: the steer words read one clause, after the split, so "fly to X then fly north" is two steers, never one toward
+  // "X then fly north". A steer's own land tail ("fly to X, then land there") is still part of its one clause.
+  if (clauses.length === 1 || (clauses.length === 2 && /^(?:then\s+)?land(?:\s+(?:there|it))?[.!?\s]*$/i.test(clauses[1]))) { const steered = steerWords(input, ctx); if (steered) return steered; }
   if (clauses.length > 1) {
     const parts = clauses.map(c => resolveCapability(c, ctx)), moves = ['walk', 'stroll'];
     if (parts[0].kind === 'unknown') return parts[0];
@@ -339,10 +379,12 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
       if (via.length <= 4) return {kind: 'alias', cap: last.cap, params: {via}, note: `${input} is ${via.join(', then ')}, then ${last.cap.id} (one act: via ${via.join(', ')}).`};
     }
     const first = parts[0] as Exclude<VocabResult, {kind: 'unknown'}>;
-    return {kind: 'alias', cap: first.cap, note: `${'note' in first ? first.note : `${clauses[0]} is ${first.cap.id}.`} Doing the first part now; act again for "${clauses.slice(1).join(', then ')}" when its receipt completes.`};
+    // #439: the first part keeps its own params ("jump c3 to e5, then e5 to g7" moves c3 to e5 now)
+    return {kind: 'alias', cap: first.cap, ...(first.kind === 'alias' && first.params ? {params: first.params} : {}), note: `${'note' in first ? first.note : `${clauses[0]} is ${first.cap.id}.`} Doing the first part now; act again for "${clauses.slice(1).join(', then ')}" when its receipt completes.`};
   }
   const text = input.toLowerCase(), colon = text.indexOf(':'), head = colon >= 0 ? text.slice(0, colon) : '';
   const stow = colon < 0 ? storeWords(input, text, ctx) : null; if (stow) return stow;
+  const searching = colon < 0 ? searchWords(input, text, ctx) : null; if (searching) return searching;
   // RESOLVE (SOULSIM-E "find a boat": no "find" capability): find / look for / search for X is a walk to the nearest X you
   // can reach, unless the words name an activity offered here ("find somewhere quiet to read", "find a seat" keep theirs)
   const find = colon < 0 ? FIND.exec(text.trim()) : null;
@@ -352,6 +394,9 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
       const r = resolveCapability(`walk to ${x}`, ctx);
       if (r.kind === 'exact') return {kind: 'alias', cap: r.cap, note: `${input} is ${r.cap.id} (${r.cap.label}).`};
       if (r.kind === 'alias') return {...r, note: `${input}: ${r.note}`};
+      // #435 (W068): "search for the book" with a hiding place nearby and no book to walk to: search it
+      const place = /^(?:please\s+)?(?:search|hunt) for\b/.test(text.trim()) ? searchCaps(ctx, [])[0] : undefined;
+      if (place) return {kind: 'alias', cap: place, note: `${input} is ${place.id} (${place.label}).`};
       return r.code ? r : {...r, reason: `Nothing called "${x.replace(/^(?:a|an|the|some)\s+/, '')}" is anywhere you can walk to from here; nothing else was chosen in its place.`};
     }
   }
