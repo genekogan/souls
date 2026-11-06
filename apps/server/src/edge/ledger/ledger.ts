@@ -21,10 +21,12 @@ import {menuWorldOf, type MenuWorld} from '../../split/menu-world.ts';
 /** RT: route refusals that hold until the world itself changes (not a crowd, a search limit or a start a step clears). */
 const ROUTE_DEAD = new Set(['route.unreachable', 'route.goal-blocked', 'route.link-unusable', 'route.unknown-level']);
 /** PC16 (#695): a walk refused because the only way needs stairs that are not finished says why they are not (the
- *  engine's reasons, spatial/path.ts route.link-unusable: "treads 3–5 missing", "no landing at top"), not their ids. */
-const unfinishedWay = (issue: {code: string; message?: string}): string => {
+ *  engine's reasons, spatial/path.ts route.link-unusable: "treads 3–5 missing", "no landing at top"), not their ids.
+ *  Only stairs parts of that message: a ladder or another link kind is not "stairs", and a floater's own
+ *  "floater.stairs-unsupported" is about the body, not the stairs. A reason may hold parentheses of its own. */
+export const unfinishedWay = (issue: {code: string; message?: string}): string => {
   if (issue.code !== 'route.link-unusable' || !issue.message) return '';
-  const why = [...new Set([...issue.message.matchAll(/\(([^()]+)\)/g)].map((m) => m[1]!).filter((x) => x !== 'not usable'))];
+  const why = [...new Set([...issue.message.matchAll(/\bstairs \S+ \((.+?)\)(?=, \S+ \S+ \(|$)/g)].map((m) => m[1]!).filter((x) => x !== 'not usable' && !x.startsWith('floater.')))];
   return why.length ? ` The way there needs stairs that are not finished: ${why.join('; ')}.` : '';
 };
 /** BS3: refusals a plain walk answers with its closest approach (the fine planner's; ground.* keep their named refusals). */
