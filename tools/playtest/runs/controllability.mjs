@@ -27,7 +27,9 @@ const RESOLUTION = new Set(['params.invalid', 'place.unknown', 'place.ambiguous'
 const ROUTE = new Set(['place.unreachable', 'route.unreachable', 'travel.unreachable', 'place.unwalkable', 'place.unsupported-floor', 'place.no-standing-room', 'room.no-standing-room', 'carry.no-route', 'carry.search-exhausted', 'use.no-approach', 'object.out-of-reach', 'tea.cup-unreachable',
   // Engine codes on the same path. Those that only end a started receipt (route.blocked, route.occupied, action.failed,
   // actor.busy, walk.goal-occupied) are not answers to an act, so they are not here; WAIT_CODES hold the act and never refuse it.
-  'route.goal-blocked', 'route.link-unusable', 'route.unknown-level', 'route.region-geometry-invalid', 'route.start-blocked', 'body.no-clearance', 'use.transition-blocked', 'use.seat-fit', 'seat.too-high']);
+  'route.goal-blocked', 'route.link-unusable', 'route.unknown-level', 'route.region-geometry-invalid', 'route.start-blocked', 'body.no-clearance', 'use.transition-blocked',
+  // A fixed fact about this seat and this body, not something that moved. seat.out-of-reach is #1087's replacement for seat.too-high.
+  'seat.too-high', 'seat.out-of-reach', 'seat.inside']);
 // The world's state answering: a seat taken, a ride gone, hands full, a game in progress. Listed one by one on purpose, so a
 // new code is unclassified and named on the card until someone decides. Left out for that reason: carry.crew-too-small,
 // carry.crew-too-large, carry.too-tall and carry.ground-only, which an agent could read before asking.
@@ -47,7 +49,7 @@ place.dynamic place.items-full place.marks-full pose.no-room
 presentation.already-reserved presentation.closed presentation.doors-closed presentation.ended presentation.entered presentation.full presentation.no-ticket presentation.not-open presentation.presenter presentation.standby-wait
 project.done project.unfinished receipt.lost-on-restart revision.stale
 ride.aboard ride.aloft ride.already-aboard ride.automatic ride.blocked ride.closed ride.departed ride.full ride.keeping-place ride.landing ride.not-aboard ride.not-boarding ride.on-ground ride.seated ride.steered ride.unavailable
-seat.approach-busy seat.inside seat.none-free seat.taken seat.yours shared.busy shared.full shared.left shared.not-member shared.not-ready shared.not-running shared.revision-changed shared.stop-asked shared.stop-requested shared.too-far
+seat.approach-busy seat.none-free seat.taken seat.yours shared.busy shared.full shared.left shared.not-member shared.not-ready shared.not-running shared.revision-changed shared.stop-asked shared.stop-requested shared.too-far
 site.under-construction sky.daylight sky.no-clock slot.none-free soul.faded soul.not-in-sight stall.released state.asleep state.changed state.safe-stop-timeout steer.unavailable surface.full swim.no-deep-middle
 tea.counter-blocked tea.cup-clean tea.cup-empty tea.cup-full tea.cup-not-down tea.cup-not-empty tea.hands-full tea.kettle-cold tea.kettle-empty tea.kettle-full tea.kettle-hot tea.kettle-not-down tea.kettle-on tea.no-bag tea.no-cup tea.no-kettle tea.no-tap tea.not-boiled tea.not-holding tea.tap-blocked
 together.nobody-leading travel.failed walk.stuck wallet.insufficient
