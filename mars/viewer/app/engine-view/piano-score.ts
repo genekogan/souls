@@ -12,10 +12,13 @@ const PIECES: { melody: (number | null)[]; roots: number[] }[] = [
   { melody: [12, null, 11, null, 9, null, 7, null, 9, null, 7, null, 4, null, null, null, 5, null, 7, null, 9, null, 12, null, 11, null, 9, null, 7, null, null, null], roots: [0, -3, 5, 7] },
 ];
 function hash(s: string) { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
-const pieceOf = (seed: string) => PIECES[hash(seed) % PIECES.length];
+/** How many pieces the score knows; a player's seed picks one, a record sleeve names one by its place (#431). */
+export const PIECE_COUNT = PIECES.length;
 /** The notes this player starts in [a, b) world seconds (left hand: bass on every half bar; right hand: the melody). */
-export function pianoNotes(seed: string, a: number, b: number): PianoNote[] {
-  const p = pieceOf(seed), out: PianoNote[] = [];
+export function pianoNotes(seed: string, a: number, b: number): PianoNote[] { return pieceNotes(hash(seed) % PIECES.length, a, b); }
+/** #431: the notes of one piece by its index (a record sleeve's place in its record player's list), on the same clock. */
+export function pieceNotes(piece: number, a: number, b: number): PianoNote[] {
+  const p = PIECES[((Math.floor(piece) % PIECES.length) + PIECES.length) % PIECES.length], out: PianoNote[] = [];
   for (let k = Math.ceil(a / PIANO_STEP - 1e-9); k * PIANO_STEP < b; k++) {
     const i = ((k % BAR) + BAR) % BAR, t = k * PIANO_STEP, m = p.melody[i];
     if (i % 4 === 0) out.push({ t, midi: 48 + p.roots[Math.floor(i / 8)] + (i % 8 === 4 ? 7 : 0), hand: 0, vel: 0.7 });
@@ -23,6 +26,12 @@ export function pianoNotes(seed: string, a: number, b: number): PianoNote[] {
   }
   return out;
 }
+/** #431: a record player's song: the record's place among its sleeves names the piece; a record it does not have plays nothing. */
+export function recordNotes(sleeves: readonly string[], record: string, a: number, b: number): PianoNote[] {
+  const i = sleeves.indexOf(record); return i < 0 ? [] : pieceNotes(i, a, b);
+}
+/** #431: whether a record's surface clicks at crackle step `k` (an eighth of a second of world time): the same for everyone. */
+export function crackle(k: number): boolean { return (Math.imul(Math.floor(k), 2654435761) >>> 0) % 7 === 0; }
 /** Each hand's key strike (1 at the onset, back to 0 over STRIKE s) and its sideways place along the keys (metres, ±). */
 export const STRIKE = 0.18;
 export function pianoHands(seed: string, t: number): [{ press: number; along: number }, { press: number; along: number }] {
@@ -98,7 +107,7 @@ const gapBefore = (melody: (number | null)[], i: number) => { for (let g = 1; g 
 /** Phrase ends where the melody rests three steps or more; there the voice releases a step early and breathes. */
 const BREATH_GAP = 3;
 export function sungNotes(who: Accompanist, a: number, b: number): SungNote[] {
-  const p = pieceOf(who.seed), out: SungNote[] = [];
+  const p = PIECES[hash(who.seed) % PIECES.length], out: SungNote[] = [];
   for (let k = Math.ceil(a / PIANO_STEP - 1e-9); k * PIANO_STEP < b; k++) {
     const i = ((k % BAR) + BAR) % BAR, m = p.melody[i]; if (m === null) continue;
     const g = gapAfter(p.melody, i), breath = g >= BREATH_GAP, first = gapBefore(p.melody, i) >= BREATH_GAP;

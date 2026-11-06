@@ -66,6 +66,17 @@ test('publication permits generic dotfiles, documentation placeholders, package 
   ]) assert.deepEqual(publicationFindings(value, { denylist: [] }), [], value);
 });
 
+test('private IPv6 literals are rejected, but slice and index syntax is not (#1045)', () => {
+  for (const value of ['[::' + '1]', 'http://[::' + '1]:8080/', '[fd12' + ':3456::1]', '[fe80' + '::1]', 'http://[fc00' + '::1]:8080/',
+    'fd12' + ':3456::1', 'fe80' + '::1%en0', 'fc00' + '::1']) {
+    assert.ok(publicationFindings(value, { denylist: [] }).includes('private IPv6 address'), value);
+  }
+  for (const value of ['xs[:90]', 's[0:5]', 'rows[1:]', 's[a:b]', 'xs[::2]', 'xs[::1]', 'h[a:f]', 'clip[:90] + x[ab:cd]',
+    'print(rows[2:][:10])', 'count 3[:]']) {
+    assert.deepEqual(publicationFindings(value, { denylist: [] }), [], value);
+  }
+});
+
 test('an optional private denylist catches names no pattern knows, without echoing them', () => {
   const dir = mkdtempSync(join(tmpdir(), 'publication-deny-'));
   const list = join(dir, 'deny.txt');

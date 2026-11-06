@@ -14,8 +14,17 @@ export function worldArrived() {
 /** True when this Playwright can start a page recording mid-page (page.screencast; older Playwright lacks it). */
 export const canScreencast = (page) => typeof page?.screencast?.start === 'function' && typeof page.screencast.stop === 'function';
 
-/** startScreencast(page, {path, size}) → {startedAt, mono}: the recording of this page begins now. */
+/** Runs inside the page: resolves once two frames have been painted. When `worldArrived` turns true the arrival card
+ *  has left the DOM, but the compositor may not have painted that yet: a screencast started then opens on the last
+ *  painted frame, which still shows the card (about 1.5 s under load, #1040). */
+export function twoPaintedFrames() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))));
+}
+
+/** startScreencast(page, {path, size}) → {startedAt, mono}: the recording of this page begins now, at the first frame
+ *  painted after arrival (twoPaintedFrames), so the take's first frame is the arrived world. */
 export async function startScreencast(page, { path, size }) {
+  await page.evaluate(twoPaintedFrames);
   await page.screencast.start({ path, ...(size ? { size } : {}) });
   return { startedAt: new Date().toISOString(), mono: performance.timeOrigin + performance.now() };
 }

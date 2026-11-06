@@ -30,7 +30,7 @@ test('mic stand: sing along, one singer per mic, stop when told or when the musi
  const until=async(pred,n=2000)=>{for(let i=0;i<n;i++){if(pred())return W().tick;await tick(1);}return null;};
  // ---- near: a mic stand with a piano beside it
  const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]],absentHere=await here(ana);
- assert.equal(god.act({ops:[{op:'place',def:'core/mic-stand@1',name:'microphone',p:[ax+1,az+3],r:0},{op:'place',def:'core/piano@1',name:'piano',p:[ax-2,az+4]}]}).accepted,true);await tick(45);
+ assert.equal(god.act({ops:[{op:'place',def:'core/mic-stand@2',name:'microphone',p:[ax+1,az+3],r:0},{op:'place',def:'core/piano@1',name:'piano',p:[ax-2,az+4]}]}).accepted,true);await tick(45);
  const mic=W().entities[god.model.get('microphone').id];assert.ok(await until(()=>edge.capabilities(ana).some(c=>c.verb==='sing'&&c.id.includes(mic.id)),600),'the near mic is offered');const near=await here(ana);
  const cap=edge.capabilities(ana).find(c=>c.verb==='sing'&&c.id.includes(mic.id));assert.ok(cap,'the mic stand offers sing');
  // no music: she goes, and the singing does not start (refused after 4 s)
@@ -65,7 +65,7 @@ test('mic stand: sing along, one singer per mic, stop when told or when the musi
  assert.equal(god.act({ops:[{op:'place',def:'core/bench-seat@1',name:'lookout-bench',p:[-30,-20]}]}).accepted,true);await tick(60);
  {const r=await act(ana,'walk to the lookout bench');assert.equal(r.accepted,true,JSON.stringify(r).slice(0,300));assert.ok(await until(()=>Math.hypot(body(ana).pose.p[0]+30,body(ana).pose.p[2]+20)<3&&body(ana).human?.activity!=='walk',4000),'Ana at the lookout: '+JSON.stringify(body(ana).pose.p));}
  const absent=await here(ana);
- const distant=[...Array.from({length:100},(_,i)=>({op:'place',def:'core/mic-stand@1',name:`distant-mic-${i}`,p:[6+i%10*2,6+Math.floor(i/10)*2]})),
+ const distant=[...Array.from({length:100},(_,i)=>({op:'place',def:'core/mic-stand@2',name:`distant-mic-${i}`,p:[6+i%10*2,6+Math.floor(i/10)*2]})),
   {op:'place',def:'core/piano@1',name:'distant-piano-a',p:[10,27],r:0},{op:'place',def:'core/piano@1',name:'distant-piano-b',p:[20,27],r:0},{op:'place',def:'core/bench-seat@1',name:'gathering-bench',p:[15,31]}];
  {const g=god.act({ops:distant});assert.equal(g.accepted,true,JSON.stringify(g).slice(0,600));}await tick(60);const farIdle=await here(ana);
  const crowd=[];for(let i=0;i<SINGERS+2;i++)crowd.push(await join('far'+i,'Far '+String.fromCharCode(65+i%26)+i));
