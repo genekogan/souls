@@ -29,6 +29,7 @@ import { doorInGap, freeDoorOpening, isDoorDef, isShut } from './doors.ts';
 import { dryingOps } from './garden.ts';
 import { fadingIds } from '../art/art.ts';
 import { createWatering, type Watering } from './watering.ts';
+import { createMending, type Mending } from './mending.ts';
 import { createTea, type Tea } from './tea.ts';
 import { createContactActuatorService } from './contact-actuator.ts';
 import { createDoorPassage } from './door-passage.ts';
@@ -298,18 +299,28 @@ export class EngineBridge {
     const owner=(id:string,soul:EdgeSoul)=>{const o=this.layers.ownership(id);return o?.owner?{name:this.layers.nameOf(o.owner),mine:this.layers.isOf(o.owner,soul)}:null;};
     // Entry 38: posters know the world day they went up (age on demand; no per-day pass)
     setWorldDaySource(()=>{const l=this.host.living;return l&&l.dayTicks>0?Math.floor(Math.max(0,this.host.engine.world.tick-l.origin)/l.dayTicks):0;});
+    if(this.edge){
+      // CTRL-2 (#1094): `inspect` shows what the offers show: a kept thing only while its container is open and not a hiding place
+      this.edge.concealedThing=(id)=>{const x=this.engine.world.entities[id] as {support?:{kind:string;on?:string;slot?:string}}|undefined;if(x?.support?.kind!=='resting-on')return false;const box=this.keptIn(x);return !!box&&(box.hidden||!box.open);};
+      this.edge.thingName=(id)=>this.model.entities.has(id)?this.model.pathOf(id):null;
+    }
     if(this.edge)this.edge.contactActuator=createContactActuatorService({model:()=>this.god.model,levelAt:(x,z,y)=>this.levelAt(x,z,y),
       clearance:(x,z,level)=>(this.host.engine as unknown as {clearanceAtV1?:(x:number,z:number,level?:number)=>number}).clearanceAtV1?.(x,z,level)??Infinity,
       body:id=>this.host.engine.world.entities[id] as never,access:(id,soul)=>this.layers.refusal(id,soul),owner,knock:(soul,id)=>this.knockHeard(soul,id),
-      moreFacts:id=>this.tea?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,failed,overlapped)=>this.searchOutcome(soul,spot,failed,overlapped),
+      moreFacts:id=>this.tea?.facts(id)??this.mending?.facts(id)??null,keptNote:(box,item,soul)=>this.keptNote(box,item,soul),searchOutcome:(soul,spot,failed,overlapped)=>this.searchOutcome(soul,spot,failed,overlapped),
       record:(soul,id,action,params={})=>{const r=this.edge!.comms?.objects.act?.(id,soul,{action,params}) as {accepted?:boolean}|undefined;if(!r?.accepted)throw Error('switch.object-record-refused');},
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
+    // #442: repair with a tool in hand (mending.ts): the world changes when the receipt completes, no tick work
+    this.mending = createMending({ model: this.god.model, engine: this.host.engine as never, levelAt: (x, z, y) => this.levelAt(x, z, y), occupied: (id) => this.seatTakers(id).length > 0, denied: (id, soul) => this.layers.takeRefusal(id, soul) ?? this.claimRefusal(id, soul as never),
+      reserved: (id, actor) => { const rt = (this.host.engine as unknown as { rt?: { holder(r: string): string[]; records: Map<string, { params?: { actor?: string } }> } }).rt; return !!rt?.holder(`entity:${id}`).some((r) => rt.records.get(r)?.params?.actor !== actor); }, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
+    if (this.edge) this.edge.repairEffects = (r) => this.mending?.effects(r) ?? {};
+    this.edge?.onReceipt((r) => { try { this.mending?.onReceipt(r); } catch (e) { this.log(`mending: ${(e as Error).message}`); } });
     // Entry 34: the watering-can act (watering.ts): planned for perceive's offers, its moments committed per tick
     this.watering = createWatering({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
     // Entry 43: the tea acts (tea.ts), the same way
     this.tea = createTea({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m), denied: (id, soul) => this.layers.takeRefusal(id, soul) ?? this.claimRefusal(id, soul) });
-    this.perceive = new GodPerceive({ model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea, claim: (id, soul) => this.claimRefusal(id, soul) });
+    this.perceive = new GodPerceive({ mending: this.mending, model: this.god.model, version: () => this.version, edge: this.edge, engine: this.host.engine as never, engineOwned: (e) => this.engineOwned(e), namesNear: (at, except) => this.nav.namesNear(at, except), things: () => this.nav.things(), places: this.places, levelAt: (x, z, y) => this.levelAt(x, z, y), log: (m) => this.log(m), commit: (ops, note) => this.god.engineAct(ops as never, note), layers: this.layers, watering: this.watering, tea: this.tea, claim: (id, soul) => this.claimRefusal(id, soul) });
     // L3 (server reliability): kept Soul menus read god state the ledger does not version (ownership, construction sites)
     // the bridge runs without an edge ledger too (toy/engine-only hosts): guard the ledger, not only the method
     if (!R) (this.edge as { addMenuInput?(f: () => string): void } | undefined)?.addMenuInput?.(() => `${this.version}|${this.god.builds.closingSites().map((x) => x.id).join(',')}`);
@@ -434,6 +445,7 @@ export class EngineBridge {
     });
   }
   private watering?: Watering;
+  private mending?: Mending;
   /** Entry 43: the tea acts; read by perception for a kettle's and a cup's compact facts. */
   tea?: Tea;
   /** Entry 18: when the world day changes, gardens dry by the days passed (capped at 3; time set backwards restarts the count). */
@@ -608,6 +620,16 @@ export class EngineBridge {
     return (this.doorSpotsCache = out);
   }
 
+  /** PC12 (#691): a part joined into an assembly is not carried off: it names what it is joined to (by joint), so the
+   *  Soul knows why and the god knows what to disconnect. */
+  private joinedRefusal(id: string): { code: string; reason: string } | null {
+    const e = this.model.entities.get(id), js = Object.entries(e?.joins ?? {});
+    if (!e || !js.length) return null;
+    const nameOf = (x: string) => { const o = this.model.entities.get(x); return String((o && (o.name ?? titleOf(o) ?? this.model.resolvedDef(o.def)?.name.replace(/^core-/, ''))) ?? x).replace(/-/g, ' '); };
+    const to = [...new Set(js.map(([, j]) => nameOf(j.to)))];
+    return { code: 'carry.joined', reason: `${nameOf(id)} is joined to ${to.length > 1 ? `${to.slice(0, -1).join(', ')} and ${to.at(-1)}` : to[0]} (${js.map(([c, j]) => `${c} to ${j.at}`).join(', ')}); a joined part is not carried until it is disconnected.` };
+  }
+
   /** The engine physics of one entity: its solids, floors and stairs, or its fixture registration. */
   derive(e: Entity, assets: Record<string, unknown>, known: Record<string, unknown>): Part | null {
     const def = this.model.resolvedDef(e.def); if (!def) return null;
@@ -624,7 +646,7 @@ export class EngineBridge {
       // a floating boat's asset carries no obstacle (catalog-adapter isFloatingDef): a new id, so worlds that registered
       // the old one (an obstacle) are sent the new one
       const aid = assetIdFor(facts, JSON.stringify(e.params ?? {}) + (isFloatingDef(def) ? '|afloat' : '') + (walkableKit ? '|ground-kit/1' : ''));
-      if (!known[aid] && !assets[aid]) { const asset = assetFromDef(aid, facts); if (walkableKit) { delete asset.obstacle; asset.seatApproach = 'slot'; for (const slot of asset.slots ?? []) delete slot.approachPolicy; } assets[aid] = asset; } // XP5: seats retain slots; kit solids supply the obstacle geometry. Their exact slot approach stays (lane walk's
+      if (!known[aid] && !assets[aid]) { const asset = assetFromDef(aid, facts, { connectors: !!this.edge?.sharedCarry }); if (walkableKit) { delete asset.obstacle; asset.seatApproach = 'slot'; for (const slot of asset.slots ?? []) delete slot.approachPolicy; } assets[aid] = asset; } // XP5: seats retain slots; kit solids supply the obstacle geometry. Their exact slot approach stays (lane walk's
       // reachable/1 sweep would cross the kit's own solids).
       part.fixture = this.fixtureSpec(e, def, aid, (assets[aid] ?? known[aid]) as any, wp);
       if (!walkableKit) return part;
@@ -856,7 +878,7 @@ export class EngineBridge {
     const pdef = parent ? this.model.resolvedDef(parent.def) : undefined;
     if (parent && pdef && isFixtureDef(pdef)) {
       const pfacts = factsOf(pdef, this.model.bake(pdef, parent.params ?? {}, parent.seed ?? 0, parent.shape), this.model.worldPose(parent).s);
-      const passet = assetFromDef(assetIdFor(pfacts, JSON.stringify(parent.params ?? {})), pfacts);
+      const passet = assetFromDef(assetIdFor(pfacts, JSON.stringify(parent.params ?? {})), pfacts, { connectors: !!this.edge?.sharedCarry });
       const pp = this.model.worldPose(parent), c = Math.cos(pp.yaw), s = Math.sin(pp.yaw), dx = wp.x - pp.x, dz = wp.z - pp.z;
       const local: [number, number, number] = [dx * c - dz * s, wp.y - pp.y, dx * s + dz * c];
       const slot = nearestSurfaceSlot(passet, local);
@@ -865,6 +887,18 @@ export class EngineBridge {
         const wx = pp.x + sl.local[0] * c + sl.local[2] * s, wz = pp.z - sl.local[0] * s + sl.local[2] * c;
         return { ...spec, p: [r3(wx), r3(pp.y + sl.local[1]), r3(wz)], support: { kind: 'resting-on', on: parent.id, slot } };
       }
+    }
+    // PC12 (#691): a part with connectors keeps its tilt about its own z (an upright stood on end) and its joints: the
+    // engine's own reciprocal connections; a part held up by bearing connectors is supported by what they join
+    // Behind SIM_SHARED_CARRY (the shared-carry ledger flag): off, the world-edit is exactly what it was before PC12 (no roll,
+    // connections or connected support); the entity world still keeps the joints and refuses carrying a joined part.
+    const cs = def.components.connectors;
+    if (cs && e.in.parent === 'world' && this.edge?.sharedCarry) {
+      const roll = Array.isArray(e.r) && e.r[2] ? r3(e.r[2]) : 0;
+      const joins = Object.entries(e.joins ?? {}).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+      const bears = new Set(cs.filter((c) => c.bears).map((c) => c.id)), on = [...new Set(joins.filter(([c]) => bears.has(c)).map(([, j]) => j.to))];
+      return { ...spec, ...(roll ? { roll } : {}), support: on.length ? { kind: 'connected', to: on } : { kind: 'ground' },
+        ...(joins.length ? { connections: joins.map(([c, j]) => ({ socket: c, to: j.to, toSocket: j.at })) } : {}) };
     }
     return { ...spec, support: { kind: 'ground' } };
   }
@@ -1923,14 +1957,14 @@ export class EngineBridge {
           // PC04 (#683, PC02 §1): a `shared-carry` load can be proposed as a carry with other Souls (behind the sharedCarry flag)
           const sharedDef=this.edge?.sharedCarry?this.model.entities.get(x.id):undefined,sdef=sharedDef&&this.model.resolvedDef(sharedDef.def),shareable=!!sharedDef&&!!sdef?.tags.includes('shared-carry');
           // PC06 (#685, PC02 §4): the solo refusal names the way to carry it with others when that is on offer
-          const block=this.layers.refusal(x.id,soul)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.${shareable&&need<=Math.min(loose.carryCrew[1],8)?` Ask others to carry it with you: carry-with:${x.id} (to: a place, with: who).`:''}`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
+          const block=this.layers.refusal(x.id,soul)??this.joinedRefusal(x.id)??(need>1?{code:'carry.crew-too-small',reason:`${name(x.id)} (${mass} kg) needs ${need} carriers; one person carries at most ${MAX_KG_PER_CARRIER} kg.${shareable&&need<=Math.min(loose.carryCrew[1],8)?` Ask others to carry it with you: carry-with:${x.id} (to: a place, with: who).`:''}`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
           const id=`carry:${x.id}`,label=`Carry ${name(x.id)} with both hands, then lay it down (to: a place name)${need>1?`; it needs ${need} carriers`:''}`;
           caps.push({id,verb:'carry',label,target:{id:x.id,kind:'object'},available:!block,...(block?{blocked:block}:{}),params:{to:{type:'string',maxLength:100}}});
           if(!block)plans.set(id,{label,steps:[...stand,{verb:'mars:carry',params:{crew:[soul.entityId],item:x.id,to:{x:here[0],z:here[1],yaw:x.pose.yaw??0}}}]});
           // Proposing moves nobody: it is a together invitation, so the plan has no body steps.
           if(sharedDef&&shareable){
             const crew:[number,number]=[need,Math.min(loose.carryCrew[1],8)],sid=`carry-with:${x.id}`;
-            const sblock=this.layers.refusal(x.id,soul)??(need>crew[1]?{code:'carry.crew-too-large',reason:`${name(x.id)} needs more carriers than it has grips.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
+            const sblock=this.layers.refusal(x.id,soul)??this.joinedRefusal(x.id)??(need>crew[1]?{code:'carry.crew-too-large',reason:`${name(x.id)} needs more carriers than it has grips.`}:held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:x.phase==='carried'||x.reservedBy?{code:'carry.in-use',reason:`${name(x.id)} is being carried.`}:(me.human.level??0)!==0||levelOf(x)!==0||x.support?.kind!=='ground'||Math.abs(x.pose.p[1])>.05?{code:'carry.ground-only',reason:`${name(x.id)} is carried from level-zero ground to level-zero ground; it is not lying on the ground here.`}:null);
             const slabel=`Carry ${name(x.id)} with other Souls (asks them first; ${crew[0]}–${crew[1]} carriers; to: a place name, with: who)`;
             caps.push({id:sid,verb:'carry-with',label:slabel,target:{id:x.id,kind:'object'},available:!sblock,...(sblock?{blocked:sblock}:{}),params:{to:{type:'string',maxLength:100},with:{type:'string',maxLength:300,description:'the Souls who carry it with you (names or ids: "Bo and Cy", "Bo, Cy and Dee")'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
             // `def` is the placed def ref with its revision (for example core/rack-beam@2): the load's identity (PC02 §4)
@@ -1943,7 +1977,8 @@ export class EngineBridge {
         if (asset.category === 'item' && !(loose && !loose.small) && x.support?.kind !== 'in-hand' && !held && (!kept || (kept.open && d <= STORE_NEAR))) {
           const note = kept && d <= FACTS_NEAR ? this.keptNote(kept.id, x.id, soul) : null;
           const id = `pick-up:${x.id}`, label = kept ? `Take ${name(x.id)}${note ? ` (${note})` : ''} out of ${kept.label} (${d} m)` : `Pick up ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
-          const block = kept ? this.storageRefusal(kept, soul) ?? this.claimRefusal(x.id, soul, d <= FACTS_NEAR) : null;
+          // PC12 (#691): a small part joined into an assembly is not picked up off its joints either
+          const block = (kept ? this.storageRefusal(kept, soul) ?? this.claimRefusal(x.id, soul, d <= FACTS_NEAR) : null) ?? this.joinedRefusal(x.id);
           caps.push({ id, verb: 'pick-up', label, target: { id: x.id, kind: 'item' }, available: !block, ...(block ? { blocked: block } : {}) });
           const precise=(this.physics?.assets[x.def] as {capabilities?:{recordedItemPoseV1?:boolean}})?.capabilities?.recordedItemPoseV1&&levelOf(x)===(me.human.level??0);
           // entry 43: an opted-in pick-up lets an idle gesture go before the hand reaches (entry 41's M04 finding)
