@@ -2008,7 +2008,7 @@ export class EngineBridge {
             }
             // PC14 (#693): a loose beam lying under a bay between two standing, supported uprights can be seated by two Souls in a
             // seat pair both uprights have free (engine-mars beamBays: level, a beam's span apart, within standing reach)
-            const bays=sdef!.tags.includes('beam')?beamBays(this.engine.world as never,x.id):[];
+            const bays=sdef!.tags.includes('beam')?beamBays(this.mw.world as never,x.id):[];
             if(bays.length){
               const tagged=bays.map(b=>({...b,names:[name(b.a),name(b.b)] as [string,string]})),cols=[...new Set(bays.map(b=>b.column))],free=cols.map(c=>`${c}: ${bays.filter(b=>b.column===c).map(b=>b.height.toFixed(2)).join(', ')} m`).join('; ');
               const pair=listed2(tagged[0]!.names),bid=`connect-beam-with:${x.id}`,blabel=`Seat ${name(x.id)} between ${pair} with one other Soul, one at each end (asks them first; column: ${cols.join(' or ')}; height: a free seat height in metres, ${free}; with: who)`;
