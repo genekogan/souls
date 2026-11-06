@@ -84,9 +84,9 @@ context-size checks below), regression runs, and an uncut real-client recording 
     Nothing is replaced and no receipt is created. Speech and reads still work, and the proposal's lapse no longer
     applies. The refusal offers the safe stop, `stop-carry:<op>`, in `alternatives` (PC08).
   - **Release.** When the native programme ends, every member's receipt ends together, in one transaction:
-    `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (a
-    fade, an engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the
-    host's programme is stopped. After a restart, guests of a carry that still runs keep their receipts. An operation
+    `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (an
+    engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the host's
+    programme is stopped. A fade is not that: it is the member's stop (PC09, below). After a restart, guests of a carry that still runs keep their receipts. An operation
     whose programme is gone is ended on the next sweeps.
 
   - **The journey (PC06).** On open level-0 ground, the native gather walks each member to their grip. The crew lifts
@@ -141,6 +141,30 @@ context-size checks below), regression runs, and an uncut real-client recording 
       idempotent. Full restart qualification is PC10.
     - **Refusals.** A stop after the end is refused `shared.not-running`, one from a non-member `shared.not-member`,
       and an unknown op `shared.unknown-op`.
+  - **A member's mind goes away (PC09, [#688](https://github.com/genekogan/souls/issues/688)).** A disconnected mind's
+    body keeps its accepted carry to its end and joins nothing new.
+    - **Not listening.** When an agent stops listening, the body rule makes its body `zombie` and later `asleep`. A
+      member's open shared receipt makes the agent busy, so the rule never moves or stops a member's body while the
+      operation runs; the carry ends as accepted.
+    - **Held.** A started shared receipt holds the fading clock for every member, the borrowed guest as well as the host
+      (`postureHold`), so an accepted carry is not abandonment.
+    - **Fade.** If a member fades anyway (`SIM_BEAM`, past the 12 h hold), the fade is that member's stop. It is the same
+      `edge-stop` naming the op's programme, and the same `stopping` journal with `stop.away`, but no stop receipt is
+      made in their name. Their shared receipt stays open and ends with everyone else's, as `stopped` or
+      `stopped-at-destination`; it is never `soul.faded`. The words say who went away, and the streams'
+      `shared.stopping` carries `away`. The fade line on the member's stream says the body stays in the carry, not
+      that it reclines.
+    - **Back while it runs.** A faded member who acts again while their operation still runs or stops is not relocated
+      to a starting place, since the crew still moves their body. A body act gets the ordinary `shared.busy` answer,
+      and the stream's return line says they are back where their body is.
+    - **Reconnect.** The same receipt id answers with the operation's current phase or its final result, and the
+      stream keeps what was delivered meanwhile. A replayed `clientRef` returns the original receipt. A stale
+      `accept:<invite>` from a member while the operation runs gets its `shared.busy` refusal. After the end it is
+      refused `invite.gone` with how the operation ended, and `stop-carry:<op>` is refused `shared.not-running`;
+      neither moves anybody or makes a receipt.
+    - **Not enlisted.** A faded Soul cannot be asked to carry: it is not perceived, so it is not near. A disconnected
+      Soul can be asked, but it is never committed without its own `accept` of that revision: the proposal waits,
+      names who has not answered, and lapses.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station; "put on a record" or "play a record" mean the record player, with the
