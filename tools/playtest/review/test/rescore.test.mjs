@@ -16,9 +16,9 @@ const st = (rows, id) => rows.find((o) => o.id === id);
 
 test('arrival never takes an earlier request\'s walk: the target is an in-window receipt (ticks) or the seat\'s act', () => {
   const e = ev('r3');
-  // An older walk (accepted before sentAt, tick 100 < the window's ~600) sits first in the pack; the request's own walk
+  // An older walk (accepted before sentAt, tick 500 < the window's ~3000) sits first in the pack; the request's own walk
   // carries only ticks. The body ends at the library.
-  e.receipts = [{ id: 'r_old', capability: 'walk:market', phase: 'completed', acceptedTick: 100, endedTick: 200 }, { id: 'r_new', capability: 'walk:library', phase: 'started', acceptedTick: 640 }];
+  e.receipts = [{ id: 'r_old', capability: 'walk:market', phase: 'completed', acceptedTick: 500, endedTick: 1000 }, { id: 'r_new', capability: 'walk:library', phase: 'started', acceptedTick: 3200 }];
   e.samples.at(-1).place = 'Library';
   const r = runOracles(e, { acts: [] });
   assert.equal(st(r, 'arrival').status, 'pass');
@@ -28,13 +28,13 @@ test('arrival never takes an earlier request\'s walk: the target is an in-window
 });
 
 test('placeTarget: the last walk act wins; an act accepted after the cutoff is late, not a target', () => {
-  const acts = [{ cmd: 'node eden.mjs act "go to the kitchen"', output: { accepted: true, receipt: { id: 'a', capability: 'walk:house-1/kitchen-chair', phase: 'replaced', acceptedTick: 640 } } },
-    { cmd: 'node eden.mjs act walk:house-2/kitchen', output: { accepted: true, receipt: { id: 'b', capability: 'walk:house-2/kitchen', phase: 'started', acceptedTick: 660 } } }];
+  const acts = [{ cmd: 'node eden.mjs act "go to the kitchen"', output: { accepted: true, receipt: { id: 'a', capability: 'walk:house-1/kitchen-chair', phase: 'replaced', acceptedTick: 3200 } } },
+    { cmd: 'node eden.mjs act walk:house-2/kitchen', output: { accepted: true, receipt: { id: 'b', capability: 'walk:house-2/kitchen', phase: 'started', acceptedTick: 3300 } } }];
   assert.equal(placeTarget({ receipts: [] }, acts).place, 'house-2/kitchen');
   const late = placeTarget({ receipts: [] }, [acts[1]], { inWindow: () => false });
   assert.equal(late.late, true);
   const e = ev('r3'); e.receipts = [];
-  const r = runOracles(e, { acts: [{ cmd: 'node eden.mjs act walk:library', output: { accepted: true, receipt: { id: 'z', capability: 'walk:library', acceptedTick: 5000 } } }] });
+  const r = runOracles(e, { acts: [{ cmd: 'node eden.mjs act walk:library', output: { accepted: true, receipt: { id: 'z', capability: 'walk:library', acceptedTick: 25000 } } }] });
   assert.match(st(r, 'arrival').detail, /accepted after the cutoff/);
   assert.equal(st(r, 'arrival').status, 'unknown');
 });

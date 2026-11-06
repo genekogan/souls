@@ -3,6 +3,7 @@
 import { seatActs, xz } from './run.mjs';
 import { journeyOracles } from './journey-oracles.mjs';
 import { expectFor, expectOracles } from './expect-oracles.mjs';
+import { windowValidity } from '../tick-validity.mjs';
 
 export const ORACLE_IDS = ['ack-latency', 'result-sent', 'listen-open', 'arrival', 'posture', 'duration-held', 'inside-solid', 'no-progress', 'oscillation', 'stuck-receipt', 'truthfulness-basic', 'vocabulary', 'duplicate-acts', 'server-errors', 'first-body-change'];
 export const PHYSICAL = ['arrival', 'posture', 'truthfulness-basic', 'inside-solid', 'no-progress'];
@@ -113,8 +114,17 @@ export function claimsIn(text, { soulName = null, others = [] } = {}) {
 
 /** runOracles(evidence, ctx) — ctx: {acts?: seat tool calls with outputs, godSlice?, run?, expect?} (acts are read from the run when
  *  absent; expect from the run's script entry when absent). A request with an `expect` also gets the scenario-truth oracles
- *  of expect-oracles.mjs after the fifteen ORACLE_IDS; requests without one get exactly ORACLE_IDS. */
+ *  of expect-oracles.mjs after the fifteen ORACLE_IDS; requests without one get exactly ORACLE_IDS.
+ *  A window the world stalled in (H-a) or the run's end cut short (H-f) is unscorable: every row gets status
+ *  `unscorable`, the reason as its detail, and the verdict it would have had as `wouldBe` (neither pass nor fail). */
 export function runOracles(ev, ctx = {}) {
+  const rows = scoreOracles(ev, ctx);
+  const v = windowValidity(ev);
+  if (v.scorable) return rows;
+  return rows.map((r) => ({ ...r, status: 'unscorable', detail: v.detail, unscorable: v.reason, windowTickRate: v.rate, wouldBe: { status: r.status, detail: r.detail } }));
+}
+
+function scoreOracles(ev, ctx = {}) {
   const P = `evidence/${ev.requestId}.json`;
   const expect = ctx.expect !== undefined ? ctx.expect : expectFor(ctx.run, ev);
   const acts = ctx.acts ?? (ctx.run ? seatActs(ctx.run, ev.seat, ev.chatTurns) : []);

@@ -45,7 +45,7 @@ w(R, 'world.json', { kind: 'dev', base: 'http://127.0.0.1:4990', slug: 'pt-fixtu
 w(R, 'close.json', { ok: true, t: iso(250), mono: m(250), seatsStopped: ['pip'], retired: [] });
 w(R, 'receipts/3-play.json', { ok: true, t: iso(0), mono: 0, anchor: iso(0) });
 w(R, 'server/healthz-before.json', { ok: true, tick: 0 });
-w(R, 'server/healthz-after.json', { ok: true, tick: 1000 });
+w(R, 'server/healthz-after.json', { ok: true, tick: 5000 });
 w(R, 'seats/pip/seat.json', { id: 'pip', adapter: 'claude-headless', model: 'haiku', effort: 'medium', soulId: SOUL, soulName: 'Pip', sessionId: 'sess-pip', ownerIdentity: 'agent-000000000000000000000000' });
 
 // seat turns: 1 onboard, 2 wake (r1), 3 chat (r2), 4 wake (r3)
@@ -89,7 +89,7 @@ w(R, 'seats/pip/chat-as-rendered.md', [
 ].join('\n'));
 
 // samples (snapshotSoul shape) every 5 s, positions {x,y,z}
-const S = (s, place, pos, posture, activity, lastReceipt, extra = {}) => ({ t: iso(s), mono: m(s), tick: s * 4, soulId: SOUL, place, placePath: ['Eden', place], pos: { x: pos[0], y: 0, z: pos[1] }, posture, activity, near: [], holding: null, following: null, riding: null, fade: 0, lastReceipt, receipts: [], ...extra });
+const S = (s, place, pos, posture, activity, lastReceipt, extra = {}) => ({ t: iso(s), mono: m(s), tick: s * 20, soulId: SOUL, place, placePath: ['Eden', place], pos: { x: pos[0], y: 0, z: pos[1] }, posture, activity, near: [], holding: null, following: null, riding: null, fade: 0, lastReceipt, receipts: [], ...extra });
 const rc = (id, capability, phase, startS, endS, extra = {}) => ({ id, soulId: SOUL, capability, phase, startedAt: startS == null ? null : iso(startS), startedMono: startS == null ? null : m(startS), endedAt: endS == null ? null : iso(endS), endedMono: endS == null ? null : m(endS), with: [], ...extra });
 const card = (s, presence, ack, result) => ({ t: iso(s), mono: m(s), card: { name: 'Pip', presence, ack, result }, bubbles: [], signs: [], toasts: [] });
 

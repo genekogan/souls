@@ -7,6 +7,7 @@ import { readJson, readJsonl } from '../lib/jsonl.mjs';
 import { loadRun, secsBetween, xz } from './run.mjs';
 import { runOracles } from './oracles.mjs';
 import { computeMetrics, joinTurns, readLedger } from './metrics.mjs';
+import { fitDuration } from '../lib/schedule.mjs';
 
 export const FROZEN = [
   { label: 'basics-1', run: '20261025-055730-basics-walk-act-1-77', kind: 'battery' },
@@ -44,12 +45,12 @@ export function frozenScenario(runDir, { currentScenario = null } = {}) {
     : rp.requests.map((r) => ({ seat: r.seat, atSec: Math.max(0, Math.round(r.sendOffsetSec * 10) / 10), channel: r.channel, text: r.text, budgetSec: r.budgetSec ?? budgets[r.requestId] ?? null }));
   const natives = currentScenario?.world && 'natives' in currentScenario.world ? currentScenario.world.natives : scen.world?.natives;
   const { scenarioPath, scenarioSha256, serverRoot, ...base } = scen;
-  return {
+  return fitDuration({ // H-f: long enough for every replayed request to finish (durationSec only grows)
     ...base, name: `${scen.name}-frozen`, seed: rp.seed ?? scen.seed, replayOf: basename(runDir), replayMode: 'scripted',
     world: { ...scen.world, ...(natives === undefined ? {} : { natives }) },
     director: { ...(scen.director ?? {}), mode: 'scripted', sequential: true, script },
     review: { ...(scen.review ?? {}), developer: false },
-  };
+  });
 }
 
 const pct = (a, b) => (b ? a / b : null);
@@ -74,8 +75,8 @@ export function runMeasures(runDir) {
   const m = computeMetrics(run, { ledger, oracles: rows });
   const joined = joinTurns(run);
   const of = (e, id) => rows.find((r) => r.requestId === e.requestId && r.id === id);
-  const truth = rows.filter((r) => r.id === 'truthfulness-basic');
-  const card = run.evidence.filter((e) => e.channel === 'card');
+  const truth = rows.filter((r) => r.id === 'truthfulness-basic' && r.status !== 'unscorable'); // H-a/H-f: neither pass nor fail
+  const card = run.evidence.filter((e) => e.channel === 'card' && of(e, 'result-sent')?.status !== 'unscorable');
   // "sit down" sits within 15 s of the first body change, in place (first sit request per seat)
   const sits = {};
   for (const e of run.evidence.filter((x) => /^\s*sit( down)?\s*[.!]?\s*$/i.test(x.text ?? ''))) {

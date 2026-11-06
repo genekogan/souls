@@ -9,6 +9,7 @@ import { metricsRun, readLedger } from './metrics.mjs';
 import { earlierRuns, rubricHash, RUBRIC_PATH } from './reviewer.mjs';
 import { ORACLE_IDS } from './oracles.mjs';
 import { buildStory, storyLines, writeStory } from './story.mjs'; // story (worker S)
+import { fitDuration } from '../lib/schedule.mjs';
 export { renderJournal } from './journal.mjs';
 
 export const seedOf = (run) => run.scenario?.seed ?? (Number(basename(run.runDir).match(/-(\d+)$/)?.[1]) || null);
@@ -35,7 +36,8 @@ export function replayToScenario(replay, mode = 'scripted') {
   // and text gets the k-th original script entry's expect, so a scripted replay is scored by the same oracles.
   const orig = replay.scenario?.director?.script ?? [], seen = new Map();
   const expectOf = (r) => { const k = `${r.seat}\u0000${r.text}`, n = seen.get(k) ?? 0; seen.set(k, n + 1); return orig.filter((e) => e.seat === r.seat && e.text === r.text)[n]?.expect ?? null; };
-  return { ...base, director: { ...(replay.scenario.director ?? {}), mode: 'scripted', script: replay.requests.map((r) => { const x = expectOf(r); return { seat: r.seat, atSec: r.sendOffsetSec, channel: r.channel, text: r.text, budgetSec: r.budgetSec ?? null, ...(x ? { expect: x } : {}) }; }) } };
+  // H-f: the run is long enough for every replayed request to finish (durationSec only grows).
+  return fitDuration({ ...base, director: { ...(replay.scenario.director ?? {}), mode: 'scripted', script: replay.requests.map((r) => { const x = expectOf(r); return { seat: r.seat, atSec: r.sendOffsetSec, channel: r.channel, text: r.text, budgetSec: r.budgetSec ?? null, ...(x ? { expect: x } : {}) }; }) } });
 }
 /** Check persona sheets in a personas dir still match the hashes the replay recorded. */
 export function verifyReplay(replay, personaSheets) { return Object.entries(replay.personas).map(([seat, p]) => ({ seat, ok: personaSheets[seat] != null && sha256(personaSheets[seat]) === p.sha256 })); }
@@ -57,6 +59,8 @@ export function renderReport(run, { metrics, prevMetrics = null, prevName = null
     `| Build | \`${run.world.build ?? '?'}\` · skill ${run.world.skill?.version ?? '?'} \`${(run.world.skill?.sha256 ?? '').slice(0, 12)}\` · CLI ${Object.entries(run.world.cli ?? {}).map(([k, v]) => `${k} \`${String(v).slice(0, 12)}\``).join(', ') || '?'} |`,
     `| Seats | ${(s.seats ?? []).map((x) => `${x.id}: ${x.adapter} ${x.model}${x.effort ? `/${x.effort}` : ''}, persona ${x.persona} (${x.personaModel ?? 'opus'})`).join('; ')}${s.god ? `; god: ${s.god.adapter} ${s.god.model}, persona ${s.god.persona}` : ''} |`,
     `| Seed / duration | ${seedOf(run) ?? '—'} · ${s.durationSec ?? '?'} s · director ${s.director?.mode ?? '?'} |`,
+    `| Validity | world ${fmt(metrics.uptime?.tickRate)} ticks/s · request windows unscorable: ${metrics.uptime?.unscorableStalled ?? 0} world stalled (under 15 ticks/s), ${metrics.uptime?.unscorableTruncated ?? 0} truncated by run end or quota |`,
+    `| Server root | ${serverRootLine(run.world.serverRoot)} |`,
     `| Cost (seats) | ${cost.input} in / ${cost.cached} cached / ${cost.output} out tokens |`,
     `| Review | ${s.review?.mode === 'deterministic' ? 'Deterministic oracles; no model reviewer or developer' : `Reviewer ${s.review?.reviewerModel ?? 'opus'}, Developer ${s.review?.developerModel ?? 'opus'}`}, rubric \`RUBRIC.md\` \`${rubricHash().slice(0, 12)}\` |`, '');
   L.push('## 1b. Basics scorecard', '', 'Plain walking and acting first; everything subjective comes after.', '', '| walks asked | arrived | arrival rate | body moved in budget | ack median (s) | first body change median (s) | stuck / no progress | inside solid | wrong | hits |', '|---|---|---|---|---|---|---|---|---|---|', `| ${b.walkRequests ?? 0} | ${b.walksArrived ?? 0} of ${b.walksArrivalKnown ?? 0} known | ${fmt(b.walkArrivalRate)} | ${b.bodyMovedInBudget ?? 0} of ${b.requests ?? 0} (${fmt(b.bodyMovedRate)}) | ${fmt(b.ackMedianSec)} | ${fmt(b.firstBodyChangeMedianSec)} | ${b.stuck ?? 0} | ${b.insideSolid ?? 0} | ${b.wrong ?? 0} | ${b.hits ?? 0} |`, '');
@@ -101,6 +105,14 @@ export function renderReport(run, { metrics, prevMetrics = null, prevName = null
   const coord = existsSync(join(run.runDir, 'COORDINATOR-NOTES.md')) ? readFileSync(join(run.runDir, 'COORDINATOR-NOTES.md'), 'utf8').trim() : '';
   if (coord) L.push('', '## 9. Coordinator note (read before trusting the scores)', '', coord, '');
   return L.join('\n');
+}
+
+/** H-i: the server root's HEAD at run start and end, and whether its tree was dirty (world.json serverRoot). */
+export function serverRootLine(r) {
+  if (!r || (!r.headAtStart && !r.headAtEnd)) return 'not recorded';
+  const h = (sha, dirty) => (sha ? `\`${sha.slice(0, 12)}\`${dirty ? ' (dirty)' : ''}` : '?');
+  const changed = r.headAtStart && r.headAtEnd && (r.headAtStart !== r.headAtEnd || !!r.dirtyAtStart !== !!r.dirtyAtEnd);
+  return `start ${h(r.headAtStart, r.dirtyAtStart)} · end ${r.headAtEnd ? h(r.headAtEnd, r.dirtyAtEnd) : 'not recorded'}${changed ? ' · **CHANGED during the run**' : ''}`;
 }
 
 export function harnessNotes(run, { metrics, ledger, reviews, specs, emergence }) {

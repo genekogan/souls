@@ -85,6 +85,17 @@ after the cutoff are diagnostic only.
   listening, arrival, posture, duration held, inside-solid, no-progress, oscillation, stuck receipt, truthfulness,
   vocabulary, duplicate acts, server errors and first body change. A scripted request may carry an `expect` block (a
   target from the genesis, words the answer must use, a facing) scored by `review/expect-oracles.mjs`.
+- **Unscorable windows** (`tick-validity.mjs`). A request's oracle rows all become `unscorable`, neither pass nor
+  fail, when its window cannot say anything about the product. That happens when the world stalled (its own samples,
+  at least two and at least 2 s apart, show under 15 ticks/s between the send and the cutoff), or when the run end or
+  a quota stop cut the window before its budget elapsed. The detail names the reason, and `wouldBe` keeps the
+  verdict the row would have had. `REPORT.md` prints the run's tick rate and both counts in its Validity row. The
+  run-level check is separate: the tick service between healthz at provision and at close, where under 0.8 marks
+  the run infrastructure-invalid.
+- **Server root.** `world.json` records the server root's `HEAD` and whether its tree was dirty, at run start and at
+  run end (`serverRoot.headAtStart`, `dirtyAtStart`, `headAtEnd`, `dirtyAtEnd`; never the path). Dirty means any
+  modified, staged or untracked file; ignored files never count. The report's Server root row flags a change during
+  the run.
 - **Reviewer** (`review/reviewer.mjs`) scores each request H (hit), P (partial), M (honest miss) or W (wrong) using
   [`review/RUBRIC.md`](../../tools/playtest/review/RUBRIC.md). It writes issues in player terms only; causes, code
   areas and fixes are stripped. With `review.mode: "deterministic"` no model scores are made and only oracles count.
@@ -114,7 +125,11 @@ after the cutoff are diagnostic only.
 - `world.kind` must be `dev`. Every seat needs an `id`, an `adapter`, a `soulName` and (for Claude) a `model`.
 - `director.mode` is `persona` (every seat needs a persona) or `scripted`, with
   `script: [{ "seat", "atSec", "channel": "chat"|"card", "text", "budgetSec", "expect"? }]`. A seat's scripted
-  requests must not overlap their budgets.
+  requests must not overlap their budgets. Every request must also be able to finish inside the run:
+  `atSec + budgetSec + 15 s` of queue slack must not exceed `durationSec`. A missing `budgetSec` counts as the
+  scenario default, and a god request as the god default. `run` refuses a scenario that breaks the rule before
+  anything is provisioned and names each late entry; fix it with a longer `durationSec`, not a shorter budget.
+  Scripted replays (`replay`, `replay-set`) raise their `durationSec` to fit.
 - **Batteries** are scripted scenarios that send the same basic requests to every seat and are scored by oracles
   (`basics-walk-act-*.json`). `scenarios/unified/` holds frozen journey fixtures with exact physical targets; see its
   README.

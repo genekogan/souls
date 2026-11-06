@@ -18,7 +18,7 @@
   {
    "t": "2026-10-24T12:00:30.000Z",
    "mono": 30000,
-   "tick": 120,
+   "tick": 600,
    "soulId": "soul_pip01",
    "place": "Fountain Plaza",
    "placePath": [
@@ -43,7 +43,7 @@
   {
    "t": "2026-10-24T12:00:35.000Z",
    "mono": 35000,
-   "tick": 140,
+   "tick": 700,
    "soulId": "soul_pip01",
    "place": "Fountain Plaza",
    "placePath": [
@@ -68,7 +68,7 @@
   {
    "t": "2026-10-24T12:00:40.000Z",
    "mono": 40000,
-   "tick": 160,
+   "tick": 800,
    "soulId": "soul_pip01",
    "place": "Fountain Plaza",
    "placePath": [
@@ -93,7 +93,7 @@
   {
    "t": "2026-10-24T12:00:45.000Z",
    "mono": 45000,
-   "tick": 180,
+   "tick": 900,
    "soulId": "soul_pip01",
    "place": "Fountain Plaza",
    "placePath": [
@@ -118,7 +118,7 @@
   {
    "t": "2026-10-24T12:00:50.000Z",
    "mono": 50000,
-   "tick": 200,
+   "tick": 1000,
    "soulId": "soul_pip01",
    "place": "Fountain Plaza",
    "placePath": [
@@ -143,7 +143,7 @@
   {
    "t": "2026-10-24T12:00:55.000Z",
    "mono": 55000,
-   "tick": 220,
+   "tick": 1100,
    "soulId": "soul_pip01",
    "place": "Fountain Plaza",
    "placePath": [
@@ -168,7 +168,7 @@
   {
    "t": "2026-10-24T12:01:00.000Z",
    "mono": 60000,
-   "tick": 240,
+   "tick": 1200,
    "soulId": "soul_pip01",
    "place": "Fountain Plaza",
    "placePath": [

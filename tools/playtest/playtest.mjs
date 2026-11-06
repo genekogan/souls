@@ -11,6 +11,8 @@ import { writeJson, readJson, appendJsonl } from './lib/jsonl.mjs';
 import { quota, quotaAllows } from './lib/quota.mjs';
 import { sha256, rng } from './lib/hash.mjs';
 import { tickValidity } from './tick-validity.mjs';
+import { scheduleProblems } from './lib/schedule.mjs';
+import { serverRootState } from './lib/server-root.mjs';
 import { freeMemGb, resolvePlaywright } from './lib/platform.mjs';
 import { REPO_ROOT, scratchDir } from '../lib/paths.mjs';
 
@@ -87,6 +89,9 @@ export async function cmdRun(a, hooks = null) {
   const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
   const policy = providerPolicy(scenario);
   assertMeasurementReady(scenario);
+  // H-f (#371): every scripted request must be able to finish inside the run; refuse before anything is provisioned.
+  const late = scheduleProblems(scenario);
+  if (late.length) { for (const p of late) log(`schedule refused: ${p.message}`); log(`scenario ${scenario.name}: ${late.length} scripted request(s) cannot finish inside durationSec ${scenario.durationSec}; raise durationSec`); return 2; }
   const seed = Number(a.seed ?? scenario.seed ?? 1);
   const serverRoot = resolve(a['server-root'] ?? scenario.serverRoot ?? DEFAULT_SERVER_ROOT);
   assertFrozenGenesis(scenario, serverRoot);
@@ -110,9 +115,10 @@ export async function cmdRun(a, hooks = null) {
     checkAbort('provision');
     if (scenario.world.kind !== 'dev') throw new Error(`world kind ${scenario.world.kind} is not available in this stage`);
     const slug = scenario.world.slug ?? `pt-${scenario.name}`.slice(0, 31);
+    const rootAtStart = serverRootState(serverRoot); // H-i
     ctx.world = await m.provision.startWorld({ serverRoot, slug, port: scenario.world.port, genesis: resolve(serverRoot, scenario.world.genesis), snapshot:scenario.world.snapshot?resolve(serverRoot,scenario.world.snapshot):undefined, dataDir: join(runDir, 'server', 'data'), log: join(runDir, 'server', 'world.log'), fresh: true, natives: scenario.world.natives === true, onSpawn: (child) => own('world', slug, () => m.provision.stopWorld({ pid: child.pid }), { pid: child.pid, port: scenario.world.port, dataDir: join(runDir, 'server', 'data') }) });
     try { ctx.world = { ...ctx.world, ...(await m.provision.describeWorld({ base: ctx.world.base, slug, port: scenario.world.port, pid: ctx.world.pid, build: ctx.world.build, startedAt: new Date().toISOString() })) }; } catch (e) { log('describeWorld failed', e.message); }
-    writeJson(join(runDir, 'world.json'), { ...ctx.world, child: undefined, healthz: undefined });
+    writeJson(join(runDir, 'world.json'), { ...ctx.world, child: undefined, healthz: undefined, serverRoot: { headAtStart: rootAtStart.head, dirtyAtStart: rootAtStart.dirty } });
     try { writeJson(join(runDir, 'server', 'healthz-before.json'), { ...(await m.provision.healthz(ctx.world.base)), at: Date.now() }); } catch { /* recorded as missing */ }
     receipt(runDir, 1, 'provision', { ok: true, base: ctx.world.base, build: ctx.world.build });
 
@@ -202,6 +208,8 @@ export async function cmdRun(a, hooks = null) {
       try { const before = existsSync(join(runDir, 'server', 'healthz-before.json')) ? readJson(join(runDir, 'server', 'healthz-before.json')) : null, after = existsSync(join(runDir, 'server', 'healthz-after.json')) ? { ...readJson(join(runDir, 'server', 'healthz-after.json')), at: Date.now() } : null;
         const v = tickValidity(before, after); writeJson(join(runDir, 'server', 'tick-validity.json'), v); log('H-a tick service', v.service ?? '-', v.valid === false ? 'INVALID' : v.valid ? 'valid' : 'not judged');
         if (v.valid === false) appendJsonl(join(runDir, 'infrastructure-invalid.jsonl'), { check: 'H-a', reason: v.reason, service: v.service }); } catch (e) { log('H-a check failed', e.message); }
+      // H-i: the server root's HEAD at run end, beside the one at start
+      try { const w = readJson(join(runDir, 'world.json')); if (w) { const end = serverRootState(serverRoot); writeJson(join(runDir, 'world.json'), { ...w, serverRoot: { ...(w.serverRoot ?? {}), headAtEnd: end.head, dirtyAtEnd: end.dirty } }); } } catch (e) { log('H-i end head failed', e.message); }
       writeJson(join(runDir, 'close.json'), { ...now(), ...closed });
       receipt(runDir, 4, 'close', { ok: true });
     }

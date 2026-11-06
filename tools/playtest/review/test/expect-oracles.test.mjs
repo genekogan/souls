@@ -5,7 +5,7 @@ import { angleDiff, bearing, compassWords, expectFor, namesIn, validateExpect, E
 
 const T0 = Date.parse('2026-10-26T10:00:00Z');
 const at = (s) => new Date(T0 + s * 1000).toISOString();
-const sample = (s, x, z, extra = {}) => ({ t: at(s), tick: 100 + s * 10, pos: { x, z }, place: null, placePath: [], posture: 'standing', ...extra });
+const sample = (s, x, z, extra = {}) => ({ t: at(s), tick: 100 + s * 20, pos: { x, z }, place: null, placePath: [], posture: 'standing', ...extra });
 const pack = (o = {}) => ({ requestId: 'r1', seat: 'pip', text: 'x', channel: 'chat', sentAt: at(0), cutoffAt: at(120), chatTurns: [3], receipts: [], samples: [sample(1, 0, 0), sample(60, 10, 0), sample(110, 20, 0)], ...o });
 const turns = (text, s = 30) => [{ turn: 3, finalText: text, endedAt: at(s) }];
 const SRC = 'test fixture';

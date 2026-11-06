@@ -4,7 +4,7 @@
   "seed": 7510,
   "providers": { "allowed": ["codex"] },
   "world": { "kind": "dev", "genesis": "worlds/templates/hello-hamlet.json", "slug": "sr-hamlet-trio", "port": 4321, "natives": false },
-  "durationSec": 150,
+  "durationSec": 160,
   "seats": [
     { "id": "ada", "adapter": "scripted-owner", "soulName": "Ada", "script": { "rules": [
       { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk:flag-orchard", "--wait", "100"]], "result": "At the orchard" },

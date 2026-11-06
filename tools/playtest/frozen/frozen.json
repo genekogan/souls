@@ -1104,7 +1104,7 @@
      "port": 4999,
      "natives": true
     },
-    "durationSec": 600,
+    "durationSec": 652,
     "seats": [
      {
       "id": "pip",
@@ -1338,7 +1338,7 @@
      "port": 4990,
      "natives": true
     },
-    "durationSec": 600,
+    "durationSec": 679,
     "seats": [
      {
       "id": "pip",
@@ -1604,7 +1604,7 @@
      "port": 4991,
      "natives": true
     },
-    "durationSec": 900,
+    "durationSec": 1031,
     "seats": [
      {
       "id": "rook",
@@ -1950,7 +1950,7 @@
      "port": 4998,
      "natives": true
     },
-    "durationSec": 900,
+    "durationSec": 1418,
     "seats": [
      {
       "id": "ori",
