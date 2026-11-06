@@ -28,6 +28,7 @@ import { checkStations, childrenState, walkCrew, type Children } from '../constr
 import { holdingDiagnostic } from '../construction/rules.ts';
 import { SIT_TRANSITION } from '../social/actions.ts';
 import { watering } from './watering.ts';
+import { repair } from './repair.ts';
 import { letGo } from './let-go.ts';
 import { cupAction } from './cup.ts';
 import {
@@ -779,4 +780,4 @@ export const eat: ActionDef<EatParams, { bowlHand: Hand }, EatExec> = {
   resumable: true,
 };
 
-export const ITEM_ACTIONS: ActionDef[] = [takeItem, putItem, serve, eat, holdItems, letGo as unknown as ActionDef, watering as unknown as ActionDef, handOver as ActionDef, cupAction as unknown as ActionDef];
+export const ITEM_ACTIONS: ActionDef[] = [takeItem, putItem, serve, eat, holdItems, letGo as unknown as ActionDef, repair as unknown as ActionDef, watering as unknown as ActionDef, handOver as ActionDef, cupAction as unknown as ActionDef];
