@@ -304,7 +304,8 @@ export class EngineBridge {
       commit:(ops,note,done)=>this.god.engineAct(ops,note,done)});
     if(this.edge?.contactActuator)this.edge.doorPassage=createDoorPassage({engine:()=>this.host.engine as never,model:()=>this.god.model,contact:this.edge.contactActuator,access:(id,soul)=>this.layers.refusal(id,soul),owner});
     // #442: repair with a tool in hand (mending.ts): the world changes when the receipt completes, no tick work
-    this.mending = createMending({ model: this.god.model, engine: this.host.engine as never, levelAt: (x, z, y) => this.levelAt(x, z, y), occupied: (id) => !!this.mw.bodyUsesV1?.(id) || this.seatTakers(id).length > 0, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
+    this.mending = createMending({ model: this.god.model, engine: this.host.engine as never, levelAt: (x, z, y) => this.levelAt(x, z, y), occupied: (id) => this.seatTakers(id).length > 0, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
+    if (this.edge) this.edge.repairEffects = (r) => this.mending?.effects(r) ?? {};
     this.edge?.onReceipt((r) => { try { this.mending?.onReceipt(r); } catch (e) { this.log(`mending: ${(e as Error).message}`); } });
     // Entry 34: the watering-can act (watering.ts): planned for perceive's offers, its moments committed per tick
     this.watering = createWatering({ model: this.god.model, version: () => this.version, engine: this.host.engine as never, commit: (ops, note) => this.god.engineAct(ops as never, note), log: (m) => this.log(m) });
@@ -1645,7 +1646,7 @@ export class EngineBridge {
     };
     L.intents.planRefusal = (soul, steps, target) => this.layers.constructionRefusal(soul, steps, target);
     const priorUseRefusal = L.nativeUseRefusal;
-    L.nativeUseRefusal = (capability, steps) => priorUseRefusal?.(capability, steps) ?? this.bedUseRefusal(capability, steps);
+    L.nativeUseRefusal = (capability, steps) => priorUseRefusal?.(capability, steps) ?? (steps ? this.mending?.stepsRefusal(steps) : null) ?? this.bedUseRefusal(capability, steps);
     // R4-INFO: god-built places are walkable (map, plain-words resolution, `via`), and the map follows the god's edits
     L.placeWalkable = (id) => this.readSide ? this.readWalkable.has(id) : this.places.walkable(id);
     // On-demand plans are appended after the full profile's layer pass. Apply

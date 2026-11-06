@@ -126,8 +126,6 @@ const nextTurn = () => new Promise<void>(r => setImmediate(r));
 
 /** #824: how many offers a "nothing matches" refusal names as `alternatives`, and verbs never offered as one. */
 const ALTERNATIVES = 3, ATTENTION_ONLY = new Set(['look', 'turn', 'face']), NOTHING_MATCHES = new Set(['capability.unknown', 'place.unknown']);
-/** #442: a completed repair says so plainly (the state change itself comes with this same completion, mending.ts). */
-const repairEffects=(r:EdgeReceipt):ConfirmedEffects=>r.phase==='completed'&&/^object:.+:repair$/.test(r.capability)?{summary:'Repaired: it is whole again, and the tool is still in hand.'}:{};
 export class EdgeLedger implements EdgeLedgerHooks {
   places: PlaceIndex;
   private receiptListeners: ((r: EdgeReceipt) => void)[] = [];
@@ -163,6 +161,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   /** World-engine easels only; installed alongside the existing art media routes. */
   painting?: PaintingService;
   contactActuator?: ContactActuatorService;
+  /** #442 (mending.ts): what a completed repair did, read when its receipt ends, before the state changes. */
+  repairEffects?: (r: EdgeReceipt) => ConfirmedEffects;
   /** Soul Actions entry 31 (god worlds, god/door-passage.ts): a plain walk a closed, permitted door walls off goes through it. */
   doorPassage?: (soul: EdgeSoul, steps: Program['steps'], what: string) => DoorPassage | DoorPassageRefusal | null;
   /** World-engine worlds only (god/places.ts): places walkable without being native engine regions (a god's plaza, a
@@ -572,7 +572,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (patch.phase && patch.phase !== cur.phase) this.emit(this.view(next));
   }
   /** Called only inside the original terminal phase transaction. Replay only reads the immutable result. */
-  private finishOutcome(row:Row){if(this.outcomes.read(row.receipt_id))return;const receipt=this.view(row),op=receiptItemOp(this,receipt.id);this.together.onReceipt(receipt);const mind=this.host.minds.get(row.soul_id);if(!mind)return;const soul={soulId:mind.soulId,entityId:mind.entityId,name:mind.name,owner:mind.owner};this.outcomes.terminal(receipt,terminalSnapshot(this,soul,row.capability.split(':')[0]),{...confirmedTogetherEffects(this,receipt,op),...this.signReadEffects(receipt),...repairEffects(receipt)});this.notifyMail();}
+  private finishOutcome(row:Row){if(this.outcomes.read(row.receipt_id))return;const receipt=this.view(row),op=receiptItemOp(this,receipt.id);this.together.onReceipt(receipt);const mind=this.host.minds.get(row.soul_id);if(!mind)return;const soul={soulId:mind.soulId,entityId:mind.entityId,name:mind.name,owner:mind.owner};this.outcomes.terminal(receipt,terminalSnapshot(this,soul,row.capability.split(':')[0]),{...confirmedTogetherEffects(this,receipt,op),...this.signReadEffects(receipt),...this.repairEffects?.(receipt)});this.notifyMail();}
   /** A completed `read:<sign>` reports the sign's own words (a Soul's board text attributed and untrusted), never a library passage. */
   private signReadEffects(r:EdgeReceipt):ConfirmedEffects{
     if(r.phase!=='completed'||!r.capability.startsWith('read:'))return{};const sign=this.contactActuator?.sign(r.capability.slice(5));if(!sign)return{};

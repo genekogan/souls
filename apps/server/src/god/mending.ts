@@ -5,6 +5,7 @@
 import { opSchema, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
 import type { EdgeReceipt } from '../edge/contract.ts';
+import { keptShut } from './actuators.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Vec3 = [number, number, number];
@@ -46,7 +47,8 @@ export function createMending(h: MendingHost) {
     if (!tools.length) {
       if (held.length) return { code: 'repair.wrong-tool', reason: `${name} needs a ${rep.tool} in your hand; put down what you are holding first.` };
       let best = TOOL_NEAR, near: string | null = null;
-      for (const o of m.entities.values()) { if (!m.resolvedDef(o.def)?.tags.includes(tag)) continue; const q = m.worldPose(o), d = Math.hypot(q.x - body.pose.p[0], q.z - body.pose.p[2]); if (d < best) { best = d; near = o.id; } }
+      // only a tool she could go and pick up: not in someone's hand, not kept in something shut
+      for (const o of m.entities.values()) { if (!m.resolvedDef(o.def)?.tags.includes(tag) || keptShut(m, o) || ents()[o.id]?.support?.kind === 'in-hand') continue; const q = m.worldPose(o), d = Math.hypot(q.x - body.pose.p[0], q.z - body.pose.p[2]); if (d < best) { best = d; near = o.id; } }
       return { code: 'repair.no-tool', reason: `${name} needs a ${rep.tool} in your hand. ${near ? `Pick up ${m.pathOf(near)} first.` : `There is no ${rep.tool} within reach here.`}` };
     }
     if (held.length > 1) return { code: 'repair.hand-full', reason: `Repairing ${name} needs your other hand free; put down what else you are holding first.` };
@@ -69,16 +71,37 @@ export function createMending(h: MendingHost) {
     if (r.phase !== 'completed') return;
     const m = /^object:(.+):repair$/.exec(r.capability); if (!m) return;
     const e = M().entities.get(m[1]), def = e && M().resolvedDef(e.def);
-    if (!e || !repairableOf(def) || e.state?.broken !== true || e.state?.repairedBy === r.id) return;
+    if (!e || !repairableOf(def) || e.state?.repairedBy === r.id) return;
+    // already whole: still noted, so this receipt can't clear a later break if it is announced again after a restart
+    if (e.state?.broken !== true) { if (h.commit([opSchema.parse({ op: 'set', id: e.id, state: { repairedBy: r.id } })], `${r.soulId} found ${e.id} whole`).accepted === false) h.log(`repair: the world refused the note on ${e.id}`); return; }
     const done = h.commit([opSchema.parse({ op: 'set', id: e.id, state: { broken: false, repairedBy: r.id } })], `${r.soulId} repaired ${e.id}`);
     if (!done.accepted) h.log(`repair: the world refused the result on ${e.id}`);
   }
+  /** What a completed repair did, for its receipt. Read as the receipt ends, before `onReceipt` clears `broken`: a second
+   *  Soul who finishes after the first, or after the creator mended it, is told it was already whole. */
+  function effects(r: EdgeReceipt): { summary: string } | Record<string, never> {
+    if (r.phase !== 'completed') return {};
+    const m = /^object:(.+):repair$/.exec(r.capability); if (!m) return {};
+    const e = M().entities.get(m[1]), def = e && M().resolvedDef(e.def), rep = repairableOf(def);
+    if (!e || !rep) return rep === undefined && !e ? { summary: 'It was gone by the time you finished, so nothing was repaired.' } : {};
+    const name = e.name ? M().pathOf(e.id) : `the ${def!.name.replace(/^core-/, '').replace(/-/g, ' ')}`;
+    return e.state?.broken === true ? { summary: `Repaired ${name} with the ${rep.tool}; the ${rep.tool} is still in your hand.` } : { summary: `${name} was already whole by the time you finished, so you repaired nothing.` };
+  }
   return {
-    plan, onReceipt,
+    plan, onReceipt, effects,
     /** Compact facts for a Soul nearby: only while broken. */
     facts(id: string) { const rep = repairableOf(defOf(id)); return rep && isBroken(id) ? { broken: rep.says } : null; },
     /** A repairable thing that is whole: nothing to offer, so it reads as it would without the faculty. */
-    whole(id: string) { return !isBroken(id); },
+    whole(id: string) { return !!repairableOf(defOf(id)) && !isBroken(id); },
+    /** One gate for every plan: a step that would sit on a broken thing (a reading or listening spot's seat, a named seat part). */
+    stepsRefusal(steps: { verb: string; params?: Record<string, unknown> }[]): Refusal | null {
+      for (const s of steps) {
+        if (s.verb !== 'sit' && s.verb !== 'mars:sit' && s.verb !== 'take_slot' && s.verb !== 'mars:take_slot') continue;
+        const on = typeof s.params?.on === 'string' ? s.params.on : typeof s.params?.slot === 'string' ? s.params.slot.split('#')[0] : null;
+        const no = on ? this.seatRefusal(on) : null; if (no) return no;
+      }
+      return null;
+    },
     /** Why this seat can't take anyone now, or null. */
     seatRefusal(id: string): Refusal | null { const rep = repairableOf(defOf(id)); return rep && isBroken(id) ? { code: 'seat.broken', reason: `It is broken (${rep.says}); nobody can sit on it until it is repaired.` } : null; },
   };

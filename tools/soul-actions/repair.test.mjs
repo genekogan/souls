@@ -92,7 +92,7 @@ test('repair: broken, perceived, refused without the tool, repaired with it',{ti
  await tick(2);assert.equal(named('old').state.broken,false,'repaired on completion');
  assert.equal(w.W().entities[ham].support.by,ana.entityId);assert.equal(w.W().entities[ham].support.hand,hand0,'same hammer in the same hand');
  await tick(10);assert.notEqual(body(ana).human.activity,'reach','the body is back to idle');
- assert.match(JSON.stringify(end),/Repaired: it is whole again/,JSON.stringify(end).slice(0,400));
+ assert.match(JSON.stringify(end),/Repaired old with the hammer/,JSON.stringify(end).slice(0,400));
  // perceived after: no fact, no offer, the seat works
  await tick(45);const after=await here(ana);assert.equal(after.objects?.find(o=>o.id===bench)?.state?.broken,undefined);assert.equal(edge.capabilities(ana).filter(c=>c.id===cap).length,0,'no offer once whole');
  assert.equal(edge.capabilities(ben).find(c=>c.id==='sit:'+bench)?.blocked?.code,undefined,'the seat is open again');

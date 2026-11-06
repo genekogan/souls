@@ -268,15 +268,19 @@ const PLACE_VERBS = new Set(['walk', 'jog', 'run', 'jog-around', 'run-around', '
 const SPOT_PLACE_VERBS = new Set(['read']);
 const GAIT_VERBS = new Set(['jog', 'run', 'jog-around', 'run-around', 'cycle', 'cycle-around']);
 
-// #442: "repair the bench", "fix the bench with the hammer", "pump up the tyre": the nearest repair offer these words name,
-// else a refusal that says nothing like that is broken here.
-const REPAIR_WORDS = /^(?:please\s+)?(?:repair|fix|mend|pump\s+up)\s+(?:(?:the|that|this|my|a)\s+)?(.{1,60}?)(?:\s+with\s+(?:(?:the|a|my)\s+)?[a-z-]+)?[.!]*$/;
+// #442: "repair the bench", "fix the cracked slat", "fix it", "pump up the tyre with the pump": the repair offer these words
+// name. "fix dinner" and "pump up the music" are not these words: nothing here is called that, so they fall through. A thing
+// that's here but not broken gets a refusal that says so.
+const REPAIR_WORDS = /^(?:please\s+)?(repair|fix|mend|pump\s+up)\s+(?:(?:the|that|this|my|a)\s+)?(.{1,60}?)(?:\s+with\s+(?:(?:the|a|my)\s+)?[a-z -]{1,30})?[.!]*$/;
 function repairWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
   const m = REPAIR_WORDS.exec(text.trim()); if (!m) return null;
-  const ws = tokens(m[1]), offers = ctx.caps.filter(c => c.id.endsWith(':repair'));
+  const ws = tokens(m[2]), offers = ctx.caps.filter(c => c.id.endsWith(':repair')), lone = /^(?:it|this|that)$/.test(m[2].trim());
+  if (lone && offers.length === 1) return {kind: 'alias', cap: offers[0], note: `${input} is ${offers[0].id} (${offers[0].label}).`};
   const cap = offers.find(c => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')); return ws.every(w => tokenHit(w, all));});
   if (cap) return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`};
-  return {kind: 'unknown', code: 'repair.not-broken', reason: `Nothing like that is broken here${offers.length ? `; what is: ${offers.map(c => c.label).join(', ')}` : ''}.`, didYouMean: offers.map(c => ({id: c.id, label: c.label}))};
+  if (m[1].startsWith('pump') || !ws.length) return null;
+  const here = ctx.caps.some(c => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')); return ws.every(w => tokenHit(w, all));});
+  return here ? {kind: 'unknown', code: 'repair.not-broken', reason: `That is not broken${offers.length ? `; what is: ${offers.map(c => c.label).join(', ')}` : ''}.`, didYouMean: offers.map(c => ({id: c.id, label: c.label}))} : null;
 }
 
 export function resolveCapability(input: string, ctx: VocabContext): VocabResult {

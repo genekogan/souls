@@ -22,7 +22,7 @@ const BENCH: DefInput = {
   ...bench, version: 2,
   description: 'A park bench for two: wooden slats on cast-iron ends with a curved back. It can break (a cracked slat) and be repaired with a hammer.',
   state: { ...(bench.state ?? {}), ...brokenState } as DefInput['state'],
-  components: { ...bench.components, repairable: { tool: 'hammer', label: 'Repair the bench with a hammer', says: 'a cracked slat', hand: [0.12, 0.5, 0.42], stands: [[0, 0.8], [-0.3, 0.8], [0.3, 0.8]], strokes: 6, lift: 0.16, motion: 'strike' } } as DefInput['components'],
+  components: { ...bench.components, repairable: { tool: 'hammer', label: 'Repair the cracked slat on the bench with a hammer', says: 'a cracked slat', hand: [0.12, 0.5, 0.42], stands: [[0, 0.8], [-0.3, 0.8], [0.3, 0.8]], strokes: 6, lift: 0.16, motion: 'strike' } } as DefInput['components'],
 };
 
 /** The cart's left wheel: whole, or flat, sunk on its rim. The pump works beside it. */
