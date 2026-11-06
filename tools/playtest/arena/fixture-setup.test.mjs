@@ -44,5 +44,5 @@ test('setup refuses malformed or nonfinite position and heading',()=>{
 test('measurement setup uses frozen transport, leaving the model served CLI unchanged', async()=>{
  const runDir=mkdtempSync(join(tmpdir(),'sim-setup-')); let calls=0;
  const r=await runFixtureSetup({runDir,requestKey:'frozen',setup:{steps:[{verb:'turn',heading:90}],expect:{heading:90}},seat:{chain:Promise.resolve(),cliJson:async()=>{throw Error('baseline model CLI must not run setup');},fixtureCliJson:async args=>{calls++;return {ok:true,data:args[0]==='act'?{accepted:true,receipt:{phase:'completed'}}:{me:{heading:90}}};}}});
- assert.equal(r.ok,true);assert.equal(calls,2);
+ assert.equal(r.ok,true);assert.equal(calls,3,'resolve, act, here');
 });

@@ -2,6 +2,7 @@
 // perceive from where it stands. Strictly local: Souls and things in the same enclosed place (or, outdoors, not
 // inside one) within sight radius and with a clear sightline (nav/1 solids); never other places, never conversation
 // content, never owner data. Read-only; deterministic for a given world state. No model calls.
+import {paramsByVerb} from '../intents/offer-schema.ts';
 import {menuWorldOf} from '../../split/menu-world.ts';
 import {entityPhysicsContribution} from '../../../../../mars/viewer/engine/spatial/edits.ts';
 import {whereLine} from './semantic-location.ts';
@@ -231,11 +232,14 @@ const doingWord = (state: string, activity: string) => POSE_WORDS[activity] ?? (
 export function compactDoHere(caps:readonly EdgeCapability[],localTargets:ReadonlySet<string>,byteBudget=1800){
  const eligible=caps.filter(c=>c.available&&c.verb!=='walk'&&c.verb!=='stroll'&&(c.id.endsWith(':here')||c.verb==='accept'||c.verb==='decline'||!!c.target&&localTargets.has(c.target.id)));
  const selected:{id:string;verb:string;label:string;available:true;params?:Record<string,unknown>}[]=[];
+ // CTRL-1 (#1093): the verbs' shared parameters once, inside the budget; an offer's own stay on it
+ const shared=paramsByVerb(eligible.map(c=>c.verb)),left=byteBudget-Buffer.byteLength(JSON.stringify(shared));
  for(const c of eligible){
   const offer={id:c.id,verb:c.verb,label:c.label,available:true as const,...(c.params?{params:structuredClone(c.params)}:{})};
-  if(selected.length<12&&Buffer.byteLength(JSON.stringify([...selected,offer]))<=byteBudget)selected.push(offer);
+  if(selected.length<12&&Buffer.byteLength(JSON.stringify([...selected,offer]))<=left)selected.push(offer);
  }
- return {doHere:selected,doHereCoverage:{localOffers:eligible.length,listed:selected.length,omitted:eligible.length-selected.length,byteBudget,complete:eligible.length===selected.length,fullCapabilities:'/v1/edge/capabilities'}};
+ const verbs=new Set(selected.map(o=>o.verb));
+ return {doHere:selected,doHereParams:Object.fromEntries(Object.entries(shared).filter(([v])=>verbs.has(v))),doHereCoverage:{localOffers:eligible.length,listed:selected.length,omitted:eligible.length-selected.length,byteBudget,complete:eligible.length===selected.length,fullCapabilities:'/v1/edge/capabilities'}};
 }
 
 /** L3 item 4: the places an exit may lead to (as the exits below choose them: a place's centroid within 150 m, not one

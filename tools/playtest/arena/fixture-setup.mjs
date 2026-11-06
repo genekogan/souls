@@ -11,6 +11,14 @@ export function checkStart(me, expected = {}) {
   if (expected.posture && !expected.posture.includes(me?.posture)) problems.push('initial posture differs');
   return problems;
 }
+/** CTRL-1 (#1093): `act` takes offered ids. Setup is scaffolding, not the agent under test: its words go through `resolve`
+ *  and it sends the first available candidate. A client without candidates (the baseline) gets the words, as before. */
+async function offered(cli, intent, left) {
+  const text = typeof intent === 'string' ? intent : JSON.stringify(intent);
+  if (/^[a-z][\w-]*:\S+$/i.test(text)) return [text];
+  const c = (await cli(['resolve', text], left)).data?.candidates?.find((x) => x.available);
+  return c ? [c.id, ...(c.args ? [JSON.stringify(c.args)] : [])] : [text];
+}
 export async function runFixtureSetup({ seat, setup, runDir, requestKey, now = Date.now }) {
   const started = now(), end = started + (setup.maxWallSec ?? 120) * 1000;
   const cli = (seat.fixtureCliJson ?? seat.cliJson).bind(seat);
@@ -20,7 +28,7 @@ export async function runFixtureSetup({ seat, setup, runDir, requestKey, now = D
     await Promise.race([seat.chain, new Promise((_, reject) => { const t = setTimeout(() => reject(new Error('previous seat turn did not finish')), Math.max(1, end - now())); t.unref?.(); })]);
     for (const intent of setup.steps ?? []) {
       const left = end - now(); if (left <= 0) throw new Error('setup wall budget exhausted');
-      let r = await cli(['act', typeof intent === 'string' ? intent : JSON.stringify(intent), '--for', 'none', '--json', '--wait', String(Math.max(1, Math.floor(left / 1000)))], left);
+      let r = await cli(['act', ...await offered(cli, intent, left), '--for', 'none', '--json', '--wait', String(Math.max(1, Math.floor(left / 1000)))], left);
       while (r.ok && r.data?.accepted && r.data.receipt?.id && ['accepted', 'started', 'running'].includes(r.data.receipt.phase) && now() < end) {
         const wait = await cli(['wait', String(Math.max(1, Math.min(60, Math.floor((end-now())/1000)))), r.data.receipt.id, '--json'], Math.max(1,end-now()));
         r = wait.ok ? { ...wait, data: { ...r.data, ...wait.data } } : wait;
