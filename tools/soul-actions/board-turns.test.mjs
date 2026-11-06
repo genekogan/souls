@@ -14,7 +14,7 @@ import {strokeRoot} from '../../mars/viewer/engine/social/hand-actuator.ts';
 // recovered fault, no violation. Every hand-writable def is covered without being listed, so a new one gets this too. Each turn
 // is a fresh world, so a fault at one turn cannot blur the next. (A stroke's step to the board stopped at the invariant's
 // clearance only at some turns before #1063.)
-const PARAMS = {write: {text: 'Hello'}, mark: {square: 'centre'}, vote: {choice: 'yes'}, sign: undefined};
+const PARAMS = {write: {text: 'Hello'}, mark: {square: 'centre'}, vote: {choice: 'yes'}, sign: undefined, move: {from: 'c3', to: 'd4'}};   // move: checkers' opening move (#1018)
 const paramsOf = (d, action) => action !== 'pin' ? PARAMS[action] : d.name === 'core-poster-wall' ? {title: 'A talk'} : {text: 'Wanted: a ladder'};
 const defs = CORE_KIT.filter(d => d.tags?.includes('hand-writable')).map(d => ({ref: `core/${d.name.replace(/^core-/, '')}@${d.version}`, action: d.actions[0].name, params: paramsOf(d, d.actions[0].name), state: d.name === 'core-poll-board' ? {text: 'yes\nno'} : undefined, then: ['erase', 'unsign', 'unpin'].find(n => d.actions[1]?.name === n && !d.actions[1].params)}));
 const turns = [0, 0.4, 0.785, 1.2, 1.571, 1.9, 2.356, 2.9, 3.7, 4.712, 5.5];
