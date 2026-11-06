@@ -1147,7 +1147,7 @@ export function foldMessages(st, messages, at = Date.now()) {
   let added = 0;
   for (const m of messages ?? []) {
     if (!m?.id || st.messages.some((x) => x.id === m.id)) continue;
-    st.messages.push({ id: m.id, text: m.text ?? null, sentAt: m.sentAt ?? null, seenAt: at, handed: false, acked: false, closed: false });
+    st.messages.push({ id: m.id, text: m.text ?? null, sentAt: m.sentAt ?? null, seenAt: at, acked: false, closed: false });
     added++;
   }
   if (messages?.length) st.inboxAfter = messages.at(-1).id ?? st.inboxAfter;
@@ -1177,9 +1177,11 @@ export function takePending(st) {
     ...(st.plan ? { plan: planView(st.plan) } : {}),
     ...(st.planEnded?.length ? { planEnded: st.planEnded } : {}),
   };
-  st.planEnded = [];
-  for (const m of st.messages) m.handed = true; // a later listen does not hand over what this read already showed
-  for (const r of receipts) if (ENDED.has(r.phase)) r.read = true;
+      const backlog = st.messages.slice(after ? st.messages.findIndex((m) => m.id === after) + 1 : 0).filter((m) => !m.acked);
+      const stopped = st.plan?.state === "stopped" && !st.plan.announced ? st.plan : null;   // a refused step wakes the agent
+      if (backlog.length || stopped) {
+        if (stopped) { stopped.announced = true; persist(); }
+        const out =  for (const r of receipts) if (ENDED.has(r.phase)) r.read = true;
   // A long unread tail hands over in pieces: move the read cursor only past what was shown.
   const last = rest.length > shown.length ? shown.at(-1) : st.events.at(-1);
   if (last?.id) st.readCursor = last.id;
@@ -1371,16 +1373,16 @@ async function serveForeground() {
     return r;
   }
   async function localListen(url) {
-    const q = new URL(url).searchParams, until = Date.now() + Math.min(Number(q.get("timeoutMs") ?? 25_000), 55_000);
+    // The world's own rule (Inbox.takeBacklog): every message not acknowledged after the cursor, however often it has been seen.
+    // A wait's timeoutMs=0 peek comes through here too, and must not take a message from the listener waiting for it.
+    const q = new URL(url).searchParams, after = q.get("after"), until = Date.now() + Math.min(Number(q.get("timeoutMs") ?? 25_000), 55_000);
     for (;;) {
       if (terminal) return terminal;
-      const backlog = st.messages.filter((m) => !m.handed && !m.acked);
+      const backlog = st.messages.slice(after ? st.messages.findIndex((m) => m.id === after) + 1 : 0).filter((m) => !m.acked);
       const stopped = st.plan?.state === "stopped" && !st.plan.announced ? st.plan : null;   // a refused step wakes the agent
       if (backlog.length || stopped) {
-        for (const m of backlog) m.handed = true;
-        if (stopped) stopped.announced = true;
-        persist();
-        const out = backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt, state: "delivered" }));
+        if (stopped) { stopped.announced = true; persist(); }
+        const out =        const out = backlog.map(({ id, text, sentAt }) => ({ id, text, sentAt, state: "delivered" }));
         return { status: 200, data: { inbox: { connected: true, ...(out[0] ? { latest: out[0] } : {}), queued: 0 }, backlog: out, ...(stopped ? { plan: planView(stopped) } : {}) } };
       }
       const left = until - Date.now();
