@@ -121,7 +121,7 @@ A core preset id names one immutable, content-addressed definition, recorded in 
 selects that exact revision. A released revision is never re-pinned: a changed preset ships as a new id, `<family>-<n>`
 (`pip-2`, shown as `pip@2`), and the old id keeps its source in `tools/body-authoring`, stays selectable and stays served
 by its address. Served bytes are rebuilt from that source and refused if they drift from the address, so a toolchain
-change that alters an old revision's bytes fails its tests loudly rather than re-pinning it. `edge-body-core-revisions.test.ts` holds the released entries and fails if one changes. Selections need no
+change that alters an old revision's bytes fails its tests loudly rather than re-pinning it. `edge-body-core-revisions.test.ts` holds the released entries and fails if one changes. That test can be edited along with the ledger, so the `scrub-guard` CI job also runs `guards.mjs ledger`, which compares the ledger at the merge base with the PR head and passes only an append. Selections need no
 migration: a world stores what a Soul wears as its content address (`model: body_<sha>`), never as the preset id, so
 restarts and newer revisions leave it unchanged. Versions apply to the authored presets served by content address
 (Pip, the monster, the ghost, the centaur). The engine-native presets (the default humanoid, whose look has its own

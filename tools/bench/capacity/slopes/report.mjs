@@ -1,8 +1,9 @@
 // CW7 (#741): the slopes bench's pure parts: its arms, the reduction of a run's raw records and samples, CPU-profile
-// summaries, the slopes across arms and REPORT.md. No I/O, no clock. slopes.mjs runs the arms; report.test.mjs pins them.
-import { quantiles } from '../meetup/workload.mjs';
+// summaries, the slopes across arms and REPORT.md. No I/O, no clock. slopes.mjs runs the arms; slopes.test.mjs pins them.
+import { DEMAND, quantiles, rng } from '../meetup/workload.mjs';
 
-export const SLOPES = 'cw7-slopes/1';
+// /2 (#951): the active window's plan is seeded by the repeat, not the arm (activePlan below)
+export const SLOPES = 'cw7-slopes/2';
 
 // Three orthogonal axes, not a sweep. Each arm: placed objects in the designated world (null = the template as
 // authored), registered and active Souls in it, and quiet worlds ticking beside it (CW1 fixtures 1..n, no Souls).
@@ -17,6 +18,37 @@ export const AXES = Object.freeze({
 // stays the same in every arm. Walk planning (#454) is not exercised here.
 export const PROBE_ROUTES = Object.freeze(['here', 'observe', 'capabilities', 'resolve', 'act']);
 export const ACTS = Object.freeze(['look left', 'wave', 'say', 'look right', 'nod', 'say']);
+
+// The active window's plan: per Soul, a read every 4 s and an act every 20 s from seeded offsets. The demand is strictly
+// periodic, so a Soul's phase against the others holds for the whole window and decides how often its calls queue
+// behind another Soul's (#951). The seed is the bench version and the repeat, never the arm: within a repeat every arm
+// replays the same schedule for its first k Souls (arms are compared on the same phases), and repeats sample different
+// phases. Seeded by arm (cw7-slopes/1), quiet10 packed all five Souls' reads into 784 ms of every period and quiet1 none.
+export const planSeed = (rep) => `${SLOPES}|r${rep}`;
+/** [soul] → its ops [{at ms from the window start, route, n?}], sorted by time. Pure: the same seed gives the same plan. */
+export function activePlan(seed, souls, activeMs) {
+  const R = rng(seed);
+  return Array.from({ length: souls }, () => {
+    const ops = [], ro = R() * DEMAND.readEveryMs, ao = R() * DEMAND.actEveryMs; let n = Math.floor(R() * DEMAND.readMix.length);
+    for (let t = ro; t < activeMs; t += DEMAND.readEveryMs) ops.push({ at: t, route: DEMAND.readMix[n++ % DEMAND.readMix.length] });
+    for (let t = ao, k = 0; t < activeMs; t += DEMAND.actEveryMs) ops.push({ at: t, route: 'act', n: k++ });
+    return ops.sort((a, b) => a.at - b.at);
+  });
+}
+/** A read is crowded when another Soul's call was scheduled less than this before it: it may wait for that call's turn.
+ *  An indicator of bunching, not of waiting: it looks back only CROWD_MS, so a queue chain (reads 300+ ms apart, each
+ *  still waiting on the earlier ones' frame credit) is not counted. */
+export const CROWD_MS = 300;
+/** How bursty a plan is: each Soul's read phase within the read period, and the share of reads that are crowded. */
+export function scheduleFacts(plan, seed) {
+  const all = plan.flatMap((ops, i) => ops.map((o) => ({ at: o.at, read: o.route !== 'act', i }))).sort((a, b) => a.at - b.at);
+  let reads = 0, crowded = 0;
+  for (let j = 0; j < all.length; j++) {
+    if (!all[j].read) continue; reads++;
+    for (let q = j - 1; q >= 0 && all[j].at - all[q].at < CROWD_MS; q--) if (all[q].i !== all[j].i) { crowded++; break; }
+  }
+  return { seed, readPhasesMs: plan.map((ops) => { const x = ops.find((o) => o.route !== 'act'); return x ? Math.round(x.at % DEMAND.readEveryMs) : null; }), crowdedReadFrac: reads ? +(crowded / reads).toFixed(2) : null };
+}
 
 /** Process CPU cores between two proc samples ({t ms, cpuS}). */
 export const cores = (a, b) => (a && b && b.t > a.t && a.cpuS != null && b.cpuS != null ? (b.cpuS - a.cpuS) / ((b.t - a.t) / 1000) : null);
@@ -128,10 +160,10 @@ export function reportText(receipt, all) {
   const s = slopes(all), L = [], results = all.filter((x) => !x.error), failed = all.filter((x) => x.error);
   L.push(`# Slopes bench (${SLOPES}) — ${receipt.indicative ? 'INDICATIVE (not a qualifying run)' : 'qualifying executor'}`, '');
   L.push(`Source ${receipt.source?.commit ?? '?'}${receipt.source?.dirty ? ' (dirty)' : ''} · host class ${receipt.host?.class} · ${receipt.host?.cores} cores · quiet declared ${!!receipt.host?.quietDeclared} · repeats ${receipt.repeats} · windows quiet ${receipt.windows?.quietS} s / active ${receipt.windows?.activeS} s · fake minds`, '');
-  L.push('| arm | rep | placed | reg/active | quiet worlds | quiet cores | active cores | CPU-ms/served | served/s | e2e p95 ms | probe CPU-ms here/observe/caps/resolve/act | loop p99 max ms | RSS max MB | boot s |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+  L.push('| arm | rep | placed | reg/active | quiet worlds | quiet cores | active cores | CPU-ms/served | served/s | e2e p95 ms | crowded reads | probe CPU-ms here/observe/caps/resolve/act | loop p99 max ms | RSS max MB | boot s |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const x of results) {
     const p = (k) => x.probe?.[k]?.cpuMsPerCall ?? '?';
-    L.push(`| ${x.arm.id} | ${x.rep} | ${x.facts?.placed ?? '?'} | ${x.arm.registered}/${x.arm.active} | ${x.arm.quiet} | ${x.windows?.quiet?.cores ?? '?'} | ${x.windows?.active?.cores ?? '?'} | ${x.active?.cpuMsPerServed ?? '—'} | ${x.active?.servedPerS ?? '—'} | ${x.active?.endToEnd?.p95 ?? '—'} | ${PROBE_ROUTES.map(p).join(' / ')} | ${x.live?.active?.loopP99MsMax ?? '?'} | ${x.windows?.active?.rssMbMax ?? '?'} | ${x.boot?.seconds ?? '?'} |`);
+    L.push(`| ${x.arm.id} | ${x.rep} | ${x.facts?.placed ?? '?'} | ${x.arm.registered}/${x.arm.active} | ${x.arm.quiet} | ${x.windows?.quiet?.cores ?? '?'} | ${x.windows?.active?.cores ?? '?'} | ${x.active?.cpuMsPerServed ?? '—'} | ${x.active?.servedPerS ?? '—'} | ${x.active?.endToEnd?.p95 ?? '—'} | ${x.schedule?.crowdedReadFrac ?? '—'} | ${PROBE_ROUTES.map(p).join(' / ')} | ${x.live?.active?.loopP99MsMax ?? '?'} | ${x.windows?.active?.rssMbMax ?? '?'} | ${x.boot?.seconds ?? '?'} |`);
   }
   if (failed.length) {
     L.push('', `## Failed runs: ${failed.length} of ${all.length}`, '', 'These runs are in no mean or slope below (each section\'s `n` counts the runs it rests on).', '', '| arm | rep | error |', '|---|---|---|');

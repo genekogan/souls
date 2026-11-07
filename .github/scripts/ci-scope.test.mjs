@@ -42,6 +42,12 @@ test('server changes run server shards and latency, not native', () => {
   assert.ok(!picked.includes('native'));
 });
 
+test('the types-web job, which runs the bundle comparison, covers what can move the bundle (#1117)', () => {
+  for (const f of ['apps/web/src/App.tsx', 'packages/world-compiler/src/joints.ts', 'tools/test-harness/bundle-budget/baseline.json', 'tools/test-harness/bundle-budget/budget.mjs']) assert.ok(names([f]).includes('types-web'), f);
+  assert.ok(!names(['docs/testing.md']).includes('types-web'));
+  assert.match(readFileSync(new URL('../workflows/ci.yml', import.meta.url), 'utf8'), /types-web\)[^;]*@souls\/web build\n[^;]*budget\.mjs --check/);
+});
+
 test('the native leg stays hosted whatever CI_HEAVY_RUNNER says, and only it (#1162)', () => {
   const workflow = readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8');
   const runsOn = /^  qualify:[\s\S]*?^    runs-on: (.*)$/m.exec(workflow)?.[1] ?? '';
