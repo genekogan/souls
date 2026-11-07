@@ -208,7 +208,7 @@ test('PC16 R6: nothing is taken from under someone on the stairs; the support ru
   ok(w.god.act({ops: [{op: 'remove', id: 'tread-3'}]})); await w.tick(30);
   const l = linkOf(w, flight); assert.equal(l.usable, false); assert.equal(l.reason, 'tread 3 missing');
   // the beam a flight hangs on is not taken away (PC12's support rule)
-  const r = w.god.act({ops: [{op: 'remove', id: 'bay-beam-4r'}]}); assert.equal(r.accepted, false); assert.match(JSON.stringify(r.failures), /support\.none|deck\.occupied/);
+  const r = w.god.act({ops: [{op: 'remove', id: 'bay-beam-4r'}]}); assert.equal(r.accepted, false); assert.match(JSON.stringify(r.failures), /support\.none|deck\.occupied|connector\.joined/);
 });
 
 test('PC16 R3: refused before anyone is asked: wrong crew, a position with no free seat, full hands, a beam that does not fit, someone where it goes', {timeout: 600000}, async (t) => {
@@ -295,6 +295,34 @@ test('PC16 review: a god does not unhook a flight with its treads in, from eithe
   ok(w.god.act({ops: [{op: 'disconnect', a: {id: 'flight', connector: 'hook'}}]})); await w.tick(40);
   assert.equal(w.E()[flight].phase, 'staged'); assert.deepEqual(w.E()[flight].support, {kind: 'ground'}); assert.equal(linkOf(w, flight), undefined);
   const tick = w.host.engine.world.tick; await w.tick(10); assert.ok(w.host.engine.world.tick > tick, 'the clock runs'); assert.ok(Cy);
+});
+
+test('PC16 review: the beam under a flight with its treads in is not taken away, even with the deck gone; a floor going away ends the stairs', {timeout: 600000}, async (t) => {
+  const w = await site(t), flight = w.idOf('flight');
+  await hang(w); for (const i of [1, 2, 3, 4, 5]) await setTread(w, i);
+  assert.equal(linkOf(w, flight).usable, true);
+  // the sheet goes: there is no landing any more, and the stairs say so or are gone
+  ok(w.god.act({ops: [{op: 'remove', id: 'bay-sheet'}]})); await w.tick(30);
+  const l = linkOf(w, flight); assert.ok(!l || (l.usable === false && /no landing at top/.test(l.reason)), JSON.stringify(l)); t.diagnostic(`with the sheet gone: ${JSON.stringify(l)?.slice(0, 160)}`);
+  for (const k of [0, 1, 2, 3, 4]) ok(w.god.act({ops: [{op: 'remove', id: `bay-joist-${k}`}]}));
+  await w.tick(30);
+  const r = w.god.act({ops: [{op: 'remove', id: 'bay-beam-4r'}]}); assert.equal(r.accepted, false, JSON.stringify(r)); assert.equal(r.failures[0].code, 'connector.joined', JSON.stringify(r)); assert.match(r.failures[0].detail, /keeps its hook while its treads are in/);
+  await w.tick(40);
+  assert.equal(w.E()[flight].phase, 'installed'); assert.deepEqual((w.host.engine.rt?.violations ?? []).filter((v) => v.code === 'stair.unsupported'), []);
+  const tick = w.host.engine.world.tick; await w.tick(10); assert.ok(w.host.engine.world.tick > tick, 'the clock runs');
+  // treads out, the beam may go, and the flight comes away clean
+  for (const i of [1, 2, 3, 4, 5]) ok(w.god.act({ops: [{op: 'remove', id: `tread-${i}`}]})); await w.tick(20);
+  ok(w.god.act({ops: [{op: 'remove', id: 'bay-beam-4r'}]})); await w.tick(40);
+  assert.equal(w.E()[flight].phase, 'staged'); assert.equal(linkOf(w, flight), undefined);
+  const after = w.host.engine.world.tick; await w.tick(10); assert.ok(w.host.engine.world.tick > after, 'the clock still runs');
+});
+
+test('PC16 review: a sheet laid after the flight gives it its landing, and taken away ends it, with treads missing too', {timeout: 600000}, async (t) => {
+  const w = await site(t), flight = w.idOf('flight');
+  await hang(w); for (const i of [1, 2]) await setTread(w, i);
+  let l = linkOf(w, flight); assert.equal(l.reason, 'treads 3–5 missing');
+  ok(w.god.act({ops: [{op: 'remove', id: 'bay-sheet'}]})); await w.tick(30);
+  l = linkOf(w, flight); assert.ok(!l || /no landing at top/.test(l.reason), JSON.stringify(l));
 });
 
 for (const at of [-0.61, 0, 0.61]) test(`PC16 review: stairs set at ${at} can be walked, up and down`, {timeout: 900000}, async (t) => {

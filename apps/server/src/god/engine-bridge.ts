@@ -513,6 +513,8 @@ export class EngineBridge {
     if (!this.reconciled) return; // the first tick reconciles everything
     for (const e of diff.upserts) for (const id of this.model.subtree(e.id)) this.pending.add(id);
     for (const id of diff.removes) this.pending.add(id);
+    // PC16 (#695): a floor going away, or a sheet no longer laid, changes the landing at a flight's top
+    if (diff.removes.some((id) => (this.physics?.byEntity?.[id] as Part | undefined)?.surfaces?.some((f) => f.level > 0)) || diff.upserts.some((e) => this.isDeckSheet(this.model.resolvedDef(e.def)))) for (const f of this.model.entities.values()) if (f.joins && this.isStairFlight(this.model.resolvedDef(f.def))) this.pending.add(f.id);
     // doorblock: a door put into, moved out of or taken from a wall's gate gap changes whether that gate yields to it
     if (diff.upserts.some((e) => this.doorIds.has(e.id) || this.isDoor(e)) || diff.removes.some((id) => this.doorIds.has(id))) for (const id of this.gated) this.pending.add(id);
     // terrain moved under things (pads, landforms): re-derive everything (each entity is only sent if it changed)
@@ -884,12 +886,14 @@ export class EngineBridge {
     for (const [i, op] of ops.entries()) {
       const ref = op.op === 'remove' || op.op === 'move' ? op.id : op.op === 'disconnect' ? op.a.id : undefined; if (!ref) continue;
       const id = this.model.get(ref)?.id ?? ref;
-      // a flight stays hooked while its treads are in, from either end of the joint: unhooked, its foot alone would "support" it
-      if (op.op === 'disconnect') for (const d of decks) {
+      // a flight stays hooked while its treads are in: unhooked, its foot alone would "support" it. From either end of the
+      // joint, and by taking away the beam it hangs on (or what that beam is a child of)
+      if (op.op === 'disconnect' || op.op === 'remove') for (const d of decks) {
         if (isDeck(d)) continue;
         const hook = (this.model.resolvedDef(d.def)?.components.connectors ?? []).find((c) => c.kind === 'stair-hook'), j = hook && d.joins?.[hook.id], treads = Object.keys(d.joins ?? {}).filter((c) => c !== hook?.id);
-        if (!hook || !j || !treads.length || !((id === d.id && op.a.connector === hook.id) || (id === j.to && op.a.connector === j.at))) continue;
-        return { accepted: false, failures: [{ op: i, code: 'connector.joined', entity: d.id, detail: `${this.model.pathOf(d.id)} keeps its hook while its treads are in (${treads.join(', ')}); take them out first.` }] };
+        if (!hook || !j || !treads.length) continue;
+        const unhooks = op.op === 'disconnect' ? (id === d.id && op.a.connector === hook.id) || (id === j.to && op.a.connector === j.at) : id !== d.id && this.isOrHolds(id, j.to);
+        if (unhooks) return { accepted: false, failures: [{ op: i, code: 'connector.joined', entity: d.id, detail: `${this.model.pathOf(d.id)} keeps its hook while its treads are in (${treads.join(', ')}); take them out first.` }] };
       }
       for (const d of decks) {
         const flight = !isDeck(d);
@@ -900,6 +904,11 @@ export class EngineBridge {
       }
     }
     return null;
+  }
+  /** `id` is this entity or one of its parents. */
+  private isOrHolds(id: string, entity: string): boolean {
+    for (let at: string | undefined = entity, n = 0; at && n < 64; at = this.model.entities.get(at)?.in.parent, n++) if (at === id) return true;
+    return false;
   }
   /** PC15 (#694): a part that is a floor once laid on its bearing connectors (its physics changes when a crew lays it). */
   private isDeckSheet(d: StoredDef | undefined): boolean { return !!d?.components.floor && (d.components.connectors ?? []).some((c) => c.bears); }
