@@ -1,9 +1,10 @@
 // CTX-1 (#1134): the Souls home. Discovery, addressing, doctor and import against a stand-in world, through the real CLI.
 import { test } from 'node:test';
+import { spawnSync as gitRun } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,6 +55,8 @@ const cliIn = (cwd, env = {}) => (...args) => new Promise((resolve) => {
   let out = '', err = ''; child.stdout.on('data', (c) => { out += c; }); child.stderr.on('data', (c) => { err += c; });
   child.on('exit', (code) => { let d = null; try { d = JSON.parse(out); } catch { /* not JSON */ } resolve({ code, d, out, err }); });
 });
+// Until a process that is not our child has gone; bounded, because an exited one nobody reaps still answers signal 0.
+const exited = async (pid) => { for (let i = 0; i < 500; i++) { try { process.kill(pid, 0); } catch { return; } await new Promise((r) => setTimeout(r, 10)); } };
 const tree = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? tree(join(dir, e.name)) : e.isSocket() ? [] : [join(dir, e.name)]);
 
 test('inline: eden.mjs carries the current home.mjs', () => {
@@ -329,7 +332,7 @@ test('re-pairing a kept Soul goes on from its cursor; a Soul named like a comman
 test('A6: two Souls listen and serve at once; a second listen for one Soul still says so', async (t) => {
   const f = await worlds(t), dir = tmp(t), run = cliIn(dir);
   await run('register', `${f.base}/a`); await run('create', 'Mira'); await run('create', 'Ana');
-  const kids = [];
+  const kids = [], served = [];
   const held = (who) => kids.push(spawn(process.execPath, [cli, who, 'listen'], { cwd: dir, env: { ...process.env, HOME: dir, SOULS_HOME: '', SOULS_PRINCIPAL: '' }, stdio: 'ignore' }));
   const lock = (id) => join(dir, `.souls/souls/${id}/runtime/.listen.lock`);
   try {
@@ -340,6 +343,7 @@ test('A6: two Souls listen and serve at once; a second listen for one Soul still
     assert.deepEqual(readdirSync(join(dir, '.souls')).filter((n) => /lock|sock/.test(n)), [], 'nothing runtime at the home root');
     // one serve per Soul, side by side
     const a = await run('mira', 'serve'), b = await run('ana', 'serve');
+    served.push(a.d?.pid, b.d?.pid);
     assert.equal(a.d.serving, true, a.err); assert.equal(b.d.serving, true, b.err); assert.notEqual(a.d.pid, b.d.pid);
     assert.equal((await run('mira', 'here')).d.me.id, 's_a1', 'through its own socket');
     assert.equal((await run('ana', 'here')).d.me.id, 's_a2');
@@ -347,6 +351,8 @@ test('A6: two Souls listen and serve at once; a second listen for one Soul still
   } finally {
     await run('mira', 'serve', '--stop'); await run('ana', 'serve', '--stop');
     await Promise.all(kids.map((c) => c.exitCode !== null || c.signalCode ? null : new Promise((r) => { c.once('exit', r); c.kill('SIGTERM'); })));
+    // `serve --stop` answers before the process ends, and its shutdown still writes runtime/, which tmp() then removes
+    await Promise.all(served.filter(Boolean).map(exited));
   }
 });
 
@@ -363,4 +369,32 @@ test('worlds are told apart by url; an empty home has a guide too', (t) => {
   const seat = h.seat(h.ensureWorld('http://x.test/w/a'));
   assert.equal(seat.key, 'a');
   assert.equal(h.ensureWorld('http://y.test/w/a'), 'a-2', 'same slug on another host is another world');
+});
+
+test('#1137: a Soul\'s memory can\'t be committed by accident, in a new home or an older one', (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'souls-git-'))); t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, '.souls'), ignored = (p) => gitRun('git', ['check-ignore', '-q', p], { cwd: root }).status === 0;
+  gitRun('git', ['init', '-q'], { cwd: root });
+  createHome(home, {});
+  for (const p of ['.souls/souls/s_a/memory/people/ana.md', '.souls/souls/s_a/memory/log/memory-events.jsonl', '.souls/souls/s_a/MEMORY.md', '.souls/souls/s_a/runtime/x']) assert.ok(ignored(p), p);
+  assert.ok(!ignored('.souls/souls/s_a/SOUL.md'), 'the owner\'s own file is theirs to commit');
+  writeFileSync(join(home, '.gitignore'), 'credentials.json\nruntime/\npending/\ngods/\nmine.txt');
+  openHome(home);
+  const lines = readFileSync(join(home, '.gitignore'), 'utf8').split('\n');
+  assert.ok(lines.includes('memory/') && lines.includes('mine.txt'), 'an older home gets the line, and keeps its own');
+  openHome(home);
+  assert.equal(readFileSync(join(home, '.gitignore'), 'utf8').split('\n').filter((l) => l === 'memory/').length, 1);
+});
+
+test('#1137: a home opens whatever its .gitignore is, and an owner\'s bytes stay theirs', { skip: process.getuid?.() === 0 }, (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'souls-git-'))); t.after(() => { chmodSync(join(root, 'locked'), 0o700); rmSync(root, { recursive: true, force: true }); });
+  const dir = join(root, 'dir'), locked = join(root, 'locked'), bytes = join(root, 'bytes');
+  createHome(dir, {}); rmSync(join(dir, '.gitignore')); mkdirSync(join(dir, '.gitignore'));
+  assert.doesNotThrow(() => openHome(dir));
+  createHome(locked, {}); writeFileSync(join(locked, '.gitignore'), 'old\n'); chmodSync(join(locked, '.gitignore'), 0o400); chmodSync(locked, 0o500);
+  assert.doesNotThrow(() => openHome(locked));
+  createHome(bytes, {}); writeFileSync(join(bytes, '.gitignore'), Buffer.from('caf\xe9.txt', 'latin1'));
+  openHome(bytes);
+  const after = readFileSync(join(bytes, '.gitignore'));
+  assert.equal(after.subarray(0, 8).toString('latin1'), 'caf\xe9.txt'); assert.match(after.toString('latin1'), /\nmemory\/\n/);
 });

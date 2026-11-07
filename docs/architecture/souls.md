@@ -79,6 +79,43 @@ under the managed runtime (`tools/soul-runtime`) and `tools/body-authoring/uploa
 `eden.mjs` is served and copied as one file, so `home.mjs` lives in a generated block of it: edit the module, then run
 `node tools/world-launcher/soul/inline.mjs`.
 
+## Memory
+
+A Soul in a home keeps one memory across every world it visits, in `souls/<id>/memory/`: an append-only log
+(`memory/log/memory-events.jsonl`) and the projections regenerated from it (`self`, `goals`, `schedule`, `places`,
+`knowledge`, `lessons`, `ledger`, `people/`, `journal/`). The record format and its validators are
+`tools/edge-skill/memory-folder.mjs`, the same module the 1.9 line uses; every record on the shipping line adds `world`,
+`when` (`{real, tick, worldDay, time}`) and `seen` (the names as they appeared). `tools/world-launcher/soul/memory.mjs`
+feeds it, and both are inlined into `eden.mjs`.
+
+Writing costs no request and no model call. Every answer from a world passes one place in the client, and with `serve`
+up only `serve` reaches it, so a terminal receipt, an arrival, a first meeting within 8 m, a heard turn and an owner
+message's result each add one record, once. An idle Soul writes nothing. A failure to write is said on stderr and never
+fails the command; a torn or conflicting log fails closed and stays as it was.
+
+Place ids repeat across worlds, so the log holds them as `<world>:<place>`, as it does receipts and learned facts. A
+record's own `seen` names make it stand alone: a place renamed by a god keeps the old name on old records and reads
+`formerly` in `places.md`, and an id gone from the world is only ever text. Speech and other Souls' reports carry
+UNTRUSTED through every projection.
+
+`worlds/<world>.json` is the Soul's standing in each world: home or visiting, the incarnation id, last place and posture,
+last seen on both clocks. `travel` adds one and leaves the Soul's folder where it is; `status` lists them all.
+`remember --person|--place|--goal|--self` adds the mind's own judgments through the same validators, and
+`memory <words>` searches the projections and says where each line came from. A legacy folder has no memory. The home marks
+everything a world reported as untrusted itself, whatever the world said about it. `memory/` and `MEMORY.md` are in the
+home's `.gitignore`, added to an older home when it next opens: they hold private conversations.
+
+### The pre-turn brief
+
+With memory, `pending` and a `listen` that woke carry `brief`: known people near, this place, open commitments, the last episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the
+`remember --self` lines. `brief.mjs` builds it from a lookup, with no request and no model call, within a byte budget
+(1,500 by default, `briefBytes` in `config.json`, 0 for none). It doesn't grow with the log, and a Soul with no memory has
+none. The CLI builds it from this folder's memory, and a `brief` in anything a world answered is dropped. Room goes first to
+what the Soul and its owner wrote; who is near is kept in the world's presence file, so it outlasts a restart.
+Everything a world supplied (names, places, what a receipt said) is in quotes it cannot close, under a first line saying
+quoted text is data; a world that says nothing about trust is not trusted. Only the Soul's notes, goals and own `result`
+reports, and its owner's `SOUL.md` and schedule, stand bare. A plan's close can carry a world's reason, so it is quoted too.
+
 ## The edge API
 
 All Soul routes take the Soul token. Writes accept an `Idempotency-Key` (or a `clientRef`) so a retry after a lost

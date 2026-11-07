@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { COPY_DEFS, CLEARANCE_M, emptySquare, withDistantInventory } from './inventory.mjs';
-import { AXES, activeWindow, cores, liveWindow, probeRoute, qualifies, reportText, slopes, summarizeProfile } from './report.mjs';
+import { AXES, CROWD_MS, SLOPES, activePlan, activeWindow, cores, liveWindow, planSeed, probeRoute, qualifies, reportText, scheduleFacts, slopes, summarizeProfile } from './report.mjs';
 
 const ROOT = new URL('../../../../', import.meta.url).pathname;
 const EDEN = JSON.parse(readFileSync(`${ROOT}worlds/templates/eden-2026.json`, 'utf8'));
@@ -85,6 +85,43 @@ test('slopes: deltas across arms, each with its repeats; a missing arm gives no 
   assert.equal(s.quiet.coresPerQuietWorld, 0.1);
   assert.deepEqual(slopes([res('inv5000', 1, 100, 150, 0.4)]), {});
   assert.match(reportText({ indicative: true, host: { class: 'laptop', cores: 8 }, repeats: 1, windows: {}, coverage: ['x'] }, [res('inv5000', 1, 100, 150, 0.4)]), /INDICATIVE[\s\S]*\| inv5000 \| 1 \|/);
+});
+
+test('active plan (#951): seeded by the repeat, never the arm; arms of a repeat share phases, repeats differ', () => {
+  const W = 180_000, seeds = [1, 2, 3].map(planSeed);
+  assert.equal(SLOPES, 'cw7-slopes/2');
+  assert.deepEqual(seeds, ['cw7-slopes/2|r1', 'cw7-slopes/2|r2', 'cw7-slopes/2|r3']);
+  for (const id of ['quiet1', 'quiet10', 'act5']) assert.ok(!planSeed(1).includes(id));
+  const five = activePlan(seeds[0], 5, W), ten = activePlan(seeds[0], 10, W);
+  assert.deepEqual(activePlan(seeds[0], 5, W), five, 'pure');
+  assert.deepEqual(ten.slice(0, 5), five, 'an arm with more Souls extends the plan of one with fewer');
+  assert.deepEqual(activePlan(seeds[0], 0, W), []);
+  assert.notDeepEqual(activePlan(seeds[1], 5, W), five, 'repeats sample different phases');
+  for (const ops of five) {
+    assert.ok(ops.every((o, i) => i === 0 || ops[i - 1].at <= o.at) && ops.every((o) => o.at >= 0 && o.at < W));
+    assert.equal(ops.filter((o) => o.route !== 'act').length, 45, 'a read every 4 s'); assert.equal(ops.filter((o) => o.route === 'act').length, 9, 'an act every 20 s');
+    assert.deepEqual(ops.filter((o) => o.route === 'act').map((o) => o.n), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  }
+});
+
+test('schedule facts (#951): read phases and the crowded-read share; the cw7-slopes/1 arm seeds reproduce the diagnosis', () => {
+  // hand-made: Soul 0 reads at 0, Soul 1 at 100 (crowded), Soul 2 at 100 + CROWD_MS (not crowded), Soul 1's act at 5
+  const plan = [[{ at: 0, route: 'observe' }], [{ at: 5, route: 'act', n: 0 }, { at: 100, route: 'here' }], [{ at: 100 + CROWD_MS, route: 'resolve' }]];
+  assert.deepEqual(scheduleFacts(plan, 's'), { seed: 's', readPhasesMs: [0, 100, 400], crowdedReadFrac: 0.33 });
+  assert.deepEqual(scheduleFacts([[{ at: 0, route: 'act', n: 0 }, { at: 10, route: 'here' }]], 's').crowdedReadFrac, 0, "a Soul's own call never crowds it");
+  assert.equal(scheduleFacts([], 's').crowdedReadFrac, null, 'no reads (act0): unknown, not 0');
+  // run 41972880510's seeds (the arm id): quiet10's five reads sat inside 784 ms of every period, quiet1's were spread
+  const old = (id) => scheduleFacts(activePlan(`cw7-slopes/1|${id}`, 5, 180_000), id);
+  assert.deepEqual([...old('quiet1').readPhasesMs].sort((a, b) => a - b), [776, 1108, 2825, 3410, 3569]);
+  assert.deepEqual([...old('quiet10').readPhasesMs].sort((a, b) => a - b), [1312, 1448, 1765, 2023, 2096]);
+  assert.equal(old('quiet1').crowdedReadFrac, 0.2); assert.equal(old('quiet10').crowdedReadFrac, 0.64);
+});
+
+test('report (#951): the crowded-read share is a column of the per-arm table', () => {
+  const x = { arm: AXES.quiet[1], rep: 1, facts: { placed: 4498 }, schedule: { seed: 'cw7-slopes/2|r1', readPhasesMs: [1, 2, 3, 4, 5], crowdedReadFrac: 0.27 }, profiles: {} };
+  const text = reportText({ indicative: true, host: {}, windows: {}, source: {} }, [x]), row = text.split('\n').find((l) => l.startsWith('| quiet10 |'));
+  assert.match(text, /\| e2e p95 ms \| crowded reads \|/); assert.match(row, /\| 0\.27 \|/);
+  assert.match(reportText({ indicative: true, host: {}, windows: {}, source: {} }, [{ ...x, schedule: undefined }]).split('\n').find((l) => l.startsWith('| quiet10 |')), /\| — \| \? \/ /);
 });
 
 test('#911 review: a failed run is listed in REPORT.md, enters no mean, and every section says how many runs it rests on', () => {
