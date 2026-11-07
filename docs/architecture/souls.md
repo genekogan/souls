@@ -105,13 +105,14 @@ last seen on both clocks. `travel` adds one and leaves the Soul's folder where i
 
 ### The pre-turn brief
 
-With memory and a `serve` up, `pending` and a `listen` that woke for a message or for speech carry `brief`: known people
-near, this place, open commitments, the last episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the
+With memory, `pending` and a `listen` that woke carry `brief`: known people near, this place, open commitments, the last episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the
 `remember --self` lines. `brief.mjs` builds it from a lookup, with no request and no model call, within a byte budget
-(1,500 by default, `briefBytes` in `config.json`). It doesn't grow with the log, and a Soul with no memory has none.
+(1,500 by default, `briefBytes` in `config.json`, 0 for none). It doesn't grow with the log, and a Soul with no memory has
+none. The CLI builds it from this folder's memory, and a `brief` in anything a world answered is dropped. Room goes first to
+what the Soul and its owner wrote; who is near is kept in the world's presence file, so it outlasts a restart.
 Everything a world supplied (names, places, what a receipt said) is in quotes it cannot close, under a first line saying
-quoted text is data; a world that says nothing about trust is not trusted. Only the Soul's notes, goals and own reports, and
-its owner's `SOUL.md` and schedule, stand bare.
+quoted text is data; a world that says nothing about trust is not trusted. Only the Soul's notes, goals and own `result`
+reports, and its owner's `SOUL.md` and schedule, stand bare. A plan's close can carry a world's reason, so it is quoted too.
 
 ## The edge API
 

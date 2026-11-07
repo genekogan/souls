@@ -37,7 +37,7 @@ export function presences(soulDir) {
   const dir = join(soulDir, "worlds");
   if (!existsSync(dir)) return [];
   return readdirSync(dir).filter((f) => f.endsWith(".json")).sort().flatMap((f) => {
-    try { const { openFor, ...p } = JSON.parse(readFileSync(join(dir, f), "utf8")); return [p]; } catch { return []; }
+    try { const { openFor, near, ...p } = JSON.parse(readFileSync(join(dir, f), "utf8")); return [p]; } catch { return []; }
   });
 }
 
@@ -69,7 +69,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   // the log moved under it opens it again. A holder that died, or a lock older than any write takes, is passed over, one
   // writer at a time; a live one is waited for, then reported. Everything else stays what memory-folder.mjs says: a torn log
   // fails closed.
-  let records = null, nearNow = [];
+  let records = null;
   const openRecords = () => openMemoryFolder(soulDir, { logs: join("memory", "log") });
   const lockGone = (file) => { try { return Date.now() - statSync(file).mtimeMs > LOCK_OLD_MS; } catch { return false; } };
   function lockStale() {
@@ -140,7 +140,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     if (!placeId || placeId === presence.place) return false;
     const place = worldKey(world, placeId), name = nameOf(r, place, said);
     const wrote = fold(r, `arrival:${world}:${when.tick ?? when.real}:${placeId}`, { type: "arrival", placeId: place, when, seen: seenOf([[place, name]]) });
-    writePresence({ place: placeId, placeName: name, lastSeen: when, worldDay: when.worldDay, time: when.time });
+    writePresence({ place: placeId, placeName: name, near: [], lastSeen: when, worldDay: when.worldDay, time: when.time });
     return wrote;
   };
   const here = (r) => { const key = typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null; return key ? [key, nameOf(r, key)] : [null, null]; };
@@ -193,13 +193,15 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       const me = frame?.me; if (!me) return;
       const when = clockAt({ real: now(), tick: frame.tick, time: frame.clock, worldDay: dayFrom(frame.now) });
       const near = rows(frame.near, 64).filter((p) => typeof p.dist === "number" && p.dist <= NEAR_METRES);
-      nearNow = near.map((p) => p.id).filter(safeId).slice(0, 8);
       const placeId = typeof me.place === "string" ? clip(me.place, PLACE_ID_MAX) || null : null;
       if ((placeId && placeId !== presence.place) || near.length) withRecords((r) => {
         arrived(r, when, placeId, me.placePath?.[0]);
         for (const p of near) met(r, when, p);
       });
       noted(me, when);
+      // Kept with the presence: who is near has to outlast this process and goes when the Soul walks away.
+      const ids = near.map((p) => p.id).filter(safeId).slice(0, 8);
+      if (ids.join() !== (presence.near ?? []).join()) writePresence({ near: ids });
     },
     /** Events off the stream or a `wait`. One the record won't take costs only itself. */
     sawEvents(events) {
@@ -232,11 +234,11 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       if (typeof receiptId !== "string" || !safeId(messageId)) return;
       writePresence({ openFor: Object.fromEntries([...Object.entries(presence.openFor ?? {}), [receiptId, messageId]].slice(-OPEN_FOR_MAX)) });
     },
-    /** The Soul's own report on an owner's message. */
-    sawResult(messageId, done, text) {
+    /** A report on an owner's message: the mind's own words, or with `own: false` a plan's close, which can carry a world's reason. */
+    sawResult(messageId, done, text, { own = true } = {}) {
       if (!safeId(messageId) || !clip(text, 160)) return;
-      const when = clockAt({ real: now(), tick: null, time: null });
-      withRecords((r) => fold(r, `owner:${world}:${messageId}`, { type: "outcome", receiptId: worldKey(world, messageId), messageId, act: "owner-message", phase: done ? "completed" : "failed", summary: clip(text, 160), untrusted: false, learned: [], produced: [], met: [], when, seen: {} }));
+      const when = clockAt({ real: now(), tick: null, time: null }), from = own ? "owner" : "plan";
+      withRecords((r) => fold(r, `${from}:${world}:${messageId}`, { type: "outcome", receiptId: worldKey(world, own ? messageId : `plan-${messageId}`), messageId, act: "owner-message", phase: done ? "completed" : "failed", summary: clip(text, 160), untrusted: !own, learned: [], produced: [], met: [], when, seen: {} }));
     },
     /** Standing in this world, written when a Soul arrives by travel. */
     entered(extra = {}) { writePresence({ lastSeen: clockAt({ real: now(), tick: null, time: null }), ...extra }); },
@@ -276,9 +278,10 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     /** The pre-turn brief, within `bytes`. A Soul with no memory has none, and nothing is opened or made for it. */
     brief({ bytes } = {}) {
       if (!existsSync(join(soulDir, "memory", "log", "memory-events.jsonl"))) return "";
-      const facts = withRecords((r) => r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null, near: nearNow }));
+      presence = readPresence() ?? presence;   // another process may be the one watching the world
+      const facts = withRecords((r) => r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null, near: presence.near ?? [] }));
       const pinned = readLines(join(soulDir, "SOUL.md"), /^## Pinned\b/).map((l) => l.replace(/^- /, "")), schedule = readLines(join(soulDir, "memory", "schedule.md"), /^# Schedule\b/).filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
-      return buildBrief({ ...facts, schedule, self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes > 0 ? { bytes } : {});
+      return buildBrief({ ...facts, schedule, self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes >= 0 ? { bytes } : {});
     },
     /** `memory <query>`: every projection line holding every word, each with where it came from. */
     search(query) {

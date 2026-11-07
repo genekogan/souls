@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { monoMs, sleep as realSleep } from '../lib/clock.mjs';
 import { rng as makeRng } from '../lib/hash.mjs';
 import { appendJsonl, writeJson } from '../lib/jsonl.mjs';
+import { applyWorldTime } from '../runs/setup.mjs';
 import { quota, quotaAllows } from '../lib/quota.mjs';
 import { withKinematics } from '../observer/kinematics.mjs';
 import { runFixtureSetup } from '../arena/fixture-setup.mjs';
@@ -53,7 +54,7 @@ export function budgetMsFor({ scenario, quick, budgetSec, god = false }) {
  * seats: array (or {id: seat}) of arena Seat objects matched to scenario.seats by id. god: god Seat or null.
  * Returns {stoppedBy, elapsedSec, seats: {id: {steps, requests, closed}}}.
  */
-export async function runPlay({ runDir, scenario, world, seats, god = null, observer, owner, clock = realClock, personaFactory = null, quotaCheck = null, seed = 0, pollSec = 2 }) {
+export async function runPlay({ runDir, scenario, world, seats, god = null, observer, owner, clock = realClock, personaFactory = null, quotaCheck = null, seed = 0, pollSec = 2, setWorldTime = applyWorldTime }) {
   const mode = scenario.director?.mode ?? 'persona';
   const rails = scenario.rails ?? {};
   const maxTurns = rails.maxTurnsPerRequest ?? 6;
@@ -64,6 +65,8 @@ export async function runPlay({ runDir, scenario, world, seats, god = null, obse
   const state = { stopped: null };
   const stop = (why) => { if (!state.stopped) { state.stopped = why; log('stop:', why); } };
   const live = () => !state.stopped && clock.now() < endAt;
+  // #1138: a clock a script depends on starts with the play, not before an onboarding of unknown length. Never fatal: the receipt says what happened.
+  if (scenario.director?.worldTime) writeJson(join(runDir, 'world-time.json'), await setWorldTime({ base: world.base, time: scenario.director.worldTime }));
   const elapsedSec = () => (clock.now() - start) / 1000;
   const sleepUntil = async (target, wake = null) => { while (live() && clock.now() < target) { if (wake?.()) return true; await clock.sleep(Math.min(pollMs, target - clock.now(), endAt - clock.now())); } return false; };
   const seatById = Array.isArray(seats) ? Object.fromEntries(seats.map((s) => [s.id, s])) : (seats ?? {});
