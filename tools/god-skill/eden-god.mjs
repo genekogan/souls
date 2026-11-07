@@ -306,6 +306,7 @@ var STATE_FILE = "state.json";
 var CREDENTIALS = "credentials.json";
 var RUNTIME_LOCKS = [".listen.lock", ".eden-serve.lock"];
 var SERVE_SOCKET = ".eden-serve.sock";
+var SOUL_ID = /^s_[A-Za-z0-9_-]+$/;
 var IMPORTED_FIELDS = ["world", "worldId", "accountAuth", "identity", "soul", "token", "home", "cursor", "ownerMark", "lastReceipt", "lastActAt", "lastAcked", "lastAckedAt", "lastAckedActed", "pendingCreate"];
 var IMPORTED_RUNTIME = [".eden-serve.json"];
 var GOD_LEGACY = ".eden-god.json";
@@ -354,6 +355,22 @@ function slugOf(url) {
   }
 }
 var keyOf = (worlds, url) => Object.keys(worlds).find((k) => worlds[k].url === url) ?? null;
+var originOf = (url) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return String(url);
+  }
+};
+function newerThan(a, b) {
+  const p = (v) => String(v ?? "0").split(".").map(Number), x = p(a), y = p(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d) return d > 0;
+  }
+  return false;
+}
+var plainName = (v, max = 64) => String(v ?? "").replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max).trim();
 var norm = (s) => String(s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
 function splitSecrets(s) {
   const { token, identity, home, pendingApproval, ...open } = s;
@@ -444,6 +461,14 @@ function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) =
       return key;
     });
   }
+  function madeFor(url) {
+    if (config().awaitingFirstWorld) updateConfig((c) => {
+      if (c.awaitingFirstWorld) {
+        delete c.awaitingFirstWorld;
+        c.trustedOrigins ??= [originOf(url)];
+      }
+    });
+  }
   const setCurrentWorld = (key) => updateConfig((c) => {
     c.currentWorld = key;
   });
@@ -453,6 +478,7 @@ function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) =
     return { kind: "seat", key, dir };
   };
   const soul = (id) => {
+    if (!SOUL_ID.test(id ?? "")) throw new Error(`"${String(id).slice(0, 40)}" is not a Soul id; nothing was kept for it.`);
     const dir = at("souls", id, "runtime");
     mkdirSync2(dir, { recursive: true, mode: 448 });
     return { kind: "soul", id, dir };
@@ -570,8 +596,9 @@ function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) =
     for (const f of readdirSync(folder)) if (GOD_KEPT.test(f)) copyFileSync(join(folder, f), join(dir, f));
     return { imported: true, world: key, reusedToken: !!token, note: `${GOD_LEGACY} stays where it was and still holds the token: delete it once the seat works.` };
   }
-  function named(id, name) {
-    if (config().souls[id]?.name === name) return;
+  function named(id, raw) {
+    const name = plainName(raw);
+    if (!name || config().souls[id]?.name === name) return;
     updateConfig((c) => {
       if (c.souls[id]) c.souls[id].name = name;
     });
@@ -582,7 +609,7 @@ function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) =
     return all.map(([id, e]) => {
       const twin = reserved.has(norm(e.name)) || all.some(([other, o]) => other !== id && o.state === "active" && norm(o.name) === norm(e.name));
       const state = readJson(at("souls", id, "runtime", STATE_FILE), {});
-      return { name: e.name, id, world: e.world, ...e.at && e.at !== e.world ? { visiting: e.at } : {}, state: e.state, address: twin ? `${norm(e.name)}@${e.world}` : norm(e.name), ...c.default === id ? { default: true } : {}, lastSeen: state.lastActAt ?? null };
+      return { name: plainName(e.name) || id, id, world: e.world, ...e.at && e.at !== e.world ? { visiting: e.at } : {}, state: e.state, address: twin ? `${norm(e.name)}@${e.world}` : norm(e.name), ...c.default === id ? { default: true } : {}, lastSeen: state.lastActAt ?? null };
     });
   }
   function list2() {
@@ -636,12 +663,12 @@ function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) =
   }
   function importExport(folder) {
     const me = JSON.parse(readFileSync2(join(folder, "soul.json"), "utf8"));
-    if (!/^s_[A-Za-z0-9_-]+$/.test(me.id ?? "")) throw new Error("soul.json names no Soul.");
+    if (!SOUL_ID.test(me.id ?? "")) throw new Error("soul.json names no Soul.");
     if (config().souls[me.id]) return { imported: false, soul: me.id, reason: "This Soul already lives in this home." };
     const key = me.world ? ensureWorld(me.world) : null;
     cpSync(folder, at("souls", me.id), { recursive: true, filter: (p) => basename(p) !== "runtime" && basename(p) !== CREDENTIALS });
     updateConfig((c) => {
-      c.souls[me.id] = { name: me.name ?? me.id, world: key, state: "unpaired" };
+      c.souls[me.id] = { name: plainName(me.name) || me.id, world: key, state: "unpaired" };
     });
     return { imported: true, soul: me.id, world: key, paired: false };
   }
@@ -722,7 +749,25 @@ function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) =
     out.healthy = !out.retired.length && !out.controlLost.length && !out.orphanCredentials.length && out.worlds.every((w) => w.checked !== "unreachable");
     return out;
   }
-  return { root, config, ensureGod, dropGod, godSeat, godSecrets, saveGodSecrets, importGod, ensureWorld, setCurrentWorld, seat: seat2, soul, seatState, load: load2, save: save2, named, principals, list: list2, setDefault, importLegacy, exportSoul, importExport, doctor: doctor2 };
+  function installBundle(bytes, running, version) {
+    if (!newerThan(version, config().client)) return null;
+    mkdirSync2(at("bin"), { recursive: true, mode: 448 });
+    const write = (file) => {
+      const tmp = `${file}.${process.pid}.tmp`;
+      writeFileSync2(tmp, bytes, { mode: 493 });
+      renameSync(tmp, file);
+    };
+    write(at("bin", "eden.mjs"));
+    if (running && dirname(real(running)) === dirname(real(root))) write(running);
+    updateConfig((c) => {
+      c.client = version;
+    });
+    return at("bin", "eden.mjs");
+  }
+  const trustOrigin = (origin) => updateConfig((c) => {
+    c.trustedOrigins = [.../* @__PURE__ */ new Set([...c.trustedOrigins ?? [], origin])];
+  });
+  return { root, config, installBundle, trustOrigin, madeFor, ensureGod, dropGod, godSeat, godSecrets, saveGodSecrets, importGod, ensureWorld, setCurrentWorld, seat: seat2, soul, seatState, load: load2, save: save2, named, principals, list: list2, setDefault, importLegacy, exportSoul, importExport, doctor: doctor2 };
 }
 
 // lib/seat.mjs
