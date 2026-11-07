@@ -94,6 +94,10 @@ transcript up to 1 MiB; past that the tool result ends with a `[scripted-owner: 
 `truncated: true`, which the scorer's `seatActs` passes on. Live casts stay on `playtest.mjs direct` and
 the souls-director skill.
 
+A step `["resolve", "<words>"]` keeps its first candidate's id as `{resolved}` for the steps after it in that rule, so a
+script can reach offers whose ids differ every run (`give:<soul>`, `accept:<invitation>`) the way an agent does. A resolve
+with no candidate fails the rule.
+
 ## Setup
 
 Setup batches are existing god-edit batches (`{ops: [...]}` as `eden-god.mjs act` takes them), applied through the world

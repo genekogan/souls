@@ -48,11 +48,11 @@ or proxy examples to this host. Internal `sim-*` service and data names remain u
   and short `hostCodes` are public; the numbers behind them are for loopback requests only.
 - `GET /__sim/health`: a health page for site owners (accounts listed in `SIM_SITE_OWNERS`) or loopback; build,
   host, every world, backups, arrivals, new client errors and alerts (`tools/world-launcher/health-dash.mjs`).
-- `GET /w/<slug>/healthz` carries `halted` and `glitches`: `{total, byRule: {rule: {rung: n}}}`, every recovery and halt
+- `GET /w/<slug>/healthz` carries `halted` and `glitches`: `{total, byRule: {rule: {rung: n}}}`, every refusal, recovery and halt
   the world has had. It is public, so rule names and counts only. Each glitch also writes one `[world] glitch` line to
   the world's log and one row to its store, with the bodies, the tick and the evidence: `op.mjs glitches --port <port>
   --base / [--world <slug>]` reads those, for sleeping worlds too. The health page shows the counts. A halted world is the
-  `halted` problem code, so `hostOk` goes false and `host-health.log` gets its ALERT line; a recovery raises no alert
+  `halted` problem code, so `hostOk` goes false and `host-health.log` gets its ALERT line; a refusal or recovery raises no alert
   until real numbers set a rate threshold ([#1150](https://github.com/soulsimulation/souls/issues/1150)).
 - `sim-worlds-health@<stage>.timer` runs `deploy/host-health.mjs` every 10 minutes: disk, memory, the unit's working
   set against its `MemoryMax`, OOM kills and the last backup. It writes `<data>/host-health.json` and appends an
