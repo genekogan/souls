@@ -2,7 +2,7 @@ import {LIE_CLEARANCE} from '../../../mars/viewer/engine/social/pose.ts';
 import {regionArrivalMask} from './region-arrival.ts';
 import { createHash } from 'node:crypto';
 import { capturePhysicalHashInput, capturedPhysicalHashSteps, physicalHashNeedsLegacyCapture } from './checkpoint-hash.ts';
-import { stableStringify } from '@souls/engine-contract';
+import { stableStringify, type EngineRefusalV1 } from '@souls/engine-contract';
 import {bodyProfile} from '../../../mars/viewer/engine/bodies/navigation.ts';
 import {immutableAuthoredBoundaryFact} from '../../../mars/viewer/engine/spatial/edits.ts';
 import {keepStaticGridsForBoot,withStaticGridReadCache,type BootGridStore} from '../../../mars/viewer/engine/spatial/grid.ts';
@@ -76,7 +76,8 @@ import { decodeSnapshot, type RuntimeSnapshot, type RuntimeSnapshotCapture } fro
 import {encode} from '../../../mars/viewer/engine/runtime/codec.ts';
 import { dcos,dsin,hypot } from '../../../mars/viewer/engine/core/math.ts';
 import { clearanceAt, nearestBlocker } from '../../../mars/viewer/engine/spatial/grid.ts';
-import { acknowledgeRelocation } from '../../../mars/viewer/engine/runtime/invariants.ts';
+import { acknowledgeRelocation, rememberPosesAfterRestore } from '../../../mars/viewer/engine/runtime/invariants.ts';
+import { REFUSALS_ALLOWED, REFUSAL_WINDOW_TICKS, SOULS_REPAIR_POLICY, refusableRule, refusalDiag } from './refuse.ts';
 import { listTable, stableIndices, withEntityList, type EntityTable } from '../../../mars/viewer/engine/world/entity-list.ts';
 import { CATALOG, HUMAN_RADIUS } from '../../../mars/viewer/engine/world/catalog.ts';
 import { HUMAN_PROFILE as HUMAN_PROFILE_V1 } from '../../../mars/viewer/engine/spatial/types.ts';
@@ -136,12 +137,15 @@ type Prog = {
   stopping?: Diag;
   /** PC08: stopped with `untilSafe` (a shared carry): a held-up action keeps its own hold-up diagnostic, not a retry's. */
   stopUntilSafe?: true;
+  /** #1150: the ticks the world refused this programme's moves; it then ends `failed`, not `cancelled`. */
+  refusalsV1?: number[];
   ops: Op[]; action?: string; settle?: 'done' | 'held'; soft?: boolean; until?: number;
   controlOf?:string;
   readiedActors?:string[];
   build?: { phase: BuildPhase; crew: string[]; stopping?: Diag; reverse?: true };
 };
-export type MarsWorldConfig = { /** PC13 (#692): the shared raise (raise_hold_v1 and its invariant); absent, SIM_SHARED_CARRY=1 decides. */ sharedCarryV1?:boolean; groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; stairLandingClearanceV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
+type RefusalCopy = { pose: { p: number[]; yaw?: number }; level?: number };
+export type MarsWorldConfig = { /** PC13 (#692): the shared raise (raise_hold_v1 and its invariant); absent, SIM_SHARED_CARRY=1 decides. */ sharedCarryV1?:boolean; /** #1150: a move that would break a rule is refused inside the step; absent, SIM_SOULS_REPAIR=1 decides. */ soulsRepairV1?:boolean; groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; stairLandingClearanceV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
 export const LITTLE_MARTIANS_WORLD: MarsWorldConfig={scene:'littlemartians',arrival:[0,18],arrivalPlace:'garden',reference:[0,16],grounds:{id:'grounds',name:'Ceramic garden'}};
 export const GREEN_FIELD_WORLD:MarsWorldConfig={scene:'greenfield',arrival:[0,0],arrivalPlace:'field',reference:[2,0],grounds:{id:'grounds',name:'Green field'}};
 export const EDEN_COMMONS_WORLD:MarsWorldConfig={scene:'eden-commons',arrival:[14,4],arrivalPlace:'commons',reference:[9,5],grounds:{id:'grounds',name:'Eden commons'}};
@@ -229,7 +233,7 @@ export class MarsEngine implements Engine {
   private acts = new Map<string, string>();          // last broadcast activity per body
   private ons = new Map<string, string | null>();
   private leaving: string[] = [];                    // bodies to remove once nothing holds them
-  private out: { paths: PathCommit[]; changes: ChangeEvent[]; programs: ProgramEvent[] } = { paths: [], changes: [], programs: [] };
+  private out: { paths: PathCommit[]; changes: ChangeEvent[]; programs: ProgramEvent[]; refusals?: EngineRefusalV1[] } = { paths: [], changes: [], programs: [] };
   private recorder: any;
   private servingPrepared = false;
   private readerRecordingDepth=0;
@@ -284,6 +288,7 @@ export class MarsEngine implements Engine {
     (rt.services.spatial as Spatial|undefined)?.refreshForWorld?.(rt.world);
     // a restore keeps the navigation epoch its snapshot recorded (the ground/re-base rebuilds above moved it)
     if(saved)(rt.services.spatial as Spatial|undefined)?.adoptRestoredEpoch?.();
+    if(saved&&this.cfg.soulsRepairV1===true)rememberPosesAfterRestore(rt);
     this.cursor = rt.events.length;
     this.startRecorder();
     const self = this;
@@ -339,9 +344,11 @@ export class MarsEngine implements Engine {
     if (reuse) this.tableReusesV1++;
     const table: EntityTable = reuse ? checkedTable(cached!) : listTable(this.ents);
     this.tableCacheV1 = null;
+    const refusable = this.cfg.soulsRepairV1 === true ? this.refusalCopyV1(table) : null, seen = this.rt.violations.length;
     this.m.stepCarriers(this.rt, table);   // carrier/1: rides move their seated riders first (no carriers: no effect)
     this.m.stepHandHolds(this.rt);         // entry 35: hands let go finish, a broken pair lets go (no holds: no effect)
     this.rt.step(table);
+    if (refusable && this.rt.violations.length > seen) this.refuseV1(refusable, seen);
     const pass: EntityTable | null = (this.rt as any).passTable ?? null;
     const still = !!pass && pass.entities === this.ents && (this.rt as any).live.size === 0 && !this.quiet && this.programs.size === 0 && this.leaving.length === 0;
     this.updateClock();
@@ -390,6 +397,75 @@ export class MarsEngine implements Engine {
     return out;
   }
 
+  /** #1150: where each body an action can move stands before this tick, with the load it holds. Never stored. */
+  private refusalCopyV1(table: EntityTable): Map<string, RefusalCopy> {
+    const out = new Map<string, RefusalCopy>(), ents = this.ents, { keys, list } = table as { keys: string[]; list: any[] };
+    const copy = (id: string, e: any) => out.set(id, { pose: { ...e.pose, p: [...e.pose.p] }, level: e.human?.level });
+    for (const i of stableIndices(ents, 'engine bodies', list, keys, (e: any) => e.kind === 'human').idx) {
+      const id = keys[i], e = list[i]; if (!this.byActor.has(id) && !this.holders(id).length) continue;
+      copy(id, e);
+      const load = e.human.grip?.entity, held = load ? ents[load] : undefined; if (held && !out.has(load)) copy(load, held);
+    }
+    return out;
+  }
+  /** A body, or a held load, with whoever moves as one with it: the load and everyone holding it. */
+  private refusalGroupV1(id: string): string[] {
+    const e = this.ents[id]; if (!e) return [];
+    const load = e.human?.grip?.entity ?? (e.support?.kind === 'held' ? id : undefined), held = load ? this.ents[load] : undefined;
+    return [...new Set([id, ...(load && held ? [load] : []), ...(held?.support?.kind === 'held' ? held.support.by as string[] : [])])];
+  }
+  /** The programme behind a body: its own, or the one whose action holds it (a crew's borrowed bodies). */
+  private refusalProgramV1(id: string): Prog | undefined {
+    const own = this.byActor.get(id); if (own) return this.programs.get(own);
+    for (let h of this.holders(id)) { for (let up = this.rt.records.get(h)?.parent; up; up = this.rt.records.get(h)?.parent) h = up; for (const p of this.programs.values()) if (p.action === h) return p; }
+    return undefined;
+  }
+  /** What undoes one violation, or null when it can't be undone from the copy: the host's repair then decides. */
+  private refusalPlanV1<V extends { code: string; subjects?: string[] }>(v: V, copy: Map<string, RefusalCopy>, tick: number) {
+    if (!refusableRule(v.code)) return null;
+    const ents = this.ents, moved = (id: string) => { const c = copy.get(id), e = ents[id]; return !!c && !!e && (c.pose.p.some((n, i) => n !== e.pose.p[i]) || c.level !== e.human?.level || (!e.human && c.pose.yaw !== e.pose.yaw)); };   // a body that only turned stayed where it was; a load's turn sweeps its ends
+    const undo = new Set<string>();
+    for (const id of [...new Set(v.subjects ?? [])].sort()) { const g = this.refusalGroupV1(id); if (g.some(moved) || (v.code === 'motion.overspeed' && copy.has(id))) g.forEach(x => undo.add(x)); }
+    if (!undo.size) return null;
+    const programs = new Map<string, Prog>(), actions = new Set<string>();
+    for (const id of [...undo].sort()) {
+      const e = ents[id]; if (!copy.has(id) || e.human?.riding || e.human?.carrier || e.human?.on || e.human?.activity?.startsWith('climb')) return null;
+      if (!e.human) continue;
+      const p = this.refusalProgramV1(id);
+      if (p) { if (p.build || (p.refusalsV1 ?? []).filter(t => tick - t < REFUSAL_WINDOW_TICKS).length >= REFUSALS_ALLOWED) return null; programs.set(p.id, p); continue; }
+      for (const h of this.holders(id)) { if (this.rt.live.get(h)?.cancelling) return null; actions.add(h); }
+    }
+    const holding = new Set<string>(); for (const id of undo) for (const h of this.holders(id)) holding.add(h);
+    return { violation: v, rule: v.code, undo: [...undo].sort(), programs, actions, holding: [...holding].sort() };
+  }
+  /** #1150 rung 1: every new violation this step is undone and its programmes stopped, or none is. What the invariants
+   *  still find after that stays in `violations`, for the host's repair. A pure function of world state and the rules. */
+  private refuseV1(copy: Map<string, RefusalCopy>, seen: number) {
+    const rt = this.rt, tick: number = rt.tick, ents = this.ents, fresh = rt.violations.splice(seen) as (Diag & { tick: number; subjects?: string[] })[];
+    const plans = fresh.map(v => this.refusalPlanV1(v, copy, tick));
+    if (plans.some(p => !p)) { rt.violations.push(...fresh); return; }
+    const done = new Map<string, EngineRefusalV1>();
+    const stuck: typeof fresh = [];
+    const told = new Set<string>();
+    for (const plan of plans as NonNullable<(typeof plans)[number]>[]) {
+      const why = refusalDiag(plan.rule), key = `${plan.rule}|${plan.undo.join()}`;
+      for (const id of plan.undo) { const c = copy.get(id)!, e = ents[id]; e.pose = { ...c.pose, p: [...c.pose.p] }; if (e.human) { e.human.level = c.level; e.human.speed = 0; } }
+      for (const h of plan.holding) { if (told.has(h)) continue; told.add(h); const l = rt.live.get(h); l?.def.refused?.(rt, l.exec); }   // once a tick: a whole crew can be named
+      for (const id of [...plan.programs.keys()].sort()) {
+        const p = plan.programs.get(id)!; p.stopping = why; const seen = p.refusalsV1 ?? [];   // once a tick: one bad step can name a whole crew
+        p.refusalsV1 = [...seen.filter(t => tick - t < REFUSAL_WINDOW_TICKS && t !== tick), tick];
+        if (p.action && rt.isActive(p.action)) rt.cancel(p.action, why);   // refused for now (a flight)? `advance` asks again each tick
+      }
+      for (const h of [...plan.actions].sort()) { rt.cancel(h, why); if (rt.isActive(h) && !rt.live.get(h)?.cancelling) stuck.push(plan.violation); }   // no programme to ask again: the host's repair
+      for (const id of plan.undo) if (ents[id].human) ents[id].human.speed = 0;
+      done.set(key, { tick, rule: plan.rule, bodies: plan.undo, programs: [...plan.programs.keys()].sort(), poses: Object.fromEntries(plan.undo.map(id => { const c = copy.get(id)!; return [id, { p: [...c.pose.p] as [number, number, number], yaw: c.pose.yaw ?? 0, ...(c.level === undefined ? {} : { level: c.level }) }]; })) });
+    }
+    (this.out.refusals ??= []).push(...done.values());
+    // The moves are back; ask the invariants again. A second pass in one tick also resets the step check's memory to these poses.
+    withEntityList(rt.world, () => { for (const inv of rt.invariants) for (const d of inv(rt)) { rt.violations.push({ ...d, tick }); rt.events.push({ tick, type: 'violation', code: d.code, message: d.message, subjects: d.subjects }); } }, listTable(ents));
+    rt.violations.push(...stuck);
+  }
+
   private emit(p: Prog, kind: ProgramEvent['kind'], d?: Diag) {
     this.out.programs.push({ tick: this.rt.tick, id: p.id, actor: p.actor, kind, step: kind === 'step' ? p.index : -1, ...(d ? { code: d.code, message: d.message } : {}) });
   }
@@ -413,7 +489,7 @@ export class MarsEngine implements Engine {
       // PC08: while an `untilSafe` stop's action is held up it stands still, so a retry would refuse again and only hide
       // the hold-up's own diagnostic (who is in the way); it is retried once the action moves again
       if(p.action&&this.rt.isActive(p.action)){if(!(p.stopUntilSafe&&this.rt.records.get(p.action)?.status==='blocked'))this.rt.cancel(p.action,p.stopping);return;}
-      return this.end(p,'cancelled',p.stopping);
+      return this.end(p,p.refusalsV1?'failed':'cancelled',p.stopping);
     }
     for (let guard = 0; guard < 12; guard++) {
       if (!this.ents[p.actor]) return this.end(p, 'cancelled', { code: 'actor.removed', message: 'the actor is gone' });
@@ -1035,6 +1111,7 @@ export class MarsEngine implements Engine {
   }
   stop(programId: string, opts?: { untilSafe?: boolean }) {
     const p = this.programs.get(programId); if (!p) return;
+    if (p.refusalsV1 && p.stopping) return;   // #1150: already stopping, and its receipt should say why
     if (p.build) { p.build.stopping={code:'program.stopped',message:'Construction interruption requested; finishing the committed segment safely.'}; return; }
     if (p.action && this.rt.isActive(p.action)) {
       this.rt.cancel(p.action, { code: 'program.stopped', message: 'stopped' });
@@ -2622,7 +2699,7 @@ function checkedTable(t: EntityTable): EntityTable {
 }
 
 function centroid(poly: [number, number][]): [number, number] { let x = 0, z = 0; for (const p of poly) { x += p[0]; z += p[1]; } return [r3(x / poly.length), r3(z / poly.length)]; }
-function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}${cfg.sharedCarryV1?'+'+SHARED_RAISE_POLICY+'+'+SHARED_BEAM_POLICY+'+'+SHARED_DECK_POLICY+'+'+SHARED_STAIRS_POLICY:''}`;}
+function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}${cfg.sharedCarryV1?'+'+SHARED_RAISE_POLICY+'+'+SHARED_BEAM_POLICY+'+'+SHARED_DECK_POLICY+'+'+SHARED_STAIRS_POLICY:''}${cfg.soulsRepairV1?'+'+SOULS_REPAIR_POLICY:''}`;}
 /** PC13 (#692): a world whose engine has the shared raise (SIM_SHARED_CARRY) says so in its rules version: a journal that
  *  names raise_hold_v1 does not replay, nor a snapshot restore, where the verb is not registered. */
 export const SHARED_RAISE_POLICY = 'shared-raise/1';
@@ -2641,6 +2718,7 @@ export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promis
   const sharedCarry = cfg.sharedCarryV1 ?? process.env.SIM_SHARED_CARRY === '1';
   // resolved once here, so the engine's own rules version (this.cfg) says what the factory registered; off adds no key
   if (sharedCarry && cfg.sharedCarryV1 !== true) cfg = {...cfg, sharedCarryV1: true};
+  if ((cfg.soulsRepairV1 ?? process.env.SIM_SOULS_REPAIR === '1') && cfg.soulsRepairV1 !== true) cfg = {...cfg, soulsRepairV1: true};
   const m = sharedCarry ? {...loaded, invariants: [...loaded.invariants, looseFramesHeld, framesStand, decksBear, stairsBear]} : loaded;
   // disassembly/1 adds its reverse verbs to this engine's registry only; the default registry is unchanged.
   const registry = cfg.disassemblyV1 ? disassemblyRegistry(m.createRegistry) : m.createRegistry(), services = m.servicesFor(m.scenes);
@@ -2650,7 +2728,8 @@ export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promis
     // A failed cross-policy checkpoint restore must not turn into replay under
     // another removal policy. An explicit, qualified transition is separate.
     canReplayHistory: version => {
-      if((cfg.walkBlockV1||cfg.safeArrivalV1||cfg.scene==='eden-commons'||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1)&&version!==nativeRulesVersion(m.rulesVersion,cfg))return false;
+      if((cfg.walkBlockV1||cfg.safeArrivalV1||cfg.scene==='eden-commons'||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1||cfg.soulsRepairV1)&&version!==nativeRulesVersion(m.rulesVersion,cfg))return false;
+      if(!cfg.soulsRepairV1&&/\+souls-repair\//.test(version))return false;
       if(!cfg.sharedCarryV1&&/\+shared-(?:raise|beam|deck|stairs)\//.test(version))return false;
       if(!cfg.map&&/\+mars-2026-map\//.test(version))return false;
       if(!cfg.disassemblyV1&&/\+disassembly\//.test(version))return false;
@@ -2665,7 +2744,7 @@ export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promis
     },
     // Candidate removal changes controller behavior: restore only its exact
     // policy/version. Legacy activities31 compatibility remains unchanged.
-    canRestoreSnapshot: version => cfg.walkBlockV1||cfg.safeArrivalV1||cfg.safeCrewRemoval||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1||cfg.scene==='eden-commons'?version===nativeRulesVersion(m.rulesVersion,cfg):[m.rulesVersion,m.rulesVersion.replace('+bodies/1',''),m.rulesVersion.replace('+bodies/1','').replace('activities/31','activities/29')].some(v=>version===nativeRulesVersion(v,cfg)),
+    canRestoreSnapshot: version => cfg.walkBlockV1||cfg.safeArrivalV1||cfg.safeCrewRemoval||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1||cfg.soulsRepairV1||cfg.scene==='eden-commons'?version===nativeRulesVersion(m.rulesVersion,cfg):[m.rulesVersion,m.rulesVersion.replace('+bodies/1',''),m.rulesVersion.replace('+bodies/1','').replace('activities/31','activities/29')].some(v=>version===nativeRulesVersion(v,cfg)),
     /** The synthetic proving ground (a campfire, two benches, a lawn), emptied of its test people: Souls arrive by being born. */
     genesis(seed: string): WorldState {
       if (cfg.scene === 'littlemartians') return m.littleMartiansWorld(seed);
@@ -2694,6 +2773,7 @@ export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promis
       if(!!s.cfg?.safeArrivalV1!==!!cfg.safeArrivalV1)throw new Error('snapshot arrival policy differs from the native factory');
       if(!!s.cfg?.safeCrewRemoval!==!!cfg.safeCrewRemoval)throw new Error('snapshot removal policy differs from the native factory');
       if(!!s.cfg?.disassemblyV1!==!!cfg.disassemblyV1)throw new Error('snapshot disassembly policy differs from the native factory');
+      if(!!s.cfg?.soulsRepairV1!==!!cfg.soulsRepairV1)throw new Error('snapshot repair policy differs from the native factory');
       if((s.cfg?.scene==='eden-commons'||cfg.scene==='eden-commons')&&s.cfg?.scene!==cfg.scene)throw new Error('snapshot commons layout differs from the native factory');
       if(cfg.scene==='eden-commons'&&s.commonsVersion!=='commons/1')throw new Error('snapshot commons rules differ from the native factory');
       // Spatial services are rebuilt for the same base scene; the snapshot carries the rest.
