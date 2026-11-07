@@ -41,7 +41,9 @@ test('middleware: a known request sequence reconciles with the counters, and ans
   adm.setLoadLevel('black');
   const ac = new AbortController(); const gone = post('sim_c', '', ac.signal);
   await new Promise(r => setTimeout(r, 30)); assert.equal(adm.queue.length, 1, 'queued');
-  ac.abort(); assert.equal((await gone).status, 499);
+  // the sweeper that notices is unref'd, so with nothing else alive this process would exit before it fires
+  const alive = setInterval(() => {}, 50);
+  ac.abort(); assert.equal((await gone).status, 499); clearInterval(alive);
   adm.setLoadLevel('green'); release(); assert.equal((await held).status, 200);
 
   const live = liveOf(a, 1, 1000), r = live.requests!, f = live.refused!;

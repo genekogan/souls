@@ -1,4 +1,4 @@
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {realpathSync} from 'node:fs';
 import {hasFreshAttributionProof,type AttributionAccountIdentity} from '../auth.ts';
 import {AccountStore,AccountStoreError,type AccountIdentity,type ApprovalDTO} from './store.ts';

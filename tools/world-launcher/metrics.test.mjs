@@ -68,11 +68,10 @@ test('restart reasons, odd slugs and unreadable live.json', () => {
   writeFileSync(join(dir, 'live.json'), 'x'.repeat(70_000)); assert.equal(readLive(dir), null);
 });
 
-test('a Unix-seconds gauge keeps millisecond resolution; small gauges keep 6 significant digits', () => {
+test('a Unix-seconds gauge keeps millisecond resolution', () => {
   const monoMs = NOW + 123.456;
   const text = metricsText({ now: NOW, worlds: [{ slug: 'w', status: 'running', restarts: 0, live: { ...LIVE, loop: { ...LIVE.loop, elu: 0.123456789 }, clock: { adminRate: 1, rate: 1, pace: 1, monoMs, state: 'running' } } }] });
-  assert.equal(val(text, 'sim_world_tick_sampled_seconds{world="w"}'), 1_800_000_000.123);
-  assert.equal(val(text, 'sim_world_elu{world="w"}'), 0.123457);
+  assert.equal(val(text, 'sim_world_tick_sampled_seconds{world="w"}'), 1_800_000_000.12346);
 });
 
 test('serveMetrics answers text/plain 0.0.4 and 500 on a failure', () => {

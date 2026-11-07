@@ -1,6 +1,6 @@
 // Personal advisory facts only. No native event/fold, body execution or planner.
 import {randomUUID} from 'node:crypto';
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {EdgeError} from '../contract.ts';
 import {tx,type Sql} from '../comms/store.ts';
 import type {EventStreams} from '../comms/stream.ts';

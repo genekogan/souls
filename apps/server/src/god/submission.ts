@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { batchSchema } from '@sim/world-compiler';
+import { batchSchema } from '@souls/world-compiler';
 import { buildFieldSchema } from './builds.ts';
 
 export const revisionSchema = z.object({ id: z.string().min(1).max(100), v: z.number().int().min(1) });

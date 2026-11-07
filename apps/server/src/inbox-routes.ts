@@ -5,7 +5,7 @@ import type {GodMode} from './god/god.ts';
 import {ApiError, type Souls} from './souls.ts';
 import {AgentInbox, type InboxScope, type TicketFocus} from './inbox.ts';
 import {soulLink} from './soul-link.ts';
-import type {WorldModel} from '@sim/world-compiler';
+import type {WorldModel} from '@souls/world-compiler';
 
 type Deps = {db: Db; worldId: string; souls: Souls; god?: GodMode; edge?: boolean; requireUser(c: Context): Promise<UserRow>; ownerSoul(c: Context, id: string): Promise<{id: string; owner: string}>; now?: () => number};
 type Agent = {kind: 'god' | 'soul'; scope: InboxScope};

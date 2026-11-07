@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type {Engine} from '@sim/engine-contract';
+import type {Engine} from '@souls/engine-contract';
 import type {Entity as NativeEntity} from '../../../mars/viewer/engine/world/types.ts';
 import {MarsEngine} from './engine.ts';
 

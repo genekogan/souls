@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { marsFactory, GREEN_FIELD_WORLD } from './engine.ts';
 import { groundFact } from './ground-bridge.ts';
 import { emptyGround, type Ground } from '../../ground/src/index.ts';
-import type { Engine } from '@sim/engine-contract';
+import type { Engine } from '@souls/engine-contract';
 import { CREATURES, creatureBody, bodyProblem, type CreatureId } from '../../../mars/viewer/engine/bodies/index.ts';
 
 const factory = await marsFactory(GREEN_FIELD_WORLD);

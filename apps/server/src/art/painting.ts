@@ -36,8 +36,10 @@ export function validatePainting(raw: unknown): Painting {
 }
 
 /** Help exists only on an offer bound to a real painting easel. */
-export const paintingParam = () => ({ type: 'object', optional: true, maxBytes: PAINTING_BYTES_MAX,
-  description: 'Optional lasting painting, published only when this activity finishes. 512×512 canvas. title (one line, <=120), background (#RRGGBB), shapes (<=64). Coordinates 0..1; shapes clip at edges; later shapes cover earlier ones. Every shape has colour (#RRGGBB). rect: x,y,width,height; ellipse: cx,cy,rx,ry; line: x1,y1,x2,y2,width (<=0.25). Sizes >0 and <=1. No other fields. Credit is your Soul. Painting over replaces the canvas and preserves the old picture in history.' });
+export const paintingParam = (fadeDays?: number) => ({ type: 'object', optional: true, maxBytes: PAINTING_BYTES_MAX,
+  description: fadeDays ? `Optional chalk drawing on the ground, published only when this activity finishes. ${PAINTING_HELP} Drawing over replaces the drawing and preserves the old one in history. It fades over ${fadeDays} world days, then washes away.`
+    : `Optional lasting painting, published only when this activity finishes. ${PAINTING_HELP} Painting over replaces the canvas and preserves the old picture in history.` });
+const PAINTING_HELP = '512×512 canvas. title (one line, <=120), background (#RRGGBB), shapes (<=64). Coordinates 0..1; shapes clip at edges; later shapes cover earlier ones. Every shape has colour (#RRGGBB). rect: x,y,width,height; ellipse: cx,cy,rx,ry; line: x1,y1,x2,y2,width (<=0.25). Sizes >0 and <=1. No other fields. Credit is your Soul.';
 
 const rgb = (hex: string): [number, number, number] => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
 const crcTable = Uint32Array.from({ length: 256 }, (_, i) => { let c = i; for (let j = 0; j < 8; j++) c = (c >>> 1) ^ (c & 1 ? 0xedb88320 : 0); return c >>> 0; });

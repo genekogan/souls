@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { componentsSchema, defSchema, CORE_KIT, WorldModel, applyBatch } from './index.ts';
-import { kitArgs, kitPhysics } from '@sim/generators';
+import { kitArgs, kitPhysics } from '@souls/generators';
 const { examples } = await import(new URL('../../../tools/god-skill/examples/light-motion.mjs', import.meta.url).href) as { examples: Record<string, unknown> };
 
 test('authored light fields are optional; old singular defaults and serialized defs stay unchanged', () => {

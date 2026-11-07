@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {edenNavWorld, factory} from '../test/eden-nav-fixture.ts';
 import {WorldHost} from './world.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';

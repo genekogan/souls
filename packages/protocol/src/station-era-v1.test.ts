@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import { STATION_PINS_V1,stationEpochId,stationEpochV1Schema } from './station-v1.ts';
 import { stationRulesEraV1Schema,stationRulesEraFactV1Schema,stationCommonsSourceV1Schema,stationPhysicalHeadV1Schema,
   initialStationPhysicalHeadV1,acceptStationPhysicalHeadV1,foldStationRulesEraV1,stationPhysicalHeadCoversTickV1,

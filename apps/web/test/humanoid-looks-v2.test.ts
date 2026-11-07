@@ -1,7 +1,7 @@
 // Looks v2 (2026-10-16): accessories, outfits, and the guarantee that every v1 look keeps its template key and params.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bodyV1Schema} from '@sim/protocol';
+import {bodyV1Schema} from '@souls/protocol';
 import * as L from '../src/humanoid/look.ts';
 
 // golden keys computed with the trunk (27a56cba) look.ts: stored bodies' `model` must not change

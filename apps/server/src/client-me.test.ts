@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {Connection} from '../../../packages/client/src/index.ts';
-import {meLiveMessageV1Schema,type Me,type ServerMsg} from '@sim/protocol';
+import {meLiveMessageV1Schema,type Me,type ServerMsg} from '@souls/protocol';
 class Socket{readyState=1;onopen:any;onmessage:any;onclose:any;onerror:any;sent:string[]=[];closes=0;send(s:string){this.sent.push(s);}close(){this.closes++;}message(m:unknown){this.onmessage({data:JSON.stringify(m)});}}
 const alice:Me={userId:'alice',short:'alice',email:null,wallet:null,role:'user',souls:[],invited:false};
 const welcome=(connectionId:string,user=alice,worldId='world',epoch='epoch')=>({t:'welcome' as const,proto:1,build:'fixture',worldId,epoch,rulesVersion:'rules',schema:'schema',dt:.05,clockRate:1,serverTick:0,serverTime:0,you:user,privateMe:{contract:'me-live/1' as const,connectionId,userId:user.userId,revision:1 as const}});

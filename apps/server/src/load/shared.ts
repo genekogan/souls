@@ -27,30 +27,31 @@ export const S = {
   // admission calibration (lane srv-admission-calib): EWMA of the tick's own ms over quiet loop windows (monitor.ts);
   // 0 = not measured yet. admission.ts reads it for the frame budget (frameBudgetMs).
   quietTickMs: 28,
+  halted: 29,      // 1 once the world's clock has stopped (a fault or a durability failure, #1150): the launcher alerts on it
   // CW3 (#737): series the launcher's /__sim/metrics already mapped but nothing wrote. elu: event-loop utilization of
   // the last closed 5 s window (-1 = no window closed yet); gcMsTotal: GC pause ms since the process started (never
   // reset, so a scrape sees every pause); ticksLateTotal: ticks whose own run took longer than their 50 ms budget.
-  elu: 29, gcMsTotal: 30, ticksLateTotal: 31,
+  elu: 30, gcMsTotal: 31, ticksLateTotal: 32,
   // CW3 (#737) S2, sampled when a 5 s monitor window closes (procAt = 0 until then): CPU ms since the process started
   // (user, system) and RSS MB are process totals (the watchdog and read-worker threads included); external and
   // array-buffer MB are the main thread's V8 isolate only (process.memoryUsage reports those per thread).
-  procAt: 32, cpuUserMs: 33, cpuSysMs: 34, rssMb: 35, externalMb: 36, arrayBuffersMb: 37,
+  procAt: 33, cpuUserMs: 34, cpuSysMs: 35, rssMb: 36, externalMb: 37, arrayBuffersMb: 38,
   // independent full-clock evidence: the admin rate (world time per wall time, as set), the current rate (dilation), the
   // attention pace, and the process-monotonic epoch ms of the sample that wrote worldTick (tickMonoMs)
-  adminRate: 38, clockRate: 39, pace: 40, tickMonoMs: 41,
+  adminRate: 39, clockRate: 40, pace: 41, tickMonoMs: 42,
   // inventory (soulsTotal = resident minds; entities = the god model's, -1 = no god model) and viewers (hub clients)
-  soulsTotal: 42, entities: 43, viewers: 44,
+  soulsTotal: 43, entities: 44, viewers: 45,
   // activity integrals since the process started (seconds × count)
-  awakeSoulSeconds: 45, connectedSoulSeconds: 46, viewerSeconds: 47,
+  awakeSoulSeconds: 46, connectedSoulSeconds: 47, viewerSeconds: 48,
   // the viewer hub's WebSockets: opened, closed, bytes sent (where the hub accounts them per client), bytes received
-  wsOpened: 48, wsClosed: 49, wsBytesSent: 50, wsBytesReceived: 51,
+  wsOpened: 49, wsClosed: 50, wsBytesSent: 51, wsBytesReceived: 52,
   // admission request counters (REQ_* below); reqOn = 1 once an Admission writes here (absent with SIM_ADMISSION=0)
-  reqOn: 52, req: 53,          // REQ_CLASSES × REQ_OUTCOMES counters
-  refused: 65,                 // REQ_CLASSES × REQ_CODES counters
-  hist: 73,                    // REQ_HISTS × HIST_SLOTS: per-bucket counts (not cumulative), +Inf, then the sum in seconds
+  reqOn: 53, req: 54,          // REQ_CLASSES × REQ_OUTCOMES counters
+  refused: 66,                 // REQ_CLASSES × REQ_CODES counters
+  hist: 74,                    // REQ_HISTS × HIST_SLOTS: per-bucket counts (not cumulative), +Inf, then the sum in seconds
   // 0 = the clock runs; 1 = paused by an admin; 2 = no clock (not serving it): a full-clock measurer excludes 1 and 2
-  clockState: 125,
-  size: 126,
+  clockState: 126,
+  size: 127,
 } as const;
 
 /** CW3 (#737) S2: closed label sets of the request counters. Order is the slot layout (append only). */
@@ -81,6 +82,8 @@ export type LiveJson = {
   /** Stage B: the first read worker's port (the launcher routes C2 reads here); present only with read workers. */
   readPort?: number;
   read?: {ports: number[]; workers: number; lagGens: number; subset: boolean; routes: string[]};
+  /** The world's clock has stopped; present only then (#1150). */
+  halted?: true;
   /** CW3 S2 (present once a 5 s window has closed): CPU and RSS of the whole process; external and arrayBuffers of the main thread only. */
   proc?: {cpuUserSeconds: number; cpuSystemSeconds: number; rssMb: number; externalMb: number; arrayBuffersMb: number};
   /** CW3 S2: full-clock evidence; monoMs is the process-monotonic epoch ms at which `tick.world` was read; state: the clock runs, is paused, or is unavailable. */
@@ -156,5 +159,6 @@ export function liveOf(a: Float64Array, pid: number, now: number, disk?: LiveJso
     out.readPort = ports[0];
     out.read = {ports, workers: a[S.readWorkers], lagGens: a[S.readLagGens], subset: mode === 1, routes: READ_ROUTES[mode] ?? []};
   }
+  if (a[S.halted]) out.halted = true;
   return out;
 }
