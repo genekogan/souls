@@ -39,6 +39,13 @@ const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 /** The release a PR's proof goes to: `override` when given, else the PR's own `proofs-<n>` (the shared `proofs`
  *  release every PR used before is full: GitHub caps a release at 1000 assets). */
 export const releaseTag = (pr, override) => override || `proofs-${pr}`;
+
+/** GitHub's per-release asset cap, and what to do when a release has reached it. */
+export const RELEASE_ASSET_CAP = 1000;
+export const fullRelease = (tag, pr) => `release "${tag}" is at GitHub's ${RELEASE_ASSET_CAP}-asset limit, so nothing was uploaded. `
+  + `Use the PR's own release: drop --release and SIM_PROOF_RELEASE (the default is proofs-${pr}). On a branch whose upload.mjs `
+  + `still defaults to the shared "proofs" release, run main's copy: git show origin/main:tools/proof/upload.mjs > .local/upload-main.mjs, `
+  + `then node .local/upload-main.mjs --pr ${pr} <files>.`;
 const TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const MAX_BYTES = 2 * 1024 ** 3, WARN_BYTES = 100 * 1024 ** 2;
 export const TYPES = {
@@ -120,6 +127,8 @@ export function githubTarget({ repo, run, dryRun = false, tag = null }) {
     upload(pr, file) {
       const rel = ensure(pr);
       if (!taken) taken = new Set(JSON.parse(gh([`repos/${repo}/releases/${rel.id}/assets?per_page=100`, '--paginate', '--slurp'])).flat().map(a => a.name));
+      // A full release (the old shared `proofs` one) refuses every new asset: say so before uploading anything.
+      if (taken.size >= RELEASE_ASSET_CAP) throw Error(fullRelease(current, pr));
       const name = uniqueName(releaseAssetName(pr, file), taken);
       taken.add(name);
       if (dryRun) return { name, url: `https://github.com/${repo}/releases/download/${current}/${name}`, dryRun: true };
@@ -129,10 +138,8 @@ export function githubTarget({ repo, run, dryRun = false, tag = null }) {
           '-H', `Content-Type: ${contentType(file)}`, '--input', file]));
       } catch (e) {
         const msg = `${e.stderr ?? ''} ${e.message ?? ''}`;
-        // `taken` already holds this name, so a release that had 1000 assets now counts 1001.
-        if (/HTTP 422/.test(msg) && taken.size - 1 >= 1000) {
-          throw Error(`release "${current}" is at GitHub's 1000-asset limit; drop --release/SIM_PROOF_RELEASE to use the PR's own proofs-${pr}`);
-        }
+        // `taken` already holds this name: a release listed one short of the cap filled up meanwhile (another upload).
+        if (/HTTP 422/.test(msg) && taken.size >= RELEASE_ASSET_CAP) throw Error(fullRelease(current, pr));
         throw e;
       }
       return { name, url: out.browser_download_url };

@@ -114,6 +114,7 @@ export async function openEdgeServerV1({input,dataDir,worldId,port=4959,webDir,m
     if(host.enableYieldTimeoutV1)await drive(host.enableYieldTimeoutV1());
     if(host.enableSpreadV2)await drive(host.enableSpreadV2());
     if(host.enableSpreadClearV1)await drive(host.enableSpreadClearV1());
+    if(host.enableRouteReachV1)await drive(host.enableRouteReachV1());
     if(host.enableStairMakeWayV1)await drive(host.enableStairMakeWayV1());
     if(host.enableReflexTimeoutV1)await drive(host.enableReflexTimeoutV1());
     if(host.enableContinuousDayV1)await drive(host.enableContinuousDayV1());
