@@ -2,8 +2,8 @@
 // gen-mesh/ register themselves (Vite glob), so lanes add files without touching this one.
 // Owner: L1. Spec <eden4>/33 §4.3.
 import type * as THREE from 'three';
-import type { Baked, Value } from '@sim/generators';
-import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
+import type { Baked, Value } from '@souls/generators';
+import type { Entity, StoredDef, WorldModel } from '@souls/world-compiler';
 import type { MaterialLib } from './materials.ts';
 import { applyLook, lookKey } from './vocab-look.ts';
 

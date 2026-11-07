@@ -2,7 +2,7 @@
 // within 150 ms; any other close, or a second close before a welcome, keeps the exponential backoff (>= 250 ms first).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Connection } from '@sim/client';
+import { Connection } from '@souls/client';
 
 type Fake = { send(s: string): void; close(): void; readyState: number; onopen: any; onmessage: any; onclose: any; onerror: any };
 function rig(t: import('node:test').TestContext) {

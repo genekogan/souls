@@ -1,8 +1,8 @@
 // Actual native anchor/perception boundary; no compiler/provider or forced motion.
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {marsFactory, EDEN_SAFE_COMMONS_WORLD} from '@sim/engine-mars';
-import {kernelHash, whyNot} from '@sim/kernel';
+import {marsFactory, EDEN_SAFE_COMMONS_WORLD} from '@souls/engine-mars';
+import {kernelHash, whyNot} from '@souls/kernel';
 import {Db} from './db.ts';
 import {WorldHost} from './world.ts';
 import {distance, distanceWord, engineRef, optionsFor, positionOf, resolveParams} from './deck.ts';

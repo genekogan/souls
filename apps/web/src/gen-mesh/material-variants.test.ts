@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import type { Entity, StoredDef } from '@sim/world-compiler';
+import type { Entity, StoredDef } from '@souls/world-compiler';
 import { VARIANT_CAP, variantCount, variantOf } from './material-variants.ts';
 import { quantizeGlow, syncLightGlow } from './motion.ts';
 import { mergedMaterialCount, mergeStatic } from './static-merge.ts';

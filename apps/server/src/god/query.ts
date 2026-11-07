@@ -4,9 +4,9 @@
 // behaviours), `where` (what is at a point) and `resolve` (constraint status). Pure functions over the
 // WorldModel; `reach` asks the Soul engine through the bridge (L9).
 // Owner: L1 (contract); L7 owns it from tranche 2; `reach` is L9's.
-import { mediumAt, waterDepthAt, waterLevelAt } from '@sim/ground';
-import { creatureAbilities, offsetPolyline, pointAlong, pointInPoly, prepareFor, queryOf, type Baked, type Vec2 } from '@sim/generators';
-import { aimOf, obbOverlap, type Entity, type OBB, type StoredDef, WorldModel } from '@sim/world-compiler';
+import { mediumAt, waterDepthAt, waterLevelAt } from '@souls/ground';
+import { creatureAbilities, offsetPolyline, pointAlong, pointInPoly, prepareFor, queryOf, type Baked, type Vec2 } from '@souls/generators';
+import { aimOf, obbOverlap, type Entity, type OBB, type StoredDef, WorldModel } from '@souls/world-compiler';
 // L2's furnish recipes (pure over the WorldModel; reads tools/god-skill/recipes/furnish/*.json)
 import { furnishBatch } from '../../../../tools/god-skill/lib/furnish.mjs';
 

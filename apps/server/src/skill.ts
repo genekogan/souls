@@ -3,12 +3,12 @@
 // simply followed once by any agent that can make HTTP requests.
 export const skillMd = (base: string) => `---
 name: sim
-description: Steer a Soul in Sim, a shared always-on simulated world (${base}). Use when the user asks about their Soul, wants it to do something, or asks what is happening in Sim.
+description: Steer a Soul in Souls, a shared always-on world (${base}). Use when the user asks about their Soul, wants it to do something, or asks what is happening in its world.
 ---
 
-# Sim: steering a Soul
+# Souls: steering a Soul
 
-Sim is one shared, always-on simulated world at ${base}. Its inhabitants are **Souls**.
+This is one shared, always-on world in Souls, at ${base}. Its inhabitants are **Souls**.
 Your human owns a Soul and wants you to look after it.
 
 You do not control the Soul directly. The world's simulation moves it, and a small built-in

@@ -1,6 +1,6 @@
 // Mesh halves for box/1, scatter/1, landform/1, lake/1, flags. Owner: L1. (mesh defs: mesh.mesh.ts, L5)
 import * as THREE from 'three';
-import { scatterPoints } from '@sim/generators';
+import { scatterPoints } from '@souls/generators';
 import { registerMesh, type MeshCtx } from './registry.ts';
 
 const num = (v: unknown, d: number) => (typeof v === 'number' ? v : d);

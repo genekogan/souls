@@ -1,4 +1,4 @@
-import {intentOwnerControlV2Schema,type IntentOwnerControlV2} from '@sim/protocol';
+import {intentOwnerControlV2Schema,type IntentOwnerControlV2} from '@souls/protocol';
 export type IntentAdapter={kind:'loading'}|{kind:'legacy'}|{kind:'unavailable'}|{kind:'candidate';control:IntentOwnerControlV2};
 /** An explicitly advertised candidate never falls back to a different mutation
  * when its next read is missing, foreign, malformed or unavailable. */

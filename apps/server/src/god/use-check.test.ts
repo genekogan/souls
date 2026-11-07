@@ -5,7 +5,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { coreLibrary, coreRef } from '@sim/world-compiler';
+import { coreLibrary, coreRef } from '@souls/world-compiler';
 import { seatFitProblem } from '../../../../mars/viewer/engine/bodies/humanoid.ts';
 import { fixture, invite, accept, factory } from '../../test/native-owner-fixture.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';

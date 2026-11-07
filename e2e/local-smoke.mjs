@@ -85,7 +85,7 @@ export function browsersDir(env = process.env, exists = existsSync) {
 
 const INSTALL = 'PLAYWRIGHT_BROWSERS_PATH="$PWD/.e2e/browsers" pnpm --filter mars-campus-viewer exec playwright install chromium';
 const BUILDS = [
-  { what: 'the web app', file: 'apps/web/dist/index.html', args: ['--filter', '@sim/web', 'build'] },
+  { what: 'the web app', file: 'apps/web/dist/index.html', args: ['--filter', '@souls/web', 'build'] },
 ];
 
 /** Match launcher selection, then pin it with --mars-web so preflight and serving use the same directory. */
@@ -166,7 +166,7 @@ function stepper(summary) {
 
 // What the page reports about the drawn scene. Reads only; every action in the run is real input.
 const SCENE_PROBE = (entityId) => {
-  const e = window.__simEntity;
+  const e = window.__soulsEntity;
   if (!e?.scene) return { ready: false };
   let figure = null;
   e.scene.traverse((o) => {

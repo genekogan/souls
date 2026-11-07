@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { registerHooks } from 'node:module';
 import { readFileSync } from 'node:fs';
-import { WorldModel, type Entity, type OBB } from '@sim/world-compiler';
+import { WorldModel, type Entity, type OBB } from '@souls/world-compiler';
 import { WorldBuildSites, parseBuildFeed, SITE_REFINEMENT, thingEnvelope, type PublicSite, type SiteDelta, type SiteModel } from './WorldBuildSites.ts';
 
 const SERVER_NOW = 1_800_000_000_000;

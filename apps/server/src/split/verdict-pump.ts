@@ -8,7 +8,7 @@
 // a replica's misses come back with `ask()` and are answered at the next tick boundary (the agent-visible trade-off:
 // one delta). Shipped verdicts are re-asked when their actor's action changes (route keys) or any action changes
 // (scope-'' keys, e.g. a seat taken), under a CPU budget per tick, so a verdict is never older than its inputs for long.
-import type {Program, RuntimeView} from '@sim/engine-contract';
+import type {Program, RuntimeView} from '@souls/engine-contract';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {livePlatforms} from '../edge/eyes/platforms.ts';
 import {LiveFeasibility, planKey, type ActionRow, type ClaimRow, type LedgerEnv, type MenuDelta, type MenuInit, type MenuStatics, type RecordRow, type VerdictRow, type MenuWorld} from './menu-world.ts';

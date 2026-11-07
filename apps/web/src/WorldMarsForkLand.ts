@@ -12,7 +12,7 @@
 // The panorama's shader places its ranges by world axes (camera-following), so it is not turned by the group: its
 // compass bearings are shifted by the fork's north offset instead. Loaded lazily (only the fork pays for the kit).
 import * as THREE from 'three';
-import { WorldModel, applyBatch, type DefInput, type StoredDef, type Entity } from '@sim/world-compiler';
+import { WorldModel, applyBatch, type DefInput, type StoredDef, type Entity } from '@souls/world-compiler';
 import desertKit from '../../../packages/world-compiler/src/core-kit/desert.json' with { type: 'json' };
 import sceneryKit from '../../../packages/world-compiler/src/core-kit/scenery.json' with { type: 'json' };
 import template from '../../../worlds/render/mars-fork-land.json' with { type: 'json' };

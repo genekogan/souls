@@ -4,7 +4,7 @@ import { paidJson, type PaidGate } from './paid.ts';
 // and writes a short plan of beats. Beats use a closed directive list; the
 // free-text flavour reaches only the mid-brain's context, never the engine.
 import { z } from 'zod';
-import type { Beat } from '@sim/protocol';
+import type { Beat } from '@souls/protocol';
 
 export const DIRECTIVES = ['gathering', 'converse', 'perform', 'rest', 'wander', 'disperse', 'follow', 'quiet'] as const;
 export const planSchema = z.object({

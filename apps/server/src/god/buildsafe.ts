@@ -9,7 +9,7 @@
 // What cannot be repaired goes back to the god as ONE line per thing: what, why, and an op that fixes it (tested here
 // when one is found). Model-only and local: a 0.1 m raster round the edit (<= 60 m a side; closed gateable enclosures <= 96 m), the edit's things before
 // and after; the engine's nav-connect check after the commit still steps out Souls and names what this did not see.
-import { obbOverlap, type Diff, type Entity, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { obbOverlap, type Diff, type Entity, type Op, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { BAND, BODY_R, CELL, approachOf, type ApproachKey, type Vec2 } from './buildsafe-rule.ts';
 
 type OBB = { c: Vec2; half: Vec2 | number[]; yaw: number; y0: number; y1: number };

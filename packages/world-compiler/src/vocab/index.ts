@@ -6,7 +6,7 @@
 // them gets an inferred category (inferCategory) so the 391 defs that predate the catalogue are findable by facet.
 import taxonomyJson from './taxonomy.json' with { type: 'json' };
 import type { DefInput, Action } from '../schemas.ts';
-import type { Baked, FieldInput } from '@sim/generators';
+import type { Baked, FieldInput } from '@souls/generators';
 
 // ------------------------------------------------------------------ taxonomy
 
