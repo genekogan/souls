@@ -1,5 +1,5 @@
 // W6: hover a framed picture, video or gallery slot on a world-engine world to read its title and who made it.
-// Self-contained like the sound layer: it waits for `window.__simEntity` (new worlds only), listens on the canvas,
+// Self-contained like the sound layer: it waits for `window.__soulsEntity` (new worlds only), listens on the canvas,
 // raycasts at most 20 times a second against faces carrying `userData.art` (sign.mesh.ts), within REACH_M.
 // `window.__edenArt.state()` reports the art faces in view and the current hover (tests, proof).
 import * as THREE from 'three';
@@ -44,14 +44,14 @@ function attach(host: Host) {
 
 export function startArtHover() {
   if (typeof window === 'undefined' || (window as unknown as { __edenArt?: unknown }).__edenArt) return;
-  const w = window as unknown as { __simEntity?: Host; __edenArt?: unknown };
+  const w = window as unknown as { __soulsEntity?: Host; __edenArt?: unknown };
   w.__edenArt = {
     state: () => ({ faces: faces.map((f) => ({ ...(f.userData.art as ArtInfo) })), hover: current, videos: videoState() }),
     /** Hover a screen point programmatically (proof scripts drive the real pointer instead when they can). */
-    pickAt: (x: number, y: number) => { pointer = { x, y }; const h = w.__simEntity; if (h) { scan(h, performance.now() + 1e9); show(pick(h)); } return current; },
+    pickAt: (x: number, y: number) => { pointer = { x, y }; const h = w.__soulsEntity; if (h) { scan(h, performance.now() + 1e9); show(pick(h)); } return current; },
   };
   setInterval(() => {
-    const host = w.__simEntity; if (!host?.camera || !host.layer) return;
+    const host = w.__soulsEntity; if (!host?.camera || !host.layer) return;
     const now = performance.now(); attach(host); scan(host, now);
     if (pointer && now - lastPick > 50) { lastPick = now; try { show(pick(host)); } catch { /* mid-reload */ } }
   }, 50);

@@ -31,6 +31,8 @@ export const POSE_OVERLAYS = ['read', 'browse', 'write', 'play-piano', 'play-mus
   'use-computer', 'sing', 'listen', 'lift-weights',
   // todo (leisure): fishing from a bank, tossing bread, tending garden beds; on a swing or a see-saw seat, picnicking
   'fish', 'feed', 'garden', 'swing', 'seesaw', 'picnic',
+  // #430: drawing in chalk on the ground in front (a stooping overlay; the drawing itself is the world's, not the pose's)
+  'chalk',
   // R5: telling a story to a circle (standing, talking with the hands)
   'tell-story'] as const;
 /** Whole-body postures on open ground (the body point stays; the viewer lays the body out along pose.yaw). */

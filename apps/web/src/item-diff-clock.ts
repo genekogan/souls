@@ -1,4 +1,4 @@
-import type {WorldModel,Entity} from '@sim/world-compiler';
+import type {WorldModel,Entity} from '@souls/world-compiler';
 /** A native reparent/set-down belongs to the same buffered tick as the hands.
  * Only the new opt-in revisions wait; owner edits and frozen predecessors retain
  * their existing delivery semantics. No held-item details enter controller context. */

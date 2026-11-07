@@ -6,7 +6,7 @@ import { FilePlayer, fileUrl, type AudioEl, type CtxLike, type FileEnv, type Fil
 import type { MusicEvent } from './music.ts';
 
 type Ramp = { from: number; to: number; at: number; until: number };
-class FakeParam { value = 0; ramps: Ramp[] = []; constructor(private ctx: FakeCtx) {} cancelScheduledValues() {} setValueAtTime(v: number) { this.value = v; } linearRampToValueAtTime(v: number, t: number) { this.ramps.push({ from: this.value, to: v, at: this.ctx.currentTime, until: t }); this.value = v; } }
+class FakeParam { value = 0; ramps: Ramp[] = []; private ctx: FakeCtx; constructor(ctx: FakeCtx) { this.ctx = ctx; } cancelScheduledValues() {} setValueAtTime(v: number) { this.value = v; } linearRampToValueAtTime(v: number, t: number) { this.ramps.push({ from: this.value, to: v, at: this.ctx.currentTime, until: t }); this.value = v; } }
 class FakeGain implements GainLike { gain: FakeParam; connected: unknown[] = []; disconnected = false; constructor(ctx: FakeCtx) { this.gain = new FakeParam(ctx); } connect(n: unknown) { this.connected.push(n); return n; } disconnect() { this.disconnected = true; } }
 class FakeEl implements AudioEl {
   src = ''; crossOrigin: string | null = 'anonymous'; preload = 'auto'; currentTime = 0; duration = NaN; readyState = 0; paused = true;

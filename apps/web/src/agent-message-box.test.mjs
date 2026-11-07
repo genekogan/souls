@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const {build} = createRequire(require.resolve('vite/package.json'))('esbuild');
-const dir = await mkdtemp(join(tmpdir(), 'sim-inbox-render-'));
+const dir = await mkdtemp(join(tmpdir(), 'souls-inbox-render-'));
 Object.assign(globalThis, {location: {origin: 'http://localhost:5960', pathname: '/w/inbox/', search: '', hash: ''}, sessionStorage: {getItem: () => null}});
 const outfile = join(dir, 'render.cjs');
 await build({stdin: {contents: `export {AgentMessageBoxView, soulStartPrompt} from './AgentMessageBox.tsx';export {watchStatus} from './god-ui/god-api.ts';export {watchInbox, godState} from './god-ui/god-store.ts';export {publishSession} from './auth-session.ts';export {SoulFocus} from './SoulFocus.tsx';export {reportAgentPresence} from './agent-presence.ts';export {createElement} from 'react';export {renderToStaticMarkup} from 'react-dom/server';`, resolveDir: new URL('.', import.meta.url).pathname, loader: 'tsx'}, outfile, bundle: true, format: 'cjs', platform: 'node', jsx: 'automatic', loader: {'.css': 'empty'}, logLevel: 'silent'});

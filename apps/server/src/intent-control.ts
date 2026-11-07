@@ -2,16 +2,16 @@ import {ownRequestDiagnosticsV1,type OwnRequestDiagnosticsV1} from './own-reques
 import {setImmediate as nextEventLoopTurn} from 'node:timers/promises';
 import {HumanGoalStateChanged} from './human-compiler.ts';
 import {readHumanCapabilitiesV1} from './human-capabilities.ts';
-import type {HumanSteeringOutcomeV1} from '@sim/engine-contract';
+import type {HumanSteeringOutcomeV1} from '@souls/engine-contract';
 import {readIntentArrivalsV1} from './intent-arrivals.ts';
-import {intentArrivalQueryV1Schema,INTENT_ARRIVAL_V1} from '@sim/protocol';
+import {intentArrivalQueryV1Schema,INTENT_ARRIVAL_V1} from '@souls/protocol';
 // Explicitly injected candidate transport service. Production bootstrap does
 // not construct this service or advertise the behavioral version.
 import { IntentHistoryReaderV1,IntentHistoryCursorUnavailable } from './intent-history-reader.ts';
-import { INTENT_HISTORY_V1,intentHistoryQueryV1Schema,type IntentHistoryPageV1 } from '@sim/protocol';
+import { INTENT_HISTORY_V1,intentHistoryQueryV1Schema,type IntentHistoryPageV1 } from '@souls/protocol';
 import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
-import { INTENT_V2, intentRequestV2Schema, intentSourceV2Schema, intentOwnerControlV2Schema, type IntentOwnerControlV2, type IntentReceiptV2 } from '@sim/protocol';
+import { INTENT_V2, intentRequestV2Schema, intentSourceV2Schema, intentOwnerControlV2Schema, type IntentOwnerControlV2, type IntentReceiptV2 } from '@souls/protocol';
 import { hashToken } from './auth.ts';
 import type { Brain } from './brain.ts';
 import type { SoulRow } from './db.ts';

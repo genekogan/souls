@@ -1,4 +1,4 @@
-import type {Entity,Program} from '@sim/engine-contract';
+import type {Entity,Program} from '@souls/engine-contract';
 import type {EdgeCapability} from '../contract.ts';
 import {creatureOf,type CreatureSpecies} from '../../../../../mars/viewer/engine/bodies/creatures.ts';
 import {hasDeclaredProfile,hasRollingProfile,profileActionProblem} from '../../../../../mars/viewer/engine/bodies/action-profile.ts';

@@ -1,7 +1,7 @@
 # One production release of the current main head:
 #   preflight  required secrets/vars exist (fails fast, naming what is missing), the head is main, inputs are sane
 #   gate       the full Modal release gate (tools/test-harness/release-gate.sh) against the last release tag
-#   ship       waits for the `production` environment's required reviewer, then tools/world-launcher/deploy/ship.sh
+#   ship       waits for the `production` environment's required reviewer, then tools/world-launcher/deploy/ship-dual-stage.sh
 #              over SSH (backup, upload, activate, probe, walks, poster, stall, cdn-walk), then healthz
 #              The web build renders the public changelog page from CHANGELOG.md with this release's section already
 #              compiled in (a copy outside the tree, SIM_CHANGELOG_FILE; #393), so the page shows the release it ships
@@ -212,7 +212,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ship"
           ( while sleep 300; do echo "ship still running ($(date -u +%H:%MZ))"; done ) & beat=$!
           set +e
-          tools/world-launcher/deploy/ship.sh --label "$LABEL" ${SHIP_PROBE_FLAG:-}
+          tools/world-launcher/deploy/ship-dual-stage.sh --label "$LABEL" ${SHIP_PROBE_FLAG:-}
           status=$?
           kill $beat
           exit $status

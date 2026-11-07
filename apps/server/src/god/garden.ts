@@ -4,7 +4,7 @@
 // Entry 34: a planter with `growth` (planter@2) grows in the same pass: one stage per day change it starts moist enough
 // (at least DRY_BELOW), capped at the last stage; a dry one stalls and its `thirst` (dry days in a row, capped) rises,
 // so it wilts further, but it never dies. Nothing about plants is computed on any other tick.
-import { opSchema, GROWTH_STAGES, type Op, type WorldModel } from '@sim/world-compiler';
+import { opSchema, GROWTH_STAGES, type Op, type WorldModel } from '@souls/world-compiler';
 export const DRY_PER_DAY = 1 / 3, DRY_BELOW = 0.34, MAX_THIRST = 3, LAST_STAGE = GROWTH_STAGES.length - 1;
 /** Test-visible: planters visited by the daily pass (it is 0 on every tick without a day change). */
 export const gardenStats = { planterVisits: 0, passes: 0 };

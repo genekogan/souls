@@ -2,7 +2,7 @@
 // an old world (which stores the whole kit from an earlier release) boots unchanged: same defs, same hashes, no commit.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, buildLibrary, coreLibrary, type DefInput } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, buildLibrary, coreLibrary, type DefInput } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { GodMode } from './god.ts';
 import { WorldStore } from './store.ts';

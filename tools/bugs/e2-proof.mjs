@@ -68,10 +68,10 @@ let chromium = null;
 try { chromium = createRequire(resolve(root, 'mars/viewer/package.json'))('@playwright/test').chromium; } catch { log('(no @playwright/test)'); }
 async function snap(page, name) { const f = resolve(out, `${name}.png`); await page.screenshot({ path: f }); report.shots.push(f); log(`  shot ${name}.png`); }
 async function waitFor(fn, ms = 30000, every = 500) { const t0 = Date.now(); let last; while (Date.now() - t0 < ms) { last = await fn(); if (last?.ok) return last; await sleep(every); } return last; }
-const rainNow = (page) => page.evaluate(() => { const a = window.__simLiving?.atmosphere?.(); return a ? { rain: a.state.rain, kind: a.kind, set: a.set } : null; });
+const rainNow = (page) => page.evaluate(() => { const a = window.__soulsLiving?.atmosphere?.(); return a ? { rain: a.state.rain, kind: a.kind, set: a.set } : null; });
 // drawn things, read from the live scene (what the visitor's GPU draws)
 const sceneRead = (page) => page.evaluate(() => {
-  const s = window.__simEntity; if (!s) return null; const out = { boom: null, forks: null, deer: null };
+  const s = window.__soulsEntity; if (!s) return null; const out = { boom: null, forks: null, deer: null };
   s.scene.traverse((o) => {
     if (o.name === 'role:boom') out.boom = +o.rotation.x.toFixed(4);
     if (o.name === 'role:forks') out.forks = +o.position.y.toFixed(4);
@@ -143,7 +143,7 @@ try {
         await snap(page, `v5-lido-basin-${d}`); return { dialogClosed: !(await page.locator('.explore-modal').isVisible().catch(() => false)) };
       }, (r) => r?.dialogClosed);
       // the digger and forklift are vehicles, not Explore landmarks: frame them with the camera for the close-ups
-      const frame = (p, eye) => page.evaluate(([p, eye]) => { const s = window.__simEntity; s.controls.target.set(p[0], p[1], p[2]); s.camera.position.set(eye[0], eye[1], eye[2]); s.controls.update?.(); }, [p, eye]);
+      const frame = (p, eye) => page.evaluate(([p, eye]) => { const s = window.__soulsEntity; s.controls.target.set(p[0], p[1], p[2]); s.camera.position.set(eye[0], eye[1], eye[2]); s.controls.update?.(); }, [p, eye]);
       await step(`V4c[${d}] close-ups: digger arm at two moments, forklift forks`, async () => {
         await frame([ax + 11, 1.6, az + 22], [ax + 4, 5.5, az + 32]); await sleep(1500); await snap(page, `v4-digger-arm-${d}`); const a = await sceneRead(page);
         await sleep(3500); await snap(page, `v4-digger-arm-later-${d}`); const b = await sceneRead(page);

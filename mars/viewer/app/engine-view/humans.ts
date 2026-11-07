@@ -490,7 +490,9 @@ export class HumanViews {
   private readingActors = new Set<string>();
   private climbs: { id: string; path: [number, number, number][] }[] = [];
 
-  constructor(private readonly humanPresets=false) {
+  private readonly humanPresets: boolean;
+  constructor(humanPresets = false) {
+    this.humanPresets = humanPresets;
     this.group.name = 'engine humans';
   }
 

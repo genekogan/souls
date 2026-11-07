@@ -70,7 +70,7 @@ EDEN_WORLDS="${VITE_EDEN_EXPERIENCE_WORLD_IDS-pm-preview-eden-20261005}"
 if [ -n "${SIM_PREBUILT_WEB_ROOT:-}" ]; then
   node tools/world-launcher/deploy/prebuilt-web.mjs install "$SIM_PREBUILT_WEB_ROOT/$BUILD" "$OUT/apps/web/dist" "$(git rev-parse HEAD)" "$BUILD" "$BASE/" "$CDN" "$CDN_ORIGIN" "$EDEN_WORLDS" "${SIM_ARRIVAL_UI_ENABLED:-0}" "${SIM_GOATCOUNTER-simeden}" "${SIM_GOD_UPLOADS_CDN:-1}"
 else
-  BUILD_ID="$BUILD" VITE_EDEN_EXPERIENCE_WORLD_IDS="$EDEN_WORLDS" SIM_ASSETS_CDN_ENABLED="$CDN" SIM_ASSETS_CDN_ORIGIN="$CDN_ORIGIN" pnpm --filter @sim/web exec vite build --logLevel warn --outDir "$OUT/apps/web/dist" --emptyOutDir --base "$BASE/"
+  BUILD_ID="$BUILD" VITE_EDEN_EXPERIENCE_WORLD_IDS="$EDEN_WORLDS" SIM_ASSETS_CDN_ENABLED="$CDN" SIM_ASSETS_CDN_ORIGIN="$CDN_ORIGIN" pnpm --filter @souls/web exec vite build --logLevel warn --outDir "$OUT/apps/web/dist" --emptyOutDir --base "$BASE/"
 fi
 grep -qE "(src=|\")$BASE/assets/" "$OUT/apps/web/dist/index.html" || { echo "web build is not under $BASE/"; exit 1; }
 # With the switch on, the bundle must carry the CDN origin (the flag-off build tree-shakes it away) and the manifest.
@@ -97,7 +97,7 @@ du -sh "$OUT" | sed 's/^/   size /'
 echo "   retained all local releases (no automatic pruning)"
 node "$ROOT/tools/world-launcher/deploy/release-manifest.mjs" snapshot "$OUT" > "$OUT/RELEASE-MANIFEST.json"
 if [ -n "$LOCAL" ]; then
-  echo "assembled $BUILD in $OUT (run pnpm install --offline --frozen-lockfile --filter @sim/server... there)"; exit 0
+  echo "assembled $BUILD in $OUT (run pnpm install --offline --frozen-lockfile --filter @souls/server... there)"; exit 0
 fi
 
 REL="$RELROOT/$BUILD"
@@ -123,8 +123,8 @@ echo "== install (user, dirs, unit; idempotent) and Linux dependencies"
 # legacy-setup.sh writes the legacy stage's own settings.
 INSTALL="bash $REL/tools/world-launcher/deploy/install.sh"; [ "$STAGE" != legacy ] || INSTALL="id simworlds >/dev/null"
 ssh "$HOST" "set -e; $INSTALL; chown -R simworlds:simworlds $REL; touch $RELROOT/$BUILD.deps.log; chown simworlds:simworlds $RELROOT/$BUILD.deps.log;
-  sudo -u simworlds -H bash -c 'set -euo pipefail; cd $REL; COREPACK_ENABLE_DOWNLOAD_PROMPT=0 nice -n 10 corepack pnpm install --frozen-lockfile --filter @sim/server... > $RELROOT/$BUILD.deps.log 2>&1 && mkdir -p apps/web/node_modules/@sim && ln -sfn ../../../../packages/world-compiler apps/web/node_modules/@sim/world-compiler' || { tail -20 $RELROOT/$BUILD.deps.log; exit 1; }"
-# The server imports apps/web/src/humanoid/look.ts (shared look rules), which imports @sim/world-compiler; the server-only
+  sudo -u simworlds -H bash -c 'set -euo pipefail; cd $REL; COREPACK_ENABLE_DOWNLOAD_PROMPT=0 nice -n 10 corepack pnpm install --frozen-lockfile --filter @souls/server... > $RELROOT/$BUILD.deps.log 2>&1 && mkdir -p apps/web/node_modules/@souls && ln -sfn ../../../../packages/world-compiler apps/web/node_modules/@souls/world-compiler' || { tail -20 $RELROOT/$BUILD.deps.log; exit 1; }"
+# The server imports apps/web/src/humanoid/look.ts (shared look rules), which imports @souls/world-compiler; the server-only
 # install doesn't link web's workspace deps, so link that one package (2026-10-11: we-39cb14d848af worlds failed to boot).
 
 if [ "$ACTIVATE" = 0 ]; then echo "uploaded $BUILD (not activated)"; exit 0; fi

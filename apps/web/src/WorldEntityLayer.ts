@@ -12,9 +12,9 @@ import { loadSnapshot } from './snapshot-wire.ts';
 import { snapshotModel } from './snapshot-model.ts';
 import type { SnapshotDecoder, SnapshotDelta } from './snapshot-delta.ts';
 import * as THREE from 'three';
-import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@sim/ground';
-import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
-import { GENERATORS } from '@sim/generators';
+import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@souls/ground';
+import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, keptBehindDoor, type Def, type Entity, type StoredDef } from '@souls/world-compiler';
+import { GENERATORS } from '@souls/generators';
 import { meshFor, type MeshCtx } from './gen-mesh/index.ts';
 import { clearBuildingPrefetch, prefetchBuilding } from './gen-mesh/building.mesh.ts';
 import { MaterialLib } from './gen-mesh/materials.ts';
@@ -654,12 +654,12 @@ export class WorldEntityLayer {
         const { enter } = this.ring.update(pose.eye[0], pose.eye[2], true);
         sorted = enter.flatMap((id) => { const e = m.entities.get(id); return e ? [e] : []; }); far = -1;
         if (!workersLater) { this.prefetchBuildings(m, sorted, pending); await nextTask(); if (signal.aborted || this.model !== m) return; }
-        (window as unknown as { __simStream?: unknown }).__simStream = { inner: this.ring.inner, outer: this.ring.outer, things: this.ring.size, ring: sorted.length, stats: this.streamStats };   // probes
+        (window as unknown as { __soulsStream?: unknown }).__soulsStream = { inner: this.ring.inner, outer: this.ring.outer, things: this.ring.size, ring: sorted.length, stats: this.streamStats };   // probes
       }
       // t4-phone-new: of the near things, those the arrival camera can see (or whose shadow can reach its view) are drawn
       // before the poster; the fill then draws the next things in view, then the near ones behind or beside it (arrival-view.ts)
       const { list: all, first: nearCount } = view && keyOf && byId ? viewFirst(sorted, far < 0 ? sorted.length : far, arrivalSeen(m, view, keyOf, byId, true), FILL_AHEAD) : { list: sorted, first: far < 0 ? sorted.length : far };
-      (window as unknown as { __simViewFirst?: unknown }).__simViewFirst = { near: far < 0 ? sorted.length : far, seen: nearCount, wedge: view, eager: eagerShas().length, eagerKB: Math.round(Object.values(eagerSizes).reduce((a, b) => a + b, 0) / 1e3) };   // probes
+      (window as unknown as { __soulsViewFirst?: unknown }).__soulsViewFirst = { near: far < 0 ? sorted.length : far, seen: nearCount, wedge: view, eager: eagerShas().length, eagerKB: Math.round(Object.values(eagerSizes).reduce((a, b) => a + b, 0) / 1e3) };   // probes
       for (let i = 0; i < all.length;) {
         if (i >= nearCount && !this.filling) { this.active = true; this.building = false; this.filling = true; this.fill = this.fillRest(m, all, i, pending, signal, workersLater); return; }
         const until = performance.now() + BUILD_SLICE_MS;
@@ -758,6 +758,8 @@ export class WorldEntityLayer {
   private overrides = new Map<string, THREE.Vector3>();
   /** BALLOON-BODY: the native twin's yaw (Core convention: rotation.y = -yaw), so the drawn cabin's door is Core's door. */
   private overrideYaw = new Map<string, number>();
+  /** PC13 (#692): a loose part a crew raises turns about its own z; the recording owns that too, while their hands are on it. */
+  private overrideRoll = new Map<string, number>();
   private recordedItems = new Set<string>();
   private missingItemAt = new Map<string,number>();
   private lightMoves = new Set<string>();
@@ -843,7 +845,7 @@ export class WorldEntityLayer {
   private transported = new Set<string>();
   /** The recorded native load owns its airborne pose, not the slower world-edit
    * stream. Only active human grips and their settling loads are visited. */
-  transportPoses(entities: Record<string, {p: readonly number[]; yaw: number; state: Record<string, unknown>}>, bodies: readonly string[]) {
+  transportPoses(entities: Record<string, {p: readonly number[]; yaw: number; roll?: number; state: Record<string, unknown>}>, bodies: readonly string[]) {
     const held = new Set<string>();
     for (const body of bodies) {
       const grip = entities[body]?.state.grip as {entity?: string} | undefined;
@@ -855,13 +857,13 @@ export class WorldEntityLayer {
     }
     for (const id of this.transported) {
       const e = entities[id], d = this.drawn.get(id);
-      if (!e || !d) { this.transported.delete(id); this.overrides.delete(id); this.overrideYaw.delete(id); continue; }
+      if (!e || !d) { this.transported.delete(id); this.overrides.delete(id); this.overrideYaw.delete(id); this.overrideRoll.delete(id); continue; }
       const p = e.p;
       if (!held.has(id) && d.to.p.distanceToSquared(new THREE.Vector3(p[0], p[1], p[2])) < .0001) {
-        this.transported.delete(id); this.overrides.delete(id); this.overrideYaw.delete(id); d.settled = false; continue;
+        this.transported.delete(id); this.overrides.delete(id); this.overrideYaw.delete(id); if (this.overrideRoll.delete(id)) { const r = this.model?.entities.get(id)?.r; d.obj.rotation.z = Array.isArray(r) ? r[2] : 0; } d.settled = false; continue;
       }
       const pose = this.overrides.get(id) ?? new THREE.Vector3();
-      pose.set(p[0], p[1], p[2]); this.overrides.set(id, pose); this.overrideYaw.set(id, e.yaw); this.live.add(id);
+      pose.set(p[0], p[1], p[2]); this.overrides.set(id, pose); this.overrideYaw.set(id, e.yaw); if (e.roll || this.overrideRoll.has(id)) this.overrideRoll.set(id, e.roll ?? 0); this.live.add(id);
     }
   }
 
@@ -928,7 +930,7 @@ export class WorldEntityLayer {
       // entry 44: a mug being drunk from or rinsed follows the drawn hand (its figure's cup pose), not the recorded item pose:
       // the engine's mug is the same timeline resolved on a 1.75 m body, the drawn one on this rig's own lips
       const cupHand = !d.removing && this.held.has(id) && !d.obj.userData.handleGrip && this.cupHeld(id, d);
-      const ride = cupHand ? undefined : this.overrides.get(id); if (ride) { d.obj.position.copy(ride); const yaw = this.overrideYaw.get(id); if (yaw !== undefined) d.obj.rotation.y = -yaw; }
+      const ride = cupHand ? undefined : this.overrides.get(id); if (ride) { d.obj.position.copy(ride); const yaw = this.overrideYaw.get(id); if (yaw !== undefined) d.obj.rotation.y = -yaw; const roll = this.overrideRoll.get(id); if (roll !== undefined) d.obj.rotation.z = roll; }
       const s = d.from.s + (d.to.s - d.from.s) * t;
       d.obj.scale.setScalar(s);
       const shown = this.interiorVisible(id, d);
@@ -1598,7 +1600,9 @@ export class WorldEntityLayer {
     if (def.tags.includes('horizon')) this.horizonBy.add(e.id); else this.horizonBy.delete(e.id);
     const parent = e.in.parent !== 'world' ? m.entities.get(e.in.parent) : undefined;
     if (parent && m.resolvedDef(parent.def)?.components.body) this.held.set(e.id, parent.id); else this.held.delete(e.id);
-    if (parent && containerInside(m.resolvedDef(parent.def))?.slots.some((s) => s.id === e.in.slot)) this.keptIn.set(e.id, parent.id); else this.keptIn.delete(e.id);
+    // #435: a doorless container (a swap shelf) hides nothing and has no lid to follow, so its contents are ordinary things
+    const pdef = parent && m.resolvedDef(parent.def);
+    if (pdef && keptBehindDoor(pdef, e.in.slot)) this.keptIn.set(e.id, parent!.id); else this.keptIn.delete(e.id);
     const existing = this.drawn.get(e.id);
     const defHash = def.hash + ':' + JSON.stringify(e.params ?? {}) + ':' + JSON.stringify(e.state ?? {}) + ':' + JSON.stringify(e.shape ?? null) + ':' + JSON.stringify(e.r ?? 0);
     const builder = meshFor(def);
@@ -1876,7 +1880,7 @@ function waterLevel(g: Ground, x: number, z: number): number | null {
   }
   return level ?? g.seaLevel ?? null;
 }
-// indexed reads, not array destructuring: the same arithmetic as @sim/ground's pointInPoly (L3e)
+// indexed reads, not array destructuring: the same arithmetic as @souls/ground's pointInPoly (L3e)
 function pointInPoly(px: number, pz: number, poly: [number, number][]) {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {

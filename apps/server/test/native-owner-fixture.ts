@@ -2,7 +2,7 @@
 // Never imports a live DB, provider credential, service or production bootstrap.
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { Auth } from '../src/auth.ts';
 import { Brain } from '../src/brain.ts';
 import { config } from '../src/config.ts';
