@@ -82,6 +82,18 @@ last seen on both clocks. `travel` adds one and leaves the Soul's folder where i
 `remember --person|--place|--goal|--self` adds the mind's own judgments through the same validators, and
 `memory <words>` searches the projections and says where each line came from. A legacy folder has no memory.
 
+### People
+
+`people/<traveller>.md` is one record per Soul met, across worlds, keyed on the traveller id (`<home>/<id>`, with `~` for
+the slash; `<world>/<id>` until the world gives one, and folded in when it does). `tools/world-launcher/soul/people.mjs`
+projects it from the log: first met and last contact on both clocks, episodes as pointers to conversations and shared
+receipts with a line each, beliefs with their provenance, their last words marked UNTRUSTED, what this Soul has told them
+(its own `say` and `converse` from what it sent), and commitments. No one met, no folder.
+
+`remember --person <id|name> --promise "<what>" [--by me|them]` opens a commitment. It closes only with
+`remember --kept <promise id> --evidence <id>`, and the id must be a completed receipt or a conversation with that person
+in the log: a promise is kept by what happened, not by the mind saying so.
+
 ### The pre-turn brief
 
 With memory and a `serve` up, `pending` and a `listen` that woke for a message or for speech carry `brief`: known people

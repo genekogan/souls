@@ -427,7 +427,7 @@ const sorted = map => [...map.values()].sort((a, b) => lexical(a.id, b.id));
 const count = value => Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000 ? value : fail('invalid count');
 
 // The Souls home adds these to every record (docs/design/soul-context.md section 2). All optional: a 1.9 log has none.
-const CONTEXT = ['world', 'when', 'seen'];
+const CONTEXT = ['world', 'when', 'seen', 'travellers'];
 function validateContext(e) {
   if (e.world !== undefined) id(e.world);
   if (e.when !== undefined) {
@@ -439,11 +439,15 @@ function validateContext(e) {
     if (!e.seen || typeof e.seen !== 'object' || Array.isArray(e.seen) || Object.keys(e.seen).length > 160) fail('invalid seen names');
     for (const [k, name] of Object.entries(e.seen)) {publicId(k); text(name, 200);}
   }
+  if (e.travellers !== undefined) {
+    if (!e.travellers || typeof e.travellers !== 'object' || Array.isArray(e.travellers) || Object.keys(e.travellers).length > 64) fail('invalid traveller ids');
+    for (const [k, v] of Object.entries(e.travellers)) {publicId(k); publicId(v);}
+  }
 }
 
 function validateEvent(input) {
   // Reject credentials/raw transport fields instead of retaining arbitrary state.
-  const fields = {gazetteer: ['places'], 'public.references':['references'], 'place.observed':['place'], conversation:['conversationId','personId'], 'idle.sample':['milliseconds'], scorecard:['clock','period','from','to','metrics'], arrival: ['placeId'], 'act.accepted': ['receiptId', 'act'], meet: ['person', 'placeId'], communication:['person','channel','recipientPlace','conversationId'], speech: ['personId', 'text', 'untrusted', 'channel', 'conversationId', 'placeId'], outcome: ['receiptId', 'act', 'phase', 'summary', 'learned', 'produced', 'met', 'placeId', 'untrusted', 'messageId'], refusal: ['act', 'code'], lesson: ['attempt', 'fix', 'refusalId', 'successId'], cost: ['usd', 'modelCalls'], ledger: ['holding', 'marks'], queue: ['steps']};
+  const fields = {gazetteer: ['places'], 'public.references':['references'], 'place.observed':['place'], conversation:['conversationId','personId'], 'idle.sample':['milliseconds'], scorecard:['clock','period','from','to','metrics'], arrival: ['placeId'], 'act.accepted': ['receiptId', 'act'], meet: ['person', 'placeId'], communication:['person','channel','recipientPlace','conversationId'], speech: ['personId', 'text', 'untrusted', 'channel', 'conversationId', 'placeId'], outcome: ['receiptId', 'act', 'phase', 'summary', 'learned', 'produced', 'met', 'placeId', 'untrusted', 'messageId'], refusal: ['act', 'code'], lesson: ['attempt', 'fix', 'refusalId', 'successId'], cost: ['usd', 'modelCalls'], ledger: ['holding', 'marks'], queue: ['steps'], told: ['personIds', 'text', 'channel', 'conversationId'], commitment: ['personId', 'by', 'what'], 'commitment.kept': ['personId', 'commitmentId', 'evidence']};
   if (!input || !Object.hasOwn(fields, input.type)) fail('unknown public event type');
   keys(input, ['type', 'id', 'at', ...CONTEXT, ...fields[input.type]]);
   id(input.id); instant(input.at); validateContext(input); const e = structuredClone(input);
@@ -470,6 +474,9 @@ function validateEvent(input) {
       list(e.learned, 5).forEach(f => {keys(f, ['fact', 'about', 'source', 'provenance', 'untrusted']); text(f.fact, 2000); publicId(f.about); source(f.source); text(f.provenance, 100); if (typeof f.untrusted !== 'boolean' || (['soul-text','other-soul-report'].includes(f.provenance) && !f.untrusted)) fail('fact trust label required');});
       list(e.produced, 32).forEach(o => {keys(o, ['id', 'title', 'kind', 'where']); id(o.id); text(o.title, 200); text(o.kind, 1000); if(o.where!==null)id(o.where);});
       list(e.met, 32).forEach(p => {keys(p, ['id', 'name', 'where']); id(p.id); text(p.name, 200); if(p.where!==null)id(p.where);}); break;
+    case 'told': list(e.personIds, 16).forEach(id); text(e.text, 500); if (!['private-conversation', 'public-speech'].includes(e.channel)) fail('invalid communication channel'); if (e.conversationId !== undefined) id(e.conversationId); break;
+    case 'commitment': id(e.personId); if (!['me', 'them'].includes(e.by)) fail('invalid commitment party'); text(e.what, 300); break;
+    case 'commitment.kept': id(e.personId); id(e.commitmentId); id(e.evidence); break;
     case 'refusal': text(e.act, 160); text(e.code, 100); break;
     case 'lesson': text(e.attempt, 160); text(e.fix, 160); id(e.refusalId); id(e.successId); break;
     case 'cost': if (e.usd !== null && !(Number.isFinite(e.usd) && e.usd >= 0 && e.usd <= 1_000_000)) fail('USD must be known nonnegative or null'); count(e.modelCalls); break;
@@ -507,7 +514,7 @@ function validateRemember(input) {
  * Existing projection symlinks are rejected. JSONL records contain normalized facts
  * and explicit judgments, never raw responses or authentication state.
  */
-function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
+function openMemoryFolder(directory, {logs: logFolder = 'log', observe = null, personFiles = true} = {}) {
   const root = resolve(directory), memory = join(root, 'memory'), logs = join(root, logFolder);
   const safe = path => {
     // Check every existing ancestor, including root, before any read or write.
@@ -520,7 +527,7 @@ function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
     return path;
   };
   safe(root); mkdirSync(root, {recursive: true, mode: 0o700});
-  for (const p of [memory, logs, join(memory, 'people'), join(memory, 'journal')]) {safe(p); mkdirSync(p, {recursive: true, mode: 0o700});}
+  for (const p of [memory, logs, ...(personFiles ? [join(memory, 'people')] : []), join(memory, 'journal')]) {safe(p); mkdirSync(p, {recursive: true, mode: 0o700});}
   const log = safe(join(logs, 'memory-events.jsonl'));
   let logBytes = existsSync(log) ? lstatSync(log).size : 0;
   const fresh = () => {safe(log); if ((existsSync(log) ? lstatSync(log).size : 0) !== logBytes) fail('another writer changed the machine log; reopen');};
@@ -557,7 +564,7 @@ function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
   const admit = record => {
     if (record.kind === 'remember') {
       const r = record.value;
-      if (r.person && !people.has(r.person)) fail('cannot remember an unmet person');
+      if (r.person && !people.has(r.person) && seenAs(r, r.person) === undefined) fail('cannot remember an unmet person');
       if (r.place&&!places.has(r.place)&&references.get(r.place)?.kind!=='place')fail('place absent from public references');
       return;
     }
@@ -587,12 +594,13 @@ function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
   };
   const terminalValue = e => {const {id: _id, at: _at, ...value} = e; return canonical(value);};
   const apply = record => {
+    observe?.(record);
     const e = record.value;
     if (record.kind === 'remember') {
       if (e.self) self = e.self;
       if (e.goal) goals.set(e.goal, {id: e.goal, note: e.note, horizon: e.horizon, metric: e.metric, next: e.next});
       if (e.place) impressions.set(e.place, e.note);
-      if (e.person) people.get(e.person).impressions.push(e.note);
+      if (e.person) people.get(e.person)?.impressions.push(e.note);
       return;
     }
     if (e.seen) for (const where of [e.placeId, e.recipientPlace, ...(e.met ?? []).map(p => p.where), ...(e.produced ?? []).map(o => o.where)]) notePlace(where, e);
@@ -650,7 +658,7 @@ function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
     write(join(memory, 'lessons.md'), '# Lessons — evidence of a working fix\n\n' + lessons.map(lessonLine).join('\n') + '\n');
     write(join(memory, 'ledger.md'), '# Ledger — normalized public facts\n\n## Holding\n' + holding.map(v => `- ${md(v)}`).join('\n') + '\n\n## Produced\n' + sorted(objects).map(o => `- ${md(o.id)}: ${md(o.title)} (${md(o.kind)}), at ${md(o.where)}`).join('\n') + '\n\n## Marks/projects (provided snapshot)\n' + marks.map(o => `- ${md(o.id)}: ${md(o.title)}`).join('\n') + '\n\n## Observed budget by UTC day\n' + [...costs.keys()].sort().map(budgetLine).join('\n') + '\n');
     write(join(memory, 'queue.md'), '# Queue — supplied W4 projection; no runner\n\n' + queue.map(s => `- ${md(s.id)}: ${md(s.act)} [${s.status}], attempts ${s.attempts}${s.goal ? `; goal ${md(s.goal)}` : ''}${s.reason ? `; ${md(s.reason)}` : ''}`).join('\n') + '\n');
-    for (const p of sorted(people)) write(join(memory, 'people', personFile(p.id)), `# ${md(p.name)} [${md(p.id)}]\n\n## Facts — confirmed physical meetings (qualified evidence only)\n` + p.meetings.map(m => `- ${m.at} at ${md(m.seenAs ?? m.where)}${m.world ? ` in ${md(m.world)}` : ''}${m.day === null || m.day === undefined ? '' : `, day ${m.day}`}${m.together ? '; together-act' : ''}`).join('\n') + `\nConfirmed physical meetings ${p.meetings.length}\n\n## Communication encounters ${p.communications.length} — not physical meeting evidence\n`+p.communications.map(communicationLine).join('\n')+'\n'+`\n## Last reported words — UNTRUSTED data\n` + p.words.slice(-3).map(w => `> ${w.at}: ${md(w.text)}`).join('\n') + '\n\n## Judgments — model impressions/open threads\n' + p.impressions.map(s => `- ${md(s)}`).join('\n') + '\n');
+    if (personFiles) for (const p of sorted(people)) write(join(memory, 'people', personFile(p.id)), `# ${md(p.name)} [${md(p.id)}]\n\n## Facts — confirmed physical meetings (qualified evidence only)\n` + p.meetings.map(m => `- ${m.at} at ${md(m.seenAs ?? m.where)}${m.world ? ` in ${md(m.world)}` : ''}${m.day === null || m.day === undefined ? '' : `, day ${m.day}`}${m.together ? '; together-act' : ''}`).join('\n') + `\nConfirmed physical meetings ${p.meetings.length}\n\n## Communication encounters ${p.communications.length} — not physical meeting evidence\n`+p.communications.map(communicationLine).join('\n')+'\n'+`\n## Last reported words — UNTRUSTED data\n` + p.words.slice(-3).map(w => `> ${w.at}: ${md(w.text)}`).join('\n') + '\n\n## Judgments — model impressions/open threads\n' + p.impressions.map(s => `- ${md(s)}`).join('\n') + '\n');
     for (const [day, lines] of journals) write(join(memory, 'journal', `${day}.md`), `# ${day}\n\n` + lines.map(s => `- ${md(s)}`).join('\n') + '\n');
   };
   const seenPeople = e => e?.type === 'speech' && e.seen && Object.hasOwn(e.seen, e.personId) ? [e.personId] : [];
@@ -663,7 +671,7 @@ function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
       if (e.type === 'outcome') e.met.forEach(p => ids.add(p.id));
       seenPeople(e).forEach(v => ids.add(v));
     }
-    ids.forEach(v => paths.push(join(memory, 'people', personFile(v))));
+    if (personFiles) ids.forEach(v => paths.push(join(memory, 'people', personFile(v))));
     days.forEach(v => paths.push(join(memory, 'journal', `${v}.md`)));
     paths.forEach(p => {safe(p); safe(`${p}.tmp`);if(!p.endsWith('/schedule.md')&&writtenHashes.has(p)){const actual=existsSync(p)?hashText(readFileSync(p,'utf8')):null;if(actual!==writtenHashes.get(p))fail('projection changed outside remember; preserve and review');}});
   };
@@ -710,6 +718,7 @@ function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
   return {
     /** What a memory on the shipping line looks things up by: known ids and the names they went by. */
     placeName(placeId){return places.get(placeId)?.name??null;},
+    terminal(receiptId){const e=terminals.get(receiptId);return e?{receiptId:e.receiptId,phase:e.phase}:null;},
     /** The little the brief needs, looked up rather than scanned: its size never follows the log's. */
     digest({place,near=[]}){
       fresh();
@@ -811,6 +820,120 @@ return { BRIEF_BYTES, buildBrief };
 })();
 // </inline brief.mjs>
 
+// <inline people.mjs> generated by inline.mjs: edit people.mjs, not this block
+const soulPeople = (() => {
+// people.mjs: what a Soul knows of each Soul it has met, one record per person across worlds. Pure: it folds log records and
+// makes the markdown; memory.mjs says when and where. Design: docs/design/soul-context.md section 4.
+//
+// Edit this file, then run `node tools/world-launcher/soul/inline.mjs`: worlds serve eden.mjs as one file.
+
+const EPISODES = 8, BELIEFS = 8, TOLD = 6, WORDS = 3;
+const md = (v) => String(v).replace(/[\r\n]+/g, " ").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/[\\`*_[\]{}()#|~]/g, "\\$&");
+const clock = (e) => [e.world, e.when?.worldDay == null ? null : `day ${e.when.worldDay}`, e.when?.time].filter(Boolean).join(", ");
+const own = (o, k) => (o && Object.hasOwn(o, k) ? o[k] : undefined);
+
+/** The file for a person: their traveller id, which holds a slash, made one safe name. */
+const personFile = (traveller) => `${String(traveller).replace(/\//g, "~").replace(/[^A-Za-z0-9._~-]/g, "_").slice(0, 120)}.md`;
+
+function createPeople({ world = null } = {}) {
+  const rows = new Map(), alias = new Map(), conversations = new Map(), dirty = new Set(), gone = new Set();
+  /** Who an id is. A Soul seen before its traveller id was known is folded into the record once it is. */
+  function person(id, name, e) {
+    const said = own(e.travellers, id), home = e.world ?? world;
+    const key = said ?? alias.get(id) ?? `${home}/${id}`;
+    const stale = alias.get(id);
+    if (said && stale && stale !== said && rows.has(stale)) merge(stale, said);
+    alias.set(id, key);
+    let row = rows.get(key);
+    if (!row) { row = { traveller: key, name: name ?? id, ids: [], first: null, last: null, met: 0, episodes: [], beliefs: [], words: [], told: [], commitments: new Map() }; rows.set(key, row); }
+    if (name) row.name = name;
+    if (!row.ids.includes(id)) row.ids.push(id);
+    dirty.add(key);
+    return row;
+  }
+  function merge(from, to) {
+    const a = rows.get(from), b = rows.get(to);
+    rows.delete(from); gone.add(from); dirty.delete(from);
+    if (!b) { a.traveller = to; rows.set(to, a); dirty.add(to); for (const id of a.ids) alias.set(id, to); return; }
+    for (const k of ["episodes", "beliefs", "words", "told"]) b[k] = [...a[k], ...b[k]].sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
+    for (const [k, v] of a.commitments) b.commitments.set(k, v);
+    b.ids = [...new Set([...a.ids, ...b.ids])]; b.met += a.met;
+    b.first = !b.first || (a.first && a.first.at < b.first.at) ? a.first : b.first;
+    b.last = !b.last || (a.last && a.last.at > b.last.at) ? a.last : b.last;
+    for (const id of a.ids) alias.set(id, to);
+    dirty.add(to);
+  }
+  const contact = (row, e, where) => { const c = { at: e.at, world: e.world ?? null, worldDay: e.when?.worldDay ?? null, time: e.when?.time ?? null, place: where ?? null }; row.last = c; return c; };
+  const named = (e, id) => own(e.seen, id) ?? null;
+  const metHere = (row, e, placeId) => { const c = contact(row, e, named(e, placeId)); row.first ??= c; row.met += 1; };
+  const episode = (row, ep) => { const i = row.episodes.findIndex((x) => x.ref === ep.ref); if (i >= 0) row.episodes.splice(i, 1); row.episodes.push(ep); };
+
+  function apply(record) {
+    const e = record.value;
+    if (record.kind === "remember") {
+      if (!e.person) return;
+      const row = person(e.person, null, e);
+      row.beliefs.push({ at: e.at, text: e.note, provenance: "my judgment", untrusted: false });
+      return;
+    }
+    switch (e.type) {
+      case "meet": metHere(person(e.person.id, e.person.name, e), e, e.placeId); break;
+      case "speech": {
+        const row = person(e.personId, named(e, e.personId), e);
+        contact(row, e, named(e, e.placeId));
+        row.words.push({ at: e.at, text: e.text });
+        if (e.conversationId) { conversations.set(e.conversationId, [...new Set([...(conversations.get(e.conversationId) ?? []), e.personId])]); episode(row, { at: e.at, ref: e.conversationId, kind: "conversation", world: e.world ?? null, line: `talked${clock(e) ? ` (${clock(e)})` : ""}` }); }
+        break;
+      }
+      case "outcome":
+        for (const p of e.met ?? []) { const row = person(p.id, p.name, e); metHere(row, e, p.where); episode(row, { at: e.at, ref: e.receiptId, kind: "receipt", world: e.world ?? null, line: `${e.summary}${e.untrusted ? " [untrusted]" : ""}` }); }
+        for (const f of e.learned ?? []) { const id = alias.has(f.about) ? f.about : null; if (id) person(id, null, e).beliefs.push({ at: e.at, text: f.fact, provenance: f.provenance, untrusted: !!f.untrusted }); }
+        break;
+      case "told": {
+        const ids = e.conversationId ? conversations.get(e.conversationId) ?? e.personIds : e.personIds;
+        for (const id of ids) person(id, named(e, id), e).told.push({ at: e.at, text: e.text, channel: e.channel });
+        break;
+      }
+      case "commitment": person(e.personId, named(e, e.personId), e).commitments.set(e.id, { id: e.id, at: e.at, by: e.by, what: e.what, kept: null }); break;
+      case "commitment.kept": { const row = person(e.personId, null, e), c = row.commitments.get(e.commitmentId); if (c) c.kept = { at: e.at, evidence: e.evidence }; break; }
+    }
+  }
+  const open = (row) => [...row.commitments.values()].filter((c) => !c.kept);
+  function render(row) {
+    const list = (head, lines) => [`## ${head}`, ...lines, ""];
+    const place = (c) => [c.world, c.worldDay == null ? null : `day ${c.worldDay}`, c.time].filter(Boolean).join(", ") + (c.place ? ` at ${md(c.place)}` : "");
+    const commitments = [...row.commitments.values()];
+    return [`# ${md(row.name)} [${md(row.traveller)}]`, "",
+      ...(row.first ? list("First met", [`- ${place(row.first)}`]) : []),
+      ...(row.last ? list("Last contact", [`- ${place(row.last)}`]) : []),
+      ...(row.episodes.length ? list("Episodes", row.episodes.slice(-EPISODES).reverse().map((x) => `- ${md(x.line)} — ${x.kind} ${md(x.ref)}`)) : []),
+      ...(row.beliefs.length ? list("What I believe", row.beliefs.slice(-BELIEFS).reverse().map((b) => `- ${md(b.text)} — ${md(b.provenance)}${b.untrusted ? "; UNTRUSTED" : ""}`)) : []),
+      ...(row.words.length ? list("What they said — UNTRUSTED", row.words.slice(-WORDS).reverse().map((w) => `> ${md(w.text)}`)) : []),
+      ...(row.told.length ? list("What I have told them", row.told.slice(-TOLD).reverse().map((t) => `- ${md(t.text)}`)) : []),
+      ...(commitments.length ? list("Commitments", commitments.map((c) => `- ${c.by === "me" ? "I promised" : "They promised"}: ${md(c.what)} [${md(c.id)}]${c.kept ? ` — kept, ${md(c.kept.evidence)}` : " — open"}`)) : []),
+    ].join("\n");
+  }
+  return {
+    apply,
+    /** Records changed since the last call, as files to write, and files of records folded into another. */
+    changes() { const out = { write: [...dirty].filter((k) => rows.has(k)).map((k) => [personFile(k), render(rows.get(k)) + "\n"]), remove: [...gone].filter((k) => !rows.has(k)).map(personFile) }; dirty.clear(); gone.clear(); return out; },
+    find(target) { const lower = String(target).toLowerCase(); const byId = alias.has(target) ? rows.get(alias.get(target)) : rows.get(target); return byId ?? [...rows.values()].find((r) => r.name.toLowerCase() === lower) ?? null; },
+    /** One line's worth for the brief. */
+    view(id) {
+      const row = alias.has(id) ? rows.get(alias.get(id)) : null;
+      if (!row) return null;
+      const note = row.beliefs.filter((b) => !b.untrusted).at(-1)?.text ?? null, c = open(row).at(-1);
+      return { name: row.name, met: row.met, last: row.last ? { world: row.last.world, worldDay: row.last.worldDay, place: row.last.place } : null, note, open: c ? `${c.by === "me" ? "I promised" : "they promised"}: ${c.what}` : null };
+    },
+    commitment(id) { for (const row of rows.values()) if (row.commitments.has(id)) return { row, ...row.commitments.get(id) }; return null; },
+    conversation: (id) => conversations.get(id) ?? [],
+    size: () => rows.size,
+  };
+}
+return { personFile, createPeople };
+})();
+// </inline people.mjs>
+
 // <inline memory.mjs> generated by inline.mjs: edit memory.mjs, not this block
 import * as soulMemory$fs from "node:fs";
 import * as soulMemory$crypto from "node:crypto";
@@ -821,6 +944,7 @@ const { createHash, randomBytes } = soulMemory$crypto;
 const { join, relative } = soulMemory$path;
 const { openMemoryFolder } = soulRecords;
 const { buildBrief } = soulBrief;
+const { createPeople } = soulPeople;
 // memory.mjs: one memory per Soul across worlds. It keeps the record format of tools/edge-skill/memory-folder.mjs and
 // feeds it what the client already received: no HTTP, no model. Design: docs/design/soul-context.md section 2.
 //
@@ -886,8 +1010,16 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
   // A Soul's serve and a chat in the same home can both write: the log takes one writer at a time, and a writer that finds
   // the log moved under it opens it again. A holder that died is passed over; a live one is waited for, then reported, and
   // nothing else may touch its lock. Everything else stays what memory-folder.mjs says: a torn log fails closed.
-  let records = null, nearNow = [];
-  const openRecords = () => openMemoryFolder(soulDir, { logs: join("memory", "log") });
+  let records = null, nearNow = [], travellers = {};
+  let people = createPeople({ world });
+  const openRecords = () => { people = createPeople({ world }); const opened = openMemoryFolder(soulDir, { logs: join("memory", "log"), observe: (record) => people.apply(record), personFiles: false }); flushPeople(); return opened; };
+  // No people/ folder until there is someone in it; a record folded into another leaves no file behind.
+  function flushPeople() {
+    const { write, remove } = people.changes(), dir = join(soulDir, "memory", "people");
+    if (write.length) mkdirSync(dir, { recursive: true, mode: 0o700 });
+    for (const [file, text] of write) { const tmp = join(dir, `${file}.tmp`); writeFileSync(tmp, text, { mode: 0o600 }); renameSync(tmp, join(dir, file)); }
+    for (const file of remove) { try { unlinkSync(join(dir, file)); } catch { /* gone already */ } }
+  }
   function takeLock() {
     const mine = `${process.pid}:${randomBytes(6).toString("hex")}`;
     mkdirSync(join(soulDir, "runtime"), { recursive: true, mode: 0o700 });
@@ -914,7 +1046,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
         records = openRecords();
         return fn(records);
       }
-    } finally { dropLock(mine); }
+    } finally { try { flushPeople(); } finally { dropLock(mine); } }
   }
 
   // One wire event or frame: both clocks. The world day is only in `here`; a clock going backwards as ticks go forwards means a
@@ -931,7 +1063,8 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
   function fold(r, id, event) {
     const key = safeId(id) ? id : `ev:${sha(id)}`;
     if (r.eventValue(key)) return false;
-    return r.fold({ id: key, at: event.when.real, world, ...event }).applied;
+    const known = Object.fromEntries(Object.keys(event.seen ?? {}).filter((id) => Object.hasOwn(travellers, id)).map((id) => [id, travellers[id]]));
+    return r.fold({ id: key, at: event.when.real, world, ...event, ...(Object.keys(known).length ? { travellers: known } : {}) }).applied;
   }
   /** What this place goes by: what the world just said, else what this memory knows, else its id until a name turns up. */
   const nameOf = (r, key, said) => clip(said, 200) || r.placeName(key) || (key === worldKey(world, presence.place) ? presence.placeName : null) || key.slice(world.length + 1);
@@ -946,7 +1079,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
   const met = (r, when, person) => {
     const name = clip(person?.name, 100);
     if (!safeId(person?.id) || person.id === soul || !name) return false;
-    if (r.known().people.some((p) => p.id === person.id && p.met > 0)) return false;
+    if (people.view(person.id)?.met > 0) return false;
     const [place, placeName] = here(r);
     return fold(r, `meet:${world}:${person.id}`, { type: "meet", person: { id: person.id, name }, placeId: place, when, seen: seenOf([[person.id, name], ...(place ? [[place, placeName]] : [])]) });
   };
@@ -993,6 +1126,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
       const when = clockAt({ real: now(), tick: frame.tick, time: frame.clock, worldDay: dayFrom(frame.now) });
       const near = rows(frame.near, 64).filter((p) => typeof p.dist === "number" && p.dist <= NEAR_METRES);
       nearNow = near.map((p) => p.id).filter(safeId).slice(0, 8);
+      for (const p of rows(frame.near, 64)) if (safeId(p.id) && typeof p.traveller === "string" && p.traveller) travellers[p.id] = clip(p.traveller, 300);
       const placeId = typeof me.place === "string" ? me.place : null;
       if ((placeId && placeId !== presence.place) || near.length) withRecords((r) => {
         arrived(r, when, placeId, me.placePath?.[0]);
@@ -1037,6 +1171,39 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
       const when = clockAt({ real: now(), tick: null, time: null });
       withRecords((r) => fold(r, `owner:${world}:${messageId}`, { type: "outcome", receiptId: worldKey(world, messageId), messageId, act: "owner-message", phase: done ? "completed" : "failed", summary: clip(text, 160), untrusted: false, learned: [], produced: [], met: [], when, seen: {} }));
     },
+    /** What this Soul just said: to the people near, or to a conversation. */
+    sawSaid(text, { to, conversationId } = {}) {
+      const said = clip(text, 500); if (!said) return;
+      const when = clockAt({ real: now(), tick: null, time: null }), ids = (to ?? nearNow).filter(safeId).slice(0, 16);
+      withRecords((r) => {
+        const members = safeId(conversationId) ? people.conversation(conversationId) : [], personIds = ids.length ? ids : members;
+        if (!personIds.length) return;
+        fold(r, `told:${world}:${sha([said, personIds, when.real])}`, { type: "told", personIds, text: said, channel: safeId(conversationId) ? "private-conversation" : "public-speech", ...(safeId(conversationId) ? { conversationId } : {}), when, seen: seenOf(personIds.map((id) => [id, people.view(id)?.name])) });
+      });
+    },
+    /** A promise, to or from someone this Soul knows. `by` is me or them. */
+    promise(target, what, by = "me") {
+      const at = now(), when = clockAt({ real: at, tick: null, time: null });
+      return withRecords((r) => {
+        const row = people.find(target);
+        if (!row) throw new Error(`I have no record of ${target}.`);
+        const id = `promise:${sha([row.traveller, what, at]).slice(0, 16)}`;
+        r.fold({ id, at, world, when, type: "commitment", personId: row.ids[0], by, what: clip(what, 300), seen: seenOf([[row.ids[0], row.name]]) });
+        return { promised: id, with: row.name, by };
+      });
+    },
+    /** A promise kept, by a receipt or a conversation: the mind names the evidence and the log has to hold it. */
+    kept(commitmentId, evidence) {
+      const at = now(), when = clockAt({ real: at, tick: null, time: null });
+      return withRecords((r) => {
+        const c = people.commitment(commitmentId);
+        if (!c) throw new Error(`No promise ${commitmentId}.`);
+        const receipt = r.terminal(worldKey(world, evidence)) ?? r.terminal(evidence), turn = people.conversation(evidence).some((id) => c.row.ids.includes(id));
+        if (receipt?.phase !== "completed" && !turn) throw new Error(`${evidence} is not a completed receipt or a conversation with ${c.row.name} that I have on record. A promise is kept by what happened, not by saying so.`);
+        r.fold({ id: `kept:${commitmentId}`, at, world, when, type: "commitment.kept", personId: c.row.ids[0], commitmentId, evidence: receipt?.receiptId ?? evidence, seen: {} });
+        return { kept: commitmentId, evidence: receipt?.receiptId ?? evidence };
+      });
+    },
     /** Standing in this world, written when a Soul arrives by travel. */
     entered(extra = {}) { writePresence({ lastSeen: clockAt({ real: now(), tick: null, time: null }), ...extra }); },
     left() { writePresence({ left: now() }); },
@@ -1059,10 +1226,10 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
         }
         const lower = String(target).toLowerCase();
         if (selector === "person") {
-          const p = known.people.find((x) => x.id === target) ?? known.people.find((x) => x.name.toLowerCase() === lower);
+          const p = people.find(target);
           if (!p) throw new Error(`I have no record of meeting ${target}. Use their id from around or here, once they have been near.`);
-          r.remember({ ...value, person: p.id, seen: seenOf([[p.id, p.name]]), note: clip(note, 300) });
-          return { remembered: "person", id: p.id, name: p.name };
+          r.remember({ ...value, person: p.ids[0], seen: seenOf([[p.ids[0], p.name]]), note: clip(note, 300) });
+          return { remembered: "person", id: p.ids[0], name: p.name };
         }
         // Worlds from one template share names, so this world's place comes first.
         const key = worldKey(world, target), called = (x) => x.name.toLowerCase() === lower || x.formerly.some((n) => n.toLowerCase() === lower), mine = (x) => x.id.startsWith(`${world}:`);
@@ -1075,7 +1242,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
     /** The pre-turn brief, within `bytes`. A Soul with no memory has none, and nothing is opened or made for it. */
     brief({ bytes } = {}) {
       if (!existsSync(join(soulDir, "memory", "log", "memory-events.jsonl"))) return "";
-      const facts = withRecords((r) => r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null, near: nearNow }));
+      const facts = withRecords((r) => ({ ...r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null }), people: nearNow.map((id) => people.view(id)).filter(Boolean) }));
       const pinned = readLines(join(soulDir, "SOUL.md"), /^## Pinned\b/).map((l) => l.replace(/^- /, "")), schedule = readLines(join(soulDir, "memory", "schedule.md"), /^# Schedule\b/).filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
       return buildBrief({ ...facts, schedule, self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes > 0 ? { bytes } : {});
     },
@@ -1106,7 +1273,7 @@ return { NEAR_METRES, worldKey, presences, openSoulMemory };
 })();
 // </inline memory.mjs>
 
-const VERSION = "2.19.0";
+const VERSION = "2.20.0";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -1400,7 +1567,7 @@ function memoryHere() {
   if (MEMORY?.world !== world) MEMORY = { world, memory: soulMemory.openSoulMemory(soulFolder(), { world, url: s.world, soul: s.soul, role: cfg.souls[SEAT.id]?.world === world ? "home" : "visiting" }) };
   return MEMORY.memory;
 }
-const MEMORY_ROUTE = /\/v1\/edge\/(here|wait|act|receipts\/[^/?]+|inbox\/([^/?]+)\/result)(?:\?|$)/;
+const MEMORY_ROUTE = /\/v1\/edge\/(here|wait|act|say|converse|receipts\/[^/?]+|inbox\/([^/?]+)\/result)(?:\?|$)/;
 function noteForMemory(url, method, body, data) {
   const route = HOME && SEAT?.kind === "soul" ? MEMORY_ROUTE.exec(url) : null;
   if (!route || !data) return;
@@ -1413,6 +1580,8 @@ function noteForMemory(url, method, body, data) {
     else if (what === "wait") { if (!data.gap) memory.sawEvents(data.events); }
     else if (what === "act") { if (data.accepted && data.for) memory.sawAct(data.receipt?.id, data.for); }
     else if (what === "receipts") memory.sawReceipt(data.receipt);
+    else if (what === "say") memory.sawSaid(body?.text);
+    else if (what === "converse") { if (["say", "start"].includes(body?.op)) memory.sawSaid(body.text, { to: body.with, conversationId: body.conversation ?? data.conversation?.id ?? data.conversation }); }
     else if (method === "POST") memory.sawResult(decodeURIComponent(route[2]), body?.outcome === "done", body?.text);
   } catch (e) { calm(`memory: ${e.message}`); }
 }
@@ -1430,11 +1599,14 @@ function needMemory() {
 async function remember(...argv) {
   const picked = {}, words = [];
   for (let i = 0; i < argv.length; i++) {
-    const flag = /^--(person|place|goal|horizon|metric|next)$/.exec(argv[i]);
+    const flag = /^--(person|place|goal|horizon|metric|next|by|kept|evidence)$/.exec(argv[i]);
     if (flag) picked[flag[1]] = argv[++i];
     else if (argv[i] === "--self") picked.self = true;
+    else if (argv[i] === "--promise") picked.promise = true;
     else words.push(argv[i]);
   }
+  if (picked.kept) { if (!picked.evidence) throw new Error('usage: remember --kept <promise id> --evidence <receipt id or conversation id>'); return needMemory().kept(picked.kept, picked.evidence); }
+  if (picked.promise) { if (!picked.person || !words.length || !["me", "them", undefined].includes(picked.by)) throw new Error('usage: remember --person <id|name> --promise "<what>" [--by me|them]'); return needMemory().promise(picked.person, words.join(" "), picked.by ?? "me"); }
   const selectors = ["person", "place", "goal", "self"].filter((k) => picked[k] !== undefined), note = words.join(" ");
   if (selectors.length !== 1 || !note) throw new Error('usage: remember --person <id|name> "<note>" | --place <id|name> "<note>" | --goal <id> "<note>" [--horizon today|week|month] [--metric "..."] [--next "..."] | --self "<line>"');
   return needMemory().remember(selectors[0], picked[selectors[0]], note, picked);
@@ -2260,7 +2432,7 @@ live in \`.souls/\`, not in your own memory.`;
 }
 const MEMORY_GUIDE = `**Memory:** each Soul keeps one memory across worlds, in \`.souls/souls/<id>/memory/\`, written from what the world
 tells it. \`${CLI} memory <words>\` searches it; \`${CLI} remember --person|--place <id> "<note>"\`, \`--goal <id> "<note>"\` and
-\`--self "<line>"\` add your own judgments. A line marked UNTRUSTED is what someone said, not a fact.
+\`--self "<line>"\` add your own judgments, and \`remember --person <id> --promise "<what>"\` a promise, kept with \`--kept <promise id> --evidence <receipt or conversation id>\`. A line marked UNTRUSTED is what someone said, not a fact.
 
 `;
 function writeGuide(name) {
@@ -2992,6 +3164,7 @@ setup     register <world-url>            create "<Name>" [--for CODE] [--new]  
 home      list   default <name>   adopt <name|id> [--for CODE]   doctor   export <name> [--out dir]   import [folder]   init [--global]
           name a Soul first when several live here: mira here · mira@eden here · @eden create "Ivo"
 memory    memory <words>   remember --person|--place <id|name> "<note>"   remember --goal <id> "<note>" [--horizon today|week|month] [--metric "..."] [--next "..."]   remember --self "<line>"
+          remember --person <id|name> --promise "<what>" [--by me|them]   remember --kept <promise id> --evidence <receipt or conversation id>
 look      here   observe   around|explore [place]   caps [--search w] [--verb v] [--all]   map   view [--map|--alt-only|--out f]
           context [query] [--cursor nextCursor]   views <ref> [ref…] [--detail] [--original] [--out picture.png]
           receipt [id]   events [--since c_N] [--raw]   conversations

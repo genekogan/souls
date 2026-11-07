@@ -25,7 +25,7 @@ const sorted = map => [...map.values()].sort((a, b) => lexical(a.id, b.id));
 const count = value => Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000 ? value : fail('invalid count');
 
 // The Souls home adds these to every record (docs/design/soul-context.md section 2). All optional: a 1.9 log has none.
-const CONTEXT = ['world', 'when', 'seen'];
+const CONTEXT = ['world', 'when', 'seen', 'travellers'];
 function validateContext(e) {
   if (e.world !== undefined) id(e.world);
   if (e.when !== undefined) {
@@ -37,11 +37,15 @@ function validateContext(e) {
     if (!e.seen || typeof e.seen !== 'object' || Array.isArray(e.seen) || Object.keys(e.seen).length > 160) fail('invalid seen names');
     for (const [k, name] of Object.entries(e.seen)) {publicId(k); text(name, 200);}
   }
+  if (e.travellers !== undefined) {
+    if (!e.travellers || typeof e.travellers !== 'object' || Array.isArray(e.travellers) || Object.keys(e.travellers).length > 64) fail('invalid traveller ids');
+    for (const [k, v] of Object.entries(e.travellers)) {publicId(k); publicId(v);}
+  }
 }
 
 function validateEvent(input) {
   // Reject credentials/raw transport fields instead of retaining arbitrary state.
-  const fields = {gazetteer: ['places'], 'public.references':['references'], 'place.observed':['place'], conversation:['conversationId','personId'], 'idle.sample':['milliseconds'], scorecard:['clock','period','from','to','metrics'], arrival: ['placeId'], 'act.accepted': ['receiptId', 'act'], meet: ['person', 'placeId'], communication:['person','channel','recipientPlace','conversationId'], speech: ['personId', 'text', 'untrusted', 'channel', 'conversationId', 'placeId'], outcome: ['receiptId', 'act', 'phase', 'summary', 'learned', 'produced', 'met', 'placeId', 'untrusted', 'messageId'], refusal: ['act', 'code'], lesson: ['attempt', 'fix', 'refusalId', 'successId'], cost: ['usd', 'modelCalls'], ledger: ['holding', 'marks'], queue: ['steps']};
+  const fields = {gazetteer: ['places'], 'public.references':['references'], 'place.observed':['place'], conversation:['conversationId','personId'], 'idle.sample':['milliseconds'], scorecard:['clock','period','from','to','metrics'], arrival: ['placeId'], 'act.accepted': ['receiptId', 'act'], meet: ['person', 'placeId'], communication:['person','channel','recipientPlace','conversationId'], speech: ['personId', 'text', 'untrusted', 'channel', 'conversationId', 'placeId'], outcome: ['receiptId', 'act', 'phase', 'summary', 'learned', 'produced', 'met', 'placeId', 'untrusted', 'messageId'], refusal: ['act', 'code'], lesson: ['attempt', 'fix', 'refusalId', 'successId'], cost: ['usd', 'modelCalls'], ledger: ['holding', 'marks'], queue: ['steps'], told: ['personIds', 'text', 'channel', 'conversationId'], commitment: ['personId', 'by', 'what'], 'commitment.kept': ['personId', 'commitmentId', 'evidence']};
   if (!input || !Object.hasOwn(fields, input.type)) fail('unknown public event type');
   keys(input, ['type', 'id', 'at', ...CONTEXT, ...fields[input.type]]);
   id(input.id); instant(input.at); validateContext(input); const e = structuredClone(input);
@@ -68,6 +72,9 @@ function validateEvent(input) {
       list(e.learned, 5).forEach(f => {keys(f, ['fact', 'about', 'source', 'provenance', 'untrusted']); text(f.fact, 2000); publicId(f.about); source(f.source); text(f.provenance, 100); if (typeof f.untrusted !== 'boolean' || (['soul-text','other-soul-report'].includes(f.provenance) && !f.untrusted)) fail('fact trust label required');});
       list(e.produced, 32).forEach(o => {keys(o, ['id', 'title', 'kind', 'where']); id(o.id); text(o.title, 200); text(o.kind, 1000); if(o.where!==null)id(o.where);});
       list(e.met, 32).forEach(p => {keys(p, ['id', 'name', 'where']); id(p.id); text(p.name, 200); if(p.where!==null)id(p.where);}); break;
+    case 'told': list(e.personIds, 16).forEach(id); text(e.text, 500); if (!['private-conversation', 'public-speech'].includes(e.channel)) fail('invalid communication channel'); if (e.conversationId !== undefined) id(e.conversationId); break;
+    case 'commitment': id(e.personId); if (!['me', 'them'].includes(e.by)) fail('invalid commitment party'); text(e.what, 300); break;
+    case 'commitment.kept': id(e.personId); id(e.commitmentId); id(e.evidence); break;
     case 'refusal': text(e.act, 160); text(e.code, 100); break;
     case 'lesson': text(e.attempt, 160); text(e.fix, 160); id(e.refusalId); id(e.successId); break;
     case 'cost': if (e.usd !== null && !(Number.isFinite(e.usd) && e.usd >= 0 && e.usd <= 1_000_000)) fail('USD must be known nonnegative or null'); count(e.modelCalls); break;
@@ -105,7 +112,7 @@ function validateRemember(input) {
  * Existing projection symlinks are rejected. JSONL records contain normalized facts
  * and explicit judgments, never raw responses or authentication state.
  */
-export function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
+export function openMemoryFolder(directory, {logs: logFolder = 'log', observe = null, personFiles = true} = {}) {
   const root = resolve(directory), memory = join(root, 'memory'), logs = join(root, logFolder);
   const safe = path => {
     // Check every existing ancestor, including root, before any read or write.
@@ -118,7 +125,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
     return path;
   };
   safe(root); mkdirSync(root, {recursive: true, mode: 0o700});
-  for (const p of [memory, logs, join(memory, 'people'), join(memory, 'journal')]) {safe(p); mkdirSync(p, {recursive: true, mode: 0o700});}
+  for (const p of [memory, logs, ...(personFiles ? [join(memory, 'people')] : []), join(memory, 'journal')]) {safe(p); mkdirSync(p, {recursive: true, mode: 0o700});}
   const log = safe(join(logs, 'memory-events.jsonl'));
   let logBytes = existsSync(log) ? lstatSync(log).size : 0;
   const fresh = () => {safe(log); if ((existsSync(log) ? lstatSync(log).size : 0) !== logBytes) fail('another writer changed the machine log; reopen');};
@@ -155,7 +162,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
   const admit = record => {
     if (record.kind === 'remember') {
       const r = record.value;
-      if (r.person && !people.has(r.person)) fail('cannot remember an unmet person');
+      if (r.person && !people.has(r.person) && seenAs(r, r.person) === undefined) fail('cannot remember an unmet person');
       if (r.place&&!places.has(r.place)&&references.get(r.place)?.kind!=='place')fail('place absent from public references');
       return;
     }
@@ -185,12 +192,13 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
   };
   const terminalValue = e => {const {id: _id, at: _at, ...value} = e; return canonical(value);};
   const apply = record => {
+    observe?.(record);
     const e = record.value;
     if (record.kind === 'remember') {
       if (e.self) self = e.self;
       if (e.goal) goals.set(e.goal, {id: e.goal, note: e.note, horizon: e.horizon, metric: e.metric, next: e.next});
       if (e.place) impressions.set(e.place, e.note);
-      if (e.person) people.get(e.person).impressions.push(e.note);
+      if (e.person) people.get(e.person)?.impressions.push(e.note);
       return;
     }
     if (e.seen) for (const where of [e.placeId, e.recipientPlace, ...(e.met ?? []).map(p => p.where), ...(e.produced ?? []).map(o => o.where)]) notePlace(where, e);
@@ -248,7 +256,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
     write(join(memory, 'lessons.md'), '# Lessons — evidence of a working fix\n\n' + lessons.map(lessonLine).join('\n') + '\n');
     write(join(memory, 'ledger.md'), '# Ledger — normalized public facts\n\n## Holding\n' + holding.map(v => `- ${md(v)}`).join('\n') + '\n\n## Produced\n' + sorted(objects).map(o => `- ${md(o.id)}: ${md(o.title)} (${md(o.kind)}), at ${md(o.where)}`).join('\n') + '\n\n## Marks/projects (provided snapshot)\n' + marks.map(o => `- ${md(o.id)}: ${md(o.title)}`).join('\n') + '\n\n## Observed budget by UTC day\n' + [...costs.keys()].sort().map(budgetLine).join('\n') + '\n');
     write(join(memory, 'queue.md'), '# Queue — supplied W4 projection; no runner\n\n' + queue.map(s => `- ${md(s.id)}: ${md(s.act)} [${s.status}], attempts ${s.attempts}${s.goal ? `; goal ${md(s.goal)}` : ''}${s.reason ? `; ${md(s.reason)}` : ''}`).join('\n') + '\n');
-    for (const p of sorted(people)) write(join(memory, 'people', personFile(p.id)), `# ${md(p.name)} [${md(p.id)}]\n\n## Facts — confirmed physical meetings (qualified evidence only)\n` + p.meetings.map(m => `- ${m.at} at ${md(m.seenAs ?? m.where)}${m.world ? ` in ${md(m.world)}` : ''}${m.day === null || m.day === undefined ? '' : `, day ${m.day}`}${m.together ? '; together-act' : ''}`).join('\n') + `\nConfirmed physical meetings ${p.meetings.length}\n\n## Communication encounters ${p.communications.length} — not physical meeting evidence\n`+p.communications.map(communicationLine).join('\n')+'\n'+`\n## Last reported words — UNTRUSTED data\n` + p.words.slice(-3).map(w => `> ${w.at}: ${md(w.text)}`).join('\n') + '\n\n## Judgments — model impressions/open threads\n' + p.impressions.map(s => `- ${md(s)}`).join('\n') + '\n');
+    if (personFiles) for (const p of sorted(people)) write(join(memory, 'people', personFile(p.id)), `# ${md(p.name)} [${md(p.id)}]\n\n## Facts — confirmed physical meetings (qualified evidence only)\n` + p.meetings.map(m => `- ${m.at} at ${md(m.seenAs ?? m.where)}${m.world ? ` in ${md(m.world)}` : ''}${m.day === null || m.day === undefined ? '' : `, day ${m.day}`}${m.together ? '; together-act' : ''}`).join('\n') + `\nConfirmed physical meetings ${p.meetings.length}\n\n## Communication encounters ${p.communications.length} — not physical meeting evidence\n`+p.communications.map(communicationLine).join('\n')+'\n'+`\n## Last reported words — UNTRUSTED data\n` + p.words.slice(-3).map(w => `> ${w.at}: ${md(w.text)}`).join('\n') + '\n\n## Judgments — model impressions/open threads\n' + p.impressions.map(s => `- ${md(s)}`).join('\n') + '\n');
     for (const [day, lines] of journals) write(join(memory, 'journal', `${day}.md`), `# ${day}\n\n` + lines.map(s => `- ${md(s)}`).join('\n') + '\n');
   };
   const seenPeople = e => e?.type === 'speech' && e.seen && Object.hasOwn(e.seen, e.personId) ? [e.personId] : [];
@@ -261,7 +269,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
       if (e.type === 'outcome') e.met.forEach(p => ids.add(p.id));
       seenPeople(e).forEach(v => ids.add(v));
     }
-    ids.forEach(v => paths.push(join(memory, 'people', personFile(v))));
+    if (personFiles) ids.forEach(v => paths.push(join(memory, 'people', personFile(v))));
     days.forEach(v => paths.push(join(memory, 'journal', `${v}.md`)));
     paths.forEach(p => {safe(p); safe(`${p}.tmp`);if(!p.endsWith('/schedule.md')&&writtenHashes.has(p)){const actual=existsSync(p)?hashText(readFileSync(p,'utf8')):null;if(actual!==writtenHashes.get(p))fail('projection changed outside remember; preserve and review');}});
   };
@@ -308,6 +316,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
   return {
     /** What a memory on the shipping line looks things up by: known ids and the names they went by. */
     placeName(placeId){return places.get(placeId)?.name??null;},
+    terminal(receiptId){const e=terminals.get(receiptId);return e?{receiptId:e.receiptId,phase:e.phase}:null;},
     /** The little the brief needs, looked up rather than scanned: its size never follows the log's. */
     digest({place,near=[]}){
       fresh();
