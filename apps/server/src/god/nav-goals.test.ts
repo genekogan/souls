@@ -147,3 +147,86 @@ test('from a raised room, a far ground goal is walked to via the building front;
   assert.ok(Math.abs((far.steps[0].params.z as number) - 3) < 1.5, `walks out through the front door first: ${JSON.stringify(far.steps[0])}`);
   assert.equal(near.steps.length, 1, 'a near ground goal is planned directly');
 });
+
+/** #875 fixture: a chair (or a two-seat sofa) facing +z with its stand points 0.75 m in front; `main` says which standing
+ *  spots are connected both ways to the main walkable area (navCheckV1), everything else is a sealed pocket. */
+function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean, room?: Vec2[], standable: (at: Vec2) => Vec2 = (at) => at) {
+  const entity = { id: 'chair', name: 'chair', def: 'chair@1', in: { parent: 'world' } };
+  const def = { name: 'chair', form: 'point', components: {}, tags: ['seat'], make: { kind: 'mesh' } };
+  const baked = { rooms: [], colliders: [], openings: [], slots: seats.map(([x, z], i) => ({ id: `seat-${i}`, kind: 'seat', p: [x, 0, z], yaw: 0 })) };
+  // `room`: a building (no door) whose one room holds the chair
+  const hall = { id: 'hall', name: 'hall', def: 'hall@1', in: { parent: 'world' } };
+  const hallDef = { name: 'hall', form: 'point', components: {}, tags: ['building'], make: { kind: 'mesh' } };
+  const hallBaked = { rooms: [{ id: 'dining', polygon: room }], colliders: [], openings: [], slots: [] };
+  const nav = new GodNav({ model: {
+    entities: new Map<string, unknown>([['chair', entity], ...(room ? [['hall', hall]] as [string, unknown][] : [])]), editSeq: 1,
+    ground: () => ({ waters: [] }), resolvedDef: (d: string) => (d === 'hall@1' ? hallDef : def), bake: (d: { name: string }) => (d.name === 'hall' ? hallBaked : baked),
+    worldPose: () => ({ x: 0, y: 0, z: 0, yaw: 0, s: 1 }),
+    pathOf: (id: string) => id, get: () => undefined,
+  }, engine: { world: { tick: 0, entities: {} },
+    standableNearV1: standable,
+    navWarmV1: () => true,
+    navCheckV1: (pts: { id: string; p: Vec2 }[]) => pts.map((x) => ({ id: x.id, ok: main(x.p) })),
+  }, levelAt: () => 0, engineOwned: () => false } as unknown as NavHost);
+  return { nav };
+}
+
+const DINING: Vec2[] = [[-4, -4], [4, -4], [4, 12], [-4, 12]];
+
+test('#875: a chair whose front is a sealed pocket is walked to on the connected floor beside it', () => {
+  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 2, DINING);
+  const chair = nav.thing('chair')!;
+  assert.equal(chair.kind, 'seat');
+  const goal = nav.goal(chair, [0, 10])!;
+  assert.ok(goal && goal.p[1] >= 2, `on the connected floor: ${JSON.stringify(goal)}`);
+  assert.ok(Math.hypot(goal.p[0], goal.p[1]) <= 3.5, 'within reach of the chair');
+});
+
+test('#875: a two-seat sofa is walked to at the stand point that is connected, not the nearer pocket one', () => {
+  const { nav } = seatRoom([[-1, 0], [1, 0]], (p) => p[0] > 0, DINING);
+  const goal = nav.goal(nav.thing('chair')!, [-1, 3])!;
+  assert.deepEqual(goal, { p: [1, 0.75], level: 0 });
+});
+
+test('#875: a chair with no connected floor within 2.5 m keeps its own goal (refused honestly, not moved far)', () => {
+  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 4, DINING);
+  const goal = nav.goal(nav.thing('chair')!, [0, 10])!;
+  assert.deepEqual(goal, { p: [0, 0.75], level: 0 });
+});
+
+test('#875: the spot beside a pocketed chair moves off someone already standing on it, and stays in the room', () => {
+  // someone stands on the nearest connected spot (0, 2.25), the 0.5 m grid round the stand point: standableNearV1 steps round them, as it does for any goal
+  const stepAside = (to: Vec2) => (at: Vec2): Vec2 => (at[0] === 0 && at[1] === 2.25 ? to : at);
+  const free = seatRoom([[0, 0]], (p) => p[1] >= 2, DINING, stepAside([0.5, 2.25])).nav;
+  assert.deepEqual(free.goal(free.thing('chair')!, [0, 10])!, { p: [0.5, 2.25], level: 0 });
+  // a step that leaves the room is no better than the occupied spot, which the walk's own making way can still clear
+  const walled = seatRoom([[0, 0]], (p) => p[1] >= 2, [[-0.4, -3], [3, -3], [3, 3], [-0.4, 3]], stepAside([-1, 2.25])).nav;
+  assert.deepEqual(walled.goal(walled.thing('chair')!, [0, 10])!, { p: [0, 2.25], level: 0 });
+});
+
+test('#875: a stand point that snaps through the wall is no other stand point: the seat keeps to its own room', () => {
+  // standableNearV1 searches by distance alone, so the sofa's second stand point, in the wall at x = -0.4, snaps to the next
+  // room's floor, which is connected; the room's own connected floor (z >= 1.5) is the honest goal
+  const wall: Vec2[] = [[-0.4, -3], [3, -3], [3, 3], [-0.4, 3]], snap = (at: Vec2): Vec2 => (at[0] < -0.2 ? [-1.5, at[1]] : at);
+  const { nav } = seatRoom([[1, 0], [-0.4, 0]], (p) => p[0] < -0.4 || p[1] >= 1.5, wall, snap);
+  const goal = nav.goal(nav.thing('chair')!, [2, 10])!; // from here the pocketed stand point is the one tried first
+  assert.ok(goal.p[0] >= -0.4 && goal.p[1] >= 1.5, `inside the room on its connected floor: ${JSON.stringify(goal)}`);
+});
+
+test('#875: a seat in no room keeps its goal, so a bench behind a closed yard door is not walked to through the wall', () => {
+  // the yard's floor reads as cut off while its door is shut; the connected ground 2 m off is the far side of the wall
+  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 2);
+  assert.deepEqual(nav.goal(nav.thing('chair')!, [0, 10])!, { p: [0, 0.75], level: 0 });
+  // and a second stand point doesn't take it out either
+  const two = seatRoom([[0, 0], [3, 0]], (p) => p[0] >= 2).nav;
+  assert.deepEqual(two.goal(two.thing('chair')!, [0, 10])!, { p: [0, 0.75], level: 0 });
+});
+
+test('#875: the spot beside a pocketed chair stays in its own room, not through the wall', () => {
+  // connected floor through the wall (x < -0.4) is nearer than the room's own connected floor (z >= 1.5)
+  const { nav } = seatRoom([[0, 0]], (p) => p[0] < -0.4 || p[1] >= 1.5, [[-0.4, -3], [3, -3], [3, 3], [-0.4, 3]]);
+  const room = nav.things().find((x) => x.kind === 'room');
+  assert.ok(room?.poly, 'the dining room is described');
+  const goal = nav.goal(nav.thing('chair')!, [0, 10])!;
+  assert.ok(goal.p[0] >= -0.4 && goal.p[1] >= 1.5, `inside the room on its connected floor: ${JSON.stringify(goal)}`);
+});
