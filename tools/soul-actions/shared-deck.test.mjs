@@ -317,5 +317,5 @@ test('PC15 R9: with the flag off nothing is offered and the rules version has no
   const w = await site(t, {sharedCarry: false});
   assert.equal(offer(w, w.souls.Ada, `install-joist-with:${w.idOf('joist-0')}`), undefined);
   assert.doesNotMatch(w.host.engine.rulesVersion ?? '', /shared-deck/);
-  assert.match(factory.rulesVersion, /\+shared-raise\/1\+shared-beam\/1\+shared-deck\/1\+shared-stairs\/1$/);
+  assert.match(factory.rulesVersion, /\+shared-raise\/1\+shared-beam\/1\+shared-deck\/1\+shared-stairs\/1\+shared-bay\/1$/);
 });

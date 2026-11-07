@@ -208,6 +208,42 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Invariant.** `stairsBear` is checked at every tick end: an installed flight's hook is joined to an installed beam
     and an installed tread to an installed flight, both ways (`stair.unsupported`).
   - **Rules version.** `+shared-stairs/1`, after PC15's suffix.
+- **Projects: a bay from a blueprint (PC17, [#696](https://github.com/soulsimulation/souls/issues/696); off unless `SIM_SHARED_CARRY=1`).**
+  Three things, kept apart. A **blueprint** (`rack-bay@1`, `packages/engine-mars/src/project/rack-bay.blueprint.json`) is
+  the target graph: parts by key, the defs each may be, where each goes in the site's own frame, what it rests on. A
+  **procedure** (`rack-bay-build@1`) is 32 finite maneuvers over those keys in three sections (`stock`, `frames`,
+  `deck-stairs`), each ending at a checkpoint where nobody holds anything. Neither schema can name a Soul, an entity or
+  a world. A **project** (`edge_projects_v1`, `apps/server/src/god/projects.ts`) is one site: where it is, which real
+  thing is each part, its revision and who has agreed to what. It stores no progress.
+  - **Organize.** `organize:rack-bay-build@1 {at, yaw, with}` is on the menu of a Soul within 25 m of loose stock, and
+    binds each part to the nearest loose thing of a def it may be. It moves nobody; `with` names who is told. Refusals,
+    before anyone is asked: `project.stock-short` (counted per def), `project.site-blocked`, `project.unknown-place`.
+  - **Progress** is read from the world on every read (`progressOf`): real parts, joints, support, floors and links. A
+    god's joint advances it, a removal takes it back, editing the row does nothing. Complete means all 29 joints
+    reciprocal, both frames standing on their own, a floor on the sheet and a usable stairs link.
+  - **Discovery.** `inspect <project>` gives blueprint, procedure, revision, section, counts, each ready maneuver's exact
+    offer and params, what is missing and who has agreed, within the 4 KB budget. `here` adds one line under `projects`,
+    only within 30 m of the site or to a Soul who agreed, was told or organized it. Anyone else gains nothing.
+  - **Offers it adds to.** `carry-with:<part> {to: "project:<id>"}` lays a part on its spot. `raise-with:<upright>
+    {project}` stands a frame where the blueprint says, whichever way round it came to lie (`raise_hold_v1` `baseV1`).
+    Everything else is the ordinary offer.
+  - **Volunteer.** `volunteer:<project> {revision, section, maneuvers, expires}` is bounded advance consent: one section,
+    one revision, a stated number of maneuvers and an expiry. While it holds, an invitation to that Soul for a ready
+    maneuver of that section, with that part and as the plan calls for it, is accepted through the ordinary `accept`, on
+    the Soul's own receipt, and the Soul is told. Anything else stays an ordinary invitation: a load off the plan, a
+    maneuver not ready, another section, consent spent, expired or left. A Soul with an open receipt, or too far off, is
+    not started and its invitation stays open. `leave-project:<project>` ends it at once. It holds no body.
+  - **Revise.** `revise-project:<project> {at, yaw, part, entity}` is the organizer's. Moving the site or binding a part
+    of another def revision is material: the revision bumps, every agreement lapses, each volunteer is told what changed,
+    and a `volunteer` for the old revision is refused `project.revision-changed`, naming it. A like-for-like swap is not.
+    A site with anything built on it does not move (`project.site-built`).
+  - **Crews side by side.** A shared carry asks `clearLiftV1`: it doesn't lift while a body stands in the load's cover or
+    someone on the move could reach it within the lift (`carry.pickup-occupied`), stops dead rather than braking when a
+    person or another crew's load comes into its way (`carry.path-occupied`), and lifts the way the load lies unless no
+    route allows it, because a lift the other way round swings the load half a turn. A crew that sets a flight steps
+    clear of it before letting go, waiting by name for whoever stands behind it, and a stop in those moments lowers it. Two crews can still hold each other up; that is a named wait, never a halted world, and
+    any member can stop. The procedure's dependencies keep neighbouring work apart so that is rare.
+  - **Rules version.** `+shared-bay/1`, after PC16's suffix.
 - **Shared proposals (PC04, [#683](https://github.com/soulsimulation/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
   A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
   comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one

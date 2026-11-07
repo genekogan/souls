@@ -155,6 +155,47 @@ test('stopped in the air, the flight comes back down to exactly where it stood; 
   }
 });
 
+test('PC17: a stop near the end never teleports the flight: lowered along its way, or already set', () => {
+  const whole = site(), r0 = flight(whole.rt); let n = 0;
+  for (; n < 4000 && !['completed', 'failed'].includes(r0.status); n++) whole.rt.step();
+  assert.equal(r0.status, 'completed', JSON.stringify(r0.diagnostic));
+  for (let k = n - 24; k < n; k += 2) {
+    const a = site(), r = flight(a.rt), f = a.rt.world.entities.F!;
+    for (let i = 0; i < k; i++) a.rt.step();
+    a.rt.cancel(r.id);
+    for (let i = 0; i < 600 && !['completed', 'cancelled', 'failed'].includes(r.status); i++) {
+      const was = structuredClone(f.pose.p); a.rt.step();
+      assert.ok(Math.hypot(f.pose.p[0] - was[0]!, f.pose.p[1] - was[1]!, f.pose.p[2] - was[2]!) < 0.2, `stopped ${n - k} steps from the end: moved ${JSON.stringify([was, f.pose.p])}`);
+    }
+    assert.ok(['completed', 'cancelled'].includes(r.status), `${r.status} ${JSON.stringify(r.diagnostic)}`);
+  }
+});
+
+const execOf = (rt: Runtime, id: string) => (rt as unknown as { live: Map<string, { exec: { backing?: boolean } }> }).live.get(id)?.exec;
+/** A body stood right behind a crew member, on the way out from the flight. */
+function behind(rt: Runtime, who: string, c: string) {
+  const f = rt.world.entities.F!, h = rt.world.entities[c]!, o = rt.world.entities[who]!, dx = h.pose.p[0] - f.pose.p[0], dz = h.pose.p[2] - f.pose.p[2], n = Math.hypot(dx, dz);
+  o.pose = { ...o.pose, p: [h.pose.p[0] + dx / n * 0.6, o.pose.p[1], h.pose.p[2] + dz / n * 0.6] };
+  return o;
+}
+test('PC17: a crew stepping clear of the flight never steps into someone: it waits, by name, and a stop doesn\'t wait', () => {
+  const idle = site(), r = flight(idle.rt);
+  for (let i = 0; i < 6000 && !execOf(idle.rt, r.id)?.backing && idle.rt.isActive(r.id); i++) idle.rt.step();
+  assert.ok(execOf(idle.rt, r.id)?.backing, 'it reached the step back');
+  behind(idle.rt, 'b1', 'a1'); behind(idle.rt, 'b2', 'a2');
+  let held = 0; for (let i = 0; i < 1500 && idle.rt.isActive(r.id); i++) { idle.rt.step(); if (r.status === 'blocked') { held++; assert.equal(r.diagnostic?.code, 'lift.crew-blocked'); } }
+  assert.equal(r.status, 'completed', JSON.stringify(r.diagnostic)); assert.ok(held > 0, 'it waited'); assert.equal(idle.rt.world.entities.F!.phase, 'installed');
+  assert.deepEqual(idle.rt.violations.map((v) => v.code).filter((c) => /^collision\./.test(c)), [], 'nobody stepped into anybody');
+  const busy = site(), q = flight(busy.rt);
+  for (let i = 0; i < 6000 && !execOf(busy.rt, q.id)?.backing && busy.rt.isActive(q.id); i++) busy.rt.step();
+  for (const [o, c] of [['b1', 'a1'], ['b2', 'a2']] as const) behind(busy.rt, o, c).human!.task = 'somebody-else';
+  for (let i = 0; i < 40; i++) busy.rt.step();
+  assert.equal(q.status, 'blocked', 'someone busy stays where they are, and the crew waits');
+  busy.rt.cancel(q.id);
+  for (let i = 0; i < 200 && busy.rt.isActive(q.id); i++) busy.rt.step();
+  assert.equal(busy.rt.isActive(q.id), false, 'a stop ends it'); assert.equal(busy.rt.world.entities.F!.phase, 'staged', 'lowered back, since the crew still had it'); assert.equal(busy.rt.world.entities.a1!.human!.grip, undefined);
+});
+
 test('the invariant notices a flight hanging on nothing and a tread in a flight that does not hold it', () => {
   const { rt } = site(), w = rt.world;
   hung(rt); done(rt, tread(rt, 1));

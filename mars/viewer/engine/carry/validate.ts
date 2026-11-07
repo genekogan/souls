@@ -19,7 +19,7 @@ import type { Link } from '../spatial/types.ts';
 import { fragileFlightCheck } from './fragile.ts';
 
 /** `via`: the stair link to use when the target is on another level (default: the one a person would take). */
-export type CarryParams = { crew: string[]; item: string; to: { x: number; z: number; yaw: number; level?: number }; place?: 'lay'; via?: string; holdCutV1?: true };
+export type CarryParams = { crew: string[]; item: string; to: { x: number; z: number; yaw: number; level?: number }; place?: 'lay'; via?: string; holdCutV1?: true; clearLiftV1?: true };
 
 /**
  * A carry between levels (single carrier): the ground leg (`traj`) ends at the climb start s0, the
@@ -32,6 +32,8 @@ export type CarryProgram = {
   fixture?: { restingPhase: Entity['phase']; binding: string };
   /** PC07 (#686): asked with `holdCutV1` (actions.ts): a route cut is held at its scene epoch and named. */
   holdCut?: true;
+  /** PC17 (#696): asked with `clearLiftV1`: the crew lifts only with nobody else within the load's cover. */
+  clearLift?: true;
   f: Formation;
   crew: string[];
   item: string;
@@ -205,7 +207,9 @@ export function planCarryAction(rt: Runtime, p: CarryParams, fixture = false): P
     });
   };
   if (!goals.length) return routeFail(`the ${f.name} formation does not fit at the target ${fmt(tq.x, tq.z)}: ${goalWhy[0]}`);
-  const r = planCarry({ g, f, starts, goals, labelOf: (id) => labelOf(sp, id), carrierNames: p.crew, ...(p.holdCutV1 ? { budgetDetail: true } : {}) });
+  const plan = (from: SE2[]) => planCarry({ g, f, starts: from, goals, labelOf: (id) => labelOf(sp, id), carrierNames: p.crew, ...(p.holdCutV1 ? { budgetDetail: true } : {}) });
+  // PC17 (#696): a lift the other way round swings the whole load half a turn through whoever stands beside it: only if nothing else gets it there
+  const asLying = p.clearLiftV1 ? plan(starts.slice(0, 1)) : null, r = asLying?.ok ? asLying : plan(starts);
   if (!r.ok) return routeFail(r.diagnostic.message, r.diagnostic);
   const pickup = starts[r.start], target = goals[r.goal];
   const gr = gatherRoutes(sp, item, people, f, pickup, lie.halfW, level, levelY);
@@ -215,7 +219,7 @@ export function planCarryAction(rt: Runtime, p: CarryParams, fixture = false): P
   const setdown = carrierSpots(f, target, entityFrame({ ...item, pose: laid }).halfW);
   return {
     ok: true,
-    program: { f, crew: [...p.crew], item: item.id, level, levelY, lying: item.pose, pickup, approach, gather, traj: r.traj, target, laid, setdown, stats: { expanded: r.expanded, keyposes: r.keyposes }, ...(p.holdCutV1 ? { holdCut: true as const } : {}) },
+    program: { f, crew: [...p.crew], item: item.id, level, levelY, lying: item.pose, pickup, approach, gather, traj: r.traj, target, laid, setdown, stats: { expanded: r.expanded, keyposes: r.keyposes }, ...(p.clearLiftV1 ? { clearLift: true as const } : {}), ...(p.holdCutV1 ? { holdCut: true as const } : {}) },
   };
 }
 

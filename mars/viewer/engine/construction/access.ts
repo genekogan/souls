@@ -36,7 +36,9 @@ export const fail = (code: string, message: string, subjects: string[], at?: Vec
 export const f2 = (x: number) => x.toFixed(2);
 
 /** A component about to be installed: footprint, top (work height) and bottom. */
-export type WorkTarget = { label: string; obb: OBB2; y: number; y0: number };
+export type WorkTarget = { label: string; obb: OBB2; y: number; y0: number;
+  /** PC17 (#696): a body standing idle does not take a station from the crew: the crew's walk there asks it to step aside (walk.ts makeWay). */
+  yieldIdle?: true };
 
 export function spatialOf(rt: Runtime): Spatial {
   const sp = rt.services.spatial as Spatial;
@@ -94,7 +96,7 @@ export function findStations(rt: Runtime, crew: string[], anchors: Vec2[], t: Wo
   }
   type Cand = { level: number; y: number; p: Vec2; k: number };
   const cands: Cand[] = [];
-  const others = Object.values(w.entities).filter((e) => e.kind === 'human' && e.human && !crew.includes(e.id));
+  const others = Object.values(w.entities).filter((e) => e.kind === 'human' && e.human && !crew.includes(e.id) && !(t.yieldIdle && e.human.activity === 'idle' && !e.human.task && !e.human.grip));
   const R = ARM_REACH, STEP = 0.2;
   for (const lv of eligible) {
     const g = sp.level(lv.id);

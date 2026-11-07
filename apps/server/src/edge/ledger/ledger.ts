@@ -54,7 +54,7 @@ import type {ContactActuatorIntent,ContactActuatorService} from '../../god/conta
 import type {DoorPassage,DoorPassageRefusal} from '../../god/door-passage.ts';
 import type {PaintingIntent, PaintingService} from '../../art/painting-completion.ts';
 import {humanoidDims} from '../../../../../mars/viewer/engine/bodies/humanoid.ts';
-import {Together, PAIRED, listed, togetherMayOffer, type TogetherPlan} from './together.ts';
+import {Together, PAIRED, listed, togetherMayOffer, type Prepared, type TogetherPlan} from './together.ts';
 import {semanticDiscovery, PURPOSE} from '../intents/semantic-discovery.ts';
 import {knownPart} from '../intents/resolved-parts.ts';
 import {Intents,walkWithDestinationWords,walkWithFallback, attentionWords, offeredAttention, type IntentInput} from '../intents/intents.ts';
@@ -165,6 +165,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   lightningNear?: (x: number, z: number) => {last: string; strikes: number; nearest: number} | null;
   /** Stage B: god/lightning.ts installs it; the verdict pump ships the list so a read worker answers lightningNear. */
   recentStrikesV1?: () => {x: number; z: number; tick: number; god?: boolean}[];
+  /** PC17 (#696): the world's projects, where the engine bridge has them (behind the shared-carry flag). */
+  projects?: {prepare(soul: EdgeSoul, tag: {kind: 'project'; op: 'organize' | 'volunteer' | 'leave' | 'revise'; procedure?: string; project?: string}, params: Record<string, unknown>): {code: string; reason: string} | Prepared; baseFor(project: string, load: string): [number, number] | null; spotFor(project: string, load: string): {id: string; name: string; spot: {x: number; z: number; yaw: number}; project: string} | null; sweep(): void; hereLines(soul: EdgeSoul): string[]; view(id: string, soul: EdgeSoul): {id: string; kind: string; name: string; state: Record<string, unknown>; members: {soulId: string; name: string; role: string; slot: number | null; accepted: boolean}[]} | null};
   worldProfile?: (soul: EdgeSoul, caps: EdgeCapability[], plans: Map<string, {label: string; steps: Program['steps']; seconds?: boolean; stop?: boolean}>) => void;
   /** A world target whose physical use is unsupported must refuse, even during quiet renewal.
    * Checked on admission/dispatch/completion, never by a per-tick world scan. Historical terminal receipts stay immutable. */
@@ -457,7 +459,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       deliver: (sid, kind, body) => {try {(this.comms as unknown as {streams?: {deliver?(s: string, k: string, t: number, b: object): void}} | undefined)?.streams?.deliver?.(sid, kind, this.host.engine.world.tick, body);} catch {/* events are best effort */}},
       spectate: m => {try {(this.comms as unknown as {core?: {spectate(m: object): void}} | undefined)?.core?.spectate({tick: this.host.engine.world.tick, ...m});} catch {/* spectators never break the ledger */}},
       touch: id => this.comms?.fading.touch?.(id),
-      decide: (soul, receipt, capability, label, steps) => this.decide(soul, receipt, capability, label, steps), sharedCarry: this.sharedCarry,
+      decide: (soul, receipt, capability, label, steps) => this.decide(soul, receipt, capability, label, steps), sharedCarry: this.sharedCarry, project: (soul, tag, params) => this.projects?.prepare(soul, tag, params) ?? {code: 'capability.unknown', reason: 'That capability is not offered to this Soul right now; read capabilities again.'}, projectBase: (project, load) => this.projects?.baseFor(project, load) ?? null,
       start: (id, programId) => this.update(id, {phase: 'started', program_id: programId, code: null, reason: null}),
       note: (id, code, reason) => this.update(id, {code, reason}),
       stopOp: (entityId, programId, op, why) => {try {void this.host.enqueue('edge-stop', 'edge:shared', {entityId, programId, op, why}).catch(() => {/* best effort */}); return true;} catch {return false;   /* clock not ready: asked again at the next sweep */}},
@@ -784,6 +786,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (tick % 100 === 0) this.unstick(tick);
     if (tick % 20 === 0) try {this.together.sweep();} catch (e) {console.error('[edge] together sweep', e instanceof Error ? e.message : e);}
     try {this.together.sharedWatch();} catch (e) {console.error('[edge] shared watch', e instanceof Error ? e.message : e);}
+    if (this.projects && tick % 10 === 0) try {this.projects.sweep();} catch (e) {console.error('[edge] projects sweep', e instanceof Error ? e.message : e);}
     if (tick % 10 === 0) this.rideFrames(tick);
     if (tick % 10 === 0) for (const m of this.host.minds.values()) {
       const to = this.innermostPlace(m), from = this.lastPlace.has(m.soulId) ? this.lastPlace.get(m.soulId)! : to;
@@ -1750,6 +1753,11 @@ export class EdgeLedger implements EdgeLedgerHooks {
     let steps = structuredClone(plan.steps);
     if(cap.verb==='carry'&&steps.some(s=>s.verb==='mars:move_fixture'||s.verb==='mars:carry')||cap.verb==='carry-with'){
       if(typeof params.to!=='string'||!params.to.trim()||params.to.length>100)return refuse('capability.params','Choose a named place for the upright carry (to).');
+      // PC17 (#696): `to: project:<id>` is the load's own spot in that project (a shared carry only)
+      const projectTo=cap.verb==='carry-with'&&params.to.startsWith('project:')?this.projects?.spotFor(params.to.slice(8),cap.target?.id??''):undefined;
+      if(cap.verb==='carry-with'&&params.to.startsWith('project:')&&!projectTo)return refuse('project.not-a-part','That load has no spot in that project.');
+      if(projectTo)params={...params,toPlace:projectTo};
+      else{
       const dest=resolvePlaceForVerb(this,soul,params.to);
       if(!dest.ok)return {...refuse(dest.code,dest.reason),did_you_mean:dest.did_you_mean};
       const place=this.places.byId.get(dest.chosen.place);
@@ -1759,6 +1767,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       if(cap.verb==='carry-with')params={...params,toPlace:{id:place.id,name:place.name}};
       const at=centroid(place.polygon);
       for(const step of steps)if(step.verb==='mars:move_fixture'||step.verb==='mars:carry')step.params.to={...(step.params.to as object),x:at[0],z:at[1]};
+      }
     }
     if (steps.length > 40) return refuse('capability.params', 'that plan is too long; act in shorter legs.');
     // CN5 (acceptance): a capability that takes no seconds (a swim) ignores them instead of refusing
@@ -1857,7 +1866,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (prep.noBody) {
       // answering someone (decline, ask to stop following) never interrupts what the body is doing
       const r = this.insert(soul, capability, 'completed', clientRef, true); prep.commit?.(r.id); this.comms?.fading.touch?.(soul.soulId);
-      return {accepted: true, receipt: this.receipt(soul.soulId, r.id)!, ...resolved};
+      return {accepted: true, receipt: this.receipt(soul.soulId, r.id)!, ...(prep.result !== undefined ? {result: prep.result} : {}), ...resolved};
     }
     if (!cap.available && cap.blocked && !WAIT_CODES.has(cap.blocked.code) && !this.host.quietBarrier) return {...refuse(cap.blocked.code, cap.blocked.reason), ...resolved};
     return this.launch(soul, capability, plan.label, this.standIfSeated(soul, steps), clientRef, resolved, refuse, prep.commit,params,cap.target?{capability:cap.id,target:cap.target.id,kind:cap.target.kind,...(cap.target.kind==='place'?{place:cap.target.id}:{})}:undefined);

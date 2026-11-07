@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "node --test src/*.test.ts"
+    "test": "node --test src/*.test.ts src/project/*.test.ts"
   },
   "dependencies": {
     "@souls/engine-contract": "workspace:*",

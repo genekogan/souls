@@ -122,6 +122,8 @@ Maintain one authority for poses, reciprocal connections and support. Scene pare
 is supported by two uprights. Rendering and persistent entity adapters observe the same state; avoid overlaying
 a duplicate static campus mesh on dynamic materials. Project progress cannot independently declare completion.
 
+The first of these is built: `rack-bay@1`, `rack-bay-build@1` and persistent projects ([soul actions](../architecture/soul-actions.md)).
+
 Floors and stairs become navigable at actual installation and lose that affordance on safe removal. Temporary
 bracing/held support counts only while present; protect occupants during disassembly. Reverse dependencies recover
 the same instances where reversible. Cutting declares outputs/offcuts; consumed fasteners/finishes have explicit

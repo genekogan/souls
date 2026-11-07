@@ -32,7 +32,7 @@ so later steps can cite them. Columns:
 
 PC numbers are the [#560](https://github.com/soulsimulation/souls/issues/560) physical-coordination queue. At the pinned
 commit PC01–PC14 are landed except PC11 (#690, open), PC15 (#694) is in review as PR #1122, and PC16 onwards are planned.
-Since then (statuses only; the rows stay as pinned): PC15 landed (#1122), and PC16 (#695, stairs) is in review as PR #1132.
+Since then (statuses only; the rows stay as pinned): PC15 landed (#1122), PC16 (#695, stairs) landed (#1132), and PC17 (#696, procedures and projects) is in review.
 Several rows below are behind the `SIM_SHARED_CARRY=1` flag.
 
 ## Engine

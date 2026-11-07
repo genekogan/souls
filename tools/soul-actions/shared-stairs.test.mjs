@@ -371,5 +371,5 @@ test('PC16 R11: with the flag off nothing is offered and the rules version has n
   const w = await site(t, {sharedCarry: false});
   assert.equal(offer(w, w.souls.Ada, `install-flight-with:${w.idOf('flight')}`), undefined);
   assert.doesNotMatch(w.host.engine.rulesVersion ?? '', /shared-stairs/);
-  assert.match(factory.rulesVersion, /\+shared-raise\/1\+shared-beam\/1\+shared-deck\/1\+shared-stairs\/1$/);
+  assert.match(factory.rulesVersion, /\+shared-raise\/1\+shared-beam\/1\+shared-deck\/1\+shared-stairs\/1\+shared-bay\/1$/);
 });
