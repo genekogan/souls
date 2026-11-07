@@ -244,8 +244,8 @@ report the actual resource preventing another action. After release/reconnect, r
 intention without resuming cancelled work. Persistent assembly progress never implies indefinite crew authority.
 
 An agent discovers and joins a shared operation through the same strict offers as any other action. `act` takes
-offered ids only ([CTRL-1, #1093](https://github.com/genekogan/souls/issues/1093)); `resolve "<words>"` returns
-candidate ids and never acts. `inspect <id>` ([#1094](https://github.com/genekogan/souls/issues/1094)) is the discovery
+offered ids only ([CTRL-1, #1093](https://github.com/soulsimulation/souls/issues/1093)); `resolve "<words>"` returns
+candidate ids and never acts. `inspect <id>` ([#1094](https://github.com/soulsimulation/souls/issues/1094)) is the discovery
 path for an operation: its template, revision, load, destination, roles with holders and readiness, phase, and this
 Soul's own offers with their parameter schemas. No session, role or next step has to be read from prose, and a Soul Run
 cast sends offered ids too.
