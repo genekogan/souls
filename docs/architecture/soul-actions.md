@@ -370,7 +370,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
       body; it is never relocated to a starting place.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
-  the station" mean the radio's station; "put on a record" or "play a record" mean the record player, with the
+  the station" mean the radio's station; "put on a record", "play a record" or "turn on the record player" mean the record player ("stop the record" stops it), with the
   sleeve the Soul picks as the `record` param. A word only applies when that action is on offer.
 - **Contact, then change.** The body walks to a stand point clear of the thing, turns to face it, and reaches. The
   world changes at the recorded contact: at the end of a door's swing, at the click of a switch, at the first knock.
