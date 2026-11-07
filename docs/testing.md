@@ -62,6 +62,10 @@ node tools/test-harness/bundle-budget/budget.mjs --build --write     # accept a 
 
 The gate never writes the baseline; only a reviewed commit does.
 
+The comparison runs in two places: the CI job `types-web`, on the build it already makes, so growth fails `ci-ok` on the
+PR that causes it; and V3-bundle in the release gate. A PR that changes only the baseline or the budget tool also selects
+`types-web`.
+
 ## Conformance
 
 `packages/conformance` bakes, places and furnishes every core library def revision at its parameter endpoints and
