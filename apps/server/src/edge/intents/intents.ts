@@ -399,7 +399,8 @@ export class Intents {
       const r = text === asked ? this.L.coreA.resolveText(soul, asked, caps) : caps.some(c => c.id === text) ? this.L.coreA.exactWords(soul, bound, text, {kind: 'exact' as const, cap: caps.find(c => c.id === text)!}) : this.L.coreA.resolveText(soul, text, caps);
       // #1152: words that only name a place ("orchard", "the pond hall", "reading room") are the walk there. A dry run, so nothing is chosen
       // for the Soul, and only when the walk's own id and label hold every word: a word it merely resembles stays refused.
-      if (!social && (r.kind === 'unknown' ? !(r as {code?: string}).code : r.cap.id.endsWith(':here') && r.cap.verb !== 'walk')) {const walk = this.namedPlaceWalk(soul, asked); if (walk) return walk;}
+      // One word that is a verb here ("dance") stays that verb, even in a world with a Dance Floor.
+      if (!social && !/^walk\s+to\b/i.test(asked) && (r.kind === 'unknown' ? !(r as {code?: string}).code : r.cap.id.endsWith(':here') && /\s/.test(asked))) {const walk = this.namedPlaceWalk(soul, asked); if (walk) return walk;}
       // #1152: a refusal names what can be done instead here as well as on act: on the strict contract this is where an agent meets it
       if (r.kind === 'unknown') {const no = {ok: false, code: (r as {code?: string}).code ?? 'capability.unknown', reason: r.reason, did_you_mean: r.didYouMean, ...(r.discovery ? {discovery: r.discovery} : {})}; return r.discovery ? no : this.L.withAlternatives(soul, asked, no, caps);}
       const params = {...(r.kind === 'alias' && r.params ? r.params : {}), ...(extra ?? {})};
