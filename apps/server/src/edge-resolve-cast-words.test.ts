@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bootEden} from '../test/eden-capabilities-timing.ts';
+import {accept} from '../test/native-owner-fixture.ts';
 
 const hamlet = new URL('../../../worlds/templates/hello-hamlet.json', import.meta.url);
 
@@ -45,8 +46,22 @@ test('#1152: words that name no place are still refused, and resolving does noth
   const fly = w.edge.intents.dryRun(w.soul, {capability: 'fly up to the pond hall'}) as any;
   assert.equal(fly.alternatives?.[0]?.id, 'walk:lab-pond-hall', JSON.stringify(fly).slice(0, 300));
   assert.ok(JSON.stringify({alternatives: fly.alternatives}).length <= 600, 'bounded bytes');
-  // an older client's act on words isn't this path: it stays as it was
   const before = (w.db.db.prepare('SELECT COUNT(*) n FROM edge_receipts_v1').get() as {n: number}).n;
   w.edge.intents.dryRun(w.soul, {capability: 'orchard'});
   assert.equal((w.db.db.prepare('SELECT COUNT(*) n FROM edge_receipts_v1').get() as {n: number}).n, before, 'no receipt from a dry run');
+});
+
+// `resolve`'s named-place path is its own, so bare place words stay refused on act. The vocabulary and the seat reader are shared, so
+// the new phrasings and a trailing "first" reach an older client's act on words as well as resolve.
+test('#1152: an older client\'s act on words: bare place words stay refused, the new phrasings walk', {timeout: 300000}, async t => {
+  const w = await bootEden(() => {}, hamlet); t.after(w.close);
+  const act = (capability: string) => accept(w.host, Promise.resolve(w.edge.act(w.soul, {capability}))) as Promise<any>;
+  for (const words of ['orchard', 'pond hall']) {
+    const r = await act(words);
+    assert.equal(r.accepted, false, `${words}: ${JSON.stringify(r).slice(0, 200)}`); assert.equal(r.code, 'capability.unknown', words);
+  }
+  const seat = await act('sit on the bench outside the cottage');
+  assert.equal(seat.accepted, false, JSON.stringify(seat).slice(0, 300)); assert.deepEqual(seat.did_you_mean?.map((d: {id: string}) => d.id), ['sit:cottage/part-outdoor-bench'], JSON.stringify(seat).slice(0, 300));
+  const r = await act('stop by the orchard first');
+  assert.equal(r.accepted, true, JSON.stringify(r).slice(0, 300)); assert.equal(r.receipt?.capability, 'walk:flag-orchard', JSON.stringify(r).slice(0, 300));
 });
