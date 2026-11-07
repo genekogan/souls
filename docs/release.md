@@ -1,5 +1,7 @@
 # Releasing Soul
 
+How the version lines relate and what a release carries: [versioning](process/versioning.md).
+
 ## Release owner
 
 The development coordinator is the release owner (maintainer decision, 2026-11-06). It runs each release end to end:

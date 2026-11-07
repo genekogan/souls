@@ -116,7 +116,8 @@ therefore **windowed**:
   `merge:ready` PR. Dispatching main's `ci.yml` instead would not help: its checks would attach to main's commit, not
   the PR head.
 - Pushes to main, manual runs without `pr`, and merge-group runs are never windowed. Main keeps its full-scope runs,
-  which the merge train reads.
+  which the merge train reads. A merge-group run is path-scoped over everything in the group since `main`, and
+  `proof-ok` reports there without checking anything, because a PR passes it at its head to enter the queue.
 
 Steward procedure: give `ci:run` to the PRs entering the window, normally the next two in merge order. Add
 `merge:ready` once a head's `ci-ok` is green, and remove `ci:run` from PRs that leave the window. A PR labelled
@@ -131,8 +132,9 @@ loaded laptop. It is picked by its own paths (`tools/soul-actions`, `apps/server
 is not a gate step, so the gate's suite tree and cached baseline don't change.
 
 **Self-hosted runners.** The heavy `qualify` legs run on the runners named by the repository variable
-`CI_HEAVY_RUNNER` when it is set (one label, such as `souls-ci`), else on GitHub-hosted runners; the browser `smoke`
-leg always stays GitHub-hosted. One runner instance takes one job at a time, so routing is only worth it with several
+`CI_HEAVY_RUNNER` when it is set (one label, such as `souls-ci`), else on GitHub-hosted runners. The browser `smoke` leg
+and the `native` leg always stay GitHub-hosted: `native` has a wall-clock budget that a loaded shared host misses
+(#1162). One runner instance takes one job at a time, so routing is only worth it with several
 instances online. `tools/ci/setup-runners.sh` sets them up on one Linux host, run there as root: N instances, each a
 systemd service under one dedicated unprivileged user, with the label, and Playwright's Chromium system packages when
 the OS has them (not Ubuntu 20.04). It is idempotent, takes the registration token as an argument and names no host;

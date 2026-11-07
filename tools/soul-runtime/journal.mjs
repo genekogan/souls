@@ -43,7 +43,7 @@ function refuseLink(path) {
  * claims delivery of an event whose payload wasn't retained in the same commit.
  * Source cursor equality is an optimistic guard, not an ordering comparison.
  */
-export function openJournal(directory, {worldId, soulId, now = Date.now,retention={},ownerTaskLimits={}}) {
+export function openJournal(directory, {worldId, soulId, now = Date.now,retention={},ownerTaskLimits={},lease={}}) {
   text(worldId, 200, 'world'); text(soulId, 200, 'Soul');
   const policy=retentionPolicy(retention);
   refuseLink(directory); mkdirSync(directory, {recursive:true, mode:0o700});
@@ -97,7 +97,7 @@ export function openJournal(directory, {worldId, soulId, now = Date.now,retentio
   const sourceName = source => text(source,100,'source');
   const cursorValue = cursor => cursor===null ? null : text(cursor,200,'cursor');
   const getCursor = source => db.prepare('SELECT cursor FROM sources WHERE source=?').get(source)?.cursor ?? null;
-  const control=attachControl(db,{now,transaction});
+  const control=attachControl(db,{now,transaction,...lease});
   let ownerTasks;
   try{ownerTasks=attachOwnerTasks(db,{now,transaction,control,limits:ownerTaskLimits});}catch(e){db.close();throw e;}
   const counts=()=>db.prepare('SELECT * FROM journal_storage_v1 WHERE singleton=1').get();

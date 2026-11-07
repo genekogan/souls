@@ -10,7 +10,7 @@
 //
 // Selectors used by legible() (from apps/web/src; update here when the UI changes):
 //  viewer      .viewer-history  data-viewer-mode|selection|presentation|tick|ready ; .viewer-following-label
-//  arrival     .viewer-arrival (card "Arriving in <World>"; arrival = body text no longer contains "Arriving in")
+//  arrival     .viewer-arrival (the arrival light; arrival = that element is gone)
 //  card        article.soul-card: #soul-card-name, .soul-character, .soul-status (fade word), .soul-doing, .soul-energy,
 //              .soul-agent[data-agent-state] (owner presence chip), .soul-follow[aria-pressed], .soul-card-thread
 //  agent box   .agent-message: .agent-message-presence[data-agent-presence] > span (e.g. "agent listening", "away");
