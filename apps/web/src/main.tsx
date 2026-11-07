@@ -12,7 +12,8 @@ const PrivyAuth=lazy(()=>import('./PrivyAuth.tsx'));
 import { Shell, type AuthCtx } from './Shell.tsx';
 import './styles.css';
 import type { ClerkSatellite } from './clerk-satellite.ts';
-import {clerkNow,clerkOriginRoute,clerkSatelliteSyncs,unsignedPreviewAuth} from './auth-ui.ts';
+import {clerkNow,clerkOriginRoute,unsignedPreviewAuth} from './auth-ui.ts';
+import {clerkSatelliteSyncs} from './clerk-sync.ts';
 // New worlds (world launcher, world engine): the launcher homepage and its sign-in. Old worlds never reach these.
 // P1 phones: the homepage (LauncherHome) and Clerk are lazy chunks, off a world page's critical path; a world's Clerk
 // loads once its arrival is over (ClerkWorld below).

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { arrivalHold } from './arrival-hold.ts';
-import { clerkSatelliteSyncs } from './auth-ui.ts';
+import { clerkSatelliteSyncs } from './clerk-sync.ts';
 import { INLINE_CONFIG_GLOBAL, inlineClerkSatellite, takeInlineConfig } from './inline-config.ts';
 
 const u = 'https://soul.example.test/w/eden/';

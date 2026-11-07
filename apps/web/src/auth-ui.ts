@@ -47,12 +47,6 @@ export function clerkOriginRoute(authenticationOrigin:string|undefined,currentOr
 export function clerkNow(href:string,hash:string,cookie=''):boolean{
  return /[?&#]__clerk|__session=|__dev_session/.test(href)||!(hash===''||hash==='#'||hash==='#watch'||!!soulFromFragment(hash))||clerkSignedInHint(cookie);
 }
-/** #531: whether this page's first Clerk load will sync with the primary domain, on a satellite: a top-level navigation to
- *  Clerk and back that makes a new document. It has not synced yet when it has neither Clerk's return parameter nor its
- *  `__client_uat` cookie, whose value (0 when signed out) is set by the sync. */
-export function clerkSatelliteSyncs(href:string,cookie:string):boolean{
- return !/[?&]__clerk_synced=/.test(href)&&!/(?:^|;\s*)__client_uat(?:_[^=;]*)?=/.test(cookie);
-}
 /** Clerk's own "client updated at" cookie on the app's domain (`__client_uat`, or `__client_uat_<suffix>`): non-zero
  *  when this browser holds a signed-in session. Only a hint for when to load Clerk; Clerk itself decides. */
 export function clerkSignedInHint(cookie:string):boolean{return /(?:^|;\s*)__client_uat(?:_[^=;]*)?=[1-9]/.test(cookie);}

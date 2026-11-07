@@ -8,7 +8,7 @@ import { apiPath } from './world-path.ts';
 import { newWorld } from './world-kind.ts';
 import { browserQuality } from './quality-tier.ts';
 import { earlyArrivalWanted } from './early-arrival.ts';
-import { clerkSatelliteSyncs } from './auth-ui.ts';
+import { clerkSatelliteSyncs } from './clerk-sync.ts';
 import { inlineClerkSatellite } from './inline-config.ts';
 
 export type EarlyLayer = { layer: WorldEntityLayer; started: Promise<void>; abort: AbortController };
