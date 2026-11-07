@@ -180,7 +180,7 @@ missing history, and cannot erase an already-dispatched uncertain effect.
 `launch.mjs` accepts the same controller arguments and adds a small outer
 process owner. On supported local POSIX hosts it can restart a killed controller
 with the same durable thread and journal only after proving its old registered
-host groups absent. It waits for an abandoned lease without stealing live
+host groups absent. A lease records its holder's pid and start token, so it's taken at once from a process that's provably gone; an unknown answer or a row without them waits out the TTL. It waits for an abandoned lease without stealing live
 ownership and stops on explicit failures or unverified ownership. `--seconds` bounds the entire launcher lifetime,
 including restarts. This does not start a login service or promise availability
 through OS sleep/reboot. Stop any legacy CLI/controller before starting it.
