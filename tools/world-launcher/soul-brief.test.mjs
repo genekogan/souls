@@ -120,7 +120,8 @@ test('A1 A5: `pending` carries the brief once there is memory, and only then; no
     assert.match(d.brief, /the square: first time here\. My note: Good light\./);
     assert.equal(f.seen.filter((p) => !/wait|listen/.test(p)).length, asked, 'the brief asks the world nothing');
     f.message('m_1');
-    const woke = (await run('listen', '--once')).d;
+    let woke = (await run('listen', '--once')).d;
+    for (let i = 0; i < 60 && !woke.messages?.length; i++) { await new Promise((r) => setTimeout(r, 50)); woke = (await run('listen', '--once')).d; }   // the serve hears it on its next poll
     assert.equal(woke.messages[0].id, 'm_1'); assert.match(woke.brief, /the square/, 'a wake carries it too');
     await run('ack', 'm_1');
     assert.equal('brief' in (await run('listen', '--once')).d, false, 'nothing to wake for: no brief');
