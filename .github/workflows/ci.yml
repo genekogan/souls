@@ -113,6 +113,8 @@ jobs:
         with: { fetch-depth: 0 }
       # pnpm's version comes from package.json `packageManager` (pnpm@10.27.0).
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        # Instances on one host share a user and home, so the default dest would collide between concurrent jobs (#1162).
+        with: { dest: '${{ runner.temp }}/setup-pnpm' }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile

@@ -49,7 +49,10 @@ done
 case "$(uname -m)" in x86_64) ARCH=x64 ;; aarch64|arm64) ARCH=arm64 ;; *) die "unsupported CPU $(uname -m)" ;; esac
 
 # ---- the OS, first: it decides whether Playwright's browser packages can be installed at all
+# os-release has a VERSION of its own: keep this script's runner version (#1162).
+RUNNER_VERSION="$VERSION"
 . /etc/os-release
+VERSION="$RUNNER_VERSION"
 OS="${ID:-unknown}-${VERSION_ID:-unknown}"
 echo "== host: ${PRETTY_NAME:-$OS}, $(nproc) cores, load $(cut -d' ' -f1-3 /proc/loadavg)"
 command -v apt-get >/dev/null || die "apt-based systems only (Debian or Ubuntu)"
