@@ -76,6 +76,12 @@ export type RouteOpts = {
    * people steps out of it first).
    */
   startTolerance?: number;
+  /**
+   * route-reach/1 (#872, prospective runtime policy `routeReachV1`; absent on every earlier history): the paged planner
+   * retries a hop the fine search could not finish on a window one ground tile wider before refusing, and plans a far
+   * walk from an upper floor down to the ground a chunk at a time instead of refusing it `ground.too-far`.
+   */
+  routeReachV1?: boolean;
 };
 
 /** Corridor planner: coarse cell size (m) and fine-search halo around the coarse path (m). */
