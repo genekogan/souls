@@ -43,8 +43,8 @@ test('server changes run server shards and latency, not native', () => {
 });
 
 test('the god-bundle job checks the bundle on god-skill paths, full scope included, and on nothing else', () => {
-  for (const f of ['tools/god-skill/eden-god.mjs', 'tools/god-skill/lib/upload.mjs', 'tools/god-skill/cli.mjs']) assert.ok(names([f]).includes('god-bundle'), f);
-  for (const f of ['apps/server/src/god/buildsafe-rule.ts', 'tools/world-launcher/launcher.mjs', 'docs/testing.md']) assert.ok(!names([f]).includes('god-bundle'), f);
+  for (const f of ['tools/god-skill/eden-god.mjs', 'tools/god-skill/lib/upload.mjs', 'tools/god-skill/cli.mjs', 'tools/world-launcher/soul/home.mjs']) assert.ok(names([f]).includes('god-bundle'), f);
+  for (const f of ['apps/server/src/god/buildsafe-rule.ts', 'tools/world-launcher/launcher.mjs', 'tools/world-launcher/soul/eden.mjs', 'docs/testing.md']) assert.ok(!names([f]).includes('god-bundle'), f);
   assert.ok(names(['pnpm-lock.yaml']).includes('god-bundle'), 'a lockfile change can move esbuild');
   const job = jobsFor(['tools/god-skill/cli.mjs']).include.find(j => j.name === 'god-bundle');
   assert.equal(job.assets, false); assert.ok(!('paths' in job));
