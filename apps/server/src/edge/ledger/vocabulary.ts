@@ -305,7 +305,7 @@ const STEER_GO = String.raw`(?:fly|flying|steer|drive|sail|float|row|rowing|pilo
 const RECORD_STOP = /^(?:please\s+)?stop\s+(?:the\s+)?record[.!]*$/, RECORD_START = /^(?:please\s+)?(?:turn|switch)\s+on\s+(?:the\s+)?record\s+player[.!]*$/;
 function recordWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
   const t = text.trim(), action = RECORD_STOP.test(t) ? 'switch-off' : RECORD_START.test(t) ? 'put-on-record' : null; if (!action) return null;
-  // only a record player's own offer that can happen now, and only one: anything else goes the ordinary way and asks which
+  // only a record player's own offer that can happen now, and only one: anything else goes the ordinary way
   const players = new Set(ctx.caps.filter(c => c.action === 'put-on-record').map(c => c.object)), found = ctx.caps.filter(c => c.verb === 'object' && c.action === action && c.available && players.has(c.object)), cap = found.length === 1 ? found[0] : null;
   return cap ? {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`} : null;
 }

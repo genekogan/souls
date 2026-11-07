@@ -287,5 +287,6 @@ test('record words: one playing record player, or the ordinary way', () => {
   const go = (t: string, caps: any[]) => { const r: any = resolveCapability(t, {caps, target: () => ({names: [], around: [], at: [1, 1]}), places: [], roots: [], me: [0, 0]} as any); return r.cap?.id ?? r.code ?? r.kind; };
   const on = [mk('e_aaaa0001', 'put-on-record'), mk('e_aaaa0001', 'switch-off')], off = [mk('e_bbbb0002', 'put-on-record'), mk('e_bbbb0002', 'switch-off', false)];
   assert.equal(go('stop the record', [...off, ...on]), 'object:e_aaaa0001:switch-off', 'the playing one, wherever it comes in the list');
-  assert.notEqual(go('stop the record', [...on, ...[mk('e_cccc0003', 'put-on-record'), mk('e_cccc0003', 'switch-off')]]), 'object:e_aaaa0001:switch-off', 'two playing: not the first one');
+  assert.equal(go('stop the record', [...on, mk('e_cccc0003', 'put-on-record'), mk('e_cccc0003', 'switch-off')]), 'unknown', 'two playing: neither is picked');
+  assert.notEqual(go('stop the record', [...off, mk('e_dddd0004', 'switch-off', true, 'radio')]), 'object:e_dddd0004:switch-off', 'a silent player: not the radio beside it');
 });
