@@ -231,7 +231,7 @@ opts in (`layers.deferred` otherwise): say so instead of retrying.
 
 ## Seeing and checking
 
-- `contained` — what a rewind set aside because it still breaks a rule, with your things named; `nothing contained` when clear. Read it after a rewind, or when something seems stuck.
+- `contained` — what the world set aside because it still breaks a rule, your things by name and anything else, such as a Soul's body, by id; `nothing contained` when clear. Read it after a rewind, or when something seems stuck.
 - `look --at <ref> [--from s|sw|…|above] [--dist m | --span m] [--inside [--floor k]] [--hour 21] [--weather rain]
   [--out f.png]` — **open the image it names**. Look at parts (`--at market`), never the whole world (`map` is the
   whole-world view). A named thing or set is framed automatically. After `pair`/`listen` a warm browser makes a look

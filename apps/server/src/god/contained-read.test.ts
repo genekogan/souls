@@ -7,6 +7,7 @@ import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
 import { GodMode } from './god.ts';
 import { mountGodRoutes } from './routes.ts';
+import { helperRoute } from './helpers.ts';
 
 function fixture(t: TestContext) {
   const db = new Db(':memory:');
@@ -19,8 +20,10 @@ function fixture(t: TestContext) {
   return { god, token, read };
 }
 
-test('G2: nothing contained reads as an empty list', async (t) => {
-  const { token, read } = fixture(t);
+test('G2: nothing contained reads as an empty list; a world that can\'t say, says so', async (t) => {
+  const { god, token, read } = fixture(t);
+  const none = await read(token); assert.equal(none.status, 503); assert.equal(none.data.code, 'contained.unavailable');
+  god.contained = () => [];
   assert.deepEqual(await read(token), { status: 200, data: { contained: [] } });
 });
 
@@ -30,6 +33,7 @@ test('G2: only the world\'s god can read it', async (t) => {
   assert.equal((await read()).status, 401);
   assert.equal((await read('not-a-token')).status, 401);
   assert.equal((await read(token)).status, 200);
+  assert.ok(helperRoute('GET', '/v1/god/contained', { build: 'b', claim: 'c', part: 'p' } as never), 'a helper token is not the god');
 });
 
 test('G1, G3: each entry\'s rule, subjects and the god\'s own thing, and it leaves the list when it stops firing', async (t) => {

@@ -6809,7 +6809,11 @@ async function stream(seconds = 60) {
 }
 async function contained() {
   const c = ok(await call("/v1/god/contained"), "contained").contained;
-  return c.length ? c.map((x) => `${x.rule}: ${x.things.length ? x.things.map((t) => t.path).join(", ") : x.subjects.join(", ")}`).join("\n") : "nothing contained";
+  const named = (x) => {
+    const yours = new Map(x.things.map((t) => [t.id, t.path]));
+    return x.subjects.map((s) => yours.get(s) ?? s).join(", ") || "no subject named";
+  };
+  return c.length ? c.map((x) => `${x.rule}: ${named(x)}`).join("\n") : "nothing contained";
 }
 async function status() {
   const s = load();

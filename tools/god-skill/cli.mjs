@@ -1376,7 +1376,7 @@ export async function prayers(flags = {}) { return ok(await call(`/v1/god/prayer
 export async function answer(prayer, text) { return act({ ops: [{ op: 'answer', prayer, text }] }); }
 export async function stream(seconds = 60) { return follow(seconds, (e) => console.log(JSON.stringify(e))); }
 /** #1198: what a rewind set aside, with the god's own things named. */
-export async function contained() { const c = ok(await call('/v1/god/contained'), 'contained').contained; return c.length ? c.map((x) => `${x.rule}: ${x.things.length ? x.things.map((t) => t.path).join(', ') : x.subjects.join(', ')}`).join('\n') : 'nothing contained'; }
+export async function contained() { const c = ok(await call('/v1/god/contained'), 'contained').contained; const named = (x) => { const yours = new Map(x.things.map((t) => [t.id, t.path])); return x.subjects.map((s) => yours.get(s) ?? s).join(', ') || 'no subject named'; }; return c.length ? c.map((x) => `${x.rule}: ${named(x)}`).join('\n') : 'nothing contained'; }
 export async function status() { const s = load(); const st = ok(await call('/v1/god/status'), 'status'); const v = st.versions; return `${s.world} — you are ${st.you}; ${st.entities} entities, seq ${st.seq}${s.group ? `; group "${s.group}"` : ''}${s.build ? `; ${buildHeader(s.build, st.builds?.find((b) => b.id === s.build.id))}` : ''}; skill ${SKILL_VERSION}${v ? `; server protocol ${v.protocol}, schema ${v.schema}, skill ${v.skill}, source ${v.source}` : ''}`; }
 
 // ---------------------------------------------------------------- cli

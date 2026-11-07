@@ -63,11 +63,12 @@ parameters, slots and actions.
 
 ### When a rewind leaves something contained
 
-With the `souls-repair/1` rules, a god edit that still breaks a rule after a rewind is set aside so the world carries on
-([engine contract](engine-contract.md)). `GET /v1/god/contained`, for the world's god only, lists each one: its `rule`,
-its `subjects`, and `things`, the subjects that are the god's own, by path. The list is empty when nothing is contained,
-and an entry leaves it when it stops firing. There's no push: read it after a rewind, or when something seems stuck.
-`eden-god contained` prints it.
+With the `souls-repair/1` rules, what still breaks a rule after a rewind, or in place when the world can't go back, is set
+aside so the world carries on ([engine contract](engine-contract.md)). A god edit is one cause; a Soul's body can be another.
+`GET /v1/god/contained`, for the world's god, lists each one: its `rule`, its `subjects`, and `things`, the subjects that are
+the god's own, by path. The list is empty when nothing is contained, and an entry leaves it when it stops firing. A world
+with no engine bridge answers 503 `contained.unavailable`. There's no push: read it after a rewind, or when something seems
+stuck. `eden-god contained` prints it.
 
 ## How an edit works
 
