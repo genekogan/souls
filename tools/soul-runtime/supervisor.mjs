@@ -59,15 +59,26 @@ const attends=(fact,listenTo)=>ambientMatches(fact,listenTo)||presenceMatches(fa
 // wake-eligible, further presence facts about that Soul received within
 // PRESENCE_COOLDOWN_MS drop to priority 0 (still delivered with the next wake).
 // In memory only, LRU-bounded; a restart starts with no cooldowns.
-export const PRESENCE_COOLDOWN_MS=300000,PRESENCE_COOLDOWN_SUBJECTS=128;
-export function presenceCooldown({ms=PRESENCE_COOLDOWN_MS,limit=PRESENCE_COOLDOWN_SUBJECTS}={}){
- const last=new Map(),cooled=(fact,at)=>{const t=last.get(fact.event.about.soulId);return t!==undefined&&at-t<ms;};
+// A return is new again (#468): a subject that left at least PRESENCE_RETURN_ABSENCE_MS
+// ago wakes on its arrival inside the cooldown, and that wake restarts the cooldown.
+// A shorter absence is a flap and stays quiet, so one subject wakes a Soul at most
+// once per absence of that length.
+export const PRESENCE_COOLDOWN_MS=300000,PRESENCE_COOLDOWN_SUBJECTS=128,PRESENCE_RETURN_ABSENCE_MS=45000;
+export function presenceCooldown({ms=PRESENCE_COOLDOWN_MS,limit=PRESENCE_COOLDOWN_SUBJECTS,absenceMs=PRESENCE_RETURN_ABSENCE_MS}={}){
+ const last=new Map(),left=new Map(),cooled=(fact,at)=>{const t=last.get(fact.event.about.soulId);return t!==undefined&&at-t<ms;};
+ const bounded=(map,subject,at)=>{map.delete(subject);map.set(subject,at);if(map.size>limit)map.delete(map.keys().next().value);};
+ // A departure before the last wake is already spent: pending facts can be delivered in any order.
+ const returned=(fact,at)=>{if(fact.event.kind!=='arrive.here')return false;const subject=fact.event.about.soulId,t=left.get(subject);return t!==undefined&&t>=(last.get(subject)??-Infinity)&&at-t>=absenceMs;};
+ const noteLeave=(fact,listenTo)=>{if(fact.event?.kind==='leave.here'&&presenceMatches(fact,listenTo))bounded(left,fact.event.about.soulId,fact.receivedAt??Date.now());};
  return {
-  priority(fact,listenTo){const p=attentionPriority(fact,listenTo);return p===1&&presenceMatches(fact,listenTo)&&cooled(fact,fact.receivedAt??Date.now())?0:p;},
+  priority(fact,listenTo){
+   const p=attentionPriority(fact,listenTo),at=fact.receivedAt??Date.now();noteLeave(fact,listenTo);
+   return p===1&&presenceMatches(fact,listenTo)&&cooled(fact,at)&&!returned(fact,at)?0:p;
+  },
   delivered(facts,listenTo,at){
    for(const fact of facts){
-    if(!presenceMatches(fact,listenTo)||cooled(fact,fact.receivedAt??at))continue;
-    const subject=fact.event.about.soulId;last.delete(subject);last.set(subject,at);if(last.size>limit)last.delete(last.keys().next().value);
+    const when=fact.receivedAt??at;if(!presenceMatches(fact,listenTo)||cooled(fact,when)&&!returned(fact,when))continue;
+    bounded(last,fact.event.about.soulId,at);
    }
   },
   get size(){return last.size;},

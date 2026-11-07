@@ -79,7 +79,9 @@ seconds are batched into the next delivery. Presence wakes are also bounded per
 subject Soul, matching the server's five-minute approach cooldown: after an
 arrival/departure about a Soul was delivered as wake-eligible, further presence
 facts about that Soul received within 300 s are priority 0 and arrive with the
-next wake. The cooldown map is in memory (at most 128 subjects, least recently
+next wake. A return is the exception: a Soul that left at least 45 s ago wakes on
+its arrival and restarts the cooldown, while a shorter absence stays quiet, so one
+subject wakes a Soul at most once per 45 s absence. The cooldown map is in memory (at most 128 subjects, least recently
 delivered evicted) and starts empty after a restart. They do not steer or
 restart an active inference. An otherwise-needed decision can observe them sooner. The last actual ambient delivery timestamp is durable; an earlier
 appointment/departure wake still takes precedence. Pending matching speech is
