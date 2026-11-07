@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import type { ViewportInsets, WorldViewerHandle, WorldViewerState } from './WorldViewer.ts';
 import { arrivalMark } from './arrival-marks.ts';
 import { earlyArrival } from './early-arrival.ts';
+import { arrivalHold } from './arrival-hold.ts';
 import { arrivalProgress, assetDownloadProgress, heldLabel, initialPending } from './viewer-arrival.ts';
 import { ArrivalLight } from './ArrivalLight.tsx';
 import type { InitialWorldProgress } from './InitialWorldReadiness.ts';
@@ -95,7 +96,8 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
   // P7 lever D: a phone's new world drawn before the live data came: only the nearest assets still hold the card
   const early = useSyncExternalStore(earlyArrival.subscribe, earlyArrival.shown, earlyArrival.shown);
   if (early) drawnOnce.current = true;
-  const card = ((!early && (arriving || preparing)) || assetsNear) && initial?.stage !== 'failed';
+  const syncing = useSyncExternalStore(arrivalHold.subscribe, arrivalHold.held, arrivalHold.held);   // #531
+  const card = ((!early && (arriving || preparing)) || assetsNear || syncing) && initial?.stage !== 'failed';
   // P7d: a world already drawn before this page part came shows no light (index.html's boot light finishes that arrival).
   // #1166: the light plays once; it never returns over a world it has dissolved into.
   const [arrivalShown, setArrivalShown] = useState(() => !earlyArrival.shown());

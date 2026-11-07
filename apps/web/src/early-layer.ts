@@ -8,6 +8,8 @@ import { apiPath } from './world-path.ts';
 import { newWorld } from './world-kind.ts';
 import { browserQuality } from './quality-tier.ts';
 import { earlyArrivalWanted } from './early-arrival.ts';
+import { clerkSatelliteSyncs } from './clerk-sync.ts';
+import { inlineClerkSatellite } from './inline-config.ts';
 
 export type EarlyLayer = { layer: WorldEntityLayer; started: Promise<void>; abort: AbortController };
 let early: EarlyLayer | null = null, claimed = false;
@@ -17,6 +19,8 @@ export function earlyLayerWanted(search = location.search): boolean {
   const q = new URLSearchParams(search);
   // lane PAIR-UI: an #approve link may be handed to an open tab of this world (Shell.tsx); never draw a world before that
   if (/^#approve\//.test(globalThis.location?.hash ?? '')) return false;
+  // #531: this page is about to leave for Clerk's sync and come back as a new document, so it draws nothing first
+  if (inlineClerkSatellite() && clerkSatelliteSyncs(globalThis.location?.href ?? '', globalThis.document?.cookie ?? '')) return false;
   return q.get('earlyLayer') !== '0' && earlyArrivalWanted(browserQuality().tier, newWorld, search, q.has('shot'));
 }
 
