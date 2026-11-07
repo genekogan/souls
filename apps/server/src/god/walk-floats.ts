@@ -1,5 +1,5 @@
-import { footprintOf, heightAt } from '@sim/ground';
-import { onAbsoluteDeck, type Entity, type WorldModel } from '@sim/world-compiler';
+import { footprintOf, heightAt } from '@souls/ground';
+import { onAbsoluteDeck, type Entity, type WorldModel } from '@souls/world-compiler';
 
 /** Preserve the audit's terrain-gap metric, except for real full-footprint deck
  * support proven by the same predicate used during physical admission. */

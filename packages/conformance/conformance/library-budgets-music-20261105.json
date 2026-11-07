@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 library budgets, music family (#494, #416): new revisions core-drum-kit@2, core-mic-stand@2 and core-jukebox@2 fit the 400-triangle kit budget (400, 393 and 340 triangles; v1 was 872, 668 and 500) with v1's positions, tints, slots, seat, components and actions. Published revisions are immutable, so v1 keeps its bytes and its pinned findings in soul-actions-20261101.json (hashes unchanged) and its holds, now marked superseded. A filtered K=2 sweep of the three families baked, placed and rendered every v2 sample with no finding, so this record pins nothing. No budgets, samples or gap checks were relaxed; the rendering-gap list is unchanged.",
+  "findings": []
+}

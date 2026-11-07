@@ -41,7 +41,7 @@ function browser() {
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const when = v => v ? new Date(v).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown';
   // Defense in depth: do not navigate arbitrary snapshot URLs, even if a future collector regresses.
-  const safe = v => typeof v === 'string' && /^https:\/\/github\.com\/genekogan\/souls\/(issues\/\d+|pull\/\d+|releases\/tag\/[\w.-]+|commit\/[a-f0-9]+)(#[\w-]+)?$/.test(v);
+  const safe = v => typeof v === 'string' && /^https:\/\/github\.com\/(?:soulsimulation|genekogan)\/souls\/(issues\/\d+|pull\/\d+|releases\/tag\/[\w.-]+|commit\/[a-f0-9]+)(#[\w-]+)?$/.test(v);
   const link = (url, label) => safe(url) ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>` : esc(label);
   function gate(message, signin = false) {
     $('#board').replaceChildren(); $('#board').hidden = true; $('#gate').hidden = false;
@@ -89,7 +89,7 @@ ${c?.proofs?.length ? `<ul class="proofs">${c.proofs.map(p => `<li>${link(p.url,
     };
     $('#board').innerHTML = `<p class="notice ${d.source.state === 'cached' ? '' : 'warning'}">${esc(d.source.message)}<br>Collection checked ${esc(when(d.source.checkedAt))}; worker timestamps stay unchanged.</p>
 <div class="columns">${['Now', 'Next', 'Needs you', 'Recently shipped'].map(group => { const items = d.items.filter(i => i.group === group); return `<section aria-label="${group}"><h2>${group}<span>${items.length}</span></h2>${group === 'Next' ? '<p class="muted">No indexed activity or claim. Existing work may already be active; check its source.</p>' : ''}${items.map(card).join('') || '<p class="empty">No indexed records in this section.</p>'}</section>`; }).join('')}</div>
-<aside><h2>Release records</h2>${d.snapshot?.releases?.length ? d.snapshot.releases.map(r => `<p>${link(r.url, r.title)} · ${esc(when(r.at))}</p>`).join('') : '<p>No release records available.</p>'}<p>GitHub releases are source records. Live deployment receipts and heartbeat/load/refusal/error diagnostics stay in ${linkHealth()}. Paging qualification remains <a href="https://github.com/genekogan/souls/issues/461" target="_blank" rel="noopener noreferrer">#461</a>.</p></aside>`;
+<aside><h2>Release records</h2>${d.snapshot?.releases?.length ? d.snapshot.releases.map(r => `<p>${link(r.url, r.title)} · ${esc(when(r.at))}</p>`).join('') : '<p>No release records available.</p>'}<p>GitHub releases are source records. Live deployment receipts and heartbeat/load/refusal/error diagnostics stay in ${linkHealth()}. Paging qualification remains <a href="https://github.com/soulsimulation/souls/issues/461" target="_blank" rel="noopener noreferrer">#461</a>.</p></aside>`;
   }
   function linkHealth() { return `<a href="${esc(CFG.base)}/__sim/health">the existing health dashboard</a>`; }
   async function load() {

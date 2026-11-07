@@ -1,4 +1,4 @@
-import {decodeSceneCapturePublication} from '@sim/protocol/scene-capture';
+import {decodeSceneCapturePublication} from '@souls/protocol/scene-capture';
 import {detachedData} from './owned-live-chunks.ts';
 import {CURRENT_UNDERSTORY_CAPTURE_HASHES,LIVE_NATIVE_SOCIAL_CAPTURE_HASHES} from '../../../mars/viewer/app/engine-view/content/environment/current-provisions-understory/current.mjs';
 const understoryHashes=new Set(CURRENT_UNDERSTORY_CAPTURE_HASHES);

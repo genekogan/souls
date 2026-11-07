@@ -60,7 +60,7 @@ const SCAN_AT=[0,1.5,5,12,25,45];
 /** W2b: phones skip the sea fog banks (big alpha-blended puffs: fill rate). */
 /** Rainbow life after a shower stops (world seconds): full until HOLD, gone by GONE. */
 const BOW_HOLD_S=100,BOW_GONE_S=240;
-const phoneTier=()=>(globalThis as {__simQuality?:{tier?:string}}).__simQuality?.tier==='phone';const RESCAN_EVERY=30;
+const phoneTier=()=>(globalThis as {__soulsQuality?:{tier?:string}}).__soulsQuality?.tier==='phone';const RESCAN_EVERY=30;
 const WHITE=new THREE.Color(1,1,1);
 /** The kind a set weather draws as (its own name, or for 'manual' the nearest by its channels). */
 function setKind(w:SetWeather):WeatherKind{

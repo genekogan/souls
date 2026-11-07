@@ -1,5 +1,5 @@
 import { waterGeometryV1Schema, waterColumnV1Schema, waterClearanceV1Schema,
-  type WaterColumnGeometryV1, type WaterClearanceGeometryV1 } from '@sim/engine-contract';
+  type WaterColumnGeometryV1, type WaterClearanceGeometryV1 } from '@souls/engine-contract';
 import { createTerrainGeometryProbe } from './terrain.ts';
 
 /** Geometry-only proposal probe. Rectangular/domain and whole-footprint tests

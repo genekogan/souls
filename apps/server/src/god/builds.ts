@@ -2,7 +2,7 @@
 import { lockStatus, type Holder } from '../../../../tools/god-skill/lib/locks.mjs';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { hashOf, obbOverlap, type Batch, type Diff, type Failure, type WorldModel, type OBB, type Op } from '@sim/world-compiler';
+import { hashOf, obbOverlap, type Batch, type Diff, type Failure, type WorldModel, type OBB, type Op } from '@souls/world-compiler';
 import type { BuildReceipt } from './build-integrity.ts';
 import { type BuildRow, type BuildWrite, type EditRow, WorldStore } from './store.ts';
 import { helperScopeFailure, type ClaimState, type HelperScope } from './helpers.ts';

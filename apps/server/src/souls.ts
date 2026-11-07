@@ -3,10 +3,10 @@ import type {WorldAccounts} from './accounts/service.ts';
 // Soul operations shared by the web API, the agent API and MCP.
 import { randomBytes } from 'node:crypto';
 import {PROBE_PREFIX, PROBE_OWNER, isVerificationProbe} from './verification-probe.ts';
-import { createSoulSchema, describeIntent, intentSchema, proposeCardsSchema, steerSchema, type EventKind, type MandateRule, type AgendaStep, type BirthPayload, type DeckPayload, type IntentPayload, type LogEvent, type WireIntent } from '@sim/protocol';
+import { createSoulSchema, describeIntent, intentSchema, proposeCardsSchema, steerSchema, type EventKind, type MandateRule, type AgendaStep, type BirthPayload, type DeckPayload, type IntentPayload, type LogEvent, type WireIntent } from '@souls/protocol';
 import { blockedArrivalNear } from './arrival-placement.ts';
 import {mandateOf,explicitTrigger} from './mandate.ts';
-import {clockAt} from '@sim/brain';
+import {clockAt} from '@souls/brain';
 import { deckView } from './deck.ts';
 import { hashToken, newId, newSoulToken, RateLimit } from './auth.ts';
 import type { Brain } from './brain.ts';
@@ -16,8 +16,8 @@ import type { Db, SoulRow, UserRow } from './db.ts';
 import { checkAcceptanceGuard, energyWord, type AcceptanceGuard,type AcceptanceJournal, type WorldHost } from './world.ts';
 import { LifecycleJournal, type LifecycleOperation } from './lifecycle-journal.ts';
 import { LifecycleRunner,ownedBodyCorresponds,projectLifecycle } from './lifecycle-runner.ts';
-import type { SoulLifecycle } from '@sim/protocol';
-import {privatePurposeContextV1Schema} from '@sim/protocol';
+import type { SoulLifecycle } from '@souls/protocol';
+import {privatePurposeContextV1Schema} from '@souls/protocol';
 
 export class ApiError extends Error {
   status: number; code: string; extra?: Record<string, unknown>;

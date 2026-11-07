@@ -2,7 +2,7 @@ import * as THREE from 'three';
 /** W8: whole-map "sits on the ground" check. Every drawn seat (bench, chair, stool, sofa, seat) is tested where it
  * stands: a short ray from just above its lowest point finds what is under it (ground, floor, deck, pier). A seat
  * whose base hangs more than FLOAT_M above that support is floating; one whose base sits more than BURY_M below the
- * ground under it is buried. Read-only and on demand (`?survey=seats`, result on window.__simSeatSurvey). */
+ * ground under it is buried. Read-only and on demand (`?survey=seats`, result on window.__soulsSeatSurvey). */
 export const FLOAT_M=.12,BURY_M=.15;
 export const SEAT_NAME=/(?:^|[^a-z])(?:bench|benches|chair|chairs|stool|stools|sofa|sofas|couch|settee|seat|seats|armchair|deckchair|lounger|pew|pews)(?:[^a-z]|$)/i;
 const NOT_SEAT=/(?:^|[^a-z])(?:seat-?belt|car|vehicle|wagon|balloon|boat|bike|bicycle|swing|label|marker|ring|halo|highlight|ghost|people|soul|body)(?:[^a-z]|$)/i;

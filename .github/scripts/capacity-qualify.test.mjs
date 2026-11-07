@@ -129,3 +129,44 @@ test('stage: refuses when a staged file holds a Soul token', () => {
   assert.throws(() => stage({ out, dest: join(out, 'artifact'), qualify: Q, scrubWith: { paths: [], names: [] } }), /even-r1\/result.json holds a Soul token/);
   rmSync(out, { recursive: true });
 });
+
+test('slopes (#741): profile slopes alone runs the slopes bench with CPU profiles; its summaries are staged, nothing else', () => {
+  const i = parseInputs({ ...ENV, INPUT_PROFILE: 'slopes' });
+  assert.equal(i.profile, 'slopes');
+  assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'slopes,even' }), /profile/);
+  const q = benchArgs(i, true, 'o'), n = benchArgs(i, false, 'o');
+  assert.ok(q.includes('--cpu-prof') && q.includes('--qualifying-executor') && q.includes('--quiet-host') && !q.includes('--profile'));
+  assert.ok(!n.includes('--qualifying-executor') && !n.includes('--quiet-host'));
+  const out = mkdtempSync(join(tmpdir(), 'cq-slopes-')), arm = join(out, 'inv5000-r1');
+  mkdirSync(join(arm, 'souls', 's0'), { recursive: true }); mkdirSync(join(arm, 'w0'), { recursive: true });
+  writeFileSync(join(arm, 'souls', 's0', '.eden-agent.json'), JSON.stringify({ token: 'tok-slopes-secret' }));
+  for (const f of ['calls.jsonl', 'live.jsonl', 'profile-probe.cpuprofile', 'template.json']) writeFileSync(join(arm, f), 'x');
+  writeFileSync(join(arm, 'result.json'), JSON.stringify({ load: { otherSoulsProcessesBefore: 2, otherSoulsProcessesAfter: 0 } }));
+  for (const f of ['REPORT.md', 'receipt.json', 'results.json']) writeFileSync(join(out, f), '{}');
+  assert.equal(benchOtherSouls(out), 2, 'the slopes bench reports other Soul servers like the meetup bench');
+  const copied = stage({ out, dest: join(out, 'artifact'), qualify: Q, scrubWith: { paths: [[out, '.']], names: [] } });
+  assert.deepEqual(copied.sort(), ['REPORT.md', 'inv5000-r1/result.json', 'qualify.json', 'receipt.json', 'results.json']);
+  rmSync(out, { recursive: true });
+});
+
+test('CW8 A2 (#955): active_min and telemetry pass through; without them the argument list is exactly today\'s', () => {
+  const today = ['--profile', 'even,meetup', '--repeats', '2', '--host-class', 'maintainer-self-hosted', '--out', 'o', '--port', '4460', '--range', '4461-4490', '--quiet-host', '--qualifying-executor'];
+  assert.deepEqual(benchArgs(parseInputs(ENV), true, 'o'), today);
+  assert.deepEqual(benchArgs(parseInputs({ ...ENV, INPUT_ACTIVE_MIN: undefined, INPUT_TELEMETRY: undefined }), true, 'o'), today);
+  const long = parseInputs({ ...ENV, INPUT_PROFILE: 'meetup', INPUT_REPEATS: '1', INPUT_ACTIVE_MIN: '60', INPUT_TELEMETRY: 'true' });
+  assert.deepEqual([long.activeMin, long.telemetry], [60, true]);
+  assert.deepEqual(benchArgs(long, true, 'o').slice(-3), ['--active-min', '60', '--telemetry']);
+  assert.equal(parseInputs({ ...ENV, INPUT_ACTIVE_MIN: '20' }).activeMin, 20, '4 runs of 20 min fit');
+  assert.equal(parseInputs({ ...ENV, INPUT_REPEATS: '1', INPUT_ACTIVE_MIN: '60' }).activeMin, 60, 'both profiles once: (60 + 15) x 2 = 150');
+  for (const v of ['19', '241', '60.5', '060', 'sixty', '60 --short'])
+    assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'meetup', INPUT_REPEATS: '1', INPUT_ACTIVE_MIN: v }), /active_min/, v);
+  assert.throws(() => parseInputs({ ...ENV, INPUT_ACTIVE_MIN: '60' }), /active_min="60".*fits the 300 min job/, 'even,meetup x2 at 60 min: (75) x 4 = 300 > 280');
+  assert.throws(() => parseInputs({ ...ENV, INPUT_SHORT: 'true', INPUT_ACTIVE_MIN: '60', INPUT_PROFILE: 'meetup', INPUT_REPEATS: '1' }), /active_min.*short/);
+  assert.throws(() => parseInputs({ ...ENV, INPUT_TELEMETRY: 'yes' }), /telemetry/);
+});
+
+test('slopes (#741) with CW8 A2 (#955): active_min and telemetry are refused with profile=slopes', () => {
+  assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'slopes', INPUT_ACTIVE_MIN: '60' }), /active_min.*slopes/);
+  assert.throws(() => parseInputs({ ...ENV, INPUT_PROFILE: 'slopes', INPUT_TELEMETRY: 'true' }), /telemetry.*slopes/);
+  assert.equal(parseInputs({ ...ENV, INPUT_PROFILE: 'slopes' }).profile, 'slopes');
+});

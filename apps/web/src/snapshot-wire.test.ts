@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isPackedColumnsV1, packColumnsV1, worldEntityOrderV1 } from '@sim/protocol';
+import { isPackedColumnsV1, packColumnsV1, worldEntityOrderV1 } from '@souls/protocol';
 import { splitSnapshot } from '../../server/src/god/snapshot-wire.ts';
 import { ENTRY_HEDGE_MS, expandSnapshot, loadSnapshot } from './snapshot-wire.ts';
 import { entryWireUrl } from './snapshot-prefetch.ts';
@@ -37,7 +37,7 @@ test('PF2: a stalled page-entry snapshot or part is asked for again after ENTRY_
   const s = splitSnapshot(structuredClone(sample)), plain = '/worlds/w/x/v1/world/snapshot', never = new Promise<Response>(() => {});
   g.window = {}; const url = entryWireUrl(plain);
   // the page-entry prefetches of the snapshot and of the defs part never answer (a stalled request)
-  g.window = { __simSnapshotPrefetch: { url, response: never, parts: { [s.refs.defs]: never } } };
+  g.window = { __soulsSnapshotPrefetch: { url, response: never, parts: { [s.refs.defs]: never } } };
   const asked: string[] = [], json = (x: unknown, headers: Record<string, string> = {}) => new Response(JSON.stringify(x), { headers });
   g.fetch = async (u: string) => { asked.push(u);
     if (u === url) return json(s.body, { 'x-defs-ref': s.refs.defs, 'x-ground-ref': s.refs.ground });

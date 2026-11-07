@@ -1,9 +1,9 @@
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1,COMMONS_PERSONAL_RESOURCES} from '@sim/engine-mars';
-import {kernelHash} from '@sim/kernel';
-import {publicEvent,intentSleepStopV1Schema} from '@sim/protocol';
+import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1,COMMONS_PERSONAL_RESOURCES} from '@souls/engine-mars';
+import {kernelHash} from '@souls/kernel';
+import {publicEvent,intentSleepStopV1Schema} from '@souls/protocol';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';

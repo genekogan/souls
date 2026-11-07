@@ -4,8 +4,8 @@
 //   boardwalk. Kerbs (chamfered) along both edges, stopping where another road's ribbon begins;
 //   junction patches round T and X crossings (drawn once, by the lower id) with kerb arcs; verges;
 //   bridge spans (from the frozen grade) as stone arches or timber trestles.
-import { centreLine, gradeOf, type Span } from '@sim/generators';
-import type { Entity, WorldModel } from '@sim/world-compiler';
+import { centreLine, gradeOf, type Span } from '@souls/generators';
+import type { Entity, WorldModel } from '@souls/world-compiler';
 import * as THREE from 'three';
 import { registerMesh, type MeshCtx } from './registry.ts';
 import { at, bridgeDeck, dirAt, line, type Line } from './l3-path.ts';

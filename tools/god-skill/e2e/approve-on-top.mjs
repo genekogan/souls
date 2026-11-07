@@ -82,7 +82,7 @@ const STUB = `(() => {
 const probe = () => {
   const card = document.querySelector('[data-approval]');
   const godOpen = !!document.querySelector('[data-god-modal][open]');
-  const loaded = window.__simEntity?.layer?.active === true && !document.querySelector('.viewer-arrival:not([data-done="true"])');
+  const loaded = window.__soulsEntity?.layer?.active === true && !document.querySelector('.viewer-arrival:not([data-done="true"])');
   if (!card) return { present: false, godOpen, loaded };
   const r = card.getBoundingClientRect(), cs = getComputedStyle(card);
   const visible = r.width > 20 && r.height > 20 && cs.visibility !== 'hidden' && +cs.opacity > 0.5 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;

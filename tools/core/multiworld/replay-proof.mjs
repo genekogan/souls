@@ -7,7 +7,7 @@ import {copySqliteReadOnly} from './copy-sqlite.mjs';
 export async function proveProductionLmReplay({baseline,input,fixtureScript,output}){
  baseline=resolve(baseline);input=resolve(input);
  const revision=spawnSync('git',['-C',baseline,'rev-parse','HEAD'],{encoding:'utf8'});if(revision.status!==0||!revision.stdout.trim().startsWith('621af256'))throw Error('exact production baseline621af256 required');
- const dir=mkdtempSync(join(tmpdir(),'sim-lm-replay-')),source=join(dir,'source'),copy=join(dir,'copy');mkdirSync(copy);
+ const dir=mkdtempSync(join(tmpdir(),'souls-lm-replay-')),source=join(dir,'source'),copy=join(dir,'copy');mkdirSync(copy);
  try{
   const built=spawnSync(process.execPath,[resolve(fixtureScript),baseline,source],{encoding:'utf8',timeout:60000});if(built.status!==0)throw Error('Production LM fixture failed: '+built.stderr.slice(-1500));
   const expected=JSON.parse(readFileSync(join(source,'expected.json'),'utf8'));

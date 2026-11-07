@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';
 import {setImmediate} from 'node:timers/promises';import {pathToFileURL} from 'node:url';
 import {openWorldServer} from './world-server.mjs';
 export async function proveNativeDay({input,worldKey,output}){
- const dir=mkdtempSync(join(tmpdir(),'sim-native-day-'));let app;
+ const dir=mkdtempSync(join(tmpdir(),'souls-native-day-'));let app;
  try{
   const options={input:resolve(input),dataDir:dir,worldKey,worldId:worldKey==='mars'?'mars-2026-1':'littlemartians-1',port:worldKey==='mars'?4963:4964};
   app=await openWorldServer(options);app.host.stop();
