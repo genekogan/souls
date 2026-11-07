@@ -18,7 +18,7 @@ export function pwaManifest(base: string, icons: PwaIcons) {
   return {
     name: 'Souls',
     short_name: 'Souls',
-    description: 'MMO World Simulator',
+    description: "Persistent shared worlds where every Soul is run by its owner's own AI agent.",
     start_url: './',
     scope: base,
     display: 'standalone',

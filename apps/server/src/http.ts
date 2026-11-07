@@ -48,7 +48,7 @@ import { poolOf } from './god/builds.ts';
 import {VerifyUse} from './god/verify-use.ts';
 import { mountModeration } from './moderation/routes.ts';
 import { mountEdgeSnapshot, safeKey, snapshotKey, withSnapshotKey, withWorldClock } from './edge-snapshot.ts';
-import { withInlineConfig } from './inline-config.ts';
+import { withInlineConfig, withWorldMeta } from './inline-config.ts';
 import { mountSharedLibraryRoutes } from './god/shared-library.ts';
 import { mountArtRoutes } from './art/routes.ts';
 import { createPaintingService } from './art/painting-completion.ts';
@@ -178,7 +178,10 @@ export function buildApp(d: Deps) {
     console.error('[http]', err);
     return c.json({ ok: false, code: 'internal', message: 'internal error' }, 500);
   });
-  app.use('*', async (c, next) => { await next(); c.header('X-Robots-Tag', 'noindex, nofollow'); c.header('X-Frame-Options', 'DENY'); c.header('Content-Security-Policy', "frame-ancestors 'none'"); });
+  // #894: the world page and its public guides may be indexed (the launcher marks every response of an unlisted world
+  // noindex itself); the API, MCP, health, debug and any query-string variant never are.
+  const INDEXABLE = new Set(['/', '/SKILL.md', '/skill.md', '/instructions.md', '/llms.txt', '/cards.md']);
+  app.use('*', async (c, next) => { await next(); if (!((c.req.method === 'GET' || c.req.method === 'HEAD') && INDEXABLE.has(c.req.path) && !c.req.url.includes('?'))) c.header('X-Robots-Tag', 'noindex, nofollow'); c.header('X-Frame-Options', 'DENY'); c.header('Content-Security-Policy', "frame-ancestors 'none'"); });
   // A halted durable clock cannot serve an unacknowledged body/head or accept
   // more control. Generic unavailable response carries no private row/error.
   app.use('*',async(c,next)=>{
@@ -553,20 +556,21 @@ export function buildApp(d: Deps) {
   // ---- static web app (SPA)
   const worldAssets = new URL('../../../worlds', import.meta.url).pathname;
   app.get('/world-assets/*', serveStatic({ root: worldAssets, rewriteRequestPath: p => p.replace(/^\/world-assets/, '') }));
-  app.get('/buildings', c => c.html(`<main style="max-width:1100px;margin:auto;font:18px system-ui;padding:24px"><a href="/">Sim worlds</a><h1>Ceramic Tower and Minaret Temple</h1><p>First procedural versions, rebuilt after Vanessa Rosa's ceramics. Open rooms and shafts are sized for floating heads.</p><img style="width:100%" src="/world-assets/littlemartians/buildings/previews/both.jpg" alt="Ceramic Tower and Minaret Temple"/><h2>Inside the rooms</h2><img style="width:48%" src="/world-assets/littlemartians/buildings/previews/ceramic-tower-inside-L1.jpg" alt="Tower second room"/><img style="width:48%" src="/world-assets/littlemartians/buildings/previews/minaret-temple-inside-L1.jpg" alt="Temple domed room"/></main>`));
+  app.get('/buildings', c => c.html(`<main style="max-width:1100px;margin:auto;font:18px system-ui;padding:24px"><a href="/">Souls</a><h1>Ceramic Tower and Minaret Temple</h1><p>First procedural versions, rebuilt after Vanessa Rosa's ceramics. Open rooms and shafts are sized for floating heads.</p><img style="width:100%" src="/world-assets/littlemartians/buildings/previews/both.jpg" alt="Ceramic Tower and Minaret Temple"/><h2>Inside the rooms</h2><img style="width:48%" src="/world-assets/littlemartians/buildings/previews/ceramic-tower-inside-L1.jpg" alt="Tower second room"/><img style="width:48%" src="/world-assets/littlemartians/buildings/previews/minaret-temple-inside-L1.jpg" alt="Temple domed room"/></main>`));
   if (existsSync(d.cfg.marsWebDir)) mountMarsStatic(app, d.cfg.marsWebDir);
   if (existsSync(d.cfg.webDir)) {
     // Re-read when the file changes so a frontend install needs no server restart (stat per request is cheap).
     const indexPath = join(d.cfg.webDir, 'index.html');
-    let index = readFileSync(indexPath, 'utf8'), indexMtime = statSync(indexPath).mtimeMs;
+    const worldMeta = { name: displayWorldName, url: publicWorldBase(d.cfg) + '/' };   // #894: from configuration, never a request header
+    let index = withWorldMeta(readFileSync(indexPath, 'utf8'), worldMeta), indexMtime = statSync(indexPath).mtimeMs;
     const worldClockNow = () => { try { return (d.host.engine.world as { env?: { datetime?: unknown } }).env?.datetime; } catch { return null; } };   // P7d: the early poster's sky (edge-snapshot.ts withWorldClock)
     const worldSoulsNow = () => { try { return d.host.minds.size; } catch { return null; } };   // P7d: the early poster's view (souls here: broadcast opens on a landmark)
-    const currentIndex = () => { try { const m = statSync(indexPath).mtimeMs; if (m !== indexMtime) { index = readFileSync(indexPath, 'utf8'); indexMtime = m; } } catch { /* keep the last good index */ } return index; };
+    const currentIndex = () => { try { const m = statSync(indexPath).mtimeMs; if (m !== indexMtime) { index = withWorldMeta(readFileSync(indexPath, 'utf8'), worldMeta); indexMtime = m; } } catch { /* keep the last good index */ } return index; };
     app.use('/assets/*', async (c, next) => { await next(); if (c.res.ok) c.header('Cache-Control', 'public, max-age=31536000, immutable'); });
     app.use('/assets/*', serveStatic({ root: d.cfg.webDir }));
     // lane P4: the installable-app manifest beside the page (apps/web/src/pwa-manifest.ts: its start_url "./" is this world)
     app.get('/manifest.webmanifest', async (c, next) => { const r = await serveStatic({ root: d.cfg.webDir, path: 'manifest.webmanifest' })(c, next); if (r?.ok) r.headers.set('Cache-Control', 'public, max-age=3600'); return r ?? c.notFound(); });
     app.get('*', (c) => (c.req.path.startsWith('/v1/') || c.req.path.startsWith('/mcp') ? c.json({ ok: false, code: 'not-found', message: 'no such route' }, 404) : c.html(withInlineConfig(withSnapshotKey(withWorldClock(currentIndex(), worldClockNow(), worldSoulsNow()), safeKey(currentSnapshotKey), godRoutes?.partRefs()), safeConfig(c)), 200, { 'Cache-Control': 'no-cache' })));
-  } else app.get('/', (c) => c.text('Sim server is running. The web app has not been built (pnpm build).'));
+  } else app.get('/', (c) => c.text('A Souls world server is running. The web app has not been built (pnpm build).'));
   return app;
 }
