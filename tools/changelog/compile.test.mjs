@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { insertSection, parseFragment, readFragments, renderSection } from './compile.mjs';
+import { fragmentProofProblem, insertSection, parseFragment, readFragments, renderSection } from './compile.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./compile.mjs', import.meta.url));
 const frag = (type, line, extra = '') => `---\ntype: ${type}\n${extra}---\n${line}\n`;
@@ -72,6 +72,38 @@ test('CLI: --out writes the compiled changelog elsewhere and leaves the tree alo
   assert.ok(existsSync(join(root, 'changes', '7.md')), 'fragments kept for publish');
   run('--version', '1.0.0', '--date', '2026-11-01');   // what publish does later
   assert.equal(readFileSync(out, 'utf8'), readFileSync(join(root, 'CHANGELOG.md'), 'utf8'), 'the build saw exactly what publish commits');
+});
+
+const FRAG = (extra) => `---\ntype: fix\n${extra}---\nSouls keep their seat.\n`;
+const PROOF = 'https://github.com/soulsimulation/souls/releases/download/proofs-7/pr-7.proof.json';
+
+test('a proof link reaches the release notes and nothing else (#1154)', () => {
+  const f = parseFragment('7.md', FRAG(`proof: ${PROOF}\n`)), plain = parseFragment('8.md', FRAG(''));
+  assert.equal(f.proof, PROOF); assert.ok(!('proof' in plain));
+  const notes = renderSection('1.0', '2026-01-01', [f, plain], { proof: true }), log = renderSection('1.0', '2026-01-01', [f, plain]);
+  assert.ok(notes.includes(`- Souls keep their seat. (#7) ([proof](${PROOF}))`));
+  assert.ok(notes.includes('- Souls keep their seat. (#8)\n'), 'a fragment without one compiles unchanged');
+  assert.ok(!log.includes('proof'), 'CHANGELOG.md stays one plain line per entry');
+  assert.equal(notes.split('\n').filter(l => l.startsWith('- ')).length, 2);
+});
+
+test('a scorecard comment and the proof CDN are allowed; the fragment key stays optional', () => {
+  assert.equal(fragmentProofProblem('https://github.com/soulsimulation/souls/pull/7#issuecomment-1'), null);
+  assert.equal(fragmentProofProblem('https://cdn.example.test/proof/pr-7.json', 'https://cdn.example.test/proof'), null);
+});
+
+test('--check refuses a proof that is not https on github.com or the proof host, or names something private (#1154)', () => {
+  const refused = {
+    'http://github.com/o/r/pull/7': /canonical https/, 'not a url': /must be a URL/, '': /must be a URL/,
+    'https://user:pw@github.com/o/r/pull/7': /canonical https/, 'https://github.com:8443/o/r/pull/7': /canonical https/,
+    'https://evil.test/o/r/pull/7': /github\.com or the proof host/, 'https://github.com.evil.test/o/r/pull/7': /github\.com or the proof host/,
+    'https://cdn.example.test.evil.test/proof/x': /github\.com or the proof host/,
+  };
+  for (const [value, why] of Object.entries(refused)) assert.match(String(fragmentProofProblem(value, 'https://cdn.example.test/proof')), why, value);
+  const home = ['', 'Users', 'alice', 'x'].join('/');
+  for (const url of [`https://github.com/o/r${home}`, `https://github.com/o/r/pull/7?p=${home}`, `https://github.com/o/r/pull/7?p=${encodeURIComponent(home)}`, `https://github.com/o/r/pull/7#${home}`])
+    assert.match(String(fragmentProofProblem(url)), /private/, url);
+  assert.throws(() => parseFragment('7.md', FRAG('proof: https://evil.test/x\n')), /7\.md: proof must be on github\.com/);
 });
 
 test('the repo fragments are valid', () => {
