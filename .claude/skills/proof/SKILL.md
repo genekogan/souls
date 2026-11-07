@@ -131,7 +131,8 @@ node tools/proof/upload.mjs --pr $N --proof .e2e/journal/$ISSUE/proof.json .e2e/
 
 - The default target is the PR's own prerelease `proofs-<n>` (tag on the default branch, created on first use);
   one release per PR keeps each under GitHub's 1000-asset limit, which the old shared `proofs` release reached.
-  `--release <tag>` (or `SIM_PROOF_RELEASE`) names another release. Assets are named
+  `--release <tag>` (or `SIM_PROOF_RELEASE`) names another release. The shared `proofs` release is full: on a branch
+  whose `upload.mjs` still defaults to it, run main's copy (`git show origin/main:tools/proof/upload.mjs > .local/upload-main.mjs`). Assets are named
   `pr-<n>.<file>`, and a re-take gets `-2`, `-3`, so earlier takes, including failed ones, stay linkable.
   `SIM_PROOF_UPLOAD_URL` (+ `SIM_PROOF_UPLOAD_TOKEN`) switches to another endpoint, such as a CDN.
 - With `--proof`, clip and image links are written into proof.json `media[]`, other files (logs, JSON) into
