@@ -1,4 +1,4 @@
-// node --test tools/world-launcher/fork.test.mjs — lane FORKS: operator forks of the old worlds (ports: proxy 5900, children 5901–5903).
+// node --test tools/world-launcher/fork.test.mjs — lane FORKS: operator forks of the old worlds (proxy and children on a free block of ports).
 // Refusals only (no world boots here): the allowlist, loopback-only, a copy must exist, the launcher's own registry is refused,
 // and public creation still never yields an old world's slug. forkOptions: the launcher's settings win over the descriptor.
 import { test, before, after } from 'node:test';
@@ -9,14 +9,16 @@ import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { slugFor } from './registry.mjs';
 import { forkOptions } from './fork-world.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(4);
 
-const PORT = 5900, dir = mkdtempSync(join(tmpdir(), 'launcher-fork-test-'));
+const PORT = P0, dir = mkdtempSync(join(tmpdir(), 'launcher-fork-test-'));
 const env = join(dir, 'clerk.env'); writeFileSync(env, 'CLERK_PUBLISHABLE_KEY=pk_test_ZmFrZQ\nCLERK_ISSUER_URL=https://clerk.example.test\n');
 const desc = join(dir, 'mars.json'); writeFileSync(desc, JSON.stringify({ worldKey: 'mars', worldId: 'mars-2026-1' }));
 const acc = join(dir, 'accounts.sqlite'); writeFileSync(acc, '');
 const webDir = join(dir, 'web'); mkdirSync(webDir); writeFileSync(join(webDir, 'index.html'), '<!doctype html>');
 let L;
-before(async () => { L = await openLauncher({ port: PORT, range: [5901, 5903], dataDir: join(dir, 'data'), webDir, base: '/worlds', publicOrigin: 'https://sim.example.test', authEnvFile: env, eager: 0, log: () => {} }); });
+before(async () => { L = await openLauncher({ port: PORT, range: [P0 + 1, P0 + 3], dataDir: join(dir, 'data'), webDir, base: '/worlds', publicOrigin: 'https://sim.example.test', authEnvFile: env, eager: 0, log: () => {} }); });
 after(async () => { await L?.close(); });
 const op = (body, headers = {}) => fetch(`http://127.0.0.1:${PORT}/worlds/__sim/op/register-fork`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
 

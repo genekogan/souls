@@ -2,9 +2,11 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import {spawn} from 'node:child_process';
 import {existsSync, mkdtempSync, readFileSync, rmSync} from 'node:fs'; import {tmpdir} from 'node:os'; import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 test('a world held at black for the limit saves its snapshot and exits 75; live.json said black and stopping', {timeout: 60_000}, async t => {
-  const data = mkdtempSync(join(tmpdir(), 'load-restart-')), port = 5188, base = `http://127.0.0.1:${port}`, logs: string[] = [];
+  const data = mkdtempSync(join(tmpdir(), 'load-restart-')), port = TEST_PORT, base = `http://127.0.0.1:${port}`, logs: string[] = [];
   const child = spawn(process.execPath, [new URL('./main.ts', import.meta.url).pathname], {env: {PATH: process.env.PATH, DATA_DIR: data, WORLD_ID: 'load-restart-fixture', WORLD_KEY: 'eden', ENGINE: 'toy', SEED_NATIVES: '0', BRAIN_MODE: 'fake', BRAIN_BUDGET_USD_PER_DAY: '0', ARCHIVE_TAKES: '0', PORT: String(port), HOST: '127.0.0.1', PUBLIC_URL: base,
     SIM_LOAD_DRILL_LEVEL: 'black', SIM_LOAD_BLACK_MS: '3000'}, stdio: ['ignore', 'pipe', 'pipe']});
   child.stdout!.on('data', d => logs.push(String(d))); child.stderr!.on('data', d => logs.push(String(d)));

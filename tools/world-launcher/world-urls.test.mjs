@@ -11,6 +11,7 @@ import { defaultCommand } from './children.mjs';
 import { openLauncher } from './launcher.mjs';
 import { archiveWorld, restoreWorld, addGodToken } from './worldops.mjs';
 import { notTestWorld } from './op-souls.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
 
 const mappings = [['eden-2026', 'eden'], ['my-mars-college-2026-3', 'mars-college-2026'], ['mars-2027', 'mars-college-2027']];
 const fixture = () => ({ schema: 'world-launcher-registry/1', other: 'preserved', worlds: mappings.map(([slug]) => ({ slug, name: slug, template: 'empty', createdAt: 1, owner: 'synthetic-owner', limits: { look: 7 }, worldHeapMb: 2048 })) });
@@ -85,7 +86,7 @@ test('root launcher redirects pages but proxies legacy POST bytes, SSE and webso
   addGodToken(dbFile, 'eden-2026-1', 'god_synthetic_existing', 'synthetic god');
   const web = join(data, 'web'); mkdirSync(web); writeFileSync(join(web, 'index.html'), '<head><title>Worlds</title></head>');
   const fake = new URL('./fake-world.mjs', import.meta.url).pathname;
-  const basePort = Number(process.env.ROOT_URL_TEST_PORT ?? 19380);
+  const basePort = Number(process.env.ROOT_URL_TEST_PORT ?? await testPort(4));
   const launcher = await openLauncher({ port: basePort, range: [basePort + 1, basePort + 3], base: '/', dataDir: data, webDir: web, eager: 0, log: () => {}, command: (w, p) => ({ cmd: process.execPath, args: [fake], env: { WORLD_KEY: w.worldKey, WORLD_SLUG: w.slug, WORLD_ID: worldIdOf(w), WORLD_PATH: `/w/${w.slug}`, PORT: String(p) } }) });
   t.after(() => launcher.close()); const origin = `http://127.0.0.1:${basePort}`;
   assert.equal((await fetch(origin + '/')).status, 200);

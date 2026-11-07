@@ -15,6 +15,8 @@ import { Brain } from './brain.ts';
 import { Souls } from './souls.ts';
 import { Hub } from './hub.ts';
 import { buildApp } from './http.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 test('actual native TCP/Hono/anonymous Hub exposes only committed clocks and closes peers/generic503 after writer refusal',async t=>{
   const db=new Db(':memory:');const factory=await marsFactory(EDEN_COMMONS_WORLD);
@@ -24,7 +26,7 @@ test('actual native TCP/Hono/anonymous Hub exposes only committed clocks and clo
   const birth=host.enqueue('birth','fixture',{soulId:'s_A',entityId:'h_A',owner:'PRIVATE_CLOCK_OWNER',name:'Alice',description:'Resident'});host.drainInputs();await birth;
   const intent=host.enqueue('intent','owner',{soulId:'s_A',intent:{text:'PRIVATE_CLOCK_PURPOSE',agenda:[]}});host.drainInputs();await intent;
   const cfg={...config,worldId:host.worldId,worldKey:'eden',brainMode:'fake' as const,budgetUsdPerDay:0,
-    typesafeKey:undefined,anthropicKey:undefined,privyAppId:'',privyAppSecret:'',publicUrl:'http://127.0.0.1:4958'};
+    typesafeKey:undefined,anthropicKey:undefined,privyAppId:'',privyAppSecret:'',publicUrl:`http://127.0.0.1:${TEST_PORT}`};
   const auth=new Auth(cfg,db),brain=new Brain(host,db,cfg,{clients:()=>0,onCall(){},onCamera(){},onTicker(){},onNarrative(){}});
   const souls=new Souls(host,db,brain,cfg);let app:ReturnType<typeof buildApp>;
   const server=createServer((req,res)=>getRequestListener(app.fetch)(req,res));
@@ -35,8 +37,8 @@ test('actual native TCP/Hono/anonymous Hub exposes only committed clocks and clo
   const sockets:WebSocket[]=[];
   t.after(async()=>{host.stop();for(const timer of timers)clearInterval(timer);for(const ws of sockets)ws.terminate();
     hub.wss.close();await new Promise<void>(resolve=>server.close(()=>resolve()));db.close();});
-  await new Promise<void>(resolve=>server.listen(4958,'127.0.0.1',resolve));
-  const ws=new WebSocket('ws://127.0.0.1:4958/ws');sockets.push(ws);const messages:any[]=[];
+  await new Promise<void>(resolve=>server.listen(TEST_PORT,'127.0.0.1',resolve));
+  const ws=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`);sockets.push(ws);const messages:any[]=[];
   ws.on('message',b=>messages.push(JSON.parse(String(b))));await once(ws,'open');
   // Subscribe before hello/ticks: scheduler turns do not prove socket delivery.
   const takesMessage=new Promise<void>((resolve,reject)=>{
@@ -53,7 +55,7 @@ test('actual native TCP/Hono/anonymous Hub exposes only committed clocks and clo
   while(host.engine.world.tick<20)host.tickOnce();
   await takesMessage;
   const takes=messages.filter(m=>m.t==='takes');assert.ok(takes.length);assert.ok(takes.every(m=>m.serverTick<=new ClockFrontiers(db).read(host.worldId)!.tick));
-  const response=await fetch('http://127.0.0.1:4958/healthz');assert.equal(response.status,200);assert.equal((await response.json() as any).tick,20);
+  const response=await fetch(`http://127.0.0.1:${TEST_PORT}/healthz`);assert.equal(response.status,200);assert.equal((await response.json() as any).tick,20);
   const row=new ClockFrontiers(db).read(host.worldId)!;
   // A real ordered pong fences the already-sent committed frames. Their late
   // arrival after close initiation must not be mislabeled as a failed-tick send.
@@ -65,10 +67,10 @@ test('actual native TCP/Hono/anonymous Hub exposes only committed clocks and clo
   assert.throws(()=>host.tickOnce(),/PRIVATE_WRITER_DETAIL/);const close=await closed;assert.equal(close[0],1013);assert.equal(messages.length,before);
   const replies=[];
   for(const path of ['/healthz','/v1/scene','/v1/take','/v1/takes','/v1/world','/v1/debug/world','/v1/station-v2','/v1/me','/v1/agent/perceive']){
-    const r=await fetch('http://127.0.0.1:4958'+path);assert.equal(r.status,503);assert.equal(r.headers.get('cache-control'),'no-store');
+    const r=await fetch(`http://127.0.0.1:${TEST_PORT}`+path);assert.equal(r.status,503);assert.equal(r.headers.get('cache-control'),'no-store');
     const value=await r.json();assert.deepEqual(value,{ok:false,code:'world-unavailable',message:'World temporarily unavailable.',...(path==='/healthz'?{halted:true,glitches:{total:1,byRule:{'durability.clock-frontier':{halt:1}}}}:{})});replies.push(value);
   }
-  const late=new WebSocket('ws://127.0.0.1:4958/ws');sockets.push(late);const lateMessages:unknown[]=[];
+  const late=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`);sockets.push(late);const lateMessages:unknown[]=[];
   late.on('message',b=>lateMessages.push(String(b)));await once(late,'open');const lateClose=once(late,'close');
   late.send(JSON.stringify({t:'hello',proto:1}));assert.equal((await lateClose)[0],1013);assert.deepEqual(lateMessages,[]);
   const publicBytes=JSON.stringify({messages,replies,lateMessages});

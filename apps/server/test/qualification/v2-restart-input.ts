@@ -10,6 +10,8 @@ import {pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import {setImmediate,setTimeout as delay} from 'node:timers/promises';
+import {testPort} from '../test-port.ts';
+const TEST_PORT=await testPort();
 
 const input=resolve(new URL('../../../../.e2e/exports/core-native-c190-live-me-45b9c986/sim',import.meta.url).pathname);
 const manifest=JSON.parse(readFileSync(join(input,'../CONTENT-MANIFEST.json'),'utf8'));
@@ -50,7 +52,7 @@ test('exact C194 full interpreted/completed request and canonical received-only 
   t.after(async()=>{await close();rmSync(dir,{recursive:true,force:true});});
   async function open(){
     const db=new Db(dbPath),host=new WorldHost(db,factory,seed,1e9,worldId);host.boot();host.drainInputs();
-    const cfg={...config,worldId,worldKey:'eden',worldPath:'/w/eden',publicUrl:'http://127.0.0.1:4959/w/eden',
+    const cfg={...config,worldId,worldKey:'eden',worldPath:'/w/eden',publicUrl:`http://127.0.0.1:${TEST_PORT}/w/eden`,
       brainMode:'fake',budgetUsdPerDay:1,typesafeKey:undefined,anthropicKey:'synthetic-only',compilerModel:'synthetic-only',privyAppId:'',privyAppSecret:'',inviteRequired:true};
     const compilerCall=async(input:any)=>{
       assert.match(input.system,/ordinary actionable present direction/);
@@ -71,10 +73,10 @@ test('exact C194 full interpreted/completed request and canonical received-only 
     const souls=new Souls(host,db,brain,cfg);souls.enableLifecycle();const auth=new Auth(cfg,db);auth.devAuth=true;
     const service=new IntentControlV2(host,brain,souls,{historyV1:true}),server=createServer(),hub=new Hub(server,host,auth,db,souls);hub.brain=brain;
     const app=buildApp({cfg,db,host,auth,brain,souls,hub,intentV2:service});active={db,host,brain,souls,auth,service,server,hub,app,peers:[]};
-    await new Promise<void>((r,reject)=>{server.once('error',reject);server.listen(4959,'127.0.0.1',r);});
+    await new Promise<void>((r,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',r);});
     const request=(path:string,owner:string|null='alice',body?:unknown)=>app.request(path,{method:body?'POST':'GET',headers:{...(owner?{authorization:'Bearer dev:'+owner}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
     const connect=async(owner:string|null)=>{
-      const frames:any[]=[];const c=new Connection('ws://127.0.0.1:4959/ws',async()=>owner?'dev:'+owner:null,{},(url:string)=>{const ws=new WebSocket(url);ws.on('message',(bytes:Buffer)=>frames.push(JSON.parse(String(bytes))));return ws;});
+      const frames:any[]=[];const c=new Connection(`ws://127.0.0.1:${TEST_PORT}/ws`,async()=>owner?'dev:'+owner:null,{},(url:string)=>{const ws=new WebSocket(url);ws.on('message',(bytes:Buffer)=>frames.push(JSON.parse(String(bytes))));return ws;});
       active.peers.push({c,frames});c.connect();await until(()=>c.replica.ready);return {c,frames};
     };
     return Object.assign(active,{request,connect});

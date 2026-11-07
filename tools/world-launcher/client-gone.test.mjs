@@ -1,4 +1,4 @@
-// node --test tools/world-launcher/client-gone.test.mjs (lane soul-listen-leak; proxy :6744, fake worlds on 6740-6743)
+// node --test tools/world-launcher/client-gone.test.mjs (lane soul-listen-leak; proxy and fake worlds on a free block of ports)
 // A request whose client hangs up while the launcher waits for its world (booting, restarting) is never sent to the world:
 // a long-poll listen replayed after its agent left would be a ghost that holds the world's inbox for up to 55 s, and under
 // "a newer listen supersedes the older" it would push the agent's real listener out. A client still connected is served.
@@ -9,8 +9,10 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(5);
 
-const PORT = 6744, RANGE = [6740, 6743];
+const PORT = P0 + 4, RANGE = [P0, P0 + 3];
 const dir = mkdtempSync(join(tmpdir(), 'launcher-gone-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 const webDir = join(dir, 'web'); mkdirSync(webDir);

@@ -14,6 +14,8 @@ import {intentNativeFixture,seed,worldId} from '../test/intent-native-fixture.ts
 import {hashToken} from './auth.ts';
 import {handleMcp} from './mcp.ts';
 import {replayFromGenesis} from './world.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 const input=(requestId:string,words='go to the campfire')=>({contract:INTENT_V2,requestId,op:'upsert',words});
 function result(raw:unknown) {
@@ -22,10 +24,10 @@ function result(raw:unknown) {
   return {error:value.isError===true,data:JSON.parse(content.text) as IntentReceiptV2|{ok:false;code:string;message:string}};
 }
 async function local(t:TestContext,path=':memory:',enabled=true,existingToken?:string) {
-  const f=intentNativeFixture(t,path,enabled),url='http://127.0.0.1:4958/mcp';
+  const f=intentNativeFixture(t,path,enabled),url=`http://127.0.0.1:${TEST_PORT}/mcp`;
   const credential=existingToken??f.souls.pairExchange(f.souls.pairCode(f.db.soul('s_A')!,url,f.db.user('dev:alice')!).code,'local MCP fixture').token;
   const server=createServer((req,res)=>{res.setHeader('Connection','close');void handleMcp(req,res,f.souls,enabled?f.service:undefined).catch(()=>{if(!res.headersSent)res.writeHead(503);res.end();});});
-  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(4958,'127.0.0.1',resolve);});
+  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',resolve);});
   const client=new Client({name:'local-owner-agent-fixture',version:'1'});
   const transport=new StreamableHTTPClientTransport(new URL(url),{requestInit:{headers:{authorization:'Bearer '+credential}}});
   let closed=false;
@@ -51,7 +53,7 @@ async function settled(f:Local) {await drive(f,f.service.settled());}
 function accepted(value:ReturnType<typeof result>,phase?:string) {
   assert.equal(value.error,false);const receipt=intentReceiptV2Schema.parse(value.data);if(phase)assert.equal(receipt.phase,phase);return receipt;
 }
-function rotate(f:Local) {return f.souls.pairExchange(f.souls.pairCode(f.db.soul('s_A')!,'http://127.0.0.1:4958/mcp',f.db.user('dev:alice')!).code,'rotated local MCP fixture').token;}
+function rotate(f:Local) {return f.souls.pairExchange(f.souls.pairCode(f.db.soul('s_A')!,`http://127.0.0.1:${TEST_PORT}/mcp`,f.db.user('dev:alice')!).code,'rotated local MCP fixture').token;}
 
 test('real SDK discovery exposes exact named write/read tools only when injected and scoped',async t=>{
   const f=await local(t),tools=await f.client.listTools();
@@ -146,7 +148,7 @@ test('actual MCP slow body cannot use a rotated generation before tool registrat
   const body=JSON.stringify({jsonrpc:'2.0',id:4,method:'tools/call',params:{name:'soul_intent_v2',arguments:input('slow')}});
   let socket!:ReturnType<typeof httpRequest>;
   const pending=new Promise<{status:number;cache:string|undefined;text:string}>((resolve,reject)=>{
-    socket=httpRequest({hostname:'127.0.0.1',port:4958,path:'/mcp',method:'POST',headers:{authorization:'Bearer '+f.credential,'content-type':'application/json',accept:'application/json, text/event-stream','content-length':Buffer.byteLength(body)}},incoming=>{
+    socket=httpRequest({hostname:'127.0.0.1',port:TEST_PORT,path:'/mcp',method:'POST',headers:{authorization:'Bearer '+f.credential,'content-type':'application/json',accept:'application/json, text/event-stream','content-length':Buffer.byteLength(body)}},incoming=>{
       const chunks:Buffer[]=[];incoming.on('data',c=>chunks.push(c));incoming.on('end',()=>resolve({status:incoming.statusCode!,cache:incoming.headers['cache-control'],text:Buffer.concat(chunks).toString()}));incoming.on('error',reject);
     });socket.on('error',reject);
   });

@@ -1,5 +1,5 @@
-// node --test tools/world-launcher/worldops.test.mjs — world housekeeping (lane WORLDOPS ports: proxy 6060, children 6061–6067;
-// a second launcher with co-builders off on 6068/6069). WORLDOPS_TEST_PORT moves the whole block (e.g. 6320 for lane r3b).
+// node --test tools/world-launcher/worldops.test.mjs — world housekeeping (lane WORLDOPS; free ports: proxy, children;
+// a second launcher with co-builders off). WORLDOPS_TEST_PORT picks the whole block, else a free one.
 // Stand-in worlds (fake-world.mjs) write their owner into sim.db the way GodMode does on first boot (WORLD_OWNER_ID).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,8 +10,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { defaultCommand } from './children.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
 
-const PORT = Number(process.env.WORLDOPS_TEST_PORT ?? 6060), RANGE = [PORT + 1, PORT + 7], OFF_PORT = PORT + 8, OFF_RANGE = [PORT + 9, PORT + 9];
+const PORT = Number(process.env.WORLDOPS_TEST_PORT ?? await testPort(10)), RANGE = [PORT + 1, PORT + 7], OFF_PORT = PORT + 8, OFF_RANGE = [PORT + 9, PORT + 9];
 const dir = mkdtempSync(join(tmpdir(), 'launcher-worldops-test-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 writeFileSync(join(templatesDir, 'plain.json'), JSON.stringify({ schema: 'genesis/1', name: 'Plain', description: 'x', batches: [] }));

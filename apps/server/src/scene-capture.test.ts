@@ -21,6 +21,8 @@ import {Hub} from './hub.ts';
 import {Souls} from './souls.ts';
 import {buildApp} from './http.ts';
 import {config} from './config.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 async function nativeChunk() {
   const factory=await marsFactory(GREEN_FIELD_WORLD),engine=factory.create(factory.genesis('captured-scene'));
@@ -121,8 +123,8 @@ test('real Hub/anonymous socket and Hono scene routes expose scoped immutable pu
   const auth=new Auth(cfg,db),server=createServer((_,res)=>res.end('fixture')),hub=new Hub(server,host,auth,db);
   const brain=new Brain(host,db,cfg,{clients:()=>0,onCall(){},onCamera(){},onTicker(){},onNarrative(){}});hub.brain=brain;
   const souls=new Souls(host,db,brain,cfg),app=buildApp({cfg,db,host,auth,hub,brain,souls});
-  await new Promise<void>(resolve=>server.listen(4955,'127.0.0.1',resolve));
-  const ws=new WebSocket('ws://127.0.0.1:4955/ws'),messages:any[]=[];ws.on('message',b=>messages.push(JSON.parse(String(b))));
+  await new Promise<void>(resolve=>server.listen(TEST_PORT,'127.0.0.1',resolve));
+  const ws=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`),messages:any[]=[];ws.on('message',b=>messages.push(JSON.parse(String(b))));
   t.after(async()=>{ws.terminate();hub.wss.close();await new Promise<void>(resolve=>server.close(()=>resolve()));});
   await once(ws,'open');
   // Subscribe before hello/ticks: scheduler turns do not prove socket delivery.

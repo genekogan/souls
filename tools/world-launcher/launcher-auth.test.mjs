@@ -1,6 +1,6 @@
 // node --test tools/world-launcher/launcher-auth.test.mjs
-// The launcher in Clerk mode with real Sim world processes (fake minds, $0) on lane ports: proxy :6139,
-// children 6130–6138. A synthetic Clerk issuer: the children get it from a test env file by path, plus a
+// The launcher in Clerk mode with real Sim world processes (fake minds, $0) on a free block of ports.
+// A synthetic Clerk issuer: the children get it from a test env file by path, plus a
 // test-only preload that serves its JWKS (no network, no provider keys).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,8 +9,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { clerkKeys, ISSUER, PUBLISHABLE_KEY } from '../../apps/server/test/clerk-fixture.ts';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(10);
 
-const PORT = 6139, RANGE = [6130, 6138], ORIGIN = `http://127.0.0.1:${PORT}`;
+const PORT = P0 + 9, RANGE = [P0, P0 + 8], ORIGIN = `http://127.0.0.1:${PORT}`;
 const PUBLIC_ORIGIN = 'https://satellite.example.test', PRIMARY = 'https://primary.example.test';
 const satellite = { domain: 'satellite.example.test', signInUrl: PRIMARY + '/sign-in' };
 const dir = mkdtempSync(join(tmpdir(), 'launcher-auth-test-'));

@@ -1,5 +1,5 @@
 // node --test tools/world-launcher/heap.test.mjs — lane L1 (server reliability): the heap cap is per world (LOAD-CONTRACT §4).
-// Fake worlds on lane L1's ports only: proxy :5110, children 5101–5103.
+// Fake worlds on a free block of ports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { openLauncher, withHeap } from './launcher.mjs';
 import { worldHeapMb, DEFAULT_WORLD_HEAP_MB, BIG_WORLD_HEAP_MB } from './registry.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(4);
 
 const fake = new URL('./fake-world.mjs', import.meta.url).pathname;
 // a stray heap flag in the child's NODE_OPTIONS (production.mjs's old form) must never give a world a second cap
@@ -36,8 +38,8 @@ test('each world boots with its own heap flag; set-heap changes it from the next
   const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
   writeFileSync(join(templatesDir, 'eden-2026.json'), JSON.stringify({ schema: 'genesis/1', name: 'Eden 2026', batches: [] }));
   const webDir = join(dir, 'web'); mkdirSync(webDir); writeFileSync(join(webDir, 'index.html'), '<!doctype html>');
-  const P = 5110, base = `http://127.0.0.1:${P}`;
-  const L = await openLauncher({ port: P, range: [5101, 5103], dataDir: join(dir, 'data'), webDir, templatesDir, command, eager: 0, log: () => {}, prewarm: false });
+  const P = P0 + 3, base = `http://127.0.0.1:${P}`;
+  const L = await openLauncher({ port: P, range: [P0, P0 + 2], dataDir: join(dir, 'data'), webDir, templatesDir, command, eager: 0, log: () => {}, prewarm: false });
   const make = (name, template) => fetch(`${base}/__sim/worlds`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, template }) }).then((r) => r.json());
   const argv = (slug) => fetch(`${base}/w/${slug}/argv`).then((r) => r.json());
   const op = (body) => fetch(`${base}/__sim/op/set-heap`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });

@@ -21,6 +21,8 @@ import { config } from './config.ts';
 import { Hub } from './hub.ts';
 import { Souls } from './souls.ts';
 import { buildApp } from './http.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 const native=await marsFactory({scene:'eden-camp',arrival:[16,-10],arrivalPlace:'bunkhouse',reference:[16,-9],grounds:{id:'grounds',name:'grounds'}});
 async function accept<T>(host:WorldHost,promise:Promise<T>){host.drainInputs();return promise;}
@@ -289,8 +291,8 @@ test('actual native controller facts stay private through public Hono routes, an
   const server=createServer((_,res)=>res.end('fixture')),hub=new Hub(server,f.host,auth,f.db);
   const brain=new Brain(f.host,f.db,cfg,{clients:()=>0,onCall(){},onCamera(){},onTicker(){},onNarrative(){}});hub.brain=brain;
   const souls=new Souls(f.host,f.db,brain,cfg),app=buildApp({cfg,db:f.db,host:f.host,auth,hub,brain,souls});
-  await new Promise<void>(resolve=>server.listen(4954,'127.0.0.1',resolve));
-  const ws=new WebSocket('ws://127.0.0.1:4954/ws'),messages:any[]=[];ws.on('message',data=>messages.push(JSON.parse(String(data))));
+  await new Promise<void>(resolve=>server.listen(TEST_PORT,'127.0.0.1',resolve));
+  const ws=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`),messages:any[]=[];ws.on('message',data=>messages.push(JSON.parse(String(data))));
   t.after(async()=>{ws.terminate();hub.wss.close();await new Promise<void>(resolve=>server.close(()=>resolve()));});
   await once(ws,'open');const welcome=once(ws,'message');ws.send(JSON.stringify({t:'hello',proto:1}));await welcome;
   // Subscribe before admission/ticks: scheduler turns do not prove socket delivery.

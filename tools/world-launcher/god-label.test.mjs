@@ -1,6 +1,6 @@
 // node --test tools/world-launcher/god-label.test.mjs
 // "god: <name>" on /worlds is self-chosen text; authority is the verified owner account only.
-// Real launcher HTTP + synthetic Clerk issuer + real fresh Sim children; fake minds, lane safety ports 5883–5886.
+// Real launcher HTTP + synthetic Clerk issuer + real fresh Sim children; fake minds, a free block of ports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync, existsSync } from 'node:fs';
@@ -8,18 +8,20 @@ import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { clerkKeys, ISSUER, PUBLISHABLE_KEY } from '../../apps/server/test/clerk-fixture.ts';
 import { tmpdir } from 'node:os';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(4);
 
 test('the god label is display text: a second account sees a visitor view, cannot take the world, and cannot wear the label', { timeout: 240_000 }, async () => {
   const scratch = process.env.SAFETY_SCRATCH ?? tmpdir();
   mkdirSync(scratch, { recursive: true });
   const dir = mkdtempSync(join(scratch, 'god-label-')), dataDir = join(dir, 'data'), templatesDir = join(dir, 'templates');
   mkdirSync(templatesDir);
-  const origin = 'http://127.0.0.1:5883', keys = await clerkKeys(origin);
+  const origin = `http://127.0.0.1:${P0}`, keys = await clerkKeys(origin);
   writeFileSync(join(dir, 'jwks.json'), JSON.stringify({ keys: [keys.jwk] }));
   const envFile = join(dir, 'fixture.env'), preload = new URL('../../apps/server/test/clerk-jwks-preload.mjs', import.meta.url).pathname;
   writeFileSync(envFile, [`CLERK_PUBLISHABLE_KEY=${PUBLISHABLE_KEY}`, `CLERK_ISSUER_URL=${ISSUER}`, `CLERK_AUTHORIZED_PARTIES=${origin}`,
     `SIM_TEST_JWKS_FILE=${join(dir, 'jwks.json')}`, `NODE_OPTIONS=--import=${preload}`, ''].join('\n'));
-  const launcher = await openLauncher({ port: 5883, range: [5884, 5886], dataDir, templatesDir, authEnvFile: envFile, publicOrigin: origin, eager: 0, newAccountCreateLimit: 3, newAccountWorldLimit: 3, log: () => {} });
+  const launcher = await openLauncher({ port: P0, range: [P0 + 1, P0 + 3], dataDir, templatesDir, authEnvFile: envFile, publicOrigin: origin, eager: 0, newAccountCreateLimit: 3, newAccountWorldLimit: 3, log: () => {} });
   const tok = (subject) => keys.sign(subject);
   const call = async (path, subject, body) => fetch(`${origin}${path}`, { method: body === undefined ? 'GET' : 'POST',
     headers: { ...(subject ? { authorization: `Bearer ${await tok(subject)}` } : {}), 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });

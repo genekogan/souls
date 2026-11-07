@@ -5,6 +5,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { marsFactory,GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { fixture,invite } from '../test/native-owner-fixture.ts';
 import { handleMcp } from './mcp.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 const factory=await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true});
 async function local(t:TestContext,candidate=true){
   const f=fixture(':memory:',factory);if(candidate)f.souls.enableLifecycle();await invite(f,'alice');
@@ -12,13 +14,13 @@ async function local(t:TestContext,candidate=true){
   let soul;
   if(candidate){const op=f.souls.acceptLifecycleCreate('dev:alice',input);f.host.drainInputs();await delay(0);soul=f.db.soul(op.scope.soulId)!;}
   else{const created=f.souls.create('dev:alice',input);f.host.drainInputs();soul=await created;}
-  const token=f.souls.pairExchange(f.souls.pairCode(soul,'http://127.0.0.1:4957',f.db.user('dev:alice')!).code,'local').token;
+  const token=f.souls.pairExchange(f.souls.pairCode(soul,`http://127.0.0.1:${TEST_PORT}`,f.db.user('dev:alice')!).code,'local').token;
   // Each fixture closes its transport; keep pooled fetch sockets out of the next fixture.
   const server=createServer((req,res)=>{res.setHeader('Connection','close');void handleMcp(req,res,f.souls).catch(()=>{res.writeHead(500).end();});});
-  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(4957,'127.0.0.1',resolve);});
+  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',resolve);});
   t.after(async()=>{await new Promise<void>((resolve,reject)=>{server.close(error=>error?reject(error):resolve());server.closeAllConnections();});f.db.close();});
   const call=async(name:string,args:unknown={})=>{
-    const response=await fetch('http://127.0.0.1:4957/mcp',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})});
+    const response=await fetch(`http://127.0.0.1:${TEST_PORT}/mcp`,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})});
     assert.equal(response.status,200);const value=await response.json() as {result:{isError:boolean;content:{type:string;text:string}[]}};
     assert.ok(value.result);return {error:value.result.isError,cache:response.headers.get('cache-control'),data:JSON.parse(value.result.content[0].text) as {code?:string;ok?:boolean;intent?:{goal?:string};rule?:{id:string}}};
   };
@@ -27,7 +29,7 @@ async function local(t:TestContext,candidate=true){
 async function drive<T>(f:Awaited<ReturnType<typeof local>>,promise:Promise<T>){
   let done=false;promise.then(()=>done=true,()=>done=true);for(let i=0;i<100&&!done;i++){f.host.drainInputs();await delay(2);}assert.ok(done);return promise;
 }
-function rotate(f:Awaited<ReturnType<typeof local>>){return f.souls.pairExchange(f.souls.pairCode(f.soul,'http://127.0.0.1:4957',f.db.user('dev:alice')!).code,'rotated local').token;}
+function rotate(f:Awaited<ReturnType<typeof local>>){return f.souls.pairExchange(f.souls.pairCode(f.soul,`http://127.0.0.1:${TEST_PORT}`,f.db.user('dev:alice')!).code,'rotated local').token;}
 
 test('actual stateless MCP current token accepts a native owner intent',async t=>{
   const f=await local(t);const result=await drive(f,f.call('soul_set_intent',{goal:'wander'}));assert.equal(result.error,false);assert.equal(result.cache,'no-store');assert.equal(result.data.ok,true);assert.equal(result.data.intent?.goal,'wander');assert.equal(f.db.events(f.host.worldId).filter(e=>e.kind==='intent').length,1);assert.equal(f.db.paidCost(),0);
@@ -46,7 +48,7 @@ test('actual MCP slow body read rechecks a rotated credential before any tool lo
   const body=JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'soul_perceive',arguments:{}}});
   let socket!:ReturnType<typeof httpRequest>;
   const response=new Promise<{status:number;cache:string|undefined;body:unknown}>((resolve,reject)=>{
-    socket=httpRequest({hostname:'127.0.0.1',port:4957,path:'/mcp',method:'POST',headers:{authorization:'Bearer '+f.token,'content-type':'application/json',accept:'application/json, text/event-stream','content-length':Buffer.byteLength(body)}},incoming=>{
+    socket=httpRequest({hostname:'127.0.0.1',port:TEST_PORT,path:'/mcp',method:'POST',headers:{authorization:'Bearer '+f.token,'content-type':'application/json',accept:'application/json, text/event-stream','content-length':Buffer.byteLength(body)}},incoming=>{
       const chunks:Buffer[]=[];incoming.on('data',chunk=>chunks.push(chunk));incoming.on('end',()=>resolve({status:incoming.statusCode!,cache:incoming.headers['cache-control'],body:JSON.parse(Buffer.concat(chunks).toString())}));incoming.on('error',reject);
     });socket.on('error',reject);
   });
@@ -123,6 +125,6 @@ test('actual stateless MCP queued intent cannot use a rotated captured token',as
   const f=await local(t),queued=f.host.enqueueChecked.bind(f.host);let entered!:()=>void;const started=new Promise<void>(resolve=>entered=resolve);
   t.mock.method(f.host,'enqueueChecked',(...args:Parameters<typeof f.host.enqueueChecked>)=>{const result=queued(...args);if(args[0]==='intent')entered();return result;});
   const pending=f.call('soul_set_intent',{goal:'wander'});await started;
-  f.souls.pairExchange(f.souls.pairCode(f.soul,'http://127.0.0.1:4957',f.db.user('dev:alice')!).code,'rotated local');f.host.drainInputs();
+  f.souls.pairExchange(f.souls.pairCode(f.soul,`http://127.0.0.1:${TEST_PORT}`,f.db.user('dev:alice')!).code,'rotated local');f.host.drainInputs();
   const response=await pending;assert.equal(response.error,true);assert.equal(response.data.code,'unauthorized');assert.equal(f.db.events(f.host.worldId).filter(e=>e.kind==='intent').length,0);
 });

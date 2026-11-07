@@ -12,6 +12,10 @@ import {GodMode} from './god/god.ts';
 import {coreRef} from '@souls/world-compiler';
 import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {streamSSE} from 'hono/streaming';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT_1=await testPort();
+const TEST_PORT_2=await testPort();
+const TEST_PORT_3=await testPort();
 
 test('soul queue: nothing overwrites, the oldest waits first, listen takes the whole backlog, ack and result per id, restart', t => {
   const dir = mkdtempSync(join(tmpdir(), 'souls-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
@@ -199,11 +203,11 @@ test('real owner and paired HTTP flows: absent, browser, command polling, listen
   await invite(f, 'alice'); await invite(f, 'bob');
   const a = await accept(f.host, f.souls.create('dev:alice', {name: 'Avery', description: 'Inbox fixture'}));
   const b = await accept(f.host, f.souls.create('dev:bob', {name: 'Briar', description: 'Other owner fixture'}));
-  const tokenA = f.souls.pairExchange(f.souls.pairCode(a, 'http://127.0.0.1:5960').code, 'scripted').token;
-  const tokenB = f.souls.pairExchange(f.souls.pairCode(b, 'http://127.0.0.1:5960').code, 'scripted').token;
+  const tokenA = f.souls.pairExchange(f.souls.pairCode(a, `http://127.0.0.1:${TEST_PORT_1}`).code, 'scripted').token;
+  const tokenB = f.souls.pairExchange(f.souls.pairCode(b, `http://127.0.0.1:${TEST_PORT_1}`).code, 'scripted').token;
   const god = new GodMode(f.db, {worldId: f.host.worldId, ownerId: 'dev:alice', tick: () => f.host.engine.world.tick, emit() {}});
   const owner = f.db.user('dev:alice')!, godToken = god.mintFor(owner, 'scripted'), browserToken = god.mintFor(owner, 'browser');
-  const app = buildApp({cfg: {...config, port: 5960, worldPath: '/w/eden', publicUrl: 'http://127.0.0.1:5960/w/eden', accountAuthRequired: false, webDir: '/nonexistent-inbox-fixture', marsWebDir: '/nonexistent-inbox-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), god, hub: {clients: new Map(), refreshMe() {}} as never});
+  const app = buildApp({cfg: {...config, port: TEST_PORT_1, worldPath: '/w/eden', publicUrl: `http://127.0.0.1:${TEST_PORT_1}/w/eden`, accountAuthRequired: false, webDir: '/nonexistent-inbox-fixture', marsWebDir: '/nonexistent-inbox-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), god, hub: {clients: new Map(), refreshMe() {}} as never});
   const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
   app.get('/v1/test-inbox-binary', c => c.body(png, 200, {'content-type': 'image/png', etag: 'fixture-original', 'cache-control': 'public, max-age=60'}));
   app.get('/v1/test-inbox-sse', c => streamSSE(c, async stream => { await stream.writeSSE({event: 'fixture', data: 'Original stream data'}); }));
@@ -325,7 +329,7 @@ test('owner box and edge command need an invited owner (same gate as the central
   const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
   await invite(f, 'carol');
   const s = await accept(f.host, f.souls.create('dev:carol', {name: 'Cato', description: 'Invite gate fixture'}));
-  const app = buildApp({cfg: {...config, port: 5961, worldPath: '/w/eden', publicUrl: 'http://127.0.0.1:5961/w/eden', accountAuthRequired: false, inviteRequired: true, webDir: '/nonexistent-inbox-fixture', marsWebDir: '/nonexistent-inbox-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), hub: {clients: new Map(), refreshMe() {}} as never});
+  const app = buildApp({cfg: {...config, port: TEST_PORT_2, worldPath: '/w/eden', publicUrl: `http://127.0.0.1:${TEST_PORT_2}/w/eden`, accountAuthRequired: false, inviteRequired: true, webDir: '/nonexistent-inbox-fixture', marsWebDir: '/nonexistent-inbox-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), hub: {clients: new Map(), refreshMe() {}} as never});
   const post = (path: string) => app.request(path, {method: 'POST', headers: {authorization: 'Bearer dev:carol', 'content-type': 'application/json'}, body: JSON.stringify({text: 'come home'})});
   assert.equal((await post(`/v1/souls/${s.id}/command`)).status, 200);
   (f.db as unknown as {db: {prepare(q: string): {run(...a: unknown[]): void}}}).db.prepare('UPDATE users SET invited_by = NULL WHERE id = ?').run('dev:carol');
@@ -432,7 +436,7 @@ test('god queue over HTTP: a real build links its ticket to where it stands; fai
   await invite(f, 'alice');
   const god = new GodMode(f.db, {worldId: f.host.worldId, ownerId: 'dev:alice', tick: () => f.host.engine.world.tick, emit() {}});
   const owner = f.db.user('dev:alice')!, godToken = god.mintFor(owner, 'scripted');
-  const app = buildApp({cfg: {...config, port: 5962, worldPath: '/w/eden', publicUrl: 'http://127.0.0.1:5962/w/eden', accountAuthRequired: false, webDir: '/nonexistent-inbox-fixture', marsWebDir: '/nonexistent-inbox-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), god, hub: {clients: new Map(), refreshMe() {}} as never});
+  const app = buildApp({cfg: {...config, port: TEST_PORT_3, worldPath: '/w/eden', publicUrl: `http://127.0.0.1:${TEST_PORT_3}/w/eden`, accountAuthRequired: false, webDir: '/nonexistent-inbox-fixture', marsWebDir: '/nonexistent-inbox-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), god, hub: {clients: new Map(), refreshMe() {}} as never});
   const req = async (path: string, token?: string, body?: unknown) => {
     const r = await app.request(path, {method: body === undefined ? 'GET' : 'POST', headers: {...(token ? {authorization: `Bearer ${token}`} : {}), 'content-type': 'application/json'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
     return {status: r.status, data: await r.json() as any};
@@ -479,9 +483,9 @@ test('after a boot, one client reconnecting N times in a row is never refused an
   const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
   await invite(f, 'alice');
   const a = await accept(f.host, f.souls.create('dev:alice', {name: 'Avery', description: 'Reboot fixture'}));
-  const tokenA = f.souls.pairExchange(f.souls.pairCode(a, 'http://127.0.0.1:5960').code, 'scripted').token;
+  const tokenA = f.souls.pairExchange(f.souls.pairCode(a, `http://127.0.0.1:${TEST_PORT_1}`).code, 'scripted').token;
   const god = new GodMode(f.db, {worldId: f.host.worldId, ownerId: 'dev:alice', tick: () => f.host.engine.world.tick, emit() {}});
-  const boot = () => buildApp({cfg: {...config, port: 5960, worldPath: '/w/eden', publicUrl: 'http://127.0.0.1:5960/w/eden', accountAuthRequired: false, webDir: '/nonexistent-inbox-fixture', marsWebDir: '/nonexistent-inbox-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), god, hub: {clients: new Map(), refreshMe() {}} as never});
+  const boot = () => buildApp({cfg: {...config, port: TEST_PORT_1, worldPath: '/w/eden', publicUrl: `http://127.0.0.1:${TEST_PORT_1}/w/eden`, accountAuthRequired: false, webDir: '/nonexistent-inbox-fixture', marsWebDir: '/nonexistent-inbox-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), god, hub: {clients: new Map(), refreshMe() {}} as never});
   const req = async (app: ReturnType<typeof boot>, path: string, token?: string, body?: unknown, signal?: AbortSignal) => {
     const r = await app.request(path, {method: body === undefined ? 'GET' : 'POST', headers: {...(token ? {authorization: `Bearer ${token}`} : {}), 'content-type': 'application/json'}, ...(body === undefined ? {} : {body: JSON.stringify(body)}), ...(signal ? {signal} : {})});
     return {status: r.status, data: await r.json() as any};

@@ -1,6 +1,6 @@
 // node --test tools/world-launcher/op-souls.test.mjs — lane OPS2: the operator's TEST-Soul commands end to end, through
 // op.mjs, the launcher (Clerk mode, real Sim world processes with fake minds, $0) and the world (apps/server/src/op-souls.ts).
-// Lane ports: proxy 7050, children 7051–7058 (OPSOULS_TEST_PORT moves them). A synthetic Clerk issuer, as launcher-auth.test.
+// Lane ports: proxy and children on a block (OPSOULS_TEST_PORT picks the block, else a free one). A synthetic Clerk issuer, as launcher-auth.test.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
@@ -12,8 +12,9 @@ import { promisify } from 'node:util';
 import { openLauncher } from './launcher.mjs';
 import { notTestWorld, deniedSoul, opSoul, NEVER_TEST_SLUGS } from './op-souls.mjs';
 import { clerkKeys, ISSUER, PUBLISHABLE_KEY } from '../../apps/server/test/clerk-fixture.ts';
+import { testPort } from '../../apps/server/test/test-port.ts';
 
-const PORT = Number(process.env.OPSOULS_TEST_PORT ?? 7050), RANGE = [PORT + 1, PORT + 8], ORIGIN = `http://127.0.0.1:${PORT}`;
+const PORT = Number(process.env.OPSOULS_TEST_PORT ?? await testPort(9)), RANGE = [PORT + 1, PORT + 8], ORIGIN = `http://127.0.0.1:${PORT}`;
 const dir = mkdtempSync(join(tmpdir(), 'launcher-op-souls-test-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 const preload = new URL('../../apps/server/test/clerk-jwks-preload.mjs', import.meta.url).pathname;

@@ -4,6 +4,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rendererWorldUrl } from './look-renderer-url.ts';
+import {testPort} from '../../test/test-port.ts';
+const TEST_PORT=await testPort(2);
 
 // The launcher is a JavaScript test API without TypeScript declarations.
 const { openLauncher } = await import(new URL('../../../../tools/world-launcher/launcher.mjs', import.meta.url).href);
@@ -41,7 +43,7 @@ test('renderer routing refuses unsafe configuration before choosing a launcher',
 });
 
 test('production-prefixed context HTML loads JavaScript through the real launcher instead of child fallback HTML', { timeout: 30_000 }, async () => {
-  const port = 7471, childPort = 7472, origin = `http://127.0.0.1:${port}`;
+  const port = TEST_PORT, childPort = TEST_PORT + 1, origin = `http://127.0.0.1:${port}`;
   const dir = mkdtempSync(join(tmpdir(), 'context-renderer-route-'));
   const webDir = join(dir, 'web'), templatesDir = join(dir, 'templates');
   mkdirSync(join(webDir, 'assets'), { recursive: true }); mkdirSync(templatesDir);

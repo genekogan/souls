@@ -160,7 +160,7 @@ jobs:
               bash tools/test-harness/web-suite.sh
               ;;
             launcher)
-              # V3-launcher-unit; launcher.test.mjs takes its ports from LAUNCHER_TEST_PORT_BASE (default 6200)
+              # V3-launcher-unit; each test file takes a free block of ports (apps/server/test/test-port.ts)
               node --test --test-concurrency=1 tools/world-launcher/*.test.mjs
               ;;
             client-cli)

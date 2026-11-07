@@ -1,5 +1,5 @@
-// node --test tools/world-launcher/listing.test.mjs — the public world list (listing.mjs; QA2 F4). Ports: launcher 7000,
-// children 7001–7007 (LISTING_TEST_PORT moves the block).
+// node --test tools/world-launcher/listing.test.mjs — the public world list (listing.mjs; QA2 F4). Ports: launcher,
+// children on a block (LISTING_TEST_PORT picks the block, else a free one).
 // Stand-in worlds (fake-world.mjs) write their owner into sim.db the way GodMode does on first boot (WORLD_OWNER_ID).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,8 +9,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { defaultCommand } from './children.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
 
-const PORT = Number(process.env.LISTING_TEST_PORT ?? 7000), RANGE = [PORT + 1, PORT + 7];
+const PORT = Number(process.env.LISTING_TEST_PORT ?? await testPort(8)), RANGE = [PORT + 1, PORT + 7];
 const dir = mkdtempSync(join(tmpdir(), 'launcher-listing-test-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 writeFileSync(join(templatesDir, 'plain.json'), JSON.stringify({ schema: 'genesis/1', name: 'Plain', description: 'x', batches: [] }));

@@ -10,9 +10,10 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { testPort } from '../../apps/server/test/test-port.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.KEEPER_TEST_PORT ?? 6017), RANGE = `${PORT + 1}-${PORT + 2}`;   // a lane may move it into its own range
+const PORT = Number(process.env.KEEPER_TEST_PORT ?? await testPort(6)), RANGE = `${PORT + 1}-${PORT + 2}`;   // a lane may move it into its own range
 const dir = mkdtempSync(join(tmpdir(), 'keeper-test-'));
 const data = join(dir, 'data'), link = join(dir, 'current');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

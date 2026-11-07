@@ -17,6 +17,8 @@ import {IntentControlV2} from './intent-control.ts';
 import {migrate} from './migrations.ts';
 import {replayFromGenesis} from './world.ts';
 import {intentNativeFixture as fixture,seed,worldId} from '../test/intent-native-fixture.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 const request=(requestId:string,words='go to the campfire')=>({contract:INTENT_V2,requestId,op:'upsert',words});
 async function accept<T>(f:ReturnType<typeof fixture>,promise:Promise<T>) {
@@ -229,21 +231,21 @@ test('inactive paths, invalid/large bodies, wrong world and unavailable compiler
 test('actual TCP owner/agent adapters and anonymous Hub join/batches exclude private intent material',async t=>{
   const f=fixture(t),server=createServer();const hub=new Hub(server,f.host,f.auth,f.db);hub.brain=f.brain;
   const app=buildApp({...f.deps,hub});server.on('request',getRequestListener(app.fetch));
-  await new Promise<void>(resolve=>server.listen(4957,'127.0.0.1',resolve));
+  await new Promise<void>(resolve=>server.listen(TEST_PORT,'127.0.0.1',resolve));
   let socket:WebSocket|undefined;t.after(async()=>{socket?.terminate();for(const client of hub.clients)client.ws.terminate();hub.wss.close();await new Promise<void>(r=>server.close(()=>r()));});
-  const credential=token(f),pending=fetch('http://127.0.0.1:4957/v1/agent/intent-v2',{method:'POST',headers:{authorization:'Bearer '+credential,'content-type':'application/json'},body:JSON.stringify(request('PRIVATE_REQUEST_ID','PRIVATE_OWNER_WORDS make friends if you feel like it'))});
+  const credential=token(f),pending=fetch(`http://127.0.0.1:${TEST_PORT}/v1/agent/intent-v2`,{method:'POST',headers:{authorization:'Bearer '+credential,'content-type':'application/json'},body:JSON.stringify(request('PRIVATE_REQUEST_ID','PRIVATE_OWNER_WORDS make friends if you feel like it'))});
   await receipt(await acceptOverTcp(f,pending));await settled(f);
   const generation=f.db.soul('s_A')!.token_generation!;
   for(const path of ['/v1/log','/v1/kernel','/v1/debug/world','/v1/take','/v1/takes','/v1/world','/v1/scene']) {
-    const response=await fetch('http://127.0.0.1:4957'+path);assert.equal(response.status,200);
+    const response=await fetch(`http://127.0.0.1:${TEST_PORT}`+path);assert.equal(response.status,200);
     const text=await response.text();for(const marker of ['PRIVATE_OWNER_WORDS','PRIVATE_REQUEST_ID','PRIVATE_STANDING_SUMMARY',generation,credential,hashToken(credential)])assert.ok(!text.includes(marker),path+' excludes '+marker.slice(0,12));
   }
-  socket=new WebSocket('ws://127.0.0.1:4957/ws');const messages:string[]=[];
+  socket=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`);const messages:string[]=[];
   socket.on('message',data=>messages.push(String(data)));
   await new Promise<void>((resolve,reject)=>{socket!.once('open',resolve);socket!.once('error',reject);});socket.send(JSON.stringify({t:'hello',proto:PROTO}));
   await arrived(socket,messages,'takes');
   assert.ok(messages.some(m=>JSON.parse(m).t==='snapshot'));
-  await receipt(await acceptOverTcp(f,fetch('http://127.0.0.1:4957/v1/souls/s_A/intent-v2',{method:'POST',headers:{authorization:'Bearer dev:alice','content-type':'application/json'},body:JSON.stringify(request('PRIVATE_LIVE_ID','PRIVATE_OWNER_WORDS make friends if you feel like it'))})));await settled(f);await ticks(f,40);
+  await receipt(await acceptOverTcp(f,fetch(`http://127.0.0.1:${TEST_PORT}/v1/souls/s_A/intent-v2`,{method:'POST',headers:{authorization:'Bearer dev:alice','content-type':'application/json'},body:JSON.stringify(request('PRIVATE_LIVE_ID','PRIVATE_OWNER_WORDS make friends if you feel like it'))})));await settled(f);await ticks(f,40);
   await arrived(socket,messages,'batch');
   for(const marker of ['PRIVATE_OWNER_WORDS','PRIVATE_REQUEST_ID','PRIVATE_LIVE_ID','PRIVATE_STANDING_SUMMARY',generation,credential,hashToken(credential)])assert.ok(!messages.join('\n').includes(marker));
   assert.equal(f.db.paidCost(),0);

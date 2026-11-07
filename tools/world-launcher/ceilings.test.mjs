@@ -1,5 +1,5 @@
 // node --test tools/world-launcher/ceilings.test.mjs — lane L1, LOAD-CONTRACT §2b: the launcher's ceilings on the Soul API.
-// Fake worlds on lane L1's ports only: proxy :5109, children 5104–5106.
+// Fake worlds on a free block of ports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { launcherFlood, requestClass, soulCeilings, SOUL_CEILINGS } from './flood.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(10);
 
 const req = (method, headers = {}) => ({ method, headers });
 
@@ -99,8 +101,8 @@ test('through the launcher: 200 god calls (50 at a time) from one address are ne
   const webDir = join(dir, 'web'); mkdirSync(webDir); writeFileSync(join(webDir, 'index.html'), '<!doctype html>');
   const fake = new URL('./fake-world.mjs', import.meta.url).pathname;
   const command = (w, port) => ({ cmd: process.execPath, args: [fake], env: { ...process.env, WORLD_KEY: w.slug, PORT: String(port) } });
-  const P = 5291, base = `http://127.0.0.1:${P}`;
-  const L = await openLauncher({ port: P, range: [5292, 5294], dataDir: join(dir, 'data'), webDir, templatesDir, command, eager: 0, log: () => {}, prewarm: false, publicOrigin: 'http://sim.test', devAuth: true, floodLimits: { godTokenBurst: 150 } });
+  const P = P0 + 6, base = `http://127.0.0.1:${P}`;
+  const L = await openLauncher({ port: P, range: [P0 + 7, P0 + 9], dataDir: join(dir, 'data'), webDir, templatesDir, command, eager: 0, log: () => {}, prewarm: false, publicOrigin: 'http://sim.test', devAuth: true, floodLimits: { godTokenBurst: 150 } });
   try {
     const { slug } = await (await fetch(`${base}/__sim/worlds`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Godspeed' }) })).json();
     await (await fetch(`${base}/w/${slug}/v1/config`)).arrayBuffer();   // booted
@@ -124,10 +126,10 @@ test('a 200 req/s hammer from one address: the world gets at most its budget, ev
   const hits = join(dir, 'hits.txt'); writeFileSync(hits, '');
   const fake = new URL('./fake-world.mjs', import.meta.url).pathname;
   const command = (w, port) => ({ cmd: process.execPath, args: [fake], env: { ...process.env, WORLD_KEY: w.slug, PORT: String(port), FAKE_HITS: hits } });
-  const P = 5109, base = `http://127.0.0.1:${P}`;
+  const P = P0 + 5, base = `http://127.0.0.1:${P}`;
   // the hammer tests the mechanism at tight limits (the release-402 numbers); the shipped defaults are far above a 200 req/s single address
   const tight = { ipPer10s: 120, ipConcurrent: 10, worldBudgetRps: 10 };
-  const L = await openLauncher({ port: P, range: [5104, 5106], dataDir: join(dir, 'data'), webDir, templatesDir, command, eager: 0, log: () => {}, prewarm: false, publicOrigin: 'http://sim.test', devAuth: true, soulLimits: tight });
+  const L = await openLauncher({ port: P, range: [P0, P0 + 2], dataDir: join(dir, 'data'), webDir, templatesDir, command, eager: 0, log: () => {}, prewarm: false, publicOrigin: 'http://sim.test', devAuth: true, soulLimits: tight });
   try {
     const made = await (await fetch(`${base}/__sim/worlds`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Anvil' }) })).json();
     const slug = made.slug, path = `${base}/w/${slug}/v1/edge/here`;
@@ -173,8 +175,8 @@ test('lane L7 mounts: /__sim/metrics (loopback only) carries the ceilings\' refu
   const webDir = join(dir, 'web'); mkdirSync(webDir); writeFileSync(join(webDir, 'index.html'), '<!doctype html>');
   const fake = new URL('./fake-world.mjs', import.meta.url).pathname;
   const command = (w, port) => ({ cmd: process.execPath, args: [fake], env: { ...process.env, WORLD_KEY: w.slug, PORT: String(port) } });
-  const P = 5109, base = `http://127.0.0.1:${P}`;
-  const L = await openLauncher({ port: P, range: [5104, 5106], dataDir: join(dir, 'data'), webDir, templatesDir, command, eager: 0, log: () => {}, prewarm: false, publicOrigin: 'http://sim.test', devAuth: true });
+  const P = P0 + 5, base = `http://127.0.0.1:${P}`;
+  const L = await openLauncher({ port: P, range: [P0, P0 + 2], dataDir: join(dir, 'data'), webDir, templatesDir, command, eager: 0, log: () => {}, prewarm: false, publicOrigin: 'http://sim.test', devAuth: true });
   try {
     const { slug } = await (await fetch(`${base}/__sim/worlds`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Gauge' }) })).json();
     assert.equal((await fetch(`${base}/w/${slug}/v1/edge/here`, { headers: { 'x-forwarded-for': '203.0.113.1' } })).status, 401);

@@ -12,17 +12,19 @@ import {fixture} from '../test/native-owner-fixture.ts';
 import {Auth} from './auth.ts';
 import {Hub} from './hub.ts';
 import {buildApp} from './http.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 const native=await marsFactory({...EDEN_SAFE_COMMONS_WORLD,safeCrewRemoval:true});
 async function until(f:()=>boolean,ms=3000){const end=performance.now()+ms;while(!f()&&performance.now()<end)await delay(2);assert.ok(f(),'actual scoped WS authority arrives');}
 async function local(t:TestContext){
   const f=fixture(':memory:',native);f.souls.enableLifecycle();const auth=new Auth(f.souls.cfg,f.db);auth.devAuth=true;const server=createServer();
   const timers:any[]=[],realInterval=setInterval;t.mock.method(globalThis,'setInterval',(...a:Parameters<typeof setInterval>)=>{const x=realInterval(...a);timers.push(x);return x;});
   const hub=new Hub(server,f.host,auth,f.db,f.souls);hub.brain=f.brain;const app=buildApp({cfg:f.souls.cfg,db:f.db,host:f.host,auth,brain:f.brain,souls:f.souls,hub});
-  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(4959,'127.0.0.1',resolve);});const connections:Connection[]=[];
+  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',resolve);});const connections:Connection[]=[];
   t.after(async()=>{for(const c of connections)c.close();for(const x of timers)clearInterval(x);for(const ws of hub.wss.clients)ws.terminate();await new Promise<void>(r=>hub.wss.close(()=>r()));await new Promise<void>(r=>server.close(()=>r()));f.host.stop();f.db.close();});
   const request=(path:string,owner:string,data?:unknown,method=data?'POST':'GET',extra:Record<string,string>={})=>app.request(path,{method,headers:{authorization:'Bearer dev:'+owner,...(data?{'content-type':'application/json'}:{}),...extra},...(data?{body:JSON.stringify(data)}:{})});
   const connect=async(owner:string|null)=>{const frames:ServerMsg[]=[],updates:any[]=[],sessions:any[]=[];let welcomes=0;
-    const c=new Connection('ws://127.0.0.1:4959/ws',async()=>owner?'dev:'+owner:null,{onWelcome(){welcomes++;},onMe:(me,scope)=>updates.push({me,scope}),onSession:s=>sessions.push(s)},url=>{const ws=new WebSocket(url);ws.on('message',d=>frames.push(JSON.parse(String(d))));return ws;});
+    const c=new Connection(`ws://127.0.0.1:${TEST_PORT}/ws`,async()=>owner?'dev:'+owner:null,{onWelcome(){welcomes++;},onMe:(me,scope)=>updates.push({me,scope}),onSession:s=>sessions.push(s)},url=>{const ws=new WebSocket(url);ws.on('message',d=>frames.push(JSON.parse(String(d))));return ws;});
     connections.push(c);c.connect();await until(()=>c.replica.ready);return {c,frames,updates,sessions,get welcomes(){return welcomes;}};
   };
   const invite=async(owner:string)=>{const response=await request('/v1/admin','admin',{action:'invite',uses:1});assert.equal(response.status,200);const {code}=await response.json() as any;assert.equal((await request('/v1/invite',owner,{code})).status,200);};
@@ -53,9 +55,9 @@ test('deleted current identity clears private authority while public transport s
 test('late first authentication and closed-socket authentication cannot override a newer hello identity',async t=>{
   const f=await local(t);await f.invite('alice');await f.invite('bob');const original=f.auth.userFromToken.bind(f.auth);let entered=false,release!:()=>void;let hold=new Promise<void>(r=>release=r);
   t.mock.method(f.auth,'userFromToken',async (token:string|null|undefined)=>{if(token==='dev:alice'){const u=await original(token);entered=true;await hold;return u;}return original(token);});
-  const ws=new WebSocket('ws://127.0.0.1:4959/ws'),frames:ServerMsg[]=[];ws.on('message',d=>frames.push(JSON.parse(String(d))));await once(ws,'open');ws.send(JSON.stringify({t:'hello',proto:PROTO,token:'dev:alice'}));await until(()=>entered);await delay(3100);ws.send(JSON.stringify({t:'hello',proto:PROTO,token:'dev:bob'}));await until(()=>frames.some(m=>m.t==='welcome'&&m.you?.userId==='dev:bob'));release();await delay(20);
+  const ws=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`),frames:ServerMsg[]=[];ws.on('message',d=>frames.push(JSON.parse(String(d))));await once(ws,'open');ws.send(JSON.stringify({t:'hello',proto:PROTO,token:'dev:alice'}));await until(()=>entered);await delay(3100);ws.send(JSON.stringify({t:'hello',proto:PROTO,token:'dev:bob'}));await until(()=>frames.some(m=>m.t==='welcome'&&m.you?.userId==='dev:bob'));release();await delay(20);
   assert.equal(frames.some(m=>m.t==='welcome'&&m.you?.userId==='dev:alice'),false);f.hub.refreshMe('dev:alice');await delay(10);assert.equal(frames.some(m=>m.t==='me'&&m.view.me?.userId==='dev:alice'),false);ws.close();await once(ws,'close');
-  entered=false;hold=new Promise<void>(r=>release=r);const closed=new WebSocket('ws://127.0.0.1:4959/ws');await once(closed,'open');closed.send(JSON.stringify({t:'hello',proto:PROTO,token:'dev:alice'}));await until(()=>entered);closed.close();await once(closed,'close');release();await delay(10);assert.equal(f.hub.clients.size,0);
+  entered=false;hold=new Promise<void>(r=>release=r);const closed=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`);await once(closed,'open');closed.send(JSON.stringify({t:'hello',proto:PROTO,token:'dev:alice'}));await until(()=>entered);closed.close();await once(closed,'close');release();await delay(10);assert.equal(f.hub.clients.size,0);
 });
 test('a controlled slow private channel closes instead of silently dropping authority, without affecting another viewer',async t=>{
   const f=await local(t),alice=await f.connect('alice'),bob=await f.connect('bob'),serverClient=[...f.hub.clients].find(c=>c.me?.userId==='dev:alice')!;

@@ -9,8 +9,9 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { openLauncher } from './launcher.mjs';
 import { defaultCommand } from './children.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
 
-const PORT = Number(process.env.OP_TEST_PORT ?? 6230), RANGE = [PORT + 1, PORT + 5];
+const PORT = Number(process.env.OP_TEST_PORT ?? await testPort(6)), RANGE = [PORT + 1, PORT + 5];
 const dir = mkdtempSync(join(tmpdir(), 'launcher-op-test-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 writeFileSync(join(templatesDir, 'arium.json'), JSON.stringify({ schema: 'genesis/1', name: 'Arium', description: 'x', batches: [] }));

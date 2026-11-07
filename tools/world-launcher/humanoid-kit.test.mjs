@@ -1,4 +1,4 @@
-// node --test tools/world-launcher/humanoid-kit.test.mjs  (port 6309, lane A's range; no world processes)
+// node --test tools/world-launcher/humanoid-kit.test.mjs  (a free block of ports; no world processes)
 // Release 3 walk: /worlds/modular/humanoid/kit.json was proxied to "any running world"; with only the old-world eden fork
 // awake (it has no such kit) every page's humanoid kit was a 404 and composed bodies fell back to simple figures. The
 // launcher now serves this release's humanoid kit itself, under its base, whatever is awake.
@@ -10,6 +10,8 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(12);
 
 const dir = mkdtempSync(join(tmpdir(), 'launcher-kit-'));
 const webDir = join(dir, 'web'); mkdirSync(join(webDir, 'assets'), { recursive: true }); writeFileSync(join(webDir, 'index.html'), '<!doctype html>');
@@ -21,9 +23,9 @@ mkdirSync(join(marsWebDir, 'modular', 'environment'));
 writeFileSync(join(marsWebDir, 'modular', 'environment', 'clips-ual.glb'), 'glTF-clips');
 writeFileSync(join(marsWebDir, 'modular', 'ASSETS.md'), '# not served');
 writeFileSync(join(marsWebDir, 'secret.json'), '{}');
-const L = await openLauncher({ port: 6309, range: [6301, 6308], base: '/worlds', dataDir: join(dir, 'data'), webDir, templatesDir, marsWebDir, command: () => ({ cmd: process.execPath, args: ['-e', ''] }), eager: 0, log: () => {} });
+const L = await openLauncher({ port: P0 + 11, range: [P0 + 3, P0 + 10], base: '/worlds', dataDir: join(dir, 'data'), webDir, templatesDir, marsWebDir, command: () => ({ cmd: process.execPath, args: ['-e', ''] }), eager: 0, log: () => {} });
 after(() => L.close?.());
-const get = (p) => fetch(`http://127.0.0.1:6309${p}`);
+const get = (p) => fetch(`http://127.0.0.1:${P0 + 11}${p}`);
 
 test('the humanoid kit and its parts are served by the launcher with no world awake', async () => {
   const kit = await get('/worlds/modular/humanoid/kit.json');
@@ -37,11 +39,11 @@ test('the environment GLBs (characters) are served by the launcher too, under th
   assert.equal(r.status, 200); assert.equal(await r.text(), 'glTF-clips'); assert.match(r.headers.get('cache-control') ?? '', /max-age=86400/);
   assert.notEqual((await get('/worlds/modular/ASSETS.md')).status, 200, 'only asset types');
   const env = join(dir, 'clerk.env'); writeFileSync(env, 'CLERK_PUBLISHABLE_KEY=pk_test_ZmFrZQ\nCLERK_ISSUER_URL=https://clerk.example.test\n');
-  const R = await openLauncher({ port: 6300, range: [6298, 6299], dataDir: join(dir, 'root-data'), webDir, templatesDir, marsWebDir, publicOrigin: 'https://sim.example.test', authEnvFile: env, oldWorldsRoot: true, eager: 0, log: () => {} });
+  const R = await openLauncher({ port: P0 + 2, range: [P0, P0 + 1], dataDir: join(dir, 'root-data'), webDir, templatesDir, marsWebDir, publicOrigin: 'https://sim.example.test', authEnvFile: env, oldWorldsRoot: true, eager: 0, log: () => {} });
   try {
-    const root = await fetch('http://127.0.0.1:6300/modular/environment/clips-ual.glb');
+    const root = await fetch(`http://127.0.0.1:${P0 + 2}/modular/environment/clips-ual.glb`);
     assert.equal(root.status, 200); assert.equal(await root.text(), 'glTF-clips');
-    assert.equal((await fetch('http://127.0.0.1:6300/modular/humanoid/kit.json')).status, 200);
+    assert.equal((await fetch(`http://127.0.0.1:${P0 + 2}/modular/humanoid/kit.json`)).status, 200);
   } finally { await R.close(); }
 });
 

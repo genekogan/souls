@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { CRAWLERS, NOINDEX, robotsTxt, sitemapXml } from './crawl.mjs';
 import { openLauncher } from './launcher.mjs';
 import { defaultCommand } from './children.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
 
 test('robots.txt names every crawler, allows the site, disallows the private paths and points at the sitemap', () => {
   const t = robotsTxt({ origin: 'https://soul.game' });
@@ -31,7 +32,7 @@ test('sitemap.xml: sitemaps.org 0.9, absolute locs on the public origin, home, c
   assert.ok(x.trimEnd().endsWith('</urlset>'));
 });
 
-const PORT = Number(process.env.CRAWL_TEST_PORT ?? 7090), RANGE = [PORT + 1, PORT + 6];
+const PORT = Number(process.env.CRAWL_TEST_PORT ?? await testPort(7)), RANGE = [PORT + 1, PORT + 6];
 const dir = mkdtempSync(join(tmpdir(), 'launcher-crawl-test-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 writeFileSync(join(templatesDir, 'plain.json'), JSON.stringify({ schema: 'genesis/1', name: 'Plain', description: 'x', batches: [] }));

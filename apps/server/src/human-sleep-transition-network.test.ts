@@ -17,6 +17,8 @@ import {buildApp} from './http.ts';
 import {stripWorldRequestPath} from './world-request-path.ts';
 import {installCommonsProvisionCards} from './commons-provisions.ts';
 import {installEdenSteeringModeV1} from './eden-steering-mode.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 async function until(ok:()=>boolean){const end=performance.now()+8000;while(!ok()&&performance.now()<end)await delay(10);assert.ok(ok(),'actual network condition arrives');}
 test('actual owner REST safely wakes physical sleep; all sockets receive truthful native rise/walk and redacted private stop',async t=>{
  const factory=nativeSleepSnapshotFactoryV1(await retainedCommonsShoreFactory()),f=fixture(':memory:',factory,{durableClockV1:true});f.souls.enableLifecycle();
@@ -35,10 +37,10 @@ test('actual owner REST safely wakes physical sleep; all sockets receive truthfu
  await accept(f.host,f.host.enqueue('decision','fixture:sleep',{soulId:alice.id,entityId:alice.entity_id,option:'sleep',label:'sleep on own mat',steps:[{verb:'mars:sleep',params:{mat:'commons-mat-1',duration:600,returnTo:COMMONS_PERSONAL_RESOURCES[0].sleepReturn}}],reevalTicks:1e9,fallback:false,trigger:'fixture'}));
  const pose=()=> (f.host.engine.world as NativeWorld).entities[alice.entity_id].human?.sleepPose;
  for(let i=0;i<3000&&pose()?.standingFraction!==0;i++){f.host.tickOnce();if(i%10===0)await setImmediate();}assert.equal(pose()?.standingFraction,0);
- await new Promise<void>((r,reject)=>{server.once('error',reject);server.listen(4959,'127.0.0.1',r);});
- const connect=async(owner?:string)=>{const socket=new WebSocket('ws://127.0.0.1:4959/w/eden/ws'),messages:any[]=[];clients.push(socket);socket.on('message',data=>messages.push(JSON.parse(String(data))));await once(socket,'open');socket.send(JSON.stringify({t:'hello',proto:PROTO,...(owner?{token:'dev:'+owner}:{})}));await until(()=>messages.some(m=>m.t==='takes'));return {socket,messages};};
+ await new Promise<void>((r,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',r);});
+ const connect=async(owner?:string)=>{const socket=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/w/eden/ws`),messages:any[]=[];clients.push(socket);socket.on('message',data=>messages.push(JSON.parse(String(data))));await once(socket,'open');socket.send(JSON.stringify({t:'hello',proto:PROTO,...(owner?{token:'dev:'+owner}:{})}));await until(()=>messages.some(m=>m.t==='takes'));return {socket,messages};};
  const a=await connect('alice'),b=await connect('bob'),anon=await connect();assert.deepEqual(a.messages.find(m=>m.t==='welcome').you.souls,[alice.id]);assert.deepEqual(b.messages.find(m=>m.t==='welcome').you.souls,[bob.id]);assert.equal(anon.messages.find(m=>m.t==='welcome').you,null);
- const base='http://127.0.0.1:4959/w/eden',path='/v1/souls/'+alice.id+'/intent-v2',headers={authorization:'Bearer dev:alice','content-type':'application/json'},canary='PRIVATE_WS_SLEEP_OWNER_20261006';
+ const base=`http://127.0.0.1:${TEST_PORT}/w/eden`,path='/v1/souls/'+alice.id+'/intent-v2',headers={authorization:'Bearer dev:alice','content-type':'application/json'},canary='PRIVATE_WS_SLEEP_OWNER_20261006';
  f.host.clockRate=1;f.host.start();const before=performance.now(),response=await fetch(base+path,{method:'POST',headers,body:JSON.stringify({contract:'soul-intent/2',op:'upsert',requestId:'network-wake-west',words:canary+' go to commons-bench-west'})});assert.equal(response.status,202);
  let receipt:any;await until(()=>{receipt=service.lookup(service.ownerScope({userId:alice.owner,expiresAt:Number.MAX_SAFE_INTEGER},alice.id),'network-wake-west');return receipt.phase!=='received';});
  const lookup=await fetch(base+path+'/requests/network-wake-west',{headers});assert.equal(lookup.status,200);receipt=intentReceiptV2Schema.parse(await lookup.json());assert.equal(receipt.phase,'understood',JSON.stringify(receipt));assert.match(receipt.revision.interpretation.summary,/Wake safely first/);const ref=receipt.revision.intentId;

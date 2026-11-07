@@ -13,6 +13,8 @@ import {buildApp} from './http.ts';
 import {IntentControlV2} from './intent-control.ts';
 import {INTENT_V2,intentOwnerControlV2Schema,publicEvent} from '@souls/protocol';
 import {intentNativeFixture,worldId} from '../test/intent-native-fixture.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 type Fixture=ReturnType<typeof intentNativeFixture>;
 const get=async(f:Fixture,credential='dev:alice',id='s_A')=>f.app.request('/v1/souls/'+id,{headers:{authorization:'Bearer '+credential}});
@@ -62,7 +64,7 @@ test('operator viewing another owner receives no genuine-owner adapter; owning a
 test('agent/api scope cannot become a human web capability',t=>{
   const f=intentNativeFixture(t),owner=f.service.ownerScope({userId:'dev:alice',expiresAt:Infinity},'s_A','api');
   assert.equal(f.service.ownerControl(owner),undefined);
-  const credential=f.souls.pairExchange(f.souls.pairCode(f.db.soul('s_A')!,'http://127.0.0.1:4959',f.db.user('dev:alice')!).code,'local capability fixture').token;
+  const credential=f.souls.pairExchange(f.souls.pairCode(f.db.soul('s_A')!,`http://127.0.0.1:${TEST_PORT}`,f.db.user('dev:alice')!).code,'local capability fixture').token;
   assert.equal(f.service.ownerControl(f.service.agentScope(credential,'mcp')),undefined);
   assert.throws(()=>f.service.ownerScope({userId:'dev:alice',expiresAt:Date.now()-1},'s_A'),/sign in/);
 });
@@ -142,12 +144,12 @@ test('two actual native owned Souls select distinct current scoped controls over
   assert.ok(f.host.minds.get('s_B'));assert.ok(f.host.engine.world.entities.h_B);
   const server=createServer(getRequestListener(f.app.fetch));
   t.after(async()=>{await new Promise<void>(r=>{server.close(()=>r());server.closeAllConnections();});});
-  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(4959,'127.0.0.1',resolve);});
+  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',resolve);});
   for(const [owner,soulId] of [['dev:alice','s_A'],['dev:bob','s_B']]) {
-    const own=await fetch('http://127.0.0.1:4959/v1/souls/'+soulId,{headers:{authorization:'Bearer '+owner}});
+    const own=await fetch(`http://127.0.0.1:${TEST_PORT}/v1/souls/`+soulId,{headers:{authorization:'Bearer '+owner}});
     assert.equal(own.status,200);assert.equal(own.headers.get('cache-control'),'no-store');
     assert.deepEqual(intentOwnerControlV2Schema.parse((await own.json()).control),{worldId,soulId,ownerId:owner,intentContract:INTENT_V2});
-    const other=soulId==='s_A'?'s_B':'s_A';await denied(await fetch('http://127.0.0.1:4959/v1/souls/'+other,{headers:{authorization:'Bearer '+owner}}),403);
+    const other=soulId==='s_A'?'s_B':'s_A';await denied(await fetch(`http://127.0.0.1:${TEST_PORT}/v1/souls/`+other,{headers:{authorization:'Bearer '+owner}}),403);
   }
   assert.equal(f.calls,0);assert.equal(f.db.paidCost(),0);assert.deepEqual(f.host.engine.runtime.violations,[]);
 });

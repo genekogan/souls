@@ -4,7 +4,8 @@ import {createServer} from 'node:http';import {once} from 'node:events';import {
 import {mkdtempSync,writeFileSync,rmSync,readFileSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {fileURLToPath} from 'node:url';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';import {EdgeLedger} from './edge/ledger/ledger.ts';import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';
 import {appearanceFromSeed,lookKey} from '../../web/src/humanoid/look.ts';
-const PORT=Number(process.env.LOOK_CLI_TEST_PORT??5731);
+import {testPort} from '../test/test-port.ts';
+const PORT=Number(process.env.LOOK_CLI_TEST_PORT??await testPort());
 test('CLI body look: show, seeded random, set parts and colours, classic preset, refusal',async t=>{
  const cli=fileURLToPath(new URL('../../../tools/edge-skill/eden-agent.mjs',import.meta.url));
  if(!readFileSync(cli,'utf8').includes("cmd==='look'")){t.skip('needs the L10 CLI patch (tools/humanoid/patches/03-cli-body-look.patch)');return;}

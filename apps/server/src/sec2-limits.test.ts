@@ -12,8 +12,10 @@ import {buildApp, bodyCeiling} from './http.ts';
 import {config} from './config.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {commsFixture} from './edge/comms/testing.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
-const cfg = {...config, port: 7049, worldPath: '/w/eden', publicUrl: 'http://127.0.0.1:7049/w/eden', accountAuthRequired: false, webDir: '/nonexistent-sec2', marsWebDir: '/nonexistent-sec2'};
+const cfg = {...config, port: TEST_PORT, worldPath: '/w/eden', publicUrl: `http://127.0.0.1:${TEST_PORT}/w/eden`, accountAuthRequired: false, webDir: '/nonexistent-sec2', marsWebDir: '/nonexistent-sec2'};
 const hub = {clients: new Map(), refreshMe() {}} as never;
 /** A chunked request body (no content-length) of `mb` MiB, counting how much of it the server pulled. */
 const chunked = (mb: number) => {

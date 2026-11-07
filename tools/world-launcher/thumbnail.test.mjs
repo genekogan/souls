@@ -1,5 +1,5 @@
-// node --test tools/world-launcher/thumbnail.test.mjs — world thumbnails on the world list (#887). Lane ports: proxy 6470,
-// children 6471–6474. Stand-in worlds (fake-world.mjs) write their owner and god tokens into sim.db the way GodMode does.
+// node --test tools/world-launcher/thumbnail.test.mjs — world thumbnails on the world list (#887). On a free block of ports.
+// Stand-in worlds (fake-world.mjs) write their owner and god tokens into sim.db the way GodMode does.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -13,8 +13,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { appendFileSync } from 'node:fs';
 import { THUMB, intakeThumbnail, thumbnailRate } from './thumbnail.mjs';
 import { setUploadClassifier } from '../../apps/server/src/moderation/classifier.ts';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(8);
 
-const PORT = 6470, RANGE = [6471, 6474], ORIGIN = `http://127.0.0.1:${PORT}`;
+const PORT = P0, RANGE = [P0 + 1, P0 + 4], ORIGIN = `http://127.0.0.1:${PORT}`;
 const dir = mkdtempSync(join(tmpdir(), 'launcher-thumbnail-test-'));
 const data = join(dir, 'data'), hits = join(dir, 'hits.txt');
 const templatesDir = join(dir, 'templates'); mkdirSync(join(templatesDir, 'thumbs'), { recursive: true });
@@ -180,13 +182,13 @@ test('the rate limit answers 429 with Retry-After and a fix', async () => {
 test('Clerk sign-in: the owner’s verified session sets it, another account’s is refused, a dev token is nobody', { timeout: 120_000 }, async () => {
   const { clerkKeys, ISSUER, PUBLISHABLE_KEY } = await import('../../apps/server/test/clerk-fixture.ts');
   const { verifiedCreator } = await import('./creator-auth.mjs');
-  const CPORT = 6475, corigin = `http://127.0.0.1:${CPORT}`, cdir = join(dir, 'clerk'); mkdirSync(cdir);
+  const CPORT = P0 + 5, corigin = `http://127.0.0.1:${CPORT}`, cdir = join(dir, 'clerk'); mkdirSync(cdir);
   const keys = await clerkKeys(corigin);
   writeFileSync(join(cdir, 'jwks.json'), JSON.stringify({ keys: [keys.jwk] }));
   const envFile = join(cdir, 'fixture.env'), preload = new URL('../../apps/server/test/clerk-jwks-preload.mjs', import.meta.url).pathname;
   writeFileSync(envFile, [`CLERK_PUBLISHABLE_KEY=${PUBLISHABLE_KEY}`, `CLERK_ISSUER_URL=${ISSUER}`, `CLERK_AUTHORIZED_PARTIES=${corigin}`, `SIM_TEST_JWKS_FILE=${join(cdir, 'jwks.json')}`, `NODE_OPTIONS=--import=${preload}`, ''].join('\n'));
   const ccommand = (w, port, o) => { const c = defaultCommand(w, port, { ...o, publicOrigin: corigin }); return { cmd: process.execPath, args: [born], env: { ...c.env, DATA_DIR: w.dataDir } }; };
-  const C = await openLauncher({ port: CPORT, range: [6476, 6477], dataDir: join(cdir, 'data'), webDir, templatesDir, authEnvFile: envFile, publicOrigin: corigin, command: ccommand, eager: 0, log: () => {} });
+  const C = await openLauncher({ port: CPORT, range: [P0 + 6, P0 + 7], dataDir: join(cdir, 'data'), webDir, templatesDir, authEnvFile: envFile, publicOrigin: corigin, command: ccommand, eager: 0, log: () => {} });
   try {
     const alice = await keys.sign('user_alice'), bob = await keys.sign('user_bob');
     const child = { envFile, registryPath: join(cdir, 'data', 'accounts.sqlite') };

@@ -5,7 +5,9 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {createServer} from 'node:http';import {once} from 'node:events';import {getRequestListener} from '@hono/node-server';
 import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {fileURLToPath} from 'node:url';
 import {coreAWorld} from '../test/core-a-fixture.ts';
-const PORT=6101;
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
+const PORT=TEST_PORT;
 test('CLI look around / explore: short around frame with walk ids; --full raw; here has district and far',{timeout:300000},async t=>{
  const cli=fileURLToPath(new URL('../../../tools/edge-skill/eden-agent.mjs',import.meta.url));
  const w=await coreAWorld(2),[a]=w.souls,dir=mkdtempSync(join(tmpdir(),'knowledge-cli-'));let server:ReturnType<typeof createServer>|undefined,pump:NodeJS.Timeout|undefined;

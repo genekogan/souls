@@ -7,19 +7,21 @@ import { DatabaseSync } from 'node:sqlite';
 import { openLauncher } from './launcher.mjs';
 import { clerkKeys, ISSUER, PUBLISHABLE_KEY } from '../../apps/server/test/clerk-fixture.ts';
 import { tmpdir } from 'node:os';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(3);
 
 test('account creation caps use verified owner, survive restart, serialize concurrent attempts and return Retry-After', { timeout: 240_000 }, async () => {
   const scratch = process.env.SAFETY_SCRATCH ?? tmpdir();
   mkdirSync(scratch, { recursive: true });
   const dir = mkdtempSync(join(scratch, 'creation-')), dataDir = join(dir, 'data'), templatesDir = join(dir, 'templates');
   mkdirSync(templatesDir);
-  const origin = 'http://127.0.0.1:5889', keys = await clerkKeys(origin);
+  const origin = `http://127.0.0.1:${P0 + 2}`, keys = await clerkKeys(origin);
   writeFileSync(join(dir, 'jwks.json'), JSON.stringify({ keys: [keys.jwk] }));
   const envFile = join(dir, 'fixture.env'), preload = new URL('../../apps/server/test/clerk-jwks-preload.mjs', import.meta.url).pathname;
   writeFileSync(envFile, [`CLERK_PUBLISHABLE_KEY=${PUBLISHABLE_KEY}`, `CLERK_ISSUER_URL=${ISSUER}`, `CLERK_AUTHORIZED_PARTIES=${origin}`,
     `SIM_TEST_JWKS_FILE=${join(dir, 'jwks.json')}`, `NODE_OPTIONS=--import=${preload}`, ''].join('\n'));
   let launcher;
-  const open = () => openLauncher({ port: 5889, range: [5887, 5888], dataDir, templatesDir, authEnvFile: envFile, publicOrigin: origin, eager: 0, idleMs: 0, maxWorldsPerAccount: 2, log: () => {} });
+  const open = () => openLauncher({ port: P0 + 2, range: [P0, P0 + 1], dataDir, templatesDir, authEnvFile: envFile, publicOrigin: origin, eager: 0, idleMs: 0, maxWorldsPerAccount: 2, log: () => {} });
   const post = async (name, subject, extra = {}, ip = '192.0.2.1') => fetch(`${origin}/__sim/worlds`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${await keys.sign(subject)}`, 'x-forwarded-for': ip }, body: JSON.stringify({ name, ...extra }) });
   const sql = fn => { const db = new DatabaseSync(join(dataDir, 'accounts.sqlite')); try { return fn(db); } finally { db.close(); } };
   try {

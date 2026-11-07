@@ -11,6 +11,8 @@ import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { fixture as edgeFixture, invite, accept } from '../test/native-owner-fixture.ts';
 import { config } from './config.ts';
 import { EdgeLedger } from './edge/ledger/ledger.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 const input = (key: string, extra: Record<string, unknown> = {}) => ({ agentLabel: 'eden-agent 1.9.17', name: 'Qwyjibo', idempotencyKey: 'link-request-key-' + key, pollSecret: randomBytes(32).toString('base64url'), ...extra });
 
@@ -100,8 +102,8 @@ test('now: set with act, say, ack, result, wait and alone; limits, clear, public
   const f = edgeFixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
   await invite(f, 'alice');
   const a = await accept(f.host, f.souls.create('dev:alice', {name: 'Avery', description: 'Now fixture'}));
-  const token = f.souls.pairExchange(f.souls.pairCode(a, 'http://127.0.0.1:5964').code, 'scripted').token;
-  const app = buildApp({cfg: {...config, port: 5964, worldPath: '/w/eden', publicUrl: 'http://127.0.0.1:5964/w/eden', accountAuthRequired: false, webDir: '/nonexistent-now-fixture', marsWebDir: '/nonexistent-now-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), hub: {clients: new Map(), refreshMe() {}} as never});
+  const token = f.souls.pairExchange(f.souls.pairCode(a, `http://127.0.0.1:${TEST_PORT}`).code, 'scripted').token;
+  const app = buildApp({cfg: {...config, port: TEST_PORT, worldPath: '/w/eden', publicUrl: `http://127.0.0.1:${TEST_PORT}/w/eden`, accountAuthRequired: false, webDir: '/nonexistent-now-fixture', marsWebDir: '/nonexistent-now-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), hub: {clients: new Map(), refreshMe() {}} as never});
   const req = async (path: string, auth?: string, body?: unknown) => {
     const r = await app.request(path, {method: body === undefined ? 'GET' : 'POST', headers: {...(auth ? {authorization: `Bearer ${auth}`} : {}), 'content-type': 'application/json'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
     return {status: r.status, data: await r.json().catch(() => null) as any};

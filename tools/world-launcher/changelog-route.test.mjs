@@ -1,11 +1,13 @@
 // node --test tools/world-launcher/changelog-route.test.mjs (issue #388)
-// The launcher serves the web build's changelog.html at <base>/changelog. No world processes; ports 9741–9743 only.
+// The launcher serves the web build's changelog.html at <base>/changelog. No world processes; a free block of ports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(3);
 
 const dir = mkdtempSync(join(tmpdir(), 'launcher-changelog-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
@@ -14,12 +16,12 @@ writeFileSync(join(webDir, 'index.html'), '<!doctype html><title>Sim</title>');
 const PAGE = '<!doctype html><title>Changelog · Sim</title><main><section class="cl-release" id="v4.0"></section></main>';
 writeFileSync(join(webDir, 'changelog.html'), PAGE);
 const command = () => { throw Error('no world is started in this test'); };
-const opts = (port, extra = {}) => ({ port, range: [9743, 9743], dataDir: join(dir, `data-${port}`), webDir, templatesDir, command, eager: 0, log: () => {}, ...extra });
+const opts = (port, extra = {}) => ({ port, range: [P0 + 2, P0 + 2], dataDir: join(dir, `data-${port}`), webDir, templatesDir, command, eager: 0, log: () => {}, ...extra });
 
 await test('root build: /changelog is the static changelog page, the homepage and unknown paths are unchanged', async () => {
-  const L = await openLauncher(opts(9741));
+  const L = await openLauncher(opts(P0));
   try {
-    const get = (p, o) => fetch(`http://127.0.0.1:9741${p}`, o);
+    const get = (p, o) => fetch(`http://127.0.0.1:${P0}${p}`, o);
     for (const p of ['/changelog', '/changelog/']) {
       const r = await get(p);
       assert.equal(r.status, 200, p);
@@ -37,14 +39,14 @@ await test('root build: /changelog is the static changelog page, the homepage an
 });
 
 await test('under --base /worlds the page is /worlds/changelog, and nothing outside the base', async () => {
-  const L = await openLauncher(opts(9742, { base: '/worlds' }));
+  const L = await openLauncher(opts(P0 + 1, { base: '/worlds' }));
   try {
-    const get = (p) => fetch(`http://127.0.0.1:9742${p}`);
+    const get = (p) => fetch(`http://127.0.0.1:${P0 + 1}${p}`);
     const r = await get('/worlds/changelog');
     assert.equal(r.status, 200);
     assert.equal(await r.text(), PAGE);
     assert.equal((await get('/changelog')).status, 404, 'outside the prefix belongs to the other release');
-    for(const path of ['/worlds/old','/worlds/old/']){const old=await fetch(`http://127.0.0.1:9742${path}?from=bookmark`,{redirect:'manual'});assert.equal(old.status,308);assert.equal(old.headers.get('location'),'/worlds/?from=bookmark#');assert.equal(await old.text(),'');}
+    for(const path of ['/worlds/old','/worlds/old/']){const old=await fetch(`http://127.0.0.1:${P0 + 1}${path}?from=bookmark`,{redirect:'manual'});assert.equal(old.status,308);assert.equal(old.headers.get('location'),'/worlds/?from=bookmark#');assert.equal(await old.text(),'');}
     assert.equal((await get('/old')).status,404,'retired route outside this base remains outside this launcher');
   } finally { await L.close(); }
 });
