@@ -181,13 +181,28 @@ test('a first register that fails trusts no one; the one that succeeds does', as
   assert.equal(configOf(d).awaitingFirstWorld, undefined);
 });
 
-test('a Soul moved in while travelling makes its home world the site, not the world it was visiting', async (t) => {
+test('a legacy file grants no trust, whichever world it names, and a person keeps their first register', async (t) => {
   const real = await world(t, { home: { manifest: describe(Buffer.from('x'), '2.0.0') } }), visited = await world(t, { away: { manifest: describe(newer, NEWER), bytes: newer } });
-  const { d, run } = folder(t);
-  writeFileSync(join(d, '.eden-agent.json'), JSON.stringify({ world: `${visited.base}/away`, soul: 's_visit', token: 'visit', home: { world: `${real.base}/home`, soul: 's_home', token: 'home' } }));
-  assert.equal((await run('import')).d.imported, true);
-  assert.deepEqual(configOf(d).trustedOrigins, [new URL(real.base).origin]);
-  assert.match((await run('upgrade', 'away')).err, /Ask your human/);
+  const moved = folder(t);
+  writeFileSync(join(moved.d, '.eden-agent.json'), JSON.stringify({ world: `${visited.base}/away`, soul: 's_visit', token: 'visit', home: { world: `${real.base}/home`, soul: 's_home', token: 'home' } }));
+  assert.equal((await moved.run('import')).d.imported, true);
+  assert.equal(configOf(moved.d).trustedOrigins, undefined, 'neither the world visited nor the home the file claims');
+  assert.match((await moved.run('upgrade', 'away')).err, /Ask your human/);
+  const bare = folder(t);
+  writeFileSync(join(bare.d, '.eden-agent.json'), JSON.stringify({ world: `${visited.base}/away` }));
+  await bare.run('import');
+  assert.match((await bare.run('upgrade', 'away')).err, /Ask your human/);
+  await bare.run('register', `${real.base}/home`);
+  assert.deepEqual(configOf(bare.d).trustedOrigins, [new URL(real.base).origin]);
+});
+
+test('a Soul id is one folder name: a world cannot place files outside the home', async (t) => {
+  const root = join(realpathSync(mkdtempSync(join(tmpdir(), 'souls-id-'))), '.souls'); t.after(() => rmSync(dirname(root), { recursive: true, force: true }));
+  createHome(root);
+  const h = openHome(root);
+  for (const id of ['../../../../planted', 's_a/../../x', '', undefined]) assert.throws(() => h.soul(id), /not a Soul id/);
+  assert.equal(h.soul('s_a1-B_2').id, 's_a1-B_2');
+  assert.ok(!existsSync(join(dirname(root), 'planted')));
 });
 
 test('a file someone handed over grants no trust', async (t) => {
@@ -212,11 +227,14 @@ test('trust goes to the world named: a selector or no name is refused, not read 
   assert.equal(configOf(d).trustedOrigins.length, 1); assert.equal(configOf(d).client, ours);
 });
 
-test('a world this home does not trust cannot stand in the way, and a refusal changes nothing', async (t) => {
+test('a world this home does not trust stops an upgrade only until a person names it, and a refusal changes nothing', async (t) => {
   const manifest = describe(newer, NEWER), w = await world(t, { aa: { manifest, bytes: newer } }), evil = await world(t, { bb: { manifest: { ...describe(Buffer.from('x'), '2.0.0'), contract: 'eden-edge/99' } } });
   const { d, run } = folder(t);
   await run('register', `${w.base}/aa`); await run('register', `${evil.base}/bb`);
-  assert.equal((await run('upgrade', 'aa')).d.upgraded, true, 'an untrusted contract blocks nothing');
+  const asked = await run('upgrade', 'aa');
+  assert.match(asked.err, /no one bundle serves both/); assert.match(asked.err, /--trust/);
+  assert.equal((await run('upgrade', 'aa', '--trust')).d.upgraded, true, 'a person who names the world goes past an untrusted contract');
+  assert.equal(configOf(d).trustedOrigins.length, 1);
   const w2 = await world(t, { aa: { manifest: describe(Buffer.from('x'), '2.0.0') }, bb: { manifest: { ...describe(newer, NEWER), contract: 'eden-edge/2' }, bytes: newer } });
   const f = folder(t);
   await f.run('register', `${w2.base}/aa`); await f.run('register', `${w2.base}/bb`);

@@ -10,6 +10,7 @@ import { basename, dirname, join, resolve } from "node:path";
 export const HOME_NAME = ".souls", LEGACY_STATE = ".eden-agent.json", STATE_FILE = "state.json", CREDENTIALS = "credentials.json";
 export const RUNTIME_LOCKS = [".listen.lock", ".eden-serve.lock"];
 const SERVE_SOCKET = ".eden-serve.sock";
+const SOUL_ID = /^s_[A-Za-z0-9_-]+$/;
 /** Run in a seat (the world's waiting room), never as a Soul: they make or pair one. */
 export const SEAT_COMMANDS = new Set(["register", "create", "pair", "adopt", "approval"]);
 /** Work on the home itself, as no one in particular. */
@@ -175,15 +176,16 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
       return key;
     });
   }
-  /** The one trust a home gives unasked: the first world a person registers, once it has answered, or the home world of a
-   *  Soul they moved in. A home from before this has no such moment and trusts nothing until a person says so; reading a
-   *  world, a travel answer or a file someone handed over is never what grants a site trust. */
+  /** The one trust a home gives unasked: the first world a person registers, once it has answered. A home from before this
+   *  has no such moment and trusts nothing until a person says so. Reading a world, a travel answer and an imported file,
+   *  legacy or exported, never grant a site trust: anyone can write a file. */
   function madeFor(url) {
     if (config().awaitingFirstWorld) updateConfig((c) => { if (c.awaitingFirstWorld) { delete c.awaitingFirstWorld; c.trustedOrigins ??= [originOf(url)]; } });
   }
   const setCurrentWorld = (key) => updateConfig((c) => { c.currentWorld = key; });
   const seat = (key) => { const dir = at("pending", key); mkdirSync(dir, { recursive: true, mode: 0o700 }); return { kind: "seat", key, dir }; };
-  const soul = (id) => { const dir = at("souls", id, "runtime"); mkdirSync(dir, { recursive: true, mode: 0o700 }); return { kind: "soul", id, dir }; };
+  // The id names a folder and it comes from a world or a file, so it must be one folder name here.
+  const soul = (id) => { if (!SOUL_ID.test(id ?? "")) throw new Error(`"${String(id).slice(0, 40)}" is not a Soul id; nothing was kept for it.`); const dir = at("souls", id, "runtime"); mkdirSync(dir, { recursive: true, mode: 0o700 }); return { kind: "soul", id, dir }; };
   const seatState = (key) => readJson(at("pending", key, STATE_FILE), {});
 
   function load(ctx) {
@@ -293,7 +295,6 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     if (id && config().souls[id]?.state === "active") return { imported: false, soul: id, reason: "This Soul already lives in this home." };
     const key = ensureWorld(s.world, { worldId: s.worldId, accountAuth: s.accountAuth });
     if (s.home?.world) ensureWorld(s.home.world);
-    madeFor(s.home?.world ?? s.world);
     if (!id || !s.token) {   // a folder with no Soul yet is the world's seat, if that seat is free
       if (seatState(key).pendingApproval) throw new Error(`An approval already waits in ${key}. Finish it first: approval wait`);
       save(seat(key), { ...s, ...(legacy.pendingApproval ? { pendingApproval: legacy.pendingApproval } : {}) });
@@ -318,7 +319,7 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
   /** An exported Soul comes in unpaired: everything but control. */
   function importExport(folder) {
     const me = JSON.parse(readFileSync(join(folder, "soul.json"), "utf8"));
-    if (!/^s_[A-Za-z0-9_-]+$/.test(me.id ?? "")) throw new Error("soul.json names no Soul.");
+    if (!SOUL_ID.test(me.id ?? "")) throw new Error("soul.json names no Soul.");
     if (config().souls[me.id]) return { imported: false, soul: me.id, reason: "This Soul already lives in this home." };
     const key = me.world ? ensureWorld(me.world) : null;
     cpSync(folder, at("souls", me.id), { recursive: true, filter: (p) => basename(p) !== "runtime" && basename(p) !== CREDENTIALS });

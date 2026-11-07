@@ -30,6 +30,7 @@ const { basename, dirname, join, resolve } = soulHome$path;
 const HOME_NAME = ".souls", LEGACY_STATE = ".eden-agent.json", STATE_FILE = "state.json", CREDENTIALS = "credentials.json";
 const RUNTIME_LOCKS = [".listen.lock", ".eden-serve.lock"];
 const SERVE_SOCKET = ".eden-serve.sock";
+const SOUL_ID = /^s_[A-Za-z0-9_-]+$/;
 /** Run in a seat (the world's waiting room), never as a Soul: they make or pair one. */
 const SEAT_COMMANDS = new Set(["register", "create", "pair", "adopt", "approval"]);
 /** Work on the home itself, as no one in particular. */
@@ -195,15 +196,16 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
       return key;
     });
   }
-  /** The one trust a home gives unasked: the first world a person registers, once it has answered, or the home world of a
-   *  Soul they moved in. A home from before this has no such moment and trusts nothing until a person says so; reading a
-   *  world, a travel answer or a file someone handed over is never what grants a site trust. */
+  /** The one trust a home gives unasked: the first world a person registers, once it has answered. A home from before this
+   *  has no such moment and trusts nothing until a person says so. Reading a world, a travel answer and an imported file,
+   *  legacy or exported, never grant a site trust: anyone can write a file. */
   function madeFor(url) {
     if (config().awaitingFirstWorld) updateConfig((c) => { if (c.awaitingFirstWorld) { delete c.awaitingFirstWorld; c.trustedOrigins ??= [originOf(url)]; } });
   }
   const setCurrentWorld = (key) => updateConfig((c) => { c.currentWorld = key; });
   const seat = (key) => { const dir = at("pending", key); mkdirSync(dir, { recursive: true, mode: 0o700 }); return { kind: "seat", key, dir }; };
-  const soul = (id) => { const dir = at("souls", id, "runtime"); mkdirSync(dir, { recursive: true, mode: 0o700 }); return { kind: "soul", id, dir }; };
+  // The id names a folder and it comes from a world or a file, so it must be one folder name here.
+  const soul = (id) => { if (!SOUL_ID.test(id ?? "")) throw new Error(`"${String(id).slice(0, 40)}" is not a Soul id; nothing was kept for it.`); const dir = at("souls", id, "runtime"); mkdirSync(dir, { recursive: true, mode: 0o700 }); return { kind: "soul", id, dir }; };
   const seatState = (key) => readJson(at("pending", key, STATE_FILE), {});
 
   function load(ctx) {
@@ -313,7 +315,6 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
     if (id && config().souls[id]?.state === "active") return { imported: false, soul: id, reason: "This Soul already lives in this home." };
     const key = ensureWorld(s.world, { worldId: s.worldId, accountAuth: s.accountAuth });
     if (s.home?.world) ensureWorld(s.home.world);
-    madeFor(s.home?.world ?? s.world);
     if (!id || !s.token) {   // a folder with no Soul yet is the world's seat, if that seat is free
       if (seatState(key).pendingApproval) throw new Error(`An approval already waits in ${key}. Finish it first: approval wait`);
       save(seat(key), { ...s, ...(legacy.pendingApproval ? { pendingApproval: legacy.pendingApproval } : {}) });
@@ -338,7 +339,7 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
   /** An exported Soul comes in unpaired: everything but control. */
   function importExport(folder) {
     const me = JSON.parse(readFileSync(join(folder, "soul.json"), "utf8"));
-    if (!/^s_[A-Za-z0-9_-]+$/.test(me.id ?? "")) throw new Error("soul.json names no Soul.");
+    if (!SOUL_ID.test(me.id ?? "")) throw new Error("soul.json names no Soul.");
     if (config().souls[me.id]) return { imported: false, soul: me.id, reason: "This Soul already lives in this home." };
     const key = me.world ? ensureWorld(me.world) : null;
     cpSync(folder, at("souls", me.id), { recursive: true, filter: (p) => basename(p) !== "runtime" && basename(p) !== CREDENTIALS });
@@ -2313,24 +2314,25 @@ async function upgradeCommand(...argv) {
   const get = async (path) => {
     const r = await fetch(w.url + path, { redirect: "error", signal: AbortSignal.timeout(30_000) }).catch((e) => {
       const why = e?.cause?.message ?? e?.message;
-      throw new Error(/redirect/i.test(why) ? `${key} redirected ${path}, and a bundle is taken only from the address this home knows. If the world moved, register its new address. Nothing changed.` : `${key} did not answer ${path} (${why}). Nothing changed.`);
+      throw new Error(/^unexpected redirect/i.test(e?.cause?.message ?? "") ? `${key} redirected ${path}, and a bundle is taken only from the address this home knows. If the world moved, register its new address. Nothing changed.` : `${key} did not answer ${path} (${why}). Nothing changed.`);
     });
     if (!r.ok) throw new Error(`${key} answered ${path} with HTTP ${r.status}. Nothing changed.`);
     return r;
   };
-  const said = await (await get("/v1/config")).json().catch(() => { throw new Error(`${key} did not answer /v1/config with JSON. Nothing changed.`); }), m = said.soulClient;
+  const said = await (await get("/v1/config")).json().catch(() => { throw new Error(`${key} did not answer /v1/config with JSON. Nothing changed.`); }), m = said?.soulClient;
   if (!m) throw new Error(`${key} does not say which bundle it serves, so there is nothing to verify against. Nothing changed.`);
   const trusted = cfg.trustedOrigins ?? [], note = () => home.ensureWorld(w.url, { contract: m.contract, bundle: m.version, minClient: m.minVersion });
-  // Only a site this home trusts can stand in the way: any world can say what it likes about its contract.
-  const clash = Object.entries(cfg.worlds).find(([k, v]) => k !== key && v.contract && v.contract !== m.contract && trusted.includes(soulHome.originOf(v.url)));
-  if (clash) throw new Error(`${key} speaks ${m.contract} and ${clash[0]} speaks ${clash[1].contract}: no one bundle serves both. Nothing changed.`);
+  // One bundle speaks one contract. A trusted site's contract is final; any other world can say what it likes about its own,
+  // so a person who names this world can go past that one.
+  const clashes = Object.entries(cfg.worlds).filter(([k, v]) => k !== key && v.contract && v.contract !== m.contract), firm = clashes.find(([, v]) => trusted.includes(soulHome.originOf(v.url))), clash = firm ?? clashes[0];
+  if (clash && (firm || !trust)) throw new Error(`${key} speaks ${m.contract} and ${clash[0]} speaks ${clash[1].contract}: no one bundle serves both. Nothing changed.${firm ? "" : ` ${clash[0]} is not a site this home trusts, so ask your human. Only if they agree: ${CLI} upgrade ${key} --trust`}`);
   if (!soulHome.newerThan(m.version, VERSION)) {
     note();
     if (soulHome.newerThan(m.minVersion, VERSION)) throw new Error(`${key} needs eden ${m.minVersion} or newer but serves ${m.version}, so it has no bundle to give this home. Tell whoever keeps that world.`);
     return { upgraded: false, world: key, version: VERSION, served: m.version, note: "This bundle is as new as what that world serves, and it still works there." };
   }
   // Whatever is installed here runs with every token in this home, for every world, so one world's say-so is not enough.
-  const origin = soulHome.originOf(w.url), safe = /^https:/.test(origin) || /^http:\/\/(127\.0\.0\.1|localhost)(:|$)/.test(origin), ask = `Ask your human. Only if they agree: ${CLI} upgrade ${key} --trust`;
+  const origin = soulHome.originOf(w.url), safe = /^https:/.test(origin) || /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|$)/.test(origin), ask = `Ask your human. Only if they agree: ${CLI} upgrade ${key} --trust`;
   if (!safe && !trust) throw new Error(`A new client runs with every Soul's token in this home, and ${origin} is plain http off this machine, so anyone between here and there could change it. ${ask}`);
   if (!trusted.includes(origin) && !trust) throw new Error(`A new client runs with every Soul's token in this home, and ${origin} is not a site this home trusts. ${ask}`);
   const bytes = Buffer.from(await (await get("/eden.mjs")).arrayBuffer()), sha = createHash("sha256").update(bytes).digest("hex");
