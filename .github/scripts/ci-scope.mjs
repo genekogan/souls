@@ -42,6 +42,9 @@ export const JOBS = [
   ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, steps: ['V5-server-full', 'V6-'] })),
   // No gate step on purpose: picked by its own paths, so the gate's suite tree and cached baseline stay as they are (#1061).
   { name: 'soul-actions', kind: 'soul-actions', assets: false, steps: [], paths: /^(tools\/soul-actions|apps\/server|packages\/world-compiler|packages\/engine-[^/]+)\// },
+  // Also no gate step, and no media: a stale eden-god.mjs fails here, because nothing else builds the bundle. `paths` is
+  // every bundle input: tools/god-skill, and home.mjs, which lib/seat.mjs inlines from outside it.
+  { name: 'god-bundle', kind: 'god-bundle', assets: false, steps: [], paths: /^tools\/god-skill\/|^tools\/world-launcher\/soul\/home\.mjs$/ },
 ];
 
 const relevant = (job, steps) => job.steps.some(s => steps.some(step => s.endsWith('-') ? step.startsWith(s) : step === s));
