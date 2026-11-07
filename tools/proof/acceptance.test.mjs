@@ -309,6 +309,17 @@ test('privacy is never waived or skipped for Dependabot, including linked issue 
 });
 
 // #765: proof links count, and proof.json is fetched, only from a proof host.
+test('proofHostProblem: a repository\'s earlier name counts as it, and only that exact name (#1183)', () => {
+  const repo = 'soulsimulation/souls', gh = path => `https://github.com/${path}`, opts = { repo, cdn: null };
+  for (const path of ['genekogan/souls/releases/download/proofs/pr-1.desktop.mp4', 'genekogan/souls/releases/download/proofs-1101/pr-1101.proof.json', 'soulsimulation/souls/releases/download/proofs-7/x.mp4'])
+    assert.equal(proofHostProblem(gh(path), opts), null, path);
+  for (const path of ['genekogan/other/releases/download/proofs/x.mp4', 'evil/souls/releases/download/proofs/x.mp4', 'genekogan/souls2/releases/download/proofs/x.mp4',
+    'xgenekogan/souls/releases/download/proofs/x.mp4', 'genekogan/souls/releases/download/v4.15/x.mp4', 'genekogan/souls/releases/download/proofs/../v1/x.mp4'])
+    assert.match(String(proofHostProblem(gh(path), opts)), /proofs release \(soulsimulation\/souls\)/, path);
+  assert.match(String(proofHostProblem(gh('genekogan/souls/releases/download/proofs/x.mp4'), { repo: 'o/r', cdn: null })), /proofs release \(o\/r\)/, 'another repository gains nothing');
+  assert.deepEqual(allowedProofLinks([gh('genekogan/souls/releases/download/proofs/x.mp4')], opts), { ok: [gh('genekogan/souls/releases/download/proofs/x.mp4')], ignored: [] });
+});
+
 test('proofHostProblem: this repository\'s proofs releases, GitHub attachments and the proof CDN only', () => {
   const ok = (u, o = { repo: 'o/r' }) => assert.equal(proofHostProblem(u, o), null, u);
   const no = (u, re, o = { repo: 'o/r' }) => assert.match(String(proofHostProblem(u, o)), re, u);
