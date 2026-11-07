@@ -18,15 +18,16 @@ const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{P
 const times = (n) => (n === 1 ? "once" : `${n} times`);
 const when = (w) => [w?.world ? quoted(w.world) : null, w?.worldDay === null || w?.worldDay === undefined ? null : `day ${w.worldDay}`].filter(Boolean).join(", ");
 
-/** `facts`: {people, place, goals, schedule, recent, self}, each maybe empty. An empty memory is an empty brief. An episode is
+/** `facts`: {people, place, promises, goals, schedule, recent, self}, each maybe empty. An empty memory is an empty brief. An episode is
  *  the Soul's own words only with `own`: a world saying nothing about its trust is not a world to be trusted. Room goes first
  *  to what the Soul and its owner wrote, so a world's long names can't push a promise out. */
 export function buildBrief(facts, { bytes = BRIEF_BYTES } = {}) {
-  const person = (p) => `${quoted(p.name)}: ${p.met ? `met ${times(p.met)}` : "only heard from"}${p.last ? `, last ${[when(p.last), p.last.place ? quoted(p.last.place) : null].filter(Boolean).join(" at ")}` : ""}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}${p.open ? ` Open: ${mine(p.open, NOTE_BYTES)}` : ""}`;
+  const person = (p) => `${quoted(p.name)}: ${p.met ? `met ${times(p.met)}` : "only heard from"}${p.last ? `, last ${[when(p.last), p.last.place ? quoted(p.last.place) : null].filter(Boolean).join(" at ")}` : ""}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}${p.open ? ` Open: ${mine(p.open, NOTE_BYTES)}` : ""}${p.claimed ? ` A world says this is ${quoted(p.claimed)}, whom I know elsewhere; I can't check that.` : ""}`;
+  const promise = (c) => `[${c.id}] ${c.by === "me" ? "I promised" : "They promised"} ${quoted(c.with)}: ${c.what}`;
   const place = (p) => `${quoted(p.name)}: ${p.visits > 1 ? `been here ${times(p.visits)}` : "first time here"}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}`;
   const goal = (g) => `${g.note}${g.next ? ` Next: ${g.next}` : ""}`;
   // Goals can't take every line: the owner's next schedule entry always has one.
-  const later = facts.schedule ?? [], open = [...(facts.goals ?? []).map(goal).slice(0, OPEN_MAX - Math.min(later.length, 1)), ...later].slice(0, OPEN_MAX);
+  const later = facts.schedule ?? [], open = [...[...(facts.promises ?? []).map(promise), ...(facts.goals ?? []).map(goal)].slice(0, OPEN_MAX - Math.min(later.length, 1)), ...later].slice(0, OPEN_MAX);
   const sections = [
     { head: "Known people here", rank: 2, lines: (facts.people ?? []).slice(0, PEOPLE_MAX).map(person) },
     { head: "This place", rank: 3, lines: facts.place ? [place(facts.place)] : [] },
