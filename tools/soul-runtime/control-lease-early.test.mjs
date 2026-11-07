@@ -2,14 +2,15 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {openJournal} from './journal.mjs';
 import {processGone} from './control.mjs';
 import {inspectOwnedProcess} from './controller-ownership.mjs';
-const JOURNAL=pathToFileURL(new URL('./journal.mjs',import.meta.url).pathname).href;
+const JOURNAL=pathToFileURL(new URL('./journal.mjs',import.meta.url).pathname).href,OWNERSHIP=pathToFileURL(new URL('./controller-ownership.mjs',import.meta.url).pathname).href;
+const inZone=(TZ,code)=>spawnSync(process.execPath,['--input-type=module','-e',code],{env:{...process.env,TZ},encoding:'utf8'});
 function fixture(t){
  const directory=mkdtempSync(join(tmpdir(),'souls-lease-')),handles=[];t.after(()=>{for(const h of handles)h.close();rmSync(directory,{recursive:true,force:true});});
  return {directory,open(lease={}){const j=openJournal(directory,{worldId:'w',soulId:'s',lease});handles.push(j);return j.control;}};
@@ -55,4 +56,19 @@ test('a real controller killed while holding the lease: the next claim takes it 
  const exited=new Promise(ok=>child.once('exit',ok));child.kill('SIGKILL');await exited;
  const t0=performance.now(),taken=f.open().claim('next',60000);
  assert.equal(taken.generation,generation+1);assert.ok(performance.now()-t0<3000,'inside the 3 s the issue asks for');
+});
+
+test('the start token does not depend on the reader\'s time zone',()=>{
+ const read=TZ=>inZone(TZ,`import {inspectOwnedProcess} from ${JSON.stringify(OWNERSHIP)};console.log(inspectOwnedProcess(${process.pid}).startToken);`).stdout.trim();
+ const honolulu=read('Pacific/Honolulu');assert.ok(honolulu);assert.equal(read('Asia/Tokyo'),honolulu);assert.equal(inspectOwnedProcess(process.pid).startToken,honolulu);
+});
+
+test('a live holder keeps the lease from a successor in another time zone',async t=>{
+ const f=fixture(t);
+ const child=spawn(process.execPath,['--input-type=module','-e',`import {openJournal} from ${JSON.stringify(JOURNAL)};const j=openJournal(${JSON.stringify(f.directory)},{worldId:'w',soulId:'s'});const c=j.control.claim('holder',60000);console.log(c.generation);setInterval(()=>{},1000);`],{stdio:['ignore','pipe','ignore'],env:{...process.env,TZ:'Pacific/Honolulu'}});
+ const exited=new Promise(ok=>child.once('exit',ok));t.after(async()=>{child.kill('SIGKILL');await exited;});
+ const generation=await new Promise(ok=>child.stdout.once('data',d=>ok(Number(String(d)))));
+ const claim=inZone('Asia/Tokyo',`import {openJournal} from ${JSON.stringify(JOURNAL)};const j=openJournal(${JSON.stringify(f.directory)},{worldId:'w',soulId:'s'});let out;try{out=j.control.claim('successor',60000).generation;}catch(e){out=e.code;}j.close();console.log(out);`);
+ assert.equal(claim.stdout.trim(),'CONTROLLER_BUSY',claim.stderr);
+ assert.equal(generation,1);
 });

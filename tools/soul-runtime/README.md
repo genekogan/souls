@@ -344,7 +344,8 @@ are still unbounded; these limits are not a total-disk-size guarantee.
 The launcher records private controller reservations before spawn and host
 reservations before the CodexHost constructor. Exact PID/parent/process-group
 and native `ps` birth metadata are registered before any host connect or turn.
-The supported birth token uses second-resolution `ps lstart`; it is not an
+The supported birth token uses second-resolution `ps lstart`, read in UTC so
+every reader gets the same token whatever its `TZ`; it is not an
 unforgeable or subsecond process generation. The birth/ancestry and actual
 owned-child provenance reject observable reuse but do not eliminate the residual
 same-second PID reuse ambiguity.
