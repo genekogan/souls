@@ -5,6 +5,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {HumanViews,type SampledHuman} from '../../../mars/viewer/app/engine-view/humans.ts';
 import {templateFromGltf,type Template} from '../../../mars/viewer/app/engine-view/people.ts';
@@ -128,4 +129,37 @@ for(const rig of ['wire-woman','kit-fem','kit-masc'])test(`a hand game starting 
  }
  assert.ok(cases>=2,'raised gestures found '+cases);
  assert.ok(worst<=.08,`palm step out of a raised gesture ${worst.toFixed(3)} m per 50 ms`);
+});
+
+// F5: inspect both actual bone chains independently of hand-game diagnostic normals.
+for(const rig of RIGS)for(const yaw of [0,Math.PI/2,Math.PI,-Math.PI/2])test(`clasp anatomy (${rig}, yaw ${yaw}): both hands retain radial thumbs and palmward finger curls standing and walking`,async()=>{
+ const v=await views(rig),since=100,walkFrom=since+60,walkTo=walkFrom+60;
+ const forward=new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw)),right=new THREE.Vector3(-Math.sin(yaw),0,Math.cos(yaw));
+ const minima={R:{curl:Infinity,thumbBase:Infinity,thumbTip:Infinity},L:{curl:Infinity,thumbBase:Infinity,thumbTip:Infinity}};
+ let samples=0,minInward=Infinity;
+ for(let k=since+Math.ceil(JOIN_SECONDS/DT);k<=walkTo+20;k++){
+  const x=Math.max(0,Math.min(3,(k-walkFrom)*DT)),walking=k>=walkFrom&&k<walkTo;
+  const f=(id:string,p:THREE.Vector3,hand:'left'|'right',other:string):SampledHuman=>({id,p:p.toArray() as [number,number,number],yaw,walk:walking?1:0,walkDist:x,activity:walking?'walk':'idle',speed:walking?1:0,restAge:30,handHold:{with:other,hand,since},handGameTick:k,handGameDt:DT});
+  const root=forward.clone().multiplyScalar(x);
+  draw(v,[f('clasp_a',root,'right','clasp_b'),f('clasp_b',root.clone().addScaledVector(right,HAND_GAP),'left','clasp_a')],k);
+  const pair:{palm:THREE.Vector3;normal:THREE.Vector3}[]=[];
+  for(const [id,side] of [['clasp_a','R'],['clasp_b','L']] as const){
+   const holder=(v as unknown as {views:Map<string,{rig:{holder:THREE.Object3D}}>}).views.get(id)!.rig.holder;
+   const P=(name:string)=>{const b=holder.getObjectByName(name+side);assert.ok(b,`actual ${name}${side} bone`);assert.ok(b.matrixWorld.determinant()>0,'bone transform has no negative scale');return b.getWorldPosition(new THREE.Vector3());};
+   const wrist=P('Wrist'),middle=P('Middle2'),fwd=middle.clone().sub(wrist).normalize(),across=P('Index2').sub(P('Pinky2'));
+   across.addScaledVector(fwd,-across.dot(fwd)).normalize();
+   const normal=side==='R'?fwd.clone().cross(across).normalize():across.clone().cross(fwd).normalize();
+   pair.push({palm:wrist.clone().lerp(middle,.5),normal});
+   const curls=['Index','Middle','Ring','Pinky'].map(name=>P(name+'4').sub(P(name+'2')).dot(normal));
+   const thumbBase=P('Thumb1').sub(middle).dot(across),thumbTip=P('Thumb3').sub(middle).dot(across),m=minima[side];
+   m.curl=Math.min(m.curl,...curls);m.thumbBase=Math.min(m.thumbBase,thumbBase);m.thumbTip=Math.min(m.thumbTip,thumbTip);
+   assert.ok(curls.every(x=>x>.005),`${rig} ${side} at ${k}: all fingertips curl into palm ${curls}`);
+   assert.ok(thumbBase>0&&thumbTip>0,`${rig} ${side} at ${k}: thumb stays on radial/index side ${thumbBase}/${thumbTip}`);
+  }
+  const gap=pair[1].palm.clone().sub(pair[0].palm);assert.ok(gap.length()>.005&&gap.length()<.065,`nondegenerate palm contact gap ${gap.length()}`);gap.normalize();
+  const inward=Math.min(pair[0].normal.dot(gap),-pair[1].normal.dot(gap));minInward=Math.min(minInward,inward);
+  assert.ok(inward>.8,`both palm surfaces point into clasp, not back-to-back: ${inward}`);
+  samples++;
+ }
+ console.log(JSON.stringify({rig,yaw,claspSamples:samples,minInward,minima}));
 });
