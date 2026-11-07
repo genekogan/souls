@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateScript, classify, matchRule, stepOutcome, turn, renderChat, keptOutput, OUTPUT_KEEP } from './scripted-owner.mjs';
+import { validateScript, classify, matchRule, stepOutcome, turn, renderChat, bindPrev, keptOutput, OUTPUT_KEEP } from './scripted-owner.mjs';
 import { seatActs } from '../../review/run.mjs';
 import { brief } from '../../../world-launcher/soul/eden.mjs';
 import { ADAPTERS } from '../seat.mjs';
@@ -124,6 +124,76 @@ console.log(JSON.stringify(a[0] === 'act' ? { accepted: true, receipt: { id: 'r1
   try { await turn({ cwd: d, text: wake([{ id: 'm1', text: 'the pond' }]), script: pond }); } finally { delete process.env.FAST; }
   assert.deepEqual(calls(d).at(-1), ['result', 'm1', 'done', 'At the pond']);
   assert.deepEqual(JSON.parse(readFileSync(join(d, '.scripted-owner.json'), 'utf8')).handled, ['m1']);
+});
+
+// #828: a refusal the script expects, then a recovery that takes the refusal's own suggestion.
+const RECOVER = `import { appendFileSync } from 'node:fs';
+const a = process.argv.slice(2); appendFileSync('calls.jsonl', JSON.stringify(a) + '\\n');
+if (a[0] === 'act' && a[1].includes('fly')) { console.log(JSON.stringify({ accepted: false, code: 'capability.unknown', did_you_mean: [{ id: 'walk:g-field', label: 'Walk to the field' }, { id: 'walk:g-pond' }] })); process.exit(1); }
+else if (a[0] === 'act') console.log(JSON.stringify({ accepted: true, receipt: { id: 'r9', phase: 'completed', capability: a[1] } }));
+else console.log(JSON.stringify({ ok: true, cmd: a[0] }));`;
+const recoverFolder = () => { const d = mkdtempSync(join(tmpdir(), 'scripted-recover-')); writeFileSync(join(d, 'eden.mjs'), RECOVER); return d; };
+const resultOf = (d) => calls(d).find((c) => c[0] === 'result');
+
+test('onRefused continue: a refused step is recorded and the next step takes the refusal\'s alternative', async () => {
+  const d = recoverFolder();
+  const script = { rules: [{ match: 'field', do: [['act', 'fly up to the field', { onRefused: 'continue' }], ['act', '{{prev.did_you_mean[0].id}}', '--wait', '30']], result: 'Walked instead' }] };
+  assert.deepEqual(validateScript(script), []);
+  const t = await turn({ cwd: d, text: wake([{ id: 'm1', text: 'fly to the field' }]), script });
+  assert.deepEqual(calls(d).filter((c) => c[0] === 'act'), [['act', 'fly up to the field'], ['act', 'walk:g-field', '--wait', '30']]);
+  assert.deepEqual(resultOf(d), ['result', 'm1', 'done', 'Walked instead']);
+  const text = JSON.stringify(t.stream);
+  assert.match(text, /act refused, continuing: .*capability\.unknown/);
+  assert.match(text, /node eden.mjs act walk:g-field --wait 30/, 'the transcript shows the resolved command');
+});
+
+test('the default stays fail: a refused step stops the rule and the request fails', async () => {
+  const d = recoverFolder();
+  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'fly' }]), script: { rules: [{ match: 'fly', do: [['act', 'fly up'], ['act', '{{prev.did_you_mean[0].id}}']] }] } });
+  assert.equal(calls(d).filter((c) => c[0] === 'act').length, 1);
+  assert.equal(resultOf(d)[2], 'failed');
+});
+
+test('an unresolved {{prev…}} fails its step without running it; onRefused applies to it too', async () => {
+  const d = recoverFolder();
+  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'fly' }]), script: { rules: [{ match: 'fly', do: [['act', 'fly up', { onRefused: 'continue' }], ['act', '{{prev.alternatives[0].id}}']] }] } });
+  assert.equal(calls(d).filter((c) => c[0] === 'act').length, 1, 'the unresolved step never ran');
+  assert.deepEqual(resultOf(d).slice(0, 3), ['result', 'm1', 'failed']);
+  assert.match(resultOf(d)[3], /unresolved \{\{prev\.alternatives\[0\]\.id\}\}/);
+});
+
+test('a refused final step fails the request even with onRefused continue', async () => {
+  const d = recoverFolder();
+  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'fly' }]), script: { rules: [{ match: 'fly', do: [['act', 'walk:g-field'], ['act', 'fly up', { onRefused: 'continue' }]], result: 'Flew' }] } });
+  assert.equal(calls(d).filter((c) => c[0] === 'act').length, 2);
+  assert.deepEqual(resultOf(d).slice(0, 3), ['result', 'm1', 'failed']);
+  assert.match(resultOf(d)[3], /^act: .*capability\.unknown/);
+});
+
+test('a step skipped for an unresolved {{prev…}} leaves no JSON for the step after it', async () => {
+  const d = recoverFolder();
+  const script = { rules: [{ match: 'fly', do: [['act', 'fly up', { onRefused: 'continue' }], ['act', '{{prev.alternatives[0].id}}', { onRefused: 'continue' }], ['act', '{{prev.did_you_mean[0].id}}']] }] };
+  await turn({ cwd: d, text: wake([{ id: 'm1', text: 'fly' }]), script });
+  assert.equal(calls(d).filter((c) => c[0] === 'act').length, 1, 'neither placeholder step ran: the refusal two steps back is not reused');
+  assert.deepEqual(resultOf(d).slice(0, 3), ['result', 'm1', 'failed']);
+  assert.match(resultOf(d)[3], /unresolved \{\{prev\.did_you_mean\[0\]\.id\}\} \(the previous step printed no JSON\)/);
+});
+
+test('bindPrev reads own properties only, never the prototype chain', () => {
+  const prev = JSON.parse('{"did_you_mean":[{"id":"walk:g-field"}],"n":3}');
+  assert.deepEqual(bindPrev(['{{prev.did_you_mean[0].id}}', 'x{{prev.n}}'], prev), { args: ['walk:g-field', 'x3'] });
+  for (const path of ['constructor.name', 'toString', 'did_you_mean[0].constructor.name', '__proto__.constructor.name', 'did_you_mean[0].id.length'])
+    assert.match(bindPrev([`{{prev.${path}}}`], prev).error, /^unresolved/, path);
+});
+
+test('step options and {{prev}} placeholders are validated by field', () => {
+  const v = (step, j = 1) => validateScript({ rules: [{ match: 'x', do: j ? [['status'], step] : [step] }] });
+  assert.deepEqual(v(['act', 'x', { onRefused: 'continue' }]), []);
+  assert.deepEqual(v(['act', 'x', { onRefused: 'ignore' }]), ['script.rules[0].do[1].onRefused: continue or fail']);
+  assert.deepEqual(v(['act', 'x', { retry: 2 }]), ['script.rules[0].do[1].retry is unknown (step options: onRefused)']);
+  assert.deepEqual(v(['act', { onRefused: 'continue' }, 'x']), ['script.rules[0].do: a list of eden.mjs argument lists'], 'options only at the end');
+  assert.deepEqual(v(['act', '{{prev.did_you_mean[0].id}}'], 0), ['script.rules[0].do[0]: {{prev.did_you_mean[0].id}} needs a previous step']);
+  assert.deepEqual(v(['act', '{{prev.a..b}}']), ['script.rules[0].do[1]: {{prev.a..b}} is not a path like prev.did_you_mean[0].id']);
 });
 
 test('a long CLI output is kept whole for scoring; past the bound it carries a marker and a flag (#371)', async () => {
