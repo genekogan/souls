@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { fullJitter, statedJitter, retryClass, retryAfterMs } from './soul/eden.mjs';
 
 const cli = fileURLToPath(new URL('./soul/eden.mjs', import.meta.url));
-const SCALE = 0.05;   // EDEN_TIME_SCALE: a stated 4 s wait takes 160–240 ms here
+const SCALE = 0.05;   // EDEN_TIME_SCALE: a stated 4 s wait takes 200–240 ms here
 const json = (res, status, body, headers = {}) => { res.writeHead(status, { 'content-type': 'application/json', ...headers }); res.end(JSON.stringify(body)); };
 const busy = (res, code = 'world.busy', after = 4, status = code.startsWith('soul.') ? 429 : 503) =>
   json(res, status, { error: { code, message: 'synthetic busy' }, world: { load: 'red', retry_after_s: after, note: 'It is crowded here right now; things take a little longer.' } }, { 'retry-after': String(after), 'x-sim-load': 'red' });
@@ -37,9 +37,10 @@ async function fixture(t, respond) {
   return { dir, seen, start, run: (...args) => start(...args).done };
 }
 
-test('helpers: full jitter stays under the capped exponential; stated waits spread ±20 %; Retry-After from header or body', () => {
+test('helpers: full jitter stays under the capped exponential; a stated wait is a floor, spread up to 20 % above it; Retry-After from header or body', () => {
   assert.equal(fullJitter(0, () => 1), 1000); assert.equal(fullJitter(3, () => 0.5), 4000); assert.equal(fullJitter(10, () => 1), 60_000);
-  assert.equal(Math.round(statedJitter(4000, () => 0)), 3200); assert.equal(Math.round(statedJitter(4000, () => 1)), 4800);
+  assert.equal(Math.round(statedJitter(4000, () => 0)), 4000); assert.equal(Math.round(statedJitter(4000, () => 1)), 4800);
+  assert.equal(Math.round(statedJitter(120_000, () => 0)), 60_000, 'the cap holds');
   assert.equal(retryAfterMs(new Headers({ 'retry-after': '3' }), {}), 3000);
   assert.equal(retryAfterMs(new Headers(), { world: { retry_after_s: 2 } }), 2000); assert.equal(retryAfterMs(new Headers(), { retry_after: 7 }), 7000);
   assert.equal(retryAfterMs(new Headers(), {}), null);

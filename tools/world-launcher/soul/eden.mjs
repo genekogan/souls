@@ -12,7 +12,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.15.0";
+const VERSION = "2.15.1";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -170,7 +170,7 @@ export function heldPhase(e, receiptId) {
 // ---------------------------------------------------------------- transport
 
 // Polite by construction (LOAD-CONTRACT v1 §3): a busy world answers 503/429 with a code and Retry-After, and this
-// client waits that long (±20 %) instead of asking again at once. Only reads, and writes that carry an
+// client waits at least that long (up to 20 % more) instead of asking again at once. Only reads, and writes that carry an
 // Idempotency-Key (the world returns the first answer to a repeat), are ever retried; `unreachable` gets full-jitter
 // exponential backoff (1 s base, 60 s cap, 6 tries) and then a clear exit 75. Nothing loops forever except listen,
 // which is one held long-poll per Soul (.listen.lock) and backs off the same way.
@@ -180,8 +180,9 @@ const TIME_SCALE = Number(process.env.EDEN_TIME_SCALE) > 0 ? Number(process.env.
 const pause = (ms) => sleep(ms * TIME_SCALE);
 /** Full jitter: uniform in [0, min(cap, base·2^attempt)]. */
 export const fullJitter = (attempt, rnd = Math.random) => rnd() * Math.min(RETRY.capMs, RETRY.baseMs * 2 ** attempt);
-/** A stated wait, spread ±20 % so a crowd told "4 s" does not come back on the same millisecond. */
-export const statedJitter = (ms, rnd = Math.random) => Math.min(RETRY.capMs, ms) * (0.8 + 0.4 * rnd());
+/** A stated wait is a floor: the world counts a return before it as impolite. Up to 20 % more, so a crowd told "4 s"
+ *  does not come back on the same millisecond. */
+export const statedJitter = (ms, rnd = Math.random) => Math.min(RETRY.capMs, ms) * (1 + 0.2 * rnd());
 /** Retry-After in ms, from the header (seconds or an HTTP date) or the body (world.retry_after_s, retry_after). */
 export function retryAfterMs(headers, data) {
   const h = headers?.get?.("retry-after");
