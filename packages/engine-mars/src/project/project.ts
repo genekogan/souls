@@ -7,7 +7,8 @@
 //   fabricate it. A maneuver is done when the world says so, whoever did it and however.
 import { z } from 'zod';
 import type { Entity, WorldState } from '../../../../mars/viewer/engine/world/types.ts';
-import { angleDelta, hypot, rot2, type Vec2 } from '../../../../mars/viewer/engine/core/math.ts';
+import { def } from '../../../../mars/viewer/engine/world/catalog.ts';
+import { angleDelta, hypot, rot2, wrapAngle, type Vec2 } from '../../../../mars/viewer/engine/core/math.ts';
 import { beamBays, frameSupported, frameStability, heldUp, standing, worldPoint } from '../beam-connect.ts';
 import { joistBays, JOIST_SEAT, ofKind, sheetBays, socketsOf } from '../deck-install.ts';
 import { flightBays, treadTarget } from '../stair-install.ts';
@@ -77,7 +78,7 @@ export type Site = { origin: Vec2; yaw: number };
 export function atSite(site: Site, at: Vec2): Vec2 { const o = rot2(at, site.yaw); return [site.origin[0] + o[0], site.origin[1] + o[1]]; }
 /** A carry's spot in the world: where its load lies and at what yaw. */
 export function spotAt(site: Site, spot: readonly [number, number, number]): { x: number; z: number; yaw: number } {
-  const p = atSite(site, [spot[0], spot[1]]); return { x: p[0], z: p[1], yaw: Math.atan2(Math.sin(spot[2] + site.yaw), Math.cos(spot[2] + site.yaw)) };
+  const p = atSite(site, [spot[0], spot[1]]); return { x: p[0], z: p[1], yaw: wrapAngle(spot[2] + site.yaw) };
 }
 /** Where a frame's base must end up, as `raise_hold_v1` needs it: the blueprint's stand point. */
 export function standAt(b: Blueprint, site: Site, part: string): Vec2 | null { const s = b.parts[part]?.stand; return s ? atSite(site, s) : null; }
@@ -87,6 +88,8 @@ export function standAt(b: Blueprint, site: Site, part: string): Vec2 | null { c
 const ON_SPOT = 0.14, ON_SPOT_YAW = 0.06;
 /** A part this close to where the blueprint puts it is there, in plan (the seats it goes into decide exactly). */
 const IN_PLACE = 0.15;
+/** A beam within this of the height the blueprint says is in that seat (the native snapSeat's hole tolerance). */
+const SEAT_TOLERANCE = 0.08;
 
 export type Bound = Record<string, string>;
 const entityOf = (w: WorldState, bound: Bound, part: string): Entity | undefined => { const id = bound[part]; return id ? w.entities[id] : undefined; };
@@ -101,12 +104,21 @@ export function jointsMade(b: Blueprint, w: WorldState, bound: Bound): { made: n
   }
   return { made, total };
 }
-/** A part is in its place: installed, joined both ways to every host, where the blueprint puts it. */
+/** The height above the frame's foot of the seat `e` is joined to on `h`. */
+function seatHeight(w: WorldState, e: Entity, h: Entity): number | null {
+  const c = (e.connections ?? []).find((x) => x.to === h.id), s = c && socketsOf(h).find((x) => x.id === c.toSocket);
+  return s ? worldPoint(h, s.local)[1] - (h.pose.p[1] - def(h.def).size[0] / 2) : null;   // a frame stands on its end: its length is its height
+}
+/** A part is in its place: installed, joined both ways to every host, where the blueprint puts it, at the height it says. */
 function inPlace(b: Blueprint, w: WorldState, site: Site, bound: Bound, part: string): boolean {
   const e = entityOf(w, bound, part), bp = b.parts[part]!;
   if (!e || e.phase !== 'installed') return false;
   if (bp.at && planDistance(e, atSite(site, bp.at)) > IN_PLACE) return false;
-  return bp.hosts.every((h) => { const he = entityOf(w, bound, h); return !!he && joinedTo(e, he); });
+  return bp.hosts.every((h) => {
+    const he = entityOf(w, bound, h); if (!he || !joinedTo(e, he)) return false;
+    if (bp.height === undefined) return true;
+    const y = seatHeight(w, e, he); return y !== null && Math.abs(y - bp.height) <= SEAT_TOLERANCE;
+  });
 }
 /** A frame stands where the blueprint says, held or on its own. */
 function stands(b: Blueprint, w: WorldState, site: Site, bound: Bound, part: string): boolean {
@@ -192,7 +204,7 @@ export function progressOf(b: Blueprint, p: Procedure, w: WorldState, site: Site
 /** The exact offer and params that do a ready maneuver in this world now (`with` is the proposer's own choice), or null
  *  when the world offers no such thing here yet: a seat's column and height, a joist's place along the bay and a flight's
  *  depend on which way round the parts came to lie, so they are read from what is offered, by where it goes. */
-export function offerFor(b: Blueprint, w: WorldState, site: Site, bound: Bound, m: Pick<Maneuver, 'template' | 'part'>, projectId: string): { offer: string; params: Record<string, unknown>; seats?: unknown } | null {
+export function offerFor(b: Blueprint, w: WorldState, site: Site, bound: Bound, m: Pick<Maneuver, 'template' | 'part'>, projectId: string): { offer: string; params: Record<string, unknown>; seats?: unknown; hosts?: string[] } | null {
   const e = entityOf(w, bound, m.part), part = b.parts[m.part]; if (!e || !part) return null;
   switch (m.template) {
     case 'carry': return { offer: `carry-with:${e.id}`, params: { to: `project:${projectId}` } };
@@ -201,19 +213,22 @@ export function offerFor(b: Blueprint, w: WorldState, site: Site, bound: Bound, 
       if (!part.at) return null;
       const q = atSite(site, part.at), bays = beamBays(w, e.id, 3.5).map((x) => { const a = w.entities[x.a]!, sa = socketsOf(a).find((s) => s.id === x.seats[0])!, bb = w.entities[x.b]!, sb = socketsOf(bb).find((s) => s.id === x.seats[1])!, pa = worldPoint(a, sa.local), pb = worldPoint(bb, sb.local); return { x, d: hypot((pa[0] + pb[0]) / 2 - q[0], (pa[2] + pb[2]) / 2 - q[1]) }; }).filter((c) => c.d < IN_PLACE);
       const best = bays.sort((x, y) => Math.abs(x.x.height - (part.height ?? 0)) - Math.abs(y.x.height - (part.height ?? 0)))[0];
-      return best && Math.abs(best.x.height - (part.height ?? 0)) <= 0.08 ? { offer: `connect-beam-with:${e.id}`, params: { column: best.x.column, height: best.x.height }, seats: best.x.seats } : null;
+      return best && Math.abs(best.x.height - (part.height ?? 0)) <= 0.08 ? { offer: `connect-beam-with:${e.id}`, params: { column: best.x.column, height: best.x.height }, seats: best.x.seats, hosts: [best.x.a, best.x.b] } : null;
     }
     case 'install-joist': {
       if (!part.at) return null;
       const q = atSite(site, part.at), bay = joistBays(w, e.id).find((x) => { const a = w.entities[x.beams[0]]!, sa = ofKind(a, JOIST_SEAT).find((s) => s.id === x.seats[0])!, bb = w.entities[x.beams[1]]!, sb = ofKind(bb, JOIST_SEAT).find((s) => s.id === x.seats[1])!, pa = worldPoint(a, sa.local), pb = worldPoint(bb, sb.local); return hypot((pa[0] + pb[0]) / 2 - q[0], (pa[2] + pb[2]) / 2 - q[1]) < IN_PLACE; });
-      return bay ? { offer: `install-joist-with:${e.id}`, params: { at: bay.at }, seats: bay.seats } : null;
+      return bay ? { offer: `install-joist-with:${e.id}`, params: { at: bay.at }, seats: bay.seats, hosts: [...bay.beams] } : null;
     }
-    case 'lay-sheet': return sheetBays(w, e.id).length ? { offer: `lay-sheet-with:${e.id}`, params: {} } : null;
+    case 'lay-sheet': {
+      const want = part.hosts.map((h) => bound[h]!), row = sheetBays(w, e.id).find((r) => want.every((id) => r.includes(id)));
+      return row ? { offer: `lay-sheet-with:${e.id}`, params: {}, hosts: [...row] } : null;
+    }
     case 'install-flight': {
       if (!part.at) return null;
       const q = atSite(site, part.at), host = entityOf(w, bound, part.hosts[0]!);
       const bay = flightBays(w, e.id).filter((x) => x.beam === host?.id).map((x) => { const s = socketsOf(w.entities[x.beam]!).find((c) => c.id === x.seat)!, pt = worldPoint(w.entities[x.beam]!, s.local); return { x, d: hypot(pt[0] - q[0], pt[2] - q[1]) }; }).sort((x, y) => x.d - y.d)[0];
-      return bay ? { offer: `install-flight-with:${e.id}`, params: { at: bay.x.at }, seats: bay.x.seat } : null;
+      return bay ? { offer: `install-flight-with:${e.id}`, params: { at: bay.x.at }, seats: bay.x.seat, hosts: [bay.x.beam] } : null;
     }
     case 'install-tread': return treadTarget(w, e.id) ? { offer: `install-tread:${e.id}`, params: {} } : null;
     case 'release': return null;   // `stop-carry:<op>`: the ledger knows the operation
@@ -240,7 +255,7 @@ export function bindStock(b: Blueprint, p: Procedure, site: Site, stock: readonl
   }
   if (!missing.length) return { bound };
   const defs = [...new Set(missing.map((k) => b.parts[k]!.def[0]!))];
-  return { short: defs.map((d) => ({ def: d, need: Object.values(b.parts).filter((x) => x.def[0] === d).length, have: stock.filter((s) => s.def === d).length })) };
+  return { short: defs.map((d) => ({ def: d, need: Object.values(b.parts).filter((x) => x.def[0] === d).length, have: stock.filter((s) => s.def === d && hypot(s.at[0] - site.origin[0], s.at[1] - site.origin[1]) <= radius).length })) };
 }
 /** A point inside the ground the site needs clear. */
 export function inSite(p: Procedure, site: Site, at: Vec2): boolean {

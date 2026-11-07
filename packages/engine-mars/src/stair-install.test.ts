@@ -155,6 +155,22 @@ test('stopped in the air, the flight comes back down to exactly where it stood; 
   }
 });
 
+test('PC17: a stop near the end never teleports the flight: lowered along its way, or finished where it stands', () => {
+  const whole = site(), r0 = flight(whole.rt); let n = 0;
+  for (; n < 4000 && !['completed', 'failed'].includes(r0.status); n++) whole.rt.step();
+  assert.equal(r0.status, 'completed', JSON.stringify(r0.diagnostic));
+  for (let k = n - 24; k < n; k += 2) {
+    const a = site(), r = flight(a.rt), f = a.rt.world.entities.F!;
+    for (let i = 0; i < k; i++) a.rt.step();
+    a.rt.cancel(r.id);
+    for (let i = 0; i < 600 && !['completed', 'cancelled', 'failed'].includes(r.status); i++) {
+      const was = structuredClone(f.pose.p); a.rt.step();
+      assert.ok(Math.hypot(f.pose.p[0] - was[0]!, f.pose.p[1] - was[1]!, f.pose.p[2] - was[2]!) < 0.2, `stopped ${n - k} steps from the end: moved ${JSON.stringify([was, f.pose.p])}`);
+    }
+    assert.ok(['completed', 'cancelled'].includes(r.status), `${r.status} ${JSON.stringify(r.diagnostic)}`);
+  }
+});
+
 test('the invariant notices a flight hanging on nothing and a tread in a flight that does not hold it', () => {
   const { rt } = site(), w = rt.world;
   hung(rt); done(rt, tread(rt, 1));

@@ -16,7 +16,7 @@ import { childrenState, walkCrew, type Children } from '../../../mars/viewer/eng
 import { distToObb, findStations, liftDuration, liftStep, sweptLiftPath } from '../../../mars/viewer/engine/construction/access.ts';
 import { type Spatial } from '../../../mars/viewer/engine/spatial/service.ts';
 import { clearanceAt } from '../../../mars/viewer/engine/spatial/grid.ts';
-const STEP_BACK_SPEED = 0.6;
+import { makeWay } from '../../../mars/viewer/engine/locomotion/walk.ts';
 import { followTarget, handPoint, pickupPlan, roomFor, STATION_SLOT } from '../../../mars/viewer/engine/construction/liftcrew.ts';
 import { frameSupported, isBeamPart, isFrame, worldPoint } from './beam-connect.ts';
 
@@ -72,6 +72,7 @@ export type Kind = 'joist' | 'plywood' | 'flight' | 'tread';
 export type Place = (part: Entity, qs: Vec3[], hosts: Entity[]) => { pose: Pose; ends: string[] } | { ok: false; diagnostic: Diagnostic };
 /** Where the crew stands to work (PC16): the points they stand near, and the box they stay out of. */
 export type Stand = (part: Entity, target: Pose) => { points: Vec2[]; obb: { c: Vec2; half: Vec2; yaw: number }; y: number; y0: number };
+const STEP_BACK_SPEED = 0.6;
 export type SeatExec = {
   /** PC17 (#696): the part is in place; the crew is stepping clear of it. */
   backing?: true;
@@ -159,17 +160,23 @@ function letGo(rt: Runtime, ex: SeatExec) {
   for (const c of ex.crew) if (rt.world.entities[c]?.human) Object.assign(rt.world.entities[c]!.human!, { activity: 'idle', grip: undefined, task: undefined });
 }
 
-/** PC17 (#696): one step of the crew backing clear of where the part now is; false once everyone is clear, or can't go further. */
-function stepClear(rt: Runtime, ex: SeatExec, part: Entity, clear: number, dt: number): boolean {
+/** PC17 (#696): one step of the crew backing clear of where the part now is. `moved` while someone steps; a named wait while
+ *  a person or a carried load stands behind them (they are asked to move, and nobody is stepped into them); null once everyone
+ *  is clear, or as clear as anything solid behind them allows. */
+function stepClear(rt: Runtime, ex: SeatExec, part: Entity, clear: number, dt: number): 'moved' | Diagnostic | null {
   const size = def(part.def).size, obb = { c: [ex.prog.target.p[0], ex.prog.target.p[2]] as Vec2, half: [size[0] / 2, size[2] / 2] as Vec2, yaw: ex.prog.target.yaw }, g = (rt.services.spatial as Spatial).level(0);
-  let moved = false;
+  const loads = ((rt.services.loadDiscs?.() ?? []) as { p: Vec2; r: number; entity: string; crew: string[] }[]);
+  let moved = false, held: Diagnostic | null = null;
   for (const c of ex.crew) {
     const h = rt.world.entities[c]!, at: Vec2 = [h.pose.p[0], h.pose.p[2]], gap = distToObb(at, obb); if (gap >= clear) continue;
     const away: Vec2 = [at[0] - obb.c[0], at[1] - obb.c[1]], n = hypot(away[0], away[1]) || 1, step = STEP_BACK_SPEED * dt, q: Vec2 = [at[0] + away[0] / n * step, at[1] + away[1] / n * step];
     if (g && clearanceAt(g, q) < HUMAN_RADIUS) continue;
+    const by = Object.values(rt.world.entities).find((o) => o.kind === 'human' && !ex.crew.includes(o.id) && o.human?.level === h.human?.level && hypot(o.pose.p[0] - q[0], o.pose.p[2] - q[1]) < 2 * HUMAN_RADIUS + 0.05)?.id
+      ?? loads.find((d) => !d.crew.includes(c) && hypot(d.p[0] - q[0], d.p[1] - q[1]) < d.r + HUMAN_RADIUS + 0.05)?.entity;
+    if (by) { if (rt.world.entities[by]?.kind === 'human') makeWay(rt, by, q); held ??= { code: 'lift.crew-blocked', message: `${c} waits for ${by} to step away from ${part.id}`, subjects: [part.id, c, by] }; continue; }
     h.pose = { ...h.pose, p: [q[0], h.pose.p[1], q[1]] }; moved = true;
   }
-  return moved;
+  return held ?? (moved ? 'moved' : null);
 }
 /** A sheet comes in over the bay's side, so its crew holds the two corners of its long edge toward where it lies (they
  *  stay outside the bay all the way; the native ends would be inside it, by the uprights), each standing beside theirs. */
@@ -230,7 +237,10 @@ export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind
       }
       const ls = ex.backing || liftStep(rt, ex, dt);
       if (ls !== true) return ls ? { status: 'blocked', diagnostic: ls } : { status: 'running', phase: ex.lowering ? 'lower' : 'lift' };
-      if (o.stepBack && !ex.lowering && stepClear(rt, ex, part, o.stepBack, dt)) { ex.backing = true; return { status: 'running', phase: 'lift' }; }
+      if (o.stepBack && !ex.lowering) {
+        const back = stepClear(rt, ex, part, o.stepBack, dt);
+        if (back) { ex.backing = true; return typeof back === 'string' ? { status: 'running', phase: 'lift' } : { status: 'blocked', diagnostic: back }; }
+      }
       letGo(rt, ex);
       part.reservedBy = undefined;
       if (ex.lowering) {
@@ -247,6 +257,8 @@ export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind
     cancel(rt, ex) {
       const part = rt.world.entities[ex.part]!;
       if (ex.lowering) return { ok: true, deferred: true };
+      // PC17 (#696): it is in place and the crew is stepping clear: that finishes the install, there is nothing to lower
+      if (ex.backing) return { ok: true, deferred: true };
       if (ex.phase === 'approach') {
         for (const r of ex.children?.recs ?? []) if (rt.isActive(r.id)) rt.cancel(r.id);
         part.phase = 'staged'; part.reservedBy = undefined;

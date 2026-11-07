@@ -143,7 +143,6 @@ function retreatBlocked(rt: Runtime, ex: CarryExec, sp: Spatial, u: number): boo
   return !!pathBystander(rt, ex, u) || (!!g && poseHit(g, ex.p.f, q, 0) >= 0);
 }
 
-/** A non-crew person inside the formation's footprint (load discs + carrier spots) at arc length u. */
 /** PC17 (#696): a body outside the crew within the load's cover where it lies (the cover `humanLoadClearance` keeps once it is lifted). */
 function liftBystander(rt: Runtime, ex: CarryExec): string | null {
   const p = ex.p, discs = worldDiscs(p.f, p.pickup);
@@ -168,6 +167,7 @@ function pathOtherLoad(rt: Runtime, ex: CarryExec, u: number): string | null {
   return hit ? hit.crew[0]! : null;
 }
 
+/** A non-crew person inside the formation's footprint (load discs + carrier spots) at arc length u. */
 function pathBystander(rt: Runtime, ex: CarryExec, u: number): string | null {
   const p = ex.p;
   const i0 = ex.i;
@@ -361,7 +361,7 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
         const under = liftBystander(rt, ex);
         if (under) {
           makeWay(rt, under, [p.pickup.x, p.pickup.z]);
-          return blockedWait(rt, ex.id, p.item, [under], { code: 'carry.pickup-occupied', message: `the crew cannot lift ${p.item}: ${under} is standing too close to it`, subjects: [p.item, under], at: [p.pickup.x, p.levelY, p.pickup.z] });
+          return blockedWait(rt, ex.id, p.item, [under], { code: 'carry.pickup-occupied', message: `the crew cannot lift ${p.item}: ${under} is standing too close to it`, subjects: [p.item, under], at: [p.pickup.x, p.levelY, p.pickup.z] }, p.crew);
         }
       }
       if (itemOf(rt, ex).tags?.includes('entity-world-transport')) {

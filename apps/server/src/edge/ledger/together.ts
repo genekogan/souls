@@ -873,13 +873,14 @@ export class Together {
       if (!inv?.shared || inv.state !== 'pending' || inv.host.soulId !== soul.soulId) return {code: 'invite.gone', reason: 'That proposal is no longer open.'};
       const s = inv.shared, changes: string[] = [];
       if (s.load.entity !== tag.load) changes.push(`the load is now ${tag.name}`);
-      if (s.destination.place !== to.id || s.destination.name !== to.name) changes.push(`the destination is now ${to.name}`);
+      if (s.destination.place !== to.id || s.destination.name !== to.name || JSON.stringify(s.destination.spot ?? null) !== JSON.stringify(to.spot ?? null)) changes.push(`the destination is now ${to.name}`);
+      if (JSON.stringify(s.base ?? null) !== JSON.stringify(base ?? null)) changes.push('where it stands has changed');
       if (inv.guests.map(g => g.soulId).sort().join() !== guests.map(g => g.soulId).sort().join()) changes.push(`the crew is now ${soul.name} with ${names}`);
       // the same proposal again changes nothing: its host's receipt answers
       if (!changes.length) return {steps: [], existing: inv.hostReceipt ?? undefined};
       const route = raising ? this.sharedRaisePreview(soul, guests, tag, base) : choice ? this.sharedSeatPreview(soul, guests, tag, choice) : bay ? this.sharedBeamPreview(soul, guests, tag, bay) : this.sharedRoute(soul, guests, tag, to); if (route) return route;
       // the amend answers with the host's one shared receipt, never a new "carry-with completed" one (PC02 §2)
-      return {steps: [], existing: inv.hostReceipt ?? undefined, label, commit: () => this.amendShared(inv.id, soul, cap.id, tag, to, guests, changes, bay, choice)};
+      return {steps: [], existing: inv.hostReceipt ?? undefined, label, commit: () => this.amendShared(inv.id, soul, cap.id, tag, to, guests, changes, bay, choice, base)};
     }
     const route = raising ? this.sharedRaisePreview(soul, guests, tag, base) : choice ? this.sharedSeatPreview(soul, guests, tag, choice) : bay ? this.sharedBeamPreview(soul, guests, tag, bay) : this.sharedRoute(soul, guests, tag, to); if (route) return route;
     const id = 'inv_' + randomUUID().slice(0, 12);
@@ -981,11 +982,11 @@ export class Together {
     return {verb: 'mars:carry', params: {crew, item: load, to: {x: at[0], z: at[1], yaw: near}, holdCutV1: true, clearLiftV1: true}};
   }
   /** PC02 §1 amend: a new revision clears every acceptance; whoever had accepted is told by their own receipt. */
-  private amendShared(id: string, soul: EdgeSoul, capability: string, tag: Extract<Tag, {kind: 'shared'}>, to: SharedDestinationTo, guests: {soulId: string; name: string}[], changes: string[], bay?: BeamBayTag, choice?: SeatChoiceTag) {
+  private amendShared(id: string, soul: EdgeSoul, capability: string, tag: Extract<Tag, {kind: 'shared'}>, to: SharedDestinationTo, guests: {soulId: string; name: string}[], changes: string[], bay?: BeamBayTag, choice?: SeatChoiceTag, base?: [number, number]) {
     const inv = this.invite(id); if (!inv?.shared || inv.state !== 'pending') return;
     const s = inv.shared, raising = raises(s), accepted = Object.entries(inv.guestReceipts).filter(([g]) => inv.responses[g] === 'accepted');
     const dropped = inv.guests.filter(g => !guests.some(x => x.soulId === g.soulId));
-    s.revision++; s.changed = changes.join('; '); s.load = {entity: tag.load, def: tag.def, name: tag.name}; s.destination = destinationOf(to); s.crew = tag.crew; if (bay) s.beam = {a: bay.a, b: bay.b, seats: bay.seats}; if (choice) s.seat = {verb: choice.verb, params: choice.params, ...(choice.at !== undefined ? {at: choice.at} : {})};
+    s.revision++; s.changed = changes.join('; '); s.load = {entity: tag.load, def: tag.def, name: tag.name}; s.destination = destinationOf(to); s.crew = tag.crew; if (base) s.base = base; else delete s.base; if (bay) s.beam = {a: bay.a, b: bay.b, seats: bay.seats}; if (choice) s.seat = {verb: choice.verb, params: choice.params, ...(choice.at !== undefined ? {at: choice.at} : {})};
     s.roles = [{role: 'carrier', slot: 0, soulId: soul.soulId}, ...guests.map((_, i) => ({role: 'carrier' as const, slot: i + 1, soulId: null}))];
     Object.assign(inv, {guests, responses: {}, guestReceipts: {}, capability, label: `asks you to ${doing(s)} together`, expiresTick: this.tick + SHARED_LAPSE * 20});
     this.saveInvite(inv);
@@ -1136,7 +1137,7 @@ export class Together {
       if (r?.phase !== 'waiting') continue;
       const how = m.soulId === inv.host.soulId
         ? raises(s) || seats(s) ? `To ${raises(s) ? 'raise' : deckOf(s) ? DECK_WORDS[deckOf(s)!].verb : 'seat'} it with ${restNames}, amend this proposal: act ${inv.capability.split(':')[0]}:${s.load.entity} with ${JSON.stringify({...(s.seat?.at !== undefined ? {at: s.seat.at} : {}), with: restNames, invite: inv.id})} (a new revision they accept again); or ask someone else in their place the same way.`
-        : `To carry it with ${restNames}, amend this proposal: act carry-with:${s.load.entity} with ${JSON.stringify({to: s.destination.name, with: restNames, invite: inv.id})} (a new revision they accept again); or ask someone else in their place the same way.`
+        : `To carry it with ${restNames}, amend this proposal: act carry-with:${s.load.entity} with ${JSON.stringify({to: s.destination.project ? `project:${s.destination.project}` : s.destination.name, with: restNames, invite: inv.id})} (a new revision they accept again); or ask someone else in their place the same way.`
         : `${inv.host.name} can ask again without them (a new revision you would accept again); until then nothing moves.`;
       const why = `Not started: ${gone}, so this revision of the ${opWord(inv)} of ${s.load.name} cannot start as asked. ${how}`;
       if (r.code !== 'shared.not-ready' || r.reason !== why) this.p.note?.(r.id, 'shared.not-ready', why);
@@ -1305,7 +1306,7 @@ export class Together {
       this.sharedEnd(inv, 'stopped', 'shared.stopped', `${st.away ? `Stopped because ${st.name} went away` : `Stopped at ${st.name}'s request`} (${op.id}): ${where}. ${crew} have let go and are free again; nothing is resumed on its own.`);
       return;
     }
-    const atDestination = !!x && this.p.places.containing(x.pose.p[0], x.pose.p[2], (x as {level?: number}).level ?? 0).some(p => p.id === s.destination.place);
+    const spot = s.destination.spot, atDestination = !!x && (spot ? Math.hypot(x.pose.p[0] - spot.x, x.pose.p[2] - spot.z) <= 0.2 : this.p.places.containing(x.pose.p[0], x.pose.p[2], (x as {level?: number}).level ?? 0).some(p => p.id === s.destination.place));
     const lifted = !(st.phase === 'gather' || st.phase === 'reach' || st.phase === 'gather-cancel');
     const where = !lifted ? `${s.load.name} was never lifted; it lies where it was`
       : st.phase === 'lift' ? `${s.load.name} was lowered back where it lay`
@@ -1436,7 +1437,7 @@ export class Together {
   }
   /** PC17 (#696): what the world's projects read and do here. A project's own change is a new menu. */
   touch() {this.bump();}
-  tell(soulId: string, text: string) {this.p.deliver(soulId, 'world', {text});}
+  tell(soulId: string, text: string) {this.p.deliver(soulId, 'world', {text, untrusted: true});}
   soulsNamed(soul: EdgeSoul, raw: unknown) {return this.withSouls(soul, raw);}
   /** Every open proposal. */
   openShared(): Invite[] {return this.pending().filter(i => i.shared);}

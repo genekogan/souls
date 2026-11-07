@@ -28,7 +28,7 @@ export const PROJECT_SIGHT = 30;
 const STOCK_SIGHT = 25;
 /** How far from what a part is wanted for loose stock counts. */
 const STOCK_RADIUS = 14;
-const CONSENT_SECONDS = 1800, CONSENT_SECONDS_MAX = 7200;
+const CONSENT_SECONDS = 1800, CONSENT_SECONDS_MIN = 60, CONSENT_SECONDS_MAX = 7200, MANEUVERS_MAX = 64;
 const READY_LISTED = 8, MISSING_LISTED = 6;
 
 const near = (a: V2, b: V2, r: number) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= r;
@@ -42,7 +42,7 @@ export class Projects {
   constructor(port: ProjectsPort) {
     this.p = port;
     port.db.db.exec('CREATE TABLE IF NOT EXISTS edge_projects_v1 (world_id TEXT NOT NULL, project_id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (world_id, project_id))');
-    for (const r of port.db.db.prepare('SELECT body FROM edge_projects_v1 WHERE world_id=?').all(port.host.worldId) as {body: string}[]) {const row = JSON.parse(r.body) as ProjectRow; this.rows.set(row.id, row);}
+    for (const r of port.db.db.prepare('SELECT body FROM edge_projects_v1 WHERE world_id=?').all(port.host.worldId) as {body: string}[]) {const row = JSON.parse(r.body) as ProjectRow; if (PROCEDURES[row.procedure]) this.rows.set(row.id, row);}
   }
   private save(row: ProjectRow) {
     this.rows.set(row.id, row);
@@ -66,8 +66,9 @@ export class Projects {
     return out;
   }
   /** Something built or standing inside the ground the site needs, other than its own parts. */
-  private siteBlocker(procedure: Procedure, site: Site, own: ReadonlySet<string>): string | null {
+  private siteBlocker(procedure: Procedure, site: Site, own: ReadonlySet<string>, except?: string): string | null {
     for (const e of Object.values(this.p.world().entities)) if (e.tags?.includes('entity-world') && !own.has(e.id) && inSite(procedure, site, [e.pose.p[0]!, e.pose.p[2]!])) return e.id;
+    for (const r of this.rows.values()) if (!except || r.id !== except) if (inSite(procedure, site, r.site.origin)) return `the site of ${this.of(r).procedure.label} at ${r.site.name}`;
     return null;
   }
   private named(id: string) {return this.p.edge.thingName?.(id) ?? id;}
@@ -85,7 +86,7 @@ export class Projects {
       if (!this.knows(row, soul)) continue;
       const {procedure} = this.of(row), mine = row.consents[soul.soulId], target = {id: row.id, kind: 'project'};
       const volunteer = `Volunteer for ${procedure.label} at ${row.site.name} (revision ${row.revision}): invitations for its ready maneuvers are accepted for you, up to a number you state, in one section, until it expires`;
-      add({id: `volunteer:${row.id}`, verb: 'volunteer', label: volunteer, target, available: true, params: {revision: {type: 'integer', min: 1, description: `the project revision you agree to (now ${row.revision})`}, section: {type: 'string', optional: true, enum: procedure.sections.map(s => s.key), description: 'the section (default: the one open now)'}, maneuvers: {type: 'integer', optional: true, min: 1, max: 64, description: 'how many maneuvers at most (default: what is left of the section)'}, expires: {type: 'integer', optional: true, min: 60, max: CONSENT_SECONDS_MAX, default: CONSENT_SECONDS, description: 'seconds it holds'}}}, 'Volunteer', {kind: 'project', op: 'volunteer', project: row.id});
+      add({id: `volunteer:${row.id}`, verb: 'volunteer', label: volunteer, target, available: true, params: {revision: {type: 'integer', min: 1, description: `the project revision you agree to (now ${row.revision})`}, section: {type: 'string', optional: true, enum: procedure.sections.map(s => s.key), description: 'the section (default: the one open now)'}, maneuvers: {type: 'integer', optional: true, min: 1, max: MANEUVERS_MAX, description: 'how many maneuvers at most (default: what is left of the section)'}, expires: {type: 'integer', optional: true, min: CONSENT_SECONDS_MIN, max: CONSENT_SECONDS_MAX, default: CONSENT_SECONDS, description: 'seconds it holds'}}}, 'Volunteer', {kind: 'project', op: 'volunteer', project: row.id});
       if (mine) add({id: `leave-project:${row.id}`, verb: 'leave-project', label: `Take back your agreement to ${procedure.label} at ${row.site.name}`, target, available: true}, 'Leave the project', {kind: 'project', op: 'leave', project: row.id});
       if (row.organizer.soulId === soul.soulId) add({id: `revise-project:${row.id}`, verb: 'revise-project', label: `Revise ${procedure.label}: move the site or rebind a part (a material change asks everyone again)`, target, available: true, params: {at: {type: 'string', optional: true, maxLength: 100}, yaw: {type: 'number', optional: true, min: -7, max: 7}, part: {type: 'string', optional: true, maxLength: 60}, entity: {type: 'string', optional: true, maxLength: 80}}}, 'Revise the project', {kind: 'project', op: 'revise', project: row.id});
     }
@@ -101,6 +102,8 @@ export class Projects {
     const dest = resolvePlaceForVerb(this.p.edge, soul, raw); if (!dest.ok) return {code: 'project.unknown-place', reason: dest.reason};
     const place = this.p.edge.places.byId.get(dest.chosen.place);
     if (!place?.polygon?.length || place.level !== 0) return {code: 'project.unknown-place', reason: 'Choose a place on level-zero ground.'};
+    // a project is named to whoever sees it, so a place the world keeps secret can't be one's site
+    if (this.p.edge.knowledge.marked().has(place.id)) return {code: 'project.unknown-place', reason: 'Choose a place everyone here can know of.'};
     return {place: place.id, name: place.name, origin: centroid(place.polygon as [number, number][])};
   }
   private organize(soul: EdgeSoul, key: string, params: Record<string, unknown>): Refusal | Prepared {
@@ -125,8 +128,11 @@ export class Projects {
     const now = this.progress(row), section = typeof params.section === 'string' ? params.section : now.section;
     if (!section) return {code: 'project.complete', reason: 'It is finished; there is nothing left to agree to.'};
     if (!procedure.sections.some(s => s.key === section)) return {code: 'capability.params', reason: `Choose a section: ${procedure.sections.map(s => s.key).join(', ')}.`};
-    const left = Number.isInteger(params.maneuvers) ? params.maneuvers as number : Math.max(1, now.maneuvers.filter(m => m.section === section && m.state !== 'done').length);
-    const seconds = Number.isInteger(params.expires) ? params.expires as number : CONSENT_SECONDS, tick = this.p.world().tick;
+    const left = params.maneuvers === undefined ? Math.max(1, now.maneuvers.filter(m => m.section === section && m.state !== 'done').length) : params.maneuvers as number;
+    const seconds = params.expires === undefined ? CONSENT_SECONDS : params.expires as number, tick = this.p.world().tick;
+    // the bound is the point of it: not left to a strict client's checks
+    if (!Number.isInteger(left) || left < 1 || left > MANEUVERS_MAX) return {code: 'capability.params', reason: `maneuvers must be 1 to ${MANEUVERS_MAX}.`};
+    if (!Number.isInteger(seconds) || seconds < CONSENT_SECONDS_MIN || seconds > CONSENT_SECONDS_MAX) return {code: 'capability.params', reason: `expires must be ${CONSENT_SECONDS_MIN} to ${CONSENT_SECONDS_MAX} seconds.`};
     return {steps: [], noBody: true, label: `Volunteer for ${section}`, result: {project: row.id, section, maneuvers: left, expiresInSeconds: seconds}, commit: () => {
       this.save({...row, consents: {...row.consents, [soul.soulId]: {name: soul.name, section, revision: row.revision, left, expiresTick: tick + seconds * 20}}});
     }};
@@ -142,7 +148,7 @@ export class Projects {
       if (Object.values(row.bound).some(id => w.entities[id]?.phase === 'installed')) return {code: 'project.site-built', reason: 'Part of it is built where it stands; the site cannot move.'};
       if (params.at !== undefined) {const at = this.placeAt(soul, params.at); if ('code' in at) return at; Object.assign(next.site, at);}
       if (params.yaw !== undefined) next.site.yaw = Number(params.yaw);
-      const blocker = this.siteBlocker(procedure, siteOf(next), new Set(Object.values(row.bound)));
+      const blocker = this.siteBlocker(procedure, siteOf(next), new Set(Object.values(row.bound)), row.id);
       if (blocker) return {code: 'project.site-blocked', reason: `${this.named(blocker)} is on the ground the site needs.`};
       material = true; changes.push(`the site moved to ${next.site.name}, facing ${next.site.yaw.toFixed(2)}`);
     }
@@ -160,7 +166,8 @@ export class Projects {
       if (!material) {this.save(next); return;}
       const said = changes.join('; ');
       for (const [soulId] of Object.entries(row.consents)) this.p.edge.together.tell(soulId, `${row.organizer.name} changed ${procedure.label}: ${said}. Your agreement has lapsed; volunteer:${row.id} {"revision": ${row.revision + 1}} if you still agree.`);
-      this.save({...next, revision: row.revision + 1, changed: said, consents: {}});
+      // whoever had agreed keeps the way back, however far off they are now
+      this.save({...next, revision: row.revision + 1, changed: said, consents: {}, invited: [...new Set([...row.invited, ...Object.keys(row.consents)])]});
     }};
   }
 
@@ -182,10 +189,14 @@ export class Projects {
     const s = inv.shared!, part = Object.entries(row.bound).find(([, id]) => id === s.load.entity)?.[0]; if (!part) return null;
     const {procedure, blueprint} = this.of(row), m = maneuversOf(procedure).find(x => x.part === part && x.template === s.template.id); if (!m || m.section !== section) return null;
     if (this.progress(row, s.load.entity).maneuvers.find(x => x.key === m.key)?.state !== 'ready') return null;
-    if (m.template === 'carry') return s.destination.project === row.id ? m : null;
+    if (m.template === 'carry') {
+      const spot = this.spotFor(row.id, s.load.entity)?.spot, went = s.destination.spot;
+      return s.destination.project === row.id && !!spot && !!went && near([spot.x, spot.z], [went.x, went.z], 0.01) ? m : null;
+    }
     if (m.template === 'raise-hold') {const b = this.baseFor(row.id, s.load.entity); return b && s.base && near(b, s.base, 0.01) ? m : null;}
     const offer = offerFor(blueprint, this.p.world() as never, siteOf(row), row.bound, m, row.id), seats = s.beam?.seats ?? s.seat?.params.seats ?? s.seat?.params.seat;
-    return offer && (offer.seats === undefined || JSON.stringify(offer.seats) === JSON.stringify(seats)) ? m : null;
+    const hosts = (s.beam ? [s.beam.a, s.beam.b] : (s.seat?.params.beams ?? s.seat?.params.joists ?? [s.seat?.params.beam])) as string[], same = (a: string[], b: string[]) => [...a].sort().join() === [...b].sort().join();
+    return offer && (offer.seats === undefined || JSON.stringify(offer.seats) === JSON.stringify(seats)) && (!offer.hosts || same(offer.hosts, hosts)) ? m : null;
   }
   /** Lapse what expired, and answer the invitations a standing agreement covers. Nothing here moves a body: `accept` is the
    *  Soul's own act, and one who is busy or far off is left with an open invitation. */
@@ -205,7 +216,7 @@ export class Projects {
       if (!row || !consent || consent.left < 1 || consent.revision !== row.revision) continue;
       const m = this.onPlan(row, inv, consent.section), mind = this.p.host.minds.get(g.soulId); if (!m || !mind) continue;
       const soul: EdgeSoul = {soulId: mind.soulId, entityId: mind.entityId, name: mind.name, owner: mind.owner};
-      if (this.p.edge.openReceipts(g.soulId).length || together.sharedAcceptProblem(soul, inv)) continue;
+      if (this.p.edge.faded.has(g.soulId) || this.p.edge.openReceipts(g.soulId).length || together.sharedAcceptProblem(soul, inv)) continue;
       this.asking.add(key);
       void this.p.edge.act(soul, {capability: 'accept:' + inv.id, params: {revision: inv.shared!.revision}}).then(r => {
         const now = this.rows.get(row.id), c = now?.consents[g.soulId]; if (!r.accepted || !now || !c) return;

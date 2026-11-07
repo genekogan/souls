@@ -7,7 +7,7 @@ import {offerParams, type ParamSchema} from '../intents/offer-schema.ts';
 type Child = {id: string; kind: string; name: string};
 type Member = {soulId: string; name: string; role: string; slot: number | null; accepted: boolean; answer?: string; ready?: boolean; why?: string};
 type Offer = {id: string; verb: string; label: string; available: boolean; why?: string; params?: ParamSchema};
-export type Inspected = {id: string; kind: string; name: string; state?: Record<string, unknown>; parts?: Child[]; contents?: Child[]; members?: Member[]; offers: Offer[]; more?: {parts?: number; contents?: number; offers?: number}};
+export type Inspected = {id: string; kind: string; name: string; state?: Record<string, unknown>; parts?: Child[]; contents?: Child[]; members?: Member[]; offers: Offer[]; more?: {parts?: number; contents?: number; offers?: number; members?: number}};
 
 export const INSPECT_BYTES = 4096;
 /** What a place lists before the byte budget: the nearest; `more` still counts the rest. */
@@ -79,13 +79,13 @@ export function inspectFrame(L: EdgeLedger, soul: EdgeSoul, id: string, opts: {a
   const out: Inspected = {...who, offers: offersOn.map(offerOf)};
   if (opts.all) return out;
   const more: NonNullable<Inspected['more']> = {};
-  const cut = (key: 'offers' | 'contents' | 'parts') => {
+  const cut = (key: 'offers' | 'contents' | 'parts' | 'members') => {
     const list = out[key] as unknown[] | undefined; if (!list) return;
     let n = 0;
     while (list.length > 1 && Buffer.byteLength(JSON.stringify(out)) > INSPECT_BYTES - MORE_BYTES) {list.pop(); n++;}
     if (n) more[key] = n;
   };
-  cut('contents'); cut('parts'); cut('offers');
+  cut('contents'); cut('parts'); cut('offers'); cut('members');
   if (cutOff) more.contents = (more.contents ?? 0) + cutOff;
   return Object.keys(more).length ? {...out, more} : out;
 }
