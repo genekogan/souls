@@ -2304,7 +2304,8 @@ async function upgradeCommand(...argv) {
   const trust = argv.includes("--trust"), [world] = argv.filter((a) => a !== "--trust");
   const home = needHome(), cfg = home.config(), key = world ?? cfg.currentWorld, w = cfg.worlds[key];
   if (!w) throw new Error(`usage: upgrade <world> (${Object.keys(cfg.worlds).join(", ") || "no world yet"})`);
-  const get = (path) => fetch(w.url + path, { signal: AbortSignal.timeout(30_000) });
+  // The site trusted below is the one asked: a redirect could hand this home a bundle from any other.
+  const get = (path) => fetch(w.url + path, { redirect: "error", signal: AbortSignal.timeout(30_000) }).catch((e) => { throw new Error(`${key} did not answer ${path} at its own address, and a redirect is not followed here (${e?.cause?.message ?? e?.message}). Nothing changed.`); });
   const said = await (await get("/v1/config")).json(), m = said.soulClient;
   if (!m) throw new Error(`${key} does not say which bundle it serves, so there is nothing to verify against. Nothing changed.`);
   home.ensureWorld(w.url, { contract: m.contract, bundle: m.version, minClient: m.minVersion });

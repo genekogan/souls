@@ -21,6 +21,7 @@ async function world(t, served) {
     const path = req.url.replace(/^\/w\/[a-z]+/, ''); hits.push(path);
     const w = served[/^\/w\/([a-z]+)/.exec(req.url)?.[1]];
     if (path === '/v1/config') return json(res, 200, { devAuth: true, worldId: 'w', worldName: 'W', ...(w?.manifest ? { soulClient: w.manifest } : {}) });
+    if (path === '/eden.mjs' && w.redirect) { res.writeHead(302, { location: w.redirect }); return res.end(); }
     if (path === '/eden.mjs') return res.end(w.bytes);
     json(res, 404, {});
   }); });
@@ -140,6 +141,20 @@ test('trust is never earned by asking twice: a home with no list stays refused u
   assert.deepEqual(readFileSync(join(d, 'eden.mjs')), readFileSync(cli), 'nothing was installed');
   assert.equal((await run('upgrade', 'next', '--trust')).d.upgraded, true);
   assert.equal(list().length, 1);
+});
+
+test('a trusted site cannot hand the bundle over to another: a redirect is refused', async (t) => {
+  const other = await world(t, { next: { bytes: newer } });
+  const w = await world(t, { next: { manifest: describe(newer, NEWER), redirect: `${other.base}/next/eden.mjs` } });
+  const { d, run } = folder(t);
+  await run('register', `${w.base}/next`);
+  for (const args of [['upgrade', 'next'], ['upgrade', 'next', '--trust']]) {
+    const r = await run(...args);
+    assert.equal(r.code, 1); assert.match(r.err, /redirect is not followed/); assert.match(r.err, /Nothing changed/);
+  }
+  assert.deepEqual(other.hits, [], 'the other site is never asked');
+  assert.deepEqual(readFileSync(join(d, 'eden.mjs')), readFileSync(cli), 'nothing was installed');
+  assert.equal(JSON.parse(readFileSync(join(d, '.souls/config.json'), 'utf8')).client, ours);
 });
 
 test('a refused world does not become the current world', async (t) => {
