@@ -35,3 +35,9 @@ test('t4-o1: readCgroup subtracts inactive file cache', async () => {
   writeFileSync(join(d, 'memory.events'), 'low 0\nhigh 0\nmax 0\noom 0\noom_kill 3\noom_group_kill 0\n');
   assert.deepEqual(readCgroup(d), { workingBytes: 1812049920 - 476078080, maxBytes: 9663676416, oomKills: 3 });
 });
+
+test('#1150: a halted world from the launcher\'s guard is an ALERT with its own code', async () => {
+  const { evaluate } = await import('./deploy/host-health.mjs');
+  const r = evaluate({ diskTotalBytes: 301e9, diskFreeBytes: 100e9, memMb: 8232, worldProblems: [{ slug: 'w', code: 'halted', text: 'w halted: its clock has stopped' }] });
+  assert.equal(r.ok, false); assert.deepEqual(r.codes, ['halted']); assert.deepEqual(r.problems, ['w halted: its clock has stopped']);
+});

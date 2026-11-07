@@ -154,9 +154,10 @@ export function healthDash(o) {
     if (st.status !== 'running' || st.frozen || !st.port) return;
     try {
       const r = await fetch(`http://127.0.0.1:${st.port}${o.wp(w.slug)}/healthz`, { signal: AbortSignal.timeout(WORLD_BUDGET_MS) });
-      if (!r.ok) return;
+      if (!r.ok && r.status !== 503) return;
       const h = await r.json();
-      tick.set(w.slug, { at: now(), tickMs: h.tickMs ?? null, clockRate: typeof h.clockRate === 'number' ? h.clockRate : null });
+      if (!r.ok) { if (h.glitches) tick.set(w.slug, { ...tick.get(w.slug), glitches: h.glitches }); return; }   // halted: its counts, and the last tick numbers stand
+      tick.set(w.slug, { at: now(), tickMs: h.tickMs ?? null, clockRate: typeof h.clockRate === 'number' ? h.clockRate : null, glitches: h.glitches ?? null });
     } catch { /* slow or busy: keep the last answer */ }
   }
   let rssCache = { at: 0, v: new Map() };
@@ -255,7 +256,7 @@ export function healthDash(o) {
       return { slug: w.slug, name: w.name ?? w.slug, template: w.template ?? null, status: st.status, viewers: o.live.get(w.slug) ?? 0,
         lastVisit: iso(kid?.lastUsed ?? w.lastLookAt ?? null), rssMb: st.pid ? rss.get(st.pid) ?? null : null, souls: s?.souls ?? w.souls ?? null,
         entities: s?.entities ?? w.entities ?? null, tickMs: h?.tickMs ?? null, clockRate: h?.clockRate ?? null, tickAt: iso(h?.at), lastEdit: iso(editAt(w.slug)),
-        restarts: st.restarts ?? 0, ...(st.restartsByReason ? { restartsByReason: st.restartsByReason } : {}), watchdogPort: st.healthPort ?? null, ...(st.held ? { held: st.held } : {}), ...(o.ceilings ? { limits: o.ceilings.limits(w.slug), refused: o.ceilings.refused(w.slug) } : {}), upSince: iso(st.upSince), lastExit: st.lastExit ? { code: st.lastExit.code ?? null, signal: st.lastExit.signal ?? null, at: iso(st.lastExit.at) } : null };
+        glitches: h?.glitches ?? null, ...(st.halted ? { halted: true } : {}), restarts: st.restarts ?? 0, ...(st.restartsByReason ? { restartsByReason: st.restartsByReason } : {}), watchdogPort: st.healthPort ?? null, ...(st.held ? { held: st.held } : {}), ...(o.ceilings ? { limits: o.ceilings.limits(w.slug), refused: o.ceilings.refused(w.slug) } : {}), upSince: iso(st.upSince), lastExit: st.lastExit ? { code: st.lastExit.code ?? null, signal: st.lastExit.signal ?? null, at: iso(st.lastExit.at) } : null };
     }).sort((a, b) => (b.viewers - a.viewers) || String(b.lastVisit ?? '').localeCompare(String(a.lastVisit ?? '')));
 
     const keeper = readJson(join(o.dataDir, 'keeper.json'));
@@ -291,6 +292,7 @@ export function healthDash(o) {
     if (d.host.disk && d.host.disk.freePct < 15) bad(`disk free ${d.host.disk.freePct}%`);
     for (const r of d.worlds) {
       if (r.status === 'failed' || r.status === 'restarting') bad(`${r.slug}: ${r.status} (restarts ${r.restarts})`);
+      if (r.halted) bad(`${r.slug}: halted, its clock has stopped and visitors get 503 (op.mjs glitches --world ${r.slug})`);
       if (r.tickMs && r.tickMs.avg > 50) warn(`${r.slug}: ticks average ${r.tickMs.avg} ms (budget 50 ms)`);
       if (typeof r.clockRate === 'number' && r.clockRate < 0.9) warn(`${r.slug}: clock running at ${Math.round(100 * r.clockRate)}%`);
     }
@@ -378,8 +380,10 @@ function render(d){
     +tile('Host check',h.check?(h.check.ok?'ok':'<span class="bad">'+esc(h.check.codes.join(', ')||'failed')+'</span>')+' <span class="muted">'+esc(ago(h.check.at))+'</span>':'—')+'</div>';
   s+='<h2>Worlds <span class="muted">'+d.totals.running+' running of '+d.totals.worlds+' · '+d.totals.viewers+' watching</span></h2><div class="wrap"><table><thead><tr><th>World</th><th>State</th><th class="n">Now</th><th>Last visit</th><th class="n">Souls</th><th class="n">Tick ms</th><th class="n">Clock</th><th class="n hide-s">RSS</th><th>Last god edit</th><th class="n hide-s">Restarts</th></tr></thead><tbody>'
     +d.worlds.map(w=>{const sc=w.status==='running'?'ok':w.status==='failed'||w.status==='restarting'?'bad':'muted',tk=w.tickMs;
-      return '<tr><td title="'+esc(w.slug)+'">'+esc(w.name)+'</td><td><span class="'+sc+'">'+esc(w.status)+'</span></td><td class="n">'+(w.viewers||'<span class="muted">0</span>')+'</td><td>'+esc(ago(w.lastVisit))+'</td><td class="n">'+fmt(w.souls)+'</td>'
+      return '<tr><td title="'+esc(w.slug)+'">'+esc(w.name)+'</td><td><span class="'+sc+'">'+esc(w.status)+'</span>'+(w.halted?' <span class="bad">halted</span>':'')+'</td><td class="n">'+(w.viewers||'<span class="muted">0</span>')+'</td><td>'+esc(ago(w.lastVisit))+'</td><td class="n">'+fmt(w.souls)+'</td>'
       +'<td class="n '+(tk&&tk.avg>50?'warn':'')+'">'+(tk?tk.avg+' <span class="muted">/ '+tk.max+'</span>':'—')+'</td><td class="n '+(w.clockRate!=null&&w.clockRate<0.9?'warn':'')+'">'+(w.clockRate==null?'—':Math.round(w.clockRate*100)+'%')+'</td><td class="n hide-s">'+fmt(w.rssMb,' MB')+'</td><td>'+esc(ago(w.lastEdit))+'</td><td class="n hide-s">'+w.restarts+'</td></tr>'}).join('')+'</tbody></table></div>';
+  const gl=d.worlds.flatMap(w=>Object.entries(w.glitches?w.glitches.byRule:{}).flatMap(([rule,by])=>Object.entries(by).map(([rung,n])=>({name:w.name,slug:w.slug,rule,rung,n}))));
+  s+='<h2>Glitches <span class="muted">'+gl.reduce((n,g)=>n+g.n,0)+' since each world began</span></h2>'+(gl.length?'<div class="wrap"><table><thead><tr><th>World</th><th>Rule</th><th>Rung</th><th class="n">Count</th></tr></thead><tbody>'+gl.map(g=>'<tr><td title="'+esc(g.slug)+'">'+esc(g.name)+'</td><td class="mono">'+esc(g.rule)+'</td><td>'+esc(g.rung)+'</td><td class="n">'+g.n+'</td></tr>').join('')+'</tbody></table></div>':'<p class="muted">None reported by a running world.</p>');
   s+='<h2>Releases and backups</h2><div class="wrap"><table><thead><tr><th>Stage</th><th>Build</th><th>Live since</th><th>Last backup</th><th class="n">Size added</th><th>Timer</th></tr></thead><tbody>'
     +d.stages.map(x=>{const b=x.backup;return '<tr><td>'+esc(x.stage)+(x.self?' <span class="chip">this</span>':'')+'</td><td class="mono">'+esc(x.build??'—')+'</td><td>'+esc(ago(x.since))+'</td><td>'+(b?(b.ok?'<span class="ok">ok</span>':'<span class="bad">failed</span>')+' '+esc(ago(b.at))+(b.source!=='record'?' <span class="muted">('+(b.source==='unit'?'backup unit':'dated copy')+'; first record after tonight’s backup)</span>':b.ok&&b.dbs!=null?' <span class="muted">'+b.dbsOk+'/'+b.dbs+' dbs</span>':''):'<span class="muted">'+(x.timer&&x.timer.enabled?'first record after tonight’s backup':'none')+'</span>')+'</td><td class="n">'+(b&&b.addedMb!=null?b.addedMb+' MB':'—')+'</td><td>'+(x.timer?(x.timer.enabled?esc(x.timer.result||'enabled'):'<span class="muted">off</span>'):'—')+'</td></tr>'}).join('')+'</tbody></table></div>'
     +'<p class="muted">Restore drill: '+(d.drill?esc(d.drill.name)+' · '+(d.drill.ok===true?'<span class="ok">ok</span> '+d.drill.dbsOk+'/'+d.drill.dbs+' dbs':d.drill.ok===false?'<span class="bad">failed</span>':'result unknown')+' · '+esc(ago(d.drill.at)):'none yet')+'</p>';
