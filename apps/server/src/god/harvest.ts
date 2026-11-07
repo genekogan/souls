@@ -5,7 +5,7 @@
 // before the contact changes nothing. What a vessel picks is data (core-kit/harvest.ts HARVEST): the basket takes tomatoes
 // from a fruiting planter, the vase a bunch of flowers from a flowering one. The planter grows again in the daily pass
 // (garden.ts). Only bodies given a picking act are read per tick (usually none): no scan of the world.
-import { opSchema, GROWTH_STAGES, harvestOf, type Harvest, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { opSchema, GROWTH_STAGES, harvestOf, type Harvest, type Op, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { handActuatorFrame, type HandActuatorMotion } from '../../../../mars/viewer/engine/social/hand-actuator.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
 
