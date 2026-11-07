@@ -10,7 +10,7 @@ const input=resolve(new URL('../../../',import.meta.url).pathname);
 async function accept(app,p){let done=false;p.then(()=>done=true,()=>done=true);for(let i=0;i<100&&!done;i++){app.host.drainInputs();await setImmediate();}return p;}
 async function complete(app,soul,capability){const result=await accept(app,app.edge.act(soul,{capability}));assert.ok(result.accepted,JSON.stringify(result));for(let i=0;i<45000;i++){app.host.tickOnce();if(i%20===0)await setImmediate();const r=app.edge.receipt(soul.soulId,result.receipt.id);if(!['started','waiting'].includes(r.phase)){assert.equal(r.phase,'completed',JSON.stringify(r));return;}}assert.fail('Construction did not finish');}
 test('native cast cannot borrow paired crew, safe pairing refuses active borrow, queued authority is revoked, and accepted history replays independently',async()=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-native-custody-'));let app;
+ const dir=mkdtempSync(join(tmpdir(),'souls-native-custody-'));let app;
  try{
   const options={input,dataDir:join(dir,'live'),worldKey:'mars',worldId:'mars-2026-1',port:4963};
   app=await openWorldServer(options);app.host.stop();app.brain.quiesce();
@@ -55,7 +55,7 @@ test('native cast cannot borrow paired crew, safe pairing refuses active borrow,
 });
 
 test('retired cast name reuse does not inherit native authority after restart',async()=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-native-roster-'));let app;
+ const dir=mkdtempSync(join(tmpdir(),'souls-native-roster-'));let app;
  try{
   const options={input,dataDir:dir,worldKey:'littlemartians',worldId:'littlemartians-1',port:4964};
   app=await openWorldServer(options);app.host.stop();app.brain.quiesce();

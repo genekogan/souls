@@ -1,6 +1,6 @@
 # Library conformance
 
-`@sim/conformance` sweeps the core definition library. It catches a change to a def revision, a generator, the
+`@souls/conformance` sweeps the core definition library. It catches a change to a def revision, a generator, the
 compiler, furnishing or gallery geometry that makes any core def fail to bake, place or furnish, or exceed its
 triangle/draw/material budget, at any sampled point. (The shared catalogue registry this package once belonged to is
 archived and gone.)
@@ -48,10 +48,15 @@ relax budgets, samples or gap checks to make a sweep pass.
 | `openings-20261105.json` | `core-tent@2` and `core-field-gate@1` (openings worked by hand); pins nothing |
 | `chalk-20261105.json` | `core-chalk-square@1` (pavement chalk on the painting faculty); pins nothing |
 | `record-player-20261105.json` | the new record player (#431, 368 triangles); pins nothing |
+| `repair-20261105.json` | `core-bench@2`, `core-cart@2` (a state-drawn break), `core-hammer@1`, `core-tyre-pump@1` (#442); pins nothing |
 | `swap-shelf-20261105.json` | `core-swap-shelf@1` (an open shelf on the container faculty, no door, a `leftBy` record); pins nothing |
+| `pantry-20261105.json` | `core-pantry@1`, `core-apple@1` and `core-bun@1` (a doorless container, food eaten from the hand); pins nothing |
 | `guestbook-20261105.json` | `core-guestbook@1` (a visitors' book on the sign-up faculty); pins nothing |
 | `lost-and-found-20261105.json` | `core-lost-and-found@1` (the swap shelf's form with an owner claim, `claim: "owner"`); pins nothing |
 | `hiding-places-20261105.json` | `core-hollow-stump@1` and `core-wall-niche@1` (doorless containers with `hidden: true`); pins nothing |
+| `litter-20261106.json` | `core-bin@2`, `core-wheelie-bin@2` (bins open at the top on the container faculty) and `core-wrapper@1` (litter); pins nothing |
+| `deck-20261106.json` | `core-rack-beam@4` (step-ledge joist seats), `core-deck-joist@1` and `core-plywood-sheet@2` (bearing connectors, a floor) (#694); pins nothing |
+| `stairs-20261106.json` | `core-rack-beam@5` (ledge seats take a stair hook), `core-deck-stair@1` and `core-deck-stair-tread@1` (stair hook, tread seats) (#695); pins nothing |
 
 Known findings are documented, not fixed: published revisions are immutable so existing worlds keep their geometry.
 Repair a range or budget in a new revision and pin what remains.

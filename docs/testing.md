@@ -1,6 +1,6 @@
 # Testing
 
-Sim has five layers of checks. Run the cheapest one that proves your change, and let the proof tier decide what a PR
+Souls has five layers of checks. Run the cheapest one that proves your change, and let the proof tier decide what a PR
 needs.
 
 | Layer | What | Where it runs |
@@ -17,7 +17,7 @@ All of them use fake minds and isolated data directories. None touches productio
 
 ```sh
 pnpm typecheck                               # every package (tsc --noEmit)
-pnpm --filter @sim/server test               # one package
+pnpm --filter @souls/server test               # one package
 node --test apps/server/src/god/buildsafe.test.ts   # one file
 pnpm test:mars                               # the vendored engine's deterministic suite
 pnpm test:client                             # Soul client and client-eval suites
@@ -70,7 +70,7 @@ A change that alters a def revision fails until a new supplement in that folder 
 same change, with the reason in its note and in the folder's README. Never edit an older supplement.
 
 ```sh
-pnpm --filter @sim/conformance test
+pnpm --filter @souls/conformance test
 node packages/conformance/bin/conformance.mjs --shard 1/4 --out .local/conformance-1.json   # bounded sweep
 ```
 
@@ -129,6 +129,14 @@ is behind main can still leave with `needs:rebase`. The decision is `windowFor` 
 loaded laptop. It is picked by its own paths (`tools/soul-actions`, `apps/server`, `packages/world-compiler`,
 `packages/engine-*`) and by every full-scope run, including each push to main, and a failure blocks through `ci-ok`. It
 is not a gate step, so the gate's suite tree and cached baseline don't change.
+
+**Self-hosted runners.** The heavy `qualify` legs run on the runners named by the repository variable
+`CI_HEAVY_RUNNER` when it is set (one label, such as `souls-ci`), else on GitHub-hosted runners; the browser `smoke`
+leg always stays GitHub-hosted. One runner instance takes one job at a time, so routing is only worth it with several
+instances online. `tools/ci/setup-runners.sh` sets them up on one Linux host, run there as root: N instances, each a
+systemd service under one dedicated unprivileged user, with the label, and Playwright's Chromium system packages when
+the OS has them (not Ubuntu 20.04). It is idempotent, takes the registration token as an argument and names no host;
+its header shows the one-line invocation from a workstation. The steward sets and clears `CI_HEAVY_RUNNER`.
 
 ## Remote gate
 
@@ -190,7 +198,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
   seats in a fake-mind world; Reviewer and Developer passes produce findings and scorecards. Measure on a quiet
   machine, two repeats per arm. [testing/playtests-cloud.md](testing/playtests-cloud.md) runs them in a cloud session.
 - [testing/swarm-director.md](testing/swarm-director.md): `node tools/playtest/playtest.mjs direct <cast>` directs
-  several Souls live from a cast file; the `sim-director` skill does it from a chat session.
+  several Souls live from a cast file; the `souls-director` skill does it from a chat session.
 - How to run and judge them: [process/playtest-method.md](process/playtest-method.md).
 
 ## What to run when
@@ -200,7 +208,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
 | Docs, tools only | links resolve; the tool's own tests if it has them |
 | Server or package logic | `node --test` on touched files, `tsc -p` of touched packages |
 | Anything that can move geometry, navigation or god builds | add the walk gate |
-| Web app | `pnpm --filter @sim/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
+| Web app | `pnpm --filter @souls/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
 | Library defs, generators, compiler | `library.test.ts` and `catalogue-checks.test.ts` (budgets and holds), conformance, plus a supplement when a revision changes |
 | Soul behaviour, navigation, engines | the above plus a scenario playtest with two repeats per arm |
 | Release head | the remote gate, then the release workflow (live walks and cdn-walk) |

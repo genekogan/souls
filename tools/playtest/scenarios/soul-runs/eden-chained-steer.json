@@ -33,7 +33,7 @@
               ],
               [
                 "act",
-                "join the balloon ride",
+                "object:ride-eden-balloon:join",
                 "--wait",
                 "120"
               ]
@@ -46,7 +46,7 @@
             "do": [
               [
                 "act",
-                "start the balloon",
+                "object:ride-eden-balloon:start",
                 "--wait",
                 "60"
               ]
@@ -63,7 +63,8 @@
               ],
               [
                 "act",
-                "fly to the library then fly north",
+                "object:ride-eden-balloon:steer",
+            "{\"to\":\"library\"}",
                 "--wait",
                 "30"
               ]

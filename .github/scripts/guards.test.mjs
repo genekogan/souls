@@ -26,7 +26,7 @@ test('scrub guard flags private values', () => {
 test('scrub guard passes neutral and documentation values', () => {
   for (const line of [
     'listen on 127.0.0.1:4000 or 0.0.0.0', 'docs use 192.0.2.10 and 10.0.0.2', 'version 1.2.3', 'node@22.20.0',
-    'import x from "@sim/web"', 'Co-Authored-By: Claude <noreply' + '@anthropic.com>', 'by someone' + '@users.noreply.github.com',
+    'import x from "@souls/web"', 'Co-Authored-By: Claude <noreply' + '@anthropic.com>', 'by someone' + '@users.noreply.github.com',
     'path /Users/you/project', 'git' + '@github.com:owner/repo.git', 'v1.2.3.4', 'resolver 8.8.8.8', 'key 7.2.3.0', 'fixture 93.184.215.14 # scrub-guard: allow',
     'unit sim-worlds' + '@production.service', 'https://user:pw' + '@host.example', '/home/sim/sim.env', 'rot=R' + '@np.array(row)', 'c=world' + '@f.center;', 'root' + '@unreachable.invalid',
   ]) assert.deepEqual(scrubLine(line), [], line);

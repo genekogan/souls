@@ -7,7 +7,7 @@
 // one later notice. Construction gets its own pair: when a build starts near a resident and when it is done.
 // Planning is pure and runs in the god request (bounded: top-level changes only, at most MAP_NOTICE.changes of them);
 // delivery waits for the request to finish (the bridge stages, then delivers on a microtask).
-import type { Diff, Entity, WorldModel } from '@sim/world-compiler';
+import type { Diff, Entity, WorldModel } from '@souls/world-compiler';
 import { inSite, siteLocal, type Site } from './builds.ts';
 import { thingName } from './walkout.ts';
 

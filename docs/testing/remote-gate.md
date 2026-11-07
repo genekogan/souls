@@ -41,6 +41,20 @@ fixed, quarantined and new failures. It never overwrites an output directory tha
 - Exit 0: `pass`, `quarantined` (only known, listed failures; inspect them before shipping) or `not-gated`.
 - `--dry-run` prints the plan (refs, scope, cache hit or miss, Modal runs) without contacting Modal or writing.
 
+### Running it from GitHub Actions
+
+`.github/workflows/gate.yml` runs the same command on a hosted runner with the repository's Modal secrets, so a gate
+no longer needs the maintainer's terminal:
+
+```sh
+gh workflow run gate.yml -f sha=<full sha> [-f baseline=<ref>] [-f scope=auto] [-f dry_run=true]
+```
+
+It shares release.yml's `release` concurrency group (one gate at a time), refuses a non-dry run once the day's runs of
+both workflows reach `modal_gates_per_day` (PROOF-POLICY.yml), keeps the baseline cache across runs with
+`actions/cache` keyed by baseline commit and Node version, and uploads `gate.log` and `receipt.json` as the
+`gate-<sha>` artifact. It ships nothing; the ship step is tracked by #519.
+
 ### What blocks
 
 - A failure not listed in `quarantine.json`, even one added to the list in the same change.

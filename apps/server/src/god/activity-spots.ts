@@ -7,7 +7,7 @@
 // to play it, a stage has a microphone and room for a band, the benches facing it are an audience. The ledger's own
 // activities code (edge/ledger/activities.ts) turns these spots into capabilities with ordinary body plans and receipts,
 // exactly as on the old worlds. Pure read of the entity world and the engine; cached until the god edits something.
-import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
+import type { Entity, StoredDef, WorldModel } from '@souls/world-compiler';
 import { seatOutOfReach } from '../../../../mars/viewer/engine/bodies/humanoid.ts';
 import type { SpotsData, Spot, Shelf } from '../edge/ledger/activities.ts';
 import { CATALOG } from '../../../../mars/viewer/engine/world/catalog.ts';

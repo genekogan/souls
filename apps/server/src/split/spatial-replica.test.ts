@@ -3,7 +3,7 @@
 // static change it rebuilds in place and agrees again. Flat and paged-ground worlds.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { groundFact } from '../../../../packages/engine-mars/src/ground-bridge.ts';
 import { emptyGround } from '../../../../packages/ground/src/index.ts';
 import { SpatialReplica, type ReplicaBody } from './spatial-replica.ts';

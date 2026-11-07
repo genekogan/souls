@@ -1,9 +1,9 @@
 {
-  "name": "@sim/library",
+  "name": "@souls/library",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "The shared object library across worlds (backlog M4, Gene's mini Thingiverse): publish a world's def to other worlds, version-pinned, author + licence recorded, restricted art never offered, one moderation seam. Builds only on @sim/world-compiler (core library + world-local defs).",
+  "description": "The shared object library across worlds (backlog M4, Gene's mini Thingiverse): publish a world's def to other worlds, version-pinned, author + licence recorded, restricted art never offered, one moderation seam. Builds only on @souls/world-compiler (core library + world-local defs).",
   "exports": {
     ".": "./src/index.ts"
   },

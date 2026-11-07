@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {commonsNewcomerResourcesFactory,retainedCommonsShoreFactory} from '@sim/engine-mars';
+import {commonsNewcomerResourcesFactory,retainedCommonsShoreFactory} from '@souls/engine-mars';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {WorldHost} from './world.ts';
 import {installCommonsProvisionCards} from './commons-provisions.ts';

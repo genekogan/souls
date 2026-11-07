@@ -1,4 +1,4 @@
-import type {MidContext,PurposeRecallV1} from '@sim/brain';
+import type {MidContext,PurposeRecallV1} from '@souls/brain';
 type Purpose=NonNullable<MidContext['purposes']>[number];
 export const PURPOSE_RECALL_LIMITS_V1=Object.freeze({entries:12,bytes:16_384,omittedRefs:12});
 const bytes=(value:unknown)=>new TextEncoder().encode(JSON.stringify(value)).length;

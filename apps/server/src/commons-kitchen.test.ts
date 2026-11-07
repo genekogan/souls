@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {commonsKitchenFactory,COMMONS_KITCHENS,COMMONS_PERSONAL_RESOURCES} from '@sim/engine-mars';
+import {commonsKitchenFactory,COMMONS_KITCHENS,COMMONS_PERSONAL_RESOURCES} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {installCommonsProvisionCards,followCommonsProvisionBirths} from './commons-provisions.ts';
 import {installCommonsKitchenCards,followCommonsKitchenBirths} from './commons-kitchen.ts';
 import {LivingWorld} from './living.ts';
 import {setImmediate} from 'node:timers/promises';
 import {WorldHost} from './world.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
 const factory=await commonsKitchenFactory({version:'commons-kitchen/2'});
 test('ordinary two-owner meal/preparation/serving conserves finite shared stock and exact snapshot/genesis; checkpoint preserves old state',async t=>{

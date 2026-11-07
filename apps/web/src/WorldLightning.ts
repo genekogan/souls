@@ -6,8 +6,8 @@
 // it is close, a long low rumble when it is far (WebAudio, synthesised; the browser lets it sound after the first click
 // or key). Presentation only; nothing here is authoritative.
 import * as THREE from 'three';
-import { strikesBetween, SOUND_MPS, type Strike } from '@sim/world-compiler';
-import { setWeatherInForce } from '@sim/world-compiler/weather-rules';
+import { strikesBetween, SOUND_MPS, type Strike } from '@souls/world-compiler';
+import { setWeatherInForce } from '@souls/world-compiler/weather-rules';
 import { warmSceneChange } from './gen-mesh/texture-budget.ts';
 import { arrivalMark, arrivalOver } from './arrival-marks.ts';
 import { audible } from './audio-focus.ts';

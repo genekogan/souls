@@ -56,7 +56,7 @@ fi
 # V1 types (all packages); known main-only errors: apps/server/src/edge-comms-manual-replay.test.ts (MERGE-GUIDE F5)
 step V1-types 1200 pnpm -r exec tsc --noEmit -p .
 # V2 builds: root (old worlds) and /worlds (launcher prefix)
-step V2-build-root 900 pnpm --filter @sim/web build
+step V2-build-root 900 pnpm --filter @souls/web build
 step V2-build-worlds 900 bash -c "cd apps/web && npx vite build --base /worlds/ --outDir $ROOT/.lane/web-worlds --emptyOutDir"
 # V3 package and engine suites (no ports)
 # Preserve actual executed-file proof for harness tests, including baseline loader repairs.

@@ -12,20 +12,20 @@
 // The object id is the entity id. Objects follow the entity world: re-derived on each god edit, removed with the thing.
 // No edge file changes: the kind registers on the ledger's comms objects when they exist; the read capability goes in
 // through the ledger's world-profile hook (as nav.ts's `walk:<path>`).
-import { checkersStatus, containerInside, gameStatus, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { checkersStatus, containerInside, gameStatus, type Entity, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { paintingLine } from '../art/art.ts';
 import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { readOnlyObjectAdvance, refreshOnlyObjectAdvance } from '../edge/comms/objects/framework.ts';
 import type { NearFilter, Objects } from '../edge/comms/objects/framework.ts';
 import { canonicalJson, stateDigest } from '../edge/comms/objects/table.ts';
-import { ACT_SIGHT, actionsOf, actuatedState, keptShut, kindActions, wrapAct, type Thing } from './actuators.ts';
+import { actionsOf, actuatedState, keptShut, kindActions, wrapAct, type Thing } from './actuators.ts';
 import { heldGodThing } from './held.ts';
 import { waterRole, wordOf } from './water.ts';
 import { economyOn } from './layers.ts';
 import { supportY } from './nav.ts';
 import { posterStale, worldDay } from './poster-boards.ts';
-import { posterList, signupNoun, wantedList } from '@sim/world-compiler';
+import { posterList, signupNoun, wantedList } from '@souls/world-compiler';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Vec2 = [number, number];
@@ -106,6 +106,8 @@ export type PerceiveHost = {
   commit?(ops: unknown[], note: string): { accepted: boolean };
   log(m: string): void;
   /** Entry 34 (watering.ts): "water <plant>" with a watering can from its hook. */
+  /** #442 (mending.ts): "repair <thing>" with the tool in hand, and whether a thing is whole (a whole one is no built object). */
+  mending?: { plan(soul: { entityId: string }, thing: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | { code: string; reason: string } | null; whole(id: string): boolean };
   watering?: { plan(soul: { entityId: string }, plant: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | { code: string; reason: string } | null; expect(body: string): void };
   /** Entry 43 (tea.ts): the kettle and cup acts. */
   tea?: { plan(soul: { entityId: string }, id: string, action: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | { code: string; reason: string } | null; expect(body: string): void };
@@ -164,21 +166,6 @@ export class GodPerceive {
   }
   /** Entry 42: a thing inside a container that is shut (a lantern in a closed locker). */
   private keptShut(id: string): boolean { const e = this.h.model.entities.get(id); return !!e && keptShut(this.h.model, e); }
-  /** #439: the checkers boards, found once per world version (never a scan per offer). */
-  private checkersIndex: { v: number; ids: string[] } | null = null;
-  /** #439: another checkers board within ACT_SIGHT where this Soul has a game in progress (not won): its name, or null. */
-  private gameElsewhere(soul: EdgeSoul, id: string): string | null {
-    const m = this.h.model, v = this.h.version?.() ?? -1;
-    if (!this.checkersIndex || this.checkersIndex.v !== v || v < 0) this.checkersIndex = { v, ids: [...m.entities.values()].filter((e) => m.resolvedDef(e.def)?.tags.includes('checkers')).map((e) => e.id) };
-    const b = this.h.engine.world.entities[soul.entityId]?.pose?.p; if (!b) return null;
-    for (const o of this.checkersIndex.ids) {
-      const e = m.entities.get(o), def = e && m.resolvedDef(e.def); if (o === id || !e || !def) continue;
-      const st = { ...actuatedState(e, def), ...(e.state ?? {}) }, ids = typeof st.textBy === 'string' && st.textBy ? st.textBy.split(',') : [];
-      if (!ids.includes(soul.soulId) || checkersStatus(st.text).winner) continue;
-      const wp = m.worldPose(e); if (Math.hypot(wp.x - b[0], wp.z - b[2]) <= ACT_SIGHT) return m.pathOf(o);
-    }
-    return null;
-  }
   private actHost() {
     return {
       // entry 42: a container is not shut on a hand that is putting something in or taking something out
@@ -191,11 +178,11 @@ export class GodPerceive {
         return busy ? { code: 'container.in-use', reason: `Someone's hand is in ${e.name ? m.pathOf(id) : 'it'}; wait until they are done.` } : null;
       },
       deferContacts: !!this.h.edge?.contactActuator,
+      repair: (soul: EdgeSoul, id: string) => this.h.mending?.plan(soul, id) ?? null,
       watering: (soul: EdgeSoul, id: string) => this.h.watering?.plan(soul, id) ?? null,
       wateringBegun: (soul: EdgeSoul) => this.h.watering?.expect(soul.entityId),
       tea: (soul: EdgeSoul, id: string, action: string) => this.h.tea?.plan(soul, id, action) ?? null,
       teaBegun: (soul: EdgeSoul) => this.h.tea?.expect(soul.entityId),
-      gameElsewhere: (soul: EdgeSoul, id: string) => this.gameElsewhere(soul, id),
       contactPlan:(soul:EdgeSoul,id:string,action:string,params?:Record<string,unknown>)=>this.h.edge?.contactActuator?.plan(soul,id,action,params)??null,
       policy:(id:string,soul:EdgeSoul,action:string)=>this.h.edge?.contactActuator?.policy(soul,id,action)??null,
       bodyAt: (soul: EdgeSoul): Vec2 | null => { const b = this.h.engine.world.entities[soul.entityId]; return b?.pose?.p ? [b.pose.p[0], b.pose.p[2]] : null; },
@@ -255,7 +242,7 @@ export class GodPerceive {
     const c = def.components as Record<string, unknown>;
     if (c.body || c.behavior || c.hover || /^core[-/]flag@/.test(def.ref) || this.h.engineOwned(e)) return null;
     if (keptShut(m, e)) return null;   // entry 42: kept in a shut drawer or locker: not a thing anyone sees until it is opened
-    const text = signText(e, def), acts = this.h.commit ? actionsOf(def).length > 0 : false;
+    const text = signText(e, def), acts = this.h.commit ? actionsOf(def).some((a) => a.name !== 'repair' || !this.h.mending?.whole(e.id)) : false;
     // LAYERS: an owned, priced or scheduled thing is seen as such (a loaf for sale, Ana's door, the café's hours)
     const lay = layersOn && layered(e) ? this.h.layers!.tag(e) : '';
     if (!e.name && text === null && !acts && !lay) return null;
@@ -480,7 +467,8 @@ export class GodPerceive {
     if (o.__godCaps) return; o.__godCaps = true;
     const original = o.capabilities.bind(o);
     o.capabilities = (...args) => original(...args).filter(cap =>
-      !(cap.object && this.desired.has(cap.object) && cap.blocked?.code === 'object.out-of-reach'));
+      // #442: a whole thing has nothing to repair (its row may lag a sync behind the state)
+      !(cap.object && this.desired.has(cap.object) && (cap.blocked?.code === 'object.out-of-reach' || cap.blocked?.code === 'repair.not-broken')));
   }
 
   /** `read:<sign>` for signs near this Soul: walk up to it and face it; the label carries its words. */

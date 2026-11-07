@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import {windowCode} from './god-ui/join-api.ts';
 import {reportAgentPresence,withLink} from './agent-presence.ts';
 import {pollInbox} from './inbox-poll.ts';

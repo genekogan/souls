@@ -63,7 +63,7 @@ def build(base: str = '/worlds/'):
         target = output / build_id
         target.mkdir()
         env['BUILD_ID'] = build_id
-        ok = run(build_id + '-build', ['pnpm', '--filter', '@sim/web', 'exec', 'vite', 'build',
+        ok = run(build_id + '-build', ['pnpm', '--filter', '@souls/web', 'exec', 'vite', 'build',
                  '--logLevel', 'warn', '--outDir', str(target / 'dist'), '--emptyOutDir', '--base', web_base], env)
         if ok:
             ok = run(build_id + '-precompress', ['node', 'tools/world-launcher/deploy/precompress.mjs',

@@ -1,7 +1,7 @@
 // Real Hono/Auth/SQLite/Souls. In-process local fixtures; no socket or paid mind.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { Auth, hashToken } from './auth.ts';
 import { Brain } from './brain.ts';
 import { config } from './config.ts';

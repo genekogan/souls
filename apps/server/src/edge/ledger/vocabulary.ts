@@ -28,6 +28,8 @@ export type VocabContext = {
   withheld?: string[];
   root: string[];
   me: [number, number] | null;
+  /** #435: whether this world thing is in this Soul's hand (a bare "eat it" means the food in her hand). */
+  holds?: (id: string) => boolean;
   /** Body yaw in world radians, facing (cos yaw, sin yaw); absence is unknown. */
   yaw?: number;
   /** Ids of the places the Soul is standing in (innermost first), when known: a stroll named for one of them is in place. */
@@ -59,7 +61,7 @@ export type VocabResult =
     verb?: string; places?: string[]};
 
 const STOP = new Set(['the', 'a', 'an', 'to', 'of', 'in', 'at', 'by', 'on', 'into', 'near', 'with', 'my', 'some', 'through', 'thru', 'around', 'across', 'over', 'back', 'please', 'little', 'bit', 'for', 'while', 'and', 'then', 'there']);
-const VERBS: Record<string, string> = {go: 'walk', goto: 'walk', 'go-to': 'walk', 'walk-to': 'walk', visit: 'walk', 'go-inside': 'walk', 'go-into': 'walk', 'go-in': 'walk', enter: 'walk', 'step-inside': 'walk', 'step-into': 'walk', 'walk-into': 'walk', 'walk-inside': 'walk', move: 'walk', head: 'walk', travel: 'walk', 'come-back': 'walk', return: 'walk', 'go-back': 'walk', 'head-back': 'walk', 'walk-back': 'walk', running: 'run', sprint: 'run', sprinting: 'run', hurry: 'run', jogging: 'jog', 'go-over': 'walk',
+const VERBS: Record<string, string> = {fix: 'repair', mend: 'repair', 'pump-up': 'repair', go: 'walk', goto: 'walk', 'go-to': 'walk', 'walk-to': 'walk', visit: 'walk', 'go-inside': 'walk', 'go-into': 'walk', 'go-in': 'walk', enter: 'walk', 'step-inside': 'walk', 'step-into': 'walk', 'walk-into': 'walk', 'walk-inside': 'walk', move: 'walk', head: 'walk', travel: 'walk', 'come-back': 'walk', return: 'walk', 'go-back': 'walk', 'head-back': 'walk', 'walk-back': 'walk', running: 'run', sprint: 'run', sprinting: 'run', hurry: 'run', jogging: 'jog', 'go-over': 'walk',
   hangout: 'hang-out', 'hang-around': 'hang-out', linger: 'hang-out', 'go-near': 'go-near', approach: 'go-near', join: 'go-near',
   'sit-on': 'sit', 'sit-at': 'sit', 'sit-down': 'sit', 'take-a-seat': 'sit', 'have-a-seat': 'sit', 'take-seat': 'sit', 'be-seated': 'sit', seat: 'sit', relax: 'rest',
   stroll: 'stroll', 'take-a-walk': 'stroll', 'take-a-stroll': 'stroll', 'go-for-a-walk': 'stroll', 'go-for-a-stroll': 'stroll', 'walk-through': 'stroll', 'stroll-through': 'stroll', wander: 'stroll', ramble: 'stroll', meander: 'stroll', explore: 'stroll',
@@ -268,6 +270,21 @@ const PLACE_VERBS = new Set(['walk', 'jog', 'run', 'jog-around', 'run-around', '
 const SPOT_PLACE_VERBS = new Set(['read']);
 const GAIT_VERBS = new Set(['jog', 'run', 'jog-around', 'run-around', 'cycle', 'cycle-around']);
 
+// #442: "repair the bench", "fix the cracked slat", "fix it", "pump up the tyre with the pump": the repair offer these words
+// name. "fix dinner" and "pump up the music" are not these words: nothing here is called that, so they fall through. A thing
+// that's here but not broken gets a refusal that says so.
+const REPAIR_WORDS = /^(?:please\s+)?(repair|fix|mend|pump\s+up)\s+(?:(?:the|that|this|my|a)\s+)?(.{1,60}?)(?:\s+with\s+(?:(?:the|a|my)\s+)?[a-z -]{1,30})?[.!]*$/;
+function repairWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
+  const m = REPAIR_WORDS.exec(text.trim()); if (!m) return null;
+  const ws = tokens(m[2]), offers = ctx.caps.filter(c => c.id.endsWith(':repair')), lone = /^(?:it|this|that)$/.test(m[2].trim());
+  if (lone && offers.length === 1) return {kind: 'alias', cap: offers[0], note: `${input} is ${offers[0].id} (${offers[0].label}).`};
+  const cap = offers.find(c => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')); return ws.every(w => tokenHit(w, all));});
+  if (cap) return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`};
+  if (m[1].startsWith('pump') || !ws.length) return null;
+  const here = ctx.caps.some(c => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')); return ws.every(w => tokenHit(w, all));});
+  return here ? {kind: 'unknown', code: 'repair.not-broken', reason: `That is not broken${offers.length ? `; what is: ${offers.map(c => c.label).join(', ')}` : ''}.`, didYouMean: offers.map(c => ({id: c.id, label: c.label}))} : null;
+}
+
 export function resolveCapability(input: string, ctx: VocabContext): VocabResult {
   const r = resolveWords(input, ctx);
   // R2 stroll (longrun 2026-10-16: nobody moved for 70 minutes): a stroll named for the place the Soul is already in, whose
@@ -302,21 +319,15 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
 }
 // #439 W093: a checkers move named by its two squares ("move c3 to d4", "jump from c3 to e5", "c3 to d4", "c3-d4") is the
 // move with those squares on the board where it can be played. Only while a checkers move is offered; the board's rules judge
-// it. A Soul with a game in progress plays it there: its other boards refuse a second game (`game.elsewhere`), so its own
-// board is the one available, or, out of turn, the one that says whose turn it is (`game.turn`). With no game in progress and
-// several boards that would take the move, the words name no board: they are refused with the choice, never a new game on
-// the nearest one.
+// it. #1084: a Soul with a game in progress plays it there: her own board's move says "in your game", and the words go to it,
+// or, out of turn, to the one that says whose turn it is (`game.turn`), never to a new game elsewhere. With no game of hers,
+// the nearest open board takes the move. A second game is started by acting on that board's own move.
 const CHECKERS_MOVE = /^(?:(?:please\s+)?(?:move|jump|play|take|capture|go)\s+)?(?:(?:the|my)\s+(?:piece|man|king|checker)\s+)?(?:(?:on|at|from)\s+)?([a-h][1-8])\s*(?:-|x|to|onto|over\s+to|and\s+jump\s+to|jumping\s+to|\s)\s*([a-h][1-8])(?:\s+on\s+the\s+(?:checkers\s+|game\s+)?board)?$/;
 function checkersWords(input: string, ctx: VocabContext): VocabResult | null {
   const caps = ctx.caps.filter(c => c.verb === 'object' && c.action === 'move' && /checkers/i.test(c.label)); if (!caps.length) return null;
   const m = CHECKERS_MOVE.exec(input.toLowerCase().replace(/[.!?\s]+$/, '').trim()); if (!m) return null;
-  const open = caps.filter(c => c.available);
-  if (open.length > 1) {
-    const named = [...open].sort((a, b) => dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
-    const which = named.map(c => /\(([^()]*)\)$/.exec(c.label)?.[1] ?? c.id);
-    return {kind: 'unknown', code: 'game.which-board', reason: `${named.length} checkers boards here would start a game with ${m[1]} to ${m[2]}: ${which.join(', ')}. Say which: act on that board's move with from ${m[1]} and to ${m[2]}.`, didYouMean: named.map(c => ({id: c.id, label: c.label}))};
-  }
-  const rank = (c: EdgeCapability) => (c.available ? 0 : c.blocked?.code === 'game.turn' ? 1 : c.blocked?.code === 'game.elsewhere' ? 3 : 2);
+  const mine = (c: EdgeCapability) => /, in your game \([^()]*\)$/.test(c.label);
+  const rank = (c: EdgeCapability) => (mine(c) ? (c.available ? 0 : c.blocked?.code === 'game.turn' ? 1 : 2) : c.available ? 3 : c.blocked?.code === 'game.turn' ? 4 : 5);
   const cap = [...caps].sort((a, b) => rank(a) - rank(b) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id))[0]!;
   return {kind: 'alias', cap, params: {from: m[1], to: m[2]}, note: `${input} is ${cap.id} (${cap.label}: ${m[1]} to ${m[2]}).`};
 }
@@ -324,10 +335,15 @@ function checkersWords(input: string, ctx: VocabContext): VocabResult | null {
 // bowl's take from inside it. A shut container's contents are never offered: its words name its open offer instead.
 // #435: an open shelf a Soul keeps things on (a swap shelf) is a container too: "leave the bowl on the swap shelf" and
 // "take the bowl off the swap shelf". "on" is a put-in only when no surface by those words is on offer (a table stays put-on).
-const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip|hide|stash)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
+const STOW = /^(?:please\s+)?(?:put|place|stow|store|keep|leave|set|pop|tuck|slip|hide|stash|stock|throw|chuck|toss)\s+(?:away\s+)?(.+?)\s+(in|into|inside|in\s+to|away\s+in|on|onto|on\s+to)\s+(.+?)[.!]?$/;
 const UNSTOW = /^(?:please\s+)?(?:take|get|fetch|remove|grab|lift|pull|pick\s+up|pick)\s+(.+?)\s+(?:out\s+of|out\s+from|from\s+inside|from\s+in|from|off\s+of|off)\s+(.+?)[.!]?$/;
+// #435: "stock the pantry with the apple" is a put of the apple in the pantry
+const STOCK = /^(?:please\s+)?(?:re)?stock\s+(.+?)\s+with\s+(.+?)[.!]?$/;
+// #1088 (W065): "throw the wrapper away", "throw away the litter", "bin it" put a held thing in the nearest bin on offer
+const THROW_AWAY = /^(?:please\s+)?(?:(?:throw|chuck|toss)\s+(?:away\s+(.+?)|(.+?)\s+away)|bin\s+(.+?))[.!]?$/;
 function storeWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
-  const put = STOW.exec(text), take = put ? null : UNSTOW.exec(text), m = put ?? take; if (!m) return null;
+  const stock = STOCK.exec(text), away = THROW_AWAY.exec(text);
+  const put: string[] | null = stock ? [text, stock[2], 'in', stock[1]] : away ? [text, away[1] ?? away[2] ?? away[3] ?? 'it', 'in', 'bin'] : STOW.exec(text), take = put ? null : UNSTOW.exec(text), m = put ?? take; if (!m) return null;
   const verb = put ? 'put-in' : 'pick-up', pool = ctx.caps.filter(c => c.verb === verb); if (!pool.length && put) return null;
   const words = (x: string) => tokens(x).filter(w => !['the', 'a', 'an', 'my', 'your', 'it', 'its', 'of', 'top'].includes(w));
   const thing = words(m[1]), box = words(put ? m[3] : m[2]), hits = (c: EdgeCapability, ws: string[]) => {const t = ctx.target(c), all = tokens([c.id, c.label, ...t.names].join(' ')); return ws.every(w => tokenHit(w, all) || (SYNONYMS[w] ?? []).some(s => tokenHit(s, all)));};
@@ -384,6 +400,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   }
   const text = input.toLowerCase(), colon = text.indexOf(':'), head = colon >= 0 ? text.slice(0, colon) : '';
   const stow = colon < 0 ? storeWords(input, text, ctx) : null; if (stow) return stow;
+  const mend = colon < 0 ? repairWords(input, text, ctx) : null; if (mend) return mend;
   const searching = colon < 0 ? searchWords(input, text, ctx) : null; if (searching) return searching;
   // RESOLVE (SOULSIM-E "find a boat": no "find" capability): find / look for / search for X is a walk to the nearest X you
   // can reach, unless the words name an activity offered here ("find somewhere quiet to read", "find a seat" keep theirs)
@@ -502,6 +519,15 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     // gets the mug's own answer (pick it up first, drink it first)
     if (pool.length && (want === 'drink' || want === 'sip' || want === 'wash') && !pool[0].available && !/\b(?:tea|cup|mug)\b/.test(text)) pool.length = 0;
     if (pool.length) return {kind: 'alias', cap: pool[0], note: `${input} is ${pool[0].id} (${pool[0].label}).`};
+    // #435: "eat the apple", "finish the apple", "have the bun", "take a bite of the bun" name a food wherever it is; "eat it"
+    // and "have a bite" mean the food in her hand. Nothing in the hand and no food named keeps the word's old meaning (a table's
+    // eat, the ledger's held food).
+    const bite = /^(?:please\s+)?(?:(?:have|take)\s+(?:a\s+)?bite(?:\s+(?:of|out\s+of)\s+(.+?))?|bite\s+(?:into\s+)?(.+?))[.!]?$/.exec(text), eat = bite ? null : /^(?:please\s+)?(?:eat|finish|have)(?:\s+(?:up|off))?(?:\s+(.+?))?[.!]?$/.exec(text);
+    if (bite || eat) {
+      const words = tokens(bite?.[1] ?? bite?.[2] ?? eat?.[1] ?? '').filter(w => !['the', 'a', 'an', 'my', 'your', 'this', 'that', 'it', 'up', 'off', 'of'].includes(w));
+      const foods = acts.filter(c => c.action === (bite ? 'bite' : 'eat') && (words.length ? (t => words.every(w => tokenHit(w, t)))(tokens([c.label, ...ctx.target(c).names].join(' '))) : c.available && !!c.object && !!ctx.holds?.(c.object))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id));
+      if (foods[0]) return {kind: 'alias', cap: foods[0], note: `${input} is ${foods[0].id} (${foods[0].label}).`};
+    }
     // entry 44: "offer Ben the tea", "give the cup of tea to Ben": the hand-over of the held mug to that Soul (entry 41's
     // give:<soul>, offered only while a world thing is held and the Soul is in sight)
     const serve = /^(?:please\s+)?(?:offer|give|hand|pass|serve|bring)\s+(?:(?!the\b|my\b|this\b|that\b|your\b)([a-z][\w' -]*?)\s+(?:(?:the|my|this|that|your|a)\s+)?(?:(?:cup|mug)\s+of\s+tea|tea|cup|mug|it)|(?:(?:the|my|this|that|your|a)\s+)?(?:(?:cup|mug)\s+of\s+tea|tea|cup|mug|it)\s+to\s+([a-z][\w' -]*?))[.!]?$/.exec(text);
