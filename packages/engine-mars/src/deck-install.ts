@@ -163,8 +163,8 @@ function letGo(rt: Runtime, ex: SeatExec) {
 /** PC17 (#696): one step of the crew backing clear of where the part now is. `moved` while someone steps; a named wait while
  *  a person, a carried load or something solid stands behind them (a person is asked to move, and nobody is stepped into
  *  anything); null once everyone is clear. Letting go short of clear would leave a body inside what now stands there. */
-function stepClear(rt: Runtime, ex: SeatExec, part: Entity, clear: number, dt: number): 'moved' | Diagnostic | null {
-  const size = def(part.def).size, obb = { c: [ex.prog.target.p[0], ex.prog.target.p[2]] as Vec2, half: [size[0] / 2, size[2] / 2] as Vec2, yaw: ex.prog.target.yaw }, g = (rt.services.spatial as Spatial).level(0);
+function stepClear(rt: Runtime, ex: SeatExec, part: Entity, clear: number, dt: number, at: Pose): 'moved' | Diagnostic | null {
+  const size = def(part.def).size, obb = { c: [at.p[0], at.p[2]] as Vec2, half: [size[0] / 2, size[2] / 2] as Vec2, yaw: at.yaw }, g = (rt.services.spatial as Spatial).level(0);
   const loads = ((rt.services.loadDiscs?.() ?? []) as { p: Vec2; r: number; entity: string; crew: string[] }[]);
   let moved = false, held: Diagnostic | null = null;
   for (const c of ex.crew) {
@@ -237,8 +237,9 @@ export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind
       }
       const ls = ex.backing || liftStep(rt, ex, dt);
       if (ls !== true) return ls ? { status: 'blocked', diagnostic: ls } : { status: 'running', phase: ex.lowering ? 'lower' : 'lift' };
-      if (o.stepBack && !ex.lowering) {
-        const back = stepClear(rt, ex, part, o.stepBack, dt);
+      if (o.stepBack) {
+        // set or lowered, it stands on the ground when they let go: clear of where it ends up, either way
+        const back = stepClear(rt, ex, part, o.stepBack, dt, ex.lowering ? ex.start : ex.prog.target);
         if (back) { ex.backing = true; return back === 'moved' ? { status: 'running', phase: 'lift' } : { status: 'blocked', diagnostic: back }; }
       }
       letGo(rt, ex);

@@ -111,7 +111,7 @@ async function build(w, host, pairs, {yaw = 0, max = +(process.env.BAY_MAX ?? 90
 }
 
 const CREW = ['Ada', 'Bo', 'Cy', 'Dee', 'Eve', 'Fay'];
-for (const yaw of [0, 0.6]) test(`R3: six Souls build the bay through the offers they are given, facing ${yaw}, and a Soul who built none of it walks up`, {timeout: 900000}, async (t) => {
+for (const yaw of [0, 0.6, 2.356]) test(`R3: six Souls build the bay through the offers they are given, facing ${yaw}, and a Soul who built none of it walks up`, {timeout: 900000}, async (t) => {
   const w = await world(t, {names: [...CREW, 'Gil']}), {Ada, Bo, Cy, Dee, Eve, Fay, Gil} = w.souls;
   const {P} = await yard(w, {yaw});
   await w.at(Gil, ...P(-7, 7));
@@ -126,6 +126,7 @@ for (const yaw of [0, 0.6]) test(`R3: six Souls build the bay through the offers
   };
   const {pj} = await build(w, Ada, [[Ada, Bo], [Cy, Dee], [Eve, Fay]], {yaw, each});
   const v = see(w, Ada, pj).state;
+  assert.equal(glitches(w), 0, 'no fault was recovered on the way');
   assert.equal(v.joints.made, 29); assert.equal(v.complete, true); assert.equal(v.nobodyHolds, true); assert.equal(v.checkpoint, 'deck-stairs');
   const r = await walk(w, Gil, 'sheet'); await until(w, () => ['completed', 'failed', 'replaced'].includes(w.edge.receipt(Gil.soulId, r.receipt.id)?.phase), 3000);
   assert.equal(w.edge.receipt(Gil.soulId, r.receipt.id).phase, 'completed', JSON.stringify(w.edge.receipt(Gil.soulId, r.receipt.id)));
@@ -304,23 +305,23 @@ test('R5: a crew stops short of another crew\'s load, by name', {timeout: 120000
   assert.equal(w.host.clockFailure, undefined); assert.ok(pj);
 });
 
-test('R4: a stop as a flight\'s crew steps clear lowers it, and says so', {timeout: 300000}, async (t) => {
-  const w = await world(t), {Ada, Bo, Cy, Dee, Eve, Fay} = w.souls; await yard(w);
+for (const [yaw, when] of [[0, 'back'], [0.6, 'lift'], [0.6, 'back'], [2.356, 'lift'], [2.356, 'back']]) test(`R4: a stop of a flight's lift (${when}, facing ${yaw}) lowers it, says so, and leaves nobody inside it`, {timeout: 300000}, async (t) => {
+  const w = await world(t), {Ada, Bo, Cy, Dee, Eve, Fay} = w.souls; await yard(w, {yaw});
   const rt = w.host.engine.rt, tick = w.tick; let done = null;
   w.tick = async (n = 5) => {
     for (let i = 0; i < n; i++) {
       await tick(1);
-      const l = [...rt.live.values()].find((x) => x.exec?.backing);
+      const l = [...rt.live.values()].find((x) => x.rec.verb === 'install_flight_v1' && (when === 'back' ? x.exec?.backing : x.exec?.phase === 'lift' && x.exec.t > 0.5));
       if (l && !done) {
         const s = Object.values(w.souls).find((x) => x.entityId === l.exec.crew[0]), run = w.edge.together.sharedRunning(s.soulId);
-        ok(await act(w, s, {capability: `stop-carry:${run.op}`})); await tick(80); done = {s, part: w.E()[l.exec.part]};
+        ok(await act(w, s, {capability: `stop-carry:${run.op}`})); done = {s, part: w.E()[l.exec.part]}; await tick(400);
         throw new Error('stopped');
       }
     }
   };
-  await assert.rejects(build(w, Ada, [[Ada, Bo], [Cy, Dee], [Eve, Fay]]), /stopped/);
-  await tick(200); assert.equal(done.part.phase, 'staged'); assert.ok(heard(w, done.s, /flight was lowered back/), 'the crew hears what happened'); assert.equal(w.host.clockFailure, undefined);
-  assert.equal(glitches(w), 0);
+  await assert.rejects(build(w, Ada, [[Ada, Bo], [Cy, Dee], [Eve, Fay]], {yaw}), /stopped/);
+  assert.equal(w.E()[done.part.id].phase, 'staged'); assert.ok(heard(w, done.s, /flight was lowered back/), 'the crew hears what happened'); assert.equal(w.host.clockFailure, undefined);
+  assert.equal(glitches(w), 0, 'no fault, no recovery');
 });
 
 test('R5: someone busy behind a flight\'s crew holds them by name, and a stop lowers it: no fault on a real host', {timeout: 300000}, async (t) => {
