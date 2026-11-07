@@ -28,16 +28,20 @@ export const S = {
   // 0 = not measured yet. admission.ts reads it for the frame budget (frameBudgetMs).
   quietTickMs: 28,
   halted: 29,      // 1 once the world's clock has stopped (a fault or a durability failure, #1150): the launcher alerts on it
-  size: 30,
+  // CW3 (#737): series the launcher's /__sim/metrics already mapped but nothing wrote. elu: event-loop utilization of
+  // the last closed 5 s window (-1 = no window closed yet); gcMsTotal: GC pause ms since the process started (never
+  // reset, so a scrape sees every pause); ticksLateTotal: ticks whose own run took longer than their 50 ms budget.
+  elu: 30, gcMsTotal: 31, ticksLateTotal: 32,
+  size: 33,
 } as const;
 
 export type LiveJson = {
   v: 1; pid: number; at: number; phase: Phase;
   boot?: {stage: BootStage; tick: number; target: number};
-  loop: {lastTurnAgeMs: number; delayP99Ms: number};
+  loop: {lastTurnAgeMs: number; delayP99Ms: number; elu?: number};
   /** quietAvgMs: the tick's own average ms in quiet windows (EWMA; 0 = not measured yet), which sets the frame budget. */
-  tick?: {world: number; service5s: number; p99Ms: number; quietAvgMs: number};
-  heap: {usedMb: number; limitMb: number; gcPct10s: number};
+  tick?: {world: number; service5s: number; p99Ms: number; quietAvgMs: number; lateTotal: number};
+  heap: {usedMb: number; limitMb: number; gcPct10s: number; gcSecondsTotal: number};
   level: Level;
   queue?: {depth: number; oldestMs: number};
   souls?: {awake: number; waiting: number; connected: number};
@@ -52,24 +56,24 @@ export type LiveJson = {
 /** The routes a read worker answers itself, by mode (S.readMode): what the launcher may route to its port. */
 export const READ_ROUTES: Record<number, string[]> = {1: ['here', 'capabilities'], 2: ['here', 'observe', 'capabilities', 'resolve', 'view']};
 
-export const newSharedLoad = () => new Float64Array(new SharedArrayBuffer(S.size * Float64Array.BYTES_PER_ELEMENT));
+export const newSharedLoad = () => { const a = new Float64Array(new SharedArrayBuffer(S.size * Float64Array.BYTES_PER_ELEMENT)); a[S.elu] = -1; return a; };
 /** The process's one shared array (the watchdog gets this buffer). Tests make their own with newSharedLoad(). */
 export const sharedLoad = newSharedLoad();
 sharedLoad[S.lastTurnAt] = Date.now();
 attachBootSlots(sharedLoad, S.boot);   // boot-progress.ts writes phase + replay progress straight into this buffer
 
-const r1 = (x: number) => Math.round(x * 10) / 10, r2 = (x: number) => Math.round(x * 100) / 100;
+const r1 = (x: number) => Math.round(x * 10) / 10, r2 = (x: number) => Math.round(x * 100) / 100, r3 = (x: number) => Math.round(x * 1000) / 1000;
 /** live.json from the shared numbers (pure: the worker calls it, and so do tests). */
 export function liveOf(a: Float64Array, pid: number, now: number): LiveJson {
   const bp = readBootProgress(a, S.boot), phase: Phase = bp.phase ?? 'boot:restore', serving = phase === 'serving' || phase === 'stopping';
   const turn = Math.max(a[S.lastTurnAt], a[S.boot + BOOT_SLOT.at] || 0);
   const out: LiveJson = {v: 1, pid, at: now, phase,
-    loop: {lastTurnAgeMs: Math.max(0, Math.round(now - turn)), delayP99Ms: Math.round(a[S.loopP99Ms])},
-    heap: {usedMb: Math.round(a[S.heapUsedMb]), limitMb: Math.round(a[S.heapLimitMb]), gcPct10s: r1(a[S.gcPct10s])},
+    loop: {lastTurnAgeMs: Math.max(0, Math.round(now - turn)), delayP99Ms: Math.round(a[S.loopP99Ms]), ...(a[S.elu] >= 0 ? {elu: r3(a[S.elu])} : {})},
+    heap: {usedMb: Math.round(a[S.heapUsedMb]), limitMb: Math.round(a[S.heapLimitMb]), gcPct10s: r1(a[S.gcPct10s]), gcSecondsTotal: r3(a[S.gcMsTotal] / 1000)},
     level: LEVELS[a[S.level]] ?? 'green', shed: {reads: a[S.shedReads], acts: a[S.shedActs]}};
   if (phase.startsWith('boot:')) out.boot = {stage: (bp.boot?.stage ?? 'restore') as BootStage, tick: bp.boot?.tick ?? 0, target: bp.boot?.target ?? 0};
   if (serving) {
-    out.tick = {world: a[S.worldTick], service5s: r2(a[S.service5s]), p99Ms: r1(a[S.tickP99Ms]), quietAvgMs: r1(a[S.quietTickMs])};
+    out.tick = {world: a[S.worldTick], service5s: r2(a[S.service5s]), p99Ms: r1(a[S.tickP99Ms]), quietAvgMs: r1(a[S.quietTickMs]), lateTotal: a[S.ticksLateTotal]};
     out.queue = {depth: a[S.queueDepth], oldestMs: Math.round(a[S.queueOldestMs])};
     out.souls = {awake: a[S.awake], waiting: a[S.waiting], connected: a[S.connected]};
   }
