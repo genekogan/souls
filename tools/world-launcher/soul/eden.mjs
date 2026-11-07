@@ -543,7 +543,7 @@ function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
     // An id standing in for a name until a name turned up is not a rename; nor does a name go back to an id.
     const bare = n => n === value || value.endsWith(`:${n}`);
     if (bare(name)) return;
-    if (!bare(old.name)) (old.formerly ??= []).push({name: old.name, day: dayOf(e), at: e.at});
+    if (!bare(old.name)) old.formerly = [...(old.formerly ?? []), {name: old.name, day: dayOf(e), at: e.at}].slice(-8);
     old.name = name;
   };
   const meet = (p, at, where, together = false, e = null) => {
@@ -758,7 +758,7 @@ import * as soulMemory$fs from "node:fs";
 import * as soulMemory$crypto from "node:crypto";
 import * as soulMemory$path from "node:path";
 const soulMemory = (() => {
-const { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } = soulMemory$fs;
+const { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } = soulMemory$fs;
 const { createHash, randomBytes } = soulMemory$crypto;
 const { join, relative } = soulMemory$path;
 const { openMemoryFolder } = soulRecords;
@@ -774,7 +774,7 @@ const { openMemoryFolder } = soulRecords;
 const TERMINAL = new Set(["completed", "failed", "replaced"]);
 /** How close a Soul has to be for a first meeting: the distance `here` counts as local. */
 const NEAR_METRES = 8;
-const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20;
+const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20, LOCK_OLD_MS = 10_000, PLACE_ID_MAX = 200;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/;
 const sha = (v) => createHash("sha256").update(typeof v === "string" ? v : JSON.stringify(v)).digest("hex");
 const clip = (v, max) => { const t = String(v ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim(); return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t; };
@@ -817,21 +817,39 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
   }
 
   // A Soul's serve and a chat in the same home can both write: the log takes one writer at a time, and a writer that finds
-  // the log moved under it opens it again. A holder that died is passed over; a live one is waited for, then reported, and
-  // nothing else may touch its lock. Everything else stays what memory-folder.mjs says: a torn log fails closed.
+  // the log moved under it opens it again. A holder that died, or a lock older than any write takes, is passed over, one
+  // writer at a time; a live one is waited for, then reported. Everything else stays what memory-folder.mjs says: a torn log
+  // fails closed.
   let records = null;
   const openRecords = () => openMemoryFolder(soulDir, { logs: join("memory", "log") });
+  const lockGone = (file) => { try { return Date.now() - statSync(file).mtimeMs > LOCK_OLD_MS; } catch { return false; } };
+  function lockStale() {
+    const holder = Number(readFileSync(lock, "utf8").split(":")[0]);
+    return (Number.isSafeInteger(holder) && holder > 0 && !pidAlive(holder)) || lockGone(lock);
+  }
+  /** Reading a lock and removing it are two steps, so a takeover is itself one writer at a time, and looks again first. */
+  function passOver() {
+    const steal = `${lock}.steal`;
+    try { closeSync(openSync(steal, "wx", 0o600)); }
+    catch (e) { if (e.code !== "EEXIST") throw e; if (lockGone(steal)) { try { unlinkSync(steal); } catch { /* someone did */ } } return; }
+    try { if (lockStale()) unlinkSync(lock); }
+    catch (e) { if (e.code !== "ENOENT") throw e; }
+    finally { try { unlinkSync(steal); } catch { /* someone did */ } }
+  }
   function takeLock() {
     const mine = `${process.pid}:${randomBytes(6).toString("hex")}`;
     mkdirSync(join(soulDir, "runtime"), { recursive: true, mode: 0o700 });
     for (let i = 0; i < LOCK_TRIES; i++) {
-      try { const fd = openSync(lock, "wx", 0o600); writeSync(fd, mine); closeSync(fd); return mine; }
-      catch (e) { if (e.code !== "EEXIST") throw e; }
-      let holder;
-      try { holder = Number(readFileSync(lock, "utf8").split(":")[0]); }
+      let fd = null;
+      try { fd = openSync(lock, "wx", 0o600); writeSync(fd, mine); closeSync(fd); return mine; }
+      catch (e) {
+        if (fd !== null) { try { closeSync(fd); } catch { /* closed */ } try { unlinkSync(lock); } catch { /* gone */ } throw e; }
+        if (e.code !== "EEXIST") throw e;
+      }
+      let stale;
+      try { stale = lockStale(); }
       catch (e) { if (e.code === "ENOENT") continue; throw new Error(`memory: ${e.message}`); }
-      if (Number.isSafeInteger(holder) && holder > 0 && !pidAlive(holder)) { try { unlinkSync(lock); } catch { /* the next try says */ } continue; }
-      sleepMs(LOCK_WAIT_MS);
+      if (stale) passOver(); else sleepMs(LOCK_WAIT_MS);
     }
     throw new Error("memory: another writer holds the lock; nothing was written");
   }
@@ -868,11 +886,12 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
   }
   /** What this place goes by: what the world just said, else what this memory knows, else its id until a name turns up. */
   const nameOf = (r, key, said) => clip(said, 200) || r.placeName(key) || (key === worldKey(world, presence.place) ? presence.placeName : null) || key.slice(world.length + 1);
-  const arrived = (r, when, placeId, said) => {
-    if (typeof placeId !== "string" || !placeId || placeId === presence.place) return false;
+  const arrived = (r, when, rawPlace, said) => {
+    const placeId = typeof rawPlace === "string" ? clip(rawPlace, PLACE_ID_MAX) : "";
+    if (!placeId || placeId === presence.place) return false;
     const place = worldKey(world, placeId), name = nameOf(r, place, said);
     const wrote = fold(r, `arrival:${world}:${when.tick ?? when.real}:${placeId}`, { type: "arrival", placeId: place, when, seen: seenOf([[place, name]]) });
-    writePresence({ place: clip(placeId, 200), placeName: name, lastSeen: when, worldDay: when.worldDay, time: when.time });
+    writePresence({ place: placeId, placeName: name, lastSeen: when, worldDay: when.worldDay, time: when.time });
     return wrote;
   };
   const here = (r) => { const key = typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null; return key ? [key, nameOf(r, key)] : [null, null]; };
@@ -890,7 +909,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
     let produced = unique(rows(out.produced, 32).flatMap((o) => (safeId(o.id) ? [{ id: o.id, title: clip(o.title, 200) || o.id, kind: clip(o.kind, 200) || "thing", where: where(o.where) }] : [])));
     // A changing source is a new reading, not a conflict: each fact keeps its own version of the source.
     let learned = unique(rows(out.learned, 5).flatMap((f) => {
-      const fact = clip(f.fact, 2000), provenance = clip(f.provenance === "authored-content" ? "authored-fiction" : f.provenance, 100) || "world-fact", untrusted = !!f.untrusted || ["soul-text", "other-soul-report"].includes(f.provenance);
+      const fact = clip(f.fact, 2000), said = clip(f.provenance, 100), provenance = (said === "authored-content" ? "authored-fiction" : said) || "world-fact", untrusted = !!f.untrusted || ["soul-text", "other-soul-report"].includes(said);
       if (!fact || typeof f.about !== "string" || !f.about) return [];
       const about = worldKey(world, f.about), source = `${world}:${clip(f.source ?? f.about, 900)}#${sha([fact, about, provenance, untrusted]).slice(0, 12)}`;
       return [{ id: source, fact, about, source, provenance, untrusted }];
@@ -925,7 +944,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
       const me = frame?.me; if (!me) return;
       const when = clockAt({ real: now(), tick: frame.tick, time: frame.clock, worldDay: dayFrom(frame.now) });
       const near = rows(frame.near, 64).filter((p) => typeof p.dist === "number" && p.dist <= NEAR_METRES);
-      const placeId = typeof me.place === "string" ? me.place : null;
+      const placeId = typeof me.place === "string" ? clip(me.place, PLACE_ID_MAX) || null : null;
       if ((placeId && placeId !== presence.place) || near.length) withRecords((r) => {
         arrived(r, when, placeId, me.placePath?.[0]);
         for (const p of near) met(r, when, p);

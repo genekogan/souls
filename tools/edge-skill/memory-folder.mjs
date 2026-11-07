@@ -141,7 +141,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
     // An id standing in for a name until a name turned up is not a rename; nor does a name go back to an id.
     const bare = n => n === value || value.endsWith(`:${n}`);
     if (bare(name)) return;
-    if (!bare(old.name)) (old.formerly ??= []).push({name: old.name, day: dayOf(e), at: e.at});
+    if (!bare(old.name)) old.formerly = [...(old.formerly ?? []), {name: old.name, day: dayOf(e), at: e.at}].slice(-8);
     old.name = name;
   };
   const meet = (p, at, where, together = false, e = null) => {
