@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {openJournal} from './journal.mjs';
 import {DECISION_SCHEMA,parseDecision,retainDecision,applyPendingDecision,decisionProgress,saveRecoveryCheckpoint,RECOVERY_METADATA_BYTES} from './decision.mjs';
 import {boundedFacts} from './context.mjs';
-function fixture(t){const dir=mkdtempSync(join(tmpdir(),'sim-decision-'));const j=openJournal(dir,{worldId:'w',soulId:'s'});t.after(()=>{j.close();rmSync(dir,{recursive:true,force:true})});return {j,dir,fence:j.control.claim('test')};}
+function fixture(t){const dir=mkdtempSync(join(tmpdir(),'souls-decision-'));const j=openJournal(dir,{worldId:'w',soulId:'s'});t.after(()=>{j.close();rmSync(dir,{recursive:true,force:true})});return {j,dir,fence:j.control.claim('test')};}
 const decision=()=>parseDecision(JSON.stringify({plan:'Go read, then return. Still pending.',call:{type:'write',command:'act',arguments:'{"capability":"read:here"}'},wakeAt:null}));
 test('urgent fallback budget survives uncertain effects and clears only with committed finalization',async t=>{
  const {j,fence}=fixture(t),marker={id:'episode-1',triggerAt:1000,reason:'owner',turnId:'old-turn',fallbackUsed:true,worldReplans:2};
@@ -120,7 +120,7 @@ test('local owner task reads never reach the world and cannot close a task',asyn
  for(const [command,args] of [['tasks',{limit:21}],['tasks',{after:-1}],['task',{id:'m1',offset:-1}],['task',{}],['tasks',{unexpected:'field'}]])assert.throws(()=>parseDecision(JSON.stringify({plan:'',call:{type:'read',command,arguments:JSON.stringify(args)},wakeAt:null})),/Local|local/);
 });
 test('a maximum local text chunk can be incorporated with full instruction and plan budgets across restart',async t=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-decision-budget-'));let j=openJournal(dir,{worldId:'w',soulId:'s'});
+ const dir=mkdtempSync(join(tmpdir(),'souls-decision-budget-'));let j=openJournal(dir,{worldId:'w',soulId:'s'});
  t.after(()=>{j.close();rmSync(dir,{recursive:true,force:true})});
  let fence=j.control.claim('test');const initialInstruction='i'.repeat(15998),plan='p'.repeat(15998);
  j.ingest({source:'owner',after:null,cursor:'large',events:[{id:'large',text:'x'.repeat(60000),sentAt:1}]});

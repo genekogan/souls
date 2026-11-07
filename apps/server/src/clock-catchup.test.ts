@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { clockAt } from '@sim/brain';
+import { clockAt } from '@souls/brain';
 import { ClockCatchUp, catchUpMinMs, catchUpPayload } from './clock-catchup.ts';
 import { PAUSED_DAY_TICKS } from './god/world-clock.ts';
 

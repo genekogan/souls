@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { nativeShoreTake } from './shore-fixture.ts';
-import { shoreContactV1Schema } from '@sim/engine-contract';
+import { shoreContactV1Schema } from '@souls/engine-contract';
 import { sampleTake } from '../../../mars/viewer/engine/take/replay.ts';
 import { nativeShoreFixture } from './shore-runtime.ts';
 import { readFileSync } from 'node:fs';

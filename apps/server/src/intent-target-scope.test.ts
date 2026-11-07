@@ -2,8 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {INTENT_V2,intentReceiptV2Schema} from '@sim/protocol';
-import type {CompileOut} from '@sim/brain';
+import {INTENT_V2,intentReceiptV2Schema} from '@souls/protocol';
+import type {CompileOut} from '@souls/brain';
 import {intentNativeFixture} from '../test/intent-native-fixture.ts';
 const proposed=(target:string|null):CompileOut=>({understood:true,agenda:[{card:'go to',target}],alignment:{understanding:'Walk to the pavilion.',trigger:{kind:'now'}}});
 type F=ReturnType<typeof intentNativeFixture>;

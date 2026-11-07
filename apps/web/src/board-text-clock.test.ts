@@ -1,6 +1,6 @@
 // Entry 13: a Soul's board text, like a lamp, waits for the depicted contact tick; owner edits stay immediate.
 import test from 'node:test';import assert from 'node:assert/strict';
-import {WorldModel,coreLibrary,applyBatch} from '@sim/world-compiler';import {lightDiffAhead} from './light-diff-clock.ts';
+import {WorldModel,coreLibrary,applyBatch} from '@souls/world-compiler';import {lightDiffAhead} from './light-diff-clock.ts';
 test('engine board text waits for the depicted stroke end; owner text does not',()=>{
  const model=new WorldModel({constants:{ground:'land',extent:350},seed:'board'});model.library=coreLibrary();
  assert.equal(applyBatch(model,{ops:[{op:'place',def:'core/whiteboard@1',name:'wb',p:[0,0]},{op:'place',def:'core/chalkboard@1',name:'cb',p:[3,0]}]},'god',1).result.accepted,true);

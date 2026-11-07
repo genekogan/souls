@@ -190,11 +190,11 @@ const page = await ctx.newPage(); page.setDefaultTimeout(180000);
 const werrors = []; page.on('pageerror', (e) => werrors.push(String(e).slice(0, 200)));
 const zm = (z0 + z) / 2; const q = new URLSearchParams({ dev: '1', shot: '1', eye: `-40,40,${z0 - 20}`, at: `0,0,${zm}` });
 await page.goto(`${base}?${q}`, { waitUntil: 'commit', timeout: 120000 });
-for (let i = 0; i < 60; i++) { const ok = await page.evaluate(() => !!window.__simEntity?.layer?.active).catch(() => false); if (ok) break; await page.waitForTimeout(500); }
+for (let i = 0; i < 60; i++) { const ok = await page.evaluate(() => !!window.__soulsEntity?.layer?.active).catch(() => false); if (ok) break; await page.waitForTimeout(500); }
 await page.waitForTimeout(6000);
 // hide the page chrome for clean shots
 await page.addStyleTag({ content: 'body > *:not(:has(canvas)) { display: none !important; } [class*=panel], [class*=Panel], [class*=dock], [class*=Dock], header, nav, aside { display: none !important; }' }).catch(() => {});
-const look = (eye, at) => page.evaluate(([e, a]) => { const w = window.__simEntity; w.controls.target.set(a[0], a[1], a[2]); w.camera.position.set(e[0], e[1], e[2]); w.camera.lookAt(w.controls.target); w.controls.update?.(); }, [eye, at]);
+const look = (eye, at) => page.evaluate(([e, a]) => { const w = window.__soulsEntity; w.controls.target.set(a[0], a[1], a[2]); w.camera.position.set(e[0], e[1], e[2]); w.camera.lookAt(w.controls.target); w.controls.update?.(); }, [eye, at]);
 await look([0, Math.max(30, (z - z0) * 0.9), z0 - (z - z0) * 0.35], [0, 0, zm]);
 await page.waitForTimeout(2500);
 await page.screenshot({ path: resolve(out, 'world-overview.png') });

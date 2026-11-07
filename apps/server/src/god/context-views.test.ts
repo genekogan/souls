@@ -19,7 +19,7 @@ import { moderationFor } from '../moderation/store.ts';
 let renderLockDir: string, previousRenderLockDir: string | undefined;
 before(() => {
     previousRenderLockDir = process.env.SIM_RENDER_LOCK_DIR;
-    renderLockDir = mkdtempSync(join(tmpdir(), 'sim-context-test-lock-'));
+    renderLockDir = mkdtempSync(join(tmpdir(), 'souls-context-test-lock-'));
     process.env.SIM_RENDER_LOCK_DIR = renderLockDir;
 });
 after(() => {
@@ -28,7 +28,7 @@ after(() => {
     rmSync(renderLockDir, { recursive: true, force: true });
 });
 function fixture() {
-    const db = new Db(':memory:'), dir = mkdtempSync(join(tmpdir(), 'sim-context-test-'));
+    const db = new Db(':memory:'), dir = mkdtempSync(join(tmpdir(), 'souls-context-test-'));
     const god = new GodMode(db, { worldId: 'context-test', ownerId: null, tick: () => 1, emit() { }, assetDir: dir });
     const act = (ops: unknown[]) => { const result = god.act({ ops }); assert.equal(result.accepted, true, JSON.stringify(result)); return result; };
     act([{ op: 'place', def: 'core/bench@1', name: 'seat', p: [0, 0], about: { title: 'Speaker seat', viewpoint: { eye: [2, 2, 3], at: [0, 1, 0] } } }, { op: 'place', def: 'core/plaza@1', name: 'plaza', shape: { area: [[-10, -10], [10, -10], [10, 10], [-10, 10]] }, about: { title: 'Plaza' } }]);

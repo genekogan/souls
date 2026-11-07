@@ -1,9 +1,9 @@
 // Deterministic fake producer fixtures shared with World conformance tests.
 // No server/provider, renderer, environment copy or filesystem DB is needed.
-import type { EngineFactory } from '@sim/engine-contract';
-import { marsFactory, GREEN_FIELD_WORLD, LITTLE_MARTIANS_WORLD } from '@sim/engine-mars';
-import { newLife } from '@sim/brain';
-import { publicEvent } from '@sim/protocol';
+import type { EngineFactory } from '@souls/engine-contract';
+import { marsFactory, GREEN_FIELD_WORLD, LITTLE_MARTIANS_WORLD } from '@souls/engine-mars';
+import { newLife } from '@souls/brain';
+import { publicEvent } from '@souls/protocol';
 import type { Brain } from '../../src/brain.ts';
 import { config } from '../../src/config.ts';
 import { Db } from '../../src/db.ts';

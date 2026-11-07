@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import {ownRequestDiagnostics,ownRequestDiagnosticsPath,type DiagnosticScope,type OwnRequestDiagnostics,type ServerDiagnostics} from './request-diagnostics.ts';
 /** GET-only reads of this own request's G414 DTO. Optional polling stops at `done`, on a missing route
  * or auth refusal, or after maxReads. Never sends or retries the direction itself. */

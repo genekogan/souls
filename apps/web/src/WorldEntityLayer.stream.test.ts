@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { registerHooks } from 'node:module';
-import { WorldModel, coreLibrary, applyBatch, type Entity, type StoredDef } from '@sim/world-compiler';
+import { WorldModel, coreLibrary, applyBatch, type Entity, type StoredDef } from '@souls/world-compiler';
 import { StreamRing } from './StreamRing.ts';
 
 type Inner = { model: WorldModel; ring: StreamRing | null; streaming: unknown; streamOption: () => { inner: number; outer: number } | null; ringSet: (e: Entity, def: StoredDef) => void; drawn: Map<string, { obj: THREE.Object3D; inst?: string }>; now: number; seq: number; signal: AbortSignal; thingsGroup: THREE.Group };

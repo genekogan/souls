@@ -1,4 +1,4 @@
-import {hashOf,type RenderScene} from '@sim/engine-contract';
+import {hashOf,type RenderScene} from '@souls/engine-contract';
 import {connectedCommonsShoreFixture} from './connected-shore.ts';
 import {decodeSnapshot} from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import {encode} from '../../../mars/viewer/engine/runtime/codec.ts';

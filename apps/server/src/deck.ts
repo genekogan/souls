@@ -2,8 +2,8 @@
 // depiction program to concrete engine steps. This is the boundary where
 // meaning (kernel things) meets the engine (bodies, fixtures, points).
 import {menuWorldOf,withRead} from './split/menu-world.ts';
-import type { ActivityOption } from '@sim/engine-contract';
-import { SPEECH_LINKS, bind, enablers, linked, linksFrom, linksTo, playable, samePlace, whyNot, type KState, type MintedCard, type Thing } from '@sim/kernel';
+import type { ActivityOption } from '@souls/engine-contract';
+import { SPEECH_LINKS, bind, enablers, linked, linksFrom, linksTo, playable, samePlace, whyNot, type KState, type MintedCard, type Thing } from '@souls/kernel';
 import type { Mind, WorldHost } from './world.ts';
 
 export type CardOption = ActivityOption & { card: string; hash: string; cardTarget: string | null; approachLen: number; available?:boolean; blockedCode?:string };

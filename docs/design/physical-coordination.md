@@ -1,8 +1,8 @@
 # Voluntary physical coordination and reusable construction
 
 **Design intent and planning baseline, not implemented API documentation.**
-The outcome is tracked in [#560](https://github.com/genekogan/souls/issues/560), a workstream of the
-[controllability umbrella #623](https://github.com/genekogan/souls/issues/623) and its
+The outcome is tracked in [#560](https://github.com/soulsimulation/souls/issues/560), a workstream of the
+[controllability umbrella #623](https://github.com/soulsimulation/souls/issues/623) and its
 [agency-quality design](agency-quality.md). Mars College 2027 is the first
 application; the mechanics, material packs and procedures must work in other compatible worlds.
 This plan extends Soul Actions after accepted entries 1–44. It authorizes no implementation or deployment.
@@ -41,6 +41,7 @@ Do not mutate old definitions to reinterpret existing worlds; introduce compatib
 ## Agreement and execution contract
 
 These are proposed semantics, not new endpoint names. Extend existing invitations, receipts and activity clocks.
+The first concrete contract, for one shared ground carry, is [shared-execution.md](shared-execution.md) (PC02).
 Keep conversation membership distinct from physical participation: discussing help is not accepting a grip,
 and leaving a conversation does not drop a load.
 
@@ -128,7 +129,7 @@ accounting. Quantities and provenance survive extraction, transport, installatio
 
 ## Authentic Lab recovery
 
-[#561](https://github.com/genekogan/souls/issues/561) must enumerate the final published selector, special
+[#561](https://github.com/soulsimulation/souls/issues/561) must enumerate the final published selector, special
 `scenarioByName` routes, imported families, native construction scenarios, later source and relevant branch reports.
 Every manifest row needs identifier/source revision, behavior, required materials/primitives, current disposition,
 migration work and acceptance fixture. Distinguish construction, support capability, reusable activity, showcase
@@ -157,6 +158,43 @@ and is a discovery source, never a wholesale upgrade. Full refs and original rep
 research archive; the original source lineage is not assumed available in a clean public checkout. The inventory
 issue must publish sanitized provenance/fixtures needed by future workers before assigning recovery work.
 
+**The manifest (PC01, [#680](https://github.com/soulsimulation/souls/issues/680)).**
+[`physical-coordination-manifest.json`](physical-coordination-manifest.json) is the finite inventory, pinned to
+`main` `df69a3ca`. It has:
+
+- one row for each of the 68 Lab selector ids;
+- one row for the hidden `raise-cancel-proof` route;
+- 15 rows for native primitives and generated builds;
+- 4 rows for server surfaces;
+- 14 rows for asset needs.
+
+Each row names:
+
+- its class: `runnable`, `refusal-probe` or `showcase`;
+- its current source;
+- its primitives and assets;
+- its in-tree evidence;
+- the PC issue that owns the remaining work.
+
+Per-scenario Lab proof grades stay in `mars/viewer/deploy/scenario-coverage.json`.
+
+The two historical failures are recorded in the tree with their exact causes. Their rows stay `unresolved`.
+- **Kitchen** stops at `carry.path-occupied`.
+- **West house** stops at `carry.gather-stuck`.
+
+Both causes come from `FULL_RED` in `mars/viewer/engine/test/year-build-houses.test.ts`.
+
+The candidate refs above are not objects in this repository, so the manifest lists each one as a missing-source
+blocker, with the PCs it blocks. Check the manifest after a pnpm install:
+`node tools/physical-manifest/check.mjs`. The check (with `node --test tools/physical-manifest/check.test.mjs`) fails
+in either case:
+- a selector id is missing or extra;
+- a source path, catalog id or library def does not exist.
+- the pinned source or a reachable research baseline is not a commit in this repository, or a ref listed as missing
+  is in fact present (`git cat-file`, failing closed).
+
+Add a row when you add a scenario.
+
 ## Interactive asset coverage
 
 The dated native inventory counted 155 definitions and 16 bundles; it is a reuse starting point, not a completeness
@@ -180,12 +218,12 @@ and a correctly refused unsupported case.
 
 | Family | Representative and reuse | Execution issue / existing scope |
 |---|---|---|
-| Moving together | Beam, differently shaped table/load, supported larger crew | [#564](https://github.com/genekogan/souls/issues/564); shared-load portion of #434 |
-| Partner movement | Partner dance, arm-in-arm or supported paired exercise | [#567](https://github.com/genekogan/souls/issues/567); #441 and existing dance/hand-holding |
-| Performance | Small ensemble with real audio, then stage gesture/movement cues | [#568](https://github.com/genekogan/souls/issues/568); #431 |
-| Shared tools | Two-person saw with real outputs, then supported crank/hoist role variation | [#569](https://github.com/genekogan/souls/issues/569); stock/repair foundations |
-| Joint preparation | Canopy from pieces, then tent or shared-setting setup/clearance | [#570](https://github.com/genekogan/souls/issues/570); #383/#427/#434/#437 |
-| Games | Real two-/three-player passing/catching and a bounded passing-and-scoring team game | [#571](https://github.com/genekogan/souls/issues/571); #440/#439/#425 |
+| Moving together | Beam, differently shaped table/load, supported larger crew | [#564](https://github.com/soulsimulation/souls/issues/564); shared-load portion of #434 |
+| Partner movement | Partner dance, arm-in-arm or supported paired exercise | [#567](https://github.com/soulsimulation/souls/issues/567); #441 and existing dance/hand-holding |
+| Performance | Small ensemble with real audio, then stage gesture/movement cues | [#568](https://github.com/soulsimulation/souls/issues/568); #431 |
+| Shared tools | Two-person saw with real outputs, then supported crank/hoist role variation | [#569](https://github.com/soulsimulation/souls/issues/569); stock/repair foundations |
+| Joint preparation | Canopy from pieces, then tent or shared-setting setup/clearance | [#570](https://github.com/soulsimulation/souls/issues/570); #383/#427/#434/#437 |
+| Games | Real two-/three-player passing/catching and a bounded passing-and-scoring team game | [#571](https://github.com/soulsimulation/souls/issues/571); #440/#439/#425 |
 
 Sports use authoritative object motion and independently chosen player actions, not a prerecorded match. Soccer,
 moving tennis, full basketball and other sports remain later roadmap outcomes; a pass does not complete them.
@@ -204,6 +242,13 @@ The owner must remain able to send a revision during shared execution. Prompt in
 model response, physical cleanup and resource release are distinct. Keep compatible speech/observation available;
 report the actual resource preventing another action. After release/reconnect, reconcile each owner's latest
 intention without resuming cancelled work. Persistent assembly progress never implies indefinite crew authority.
+
+An agent discovers and joins a shared operation through the same strict offers as any other action. `act` takes
+offered ids only ([CTRL-1, #1093](https://github.com/soulsimulation/souls/issues/1093)); `resolve "<words>"` returns
+candidate ids and never acts. `inspect <id>` ([#1094](https://github.com/soulsimulation/souls/issues/1094)) is the discovery
+path for an operation: its template, revision, load, destination, roles with holders and readiness, phase, and this
+Soul's own offers with their parameter schemas. No session, role or next step has to be read from prose, and a Soul Run
+cast sends offered ids too.
 
 Roles must match a body's declared physical capabilities. The [custom body design](custom-bodies.md) extends
 this to non-humanoids: a rigid body can participate through a validated adaptation, not an assumed humanoid grip.
@@ -230,8 +275,8 @@ source/environment and retained failed attempts. No new suite/gate merely to rel
 
 ## Delivery order and work boundaries
 
-The [umbrella](https://github.com/genekogan/souls/issues/623) owns phase priority, shared contracts and the
-coordinator handoff; the [physical epic](https://github.com/genekogan/souls/issues/560) holds PC01–PC48 and their
+The [umbrella](https://github.com/soulsimulation/souls/issues/623) owns phase priority, shared contracts and the
+coordinator handoff; the [physical epic](https://github.com/soulsimulation/souls/issues/560) holds PC01–PC48 and their
 scope parents. The following graph replaces the earlier coarse graph that appeared to require all structural
 and navigation work before a ground carry. It expresses capability dependencies, not a parallel worker plan.
 

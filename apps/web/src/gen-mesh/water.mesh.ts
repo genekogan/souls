@@ -2,8 +2,8 @@
 // Rivers draw their own water (per-point levels, flowing, animated) trimmed where they enter a lake,
 // banks by material (sand, pebbles, stone, reeds), waterfalls with foam and lip rocks where the
 // frozen profile steps; shores ring lakes; bridges, piers and decks stand on posts to the bed.
-import { areaFrame, atOf, bridgeSpan, flowOf, prepareBridge, prepareDeck, queryOf, railGaps, riverLine, smoothPath } from '@sim/generators';
-import type { Ground } from '@sim/ground';
+import { areaFrame, atOf, bridgeSpan, flowOf, prepareBridge, prepareDeck, queryOf, railGaps, riverLine, smoothPath } from '@souls/generators';
+import type { Ground } from '@souls/ground';
 import * as THREE from 'three';
 import { registerMesh, type MeshCtx } from './registry.ts';
 import { at, bridgeDeck, line } from './l3-path.ts';

@@ -1,7 +1,7 @@
 // Geometry-only building job: shared by the page fallback and building.worker.ts.
 // Keep layout generation, mesh registration and rendering on the page.
 import * as THREE from 'three';
-import type { Value } from '@sim/generators';
+import type { Value } from '@souls/generators';
 import type { BuildingLayout } from '../../../../packages/generators/src/building.ts';
 import { Builder, hashStr, mix, rng, type Col, type RawSoup } from './building-kit.ts';
 
