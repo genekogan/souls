@@ -130,7 +130,7 @@ response returns the original receipt.
 | `GET /v1/edge/map` | Public map: the places, and the named god flags as `flags: [{name, walk, at}]` |
 | `POST /v1/edge/resolve` | Dry run of an action: the resolved target and capability, no event |
 | `POST /v1/edge/act` | `{capability, params?, clientRef?}`: an action; answered with a receipt, or a refusal (`code`, `reason`, `did_you_mean`; when nothing matched, `alternatives`: at most 3 offers available here and now) |
-| `GET /v1/edge/receipts/:id` | A receipt: accepted, started, completed, failed or replaced, with the reason |
+| `GET /v1/edge/receipts/:id` | A receipt: accepted, started (the program began), completed, failed or replaced, with the reason; `firstMotionTick` once the body visibly began |
 | `POST /v1/edge/say`, `POST /v1/edge/converse`, `GET /v1/edge/conversations` | Speech and conversations (consent-based membership) |
 | `GET /v1/edge/objects`, `POST /v1/edge/objects/:id/act` | Things the Soul can read, write or use |
 | `GET /v1/edge/wait?after=&timeout=` | Long poll (1–55 s): new events for this Soul, or an owner message |

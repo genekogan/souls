@@ -100,10 +100,11 @@ from 1), `at` (local wall ms), `mono` (process-monotonic ms since start).
 | `proc.end` | `exitCode`, `durationMs`, `stats` {records, dropped, truncated, sinkFailures, inFlightAtExit, bodiesPendingAtExit, bodyOmitted} |
 
 `facts` is a whitelist: `accepted`, `code`, `receipt` {id, soulId, capability, phase, code, acceptedTick,
-startedTick, endedTick}, `for`, `channel`, `cursor`, `queued`, `messages` [{id, sentAt, state}], `events` (receipt
+startedTick, firstMotionTick, endedTick}, `for`, `channel`, `cursor`, `queued`, `messages` [{id, sentAt, state}], `events` (receipt
 facts only). Never recorded: owner or speech text, observation content, reasons, authorization, hosts, query values.
 
-Clock domains: `sentAt` server wall; receipt ticks world tick (authoritative for accepted/started/ended); `at` local
+Clock domains: `sentAt` server wall; receipt ticks world tick (authoritative for accepted/started/first motion/ended:
+`started` is the body program's start, first motion the receipt's `firstMotionTick`, when the body visibly began); `at` local
 wall (display); `mono` exact only inside one process. The readout labels cross-domain intervals approximate and
 never subtracts them as exact latency. Without host records the chat host's work is opaque: the time between a delivery
 and the next command is shown as unattributed host time (see Host boundaries).

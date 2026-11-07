@@ -108,7 +108,7 @@ export function registerEdgeComms(app: Hono, deps: EdgeDeps, options: CommsOptio
     if (!fresh) return;
     if (r.phase === 'started' || r.phase === 'waiting') fading.touch(r.soulId);
     const tick = r.endedTick ?? r.startedTick ?? r.acceptedTick;
-    streams.deliver(r.soulId, 'receipt', tick, {receipt: {id: r.id, capability: r.capability, phase: r.phase, acceptedTick: r.acceptedTick, startedTick: r.startedTick, endedTick: r.endedTick, code: r.code, reason: r.reason, ...(r.channel ? {channel: r.channel} : {}), ...(r.chosen ? {chosen: r.chosen} : {}), ...(r.endedAt ? {endedAt: r.endedAt} : {}), ...(r.outcome?{outcome:r.outcome}:{}), ...((r as {alternatives?: unknown}).alternatives ? {alternatives: (r as {alternatives?: unknown}).alternatives} : {})}});   // Core-A: strict/1 endedAt, intents/1 chosen + alternatives
+    streams.deliver(r.soulId, 'receipt', tick, {receipt: {id: r.id, capability: r.capability, phase: r.phase, acceptedTick: r.acceptedTick, startedTick: r.startedTick, ...(r.firstMotionTick !== undefined ? {firstMotionTick: r.firstMotionTick} : {}), endedTick: r.endedTick, code: r.code, reason: r.reason, ...(r.channel ? {channel: r.channel} : {}), ...(r.chosen ? {chosen: r.chosen} : {}), ...(r.endedAt ? {endedAt: r.endedAt} : {}), ...(r.outcome?{outcome:r.outcome}:{}), ...((r as {alternatives?: unknown}).alternatives ? {alternatives: (r as {alternatives?: unknown}).alternatives} : {})}});   // Core-A: strict/1 endedAt, intents/1 chosen + alternatives
   }));
   deps.ledger.onPlaceChange(e => presence.onPlaceChange(e));
   try { presence.prime(); } catch { /* ledger not ready: paths are learned on first change */ }
