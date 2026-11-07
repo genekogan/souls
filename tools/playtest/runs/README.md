@@ -154,12 +154,20 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
 - **Standard measures** keep their own family, unit, n, denominator and basis: `request-latency` (owner card to the
   seat's ack and result calls, and the director's own open time), `physical-completion` (receipt phases the world
   returned to the seat's act calls: completed, ongoing such as seated, or started and not observed to end),
-  `seat-claims` (result calls, which are claims), `observed-walking-speed` and the review oracles (only from the
-  observer's evidence packs, through `review/metrics.mjs`), `tick-timing`, `token-cost`, `lifecycle` and, for directed
+  `seat-claims` (result calls, which are claims), `observed-walking-speed`, `observed-physical` and the review oracles
+  (only from the observer's evidence packs, through `review/metrics.mjs`), `tick-timing`, `token-cost`, `lifecycle` and, for directed
   casts, `direction` (the `directions` measure: the journal's commands by command and outcome, and each redirection
   with its target, run-relative time, outcome and whether the target spoke afterwards). Emergence
   numbers are labelled `social-heuristic`. A measure without its source is `unavailable` with the reason, never 0
   (for example no seat transcript after `controllerState: "delete"`, or no evidence packs while the observer failed).
+- **Walk measures read world truth.** `walkArrivalRate` follows each walk request's receipt (the seat's act output,
+  else a receipt accepted in the request window) to its last phase anywhere in the run: completed inside the chosen
+  place is an arrival, failed or replaced is not, and a receipt never seen ending is unknown and left out. It is not
+  the at-cutoff `arrival` oracle (a directed request is cut off by the next direction, usually before a walk ends);
+  that count is kept in the basis. `walkMps` is one speed per distinct walk receipt, over world ticks from
+  `firstMotionTick` (when the receipt has it) or `startedTick` to `endedTick`, using the seat's samples from every pack
+  and the receipt's end point, in world seconds at the world's fixed 50 ms tick (not a rate read off wall time, which
+  drifts when the server falls behind); the basis counts which start tick was used.
 - **Questions** are small named scorer modules (`questions/*.mjs`, default export `{id, version, question,
   assumptions, score(ctx)}`) answering `pass`, `fail` or `unknown` with evidence references and stated uncertainty.
   `ctx` holds the joined requests (director record plus the seat's ack, act, say and result calls), each seat's CLI

@@ -3,8 +3,8 @@
 import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { readJson, readJsonl, writeJson } from '../lib/jsonl.mjs';
-import { loadRun, secsBetween, xz } from './run.mjs';
-import { runOracles } from './oracles.mjs';
+import { loadRun, secsBetween, xz, seatActs } from './run.mjs';
+import { runOracles, placeTarget, seatSamples, seatReceipts, tickClock, acceptedMs } from './oracles.mjs';
 
 export const ACK_CHAR_BOUND = 140;
 const stats = (xs) => { const v = xs.filter((x) => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => a - b); if (!v.length) return { n: 0, median: null, p90: null, max: null, mean: null }; const q = (p) => v[Math.min(v.length - 1, Math.floor(p * v.length))]; const mid = v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2; return { n: v.length, median: mid, p90: q(0.9), max: v.at(-1), mean: Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 100) / 100 }; };
@@ -41,12 +41,82 @@ export function joinTurns(run) {
 /** Seconds a chat request waited for the seat's running turn: recorded queuedSec, else its linked turn's start. */
 export const chatQueuedSec = (run, e) => { if (Number.isFinite(e.queuedSec)) return e.queuedSec; const t = (run.seats?.[e.seat]?.turns ?? []).find((x) => (e.chatTurns ?? []).includes(x.turn)); return t ? Math.max(0, Math.round((Date.parse(t.startedAt) - Date.parse(e.sentAt)) / 100) / 10) : null; };
 
+const WALKCAP = /^(go|walk|visit|goto|stroll)[:.]/i;
+const WALKREQ = /\b(walk|go|come|head|run|stroll)\b/i;
+const TERMINAL = new Set(['completed', 'failed', 'replaced']);
+const SLACK_MS = 1500; // tick→time estimate tolerance, as in the oracles
+const inPlace = (end, want) => !end || !want || end === want || String(end).startsWith(`${want}.`);
+const latest = (a, b) => (!a ? b : !b ? a : TERMINAL.has(b.phase) && !TERMINAL.has(a.phase) ? b : a);
+
+/** World truth for walk requests (#822): the walk receipt each request started (the seat's act output, else a receipt
+ *  accepted in the request window, as the arrival oracle picks it), followed to its latest phase anywhere in the run
+ *  (later requests' packs, the act output). completed → arrived (when it names an end place, inside the chosen place);
+ *  failed / replaced → not arrived; never seen terminal → unknown. Facts after the request's cutoff count here, unlike
+ *  the per-request arrival oracle, because the world's receipt, not a sample at the cutoff, is the outcome. */
+export function walkTruth(run) {
+  return run.evidence.filter((e) => WALKREQ.test(e.text ?? '')).map((e) => {
+    const acts = run.seats?.[e.seat] ? seatActs(run, e.seat, e.chatTurns) : [];
+    const clk = tickClock(seatSamples(run, e.seat) ?? []);
+    const sent = Date.parse(e.sentAt), cutoff = Date.parse(e.cutoffAt) || Infinity;
+    const inWindow = (r) => { const a = acceptedMs(r, clk); return a == null ? null : a >= sent - SLACK_MS && a <= cutoff + SLACK_MS; };
+    const tgt = placeTarget(e, acts, { inWindow });
+    if (!tgt?.receiptId || tgt.late) return { requestId: e.requestId, seat: e.seat, receiptId: null, phase: null, arrived: null, why: !tgt ? 'no walk accepted in the request window' : tgt.late ? 'walk accepted after the cutoff' : 'walk without a receipt id' };
+    const fromPacks = (seatReceipts(run, e.seat) ?? []).find((r) => r.id === tgt.receiptId) ?? null;
+    const fromAct = [...acts].reverse().map((a) => a.output?.receipt).find((r) => r?.id === tgt.receiptId) ?? null;
+    const r = latest(fromPacks, fromAct);
+    const phase = r?.phase ?? null, end = r?.endedAt?.place ?? null, want = r?.chosen?.place ?? null;
+    const arrived = phase === 'completed' ? inPlace(end, want) : phase === 'failed' || phase === 'replaced' ? false : null;
+    return { requestId: e.requestId, seat: e.seat, receiptId: tgt.receiptId, phase, endedTick: r?.endedTick ?? null, endPlace: end, arrived, why: arrived === null ? `receipt ${phase ?? 'not seen'}, never terminal in the run` : arrived ? 'world receipt completed' : phase === 'completed' ? `completed at ${end}, outside ${want}` : `world receipt ${phase}${r?.code ? ` (${r.code})` : ''}` };
+  });
+}
+
+/** Walking speed per distinct walk receipt (#822). World receipts carry ticks: the window runs from firstMotionTick when
+ *  the receipt has it (#810), else startedTick, to endedTick; points are the seat's samples from every pack whose tick is
+ *  in the window plus the receipt's endedAt position at endedTick, and seconds are world seconds: ticks × the world's
+ *  fixed tick (WORLD_TICK_SEC), never a rate read off wall time, which drifts when the server falls behind or catches up.
+ *  A receipt with ISO startedAt (older synthetic packs) is windowed by wall time instead. A walk never seen ending is
+ *  bounded by the last cutoff of a pack that carries it. → {speeds: [{receiptId, mps, startBasis}], skipped: [{receiptId,
+ *  why}]}; a missing fact is a skipped receipt with its reason, never a 0. */
+/** The world's fixed simulation tick, in seconds: TICK_MS = 50 in apps/server/src/world.ts. A run's world meta that
+ *  records its own tick length (run.world.tickMs) wins. */
+export const WORLD_TICK_SEC = 0.05;
+export function walkSpeeds(run) {
+  const tickSec = Number(run.world?.tickMs) > 0 ? run.world.tickMs / 1000 : WORLD_TICK_SEC;
+  const seen = new Map(); // receipt id → last cutoff (ms) of a pack that carries it
+  for (const e of run.evidence) for (const r of e.receipts ?? []) seen.set(r.id, Math.max(seen.get(r.id) ?? -Infinity, Date.parse(e.cutoffAt) || -Infinity));
+  const len = (pts) => { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].p[0] - pts[i - 1].p[0], pts[i].p[1] - pts[i - 1].p[1]); return L; };
+  const speeds = [], skipped = [];
+  for (const seat of [...new Set(run.evidence.map((e) => e.seat).filter(Boolean))]) {
+    const pool = (seatSamples(run, seat) ?? []).filter((s) => s.p);
+    for (const r of (seatReceipts(run, seat) ?? []).filter((x) => WALKCAP.test(x.capability ?? ''))) {
+      const fm = Number.isSafeInteger(r.firstMotionTick) ? r.firstMotionTick : null;
+      const start = fm ?? (Number.isFinite(r.startedTick) ? r.startedTick : null), lastSeen = seen.get(r.id) ?? Infinity;
+      if (start == null) {
+        const a = Date.parse(r.startedAt), b = Math.min(Date.parse(r.endedAt) || Infinity, lastSeen);
+        if (!Number.isFinite(a)) { skipped.push({ receiptId: r.id, why: 'the receipt carries no startedTick or firstMotionTick' }); continue; }
+        const pts = pool.filter((s) => s.ms >= a && s.ms <= b);
+        if (pts.length < 2 || pts.at(-1).ms <= pts[0].ms) { skipped.push({ receiptId: r.id, why: `${pts.length} sample(s) inside the walk` }); continue; }
+        speeds.push({ receiptId: r.id, seat, mps: len(pts) / ((pts.at(-1).ms - pts[0].ms) / 1000), points: pts.length, startBasis: 'startedAt' });
+        continue;
+      }
+      const ended = Number.isFinite(r.endedTick);
+      const pts = pool.filter((s) => Number.isFinite(s.tick) && s.tick >= start && (ended ? s.tick <= r.endedTick : s.ms <= lastSeen)).map((s) => ({ tick: s.tick, p: s.p }));
+      const ep = r.phase === 'completed' && ended ? xz(r.endedAt?.pos) : null;
+      if (ep && !pts.some((x) => x.tick === r.endedTick)) pts.push({ tick: r.endedTick, p: ep });
+      pts.sort((a, b) => a.tick - b.tick);
+      if (pts.length < 2 || pts.at(-1).tick <= pts[0].tick) { skipped.push({ receiptId: r.id, why: `${pts.length} point(s) with a tick inside the walk (from tick ${start})` }); continue; }
+      speeds.push({ receiptId: r.id, seat, mps: len(pts) / ((pts.at(-1).tick - pts[0].tick) * tickSec), points: pts.length, startBasis: fm != null ? 'firstMotionTick' : 'startedTick' });
+    }
+  }
+  return { speeds, skipped, tickSec };
+}
+
 export function computeMetrics(run, { ledger = [], oracles = null, emergence = null } = {}) {
   const ors = oracles ?? run.evidence.flatMap((ev) => runOracles(ev, { run }));
   const ev = run.evidence;
   const cardEv = ev.filter((e) => e.channel === 'card');
   // walk speed: displacement per second while a walk receipt was in progress, timely samples only
-  const speeds = ev.flatMap((e) => (e.receipts ?? []).filter((r) => /^(go|walk|visit|goto|stroll)[:.]/i.test(r.capability ?? '')).map((r) => { const a = Date.parse(r.startedAt), b = Math.min(Date.parse(r.endedAt ?? e.cutoffAt), Date.parse(e.cutoffAt)); const s = (e.samples ?? []).filter((x) => Date.parse(x.t) >= a && Date.parse(x.t) <= b && x.pos); if (s.length < 2) return null; let L = 0; for (let i = 1; i < s.length; i++) { const p = xz(s[i - 1].pos), q = xz(s[i].pos); L += Math.hypot(q[0] - p[0], q[1] - p[1]); } return L / ((Date.parse(s.at(-1).t) - Date.parse(s[0].t)) / 1000); }).filter((x) => x != null));
+  const walkSp = walkSpeeds(run), speeds = walkSp.speeds.map((x) => x.mps);
   const allTurns = Object.entries(run.seats).flatMap(([id, s]) => s.turns.map((t) => ({ ...t, seat: id })));
   const joined = joinTurns(run); const J = (e) => joined.get(e.requestId);
   const r0 = (v) => (v == null ? null : Math.round(v));
@@ -62,22 +132,24 @@ export function computeMetrics(run, { ledger = [], oracles = null, emergence = n
   const lateness = ev.flatMap((e) => { const s = (e.samples ?? []).map((x) => Date.parse(x.t)); return s.slice(1).map((t, i) => (t - s[i]) / 1000 - sampleSec).filter((d) => d > sampleSec * 0.5); });
   const disagreements = existsSync(join(run.runDir, 'coordinator-ledger.tsv')) ? (() => { const c = readLedger(join(run.runDir, 'coordinator-ledger.tsv')); return c.filter((x) => ledger.find((r) => r.requestId === x.requestId && r.fidelity !== x.fidelity)).length; })() : null;
   // Basics scorecard (Gene 2026-10-25): plain walking and acting must work before anything subjective is scored.
-  const WALKREQ = /\b(walk|go|come|head|run|stroll)\b/i;
   const walkReqs = ev.filter((e) => WALKREQ.test(e.text ?? ''));
   const oracleFor = (e, id) => ors.find((r) => r.requestId === e.requestId && r.id === id);
   const arrived = walkReqs.filter((e) => oracleFor(e, 'arrival')?.status === 'pass').length;
   const arrivalKnown = walkReqs.filter((e) => ['pass', 'fail'].includes(oracleFor(e, 'arrival')?.status)).length;
+  const wt = walkTruth(run), truthKnown = wt.filter((t) => t.arrived !== null);
   // The budget clock starts when the turn that carried the request started (budgetStartAt; chat queued behind a running turn).
   const startedInBudget = ev.filter((e) => e.firstBodyChangeAt && (!e.budgetSec || secsBetween(e.budgetStartAt ?? e.sentAt, e.firstBodyChangeAt) <= e.budgetSec)).length;
   const basics = {
     requests: ev.length, walkRequests: walkReqs.length, walksArrived: arrived, walksArrivalKnown: arrivalKnown,
     walkArrivalRate: arrivalKnown ? arrived / arrivalKnown : null,
+    walksCompletedWorld: truthKnown.filter((t) => t.arrived).length, walksWorldKnown: truthKnown.length,
+    walkArrivalWorldRate: truthKnown.length ? truthKnown.filter((t) => t.arrived).length / truthKnown.length : null,
     bodyMovedInBudget: startedInBudget, bodyMovedRate: ev.length ? startedInBudget / ev.length : null,
     ackMedianSec: stats(cardEv.map((e) => secsBetween(e.sentAt, e.ackAt))).median,
     firstBodyChangeMedianSec: stats(ev.map((e) => secsBetween(e.sentAt, e.firstBodyChangeAt))).median,
     stuck: count(ors, 'stuck-receipt') + count(ors, 'no-progress'), insideSolid: count(ors, 'inside-solid'), oscillations: count(ors, 'oscillation'),
     wrong: fid.W, hits: fid.H,
-    basis: 'walk requests by verb in the owner text; arrival from the arrival oracle (unknown excluded); body moved = first visible body change inside the request budget',
+    basis: 'walk requests by verb in the owner text; arrival from the arrival oracle (unknown excluded); body moved = first visible body change inside the request budget; walkArrivalWorldRate = the request\'s walk receipt followed to its last phase in the run (completed = arrived; unknown excluded)',
   };
   return {
     version: 2, scenario: run.scenario?.name ?? null, requests: ev.length, basics,
@@ -85,7 +157,7 @@ export function computeMetrics(run, { ledger = [], oracles = null, emergence = n
       ackSec: stats(cardEv.map((e) => secsBetween(e.sentAt, e.ackAt))), firstBodyChangeSec: stats(ev.map((e) => secsBetween(e.sentAt, e.firstBodyChangeAt))), resultSec: stats(ev.map((e) => secsBetween(e.sentAt, e.resultAt))),
       chatQueuedSec: stats(ev.filter((e) => e.channel === 'chat').map((e) => chatQueuedSec(run, e))),
       walkMps: stats(speeds), wallVsBudget: stats(ev.map((e) => (e.budgetSec ? secsBetween(e.sentAt, e.cutoffAt) / e.budgetSec : null))),
-      basis: 'seconds from the owner message (sentAt); ack = card ack only; resultSec = latest observed card result, including server progress, not overall journey completion (use journey physicalCompleteAt/completionClaimAt); chatQueuedSec = sentAt to the start of the seat turn that carried a chat message (Claude Code queues typed messages behind a running turn); walk m/s = sampled displacement during walk receipts',
+      basis: 'seconds from the owner message (sentAt); ack = card ack only; resultSec = latest observed card result, including server progress, not overall journey completion (use journey physicalCompleteAt/completionClaimAt); chatQueuedSec = sentAt to the start of the seat turn that carried a chat message (Claude Code queues typed messages behind a running turn); walk m/s = sampled displacement per distinct walk receipt, from firstMotionTick (else startedTick) to endedTick, plus the receipt end point, over world seconds at the fixed 50 ms tick',
     },
     uptime: {
       listenOpenFraction: pres.length ? pres.filter((p) => /listening|working/i.test(p)).length / pres.length : null, unackedAtCutoff: cardEv.filter((e) => !e.ackAt || Date.parse(e.ackAt) > Date.parse(e.cutoffAt)).length,
