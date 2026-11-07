@@ -12,7 +12,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "2.14.0";
+const VERSION = "2.14.1";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -755,7 +755,14 @@ export function brief(out) {
     ...(out.for ? { for: out.for } : {}), ...(out.open ? { open: true } : {}), ...(out.ownerMessages ? { ownerMessages: out.ownerMessages } : {}), ...(out.addressed ? { addressed: out.addressed } : {}),
     ...(out.resolved?.to && out.resolved.to !== out.resolved.from ? { resolved: out.resolved.to } : {}),
   };
-  for (const k of ["resolved", "receipt"]) if (JSON.stringify(o).length > 600) delete o[k];
+  // #832: an owner message that ends a wait must not push the receipt out: shorten the message texts (stderr's OWNER
+  // MESSAGE line has them in full), then keep only the newest, so the agent still sees which act is open. Without
+  // owner messages the output is as before (resolved, then receipt, go first).
+  for (const k of o.ownerMessages ? ["resolved"] : ["resolved", "receipt"]) if (JSON.stringify(o).length > 600) delete o[k];
+  if (JSON.stringify(o).length > 600 && o.ownerMessages) {
+    o.ownerMessages = o.ownerMessages.map((m) => (String(m.text ?? "").length > 100 ? { ...m, text: m.text.slice(0, 100) + "…", textShortened: true } : m));
+    if (JSON.stringify(o).length > 600 && o.ownerMessages.length > 1) { o.ownerMessagesOmitted = o.ownerMessages.length - 1; o.ownerMessages = o.ownerMessages.slice(-1); }
+  }
   const over = JSON.stringify(o).length - 600;
   if (over > 0 && o[key]) o[key] = o[key].slice(0, Math.max(40, o[key].length - over - 1)) + "…";
   if (out.events?.length || out.gap) {
