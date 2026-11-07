@@ -390,7 +390,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses and checkers with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "move c3 to d4", "jump d4 to f6", "play rock-paper-scissors with Bea" then "accept" |
-| Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
+| Food | Make tea or coffee: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "make a cup of coffee", "offer Ben the tea", "offer Ben the coffee", "drink the coffee", "rinse the mug", "wash up" |
 | Media | Switch a screen on and off by its physical control; the image or video it shows stays the same | "turn on the screen", "switch off the screen" |
 | Making | Paint a picture at an easel and leave it there with a title and credit; draw a picture in chalk on a chalk square, which fades over four world days and washes away | "paint at the easel", "draw in chalk" |
 
@@ -475,6 +475,18 @@ ends "(their words, not world facts)", and the Soul learns one fact per signer, 
 name it by its entity name ("sign the guestbook"); the def's other synonyms ("visitors' book") help catalogue search but
 not plain words at a thing.
 
+### Coffee (#437)
+
+A coffee mug (`core-coffee-mug@1`) is the tea mug's faculty with data only: the `tea-cup` tag, the same state, kettle,
+pour, hand-over, sips and rinse. Its `coffee` tag names what it holds, so its offers ("Make a cup of coffee"), summaries,
+refusals and nearby fact (`coffee: 0.4`) say coffee. It starts with a spoonful of ground coffee in it, where a tea mug
+has its bag; a rinsed mug has none, so it can't make coffee again. Words that name a drink take only a mug whose offer
+names it, nearest first: "make a cup of tea" leaves a nearer coffee mug alone. Words that name neither ("drink it",
+"wash the mug") take the nearest mug of either kind. "pour the tea" from a kettle fills the nearest empty mug, which may
+be a coffee mug, and then says coffee. "pick up the coffee mug" takes the god-built mug even beside a tea room
+that hands out prop cups: a name of more than one word comes before a prop source wherever the thing is, and one word
+comes first within 8 m ("pick up the mug" is the mug on the counter; "pick up the apple" is not one 55 m off).
+
 ## What other Souls perceive
 
 A Soul's `here` frame lists a few nearby things with compact facts, and only for things in the same enclosed place,
@@ -486,7 +498,7 @@ within about 4 m and in plain sight:
   lost-and-found: whose each thing is and who found it ("bowl (Ana's, found by Ben)");
 - a pantry: what it `holds` (names only); a food in the hand or bitten: its `bites` left, then `eaten`;
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
-  a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
+  a mug: how much `tea` (or `coffee`) is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
 - a finished painting or chalk drawing: its maker and title ("an easel with Ana’s painting “Quiet sky”", "Ana’s chalk drawing “Sun” on the pavement, fading"), never the drawing itself;
 - who is holding hands, who is offering a hand-over, and who is holding what.

@@ -509,15 +509,21 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   // turn it on, boil it) is the kettle's `boil`; "make a cup of tea" is the nearest offered cup's `brew` (an available one first)
   if (colon < 0) {
     const want = /^(?:please\s+)?(?:(?:put|switch|turn)\s+(?:the\s+|my\s+)?kettle\s+on|(?:switch|turn)\s+on\s+(?:the\s+)?kettle|boil\s+(?:the\s+)?(?:kettle|water))[.!]?$/.test(text) ? 'boil'
-      : /^(?:please\s+)?(?:make|brew)\s+(?:me\s+|us\s+)?(?:a\s+|some\s+|another\s+)?(?:(?:cup|mug)\s+of\s+)?tea[.!]?$/.test(text) ? 'brew'
+      : /^(?:please\s+)?(?:make|brew)\s+(?:me\s+|us\s+)?(?:a\s+|some\s+|another\s+)?(?:(?:cup|mug)\s+of\s+)?(?:tea|coffee)[.!]?$/.test(text) ? 'brew'
       // entry 44: "drink the tea" (drink it, finish the tea, drink up); "have a sip"; "wash the cup" (wash up, rinse the mug)
-      : /^(?:please\s+)?(?:(?:drink|finish)\s+(?:up\s+)?(?:(?:the|my|your|this|that)\s+)?(?:(?:cup|mug)\s+of\s+tea|tea|cup|mug|it)?|drink\s+up)[.!]?$/.test(text) ? 'drink'
-      : /^(?:please\s+)?(?:(?:have|take)\s+(?:a\s+)?sip(?:\s+of\s+(?:(?:the|my|your)\s+)?(?:tea|it))?|sip\s+(?:(?:the|my|your)\s+)?(?:tea|it))[.!]?$/.test(text) ? 'sip'
-      : /^(?:please\s+)?(?:(?:wash|rinse|clean)\s+(?:up|out)?\s*(?:(?:the|my|your|this|that)\s+)?(?:(?:tea\s*)?cup|mug|it)?(?:\s+(?:up|out))?|do\s+the\s+washing[- ]up|wash\s+up)[.!]?$/.test(text) ? 'wash' : null;
-    const pool = want ? acts.filter(c => c.action === want).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id)) : [];
+      : /^(?:please\s+)?(?:(?:drink|finish)\s+(?:up\s+)?(?:(?:the|my|your|this|that)\s+)?(?:(?:cup|mug)\s+of\s+(?:tea|coffee)|tea|coffee|cup|mug|it)?|drink\s+up)[.!]?$/.test(text) ? 'drink'
+      : /^(?:please\s+)?(?:(?:have|take)\s+(?:a\s+)?sip(?:\s+of\s+(?:(?:the|my|your)\s+)?(?:tea|coffee|it))?|sip\s+(?:(?:the|my|your)\s+)?(?:tea|coffee|it))[.!]?$/.test(text) ? 'sip'
+      : /^(?:please\s+)?(?:(?:wash|rinse|clean)\s+(?:up|out)?\s*(?:(?:the|my|your|this|that)\s+)?(?:(?:tea\s*|coffee\s*)?cup|(?:coffee\s+)?mug|it)?(?:\s+(?:up|out))?|do\s+the\s+washing[- ]up|wash\s+up)[.!]?$/.test(text) ? 'wash' : null;
+    // #437 W078: words that name the drink ("make a cup of coffee", "wash the coffee mug") take only a mug whose offer names
+    // it (its def's labels, before the thing's name in brackets: "Make a cup of coffee", "Wash the coffee mug"); a tea mug's
+    // "Wash the cup" names no drink and is tea's. "drink it", "wash the mug" take the nearest mug of either. "the teacup"
+    // (one word) names tea as "the tea cup" does
+    const drink = /\b(tea|coffee)(?:cups?|mugs?)?\b/.exec(text)?.[1];
+    const names = (c: {label: string}, d: string) => new RegExp(`\\b${d}\\b`, 'i').test(c.label.replace(/\s*\(.*\)$/, ''));
+    const pool = want ? acts.filter(c => c.action === want && (!drink || names(c, drink) || (want === 'wash' && drink === 'tea' && !names(c, 'coffee')))).sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id)) : [];
     // entry 44: a bare "drink" or "wash up" near a mug nobody can use now keeps its old meaning; naming the tea or the cup
     // gets the mug's own answer (pick it up first, drink it first)
-    if (pool.length && (want === 'drink' || want === 'sip' || want === 'wash') && !pool[0].available && !/\b(?:tea|cup|mug)\b/.test(text)) pool.length = 0;
+    if (pool.length && (want === 'drink' || want === 'sip' || want === 'wash') && !pool[0].available && !/\b(?:tea|coffee|cup|mug)\b/.test(text)) pool.length = 0;
     if (pool.length) return {kind: 'alias', cap: pool[0], note: `${input} is ${pool[0].id} (${pool[0].label}).`};
     // #435: "eat the apple", "finish the apple", "have the bun", "take a bite of the bun" name a food wherever it is; "eat it"
     // and "have a bite" mean the food in her hand. Nothing in the hand and no food named keeps the word's old meaning (a table's
@@ -530,12 +536,12 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     }
     // entry 44: "offer Ben the tea", "give the cup of tea to Ben": the hand-over of the held mug to that Soul (entry 41's
     // give:<soul>, offered only while a world thing is held and the Soul is in sight)
-    const serve = /^(?:please\s+)?(?:offer|give|hand|pass|serve|bring)\s+(?:(?!the\b|my\b|this\b|that\b|your\b)([a-z][\w' -]*?)\s+(?:(?:the|my|this|that|your|a)\s+)?(?:(?:cup|mug)\s+of\s+tea|tea|cup|mug|it)|(?:(?:the|my|this|that|your|a)\s+)?(?:(?:cup|mug)\s+of\s+tea|tea|cup|mug|it)\s+to\s+([a-z][\w' -]*?))[.!]?$/.exec(text);
+    const serve = /^(?:please\s+)?(?:offer|give|hand|pass|serve|bring)\s+(?:(?!the\b|my\b|this\b|that\b|your\b)([a-z][\w' -]*?)\s+(?:(?:the|my|this|that|your|a)\s+)?(?:(?:cup|mug)\s+of\s+(?:tea|coffee)|tea|coffee|cup|mug|it)|(?:(?:the|my|this|that|your|a)\s+)?(?:(?:cup|mug)\s+of\s+(?:tea|coffee)|tea|coffee|cup|mug|it)\s+to\s+([a-z][\w' -]*?))[.!]?$/.exec(text);
     const to = serve ? (serve[1] ?? serve[2]).trim() : '';
     const give = to ? ctx.caps.filter(c => c.verb === 'give' && c.id.startsWith('give:') && c.label.toLowerCase().startsWith(`give ${to} `)) : [];
     if (give.length) return {kind: 'alias', cap: give[0], note: `${input} is ${give[0].id} (${give[0].label}).`};
     // "put the cup on the table", "set it down on the counter": while something is held, that is put-on <the surface>
-    const put = /^(?:please\s+)?(?:put|set|place|stand)\s+(?:(?:the|my|this|that|your)\s+)?(?:it|[a-z][a-z-]*(?:\s+of\s+tea)?)\s+(?:down\s+|back\s+)?(?:on|onto)\s+(?:to\s+)?(.+?)[.!]?$/.exec(text);
+    const put = /^(?:please\s+)?(?:put|set|place|stand)\s+(?:(?:the|my|this|that|your)\s+)?(?:it|[a-z][a-z-]*(?:\s+of\s+(?:tea|coffee))?)\s+(?:down\s+|back\s+)?(?:on|onto)\s+(?:to\s+)?(.+?)[.!]?$/.exec(text);
     if (put && ctx.caps.some(c => c.verb === 'put-on')) return resolveCapability(`put-on ${put[1]}`, ctx);
   }
   let {verb, rest} = parseCapability(input, verbs);
