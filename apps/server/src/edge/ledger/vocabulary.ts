@@ -317,6 +317,25 @@ function steerWords(input: string, ctx: VocabContext): VocabResult | null {
   }
   return null;
 }
+// #438 W085/W086: "pick the tomatoes" (harvest them, pick the fruit, pick tomatoes into the basket) is the harvest of the
+// nearest offered basket; "pick flowers for the vase" (pick some flowers, pick the flowers) that of the nearest offered vase.
+// The vessel's offer names what it picks ("Pick the ripe tomatoes into the basket", "Pick flowers for the vase"); an
+// available one first. Only while such an offer exists; other words, and "pick up", resolve as before. A planter named after
+// "from" is passed on as the act's `from`.
+const HARVEST_WORDS = /^(?:please\s+)?(?:(?:go\s+and\s+|go\s+)?(?:pick|harvest|gather|collect|cut))\s+(?:(?:the|some|a\s+few|a\s+bunch\s+of|a\s+handful\s+of|my|our)\s+)?(?:ripe\s+)?(tomatoes|tomato|fruit|flowers|flower|blooms|cosmos)(?:\s+(?:in|into|for|to\s+put\s+in)\s+(?:the|a|my)\s+(basket|vase))?(?:\s+from\s+(?:(?:the|my|our|a|this|that)\s+)?(?!basket\b|vase\b)([a-z][\w-]*(?:\s+(?!and\b|then\b|basket\b|vase\b)[a-z][\w-]*)?))?$/;
+const GENERIC_PLANTER = /^(?:(?:garden|raised|vegetable|veg|flower)\s+)?(?:planters?|beds?|garden|plants?|vines?|patch|plot)$/;
+function harvestWords(input: string, ctx: VocabContext): VocabResult | null {
+  const m = HARVEST_WORDS.exec(input.toLowerCase().replace(/[.!?\s]+$/, '').trim()); if (!m) return null;
+  const fruit = /^(?:tomato|fruit)/.test(m[1]), word = fruit ? /\btomato/i : /\bflowers?\b/i;
+  // "pick tomatoes for the vase" or "flowers into the basket" names a vessel that does not pick them: not these words
+  if (m[2] && (m[2] === 'basket') !== fruit) return null;
+  const caps = ctx.caps.filter(c => c.verb === 'object' && c.action === 'harvest' && word.test(c.label.replace(/\s*\(.*\)$/, ''))); if (!caps.length) return null;
+  const cap = [...caps].sort((a, b) => Number(b.available) - Number(a.available) || dist(ctx.target(a).at, ctx.me) - dist(ctx.target(b).at, ctx.me) || a.id.localeCompare(b.id))[0]!;
+  // "... from the rose bed" names the planter: the act picks from that one (harvest.ts), never the nearest instead
+  // ("from the bed", "from the garden", "from the plants" name no planter in particular: the nearest ripe one, as before)
+  const from = m[3] && !GENERIC_PLANTER.test(m[3]) ? m[3].slice(0, 48) : undefined;
+  return {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label})${from ? `, from ${from}` : ''}.`, ...(from ? {params: {from}} : {})};
+}
 // #439 W093: a checkers move named by its two squares ("move c3 to d4", "jump from c3 to e5", "c3 to d4", "c3-d4") is the
 // move with those squares on the board where it can be played. Only while a checkers move is offered; the board's rules judge
 // it. #1084: a Soul with a game in progress plays it there: her own board's move says "in your game", and the words go to it,
@@ -380,6 +399,7 @@ function searchWords(input: string, text: string, ctx: VocabContext): VocabResul
 function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const exact = ctx.caps.find(c => c.id === input); if (exact) return {kind: 'exact', cap: exact};
   const checkers = checkersWords(input, ctx); if (checkers) return checkers;
+  const picked = harvestWords(input, ctx); if (picked) return picked;
   // CN5 (acceptance): "A, then B" is two things. Walks and strolls chain (the earlier ones become `via` legs of the last);
   // anything else does the first and says to act again for the rest (never a mix-up of the two).
   // r3 quality case 35: "pick up a book and give it to X" is two steps too (the give is offered only once holding it).

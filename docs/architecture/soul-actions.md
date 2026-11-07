@@ -385,7 +385,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 |---|---|---|
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
 | Doors and openings | Open and close doors, gates (a picket gate and a five-bar field gate), windows, cupboard and locker doors, fridge doors, curtains, blinds, drawers and a tent flap; doors and gates open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "open the tent flap", "close the field gate", "knock on the door", "lock the door" |
-| Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
+| Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages; pick the ripe tomatoes into a basket and flowers for a vase, and carry them indoors | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed", "pick the tomatoes", "put the basket on the counter", "pick flowers for the vase", "put the vase on the table" |
 | Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it; hide a small thing in a hollow stump or a wall niche, and search one to find what is there; stock a pantry and take things out of it; eat an apple or a bun from the hand, bite by bite | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found", "hide the book in the stump", "search the stump", "look in the niche", "search around here" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
@@ -475,6 +475,22 @@ ends "(their words, not world facts)", and the Soul learns one fact per signer, 
 name it by its entity name ("sign the guestbook"); the def's other synonyms ("visitors' book") help catalogue search but
 not plain words at a thing.
 
+### Picking from the garden (#438)
+
+A harvest basket (`core-harvest-basket@1`) and a flower vase (`core-flower-vase@1`) pick from a growing planter
+(`core-garden-planter@2`, unchanged). "pick the tomatoes" (harvest the tomatoes, pick the fruit) is one act: the Soul picks
+up the basket in the right hand if it is not holding it, walks to the nearest fruiting planter, and reaches into the plants
+with the free left hand. "pick the tomatoes from the rose bed" goes to that planter (by its name, up to two words after
+"from") and never to a nearer one; a name no planter nearby has, or a named planter that is not ripe, is refused by name. At the hand's contact the planter goes back to flowering and the basket holds three tomatoes (it
+holds six). "pick flowers for the vase" (pick some flowers) is the same act with the vase: a flowering planter goes back to
+leafy and the vase holds a bunch of three. An act interrupted before the contact changes nothing, and the receipt reports what the hand did, not that the steps ran: it is `completed` only if the contact picked. Two Souls after one ripe bed: the first hand picks and the other receipt fails `harvest.not-ripe`. A fetch held up for two minutes fails `harvest.fetch-blocked`. What a vessel picks (the
+stage it picks from and leaves, its state field, how many, where the hand goes) is one row of data per def
+(`packages/world-compiler/src/core-kit/harvest.ts`); the faculty is `apps/server/src/god/harvest.ts`. A picked planter
+fruits or flowers again through the daily growth pass while it stays watered. "put the basket on the counter" is the
+ordinary put-on. Refusals say why: nothing ripe (with the nearest planter's stage), the vessel full, in someone else's
+hand, someone else's private planter, or the Soul's hands full. A planter offers nothing new: the picking offer belongs to
+the basket and the vase. Nothing takes the tomatoes or the flowers out yet, so a full basket or vase stays full.
+
 ## What other Souls perceive
 
 A Soul's `here` frame lists a few nearby things with compact facts, and only for things in the same enclosed place,
@@ -486,7 +502,8 @@ within about 4 m and in plain sight:
   lost-and-found: whose each thing is and who found it ("bowl (Ana's, found by Ben)");
 - a pantry: what it `holds` (names only); a food in the hand or bitten: its `bites` left, then `eaten`;
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
-  a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
+  a mug: how much `tea` is left, `empty` once drunk, `clean` once washed; a basket: its `fruit` and a vase its
+  `flowers`, once they hold some;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
 - a finished painting or chalk drawing: its maker and title ("an easel with Ana’s painting “Quiet sky”", "Ana’s chalk drawing “Sun” on the pavement, fading"), never the drawing itself;
 - who is holding hands, who is offering a hand-over, and who is holding what.

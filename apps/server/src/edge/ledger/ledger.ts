@@ -170,6 +170,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
    * Checked on admission/dispatch/completion, never by a per-tick world scan. Historical terminal receipts stay immutable. */
   /** `steps`, when known, is the body plan about to run for the capability (beds/1: a bed is used only by its native berth). */
   nativeUseRefusal?: (capability: string, steps?: Program['steps']) => {code: string; reason: string} | null;
+  /** #1214: a faculty whose world change happens during an act's steps says what became of it when they end: 'done', why
+   * not, or null to leave the receipt to the programme. `finished`: the steps ran to their end. */
+  actOutcome?: (capability: string, entityId: string, finished: boolean) => 'done' | {code: string; reason: string} | null;
   /** World-engine easels only; installed alongside the existing art media routes. */
   painting?: PaintingService;
   contactActuator?: ContactActuatorService;
@@ -668,11 +671,23 @@ export class EdgeLedger implements EdgeLedgerHooks {
     }
     this.dropMenus('engine-recovery');
   }
+  /** #1214: is this capability's act still open for this body? */
+  actOpen(entityId: string, capability: string) {return this.rows("capability=? AND phase IN ('waiting','started')", capability).some(r => this.host.minds.get(r.soul_id)?.entityId === entityId);}
+  /** #1214: end this body's open act, failed by name, and stop its programme with a logged stop, so replay is exact. */
+  actFail(entityId: string, capability: string, why: {code: string; reason: string}) {
+    for (const r of this.rows("capability=? AND phase IN ('waiting','started')", capability)) {
+      if (this.host.minds.get(r.soul_id)?.entityId !== entityId) continue;
+      this.update(r.receipt_id, {phase: 'failed', code: why.code, reason: why.reason});
+      if (r.program_id) try {void this.host.enqueue('edge-stop', `edge:${r.soul_id}`, {soulId: r.soul_id, entityId, programId: r.program_id, why: why.code}).catch(() => {/* best effort */});} catch {/* clock not ready */}
+    }
+  }
   private onProgram(ev: {id: string; kind: string; code?: string; message?: string}) {
     if (ev.kind === 'step') return;
     const r = this.rows("program_id=? AND phase IN ('waiting','started')", ev.id)[0]; if (!r) return;
     // PC05: a shared operation's programme ended; every member's receipt ends with it
     if (this.together.sharedProgramEnded(r.receipt_id, ev)) return;
+    const actor = this.host.minds.get(r.soul_id)?.entityId, told = actor ? this.actOutcome?.(r.capability, actor, ev.kind === 'completed') : null;
+    if (told) { this.update(r.receipt_id, told === 'done' ? {phase: 'completed'} : {phase: 'failed', code: told.code, reason: told.reason}); return; }
     if (ev.kind === 'completed') {
       const unsupported = this.nativeUseRefusal?.(r.capability);
       if (unsupported) { this.update(r.receipt_id, {phase: 'failed', code: unsupported.code, reason: unsupported.reason}); return; }
