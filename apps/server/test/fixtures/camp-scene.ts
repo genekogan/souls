@@ -1,6 +1,6 @@
 // Actual native producer output, no World helper or fabricated segment boundary.
-import {marsFactory} from '@sim/engine-mars';
-import type {RenderSceneRefV1} from '@sim/engine-contract';
+import {marsFactory} from '@souls/engine-mars';
+import type {RenderSceneRefV1} from '@souls/engine-contract';
 
 export const CAMP_SCENE_PRODUCER_PIN='3ab5daaddf949104651f93cc15afabfa21be6d3b';
 export async function campSceneFixture() {

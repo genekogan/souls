@@ -21,7 +21,7 @@ test('a camera whose post-arrival setup throws closes its context and keeps its 
     video: () => ({ path: async () => raw }) };
   const ctx = { addInitScript: async () => {}, newPage: async () => page, close: async () => { closed++; } };
   const browser = { newContext: async () => ctx };
-  const o = { base: 'http://world.test', kind: 'free', name: 'free', record: { dir } };
+  const o = { base: 'http://world.test', kind: 'free', name: 'free', record: { dir, start: 'load' } }; // from page creation: the context's own video
   const e = await openCamera({ browser, ...o }).then(() => null, (x) => x);
   assert.match(e?.message ?? '', /detached/);
   assert.equal(closed, 1, 'the context is closed, not left open until browser.close()');

@@ -3,7 +3,7 @@
 // co-builder signs in; the agent name follows it). Such a token builds (act, place, define, builds it leads, claims), but
 // never changes env/sky/time/weather or strikes, never undoes, redoes, takes, releases, pauses, resumes, finishes or abandons
 // another account's work, and never mints. Owner tokens (any other label) are unchanged.
-import type { Failure, Op } from '@sim/world-compiler';
+import type { Failure, Op } from '@souls/world-compiler';
 
 export const COBUILDER_PREFIX = 'cobuilder:';
 /** The co-builder account named by a root token label, or null for an owner token. */

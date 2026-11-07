@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { CORE_KIT, WorldModel, applyBatch, coreRef, type Op } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, coreRef, type Op } from '@souls/world-compiler';
 import { ApiError } from '../souls.ts';
 import { listDisplays, mediaKind, planHang, type Caller } from './art.ts';
 import { mountArtRoutes } from './routes.ts';

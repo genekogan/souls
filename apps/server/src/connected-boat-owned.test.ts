@@ -6,11 +6,11 @@ import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setImmediate} from 'node:timers/promises';
-import {hashOf} from '@sim/engine-contract';
-import {kernelHash} from '@sim/kernel';
-import {connectedCommonsBoatFactory} from '@sim/engine-mars';
+import {hashOf} from '@souls/engine-contract';
+import {kernelHash} from '@souls/kernel';
+import {connectedCommonsBoatFactory} from '@souls/engine-mars';
 import {connectedCommonsBoatFixture} from '../../../packages/engine-mars/src/connected-boat.ts';
-import {soulLifecycleSchema,ownerLifecycleListSchema} from '@sim/protocol';
+import {soulLifecycleSchema,ownerLifecycleListSchema} from '@souls/protocol';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 
 test('owned docked passenger retirement stays private/pending through real exit and recovers moving WAL/snapshot/genesis exactly',async t=>{

@@ -107,3 +107,26 @@ test('ancestor memo preserves scan ownership and parent-mesh culling, then repla
   detail.apply(root,camera,844);assert.equal(mesh.visible,true,'new scan sees the hidden parent and skips the mesh');assert.equal(child.castShadow,true);detail.dispose();
   assert.equal((detail as unknown as {candidates:unknown[]}).candidates.length,0,'disposing releases the candidate-owned ancestor memo');
 });
+
+function pool(){
+  const root=new THREE.Scene(),camera=new THREE.PerspectiveCamera(45,1,0.1,2400);camera.position.set(0,2,5);camera.lookAt(0,2,0);
+  const mesh=new THREE.InstancedMesh(new THREE.SphereGeometry(.08,8,4),new THREE.MeshBasicMaterial(),8);mesh.count=1;mesh.frustumCulled=true;root.add(mesh);root.updateMatrixWorld(true);
+  return {root,camera,mesh};
+}
+const options={minRadiusPx:1,shadowNear:40,shadowPerMetre:20,shadowMaxRadius:6,standInDistance:Infinity,rescanFrames:90};
+
+test('distance detail: an instanced pool hidden at scale 0 during a scan is drawn as soon as it is shown again, with no new scan', () => {
+  const {root,camera,mesh}=pool(),detail=new WorldDistanceDetail(options);
+  mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,2,0),0);   // every instance at scale 0: what EntityInstancer.updateBounds leaves
+  detail.apply(root,camera,800);assert.equal(mesh.visible,false,'nothing to draw while it has no size');detail.restore();
+  mesh.boundingSphere.radius=.16;                                     // shown again, 1 frame after the scan
+  detail.apply(root,camera,800);assert.equal(mesh.visible,true,'drawn on the next frame');detail.restore();
+});
+
+test('distance detail: an instanced pool is judged where its instances are now, not where the scan saw them', () => {
+  const {root,camera,mesh}=pool(),detail=new WorldDistanceDetail(options);
+  mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,2,-3000),.16);
+  detail.apply(root,camera,800);assert.equal(mesh.visible,false,'far away: under a pixel');detail.restore();
+  mesh.boundingSphere.center.set(0,2,0);
+  detail.apply(root,camera,800);assert.equal(mesh.visible,true,'carried here since the scan');detail.restore();
+});

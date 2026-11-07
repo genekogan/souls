@@ -6,7 +6,7 @@
 // blocked across its own width at its own spot. A wall or fence gate (`gates` param) with a door standing in it yields
 // to that door: the door, not the wall's built-in gate, decides whether the gap passes. A bare gate (no door in it) is
 // an open gap unless its params say `state: 'closed'` (SEALED 2026-10-21; packages/generators paths.ts gateOpenings).
-import type { Entity, StoredDef } from '@sim/world-compiler';
+import type { Entity, StoredDef } from '@souls/world-compiler';
 
 type Vec2 = [number, number];
 type Opening = { id: string; kind: 'door' | 'window' | 'gate' | 'arch'; at: Vec2; yaw: number; width: number; height: number; sill?: number; level: number; state?: 'open' | 'closed' | 'always' };

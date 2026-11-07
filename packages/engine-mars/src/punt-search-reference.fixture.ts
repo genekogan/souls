@@ -6,7 +6,7 @@ import type {Runtime} from '../../../mars/viewer/engine/runtime/runtime.ts';
 import type {CarrierInstallSpec, CarrierRoute} from '../../../mars/viewer/engine/vehicles/carrier.ts';
 import {routePosition,routeTicks} from '../../../mars/viewer/engine/vehicles/carrier.ts';
 import type {Spatial} from '../../../mars/viewer/engine/spatial/service.ts';
-import type {RenderScene} from '@sim/engine-contract';
+import type {RenderScene} from '@souls/engine-contract';
 import {groundRecipe} from './ground-bridge.ts';
 import {createTerrainGeometryProbe} from './terrain.ts';
 import {createWaterGeometryProbe} from './water-geometry.ts';

@@ -2,8 +2,8 @@ import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
 import { performance } from 'node:perf_hooks';
-import { coreRef } from '@sim/world-compiler';
-import { work } from '@sim/world-compiler/work-meter';
+import { coreRef } from '@souls/world-compiler';
+import { work } from '@souls/world-compiler/work-meter';
 import { Hono } from 'hono';
 import { fixture, invite, accept, factory } from '../../test/native-owner-fixture.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';
@@ -188,7 +188,7 @@ test('closure lift, done and abandon reopen capabilities; lifted build keeps its
   w.start({ id: 'renovation' }); await w.settle(1); blocked(cap(w, s, 'walk:church'), 'site.under-construction'); w.god.builds.abandon('renovation', {}, () => ({ accepted: true, reverted: [], notReverted: [] })); await w.settle(1); assert.equal(cap(w, s, 'walk:church').available, true);
 });
 
-// Z3: work budgets, not milliseconds (see @sim/world-compiler/work-meter): the same answer on any CPU, so it runs in the gate.
+// Z3: work budgets, not milliseconds (see @souls/world-compiler/work-meter): the same answer on any CPU, so it runs in the gate.
 // Measured 2026-10-20, identical on every run: capabilities for 20 Souls 744,455 (max of 30 ticks), +296,620 with a build
 // open, an idle evacuation with 8 sites 2,311. Budgets are about 2x.
 const RESIDENT_WORK = { capabilities20: 1_500_000, buildOverhead: 600_000, evacuate20x8: 4_700 };

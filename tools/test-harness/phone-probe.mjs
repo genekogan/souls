@@ -162,7 +162,7 @@ try {
     // Who draws two frames (one of each mode at a 2-frame cadence), by pass (shadow camera or the view) and owner (the scene path's first three names), with the
     // entity world's own counters: tells a batch, pool or freeze still forming from the periodic shadow pass.
     const drawOwners = await page.evaluate(async () => {
-      const w = window.__simEntity; if (!w?.renderer) return null;
+      const w = window.__soulsEntity; if (!w?.renderer) return null;
       const key = (o) => { const path = []; for (let p = o; p && p !== w.scene; p = p.parent) path.unshift(p.name || p.userData?.kind || p.type); return path.slice(0, 3).join(' / '); };
       const r = w.renderer, orig = r.renderBufferDirect, frame = {}; let on = false;
       r.renderBufferDirect = function (camera, scene, geometry, material, object) { if (on) { const k = (camera.isOrthographicCamera ? 'shadow ' : camera.isPerspectiveCamera ? 'main ' : 'other ') + key(object), n = geometry.index ? geometry.index.count : geometry.attributes.position?.count ?? 0; const e = frame[k] ??= [0, 0]; e[0]++; e[1] += Math.round(n / 3 * (object.isInstancedMesh ? object.count : 1)); } return orig.apply(this, arguments); };
@@ -171,7 +171,7 @@ try {
       for (const [k, [d, t]] of sorted) { const e = passes[k.split(' ')[0]] ??= [0, 0]; e[0] += d; e[1] += t; }
       return { passes, owners: Object.fromEntries(sorted.slice(0, 40)), stats: w.stats?.() ?? null };
     }).catch((e) => String(e));
-    const mem = await page.evaluate(() => { const P = window.__phone; const c = document.querySelector('canvas[aria-label="Live 3D view of the world"]'); const fb = c ? c.width * c.height * (4 + 4) * 4 + c.width * c.height * 4 * 2 : 0; return { texMB: +(P.tex / 1048576).toFixed(1), textures: P.texCount, bufMB: +(P.buf / 1048576).toFixed(1), rbMB: +(P.rb / 1048576).toFixed(1), canvasMB: +(fb / 1048576).toFixed(1), totalMB: +((P.tex + P.buf + P.rb + fb) / 1048576).toFixed(1), heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null, quality: window.__simQuality?.tier ?? null, detail: window.__simQuality?.detail?.() ?? null, lod: window.__simQuality?.lod?.() ?? null, standIns: window.__simQuality?.standIns?.() ?? null, gpuState: P.gpuState ?? null, gpuErr: P.gpuErr ?? null, gpuGl: !!P.gl }; });
+    const mem = await page.evaluate(() => { const P = window.__phone; const c = document.querySelector('canvas[aria-label="Live 3D view of the world"]'); const fb = c ? c.width * c.height * (4 + 4) * 4 + c.width * c.height * 4 * 2 : 0; return { texMB: +(P.tex / 1048576).toFixed(1), textures: P.texCount, bufMB: +(P.buf / 1048576).toFixed(1), rbMB: +(P.rb / 1048576).toFixed(1), canvasMB: +(fb / 1048576).toFixed(1), totalMB: +((P.tex + P.buf + P.rb + fb) / 1048576).toFixed(1), heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null, quality: window.__soulsQuality?.tier ?? null, detail: window.__soulsQuality?.detail?.() ?? null, lod: window.__soulsQuality?.lod?.() ?? null, standIns: window.__soulsQuality?.standIns?.() ?? null, gpuState: P.gpuState ?? null, gpuErr: P.gpuErr ?? null, gpuGl: !!P.gl }; });
     const audit = await page.evaluate(AUDIT);
     await page.screenshot({ path: resolve(out, `${tag}-still.png`) });
     // one-finger touch orbit across the middle of the view, then a two-finger pinch in
@@ -188,7 +188,7 @@ try {
       await touch('touchEnd', []);
     });
     orbit.long = await longAt(orbitFrom, Infinity);
-    const camMoved = await page.evaluate(() => JSON.stringify(window.__simCamera ?? null));
+    const camMoved = await page.evaluate(() => JSON.stringify(window.__soulsCamera ?? null));
     await page.waitForTimeout(800);
     await page.screenshot({ path: resolve(out, `${tag}-orbit.png`) });
     // Speech: the first resident (fake mind) says a line through the edge API; then the bubbles and tags are audited.
@@ -206,7 +206,7 @@ try {
         if (await collapse.count()) await collapse.first().tap({ timeout: 4000 }).catch(() => {});
         if (await open.count()) speechTap = await open.tap({ timeout: 4000, trial: true }).then(() => 'avatar tappable', () => 'avatar covered by another control');
         // Frame the speaker at a phone-chat distance (entity worlds expose the camera): the tag's anchor is the head.
-        speechTap += ' / ' + await page.evaluate((id) => { const w = window.__simEntity; let at = null; (w?.labelScene ?? w?.scene)?.traverse((o) => { if (o.isCSS2DObject && o.element?.dataset?.soulId === id) at = o.position.clone(); }); if (!at) return 'speaker not found'; w.controls.target.copy(at); w.camera.position.set(at.x + 5, at.y + 2.5, at.z + 7); w.camera.lookAt(at); w.controls.update?.(); return 'framed'; }, soul.id);
+        speechTap += ' / ' + await page.evaluate((id) => { const w = window.__soulsEntity; let at = null; (w?.labelScene ?? w?.scene)?.traverse((o) => { if (o.isCSS2DObject && o.element?.dataset?.soulId === id) at = o.position.clone(); }); if (!at) return 'speaker not found'; w.controls.target.copy(at); w.camera.position.set(at.x + 5, at.y + 2.5, at.z + 7); w.camera.lookAt(at); w.controls.update?.(); return 'framed'; }, soul.id);
         await page.waitForTimeout(2000);
         const said = await ctx.request.post(base + '/v1/edge/say', { headers: { authorization: `Bearer ${cred.token}` }, data: { text: 'Hello from this phone. Can you read these two lines while walking through the world?' } });
         await page.waitForFunction(() => [...document.querySelectorAll('.dialogue-popup')].some((e) => !e.hidden && e.getClientRects().length), null, { timeout: 30000 }).catch(() => {});

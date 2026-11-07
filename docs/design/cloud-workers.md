@@ -1,7 +1,7 @@
 # Owner-dispatched cloud workers (design)
 
-Status: design only, 2026-11-05. No owner dispatch path is implemented on `main` or qualified. Tracking: [#601](https://github.com/genekogan/souls/issues/601),
-part of [#554](https://github.com/genekogan/souls/issues/554) A3 and [#594](https://github.com/genekogan/souls/issues/594) A5.
+Status: design only, 2026-11-05. No owner dispatch path is implemented on `main` or qualified. Tracking: [#601](https://github.com/soulsimulation/souls/issues/601),
+part of [#554](https://github.com/soulsimulation/souls/issues/554) A3 and [#594](https://github.com/soulsimulation/souls/issues/594) A5.
 
 ## Problem
 

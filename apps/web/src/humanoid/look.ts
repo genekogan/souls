@@ -1,9 +1,9 @@
 // core/humanoid@2 looks: the def's params are the truth; this module resolves, canonicalises, keys,
 // randomises (seeded) and turns a look into palette colours. Pure (no three.js, no DOM) and node
 // strip-types safe, so the server, the CLI tooling and the viewer share it.
-import {checkFields, sha256Hex, stableStringify, type Field, type Value} from '@sim/world-compiler';
+import {checkFields, sha256Hex, stableStringify, type Field, type Value} from '@souls/world-compiler';
 // lane PERF2: only this def, not CORE_KIT (which put the whole core kit into the web bundle)
-import {HUMANOID2_DEF as DEF} from '@sim/world-compiler/humanoid2';
+import {HUMANOID2_DEF as DEF} from '@souls/world-compiler/humanoid2';
 /** The def's params (typed fields). Every look key is one of these. */
 export const HUMANOID_PARAMS = DEF.params as Readonly<Record<string, Field>>;
 export const HUMANOID_REF = 'core/humanoid@2';

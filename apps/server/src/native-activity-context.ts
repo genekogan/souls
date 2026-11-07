@@ -1,4 +1,4 @@
-import {localClassroomObservationV1Schema} from '@sim/engine-contract';
+import {localClassroomObservationV1Schema} from '@souls/engine-contract';
 import type {Mind,WorldHost} from './world.ts';
 const small=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
 const word=(n:number)=>n<20?small[n]:n<30?'twenty'+(n===20?'':'-'+small[n-20]):'thirty'+(n===30?'':'-'+small[n-30]);
