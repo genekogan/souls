@@ -7,7 +7,7 @@ import type {EdgeOutcomeV1} from '@souls/protocol';
 import type {EdgeReceipt} from '../contract.ts';
 import {SPOT_ACTIVITIES} from './activities.ts';
 
-/** The most entries a public record carries, newest first. Every text is cut to 80 bytes, so the timeline stays under 8 KB. */
+/** The most entries a public record carries, newest first. Every text is cut to 80 bytes before JSON escapes it, so the timeline stays around 10 KB at the very worst. */
 export const TIMELINE_MAX = 20;
 /** What `inspect <soul>` shows of it. */
 export const TIMELINE_PAGE = 5;

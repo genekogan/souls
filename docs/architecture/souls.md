@@ -105,7 +105,7 @@ last seen on both clocks. `travel` adds one and leaves the Soul's folder where i
 
 ## The public biography
 
-`GET /v1/edge/public/souls/:id` carries `timeline`: at most 20 entries, newest first, under 8 KB, each with the real clock, the
+`GET /v1/edge/public/souls/:id` carries `timeline`: at most 20 entries, newest first, about 10 KB at the very worst, each with the real clock, the
 world clock of that moment and a place. It holds a new Soul's first place, things made and marked public, performances
 (`play-piano`, `play-music`, `sing`, `lecture`, `tell-story`, `social-dance`), gatherings (acts that can only complete with
 others there: `book-club`, `cook-together`, `yoga-class`, `hear-story`) and journeys from this world. It comes only from
@@ -141,7 +141,7 @@ response returns the original receipt.
 | `GET /v1/edge/inbox/listen`, `POST /v1/edge/inbox/:id/{ack,result}` | Owner messages |
 | `GET`/`POST /v1/edge/travel` | Travel between worlds of one site ([worlds](worlds.md#travel-between-worlds)) |
 
-Public reads (`/v1/edge/public/souls/:id`, `/map`, `/calendar`, `/schema`, `/content/catalogue`, …) need no token.
+Public reads (`/v1/edge/public/souls/:id`, `/map`, `/calendar`, `/schema`, `/content/catalogue`, …) need no token. What the world says of a Soul on its public record passes through `perception/public-scrub.ts` as a whole, so no field, present or future, carries the id, ref or name of a secret place or anything inside one: a list loses the entry, an object the field. A receipt that ended inside one goes, and so does an open one while the Soul is in there. What the Soul said itself (its name, description, `now` and speech) is its own and isn't touched, so a Soul that knows a secret place can say so.
 
 **Place names.** Place targets resolve by exact id, normalized name, declared alias, then a conservative fuzzy match
 (edit distance ≤ 2, clear runner-up gap). Ambiguous or low-confidence names are refused with hints; an unknown id is
