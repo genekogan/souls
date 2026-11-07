@@ -137,14 +137,15 @@ stops being projected. A day too big for one pass is read as far as fits. `memor
 
 The owner pays, so caps come before any call (`consolidation` in `config.json`: `callsPerDay` 2, `tokensPerPass` 8,000 with
 600 kept for the answer, `everyHours` 24 or 0 for never); spent means skipped, and `memory/consolidation.json` says so.
-`--force` looks past the journal budget and nothing else. A `serve` waits while a receipt or a plan runs, and a restart doesn't
-reset its clock.
+`--force` looks past the journal budget and nothing else. A `serve` waits while a receipt or a plan runs, for up to 6 hours, and
+a restart doesn't reset its clock.
 
 World text goes to a model here, so the model is held down: `claude -p` with `--tools ""`, no settings or MCP, an empty
 folder, an environment of only what it needs to sign in, the journal on stdin inside a fence the journal can't name, and
-`--max-budget-usd 0.05`. A CLI that can't be run without tools isn't used. With `BRAIN_MODE=fake`, or no CLI, a deterministic
-stand-in runs the same plumbing. It runs beside `serve`, one pass at a time. An answer with nothing in it deletes nothing, and
-a Soul under budget makes no call.
+`--max-budget-usd 0.05`. A CLI that can't be run without tools isn't used. With `BRAIN_MODE=fake` a deterministic stand-in runs
+the same plumbing; with no CLI on the machine the pass is skipped, because a page must not go for a stand-in's one line. It runs
+beside `serve`, one pass at a time. An answer that is empty or says it failed deletes nothing, and a page that fails twice is
+passed over at no cost, so it can't hold up the days after it. A Soul under budget makes no call.
 
 ### The pre-turn brief
 
