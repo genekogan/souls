@@ -23,7 +23,8 @@ export function aroundFrame(ledger: EdgeLedger, soul: EdgeSoul) {
   for (const p of found) K.find(soul.soulId, p.id, tick);
   if (found.length) ledger.invalidateBodies();
   const mem = K.memory(soul.soulId), path = ledger.placePathOf(soul.soulId).filter(p => p.kind !== 'occupier').map(p => p.id);
-  const people = P.souls(AROUND_RADIUS).slice(0, 12).map(o => `${o.name} · ${o.distance}m ${P.bearing(o.at)} · ${o.activity && o.activity !== 'idle' ? o.activity.replace(/[-_]/g, ' ') : o.state}`);
+  const seen = P.souls(AROUND_RADIUS).slice(0, 12), souls = seen.map(o => ({id: o.soulId, traveller: ledger.travellerOf(o.soulId)}));
+  const people = seen.map(o => `${o.name} · ${o.distance}m ${P.bearing(o.at)} · ${o.activity && o.activity !== 'idle' ? o.activity.replace(/[-_]/g, ' ') : o.state}`);
   const things = P.things(AROUND_RADIUS).slice(0, 16).map(t => `${t.name}${t.kind === 'seat' ? (t.free ? ' (free seat)' : ' (taken seat)') : t.kind === 'spot' ? ` (${t.capability?.split(':')[0] ?? 'spot'})` : ` (${t.kind})`} · ${t.distance}m ${P.bearing(t.at)}`);
   const inside = new Set(path);
   // the walk to a place, only when one is offered now (a place in view is not always one you can walk into)
@@ -37,5 +38,5 @@ export function aroundFrame(ledger: EdgeLedger, soul: EdgeSoul) {
         ...(p.description ? {what: clip(p.description, 160)} : {}), ...(p.semanticKind?{kind:p.semanticKind}:{}), ...(p.parts?.length?{parts:p.parts.map(part=>({id:part.id,name:part.title,...(part.walk?{walk:part.walk}:{}),...(part.sit?{sit:part.sit}:{})}))}:{}), ...(k ? {been: k.how === 'visited' ? k.visits : 'found'} : {}), ...(K.isSecret(p.id) ? {secret: true} : {})};});
   const unvisited = places.filter(p => !mem.has(p.id) && p.walk).slice(0, 3).map(p => p.walk!);
   return {tick, ...(found.length ? {found: found.map(p => ({id: p.id, name: p.name, ...(walks.has(p.id) ? {walk: walks.get(p.id)} : {}), ...(p.description ? {what: clip(p.description, 110)} : {})}))} : {}),
-    people, things, places, ...(() => {const f = floorLines(ledger, P, 60); return f.length ? {floors: f} : {};})(), ...(unvisited.length ? {unvisited} : {}), untrusted: true};
+    people, ...(souls.length ? {souls} : {}), things, places, ...(() => {const f = floorLines(ledger, P, 60); return f.length ? {floors: f} : {};})(), ...(unvisited.length ? {unvisited} : {}), untrusted: true};
 }

@@ -7,7 +7,7 @@ import {offerParams, type ParamSchema} from '../intents/offer-schema.ts';
 type Child = {id: string; kind: string; name: string};
 type Member = {soulId: string; name: string; role: string; slot: number | null; accepted: boolean; answer?: string; ready?: boolean; why?: string};
 type Offer = {id: string; verb: string; label: string; available: boolean; why?: string; params?: ParamSchema};
-export type Inspected = {id: string; kind: string; name: string; state?: Record<string, unknown>; parts?: Child[]; contents?: Child[]; members?: Member[]; offers: Offer[]; more?: {parts?: number; contents?: number; offers?: number}};
+export type Inspected = {id: string; kind: string; name: string; traveller?: string; state?: Record<string, unknown>; parts?: Child[]; contents?: Child[]; members?: Member[]; offers: Offer[]; more?: {parts?: number; contents?: number; offers?: number}};
 
 export const INSPECT_BYTES = 4096;
 /** What a place lists before the byte budget: the nearest; `more` still counts the rest. */
@@ -41,7 +41,7 @@ function identify(L: EdgeLedger, soul: EdgeSoul, id: string, caps: EdgeCapabilit
   if (mind) {
     // public facts only: not its receipts, its events or where it is, which may be a place this Soul has not found
     const seen = L.publicSoul(id) as {soul?: {description?: string | null}; now?: unknown; self?: {activity?: string; doing?: unknown} | null};
-    return {id, kind: 'soul', name: mind.name, state: {...(seen.soul?.description ? {description: seen.soul.description, untrusted: true} : {}), ...(seen.now ? {now: seen.now} : {}), ...(seen.self ? {activity: seen.self.activity} : {})}};
+    return {id, kind: 'soul', name: mind.name, traveller: L.travellerOf(id), state: {...(seen.soul?.description ? {description: seen.soul.description, untrusted: true} : {}), ...(seen.now ? {now: seen.now} : {}), ...(seen.self ? {activity: seen.self.activity} : {})}};
   }
   if (L.concealedThing?.(id)) return null;
   const item = L.together.publicItems().find(i => i.id === id);

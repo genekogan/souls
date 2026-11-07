@@ -103,10 +103,28 @@ export class Objects {
       const prior = this.core.db.prepare('SELECT MAX(version) AS version FROM edge_comms_object_log WHERE world_id=? AND object_id=?').get(this.core.worldId, input.id) as {version: number | null};
       const o: ObjectRecord = {id: input.id, kind: input.kind, name: input.name.slice(0, 100), description: (input.description ?? kind.description).slice(0, 4000), placeId: input.placeId, version: (prior.version ?? 0) + 1, state, createdAt: this.core.now()};
       this.save(o); this.log(o, null, 'create', input.params ?? {});
+      this.core.db.prepare('DELETE FROM edge_comms_object_tombstones_v1 WHERE world_id = ? AND id = ?').run(this.core.worldId, input.id);
       return o;
     });
   }
-  remove(id: string) { this.core.db.prepare('DELETE FROM edge_comms_objects WHERE world_id = ? AND id = ?').run(this.core.worldId, id); this.table.removed(id); }
+  remove(id: string) {
+    const o = this.row(id);
+    tx(this.core.db, () => {
+      // #1139: memory points at objects by id; a removed one leaves its last name, so the pointer degrades instead of breaking
+      if (o) this.core.db.prepare('INSERT OR REPLACE INTO edge_comms_object_tombstones_v1 (world_id, id, kind, name, listed, state, gone_at, gone_tick) VALUES (?,?,?,?,?,?,?,?)').run(this.core.worldId, id, o.kind, o.name, this.kinds.get(o.kind)?.listed ? 1 : 0, JSON.stringify(o.state), this.core.now(), this.core.tick());
+      this.core.db.prepare('DELETE FROM edge_comms_objects WHERE world_id = ? AND id = ?').run(this.core.worldId, id);
+    });
+    this.table.removed(id);
+  }
+  /** The last name of a removed object, for a Soul that could have known it: any listed kind, else one that held a role
+   *  in it or acted on it. */
+  tombstone(id: string, soulId: string) {
+    if (!OBJECT_ID.test(id) || this.row(id)) return null;
+    const t = this.core.db.prepare('SELECT kind, name, listed, state, gone_at, gone_tick FROM edge_comms_object_tombstones_v1 WHERE world_id = ? AND id = ?').get(this.core.worldId, id) as {kind: string; name: string; listed: number; state: string; gone_at: number; gone_tick: number} | undefined;
+    if (!t) return null;
+    if (!t.listed && !this.kinds.get(t.kind)?.rolesOf(JSON.parse(t.state), soulId).length && !this.core.db.prepare('SELECT 1 FROM edge_comms_object_log WHERE world_id = ? AND object_id = ? AND soul_id = ? LIMIT 1').get(this.core.worldId, id, soulId)) return null;
+    return {id, kind: t.kind, lastName: t.name, goneAt: t.gone_at, goneTick: t.gone_tick};
+  }
 
   private inPlace(soulId: string, placeId: string): boolean {
     try { return this.core.deps.ledger.placePathOf(soulId).some(p => p.id === placeId); } catch { return false; }

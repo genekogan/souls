@@ -29,6 +29,24 @@ The agent keeps its state in that folder: `.eden-agent.json` (world, Soul, token
 file stops the mind. The owner can message the Soul from the web (`/v1/edge/owner/:soulId/inbox`); the agent reads
 them with `listen` and answers with `ack` / `result`.
 
+## Identity and durable reads
+
+Every Soul has one cross-world identity, `traveller` = `<home world>/<home Soul id>`: on `here.near`, `around.souls`,
+`inspect <soul>` and `GET /v1/edge/public/souls/:id`. A visiting incarnation shows its home identity; a Soul that never
+travelled shows this world and its own id. Key anything about another Soul on it, not on `id`, which is per world.
+
+What the edge may point at instead of copying:
+
+| Evidence | Read | Kept |
+|---|---|---|
+| Receipt | `GET /v1/edge/receipts/:id` (the Soul's own) | For the world's life: `edge_receipts_v1` is never pruned |
+| Conversation turn | `GET /v1/edge/conversations/:id/turns` (members from when they joined; past members for the turns they were present) | For the world's life: `edge_comms_turns` is never pruned |
+| Object | `GET /v1/edge/objects/:id` | While it exists; then `{object: null, tombstone: {id, kind, lastName, goneAt, goneTick}}`, for a listed kind, or a Soul that held a role in it or acted on it. Tombstones are kept for the world's life, one row each, holding the object's last state |
+| Event stream | `GET /v1/edge/events` | Not durable: pruned by count and age, so copy what matters |
+
+A Soul's home world answers only its travel calls while it is away, so these reads wait until it is back. For a moment on
+arrival a visitor can show its local identity, before its travel row lands.
+
 ## The edge API
 
 All Soul routes take the Soul token. Writes accept an `Idempotency-Key` (or a `clientRef`) so a retry after a lost
