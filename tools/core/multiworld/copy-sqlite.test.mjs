@@ -29,7 +29,7 @@ function fixture(path){
 const live=['fixture','events','named','wr','usage','sqlite_sequence'];
 
 test('compact copy: live rows exact (WAL, rowids, blobs, bigints, WITHOUT ROWID), recordings dropped, triggers last, refuses overwrite',()=>{
-  const dir=mkdtempSync(join(tmpdir(),'sim-ro-copy-')),source=join(dir,'source.db'),target=join(dir,'copy.db');let w,copy;
+  const dir=mkdtempSync(join(tmpdir(),'souls-ro-copy-')),source=join(dir,'source.db'),target=join(dir,'copy.db');let w,copy;
   try{
     w=fixture(source);
     const before=Object.fromEntries(live.map(t=>[t,all(w,`SELECT * FROM ${t} ORDER BY 1`)]));
@@ -58,7 +58,7 @@ test('compact copy: live rows exact (WAL, rowids, blobs, bigints, WITHOUT ROWID)
 });
 
 test('compact copy refuses views and leaves no partial destination',()=>{
-  const dir=mkdtempSync(join(tmpdir(),'sim-ro-copy-')),source=join(dir,'s.db'),target=join(dir,'t.db');let w;
+  const dir=mkdtempSync(join(tmpdir(),'souls-ro-copy-')),source=join(dir,'s.db'),target=join(dir,'t.db');let w;
   try{
     w=new DatabaseSync(source);w.exec('CREATE TABLE a(x); CREATE VIEW v AS SELECT x FROM a;');
     assert.throws(()=>copySqliteReadOnly(source,target),/unsupported schema objects: v/);

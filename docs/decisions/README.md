@@ -1,6 +1,6 @@
 # Decisions
 
-Architecture decision records (ADRs): one short file per decision that shapes how Sim is built or run, and is
+Architecture decision records (ADRs): one short file per decision that shapes how Souls is built or run, and is
 hard to reverse or easy to forget. They record why, so a later contributor (or agent) does not undo a choice
 without knowing what it was protecting.
 

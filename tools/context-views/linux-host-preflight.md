@@ -16,8 +16,8 @@ Environment/ReadWritePaths changes are separate operator steps. A daemon-reload 
    print environment or auth files.
 3. Check the candidate lockfile hash matches production's, then in the candidate directory run
    `COREPACK_ENABLE_NETWORK=0 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 corepack pnpm install --offline --frozen-lockfile
-   --store-dir <store> --filter @sim/server... --filter mars-campus-viewer`. A failure means missing prerequisites: keep
-   the log and stop; never retry online or download browsers. As in `release.sh`, link only web's `@sim/world-compiler`
+   --store-dir <store> --filter @souls/server... --filter mars-campus-viewer`. A failure means missing prerequisites: keep
+   the log and stop; never retry online or download browsers. As in `release.sh`, link only web's `@souls/world-compiler`
    to the candidate package if the server-filtered install omitted it. Never symlink production `node_modules`:
    workspace links can silently select old production source.
 4. Point both candidate units at the Chromium already installed under `/srv/sim-eyes/ms-playwright` (browser cache and

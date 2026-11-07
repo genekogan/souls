@@ -14,7 +14,7 @@ async function cleanupFixture(directory){
 // network, pairing or world service is started. The first controller is killed;
 // a replacement must not start while its old owned writer group survives.
 test('launcher reaps a birth-registered orphan after actual controller death before admitting a replacement',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-controller-reentry-')),script=join(directory,'controller.mjs'),record=join(directory,'record.json'),result=join(directory,'result.json'),state=join(directory,'state');
+ const directory=mkdtempSync(join(tmpdir(),'souls-controller-reentry-')),script=join(directory,'controller.mjs'),record=join(directory,'record.json'),result=join(directory,'result.json'),state=join(directory,'state');
  writeFileSync(script,`import {spawn} from 'node:child_process';import {existsSync,readFileSync,writeFileSync} from 'node:fs';
  const record=${JSON.stringify(record)},result=${JSON.stringify(result)},state=${JSON.stringify(state)};
  const {openJournal}=await import(${JSON.stringify(new URL('./journal.mjs',import.meta.url).href)});const journal=openJournal(state,{worldId:'world',soulId:'s_subject'});
@@ -28,7 +28,7 @@ test('launcher reaps a birth-registered orphan after actual controller death bef
 });
 
 test('actual run startup registers before connect and restores the durable thread after active controller SIGKILL',{timeout:30000},async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-run-active-reentry-')),state=join(directory,'state'),script=join(directory,'controller.mjs'),phase=join(directory,'phase.json'),result=join(directory,'result.json');
+ const directory=mkdtempSync(join(tmpdir(),'souls-run-active-reentry-')),state=join(directory,'state'),script=join(directory,'controller.mjs'),phase=join(directory,'phase.json'),result=join(directory,'result.json');
  writeFileSync(join(directory,'.eden-agent.json'),JSON.stringify({world:'http://127.0.0.1:1/w/synthetic',soul:'s_subject',token:'SYNTHETIC_TOKEN_CANARY'}),{mode:0o600});
  writeFileSync(script,`import {spawn} from 'node:child_process';import {EventEmitter} from 'node:events';import {readFileSync,writeFileSync,existsSync} from 'node:fs';
  const {main}=await import(${JSON.stringify(new URL('./run.mjs',import.meta.url).href)});const {openJournal}=await import(${JSON.stringify(new URL('./journal.mjs',import.meta.url).href)});

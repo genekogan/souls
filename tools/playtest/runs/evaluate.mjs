@@ -13,8 +13,9 @@ import { readJson, readJsonl } from '../lib/jsonl.mjs';
 import { loadRun } from '../review/run.mjs';
 import { computeMetrics, readLedger } from '../review/metrics.mjs';
 import { runOracles } from '../review/oracles.mjs';
+import { SCORER, scoreRun, scorecardMeasures, renderScorecard } from './controllability.mjs';
 
-export const EVALUATOR = Object.freeze({ name: 'soul-runs/evaluate', version: '1' });
+export const EVALUATOR = Object.freeze({ name: 'soul-runs/evaluate', version: '2' }); // v2: the controllability scorecard (#1097)
 export const SCHEMA = 'soul-run-evaluation/1';
 export const INDEX_SCHEMA = 'soul-run-index/1';
 const VERDICTS = ['pass', 'fail', 'unknown'];
@@ -298,7 +299,10 @@ export function runIdentity(sr) {
   const pre = sr.receipt?.preflight?.scenario?.checks ?? (sr.playtestDir ? readJson(join(sr.playtestDir, 'preflight.json'), null)?.checks : null) ?? null;
   const ev = sr.receipt?.evidence ?? {};
   const conditions = {
-    commit: sr.receipt?.source?.commit ?? null, dirtyTrackedFiles: sr.receipt?.source?.dirtyTrackedFiles ?? null, node: sr.receipt?.source?.node ?? null,
+    commit: sr.receipt?.source?.commit ?? null, dirtyTrackedFiles: sr.receipt?.source?.dirtyTrackedFiles ?? null,
+    // #785: the tools checkout (runner, adapters, director) can differ from the server root; null on older receipts.
+    toolsCommit: sr.receipt?.source?.tools?.commit ?? null, toolsDirtyTrackedFiles: sr.receipt?.source?.tools?.dirtyTrackedFiles ?? null,
+    node: sr.receipt?.source?.node ?? null,
     cli: ev.cli ?? null, skill: ev.skill ?? null, build: ev.build ?? null,
     machine: pre ? { load1: pre.laptopLoad?.[0] ?? null, freeGb: pre.freeGb ?? null, machineOk: pre.machineOk ?? null } : null,
     observer: sr.receipt?.observer ? { ok: sr.receipt.observer.ok, stage: sr.receipt.observer.stage ?? null } : null,
@@ -308,7 +312,7 @@ export function runIdentity(sr) {
 
 function evaluatorFiles() {
   const here = dirname(new URL(import.meta.url).pathname);
-  const files = ['runs/evaluate.mjs', 'review/run.mjs', 'review/metrics.mjs', 'review/oracles.mjs'];
+  const files = ['runs/evaluate.mjs', 'runs/controllability.mjs', 'review/run.mjs', 'review/metrics.mjs', 'review/oracles.mjs'];
   const root = resolve(here, '..');
   const out = Object.fromEntries(files.map((f) => [f, existsSync(join(root, f)) ? sha256(readFileSync(join(root, f))).slice(0, 16) : null]));
   let commit = null, dirty = null;
@@ -334,6 +338,11 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
   for (const q of sr.receipt?.spec?.effective?.evaluation?.questions ?? []) if (!loaded.some((l) => l.sha256 === q.sha256)) answers.push({ id: q.id ?? basename(q.path), basis: 'predeclared', verdict: 'unknown', uncertainty: 'the predeclared scorer file is missing or changed since the run (hash mismatch)', evidence: [], scorer: q });
   const review = sr.playtestDir ? readJson(join(sr.playtestDir, 'receipts', '5-review.json'), null) : null;
   const identity = runIdentity(sr);
+  // The scorecard's definitions are predeclared the way questions are: their hash is in the effective spec at the run.
+  const scorerSha = sha256(readFileSync(new URL('./controllability.mjs', import.meta.url)));
+  const declaredScorer = sr.receipt?.spec?.effective?.scorer ?? null;
+  const scorecard = scoreRun(sr, { answers, scorer: { sha256: scorerSha, predeclared: declaredScorer?.sha256 === scorerSha, ...(declaredScorer && declaredScorer.sha256 !== scorerSha ? { note: `the scorer changed since the run (spec had ${declaredScorer.sha256.slice(0, 16)})` } : !declaredScorer ? { note: 'the run\'s spec names no scorer hash (an earlier run)' } : {}) } });
+  measures.push(...scorecardMeasures(scorecard));
   const evaluation = {
     schema: SCHEMA, evaluator: evaluatorFiles(), createdAt: now().toISOString(),
     offline: { worldStarted: false, controllersStarted: false, network: false, modelCalls: 0 },
@@ -348,6 +357,7 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
       semanticReview: review ? { mode: sr.scenario?.review?.mode ?? 'model', provider: (sr.scenario?.review?.mode ?? 'model') === 'model' ? 'claude' : null, model: (sr.scenario?.review?.mode ?? 'model') === 'model' ? (sr.scenario?.review?.reviewerModel ?? 'opus') : null, requests: review.requests ?? 0, inputs: (sr.scenario?.review?.mode ?? 'model') === 'model' ? 'bounded per-request evidence projections (review/run.mjs projectEvidence)' : 'deterministic oracles only', outputs: ['ledger.tsv', 'reviews.jsonl'].map((f) => sr.at(f)).filter((f) => before[f]), note: 'indexed, not re-run; evaluate makes no model call' } : null,
     },
     measures,
+    scorecard: { file: 'scorecard.json', scorer: scorecard.scorer },
     acceptance: { scenario: sr.playtestDir ? scenarioAcceptance(sr) : null, predeclared: answers.filter((a) => a.basis === 'predeclared') },
     questions: answers.filter((a) => a.basis === 'exploratory'),
     requests,
@@ -361,15 +371,16 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
   };
   const after = indexSources(sr.runDir);
   evaluation.sources.unchanged = JSON.stringify(before) === JSON.stringify(after);
-  if (!write) return { evaluation, dir: null };
+  if (!write) return { evaluation, scorecard, dir: null };
   const root = join(sr.runDir, 'evaluations');
   mkdirSync(root, { recursive: true });
   const n = readdirSync(root).filter((d) => /^\d{3}-/.test(d)).length + 1;
   const out = join(root, `${String(n).padStart(3, '0')}-v${EVALUATOR.version}`);
   mkdirSync(out);
   writeFileSync(join(out, 'evaluation.json'), JSON.stringify(evaluation, null, 1) + '\n');
-  writeFileSync(join(out, 'EVALUATION.md'), renderEvaluation(evaluation));
-  return { evaluation, dir: out };
+  writeFileSync(join(out, 'scorecard.json'), JSON.stringify(scorecard, null, 1) + '\n');
+  writeFileSync(join(out, 'EVALUATION.md'), renderEvaluation(evaluation) + '\n' + renderScorecard(scorecard));
+  return { evaluation, scorecard, dir: out };
 }
 
 const fmt = (v) => (v == null ? '—' : typeof v === 'number' ? String(v) : String(v));
@@ -430,11 +441,12 @@ export async function compareRunSet(dirs, { questions = [], now = () => new Date
       const versions = [...new Set(Object.values(v).filter(Boolean).map((x) => x.version))];
       return [id, { verdicts: v, pass: Object.values(v).filter((x) => x?.verdict === 'pass').length, fail: Object.values(v).filter((x) => x?.verdict === 'fail').length, unknown: Object.values(v).filter((x) => !x || x.verdict === 'unknown').length, ...(versions.length > 1 ? { flag: `scorer versions differ: ${versions.join(', ')}` } : {}) }];
     }));
-    const keys = ['commit', 'dirtyTrackedFiles', 'node', 'cli', 'skill', 'build', 'machine', 'observer'];
+    const keys = ['commit', 'dirtyTrackedFiles', 'toolsCommit', 'toolsDirtyTrackedFiles', 'node', 'cli', 'skill', 'build', 'machine', 'observer'];
     const all = attempts.filter((t) => t.arm === arm.arm);
     arm.conditions = Object.fromEntries(all.map((t) => [t.runId, t.conditions]));
     arm.conditionsDiffer = keys.filter((k) => new Set(all.map((t) => JSON.stringify(k === 'machine' ? { ok: t.conditions?.machine?.machineOk } : t.conditions?.[k]))).size > 1);
-    if (all.some((t) => t.conditions?.dirtyTrackedFiles)) arm.caveats = [`source not exactly identified for ${all.filter((t) => t.conditions?.dirtyTrackedFiles).map((t) => t.runId).join(', ')} (uncommitted tracked files)`];
+    const dirty = all.filter((t) => t.conditions?.dirtyTrackedFiles || t.conditions?.toolsDirtyTrackedFiles);
+    if (dirty.length) arm.caveats = [`source not exactly identified for ${dirty.map((t) => `${t.runId}${t.conditions?.toolsDirtyTrackedFiles ? (t.conditions?.dirtyTrackedFiles ? ' (server root and tools)' : ' (tools)') : ''}`).join(', ')} (uncommitted tracked files)`];
     if (reps.length < 2) arm.caveats = [...(arm.caveats ?? []), `${reps.length} completed repeat(s): no spread can be read`];
   }
   const incompatible = [];
@@ -449,6 +461,8 @@ export function renderIndex(ix) {
   const L = [`# Run comparison`, '', `${ix.attempts.length} attempt(s), ${ix.arms.length} arm(s). ${ix.pooled}.`, ''];
   for (const a of ix.arms) {
     L.push(`## Arm \`${a.arm}\``, '', `Attempts: ${a.attempts.map((t) => `${t.runId} (${t.status})`).join(', ')}. Completed repeats: ${a.repeats.length}.${a.conditionsDiffer.length ? ` Conditions differ: ${a.conditionsDiffer.join(', ')}.` : ''}${a.caveats ? ` Caveats: ${a.caveats.join('; ')}.` : ''}`, '');
+    const src = (c) => `server root ${c?.commit?.slice(0, 8) ?? '?'}${c?.dirtyTrackedFiles ? `+${c.dirtyTrackedFiles}` : ''}, tools ${c?.toolsCommit?.slice(0, 8) ?? 'unrecorded'}${c?.toolsDirtyTrackedFiles ? `+${c.toolsDirtyTrackedFiles}` : ''}`;
+    L.push(`Source: ${Object.entries(a.conditions ?? {}).map(([id, c]) => `${id} (${src(c)})`).join('; ')}.`, '');
     if (a.repeats.length) {
       L.push(`| measure | unit | ${a.repeats.join(' | ')} | measured / unavailable |`, `|---|---|${a.repeats.map(() => '---').join('|')}|---|`);
       for (const [id, m] of Object.entries(a.measures)) L.push(`| ${id} | ${m.unit} | ${a.repeats.map((r) => fmt(m.values[r])).join(' | ')} | ${m.measured} / ${m.unavailable} |`);

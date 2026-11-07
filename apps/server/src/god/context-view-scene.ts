@@ -1,5 +1,5 @@
 import type { GodMode } from './god.ts';
-import type { Entity, WorldModel } from '@sim/world-compiler';
+import type { Entity, WorldModel } from '@souls/world-compiler';
 import { contextHash } from './context-view-cache.ts';
 import { humanTitle, meaningParts } from './meaning.ts';
 import { withoutHidden } from '../moderation/routes.ts';

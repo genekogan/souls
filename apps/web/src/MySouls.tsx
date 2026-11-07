@@ -1,12 +1,12 @@
 import {useEffect,useState,type ReactNode} from 'react';
 import {NavbarMenu} from './NavbarMenu.tsx';
 import {orderedSoulIds,readSoulRecency,selectedSoulIds} from './soul-recency.ts';
-import type {PublicSoul} from '@sim/protocol';
+import type {PublicSoul} from '@souls/protocol';
 import {worldKey,worldPath} from './world-path.ts';
 import {requestSoulConversations} from './dialogue-speaking.ts';
 import {soulAvatars} from './SoulAvatars.ts';
 import {soulAvatarImage} from './soul-avatar-source.ts';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import {useOwnedAgentPresence} from './agent-presence.ts';
 import {newest,ownerLink,readBody,type Body} from './soul-state.ts';
 const ID=/^[a-zA-Z0-9_-]{1,100}$/;

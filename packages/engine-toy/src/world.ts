@@ -1,6 +1,6 @@
 // The toy world: a 100×100 m plane with a campfire, benches, a kiosk and a gate.
 // Stand-in for the Mars campus; same WorldState shape.
-import { seedRng, type Entity, type Provenance, type Region, type WorldState } from '@sim/engine-contract';
+import { seedRng, type Entity, type Provenance, type Region, type WorldState } from '@souls/engine-contract';
 
 export const TOY_SCHEMA = 'sim-toy-world/1';
 export const TOY_RULES_VERSION = 'sim-toy/1+activities/1';

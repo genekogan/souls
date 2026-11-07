@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 PC11 (#690) table-shaped load. core-work-table@1 (5575b7099fba…) is a new immutable revision: a 75 kg, 2.44 × 0.91 × 0.76 m work table whose components.carryable.handling is crew [3, 4] (three by mass at 30 kg each) with grips for three and four at its legs, carried level on its legs. No existing def's bytes changed (work.json only appends it). A narrow production K=2 run (`conformance.mjs --k 2 --filter core-work-table`) baked, placed and rendered all 5 samples with 0 findings and 0 qualification gaps, so this supplement pins no finding. catalogue-checks: 838 items, every G2 failure held, 0 G3. No budgets, samples or gap checks were relaxed. Real carry and browser qualification are separate evidence in the PR.",
+  "findings": []
+}

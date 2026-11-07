@@ -29,19 +29,19 @@ try{
   const q=new URLSearchParams({dev:'1',shot:'1',settle:'1500',dust,eye:'15,3,5',at:'-5,2,-35'});
   console.log('load',dpr,dust);
   await page.goto(base+'?'+q,{waitUntil:'domcontentloaded',timeout:90000});
-  await page.waitForFunction(()=>window.__shotReady===true&&window.__simEntity?.layer?.active,null,{polling:250,timeout:90000}).catch(async e=>{writeFileSync(join(out,`${phase}-readiness-dpr${dpr}.json`),JSON.stringify({errors,url:page.url(),body:await page.locator('body').innerText({timeout:5000}).catch(()=>'(unresponsive)')},null,2));throw e;});
+  await page.waitForFunction(()=>window.__shotReady===true&&window.__soulsEntity?.layer?.active,null,{polling:250,timeout:90000}).catch(async e=>{writeFileSync(join(out,`${phase}-readiness-dpr${dpr}.json`),JSON.stringify({errors,url:page.url(),body:await page.locator('body').innerText({timeout:5000}).catch(()=>'(unresponsive)')},null,2));throw e;});
   await page.waitForTimeout(2000);
-  const initial=await page.evaluate(()=>window.__simEntity.camera.position.toArray());
+  const initial=await page.evaluate(()=>window.__soulsEntity.camera.position.toArray());
   await page.mouse.click(600,500);await page.keyboard.down('w');await page.waitForTimeout(500);await page.keyboard.up('w');
-  const moved=await page.evaluate(p=>Math.hypot(...window.__simEntity.camera.position.toArray().map((v,i)=>v-p[i])),initial);
+  const moved=await page.evaluate(p=>Math.hypot(...window.__soulsEntity.camera.position.toArray().map((v,i)=>v-p[i])),initial);
   if(moved<.2)throw Error('real W input did not move camera');
   const assetViews=flag('views',null)?JSON.parse(readFileSync(flag('views'),'utf8')):VIEWS;
   const dustViews={['dust-'+dust]:{eye:[15,3,5],at:[-5,2,-35]}};
   const views=mode==='review'?{...(dust==='clear'?assetViews:{}),...dustViews}:mode==='dust'?dustViews:assetViews;
   for(const [name,v]of Object.entries(views)){
-   await page.evaluate(v=>{const w=window.__simEntity;w.controls.target.set(...v.at);w.camera.position.set(...v.eye);w.controls.update();window.__buildingView??={};window.__buildingView.hideRoofs=!!v.roofs;},v);
+   await page.evaluate(v=>{const w=window.__soulsEntity;w.controls.target.set(...v.at);w.camera.position.set(...v.eye);w.controls.update();window.__buildingView??={};window.__buildingView.hideRoofs=!!v.roofs;},v);
    await page.waitForTimeout(1400);
-   const info=await page.evaluate(()=>({stats:window.__simEntity.stats(),dust:window.__simLiving?.atmosphere().dust,canvas:{width:document.querySelector('canvas').width,height:document.querySelector('canvas').height},gpu:(()=>{const gl=window.__simEntity.renderer.getContext(),ext=gl.getExtension('WEBGL_debug_renderer_info');return gl.getParameter(ext?ext.UNMASKED_RENDERER_WEBGL:gl.RENDERER);})()}));
+   const info=await page.evaluate(()=>({stats:window.__soulsEntity.stats(),dust:window.__soulsLiving?.atmosphere().dust,canvas:{width:document.querySelector('canvas').width,height:document.querySelector('canvas').height},gpu:(()=>{const gl=window.__soulsEntity.renderer.getContext(),ext=gl.getExtension('WEBGL_debug_renderer_info');return gl.getParameter(ext?ext.UNMASKED_RENDERER_WEBGL:gl.RENDERER);})()}));
    if(info.canvas.width!==1280*dpr)throw Error('wrong canvas DPR');
    if(name.startsWith('dust-')&&(info.dust?.kind!==dust||Math.abs(info.dust?.intensity-({clear:0,faint:.035,heavy:.4}[dust]))>1e-6))throw Error('dust state mismatch '+JSON.stringify(info.dust));
    if(errors.length)throw Error('browser errors '+errors.join('\n'));

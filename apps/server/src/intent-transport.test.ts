@@ -9,7 +9,7 @@ import {join} from 'node:path';
 import {createServer} from 'node:http';
 import {getRequestListener} from '@hono/node-server';
 import WebSocket from 'ws';
-import {INTENT_V2,PROTO,intentReceiptV2Schema,publicEvent} from '@sim/protocol';
+import {INTENT_V2,PROTO,intentReceiptV2Schema,publicEvent} from '@souls/protocol';
 import {hashToken} from './auth.ts';
 import {buildApp} from './http.ts';
 import {Hub} from './hub.ts';

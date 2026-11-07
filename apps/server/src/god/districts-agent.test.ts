@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
 import { GodMode } from './god.ts';

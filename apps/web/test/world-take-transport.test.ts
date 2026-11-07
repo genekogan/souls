@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {authoredBoundaryDeclarationV1,hashOf} from '@sim/engine-contract';
-import {stringifyTakeBoundaryWireV1,TAKE_BOUNDARY_WIRE_V1} from '@sim/protocol';
+import {authoredBoundaryDeclarationV1,hashOf} from '@souls/engine-contract';
+import {stringifyTakeBoundaryWireV1,TAKE_BOUNDARY_WIRE_V1} from '@souls/protocol';
 import {historyTakePage,historyTakePath} from '../src/WorldTakeTransport.ts';
 import {sampleTake,replayFinalState} from '../../../mars/viewer/engine/take/replay.ts';
 

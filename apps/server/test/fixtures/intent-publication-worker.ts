@@ -1,7 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { setImmediate } from 'node:timers/promises';
-import { toyFactory } from '@sim/engine-toy';
-import { INTENT_V2 } from '@sim/protocol';
+import { toyFactory } from '@souls/engine-toy';
+import { INTENT_V2 } from '@souls/protocol';
 import { Db } from '../../src/db.ts';
 import { IntentPublisher } from '../../src/intent-publisher.ts';
 import { IntentRequests, type IntentRequestScope } from '../../src/intent-requests.ts';

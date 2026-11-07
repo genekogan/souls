@@ -2,21 +2,21 @@ import {LIE_CLEARANCE} from '../../../mars/viewer/engine/social/pose.ts';
 import {regionArrivalMask} from './region-arrival.ts';
 import { createHash } from 'node:crypto';
 import { capturePhysicalHashInput, capturedPhysicalHashSteps, physicalHashNeedsLegacyCapture } from './checkpoint-hash.ts';
-import { stableStringify } from '@sim/engine-contract';
+import { stableStringify } from '@souls/engine-contract';
 import {bodyProfile} from '../../../mars/viewer/engine/bodies/navigation.ts';
 import {immutableAuthoredBoundaryFact} from '../../../mars/viewer/engine/spatial/edits.ts';
 import {keepStaticGridsForBoot,withStaticGridReadCache,type BootGridStore} from '../../../mars/viewer/engine/spatial/grid.ts';
-import {edenGroundTransitionV1Schema,type EdenGroundTransitionV1} from '@sim/engine-contract';
+import {edenGroundTransitionV1Schema,type EdenGroundTransitionV1} from '@souls/engine-contract';
 import type {EdenGroundReaderV1} from './eden-ground.ts';
 import {readClassroom} from '../../../mars/viewer/engine/activities/classroom.ts';
 import {edenLectureV1} from './eden-lecture.ts';
-import {edenLectureTransitionV1Schema,type EdenLectureTransitionV1,type EdenLecturePlacementV1} from '@sim/engine-contract';
-import {nativeSleepSnapshotPolicyV1Schema,type NativeSleepSnapshotPolicyV1} from '@sim/engine-contract';
+import {edenLectureTransitionV1Schema,type EdenLectureTransitionV1,type EdenLecturePlacementV1} from '@souls/engine-contract';
+import {nativeSleepSnapshotPolicyV1Schema,type NativeSleepSnapshotPolicyV1} from '@souls/engine-contract';
 import {NATIVE_SLEEP_SNAPSHOT_V1} from '../../../mars/viewer/engine/activities/sleep.ts';
 import {commonsNewcomerResourcesV1} from './newcomer-resources.ts';
-import {newcomerResourcesPublicV1Schema,commonsNewcomerResourcesV1Schema,type CommonsNewcomerResourcesV1,type NewcomerResourcePlacementV1} from '@sim/engine-contract';
+import {newcomerResourcesPublicV1Schema,commonsNewcomerResourcesV1Schema,type CommonsNewcomerResourcesV1,type NewcomerResourcePlacementV1} from '@souls/engine-contract';
 import {existingGreenLandmarkV1} from './green-landmark.ts';
-import {existingGreenLandmarkTransitionV1Schema,type ExistingGreenLandmarkTransitionV1} from '@sim/engine-contract';
+import {existingGreenLandmarkTransitionV1Schema,type ExistingGreenLandmarkTransitionV1} from '@souls/engine-contract';
 import {fixtureSlots, isFree, seatApproach} from '../../../mars/viewer/engine/social/slots.ts';
 import {angleDelta} from '../../../mars/viewer/engine/core/math.ts';
 import {publishedWaitsFor} from '../../../mars/viewer/engine/runtime/waits.ts';
@@ -25,12 +25,12 @@ import {rerouteCarrier,setCarrierRoute,type CarrierInstallSpec} from '../../../m
 import {puntCandidates,previewPunt,PuntSearch} from './punt.ts';
 import {probeBody,releaseBody,setDownFrom} from './stall.ts';
 import {commonsFoodDeliveryItemsV1} from './food-delivery.ts';
-import {commonsFoodDeliveryV1Schema,type CommonsFoodDeliveryV1} from '@sim/engine-contract';
+import {commonsFoodDeliveryV1Schema,type CommonsFoodDeliveryV1} from '@souls/engine-contract';
 import {socialEdenV1} from './social-eden.ts';
 import {applyWorldEdit,worldEditChangesNavigation,type WorldEditV1} from './entity-physics.ts';
 import {applyUpperFloorsV1,placeLevelOf,previewUpperFloorsV1,type UpperFloorsFactV1,type UpperFloorsV1} from './upper-floors.ts';
 import {registerAssets} from './catalog-adapter.ts';
-import {socialEdenTransitionV1Schema,type SocialEdenTransitionV1} from '@sim/engine-contract';
+import {socialEdenTransitionV1Schema,type SocialEdenTransitionV1} from '@souls/engine-contract';
 import {searchArrival,arrivalPocket,type ArrivalGround,type ArrivalPocket,type ArrivalSpot} from './arrival-search.ts';
 import {attachGround,groundRegistry,installGroundV1 as installGround,previewGroundV1,standOn,groundArrival,groundRecipe,inDeepWater,destinationInDeepWater} from './ground-bridge.ts';
 // The Mars engine behind Sim's engine contract.
@@ -49,29 +49,33 @@ import {attachGround,groundRegistry,installGroundV1 as installGround,previewGrou
 //     them back at any time, and the borrower treats that as the scene ending.
 //  3. Feasibility is asked first (verb.plan), because in Mars even a refused
 //     instruction pulls a person out of what they were doing.
-import { hashOf, physicalView, type BirthNearV1, type ActionRecord, type ActivityOption, type Anchor, type ChangeEvent, type Engine, type EngineFactory, type EngineSnapshot, type EngineSnapshotCapture, type EngineCheckpointCapture, type EngineCheckpoint, type PathCommit, type PoseSample, type Program, type ProgramEvent, type RuntimeEvent, type RuntimeView, type Vec3, type VerbInfo, type WorldState } from '@sim/engine-contract';
+import { hashOf, physicalView, type BirthNearV1, type ActionRecord, type ActivityOption, type Anchor, type ChangeEvent, type Engine, type EngineFactory, type EngineSnapshot, type EngineSnapshotCapture, type EngineCheckpointCapture, type EngineCheckpoint, type PathCommit, type PoseSample, type Program, type ProgramEvent, type RuntimeEvent, type RuntimeView, type Vec3, type VerbInfo, type WorldState } from '@souls/engine-contract';
 import { loadMars, type Mars } from './load.ts';
 import type {CampExpansionReader} from './camp-expansion.ts';
-import {campExpansionV1Schema,type CampExpansionV1,type CampExpansionAdmissionV1} from '@sim/engine-contract';
+import {campExpansionV1Schema,type CampExpansionV1,type CampExpansionAdmissionV1} from '@souls/engine-contract';
 import { CodecError, assertCapturedHashable, captureGraph, prepareImmutableSnapshotData } from '../../../mars/viewer/engine/runtime/codec.ts';
 import { constructionPlan, unsafeConstruction, type BuildPhase } from './construction.ts';
 import { disassemblyPlan, DISASSEMBLY_POLICY } from './disassembly.ts';
 import { MARS_2026_MAP, withMars2026Map } from './mars-2026-map.ts';
 import { disassemblyRegistry } from '../../../mars/viewer/engine/construction/disassembly.ts';
-import { captureRenderScene, commonsSceneMetadataV1Schema, type RenderSceneCaptureV1, type RenderScene } from '@sim/engine-contract';
+import { raiseHold, looseFramesHeld } from './raise-hold.ts';
+import { connectBeamV1, framesStand } from './beam-connect.ts';
+import { decksBear, installJoistV1, laySheetV1 } from './deck-install.ts';
+import { installFlightV1, installTreadV1, stairsBear } from './stair-install.ts';
+import { captureRenderScene, commonsSceneMetadataV1Schema, type RenderSceneCaptureV1, type RenderScene } from '@souls/engine-contract';
 import {readLocalClassroomV1} from './classroom-observation.ts';
 import { readNativeGathering } from './gathering-observation.ts';
 import { prepareCommonsTransition } from './commons-transition.ts';
-import { commonsTransitionV1Schema,type CommonsTransitionV1,type CommonsTransitionAdmissionV1 } from '@sim/engine-contract';
-import {crewRemovalTransitionV1Schema,type CrewRemovalTransitionV1,type CrewRemovalTransitionAdmissionV1} from '@sim/engine-contract';
+import { commonsTransitionV1Schema,type CommonsTransitionV1,type CommonsTransitionAdmissionV1 } from '@souls/engine-contract';
+import {crewRemovalTransitionV1Schema,type CrewRemovalTransitionV1,type CrewRemovalTransitionAdmissionV1} from '@souls/engine-contract';
 import {commonsProvisions,COMMONS_PERSONAL_RESOURCES} from './commons-provisions.ts';
 import {commonsKitchen,COMMONS_KITCHENS,type CommonsKitchenVersion} from './commons-kitchen.ts';
 import type {RetainedCommonsShoreReader} from './retained-shore.ts';
-import {retainedCommonsShoreV1Schema,type RetainedCommonsShoreV1,type RetainedCommonsShoreAdmissionV1} from '@sim/engine-contract';
+import {retainedCommonsShoreV1Schema,type RetainedCommonsShoreV1,type RetainedCommonsShoreAdmissionV1} from '@souls/engine-contract';
 import { decodeSnapshot, type RuntimeSnapshot, type RuntimeSnapshotCapture } from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import {encode} from '../../../mars/viewer/engine/runtime/codec.ts';
 import { dcos,dsin,hypot } from '../../../mars/viewer/engine/core/math.ts';
-import { clearanceAt } from '../../../mars/viewer/engine/spatial/grid.ts';
+import { clearanceAt, nearestBlocker } from '../../../mars/viewer/engine/spatial/grid.ts';
 import { acknowledgeRelocation } from '../../../mars/viewer/engine/runtime/invariants.ts';
 import { listTable, stableIndices, withEntityList, type EntityTable } from '../../../mars/viewer/engine/world/entity-list.ts';
 import { CATALOG, HUMAN_RADIUS } from '../../../mars/viewer/engine/world/catalog.ts';
@@ -82,8 +86,8 @@ import { NavConnectivity, NAV_CONNECT_POLICY, NAV_RESCUE_MAX_POCKET, CONNECT_CLE
 const NAV_ANCHORED=new Set<unknown>(['sit','lie','nap','sleep']);
 // L1: Object.values(entities)'s list, ~2.7x cheaper on a big world's dictionary-mode object (fresh array each call)
 import { listEntities } from '../../../mars/viewer/engine/world/entity-list.ts';
-import type {NativeBoatControlsV1} from '@sim/engine-contract';
-import type {BodyLocationV1} from '@sim/engine-contract';
+import type {NativeBoatControlsV1} from '@souls/engine-contract';
+import type {BodyLocationV1} from '@souls/engine-contract';
 import {bodyDanceStep} from '../../../mars/viewer/engine/bodies/motion.ts';
 import {bodyProblem} from '../../../mars/viewer/engine/bodies/body.ts';
 import {humanRadius,seatFitProblem} from '../../../mars/viewer/engine/bodies/humanoid.ts';
@@ -91,9 +95,9 @@ import {slotTransitionIssue,obstacleIndex,type ObstacleIndex} from '../../../mar
 import {PLAN_MARGIN} from '../../../mars/viewer/engine/spatial/path.ts';
 import {creatureOf} from '../../../mars/viewer/engine/bodies/creatures.ts';
 import type {Body} from '../../../mars/viewer/engine/world/types.ts';
-import {renderPlatformsV1Schema,type RenderPlatformsV1} from '@sim/engine-contract';
-import {officeStairGuardsV1Schema,type OfficeStairGuardsV1} from '@sim/engine-contract';
-import {authoredBoundariesV1Schema,authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesV1,type AuthoredBoundariesDeclarationV1} from '@sim/engine-contract';
+import {renderPlatformsV1Schema,type RenderPlatformsV1} from '@souls/engine-contract';
+import {officeStairGuardsV1Schema,type OfficeStairGuardsV1} from '@souls/engine-contract';
+import {authoredBoundariesV1Schema,authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesV1,type AuthoredBoundariesDeclarationV1} from '@souls/engine-contract';
 import {placeOnGround} from '../../../mars/viewer/engine/items/model.ts';
 /** One fixture slot's verdict from useCheckV1 (lane BS1). */
 export type UseCheckV1={id:string;of:string;kind:'seat'|'berth';level:number;ok:boolean;code?:string;message?:string;at?:[number,number]};
@@ -109,7 +113,7 @@ const RELEASE_TIMEOUT = 15 * TPS;          // how long a program waits for its a
 const KEEP_RECORDS = 120 * TPS;            // finished Mars action records are kept this long, then forgotten
 const SNAPSHOT_FORMAT = 'sim-mars-snapshot/1';
 
-type Diag = { code: string; message: string; subjects?: string[] };
+type Diag = { code: string; message: string; subjects?: string[]; details?: Record<string, unknown> };
 const SHARED_WATER_WAIT_POLICY = 'shared-water-wait/1';
 /** shared-water-wait/2 (prospective): /1 plus a mutual-wait courtesy. When two swimmers each wait on the other's
  * body, the one with the larger entity id steps aside (native make-way) so the other can go first. /1 programmes
@@ -130,12 +134,14 @@ type Prog = {
   trafficSince?: number;
   trafficTries?: number;
   stopping?: Diag;
+  /** PC08: stopped with `untilSafe` (a shared carry): a held-up action keeps its own hold-up diagnostic, not a retry's. */
+  stopUntilSafe?: true;
   ops: Op[]; action?: string; settle?: 'done' | 'held'; soft?: boolean; until?: number;
   controlOf?:string;
   readiedActors?:string[];
   build?: { phase: BuildPhase; crew: string[]; stopping?: Diag; reverse?: true };
 };
-export type MarsWorldConfig = { groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
+export type MarsWorldConfig = { /** PC13 (#692): the shared raise (raise_hold_v1 and its invariant); absent, SIM_SHARED_CARRY=1 decides. */ sharedCarryV1?:boolean; groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; stairLandingClearanceV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
 export const LITTLE_MARTIANS_WORLD: MarsWorldConfig={scene:'littlemartians',arrival:[0,18],arrivalPlace:'garden',reference:[0,16],grounds:{id:'grounds',name:'Ceramic garden'}};
 export const GREEN_FIELD_WORLD:MarsWorldConfig={scene:'greenfield',arrival:[0,0],arrivalPlace:'field',reference:[2,0],grounds:{id:'grounds',name:'Green field'}};
 export const EDEN_COMMONS_WORLD:MarsWorldConfig={scene:'eden-commons',arrival:[14,4],arrivalPlace:'commons',reference:[9,5],grounds:{id:'grounds',name:'Eden commons'}};
@@ -147,6 +153,13 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
 /** free-goal/1: the walk-step marker (`free`, with an optional room polygon `freeWithin`), the gap (m) another body leaves a
  *  goal free by (as birth-near/1) and the most route plans one step tries. */
 export const FREE_GOAL_V1 = 'goal/1', FREE_GOAL_GAP = 0.8, FREE_GOAL_PLANS = 8;
+/** stand/1 (#374, prospective): the walk-step marker (`stand`) for a standoff point with standing room. On paged ground a
+ *  long walk's plan checks only its first fine hop, so a standoff point inside a solid (a ride's own collider) passes the
+ *  plan and fails at the last hop (`route.goal-blocked`). A marked step takes only a point with room for the walker's
+ *  body (an exact clearance read) and, when no turn around the target has room and a route, the nearest standable point
+ *  at most STAND_CLEAR_BEYOND metres beyond the standoff (a ride boards within 3.2 m of its carrier): STAND_CLEAR_SPOKES
+ *  points on each half-metre ring out to there, nearest the first turn first, at most FREE_GOAL_PLANS route plans. Unmarked steps keep the goal they always chose. */
+export const STAND_CLEAR_V1 = 'clear/1', STAND_CLEAR_BEYOND = 0.9, STAND_CLEAR_SPOKES = 16;
 const num = { type: 'number' }, str = { type: 'string' };
 const ref = { anyOf: [str, { type: 'array', items: num, minItems: 2, maxItems: 2 }] };
 /** The body language, as the card grammar and agents see it. The actor is always implied. */
@@ -255,6 +268,7 @@ export class MarsEngine implements Engine {
     if(this.cfg.walkSettleWaitV1===true)this.rt.services.walkSettleWaitV1=true;
     if(this.cfg.occupiedLinkRoutingV1===true)this.rt.services.occupiedLinkRoutingV1=true;
     if(this.cfg.concurrentLinkEgressV1===true)this.rt.services.concurrentLinkEgressV1=true;
+    if(this.cfg.stairLandingClearanceV1===true)this.rt.services.stairLandingClearanceV1=true;
     if(this.cfg.shoreDepartV1===true)this.rt.services.shoreDepartV1=true;
     this.rt.services.doorPassersV1=this.doorPassersV1;
     if(rt.world.authoredBoundariesV1)immutableAuthoredBoundaryFact(rt.world.authoredBoundariesV1);
@@ -297,7 +311,7 @@ export class MarsEngine implements Engine {
   stateHash(): string { return this.stateHashWithWorld(this.rt.stateHash()); }
   /** Reuse only the native hash captured synchronously by snapshot(); never cache a live world hash across calls. */
   private stateHashWithWorld(nativeStateHash: string): string { return hashOf(this.stateHashInputs(nativeStateHash)); }
-  private stateHashInputs(nativeStateHash: string) { return { ...(this.cfg.groundReclaimV1===true?{groundReclaimPolicy:'ground-reclaim/1'}:{}), ...(this.world.officeStairGuardsV1?{officeGuardPolicy:this.world.officeStairGuardsV1.version}:{}), ...(this.lecturePlacement?{lecturePolicy:this.lecturePlacement}:{}), ...(this.sleepSnapshotActive?{sleepSnapshotPolicy:NATIVE_SLEEP_SNAPSHOT_V1}:{}), ...(this.newcomerResources.length?{newcomerResources:this.newcomerResources}:{}), w: nativeStateHash, p: [...this.programs.values()], l: this.leaving, clock: this.cfg.clock ?? null, quiet: this.quiet, ...(this.cfg.safeCrewRemoval?{removalPolicy:'crew-removal/1'}:{}), ...(this.cfg.disassemblyV1?{disassemblyPolicy:DISASSEMBLY_POLICY}:{}), ...(this.cfg.fixtureGroundGoalsV1?{fixtureGoalPolicy:'ground-fixture-levels/1'}:{}), ...(this.cfg.nativeArrivalWitnessV1?{arrivalWitnessPolicy:'native-navigation-arrival/1'}:{}), ...(this.cfg.quietLandingCourtesyV1?{quietLandingPolicy:'idle-landing-courtesy/1'}:{}), ...(this.commonsProvisionsActive?{provisionsPolicy:'commons-provisions/1'}:{}), ...(this.commonsKitchenActive?{kitchenPolicy:this.commonsKitchenVersion}:{}), ...(this.greenLandmarkActive?{greenLandmarkPolicy:'existing-green-landmark/1'}:{}), ...(this.socialEdenActive?{socialPolicy:'social-eden/1'}:{}), ...(this.foodDeliveries.length?{foodDeliveryPolicy:'commons-food-delivery/1',foodDeliveries:this.foodDeliveries}:{}), ...(this.cfg.safeArrivalV1?{arrivalPolicy:'arrival-clearance/1'}:{}), ...(this.cfg.walkSettleWaitV1===true?{walkSettlePolicy:'walk-settle-wait/1'}:{}),...(this.cfg.occupiedLinkRoutingV1===true?{occupiedLinkPolicy:'occupied-link-routing/1'}:{}),...(this.cfg.concurrentLinkEgressV1===true?{concurrentLinkEgressPolicy:'concurrent-link-egress/1'}:{}), ...(this.cfg.walkBlockV1?{walkPolicy:'walk-block/1'}:{}), ...(this.physical?{physicalBinding:this.physical.rulesVersion,physicalPolicy:this.cfg}:{}) }; }
+  private stateHashInputs(nativeStateHash: string) { return { ...(this.cfg.groundReclaimV1===true?{groundReclaimPolicy:'ground-reclaim/1'}:{}), ...(this.world.officeStairGuardsV1?{officeGuardPolicy:this.world.officeStairGuardsV1.version}:{}), ...(this.lecturePlacement?{lecturePolicy:this.lecturePlacement}:{}), ...(this.sleepSnapshotActive?{sleepSnapshotPolicy:NATIVE_SLEEP_SNAPSHOT_V1}:{}), ...(this.newcomerResources.length?{newcomerResources:this.newcomerResources}:{}), w: nativeStateHash, p: [...this.programs.values()], l: this.leaving, clock: this.cfg.clock ?? null, quiet: this.quiet, ...(this.cfg.safeCrewRemoval?{removalPolicy:'crew-removal/1'}:{}), ...(this.cfg.disassemblyV1?{disassemblyPolicy:DISASSEMBLY_POLICY}:{}), ...(this.cfg.fixtureGroundGoalsV1?{fixtureGoalPolicy:'ground-fixture-levels/1'}:{}), ...(this.cfg.nativeArrivalWitnessV1?{arrivalWitnessPolicy:'native-navigation-arrival/1'}:{}), ...(this.cfg.quietLandingCourtesyV1?{quietLandingPolicy:'idle-landing-courtesy/1'}:{}), ...(this.commonsProvisionsActive?{provisionsPolicy:'commons-provisions/1'}:{}), ...(this.commonsKitchenActive?{kitchenPolicy:this.commonsKitchenVersion}:{}), ...(this.greenLandmarkActive?{greenLandmarkPolicy:'existing-green-landmark/1'}:{}), ...(this.socialEdenActive?{socialPolicy:'social-eden/1'}:{}), ...(this.foodDeliveries.length?{foodDeliveryPolicy:'commons-food-delivery/1',foodDeliveries:this.foodDeliveries}:{}), ...(this.cfg.safeArrivalV1?{arrivalPolicy:'arrival-clearance/1'}:{}), ...(this.cfg.walkSettleWaitV1===true?{walkSettlePolicy:'walk-settle-wait/1'}:{}),...(this.cfg.occupiedLinkRoutingV1===true?{occupiedLinkPolicy:'occupied-link-routing/1'}:{}),...(this.cfg.concurrentLinkEgressV1===true?{concurrentLinkEgressPolicy:'concurrent-link-egress/1'}:{}),...(this.cfg.stairLandingClearanceV1===true?{stairLandingPolicy:'stair-landing-clearance/1'}:{}), ...(this.cfg.walkBlockV1?{walkPolicy:'walk-block/1'}:{}), ...(this.physical?{physicalBinding:this.physical.rulesVersion,physicalPolicy:this.cfg}:{}) }; }
   // Preserve the contract serializer's exact bytes; only the Node digest implementation changes.
   physicalHash(): string { return createHash('sha256').update(stableStringify(physicalView(this.world))).digest('hex'); }
 
@@ -307,6 +321,7 @@ export class MarsEngine implements Engine {
     if(this.cfg.walkSettleWaitV1===true)this.rt.services.walkSettleWaitV1=true;
     if(this.cfg.occupiedLinkRoutingV1===true)this.rt.services.occupiedLinkRoutingV1=true;
     if(this.cfg.concurrentLinkEgressV1===true)this.rt.services.concurrentLinkEgressV1=true;
+    if(this.cfg.stairLandingClearanceV1===true)this.rt.services.stairLandingClearanceV1=true;
     if(this.cfg.shoreDepartV1===true)this.rt.services.shoreDepartV1=true;
     this.rt.services.doorPassersV1=this.doorPassersV1;
     // Reader wrappers finish restoring public policies after construction.
@@ -395,7 +410,9 @@ export class MarsEngine implements Engine {
   private advance(p: Prog) {
     const tick: number = this.rt.tick;
     if(p.stopping){
-      if(p.action&&this.rt.isActive(p.action)){this.rt.cancel(p.action,p.stopping);return;}
+      // PC08: while an `untilSafe` stop's action is held up it stands still, so a retry would refuse again and only hide
+      // the hold-up's own diagnostic (who is in the way); it is retried once the action moves again
+      if(p.action&&this.rt.isActive(p.action)){if(!(p.stopUntilSafe&&this.rt.records.get(p.action)?.status==='blocked'))this.rt.cancel(p.action,p.stopping);return;}
       return this.end(p,'cancelled',p.stopping);
     }
     for (let guard = 0; guard < 12; guard++) {
@@ -535,12 +552,13 @@ export class MarsEngine implements Engine {
     const body=this.m.admitFloaters(verb,parsed.data,(id:string)=>this.ents[id]?.body);
     if(body.status==='refuses')return {code:body.reason,message:body.note};
     const r = def.plan(this.rt, parsed.data);
-    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])]}:{}) };
+    // PC07: a preview of a `holdCutV1` carry also returns the planner's details (its search size and budget); others unchanged
+    return r.ok ? null : { code: r.diagnostic.code, message: r.diagnostic.message, ...(subjects?{subjects:[...(r.diagnostic.subjects??[])],...(r.diagnostic.details&&(parsed.data as {holdCutV1?:true}).holdCutV1?{details:{...r.diagnostic.details}}:{})}:{}) };
   }
   /** VEHICLE-STEER: a pure check of a Mars verb (no `mars:` prefix) against the world now: the refusal it would meet, or null. */
   previewMarsVerbV1(verb: string, params: unknown): Diag | null { return this.plan(verb, params, true); }
   /** A reachable standing point `standoff` metres from a target, on the side the actor comes from if possible. 'here' if already there. */
-  private goalNear(actor: string, to: unknown, standoff: number): { x: number; z: number; level: number } | 'here' | Diag {
+  private goalNear(actor: string, to: unknown, standoff: number, stand?: unknown): { x: number; z: number; level: number } | 'here' | Diag {
     const me = this.pos(actor)!, t = this.pointOf(to);
     if (!t) return { code: 'target.unknown', message: `nothing to walk to: ${JSON.stringify(to)}` };
     const level = typeof to === 'string' ? (this.rt.world.regions[to]?.level ?? this.ents[to]?.human?.level ?? (this.cfg.fixtureGroundGoalsV1&&this.ents[to]?.support?.kind==='ground'?0:this.ents[actor].human.level)) : this.ents[actor].human.level;
@@ -551,11 +569,37 @@ export class MarsEngine implements Engine {
     if (d <= off + 0.4 && level === this.ents[actor].human.level) return 'here';
     const base = Math.atan2(dz, dx);
     let last: Diag = { code: 'route.unreachable', message: 'no reachable standing point near the target' };
+    // stand/1: an exact read of standing room for this body before a point is planned (null: no grid there, unchanged)
+    const marked = stand === STAND_CLEAR_V1 && level === 0, radius = marked ? bodyProfile(this.ents[actor]).radius + PLAN_MARGIN : 0;   // the route's own goal check (spatial/path.ts prepare)
+    const roomy = marked ? (() => { const sp = this.rt.services.spatial as Spatial; sp.sync(this.rt.world); return sp.clearTester(0, [t[0], t[1]], radius); })() : null;
+    let turnRoom = false;
     for (const turn of off === 0 ? [0] : [0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9, Math.PI]) {
       const x = r3(t[0] + Math.cos(base + turn) * off), z = r3(t[1] + Math.sin(base + turn) * off);
+      if (roomy && !roomy([x, z])) continue;
+      turnRoom = true;
       const no = this.plan(this.movementVerb(actor,x,z), { actor, x, z, level });
       if (!no) return { x, z, level };
       last = no;
+    }
+    if (roomy) {
+      // the fallback: points around the target (never further than STAND_CLEAR_BEYOND past the standoff) with room and no
+      // other body within 0.8 m, ring by ring from the standoff out, nearest the first turn first; the first that plans
+      const people = (listEntities(this.ents) as any[]).filter(o => o.kind === 'human' && o.id !== actor).map(o => [o.pose.p[0], o.pose.p[2]] as [number, number]);
+      const rings: number[] = []; for (const r of off === 0 ? [.5, STAND_CLEAR_BEYOND] : [off, off + .5, off + STAND_CLEAR_BEYOND]) rings.push(r);   // below the 3.2 m boarding reach after rounding
+      let roomless = !turnRoom, plans = 0;
+      for (const rr of rings) if (plans < FREE_GOAL_PLANS) for (const k of Array.from({ length: STAND_CLEAR_SPOKES }, (_, i) => i).sort((a, b) => Math.min(a, STAND_CLEAR_SPOKES - a) - Math.min(b, STAND_CLEAR_SPOKES - b) || a - b)) {
+        const ang = base + (k / STAND_CLEAR_SPOKES) * Math.PI * 2, x = r3(t[0] + dcos(ang) * rr), z = r3(t[1] + dsin(ang) * rr);
+        if (!roomy([x, z])) continue;
+        roomless = false;
+        if (people.some(([px, pz]) => hypot(px - x, pz - z) < .8)) continue;
+        if (++plans > FREE_GOAL_PLANS) break;
+        const no = this.plan(this.movementVerb(actor, x, z), { actor, x, z, level }); if (!no) return { x, z, level }; last = no;
+      }
+      if (roomless) {
+        // nothing was planned: no point around the target has room. Said as the walk's own goal refusal, naming the blocker
+        const p0: [number, number] = [r3(t[0] + Math.cos(base) * off), r3(t[1] + Math.sin(base) * off)], sp = this.rt.services.spatial as Spatial, g = sp.levelAt(0, p0), b = g ? nearestBlocker(g, p0, 1.5) : undefined;
+        last = { code: 'route.goal-blocked', message: `no standing room for a ${radius.toFixed(2)} m-radius body ${off ? `${off} m from the target` : 'at the target'} (${p0[0].toFixed(2)}, ${p0[1].toFixed(2)}) or up to ${STAND_CLEAR_BEYOND} m beyond it around the target${b ? ` (blocked by ${b})` : ''}`, ...(b ? { subjects: [b] } : {}) };
+      }
     }
     return last;
   }
@@ -768,7 +812,7 @@ export class MarsEngine implements Engine {
       case 'control_classroom_v1': return [{verb:'classroom_control',params:{session:a.session,intent:{kind:a.kind}},settle:'done',raw:true}];
       case 'walk_to': {
         const gaitIssue = this.gaitIssue(me, a); if (gaitIssue) return gaitIssue;
-        let g = (a.spread === 'pond/1' || a.spread === 'region/1' || a.spread === 'pond-lap/1') && typeof a.to === 'string' && this.rt.world.regions[a.to] ? this.spreadGoalV1(me, a.to, a.spread,this.sharedWaterStep(step),a.regionOutside) : this.goalNear(me, a.doorQueueV1 ? this.doorQueueGoalV1(p, a) : a.to, typeof a.standoff === 'number' ? a.standoff : 0);
+        let g = (a.spread === 'pond/1' || a.spread === 'region/1' || a.spread === 'pond-lap/1') && typeof a.to === 'string' && this.rt.world.regions[a.to] ? this.spreadGoalV1(me, a.to, a.spread,this.sharedWaterStep(step),a.regionOutside) : this.goalNear(me, a.doorQueueV1 ? this.doorQueueGoalV1(p, a) : a.to, typeof a.standoff === 'number' ? a.standoff : 0, a.stand);
         if (g === 'here') return [];
         if ('code' in g) return g;
         if (a.free === FREE_GOAL_V1) { const f = this.freeGoalV1(me, g, a.freeWithin); if (!f) return []; g = f; }
@@ -932,7 +976,7 @@ export class MarsEngine implements Engine {
     if (first.verb.startsWith('mars:')) { const r = this.raw(program.actor, first); return 'code' in r ? r : this.plan(r.verb, r.params); }
     if (!BODY.has(first.verb)) return { code: 'action.unknown-verb', message: `no body verb "${first.verb}"` };
     if (first.verb === 'walk_to') {
-      const g = (first.params.spread === 'pond/1' || first.params.spread === 'region/1' || first.params.spread === 'pond-lap/1') && typeof first.params.to === 'string' && this.rt.world.regions[first.params.to] ? this.spreadGoalV1(program.actor, first.params.to, first.params.spread,this.sharedWaterStep(first),first.params.regionOutside) : this.goalNear(program.actor, first.params.to, typeof first.params.standoff === 'number' ? first.params.standoff : 0);
+      const g = (first.params.spread === 'pond/1' || first.params.spread === 'region/1' || first.params.spread === 'pond-lap/1') && typeof first.params.to === 'string' && this.rt.world.regions[first.params.to] ? this.spreadGoalV1(program.actor, first.params.to, first.params.spread,this.sharedWaterStep(first),first.params.regionOutside) : this.goalNear(program.actor, first.params.to, typeof first.params.standoff === 'number' ? first.params.standoff : 0, first.params.stand);
       if(g==='here')return null;if('code' in g)return g;
       if(first.params.gait&&first.params.gait!=='walk'){
         if(this.movementVerb(program.actor,g.x,g.z)!=='walk_to')return {code:'gait.dry-ground-required',message:'This shore or water route does not support jogging or running; return to dry ground first.'};
@@ -989,12 +1033,14 @@ export class MarsEngine implements Engine {
     this.programs.set(id, p); this.byActor.set(p.actor, id);
     return result;
   }
-  stop(programId: string) {
+  stop(programId: string, opts?: { untilSafe?: boolean }) {
     const p = this.programs.get(programId); if (!p) return;
     if (p.build) { p.build.stopping={code:'program.stopped',message:'Construction interruption requested; finishing the committed segment safely.'}; return; }
     if (p.action && this.rt.isActive(p.action)) {
       this.rt.cancel(p.action, { code: 'program.stopped', message: 'stopped' });
-      if(this.physical&&this.rt.isActive(p.action)){p.stopping={code:'program.stopped',message:'Stopped after native movement reaches safe support.'};return;}
+      // PC08 (#687): a shared carry's stop keeps its programme (and so the crew's borrowed bodies) until the native
+      // cleanup lands, as a physical runtime does: `advance` retries a refused cancel each tick
+      if((this.physical||opts?.untilSafe===true)&&this.rt.isActive(p.action)){p.stopping={code:'program.stopped',message:'Stopped after native movement reaches safe support.'};if(opts?.untilSafe===true)p.stopUntilSafe=true;return;}
     }
     this.end(p, 'cancelled', { code: 'program.stopped', message: 'stopped' });
   }
@@ -2304,10 +2350,11 @@ export class MarsEngine implements Engine {
   /** Prospective ground-reclaim/1 reader; cfg and its state hash preserve the activation in snapshots. */
   groundReclaimEnabledV1(): boolean { return this.cfg.groundReclaimV1 === true; }
   enableGroundReclaimV1(): void { this.cfg = { ...this.cfg, groundReclaimV1: true }; }
-  configureRuntimePolicy(policy: {sleepBlockTicks:number;walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean;quietSeatCourtesy?:boolean;fixtureGroundGoalsV1?:boolean;nativeArrivalWitnessV1?:boolean;quietLandingCourtesyV1?:boolean;quietStallReleaseV1?:boolean;stairMakeWayV1?:boolean;yieldTimeoutV1?:boolean;spreadV2?:boolean;shoreDepartV1?:boolean}) {
+  configureRuntimePolicy(policy: {sleepBlockTicks:number;walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean;stairLandingClearanceV1?:boolean;quietSeatCourtesy?:boolean;fixtureGroundGoalsV1?:boolean;nativeArrivalWitnessV1?:boolean;quietLandingCourtesyV1?:boolean;quietStallReleaseV1?:boolean;stairMakeWayV1?:boolean;yieldTimeoutV1?:boolean;spreadV2?:boolean;shoreDepartV1?:boolean}) {
     if(policy.walkSettleWaitV1!==undefined&&typeof policy.walkSettleWaitV1!=='boolean')throw Error('runtime-policy.walk-settle-wait');
     if(policy.occupiedLinkRoutingV1!==undefined&&typeof policy.occupiedLinkRoutingV1!=='boolean')throw Error('runtime-policy.occupied-link-routing');
     if(policy.concurrentLinkEgressV1!==undefined&&typeof policy.concurrentLinkEgressV1!=='boolean')throw Error('runtime-policy.concurrent-link-egress');
+    if(policy.stairLandingClearanceV1!==undefined&&typeof policy.stairLandingClearanceV1!=='boolean')throw Error('runtime-policy.stair-landing-clearance');
     if (!Number.isInteger(policy.sleepBlockTicks) || policy.sleepBlockTicks < 20 || policy.sleepBlockTicks > 72000) throw new Error('runtime-policy.sleep-limit');
     if(policy.quietSeatCourtesy !== undefined && typeof policy.quietSeatCourtesy !== "boolean") throw new Error("runtime-policy.quiet-seat-courtesy");
     if(policy.stairMakeWayV1===true)this.cfg={...this.cfg,stairMakeWayV1:true};
@@ -2325,6 +2372,8 @@ export class MarsEngine implements Engine {
     if(policy.walkSettleWaitV1===true){this.cfg={...this.cfg,walkSettleWaitV1:true};this.rt.services.walkSettleWaitV1=true;}
     if(policy.occupiedLinkRoutingV1===true){this.cfg={...this.cfg,occupiedLinkRoutingV1:true};this.rt.services.occupiedLinkRoutingV1=true;}
     if(policy.concurrentLinkEgressV1===true){this.cfg={...this.cfg,concurrentLinkEgressV1:true};this.rt.services.concurrentLinkEgressV1=true;}
+    // stairLandingClearanceV1 (prospective, #509): the last climb step refuses a landing occupied on its destination level.
+    if(policy.stairLandingClearanceV1===true){this.cfg={...this.cfg,stairLandingClearanceV1:true};this.rt.services.stairLandingClearanceV1=true;}
     this.cfg.sleepBlockTicks = policy.sleepBlockTicks;
     this.cfg.quietSeatCourtesy = policy.quietSeatCourtesy;
   }
@@ -2451,6 +2500,7 @@ export class MarsEngine implements Engine {
     if(this.cfg.walkSettleWaitV1===true)this.rt.services.walkSettleWaitV1=true;
     if(this.cfg.occupiedLinkRoutingV1===true)this.rt.services.occupiedLinkRoutingV1=true;
     if(this.cfg.concurrentLinkEgressV1===true)this.rt.services.concurrentLinkEgressV1=true;
+    if(this.cfg.stairLandingClearanceV1===true)this.rt.services.stairLandingClearanceV1=true;
     if(this.cfg.shoreDepartV1===true)this.rt.services.shoreDepartV1=true;
     this.startRecorder();
   }
@@ -2572,19 +2622,36 @@ function checkedTable(t: EntityTable): EntityTable {
 }
 
 function centroid(poly: [number, number][]): [number, number] { let x = 0, z = 0; for (const p of poly) { x += p[0]; z += p[1]; } return [r3(x / poly.length), r3(z / poly.length)]; }
-function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}`;}
+function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}${cfg.sharedCarryV1?'+'+SHARED_RAISE_POLICY+'+'+SHARED_BEAM_POLICY+'+'+SHARED_DECK_POLICY+'+'+SHARED_STAIRS_POLICY:''}`;}
+/** PC13 (#692): a world whose engine has the shared raise (SIM_SHARED_CARRY) says so in its rules version: a journal that
+ *  names raise_hold_v1 does not replay, nor a snapshot restore, where the verb is not registered. */
+export const SHARED_RAISE_POLICY = 'shared-raise/1';
+/** PC14 (#693): the same flag adds connect_beam_v1 and the frame invariant: a journal that seats a beam needs them. */
+export const SHARED_BEAM_POLICY = 'shared-beam/1';
+/** PC15 (#694): the same flag adds install_joist_v1, lay_sheet_v1 and the deck invariant: a journal that builds a deck needs them. */
+export const SHARED_DECK_POLICY = 'shared-deck/1';
+/** PC16 (#695): the same flag adds install_flight_v1, install_tread_v1 and the stair invariant: a journal that builds stairs needs them. */
+export const SHARED_STAIRS_POLICY = 'shared-stairs/1';
 
 /** The factory is made once the Mars engine has been loaded (an async import); after that everything is synchronous. */
 export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promise<EngineFactory> {
-  const m = cfg.map===MARS_2026_MAP?withMars2026Map(await loadMars()):await loadMars();if(cfg.map&&cfg.map!==MARS_2026_MAP)throw new Error('mars.unknown-map');
+  const loaded = cfg.map===MARS_2026_MAP?withMars2026Map(await loadMars()):await loadMars();if(cfg.map&&cfg.map!==MARS_2026_MAP)throw new Error('mars.unknown-map');
+  // PC13 (#692): the shared raise's verb and its invariant exist only behind SIM_SHARED_CARRY (the shared-carry ledger
+  // flag, the same default); without it the registry and the invariants are exactly what they were before PC13.
+  const sharedCarry = cfg.sharedCarryV1 ?? process.env.SIM_SHARED_CARRY === '1';
+  // resolved once here, so the engine's own rules version (this.cfg) says what the factory registered; off adds no key
+  if (sharedCarry && cfg.sharedCarryV1 !== true) cfg = {...cfg, sharedCarryV1: true};
+  const m = sharedCarry ? {...loaded, invariants: [...loaded.invariants, looseFramesHeld, framesStand, decksBear, stairsBear]} : loaded;
   // disassembly/1 adds its reverse verbs to this engine's registry only; the default registry is unchanged.
   const registry = cfg.disassemblyV1 ? disassemblyRegistry(m.createRegistry) : m.createRegistry(), services = m.servicesFor(m.scenes);
+  if (sharedCarry) { registry.set(raiseHold.verb, raiseHold as any); registry.set(connectBeamV1.verb, connectBeamV1 as any); registry.set(installJoistV1.verb, installJoistV1 as any); registry.set(laySheetV1.verb, laySheetV1 as any); registry.set(installFlightV1.verb, installFlightV1 as any); registry.set(installTreadV1.verb, installTreadV1 as any); }   // PC13 (#692), PC14 (#693), PC15 (#694), PC16 (#695)
   return {
     rulesVersion: nativeRulesVersion(m.rulesVersion,cfg),
     // A failed cross-policy checkpoint restore must not turn into replay under
     // another removal policy. An explicit, qualified transition is separate.
     canReplayHistory: version => {
-      if((cfg.walkBlockV1||cfg.safeArrivalV1||cfg.scene==='eden-commons'||cfg.disassemblyV1||cfg.map)&&version!==nativeRulesVersion(m.rulesVersion,cfg))return false;
+      if((cfg.walkBlockV1||cfg.safeArrivalV1||cfg.scene==='eden-commons'||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1)&&version!==nativeRulesVersion(m.rulesVersion,cfg))return false;
+      if(!cfg.sharedCarryV1&&/\+shared-(?:raise|beam|deck|stairs)\//.test(version))return false;
       if(!cfg.map&&/\+mars-2026-map\//.test(version))return false;
       if(!cfg.disassemblyV1&&/\+disassembly\//.test(version))return false;
       const walk=version.match(/\+walk-block\/[^+]+/g)??[];
@@ -2598,7 +2665,7 @@ export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promis
     },
     // Candidate removal changes controller behavior: restore only its exact
     // policy/version. Legacy activities31 compatibility remains unchanged.
-    canRestoreSnapshot: version => cfg.walkBlockV1||cfg.safeArrivalV1||cfg.safeCrewRemoval||cfg.disassemblyV1||cfg.map||cfg.scene==='eden-commons'?version===nativeRulesVersion(m.rulesVersion,cfg):[m.rulesVersion,m.rulesVersion.replace('+bodies/1',''),m.rulesVersion.replace('+bodies/1','').replace('activities/31','activities/29')].some(v=>version===nativeRulesVersion(v,cfg)),
+    canRestoreSnapshot: version => cfg.walkBlockV1||cfg.safeArrivalV1||cfg.safeCrewRemoval||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1||cfg.scene==='eden-commons'?version===nativeRulesVersion(m.rulesVersion,cfg):[m.rulesVersion,m.rulesVersion.replace('+bodies/1',''),m.rulesVersion.replace('+bodies/1','').replace('activities/31','activities/29')].some(v=>version===nativeRulesVersion(v,cfg)),
     /** The synthetic proving ground (a campfire, two benches, a lawn), emptied of its test people: Souls arrive by being born. */
     genesis(seed: string): WorldState {
       if (cfg.scene === 'littlemartians') return m.littleMartiansWorld(seed);

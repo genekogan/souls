@@ -1,4 +1,4 @@
-import type {Engine,EngineFactory,EngineSnapshot} from '@sim/engine-contract';
+import type {Engine,EngineFactory,EngineSnapshot} from '@souls/engine-contract';
 import {GREEN_FIELD_WORLD,MarsEngine,marsCommonsTransitionFactory,marsFactory} from './engine.ts';
 
 /** Deliberate Eden legacy reader, never a replacement default factory.

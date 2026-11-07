@@ -3,14 +3,16 @@
 // The lifecycle owns cleanup and the receipt; the scenario runner keeps its own steps and semantics.
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createLedger } from './ledger.mjs';
 import { validateSpec, portFree } from './spec.mjs';
-import { applySetup } from './setup.mjs';
+import { applySetup, applyWorldTime } from './setup.mjs';
 import { attachTrace, checkTap, summarizeTraces } from './diagnostics.mjs';
 import { writeJson, readJson } from '../lib/jsonl.mjs';
 import { scratchDir } from '../../lib/paths.mjs';
+import { startProcessSampler } from './proc-cost.mjs';
 
 export const RECEIPT = 'run-receipt.json';
 const TIMEOUT = Symbol('timeout');
@@ -19,10 +21,19 @@ const short = (e) => String(e?.message ?? e).split('\n')[0].slice(0, 300);
 const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
 const inside = (root, p) => { const r = relative(resolve(root), resolve(p)); return r && !r.startsWith('..') && !r.startsWith(sep) && r !== '..'; };
 
-function sourceIdentity(serverRoot) {
-  const git = (args) => { try { return execFileSync('git', args, { cwd: serverRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000 }).trim(); } catch { return null; } };
+// fileURLToPath, not URL.pathname: a checkout under a path with a space (or %, #, non-ASCII) must still resolve.
+export const TOOLS_ROOT = fileURLToPath(new URL('.', import.meta.url));
+const checkoutIdentity = (cwd) => {
+  const git = (args) => { try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000 }).trim(); } catch { return null; } };
   const status = git(['status', '--porcelain', '--untracked-files=no']);
-  return { commit: git(['rev-parse', 'HEAD']), dirtyTrackedFiles: status == null ? null : status.split('\n').filter(Boolean).length, node: process.version };
+  return { commit: git(['rev-parse', 'HEAD']), dirtyTrackedFiles: status == null ? null : status.split('\n').filter(Boolean).length };
+};
+
+/** The server root's checkout (top-level commit/dirtyTrackedFiles, kept for older receipts) and, labelled, both the
+ * server root's and the tools checkout's (the runner, adapters and director that ran; #785). */
+export function sourceIdentity(serverRoot, toolsRoot = TOOLS_ROOT) {
+  const server = checkoutIdentity(serverRoot), tools = checkoutIdentity(toolsRoot);
+  return { ...server, node: process.version, serverRoot: server, tools };
 }
 
 function bytesUnder(dir) {
@@ -87,7 +98,7 @@ export async function executeScenario({ scenarioFile, playtestDir, serverRoot, h
 /** startRun → terminal receipt. status: refused (nothing created) | completed | failed | cancelled | stopped-limit.
  *  signal: an AbortSignal the caller aborts on SIGINT/SIGTERM. execute/scenarioPreflight/importer are injectable. */
 export async function startRun({ spec, specPath = null, specSha256 = null, serverRoot, outDir = null, signal = null, log = () => {},
-  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup, toolsRoot, tapCheck }) {
+  execute = executeScenario, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup, worldTimeFn = applyWorldTime, toolsRoot, tapCheck, processSampler = startProcessSampler }) {
   const validation = validateSpec(spec, { specPath, serverRoot, ...(toolsRoot ? { toolsRoot } : {}) });
   if (!validation.ok) return { status: 'refused', stage: 'validate', errors: validation.errors };
   const pre = await preflightRun({ validation, serverRoot, scenarioPreflight, ...(tapCheck ? { tapCheck } : {}) });
@@ -103,6 +114,8 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   ledger.borrow('checkout', 'server-root', { path: serverRoot, use: 'read-only source and web build' });
   ledger.borrow('port-range', 'host', { note: 'other services on this host are never stopped' });
   const t0 = Date.now(), usage0 = process.resourceUsage();
+  // Descendant processes by class (#803): browser rendering and video encoding apart from the runner's own CPU.
+  let procs = null; try { procs = processSampler(); } catch (e) { procs = { stop: async () => ({ status: 'unavailable', reason: short(e) }) }; }
   const receipt = {
     soulRun: 1, runId: runDir.split(sep).pop(), status: 'running', startedAt: new Date(t0).toISOString(),
     spec: { path: specPath, sha256: specSha256, effective: eff }, source: sourceIdentity(serverRoot), controllers: validation.controllers,
@@ -115,7 +128,7 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   const diagnostics = attachTrace(validation.scenario, { effective: eff.diagnostics, runId: receipt.runId, runDir, ...(toolsRoot ? { root: toolsRoot } : {}) });
   if (diagnostics) { receipt.diagnostics = diagnostics; save(); }
   // Recording sidecars carry the run's provenance (#754); the runner adds world, camera and clock fields.
-  if (eff.observer.record != null) validation.scenario.observer = { ...(validation.scenario.observer ?? {}), recordMeta: { runId: receipt.runId, attempt: 1, specSha256: specSha256 ?? null, effectiveSpecSha256: sha256Of(JSON.stringify(eff)), source: { commit: receipt.source?.commit ?? null, dirtyTrackedFiles: receipt.source?.dirtyTrackedFiles ?? null } } };
+  if (eff.observer.record != null) validation.scenario.observer = { ...(validation.scenario.observer ?? {}), recordMeta: { runId: receipt.runId, attempt: 1, worldTimeRequested: eff.world.time ?? null, specSha256: specSha256 ?? null, effectiveSpecSha256: sha256Of(JSON.stringify(eff)), source: { commit: receipt.source?.commit ?? null, dirtyTrackedFiles: receipt.source?.dirtyTrackedFiles ?? null } } };
   writeJson(scenarioFile, validation.scenario);
   writeJson(join(runDir, 'spec.effective.json'), eff);
 
@@ -145,7 +158,14 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
     // The scenario preflight already ran in preflightRun; hand its result over so cmdRun does not repeat it (a second
     // machine-gate roll could otherwise refuse inside the runner and read as failed rather than refused).
     const hooks = { own: ledger.own, signal: abort.signal, ...(pre.checks.scenario ? { preflight: pre.checks.scenario } : {}), ...(modules ? { modules } : {}),
-      ...(validation.setup ? { afterProvision: async ({ world }) => {
+      ...(validation.setup || eff.world.time ? { afterProvision: async ({ world }) => {
+        // World time (#888) first: before any seat or camera, so every clip of the run is by day. A clock that could
+        // not be set is recorded and the run goes on.
+        if (eff.world.time) {
+          receipt.worldTime = await worldTimeFn({ base: world.base, time: eff.world.time }); save();
+          log(`world time: ${receipt.worldTime.ok ? `${receipt.worldTime.applied?.clock ?? '?'}${receipt.worldTime.applied?.paused ? ', clock paused' : ''}` : `not set: ${receipt.worldTime.error}`}`);
+        }
+        if (!validation.setup) return;
         receipt.setup = await setupFn({ base: world.base, setup: validation.setup });
         writeJson(join(runDir, 'setup.json'), receipt.setup); save();
         log(`setup: ${receipt.setup.ok ? `${receipt.setup.batches.length} batch(es) applied` : `refused: ${receipt.setup.error}`}`);
@@ -166,10 +186,11 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   log(`run ${outcome.status}${outcome.reason ? `: ${outcome.reason}` : ''}; releasing owned resources`);
   const cleanup = await ledger.releaseAll({ waitMs: eff.limits.cleanupWaitMs });
   receipt.retention = applyRetention({ runDir, ledger, retention: eff.retention, completed: outcome.status === 'completed' && cleanup.ok });
+  const processes = await procs.stop().catch((e) => ({ status: 'unavailable', reason: short(e) }));
   const usage1 = process.resourceUsage(), endedAt = Date.now();
   Object.assign(receipt, outcome, {
     endedAt: new Date(endedAt).toISOString(), resources: cleanup,
-    cost: { wallMs: endedAt - t0, executeMs: execMs, lifecycleOverheadMs: execMs == null ? null : endedAt - t0 - execMs, runnerCpuUserMs: Math.round((usage1.userCPUTime - usage0.userCPUTime) / 1000), runnerCpuSystemMs: Math.round((usage1.systemCPUTime - usage0.systemCPUTime) / 1000), runnerMaxRssMb: Math.round(usage1.maxRSS / 1024), runDirBytes: bytesUnder(runDir) },
+    cost: { wallMs: endedAt - t0, executeMs: execMs, lifecycleOverheadMs: execMs == null ? null : endedAt - t0 - execMs, runnerCpuUserMs: Math.round((usage1.userCPUTime - usage0.userCPUTime) / 1000), runnerCpuSystemMs: Math.round((usage1.systemCPUTime - usage0.systemCPUTime) / 1000), runnerMaxRssMb: Math.round(usage1.maxRSS / 1024), runDirBytes: bytesUnder(runDir), processes },
     evidence: summarizeEvidence(playtestDir), ...(eff.observer.record != null || existsSync(join(playtestDir, 'recordings')) ? { recordings: summarizeRecordings(playtestDir) } : {}),
   });
   if (receipt.diagnostics) receipt.diagnostics.capture.result = summarizeTraces(runDir, receipt.diagnostics);

@@ -17,7 +17,7 @@ on:
         required: true
         default: main
       profile:
-        description: even, meetup or even,meetup
+        description: even, meetup or even,meetup; or slopes alone (the CW7 slopes bench, tools/bench/capacity/slopes)
         default: even,meetup
       repeats:
         description: Repeats per profile (the verdict needs 2)
@@ -43,6 +43,13 @@ on:
       slice_memory_max:
         description: Optional systemd MemoryMax for the worlds, e.g. 8G
         default: ''
+      active_min:
+        description: Optional activity window in minutes, 20-240 (CW8 A2; blank = 20). (minutes + 15) x runs must be at most 280
+        default: ''
+      telemetry:
+        description: Run the launcher's telemetry collector beside the worlds (CW8 A2; its store growth is reported)
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -51,7 +58,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   qualify:
-    if: github.repository == 'genekogan/souls'
+    if: github.repository == 'soulsimulation/souls'
     runs-on: ${{ fromJSON(vars.QUALIFY_RUNNER || '["self-hosted"]') }}
     timeout-minutes: 300
     env:
@@ -64,6 +71,8 @@ jobs:
       INPUT_HOST_CLASS: ${{ inputs.host_class }}
       INPUT_SLICE_CPU_QUOTA: ${{ inputs.slice_cpu_quota }}
       INPUT_SLICE_MEMORY_MAX: ${{ inputs.slice_memory_max }}
+      INPUT_ACTIVE_MIN: ${{ inputs.active_min }}
+      INPUT_TELEMETRY: ${{ inputs.telemetry }}
       QUALIFY_RUNNER: ${{ vars.QUALIFY_RUNNER || '["self-hosted"]' }}
       CTL: ../ctl/.github/scripts/capacity-qualify.mjs
       QUALIFY: .local/bench/qualify.json
@@ -103,6 +112,7 @@ jobs:
         working-directory: bench
         run: |
           f=tools/bench/capacity/meetup/meetup.mjs
+          if [ "$INPUT_PROFILE" = slopes ]; then f=tools/bench/capacity/slopes/slopes.mjs; fi
           if [ ! -f "$f" ] || ! grep -q "qualifying-executor" "$f"; then
             echo "::error::ref $INPUT_REF has no $f with --qualifying-executor (CW2, #793); dispatch with a ref that does"; exit 1
           fi
@@ -121,7 +131,7 @@ jobs:
       - name: Build the web and viewer bundles
         working-directory: bench
         run: |
-          pnpm --filter @sim/web build
+          pnpm --filter @souls/web build
           pnpm build:viewer
       # Only when asked: the runner must already have Chromium's system libraries (no --with-deps, no sudo here).
       - name: Chromium for the bench's real browser

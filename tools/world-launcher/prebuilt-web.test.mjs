@@ -7,7 +7,7 @@ import { install, seal } from './deploy/prebuilt-web.mjs';
 
 const identity = { sourceSha: 'a'.repeat(40), buildId: 'we-aaaaaaaaaaaa', base: '/worlds/', cdn: '1', cdnOrigin: 'https://assets.eden.art', edenWorlds: 'test-world', arrivalUI: '0', goatCounter: 'simeden', godUploadsCdn: '1' };
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'sim-prebuilt-test-'));
+  const root = mkdtempSync(join(tmpdir(), 'souls-prebuilt-test-'));
   mkdirSync(join(root, 'dist/assets'), { recursive: true });
   writeFileSync(join(root, 'dist/index.html'), '<script src="/worlds/assets/main.js"></script>');
   writeFileSync(join(root, 'dist/assets/main.js'), 'console.log("test")');

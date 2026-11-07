@@ -170,10 +170,11 @@ export async function cmdRun(a, hooks = null) {
         own('browser', 'observer', () => ctx.browser.close(), { gpu: ctx.browser.gpu ?? null });
         const vpRaw = scenario.observer?.viewport ?? [1280, 800]; const vp = Array.isArray(vpRaw) ? { width: vpRaw[0], height: vpRaw[1] } : vpRaw;
         // Recording (#754): the cameras named in observer.record (true = all) record one uncut real-speed video each, at
-        // observer.recordSize (#802: compact by default; "viewport" for full size).
+        // observer.recordSize (#802: compact by default; "viewport" for full size), from observer.recordStart (#888: at arrival by
+        // default; "load" from page creation).
         const rec = scenario.observer?.record ?? null, recDir = join(runDir, 'recordings');
         const recMeta = { attempt: scenario.observer?.recordMeta?.attempt ?? 1, ...(scenario.observer?.recordMeta ?? {}), world: { slug: scenario.world?.slug ?? null, port: scenario.world?.port ?? null } };
-        const recordFor = (name, kind) => (rec === true || (Array.isArray(rec) && (rec.includes(name) || (kind === 'follow' && rec.includes('follow')))) ? { dir: (mkdirSync(recDir, { recursive: true }), recDir), meta: recMeta, size: scenario.observer?.recordSize ?? 'compact' } : null);
+        const recordFor = (name, kind) => (rec === true || (Array.isArray(rec) && (rec.includes(name) || (kind === 'follow' && rec.includes('follow')))) ? { dir: (mkdirSync(recDir, { recursive: true }), recDir), meta: recMeta, size: scenario.observer?.recordSize ?? 'compact', start: scenario.observer?.recordStart ?? 'arrival' } : null);
         ctx.cameraLog = [];
         const openCam = async (opts) => { try { const c = await ctx.browser.openCamera({ ...opts, record: recordFor(opts.name, opts.kind), arrivalTimeoutMs: scenario.observer?.arrivalTimeoutMs ?? 180000 }); ctx.cameraLog.push({ name: opts.name, kind: opts.kind, ok: true, arrivedMs: c.arrivedMs, follow: c.follow, free: c.free }); return c; } catch (e) { log(`camera ${opts.name} failed: ${String(e.message).split('\n')[0]}`); ctx.cameraLog.push({ name: opts.name, kind: opts.kind, ok: false, reason: String(e.message).split('\n')[0] }); return null; } };
         for (const seat of ctx.seats) { const info = infoOf(seat); if (info.soulId) { const cam = await openCam({ base: ctx.world.base, identity: info.ownerIdentity, kind: 'follow', soulId: info.soulId, viewport: vp, dpr: scenario.observer?.dpr ?? 1, runDir, name: info.id }); if (cam) ctx.cameras[info.id] = cam; } }
@@ -362,7 +363,7 @@ async function main() {
   if (cmd === 'replay-set') process.exit(await cmdReplaySet(a));
   if (cmd === 'freeze-bundle') process.exit(await cmdFreezeBundle(a));
   // direct: a swarm-directed session from a cast file (director/swarm/, STATUS-SWARM.md at the worktree root)
-  if (cmd === 'direct') { const { cmdDirect } = await import('./director/swarm/run.mjs'); process.exit(await cmdDirect(a, { log })); }
+  if (cmd === 'direct') { const { cmdDirect } = await import('./director/swarm/run.mjs'); process.exit(await cmdDirect(a, null, { log })); }
   if (cmd === 'replay') {
     const src = resolve(a._[1]); const rp = readJson(join(src, 'replay.json')); if (!rp) { log('no replay.json'); process.exit(2); }
     const mode = a.mode ?? 'scripted';
