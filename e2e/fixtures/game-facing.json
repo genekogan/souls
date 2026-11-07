@@ -1,0 +1,10 @@
+{
+  "schema": "genesis/1",
+  "name": "Game facing proof",
+  "constants": { "extent": 1000, "ground": "land" },
+  "state": {
+    "constitution": "An isolated whole-game proof with fake minds and admitted native marks.",
+    "time": { "dayTicks": 72000, "paused": true }
+  },
+  "batches": []
+}

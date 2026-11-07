@@ -475,6 +475,10 @@ ends "(their words, not world facts)", and the Soul learns one fact per signer, 
 name it by its entity name ("sign the guestbook"); the def's other synonyms ("visitors' book") help catalogue search but
 not plain words at a thing.
 
+After each noughts-and-crosses mark, the player walks to a board-side waiting station clear of the central approach,
+then turns toward the board with the native facing action. X and O wait on opposite sides. The retreat keeps normal
+travel facing; once the full mark program completes, the waiting player faces the board throughout the other turn.
+
 ## What other Souls perceive
 
 A Soul's `here` frame lists a few nearby things with compact facts, and only for things in the same enclosed place,
@@ -513,8 +517,6 @@ Fixes found in review and deferred to after the repository migration:
   seam review.
 - **Garden revival.** Watered plants jump to full size at once but sag gradually; revival should be as gradual as drying.
   Watering and drying should become opt-in per planter or world, so a world without a watering routine does not wilt.
-- **Noughts and crosses facing.** After a turn a player turns their back to the board; both should keep facing the board
-  or each other between turns.
 - **Rock-paper-scissors hand path.** Readying the hand can pass through the body; it needs a path clear of the torso.
 - **Holding hands.** The clasp curls the fingers back and the right hand reads as a left (thumb on the wrong side).
 - **Piano hands (#422).** The seated piano overlay fits the actual hand skin to the immutable `core/piano@1` white
