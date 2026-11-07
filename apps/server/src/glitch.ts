@@ -1,7 +1,7 @@
 // #1150: what a broken rule did to a world, kept so root causes get fixed rather than hidden and production's rate can be
-// measured. One record per recovery and per halt. Records are operations data, outside the event log: replay never reads
+// measured. One record per refusal, recovery and halt. Records are operations data, outside the event log: replay never reads
 // them, no state hash covers them, and a halted host may still write them (its log and clock frontier stay frozen, #1120).
-export type GlitchRung = 'recovery' | 'halt';
+export type GlitchRung = 'refusal' | 'recovery' | 'halt';
 export type GlitchRecordV1 = {rung: GlitchRung; rule: string; bodies: string[]; tick: number; at: number; evidence: Record<string, unknown>};
 /** Public on the world's /healthz, so rule names and numbers only. */
 export type GlitchCountsV1 = {total: number; byRule: Record<string, Partial<Record<GlitchRung, number>>>};
