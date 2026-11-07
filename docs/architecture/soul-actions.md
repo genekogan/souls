@@ -144,7 +144,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
     free (`carry.hands-full`).
   - **Invariant.** `framesStand` is checked at every tick end. An installed beam has both ends joined in standing uprights,
     and a joined upright nobody holds is in a frame that stands on its own.
-  - **Rules version.** The flag adds `+shared-raise/1+shared-beam/1` (and `+shared-deck/1`, below), so a journal that
+  - **Rules version.** The flag adds `+shared-raise/1+shared-beam/1` (and `+shared-deck/1` and `+shared-stairs/1`, below), so a journal that
     names these verbs is never replayed without them.
   - **Not yet.** Where the uprights stand comes from where they were laid; Souls can't move a raised frame into line.
     No disconnecting.
@@ -177,6 +177,37 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Invariant.** `decksBear` is checked at every tick end: an installed joist or sheet has every bearing connector
     joined to an installed support (`deck.unsupported`).
   - **Rules version.** `+shared-deck/1`, after PC14's suffix.
+- **Stairs up to a deck (PC16, [#695](https://github.com/genekogan/souls/issues/695); off unless `SIM_SHARED_CARRY=1`).**
+  Three appended revisions carry it: `core-deck-stair@1` (a loose 5-tread flight, two 2x12 stringers and a header,
+  1.03 m rise over 1.35 m, 0.91 m wide: a bearing `stair-hook` on its header and `tread-seat`s `tread-1` to `tread-5`
+  from the bottom), `core-deck-stair-tread@1` (a loose 2x10 with one bearing `tread-bearing`) and `core-rack-beam@5` (`@4`
+  whose ledge `joist-seat`s also take a `stair-hook`). The flight fits a deck on step beams at seat 4 (36 in), whose top
+  at 1.03 m no step reaches.
+  - **Offers.** A loose flight standing by a bay whose beam carries a deck (a joist on its other face), seated in
+    supported frames, with a free ledge seat on its outer face at the height that puts the flight's foot on the ground, is
+    offered `install-flight-with:<id>`, with `at` (metres along the beam from its middle, snapped within 10 cm; the free
+    positions are listed) and `with`; crew exactly two, through the same invitation as `install-joist-with`. A loose tread
+    lying within 3 m of an installed, supported flight with a tread missing is offered `install-tread:<id>` to one Soul: it
+    goes into the flight's lowest missing tread.
+  - **Commit.** `mars:install_flight_v1` and `mars:install_tread_v1` (`packages/engine-mars/src/stair-install.ts`) bring
+    the native `install_stair_flight` and `install_tread` (`construction/stairs.ts`) to connectors matched by kind, through
+    PC15's seat programme: walk to it, take hold, lift along the swept path, set it on its seat. The flight goes square to
+    the beam, ascending toward it from the side of the seat's face; its crew stands either side of it. A tread's worker
+    stands beside the flight. The receipts end `completed` (the flight's with `shared.seated`).
+  - **Walkable only when finished.** A hanging flight is a `stairs` link (`<id>#stairs`) from the ground at its foot to
+    the floor level at its top. It is usable only when every tread is in and a laid floor lies at its top. Otherwise it is
+    there and unusable with its reason (`treads 3–5 missing`, `no landing at top`), so a walk that needs it is refused
+    `route.link-unusable` and the refusal says why ("The way there needs stairs that are not finished: …"). A loose or
+    carried flight is no link.
+  - **Stop.** As PC15: let go before the lift, lowered back along its path during it.
+  - **Refused before anyone is asked:** `stair.beam-unsupported`, `stair.occupied`, `stair.no-seat`, `stair.rise`,
+    `stair.site-blocked`, `stair.site-occupied`, `stair.not-staged`, `stair.crew`, `stair.station-unreachable`,
+    `tread.no-stair`, `tread.index`, `tread.already-installed`, `tread.not-staged`, `tread.crew`, `reach.too-high`,
+    `lift.path-blocked`. A god's edit that would move, remove or disconnect a flight, one of its treads, or what holds it
+    up while someone is on it is refused `stair.occupied`; under a hanging flight, PC12's `support.none` holds.
+  - **Invariant.** `stairsBear` is checked at every tick end: an installed flight's hook is joined to an installed beam
+    and an installed tread to an installed flight, both ways (`stair.unsupported`).
+  - **Rules version.** `+shared-stairs/1`, after PC15's suffix.
 - **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
   A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
   comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one

@@ -32,6 +32,7 @@ so later steps can cite them. Columns:
 
 PC numbers are the [#560](https://github.com/genekogan/souls/issues/560) physical-coordination queue. At the pinned
 commit PC01–PC14 are landed except PC11 (#690, open), PC15 (#694) is in review as PR #1122, and PC16 onwards are planned.
+Since then (statuses only; the rows stay as pinned): PC15 landed (#1122), and PC16 (#695, stairs) is in review as PR #1132.
 Several rows below are behind the `SIM_SHARED_CARRY=1` flag.
 
 ## Engine
@@ -128,7 +129,7 @@ manifest's `native` and `lab` rows.
 | M61 | `mars/viewer/engine/construction/raise.ts`, `raise-lower.ts` | `raise_upright` and its controlled reversal. | engine-mars 1 (`raise-hold.ts`) · engine tests | Soul action | Done by PC13 (#692): `mars:raise_hold_v1`, behind `SIM_SHARED_CARRY`. |
 | M62 | `mars/viewer/engine/construction/beam.ts` | `connect_beam` and `release_support`. | engine tests | Soul action | Done by PC14 (#693): `mars:connect_beam_v1`, behind the flag. |
 | M63 | `mars/viewer/engine/construction/deck.ts`, `contributor.ts` | Joists and plywood decks; construction changes navigation. | engine tests | Soul action | PC15 (#694): `deck-install.ts` in PR #1122 (in review, not on main). |
-| M64 | `mars/viewer/engine/construction/stairs.ts`, `setpart.ts` | Stair flights and treads; phase B stringers, risers, posts, handrails. | engine tests | Soul action | PC16 (#695) planned; phase B parts PC42 (#725). |
+| M64 | `mars/viewer/engine/construction/stairs.ts`, `setpart.ts` | Stair flights and treads; phase B stringers, risers, posts, handrails. | engine tests | Soul action | PC16 (#695) in review as #1132 (library deck stair and tread; native verbs stay); phase B parts PC42 (#725). |
 | M65 | `mars/viewer/engine/construction/frame.ts`, `framemove.ts` | Climbing an upright's bracing (`climb_frame`) and walking a beam (`beam_walk`). | engine tests | Soul action | The PC01 manifest lists them under PC14, but PC14's landed scope is `connect_beam_v1`. Unsure: no open PC names them. |
 | M66 | `mars/viewer/engine/construction/handup.ts`, `passup.ts`, `aloft.ts`, `moves-b.ts` | Hand-up and pass-up to elevated receivers, parts staged aloft, phase B logistics. | engine tests | Soul action | PC33 (#712), PC34 prone receive (#713). |
 | M67 | `mars/viewer/engine/construction/framing.ts` | Roof framing: top plates, rafters, blocking. | engine tests | Soul action | PC38 (#718). |
@@ -286,7 +287,7 @@ These are recommendations. Nothing is closed without Gene's OK.
 | Connect a beam | PC14 (#693) | landed, behind the flag | M62, M112 |
 | Release a support once the frame stands | PC14 (#693) | landed | M62, M112 |
 | Install joists and plywood decks | PC15 (#694) | in review (PR #1122) | M63 |
-| Stair flights and treads | PC16 (#695) | planned | M64 |
+| Stair flights and treads | PC16 (#695) | in review (#1132) | M64 |
 | Roof framing: top plates, rafters, blocking | PC38 (#718) | planned | M67 |
 | Lift crews | PC13/PC14 reuse `liftcrew.ts`; larger crews PC11 (#690) | PC11 open | M60, M73 |
 | Hand-ups | PC33 (#712), prone receive PC34 (#713), forklift PC36 (#715) | planned | M66, M74 |
@@ -313,7 +314,7 @@ frame. Before that, confirm whether `climb_frame`/`beam_walk` belong to a PC; if
 | Live sessions | PC02 (#681) contract, PC04/PC05 (#683, #684), PC17 bounded sessions | contract and roles landed; PC17 planned | — |
 | Persistent project resumed by a different consenting crew | PC18 (#697) | planned | M10 |
 | Progress from actual connections and support | PC12 (#691), PC14 (#693) | landed | M60, M62 |
-| Floors and stairs usable once installed | PC15 (#694), PC16 (#695) | in review / planned | M63, M64 |
+| Floors and stairs usable once installed | PC15 (#694), PC16 (#695) | landed / in review (#1132) | M63, M64 |
 | Reversible disassembly keeping identity | PC19 (#698) | planned | M71 |
 | Second arrangement and a non-Mars world through the same authoring | PC20 (#699) | planned | M75 |
 | Mars campus expressed with the same kit | PC40–PC43 (#721, #724, #725, #726); PC21 (#700) packages the first stock yard and bay | planned | M44, M76 |

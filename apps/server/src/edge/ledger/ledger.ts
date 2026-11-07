@@ -20,6 +20,15 @@ import {humanBlockedExplanationV1} from '../../human-wait-condition.ts';
 import {menuWorldOf, type MenuWorld} from '../../split/menu-world.ts';
 /** RT: route refusals that hold until the world itself changes (not a crowd, a search limit or a start a step clears). */
 const ROUTE_DEAD = new Set(['route.unreachable', 'route.goal-blocked', 'route.link-unusable', 'route.unknown-level']);
+/** PC16 (#695): a walk refused because the only way needs stairs that are not finished says why they are not (the
+ *  engine's reasons, spatial/path.ts route.link-unusable: "treads 3–5 missing", "no landing at top"), not their ids.
+ *  Only stairs parts of that message: a ladder or another link kind is not "stairs", and a floater's own
+ *  "floater.stairs-unsupported" is about the body, not the stairs. A reason may hold parentheses of its own. */
+export const unfinishedWay = (issue: {code: string; message?: string}): string => {
+  if (issue.code !== 'route.link-unusable' || !issue.message) return '';
+  const why = [...new Set([...issue.message.matchAll(/\bstairs \S+ \((.+?)\)(?=, \S+ \S+ \(|$)/g)].map((m) => m[1]!).filter((x) => x !== 'not usable' && !x.startsWith('floater.')))];
+  return why.length ? ` The way there needs stairs that are not finished: ${why.join('; ')}.` : '';
+};
 /** BS3: refusals a plain walk answers with its closest approach (the fine planner's; ground.* keep their named refusals). */
 const APPROACH_CODES = new Set(['route.unreachable', 'route.goal-blocked']);
 const STUCK_RADIUS = 0.34;
@@ -509,7 +518,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   private rows(where: string, ...args: (string | number | null)[]): Row[] {return this.db.db.prepare(`SELECT * FROM edge_receipts_v1 WHERE world_id=? AND ${where}`).all(this.host.worldId, ...args) as Row[];}
   private view(r: Row): EdgeReceipt {const outcome=this.outcomes.read(r.receipt_id);
     // An invitation nobody has answered yet is not a shared activity: the host's receipt stays `waiting` (quality case 32).
-    const awaiting=r.phase==='started'||r.phase==='waiting'&&/^(?:carry|raise|connect-beam|install-joist|lay-sheet)-with:/.test(r.capability)?this.together?.awaitingAnswer(r.receipt_id,r.capability)??null:null;
+    const awaiting=r.phase==='started'||r.phase==='waiting'&&/^(?:carry|raise|connect-beam|install-joist|lay-sheet|install-flight)-with:/.test(r.capability)?this.together?.awaitingAnswer(r.receipt_id,r.capability)??null:null;
     // PC04 (#683): a shared receipt shows its own Soul the invitation, revision, role and phase it was made for
     const made=r.detail?.includes('"sharedV1"')?(JSON.parse(r.detail) as {sharedV1?:{invite:string;revision:number}}).sharedV1:undefined,shared=made&&this.together?this.together.sharedReceipt(r.receipt_id,r.soul_id,made):undefined;
     return {id: r.receipt_id, soulId: r.soul_id, capability: r.capability, phase: awaiting?'waiting':r.phase, acceptedTick: r.accepted_tick, startedTick: r.started_tick, endedTick: r.ended_tick, code: r.code, reason: r.reason, programId: r.program_id, ...detailOf(r),...(outcome?{outcome}:{}),...(awaiting?{awaitingAnswer:{...awaiting,note:`Invitation sent; ${listed(awaiting.waitingFor.map(g=>g.name))} ${awaiting.waitingFor.length>1?'have':'has'} not accepted yet. Nothing shared has started.`}}:{}),...(shared?{shared}:{}),...(OPEN.includes(r.phase)?this.bodyFacts(r,!!awaiting):{})};}
@@ -1838,7 +1847,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (this.sharedCarry && capability.startsWith('stop-carry:')) return {...await this.stopShared(soul, capability, clientRef), ...resolved};
     // PC05: a member of a running shared operation cannot propose or accept another (the body checks below would
     // otherwise answer with their own codes, e.g. hands.full)
-    if (/^(carry-with|raise-with|connect-beam-with|install-joist-with|lay-sheet-with|accept):/.test(capability)) {const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy), ...resolved};}
+    if (/^(carry-with|raise-with|connect-beam-with|install-joist-with|lay-sheet-with|install-flight-with|accept):/.test(capability)) {const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy), ...resolved};}
     // together/1: invitations (params.with), paired gestures, gifts, follows and items check and adjust their plan here
     const prep = this.together.prepare(soul, cap, plan, params, steps);
     if ('code' in prep) return {...refuse(prep.code, prep.reason), ...(prep.did_you_mean ? {did_you_mean: prep.did_you_mean} : {}), ...resolved};
@@ -1979,7 +1988,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
       }
     }
     // The verifier probe reports the engine's own diagnostic (what blocks the seat, how much room it needs) to the builder.
-    if (issue && !WAIT_CODES.has(issue.code)) return {...refuse(issue.code, issue.code.startsWith('carrier.') || isVerificationProbe(soul.soulId) ? issue.message : humanBlockedExplanationV1(issue.code, label)), ...resolved};
+    if (issue && !WAIT_CODES.has(issue.code)) return {...refuse(issue.code, issue.code.startsWith('carrier.') || isVerificationProbe(soul.soulId) ? issue.message : humanBlockedExplanationV1(issue.code, label) + unfinishedWay(issue)), ...resolved};
     const remember = (id: string) => {
       if (note) this.update(id, {reason: note});
       if (approach) this.setDetail(id, {approach});
@@ -2160,7 +2169,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const {host, label, steps, revision, opId} = plan, inv = this.together.invite(id)!;
     const issue = this.host.engine.canPerform({actor: host.entityId, label, steps});
     const wait = (code: string, message?: string) => this.together.sharedNotReady(inv, [{soulId: host.soulId, name: 'The carry', why: `cannot start yet (${code}${message ? `: ${message}` : ''})`}]);
-    if (issue) {if (WAIT_CODES.has(issue.code) || SHARED_CARRY_WAIT.has(issue.code) || !/^(?:carry|raise|beam|joist|plywood|reach|lift)\./.test(issue.code)) wait(issue.code, issue.message); else this.together.sharedRefused(id, issue.code, issue.message ?? humanBlockedExplanationV1(issue.code, label)); return;}
+    if (issue) {if (WAIT_CODES.has(issue.code) || SHARED_CARRY_WAIT.has(issue.code) || !/^(?:carry|raise|beam|joist|plywood|stair|tread|reach|lift)\./.test(issue.code)) wait(issue.code, issue.message); else this.together.sharedRefused(id, issue.code, issue.message ?? humanBlockedExplanationV1(issue.code, label)); return;}
     const guard = (): true => {
       this.together.sharedCommitGuard(id, revision);
       if (this.host.quietBarrier) throw new EdgeError(409, 'state.changed', 'The world entered a quiet barrier; retry.');
@@ -2176,7 +2185,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     } catch (error) {
       // nothing was committed (the transaction rolled back); a native refusal at the fold is handled as at the check above
       const code = error instanceof Error ? /^object\.native-admission-refused:(.+)$/.exec(error.message)?.[1] : undefined;
-      if (code && /^(?:carry|raise|beam|joist|plywood|reach|lift)\./.test(code) && !SHARED_CARRY_WAIT.has(code)) this.together.sharedRefused(id, code, humanBlockedExplanationV1(code, label));
+      if (code && /^(?:carry|raise|beam|joist|plywood|stair|tread|reach|lift)\./.test(code) && !SHARED_CARRY_WAIT.has(code)) this.together.sharedRefused(id, code, humanBlockedExplanationV1(code, label));
     }
   }
   private async performAtomicObjectBodies(soul:EdgeSoul,capability:string,label:string,steps:Program['steps'],clientRef:string|undefined,admission:ObjectBodyAdmission){

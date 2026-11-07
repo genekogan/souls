@@ -819,6 +819,12 @@ export class GodNav {
     return true;
   }
 
+  /** PC16 (#695): a level only unfinished stairs lead up to says what they are missing (a stairs link's own reason). */
+  private unfinishedTo(level: number, ref: string): string | null {
+    const byEntity = (this.E.world as { entityPhysicsV1?: { byEntity?: Record<string, { links?: { usable: boolean; reason?: string; kind: string; to: { level: number } }[] }> } }).entityPhysicsV1?.byEntity ?? {};
+    const why = [...new Set(Object.values(byEntity).flatMap((p) => p.links ?? []).filter((l) => !l.usable && l.reason && l.to.level === level && l.kind === 'stairs').map((l) => l.reason!))];
+    return why.length ? `${ref} is up where only unfinished stairs reach: ${why.join('; ')}.` : null;
+  }
   private offerWalk(soul: EdgeSoul, t: Thing, d: number, at: { here: Vec2; myLevel: number; seated: boolean; exit: { p: Vec2; level: number } | null; keep?: NonNullable<MenuFocus['walkKeep']>['keep'] }, caps: EdgeCapability[], plans: Plans, onlyWalk=false) {
     const { here, myLevel, seated, exit } = at;
     const id = `walk:${t.ref}`; if (caps.some((c) => c.id === id)) return;
@@ -832,7 +838,7 @@ export class GodNav {
     const E = this.E, cut = !!g0 && (g0.level > 0 || !!t.semanticPart) && !!E.navCheckV1 && !!E.navWarmV1?.(0) && E.navCheckV1([{ id, ...g0 }])[0]?.ok === false;
     const goal = cut ? null : g0;
     const cap: EdgeCapability = { id, verb: 'walk', label: where, ...(t.aliases?.length?{aliases:t.aliases}:{}), target, available: !!goal,
-      ...(goal ? {} : { blocked: cut ? { code: 'route.unreachable', reason: `${t.ref} is up where no stair or ramp from the ground reaches.` } : this.blocked.has(t.ref) ? { code: 'route.unreachable', reason: this.blocked.get(t.ref)! } : { code: 'place.no-standing-room', reason: `There is no clear standing room at ${t.ref} right now.` } }) };
+      ...(goal ? {} : { blocked: cut ? { code: 'route.unreachable', reason: this.unfinishedTo(g0!.level, t.ref) ?? `${t.ref} is up where no stair or ramp from the ground reaches.` } : this.blocked.has(t.ref) ? { code: 'route.unreachable', reason: this.blocked.get(t.ref)! } : { code: 'place.no-standing-room', reason: `There is no clear standing room at ${t.ref} right now.` } }) };
     caps.push(cap);
     if (!goal) return;
     const stand: Step[] = seated ? [{ verb: 'stand', params: {} }] : [];
