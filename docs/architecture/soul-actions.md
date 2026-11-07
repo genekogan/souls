@@ -485,8 +485,7 @@ names it, nearest first: "make a cup of tea" leaves a nearer coffee mug alone. W
 "wash the mug") take the nearest mug of either kind. "pour the tea" from a kettle fills the nearest empty mug, which may
 be a coffee mug, and then says coffee. "pick up the coffee mug" takes the god-built mug even beside a tea room
 that hands out prop cups: a name of more than one word comes before a prop source wherever the thing is, and one word
-that is its whole name comes first within 8 m ("pick up the apple" is the apple on the table, not one 55 m off). One word
-that is only part of a name keeps the prop: "pick up a cup" in a café still takes the café's cup.
+comes first within 8 m ("pick up the mug" is the mug on the counter; "pick up the apple" is not one 55 m off).
 
 ## What other Souls perceive
 
