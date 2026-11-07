@@ -1306,6 +1306,8 @@ export class Together {
     this.sharedEnd(inv, arrived ? 'arrived' : 'ended', ev.code ?? 'action.failed', raises(s) ? `The shared raise of ${s.load.name} ended${ev.message ? ` (${ev.message})` : ''}.` : deckOf(s) ? `The shared ${DECK_WORDS[deckOf(s)!].op} of ${s.load.name} ended before it was in place${ev.message ? ` (${this.beamWhy({code: ev.code ?? '', message: ev.message})})` : ''}; it lies where it was.` : seats(s) ? `The shared beam seating of ${s.load.name} ended before it was seated${ev.message ? ` (${this.beamWhy({code: ev.code ?? '', message: ev.message})})` : ''}; it lies where it was.` : `The shared carry of ${s.load.name} ended before ${s.destination.name}${ev.message ? ` (${ev.message})` : ''}.`);
     return true;
   }
+  /** #1150 rung 3: the world went back, so every committed shared operation is over and its claims go with it. */
+  rewound(code: string, reason: string) {for (const inv of this.committed()) if (inv.shared?.op) this.sharedEnd(inv, 'ended', code, reason);}
   /** PC02 §3 release, in one transaction: the operation ends, the claims go and every member's still-open receipt ends
    *  (`completed` on arrival; `completed` with `shared.stopped` and its reason after a stop's cleanup, PC02 §2; else
    *  `failed` with the code). */

@@ -149,6 +149,10 @@ export class Db {
   lastRecoverySeq(worldId: string, afterSeq: number): number | null {
     return ((this.db.prepare("SELECT MAX(seq) AS s FROM events WHERE world_id = ? AND seq > ? AND kind = 'rules' AND author = 'world:recovery'").get(worldId, afterSeq) as any)?.s as number) ?? null;
   }
+  /** The tick of this world's last rung 3 since `afterTick` (#1150): a boot starts past its recipe, and its cooldown still counts. */
+  lastRewindTick(worldId: string, afterTick: number): number | null {
+    return ((this.db.prepare("SELECT MAX(tick) AS t FROM events WHERE world_id = ? AND tick > ? AND kind = 'rules' AND author = 'world:recovery' AND json_type(payload, '$.recovery.lastRung') IS NOT NULL").get(worldId, afterTick) as any)?.t as number) ?? null;
+  }
   /** The tick at which each Soul was born (from the log). */
   birthTicks(worldId: string): Record<string, number> {
     const out: Record<string, number> = {};

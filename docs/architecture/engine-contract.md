@@ -104,8 +104,38 @@ would break a rule is not applied ([#1150](https://github.com/soulsimulation/sou
   outside the snapshot, and would otherwise miss a jump on its first tick.
 - A body that only turned did not move. Observers run in the end-of-tick pass, before the undo, so a take can show the
   refused pose for that one tick.
+- **The one relocation exception.** A `collision.human-static` naming a body that did not move means the world landed on it
+  (a god edit past the bridge's own walk-out). There is no pose to go back to, so it stands at the nearest free spot,
+  logged and told to the Soul: the only time a body changes place without moving there.
 - `step().refusals` reports each one. The host logs it as a `rules` event from `world:refusal`. Replay reads those only to
   compare the count, and a difference is reported, not fatal.
+
+### The ladder
+
+1. **Refuse** (above), inside `Engine.step`.
+2. **Narrow replay:** the host's recovery plans, unchanged, each kept only if its replay is clean.
+3. **Last rung,** when rung 2 fails or has no plan: restore the last clean baseline, stop every programme, re-apply
+   everything since it except decisions and what only they explain (`decision`, `play`, `edge-stop`, intent admissions,
+   arrivals and sleep stops), and set the clock to the fault's tick. This takes no engine step,
+   so no rule can fire. It's logged as a recovery recipe with `lastRung`. Open receipts end `world.rewound`.
+   With no baseline, or within a minute of the last one, it stays on the head, and rung 2 isn't tried: stop, contain, logged
+   as `lastRungInPlace`, whenever it stopped something and otherwise once per fault per minute. A replay makes the same
+   stops from that event. An event that won't re-apply costs only itself, and the recipe lists it.
+
+**`containedV1`** is part of world state, absent when empty: what still breaks a rule after rung 3. Each entry is counted
+once, doesn't fault again, and leaves when it stops firing. A body inside something is relocated once. Under these rules an
+invariant that throws is a named `engine.thrown` violation, so it is contained like any other. A replay survives what the
+live tick survived: a step or event that threw is reported and passed.
+
+**A step that throws still moves the clock,** live and in a replay, so no cooldown or replay waits on a tick that isn't
+coming. Half the ticks of ten seconds of world time faulted is `engine.step-failing`: the clock runs, bodies can't get
+anywhere, so acts are refused with `world.step-failing`, nothing rewinds, the launcher alerts as for a halt, and a due
+snapshot is taken at once on a faulted tick. That snapshot is marked: it serves a boot, never a rewind, and one that won't
+capture waits until the next is due. A snapshot from a clean tick in the stretch stays unmarked and can be a baseline. It ends when faults fall below a quarter of that, and a clean snapshot follows at once. A stop already
+under way keeps its own reason and cleanup, so one that itself keeps failing holds this state until an operator acts.
+
+**What still halts:** durability only (`failCheckpoint`, a database that won't write, a clock frontier that can't be
+persisted, a stored baseline that won't restore). Each is named `durability.*`. Without `souls-repair/1`, `haltOnFault` is unchanged.
 
 ## Conformance
 

@@ -238,6 +238,8 @@ export type Environment = {
 };
 
 export type WorldState = {
+  /** #1150 rung 3: rule breaks the world could not repair, kept visible. */
+  containedV1?: { code: string; subjects: string[] }[];
   schema: typeof WORLD_SCHEMA;
   base: BaseRef;
   tick: number;

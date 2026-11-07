@@ -1,3 +1,4 @@
+import {RELOCATED,REWOUND,STEP_FAILING} from '@souls/engine-contract';
 import {handActuatorFrame} from '../../../../../mars/viewer/engine/social/hand-actuator.ts';
 // Core-Ledger: capabilities v2, direct act with durable receipts, Tier 1 observe, map,
 // and the read-only hooks Core-Comms routes events and speech with. No model calls.
@@ -648,9 +649,25 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (r.programOk && r.programId) this.update(m[1], {phase: 'started', program_id: r.programId});
     else this.update(m[1], {phase: 'failed', code: r.programCode ?? 'program.refused', reason: humanBlockedExplanationV1(r.programCode, 'That action')});
   }
+  /** #1150 decision 1: the world landed on these bodies and moved them. Each Soul hears it on its own stream. */
+  private onRelocated(bodies: string[]) {
+    for (const id of bodies) { const soul = this.host.mindByEntity.get(id)?.soulId; if (soul) this.comms?.streams.deliver?.(soul, RELOCATED.code, this.host.engine.world.tick, {text: RELOCATED.message}); }
+  }
+  /** #1150 rung 3: nothing running survived, so every open act ends here, and each Soul is told. */
+  private onRewound(relocated: string[]) {
+    this.together.rewound(REWOUND.code, REWOUND.message);
+    for (const r of this.rows("phase IN ('waiting','started')")) this.update(r.receipt_id, {phase: 'failed', code: REWOUND.code, reason: REWOUND.message});
+    this.pending.clear(); this.dropMenus('engine-recovery');
+    // a walk finished since the baseline did not happen either, and that receipt is closed: every Soul hears it
+    for (const m of this.host.minds.values()) this.comms?.streams.deliver?.(m.soulId, REWOUND.code, this.host.engine.world.tick, {text: REWOUND.message});
+    this.onRelocated(relocated);
+  }
   /** Hotfix: a recovered engine fault ends the open receipts of the Souls whose programmes were set aside. */
   private onRecovery(e: {kind: string; payload: unknown}) {
-    const edge = (e.payload as {recovery?: {edge?: {souls: string[]}}} | null)?.recovery?.edge; if (e.kind !== 'rules' || !edge) return;
+    const fact = e.payload as {recovery?: {edge?: {souls: string[]}; lastRung?: {relocated?: string[]}}; lastRungInPlace?: {relocated?: string[]}; refusal?: {relocated?: true; bodies: string[]}} | null;
+    if (e.kind === 'rules' && (fact?.recovery?.lastRung || fact?.lastRungInPlace)) return this.onRewound((fact.recovery?.lastRung ?? fact.lastRungInPlace)!.relocated ?? []);
+    if (e.kind === 'rules' && fact?.refusal?.relocated) return this.onRelocated(fact.refusal.bodies);
+    const edge = fact?.recovery?.edge; if (e.kind !== 'rules' || !edge) return;
     for (const soulId of edge.souls) {
       this.pending.delete(soulId);
       for (const r of this.openReceipts(soulId)) this.update(r.id, {phase: 'failed', code: 'engine.fault-recovered', reason: 'That would have pushed bodies into each other, so the world set it aside and carried on; choose again.'});
@@ -1642,6 +1659,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     const clientRef = typeof input.clientRef === 'string' && input.clientRef.length <= 100 ? input.clientRef : undefined;
     if (clientRef) {const old = this.rows('soul_id=? AND client_ref=?', soul.soulId, clientRef)[0]; if (old) return {accepted: true, receipt: this.view(old)};}
     const refuse = (code: string, reason: string, extra?: {retry_after?: number}) => {this.recordRefusal(soul.soulId, 'act', capability, code, reason); return this.withInPlaceAlternative(soul, {accepted: false as const, code, reason, capability, ...extra});};
+    if (this.host.stepFailing) return refuse(STEP_FAILING.code, STEP_FAILING.message);
     const askedVerb=asked.split(/[:\s]/)[0]!;const unsupported=askedVerb==='object'?null:this.bodyVerbProblem(soul,askedVerb);if(unsupported)return refuse(unsupported.code,unsupported.reason);
     if (this.faded.has(soul.soulId)) {
       // Reclaim: fall onto feet at a starting place, identity and history intact (C9).
@@ -2082,6 +2100,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   async performBodies(soul: EdgeSoul, capability: string, label: string, steps: Program['steps'], clientRef?: string,effects?:ConfirmedEffects,admission?:ObjectBodyAdmission): Promise<{accepted: true; receipt: EdgeReceipt} | {accepted: false; code: string; reason: string}> {
     if (clientRef) {const old = this.rows('soul_id=? AND client_ref=?', soul.soulId, clientRef)[0]; if (old) return {accepted: true, receipt: this.view(old)};}
     const refuse = (code: string, reason: string) => {this.recordRefusal(soul.soulId, 'object', capability, code, reason); return {accepted: false as const, code, reason};};
+    if (this.host.stepFailing) return refuse(STEP_FAILING.code, STEP_FAILING.message);
     const busy = this.sharedBusy(soul.soulId); if (busy) return {...refuse('shared.busy', busy.reason), ...this.busyExtra(busy)};
     const nativeUse = this.nativeUseRefusal?.(capability, steps);
     if (nativeUse) return refuse(nativeUse.code, nativeUse.reason);

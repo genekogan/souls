@@ -59,6 +59,19 @@ test('(a) wedged, live.json: the watchdog shows the main thread stuck; SIGUSR2, 
   await p.closeAll();
 });
 
+test('#1150 rewound: each new rung 3 is a `rewound` problem, the world keeps running, and the next one is seen too', async () => {
+  const p = pool([5105, 5107], { FAKE_LIVE: '1', FAKE_STOP_MS: '50' });
+  const port = await p.ensure(world('wr')); const pid = p.state('wr').child.pid;
+  p.startGuard(); await sleep(250);
+  assert.deepEqual(p.problems(), []);
+  await get(port, 'wr', '/rewind');
+  await until(() => p.problems().some((x) => x.code === 'rewound'), 2000, 'rewound in problems');
+  assert.match(p.problems().find((x) => x.code === 'rewound').text, /rewind 1/); assert.equal(p.status('wr').pid, pid, 'nothing restarts it');
+  await get(port, 'wr', '/rewind');
+  await until(() => /rewind 2/.test(p.problems().find((x) => x.code === 'rewound')?.text ?? ''), 2000, 'the second is its own alert');
+  await p.stop('wr');
+});
+
 test('#1150 halted: live.json says the clock stopped; a `halted` problem and status, not wedged and not restarted, gone once a restart boots it', async () => {
   const p = pool([5101, 5103], { FAKE_LIVE: '1', FAKE_STOP_MS: '50' });
   const port = await p.ensure(world('wh')); const pid = p.state('wh').child.pid;
