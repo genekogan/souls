@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -164,9 +164,34 @@ test('the lock: a dead holder is passed over, a live one is waited for and repor
   writeFileSync(lock, `${process.pid}:someone`);
   assert.throws(() => m.remember('self', undefined, 'Waits.'), /another writer holds the lock/);
   assert.equal(readFileSync(lock, 'utf8'), `${process.pid}:someone`, 'the holder keeps it');
-  rmSync(lock); mkdirSync(lock);
+  for (const stuck of ['', 'x', '1:abc']) {   // a crash before the write, or a pid reused after a reboot: old is enough
+    writeFileSync(lock, stuck); utimesSync(lock, new Date(Date.now() - 60000), new Date(Date.now() - 60000));
+    m.remember('self', undefined, `Old lock ${JSON.stringify(stuck)}.`);
+    assert.ok(!existsSync(lock));
+  }
+  rmSync(lock, { force: true }); mkdirSync(lock);
   assert.throws(() => m.remember('self', undefined, 'A folder.'), /memory:/);
   rmSync(lock, { recursive: true });
+});
+
+test('the takeover is one writer at a time: writers racing past a dead holder leave one record', async (t) => {
+  const child = fileURLToPath(new URL('./soul/memory.mjs', import.meta.url)), code = `import(${JSON.stringify(child)}).then(({openSoulMemory})=>{const m=openSoulMemory(process.argv[1],{world:'eden',soul:'s_me'});m.sawReceipt({id:'r_race',capability:'walk:x',phase:'completed',endedTick:7,outcome:{summary:'Walked.',learned:[],produced:[],met:[]}});});`;
+  for (let round = 0; round < 6; round++) {
+    const dir = tmp(t), m = open(dir);
+    m.sawHere(frame());
+    writeFileSync(join(dir, 'runtime/.memory.lock'), '999999:gone');
+    await Promise.all(Array.from({ length: 6 }, () => new Promise((done) => spawn(process.execPath, ['-e', code, dir], { stdio: 'ignore' }).on('exit', done))));
+    assert.equal(events(dir).filter((e) => e.receiptId === 'eden:r_race').length, 1, 'one record');
+    assert.equal(open(dir).search('Walked').query, 'Walked', 'the log replays');
+  }
+});
+
+test('an id the world pads or stretches is one place, however often it says so', (t) => {
+  const dir = tmp(t), m = open(dir), long = 'p'.repeat(300);
+  for (const place of [' pier ', long]) for (let tick = 100; tick < 104; tick++) m.sawHere(frame({ tick: tick + place.length, me: { place, placePath: ['x'], posture: 'standing' } }));
+  assert.equal(events(dir).filter((e) => e.type === 'arrival').length, 2);
+  m.sawReceipt(receipt('r_pad', { outcome: { summary: 'Read.', learned: [{ fact: 'It floods.', about: 'mill', source: 's', provenance: ' soul-text ' }], produced: [], met: [] } }));
+  assert.equal(events(dir).at(-1).learned[0].untrusted, true);
 });
 
 test('remember --place prefers the world the Soul is in', (t) => {

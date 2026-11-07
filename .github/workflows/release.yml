@@ -262,9 +262,9 @@ jobs:
           cp "$tmp/CHANGELOG.md" CHANGELOG.md
           for f in $shipped; do git rm -q --ignore-unmatch "$f"; done
           git add CHANGELOG.md
-          git tag -a "v$VERSION" "$SHA" -m "Sim $VERSION"
+          git tag -a "v$VERSION" "$SHA" -m "Souls $VERSION"
           git push origin "v$VERSION"
-          gh release create "v$VERSION" --verify-tag --title "Sim $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --verify-tag --title "Souls $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
           git commit -q -m "release: changelog for $VERSION" -m "Folds the shipped changes/ fragments into CHANGELOG.md."
           # main may have moved during the release; replay the changelog commit on top.
           for attempt in 1 2 3; do
