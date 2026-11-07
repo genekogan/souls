@@ -97,11 +97,44 @@ test('a world can\'t get a line into "Noted more than once": only the Soul\'s ow
 test('a page that keeps failing is passed over, at no cost, and the days after it go on', async (t) => {
   const { dir } = lived(t);
   let calls = 0; const ask = async (p) => { calls += 1; return /Played on day 1/.test(p) ? [] : ['Later days.']; }, pass = () => consolidate(dir, { ask, budget: 10, now: NOW, caps: { callsPerDay: 9, tokensPerPass: 1000 } });
-  assert.equal((await pass()).skipped, 'the mind gave nothing back'); assert.equal((await pass()).skipped, 'the mind gave nothing back');
+  for (let i = 0; i < 3; i++) assert.equal((await pass()).skipped, 'the mind gave nothing back');
   const r = await pass();
-  assert.equal(r.passedOver, '2026-11-01'); assert.equal(calls, 2, 'no call for it');
+  assert.equal(r.passedOver, '2026-11-01'); assert.equal(calls, 3, 'once with the rest, twice alone, then no call for it');
   assert.match(readFileSync(join(dir, 'MEMORY.md'), 'utf8'), /This day could not be summarized\./);
   assert.deepEqual((await pass()).consolidated.slice(0, 1), ['2026-11-02']);
+});
+
+test('a CLI that fails says nothing about a page: an outage moves nothing, and a real page isn\'t blamed for the next one', async (t) => {
+  const { dir } = lived(t), down = async () => { throw Object.assign(new Error('signed out'), { usd: 0.01 }); };
+  for (let i = 0; i < 4; i++) await assert.rejects(consolidate(dir, { ask: down, budget: 10, now: NOW, caps: { callsPerDay: 9 } }));
+  assert.ok(existsSync(join(dir, 'memory/journal/2026-11-01.md'))); assert.ok(!existsSync(join(dir, 'MEMORY.md')));
+  const l = JSON.parse(readFileSync(join(dir, 'memory/consolidation.json'), 'utf8')); assert.equal(l.stuck ?? null, null); assert.ok(l.usd > 0.03);
+  const b = lived(t).dir, ask = async (p) => (/Played on day 3/.test(p) ? [] : ['Fine.']), pass = () => consolidate(b, { ask, budget: 10, now: NOW, caps: { callsPerDay: 9 } });
+  assert.equal((await pass()).skipped, 'the mind gave nothing back');
+  assert.deepEqual((await pass()).consolidated, ['2026-11-01'], 'alone, the oldest page is fine');
+});
+
+test('a proposal goes when there is nothing to propose, reads plain, and applies to a file with no last newline', async (t) => {
+  const { dir, m } = lived(t);
+  m.remember('self', undefined, 'I <3 tea & toast.');
+  writeFileSync(join(dir, 'SOUL.md'), '# Me\n\nNo last newline');
+  await consolidate(dir, { budget: 10, now: NOW });
+  assert.equal(spawnSync('patch', ['--dry-run', '-p1', '-i', join(dir, 'memory/soul-proposal.diff')], { cwd: dir }).status, 0);
+  assert.match(readFileSync(join(dir, 'memory/soul-proposal.diff'), 'utf8'), /\+I <3 tea & toast\./);
+  writeFileSync(join(dir, 'SOUL.md'), '# Me\n\nI am patient.\nI <3 tea & toast.\n');
+  writeFileSync(join(dir, 'memory/journal/2026-10-01.md'), '# 2026-10-01\n\n- Old.\n');
+  await consolidate(dir, { budget: 1, now: NOW });
+  assert.ok(!existsSync(join(dir, 'memory/soul-proposal.diff')));
+});
+
+test('a process that stops takes its model CLI with it', async (t) => {
+  const dir = tmp(t), bin = join(dir, 'slow'), mark = join(dir, 'pid'), mod = fileURLToPath(new URL('./soul/consolidate.mjs', import.meta.url));
+  writeFileSync(bin, `#!${process.execPath}\nrequire('fs').writeFileSync(${JSON.stringify(mark)},String(process.pid));setTimeout(()=>{},60000);\n`); chmodSync(bin, 0o755);
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `import(${JSON.stringify(mod)}).then(({ownerMind})=>{ownerMind({bin:${JSON.stringify(bin)}})('x').catch(()=>{});setTimeout(()=>process.exit(0),1500);});`], { stdio: 'ignore' });
+  await new Promise((r) => child.on('exit', r));
+  const pid = Number(readFileSync(mark, 'utf8'));
+  await new Promise((r) => setTimeout(r, 200));
+  assert.throws(() => process.kill(pid, 0), /ESRCH/);
 });
 
 test('no model CLI: nothing is spent and no page goes', async (t) => {
@@ -173,6 +206,8 @@ test('A2: the schedule counts from the last look, across restarts', (t) => {
   writeFileSync(join(memory, 'consolidation.json'), JSON.stringify({ lastLook: '2026-11-10T00:00:00.000Z' }));
   assert.equal(nextPassIn(memory, { everyHours: 24, now: NOW }), 12 * 3600_000);
   assert.equal(nextPassIn(memory, { everyHours: 6, now: NOW }), 0, 'overdue');
+  writeFileSync(join(memory, 'consolidation.json'), 'null');
+  assert.doesNotThrow(() => nextPassIn(memory, { everyHours: 6, now: NOW }));
 });
 
 test('the model CLI gets no tools, no settings, an empty folder, a short environment, and the prompt on stdin', async (t) => {
@@ -234,7 +269,17 @@ test('A2 A5: an idle serve runs the pass on its schedule, through the real CLI; 
   assert.ok(!existsSync(join(soul, 'MEMORY.md')), 'everyHours 0: never'); await run('serve', '--stop');
   await new Promise((r) => setTimeout(r, 300));
   writeFileSync(cfg, JSON.stringify({ ...JSON.parse(readFileSync(cfg, 'utf8')), consolidation: { everyHours: 1 } }));
+  writeFileSync(join(soul, 'memory/consolidation.json'), 'null');
+  chmodSync(join(soul, 'memory'), 0o500);
+  assert.equal(JSON.parse(await run('serve')).serving, true, 'a ledger it can\'t read or write never stops a serve'); await run('serve', '--stop');
+  chmodSync(join(soul, 'memory'), 0o700);
+  await new Promise((r) => setTimeout(r, 300));
+  writeFileSync(join(soul, 'memory/consolidation.json'), JSON.stringify({ lastLook: new Date(Date.now() - 2 * 3600_000).toISOString() }));
+  const good = readFileSync(cfg, 'utf8');
   await run('serve');
+  writeFileSync(cfg, '{ not json');
+  await new Promise((r) => setTimeout(r, 300));
+  writeFileSync(cfg, good);   // a typo while it looks costs that look, not the schedule
   try {
     for (let i = 0; i < 400 && !existsSync(join(soul, 'MEMORY.md')); i++) await new Promise((r) => setTimeout(r, 50));
     assert.ok(existsSync(join(soul, 'MEMORY.md')), 'it looked, and the journal was over budget');

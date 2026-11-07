@@ -31,7 +31,7 @@ export function settingsOf(config) {
   return { callsPerDay: whole(c.callsPerDay, CAPS.callsPerDay, 100), tokensPerPass: whole(c.tokensPerPass, CAPS.tokensPerPass, 1_000_000), everyHours: whole(c.everyHours, CAPS.everyHours, EVERY_HOURS_MAX) };
 }
 
-/** The stand-in a world with fake minds, or an owner with no model CLI, gets: the same plumbing, with no model. */
+/** The stand-in a world with fake minds gets: the same plumbing, with no model. */
 export function fakeMind(prompt) {
   const lines = prompt.split("\n").filter((l) => l.startsWith("- ")).map(clean);
   return lines.length ? [`${lines.length} moments, from "${lines[0].slice(0, 80)}" to "${lines.at(-1).slice(0, 80)}".`] : [];
@@ -39,24 +39,28 @@ export function fakeMind(prompt) {
 
 /** No model CLI on this machine: nothing can be summarized, and pages must not go for a stand-in's one line. */
 export class NoMind extends Error {}
+/** Model CLIs running now, killed with this process: a `serve` that stops leaves none behind. */
+const running = new Map();
+process.on("exit", () => { for (const [pid, dir] of running) { try { process.kill(-pid, "SIGKILL"); } catch { /* gone */ } try { rmSync(dir, { recursive: true, force: true }); } catch { /* gone */ } } });
 /** The owner's model CLI, for text a world wrote: no tools, no settings, no MCP, an empty folder, an environment holding only what
  *  it needs to sign in, the prompt on stdin, a spend limit of its own. A CLI that can't be held to that isn't used. Never blocks:
  *  a pass runs beside a `serve`. An answer that says it failed is a failure, whatever the exit code. */
 export function ownerMind({ bin = "claude", env = process.env, timeoutMs = ASK_MS } = {}) {
-  const keep = Object.fromEntries(["PATH", "HOME", "ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR", "TMPDIR"].filter((k) => env[k]).map((k) => [k, env[k]]));
+  const keep = Object.fromEntries(["PATH", "HOME", "USER", "LOGNAME", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "TMPDIR"].filter((k) => env[k]).map((k) => [k, env[k]]));
   const args = ["-p", "--model", "haiku", "--tools", "", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--disable-slash-commands", "--no-session-persistence", "--max-budget-usd", String(PASS_USD), "--output-format", "json"];
   return (prompt) => new Promise((resolve, reject) => {
     const cwd = mkdtempSync(join(tmpdir(), "souls-pass-"));
     const child = spawn(bin, args, { cwd, env: { ...keep, CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" }, stdio: ["pipe", "pipe", "ignore"], detached: true });
     let out = "", settled = false;
-    const done = (fn, v) => { if (settled) return; settled = true; clearTimeout(timer); try { process.kill(-child.pid, "SIGKILL"); } catch { /* it has gone */ } rmSync(cwd, { recursive: true, force: true }); fn(v); };
+    if (child.pid) running.set(child.pid, cwd);
+    const done = (fn, v) => { if (settled) return; settled = true; clearTimeout(timer); running.delete(child.pid); try { process.kill(-child.pid, "SIGKILL"); } catch { /* it has gone */ } rmSync(cwd, { recursive: true, force: true }); fn(v); };
     const timer = setTimeout(() => done(reject, new Error(`${bin} did not finish the pass`)), timeoutMs);
     child.stdout.on("data", (c) => { if (out.length < 256 * 1024) out += c; });
     child.stdin.on("error", () => { /* it left early: its exit says why */ });
     child.on("error", (e) => done(reject, e.code === "ENOENT" ? new NoMind(`no ${bin} here`) : e));
     child.on("close", (code) => {
       let r = null; try { r = JSON.parse(out); } catch { /* not an answer */ }
-      if (code !== 0 || !r || r.is_error || typeof r.result !== "string") return done(reject, new Error(`${bin} did not finish the pass`));
+      if (code !== 0 || !r || r.is_error || typeof r.result !== "string") return done(reject, Object.assign(new Error(`${bin} did not finish the pass`), { usd: Number.isFinite(r?.total_cost_usd) ? r.total_cost_usd : 0 }));
       done(resolve, Object.assign(r.result.split("\n"), { usd: Number.isFinite(r.total_cost_usd) ? r.total_cost_usd : null }));
     });
     child.stdin.end(prompt);
@@ -95,13 +99,13 @@ function takePass(memory) {
   return null;
 }
 
-const readLedger = (memory) => { try { return JSON.parse(readFileSync(join(memory, "consolidation.json"), "utf8")); } catch { return {}; } };
+const readLedger = (memory) => { try { const l = JSON.parse(readFileSync(join(memory, "consolidation.json"), "utf8")); return l && typeof l === "object" && !Array.isArray(l) ? l : {}; } catch { return {}; } };
 const writeLedger = (memory, ledger) => { const file = join(memory, "consolidation.json"), tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, JSON.stringify(ledger, null, 1) + "\n", { mode: 0o600 }); renameSync(tmp, file); };
 /** How long an idle `serve` should wait: `everyHours` after the last look, which a restart doesn't reset. A Soul never looked at
  *  starts its clock here, once there is a memory to keep it in. */
 export function nextPassIn(memory, { everyHours = CAPS.everyHours, now = () => new Date().toISOString() } = {}) {
   const ledger = readLedger(memory), every = everyHours * 3600_000;
-  if (!ledger.lastLook && existsSync(memory)) writeLedger(memory, { ...ledger, lastLook: now() });
+  if (!ledger.lastLook && existsSync(memory)) try { writeLedger(memory, { ...ledger, lastLook: now() }); } catch { /* the next look tries again */ }
   const last = Date.parse(ledger.lastLook ?? "");
   return Number.isFinite(last) ? Math.min(every, Math.max(0, last + every - Date.parse(now()))) : every;
 }
@@ -125,13 +129,16 @@ export async function consolidate(soulDir, { ask = async (p) => fakeMind(p), cap
       const notes = repeatedNotes(memory), proposal = proposeSoul(soulDir, memory);
       writeMemoryMd(soulDir, { lines, taken, notes });
       if (proposal) writeFileSync(join(memory, "soul-proposal.diff"), proposal, { mode: 0o600 });
+      else rmSync(join(memory, "soul-proposal.diff"), { force: true });
       // The log keeps everything: only these days' projections go, and they don't come back while `through` says so.
       for (const d of taken) unlinkSync(d.file);
-      save({ through: taken.at(-1).day, lastPass: now(), stuck: null });
+      save({ through: taken.at(-1).day, lastPass: now(), lastLook: now(), stuck: null });
       return { consolidated: taken.map((d) => d.day), ...(taken[0].clipped ? { clipped: true } : {}), lines: lines.length, notesMerged: notes.length, proposed: !!proposal, calls: ledger.calls, tokens: ledger.tokens, usd: ledger.usd };
     };
-    // A page that keeps a pass from finishing is passed over, at no cost: it can't keep every later day waiting, and spending.
-    if (ledger.stuck?.day === days[0].day && ledger.stuck.tries >= STUCK_TRIES) return { ...finish(["This day could not be summarized."], [days[0]]), passedOver: days[0].day };
+    // A page the mind gave nothing back for, alone, twice, is passed over at no cost: it can't keep every later day waiting. A CLI
+    // that failed says nothing about a page, so an outage moves nothing.
+    const suspect = ledger.stuck?.day === days[0].day;
+    if (suspect && ledger.stuck.tries >= STUCK_TRIES) return { ...finish(["This day could not be summarized."], [days[0]]), passedOver: days[0].day };
 
     // What fits the cap, oldest first, inside a fence the journal can't name. Worlds wrote much of this.
     const fence = randomBytes(8).toString("hex"), open = `<<<${fence}\n`, shut = `\n${fence}>>>\n`;
@@ -140,24 +147,25 @@ export async function consolidate(soulDir, { ask = async (p) => fakeMind(p), cap
     let data = "";
     for (const d of days) {
       const left = room - Buffer.byteLength(data);
-      if (d.bytes + 1 <= left) { data += `${d.text}\n`; taken.push(d); continue; }
+      if (d.bytes + 1 <= left && !(suspect && taken.length)) { data += `${d.text}\n`; taken.push(d); continue; }
+      if (suspect && taken.length) break;
       // One day too big for any pass would stop every pass after it: what fits of it is read, and the page goes. The log keeps it.
       if (!taken.length && left >= MIN_DATA_BYTES) { data = Buffer.from(d.text).subarray(0, left).toString().replace(/�+$/, ""); taken.push({ ...d, clipped: true }); }
       break;
     }
     if (!taken.length) { save({ lastSkip: "tokens per pass too low for one day", lastLook: now() }); return { skipped: "tokens per pass too low for one day" }; }
-    const prompt = `${head}${open}${data}${shut}`, failed = () => ({ day: days[0].day, tries: (ledger.stuck?.day === days[0].day ? ledger.stuck.tries : 0) + 1 });
+    const prompt = `${head}${open}${data}${shut}`, alone = taken.length === 1;
     save({ calls: ledger.calls + 1, tokens: ledger.tokens + tokensOf(prompt), lastLook: now() });   // counted before the call: a pass that dies still spent it
     let said;
     try { said = await ask(prompt, { tokens: limit.tokensPerPass }); }
     catch (e) {
       if (e instanceof NoMind) { save({ calls: ledger.calls - 1, tokens: ledger.tokens - tokensOf(prompt), lastSkip: "no model CLI" }); return { skipped: "no model CLI" }; }
-      save({ stuck: failed(), lastSkip: "the pass failed" });
+      save({ usd: ledger.usd + (e.usd ?? 0), lastSkip: "the pass failed" });
       throw e;
     }
     const lines = said.map(clean).filter(Boolean).slice(0, LINES_MAX);
     save({ tokens: ledger.tokens + tokensOf(said.join("\n")), usd: ledger.usd + (said.usd ?? 0) });
-    if (!lines.length) { save({ stuck: failed(), lastSkip: "the mind gave nothing back" }); return { skipped: "the mind gave nothing back" }; }
+    if (!lines.length) { save({ stuck: { day: days[0].day, tries: (suspect ? ledger.stuck.tries : 0) + (alone ? 1 : 0) }, lastSkip: "the mind gave nothing back" }); return { skipped: "the mind gave nothing back" }; }
     return finish(lines, taken);
   } finally { release(); }
 }
@@ -179,10 +187,10 @@ function repeatedNotes(memory) {
 /** The self lines not yet in SOUL.md, as a diff the owner can apply or ignore: new lines at the end, so pinned lines are never in it. */
 function proposeSoul(soulDir, memory) {
   const soulFile = join(soulDir, "SOUL.md"), soul = existsSync(soulFile) ? readFileSync(soulFile, "utf8") : "";
-  let self = []; try { self = readFileSync(join(memory, "self.md"), "utf8").split("\n").map((l) => l.replace(/\\(.)/g, "$1").trim()).filter(Boolean); } catch { /* none */ }
+  let self = []; try { self = readFileSync(join(memory, "self.md"), "utf8").split("\n").map((l) => l.replace(/\\(.)/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").trim()).filter(Boolean); } catch { /* none */ }
   const added = self.filter((l) => !soul.includes(l)).slice(0, 8), lines = soul.replace(/\n$/, "").split("\n"), n = soul ? lines.length : 0;
   if (!added.length) return "";
-  const hunk = n ? `@@ -${n},1 +${n},${added.length + 1} @@\n ${lines.at(-1)}\n` : `@@ -0,0 +1,${added.length} @@\n`;
+  const last = lines.at(-1), hunk = !n ? `@@ -0,0 +1,${added.length} @@\n` : soul.endsWith("\n") ? `@@ -${n},1 +${n},${added.length + 1} @@\n ${last}\n` : `@@ -${n},1 +${n},${added.length + 1} @@\n-${last}\n\\ No newline at end of file\n+${last}\n`;
   return `--- a/SOUL.md\n+++ b/SOUL.md\n${hunk}${added.map((l) => `+${l}`).join("\n")}\n`;
 }
 

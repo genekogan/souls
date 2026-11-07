@@ -144,8 +144,8 @@ World text goes to a model here, so the model is held down: `claude -p` with `--
 folder, an environment of only what it needs to sign in, the journal on stdin inside a fence the journal can't name, and
 `--max-budget-usd 0.05`. A CLI that can't be run without tools isn't used. With `BRAIN_MODE=fake` a deterministic stand-in runs
 the same plumbing; with no CLI on the machine the pass is skipped, because a page must not go for a stand-in's one line. It runs
-beside `serve`, one pass at a time. An answer that is empty or says it failed deletes nothing, and a page that fails twice is
-passed over at no cost, so it can't hold up the days after it. A Soul under budget makes no call.
+beside `serve`, one pass at a time. An answer that is empty or says it failed deletes nothing. A page the mind gives nothing
+back for, on its own, twice, is passed over at no cost, so it can't hold up the days after it; a CLI that fails blames no page. A Soul under budget makes no call.
 
 ### The pre-turn brief
 
