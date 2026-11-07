@@ -160,6 +160,11 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
   with its target, run-relative time, outcome and whether the target spoke afterwards). Emergence
   numbers are labelled `social-heuristic`. A measure without its source is `unavailable` with the reason, never 0
   (for example no seat transcript after `controllerState: "delete"`, or no evidence packs while the observer failed).
+- **Owner requests** come from the persona director's `personas/<seat>/decisions.jsonl`. A directed cast has none: its
+  cards are the lines of `director/directions.jsonl` that carry a `requestId` and `messageId` (gather, prepare, go and
+  console redirects alike), and each request's reference points at its line there. Either way they are joined with
+  the seat's transcript and its `personas/<seat>/requests.jsonl` cutoffs. With no requests to join, the
+  physical-completion measures are unavailable, not 0.
 - **Questions** are small named scorer modules (`questions/*.mjs`, default export `{id, version, question,
   assumptions, score(ctx)}`) answering `pass`, `fail` or `unknown` with evidence references and stated uncertainty.
   `ctx` holds the joined requests (director record plus the seat's ack, act, say and result calls), each seat's CLI

@@ -36,11 +36,18 @@ function makeRun(opts = {}) {
   for (const [n, s] of ['0-preflight', '1-provision', '2-seats', '3-play', '4-close', '5-review', '7-report'].entries()) w(join(p, 'receipts', `${s}.json`), { step: s.slice(2), ok: true, ...(n === 5 ? { requests: 0 } : {}) });
   w(join(p, 'world.json'), { startedAt: iso(-10) });
   const m1 = 'msg_1', m2 = 'msg_2';
-  w(join(p, 'personas/bo/decisions.jsonl'), jl([
+  // A directed cast (#783) writes its cards to director/directions.jsonl (here after another seat's card) instead.
+  if (opts.directed) w(join(p, 'director/directions.jsonl'), jl([
+    { t: iso(-1), seat: 'ada', kind: 'gather', by: 'director', channel: 'card', text: 'Go to the hall', messageId: 'msg_a', requestId: 'ada-001' },
+    { t: iso(0), seat: 'bo', kind: 'gather', by: 'director', channel: 'card', text: script[0].text, messageId: m1, requestId: 'bo-001' },
+    { t: iso(5), seat: 'bo', kind: 'note', by: 'console', channel: 'card', text: 'not delivered' },
+    { t: iso(9), seat: 'bo', kind: 'redirect', by: 'console', channel: 'card', text: script[1].text, messageId: m2, requestId: 'bo-002' },
+  ]));
+  else if (!opts.noDirector) w(join(p, 'personas/bo/decisions.jsonl'), jl([
     { t: iso(0), seat: 'bo', mode: 'scripted', scripted: script[0], delivered: { requestId: 'bo-001', channel: 'card', messageId: m1 } },
     { t: iso(9), seat: 'bo', mode: 'scripted', scripted: script[1], delivered: { requestId: 'bo-002', channel: 'card', messageId: m2 } },
   ]));
-  w(join(p, 'personas/bo/requests.jsonl'), jl([
+  if (!opts.noDirector) w(join(p, 'personas/bo/requests.jsonl'), jl([
     { t: iso(40), requestId: 'bo-002', cutoffReason: 'result', openSec: 31, resultText: 'At the hall' },
     { t: iso(100), requestId: 'bo-001', cutoffReason: opts.director001 ?? 'budget', openSec: 100 },
   ]));
@@ -267,4 +274,30 @@ test('directions: the direction journal is counted by command and outcome; each 
   writeFileSync(join(pt, 'director', 'commands.jsonl'), readFileSync(join(pt, 'director', 'commands.jsonl'), 'utf8') + '{"t":"2026-01-01T00:01:40Z","cmd":"redir');
   const torn = directionsMeasure(sr);
   assert.deepEqual({ value: torn.value, skipped: torn.skipped, keys: Object.keys(torn.byCommand) }, { value: 5, skipped: 1, keys: ['broadcast', 'error', 'redirect', 'end'] });
+});
+
+test('directed casts: requests come from the direction stream, joined with the seat transcripts; absent stays unavailable', async () => {
+  const persona = (await evaluateRun(makeRun(), { write: false })).evaluation;
+  const e = (await evaluateRun(makeRun({ name: 'direct-1', directed: true }), { write: false })).evaluation;
+  for (const id of ['ackSec', 'seatResultSec', 'unacked', 'directorOpenSec', 'requestsPhysicallyCompleted', 'requestsPhysicallyUnknown', 'seatReportedDone']) {
+    assert.equal(M(e, id).status, 'measured', id);
+    assert.equal(M(e, id).value, M(persona, id).value, `${id} matches the persona-director run of the same calls`);
+  }
+  assert.equal(M(e, 'requestsPhysicallyCompleted').denominator, 2);
+  assert.match(M(e, 'ackSec').basis, /director\/directions\.jsonl/);
+  assert.ok(M(e, 'ackSec').sources.includes('playtest/director/directions.jsonl'));
+  const bo2 = e.requests.find((r) => r.requestId === 'bo-002');
+  assert.deepEqual(bo2.refs[0], { path: 'playtest/director/directions.jsonl', line: 4, sha256: bo2.refs[0].sha256 }, 'the card keeps its line in the stream');
+  assert.equal(bo2.text, 'Change of plan: the pond hall instead');
+  // ada has a delivered card but no transcript: her request is left out of seat timing and said so.
+  assert.match(M(e, 'ackSec').basis, /no transcript for ada/);
+  // Seats without a transcript: latency unavailable with the reason, never 0.
+  const deaf = (await evaluateRun(makeRun({ name: 'direct-2', directed: true, noTranscript: true }), { write: false })).evaluation;
+  for (const id of ['ackSec', 'seatResultSec', 'unacked', 'requestsPhysicallyCompleted']) assert.equal(M(deaf, id).status, 'unavailable', id);
+  assert.equal(M(deaf, 'ackSec').reason, 'no seat transcripts were retained');
+  // No director records at all: no requests, so physical completion is unavailable rather than 0 over nothing.
+  const none = (await evaluateRun(makeRun({ name: 'direct-3', noDirector: true }), { write: false })).evaluation;
+  assert.equal(M(none, 'ackSec').reason, 'no director records');
+  assert.equal(M(none, 'requestsPhysicallyCompleted').status, 'unavailable');
+  assert.equal(M(none, 'requestsPhysicallyCompleted').reason, 'no director records to join the seat\'s acts to');
 });
