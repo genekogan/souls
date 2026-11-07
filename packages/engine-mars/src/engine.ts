@@ -421,21 +421,22 @@ export class MarsEngine implements Engine {
     return undefined;
   }
   /** What undoes one violation, or null when it can't be undone from the copy: the host's repair then decides. */
-  private refusalPlanV1(v: { code: string; subjects?: string[] }, copy: Map<string, RefusalCopy>, tick: number) {
+  private refusalPlanV1<V extends { code: string; subjects?: string[] }>(v: V, copy: Map<string, RefusalCopy>, tick: number) {
     if (!refusableRule(v.code)) return null;
-    const ents = this.ents, moved = (id: string) => { const c = copy.get(id), e = ents[id]; return !!c && !!e && (c.pose.p.some((n, i) => n !== e.pose.p[i]) || c.pose.yaw !== e.pose.yaw || c.level !== e.human?.level); };
+    const ents = this.ents, moved = (id: string) => { const c = copy.get(id), e = ents[id]; return !!c && !!e && (c.pose.p.some((n, i) => n !== e.pose.p[i]) || c.level !== e.human?.level || (!e.human && c.pose.yaw !== e.pose.yaw)); };   // a body that only turned stayed where it was; a load's turn sweeps its ends
     const undo = new Set<string>();
     for (const id of [...new Set(v.subjects ?? [])].sort()) { const g = this.refusalGroupV1(id); if (g.some(moved) || (v.code === 'motion.overspeed' && copy.has(id))) g.forEach(x => undo.add(x)); }
     if (!undo.size) return null;
     const programs = new Map<string, Prog>(), actions = new Set<string>();
     for (const id of [...undo].sort()) {
-      const e = ents[id]; if (!copy.has(id) || e.human?.riding || e.human?.carrier || e.human?.on) return null;
+      const e = ents[id]; if (!copy.has(id) || e.human?.riding || e.human?.carrier || e.human?.on || e.human?.activity?.startsWith('climb')) return null;
       if (!e.human) continue;
       const p = this.refusalProgramV1(id);
       if (p) { if (p.build || (p.refusalsV1 ?? []).filter(t => tick - t < REFUSAL_WINDOW_TICKS).length >= REFUSALS_ALLOWED) return null; programs.set(p.id, p); continue; }
       for (const h of this.holders(id)) { if (this.rt.live.get(h)?.cancelling) return null; actions.add(h); }
     }
-    return { rule: v.code, undo: [...undo].sort(), programs, actions };
+    const holding = new Set<string>(); for (const id of undo) for (const h of this.holders(id)) holding.add(h);
+    return { violation: v, rule: v.code, undo: [...undo].sort(), programs, actions, holding: [...holding].sort() };
   }
   /** #1150 rung 1: every new violation this step is undone and its programmes stopped, or none is. What the invariants
    *  still find after that stays in `violations`, for the host's repair. A pure function of world state and the rules. */
@@ -444,20 +445,24 @@ export class MarsEngine implements Engine {
     const plans = fresh.map(v => this.refusalPlanV1(v, copy, tick));
     if (plans.some(p => !p)) { rt.violations.push(...fresh); return; }
     const done = new Map<string, EngineRefusalV1>();
+    const stuck: typeof fresh = [];
     for (const plan of plans as NonNullable<(typeof plans)[number]>[]) {
       const why = refusalDiag(plan.rule), key = `${plan.rule}|${plan.undo.join()}`;
       for (const id of plan.undo) { const c = copy.get(id)!, e = ents[id]; e.pose = { ...c.pose, p: [...c.pose.p] }; if (e.human) { e.human.level = c.level; e.human.speed = 0; } }
+      for (const h of plan.holding) { const l = rt.live.get(h); l?.def.refused?.(rt, l.exec); }
       for (const id of [...plan.programs.keys()].sort()) {
-        const p = plan.programs.get(id)!; p.stopping = why; (p.refusalsV1 ??= []).push(tick); p.refusalsV1 = p.refusalsV1.filter(t => tick - t < REFUSAL_WINDOW_TICKS);
-        if (p.action && rt.isActive(p.action)) { rt.cancel(p.action, why); if (rt.isActive(p.action)) p.stopUntilSafe = true; }
+        const p = plan.programs.get(id)!; p.stopping = why; const seen = p.refusalsV1 ?? [];   // once a tick: one bad step can name a whole crew
+        p.refusalsV1 = [...seen.filter(t => tick - t < REFUSAL_WINDOW_TICKS && t !== tick), tick];
+        if (p.action && rt.isActive(p.action)) rt.cancel(p.action, why);   // refused for now (a flight)? `advance` asks again each tick
       }
-      for (const h of [...plan.actions].sort()) rt.cancel(h, why);
+      for (const h of [...plan.actions].sort()) { rt.cancel(h, why); if (rt.isActive(h) && !rt.live.get(h)?.cancelling) stuck.push(plan.violation); }   // no programme to ask again: the host's repair
       for (const id of plan.undo) if (ents[id].human) ents[id].human.speed = 0;
       done.set(key, { tick, rule: plan.rule, bodies: plan.undo, programs: [...plan.programs.keys()].sort(), poses: Object.fromEntries(plan.undo.map(id => { const c = copy.get(id)!; return [id, { p: [...c.pose.p] as [number, number, number], yaw: c.pose.yaw ?? 0, ...(c.level === undefined ? {} : { level: c.level }) }]; })) });
     }
     (this.out.refusals ??= []).push(...done.values());
     // The moves are back; ask the invariants again. A second pass in one tick also resets the step check's memory to these poses.
-    withEntityList(rt.world, () => { for (const inv of rt.invariants) for (const d of inv(rt)) rt.violations.push({ ...d, tick }); }, listTable(ents));
+    withEntityList(rt.world, () => { for (const inv of rt.invariants) for (const d of inv(rt)) { rt.violations.push({ ...d, tick }); rt.events.push({ tick, type: 'violation', code: d.code, message: d.message, subjects: d.subjects }); } }, listTable(ents));
+    rt.violations.push(...stuck);
   }
 
   private emit(p: Prog, kind: ProgramEvent['kind'], d?: Diag) {

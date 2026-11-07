@@ -82,6 +82,26 @@ test('rung 2 keeps what refusal cannot undo: another rule, a body that did not m
   w.step(); assert.equal(w.e.runtime.violations.length, 2, 'all of a tick or none of it'); assert.notEqual(w.e.programOf('a'), null);
 });
 
+test('a body that only turned stayed where it was: named in a collision, it keeps its programme', () => {
+  const w = world(); w.walk('a', [10, 0]); w.go(10);
+  assert.equal(w.e.perform({ actor: 'b', label: 'rest', steps: [{ verb: 'rest', params: { seconds: 60 } }] }).ok, true); w.go(5);
+  const rest = w.e.programOf('b'); w.once(rt => { shove(0.01)(rt); rt.world.entities.b.pose.yaw += 0.5; return [{ code: 'collision.human-human', message: 'forced', subjects: ['a', 'b'] }]; });
+  const out = w.step();
+  assert.deepEqual(out.refusals?.map(r => r.bodies), [['a']]); assert.equal(w.e.programOf('b'), rest); assert.deepEqual(w.e.runtime.violations, []);
+});
+
+for (const [why, arrange] of [
+  ['a build programme', (w: any) => { (w.e as any).programs.get(w.e.programOf('a')).build = { phase: 'stage', crew: ['a'] }; }],
+  ['a ridden body', (w: any) => { w.e.world.entities.a.human.riding = 'cart'; }],
+  ['a body on the structure', (w: any) => { w.e.world.entities.a.human.on = 'beam'; }],
+  ['a body on a flight', (w: any) => { w.once((rt: any) => { rt.world.entities.a.human.activity = 'climb-up'; shove(1)(rt); }); }],
+] as [string, (w: any) => void][])
+  test(`rung 2 keeps ${why}`, () => {
+    const w = world(); w.walk('a', [10, 0]); w.go(10); arrange(w);
+    if (why !== 'a body on a flight') w.once(shove(1));
+    w.step(); assert.ok(w.e.runtime.violations.length >= 1, 'left for the host');
+  });
+
 test('a refusal needs no input: two runs and a restored copy reach the same state', () => {
   const run = () => { const w = world(); w.walk('a', [10, 0]); w.walk('b', [6, 16]); w.go(10); w.once(shove(1)); w.go(30); return w; };
   const one = run(), two = run(); assert.equal(one.e.stateHash(), two.e.stateHash());

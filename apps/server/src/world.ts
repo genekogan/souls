@@ -530,7 +530,7 @@ export class WorldHost {
     const previousViolations = this.engine.runtime.violations.length;
     const tStep = performance.now();
     try { out = this.engine.step(); if (this.engine.runtime.violations.length > previousViolations) throw new Error(JSON.stringify(this.engine.runtime.violations.slice(previousViolations))); }
-    catch (error) { this.recoverFault(error); return; }
+    catch (error) { for (const r of out!?.refusals ?? []) this.countRefusal(r); this.recoverFault(error); return; }
     this.advanceLives();
     this.kernel.tick = this.engine.world.tick;
     sweep(this.kernel);
@@ -1553,12 +1553,10 @@ export class WorldHost {
   /** #1150 rung 1: the engine already undid these moves. The log keeps each as evidence, in this tick; a replay recomputes
    *  them from state, so it reads these only to compare the count. */
   private noteRefusals(refusals: EngineRefusalV1[]) {
-    for (const r of refusals) {
-      void this.enqueue('rules', 'world:refusal', { refusal: r });
-      this.recordGlitch('refusal', JSON.stringify([{ code: r.rule, subjects: r.bodies }]), { tick: r.tick, evidence: { programs: r.programs, poses: r.poses } });
-    }
+    for (const r of refusals) { void this.enqueue('rules', 'world:refusal', { refusal: r }); this.countRefusal(r); }
     this.drainInputs();
   }
+  private countRefusal(r: EngineRefusalV1) { this.recordGlitch('refusal', JSON.stringify([{ code: r.rule, subjects: r.bodies }]), { tick: r.tick, evidence: { programs: r.programs, poses: r.poses } }); }
   /** The fault that paused this world (edge worlds), if any. */
   engineFault: string | null = null;
   private glitchCounts: GlitchCountsV1 | null = null;
