@@ -30,7 +30,7 @@ export function retryAfterMs(headers,data){
  for(const v of [data?.world?.retry_after_s,data?.error?.retry_after_s,data?.retry_after_s])if(Number.isFinite(v)&&v>=0)return v*1000;
  return null;
 }
-export function createWorldClient({world,token,fetchImpl=fetch,timeoutMs=65000,expectedSoulId=null}){
+export function createWorldClient({world,token,fetchImpl=fetch,timeoutMs=65000,streamConnectMs=30000,expectedSoulId=null}){
  const base=new URL(world);
  if(base.username||base.password||base.search||base.hash||!(base.protocol==='https:'||(base.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(base.hostname))))throw Error('World must be HTTPS or loopback HTTP without credentials/query');
  if(typeof token!=='string'||!token)throw Error('Missing paired Soul credential');
@@ -49,9 +49,11 @@ export function createWorldClient({world,token,fetchImpl=fetch,timeoutMs=65000,e
   return data;
  }
  const eventPage=createEventReader({open:async(after,signal)=>{
-  let response;
-  try{response=await fetchImpl(origin+'/v1/edge/events?'+new URLSearchParams({cursor:after??'c_0',format:'envelope'}),{headers:{authorization:`Bearer ${token}`,accept:'text/event-stream'},redirect:'error',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs)});}
+  // This limit ends at the headers: an open stream is held to the reader's idle limit, never to a whole-stream one.
+  let response;const connect=new AbortController(),timer=setTimeout(()=>connect.abort(),streamConnectMs);
+  try{response=await fetchImpl(origin+'/v1/edge/events?'+new URLSearchParams({cursor:after??'c_0',format:'envelope'}),{headers:{authorization:`Bearer ${token}`,accept:'text/event-stream'},redirect:'error',signal:signal?AbortSignal.any([signal,connect.signal]):connect.signal});}
   catch{throw error('transport.unreachable','Event stream unavailable',{transient:!signal?.aborted});}
+  finally{clearTimeout(timer);}
   if(!response.ok){throw error('stream.refused','Event stream refused',{status:response.status,transient:response.status===429||response.status>=500,retryAfterMs:retryAfterMs(response.headers)});}
   if(!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream'))throw error('stream.invalid','Event stream content type unavailable');
   return response;
@@ -112,7 +114,8 @@ export function createWorldClient({world,token,fetchImpl=fetch,timeoutMs=65000,e
    if(command==='object')return request('/v1/edge/objects/'+segment(args.id),{signal});
    throw Error('Unsupported world read');
   },
-  async write(command,args,operationId,signal){
+  // link.for: the owner message this act serves (#789), sent as the CLI's default link (D3b/D3c); acts only.
+  async write(command,args,operationId,signal,link){
    if(typeof operationId!=='string'||!/^[A-Za-z0-9._:-]{1,100}$/.test(operationId))throw Error('Stable operation identity required');
    if(command==='converse')validateConversationArgs(args);
    if(command==='result'){
@@ -121,7 +124,7 @@ export function createWorldClient({world,token,fetchImpl=fetch,timeoutMs=65000,e
    }
    if(command==='ack'&&args.reply!==undefined&&(typeof args.reply!=='string'||args.reply.length>140||/[\r\n]/.test(args.reply)))throw error('invalid','ack reply must be one line of at most 140 characters',{status:400,uncertain:false});
    let path,body;
-   if(command==='act'){path='/v1/edge/act';body={capability:args.capability,params:args.params??{},clientRef:operationId};}
+   if(command==='act'){path='/v1/edge/act';body={capability:args.capability,params:args.params??{},clientRef:operationId,...(typeof link?.for==='string'&&link.for?{for:link.for,forDefault:true}:{})};}
    else if(command==='say'){path='/v1/edge/say';body={text:args.text};}
    else if(command==='converse'){path='/v1/edge/converse';body={...args};}
    else if(command==='ack'){path='/v1/edge/inbox/'+segment(args.id)+'/ack';body={reply:args.reply};}

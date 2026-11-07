@@ -3,6 +3,7 @@ import { SoulNow, type SoulNowLine } from './soul-now.ts';
 import type {CarrierInstallSpec} from '../../../mars/viewer/engine/vehicles/carrier.ts';
 import {soulProfileFactV1Schema,type SoulProfileFactV1} from '@souls/protocol';
 import {authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesDeclarationV1} from '@souls/engine-contract';
+import type {EngineRefusalV1} from '@souls/engine-contract';
 import {edenLectureV1} from '@souls/engine-mars';
 import {renderPlatformRowsV1Schema,type RenderPlatformV1} from '@souls/engine-contract';
 import {officeStairGuardsDeclarationV1Schema,type OfficeStairGuardsDeclarationV1} from '@souls/engine-contract';
@@ -253,9 +254,11 @@ export class WorldHost {
       if(this.engine.world.tick<clock.tick)throw new Error('clock-frontier.snapshot-prefix-differs');
       checkedClock=true; // A later exact durable snapshot supersedes this prefix.
     }
+    let replayedRefusals=0;
     const stepReplay=()=>{
       const before=this.engine.runtime.violations.length;
       const out=this.engine.step();this.advanceLives();replayTicks++;bootTick(this.engine.world.tick);
+      replayedRefusals+=out.refusals?.length??0;
       if(this.durableClockV1){
         if(this.engine.runtime.violations.length>before)throw new Error('clock-frontier.replay-violates');
         this.kernel.tick=this.engine.world.tick;sweep(this.kernel);
@@ -311,6 +314,9 @@ export class WorldHost {
       replayTicks, replayEvents: later.length, fromTick, toTick: this.engine.world.tick, minds: this.minds.size };
     this.bootStats = stats;
     console.log(`[boot] restore ${stats.restoreMs} ms from ${from} tick ${fromTick} (snapshot read+decode ${stats.readMs} ms, ${stats.minds} minds)`);
+    // #1150: refusals are recomputed, so the log's count is evidence only: a difference is reported and the boot goes on
+    const loggedRefusals=later.filter(e=>e.kind==='rules'&&e.author==='world:refusal').length;
+    if(loggedRefusals!==replayedRefusals)console.warn(`[world] refusal count differs on replay: logged ${loggedRefusals}, replayed ${replayedRefusals}`);
     console.log(`[boot] replay ${stats.replayMs} ms ${replayTicks} ticks ${later.length} events to tick ${stats.toTick} (${replayTicks ? (stats.replayMs / replayTicks).toFixed(2) : '0'} ms/tick; recovery baseline ${stats.baselineMs} ms)`);
     return { from, replayed: later.length };
   }
@@ -524,7 +530,7 @@ export class WorldHost {
     const previousViolations = this.engine.runtime.violations.length;
     const tStep = performance.now();
     try { out = this.engine.step(); if (this.engine.runtime.violations.length > previousViolations) throw new Error(JSON.stringify(this.engine.runtime.violations.slice(previousViolations))); }
-    catch (error) { this.recoverFault(error); return; }
+    catch (error) { for (const r of out!?.refusals ?? []) this.countRefusal(r); this.recoverFault(error); return; }
     this.advanceLives();
     this.kernel.tick = this.engine.world.tick;
     sweep(this.kernel);
@@ -534,6 +540,7 @@ export class WorldHost {
     this.reconcileIntentObservations();
     this.observeIntentActions();
     this.afterPrograms(out.programs, false);
+    if (out.refusals) this.noteRefusals(out.refusals);
     this.replayDebtMs += performance.now() - tStep;
     if(this.durableClockV1){
       // Derived effects become durable before this elapsed body tick is sent.
@@ -1543,6 +1550,13 @@ export class WorldHost {
     // that refuses snapshots
     for (const listener of this.listeners) try { listener.onClockUnavailable?.(); } catch { /* the engine fault remains the cause */ }
   }
+  /** #1150 rung 1: the engine already undid these moves. The log keeps each as evidence, in this tick; a replay recomputes
+   *  them from state, so it reads these only to compare the count. */
+  private noteRefusals(refusals: EngineRefusalV1[]) {
+    for (const r of refusals) { void this.enqueue('rules', 'world:refusal', { refusal: r }); this.countRefusal(r); }
+    this.drainInputs();
+  }
+  private countRefusal(r: EngineRefusalV1) { this.recordGlitch('refusal', JSON.stringify([{ code: r.rule, subjects: r.bodies }]), { tick: r.tick, evidence: { programs: r.programs, poses: r.poses } }); }
   /** The fault that paused this world (edge worlds), if any. */
   engineFault: string | null = null;
   private glitchCounts: GlitchCountsV1 | null = null;

@@ -42,11 +42,32 @@ test('server changes run server shards and latency, not native', () => {
   assert.ok(!picked.includes('native'));
 });
 
+test('the types-web job, which runs the bundle comparison, covers what can move the bundle (#1117)', () => {
+  for (const f of ['apps/web/src/App.tsx', 'packages/world-compiler/src/joints.ts', 'tools/test-harness/bundle-budget/baseline.json', 'tools/test-harness/bundle-budget/budget.mjs']) assert.ok(names([f]).includes('types-web'), f);
+  assert.ok(!names(['docs/testing.md']).includes('types-web'));
+  assert.match(readFileSync(new URL('../workflows/ci.yml', import.meta.url), 'utf8'), /types-web\)[^;]*@souls\/web build\n[^;]*budget\.mjs --check/);
+});
+
+test('the native leg stays hosted whatever CI_HEAVY_RUNNER says, and only it (#1162)', () => {
+  const workflow = readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8');
+  const runsOn = /^  qualify:[\s\S]*?^    runs-on: (.*)$/m.exec(workflow)?.[1] ?? '';
+  assert.match(runsOn, /^\$\{\{ matrix\.kind != 'native' && vars\.CI_HEAVY_RUNNER && /);
+  assert.match(runsOn, /\|\| 'ubuntu-latest' \}\}$/);
+  assert.equal(runsOn.match(/matrix\./g)?.length, 1, 'no other leg is pinned');
+});
+
 test('the soul-actions job runs on its own paths, full scope included, and on nothing else (#1061)', () => {
   for (const f of ['tools/soul-actions/shared-crew.test.mjs', 'apps/server/src/edge/ledger/together.ts', 'apps/server/test/native-owner-fixture.ts', 'packages/world-compiler/src/model.ts', 'packages/engine-mars/src/x.ts']) assert.ok(names([f]).includes('soul-actions'), f);
   for (const f of ['apps/web/src/App.tsx', 'docs/testing.md', 'tools/world-launcher/launcher.mjs', 'packages/edge-cli/x.ts']) assert.ok(!names([f]).includes('soul-actions'), f);
   assert.ok(names(['pnpm-lock.yaml']).includes('soul-actions'));
   assert.ok(!('paths' in jobsFor(['tools/soul-actions/x.test.mjs']).include.find(j => j.name === 'soul-actions')));
+});
+
+test('the soul-tools job runs on its own paths, full scope included, and on nothing else (#1111)', () => {
+  for (const f of ['tools/soul-runtime/run.test.mjs', 'tools/soul-trace/tap.mjs', 'tools/world-launcher/soul/eden.mjs', 'apps/server/src/edge/comms/testing.ts']) assert.ok(names([f]).includes('soul-tools'), f);
+  for (const f of ['apps/web/src/App.tsx', 'docs/testing.md', 'tools/world-launcher/launcher.mjs', 'tools/edge-skill/client.mjs', 'tools/soul-actions/shared-crew.test.mjs']) assert.ok(!names([f]).includes('soul-tools'), f);
+  assert.ok(names(['pnpm-lock.yaml']).includes('soul-tools'));
+  assert.ok(!('paths' in jobsFor(['tools/soul-trace/x.test.mjs']).include.find(j => j.name === 'soul-tools')));
 });
 
 test('unmapped paths (lockfile, .github, mars) run every job', () => {

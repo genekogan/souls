@@ -298,7 +298,7 @@ interprets it, `intent-v2` is logged, and `host.enqueueIntentDecision` writes a 
 forked Playwright Chromium renders the viewer with `?eyes=1` only when `EDGE_EYES` is set.
 
 **Continuity.** There is no server-side Soul memory runtime. The agent's own folder holds `memory/` (self, goals,
-places, knowledge, lessons, ledger, schedule) via `memory-folder.mjs`; the world keeps only `edge_place_knowledge_v1`,
+places, knowledge, lessons, ledger, schedule) via `memory-folder.mjs`, on the shipping line through `soul/memory.mjs`; the world keeps only `edge_place_knowledge_v1`,
 the ≤ 140-character `now` line (`soul_now_v1`, outside the log) and receipts. `purpose-recall.ts` / `purpose-episodes.ts`
 feed only the *central* `Brain`. A continuity runtime would plug in at the CLI (`client-memory.mjs`, `client-living.mjs`)
 and read `boot` + `here`, not into the world process.

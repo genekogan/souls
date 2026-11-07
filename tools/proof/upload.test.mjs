@@ -70,8 +70,19 @@ test('github target: --release / SIM_PROOF_RELEASE override the per-PR release',
   assert.throws(() => githubTarget({ repo: 'o/r', run: gh.run, tag: '../x' }), /not a valid tag/);
 });
 
-test('github target: a full release says how to get out of it', async () => {
+test('github target: a full release is refused before any upload, dry run included (#920)', async () => {
   const full = Array.from({ length: 1000 }, (_, i) => ({ name: `pr-1.f${i}.png` }));
+  for (const dryRun of [false, true]) {
+    const gh = fakeGh({ release: { id: 5 }, assets: full });
+    await assert.rejects(async () => githubTarget({ repo: 'o/r', run: gh.run, tag: 'proofs', dryRun }).upload(7, clip), /"proofs" is at GitHub's 1000-asset limit, so nothing was uploaded.*proofs-7.*git show origin\/main:tools\/proof\/upload\.mjs/s);
+    assert.ok(!gh.calls.some(a => a.join(' ').includes('uploads.github.com')), 'no upload was attempted');
+  }
+  const room = fakeGh({ release: { id: 5 }, assets: full.slice(1) });
+  assert.match((await githubTarget({ repo: 'o/r', run: room.run, tag: 'proofs' }).upload(7, clip)).url, /proofs\/pr-7\.desktop\.mp4$/, 'one slot left still uploads');
+});
+
+test('github target: a release that fills up during the upload says how to get out of it', async () => {
+  const full = Array.from({ length: 999 }, (_, i) => ({ name: `pr-1.f${i}.png` }));
   const gh = fakeGh({ release: { id: 5 }, assets: full, fail: { 'uploads.github.com': 'gh: Validation Failed (HTTP 422)' } });
   await assert.rejects(async () => githubTarget({ repo: 'o/r', run: gh.run, tag: 'proofs' }).upload(7, clip), /1000-asset limit.*proofs-7/);
 });
