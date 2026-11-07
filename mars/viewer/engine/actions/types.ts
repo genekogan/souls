@@ -69,6 +69,9 @@ export interface ActionDef<Params = unknown, Program = unknown, Exec = unknown> 
    * when stopping would leave an unsupported load (spec §13 `cancelled`).
    */
   cancel(rt: Runtime, exec: Exec): CancelResult;
+  /** The world refused this tick's move (#1150): its entities are back where the tick found them, and `cancel` follows.
+   *  An action that keeps its own position rewinds it here, so its cleanup starts from the pose the world kept. */
+  refused?(rt: Runtime, exec: Exec): void;
   /** Retry this specific mover through the action's existing validated planner; never force release or teleport. */
   recoverWait?(rt: Runtime, exec: Exec, mover: string): WaitRecoveryResult;
   /** Certify that every internal mover is quiescent; unknown actions cannot end a sequence early. */

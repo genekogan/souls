@@ -61,7 +61,8 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  }
  const parsed=parseCapability(text,new Set([...caps.map(c=>c.verb),'sit']));if(parsed.verb!=='sit')return null;
  // An infinitive/so-clause after a named seat states why to sit, not a second seat identity.
- const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to)\s+/i)[0],q=tokens(target).filter(w=>w!=='down');
+ // #1152: how long is not part of the seat's name, and "outside" is how a person says the part's "outdoor".
+ const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to|for\s+(?:a\s+(?:while|bit|moment)|some\s+time))(?:\s+|$)/i)[0],q=tokens(target).filter(w=>w!=='down').map(w=>w==='outside'?'outdoor':w);
  if(!q.length||q.every(w=>GENERIC_SEAT.has(w)))return null;
  // Existing exact fixture identities retain the normal vocabulary/admission path. A shared
  // word in a semantic part must not intercept a fully named ordinary object.

@@ -5,6 +5,7 @@ import './client-errors.ts';   // lane ERR: first, so errors from here on are re
 import { installAssetTransport } from './boot-assets.ts';
 import { earlyLayerWanted, startEarlyLayer } from './early-layer.ts';
 import { callPhase2 } from './phased-entry.ts';
+import { followBootLight } from './boot-light.ts';
 
 const phase2 = (hold = false) => callPhase2(hold ? true : undefined);
 /** P7d: phase two's entry waits at most this long after the snapshot for the early renderer's poster. */
@@ -22,6 +23,6 @@ try {
     phase2(true); setTimeout(release, POSTER_WAIT_MS);
     try { void import('./early-render.ts').then((m) => m.startEarlyRender(release), release); } catch { release(); }
   };
-  if (earlyLayerWanted()) { installAssetTransport(); started = startEarlyLayer(onSnapshot); }
+  if (earlyLayerWanted()) { installAssetTransport(); followBootLight(); started = startEarlyLayer(onSnapshot); }
 } catch { /* LiveWorld makes its own layer */ }
 if (!started) phase2();
