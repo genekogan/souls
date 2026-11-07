@@ -249,6 +249,7 @@ function questionContext(sr, requests, sources) {
     runId: sr.runId, status: sr.status, scenario: sr.scenario, setup: sr.setup, requests, seats: sr.seatIds,
     steps: (seat) => sr.steps[seat] ?? [],
     hasTranscript: (seat) => (sr.steps[seat]?.length ?? 0) > 0,
+    listens: (seat) => (sr.playtestDir ? readJsonl(join(sr.playtestDir, 'seats', seat, 'listen.jsonl')) : []),
     observer: { packs: packs.length, available: packs.length > 0, receipt: sr.receipt?.observer ?? null },
     evidencePacks: packs,
     ref: (path, line = null) => ({ path, ...(line ? { line } : {}), sha256: sources[path]?.sha256 ?? null }),

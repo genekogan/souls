@@ -145,6 +145,8 @@ jobs:
             types-web)
               pnpm typecheck
               pnpm --filter @souls/web build
+              # V3-bundle's comparison, on the build above, so growth is seen on the PR that causes it (#1117)
+              node tools/test-harness/bundle-budget/budget.mjs --check
               # The Mars viewer's static site holds the people's character set (/modular); without it no world
               # draws people (issue #395). Build it as the first run does, then fail if the set is missing.
               pnpm build:viewer
@@ -174,6 +176,10 @@ jobs:
             soul-actions)
               # #1061: not a gate step; picked by ci-scope.mjs from its own paths
               node --test --test-concurrency=4 tools/soul-actions/*.test.mjs
+              ;;
+            soul-tools)
+              # #1111: not a gate step; picked by ci-scope.mjs from its own paths
+              node --test --test-concurrency=4 tools/soul-runtime/*.test.mjs tools/soul-trace/*.test.mjs
               ;;
             server)
               node --input-type=module <<'NODE'

@@ -9,6 +9,9 @@
 //                                                              lines added since <base>: no home paths, private
 //                                                              workspace paths, non-documentation IPs, private host
 //                                                              names or personal emails
+//   node .github/scripts/guards.mjs ledger --base <ref> [--head <ref>]
+//                                                              the released core body revisions at the merge base are
+//                                                              a prefix of those at head: append only (#845, D027)
 //
 // The patterns are deliberately generic. A line that must keep a match (say, a test fixture) can carry the marker
 // `scrub-guard: allow`; reviewers see it in the diff.
@@ -126,6 +129,33 @@ export function checkScrub(lines) {
 }
 
 // ── main ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── ledger ──────────────────────────────────────────────────────────────────────────────────────────────────────
+export const LEDGER_FILE = 'apps/server/src/edge/body/core-revisions.ts';
+const LEDGER_ENTRY = /\{\s*id:\s*['"]([^'"]+)['"]\s*,\s*family:\s*['"]([^'"]+)['"]\s*,\s*n:\s*(\d+)\s*,\s*asset:\s*['"]([^'"]+)['"]\s*,?\s*\}/g;
+
+/** The entries of CORE_REVISIONS in `source`, comments ignored, so a commented-out entry reads as removed. */
+export function ledgerEntries(source) {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const list = /CORE_REVISIONS\b[^=]*=[^[]*\[([^\]]*)\]/.exec(code)?.[1] ?? '';
+  return [...list.matchAll(LEDGER_ENTRY)].map(([, id, family, n, asset]) => ({ id, family, n: Number(n), asset }));
+}
+
+/** Problems with `head` as a successor of `base`, each a source text or null when the file is absent. An entry this
+ *  check cannot read counts as missing, so a change of shape fails here rather than passing unseen. */
+export function checkLedger(base, head) {
+  if (base === null) return [];
+  const before = ledgerEntries(base), after = head === null ? [] : ledgerEntries(head), name = e => `${e.family}@${e.n}`;
+  if (!before.length) return [`${LEDGER_FILE}: no released entries read at the base; update ledgerEntries with the new shape`];
+  if (head === null) return [`${LEDGER_FILE}: removed, and it holds released core revisions`];
+  return before.flatMap((e, i) => {
+    const now = after[i];
+    if (!now) return [`${LEDGER_FILE}: released entry ${name(e)} is missing or unreadable at position ${i}`];
+    return JSON.stringify(now) === JSON.stringify(e) ? [] : [`${LEDGER_FILE}: released entry ${name(e)} changed at position ${i}; a changed preset is a new entry`];
+  });
+}
+
+const showFile = (ref, file) => { try { return git('show', `${ref}:${file}`); } catch { return null; } };
+
 function main([mode, ...argv]) {
   const opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
   let problems;
@@ -140,6 +170,12 @@ function main([mode, ...argv]) {
     const lines = addedLines(git('diff', '-U0', '--no-color', '--no-ext-diff', `${base}...${head}`));
     problems = checkScrub(lines);
     console.log(`scrub guard: ${lines.length} added line(s) since ${base}, ${problems.length} problem(s)`);
+  } else if (mode === 'ledger') {
+    const base = opt('--base'), head = opt('--head') || 'HEAD';
+    if (!base || /^0+$/.test(base)) { console.log('ledger guard: no base to compare with; nothing to check'); return 0; }
+    const from = git('merge-base', base, head).trim();
+    problems = checkLedger(showFile(from, LEDGER_FILE), showFile(head, LEDGER_FILE));
+    console.log(`ledger guard: released core revisions at ${from} against ${head}, ${problems.length} problem(s)`);
   } else if (mode === 'staged') {
     const files = git('diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z').split('\0').filter(Boolean);
     const allow = readAllowlist(readFileSync(resolve(ROOT, '.github/guards/media-allowlist.txt'), 'utf8'));
@@ -147,11 +183,11 @@ function main([mode, ...argv]) {
     problems = [...checkPaths(files, allow, sniffBinary), ...checkScrub(lines)];
     console.log(`guards (staged): ${files.length} file(s), ${lines.length} added line(s), ${problems.length} problem(s)`);
   } else {
-    console.error('usage: guards.mjs paths | staged | scrub --base <ref> [--head <ref>]');
+    console.error('usage: guards.mjs paths | staged | scrub --base <ref> [--head <ref>] | ledger --base <ref> [--head <ref>]');
     return 2;
   }
   for (const p of problems) console.log(process.env.GITHUB_ACTIONS ? `::error::${p}` : `  ${p}`);
-  if (problems.length && mode !== 'paths') console.log('Replace private values with env vars, config or neutral wording (or mark a deliberate fixture line with `scrub-guard: allow`).');
+  if (problems.length && (mode === 'scrub' || mode === 'staged')) console.log('Replace private values with env vars, config or neutral wording (or mark a deliberate fixture line with `scrub-guard: allow`).');
   return problems.length ? 1 : 0;
 }
 

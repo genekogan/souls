@@ -20,6 +20,43 @@ test('wake text is what Claude Code shows for a finished background task; onboar
   assert.equal(onboardingText('http://h/w/x', 'Pip'), 'Make me a Soul in this world: http://h/w/x/ . Call it Pip. Start from http://h/w/x/instructions.md.');
 });
 
+// #1138: a stand-in CLI: logs each call, keeps `serve` state in a file; a stopping serve answers once more.
+const FAKE_CLI = `import { appendFileSync, existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+const a = process.argv.slice(2), up = () => existsSync('up'); appendFileSync('calls', a.join(' ') + '\\n');
+if (existsSync('fail') && readFileSync('fail', 'utf8') === a.join(' ')) { console.error('no'); process.exit(3); }
+if (a[0] === 'serve' && a[1] === '--status') { const left = up() ? Number(readFileSync('up', 'utf8')) : 0; if (left > 0) { writeFileSync('up', String(left - 1)); if (left === 1) rmSync('up'); } console.log(JSON.stringify({ serving: left > 0 })); }
+else if (a[0] === 'serve' && a[1] === '--stop') { if (up()) writeFileSync('up', '1'); console.log('{}'); }
+else if (a[0] === 'serve') { writeFileSync('up', '99'); console.log(JSON.stringify({ serving: true })); }
+else if (a[0] === 'import') { rmSync('.eden-agent.json'); console.log('{}'); }
+else console.log('{}');
+`;
+function restartable(seat = {}) {
+  const s = createSeat({ runDir: mkdtempSync(join(tmpdir(), 'pt-seat-')), seat: { id: 'pip', adapter: 'claude-headless', ...seat }, worldBase: 'http://h/w/x' });
+  writeFileSync(join(s.folder, s.cli.file), FAKE_CLI); s.info.sessionId = 'old';
+  return { s, calls: () => readFileSync(join(s.folder, 'calls'), 'utf8').trim().split('\n') };
+}
+
+test('restart: reads what the last chat left, waits out a stopping serve, starts anew, moves a `home` seat in, opens a new chat', async () => {
+  const { s, calls } = restartable({ home: true });
+  await s.restart();
+  assert.deepEqual(calls(), ['serve --status', 'serve --stop', 'serve --status', 'import', 'serve']);
+  assert.equal(s.info.sessionId, null);
+  writeFileSync(join(s.folder, 'calls'), '');
+  await s.restart();
+  assert.deepEqual(calls(), ['serve --status', 'pending', 'serve --stop', 'serve --status', 'serve --status', 'serve']);
+});
+
+test('restart: a step that fails says which, and the seat keeps its chat; a turn in flight ends first', async () => {
+  const { s } = restartable();
+  writeFileSync(join(s.folder, 'fail'), 'serve');
+  let listens = 0; s.listener = { kill() {} }; s.startListen = () => { listens += 1; };
+  await assert.rejects(s.restart(), /seat pip: serve exited 3: no/); assert.equal(s.info.sessionId, 'old');
+  assert.equal(listens, 1, 'a failed restart leaves the seat listening'); s.listener = null;
+  writeFileSync(join(s.folder, 'fail'), '');
+  let done = false; s.chain = new Promise((r) => setTimeout(() => { done = true; r(); }, 50));
+  await s.restart(); assert.equal(done, true); assert.equal(s.info.sessionId, null);
+});
+
 test('createSeat: empty folder plus only the identity seed; refuses a non-empty folder', () => {
   const run = mkdtempSync(join(tmpdir(), 'pt-seat-'));
   const s = createSeat({ runDir: run, seat: { id: 'pip', adapter: 'claude-headless', model: 'haiku', soulName: 'Pip' }, worldBase: 'http://h/w/x' });
