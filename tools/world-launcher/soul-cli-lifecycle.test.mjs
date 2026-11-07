@@ -24,7 +24,7 @@ const receipt = (state, ready = false) => ({
 const pending503 = (res, headers) => json(res, 503, { ok: false, code: 'lifecycle-pending', message: 'Completion is unconfirmed; refresh the private lifecycle receipt.', lifecycle: receipt('pending') }, headers);
 
 async function fixture(t, world) {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-lifecycle-')), seen = [];
+  const dir = mkdtempSync(join(tmpdir(), 'souls-lifecycle-')), seen = [];
   const server = createServer((req, res) => { req.resume(); req.on('end', () => { const n = seen.push({ m: req.method, u: req.url, at: performance.now(), auth: req.headers.authorization }); world(req, res, n); }); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({ world: `http://127.0.0.1:${server.address().port}`, identity: 'bench7' }), { mode: 0o600 });

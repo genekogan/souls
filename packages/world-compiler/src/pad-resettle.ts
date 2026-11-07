@@ -1,4 +1,4 @@
-import { footprintOf, heightAt, padFlatDist, pointInPoly, settle, type Landform } from '@sim/ground';
+import { footprintOf, heightAt, padFlatDist, pointInPoly, settle, type Landform } from '@souls/ground';
 import type { WorldModel } from './model.ts';
 
 type Pad = Extract<Landform, { kind: 'pad' }>;

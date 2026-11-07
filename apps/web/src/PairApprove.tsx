@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import {isConnectionRefusal} from './connection-response.ts';
 import {countPairing} from './visitor-counts.ts';
 export function PairApprove({ api, code, souls, allowCreate, done }: { api: Api; code: string; souls: {id:string;name:string;hasToken?:boolean}[]; allowCreate: boolean; done(): void }) {

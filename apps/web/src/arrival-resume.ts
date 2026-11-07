@@ -1,5 +1,5 @@
 import {admissionAccount,type AdmissionAccount} from './admission-account.ts';
-import type {SoulLifecycle} from '@sim/protocol';
+import type {SoulLifecycle} from '@souls/protocol';
 export type ArrivalResume={kind:'unavailable'}|{kind:'incomplete'}|{kind:'clear'}|{kind:'resume';request:SoulLifecycle}|{kind:'choose';requests:SoulLifecycle[]};
 /** A cold form must not infer no previous pending birth from a capped page.
  * Only an authenticated current-owner capability/page can supply candidates.

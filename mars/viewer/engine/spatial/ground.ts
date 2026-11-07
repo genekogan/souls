@@ -3,12 +3,12 @@
 // on level 0 stands at the field's height, and what it meets there (walk,
 // wade, swim, steep, outside) decides where it may route. The engine sees
 // only this interface; the adapter (packages/engine-mars/src/ground-bridge.ts)
-// builds it from @sim/ground. Absent in every authored world (Mars, Eden,
+// builds it from @souls/ground. Absent in every authored world (Mars, Eden,
 // Little Martians): their flat-level behaviour is untouched.
 
-/** Edge of a ground tile (m); fine grids are built and cached per tile. Equals @sim/ground TILE_M. */
+/** Edge of a ground tile (m); fine grids are built and cached per tile. Equals @souls/ground TILE_M. */
 export const GROUND_TILE_M = 64;
-/** Media codes, as @sim/ground MEDIUM. */
+/** Media codes, as @souls/ground MEDIUM. */
 export const G_WALK = 0, G_WADE = 1, G_SWIM = 2, G_STEEP = 3, G_OUTSIDE = 4;
 export const MEDIUM_NAMES = ['walk', 'wade', 'swim', 'steep', 'outside'] as const;
 export type GroundMediumName = (typeof MEDIUM_NAMES)[number];

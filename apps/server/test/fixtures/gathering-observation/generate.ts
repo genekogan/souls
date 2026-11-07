@@ -1,7 +1,7 @@
 // Actual native physical fixture with fake body/Soul associations. No owner DB,
 // station policy, cue, route, model, browser or server bootstrap installation.
 import { fileURLToPath } from 'node:url';
-import { marsFactory } from '@sim/engine-mars';
+import { marsFactory } from '@souls/engine-mars';
 export async function generateNativeGatheringObservation() {
   const factory=await marsFactory(),engine=factory.create(factory.genesis('native-gathering-public-fixture'));
   for(const id of ['a','b'])engine.spawnHuman({id,label:`Fake ${id}`,soul:`fake-soul-${id}`});

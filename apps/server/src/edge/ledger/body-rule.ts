@@ -15,7 +15,7 @@
 // Gene's standing-rule exception (lanes/GENE-DECISIONS.md): these are body rules, never goals, speech or model calls. Every
 // move is an ordinary logged decision (trigger `edge-body`), so replay stays exact; the rule's own clock and state are not
 // part of the world's replayed state (like the fading clock was).
-import type {Program} from '@sim/engine-contract';
+import type {Program} from '@souls/engine-contract';
 
 export type BodyState = 'awake' | 'idle' | 'zombie' | 'asleep';
 export type BodyDoing = 'standing' | 'sitting' | 'dozing' | 'drifting' | 'floating' | null;

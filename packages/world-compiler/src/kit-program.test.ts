@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { expandKitProgram } from '@sim/generators';
+import { expandKitProgram } from '@souls/generators';
 import { WorldModel, applyBatch, type DefInput } from './index.ts';
 
 const program = { shapes: [{ kind: 'box', at: [0, '$height/2', 0], size: [1, '$height', 1], repeat: { n: '$count', step: [2, 0, 0] } }] };

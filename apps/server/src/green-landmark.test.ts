@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {retainedCommonsShoreFactory,existingGreenLandmarkV1} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory,existingGreenLandmarkV1} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {Brain} from './brain.ts';
 import {LivingWorld} from './living.ts';
 import {IntentControlV2} from './intent-control.ts';
 import {WorldHost} from './world.ts';
-import {kernelHash} from '@sim/kernel';
-import {publicEvent} from '@sim/protocol';
+import {kernelHash} from '@souls/kernel';
+import {publicEvent} from '@souls/protocol';
 const factory=await retainedCommonsShoreFactory({foodDeliveryV1:true,socialEdenV1:true,greenLandmarkV1:true});
 test('matched existing tree is a canonical logged native ground destination; human garden adaptation uses it, preserves source/history and replays without models',async t=>{
  const f=fixture(':memory:',factory,{durableClockV1:true});f.souls.enableLifecycle();t.after(()=>{f.brain.quiesce();f.host.stop();f.db.close();});await accept<unknown>(f.host,new LivingWorld(f.host).install(['People may walk and rest near real landmarks.']));for(let i=0;i<4;i++)f.host.tickOnce();await invite(f,'alice');const row=await accept(f.host,f.souls.create('dev:alice',{name:'Alice',description:'Synthetic real source landmark owner'}));f.brain.quiesce();await accept(f.host,f.host.installCommonsProvisionsV1());await accept(f.host,f.host.installCommonsKitchenV1());await accept(f.host,f.host.installSocialEdenV1());await accept(f.host,f.host.installRetainedCommonsShoreV1());

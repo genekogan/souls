@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { nativeBoatTake } from './boat-fixture.ts';
 import { nativeBoatFixture } from './boat-runtime.ts';
-import { boatStateV1Schema, boatPassengerV1Schema, boatTransitV1Schema, hashOf } from '@sim/engine-contract';
+import { boatStateV1Schema, boatPassengerV1Schema, boatTransitV1Schema, hashOf } from '@souls/engine-contract';
 import { sampleTake } from '../../../mars/viewer/engine/take/replay.ts';
 
 test('published actual two-person native journey replays without models and seated take roots follow the recorded boat',async()=>{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type {MidContext} from '@sim/brain';
+import type {MidContext} from '@souls/brain';
 import {recallPurposesV1,PURPOSE_RECALL_LIMITS_V1} from './purpose-recall.ts';
 type Purpose=NonNullable<MidContext['purposes']>[number];
 const p=(i:number,strict=false):Purpose=>({words:'PRIVATE_OWNER_'+i+' '+('A retained owner purpose. '.repeat(60)),strict,importance:.5,understanding:'Consider an unfinished activity.',status:'active',source:{worldId:'w',soulId:'s_A',intentId:'i_'+i,version:1,seq:i+1,tick:i+1},trigger:{kind:'none'},contribution:{kind:'native_program_sequence',completedSteps:0,totalSteps:1,nextCard:'rest'}});

@@ -1,5 +1,5 @@
-import { expandKitProgram, kitWhen, type KitArgs } from '@sim/generators';
-import type { StoredDef } from '@sim/world-compiler';
+import { expandKitProgram, kitWhen, type KitArgs } from '@souls/generators';
+import type { StoredDef } from '@souls/world-compiler';
 
 /** Keep the warning aligned with kit/2's default collider eligibility. */
 export function tiltedColliderWarning(def: StoredDef, params: Record<string, unknown> = {}): string[] {

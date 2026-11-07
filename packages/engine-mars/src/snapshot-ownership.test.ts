@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { EngineSnapshot } from '@sim/engine-contract';
+import type { EngineSnapshot } from '@souls/engine-contract';
 import type { RuntimeSnapshot } from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import { MarsEngine, marsFactory, GREEN_FIELD_WORLD, type MarsWorldConfig } from './engine.ts';
 import { commonsProvisionsFactory } from './commons-provisions-engine.ts';

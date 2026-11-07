@@ -37,6 +37,16 @@ const bytes = new Uint8Array([1, 2, 3, 4]);
 const cdn = { url: cdnUrl, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
 const response = () => new Response(bytes.slice());
 const terminal = (w: ReturnType<typeof runtime>) => w.reports.filter(m => m.error !== undefined || m.buffer !== undefined);
+// The worker checks CDN bytes with WebCrypto, whose digest completes on Node's thread pool: outside the fake clock and
+// outside any fixed number of event-loop turns, so under load it can land after flush(). This digest adds 20 ms of real
+// time so that order is the usual one, not a rare one; settled() covers both orders in real time without advancing fake time.
+let digests = 0;
+const slowDigest = { subtle: { digest: async (algorithm: AlgorithmIdentifier, data: BufferSource) => {
+  digests++; await new Promise(resolve => setTimeout(resolve, 20)); return crypto.subtle.digest(algorithm, data);
+} } };
+async function settled(w: ReturnType<typeof runtime>) {
+  for (const end = Date.now() + 5000; !terminal(w).length && Date.now() < end;) await new Promise(resolve => setTimeout(resolve, 1));
+}
 function clean(w: ReturnType<typeof runtime>) { assert.equal(w.pending(), 0, 'worker job released'); assert.equal(w.clock.timers.size, 0, 'all transport timers released'); }
 
 test('worker headers queued behind six healthy page bodies survive a20s native connection wait', async () => {
@@ -82,14 +92,14 @@ test('CDN and original header hangs exhaust bounded CDN fallback and terminate o
 });
 
 test('a fast origin404 hedge cannot defeat valid slower CDN headers; failed bodies are cancelled', async () => {
-  let badBodyCancelled = 0;
+  let badBodyCancelled = 0; digests = 0;
   const w = runtime((url, _init, clock) => url === cdnUrl
     ? new Promise(resolve => clock.setTimeout(() => resolve(response()), 5000))
-    : Promise.resolve(new Response(new ReadableStream({ cancel() { badBodyCancelled++; } }), { status: 404 })));
+    : Promise.resolve(new Response(new ReadableStream({ cancel() { badBodyCancelled++; } }), { status: 404 })), undefined, { crypto: slowDigest });
   void w.send({ id: 3, url: origin, cdn }); await flush(); await w.clock.tick(4000);
-  assert.equal(terminal(w).length, 0); await w.clock.tick(1000);
-  assert.equal(terminal(w)[0].cdn, true); assert.deepEqual([...new Uint8Array(terminal(w)[0].buffer as ArrayBuffer)], [...bytes]);
-  assert.equal(badBodyCancelled, 1); clean(w);
+  assert.equal(terminal(w).length, 0); await w.clock.tick(1000); await settled(w);
+  assert.equal(terminal(w).length, 1); assert.equal(terminal(w)[0].cdn, true); assert.deepEqual([...new Uint8Array(terminal(w)[0].buffer as ArrayBuffer)], [...bytes]);
+  assert.equal(digests, 1, 'the CDN bytes were verified'); assert.equal(badBodyCancelled, 1); clean(w);
 });
 
 test('HTTP status is preserved when the original fails without a usable sibling', async () => {

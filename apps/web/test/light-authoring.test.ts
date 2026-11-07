@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import ts from 'typescript';
 import * as THREE from 'three';
-import { defSchema } from '@sim/world-compiler';
+import { defSchema } from '@souls/world-compiler';
 import { defLights, lightPhase, lightPatternLevel, PatternNightMap, installNightLighting, paintNightMap, worldNightBounds } from '../src/WorldNightLights.ts';
 import { Halos } from '../src/atmosphere/halos.ts';
 import { animate, hasMotion } from '../src/gen-mesh/motion.ts';

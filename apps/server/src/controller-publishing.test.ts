@@ -7,7 +7,7 @@ import {fixture} from '../test/native-owner-fixture.ts';
 
 test('single-controller CLI is distinct from retained legacy CLI and instructions preserve window binding',async t=>{
  const f=fixture(':memory:');f.brain.quiesce();t.after(()=>{f.host.stop();f.db.close();});
- const dir=mkdtempSync(join(tmpdir(),'sim-controller-publish-'));
+ const dir=mkdtempSync(join(tmpdir(),'souls-controller-publish-'));
  const legacy='// retained old CLI\n',current='// new thin controller CLI\n';
  f.souls.cfg.cliFile=join(dir,'legacy.mjs');f.souls.cfg.controllerCliFile=join(dir,'eden.mjs');
  f.souls.cfg.skillFile=join(dir,'skill.md');f.souls.cfg.instructionsFile=join(dir,'instructions.md');
