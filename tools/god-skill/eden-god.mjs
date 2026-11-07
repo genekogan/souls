@@ -780,20 +780,21 @@ function enterGodSeat(argv, commands, { cwd = process.cwd(), env: env2 = process
     if (key && cfg.gods[key]) sit(h, key);
     return line2;
   }
-  if (cmd === "register") {
-    registering = h;
-    registerAs = asked;
-    if (asked !== null) return line2;
-  }
   if (asked !== null) {
-    sit(h, asked);
+    if (cmd === "register") {
+      registering = h;
+      registerAs = asked;
+    } else sit(h, asked);
     return line2;
   }
   if (existsSync2(join2(cwd, LEGACY))) {
     const key = keyOf(cfg.worlds, legacyWorld());
     if (!key || !cfg.gods[key]) return argv;
   }
-  if (cmd === "register") return line2;
+  if (cmd === "register") {
+    registering = h;
+    return line2;
+  }
   const seats = Object.keys(cfg.gods);
   if (seats.length === 1 && cmd !== "help") sit(h, seats[0]);
   else if (seats.length > 1 && commands[cmd] && cmd !== "help") throw new Error(`Several god seats here: ${seats.join(", ")}. Say which: node eden-god.mjs ${say(seats[0])} ${cmd}`);

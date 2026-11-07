@@ -49,11 +49,14 @@ export function enterGodSeat(argv, commands, { cwd = process.cwd(), env = proces
     if (key && cfg.gods[key]) sit(h, key);
     return line;
   }
-  if (cmd === 'register') { registering = h; registerAs = asked; if (asked !== null) return line; }
-  if (asked !== null) { sit(h, asked); return line; }
+  // In this order: a named seat; then a legacy file, which outranks anything unnamed; then register; then the only seat.
+  if (asked !== null) {
+    if (cmd === 'register') { registering = h; registerAs = asked; } else sit(h, asked);
+    return line;
+  }
   // A legacy file here is this folder's god until `node eden.mjs import` moves it: a seat is never lost from view.
   if (existsSync(join(cwd, LEGACY))) { const key = keyOf(cfg.worlds, legacyWorld()); if (!key || !cfg.gods[key]) return argv; }
-  if (cmd === 'register') return line;
+  if (cmd === 'register') { registering = h; return line; }
   const seats = Object.keys(cfg.gods);
   if (seats.length === 1 && cmd !== 'help') sit(h, seats[0]);
   else if (seats.length > 1 && commands[cmd] && cmd !== 'help') throw new Error(`Several god seats here: ${seats.join(', ')}. Say which: node eden-god.mjs ${say(seats[0])} ${cmd}`);

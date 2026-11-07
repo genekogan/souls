@@ -78,6 +78,9 @@ test('A2: a legacy god folder works unchanged, a home does not capture it, and i
   writeFileSync(join(dir, '.eden-god.cache.json'), '{"held":1}');
   await soul('register', `${base}/a`); await soul('create', 'Mira');
   assert.equal((await godCli('status')).code, 0, 'a home beside the file does not lose the god');
+  assert.equal((await godCli('register', `${base}/a`, 'dev:owner')).code, 0, 'registering again stays on the file');
+  assert.equal((await godCli('status')).code, 0);
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).token, 'god_a_tok');
   assert.ok(!existsSync(join(dir, '.souls/gods')));
   const r = await soul('import');
   assert.equal(r.d.god.imported, true, r.err); assert.equal(r.d.god.reusedToken, true);
