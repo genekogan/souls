@@ -105,22 +105,23 @@ last seen on both clocks. `travel` adds one and leaves the Soul's folder where i
 
 ### People
 
-`people/<traveller>.md` is one record per Soul met, across worlds, keyed on the traveller id (`<home>/<id>`, with `~` for
-the slash; `<world>/<id>` until the world gives one, and folded in when it does). `tools/world-launcher/soul/people.mjs`
-projects it from the log: first met and last contact on both clocks, episodes as pointers to conversations and shared
-receipts with a line each, beliefs with their provenance, their last words marked UNTRUSTED, what this Soul has told them
-(its own `say` and `converse` from what it sent), and commitments. No one met, no folder.
+`people/<slug>-<hash>.md` is one record per Soul met, across worlds, keyed on the traveller id (`<home>/<id>`, hashed into the
+file name so two ids never share a file; `<world>/<id>` until the world gives one, and folded in when it does).
+`tools/world-launcher/soul/people.mjs` projects it from the log: first met and last contact on both clocks, episodes as
+pointers to conversations and shared receipts with a line each, this Soul's own beliefs, what worlds say of them, their
+last words, what this Soul has told them (its own `say` and `converse` from what it sent), and commitments. Everything a
+world wrote is under a heading marked UNTRUSTED, and a world's provenance is only a label: "my judgment" is what `remember`
+wrote. A record met once stays under 2 KB; any record under 8 KB. No one met, no folder.
 
-`remember --person <id|name> --promise "<what>" [--by me|them]` opens a commitment. It closes only with
-`remember --kept <promise id> --evidence <id>`, and the id must be a completed receipt or a conversation with that person
-in the log: a promise is kept by what happened, not by the mind saying so.
+A world speaks for its own Souls. That a Soul is a visitor from elsewhere is only the visited world's word: the record is
+shared, and says so, but a note or a promise made about one id shows only under that id or one its own world speaks for, a
+claim renames no one, and a claimed id can't keep a promise made to another.
 
-### The pre-turn brief
-
-With memory and a `serve` up, `pending` and a `listen` that woke for a message or for speech carry `brief`: known people
-near, this place, open commitments, the last episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the
-`remember --self` lines. `brief.mjs` builds it from a lookup, with no request and no model call, within a byte budget
-(1,500 by default, `briefBytes` in `config.json`). It doesn't grow with the log, and a Soul with no memory has none.
+`remember --person <id|name> --promise "<what>" [--by me|them]` opens a commitment, and every open one is in the brief,
+whoever is near. It closes only with `remember --kept <promise id> --evidence <id>`, and the log has to hold what happened
+after the promise with that person: for one of mine, a completed receipt that names them or a conversation turn of theirs;
+for one of theirs, their turn. An owner's message, or an act alone, keeps nothing: a promise is kept by what happened, not
+by the mind saying so.
 
 ## The edge API
 

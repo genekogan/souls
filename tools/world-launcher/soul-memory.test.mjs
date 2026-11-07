@@ -208,7 +208,7 @@ test('A2: every projection regenerates, and speech and reports keep their label'
   for (const f of ['self.md', 'goals.md', 'schedule.md', 'places.md', 'knowledge.md', 'lessons.md', 'ledger.md']) assert.ok(existsSync(join(memory, f)), f);
   assert.equal(people.length, 1); assert.equal(readdirSync(join(memory, 'journal')).length, 1);
   const person = readFileSync(join(memory, 'people', people[0]), 'utf8');
-  assert.match(person, /UNTRUSTED/); assert.match(person, /Meet me at the mill tomorrow/); assert.match(person, /eden, day 3, 09:21 at the pier/);
+  assert.match(person, /UNTRUSTED/); assert.match(person, /Meet me at the mill tomorrow/); assert.match(person, /eden, day 3, 09:21, [^ ]+ at the pier/);
   assert.match(readFileSync(join(memory, 'knowledge.md'), 'utf8'), /The mill floods\..*UNTRUSTED/);
   assert.match(readdirSync(join(memory, 'journal')).map((f) => readFileSync(join(memory, 'journal', f), 'utf8')).join(''), /Ana said the mill floods.*untrusted content/);
   rmSync(join(memory, 'places.md')); rmSync(join(memory, 'people', people[0]));

@@ -17,7 +17,7 @@ const TERMINAL = new Set(["completed", "failed", "replaced"]);
 /** How close a Soul has to be for a first meeting: the distance `here` counts as local. */
 export const NEAR_METRES = 8;
 const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20, LOCK_OLD_MS = 10_000, PLACE_ID_MAX = 200;
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/;
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/, TRAVELLER = /^[a-z0-9][a-z0-9-]{0,63}\/[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const sha = (v) => createHash("sha256").update(typeof v === "string" ? v : JSON.stringify(v)).digest("hex");
 const clip = (v, max) => { const t = String(v ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim(); return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t; };
 const safeId = (v) => typeof v === "string" && SAFE_ID.test(v);
@@ -38,7 +38,7 @@ export function presences(soulDir) {
   const dir = join(soulDir, "worlds");
   if (!existsSync(dir)) return [];
   return readdirSync(dir).filter((f) => f.endsWith(".json")).sort().flatMap((f) => {
-    try { const { openFor, ...p } = JSON.parse(readFileSync(join(dir, f), "utf8")); return [p]; } catch { return []; }
+    try { const { openFor, near, ...p } = JSON.parse(readFileSync(join(dir, f), "utf8")); return [p]; } catch { return []; }
   });
 }
 
@@ -70,7 +70,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   // the log moved under it opens it again. A holder that died, or a lock older than any write takes, is passed over, one
   // writer at a time; a live one is waited for, then reported. Everything else stays what memory-folder.mjs says: a torn log
   // fails closed.
-  let records = null, nearNow = [], travellers = {};
+  let records = null, travellers = {};
   let people = createPeople({ world });
   const openRecords = () => { people = createPeople({ world }); const opened = openMemoryFolder(soulDir, { logs: join("memory", "log"), observe: (record) => people.apply(record), personFiles: false }); flushPeople(); return opened; };
   // No people/ folder until there is someone in it; a record folded into another leaves no file behind.
@@ -150,7 +150,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     if (!placeId || placeId === presence.place) return false;
     const place = worldKey(world, placeId), name = nameOf(r, place, said);
     const wrote = fold(r, `arrival:${world}:${when.tick ?? when.real}:${placeId}`, { type: "arrival", placeId: place, when, seen: seenOf([[place, name]]) });
-    writePresence({ place: placeId, placeName: name, lastSeen: when, worldDay: when.worldDay, time: when.time });
+    writePresence({ place: placeId, placeName: name, near: [], lastSeen: when, worldDay: when.worldDay, time: when.time });
     return wrote;
   };
   const here = (r) => { const key = typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null; return key ? [key, nameOf(r, key)] : [null, null]; };
@@ -203,14 +203,16 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       const me = frame?.me; if (!me) return;
       const when = clockAt({ real: now(), tick: frame.tick, time: frame.clock, worldDay: dayFrom(frame.now) });
       const near = rows(frame.near, 64).filter((p) => typeof p.dist === "number" && p.dist <= NEAR_METRES);
-      nearNow = near.map((p) => p.id).filter(safeId).slice(0, 8);
-      for (const p of rows(frame.near, 64)) if (safeId(p.id) && typeof p.traveller === "string" && p.traveller) travellers[p.id] = clip(p.traveller, 300);
+      for (const p of rows(frame.near, 64)) if (safeId(p.id) && TRAVELLER.test(p.traveller ?? "")) travellers[p.id] = p.traveller;
       const placeId = typeof me.place === "string" ? clip(me.place, PLACE_ID_MAX) || null : null;
       if ((placeId && placeId !== presence.place) || near.length) withRecords((r) => {
         arrived(r, when, placeId, me.placePath?.[0]);
         for (const p of near) met(r, when, p);
       });
       noted(me, when);
+      // Kept with the presence: who is near has to outlast this process and goes when the Soul walks away.
+      const ids = near.map((p) => p.id).filter(safeId).slice(0, 8);
+      if (ids.join() !== (presence.near ?? []).join()) writePresence({ near: ids });
     },
     /** Events off the stream or a `wait`. One the record won't take costs only itself. */
     sawEvents(events) {
@@ -243,16 +245,16 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       if (typeof receiptId !== "string" || !safeId(messageId)) return;
       writePresence({ openFor: Object.fromEntries([...Object.entries(presence.openFor ?? {}), [receiptId, messageId]].slice(-OPEN_FOR_MAX)) });
     },
-    /** The Soul's own report on an owner's message. */
-    sawResult(messageId, done, text) {
+    /** A report on an owner's message: the mind's own words, or with `own: false` a plan's close, which can carry a world's reason. */
+    sawResult(messageId, done, text, { own = true } = {}) {
       if (!safeId(messageId) || !clip(text, 160)) return;
-      const when = clockAt({ real: now(), tick: null, time: null });
-      withRecords((r) => fold(r, `owner:${world}:${messageId}`, { type: "outcome", receiptId: worldKey(world, messageId), messageId, act: "owner-message", phase: done ? "completed" : "failed", summary: clip(text, 160), untrusted: false, learned: [], produced: [], met: [], when, seen: {} }));
+      const when = clockAt({ real: now(), tick: null, time: null }), from = own ? "owner" : "plan";
+      withRecords((r) => fold(r, `${from}:${world}:${messageId}`, { type: "outcome", receiptId: worldKey(world, own ? messageId : `plan-${messageId}`), messageId, act: "owner-message", phase: done ? "completed" : "failed", summary: clip(text, 160), untrusted: !own, learned: [], produced: [], met: [], when, seen: {} }));
     },
     /** What this Soul just said: to the people near, or to a conversation. */
     sawSaid(text, { to, conversationId } = {}) {
       const said = clip(text, 500); if (!said) return;
-      const when = clockAt({ real: now(), tick: null, time: null }), ids = (to ?? nearNow).filter(safeId).slice(0, 16);
+      const when = clockAt({ real: now(), tick: null, time: null }), ids = (to ?? presence.near ?? []).filter(safeId).slice(0, 16);
       withRecords((r) => {
         const members = safeId(conversationId) ? people.conversation(conversationId) : [], personIds = ids.length ? ids : members;
         if (!personIds.length) return;
@@ -265,21 +267,24 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       return withRecords((r) => {
         const row = people.find(target);
         if (!row) throw new Error(`I have no record of ${target}.`);
-        const id = `promise:${sha([row.traveller, what, at]).slice(0, 16)}`;
-        r.fold({ id, at, world, when, type: "commitment", personId: row.ids[0], by, what: clip(what, 300), seen: seenOf([[row.ids[0], row.name]]) });
+        const id = `promise:${sha([row.traveller, what, at]).slice(0, 16)}`, to = people.addressOf(row);
+        r.fold({ id, at, world, when, type: "commitment", personId: to.id, by, what: clip(what, 300), seen: seenOf([[to.id, row.name]]), ...(Object.keys(to.travellers).length ? { travellers: to.travellers } : {}) });
         return { promised: id, with: row.name, by };
       });
     },
-    /** A promise kept, by a receipt or a conversation: the mind names the evidence and the log has to hold it. */
+    /** A promise kept, by what happened after it with that person: a shared receipt for one of mine, their own words for one of
+     *  theirs. An owner's message, or an act of mine alone, keeps no one's promise. */
     kept(commitmentId, evidence) {
       const at = now(), when = clockAt({ real: at, tick: null, time: null });
       return withRecords((r) => {
         const c = people.commitment(commitmentId);
         if (!c) throw new Error(`No promise ${commitmentId}.`);
-        const receipt = r.terminal(worldKey(world, evidence)) ?? r.terminal(evidence), turn = people.conversation(evidence).some((id) => c.row.ids.includes(id));
-        if (receipt?.phase !== "completed" && !turn) throw new Error(`${evidence} is not a completed receipt or a conversation with ${c.row.name} that I have on record. A promise is kept by what happened, not by saying so.`);
-        r.fold({ id: `kept:${commitmentId}`, at, world, when, type: "commitment.kept", personId: c.row.ids[0], commitmentId, evidence: receipt?.receiptId ?? evidence, seen: {} });
-        return { kept: commitmentId, evidence: receipt?.receiptId ?? evidence };
+        const receipt = r.terminal(worldKey(world, evidence)) ?? r.terminal(evidence), turn = people.lastTurn(evidence, c);
+        const shared = c.by === "me" && receipt?.phase === "completed" && !receipt.own && receipt.at > c.at && people.involves(receipt, c), spoke = turn !== null && turn > c.at;
+        if (!shared && !spoke) throw new Error(`${evidence} is not ${c.by === "me" ? "a completed act shared with" : "something said by"} ${c.row.name}${c.by === "me" ? ", or a conversation turn of theirs," : ""} since the promise. A promise is kept by what happened, not by saying so.`);
+        const to = people.addressOf(c.row), proof = shared ? receipt.receiptId : evidence;
+        r.fold({ id: `kept:${commitmentId}`, at, world, when, type: "commitment.kept", personId: to.id, commitmentId, evidence: proof, seen: {}, ...(Object.keys(to.travellers).length ? { travellers: to.travellers } : {}) });
+        return { kept: commitmentId, evidence: proof };
       });
     },
     /** Standing in this world, written when a Soul arrives by travel. */
@@ -306,8 +311,9 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
         if (selector === "person") {
           const p = people.find(target);
           if (!p) throw new Error(`I have no record of meeting ${target}. Use their id from around or here, once they have been near.`);
-          r.remember({ ...value, person: p.ids[0], seen: seenOf([[p.ids[0], p.name]]), note: clip(note, 300) });
-          return { remembered: "person", id: p.ids[0], name: p.name };
+          const to = people.addressOf(p);
+          r.remember({ ...value, person: to.id, seen: seenOf([[to.id, p.name]]), note: clip(note, 300), ...(Object.keys(to.travellers).length ? { travellers: to.travellers } : {}) });
+          return { remembered: "person", id: to.id, name: p.name };
         }
         // Worlds from one template share names, so this world's place comes first.
         const key = worldKey(world, target), called = (x) => x.name.toLowerCase() === lower || x.formerly.some((n) => n.toLowerCase() === lower), mine = (x) => x.id.startsWith(`${world}:`);
@@ -320,9 +326,10 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     /** The pre-turn brief, within `bytes`. A Soul with no memory has none, and nothing is opened or made for it. */
     brief({ bytes } = {}) {
       if (!existsSync(join(soulDir, "memory", "log", "memory-events.jsonl"))) return "";
-      const facts = withRecords((r) => ({ ...r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null }), people: nearNow.map((id) => people.view(id)).filter(Boolean) }));
+      presence = readPresence() ?? presence;   // another process may be the one watching the world
+      const facts = withRecords((r) => ({ ...r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null }), people: (presence.near ?? []).map((id) => people.view(id)).filter(Boolean), promises: people.promises() }));
       const pinned = readLines(join(soulDir, "SOUL.md"), /^## Pinned\b/).map((l) => l.replace(/^- /, "")), schedule = readLines(join(soulDir, "memory", "schedule.md"), /^# Schedule\b/).filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
-      return buildBrief({ ...facts, schedule, self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes > 0 ? { bytes } : {});
+      return buildBrief({ ...facts, schedule, self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes >= 0 ? { bytes } : {});
     },
     /** `memory <query>`: every projection line holding every word, each with where it came from. */
     search(query) {

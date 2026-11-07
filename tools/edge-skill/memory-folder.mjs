@@ -316,7 +316,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log', observe = 
   return {
     /** What a memory on the shipping line looks things up by: known ids and the names they went by. */
     placeName(placeId){return places.get(placeId)?.name??null;},
-    terminal(receiptId){const e=terminals.get(receiptId);return e?{receiptId:e.receiptId,phase:e.phase}:null;},
+    terminal(receiptId){const e=terminals.get(receiptId);return e?{receiptId:e.receiptId,phase:e.phase,own:e.act==='owner-message'||!e.id.startsWith('terminal:'),at:e.at,world:e.world??null,met:(e.met??[]).map(p=>p.id)}:null;},
     /** The little the brief needs, looked up rather than scanned: its size never follows the log's. */
     digest({place,near=[]}){
       fresh();
@@ -325,7 +325,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log', observe = 
         place:p?{name:p.name,visits:p.visits,note:impressions.get(p.id)??null}:null,
         people:near.flatMap(personId=>{const row=people.get(personId);if(!row)return [];const m=row.meetings.at(-1);return [{id:row.id,name:row.name,met:row.meetings.length,last:m?{world:m.world??null,worldDay:m.day??null,place:m.seenAs??null}:null,note:row.impressions.at(-1)??null}];}),
         goals:sorted(goals).sort((a,b)=>['today','week','month'].indexOf(a.horizon)-['today','week','month'].indexOf(b.horizon)).slice(0,4).map(g=>({note:g.note,next:g.next})),
-        recent:recentOutcomes.slice(-2).map(e=>({summary:e.summary,untrusted:e.untrusted})),
+        recent:recentOutcomes.slice(-2).map(e=>({summary:e.summary,own:e.id.startsWith('owner:')})),
         self:self.slice(0,8),
       };
     },

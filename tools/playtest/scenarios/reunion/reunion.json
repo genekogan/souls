@@ -4,15 +4,15 @@
   "seed": 1138,
   "providers": { "allowed": ["claude"] },
   "world": { "kind": "dev", "genesis": "worlds/templates/hello-hamlet.json", "slug": "pt-reunion", "port": 4351, "natives": false },
-  "durationSec": 900,
+  "durationSec": 800,
   "seats": [
-    { "id": "ada", "adapter": "claude-headless", "model": "sonnet", "effort": "low", "soulName": "Ada", "wake": true },
-    { "id": "bo", "adapter": "claude-headless", "model": "sonnet", "effort": "low", "soulName": "Bo", "wake": true }
+    { "id": "ada", "adapter": "claude-headless", "model": "sonnet", "effort": "low", "soulName": "Ada", "wake": true, "home": true },
+    { "id": "bo", "adapter": "claude-headless", "model": "sonnet", "effort": "low", "soulName": "Bo", "wake": true, "home": true }
   ],
   "god": null,
-  "director": { "mode": "scripted", "sequential": false, "script": [
-    { "seat": "*", "atSec": 5, "restart": true, "channel": "card", "text": "Find the other Soul in this world, get to know them, and agree together on one place you will both be tomorrow morning. Then say goodbye.", "budgetSec": 240 },
-    { "seat": "*", "atSec": 300, "after": "result", "restart": true, "channel": "card", "text": "It's a new day. Carry on with what you had planned.", "budgetSec": 300 }
+  "director": { "mode": "scripted", "sequential": false, "worldTime": { "timeOfDay": "15:00", "timeScale": 120 }, "script": [
+    { "seat": "*", "atSec": 5, "restart": true, "channel": "card", "text": "Find the other Soul in this world, get to know them, and agree together on one place you will both be tomorrow morning. When you agree, each of you say it aloud in these words, with the walk id the world offers for that place: Tomorrow at walk:<place>. Then say goodbye, and each of you walk somewhere else for the evening.", "budgetSec": 240 },
+    { "seat": "*", "atSec": 470, "after": "result", "restart": true, "channel": "card", "text": "It's a new day. Carry on with what you had planned.", "budgetSec": 300 }
   ] },
   "observer": { "sampleSec": 5, "viewport": [1280, 800], "dpr": 1, "cameras": [] },
   "review": { "mode": "deterministic", "developer": false },
