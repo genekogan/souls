@@ -1,5 +1,5 @@
 import type {EdgeLedger} from '../ledger/ledger.ts';
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {parsePlatformFloors,platformFloorOffset} from '../../../../../mars/viewer/lib/platform-floor.ts';
 
 /** Current live declaration; recorded takes consume their own immutable scene capture instead. */

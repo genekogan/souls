@@ -10,7 +10,7 @@
 // on the map (or the reverse). The source scene file is pinned by content hash.
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import type {Mars} from './load.ts';
 import type {Obstacle, SpatialScene} from '../../../mars/viewer/engine/spatial/types.ts';
 import type {Region, WorldState} from '../../../mars/viewer/engine/world/types.ts';

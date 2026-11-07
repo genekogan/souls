@@ -1,7 +1,7 @@
 import {SoulAvatar} from './MySouls.tsx';
 import {useEffect,useRef,useState} from 'react';
-import type {PublicSoul} from '@sim/protocol';
-import type {Api} from './useSim.ts';
+import type {PublicSoul} from '@souls/protocol';
+import type {Api} from './useSouls.ts';
 import {PUBLIC_SOUL_PATH,readPublicRecord,type PublicRecord} from './public-soul-record.ts';
 import {publicSoulLink} from './soul-link.ts';
 import {apiPath,worldPath} from './world-path.ts';

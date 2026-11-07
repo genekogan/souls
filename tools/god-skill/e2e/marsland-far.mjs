@@ -120,7 +120,7 @@ async function load(page, opts) {
 }
 /** What the view has: draw calls, triangles, a synced render time (20 renders, readPixels), the far land and panorama, the green ring. */
 const probe = (page) => page.evaluate(() => {
-  const E = window.__simEntity; if (!E) return null;
+  const E = window.__soulsEntity; if (!E) return null;
   const gl = E.renderer.getContext(), px = new Uint8Array(4), t0 = performance.now();
   for (let i = 0; i < 20; i++) { E.renderer.render(E.scene, E.camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
   const renderMs = +((performance.now() - t0) / 20).toFixed(2);

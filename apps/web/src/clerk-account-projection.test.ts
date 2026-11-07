@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {matchingMe,authIdentity} from './auth-projection.ts';
-import type {Me} from '@sim/protocol';
+import type {Me} from '@souls/protocol';
 import {configuredSignIn} from './auth-ui.ts';
 test('Clerk-only bootstrap enables shared Sign in, Account and Sign out chrome without a Privy app',()=>{
  assert.equal(configuredSignIn({authProvider:'clerk',privyAppId:'',clerkPublishableKey:'pk_live_fixture',clerkIssuer:'https://clerk.example.test'}),true);

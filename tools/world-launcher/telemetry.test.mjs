@@ -1,7 +1,7 @@
 // CW4 (#738): bounded telemetry history and the operator report.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { metricsText } from './metrics.mjs';
 import { parsePrometheus, keyOf, labelsOf, kindOf } from './telemetry/prom.mjs';
@@ -59,13 +59,12 @@ test('collect: gaps for an unreachable or failing launcher; skew recorded; a ful
   const h = readHour(join(dir, 'fine', `${new Date(T0).toISOString().slice(0, 13)}.jsonl`));
   assert.deepEqual(h.rows.map((r) => r.ok), [false, false, true]);
   assert.match(h.rows[0].error, /ECONNREFUSED/); assert.equal(h.rows[2].skewMs, 1000);
-  // an unwritable store: the write fails, is counted, and the collector carries on
-  chmodSync(join(dir, 'fine'), 0o500);
-  try {
-    const s2 = openStore(dir, { everyMs: 15_000 }); const before = s2.state.loss.failedWrites;
-    await scrapeOnce(s2, 'u', { now: () => T0 + 2 * H, fetchImpl: fetchOf(scrape(T0 + 2 * H, [])) });
-    assert.ok(s2.state.loss.failedWrites > before);
-  } finally { chmodSync(join(dir, 'fine'), 0o700); }
+  // an unwritable store: the write fails, is counted, and the collector carries on. A directory where the hour's file
+  // belongs makes the write fail for any uid (EISDIR); permission bits would not stop a root runner such as the gate's.
+  const s2 = openStore(dir, { everyMs: 15_000 }); const before = s2.state.loss.failedWrites;
+  mkdirSync(join(dir, 'fine', `${new Date(T0 + 2 * H).toISOString().slice(0, 13)}.jsonl`));
+  assert.equal(await scrapeOnce(s2, 'u', { now: () => T0 + 2 * H, fetchImpl: fetchOf(scrape(T0 + 2 * H, [])) }), false);
+  assert.ok(s2.state.loss.failedWrites > before);
 });
 
 test('store: sparse rows rebuild exactly; a series that vanishes is absent, not 0; a collector restart is a boundary', async (t) => {
@@ -86,7 +85,9 @@ test('a failed write between good scrapes never mis-indexes a series; a long gap
   const a = (tick) => ({ slug: 'a', status: 'running', live: live({ tick }) }), b = (tick) => ({ slug: 'b', status: 'running', live: live({ tick }) });
   await sc(T0, [a(0)]);
   const file = join(dir, 'fine', `${new Date(T0).toISOString().slice(0, 13)}.jsonl`);
-  chmodSync(file, 0o400); try { assert.equal(await sc(T0 + 15_000, [a(300), b(7)]), false); } finally { chmodSync(file, 0o600); }
+  // the hour's file is briefly a directory, so this write fails for any uid (EISDIR), root included; then it is back
+  renameSync(file, `${file}.aside`); mkdirSync(file);
+  try { assert.equal(await sc(T0 + 15_000, [a(300), b(7)]), false); } finally { rmdirSync(file); renameSync(`${file}.aside`, file); }
   await sc(T0 + 30_000, [a(600), b(8)]);
   await sc(T0 + 30 * 60_000, [a(36_000), b(9)]);   // 29.5 min without a scrape, the clock at full rate meanwhile
   await sc(T0 + 30 * 60_000 + 15_000, [a(36_300), b(10)]);

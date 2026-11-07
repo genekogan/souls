@@ -2,7 +2,7 @@
 //   node --test apps/web/src/gen-mesh/ground-cover-recipe.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@souls/world-compiler';
 import terrainKit from '../../../../packages/world-compiler/src/core-kit/terrain.json' with { type: 'json' };
 import { blockCellsOf, BLOCK_CELL } from './ecology.mesh.ts';
 import { COVER_CELL, REC, cellKind, cellSites, coverIndex, prefix, siteAt } from './ground-cover-recipe.ts';

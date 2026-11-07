@@ -104,7 +104,7 @@ Checks:
 ## Other modules
 
 - `station-connection.mjs` and `server-clock.mjs` follow a world's music station over the existing connection and
-  estimate the server clock from ping/pong (used by `useSim.ts`). They open no sockets and start no audio.
+  estimate the server clock from ping/pong (used by `useSouls.ts`). They open no sockets and start no audio.
 - `runtime.mjs`, `composition.mjs`, `preview.mjs` and `MusicPreview.tsx` are an older development adapter: an earlier
   Sim Score revision (`PROVENANCE.json`) wrapped in a private namespace with Tone passed explicitly, a bounded 64-cycle
   composer (`createComposition`, `composeAt`) and a gesture-started local preview with mute, volume and disposal. The

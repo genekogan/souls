@@ -1,7 +1,7 @@
 // plaza/1, lawn/1, pitch/1, parking/1, garden-bed/1 mesh halves: draped on the ground with an
 // interior grid (follows hills, not a boundary fan), patterns and markings in vertex colours.
 // Owner: L3. Lift order (surface priority): road 0.05–0.09 > plaza 0.06 > pitch 0.04 > lawn 0.02.
-import { areaFrame } from '@sim/generators';
+import { areaFrame } from '@souls/generators';
 import * as THREE from 'three';
 import { registerMesh, type MeshCtx } from './registry.ts';
 import { groundBaseFor, groundRealismFor } from './ground-palette.ts';

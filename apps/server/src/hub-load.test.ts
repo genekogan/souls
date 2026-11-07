@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
-import { marsFactory, EDEN_COMMONS_WORLD } from '@sim/engine-mars';
+import { marsFactory, EDEN_COMMONS_WORLD } from '@souls/engine-mars';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { config } from './config.ts';

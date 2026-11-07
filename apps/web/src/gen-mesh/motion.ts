@@ -7,7 +7,7 @@
 // creatures/creature.mesh.ts or the animals/1 herd builder): role pivots plus the world model for
 // terrain, water and solids. Gaits: quadruped-walk, biped-waddle, bird-fly, fish-swim, hover.
 import type * as THREE from 'three';
-import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
+import type { Entity, StoredDef, WorldModel } from '@souls/world-compiler';
 // L1: the singular and plural light components share their pattern curves with pools and halos.
 import {defLights,flickers,lightPatternLevel,lightPhase} from '../WorldNightLights.ts';
 import { hasFlames } from '../fx/flames.ts';
@@ -530,7 +530,7 @@ export const AFLOAT = new Set<THREE.Object3D>();
 /** At most one boat surveys its water per frame (none during the first seconds of arrival); drift then eases in. */
 /** Phones: boats sway in place, no water survey. */
 let surveyFrame = -1;
-const onPhone = () => (globalThis as { __simQuality?: { tier?: string } }).__simQuality?.tier === 'phone';
+const onPhone = () => (globalThis as { __soulsQuality?: { tier?: string } }).__soulsQuality?.tier === 'phone';
 /** Bob on the swell, roll and pitch; moored boats swing a little on their lines; free boats drift on a slow loop and
  *  turn with it. A pure function of world time and the entity's seed, like every motion here. */
 function boatStep(obj: THREE.Object3D, e: Entity, def: StoredDef, model: WorldModel | null, t: number, base: { y: number; yaw: number }, phase: number, routed: boolean) {

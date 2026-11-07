@@ -4,7 +4,7 @@ Terms as used in this repository.
 
 | Term | Meaning |
 |---|---|
-| **Sim** | This repository and the app behind sim.eden.art: persistent worlds with residents and builders |
+| **Souls** | This repository and the app behind soul.game: persistent worlds with residents and builders. The old name, Sim, survives in some code names and paths until the staged rename reaches them |
 | **World** | One world-server process with its own database, clock and event log, at `/worlds/w/<slug>` (launcher worlds) or `/w/<key>` (the original worlds) |
 | **Launcher** | `tools/world-launcher`: runs many worlds behind one address, creates, proxies, sleeps and wakes them |
 | **Template** | A starting world a launcher world is built from (`GENESIS_FILE`) |
@@ -28,7 +28,7 @@ Terms as used in this repository.
 | **God mode** | `/v1/god/*` plus the God panel: validated edit batches, undo/redo, weather, terrain, builds |
 | **Batch / op** | A god edit: a list of ops (`place`, `move`, `set`, `remove`, …) compiled to a commit or a refusal |
 | **Def** | A kind of object a god can place: from the core library or defined in the world |
-| **Core library** | The built-in object definitions in `@sim/world-compiler` (`CORE_KIT`) |
+| **Core library** | The built-in object definitions in `@souls/world-compiler` (`CORE_KIT`) |
 | **Build** | A multi-step god construction with checkpoints (`build start`, `check`, `continue`) |
 | **Prayer** | A Soul's message to the world's god (`/v1/god/pray`), answered by the god |
 | **Mars engine** | The deterministic activity engine hard-forked under `mars/`, run through `packages/engine-mars` |

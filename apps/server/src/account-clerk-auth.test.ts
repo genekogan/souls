@@ -2,12 +2,12 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {generateKeyPair,exportJWK,SignJWT} from 'jose';
 import {mkdtempSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';
 import {Auth} from './auth.ts';import {Db} from './db.ts';import {config} from './config.ts';
-import {marsFactory,GREEN_FIELD_WORLD} from '@sim/engine-mars';
+import {marsFactory,GREEN_FIELD_WORLD} from '@souls/engine-mars';
 import {AccountRegistry} from './account-registry.ts';
 import {fixture} from '../test/native-owner-fixture.ts';import {buildApp} from './http.ts';import type {Hub} from './hub.ts';
 import {randomBytes} from 'node:crypto';import {setImmediate} from 'node:timers/promises';import {spawnSync} from 'node:child_process';
 test('Clerk exact verified issuer and origin bind opaque shared identity, never metadata or disabled Privy',async t=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-clerk-test-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const dir=mkdtempSync(join(tmpdir(),'souls-clerk-test-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
  const issuer='https://clerk.example.test',origin='https://sim.example.test';
  const {publicKey,privateKey}=await generateKeyPair('RS256');const jwk={...await exportJWK(publicKey),kid:'fixture',alg:'RS256'};
  const original=globalThis.fetch;let fetches=0;globalThis.fetch=async input=>{assert.equal(String(input),issuer+'/.well-known/jwks.json');fetches++;return new Response(JSON.stringify({keys:[jwk]}));};t.after(()=>globalThis.fetch=original);
