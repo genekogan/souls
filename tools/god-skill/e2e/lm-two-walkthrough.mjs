@@ -164,11 +164,11 @@ try {
   const line = await page.locator('[data-join-prompt]').innerText();
   await shot('07-join-line');
   const soulDir = mkdtempSync(join(tmpdir(), 'fixx-soul-')), soul = sect('Soul mode');
-  await sh(soulDir, bare(lineOf(soul, /^test -f eden-agent\.mjs \|\| curl /)));
-  await sh(soulDir, bare(lineOf(soul, /^node eden-agent\.mjs register /)));
-  const created = JSON.parse(await sh(soulDir, bare(lineOf(soul, /^node eden-agent\.mjs create-soul /)).replace('"<name>"', '"Gene"')));
+  await sh(soulDir, bare(lineOf(soul, /^test -f eden\.mjs \|\| curl /)));
+  await sh(soulDir, bare(lineOf(soul, /^node eden\.mjs register /)));
+  const created = JSON.parse(await sh(soulDir, bare(lineOf(soul, /^node eden\.mjs create /)).replace('"<name>"', '"Gene"')));
   check('the Soul CLI asks for approval with a link on this /worlds world', created.approvalURL?.startsWith(`${base}/#approve/ap_`), { approvalURL: created.approvalURL });
-  const waiting = sh(soulDir, bare(lineOf(soul, /^node eden-agent\.mjs approval wait/)), 300_000).then((s) => JSON.parse(s), (e) => ({ error: String(e.message).slice(0, 300) }));
+  const waiting = sh(soulDir, bare(lineOf(soul, /^node eden\.mjs approval wait/)), 300_000).then((s) => JSON.parse(s), (e) => ({ error: String(e.message).slice(0, 300) }));
   // the person opens the link their agent printed: a new tab (same browser, so the same Clerk session)
   const tab = await ctx.newPage(); tab.setDefaultTimeout(120_000); tab.on('pageerror', (e) => errors.push(e.message));
   await tab.goto(created.approvalURL, { waitUntil: 'domcontentloaded' });
@@ -176,7 +176,7 @@ try {
   await tab.screenshot({ path: join(out, '08-approval-card.png') });
   await tab.locator('[data-approve-agent]').click();
   const waited = await Promise.race([waiting, sleep(120_000).then(() => ({ error: 'timeout' }))]);
-  const status = JSON.parse(await sh(soulDir, 'node eden-agent.mjs status'));
+  const status = JSON.parse(await sh(soulDir, 'node eden.mjs status'));
   check('Join as Soul: Approve (click) on the approval link connects the agent to a new Soul', waited.status === 'ready' && status.paired === true, { line: line.slice(0, 120), waited, soul: status.soul });
   await sleep(3000); await tab.screenshot({ path: join(out, '09-after-join.png') });
   check('no page errors', errors.length === 0, errors.slice(0, 3));
