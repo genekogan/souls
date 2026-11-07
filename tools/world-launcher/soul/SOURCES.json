@@ -31,15 +31,15 @@
   },
   "instructions": {
     "file": "instructions.md",
-    "version": "2.0.2",
-    "sha256": "a8cab14b086408d78e9d98c7c80c3438bc8fb12acb6a9352fefa998aa297c3a0",
+    "version": "2.0.3",
+    "sha256": "16923aa5a38b3f6f778fda86453f1b263935ecd5688d0ba6f3e589086067a7a9",
     "from": "the Soul client rewrite handover (private records), INSTRUCTIONS-v2.md",
     "capture": {
       "base": "https://sim.eden.art/worlds/w/eden-2026",
       "world": "Eden 2026",
       "code": "GL7R-YZYJ"
     },
-    "note": "a rendered capture, published byte for byte. The world recognises it by its exact opening lines (apps/server/src/accounts/instructions.ts CAPTURE, which must equal capture above) and per request replaces only those literals: the world URL from server configuration, the world name, and the captured --for code with the requested valid window code (none: the flag is dropped and the open-window sentence becomes the approval-link sentence). Replaces the 1.9 instructions below. 2.0.1 (2026-10-25): step 1 says what to do when .eden-agent.json exists but status shows paired: false. 2.0.2 (L6 polite client): step 4 adds one listen per Soul and no retry loops (busy = slow, not broken)."
+    "note": "a rendered capture, published byte for byte. The world recognises it by its exact opening lines (apps/server/src/accounts/instructions.ts CAPTURE, which must equal capture above) and per request replaces only those literals: the world URL from server configuration, the world name, and the captured --for code with the requested valid window code (none: the flag is dropped and the open-window sentence becomes the approval-link sentence). Replaces the 1.9 instructions below. 2.0.1 (2026-10-25): step 1 says what to do when .eden-agent.json exists but status shows paired: false. 2.0.2 (L6 polite client): step 4 adds one listen per Soul and no retry loops (busy = slow, not broken). 2.0.3: step 5 names an offered id; strict act refuses words."
   },
   "legacy": {
     "note": "1.9 Soul guides replaced by 2.0.0 (SOUL3); provenance kept as published.",
