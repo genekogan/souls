@@ -76,8 +76,6 @@ const STEP_BACK_SPEED = 0.6;
 export type SeatExec = {
   /** PC17 (#696): the part is in place; the crew is stepping clear of it. */
   backing?: true;
-  /** A stop came while it stepped clear: the install finishes where the crew stands. */
-  stopped?: true;
   p: { crew: string[] }; part: string; kind: Kind; prog: Prog; id: string; phase: 'approach' | 'lift'; children?: Children; t: number; from: Pose; to: Pose; start: Pose;
   path?: Pose[]; duration: number; crew: string[]; item: string; slots?: string[]; stall?: number; lowering?: true;
 };
@@ -163,8 +161,8 @@ function letGo(rt: Runtime, ex: SeatExec) {
 }
 
 /** PC17 (#696): one step of the crew backing clear of where the part now is. `moved` while someone steps; a named wait while
- *  a person or a carried load stands behind them (they are asked to move, and nobody is stepped into them); null once everyone
- *  is clear, or as clear as anything solid behind them allows. */
+ *  a person, a carried load or something solid stands behind them (a person is asked to move, and nobody is stepped into
+ *  anything); null once everyone is clear. Letting go short of clear would leave a body inside what now stands there. */
 function stepClear(rt: Runtime, ex: SeatExec, part: Entity, clear: number, dt: number): 'moved' | Diagnostic | null {
   const size = def(part.def).size, obb = { c: [ex.prog.target.p[0], ex.prog.target.p[2]] as Vec2, half: [size[0] / 2, size[2] / 2] as Vec2, yaw: ex.prog.target.yaw }, g = (rt.services.spatial as Spatial).level(0);
   const loads = ((rt.services.loadDiscs?.() ?? []) as { p: Vec2; r: number; entity: string; crew: string[] }[]);
@@ -172,7 +170,7 @@ function stepClear(rt: Runtime, ex: SeatExec, part: Entity, clear: number, dt: n
   for (const c of ex.crew) {
     const h = rt.world.entities[c]!, at: Vec2 = [h.pose.p[0], h.pose.p[2]], gap = distToObb(at, obb); if (gap >= clear) continue;
     const away: Vec2 = [at[0] - obb.c[0], at[1] - obb.c[1]], n = hypot(away[0], away[1]) || 1, step = STEP_BACK_SPEED * dt, q: Vec2 = [at[0] + away[0] / n * step, at[1] + away[1] / n * step];
-    if (g && clearanceAt(g, q) < HUMAN_RADIUS) continue;
+    if (g && clearanceAt(g, q) < HUMAN_RADIUS) { held ??= { code: 'lift.crew-blocked', message: `${c} has no room to step clear of ${part.id}`, subjects: [part.id, c] }; continue; }
     const by = Object.values(rt.world.entities).find((o) => o.kind === 'human' && !ex.crew.includes(o.id) && o.human?.level === h.human?.level && hypot(o.pose.p[0] - q[0], o.pose.p[2] - q[1]) < 2 * HUMAN_RADIUS + 0.05)?.id
       ?? loads.find((d) => !d.crew.includes(c) && hypot(d.p[0] - q[0], d.p[1] - q[1]) < d.r + HUMAN_RADIUS + 0.05)?.entity;
     if (by) { if (rt.world.entities[by]?.kind === 'human') makeWay(rt, by, q); held ??= { code: 'lift.crew-blocked', message: `${c} waits for ${by} to step away from ${part.id}`, subjects: [part.id, c, by] }; continue; }
@@ -240,10 +238,8 @@ export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind
       const ls = ex.backing || liftStep(rt, ex, dt);
       if (ls !== true) return ls ? { status: 'blocked', diagnostic: ls } : { status: 'running', phase: ex.lowering ? 'lower' : 'lift' };
       if (o.stepBack && !ex.lowering) {
-        // a stop doesn't wait for whoever stands behind them: the crew backs as far as it can and lets go
         const back = stepClear(rt, ex, part, o.stepBack, dt);
-        if (back === 'moved') { ex.backing = true; return { status: 'running', phase: 'lift' }; }
-        if (back && !ex.stopped) { ex.backing = true; return { status: 'blocked', diagnostic: back }; }
+        if (back) { ex.backing = true; return back === 'moved' ? { status: 'running', phase: 'lift' } : { status: 'blocked', diagnostic: back }; }
       }
       letGo(rt, ex);
       part.reservedBy = undefined;
@@ -261,8 +257,8 @@ export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind
     cancel(rt, ex) {
       const part = rt.world.entities[ex.part]!;
       if (ex.lowering) return { ok: true, deferred: true };
-      // PC17 (#696): it is in place and the crew is stepping clear: that finishes the install, there is nothing to lower
-      if (ex.backing) { ex.stopped = true; return { ok: true, deferred: true }; }
+      // PC17 (#696): stepping clear they still hold it and nothing is joined, so a stop lowers it like any other in the air
+      ex.backing = undefined;
       if (ex.phase === 'approach') {
         for (const r of ex.children?.recs ?? []) if (rt.isActive(r.id)) rt.cancel(r.id);
         part.phase = 'staged'; part.reservedBy = undefined;

@@ -92,8 +92,8 @@ export const installFlightV1: ActionDef<FP, Prog, SeatExec> = withParams(seatAct
   description: 'Two people set a loose stair flight standing beside a bay so that its header hangs on a free ledge seat of a seated beam (its foot on the ground); its treads go in separately. Stopping before the lift lets go, during it lowers the flight back where it stood.',
   schema: z.strictObject({ crew: z.array(z.string().max(80)).min(1).max(4), flight: z.string().max(80), beam: z.string().max(80), seat: z.string().max(40) }),
   part: (p) => p.flight, hosts: (p) => [p.beam], plan: planFlightV1, seats: (_w, p) => [`${p.beam}:${p.seat}`],
-  // PC17 (#696): it stands on the ground, and the walk grid reads a turned part up to a cell wider than it is
-  stepBack: 0.62,
+  // PC17 (#696): it stands on the ground, and the walk grid reads a turned part up to a cell wider than it is (0.14 m at 0.1 m cells)
+  stepBack: 0.45,
 }));
 
 type TP = { crew: string[]; tread: string; flight: string; index: number };

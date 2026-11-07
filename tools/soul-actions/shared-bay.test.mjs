@@ -146,6 +146,7 @@ async function organized(t, opts = {}) {
 const invitation = (w, r) => w.edge.together.invite(r.receipt.shared.invite);
 const answered = (w, r, soul) => invitation(w, r).responses[soul.soulId] === 'accepted';
 const ready = (w, s, pj, m) => see(w, s, pj).state.ready.find((x) => x.maneuver === m);
+const glitches = (w) => w.db.db.prepare('SELECT count(*) n FROM glitches_v1').get().n;
 const heard = (w, s, re) => (w.told[s.soulId] ?? []).some((b) => re.test(b));
 async function restart(w) {
   w.comms.close(); w.host.stop(); w.host.drainInputs(); w.host.saveSnapshot(true); w.db.close();
@@ -298,11 +299,12 @@ test('R5: a crew stops short of another crew\'s load, by name', {timeout: 120000
   ok(await act(w, Dee, {capability: `accept:${b.receipt.shared.invite}`, params: {revision: 1}}));
   const named = new Set();
   for (let i = 0; i < 1500 && [a, b].some((x) => invitation(w, x).shared.op?.phase !== 'ended'); i++) {await w.tick(1); for (const r of w.host.engine.rt.records.values()) if (r.verb === 'carry' && r.status === 'blocked' && r.diagnostic?.code) named.add(r.diagnostic.code);}
+  // this says crews wait, by name, rather than fault; it doesn't pin which of the two holds fired
   assert.ok(named.has('carry.path-occupied') || named.has('carry.pickup-occupied'), `a named wait, not a fault: ${[...named]}`);
   assert.equal(w.host.clockFailure, undefined); assert.ok(pj);
 });
 
-test('R4: a stop as a flight\'s crew steps clear tells them what is true: it is set', {timeout: 300000}, async (t) => {
+test('R4: a stop as a flight\'s crew steps clear lowers it, and says so', {timeout: 300000}, async (t) => {
   const w = await world(t), {Ada, Bo, Cy, Dee, Eve, Fay} = w.souls; await yard(w);
   const rt = w.host.engine.rt, tick = w.tick; let done = null;
   w.tick = async (n = 5) => {
@@ -317,7 +319,28 @@ test('R4: a stop as a flight\'s crew steps clear tells them what is true: it is 
     }
   };
   await assert.rejects(build(w, Ada, [[Ada, Bo], [Cy, Dee], [Eve, Fay]]), /stopped/);
-  assert.equal(done.part.phase, 'installed'); assert.ok(heard(w, done.s, /is in place; it was set/), 'the crew hears it is set'); assert.ok(!heard(w, done.s, /flight was lowered back/));
+  await tick(200); assert.equal(done.part.phase, 'staged'); assert.ok(heard(w, done.s, /flight was lowered back/), 'the crew hears what happened'); assert.equal(w.host.clockFailure, undefined);
+  assert.equal(glitches(w), 0);
+});
+
+test('R5: someone busy behind a flight\'s crew holds them by name, and a stop lowers it: no fault on a real host', {timeout: 300000}, async (t) => {
+  const w = await world(t, {names: [...CREW, 'Gil']}), {Ada, Bo, Cy, Dee, Eve, Fay, Gil} = w.souls, {P} = await yard(w);
+  const rt = w.host.engine.rt, tick = w.tick; let placed = false, done = null;
+  w.tick = async (n = 5) => {
+    for (let i = 0; i < n; i++) {
+      await tick(1);
+      if (!placed && [...rt.live.values()].some((x) => x.rec.verb === 'install_flight_v1' && x.exec?.phase === 'lift')) {placed = true; await w.at(Gil, ...P(0, 2.7)); w.E()[Gil.entityId].human.task = 'somebody-else';}
+      const l = [...rt.live.values()].find((x) => x.exec?.backing && x.rec.status === 'blocked');
+      if (l && !done) {
+        const s = Object.values(w.souls).find((x) => x.entityId === l.exec.crew[0]), run = w.edge.together.sharedRunning(s.soulId);
+        done = {code: l.rec.diagnostic?.code, part: w.E()[l.exec.part], s};
+        ok(await act(w, s, {capability: `stop-carry:${run.op}`})); await tick(300);
+        throw new Error('stopped');
+      }
+    }
+  };
+  await assert.rejects(build(w, Ada, [[Ada, Bo], [Cy, Dee], [Eve, Fay]]), /stopped/);
+  assert.equal(done.code, 'lift.crew-blocked'); assert.equal(done.part.phase, 'staged'); assert.equal(glitches(w), 0, 'no recovery, no fault'); assert.ok(heard(w, done.s, /flight was lowered back/));
 });
 
 test('R5: the amend a refusal recommends keeps a project\'s raise where the blueprint says', {timeout: 120000}, async (t) => {

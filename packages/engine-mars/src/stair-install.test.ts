@@ -155,7 +155,7 @@ test('stopped in the air, the flight comes back down to exactly where it stood; 
   }
 });
 
-test('PC17: a stop near the end never teleports the flight: lowered along its way, or finished where it stands', () => {
+test('PC17: a stop near the end never teleports the flight: lowered along its way, or already set', () => {
   const whole = site(), r0 = flight(whole.rt); let n = 0;
   for (; n < 4000 && !['completed', 'failed'].includes(r0.status); n++) whole.rt.step();
   assert.equal(r0.status, 'completed', JSON.stringify(r0.diagnostic));
@@ -193,7 +193,7 @@ test('PC17: a crew stepping clear of the flight never steps into someone: it wai
   assert.equal(q.status, 'blocked', 'someone busy stays where they are, and the crew waits');
   busy.rt.cancel(q.id);
   for (let i = 0; i < 200 && busy.rt.isActive(q.id); i++) busy.rt.step();
-  assert.equal(busy.rt.isActive(q.id), false, 'a stop ends it'); assert.equal(busy.rt.world.entities.F!.phase, 'installed'); assert.equal(busy.rt.world.entities.a1!.human!.grip, undefined);
+  assert.equal(busy.rt.isActive(q.id), false, 'a stop ends it'); assert.equal(busy.rt.world.entities.F!.phase, 'staged', 'lowered back, since the crew still had it'); assert.equal(busy.rt.world.entities.a1!.human!.grip, undefined);
 });
 
 test('the invariant notices a flight hanging on nothing and a tread in a flight that does not hold it', () => {

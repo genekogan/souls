@@ -118,6 +118,8 @@ export class GodMode {
   private eventSeq = 0;
 
   readonly db: Db; readonly opts: GodOptions;
+  /** PC17 (#696): settles what the engine has done and the model hasn't heard yet, so a batch can't undo it (the engine bridge's). */
+  beforeBatch?: () => void;
   // Existing diff-only embedders remain source compatible; new consumers can explicitly accept both feeds.
   constructor(db: Db, opts: Omit<GodOptions, 'emit'> & { emit: (m: WorldDiffMessage) => void });
   constructor(db: Db, opts: GodOptions);
@@ -377,6 +379,7 @@ Prayers from Souls queue for you: \`node eden-god.mjs prayers\`, \`answer <id> <
   }
   /** Only server-owned genesis import can request trusted library adoption; request JSON cannot enable it. */
   private commitBatch(batch: unknown, note?: string, trusted = false): Result {
+    this.beforeBatch?.();
     this.builds.sweep();
     const inputFailure = creationInputFailure(batch); if (inputFailure) return { accepted: false, failures: [inputFailure] };
     const kit = correctKitDefines(batch); batch = kit.batch; // harvest fix kitlenient: the corrected ops are the ones stored

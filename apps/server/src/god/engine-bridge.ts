@@ -1897,6 +1897,9 @@ export class EngineBridge {
     L.thingWords = () => pass('thing words', () => this.nav.thingWords(), [] as string[]);
     L.beforeMap = () => { this.flush(); this.perceiveSync(); };
     if (L.sharedCarry && !this.readSide) {
+      // a joint a crew made reaches the model within 10 ticks; a god batch in those ticks would re-derive the world without it
+      let settling = false;
+      this.god.beforeBatch = () => { if (settling) return; settling = true; try { this.writeBack(); } finally { settling = false; } };
       this.projects = new Projects({ db: this.god.db, host: this.host, edge: L as never, world: () => this.mw.world as never, defOf: (id) => this.model.entities.get(id)?.def.replace(/^core-/, 'core/') });
       L.projects = this.projects;
     }
