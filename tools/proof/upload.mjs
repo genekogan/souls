@@ -15,6 +15,10 @@
 //             `${SIM_PROOF_PUBLIC_URL || SIM_PROOF_UPLOAD_URL}/pr-<n>/<file>`. For a future CDN endpoint.
 //
 // An existing name is never overwritten: a re-take gets `-2`, `-3`, ... so earlier (failed) takes stay linkable.
+// With --proof, a clip's uncut, realSpeed, seconds, viewport and caption come from its `<clip>.json` sidecar where proof.json
+// leaves them unset; a clip whose uncut or realSpeed would stay unset is refused (proof.media-incomplete) before anything
+// is uploaded. A clip whose sidecar records a privacy hit (clip-privacy.mjs) is refused (proof.clip-private) with or
+// without --proof, and so is a sidecar itself, which holds local paths and stays unpublished.
 // With --proof, clip and image urls are written into proof.json `media[]` and other files' (logs, JSON) into `files[]`,
 // matched by file name (new media get an entry to complete). Then proof.json itself is uploaded last and its link
 // printed: that is the link for the PR.
@@ -33,6 +37,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { clipPrivacyHits, hitSummary } from './clip-privacy.mjs';
 import { assertPublishable, readPublication } from './publication.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -57,6 +62,10 @@ export const contentType = file => TYPES[extname(file).toLowerCase()] ?? 'applic
 export const kindOf = file => /^video\//.test(contentType(file)) ? 'video' : /^image\//.test(contentType(file)) ? 'image' : 'file';
 
 export class Blocked extends Error {}
+/** A clip whose proof.json entry would fail `proof-ok`, refused before anything is uploaded. */
+export class IncompleteMedia extends Error { code = 'proof.media-incomplete'; }
+/** A clip that showed something private, or a sidecar, refused before anything is uploaded. */
+export class PrivateClip extends Error { code = 'proof.clip-private'; }
 const BLOCKED = /HTTP 40[134]|Resource not accessible|not logged|gh auth login|authentication|Could not resolve host|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|network|proxy|tunnel|ENOENT/i;
 
 export const safeName = s => s.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[.-]+/, '');
@@ -206,6 +215,7 @@ export function makePreview(file, { start = 0, seconds = 6, ffmpeg = args => exe
   return { skipped: `even a ${PREVIEW_LADDER.at(-1).width}px preview is over ${PREVIEW_MAX_BYTES / 1024 ** 2} MB; use --preview-seconds to shorten it` };
 }
 
+const SIDECAR = /\.(?:mp4|m4v|webm|mov)\.json$/i;
 /** A clip's sidecar (`<clip>.json`, written by record.mjs and the run cameras), or null. */
 export function clipSidecar(file, read = readFileSync) { try { return JSON.parse(read(`${file}.json`, 'utf8')); } catch { return null; } }
 
@@ -222,6 +232,18 @@ export function previewStartFor(sidecar) {
 export const embedLine = (u, alt = basename(u.file)) => u.preview
   ? `[Full-resolution video: ${alt}](${u.url}) — reduced GIF preview below.\n\n[![Reduced preview: ${alt}](${u.preview})](${u.url})`
   : `[Full-resolution video: ${alt}](${u.url})`;
+
+/** What a clip's sidecar can vouch for, or null. Only record.mjs writes one, and it never edits, speeds up or cuts, so a
+ *  sidecar of that shape means an uncut, real-speed take. `videoSec` is the recording itself; `durationSec`, all an older
+ *  sidecar has, stops before the recording closes, so it runs about a second short. */
+export function clipFacts(side) {
+  const seconds = side?.videoSec ?? side?.durationSec;
+  if (!side?.playwright || typeof side.viewport !== 'string' || !(seconds > 0)) return null;
+  return { uncut: true, realSpeed: true, seconds, viewport: side.viewport, caption: `${side.viewport} take${side.commit ? ` recorded at ${String(side.commit).slice(0, 9)}` : ''}` };
+}
+
+/** Fills what the author left unset. Anything already stated stands, an `uncut: false` above all. */
+const fillFacts = (entry, facts) => { for (const [k, v] of Object.entries(facts ?? {})) if (entry[k] == null || entry[k] === '') entry[k] = v; };
 
 /** Writes uploaded links into proof.json: clips and images into media[], everything else (logs, JSON) into files[],
  *  both matched by file name. A non-media entry left in media[] by an older upload moves to files[]. */
@@ -242,8 +264,11 @@ export function linkMedia(proof, uploaded) {
     const entry = named(media, file);
     // Which start the take used (#888): "arrival" (the default) or "load" (from page creation), from its sidecar.
     const start = u.start ? { start: u.start, ...(u.previewStartSec != null ? { previewStartSec: u.previewStartSec } : {}) } : {};
-    if (entry) { entry.url = u.url; if (u.preview) entry.preview = u.preview; Object.assign(entry, start); }
-    else media.push({ file, url: u.url, ...(u.preview ? { preview: u.preview } : {}), kind, ...(kind === 'video' ? { uncut: null, realSpeed: null, seconds: null, viewport: null } : {}), ...start, caption: '' });
+    if (entry) { entry.url = u.url; if (u.preview) entry.preview = u.preview; Object.assign(entry, start); if (kind === 'video') fillFacts(entry, u.facts); }
+    else {
+      media.push({ file, url: u.url, ...(u.preview ? { preview: u.preview } : {}), kind, ...(kind === 'video' ? { uncut: null, realSpeed: null, seconds: null, viewport: null } : {}), ...start, caption: '' });
+      if (kind === 'video') fillFacts(media.at(-1), u.facts);
+    }
   }
   return { ...proof, media, ...(files.length || Array.isArray(proof.files) ? { files } : {}) };
 }
@@ -252,14 +277,24 @@ export function linkMedia(proof, uploaded) {
 export async function uploadAll({ pr, files, proofPath = null, target, read = readFileSync, write = writeFileSync, preview = null, previewStart = null, warn = () => {} }) {
   // Check the entire batch before the first network write, including a late proof/log payload.
   for (const file of [...files, ...(proofPath ? [proofPath] : [])]) {
+    if (SIDECAR.test(file)) throw new PrivateClip(`proof.clip-private: ${basename(file)} is a clip's sidecar: it holds local paths and stays unpublished.`);
+    const hits = kindOf(file) === 'video' ? clipPrivacyHits(clipSidecar(file, read)) : [];
+    if (hits.length) throw new PrivateClip(`proof.clip-private: ${basename(file)} showed ${hitSummary(hits)}. Record a new take; this one is never published.`);
     assertPublishable(basename(file));
     if (file === proofPath || kindOf(file) === 'file') assertPublishable(readPublication(file, read, { json: file === proofPath }));
+  }
+  // proof-ok fails a video without uncut and realSpeed, so say so now, not after the upload.
+  if (proofPath) {
+    const media = JSON.parse(read(proofPath, 'utf8')).media ?? [];
+    const bad = files.filter(f => kindOf(f) === 'video' && !clipFacts(clipSidecar(f, read))).filter(f => { const m = media.find(x => x?.file && basename(x.file) === basename(f)); return m?.uncut == null || m?.realSpeed == null; });
+    if (bad.length) throw new IncompleteMedia(`proof.media-incomplete: ${bad.map(f => basename(f)).join(', ')}: no record.mjs sidecar (<clip>.json) beside the clip, and proof.json does not state uncut and realSpeed. Record with .claude/skills/proof/record.mjs, or state both in the clip's media entry yourself.`);
   }
   const uploaded = [];
   for (const file of files) {
     const u = { file, ...(await target.upload(pr, file)) };
     const side = kindOf(file) === 'video' ? clipSidecar(file, read) : null;
     if (side?.start) u.start = side.start;
+    if (clipFacts(side)) u.facts = clipFacts(side);
     if (preview && kindOf(file) === 'video') {
       const at = previewStart ?? previewStartFor(side).start;
       u.previewStartSec = at;
@@ -333,6 +368,7 @@ async function main(argv) {
     return 0;
   } catch (e) {
     if (e instanceof Blocked) { console.error(blockedMessage({ reason: e.message, files, pr, proofPath })); return 3; }
+    if (e instanceof IncompleteMedia || e instanceof PrivateClip) { console.error(`error: ${e.message}`); return 1; }
     throw e;
   }
 }

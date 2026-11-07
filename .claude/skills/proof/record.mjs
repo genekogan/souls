@@ -21,11 +21,14 @@
 //          If the journey runs past it the clip is cut at the cap and the script exits 3: shorten the journey.
 // Writes <out> (mp4, or .webm when ffmpeg is missing) and <out>.json (url, viewport, duration, marks, console errors,
 // commit). Browsers: PLAYWRIGHT_BROWSERS_PATH when set, else /opt/pw-browsers when present.
+// Privacy (#1238): through the take the page's text is polled for its own host and the Reconnect box's wording. A hit
+//          goes in the sidecar's `privacy` by kind and second, the take fails (exit 4) and upload.mjs refuses the clip.
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { hitSummary, readPageText, watchTake } from '../../../tools/proof/clip-privacy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const VIEWPORTS = {
@@ -114,7 +117,7 @@ export function worldTimePlan(a, tools) {
 
 async function main() {
   const a = parseArgs(process.argv.slice(2));
-  if (a.help || !a.url || !a.out) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 23).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(a.help ? 0 : 2); }
+  if (a.help || !a.url || !a.out) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 25).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(a.help ? 0 : 2); }
   const vp = VIEWPORTS[a.viewport];
   if (!vp) throw Error('--viewport must be desktop or phone');
   const cap = a.maxSeconds > 0 ? { value: a.maxSeconds, from: '--max-seconds' } : policyMaxSeconds();
@@ -149,7 +152,8 @@ async function main() {
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 500)); });
   page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${String(e?.message ?? e).slice(0, 500)}`));
 
-  let truncated = false, stepError = null, capTimer = null;
+  let truncated = false, stepError = null, capTimer = null, watch = null;
+  const watchFromHere = () => { watch = watchTake({ read: () => page.evaluate(readPageText), sinceSec: () => (Date.now() - t0) / 1000 }); };
   const capped = new Promise((r) => { capTimer = () => setTimeout(() => { truncated = true; r(); }, cap.value * 1000); });
   const journey = (async () => {
     if (screencast) {
@@ -159,10 +163,10 @@ async function main() {
         .catch(() => { throw Error(`the page never arrived on a world in ${a.arrivalSeconds} s (world on screen, arrival card gone); for a page that is not a world, or a journey about loading, pass --from-load`); });
       ({ startedAt } = await tools.startScreencast(page, { path: screencast, size: { width, height } }));
       t0 = Date.parse(startedAt); capTimer();
-      mark('arrived');
+      mark('arrived'); watchFromHere();
     } else {
       capTimer();
-      mark('goto');
+      mark('goto'); watchFromHere();
       // From load, the arrival is still marked (in the background) so the preview GIF and readers can find it.
       if (tools) page.waitForFunction(tools.worldArrived, null, { timeout: cap.value * 1000 }).then(() => mark('arrived'), () => {});
       await page.goto(a.url, { waitUntil: 'domcontentloaded', timeout: cap.value * 1000 });
@@ -182,6 +186,7 @@ async function main() {
     console.error(stepError); process.exit(1);
   }
   const durationSec = +((Date.now() - t0) / 1000).toFixed(2);
+  const privacy = await watch.stop();                  // before the recording closes: its last read sees the last frames
   const video = screencast ? null : page.video();
   if (screencast) await page.screencast.stop();
   await context.close();
@@ -201,15 +206,16 @@ async function main() {
   rmSync(work, { recursive: true, force: true });
 
   const meta = {
-    file: basename(file), url: a.url, viewport: a.viewport, size: `${width}x${height}`, durationSec, maxSeconds: cap.value,
+    file: basename(file), url: a.url, viewport: a.viewport, size: `${width}x${height}`, durationSec, videoSec: +videoSec.toFixed(2), maxSeconds: cap.value,
     start: screencast ? 'arrival' : 'load', startRequested: a.fromLoad ? 'load' : 'arrival', ...(startFallback ? { startFallback } : {}), startedAt, worldTime,
-    maxSecondsFrom: cap.from, truncated, stepsFile: a.steps ?? null, stepError, marks, consoleErrors,
+    maxSecondsFrom: cap.from, truncated, stepsFile: a.steps ?? null, stepError, marks, consoleErrors, privacy,
     scrubBar: !!burned?.ok, timecode: !!burned?.timecode, playwright: from,
     commit: git('rev-parse', 'HEAD'), dirty: (git('status', '--porcelain') ?? '') !== '', recordedAt: new Date().toISOString(),
   };
   writeFileSync(`${file}.json`, JSON.stringify(meta, null, 2) + '\n');
   console.log(`${file}  ${durationSec}s ${a.viewport} from ${meta.start}${meta.scrubBar ? ' +scrub bar' : ' (raw: no ffmpeg or ffmpeg failed)'}  console errors: ${consoleErrors.length}`);
   console.log(`${file}.json`);
+  if (privacy.hits.length) { console.error(`privacy: this take showed ${hitSummary(privacy.hits)}; it is failed and upload.mjs refuses it. Fix what showed it and record a new take; never publish this one`); process.exit(4); }
   if (stepError) { console.error(`steps failed: ${stepError}`); process.exit(1); }
   if (truncated) { console.error(`journey ran past ${cap.value}s (${cap.from}); clip cut at the cap: shorten the journey`); process.exit(3); }
 }
