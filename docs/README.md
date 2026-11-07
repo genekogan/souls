@@ -23,6 +23,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 | diagnose experiences spanning an edge agent and world | [experience report design](design/experience-reports.md) |
 | work on god mode | [god mode](architecture/godmode.md), [safety](architecture/safety.md) |
 | know what Souls do by hand (lamps, doors, water, carrying, boards, music, play, tea) | [Soul Actions](architecture/soul-actions.md) |
+| add something a Soul can do | [adding a Soul action](architecture/adding-an-action.md) |
 | work on worlds or the launcher | [worlds](architecture/worlds.md), [data](architecture/data.md), [load](architecture/load.md), [split](architecture/split.md) |
 | touch an engine | [engine contract](architecture/engine-contract.md), the [Mars engine docs](mars/README.md) |
 | touch model calls or the budget | [brain](architecture/brain.md) |

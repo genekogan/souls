@@ -2422,7 +2422,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
    *  already read (one per verb). Nothing available: no field. */
   /** CTRL-3 (#1095): what serves the same intent with a different binding, at most 3, nearest first within that class: never
    *  a different verb, never a different destination, never the refused act. Information for the agent, never a default. */
-  private withAlternatives<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, words: string, out: T, caps: EdgeCapability[], blocked?: EdgeCapability): T & {alternatives?: Alternative[]} {
+  withAlternatives<T extends {code: string; reason: string; did_you_mean?: {id: string; label: string}[]}>(soul: EdgeSoul, words: string, out: T, caps: EdgeCapability[], blocked?: EdgeCapability): T & {alternatives?: Alternative[]} {
     const asked = words.trim(), seen = new Set([asked, ...(out.did_you_mean ?? []).map(d => d.id)]), picks: {c: EdgeCapability; why: string; partial?: true}[] = [];
     const add = (c: EdgeCapability | undefined, why: string, partial?: boolean) => {if (c?.available && !seen.has(c.id) && picks.length < ALTERNATIVES * 2) {seen.add(c.id); picks.push({c, why, ...(partial ? {partial: true as const} : {})});}};
     const ctx = this.vocabulary(soul, caps), w = tokens(words), head = (asked.includes(':') ? asked.slice(0, asked.indexOf(':')) : w[0] ?? '').toLowerCase();

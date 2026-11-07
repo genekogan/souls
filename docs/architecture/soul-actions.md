@@ -585,6 +585,8 @@ Other known limits:
 
 ## Tests
 
+To add an action: [adding a Soul action](adding-an-action.md).
+
 Each family has a deterministic native test that runs a real server and engine in-process, with no ports and no models:
 
 ```sh
