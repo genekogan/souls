@@ -1,7 +1,7 @@
 // Fresh connected native topology with an optional explicit helm rule version.
 // No existing history or default reinterpretation; the owned adapter is separate.
 import {readFileSync} from 'node:fs';
-import {hashOf,nativeBoatControlsV1Schema,nativeShoreSceneV1Schema,shoreAppearanceSourceV1Schema,SHORE_APPEARANCE_SOURCE_V1,type RenderScene} from '@sim/engine-contract';
+import {hashOf,nativeBoatControlsV1Schema,nativeShoreSceneV1Schema,shoreAppearanceSourceV1Schema,SHORE_APPEARANCE_SOURCE_V1,type RenderScene} from '@souls/engine-contract';
 import {connectedCommonsShoreFixture,CONNECTED_SHORE_TRANSFORM} from './connected-shore.ts';
 import {loadMars} from './load.ts';
 import {createWaterGeometryProbe} from './water-geometry.ts';

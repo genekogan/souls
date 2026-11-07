@@ -11,8 +11,11 @@ import { newIdentity } from '../lib/hash.mjs';
 import { now, sleep } from '../lib/clock.mjs';
 import * as claude from './adapters/claude-headless.mjs';
 import * as codex from './adapters/codex-headless.mjs';
+import * as scriptedOwner from './adapters/scripted-owner.mjs';
+import { worldBudgetFor, priceDriftOf, callUsd } from './world-budget.mjs';
 
-export const ADAPTERS = { 'claude-headless': claude, 'codex-headless': codex };
+export const ADAPTERS = { 'claude-headless': claude, 'codex-headless': codex, 'scripted-owner': scriptedOwner };
+export const LIVE_ADAPTERS = new Set(['claude-headless', 'codex-headless']);
 export const onboardingText = (base, name) => `Make me a Soul in this world: ${base}/ . Call it ${name}. Start from ${base}/instructions.md.`;
 export const wakeText = (cmdLine, stdout) => `[background task] ${cmdLine} exited with output:\n${stdout}`;
 
@@ -35,7 +38,7 @@ export function splitRendered(md) {
 export const SOUL_CLI = { file: 'eden.mjs', fallbackFile: 'eden-agent.mjs', listen: (after) => ['listen', ...(after ? ['--after', after] : [])], status: ['status'], parseStatus: parseJsonStatus };
 
 export class Seat {
-  constructor({ dir, seat, worldBase, rails = {}, cli = SOUL_CLI, allowedTools, kind = 'soul' }) {
+  constructor({ dir, seat, worldBase, rails = {}, cli = SOUL_CLI, allowedTools, kind = 'soul', budget = null }) {
     this.dir = dir; this.folder = join(dir, 'folder'); this.seat = seat; this.base = worldBase; this.kind = kind; this.cli = cli;
     this.adapter = ADAPTERS[seat.adapter ?? 'claude-headless']; if (!this.adapter) throw new Error(`unknown adapter ${seat.adapter}`);
     this.rails = { maxTurnsPerRequest: 6, maxTurnWallSec: 240, ...rails };
@@ -45,6 +48,8 @@ export class Seat {
       `Write(${this.folder}/.claude/**)`, `Edit(${this.folder}/.claude/**)`, 'Write(./.claude/**)', 'Edit(./.claude/**)'];
     this.turnN = 0; this.chain = Promise.resolve(); this.listener = null; this.waking = false; this.stopped = false;
     this.lastListenId = null; this.wakesSinceRequest = 0; this.cumulative = null; this.listenFailures = 0;
+    // #1098: live model turns reserve their worst case from the run's world budget before the call (scripted seats spend nothing)
+    this.budget = LIVE_ADAPTERS.has(seat.adapter ?? 'claude-headless') ? budget : null; this.budgetRefused = null;
     this.info = readJson(join(dir, 'seat.json'), null) ?? { id: seat.id, kind, adapter: seat.adapter ?? 'claude-headless', model: seat.model ?? null, effort: seat.effort ?? null,
       soulName: seat.soulName ?? null, worldBase, folder: this.folder, createdAt: now().t, sessionId: null, soulId: null, ownerIdentity: null, assisted: false,
       wake: (seat.adapter ?? 'claude-headless') === 'codex-headless' ? seat.wake === true : seat.wake !== false };
@@ -92,22 +97,87 @@ export class Seat {
     this.inTurn = true;
     const n = ++this.turnN, started = now();
     try { onStart?.({ turn: n, reason, startedAt: started.t, startMono: started.mono }); } catch { /* observer hook is best effort */ }
+    // #1098: a live seat with no real cost report (Codex) can't be held to the world budget, so under one it is refused
+    const noCost = this.budget && this.info.adapter !== 'claude-headless' ? { ok: false, reason: `world budget: ${this.info.adapter} reports no turn cost, so it can't run under a world budget` } : null;
+    const ctxBefore = this.info.sessionContextTokens ?? null;   // the session's context at its last call (null: no call yet)
+    const hold = noCost ?? (this.budget ? await this.budget.reserve(this.seat.id, { contextTokens: ctxBefore }) : null);
+    if (hold && !hold.ok) {   // #1098: refused before any provider call; recorded as a turn with no model use
+      const ended = now(); this.budgetRefused = hold.reason; this.inTurn = false;
+      const rec = { turn: n, reason, startedAt: started.t, endedAt: ended.t, startMono: started.mono, endMono: ended.mono, wallMs: 0, usage: null, finalText: null, toolCalls: [], exit: null, timedOut: false, endedAfterResult: null, refused: 'world-budget', refusedReason: hold.reason };
+      appendJsonl(join(this.dir, 'turns.jsonl'), rec);
+      if (this.waking && !this.stopped) this.startListen();
+      return rec;
+    }
     const first = !this.info.sessionId;
     if (first && this.info.adapter === 'claude-headless') { this.info.sessionId = randomUUID(); this.save(); }
-    const r = await this.adapter.turn({ cwd: this.folder, sessionId: this.info.sessionId, resume: !first, model: this.info.model ?? undefined, effort: this.info.effort,
-      text, allowedTools: this.allowedTools, maxWallSec: this.rails.maxTurnWallSec, prevCumulative: this.cumulative });
+    let r;
+    try {
+      r = await this.adapter.turn({ cwd: this.folder, sessionId: this.info.sessionId, resume: !first, model: this.info.model ?? undefined, effort: this.info.effort,
+        text, allowedTools: this.allowedTools, maxWallSec: this.rails.maxTurnWallSec, prevCumulative: this.cumulative, script: this.seat.script, diagnostics: this.seat.diagnostics,
+        ...(hold ? { maxBudgetUsd: hold.capUsd, maxOutputTokens: this.budget.maxOutputTokens } : {}) });
+    } catch (e) { if (hold) this.budget.settle(hold, null); throw e; }
     const ended = now();
+    // #1098: `claude -p --resume` reports total_cost_usd for the whole session so far, so this turn's cost is the difference
+    // from the session's last total (a crashed turn can report zero: then its cost is unknown and the whole reservation counts).
+    // A turn killed at its wall limit writes no final result, and its stream can carry an early result line repeating the last
+    // total, which would read as a known $0. Its cost is unknown too. The CLI's next total for the same session holds every call
+    // the killed turn completed, token for token (two live kills on #1098), so the reservation stands until then and is taken back
+    // when that total arrives. The total leaves out a call in flight at the kill, which the provider may still bill, so the release
+    // keeps the priced last call. The limit: an in-flight call that cost more than that reads low by the difference, at most one
+    // observation plus one output ($0.073 at the defaults). A kill on a seat's last turn, or a new session, stays counted.
+    const sessionCost = this.info.adapter === 'claude-headless' ? r.usage?.costUsd ?? null : null;
+    let turnCost = r.usage?.costUsd ?? null;
+    if (r.timedOut) turnCost = null;
+    else if (sessionCost != null) {
+      const sid = r.sessionId ?? this.info.sessionId, prev = this.info.sessionCostUsd?.[sid] ?? 0;
+      turnCost = sessionCost >= prev ? sessionCost - prev : null;
+      this.info.sessionCostUsd = { ...(this.info.sessionCostUsd ?? {}), [sid]: Math.max(prev, sessionCost) };
+    }
+    if (hold) {
+      const calls = [], seen = new Set();
+      for (const e of r.stream ?? []) {
+        if (e?.type !== 'assistant') continue;
+        const u = e.message?.usage ?? {}, key = e.message?.id ?? JSON.stringify(u); if (seen.has(key)) continue; seen.add(key);
+        calls.push({ ctx: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0), out: u.output_tokens ?? 0, usd: callUsd(u) });
+      }
+      this.budget.settle(hold, turnCost);
+      const sid = r.sessionId ?? this.info.sessionId, killed = this.info.unknownCost?.[sid] ?? null;
+      if (turnCost == null) {   // no call shown: the kill landed in the turn's first call, so keep what one call at this context can cost
+        const keepUsd = calls.at(-1)?.usd ?? hold.usd - hold.capUsd;
+        this.info.unknownCost = { ...(this.info.unknownCost ?? {}), [sid]: { usd: (killed?.usd ?? 0) + hold.usd, keepUsd: (killed?.keepUsd ?? 0) + keepUsd } }; this.save();
+      } else if (killed && sessionCost != null) {
+        this.budget.release(this.seat.id, killed.usd - killed.keepUsd, 'the session total now holds the turns whose cost was unknown', { keptUsd: killed.keepUsd });
+        const { [sid]: _, ...rest } = this.info.unknownCost; this.info.unknownCost = rest; this.save();
+      }
+      const drift = priceDriftOf((r.stream ?? []).filter((e) => e?.type === 'result').at(-1)?.modelUsage);
+      if (drift) this.budget.priceDrift(this.seat.id, drift);
+      // the reservation assumed: no output past maxOutputTokens in a call; context growing by at most one observation plus one
+      // output between calls (from the session's last context, or from maxContextTokens on the first call); and the turn
+      // costing no more than it reserved. Anything past that ends the world's turns.
+      const step = this.budget.maxObservationTokens + this.budget.maxOutputTokens;
+      let prev = ctxBefore, broke = null;
+      for (const c of calls) {
+        if (c.out > this.budget.maxOutputTokens) broke = `output ${c.out} tokens in one call`;
+        else if (prev == null && c.ctx > this.budget.maxContextTokens) broke = `first-call context ${c.ctx} tokens`;
+        else if (prev != null && c.ctx > prev + step) broke = `context grew ${c.ctx - prev} tokens between calls`;
+        if (broke) break; prev = c.ctx + c.out;
+      }
+      if (!broke && turnCost != null && turnCost > hold.usd + (killed?.usd ?? 0)) broke = `turn cost $${turnCost} past its reservation $${hold.usd}`;
+      if (broke) this.budget.exceeded(this.seat.id, broke);
+      const last = calls.at(-1); if (last) { this.info.sessionContextTokens = last.ctx + last.out; this.save(); }
+    }
     if (r.cumulative) this.cumulative = r.cumulative;
     if (r.sessionId && r.sessionId !== this.info.sessionId) { this.info.sessionId = r.sessionId; }
     if (this.info.effortApplied === undefined && r.effortApplied !== null) this.info.effortApplied = r.effortApplied;
     this.save();
     for (const e of r.stream) appendJsonl(join(this.dir, 'transcript.jsonl'), { turn: n, ...e });
-    const rec = { turn: n, reason, startedAt: started.t, endedAt: ended.t, startMono: started.mono, endMono: ended.mono, wallMs: r.wallMs, usage: r.usage, finalText: r.finalText,
+    const rec = { turn: n, reason, startedAt: started.t, endedAt: ended.t, startMono: started.mono, endMono: ended.mono, wallMs: r.wallMs, usage: r.usage ? { ...r.usage, costUsd: turnCost, ...(sessionCost != null ? { sessionCostUsd: sessionCost } : {}) } : r.usage, finalText: r.finalText,
       toolCalls: r.toolCalls.map((c) => ({ cmd: c.cmd ?? c.name, ms: c.ms, isError: c.isError })), exit: r.exit, timedOut: r.timedOut, endedAfterResult: r.endedAfterResult ?? null };
     appendJsonl(join(this.dir, 'turns.jsonl'), rec);
     const u = r.usage ?? {};
     appendJsonl(join(this.dir, 'cost.jsonl'), { t: ended.t, mono: ended.mono, turn: n, inputTokens: u.inputTokens ?? null, cachedTokens: u.cachedTokens ?? null,
-      cacheCreationTokens: u.cacheCreationTokens ?? null, outputTokens: u.outputTokens ?? null, ...(u.costUsd != null ? { costUsd: u.costUsd } : {}) });
+      cacheCreationTokens: u.cacheCreationTokens ?? null, outputTokens: u.outputTokens ?? null, ...(turnCost != null ? { costUsd: turnCost } : {}), ...(sessionCost != null ? { sessionCostUsd: sessionCost } : {}),
+      ...(hold ? { reservedUsd: hold.usd } : {}) });
     writeFileSync(join(this.dir, 'chat-as-rendered.md'), `\n<!-- turn ${n} (${reason}) ${started.t} -->\n\n${this.adapter.renderChat(r.stream)}`, { flag: 'a' });
     this.inTurn = false;
     if (this.waking && !this.stopped) this.startListen();
@@ -167,7 +237,10 @@ export class Seat {
     const args = [file, ...this.cli.listen(this.lastListenId)];
     const cmdLine = `node ${args.join(' ')}`;
     const startedAt = now();
-    const h = start('node', args, { cwd: this.folder, onExit: ({ code, signal, stdout, stderr }) => {
+    // Soul Runs diagnostics (#752): a traced seat's harness listen carries the same passive preload as its commands, so
+    // the trace sees each owner message's delivery. Untraced seats get no extra argument or environment.
+    const tr = this.seat.diagnostics?.trace;
+    const h = start('node', tr ? ['--import', tr.tap, ...args] : args, { cwd: this.folder, env: tr ? { SOUL_TRACE_FILE: tr.file, SOUL_TRACE_RUN: tr.run, SOUL_TRACE_SEAT: tr.seat } : undefined, onExit: ({ code, signal, stdout, stderr }) => {
       const killed = h.killedByUs; if (this.listener === h) this.listener = null;
       const msgs = listenMessages(stdout);
       appendJsonl(join(this.dir, 'listen.jsonl'), { ...now(), startMono: startedAt.mono, cmd: cmdLine, code, signal, killedByUs: !!killed, messages: msgs.map((m) => m.id), stdout: killed ? undefined : stdout, stderr: stderr.slice(-500) || undefined });
@@ -199,7 +272,8 @@ export class Seat {
 /** createSeat({runDir, seat, worldBase, rails}) → Seat: an empty folder holding only the identity seed. */
 export function createSeat({ runDir, seat, worldBase, rails }) {
   const dir = join(runDir, 'seats', seat.id);
-  const s = new Seat({ dir, seat, worldBase, rails });
+  const budget = worldBudgetFor(runDir, { capUsd: rails?.worldBudgetUsd, turnCapUsd: rails?.turnBudgetUsd, file: rails?.worldBudgetFile ?? null });   // one per world
+  const s = new Seat({ dir, seat, worldBase, rails, budget });
   mkdirSync(s.folder, { recursive: true });
   if (!s.info.ownerIdentity) {
     if (readdirSync(s.folder).length) throw new Error(`seat folder not empty: ${s.folder}`);

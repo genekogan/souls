@@ -2,7 +2,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';
 import {fixture,invite,accept,factory} from '../test/native-owner-fixture.ts';import {EdgeLedger} from './edge/ledger/ledger.ts';import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';import {Hono} from 'hono';
-import {WorldHost} from './world.ts';import {Db} from './db.ts';import {bodyV1Schema} from '@sim/protocol';
+import {WorldHost} from './world.ts';import {Db} from './db.ts';import {bodyV1Schema} from '@souls/protocol';
 import {lookKey,resolveLook,appearanceFromSeed,legacyPreset,compactLook} from '../../web/src/humanoid/look.ts';
 import {bodyProfile} from '../../../mars/viewer/engine/bodies/navigation.ts';
 async function setup(t:any){const dir=mkdtempSync(join(tmpdir(),'body-look-')),path=join(dir,'sim.db'),f=fixture(path,factory,{durableClockV1:true});f.brain.quiesce();

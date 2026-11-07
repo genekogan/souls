@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 music family entry 1 (#431): new def core-record-player@1 (368 triangles, within the 400-triangle kit budget, no hold). No existing def revision changes: core-jukebox@1/@2 and core-radio@1/@2 keep their bytes. A filtered K=2 sweep (--filter core-record-player) baked, placed and rendered 5 samples with 0 findings and 0 gaps, so this record pins nothing. No budgets, samples or gap checks were relaxed.",
+  "findings": []
+}

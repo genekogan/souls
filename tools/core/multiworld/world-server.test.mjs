@@ -9,7 +9,7 @@ test('selected-world routing preserves API/query identity and legacy year routes
  assert.equal(worldForPath('/w/mars/v1/config?x=1'),'mars');assert.equal(worldForPath('/w/littlemartians/ws?after=123'),'littlemartians');assert.equal(worldForPath('/w/eden/v1/config'),'eden');assert.equal(worldForPath('/browser/campus.glb?v=1'),'mars');assert.equal(worldForPath('/w/mars/2026'),'eden');assert.equal(worldForPath('/w/mars/2026/v1/scene'),'eden');assert.equal(worldForPath('/w/else/v1/config'),null);
 });
 test('LM launcher offers rigid motion, reaches tower and resumes exactly on its own disposable DB',async()=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-lm-launch-'));let app;
+ const dir=mkdtempSync(join(tmpdir(),'souls-lm-launch-'));let app;
  try{
   const options={input,dataDir:dir,worldKey:'littlemartians',worldId:'littlemartians-1',port:4964,nativeCast:false};
   app=await openWorldServer(options);app.host.stop();
@@ -23,7 +23,7 @@ test('LM launcher offers rigid motion, reaches tower and resumes exactly on its 
  }finally{if(app)await app.close();rmSync(dir,{recursive:true,force:true});}
 });
 test('Mars camp profile exposes native construction, take-down, meals and work on campus map',async()=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-mars-launch-'));let app;
+ const dir=mkdtempSync(join(tmpdir(),'souls-mars-launch-'));let app;
  try{
   app=await openWorldServer({input,dataDir:dir,worldKey:'mars',worldId:'mars-2026-1',port:4963,nativeCast:false});app.host.stop();
   const soul=app.host.minds.values().next().value,caps=app.edge.capabilities(soul);

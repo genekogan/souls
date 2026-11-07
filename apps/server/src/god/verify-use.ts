@@ -2,7 +2,7 @@
 // invitation or owner credential is involved in verification.
 import { holder, lockStatus } from '../../../../tools/god-skill/lib/locks.mjs';
 import {z} from 'zod';
-import type {Entity} from '@sim/world-compiler';
+import type {Entity} from '@souls/world-compiler';
 import type {WorldHost, HostListener} from '../world.ts';
 import type {Souls} from '../souls.ts';
 import type {SoulRow} from '../db.ts';

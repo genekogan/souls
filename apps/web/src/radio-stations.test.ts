@@ -1,7 +1,7 @@
 // Entry 37: a radio's stations are pure functions of (station, depicted world seconds); the needle and the tuning knob
 // follow the station on the hand's clock, the panel light and the dial glow while it is on.
 import test from 'node:test';import assert from 'node:assert/strict';import * as THREE from 'three';
-import {WorldModel,coreLibrary,applyBatch,contactStateKey} from '@sim/world-compiler';import {meshFor} from './gen-mesh/registry.ts';import './gen-mesh/kit.mesh.ts';import {MaterialLib} from './gen-mesh/materials.ts';
+import {WorldModel,coreLibrary,applyBatch,contactStateKey} from '@souls/world-compiler';import {meshFor} from './gen-mesh/registry.ts';import './gen-mesh/kit.mesh.ts';import {MaterialLib} from './gen-mesh/materials.ts';
 import {beginOpeningMotion,stepOpeningMotion,NEEDLE_SWEEP_MS} from './opening-motion.ts';import {lightDiffAhead} from './light-diff-clock.ts';
 import {RADIO_STATIONS,stationEvents,tuneMix,TUNE,TALK_TURN} from './gen-mesh/radio-stations.ts';
 import {RADIO_STATIONS as DEF_STATIONS} from '../../../packages/world-compiler/src/core-kit/hand-music.ts';

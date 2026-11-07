@@ -27,11 +27,12 @@ export const S = {
   // admission calibration (lane srv-admission-calib): EWMA of the tick's own ms over quiet loop windows (monitor.ts);
   // 0 = not measured yet. admission.ts reads it for the frame budget (frameBudgetMs).
   quietTickMs: 28,
+  halted: 29,      // 1 once the world's clock has stopped (a fault or a durability failure, #1150): the launcher alerts on it
   // CW3 (#737): series the launcher's /__sim/metrics already mapped but nothing wrote. elu: event-loop utilization of
   // the last closed 5 s window (-1 = no window closed yet); gcMsTotal: GC pause ms since the process started (never
   // reset, so a scrape sees every pause); ticksLateTotal: ticks whose own run took longer than their 50 ms budget.
-  elu: 29, gcMsTotal: 30, ticksLateTotal: 31,
-  size: 32,
+  elu: 30, gcMsTotal: 31, ticksLateTotal: 32,
+  size: 33,
 } as const;
 
 export type LiveJson = {
@@ -48,6 +49,8 @@ export type LiveJson = {
   /** Stage B: the first read worker's port (the launcher routes C2 reads here); present only with read workers. */
   readPort?: number;
   read?: {ports: number[]; workers: number; lagGens: number; subset: boolean; routes: string[]};
+  /** The world's clock has stopped; present only then (#1150). */
+  halted?: true;
 };
 
 /** The routes a read worker answers itself, by mode (S.readMode): what the launcher may route to its port. */
@@ -79,5 +82,6 @@ export function liveOf(a: Float64Array, pid: number, now: number): LiveJson {
     out.readPort = ports[0];
     out.read = {ports, workers: a[S.readWorkers], lagGens: a[S.readLagGens], subset: mode === 1, routes: READ_ROUTES[mode] ?? []};
   }
+  if (a[S.halted]) out.halted = true;
   return out;
 }

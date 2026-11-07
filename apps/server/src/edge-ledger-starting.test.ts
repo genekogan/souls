@@ -1,7 +1,7 @@
 // W1 scenery places flagged `starting` (e.g. region-*) are never a reclaim landing spot; only admitted native ground is.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@souls/engine-mars';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
 import {fixture} from '../test/native-owner-fixture.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';

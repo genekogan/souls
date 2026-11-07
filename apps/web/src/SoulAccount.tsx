@@ -1,10 +1,10 @@
 import type {AuthCtx} from './Shell.tsx';
-import type {Api,Sim} from './useSim.ts';
+import type {Api,Souls} from './useSouls.ts';
 import {approvedMe,authIdentity} from './auth-projection.ts';
 import {SoulAvatar} from './MySouls.tsx';
 import {PairApprove} from './PairApprove.tsx';
 import {NewSoulLink} from './BringAgent.tsx';
-export function SoulAccount({sim,auth,api,select,pairCode,clearPair}:{sim:Sim;auth:AuthCtx;api:Api;select(id:string):void;pairCode:string|null;clearPair():void}){
+export function SoulAccount({sim,auth,api,select,pairCode,clearPair}:{sim:Souls;auth:AuthCtx;api:Api;select(id:string):void;pairCode:string|null;clearPair():void}){
  const me=approvedMe(auth,sim.me),souls=me?.souls.flatMap(id=>{const s=sim.conn.replica.souls.get(id);return s?[s]:[];})??[];
  if(!auth.authed)return <section className="soul-card"><h1>Your account</h1><p>Sign in to see your Souls. You can keep exploring without signing in.</p><button disabled={!auth.ready} onClick={auth.login}>Sign in</button></section>;
  if(!me)return <section className="soul-card"><h1>Your account</h1><p role="status">Checking current account…</p></section>;

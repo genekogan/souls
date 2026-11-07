@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { createWaterGeometryProbe } from '@sim/engine-mars';
+import { createWaterGeometryProbe } from '@souls/engine-mars';
 const sourcePath='apps/server/test/fixtures/scene-placement/shore-world.v1.json';
 const sourceCommit='27879c144ef7716cd0238b5734a93d785e922950';
 const sourceSha256='69ac8401b8ff734f8d23acc8088d6e583d29a31d428a0a8f066cf700c85dfb3b';

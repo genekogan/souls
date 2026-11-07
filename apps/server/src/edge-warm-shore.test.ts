@@ -1,7 +1,7 @@
 import {walkWithDestinationWords} from './edge/intents/intents.ts';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {edenNavWorld} from '../test/eden-nav-fixture.ts';
-import {kernelHash} from '@sim/kernel';import {WorldHost,replayFromGenesis} from './world.ts';
+import {kernelHash} from '@souls/kernel';import {WorldHost,replayFromGenesis} from './world.ts';
 import {accept} from '../test/native-owner-fixture.ts';
 async function swimming(t:{after:(f:()=>void)=>void}){
  const w=await edenNavWorld(1,{nav:false});t.after(()=>{w.f.host.stop();w.f.db.close();});const a=w.souls[0];

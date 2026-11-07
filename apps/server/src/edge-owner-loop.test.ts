@@ -100,7 +100,7 @@ test('D3: act --for links the receipt to the owner message; the world writes the
 // put the wave on the message and its end closed the card Done. A default (implicit) link now closes only with an act of
 // the message's last step; any other act's end writes a progress line and the card stays open. Explicit links unchanged.
 test('D3c rook-003: a default-linked wave, then a sit, keep "rest, then come back to the balloon" open; the walk back closes it', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-d3c-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-d3c-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   const db = new Db(join(dir, 'fixture.db')); t.after(() => db.close());
   const inbox = new AgentInbox(db, 'w1'), soul = {soulId: 's_rook', entityId: 'h_rook', name: 'Rook', owner: 'mira'}, scope = {scope: 'soul:s_rook', owner: 'mira'};
   let emit: (r: EdgeReceipt) => void = () => {};
@@ -166,7 +166,7 @@ test('D3c rook-003: a default-linked wave, then a sit, keep "rest, then come bac
 // reach (the receipt's own target, a place inside the named one, or where the body ended); an unresolved target is
 // never closed by default (the agent's result closes it). One-step messages keep D3c's verb rule.
 test('D3d: a default-linked last step closes only at its target; an unresolved target stays open until the agent says', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-d3d-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-d3d-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   const db = new Db(join(dir, 'fixture.db')); t.after(() => db.close());
   const inbox = new AgentInbox(db, 'w1'), soul = {soulId: 's_rook', entityId: 'h_rook', name: 'Rook', owner: 'mira'}, scope = {scope: 'soul:s_rook', owner: 'mira'};
   let emit: (r: EdgeReceipt) => void = () => {};

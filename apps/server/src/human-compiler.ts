@@ -1,7 +1,7 @@
-import type {Card} from '@sim/kernel';
-import {humanCompilerOutputV1Schema,humanSteeringOutcomeV1Schema,type HumanSteeringOutcomeV1,type HumanCompilerOutputV1,type HumanGoalV1} from '@sim/engine-contract';
-import type {BrainCall,IntentRevisionV2} from '@sim/protocol';
-import type {callTool} from '@sim/brain';
+import type {Card} from '@souls/kernel';
+import {humanCompilerOutputV1Schema,humanSteeringOutcomeV1Schema,type HumanSteeringOutcomeV1,type HumanCompilerOutputV1,type HumanGoalV1} from '@souls/engine-contract';
+import type {BrainCall,IntentRevisionV2} from '@souls/protocol';
+import type {callTool} from '@souls/brain';
 import type {Brain} from './brain.ts';
 import {BudgetReservationUnavailable} from './db.ts';
 import {basicHumanGoalV1,readHumanCapabilitiesV1,observeSeatedHumanGoalV1,type HumanRegistryReadV1} from './human-capabilities.ts';

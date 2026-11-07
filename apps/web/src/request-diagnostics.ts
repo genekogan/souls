@@ -1,4 +1,4 @@
-import type {IntentReceiptV2,IntentRequestV2} from '@sim/protocol';
+import type {IntentReceiptV2,IntentRequestV2} from '@souls/protocol';
 import type {IntentResponse} from './intent-response.ts';
 import {intentFeedback} from './intent-feedback.ts';
 export type DiagnosticContext={worldId:string;soulId:string;entityId?:string;backendBuild?:string;sentAt?:string;observedAt?:string;responseStatus?:number;body?:{activity?:string;actionId?:string;seatedOn?:string;tick?:number}};

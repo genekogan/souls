@@ -1,0 +1,175 @@
+# CW2 (#736, #840): run the 50-Soul / 10-world meetup bench on a self-hosted runner and upload its verdict. The runner
+# labels come from the QUALIFY_RUNNER repository variable (a JSON array, default ["self-hosted"]), never from this file. Manual only. The control script (.github/scripts/capacity-qualify.mjs) comes from this workflow's commit;
+# the bench comes from `ref`, which must be `main` or an `agent/<name>` branch of this repository (anything else is
+# refused before checkout). The runner is persistent, so nothing the bench ref installs is shared between runs: pnpm,
+# its store, cache and state and the media cache live in a per-run directory under the job's temp dir that the last
+# step deletes, and no step uses actions/cache. The bench is told the host is quiet (--quiet-host
+# --qualifying-executor) only when the dispatcher declares it quiet AND no other job runs on the label, no other Soul
+# server runs and the load has settled; the same checks run again afterwards. The artifact is an allowlist of summaries, scrubbed of host paths and names,
+# and refused if it holds a Soul token. The bench's real browser (--browser) is off unless `browser` is set, because
+# it needs a host with Playwright's Chromium system libraries. See docs/testing.md ("Capacity qualification workflow").
+name: capacity-qualify
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: main or an agent/<name> branch of this repository holding tools/bench/capacity/meetup (with --qualifying-executor)
+        required: true
+        default: main
+      profile:
+        description: even, meetup or even,meetup; or slopes alone (the CW7 slopes bench, tools/bench/capacity/slopes)
+        default: even,meetup
+      repeats:
+        description: Repeats per profile (the verdict needs 2)
+        default: '2'
+      short:
+        description: Short smoke shape (never qualifies)
+        type: boolean
+        default: false
+      browser:
+        description: Hold one headless Chromium on world 0 (needs Playwright's Chromium system libraries on the host)
+        type: boolean
+        default: false
+      quiet_host:
+        description: I declare the host quiet (nothing else running); the run still checks
+        type: boolean
+        default: false
+      host_class:
+        description: Host class label written into the receipt (no machine names)
+        default: maintainer-self-hosted
+      slice_cpu_quota:
+        description: Optional systemd CPUQuota for the worlds, e.g. 400%
+        default: ''
+      slice_memory_max:
+        description: Optional systemd MemoryMax for the worlds, e.g. 8G
+        default: ''
+      active_min:
+        description: Optional activity window in minutes, 20-240 (CW8 A2; blank = 20). (minutes + 15) x runs must be at most 280
+        default: ''
+      telemetry:
+        description: Run the launcher's telemetry collector beside the worlds (CW8 A2; its store growth is reported)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: capacity-qualify
+  cancel-in-progress: false
+jobs:
+  qualify:
+    if: github.repository == 'soulsimulation/souls'
+    runs-on: ${{ fromJSON(vars.QUALIFY_RUNNER || '["self-hosted"]') }}
+    timeout-minutes: 300
+    env:
+      INPUT_REF: ${{ inputs.ref }}
+      INPUT_PROFILE: ${{ inputs.profile }}
+      INPUT_REPEATS: ${{ inputs.repeats }}
+      INPUT_SHORT: ${{ inputs.short }}
+      INPUT_QUIET_HOST: ${{ inputs.quiet_host }}
+      INPUT_BROWSER: ${{ inputs.browser }}
+      INPUT_HOST_CLASS: ${{ inputs.host_class }}
+      INPUT_SLICE_CPU_QUOTA: ${{ inputs.slice_cpu_quota }}
+      INPUT_SLICE_MEMORY_MAX: ${{ inputs.slice_memory_max }}
+      INPUT_ACTIVE_MIN: ${{ inputs.active_min }}
+      INPUT_TELEMETRY: ${{ inputs.telemetry }}
+      QUALIFY_RUNNER: ${{ vars.QUALIFY_RUNNER || '["self-hosted"]' }}
+      CTL: ../ctl/.github/scripts/capacity-qualify.mjs
+      QUALIFY: .local/bench/qualify.json
+      OUT: .local/bench/meetup/ci-${{ github.run_id }}
+      ARTIFACT: .local/bench/artifact
+    steps:
+      # Before anything can print them: the runner's paths, host name and user name never reach the public log.
+      - name: Mask host-identifying values
+        run: |
+          for v in "$HOME" "$GITHUB_WORKSPACE" "$RUNNER_WORKSPACE" "$RUNNER_TEMP" "$RUNNER_TOOL_CACHE" "$(hostname)" "$(id -un)"; do
+            if [ "${#v}" -ge 4 ]; then echo "::add-mask::$v"; fi
+          done
+      # Nothing the bench ref installs outlives this run or reaches another run on this persistent runner.
+      - name: Per-run tool directories
+        run: |
+          d="$RUNNER_TEMP/qualify-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$d"
+          {
+            echo "PER_RUN=$d"
+            echo "npm_config_store_dir=$d/pnpm-store"
+            echo "npm_config_cache_dir=$d/pnpm-cache"
+            echo "npm_config_state_dir=$d/pnpm-state"
+            echo "SIM_ASSETS_CACHE=$d/sim-assets"
+            echo "PLAYWRIGHT_BROWSERS_PATH=$d/browsers"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { path: ctl, sparse-checkout: .github/scripts, persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22 }
+      - name: Validate inputs
+        id: vet
+        working-directory: ctl
+        run: node .github/scripts/capacity-qualify.mjs inputs
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { path: bench, ref: '${{ steps.vet.outputs.target }}', persist-credentials: false }
+      - name: The ref carries the meetup bench and its qualifying flag
+        working-directory: bench
+        run: |
+          f=tools/bench/capacity/meetup/meetup.mjs
+          if [ "$INPUT_PROFILE" = slopes ]; then f=tools/bench/capacity/slopes/slopes.mjs; fi
+          if [ ! -f "$f" ] || ! grep -q "qualifying-executor" "$f"; then
+            echo "::error::ref $INPUT_REF has no $f with --qualifying-executor (CW2, #793); dispatch with a ref that does"; exit 1
+          fi
+          echo "BENCH_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          command -v python3 >/dev/null || echo "::warning::python3 is missing; the receipt cannot read each world's configured clock rate"
+      # pnpm's version comes from the bench ref's package.json `packageManager`; pnpm itself goes in the per-run dir.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { package_json_file: bench/package.json, dest: '${{ env.PER_RUN }}/setup-pnpm' }
+      - name: Install
+        working-directory: bench
+        run: pnpm install --frozen-lockfile --store-dir "$npm_config_store_dir"
+      - name: Pull media (web, runtime)
+        working-directory: bench
+        timeout-minutes: 15
+        run: timeout 840 pnpm assets:pull --quiet --set web,runtime
+      - name: Build the web and viewer bundles
+        working-directory: bench
+        run: |
+          pnpm --filter @souls/web build
+          pnpm build:viewer
+      # Only when asked: the runner must already have Chromium's system libraries (no --with-deps, no sudo here).
+      - name: Chromium for the bench's real browser
+        if: inputs.browser
+        working-directory: bench
+        run: pnpm --filter mars-campus-viewer exec playwright install --only-shell chromium
+      - name: Slice limits apply on this host
+        working-directory: bench
+        run: node "$CTL" slice-check
+      - name: Quiet before
+        working-directory: bench
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: mkdir -p .local/bench && node "$CTL" before --qualify "$QUALIFY"
+      - name: Meetup bench
+        working-directory: bench
+        run: node "$CTL" bench --qualify "$QUALIFY" --out "$OUT"
+      - name: Quiet after
+        if: always()
+        working-directory: bench
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: if [ -f "$QUALIFY" ]; then node "$CTL" after --qualify "$QUALIFY" --out "$OUT"; fi
+      - name: Stage the artifact
+        if: always()
+        working-directory: bench
+        run: if [ -f "$QUALIFY" ]; then node "$CTL" stage --qualify "$QUALIFY" --out "$OUT" --dest "$ARTIFACT"; fi
+      - name: Upload the verdict and summaries
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: capacity-qualify-${{ github.run_id }}
+          path: bench/.local/bench/artifact/
+          if-no-files-found: warn
+          retention-days: 30
+      # Soul tokens, world data and the per-run tool directories never outlive the job on the runner's disk.
+      - name: Clean up
+        if: always()
+        run: |
+          pkill -TERM -f "ci-${GITHUB_RUN_ID}/" || true
+          sleep 5
+          rm -rf bench/.local/bench
+          if [ -n "${PER_RUN:-}" ]; then rm -rf "$PER_RUN"; fi

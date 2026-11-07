@@ -14,7 +14,10 @@ export class WorldHover{
  readonly marker=new THREE.Mesh(new THREE.RingGeometry(.58,.67,48).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#fff0ab',transparent:true,opacity:.6,depthTest:false,side:THREE.DoubleSide}));
  private tooltip:HTMLDivElement;private pointer:{x:number;y:number;ndc:THREE.Vector2}|null=null;private last=0;private held=false;private listeners:[EventTarget,string,EventListener][]=[];private timer:ReturnType<typeof setTimeout>|null=null;
  private target:HoverTarget|null=null;
- constructor(private canvas:HTMLCanvasElement,private camera:THREE.PerspectiveCamera,private o:{scene:()=>THREE.Object3D;roots:()=>readonly THREE.Object3D[];entity:(id:string)=>Omit<HoverTarget,'radius'>|null;places:()=>readonly HoverPlace[];available:()=>boolean;inspect:(t:HoverTarget)=>void}){
+ private canvas:HTMLCanvasElement;
+ private camera:THREE.PerspectiveCamera;
+ private o:{scene:()=>THREE.Object3D;roots:()=>readonly THREE.Object3D[];entity:(id:string)=>Omit<HoverTarget,'radius'>|null;places:()=>readonly HoverPlace[];available:()=>boolean;inspect:(t:HoverTarget)=>void};
+ constructor(canvas:HTMLCanvasElement,camera:THREE.PerspectiveCamera,o:{scene:()=>THREE.Object3D;roots:()=>readonly THREE.Object3D[];entity:(id:string)=>Omit<HoverTarget,'radius'>|null;places:()=>readonly HoverPlace[];available:()=>boolean;inspect:(t:HoverTarget)=>void}){this.canvas=canvas;this.camera=camera;this.o=o;
   this.marker.name='hover-ring';this.marker.visible=false;this.marker.renderOrder=997;
   this.tooltip=document.createElement('div');this.tooltip.className='world-hover-tooltip';this.tooltip.hidden=true;this.tooltip.setAttribute('role','tooltip');canvas.parentElement?.append(this.tooltip);
   const listen=(t:EventTarget,n:string,f:EventListener)=>{t.addEventListener(n,f);this.listeners.push([t,n,f]);};
