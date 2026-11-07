@@ -2,7 +2,9 @@
 // Writes core-kit/<family>.json from the authoring modules and reports triangle counts
 // (kit estimate and the real three.js geometry) against the Eden budgets
 // (creature ≤ 600, prop ≤ 400, structures ≤ 6000).
-//   node packages/world-compiler/src/core-kit/authoring/build.mjs [--check]
+//   node packages/world-compiler/src/core-kit/authoring/build.mjs [--check [--against <dir>]]
+// --check writes no kit file and exits 1 when one differs from what the authoring modules produce; --against compares
+// with the files in <dir> in place of the committed ones. kit-build.test.ts runs it in CI.
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +16,7 @@ import { lintDef, triBudget, categoryOf } from '../../vocab/index.ts';
 const here = dirname(fileURLToPath(import.meta.url));
 const FAMILIES = ['creatures', 'furniture', 'props', 'plants', 'transport', 'civic', 'play', 'kitchen', 'work', 'signage', 'vocab', 'vocab-2', 'vocab-w1', 'vocab-w2', 'vocab-w3'];
 const check = process.argv.includes('--check');
+const against = process.argv.includes('--against') ? resolve(process.argv[process.argv.indexOf('--against') + 1]) : resolve(here, '..');
 
 // real triangle counts from the viewer's own kit builder
 const { buildKit } = await import('../../../../../apps/web/src/gen-mesh/kit.mesh.ts');
@@ -45,7 +48,7 @@ for (const fam of FAMILIES) {
     if (Math.max(real, est) > budget) over++;
     rows.push({ fam, name: d.name, real, est, budget, shapes: d.make.args.shapes.length, roles: [...new Set(d.make.args.shapes.map((s) => s.role).filter(Boolean))].length });
   }
-  const out = resolve(here, `../${fam}.json`), json = JSON.stringify(defs) + '\n';
+  const out = resolve(against, `${fam}.json`), json = JSON.stringify(defs) + '\n';
   if (check) { if (!existsSync(out) || readFileSync(out, 'utf8') !== json) { stale++; console.error(`stale: ${fam}.json`); } }
   else writeFileSync(out, json);
   total += defs.length;
