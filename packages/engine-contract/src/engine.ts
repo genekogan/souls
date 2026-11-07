@@ -84,6 +84,10 @@ export type EngineCheckpointCapture = {
   steps(): Generator<void, EngineCheckpoint, void>;
 };
 
+/** #1150 rung 1: moves this step did not apply, by rule. Present only on a step that refused one. The log keeps them as
+ *  evidence; a replay recomputes them from world state and the rules, so nothing here is an input. */
+export type EngineRefusalV1 = { tick: number; rule: string; bodies: string[]; programs: string[]; poses: Record<string, { p: [number, number, number]; yaw: number; level?: number }> };
+
 export interface Engine {
   readonly rulesVersion: string;
   readonly dt: number;
@@ -102,7 +106,7 @@ export interface Engine {
   stateHash(): string;
   physicalHash(): string;
   /** Advance one tick. Returns what changed for broadcast. */
-  step(): { paths: PathCommit[]; changes: ChangeEvent[]; events: RuntimeEvent[]; programs: ProgramEvent[] };
+  step(): { paths: PathCommit[]; changes: ChangeEvent[]; events: RuntimeEvent[]; programs: ProgramEvent[]; refusals?: EngineRefusalV1[] };
   /** Start a depiction program for an actor, replacing whatever that actor was doing. */
   perform(program: Program): ProgramAdmission;
   /** Detached admission result for the immediately following perform on the
