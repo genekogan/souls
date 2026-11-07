@@ -1,7 +1,7 @@
 // Pure selection over validated durable history; native crowd proof is separate.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {INTENT_V2, type IntentHistoryEventV2} from '@sim/protocol';
+import {INTENT_V2, type IntentHistoryEventV2} from '@souls/protocol';
 import {replayIntentHistoryV2} from './intent-history.ts';
 import {blockedDirectionForRetry} from './intent-retry.ts';
 const scope = {contract: INTENT_V2, worldId: 'retry-world', soulId: 's_A'};

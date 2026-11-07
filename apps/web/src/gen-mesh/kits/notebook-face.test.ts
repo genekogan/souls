@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { WorldModel, coreLibrary, notebookLine } from '@sim/world-compiler';
+import { WorldModel, coreLibrary, notebookLine } from '@souls/world-compiler';
 import { MaterialLib } from '../materials.ts';
 import { meshFor, type MeshCtx } from '../registry.ts';
 

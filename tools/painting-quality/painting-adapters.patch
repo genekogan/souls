@@ -34,7 +34,7 @@
 --- a/apps/server/src/god/perceive.ts
 +++ b/apps/server/src/god/perceive.ts
 @@ -15,2 +15,3 @@
- import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
+ import type { Entity, StoredDef, WorldModel } from '@souls/world-compiler';
 +import { paintingLine } from '../art/art.ts';
  import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 @@ -204,3 +205,3 @@

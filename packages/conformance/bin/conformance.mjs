@@ -6,7 +6,7 @@ import { mkdtempSync, readdirSync, statSync, writeFileSync, rmSync } from 'node:
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { coreLibrary } from '@sim/world-compiler';
+import { coreLibrary } from '@souls/world-compiler';
 import { conformance } from '../src/conformance.ts';
 const args = process.argv.slice(2), flag = (k, fallback) => { const i = args.indexOf(`--${k}`); return i < 0 ? fallback : args[i + 1]; };
 const k = Number(flag('k', 32));

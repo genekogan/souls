@@ -4,8 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { GENERATORS, type Value } from '@sim/generators';
-import { CORE_KIT, WorldModel, type Entity } from '@sim/world-compiler';
+import { GENERATORS, type Value } from '@souls/generators';
+import { CORE_KIT, WorldModel, type Entity } from '@souls/world-compiler';
 import { meshFor, type MeshCtx } from './registry.ts';
 import { MaterialLib } from './materials.ts';
 import { buildingFinish } from './building.mesh.ts';

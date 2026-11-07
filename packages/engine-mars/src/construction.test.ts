@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { marsFactory, type MarsWorldConfig } from './engine.ts';
 import { edenCampActivities, CAMP_ARRIVALS } from '../../../mars/viewer/engine/scenarios/eden-camp.ts';
 import { constructionDone } from './construction.ts';
-import type { Engine } from '@sim/engine-contract';
+import type { Engine } from '@souls/engine-contract';
 import type { WorldState } from '../../../mars/viewer/engine/world/types.ts';
 const cfg: MarsWorldConfig={scene:'eden-camp',arrival:CAMP_ARRIVALS[0].p,arrivalPlace:'yard',reference:CAMP_ARRIVALS[1].p,grounds:{id:'grounds',name:'Camp'}};
 async function setup(){const f=await marsFactory(cfg),e=f.create(f.genesis('construction-proof'));for(const [i,name] of ['Alice','Bob','Carol','David'].entries())e.spawnHuman({id:`h${i}`,label:name,soul:`s${i}`});return {f,e};}

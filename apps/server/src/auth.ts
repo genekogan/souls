@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createRemoteJWKSet, importSPKI, jwtVerify, type CryptoKey } from 'jose';
 import {AccountRegistry} from './account-registry.ts';
 import {isAbsolute} from 'node:path';
-import type { Me } from '@sim/protocol';
+import type { Me } from '@souls/protocol';
 import type { Config } from './config.ts';
 import type { Db, UserRow } from './db.ts';
 import { ownerShort } from './world.ts';

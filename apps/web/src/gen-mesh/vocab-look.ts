@@ -10,7 +10,7 @@
 //                               role:fill rises with level (0..1); station: role:needle slides, role:knob turns
 import * as THREE from 'three';
 import type { MeshCtx } from './registry.ts';
-import { DRAWER_TRAVEL } from '@sim/world-compiler';
+import { DRAWER_TRAVEL } from '@souls/world-compiler';
 import { variantOf } from './material-variants.ts';
 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);

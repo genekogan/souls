@@ -35,7 +35,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       let st = {};
       for (let i = 0; i < 240; i++) {
         await page.waitForTimeout(1000);
-        st = await page.evaluate(() => { const w = window.__simEntity; const drawn = w?.layer?.drawn ?? w?.layer?.objects; return { active: !!w?.layer?.active, drawn: drawn?.size ?? null, easing: w?.layer?.easing?.size ?? w?.layer?.easing ?? null, shot: !!window.__shotReady }; }).catch((e) => ({ err: String(e.message).slice(0, 80) }));
+        st = await page.evaluate(() => { const w = window.__soulsEntity; const drawn = w?.layer?.drawn ?? w?.layer?.objects; return { active: !!w?.layer?.active, drawn: drawn?.size ?? null, easing: w?.layer?.easing?.size ?? w?.layer?.easing ?? null, shot: !!window.__shotReady }; }).catch((e) => ({ err: String(e.message).slice(0, 80) }));
         if (st.shot && i > 8) break;
       }
       await page.waitForTimeout(3000);

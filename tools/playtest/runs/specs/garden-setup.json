@@ -8,10 +8,10 @@
  "cast": {
   "seats": [
    { "id": "dee", "adapter": "scripted-owner", "soulName": "Dee", "script": { "rules": [
-    { "match": "bench", "ack": "Going to sit", "do": [["act", "sit on the bench", "--wait", "80"]], "result": "Sitting on the bench" },
+    { "match": "bench", "ack": "Going to sit", "do": [["act", "sit:e_39b327e0", "--wait", "80"]], "result": "Sitting on the bench" },
     { "match": "wave|hello", "do": [["say", "Hello from the bench!"]], "result": "Said hello" } ] } },
    { "id": "eli", "adapter": "scripted-owner", "soulName": "Eli", "script": { "rules": [
-    { "match": "tower", "ack": "Heading to the tower", "do": [["act", "walk to the ceramic tower", "--wait", "80"]], "result": "At the ceramic tower" },
+    { "match": "tower", "ack": "Heading to the tower", "do": [["act", "walk:ceramic-tower", "--wait", "80"]], "result": "At the ceramic tower" },
     { "match": "wave|hello", "do": [["say", "Hello from the tower!"]], "result": "Said hello" } ] } }
   ],
   "script": [

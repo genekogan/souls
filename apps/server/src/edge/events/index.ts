@@ -7,7 +7,7 @@ import type {Context, Hono} from 'hono';
 import {streamSSE} from 'hono/streaming';
 import type {ContentfulStatusCode} from 'hono/utils/http-status';
 import {WebSocketServer, type WebSocket} from 'ws';
-import {clockAt} from '@sim/brain';
+import {clockAt} from '@souls/brain';
 import {EDGE_CONTRACT, EdgeError, edgeBody, type EdgeDeps, type EdgeSoul, edgeErrorOf} from '../contract.ts';
 import type {CommsRuntime} from '../comms/index.ts';
 import {cursorOf, parseCursor, type StreamEvent} from '../comms/stream.ts';

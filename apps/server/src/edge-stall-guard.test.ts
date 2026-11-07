@@ -3,7 +3,7 @@
 // releases each within LIMIT_S (30 s) with a stall:released receipt; stand:here from the owner releases at once.
 // BEFORE: SIM_STALL_GUARD=off node --test src/edge-stall-guard.test.ts (the bodies stay held).
 import test from 'node:test';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import assert from 'node:assert/strict';
-import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@souls/engine-mars';
 import {Hono} from 'hono';import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';import {hashToken} from './auth.ts';import {EdgeLedger} from './edge/ledger/ledger.ts';import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';
 const common=await retainedCommonsShoreFactory().then(nativeSleepSnapshotFactoryV1);

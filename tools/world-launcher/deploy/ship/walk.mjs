@@ -5,7 +5,7 @@
 // The wheel step keeps the eye in open space (lane RR, 2026-10-20): five blind notches in took the eye to the 2 m near limit
 // whenever the broadcast camera arrived close (/w/eden: 13 m from the pivot -> 3.2 m, 2.4 m above the ground), and the
 // orbit shot showed a wall or a roof (walks 3.46, 3.47, 3.51, 3.53). Now it zooms in a notch at a time only while the eye
-// stays ORBIT_MIN_DIST from the pivot and ORBIT_MIN_HEIGHT above the ground (window.__simCamera / __simCameraGround), and
+// stays ORBIT_MIN_DIST from the pivot and ORBIT_MIN_HEIGHT above the ground (window.__soulsCamera / __soulsCameraGround), and
 // zooms out when it arrived closer than that (one notch out and back when it is already right); a page without those
 // diagnostics keeps the five notches. entry.orbit records it.
 export const ORBIT_MIN_DIST = 25, ORBIT_MIN_HEIGHT = 10, NOTCH = 240, MAX_IN = 5, MAX_OUT = 8;
@@ -18,7 +18,7 @@ export function zoomStep(d, h, zin) {
 }
 import { mkdirSync, writeFileSync } from 'node:fs'; import { fileURLToPath } from 'node:url'; import { loadavg } from 'node:os';
 import { chromium as playwrightChromium, lease } from './browser.mjs';
-const eye = (p) => p.evaluate(() => { const c = globalThis.__simCamera, g = globalThis.__simCameraGround; if (!c?.p || !c.pivot) return null;
+const eye = (p) => p.evaluate(() => { const c = globalThis.__soulsCamera, g = globalThis.__soulsCameraGround; if (!c?.p || !c.pivot) return null;
   return { d: +Math.hypot(c.p[0] - c.pivot[0], c.p[1] - c.pivot[1], c.p[2] - c.pivot[2]).toFixed(1), h: g?.ground == null ? null : +(c.p[1] - g.ground).toFixed(1) }; }).catch(() => null);
 async function zoomOpen(p) {
   const o = { start: await eye(p), in: 0, out: 0 };

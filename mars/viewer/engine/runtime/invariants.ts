@@ -167,7 +167,9 @@ export const speedWithinCap: Invariant = (rt: Runtime) => {
   const out: Diagnostic[] = [];
   for (const e of relevantEntities(rt.world)) {   // bodies only
     const sp = e.human?.speed;
-    if (sp === undefined) continue;
+    // #1086: a published zero is no movement (a relocated body that then reaches published 0 in `reach` and faulted); the
+    // ground bridge's cap (engine-mars ground-bridge.ts) already skips it
+    if (sp === undefined || sp === 0) continue;
     const cap = SPEED_CAPS[e.human!.activity];
     if (cap !== undefined && sp <= cap * OVERSPEED_TOL) continue;
     out.push({
