@@ -5,7 +5,7 @@
 // ledger decided). The steward reads public speech and object actions, never private
 // conversations.
 import {createHash, timingSafeEqual} from 'node:crypto';
-import {clockAt, DAY_TICKS} from '@sim/brain';
+import {clockAt, DAY_TICKS} from '@souls/brain';
 import {EdgeError} from '../contract.ts';
 import {newId, type CommsCore} from './core.ts';
 import {speechLog} from './speech.ts';

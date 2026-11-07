@@ -7,7 +7,7 @@ or the ports in `SPEED_PORTS`. They always refuse 4930–4990.
 ## Run
 
 ```sh
-pnpm --filter @sim/web build                    # fixtures serve apps/web/dist
+pnpm --filter @souls/web build                    # fixtures serve apps/web/dist
 node tools/speed/fixtures.mjs                   # starts both fixture worlds, prints their PIDs
 node tools/speed/matrix.mjs before|after|phone-before|phone|all [output-dir]
 node tools/speed/character-transfer.mjs http://127.0.0.1:5890 <out.json>

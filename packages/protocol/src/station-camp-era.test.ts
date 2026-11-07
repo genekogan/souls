@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {marsCampExpansionFactory} from '../../engine-mars/src/camp-expansion-engine.ts';
 import type {MarsWorldConfig} from '../../engine-mars/src/engine.ts';
 import {STATION_PINS_V1,stationEpochId,stationEpochV1Schema} from './station-v1.ts';

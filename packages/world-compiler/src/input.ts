@@ -1,4 +1,4 @@
-import { CREATION_LIMITS as L } from '@sim/generators';
+import { CREATION_LIMITS as L } from '@souls/generators';
 import type { Failure } from './schemas.ts';
 
 /** Iterative before Zod's recursive JSON parser: malformed/deep/cyclic local inputs cannot overflow it. */

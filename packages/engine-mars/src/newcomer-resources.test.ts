@@ -1,7 +1,7 @@
 import type {Entity as NativeEntity} from '../../../mars/viewer/engine/world/types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf,newcomerResourcesPublicV1Schema} from '@sim/engine-contract';
+import {hashOf,newcomerResourcesPublicV1Schema} from '@souls/engine-contract';
 import {commonsProvisionsFactory} from './commons-provisions-engine.ts';
 import {commonsNewcomerResourcesFactory} from './newcomer-resources-engine.ts';
 import {COMMONS_PERSONAL_RESOURCES} from './commons-provisions.ts';

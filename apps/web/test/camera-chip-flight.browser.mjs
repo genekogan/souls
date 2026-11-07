@@ -51,10 +51,10 @@ try{
   page=await ctx.newPage();const errors=[];page.on('pageerror',e=>errors.push(String(e).slice(0,200)));
   await page.goto(base+'/',{waitUntil:'domcontentloaded'});
   const chip=page.locator('.my-souls>button').first();await chip.waitFor({state:'visible',timeout:180000});
-  await page.waitForFunction(()=>!!globalThis.__simCamera,null,{timeout:120000});
+  await page.waitForFunction(()=>!!globalThis.__soulsCamera,null,{timeout:120000});
   if(await page.locator('[data-god-modal][open]').count()){await page.keyboard.press('Escape');await sleep(400);}
   const canvas=page.locator('canvas[aria-label="Live 3D view of the world"]');
-  const shot=()=>canvas.evaluate(c=>c.dataset.cameraShot??'');const cam=()=>page.evaluate(()=>globalThis.__simCamera);
+  const shot=()=>canvas.evaluate(c=>c.dataset.cameraShot??'');const cam=()=>page.evaluate(()=>globalThis.__soulsCamera);
   const frames=async(name,n,gap)=>{for(let i=0;i<n;i++){await page.screenshot({path:join(out,`${name}-${String(i).padStart(2,'0')}.png`)});await sleep(gap);}};
   const overview=async()=>{await page.evaluate(()=>(document.activeElement)?.blur?.());await page.keyboard.press('Home');await sleep(2500);};
 

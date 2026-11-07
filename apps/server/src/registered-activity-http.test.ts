@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {retainedCommonsShoreFactory} from '@sim/engine-mars';
-import {humanCapabilityRegistryV1Schema as registrySchema} from '@sim/engine-contract';
-import {intentReceiptV2Schema} from '@sim/protocol';
+import {retainedCommonsShoreFactory} from '@souls/engine-mars';
+import {humanCapabilityRegistryV1Schema as registrySchema} from '@souls/engine-contract';
+import {intentReceiptV2Schema} from '@souls/protocol';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';
 import {Brain} from './brain.ts';

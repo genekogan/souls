@@ -1,6 +1,6 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { EdgeLedger } from './edge/ledger/ledger.ts';

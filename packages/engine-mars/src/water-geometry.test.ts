@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { createWaterGeometryProbe } from './water-geometry.ts';
 import { createTerrainGeometryProbe } from './terrain.ts';
 import { marsFactory, GREEN_FIELD_WORLD } from './engine.ts';
-import { waterGeometryV1Schema, type TerrainPatchV1 } from '@sim/engine-contract';
+import { waterGeometryV1Schema, type TerrainPatchV1 } from '@souls/engine-contract';
 
 const bytes=readFileSync(new URL('../../../apps/server/test/fixtures/scene-placement/shore-world.v1.json',import.meta.url));
 assert.equal(createHash('sha256').update(bytes).digest('hex'),'69ac8401b8ff734f8d23acc8088d6e583d29a31d428a0a8f066cf700c85dfb3b');

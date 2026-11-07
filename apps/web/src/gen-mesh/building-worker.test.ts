@@ -2,8 +2,8 @@
 // geometry the page would make itself, for every library building.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GENERATORS } from '@sim/generators';
-import { CORE_KIT, WorldModel } from '@sim/world-compiler';
+import { GENERATORS } from '@souls/generators';
+import { CORE_KIT, WorldModel } from '@souls/world-compiler';
 import type { BuildingLayout } from '../../../../packages/generators/src/building.ts';
 import { buildingBuffers, buildingJob } from './building.mesh.ts';
 

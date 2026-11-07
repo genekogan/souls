@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const helper = fileURLToPath(new URL('./deploy/ship/compact-copy.py', import.meta.url));
 const python = (code, ...args) => spawnSync('python3', ['-c', code, ...args], { encoding: 'utf8' });
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'sim-compact-release-')), source = join(root, 'source.db');
+  const root = mkdtempSync(join(tmpdir(), 'souls-compact-release-')), source = join(root, 'source.db');
   const p = python(`import sqlite3,sys
 c=sqlite3.connect(sys.argv[1])
 c.executescript("""

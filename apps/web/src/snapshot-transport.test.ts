@@ -89,7 +89,7 @@ test('inline prefetch controller adoption sends no duplicate and cancels unused 
 
 test('old controller-less prefetch remains compatible; late losing body is cancelled', async t => {
   const g = setup(t); let resolve!: (r: Response) => void, cancelled = 0;
-  g.window = { __simSnapshotPrefetch: { url: entryWireUrl(plain), response: new Promise<Response>(r => resolve = r) } };
+  g.window = { __soulsSnapshotPrefetch: { url: entryWireUrl(plain), response: new Promise<Response>(r => resolve = r) } };
   g.fetch = (async () => json(sample)) as typeof fetch;
   const promise = loadSnapshot(plain, new AbortController().signal, true); await flush(); t.mock.timers.tick(ENTRY_HEDGE_MS); await flush();
   assert.deepEqual((await promise)?.snap, sample);
@@ -113,7 +113,7 @@ test('owned entry prefetch abort stops late part launch, and mismatched-page pre
   const promise = loadSnapshot(plain, new AbortController().signal, true); await flush(); t.mock.timers.tick(ENTRY_HEDGE_MS); await flush();
   assert.deepEqual((await promise)?.snap, sample); assert.equal(signals[0].aborted, true);
   answer(json({}, { 'x-defs-ref': 'a'.repeat(32), 'x-ground-ref': 'b'.repeat(32) })); await flush(); assert.equal(calls.length, 2, 'discarded batch cannot launch late parts');
-  let discarded = 0; g.window = { __simSnapshotPrefetch: { url: '/w/old/v1/world/snapshot', response: Promise.resolve(json({epoch:'old'})), abort() { discarded++; } } };
+  let discarded = 0; g.window = { __soulsSnapshotPrefetch: { url: '/w/old/v1/world/snapshot', response: Promise.resolve(json({epoch:'old'})), abort() { discarded++; } } };
   assert.deepEqual((await loadSnapshot(plain, new AbortController().signal, true))?.snap, sample); assert.equal(discarded, 1);
 });
 
@@ -232,12 +232,12 @@ test('part failure cancels unfinished siblings while a consumed snapshot and pla
 test('controller-less cached prefetch consumes used parts once and cancels a late unused body', async t => {
   const g = setup(t), defs = 'a'.repeat(32), ground = 'b'.repeat(32), unused = 'c'.repeat(32);
   let answerUnused!: (r: Response) => void, cancelled = 0;
-  g.window = { __simSnapshotPrefetch: {
+  g.window = { __soulsSnapshotPrefetch: {
     url: entryWireUrl(plain), response: Promise.resolve(json({ ...sample, defsRef: defs, groundRef: ground }, { 'x-defs-ref': defs, 'x-ground-ref': ground })),
     parts: { [defs]: Promise.resolve(json(sample.defs)), [ground]: Promise.resolve(json(sample.ground)), [unused]: new Promise<Response>(resolve => answerUnused = resolve) },
   } };
   g.fetch = (async () => { throw Error('duplicate fetch'); }) as typeof fetch;
   assert.deepEqual((await loadSnapshot(plain, new AbortController().signal, true))?.snap, sample);
   answerUnused(new Response(new ReadableStream({ cancel() { cancelled++; } }))); await flush();
-  assert.equal(cancelled, 1); assert.equal((g.window as Record<string, unknown>).__simSnapshotPrefetch, undefined);
+  assert.equal(cancelled, 1); assert.equal((g.window as Record<string, unknown>).__soulsSnapshotPrefetch, undefined);
 });

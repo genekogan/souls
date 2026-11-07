@@ -9,7 +9,7 @@
 // command was read.
 
 /** Options whose values are free text: never split, never a source of spilled words. */
-const FREE = new Set(['title', 'brief', 'say', 'note', 'asks', 'steps', 'mass', 'event', 'views', 'state', 'path', 'area', 'label', 'text']);
+const FREE = new Set(['title', 'brief', 'say', 'note', 'asks', 'steps', 'mass', 'event', 'views', 'state', 'path', 'area', 'label', 'text', 'description', 'license', 'source']);
 /** Options whose values are one word (a point, number, name, ref or compass word): a space inside one is a spill. */
 const WORD = new Set(['at', 'near', 'along', 't', 'side', 'facing', 'name', 'scale', 'yaw', 'dir', 'dist', 'offset', 'by', 'step', 'inside', 'on', 'against', 'wall', 'corner', 'count', 'row', 'gap', 'spacing', 'from', 'to', 'radius', 'size', 'setback', 'around', 'via']);
 /** Commands whose one positional word is a def or a thing (never free text). */

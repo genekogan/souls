@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { Db } from './db.ts';
 import { migrate } from './migrations.ts';
 import { LifecycleJournal, type LifecycleScope } from './lifecycle-journal.ts';
-import type { LogEvent } from '@sim/protocol';
+import type { LogEvent } from '@souls/protocol';
 const requestId='lc_'+'a'.repeat(32),retireId='lc_'+'b'.repeat(32),scope={worldId:'world',soulId:'s_A',entityId:'h_A',owner:'owner'};
 const input={name:'Alice',description:'PRIVATE_LIFECYCLE_DESCRIPTION',native:false};
 const birth:LogEvent={seq:1,tick:0,kind:'birth',author:'soul:s_A',at:1,payload:{soulId:'s_A',entityId:'h_A',owner:'owner',name:input.name,description:input.description}};

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { coreLibrary, coreRef, hashOf, type ResidentMove, type Result } from '@sim/world-compiler';
+import { coreLibrary, coreRef, hashOf, type ResidentMove, type Result } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
 import { GodMode } from './god.ts';

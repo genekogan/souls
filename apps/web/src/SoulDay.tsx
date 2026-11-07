@@ -2,7 +2,7 @@
 // What it did, what it said, and what the world refused, with the world's own reason. Each entry with a place
 // moves the world camera there. Lazy chunk: loaded only on the Soul's home view.
 import { useEffect, useState } from 'react';
-import type { Api } from './useSim.ts';
+import type { Api } from './useSouls.ts';
 import { requestLookAt } from './look-at-request.ts';
 import './SoulDay.css';
 
