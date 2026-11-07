@@ -585,7 +585,12 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     return {kind:'unknown',code:'place.unreachable',place:place.id,verb:'walk',places:[place.id],reason:`The nearest building is ${place.name}; its exact entry must be checked on demand. No farther building was substituted.`,didYouMean:[]};
   }
   if (notebookOffered && NOTEBOOK_WORDS[verb] && !ctx.caps.some(c => c.verb === verb)) verb = NOTEBOOK_WORDS[verb];
-  else if (ACT_ALIASES[verb] && !ctx.caps.some(c => c.verb === verb)) verb = ACT_ALT[verb] && !verbs.has(ACT_ALIASES[verb]) && verbs.has(ACT_ALT[verb]) ? ACT_ALT[verb] : ACT_ALIASES[verb];
+  else if (ACT_ALIASES[verb] && !ctx.caps.some(c => c.verb === verb)) {
+    // the second meaning when it can happen and the first can't, or when the words name its target
+    const alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), ws = tokens(rest);
+    const altFits = !!alt && (can(alt).length ? !can(ACT_ALIASES[verb]!).length || can(alt).some(c => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')); return ws.some(w => tokenHit(w, all));}) : !verbs.has(ACT_ALIASES[verb]!) && verbs.has(alt));
+    verb = altFits ? alt : ACT_ALIASES[verb]!;
+  }
   // A real fire is a qualifier of the existing fire request, not a new seat name.
   // Keep explicit/named IDs intact and require an offered actual fire before dropping it.
   const realFire = colon < 0 && ['sit', 'warm-by-fire'].includes(verb) ? /^(?:by|near|beside)\s+(?:a|the)\s+real\s+(fire|campfire)[.!]?$/i.exec(rest) : null;

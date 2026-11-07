@@ -21,4 +21,8 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('write in the study', [desk, nbPin, nbUnpin]), desk.id, 'a notebook nearby does not take "write in the study" from the desk');
   assert.equal(resolve('cross out my line in the notebook', [nbPin, nbUnpin]), nbUnpin.id);
   assert.equal(resolve('cross out my name on the sign-up sheet', [sign, unsign, nbPin, nbUnpin]), unsign.id, 'cross out keeps its sign-up meaning where that is offered');
+  // review of #990: a sheet nearby doesn't take the words from the notebook they name, or from a sheet she can't cross off
+  assert.equal(resolve('cross out my line in the notebook', [sign, unsign, nbPin, nbUnpin]), nbUnpin.id, 'the words name the notebook');
+  const notSigned = {...unsign, available: false, blocked: {code: 'object.state', reason: 'Your name is not on this sheet.'}};
+  assert.equal(resolve('cross out my line', [sign, notSigned, nbPin, nbUnpin]), nbUnpin.id, 'the sheet has nothing of hers to cross off');
 });

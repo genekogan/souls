@@ -94,7 +94,11 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  assert.equal(lines().lines.length,8);
  const fin=await join('fin','Fin');const full=await act(fin,`object:${id('notebook')}:pin`,{text:'room for me?'},false);assert.match(full.reason??'',/notebook is full/);
  // private notebook refused for a non-owner
- const priv=await act(ben,`object:${id('private-journal')}:pin`,{text:'hello'},false);assert.match(priv.code,/private|access|owner/);
+ const priv=await act(ben,`object:${id('private-journal')}:pin`,{text:'hello'},false);assert.equal(priv.code,'object.private');
+ // a private notebook keeps its lines from anyone but its owner: the read is refused and no count or line reaches the offer
+ assert.equal(god.act({ops:[{op:'set',id:id('private-journal'),state:{text:'my secret plans — Zed',textBy:'soul:someone-else'}}]}).accepted,true);await tick(45);
+ {const r=edge.capabilities(ben).find(c=>c.id===`read:${id('private-journal')}`);assert.equal(r?.available,false,'a closed read offer');assert.equal(r.blocked.code,'object.private');assert.ok(!/line|secret/.test(r.label),r.label);
+  const denied=await act(ben,`read:${id('private-journal')}`,undefined,false);assert.equal(denied.code,'object.private');assert.ok(!/secret/.test(JSON.stringify(denied)),'the refusal carries no line');}
  // reading: another Soul gets the lines attributed and untrusted, never in its ambient frame or the offer
  const finHere=await here(fin);assert.ok(!JSON.stringify(finHere).includes('kite'),'no words in here');
  const readCap=edge.capabilities(fin).find(c=>c.id===`read:${id('notebook')}`);assert.ok(readCap,'read offered');assert.match(readCap.label,/a notebook, 8 lines written/);assert.ok(!readCap.label.includes('kite'));
@@ -111,6 +115,9 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  const lec=atLectern(ben,'oak-lectern');
  assert.ok(lec,`a reading offer at the book lectern: ${JSON.stringify(readers.map(c=>[c.id,c.label]))}`);assert.match(lec.label,/^Read A Cup with Room for Silence/);
  const lecIds=[];const book=EDEN_LIBRARY_CATALOGUE.find(b=>b.id==='book:tea-cup');
+ // strict offers: this lectern's schema names its own book, so another is refused and never swapped
+ assert.deepEqual(lec.params?.book?.enum,['book:tea-cup'],'the offer names the book it holds');
+ for(const capability of [lec.id,`read:read.${id('oak-lectern')}`.toLowerCase()]){soul=ben;const other=await (await app.request('/v1/edge/act',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability,params:{book:'book:pond-mirror'},strict:true})})).json();assert.equal(other.code,'capability.params',JSON.stringify(other).slice(0,300));}
  const readAt=async(s,cap)=>{const r=await act(s,cap.id,{seconds:20});const fr=await finish(s,r,1200);assert.equal(fr.phase,'completed',JSON.stringify(edge.receipt(s.soulId,r.receipt.id)).slice(0,500));return edge.receipt(s.soulId,r.receipt.id).outcome;};
  assert.equal(await words(ben,'read a cup with room for silence'),`read:read.${id('oak-lectern')}`.toLowerCase(),'the book\'s title names its lectern');
  assert.equal(await words(ben,'read the book on the oak lectern'),`read:read.${id('oak-lectern')}`.toLowerCase(),'"read the book on the oak lectern" is that lectern, not ambiguous with read:here at the same spot');

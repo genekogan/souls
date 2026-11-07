@@ -33,6 +33,8 @@ export function installLecternBooks(L: EdgeLedger, god: GodMode) {
       if (c.verb !== 'read') continue;
       const book = lecternBook(god, c.id, c.target?.kind === 'spot' ? c.target.id : undefined); if (!book) continue;
       c.label = String(c.label).replace(/^Read (?:this world's constitution|about this world|a book|the book you carry)/i, `Read ${book.title}`).replace(/; takes a book from the shelf and puts it back\)/, ')');
+      // the offer's own schema: this lectern holds this book, so naming another is refused, never swapped
+      c.params = { ...c.params, book: { type: 'string', optional: true, enum: [book.id], description: 'the book open on this lectern' } };
       const p = plans.get(c.id); if (p) p.label = `Read ${book.title}`;
     }
   };
