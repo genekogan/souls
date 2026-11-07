@@ -18,7 +18,7 @@ import { superviseProcess } from '../../soul-runtime/launch.mjs';
 import { readControllerSnapshot } from '../../soul-runtime/controller-ownership.mjs';
 import { createWorldClient } from '../../soul-runtime/world-client.mjs';
 import { attentionPriority } from '../../soul-runtime/supervisor.mjs';
-import { createProcessWatch, drift, exportReport, idleBracket, staleReads, verdict } from './lib.mjs';
+import { createProcessWatch, drift, exportReport, firstMoved, idleBracket, staleReads, verdict } from './lib.mjs';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -42,19 +42,24 @@ function spokenBy(dataDir, soulId) {
   const db = new DatabaseSync(join(dataDir, 'sim.db'), { readOnly: true });
   try { return db.prepare('SELECT text, at FROM edge_comms_speech WHERE soul_id=?').all(soulId); } finally { db.close(); }
 }
-/** Facts about one Soul in another's journal, and how many the runtime's own rule would wake on (#475). */
+/**
+ * Facts about one Soul in another's journal, and how many the runtime's own rule would wake on (#475): under the scope the
+ * Soul really has, and under `nearby`, because a salience 1 presence fact only wakes a Soul that listens for it.
+ */
 function factsAbout(journalPath, soulId) {
   const db = new DatabaseSync(journalPath, { readOnly: true });
   try {
     const facts = db.prepare('SELECT source, payload FROM events').all().map((r) => ({ source: r.source, event: JSON.parse(r.payload) })).filter((f) => f.event.about?.soulId === soulId);
-    return { facts: facts.length, wakeEligible: facts.filter((f) => attentionPriority(f, 'nearby') >= 1).length };
+    const listenTo = JSON.parse(db.prepare('SELECT payload FROM checkpoint WHERE singleton=1').get().payload).listenTo ?? [];
+    const waking = (scope) => facts.filter((f) => attentionPriority(f, scope) >= 1).length;
+    return { facts: facts.length, wakeEligible: waking(listenTo), wakeEligibleNearby: waking('nearby') };
   } finally { db.close(); }
 }
 
 export async function runFamily({ out, port, seconds = 60, forceFailure = false }) {
   mkdirSync(out, { recursive: true, mode: 0o700 });
   const report = { schema: 'continuity-family/1', family: 'restart', pass: false, failure: null, forcedFailure: forceFailure, startedAt: new Date().toISOString() };
-  const watch = createProcessWatch(), stop = new AbortController(), samples = [], positions = [], controllers = [];
+  const watch = createProcessWatch(), stop = new AbortController(), samples = [], controllers = [];
   const noting = setInterval(() => { try { watch.note(); } catch { /* the next tick tries again */ } }, 1000);
   const began = Date.now();
   let world = null, supervised = null, sampling = null, paired = null, stateDir = null, killedAt = null;
@@ -68,7 +73,7 @@ export async function runFamily({ out, port, seconds = 60, forceFailure = false 
     sampling = (async () => {
       while (!stop.signal.aborted) {
         const requestedAt = Date.now();
-        try { const here = (await placedClient.read('here', { view: 'body' }, stop.signal)).here; samples.push({ requestedAt, receivedAt: Date.now(), tick: here.tick, activity: here.me?.activity?.kind ?? null }); if (here.me?.pos) positions.push(here.me.pos); } catch { /* a missed sample is a gap, and the count shows it */ }
+        try { const here = (await placedClient.read('here', { view: 'body' }, stop.signal)).here; samples.push({ requestedAt, receivedAt: Date.now(), tick: here.tick, activity: here.me?.activity?.kind ?? null, pos: here.me?.pos ?? null }); } catch { /* a missed sample is a gap, and the count shows it */ }
         await sleep(1000);
       }
     })();
@@ -92,7 +97,8 @@ export async function runFamily({ out, port, seconds = 60, forceFailure = false 
     report.restart = { journalSame: after.journalIdentity === before.journalIdentity, threadSame: after.threadId === before.threadId, generationBefore: last.generation, generationAfter: after.generation, killedWithOpenOperation: open, recoveryMs };
     const [from, to] = [samples[0]?.requestedAt ?? 0, samples.at(-1)?.requestedAt ?? 0];
     report.reads = { samples: samples.length, stale: staleReads(samples).length, bracket: idleBracket(samples, { from, to }).status };
-    report.placedBody = { samples: positions.length, driftMetres: drift(positions), ...factsAbout(journalPath, placed.soul) };
+    const placedAt = samples.filter((s) => s.pos), moved = firstMoved(placedAt);
+    report.placedBody = { samples: placedAt.length, driftMetres: drift(placedAt.map((s) => s.pos)), ...(moved ? { firstMovedSec: Math.round((moved.requestedAt - began) / 1000) } : {}), ...factsAbout(journalPath, placed.soul) };
   } catch (e) {
     report.failure = typeof e.code === 'string' ? e.code : 'RUN_FAILED';
   } finally {

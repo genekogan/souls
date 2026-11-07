@@ -16,6 +16,10 @@ Exit 0 is a pass, 1 a failed run, 2 a checkout that isn't set up. `--force-failu
 and `--seconds` sets the length. `report.json` stays local; `export.json` holds only the fields named in
 `continuity/lib.mjs`, and is the one file that may leave the run.
 
+Run `--seconds 300` to see what the unlaunched body does. A disconnected body starts its zombie shuffle after the 120 s
+grace in `body-rule.ts`, so the default 60 s always reports 0 m. `wakeEligible` uses the Soul's own `listenTo`, and
+`wakeEligibleNearby` shows what a Soul listening to `nearby` would wake on.
+
 **It proves the driver and the recovery path, not behaviour, so it qualifies nothing.** The model-free host never
 reasons, so the qualification design below still needs real trials.
 

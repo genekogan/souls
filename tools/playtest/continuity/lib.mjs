@@ -30,12 +30,15 @@ export function drift(positions) {
   return positions.reduce((most, p) => { const [x, z] = flat(p); return Math.max(most, Math.hypot(x - x0, z - z0)); }, 0);
 }
 
+/** The first sample that moved from the first one, or null. Below a centimetre is rounding, not movement. */
+export const firstMoved = (samples) => samples.find((s) => samples[0] && drift([samples[0].pos, s.pos]) >= 0.01) ?? null;
+
 // The only fields that leave a run directory. A new field is added here on purpose, with its reason, or it stays behind.
 const EXPORT_FIELDS = {
   schema: 'string', family: 'string', pass: 'boolean', failure: 'code', startedAt: 'time', endedAt: 'time', forcedFailure: 'boolean',
   restart: { journalSame: 'boolean', threadSame: 'boolean', generationBefore: 'count', generationAfter: 'count', killedWithOpenOperation: 'boolean', recoveryMs: 'count' },
   effects: { spoken: 'count', spokenAfterRestart: 'count', duplicates: 'count' },
-  placedBody: { samples: 'count', driftMetres: 'number', facts: 'count', wakeEligible: 'count' },
+  placedBody: { samples: 'count', driftMetres: 'number', firstMovedSec: 'count', facts: 'count', wakeEligible: 'count', wakeEligibleNearby: 'count' },
   reads: { samples: 'count', stale: 'count', bracket: 'code' },
   cleanup: { listening: 'boolean', survivors: 'count' },
 };

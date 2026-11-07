@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
-import { byIssueTime, createProcessWatch, descendants, drift, exportReport, idleBracket, alive, staleReads, verdict } from './lib.mjs';
+import { byIssueTime, createProcessWatch, descendants, drift, exportReport, firstMoved, idleBracket, alive, staleReads, verdict } from './lib.mjs';
 
 // Read 2 was issued second and answered last: the slow read of #484. It saw tick 20, and its answer lands after read 3's.
 const slow = [
@@ -36,6 +36,11 @@ test('#484: the idle bracket comes from the samples around it, so the slow read 
 test('drift is the furthest from the first sample, on the ground plane', () => {
   assert.equal(drift([]), 0); assert.equal(drift([[1, 1], [1, 1]]), 0);
   assert.equal(drift([[0, 0], [3, 4], [1, 0]]), 5); assert.equal(drift([[0, 9, 0], [3, 2, 4]]), 5);
+});
+
+test('firstMoved finds the first real movement, and ignores rounding', () => {
+  assert.equal(firstMoved([]), null); assert.equal(firstMoved([{ pos: [1, 1] }, { pos: [1.001, 1] }]), null);
+  const at = { pos: [3, 1], requestedAt: 180 }; assert.equal(firstMoved([{ pos: [1, 1] }, { pos: [1, 1] }, at, { pos: [4, 1] }]), at);
 });
 
 test('the export keeps named fields of the right shape and nothing else', () => {
