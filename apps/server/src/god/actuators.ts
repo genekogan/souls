@@ -295,7 +295,8 @@ function enumParamFields(def: StoredDef, a: Action): { param: string; field: str
   }
   return out;
 }
-const enumKey = (v: unknown) => String(v ?? '').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim();
+// a combining mark after a separator belongs to it (an emoji's VS16), so an emoji-only value is an empty key and matches nothing
+const enumKey = (v: unknown) => String(v ?? '').normalize('NFC').toLowerCase().replace(/(?:[^\p{L}\p{M}\p{N}]\p{M}*)+/gu, ' ').trim();
 /** #431: a param set into an enum field must name one of its values (case and spacing forgiven); null when every one does. */
 export function enumParamProblem(def: StoredDef, a: Action, params: Record<string, unknown>, name: string): Refusal | null {
   for (const e of enumParamFields(def, a)) {

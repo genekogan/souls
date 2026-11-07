@@ -3,7 +3,7 @@
 //   node --test apps/web/src/gen-mesh/sound-plan.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { componentsSchema } from '@souls/world-compiler';
+import { componentsSchema, coreLibrary } from '@souls/world-compiler';
 import { ambienceAt, condition, DEFAULT_SETTINGS, distanceTo, emittersOf, exposureAt, impliedSpecs, treeIndex, treesOf, loadSettings, Movement, saveSettings, SETTINGS_KEY, specsOf, variantOf, VARIANTS, KINDS, MASTER_DEFAULT, QueuedNotes } from './sound-plan.ts';
 
 test('a def may carry one sound or a list; unknown kinds are dropped; the schema accepts both', () => {
@@ -153,4 +153,12 @@ test('queued notes: a stopped player loses only the notes that have not begun', 
   assert.deepEqual(q.settle(10.15, new Set(['b'])), ['a-next', 'a-next-octave'], 'a stopped: its not-yet-begun note is silenced');
   assert.deepEqual(q.settle(10.35, new Set()), [], 'b had begun before it stopped');
   assert.equal(q.size, 0);
+});
+
+test('a switched-off record player is silent, whatever record is set (#1051)', () => {
+  const def = coreLibrary().get('core/record-player@1')!, spec = (def.components as { sound: { when: string } }).sound;
+  const model = fakeModel([['p', 'rp', [0, 0]]], { rp: def }), [em] = emittersOf(model as never);
+  assert.equal(em.spec.when, 'on');
+  assert.equal(condition(spec.when, { on: false, record: 'Low Tide' }), false, 'off: no emitter sounds and no note is scheduled (playJukeboxes reads this gate first)');
+  assert.equal(condition(spec.when, { on: true, record: 'Low Tide' }), true);
 });

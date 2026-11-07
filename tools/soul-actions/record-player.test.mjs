@@ -42,6 +42,9 @@ test('record player: pick a record at the tonearm, stop at the knob, refusal, in
  assert.ok(offer,'put-on-record is offered');assert.match(JSON.stringify(offer.params??offer),/Morning Waltz, Harbour Lights, Low Tide, Night Train/,'the offer lists the sleeves');
  const act=async(cap,accepted=true,params)=>{const r=await accept(f.host,app.request('/v1/edge/act',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability:cap,...(params?{params}:{})})}));const b=await r.json();assert.equal(b.accepted,accepted,JSON.stringify(b));return b;};
  const finish=async(r,field,want,limit=600)=>{let motion=null,early=false,root=null;for(let n=0;n<limit;n++){const m=body().human?.handActuator;if(m){motion=m;root=[...body().pose.p];if((f.host.engine.world.tick-m.startTick)*f.host.engine.dt<(m.reach??0.65)-0.05&&state('player')[field]===want)early=true;}const ph=edge.receipt(soul.soulId,r.receipt.id)?.phase;if(['completed','failed','cancelled','replaced'].includes(ph))break;await tick(1);}return {motion,early,root,phase:edge.receipt(soul.soulId,r.receipt.id)?.phase};};
+ // #1051: the phrasings that have no switch of their own read as the offers that do the job
+ const said=async w=>(await (await app.request('/v1/edge/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability:w})})).json()).resolve.candidates[0]?.id;
+ assert.equal(await said('turn on the record player'),`object:${id('player')}:put-on-record`,'turning it on is putting a record on');
  // refused: stopping an off player, an unknown record, no record named
  const stopOff=await act('object:player:switch-off',false);
  assert.match(JSON.stringify(stopOff),/object\.state/);assert.match(JSON.stringify(stopOff),/is off/,'stopping an off record player is refused as off');
@@ -52,6 +55,14 @@ test('record player: pick a record at the tonearm, stop at the knob, refusal, in
  const cut=await act('object:player:put-on-record',true,{record:'Low Tide'});for(let n=0;n<300&&!body().human?.handActuator;n++)await tick(1);assert.ok(body().human?.handActuator,'the reach started');await tick(4);await accept(f.host,edge.act(soul,{capability:'stand:here'}));await tick(60);
  assert.equal(state('player').on??false,false,'interrupted before contact: the record player stays off');
  assert.ok(['replaced','cancelled'].includes(edge.receipt(soul.soulId,cut.receipt.id)?.phase),'the interrupted act ends replaced');assert.notEqual(state('player').record,'Low Tide','and the picked record was not set');
+ // #1051: a tonearm that moves away mid-reach changes nothing; the world refuses it as a changed target
+ {const home=god.model.worldPose(god.model.get('player')),r=await act('object:player:put-on-record',true,{record:'Night Train'});
+  for(let n=0;n<300&&!body().human?.handActuator;n++)await tick(1);assert.ok(body().human?.handActuator,'the reach started');
+  assert.equal(god.act({ops:[{op:'move',id:'player',p:[home.x+4,home.z]}]}).accepted,true);
+  for(let n=0;n<600&&!['completed','failed','cancelled','replaced'].includes(edge.receipt(soul.soulId,r.receipt.id)?.phase);n++)await tick(1);
+  const rc=edge.receipt(soul.soulId,r.receipt.id);assert.equal(rc.phase,'failed',JSON.stringify(rc).slice(0,300));assert.equal(rc.code,'contact.target-changed');
+  assert.equal(state('player').on??false,false,'still off');assert.notEqual(state('player').record,'Night Train','and the record was not set');
+  assert.equal(god.act({ops:[{op:'move',id:'player',p:[home.x,home.z]}]}).accepted,true);await tick(45);}
  const results=[];
  const run=async(cap,field,want,tint,params)=>{
   const before=state('player')[field],r=await act(cap,true,params);assert.equal(state('player')[field],before,'admission changes nothing remotely');

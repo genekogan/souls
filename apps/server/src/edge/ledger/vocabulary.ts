@@ -300,6 +300,14 @@ export function resolveCapability(input: string, ctx: VocabContext): VocabResult
 const STEER_DIRS = 'north|northeast|north-east|east|southeast|south-east|south|southwest|south-west|west|northwest|north-west|n|ne|e|se|s|sw|w|nw';
 const STEER_VEHICLE = String.raw`(?:(?:the|our|this|my)\s+)?(?:hot[- ]air\s+|red\s+|rowing\s+)?(?:balloon|punt|boat|basket|ride|it|us)`;
 const STEER_GO = String.raw`(?:fly|flying|steer|drive|sail|float|row|rowing|pilot|navigate|head|take|move|go|bring)`;
+// #1051: "stop the record" is the record player's own stop, and "turn on the record player" its record: there is no switch to
+// turn on, so the offer's schema asks which record. Only while such an offer exists.
+const RECORD_STOP = /^(?:please\s+)?stop\s+(?:the\s+)?(?:record|music)(?:\s+player)?[.!]*$/, RECORD_START = /^(?:please\s+)?(?:turn|switch)\s+on\s+(?:the\s+)?record\s+player[.!]*$/;
+function recordWords(input: string, text: string, ctx: VocabContext): VocabResult | null {
+  const t = text.trim(), action = RECORD_STOP.test(t) ? 'switch-off' : RECORD_START.test(t) ? 'put-on-record' : null; if (!action) return null;
+  const cap = ctx.caps.find(c => c.verb === 'object' && c.action === action && (action === 'put-on-record' || /\brecord\b/i.test(c.label)));
+  return cap ? {kind: 'alias', cap, note: `${input} is ${cap.id} (${cap.label}).`} : null;
+}
 function steerWords(input: string, ctx: VocabContext): VocabResult | null {
   const caps = ctx.caps.filter(c => c.verb === 'object' && c.action === 'steer' && c.available); if (!caps.length) return null;
   const t = input.toLowerCase().replace(/^(?:please\s+|let'?s\s+|now\s+|ok(?:ay)?,?\s+)+/, '').replace(/[.!?\s]+$/, '').trim(); if (!t || t.includes(':')) return null;
@@ -401,6 +409,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   const text = input.toLowerCase(), colon = text.indexOf(':'), head = colon >= 0 ? text.slice(0, colon) : '';
   const stow = colon < 0 ? storeWords(input, text, ctx) : null; if (stow) return stow;
   const mend = colon < 0 ? repairWords(input, text, ctx) : null; if (mend) return mend;
+  const record = colon < 0 ? recordWords(input, text, ctx) : null; if (record) return record;
   const searching = colon < 0 ? searchWords(input, text, ctx) : null; if (searching) return searching;
   // RESOLVE (SOULSIM-E "find a boat": no "find" capability): find / look for / search for X is a walk to the nearest X you
   // can reach, unless the words name an activity offered here ("find somewhere quiet to read", "find a seat" keep theirs)
