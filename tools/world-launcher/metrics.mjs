@@ -16,12 +16,22 @@
 // sim_world_tick_service_ratio; souls.* → active/waiting/connected; queue.*; shed.{reads,acts,...} →
 // sim_world_shed_total{class}; level → sim_world_level{level} 0/1; phase → sim_world_phase{phase} 0/1; boot.tick/target;
 // read.workers/lagGens → sim_world_read_workers / sim_world_read_lag_gens (Stage B, only with read workers).
+// CW3 (#737) S2 (the metric dictionary: docs/architecture/load.md §5.1): proc.* → sim_world_process_*; clock.* →
+// sim_world_clock_admin_rate / _rate / sim_world_attention_pace / sim_world_tick_sampled_seconds; inventory.* →
+// sim_world_souls_resident / _entities / _viewers; activity.* → sim_world_{awake_soul,connected_soul,viewer}_seconds_total;
+// ws.* → sim_world_ws_*; requests/refused → sim_world_requests_total{class,outcome} / sim_world_requests_refused_total
+// {class,code}; latency → sim_world_request_{queue,run}_seconds histograms{class}; disk.* → sim_world_{db,wal}_bytes and
+// sim_world_disk_free_bytes.
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const LEVELS = ['green', 'amber', 'red', 'black'];
 const PHASES = ['boot:restore', 'boot:replay', 'boot:projection', 'boot:prepare', 'serving', 'stopping'];
 const LIVE_MAX_BYTES = 64 * 1024;
+// closed label sets of the request counters (apps/server/src/load/shared.ts REQ_*): anything else is not exported
+const REQ_CLASSES = ['read', 'act'];
+const REQ_OUTCOMES = ['attempted', 'started', 'completed', 'rejected', 'failed', 'dropped'];
+const REQ_CODES = ['soul.busy', 'soul.slow-down', 'world.busy', 'world.crowded'];
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const esc = (v) => String(v).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');
@@ -46,6 +56,7 @@ function registry() {
     const v = num(value); if (v === null) return;
     let f = fams.get(name); if (!f) fams.set(name, (f = { type, help, rows: [] }));
     const l = Object.entries(labels ?? {}).map(([k, x]) => `${k}="${esc(x)}"`).join(',');
+    // counters and histograms keep 12 significant digits, so a long uptime's fractional totals still rate() finely
     f.rows.push(`${name}${suffix}${l ? `{${l}}` : ''} ${fmt(v)}`);
   };
   const text = () => {
@@ -133,6 +144,7 @@ export function metricsText({ worlds = [], launcher = {}, clientErrors = null, n
     if (read) { g('sim_world_read_workers', 'Read workers alive and serving (Stage B).', L, read.workers); g('sim_world_read_lag_gens', 'Largest delta gap between the main thread and a read worker (generations).', L, read.lagGens); }
     g('sim_world_boot_tick', 'Replay progress while booting: tick reached.', L, boot.tick);
     g('sim_world_boot_target_tick', 'Replay progress while booting: tick to reach.', L, boot.target);
+    worldS2(r, world, v);
   }
 
   if (clientErrors) {
@@ -142,6 +154,50 @@ export function metricsText({ worlds = [], launcher = {}, clientErrors = null, n
     g('sim_client_errors_new_kinds', 'Error kinds first seen since this build went live.', {}, clientErrors.newSinceRelease?.());
   }
   return r.text();
+}
+
+/** CW3 (#737) S2 series of one world's live.json (absent fields are skipped, never written as 0). */
+function worldS2(r, world, v) {
+  const L = { world }, g = (n, h, l, x) => r.add(n, 'gauge', h, l, x), c = (n, h, l, x) => r.add(n, 'counter', h, l, x);
+  const o = (x) => (x && typeof x === 'object' ? x : {});
+  const MB = (x) => (num(x) === null ? null : x * 1048576);
+  const proc = o(v.proc), clock = o(v.clock), inv = o(v.inventory), act = o(v.activity), ws = o(v.ws), disk = o(v.disk);
+  c('sim_world_process_cpu_seconds_total', 'CPU seconds of the world process since it started, by mode (includes its worker threads).', { world, mode: 'user' }, proc.cpuUserSeconds);
+  c('sim_world_process_cpu_seconds_total', 'CPU seconds of the world process since it started, by mode (includes its worker threads).', { world, mode: 'system' }, proc.cpuSystemSeconds);
+  g('sim_world_process_resident_bytes', 'RSS of the world process (includes its worker threads).', L, MB(proc.rssMb));
+  g('sim_world_process_external_bytes', 'V8 external memory of the world\'s main thread only (not its worker threads).', L, MB(proc.externalMb));
+  g('sim_world_process_array_buffers_bytes', 'ArrayBuffer/Buffer memory of the world\'s main thread only (not its worker threads).', L, MB(proc.arrayBuffersMb));
+  g('sim_world_clock_admin_rate', 'World time per wall time as the admin set it (the full-clock rate).', L, clock.adminRate);
+  g('sim_world_clock_rate', 'Effective world clock rate (below the admin rate while dilated).', L, clock.rate);
+  g('sim_world_attention_pace', 'Attention pace of the clock (1 = full pace).', L, clock.pace);
+  g('sim_world_tick_sampled_seconds', 'Process-monotonic Unix time at which sim_world_tick was read.', L, num(clock.monoMs) === null ? null : clock.monoMs / 1000);
+  if (typeof clock.state === 'string') for (const st of ['running', 'paused', 'unavailable']) g('sim_world_clock_state', 'The world clock runs, is paused by an admin, or is unavailable (1 = current).', { world, state: st }, clock.state === st ? 1 : 0);
+  g('sim_world_souls_resident', 'Souls resident in the world process (minds; not humans).', L, inv.souls);
+  g('sim_world_entities', 'Entities in the world\'s god model (placed objects; not definitions).', L, inv.entities);
+  g('sim_world_viewers', 'Viewer sockets on the world\'s hub (connections, not humans).', L, inv.viewers);
+  c('sim_world_awake_soul_seconds_total', 'Integral of awake Souls over wall seconds since the process started.', L, act.awakeSoulSeconds);
+  c('sim_world_connected_soul_seconds_total', 'Integral of connected Souls over wall seconds since the process started.', L, act.connectedSoulSeconds);
+  c('sim_world_viewer_seconds_total', 'Integral of viewer sockets over wall seconds since the process started.', L, act.viewerSeconds);
+  for (const ev of ['opened', 'closed']) c('sim_world_ws_connections_total', 'Viewer WebSockets opened / closed since the process started.', { world, event: ev }, ws[ev]);
+  c('sim_world_ws_sent_bytes_total', 'Text the hub sent to viewers since the process started (as it counts it per client).', L, ws.bytesSent);
+  c('sim_world_ws_received_bytes_total', 'Bytes viewers sent to the hub since the process started.', L, ws.bytesReceived);
+  const req = o(v.requests), ref = o(v.refused), lat = o(v.latency);
+  for (const cls of REQ_CLASSES) {
+    for (const outcome of REQ_OUTCOMES) c('sim_world_requests_total', 'Admitted-class requests (read = C2, act = C1) by outcome since the process started.', { world, class: cls, outcome }, o(req[cls])[outcome]);
+    for (const code of REQ_CODES) c('sim_world_requests_refused_total', 'Requests in-world admission refused, by class and code.', { world, class: cls, code }, o(ref[cls])[code]);
+    for (const kind of ['queue', 'run']) {
+      const h = o(lat[`${cls}.${kind}`]), name = `sim_world_request_${kind}_seconds`;
+      const help = kind === 'queue' ? 'Seconds a started request waited in admission (arrival to start).' : 'Seconds a started request ran (start to answer).';
+      if (!Array.isArray(h.le) || !Array.isArray(h.counts) || h.counts.length !== h.le.length + 1) continue;
+      h.le.forEach((le, i) => r.add(name, 'histogram', help, { world, class: cls, le: String(le) }, h.counts[i], '_bucket'));
+      r.add(name, 'histogram', help, { world, class: cls, le: '+Inf' }, h.counts.at(-1), '_bucket');
+      r.add(name, 'histogram', help, { world, class: cls }, h.sum, '_sum');
+      r.add(name, 'histogram', help, { world, class: cls }, h.counts.at(-1), '_count');
+    }
+  }
+  g('sim_world_db_bytes', 'Size of the world\'s sim.db.', L, disk.dbBytes);
+  g('sim_world_wal_bytes', 'Size of the world\'s sim.db-wal.', L, disk.walBytes);
+  g('sim_world_disk_free_bytes', 'Free bytes on the filesystem of the world\'s data directory.', L, disk.freeBytes);
 }
 
 /** Answer a metrics request (the caller has already checked it is a direct loopback GET). */

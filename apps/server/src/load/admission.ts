@@ -5,7 +5,7 @@
 // whose client went away is dropped. It queues, delays and refuses; it never chooses or retries an act for a Soul.
 import {createHash} from 'node:crypto';
 import type {Context, MiddlewareHandler} from 'hono';
-import {S, sharedLoad, type Level} from './shared.ts';
+import {histSlot, observe, refusedSlot, reqSlot, S, sharedLoad, type Level, type ReqCode, type ReqOutcome} from './shared.ts';
 import {crowdedNote} from './waking.ts';
 
 export type Cls = 'C0' | 'C1' | 'C2' | 'C3';
@@ -72,7 +72,9 @@ export type Ticket = {refusal: Refusal} | {turn: Promise<'run' | 'dropped' | Ref
 
 export type AdmissionOpts = {now?: () => number; yieldTurn?: () => Promise<void>;
   /** The quiet tick ms (default: the monitor's, from the process's shared numbers, S.quietTickMs). */
-  quietTickMs?: () => number};
+  quietTickMs?: () => number;
+  /** Where the request counters go (CW3 S2; default: the process's shared numbers). */
+  shared?: Float64Array};
 export class Admission {
   level: Level = 'green';
   readonly queue: Job[] = [];
@@ -93,7 +95,16 @@ export class Admission {
   private now: () => number;
   private o: AdmissionOpts;
   private quietTick: () => number;
-  constructor(o: AdmissionOpts = {}) { this.o = o; this.now = o.now ?? (() => performance.now()); this.quietTick = o.quietTickMs ?? (() => sharedLoad[S.quietTickMs]); }
+  /** CW3 S2: the request counters and latency histograms (shared.ts REQ_*), plain increments into the shared numbers. */
+  readonly tel: Float64Array;
+  constructor(o: AdmissionOpts = {}) { this.o = o; this.now = o.now ?? (() => performance.now()); this.quietTick = o.quietTickMs ?? (() => sharedLoad[S.quietTickMs]); this.tel = o.shared ?? sharedLoad; this.tel[S.reqOn] = 1; }
+  /** Count one request outcome (C2 = read, C1 = act; other classes are not admitted and not counted). */
+  count(cls: Cls, outcome: ReqOutcome) { if (cls === 'C1' || cls === 'C2') this.tel[reqSlot(cls === 'C2' ? 'read' : 'act', outcome)]++; }
+  refusedAs(cls: Cls, code: ReqCode) { if (cls === 'C1' || cls === 'C2') this.tel[refusedSlot(cls === 'C2' ? 'read' : 'act', code)]++; }
+  /** One latency sample: queue = arrival to start, run = start to answer. */
+  timed(cls: Cls, kind: 'queue' | 'run', ms: number) { if (cls === 'C1' || cls === 'C2') observe(this.tel, histSlot(cls === 'C2' ? 'read' : 'act', kind), ms); }
+  /** The outcome of a request that ran, by the status it was answered with. */
+  answered(cls: Cls, status: number, ranMs: number) { this.count(cls, status >= 500 ? 'failed' : status >= 400 ? 'rejected' : 'completed'); this.timed(cls, 'run', ranMs); }
   /** This level's frame budget (request ms per 50 ms frame), calibrated from the measured quiet tick (frameBudgetMs). */
   frameBudget(level: Level = this.level) { return frameBudgetMs(level, this.quietTick()); }
 
@@ -291,9 +302,10 @@ export function admissionMiddleware(adm: Admission, level: () => Level, bearer: 
     // only by an in-process app.fetch, never by a client
     if ((c.env as {simAdmitted?: boolean} | undefined)?.simAdmitted === true) { await next(); stamp(c, lv, token); return; }
     if (!r || !token || (r.cls !== 'C1' && r.cls !== 'C2')) { await next(); stamp(c, lv, token); return; }
+    adm.count(r.cls, 'attempted');
     // waking limit (dark): a Soul waiting its turn has its acts answered world.crowded; its reads still answer
     const line = r.cls === 'C1' && !r.god ? crowded?.(token) : null;
-    if (line) { stamp(c, lv, token); c.header('Cache-Control', 'no-store'); c.header('Retry-After', String(Math.max(1, Math.min(line.eta_s, 60))));
+    if (line) { adm.refusedAs(r.cls, 'world.crowded'); stamp(c, lv, token); c.header('Cache-Control', 'no-store'); c.header('Retry-After', String(Math.max(1, Math.min(line.eta_s, 60))));
       return c.json({contract: 'eden-edge/1', error: {code: 'world.crowded', message: crowdedNote(line), position: line.position, eta_s: line.eta_s}, world: worldBlock(lv, Math.max(1, Math.min(line.eta_s, 60)))}, 503); }
     // the body is NOT pre-read here: god/ingestion.ts and edge/body/routes.ts measure/stream the raw body with their own
     // reader, and a stream Hono has already consumed is locked (R2 integration: every POST /v1/god/* answered 500). Body
@@ -303,11 +315,14 @@ export function admissionMiddleware(adm: Admission, level: () => Level, bearer: 
     const t = adm.request({key: r.god ? 'god' : 'soul:' + token, god: r.god, route: r, hintMs: Number.isFinite(hint) ? hint : undefined, closed: () => env?.incoming ? env.incoming.socket?.destroyed === true : c.req.raw.signal?.aborted === true});
     const refuse = (x: Refusal) => { c.header('Cache-Control', 'no-store'); c.header('Retry-After', String(x.retryAfterS)); stamp(c, lv, token);
       return c.json({contract: 'eden-edge/1', error: {code: x.code, message: x.message}, world: worldBlock(lv, x.retryAfterS)}, x.status); };
-    if ('refusal' in t) return refuse(t.refusal);
+    if ('refusal' in t) { adm.refusedAs(r.cls, t.refusal.code); return refuse(t.refusal); }
     const v = await t.turn;
-    if (v === 'dropped') return c.body(null, 499 as never);
-    if (v !== 'run') return refuse(v);
-    try { await next(); } finally { t.done(); }
+    if (v === 'dropped') { adm.count(r.cls, 'dropped'); return c.body(null, 499 as never); }
+    if (v !== 'run') { adm.refusedAs(r.cls, v.code); return refuse(v); }
+    adm.count(r.cls, 'started'); adm.timed(r.cls, 'queue', t.waitedMs());
+    const ranAt = performance.now();
+    try { await next(); } catch (e) { adm.answered(r.cls, 500, performance.now() - ranAt); t.done(); throw e; }
+    adm.answered(r.cls, c.res.status, performance.now() - ranAt); t.done();
     stamp(c, lv, token);
   };
 }
@@ -322,12 +337,20 @@ export type PortJob = {t: 'job'; id: number; key: string; god: boolean; route: R
 export type PortClosed = {t: 'closed'; id: number};
 export type PortDone = {t: 'done'; id: number; refusal?: Refusal; dropped?: true; result?: unknown; error?: string};
 type PortLike = {on(ev: 'message', f: (m: unknown) => void): unknown; postMessage(m: unknown, transfer?: readonly ArrayBuffer[]): void};
+const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function admissionPort(adm: Admission | undefined, port: PortLike, run: (payload: unknown, job: PortJob) => Promise<{result: unknown; transfer?: ArrayBuffer[]}>) {
   const closed = new Set<number>(), stats = {jobs: 0, refused: 0, dropped: 0, failed: 0};
   const reply = (d: PortDone, transfer?: ArrayBuffer[]) => { closed.delete(d.id); port.postMessage(d, transfer); };
   const go = async (m: PortJob, done?: () => void) => {
-    try { const r = await run(m.payload, m); reply({t: 'done', id: m.id, result: r.result}, r.transfer); }
-    catch (e) { stats.failed++; reply({t: 'done', id: m.id, error: e instanceof Error ? e.message : String(e)}); }
+    const counted = !!adm && !!m.route && (m.route.cls === 'C1' || m.route.cls === 'C2'), ranAt = performance.now();
+    let r: {result: unknown; transfer?: ArrayBuffer[]};
+    try { r = await run(m.payload, m); }
+    catch (e) { stats.failed++; if (counted) adm!.answered(m.route!.cls, 500, performance.now() - ranAt); try { reply({t: 'done', id: m.id, error: msg(e)}); } catch { /* the port is gone: nothing to answer */ } finally { done?.(); } return; }
+    // counted once, before the reply (a reply that throws is not a second outcome)
+    if (counted) { const st = (r.result as {status?: unknown} | null)?.status; adm!.answered(m.route!.cls, typeof st === 'number' ? st : 200, performance.now() - ranAt); }
+    // a reply that throws (an uncloneable result, a closed port) becomes an error reply, never an unhandled rejection
+    try { reply({t: 'done', id: m.id, result: r.result}, r.transfer); }
+    catch (e) { try { reply({t: 'done', id: m.id, error: msg(e)}); } catch { /* the port is gone */ } }
     finally { done?.(); }
   };
   port.on('message', (x) => {
@@ -336,12 +359,15 @@ export function admissionPort(adm: Admission | undefined, port: PortLike, run: (
     if (m?.t !== 'job') return;
     stats.jobs++;
     if (!adm || !m.route || (m.route.cls !== 'C1' && m.route.cls !== 'C2')) { void go(m); return; }
+    const cls = m.route.cls;
+    adm.count(cls, 'attempted');
     const t = adm.request({key: m.key, god: m.god, route: m.route, hintMs: m.hintMs, closed: () => closed.has(m.id)});
-    if ('refusal' in t) { stats.refused++; reply({t: 'done', id: m.id, refusal: t.refusal}); return; }
+    if ('refusal' in t) { stats.refused++; adm.refusedAs(cls, t.refusal.code); reply({t: 'done', id: m.id, refusal: t.refusal}); return; }
     // (a dropped or refused job is already out of `outstanding`: done() is not called, as in the middleware)
     void t.turn.then((v) => {
-      if (v === 'dropped') { stats.dropped++; reply({t: 'done', id: m.id, dropped: true}); return; }
-      if (v !== 'run') { stats.refused++; reply({t: 'done', id: m.id, refusal: v}); return; }
+      if (v === 'dropped') { stats.dropped++; adm.count(cls, 'dropped'); reply({t: 'done', id: m.id, dropped: true}); return; }
+      if (v !== 'run') { stats.refused++; adm.refusedAs(cls, v.code); reply({t: 'done', id: m.id, refusal: v}); return; }
+      adm.count(cls, 'started'); adm.timed(cls, 'queue', t.waitedMs());
       void go(m, t.done);
     });
   });
