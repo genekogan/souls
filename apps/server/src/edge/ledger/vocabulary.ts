@@ -590,17 +590,17 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     // the second meaning when it can happen and the first can't, or when the words name its target
     const primary = ACT_ALIASES[verb]!, alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), said = tokens(rest).filter(w => !LABEL_FILLER.has(w)), ws = said.map(w => THING_ALIASES[w] ?? w);
     // what the words name decides (#990): the thing first (its names, the "in the notebook" and "(notebook)" of its label),
-    // then a label's noun ("your line"), never its "from" or "your". Words for a thing that isn't here do nothing at all, so a
-    // note is not taken down for what they name. Words naming nothing take what there is to cross out, and a blocked
+    // then a label's noun ("your line"), never its "from" or "your". Words for a thing that isn't here do nothing at all. Words naming nothing take what there is to cross out, and a blocked
     // offer answers for itself.
     const hits = (text: string) => {const all = tokens(text).filter(w => !LABEL_FILLER.has(w)); return ws.some(w => tokenHit(w, all));};
     const thing = (c: EdgeCapability) => [...ctx.target(c).names, ...[...c.label.matchAll(/\b(?:in|on|off|from)\s+the\s+([^()]+)|\(([^)]*)\)/g)].map(m => m[1] ?? m[2])].join(' ');
     const name = (c: EdgeCapability) => hits(thing(c)), noun = (c: EdgeCapability) => hits(c.label);
     const first = ctx.caps.filter(c => c.action === primary), second = alt ? ctx.caps.filter(c => c.action === alt) : [];
     const crossing = !!alt || primary === 'unpin', here = crossing ? tokens([...first, ...second].map(thing).join(' ')) : [];
-    // the thing she names after in, on, off or from: if nothing offered goes by it, nothing is done, whatever it is called
-    const named = /\b(?:in|on|off|from)\s+(.+)$/i.exec(rest)?.[1] ?? '', where = tokens(named).filter(w => !LABEL_FILLER.has(w));
-    if (crossing && first.length + second.length && where.length && !where.some(w => tokenHit(THING_ALIASES[w] ?? w, here) || tokenHit(w, here))) return {kind: 'unknown', code: 'capability.unknown', reason: `Nothing here to cross out or take down goes by "${named.trim()}", so nothing was done.`, didYouMean: []};
+    // every word must be about something offered, its name or its label's noun, or nothing is done: "my journal note" with only
+    // a board is not that board's note, whatever the word and wherever it stands in the sentence
+    const known = crossing ? tokens([...first, ...second].flatMap(c => [c.label, thing(c)]).join(' ')) : [], stray = said.find(w => !tokenHit(w, known) && !tokenHit(THING_ALIASES[w] ?? w, known));
+    if (crossing && first.length + second.length && stray) return {kind: 'unknown', code: 'capability.unknown', reason: `Nothing here to cross out or take down goes by "${stray}", so nothing was done.`, didYouMean: []};
     const altFits = !!alt && (second.length
       ? first.some(name) ? false : second.some(name) ? true : !first.length && ws.includes('name') ? false : first.some(noun) ? false : second.some(noun) ? true : !can(primary).length && (!!can(alt).length || !first.length)
       : !verbs.has(primary) && verbs.has(alt));

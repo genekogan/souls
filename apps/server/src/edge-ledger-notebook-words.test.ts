@@ -85,4 +85,11 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('remove my line from the whiteboard', [nbPin, nbUnpin]), 'capability.unknown');
   assert.equal(resolve('take down my note from the note book', [pin, unpin]), 'capability.unknown');
   assert.equal(resolve('cross out my line in the logbook', [nbPin, nbUnpin]), nbUnpin.id);
+  // anywhere in the sentence, not only after in, on, off or from
+  for (const w of ['cross out my notebook note', 'remove my journal note', 'take down my note inside the notebook', 'take down my note at the sheet', 'remove my diary note']) assert.equal(resolve(w, [pin, unpin]), 'capability.unknown', w);
+  for (const w of ['take down my line at the board', 'cross out my line at the sheet']) assert.equal(resolve(w, [nbPin, nbUnpin]), 'capability.unknown', w);
+  assert.equal(resolve('cross out my name at the notebook', [sign, unsign]), 'capability.unknown');
+  assert.equal(resolve('remove my note from the notebook near the notice board', [pin, unpin]), 'capability.unknown');
+  assert.equal(resolve('take down my note', [pin, unpin]), unpin.id);
+  assert.equal(resolve('cross out my line', [nbPin, nbUnpin]), nbUnpin.id);
 });

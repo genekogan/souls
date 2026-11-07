@@ -176,3 +176,16 @@ test('a removed notebook leaves the others shut after a restart',{timeout:120000
  assert.ok(w.edge.capabilities(ben).some(c=>c.id===`read:${live}`&&c.blocked?.code==='object.private'),'the read is still closed');
  assert.ok(w.edge.capabilities(ben).some(c=>c.id===`object:${live}:pin`),'the notebook keeps its actions');
 });
+
+// review of #990: on real offers, words about something else leave a note where it is
+test('words for a thing that is not here take nothing',{timeout:120000},async t=>{
+ const f=fixture(':memory:',factory,{durableClockV1:true});f.brain.quiesce();const edge=new EdgeLedger(f.host,f.db,undefined,{ambient:false}),app=new Hono();let soul;
+ const comms=mountEdgeRoutes(app,{host:f.host,db:f.db,souls:f.souls,ledger:edge,soul:()=>soul});t.after(()=>{comms.close();f.host.stop();f.db.close();});
+ const god=new GodMode(f.db,{worldId:f.host.worldId,ownerId:'dev:admin',tick:()=>f.host.engine.world.tick,emit(){}});installEngineBridge({host:f.host,god,edge,log(){},worldLore:false,worldClock:false});
+ const tick=async(n=5)=>{for(let i=0;i<n;i++){f.host.tickOnce();await setImmediate();f.host.drainInputs();}};await tick();await invite(f,'ana');
+ const row=await accept(f.host,f.souls.create('dev:ana',{name:'Ana',description:'Notebook test'}));await tick();soul={soulId:row.id,entityId:row.entity_id,name:row.name,owner:'dev:ana'};
+ const p=f.host.engine.world.entities[soul.entityId].pose.p;assert.equal(god.act({ops:[{op:'place',def:'core/notice-board@3',name:'board',p:[p[0]+1,p[2]+2.5],state:{text:'buy milk — Ana',textBy:soul.soulId}}]}).accepted,true);await tick(60);
+ const r=async w=>(await (await accept(f.host,app.request('/v1/edge/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability:w})}))).json()).resolve;
+ for(const w of ['cross out my notebook note','remove my journal note','take down my note inside the notebook','remove my diary note','take down my note at the sheet','cross off my name from the sign-up sheet'])assert.ok(!/unpin/.test(JSON.stringify((await r(w))?.would??null)),w);
+ assert.match(JSON.stringify((await r('take down my note'))?.would??null),/unpin/,'her own words for her own note still work');
+});
