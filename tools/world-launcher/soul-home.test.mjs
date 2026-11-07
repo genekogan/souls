@@ -241,6 +241,7 @@ test('A4: a legacy folder keeps working; import reuses its token and leaves the 
   assert.equal((await run('pip', 'here')).d.me.id, 's_a1');
   assert.equal(JSON.parse(readFileSync(join(dir, '.souls/souls/s_a1/runtime/state.json'), 'utf8')).cursor, 'c_9');
   assert.equal((await run('import')).d.imported, false, 'once');
+  assert.doesNotMatch((await run('create', 'Next')).err, /No world yet/, 'the imported world\'s seat is ready for the next Soul');
 
   const busy = tmp(t);
   writeFileSync(join(busy, '.eden-agent.json'), JSON.stringify(legacy)); writeFileSync(join(busy, '.listen.lock'), JSON.stringify({ pid: process.pid }));
@@ -296,6 +297,9 @@ test('re-pairing a kept Soul goes on from its cursor; a Soul named like a comman
   writeFileSync(state, JSON.stringify({ ...JSON.parse(readFileSync(state, 'utf8')), cursor: 'c_7', lastActAt: 'then' }));
   assert.equal((await run('adopt', 's_a1')).d.paired, true);
   assert.equal(JSON.parse(readFileSync(state, 'utf8')).cursor, 'c_7');
+  writeFileSync(state, JSON.stringify({ ...JSON.parse(readFileSync(state, 'utf8')), world: `${f.base}/b`, cursor: 'c_elsewhere' }));
+  assert.equal((await run('adopt', 's_a1')).d.paired, true);
+  assert.equal(JSON.parse(readFileSync(state, 'utf8')).cursor, undefined, 'a cursor from another world does not come back');
   const say = (await run('list')).d.souls.find((s) => s.name === 'Say');
   assert.equal(say.address, 'say@a');
   assert.equal((await run('say@a', 'here')).d.me.id, 's_a2');
