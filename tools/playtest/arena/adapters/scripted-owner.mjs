@@ -7,7 +7,9 @@
 // script: { rules: [{ match, ack?, do: [[eden.mjs args…], …], close?: "done"|"open", result?, supersede? }], unmatched? }
 //   match      case-insensitive regular expression tested against the owner's message text; the first rule that matches wins
 //   ack        reply sent with `ack <id>` (≤140 chars); default "On it."
-//   do         eden.mjs argument lists run in order; "{id}" is replaced by the message id. A step that is refused or fails
+//   do         eden.mjs argument lists run in order; "{id}" is replaced by the message id. A `--wait` step that an owner
+//              message ends while its receipt is still open keeps checking that receipt (`receipt <id>` every 2 s) for the rest
+//              of its window (#832); the message is handled on the next turn. A step that is refused or fails
 //              stops the rule, unless the step ends with an options object {"onRefused": "continue"} (default "fail"):
 //              then the refusal is recorded and the next step runs (#828). A refused final step still fails the request:
 //              there is no next step to recover with. "{{prev.<path>}}" in an argument is replaced from the previous
@@ -111,6 +113,18 @@ export function stepOutcome(r, { waited = false } = {}) {
   if (!ongoing) return { ok: false, why: `still ${phase ?? 'open'} after waiting` };
   return { ok: true, phase, ongoing: true };
 }
+/** #832: an owner message ends a `--wait` early, by design, so the agent can read it. The receipt id to keep waiting on
+ *  when that happened and the receipt has not ended, else null. The message itself is handled on the next turn. */
+const ENDED = ['completed', 'failed', 'refused', 'cancelled', 'interrupted', 'replaced'], POLL_MS = 2000;
+export function ownerWokeOpen(r) {
+  const d = stepJson(r), rec = d?.receipt && !d.receipt.error ? d.receipt : null;
+  return r?.code === 0 && d?.ownerMessages?.length && rec?.id && !ENDED.includes(rec.phase) ? rec.id : null;
+}
+/** The window a step's `--wait [s]` asked for, as the CLI applies it (at most 60 s; 60 when no number follows). */
+export function waitWindowSec(args) {
+  const i = args.indexOf('--wait'), n = /^\d+$/.test(args[i + 1] ?? '') ? Number(args[i + 1]) : 60;
+  return Math.min(60, Math.max(1, n));
+}
 /** How much of one CLI output a tool result keeps (#371): all of it up to this many characters. It was 4000, which cut
  *  `around` (its route) and `map` (its flags) mid-JSON, so the scorer read output the Soul really got as a broken string. */
 export const OUTPUT_KEEP = 1024 * 1024;
@@ -189,7 +203,23 @@ export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = 
       const bound = bindPrev(args.map((a) => (id ? a.replaceAll('{id}', id) : a)), prev);
       let o;
       if (bound.error) { o = { ok: false, why: bound.error }; prev = null; }
-      else { const r = await cli(bound.args); prev = stepJson(r); o = stepOutcome(r, { waited: args.includes('--wait') }); }
+      else {
+        const waited = args.includes('--wait'), until = Date.now() + waitWindowSec(args) * 1000;
+        let r = await cli(bound.args); prev = stepJson(r);
+        // #832: woken by an owner message with the act still going: keep waiting on its receipt for the rest of the window.
+        // A `wait` would return at once while that card is unacknowledged (the world's rule, so "stop" is never slept
+        // through), so check the receipt instead, every POLL_MS, until it ends or the window does.
+        // Not when the woken output already shows the act under way (a seated sit holds its receipt open while seated).
+        const rid = waited && !stepOutcome(r, { waited }).ok ? ownerWokeOpen(r) : null;
+        while (rid && Date.now() + POLL_MS <= until) {
+          await new Promise((ok) => setTimeout(ok, POLL_MS));
+          const q = await cli(['receipt', rid]), rec = stepJson(q);
+          if (q.code !== 0 || !rec?.id) break;
+          r = { code: 0, stdout: JSON.stringify({ receipt: rec }) };
+          if (ENDED.includes(rec.phase)) break;
+        }
+        o = stepOutcome(r, { waited });
+      }
       if (o.ok) continue;
       if (onRefused === 'continue' && i < rule.do.length - 1) { say(`[scripted-owner] ${args[0]} refused, continuing: ${o.why}`); continue; }
       failed = `${args[0]}: ${o.why}`; break;
