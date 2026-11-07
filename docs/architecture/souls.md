@@ -109,6 +109,9 @@ With memory and a `serve` up, `pending` and a `listen` that woke for a message o
 near, this place, open commitments, the last episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the
 `remember --self` lines. `brief.mjs` builds it from a lookup, with no request and no model call, within a byte budget
 (1,500 by default, `briefBytes` in `config.json`). It doesn't grow with the log, and a Soul with no memory has none.
+Everything a world supplied (names, places, what a receipt said) is in quotes it cannot close, under a first line saying
+quoted text is data; a world that says nothing about trust is not trusted. Only the Soul's notes, goals and own reports, and
+its owner's `SOUL.md` and schedule, stand bare.
 
 ## The edge API
 

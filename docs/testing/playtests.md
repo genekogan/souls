@@ -11,10 +11,13 @@ chat session are in [swarm director](swarm-director.md).
 
 ## Reunion
 
-`tools/playtest/runs/specs/reunion.json` measures what a Soul carries across a restart: two Souls meet and plan where to
-be tomorrow; a card with `restart` then restarts each resident client and opens a new chat, past world midnight; they
-carry on. `tools/playtest/runs/questions/reunion-recall.mjs` scores recall (greets by name, keeps the promise), beside
-M2, M6 and M7. Its seats are live: it needs the coordinator's go-ahead and the model budget.
+`tools/playtest/runs/specs/reunion.json` measures what a Soul carries across a restart: two Souls meet, agree where to be
+tomorrow and part; a card with `restart` then restarts each resident client and opens a new chat, past world midnight; they
+carry on. The world clock starts at 16:00 at 60 to 1, so the first card ends before midnight and the second starts after it,
+however long onboarding took. `tools/playtest/runs/questions/reunion-recall.mjs` scores recall beside M2, M6 and M7: both
+Souls ended at the place they each named after "Tomorrow at" on the first day, using the other's name. `here` shows a near
+Soul's name to anyone, so a name alone passes nothing. Its seats are live: it needs the coordinator's go-ahead and the model
+budget.
 
 ## Commands
 

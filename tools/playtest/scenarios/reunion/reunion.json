@@ -11,8 +11,8 @@
   ],
   "god": null,
   "director": { "mode": "scripted", "sequential": false, "script": [
-    { "seat": "*", "atSec": 5, "restart": true, "channel": "card", "text": "Find the other Soul in this world, get to know them, and agree together on one place you will both be tomorrow morning. Then say goodbye.", "budgetSec": 240 },
-    { "seat": "*", "atSec": 300, "after": "result", "restart": true, "channel": "card", "text": "It's a new day. Carry on with what you had planned.", "budgetSec": 300 }
+    { "seat": "*", "atSec": 5, "restart": true, "channel": "card", "text": "Find the other Soul in this world, get to know them, and agree together on one place you will both be tomorrow morning. When you agree, each of you say it aloud in these words: Tomorrow at <place>. Then say goodbye and go somewhere else for the evening.", "budgetSec": 240 },
+    { "seat": "*", "atSec": 500, "after": "result", "restart": true, "channel": "card", "text": "It's a new day. Carry on with what you had planned.", "budgetSec": 300 }
   ] },
   "observer": { "sampleSec": 5, "viewport": [1280, 800], "dpr": 1, "cameras": [] },
   "review": { "mode": "deterministic", "developer": false },

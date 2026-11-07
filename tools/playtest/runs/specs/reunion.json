@@ -2,7 +2,7 @@
   "soulRun": 1,
   "name": "reunion",
   "scenario": "../../scenarios/reunion/reunion.json",
-  "world": { "port": 4351, "timeOfDay": "21:30", "timeScale": 60 },
+  "world": { "port": 4351, "timeOfDay": "16:00", "timeScale": 60 },
   "observer": { "check": true, "required": false, "mode": "passive", "timeoutMs": 60000 },
   "limits": { "maxWallSec": 1200, "maxControllers": 2, "cleanupWaitMs": 15000 },
   "controllers": { "allowLiveModels": true },

@@ -57,7 +57,14 @@ export class Seat {
   save() { writeJson(join(this.dir, 'seat.json'), this.info); }
   /** A new start for this Soul's owner: its resident client restarts and the next turn opens a new chat. */
   async restart() {
-    for (const step of [['serve', '--stop'], ['serve']]) await run('node', [this.cli.file, ...step], { cwd: this.folder, maxWallMs: 20000 });
+    const cli = async (...args) => {
+      const r = await run('node', [this.cli.file, ...args], { cwd: this.folder, maxWallMs: 20000 });
+      if (r.code !== 0) throw new Error(`seat ${this.id}: ${args.join(' ')} exited ${r.code}: ${r.stderr.slice(0, 300)}`);
+      return JSON.parse(r.stdout);
+    };
+    await cli('serve', '--stop');
+    for (let i = 0; i < 100 && (await cli('serve', '--status')).serving; i++) await sleep(100);   // a stopping serve still answers
+    if (!(await cli('serve')).serving) throw new Error(`seat ${this.id}: serve did not come back`);
     this.info.sessionId = null; this.save();
   }
   get sessionId() { return this.info.sessionId; }
