@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { hashToken, RateLimit } from '../auth.ts';
 import { ApiError } from '../souls.ts';
-import { CREATION_LIMITS } from '@sim/generators';
+import { CREATION_LIMITS } from '@souls/generators';
 import { isIdentity, poolOf } from './builds.ts';
 
 /** Reuse the server's sliding window; authenticate before allocating any token bucket.

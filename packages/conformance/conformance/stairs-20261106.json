@@ -1,0 +1,5 @@
+{
+ "schema": "catalog-conformance-supplement/1",
+ "note": "2026-11-06 PC16 (#695) stairs up to a rack deck. core-rack-beam@5 (5559ec1c3c22…) is core-rack-beam@4 whose ten ledge joist-seat connectors also mate a stair-hook. core-deck-stair@1 (217da831a661…) is new (named apart from the parametric core-stair-flight, which keeps its bytes): a loose 5-tread flight of two 2x12 stringers and a header (1.03 m rise over 1.35 m, 0.91 m wide) with a bearing stair-hook on its header and five tread-seat connectors. core-deck-stair-tread@1 (88896760424b…) is new: a loose 2x10 tread with one bearing tread-bearing connector. No existing def's bytes changed: work.json only appends them. Narrow production K=2 runs (`conformance.mjs --k 2 --filter core-deck-stair`, 2 defs and 10 samples; `--filter core-rack-beam`, 5 revisions and 25 samples) placed, baked and rendered every sample with 0 findings and 0 qualification gaps, so this supplement pins no finding. catalogue-checks: 869 items, every G2 failure held, 0 G3. No budgets, samples or gap checks were relaxed. Stair behaviour and live-client evidence are separate, in the PR.",
+ "findings": []
+}

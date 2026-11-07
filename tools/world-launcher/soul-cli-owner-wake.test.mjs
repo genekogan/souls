@@ -54,7 +54,7 @@ test('act --wait woken by a long owner card prints the open receipt (CLI end to 
   await new Promise(r => server.listen(0, '127.0.0.1', r)); t.after(() => server.close());
   const dir = mkdtempSync(join(tmpdir(), 'eden-cli-owner-wake-'));
   writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({world: `http://127.0.0.1:${server.address().port}`, token: 'tok'}));
-  const {out, err} = await new Promise((res, rej) => execFile(process.execPath, [CLI, 'act', 'walk to the pond hall', '--wait', '60'], {cwd: dir}, (e, out, err) => e ? rej(new Error(err || e.message)) : res({out: JSON.parse(out), err})));
+  const {out, err} = await new Promise((res, rej) => execFile(process.execPath, [CLI, 'act', 'walk:lab-pond-hall', '--wait', '60'], {cwd: dir}, (e, out, err) => e ? rej(new Error(err || e.message)) : res({out: JSON.parse(out), err})));
   assert.equal(out.receipt.id, open.id); assert.equal(out.receipt.phase, 'started'); assert.equal(out.done, false);
   assert.equal(out.ownerMessages[0].id, long.id); assert.equal(out.ownerMessages[0].textShortened, true);
   assert.ok(err.includes(long.text), 'stderr keeps the owner message in full');

@@ -2,7 +2,7 @@
 // unchanged; these capture actual registered geometry before native execution.
 import { nativeShoreTake } from './shore-fixture.ts';
 import { nativeBoatTake } from './boat-fixture.ts';
-import { parseRenderSceneCapture,hashOf } from '@sim/engine-contract';
+import { parseRenderSceneCapture,hashOf } from '@souls/engine-contract';
 export async function nativeShoreCaptureFixture(){
   const shore=await nativeShoreTake(true),boat=await nativeBoatTake(true);
   const journeys=[{worldId:'native-shore-capture-1',kind:'shore' as const,recording:shore},

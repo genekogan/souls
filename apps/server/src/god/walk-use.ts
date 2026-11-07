@@ -4,7 +4,7 @@
 // there has nowhere to stand; navTargetsV1 skips such slots, so the walk audit never saw them) or an approach not walkable
 // both ways from the main ground (connectivityV1, as the walk audit's seat:/berth: destinations).
 import { fixtureSlots, seatApproach } from '../../../../mars/viewer/engine/social/slots.ts';
-import { spatialFixtureIdsV1 } from '@sim/engine-mars';
+import { spatialFixtureIdsV1 } from '@souls/engine-mars';
 
 /** BS1's useCheckV1 row (t4-bs1.md "API"). */
 export type UseVerdict = { id: string; of: string; kind: 'seat' | 'berth'; level: number; ok: boolean; code?: string; message?: string; at?: [number, number] };

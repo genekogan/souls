@@ -1,4 +1,4 @@
-import type {TalkLine} from '@sim/protocol';
+import type {TalkLine} from '@souls/protocol';
 import {EDEN_VIEWER_PLACES} from './WorldEdenPlaceData.ts';
 import {conversationColour} from './WorldSpectatorSpeech.ts';
 /** DLG2 dialogue threads: the spectator's edge feed (doc 26 §10: spectators see every channel) folded into

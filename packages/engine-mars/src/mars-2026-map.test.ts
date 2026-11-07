@@ -7,7 +7,7 @@ import { marsFactory, type MarsWorldConfig } from './engine.ts';
 import { MARS_2026_MAP, MARS_2026_BOUNDS, CAMPUS_OBSTACLE_PREFIX } from './mars-2026-map.ts';
 import { CAMP_ARRIVALS } from '../../../mars/viewer/engine/scenarios/eden-camp.ts';
 import { LOOKOUT_PARTS } from './disassembly.ts';
-import type { Engine, EngineFactory } from '@sim/engine-contract';
+import type { Engine, EngineFactory } from '@souls/engine-contract';
 import type { WorldState } from '../../../mars/viewer/engine/world/types.ts';
 
 const camp: MarsWorldConfig = { scene: 'eden-camp', arrival: CAMP_ARRIVALS[0].p, arrivalPlace: 'arrival', reference: CAMP_ARRIVALS[1].p, grounds: { id: 'grounds', name: 'Mars camp' }, disassemblyV1: true };

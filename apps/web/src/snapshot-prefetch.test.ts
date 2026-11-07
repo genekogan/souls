@@ -100,9 +100,9 @@ test('GodPanel flags: flagRefsOf over the layer\'s entities = the old snapshot d
   assert.equal(layer.entitiesAt(0), null, 'no picture yet: GodPanel waits, then falls back to the snapshot');
 });
 
-// Lane W1: the socket at page entry, adopted by useSim's Connection.
+// Lane W1: the socket at page entry, adopted by useSouls's Connection.
 import { CONFIG_GLOBAL, OPEN_SOCKET_GLOBAL, SOCKET_GLOBAL, takeBootSocket, takeConfigPrefetch, entrySnapshotUrl, entryWireUrl } from './snapshot-prefetch.ts';
-import { anonymousHello, Connection } from '@sim/client';
+import { anonymousHello, Connection } from '@souls/client';
 
 class FakeWS { static made: FakeWS[] = []; readyState = 0; sent: string[] = []; closed = false; onopen: any; onmessage: any; onclose: any; onerror: any; url: string;
   constructor(url: string) { this.url = url; FakeWS.made.push(this); }

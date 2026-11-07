@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // M2 (lane mars, 2026-10-16): the Chiba field's black fire bowl and gray beanbag (sim.mars.college 2026 reference,
-// mars/viewer/app/history/details-2026-ground-life.ts, c49195) are already drawn in Sim — baked into the Chiba mesh — but
+// mars/viewer/app/history/details-2026-ground-life.ts, c49195) are already drawn in Souls — baked into the Chiba mesh — but
 // are scenery: the fire never burns and nobody can sit in the beanbag. Two small world-local defs make them usable,
 // placed as Chiba children inside the baked shapes. Writes worlds/patches/mars-field-20261016/defs.json (deterministic).
 //  - mars-fire-bowl-fire: ash bed and flames for the inside of the baked bowl (ash .63 m up); flames (kit role `flame`)

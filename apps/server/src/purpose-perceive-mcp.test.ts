@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import {privatePurposeContextV1Schema} from '@sim/protocol';
+import {privatePurposeContextV1Schema} from '@souls/protocol';
 import {purposePerceiveFixture} from '../test/purpose-perceive-fixture.ts';
 import {handleMcp} from './mcp.ts';
 test('actual SDK soul_perceive matches bounded REST/mind context and refuses a rotated generation without private payload',async t=>{

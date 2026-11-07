@@ -8,7 +8,7 @@
 //   {version:'upper-floors/1', remove:'<building id>'}                                                  remove
 import type { UpperFloorsBuildingV1, UpperFloorsV1 } from '../../../mars/viewer/engine/spatial/edits.ts';
 import type { WorldState } from '../../../mars/viewer/engine/world/types.ts';
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 
 export type { UpperFloorsBuildingV1, UpperFloorsV1 };
 export type UpperFloorsFactV1 = { version: 'upper-floors/1'; building: UpperFloorsBuildingV1 } | { version: 'upper-floors/1'; remove: string };

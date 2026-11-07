@@ -2,9 +2,9 @@
 // the vocabulary lacks one. The grammar text below is the single description of
 // how to write a card; it is the compiler's system prompt and is also served to
 // owners' agents (as /cards.md) so they can propose cards themselves.
-import type { KState, MintedCard } from '@sim/kernel';
+import type { KState, MintedCard } from '@souls/kernel';
 import type { ToolDef } from './llm.ts';
-import type {Alignment} from '@sim/protocol';
+import type {Alignment} from '@souls/protocol';
 
 export type VerbDoc = { verb: string; description: string; inputSchema: Record<string, unknown>; scope?: 'world' };
 

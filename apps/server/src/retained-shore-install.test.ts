@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {retainedCommonsShoreFactory} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {scheduleRetainedCommonsShoreInstallation} from './retained-shore-install.ts';
 import {setImmediate} from 'node:timers/promises';
