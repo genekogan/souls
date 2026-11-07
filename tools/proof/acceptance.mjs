@@ -114,20 +114,25 @@ export const isVideo = u => VIDEO.test(u) && !IMAGE.test(u);
 export const isImage = u => IMAGE.test(u);
 const isProofJson = u => /proof[^/]*\.json(\?|#|$)/i.test(u);
 
+/** Earlier names of a repository (#1183): GitHub redirects them, and open PRs and their proof still carry them. Keyed by
+ *  the current name, so every other repository's check stays exact. */
+export const PREVIOUS_REPOS = { 'soulsimulation/souls': ['genekogan/souls'] };
+
 /**
  * Where a proof.json or clip link may live (#765): this repository's proofs releases (`releases/download/proofs/` or
  * `proofs-<n>/`), GitHub user attachments, and the proof CDN (SIM_PROOF_PUBLIC_URL) when one is configured. A canonical
  * https URL only: no userinfo, port, query or fragment. `repo` null (a local check with no repository known) accepts
- * any repository's proofs releases; proof-check always passes its repository. Returns null when allowed, else why not.
+ * any repository's proofs releases; proof-check always passes its repository, and its PREVIOUS_REPOS names count as
+ * this repository. Returns null when allowed, else why not.
  */
 export function proofHostProblem(value, { repo = null, cdn = process.env.SIM_PROOF_PUBLIC_URL || null } = {}) {
   let u;
   try { u = new URL(value); } catch { return 'not a URL'; }
   if (u.protocol !== 'https:') return 'not https';
   if (u.username || u.password || u.port || u.search || u.hash) return 'userinfo, a port, a query or a fragment is not allowed';
-  const repoRe = repo ? repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '[\\w.-]+/[\\w.-]+';
+  const repoRe = repo ? [repo, ...(PREVIOUS_REPOS[repo] ?? [])].map(r => r.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') : '[\\w.-]+/[\\w.-]+';
   if (u.origin === 'https://github.com') {
-    if (new RegExp(`^/${repoRe}/releases/download/proofs(?:-\\d+)?/[A-Za-z0-9._-]+$`).test(u.pathname)) return null;
+    if (new RegExp(`^/(?:${repoRe})/releases/download/proofs(?:-\\d+)?/[A-Za-z0-9._-]+$`).test(u.pathname)) return null;
     if (/^\/user-attachments\/(?:assets|files)\/[A-Za-z0-9-]+(?:\/[A-Za-z0-9._-]+)?$/.test(u.pathname)) return null;
     return `not this repository's proofs release${repo ? ` (${repo})` : ''} or a GitHub attachment`;
   }

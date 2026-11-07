@@ -6,7 +6,6 @@ import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
 import { coreLibrary, coreRef } from '@souls/world-compiler';
-import { seatFitProblem } from '../../../../mars/viewer/engine/bodies/humanoid.ts';
 import { fixture, invite, accept, factory } from '../../test/native-owner-fixture.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { GodMode } from './god.ts';
@@ -73,7 +72,8 @@ test('use-check: a seat or bed is usable exactly when a body can sit or lie on i
   assert.match(by('ringed')[0].line!, /in the way: rim-[nsew]\.$/);
   // all fixtures by default (the walls have no slots), and the seat-top read: the bench's 0.465 m seat fits the standard body
   assert.equal(useCheck(w.E).length, all.length);
-  assert.deepEqual(w.E.useCheckV1({ of: [id('free-bench')], seatTop: () => 1.3 }).map((v: any) => v.code), ['use.seat-fit', 'use.seat-fit'], 'a 1.3 m seat top is too high for the standard body (it sits on 0.2–1.2 m)');
+  assert.deepEqual(w.E.useCheckV1({ of: [id('free-bench')], seatTop: () => 1.3 }).map((v: any) => v.ok), [true, true], '#1083: a 1.3 m seat top is no finding (any declared seat is sat on)');
+  assert.deepEqual(w.E.useCheckV1({ of: [id('free-bench')], seatTop: () => 2.3 }).map((v: any) => v.code), ['use.seat-out-of-reach', 'use.seat-out-of-reach'], 'above the 2.06 m standing reach: out of reach');
   // what a body actually does: sits on the free bench and lies on the free bed, never gets onto the others
   const send = async (cap: string) => { const out = await accept(w.host, w.edge.act(w.soul, { capability: cap, params: { seconds: 2 } })) as any; return out; };
   const done = async (r: any) => { if (r.accepted) await w.until(() => ['completed', 'failed', 'cancelled'].includes(w.edge.receipt(w.soul.soulId, r.receipt.id)?.phase ?? '')); };
@@ -96,7 +96,7 @@ test('use-check: a seat or bed is usable exactly when a body can sit or lie on i
 // The edge sit capability reads the same baked seat tops (seatTopsOf): engine seat slots carry no height, so it used to read
 // none and offered every seat to every body, which then failed at the seat. A 1.16 m stool top suits the standard 1.75 m
 // body (seats up to 1.2 m) but not the shortest look (1.65 m: up to 1.13 m), and the use-check reads the same top.
-test('use-check: the sit capability is blocked on a seat too high for the body, from the baked seat top', { timeout: 120_000 }, async (t) => {
+test('use-check: a seat higher than the body\'s comfortable range is offered and sat on (#1083)', { timeout: 120_000 }, async (t) => {
   const w = await setup(t);
   const me = w.host.engine.world.entities[w.soul.entityId] as any, at: [number, number] = [me.pose.p[0] + 4, me.pose.p[2]];
   const stool = { schema: 'def/1', name: 'tall-stool', version: 1, tags: ['furniture', 'seat'], form: 'point', size: { box: [0.5, 1.16, 0.5] },
@@ -109,10 +109,13 @@ test('use-check: the sit capability is blocked on a seat too high for the body, 
   assert.equal(cap()?.available, true, `the standard body may sit on a 1.16 m seat: ${JSON.stringify(cap())}`);
   me.body = { family: 'humanoid', model: 'short', params: { height: 1.65 } };
   await w.settle(1);   // capabilities are cached per tick
+  // #1083: the shortest look sits on it too, whatever its height
   const c = cap();
-  assert.equal(c?.available, false, JSON.stringify(c));
-  assert.equal(c?.blocked?.code, 'seat.too-high');
-  assert.match(c.blocked.reason, /the seat is 1\.16 m high; a 1\.65 m body sits on seats up to 1\.13 m/);
+  assert.equal(c?.available, true, JSON.stringify(c));
+  const r = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${id}`, params: { seconds: 2 } })) as any;
+  assert.equal(r.accepted, true, JSON.stringify(r));
+  assert.ok(await w.until(() => w.human().activity === 'sit'), 'the 1.65 m body sits on the 1.16 m stool');
+  assert.deepEqual(w.E.rt?.violations ?? [], []);
 });
 
 // SEATDEF (2026-10-22): 32 of the library's 180 seat slots stored a seat height no body sits at (the Mars bus seats' and
@@ -120,13 +123,13 @@ test('use-check: the sit capability is blocked on a seat too high for the body, 
 // tiers, mattresses). The library revisions now carry the measured heights, SEAT_HEIGHTS carries them to the revisions
 // worlds already placed, and no core seat is too high for the shortest look.
 const SHORT = { family: 'humanoid', model: 'short', params: { height: 1.65 } } as const;
-test('use-check: every core seat suits the shortest look, and SEAT_HEIGHTS is what the library revisions store', () => {
+test('use-check: every core seat has a real height, and SEAT_HEIGHTS is what the library revisions store', () => {
   const lib = coreLibrary(), high: string[] = [];
   for (const d of lib.all()) {
     if (!lib.get(d.ref) || lib.get(d.ref)!.hash !== d.hash) continue;   // current revisions only
     for (const s of d.slots.filter((x) => x.kind === 'seat')) {
       const h = SEAT_HEIGHTS[d.name] ?? s.height ?? s.p[1];
-      if (seatFitProblem(SHORT as any, h)?.code === 'seat.too-high') high.push(`${d.ref} ${s.id} ${h}`);
+      if (!(h >= 0)) high.push(`${d.ref} ${s.id} ${h}`);   // #1083: every core seat has a real height (none is refused by it)
       if (SEAT_HEIGHTS[d.name] !== undefined) assert.equal(s.height, SEAT_HEIGHTS[d.name], `${d.ref} ${s.id} stores the measured height`);
     }
   }
@@ -167,9 +170,50 @@ test('use-check: seats Souls sit on today stay sittable for every look, retired 
     const c = w.edge.capabilities(w.soul).find((x: any) => x.id === `sit:${id(n)}`) as any;
     assert.equal(c?.available, true, `${n}: ${JSON.stringify(c)}`);
   }
-  const fit = useCheck(w.E, ['old-bus-seat', 'bus-seat', 'papasan', 'bleachers'].map(id), w.god.model).filter((v) => v.code === 'use.seat-fit');
-  assert.deepEqual(fit.map((v) => v.line), [], 'no seat-fit finding on them');
+  const fit = useCheck(w.E, ['old-bus-seat', 'bus-seat', 'papasan', 'bleachers'].map(id), w.god.model).filter((v) => !v.ok);
+  assert.deepEqual(fit.map((v) => v.line), [], 'no finding on them');
   const r = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${id('old-bus-seat')}`, params: { seconds: 2 } })) as any;
   assert.equal(r.accepted, true, JSON.stringify(r));
   assert.ok(await w.until(() => w.human().activity === 'sit'), 'the shortest look sits on the retired bus seat');
+});
+
+// #1083: seated on one god-built seat, a sit on another stands first (the bare walk from inside the first seat's footprint
+// was refused route.start-blocked); found by the seat-height Soul Run, with a 1.6 m stool and a 0.1 m seat.
+test('use-check: from a 1.6 m god stool to a 0.1 m god seat, by their offers', { timeout: 180_000 }, async (t) => {
+  const w = await setup(t);
+  const me = w.host.engine.world.entities[w.soul.entityId] as any, [x, z] = [me.pose.p[0], me.pose.p[2]];
+  const seat = (name: string, h: number, box: number[]) => ({ schema: 'def/1', name, version: 1, tags: ['furniture', 'seat'], form: 'point', size: { box },
+    make: { kind: 'gen', gen: 'kit/2', args: { shapes: [{ kind: 'box', at: [0, h / 2, 0], size: [box[0], h, box[2]] }] } },
+    slots: [{ id: 'seat', kind: 'seat', p: [0, h, 0], yaw: 0, height: h, accepts: { tags: ['body'] }, capacity: 1 }], components: { seat: { height: h } } });
+  w.act([{ op: 'define', def: seat('tall-stool', 1.6, [0.5, 1.6, 0.5]) }, { op: 'define', def: seat('floor-seat', 0.1, [0.6, 0.1, 0.6]) },
+    { op: 'place', def: 'tall-stool@1', name: 'tall', p: [x + 4, z] }, { op: 'place', def: 'floor-seat@1', name: 'floor', p: [x - 6, z] }]);
+  await w.settle(4);
+  const sit = async (n: string) => { const r = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${w.god.model.get(n)!.id}`, params: { seconds: 2 } })) as any;
+    assert.equal(r.accepted, true, `${n}: ${JSON.stringify(r).slice(0, 300)}`);
+    assert.ok(await w.until(() => w.edge.receipt(w.soul.soulId, r.receipt.id)?.phase === 'completed'), `${n}: ${JSON.stringify(w.edge.receipt(w.soul.soulId, r.receipt.id)).slice(0, 300)}`); };
+  await sit('tall'); await sit('floor');
+  assert.deepEqual(w.E.rt?.violations ?? [], []);
+});
+
+// #1083 (steward's review): up to the standing reach a seat is sat on, at that height; above it the sit is refused with the
+// physical reason, by offer and by act
+test('use-check: a 2.05 m god stool is sat on; a 2.2 m one is out of reach', { timeout: 180_000 }, async (t) => {
+  const w = await setup(t);
+  const me = w.host.engine.world.entities[w.soul.entityId] as any, [x, z] = [me.pose.p[0], me.pose.p[2]];
+  const stool = (name: string, h: number) => ({ schema: 'def/1', name, version: 1, tags: ['furniture', 'seat'], form: 'point', size: { box: [0.5, h, 0.5] },
+    make: { kind: 'gen', gen: 'kit/2', args: { shapes: [{ kind: 'box', at: [0, h / 2, 0], size: [0.5, h, 0.5] }] } },
+    slots: [{ id: 'seat', kind: 'seat', p: [0, h, 0], yaw: 0, height: h, accepts: { tags: ['body'] }, capacity: 1 }], components: { seat: { height: h } } });
+  w.act([{ op: 'define', def: stool('reach-stool', 2.05) }, { op: 'define', def: stool('over-stool', 2.2) },
+    { op: 'place', def: 'reach-stool@1', name: 'reach', p: [x + 4, z] }, { op: 'place', def: 'over-stool@1', name: 'over', p: [x - 4, z] }]);
+  await w.settle(4);
+  const cap = (n: string) => w.edge.capabilities(w.soul).find((c: any) => c.id === `sit:${w.god.model.get(n)!.id}`) as any;
+  assert.equal(cap('reach')?.available, true, JSON.stringify(cap('reach')));
+  assert.equal(cap('over')?.blocked?.code, 'seat.out-of-reach', JSON.stringify(cap('over')));
+  assert.match(cap('over').blocked.reason, /2\.20 m high, above the 2\.06 m this body can reach/);
+  const no = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${w.god.model.get('over')!.id}`, params: { seconds: 2 } })) as any;
+  assert.equal(no.accepted, false); assert.equal(no.code, 'seat.out-of-reach');
+  const r = await accept(w.host, w.edge.act(w.soul, { capability: `sit:${w.god.model.get('reach')!.id}`, params: { seconds: 2 } })) as any;
+  assert.equal(r.accepted, true, JSON.stringify(r).slice(0, 300));
+  assert.ok(await w.until(() => w.edge.receipt(w.soul.soulId, r.receipt.id)?.phase === 'completed'), 'sat on the 2.05 m stool');
+  assert.deepEqual(w.E.rt?.violations ?? [], []);
 });
