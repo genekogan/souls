@@ -186,7 +186,7 @@ root (so `systemd-run` may drop to the bench user) and give that user write acce
 the CW2 baseline:
 
 ```bash
-gh run download <run> --repo genekogan/souls -D .local/qualify/<run>
+gh run download <run> --repo soulsimulation/souls -D .local/qualify/<run>
 node tools/bench/capacity/meetup/compare.mjs .local/qualify/<baseline>/capacity-qualify-<baseline> .local/qualify/<run>/capacity-qualify-<run> [--out <file>]
 ```
 

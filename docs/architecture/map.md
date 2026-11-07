@@ -9,7 +9,7 @@ This detailed source map was assembled before the public cutover. Line numbers, 
 and the comparisons with older docs below are historical leads, not current measurements or operational instructions.
 Verify the named source at the working commit. Use [operations](../operations.md) and [release](../release.md) for the
 current root-only topology, and [repository layout](../development/repository-layout.md) for extraction boundaries.
-The [starting-line audit #555](https://github.com/genekogan/souls/issues/555) tracks per-section revalidation; this
+The [starting-line audit #555](https://github.com/soulsimulation/souls/issues/555) tracks per-section revalidation; this
 notice does not claim the entire map has been reverified.
 
 ## 1. The component graph

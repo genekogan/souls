@@ -53,7 +53,7 @@ or proxy examples to this host. Internal `sim-*` service and data names remain u
   the world's log and one row to its store, with the bodies, the tick and the evidence: `op.mjs glitches --port <port>
   --base / [--world <slug>]` reads those, for sleeping worlds too. The health page shows the counts. A halted world is the
   `halted` problem code, so `hostOk` goes false and `host-health.log` gets its ALERT line; a recovery raises no alert
-  until real numbers set a rate threshold ([#1150](https://github.com/genekogan/souls/issues/1150)).
+  until real numbers set a rate threshold ([#1150](https://github.com/soulsimulation/souls/issues/1150)).
 - `sim-worlds-health@<stage>.timer` runs `deploy/host-health.mjs` every 10 minutes: disk, memory, the unit's working
   set against its `MemoryMax`, OOM kills and the last backup. It writes `<data>/host-health.json` and appends an
   ALERT/RECOVERED line to `<data>/host-health.log`; the launcher folds the result into healthz. An external monitor
@@ -67,7 +67,7 @@ audit log, uploaded assets, old-world fork inputs and the stage's non-secret hos
 restic snapshot. Retention keeps 7 daily, 4 weekly and 6 monthly snapshots (`SIM_BACKUP_KEEP`). An off-host copy to an
 S3-compatible bucket runs when `SIM_BACKUP_OFFSITE` is set. Every release also takes its own compact pre-release copy.
 Commands are in the [runbook](operations/runbook.md#backups). Local backup verification does not prove offsite
-recovery; [offsite setup #557](https://github.com/genekogan/souls/issues/557) is explicitly deferred and must be
+recovery; [offsite setup #557](https://github.com/soulsimulation/souls/issues/557) is explicitly deferred and must be
 qualified separately.
 
 ## Logs

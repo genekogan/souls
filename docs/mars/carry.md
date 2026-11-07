@@ -90,7 +90,7 @@ Code: `engine/carry/`; tests: `engine/test/carry.test.ts`, `carry-stairs.test.ts
 
 ## Action contract (`carry`)
 - Params: `{ crew: string[] (distinct), item, to: { x, z, yaw, level? }, place?: 'lay', holdCutV1?: true }`.
-- `holdCutV1` ([#686](https://github.com/genekogan/souls/issues/686)), opt-in, which only the server's shared carries pass:
+- `holdCutV1` ([#686](https://github.com/soulsimulation/souls/issues/686)), opt-in, which only the server's shared carries pass:
   - a route cut with no alternative is held at that scene epoch, and searched again only when the scene changes;
   - its `carry.route-blocked` names the obstacle at the cut and says whether the replan stopped at its pose budget;
   - the planner's failure details give that budget, and a preview returns them.

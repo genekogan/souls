@@ -1,5 +1,5 @@
 // A deterministic, bounded projection. Raw GitHub bodies and comments never enter the served snapshot.
-export const REPO = 'genekogan/souls';
+export const REPO = 'soulsimulation/souls';
 export const DEFAULT_ISSUES = [26, 415, 556, 560, 577, 583];
 export const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // Open issues carrying these labels join the initial cards, in this order: decisions waiting on the maintainer, then
@@ -17,7 +17,7 @@ const text = (v, max = 600) => typeof v === 'string' ? v.replace(/[\u0000-\u001f
 export const timestamp = v => typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(v).toISOString() : null;
 export function recordUrl(v) {
   // Only source journals on this repository. Arbitrary URLs/media, credentials and query tokens are never exported.
-  return typeof v === 'string' && /^https:\/\/github\.com\/genekogan\/souls\/(?:issues\/\d+(?:#issuecomment-\d+)?|pull\/\d+(?:#(?:issuecomment|discussion_r)-\d+)?|releases\/tag\/[a-zA-Z0-9._-]+|commit\/[a-f0-9]{7,40})$/.test(v) ? v : null;
+  return typeof v === 'string' && /^https:\/\/github\.com\/(?:soulsimulation|genekogan)\/souls\/(?:issues\/\d+(?:#issuecomment-\d+)?|pull\/\d+(?:#(?:issuecomment|discussion_r)-\d+)?|releases\/tag\/[a-zA-Z0-9._-]+|commit\/[a-f0-9]{7,40})$/.test(v) ? v : null;
 }
 export function checkpointFrom(comments = [], observedAt, trustedAuthors = ['genekogan']) {
   const found = [];
@@ -50,7 +50,7 @@ export function domainFor(issue) {
   const words = label.split(':')[1].replace(/-/g, ' ');
   return words[0].toUpperCase() + words.slice(1);
 }
-const refs = (body, n) => new RegExp(`(?:^|[^\\w])#${n}(?!\\d)|https://github\\.com/genekogan/souls/(?:issues|pull)/${n}(?!\\d)`).test(String(body ?? ''));
+const refs = (body, n) => new RegExp(`(?:^|[^\\w])#${n}(?!\\d)|https://github\\.com/soulsimulation/souls/(?:issues|pull)/${n}(?!\\d)`).test(String(body ?? ''));
 export function projectRecords({ issues, pulls = [], releases = [], observedAt }) {
   const at = timestamp(observedAt);
   if (!at || !Array.isArray(issues)) throw new Error('invalid source records');
