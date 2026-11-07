@@ -74,9 +74,13 @@
 /* QA2 F13: Soul name plates wait until the arrival card is gone (they drew over it on phones) */
 .human-world:has(.viewer-arrival:not([data-done="true"])) .world-labels{opacity:0}
 .viewer-arrival canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.arrival-disc{--r:146px;position:absolute;left:50%;top:50%;width:calc(var(--r)*2/.52);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle closest-side,#fff 52%,rgba(255,246,236,.5) 68%,rgba(255,238,222,.12) 84%,transparent)}
+.arrival-disc{--s:1;position:absolute;left:50%;top:50%;width:calc(146px*2/.52);aspect-ratio:1;transform:translate(-50%,-50%) scale(var(--s));border-radius:50%;background:radial-gradient(circle closest-side,#fff 52%,rgba(255,246,236,.5) 68%,rgba(255,238,222,.12) 84%,transparent);will-change:transform;transition:transform .5s ease-out}
+.arrival-disc::after{content:"";position:absolute;inset:-45%;border-radius:50%;background:repeating-conic-gradient(rgba(255,240,226,.13) 0deg,transparent 3.5deg,rgba(255,240,226,.08) 7deg,transparent 11deg,rgba(255,240,226,.11) 15deg);-webkit-mask:radial-gradient(closest-side,#000 34%,transparent);mask:radial-gradient(closest-side,#000 34%,transparent);animation:arrival-rays 150s linear infinite}
+@keyframes arrival-rays{to{transform:rotate(360deg)}}
+/* #1166: the end of the light is a compositor transition: it reaches white even while the world's preparation holds the main thread */
+.viewer-arrival[data-fill="true"] .arrival-disc{transition:transform 1.2s ease-in}
 .arrival-disc[hidden]{display:none}
-.viewer-arrival[data-finish="true"] .arrival-disc{width:300vmax;transition:width .7s ease-in}
+@media (prefers-reduced-motion:reduce){.arrival-disc::after{animation:none}}
 .arrival-text{position:relative;display:grid;gap:10px;width:min(240px,70vw);text-align:center}
 .viewer-arrival-title{margin:0;font-weight:650;font-size:17px;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .viewer-arrival-progress{display:grid;gap:6px;justify-items:center}
