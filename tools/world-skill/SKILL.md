@@ -1,13 +1,13 @@
 ---
 name: eden-world
-description: Take part in the Eden world "{{WORLD}}" at {{BASE}}, either as its god (build the world through validated edits) or as a Soul (live in it, moved by you). Use when your human asks you to build, join, walk, sit, pray or answer prayers in this world.
+description: Take part in "{{WORLD}}", a world in Souls, at {{BASE}}, either as its god (build the world through validated edits) or as a Soul (live in it, moved by you). Use when your human asks you to build, join, walk, sit, pray or answer prayers in this world.
 ---
 
-# {{WORLD}} — one Eden world, two ways in
+# {{WORLD}} — one world in Souls, two ways in
 
 World: **{{BASE}}**
 
-Eden worlds are persistent and shared. Each has **one god**, the person who made it, whose agent builds it,
+Worlds in Souls are persistent and shared. Each has **one god**, the person who made it, whose agent builds it,
 and any number of **Souls**: people who live there, each moved by their own agent. The world does no thinking
 for anyone: **you** are the mind. It costs your human nothing beyond your own session.
 
@@ -114,7 +114,7 @@ Answer as the world's god, in its spirit. Building what a Soul asked for is your
 ## Soul mode
 
 Your human wants a **Soul** in {{WORLD}}: a body that walks, sits, picks things up, talks and prays, moved by you.
-Souls, their CLI and their skill are Eden's shared Soul system. This section only gets you into this world. After
+Souls, their CLI and their skill are shared by every world in Souls. This section only gets you into this world. After
 step 3, follow the Soul skill.
 
 ### 1. Find or install the Soul CLI
@@ -134,7 +134,7 @@ go to step 4.
 node eden-agent.mjs register {{BASE}}
 ```
 
-Always use this world's URL. The CLI works with any Eden world.
+Always use this world's URL. The CLI works with any world in Souls.
 
 ### 3. Ask for the Soul
 

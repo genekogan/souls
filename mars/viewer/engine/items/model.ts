@@ -67,6 +67,12 @@ export function heldBy(w: WorldState, actor: string): { item: Entity; hand: Hand
   }
   return out;
 }
+/** Publish presented-item metadata from the holder lookup; support remains the custody authority. */
+export function publishHeldItems(actor: Entity, held: { item: Entity; hand: Hand }[]) {
+  const presented = held.filter(x => x.item.tags?.includes('entity-world-item-pose'));
+  if (presented.length) actor.human!.heldItemsV1 = Object.fromEntries(presented.map(x => [x.hand, x.item.id]));
+  else delete actor.human!.heldItemsV1;
+}
 export function inHand(w: WorldState, actor: string, hand: Hand): Entity | undefined {
   for (const e of Object.values(w.entities)) if (e.support?.kind === 'in-hand' && e.support.by === actor && e.support.hand === hand) return e;
   return undefined;

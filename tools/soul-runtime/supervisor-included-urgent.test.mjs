@@ -30,7 +30,7 @@ class Host extends EventEmitter{
 }
 function fixture(t,{startRun=true,budget=activeDecisionMs,wakeOffset=null}={}){
  t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:origin});
- const directory=mkdtempSync(join(tmpdir(),'sim-included-urgent-')),journal=openJournal(directory,{worldId:'world',soulId:'s_me'}),host=new Host(),stop=new AbortController(),commands=[],states=[];
+ const directory=mkdtempSync(join(tmpdir(),'souls-included-urgent-')),journal=openJournal(directory,{worldId:'world',soulId:'s_me'}),host=new Host(),stop=new AbortController(),commands=[],states=[];
  const fence=journal.control.claim('seed');journal.control.save(fence,0,{threadId:host.threadId,initialInstruction:'Finish the original owner errand',plan:'Retain original errand and appointment',wakeAt:wakeOffset===null?null:new Date(origin+wakeOffset).toISOString(),listenTo:[]});journal.control.release(fence);
  const world={read:async command=>{commands.push(['read',command]);return {here:'native current place'};},write:async command=>{commands.push(['write',command]);return {accepted:true};}};
  for(const method of ['worldPage','ownerPage'])world[method]=async({after,signal})=>{await abortableSleep(1000000000,signal);return {cursor:after,events:[]};};

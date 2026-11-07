@@ -79,7 +79,7 @@ let chromium = null;
 try { chromium = createRequire(resolve(root, 'mars/viewer/package.json'))('@playwright/test').chromium; } catch { log('  (no @playwright/test: viewer steps skipped)'); }
 async function snap(page, name) { const file = resolve(out, `${name}.png`); await page.screenshot({ path: file }); report.shots.push(file); log(`  📷 ${name}.png`); }
 async function waitFor(page, fn, ms = 30000, every = 500) { const t0 = Date.now(); let last; while (Date.now() - t0 < ms) { last = await fn(); if (last?.ok) return last; await page.waitForTimeout(every); } return last; }
-const look = (page, eye, at) => page.evaluate(([e, a]) => { const s = window.__simEntity; if (!s) return false; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.controls.update?.(); return true; }, [eye, at]);
+const look = (page, eye, at) => page.evaluate(([e, a]) => { const s = window.__soulsEntity; if (!s) return false; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.controls.update?.(); return true; }, [eye, at]);
 
 try {
   await boot(); log(`▶ world "${slug}" on :${port}`);
@@ -138,7 +138,7 @@ try {
       await page.goto(`${base}?dev=1`, { waitUntil: 'domcontentloaded' });
       const d = `dpr${dpr}`;
       await step(`V1[${d}] Ana by the far hut on the new land (real Chrome)`, async () => {
-        await waitFor(page, async () => ({ ok: await page.evaluate(() => !!window.__simEntity?.layer?.active) }), 60000);
+        await waitFor(page, async () => ({ ok: await page.evaluate(() => !!window.__soulsEntity?.layer?.active) }), 60000);
         await setCameraMode(page, 'manual'); await page.waitForTimeout(500);
         await page.locator('button[aria-label="collapse"]').first().click().catch(() => {});
         const p = (await hereOf())?.me?.pos ?? [942, 12];

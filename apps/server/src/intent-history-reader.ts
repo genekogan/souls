@@ -2,11 +2,11 @@
 // physical outcome inference. Cursor rows are bounded read bookkeeping.
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import { INTENT_V2,INTENT_HISTORY_V1,INTENT_HISTORY_PAGE_LIMIT,INTENT_HISTORY_SCAN_LIMIT,INTENT_HISTORY_CURSOR_TTL_MS,
   intentHistoryQueryV1Schema,intentHistoryPageV1Schema,intentHistoryCapabilityV1Schema,
   intentHistoryFactV2,intentAdmissionFactV2,intentControllerFactV2,
-  type IntentHistoryEventV2,type IntentHistoryPageV1,type LogEvent } from '@sim/protocol';
+  type IntentHistoryEventV2,type IntentHistoryPageV1,type LogEvent } from '@souls/protocol';
 import type { IntentControlV2 } from './intent-control.ts';
 import type { IntentRequestScope } from './intent-requests.ts';
 

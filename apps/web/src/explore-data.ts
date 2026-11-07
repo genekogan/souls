@@ -1,4 +1,4 @@
-import type {PublicSoul} from '@sim/protocol';
+import type {PublicSoul} from '@souls/protocol';
 import {newest,readBody,readNow,type Body,type Now} from './soul-state.ts';
 /** `travelled`: gone to another world (the fade roster's `away`); Explore leaves it out, it is not in this world now. */
 export type ExplorePresence='active'|'fading'|'departed'|'travelled'|'unknown';

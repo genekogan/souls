@@ -4,7 +4,7 @@ import { setImmediate } from 'node:timers/promises';
 import { mkdtempSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { INTENT_V2,intentHistoryPageV1Schema,publicEvent } from '@sim/protocol';
+import { INTENT_V2,intentHistoryPageV1Schema,publicEvent } from '@souls/protocol';
 import { intentNativeFixture } from '../test/intent-native-fixture.ts';
 import { hashToken } from './auth.ts';
 type F=ReturnType<typeof intentNativeFixture>;

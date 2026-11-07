@@ -1,6 +1,6 @@
 // Paired actual native public input for World; hypothetical low-level bodies,
 // with an explicit fixture pilot capability rather than ownerless product Souls.
-import {hashOf,captureRenderScene} from '@sim/engine-contract';
+import {hashOf,captureRenderScene} from '@souls/engine-contract';
 import {connectedCommonsBoatFixture} from './connected-boat.ts';
 import {TakeRecorder} from '../../../mars/viewer/engine/take/recorder.ts';
 export async function nativeConnectedBoatTake(){

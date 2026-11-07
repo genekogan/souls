@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { type DefInput, type Result } from '@sim/world-compiler';
+import { type DefInput, type Result } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { GodMode, type WorldDiffMessage } from './god.ts';
 import { mountGodRoutes } from './routes.ts';

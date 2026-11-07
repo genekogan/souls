@@ -3,10 +3,10 @@
 `mars/` is a vendored, hard-forked world engine: a deterministic world and activity runtime in pure TypeScript
 (`mars/viewer/engine/`), a three.js viewer and Lab (`mars/viewer/app/`), and a Cloudflare Worker host
 (`mars/viewer/simulation/`). It was built to model the Mars College desert campus and its buildings
-([campus](campus.md)); in Sim it runs behind the engine contract through `packages/engine-mars` (`ENGINE=mars`). See
+([campus](campus.md)); in Souls it runs behind the engine contract through `packages/engine-mars` (`ENGINE=mars`). See
 [the engine contract](../architecture/engine-contract.md) for the mapping.
 
-The long-term plan is to deprecate `mars/` and generalize its useful parts into Sim. These docs describe the
+The long-term plan is to deprecate `mars/` and generalize its useful parts into Souls. These docs describe the
 engine as it is, briefly; read the code for detail.
 
 ## Engine overview
@@ -32,7 +32,7 @@ engine as it is, briefly; read the code for detail.
   diff. A take records quantized pose tracks and change events; renderers and cameras consume takes, never a live
   runtime.
 - **Execution model of the original host.** "Submit a plan → simulate faster than real time in one request → store
-  a take → viewers poll." Sim's shell supplies the 24/7 loop, event log, accounts and agents around it.
+  a take → viewers poll." Souls' shell supplies the 24/7 loop, event log, accounts and agents around it.
 
 ## Module map (`mars/viewer/engine/`)
 
@@ -74,4 +74,4 @@ engine as it is, briefly; read the code for detail.
 Other references: `mars/viewer/public/simulation-agent-guide.md` (the guide the Worker serves to MCP agents),
 [`mars/viewer/simulation/README.md`](../../mars/viewer/simulation/README.md),
 [`mars/viewer/e2e/README.md`](../../mars/viewer/e2e/README.md),
-[`worlds/mars/camp/README.md`](../../worlds/mars/camp/README.md) (the camp Sim runs on this engine).
+[`worlds/mars/camp/README.md`](../../worlds/mars/camp/README.md) (the camp Souls runs on this engine).

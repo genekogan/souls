@@ -75,7 +75,7 @@ export async function bootForWalk(o: { db?: string; genesis?: string; fuzz?: str
     worldId = head.id; seed = head.seed;
   } else { worldId = o.fuzz ? 'walk-fuzz-1' : 'walk-genesis-1'; seed = o.fuzz ? 'walk-fuzz' : 'walk-genesis'; }
   env(worldId.replace(/-\d+$/, ''), worldId, dir);
-  const { Db } = await import('../db.ts'), { WorldHost } = await import('../world.ts'), mars = await import('@sim/engine-mars');
+  const { Db } = await import('../db.ts'), { WorldHost } = await import('../world.ts'), mars = await import('@souls/engine-mars');
   const { loadGroundRecipes, GroundHost } = await import('./ground-host.ts'), { GodMode } = await import('./god.ts');
   const { EdgeLedger } = await import('../edge/ledger/ledger.ts'), { installEngineBridge } = await import('./engine-bridge.ts');
   const db = new Db(file);
