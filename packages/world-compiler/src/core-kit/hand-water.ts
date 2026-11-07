@@ -109,4 +109,22 @@ const gardenFountain: DefInput = {
   actions: switches('Turn on the fountain', 'Turn off the fountain') as DefInput['actions'],
 } as DefInput;
 
-export const HAND_WATER: DefInput[] = [gardenTap, beachShower, gardenSprinkler, gardenPlanter, gardenFountain];
+// #494 / #416: v1 above is immutable (worlds keep its geometry); v2 fits the 400-triangle kit budget with v1's state,
+// sound, actions and size, and the same valve, nozzle and water surfaces (fx/water-jets.ts reads where the jet starts and
+// where the drops land, so neither moves). The basin and bowl turn with 12 sides instead of 20-24, the basin's foot
+// bevel is dropped, the upper bowl is a stone cup under its water, and the pipe and valve post are square-edged.
+const gardenFountain2: DefInput = { ...structuredClone(gardenFountain), version: 2,
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.02, shapes: [
+    { kind: 'lathe', at: [0, 0, 0], profile: [[1.15, 0], [1.15, 0.48], [1.0, 0.52], [1.0, 0.15], [0, 0.15]], segments: 12, tint: 'stone', collide: true },
+    { kind: 'cyl', at: [0, 0.42, 0], r: 1.0, h: 0.03, segments: 12, tint: 'water', material: 'water' },
+    { kind: 'cyl', at: [0, 0.75, 0], r: 0.14, h: 0.7, segments: 8, r2: 0.1, tint: 'stone' },
+    { kind: 'cyl', at: [0, 1.085, 0], r: 0.1, r2: 0.5, h: 0.17, segments: 12, tint: 'stone' },
+    { kind: 'cyl', at: [0, 1.18, 0], r: 0.45, h: 0.02, segments: 12, tint: 'water', material: 'water' },
+    { kind: 'cyl', at: [0, 1.3, 0], r: 0.04, h: 0.2, segments: 6, tint: 'stone' },
+    { kind: 'cyl', at: [0, 1.405, 0], r: 0.022, h: 0.012, segments: 6, tint: 'nozzle' },
+    { kind: 'box', at: [1.27, 0.1, 0], size: [0.24, 0.04, 0.04], round: 0, tint: 'metal' },
+    { kind: 'box', at: [1.37, 0.585, 0], size: [0.07, 1.17, 0.07], round: 0, tint: 'metal' },
+    { kind: 'cyl', at: [1.37, 1.2, 0], r: 0.05, h: 0.025, segments: 6, tint: 'valve' }] } } as unknown as DefInput['make'],
+} as DefInput;
+
+export const HAND_WATER: DefInput[] = [gardenTap, beachShower, gardenSprinkler, gardenPlanter, gardenFountain, gardenFountain2];

@@ -24,14 +24,14 @@ test('hand-drawn curtains and blind: words, cord contact, refusal, interruption,
  await tick();await invite(f,'ana');const row=await accept(f.host,f.souls.create('dev:ana',{name:'Ana',description:'Curtains test'}));soul={soulId:row.id,entityId:row.entity_id,name:row.name,owner:row.owner};await tick();
  const here=async()=>{const r=await app.request('/v1/edge/here?include=doHere');assert.equal(r.status,200);return (await r.json()).here;};
  const absent=await here();
- const distant=Array.from({length:100},(_,i)=>({op:'place',def:i%2?'core/blind-window@1':'core/curtained-window@1',name:`distant-window-${i}`,p:[120+i%10*4,120+Math.floor(i/10)*4],state:{open:i%4<2}}));
+ const distant=Array.from({length:100},(_,i)=>({op:'place',def:i%2?'core/blind-window@1':'core/curtained-window@2',name:`distant-window-${i}`,p:[120+i%10*4,120+Math.floor(i/10)*4],state:{open:i%4<2}}));
  {const res=god.act({ops:distant});assert.equal(res.accepted,true,JSON.stringify(res).slice(0,600));}await tick(45);const far=await here();
  if(out){mkdirSync(out,{recursive:true});writeFileSync(`${out}/here-absent.json`,JSON.stringify(absent,null,1));writeFileSync(`${out}/here-far.json`,JSON.stringify(far,null,1));}
  const farIds=new Set(distant.map(d=>god.model.get(d.name).id));
  assert.deepEqual(edge.capabilities(soul).filter(c=>c.object&&farIds.has(c.object)).map(c=>c.id),[],'no distant offers');
  const body=()=>f.host.engine.world.entities[soul.entityId],[ax,az]=[body().pose.p[0],body().pose.p[2]];
  // the windows face -z (their inside, +z, toward the Soul): placed in front of her, turned round
- assert.equal(god.act({ops:[{op:'place',def:'core/curtained-window@1',name:'curtains',p:[ax+1.2,az+3],r:Math.PI},{op:'place',def:'core/blind-window@1',name:'blind',p:[ax-2.2,az+3],r:Math.PI}]}).accepted,true);await tick(45);
+ assert.equal(god.act({ops:[{op:'place',def:'core/curtained-window@2',name:'curtains',p:[ax+1.2,az+3],r:Math.PI},{op:'place',def:'core/blind-window@1',name:'blind',p:[ax-2.2,az+3],r:Math.PI}]}).accepted,true);await tick(45);
  const near=await here();if(out)writeFileSync(`${out}/here-near.json`,JSON.stringify(near,null,1));const state=n=>god.model.get(n).state,id=n=>god.model.get(n).id;
  const rows=Object.fromEntries(['curtains','blind'].map(n=>[n,near.objects.find(o=>o.id===id(n)&&o.state)?.state]));
  for(const n of ['curtains','blind'])assert.deepEqual(rows[n],{open:true},n+' shows only its open fact');

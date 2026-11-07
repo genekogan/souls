@@ -78,4 +78,32 @@ const growingPlanter: DefInput = {
   size: { box: [0.9, 0.9, 0.5] },
 } as DefInput;
 
-export const WATERING_CAN: DefInput[] = [wateringCan, canHook, growingPlanter];
+// #494 / #416: v2 above is immutable (worlds keep its geometry); v3 fits the 400-triangle budget, as estimated and as
+// drawn (a sweep is drawn as a tube of four rings per path point, which made v2 1,272 triangles on screen). The carrying
+// arch is a three-point tube through its crown, the pouring handle and the spout are straight rods through v2's path
+// points, and the drum turns with 10 sides. CAN_GRIP, CAN_ROSE and CAN_OPENING stay where they are; carrying,
+// filling, pouring, hanging and every other field are v2's.
+/** A cylinder from a to b in the can's x-y plane (z = 0). Like v2's sweeps it never collides (a tall tilted cylinder
+ *  would otherwise add a collider the can never had). */
+const rod = (a: [number, number], b: [number, number], r: number, extra: Record<string, unknown> = {}) => {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  return { kind: 'cyl', at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0], r, h: Math.hypot(dx, dy), segments: 5, tint: 'metal', roll: Math.atan2(-dx, dy), collide: false, ...extra };
+};
+const wateringCan3: DefInput = { ...structuredClone(wateringCan), version: 3,
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.006, shapes: [
+    { kind: 'lathe', at: [0.06, 0, 0], profile: [[0, 0], [0.114, 0.012], [0.109, 0.215], [0.064, 0.266], [0, 0.27]], segments: 10, tint: 'metal' },
+    { kind: 'cyl', at: [0.06, 0.012, 0], r: 0.115, h: 0.016, segments: 8, tint: 'dark' },
+    { kind: 'cyl', at: [CAN_OPENING[0], 0.266, 0], r: 0.05, h: 0.022, segments: 6, tint: 'metal' },
+    { kind: 'cyl', at: [CAN_OPENING[0], 0.276, 0], r: 0.04, h: 0.004, segments: 6, tint: 'dark' },
+    { kind: 'cyl', at: [CAN_OPENING[0], 0.2785, 0], r: 0.037, h: 0.003, segments: 6, tint: 'water', material: 'water', when: '@level>0.05' },
+    // the arched carrying handle, a smooth tube through its ends and its crown (CAN_GRIP, where the hand closes)
+    { kind: 'sweep', at: [0, 0, 0], path: [[-0.035, 0.24, 0], CAN_GRIP, [0.056, 0.266, 0]], r: 0.011, segments: 5, tint: 'metal' },
+    // the rear pouring handle
+    rod([-0.058, 0.2], [-0.118, 0.13], 0.01), rod([-0.118, 0.13], [-0.06, 0.05], 0.01),
+    // the spout from low on the front, up to the rose
+    rod([0.155, 0.05], [0.44, 0.33], 0.014, { r2: 0.012, segments: 5 }),
+    { kind: 'cone', at: [0.452, 0.341, 0], r: 0.036, h: 0.04, segments: 6, tint: 'metal', roll: Math.PI - 0.82 },
+    { kind: 'cyl', at: [CAN_ROSE[0], CAN_ROSE[1], 0], r: 0.037, h: 0.006, segments: 6, tint: 'dark', roll: -0.82 }] } } as unknown as DefInput['make'],
+} as unknown as DefInput;
+
+export const WATERING_CAN: DefInput[] = [wateringCan, canHook, growingPlanter, wateringCan3];

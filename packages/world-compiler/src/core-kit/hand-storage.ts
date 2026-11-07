@@ -36,6 +36,12 @@ const lockers: DefInput = {
   components: { ...lockerV2.components, container: { capacity: 1, inside: { lip: 1.055, face: 0.236, stand: [-0.12, 0.76], fit: [0.26, 0.62, 0.36], word: 'locker' } } } as DefInput['components'],
 } as DefInput;
 
+// #494 / #416: drawer-chest@1 and @2 are immutable (worlds keep their geometry); @3 is @2 (the drawer, its two places
+// inside and every other field) within the 400-triangle kit budget. Its seven brass knobs were 8-sided spheres (64
+// triangles each); the fixed drawers' knobs now have 5 sides and the moving drawer's knob, where the hand goes, 6.
+const drawerChest3 = structuredClone(drawerChest) as DefInput & { make: { args: { shapes: Record<string, unknown>[] } } };
+for (const sh of drawerChest3.make.args.shapes) if (sh.tint === 'brass') sh.segments = sh.role === 'drawer' ? 6 : 5;
+
 // #435 (W071): a swap shelf (a free shelf). The same storage with data only: no `open` state, so no door (always open,
 // containerOpen), and a declared `leftBy`, so it records who left each thing. One shelf at 1 m behind a low front rail, three
 // places on it (each up to 0.3 m across and 0.28 m tall); the body stands 0.6 m clear of the footprint, so the engine's step in during a reach (at most 0.2 m) leaves it 0.4 m clear at every turn (0.35 m tripped a recovered fault at some turns, #1063). The lower shelf is fixed.
@@ -148,4 +154,4 @@ const pantry: DefInput = {
   size: { box: [W, H, D] },
 } as DefInput;
 
-export const HAND_STORAGE: DefInput[] = [drawerChest, lockers, swapShelf, lostAndFound, hollowStump, wallNiche, pantry];
+export const HAND_STORAGE: DefInput[] = [drawerChest, lockers, { ...drawerChest3, version: 3 } as DefInput, swapShelf, lostAndFound, hollowStump, wallNiche, pantry];
