@@ -3,9 +3,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {realpathSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {relative,resolve} from 'node:path';
+import {join,relative,resolve} from 'node:path';
 import {isRuntimeSource} from './build-inputs.mjs';
 const root=realpathSync(fileURLToPath(new URL('../../',import.meta.url)));
 const {build}=createRequire(realpathSync(resolve(root,'apps/web/node_modules/vite/package.json')))('esbuild');
@@ -15,6 +17,12 @@ test('both runtime entry points bundle from listed sources only',async()=>{
   const unlisted=Object.keys(metafile.inputs).map(p=>relative(root,realpathSync(resolve(root,p)))).filter(p=>!isRuntimeSource(p));
   assert.deepEqual(unlisted,[],file);
  }
+});
+test('a bundle is the runtime alone: no module it took in runs as its own command',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'souls-runtime-bundle-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ await build({absWorkingDir:root,entryPoints:['tools/soul-runtime/run.mjs'],bundle:true,platform:'node',format:'esm',target:'node22',outfile:join(dir,'run.mjs'),logLevel:'silent'});
+ const {stderr,stdout}=spawnSync(process.execPath,['run.mjs'],{cwd:dir,encoding:'utf8',timeout:30000});
+ assert.doesNotMatch(stderr+stdout,/usage: host\.mjs/);assert.match(stderr+stdout,/"state":"blocked"/,'its own main ran');
 });
 test('the rest of soul-trace stays out',()=>{
  for(const local of ['tools/soul-trace/tap.mjs','tools/soul-trace/readout.mjs','tools/soul-trace/inspect.mjs','../tools/soul-runtime/run.mjs','apps/server/src/main.ts'])assert.equal(isRuntimeSource(local),false,local);
