@@ -1,4 +1,4 @@
-import {hashOf,type EngineFactory,type EngineSnapshot,type CommonsFoodDeliveryV1} from '@sim/engine-contract';
+import {hashOf,type EngineFactory,type EngineSnapshot,type CommonsFoodDeliveryV1} from '@souls/engine-contract';
 import {MarsEngine} from './engine.ts';
 import {createEdenGroundReaderV1} from './eden-ground.ts';
 import {loadMars} from './load.ts';

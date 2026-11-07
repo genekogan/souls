@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {retainedCommonsShoreFactory} from './retained-shore-engine.ts';
-import type {Engine} from '@sim/engine-contract';
+import type {Engine} from '@souls/engine-contract';
 import {connectedCommonsShoreFixture} from './connected-shore.ts';
 import {SHORE_POLICY} from '../../../mars/viewer/engine/locomotion/shore.ts';
 const geometry=(await connectedCommonsShoreFixture()).geometry;

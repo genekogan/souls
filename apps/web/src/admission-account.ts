@@ -1,4 +1,4 @@
-import {ownerLifecycleCapabilitySchema,ownerLifecycleListSchema,type OwnerLifecycleCapability,type OwnerLifecycleList} from '@sim/protocol';
+import {ownerLifecycleCapabilitySchema,ownerLifecycleListSchema,type OwnerLifecycleCapability,type OwnerLifecycleList} from '@souls/protocol';
 export type AdmissionAccount={capability:OwnerLifecycleCapability;page:OwnerLifecycleList;owned:string[]};
 /** Use only a fresh authenticated Me reply. A protocol capability does not grant
  * permission, capacity or readiness; the server still owns every write check. */

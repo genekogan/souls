@@ -2,7 +2,7 @@
 // This does not validate physics, content hashes, authority or privacy; producers
 // and consumers must prove those separately. Additive fields are preserved.
 import { z } from 'zod';
-import { renderSceneRefV1Schema } from '@sim/engine-contract/scene-capture';
+import { renderSceneRefV1Schema } from '@souls/engine-contract/scene-capture';
 export {decodeSceneCapturePublication,type SceneCapturePublication} from './scene-capture.ts';
 
 const tick = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);

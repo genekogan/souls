@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {openJournal} from './journal.mjs';
 import {runManaged} from './managed.mjs';
 import {abortableSleep} from './receiver.mjs';
-function fixture(t){const dir=mkdtempSync(join(tmpdir(),'sim-managed-'));const journal=openJournal(dir,{worldId:'w',soulId:'s'});t.after(()=>{journal.close();rmSync(dir,{recursive:true,force:true});});return journal;}
+function fixture(t){const dir=mkdtempSync(join(tmpdir(),'souls-managed-'));const journal=openJournal(dir,{worldId:'w',soulId:'s'});t.after(()=>{journal.close();rmSync(dir,{recursive:true,force:true});});return journal;}
 class Host extends EventEmitter{
  constructor(decision){super();this.decision=decision;this.threadId='t';}
  async connect(){}

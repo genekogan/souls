@@ -13,9 +13,9 @@ import {WorldSpeechOverlay} from './WorldSpeechOverlay.tsx';
 import { apiPath, worldPath } from './world-path.ts';
 import {singleLocalPreview} from './local-navigation.ts';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
-import type { LogEvent } from '@sim/protocol';
-import { describeIntent } from '@sim/protocol';
-import { makeApi, refreshMe, useSim, type Sim } from './useSim.ts';
+import type { LogEvent } from '@souls/protocol';
+import { describeIntent } from '@souls/protocol';
+import { makeApi, refreshMe, useSouls, type Souls } from './useSouls.ts';
 import {WorldAccountControls} from './AccountMenu.tsx';
 import {SoulAccount} from './SoulAccount.tsx';
 import {useSignOutAtOnce} from './sign-out-now.ts';
@@ -49,6 +49,8 @@ import {publishSession,type SessionMode} from './auth-session.ts';
 import {getStatus as godStatus} from './god-ui/god-api.ts';
 import {worldTitle} from './world-title.ts';
 import { GodButton } from './god-ui/GodButton.tsx';
+import {SoulChip} from './SoulChip.tsx';
+import {doingText} from './place-names.ts';
 // P1 phones: the advanced surface's panels are lazy chunks, fetched the first time the advanced surface shows them
 // (never on a world's arrival)
 const lazyNamed=<M,K extends keyof M>(load:()=>Promise<M>,name:K)=>lazy(()=>load().then(m=>({default:m[name] as ComponentType<any>})));
@@ -95,7 +97,7 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   // the god panel and the Join flow act as this same person (auth-session.ts)
   useEffect(()=>{publishSession({mode:auth.mode??(cfg.authProvider==='clerk'?'clerk':'none'),ready:auth.ready,authed:auth.authed,scope:authIdentity(auth),label:auth.label,signInUrl:auth.signInUrl,getToken:()=>tokenReader.current(),login:auth.login,logout:auth.logout});});
   const getToken = useCallback(() => tokenReader.current(), []);
-  const sim = useSim(getToken, auth.authed,authIdentity(auth),cfg.worldId);
+  const sim = useSouls(getToken, auth.authed,authIdentity(auth),cfg.worldId);
   const apiGeneration=useRef(0);
   const apiMe=approvedMe(auth,sim.me);
   const apiScope=JSON.stringify([sim.privateAuthorityGeneration??0,cfg.worldId,auth.ready,auth.authed,authIdentity(auth),apiMe?.userId,apiMe?.role,apiMe?.invited,apiMe?.souls.slice().sort()]);
@@ -130,7 +132,7 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
     addEventListener('focus',mark);document.addEventListener('visibilitychange',mark);
     const stop=answerApprovalTabs(approvalChannelName(cfg.worldId),id=>{location.hash='approve/'+id;},()=>front);
     return()=>{stop();removeEventListener('focus',mark);document.removeEventListener('visibilitychange',mark);};},[cfg.worldId]);
-  useEffect(() => { const f = () => { if(approvalFromHash(location.hash))return; if(location.hash==='#advanced'){setAdvanced(true);setPanelOpen(false);setTab('watch');return;} const h = hashTab(); setTab(h.tab); if (!['watch', 'my soul'].includes(h.tab)) setAdvanced(true); else if(h.soul){setAdvanced(false);setPanelOpen(true);setNavigationOpen(false);} if(h.tab==='watch')setSelected(h.soul??null); if (h.pair) setPairCode(h.pair); else if(h.tab==='watch')setPairCode(null); }; addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
+  useEffect(() => { const f = () => { if(approvalFromHash(location.hash))return; if(location.hash==='#advanced'){setAdvanced(true);setPanelOpen(false);setTab('watch');return;} const h = hashTab(); setTab(h.tab); if (!['watch', 'my soul'].includes(h.tab)) setAdvanced(true); else if(h.soul&&h.soul!==chipRef.current){setAdvanced(false);setPanelOpen(true);setNavigationOpen(false);}  /* #892: the chip's own selection writes this hash; it keeps the card collapsed */ if(h.tab==='watch')setSelected(h.soul??null); if (h.pair) setPairCode(h.pair); else if(h.tab==='watch')setPairCode(null); }; addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
   const [lessonIndex,setLessonIndex]=useState(0);
   const [lessonOpen,setLessonOpen]=useState(false);
   // VF3 (Gene): Advanced is unlisted; reach it at #advanced (or any Advanced tab's hash).
@@ -188,7 +190,11 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   const signinEnabled=AUTH_UI&&configuredSignIn(cfg,launcherWorld);  // new worlds: local dev sign-in too
   const newSoulAvailable=(!signinEnabled||auth.ready)&&(signinEnabled||cfg.accountAuthRequired!==true);
   const mine = new Set(currentMe?.souls ?? []);
-  const inspect = (id: string | null) => { setSelected(id); if (id) revealPanel(); };
+  // #892: a touch that followed a Soul (a tap, a swipe, the Broadcast chip) collapses its card to the bottom chip.
+  const [chip,setChip]=useState<string|null>(null),chipRef=useRef<string|null>(null),[chipNote,setChipNote]=useState<{text:string;at:number}|null>(null);
+  const [coarse]=useState(()=>{try{return matchMedia('(pointer: coarse)').matches;}catch{return false;}});
+  useEffect(()=>{if(!chipNote)return;const t=setTimeout(()=>setChipNote(null),2500);return()=>clearTimeout(t);},[chipNote]);
+  const inspect = (id: string | null, how?: 'chip') => { setSelected(id); if(how==='chip'&&id){chipRef.current=id;setChip(id);setPanelOpen(false);return;} chipRef.current=null;setChip(null); if (id) revealPanel(); };
   const accountSouls=(entry:ReactNode)=><MySouls key={JSON.stringify([worldKey,currentMe?.userId])} recencyKey={JSON.stringify(['sim.soul-recency',worldKey,currentMe?.userId??'public'])} selectedId={selected} newSoul={entry} api={api} bodies={soulBodies} ids={ownedIds} souls={r.souls} present={new Set([...r.souls.values()].filter(s=>r.entities[s.entityId]).map(s=>s.id))} select={inspect} follow={requestFollowSoul}/>;
   const edenExpansion=edenExperienceEnabled(location.hostname,worldPath,cfg.worldId,sim.conn.welcome?.worldId,qualifiedEdenWorlds);
   // P1 phones (F12): the page that will show the old Eden town asks for its chunk before the welcome (it came ~1.3 s late)
@@ -204,10 +210,10 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   return (
     <div ref={frame} className={`human-world ${advanced ? 'has-advanced' : ''}`}>
       {!launcherWorld&&<OldWorldApprovals linkId={approvalId} auth={auth} accountAuthRequired={cfg.accountAuthRequired===true} onLinkDone={()=>{setApprovalId(null);history.replaceState(null,'',location.pathname+location.search+'#watch');}}/>}
-      <div className="world-scene"><LiveWorld sim={sim} selected={selected} onSelect={inspect} embedded bootWorldId={launcherWorld?cfg.worldId:undefined} {...{edenExpansion,edenExpected,localClassroomPresentation,publishSpeechAnchors:!advanced,humanPresets:humanPresetsEnabled&&edenExpansion}} hideControls={!advanced} hideSoulInfo={!advanced} viewportInsets={viewportInsets} onViewerHandle={receiveHandle} onViewerState={receiveState} onInitialProgress={advanced ? undefined : setInitialProgress} /></div>
+      <div className="world-scene"><LiveWorld sim={sim} selected={selected} onSelect={inspect} onChipNote={text=>setChipNote({text,at:Date.now()})} embedded bootWorldId={launcherWorld?cfg.worldId:undefined} {...{edenExpansion,edenExpected,localClassroomPresentation,publishSpeechAnchors:!advanced,humanPresets:humanPresetsEnabled&&edenExpansion}} hideControls={!advanced} hideSoulInfo={!advanced} viewportInsets={viewportInsets} onViewerHandle={receiveHandle} onViewerState={receiveState} onInitialProgress={advanced ? undefined : setInitialProgress} /></div>
       <VisitorWelcome key={privatePanelKey} api={api} siteApi={siteApi} worldPath={worldPath} ownerId={currentMe?.userId??null} worldId={cfg.worldId} worldName={worldName} build={cfg.build} handle={viewerHandle} state={viewerState}/>
       <WorldSpeechOverlay root={frame} sim={sim} state={viewerState} active={!advanced} handle={viewerHandle}/>
-      {!advanced && <ViewerFrame handle={viewerHandle} state={viewerState} dt={sim.conn.welcome?.dt ?? 0.05} navigationOpen={navigationOpen} onNavigationChange={setNavigationOpen} onNavigationOpen={openNavigation} worldTime={worldTimeText(worldClockAt((sim as Sim&{takes?:{chunks?:unknown[]}|null}).takes?.chunks,viewerState?.shownTick))} connected={!connectionLost(sim.conn)} connecting={!sim.conn.welcome} worldName={worldName} followName={viewerState?.cameraMode === 'follow' ? r.souls.get(viewerState.selection.soulId ?? '')?.name ?? null : null} slots={{ status: statusSlot, camera: cameraSlot }} initial={initialProgress} />}
+      {!advanced && <ViewerFrame handle={viewerHandle} state={viewerState} dt={sim.conn.welcome?.dt ?? 0.05} navigationOpen={navigationOpen} onNavigationChange={setNavigationOpen} onNavigationOpen={openNavigation} worldTime={worldTimeText(worldClockAt((sim as Souls&{takes?:{chunks?:unknown[]}|null}).takes?.chunks,viewerState?.shownTick))} connected={!connectionLost(sim.conn)} connecting={!sim.conn.welcome} worldName={worldName} followName={viewerState?.cameraMode === 'follow' || viewerState?.flyingTo ? r.souls.get(viewerState.flyingTo ?? viewerState.selection.soulId ?? '')?.name ?? null : null} selectedName={r.souls.get(viewerState?.selection.soulId ?? '')?.name ?? null} slots={{ status: statusSlot, camera: cameraSlot }} initial={initialProgress} />}
       <header className={`world-hud${advanced ? '' : ' slim'}`}>
         {advanced && <>
         <a href="/" className="world-home">SIM</a>
@@ -223,6 +229,12 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
 
         </div>
       </header>
+      {!advanced&&!panelOpen&&(()=>{
+        const following=chip&&selected===chip&&(viewerState?.cameraMode==='follow'||viewerState?.flyingTo===chip)?r.souls.get(chip):undefined;
+        if(following)return <SoulChip kind="follow" name={following.name} status={doingText(following.doing,(r.entities[following.entityId] as {activity?:string}|undefined)?.activity,following.id)} note={chipNote?.text} openCard={()=>{chipRef.current=null;setChip(null);revealPanel();}}/>;
+        const showing=coarse&&viewerState?.cameraMode==='broadcast'&&viewerState.shownTick!=null&&viewerState.broadcastSoulId?r.souls.get(viewerState.broadcastSoulId):undefined;
+        return showing?<SoulChip kind="broadcast" name={showing.name} follow={()=>{viewerHandle?.flyToSoul?.(showing.id,{chip:true});}}/>:null;
+      })()}
       <aside id="soul-panel" tabIndex={-1} className="human-panel" hidden={advanced || !panelOpen || tab === 'my soul'} aria-label="Selected Soul">
         <button className="panel-close" aria-label="Close panel" title="Close" onClick={() => setPanelOpen(false)}>×</button>
         {lessonOpen&&localClassroomPresentation&&<ClassroomPresentation worldId={localClassroomPresentation.worldId} screenEntityId={localClassroomPresentation.screenEntityId} index={lessonIndex} onSelect={setLessonIndex}/>}
@@ -273,7 +285,7 @@ function Intro({ authed, login, go, souls }: { authed: boolean; login(): void; g
     </section>
   );
 }
-function Happenings({ sim }: { sim: Sim }) {
+function Happenings({ sim }: { sim: Souls }) {
   const rows = sim.log.filter((e) => e.kind !== 'rules' && e.kind !== 'admin' && e.kind !== 'decision' && e.kind !== 'deck').slice(-14).reverse();
   return (
     <section>
@@ -283,7 +295,7 @@ function Happenings({ sim }: { sim: Sim }) {
     </section>
   );
 }
-function eventPlain(e: LogEvent, sim: Sim): string {
+function eventPlain(e: LogEvent, sim: Souls): string {
   const p = e.payload ?? {}; const name = (id: string) => sim.conn.replica.souls.get(id)?.name ?? 'someone';
   if (e.kind === 'birth') return `${p.name} arrived.`;
   if (e.kind === 'play') return `${name(p.soulId)} ${p.card}${p.target ? ` → ${sim.kernel?.things[p.target]?.name ?? 'something'}` : ''}.`;
@@ -298,7 +310,7 @@ function eventPlain(e: LogEvent, sim: Sim): string {
 
 // ------------------------------------------------------------------ world
 const COLS = 64, ROWS = 28;
-function WorldPanel({ sim, mine, selected, onSelect }: { sim: Sim; mine: Set<string>; selected: string | null; onSelect(id: string | null): void }) {
+function WorldPanel({ sim, mine, selected, onSelect }: { sim: Souls; mine: Set<string>; selected: string | null; onSelect(id: string | null): void }) {
   const r = sim.conn.replica, tick = sim.conn.displayTick();
   const souls = [...r.souls.values()].sort((a, b) => a.name.localeCompare(b.name));
   // fit the map to whatever this world contains (the toy plane is 100 m; a Mars scene is wherever its fixtures and people are)
@@ -342,7 +354,7 @@ function WorldPanel({ sim, mine, selected, onSelect }: { sim: Sim; mine: Set<str
 }
 
 // ------------------------------------------------------------------ sync
-function SyncPanel({ sim }: { sim: Sim }) {
+function SyncPanel({ sim }: { sim: Souls }) {
   const c = sim.conn, st = c.stats, s = sim.stats, hb = c.heartbeat, r = c.replica;
   return (
     <section>
@@ -374,7 +386,7 @@ function SyncPanel({ sim }: { sim: Sim }) {
     </section>
   );
 }
-function maxDrift(sim: Sim): number {
+function maxDrift(sim: Souls): number {
   const hb = sim.conn.heartbeat, r = sim.conn.replica; if (!hb) return 0;
   let m = 0;
   for (const [id, k] of Object.entries(hb.keyframes)) { if (!r.entities[id]) continue; const p = r.poseAt(id, k[0]); m = Math.max(m, Math.abs(p[1] - k[1]), Math.abs(p[3] - k[3])); }
@@ -383,7 +395,7 @@ function maxDrift(sim: Sim): number {
 export const fmtDur = (s: number) => (s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 
 // ------------------------------------------------------------------ log
-export function eventText(e: LogEvent, sim: Sim): string {
+export function eventText(e: LogEvent, sim: Souls): string {
   const p = e.payload ?? {}; const r = sim.conn.replica;
   const name = (soulId: string) => r.souls.get(soulId)?.name ?? soulId;
   const label = (id: string) => r.entities[id]?.label ?? r.regions[id]?.label ?? id;
@@ -396,7 +408,7 @@ export function eventText(e: LogEvent, sim: Sim): string {
     default: return JSON.stringify(p);
   }
 }
-function LogPanel({ log, sim }: { log: LogEvent[]; sim: Sim }) {
+function LogPanel({ log, sim }: { log: LogEvent[]; sim: Souls }) {
   const [kind, setKind] = useState('all');
   const rows = log.filter((e) => kind === 'all' || e.kind === kind).slice(-80).reverse();
   return (

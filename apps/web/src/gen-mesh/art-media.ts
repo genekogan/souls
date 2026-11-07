@@ -6,7 +6,7 @@
 // only while one of its faces is in the scene, within PLAY_M of the camera, facing it, and the page is visible; at most
 // MAX_PLAYING play at once (nearest first); a video no face has used for RELEASE_MS is unloaded and its texture freed.
 import * as THREE from 'three';
-import { frameMediaKind } from '@sim/world-compiler';
+import { frameMediaKind } from '@souls/world-compiler';
 
 export type MediaKind = 'image' | 'video';
 export type ArtInfo = { frame: string; slot: number; url: string; kind: MediaKind; title: string; maker: string; broken?: boolean };
@@ -149,7 +149,7 @@ export function updateVideos(camera: THREE.Camera | null, now = performance.now(
 function release(e: Entry) { e.onFail.clear(); e.failed = true; e.video.pause(); e.video.removeAttribute('src'); e.video.load(); e.texture.dispose(); videos.delete(e.url); }
 function startTicker() {
   if (ticking || typeof window === 'undefined') return; ticking = true;
-  setInterval(() => { const cam = (window as unknown as { __simEntity?: { camera?: THREE.Camera } }).__simEntity?.camera ?? null; try { updateVideos(cam); } catch { /* mid-reload */ } }, 250);
+  setInterval(() => { const cam = (window as unknown as { __soulsEntity?: { camera?: THREE.Camera } }).__soulsEntity?.camera ?? null; try { updateVideos(cam); } catch { /* mid-reload */ } }, 250);
 }
 /** For tests and proof: every shared video and whether it is playing. */
 export function videoState() { return [...videos.values()].map((e) => ({ url: e.url, faces: e.meshes.size, playing: !e.video.paused, readyState: e.video.readyState, time: +e.video.currentTime.toFixed(2), why: e.why, error: e.error, failed: e.failed })); }

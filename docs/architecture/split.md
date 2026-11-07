@@ -82,7 +82,7 @@ Most of the 133 are in the act path (`act`/`actOnce`/`decide`, 837–1220); the 
 ## 2. The delta stream (`apps/server/src/split/delta.ts`)
 
 **What already exists.** Each tick, `engine.step()` returns `{paths, changes, programs}` (`world.ts` 487–494). The
-hub accumulates them into the viewer `Batch` every 500 ms (`world.ts` 1617–1627; `@sim/protocol` `Batch`), so
+hub accumulates them into the viewer `Batch` every 500 ms (`world.ts` 1617–1627; `@souls/protocol` `Batch`), so
 browsers keep a state-fed replica. That covers entity motion (paths) and entity field changes. It does **not** carry
 what the edge reads also need: who the minds are, `faded`, receipts, comms objects, placed items, live sit holds and
 program actions, or the static layer (places, enclosure shells, spots, fires, regions, sight solids). So `WorldDelta`

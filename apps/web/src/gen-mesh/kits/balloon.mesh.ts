@@ -7,7 +7,7 @@
 // while the ride twin exists, WorldEntityLayer.poseOverride).
 import { isRideBalloonDef } from './ride-balloon.ts';
 import * as THREE from 'three';
-import { kitArgs } from '@sim/generators';
+import { kitArgs } from '@souls/generators';
 import { buildKit } from '../kit.mesh.ts';
 import { registerMesh } from '../registry.ts';
 import { bindMotionModel } from '../motion.ts';

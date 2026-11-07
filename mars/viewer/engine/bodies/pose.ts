@@ -4,6 +4,7 @@
 // paused take holds still unless the caller advances the tick). Deterministic trig (core/math dsin).
 import { clamp, dsin, type Vec3 } from '../core/math.ts';
 import type { FloaterBody } from './body.ts';
+import {MOTION_LIMITS,type MotionAdapter,type BodyMotionState} from './motion.ts';
 
 export type FloaterPose = { p: Vec3; yaw: number; pitch: number; roll: number };
 
@@ -24,7 +25,8 @@ const TWO_PI = 2 * Math.PI;
  * `ground` is the sampled entity pose (p on the walkable surface; yaw/pitch/roll as recorded);
  * `speed` the sampled ground speed (m/s) if published.
  */
-export function floaterPose(id: string, ground: { p: Vec3; yaw: number; pitch?: number; roll?: number }, body: FloaterBody, tick: number, dt: number, speed = 0): FloaterPose {
+export function floaterPose(id: string, ground: { p: Vec3; yaw: number; pitch?: number; roll?: number;activity?:string;state?:Record<string,unknown> }, body: FloaterBody, tick: number, dt: number, speed = 0): FloaterPose {
+  if(body.motion)return authoredPose(id,ground,body,tick,dt,speed);
   const t = tick * dt;
   const period = BOB.periodMin + (BOB.periodMax - BOB.periodMin) * idPhase(id, 1);
   const ph = TWO_PI * idPhase(id, 2);
@@ -38,4 +40,21 @@ export function floaterPose(id: string, ground: { p: Vec3; yaw: number; pitch?: 
     pitch: (ground.pitch ?? 0) + lean + BOB.swayPitch * dsin(w * t + ph + Math.PI / 2),
     roll: (ground.roll ?? 0) + BOB.swayRoll * dsin(w * 0.61 * t + ph * 2.3),
   };
+}
+
+/** Stateless sampled-tick evaluation: reverse scrubbing, reload and interruption have identical poses. */
+function authoredPose(id:string,ground:Parameters<typeof floaterPose>[1],body:FloaterBody,tick:number,dt:number,speed:number):FloaterPose {
+ const motion=body.motion!,t=tick*dt,phase=TWO_PI*idPhase(id,2);
+ const sample=(a:MotionAdapter)=>{const w=TWO_PI*t/a.period+phase;return {bob:a.bob*dsin(w),pitch:a.pitch*dsin(w+Math.PI/2),roll:a.roll*dsin(w*.999),yaw:a.yaw*dsin(w)};};
+ const mix=(a:ReturnType<typeof sample>,b:ReturnType<typeof sample>,w:number)=>({bob:a.bob+(b.bob-a.bob)*w,pitch:a.pitch+(b.pitch-a.pitch)*w,roll:a.roll+(b.roll-a.roll)*w,yaw:a.yaw+(b.yaw-a.yaw)*w});
+ const smooth=(x:number)=>{const v=clamp(x,0,1);return v*v*(3-2*v);};
+ let q=sample(ground.activity==='rest'?motion.rest:motion.idle);
+ q=mix(q,sample(motion.move),clamp(Math.abs(speed)/.4,0,1));
+ const signal=ground.state?.bodyMotionV1 as BodyMotionState|undefined;
+ if(motion.dance&&signal&&Number.isFinite(signal.since)&&Number.isFinite(signal.until)){
+  const fade=MOTION_LIMITS.fadeSeconds/dt;
+  const weight=signal.release?signal.release.weight*(1-smooth((tick-signal.release.at)/fade)):Math.min(smooth((tick-signal.since)/fade),smooth((signal.until-tick)/fade));
+  q=mix(q,sample(motion.dance),weight);
+ }
+ return {p:[ground.p[0],ground.p[1]+body.hoverHeight+q.bob,ground.p[2]],yaw:ground.yaw+q.yaw,pitch:(ground.pitch??0)+q.pitch,roll:(ground.roll??0)+q.roll};
 }
