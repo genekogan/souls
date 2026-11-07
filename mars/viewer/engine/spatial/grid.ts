@@ -721,6 +721,15 @@ export function clearanceAt(g: LevelGrid, p: Vec2): number {
   return c < 0 ? 0 : g.clearance[c];
 }
 
+/** #1070: what `p` will read from `o` alone once `o` stands: its conservative raster and edt's own expression, so it matches
+ *  the clearance a rebuild gives, not the exact distance. Infinity when `o` touches no cell of this grid. */
+export function clearanceFromObb(g: LevelGrid, o: OBB2, p: Vec2): number {
+  const c = cellOf(g, p); if (c < 0) return 0;
+  const ci = c % g.nx, cj = Math.floor(c / g.nx); let best = Infinity;
+  rasterObb(o, g.ox, g.oz, g.cell, g.nx, g.nz, (i) => { const dx = i % g.nx - ci, dz = Math.floor(i / g.nx) - cj, d = dx * dx + dz * dz; if (d < best) best = d; }, true);
+  return best === Infinity ? Infinity : Math.fround(Math.max(0, Math.sqrt(best) * g.cell - g.cell / 2));
+}
+
 /** Minimum clearance sampled along a segment (step ≤ half a cell). */
 export function segmentClearance(g: LevelGrid, a: Vec2, b: Vec2): number {
   const len = hypot(b[0] - a[0], b[1] - a[1]);

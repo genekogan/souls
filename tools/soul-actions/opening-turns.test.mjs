@@ -40,6 +40,7 @@ const once = async (ref, r) => {
    out.push(rc?.code ?? rc?.phase); await tick(10);
   }
   assert.deepEqual(f.host.engine.runtime.violations, [], `${ref} r=${r}`);
+  assert.equal(f.host.glitches.total, 0, `${ref} r=${r}: ${JSON.stringify(f.host.glitches.byRule)}`);
   assert.ok(Math.max(0, ...moved) < 0.2, `${ref} r=${r}: the body never jumps (${Math.max(...moved).toFixed(3)} m in a tick)`);
   return out;
  } finally {comms.close(); f.host.stop(); f.db.close();}
@@ -50,7 +51,7 @@ test('open and close at every turn: done or refused by name, never a recovered f
  for (const ref of defs) await t.test(ref, async () => {
   for (const r of turns) for (const code of await once(ref, r)) {
    assert.notEqual(code, 'engine.fault-recovered', `${ref} r=${r}`);
-   assert.ok(code === 'completed' || /^[a-z]+(\.[a-z-]+)+$/.test(code ?? ''), `${ref} r=${r}: ${code}`);
+   assert.ok(code === 'completed' || /^(contact|object|hand_actuator_v1)\.[a-z-]+$/.test(code ?? ''), `${ref} r=${r}: ${code}`);
    if (/^core\/(door|gate)@/.test(ref)) assert.equal(code, 'completed', `${ref} r=${r}`);
   }
  });

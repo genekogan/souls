@@ -14,7 +14,9 @@ export const HAND_REACH_SECONDS=.65,HAND_SWING_SECONDS=2.2,HAND_RELEASE_SECONDS=
 export const HAND_IDLE_HANDOFF_SECONDS=1.2;
 export const HAND_OPEN_ANGLE=-Math.PI*.48;
 const vec=z.tuple([z.number().finite(),z.number().finite(),z.number().finite()]);
-const opening=z.object({floorY:z.number().finite().optional(),hinge:vec,yaw:z.number().finite(),radius:z.number().min(.2).max(2),height:z.number().min(.3).max(3),handleY:z.number().min(.3).max(2),from:z.number().min(-1.6).max(0),to:z.number().min(-1.6).max(0),side:z.union([z.literal(1),z.literal(-1)]),bodyPolicy:z.literal('door-natural-v2').optional()}).strict();
+const opening=z.object({floorY:z.number().finite().optional(),
+ /** #1070: a close only, when its end would stand too near the gap that turns solid at contact: the body eases this far (world xz) over the reach and swing */ settle:z.tuple([z.number().min(-.2).max(.2),z.number().min(-.2).max(.2)]).optional(),
+ hinge:vec,yaw:z.number().finite(),radius:z.number().min(.2).max(2),height:z.number().min(.3).max(3),handleY:z.number().min(.3).max(2),from:z.number().min(-1.6).max(0),to:z.number().min(-1.6).max(0),side:z.union([z.literal(1),z.literal(-1)]),bodyPolicy:z.literal('door-natural-v2').optional()}).strict();
 // A hand that writes or wipes across a flat face (a board): `at` is the face centre, `yaw` its facing.
 // Soul Actions entry 38: a poster is put up (or taken down) with both hands: `width`/`height` are the sheet's, `at` its centre on
 // the wall's surface, and `sheet` what is printed on it (so every viewer draws the same paper in the hands as on the wall).
@@ -199,8 +201,10 @@ function nearObstacles(ex:Exec,all:readonly Obstacle[]){
  *  nothing fits. */
 function sidestep(rt:Runtime,ex:Exec,a:Entity,root:Vec3):boolean{
  const from=a.pose.p,fits=(x:number,z:number)=>staticStepClear(rt,a,[x,z]);
+ const [x,z]=ex.shift??[0,0],off=hypot(x,z);
+ // the path is the path: once there's room the shift eases back, so the step ends where its plan said
+ if(off){const k=Math.max(0,1-SHIFT_STEPS[0]/off),bx=root[0]-x*(1-k),bz=root[2]-z*(1-k);if(hypot(bx-from[0],bz-from[2])<=STEP_MAX&&fits(bx,bz)){if(k)ex.shift=[x*k,z*k];else delete ex.shift;root[0]=bx;root[2]=bz;return true;}}
  if(fits(root[0],root[2]))return true;
- const [x,z]=ex.shift??[0,0];
  for(const m of SHIFT_STEPS)for(let i=0;i<8;i++){const dx=m*dcos(i*Math.PI/4),dz=m*dsin(i*Math.PI/4),qx=root[0]+dx,qz=root[2]+dz;
   if(hypot(x+dx,z+dz)<=SHIFT_MAX&&hypot(qx-from[0],qz-from[2])<=STEP_MAX&&fits(qx,qz)){ex.shift=[x+dx,z+dz];root[0]=qx;root[2]=qz;return true;}}
  return false;
@@ -366,11 +370,13 @@ export const handActuator:ActionDef<HandActuatorParams,true,Exec>={
   if(ex.p.stroke){const goal=strokeRoot(ex.p.at,ex.p.stroke,ex.root[1]);if(hypot(goal[0]-ex.root[0],goal[2]-ex.root[2])>.5){clear(rt,ex);return {status:'failed',diagnostic:issue('not-at-board','Walk up to the board before writing on it.',[ex.p.target])};}
    const k=smooth(Math.min(1,ex.t/HAND_REACH_SECONDS));point.root=ex.strokeHeld?[...a.pose.p]:[ex.root[0]+(goal[0]-ex.root[0])*k,ex.root[1],ex.root[2]+(goal[2]-ex.root[2])*k];}
   if((ex.p.opening||ex.p.slide)&&ex.t<handReachSeconds(ex.p)){const k=smooth(ex.t/handReachSeconds(ex.p));point.root=[ex.root[0]+(point.root[0]-ex.root[0])*k,ex.root[1]+(point.root[1]-ex.root[1])*k,ex.root[2]+(point.root[2]-ex.root[2])*k];}
+  if(ex.p.opening?.settle){const k=smooth(ex.t/(handReachSeconds(ex.motion)+handSwingSeconds(ex.motion))),[sx,sz]=ex.p.opening.settle;point.root=[point.root[0]+sx*k,point.root[1],point.root[2]+sz*k];}
   if(ex.shift)point.root=[point.root[0]+ex.shift[0],point.root[1],point.root[2]+ex.shift[1]];
   const bad=blocked(rt,ex,point.root,f.angle);if(bad){clear(rt,ex);return {status:'failed',diagnostic:bad};}
   // #1063: a stroke's step stops for good where the next one would overlap by the invariant's measure, and the hand works from there
   if(ex.p.stroke&&!ex.strokeHeld&&!staticStepClear(rt,a,[point.root[0],point.root[2]])){ex.strokeHeld=true;point.root=[...a.pose.p];}
-  if((ex.p.opening||ex.p.slide)&&!sidestep(rt,ex,a,point.root)){clear(rt,ex);return {status:'failed',diagnostic:issue('step-blocked','There is no clear place to step while holding this handle.',[ex.p.actor,ex.p.target])};}
+  if(ex.p.opening||ex.p.slide){const was=ex.shift;if(!sidestep(rt,ex,a,point.root)){clear(rt,ex);return {status:'failed',diagnostic:issue('step-blocked','There is no clear place to step while holding this handle.',[ex.p.actor,ex.p.target])};}
+   const moved=ex.shift!==was?blocked(rt,ex,point.root,f.angle):null;if(moved){clear(rt,ex);return {status:'failed',diagnostic:moved};}}
   const before=[...a.pose.p];a.pose.p=[...point.root];
   const face=ex.p.slide?heading([-ex.p.slide.dir[0],-ex.p.slide.dir[1]]):ex.p.opening?heading([-dsin(ex.p.opening.yaw+(ex.p.opening.bodyPolicy==='door-natural-v2'?(ex.p.opening.side===-1?f.angle*.34:0):f.angle))*ex.p.opening.side,-dcos(ex.p.opening.yaw+(ex.p.opening.bodyPolicy==='door-natural-v2'?(ex.p.opening.side===-1?f.angle*.34:0):f.angle))*ex.p.opening.side]):ex.p.stroke?heading([-dsin(ex.p.stroke.yaw),-dcos(ex.p.stroke.yaw)]):heading([point.hand[0]-a.pose.p[0],point.hand[2]-a.pose.p[2]]),turn=((face-ex.yaw+Math.PI*3)%(Math.PI*2))-Math.PI;
   // Soul Actions entry 33: a switch or valve contact turns the body over the whole reach (a door, drawer or board stroke

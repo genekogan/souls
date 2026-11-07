@@ -83,7 +83,8 @@ and the hand works from where the body is. A stroke stays held for the rest of t
 out. Invariants run at the end of every tick, so a held step would have been a violation on that same tick (unless something
 later in that tick moved the obstacle), and every earlier step moves as it did.
 An opening or a slide can't stop short, because its body follows the handle: where the next step would trip the same rule, the
-rest of its path shifts aside by the smallest step with room, at most 0.15 m in all, and with no such step it fails `step-blocked`. Other body steps owned by actions do not go through it yet.
+rest of its path shifts aside by the smallest step with room, at most 0.18 m in all, easing back once there is room, and with no such step it fails `step-blocked`.
+A door's gap turns solid only at the close's contact, so the plan reads that gap's raster at the close's end (`settleBeside`): a close that would end under the limit eases clear over the reach and swing (`opening.settle`, at most 0.18 m), and with no such place it is refused `contact.no-room`. A close that ends clear carries nothing extra. Other body steps owned by actions do not go through it yet.
 
 ## Refusal
 

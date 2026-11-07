@@ -38,7 +38,7 @@ export function createDoorPassage(d:{engine:()=>Engine;model:()=>WorldModel;cont
    if(!actionsOf(def).some(a=>a.name==='open'&&isContactActuator(def,a)))continue;
    const open=d.contact.plan(soul,id,'open',{},{open:false}),o=open?.params.opening;if(!open||!o)continue;
    const wp=m.worldPose(e),n:[number,number]=[Math.sin(wp.yaw),Math.cos(wp.yaw)],far:[number,number]=[wp.x-n[0]*o.side*FAR,wp.z-n[1]*o.side*FAR];
-   const close=d.contact.plan(soul,id,'close',{},{from:far,open:true}),c=close?.params.opening;if(!close||!c||c.side===o.side)continue;
+   const close=d.contact.plan(soul,id,'close',{},{from:far,open:true}),c=close?.params.opening;if(!close||close.noRoom||!c||c.side===o.side)continue;
    // does the far side reach the destination (the door's own gap stays shut in this check: the far side is beyond it)?
    const end=actuatorPoint(c,0).root;if(!eng.walkFromReachesV1(soul.entityId,[end[0],end[2]],steps))continue;
    const name=e.name??id,denied=d.access(id,soul);

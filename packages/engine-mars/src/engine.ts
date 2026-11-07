@@ -18,7 +18,8 @@ import {newcomerResourcesPublicV1Schema,commonsNewcomerResourcesV1Schema,type Co
 import {existingGreenLandmarkV1} from './green-landmark.ts';
 import {existingGreenLandmarkTransitionV1Schema,type ExistingGreenLandmarkTransitionV1} from '@souls/engine-contract';
 import {fixtureSlots, isFree, seatApproach} from '../../../mars/viewer/engine/social/slots.ts';
-import {angleDelta} from '../../../mars/viewer/engine/core/math.ts';
+import {angleDelta,type OBB2} from '../../../mars/viewer/engine/core/math.ts';
+import {EDIT_CLEAR,settleBeside} from '../../../mars/viewer/engine/runtime/static-step.ts';
 import {publishedWaitsFor} from '../../../mars/viewer/engine/runtime/waits.ts';
 import {inShoreDomain} from '../../../mars/viewer/engine/locomotion/connected-shore.ts';
 import {rerouteCarrier,setCarrierRoute,type CarrierInstallSpec} from '../../../mars/viewer/engine/vehicles/carrier.ts';
@@ -2048,7 +2049,7 @@ export class MarsEngine implements Engine {
     const relocated:string[]=[],trapped:string[]=[];
     for(const id of navigationChanged?Object.keys(this.ents).sort():[]){
       const e=this.ents[id];if(e.kind!=='human'||!e.human||e.human.shore||e.human.carrier||e.human.sleepPose||e.human.on)continue;
-      const grid=spatial.levelAt(e.human.level??0,[e.pose.p[0],e.pose.p[2]]);if(!grid||clearanceAt(grid,[e.pose.p[0],e.pose.p[2]])>=HUMAN_RADIUS*0.9)continue;
+      const grid=spatial.levelAt(e.human.level??0,[e.pose.p[0],e.pose.p[2]]);if(!grid||clearanceAt(grid,[e.pose.p[0],e.pose.p[2]])>=EDIT_CLEAR)continue;
       if(e.human.activity==='sit'||e.human.baseActivity==='sit')continue; // a seated body's own seat is its support
       const to=(e.human.level??0)===0?this.nearestStandableV1([e.pose.p[0],e.pose.p[2]],id):null;
       if(to&&this.relocateHumanV1(id,to))relocated.push(id);else trapped.push(id);
@@ -2248,6 +2249,8 @@ export class MarsEngine implements Engine {
   /** Floors (2026-10-26): where a body's feet rest at (x, z) on `level`: level 0 of a ground world is the nav's standing
    *  height (the terrain, or a floor plate / deck on it; the swim root in deep water); else the level's flat height. */
   standYAtV1(x:number,z:number,level=0):number|null{const spatial=this.rt.services.spatial as Spatial;spatial.sync(this.rt.world);if(level===0&&this.rt.world.groundV1&&spatial.ground)return r3(standOn(spatial.ground,x,z));const l=spatial.scene.levels.find(v=>v.id===level);return l?l.y:null;}
+  /** #1070: where this body must ease to so that `to` stays clear once `solids` stand (static-step.ts settleBeside). */
+  settleBesideV1(actor:string,to:[number,number],solids:readonly OBB2[]):[number,number]|null|undefined{const a=this.rt.world.entities[actor];return a?settleBeside(this.rt,a,to,solids):undefined;}
   clearanceAtV1(x:number,z:number,level=0):number{const spatial=this.rt.services.spatial as Spatial;spatial.sync(this.rt.world);const clear=spatial.clearanceReader(level,[x,z]);return clear?clear([x,z]):0;}
   /** nav read (L1): clearanceAtV1 capped at `cap` — the same value below it, `cap` at or above it — answered off the paged
    *  windows without building fine nav tiles. For the many "is there standing room here (≥ t ≤ cap)?" reads. */
