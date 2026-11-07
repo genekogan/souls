@@ -19,7 +19,7 @@
     1.3,
     0
    ],
-   "within": 2.8
+   "within": 1.0
   },
   "tread-2": {
    "spot": [
@@ -27,7 +27,7 @@
     1.7,
     0
    ],
-   "within": 2.8
+   "within": 1.0
   },
   "tread-3": {
    "spot": [
@@ -35,7 +35,7 @@
     2.1,
     0
    ],
-   "within": 2.8
+   "within": 1.0
   },
   "tread-4": {
    "spot": [
@@ -43,7 +43,7 @@
     2.5,
     0
    ],
-   "within": 2.8
+   "within": 1.0
   },
   "tread-5": {
    "spot": [
@@ -51,7 +51,7 @@
     2.9,
     0
    ],
-   "within": 2.8
+   "within": 1.0
   }
  },
  "siteClear": [

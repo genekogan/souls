@@ -17,7 +17,7 @@ import { checkStations, childrenState, walkCrew, type Children } from '../../../
 import { frameStability } from './beam-connect.ts';
 import { LIFT_SPEED, RAISE_BYSTANDER_GAP, RAISE_RATE, raiseAlong, raiseBystander, raiseChoreoBlocked, raiseFaceCol, raiseLifterAt, raiseNextPitch, raisePathLen, raiseReach, raiseRoles, raiseStandBlocked, raiseStepPath, raiseTransitionPitch, type RaiseGeo, type RaiseRole } from '../../../mars/viewer/engine/construction/raise.ts';
 
-type P = { crew: string[]; item: string };
+type P = { crew: string[]; item: string; baseV1?: [number, number] };
 type Plan = { sign: 1 | -1 };
 /** approach → grip → raise → step (a crew of 3 or 4) → set → hold; `lowering` runs set, step and raise backwards. `th` is the
  *  native pitch: π/2 lying, 0 standing. */
@@ -121,7 +121,11 @@ function bystanderWait(rt: Runtime, ex: RaiseHoldExec, u: Entity, moves: [string
 export const raiseHold: ActionDef<P, Plan, RaiseHoldExec> = {
   verb: 'raise_hold_v1',
   description: 'A crew raises a loose upright lying on the ground about its base edge and keeps holding it, hands on its columns, until the action is stopped; stopping lowers it along the same arc back where it lay.',
-  schema: z.strictObject({ crew: z.array(z.string().max(80)).min(1).max(4), item: z.string().max(80) }),
+  schema: z.strictObject({
+    crew: z.array(z.string().max(80)).min(1).max(4), item: z.string().max(80),
+    /** PC17 (#696): the end nearer this point (x, z) is the base, whichever way the part came to lie, or the raise is refused; absent, the crew's end. */
+    baseV1: z.tuple([z.number(), z.number()]).optional(),
+  }),
   resumable: true,
   reservations: (_w, p) => [...p.crew.map((c) => ({ resource: `actor:${c}`, mode: 'exclusive' as const })), { resource: `entity:${p.item}`, mode: 'exclusive' as const }],
   plan(rt, p) {
@@ -142,8 +146,9 @@ export const raiseHold: ActionDef<P, Plan, RaiseHoldExec> = {
     // the base is the end nearer the first of the crew, else the other end if only that one has room
     const { L, W } = size(u), lead = rt.world.entities[p.crew[0]!]!, t = toward(u.pose, 1);
     const near: 1 | -1 = (lead.pose.p[0] - u.pose.p[0]) * t[0] + (lead.pose.p[2] - u.pose.p[2]) * t[1] > 0 ? -1 : 1;
+    const named = p.baseV1 && (([1, -1] as const).map((s) => ({ s, d: hypot(u.pose.p[0] - t[0] * s * L / 2 - p.baseV1![0], u.pose.p[2] - t[1] * s * L / 2 - p.baseV1![1]) })).sort((a, b) => a.d - b.d)[0]!.s);
     let first: Diagnostic | null = null;
-    for (const sign of [near, -near as 1 | -1]) {
+    for (const sign of named ? [named] : [near, -near as 1 | -1]) {
       const g = geoOf(u.pose, L, W, sign), roles = raiseRoles(p.crew);
       const issue = arcHit(rt, u, u.pose, sign, p.crew, PI2, 0, 24)
         ?? (() => { const d = checkStations(rt, [...startMoves(g, roles), ...roles.map((r) => ({ actor: r.actor, p: stationOf(g, r).p }))]); return d ? { ...d, code: 'raise.station-unreachable' } : null; })()

@@ -77,7 +77,7 @@ export type Site = { origin: Vec2; yaw: number };
 export function atSite(site: Site, at: Vec2): Vec2 { const o = rot2(at, site.yaw); return [site.origin[0] + o[0], site.origin[1] + o[1]]; }
 /** A carry's spot in the world: where its load lies and at what yaw. */
 export function spotAt(site: Site, spot: readonly [number, number, number]): { x: number; z: number; yaw: number } {
-  const p = atSite(site, [spot[0], spot[1]]); return { x: p[0], z: p[1], yaw: Math.atan2(Math.sin(spot[2] - site.yaw), Math.cos(spot[2] - site.yaw)) };
+  const p = atSite(site, [spot[0], spot[1]]); return { x: p[0], z: p[1], yaw: Math.atan2(Math.sin(spot[2] + site.yaw), Math.cos(spot[2] + site.yaw)) };
 }
 /** Where a frame's base must end up, as `raise_hold_v1` needs it: the blueprint's stand point. */
 export function standAt(b: Blueprint, site: Site, part: string): Vec2 | null { const s = b.parts[part]?.stand; return s ? atSite(site, s) : null; }
@@ -190,7 +190,7 @@ export function progressOf(b: Blueprint, p: Procedure, w: WorldState, site: Site
 /** The exact offer and params that do a ready maneuver in this world now (`with` is the proposer's own choice), or null
  *  when the world offers no such thing here yet: a seat's column and height, a joist's place along the bay and a flight's
  *  depend on which way round the parts came to lie, so they are read from what is offered, by where it goes. */
-export function offerFor(b: Blueprint, w: WorldState, site: Site, bound: Bound, m: Pick<Maneuver, 'template' | 'part'>, projectId: string): { offer: string; params: Record<string, unknown> } | null {
+export function offerFor(b: Blueprint, w: WorldState, site: Site, bound: Bound, m: Pick<Maneuver, 'template' | 'part'>, projectId: string): { offer: string; params: Record<string, unknown>; seats?: unknown } | null {
   const e = entityOf(w, bound, m.part), part = b.parts[m.part]; if (!e || !part) return null;
   switch (m.template) {
     case 'carry': return { offer: `carry-with:${e.id}`, params: { to: `project:${projectId}` } };
@@ -199,21 +199,49 @@ export function offerFor(b: Blueprint, w: WorldState, site: Site, bound: Bound, 
       if (!part.at) return null;
       const q = atSite(site, part.at), bays = beamBays(w, e.id, 3.5).map((x) => { const a = w.entities[x.a]!, sa = socketsOf(a).find((s) => s.id === x.seats[0])!, bb = w.entities[x.b]!, sb = socketsOf(bb).find((s) => s.id === x.seats[1])!, pa = worldPoint(a, sa.local), pb = worldPoint(bb, sb.local); return { x, d: hypot((pa[0] + pb[0]) / 2 - q[0], (pa[2] + pb[2]) / 2 - q[1]) }; }).filter((c) => c.d < IN_PLACE);
       const best = bays.sort((x, y) => Math.abs(x.x.height - (part.height ?? 0)) - Math.abs(y.x.height - (part.height ?? 0)))[0];
-      return best && Math.abs(best.x.height - (part.height ?? 0)) <= 0.08 ? { offer: `connect-beam-with:${e.id}`, params: { column: best.x.column, height: best.x.height } } : null;
+      return best && Math.abs(best.x.height - (part.height ?? 0)) <= 0.08 ? { offer: `connect-beam-with:${e.id}`, params: { column: best.x.column, height: best.x.height }, seats: best.x.seats } : null;
     }
     case 'install-joist': {
       if (!part.at) return null;
       const q = atSite(site, part.at), bay = joistBays(w, e.id).find((x) => { const a = w.entities[x.beams[0]]!, sa = ofKind(a, JOIST_SEAT).find((s) => s.id === x.seats[0])!, bb = w.entities[x.beams[1]]!, sb = ofKind(bb, JOIST_SEAT).find((s) => s.id === x.seats[1])!, pa = worldPoint(a, sa.local), pb = worldPoint(bb, sb.local); return hypot((pa[0] + pb[0]) / 2 - q[0], (pa[2] + pb[2]) / 2 - q[1]) < IN_PLACE; });
-      return bay ? { offer: `install-joist-with:${e.id}`, params: { at: bay.at } } : null;
+      return bay ? { offer: `install-joist-with:${e.id}`, params: { at: bay.at }, seats: bay.seats } : null;
     }
     case 'lay-sheet': return sheetBays(w, e.id).length ? { offer: `lay-sheet-with:${e.id}`, params: {} } : null;
     case 'install-flight': {
       if (!part.at) return null;
       const q = atSite(site, part.at), host = entityOf(w, bound, part.hosts[0]!);
-      const bay = flightBays(w, e.id).filter((x) => x.beam === host?.id).map((x) => { const s = socketsOf(w.entities[x.beam]!).find((c) => c.id === x.seat)!, pt = worldPoint(w.entities[x.beam]!, s.local); return { x, d: hypot(pt[0] - atSite(site, [part.at![0], 0])[0], pt[2] - atSite(site, [part.at![0], 0])[1]) + 0 * q[0] }; }).sort((x, y) => x.d - y.d)[0];
-      return bay ? { offer: `install-flight-with:${e.id}`, params: { at: bay.x.at } } : null;
+      const bay = flightBays(w, e.id).filter((x) => x.beam === host?.id).map((x) => { const s = socketsOf(w.entities[x.beam]!).find((c) => c.id === x.seat)!, pt = worldPoint(w.entities[x.beam]!, s.local); return { x, d: hypot(pt[0] - q[0], pt[2] - q[1]) }; }).sort((x, y) => x.d - y.d)[0];
+      return bay ? { offer: `install-flight-with:${e.id}`, params: { at: bay.x.at }, seats: bay.x.seat } : null;
     }
     case 'install-tread': return treadTarget(w, e.id) ? { offer: `install-tread:${e.id}`, params: {} } : null;
     case 'release': return null;   // `stop-carry:<op>`: the ledger knows the operation
   }
+}
+
+/** A loose thing that could be a part: its library def and where it lies. */
+export type Stock = { id: string; def: string; at: Vec2 };
+/** Where a part is first wanted: the spot it is delivered to or carried to, else the site itself. */
+function firstWanted(p: Procedure, site: Site, part: string): Vec2 {
+  const spot = p.delivered[part]?.spot ?? maneuversOf(p).find((m) => m.part === part && m.spot)?.spot;
+  return spot ? atSite(site, [spot[0], spot[1]]) : site.origin;
+}
+/** Bind each part to the nearest loose thing of a def it may be, the strictest parts first, or say what is short, per def.
+ *  A delivered part counts only where it can be used: within its delivery's reach. */
+export function bindStock(b: Blueprint, p: Procedure, site: Site, stock: readonly Stock[], radius: number): { bound: Bound } | { short: { def: string; need: number; have: number }[] } {
+  const free = new Map(stock.map((s) => [s.id, s])), bound: Bound = {}, missing: string[] = [];
+  const parts = Object.keys(b.parts).sort((x, y) => b.parts[x]!.def.length - b.parts[y]!.def.length);
+  for (const k of parts) {
+    const part = b.parts[k]!, want = firstWanted(p, site, k), reach = p.delivered[k]?.within ?? radius;
+    const hit = [...free.values()].filter((s) => part.def.includes(s.def) && hypot(s.at[0] - want[0], s.at[1] - want[1]) <= reach)
+      .sort((x, y) => part.def.indexOf(x.def) - part.def.indexOf(y.def) || hypot(x.at[0] - want[0], x.at[1] - want[1]) - hypot(y.at[0] - want[0], y.at[1] - want[1]) || (x.id < y.id ? -1 : 1))[0];
+    if (hit) { bound[k] = hit.id; free.delete(hit.id); } else missing.push(k);
+  }
+  if (!missing.length) return { bound };
+  const defs = [...new Set(missing.map((k) => b.parts[k]!.def[0]!))];
+  return { short: defs.map((d) => ({ def: d, need: Object.values(b.parts).filter((x) => x.def[0] === d).length, have: stock.filter((s) => s.def === d).length })) };
+}
+/** A point inside the ground the site needs clear. */
+export function inSite(p: Procedure, site: Site, at: Vec2): boolean {
+  const l = rot2([at[0] - site.origin[0], at[1] - site.origin[1]], -site.yaw);
+  return Math.abs(l[0]) <= p.siteClear[0] && Math.abs(l[1]) <= p.siteClear[1];
 }

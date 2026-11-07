@@ -16,6 +16,7 @@ import { deckRaised, railGaps, rasterOf } from '@souls/generators';
 import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@souls/world-compiler';
 import { beamBays, joistBays, sheetBays, flightBays, flightUnfit, treadTarget, treadsPhrase, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@souls/engine-mars';
 import { createHash } from 'node:crypto';
+import { Projects } from './projects.ts';
 import type { WorldHost } from '../world.ts';
 import type { LogEvent } from '@souls/protocol';
 import type { EdgeLedger, FloorNear } from '../edge/ledger/ledger.ts';
@@ -259,6 +260,8 @@ export class EngineBridge {
   readonly nav: GodNav;
   /** F1: god-built things Souls can see, look at and read (perceive.ts). */
   readonly perceive: GodPerceive;
+  /** PC17 (#696): the world's projects, behind the shared-carry flag. */
+  private projects?: Projects;
   /** R4-INFO: god-built places (areas, waters, buildings and their rooms, landmarks) in the Souls' map (places.ts). */
   readonly places: GodPlaces;
   /** LAYERS: schedules, ownership, zones, relationships, economy for Souls (layers.ts). */
@@ -1893,6 +1896,10 @@ export class EngineBridge {
     L.thingAt = (id) => { const t = this.nav.thingById(id); return t ? [t.at[0], t.at[1]] : null; };
     L.thingWords = () => pass('thing words', () => this.nav.thingWords(), [] as string[]);
     L.beforeMap = () => { this.flush(); this.perceiveSync(); };
+    if (L.sharedCarry && !this.readSide) {
+      this.projects = new Projects({ db: this.god.db, host: this.host, edge: L as never, world: () => this.mw.world as never, defOf: (id) => this.model.entities.get(id)?.def.replace(/^core-/, 'core/') });
+      L.projects = this.projects;
+    }
     const prev = L.worldProfile;
     L.worldProfile = (soul, caps, plans) => { prev?.(soul, caps, plans); try { this.capabilities(soul, caps, plans as never); } catch (e) { this.log(`capabilities: ${(e as Error).message}`); } };
     L.exactAuthoredWalkRef=ref=>this.nav.exactPlaceWalkRef(ref);
@@ -2031,6 +2038,8 @@ export class EngineBridge {
     // the object scans read every entity of the world (three passes) and perceive/layers scan signs and stalls
     const named = (...verbs: string[]) => !focus || focus.targets.size > 0 || verbs.some((v) => wantsPrefix(focus, v + ':', v));
     if (named('read')) try { this.perceive.capabilities(soul, caps, plans); } catch (e) { this.log(`perceive capabilities: ${(e as Error).message}`); }
+    // PC17 (#696): projects near this Soul, and stock to organize one with (nothing else: a far Soul's menu gains no row)
+    if (this.projects && named('organize', 'volunteer', 'leave-project', 'revise-project')) try { this.projects.capabilities(soul, caps, plans as never); } catch (e) { this.log(`project capabilities: ${(e as Error).message}`); }
     caps.push({ id: 'pray', verb: 'pray', label: 'Pray to the god of this world (params: {"text": "…"}); answers come back under GET /v1/god/prayers/mine', available: true, params: { text: { type: 'string', required: true, maxLength: 2000 } } });
     const ents = this.mw.world.entities as Record<string, any>, me = ents[soul.entityId]; if (!me?.human) return;
     const here: Vec2 = [me.pose.p[0], me.pose.p[2]];
@@ -2152,7 +2161,7 @@ export class EngineBridge {
             if(sdef!.tags.includes('upright')){
               const rid=`raise-with:${x.id}`,rlabel=`Raise ${name(x.id)} upright with other Souls and hold it until one of you stops (asks them first; ${crew[0]}–${crew[1]} people; with: who)`;
               const rblock=sblock??(x.pose.roll?{code:'raise.not-lying',reason:`${name(x.id)} is not lying flat on the ground.`}:null);
-              caps.push({id:rid,verb:'raise-with',label:rlabel,target:{id:x.id,kind:'object'},available:!rblock,...(rblock?{blocked:rblock}:{}),params:{with:{type:'string',maxLength:300,description:'the Souls who raise it with you (names or ids: "Bo and Cy", "Bo, Cy and Dee")'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
+              caps.push({id:rid,verb:'raise-with',label:rlabel,target:{id:x.id,kind:'object'},available:!rblock,...(rblock?{blocked:rblock}:{}),params:{with:{type:'string',maxLength:300,description:'the Souls who raise it with you (names or ids: "Bo and Cy", "Bo, Cy and Dee")'},project:{type:'string',optional:true,maxLength:40,description:'a project this is a frame of: it stands where the blueprint says'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
               const rplan={label:rlabel,steps:[],together:{kind:'shared' as const,template:'raise-hold' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew,mass:{kg:mass,each:MAX_KG_PER_CARRIER}}};
               if(!rblock)plans.set(rid,rplan);
             }

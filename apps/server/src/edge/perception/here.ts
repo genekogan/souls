@@ -366,6 +366,7 @@ export function hereFrame(ledger: EdgeLedger, soul: EdgeSoul,options:{doHere?:bo
     ...(where?{where}:{}),
     me: ownMe,
     near, objects, ...(Object.keys(more).length ? {more} : {}), conversations_in_earshot: conversations, exits, ...(() => {const f = floorLines(ledger, P); return f.length ? {floors: f} : {};})(),
+    ...(() => {const l = ledger.projects?.hereLines(soul) ?? []; return l.length ? {projects: l} : {};})(),
     // knowledge/1: the district summarised, far districts as names and directions (more once visited)
     ...(ledger.knowledge?.scales(soul.soulId, ledger.placePathOf(soul.soulId).filter(p => p.kind !== 'occupier').map(p => p.id), P.pos, c ? c.hour * 60 + c.minute : null) ?? {}),
     untrusted: true,
