@@ -7,9 +7,10 @@ import { resolveCapability } from './edge/ledger/vocabulary.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const mk = (obj: string, action: string, label: string, name: string) => ({ id: `object:${obj}:${action}`, verb: 'object', object: obj, action, label, available: true, target: { id: obj, kind: 'object' }, _name: name }) as any;
-const pin = mk('e_aaaa0001', 'pin', 'Pin a note on the notice board', 'notice board'), unpin = mk('e_aaaa0001', 'unpin', 'Take down your note from the notice board', 'notice board');
-const sign = mk('e_bbbb0002', 'sign', 'Sign the sign-up sheet', 'sign-up sheet'), unsign = mk('e_bbbb0002', 'unsign', 'Cross your name off the sign-up sheet', 'sign-up sheet');
-const nbPin = mk('e_cccc0003', 'pin', 'Write a line in the notebook', 'notebook'), nbUnpin = mk('e_cccc0003', 'unpin', 'Cross out your line in the notebook', 'notebook');
+// as the world offers them: an object target has no names of its own, and its label ends in the thing's name
+const pin = mk('e_aaaa0001', 'pin', 'Pin a note on the notice board (board)', ''), unpin = mk('e_aaaa0001', 'unpin', 'Take down your note from the notice board (board)', '');
+const sign = mk('e_bbbb0002', 'sign', 'Sign the sign-up sheet (sheet)', ''), unsign = mk('e_bbbb0002', 'unsign', 'Cross your name off the sign-up sheet (sheet)', '');
+const nbPin = mk('e_cccc0003', 'pin', 'Write a line in the notebook (notebook)', ''), nbUnpin = mk('e_cccc0003', 'unpin', 'Cross out your line in the notebook (notebook)', '');
 const desk = { id: 'write:write.e_dddd0004', verb: 'write', label: 'Write (desk in the study)', available: true, target: { id: 'write.e_dddd0004', kind: 'spot' }, _name: 'desk' } as any;
 const resolve = (input: string, caps: any[]) => { const r: any = resolveCapability(input, { caps, target: (c: any) => ({ names: c._name ? [c._name] : [], around: c === desk ? ['study'] : [], at: [1, 1] }), places: [], root: [], me: [0, 0] } as any); return r.cap?.id ?? r.code ?? r.kind; };
 
@@ -42,4 +43,10 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('cross off my name from the sign-up sheet', [pin, unpin]), 'unknown', 'no sheet here: the board keeps her note');
   assert.equal(resolve('cross out my name from the notebook', [pin, unpin]), 'unknown');
   assert.equal(resolve('cross out', [nbPin, nbUnpin]), nbUnpin.id, 'nothing else to cross out');
+  // a thing named beats a label's noun, and a blocked offer answers for itself
+  assert.equal(resolve('cross off my name from the notice board', all), unpin.id);
+  assert.equal(resolve('strike off my name from the board', all), unpin.id);
+  const noLine = {...nbUnpin, available: false, blocked: {code: 'object.not-yours', reason: 'You have no line in this notebook.'}};
+  assert.equal(resolve('cross out my line in the notebook', [sign, unsign, nbPin, noLine]), noLine.id, 'the notebook says why not');
+  assert.equal(resolve('cross out my note on the sheet', [pin, unpin]), 'unknown', 'a sheet that is not here');
 });

@@ -165,7 +165,7 @@ export class GodPerceive {
         }) : {});
       // #428: a notebook's lines come with a read, never with the sight of it or a look at its object
       const shut = { visibility: [] as string[] }, schema = kind.schema as Record<string, object>;
-      this.objs!.register(def?.tags?.includes('notebook') ? { ...kind, schema: { ...schema, text: { ...schema.text, ...shut }, state: { ...schema.state, ...shut } } } as never : kind);
+      this.objs!.register(def?.tags?.includes('notebook') ? { ...kind, schema: { ...schema, text: { type: 'string', ...shut }, state: { type: 'json', ...shut } } } as never : kind);
     }
     this.kinds.add(k);
   }
@@ -347,7 +347,7 @@ export class GodPerceive {
   private begin(): Run | null {
     const objs = this.objects(); if (!objs) return null;
     const root = this.rootPlace(); if (!root) return null;
-    if (!this.sigs.size) for (const o of objs.all()) if (this.kinds.has(o.kind) || (o.state as BuiltState)?.key === o.id) { this.sigs.set(o.id, stateDigest(o.state)); if (!this.kinds.has(o.kind)) { const e = this.h.model.entities.get(o.id), def = e && this.h.model.resolvedDef(e.def); this.registerBuiltKind(o.kind, def ?? undefined); } }
+    if (!this.sigs.size) for (const o of objs.all()) if (this.kinds.has(o.kind) || (o.state as BuiltState)?.key === o.id) { this.sigs.set(o.id, stateDigest(o.state)); if (!this.kinds.has(o.kind)) { const e = this.h.model.entities.get(o.id), ref = e?.def ?? (o.state as BuiltState)?.def, def = ref ? this.h.model.resolvedDef(ref) : undefined; /* a removed thing's row still names its def, and the kind outlives it (#990) */ this.registerBuiltKind(o.kind, def ?? undefined); } }
     const layersOn = !!this.h.layers?.active();
     // L4 item 5: the layers switching on or off changes only what wantOne's `lay` reads: things with a layer field
     if (layersOn !== this.layersOn) { this.layersOn = layersOn; for (const e of this.h.model.entities.values()) if (layered(e)) this.retag.add(e.id); }

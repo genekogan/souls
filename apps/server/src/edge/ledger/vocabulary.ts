@@ -94,7 +94,7 @@ const ACT_ALIASES: Record<string, string> = {'turn-on': 'switch-on', 'turn-off':
 /** #428: a second meaning of an everyday word, used only when its ACT_ALIASES meaning is not on offer and this one is:
  *  "cross out" a sign-up name (unsign) or a notebook line (the pinboard faculty's unpin). */
 const ACT_ALT: Record<string, string> = {'cross-out': 'unpin', 'cross-off': 'unpin', 'strike-off': 'unpin'};
-const LABEL_FILLER = new Set(['from', 'your', 'my', 'out', 'off', 'down', 'take', 'cross', 'in', 'on', 'of']);
+const LABEL_FILLER = new Set(['from', 'your', 'my', 'out', 'off', 'down', 'take', 'cross', 'in', 'on', 'of']), SHEET_WORDS = new Set(['name', 'sheet', 'signature']);
 /** #428: "write in the notebook" is a notebook's line (the pinboard faculty's `pin`), only where a notebook's line is on
  *  offer (its label says so), so "write in the study" still reaches a desk beside a pinboard. */
 const NOTEBOOK_WORDS: Record<string, string> = {'write-in': 'pin', 'write-a-line-in': 'pin'};
@@ -589,13 +589,15 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   else if (ACT_ALIASES[verb] && !ctx.caps.some(c => c.verb === verb)) {
     // the second meaning when it can happen and the first can't, or when the words name its target
     const primary = ACT_ALIASES[verb]!, alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), ws = tokens(rest).filter(w => !LABEL_FILLER.has(w));
-    // what the words name decides (#990): a target's own name first, then a label's noun ("your line"), never its "from" or
-    // "your". Words that name neither stay with the first meaning, so another thing's note is not taken down for them.
+    // what the words name decides (#990): the thing first (its names, the "in the notebook" and "(notebook)" of its label),
+    // then a label's noun ("your line"), never its "from" or "your". Words for a sheet that isn't here stay with the sheet,
+    // so a note is not taken down for them; words naming nothing take what is there to cross out.
     const hits = (text: string) => {const all = tokens(text).filter(w => !LABEL_FILLER.has(w)); return ws.some(w => tokenHit(w, all));};
-    const name = (c: EdgeCapability) => hits(ctx.target(c).names.join(' ')), noun = (c: EdgeCapability) => hits(c.label);
-    const first = ctx.caps.filter(c => c.action === primary), second = alt ? can(alt) : [];
+    const thing = (c: EdgeCapability) => [...ctx.target(c).names, ...[...c.label.matchAll(/\b(?:in|on|off|from)\s+the\s+([^()]+)|\(([^)]*)\)/g)].map(m => m[1] ?? m[2])].join(' ');
+    const name = (c: EdgeCapability) => hits(thing(c)), noun = (c: EdgeCapability) => hits(c.label);
+    const first = ctx.caps.filter(c => c.action === primary), second = alt ? ctx.caps.filter(c => c.action === alt) : [];
     const altFits = !!alt && (second.length
-      ? first.some(name) ? false : second.some(name) ? true : first.some(noun) ? false : second.some(noun) ? true : !ws.length && !can(primary).length
+      ? first.some(name) ? false : second.some(name) ? true : !first.length && ws.some(w => SHEET_WORDS.has(w)) ? false : first.some(noun) ? false : second.some(noun) ? true : !can(primary).length && !!can(alt).length
       : !verbs.has(primary) && verbs.has(alt));
     verb = altFits ? alt : primary;
   }

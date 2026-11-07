@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {writeFileSync, mkdirSync} from 'node:fs';
 import {setImmediate} from 'node:timers/promises';
 import {Hono} from '../../apps/server/node_modules/hono/dist/index.js';
@@ -151,4 +154,25 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
   limitation:'Deterministic native fake-brain test; the look of the page, the handwriting and the hand is judged from the real-client video.'};
  if(out){mkdirSync(out,{recursive:true});writeFileSync(`${out}/summary.json`,JSON.stringify(report,null,2));}
  console.log(JSON.stringify(report));
+});
+
+// third review of #990: on boot a kind comes from the first row met, and that row may be a removed notebook's: the kind stays
+// shut and keeps its actions for the notebooks still there
+test('a removed notebook leaves the others shut after a restart',{timeout:120000},async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'notebook-')),path=join(dir,'world.db');t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const open=async()=>{const f=fixture(path,factory,{durableClockV1:true});f.brain.quiesce();const edge=new EdgeLedger(f.host,f.db,undefined,{ambient:false}),app=new Hono();let soul;
+  const comms=mountEdgeRoutes(app,{host:f.host,db:f.db,souls:f.souls,ledger:edge,soul:()=>soul});const god=new GodMode(f.db,{worldId:f.host.worldId,ownerId:'dev:admin',tick:()=>f.host.engine.world.tick,emit(){}});
+  installEngineBridge({host:f.host,god,edge,log(){},worldLore:false,worldClock:false});const tick=async(n=5)=>{for(let i=0;i<n;i++){f.host.tickOnce();await setImmediate();f.host.drainInputs();}};await tick();
+  return {f,edge,app,god,tick,as:s=>{soul=s;},close(){comms.close();f.host.saveSnapshot?.();f.host.stop();f.db.close();}};};
+ let w=await open();await invite(w.f,'ben');const row=await accept(w.f.host,w.f.souls.create('dev:ben',{name:'Ben',description:'Notebook test'}));await w.tick(5);
+ const ben={soulId:row.id,entityId:row.entity_id,name:row.name,owner:'dev:ben'},p=w.f.host.engine.world.entities[ben.entityId].pose.p;
+ const places=[0,1,2,3].map(i=>({op:'place',def:'core/notebook-stand@1',name:`nb-${i}`,p:[p[0]+1.5+i*1.2,p[2]+2.5],owner:'soul:someone-else',access:'private',state:{text:`zebra secret ${i} — Zed`,textBy:'soul:someone-else'}}));
+ assert.equal(w.god.act({ops:places}).accepted,true);await w.tick(60);
+ const ids=[...w.god.model.entities.values()].filter(e=>/^nb-/.test(e.name)).map(e=>e.id).sort(),gone=ids[0],live=ids[1];
+ assert.equal(w.god.act({ops:[{op:'remove',id:gone}]}).accepted,true);await w.tick(60);w.close();
+ w=await open();t.after(()=>w.close());await w.tick(60);w.as(ben);
+ const get=async u=>JSON.stringify(await (await accept(w.f.host,w.app.request(u))).json());
+ for(const u of [`/v1/edge/objects/${live}`,'/v1/edge/objects','/v1/edge/observe'])assert.ok(!/zebra secret/.test(await get(u)),`${u} carries no line`);
+ assert.ok(w.edge.capabilities(ben).some(c=>c.id===`read:${live}`&&c.blocked?.code==='object.private'),'the read is still closed');
+ assert.ok(w.edge.capabilities(ben).some(c=>c.id===`object:${live}:pin`),'the notebook keeps its actions');
 });
