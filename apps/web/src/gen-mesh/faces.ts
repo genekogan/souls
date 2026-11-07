@@ -2,7 +2,7 @@
 // only, the WD8 sign-media rule), and seeded stained glass / mosaic (pure pixel arrays → DataTexture: no canvas, network
 // or paid generation). One small mesh per face, on a kit/2 shape side or a building wall slot. Owner: lane Y2.
 import * as THREE from 'three';
-import { FACE_IMAGE, FACE_NORMALS, boxSideSize, decalSchema, faceLines, faceLocalSide, type Decal, type FaceContent, type FaceSide, type KitShape, type ShapeFace, type Slot } from '@sim/generators';
+import { FACE_IMAGE, FACE_NORMALS, boxSideSize, decalSchema, faceLines, faceLocalSide, type Decal, type FaceContent, type FaceSide, type KitShape, type ShapeFace, type Slot } from '@souls/generators';
 import { BASE } from '../base-path.ts';
 
 type V3 = [number, number, number];

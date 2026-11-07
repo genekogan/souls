@@ -3,8 +3,8 @@
 // def's own mesh half (any kit tree, rock or flower) instead of a built-in species. Exclusions
 // come from the model: solids (footprints), roads/paths/plazas/pitches (surfaces), buildings.
 // Owner: L3.
-import { centreLine, orchardPoints, paletteOf, queryOf, scatter2Points, type ScatterPoint } from '@sim/generators';
-import type { Entity, WorldModel } from '@sim/world-compiler';
+import { centreLine, orchardPoints, paletteOf, queryOf, scatter2Points, type ScatterPoint } from '@souls/generators';
+import type { Entity, WorldModel } from '@souls/world-compiler';
 import * as THREE from 'three';
 import { meshFor, registerMesh, type MeshCtx } from './registry.ts';
 import { blockTest, type BlockCells, type BlockShape } from './block-test.ts';
@@ -112,6 +112,21 @@ function addBlocks(model: WorldModel, e: Entity, pad: number, cells: BlockCells,
       if (fp.length) { const ma = (a0 + a1) / 2, mb = (b0 + b1) / 2, c: [number, number] = [cx + ma * co + mb * si, cz - ma * si + mb * co], h: [number, number] = [(a1 - a0) / 2 + pad, (b1 - b0) / 2 + pad], r = Math.hypot(h[0], h[1]); put(c[0] - r, c[1] - r, c[0] + r, c[1] + r, { kind: 'obb', c, h, yaw, id: e.id }); }
     }
     for (const o of model.footprint(e, d)) { const r = Math.hypot(o.half[0], o.half[1]) + pad; put(o.c[0] - r, o.c[1] - r, o.c[0] + r, o.c[1] + r, { kind: 'obb', c: o.c, h: [o.half[0] + pad, o.half[1] + pad], yaw: o.yaw, id: e.id }); }
+    // #870: a footprinted kit's (or a mesh sidecar's) ground rooms are walkable floor, not colliders, but no meadow either:
+    // each floor-0 room polygon is blocked in the thing's world pose (the bake footprint() just made, memoised). Only a
+    // def with a footprint has rooms: the rest skip the second bake lookup
+    if (d.make.kind === 'mesh' ? d.make.footprint : d.make.kind === 'gen' && d.make.gen === 'kit/2' && d.make.args?.footprint) {
+      const rooms = model.bake(d, e.params ?? {}, e.seed ?? 0, e.shape).rooms;
+      if (rooms?.length) {
+        const world = d.form !== 'point' && e.in.parent === 'world', wp = world ? null : model.worldPose(e), co = wp ? Math.cos(wp.yaw) : 1, si = wp ? Math.sin(wp.yaw) : 0;
+        for (const room of rooms) {
+          if (room.floor !== 0 || !(room.polygon?.length >= 3)) continue;
+          const p = room.polygon.map(([x, z]): [number, number] => wp ? [wp.x + (x * co + z * si) * wp.s, wp.z + (-x * si + z * co) * wp.s] : [x, z]);
+          let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; for (const [x, z] of p) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
+          if (Number.isFinite(x0 + z0 + x1 + z1)) put(x0, z0, x1, z1, { kind: 'poly', p, id: e.id });
+        }
+      }
+    }
   }
 }
 

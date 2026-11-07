@@ -29,7 +29,7 @@ class PendingHost extends EventEmitter{
 }
 function fixture(t,{idle=false,startRun=true,urgentMs=1000}={}){
  t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:origin});
- const directory=mkdtempSync(join(tmpdir(),'sim-active-progress-')),journal=openJournal(directory,{worldId:'w',soulId:'s'}),host=new PendingHost(),stop=new AbortController(),commands=[],states=[];
+ const directory=mkdtempSync(join(tmpdir(),'souls-active-progress-')),journal=openJournal(directory,{worldId:'w',soulId:'s'}),host=new PendingHost(),stop=new AbortController(),commands=[],states=[];
  const plan='Preserve the original goal, unfinished errand and observations',instruction='Carry out the original owner request using observed facts.';
  journal.ingest({source:'owner',after:null,cursor:'original-owner',events:[{id:'original-owner',text:instruction}]});journal.handled('owner','original-owner','notification incorporated; task still open');
  journal.ingest({source:'world',after:null,cursor:'activity-at-start',events:[{id:'ambient-at-start',kind:'speech.ambient',raw:'speech',salience:1,text:'An already observed ambient remark.'},{id:'activity-at-start',kind:'activity.observed',salience:2,data:{body:{activity:'read'}}}]});

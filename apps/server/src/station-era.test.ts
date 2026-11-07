@@ -8,11 +8,11 @@ import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
-import { marsFactory,marsCommonsTransitionFactory,GREEN_FIELD_WORLD } from '@sim/engine-mars';
-import { hashOf } from '@sim/engine-contract';
-import { kernelHash } from '@sim/kernel';
+import { marsFactory,marsCommonsTransitionFactory,GREEN_FIELD_WORLD } from '@souls/engine-mars';
+import { hashOf } from '@souls/engine-contract';
+import { kernelHash } from '@souls/kernel';
 import { stationLivePhaseV1,stationLivePhaseV2,stationPhaseAtTickV2,stationEndTick,publicEvent,makeStationCueV2,
-  stationLiveV2Schema,stationHistoricalV2Schema,recordedTakeChunkSchema,decodeSceneCapturePublication } from '@sim/protocol';
+  stationLiveV2Schema,stationHistoricalV2Schema,recordedTakeChunkSchema,decodeSceneCapturePublication } from '@souls/protocol';
 import { WorldHost } from './world.ts';
 import { Db } from './db.ts';
 import { CandidateStationV1 } from './station.ts';

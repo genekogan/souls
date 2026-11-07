@@ -8,7 +8,7 @@ import {CARRY_REACH_SECONDS, CARRY_RELEASE_SECONDS, carryContactWeight} from './
 import { blockedWait } from '../runtime/waits.ts';
 import { z } from 'zod';
 import { angleDelta, clamp, dcos, dsin, rot2, wrapAngle, type Vec2, hypot } from '../core/math.ts';
-import type { ActionDef, CancelResult, StepResult } from '../actions/types.ts';
+import type { ActionDef, CancelResult, Diagnostic, StepResult } from '../actions/types.ts';
 import { DT, type Runtime } from '../runtime/runtime.ts';
 import type { Entity, Pose } from '../world/types.ts';
 import type { Spatial } from '../spatial/service.ts';
@@ -18,12 +18,14 @@ import { entityFootprint } from '../spatial/service.ts';
 import { carriedPose, carrierSpots, entityFrame, formationFor, laidPose, worldDiscs, isCarryLoad, type SE2 } from './formation.ts';
 import { poseHit } from './sweep.ts';
 import { labelOf, laidIssue, planCarryAction, type CarryParams, type CarryProgram } from './validate.ts';
-import { planCarry } from './planner.ts';
+import { PLAN_MAX_EXPAND, planCarry } from './planner.ts';
+import { nearestBlocker } from '../spatial/grid.ts';
 import { relevantEntities } from '../world/relevant.ts';
 import { MAX_LEVEL_ID } from '../spatial/types.ts';
 
 export const CARRY_SPEED = 0.9; // m/s of the fastest-moving formation point (centre + load tips under rotation)
 const ACCEL = 0.5; // m/s²
+const RETREAT = 1; // m a refused crew backs along its route before it sets down (#1150)
 const LIFT_S = 1.2;
 const SETDOWN_S = 1.2;
 const RELEASE_S = 0.4;
@@ -46,6 +48,11 @@ export type CarryExec = {
   cancelling: boolean;
   epoch: number;
   replans?: number;
+  /** A construction cut with no alternative from here, at that scene epoch: held (blocked) without replanning again
+   *  until the scene changes (PC07). */
+  cut?: { epoch: number; diagnostic: Diagnostic };
+  /** #1150: the world refused the crew's move. It backs along the route it came by, to this arc length, and sets down there. */
+  retreatTo?: number;
   reachStart?: number;
   waited?: number;
   /** Climb (between levels): traversal parameter, whether the flight's traffic resource is held, done. */
@@ -60,6 +67,10 @@ export const carrySchema = z.strictObject({
   to: z.strictObject({ x: z.number().min(-500).max(500), z: z.number().min(-500).max(500), yaw: z.number().min(-7).max(7), level: z.number().int().min(0).max(MAX_LEVEL_ID).optional() }),
   place: z.literal('lay').optional(),
   via: z.string().max(80).optional(),
+  /** PC07 (#686), opt-in: a route cut with no alternative is held at that scene epoch (no new search each tick) and its
+   *  diagnostic names the obstacle at the cut and whether the search was exhausted. Only the server's shared carries
+   *  ask for it; every other carry is unchanged. */
+  holdCutV1: z.literal(true).optional(),
 });
 
 const smooth = (t: number) => t * t * (3 - 2 * t);
@@ -118,6 +129,13 @@ function applyFormation(rt: Runtime, ex: CarryExec, q: SE2) {
     h.pose = { p: [spots[i][0], ex.p.levelY, spots[i][1]], yaw: carryFacing(ex, q.th, i) };
   });
   ex.q = q;
+}
+
+/** #1150: a refused crew's next step back would meet a person or something solid. */
+function retreatBlocked(rt: Runtime, ex: CarryExec, sp: Spatial, u: number): boolean {
+  const i0 = ex.i, g = sp.level(ex.p.level); ex.i = 0;
+  const q = poseAtU(ex, u); ex.i = i0;
+  return !!pathBystander(rt, ex, u) || (!!g && poseHit(g, ex.p.f, q, 0) >= 0);
 }
 
 /** A non-crew person inside the formation's footprint (load discs + carrier spots) at arc length u. */
@@ -334,17 +352,35 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
       }
       return { status: 'running', phase: ex.phase };
     }
+    if (ex.phase === 'move' && ex.retreatTo !== undefined) {
+      const sp = rt.services.spatial as Spatial; sp.sync(rt.world);
+      const next = Math.max(ex.retreatTo, ex.u - CARRY_SPEED * dt);
+      // the route was clear when it was planned, not necessarily now: what stands behind ends the backing here
+      if (next < ex.u && !retreatBlocked(rt, ex, sp, next)) {
+        ex.u = next; ex.i = 0; applyFormation(rt, ex, poseAtU(ex, ex.u));
+        if (ex.u > ex.retreatTo) return { status: 'running', phase: 'move' };
+        // not clear to lay it here: further back, where it was. The route's start is as far as it goes.
+        if (ex.u > 0 && laidIssue(sp, p.f, ex.q, p.level, p.levelY, p.item, p.crew)) { ex.retreatTo = Math.max(0, ex.u - RETREAT); return { status: 'running', phase: 'move' }; }
+      }
+      ex.retreatTo = undefined; startSetDown(rt, ex, ex.q);
+      return { status: 'running', phase: 'set-down' };
+    }
     if (ex.phase === 'move') {
       // construction changed the scene? the rest of the validated route must still be clear
       const sp = rt.services.spatial as Spatial;
       sp.sync(rt.world);
       if (sp.epoch !== ex.epoch) {
+        // PC07 (holdCutV1): the scene has not changed since the last search found no way: still held, without searching
+        // again each tick
+        if (p.holdCut && ex.cut?.epoch === sp.epoch) return { status: 'blocked', diagnostic: ex.cut.diagnostic };
+        if (p.holdCut) ex.cut = undefined;
         const g = sp.level(p.level)!;
-        const k = p.traj.poses.findIndex((q, j) => j > ex.i && poseHit(g, p.f, q, 0) >= 0);
+        const cutAt = { p: [0, 0] as Vec2 };
+        const k = p.traj.poses.findIndex((q, j) => j > ex.i && (p.holdCut ? poseHit(g, p.f, q, 0, cutAt) : poseHit(g, p.f, q, 0)) >= 0);
         if (k >= 0) {
           // replan the rest of the carry from the current formation pose (construction changed the topology)
           const here = poseAtU(ex, ex.u);
-          const r = planCarry({ g, f: p.f, starts: replanStarts(rt, ex, here), goals: [p.target], labelOf: (id) => labelOf(sp, id), carrierNames: p.crew });
+          const r = planCarry({ g, f: p.f, starts: replanStarts(rt, ex, here), goals: [p.target], labelOf: (id) => labelOf(sp, id), carrierNames: p.crew, ...(p.holdCut ? { budgetDetail: true } : {}) });
           if (r.ok) {
             p.traj = r.traj;
             ex.u = 0;
@@ -354,8 +390,23 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
             applyFormation(rt, ex, r.traj.poses[0]);
             return { status: 'running', phase: 'replan' };
           }
-          const q = p.traj.poses[k];
-          return { status: 'blocked', diagnostic: { code: 'carry.route-blocked', message: `the carry route of ${p.item} is now blocked near (${q.x.toFixed(1)}, ${q.z.toFixed(1)}) and no alternative exists: ${r.diagnostic.message}; the crew holds the load and waits`, subjects: [p.item, ...(r.diagnostic.subjects ?? [])], at: [q.x, p.levelY, q.z] } };
+          if (!p.holdCut) {
+            const q = p.traj.poses[k];
+            return { status: 'blocked', diagnostic: { code: 'carry.route-blocked', message: `the carry route of ${p.item} is now blocked near (${q.x.toFixed(1)}, ${q.z.toFixed(1)}) and no alternative exists: ${r.diagnostic.message}; the crew holds the load and waits`, subjects: [p.item, ...(r.diagnostic.subjects ?? [])], at: [q.x, p.levelY, q.z] } };
+          }
+          // what cut the route is the obstacle at the first blocked pose (the replan's closest try may stop elsewhere);
+          // a replan that stopped at its pose budget did not prove there is no other way
+          const q = p.traj.poses[k], cut = nearestBlocker(g, cutAt.p, 1.0), exhausted = r.expanded > PLAN_MAX_EXPAND;
+          const label = cut ? sp.scene.obstacles.find((o) => o.id === cut)?.label : undefined;
+          const diagnostic: Diagnostic = {
+            code: 'carry.route-blocked',
+            message: `the carry route of ${p.item} is now blocked near (${q.x.toFixed(1)}, ${q.z.toFixed(1)})${cut ? ` by '${labelOf(sp, cut)}'` : ''} and ${exhausted ? `a search of ${r.expanded} poses found no alternative (not a proof)` : 'no alternative exists'}: ${r.diagnostic.message}; the crew holds the load and waits`,
+            subjects: [p.item, ...(cut ? [cut] : []), ...(r.diagnostic.subjects ?? []).filter((s) => s !== cut)],
+            at: [q.x, p.levelY, q.z],
+            details: { cut: cut ?? null, ...(label ? { cutLabel: label } : {}), expanded: r.expanded, budget: PLAN_MAX_EXPAND, exhausted },
+          };
+          ex.cut = { epoch: sp.epoch, diagnostic };
+          return { status: 'blocked', diagnostic };
         }
         ex.epoch = sp.epoch;
       }
@@ -450,6 +501,14 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
     if (ex.phase === 'gather') return ex.walks.every((walk, i) => !!walk && exhausted.has(ex.p.crew[i]) && walkTo.waitQuiescent!(rt, walk, exhausted));
     return ex.phase === 'move' && ex.v < 0.02 && !ex.onStair && exhausted.has(ex.p.item);
   },
+  /** #1150: the crew's last step was not taken. The route behind it is the way it came, so that is the way out, as far as it is still clear. */
+  refused(rt, ex) {
+    if (ex.phase !== 'move') return;
+    // refused while backing: that step was back, so undo it, and go no further that way
+    if (ex.retreatTo !== undefined) { ex.u = Math.min(ex.p.traj.u[ex.p.traj.u.length - 1], ex.u + CARRY_SPEED * DT); ex.i = 0; ex.q = poseAtU(ex, ex.u); ex.retreatTo = ex.u; return; }
+    ex.u = Math.max(0, ex.u - ex.v * DT); ex.v = 0; ex.i = 0; ex.q = poseAtU(ex, ex.u);
+    ex.retreatTo = Math.max(0, ex.u - RETREAT);
+  },
   cancel(rt, ex): CancelResult {
     const p = ex.p;
     if (ex.phase === 'gather' && ex.reachStart !== undefined) {
@@ -495,6 +554,7 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
         },
       };
     if (ex.phase === 'move') {
+      if (ex.retreatTo !== undefined) { ex.cancelling = true; return { ok: true, deferred: true }; }   // #1150: backing off already; it sets down
       const sp = rt.services.spatial as Spatial;
       sp.sync(rt.world);
       const why = laidIssue(sp, p.f, ex.q, p.level, p.levelY, p.item, p.crew);

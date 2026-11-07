@@ -52,7 +52,7 @@ if (!args['no-viewer']) {
         page.on('requestfinished', async (rq) => { const u = rq.url(); try { const z = await rq.sizes(); if (/\/assets\/[0-9a-f]{64}\.glb/.test(u) && !seen.has(u)) { seen.add(u); files++; glb += z.responseBodySize; } if (/\/v1\/world\/snapshot/.test(u)) snapBytes = { body: z.responseBodySize, headers: z.responseHeadersSize }; } catch { } });
         await page.goto(`${base}?dev=1${q}`, { waitUntil: 'domcontentloaded' });
         const at = {};
-        for (const s of [5, 10, 20]) { await page.waitForTimeout(s * 1000 - (Date.now() - t0)).catch(() => {}); at[`${s}s`] = { glbMB: +(glb / 1e6).toFixed(1), files }; if (!firstDrawn) firstDrawn = await page.evaluate(() => window.__simEntity?.layer?.drawn?.size ?? null); }
+        for (const s of [5, 10, 20]) { await page.waitForTimeout(s * 1000 - (Date.now() - t0)).catch(() => {}); at[`${s}s`] = { glbMB: +(glb / 1e6).toFixed(1), files }; if (!firstDrawn) firstDrawn = await page.evaluate(() => window.__soulsEntity?.layer?.drawn?.size ?? null); }
         const bar = await page.evaluate(() => [...document.querySelectorAll('.viewer-arrival-progress span')].map((x) => x.textContent).join(' '));
         out.viewer[mode] = { ...at, drawnAt5s: firstDrawn, snapshotSentBytes: snapBytes, bar };
         await ctx.close();

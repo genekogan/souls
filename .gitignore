@@ -11,6 +11,7 @@ deploy.env
 
 # --- local agent identity files (Soul / god credentials)
 .eden-agent.json
+.souls/
 .eden-god.json
 
 # --- databases: worlds, fixtures and backups never go into git

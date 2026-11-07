@@ -207,7 +207,7 @@ export class Objects {
     return Object.entries(kind.actions).flatMap(([name, a]) => {
       if (a.roles !== 'anyone' && !a.roles.some(r => ctx.roles.includes(r))) return [];
       const blocked: Refusal | null = a.reach === 'place' && !ctx.inPlace ? {code: 'object.out-of-reach', reason: `Go to ${o.placeId} first.`} : a.available?.(o.state, ctx) ?? null;
-      return [{action: name, label: a.labelFor?.(o.state) ?? a.label, params: a.params, available: !blocked, ...(blocked ? {blocked} : {})}];
+      return [{action: name, label: a.labelFor?.(o.state, ctx) ?? a.label, params: a.params, available: !blocked, ...(blocked ? {blocked} : {})}];
     });
   }
 
@@ -349,7 +349,8 @@ export function checkParams(specs: Record<string, ParamSpec>, params: Record<str
     const v = params[key];
     if (v === undefined) { if (spec.optional) continue; return {code: 'capability.params', reason: `${key} is required.`}; }
     if (spec.type === 'string') {
-      if (typeof v !== 'string' || v.length > (spec.maxLength ?? 500)) return {code: 'capability.params', reason: `${key} must be a string.`};
+      if (typeof v !== 'string') return {code: 'capability.params', reason: `${key} must be a string.`};
+      if (v.length > (spec.maxLength ?? 500)) return {code: 'capability.params', reason: `${key} is too long: at most ${spec.maxLength ?? 500} characters (yours is ${v.length}).`};
       if (spec.enum && !spec.enum.includes(v)) return {code: 'capability.params', reason: `${key} must be one of ${spec.enum.join(', ')}.`};
       if (spec.pattern && !new RegExp(spec.pattern).test(v)) return {code: 'capability.params', reason: `${key} is not in the expected form.`};
     } else if (spec.type === 'integer') {

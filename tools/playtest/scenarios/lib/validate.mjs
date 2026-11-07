@@ -8,12 +8,13 @@ import { validateExpect } from '../../review/expect-oracles.mjs';
 import { normalizeCast } from '../../director/swarm/cast.mjs';
 import { providerPolicy } from '../../lib/provider-policy.mjs';
 import { templateNames, dist } from './world-names.mjs';
+import { validateScript } from '../../arena/adapters/scripted-owner.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIOS = resolve(HERE, '..');
 export const REPO = resolve(HERE, '../../../..');
 const PERSONAS = resolve(HERE, '../../personas');
-const ADAPTERS = ['claude-headless', 'codex-headless'];
+const ADAPTERS = ['claude-headless', 'codex-headless', 'scripted-owner'];
 const names = new Map();
 const namesOf = (genesis) => { if (!names.has(genesis)) names.set(genesis, templateNames(join(REPO, genesis))); return names.get(genesis); };
 
@@ -42,6 +43,7 @@ export function validateScenario(s) {
     if (!ADAPTERS.includes(x.adapter)) errs.push(`seats[${i}].adapter ${x.adapter}`);
     if (x.adapter === 'claude-headless' && !x.model) errs.push(`seats[${i}].model required for a Claude seat`);
     if (!x.soulName) errs.push(`seats[${i}].soulName required`);
+    if (x.adapter === 'scripted-owner') for (const e of validateScript(x.script)) errs.push(`seats[${i}].${e}`);
     if (x.persona && !existsSync(join(PERSONAS, `${x.persona}.md`))) errs.push(`seats[${i}].persona ${x.persona}: no personas/${x.persona}.md`);
   }
   if (!s?.seats?.length) errs.push('seats[] required');
@@ -52,17 +54,20 @@ export function validateScenario(s) {
     if (!Array.isArray(d.script) || !d.script.length) errs.push('scripted mode: director.script[] required');
     const bySeat = {};
     for (const [i, e] of (d.script ?? []).entries()) {
-      if (!ids.has(e.seat)) errs.push(`script[${i}].seat ${e.seat} is not a seat`);
+      if (!ids.has(e.seat) && e.seat !== '*') errs.push(`script[${i}].seat ${e.seat} is not a seat`);
       if (!['chat', 'card'].includes(e.channel)) errs.push(`script[${i}].channel`);
       if (!e.text) errs.push(`script[${i}].text`);
       if (!(e.atSec >= 0)) errs.push(`script[${i}].atSec`);
+      if (e.after != null && e.after !== 'result') errs.push(`script[${i}].after must be "result" (send once this seat's open requests have closed)`);
       if (e.atSec + (e.budgetSec ?? 0) > s.durationSec) errs.push(`script[${i}] ends after durationSec`);
-      (bySeat[e.seat] ??= []).push(e);
+      for (const id of e.seat === '*' ? ids : [e.seat]) (bySeat[id] ??= []).push(e);
       if (e.expect) { for (const m of validateExpect(e.expect)) errs.push(`script[${i}] ${m}`); if (s.world?.genesis) errs.push(...checkTargets(s.world.genesis, e.expect.targets, `script[${i}]`)); }
     }
-    for (const [seat, es] of Object.entries(bySeat)) { const o = [...es].sort((a, b) => a.atSec - b.atSec); for (let k = 1; k < o.length; k++) if (o[k].atSec < o[k - 1].atSec + (o[k - 1].budgetSec ?? 0)) errs.push(`seat ${seat}: "${o[k].text}" starts before "${o[k - 1].text}" has used its budget`); }
+    // Sequential direction waits for each request; non-sequential direction may overlap them (a mid-activity redirection).
+    if (d.sequential !== false) for (const [seat, es] of Object.entries(bySeat)) { const o = [...es].sort((a, b) => a.atSec - b.atSec); for (let k = 1; k < o.length; k++) if (o[k].atSec < o[k - 1].atSec + (o[k - 1].budgetSec ?? 0)) errs.push(`seat ${seat}: "${o[k].text}" starts before "${o[k - 1].text}" has used its budget`); }
   }
   if (!Array.isArray(s?.observer?.viewport)) errs.push('observer.viewport required');
+  if (s?.observer?.recordStart != null && !['arrival', 'load'].includes(s.observer.recordStart)) errs.push('observer.recordStart must be arrival or load');
   if (s?.review?.mode !== 'deterministic' && !s?.review?.reviewerModel) errs.push('review.reviewerModel required');
   try { providerPolicy(s); } catch (e) { errs.push(e.message); }
   if (!s?.rails) errs.push('rails required');

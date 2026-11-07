@@ -5,11 +5,11 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setImmediate} from 'node:timers/promises';
-import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@sim/engine-mars';
-import {kernelHash} from '@sim/kernel';
-import {hashOf} from '@sim/engine-contract';
-import {INTENT_V2,intentReceiptV2Schema,intentHistoryPageV1Schema,intentAdmissionFactV2,publicEvent} from '@sim/protocol';
-import type {CompileOut,callTool} from '@sim/brain';
+import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@souls/engine-mars';
+import {kernelHash} from '@souls/kernel';
+import {hashOf} from '@souls/engine-contract';
+import {INTENT_V2,intentReceiptV2Schema,intentHistoryPageV1Schema,intentAdmissionFactV2,publicEvent} from '@souls/protocol';
+import type {CompileOut,callTool} from '@souls/brain';
 import {Db} from '../../../src/db.ts';
 import {WorldHost} from '../../../src/world.ts';
 import {Brain} from '../../../src/brain.ts';
@@ -22,11 +22,13 @@ import type {Hub} from '../../../src/hub.ts';
 import {CandidateStationV1} from '../../../src/station.ts';
 import {drainEdenThought} from '../../../src/eden-bootstrap.ts';
 
-export async function generateCommonsCohort(measuredTicks=3600,retryV1=false,diagnosticsV1=false,walkBlockV1=false){
+// stairLandingV1 (#509): the cohort models a new world, which adopts stair-landing-clearance/1; false keeps the
+// pre-policy behaviour for the seeded regression's before arm.
+export async function generateCommonsCohort(measuredTicks=3600,retryV1=false,diagnosticsV1=false,walkBlockV1=false,stairLandingV1=true){
   const dir=mkdtempSync(join(tmpdir(),'eden-commons-cohort-')),path=join(dir,'native.db'),db=new Db(path);
   const factory=await marsFactory({...EDEN_SAFE_COMMONS_WORLD,safeCrewRemoval:true,walkBlockV1}),seed='commons-active-24',worldId='commons-active-24';
   const host=new WorldHost(db,factory,seed,1e9,worldId,{durableClockV1:true});host.boot();host.drainInputs();
-  const programEvents:import('@sim/engine-contract').ProgramEvent[]=[];
+  const programEvents:import('@souls/engine-contract').ProgramEvent[]=[];
   if(diagnosticsV1)host.listeners.push({onProgram:event=>programEvents.push(structuredClone(event))});
   const cfg={...config,worldId,worldKey:'eden',worldPath:'/w/eden',brainMode:'fake' as const,budgetUsdPerDay:.5,
     publicUrl:'http://127.0.0.1:4957',typesafeKey:undefined,anthropicKey:'synthetic-only',compilerModel:'synthetic-only',privyAppId:'',privyAppSecret:'',inviteRequired:true};
@@ -49,6 +51,7 @@ export async function generateCommonsCohort(measuredTicks=3600,retryV1=false,dia
       assert.equal((await request('/v1/invite','cohort'+i,{code})).status,200);
     }
     await drive(host.enqueue('rules','fixture',{dayConfig:{origin:0,dayTicks:72000,customs:[]}}));
+    if(stairLandingV1)await drive<unknown>(host.enableStairLandingClearanceV1());
     for(let i=0;i<24;i++){
       const owner='cohort'+Math.floor(i/4),created=await drive(request('/v1/souls',owner,{name:'Resident '+i,description:'local owned population'},{'X-Sim-Lifecycle':'1'}));assert.equal(created.status,202,await created.clone().text());
       const {lifecycle}=await created.json() as any;await setImmediate();host.drainInputs();await setImmediate();host.drainInputs();

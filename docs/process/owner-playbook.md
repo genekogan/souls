@@ -96,7 +96,7 @@ the model session stays with the app coordinator. This route needs no second rem
 remote agent or native Codex Cloud dispatch. Use one writer per checkout, reuse the existing checkout, and isolate
 test data. Preserve the exact source revision, commands, results and failed attempts for handoff. Return the patch or
 commit to the coordinator for publication through configured hooks; never copy credentials or bypass hooks. The
-fixture repair in [#609](https://github.com/genekogan/souls/issues/609) and [#610](https://github.com/genekogan/souls/pull/610)
+fixture repair in [#609](https://github.com/soulsimulation/souls/issues/609) and [#610](https://github.com/soulsimulation/souls/pull/610)
 demonstrates remote implementation and checks with local protected publication.
 
 ## Ship and recover
@@ -107,8 +107,8 @@ qualification and the established manual path are distinct: use the documented q
 still lacks configuration or receipts. [Operations](../operations.md) and [disaster recovery](../operations/disaster-recovery.md)
 cover service recovery; do not expose credentials in issues or ask the owner to paste them into chat.
 
-V1 acceptance is recorded in [#554](https://github.com/genekogan/souls/issues/554) and
-[#594](https://github.com/genekogan/souls/issues/594): usable intake/claims/proof, a real cloud task, a recoverable
+V1 acceptance is recorded in [#554](https://github.com/soulsimulation/souls/issues/554) and
+[#594](https://github.com/soulsimulation/souls/issues/594): usable intake/claims/proof, a real cloud task, a recoverable
 executor handoff, concurrent independent tasks, overview access verification, and the actual release path. Mark each
 completed, explicitly deferred or blocked with the missing capability. This page alone does not pass those checks.
 Full engine extraction, new body features and experience-report collection remain separately tracked outcomes.

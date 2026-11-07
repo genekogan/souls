@@ -4,7 +4,7 @@ import { z } from 'zod';
 import {
   DT, nextFloat, samplePath, timedPath,
   type ActionDef, type Diagnostic, type Entity, type PathCommit, type PoseSample, type Runtime, type WorldState,
-} from '@sim/engine-contract';
+} from '@souls/engine-contract';
 import { HALF, WALK_SPEED_MM_S } from './world.ts';
 
 const TPS = Math.round(1 / DT);
