@@ -87,6 +87,29 @@ test('A1: a public place outlives a secret one that sounds like it; words mean n
  assert.equal(secretMatcher([123,null,''],[7]),null,'a ref that isn\'t text is no term, and no 503');
 });
 
+test('A1: a seat goes with its place, by its own id; and a receipt in a public place keeps its path and its verb', () => {
+ const s=secretMatcher(['g-sq','seat-0','walk','jump'],['Square','World-Tree'])!;
+ assert.deepEqual(withoutSecrets({placePath:[{id:'seat-0',name:'Square seat',kind:'occupier'},{id:'bench',name:'Bench',kind:'place'}]},s),{placePath:[{id:'bench',name:'Bench',kind:'place'}]});
+ const publicOne={id:'r',capability:'jump:here',endedAt:{place:'open-sq',placePath:['Open Square','Town'],pos:[1,2]}},walkOne={id:'r2',capability:'walk:field'};
+ assert.deepEqual(withoutSecrets({receipts:[publicOne,walkOne]},s),{receipts:[publicOne,walkOne]},'an exact field isn\'t read for words, and a verb is no place');
+ assert.deepEqual(withoutSecrets({receipts:[{...publicOne,endedAt:{place:'x',placePath:['Square','Town']}}]},s),{receipts:[]},'the exact name in a path is');
+ assert.deepEqual(withoutSecrets({receipts:[{capability:'walk:g-sq'}]},s),{receipts:[]});
+});
+
+test('A1: a real seat: its occupier entry goes with the place', async t => {
+ const f=await world(t),target=places((await f.pub()).j)[0]!,place=f.ledger.places.byId.get(target.id)!;
+ (f.ledger.places.occupierOf as Map<string,unknown>).set('seat-x',{occ:{id:'bench-seat-0'},place});
+ f.ledger.knowledge.setSecret(target.id,true);
+ assert.ok(f.ledger.knowledge.publicMatcher()!.ids.has('bench-seat-0'));
+ assert.ok(f.ledger.places.occupierOf.size>0);
+});
+
+test('A1: with a secret place in the world, no receipt carries a chosen target', async t => {
+ const f=await world(t),target=places((await f.pub()).j)[0]!;
+ f.ledger.knowledge.setSecret('field',true);f.ledger.knowledge.setSecret(target.id,false);
+ assert.ok(!(await f.pub()).text.includes('"chosen"'));
+});
+
 test('A1: a new field can\'t bring one back: the scrub works on the answer, not on field names', () => {
  const s=secretMatcher(['hut-1'],['Hidden Cove'])!,gone=withoutSecrets({a:{later:{where:'hut-1',ok:1}},list:[{deep:[{x:'At the hidden cove.'}]},{y:'hut-12 and chutney'}],k:'Hidden Cove',n:3},s);
  assert.deepEqual(gone,{a:{later:{ok:1}},list:[{y:'hut-12 and chutney'}],n:3},'whole words only; an entry goes whole, a field alone');

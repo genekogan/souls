@@ -84,7 +84,9 @@ export class PlaceKnowledge {
   publicMatcher(): Secrets | null {
     if (this.matcher?.version === this.version && this.matcher.places === this.L.places.version) return this.matcher.re;
     const hidden = [...this.L.places.byId.values()].filter((p) => this.isSecret(p.id));
-    const re = secretMatcher(hidden.flatMap((p) => [p.id, (p as Place & {ref?: unknown}).ref]), hidden.map((p) => p.name)); this.matcher = {version: this.version, places: this.L.places.version, re}; return re;
+    // a seat or a rider's slot has its own id and goes by its place's name
+    const occupiers = [...this.L.places.occupierOf.values()].filter((o) => this.isSecret(o.place.id)).map((o) => o.occ.id);
+    const re = secretMatcher([...hidden.flatMap((p) => [p.id, (p as Place & {ref?: unknown}).ref]), ...occupiers], hidden.map((p) => p.name)); this.matcher = {version: this.version, places: this.L.places.version, re}; return re;
   }
   secrets(): {id: string; name: string}[] {return [...this.marked()].sort().map(id => ({id, name: this.L.places.byId.get(id)?.name ?? id}));}
 
