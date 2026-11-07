@@ -20,7 +20,11 @@ export const HARVEST_REACH = 20;
 export const PICK_HOLD_SECONDS = 0.7;
 const GRACE_TICKS = 1200, EDGE_GAP = HUMAN_RADIUS + 0.04, STAND_GAP = HUMAN_RADIUS + 0.08;
 /** A vessel this near (m) is taken from where the Soul stands, under `take_item`'s own HERE_REACH (0.85 m). */
-const TAKE_REACH = 0.8;
+const TAKE_REACH = 0.82;
+/** Two Souls fetching at once keep their stands this far apart (m): two bodies and a margin. */
+const STANDS_APART = 2 * HUMAN_RADIUS + 0.04;
+/** Stands tried out from a table's edge (m), and along the side from straight out from the vessel. */
+const EDGE_GAPS = [EDGE_GAP, EDGE_GAP + 0.06, EDGE_GAP + 0.12, EDGE_GAP + 0.18], ALONG = [0, 0.15, -0.15, 0.3, -0.3, 0.45, -0.45];
 /** The picking hand reaches this far into the bed from its near edge (m), and the body stands this far to the right of the
  *  plant so the left hand reaches it straight ahead. */
 const INTO_BED = 0.13, HAND_LEFT = 0.17;
@@ -62,33 +66,40 @@ export function createHarvest(h: HarvestHost) {
   const walk = (st: Vec3, face: number): Step => ({ verb: 'mars:walk_to', params: { x: r3(st[0]), z: r3(st[2]), level: 0, face: r3(face) } });
   const LET_GO: Step = { verb: 'mars:let_go_v1', params: {} };
 
-  /** The steps to take a vessel that is not held. The walk is a step of the act, with the engine's limits on a blocked walk,
-   *  and it ends where the vessel is in reach, so `take_item` needs no walk of its own: that one has no limit, and from a
-   *  stand out of reach it went on round the table through the next Soul (#1214). On a table or a counter, the nearest side
-   *  with the vessel in reach; on the ground, a step from it on the Soul's side. */
-  function fetchSteps(id: string, me: Vec2): Step[] | Refusal {
+  /** Stands another Soul's open fetch is walking to: a vessel already in hand has left its stand. */
+  const taken = (body: string) => [...acting].filter(([b, a]) => b !== body && a.stand && ents()[a.vessel]?.support?.kind !== 'in-hand').map(([, a]) => a.stand as Vec3);
+  /** The best of these stands: clear, then away from another fetch's stand, then nearest the Soul. */
+  function bestStand(body: string, me: Vec2, stands: Vec3[]): Vec3 | null {
+    const others = taken(body), free = stands.filter(clear), apart = free.filter((st) => others.every((o) => Math.hypot(o[0] - st[0], o[2] - st[2]) >= STANDS_APART));
+    return (apart.length ? apart : free).sort((a, b) => Math.hypot(a[0] - me[0], a[2] - me[1]) - Math.hypot(b[0] - me[0], b[2] - me[1]))[0] ?? null;
+  }
+  /** The stand to take a vessel from and the steps to it. The walk is a step of the act, with the engine's limits on a
+   *  blocked walk, and it ends with the vessel in reach, so `take_item` needs no walk of its own: that one has no limit, and
+   *  it went on round the table through the next Soul (#1214). On a table or a counter, along any side, kept clear of
+   *  another Soul's stand; on the ground, a step from it, the Soul's side first. */
+  function fetchSteps(id: string, body: string, me: Vec2): { steps: Step[]; stand: Vec3 } | Refusal {
     const x = ents()[id], s = x?.support, it = x?.pose?.p as Vec3 | undefined, name = M().pathOf(id);
-    const TAKE: Step = { verb: 'mars:take_item', params: { item: id, hand: 'right' } };
     if (!it) return { code: 'harvest.vessel-gone', reason: `${name} is not there any more.` };
+    const go = (st: Vec3) => ({ stand: st, steps: [walk(st, Math.atan2(it[2] - st[2], it[0] - st[0])), LET_GO, { verb: 'mars:take_item', params: { item: id, hand: 'right' } }] });
+    const away = (st: Vec3) => Math.hypot(st[0] - it[0], st[2] - it[2]);
     if (s?.kind === 'resting-on') {
       const owner = M().entities.get(s.on), odef = owner && M().resolvedDef(owner.def);
       if (owner && odef) {
         const wp = M().worldPose(owner), hx = odef.size.box[0] / 2 * wp.s, hz = odef.size.box[2] / 2 * wp.s, c = Math.cos(wp.yaw), sn = Math.sin(wp.yaw);
         const lx = (it[0] - wp.x) * c - (it[2] - wp.z) * sn, lz = (it[0] - wp.x) * sn + (it[2] - wp.z) * c;
         const sides: [Vec2, Vec2][] = [[[lx, hz], [0, 1]], [[lx, -hz], [0, -1]], [[hx, lz], [1, 0]], [[-hx, lz], [-1, 0]]];
-        const stands = sides.flatMap(([e, n]) => [EDGE_GAP, EDGE_GAP + 0.06, EDGE_GAP + 0.12].map((g) => toWorld(wp, [(e[0] + n[0] * g) / wp.s, 0, (e[1] + n[1] * g) / wp.s])))
-          .filter((st) => Math.hypot(st[0] - it[0], st[2] - it[2]) <= TAKE_REACH && clear(st))
-          .sort((a, b) => Math.hypot(a[0] - me[0], a[2] - me[1]) - Math.hypot(b[0] - me[0], b[2] - me[1]));
-        if (!stands.length) return [LET_GO, TAKE]; // deep on a wide table: only `take_item`'s own station reaches it
-        return [walk(stands[0], Math.atan2(it[2] - stands[0][2], it[0] - stands[0][0])), LET_GO, TAKE];
+        const all = sides.flatMap(([e, n]) => EDGE_GAPS.flatMap((g) => ALONG.map((a) => toWorld(wp, [(e[0] + n[0] * g + n[1] * a) / wp.s, 0, (e[1] + n[1] * g + n[0] * a) / wp.s]))));
+        // deep on a wide table no stand reaches it: the nearest clear one, where `take_item` has the least left to do
+        const st = bestStand(body, me, all.filter((q) => away(q) <= TAKE_REACH)) ?? all.filter(clear).sort((a, b) => away(a) - away(b))[0];
+        return st ? go(st) : { code: 'harvest.vessel-blocked', reason: `There is no room to stand at ${M().pathOf(s.on)} to pick up ${name}.` };
       }
     }
     if (s?.kind === 'in-hand') return { code: 'harvest.vessel-held', reason: `Someone else is holding ${name}.` };
     if (s?.kind !== 'ground') return { code: 'harvest.vessel-not-down', reason: `${name} is not on a table, a counter or the ground; take it out first.` };
-    const d = Math.hypot(me[0] - it[0], me[1] - it[2]) || 1, u: Vec2 = [(me[0] - it[0]) / d, (me[1] - it[2]) / d];
-    for (const g of [0.45, 0.55, 0.65]) {
-      const st: Vec3 = [it[0] + u[0] * g, 0, it[2] + u[1] * g];
-      if (clear(st)) return [walk(st, Math.atan2(-u[1], -u[0])), LET_GO, TAKE];
+    const from = Math.atan2(me[1] - it[2], me[0] - it[0]);
+    for (const g of [0.45, 0.55, 0.65]) for (const k of [0, 1, -1, 2, -2, 3, -3, 4]) {
+      const st: Vec3 = [it[0] + Math.cos(from + k * Math.PI / 4) * g, 0, it[2] + Math.sin(from + k * Math.PI / 4) * g];
+      if (clear(st)) return go(st);
     }
     return { code: 'harvest.vessel-blocked', reason: `There is no room to stand by ${name} to pick it up.` };
   }
@@ -141,10 +152,10 @@ export function createHarvest(h: HarvestHost) {
       if (clear(s)) { st = s; break; }
     }
     if (!st) return { code: 'harvest.planter-blocked', reason: `There is no room to stand at ${m.pathOf(ripe)} to pick from it.` };
-    const steps: Step[] = [];
-    if (!held) { const no = soul.soulId ? h.denied?.(id, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null; if (no) return no; const f = fetchSteps(id, me); if ('code' in f) return f; steps.push(LET_GO, ...f); }
+    const steps: Step[] = []; let stand: Vec3 | undefined;
+    if (!held) { const no = soul.soulId ? h.denied?.(id, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null; if (no) return no; const f = fetchSteps(id, soul.entityId, me); if ('code' in f) return f; steps.push(LET_GO, ...f.steps); stand = f.stand; }
     steps.push(walk(st, face), LET_GO, { verb: 'mars:hand_actuator_v1', params: { target: ripe, at: at.map(r3), hand: 'left', hold: PICK_HOLD_SECONDS } });
-    planned.set(soul.entityId, { vessel: id, planter: ripe });
+    planned.set(soul.entityId, { vessel: id, planter: ripe, stand });
     // the pick happens at the hand's contact (and is checked again there): the summary says what the act does
     return { steps, summary: `Picks ${hv.take} ${hv.word} from ${m.pathOf(ripe)} into ${name} at the hand's touch.` };
   }
@@ -156,7 +167,7 @@ export function createHarvest(h: HarvestHost) {
   }
 
   // ---- the world changes at the hand's contact ----
-  const watching = new Map<string, number>(), fired = new Set<string>(), planned = new Map<string, { vessel: string; planter: string }>(), acting = new Map<string, { vessel: string; planter: string; since?: number; reached?: true }>();
+  const watching = new Map<string, number>(), fired = new Set<string>(), planned = new Map<string, { vessel: string; planter: string; stand?: Vec3 }>(), acting = new Map<string, { vessel: string; planter: string; stand?: Vec3; since?: number; reached?: true }>();
   /** What the hand's contact came to, kept for the receipt when the act's steps end (`outcome`). */
   const touched = new Map<string, { vessel: string; failure: Refusal | null }>();
   let visits = 0;
