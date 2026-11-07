@@ -1,5 +1,5 @@
 #!/bin/bash
-# lib.sh — shared helpers for the sim-director scripts (sourced, not run).
+# lib.sh — shared helpers for the souls-director scripts (sourced, not run).
 # State for the one live run lives in $STATE_DIR/current.env (shell-quoted vars written by direct.sh / run.sh).
 # Everything defaults to paths inside the repo checkout (gitignored .e2e/); override with the env vars below.
 
@@ -10,7 +10,7 @@ STATE="$STATE_DIR/current.env"
 RUNS_ROOT="${SIM_RUNS_ROOT:-$SIM_CHECKOUT/.e2e/playtest/runs}"
 LOAD_MAX="${SIM_LOAD_MAX:-10}"
 
-die() { echo "sim-director: $*" >&2; exit 1; }
+die() { echo "souls-director: $*" >&2; exit 1; }
 alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 load_state() { [ -f "$STATE" ] || return 1; # shellcheck disable=SC1090
   source "$STATE"; }

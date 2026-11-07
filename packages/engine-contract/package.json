@@ -1,5 +1,5 @@
 {
-  "name": "@sim/engine-contract",
+  "name": "@souls/engine-contract",
   "version": "0.0.1",
   "private": true,
   "type": "module",

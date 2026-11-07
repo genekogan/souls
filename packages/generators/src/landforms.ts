@@ -1,4 +1,4 @@
-// Landform generators for the tranche-2 kinds in @sim/ground (forms.ts): cliff/1 (path),
+// Landform generators for the tranche-2 kinds in @souls/ground (forms.ts): cliff/1 (path),
 // terrace/1 (area), channel/1 (path), brush/1 (point). Owner: L3. Spec 33 §2 row 5.
 // Scales blend by the fold order: natural (hills, ridges, cliffs, raise/lower) → carve (lakes,
 // rivers, channels) → smooth → terrace (terraces, flatten) → pad (building terraces). Height field

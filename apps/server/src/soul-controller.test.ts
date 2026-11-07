@@ -18,7 +18,7 @@ import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {EDGE_CONTRACT} from './edge/contract.ts';
 import {Db} from './db.ts';
 import {hashToken} from './auth.ts';
-import {marsFactory,GREEN_FIELD_WORLD} from '@sim/engine-mars';
+import {marsFactory,GREEN_FIELD_WORLD} from '@souls/engine-mars';
 const factory=await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true});
 const ISO=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
 

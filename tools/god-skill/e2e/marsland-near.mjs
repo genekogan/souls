@@ -78,7 +78,7 @@ let chromium = null;
 try { chromium = createRequire(resolve(root, 'mars/viewer/package.json'))('@playwright/test').chromium; } catch { log('  (no @playwright/test: viewer steps skipped)'); }
 async function snap(page, name) { const file = resolve(out, `${name}.png`); await page.screenshot({ path: file }); report.shots.push(file); log(`  📷 ${name}.png`); }
 async function waitFor(page, fn, ms = 30000, every = 500) { const t0 = Date.now(); let last; while (Date.now() - t0 < ms) { last = await fn(); if (last?.ok) return last; await page.waitForTimeout(every); } return last; }
-const look = (page, eye, at) => page.evaluate(([e, a]) => { const s = window.__simEntity; if (!s) return false; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.controls.update?.(); return true; }, [eye, at]);
+const look = (page, eye, at) => page.evaluate(([e, a]) => { const s = window.__soulsEntity; if (!s) return false; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.controls.update?.(); return true; }, [eye, at]);
 
 // the ring: centre, semi-axes (x, z); `inside` < 1 within the ellipse
 const RING = { c: [-80, 0], rx: 40, rz: 70 };
@@ -158,11 +158,11 @@ try {
       await page.goto(`${base}?dev=1&weather=off`, { waitUntil: 'domcontentloaded' });
       const d = `dpr${dpr}`;
       await step(`V1[${d}] the ring, the scrub and Ana on the playa (real Chrome)`, async () => {
-        await waitFor(page, async () => ({ ok: await page.evaluate(() => !!window.__simEntity?.layer?.active) }), 60000);
+        await waitFor(page, async () => ({ ok: await page.evaluate(() => !!window.__soulsEntity?.layer?.active) }), 60000);
         await setCameraMode(page, 'manual'); await page.waitForTimeout(500);
         await page.locator('button[aria-label="collapse"]').first().click().catch(() => {});
         await page.waitForTimeout(3000);
-        const stats = await page.evaluate(() => { const g = window.__simEntity?.layer?.group; let ring = 0, scrub = 0, draws = 0; g?.traverse((o) => { if (o.isInstancedMesh && /^tire-ring/.test(o.name)) ring = o.count; if (o.isInstancedMesh && /^scrub:/.test(o.name)) { scrub += o.count; draws++; } }); return { ring, scrub, scrubDraws: draws }; });
+        const stats = await page.evaluate(() => { const g = window.__soulsEntity?.layer?.group; let ring = 0, scrub = 0, draws = 0; g?.traverse((o) => { if (o.isInstancedMesh && /^tire-ring/.test(o.name)) ring = o.count; if (o.isInstancedMesh && /^scrub:/.test(o.name)) { scrub += o.count; draws++; } }); return { ring, scrub, scrubDraws: draws }; });
         const p = (await hereOf())?.me?.pos ?? FLAG;
         await look(page, [p[0] + 14, 6, p[1] + 12], [p[0] - 2, 0.8, p[1] - 1]); await page.waitForTimeout(4000); await snap(page, `v1-ana-at-the-flag-${d}`);
         await look(page, [RING.c[0] + 30, 3, RING.c[1] + 60], [RING.c[0] - 20, 0.3, RING.c[1] + 20]); await page.waitForTimeout(3000); await snap(page, `v2-tyres-close-${d}`);

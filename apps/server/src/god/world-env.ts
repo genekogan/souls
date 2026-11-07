@@ -15,15 +15,15 @@
 // caption via EdgeLedger.weatherNow). GOD-ENV wraps this as god ops / CLI verbs; HTTP: GET /v1/world/env (public),
 // POST /v1/god/env (god token) with the same body.
 import type { Context, Hono } from 'hono';
-import { WEATHER_KINDS, type WorldState } from '@sim/world-compiler';
+import { WEATHER_KINDS, type WorldState } from '@souls/world-compiler';
 import type { WorldHost } from '../world.ts';
 import type { GodMode } from './god.ts';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { viewerWeatherKind } from '../edge/eyes/sight.ts';
 import { ApiError } from '../souls.ts';
 import { recentStrikes } from './lightning.ts';
-import { CREATION_LIMITS } from '@sim/generators';
-import { WEATHER_RULES, setWeatherInForce, showerMinutes } from '@sim/world-compiler';
+import { CREATION_LIMITS } from '@souls/generators';
+import { WEATHER_RULES, setWeatherInForce, showerMinutes } from '@souls/world-compiler';
 import { godTokenLimiter } from './rate-limit.ts';
 import { syncWorldClock } from './world-clock.ts';
 import { callerOf } from './builds.ts';

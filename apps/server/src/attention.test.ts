@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { marsFactory } from '@sim/engine-mars';
+import { marsFactory } from '@souls/engine-mars';
 import { Attention, passiveRequest, unwatchedPace } from './attention.ts';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';

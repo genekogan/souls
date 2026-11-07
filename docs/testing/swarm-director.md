@@ -9,7 +9,7 @@ A console (stdin, or a script in headless runs) lets you redirect seats mid-scen
 ## Run
 
 ```sh
-node tools/playtest/playtest.mjs direct <cast.json> --server-root <sim-checkout> --out <run-dir> \
+node tools/playtest/playtest.mjs direct <cast.json> --server-root <souls-checkout> --out <run-dir> \
   [--world <url>] [--headless] [--script <file>] [--only <seat,seat>] [--no-planner] [--force-machine] [--keep-world]
 ```
 
@@ -98,7 +98,7 @@ The verdict reads world truth only:
 
 ## Live runs from a chat session
 
-For directing Souls on a live world by hand, without the harness, the `sim-director` Claude Code skill makes the
+For directing Souls on a live world by hand, without the harness, the `souls-director` Claude Code skill makes the
 chat session the coordinator, with one subagent per Soul. Each subagent works in its own folder and onboards from the
 world's served `instructions.md` like any new agent. The world owner approves each Soul in their open Souls window.
 The coordinator then relays plain-language directions. A subagent runs only a few CLI calls per direction and reports

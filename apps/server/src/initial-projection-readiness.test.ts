@@ -1,8 +1,8 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
-import type { LogEvent } from '@sim/protocol';
-import { coreRef } from '@sim/world-compiler';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
+import type { LogEvent } from '@souls/protocol';
+import { coreRef } from '@souls/world-compiler';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { GodMode } from './god/god.ts';

@@ -2,8 +2,8 @@ import {useEffect,useRef,useState} from 'react';
 import {admissionAccount,type AdmissionAccount} from './admission-account.ts';
 import {creationReceipt,readyCreatedSoul,type CreationReceipt} from './creation-receipt.ts';
 import {arrivalResumeAccount,type ArrivalResume} from './arrival-resume.ts';
-import type {SoulLifecycle} from '@sim/protocol';
-import type {Api} from './useSim.ts';
+import type {SoulLifecycle} from '@souls/protocol';
+import type {Api} from './useSouls.ts';
 type Props={api:Api;base:string;worldId:string;identity:string;onReady(id:string):void;active?:boolean;onPendingChange?(pending:boolean):void};
 // Staged consumer for accepted lifecycle-enabled admission. The caller still
 // owns admission availability and must preserve this scoped state while hidden.

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { Auth } from './auth.ts';
 import { Brain } from './brain.ts';
 import { config } from './config.ts';

@@ -7,7 +7,7 @@ import {menuWorldOf} from '../../split/menu-world.ts';
 import {entityPhysicsContribution} from '../../../../../mars/viewer/engine/spatial/edits.ts';
 import {whereLine} from './semantic-location.ts';
 import {isCampfire} from '../ledger/fire.ts';
-import {clockAt} from '@sim/brain';
+import {clockAt} from '@souls/brain';
 import type {WorldState as NativeWorld} from '../../../../../mars/viewer/engine/world/types.ts';
 import type {EdgeLedger} from '../ledger/ledger.ts';
 import {stateOf} from '../ledger/ledger.ts';

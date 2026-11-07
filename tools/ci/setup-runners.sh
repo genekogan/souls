@@ -6,7 +6,7 @@
 # the user, packages and runner download are reused. Nothing here names a host, user or address: pass them in.
 #
 #   sudo bash tools/ci/setup-runners.sh --token <registration token> [--count 4] [--user <runner user>] \
-#        [--label souls-ci] [--prefix souls-ci] [--repo genekogan/souls] [--root /opt] [--version <x.y.z>] [--no-playwright]
+#        [--label souls-ci] [--prefix souls-ci] [--repo soulsimulation/souls] [--root /opt] [--version <x.y.z>] [--no-playwright]
 #
 # From a workstation, without copying the file there (the token is minted with your gh login, valid for one hour):
 #
@@ -16,7 +16,7 @@
 # One instance runs one job at a time, so --count is the number of parallel heavy CI legs the host takes on.
 set -euo pipefail
 
-TOKEN="" COUNT=4 RUNNER_USER="ci-runner" LABEL="souls-ci" PREFIX="souls-ci" REPO="genekogan/souls" ROOT="/opt" VERSION="" PLAYWRIGHT=1
+TOKEN="" COUNT=4 RUNNER_USER="ci-runner" LABEL="souls-ci" PREFIX="souls-ci" REPO="soulsimulation/souls" ROOT="/opt" VERSION="" PLAYWRIGHT=1
 # The Playwright the repository locks (pnpm-lock.yaml); its install-deps knows each supported OS's package names.
 PLAYWRIGHT_VERSION="1.64.1"
 
@@ -49,7 +49,10 @@ done
 case "$(uname -m)" in x86_64) ARCH=x64 ;; aarch64|arm64) ARCH=arm64 ;; *) die "unsupported CPU $(uname -m)" ;; esac
 
 # ---- the OS, first: it decides whether Playwright's browser packages can be installed at all
+# os-release has a VERSION of its own: keep this script's runner version (#1162).
+RUNNER_VERSION="$VERSION"
 . /etc/os-release
+VERSION="$RUNNER_VERSION"
 OS="${ID:-unknown}-${VERSION_ID:-unknown}"
 echo "== host: ${PRETTY_NAME:-$OS}, $(nproc) cores, load $(cut -d' ' -f1-3 /proc/loadavg)"
 command -v apt-get >/dev/null || die "apt-based systems only (Debian or Ubuntu)"

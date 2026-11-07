@@ -5,7 +5,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 import { fixture, invite, accept, factory } from '../test/native-owner-fixture.ts';
 import { EdgeLedger } from './edge/ledger/ledger.ts';
 import { GodMode } from './god/god.ts';

@@ -1,4 +1,4 @@
-import type { WorldState } from '@sim/engine-contract';
+import type { WorldState } from '@souls/engine-contract';
 import { hashCanonicalSteps } from '../../../mars/viewer/engine/core/hash.ts';
 import { assertCanonicalProjectionHashable, canonicalArray, canonicalEntries, canonicalGet, canonicalObject, canonicalTextSteps, type CanonicalValue, type CanonicalHashProjection } from '../../../mars/viewer/engine/runtime/codec.ts';
 

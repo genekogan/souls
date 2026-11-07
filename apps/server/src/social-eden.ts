@@ -1,7 +1,7 @@
 import type {WorldHost} from './world.ts';
 import type {Brain} from './brain.ts';
-import type {Card} from '@sim/kernel';
-import {COMMONS_PERSONAL_RESOURCES,commonsFoodDeliveryItemsV1} from '@sim/engine-mars';
+import type {Card} from '@souls/kernel';
+import {COMMONS_PERSONAL_RESOURCES,commonsFoodDeliveryItemsV1} from '@souls/engine-mars';
 /** Existing general card grammar; physical native seat/food claims remain authoritative. */
 export async function installSocialEdenCardsV1(host:WorldHost,brain:Brain){
  if(host!==brain.host)throw Error('social-eden.card-host');if(!/\+social-eden\/1(?:\+|$)/.test(host.engine.rulesVersion))throw Error('social-eden.reader-required');

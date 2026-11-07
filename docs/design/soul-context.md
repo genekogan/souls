@@ -1,7 +1,7 @@
 # Soul context: a durable home, one memory, relationships
 
 **Design intent and planning baseline, not implemented API documentation.** The outcome is tracked in
-[#1133](https://github.com/genekogan/souls/issues/1133). Direction by Gene, 6 November 2026. This document
+[#1133](https://github.com/soulsimulation/souls/issues/1133). Direction by Gene, 6 November 2026. This document
 authorizes no implementation; each milestone is its own issue with acceptance written before work.
 
 The tranche answers two questions. Where do a person's Souls, god seats and worlds live on their machine, so that

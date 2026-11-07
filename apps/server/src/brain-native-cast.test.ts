@@ -2,7 +2,7 @@
 // pairing also fences a decision already queued by the native brain.
 import test from 'node:test';import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {toyFactory} from '@sim/engine-toy';
+import {toyFactory} from '@souls/engine-toy';
 import {Brain} from './brain.ts';import {WorldHost} from './world.ts';import {Db} from './db.ts';import {config} from './config.ts';
 test('native cast predicate suppresses every Soul route and fences queued work',async()=>{
  const db=new Db(':memory:'),host=new WorldHost(db,toyFactory,'native-boundary',1e9);host.boot();

@@ -5,7 +5,7 @@ import {createServer} from 'node:http';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import {INTENT_V2,intentHistoryPageV1Schema} from '@sim/protocol';
+import {INTENT_V2,intentHistoryPageV1Schema} from '@souls/protocol';
 import {intentNativeFixture} from '../test/intent-native-fixture.ts';
 import {handleMcp} from './mcp.ts';
 

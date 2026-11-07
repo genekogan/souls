@@ -1,9 +1,9 @@
 ---
-name: sim-director
+name: souls-director
 description: Direct several Souls live in a Souls world from a chat session — the session is the coordinator, one subagent per Soul, the user steers in plain words. Use when asked to "direct a scene/cast", "have Alice, Bob and Carol meet at the bandstand", "run three Souls", "tell <Soul> to …" mid-run, or to end such a run. The measured playtest mode (dev world, harness, verdicts, T3 scenario playtests) is in MEASURED.md and is only for playtests someone explicitly asks to measure.
 ---
 
-# sim-director — plain mode (default)
+# souls-director — plain mode (default)
 
 The coordinator is this chat session. Each Soul is one subagent (Agent tool, `run_in_background: true`, model as the
 user says, default haiku) living in its own folder and talking to the world through the world's own CLI, exactly like

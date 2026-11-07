@@ -3,7 +3,7 @@
 //   node --test apps/web/src/gen-mesh/ecology-block-cache.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@souls/world-compiler';
 import terrainKit from '../../../../packages/world-compiler/src/core-kit/terrain.json' with { type: 'json' };
 import { blockedBy } from './ecology.mesh.ts';
 
@@ -30,7 +30,7 @@ test('scatters share one blocked-ground index per world state; an edit rebuilds 
 });
 
 test('the desert-scrub worker scatter (cloned block cells + blockTest) equals the viewer-thread scatter', async () => {
-  const { scrubPoints } = await import('@sim/generators');
+  const { scrubPoints } = await import('@souls/generators');
   const { blockCellsOf, BLOCK_CELL } = await import('./ecology.mesh.ts');
   const { blockTest } = await import('./block-test.ts');
   const w = world();
@@ -130,7 +130,7 @@ test('a footprinted kit blocks its ground rooms in world pose; a kit without roo
 test('a mesh with a footprint sidecar blocks its ground rooms, not its upper floors', async () => {
   const { blockCellsOf, BLOCK_CELL } = await import('./ecology.mesh.ts');
   const { blockTest } = await import('./block-test.ts');
-  const { footprintToBaked } = await import('@sim/generators');
+  const { footprintToBaked } = await import('@souls/generators');
   const glb = 'a'.repeat(64), side = 'b'.repeat(64);
   const baked = footprintToBaked({ schema: 'lm-building-footprint/1', bounds: { min: [-5, 0, -3], max: [5, 6, 3] },
     rooms: [{ id: 'hall', level: 0, y0: 0, y1: 3, polygon: [[-5, -3], [0, -3], [0, 3], [-5, 3]] }, { id: 'loft', level: 1, y0: 3, y1: 6, polygon: [[0, -3], [5, -3], [5, 3], [0, 3]] }],
