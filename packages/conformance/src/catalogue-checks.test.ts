@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { coreLibrary, type StoredDef } from '@sim/world-compiler';
+import { coreLibrary, type StoredDef } from '@souls/world-compiler';
 import { budgetCheck, catalogueChecks } from './catalogue-checks.ts';
 import { assetMeta, type Measured } from './measure.ts';
 

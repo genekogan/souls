@@ -2,7 +2,7 @@
 // state (the god's `world` op; apps/server/src/god/world-env.ts is the setter). Presentation only.
 import * as THREE from 'three';
 import type { SetWeather } from './WorldAtmosphere.ts';
-import { setWeatherInForce } from '@sim/world-compiler/weather-rules';
+import { setWeatherInForce } from '@souls/world-compiler/weather-rules';
 import { nightOf, setClockNight, worldSeconds } from './gen-mesh/motion.ts';
 import { defLights, flickers, lightPhase, PatternNightMap, paintOnlySources, setNightLightStrength, worldNightBounds, type AuthoredLight, type NightSource } from './WorldNightLights.ts';
 import type { HaloSource } from './atmosphere/halos.ts';

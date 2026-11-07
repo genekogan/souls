@@ -23,8 +23,8 @@ def run(bundle: bytes, source: str) -> bytes:
         archive.extractall(root, filter="data")
     subprocess.run(["pnpm", "install", "--no-frozen-lockfile", "--ignore-scripts"], cwd=root, stdout=subprocess.DEVNULL, check=True)
     # Shared scenarios use the root path; launcher proof uses /worlds. Build both explicitly.
-    subprocess.run(["pnpm", "--filter", "@sim/web", "exec", "vite", "build"], cwd=root, stdout=subprocess.DEVNULL, check=True)
-    subprocess.run(["pnpm", "--filter", "@sim/web", "exec", "vite", "build", "--base", "/worlds/", "--outDir", "/repo/.lane/web-worlds", "--emptyOutDir"], cwd=root, stdout=subprocess.DEVNULL, check=True)
+    subprocess.run(["pnpm", "--filter", "@souls/web", "exec", "vite", "build"], cwd=root, stdout=subprocess.DEVNULL, check=True)
+    subprocess.run(["pnpm", "--filter", "@souls/web", "exec", "vite", "build", "--base", "/worlds/", "--outDir", "/repo/.lane/web-worlds", "--emptyOutDir"], cwd=root, stdout=subprocess.DEVNULL, check=True)
     out = pathlib.Path("/proof")
     out.mkdir()
     env = {**__import__("os").environ, "P1_SOURCE_SHA": source, "P1_PROOF_DPR": ""}

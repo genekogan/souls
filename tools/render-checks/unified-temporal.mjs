@@ -20,10 +20,10 @@ try{
   if(!r.accepted)throw Error(JSON.stringify(r));
   await delay(1000);
   await page.goto(world.base+'/?shot=1&eye=-20,18,8&at=-14,1,-26',{timeout:120000});
-  await page.waitForFunction(()=>window.__simEntity&&document.title==='ready',{timeout:120000});
+  await page.waitForFunction(()=>window.__soulsEntity&&document.title==='ready',{timeout:120000});
   await delay(3000);
   const result=await page.evaluate(async mode=>{
-   const{renderer,scene,camera,controls}=window.__simEntity;
+   const{renderer,scene,camera,controls}=window.__soulsEntity;
    renderer.shadowMap.enabled=mode!=='no-shadows';
    const light=scene.children.find(x=>x.isDirectionalLight&&x.castShadow);
    const stream=renderer.domElement.captureStream(30),chunks=[],samples=[];
@@ -56,7 +56,7 @@ try{
    let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
    const rawMetrics=Object.fromEntries(Object.entries(measures).map(([k,m])=>[k,{frames:m.n,meanAlpha:m.alpha/m.n,meanAdjacentLumaDelta:m.delta/Math.max(1,m.n-1),fractionPixelsDeltaOver8:m.large/Math.max(1,m.n-1),meanTemporalStd:m.sum.reduce((n,v,i)=>n+Math.sqrt(Math.max(0,m.sq[i]/m.n-(v/m.n)**2)),0)/m.sum.length}]));
    if(Object.values(rawMetrics).some(m=>m.frames<100||m.meanAlpha<250))throw Error('invalid raw frame readback');
-   return{video:btoa(binary),samples,rawMetrics,mode,stats:window.__simEntity.stats()};
+   return{video:btoa(binary),samples,rawMetrics,mode,stats:window.__soulsEntity.stats()};
   },mode);
   writeFileSync(out+'/'+mode+'.webm',Buffer.from(result.video,'base64'));delete result.video;
   writeFileSync(out+'/'+mode+'.json',JSON.stringify(result));

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {commonsKitchenFactory,COMMONS_PERSONAL_RESOURCES} from '@sim/engine-mars';
+import {commonsKitchenFactory,COMMONS_PERSONAL_RESOURCES} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
-import type {Card} from '@sim/kernel';
+import type {Card} from '@souls/kernel';
 import {LivingWorld} from './living.ts';
 import {installCommonsProvisionCards} from './commons-provisions.ts';
 import {scheduleCommonsKitchenInstallation} from './commons-kitchen-install.ts';

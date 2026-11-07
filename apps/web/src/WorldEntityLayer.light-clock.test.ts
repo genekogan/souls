@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import * as THREE from 'three';import {registerHooks} from 'node:module';
-import {WorldModel,coreLibrary,applyBatch} from '@sim/world-compiler';
+import {WorldModel,coreLibrary,applyBatch} from '@souls/world-compiler';
 import {GodWorldLiving} from './world-env.ts';import {lightDiffAhead} from './light-diff-clock.ts';
 
 async function fixture(){

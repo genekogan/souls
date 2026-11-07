@@ -1,4 +1,4 @@
-import { nativeGatheringObservationV1Schema, type NativeGatheringObservationV1 } from '@sim/engine-contract';
+import { nativeGatheringObservationV1Schema, type NativeGatheringObservationV1 } from '@souls/engine-contract';
 import type { Runtime } from '../../../mars/viewer/engine/runtime/runtime.ts';
 import { fixtureSlots, type Slot } from '../../../mars/viewer/engine/social/slots.ts';
 

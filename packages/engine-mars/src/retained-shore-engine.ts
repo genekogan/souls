@@ -1,8 +1,8 @@
 import {existingGreenLandmarkV1} from './green-landmark.ts';
 import {socialEdenV1} from './social-eden.ts';
 import {commonsFoodDeliveryItemsV1} from './food-delivery.ts';
-import type {CommonsFoodDeliveryV1} from '@sim/engine-contract';
-import {hashOf,type EngineFactory,type EngineSnapshot} from '@sim/engine-contract';
+import type {CommonsFoodDeliveryV1} from '@souls/engine-contract';
+import {hashOf,type EngineFactory,type EngineSnapshot} from '@souls/engine-contract';
 import {MarsEngine,EDEN_SAFE_COMMONS_WORLD,type MarsWorldConfig} from './engine.ts';
 import {commonsKitchenFactory} from './commons-kitchen-engine.ts';
 import {createRetainedCommonsShoreReader} from './retained-shore.ts';

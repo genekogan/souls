@@ -1,6 +1,6 @@
 # Mars dependency inventory
 
-Snapshot at `90e5266c24f8156d66a041f12c48763723c7fd45` for [#381](https://github.com/genekogan/souls/issues/381).
+Snapshot at `90e5266c24f8156d66a041f12c48763723c7fd45` for [#381](https://github.com/soulsimulation/souls/issues/381).
 This is a dependency map, not authorization to move files. Destinations and classifications are **proposals**,
 not package names or decisions; directory-level classification can hide mixed content and requires review at each move.
 In particular, `engine/world`, `api`, and viewer features can mix generic behavior with authored data. Preserve

@@ -1,7 +1,7 @@
 // Isolated native fixture installation. Intentionally not a living-world
 // factory/default migration: only these certified locomotion verbs are admitted.
 import { readFileSync } from 'node:fs';
-import { hashOf,nativeShoreSceneV1Schema,type RenderScene } from '@sim/engine-contract';
+import { hashOf,nativeShoreSceneV1Schema,type RenderScene } from '@souls/engine-contract';
 import { loadMars } from './load.ts';
 import { createTerrainGeometryProbe } from './terrain.ts';
 import { createWaterGeometryProbe } from './water-geometry.ts';

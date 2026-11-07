@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs';
 import {setImmediate} from 'node:timers/promises';
 import {Db} from './db.ts';
 import {WorldHost} from './world.ts';
-import {marsFactory,GREEN_FIELD_WORLD,LITTLE_MARTIANS_WORLD} from '@sim/engine-mars';
+import {marsFactory,GREEN_FIELD_WORLD,LITTLE_MARTIANS_WORLD} from '@souls/engine-mars';
 import {enableEdgeRuntimeRules,LITTLE_MARTIANS_WORLD_KEYS} from './edge-runtime-rules.ts';
 
 type Policy = {quietStallReleaseV1?:boolean;yieldTimeoutV1?:boolean;spreadV2?:boolean;routeReachV1?:boolean;occupiedLinkRoutingV1?:boolean;concurrentLinkEgressV1?:boolean;stairLandingClearanceV1?:boolean};

@@ -146,6 +146,29 @@ or transport failures, reconciling pending effects before inference; repeated
 failure produces an explicit blocked status with task state retained. It does
 not retry authentication failures or silently discard an uncertain operation.
 
+`--evidence <local-jsonl>` appends probe-only metadata (world-read timing, host
+RPC acknowledgements, selected host events; never prompts, output, credentials
+or config). It is an observer: if a write or the final flush fails, recording
+stops (one `evidence-disabled` line on stderr), the run, world reads and host
+calls continue unchanged, the file gets no `closed` row and the final
+`controller-closed` line reports `evidence: {complete: false, code, dropped}`
+(#733 A4). `--evidence-required` restores fail-closed recording for
+qualification runs: the first failure aborts the run and reads fail with
+`EVIDENCE_IO`. By default rows go through soul-trace's bounded asynchronous
+queue (`tools/soul-trace/sink.mjs`: one batch in flight, at most 4 MiB queued,
+flushed every 100 ms), so a slow disk does not delay the controller's event
+loop; an overflow is reported as `EVIDENCE_DROPPED`, a crash can lose the last
+100 ms, and a sink that has not drained 2 s after shutdown is reported
+incomplete. `--evidence-required` keeps synchronous writes.
+
+`SOUL_TRACE_FILE=<local .jsonl>` (opt-in, off by default) records the
+controller's side of an owner episode in the thin CLI's `soul-trace/1` format
+(`tools/soul-trace/README.md`): `host.turn` from each `begin` request to
+`turn/completed`, linked to the first owner message the turn carries, and
+`host.tool` for tool items. Run it with
+`node --import tools/soul-trace/tap.mjs tools/soul-runtime/run.mjs …` so the
+same file also has the world requests; `readout.mjs` and `inspect.mjs` read it.
+
 Finite body actions and sustained activities differ. Walking has a terminal
 receipt; reading may also have a native finite duration, while sitting can
 persist until replaced. A duration-based wait

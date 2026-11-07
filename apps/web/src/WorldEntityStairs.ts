@@ -1,6 +1,6 @@
 // Bounded cosmetic contact registry for known, actually loaded mesh representations.
 import * as THREE from 'three';
-import type {WorldModel,Entity,StoredDef} from '@sim/world-compiler';
+import type {WorldModel,Entity,StoredDef} from '@souls/world-compiler';
 import {sha256} from '../../../mars/viewer/engine/core/hash.ts';
 import {meshStairFlight,stairGeometryDigest,type MeshStairProfile,type Triangle} from '../../../mars/viewer/app/engine-view/stair-mesh-profile.ts';
 import {StairObservation,type SupplementalStair} from '../../../mars/viewer/app/engine-view/stair-frame.ts';

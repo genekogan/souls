@@ -6,14 +6,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { Brain } from './brain.ts';
 import { config } from './config.ts';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 
 test('mid-brain calls are shared fairly across Souls', async () => {
-  const db = new Db(join(mkdtempSync(join(tmpdir(), 'sim-fair-')), 't.db'));
+  const db = new Db(join(mkdtempSync(join(tmpdir(), 'souls-fair-')), 't.db'));
   const host = new WorldHost(db, toyFactory, 'fair', 1e9); host.boot();
   const brain = new Brain(host, db, { ...config, brainMode: 'fake', typesafeKey: undefined, anthropicKey: undefined }, { onCall() {}, onCamera() {}, onTicker() {}, onNarrative() {}, clients: () => 0 });
   const names = Array.from({ length: 12 }, (_, i) => `s${i}`);

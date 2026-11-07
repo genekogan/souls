@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {ActionOutcomes,type OutcomeSnapshot} from './edge/outcomes/store.ts';
 import {EDGE_ACT_VERBS} from './edge/events/schema.ts';
-import {edgeOutcomeV1Schema} from '@sim/protocol';
+import {edgeOutcomeV1Schema} from '@souls/protocol';
 import type {EdgeReceipt} from './edge/contract.ts';
 const receipt=(id:string,capability:string,phase:EdgeReceipt['phase']='completed'):EdgeReceipt=>({id,soulId:'s_fixture',capability,phase,acceptedTick:1,startedTick:2,endedTick:20,code:null,reason:null,programId:'p_fixture'});
 const snapshot=():OutcomeSnapshot=>({worldId:'fixture-world',tick:20,place:'field',placePath:['field','eden'],pos:[1,2],walkable:['field'],sections:[{section:'directory',rows:[{soulId:'s_peer',name:'Peer',untrusted:true}],learned:[{fact:'One profile appears in the public directory.',about:'fixture-world',source:'town:directory:20',provenance:'world-fact',untrusted:false}]}],materials:[]});

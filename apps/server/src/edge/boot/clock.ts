@@ -1,4 +1,4 @@
-import {clockAt} from '@sim/brain';
+import {clockAt} from '@souls/brain';
 import type {WorldHost} from '../../world.ts';
 /** The host frame and native durations use 50ms ticks. Calendar minutes are
  * separate: a 72,000-tick day has 50 ticks = 2.5 native seconds per world minute.

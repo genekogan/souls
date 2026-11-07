@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {INTENT_V2,type IntentHistoryEventV2} from '@sim/protocol';
+import {INTENT_V2,type IntentHistoryEventV2} from '@souls/protocol';
 import {replayIntentHistoryV2} from './intent-history.ts';
 import {purposeContextEvidenceV1} from './purpose-context-evidence.ts';
 const scope={contract:INTENT_V2,worldId:'evidence-world',soulId:'s_A'},source={kind:'owner' as const,ownerId:'alice',principalId:'alice',channel:'web' as const};

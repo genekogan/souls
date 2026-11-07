@@ -7,7 +7,7 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';
 import {randomBytes} from 'node:crypto';
 import {config,publicWorldBase} from './config.ts';
-import {marsFactory,GREEN_FIELD_WORLD} from '@sim/engine-mars';
+import {marsFactory,GREEN_FIELD_WORLD} from '@souls/engine-mars';
 import {fixture} from '../test/native-owner-fixture.ts';import {buildApp} from './http.ts';import type {Hub} from './hub.ts';
 
 const origin='https://sim.example.test';
@@ -24,7 +24,7 @@ for(const shape of [
  {name:'launcher-mounted world',publicUrl:origin,worldPath:'/worlds/w/bench-hamlet'},
  {name:'legacy root world',publicUrl:origin+'/w/eden',worldPath:'/w/eden'},
 ]) test(`Clerk approvalURL and world.url carry the world's public base: ${shape.name}`,async t=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-au-test-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const dir=mkdtempSync(join(tmpdir(),'souls-au-test-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
  const cfg={...config,authProvider:'clerk' as const,accountAuthRequired:true,clerkIssuer:'https://clerk.example.test',clerkPublishableKey:'pk_live_'+Buffer.from('clerk.example.test$').toString('base64'),clerkAuthorizedParties:[origin],publicUrl:shape.publicUrl,worldPath:shape.worldPath,accountRegistryPath:join(dir,'accounts.sqlite'),privyAppId:'MUST_NOT_INITIALIZE',privyAppSecret:'synthetic-unused'};
  const f=fixture(':memory:',await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true}));t.after(()=>{f.host.stop();f.auth.close();f.db.close();});f.brain.quiesce();f.souls.enableLifecycle();Object.assign(f.souls.cfg,cfg,{worldId:f.host.worldId,inviteRequired:false});f.auth.devAuth=false;await f.auth.init();
  const app=buildApp({cfg:f.souls.cfg,db:f.db,host:f.host,souls:f.souls,brain:f.brain,auth:f.auth,hub:{clients:new Map(),refreshMe(){}} as unknown as Hub});

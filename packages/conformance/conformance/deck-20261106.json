@@ -1,0 +1,5 @@
+{
+ "schema": "catalog-conformance-supplement/1",
+ "note": "2026-11-06 PC15 (#694) a deck on a rack bay. core-rack-beam@4 (9ac7ae3fc052…) is core-rack-beam@3 plus ten joist-seat connectors on a step ledge along both faces every 24 in. core-deck-joist@1 (47100ff2e300…) is new: a loose 2x4 on edge cut to the bay, with a bearing joist-end under each end and a sheet-seat on top. core-plywood-sheet@2 (1015dda9fb05…) is core-plywood-sheet@1's geometry, mass and handling plus five bearing sheet-bearing connectors every 24 in and a floor on its top. No existing def's bytes changed: work.json only appends them. Narrow production K=2 runs (`conformance.mjs --k 2 --filter core-rack-beam`, 4 revisions and 20 samples; `--filter core-deck-joist`, 5 samples; `--filter core-plywood-sheet`, 2 revisions and 10 samples) placed, baked and rendered every sample with 0 findings and 0 qualification gaps, so this supplement pins no finding. catalogue-checks: 866 items, every G2 failure held, 0 G3. No budgets, samples or gap checks were relaxed. Deck behaviour and live-client evidence are separate, in the PR.",
+ "findings": []
+}

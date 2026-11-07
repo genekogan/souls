@@ -1,28 +1,28 @@
 import {tx} from './edge/comms/store.ts';
 import { SoulNow, type SoulNowLine } from './soul-now.ts';
 import type {CarrierInstallSpec} from '../../../mars/viewer/engine/vehicles/carrier.ts';
-import {soulProfileFactV1Schema,type SoulProfileFactV1} from '@sim/protocol';
-import {authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesDeclarationV1} from '@sim/engine-contract';
-import {edenLectureV1} from '@sim/engine-mars';
-import {renderPlatformRowsV1Schema,type RenderPlatformV1} from '@sim/engine-contract';
-import {officeStairGuardsDeclarationV1Schema,type OfficeStairGuardsDeclarationV1} from '@sim/engine-contract';
-import type {EdenLecturePlacementV1} from '@sim/engine-contract';
+import {soulProfileFactV1Schema,type SoulProfileFactV1} from '@souls/protocol';
+import {authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesDeclarationV1} from '@souls/engine-contract';
+import {edenLectureV1} from '@souls/engine-mars';
+import {renderPlatformRowsV1Schema,type RenderPlatformV1} from '@souls/engine-contract';
+import {officeStairGuardsDeclarationV1Schema,type OfficeStairGuardsDeclarationV1} from '@souls/engine-contract';
+import type {EdenLecturePlacementV1} from '@souls/engine-contract';
 import {latestPurposeDirectionV1} from './latest-purpose-direction.ts';
 import {episodesFromHistoryV1} from './purpose-episodes.ts';
-import {commonsNewcomerResourcesV1} from '@sim/engine-mars';
-import type {NewcomerResourcePlacementV1} from '@sim/engine-contract';
-import {existingGreenLandmarkV1} from '@sim/engine-mars';
-import {socialEdenV1} from '@sim/engine-mars';
+import {commonsNewcomerResourcesV1} from '@souls/engine-mars';
+import type {NewcomerResourcePlacementV1} from '@souls/engine-contract';
+import {existingGreenLandmarkV1} from '@souls/engine-mars';
+import {socialEdenV1} from '@souls/engine-mars';
 import {captureIntentArrivalV1,journalIntentArrivalV1,verifyIntentArrivalV1} from './intent-arrivals.ts';
 import {previewHumanSleepStopV1} from './human-sleep-transition.ts';
 import {bodyState,cardDoing,type ApproachV1,type BodyStateV1} from './body-state.ts';
-import {intentSleepStopV1Schema,type IntentSleepStopV1} from '@sim/protocol';
+import {intentSleepStopV1Schema,type IntentSleepStopV1} from '@souls/protocol';
 // WorldHost: the sequencer. Owns the engine, the event log, the tick loop,
 // snapshots, and the per-batch broadcast. The fold (doc 11):
 //   events logged with tick T are applied when world.tick == T, then the engine steps to T+1.
-import type { Engine, EngineFactory, PathCommit, ChangeEvent, ProgramEvent, EngineSnapshot, EngineCheckpoint, RuntimeEvent } from '@sim/engine-contract';
-import { hashOf } from '@sim/engine-contract';
-import { kernelHash, sweep, type KState } from '@sim/kernel';
+import type { Engine, EngineFactory, PathCommit, ChangeEvent, ProgramEvent, EngineSnapshot, EngineCheckpoint, RuntimeEvent } from '@souls/engine-contract';
+import { hashOf } from '@souls/engine-contract';
+import { kernelHash, sweep, type KState } from '@souls/kernel';
 import { ClockFrontiers,type ClockFrontierV1 } from './clock-frontier.ts';
 import {
   describeIntent, publicIntent, viewHashOf, viewRow,
@@ -33,9 +33,9 @@ import {
   type IntentAdmissionPayloadV2, type IntentControllerPayloadV2,
   type AgendaStep, type Batch, type BirthPayload, type DecisionPayload, type EventKind, type Heartbeat, type IntentPayload, type KernelView, type LogEvent,
   type PlayPayload, type PlayView, type PublicSoul, type ScenePayload, type Snapshot, type WireIntent,
-} from '@sim/protocol';
+} from '@souls/protocol';
 import type { Db } from './db.ts';
-import { advanceNeeds, newLife, type Life } from '@sim/brain';
+import { advanceNeeds, newLife, type Life } from '@souls/brain';
 import { arrivalPlace, baseVocabulary, codeVocabulary, foldEvent, initKernel, pinnedVocabulary, soulThing, type Vocabulary, type FoldResult } from './fold.ts';
 import { frontier, stepIndex, belongsTo } from './deck.ts';
 import {mandateOf,MANDATE_STATE} from './mandate.ts';
@@ -44,6 +44,7 @@ import { IntentObservations } from './intent-observations.ts';
 import { foldStationFactV1, stationGenesisIdV1, type StationHistoryV1 } from './station-history.ts';
 import { initialStationHistoryV2,foldStationFactV2,type StationHistoryV2 } from './station-history-v2.ts';
 import { bootPhase, bootTick } from './load/boot-progress.ts';
+import { countGlitch, faultFacts, glitchLine, type GlitchCountsV1, type GlitchRecordV1, type GlitchRung } from './glitch.ts';
 export { replayFromGenesis, replayKernel } from './fold.ts';
 
 
@@ -191,7 +192,7 @@ export class WorldHost {
   private durableClockV1:boolean;
   private clockFailure:unknown;
   get clockAvailable(){return !this.clockFailure;}
-  assertClockReady():void {if(this.clockFailure)throw new Error('clock-frontier.unavailable');}
+  assertClockReady():void {if(this.clockFailure)throw new Error('clock-frontier.unavailable', { cause: this.clockFailure });}
 
   constructor(db: Db, factory: EngineFactory, seed: string, snapshotEvery: number, worldId = 'toy-1',options?:{durableClockV1?:boolean}) {
     this.worldId = worldId;
@@ -606,9 +607,9 @@ export class WorldHost {
       if (p.journal) {
         // Accepted log fact and its private request reference either both exist
         // or neither does. Check current DB authority under the same write lock.
+        // A tracked transaction, so a journal's after-commit notices (edge receipts, streams) run once it commits.
         try {
-          this.db.db.exec('BEGIN IMMEDIATE');
-          try {
+          tx(this.db.db, () => {
             checkAcceptanceGuard(p.guard!);
             if(p.stationEra)stationEra=this.stationEraEvent(e);
             if (p.purpose) {
@@ -619,11 +620,10 @@ export class WorldHost {
             if (admission) this.db.appendEvent(this.worldId, admission);
             if(stationEra)this.db.appendEvent(this.worldId,stationEra);
             if(arrival){this.db.appendEvent(this.worldId,arrival);journalIntentArrivalV1(this,arrival);}
-            if (p.journal(e) !== true) throw new TypeError('acceptance journal must synchronously return true');
-            this.db.db.exec('COMMIT');
-          } catch (error) { this.db.db.exec('ROLLBACK'); throw error; }
+            if (p.journal!(e) !== true) throw new TypeError('acceptance journal must synchronously return true');
+          }, {immediate: true});
         } catch (error) { p.reject!(error); continue; }
-      } else if(arrival){this.db.db.exec('BEGIN IMMEDIATE');try{this.db.appendEvent(this.worldId,e);this.db.appendEvent(this.worldId,arrival);journalIntentArrivalV1(this,arrival);this.db.db.exec('COMMIT');}catch(error){this.db.db.exec('ROLLBACK');this.clockFailure=error;this.paused=true;this.stop();for(const listener of this.listeners)try{listener.onClockUnavailable?.();}catch{}throw error;}}else this.db.appendEvent(this.worldId, e);
+      } else if(arrival){this.db.db.exec('BEGIN IMMEDIATE');try{this.db.appendEvent(this.worldId,e);this.db.appendEvent(this.worldId,arrival);journalIntentArrivalV1(this,arrival);this.db.db.exec('COMMIT');}catch(error){this.db.db.exec('ROLLBACK');this.clockFailure=error;this.paused=true;this.stop();this.recordGlitch('halt',error,{rule:'durability.arrival'});for(const listener of this.listeners)try{listener.onClockUnavailable?.();}catch{}throw error;}}else this.db.appendEvent(this.worldId, e);
       this.seq = arrival?.seq ?? stationEra?.seq ?? admission?.seq ?? e.seq;
       let recovered = false;
       let result: FoldResult | undefined;
@@ -719,7 +719,7 @@ export class WorldHost {
 
   /** Internal opt-in choice producer. No wire operation accepts a purpose ref
    * or activity claim. The original caller fence still owns final authority. */
-  ownLectureRosterV1(soulId:string,steps:import('@sim/engine-contract').Program['steps']){const leader=this.minds.get(soulId);if(!leader)return false;for(const step of steps){if(step.verb==='control_classroom_v1'){const ids=typeof step.params.session==='string'?this.engine.ownedClassroomControlRosterV1?.(leader.entityId,step.params.session):null;if(!ids)return false;for(const id of ids){const m=this.mindByEntity.get(id),row=m?this.db.soul(m.soulId):undefined;if(!m||!row||row.retired_at!==null||row.world_id!==this.worldId||row.owner!==leader.owner||row.entity_id!==id||this.kernel.things[m.soulId]?.traits.body!==id)return false;}continue;}if(step.verb!=='mars:classroom_session')continue;const p=step.params as {host?:string;presenters?:string[];audience?:string[]};if(p.host!==leader.entityId||!Array.isArray(p.presenters)||!Array.isArray(p.audience))return false;const ids=[p.host,...p.presenters,...p.audience];if(new Set(ids).size!==ids.length)return false;for(const id of ids){const m=this.mindByEntity.get(id),row=m?this.db.soul(m.soulId):undefined;if(!m||!row||row.retired_at!==null||row.world_id!==this.worldId||row.owner!==leader.owner||m.owner!==leader.owner||row.entity_id!==id||this.kernel.things[m.soulId]?.traits.body!==id||!this.engine.world.entities[id])return false;}}return true;}
+  ownLectureRosterV1(soulId:string,steps:import('@souls/engine-contract').Program['steps']){const leader=this.minds.get(soulId);if(!leader)return false;for(const step of steps){if(step.verb==='control_classroom_v1'){const ids=typeof step.params.session==='string'?this.engine.ownedClassroomControlRosterV1?.(leader.entityId,step.params.session):null;if(!ids)return false;for(const id of ids){const m=this.mindByEntity.get(id),row=m?this.db.soul(m.soulId):undefined;if(!m||!row||row.retired_at!==null||row.world_id!==this.worldId||row.owner!==leader.owner||row.entity_id!==id||this.kernel.things[m.soulId]?.traits.body!==id)return false;}continue;}if(step.verb!=='mars:classroom_session')continue;const p=step.params as {host?:string;presenters?:string[];audience?:string[]};if(p.host!==leader.entityId||!Array.isArray(p.presenters)||!Array.isArray(p.audience))return false;const ids=[p.host,...p.presenters,...p.audience];if(new Set(ids).size!==ids.length)return false;for(const id of ids){const m=this.mindByEntity.get(id),row=m?this.db.soul(m.soulId):undefined;if(!m||!row||row.retired_at!==null||row.world_id!==this.worldId||row.owner!==leader.owner||m.owner!==leader.owner||row.entity_id!==id||this.kernel.things[m.soulId]?.traits.body!==id||!this.engine.world.entities[id])return false;}}return true;}
   enqueueIntentDecision(author: string, payload: DecisionPayload, raw: PurposeRef, guard: AcceptanceGuard): Promise<LogEvent> {
     this.assertClockReady();
     const purpose = intentReferenceV2Schema.parse(raw), mind = this.minds.get(payload.soulId);
@@ -1166,7 +1166,7 @@ export class WorldHost {
   enableIntentRetainedChoiceV1(){if(this.extra.intentRetainedChoiceV1)return Promise.resolve();if(!this.extra.intentPurposeRecallV1||!this.extra.intentNativeSequenceCompletionV1)return Promise.reject(Error('retained-choice.qualified-context-required'));return this.enqueue('rules','operator:retained-choice',{intentRetainedChoiceV1:true,why:'recalled owned typed unfinished steps are ordinary feasible alternatives; actual chosen contributions retain private intent provenance without FIFO priority'});}
   enableIntentEpisodeMemoryV1(){if(this.extra.intentEpisodeMemoryV1)return Promise.resolve();return this.enqueue('rules','operator:purpose-episodes',{intentEpisodeMemoryV1:true,why:'private reflection keeps bounded canonical owned outcomes separately from interpretive prose; current owner will fences delayed reflection'});}
   pendingHumanSleepTransitionV1(soulId:string){const p=(this.extra.intentHumanSleepTransitionsV1 as Record<string,IntentSleepStopV1>|undefined)?.[soulId];return !!p&&this.engine.programOf(p.entityId)===p.programId;}
-  enqueueHumanSleepStopV1(soulId:string,intent:PurposeRef,program:import('@sim/engine-contract').Program,guard:AcceptanceGuard){
+  enqueueHumanSleepStopV1(soulId:string,intent:PurposeRef,program:import('@souls/engine-contract').Program,guard:AcceptanceGuard){
     const m=this.minds.get(soulId),programId=m?previewHumanSleepStopV1(this,m,program):null;if(!m||!programId)return Promise.reject(new StaleIntentAttempt());
     const p=intentSleepStopV1Schema.parse({contract:'private-intent-sleep-stop/1',worldId:this.worldId,soulId,entityId:m.entityId,intent,programId});
     const current:AcceptanceGuard=()=>{
@@ -1457,10 +1457,11 @@ export class WorldHost {
       const edge=plan.edge?{...plan.edge,...this.rewoundPoses(plan.edge, all)}:undefined;
       const recipe: RecoveryRecipe={baseline:structuredClone(baseline),events,untilTick,faults:{...faults},excluded:[...plan.excluded],reason:String(error).slice(0,800),...(edge?{edge}:{})};
       try { this.restoreRecovery(recipe); }
-      catch (replayError) { if (attempt===plans.length-1) { if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults'); throw replayError; } continue; }
+      catch (replayError) { if (attempt===plans.length-1) { if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults', error, untilTick); throw replayError; } continue; }
       this.seq=originalSeq;
       const e: LogEvent={seq:++this.seq,tick:untilTick,kind:'rules',author:'world:recovery',payload:{recovery:recipe},at:Date.now()};
       this.db.appendEvent(this.worldId,e); this.resetAcc(); this.acc.log.push(e); this.ring=[];
+      this.recordGlitch('recovery', error, {tick:untilTick, bodies:[...(edgeHint?.entityId?[edgeHint.entityId]:[]),...(plan.edge?.stopActors??[])], evidence:{seq:e.seq, plan:attempt+1, plans:plans.length, excluded:plan.excluded, ...(plan.edge?{stopActors:plan.edge.stopActors, excludedSeqs:plan.edge.excludedSeqs, souls:plan.edge.souls}:{})}});
       if(this.durableClockV1)this.persistClockFrontier();
       for (const m of this.minds.values()) this.acc.dirty.add(m.soulId);
       for (const l of this.listeners) l.onApplied?.(e);
@@ -1532,18 +1533,46 @@ export class WorldHost {
     return out.filter((p, i) => p.stopActors.length + p.excludedSeqs.length > 0 && out.findIndex(q => JSON.stringify(q) === JSON.stringify(p)) === i);
   }
   /** Last resort for edge worlds: keep the process up, the world paused and the fault reported (never a crash loop). */
-  private haltOnFault(error: unknown, why: string) {
+  private haltOnFault(error: unknown, why: string, fault: unknown = error, tick?: number) {
     console.error(`[world] engine fault could not be recovered (${why}); the world is paused, the process stays up:`, String(error).slice(0, 800));
     this.paused = true; this.engineFault = String(error).slice(0, 800);
+    this.recordGlitch('halt', fault, {tick, evidence:{why, ...(error===fault?{}:{last:String(error).slice(0,800)})}});
+    // A failed recovery leaves the host half-replayed: its seq can sit behind the log (a plan skipped the newest decisions) and its
+    // state need not match any logged prefix (#1120). Nothing durable may be written from it, so every later tick, drain and
+    // snapshot refuses, naming this fault; a restart boots from the log. The process stays up, as before.
+    if (this.clockFailure) return;
+    this.clockFailure = new Error(`engine.halted: ${why}: ${this.engineFault}`, { cause: error });
+    // as for the other clock failures: viewers are told the world is unavailable (hub: close 1013), not left asking a host
+    // that refuses snapshots
+    for (const listener of this.listeners) try { listener.onClockUnavailable?.(); } catch { /* the engine fault remains the cause */ }
   }
   /** The fault that paused this world (edge worlds), if any. */
   engineFault: string | null = null;
+  private glitchCounts: GlitchCountsV1 | null = null;
+  /** Every recovery and halt this world has had, by rule and rung (#1150). Public on /healthz: see GlitchCountsV1. */
+  get glitches(): GlitchCountsV1 {
+    if (this.glitchCounts) return this.glitchCounts;
+    try { return this.glitchCounts = this.db.glitchCounts(this.worldId); }
+    catch { return this.glitchCounts = {total: 0, byRule: {}}; }   // the store's own failure is reported where it happens
+  }
+  /** One record per recovery and per halt. Never throws and writes nothing to the log: whatever called it goes on as before. */
+  private recordGlitch(rung: GlitchRung, fault: unknown, o: {rule?: string; tick?: number; bodies?: string[]; evidence?: Record<string, unknown>}) {
+    try {
+      const facts = faultFacts(fault), rule = o.rule ?? facts.rule, counts = this.glitches;
+      const g: GlitchRecordV1 = {rung, rule, bodies: facts.bodies.length ? facts.bodies : [...new Set(o.bodies ?? [])].sort(), tick: o.tick ?? this.engine.world.tick, at: Date.now(),
+        evidence: {...o.evidence, reason: String(fault).slice(0, 800), ...(facts.rules.length > 1 ? {rules: facts.rules} : {})}};
+      countGlitch(counts, rule, rung);
+      console.warn(glitchLine(g));
+      this.db.appendGlitch(this.worldId, g);
+    } catch (failure) { console.error('[world] glitch record not written:', String(failure).slice(0, 200)); }
+  }
 
   setClockRate(rate: number, author: string, why: string) {
     this.clockRate = this.baseRate = rate; this.db.setClockRate(this.worldId, rate);
     void this.enqueue('rules', author, { clockRate: rate, why });
   }
   setPaused(p: boolean, author: string) {
+    this.assertClockReady();   // a halted or clock-failed host stays as it is (#1120)
     this.cancelFrameBatch();
     if (p) { void this.enqueue('admin', author, { action: 'pause' }); this.tickOnceForQueue(); this.paused = true; this.flush(); this.heartbeat(); }   // tell clients now: no tick will
     else { this.paused = false; this.last = performance.now(); this.carry = 0; void this.enqueue('admin', author, { action: 'resume' }); }
@@ -1838,6 +1867,7 @@ export class WorldHost {
     console.error('[snapshot] periodic checkpoint failed', error);
     this.recoveryCapture = null;
     this.clockFailure = error instanceof Error ? error : new Error('periodic checkpoint failed', { cause: error }); this.paused = true; this.stop();
+    this.recordGlitch('halt', error, {rule: 'durability.checkpoint'});
     for (const listener of this.listeners) try { listener.onClockUnavailable?.(); } catch { /* preserve checkpoint fault */ }
   }
   /** Superseding snapshots, recovery and stop must not leave a writer scheduled
@@ -1861,6 +1891,7 @@ export class WorldHost {
       this.clockFrontiers.write(frontier);
     }catch(error){
       this.clockFailure=error;this.paused=true;this.stop();
+      this.recordGlitch('halt',error,{rule:'durability.clock-frontier'});
       for(const listener of this.listeners)try{listener.onClockUnavailable?.();}catch{/* The durable fault remains the cause. */}
       throw error;
     }

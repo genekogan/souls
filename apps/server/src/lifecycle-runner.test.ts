@@ -4,8 +4,8 @@ import { mkdtempSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { kernelHash } from '@sim/kernel';
-import { marsFactory,GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { kernelHash } from '@souls/kernel';
+import { marsFactory,GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { WorldHost,replayFromGenesis } from './world.ts';
 import { LifecycleRunner,projectLifecycle,lifecycleBodyReady } from './lifecycle-runner.ts';
 import type { WorldState as NativeWorldState } from '../../../mars/viewer/engine/world/types.ts';
@@ -141,7 +141,7 @@ test('inconsistent existing native or kernel identity remains a visible invarian
 // every approved Soul ended "refused" (arrival-unavailable) right after the person clicked Approve. A lifecycle birth now
 // carries birth-near/1: the nearest clear standing ground to the arrival point, as verifier probes already did.
 test('a built-over arrival point admits the approved Soul on the nearest clear ground, exactly on replay',async t=>{
-  const { EDEN_COMMONS_WORLD } = await import('@sim/engine-mars');
+  const { EDEN_COMMONS_WORLD } = await import('@souls/engine-mars');
   const built=await marsFactory({...EDEN_COMMONS_WORLD,safeCrewRemoval:true,arrival:[9,-1.8],reference:[10,-1.8]});   // on the commons platform
   const f=fixture(':memory:',built);t.after(()=>f.db.close());
   f.journal.acceptCreate(scope,requestId,input,()=>true);await settle(f);const op=f.journal.get(scope,requestId)!;
@@ -169,7 +169,7 @@ test('a clear arrival point keeps the default placement: the birth carries no hi
   assert.equal(op.state,'complete');const birth=f.db.events(worldId).find(e=>e.kind==='birth')!;assert.equal('near' in birth.payload,false);
 });
 test('old histories replay unchanged: a birth with lane PB\'s {at} hint (births without a hint: every replay test above)',async t=>{
-  const { EDEN_COMMONS_WORLD } = await import('@sim/engine-mars');
+  const { EDEN_COMMONS_WORLD } = await import('@souls/engine-mars');
   const built=await marsFactory({...EDEN_COMMONS_WORLD,safeCrewRemoval:true,arrival:[9,-1.8],reference:[10,-1.8]});
   const f=fixture(':memory:',built);t.after(()=>f.db.close());
   const a=f.host.enqueue('birth','scripted:legacy',{soulId:'s_old',entityId:'h_old',name:'Old',description:'pre-ARR birth with the PB hint',owner:'scripted:owner',near:{at:[9,-1.8]}});f.host.drainInputs();await a;

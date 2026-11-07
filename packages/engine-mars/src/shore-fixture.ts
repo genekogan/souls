@@ -1,5 +1,5 @@
 import { nativeShoreFixture } from './shore-runtime.ts';
-import { shoreContactV1Schema, hashOf,captureRenderScene } from '@sim/engine-contract';
+import { shoreContactV1Schema, hashOf,captureRenderScene } from '@souls/engine-contract';
 import { TakeRecorder } from '../../../mars/viewer/engine/take/recorder.ts';
 import { SHORE_POLICY } from '../../../mars/viewer/engine/locomotion/shore.ts';
 

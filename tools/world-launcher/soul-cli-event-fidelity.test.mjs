@@ -13,7 +13,7 @@ const speech = {id: 'c_11', kind: 'speech', tick: 40, at: 1000, from: {soulId: '
 const departure = {id: 'c_12', kind: 'departure', tick: 80, at: 3000, soul: {soulId: 's_ava', name: 'Ava'}, placeId: 'square', untrusted: true};
 
 async function mounted(t, payload) {
-  const requests = [], dir = mkdtempSync(join(tmpdir(), 'sim-event-fidelity-'));
+  const requests = [], dir = mkdtempSync(join(tmpdir(), 'souls-event-fidelity-'));
   const server = createServer((req, res) => {
     requests.push(req.url);
     res.writeHead(200, {'content-type': 'application/json'});

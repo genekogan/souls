@@ -2,7 +2,7 @@
 // refused with a reason; nothing else can alter the state.
 // Coherence rule: an actor changes only itself, what it controls, and what it
 // made. Anything shared happens when independent actions fit together.
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import type { Change, Json, KState, Link, Thing } from './types.ts';
 
 export const linkKey = (kind: string, from: string, to: string) => `${kind}|${from}|${to}`;
