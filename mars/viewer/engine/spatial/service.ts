@@ -686,8 +686,10 @@ export class Spatial {
     this.navN++;
   }
 
+  /** route-reach/1 (#872): set by the engine from its accepted runtime policy (re-applied after every runtime rebuild). */
+  routeReachV1 = false;
   route(world: WorldState, profile: AgentProfile, start: Place, goal: Place, opts?: RouteOpts): RouteResult {
-    const o = this.planner === 'exact' ? opts : { planner: this.planner, ...opts };
+    const o0 = this.planner === 'exact' ? opts : { planner: this.planner, ...opts }, o = this.routeReachV1 ? { ...o0, routeReachV1: true } : o0;
     if (this.ground) {
       this.sync(world);
       const run = () => groundRoute(this.ground!, this.scene, profile, start, goal, o ?? {}, (r) => this.groundInclude(world, r), () => this.grids);
@@ -767,7 +769,7 @@ export class Spatial {
       let rest: Place | undefined;
       if (this.ground?.paged && start.level === 0 && goal.level === 0 && hypot(goal.p[0] - start.p[0], goal.p[1] - start.p[1]) > PAGED_DIRECT_M) {
         this.sync(world);
-        const c = pagedRoute(this.ground, this.scene, profile, start, goal, {});
+        const c = pagedRoute(this.ground, this.scene, profile, start, goal, this.routeReachV1 ? { routeReachV1: true } : {});
         if (!c.ok) return c;
         const end = c.route.rest ? (c.route.legs.at(-1) as { points?: Vec2[] } | undefined)?.points?.at(-1) : undefined;
         if (end) { rest = c.route.rest; goal = { level: 0, p: end }; }
