@@ -298,7 +298,7 @@ import { homedir } from "node:os";
 import { join as join2, resolve as resolve3 } from "node:path";
 
 // ../world-launcher/soul/home.mjs
-import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync as mkdirSync2, openSync, readdirSync, readFileSync as readFileSync2, realpathSync, renameSync, rmSync as rmSync2, statSync as statSync2, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync as mkdirSync2, openSync, readdirSync, readFileSync as readFileSync2, realpathSync, renameSync, rmSync as rmSync2, statSync as statSync2, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { basename, dirname, join, resolve as resolve2 } from "node:path";
 var HOME_NAME = ".souls";
 var LEGACY_STATE = ".eden-agent.json";
@@ -345,10 +345,13 @@ function readJson(file, fallback) {
   }
 }
 function keepOutOfGit(root) {
-  const file = join(root, ".gitignore"), was = existsSync(file) ? readFileSync2(file, "utf8") : "", have = was.split("\n").map((l) => l.trim());
-  const missing = [CREDENTIALS, "runtime/", "pending/", "gods/", "memory/", "MEMORY.md"].filter((l) => !have.includes(l));
-  if (missing.length) writeFileSync2(file, `${was}${was && !was.endsWith("\n") ? "\n" : ""}${missing.join("\n")}
+  try {
+    const file = join(root, ".gitignore"), was = existsSync(file) ? readFileSync2(file, "latin1") : "", have = was.split("\n").map((l) => l.trim());
+    const missing = [CREDENTIALS, "runtime/", "pending/", "gods/", "memory/", "MEMORY.md"].filter((l) => !have.includes(l));
+    if (missing.length) appendFileSync(file, `${was && !was.endsWith("\n") ? "\n" : ""}${missing.join("\n")}
 `);
+  } catch {
+  }
 }
 function slugOf(url) {
   const m = /\/w\/([a-z0-9-]+)\/*$/.exec(String(url));
@@ -1438,7 +1441,7 @@ async function taxonomy(flags2 = {}) {
 }
 
 // cli.mjs
-import { readFileSync as readFileSync13, writeFileSync as writeFileSync7, existsSync as existsSync10, mkdirSync as mkdirSync4, appendFileSync } from "node:fs";
+import { readFileSync as readFileSync13, writeFileSync as writeFileSync7, existsSync as existsSync10, mkdirSync as mkdirSync4, appendFileSync as appendFileSync2 } from "node:fs";
 import { resolve as resolve9 } from "node:path";
 
 // lib/mirror.mjs
@@ -7093,7 +7096,7 @@ ${HELP}`);
   const record = (out, error) => {
     if (!tr || cmd === "look-shot" || cmd === "look-keeper") return;
     try {
-      appendFileSync(tr, JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), cmd: redact([cmd, ...argv].join(" ")), argv: [cmd ?? "help", ...argv].map(redact), ...changed ? { readAs: [cmd, ...readAs].map(redact) } : {}, ms: Date.now() - t0, ...error ? { error } : { out: typeof out === "string" ? out : JSON.stringify(out).slice(0, 4e3) } }) + "\n");
+      appendFileSync2(tr, JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), cmd: redact([cmd, ...argv].join(" ")), argv: [cmd ?? "help", ...argv].map(redact), ...changed ? { readAs: [cmd, ...readAs].map(redact) } : {}, ms: Date.now() - t0, ...error ? { error } : { out: typeof out === "string" ? out : JSON.stringify(out).slice(0, 4e3) } }) + "\n");
     } catch {
     }
   };
@@ -7113,7 +7116,7 @@ ${HELP}`);
     process.exit(2);
   }
   if (tr && cmd === "look") try {
-    appendFileSync(tr, JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), cmd: [cmd, ...argv].join(" "), phase: "start" }) + "\n");
+    appendFileSync2(tr, JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), cmd: [cmd, ...argv].join(" "), phase: "start" }) + "\n");
   } catch {
   }
   if (!NO_WARM.has(cmd ?? "help")) autoWarm(SELF, { force: ["status", "listen"].includes(cmd) });

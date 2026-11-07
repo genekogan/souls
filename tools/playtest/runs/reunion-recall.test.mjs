@@ -39,6 +39,9 @@ test('a walk elsewhere whose end was seen is a miss: `act` then `wait` is one re
   const r = { id: 'r_9', capability: 'walk:flag-mill' }, went = [{ verb: 'act', args: ['walk:flag-mill'], atMs: T + 2000, out: { accepted: true, receipt: { ...r, phase: 'started' } } }, { verb: 'wait', args: [], atMs: T + 3000, out: { receipt: { ...r, phase: 'completed' } } }];
   assert.equal(verdict([plan(), parted(), say('Bo!'), ...went]), 'fail');
   assert.equal(verdict([plan(), parted(), say('Bo!'), went[0]]), 'unknown', 'with no end seen it stays open');
+  assert.equal(verdict([plan(), parted(), say('Bo!'), went[0], { verb: 'wait', args: ['--json'], atMs: T + 3000, out: { receipt: { id: 'r_9', error: 'world busy' } } }]), 'unknown', 'a read that failed says nothing');
+  const replaced = { verb: 'wait', args: [], atMs: T + 3000, out: { receipt: { ...r, phase: 'replaced' } } };
+  assert.equal(verdict([plan(), parted(), say('Bo!'), went[0], replaced, walk('flag-pond', 'completed', T + 4000)]), 'fail');
 });
 test('leaving after the meeting changes nothing', () => {
   assert.equal(verdict(good('Bo', walk('flag-pond', 'completed', T + 5000))), 'pass');

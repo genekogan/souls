@@ -4,7 +4,7 @@ import { spawnSync as gitRun } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -379,4 +379,17 @@ test('#1137: a Soul\'s memory can\'t be committed by accident, in a new home or 
   assert.ok(lines.includes('memory/') && lines.includes('mine.txt'), 'an older home gets the line, and keeps its own');
   openHome(home);
   assert.equal(readFileSync(join(home, '.gitignore'), 'utf8').split('\n').filter((l) => l === 'memory/').length, 1);
+});
+
+test('#1137: a home opens whatever its .gitignore is, and an owner\'s bytes stay theirs', { skip: process.getuid?.() === 0 }, (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'souls-git-'))); t.after(() => { chmodSync(join(root, 'locked'), 0o700); rmSync(root, { recursive: true, force: true }); });
+  const dir = join(root, 'dir'), locked = join(root, 'locked'), bytes = join(root, 'bytes');
+  createHome(dir, {}); rmSync(join(dir, '.gitignore')); mkdirSync(join(dir, '.gitignore'));
+  assert.doesNotThrow(() => openHome(dir));
+  createHome(locked, {}); writeFileSync(join(locked, '.gitignore'), 'old\n'); chmodSync(join(locked, '.gitignore'), 0o400); chmodSync(locked, 0o500);
+  assert.doesNotThrow(() => openHome(locked));
+  createHome(bytes, {}); writeFileSync(join(bytes, '.gitignore'), Buffer.from('caf\xe9.txt', 'latin1'));
+  openHome(bytes);
+  const after = readFileSync(join(bytes, '.gitignore'));
+  assert.equal(after.subarray(0, 8).toString('latin1'), 'caf\xe9.txt'); assert.match(after.toString('latin1'), /\nmemory\/\n/);
 });

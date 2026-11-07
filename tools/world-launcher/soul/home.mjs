@@ -4,7 +4,7 @@
 // Edit this file, then run `node tools/world-launcher/soul/inline.mjs`: worlds serve eden.mjs as one file, so this module
 // lives inside it as a generated block.
 
-import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 export const HOME_NAME = ".souls", LEGACY_STATE = ".eden-agent.json", STATE_FILE = "state.json", CREDENTIALS = "credentials.json";
@@ -49,9 +49,12 @@ function readJson(file, fallback) {
 
 /** What a home never commits: tokens, and a Soul's memory, which holds private conversations. A home made before a line was added gets it. */
 function keepOutOfGit(root) {
-  const file = join(root, ".gitignore"), was = existsSync(file) ? readFileSync(file, "utf8") : "", have = was.split("\n").map((l) => l.trim());
-  const missing = [CREDENTIALS, "runtime/", "pending/", "gods/", "memory/", "MEMORY.md"].filter((l) => !have.includes(l));
-  if (missing.length) writeFileSync(file, `${was}${was && !was.endsWith("\n") ? "\n" : ""}${missing.join("\n")}\n`);
+  try {
+    // Latin-1 reads any bytes, and only what's missing is appended: an owner's file is never rewritten.
+    const file = join(root, ".gitignore"), was = existsSync(file) ? readFileSync(file, "latin1") : "", have = was.split("\n").map((l) => l.trim());
+    const missing = [CREDENTIALS, "runtime/", "pending/", "gods/", "memory/", "MEMORY.md"].filter((l) => !have.includes(l));
+    if (missing.length) appendFileSync(file, `${was && !was.endsWith("\n") ? "\n" : ""}${missing.join("\n")}\n`);
+  } catch { /* a home it can't write to still opens */ }
 }
 
 /** Make a home at `root`. `cli` is the bundle to keep in bin/. Safe to call on an existing home. */

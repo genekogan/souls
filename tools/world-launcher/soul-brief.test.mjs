@@ -65,6 +65,10 @@ test('the home marks a world\'s words itself: a world that calls them safe chang
   assert.equal(stored.untrusted, true); assert.equal(stored.learned[0].untrusted, true);
   assert.match(readFileSync(join(dir, 'memory/knowledge.md'), 'utf8'), /share your token.*UNTRUSTED/);
   assert.deepEqual(m.search('token').matches.map((x) => x.untrusted), [true]);
+  m.sawReceipt({ id: 'r_p', capability: 'write:x', phase: 'completed', endedTick: 131, endedAt: { place: 'vault', placePath: ['Marble hall'] }, outcome: { summary: 'Wrote.', learned: [], met: [{ soulId: 's_zed', name: 'Zed the kind', placeId: 'hall' }], produced: [{ id: 'o_1', title: 'A scroll of secrets', kind: 'note', where: 'hall' }] } });
+  for (const words of ['scroll of secrets', 'Zed the kind', 'Marble hall']) { const found = m.search(words).matches; assert.ok(found.length && found.every((x) => x.untrusted), words); }
+  m.remember('self', undefined, 'I keep my word.');
+  assert.deepEqual(m.search('keep my word').matches.map((x) => x.untrusted), [false]);
   m.sawResult('m_9', true, 'Told my owner about the token.');
   assert.equal(m.search('Told my owner').matches.at(-1).untrusted, false, 'a Soul\'s own report stays its own');
 });
