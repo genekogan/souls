@@ -410,7 +410,9 @@
    "cmd": "move gazebo/gazebo-bench-n --by 0,-1.6",
    "file": "transcript.jsonl",
    "line": 61,
-   "recorded": "refused:overlap.solid"
+   "recorded": "refused:overlap.solid",
+   "expected": "ok",
+   "reason": "BS2 buildsafe/1 (3d006551): row 59's move --in gazebo/pavilion now nudges the bench 0.3 m north to (93.5, 18.7), not 0.15 m north-west to (93.39, 18.89), so this -1.6 m move clears the gazebo post it used to cross"
   },
   {
    "at": "2026-10-15T13:06:23.156Z",
@@ -872,7 +874,9 @@
    "cmd": "describe gazebo/gazebo-bench-n",
    "file": "transcript.jsonl",
    "line": 137,
-   "recorded": "ok"
+   "recorded": "ok",
+   "expected": "error",
+   "reason": "follows row 61: the bench, now 1.6 m further south, leaves gazebo at row 64 (-1.55 m to z 15.55, 'out of gazebo, now at the root'), so gazebo/gazebo-bench-n no longer names it"
   },
   {
    "at": "2026-10-15T13:17:44.901Z",
