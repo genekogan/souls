@@ -872,6 +872,7 @@ export class Together {
       const inv = typeof params.invite === 'string' ? this.invite(params.invite) : null;
       if (!inv?.shared || inv.state !== 'pending' || inv.host.soulId !== soul.soulId) return {code: 'invite.gone', reason: 'That proposal is no longer open.'};
       const s = inv.shared, changes: string[] = [];
+      if (raising && params.project === undefined) base = s.base;   // an amend of a project's raise is still that raise
       if (s.load.entity !== tag.load) changes.push(`the load is now ${tag.name}`);
       if (s.destination.place !== to.id || s.destination.name !== to.name || JSON.stringify(s.destination.spot ?? null) !== JSON.stringify(to.spot ?? null)) changes.push(`the destination is now ${to.name}`);
       if (JSON.stringify(s.base ?? null) !== JSON.stringify(base ?? null)) changes.push('where it stands has changed');
@@ -1302,7 +1303,9 @@ export class Together {
       return;
     }
     if (seats(s)) {
-      const where = !st.phase || st.phase === 'approach' ? `${s.load.name} was never lifted; it lies where it was` : `${s.load.name} was lowered back where it lay`;
+      // a stop in the last moments, once it is in place, finds it set
+      const installed = (x as {phase?: string} | undefined)?.phase === 'installed';
+      const where = installed ? `${s.load.name} is in place; it was set before the stop reached it` : !st.phase || st.phase === 'approach' ? `${s.load.name} was never lifted; it lies where it was` : `${s.load.name} was lowered back where it lay`;
       this.sharedEnd(inv, 'stopped', 'shared.stopped', `${st.away ? `Stopped because ${st.name} went away` : `Stopped at ${st.name}'s request`} (${op.id}): ${where}. ${crew} have let go and are free again; nothing is resumed on its own.`);
       return;
     }

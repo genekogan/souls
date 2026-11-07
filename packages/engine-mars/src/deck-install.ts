@@ -76,6 +76,8 @@ const STEP_BACK_SPEED = 0.6;
 export type SeatExec = {
   /** PC17 (#696): the part is in place; the crew is stepping clear of it. */
   backing?: true;
+  /** A stop came while it stepped clear: the install finishes where the crew stands. */
+  stopped?: true;
   p: { crew: string[] }; part: string; kind: Kind; prog: Prog; id: string; phase: 'approach' | 'lift'; children?: Children; t: number; from: Pose; to: Pose; start: Pose;
   path?: Pose[]; duration: number; crew: string[]; item: string; slots?: string[]; stall?: number; lowering?: true;
 };
@@ -238,8 +240,10 @@ export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind
       const ls = ex.backing || liftStep(rt, ex, dt);
       if (ls !== true) return ls ? { status: 'blocked', diagnostic: ls } : { status: 'running', phase: ex.lowering ? 'lower' : 'lift' };
       if (o.stepBack && !ex.lowering) {
+        // a stop doesn't wait for whoever stands behind them: the crew backs as far as it can and lets go
         const back = stepClear(rt, ex, part, o.stepBack, dt);
-        if (back) { ex.backing = true; return typeof back === 'string' ? { status: 'running', phase: 'lift' } : { status: 'blocked', diagnostic: back }; }
+        if (back === 'moved') { ex.backing = true; return { status: 'running', phase: 'lift' }; }
+        if (back && !ex.stopped) { ex.backing = true; return { status: 'blocked', diagnostic: back }; }
       }
       letGo(rt, ex);
       part.reservedBy = undefined;
@@ -258,7 +262,7 @@ export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind
       const part = rt.world.entities[ex.part]!;
       if (ex.lowering) return { ok: true, deferred: true };
       // PC17 (#696): it is in place and the crew is stepping clear: that finishes the install, there is nothing to lower
-      if (ex.backing) return { ok: true, deferred: true };
+      if (ex.backing) { ex.stopped = true; return { ok: true, deferred: true }; }
       if (ex.phase === 'approach') {
         for (const r of ex.children?.recs ?? []) if (rt.isActive(r.id)) rt.cancel(r.id);
         part.phase = 'staged'; part.reservedBy = undefined;

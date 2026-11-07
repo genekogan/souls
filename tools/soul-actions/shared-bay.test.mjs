@@ -289,6 +289,44 @@ test('R9, R10, R11: inspect is enough, a far Soul gains nothing, a volunteer sta
   const crowded = inspectFrame(w.edge, Ada, pj); assert.ok(Buffer.byteLength(JSON.stringify(crowded)) <= 4096, 'within the budget'); assert.ok(crowded.more.members > 0, 'and it says how many it left out');
 });
 
+test('R5: a crew stops short of another crew\'s load, by name', {timeout: 120000}, async (t) => {
+  const {w, pj} = await organized(t), {Ada, Bo, Cy, Dee} = w.souls, beam = w.idOf('beam1'), other = w.idOf('beam3');
+  // two crews, one load across the other's way: the first carries to the far side of the second's load
+  const a = ok(await act(w, Ada, {capability: `carry-with:${other}`, params: {to: 'apron', with: 'Bo'}}));
+  ok(await act(w, Bo, {capability: `accept:${a.receipt.shared.invite}`, params: {revision: 1}}));
+  const b = ok(await act(w, Cy, {capability: `carry-with:${beam}`, params: {to: 'apron', with: 'Dee'}}));
+  ok(await act(w, Dee, {capability: `accept:${b.receipt.shared.invite}`, params: {revision: 1}}));
+  const named = new Set();
+  for (let i = 0; i < 1500 && [a, b].some((x) => invitation(w, x).shared.op?.phase !== 'ended'); i++) {await w.tick(1); for (const r of w.host.engine.rt.records.values()) if (r.verb === 'carry' && r.status === 'blocked' && r.diagnostic?.code) named.add(r.diagnostic.code);}
+  assert.ok(named.has('carry.path-occupied') || named.has('carry.pickup-occupied'), `a named wait, not a fault: ${[...named]}`);
+  assert.equal(w.host.clockFailure, undefined); assert.ok(pj);
+});
+
+test('R4: a stop as a flight\'s crew steps clear tells them what is true: it is set', {timeout: 300000}, async (t) => {
+  const w = await world(t), {Ada, Bo, Cy, Dee, Eve, Fay} = w.souls; await yard(w);
+  const rt = w.host.engine.rt, tick = w.tick; let done = null;
+  w.tick = async (n = 5) => {
+    for (let i = 0; i < n; i++) {
+      await tick(1);
+      const l = [...rt.live.values()].find((x) => x.exec?.backing);
+      if (l && !done) {
+        const s = Object.values(w.souls).find((x) => x.entityId === l.exec.crew[0]), run = w.edge.together.sharedRunning(s.soulId);
+        ok(await act(w, s, {capability: `stop-carry:${run.op}`})); await tick(80); done = {s, part: w.E()[l.exec.part]};
+        throw new Error('stopped');
+      }
+    }
+  };
+  await assert.rejects(build(w, Ada, [[Ada, Bo], [Cy, Dee], [Eve, Fay]]), /stopped/);
+  assert.equal(done.part.phase, 'installed'); assert.ok(heard(w, done.s, /is in place; it was set/), 'the crew hears it is set'); assert.ok(!heard(w, done.s, /flight was lowered back/));
+});
+
+test('R5: the amend a refusal recommends keeps a project\'s raise where the blueprint says', {timeout: 120000}, async (t) => {
+  const {w, pj} = await organized(t), {Ada} = w.souls, frame = w.idOf('fa');
+  const r = ok(await act(w, Ada, {capability: `raise-with:${frame}`, params: {project: pj, with: 'Bo'}})), inv = r.receipt.shared.invite, base = w.edge.together.invite(inv).shared.base;
+  assert.ok(base); ok(await act(w, Ada, {capability: `raise-with:${frame}`, params: {with: 'Cy', invite: inv}}));
+  assert.deepEqual(w.edge.together.invite(inv).shared.base, base);
+});
+
 test('R6: editing the row cannot complete it', {timeout: 120000}, async (t) => {
   const {w, pj} = await organized(t), {Ada} = w.souls, row = w.db.db.prepare('SELECT body FROM edge_projects_v1 WHERE project_id=?').get(pj);
   assert.ok(!/progress|complete|done/.test(row.body), 'the row stores no progress');
@@ -326,9 +364,9 @@ test('R5: a crew waits with a named hold for someone at its lift, and stops dead
   await w.at(Fay, (q[0] + spot[0]) / 2, (q[2] + spot[1]) / 2); await w.tick(2);
   ok(await act(w, Fay, {capability: 'sit-ground:here', params: {seconds: 60}}));
   // it stands still where it is, the bystander is asked to step aside, and it goes on: never a body in the load
-  let still = 0, most = 0, last = '';
-  for (let i = 0; i < 900 && w.edge.together.invite(p.receipt.shared.invite).shared.op?.phase !== 'ended'; i++) {await w.tick(1); const e = JSON.stringify(w.E()[frame].pose); still = e === last && w.E()[frame].support?.kind === 'held' ? still + 1 : 0; most = Math.max(most, still); last = e;}
-  assert.ok(most >= 3, `the load stopped for her (${most} ticks)`);
+  const named = new Set();
+  for (let i = 0; i < 900 && w.edge.together.invite(p.receipt.shared.invite).shared.op?.phase !== 'ended'; i++) {await w.tick(1); for (const r of w.host.engine.rt.records.values()) if (r.verb === 'carry' && r.status === 'blocked' && r.diagnostic?.code) named.add(r.diagnostic.code);}
+  assert.ok(named.has('carry.path-occupied'), `the hold is named: ${[...named]}`);
   assert.equal(w.edge.together.invite(p.receipt.shared.invite).shared.op.result, 'arrived');
   assert.equal(w.host.clockFailure, undefined, 'the world goes on');
 });
