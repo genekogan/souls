@@ -9,9 +9,10 @@ export const SOLID = 0.16;
 export const TEXT_MARGIN = 20;
 /** Fastest the radius may move, in fractions of the whole way per second: a clump of progress reads as a swell. */
 const RATE = 0.6, FINISH_RATE = 2, TAU = 0.35;
-/** The drawing buffer's long side and the frame rate; the picture is soft, so it upscales well. */
-const MAX_SIDE = 640;
-export const FRAME_MS = 1000 / 30;
+/** The drawing buffer's long side and the frame rate; the picture is soft, so it upscales well. At 640 px and 30 fps a
+ *  software renderer slowed the world's download by about half a second on a phone-sized page; here it doesn't measurably. */
+const MAX_SIDE = 480;
+export const FRAME_MS = 1000 / 24;
 
 /** The radius from just covering the text to reaching the corners, in CSS pixels. */
 export const lightRadius = (fraction: number, width: number, height: number, textHalf: number) =>
