@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,13 +83,97 @@ test('A1: a world\'s answer that outgrows a record is bounded, not lost', (t) =>
   assert.equal(e.type, 'outcome'); assert.equal(e.summary.length, 160); assert.equal(e.learned.length, 5); assert.equal(e.met[0].id, 's_bo');
 });
 
-test('A1: two sources with one name in two worlds do not conflict; the same source changing keeps the act', (t) => {
+test('A1: two sources with one name in two worlds do not conflict; a source that changes is a new reading', (t) => {
   const dir = tmp(t), m = open(dir);
   m.sawHere(frame());
   m.sawReceipt(receipt('r_a'));
   open(dir, { world: 'mars', role: 'visiting' }).sawReceipt(receipt('r_a'));
   m.sawReceipt(receipt('r_b', { outcome: { summary: 'Read it again.', learned: [{ fact: 'The ferry runs at noon.', about: 'pier', source: 'book:ferry' }], produced: [], met: [] } }));
-  assert.deepEqual(events(dir).filter((e) => e.type === 'outcome').map((e) => [e.world, e.receiptId, e.learned.length]), [['eden', 'eden:r_a', 1], ['mars', 'mars:r_a', 1], ['eden', 'eden:r_b', 0]]);
+  assert.deepEqual(events(dir).filter((e) => e.type === 'outcome').map((e) => [e.world, e.receiptId, e.learned.length]), [['eden', 'eden:r_a', 1], ['mars', 'mars:r_a', 1], ['eden', 'eden:r_b', 1]]);
+  const knowledge = readFileSync(join(dir, 'memory/knowledge.md'), 'utf8');
+  assert.match(knowledge, /runs at dawn/); assert.match(knowledge, /runs at noon/);
+});
+
+test('a batch survives a bad event: one the record won\'t take costs only itself', (t) => {
+  const dir = tmp(t), m = open(dir), good = (id, text) => ({ id, kind: 'speech', tick: 5, at: T0, clock: '09:00', from: { soulId: 's_ana', name: 'Ana' }, text });
+  m.sawHere(frame());
+  for (const bad of [{ ...good('c_1', '\u0001') }, { ...good('c_2', 'x'), at: 1e20 }, { ...good('c_3', 'x'), tick: -1 }, { ...good('c_4', 'x'), from: { soulId: 's_x', name: ' \u0001 ' } }, { ...good('c_5', 'x'), from: { soulId: 7, name: 'N' } }, { kind: 'receipt', tick: 6, at: T0, receipt: receipt('r_dup', { outcome: { summary: 'ok', learned: [null, { fact: ' ', about: 'pier' }], produced: [{ id: 'o_1' }, { id: 'o_1' }], met: [{ soulId: 's_b', name: 'B' }, { soulId: 's_b', name: 'B' }] } }) }]) m.sawEvents([bad, good(`after-${bad.id ?? 'r'}`, 'Still here.')]);
+  const all = events(dir);
+  assert.equal(all.filter((e) => e.text === 'Still here.').length, 6, 'every event after a bad one was kept');
+  assert.equal(all.find((e) => e.receiptId === 'eden:r_dup').produced.length, 1); assert.equal(all.find((e) => e.receiptId === 'eden:r_dup').met.length, 1);
+  assert.equal(open(dir).search('Still here').query, 'Still here', 'and it all replays');
+});
+
+test('a world\'s lies stay out of presence and the clock', (t) => {
+  const dir = tmp(t), m = open(dir);
+  m.sawHere(frame({ now: 'world day 99999999999999999999', me: { place: { evil: 1 }, placePath: ['x'], posture: 'p'.repeat(5000) } }));
+  m.sawHere(frame({ me: { place: 'pier', placePath: ['n'.repeat(5000)], posture: 'standing' } }));
+  m.sawHere(frame({ me: { place: 'pier', placePath: ['the pier'], posture: 'standing' } }));
+  const p = JSON.parse(readFileSync(join(dir, 'worlds/eden.json'), 'utf8'));
+  assert.equal(p.worldDay, 3); assert.ok(readFileSync(join(dir, 'worlds/eden.json'), 'utf8').length < 2000);
+  m.remember('self', undefined, 'Fine.');
+  m.sawResult('m_1', true, 'Fine.');
+  assert.equal(events(dir).at(-1).type, 'outcome');
+});
+
+test('backlog adds no day; a clock going back as ticks go on does', (t) => {
+  const dir = tmp(t), m = open(dir), at = (id, tick, clock) => ({ id, kind: 'speech', tick, at: T0, clock, from: { soulId: 's_ana', name: 'Ana' }, text: id });
+  m.sawHere(frame({ tick: 100, clock: '12:00' }));
+  m.sawEvents([at('old-1', 50, '08:00'), at('old-2', 60, '08:30')]);
+  m.sawEvents([at('old-3', 70, '07:00')]);
+  assert.deepEqual(events(dir).filter((e) => e.type === 'speech').map((e) => e.when.worldDay), [3, 3, 3]);
+  m.sawEvents([at('next', 500, '06:00')]);
+  assert.equal(events(dir).at(-1).when.worldDay, 4);
+});
+
+test('a together-act names no place by its id: the name as known stays', (t) => {
+  const dir = tmp(t), m = open(dir);
+  m.sawHere(frame());
+  m.sawReceipt(receipt('r_t', { outcome: { summary: 'Danced with Ana.', learned: [], produced: [], met: [{ soulId: 's_ana', name: 'Ana', placeId: 'pier' }] } }));
+  const places = readFileSync(join(dir, 'memory/places.md'), 'utf8');
+  assert.match(places, /the pier/); assert.doesNotMatch(places, /formerly/);
+  const person = readdirSync(join(dir, 'memory/people')).map((f) => readFileSync(join(dir, 'memory/people', f), 'utf8')).join('');
+  assert.match(person, /at the pier/);
+  m.sawReceipt(receipt('r_u', { endedAt: { place: 'mill' } }));
+  m.sawHere(frame({ tick: 150, me: { place: 'mill', placePath: ['the mill'], posture: 'standing' } }));
+  const after = readFileSync(join(dir, 'memory/places.md'), 'utf8');
+  assert.match(after, /the mill/); assert.doesNotMatch(after, /formerly/, 'a name turning up for an id is no rename');
+});
+
+test('a record names what it carries, and what won\'t fit is cut, not lost', (t) => {
+  const dir = tmp(t), m = open(dir), wide = '字'.repeat(200);
+  m.sawHere(frame());
+  m.sawReceipt(receipt('r_many', { outcome: { summary: 'Made things.', learned: [], produced: Array.from({ length: 32 }, (_, i) => ({ id: `o_${i}`, title: wide, kind: wide, where: `w${i}` })), met: Array.from({ length: 32 }, (_, i) => ({ soulId: `s_${i}`, name: wide, placeId: `m${i}` })) } }));
+  const e = events(dir).at(-1);
+  assert.equal(e.receiptId, 'eden:r_many'); assert.ok(e.produced.length > 0); assert.equal(e.seen[e.produced[0].id], wide);
+});
+
+test('a prototype name is only a name', (t) => {
+  const dir = tmp(t), m = open(dir);
+  m.sawHere(frame());
+  m.sawEvents([{ id: 'c_1', kind: 'speech', tick: 5, at: T0, clock: '09:00', from: { soulId: 'constructor', name: '   ' }, text: 'Boo.' }, { id: 'c_2', kind: 'approach', tick: 6, at: T0, clock: '09:00', from: { soulId: 's_zed', name: 'Zed' } }]);
+  assert.equal(m.remember('person', 'Zed', 'Fine.').id, 's_zed');
+});
+
+test('the lock: a dead holder is passed over, a live one is waited for and reported, and only its owner frees it', (t) => {
+  const dir = tmp(t), m = openSoulMemory(dir, { world: 'eden', soul: 's_me', sleepMs: () => {} }), lock = join(dir, 'runtime/.memory.lock');
+  m.sawHere(frame());
+  writeFileSync(lock, '999999:gone');
+  m.remember('self', undefined, 'A dead holder.');
+  assert.ok(!existsSync(lock));
+  writeFileSync(lock, `${process.pid}:someone`);
+  assert.throws(() => m.remember('self', undefined, 'Waits.'), /another writer holds the lock/);
+  assert.equal(readFileSync(lock, 'utf8'), `${process.pid}:someone`, 'the holder keeps it');
+  rmSync(lock); mkdirSync(lock);
+  assert.throws(() => m.remember('self', undefined, 'A folder.'), /memory:/);
+  rmSync(lock, { recursive: true });
+});
+
+test('remember --place prefers the world the Soul is in', (t) => {
+  const dir = tmp(t), a = open(dir, { world: 'aa' }), b = open(dir, { world: 'bb', role: 'visiting' });
+  a.sawHere(frame({ me: { place: 'green', placePath: ['Village Green'], posture: 'standing' } }));
+  b.sawHere(frame({ tick: 200, me: { place: 'green', placePath: ['Village Green'], posture: 'standing' } }));
+  assert.equal(b.remember('place', 'Village Green', 'Same name, this world.').id, 'bb:green');
 });
 
 test('A2: every projection regenerates, and speech and reports keep their label', (t) => {
@@ -255,7 +339,10 @@ test('wait and result are noted without a serve; with one up the serve notes the
   await run('here');
   assert.equal(events(soul).filter((e) => e.messageId === 'm_2').length, 1);
   assert.equal(logOf(soul).filter((r) => r.kind === 'remember').length, 1);
-  } finally { await run('serve', '--stop'); }
+  } finally {
+    await run('serve', '--stop');
+    for (let i = 0; i < 100 && existsSync(join(soul, 'runtime/.eden-serve.lock')); i++) await new Promise((r) => setTimeout(r, 20));
+  }
 });
 
 test('a legacy folder is left as it was: no memory, and it says how to get one', async (t) => {
