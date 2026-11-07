@@ -206,12 +206,44 @@ test('a load driven through a real box by its own step: refused once, the crew b
   for (const s of [Ada, Bo]) ok(await act(w, s, {capability: 'walk:yard'}));
 });
 
+// What stands behind a refused crew: it stops backing and sets down where it is, rather than walking into that too.
+for (const [what, behind] of [
+  ['a person', async (w, at) => w.at(w.souls.Cy, at[0], at[1])],
+  ['a box', async (w, at) => { ok(w.god.act({ops: [{op: 'place', def: 'core/box@1', name: 'crate', p: at}]})); }],
+])
+  test(`${what} behind the crew: the backing stops short, the load is set down, nothing falls to a rewind`, async (t) => {
+    t.mock.method(console, 'warn', () => {});
+    const w = await world(t), r = await carrying(w), host = w.f.host, ex = carryOf(host.engine.rt, w.beam).exec, back = [-Math.cos(ex.q.th), -Math.sin(ex.q.th)], f = ex.p.f;
+    await behind(w, [ex.q.x + back[0] * (f.length / 2 + 0.75), ex.q.z + back[1] * (f.length / 2 + 0.75)]);
+    const stepsBack = []; force(w, () => [{code: 'carry.load-static', message: 'forced', subjects: [w.beam]}]);
+    const inv = () => w.edge.together.invite(r.id);
+    for (let n = 0; n < 900 && inv().shared.op.phase !== 'ended'; n++) { await w.tick(1); stepsBack.push(ex.u); }
+    assert.equal(host.paused, false); assert.equal(rungs(host).repair, 0, JSON.stringify(host.glitches.byRule)); assert.equal(rungs(host).refusal, 1); assert.deepEqual(host.engine.runtime.violations, []);
+    assert.equal(w.E[w.beam].support?.kind, 'ground');
+    for (const [s, rc] of [[w.souls.Ada, r.p], [w.souls.Bo, r.a]]) assert.equal(read(w, s, rc).code, 'world.refused:carry.load-static');
+  });
+
+test('a stop asked while the crew is backing leaves the reason as it was', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const w = await world(t), r = await carrying(w), inv = () => w.edge.together.invite(r.id);
+  force(w, () => [{code: 'carry.load-static', message: 'forced', subjects: [w.beam]}]); await w.tick(3);
+  w.f.host.engine.stop(inv().shared.op.programId); assert.notEqual(w.f.host.engine.programAction?.(inv().shared.op.programId), null, 'it goes on until the load is down');
+  for (let n = 0; n < 900 && inv().shared.op.phase !== 'ended'; n++) await w.tick(1);
+  assert.equal(read(w, w.souls.Ada, r.p).code, 'world.refused:carry.load-static'); assert.equal(w.E[w.beam].support?.kind, 'ground');
+});
+
+test('a fixture carry has the same way out: the hook is delegated', async () => {
+  const f = await marsFactory({...GREEN_FIELD_WORLD, soulsRepairV1: true}), e = f.create(f.genesis('x'));
+  assert.equal(typeof e.rt.registry.get('move_fixture').refused, 'function');
+});
+
 test('one bad tick that names a whole crew is one refusal of its programme', async (t) => {
   t.mock.method(console, 'warn', () => {});
   const w = await world(t), {Ada, Bo} = w.souls, r = await carrying(w), eng = w.f.host.engine;
   force(w, () => [Ada.entityId, Bo.entityId, w.beam].map((id) => ({code: 'motion.teleport', message: 'forced', subjects: [id]})));
   w.f.host.tickOnce();
   assert.deepEqual([...eng.programs.values()].map((p) => p.refusalsV1?.length), [1]);
+  const back = carryOf(eng.rt, w.beam).exec; assert.ok(back.retreatTo < back.u, 'three names, one retreat: it is still backing');
   force(w, () => [{code: 'collision.human-static', message: 'forced', subjects: [Bo.entityId]}]);
   w.f.host.tickOnce(); await w.tick(1); assert.equal(rungs(w.f.host).repair, 0, 'a second refusal is still a refusal');
 });

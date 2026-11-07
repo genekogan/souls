@@ -121,6 +121,12 @@ export function activeLoadDiscs(rt: Runtime, braking = false): LoadDisc[] {
 const carryFacing = (ex: CarryExec, yaw:number, index=0) => wrapAngle(yaw - (ex.p.fixture ? ex.p.f.carriers[index].side * Math.PI / 2 : 0));
 
 /** Place load + carriers for formation pose q (the only way positions change while moving). */
+/** #1150: a refused crew's next step back would meet a person or something solid. */
+function retreatBlocked(rt: Runtime, ex: CarryExec, sp: Spatial, u: number): boolean {
+  const i0 = ex.i, g = sp.level(ex.p.level); ex.i = 0;
+  const q = poseAtU(ex, u); ex.i = i0;
+  return !!pathBystander(rt, ex, u) || (!!g && poseHit(g, ex.p.f, q, 0) >= 0);
+}
 function applyFormation(rt: Runtime, ex: CarryExec, q: SE2) {
   const item = itemOf(rt, ex);
   item.pose = carriedPose(ex.p.f, q, ex.p.levelY);
@@ -346,12 +352,15 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
       return { status: 'running', phase: ex.phase };
     }
     if (ex.phase === 'move' && ex.retreatTo !== undefined) {
-      ex.u = Math.max(ex.retreatTo, ex.u - CARRY_SPEED * dt); ex.i = 0;
-      applyFormation(rt, ex, poseAtU(ex, ex.u));
-      if (ex.u > ex.retreatTo) return { status: 'running', phase: 'move' };
       const sp = rt.services.spatial as Spatial; sp.sync(rt.world);
-      // not clear to lay it here: further back, where it was. The route's start is as far as it goes.
-      if (ex.u > 0 && laidIssue(sp, p.f, ex.q, p.level, p.levelY, p.item, p.crew)) { ex.retreatTo = Math.max(0, ex.u - RETREAT); return { status: 'running', phase: 'move' }; }
+      const next = Math.max(ex.retreatTo, ex.u - CARRY_SPEED * dt);
+      // the route was clear when it was planned, not necessarily now: what stands behind ends the backing here
+      if (next < ex.u && !retreatBlocked(rt, ex, sp, next)) {
+        ex.u = next; ex.i = 0; applyFormation(rt, ex, poseAtU(ex, ex.u));
+        if (ex.u > ex.retreatTo) return { status: 'running', phase: 'move' };
+        // not clear to lay it here: further back, where it was. The route's start is as far as it goes.
+        if (ex.u > 0 && laidIssue(sp, p.f, ex.q, p.level, p.levelY, p.item, p.crew)) { ex.retreatTo = Math.max(0, ex.u - RETREAT); return { status: 'running', phase: 'move' }; }
+      }
       ex.retreatTo = undefined; startSetDown(rt, ex, ex.q);
       return { status: 'running', phase: 'set-down' };
     }
@@ -491,9 +500,11 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
     if (ex.phase === 'gather') return ex.walks.every((walk, i) => !!walk && exhausted.has(ex.p.crew[i]) && walkTo.waitQuiescent!(rt, walk, exhausted));
     return ex.phase === 'move' && ex.v < 0.02 && !ex.onStair && exhausted.has(ex.p.item);
   },
-  /** #1150: the crew's last step was not taken. Every pose behind it on this route was valid, so that is the way out. */
+  /** #1150: the crew's last step was not taken. The route behind it is the way it came, so that is the way out, as far as it is still clear. */
   refused(rt, ex) {
     if (ex.phase !== 'move') return;
+    // refused while backing: that step was back, so undo it, and go no further that way
+    if (ex.retreatTo !== undefined) { ex.u = Math.min(ex.p.traj.u[ex.p.traj.u.length - 1], ex.u + CARRY_SPEED * DT); ex.i = 0; ex.q = poseAtU(ex, ex.u); ex.retreatTo = ex.u; return; }
     ex.u = Math.max(0, ex.u - ex.v * DT); ex.v = 0; ex.i = 0; ex.q = poseAtU(ex, ex.u);
     ex.retreatTo = Math.max(0, ex.u - RETREAT);
   },

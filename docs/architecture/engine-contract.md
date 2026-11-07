@@ -94,8 +94,8 @@ would break a rule is not applied ([#1150](https://github.com/soulsimulation/sou
 - **Refusable:** `collision.human-static`, `collision.human-human`, `collision.human-load`, `motion.overspeed`,
   `motion.teleport`, `carry.load-static`, `lift.hands-out-of-reach`. A body that holds a load refuses with its load and
   everyone holding it. Cleanup is the action's own, and a stop never drops a load. An action that keeps its own position
-  rewinds it in its `refused` hook: a carry backs 1 m along the route it came by, where every pose was valid, and sets
-  down there, further back if it can't lay the load there.
+  rewinds it in its `refused` hook: a carry backs up to 1 m along the route it came by and sets down there, further back if
+  it can't lay the load there. A person or a solid behind it, or a refusal while backing, ends the backing where it stands.
 - **Not refusable, left in `violations` for the host's repair:** any other rule in the same tick (a tick is refused whole
   or not at all), a violation naming only bodies that did not move, a build programme, a body ridden, carried, on a
   structure or on a flight, an action with no programme whose cancel is refused, and a third refusal of one programme within 5 s.
