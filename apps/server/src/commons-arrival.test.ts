@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { marsCommonsTransitionFactory,GREEN_FIELD_WORLD,marsFactory,EDEN_COMMONS_WORLD } from '@sim/engine-mars';
+import { marsCommonsTransitionFactory,GREEN_FIELD_WORLD,marsFactory,EDEN_COMMONS_WORLD } from '@souls/engine-mars';
 import { fixture,invite,accept } from '../test/native-owner-fixture.ts';
 import { WorldHost } from './world.ts';
-import { kernelHash } from '@sim/kernel';
+import { kernelHash } from '@souls/kernel';
 import { CandidateStationV1 } from './station.ts';
 import { CandidateStationV2 } from './station-v2.ts';
 import { ClockFrontiers } from './clock-frontier.ts';
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import { LifecycleRunner } from './lifecycle-runner.ts';
 import { LifecycleJournal } from './lifecycle-journal.ts';
 

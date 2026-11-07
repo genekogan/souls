@@ -1,5 +1,5 @@
 import { nativeBoatFixture } from './boat-runtime.ts';
-import { boatStateV1Schema, boatPassengerV1Schema, boatTransitV1Schema, nativeBoatLayoutV1Schema, hashOf,captureRenderScene } from '@sim/engine-contract';
+import { boatStateV1Schema, boatPassengerV1Schema, boatTransitV1Schema, nativeBoatLayoutV1Schema, hashOf,captureRenderScene } from '@souls/engine-contract';
 import { TakeRecorder } from '../../../mars/viewer/engine/take/recorder.ts';
 import { BOAT_LAYOUT, BOAT_POLICY } from '../../../mars/viewer/engine/vehicles/boat.ts';
 

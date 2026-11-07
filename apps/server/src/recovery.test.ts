@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { marsFactory } from '@sim/engine-mars';
-import { toyFactory } from '@sim/engine-toy';
-import type { Engine, EngineFactory } from '@sim/engine-contract';
-import { kernelHash } from '@sim/kernel';
-import { publicEvent } from '@sim/protocol';
+import { marsFactory } from '@souls/engine-mars';
+import { toyFactory } from '@souls/engine-toy';
+import type { Engine, EngineFactory } from '@souls/engine-contract';
+import { kernelHash } from '@souls/kernel';
+import { publicEvent } from '@souls/protocol';
 import { Db } from './db.ts';
 import { WorldHost, replayFromGenesis, replayKernel } from './world.ts';
 import { initKernel } from './fold.ts';
@@ -21,7 +21,7 @@ function faultyFactory(): EngineFactory {
   return {...toyFactory,create:w=>wrap(toyFactory.create(w)),restore:s=>wrap(toyFactory.restore(s))};
 }
 test('fault restores checkpoint and filtered log; three faults quarantine; restart and both replay paths agree',()=>{
-  const db=new Db(join(mkdtempSync(join(tmpdir(),'sim-recovery-')),'sim.db')), factory=faultyFactory();
+  const db=new Db(join(mkdtempSync(join(tmpdir(),'souls-recovery-')),'sim.db')), factory=faultyFactory();
   const h=new WorldHost(db,factory,'recovery',1e9); h.boot();
   void h.enqueue('birth','test',{soulId:'s_A',entityId:'h_A',name:'A',description:'quiet',owner:'private-owner'}); h.tickOnce(); h.saveSnapshot();
   for(let fault=1;fault<=3;fault++) {
@@ -40,7 +40,7 @@ test('fault restores checkpoint and filtered log; three faults quarantine; resta
 });
 
 test('historical Mars invariant receipts survive restart without being treated as fresh faults',async()=>{
- const db=new Db(join(mkdtempSync(join(tmpdir(),'sim-old-receipts-')),'sim.db')),factory=await marsFactory();
+ const db=new Db(join(mkdtempSync(join(tmpdir(),'souls-old-receipts-')),'sim.db')),factory=await marsFactory();
  const h=new WorldHost(db,factory,'historic',1e9);h.boot();
  void h.enqueue('birth','test',{soulId:'s_A',entityId:'h_A',name:'A',description:'quiet',owner:'test'});h.tickOnce();
  h.engine.runtime.violations.push({tick:0,code:'historic.receipt',message:'A previously recorded violation, already resolved'});h.saveSnapshot();
@@ -49,7 +49,7 @@ test('historical Mars invariant receipts survive restart without being treated a
 });
 
 test('repeated faults between snapshots never nest recovery recipes; boot and readers skip the recipe bodies',()=>{
-  const db=new Db(join(mkdtempSync(join(tmpdir(),'sim-recovery-nest-')),'sim.db')), factory=faultyFactory();
+  const db=new Db(join(mkdtempSync(join(tmpdir(),'souls-recovery-nest-')),'sim.db')), factory=faultyFactory();
   const h=new WorldHost(db,factory,'nest',1e9); h.boot();
   void h.enqueue('birth','test',{soulId:'s_A',entityId:'h_A',name:'A',description:'quiet',owner:'private-owner'}); h.tickOnce(); h.saveSnapshot();
   const preFix=db.db.prepare('SELECT * FROM snapshots WHERE world_id=? ORDER BY tick DESC LIMIT 1').get(h.worldId) as Record<string,any>;
@@ -93,7 +93,7 @@ test('a legacy nested recovery chain boots in one linear replay, to the same hea
   // Recipes as recoverFault logged them before they stopped nesting (eden-2026 seq 828..835): each carries the
   // baseline body and every event since it, the earlier recipes included.
   const world=(nest:boolean)=>{
-    const db=new Db(join(mkdtempSync(join(tmpdir(),'sim-recovery-legacy-')),'sim.db'));
+    const db=new Db(join(mkdtempSync(join(tmpdir(),'souls-recovery-legacy-')),'sim.db'));
     const h=new WorldHost(db,factory,'legacy',1e9); h.boot();
     void h.enqueue('birth','test',{soulId:'s_A',entityId:'h_A',name:'A',description:'quiet',owner:'private-owner'}); h.tickOnce(); h.saveSnapshot();
     const snap=db.latestSnapshot(h.worldId)!, baseline=snap.body, since:any[]=[]; let seq=h.seq;
@@ -122,7 +122,7 @@ test('skipping a superseded recovery prefix preserves its original violation cei
     if((s as any).testHistoricViolation)e.runtime.violations.push({rule:'fixture.historic',message:'fixture'} as any);
     return e;
   }};
-  const db=new Db(join(mkdtempSync(join(tmpdir(),'sim-recovery-ceiling-')),'sim.db'));
+  const db=new Db(join(mkdtempSync(join(tmpdir(),'souls-recovery-ceiling-')),'sim.db'));
   const h=new WorldHost(db,factory,'ceiling',1e9); h.boot(); h.saveSnapshot();
   const snap=db.latestSnapshot(h.worldId)!, baseline=snap.body as any;
   const innerBody=structuredClone(baseline); innerBody.runtime.testHistoricViolation=true;
@@ -141,7 +141,7 @@ test('a recovery replay that still violates names the new violation and the orig
     if((s as any).testReplayViolation)e.runtime.violations.push({code:'collision.human-human',message:'a and b overlap (0.30 m apart)',subjects:['a','b'],tick:7} as any);
     return e;
   }};
-  const db=new Db(join(mkdtempSync(join(tmpdir(),'sim-recovery-cause-')),'sim.db'));
+  const db=new Db(join(mkdtempSync(join(tmpdir(),'souls-recovery-cause-')),'sim.db'));
   const h=new WorldHost(db,factory,'cause',1e9); h.boot(); h.saveSnapshot();
   const snap=db.latestSnapshot(h.worldId)!, baseline=snap.body as any;
   const innerBody=structuredClone(baseline); innerBody.runtime.testReplayViolation=true;

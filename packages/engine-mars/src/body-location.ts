@@ -1,4 +1,4 @@
-import {bodyLocationV1Schema,type BodyLocationV1} from '@sim/engine-contract';
+import {bodyLocationV1Schema,type BodyLocationV1} from '@souls/engine-contract';
 import type {Runtime} from '../../../mars/viewer/engine/runtime/runtime.ts';
 import type {Entity} from '../../../mars/viewer/engine/world/types.ts';
 import type {Diagnostic} from '../../../mars/viewer/engine/actions/types.ts';

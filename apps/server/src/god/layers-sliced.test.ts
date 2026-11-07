@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, coreRef } from '@sim/world-compiler';
-import { toyFactory } from '@sim/engine-toy';
+import { CORE_KIT, WorldModel, applyBatch, coreRef } from '@souls/world-compiler';
+import { toyFactory } from '@souls/engine-toy';
 import { PlaceIndex, type Place } from '../edge/ledger/places.ts';
 import { Db } from '../db.ts';
 import { WorldHost } from '../world.ts';

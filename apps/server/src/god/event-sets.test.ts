@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, coreRef, type Op } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, coreRef, type Op } from '@souls/world-compiler';
 import { GodLayers } from './layers.ts';
 import { isSetPiece, pieceNames, describeSet } from './event-sets.ts';
 

@@ -1,5 +1,5 @@
 // The clock announces moments and holds finished bodies for durability. It chooses no activities.
-import { clockAt, DAY_TICKS } from '@sim/brain';
+import { clockAt, DAY_TICKS } from '@souls/brain';
 import type { WorldHost } from './world.ts';
 
 export class LivingWorld {

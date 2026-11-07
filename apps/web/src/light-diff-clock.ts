@@ -1,4 +1,4 @@
-import {contactStateKey,CONTACT_EXTRA_FIELDS,type WorldModel,type Entity} from '@sim/world-compiler';
+import {contactStateKey,CONTACT_EXTRA_FIELDS,type WorldModel,type Entity} from '@souls/world-compiler';
 
 /** Native interactions use the same depicted tick as the Soul performing them.
  * The ordered diff stream waits here; it must not show a lamp's result ahead of

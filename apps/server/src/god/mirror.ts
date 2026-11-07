@@ -19,7 +19,7 @@
 // `groundHash`; a client that sends the same hash (`ground`) gets `top.ground: null` and `groundRef: true` and keeps its
 // copy. Clients that send no hash (CLIs before G3) get the recipe as before.
 import { createHash } from 'node:crypto';
-import type { Entity, WorldModel } from '@sim/world-compiler';
+import type { Entity, WorldModel } from '@souls/world-compiler';
 import type { GodMode } from './god.ts';
 import { layoutRow, seatProviders } from './query.ts';
 

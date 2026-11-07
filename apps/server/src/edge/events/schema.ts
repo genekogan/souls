@@ -33,7 +33,7 @@ export function edgeSchema() {
       {method:'DELETE',path:'/v1/edge/reminders/:id',limit:'60/min'},
       {method: 'GET', path: '/v1/edge/observe', query: {include: 'capabilities,map'}, limit: '240/min'},
       {method: 'GET', path: '/v1/edge/capabilities', limit: '240/min'},
-      {method: 'POST', path: '/v1/edge/act', body: '{capability: <id | plain words>, params?, clientRef?}', idempotent: true, limit: '60/min'},
+      {method: 'POST', path: '/v1/edge/act', body: '{capability: <id | plain words>, params?, clientRef?, strict?: true (offered ids only; words are refused with candidates)}', idempotent: true, limit: '60/min'},
       {method: 'GET', path: '/v1/edge/receipts/:id'},
       {method: 'POST', path: '/v1/edge/say', body: '{text ≤500}', idempotent: true},
       {method: 'POST', path: '/v1/edge/converse', body: '{op: start|accept|decline|say|leave|ask, with?, conversation?, text?}', idempotent: true},

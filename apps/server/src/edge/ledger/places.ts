@@ -2,7 +2,7 @@
 // World authors the file; Core validates against the live world and indexes it.
 import {CATALOG} from '../../../../../mars/viewer/engine/world/catalog.ts';
 import type {WorldState as NativeWorld} from '../../../../../mars/viewer/engine/world/types.ts';
-import type {WorldAbout} from '@sim/world-compiler';
+import type {WorldAbout} from '@souls/world-compiler';
 import type {MeaningPart} from '../../god/meaning.ts';
 import type {PlaceRef} from '../contract.ts';
 

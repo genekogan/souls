@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import type {Region} from '../../../mars/viewer/engine/world/types.ts';
 const source=JSON.parse(readFileSync(new URL('./fixtures/existing-green-landmark.v1.json',import.meta.url),'utf8'));
 /** Matched existing visual source. This region names standing space beside the tree, not its trunk. */

@@ -6,8 +6,8 @@ import {spawn} from 'node:child_process';
 import {mkdtempSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {serve} from '@hono/node-server';
-import {marsFactory, GREEN_FIELD_WORLD} from '@sim/engine-mars';
-import {coreRef} from '@sim/world-compiler';
+import {marsFactory, GREEN_FIELD_WORLD} from '@souls/engine-mars';
+import {coreRef} from '@souls/world-compiler';
 import {Auth} from './auth.ts';
 import {Brain} from './brain.ts';
 import {config} from './config.ts';
@@ -67,7 +67,7 @@ async function cli(file: string, cwd: string, args: string[]) {
 
 test('two dev-auth accounts cannot control, read private state, rename, delete or pair the other account’s residents/world', {timeout: 60000}, async t => {
   const scratch = process.env.SAFETY_ISOLATION_TMP ?? tmpdir(); mkdirSync(scratch, {recursive: true});
-  const root = mkdtempSync(join(scratch, 'sim-two-account-'));
+  const root = mkdtempSync(join(scratch, 'souls-two-account-'));
   const a = await world(t, root, 'safety-alice', 5880, 'dev:alice');
   const b = await world(t, root, 'safety-bob', 5881, 'dev:bob');
   t.after(() => rmSync(root, {recursive: true, force: true}));
