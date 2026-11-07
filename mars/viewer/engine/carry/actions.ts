@@ -121,12 +121,6 @@ export function activeLoadDiscs(rt: Runtime, braking = false): LoadDisc[] {
 const carryFacing = (ex: CarryExec, yaw:number, index=0) => wrapAngle(yaw - (ex.p.fixture ? ex.p.f.carriers[index].side * Math.PI / 2 : 0));
 
 /** Place load + carriers for formation pose q (the only way positions change while moving). */
-/** #1150: a refused crew's next step back would meet a person or something solid. */
-function retreatBlocked(rt: Runtime, ex: CarryExec, sp: Spatial, u: number): boolean {
-  const i0 = ex.i, g = sp.level(ex.p.level); ex.i = 0;
-  const q = poseAtU(ex, u); ex.i = i0;
-  return !!pathBystander(rt, ex, u) || (!!g && poseHit(g, ex.p.f, q, 0) >= 0);
-}
 function applyFormation(rt: Runtime, ex: CarryExec, q: SE2) {
   const item = itemOf(rt, ex);
   item.pose = carriedPose(ex.p.f, q, ex.p.levelY);
@@ -135,6 +129,13 @@ function applyFormation(rt: Runtime, ex: CarryExec, q: SE2) {
     h.pose = { p: [spots[i][0], ex.p.levelY, spots[i][1]], yaw: carryFacing(ex, q.th, i) };
   });
   ex.q = q;
+}
+
+/** #1150: a refused crew's next step back would meet a person or something solid. */
+function retreatBlocked(rt: Runtime, ex: CarryExec, sp: Spatial, u: number): boolean {
+  const i0 = ex.i, g = sp.level(ex.p.level); ex.i = 0;
+  const q = poseAtU(ex, u); ex.i = i0;
+  return !!pathBystander(rt, ex, u) || (!!g && poseHit(g, ex.p.f, q, 0) >= 0);
 }
 
 /** A non-crew person inside the formation's footprint (load discs + carrier spots) at arc length u. */
