@@ -77,5 +77,20 @@ A file that cannot be read, such as a gzip truncated by a crash, is skipped and 
 `ratioAtFullClock` is an indication from 15 s samples. The meetup bench's clock check
 (`tools/bench/capacity/meetup`) is the oracle. A world at the unwatched quarter pace shows about 0.25 here.
 
-Fields the launcher does not export yet are listed under `unknown` instead of being shown as 0: actions and reads by
-outcome, viewer and connection counts, DB/WAL growth, process CPU and RSS (#737).
+With the CW3 S2 series (#737, `docs/architecture/load.md` §5.1), each world also has the following:
+- `requests`: increases by class (`read`, `act`) of attempted, started, completed, rejected (a gameplay refusal),
+  failed and dropped, plus refusals by code.
+- `latency`: queue and run p50/p95/p99 per class. These come from bucket increases summed per `le` over the range, so
+  each value is a bucket bound (`>10` when only `+Inf` reaches it), never an average of quantiles. Fewer than 100
+  samples are marked `p99Supported: false`.
+- `process`: CPU cores (CPU-seconds per covered second, user + system) and RSS, with main-thread external memory shown
+  apart and never added to RSS.
+- `disk`: `sim.db` and WAL first/last/max and growth per day of the sampled span, and the minimum free disk.
+- `viewers`: viewers now, mean concurrent viewers (viewer-seconds ÷ covered seconds), awake-Soul seconds, sockets
+  opened and closed, resident Souls and entities.
+- `clock.fullClockRatio`: the tick rise over the rise of its own sample time × 20 × the admin rate. It is independent
+  of scrape timing and of the attention pace, which is shown beside it.
+
+The fleet sums request outcomes and world CPU cores. These are distinct processes; the launcher and the rest of the host
+are not included. A block a world did not export is `unknown`, never 0. The top-level `unknown` list names each block
+that no world in the range exported, for example a store collected before #859.
