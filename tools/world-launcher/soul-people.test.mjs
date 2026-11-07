@@ -42,7 +42,7 @@ test('A1: a Soul met in two worlds is one record, and a record made before its t
   b.sawHere(frame('venus', 200, [near('s_visit', 'mars/s_home')]));
   b.sawEvents([{ id: 'c_9', kind: 'speech', tick: 201, at: T0 + 9000, clock: '10:00', from: { soulId: 's_visit', name: 'Ana' }, text: 'Hello again.' }]);
   assert.deepEqual(readdirSync(join(dir, 'memory/people')), [personFile('mars/s_home')], 'one file, and the old one is gone');
-  assert.match(file(dir, 'mars/s_home'), /A world's word, not checked: eden\/s\\_ana, venus\/s\\_visit is this Soul\./);
+  assert.match(file(dir, 'mars/s_home'), /A world's word, not checked: venus\/s\\_visit, eden\/s\\_ana is this Soul\./);
   const text = file(dir, 'mars/s_home');
   assert.match(text, /Hello again\./); assert.match(text, /Hello\./);
   const again = open(dir, 'venus', 'visiting');
@@ -232,10 +232,36 @@ test('A2: a name a world can change finds no one when two go by it, and the repl
   assert.equal(r.key, 'b/s_ana');
   open(dir, 'a').sawEvents([wordsFrom('s_x', 'Ana')]);
   const away = open(dir, 'c');
-  assert.throws(() => away.remember('person', 'Ana', 'I trust Ana with the key.'), /Several Souls go by that name: a\/s_x, b\/s_ana/);
+  assert.throws(() => away.remember('person', 'Ana', 'I trust Ana with the key.'), /Several Souls fit that: b\/s_ana, a\/s_x/);
   assert.throws(() => away.promise('Ana', 'Bring Ana the key'), /Several Souls/);
   assert.equal(away.promise('b/s_ana', 'Bring Ana the key').key, 'b/s_ana');
   assert.doesNotMatch(file(dir, 'a/s_x'), /Bring Ana|trust Ana/);
+});
+
+test('A2: an id a world chose is no better than a name: one equal to a friend\'s name, or a name equal to a friend\'s id, is refused', (t) => {
+  const dir = tmp(t), { home } = friend(dir), evil = open(dir, 'evil');
+  evil.sawHere(frame('evil', 100, [{ id: 'Ana', name: 'Ana', dist: 2 }, { id: 's_x', name: 's_home', dist: 2 }]));
+  assert.throws(() => evil.remember('person', 'Ana', 'I trust Ana.'), /Several Souls fit that: mars\/s_home, evil\/Ana/); assert.throws(() => evil.promise('Ana', 'Bring it'), /Several Souls/);
+  const away = open(dir, 'venus');
+  assert.throws(() => away.remember('person', 's_home', 'Note.'), /Several Souls fit that/);
+  assert.equal(away.remember('person', 'mars/s_home', 'By key.').key, 'mars/s_home');
+  assert.equal(home.remember('person', 'mars/s_home', 'Still mine.').key, 'mars/s_home');
+});
+
+test('A5: a world\'s long names can\'t cut a promise or a note at the small cap, and a claimant row I wrote on stays shown', (t) => {
+  const dir = tmp(t), m = clocked(dir), far = 'mars/s_home';
+  m.sawHere(frame('eden', 100, [{ id: 's_x', name: '&'.repeat(100), dist: 2 }], '&'.repeat(120)));
+  const ids = Array.from({ length: 8 }, (_, i) => m.promise('s_x', `Promise ${i}: be at the mill by dawn with the map and the rope.`).promised);
+  m.remember('person', 's_x', 'Keeps her word.');
+  for (const w of ['w1', 'w2', 'w3', 'w4']) open(dir, w).sawEvents([{ ...wordsFrom('s_' + '_'.repeat(90), '&'.repeat(100)), id: `w_${w}` }]);
+  const text = file(dir, 'eden/s_x');
+  for (const id of ids) assert.ok(text.includes(id), id);
+  assert.match(text, /Keeps her word\./); assert.ok(Buffer.byteLength(text) < 2048);
+  const d2 = tmp(t), v = open(d2, 'venus');
+  v.sawHere(frame('venus', 100, [{ id: 's_visit', name: 'Ana', dist: 2, traveller: far }]));
+  v.remember('person', 's_visit', 'She brought the map.');
+  for (const w of ['e1', 'e2', 'e3', 'e4', 'e5']) open(d2, w).sawHere(frame(w, 100, [{ id: 's_x', name: 'Mallory', dist: 2, traveller: far }]));
+  assert.match(file(d2, far), /She brought the map\./);
 });
 
 test('A5: every open promise stays nameable: a flood of words, or claimants, can\'t push a promise or a note out', (t) => {

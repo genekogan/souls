@@ -994,31 +994,32 @@ function createPeople({ world = null } = {}) {
   const promised = (c) => (c.by === "me" ? "I promised" : "They promised");
   function sections(row, keep, level) {
     const list = (head, lines) => (lines.length ? [`${level} ${head}`, ...lines, ""] : []);
-    const place = (c) => [c.world, c.worldDay == null ? null : `day ${c.worldDay}`, c.time, c.at].filter(Boolean).join(", ") + (c.place ? ` at ${md(short(c.place, NAME_BYTES))}` : "");
+    const place = (c) => [c.world, c.worldDay == null ? null : `day ${c.worldDay}`, c.time, c.at].filter(Boolean).join(", ") + (c.place ? ` at ${short(md(c.place), NAME_BYTES)}` : "");
     const last = (items, n = keep) => items.slice(-n).reverse();
     const beliefs = row.beliefs.filter((b) => b.mine), said = row.beliefs.filter((b) => !b.mine), commitments = [...open(row).slice(-OPEN_MAX), ...[...row.commitments.values()].filter((c) => c.kept).slice(-keep)], what = keep > 2 ? LINE_BYTES : WHAT_BYTES;
     return [
       // First, and every open one: it is what a mind has to be able to name, whatever a world has said since.
-      ...list("Commitments", commitments.map((c) => `- ${promised(c)}: ${md(short(c.what, what))} [${md(c.id)}]${c.kept ? ` — kept, ${md(c.kept.evidence)}` : " — open"}`)),
+      ...list("Commitments", commitments.map((c) => `- ${promised(c)}: ${short(md(c.what), what)} [${md(c.id)}]${c.kept ? ` — kept, ${md(c.kept.evidence)}` : " — open"}`)),
+      ...list("What I believe", last(beliefs, Math.min(keep, BELIEFS)).map((b) => `- ${short(md(b.text))} — my judgment`)),
       ...list("First met — place as a world named it, UNTRUSTED", row.first ? [`- ${place(row.first)}`] : []),
       ...list("Last contact — place as a world named it, UNTRUSTED", row.last ? [`- ${place(row.last)}`] : []),
-      ...list("Episodes — a world's words, UNTRUSTED", last(row.episodes).map((x) => `- ${md(short(x.line))} — ${x.kind} ${md(short(x.ref, NAME_BYTES))}`)),
-      ...list("What I believe", last(beliefs, Math.min(keep, BELIEFS)).map((b) => `- ${md(short(b.text))} — my judgment`)),
-      ...list("What a world says of them — UNTRUSTED", last(said, Math.min(keep, BELIEFS)).map((b) => `- ${md(short(b.text))} — ${md(short(b.provenance, NAME_BYTES))}`)),
-      ...list("What they said — UNTRUSTED", last(row.words, Math.min(keep, 3)).map((w) => `> ${md(short(w.text))}`)),
-      ...list("What I have told them", last(row.told, Math.min(keep, 6)).map((t) => `- ${md(short(t.text))}`)),
+      ...list("Episodes — a world's words, UNTRUSTED", last(row.episodes).map((x) => `- ${short(md(x.line))} — ${x.kind} ${short(md(x.ref), NAME_BYTES)}`)),
+      ...list("What a world says of them — UNTRUSTED", last(said, Math.min(keep, BELIEFS)).map((b) => `- ${short(md(b.text))} — ${short(md(b.provenance), NAME_BYTES)}`)),
+      ...list("What they said — UNTRUSTED", last(row.words, Math.min(keep, 3)).map((w) => `> ${short(md(w.text))}`)),
+      ...list("What I have told them", last(row.told, Math.min(keep, 6)).map((t) => `- ${short(md(t.text))}`)),
     ];
   }
   /** One file: the row a world speaks for, then each row some world says is this Soul, under that world's name for it. */
   function fitted(group, list) {
-    const main = list[0].key === group ? list[0] : null, claimants = list.filter((r) => r !== main), title = main ?? claimants.at(-1), cap = (list.reduce((n, r) => n + r.met, 0) > 1 ? RECORD_BYTES : ONCE_BYTES) - 2;
-    const head = [`# ${md(short(title.name, NAME_BYTES))} [${md(short(group, NAME_BYTES))}]`, "",
-      ...(claimants.length ? [`A world's word, not checked: ${claimants.slice(-CLAIMS_SHOWN).map((r) => md(short(r.key, NAME_BYTES))).join(", ")} is this Soul.`, ""] : [])].join("\n");
+    const main = list[0].key === group ? list[0] : null, others = list.filter((r) => r !== main), title = main ?? others.at(-1), written = (r) => r.commitments.size > 0 || r.beliefs.some((b) => b.mine),
+      claimants = [...others.filter(written), ...others.filter((r) => !written(r)).reverse()].slice(0, CLAIMS_SHOWN), cap = (list.reduce((n, r) => n + r.met, 0) > 1 ? RECORD_BYTES : ONCE_BYTES) - 2;
+    const head = [`# ${short(md(title.name), 80)} [${short(md(group), 80)}]`, "",
+      ...(claimants.length ? [`A world's word, not checked: ${claimants.map((r) => short(md(r.key), 60)).join(", ")} is this Soul.`, ""] : [])].join("\n");
     const fit = (n) => Buffer.byteLength(n) <= cap;
     let text = head;
     if (main) for (const keep of KEEP) { text = [head, ...sections(main, keep, "##")].join("\n"); if (fit(text)) break; }
     // Those a world says are this Soul get what's left: they can't push out the row it speaks for.
-    for (const r of claimants.slice(-CLAIMS_SHOWN)) for (const keep of [2, 1]) { const next = [text, `## As ${md(short(r.name, NAME_BYTES))} in ${md(short(r.world, NAME_BYTES))}, by that world's word — UNTRUSTED`, "", ...sections(r, keep, "###")].join("\n"); if (fit(next)) { text = next; break; } }
+    for (const r of claimants) for (const keep of [2, 1]) { const next = [text, `## As ${short(md(r.name), NAME_BYTES)} in ${short(md(r.world), NAME_BYTES)}, by that world's word — UNTRUSTED`, "", ...sections(r, keep, "###")].join("\n"); if (fit(next)) { text = next; break; } }
     return short(text, cap);
   }
   const local = (id) => at(world, id);
@@ -1031,12 +1032,14 @@ function createPeople({ world = null } = {}) {
       dirty.clear();
       return out;
     },
-    /** By id in this world, or by key. A name is a world's to change, so it only finds someone when one Soul goes by it. */
+    /** By key, which nothing can spoof. By anything else a world chose (an id, a name), only when one row fits: a Soul here with
+     *  a friend's name, or named a friend's id, is refused with the keys, not guessed. */
     find(target) {
-      const lower = String(target).toLowerCase(), named = [...rows.values()].filter((r) => r.name.toLowerCase() === lower), byId = rows.get(local(target)) ?? rows.get(target);
-      if (byId) return byId;
-      if (named.length > 1) throw new Error(`Several Souls go by that name: ${named.slice(0, 6).map((r) => r.key).join(", ")}. Use one of these.`);
-      return named[0] ?? null;
+      if (rows.has(target) && String(target).includes("/")) return rows.get(target);
+      const lower = String(target).toLowerCase(), all = [...rows.values()], here = rows.get(local(target));
+      const fits = new Set([...(here ? [here] : all.filter((r) => r.id === target)), ...all.filter((r) => r.name.toLowerCase() === lower)]);
+      if (fits.size > 1) throw new Error(`Several Souls fit that: ${[...fits].sort((x, y) => y.beliefs.length + y.commitments.size - x.beliefs.length - x.commitments.size).slice(0, 12).map((r) => r.key).join(", ")}. Use one of these.`);
+      return [...fits][0] ?? null;
     },
     /** One line's worth for the brief, as this world's id sees it. */
     view(id) {
