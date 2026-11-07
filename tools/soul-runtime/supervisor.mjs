@@ -59,15 +59,28 @@ const attends=(fact,listenTo)=>ambientMatches(fact,listenTo)||presenceMatches(fa
 // wake-eligible, further presence facts about that Soul received within
 // PRESENCE_COOLDOWN_MS drop to priority 0 (still delivered with the next wake).
 // In memory only, LRU-bounded; a restart starts with no cooldowns.
-export const PRESENCE_COOLDOWN_MS=300000,PRESENCE_COOLDOWN_SUBJECTS=128;
-export function presenceCooldown({ms=PRESENCE_COOLDOWN_MS,limit=PRESENCE_COOLDOWN_SUBJECTS}={}){
- const last=new Map(),cooled=(fact,at)=>{const t=last.get(fact.event.about.soulId);return t!==undefined&&at-t<ms;};
+// A return is new again (#468): a subject that left at least PRESENCE_RETURN_ABSENCE_MS
+// ago wakes on its arrival inside the cooldown, and that wake restarts the cooldown.
+// A shorter absence is a flap and stays quiet, so one subject wakes a Soul at most
+// once per absence of that length. Two minutes is a judgment call, not a measurement:
+// each wake spends the owner's model budget, and 45 s about doubled wakes in a busy room (#486).
+export const PRESENCE_COOLDOWN_MS=300000,PRESENCE_COOLDOWN_SUBJECTS=128,PRESENCE_RETURN_ABSENCE_MS=120000;
+export function presenceCooldown({ms=PRESENCE_COOLDOWN_MS,limit=PRESENCE_COOLDOWN_SUBJECTS,absenceMs=PRESENCE_RETURN_ABSENCE_MS}={}){
+ const last=new Map(),left=new Map(),spent=new Map(),cooled=(fact,at)=>{const t=last.get(fact.event.about.soulId);return t!==undefined&&at-t<ms;};
+ const bounded=(map,subject,at)=>{map.delete(subject);map.set(subject,at);if(map.size>limit)map.delete(map.keys().next().value);};
+ // One departure pays for one return. Only a return spends it: a wake on the departure itself doesn't, and pending facts can be delivered in any order.
+ const returned=(fact,at)=>{if(fact.event.kind!=='arrive.here')return false;const subject=fact.event.about.soulId,t=left.get(subject);return t!==undefined&&t>(spent.get(subject)??-Infinity)&&at-t>=absenceMs;};
+ // priority() calls this, so priority changes state. A rescan may ask about a fact again: the newest departure stays, so that's harmless.
+ const noteLeave=(fact,listenTo)=>{if(fact.event?.kind!=='leave.here'||!presenceMatches(fact,listenTo))return;const subject=fact.event.about.soulId,at=fact.receivedAt??Date.now();if(at>=(left.get(subject)??-Infinity))bounded(left,subject,at);};
  return {
-  priority(fact,listenTo){const p=attentionPriority(fact,listenTo);return p===1&&presenceMatches(fact,listenTo)&&cooled(fact,fact.receivedAt??Date.now())?0:p;},
+  priority(fact,listenTo){
+   const p=attentionPriority(fact,listenTo),at=fact.receivedAt??Date.now();noteLeave(fact,listenTo);
+   return p===1&&presenceMatches(fact,listenTo)&&cooled(fact,at)&&!returned(fact,at)?0:p;
+  },
   delivered(facts,listenTo,at){
    for(const fact of facts){
-    if(!presenceMatches(fact,listenTo)||cooled(fact,fact.receivedAt??at))continue;
-    const subject=fact.event.about.soulId;last.delete(subject);last.set(subject,at);if(last.size>limit)last.delete(last.keys().next().value);
+    const when=fact.receivedAt??at,back=presenceMatches(fact,listenTo)&&returned(fact,when);if(!presenceMatches(fact,listenTo)||cooled(fact,when)&&!back)continue;
+    const subject=fact.event.about.soulId;bounded(last,subject,at);if(back)bounded(spent,subject,left.get(subject));
    }
   },
   get size(){return last.size;},
