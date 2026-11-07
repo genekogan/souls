@@ -446,10 +446,11 @@ export class MarsEngine implements Engine {
     if (plans.some(p => !p)) { rt.violations.push(...fresh); return; }
     const done = new Map<string, EngineRefusalV1>();
     const stuck: typeof fresh = [];
+    const told = new Set<string>();
     for (const plan of plans as NonNullable<(typeof plans)[number]>[]) {
       const why = refusalDiag(plan.rule), key = `${plan.rule}|${plan.undo.join()}`;
       for (const id of plan.undo) { const c = copy.get(id)!, e = ents[id]; e.pose = { ...c.pose, p: [...c.pose.p] }; if (e.human) { e.human.level = c.level; e.human.speed = 0; } }
-      for (const h of plan.holding) { const l = rt.live.get(h); l?.def.refused?.(rt, l.exec); }
+      for (const h of plan.holding) { if (told.has(h)) continue; told.add(h); const l = rt.live.get(h); l?.def.refused?.(rt, l.exec); }   // once a tick: a whole crew can be named
       for (const id of [...plan.programs.keys()].sort()) {
         const p = plan.programs.get(id)!; p.stopping = why; const seen = p.refusalsV1 ?? [];   // once a tick: one bad step can name a whole crew
         p.refusalsV1 = [...seen.filter(t => tick - t < REFUSAL_WINDOW_TICKS && t !== tick), tick];
@@ -1110,6 +1111,7 @@ export class MarsEngine implements Engine {
   }
   stop(programId: string, opts?: { untilSafe?: boolean }) {
     const p = this.programs.get(programId); if (!p) return;
+    if (p.refusalsV1 && p.stopping) return;   // #1150: already stopping, and its receipt should say why
     if (p.build) { p.build.stopping={code:'program.stopped',message:'Construction interruption requested; finishing the committed segment safely.'}; return; }
     if (p.action && this.rt.isActive(p.action)) {
       this.rt.cancel(p.action, { code: 'program.stopped', message: 'stopped' });

@@ -102,6 +102,13 @@ for (const [why, arrange] of [
     w.step(); assert.ok(w.e.runtime.violations.length >= 1, 'left for the host');
   });
 
+test('an action with no programme whose cancel stays refused goes to the host, so it cannot be refused every tick for ever', () => {
+  const w = world(); const r = w.e.submit('walk_to', { actor: 'a', x: 10, z: 0 } as any);
+  assert.notEqual(r.status, 'failed', JSON.stringify(r)); w.go(5); assert.equal(w.e.programOf('a'), null); assert.ok((w.e as any).holders('a').length, 'an action holds the body');
+  w.rt.cancel = (id: string) => w.rt.records.get(id);   // a cancel that refuses
+  w.once(shove(1)); w.step(); assert.ok(w.e.runtime.violations.length >= 1);
+});
+
 test('a refusal needs no input: two runs and a restored copy reach the same state', () => {
   const run = () => { const w = world(); w.walk('a', [10, 0]); w.walk('b', [6, 16]); w.go(10); w.once(shove(1)); w.go(30); return w; };
   const one = run(), two = run(); assert.equal(one.e.stateHash(), two.e.stateHash());
