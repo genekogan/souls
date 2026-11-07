@@ -15,7 +15,7 @@
 //    just that hop's tiles, so a route never depends on how far the window has grown.
 import { datan2, dcos, dsin, hypot, obbCorners, pointInObb, type Vec2 } from '../core/math.ts';
 import { BODY_HEIGHT, STEP, buildGrids, buildGridsOverFloors, edt, gridContentKeys, latticeCentre, latticeIndex, latticeOf, obbRange, rasterObb, type GridSet, type LevelGrid } from './grid.ts';
-import { findRoute, linkApproach, type Leg, type Place, type RouteOpts, type RouteResult, type WalkLeg } from './path.ts';
+import { PLAN_MARGIN, findRoute, linkApproach, snap, type Leg, type Place, type RouteOpts, type RouteResult, type WalkLeg } from './path.ts';
 import type { AgentProfile, Obstacle, SpatialScene, Surface } from './types.ts';
 import { GROUND_TILE_M, G_OUTSIDE, G_STEEP, G_SWIM, G_WADE, G_WALK, MEDIUM_NAMES, coarseMedium, type GroundField } from './ground.ts';
 
@@ -853,7 +853,7 @@ export function pagedRoute(nav: GroundNav, scene: SpatialScene, profile: AgentPr
   const f = nav.field, direct = hypot(goal.p[0] - start.p[0], goal.p[1] - start.p[1]) <= PAGED_DIRECT_M;
   if (start.level !== 0 || goal.level !== 0) {
     if (direct) { const r = rectOf([start.p, goal.p]); return findRoute(nav.gridsOver(r, scene), { ...scene, bounds: rectBounds(r) }, profile, start, goal, opts); }
-    if (start.level !== 0) return failR('ground.too-far', `(${fmt(goal.p)}) is too far to plan from an upper floor; walk down first`, goal);
+    if (start.level !== 0) return (opts.routeReachV1 ? upperChunk(nav, scene, profile, start, goal, opts) : null) ?? failR('ground.too-far', `(${fmt(goal.p)}) is too far to plan from an upper floor; walk down first`, goal);
   } else {
     const goalIssue = groundGoalIssue(f, goal.p);
     if (goalIssue) return goalIssue;
@@ -877,23 +877,86 @@ export function pagedRoute(nav: GroundNav, scene: SpatialScene, profile: AgentPr
   // the first hop (as groundRoute cuts them); the last one ends at the goal itself
   let acc = 0, k0 = 1;
   for (; k0 < path.length; k0++) { acc += hypot(path[k0][0] - path[k0 - 1][0], path[k0][1] - path[k0 - 1][1]); if (acc >= HOP_M && k0 < path.length - 4) break; }
-  const hop = (k: number) => {
+  const hop = (k: number, margin = WINDOW_MARGIN_M, maxExpand?: number) => {
     const last = k >= path.length && goal.level === 0, target: Vec2 = last ? goal.p : path[Math.min(k, path.length - 1)];
-    const r = rectOf([start.p, target, ...path.slice(1, k + 1)]);
+    const r = rectOf([start.p, target, ...path.slice(1, k + 1)], margin);
     const grids: GridSet = { cell: nav.cell, levels: new Map([[0, nav.compose(r, scene.obstacles)]]) };
-    return { k, last, res: findRoute(grids, { ...scene, bounds: rectBounds(r), links: [] }, profile, start, { level: 0, p: target }, last ? opts : { ...opts, goalTolerance: 2.5 }) };
+    return { k, last, target, grid: grids.levels.get(0)!, res: findRoute(grids, { ...scene, bounds: rectBounds(r), links: [] }, profile, start, { level: 0, p: target }, { ...(last ? opts : { ...opts, goalTolerance: 2.5 }), ...(maxExpand ? { maxExpand } : {}) }) };
   };
   let h = hop(k0);
   // BS3 (b): the coarse path runs through enterable buildings (only big solids are coarse-solid), so the hop's waypoint can
   // lie in a shop where no fine route ends (eden-2026: the jetty -> chapel walk stopped in old-town-north-arcade-1); a few
   // waypoints further along or back along the same coarse path are tried before the walk fails
   if (!h.res.ok && !h.last) for (const kk of hopRetries(k0, path.length, h.res.diagnostic.code, goal.level === 0)) { const t = hop(kk); if (t.res.ok) { h = t; break; } }
+  // route-reach/1 (#872): the fine route can need ground outside a window cut WINDOW_MARGIN_M round the coarse path (a
+  // fence or a building's walls the coarse path crosses: the way round leaves the tile). One tile wider, once, before refusing.
+  // Only when neither end is sealed inside this window: an area wholly inside it stays sealed in any wider one, so a place
+  // no walk reaches keeps its old, cheap refusal (review: a sealed goal flooded the wide window on every admission check).
+  // The ends are seeded as the fine search snaps them (radius + PLAN_MARGIN, the hop's own tolerances); the wide search is
+  // bounded (WIDE_EXPAND) as a backstop for an area sealed only beyond this window's edge.
+  if (!h.res.ok && opts.routeReachV1 && HOP_RETRY_CODES.has(h.res.diagnostic.code)) {
+    const r = profile.radius + PLAN_MARGIN, goalTol = h.last ? opts.goalTolerance ?? 0.35 : 2.5;
+    if (!enclosedIn(h.grid, h.target, r, goalTol) && !enclosedIn(h.grid, start.p, r, opts.startTolerance ?? 0.5)) { const t = hop(h.k, WINDOW_MARGIN_M + GROUND_TILE_M, WIDE_EXPAND); if (t.res.ok) h = t; }
+  }
   const { k, last, res } = h;
   if (!res.ok || last) return res;
   // length: this chunk's, plus the coarse path's remainder (an estimate of the whole walk, e.g. routeEstimateV1)
   let more = 0;
   for (let j = Math.min(k, path.length - 1) + 1; j < path.length; j++) more += hypot(path[j][0] - path[j - 1][0], path[j][1] - path[j - 1][1]);
   return { ok: true, route: { ...res.route, length: res.route.length + more, rest: goal } };
+}
+
+/** route-reach/1: expansions the one wider hop search may spend (a sealed area seen only past the first window's edge). */
+const WIDE_EXPAND = 1_000_000;
+/** route-reach/1: per window grid, the standing areas already flooded (1 sealed inside it, -1 reaching its edge), by cell.
+ *  Grids are never mutated, so an answer holds for the grid's life (a spread's spots in one sealed yard flood it once). */
+const sealedAreas = new WeakMap<LevelGrid, Map<number, Int8Array>>();
+/**
+ * route-reach/1: whether the standing area the fine search would start or end in (the cell `snap` picks for radius `r`
+ * within `tol`, then every cell with clearance >= r, 8-connected) lies wholly inside grid `g`, never reaching its edge. An
+ * area sealed inside a window stays sealed in any wider one. No standing cell near `p`: false (the wide search decides).
+ */
+export function enclosedIn(g: LevelGrid, p: Vec2, r: number, tol: number): boolean {
+  const seed = snap(g, p, r, tol); if (seed < 0) return false;
+  let byR = sealedAreas.get(g); if (!byR) sealedAreas.set(g, byR = new Map());
+  let mark = byR.get(r); if (!mark) byR.set(r, mark = new Int8Array(g.nx * g.nz));
+  if (mark[seed]) return mark[seed] > 0;
+  const queue = [seed]; mark[seed] = 2; let sealed = true;
+  for (let q = 0; q < queue.length && sealed; q++) {
+    const k = queue[q], i = k % g.nx, j = (k - i) / g.nx;
+    if (i === 0 || j === 0 || i === g.nx - 1 || j === g.nz - 1) { sealed = false; break; }
+    for (let dj = -1; dj <= 1 && sealed; dj++) for (let di = -1; di <= 1; di++) {
+      const n = k + dj * g.nx + di;
+      // an area an earlier flood found reaching the edge: this one does too (review round 3: never a wall)
+      if (mark[n] < 0 && g.clearance[n] >= r) { sealed = false; break; }
+      if (!mark[n] && g.clearance[n] >= r) { mark[n] = 2; queue.push(n); }
+    }
+  }
+  // every cell met is in the seed's area: sealed, or (stopped at the edge or at an open area) open; unvisited ones stay unknown
+  for (const k of queue) mark[k] = sealed ? 1 : -1;
+  return sealed;
+}
+/** Distances (m along the line to the goal) of the ground points route-reach/1 tries as the end of an upper floor's first chunk. */
+const UPPER_CHUNK_M = [60, 48, 36, 24, 12, 0];
+/**
+ * route-reach/1 (#872): a far walk from an upper floor. The first chunk is planned in one window from where the body
+ * stands, down the building's own stairs, to a standable ground point toward the goal (the farthest of UPPER_CHUNK_M
+ * that a fine route reaches and from which a coarse footpath goes on to the goal); the route carries `rest`, and the
+ * walker plans on from the ground, as every paged walk does. Null (the old refusal) when no such chunk exists.
+ */
+function upperChunk(nav: GroundNav, scene: SpatialScene, profile: AgentProfile, start: Place, goal: Place, opts: RouteOpts): RouteResult | null {
+  const d = hypot(goal.p[0] - start.p[0], goal.p[1] - start.p[1]); if (!(d > 0)) return null;
+  const u: Vec2 = [(goal.p[0] - start.p[0]) / d, (goal.p[1] - start.p[1]) / d];
+  for (const m of UPPER_CHUNK_M) {
+    const p: Vec2 = [start.p[0] + u[0] * m, start.p[1] + u[1] * m];
+    if (groundGoalIssue(nav.field, p)) continue;
+    if (!nav.coarsePath(p, goal.p, WALK_COST)) continue;
+    const r = rectOf([start.p, p]);
+    const res = findRoute(nav.gridsOver(r, scene), { ...scene, bounds: rectBounds(r) }, profile, start, { level: 0, p }, { ...opts, goalTolerance: 2.5 });
+    if (!res.ok) continue;
+    return { ok: true, route: { ...res.route, length: res.route.length + hypot(goal.p[0] - p[0], goal.p[1] - p[1]), rest: goal } };
+  }
+  return null;
 }
 
 /** BS3 (b): a fine hop to coarse waypoint `k` failed with `code`: the other waypoint indices to try, nearest first (one

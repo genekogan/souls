@@ -92,6 +92,8 @@ export class Hub {
   epoch = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   build = 'dev';
   private lastTakeTick = -1;
+  /** #1221: the oldest batch a client may resume from: nothing before the last recovery still holds. */
+  private resumeFrom = 0;
   /** take-entities-ref/1: one table registry for every peer that announced it (see packages/protocol take-entities-wire). */
   readonly takeEntities = new TakeEntitiesEncoderV1();
   readonly takeChunks = new TakeChunksEncoderV1();
@@ -124,7 +126,12 @@ export class Hub {
     host.holdClock = () => this.joinInFlight();
     host.listeners.push({
       onClockUnavailable:()=>{for(const c of this.clients){c.ready=false;c.ws.close(1013,'world unavailable');}},
-      onApplied: e => { if (e.kind === 'rules' && e.payload?.recovery) { this.lastTakeTick=host.engine.world.tick; this.epoch=`${Date.now().toString(36)}-repair`; for (const c of this.clients) c.ws.close(1012, 'world restored; reconnect'); }
+      onApplied: e => { if (e.kind === 'rules' && e.payload?.recovery) {
+          // #1221: the world took a step back; everyone gets the picture again where they are. A new epoch or a closed socket
+          // would make every page tear its whole view down and lose who it was following. Nothing from before this resumes.
+          this.lastTakeTick=host.engine.world.tick; this.resumeFrom=host.currentBatchSeq+1;
+          for (const c of this.clients) if (c.ready) this.send(c, {t: 'snapshot', reason: 'world restored', ...host.snapshotView()});
+        }
         if(e.kind==='station-rules-era-v1'){
           for(const c of this.clients){if(!c.ready)continue;
             if(c.stationContract==='station-live/1')this.welcomeClient(c);
@@ -223,7 +230,7 @@ export class Hub {
       // the join set is bounded (one per hello, hellos at most every 3 s) and is never dropped for backpressure
       c.joinSend=true;c.awaitingTakes=true;
       try{
-      const canResume = typeof m.since === 'number' && m.epoch === this.epoch && ring.length > 0 && m.since >= ring[0].seq - 1 && m.since <= this.host.currentBatchSeq;
+      const canResume = typeof m.since === 'number' && m.epoch === this.epoch && m.since >= this.resumeFrom && ring.length > 0 && m.since >= ring[0].seq - 1 && m.since <= this.host.currentBatchSeq;
       if (canResume) for (const b of ring) { if (b.seq > m.since!) this.send(c, { t: 'batch', ...b, log: b.log.map(publicEvent) }); }
       else this.send(c, { t: 'snapshot', reason: typeof m.since === 'number' ? 'too far behind; full snapshot' : 'join', ...this.host.snapshotView() });
       this.send(c, { t: 'log', events: this.db.tailEvents(this.host.worldId, 150, true).map(e=>joinLogEvent(publicEvent(e))) });

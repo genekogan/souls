@@ -4,6 +4,7 @@
 #               .github/guards/media-allowlist.txt anywhere in the tree
 #   scrub-guard lines added by the change: no home paths, private workspace paths, public IPs, private host names,
 #               ssh targets or personal emails (.github/scripts/guards.mjs)
+#               and the released core body revisions stay append-only (guards.mjs ledger, #845)
 name: security
 on:
   pull_request:
@@ -68,3 +69,4 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 22 }
       - run: node .github/scripts/guards.mjs scrub --base "$BASE" --head "$HEAD_SHA"
+      - run: node .github/scripts/guards.mjs ledger --base "$BASE" --head "$HEAD_SHA"
