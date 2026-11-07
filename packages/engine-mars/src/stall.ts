@@ -6,6 +6,8 @@
 import { carrierDef } from '../../../mars/viewer/engine/vehicles/carrier.ts';
 import { rot2 } from '../../../mars/viewer/engine/core/math.ts';
 import { acknowledgeRelocation } from '../../../mars/viewer/engine/runtime/invariants.ts';
+import { clearanceAt } from '../../../mars/viewer/engine/spatial/grid.ts';
+import { listEntities } from '../../../mars/viewer/engine/world/entity-list.ts';
 
 /** Phases that move a body from one hold to another (on, off, up, down). They last seconds when they work. */
 export const TRANSFER_PHASES = new Set(['boarding', 'boarding-wait', 'leaving', 'leaving-wait', 'stand-up', 'step-off',
@@ -71,6 +73,29 @@ export function setDownFrom(rt: Rt, actor: string): { at: [number, number]; y?: 
     if (local) { const v = rot2(local, e.pose.yaw); return { at: [e.pose.p[0] + v[0], e.pose.p[2] + v[1]], y: cs.home[1] }; }
   }
   return { at: [a.pose.p[0], a.pose.p[2]] };
+}
+
+/** stall-release-support/1 (#447): where a stall release stands a body on an upper level, or null when nowhere is
+ *  supported. Where it is (`from`), when its level has a clear standing disc there; otherwise the nearer free landing of
+ *  the stair link its walk is on: a clear disc on that landing's level and nobody within two radii in plan and 1.5 m in
+ *  height, on any level. `yAt` gives the standing height on a level (the ground's own on level 0). Read-only. */
+export function supportedSetDownV1(rt: Rt, actor: string, from: { at: [number, number]; y?: number }, radius: number,
+  yAt: (level: number, p: [number, number], y: number) => number): { at: [number, number]; y: number; level: number } | null {
+  const a = rt.world.entities[actor], level = a?.human?.level ?? 0;
+  if (!a?.human || level === 0) return null;
+  const spatial = rt.services.spatial; spatial.sync(rt.world);
+  const standing = (lv: number, p: [number, number]) => { const g = spatial.levelAt(lv, p); return !!g && clearanceAt(g, p) >= radius; };
+  if (standing(level, from.at)) return { at: from.at, y: from.y ?? a.pose.p[1], level };
+  const clear = (p: [number, number], y: number) => !(listEntities(rt.world.entities) as any[]).some((o) => o.id !== actor && o.human && Math.hypot(o.pose.p[0] - p[0], o.pose.p[2] - p[1]) < 2 * radius && Math.abs(o.pose.p[1] - y) < 1.5);
+  for (const holder of rt.holder(`actor:${actor}`) as string[]) {
+    const ex = rt.live.get(holder)?.exec, leg = ex?.route?.legs?.[ex.leg];
+    if (leg?.kind !== 'link') continue;
+    const ends = [leg.link.from, leg.link.to].map((e: any) => ({ at: [e.p[0], e.p[1]] as [number, number], level: e.level as number, y: yAt(e.level, [e.p[0], e.p[1]], e.y) }));
+    const d = (u: { at: [number, number] }) => Math.hypot(u.at[0] - from.at[0], u.at[1] - from.at[1]);
+    ends.sort((u, v) => d(u) - d(v) || u.level - v.level);
+    for (const end of ends) if (standing(end.level, end.at) && clear(end.at, end.y)) return end;
+  }
+  return null;
 }
 
 /** The world ends whatever holds the body (no def asked: a refused or deferred stop is what stalled it), clears the body's

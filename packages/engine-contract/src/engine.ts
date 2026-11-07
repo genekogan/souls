@@ -155,7 +155,7 @@ export interface Engine {
   canSnapshot?(): boolean;
   groundReclaimEnabledV1?(): boolean;
   enableGroundReclaimV1?(): void;
-  configureRuntimePolicy?(policy: {sleepBlockTicks:number;quietSeatCourtesy?:boolean;nativeArrivalWitnessV1?:boolean;quietLandingCourtesyV1?:boolean;walkSettleWaitV1?:boolean;occupiedLinkRoutingV1?:boolean;concurrentLinkEgressV1?:boolean;stairLandingClearanceV1?:boolean}): void;
+  configureRuntimePolicy?(policy: {sleepBlockTicks:number;quietSeatCourtesy?:boolean;nativeArrivalWitnessV1?:boolean;quietLandingCourtesyV1?:boolean;walkSettleWaitV1?:boolean;occupiedLinkRoutingV1?:boolean;concurrentLinkEgressV1?:boolean;stairLandingClearanceV1?:boolean;stallReleaseSupportV1?:boolean}): void;
   configureClock?(clock: { origin: number; dayTicks: number }): void;
   beginQuiet?(): void;
   isQuiet?(): boolean;
