@@ -55,4 +55,11 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('cross out my line on the board', [nbPin, nbUnpin]), 'capability.unknown');
   assert.equal(resolve('cross out my name from the notice board', [sign, unsign]), 'capability.unknown', 'the sheet keeps her name');
   assert.equal(resolve('cross out my name in the notebook', [sign, unsign]), 'capability.unknown');
+  // "from" names nothing here either, and a thing's other words are that thing
+  assert.equal(resolve('cross off my signature from the list', [pin, unpin]), 'unknown', 'the board keeps her note');
+  assert.equal(resolve('cross off my entry from the list', [pin, unpin]), 'unknown');
+  assert.equal(resolve('cross off the milk from the list', [pin, unpin]), 'unknown');
+  assert.equal(resolve('cross out my note on the noticeboard', [pin, unpin]), unpin.id);
+  assert.equal(resolve('cross out my line in the journal', [nbPin, nbUnpin]), nbUnpin.id);
+  assert.equal(resolve('cross out my line in the guestbook', [nbPin, nbUnpin]), nbUnpin.id);
 });

@@ -489,9 +489,9 @@ export class GodPerceive {
       const words = s.text.replace(/\s*\n\s*/g, ' / ');
       // A Soul-written board offers a read only when written on, and never carries its words: they come with the read.
       if (s.writable && !words && s.list !== 'poll' && !s.game) continue;
-      // #428: a private notebook's lines are its owner's: a closed cover, not a count, for anyone else
+      // #428: a notebook closed to this Soul offers a closed cover, not a count (its page is still drawn in the world: #1223)
       const closed = s.notebook ? this.h.layers?.refusal(s.id, soul) : null;
-      if (closed) { caps.push({ id, verb: 'read', label: `Read ${s.name}${closed.code === 'object.private' ? ' (a private notebook)' : ''}`, target: { id: s.id, kind: 'object' }, available: false, blocked: closed }); continue; }
+      if (closed) { caps.push({ id, verb: 'read', label: `Read ${s.name} (closed to you)`, target: { id: s.id, kind: 'object' }, available: false, blocked: closed }); continue; }
       const pinned = s.pinboard ? s.text.split('\n').length : 0;
       const names = s.list === 'signup' ? s.text.split('\n').filter(Boolean).length : 0;
       // entry 25: counts only, never the names or the question (they come with the read)

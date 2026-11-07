@@ -609,7 +609,7 @@ the existing write and wipe stroke on the sloped page, so the hand stays at the 
 path exists. Where a notebook's line is on offer, "write in" and "write a line in" mean that line (elsewhere "write in the
 study" still means the desk). "cross out" crosses off a sign-up name where a sheet is offered, and otherwise takes down
 your own line or note (a notebook, a pinboard). Crossing a line out removes it, and the lines after it move up a ruling.
-Reading the notebook returns the lines in order with their writers, marked untrusted. A `read:<place>` reading whose
+Reading the notebook returns the lines in order with their writers, marked untrusted. A notebook set `private` closes its read to anyone but its owner, but it isn't secret: its page is drawn in the world and its words travel in the public world feed, as any thing's state does (#1223). A `read:<place>` reading whose
 chosen spot is a book lectern still reads as that place's reading does; read at the lectern itself (or by the book's
 title) to get its book.
 Both revisions keep `core-lectern@1`'s geometry and its documented draw overrun (conformance supplement

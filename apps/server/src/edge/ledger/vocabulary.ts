@@ -94,7 +94,7 @@ const ACT_ALIASES: Record<string, string> = {'turn-on': 'switch-on', 'turn-off':
 /** #428: a second meaning of an everyday word, used only when its ACT_ALIASES meaning is not on offer and this one is:
  *  "cross out" a sign-up name (unsign) or a notebook line (the pinboard faculty's unpin). */
 const ACT_ALT: Record<string, string> = {'cross-out': 'unpin', 'cross-off': 'unpin', 'strike-off': 'unpin'};
-const LABEL_FILLER = new Set(['from', 'your', 'my', 'out', 'off', 'down', 'take', 'cross', 'in', 'on', 'of']), THING_WORDS = new Set(['notebook', 'journal', 'board', 'noticeboard', 'sheet', 'guestbook']);
+const LABEL_FILLER = new Set(['from', 'your', 'my', 'out', 'off', 'down', 'take', 'cross', 'in', 'on', 'of']), THING_WORDS = new Set(['notebook', 'board', 'sheet']), THING_ALIASES: Record<string, string> = {journal: 'notebook', guestbook: 'notebook', noticeboard: 'board'};
 /** #428: "write in the notebook" is a notebook's line (the pinboard faculty's `pin`), only where a notebook's line is on
  *  offer (its label says so), so "write in the study" still reaches a desk beside a pinboard. */
 const NOTEBOOK_WORDS: Record<string, string> = {'write-in': 'pin', 'write-a-line-in': 'pin'};
@@ -588,7 +588,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   if (notebookOffered && NOTEBOOK_WORDS[verb] && !ctx.caps.some(c => c.verb === verb)) verb = NOTEBOOK_WORDS[verb];
   else if (ACT_ALIASES[verb] && !ctx.caps.some(c => c.verb === verb)) {
     // the second meaning when it can happen and the first can't, or when the words name its target
-    const primary = ACT_ALIASES[verb]!, alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), ws = tokens(rest).filter(w => !LABEL_FILLER.has(w));
+    const primary = ACT_ALIASES[verb]!, alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), ws = tokens(rest).filter(w => !LABEL_FILLER.has(w)).map(w => THING_ALIASES[w] ?? w);
     // what the words name decides (#990): the thing first (its names, the "in the notebook" and "(notebook)" of its label),
     // then a label's noun ("your line"), never its "from" or "your". Words for a thing that isn't here do nothing at all, so a
     // note is not taken down for the notebook they name. Words naming nothing take what there is to cross out, and a blocked
@@ -604,7 +604,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     const altFits = !!alt && (second.length
       ? first.some(name) ? false : second.some(name) ? true : !first.length && ws.includes('name') ? false : first.some(noun) ? false : second.some(noun) ? true : !can(primary).length && (!!can(alt).length || !first.length)
       : !verbs.has(primary) && verbs.has(alt));
-    verb = altFits ? alt : primary;
+    verb = altFits ? alt : primary; rest = ws.join(' ');   // the label filler stays out of the match below too
   }
   // A real fire is a qualifier of the existing fire request, not a new seat name.
   // Keep explicit/named IDs intact and require an offered actual fire before dropping it.
