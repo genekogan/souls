@@ -13,6 +13,7 @@
 //              Its geometry stays public (the renderer draws the world); only its name and listings are withheld.
 //
 // Read-mostly and deterministic for a given world state; writes are small upserts on place change or discovery.
+import {secretMatcher, type Secrets} from './public-scrub.ts';
 import type {Place} from '../ledger/places.ts';
 import {centroid, happenings, inPoly} from '../ledger/places.ts';
 import type {EdgeLedger} from '../ledger/ledger.ts';
@@ -38,6 +39,7 @@ export class PlaceKnowledge {
       how TEXT NOT NULL, visits INTEGER NOT NULL, first_tick INTEGER NOT NULL, last_tick INTEGER NOT NULL, PRIMARY KEY (world_id, soul_id, place_id)) WITHOUT ROWID;
       CREATE TABLE IF NOT EXISTS edge_place_secrets_v1 (world_id TEXT NOT NULL, place_id TEXT NOT NULL, secret INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (world_id, place_id)) WITHOUT ROWID;`);
   }
+  private matcher: {version: number; places: number; re: Secrets | null} | null = null;
   private get w() {return this.L.host.worldId;}
 
   // ------------------------------------------------------------ secrets
@@ -75,9 +77,17 @@ export class PlaceKnowledge {
     this.changed(); return true;
   }
   /** Places change (a god edit re-derives them): drop caches. */
-  changed() {this.secretsCache = null; this.version++; this.L.invalidateBodies();}
+  changed() {this.secretsCache = null; this.matcher = null; this.version++; this.L.invalidateBodies();}
   /** Read worker: main writes visits and secrets; forget what was read so the next read sees the database (WAL). */
-  reload() {this.memo.clear(); this.secretsCache = null;}
+  reload() {this.memo.clear(); this.secretsCache = null; this.matcher = null;}
+  /** Everything a secret place, or anything inside one, goes by, for answers anyone can read. */
+  publicMatcher(): Secrets | null {
+    if (this.matcher?.version === this.version && this.matcher.places === this.L.places.version) return this.matcher.re;
+    const hidden = [...this.L.places.byId.values()].filter((p) => this.isSecret(p.id));
+    // a seat or a rider's slot has its own id and goes by its place's name
+    const occupiers = [...this.L.places.occupierOf.values()].filter((o) => this.isSecret(o.place.id)).map((o) => o.occ.id);
+    const re = secretMatcher([...hidden.flatMap((p) => [p.id, (p as Place & {ref?: unknown}).ref]), ...occupiers], hidden.map((p) => p.name)); this.matcher = {version: this.version, places: this.L.places.version, re}; return re;
+  }
   secrets(): {id: string; name: string}[] {return [...this.marked()].sort().map(id => ({id, name: this.L.places.byId.get(id)?.name ?? id}));}
 
   // ------------------------------------------------------------ memory of visits
