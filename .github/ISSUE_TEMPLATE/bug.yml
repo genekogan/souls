@@ -1,5 +1,5 @@
 name: Bug
-description: Something in Sim is broken or behaves wrongly
+description: Something in Souls is broken or behaves wrongly
 labels: ["type:bug"]
 body:
   - type: textarea

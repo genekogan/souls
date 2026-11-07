@@ -3,8 +3,8 @@
 // no world, no terrain — so the sheet is cheap to photograph even on a loaded machine.
 // Bundled by tools/god-skill/scripts/gallery.mjs (esbuild) together with every *.mesh.ts.
 import * as THREE from 'three';
-import { GENERATORS, type Value } from '@sim/generators';
-import { WorldModel, type StoredDef } from '@sim/world-compiler';
+import { GENERATORS, type Value } from '@souls/generators';
+import { WorldModel, type StoredDef } from '@souls/world-compiler';
 import { meshFor, type MeshCtx } from '../registry.ts';
 import { MaterialLib } from '../materials.ts';
 import { gait, type Rig } from '../motion.ts';

@@ -1,5 +1,5 @@
 // LINK card fixtures: every owner and visitor state as SoulCardView props, for the component tests and the shot page.
-import type {PublicSoul} from '@sim/protocol';
+import type {PublicSoul} from '@souls/protocol';
 import type {SoulCardViewProps} from './SoulCard.tsx';
 import type {AgentHere} from './agent-presence.ts';
 import type {Link} from './soul-state.ts';

@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {HUMAN_RADIUS} from '../../../mars/viewer/engine/world/catalog.ts';
 import {edenNavWorld, factory, inSolid, CN5_SPOTS} from '../test/eden-nav-fixture.ts';
 import {WorldHost} from './world.ts';

@@ -29,9 +29,10 @@ Rolled back; superseded by 4.1.
 Earlier development is recorded in the git history.
 `;
 
-// Text-only rendering has no subresources. Published visual journals intentionally add allowlisted media.
+// Text-only rendering has no subresources. Published visual journals intentionally add allowlisted media. A canonical or
+// alternate <link> (#894, #896) names the page's own URLs; the browser fetches nothing for it.
 function assertTextOnlySelfContained(page: string) {
-  assert.ok(!/<script|<link|<img|<iframe|@import|url\(/i.test(page), 'no script and no subresource: the document is the whole page');
+  assert.ok(!/<script|<link(?! rel="(?:canonical|alternate)")|<img|<iframe|@import|url\(/i.test(page), 'no script and no subresource: the document is the whole page');
   // Entries are escaped text. A written repository address or API path is not a runtime reference.
   const markup = (page.match(/<[^>]*>/g) ?? []).join('\n');
   assert.ok(!/github\.com|\/v1\//i.test(markup), 'no runtime GitHub or API reference');
@@ -68,9 +69,9 @@ await test('refused: a CHANGELOG.md without release headings fails the build wit
 });
 
 await test('text-only page checks allow inert GitHub and API prose, including escaped would-be markup', () => {
-  const md = SAMPLE.replace('Souls can paint with `brush` colours.', 'See github.com/genekogan/souls and `/v1/config`; <a href="https://github.com/example/repo">stays text</a>.');
+  const md = SAMPLE.replace('Souls can paint with `brush` colours.', 'See github.com/soulsimulation/souls and `/v1/config`; <a href="https://github.com/example/repo">stays text</a>.');
   const page = changelogHtml('<main><!--changelog--></main>', md, '/');
-  assert.match(page, /See github\.com\/genekogan\/souls and <code>\/v1\/config<\/code>/);
+  assert.match(page, /See github\.com\/soulsimulation\/souls and <code>\/v1\/config<\/code>/);
   assert.match(page, /&lt;a href=&quot;https:\/\/github\.com\/example\/repo&quot;&gt;stays text&lt;\/a&gt;/);
   assertTextOnlySelfContained(page);
 });
@@ -105,9 +106,9 @@ await test('text-only page template plus real CHANGELOG.md: every release, no su
 const JOURNAL = {
   id: 'tea', version: '4.1', date: '2026-11-02', title: 'Tea <together>', result: 'Serve & wash',
   limitations: 'Historical branch footage; not production verification.',
-  source: { url: 'https://github.com/genekogan/souls/pull/493', commit: 'a'.repeat(40), capturedOn: '2026-10-31', environment: 'historical-test' },
-  media: { kind: 'video', url: 'https://github.com/genekogan/souls/releases/download/proofs/tea.mp4',
-    poster: 'https://github.com/genekogan/souls/releases/download/proofs/tea.jpg', alt: 'Wash <cup>', status: 'available' },
+  source: { url: 'https://github.com/soulsimulation/souls/pull/493', commit: 'a'.repeat(40), capturedOn: '2026-10-31', environment: 'historical-test' },
+  media: { kind: 'video', url: 'https://github.com/soulsimulation/souls/releases/download/proofs/tea.mp4',
+    poster: 'https://github.com/soulsimulation/souls/releases/download/proofs/tea.jpg', alt: 'Wash <cup>', status: 'available' },
 };
 
 await test('public journal preserves exact association, stable anchors, escaped prose and user-initiated media', () => {
@@ -123,6 +124,14 @@ await test('public journal preserves exact association, stable anchors, escaped 
   assert.match(html, /If media cannot load/);
 });
 
+await test('public journal accepts media on a PR\'s own proof release (proofs-<pr>, the upload.mjs default)', () => {
+  const perPr = 'https://github.com/soulsimulation/souls/releases/download/proofs-761/pr-761.tea.mp4';
+  const html = changelogHtml('<main><!--changelog--></main>', SAMPLE, '/', [{ ...JOURNAL, media: { ...JOURNAL.media, url: perPr,
+    poster: perPr.replace('.mp4', '.jpg') } }]);
+  assert.ok(html.includes(perPr), 'per-PR clip kept');
+  assert.ok(html.includes(perPr.replace('.mp4', '.jpg')), 'per-PR poster kept');
+});
+
 await test('public projection refuses unknown/private fields, wrong association, malformed provenance and unsafe URLs', () => {
   const bad = [
     { ...JOURNAL, owner: 'private' }, { ...JOURNAL, version: '99' }, { ...JOURNAL, date: '2026-11-01' },
@@ -132,10 +141,13 @@ await test('public projection refuses unknown/private fields, wrong association,
     { ...JOURNAL, media: { ...JOURNAL.media, poster: undefined } },
   ];
   for (const url of ['javascript:alert(1)', 'data:text/html,hello', 'http://assets.eden.art/public-journal/a.mp4',
-    'https://github.com.evil.test/genekogan/souls/releases/download/proofs/a.mp4',
-    'https://user:secret@github.com/genekogan/souls/releases/download/proofs/a.mp4',
-    'https://github.com/genekogan/souls/releases/download/proofs/a.mp4?token=private',
+    'https://github.com.evil.test/soulsimulation/souls/releases/download/proofs/a.mp4',
+    'https://user:secret@github.com/soulsimulation/souls/releases/download/proofs/a.mp4',
+    'https://github.com/soulsimulation/souls/releases/download/proofs/a.mp4?token=private',
     'https://assets.eden.art/private/a.mp4', 'https://assets.eden.art/public-journal/../private/a.mp4',
+    'https://github.com/soulsimulation/souls/releases/download/proofs-x/a.mp4',
+    'https://github.com/soulsimulation/souls/releases/download/proofs-761-extra/a.mp4',
+    'https://github.com/soulsimulation/souls/releases/download/v4.1/a.mp4',
   ]) bad.push({ ...JOURNAL, media: { ...JOURNAL.media, url } });
   for (const input of bad) assert.throws(() => parsePublicJournal([input], parseChangelog(SAMPLE)));
   assert.throws(() => parsePublicJournal([JOURNAL, JOURNAL], parseChangelog(SAMPLE)), /duplicate/);

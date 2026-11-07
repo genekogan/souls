@@ -57,7 +57,10 @@ export class HumanActorAppearance{
  private state='simple';
  private presetId:string|null=null;
  readonly ready:Promise<void>;
- constructor(private readonly root:THREE.Object3D,private readonly appearance:ActorAppearance|undefined,private readonly soulKey:unknown){
+ private readonly root:THREE.Object3D;
+ private readonly appearance:ActorAppearance|undefined;
+ private readonly soulKey:unknown;
+ constructor(root:THREE.Object3D,appearance:ActorAppearance|undefined,soulKey:unknown){this.root=root;this.appearance=appearance;this.soulKey=soulKey;
   this.ready=this.start().catch(()=>{this.release();});
  }
  private async start(){

@@ -1,4 +1,4 @@
-import {intentHistoryPageV1Schema,type IntentHistoryPageV1} from '@sim/protocol';
+import {intentHistoryPageV1Schema,type IntentHistoryPageV1} from '@souls/protocol';
 import {intentHistoryRow,type IntentHistoryRow} from './intent-history-row.ts';
 type Scope={worldId:string;soulId:string;ownerId:string};
 export type HistoryWindow={page:Extract<IntentHistoryPageV1,{state:'page'}>;rows:IntentHistoryRow[];omitted:number};

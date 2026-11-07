@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { publicMarsAsset, mountMarsStatic } from './mars-static.ts';
 
 test('configured world identities keep their events and checkpoints separate; toy fixture stays toy-1', () => {
@@ -30,7 +30,7 @@ import { gunzipSync } from 'node:zlib';
 import { Hono } from 'hono';
 
 test('copied GLBs negotiate streaming gzip on both public asset routes', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'sim-mars-static-'));
+  const root = mkdtempSync(join(tmpdir(), 'souls-mars-static-'));
   try {
     mkdirSync(join(root, 'modular/environment'), { recursive: true });
     // Large, compressible stand-in: test transport identity rather than GLB parsing.
@@ -68,7 +68,7 @@ test('copied GLBs negotiate streaming gzip on both public asset routes', async (
 });
 
 test('GLB compression leaves other asset types and missing routes alone', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'sim-mars-static-'));
+  const root = mkdtempSync(join(tmpdir(), 'souls-mars-static-'));
   try {
     mkdirSync(join(root, 'engine'), { recursive: true });
     const original = JSON.stringify({ unchanged: 'value '.repeat(4096) });

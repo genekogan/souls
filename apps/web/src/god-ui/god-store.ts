@@ -1,6 +1,6 @@
 // G4 (Gene 2026-10-20): one God modal under the God button (G5: one view, no tabs). The button lives in Shell's top bar, the modal in LiveWorld
 // (GodPanel owns flags and the entity layer), so a tiny store joins them: whether the modal is open, which section, and
-// the owner's agent inbox (presence for the button's dot, the ticket log for the modal), polled every 2 s while the modal
+// the owner's agent inbox (presence for the button's border, the ticket log for the modal), polled every 2 s while the modal
 // is open and every 6 s while it is closed. Visitors never poll the inbox.
 import { useSyncExternalStore } from 'react';
 import { whenVisible } from '../poll-pace.ts';

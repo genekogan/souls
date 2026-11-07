@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // browser-proof-uploads.mjs — local real-Chrome proof that a god upload loads through the pull-through Worker (lane CDN4).
 //
-//   SIM_ASSETS_CDN_ENABLED=1 SIM_ASSETS_CDN_ORIGIN=http://127.0.0.1:6561 pnpm --filter @sim/web exec vite build --base /worlds/ --outDir <web>
+//   SIM_ASSETS_CDN_ENABLED=1 SIM_ASSETS_CDN_ORIGIN=http://127.0.0.1:6561 pnpm --filter @souls/web exec vite build --base /worlds/ --outDir <web>
 //   node tools/cdn/worker/browser-proof-uploads.mjs serve --web-dir <web> --out <dir> &     # world 6560, Worker 6561, page 6562
 //   node tools/cdn/worker/browser-proof-uploads.mjs check --out <dir>                      # takes the `cdn` Chrome lease
 //
