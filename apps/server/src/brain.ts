@@ -9,16 +9,16 @@ import {recallPurposesV1} from './purpose-recall.ts';
 import {retainedPurposeChoicesV1,retainedChoiceKeyV1} from './retained-purpose-choice.ts';
 // The three-tier brain, server side. Schedules calls, records every request
 // and response for the debug shell, and turns answers into logged events.
-import type { Entity } from '@sim/engine-contract';
-import {describeBodyLocation} from '@sim/engine-contract';
+import type { Entity } from '@souls/engine-contract';
+import {describeBodyLocation} from '@souls/engine-contract';
 import {
   JEV_MODEL, JevClient, buildDirectorRequest, buildMidRequest, buildShotRequest, buildTranslateRequest, callNarrator, buildNarratorRequest, fallbackMid, fingerprint,
   haikuTranslate, interpretDirector, interpretMid, interpretTranslate, sanitize,
   buildAttuneRequest, interpretAttune, callTool, cardGrammar, cleanLines, compileUser, plainLine, talkUser, COMPILER_PREAMBLE, COMPILE_TOOL, TALK_SYSTEM, TALK_TOOL,
   type CompileOut, type SpokenLine, type TalkInput, type PaidGate, clockAt, reflectInCode,
   type DirectorContext, type MidContext, type RegionDigest, type ShotCandidate, type Target, type Translation, type ChoiceA,
-} from '@sim/brain';
-import { GOALS, describeIntent, publicIntent, mandateTriggerSchema, type Alignment, type Beat, type BrainCall, type CameraLine, type DecisionPayload, type EventKind, type LogEvent, type NarrativeView, type ScenePayload, type TalkLine, type TickerLine, type WireIntent } from '@sim/protocol';
+} from '@souls/brain';
+import { GOALS, describeIntent, publicIntent, mandateTriggerSchema, type Alignment, type Beat, type BrainCall, type CameraLine, type DecisionPayload, type EventKind, type LogEvent, type NarrativeView, type ScenePayload, type TalkLine, type TickerLine, type WireIntent } from '@souls/protocol';
 import type { Config } from './config.ts';
 import type { Db } from './db.ts';
 import { checkAcceptanceGuard, energyWord, hash32, IntentAdmissionDeferred, StaleIntentAttempt, PersistedIntentAdmissionFault, type AcceptanceGuard, type AcceptanceJournal, type Mind, type WorldHost } from './world.ts';
@@ -27,7 +27,7 @@ import { Governor, SHARES, tierOf, type Tier } from './governor.ts';
 import { awaiting, belongsTo, candidatesFor, optionsFor, situationOf, matchesStep, type CardOption } from './deck.ts';
 import {mandateOf,triggerDue} from './mandate.ts';
 import {blockedDirectionForRetry} from './intent-retry.ts';
-import { SPEECH_LINKS, cardHash, validateCard, type Card, type LinkKind, type MintedCard } from '@sim/kernel';
+import { SPEECH_LINKS, cardHash, validateCard, type Card, type LinkKind, type MintedCard } from '@souls/kernel';
 
 const TPS = 20;
 const MAX_INFLIGHT = 8;

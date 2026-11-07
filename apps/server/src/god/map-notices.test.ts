@@ -4,7 +4,7 @@ import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
 import { performance } from 'node:perf_hooks';
-import { applyBatch, coreRef } from '@sim/world-compiler';
+import { applyBatch, coreRef } from '@souls/world-compiler';
 import { fixture, invite, accept, factory } from '../../test/native-owner-fixture.ts';
 import { Db } from '../db.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';

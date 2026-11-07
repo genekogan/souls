@@ -29,7 +29,11 @@ node tools/world-launcher/owner-overview-collect.mjs /path/to/DATA_DIR/owner-ove
 ```
 
 The collector uses the operator's already authenticated `gh` CLI without reading credential files. It fetches the
-six initial issues (#26, #415, #556, #560, #577, #583), their comments, up to 100 recent PRs and 10 release records.
+six initial issues (#26, #415, #556, #560, #577, #583), then open issues labelled `needs:gene` and `type:epic` (in
+that order, newest first, at most 30 cards in all: the cap drops the oldest epics first, and pending decisions are kept ahead of every epic), their comments, up to
+100 recent PRs and 10 release records. A card's domain is its epic label (`epic:dev-flow` shows as "Dev flow"), then
+its area label, else "Other"; the six initial issues keep their names. `agent:claimed` does not add cards: claims can
+outlive their work.
 It writes an atomic, mode-0600 projection only after all sources succeed. A failure preserves the old file. No new
 account/service, task database, model call, scheduled agent or automatic task launch is involved. The authorized
 operator decides when to run this bounded deterministic command; the page's Refresh view button rereads the cache.
@@ -64,7 +68,7 @@ second checkpoint solely for this page if the issue's source journal is sufficie
     "basis": "The stable-head measurement has not completed."
   },
   "proofs": [{
-    "url": "https://github.com/genekogan/souls/pull/123",
+    "url": "https://github.com/soulsimulation/souls/pull/123",
     "outcome": "candidate; not production qualified",
     "environment": "local fake minds"
   }]

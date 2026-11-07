@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {retainedCommonsShoreFactory,COMMONS_PERSONAL_RESOURCES} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory,COMMONS_PERSONAL_RESOURCES} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';
 import {installSocialEdenCardsV1} from './social-eden.ts';
 import {WorldHost} from './world.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {setImmediate} from 'node:timers/promises';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
 const factory=await retainedCommonsShoreFactory({socialEdenV1:true,foodDeliveryV1:true});

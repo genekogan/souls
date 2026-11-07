@@ -1,6 +1,6 @@
 # Project visibility and visual release history
 
-Design for [#581](https://github.com/genekogan/souls/issues/581). The private project view is not yet deployed; the
+Design for [#581](https://github.com/soulsimulation/souls/issues/581). The private project view is not yet deployed; the
 [bounded owner-overview implementation](../operations/owner-overview.md) documents its collector and access boundary.
 Keep it read-only and small. Conversation remains the place to change priorities or give feedback.
 
@@ -56,7 +56,7 @@ the public publication input. The world viewer must download no extra board/chan
 
 ## Historical recovery
 
-The existing changelog starts at 3.0; [#585](https://github.com/genekogan/souls/issues/585) recovers earlier notes from
+The existing changelog starts at 3.0; [#585](https://github.com/soulsimulation/souls/issues/585) recovers earlier notes from
 preserved records. Prefer recorded release dates and source receipts over commit dates. Keep a private provenance
 map; publicly distinguish reconstructed historical summaries and uncertain dates from original release records.
 Do not invent a release or imply deployed status from a branch merge.
@@ -74,7 +74,7 @@ triage outcomes from the owner view; never export raw reports through the public
 
 Build on the launcher health page, `metrics.mjs`, client-error ingestion, watchdog heartbeats and deployment receipts.
 Separate project status from service health. Metrics code being present does not prove live collection, retention,
-alert delivery or a successful incident drill. [#461](https://github.com/genekogan/souls/issues/461) retains those
+alert delivery or a successful incident drill. [#461](https://github.com/soulsimulation/souls/issues/461) retains those
 qualification requirements; offsite backup verification remains separate.
 
 No new external monitoring service or custom time-series database is required for the first view. Start with a small
@@ -83,8 +83,8 @@ benefit and operational cost before adding it. The overview is read-only: no dep
 
 ## Delivery
 
-[#583](https://github.com/genekogan/souls/issues/583) implements the private overview and access boundary;
-[#584](https://github.com/genekogan/souls/issues/584) adds public visual release entries. Agree their small shared
+[#583](https://github.com/soulsimulation/souls/issues/583) implements the private overview and access boundary;
+[#584](https://github.com/soulsimulation/souls/issues/584) adds public visual release entries. Agree their small shared
 publication/checkpoint format first, then build the first useful slice. Auth and data isolation require their own
 tests and review; public UI requires desktop/phone proof. Existing release approvals, gate limits and no scheduled
 agents remain binding.

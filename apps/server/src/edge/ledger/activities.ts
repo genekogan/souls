@@ -1,7 +1,7 @@
 // activities/1 (team/CONTRACTS/proposals/ACTIVITIES-v1.md): generic, native body activities offered as capabilities.
 // sit:here, sit-ground:here, lie:here, nap:here, read:here, read:<place>, <activity>:<spot>. Each plan is ordinary
 // body steps (walk_to, sit, stand, mars:pose_v1) performed as one logged decision with a normal receipt. No model calls.
-import type {Program} from '@sim/engine-contract';
+import type {Program} from '@souls/engine-contract';
 import type {EdgeCapability} from '../contract.ts';
 import type {Interior, Platform, Ring, Solid} from './nav.ts';
 import {DANCE_CLEARANCE,POSE_INSTRUMENTS,SOCIAL_FACING_ACTIVITIES} from '../../../../../mars/viewer/engine/social/pose.ts';
@@ -26,6 +26,8 @@ export type Spot = {id: string; place?: string; activity: string; base: 'sit' | 
   title?: string;
   /** Bound only by the world adapter for a real painting easel. Never inferred from a label. */
   paintingTarget?: string;
+  /** #430: this spot's own body pose for its activity (chalk on the ground stoops), and the days its drawing fades over. */
+  pose?: string; fadeDays?: number;
   /** Entry 36: a mic stand's singer sings along with music within this many metres (the pose ends when it stops). */
   accompany?: number};
 export type Shelf = {id: string; place?: string; at: V2; faceTo?: V2; level?: number};
@@ -148,7 +150,8 @@ const d2 = (a: V2, b: V2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 // plain walk_to keeps the body's current level and would seat it on the floor above the spot
 const walk = (to: V2, level?: number, from = 0) => level || (level === 0 && from) ? {verb: 'mars:walk_to', params: {x: to[0], z: to[1], level}} : {verb: 'walk_to', params: {to: [to[0], to[1]]}};
 const standFirst = (w: ActivityWorld): Program['steps'] => w.seated ? [{verb: 'stand', params: {}}] : [];
-const secondsParam = (def: number, max = 1800) => ({seconds: {type: 'integer', min: 5, max, default: def}});
+// the bounds hold the default: a four-second letter is not below its own minimum, so a client can send what the schema says
+const secondsParam = (def: number, max = 1800) => ({seconds: {type: 'integer', min: Math.min(5, def), max, default: def}});
 /** A seat's sit (no pose): the ledger times its rest or sit step, 1..600 s, 60 by default, like every sit:<seat>. */
 const seatSeconds = () => ({seconds: {type: 'integer', min: 1, max: 600, default: 60}});
 export const ACTIVITY_SECONDS_MAX = 1800;
@@ -189,7 +192,7 @@ export function activityCapabilities(data: SpotsData, w: ActivityWorld): {caps: 
   const reach0 = data.spots.filter(s => d2(s.at, w.me) <= SPOT_REACH && w.enterable(s.place)), ok = (s: Spot) => !!clearAt(s);
   const live = data.nearest ? reach0 : reach0.filter(ok);
   const spotSteps = (s: Spot, seconds?: number, activity = s.activity, fromLevel = w.level): Program['steps'] => {
-    const def = SPOT_ACTIVITIES[activity], body = def.pose ?? activity, lying = s.base === 'lie', act = lying && !LYING_SPOT.has(body) ? 'lie' : body, prop = s.prop ?? def.prop;
+    const def = SPOT_ACTIVITIES[activity], body = (activity === s.activity && s.pose) || def.pose || activity, lying = s.base === 'lie', act = lying && !LYING_SPOT.has(body) ? 'lie' : body, prop = s.prop ?? def.prop;
     const reach = s.seat ? {verb: 'sit', params: {on: s.seat, seconds: 1}} : walk(clearAt(s) ?? s.at, s.level, fromLevel);
     // Ordinary standing work prepares through the existing native face action before publishing hands.
     // Seats and explicit choreography retain their own direction and arrival contract.
@@ -315,7 +318,7 @@ export function activityCapabilities(data: SpotsData, w: ActivityWorld): {caps: 
       const needs = s.requires ? data.spots.find(x => x.id === s.requires) : undefined, missing = !!needs && !w.taken(needs.at, needs.id);
       const waiting = s.together ? w.groupSize(s.together.group) : 0, withWho = s.together ? (waiting ? `; ${waiting} waiting on the other end, join them` : (s.together.alone === 'start' ? `; starts after ${s.together.wait} s, others may join` : `; waits up to ${s.together.wait} s for someone to join`)) : '';
       const painting = activity === 'paint' && s.paintingTarget ? {paintingTarget: s.paintingTarget,paintingLevel:s.level??0} : {};
-      add({id, verb: activity, label: labelOf(s, activity) + withWho, available: !missing, ...(missing ? {blocked: {code: 'together.nobody-leading', reason: `Nobody is at ${needs!.label ?? needs!.id} yet; nothing to join. Start it yourself, or ask again later.`}} : {}), target: {id: s.id, kind: 'spot'}, params: {...secondsParam(def.seconds), ...('paintingTarget' in painting ? {painting: paintingParam()} : {})}}, {label: def.label, steps: activity === 'read' ? readAt(s) : spotSteps(s, undefined, activity), seconds: true, ...painting});
+      add({id, verb: activity, label: labelOf(s, activity) + withWho, available: !missing, ...(missing ? {blocked: {code: 'together.nobody-leading', reason: `Nobody is at ${needs!.label ?? needs!.id} yet; nothing to join. Start it yourself, or ask again later.`}} : {}), target: {id: s.id, kind: 'spot'}, params: {...secondsParam(def.seconds), ...('paintingTarget' in painting ? {painting: paintingParam(s.fadeDays)} : {})}}, {label: (activity === s.activity && s.paintingTarget && s.title) || def.label, steps: activity === 'read' ? readAt(s) : spotSteps(s, undefined, activity), seconds: true, ...painting});
     }
   }
   // ---- CN5 choreographed games: each court's free places (its spots, then extra places beside them up to 6 players)

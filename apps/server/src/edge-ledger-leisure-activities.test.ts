@@ -2,7 +2,7 @@
 // verdicts (no ducks here: refused, never swapped), visible pose state (activity + prop), exact replay.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {edenNavWorld, factory, WORLD_SPOTS} from '../test/eden-nav-fixture.ts';
 import {WorldHost} from './world.ts';
 import {activityCapabilities, loadSpots} from './edge/ledger/activities.ts';

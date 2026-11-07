@@ -36,9 +36,9 @@ import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {installPuntActivities} from './punt-install.ts';
 import {readFileSync} from 'node:fs';
 import {installBirthLooks} from './god/birth-look.ts';
-import { setKitViewerContract } from '@sim/generators';
+import { setKitViewerContract } from '@souls/generators';
 import { rehearseRestore, standby } from './standby.ts';
-import { coreLibrary } from '@sim/world-compiler';
+import { coreLibrary } from '@souls/world-compiler';
 import { startWatchdog, writeLiveNow } from './load/watchdog.ts';
 import { sharedLoad } from './load/shared.ts';
 import { LoadMonitor } from './load/monitor.ts';
@@ -52,7 +52,7 @@ const bootAt: Record<string, number> = { code: performance.now() };
 // (standby.ts rehearseRestore).
 let warmFactory: Awaited<ReturnType<typeof plainFactory>> | undefined;
 await standby(async () => {
-  if (config.engine === 'mars') await import('@sim/engine-mars');
+  if (config.engine === 'mars') await import('@souls/engine-mars');
   await import('./edge/body/migrate-looks.ts');
   if (config.worldEngine) coreLibrary();   // the god's shared core library (built once per process, ~0.1 s)
   if (!edenCoreRequested(config, process.env)) { warmFactory = await plainFactory(); rehearseRestore(join(config.dataDir, 'sim.db'), config.worldId, warmFactory as never, (ro) => { if (config.worldEngine && ro.prepare("SELECT 1 FROM sqlite_master WHERE name='world_ground_recipes_v1'").get()) registerGroundRecipes(ro, config.worldId); }); }
@@ -100,7 +100,7 @@ const factory=edenCore?await edenHistoryFactory(db,config.worldId,{lifeV1:edenLi
 /** A world's engine factory when it is not Eden core (that one reads its history from the database). Each process owns
  *  one world and imports its engine from this release. */
 async function plainFactory() {
-  const mars = config.engine === 'mars' ? await import('@sim/engine-mars') : null;
+  const mars = config.engine === 'mars' ? await import('@souls/engine-mars') : null;
   const accountLifecycle = config.worldEngine && !edenCoreRequested(config, process.env) && process.env.SOUL_LIFECYCLE === '1';
   return mars?await mars.marsFactory(config.worldKey==='littlemartians'?mars.LITTLE_MARTIANS_WORLD:config.worldKey==='eden'||!KNOWN_WORLD_KEYS.includes(config.worldKey as never)?(accountLifecycle?{...mars.GREEN_FIELD_WORLD,safeCrewRemoval:true}:mars.GREEN_FIELD_WORLD):undefined):recordedToyFactory;
 }
@@ -228,7 +228,7 @@ if (process.env.SIM_READ_WORKER === '1' && edge) {
     run: async (f) => { const r = await app.fetch(new Request('http://127.0.0.1' + f.url, { method: f.method, headers: f.headers, ...(f.body && f.method !== 'GET' && f.method !== 'HEAD' ? { body: f.body } : {}) }), { simAdmitted: true });
       return { status: r.status, headers: [...r.headers], body: await r.arrayBuffer() }; } }).start();
   source.onDelta((d) => pool.delta(d), () => pool.reinit());
-  (globalThis as { __simReadPool?: unknown }).__simReadPool = pool;   // tests and the harness read pool.status()
+  (globalThis as { __soulsReadPool?: unknown }).__soulsReadPool = pool;   // tests and the harness read pool.status()
   // SIM_READ_ORACLE=1 (B-facade item 5, lane only): the five reads answered by main and by a replica ledger, compared
   if (process.env.SIM_READ_ORACLE === '1') { const { installReadOracle } = await import('./split/read-oracle.ts'); await installReadOracle(host, edge, source as never, db.path); console.log('[read-oracle] on'); }
   console.log(`[read] ${pool.size} read worker(s), mode ${readMode === 2 ? 'read code (here)' : 'subset (here, capabilities)'}`);

@@ -27,7 +27,7 @@ async function stubWorld(t) {
       if (req.url === '/v1/edge/inbox/m_1/ack') return reply(200, {inbox: {queued: 0}});
       if (req.url === '/v1/edge/inbox/m_1/result') return reply(200, {inbox: {queued: 0}});
       if (req.url === '/v1/edge/act') {
-        if (body.capability === 'fly') return reply(200, {accepted: false, code: 'capability.unknown', reason: 'no fly here'});
+        if (body.capability === 'fly:here') return reply(200, {accepted: false, code: 'capability.unknown', reason: 'no fly here'});
         return reply(200, {accepted: true, channel: 'body', receipt: {id: 'r_9', soulId: 's_1', capability: 'walk:fountain', phase: 'started', acceptedTick: tick - 2, startedTick: tick, now: 'walking'}, ...(body.for ? {for: body.for} : {})});
       }
       if (req.url.startsWith('/v1/edge/receipts/r_9')) return reply(200, {receipt: {id: 'r_9', soulId: 's_1', capability: 'walk:fountain', phase: 'completed', acceptedTick: 100, startedTick: 102, endedTick: 160, outcome: {summary: SECRET}}});
@@ -47,10 +47,10 @@ test('A1/A2/A3: a traced thin-CLI episode links owner message → act → receip
   const {dir, seen} = await stubWorld(t), trace = join(dir, 'trace.jsonl'), env = {SOUL_TRACE_FILE: trace, SOUL_TRACE_RUN: 'run-1', SOUL_TRACE_SEAT: 'seat-a'};
   await run(dir, ['listen', '--once'], env);
   await run(dir, ['ack', 'm_1', 'On my way'], env);
-  await run(dir, ['act', 'fly'], env);
-  await run(dir, ['act', 'fly', '--for', 'm_1'], env);
-  await run(dir, ['act', 'fly', '--for', 'none'], env);
-  await run(dir, ['act', 'walk to the fountain', '--for', 'm_1'], env);
+  await run(dir, ['act', 'fly:here'], env);
+  await run(dir, ['act', 'fly:here', '--for', 'm_1'], env);
+  await run(dir, ['act', 'fly:here', '--for', 'none'], env);
+  await run(dir, ['act', 'walk:fountain', '--for', 'm_1'], env);
   await run(dir, ['receipt', 'r_9'], env);
   await run(dir, ['result', 'm_1', 'done', 'walked to the fountain'], env);
   const text = readFileSync(trace, 'utf8');
@@ -83,18 +83,18 @@ test('A1/A2/A3: a traced thin-CLI episode links owner message → act → receip
 
 test('A3/A4: off adds nothing; on and a failing sink leave stdout, stderr and exit code unchanged', async t => {
   const {dir} = await stubWorld(t);
-  const plain = await run(dir, ['act', 'walk to the fountain', '--json'], {}, false);
-  const off = await run(dir, ['act', 'walk to the fountain', '--json'], {});
+  const plain = await run(dir, ['act', 'walk:fountain', '--json'], {}, false);
+  const off = await run(dir, ['act', 'walk:fountain', '--json'], {});
   assert.deepEqual(stable(off), stable(plain)); assert.ok(!existsSync(join(dir, 'trace.jsonl')));
-  const on = await run(dir, ['act', 'walk to the fountain', '--json'], {SOUL_TRACE_FILE: join(dir, 'trace.jsonl')});
+  const on = await run(dir, ['act', 'walk:fountain', '--json'], {SOUL_TRACE_FILE: join(dir, 'trace.jsonl')});
   assert.deepEqual(stable(on), stable(plain)); assert.ok(existsSync(join(dir, 'trace.jsonl')));
-  const broken = await run(dir, ['act', 'walk to the fountain', '--json'], {SOUL_TRACE_FILE: join(dir, 'missing-dir', 'trace.jsonl')});
+  const broken = await run(dir, ['act', 'walk:fountain', '--json'], {SOUL_TRACE_FILE: join(dir, 'missing-dir', 'trace.jsonl')});
   assert.deepEqual(stable(broken), stable(plain), 'an unwritable sink changes nothing the agent sees');
-  const refused = await run(dir, ['act', 'fly'], {SOUL_TRACE_FILE: join(dir, 'missing-dir', 'x.jsonl')});
-  const refusedPlain = await run(dir, ['act', 'fly'], {}, false);
+  const refused = await run(dir, ['act', 'fly:here'], {SOUL_TRACE_FILE: join(dir, 'missing-dir', 'x.jsonl')});
+  const refusedPlain = await run(dir, ['act', 'fly:here'], {}, false);
   assert.deepEqual(stable(refused), stable(refusedPlain));
   const fifo = join(dir, 'pipe.jsonl'); execFileSync('mkfifo', [fifo]);
-  const piped = await run(dir, ['act', 'walk to the fountain', '--json'], {SOUL_TRACE_FILE: fifo});
+  const piped = await run(dir, ['act', 'walk:fountain', '--json'], {SOUL_TRACE_FILE: fifo});
   assert.deepEqual(stable(piped), stable(plain), 'a FIFO sink (no reader) is refused rather than blocking exit');
 });
 
@@ -183,4 +183,12 @@ test('A2: duplicates, reordering, missing origin, restart, lost records and dela
   for (const t of ['duplicate', 'reordered', 'restart', 'unclosed-process', 'missing-start', 'missing-records', 'capture-loss', 'stale-receipt', 'receipt-unresolved', 'unparsed-lines']) assert.ok(types.has(t), t + ' ' + JSON.stringify(tl.anomalies));
   assert.equal(tl.unlinked.at(-1).origin.kind, 'unknown', 'an act with no recorded owner link is not joined by time');
   assert.equal(tl.episodes.find(e => e.origin.id === 'm_2').acts.length, 1);
+});
+
+// #824: a refusal's alternatives are kept as offer ids only (bounded, labels omitted) and the readout prints them.
+test('factsOf keeps a refusal\'s alternative ids, never their labels', () => {
+  const f = factsOf({accepted: false, code: 'ride.unavailable', alternatives: [{id: 'walk:field', label: 'Green field'}, {id: 'bad id with spaces', label: 'x'}, {id: 'gather:field', label: 'y'}, {id: 'jog:field', label: 'z'}]});
+  assert.deepEqual(f.alternatives, ['walk:field', 'gather:field']);
+  assert.ok(!JSON.stringify(f).includes('Green field'));
+  assert.equal(factsOf({accepted: false, code: 'capability.params'}).alternatives, undefined);
 });

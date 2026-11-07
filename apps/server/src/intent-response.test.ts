@@ -3,9 +3,9 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { marsFactory } from '@sim/engine-mars';
-import { buildMidRequest, fakeJev, newLife, type CompileOut, type callTool } from '@sim/brain';
-import { INTENT_V2, intentAdmissionFactV2, publicEvent } from '@sim/protocol';
+import { marsFactory } from '@souls/engine-mars';
+import { buildMidRequest, fakeJev, newLife, type CompileOut, type callTool } from '@souls/brain';
+import { INTENT_V2, intentAdmissionFactV2, publicEvent } from '@souls/protocol';
 import { Brain } from './brain.ts';
 import { config } from './config.ts';
 import { Db } from './db.ts';

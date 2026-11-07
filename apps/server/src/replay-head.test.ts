@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toyFactory } from '@sim/engine-toy';
-import { kernelHash } from '@sim/kernel';
+import { toyFactory } from '@souls/engine-toy';
+import { kernelHash } from '@souls/kernel';
 import { Db } from './db.ts';
 import { WorldHost,replayFromGenesis } from './world.ts';
 

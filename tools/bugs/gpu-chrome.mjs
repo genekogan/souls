@@ -11,7 +11,7 @@ chromium.launch = async (options = {}) => {
       const page = await newPage(...pageArgs), screenshot = page.screenshot.bind(page);
       page.screenshot = async (...shotArgs) => {
         const gpu = await page.evaluate(() => {
-          const existing = window.__simEntity?.renderer?.getContext(), gl = existing ?? document.createElement('canvas').getContext('webgl2');
+          const existing = window.__soulsEntity?.renderer?.getContext(), gl = existing ?? document.createElement('canvas').getContext('webgl2');
           if (!gl) return null;
           const ext = gl.getExtension('WEBGL_debug_renderer_info'), value = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
           if (!existing) gl.getExtension('WEBGL_lose_context')?.loseContext();

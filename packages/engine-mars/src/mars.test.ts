@@ -1,8 +1,8 @@
 // Dry run of the Mars engine behind Sim's contract. Skipped where the Mars checkout is absent.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { conformance } from '@sim/engine-contract/conformance';
-import type { Engine, ProgramEvent } from '@sim/engine-contract';
+import { conformance } from '@souls/engine-contract/conformance';
+import type { Engine, ProgramEvent } from '@souls/engine-contract';
 import { MEAL_WORLD, loadMars, marsAvailable, marsFactory } from './index.ts';
 
 if (!marsAvailable()) test('mars adapter (skipped: no Mars checkout on this machine)', { skip: true }, () => {});

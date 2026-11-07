@@ -14,7 +14,7 @@ import { fillInstructions } from './accounts/instructions.ts';
 import { fixture as worldFixture } from '../test/native-owner-fixture.ts';
 import { buildApp } from './http.ts';
 import type { Hub } from './hub.ts';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 
 const input = (key: string, extra: Record<string, unknown> = {}) => ({ agentLabel: 'eden-agent 1.9.3', name: 'Qwyjibo', idempotencyKey: 'window-request-key-' + key, pollSecret: randomBytes(32).toString('base64url'), ...extra });
 const error = (code: string) => (e: unknown) => e instanceof AccountStoreError && e.code === code;

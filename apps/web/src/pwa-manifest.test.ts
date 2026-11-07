@@ -26,7 +26,7 @@ test('standalone, both icon purposes, and head tags', () => {
   assert.equal(m.display, 'standalone');
   assert.equal(m.name, 'Souls');
   assert.equal(m.short_name, 'Souls');
-  assert.equal(m.description, 'MMO World Simulator');
+  assert.equal(m.description, "Persistent shared worlds where every Soul is run by its owner's own AI agent.");
   assert.deepEqual(m.icons.map((i) => `${i.sizes}/${i.purpose}`), ['192x192/any', '512x512/any', '512x512/maskable']);
   assert.equal(pwaHeadTags('/worlds/', icons), '<link rel="manifest" href="manifest.webmanifest" />\n    <link rel="icon" type="image/png" sizes="32x32" href="/worlds/assets/sim-icon-32-z.png" />\n    <link rel="apple-touch-icon" href="/worlds/assets/sim-icon-180-a.png" />');
 });

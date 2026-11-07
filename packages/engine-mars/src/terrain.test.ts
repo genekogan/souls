@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { terrainPatchV1Schema, type TerrainPatchV1 } from '@sim/engine-contract';
+import { terrainPatchV1Schema, type TerrainPatchV1 } from '@souls/engine-contract';
 import { createTerrainGeometryProbe } from './terrain.ts';
 import { marsFactory, GREEN_FIELD_WORLD } from './engine.ts';
 

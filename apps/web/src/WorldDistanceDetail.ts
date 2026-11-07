@@ -73,6 +73,9 @@ export class WorldDistanceDetail{
    let r:number,d:number;
    if(frozen!==undefined&&c.w&&c.w.list===frozen){const w=c.w;r=w.r;d=Math.sqrt((w.x-cam.x)**2+(w.y-cam.y)**2+(w.z-cam.z)**2)-r;}
    else{
+    // An instanced pool's sphere moves and resizes between scans (EntityInstancer.updateBounds): its things move, and a pool
+    // all at scale 0 (kept in a shut drawer, a cut interior) has radius 0. Read it now: a scan's copy of that radius would cull the pool until the next scan.
+    const live=(m as THREE.InstancedMesh).isInstancedMesh?(m as THREE.InstancedMesh).boundingSphere:null;if(live){c.centre.copy(live.center);c.radius=live.radius;}
     const e=m.matrixWorld.elements,scale=Math.sqrt(Math.max(e[0]*e[0]+e[1]*e[1]+e[2]*e[2],e[4]*e[4]+e[5]*e[5]+e[6]*e[6],e[8]*e[8]+e[9]*e[9]+e[10]*e[10]));
     const w=this.world.copy(c.centre).applyMatrix4(m.matrixWorld);r=c.radius*scale;d=w.distanceTo(cam)-r;
     if(frozen!==undefined)c.w={list:frozen,x:w.x,y:w.y,z:w.z,r};else c.w=undefined;

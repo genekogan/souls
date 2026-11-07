@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {intentRequestV2Schema} from '@sim/protocol';
+import {intentRequestV2Schema} from '@souls/protocol';
 import {intentLookupResponse,intentResponse} from '../src/intent-response.ts';
 import {OWN_REQUEST_DIAGNOSTICS,ownRequestDiagnostics,ownRequestDiagnosticsPath,requestCause,requestDiagnostics,requestNeedsDiagnostics} from '../src/request-diagnostics.ts';
 // Exact saved Alice receipts (team/pm-integration/p0-interaction-broadcast-20261006/EXACT-SAVED-REQUESTS.json).

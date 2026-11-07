@@ -1,4 +1,4 @@
-import type {EngineFactory,EngineSnapshot} from '@sim/engine-contract';
+import type {EngineFactory,EngineSnapshot} from '@souls/engine-contract';
 import {MarsEngine} from './engine.ts';
 import {commonsProvisionsFactory} from './commons-provisions-engine.ts';
 import {commonsKitchen,type CommonsKitchenVersion} from './commons-kitchen.ts';
