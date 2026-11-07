@@ -21,5 +21,11 @@ test('#437 pick-up words: a named world thing before a prop source, a bare kind 
     assert.equal(to('pick up the coffee mug', [source, item('e_mug', 'counter/coffee-mug', 2, false)]), 'pick-up:cup', 'a named thing not on offer does not block the source');
     assert.equal(to('pick up the mug', [mug]), 'pick-up:e_mug', 'no source: the named thing, as before');
     assert.equal(to('pick up the coffee mug', [mug]), 'pick-up:e_mug');
+    // #435 and #437 together: one exact word wins only near; more words win anywhere; part of a name is the prop
+    const food: EdgeCapability = {id: 'pick-up:food', verb: 'pick-up', label: 'Pick up something to eat (café, 3 m)', available: true, target: {id: 'src-food', kind: 'source'}};
+    assert.equal(to('pick up the apple', [food, item('e_apple', 'table/apple', 2)]), 'pick-up:e_apple', 'the apple on the table');
+    assert.equal(to('pick up the apple', [food, item('e_apple', 'table/apple', 55)]), 'pick-up:food', 'not 55 m past the prop');
+    assert.equal(to('pick up the apple', [food, item('e_red', 'table/red-apple', 2)]), 'pick-up:food', 'one word that is part of a name keeps the prop');
+    assert.equal(to('pick up the coffee mug', [source, item('e_mug', 'far-counter/coffee-mug', 55)]), 'pick-up:e_mug', 'two words name it wherever it is');
     assert.equal(to('pick up the blue coffee-mug', [source, item('e_blue', 'counter/blue-coffee-mug-2', 2)]), 'pick-up:e_blue', 'a hyphen in the words is a separator');
 });

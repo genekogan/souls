@@ -484,8 +484,9 @@ has its bag; a rinsed mug has none, so it can't make coffee again. Words that na
 names it, nearest first: "make a cup of tea" leaves a nearer coffee mug alone. Words that name neither ("drink it",
 "wash the mug") take the nearest mug of either kind. "pour the tea" from a kettle fills the nearest empty mug, which may
 be a coffee mug, and then says coffee. "pick up the coffee mug" takes the god-built mug even beside a tea room
-that hands out prop cups: words that name a world thing more closely than its kind (its exact name, or more than one
-word) come before a prop source, while "pick up a cup" in a café still takes the café's cup.
+that hands out prop cups: a name of more than one word comes before a prop source wherever the thing is, and one word
+that is its whole name comes first within 8 m ("pick up the apple" is the apple on the table, not one 55 m off). One word
+that is only part of a name keeps the prop: "pick up a cup" in a café still takes the café's cup.
 
 ## What other Souls perceive
 
