@@ -11,17 +11,19 @@ const EXACT = new Set(['place', 'placeId', 'placePath', 'where', 'target', 'to',
 const OFFERS = new Set(['capability', 'capabilityId']);
 /** `sit:here` is about wherever the Soul is, whatever a place's ref says. */
 const NOT_A_PLACE = new Set(['here']);
-export type Secrets = {ids: Set<string>; exact: Set<string>; text: RegExp};
+export type Secrets = {ids: Set<string>; exact: Set<string>; text: RegExp; offer: RegExp | null};
 
 /** Ids and refs, exact in a place entry; names and ids as whole words in anything else. `hut` doesn't match `hut-2`. */
 export function secretMatcher(ids: readonly unknown[], names: readonly unknown[] = []): Secrets | null {
   const usable = (v: readonly unknown[]) => v.filter((t): t is string => typeof t === 'string' && !!t.trim() && !NOT_A_PLACE.has(t.trim().toLowerCase())).map((t) => t.trim());
   const exact = usable(ids), words = [...new Set([...exact, ...usable(names)])].sort((a, b) => b.length - a.length);
-  return words.length ? {ids: new Set(exact), exact: new Set(words.map((w) => w.toLowerCase())), text: new RegExp(`(?<![\\p{L}\\p{N}_-])(?:${words.map(escape).join('|')})(?![\\p{L}\\p{N}_-])`, 'iu')} : null;
+  const asWords = (list: string[]) => new RegExp(`(?<![\\p{L}\\p{N}_-])(?:${list.map(escape).join('|')})(?![\\p{L}\\p{N}_-])`, 'iu');
+  return words.length ? {ids: new Set(exact), exact: new Set(words.map((w) => w.toLowerCase())), text: asWords(words), offer: exact.length ? asWords([...exact].sort((a, b) => b.length - a.length)) : null} : null;
 }
 
 const named = (v: unknown, s: Secrets): boolean => (typeof v === 'string' ? s.exact.has(v.trim().toLowerCase()) : Array.isArray(v) ? v.some((x) => named(x, s) || (!!x && typeof x === 'object' && holdsSecret(x, s))) : !!v && typeof v === 'object' && holdsSecret(v, s));
-const offered = (v: unknown, s: Secrets) => typeof v === 'string' && v.includes(':') && s.ids.has(v.slice(v.indexOf(':') + 1));
+/** After the verb, ids and refs as whole words: `walk:cove/bench` names `cove`. A name means nothing here: `walk:field` isn't a place called Field. */
+const offered = (v: unknown, s: Secrets) => typeof v === 'string' && v.includes(':') && !!s.offer?.test(v.slice(v.indexOf(':') + 1));
 /** One field of an object, by what kind of field it is. */
 const fieldHolds = (k: string, x: unknown, s: Secrets): boolean => (ENUMS.has(k) ? false : EXACT.has(k) ? named(x, s) : OFFERS.has(k) ? offered(x, s) : holdsSecret(x, s));
 const isPlace = (v: object): v is {id: string} => typeof (v as {id?: unknown}).id === 'string' && typeof (v as {name?: unknown}).name === 'string';
