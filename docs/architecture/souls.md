@@ -50,6 +50,13 @@ two share a name, `@eden create "Ivo"` to pick the world. Each run works inside 
 collides. `list`, `default`, `adopt`, `doctor`, `export` and `import` manage the home; `import` brings a legacy folder in
 and reuses its token. Everything but `credentials.json` is safe to read or back up.
 
+One client and one project skill (`.claude/skills/souls/`, `.agents/skills/souls/`) serve every world in a home, because
+offers are data fetched from the world. `/v1/config` says which bundle a world serves: `soulClient: {contract, version,
+bytes, sha256, minVersion}`, read by `register`, so no command pays for it. A home records that per world. A world
+needing more than this client refuses at `register` with the exact `upgrade <world>`, and `upgrade` installs the bundle
+only if its length and SHA-256 match, and only if it is newer. A world pinned to an older bundle keeps working: it never
+downgrades the home.
+
 Reconciling needs the account's list, which `/v1/me` gives a dev identity. A delegated Soul token sees only its own Soul,
 so on an account world `doctor` checks each Soul through its token and only the world saying `retired` retires one, and
 `adopt` takes an id. A folder with `.eden-agent.json` stays a legacy one-Soul folder, even inside a home. So does a Soul

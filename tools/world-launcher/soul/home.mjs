@@ -13,7 +13,7 @@ const SERVE_SOCKET = ".eden-serve.sock";
 /** Run in a seat (the world's waiting room), never as a Soul: they make or pair one. */
 export const SEAT_COMMANDS = new Set(["register", "create", "pair", "adopt", "approval"]);
 /** Work on the home itself, as no one in particular. */
-export const HOME_COMMANDS = new Set(["list", "doctor", "default", "export", "import", "init", "guide", "help", "version"]);
+export const HOME_COMMANDS = new Set(["list", "doctor", "default", "export", "import", "init", "upgrade", "guide", "help", "version"]);
 /** What a legacy folder hands over on import. Anything else (1.9's `delegations` holds tokens) stays in its own file. */
 export const IMPORTED_FIELDS = ["world", "worldId", "accountAuth", "identity", "soul", "token", "home", "cursor", "ownerMark", "lastReceipt", "lastActAt", "lastAcked", "lastAckedAt", "lastAckedActed", "pendingCreate"];
 const IMPORTED_RUNTIME = [".eden-serve.json"];
@@ -65,6 +65,12 @@ export function slugOf(url) {
   try { const u = new URL(url); return `${u.hostname}${u.port ? `-${u.port}` : ""}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"); } catch { return "world"; }
 }
 export const keyOf = (worlds, url) => Object.keys(worlds).find((k) => worlds[k].url === url) ?? null;
+/** a > b for dotted versions; a missing one is oldest. */
+export function newerThan(a, b) {
+  const p = (v) => String(v ?? "0").split(".").map(Number), x = p(a), y = p(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] ?? 0) - (y[i] ?? 0); if (d) return d > 0; }
+  return false;
+}
 /** The name a person can type for a Soul: "Old Mira" answers to old-mira. */
 export const norm = (s) => String(s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
 
@@ -369,5 +375,14 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     return out;
   }
 
-  return { root, config, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
+  /** Replace the home's bundle, and the running copy when it lives in this home's folder. Never older. */
+  function installBundle(bytes, running, version, runningVersion) {
+    mkdirSync(at("bin"), { recursive: true, mode: 0o700 });
+    const write = (file) => { const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, bytes, { mode: 0o755 }); renameSync(tmp, file); };
+    write(at("bin", "eden.mjs"));
+    if (running && newerThan(version, runningVersion) && dirname(real(running)) === dirname(real(root))) write(running);
+    return at("bin", "eden.mjs");
+  }
+
+  return { root, config, installBundle, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
 }

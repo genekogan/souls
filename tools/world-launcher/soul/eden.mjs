@@ -8,7 +8,7 @@
 import { existsSync, readFileSync, readlinkSync, realpathSync, writeFileSync, renameSync, lstatSync, openSync, closeSync, unlinkSync } from "node:fs";
 import { execFileSync, spawn } from "node:child_process";
 import { createConnection, createServer } from "node:net";
-import { randomUUID, randomBytes } from "node:crypto";
+import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { homedir } from "node:os";
 import { join as joinPath } from "node:path";
@@ -33,7 +33,7 @@ const SERVE_SOCKET = ".eden-serve.sock";
 /** Run in a seat (the world's waiting room), never as a Soul: they make or pair one. */
 const SEAT_COMMANDS = new Set(["register", "create", "pair", "adopt", "approval"]);
 /** Work on the home itself, as no one in particular. */
-const HOME_COMMANDS = new Set(["list", "doctor", "default", "export", "import", "init", "guide", "help", "version"]);
+const HOME_COMMANDS = new Set(["list", "doctor", "default", "export", "import", "init", "upgrade", "guide", "help", "version"]);
 /** What a legacy folder hands over on import. Anything else (1.9's `delegations` holds tokens) stays in its own file. */
 const IMPORTED_FIELDS = ["world", "worldId", "accountAuth", "identity", "soul", "token", "home", "cursor", "ownerMark", "lastReceipt", "lastActAt", "lastAcked", "lastAckedAt", "lastAckedActed", "pendingCreate"];
 const IMPORTED_RUNTIME = [".eden-serve.json"];
@@ -85,6 +85,12 @@ function slugOf(url) {
   try { const u = new URL(url); return `${u.hostname}${u.port ? `-${u.port}` : ""}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"); } catch { return "world"; }
 }
 const keyOf = (worlds, url) => Object.keys(worlds).find((k) => worlds[k].url === url) ?? null;
+/** a > b for dotted versions; a missing one is oldest. */
+function newerThan(a, b) {
+  const p = (v) => String(v ?? "0").split(".").map(Number), x = p(a), y = p(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] ?? 0) - (y[i] ?? 0); if (d) return d > 0; }
+  return false;
+}
 /** The name a person can type for a Soul: "Old Mira" answers to old-mira. */
 const norm = (s) => String(s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
 
@@ -389,13 +395,22 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
     return out;
   }
 
-  return { root, config, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
+  /** Replace the home's bundle, and the running copy when it lives in this home's folder. Never older. */
+  function installBundle(bytes, running, version, runningVersion) {
+    mkdirSync(at("bin"), { recursive: true, mode: 0o700 });
+    const write = (file) => { const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, bytes, { mode: 0o755 }); renameSync(tmp, file); };
+    write(at("bin", "eden.mjs"));
+    if (running && newerThan(version, runningVersion) && dirname(real(running)) === dirname(real(root))) write(running);
+    return at("bin", "eden.mjs");
+  }
+
+  return { root, config, installBundle, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
 }
-return { HOME_NAME, RUNTIME_LOCKS, SEAT_COMMANDS, HOME_COMMANDS, IMPORTED_FIELDS, findHome, globalRoot, createHome, slugOf, keyOf, norm, splitSecrets, selectSoul, looksLikeSelector, chooseContext, runtimeLocks, openHome, LEGACY_STATE, STATE_FILE, CREDENTIALS };
+return { HOME_NAME, RUNTIME_LOCKS, SEAT_COMMANDS, HOME_COMMANDS, IMPORTED_FIELDS, findHome, globalRoot, createHome, slugOf, keyOf, newerThan, norm, splitSecrets, selectSoul, looksLikeSelector, chooseContext, runtimeLocks, openHome, LEGACY_STATE, STATE_FILE, CREDENTIALS };
 })();
 // </inline home.mjs>
 
-const VERSION = "2.15.0";
+const VERSION = "2.17.0";
 const STATE = ".eden-agent.json";
 const CLI = "node eden.mjs";
 
@@ -740,7 +755,9 @@ async function register(world) {
 
 function noteWorld(url, cfg, accountAuth) {
   if (!HOME) return;
-  HOME.setCurrentWorld(HOME.ensureWorld(url, { name: cfg.worldName, worldId: cfg.worldId, accountAuth }));
+  const c = cfg.soulClient, key = HOME.ensureWorld(url, { name: cfg.worldName, worldId: cfg.worldId, accountAuth, ...(c ? { contract: c.contract, bundle: c.version, minClient: c.minVersion } : {}) });
+  HOME.setCurrentWorld(key);
+  if (c && soulHome.newerThan(c.minVersion, VERSION)) throw new Error(`This world needs eden ${c.minVersion} or newer; this is ${VERSION}. Run: ${CLI} upgrade ${key}`);
 }
 
 function forOption(argv) {
@@ -2211,7 +2228,7 @@ const HELP = `eden ${VERSION} — one Soul, one controller. Commands print JSON.
 
 setup     register <world-url>            create "<Name>" [--for CODE] [--new]    pair <soulId> [--for CODE]
           approval [status|wait|cancel]   status                          guide
-home      list   default <name>   adopt <name|id> [--for CODE]   doctor   export <name> [--out dir]   import [folder]   init [--global]
+home      list   default <name>   adopt <name|id> [--for CODE]   doctor   export <name> [--out dir]   import [folder]   init [--global]   upgrade [world]
           name a Soul first when several live here: mira here · mira@eden here · @eden create "Ivo"
 look      here   observe   around|explore [place]   caps [--search w] [--verb v] [--all]   map   view [--map|--alt-only|--out f]
           context [query] [--cursor nextCursor]   views <ref> [ref…] [--detail] [--original] [--out picture.png]
@@ -2244,6 +2261,12 @@ async function defaultCommand(sel) {
 async function doctorCommand() {
   const ask = async (url, bearer) => { const { status, data } = await worldOnce(url, { method: "GET", headers: { authorization: `Bearer ${bearer}` }, timeoutMs: 25_000 }); return { status, data }; };
   const out = await needHome().doctor(ask, { alive: pidAlive });
+  for (const [world, w] of Object.entries(HOME.config().worlds)) {
+    const { status, data } = await worldOnce(`${w.url}/v1/config`, { method: "GET", headers: {}, timeoutMs: 25_000 }), c = status === 200 ? data?.soulClient : null;
+    if (!c) continue;
+    HOME.ensureWorld(w.url, { contract: c.contract, bundle: c.version, minClient: c.minVersion });
+    if (soulHome.newerThan(c.minVersion, VERSION)) (out.needsUpgrade ??= []).push({ world, needs: c.minVersion, next: `${CLI} upgrade ${world}` });
+  }
   if (out.retired.length) refreshGuide();
   return out;
 }
@@ -2267,6 +2290,20 @@ async function importCommand(from) {
   const me = await call("/v1/agent/me");   // its name, for addressing; the token is reused as it is
   writeGuide(me.data?.soul?.name ?? ctx.id);
   return { ...r, name: me.data?.soul?.name ?? null, reusedToken: true, note: `${soulHome.LEGACY_STATE} stays where it was and still holds the token: delete it once the home works.` };
+}
+// upgrade [world]: fetch the world's bundle into the home and check it against what the world says it is.
+async function upgradeCommand(world) {
+  const home = needHome(), cfg = home.config(), key = world ?? cfg.currentWorld, w = cfg.worlds[key];
+  if (!w) throw new Error(`usage: upgrade <world> (${Object.keys(cfg.worlds).join(", ") || "no world yet"})`);
+  const get = (path) => fetch(w.url + path, { signal: AbortSignal.timeout(30_000) });
+  const said = await (await get("/v1/config")).json(), m = said.soulClient;
+  if (!m) throw new Error(`${key} does not say which bundle it serves, so there is nothing to verify against. Nothing changed.`);
+  home.ensureWorld(w.url, { contract: m.contract, bundle: m.version, minClient: m.minVersion });
+  if (!soulHome.newerThan(m.version, VERSION)) return { upgraded: false, world: key, version: VERSION, served: m.version, note: "This bundle is as new as what that world serves, and it still works there." };
+  const bytes = Buffer.from(await (await get("/eden.mjs")).arrayBuffer()), sha = createHash("sha256").update(bytes).digest("hex");
+  if (bytes.length !== m.bytes || sha !== m.sha256) throw new Error(`The bundle ${key} sent is not the one it describes (${bytes.length} bytes, expected ${m.bytes}). Nothing changed.`);
+  home.installBundle(bytes, process.argv[1], m.version, VERSION);
+  return { upgraded: true, world: key, from: VERSION, to: m.version, bytes: m.bytes, sha256: m.sha256 };
 }
 async function initCommand(...argv) {
   const global = argv.includes("--global"), root = global ? soulHome.globalRoot(homedir()) : needHome().root;
@@ -2300,7 +2337,7 @@ export function enterHome(argv) {
   return line;
 }
 
-const commands = { plan, inspect, now: nowLine, register, create, pair, adopt, list: listCommand, default: defaultCommand, doctor: doctorCommand, export: exportCommand, import: importCommand, init: initCommand, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), serve, pending, batch, help: async () => HELP };
+const commands = { plan, inspect, now: nowLine, register, create, pair, adopt, list: listCommand, default: defaultCommand, doctor: doctorCommand, export: exportCommand, import: importCommand, init: initCommand, upgrade: upgradeCommand, approval, status, guide, here, observe, around, explore: around, caps, capabilities: caps, map, view, context, views, receipt, events, conversations, act, resolve, wait, say, converse, object, listen, ack, result, profile, body, travel, version: async () => ({ version: VERSION }), serve, pending, batch, help: async () => HELP };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   let line;
