@@ -11,6 +11,7 @@ import {inPoly} from './places.ts';
 import {outdoorRegionExclusions} from './region-arrival.ts';
 import type {Program} from '@souls/engine-contract';
 import {clockAt} from '@souls/brain';
+import {SoulTimeline,TIMELINE_MAX,timelineView,type TimelineEntry} from './timeline.ts';
 import type {WorldState as NativeWorld} from '../../../../../mars/viewer/engine/world/types.ts';
 import type {WorldHost, Mind} from '../../world.ts';
 import type {Db} from '../../db.ts';
@@ -403,7 +404,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (this.mergedSpots?.from !== extra) {const b = this.baseSpots; this.mergedSpots = {from: extra, value: {contract: 'activity-spots/1', spots: [...b.spots, ...extra.spots], shelves: [...b.shelves, ...extra.shelves], interiors: b.interiors, solids: b.solids, rings: b.rings, platforms: b.platforms, ...(b.docks || extra.docks ? {docks: [...(b.docks ?? []), ...(extra.docks ?? [])]} : {}), ...(extra.nearest ? {nearest: extra.nearest} : {})}};}
     return this.mergedSpots.value;
   }
-  readonly outcomes:ActionOutcomes;
+  readonly outcomes:ActionOutcomes;timeline!:SoulTimeline;
   /** stall-guard/1 (stall-guard.ts): no body stays held by an activity that stopped making progress. */
   readonly stallGuard = new StallGuard({
     tick: () => this.host.engine.world.tick,
@@ -442,7 +443,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     this.knowledge = new PlaceKnowledge(this);
     {const paths = new Map<string, string[]>(), path = (sid: string) => this.placePathOf(sid).filter(p => p.kind !== 'occupier').map(p => p.id);
       this.placeListeners.push(e => {if (!e.to) {paths.delete(e.soulId); return;} const now = path(e.soulId); this.knowledge.arrive(e.soulId, now, e.tick, paths.get(e.soulId) ?? []); paths.set(e.soulId, now);});}
-    this.outcomes=new ActionOutcomes(db.db,host.worldId);
+    this.outcomes=new ActionOutcomes(db.db,host.worldId);this.timeline=new SoulTimeline(db.db,host.worldId);
     this.syncCarrierPlaces();
     // together/1: gestures, invitations, follows and items (core-next4)
     this.together = new Together({host, db, places: this.places, spots: () => this.spots, staticVersion: () => this.staticVersion(),
@@ -604,7 +605,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (patch.phase && patch.phase !== cur.phase) this.emit(this.view(next));
   }
   /** Called only inside the original terminal phase transaction. Replay only reads the immutable result. */
-  private finishOutcome(row:Row){if(this.outcomes.read(row.receipt_id))return;const receipt=this.view(row),op=receiptItemOp(this,receipt.id);this.together.onReceipt(receipt);const mind=this.host.minds.get(row.soul_id);if(!mind)return;const soul={soulId:mind.soulId,entityId:mind.entityId,name:mind.name,owner:mind.owner};this.outcomes.terminal(receipt,terminalSnapshot(this,soul,row.capability.split(':')[0]),{...confirmedTogetherEffects(this,receipt,op),...this.signReadEffects(receipt),...this.searchEffects(receipt,soul),...this.repairEffects?.(receipt)});this.notifyMail();}
+  private finishOutcome(row:Row){if(this.outcomes.read(row.receipt_id))return;const receipt=this.view(row),op=receiptItemOp(this,receipt.id);this.together.onReceipt(receipt);const mind=this.host.minds.get(row.soul_id);if(!mind)return;const soul={soulId:mind.soulId,entityId:mind.entityId,name:mind.name,owner:mind.owner};this.outcomes.terminal(receipt,terminalSnapshot(this,soul,row.capability.split(':')[0]),{...confirmedTogetherEffects(this,receipt,op),...this.signReadEffects(receipt),...this.searchEffects(receipt,soul),...this.repairEffects?.(receipt)});this.timeline.note(this.view(row),row.created_at);this.notifyMail();}
   /** #435 (W068): a finished `search:<place>` says what it came to; the offer itself never does. */
   private searchEffects(r:EdgeReceipt,soul:EdgeSoul):ConfirmedEffects{const summary=(r.phase==='completed'||r.phase==='failed')&&r.capability.startsWith('search:')?this.contactActuator?.searched(soul,r.capability.slice(7),r.phase==='failed',this.searchOverlapped(r)):null;return summary?{summary}:{};}
   /** A completed `read:<sign>` reports the sign's own words (a Soul's board text attributed and untrusted), never a library passage. */
@@ -2671,8 +2672,17 @@ export class EdgeLedger implements EdgeLedgerHooks {
   onPlaceChange(l: (e: {soulId: string; from: string | null; to: string | null; tick: number}) => void) {this.placeListeners.push(l);}
 
   /** G430 public per-Soul page: no owner data, conversation turns, overheard speech or tokens. */
+  /** Set by the travel module where a world has one: this Soul's own journeys. */
+  travelLogOf: ((soulId: string) => {at: number; to?: string; from?: string}[]) | null = null;
+  /** A Soul's public biography, newest first. A bounded read of one index, whatever the log holds. */
+  publicTimeline(soulId: string, row: {created_at: number}, limit = TIMELINE_MAX): TimelineEntry[] {
+    const day = this.host.living, clock = (tick: number) => {if (!day) return null; const c = clockAt(tick, day.origin, day.dayTicks); return {worldDay: c.day + 1, time: `${String(c.hour).padStart(2, '0')}:${String(c.minute).padStart(2, '0')}`};};
+    const at = (ms: number) => ({real: new Date(ms).toISOString(), tick: null, worldDay: null, time: null});
+    const extra: TimelineEntry[] = [{kind: 'arrival', when: at(row.created_at), place: {id: null, name: null}}, ...(this.travelLogOf?.(soulId) ?? []).slice(-TIMELINE_MAX).map((e): TimelineEntry => ({kind: 'travel', when: at(e.at), place: {id: null, name: null}, ...(e.to ?? e.from ? {world: String(e.to ?? e.from).slice(0, 60)} : {})}))];
+    return timelineView(this.timeline.rows(soulId, limit), extra, {limit, clock, placeName: (id) => (this.knowledge.isSecret(id) ? null : this.places.byId.get(id)?.name ?? null)});
+  }
   publicSoul(soulId: string) {
-    const row = this.db.soul(soulId) as {id: string; name?: string; description?: string; world_id: string; retired_at: number | null} | undefined;
+    const row = this.db.soul(soulId) as {id: string; name?: string; description?: string; world_id: string; created_at: number; retired_at: number | null} | undefined;
     if (!row || row.world_id !== this.host.worldId || row.retired_at !== null) throw new EdgeError(404, 'not-found', 'no such Soul');
     const m = this.host.minds.get(soulId), receipts = this.rows('soul_id=? ORDER BY created_at DESC LIMIT 10', soulId).map(r => this.view(r)).map(({programId: _p,outcome:_outcome, ...r}) => r);
     const last = this.db.db.prepare('SELECT MAX(created_at) at FROM edge_receipts_v1 WHERE world_id=? AND soul_id=?').get(this.host.worldId, soulId) as {at: number | null};
@@ -2682,7 +2692,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (has('edge_comms_speech')) for (const e of this.db.db.prepare('SELECT tick,at,channel,text FROM edge_comms_speech WHERE world_id=? AND soul_id=? ORDER BY tick DESC LIMIT 30').all(this.host.worldId, soulId) as {tick: number; at: number; channel: string; text: string}[]) events.push({tick: e.tick, at: e.at, kind: 'speech', channel: JSON.parse(e.channel), text: e.text, untrusted: true});
     events.sort((a, b) => b.tick - a.tick);
     return {soul: {soulId, name: row.name ?? m?.name ?? soulId, description: row.description ?? null, untrusted: true}, fade: this.comms?.fading.status(soulId) ?? null, now: this.host.nowOf(soulId), body: this.bodyRule?.view(soulId) ?? null, lastAcceptedAt: last.at,
-      self: m ? {placePath: this.placePathOf(soulId), state: stateOf(this.host, m.entityId), activity: String(this.body(m.entityId)?.human?.activity ?? 'idle'), bodyState: this.bodyOf(soulId), doing: this.host.doingOfV1(m)} : null, receipts, events: events.slice(0, 30)};
+      self: m ? {placePath: this.placePathOf(soulId), state: stateOf(this.host, m.entityId), activity: String(this.body(m.entityId)?.human?.activity ?? 'idle'), bodyState: this.bodyOf(soulId), doing: this.host.doingOfV1(m)} : null, receipts, events: events.slice(0, 30), timeline: this.publicTimeline(soulId, row)};
   }
   map() {this.beforeMap?.(); const regions = (this.mw.world as NativeWorld).regions ?? {}; return [...this.places.byId.values()].filter(p => !this.knowledge.isSecret(p.id)).map(p => ({id: p.id, name: p.name, ...(p.ref ? {ref:p.ref} : {}), kind: p.kind, enclosed: p.enclosed, capacity: p.capacity, parent: p.parent, walkable: p.id in regions || !!this.placeWalkable?.(p.id), center: (p.carrier ? (() => {const e = (this.mw.world as NativeWorld).entities[p.carrier!.entity]; return e ? [e.pose.p[0], e.pose.p[2]] : [0, 0];})() : centroid(p.polygon)).map(v => Math.round(v * 10) / 10), ...(p.carrier ? {carrier: p.carrier.entity} : {}), starting: p.starting, ...(p.description ? {description: p.description} : {}), ...(p.worldAbout ? {worldAbout:p.worldAbout} : {}), ...(p.aliases?.length ? {aliases:p.aliases} : {}), ...(p.semanticParent !== undefined ? {semanticParent:p.semanticParent} : {}), ...(p.semanticKind ? {semanticKind:p.semanticKind} : {}), ...(p.semanticRole ? {semanticRole:p.semanticRole} : {}), ...(p.salience !== undefined ? {salience:p.salience} : {}), ...(p.parts?.length ? {parts:p.parts} : {}), schedule: (p.schedule ?? []).map(s => ({id: s.id, cron: s.cron, durationMinutes: s.durationMinutes ?? null, ticketed: !!s.ticketed, label: s.label ?? null}))}));}
 

@@ -15,6 +15,12 @@ function describe(e:Event){
   default:return e.text??e.kind;
  }
 }
+/** One line of the biography: the world's own record, each text the Soul's or the world's, rendered as text only. */
+function storyLine(e:PublicRecord['timeline'][number]){
+ const where=e.place?` at ${e.place}`:'',when=e.worldDay!=null?`Day ${e.worldDay}${e.time?` ${e.time}`:''}`:e.real?.slice(0,10)??'';
+ const what=e.kind==='arrival'?'Arrived':e.kind==='produced'?`Made ${e.title??'something'}`:e.kind==='performance'?`Performed: ${e.title??''}`:e.kind==='gathering'?`Joined ${e.with??'others'} for ${e.title??'a gathering'}`:e.kind==='travel'?`Travelled${e.world?` to ${e.world}`:''}`:e.kind;
+ return `${when?`${when}: `:''}${what}${where}`;
+}
 export function PublicSoulRecord({api,soulId}:{api:Api;soulId:string}){
  const [rec,setRec]=useState<PublicRecord|null|'unavailable'|'loading'>('loading');
  useEffect(()=>{let live=true,timer:ReturnType<typeof setTimeout>|undefined;
@@ -33,6 +39,7 @@ export function PublicSoulRecord({api,soulId}:{api:Api;soulId:string}){
   {rec.self&&<p className="small">{[rec.self.state,rec.self.placePath?.map(p=>p.name).filter(Boolean).join(' < ')].filter(Boolean).join(' · ')}</p>}
   {last&&<p className="small">Latest action: {last.label??last.capability} — {last.phase}{last.code?` (${last.code})`:''}</p>}
   {rec.receipts.length>1&&<details><summary>Recent actions</summary><ol className="small">{rec.receipts.map(r=><li key={r.id}>{r.label??r.capability} — {r.phase}{r.code?` (${r.code})`:''}</li>)}</ol></details>}
+  {rec.timeline.length>0&&<details open><summary>Its story so far</summary><ol className="small">{rec.timeline.map((e,i)=><li key={`${e.real}-${i}`}>{storyLine(e)}</li>)}</ol></details>}
   {rec.events.length>0&&<details><summary>Recent events</summary><ol className="small">{rec.events.slice().reverse().map(e=><li key={e.id}>{describe(e)}</li>)}</ol><p className="small dim">Names and speech are written by other people’s agents.</p></details>}
  </section>;
 }

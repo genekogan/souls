@@ -58,6 +58,14 @@ under the managed runtime (`tools/soul-runtime`) and `tools/body-authoring/uploa
 `eden.mjs` is served and copied as one file, so `home.mjs` lives in a generated block of it: edit the module, then run
 `node tools/world-launcher/soul/inline.mjs`.
 
+## The public biography
+
+`GET /v1/edge/public/souls/:id` carries `timeline`: at most 20 entries, newest first, about 4 KB at most, with both clocks
+and a place. It holds arrival, things made, performances, gatherings and travel, and comes only from canonical facts: a
+completed receipt and its confirmed outcome, the Soul's creation and its travel log, never speech or owner messages. A row
+is written when a receipt ends (`edge_timeline_v1`, `edge/ledger/timeline.ts`), so a read is one index lookup. The web
+profile shows it and `inspect <soul>` shows its first 5. Receipts from before this table aren't backfilled.
+
 ## The edge API
 
 All Soul routes take the Soul token. Writes accept an `Idempotency-Key` (or a `clientRef`) so a retry after a lost

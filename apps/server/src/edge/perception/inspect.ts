@@ -1,5 +1,6 @@
 // CTRL-2 (#1094): one recursive read for any id: what it is, its state, what is in it, and the offers on it with their
 // schemas. Nothing here knows a kind of object: facts come from the same source `here` reads, offers from the menu.
+import {TIMELINE_PAGE} from '../ledger/timeline.ts';
 import type {EdgeLedger} from '../ledger/ledger.ts';
 import {EdgeError, type EdgeCapability, type EdgeSoul} from '../contract.ts';
 import {offerParams, type ParamSchema} from '../intents/offer-schema.ts';
@@ -40,8 +41,8 @@ function identify(L: EdgeLedger, soul: EdgeSoul, id: string, caps: EdgeCapabilit
   const mind = L.host.minds.get(id);
   if (mind) {
     // public facts only: not its receipts, its events or where it is, which may be a place this Soul has not found
-    const seen = L.publicSoul(id) as {soul?: {description?: string | null}; now?: unknown; self?: {activity?: string; doing?: unknown} | null};
-    return {id, kind: 'soul', name: mind.name, state: {...(seen.soul?.description ? {description: seen.soul.description, untrusted: true} : {}), ...(seen.now ? {now: seen.now} : {}), ...(seen.self ? {activity: seen.self.activity} : {})}};
+    const seen = L.publicSoul(id) as {soul?: {description?: string | null}; now?: unknown; self?: {activity?: string; doing?: unknown} | null; timeline?: unknown[]};
+    return {id, kind: 'soul', name: mind.name, state: {...(seen.soul?.description ? {description: seen.soul.description, untrusted: true} : {}), ...(seen.now ? {now: seen.now} : {}), ...(seen.timeline?.length ? {timeline: seen.timeline.slice(0, TIMELINE_PAGE)} : {}), ...(seen.self ? {activity: seen.self.activity} : {})}};
   }
   if (L.concealedThing?.(id)) return null;
   const item = L.together.publicItems().find(i => i.id === id);
