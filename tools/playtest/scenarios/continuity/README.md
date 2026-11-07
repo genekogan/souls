@@ -308,3 +308,14 @@ persistence verification remain `not-checked`. Durable rows still require native
 archive ACKs plus metadata helper closure. Private incremental NDJSON, usage,
 native outcomes and exact process-group cleanup are preserved in both modes;
 ephemeral does not excuse unverified cleanup or erase the behavioral summary.
+
+## Wake cost
+
+`wake-cost.mjs` measures what presence wakes cost in a busy room (#486): N Souls wait in one room of a real fake-mind world while
+visitors come and go, one Soul waits elsewhere, and each waiting Soul's real stream goes through the runtime's own attention rule
+and cooldown. No model and no host run, so a wake reads `here` once: a live agent may read more, and each wake also costs it a turn.
+
+```bash
+node tools/playtest/scenarios/continuity/wake-cost.mjs --souls 6 --seconds 300 --every 30 [--runtime <another checkout>]
+```
+
