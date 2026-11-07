@@ -175,6 +175,10 @@ jobs:
               # #1061: not a gate step; picked by ci-scope.mjs from its own paths
               node --test --test-concurrency=4 tools/soul-actions/*.test.mjs
               ;;
+            soul-tools)
+              # #1111: not a gate step; picked by ci-scope.mjs from its own paths
+              node --test --test-concurrency=4 tools/soul-runtime/*.test.mjs tools/soul-trace/*.test.mjs
+              ;;
             server)
               node --input-type=module <<'NODE'
           import { spawnSync } from 'node:child_process';

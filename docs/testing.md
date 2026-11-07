@@ -131,6 +131,11 @@ loaded laptop. It is picked by its own paths (`tools/soul-actions`, `apps/server
 `packages/engine-*`) and by every full-scope run, including each push to main, and a failure blocks through `ci-ok`. It
 is not a gate step, so the gate's suite tree and cached baseline don't change.
 
+**Soul runtime and trace tests.** `tools/soul-runtime/*.test.mjs` and `tools/soul-trace/*.test.mjs` run as the CI job
+`soul-tools`, about 17 s measured on a loaded laptop. It is picked by its own paths (`tools/soul-runtime`,
+`tools/soul-trace`, `tools/world-launcher/soul`, `apps/server`) and by every full-scope run, and a failure blocks through
+`ci-ok`. Like `soul-actions`, it is not a gate step.
+
 **Self-hosted runners.** The heavy `qualify` legs run on the runners named by the repository variable
 `CI_HEAVY_RUNNER` when it is set (one label, such as `souls-ci`), else on GitHub-hosted runners. The browser `smoke` leg
 and the `native` leg always stay GitHub-hosted: `native` has a wall-clock budget that a loaded shared host misses
