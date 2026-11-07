@@ -246,6 +246,12 @@ test('opted-in resume keeps the provider a retained thread was created with',asy
   assert.deepEqual(legacy.requests.find(r=>r.method==='thread/resume').params.config,caller,'a legacy built-in thread is resumed unchanged');assert.deepEqual(connected.transport,{providerId:null,idleTimeoutMs:null,authMode:null,reason});
  }
 });
+test('#488: an unanswered thread read keeps the provider the checkpoint recorded',async t=>{
+ const kept=selection(t,{recorded:null});const connected=await kept.host.connect({threadId:'soul-thread',config:caller,soulTransport:true,threadProvider:SOUL_PROVIDER_ID});
+ assert.equal(kept.requests.find(r=>r.method==='thread/resume').params.config.model_provider,SOUL_PROVIDER_ID,'not flipped to the default');assert.equal(connected.transport.reason,'applied');
+ const other=selection(t,{recorded:'openai'});await other.host.connect({threadId:'legacy-thread',config:caller,soulTransport:true,threadProvider:SOUL_PROVIDER_ID});
+ assert.deepEqual(other.requests.find(r=>r.method==='thread/resume').params.config,caller,'what the host reports wins');
+});
 for(const [label,options,reason] of [
  ['refused account read',{account:null},'auth-unknown'],
  ['unanswered account read',{account:'silent',options:{requestTimeoutMs:200}},'auth-unknown'],
