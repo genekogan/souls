@@ -18,7 +18,9 @@ export type HarvestPlan = { steps: Step[]; summary: string };
 export const HARVEST_REACH = 20;
 /** Seconds the picking hand stays in the plants after its contact (it closes on the fruit or the stems). */
 export const PICK_HOLD_SECONDS = 0.7;
-const GRACE_TICKS = 1200, STAND_GAP = HUMAN_RADIUS + 0.08;
+const GRACE_TICKS = 1200, EDGE_GAP = HUMAN_RADIUS + 0.04, STAND_GAP = HUMAN_RADIUS + 0.08;
+/** A vessel this near (m) is taken from where the Soul stands, under `take_item`'s own HERE_REACH (0.85 m). */
+const TAKE_REACH = 0.8;
 /** The picking hand reaches this far into the bed from its near edge (m), and the body stands this far to the right of the
  *  plant so the left hand reaches it straight ahead. */
 const INTO_BED = 0.13, HAND_LEFT = 0.17;
@@ -60,15 +62,35 @@ export function createHarvest(h: HarvestHost) {
   const walk = (st: Vec3, face: number): Step => ({ verb: 'mars:walk_to', params: { x: r3(st[0]), z: r3(st[2]), level: 0, face: r3(face) } });
   const LET_GO: Step = { verb: 'mars:let_go_v1', params: {} };
 
-  /** Why a vessel that is not held cannot be fetched, or null. The fetch is `take_item` alone, as a pick-up is: it finds its
-   *  own station within reach. A stand of our own beside each vessel put two Souls at one table on stands closer than two
-   *  bodies, from which `take_item` walked on round the table through the other Soul (#1214). */
-  function fetchProblem(id: string): Refusal | null {
-    const x = ents()[id], s = x?.support, name = M().pathOf(id);
-    if (!x?.pose?.p) return { code: 'harvest.vessel-gone', reason: `${name} is not there any more.` };
+  /** The steps to take a vessel that is not held. The walk is a step of the act, with the engine's limits on a blocked walk,
+   *  and it ends where the vessel is in reach, so `take_item` needs no walk of its own: that one has no limit, and from a
+   *  stand out of reach it went on round the table through the next Soul (#1214). On a table or a counter, the nearest side
+   *  with the vessel in reach; on the ground, a step from it on the Soul's side. */
+  function fetchSteps(id: string, me: Vec2): Step[] | Refusal {
+    const x = ents()[id], s = x?.support, it = x?.pose?.p as Vec3 | undefined, name = M().pathOf(id);
+    const TAKE: Step = { verb: 'mars:take_item', params: { item: id, hand: 'right' } };
+    if (!it) return { code: 'harvest.vessel-gone', reason: `${name} is not there any more.` };
+    if (s?.kind === 'resting-on') {
+      const owner = M().entities.get(s.on), odef = owner && M().resolvedDef(owner.def);
+      if (owner && odef) {
+        const wp = M().worldPose(owner), hx = odef.size.box[0] / 2 * wp.s, hz = odef.size.box[2] / 2 * wp.s, c = Math.cos(wp.yaw), sn = Math.sin(wp.yaw);
+        const lx = (it[0] - wp.x) * c - (it[2] - wp.z) * sn, lz = (it[0] - wp.x) * sn + (it[2] - wp.z) * c;
+        const sides: [Vec2, Vec2][] = [[[lx, hz], [0, 1]], [[lx, -hz], [0, -1]], [[hx, lz], [1, 0]], [[-hx, lz], [-1, 0]]];
+        const stands = sides.flatMap(([e, n]) => [EDGE_GAP, EDGE_GAP + 0.06, EDGE_GAP + 0.12].map((g) => toWorld(wp, [(e[0] + n[0] * g) / wp.s, 0, (e[1] + n[1] * g) / wp.s])))
+          .filter((st) => Math.hypot(st[0] - it[0], st[2] - it[2]) <= TAKE_REACH && clear(st))
+          .sort((a, b) => Math.hypot(a[0] - me[0], a[2] - me[1]) - Math.hypot(b[0] - me[0], b[2] - me[1]));
+        if (!stands.length) return [LET_GO, TAKE]; // deep on a wide table: only `take_item`'s own station reaches it
+        return [walk(stands[0], Math.atan2(it[2] - stands[0][2], it[0] - stands[0][0])), LET_GO, TAKE];
+      }
+    }
     if (s?.kind === 'in-hand') return { code: 'harvest.vessel-held', reason: `Someone else is holding ${name}.` };
-    if (s?.kind !== 'ground' && !(s?.kind === 'resting-on' && M().entities.has(s.on))) return { code: 'harvest.vessel-not-down', reason: `${name} is not on a table, a counter or the ground; take it out first.` };
-    return null;
+    if (s?.kind !== 'ground') return { code: 'harvest.vessel-not-down', reason: `${name} is not on a table, a counter or the ground; take it out first.` };
+    const d = Math.hypot(me[0] - it[0], me[1] - it[2]) || 1, u: Vec2 = [(me[0] - it[0]) / d, (me[1] - it[2]) / d];
+    for (const g of [0.45, 0.55, 0.65]) {
+      const st: Vec3 = [it[0] + u[0] * g, 0, it[2] + u[1] * g];
+      if (clear(st)) return [walk(st, Math.atan2(-u[1], -u[0])), LET_GO, TAKE];
+    }
+    return { code: 'harvest.vessel-blocked', reason: `There is no room to stand by ${name} to pick it up.` };
   }
 
   /** The act for a vessel's `harvest`: a refusal with its reason, the steps, or null (not a harvest vessel). */
@@ -120,7 +142,7 @@ export function createHarvest(h: HarvestHost) {
     }
     if (!st) return { code: 'harvest.planter-blocked', reason: `There is no room to stand at ${m.pathOf(ripe)} to pick from it.` };
     const steps: Step[] = [];
-    if (!held) { const no = soul.soulId ? h.denied?.(id, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null; if (no) return no; const f = fetchProblem(id); if (f) return f; steps.push(LET_GO, { verb: 'mars:take_item', params: { item: id, hand: 'right' } }); }
+    if (!held) { const no = soul.soulId ? h.denied?.(id, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null; if (no) return no; const f = fetchSteps(id, me); if ('code' in f) return f; steps.push(LET_GO, ...f); }
     steps.push(walk(st, face), LET_GO, { verb: 'mars:hand_actuator_v1', params: { target: ripe, at: at.map(r3), hand: 'left', hold: PICK_HOLD_SECONDS } });
     planned.set(soul.entityId, { vessel: id, planter: ripe });
     // the pick happens at the hand's contact (and is checked again there): the summary says what the act does
@@ -134,12 +156,12 @@ export function createHarvest(h: HarvestHost) {
   }
 
   // ---- the world changes at the hand's contact ----
-  const watching = new Map<string, number>(), fired = new Set<string>(), planned = new Map<string, { vessel: string; planter: string }>(), acting = new Map<string, { vessel: string; planter: string; reached?: true }>();
+  const watching = new Map<string, number>(), fired = new Set<string>(), planned = new Map<string, { vessel: string; planter: string }>(), acting = new Map<string, { vessel: string; planter: string; since?: number; reached?: true }>();
   /** What the hand's contact came to, kept for the receipt when the act's steps end (`outcome`). */
   const touched = new Map<string, { vessel: string; failure: Refusal | null }>();
   let visits = 0;
   /** A body was given a picking act: watch its motions until they are done (with a minute's grace before them). */
-  function expect(body: string) { const p = planned.get(body); if (!p) return; acting.set(body, p); touched.delete(body); watching.set(body, h.engine.world.tick + GRACE_TICKS); }
+  function expect(body: string) { const p = planned.get(body); if (!p) return; acting.set(body, { ...p, since: h.engine.world.tick }); touched.delete(body); watching.set(body, h.engine.world.tick + GRACE_TICKS); }
   /** The pick itself: the planter back a stage and the vessel holding what was picked, in one commit, if the planter is
    *  still ripe for it and the vessel is in this body's hand. Otherwise why nothing was picked. */
   function pick(body: string, vessel: string, planter: string): Refusal | null {
@@ -173,13 +195,12 @@ export function createHarvest(h: HarvestHost) {
     const now = h.engine.world.tick, d = dt();
     for (const [body, until] of watching) {
       visits++;
-      const p = acting.get(body), am = ents()[body]?.human?.handActuator as HandActuatorMotion | undefined;
-      // a long fetch and walk keeps the watch while the vessel is in this body's hand (tea.ts, watering.ts)
-      const s = p ? ents()[p.vessel]?.support : undefined;
-      if (p && s?.kind === 'in-hand' && s.by === body && !(am && am.target === p.planter)) watching.set(body, now + GRACE_TICKS);
+      const p = acting.get(body), motion = ents()[body]?.human?.handActuator as HandActuatorMotion | undefined;
+      // this act's own hand motion on the planter, not an earlier one still easing back
+      const am = p && motion?.target === p.planter && motion.startTick >= (p.since ?? 0) ? motion : undefined;
       // the act's hand motion on the planter has ended (picked, or interrupted before the contact): nothing more to watch
-      if (p?.reached && !(am && am.target === p.planter)) { acting.delete(body); watching.delete(body); continue; }
-      if (p && am && am.target === p.planter) {
+      if (p?.reached && !am) { acting.delete(body); watching.delete(body); continue; }
+      if (p && am) {
         p.reached = true; watching.set(body, now + GRACE_TICKS);
         const key = am.actionId ?? `${body}:${am.startTick}`;
         if (!fired.has(key) && handActuatorFrame(am, (now - am.startTick) * d).contact) {

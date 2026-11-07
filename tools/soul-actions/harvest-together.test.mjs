@@ -68,6 +68,31 @@ test('the bed stops being ripe before the hand arrives: failed by name, nothing 
  assert.equal(g.state('basket').fruit ?? 0, 0, 'nothing in the basket'); assert.equal(g.state('bed').growth, 1, 'the bed as it was set');
 });
 
+// From every side of the table: the walk is a step of the act, so a head-on swap ends with a name instead of hanging, and
+// whatever the two receipts say is what the vessels hold. Starts (3, 0), (3, 0.3) and (4, 0) hung for good under `take_item`'s
+// own approach.
+test('two Souls at one table end truthfully from any start', {timeout: 240000}, async t => {
+ for (const start of [[3, 0], [3, 0.3], [4, 0], [0, 3], [5, 3], [1.5, -1], [2.5, 4], [-1, 2]]) {
+  await t.test(`Ben from ${start}`, async t => {
+   const g = await garden(t, table, start);
+   const [a, b] = await g.end([await g.act(g.ana, 'basket'), await g.act(g.ben, 'vase')], 3200);
+   for (const [r, vessel, field, bed, was] of [[a, 'basket', 'fruit', 'bed', 4], [b, 'vase', 'flowers', 'flower-bed', 3]]) {
+    assert.ok(ENDED.includes(r.phase), `${vessel} ended: ${JSON.stringify(r).slice(0, 300)}`);
+    assert.equal(g.state(vessel)[field] ?? 0, r.phase === 'completed' ? 3 : 0, `${vessel}: ${r.phase} ${r.code}`);
+    assert.equal(g.state(bed).growth, r.phase === 'completed' ? was - 1 : was, `${bed}: ${r.phase} ${r.code}`);
+    if (r.phase === 'failed') assert.ok(r.code, 'failed by name');
+   }
+   assert.ok([a, b].some(r => r.phase === 'completed'), `at least one finished: ${JSON.stringify([a.code, b.code])}`);
+  });
+ }
+});
+
+test('a vessel on the ground is fetched from any distance', {timeout: 60000}, async t => {
+ const g = await garden(t, (ax, az) => [{op: 'place', def: 'core/garden-planter@2', name: 'bed', p: [ax + 4.9, az + 3.9], state: {growth: 4, moisture: 1}}, {op: 'place', def: 'core/harvest-basket@1', name: 'basket', p: [ax + 1.5, az + 2.4]}], [9, -6]);
+ const [a] = await g.end([await g.act(g.ana, 'basket')]);
+ assert.equal(a.phase, 'completed', JSON.stringify(a).slice(0, 300)); assert.equal(g.state('basket').fruit, 3);
+});
+
 // The faculty alone, on a clock the test turns: a walk can outlast any grace, and an act that never touched says so.
 test('the watch outlives a hold-up while the act is open, and only a contact makes a pick', {timeout: 60000}, async t => {
  const g = await garden(t, table), {model} = g.god, basket = g.id('basket'), bed = g.id('bed'), me = g.ana.entityId;
@@ -85,6 +110,6 @@ test('the watch outlives a hold-up while the act is open, and only a contact mak
  assert.equal(commits.length, 1, 'the contact picked, long after the first minute'); assert.equal(h.outcome(capability, me, false), 'done', 'a hold cut short after the pick is still a pick');
  assert.equal(h.outcome(capability, me, true).code, 'harvest.not-picked', 'an outcome is read once');
  delete world.entities[me].human.handActuator; run(2); assert.equal(h.watchingCount(), 0, 'the hand is back: nothing watched');
- world.entities[basket].support = {kind: 'ground'}; plan(); open = false; run(1300);
- assert.equal(h.watchingCount(), 0, 'an act that has closed loses its watch at the end of the grace'); assert.equal(commits.length, 1);
+ plan(); open = false; run(1300);
+ assert.equal(h.watchingCount(), 0, 'an act that has closed loses its watch at the end of the grace, the vessel still held'); assert.equal(commits.length, 1);
 });
