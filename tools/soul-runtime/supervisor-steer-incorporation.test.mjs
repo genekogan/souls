@@ -31,7 +31,7 @@ class SteerHost extends EventEmitter{
 }
 function fixture(t){
  t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:origin});
- const directory=mkdtempSync(join(tmpdir(),'sim-steer-incorporation-')),journal=openJournal(directory,{worldId:'w',soulId:'s'}),host=new SteerHost(),stop=new AbortController(),commands=[],states=[];
+ const directory=mkdtempSync(join(tmpdir(),'souls-steer-incorporation-')),journal=openJournal(directory,{worldId:'w',soulId:'s'}),host=new SteerHost(),stop=new AbortController(),commands=[],states=[];
  const instruction='Reply once to the presenter when the session opens.';
  journal.ingest({source:'owner',after:null,cursor:'original-owner',events:[{id:'original-owner',text:instruction}]});journal.handled('owner','original-owner','notification incorporated; task still open');
  const fence=journal.control.claim('prior');journal.control.save(fence,0,{threadId:host.threadId,initialInstruction:instruction,plan:'Wait for the session to open',wakeAt:null,listenTo:[]});journal.control.release(fence);
@@ -165,4 +165,15 @@ test('timer steers occupy item positions and merged references stay within promp
  assert.equal(steerIncorporation(active,{...done(items,3),status:'interrupted'},[],1),null);
  const wide={steerIds:['wide000000000001'],pulses:[{carried:{steerId:'wide000000000001',facts:Array.from({length:20},(_,i)=>fact(200+i))}}]};
  assert.equal(steerIncorporation(wide,done([null,'wide000000000001'],2),Array.from({length:90},(_,i)=>fact(i+1)),1),null,'more than the prompt fact bound keeps the replan');
+});
+
+test('#488: a turn with more than one agent message is reported, without its text; one message says nothing',async t=>{
+ const f=fixture(t);
+ try{
+  await flush();assert.equal(f.host.calls.length,1);
+  f.host.finish('turn-1',{text:'A preamble\n'+say('Welcome, I am here'),finalText:say('Welcome, I am here'),inputs:{userMessages:1,agentMessages:2,finalAfter:1,steerIds:[null]}});await flush();
+  const seen=f.states.filter(s=>s.state==='decision-multiple-messages');assert.equal(seen.length,1);assert.equal(seen[0].turnId,'turn-1');assert.equal(seen[0].agentMessages,2);
+  assert.doesNotMatch(JSON.stringify(seen[0]),/preamble/,'an id and a count, no model text');
+  assert.equal(f.journal.control.checkpoint().value.threadProvider,null,'a host with no Soul transport records none');
+ }finally{await f.cleanup();}
 });

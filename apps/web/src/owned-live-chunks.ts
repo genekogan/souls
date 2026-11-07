@@ -1,4 +1,4 @@
-import {recordedTakeChunkSchema,type RecordedTakeChunk} from '@sim/protocol';
+import {recordedTakeChunkSchema,type RecordedTakeChunk} from '@souls/protocol';
 // Only this module can brand a validated, detached, deeply immutable wire chunk.
 // Mutable caller objects are never identity-cached or frozen in place.
 const owned=new WeakSet<object>();

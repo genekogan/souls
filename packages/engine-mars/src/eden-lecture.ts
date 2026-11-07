@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {hashOf,edenLecturePlacementV1Schema,type EdenLecturePlacementV1} from '@sim/engine-contract';
+import {hashOf,edenLecturePlacementV1Schema,type EdenLecturePlacementV1} from '@souls/engine-contract';
 import {CATALOG} from '../../../mars/viewer/engine/world/catalog.ts';
 import {add2,rot2,wrapAngle} from '../../../mars/viewer/engine/core/math.ts';
 import type {Entity,Region} from '../../../mars/viewer/engine/world/types.ts';

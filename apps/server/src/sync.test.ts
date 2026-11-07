@@ -8,7 +8,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
-import { Connection } from '@sim/client';
+import { Connection } from '@souls/client';
 
 const PORT = 4951; // Core's reserved local range; suite runs serially.
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -23,7 +23,7 @@ const api = async (path: string, token: string, body?: unknown, method?: string)
 
 before(async () => {
   proc = spawn(process.execPath, [new URL('./main.ts', import.meta.url).pathname], {
-    env: { PATH: process.env.PATH, PORT: String(PORT), HOST: '127.0.0.1', DATA_DIR: mkdtempSync(join(tmpdir(), 'sim-sync-')), BRAIN_MODE: 'fake', MIND_DRIVER: 'central', DEV_AUTH: '1', PUBLIC_URL: BASE, WEB_DIR: '/nonexistent', INVITE_REQUIRED: '1' },
+    env: { PATH: process.env.PATH, PORT: String(PORT), HOST: '127.0.0.1', DATA_DIR: mkdtempSync(join(tmpdir(), 'souls-sync-')), BRAIN_MODE: 'fake', MIND_DRIVER: 'central', DEV_AUTH: '1', PUBLIC_URL: BASE, WEB_DIR: '/nonexistent', INVITE_REQUIRED: '1' },
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(`${BASE}/healthz`)).ok) return; } catch { /* not up yet */ } await sleep(200); }

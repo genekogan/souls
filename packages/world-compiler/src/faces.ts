@@ -1,7 +1,7 @@
 // XP8 admission: faces and decals may show only image assets registered to this world (the WD8 sign-media rule), and a
 // building's decals must name one of its own wall slots and stay on that wall. Refusals are `params.invalid` with the
 // field and a fix.
-import { FACE_IMAGE, FACE_LIMITS, GENERATORS, decalSchema, faceContentIssues, type Decal, type Slot } from '@sim/generators';
+import { FACE_IMAGE, FACE_LIMITS, GENERATORS, decalSchema, faceContentIssues, type Decal, type Slot } from '@souls/generators';
 import type { WorldModel } from './model.ts';
 import type { Failure, StoredDef } from './schemas.ts';
 

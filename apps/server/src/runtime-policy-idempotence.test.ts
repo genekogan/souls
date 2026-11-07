@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {setImmediate} from 'node:timers/promises';
-import {Db} from './db.ts';import {WorldHost} from './world.ts';import {marsFactory,GREEN_FIELD_WORLD} from '@sim/engine-mars';
+import {Db} from './db.ts';import {WorldHost} from './world.ts';import {marsFactory,GREEN_FIELD_WORLD} from '@souls/engine-mars';
 // The release gate compares tests by title: this keeps the 403 title, now also covering the occupied-link routing and
 // concurrent link egress policies (continuity, 3f99ee356 / a126b2101) and a restart from the pre-activation snapshot.
 test('prospective courtesy/fixture/rest policies preserve exact head/hash after snapshot and genesis restart',async()=>{

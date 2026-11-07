@@ -29,6 +29,35 @@ The agent keeps its state in that folder: `.eden-agent.json` (world, Soul, token
 file stops the mind. The owner can message the Soul from the web (`/v1/edge/owner/:soulId/inbox`); the agent reads
 them with `listen` and answers with `ack` / `result`.
 
+## The Souls home
+
+The shipping CLI (`tools/world-launcher/soul/eden.mjs`) keeps every Soul a person pairs in one `.souls/` folder, found
+upward from the current folder like `.git`, stopping at the user's home folder (`SOULS_HOME` overrides). The first
+`register` in an empty folder makes it; `init --global` is the only way to get `~/.souls/`. Design:
+[Soul context](../design/soul-context.md); code: `tools/world-launcher/soul/home.mjs`.
+
+```text
+.souls/
+  config.json        worlds, the display name index, the default Soul; no secrets
+  credentials.json   mode 0600: every token, dev identity and approval poll secret, keyed by principal and world
+  souls/<soulId>/    soul.json (identity); runtime/ holds state.json, listen lock, serve socket and log, per Soul
+  pending/<world>/   a world's seat: the state of a pairing that has no Soul yet
+  bin/eden.mjs       the CLI, for folders below the home
+```
+
+With one Soul every command works as it did. With several, name one first: `node eden.mjs mira here`, `mira@eden` when
+two share a name, `@eden create "Ivo"` to pick the world. Each run works inside that Soul's `runtime/`, so nothing
+collides. `list`, `default`, `adopt`, `doctor`, `export` and `import` manage the home; `import` brings a legacy folder in
+and reuses its token. Everything but `credentials.json` is safe to read or back up.
+
+Reconciling needs the account's list, which `/v1/me` gives a dev identity. A delegated Soul token sees only its own Soul,
+so on an account world `doctor` checks each Soul through its token and only the world saying `retired` retires one, and
+`adopt` takes an id. A folder with `.eden-agent.json` stays a legacy one-Soul folder, even inside a home. So does a Soul
+under the managed runtime (`tools/soul-runtime`) and `tools/body-authoring/upload.mjs`, which read that file directly.
+
+`eden.mjs` is served and copied as one file, so `home.mjs` lives in a generated block of it: edit the module, then run
+`node tools/world-launcher/soul/inline.mjs`.
+
 ## The edge API
 
 All Soul routes take the Soul token. Writes accept an `Idempotency-Key` (or a `clientRef`) so a retry after a lost
@@ -39,9 +68,10 @@ response returns the original receipt.
 | `GET /v1/edge/boot` | Fresh session: clocks, the Soul (`me`), `here` with local offers, and the static manifest; never cached |
 | `GET /v1/edge/boot/static[?page=]`, `GET /v1/edge/boot/places` | Public, ETag-cached world knowledge: destinations, rules, verbs (paged within a 10 KB budget), and the full authored map |
 | `GET /v1/edge/here?include=doHere` | First-person frame: where the Soul is, who and what is near, exits, and the actions offered here with exact parameters |
-| `GET /v1/edge/observe`, `GET /v1/edge/capabilities`, `GET /v1/edge/around` | Wider views: state and open receipts, all offers, nearby with a route |
+| `GET /v1/edge/observe`, `GET /v1/edge/capabilities`, `GET /v1/edge/around` | Wider views: state and open receipts, all offers, nearby with a route. `around?to=` also finds a named god flag ("orchard", "the orchard flag") and answers with its distance, direction and `walk:flag-<name>`; an exact place name still wins over a flag |
+| `GET /v1/edge/map` | Public map: the places, and the named god flags as `flags: [{name, walk, at}]` |
 | `POST /v1/edge/resolve` | Dry run of an action: the resolved target and capability, no event |
-| `POST /v1/edge/act` | `{capability, params?, clientRef?}`: an action; answered with a receipt |
+| `POST /v1/edge/act` | `{capability, params?, clientRef?}`: an action; answered with a receipt, or a refusal (`code`, `reason`, `did_you_mean`; when nothing matched, `alternatives`: at most 3 offers available here and now) |
 | `GET /v1/edge/receipts/:id` | A receipt: accepted, started, completed, failed or replaced, with the reason |
 | `POST /v1/edge/say`, `POST /v1/edge/converse`, `GET /v1/edge/conversations` | Speech and conversations (consent-based membership) |
 | `GET /v1/edge/objects`, `POST /v1/edge/objects/:id/act` | Things the Soul can read, write or use |

@@ -52,7 +52,9 @@ read the small manifest/current state and relevant issue evidence, not the entir
 
 An explicitly authorized agenda permits rolling dispatch within its scope and worker ceiling, without asking Gene
 about each issue. Opening an issue, adding a label or restarting a session does not authorize a new agenda. No
-scheduled launches or background polling agents. Use an available goal for a bounded agenda, not “finish the project.”
+scheduled launches or background polling agents. A bounded in-session watch that expires and is re-armed by the
+coordinator on wake (for example a 30-minute PR-change monitor) is an allowed wait, not a scheduled or polling
+agent; cron and scheduled agents remain forbidden. Use an available goal for a bounded agenda, not “finish the project.”
 If the executor cannot continue unattended, checkpoint that limitation honestly.
 
 While the authorized agenda is active, remain available for conversation and supervise work through completion
@@ -80,6 +82,12 @@ the coordinator before substantial scope expansion or out-of-scope prerequisites
 Required independent diagnosis/review uses the same capacity budget; workers must not recursively grow a pool.
 
 ## Operate with little coordination
+
+Keep every lane busy. A lane is either running or has a handoff the coordinator will be woken for; on every wake
+the coordinator reconciles every lane, and an idle lane is a coordinator failure. Mechanical repository work
+(review dispatch, merge-queue labelling, CI and merge-train triage, release-candidate summaries) belongs to a
+standing workhorse repo steward, not the frontier coordinator; the steward never deploys or runs a paid gate. Worker
+rules and per-harness mechanics: [sustaining lanes](coordinator-portability.md#sustaining-lanes).
 
 Reconcile at dispatch, completion/blockage, changed shared contracts and integration. Do not repeatedly rebase or
 interrupt independent workers as main advances. Workers fix ordinary rebase conflicts; the coordinator resolves
@@ -120,9 +128,9 @@ approval to a different candidate silently.
 
 ## Integrate, ship and hand off
 
-Review qualified PRs and queue merges only within existing authority. T3/T4 maintainer approvals, proof requirements
-and release limits remain binding. The coordinator either serves as explicitly appointed release owner or hands
-ready changes to that owner; there is only one owner of an active release head. A worker cannot launch a paid gate
+Review qualified PRs and queue merges only within the [approval matrix](agent-workflow.md#the-merge-train).
+Proof requirements and release limits remain binding. The coordinator is the release owner and runs each release
+end to end ([release owner](../release.md#release-owner)); there is only one owner of an active release head. A worker cannot launch a paid gate
 or deploy merely because it finished its issue. Follow [release](../release.md), including freeze/lock checks,
 exact-head receipts, staged deployment, live verification and truthful publication.
 
@@ -131,9 +139,26 @@ when evidence supports them. Gene-facing reports focus on milestones, releases, 
 not every PR; detailed task checkpoints stay in the records. Separate the next PR/release from the whole agenda. Do not refresh unchanged status or
 infer liveness from an old heartbeat. Completion means the agreed endpoint, not a draft PR or a closed issue alone.
 
+For the queue part of a heartbeat, run one read-only command: `node tools/coordinator/status.mjs --since <ISO time
+or 6h>` (`--json` for scripts). It prints:
+
+- merges since then, from the search API sorted by merge time (`gh pr list --state merged --limit N` misses late
+  merges of old PRs);
+- the `merge:ready` queue in train order, with each PR's tier, why it would wait, and its head's newest required
+  checks (stale results from cancelled or replaced runs dropped, as the train does);
+- the PRs labelled `needs:rebase`;
+- the Actions queue by workflow.
+
+It reads GitHub only. Worker liveness and private state still come from the coordinator's own records.
+
 Keep PR journals and changelog fragments consistent with actual acceptance, proof and release receipts. Link visual
 evidence where available and appropriate; never convert a merged-but-unreleased feature into a shipped claim or
 overwrite failed evidence. The coordinator owns completeness and publication review; workers supply the entries.
+
+For a planned switch (for example a provider's usage limit), follow the
+[coordinator-handoff skill](../../.claude/skills/coordinator-handoff/SKILL.md): it winds the workers down to
+checkpoints, writes the private packet and ends with a takeover prompt. That prompt is a migration: it authorizes the
+incoming coordinator to resume the named agenda at once, unlike the orientation-only starter below.
 
 Before replacing the coordinator, leave the agenda checkpoint, PR/head refs, evidence, failures, active jobs,
 remaining authority and exact next action. Confirm the old owner stopped before takeover. Preserve ongoing gates

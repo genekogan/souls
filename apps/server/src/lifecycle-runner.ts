@@ -1,8 +1,8 @@
 // Internal opt-in native producer. Production bootstrap/HTTP do not install it.
-import { TERMINAL } from '@sim/engine-contract';
-import { probeNativeHumanBirth } from '@sim/engine-mars';
+import { TERMINAL } from '@souls/engine-contract';
+import { probeNativeHumanBirth } from '@souls/engine-mars';
 import { planNativeBirth } from './arrival-placement.ts';
-import { soulLifecycleSchema, ownerLifecycleListSchema, type SoulLifecycle } from '@sim/protocol';
+import { soulLifecycleSchema, ownerLifecycleListSchema, type SoulLifecycle } from '@souls/protocol';
 import { LifecycleJournal, type LifecycleOperation, type LifecycleScope } from './lifecycle-journal.ts';
 import type { WorldHost } from './world.ts';
 

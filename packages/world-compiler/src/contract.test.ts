@@ -1,7 +1,7 @@
 // Contract-commit features: kit/2 defs, float anchoring, facing, clone, prefab when/repeat, river water, generator registry.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeGenerators } from '@sim/generators';
+import { describeGenerators } from '@souls/generators';
 import { CORE_KIT, WorldModel, applyBatch, coreRef, type Accepted, type Refused } from './index.ts';
 
 function fresh() { const w = new WorldModel({ constants: { extent: 1000, ground: 'land' }, seed: 'contract' }); for (const d of CORE_KIT) w.defineDef(d, 'core', 0); return w; }

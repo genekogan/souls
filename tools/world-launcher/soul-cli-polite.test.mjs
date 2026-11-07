@@ -17,7 +17,7 @@ const busy = (res, code = 'world.busy', after = 4, status = code.startsWith('sou
   json(res, status, { error: { code, message: 'synthetic busy' }, world: { load: 'red', retry_after_s: after, note: 'It is crowded here right now; things take a little longer.' } }, { 'retry-after': String(after), 'x-sim-load': 'red' });
 
 async function fixture(t, respond) {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-polite-')), seen = [];
+  const dir = mkdtempSync(join(tmpdir(), 'souls-polite-')), seen = [];
   const server = createServer((req, res) => {
     let body = ''; req.on('data', c => { body += c; });
     req.on('end', () => { seen.push({ method: req.method, url: req.url, key: req.headers['idempotency-key'] ?? null, body: body ? JSON.parse(body) : null, at: Date.now() }); respond(req, res, seen.length); });
@@ -82,7 +82,7 @@ test('act and say retry with the same Idempotency-Key and body after a busy refu
     if (req.url === '/v1/edge/act') return json(res, 200, { accepted: true, receipt: { id: 'r_1', phase: 'running' }, channel: 'body' });
     return json(res, 200, { said: true });
   });
-  const got = await f.run('act', 'wave');
+  const got = await f.run('act', 'wave:here');
   assert.equal(got.code, 0, got.stderr);
   const acts = f.seen.filter(s => s.url === '/v1/edge/act');
   assert.equal(acts.length, 3);

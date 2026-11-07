@@ -69,9 +69,9 @@ try {
       await page.locator('[data-create]').click();
       await page.waitForURL(/\/w\/[a-z0-9-]+\/\?dev=1&new=1/, { timeout: PAGE_MS });
       const slug = new URL(page.url()).pathname.split('/')[2];
-      await page.waitForFunction(() => window.__simEntity?.layer?.active === true && window.__simEntity.layer.drawn?.size > 5, null, { timeout: PAGE_MS });
+      await page.waitForFunction(() => window.__soulsEntity?.layer?.active === true && window.__soulsEntity.layer.drawn?.size > 5, null, { timeout: PAGE_MS });
       const status = await (await fetch(`${origin}/w/${slug}/v1/god/status`, { headers: { authorization: 'Bearer dev:admin' } })).json();
-      const drawn = await page.evaluate(() => window.__simEntity.layer.drawn.size);
+      const drawn = await page.evaluate(() => window.__soulsEntity.layer.drawn.size);
       // the page's own camera, then the comparison view (Mars: roofs off, the camp rooms are open-topped)
       if (view.roofsOff) await page.evaluate(() => { globalThis.__buildingView = { hideRoofs: true }; });
       await page.addInitScript((off) => { globalThis.__buildingView = { hideRoofs: off }; }, !!view.roofsOff);

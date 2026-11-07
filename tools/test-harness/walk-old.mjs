@@ -10,10 +10,10 @@ const worlds=['eden','mars','littlemartians'];const W=1352,H=780;
 const geometry=()=>{const c=document.querySelector('canvas[aria-label="Live 3D view of the world"]');const r=c?.getBoundingClientRect();return {window:[innerWidth,innerHeight],dpr:devicePixelRatio,canvasCss:r&&[Math.round(r.width),Math.round(r.height)],buffer:c&&[c.width,c.height]};};
 const ui=()=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden';};
  return {buttons:[...document.querySelectorAll('header button, header a, .hud-actions button, .hud-actions a, summary')].filter(vis).map(e=>(e.getAttribute('aria-label')||e.textContent||'').trim().replace(/\s+/g,' ').slice(0,40)).sort(),
-  godPanel:!!document.querySelector('.god-panel, [data-god-panel]'),simEntity:'__simEntity' in window,dialogs:document.querySelectorAll('[role=dialog]').length,
+  godPanel:!!document.querySelector('.god-panel, [data-god-panel]'),simEntity:'__soulsEntity' in window,dialogs:document.querySelectorAll('[role=dialog]').length,
   arrival:!!document.querySelector('.viewer-arrival'),revealed:document.querySelector('.world-canvas-host')?.getAttribute('data-initial-revealed')??null,
   title:document.title};};
-const cam=()=>globalThis.__simCamera??null;
+const cam=()=>globalThis.__soulsCamera??null;
 const moved=(a,b,k)=>!!(a&&b)&&a[k].some((v,i)=>Math.abs(v-b[k][i])>0.01);
 const release=await chromeLease('rec-old-worlds');const report=[];
 try{for(const dpr of [1,2]){const browser=await chromium.launch({channel:'chrome',headless:true,args:['--ignore-gpu-blocklist']});

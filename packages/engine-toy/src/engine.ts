@@ -2,7 +2,7 @@ import {
   Runtime, createRegistry, describeVerbs, hashOf, nextFloat, physicalView,
   type ActionDef, type ActivityOption, type Anchor, type ChangeEvent, type Diagnostic, type Engine, type EngineFactory, type Entity,
   type Intent, type Invariant, type PathCommit, type PoseSample, type Program, type ProgramEvent, type RuntimeSnapshot, type Vec3, type WorldState,
-} from '@sim/engine-contract';
+} from '@souls/engine-contract';
 import { HALF, START_DATETIME, TOY_RULES_VERSION, TOY_SCHEMA, genesis } from './world.ts';
 import { PRIMITIVES, distMm, doActivity, mmOf, occupancy, type ToyServices } from './verbs.ts';
 

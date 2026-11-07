@@ -5,7 +5,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openJournal} from './journal.mjs';
-import {runSupervisor,AMBIENT_WAKE_MS,AMBIENT_SETTLE_MS,PRESENCE_COOLDOWN_MS} from './supervisor.mjs';
+import {runSupervisor,AMBIENT_WAKE_MS,AMBIENT_SETTLE_MS,PRESENCE_COOLDOWN_MS,PRESENCE_RETURN_ABSENCE_MS} from './supervisor.mjs';
 import {abortableSleep} from './receiver.mjs';
 
 const origin=Date.parse('2026-10-30T12:00:00.000Z');
@@ -23,7 +23,7 @@ class Host extends EventEmitter{
 }
 function fixture(t,{legacy}={}){
  t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:origin});
- const directory=mkdtempSync(join(tmpdir(),'sim-idle-default-')),commands=[],states=[];
+ const directory=mkdtempSync(join(tmpdir(),'souls-idle-default-')),commands=[],states=[];
  let journal=openJournal(directory,{worldId:'world',soulId:'s_subject'}),host=new Host(journal),stop=new AbortController();
  if(legacy!==undefined){const fence=journal.control.claim('existing');journal.control.save(fence,0,legacy);journal.control.release(fence);}
  const initial=journal.control.checkpoint();
@@ -136,6 +136,31 @@ test('presence of one subject shuffling across a boundary wakes at most once per
   assert.equal(f.host.calls.length,2,'repeat presence of the same subject inside the cooldown does not wake');
   await advance(delivered+PRESENCE_COOLDOWN_MS-Date.now());f.ingest(presence('x15','leave.here','s_peer'));await advance(AMBIENT_SETTLE_MS);
   assert.equal(f.host.calls.length,3,'the first presence after the cooldown is prompt again');assert.deepEqual(f.host.calls[2].pending.filter(x=>x.event.kind==='leave.here'||x.event.kind==='arrive.here').map(x=>x.event.id).sort(),[...shuffled,'x15'].sort());assert.equal(f.host.steers.length,0);assert.equal(f.host.interrupts.length,0);
+ }finally{await f.cleanup();}
+});
+test('#468: a companion who left and came back wakes the Soul inside the cooldown; a short flap does not',async t=>{
+ const f=fixture(t),advance=async ms=>{for(let left=Math.max(0,ms);left>0;left-=1000){t.mock.timers.tick(Math.min(1000,left));await flush();}for(let i=0;i<2;i++){t.mock.timers.tick(100);await flush();}};
+ try{
+  await flush();f.host.finish({...wait(),wakeAt:far});await flush();f.ingest(presence('a0','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,2);
+  f.host.finish({...wait(),wakeAt:far});await flush();
+  await advance(10000);f.ingest(presence('l1','leave.here','s_peer'));await advance(60000);f.ingest(presence('a1','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);
+  assert.equal(f.host.calls.length,2,'gone for 60 s is not yet a return');
+  await advance(10000);f.ingest(presence('l2','leave.here','s_peer'));await advance(PRESENCE_RETURN_ABSENCE_MS+15000);f.ingest(presence('a2','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);
+  assert.equal(f.host.calls.length,3,'one wake on the return');assert.ok(f.host.calls[2].pending.some(x=>x.event.id==='a2'));
+  f.host.finish({...wait(),wakeAt:far});await flush();
+  await advance(10000);f.ingest(presence('a3','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,3,'that return restarted the cooldown');
+ }finally{await f.cleanup();}
+});
+test('#468: a departure that wakes the Soul itself still lets the return wake it',async t=>{
+ const f=fixture(t),advance=async ms=>{for(let left=Math.max(0,ms);left>0;left-=1000){t.mock.timers.tick(Math.min(1000,left));await flush();}for(let i=0;i<2;i++){t.mock.timers.tick(100);await flush();}};
+ try{
+  await flush();f.host.finish({...wait(),wakeAt:far});await flush();f.ingest(presence('a0','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,2);
+  f.host.finish({...wait(),wakeAt:far});await flush();
+  await advance(PRESENCE_COOLDOWN_MS+1000);f.ingest(presence('l1','leave.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,3,'past the cooldown, the departure wakes');
+  f.host.finish({...wait(),wakeAt:far});await flush();
+  await advance(PRESENCE_RETURN_ABSENCE_MS);f.ingest(presence('a1','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,4,'and the return wakes too');
+  f.host.finish({...wait(),wakeAt:far});await flush();
+  await advance(60000);f.ingest(presence('a2','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,4,'one departure pays for one return');
  }finally{await f.cleanup();}
 });
 test('presence of different subjects each wakes inside one subject cooldown',async t=>{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf,nativeBoatControlsV1Schema} from '@sim/engine-contract';
+import {hashOf,nativeBoatControlsV1Schema} from '@souls/engine-contract';
 import {connectedCommonsBoatFixture} from './connected-boat.ts';
 import {connectedCommonsBoatFactory,connectedCommonsHelmFactory} from './connected-boat-engine.ts';
 import type {Runtime} from '../../../mars/viewer/engine/runtime/runtime.ts';

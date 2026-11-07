@@ -8,7 +8,7 @@
 // The read code reaches it through `menuWorldOf(host)` (one LiveMenuWorld per engine, unless a worker registered a
 // replica for its read-only host with `setMenuWorld`): dependency injection without threading a parameter through
 // every reader. Grep test: apps/server/src/split/menu-world.test.ts (no `host.engine` reach in read code).
-import type {Anchor, Program, ProgramAction, RuntimeView, VerbInfo} from '@sim/engine-contract';
+import type {Anchor, Program, ProgramAction, RuntimeView, VerbInfo} from '@souls/engine-contract';
 import type {WorldState as NativeWorld} from '../../../../mars/viewer/engine/world/types.ts';
 import type {ConnPoint, ConnVerdict} from '../../../../mars/viewer/engine/spatial/connectivity.ts';
 

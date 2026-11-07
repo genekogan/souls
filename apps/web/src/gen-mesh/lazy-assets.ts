@@ -8,7 +8,7 @@
 //   - `?shot` pages (god `look`, thumbnails) and `?assets=eager` load everything at once, as before.
 // Content-addressed URLs stay immutable (/assets/<sha>.glb): each GLB is fetched once per browser, whenever it is.
 import * as THREE from 'three';
-import type { Entity, StoredDef } from '@sim/world-compiler';
+import type { Entity, StoredDef } from '@souls/world-compiler';
 import { meshLodAsset, type LodMake } from './mesh-lod.ts';
 import { browserQuality, progressiveNearM } from '../quality-tier.ts';
 
@@ -219,4 +219,4 @@ function scheduleBackground() {
 export function noteDeferred() { if (LAZY && !background) scheduleBackground(); }
 
 /** Probe settling must include the complete deferred corpus, not a temporary plateau in triangle count. */
-if (typeof window !== 'undefined') (window as unknown as { __simLoadQueueStats?: unknown }).__simLoadQueueStats = () => ({ enabled: QUEUED, pending: waiting.size, activeCopies: inFlight.size, active: loadQueue.stats().active });
+if (typeof window !== 'undefined') (window as unknown as { __soulsLoadQueueStats?: unknown }).__soulsLoadQueueStats = () => ({ enabled: QUEUED, pending: waiting.size, activeCopies: inFlight.size, active: loadQueue.stats().active });

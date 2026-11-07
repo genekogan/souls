@@ -1,7 +1,7 @@
 // C10: steward work queue (digest schedule, claim/complete, narration) and GET /v1/edge/digest.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {DAY_TICKS} from '@sim/brain';
+import {DAY_TICKS} from '@souls/brain';
 import {EDGE_CONTRACT} from './edge/contract.ts';
 import {commsFixture} from './edge/comms/testing.ts';
 

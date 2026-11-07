@@ -9,7 +9,7 @@
 //     they are absolute world heights (bridge decks, piers, decks over water, their rails).
 //   - Ground is the only height source: absolute heights are frozen from the ground by a prepare
 //     step (prepareRoad / snapRiver / prepareDeck) into the entity's params, never re-invented.
-import { waterLevelAt, type Ground, type Water } from '@sim/ground';
+import { waterLevelAt, type Ground, type Water } from '@souls/ground';
 import type { LocalOBB, Surface, Vec2 } from './types.ts';
 
 /** What prepare-steps need from a world: the WorldModel (server, skill mirror, viewer) satisfies it via `queryOf`. */
