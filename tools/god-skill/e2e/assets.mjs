@@ -99,12 +99,12 @@ async function look(name, { eye, at, settle = 6000, size = [1280, 800] } = {}) {
     await page.waitForFunction(() => document.title === 'ready' || document.title === 'no-entity-world', null, { timeout: 1_200_000, polling: 2000 });
   }
   const vp = page.viewportSize(); if (vp.width !== size[0] || vp.height !== size[1]) await page.setViewportSize({ width: size[0], height: size[1] });
-  await page.evaluate(([e, a]) => { const s = window.__simEntity; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.camera.lookAt(s.controls.target); s.controls.update?.(); }, [eye, at]);
+  await page.evaluate(([e, a]) => { const s = window.__soulsEntity; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.camera.lookAt(s.controls.target); s.controls.update?.(); }, [eye, at]);
   // wait for every GLB to arrive (or fail), then let the frame settle
-  await page.waitForFunction(() => { let pending = 0; window.__simEntity.layer.group.traverse((o) => { if (o.name.startsWith('mesh ') && !o.getObjectByName('asset') && !o.getObjectByName('asset missing')) pending++; }); return pending === 0; }, null, { timeout: 300_000, polling: 1000 }).catch(() => {});
+  await page.waitForFunction(() => { let pending = 0; window.__soulsEntity.layer.group.traverse((o) => { if (o.name.startsWith('mesh ') && !o.getObjectByName('asset') && !o.getObjectByName('asset missing')) pending++; }); return pending === 0; }, null, { timeout: 300_000, polling: 1000 }).catch(() => {});
   await page.waitForTimeout(settle);
   const state = await page.evaluate(() => {
-    const w = window.__simEntity; if (!w) return null;
+    const w = window.__soulsEntity; if (!w) return null;
     const meshes = []; w.layer.group.traverse((o) => { if (o.name.startsWith('mesh ')) meshes.push({ name: o.name, loaded: !!o.getObjectByName('asset'), missing: !!o.getObjectByName('asset missing') }); });
     return { drawn: w.layer.drawn?.size, ids: [...(w.layer.drawn?.keys?.() ?? [])], lastError: w.layer.stats?.lastError, meshes };
   });

@@ -1,7 +1,7 @@
 import type {WorldHost} from './world.ts';
 import type {Brain} from './brain.ts';
-import type {Card} from '@sim/kernel';
-import {commonsFoodDeliveryItemsV1} from '@sim/engine-mars';
+import type {Card} from '@souls/kernel';
+import {commonsFoodDeliveryItemsV1} from '@souls/engine-mars';
 /** Stable lifetime birth slots, no ownerless avatar or reassignment by cast sort. */
 export async function installFoodDeliveryCardsV1(host:WorldHost,brain:Brain){
  if(host!==brain.host)throw Error('food-delivery.card-host');const births=host.db.db.prepare("SELECT payload FROM events WHERE world_id=? AND kind='birth' ORDER BY seq LIMIT 8").all(host.worldId) as {payload:string}[];const verdicts=[];

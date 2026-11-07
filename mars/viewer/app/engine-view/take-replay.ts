@@ -4,6 +4,7 @@ import {WAVE_BLEND_SECONDS,type WaveSample} from './wave-blend.ts';
 // Everything is random access in take time, so scrubbing, pausing, the speed
 // and whether the engine camera is on can never change what is shown at a
 // given t (spec §18: the take plays identically with any camera).
+import {PIANO_FADE} from './activity-poses.ts';
 import {recordedBody,admittedBodyUrl} from './recorded-body.ts';
 import {recordedGame} from './recorded-games.ts';
 import {projectPlatformFrame} from './recorded-platforms.ts';
@@ -20,7 +21,7 @@ import type { Vec3 } from '../../engine/core/math.ts';
 import type { Entity, WorldState } from '../../engine/world/types.ts';
 import type { SpatialScene } from '../../engine/spatial/types.ts';
 import {carryContactWeight, type CarryContact} from '../../engine/carry/contact.ts';
-import { def } from '../../engine/world/catalog.ts';
+import { CATALOG, def } from '../../engine/world/catalog.ts';
 import { progressiveContributor } from '../../engine/construction/contributor.ts';
 import {waterTransitions,type WaterTransition} from './water-transition.ts';
 import { isPlywood } from '../../engine/construction/deck.ts';
@@ -181,7 +182,7 @@ export class TakePeople {
   private waveOwners = new Map<string,number[]>();
   private waveActs = new Map<string,{t:number[];v:string[]}>();
   private waveTakes = new WeakMap<Take,boolean>();
-  private acts = new Map<string, { t: number[]; v: string[]; bt: number[]; bv: (string | null)[] }>();
+  private acts = new Map<string, { t: number[]; v: string[]; bt: number[]; bv: (string | null)[]; it?:number[];iv?:(string|null)[] }>();
   private base: SpatialScene;
   private stairKey = '';
   private supplementalStairs:readonly SupplementalStair[]=[];
@@ -206,6 +207,10 @@ export class TakePeople {
   poseStats(){return this.humans.poseStats;}
   contactDiagnostics(){return this.humans.bones();}
   instrumentOf(id:string){return this.humans.instrumentOf(id);}
+  activityAgeOf(id:string){return this.humans.activityAgeOf(id);}
+  /** Seconds until `id`'s current activity ends at the depicted tick, when the take already records the change (#422:
+   *  a pianist's notes stop where the release pose freezes the score); undefined while the end is not yet known. */
+  activityLeftOf(id:string){const tick=this.frame?.tick;if(tick===undefined)return undefined;const a=this.acts.get(id),next=a?a.t[this.runAt(a,tick)+1]:undefined;return next===undefined?undefined:(next-tick)*this.take.dt;}
   appearanceStatus(){return this.humans.appearanceStatus();}
 
   constructor(take: Take, opts: { scene?: SpatialScene; commonsContrast?:boolean; humanPresets?:boolean; nativeBoat?:{layout:NativeBoatLayoutV1;proposal:ShoreDesign['boat']} } = {}) {
@@ -228,6 +233,9 @@ export class TakePeople {
     const physics = this.take.finalState.entityPhysicsV1 as {assets?: Record<string, import('../../engine/world/catalog.ts').AssetDef>} | undefined;
     const handling = Object.fromEntries(Object.entries(physics?.assets ?? {}).flatMap(([id, asset]) => asset.capabilities?.fixtureCarry ? [[id, asset.capabilities.fixtureCarry.handling]] : []));
     this.humans.setFixtureHandling({...handling, ...this.take.fixtureCarryHandlingV1});
+    // PC03 (#682): a recorded loose-material transport is a library def the native catalog does not know; register its
+    // adapted asset (observation only: the replay reads its size and grips to pose the carriers' hands)
+    for (const [id, asset] of Object.entries(this.take.transportAssetsV1 ?? {})) if (!CATALOG[id]) CATALOG[id] = structuredClone(asset);
     this.indexActs();
     this.waterTransition=waterTransitions(this.take);
     this.waterHistoryKey='';
@@ -289,7 +297,7 @@ export class TakePeople {
   }
 
   /** How long `id`'s current activity has run at `tick` and what it did before (absent when it began before the take). */
-  private activityHistory(id: string, tick: number, act: string, walk: number): Pick<SampledHuman, 'activityAge' | 'prevActivity' | 'prevBaseActivity' | 'restAge' | 'walkAge' | 'restAgeAtWalk' | 'prevWaveDuration' | 'waveRestAge' | 'waveSamples' | 'waveClock'> {
+  private activityHistory(id: string, tick: number, act: string, walk: number): Pick<SampledHuman, 'activityAge' | 'prevActivity' | 'prevBaseActivity' | 'prevActivityDuration' | 'prevInstrument' | 'restAge' | 'walkAge' | 'restAgeAtWalk' | 'prevWaveDuration' | 'waveRestAge' | 'waveSamples' | 'waveClock'> {
     const a = this.acts.get(id);
     const k = this.runAt(a, tick);
     const rest = { ...this.restAge(id, a, k, tick, act), ...(walk > 0.02 ? this.walkStart(id, tick) : {}) };
@@ -314,7 +322,14 @@ export class TakePeople {
     if(!a||k<1)return {...rest,...wave};
     let b:string|null=null;for(let i=a.bt.length-1;i>=0;i--)if(a.bt[i]<a.t[k]){b=a.bv[i];break;}
     const age=(tick-a.t[k])*this.take.dt;
-    return { ...wave, activityAge: age, prevActivity: a.v[k - 1], ...(b ? { prevBaseActivity: b } : {}), ...rest };
+    const history:Pick<SampledHuman,'activityAge'|'prevActivity'|'prevBaseActivity'|'prevActivityDuration'|'prevInstrument'|'restAge'|'walkAge'|'restAgeAtWalk'|'prevWaveDuration'|'waveRestAge'|'waveSamples'|'waveClock'>={ ...wave, activityAge: age, prevActivity: a.v[k - 1], ...(b ? { prevBaseActivity: b } : {}), ...rest };
+    if(age<PIANO_FADE&&(history.prevActivity==='play-piano'||history.prevActivity==='play-music'&&a.it)){
+      let instrument:string|null=null;for(let i=(a.it?.length??0)-1;i>=0;i--)if(a.it![i]<a.t[k]){instrument=a.iv![i];break;}
+      if(history.prevActivity==='play-piano'||instrument==='piano'||instrument==='keyboard'){
+        history.prevActivityDuration=(a.t[k]-a.t[k-1])*this.take.dt;if(instrument)history.prevInstrument=instrument;
+      }
+    }
+    return history;
   }
 
   /**
@@ -352,12 +367,14 @@ export class TakePeople {
     const add=(take:Take,offset:number)=>{
       let found=false;
       for(const [tick,id,field,value]of take.changes){
-        if(field!=='activity'&&field!=='baseActivity')continue;
+        if(field!=='activity'&&field!=='baseActivity'&&field!=='instrument')continue;
+        if(field==='instrument'&&value!=='piano'&&value!=='keyboard'&&!this.acts.get(id)?.it)continue;
         let a=this.acts.get(id);if(!a)this.acts.set(id,(a={t:[],v:[],bt:[],bv:[]}));
         if(field==='activity'){
           if(value==='wave')found=true;
           if(typeof value==='string'&&a.v[a.v.length-1]!==value){a.t.push(tick+offset);a.v.push(value);}
-        }else{a.bt.push(tick+offset);a.bv.push(typeof value==='string'?value:null);}
+        }else if(field==='baseActivity'){a.bt.push(tick+offset);a.bv.push(typeof value==='string'?value:null);}
+        else{(a.it??=[]).push(tick+offset);(a.iv??=[]).push(typeof value==='string'?value:null);}
       }
       this.waveTakes.set(take,found);
     };
@@ -518,7 +535,9 @@ export class TakePeople {
       people.push({itemPose:itemPoseOf(e.state.itemTransferV1 as NonNullable<Entity['human']>['itemTransferV1'],e.state.heldItemsV1 as NonNullable<Entity['human']>['heldItemsV1'],this.take.startTick+frame.tick,this.take.dt),...(e.state.handActuator?{handActuator:e.state.handActuator as NonNullable<Entity['human']>['handActuator'],handActuatorTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.handTransferV1?{transfer:e.state.handTransferV1 as NonNullable<Entity['human']>['handTransferV1'],transferTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.wateringV1?{watering:e.state.wateringV1 as NonNullable<Entity['human']>['wateringV1'],wateringTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.letGoV1?{letGo:e.state.letGoV1 as NonNullable<Entity['human']>['letGoV1'],letGoTime:(this.take.startTick+frame.tick)*this.take.dt}:{}),...(e.state.cupV1?{cup:e.state.cupV1 as NonNullable<Entity['human']>['cupV1'],cupTime:(this.take.startTick+frame.tick)*this.take.dt}:{}), ...(body?.modelUrl?{bodyModel:admittedBodyUrl(body.modelUrl)??body.modelUrl}:body?.params&&typeof body.model==='string'?{bodyModel:body.model}:{}),...(typeof publicSoulKey==='string'?{publicSoulKey}:{}), ...(seatHeight!==undefined?{seatHeight}:{}), ...(shore.status==='recorded'?{shore:shore.contact}:{}), shoreTime:(this.take.startTick+t/this.take.dt)*this.take.dt,waterTransition:this.waterTransition(id,t), id, p: e.p, yaw: e.yaw, walk, walkDist: dist, activity: e.activity, grip: g?.entity, gripSlot: g?.slot, carryWeight, hands: e.hands, baseActivity: st.baseActivity ?? undefined, ...this.activityHistory(id, frame.tick, e.activity ?? 'idle', climbing ? 0 : walk), ...(typeof (st as {partner?: unknown}).partner==='string'?{partner:(st as {partner:string}).partner}:{}), ...(e.state.handHold||e.state.rps?{...(e.state.handHold?{handHold:e.state.handHold as HandHoldState}:{}),...(e.state.rps?{rps:e.state.rps as RpsState}:{}),handGameTick:this.take.startTick+frame.tick,handGameDt:this.take.dt}:{}), ...(typeof st.prop==='string'?{prop:st.prop}:{}), ...(typeof e.state.instrument==='string'?{instrument:e.state.instrument}:{}),...(game?{game,gameTick:this.take.startTick+frame.tick,gameDt:this.take.dt}:{}),...(Number.isFinite(speed)?{speed:Math.abs(speed)}:{}), on: st.on ?? undefined, ...(proneYaw !== undefined ? { proneYaw } : {}), ...(phaseK !== undefined ? { phaseK } : {}), ...(st.sleepPose ? { sleepPose: recordedSleepPose(this.take,id,frame.tick,st.sleepPose) } : {}) });
     }
     this.stairs(comps);
-    this.comps.onTick({ entities: comps });
+    // PC03 (#682): a recorded loose-material transport is drawn by the entity layer's authored mesh at this same recorded
+    // pose; it stays in `comps` for the carriers' hands and stairs, but gets no stand-in box here
+    this.comps.onTick({ entities: Object.fromEntries(Object.entries(comps).filter(([, e]) => !e.tags?.includes('entity-world-transport'))) });
     this.comps.render(1);
     this.fixtures.onTick({ entities: Object.fromEntries(Object.entries(fixtures).filter(([, e]) => !e.tags?.includes('entity-world'))) });
     this.fixtures.render(clock);

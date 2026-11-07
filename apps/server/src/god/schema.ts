@@ -1,8 +1,8 @@
 // /v1/god/schema: everything a god agent needs to know about the vocabulary, generated from
 // the code so it never drifts (spec 33 §2 row 1, §3.4). Owner: L1.
 import { z } from 'zod';
-import { CREATION_LIMITS, describeGenerators, KIT_PRIMITIVES, KIT_ROLES, kitArgs, materialEnum, slotKind } from '@sim/generators';
-import { clientOpSchema, componentsSchema, constraintSchema, defSchema, refusalCodes, type WorldConstants } from '@sim/world-compiler';
+import { CREATION_LIMITS, describeGenerators, KIT_PRIMITIVES, KIT_ROLES, kitArgs, materialEnum, slotKind } from '@souls/generators';
+import { clientOpSchema, componentsSchema, constraintSchema, defSchema, refusalCodes, type WorldConstants } from '@souls/world-compiler';
 import { godVersions } from './versions.ts';
 import { submissionSchema } from './submission.ts';
 import {verifyCodes, verifyUseSchema} from './verify-use.ts';

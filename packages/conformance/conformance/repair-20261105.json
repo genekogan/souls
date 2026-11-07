@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 repair family (#442): core-bench@2 and core-cart@2 add a state `broken` drawn with kit `when` shapes (a cracked slat, a flat tyre) and components.repairable; core-hammer@1 and core-tyre-pump@1 are new carryable tools. core-bench@1 and core-cart@1 keep their bytes. Narrow production K=2 runs (`conformance.mjs --k 2 --filter`) of each placed, baked and rendered every sample with 0 findings and 0 qualification gaps, so this pins no finding.",
+  "findings": []
+}

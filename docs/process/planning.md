@@ -81,6 +81,8 @@ a short issue/PR checkpoint with:
 - Branch and base/current SHA; durable WIP ref or recoverable patch.
 - Acceptance already met, unresolved assumptions, failed/unverified checks and evidence links with environment identity.
 - Active jobs, output locations and resources in use; put private operational details in approved private records.
+- Public handoffs use relative paths and neutral resource labels. Run the [publication privacy check](publication-privacy.md)
+  on their exact outgoing payload; keep device paths, addresses and resource identifiers in private records.
 - Next action, blockers, approvals and stop conditions.
 
 For long work, include an ETA range with its scope, confidence and observation time, or state what prevents an

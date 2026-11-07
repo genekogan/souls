@@ -3,7 +3,7 @@
 // content-addressed, immutable parts (/v1/world/part/<ref>: one download per browser, shared by every world and visit
 // with the same set). expandSnapshot puts it back together exactly as the plain snapshot, so WorldModel.fromSnapshot
 // and everything after it see no difference. Any failure falls back to the plain snapshot.
-import { isPackedColumnsV1, unpackColumnsV1 } from '@sim/protocol/columns-v1';
+import { isPackedColumnsV1, unpackColumnsV1 } from '@souls/protocol/columns-v1';
 import { entryWireUrl, takeSnapshotPrefetchBatch, type PrefetchRequest } from './snapshot-prefetch.ts';
 
 type Spec = Record<string, { default?: unknown } | undefined>;

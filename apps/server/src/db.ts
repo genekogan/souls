@@ -4,9 +4,10 @@ import { statSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { migrate } from './migrations.ts';
-import type { BrainCall, LogEvent, NarrativeView, TalkLine } from '@sim/protocol';
-import {recordedTakeChunkSchema} from '@sim/protocol';
-import {stableStringify,parseRenderSceneCapture,type RenderSceneCaptureV1} from '@sim/engine-contract';
+import { countGlitch, type GlitchCountsV1, type GlitchRecordV1, type GlitchRung } from './glitch.ts';
+import type { BrainCall, LogEvent, NarrativeView, TalkLine } from '@souls/protocol';
+import {recordedTakeChunkSchema} from '@souls/protocol';
+import {stableStringify,parseRenderSceneCapture,type RenderSceneCaptureV1} from '@souls/engine-contract';
 
 export type UserRow = { id: string; email: string | null; wallet: string | null; role: 'user' | 'admin'; created_at: number; last_seen: number; invited_by: string | null };
 export type SoulRow = { id: string; world_id: string; owner: string; entity_id: string; name: string; description: string; created_at: number; retired_at: number | null; token_hash: string | null; token_generation: string | null; token_created_at: number | null; native: number; token_label: string | null; token_last_used: number | null };
@@ -126,7 +127,7 @@ export class Db {
   appendEvent(worldId: string, e: LogEvent) { this.db.prepare('INSERT INTO events (world_id, seq, tick, kind, author, payload, at, soul_id) VALUES (?,?,?,?,?,?,?,?)').run(worldId, e.seq, e.tick, e.kind, e.author, JSON.stringify(e.payload), e.at, (e.payload as { soulId?: string })?.soulId ?? null); }
   /** Bounded original personal camp-card evidence bound by actual world/Soul
    * IDs. Removing a card or changing display order does not erase its source. */
-  campPersonalCards(worldId:string,soulId:string):import('@sim/kernel').MintedCard[]{
+  campPersonalCards(worldId:string,soulId:string):import('@souls/kernel').MintedCard[]{
     return (this.db.prepare("SELECT payload FROM events WHERE world_id=? AND kind='mint' AND json_extract(payload,'$.forSoul')=? AND json_extract(payload,'$.card.by')='world' AND (json_extract(payload,'$.card.name') LIKE 'bunk sleep %' OR json_extract(payload,'$.card.name') LIKE 'eat a bowl of %' OR json_extract(payload,'$.card.name') LIKE 'finish the bowl %') ORDER BY seq LIMIT 32").all(worldId,soulId) as {payload:string}[]).map(r=>JSON.parse(r.payload).card);
   }
   /** A Soul's own events, newest last (indexed). */
@@ -158,6 +159,16 @@ export class Db {
   hasVocabulary(worldId: string): boolean { return !!this.db.prepare("SELECT 1 FROM events WHERE world_id = ? AND kind = 'rules' AND author <> 'world:recovery' AND json_type(payload, '$.vocabulary') = 'object' LIMIT 1").get(worldId); }
   lastSeq(worldId: string): number { return ((this.db.prepare('SELECT MAX(seq) AS s FROM events WHERE world_id = ?').get(worldId) as any)?.s as number) ?? 0; }
   countEvents(worldId: string): number { return (this.db.prepare('SELECT COUNT(*) AS c FROM events WHERE world_id = ?').get(worldId) as any).c; }
+
+  // #1150: glitch records (operations data; replay never reads them)
+  appendGlitch(worldId: string, g: GlitchRecordV1): void {
+    this.db.prepare('INSERT INTO glitches_v1 (world_id, at, tick, rung, rule, bodies, evidence) VALUES (?,?,?,?,?,?,?)').run(worldId, g.at, g.tick, g.rung, g.rule, JSON.stringify(g.bodies), JSON.stringify(g.evidence));
+  }
+  glitchCounts(worldId: string): GlitchCountsV1 {
+    const out: GlitchCountsV1 = {total: 0, byRule: {}};
+    for (const r of this.db.prepare('SELECT rule, rung, COUNT(*) AS n FROM glitches_v1 WHERE world_id = ? GROUP BY rule, rung').all(worldId) as {rule: string; rung: GlitchRung; n: number}[]) countGlitch(out, r.rule, r.rung, r.n);
+    return out;
+  }
 
   // snapshots
   saveSnapshot(worldId: string, s: { tick: number; seq: number; stateHash: string; physicalHash: string; rulesVersion: string; body: unknown }) {

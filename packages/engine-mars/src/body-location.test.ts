@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bodyLocationV1Schema,describeBodyLocation,hashOf} from '@sim/engine-contract';
+import {bodyLocationV1Schema,describeBodyLocation,hashOf} from '@souls/engine-contract';
 import {connectedCommonsBoatFixture} from './connected-boat.ts';
 import {connectedCommonsBoatFactory,connectedCommonsHelmFactory,connectedCommonsLocationFactory} from './connected-boat-engine.ts';
 import type {Runtime} from '../../../mars/viewer/engine/runtime/runtime.ts';

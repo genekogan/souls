@@ -52,10 +52,14 @@ export const DEMAND = Object.freeze({
 });
 
 /** Phase lengths. `short` is the smoke: the same shape, scaled, never a measuring window. */
-export function phases(short = false) {
-  return short
-    ? { quietMs: 60_000, activeMs: 180_000, meetupsMs: [40_000, 90_000, 140_000] }
-    : { quietMs: 5 * 60_000, activeMs: 20 * 60_000, meetupsMs: [5 * 60_000, 11 * 60_000, 17 * 60_000] };
+export function phases(short = false, activeMin = null) {
+  if (short) { if (activeMin != null) throw new Error('--active-min does not combine with --short'); return { quietMs: 60_000, activeMs: 180_000, meetupsMs: [40_000, 90_000, 140_000] }; }
+  if (activeMin == null || activeMin === 20) return { quietMs: 5 * 60_000, activeMs: 20 * 60_000, meetupsMs: [5 * 60_000, 11 * 60_000, 17 * 60_000] };
+  // CW8 A2 (#955): a longer window (20-240 min) keeps the per-Soul rates and repeats the meetups in every 20-min block
+  if (!Number.isInteger(activeMin) || activeMin < 20 || activeMin > 240) throw new Error(`--active-min ${activeMin}: a whole number of minutes, 20 to 240`);
+  const meetupsMs = [];
+  for (let b = 0; b * 20 < activeMin; b++) for (const m of [5, 11, 17]) if (b * 20 + m < activeMin) meetupsMs.push((b * 20 + m) * 60_000);
+  return { quietMs: 5 * 60_000, activeMs: activeMin * 60_000, meetupsMs };
 }
 
 // Documentation address ranges only (RFC 5737): one address per Soul, one shared network.

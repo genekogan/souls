@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 public-writing family (#429, W092): a guestbook at a place. core-guestbook@1 (d962eb329037bf72…) is a new def on the sign-up sheet's faculty with data only: a visitors' book propped open on a book stand, its text field declaring 16 lines, the synonym guestbook, a sign action with an optional few words, and the keeps-newest tag (a fresh page when full). Frozen core-signup-sheet@1 (16c612c48d62…) is byte-identical. A narrow production K=2 run (`conformance.mjs --k 2 --filter core-guestbook`) baked, placed and rendered all 5 samples with 0 findings and 0 qualification gaps, so this supplement pins no finding. No budgets, samples or gap checks were relaxed.",
+  "findings": []
+}

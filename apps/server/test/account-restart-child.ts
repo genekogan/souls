@@ -1,7 +1,7 @@
 // Synthetic native SQLite fixture only; invoked by the independent process
 // test. No provider, port, real identity file, model or product DB is accessed.
 import assert from 'node:assert/strict';import {readFileSync,writeFileSync} from 'node:fs';import {join} from 'node:path';import {randomBytes} from 'node:crypto';
-import {marsFactory,GREEN_FIELD_WORLD} from '@sim/engine-mars';import {hashOf} from '@sim/engine-contract';import {fixture,invite,accept} from './native-owner-fixture.ts';import {buildApp} from '../src/http.ts';import type {Hub} from '../src/hub.ts';import type {AccountIdentity} from '../src/accounts/store.ts';
+import {marsFactory,GREEN_FIELD_WORLD} from '@souls/engine-mars';import {hashOf} from '@souls/engine-contract';import {fixture,invite,accept} from './native-owner-fixture.ts';import {buildApp} from '../src/http.ts';import type {Hub} from '../src/hub.ts';import type {AccountIdentity} from '../src/accounts/store.ts';
 const [mode,root]=process.argv.slice(2),factory=await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true}),f=fixture(join(root,'sim.db'),factory);f.brain.quiesce();f.souls.enableLifecycle();const legacy='agent-'+'f'.repeat(24),identity:AccountIdentity={id:'did:privy:restart-owner',issuer:'privy.io/fixture',subject:'did:privy:restart-owner',verifiedAt:Date.now(),expiresAt:Date.now()+60000};
 try{
  if(mode==='seed'){

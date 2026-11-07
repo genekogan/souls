@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { marsFactory,marsCommonsTransitionFactory,EDEN_COMMONS_WORLD } from '@sim/engine-mars';
-import { kernelHash } from '@sim/kernel';
+import { marsFactory,marsCommonsTransitionFactory,EDEN_COMMONS_WORLD } from '@souls/engine-mars';
+import { kernelHash } from '@souls/kernel';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { ClockFrontiers,clockFrontierV1Schema } from './clock-frontier.ts';
-import { hashOf,captureRenderScene } from '@sim/engine-contract';
+import { hashOf,captureRenderScene } from '@souls/engine-contract';
 import { mkdtempSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +14,7 @@ import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import { CandidateStationV1 } from './station.ts';
 import { CandidateStationV2 } from './station-v2.ts';
-import { stationPhaseAtTickV2,stationLivePhaseV2 } from '@sim/protocol';
+import { stationPhaseAtTickV2,stationLivePhaseV2 } from '@souls/protocol';
 
 test('durable quiet tick destination restores native elapsed time beyond the last input without snapshot or model',async t=>{
   const db=new Db(':memory:');t.after(()=>db.close());const factory=await marsFactory(EDEN_COMMONS_WORLD);
@@ -122,7 +122,7 @@ test('writer refusal halts further stepping, views and callbacks while the last 
 });
 
 for(const phase of ['after-step','after-write','after-commit'])test(`actual native process exit ${phase} recovers the last committed body tick without a model`,async t=>{
-  const dir=mkdtempSync(join(tmpdir(),'sim-clock-crash-')),db=new Db(join(dir,'world.db'));
+  const dir=mkdtempSync(join(tmpdir(),'souls-clock-crash-')),db=new Db(join(dir,'world.db'));
   t.after(()=>{db.close();rmSync(dir,{recursive:true,force:true});});
   const factory=await marsFactory(EDEN_COMMONS_WORLD),make=()=>new WorldHost(db,factory,'clock-crash',1e9,'clock-crash',{durableClockV1:true});
   const host=make();host.boot();host.drainInputs();
@@ -172,7 +172,7 @@ for(const interrupted of [false,true])test(`explicit logged native repair ${inte
   const decision=host.enqueue('decision','soul:s_A',{soulId:'s_A',entityId:'h_A',card:'rest',target:null,option:'rest',label:'rest',
     steps:[{verb:'rest',params:{seconds:90}}],approachLen:0,reevalTicks:10000,trigger:'fixture',fallback:false});host.drainInputs();await decision;
   for(let i=0;i<37;i++)host.tickOnce();const old=new ClockFrontiers(db).read(host.worldId)!;
-  if(interrupted){const append=db.appendEvent.bind(db);t.mock.method(db,'appendEvent',(world:string,event:import('@sim/protocol').LogEvent)=>{
+  if(interrupted){const append=db.appendEvent.bind(db);t.mock.method(db,'appendEvent',(world:string,event:import('@souls/protocol').LogEvent)=>{
     append(world,event);if(event.payload?.recovery)throw new Error('fixture interruption after durable repair');
   });}
   host.engine.step=()=>{throw new Error('fixture attributed native rest failure');};

@@ -1,0 +1,31 @@
+{
+ "soulRun": 1,
+ "name": "eden-chained-steer",
+ "scenario": "../../scenarios/soul-runs/eden-chained-steer.json",
+ "world": {
+  "port": 4331
+ },
+ "observer": {
+  "check": true,
+  "required": false,
+  "cameras": [],
+  "record": [
+   "follow"
+  ],
+  "timeoutMs": 60000
+ },
+ "limits": {
+  "maxWallSec": 600,
+  "maxControllers": 1,
+  "cleanupWaitMs": 15000
+ },
+ "retention": {
+  "worldData": "keep",
+  "controllerState": "keep"
+ },
+ "evaluation": {
+  "questions": [
+   "../questions/chained-steer.mjs"
+  ]
+ }
+}

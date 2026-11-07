@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { marsFactory, GREEN_FIELD_WORLD, type MarsEngine } from './engine.ts';
 import { nextEntityPhysics, type WorldEditV1 } from './entity-physics.ts';
-import type { Engine } from '@sim/engine-contract';
+import type { Engine } from '@souls/engine-contract';
 
 // A one-room cottage as the bridge derives it: four walls, a 1.0 m front door gap (the building generator's exterior
 // door width) in the south wall (z = 3) at x = 10.
