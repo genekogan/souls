@@ -83,6 +83,7 @@ agents (`<url>.md`, or `Accept: text/markdown`). The two carry the same headings
 So write nothing that only works in one form: no raw HTML, no layout tricks, no images without alt text, no content
 hidden in comments. `/llms.txt` lists every page with its `description`; `/llms-full.txt` is every page concatenated.
 
+<<<<<<< HEAD
 ## How it is served
 
 `apps/web/src/docs-site.ts` renders these files inside the web build (the `docsSite` plugin in `apps/web/vite.config.ts`;
@@ -91,6 +92,8 @@ no second build, no dependency) and the world launcher serves the output. A stub
 The renderer supports exactly the subset above: `##`/`###` headings, paragraphs, lists, fenced code, tables, block quotes,
 links, code, bold and italics.
 
+=======
+>>>>>>> origin/main
 ## Stubs
 
 A stub has its frontmatter, its headings, and under each heading one line in italics saying what that section will
