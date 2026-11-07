@@ -78,6 +78,9 @@ The strict steps:
    - **T3** requires coordinator sign-off after the repo steward posts the bar at the current head, except for
      the maintainer-reserved decisions below.
    - **T4 and maintainer-reserved decisions** require Gene's approval.
+   - A change that touches only test files under `apps/server/src/edge*` (plus docs or a fragment) computes T1, not
+     T3 (PROOF-POLICY.yml `when: tests-only`), so it lands on green; its review checks that no assertion was dropped
+     or loosened and no `skip`/`todo` was added.
 
    The maintainer gate lives in the required `proof-ok` check, not only in the train: for a T3 or T4 PR, `proof-ok`
    fails until the maintainer's latest decisive review is an approval or, on a PR the maintainer authored (GitHub

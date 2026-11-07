@@ -17,6 +17,9 @@ const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const POLICY_PATH = resolve(ROOT, 'docs/process/PROOF-POLICY.yml');
 const TIERS = ['T0', 'T1', 'T2', 'T3', 'T4'];
 const rank = tier => TIERS.indexOf(tier);
+/** Conditions a path rule can carry. `tests-only`: the change touches only test files and T0 paths. */
+const WHEN = ['tests-only'];
+export const TEST_FILE = /\.test\.(ts|mjs)$/;
 
 /** Reads the parts of the policy this tool needs: the `paths` rules (one-line flow maps) and `default_tier`. */
 export function loadPolicy(text = readFileSync(POLICY_PATH, 'utf8')) {
@@ -35,7 +38,9 @@ export function loadPolicy(text = readFileSync(POLICY_PATH, 'utf8')) {
     if (!m) throw Error(`PROOF-POLICY paths: expected "- { prefix|glob: ..., tier: Tn }", got: ${raw.trim()}`);
     const rule = Object.fromEntries([...m[1].matchAll(/(\w+):\s*("[^"]*"|'[^']*'|[^,\s}]+)/g)].map(([, k, v]) => [k, v.replace(/^["']|["']$/g, '')]));
     if (!rule.tier || rank(rule.tier) < 0 || rank(rule.tier) > 3 || !(rule.prefix || rule.glob)) throw Error(`PROOF-POLICY paths: bad rule: ${raw.trim()}`);
-    paths.push(rule.prefix ? { prefix: rule.prefix, tier: rule.tier } : { glob: rule.glob, re: globToRegExp(rule.glob), tier: rule.tier });
+    if (rule.when !== undefined && !WHEN.includes(rule.when)) throw Error(`PROOF-POLICY paths: unknown when "${rule.when}" (known: ${WHEN.join(', ')}): ${raw.trim()}`);
+    const when = rule.when ? { when: rule.when } : {};
+    paths.push(rule.prefix ? { prefix: rule.prefix, tier: rule.tier, ...when } : { glob: rule.glob, re: globToRegExp(rule.glob), tier: rule.tier, ...when });
   }
   if (!paths.length || !defaultTier) throw Error('PROOF-POLICY needs a paths list and default_tier');
   return { paths, defaultTier };
@@ -54,13 +59,18 @@ export function globToRegExp(glob) {
   return new RegExp(`^${re}$`);
 }
 
-export function tierForFile(file, policy) {
-  const rule = policy.paths.find(r => r.prefix ? file.startsWith(r.prefix) : r.re.test(file));
+/** The first rule matching `file`; a `when: tests-only` rule counts only when `testsOnly` (the whole change) holds. */
+export function tierForFile(file, policy, { testsOnly = false } = {}) {
+  const rule = policy.paths.find(r => (!r.when || (r.when === 'tests-only' && testsOnly)) && (r.prefix ? file.startsWith(r.prefix) : r.re.test(file)));
   return { tier: rule ? rule.tier : policy.defaultTier, rule: rule ? (rule.prefix || rule.glob) : 'default_tier' };
 }
 
+/** Whether a change touches only test files and T0 paths (unconditional rules decide what is T0). */
+export const testsOnly = (files, policy) => files.every(f => TEST_FILE.test(f) || tierForFile(f, policy).tier === 'T0');
+
 export function tierFor(files, policy = loadPolicy(), labels = []) {
-  const byFile = files.filter(Boolean).map(file => ({ file, ...tierForFile(file, policy) }));
+  const list = files.filter(Boolean), only = testsOnly(list, policy);
+  const byFile = list.map(file => ({ file, ...tierForFile(file, policy, { testsOnly: only }) }));
   const fileTier = byFile.reduce((t, f) => rank(f.tier) > rank(t) ? f.tier : t, 'T0');
   const label = labels.map(l => /^tier:(T[0-4])$/.exec(l)?.[1]).filter(Boolean).reduce((t, l) => rank(l) > rank(t) ? l : t, 'T0');
   const raised = rank(label) > rank(fileTier);
@@ -78,8 +88,8 @@ function main(argv) {
   const labels = argv.flatMap((a, i) => a === '--label' ? [argv[i + 1]] : []);
   let files;
   if (opt('--files') !== undefined) files = opt('--files').split(',');
-  else if (opt('--head')) files = git('diff', '--name-only', `${opt('--base') || defaultBase()}...${opt('--head')}`);
-  else files = [...new Set([...git('diff', '--name-only', opt('--base') || defaultBase()), ...git('ls-files', '--others', '--exclude-standard')])];
+  else if (opt('--head')) files = git('diff', '--name-only', '--no-renames', `${opt('--base') || defaultBase()}...${opt('--head')}`);
+  else files = [...new Set([...git('diff', '--name-only', '--no-renames', opt('--base') || defaultBase()), ...git('ls-files', '--others', '--exclude-standard')])];
   const result = tierFor(files, loadPolicy(), labels);
   if (argv.includes('--json')) {
     const gate = scopeFor(files);
