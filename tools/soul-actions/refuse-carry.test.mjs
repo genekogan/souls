@@ -219,7 +219,7 @@ for (const [what, behind] of [
     const inv = () => w.edge.together.invite(r.id);
     for (let n = 0; n < 900 && inv().shared.op.phase !== 'ended'; n++) { await w.tick(1); stepsBack.push(ex.u); }
     assert.equal(host.paused, false); assert.equal(rungs(host).repair, 0, JSON.stringify(host.glitches.byRule)); assert.equal(rungs(host).refusal, 1); assert.deepEqual(host.engine.runtime.violations, []);
-    assert.equal(w.E[w.beam].support?.kind, 'ground');
+    assert.equal(w.E[w.beam].support?.kind, 'ground'); assert.ok(stepsBack[0] - Math.min(...stepsBack) < 0.95, 'it stopped short of the full metre');
     for (const [s, rc] of [[w.souls.Ada, r.p], [w.souls.Bo, r.a]]) assert.equal(read(w, s, rc).code, 'world.refused:carry.load-static');
   });
 
