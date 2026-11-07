@@ -43,7 +43,7 @@ export function seatForRegister(url) {
  *  2. A helper sits in the world of its helper file, unless its lead is still on a file here, and never pairs or registers.
  *  3. A named seat is used. A named `register` may only repeat that seat's own world.
  *  4. A file here with a world is this folder's god, as on any folder without a home, until `node eden.mjs import` moves
- *     it: the seat records the folder it came from, and that folder then sits there.
+ *     it: the seat records the folder it came from, and that folder then sits there, except to pair, which rule 6 decides.
  *  5. `register` makes the seat of its URL, once its arguments are parsed and the world answers.
  *  6. One seat needs no name; several must be named; none leaves this run on the folder. */
 export function enterGodSeat(argv, commands, { cwd = process.cwd(), env = process.env, home = homedir() } = {}) {
@@ -67,7 +67,7 @@ export function enterGodSeat(argv, commands, { cwd = process.cwd(), env = proces
   }
   if (fileHolds(h, cfg, cwd)) return argv;
   const moved = Object.keys(cfg.gods).find((k) => cfg.gods[k].importedFrom === realpathSync(cwd));
-  if (moved && cmd !== 'register' && cmd !== 'help') { sit(h, moved); return line; }
+  if (moved && !['register', 'pair', 'mint', 'help'].includes(cmd)) { sit(h, moved); return line; }   // pairing always names its seat
   if (cmd === 'register') { registering = h; return line; }
   const seats = Object.keys(cfg.gods);
   if (seats.length === 1 && cmd !== 'help') sit(h, seats[0]);

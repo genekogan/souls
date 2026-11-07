@@ -49,7 +49,7 @@ upward from the current folder like `.git`, stopping at the user's home folder (
 With one Soul every command works as it did. With several, name one first: `node eden.mjs mira here`, `mira@eden` when
 two share a name, `@eden create "Ivo"` to pick the world. Each run works inside that Soul's `runtime/`, so nothing
 collides. `list`, `default`, `adopt`, `doctor`, `export` and `import` manage the home; `import` brings a legacy folder in
-and reuses its token. Everything but `credentials.json` is safe to read or back up.
+and reuses its token. Everything but `credentials.json` is safe to read or back up, apart from a god seat's relay secret below.
 
 A god is a second principal. `eden-god.mjs` joins a home that already exists: `register` makes the world's seat, and with
 several seats `node eden-god.mjs <world> <command>` picks one (`@<world>` when a command has that name). Its working directory stays yours, because god commands take

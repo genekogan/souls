@@ -87,6 +87,11 @@ test('A2: a legacy god folder works unchanged, a home does not capture it, and i
   assert.equal(readFileSync(file, 'utf8'), before, 'left in place');
   assert.equal(readFileSync(join(dir, '.souls/gods/a/.eden-god.cache.json'), 'utf8'), '{"held":1}');
   assert.equal(JSON.parse(readFileSync(join(dir, '.souls/credentials.json'), 'utf8')).gods.a.token, 'god_a_tok');
+  await godCli('register', `${base}/b`, 'dev:owner');
+  assert.match((await godCli('mint')).err, /Several god seats here/, 'pairing always names its seat');
+  assert.equal((await godCli('status')).code, 0, 'the imported folder still answers as its own seat');
+  await godCli('b', 'mint');
+  assert.equal(JSON.parse(readFileSync(join(dir, '.souls/credentials.json'), 'utf8')).gods.b.token, 'god_b_tok');
   rmSync(file);
   assert.equal((await godCli('status')).code, 0, 'the seat works once the file is gone');
   assert.equal((await soul('import')).code, 1, 'nothing left to import');

@@ -801,7 +801,7 @@ function enterGodSeat(argv, commands, { cwd = process.cwd(), env: env2 = process
   }
   if (fileHolds(h, cfg, cwd)) return argv;
   const moved = Object.keys(cfg.gods).find((k) => cfg.gods[k].importedFrom === realpathSync2(cwd));
-  if (moved && cmd !== "register" && cmd !== "help") {
+  if (moved && !["register", "pair", "mint", "help"].includes(cmd)) {
     sit(h, moved);
     return line2;
   }
