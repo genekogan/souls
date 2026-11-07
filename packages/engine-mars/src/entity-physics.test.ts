@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { marsFactory, GREEN_FIELD_WORLD, type MarsEngine } from './engine.ts';
 import { entityPhysicsHash, nextEntityPhysics, type WorldEditV1 } from './entity-physics.ts';
 import { assetFromDef, assetIdFor, type DefFacts } from './catalog-adapter.ts';
-import type { Engine } from '@sim/engine-contract';
+import type { Engine } from '@souls/engine-contract';
 import { CATALOG } from '../../../mars/viewer/engine/world/catalog.ts';
 // test-only: the contract WorldState type does not list the engine's entityPhysicsV1 field
 const phys = (x: { world: unknown }) => (x.world as { entityPhysicsV1?: any }).entityPhysicsV1;

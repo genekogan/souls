@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Hono} from 'hono';
 import {writeFileSync} from 'node:fs';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {edenNavWorld, factory} from '../test/eden-nav-fixture.ts';
 import {WorldHost} from './world.ts';
 import {besideEachOther, TOGETHER_RADIUS} from './edge/ledger/together.ts';

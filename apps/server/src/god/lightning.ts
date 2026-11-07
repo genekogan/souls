@@ -3,12 +3,12 @@
 // broadcast). Souls perceive both: `here.weather.lightning` says where the last bolt fell, how far, and when its thunder
 // reached them; viewers draw the bolt and the flash and play the thunder delayed by the distance.
 import type { Context, Hono } from 'hono';
-import { boundsOf, strikesBetween, SOUND_MPS, type Strike, type WorldState } from '@sim/world-compiler';
+import { boundsOf, strikesBetween, SOUND_MPS, type Strike, type WorldState } from '@souls/world-compiler';
 import { ApiError } from '../souls.ts';
 import type { GodMode } from './god.ts';
 import { callerOf } from './builds.ts';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
-import { CREATION_LIMITS } from '@sim/generators';
+import { CREATION_LIMITS } from '@souls/generators';
 import { godTokenLimiter } from './rate-limit.ts';
 
 const r1 = (v: number) => Math.round(v * 10) / 10;

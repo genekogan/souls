@@ -1,7 +1,7 @@
 import { apiPath, worldPath } from './world-path.ts';
-import type { Sim } from './useSim.ts';
+import type { Souls } from './useSouls.ts';
 
-export function ArchPanel({ sim, cfg }: { sim: Sim; cfg: { publicUrl: string; worldId: string } }) {
+export function ArchPanel({ sim, cfg }: { sim: Souls; cfg: { publicUrl: string; worldId: string } }) {
   const s = sim.stats, st = sim.conn.stats, w = sim.conn.welcome;
   const d = `
    owners' agents (Claude / GPT / Codex)          you, in this page

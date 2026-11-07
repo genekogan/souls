@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {purposePerceiveFixture,drivePurpose} from '../test/purpose-perceive-fixture.ts';
 import {purposeEpisodesV1} from './purpose-episodes.ts';
 import {WorldHost} from './world.ts';
-import {publicEvent} from '@sim/protocol';
+import {publicEvent} from '@souls/protocol';
 test('private reflection keeps actual accepted outcomes separate from journal prose and replays its bounded own evidence',async t=>{
  const f=await purposePerceiveFixture(t);await drivePurpose<unknown>(f,f.host.enableIntentEpisodeMemoryV1());
  const entry=Object.values(f.host.intentHistoryOf('s_A').intents)[0],ref={intentId:entry.revision.intentId,version:entry.revision.version};await drivePurpose(f,f.host.enqueueIntentDecision('fixture:episode',{soulId:'s_A',entityId:'h_A',card:'rest',target:null,option:'rest',label:'recorded timed rest',steps:[{verb:'rest',params:{seconds:1}}],reevalTicks:1e9,fallback:false,trigger:'fixture'},ref,()=>true));

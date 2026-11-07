@@ -5,11 +5,11 @@ import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import { getRequestListener } from '@hono/node-server';
 import WebSocket from 'ws';
-import { Connection,type TransportReceipt,type PongReceipt,type ConnectionSession } from '@sim/client';
+import { Connection,type TransportReceipt,type PongReceipt,type ConnectionSession } from '@souls/client';
 import { PROTO,stationLivePhaseV1,stationLivePhaseV2,stationPhaseAtTickV2,stationEndTick,
-  stationEraPageV1Schema,stationHistoricalV2Schema,recordedTakeChunkSchema,type StationLiveV2,type StationLiveV1,type StationLiveContract } from '@sim/protocol';
-import { hashOf } from '@sim/engine-contract';
-import { marsFactory,marsCommonsTransitionFactory,GREEN_FIELD_WORLD } from '@sim/engine-mars';
+  stationEraPageV1Schema,stationHistoricalV2Schema,recordedTakeChunkSchema,type StationLiveV2,type StationLiveV1,type StationLiveContract } from '@souls/protocol';
+import { hashOf } from '@souls/engine-contract';
+import { marsFactory,marsCommonsTransitionFactory,GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { CandidateStationV1 } from './station.ts';

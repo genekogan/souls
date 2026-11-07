@@ -1,6 +1,6 @@
 // Cards: resolving references, testing conditions, finding what a Soul can play
 // now, and turning a play into concrete changes.
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import { SPEECH_LINKS, controllers, linked, linksTo, preview, samePlace } from './kernel.ts';
 import { cardSchema, type Card, type Change, type Cond, type Json, type KState, type MintedCard } from './types.ts';
 

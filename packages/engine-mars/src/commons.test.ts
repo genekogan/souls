@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { marsFactory, EDEN_COMMONS_WORLD, GREEN_FIELD_WORLD } from './engine.ts';
 import { probeNativeHumanBirth } from './birth.ts';
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import { fixtureSlots, seatApproach } from '../../../mars/viewer/engine/social/slots.ts';
 import { CATALOG } from '../../../mars/viewer/engine/world/catalog.ts';
 import { loadMars } from './load.ts';

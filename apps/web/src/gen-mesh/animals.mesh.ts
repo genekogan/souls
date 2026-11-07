@@ -3,8 +3,8 @@
 // the same deterministic behaviour as a single creature entity. Water areas make swimmers.
 // The herd ticks itself while any member is on screen (world builders get no per-frame call).
 import * as THREE from 'three';
-import { scatterPoints, type Value } from '@sim/generators';
-import { defSchema, type DefInput, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { scatterPoints, type Value } from '@souls/generators';
+import { defSchema, type DefInput, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { registerMesh, type MeshCtx } from './registry.ts';
 import { creatureObject } from './creatures/creature.mesh.ts';
 import { seedOf, type BehaviorKind } from './creatures/behavior.ts';
@@ -15,7 +15,7 @@ let markerMaterial: THREE.MeshBasicMaterial | undefined;
 // lane PERF2: the core kit's family defs (~1.4 MB; every creature is one) are fetched only when a herd's species is missing
 // from its world (worlds carry their core defs), as their own chunk, instead of riding in the main web bundle.
 let CORE_KIT: DefInput[] | null = null, kitLoad: Promise<unknown> | null = null;
-const loadKit = () => (kitLoad ??= import('@sim/world-compiler/family-kits').then((m) => { CORE_KIT = m.FAMILY_KITS; }, () => { kitLoad = null; }));
+const loadKit = () => (kitLoad ??= import('@souls/world-compiler/family-kits').then((m) => { CORE_KIT = m.FAMILY_KITS; }, () => { kitLoad = null; }));
 /** A core creature def by species, from the world model if present, else from the core kit (once loaded; see loadKit). */
 export function speciesDef(model: WorldModel, ref: string): StoredDef | undefined {
   const inWorld = model.resolvedDef(ref) ?? model.resolvedDef(`core/${ref}@1`);

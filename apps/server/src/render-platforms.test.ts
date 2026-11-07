@@ -1,6 +1,6 @@
 import {Hono} from 'hono';
 import test from 'node:test';import assert from 'node:assert/strict';
-import {captureRenderScene,parseRenderSceneCapture,hashOf} from '@sim/engine-contract';import {kernelHash} from '@sim/kernel';
+import {captureRenderScene,parseRenderSceneCapture,hashOf} from '@souls/engine-contract';import {kernelHash} from '@souls/kernel';
 import {fixture,accept,factory} from '../test/native-owner-fixture.ts';import {WorldHost} from './world.ts';import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {visualFloorOffset,livePlatforms} from './edge/eyes/platforms.ts';import {eyePose} from './edge/eyes/view.ts';
 import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';

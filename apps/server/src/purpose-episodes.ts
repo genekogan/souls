@@ -1,4 +1,4 @@
-import type {MidContext,PurposeExperiencesV1} from '@sim/brain';
+import type {MidContext,PurposeExperiencesV1} from '@souls/brain';
 import {ownedBodyCorresponds} from './lifecycle-runner.ts';
 import type {WorldHost,Mind} from './world.ts';
 import type {IntentHistoryV2} from './intent-history.ts';

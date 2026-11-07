@@ -32,7 +32,7 @@ export type ActionOutcome<S> = {state: S; result?: Record<string, unknown>; even
 export type ActionDef<S> = {
   label: string;
   /** Optional state-aware label (e.g. a ride's commitment: lifts off in ~N s, travels ~M min, returns); `label` stays the default. */
-  labelFor?(state: S): string;
+  labelFor?(state: S, ctx?: ActionCtx): string;
   /** Explicit admission boundary for actions that request a native body plan. */
   movesBody?:true;
   /** Roles allowed to take the action; 'anyone' includes Souls with no role. */

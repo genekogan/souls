@@ -11,7 +11,8 @@ export class WorldEdgeItems{
  readonly group=new THREE.Group();
  private shown=new Map<string,{kind:PropKind;obj:THREE.Object3D;key:string}>();
  private timer:ReturnType<typeof setTimeout>|null=null;
- constructor(private readonly url:string){this.group.name='edge items';}
+ private readonly url:string;
+ constructor(url:string){this.url=url;this.group.name='edge items';}
  start(signal:AbortSignal){
   const pace=new Backoff(POLL_MS,POLL_MAX_MS);let last='',cancelVisible=()=>{};
   const tick=async()=>{

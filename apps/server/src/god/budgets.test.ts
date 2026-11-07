@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CREATION_LIMITS as L } from '@sim/generators';
+import { CREATION_LIMITS as L } from '@souls/generators';
 import { Db } from '../db.ts';
 import { GodMode } from './god.ts';
 import { ApiError } from '../souls.ts';

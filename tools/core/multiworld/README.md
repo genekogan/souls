@@ -46,13 +46,13 @@ Save a config outside the repository and start the group:
 
 ```json
 {
-  "input": "/abs/sim-checkout",
+  "input": "/abs/souls-checkout",
   "dataDir": "/abs/scratch/local-worlds",
   "edenPort": 4970,
   "proxyPort": 4966,
-  "webDir": "/abs/sim-checkout/apps/web/dist",
-  "skillFile": "/abs/sim-checkout/tools/edge-skill/SKILL.md",
-  "cliFile": "/abs/sim-checkout/tools/edge-skill/eden-agent.mjs",
+  "webDir": "/abs/souls-checkout/apps/web/dist",
+  "skillFile": "/abs/souls-checkout/tools/edge-skill/SKILL.md",
+  "cliFile": "/abs/souls-checkout/tools/edge-skill/eden-agent.mjs",
   "marsWebDir": "/abs/mars-web",
   "mars": { "port": 4963, "worldId": "mars-2026-1" },
   "littlemartians": { "port": 4964, "worldId": "littlemartians-1" }

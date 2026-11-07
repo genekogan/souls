@@ -1,6 +1,6 @@
 // EF4: no truncation. Every point is isolated, deterministic and attributed to a def + field.
-import { WorldModel, coreLibrary, applyBatch, hashOf, vocab, type StoredDef, type DefLibrary, type Batch } from '@sim/world-compiler';
-import { CREATION_LIMITS } from '@sim/generators';
+import { WorldModel, coreLibrary, applyBatch, hashOf, vocab, type StoredDef, type DefLibrary, type Batch } from '@souls/world-compiler';
+import { CREATION_LIMITS } from '@souls/generators';
 import { assetLookup, shapeFor, measure } from './measure.ts';
 export type SweepPoint = { field: string; params: Record<string, unknown>; scale?: number };
 export type Finding = { def: string; hash: string; field: string; stage: string; code: string; detail: string };

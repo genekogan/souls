@@ -78,4 +78,50 @@ const radio: DefInput = {
   ] as DefInput['actions'],
 } as DefInput;
 
-export const HAND_MUSIC: DefInput[] = [jukebox, radio];
+// #494 / #416: v1 above is immutable (worlds keep its geometry); v2 fits the 400-triangle kit budget. The thin trim slats
+// and the trim bar lose a rounding nobody sees at 1.5 cm high (a sharp box is 12 triangles, a chamfered one 44); every
+// shape, tint, state, sound and action is otherwise v1's.
+const jukebox2: DefInput = { ...structuredClone(jukebox), version: 2 };
+for (const sh of (jukebox2.make as unknown as { args: { shapes: { tint?: string; round?: number }[] } }).args.shapes) if (sh.tint === 'trim') sh.round = 0;
+
+// #431 (music family, entry 1): a record player on a low console, with four record sleeves fanned against its front. A Soul
+// puts on the record she picks ("put on a record" with `record`: one of the sleeves) at the tonearm (the part tinted `tuner`)
+// and stops it at the power knob (tinted `valve`), both worked from one place in front of the console, like a radio's knobs.
+// The record is an enum field set from the param; the sound layer plays the picked sleeve's song from the shared score clock
+// (sound.ts playJukeboxes: a jukebox with a `record` field), so everyone near it hears the same record at the same moment.
+export const RECORD_SLEEVES = ['Morning Waltz', 'Harbour Lights', 'Low Tide', 'Night Train'] as const;
+const P = { wood: '#6e4528', trim: '#3a2618', deck: '#2c2622', platter: '#9a9ea3', vinyl: '#141414', label: '#d8452f', dark: '#1e1a17', valve: '#d9c08a', tuner: '#c9ccd1', s1: '#e8b04a', s2: '#3f7cac', s3: '#5c9e6e', s4: '#8a3f62' };
+const pp = { wood: { type: 'color', default: P.wood, doc: 'console colour' }, trim: { type: 'color', default: P.trim, doc: 'plinth colour' } };
+const recordPlayer: DefInput = {
+  schema: 'def/1', name: 'core-record-player', version: 1,
+  description: 'A record player on a low wooden console, with four record sleeves fanned against its front. A Soul puts on the record she picks at the tonearm and stops it at the power knob; everyone nearby hears the same record.',
+  tags: ['music', 'jukebox', 'record-player', 'hand-operated'], form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0, shapes: [
+    // the console on a plinth, its deck, the platter
+    { kind: 'box', at: [0, 0.03, 0], size: [0.62, 0.06, 0.42], tint: 'trim' },
+    { kind: 'box', at: [0, 0.5, 0], size: [0.6, 0.88, 0.4], tint: 'wood' },
+    { kind: 'box', at: [0, 0.955, 0], size: [0.58, 0.03, 0.38], tint: 'deck' },
+    { kind: 'cyl', at: [-0.07, 0.985, 0], r: 0.15, h: 0.03, segments: 16, tint: 'platter' },
+    // the record on the platter while it plays, with its label
+    { kind: 'cyl', at: [-0.07, 1.003, 0], r: 0.14, h: 0.006, segments: 16, tint: 'vinyl', when: '@on' },
+    { kind: 'cyl', at: [-0.07, 1.007, 0], r: 0.045, h: 0.004, segments: 8, tint: 'label', when: '@on' },
+    // the tonearm (the hand goes here to put a record on) on its pivot
+    { kind: 'cyl', at: [0.17, 0.99, -0.12], r: 0.025, h: 0.04, segments: 8, tint: 'dark' },
+    { kind: 'box', at: [0.14, 1.015, -0.03], size: [0.022, 0.016, 0.2], tint: 'tuner' },
+    // the power knob on the console's front, with a jewel lit while it plays
+    { kind: 'cyl', at: [0.2, 0.86, 0.205], r: 0.026, h: 0.03, segments: 8, tint: 'valve', pitch: Math.PI / 2 },
+    { kind: 'cyl', at: [0.12, 0.86, 0.203], r: 0.01, h: 0.01, segments: 6, tint: 'dark', pitch: Math.PI / 2, when: '!@on' },
+    { kind: 'cyl', at: [0.12, 0.86, 0.203], r: 0.01, h: 0.01, segments: 6, tint: 'label', glow: 1, pitch: Math.PI / 2, when: '@on' },
+    // four sleeves fanned against the lower front
+    ...['s1', 's2', 's3', 's4'].map((tint, i) => ({ kind: 'box', at: [-0.16 + i * 0.1, 0.22 + i * 0.012, 0.207 + i * 0.006], size: [0.28, 0.28, 0.006], tint }))] } } as unknown as DefInput['make'],
+  params: pp as DefInput['params'], palette: P,
+  state: { on: { type: 'bool', default: false }, record: { type: 'enum', values: [...RECORD_SLEEVES], default: RECORD_SLEEVES[0] } } as DefInput['state'],
+  components: { sound: { kind: 'music', radius: 18, volume: 0.5, when: 'on', mode: 'loop' } } as DefInput['components'],
+  size: { box: [0.62, 1.03, 0.42] },
+  actions: [
+    { name: 'put-on-record', label: 'Put on a record', roles: 'anyone', reach: 'touch', params: { record: { type: 'string', max: 40, doc: `the record to put on: ${RECORD_SLEEVES.join(', ')}` } }, when: [], then: [{ op: 'set', field: 'record', value: { param: 'record' } }, { op: 'set', field: 'on', value: true }] },
+    { name: 'switch-off', label: 'Stop the record player', roles: 'anyone', reach: 'touch', params: {}, when: [{ field: 'on', is: true }], then: [{ op: 'set', field: 'on', value: false }] },
+  ] as DefInput['actions'],
+} as DefInput;
+
+export const HAND_MUSIC: DefInput[] = [jukebox, radio, jukebox2, recordPlayer];

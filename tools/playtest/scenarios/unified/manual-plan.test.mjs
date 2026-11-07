@@ -1,6 +1,6 @@
 import test from'node:test';import assert from'node:assert/strict';import{mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync}from'node:fs';import{tmpdir}from'node:os';import{join}from'node:path';import{sha256}from'../../lib/hash.mjs';import{verifyRetained,validateScopeDiff}from'./manual-plan.mjs';
 test('retained controls fail closed on stale scorer, changed conditions, source head or infrastructure invalidity',t=>{
- const d=mkdtempSync(join(tmpdir(),'sim-retained-'));t.after(()=>rmSync(d,{recursive:true,force:true}));const run=join(d,'run'),rescore=join(d,'rescore');mkdirSync(join(run,'evidence'),{recursive:true});mkdirSync(rescore);
+ const d=mkdtempSync(join(tmpdir(),'souls-retained-'));t.after(()=>rmSync(d,{recursive:true,force:true}));const run=join(d,'run'),rescore=join(d,'rescore');mkdirSync(join(run,'evidence'),{recursive:true});mkdirSync(rescore);
  const write=(p,x)=>writeFileSync(p,typeof x==='string'?x:JSON.stringify(x));
  const s={freeze:{physicalSha256:'p',physicalPoseSha256:'poses'},world:{genesis:'g'},director:{script:[{id:'a',text:'Sit',budgetSec:180,expect:{journey:{phases:[]}}}]}};
  const scenario=join(d,'frozen.json');write(scenario,s);write(join(run,'scenario.json'),s);write(join(rescore,'scenario.json'),s);write(join(run,'oracles.jsonl'),'{}\n');write(join(run,'close.json'),{});write(join(run,'preflight.json'),{ok:true});write(join(run,'evidence/sol-001.json'),{sentAt:'s',cutoffAt:'c',samples:[{}]});

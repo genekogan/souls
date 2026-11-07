@@ -8,7 +8,7 @@
 import {VerdictPump} from './verdict-pump.ts';
 import {menuWorldOf, type LiveMenuWorld} from './menu-world.ts';
 import {threadCpuUsage} from 'node:process';
-import type {ChangeEvent, PathCommit, ProgramEvent} from '@sim/engine-contract';
+import type {ChangeEvent, PathCommit, ProgramEvent} from '@souls/engine-contract';
 import type {WorldHost} from '../world.ts';
 import type {EdgeLedger} from '../edge/ledger/ledger.ts';
 import type {EdgeReceipt} from '../edge/contract.ts';
