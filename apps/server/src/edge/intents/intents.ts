@@ -363,8 +363,20 @@ export class Intents {
     return this.capabilityWould(soul, v.cap, asked, {}, '');
   }
 
+  /** #1152: the walk that `asked` names by itself, or null. Every word of it is in the walk's id or label. */
+  private namedPlaceWalk(soul: EdgeSoul, asked: string): Record<string, unknown> | null {
+    const words = asked.toLowerCase().replace(/[.!?]+$/, '').split(/[^a-z0-9-]+/).filter(w => w && !['the', 'a', 'an', 'to', 'please'].includes(w));
+    if (!words.length || words.length > 5) return null;
+    const out = this.dryRun(soul, {capability: `walk to ${words.join(' ')}`}), would = out.would as {capability?: string; label?: string} | undefined;
+    if (out.ok === false || !would?.capability?.startsWith('walk:')) return null;
+    const held = new Set(`${would.capability} ${would.label ?? ''}`.toLowerCase().split(/[^a-z0-9]+/));
+    return words.flatMap(w => w.split('-')).every(w => held.has(w)) ? {...out, would: {...would, resolved: `${asked} names ${would.capability}`}} : null;
+  }
+
   /** POST /v1/edge/resolve: what act would do, without doing anything. */
   dryRun(soul: EdgeSoul, input: IntentInput & {capability?: unknown}): Record<string, unknown> {
+    // #1152: how an owner asks ("could you ...?") is not what is asked
+    if (typeof input.capability === 'string' && input.verb === undefined && !input.capability.includes(':')) input = {...input, capability: input.capability.replace(/^\s*(?:(?:could|can|would|will)\s+you\s+)?(?:please\s+)?(?:go\s+and\s+)?/i, '').replace(/[\s,]*(?:please)?[\s.?!]*$/i, '')};
     if (typeof input.capability === 'string' && input.verb === undefined) {
       const walk=walkWithDestinationWords(input.capability,[...this.L.host.minds.values()].map(m=>m.name));if(walk){const out=this.dryRun(soul,{...walk,...(input.params?{params:input.params}:{})});if(out.ok!==false)return out;
         // quality case 27: an ambiguous destination name ("the library") falls back to the walk the plain words resolve to, still inviting the companions
@@ -385,6 +397,9 @@ export class Intents {
       if (social && 'code' in social) return {ok: false, code: social.code, reason: social.reason, did_you_mean: social.did_you_mean};
       const text = social ? social.capability || social.rest || asked : asked, extra = social?.params;
       const r = text === asked ? this.L.coreA.resolveText(soul, asked, caps) : caps.some(c => c.id === text) ? this.L.coreA.exactWords(soul, bound, text, {kind: 'exact' as const, cap: caps.find(c => c.id === text)!}) : this.L.coreA.resolveText(soul, text, caps);
+      // #1152: words that only name a place ("orchard", "the pond hall", "reading room") are the walk there. A dry run, so nothing is chosen
+      // for the Soul, and only when the walk's own id and label hold every word: a word it merely resembles stays refused.
+      if (!social && (r.kind === 'unknown' ? !(r as {code?: string}).code : r.cap.id.endsWith(':here') && r.cap.verb !== 'walk')) {const walk = this.namedPlaceWalk(soul, asked); if (walk) return walk;}
       if (r.kind === 'unknown') return {ok: false, code: (r as {code?: string}).code ?? 'capability.unknown', reason: r.reason, did_you_mean: r.didYouMean,...(r.discovery?{discovery:r.discovery}:{})};
       const params = {...(r.kind === 'alias' && r.params ? r.params : {}), ...(extra ?? {})};
       return this.capabilityWould(soul, r.cap, asked, params, [social?.note, r.kind === 'alias' ? r.note : null].filter(Boolean).join('; '), extra);
