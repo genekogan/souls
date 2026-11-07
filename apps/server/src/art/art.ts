@@ -9,8 +9,8 @@
 //   `creator:<owner id>:<label>` or `soul:<soul id>:<name>`.
 // Media must be an http(s) URL or a same-site path (e.g. one returned by POST /v1/art/media); videos are .mp4/.webm/
 // .mov/.m4v and loop muted in the viewer. Every display def stores `media`, `title`, `maker`, one line per slot.
-import type { Entity, Op, StoredDef, WorldModel } from '@sim/world-compiler';
-import { frameMediaKind } from '@sim/world-compiler';
+import type { Entity, Op, StoredDef, WorldModel } from '@souls/world-compiler';
+import { frameMediaKind } from '@souls/world-compiler';
 
 export type Caller = { kind: 'creator'; owner: string | null; label?: string } | { kind: 'soul'; id: string; name: string };
 export type HangRequest = { frame: string; media?: string | null; title?: string; slot?: number };
@@ -18,7 +18,7 @@ export type ArtFailure = { ok: false; status: number; code: string; message: str
 export type ArtPlan = { ok: true; id: string; slot: number; ops: Op[]; note: string };
 export type DisplayInfo = { id: string; name: string | null; def: string; slots: number; p: [number, number, number]; yaw: number; owner: string | null; art: { slot: number; media: string; kind: 'image' | 'video'; title: string; maker: string }[] };
 
-/** One media reference (the shared frame-media rule in @sim/world-compiler). */
+/** One media reference (the shared frame-media rule in @souls/world-compiler). */
 export const mediaKind = (url: string): 'image' | 'video' | null => frameMediaKind(url);
 const fail = (status: number, code: string, message: string): ArtFailure => ({ ok: false, status, code, message });
 const clean = (s: string, max: number) => s.replace(/[\r\n\t]+/g, ' ').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max);

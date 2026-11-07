@@ -2,17 +2,17 @@
 // Everything a god or the server exchanges is one of these shapes. Keep them
 // compact; the compiler (compile.ts) is the only thing that interprets them.
 import { z } from 'zod';
-import { landformBodySchema } from '@sim/ground';
-import { ID, NAME, fieldSchema, fieldsSchema, materialEnum, num, slotSchema, v2, v3, value } from '@sim/generators';
+import { landformBodySchema } from '@souls/ground';
+import { ID, NAME, fieldSchema, fieldsSchema, materialEnum, num, slotSchema, v2, v3, value } from '@souls/generators';
 import { ACCESS, layersStateSchema, ownerRef, priceSchema, relRef, RELATIONS, scheduleSchema } from './layers.ts';
-import { CREATION_LIMITS as L } from '@sim/generators';
+import { CREATION_LIMITS as L } from '@souls/generators';
 
 export const ENTITY_SCHEMA = 'entity/1';
 export const DEF_SCHEMA = 'def/1';
 export const EDIT_SCHEMA = 'edit/1';
 
-export { ID, NAME, value, fieldSchema, fieldsSchema, slotKind, slotSchema, materialEnum } from '@sim/generators';
-export type { Value, Field, FieldInput, Slot, Material } from '@sim/generators';
+export { ID, NAME, value, fieldSchema, fieldsSchema, slotKind, slotSchema, materialEnum } from '@souls/generators';
+export type { Value, Field, FieldInput, Slot, Material } from '@souls/generators';
 export const DEF_REF = /^((?:core|eden|lm|mars)\/[a-z0-9][a-z0-9._-]*@\d+|sha:[0-9a-f]{16,64}|[a-z0-9][a-z0-9._-]*@\d+)$/;
 
 // ---------- defs ----------
@@ -33,6 +33,11 @@ export const lightSchema = z.object({
 });
 export const componentsSchema = z.object({
   seat: z.object({ height: num.default(0.45) }).optional(),
+  /** #442: this thing can break (state `broken`) and be repaired by hand with a carried tool: a held thing tagged `tool-<tool>`.
+   *  `label` is the offer; `says` the nearby fact's word; `hand` where the working hand goes at the end of each stroke and
+   *  `stands` where the body may stand for that (own local frame, first clear one wins); `motion`: a `strike` falls on it from
+   *  `lift` metres up, a `pump` works back and forth over `lift` metres along the facing. */
+  repairable: z.object({ tool: z.string().regex(/^[a-z][a-z-]{0,23}$/), label: z.string().max(80), says: z.string().max(40), hand: v3, stands: z.array(v2).min(1).max(4), strokes: z.number().int().min(1).max(20), lift: num.positive().max(0.5), motion: z.enum(['strike', 'pump']) }).strict().optional(),
   bed: z.object({ height: num.default(0.5) }).optional(),
   surface: z.object({ height: num }).optional(),
   /** Soul Actions entry 42: `inside` makes a hand-operated container's `shelf` slots real storage places (contact.ts
@@ -47,6 +52,13 @@ export const componentsSchema = z.object({
   carryable: z.object({ mass: num.positive(), grips: z.number().int().min(1).max(4).default(1),
     handling: z.object({ crew: z.tuple([z.number().int().min(1).max(8), z.number().int().min(1).max(8)]), pose: z.enum(['edge', 'flat']), height: num.positive().max(2),
       grips: z.record(z.string().regex(/^[1-8]$/), z.array(v3).min(1).max(8)) }).strict().optional() }).optional(),
+  /** PC12 (#691): typed structural connectors, in the def frame at scale 1. Two connectors join when each one's `mates`
+   *  names the other's `kind` and their points meet (`connect`); a `bears` connector holds its part up, so a part with
+   *  bearing connectors is supported through them once all are joined (or by the ground when none is). Generic data:
+   *  nothing in the compiler names a kind. */
+  connectors: z.array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9@._-]{0,31}$/), kind: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/), at: v3,
+    mates: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,31}$/)).min(1).max(8), bears: z.literal(true).optional() }).strict()).min(1).max(128)
+    .refine((cs) => new Set(cs.map((c) => c.id)).size === cs.length, 'connector ids must be unique').optional(),
   opening: z.object({ width: num.positive(), height: num.positive(), state: z.enum(['open', 'closed', 'always']).default('always') }).optional(),
   floor: z.object({ level: z.number().int().default(0), y: num.default(0) }).optional(),
   stairs: z.object({ rise: num.positive(), run: num.positive(), treads: z.number().int().min(1) }).optional(),
@@ -256,9 +268,14 @@ export const entitySchema = z.object({
   access: z.enum(ACCESS).optional(),
   schedule: scheduleSchema.optional(),
   price: priceSchema.optional(),
+  /** PC12 (#691): this part's half of each structural joint, by its own connector id: the other part and its connector.
+   *  Both halves are always present (`connect`, `disconnect`); the joint's id is `jointId` of the two ends. */
+  joins: z.record(z.string(), z.object({ to: z.string(), at: z.string() }).strict()).optional(),
   by: z.string(), born: z.number().int(), v: z.number().int().default(1),
 });
 export type Entity = z.infer<typeof entitySchema>;
+/** PC12 (#691): a joint's stable id, the same from either end: `<a>.<connector>~<b>.<connector>`, the lesser end first. */
+export const jointId = (a: string, ca: string, b: string, cb: string) => { const x = `${a}.${ca}`, y = `${b}.${cb}`; return x < y ? `${x}~${y}` : `${y}~${x}`; };
 
 // ---------- world ----------
 
@@ -356,6 +373,10 @@ const clone = z.object({
   count: z.number().int().min(1).max(64).default(1), step: v2.optional(),
   mode: z.enum(['strict', 'nudge']).default('strict'),
 });
+/** PC12 (#691): join two parts at a connector each (both halves recorded), or undo one joint by either end. */
+const end = z.object({ id: z.string(), connector: z.string() });
+const connect = z.object({ op: z.literal('connect'), a: end, b: end });
+const disconnect = z.object({ op: z.literal('disconnect'), a: end });
 const define = z.object({ op: z.literal('define'), def: defSchema });
 // W1: retire an unused local ref; hashed content remains available to undo.
 const undefine = z.object({ op: z.literal('undefine'), ref: z.string() });
@@ -373,9 +394,9 @@ const restoreDef = z.object({ op: z.literal('restore-def'), ref: z.string(), has
 });
 const reviveDef = z.object({ op: z.literal('revive-def'), ref: z.string(), hash: z.string().regex(/^[0-9a-f]{64}$/) });
 
-export const opSchema = z.discriminatedUnion('op', [place, remove, move, set, clone, define, undefine, world, expand, answer, restore, restoreDef, reviveDef, economy, mint, pay, relate]);
+export const opSchema = z.discriminatedUnion('op', [place, remove, move, set, clone, define, undefine, world, expand, answer, restore, restoreDef, reviveDef, economy, mint, pay, relate, connect, disconnect]);
 export type Op = z.infer<typeof opSchema>;
-export const clientOpSchema = z.discriminatedUnion('op', [place, remove, move, set, clone, define, undefine, world, expand, answer, economy, mint, pay, relate]);
+export const clientOpSchema = z.discriminatedUnion('op', [place, remove, move, set, clone, define, undefine, world, expand, answer, economy, mint, pay, relate, connect, disconnect]);
 
 export const batchSchema = z.object({
   schema: z.literal(EDIT_SCHEMA).default(EDIT_SCHEMA),
@@ -409,7 +430,8 @@ export const refusalCodes = [
   'parent.unknown', 'slot.unknown', 'slot.incompatible', 'slot.full', 'slot.outside',
   'size.range', 'size.furnished', 'extent.outside', 'overlap.solid', 'support.none', 'body.protected',
   'constant.immutable', 'float.no-water', 'constraint.unsatisfied', 'architecture', 'architecture.sealed', 'architecture.unreachable', 'architecture.headroom', 'entity.unknown', 'entity.limit', 'name.taken', 'params.invalid', 'state.invalid', 'undo.conflict',
-  'wallet.insufficient', 'relation.invalid',
+  'wallet.insufficient', 'relation.invalid', 'handling.crew', 'handling.grips', 'handling.mass', 'handling.reach',
+  'connector.unknown', 'connector.incompatible', 'connector.taken', 'connector.apart', 'connector.joined', 'connector.free', 'connector.pose',
   'request.conflict', 'request.budget', 'revision.stale', 'asset.invalid', 'asset.budget', 'budget.world', 'budget.region',
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];

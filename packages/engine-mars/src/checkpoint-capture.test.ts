@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Engine, EngineSnapshot, EngineCheckpoint, EngineCheckpointCapture, WorldState } from '@sim/engine-contract';
+import type { Engine, EngineSnapshot, EngineCheckpoint, EngineCheckpointCapture, WorldState } from '@souls/engine-contract';
 import type { RuntimeSnapshot } from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import { MarsEngine, marsFactory, GREEN_FIELD_WORLD, type MarsWorldConfig } from './engine.ts';
 import { commonsProvisionsFactory } from './commons-provisions-engine.ts';
 import { commonsNewcomerResourcesFactory } from './newcomer-resources-engine.ts';
 import { nativeSleepSnapshotFactoryV1 } from './sleep-snapshot-engine.ts';
-import { physicalView, stableStringify } from '@sim/engine-contract';
+import { physicalView, stableStringify } from '@souls/engine-contract';
 import { createHash } from 'node:crypto';
 import { captureGraphDeferred, capturedCanonicalRoot, prepareImmutableSnapshotData } from '../../../mars/viewer/engine/runtime/codec.ts';
 import { capturedPhysicalHashSteps, capturePhysicalHashInput } from './checkpoint-hash.ts';

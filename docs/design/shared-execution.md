@@ -1,13 +1,13 @@
 # Shared execution within independent Soul action streams (PC02)
 
 **This is the contract for the first shared carry. It is not implemented API documentation.** Issue:
-[#681](https://github.com/genekogan/souls/issues/681), part of [#560](https://github.com/genekogan/souls/issues/560)
-and [#623](https://github.com/genekogan/souls/issues/623) S4b. The programme design is
+[#681](https://github.com/soulsimulation/souls/issues/681), part of [#560](https://github.com/soulsimulation/souls/issues/560)
+and [#623](https://github.com/soulsimulation/souls/issues/623) S4b. The programme design is
 [physical-coordination.md](physical-coordination.md), and the inventory is
 [physical-coordination-manifest.json](physical-coordination-manifest.json).
 
 It specifies the smallest contract one consensual two-Soul ground carry needs (PC06,
-[#685](https://github.com/genekogan/souls/issues/685)), and how PC04–PC11 grow it. Where it changes current behaviour,
+[#685](https://github.com/soulsimulation/souls/issues/685)), and how PC04–PC11 grow it. Where it changes current behaviour,
 it says *Change:* and names the current rule. Everything else describes code on `main` at `df69a3ca`.
 
 ## Principles
@@ -132,7 +132,7 @@ through `OwnerLoop.link` on their own act. Nobody's receipt is linked to another
   - An `op` whose program ended is closed with that program's outcome.
   - A `pending` session has no program; it stays pending and readiness is re-derived.
 - A restart never commits on its own behalf after `expiresTick`, and never commits a revision some member no longer
-  accepts. PC10 ([#689](https://github.com/genekogan/souls/issues/689)) proves this at every phase.
+  accepts. PC10 ([#689](https://github.com/soulsimulation/souls/issues/689)) proves this at every phase.
 
 ## 3. Streams during execution: speech, busy, stop and release (A2, A6)
 
@@ -201,7 +201,7 @@ anything new. A member who *fades* (`ledger.ts`) fails their open receipts and s
 borrowed member that would cut across a running carry. PC09 owns the rule: fading during a shared operation is
 treated as a stop request with supported cleanup. A pending acceptance from a disconnected mind still counts until
 `expiresTick`. On reconnect, the same receipt
-shows the actual outcome. PC09 ([#688](https://github.com/genekogan/souls/issues/688)) proves this.
+shows the actual outcome. PC09 ([#688](https://github.com/soulsimulation/souls/issues/688)) proves this.
 
 ## 4. Envelope of the first template (A3)
 
@@ -227,7 +227,7 @@ has no solo carry offer today, only the one-hand item path PC03 replaces. *Chang
 - `in-hand` for small items.
 
 Sockets, reciprocal connections and structural support are not part of this contract. They begin at PC12
-([#691](https://github.com/genekogan/souls/issues/691)), and a carried beam cannot be installed through it.
+([#691](https://github.com/soulsimulation/souls/issues/691)), and a carried beam cannot be installed through it.
 
 ## 5. Evidence, trace and viewer (A5)
 
@@ -248,7 +248,7 @@ There is no new logger. The existing records carry the shared fields as follows.
 
 ## 6. What S3 already qualifies (A6)
 
-Pre-S4b qualification: [#623 comment](https://github.com/genekogan/souls/issues/623#issuecomment-6638951260).
+Pre-S4b qualification: [#623 comment](https://github.com/soulsimulation/souls/issues/623#issuecomment-6638951260).
 
 - **Action identity and receipts.** `for` (#805/#823) and `firstMotionTick` (#810) are approved, but neither is on
   `main` yet.
@@ -267,15 +267,15 @@ them. This contract builds on all of them. Its new boundary questions are the on
 
 | contract piece | current surface | PC |
 |---|---|---|
-| loose beam and sheet defs, opt-in `shared-carry`, a new `core-rack-beam` revision, and a conformance supplement | `packages/world-compiler/src/core-kit/authoring/work.mjs`, `packages/conformance/conformance/` | PC03 [#682](https://github.com/genekogan/souls/issues/682) |
-| `kind: 'shared'` invites, revision, accept and decline against a revision, expiry; a test that a host body act closes the invite (`shared.left` for every member) | `edge/ledger/together.ts` | PC04 [#683](https://github.com/genekogan/souls/issues/683) |
-| readiness, atomic commit (`enqueueObjectDecision`), the `committed` state, claims, borrowed crew, `shared.busy` instead of `replaced`, `shared.left`, per-member receipts | `edge/ledger/ledger.ts` `insert`, `world.ts`, `god/engine-bridge.ts`, `packages/engine-mars/src/engine.ts` | PC05 [#684](https://github.com/genekogan/souls/issues/684) |
-| the native crew `carry` through the bridge, `carry-with` offers, the solo refusal's alternative | `god/engine-bridge.ts`, `mars/viewer/engine/carry/` | PC06 [#685](https://github.com/genekogan/souls/issues/685) |
-| a brief obstruction wait, detour or lasting blockage for the formation | native `planner.ts` and `blockedWait` | PC07 [#686](https://github.com/genekogan/souls/issues/686) |
-| `stop-carry`, stopping a program by `op.programId`, `stopping`, `blocked`, release; old `edge-stop` events without `programId` keep replaying through `programOf(entityId)`, unchanged | the ledger, `fold.ts` `edge-stop`, engine `stop`/`advance`, the native `cancel` | PC08 [#687](https://github.com/genekogan/souls/issues/687) |
-| disconnect, reconnect, and fade during an operation | the ledger and the owner loop | PC09 [#688](https://github.com/genekogan/souls/issues/688) |
-| restart reconciliation | the invite row plus host checkpoint and log replay | PC10 [#689](https://github.com/genekogan/souls/issues/689) |
-| a different load and a crew of 3–4 | data and def only | PC11 [#690](https://github.com/genekogan/souls/issues/690) |
+| loose beam and sheet defs, opt-in `shared-carry`, a new `core-rack-beam` revision, and a conformance supplement | `packages/world-compiler/src/core-kit/authoring/work.mjs`, `packages/conformance/conformance/` | PC03 [#682](https://github.com/soulsimulation/souls/issues/682) |
+| `kind: 'shared'` invites, revision, accept and decline against a revision, expiry; a test that a host body act closes the invite (`shared.left` for every member) | `edge/ledger/together.ts` | PC04 [#683](https://github.com/soulsimulation/souls/issues/683) |
+| readiness, atomic commit (`enqueueObjectDecision`), the `committed` state, claims, borrowed crew, `shared.busy` instead of `replaced`, `shared.left`, per-member receipts | `edge/ledger/ledger.ts` `insert`, `world.ts`, `god/engine-bridge.ts`, `packages/engine-mars/src/engine.ts` | PC05 [#684](https://github.com/soulsimulation/souls/issues/684) |
+| the native crew `carry` through the bridge, `carry-with` offers, the solo refusal's alternative | `god/engine-bridge.ts`, `mars/viewer/engine/carry/` | PC06 [#685](https://github.com/soulsimulation/souls/issues/685) |
+| a brief obstruction wait, detour or lasting blockage for the formation | native `planner.ts` and `blockedWait` | PC07 [#686](https://github.com/soulsimulation/souls/issues/686) |
+| `stop-carry`, stopping a program by `op.programId`, `stopping`, `blocked`, release; old `edge-stop` events without `programId` keep replaying through `programOf(entityId)`, unchanged | the ledger, `fold.ts` `edge-stop`, engine `stop`/`advance`, the native `cancel` | PC08 [#687](https://github.com/soulsimulation/souls/issues/687) |
+| disconnect, reconnect, and fade during an operation | the ledger and the owner loop | PC09 [#688](https://github.com/soulsimulation/souls/issues/688) |
+| restart reconciliation | the invite row plus host checkpoint and log replay | PC10 [#689](https://github.com/soulsimulation/souls/issues/689) |
+| a different load and a crew of 3–4 | data and def only | PC11 [#690](https://github.com/soulsimulation/souls/issues/690) |
 
 **Order.** PC03 → PC04 → PC05 → PC06 is a hard chain: defs, then the agreement, then commit and claims, then the
 visible carry. PC07–PC10 each need PC06 and are independent of one another. PC11 needs PC06 and PC03's second def.
@@ -297,6 +297,27 @@ creates the first claimed receipts.
   Afterwards, a third unrelated Soul has walked throughout.
 
 The PC06 proof is this journey on the real client at real speed. PC08 reuses it, with Bo acting `stop-carry` mid-move.
+
+## Later templates
+
+`raise-hold` (PC13, [#692](https://github.com/soulsimulation/souls/issues/692)) uses this session, op and stop as they are, with
+no destination: its `destination` is a placeholder and its `cleanup` is `lower-here`. Its native programme doesn't end by
+itself. Holding is a phase, so the claims and receipts stay for as long as it is held, and the only way out is the stop.
+See [soul actions](../architecture/soul-actions.md).
+
+`connect-beam` (PC14, [#693](https://github.com/soulsimulation/souls/issues/693)) keeps the same session and op, with exactly two
+members. Its `destination` names the two uprights, the column and the seat height. Its `beam` field holds the two uprights
+and their seat connectors. It ends `arrived` (the receipts' `shared.seated`) once the beam is seated. A stop lowers a
+lifted beam back where it lay. A raise whose upright a beam joins changes its stop: the crew lets go only when the frame
+stands on its own, and until then keeps holding.
+
+`install-joist` and `lay-sheet` (PC15, [#694](https://github.com/soulsimulation/souls/issues/694)) keep the same session and op,
+with exactly two members. The session's `seat` field holds the engine step it commits (`install_joist_v1` or
+`lay_sheet_v1` and its params, the crew added at commit) and, for a joist, where along the bay it goes. They end
+`arrived` (`shared.seated`) once every bearing connector is joined; a stop lowers a lifted part back where it lay.
+`install-flight` (PC16, [#695](https://github.com/soulsimulation/souls/issues/695)) is the same template for a stair flight,
+with `at` along the beam it hangs on; its `seat` is `install_flight_v1`. A flight's treads are set by one Soul each, an
+ordinary solo action (`install-tread:<id>`), not a shared session.
 
 ## Exclusions
 

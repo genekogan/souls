@@ -12,7 +12,7 @@
 // The object id is the entity id. Objects follow the entity world: re-derived on each god edit, removed with the thing.
 // No edge file changes: the kind registers on the ledger's comms objects when they exist; the read capability goes in
 // through the ledger's world-profile hook (as nav.ts's `walk:<path>`).
-import { checkersStatus, containerInside, gameStatus, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { checkersStatus, containerInside, gameStatus, type Entity, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { paintingLine } from '../art/art.ts';
 import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
@@ -25,7 +25,7 @@ import { waterRole, wordOf } from './water.ts';
 import { economyOn } from './layers.ts';
 import { supportY } from './nav.ts';
 import { posterStale, worldDay } from './poster-boards.ts';
-import { posterList, signupNoun, wantedList } from '@sim/world-compiler';
+import { posterList, signupNoun, wantedList } from '@souls/world-compiler';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Vec2 = [number, number];
@@ -106,6 +106,8 @@ export type PerceiveHost = {
   commit?(ops: unknown[], note: string): { accepted: boolean };
   log(m: string): void;
   /** Entry 34 (watering.ts): "water <plant>" with a watering can from its hook. */
+  /** #442 (mending.ts): "repair <thing>" with the tool in hand, and whether a thing is whole (a whole one is no built object). */
+  mending?: { plan(soul: { entityId: string }, thing: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | { code: string; reason: string } | null; whole(id: string): boolean };
   watering?: { plan(soul: { entityId: string }, plant: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | { code: string; reason: string } | null; expect(body: string): void };
   /** Entry 43 (tea.ts): the kettle and cup acts. */
   tea?: { plan(soul: { entityId: string }, id: string, action: string): { steps: { verb: string; params: Record<string, unknown> }[]; summary: string } | { code: string; reason: string } | null; expect(body: string): void };
@@ -176,6 +178,7 @@ export class GodPerceive {
         return busy ? { code: 'container.in-use', reason: `Someone's hand is in ${e.name ? m.pathOf(id) : 'it'}; wait until they are done.` } : null;
       },
       deferContacts: !!this.h.edge?.contactActuator,
+      repair: (soul: EdgeSoul, id: string) => this.h.mending?.plan(soul, id) ?? null,
       watering: (soul: EdgeSoul, id: string) => this.h.watering?.plan(soul, id) ?? null,
       wateringBegun: (soul: EdgeSoul) => this.h.watering?.expect(soul.entityId),
       tea: (soul: EdgeSoul, id: string, action: string) => this.h.tea?.plan(soul, id, action) ?? null,
@@ -239,7 +242,7 @@ export class GodPerceive {
     const c = def.components as Record<string, unknown>;
     if (c.body || c.behavior || c.hover || /^core[-/]flag@/.test(def.ref) || this.h.engineOwned(e)) return null;
     if (keptShut(m, e)) return null;   // entry 42: kept in a shut drawer or locker: not a thing anyone sees until it is opened
-    const text = signText(e, def), acts = this.h.commit ? actionsOf(def).length > 0 : false;
+    const text = signText(e, def), acts = this.h.commit ? actionsOf(def).some((a) => a.name !== 'repair' || !this.h.mending?.whole(e.id)) : false;
     // LAYERS: an owned, priced or scheduled thing is seen as such (a loaf for sale, Ana's door, the café's hours)
     const lay = layersOn && layered(e) ? this.h.layers!.tag(e) : '';
     if (!e.name && text === null && !acts && !lay) return null;
@@ -464,7 +467,8 @@ export class GodPerceive {
     if (o.__godCaps) return; o.__godCaps = true;
     const original = o.capabilities.bind(o);
     o.capabilities = (...args) => original(...args).filter(cap =>
-      !(cap.object && this.desired.has(cap.object) && cap.blocked?.code === 'object.out-of-reach'));
+      // #442: a whole thing has nothing to repair (its row may lag a sync behind the state)
+      !(cap.object && this.desired.has(cap.object) && (cap.blocked?.code === 'object.out-of-reach' || cap.blocked?.code === 'repair.not-broken')));
   }
 
   /** `read:<sign>` for signs near this Soul: walk up to it and face it; the label carries its words. */

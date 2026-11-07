@@ -6,7 +6,7 @@
 // patches the CLI's mirror to exactly a whole mirror. Only the rows whose inputs changed are laid out again.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { GodMode } from './god.ts';
 import { entityHash, layoutRows, mirrorHash, mirrorPayload, rowCacheStats } from './mirror.ts';

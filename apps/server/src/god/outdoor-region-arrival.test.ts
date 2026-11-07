@@ -7,7 +7,7 @@ import {inPoly} from '../edge/ledger/places.ts';
 import {GodMode} from './god.ts';
 import {installEngineBridge} from './engine-bridge.ts';
 import {GroundHost} from './ground-host.ts';
-import {coreRef} from '@sim/world-compiler';
+import {coreRef} from '@souls/world-compiler';
 import {outdoorRegionExclusions} from '../edge/ledger/region-arrival.ts';
 import {GodNav,type Thing} from './nav.ts';
 

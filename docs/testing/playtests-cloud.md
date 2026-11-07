@@ -63,7 +63,7 @@ PLAYTEST_CLOUD_SKIP=install-playtest,install-server,web-build,overlay,preflight,
 
 Linux with Node 22 (the script adds `--experimental-strip-types` below 22.18), pnpm 10 (installed through corepack if
 missing), the global `playwright` module with browsers (`/opt/pw-browsers` is used when present), an authenticated
-`claude` CLI, and network access to package registries, the public Sim and asset sites, and the Git remote.
+`claude` CLI, and network access to package registries, the public Souls and asset sites, and the Git remote.
 ImageMagick is installed with apt when no image tool exists. Codex is optional: `direct` substitutes a Claude seat
 (`PLAYTEST_CODEX_SUBSTITUTE_MODEL`, default `sonnet`) when `codex` is not installed.
 

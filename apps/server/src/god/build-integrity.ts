@@ -1,5 +1,5 @@
 // R1: private, read-only diagnostics. Estimates are labelled; no resident probes or viewer work run here.
-import { obbOverlap, type WorldModel, type Failure } from '@sim/world-compiler';
+import { obbOverlap, type WorldModel, type Failure } from '@souls/world-compiler';
 import { siteLocal, siteWorld, inSite, type BuildBody, type BuildInventory, type BuildInventoryContext } from './builds.ts';
 import type { EditRow } from './store.ts';
 import { runQuery } from './query.ts';

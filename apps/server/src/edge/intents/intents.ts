@@ -3,7 +3,7 @@
 // it chose; `resolve` is the same choice as a dry run with no side effects. Attention acts (look, turn, face) move the
 // head (or turn a free standing body) through a logged `edge-attention` event and never cancel the body's act; speech
 // and conversation never touch the body. No model calls; deterministic for a given world state.
-import type {Program} from '@sim/engine-contract';
+import type {Program} from '@souls/engine-contract';
 import type {EdgeLedger} from '../ledger/ledger.ts';
 import type {EdgeCapability, EdgeReceipt, EdgeSoul} from '../contract.ts';
 import {Perception, type Located} from '../perception/here.ts';

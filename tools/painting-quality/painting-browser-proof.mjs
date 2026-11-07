@@ -101,7 +101,7 @@ export async function runPaintingBrowserProof(owner) {
   const showPainting = async (visitor, target, state, version) => {
     const { page, label } = visitor; budget();
     await bound(page.waitForFunction(({ target, media, title, maker }) => {
-      const host = window.__simEntity; if (!host?.layer?.active || host.layer.building || host.layer.filling) return false;
+      const host = window.__soulsEntity; if (!host?.layer?.active || host.layer.building || host.layer.filling) return false;
       let found = false;
       host.layer.group?.traverse(mesh => {
         const art = mesh.userData.art, map = mesh.material?.map, image = map?.image;
@@ -110,7 +110,7 @@ export async function runPaintingBrowserProof(owner) {
       }); return found;
     }, { target, media: state.media, title: state.title, maker: state.maker }, { timeout: Math.min(15000, deadline - Date.now()) }));
     const face = await bound(page.evaluate(({ target, media }) => {
-      const host = window.__simEntity; let result;
+      const host = window.__soulsEntity; let result;
       host.layer.group.traverse(mesh => {
         const art = mesh.userData.art; if (result || art?.frame !== target || art.url !== media) return;
         const image = mesh.material.map.image, canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;

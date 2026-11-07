@@ -15,7 +15,7 @@ import { fixture } from '../test/native-owner-fixture.ts';
 import { buildApp } from './http.ts';
 import type { Hub } from './hub.ts';
 import type { AccountIdentity } from './accounts/store.ts';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 
 const CLI = fileURLToPath(new URL('../../../tools/world-launcher/soul/eden.mjs', import.meta.url));
 

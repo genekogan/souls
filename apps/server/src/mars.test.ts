@@ -10,9 +10,9 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
-import { Connection } from '@sim/client';
-import { marsAvailable, marsFactory } from '@sim/engine-mars';
-import { kernelHash } from '@sim/kernel';
+import { Connection } from '@souls/client';
+import { marsAvailable, marsFactory } from '@souls/engine-mars';
+import { kernelHash } from '@souls/kernel';
 import { Db } from './db.ts';
 import { optionsFor } from './deck.ts';
 import { initKernel, replayKernel } from './fold.ts';
@@ -33,7 +33,7 @@ else {
   const births = (host: WorldHost, names: string[]) => names.forEach((n) => void host.enqueue('birth', 'test', { soulId: `s_${n}`, entityId: `h_${n}`, name: n, description: 'test soul', owner: 'system' }));
 
   test('mars: replay from genesis reproduces the live world, and the kernel replays without the engine', () => {
-    const db = new Db(join(mkdtempSync(join(tmpdir(), 'sim-mars-')), 't.db'));
+    const db = new Db(join(mkdtempSync(join(tmpdir(), 'souls-mars-')), 't.db'));
     const host = new WorldHost(db, factory, 'mars-replay', 1e9); host.boot();
     births(host, ['a', 'b', 'c', 'd', 'e']);
     drive(host, 3000, (i) => i * 7);
@@ -53,7 +53,7 @@ else {
   });
 
   test('mars: restart from a snapshot taken mid-action equals the uninterrupted world', () => {
-    const db = new Db(join(mkdtempSync(join(tmpdir(), 'sim-mars-')), 't.db'));
+    const db = new Db(join(mkdtempSync(join(tmpdir(), 'souls-mars-')), 't.db'));
     const host = new WorldHost(db, factory, 'mars-restart', 1e9); host.boot();
     births(host, ['a', 'b', 'c']);
     drive(host, 1200, (i) => i);
@@ -88,7 +88,7 @@ else {
   before(async () => {
     const vacancy=createServer();await new Promise<void>((resolve,reject)=>{vacancy.once('error',reject);vacancy.listen(PORT,'127.0.0.1',()=>vacancy.close(error=>error?reject(error):resolve()));});
     let listening=false,startupError:Error|undefined;
-    const fixtureData=mkdtempSync(join(tmpdir(),'sim-mars-'));
+    const fixtureData=mkdtempSync(join(tmpdir(),'souls-mars-'));
     proc = spawn(process.execPath, [new URL('./main.ts', import.meta.url).pathname], {
       env: { PATH: process.env.PATH, HOME: process.env.HOME, ...(process.env.MARS_ENGINE_DIR ? { MARS_ENGINE_DIR: process.env.MARS_ENGINE_DIR } : {}), WORLD_KEY:'toy',WORLD_ID:WORLD_ID, BUILD_ID:fixtureBuild, ENGINE: 'mars', MIND_DRIVER: 'central', PORT: String(PORT), HOST: '127.0.0.1', DATA_DIR:fixtureData,ACCOUNT_REGISTRY_PATH:join(fixtureData,'accounts.sqlite'),ACCOUNT_AUTH_REQUIRED:'0',SEED_NATIVES:'1', BRAIN_MODE: 'fake', DEV_AUTH: '1', PUBLIC_URL: BASE, WEB_DIR: '/nonexistent' },
       stdio: ['ignore', 'pipe', 'inherit'],

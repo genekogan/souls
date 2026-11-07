@@ -1,4 +1,4 @@
-# sim-director — measured mode (swarm director and playtests)
+# souls-director — measured mode (swarm director and playtests)
 
 Not the default: see `SKILL.md` for the plain coordinator + subagents mode. Use this for measured runs: a cast
 directed by the harness with a VERDICT, or a playtest scenario (the T3 proof in `docs/process/PROOF-POLICY.yml`:
@@ -13,7 +13,7 @@ Two tools in `tools/playtest/`, driven here by background scripts so the chat st
 - **Playtest** (`playtest.mjs run <scenario.json>`): a scripted battery or persona-driven session with seats,
   cameras and oracles, then a Reviewer and Developer pass. No live console.
 
-Scripts (`.claude/skills/sim-director/scripts/`, each has `--help`):
+Scripts (`.claude/skills/souls-director/scripts/`, each has `--help`):
 
 | script | does |
 |---|---|
@@ -44,7 +44,7 @@ Paths (all overridable): checkout `SIM_CHECKOUT` (default: this repo), state `SI
    `.e2e/playtest/casts/` unless they are meant to be committed in a PR.
 
 ## Before starting: server root
-- **Server root** (`--server-root`, default: the checkout) must be a built Sim checkout containing
+- **Server root** (`--server-root`, default: the checkout) must be a built Souls checkout containing
   `tools/god-skill/dev-world.mjs`, `apps/web/dist/index.html` and `tools/world-launcher/soul/eden.mjs`; the scripts
   refuse otherwise. Build with `pnpm install --frozen-lockfile && pnpm build`. Say which root you used.
 - Optional read-only check: `node tools/playtest/playtest.mjs preflight --server-root <root>` (usage, CLI versions,
@@ -84,7 +84,7 @@ Show the user the `--dry-run` summary before starting.
 
 ## Running a cast
 ```bash
-S=.claude/skills/sim-director/scripts
+S=.claude/skills/souls-director/scripts
 $S/direct.sh --dry-run .e2e/playtest/casts/<name>.json --server-root <root>   # read the gate, show the user
 $S/direct.sh .e2e/playtest/casts/<name>.json --server-root <root>             # returns in ~3 s
 $S/status.sh                                   # every few minutes, and whenever the user asks

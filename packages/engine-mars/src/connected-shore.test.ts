@@ -5,7 +5,7 @@ import {nativeShoreFixture} from './shore-runtime.ts';
 import {SHORE_POLICY} from '../../../mars/viewer/engine/locomotion/shore.ts';
 import {TakeRecorder} from '../../../mars/viewer/engine/take/recorder.ts';
 import {sampleTake} from '../../../mars/viewer/engine/take/replay.ts';
-import {captureRenderScene,hashOf} from '@sim/engine-contract';
+import {captureRenderScene,hashOf} from '@souls/engine-contract';
 
 test('fresh connection preserves original commons and transformed reviewed shore depth, with a real shared supported disc',async()=>{
   const f=await connectedCommonsShoreFixture(),old=await nativeShoreFixture();

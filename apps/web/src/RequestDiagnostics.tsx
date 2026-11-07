@@ -1,6 +1,6 @@
-import type {IntentRequestV2} from '@sim/protocol';
+import type {IntentRequestV2} from '@souls/protocol';
 import {useEffect,useRef,useState} from 'react';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import type {IntentResponse} from './intent-response.ts';
 import {ownWords,requestCause,requestDiagnostics,type DiagnosticContext,type DiagnosticScope} from './request-diagnostics.ts';
 import {useOwnRequestDiagnostics} from './use-own-request-diagnostics.ts';

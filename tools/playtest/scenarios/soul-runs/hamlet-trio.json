@@ -7,14 +7,14 @@
   "durationSec": 150,
   "seats": [
     { "id": "ada", "adapter": "scripted-owner", "soulName": "Ada", "script": { "rules": [
-      { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk to the orchard", "--wait", "100"]], "result": "At the orchard" },
+      { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk:flag-orchard", "--wait", "100"]], "result": "At the orchard" },
       { "match": "hello", "do": [["say", "Hello, everyone!"]], "result": "Said hello" } ] } },
     { "id": "bo", "adapter": "scripted-owner", "soulName": "Bo", "script": { "rules": [
-      { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk to the orchard"]], "close": "open" },
-      { "match": "change of plan", "supersede": "My owner changed the plan before I arrived", "ack": "Turning around", "do": [["here"], ["act", "walk to the pond hall", "--wait", "100"]], "result": "At the pond hall" },
+      { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk:flag-orchard"]], "close": "open" },
+      { "match": "change of plan", "supersede": "My owner changed the plan before I arrived", "ack": "Turning around", "do": [["here"], ["act", "walk:lab-pond-hall", "--wait", "100"]], "result": "At the pond hall" },
       { "match": "hello", "do": [["say", "Hello from the pond hall!"]], "result": "Said hello" } ] } },
     { "id": "cy", "adapter": "scripted-owner", "soulName": "Cy", "script": { "rules": [
-      { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk to the orchard", "--wait", "100"]], "result": "At the orchard" },
+      { "match": "orchard", "ack": "Walking to the orchard", "do": [["act", "walk:flag-orchard", "--wait", "100"]], "result": "At the orchard" },
       { "match": "hello", "do": [["say", "Hi all!"]], "result": "Said hello" } ] } }
   ],
   "god": null,
