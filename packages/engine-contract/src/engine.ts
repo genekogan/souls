@@ -89,6 +89,8 @@ export type EngineCheckpointCapture = {
 export type EngineRefusalV1 = { tick: number; rule: string; bodies: string[]; programs: string[]; poses: Record<string, { p: [number, number, number]; yaw: number; level?: number }>; relocated?: true };
 
 /** #1150 rung 3: what a Soul is told when the world went back. */
+/** #1150 decision 1: the world landed on a body, so there is no pose to go back to. The one named exception to "never teleport". */
+export const RELOCATED = { code: 'world.relocated', message: 'The world changed where you stood, so you were moved to the nearest free spot. Nothing else changed.' };
 export const REWOUND = { code: 'world.rewound', message: 'The world went back to its last clean moment, and what you were doing did not happen. You can act again.' };
 
 export interface Engine {

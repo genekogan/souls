@@ -70,8 +70,8 @@ for (const rule of ['collision.human-static', 'collision.human-human', 'collisio
 test('rung 2 keeps what refusal cannot undo: another rule, a body that did not move, a programme past its refusals', () => {
   let w = world(); w.walk('a', [10, 0]); w.go(10); w.once(() => [{ code: 'support.floating', message: 'forced', subjects: ['a'] }]);
   w.step(); assert.equal(w.e.runtime.violations.length, 1, 'outside the classes'); assert.notEqual(w.e.programOf('a'), null);
-  w = world(); w.walk('a', [10, 0]); w.go(10); w.once(() => [{ code: 'collision.human-static', message: 'forced', subjects: ['b'] }]);
-  w.step(); assert.equal(w.e.runtime.violations.length, 1, 'b stood still: the world moved onto it'); assert.notEqual(w.e.programOf('a'), null);
+  w = world(); w.walk('a', [10, 0]); w.go(10); w.once(() => [{ code: 'collision.human-human', message: 'forced', subjects: ['b'] }]);
+  w.step(); assert.equal(w.e.runtime.violations.length, 1, 'b stood still, and only a solid landing on it is the world moving onto it'); assert.notEqual(w.e.programOf('a'), null);
   w = world(); w.walk('a', [10, 0]); w.go(10); const t = w.e.world.tick;
   (w.e as any).programs.get(w.e.programOf('a')).refusalsV1 = [t - 40, t - 20]; w.once(shove(1));
   w.step(); assert.equal(w.e.runtime.violations.length, 1, 'a third refusal within 5 s goes to the host');

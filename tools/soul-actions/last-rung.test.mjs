@@ -16,6 +16,7 @@ import {mountEdgeRoutes} from '../../apps/server/src/edge/routes.ts';
 import {GodMode} from '../../apps/server/src/god/god.ts';
 import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
 import {marsFactory, GREEN_FIELD_WORLD} from '../../packages/engine-mars/src/engine.ts';
+import {forgetMotion} from '../../mars/viewer/engine/runtime/invariants.ts';
 
 const repair = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true, soulsRepairV1: true}), today = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true});
 function faulted(base, control) {
@@ -51,6 +52,22 @@ const act = (w, s, input) => accept(w.f.host, w.edge.act(s, input));
 const read = (w, s, r) => w.edge.receipt(s.soulId, r.receipt?.id ?? r.id);
 const byRung = (h) => Object.values(h.glitches.byRule).reduce((n, r) => { for (const [k, v] of Object.entries(r)) n[k] = (n[k] ?? 0) + v; return n; }, {});
 const violate = (code, subjects) => () => [{code, message: 'forced', subjects}];
+
+// The god bridge walks a body clear of what a god places (#1066), so this is the backstop: the body is put inside a real table
+// between ticks, as an edit that got past the bridge would, and it never moved itself.
+test('L1 the world lands on a still body: it stands at the nearest free spot and is told, and nobody else loses anything', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const w = await world(t), host = w.f.host, {Ada, Bo} = w.souls, E = host.engine.world.entities, [x, y, z] = E[Bo.entityId].pose.p;
+  ok(w.god.act({ops: [{op: 'place', def: 'core/table@1', name: 'over-him', p: [x + 4, z]}]})); await w.tick(5);
+  const walk = ok(await act(w, Ada, {capability: 'walk:shed'})); await w.tick(5);
+  E[Bo.entityId].pose.p = [x + 4, y, z]; forgetMotion(host.engine.rt);
+  await w.tick(1);
+  const [nx, , nz] = E[Bo.entityId].pose.p, refusal = w.f.db.db.prepare("SELECT payload FROM events WHERE author='world:refusal'").all().map((e) => JSON.parse(e.payload).refusal);
+  assert.ok(Math.hypot(nx - (x + 4), nz - z) > 0.3, 'moved clear of the table'); assert.equal(refusal.length, 1); assert.equal(refusal[0].relocated, true); assert.deepEqual(refusal[0].bodies, [Bo.entityId]);
+  assert.deepEqual(byRung(host), {refusal: 1}); assert.deepEqual(host.engine.runtime.violations, []);
+  assert.ok(w.comms.streams.read(Bo.soulId, 0).events.some((e) => e.kind === 'world.relocated'), 'he hears it');
+  await w.tick(5); assert.equal(read(w, Ada, walk).phase, 'started', 'Ada walks on'); ok(await act(w, Bo, {capability: 'walk:yard'}));
+});
 
 for (const rule of ['support.floating', 'beam.unseated', 'deck.unsupported', 'stair.unsupported', 'raise.dropped'])
   test(`L2 ${rule}, with every replay faulting: today a halt, now a rewind, and the world runs on`, async (t) => {
