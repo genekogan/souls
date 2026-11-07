@@ -16,13 +16,19 @@ test('Eden 2026: roof things are offered available only when a stair from the gr
   const w = await bootEden();
   t.after(() => w.close());
   const nav = w.bridge.nav, E = w.host.engine as unknown as NavV1;
-  assert.ok(E.navWarmV1(Infinity));
   const thing = (ref: string) => nav.things().find((x: { ref?: string }) => x.ref === ref);
-  const stairRoof = thing('eden-house-3/eden-house-3-roof-planter-1'); assert.ok(stairRoof, 'eden-house-3 roof planter');
+  // #882: the roof walk listed just after boot, before navigation is warm, caches a goal that skipped roofReach; once warm
+  // (inside that entry's 50 ticks) the walk was refused as cut ("no stair or ramp") instead of made again
+  const roofRef = 'eden-house-3/eden-house-3-roof-planter-1';
+  assert.equal(E.navWarmV1(0), false, 'just after boot, navigation is still cold');
+  nav.walkRefOnDemand(w.soul, roofRef, [], new Map());
+  assert.ok(E.navWarmV1(Infinity));
+  w.host.tickOnce();
+  const stairRoof = thing(roofRef); assert.ok(stairRoof, 'eden-house-3 roof planter');
   const g = nav.goal(stairRoof, [0, 60]);
   assert.ok(g && g.level > 0, `on the roof: ${JSON.stringify(g)}`);
   assert.equal(E.navCheckV1([{ id: 'g', ...g }])[0].ok, true, 'reached up the roof stair');
-  for (const ref of ['eden-house-3-kitchen/eden-house-3-kitchen-roof-planter-1', 'eden-house-3/eden-house-3-roof-planter-1']) {
+  for (const ref of ['eden-house-3-kitchen/eden-house-3-kitchen-roof-planter-1', roofRef]) {
     const caps: Cap[] = [], plans = new Map();
     assert.ok(thing(ref), ref);
     nav.walkRefOnDemand(w.soul, ref, caps as EdgeCapability[], plans);
