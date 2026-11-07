@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {fixture,accept,factory} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';
 import {WorldHost} from './world.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 const rules=(f:any)=>f.db.events(f.host.worldId).filter((e:any)=>e.kind==='rules').map((e:any)=>e.payload);
 test('continuousDayV1: legacy quiet ends at once, days turn without quiet, replay exact',{timeout:300000},async t=>{
  const f=fixture(':memory:',factory,{durableClockV1:true});f.brain.quiesce();t.after(()=>{f.host.stop();f.db.close();});

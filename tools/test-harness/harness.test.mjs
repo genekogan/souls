@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 test('raw package results keep an earlier failure even when the last package passes', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-package-harness-'));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-package-harness-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   for (const p of ['engine-mars', 'world-compiler', 'generators', 'ground', 'kernel', 'brain', 'engine-toy', 'engine-contract', 'protocol', 'engine-native', 'conformance']) {
     mkdirSync(join(dir, 'packages', p, 'src'), { recursive: true });
@@ -25,7 +25,7 @@ test('raw package results keep an earlier failure even when the last package pas
 });
 
 test('historical input transport resolves original SHAs in an independent Git database', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-history-harness-'));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-history-harness-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const pack = join(dir, 'inputs.pack');
   execFileSync(process.execPath, [join(root, 'tools/test-harness/historical-inputs.mjs'), 'HEAD', pack], { cwd: root });

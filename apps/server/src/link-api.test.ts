@@ -7,7 +7,7 @@ import type { AccountIdentity } from './accounts/store.ts';
 import { fixture as worldFixture } from '../test/native-owner-fixture.ts';
 import { buildApp } from './http.ts';
 import type { Hub } from './hub.ts';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { fixture as edgeFixture, invite, accept } from '../test/native-owner-fixture.ts';
 import { config } from './config.ts';
 import { EdgeLedger } from './edge/ledger/ledger.ts';

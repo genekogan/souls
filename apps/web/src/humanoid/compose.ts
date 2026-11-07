@@ -3,6 +3,7 @@
 // bag, bottom, shoes → four draws), one palette material. fit/fitArms/measureWalk/createRig run unchanged via
 // people.ts templateFromParts. Identical looks share one template; parts and merged geometry are shared.
 import * as THREE from 'three';
+import {calfMissing,calfSkin} from './calves.ts';
 import type {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
 import {templateFromPartsAsync, type Template} from '../../../../mars/viewer/app/engine-view/people.ts';
@@ -241,11 +242,17 @@ export class HumanoidKit {
   }
   /** Tris of a look (budget checks), from the manifest plus prop geometry. */
   async tris(params: unknown) { const look = resolveLook(params), [head, top, b, s] = await this.geometries(look); return [head, top, b, s].reduce((a, g) => a + g.index!.count / 3, 0); }
+  private calfBottom(look:Look):Promise<THREE.BufferGeometry>{
+    return this.cache(this.merged,`calf:${look.frame}:${look.bottom}:${look.shoes}`,async()=>{
+      const [bottom,shoes,rig]=await Promise.all([this.part('bottom',look.bottom,look.frame),this.part('shoes',look.shoes,look.frame),this.rig(look.frame)]);
+      if(!calfMissing(bottom,shoes,rig))return bottom;const skin=calfSkin(bottom,shoes,await this.part('bottom','beach',look.frame),rig);const out=mergeParts([bottom,skin]);out.userData.calfRepair=skin.userData.calfRepair;return out;
+    });
+  }
   private async geometries(look: Look) {
-    const base = await Promise.all([this.head(look), this.top(look), this.part('bottom', look.bottom, look.frame), this.part('shoes', look.shoes, look.frame)]);
+    const base = await Promise.all([this.head(look), this.top(look), this.calfBottom(look), this.part('shoes', look.shoes, look.frame)]);
     const shaped = SHAPE_KEYS.some(k => look[k] !== 1);
     if (look.build === 1 && !shaped) return base;
-    const rig = await this.rig(look.frame), keys = [headKey(look), topKey(look), ['bottom', look.frame, look.bottom], ['shoes', look.frame, look.shoes]];
+    const rig = await this.rig(look.frame), keys = [headKey(look), topKey(look), ['bottom', look.frame, look.bottom, look.shoes], ['shoes', look.frame, look.shoes]];
     return Promise.all(base.map((g, i) => { const key = [...keys[i], 'build', look.build, ...SHAPE_KEYS.map(k => look[k])].join(':'); let p = this.merged.get(key); if (!p) this.merged.set(key, p = Promise.resolve(withShape(withGirth(g, look.build, rig), look, rig))); return p; }));
   }
   private async compose(look: Look, key: string): Promise<Template> {

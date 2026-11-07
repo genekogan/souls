@@ -4,12 +4,14 @@ import { execFile } from 'node:child_process';
 import { chmodSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { DEFAULT_ISSUES, REPO, projectRecords } from './owner-overview-data.mjs';
+import { DEFAULT_ISSUES, MAX_ITEMS, POPULATION_LABELS, REPO, projectRecords, selectIssues } from './owner-overview-data.mjs';
 const gh = args => new Promise((yes, no) => execFile('gh', args, { encoding: 'utf8', timeout: 30_000, maxBuffer: 8 * 1024 * 1024 }, (e, out) => { if (e) no(new Error('GitHub collection failed; previous snapshot preserved.')); else { try { yes(JSON.parse(out)); } catch { no(new Error('Invalid GitHub response; previous snapshot preserved.')); } } }));
 export async function collectOverview(output, run = gh, now = () => new Date().toISOString()) {
   // Serial issues keep GitHub/API process concurrency low. No raw response is persisted.
+  const labelled = [];
+  for (const label of POPULATION_LABELS) labelled.push(await run(['issue', 'list', '--repo', REPO, '--state', 'open', '--label', label, '--limit', String(MAX_ITEMS), '--json', 'number']));
   const issues = [];
-  for (const n of DEFAULT_ISSUES) issues.push(await run(['issue', 'view', String(n), '--repo', REPO, '--json', 'number,title,body,url,state,updatedAt,assignees,labels,comments']));
+  for (const n of selectIssues(DEFAULT_ISSUES, labelled)) issues.push(await run(['issue', 'view', String(n), '--repo', REPO, '--json', 'number,title,body,url,state,updatedAt,assignees,labels,comments']));
   const pulls = await run(['pr', 'list', '--repo', REPO, '--state', 'all', '--limit', '100', '--json', 'number,title,body,url,state,mergedAt,headRefName,headRefOid,updatedAt,closingIssuesReferences']);
   const releases = await run(['api', `repos/${REPO}/releases?per_page=10`]);
   const snapshot = projectRecords({ issues, pulls, releases, observedAt: now() });

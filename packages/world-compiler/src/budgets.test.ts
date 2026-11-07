@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CREATION_LIMITS as L } from '@sim/generators';
+import { CREATION_LIMITS as L } from '@souls/generators';
 import { WorldModel, applyBatch, type Entity, type Refused } from './index.ts';
 const cube = { schema: 'def/1' as const, name: 'cube', size: { box: [0.1, 1, 0.1] as [number, number, number] }, overlaps: ['cube'], make: { kind: 'gen' as const, gen: 'kit/2', args: { shapes: [{ kind: 'box', at: [0, 0.5, 0], size: [0.1, 1, 0.1] }] } } };
 test('clone expansion cannot bypass the world entity limit', () => {

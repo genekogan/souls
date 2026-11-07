@@ -10,7 +10,7 @@
 //
 // Everything here is absent until the god uses it: a world that never does keeps its exact state and entities.
 import { z } from 'zod';
-import { ID, NAME, value } from '@sim/generators';
+import { ID, NAME, value } from '@souls/generators';
 
 export const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;   // index = JS getUTCDay()
 export type Day = (typeof DAYS)[number];

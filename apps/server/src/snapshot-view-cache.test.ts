@@ -1,7 +1,7 @@
 // Lane L5: a reconnect storm costs one entity copy per world state; any step or accepted input makes a new one.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 

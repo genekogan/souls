@@ -1,5 +1,5 @@
 // World-local evidence of parts kept by finished builds. Definitions are never modified.
-import { defSchema, definitionRefs, hashOf, type Entity, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { defSchema, definitionRefs, hashOf, type Entity, type Op, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { searchDefs } from './assets.ts';
 import type { BuildBody, Identity } from './builds.ts';
 import type { WorldStore } from './store.ts';

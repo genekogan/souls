@@ -3,7 +3,7 @@ import {RequestProgress} from './RequestProgress.tsx';
 import {requestNeedsDiagnostics,type DiagnosticContext} from './request-diagnostics.ts';
 import {intentFeedback} from './intent-feedback.ts';
 import {useEffect,useRef,useState} from 'react';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import {intentLookupResponse,type IntentResponse} from './intent-response.ts';
 type Props={api:Api;worldId:string;soulId:string;ownerId:string;principalId?:string;authorityKey:string;active:boolean;entityId?:string;diagnosticContext?:Pick<DiagnosticContext,'backendBuild'|'body'>};
 export function IntentLookup(props:Props){return props.active?<Lookup key={JSON.stringify([props.worldId,props.soulId,props.ownerId,props.authorityKey,props.entityId])} {...props}/>:null;}
