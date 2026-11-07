@@ -1,8 +1,8 @@
 import {tx} from './edge/comms/store.ts';
 // Private durable candidate storage. No HTTP, host activation or historical repair.
 import { z } from 'zod';
-import { hashOf } from '@sim/engine-contract';
-import { createSoulSchema, lifecycleRequestIdSchema, lifecycleCursorSchema, type LogEvent } from '@sim/protocol';
+import { hashOf } from '@souls/engine-contract';
+import { createSoulSchema, lifecycleRequestIdSchema, lifecycleCursorSchema, type LogEvent } from '@souls/protocol';
 import type { Db, SoulRow } from './db.ts';
 
 const id=z.string().min(1).max(128);

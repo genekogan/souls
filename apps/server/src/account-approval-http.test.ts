@@ -10,7 +10,7 @@ import {SoulProfiles} from './soul-profile.ts';
 import {WorldAccounts} from './accounts/service.ts';
 import {IntentControlV2} from './intent-control.ts';
 import {Brain} from './brain.ts';
-import {marsFactory,GREEN_FIELD_WORLD} from '@sim/engine-mars';
+import {marsFactory,GREEN_FIELD_WORLD} from '@souls/engine-mars';
 const factory=await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true});
 
 test('mounted verified account approval creates once, delegates only ready Soul, survives restart and revokes queued authority',async t=>{

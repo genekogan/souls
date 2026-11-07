@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono, type Context } from 'hono';
-import { vocab } from '@sim/world-compiler';
+import { vocab } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
 import { GodMode } from './god.ts';

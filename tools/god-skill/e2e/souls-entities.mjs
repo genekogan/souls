@@ -98,7 +98,7 @@ async function shot(name, { eye, at, wait: ms = 5000, hideRoofs = true } = {}) {
     await page.goto(`${base}?${q}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
     await page.waitForFunction(() => (window).__shotReady === true, null, { timeout: 180000 }).catch(() => log('  (no __shotReady; shooting anyway)'));
     await page.waitForTimeout(ms); // people arrive over the take stream
-    const state = await page.evaluate(() => { const w = window.__simEntity; return w ? { active: w.layer.active, drawn: w.layer.drawn?.size ?? null } : null; });
+    const state = await page.evaluate(() => { const w = window.__soulsEntity; return w ? { active: w.layer.active, drawn: w.layer.drawn?.size ?? null } : null; });
     const file = resolve(out, `${name}.png`);
     await page.screenshot({ path: file, timeout: 120000 });
     report.shots.push({ name, file, state, ms: +(t() - t0).toFixed(0) });

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {hydrateTakeEntitiesV1,TakeEntitiesEncoderV1,type TakeEntitiesStateV1} from '@sim/protocol';
+import {hydrateTakeEntitiesV1,TakeEntitiesEncoderV1,type TakeEntitiesStateV1} from '@souls/protocol';
 import {ownLiveChunk,detachedData} from './owned-live-chunks.ts';
 
 const entity=(i:number)=>({id:'e'+i,kind:i%3?'tree':'person',pose:{p:[i,0,i/2],yaw:.25},tags:['a'],state:{hp:3,inv:[{k:'apple',n:i}]}});

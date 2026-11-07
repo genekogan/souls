@@ -68,3 +68,23 @@ test('#848 review: a generic sit does not build the named-seat parts (no cost be
  const {L,places}=setup(),knows=L.knowledge.knows;let calls=0;L.knowledge.knows=(...a:[string,string])=>{calls++;return knows(...a);};
  for(const query of ['sit down','sit on a bench']){calls=0;assert.equal(semanticDiscovery(L,{soulId:'s'} as any,query,[],new Map()),null,query);assert.equal(calls,places.length,`${query}: only the known-places filter`);}
 });
+
+test('F5 (#376): a bound seat whose own name holds every word keeps the vocabulary path; seats of different names are named, never chosen',()=>{
+ const {L}=setup(),seat=(name:string,id=name)=>({id:'sit:e_'+id,verb:'sit',label:`${name} (a mars-presenter-timber-box, sit on top, 23 m)`,target:{kind:'object',id},available:true});
+ const run=(q:string,caps:any[])=>semanticDiscovery(L,{soulId:'s'} as any,q,caps,new Map()) as any;
+ // "presenter" names a Chiba part alias ("presenter desk"), so on main this was refused with no candidates
+ assert.equal(run('sit on the presenter box',[seat('presenter-timber-box')]),null);
+ assert.equal(run('sit on the presenter box',[seat('presenter-timber-box'),seat('presenter-timber-box-2')]),null,'numbered copies of one seat stay the nearest-of-them');
+ const two=run('sit on the presenter box',[seat('presenter-timber-box'),seat('presenter-spare-box')]);
+ assert.equal(two.code,'capability.choose');assert.deepEqual(two.didYouMean.map((c:any)=>c.id).sort(),['sit:e_presenter-spare-box','sit:e_presenter-timber-box']);
+ assert.match(two.reason,/presenter-spare-box/);assert.match(two.reason,/presenter-timber-box/);assert.equal(two.discovery.requested,'sit');
+ // a "by <neighbour>" clause or the kind in a label never names the seat; case and separators do not split copies
+ const by=(name:string,near:string)=>({id:'sit:e_'+name,verb:'sit',label:`${name} (a mars-navy-sofa, seat 0.5 m high; by ${near}; 3 m)`,target:{kind:'object',id:name},available:true});
+ assert.equal(run('sit on the auditorium sofa',[by('auditorium-guest-sofa','camp-tracks'),by('navy-sofa','chiba/part-auditorium')]),null,'only one seat is named both words');
+ assert.equal(run('sit on the presenter box',[seat('crate-a'),seat('crate-b')]).code,'capability.unavailable','the kind is not a name');
+ assert.equal(run('sit on the presenter box',[seat('Presenter Timber Box','a'),seat('presenter-timber-box-2','b')]),null);
+ // the choice keeps one seat per name, and the reason names what it lists
+ const many=run('sit on the presenter box',[...Array.from({length:9},(_,i)=>seat(`presenter-box-${i+1}`)),seat('presenter-spare-box')]);
+ assert.deepEqual(many.didYouMean.map((c:any)=>c.id),['sit:e_presenter-box-1','sit:e_presenter-spare-box']);assert.match(many.reason,/presenter-box-1, presenter-spare-box/);
+ const none=run('sit on the auditorium sofa',[seat('presenter-timber-box')]);assert.equal(none.code,'capability.unavailable');assert.equal(none.didYouMean.length,0);
+});

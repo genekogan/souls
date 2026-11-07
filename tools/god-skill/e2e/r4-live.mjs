@@ -79,7 +79,7 @@ const near = (a, b, m) => Math.abs(((mins(a) - mins(b)) % 1440 + 1440 + 720) % 1
 let chromium = null;
 try { chromium = createRequire(resolve(root, 'mars/viewer/package.json'))('@playwright/test').chromium; } catch { log('  (no @playwright/test: viewer steps skipped)'); }
 async function snap(page, name) { const file = resolve(out, `${name}.png`); await page.screenshot({ path: file }); report.shots.push(file); log(`  📷 ${name}.png`); }
-const canvasState = (page) => page.evaluate(() => { const c = document.querySelector('canvas'); const l = window.__simLiving; return { mode: c?.dataset.cameraMode, shot: c?.dataset.cameraShot, buffer: c ? [c.width, c.height] : null, css: c ? [c.clientWidth, c.clientHeight] : null, lights: l?.lights ?? null, views: l?.broadcastViews?.() ?? null, atmos: (() => { const a = l?.atmosphere?.(); return a ? { profile: a.profile, set: a.set, active: a.active, kind: a.kind, rain: +a.state.rain.toFixed(2), cloud: +a.state.cloud.toFixed(2) } : null; })() }; });
+const canvasState = (page) => page.evaluate(() => { const c = document.querySelector('canvas'); const l = window.__soulsLiving; return { mode: c?.dataset.cameraMode, shot: c?.dataset.cameraShot, buffer: c ? [c.width, c.height] : null, css: c ? [c.clientWidth, c.clientHeight] : null, lights: l?.lights ?? null, views: l?.broadcastViews?.() ?? null, atmos: (() => { const a = l?.atmosphere?.(); return a ? { profile: a.profile, set: a.set, active: a.active, kind: a.kind, rain: +a.state.rain.toFixed(2), cloud: +a.state.cloud.toFixed(2) } : null; })() }; });
 async function waitFor(page, fn, ms = 30000, every = 500) { const t0 = Date.now(); let last; while (Date.now() - t0 < ms) { last = await fn(); if (last?.ok) return last; await page.waitForTimeout(every); } return last; }
 
 // ================================================================ the scenario
@@ -152,7 +152,7 @@ try {
         let samples = [];
         for (let i = 0; i < 24; i++) {
           await page.waitForTimeout(700);
-          const s = await page.evaluate(() => { const e = window.__simEntity; const t = e?.controls?.target; return { mode: document.querySelector('canvas')?.dataset.cameraMode, target: t ? [t.x, t.z] : null }; });
+          const s = await page.evaluate(() => { const e = window.__soulsEntity; const t = e?.controls?.target; return { mode: document.querySelector('canvas')?.dataset.cameraMode, target: t ? [t.x, t.z] : null }; });
           const me = (await hereOf('Ana'))?.me?.pos; samples.push({ ...s, ana: me, gap: s.target && me ? +Math.hypot(s.target[0] - me[0], s.target[1] - me[1]).toFixed(2) : null });
           if (i === 8) await snap(page, `v5-following-ana-while-building-${d}`);
         }
@@ -185,7 +185,7 @@ try {
       await step(`V8[${d}] night falls (env 22:30, clear): lamps glow over the plaza`, async () => {
         await godEnv({ timeOfDay: '22:30', weather: { kind: 'clear' } });
         await page.getByRole('button', { name: /see everything|your camera|back to broadcast|broadcast/i }).first().isVisible().catch(() => false);
-        await page.evaluate(() => { const e = window.__simEntity; if (e) { e.controls.target.set(0, 1, -18); e.camera.position.set(16, 12, 6); } });
+        await page.evaluate(() => { const e = window.__soulsEntity; if (e) { e.controls.target.set(0, 1, -18); e.camera.position.set(16, 12, 6); } });
         await page.waitForTimeout(6000); await snap(page, `v8-night-lamps-${d}`);
         return { env: (await worldEnv()).time.clock, ...(await canvasState(page)), errors };
       }, (r) => near(r.env, "22:30", 5) && r.lights >= 5 && !r.errors.length);

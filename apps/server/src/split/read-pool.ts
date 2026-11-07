@@ -27,7 +27,7 @@ export type ReadPoolOptions = {
   /** a Soul token → its Soul (null: not a Soul of this world) and the opaque account tag for x-sim-account */
   auth: (token: string) => {soulId: string | null; account?: string | null};
   /** B-facade: a worker's verdict misses, to main's pump */
-  ask?: (misses: {program: import('@sim/engine-contract').Program; scope: string}[]) => void;
+  ask?: (misses: {program: import('@souls/engine-contract').Program; scope: string}[]) => void;
   respawnMs?: number; heapMb?: number; log?: (m: string) => void;
   /** mode 2: the place visits/finds a worker's reads recorded (its database is read-only), for main's ledger to merge */
   writes?: (rows: {soulId: string; placeId: string; k: {visits: number; firstTick: number; lastTick: number; how: 'visited' | 'found'}}[]) => void;
@@ -83,7 +83,7 @@ export class ReadPool {
       else if (m.t === 'error') { s.lastError = m.error; this.log(`worker ${s.index}: ${m.error}`); }
       else if (m.t === 'resync') { this.stats.resyncs = (this.stats.resyncs ?? 0) + 1; this.reinit(); }
       else if (m.t === 'writes') this.o.writes?.((m as unknown as {rows: Parameters<NonNullable<ReadPoolOptions['writes']>>[0]}).rows);
-      else if (m.t === 'ask') this.o.ask?.((m as unknown as {misses: {program: import('@sim/engine-contract').Program; scope: string}[]}).misses);
+      else if (m.t === 'ask') this.o.ask?.((m as unknown as {misses: {program: import('@souls/engine-contract').Program; scope: string}[]}).misses);
     });
     w.on('error', (e) => { s.lastError = e.message; this.log(`worker ${s.index} failed: ${e.message}`); });
     w.once('exit', (code) => {
@@ -134,6 +134,6 @@ export async function deltaSource(host: import('../world.ts').WorldHost, L: impo
   const pump = tap.extend as import('./verdict-pump.ts').VerdictPump;
   return {tap, pump, init: () => worldInit(host, L, tap), cost: tap.cost,
     onDelta: (f: (d: WorldDelta) => void, resnapshot: () => void) => tap.subscribe(m => {if ('t' in m) resnapshot(); else f(m);}),
-    ask: (misses: {program: import('@sim/engine-contract').Program; scope: string}[]) => pump.ask(misses),
+    ask: (misses: {program: import('@souls/engine-contract').Program; scope: string}[]) => pump.ask(misses),
     writes: (rows: Parameters<typeof L.knowledge.merge>[0]) => L.knowledge.merge(rows)};
 }

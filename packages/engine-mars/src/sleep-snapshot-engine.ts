@@ -1,6 +1,6 @@
 import {decodeSnapshot,type RuntimeSnapshot} from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import {NATIVE_SLEEP_SNAPSHOT_V1} from '../../../mars/viewer/engine/activities/sleep.ts';
-import type {Engine,EngineFactory,EngineSnapshot} from '@sim/engine-contract';
+import type {Engine,EngineFactory,EngineSnapshot} from '@souls/engine-contract';
 import {MarsEngine} from './engine.ts';
 /** Outermost reader: origin remains the actual resource/physical history reader. */
 export function nativeSleepSnapshotFactoryV1(origin:EngineFactory):EngineFactory{

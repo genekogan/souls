@@ -32,7 +32,7 @@ These are public domain (CC0 1.0). No attribution is required; we credit them wi
 
 - **Little Martians**, by Vanessa Rosa (Little Martians): the characters, ceramic scans and buildings, and the world's
   character names, descriptions and lore, including that text in `worlds/littlemartians/` and the Little Martians
-  templates, are © Vanessa Rosa. They are used in Sim with permission and are **not** covered by this repository's
+  templates, are © Vanessa Rosa. They are used in Souls with permission and are **not** covered by this repository's
   licence or available for reuse.
 - **Mars College**: campus models and campus geometry data (including `mars/viewer/public/engine/campus-*.json` and
   the campus catalogues) are © Mars College. They are used with permission and are **not** covered by this
