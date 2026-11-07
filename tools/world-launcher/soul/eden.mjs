@@ -66,9 +66,9 @@ function readJson(file, fallback) {
 }
 
 /** Make a home at `root`. `cli` is the bundle to keep in bin/. Safe to call on an existing home. */
-function createHome(root, { cli } = {}) {
+function createHome(root, { cli, version } = {}) {
   mkdirSync(join(root, "souls"), { recursive: true, mode: 0o700 });
-  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, default: null, currentWorld: null, worlds: {}, souls: {} });
+  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, client: version ?? null, default: null, currentWorld: null, worlds: {}, souls: {} });
   if (!existsSync(join(root, CREDENTIALS))) writeJson(join(root, CREDENTIALS), { version: 1, souls: {}, worlds: {}, approvals: {} });
   if (!existsSync(join(root, ".gitignore"))) writeFileSync(join(root, ".gitignore"), `${CREDENTIALS}\nruntime/\npending/\n`);
   if (cli && !existsSync(join(root, "bin", "eden.mjs"))) {
@@ -85,6 +85,7 @@ function slugOf(url) {
   try { const u = new URL(url); return `${u.hostname}${u.port ? `-${u.port}` : ""}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"); } catch { return "world"; }
 }
 const keyOf = (worlds, url) => Object.keys(worlds).find((k) => worlds[k].url === url) ?? null;
+const originOf = (url) => { try { return new URL(url).origin; } catch { return String(url); } };
 /** a > b for dotted versions; a missing one is oldest. */
 function newerThan(a, b) {
   const p = (v) => String(v ?? "0").split(".").map(Number), x = p(a), y = p(b);
@@ -190,6 +191,7 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
     return updateConfig((c) => {
       let key = keyOf(c.worlds, url);
       if (!key) { const base = slugOf(url); key = base; for (let n = 2; c.worlds[key]; n++) key = `${base}-${n}`; c.worlds[key] = { url }; }
+      c.trustedOrigins ??= [originOf(url)];   // the site this home was made for; any other must be trusted by name
       Object.assign(c.worlds[key], Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== undefined)));
       return key;
     });
@@ -395,18 +397,21 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
     return out;
   }
 
-  /** Replace the home's bundle, and the running copy when it lives in this home's folder. Never older. */
-  function installBundle(bytes, running, version, runningVersion) {
+  /** Replace the home's bundle, and the running copy when it lives in this home's folder. Never older than either. */
+  function installBundle(bytes, running, version) {
+    if (!newerThan(version, config().client)) return null;
     mkdirSync(at("bin"), { recursive: true, mode: 0o700 });
     const write = (file) => { const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, bytes, { mode: 0o755 }); renameSync(tmp, file); };
     write(at("bin", "eden.mjs"));
-    if (running && newerThan(version, runningVersion) && dirname(real(running)) === dirname(real(root))) write(running);
+    if (running && dirname(real(running)) === dirname(real(root))) write(running);
+    updateConfig((c) => { c.client = version; });
     return at("bin", "eden.mjs");
   }
+  const trustOrigin = (origin) => updateConfig((c) => { c.trustedOrigins = [...new Set([...(c.trustedOrigins ?? []), origin])]; });
 
-  return { root, config, installBundle, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
+  return { root, config, installBundle, trustOrigin, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
 }
-return { HOME_NAME, RUNTIME_LOCKS, SEAT_COMMANDS, HOME_COMMANDS, IMPORTED_FIELDS, findHome, globalRoot, createHome, slugOf, keyOf, newerThan, norm, splitSecrets, selectSoul, looksLikeSelector, chooseContext, runtimeLocks, openHome, LEGACY_STATE, STATE_FILE, CREDENTIALS };
+return { HOME_NAME, RUNTIME_LOCKS, SEAT_COMMANDS, HOME_COMMANDS, IMPORTED_FIELDS, findHome, globalRoot, createHome, slugOf, keyOf, originOf, newerThan, norm, splitSecrets, selectSoul, looksLikeSelector, chooseContext, runtimeLocks, openHome, LEGACY_STATE, STATE_FILE, CREDENTIALS };
 })();
 // </inline home.mjs>
 
@@ -420,7 +425,7 @@ const CLI = "node eden.mjs";
 // runtime folder, so every lock, socket and small state file below stays per Soul. A legacy folder works as ever.
 const INVOKED = process.cwd();
 const userPath = (p) => resolvePath(INVOKED, p);   // a file the person named, wherever this run is working
-let HOME = null, SEAT = null;
+let HOME = null, SEAT = null, DELEGATE = null;
 const load = () => (HOME ? (SEAT ? HOME.load(SEAT) : {}) : existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : {});
 function save(patch) {
   const s = { ...load(), ...patch };
@@ -756,8 +761,8 @@ async function register(world) {
 function noteWorld(url, cfg, accountAuth) {
   if (!HOME) return;
   const c = cfg.soulClient, key = HOME.ensureWorld(url, { name: cfg.worldName, worldId: cfg.worldId, accountAuth, ...(c ? { contract: c.contract, bundle: c.version, minClient: c.minVersion } : {}) });
-  HOME.setCurrentWorld(key);
   if (c && soulHome.newerThan(c.minVersion, VERSION)) throw new Error(`This world needs eden ${c.minVersion} or newer; this is ${VERSION}. Run: ${CLI} upgrade ${key}`);
+  HOME.setCurrentWorld(key);
 }
 
 function forOption(argv) {
@@ -2292,22 +2297,29 @@ async function importCommand(from) {
   return { ...r, name: me.data?.soul?.name ?? null, reusedToken: true, note: `${soulHome.LEGACY_STATE} stays where it was and still holds the token: delete it once the home works.` };
 }
 // upgrade [world]: fetch the world's bundle into the home and check it against what the world says it is.
-async function upgradeCommand(world) {
+async function upgradeCommand(...argv) {
+  const trust = argv.includes("--trust"), [world] = argv.filter((a) => a !== "--trust");
   const home = needHome(), cfg = home.config(), key = world ?? cfg.currentWorld, w = cfg.worlds[key];
   if (!w) throw new Error(`usage: upgrade <world> (${Object.keys(cfg.worlds).join(", ") || "no world yet"})`);
   const get = (path) => fetch(w.url + path, { signal: AbortSignal.timeout(30_000) });
   const said = await (await get("/v1/config")).json(), m = said.soulClient;
   if (!m) throw new Error(`${key} does not say which bundle it serves, so there is nothing to verify against. Nothing changed.`);
   home.ensureWorld(w.url, { contract: m.contract, bundle: m.version, minClient: m.minVersion });
+  const clash = Object.entries(cfg.worlds).find(([k, v]) => k !== key && v.contract && v.contract !== m.contract);
+  if (clash) throw new Error(`${key} speaks ${m.contract} and ${clash[0]} speaks ${clash[1].contract}: no one bundle serves both. Nothing changed.`);
   if (!soulHome.newerThan(m.version, VERSION)) return { upgraded: false, world: key, version: VERSION, served: m.version, note: "This bundle is as new as what that world serves, and it still works there." };
+  // Whatever is installed here runs with every token in this home, for every world, so one world's say-so is not enough.
+  const origin = soulHome.originOf(w.url), known = (cfg.trustedOrigins ?? []).includes(origin), safe = /^https:/.test(origin) || /^http:\/\/(127\.0\.0\.1|localhost)(:|$)/.test(origin);
+  if (!(known && safe) && !trust) throw new Error(`A new client runs with every Soul's token in this home, and ${origin} is not a site this home trusts. Ask your human. Only if they agree: ${CLI} upgrade ${key} --trust`);
   const bytes = Buffer.from(await (await get("/eden.mjs")).arrayBuffer()), sha = createHash("sha256").update(bytes).digest("hex");
   if (bytes.length !== m.bytes || sha !== m.sha256) throw new Error(`The bundle ${key} sent is not the one it describes (${bytes.length} bytes, expected ${m.bytes}). Nothing changed.`);
-  home.installBundle(bytes, process.argv[1], m.version, VERSION);
+  if (trust) home.trustOrigin(origin);
+  if (!home.installBundle(bytes, process.argv[1], m.version)) return { upgraded: false, world: key, version: home.config().client, served: m.version, note: "This home's bundle is already as new." };
   return { upgraded: true, world: key, from: VERSION, to: m.version, bytes: m.bytes, sha256: m.sha256 };
 }
 async function initCommand(...argv) {
   const global = argv.includes("--global"), root = global ? soulHome.globalRoot(homedir()) : needHome().root;
-  soulHome.createHome(root, { cli: process.argv[1] });
+  soulHome.createHome(root, { cli: process.argv[1], version: VERSION });
   return { home: root };
 }
 
@@ -2319,8 +2331,11 @@ export function enterHome(argv) {
   const url = first === "register" && WORLD_URL.test(second ?? "") ? second.replace(/\/+$/, "") : null;
   const makes = (found.kind === "none" && (url || first === "import" || (first === "init" && !argv.includes("--global")))) || (found.kind === "legacy" && first === "import");
   if (found.kind !== "home" && !makes) return argv;
-  if (found.kind !== "home") { soulHome.createHome(found.root, { cli: process.argv[1] }); process.stderr.write(`Made a Souls home here: ${found.root}\n`); }
+  if (found.kind !== "home") { soulHome.createHome(found.root, { cli: process.argv[1], version: VERSION }); process.stderr.write(`Made a Souls home here: ${found.root}\n`); }
   HOME = soulHome.openHome(found.root, { reserved: new Set(Object.keys(commands)) });
+  // An older copy in a folder of this home hands over to the home's bundle: `upgrade` holds for every copy.
+  const bin = joinPath(found.root, "bin", "eden.mjs");
+  if (soulHome.newerThan(HOME.config().client, VERSION) && existsSync(bin) && realpathSync(process.argv[1]) !== realpathSync(bin)) { DELEGATE = bin; return argv; }
   let line = argv, selector;
   const cfg = HOME.config();
   if (first && !commands[first] && soulHome.looksLikeSelector(cfg, first)) { selector = first; line = argv.slice(1); }
@@ -2342,6 +2357,12 @@ const commands = { plan, inspect, now: nowLine, register, create, pair, adopt, l
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   let line;
   try { line = enterHome(process.argv.slice(2)); } catch (e) { process.stderr.write(`error: ${e.message}\n`); process.exit(1); }
+  if (DELEGATE) {
+    const child = spawn(process.execPath, [DELEGATE, ...process.argv.slice(2)], { stdio: "inherit" });
+    for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(sig, () => child.kill(sig));
+    child.on("exit", (code) => process.exit(code ?? 1));
+    await new Promise(() => {});
+  }
   const [cmd, ...args] = line;
   const fn = commands[cmd];
   if (!fn) { process.stdout.write(HELP); process.exit(cmd ? 1 : 0); }

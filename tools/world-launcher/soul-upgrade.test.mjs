@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { newerThan } from './soul/home.mjs';
+import { createHome, newerThan, openHome } from './soul/home.mjs';
 
 const cli = fileURLToPath(new URL('./soul/eden.mjs', import.meta.url));
 const ours = /const VERSION = "([0-9.]+)"/.exec(readFileSync(cli, 'utf8'))[1];
@@ -80,6 +80,53 @@ test('doctor says when a world has moved past this client', async (t) => {
   assert.equal((await run('doctor')).d.needsUpgrade, undefined);
   served.old.manifest = describe(newer, NEWER, NEWER); served.old.bytes = newer;
   assert.deepEqual((await run('doctor')).d.needsUpgrade, [{ world: 'old', needs: NEWER, next: 'node eden.mjs upgrade old' }]);
+});
+
+test('A3: an upgrade run from a folder below reaches every copy, and an older world never takes the home back', async (t) => {
+  const v3 = Buffer.from('const VERSION = "3.0.0";\nconsole.log(\'{"v3":true}\');\n');
+  const w = await world(t, { old: { manifest: describe(Buffer.from('x'), '2.0.0') }, next: { manifest: describe(newer, NEWER), bytes: newer }, three: { manifest: describe(v3, '3.0.0'), bytes: v3 } });
+  const { d, run } = folder(t), sub = join(d, 'below'); mkdirSync(sub); copyFileSync(cli, join(sub, 'eden.mjs'));
+  const below = (...args) => new Promise((resolve) => { const c = spawn(process.execPath, ['eden.mjs', ...args], { cwd: sub, env: { ...process.env, HOME: d, SOULS_HOME: '', SOULS_PRINCIPAL: '' }, stdio: ['ignore', 'pipe', 'pipe'] }); let out = ''; c.stdout.on('data', (x) => { out += x; }); c.on('exit', (code) => resolve({ code, out })); });
+  await run('register', `${w.base}/old`); await run('register', `${w.base}/next`); await run('register', `${w.base}/three`);
+  const up = await below('upgrade', 'next');
+  assert.match(up.out, /"upgraded": true/);
+  assert.deepEqual(readFileSync(join(d, '.souls/bin/eden.mjs')), newer);
+  assert.equal((await run('status')).d?.newer, true, 'the folder copy runs the new bundle');
+  assert.match((await below('status')).out, /newer/, 'so does the older copy below, through the home');
+  assert.notDeepEqual(readFileSync(join(sub, 'eden.mjs')), newer, 'a copy outside the home folder is left alone');
+  assert.equal(JSON.parse(readFileSync(join(d, '.souls/config.json'), 'utf8')).client, NEWER);
+});
+
+test('never older: a bundle below the home\'s is not installed', (t) => {
+  const root = join(realpathSync(mkdtempSync(join(tmpdir(), 'souls-bin-'))), '.souls'); t.after(() => rmSync(dirname(root), { recursive: true, force: true }));
+  createHome(root, { version: '9.0.0' });
+  assert.equal(openHome(root).installBundle(Buffer.from('old'), null, '3.0.0'), null);
+  assert.ok(!existsSync(join(root, 'bin/eden.mjs')));
+});
+
+test('a client from a site this home does not know needs a person', async (t) => {
+  const w = await world(t, { next: { manifest: describe(newer, NEWER), bytes: newer } }), other = await world(t, { next: { manifest: describe(newer, NEWER), bytes: newer } });
+  const { d, run } = folder(t);
+  await run('register', `${w.base}/next`);
+  await run('register', `${other.base}/next`);
+  const refused = await run('upgrade', 'next-2');
+  assert.match(refused.err, /Ask your human/); assert.match(refused.err, /--trust/);
+  assert.equal(JSON.parse(readFileSync(join(d, '.souls/config.json'), 'utf8')).client, ours);
+  assert.equal((await run('upgrade', 'next-2', '--trust')).d.upgraded, true);
+});
+
+test('a refused world does not become the current world', async (t) => {
+  const w = await world(t, { old: { manifest: describe(Buffer.from('x'), '2.0.0') }, next: { manifest: describe(newer, NEWER, NEWER), bytes: newer } });
+  const { d, run } = folder(t);
+  await run('register', `${w.base}/old`); await run('register', `${w.base}/next`);
+  assert.equal(JSON.parse(readFileSync(join(d, '.souls/config.json'), 'utf8')).currentWorld, 'old');
+});
+
+test('A3: no one bundle serves two contracts', async (t) => {
+  const w = await world(t, { old: { manifest: describe(Buffer.from('x'), '2.0.0') }, next: { manifest: { ...describe(newer, NEWER), contract: 'eden-edge/2' }, bytes: newer } });
+  const { run } = folder(t);
+  await run('register', `${w.base}/old`); await run('register', `${w.base}/next`);
+  assert.match((await run('upgrade', 'next')).err, /no one bundle serves both/);
 });
 
 test('A5: everyday commands ask nothing about versions', async (t) => {

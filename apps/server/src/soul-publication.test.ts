@@ -47,6 +47,7 @@ test('HTTP: the real published files are served by hash; the guide uses configur
   const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
   Object.assign(f.souls.cfg, {cliFile: dir + 'eden-agent.mjs', controllerCliFile: dir + 'eden.mjs', skillFile: dir + 'skill.md', instructionsFile: dir + 'instructions.md', publicUrl: 'https://sim.example.test'});
   assert.equal(sha(Buffer.from(await (await f.request('/eden.mjs')).arrayBuffer())), sources.controllerCli.sha256);
+  assert.equal((await (await f.request('/v1/config')).json() as {soulClient: {sha256: string}}).soulClient.sha256, sources.controllerCli.sha256, '/v1/config describes the bundle it serves');
   assert.equal(sha(Buffer.from(await (await f.request('/eden-agent.mjs')).arrayBuffer())), sources.cli.sha256);
   assert.equal(sha(await (await f.request('/skill.md')).text()), sources.skill.sha256, 'the 2.1 skill has no templates');
   assert.equal(sha(readFileSync(dir + 'schema-notes.md')), sources.schemaNotes.sha256, 'the reference\'s notes are pinned too');

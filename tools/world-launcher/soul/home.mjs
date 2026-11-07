@@ -46,9 +46,9 @@ function readJson(file, fallback) {
 }
 
 /** Make a home at `root`. `cli` is the bundle to keep in bin/. Safe to call on an existing home. */
-export function createHome(root, { cli } = {}) {
+export function createHome(root, { cli, version } = {}) {
   mkdirSync(join(root, "souls"), { recursive: true, mode: 0o700 });
-  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, default: null, currentWorld: null, worlds: {}, souls: {} });
+  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, client: version ?? null, default: null, currentWorld: null, worlds: {}, souls: {} });
   if (!existsSync(join(root, CREDENTIALS))) writeJson(join(root, CREDENTIALS), { version: 1, souls: {}, worlds: {}, approvals: {} });
   if (!existsSync(join(root, ".gitignore"))) writeFileSync(join(root, ".gitignore"), `${CREDENTIALS}\nruntime/\npending/\n`);
   if (cli && !existsSync(join(root, "bin", "eden.mjs"))) {
@@ -65,6 +65,7 @@ export function slugOf(url) {
   try { const u = new URL(url); return `${u.hostname}${u.port ? `-${u.port}` : ""}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"); } catch { return "world"; }
 }
 export const keyOf = (worlds, url) => Object.keys(worlds).find((k) => worlds[k].url === url) ?? null;
+export const originOf = (url) => { try { return new URL(url).origin; } catch { return String(url); } };
 /** a > b for dotted versions; a missing one is oldest. */
 export function newerThan(a, b) {
   const p = (v) => String(v ?? "0").split(".").map(Number), x = p(a), y = p(b);
@@ -170,6 +171,7 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     return updateConfig((c) => {
       let key = keyOf(c.worlds, url);
       if (!key) { const base = slugOf(url); key = base; for (let n = 2; c.worlds[key]; n++) key = `${base}-${n}`; c.worlds[key] = { url }; }
+      c.trustedOrigins ??= [originOf(url)];   // the site this home was made for; any other must be trusted by name
       Object.assign(c.worlds[key], Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== undefined)));
       return key;
     });
@@ -375,14 +377,17 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     return out;
   }
 
-  /** Replace the home's bundle, and the running copy when it lives in this home's folder. Never older. */
-  function installBundle(bytes, running, version, runningVersion) {
+  /** Replace the home's bundle, and the running copy when it lives in this home's folder. Never older than either. */
+  function installBundle(bytes, running, version) {
+    if (!newerThan(version, config().client)) return null;
     mkdirSync(at("bin"), { recursive: true, mode: 0o700 });
     const write = (file) => { const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, bytes, { mode: 0o755 }); renameSync(tmp, file); };
     write(at("bin", "eden.mjs"));
-    if (running && newerThan(version, runningVersion) && dirname(real(running)) === dirname(real(root))) write(running);
+    if (running && dirname(real(running)) === dirname(real(root))) write(running);
+    updateConfig((c) => { c.client = version; });
     return at("bin", "eden.mjs");
   }
+  const trustOrigin = (origin) => updateConfig((c) => { c.trustedOrigins = [...new Set([...(c.trustedOrigins ?? []), origin])]; });
 
-  return { root, config, installBundle, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
+  return { root, config, installBundle, trustOrigin, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
 }
