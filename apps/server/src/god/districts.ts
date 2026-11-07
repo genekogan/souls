@@ -10,7 +10,7 @@
 // retention prune of closed build rows; the ledger keeps each plot's newest chapter and is bounded per district.
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
-import { hashOf, obbOverlap, type Failure, type OBB, type WorldModel } from '@sim/world-compiler';
+import { hashOf, obbOverlap, type Failure, type OBB, type WorldModel } from '@souls/world-compiler';
 import { ApiError } from '../souls.ts';
 import { CLOSURE_MARGIN_M, effective, siteLocal, siteWorld, type BuildBody, type GodBuilds, type Identity, type Mass, type Site } from './builds.ts';
 import type { BuildRow, WorldStore } from './store.ts';

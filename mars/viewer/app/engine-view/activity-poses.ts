@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PIANO_STEP, drumHands, pianoHands, voiceAt, type Accompanist } from './piano-score.ts';
+import { PIANO_FADE, PIANO_STEP, drumHands, pianoHands, pianoLanes, voiceAt, type Accompanist } from './piano-score.ts';
 import {gameContact,type RecordedGame} from './recorded-games.ts';
 import {rowingStroke} from './rowing-motion.ts';
 import {seesawAngle, swingAngle} from './play-motion.ts';
@@ -9,7 +9,7 @@ import {seesawAngle, swingAngle} from './play-motion.ts';
 // roots, contacts, seats and hands stay the engine's; engine hand points / grips always win over this layer.
 
 /** Overlay ids drawn on top of their base posture (sit / idle / sit-ground). */
-export const ACTIVITY_OVERLAYS: ReadonlySet<string> = new Set(['row', 'ride', 'read', 'browse', 'write', 'play-piano', 'play-music', 'paint', 'eat', 'drink', 'cook', 'play-game', 'craft', 'post-letter', 'wave', 'operate', 'use-computer', 'sing', 'listen', 'fish', 'feed', 'garden', 'swing', 'seesaw', 'picnic', 'tell-story', 'bow', 'clap', 'nod', 'shake-head', 'cheer', 'point', 'pick-up', 'put-down', 'hug', 'handshake', 'high-five', 'give', 'take']);
+export const ACTIVITY_OVERLAYS: ReadonlySet<string> = new Set(['row', 'ride', 'read', 'browse', 'write', 'play-piano', 'play-music', 'paint', 'eat', 'drink', 'cook', 'play-game', 'craft', 'post-letter', 'wave', 'operate', 'use-computer', 'sing', 'listen', 'fish', 'feed', 'garden', 'chalk', 'swing', 'seesaw', 'picnic', 'tell-story', 'bow', 'clap', 'nod', 'shake-head', 'cheer', 'point', 'pick-up', 'put-down', 'hug', 'handshake', 'high-five', 'give', 'take']);
 /** Whole-body ids: the body point stays put and the viewer lays the body out from it along pose.yaw. */
 export const LYING: ReadonlySet<string> = new Set(['lie', 'nap', 'situps', 'bench-press', 'hammock', 'stargaze']);
 export const FACE_DOWN: ReadonlySet<string> = new Set(['pushups']);
@@ -41,16 +41,22 @@ export function propFor(activity: string, prop?: string, instrument?:string): Pr
 export type FrameOpts = { groundSeat?: boolean; since?: number; gap?: number;instrument?:string;game?:RecordedGame;gameTick?:number;gameDt?:number;actorId?:string;
   /** Entry 36: whom a singer sings along with (her voice and the head/breath motion follow its sung notes), and, after
    *  her singing ended, the seconds since (the hand lets go of the mic and the pose eases out). */
-  accompanist?: Accompanist | null; released?: number };
+  accompanist?: Accompanist | null; released?: number; priorAge?:number };
 const GAP: Record<string, number> = { hug: 0.52, handshake: 0.85, 'high-five': 0.75, give: 0.9, take: 0.9 };
 /** Shoulder height and half width the hand goals below are written for (BODY_MODEL: shoulders at 1.34 m). */
 const SH = 1.34, HALF = 0.19;
+/** core/piano@1 highest keys: black centre .795 m + half thickness .01 m. */
+export const PIANO_KEY_HEIGHT = .805;
+/** Ease free piano arms in/out on recorded activity age; explicit engine hand targets still win. */
+export { PIANO_FADE };
 
 /** One hand goal relative to that arm's shoulder: [forward, outward (+ away from the body midline), up] metres. */
 export type HandGoal = readonly [number, number, number];
 export type ActivityFrame = {
   /** [left, right]; null = that arm is left to the base posture (dangling / hand on thigh). */
   handWeights?:[number,number];
+  /** Piano contact plane and per-hand lift above it, from the shared audible score. */
+  piano?:{height:number;lift:[number,number];weight:number};
   hands: [HandGoal | null, HandGoal | null] | null;
   /** Feet apart (metres each side) and pelvis lift (metres, a hop) for standing cycles. */
   feetOut: number; hop: number;
@@ -138,6 +144,9 @@ export function activityFrame(activity: string, base: string, seconds: number, i
       f.hands = [[0.3, -0.12, -0.12 + 0.06 * bite], [0.34 + 0.22 * cast, 0.1, -0.02 + 0.26 * cast - 0.16 * bite]]; f.lean = 0.08 + 0.1 * cast; f.look = 0.2; return f; }
     case 'feed': { const k = (t * 0.55) % 1, scoop = k < 0.4 ? S(k / 0.4) : 0, toss = k >= 0.4 && k < 0.7 ? S((k - 0.4) / 0.3) : 0, rest = k >= 0.7 ? S((k - 0.7) / 0.3) : 0;
       f.hands = [[0.28, -0.12, -0.3 + 0.1 * scoop], [0.3 - 0.1 * scoop + 0.34 * toss - 0.2 * rest, 0.04 + 0.12 * toss, -0.38 + 0.26 * scoop + 0.1 * toss - 0.2 * rest]]; f.lean = 0.12 + 0.12 * toss; f.look = 0.3; return f; }
+    // #430: stooped low over the pavement in front, the chalk hand drawing small loops near the ground, the other on a knee
+    case 'chalk': { const a = t * 2.4, k = tri(t * 0.17);
+      f.hands = [[0.2, -0.16, -0.62], [0.5 + 0.07 * Math.cos(a) + 0.05 * k, 0.04 + 0.07 * Math.sin(a), -1.08]]; f.lean = 0.88; f.feetOut = 0.17; f.look = 0.55; return f; }
     case 'garden': { const dig = Math.sin(t * 3.2), k = tri(t * 0.2);
       f.hands = [[0.42, -0.06, -0.62 + 0.02 * k], [0.46 + 0.08 * dig, 0.05, -0.64 + 0.06 * Math.abs(dig)]]; f.lean = 0.62 + 0.06 * dig; f.feetOut = 0.17; f.look = 0.2; return f; }
     // leisure: holding the swing's chains at shoulder height, leaning back as it goes forward; the see-saw's handle in
@@ -169,7 +178,12 @@ export function activityFrame(activity: string, base: string, seconds: number, i
     // Entry 14: the hands strike the keys at the score's own onsets (the same notes the visitor hears), moving along the
     // keys with pitch; between notes they lift a little. Clocked by world seconds, not the per-person phase.
     case 'play-piano': { const [l, r] = pianoHands(opts.actorId ?? id, seconds);
-      f.hands = [[0.42, -0.02 + l.along, -0.36 + 0.028 * (1 - l.press)], [0.42, -0.02 - r.along, -0.36 + 0.028 * (1 - r.press)]]; f.lean = 0.1; f.look = 0.3; return f; }
+      // Standing keyboards retain their shoulder-relative layout; this contact plane belongs to the piano bench.
+      if(!seated){f.hands=[[.42,-.02+l.along,-.36+.028*(1-l.press)],[.42,-.02-r.along,-.36+.028*(1-r.press)]];f.lean=.1;f.look=.3;return f;}
+      const lift:[number,number]=[.028*(1-l.press),.028*(1-r.press)],[laneL,laneR]=pianoLanes(opts.actorId??id,seconds);
+      f.hands = [[.42,0,0],[.42,0,0]];f.rootHands=[[.42,.17+laneL,PIANO_KEY_HEIGHT+.04],[.42,.17-laneR,PIANO_KEY_HEIGHT+.04]];
+      f.curl=[0,0];const age=opts.released??opts.since??PIANO_FADE,k=Math.max(0,Math.min(1,age/PIANO_FADE));
+      f.piano={height:PIANO_KEY_HEIGHT,lift,weight:opts.released===undefined?S(k):S(Math.max(0,Math.min(1,(opts.priorAge??PIANO_FADE)/PIANO_FADE)))*(1-S(k))};f.lean=.1;f.look=.3;return f; }
     case 'play-music': { const s = Math.sin(t * 6) * 0.06;
       // Entry 26: the sticks meet the drums at the drum part's own hits (the sound the visitor hears), lifting between them
       if(opts.instrument==='drums'){const [l,r]=drumHands(opts.actorId ?? id,seconds);f.hands=[[.38,.05,-.26+l.lift*.16],[.38+r.reach*.06,.05+r.reach*.1,-.26+r.lift*.16+r.reach*.04]];f.look=.18;}

@@ -7,10 +7,10 @@
 // to play it, a stage has a microphone and room for a band, the benches facing it are an audience. The ledger's own
 // activities code (edge/ledger/activities.ts) turns these spots into capabilities with ordinary body plans and receipts,
 // exactly as on the old worlds. Pure read of the entity world and the engine; cached until the god edits something.
-import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
+import type { Entity, StoredDef, WorldModel } from '@souls/world-compiler';
 import type { SpotsData, Spot, Shelf } from '../edge/ledger/activities.ts';
 import { CATALOG } from '../../../../mars/viewer/engine/world/catalog.ts';
-import { paintingEasel } from '../art/art.ts';
+import { canvasFace, flatCanvas, paintingEasel } from '../art/art.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type V2 = [number, number];
@@ -63,6 +63,8 @@ export const TOGETHER_WAIT = 150;
 /** Standing work positions that ordinary room visitors should leave usable.
  * These are geometric hints, not claims: explicit activity plans still use them. */
 export type ActivityServicePoint = {id: string; at: V2; level: number};
+/** #430: a paint spot at a flat (ground) canvas: its own title, a stick of chalk in hand and the stooping chalk pose. */
+const CHALK_SPOT = { title: 'Draw in chalk', prop: 'pen', pose: 'chalk' } as const;
 const SERVICE_ACTIVITIES = new Set(['read', 'write', 'paint', 'use-computer', 'craft', 'cook', 'post-letter', 'play-music', 'play-piano']);
 
 export class GodActivitySpots {
@@ -260,7 +262,8 @@ export class GodActivitySpots {
     for (const t of all) {
       if ((++slice & 127) === 0) yield;
       const k = t.c.workstation?.kind;
-      if (k === 'painting' || is(t, 'easel')) standSpot(t, 'paint', paintingEasel(t.def) ? { paintingTarget: t.id } : {});
+      // #430: a painting canvas lying flat on the ground is drawn in chalk, stooping over it (the same paint offer and recipe)
+      if (k === 'painting' || is(t, 'easel')) standSpot(t, 'paint', paintingEasel(t.def) ? { paintingTarget: t.id, ...(flatCanvas(canvasFace(t.def)) ? { ...CHALK_SPOT, ...(canvasFace(t.def)!.fadeDays ? { fadeDays: canvasFace(t.def)!.fadeDays } : {}) } : {}) } : {});
       else if (k === 'cooking' || is(t, 'stove', 'hearth')) standSpot(t, 'cook');
       else if (is(t, 'arcade-cabinet', 'pool-table', 'dartboard', 'foosball')) standSpot(t, 'play-game', {}, t.slots.find(s => s.kind === 'stand')?.id);
       // a workbench (old Eden's barn and workshop): make something by hand

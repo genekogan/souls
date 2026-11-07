@@ -1,6 +1,6 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,type KeyboardEvent as ReactKeyboardEvent} from 'react';
 import type {WorldLocationPage} from './WorldLocations.ts';
-import type {PublicSoul} from '@sim/protocol';
+import type {PublicSoul} from '@souls/protocol';
 import {SoulAvatar} from './MySouls.tsx';
 import {curatedExploreLocations} from './WorldPlaces.ts';
 import './Explore.css';

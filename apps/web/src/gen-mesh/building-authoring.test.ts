@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import * as THREE from 'three';
-import { GENERATORS, type Value } from '@sim/generators';
-import { CORE_KIT, WorldModel, applyBatch, type Entity } from '@sim/world-compiler';
+import { GENERATORS, type Value } from '@souls/generators';
+import { CORE_KIT, WorldModel, applyBatch, type Entity } from '@souls/world-compiler';
 import { runQuery } from '../../../server/src/god/query.ts';
 // @ts-expect-error CLI modules are plain JS; exercise the actual relation path, without HTTP.
 import { view } from '../../../../tools/god-skill/lib/mirror.mjs';

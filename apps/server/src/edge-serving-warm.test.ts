@@ -3,7 +3,7 @@
 // same capabilities as a cold one for the same state.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';

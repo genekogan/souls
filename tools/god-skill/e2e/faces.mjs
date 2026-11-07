@@ -88,19 +88,19 @@ async function look(name, eye, at, settle = 4000) {
     await page.goto(`${base}?dev=1&shot=1&eye=${eye.join(',')}&at=${at.join(',')}&settle=3000`, { waitUntil: 'domcontentloaded', timeout: 600_000 });
     await page.waitForFunction(() => document.title === 'ready' || document.title === 'no-entity-world', null, { timeout: 900_000, polling: 1000 });
   }
-  await page.evaluate(([e, a]) => { const s = window.__simEntity; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.camera.lookAt(s.controls.target); s.controls.update?.(); }, [eye, at]);
+  await page.evaluate(([e, a]) => { const s = window.__soulsEntity; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.camera.lookAt(s.controls.target); s.controls.update?.(); }, [eye, at]);
   await page.waitForTimeout(settle);
   const state = await page.evaluate(() => {
     const faces = {}, images = [];
-    window.__simEntity.scene.traverse((o) => {
+    window.__soulsEntity.scene.traverse((o) => {
       const kind = o.isMesh && o.material?.userData?.face; if (!kind) return;
       faces[kind] = (faces[kind] ?? 0) + (o.isInstancedMesh ? o.count : 1);
       const img = o.material.map?.image; if (kind === 'image') images.push({ src: img?.currentSrc ?? img?.src ?? null, loaded: !!(img?.naturalWidth || img?.width) });
     });
     // Decals measured in their building's own frame against the slot each names (slot.p + at along the wall).
-    const decals = [], m = window.__simEntity.layer.model, shop = m?.get('bakery');
-    window.__simEntity.scene.updateMatrixWorld(true);
-    window.__simEntity.scene.traverse((o) => {
+    const decals = [], m = window.__soulsEntity.layer.model, shop = m?.get('bakery');
+    window.__soulsEntity.scene.updateMatrixWorld(true);
+    window.__soulsEntity.scene.traverse((o) => {
       if (o.name !== 'building-decal') return;
       let root = o; while (root.parent && root.name !== 'building') root = root.parent;
       const pos = o.geometry.attributes.position, c = root.position.clone().set(0, 0, 0), v = c.clone(), toRoot = root.matrixWorld.clone().invert().multiply(o.matrixWorld);
@@ -109,7 +109,7 @@ async function look(name, eye, at, settle = 4000) {
       decals.push({ face: o.material.userData.face, at: [c.x, c.y, c.z].map((v) => Math.round(v * 1000) / 1000) });
     });
     const slots = shop ? Object.fromEntries(m.slotsOf(shop).map((s) => [s.id, { p: s.p, yaw: s.yaw }])) : {};
-    return { faces, images, decals, slots, decalParams: shop?.params?.decals ?? null, stats: window.__simEntity.stats(), lastError: window.__simEntity.layer.stats?.lastError ?? null };
+    return { faces, images, decals, slots, decalParams: shop?.params?.decals ?? null, stats: window.__soulsEntity.stats(), lastError: window.__soulsEntity.layer.stats?.lastError ?? null };
   });
   const file = resolve(out, `${name}.png`); await page.screenshot({ path: file });
   report.shots.push({ name, file, state, errors: [...pageErrors] });

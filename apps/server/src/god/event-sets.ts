@@ -1,13 +1,13 @@
 // EVENTS (2026-10-15, backlog R6): events that physically appear. A scheduled event may carry a `set` (the schedule
-// schema in @sim/world-compiler layers.ts): market stalls for a Saturday market, a stage with floodlights for a dusk
+// schema in @souls/world-compiler layers.ts): market stalls for a Saturday market, a stage with floodlights for a dusk
 // concert. While the event is on, the clock step places the set inside the scheduled thing (engine edits, so viewers see
 // it arrive and Souls perceive it as ordinary things); when it ends, the set is packed away (removed).
 //
 // Identity without new storage: each piece is a named child of the scheduled thing (`<event>-<def>-<n>`, so Souls read
 // "market-stall-2" in the square) and carries a seed in a reserved band, so pieces left behind by an event the god has
 // since removed (or an earlier server run) are still recognised and packed away. Nothing else carries such a seed.
-import { eventsOn, type Entity, type Op, type Result, type WorldModel } from '@sim/world-compiler';
-import type { layers } from '@sim/world-compiler';
+import { eventsOn, type Entity, type Op, type Result, type WorldModel } from '@souls/world-compiler';
+import type { layers } from '@souls/world-compiler';
 
 type SetPiece = layers.SetPiece;
 type Clock = { minute: number; weekday: number };

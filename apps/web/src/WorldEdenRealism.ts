@@ -562,7 +562,7 @@ export function applySceneryRealism(scene:THREE.Object3D,skip:readonly THREE.Obj
  *  Idempotent; phones keep their plain materials. */
 export function applyBuildingFinish(material:THREE.Material,layer:'wall'|'roof'|'floor',finish:{wall:number;roof:number}={wall:4,roof:0}){
  if(patched.has(material)||!(material instanceof THREE.MeshStandardMaterial))return false;
- if((globalThis as {__simQuality?:{tier?:string}}).__simQuality?.tier==='phone'){patched.set(material,{cls:'generic',onBeforeCompile:material.onBeforeCompile,key:material.customProgramCacheKey});return false;}
+ if((globalThis as {__soulsQuality?:{tier?:string}}).__soulsQuality?.tier==='phone'){patched.set(material,{cls:'generic',onBeforeCompile:material.onBeforeCompile,key:material.customProgramCacheKey});return false;}
  if(layer==='floor'){install(material,'wood',1,STRENGTH.wood,'building floor');return true;}
  const style:BuildingStyle={role:7,wall:finish.wall,roof:finish.roof,baseY:0,paint:new THREE.Color(1,1,1),trim:new THREE.Color(1,1,1)};
  install(material,layer==='wall'?'plaster':'roof',1,1,`building ${layer} ${layer==='wall'?finish.wall:finish.roof}`,style,layer==='wall');return true;

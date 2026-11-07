@@ -19,7 +19,7 @@ test('mic stand: sing along, one singer per mic, stop when told or when the musi
  t.after(()=>{comms.close();f.host.stop();f.db.close();});
  const god=new GodMode(f.db,{worldId:f.host.worldId,ownerId:'dev:admin',tick:()=>f.host.engine.world.tick,emit(){}});
  installEngineBridge({host:f.host,god,edge,log(){},worldLore:false,worldClock:false});
- let tickMs=0,ticks=0;const tick=async(n=5)=>{for(let i=0;i<n;i++){const t0=performance.now();f.host.tickOnce();tickMs+=performance.now()-t0;ticks++;await setImmediate();f.host.drainInputs();}};
+ let tickMs=0,ticks=0;const tick=async(n=5)=>{for(let i=0;i<n;i++){const t0=performance.now();f.host.tickOnce();assert.equal(f.host.engineFault,null,'the world halted on an engine fault (#1120)');tickMs+=performance.now()-t0;ticks++;await setImmediate();f.host.drainInputs();}};
  await tick();
  const join=async(id,name)=>{await invite(f,id);const row=await accept(f.host,f.souls.create('dev:'+id,{name,description:'Singing test'}));await tick();return {soulId:row.id,entityId:row.entity_id,name:row.name};};
  const ana=await join('ana','Ana'),ben=await join('ben','Ben'),cal=await join('cal','Cal');

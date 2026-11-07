@@ -102,7 +102,7 @@ try {
 
   await page.goto(`${base}/?dev=1`, { waitUntil: 'domcontentloaded' });
   await page.locator('[data-god-open="owner"]').waitFor({ state: 'attached', timeout: 120_000 });
-  await page.waitForFunction(() => window.__simEntity?.layer?.active === true, null, { timeout: 120_000 });
+  await page.waitForFunction(() => window.__soulsEntity?.layer?.active === true, null, { timeout: 120_000 });
   await modal.waitFor({ timeout: 10_000 }).catch(() => {});
   const openedByItself = (await modal.count()) > 0;
   await openGod(); await sleep(800);

@@ -23,7 +23,7 @@ Tier: T?
 <!-- `node tools/proof/tier.mjs` prints the computed tier; a tier:Tn label can raise it. One line per clip or image:
      the journey, world template, viewport, duration, commit, and the moment the change is visible. -->
 - proof.json:
-- clips: <!-- paste the lines upload.mjs prints: [![journey](…preview.gif)](…clip.mp4), the preview plays inline -->
+- clips: <!-- explicit Full-resolution uncut video links + dimensions/duration; reduced GIF previews are pointers only -->
 - images:
 
 ## Self-audit
