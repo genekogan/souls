@@ -6,7 +6,7 @@
 //   - physics carves the bed with a `channel` (cut) to level − depth per point, lays path water with
 //     per-point levels (the ground's water record), and emits shore bands as surfaces;
 //   - shore/1 rings a lake or pond with a sand / stone / pebble band.
-import { pointInPoly, type Water } from '@sim/ground';
+import { pointInPoly, type Water } from '@souls/ground';
 import { bounds2, boxOfBounds, n } from './geom.ts';
 import { arcLengths, band, distSeg, hyp, pathSig, round2, smoothPath, type AbsSurface, type TerrainQuery } from './terrain-query.ts';
 import type { Baked, Generator, Shape, Vec2 } from './types.ts';

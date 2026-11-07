@@ -116,7 +116,7 @@ export const isFloatingDef = (d: Pick<DefFacts, 'components'>) => !!d.components
 /** The engine AssetDef of an entity-world def (for an id from assetIdFor). `seen`: a decoration that is only perceived
  *  (a fountain, a lamp, a sign): a fixture Souls can see, look at and name, with no slots and no obstacle of its own
  *  (its walls and rims are the entity's solids, as before). */
-export function assetFromDef(id: string, d: DefFacts, o: { seen?: boolean } = {}): AssetDef {
+export function assetFromDef(id: string, d: DefFacts, o: { seen?: boolean; connectors?: boolean } = {}): AssetDef {
   const c = d.components as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   const [w, h, dd] = d.box;
   const label = (d.description?.replace(/\.$/, '') || d.name.replace(/^core-/, '')).slice(0, 80);
@@ -129,6 +129,11 @@ export function assetFromDef(id: string, d: DefFacts, o: { seen?: boolean } = {}
     dims: { confidence: 'hypothetical', note: `derived from entity-world def ${d.ref} (${d.hash.slice(0, 12)}) by the L9 catalog adapter` },
   };
   if (o.seen) return out;
+  // PC12 (#691): a def's typed connectors are the asset's sockets (same frame: x along it, y up from its base, z across),
+  // so the engine's connections on its instances name real sockets. Library kinds are data; the native rack rules read
+  // only their own kinds, and only for their own categories.
+  // Only when the host mirrors joints (`connectors`: the server's SIM_SHARED_CARRY): otherwise the asset is as before PC12.
+  if (o.connectors && Array.isArray(c.connectors)) out.sockets = (c.connectors as { id: string; kind: string; at: [number, number, number]; mates?: string[] }[]).map((x) => ({ id: x.id, kind: x.kind as NonNullable<AssetDef['sockets']>[number]['kind'], local: [r4(x.at[0]), r4(x.at[1]), r4(x.at[2])] as [number, number, number], ...(x.mates ? { mates: x.mates } : {}) }));
   if (upright) {
     const crew=Math.ceil(c.carryable.grips/2),span=Math.min(.6,w*.8);
     out.obstacle=true;
@@ -139,6 +144,9 @@ export function assetFromDef(id: string, d: DefFacts, o: { seen?: boolean } = {}
     const h = c.carryable.handling as { crew: [number, number]; pose: 'edge' | 'flat'; height: number; grips: Record<string, [number, number, number][]> };
     out.handling = { carryCrew: [h.crew[0], h.crew[1]], carryPose: h.pose, carryHeight: h.height,
       grips: Object.fromEntries(Object.entries(h.grips).map(([n, gs]) => [Number(n), gs.map((local, i) => ({ id: gs.length === 1 ? 'mid' : `g${i}`, local: [r4(local[0]), r4(local[1]), r4(local[2])] as [number, number, number] }))])) };
+    // PC13 (#692): an upright's two long edges are where a crew holds it while raising it (hands slide along them, kept in
+    // reach: humans.ts slotPoint); crew size 0 is never a carry layout. Only where the host mirrors joints, as above.
+    if (o.connectors && d.tags.includes('upright')) out.handling.grips[0] = [-1, 1].map((sz: number) => ({ id: sz > 0 ? 'column-pos' : 'column-neg', local: [0, r4(out.size[1] / 2), r4(sz * dd / 2)] as [number, number, number], span: [r4(w), 0, 0] as [number, number, number] }));
   } else if (c.carryable) {
     // one hand, palm under the base (catalog-items.ts hand1): the engine's take_item / put_item / serve verbs
     out.handling = { carryCrew: [1, 1], carryPose: 'flat', grips: { 1: [{ id: 'hand', local: [0, 0, 0] }] }, carryHeight: 0.95, hands: 1, small: true };

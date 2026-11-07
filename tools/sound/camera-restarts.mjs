@@ -107,7 +107,7 @@ try {
         const errors = []; page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
         const t0 = Date.now();
         await page.goto(`${base}?dev=1`, { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => !!window.__simEntity?.layer?.model && !!window.__edenSound, null, { timeout: 180_000 });
+        await page.waitForFunction(() => !!window.__soulsEntity?.layer?.model && !!window.__edenSound, null, { timeout: 180_000 });
         const ready = Date.now() - t0;
         await sleep(3000);
         // the gesture that unlocks audio (a tap on the world), then music on
@@ -116,7 +116,7 @@ try {
         await page.evaluate((ts) => { window.__edenSound.music(true); if (ts) window.__edenMusic?.trackSeconds(ts); }, trackS);
         await sleep(6000);
         // start low in the wood, among trees, birds and the visitor's own steps (an overhead camera hears little)
-        await page.evaluate(() => { const s = window.__simEntity, g = s.layer.groundAt?.(0, 70) ?? 0; s.controls.target.set(10, g + 1.4, 75); s.camera.position.set(0, g + 1.7, 70); s.controls.update?.(); });
+        await page.evaluate(() => { const s = window.__soulsEntity, g = s.layer.groundAt?.(0, 70) ?? 0; s.controls.target.set(10, g + 1.4, 75); s.camera.position.set(0, g + 1.7, 70); s.controls.update?.(); });
         await sleep(2000);
         const cdp = await page.context().newCDPSession(page); await cdp.send('Performance.enable');
         const task = async () => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'TaskDuration').value;

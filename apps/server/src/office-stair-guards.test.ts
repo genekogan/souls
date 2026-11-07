@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {officeStairGuardsDeclarationV1Schema,captureRenderScene,parseRenderSceneCapture} from '@sim/engine-contract';
-import {kernelHash} from '@sim/kernel';import {fixture,accept,factory} from '../test/native-owner-fixture.ts';import {WorldHost} from './world.ts';
+import {officeStairGuardsDeclarationV1Schema,captureRenderScene,parseRenderSceneCapture} from '@souls/engine-contract';
+import {kernelHash} from '@souls/kernel';import {fixture,accept,factory} from '../test/native-owner-fixture.ts';import {WorldHost} from './world.ts';
 import {officeStairGuardBoxes,OFFICE_STAIR_GUARD_VERSION} from '../../../mars/viewer/lib/office-stair-guards.ts';
 const declaration=officeStairGuardsDeclarationV1Schema.parse({version:OFFICE_STAIR_GUARD_VERSION,guards:officeStairGuardBoxes()});
 void test('office guard fact is explicit, exact, captured, resumable and idempotent; absent old captures keep their hash',async t=>{

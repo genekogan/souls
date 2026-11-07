@@ -7,9 +7,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
 import { performance } from 'node:perf_hooks';
-import { kernelHash } from '@sim/kernel';
-import { coreRef } from '@sim/world-compiler';
-import { meter, type Work } from '@sim/world-compiler/work-meter';
+import { kernelHash } from '@souls/kernel';
+import { coreRef } from '@souls/world-compiler';
+import { meter, type Work } from '@souls/world-compiler/work-meter';
 import { fixture, invite, accept, factory, seed } from '../../test/native-owner-fixture.ts';
 import { WorldHost } from '../world.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';
@@ -224,7 +224,7 @@ test('a walk-out the engine refuses at fold time is named in the durable receipt
   assert.match((w.edge.observe(dee as never, new Set()) as any).notices[0].text, /you could not step clear, so you stayed where you were\.$/);
 });
 
-// Z3: work budgets, not milliseconds (see @sim/world-compiler/work-meter): the same answer on any CPU, so it runs in the gate.
+// Z3: work budgets, not milliseconds (see @souls/world-compiler/work-meter): the same answer on any CPU, so it runs in the gate.
 // Measured 2026-10-20, identical on every run: moving the hut (16 residents among 1,217 entities) 223,022 in all, planning
 // 134,023, moves 60,237; moving it back over 7 of them 104,160. Budgets are 1.5x of the larger edit (the real engine
 // leaves a little run-to-run slack: 222,067 when the whole file runs first).

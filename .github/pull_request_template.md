@@ -29,7 +29,8 @@ Tier: T?
 ## Self-audit
 
 <!-- What you checked, what failed on the way, and what this costs elsewhere. "none" is an answer; blank is not. -->
-- **Checks run**: <!-- `command` -> result, one per line; checks you could not run are listed as unverified -->
+- **Checks run**: <!-- `command` -> result, one per line; checks you could not run are listed as unverified.
+  A library def added or revised: the budget tests (core-kit/library.test.ts, conformance catalogue-checks) and conformance. -->
 - **Failed attempts**: <!-- kept with their evidence, never deleted -->
 - **Long tail / externalities**: <!-- cost to everything else: payload or context bytes with the feature absent,
   distant and in use; idle work; extra wakeups or events; unrelated journeys still working -->

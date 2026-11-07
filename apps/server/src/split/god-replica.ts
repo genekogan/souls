@@ -12,7 +12,7 @@
 // listeners get one synthetic commit per refresh (upserts/removes/defs/tiles as main's diffs name them; `by` 'engine' when
 // every journaled edit since the last refresh was the engine's), which bumps the bridge's own versions exactly as main's
 // commits do.
-import {WorldModel, coreLibrary, type Diff, type Entity, type StoredDef} from '@sim/world-compiler';
+import {WorldModel, coreLibrary, type Diff, type Entity, type StoredDef} from '@souls/world-compiler';
 import type {Db} from '../db.ts';
 import {WorldStore} from '../god/store.ts';
 import {AssetStore, defaultAssetDir} from '../god/assets.ts';

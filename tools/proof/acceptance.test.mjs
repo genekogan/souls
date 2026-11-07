@@ -361,3 +361,31 @@ test('prMode never fetches a proof.json from a host outside the allowlist', asyn
   assert.equal(result.ok, false);
   assert.ok(result.warnings.some(w => w.startsWith(`ignored proof link ${evil}`)));
 });
+
+test('a note cut inside a link renders without the partial link, and device details stay blocked (#1055)', () => {
+  const link = 'https://github.com/o/r/releases/tag/v1';
+  const withNote = note => checkPr({ body: body({ acceptance: `- [x] **A1** One — evidence: ${note}` }), tier: 'T1', policy });
+  const row = r => renderComment(r).split('\n').find(l => l.includes('A1 One'));
+
+  const lead = 'x'.repeat(109);
+  const cut = withNote(`${lead} ${link} and more`);
+  assert.equal(cut.checklist[0].note.slice(0, 120), `${lead} https://gi`, 'the cut falls inside the host');
+  assert.ok(row(cut).includes(`| ${lead} |`));
+
+  // A whole link that ends at the cut stays, and so does a cut through plain words.
+  assert.ok(row(withNote(`${'x'.repeat(119 - link.length)} ${link} tail`)).includes(`${link} |`));
+  assert.ok(row(withNote(`${'y'.repeat(200)} ${link}`)).includes(`| ${'y'.repeat(120)} |`));
+
+  // Real device details stay blocked: anywhere in the note, across the cut by checkPr's whole-body scan,
+  // and in the kept text by the comment's own check.
+  const hostUrl = ['http://', 'build-box', ':8080/x'].join('');
+  for (const note of [`see ${hostUrl}`, `${lead} ${hostUrl}`]) {
+    const blocked = withNote(note);
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.problems.join(' '), /device details detected/);
+    assert.ok(!renderComment(blocked).includes('build-box'));
+  }
+  const kept = withNote('fine');
+  kept.checklist[0].note = `see ${hostUrl}`;
+  assert.throws(() => renderComment(kept), /Publication blocked: local service URL/);
+});

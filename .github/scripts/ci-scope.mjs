@@ -42,6 +42,8 @@ export const JOBS = [
   // god-skill unit test (GOD_SKILL_TESTS, the replay corpus among them; none needs a browser or a live server): about
   // 35 s, and some need the pulled media, so they ride on a leg that god paths already select (#918).
   ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, ...(shard === 0 ? { godSkill: true } : {}), steps: ['V5-server-full', 'V6-'] })),
+  // No gate step on purpose: picked by its own paths, so the gate's suite tree and cached baseline stay as they are (#1061).
+  { name: 'soul-actions', kind: 'soul-actions', assets: false, steps: [], paths: /^(tools\/soul-actions|apps\/server|packages\/world-compiler|packages\/engine-[^/]+)\// },
 ];
 
 /** The god-skill unit tests (every *.test.mjs under tools/god-skill), run by the job with `godSkill` (ci.yml). */
@@ -51,8 +53,8 @@ const relevant = (job, steps) => job.steps.some(s => steps.some(step => s.endsWi
 
 export function jobsFor(files) {
   const scope = scopeFor(files);
-  const include = scope.resolved === 'full' ? JOBS : JOBS.filter(job => relevant(job, scope.steps));
-  return { scope: scope.resolved, steps: scope.steps, include: include.map(({ steps, ...job }) => job), diff: scope.diff };
+  const include = scope.resolved === 'full' ? JOBS : JOBS.filter(job => relevant(job, scope.steps) || files?.some(f => job.paths?.test(f)));
+  return { scope: scope.resolved, steps: scope.steps, include: include.map(({ steps, paths, ...job }) => job), diff: scope.diff };
 }
 
 /** The local smoke job: changes under apps/web, apps/server or e2e; null (no usable base) runs it too. */

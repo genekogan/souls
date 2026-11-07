@@ -81,13 +81,13 @@ try {
     await page.goto(`${base}?dev=1&shot=1&eye=-25.5,2.4,-6.8&at=-29,0.3,-0.8`, { waitUntil: 'commit', timeout: 300000 });
     // the page may remount its entity layer once after the first snapshot: wait until one stays up
     let steady = 0;
-    for (let i = 0; i < 900; i++) { const ok = await page.evaluate(() => { const w = window.__simEntity; return !!w?.layer?.active && !!w.layer.model && w.layer.drawn?.size > 5; }).catch(() => false); steady = ok ? steady + 1 : 0; if (steady >= 5) return true; await page.waitForTimeout(1000); }
+    for (let i = 0; i < 900; i++) { const ok = await page.evaluate(() => { const w = window.__soulsEntity; return !!w?.layer?.active && !!w.layer.model && w.layer.drawn?.size > 5; }).catch(() => false); steady = ok ? steady + 1 : 0; if (steady >= 5) return true; await page.waitForTimeout(1000); }
     return false;
   }, (x) => x);
   await page.waitForTimeout(4000);   // ease-in of the placed things (2.5 s) and first motion frames
   const where = async (names) => { for (let i = 0; i < 120; i++) { const r = await whereOnce(names).catch(() => null); if (r) return r; await page.waitForTimeout(500); } throw new Error('viewer lost its entity layer'); };
   const whereOnce = (names) => page.evaluate((names) => {
-    const w = window.__simEntity, out = {}; if (!w?.layer?.model) return null;
+    const w = window.__soulsEntity, out = {}; if (!w?.layer?.model) return null;
     const snap = [...w.layer.model.entities.values()];
     for (const n of names) {
       const e = snap.find((x) => x.name === n); const d = e && w.layer.drawn.get(e.id); if (!d) { out[n] = null; continue; }
@@ -96,7 +96,7 @@ try {
     }
     return out;
   }, names);
-  const look = (eye, at) => page.evaluate(([e, a]) => { const w = window.__simEntity; w.controls.target.set(...a); w.camera.position.set(...e); w.camera.lookAt(w.controls.target); }, [eye, at]);
+  const look = (eye, at) => page.evaluate(([e, a]) => { const w = window.__soulsEntity; w.controls.target.set(...a); w.camera.position.set(...e); w.camera.lookAt(w.controls.target); }, [eye, at]);
   const shot = async (name) => { const file = resolve(out, `${name}.png`); await page.screenshot({ path: file, timeout: 600000 }); report.shots.push({ name, file }); log(`  📷 ${name}.png`); };
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 

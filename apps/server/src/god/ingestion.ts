@@ -2,7 +2,7 @@
 // Hono's standard limiter trusts Content-Length; God uploads also count the stream.
 import type { MiddlewareHandler } from 'hono';
 import { ApiError } from '../souls.ts';
-import { CREATION_LIMITS as L } from '@sim/generators';
+import { CREATION_LIMITS as L } from '@souls/generators';
 
 export const GOD_JSON_BYTES = L.jsonBodyBytes;
 export const FOOTPRINT_BYTES = L.footprintBytes;

@@ -14,7 +14,7 @@
 //     a watermill also runs, a windmill also catches the wind). Birds sing from the world's trees, wind rises on open and
 //     high ground, frogs sing at ponds by night and gulls call over the sea by day.
 // Everything is quiet by default (MASTER_DEFAULT) and ambient music is opt-in.
-import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
+import type { Entity, StoredDef, WorldModel } from '@souls/world-compiler';
 
 export type SoundKind =
   | 'water' | 'stream' | 'fire' | 'wind' | 'creak' | 'birds' | 'bell' | 'hum' | 'engine' | 'chime' | 'frogs' | 'music'

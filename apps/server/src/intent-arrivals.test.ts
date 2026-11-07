@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@sim/engine-mars';
-import type {callTool,CompileOut} from '@sim/brain';
+import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@souls/engine-mars';
+import type {callTool,CompileOut} from '@souls/brain';
 import {Brain} from './brain.ts';
 import {IntentControlV2} from './intent-control.ts';
 import {readIntentArrivalsV1} from './intent-arrivals.ts';
@@ -15,7 +15,7 @@ import {Hub} from './hub.ts';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
 import WebSocket from 'ws';
-import {publicEvent,intentArrivalFactV1,intentArrivalPageV1Schema} from '@sim/protocol';
+import {publicEvent,intentArrivalFactV1,intentArrivalPageV1Schema} from '@souls/protocol';
 const factory=await marsFactory({...EDEN_SAFE_COMMONS_WORLD,safeCrewRemoval:true});
 test('private native arrival follows own canonical play before resting-tail interruption, without fulfilling purpose; model-free replay and current-owner read',async t=>{
   const f=fixture(':memory:',factory,{durableClockV1:true});f.souls.enableLifecycle();t.after(()=>{f.brain.quiesce();f.host.stop();f.db.close();});

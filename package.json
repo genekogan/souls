@@ -1,5 +1,5 @@
 {
-  "name": "sim",
+  "name": "souls",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,11 +9,11 @@
   "scripts": {
     "predev": "(node tools/assets/pull.mjs --check --quiet --set web,runtime || echo 'warning: media missing, run pnpm assets:pull') && node tools/assets/mars-web.mjs",
     "dev": "pnpm -r --parallel --filter './apps/*' dev",
-    "build": "pnpm --filter @sim/web build && node tools/assets/mars-web.mjs",
+    "build": "pnpm --filter @souls/web build && node tools/assets/mars-web.mjs",
     "build:viewer": "node tools/assets/mars-web.mjs",
     "pretest": "node tools/assets/pull.mjs --check --quiet --set web,runtime",
     "test": "pnpm -r --filter '!mars-campus-viewer' test && pnpm test:mars",
-    "test:replay": "pnpm --filter @sim/server test:replay",
+    "test:replay": "pnpm --filter @souls/server test:replay",
     "start": "node --experimental-strip-types apps/server/src/main.ts",
     "typecheck": "pnpm -r exec tsc --noEmit -p .",
     "check": "pnpm typecheck && pnpm test",

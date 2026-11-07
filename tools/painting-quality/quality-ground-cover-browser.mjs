@@ -135,9 +135,9 @@ export async function runQualityGroundCoverProof(owner) {
         url.search = new URLSearchParams({ eye: camera.eye.join(','), at: camera.at.join(',') }).toString();
         try {
           await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: Math.min(25000, deadline - Date.now()) });
-          await page.waitForFunction(() => { const e = window.__simEntity; return e?.layer.active && !e.layer.building && !e.layer.filling && !e.layer.stats.lastError && (!e.layer.cover.stats.enabled || e.layer.cover.stats.rebuilds > 0) && [...document.querySelectorAll('canvas')].filter(c => c.getBoundingClientRect().width > 0 && c.getBoundingClientRect().height > 0).length === 1; });
-          const inspect = () => page.evaluate(() => { const e = window.__simEntity, gl = e.renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return {
-            camera: e.camera.position.toArray(), pivot: e.controls.target.toArray(), cover: { ...e.layer.cover.stats }, tier: window.__simQuality?.tier,
+          await page.waitForFunction(() => { const e = window.__soulsEntity; return e?.layer.active && !e.layer.building && !e.layer.filling && !e.layer.stats.lastError && (!e.layer.cover.stats.enabled || e.layer.cover.stats.rebuilds > 0) && [...document.querySelectorAll('canvas')].filter(c => c.getBoundingClientRect().width > 0 && c.getBoundingClientRect().height > 0).length === 1; });
+          const inspect = () => page.evaluate(() => { const e = window.__soulsEntity, gl = e.renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return {
+            camera: e.camera.position.toArray(), pivot: e.controls.target.toArray(), cover: { ...e.layer.cover.stats }, tier: window.__soulsQuality?.tier,
             lost: gl.isContextLost(), renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
             canvases: [...document.querySelectorAll('canvas')].filter(canvas => canvas.getBoundingClientRect().width > 0 && canvas.getBoundingClientRect().height > 0).length,
             overflow: document.documentElement.scrollWidth > innerWidth + 1 };
@@ -155,7 +155,7 @@ export async function runQualityGroundCoverProof(owner) {
             try { await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + 70, y: y + 10 }] }); await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); }
             finally { await cdp.detach(); }
           } else { await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 90, y + 10, { steps: 8 }); await page.mouse.up(); }
-          await page.waitForFunction(prior => { const p = window.__simEntity?.camera.position.toArray(); return p && Math.hypot(...p.map((v, i) => v - prior[i])) > .05; }, initial.camera);
+          await page.waitForFunction(prior => { const p = window.__soulsEntity?.camera.position.toArray(); return p && Math.hypot(...p.map((v, i) => v - prior[i])) > .05; }, initial.camera);
           await snapshot(page, id + '-after-input'); row.afterInput = await inspect();
           check(id + ' real input changes camera and retains live WebGL', !row.afterInput.lost && errors.length === 0, row.afterInput); save();
         } catch (error) { await failure(page, id, errors, resources, error); throw error; }

@@ -1,7 +1,7 @@
 # One production release of the current main head:
 #   preflight  required secrets/vars exist (fails fast, naming what is missing), the head is main, inputs are sane
 #   gate       the full Modal release gate (tools/test-harness/release-gate.sh) against the last release tag
-#   ship       waits for the `production` environment's required reviewer, then tools/world-launcher/deploy/ship.sh
+#   ship       waits for the `production` environment's required reviewer, then tools/world-launcher/deploy/ship-dual-stage.sh
 #              over SSH (backup, upload, activate, probe, walks, poster, stall, cdn-walk), then healthz
 #              The web build renders the public changelog page from CHANGELOG.md with this release's section already
 #              compiled in (a copy outside the tree, SIM_CHANGELOG_FILE; #393), so the page shows the release it ships
@@ -212,7 +212,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ship"
           ( while sleep 300; do echo "ship still running ($(date -u +%H:%MZ))"; done ) & beat=$!
           set +e
-          tools/world-launcher/deploy/ship.sh --label "$LABEL" ${SHIP_PROBE_FLAG:-}
+          tools/world-launcher/deploy/ship-dual-stage.sh --label "$LABEL" ${SHIP_PROBE_FLAG:-}
           status=$?
           kill $beat
           exit $status
@@ -262,9 +262,9 @@ jobs:
           cp "$tmp/CHANGELOG.md" CHANGELOG.md
           for f in $shipped; do git rm -q --ignore-unmatch "$f"; done
           git add CHANGELOG.md
-          git tag -a "v$VERSION" "$SHA" -m "Sim $VERSION"
+          git tag -a "v$VERSION" "$SHA" -m "Souls $VERSION"
           git push origin "v$VERSION"
-          gh release create "v$VERSION" --verify-tag --title "Sim $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --verify-tag --title "Souls $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
           git commit -q -m "release: changelog for $VERSION" -m "Folds the shipped changes/ fragments into CHANGELOG.md."
           # main may have moved during the release; replay the changelog commit on top.
           for attempt in 1 2 3; do

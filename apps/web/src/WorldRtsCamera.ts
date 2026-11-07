@@ -23,6 +23,8 @@ export type RtsOptions = {
   pickRoots: () => readonly THREE.Object3D[];
   /** Whether the user is in "your camera" with this module in charge (not Free, not Advanced). */
   enabled?: () => boolean;
+  /** #893: a flyTo glide (double-click, double-tap, ground tap) reached its point. */
+  arrived?: () => void;
   /** Subject centre and enclosing world-space radius, never a requested camera distance. */
   focusAt?:(x:number,y:number)=>{center:THREE.Vector3;radius:number}|null;
   /** C1: the world's ground rectangle [x0, z0, x1, z1] (far zoom limit, pivot bounds); null when unknown. */
@@ -390,6 +392,15 @@ export class WorldRtsCamera {
     this.o.takeOver();
     this.flyTo(point);
   }
+  /** #892: a touch tap on the ground while following: take the camera (Free) and glide the pivot to the tapped point. */
+  flyToGround(e: { clientX: number; clientY: number }): boolean {
+    if (this.enabledNow() === false) return false;
+    const point = this.pickPoint(e.clientX, e.clientY);
+    if (!point) return false;
+    this.o.takeOver();
+    this.flyTo(point);
+    return true;
+  }
   /** Glide the pivot to `point`, coming in to a comfortable distance (6–16 m) at the same angle. */
   frameSubject(center:THREE.Vector3,boundingRadius:number){
     const vfov=this.camera.fov*Math.PI/180,hfov=2*Math.atan(Math.tan(vfov/2)*this.camera.aspect);
@@ -415,7 +426,7 @@ export class WorldRtsCamera {
       const f = this.flight; f.t = Math.min(1, f.t + dt / (f.seconds ?? FLY_SECONDS)); const k = f.t * f.t * (3 - 2 * f.t);
       pivot.lerpVectors(f.fromT, f.toT, k); this.camera.position.lerpVectors(f.fromP, f.toP, k); this.camera.lookAt(pivot);
       this.markerAge = 0; changed = true;
-      if (f.t >= 1) this.flight = null;
+      if (f.t >= 1) { this.flight = null; this.o.arrived?.(); }
     }
     if(this.zoomLog&&mode==='manual'&&this.enabledNow()!==false&&!this.flight)changed=this.stepZoom(dt,pivot)||changed;
     if((this.walking||this.riseBy)&&(mode!=='manual'||this.enabledNow()===false)){this.stick={forward:0,right:0};this.riseBy=0;}
@@ -451,7 +462,7 @@ export class WorldRtsCamera {
     }
     this.write(c); if (mode === 'manual' && this.applyLook()) changed = true;
     // Diagnostics for proofs/tests (read-only): where the camera and its pivot are.
-    (globalThis as { __simCamera?: unknown }).__simCamera = { p: this.camera.position.toArray().map(v => +v.toFixed(2)), pivot: pivot.toArray().map(v => +v.toFixed(2)), look: [+this.look.yaw.toFixed(3), +this.look.pitch.toFixed(3)], marker: this.marker.visible, far: this.farLimit() };
+    (globalThis as { __soulsCamera?: unknown }).__soulsCamera = { p: this.camera.position.toArray().map(v => +v.toFixed(2)), pivot: pivot.toArray().map(v => +v.toFixed(2)), look: [+this.look.yaw.toFixed(3), +this.look.pitch.toFixed(3)], marker: this.marker.visible, far: this.farLimit() };
     return changed;
   }
   /** WASD speed factor: the eye's height above the ground under it over SPEED_HEIGHT, 1–SPEED_MAX. */

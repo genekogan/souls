@@ -25,7 +25,7 @@
 //        (the launcher stays outside); --world-user: the launcher (so the world) runs as that user.
 // Writes <out>/<arm>-r<k>/{result.json,commands.jsonl,world.log}, <out>/receipt.json and <out>/REPORT.md (report.mjs).
 // The fixture's per-run copy is deleted after each run; the fixture itself is never written.
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, execFile, execFileSync } from 'node:child_process';
 import { copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { cpus, homedir, loadavg, release, hostname } from 'node:os';
@@ -228,12 +228,13 @@ const CLASS = { here: 'C2', observe: 'C2', caps: 'C2', resolve: 'C2', around: 'C
 function runCli(soul, args, deadlineMs, rec) {
   return new Promise((done) => {
     const t = now(), p = spawn(process.execPath, ['eden.mjs', ...args], { cwd: soul.dir, stdio: ['ignore', 'pipe', 'pipe'] });
-    let err = '', killed = false; p.stderr.on('data', (d) => { err = (err + d).slice(-2000); }); p.stdout.resume();
+    let err = '', out = '', killed = false; p.stderr.on('data', (d) => { err = (err + d).slice(-2000); }); p.stdout.on('data', (d) => { if (args[0] === 'act') out = (out + d).slice(0, 2000); });
     const k = setTimeout(() => { killed = true; p.kill('SIGKILL'); }, deadlineMs);
     p.on('exit', (code) => {
       clearTimeout(k);
-      const outcome = killed ? 'timeout' : code === 0 ? 'ok' : /unreachable/.test(err) ? 'unreachable' : BUSY.test(err) ? 'refused' : 'error';
-      const r = { soul: soul.i, cmd: args[0], cls: CLASS[args[0]] ?? 'C0', at: t, ms: now() - t, code, outcome, ...(outcome === 'error' ? { err: err.trim().split('\n').at(-1)?.slice(0, 200) } : {}) };
+      // an act the world answers `accepted: false` is a refusal, whatever the exit code (#1093: words would refuse every act)
+      const outcome = killed ? 'timeout' : /"accepted":\s*false/.test(out) ? 'refused' : code === 0 ? 'ok' : /unreachable/.test(err) ? 'unreachable' : BUSY.test(err) ? 'refused' : 'error';
+      const r = { soul: soul.i, cmd: args[0], cls: CLASS[args[0]] ?? 'C0', at: t, ms: now() - t, code, outcome, ...(outcome === 'refused' && out ? { refusal: /"code":\s*"([^"]+)"/.exec(out)?.[1], target: args[1] } : {}), ...(outcome === 'error' ? { err: err.trim().split('\n').at(-1)?.slice(0, 200) } : {}) };
       rec?.(r); done(r);
     });
   });
@@ -258,11 +259,23 @@ async function join_(run, i) {
   soul.token = JSON.parse(readFileSync(join(dir, '.eden-agent.json'), 'utf8')).token;
   return soul;
 }
+// What `go to <target>` reads as in this world, through the CLI's own resolve. Empty is an error: the bench would measure refusals.
+let WALK_IDS = [];
+async function learnWalkIds(soul) {
+  const read = (words) => new Promise((done) => execFile(process.execPath, ['eden.mjs', 'resolve', words], { cwd: soul.dir, timeout: 60_000 }, (_e, out) => { try { const d = JSON.parse(out); done({ id: d.candidates?.find((c) => c.available)?.id ?? null, why: d.code ?? null }); } catch { done({ id: null, why: String(out).slice(0, 80) }); } }));
+  // one after another, as an agent would: the world's read limits are not what this measures
+  const ids = new Set(), misses = [];
+  for (const t of TARGETS) { const r = await read(`go to ${t}`); if (r.id) ids.add(r.id); else misses.push(`${t}: ${r.why ?? 'no available candidate'}`); }
+  WALK_IDS = [...ids];
+  if (!WALK_IDS.length) throw new Error(`no offered id for any of ${TARGETS.join(', ')}: the act load would only measure refusals (${misses.join('; ')})`);
+  log(`act load walks to: ${WALK_IDS.join(', ')}${misses.length ? `; no id for ${misses.join('; ')}` : ''}`);
+}
 const MINUTE = ['here', 'observe', 'here', 'observe', 'here', 'observe', 'caps', 'caps', 'resolve', 'resolve', 'around', 'act', 'act', 'say'];
 function argsFor(op, n) {
   if (op === 'caps') return ['caps', '--search', pick(SEARCH)];
   if (op === 'resolve') return ['resolve', pick(TARGETS)];
-  if (op === 'act') return n % 3 === 2 ? ['act', 'sit down'] : ['act', `go to ${pick(TARGETS)}`];
+  // CTRL-1 (#1093): the served CLI acts on offered ids only; the ids are read from the world once, before the load starts
+  if (op === 'act') return n % 3 === 2 ? ['act', 'sit:here'] : ['act', pick(WALK_IDS)];
   if (op === 'say') return ['say', 'hello from the capacity bench'];
   return [op];
 }
@@ -472,6 +485,7 @@ async function oneRun(arm, rep, mode = null) {
     for (let i = 0; i < N; i += JOIN_PAR) souls.push(...await Promise.all(Array.from({ length: Math.min(JOIN_PAR, N - i) }, (_, k) => join_(run, i + k))));
     souls.forEach((s) => { s.cli = s.i < cliN; }); run.joinS = (now() - tj) / 1000;
     log(`${key} r${rep}: ${N} Souls joined (${cliN} CLI, ${N - cliN} raw)`);
+    if (cliN) await learnWalkIds(souls.find((s) => s.cli));
     const relaunch = souls.map((s) => s.cli ? holdListen(run, s) : (rawListen(run, s), () => {}));
     if (SB) for (let v = 0; v < VIEWERS; v++) viewer(run, hello); else for (const s of souls) { waitStream(run, s); viewer(run, hello); }
     run.mode = 'idle'; const loops = souls.map((s) => SB ? sbLoop(run, s, arm === 'incident') : soulLoop(run, s, arm === 'incident'));
@@ -521,9 +535,10 @@ async function calibrate(soul, w, proc, idleWin, setPhase) {   // M7: CPU-s per 
   for (const op of ['here', 'observe', 'caps', 'resolve', 'around', 'act', 'say']) {
     setPhase(`calib-${op}`);
     const a = procStats(w.pid), t = now(), ms = [];
-    for (let i = 0; i < PH.calib; i++) ms.push((await runCli(soul, argsFor(op, i), 60_000)).ms);
+    let refused = 0;
+    for (let i = 0; i < PH.calib; i++) { const r = await runCli(soul, argsFor(op, i), 60_000); ms.push(r.ms); if (r.outcome === 'refused') { refused++; log(`calibration act refused: ${r.target} ${r.refusal}`); } }
     const b = procStats(w.pid), el = (now() - t) / 1000;
-    out[op] = { cpuSPerReq: +(((b.cpuS - a.cpuS) - idleRate * el) / PH.calib).toFixed(4), p50Ms: pct(ms, 0.5) };
+    out[op] = { cpuSPerReq: +(((b.cpuS - a.cpuS) - idleRate * el) / PH.calib).toFixed(4), p50Ms: pct(ms, 0.5), ...(refused ? { refused } : {}) };
   }
   return out;
 }
