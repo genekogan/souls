@@ -1200,9 +1200,10 @@
       "role": "holdout",
       "world": "eden-2026",
       "fixtureStatus": "blocked-before-comparison",
-      "fixtureVersion": 2,
+      "fixtureVersion": 3,
       "gardenRule": "garden-pool-v2",
       "fixtureVersionNote": "Declared 2026-10-31 by Gene/root after garden-holdout-r3-baseline-1 (diagnosis garden-discoverability-diagnosis/diagnosis.json): the frozen instruction names no garden, native `explore garden` returns five gardens, and v1 bound the garden visit, its receipt and the independent-errand trigger to place-eden-stone-garden only. v2 seals the five-garden pool below and binds those checks to the agreed / co-visited pool garden, mirroring the endpoint rule. Instruction text, timings, thresholds, overlap durations, separation distance, every other criterion and the endpoint pool are unchanged. Callers must declare fixtureVersion 2 (scorer evidence.fixtureVersion; disturbance dispatcher fixtureVersion). Version 1 is this file at git 94d5d6eda; runs sealed under v1 keep their v1 scores.",
+      "fixtureVersion3Note": "Declared 2026-11-07 (#473): the world places Commons Fire Circle inside Commons Field, and a return there came back UNKNOWN under version 2 (garden limit 3) because the rule took only coextensive refs. fieldReturn.openChildren lets a binding name open child places with the world's containment as proof. Enclosed places and buildings still never qualify, and the field polygon still applies. Verdicts under earlier versions stay as written.",
       "timeDomain": "real UTC; T0 set after all setup receipts and initial poses pass",
       "soulIds": "bind fresh per run; never publish or reuse probe Soul IDs",
       "agentInformation": "matrix instructions plus the declared initial owner supplements; no oracle entity IDs/coordinates or other agent state in model prompts",
@@ -1693,6 +1694,8 @@
           "commons-mown-lawn"
         ],
         "equivalenceRule": "Fresh source-cited world binding frozen before T0; only listed coextensive open-field refs. Current most-specific native place and physical level, not containing ancestry.",
+        "openChildren": true,
+        "childRule": "A place the world puts directly inside a bound field place counts as the field when the binding names it with that containment, it is open and at the field's level, and the body stands inside the field polygon. Unrelated places, enclosed places and buildings do not.",
         "sources": [
           "worlds/eden/places.v1.json#field",
           "worlds/templates/eden-2026.json#place-field,commons-mown-lawn",
