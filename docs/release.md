@@ -246,7 +246,7 @@ It runs from a clean checkout (`git status --porcelain --untracked-files=no` emp
    holds the same build is reused only when its manifest matches and `release-manifest.mjs verify` passes; a partial
    or different upload is refused, never overwritten. Use a new commit instead.
 6. **Installs** (`install.sh`, idempotent; not for legacy) and the server's Linux dependencies
-   (`pnpm install --frozen-lockfile --filter @sim/server...`) as the `simworlds` user.
+   (`pnpm install --frozen-lockfile --filter @souls/server...`) as the `simworlds` user.
 7. **Activates** with `activate.sh` unless `--no-activate` (legacy is never activated by release.sh; ship-dual-stage.sh does it).
    Production refuses to activate without `/etc/sim-worlds/production-auth.env` ([auth](operations/auth.md)).
 
@@ -318,7 +318,7 @@ switch it on (one last restart).
 **What a viewer sees.** The page and API never get a refused connection. Each world's viewer socket drops once while
 that world moves and reconnects by itself; "Reconnecting…" appears only after 3 s (`apps/web/src/viewer-arrival.ts`).
 A page running the previous bundle reloads at once only if the protocol changed; otherwise it swaps bundles after
-the tab has been hidden for a minute (`useSim.ts`).
+the tab has been hidden for a minute (`useSouls.ts`).
 
 ## Rollback
 

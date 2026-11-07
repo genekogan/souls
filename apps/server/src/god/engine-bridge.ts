@@ -11,12 +11,12 @@ import { handReachSeconds, handReleaseSeconds, handSwingSeconds, type HandActuat
 import { menuWorldOf, type MenuWorld } from '../split/menu-world.ts';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
-import { deckRaised, railGaps, rasterOf } from '@sim/generators';
-import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
-import { beamBays, joistBays, sheetBays, flightBays, flightUnfit, treadTarget, treadsPhrase, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
+import { deckRaised, railGaps, rasterOf } from '@souls/generators';
+import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@souls/world-compiler';
+import { beamBays, joistBays, sheetBays, flightBays, flightUnfit, treadTarget, treadsPhrase, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@souls/engine-mars';
 import { createHash } from 'node:crypto';
 import type { WorldHost } from '../world.ts';
-import type { LogEvent } from '@sim/protocol';
+import type { LogEvent } from '@souls/protocol';
 import type { EdgeLedger, FloorNear } from '../edge/ledger/ledger.ts';
 import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 import type { GodMode } from './god.ts';

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Engine, EngineFactory } from '@sim/engine-contract';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import type { Engine, EngineFactory } from '@souls/engine-contract';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';

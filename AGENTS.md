@@ -68,7 +68,7 @@ edge, god mode for world creators, and a vendored deterministic engine under `ma
 
 - Batteries, personas and casts live in `tools/playtest/`. Measure on a quiet machine only, two repeats per arm.
   Seats use one relative command per call. [docs/testing/playtests.md](docs/testing/playtests.md)
-- Directed live casts: `node tools/playtest/playtest.mjs direct <cast>`, or the `sim-director` skill from a chat
+- Directed live casts: `node tools/playtest/playtest.mjs direct <cast>`, or the `souls-director` skill from a chat
   session. [docs/testing/swarm-director.md](docs/testing/swarm-director.md)
 
 ## Cloud spend
@@ -109,7 +109,7 @@ contract; fresh sessions recover its dated agenda and assignments before dispatc
 - Issues state the problem and acceptance criteria before work starts. The PR is the journal entry: acceptance with
   evidence, proof, self-audit. [docs/process/agent-lifecycle.md](docs/process/agent-lifecycle.md#5-pull-request)
 - Repo skills in `.claude/skills/` (plain Markdown, readable by any agent): `journal`, `epic`, `triage`, `finish`,
-  `proof`, `e2e`, `sim-director`, `coordinator-handoff`. Agent definitions in `.claude/agents/`: `coordinator`,
+  `proof`, `e2e`, `souls-director`, `coordinator-handoff`. Agent definitions in `.claude/agents/`: `coordinator`,
   `lane`, `reviewer`.
 
 ## Release and operations

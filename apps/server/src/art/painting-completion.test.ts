@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { GodMode } from '../god/god.ts';
 import { afterCommit, tx } from '../edge/comms/store.ts';

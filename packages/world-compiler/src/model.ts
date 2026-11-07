@@ -2,8 +2,8 @@
 // terrain. Pure data + lookups; no I/O. The server persists it; the god skill
 // mirrors it from snapshot + stream.
 import { meshFloors, meshFloorLinks } from './mesh-floors.ts';
-import { Terrain, emptyGround, type Ground, type Landform, type Water } from '@sim/ground';
-import { CREATION_LIMITS, GENERATORS, mergeKitSlots, type Baked, type LocalOBB } from '@sim/generators';
+import { Terrain, emptyGround, type Ground, type Landform, type Water } from '@souls/ground';
+import { CREATION_LIMITS, GENERATORS, mergeKitSlots, type Baked, type LocalOBB } from '@souls/generators';
 import { cacheKeyOfText, hashOf, stableStringify } from './hash.ts';
 import { stretchBaked, stretchOf } from './vocab/index.ts';
 import { defSchema, fieldSchema, type Def, type DefInput, type Entity, type StoredDef, type Value, type WorldConstants, type WorldState, worldConstantsSchema, worldStateSchema } from './schemas.ts';

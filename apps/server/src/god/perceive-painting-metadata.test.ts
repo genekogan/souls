@@ -1,7 +1,7 @@
 // Uses the native perception/comms harness; no browser, server, renderer or painting recipe.
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, coreRef, type Op } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, coreRef, type Op } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { commsFixture } from '../edge/comms/testing.ts';

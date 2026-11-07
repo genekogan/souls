@@ -1,7 +1,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { toyFactory } from '@sim/engine-toy';
-import type { Engine, EngineFactory } from '@sim/engine-contract';
+import { toyFactory } from '@souls/engine-toy';
+import type { Engine, EngineFactory } from '@souls/engine-contract';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { faultFacts, glitchLine, THROWN_RULE } from './glitch.ts';

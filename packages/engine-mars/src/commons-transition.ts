@@ -1,5 +1,5 @@
 // An explicit physical checkpoint, never a scene inferred from current art.
-import { commonsTransitionV1Schema,hashOf,type CommonsTransitionV1 } from '@sim/engine-contract';
+import { commonsTransitionV1Schema,hashOf,type CommonsTransitionV1 } from '@souls/engine-contract';
 import { decodeSnapshot } from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import { encode } from '../../../mars/viewer/engine/runtime/codec.ts';
 import type { Mars } from './load.ts';

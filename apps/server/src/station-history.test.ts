@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf} from '@sim/engine-contract';
-import {STATION_PINS_V1,stationEpochId,makeStationCueV1,publicEvent,type LogEvent} from '@sim/protocol';
+import {hashOf} from '@souls/engine-contract';
+import {STATION_PINS_V1,stationEpochId,makeStationCueV1,publicEvent,type LogEvent} from '@souls/protocol';
 import {foldStationFactV1,replayStationFactsV1,historicalStationV1} from './station-history.ts';
 
 const binding={worldId:'history-world',genesisId:hashOf('genesis'),rulesVersion:'test-rules',dtSeconds:.05};

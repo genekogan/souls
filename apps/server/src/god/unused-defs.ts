@@ -1,5 +1,5 @@
 // W1: protect definitions used through inheritance/prefabs, including historical revisions.
-import { definitionRefs, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { definitionRefs, type StoredDef, type WorldModel } from '@souls/world-compiler';
 export function definitionUseClosure(model: WorldModel, placed: Iterable<string>): Set<string> {
   const variants = new Map<string, StoredDef[]>();
   for (const d of new Set(model.defs.values())) { const rows = variants.get(d.ref) ?? []; rows.push(d); variants.set(d.ref, rows); }

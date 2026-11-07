@@ -1,6 +1,6 @@
 # Library conformance
 
-`@sim/conformance` sweeps the core definition library. It catches a change to a def revision, a generator, the
+`@souls/conformance` sweeps the core definition library. It catches a change to a def revision, a generator, the
 compiler, furnishing or gallery geometry that makes any core def fail to bake, place or furnish, or exceed its
 triangle/draw/material budget, at any sampled point. (The shared catalogue registry this package once belonged to is
 archived and gone.)

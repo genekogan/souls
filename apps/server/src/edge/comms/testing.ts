@@ -5,7 +5,7 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Hono} from 'hono';
-import type {Entity} from '@sim/engine-contract';
+import type {Entity} from '@souls/engine-contract';
 import {Db} from '../../db.ts';
 import type {WorldHost} from '../../world.ts';
 import type {Souls} from '../../souls.ts';

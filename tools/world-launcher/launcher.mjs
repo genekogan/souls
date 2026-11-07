@@ -1080,7 +1080,7 @@ export async function openLauncher(cfg = {}) {
         // per request, so a world listed or unlisted appears or drops out at once.
         if (path === '/robots.txt') { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' }).end(req.method === 'HEAD' ? undefined : robotsTxt({ origin: publicOrigin, base: B })); return; }
         if (path === '/sitemap.xml') { res.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'no-cache' }).end(req.method === 'HEAD' ? undefined : sitemapXml({ origin: publicOrigin, base: B, pages: docsPages(), worlds: publicWorlds(registry.worlds.filter((w) => !closing.has(w.slug))) })); return; }
-        if (path === '/' || path === '/index.html') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @sim/web build'); return; }
+        if (path === '/' || path === '/index.html') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @souls/web build'); return; }
         // #896: the docs, llms.txt and the changelog's Markdown twin, all built into the web build (apps/web/src/docs-site.ts).
         // A page answers as HTML, or as its Markdown twin at <path>.md or for `Accept: text/markdown`.
         if (path === '/llms.txt' || path === '/llms-full.txt') { if (serveFile(res, join(webDir, path.slice(1)), 'no-cache', req)) return; }

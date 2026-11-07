@@ -1,5 +1,5 @@
-import type {Connection,PrivateMeSession} from '@sim/client';
-import type {Me,BrainCall,ServerStats} from '@sim/protocol';
+import type {Connection,PrivateMeSession} from '@souls/client';
+import type {Me,BrainCall,ServerStats} from '@souls/protocol';
 import {matchingMe} from './auth-projection.ts';
 type PrivateState={me:Me|null;brain:BrainCall[];stats:ServerStats|null;privateAuthorityGeneration?:number};
 const scope=(me:Me|null)=>me?JSON.stringify([me.userId,me.role,me.invited,me.souls.slice().sort()]):null;

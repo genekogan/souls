@@ -2,17 +2,17 @@
 // Everything a god or the server exchanges is one of these shapes. Keep them
 // compact; the compiler (compile.ts) is the only thing that interprets them.
 import { z } from 'zod';
-import { landformBodySchema } from '@sim/ground';
-import { ID, NAME, fieldSchema, fieldsSchema, materialEnum, num, slotSchema, v2, v3, value } from '@sim/generators';
+import { landformBodySchema } from '@souls/ground';
+import { ID, NAME, fieldSchema, fieldsSchema, materialEnum, num, slotSchema, v2, v3, value } from '@souls/generators';
 import { ACCESS, layersStateSchema, ownerRef, priceSchema, relRef, RELATIONS, scheduleSchema } from './layers.ts';
-import { CREATION_LIMITS as L } from '@sim/generators';
+import { CREATION_LIMITS as L } from '@souls/generators';
 
 export const ENTITY_SCHEMA = 'entity/1';
 export const DEF_SCHEMA = 'def/1';
 export const EDIT_SCHEMA = 'edit/1';
 
-export { ID, NAME, value, fieldSchema, fieldsSchema, slotKind, slotSchema, materialEnum } from '@sim/generators';
-export type { Value, Field, FieldInput, Slot, Material } from '@sim/generators';
+export { ID, NAME, value, fieldSchema, fieldsSchema, slotKind, slotSchema, materialEnum } from '@souls/generators';
+export type { Value, Field, FieldInput, Slot, Material } from '@souls/generators';
 export const DEF_REF = /^((?:core|eden|lm|mars)\/[a-z0-9][a-z0-9._-]*@\d+|sha:[0-9a-f]{16,64}|[a-z0-9][a-z0-9._-]*@\d+)$/;
 
 // ---------- defs ----------

@@ -58,7 +58,7 @@ modules they mount):
 | Public world model | `GET /v1/world/builds`, `/seq`, `/snapshot`, `/ground`, `/tiles/:tx/:tz`, `/entities/:id` |
 
 The catalogue lists this world's own defs plus the built-in core library (`coreLibrary()` from
-`@sim/world-compiler`, the `CORE_KIT` objects): furniture, buildings, landforms, vegetation and more, each with
+`@souls/world-compiler`, the `CORE_KIT` objects): furniture, buildings, landforms, vegetation and more, each with
 parameters, slots and actions.
 
 ## How an edit works

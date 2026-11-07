@@ -4,7 +4,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate as turn } from 'node:timers/promises';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 

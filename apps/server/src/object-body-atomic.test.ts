@@ -1,8 +1,8 @@
 import {createHash} from 'node:crypto';
 import test from 'node:test';import assert from 'node:assert/strict';import {setImmediate} from 'node:timers/promises';
-import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1,marsFactory} from '@sim/engine-mars';import {kernelHash} from '@sim/kernel';
+import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1,marsFactory} from '@souls/engine-mars';import {kernelHash} from '@souls/kernel';
 import {Hono} from 'hono';import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
-import {LivingWorld} from './living.ts';import {hashToken} from './auth.ts';import {EdgeLedger} from './edge/ledger/ledger.ts';import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';import type {EngineFactory} from '@sim/engine-contract';
+import {LivingWorld} from './living.ts';import {hashToken} from './auth.ts';import {EdgeLedger} from './edge/ledger/ledger.ts';import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';import type {EngineFactory} from '@souls/engine-contract';
 const common=await retainedCommonsShoreFactory().then(nativeSleepSnapshotFactoryV1);
 async function setup(t:{after(fn:()=>void):void},factory:EngineFactory=common,count=1){
  const f=fixture(':memory:',factory,{durableClockV1:true});f.souls.enableLifecycle();f.brain.quiesce();

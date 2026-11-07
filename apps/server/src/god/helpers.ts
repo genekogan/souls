@@ -3,7 +3,7 @@
 // limits with the lead, and never reaches env, land, strike, others' undo, build lifecycle, minting or pairing.
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import type { Failure, Op } from '@sim/world-compiler';
+import type { Failure, Op } from '@souls/world-compiler';
 import type { Db } from '../db.ts';
 
 export const HELPER_LIMITS = { defaultTtlMs: 2 * 3_600_000, minTtlMs: 60_000, maxTtlMs: 12 * 3_600_000, perClaim: 4, perWorld: 64, verifyBudget: 3, maxVerifyBudget: 10, mintPerMinute: 12 } as const;

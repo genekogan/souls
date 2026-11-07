@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {marsFactory} from '@sim/engine-mars';
+import {marsFactory} from '@souls/engine-mars';
 import {CAMP_ARRIVALS} from '../../../mars/viewer/engine/scenarios/eden-camp.ts';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';import {WorldHost} from './world.ts';
