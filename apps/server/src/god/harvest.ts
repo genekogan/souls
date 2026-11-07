@@ -2,7 +2,7 @@
 // steps, like the tea acts (tea.ts): take the vessel by the right hand if it is not held (take_item), walk to the planter
 // that is ripe for it, and reach into the plants with the free left hand (hand_actuator_v1, entry 42's free hand). At the
 // hand's contact, and only then, the planter goes back a stage and the vessel holds what was picked; an act interrupted
-// before the contact changes nothing. What a vessel picks is data (core-kit/harvest.ts HARVEST): the basket takes tomatoes
+// before the contact changes nothing, and the receipt says what the hand did, never only that the steps ran (`outcome`). What a vessel picks is data (core-kit/harvest.ts HARVEST): the basket takes tomatoes
 // from a fruiting planter, the vase a bunch of flowers from a flowering one. The planter grows again in the daily pass
 // (garden.ts). Only bodies given a picking act are read per tick (usually none): no scan of the world.
 import { opSchema, GROWTH_STAGES, harvestOf, type Harvest, type Op, type StoredDef, type WorldModel } from '@souls/world-compiler';
@@ -18,7 +18,7 @@ export type HarvestPlan = { steps: Step[]; summary: string };
 export const HARVEST_REACH = 20;
 /** Seconds the picking hand stays in the plants after its contact (it closes on the fruit or the stems). */
 export const PICK_HOLD_SECONDS = 0.7;
-const GRACE_TICKS = 1200, EDGE_GAP = HUMAN_RADIUS + 0.04, STAND_GAP = HUMAN_RADIUS + 0.08;
+const GRACE_TICKS = 1200, STAND_GAP = HUMAN_RADIUS + 0.08;
 /** The picking hand reaches this far into the bed from its near edge (m), and the body stands this far to the right of the
  *  plant so the left hand reaches it straight ahead. */
 const INTO_BED = 0.13, HAND_LEFT = 0.17;
@@ -38,6 +38,8 @@ export type HarvestHost = {
   access?(id: string, soul: { soulId: string; name: string }): Refusal | null;
   /** The vessel fetched on the way: the answer a pick-up offer gets (for sale, or a lost-and-found claim). */
   denied?(id: string, soul: { soulId: string; name: string }): Refusal | null;
+  /** Is this body's act still open (its receipt not ended)? A walk held up by other people can outlast any fixed grace. */
+  actOpen?(body: string, capability: string): boolean;
 };
 
 export function createHarvest(h: HarvestHost) {
@@ -58,31 +60,15 @@ export function createHarvest(h: HarvestHost) {
   const walk = (st: Vec3, face: number): Step => ({ verb: 'mars:walk_to', params: { x: r3(st[0]), z: r3(st[2]), level: 0, face: r3(face) } });
   const LET_GO: Step = { verb: 'mars:let_go_v1', params: {} };
 
-  /** Where to stand to take a vessel that rests on a table or a counter (tea.ts `station`, in front of the vessel), or on
-   *  the ground (a step from it on the Soul's side). */
-  function fetchSteps(id: string, me: Vec2): Step[] | Refusal {
-    const x = ents()[id], s = x?.support, it = x?.pose?.p as Vec3 | undefined, name = M().pathOf(id);
-    if (!it) return { code: 'harvest.vessel-gone', reason: `${name} is not there any more.` };
-    if (s?.kind === 'resting-on') {
-      const owner = M().entities.get(s.on), odef = owner && M().resolvedDef(owner.def);
-      if (owner && odef) {
-        const wp = M().worldPose(owner), half = odef.size.box[2] / 2 * wp.s, c = Math.cos(wp.yaw), sn = Math.sin(wp.yaw);
-        const lx = (it[0] - wp.x) * c - (it[2] - wp.z) * sn, mz = (me[0] - wp.x) * sn + (me[1] - wp.z) * c, side = mz >= 0 ? 1 : -1;
-        for (const g of [EDGE_GAP, EDGE_GAP + 0.06, EDGE_GAP + 0.12]) {
-          const st = toWorld(wp, [lx / wp.s, 0, side * (half + g) / wp.s]);
-          if (clear(st)) return [walk(st, heading(wp, [0, -side])), LET_GO, { verb: 'mars:take_item', params: { item: id, hand: 'right' } }];
-        }
-        return { code: 'harvest.vessel-blocked', reason: `There is no room to stand in front of ${name} to pick it up.` };
-      }
-    }
+  /** Why a vessel that is not held cannot be fetched, or null. The fetch is `take_item` alone, as a pick-up is: it finds its
+   *  own station within reach. A stand of our own beside each vessel put two Souls at one table on stands closer than two
+   *  bodies, from which `take_item` walked on round the table through the other Soul (#1214). */
+  function fetchProblem(id: string): Refusal | null {
+    const x = ents()[id], s = x?.support, name = M().pathOf(id);
+    if (!x?.pose?.p) return { code: 'harvest.vessel-gone', reason: `${name} is not there any more.` };
     if (s?.kind === 'in-hand') return { code: 'harvest.vessel-held', reason: `Someone else is holding ${name}.` };
-    if (s?.kind !== 'ground') return { code: 'harvest.vessel-not-down', reason: `${name} is not on a table, a counter or the ground; take it out first.` };
-    const d = Math.hypot(me[0] - it[0], me[1] - it[2]) || 1, u: Vec2 = [(me[0] - it[0]) / d, (me[1] - it[2]) / d];
-    for (const g of [0.45, 0.55, 0.65]) {
-      const st: Vec3 = [it[0] + u[0] * g, 0, it[2] + u[1] * g];
-      if (clear(st)) return [walk(st, Math.atan2(-u[1], -u[0])), LET_GO, { verb: 'mars:take_item', params: { item: id, hand: 'right' } }];
-    }
-    return { code: 'harvest.vessel-blocked', reason: `There is no room to stand by ${name} to pick it up.` };
+    if (s?.kind !== 'ground' && !(s?.kind === 'resting-on' && M().entities.has(s.on))) return { code: 'harvest.vessel-not-down', reason: `${name} is not on a table, a counter or the ground; take it out first.` };
+    return null;
   }
 
   /** The act for a vessel's `harvest`: a refusal with its reason, the steps, or null (not a harvest vessel). */
@@ -134,7 +120,7 @@ export function createHarvest(h: HarvestHost) {
     }
     if (!st) return { code: 'harvest.planter-blocked', reason: `There is no room to stand at ${m.pathOf(ripe)} to pick from it.` };
     const steps: Step[] = [];
-    if (!held) { const no = soul.soulId ? h.denied?.(id, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null; if (no) return no; const f = fetchSteps(id, me); if ('code' in f) return f; steps.push(LET_GO, ...f); }
+    if (!held) { const no = soul.soulId ? h.denied?.(id, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null; if (no) return no; const f = fetchProblem(id); if (f) return f; steps.push(LET_GO, { verb: 'mars:take_item', params: { item: id, hand: 'right' } }); }
     steps.push(walk(st, face), LET_GO, { verb: 'mars:hand_actuator_v1', params: { target: ripe, at: at.map(r3), hand: 'left', hold: PICK_HOLD_SECONDS } });
     planned.set(soul.entityId, { vessel: id, planter: ripe });
     // the pick happens at the hand's contact (and is checked again there): the summary says what the act does
@@ -149,20 +135,37 @@ export function createHarvest(h: HarvestHost) {
 
   // ---- the world changes at the hand's contact ----
   const watching = new Map<string, number>(), fired = new Set<string>(), planned = new Map<string, { vessel: string; planter: string }>(), acting = new Map<string, { vessel: string; planter: string; reached?: true }>();
+  /** What the hand's contact came to, kept for the receipt when the act's steps end (`outcome`). */
+  const touched = new Map<string, { vessel: string; failure: Refusal | null }>();
   let visits = 0;
   /** A body was given a picking act: watch its motions until they are done (with a minute's grace before them). */
-  function expect(body: string) { const p = planned.get(body); if (!p) return; acting.set(body, p); watching.set(body, h.engine.world.tick + GRACE_TICKS); }
+  function expect(body: string) { const p = planned.get(body); if (!p) return; acting.set(body, p); touched.delete(body); watching.set(body, h.engine.world.tick + GRACE_TICKS); }
   /** The pick itself: the planter back a stage and the vessel holding what was picked, in one commit, if the planter is
-   *  still ripe for it and the vessel is in this body's hand. */
-  function pick(body: string, vessel: string, planter: string) {
+   *  still ripe for it and the vessel is in this body's hand. Otherwise why nothing was picked. */
+  function pick(body: string, vessel: string, planter: string): Refusal | null {
     const hv = harvestOf(defOf(vessel) as never) as Harvest | null, s = ents()[vessel]?.support;
-    if (!hv) return;
-    if (s?.kind !== 'in-hand' || s.by !== body) { h.log(`harvest ${planter}: ${vessel} is not in the picking body's hand`); return; }
-    if (Math.round(num(stateOf(planter).growth)) !== GROWTH_STAGES.indexOf(hv.from)) { h.log(`harvest ${planter}: no longer ${hv.from}`); return; }
+    if (!hv) return { code: 'harvest.vessel-gone', reason: 'What you were picking into is not there any more; nothing was picked.' };
+    const name = M().pathOf(vessel), bed = M().pathOf(planter), growth = stateOf(planter).growth;
+    if (s?.kind !== 'in-hand' || s.by !== body) return { code: 'harvest.vessel-lost', reason: `${name} was not in your hand when you reached ${bed}; nothing was picked.` };
+    // two Souls at one bed: the first hand to touch it picks; the other is told so
+    if (Math.round(num(growth)) !== GROWTH_STAGES.indexOf(hv.from)) return { code: 'harvest.not-ripe', reason: `${bed} was ${stageOf(growth)} when your hand reached it, not ${hv.from}; nothing was picked into ${name}.` };
     const have = Math.round(num(stateOf(vessel)[hv.field]));
-    if (have + hv.take > hv.holds) { h.log(`harvest ${vessel}: full`); return; }
+    if (have + hv.take > hv.holds) return { code: 'harvest.vessel-full', reason: `${name} had no room for ${hv.take} more ${hv.word}; nothing was picked.` };
     const ops: Op[] = [opSchema.parse({ op: 'set', id: planter, state: { growth: GROWTH_STAGES.indexOf(hv.leaves) } }), opSchema.parse({ op: 'set', id: vessel, state: { [hv.field]: have + hv.take } })];
-    const r = h.commit(ops, `${body} harvest ${planter} into ${vessel}`); if (!r.accepted) h.log(`harvest ${planter}: the world refused ${JSON.stringify(ops)}`);
+    const r = h.commit(ops, `${body} harvest ${planter} into ${vessel}`); if (r.accepted) return null;
+    h.log(`harvest ${planter}: the world refused ${JSON.stringify(ops)}`);
+    return { code: 'harvest.refused', reason: `The world refused the pick from ${bed}; nothing was picked.` };
+  }
+  /** What a `harvest` act came to when its steps ended, for its receipt; null when this is not a picking act, or the steps
+   *  stopped before the hand touched anything (the programme's own reason stands). The steps ending says only that the body
+   *  moved: the receipt says what the contact did. A hold cut short after the pick is still a pick (#1214). */
+  function outcome(capability: string, body: string, finished: boolean): 'done' | Refusal | null {
+    const vessel = /^object:(.+):harvest$/.exec(capability)?.[1]; if (!vessel) return null;
+    const def = defOf(vessel); if (def && !harvestOf(def as never)) return null;
+    const t = touched.get(body); touched.delete(body);
+    if (t?.vessel === vessel) return t.failure ?? 'done';
+    if (!finished) return null;
+    return def ? { code: 'harvest.not-picked', reason: `Your hand did not pick anything into ${M().pathOf(vessel)}.` } : { code: 'harvest.vessel-gone', reason: 'What you were picking into is not there any more; nothing was picked.' };
   }
   /** Per tick, only for bodies given a picking act (usually none). */
   function tick() {
@@ -179,11 +182,20 @@ export function createHarvest(h: HarvestHost) {
       if (p && am && am.target === p.planter) {
         p.reached = true; watching.set(body, now + GRACE_TICKS);
         const key = am.actionId ?? `${body}:${am.startTick}`;
-        if (!fired.has(key) && handActuatorFrame(am, (now - am.startTick) * d).contact) { fired.add(key); try { pick(body, p.vessel, p.planter); } catch (e) { h.log(`harvest: ${(e as Error).message}`); } }
-      } else if (now > until) { watching.delete(body); acting.delete(body); }
+        if (!fired.has(key) && handActuatorFrame(am, (now - am.startTick) * d).contact) {
+          fired.add(key); let failure: Refusal | null;
+          try { failure = pick(body, p.vessel, p.planter); } catch (e) { h.log(`harvest: ${(e as Error).message}`); failure = { code: 'harvest.refused', reason: 'The world could not apply the pick; nothing was picked.' }; }
+          if (failure) h.log(`harvest ${p.planter}: ${failure.code}`);
+          touched.set(body, { vessel: p.vessel, failure });
+        }
+      } else if (now > until) {
+        // the grace is only for an act that never began; one still open may be waiting its turn at a crowded table
+        if (p && h.actOpen?.(body, `object:${p.vessel}:harvest`)) watching.set(body, now + GRACE_TICKS);
+        else { watching.delete(body); acting.delete(body); }
+      }
       if (fired.size > 64) for (const x of [...fired].slice(0, 32)) fired.delete(x);
     }
   }
-  return { plan, facts, expect, tick, watchingCount: () => watching.size, visits: () => visits };
+  return { plan, facts, expect, outcome, tick, watchingCount: () => watching.size, visits: () => visits };
 }
 export type HarvestFaculty = ReturnType<typeof createHarvest>;

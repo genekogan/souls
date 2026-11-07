@@ -483,7 +483,7 @@ up the basket in the right hand if it is not holding it, walks to the nearest fr
 with the free left hand. "pick the tomatoes from the rose bed" goes to that planter (by its name, up to two words after
 "from") and never to a nearer one; a name no planter nearby has, or a named planter that is not ripe, is refused by name. At the hand's contact the planter goes back to flowering and the basket holds three tomatoes (it
 holds six). "pick flowers for the vase" (pick some flowers) is the same act with the vase: a flowering planter goes back to
-leafy and the vase holds a bunch of three. An act interrupted before the contact changes nothing. What a vessel picks (the
+leafy and the vase holds a bunch of three. An act interrupted before the contact changes nothing, and the receipt reports what the hand did, not that the steps ran: it is `completed` only if the contact picked. Two Souls after one ripe bed: the first hand picks and the other receipt fails `harvest.not-ripe`. What a vessel picks (the
 stage it picks from and leaves, its state field, how many, where the hand goes) is one row of data per def
 (`packages/world-compiler/src/core-kit/harvest.ts`); the faculty is `apps/server/src/god/harvest.ts`. A picked planter
 fruits or flowers again through the daily growth pass while it stays watered. "put the basket on the counter" is the
