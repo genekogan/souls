@@ -27,7 +27,7 @@ try {
       await page.locator('[data-template="empty"] input').check(); await page.locator('[data-create]').click();
       await page.waitForURL(/\/worlds\/w\//, { timeout: 120000 });
       const url = new URL(page.url()); url.search = ''; url.hash = ''; const base = url.href.replace(/\/$/, '');
-      await page.waitForFunction(() => !!window.__simEntity?.layer.active, null, { timeout: 120000 });
+      await page.waitForFunction(() => !!window.__soulsEntity?.layer.active, null, { timeout: 120000 });
       await page.locator('.viewer-arrival').waitFor({ state: 'hidden', timeout: 120000 });
       await page.locator('canvas[aria-label="Live 3D view of the world"]').click({ position: { x: 650, y: 470 } });
       await page.keyboard.down('w'); await sleep(400); await page.keyboard.up('w');

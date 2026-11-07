@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { strikesBetween, setWeatherInForce, WEATHER_RULES } from '@sim/world-compiler';
+import { strikesBetween, setWeatherInForce, WEATHER_RULES } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { GodMode } from './god.ts';
 import { envPatch, setEnv, weatherNow } from './world-env.ts';

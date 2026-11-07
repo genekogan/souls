@@ -1,5 +1,5 @@
 // Applicability of this authored scenery, not physical validation or a wire codec.
-import { hashOf, type CommonsSceneMetadataV1 } from '@sim/engine-contract';
+import { hashOf, type CommonsSceneMetadataV1 } from '@souls/engine-contract';
 import type { SpatialScene } from '../../../mars/viewer/engine/spatial/types.ts';
 import type { SampledEntity } from '../../../mars/viewer/engine/take/replay.ts';
 import { commonsPrefabPlacements } from '../../../mars/viewer/app/engine-view/content/environment/commons.ts';

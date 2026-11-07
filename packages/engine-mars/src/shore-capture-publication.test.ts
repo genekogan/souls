@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { decodeSceneCapturePublication,recordedTakeChunkSchema } from '../../protocol/src/index.ts';
-import { hashOf,decodeShoreAppearanceSourceV1 } from '@sim/engine-contract';
+import { hashOf,decodeShoreAppearanceSourceV1 } from '@souls/engine-contract';
 import { takeIdOf } from '../../../mars/viewer/engine/take/recorder.ts';
 
 test('frozen captured native shore publication pins exact bytes and both complete take/scene pairs',()=>{

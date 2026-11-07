@@ -4,8 +4,8 @@ import {requestNeedsDiagnostics,type DiagnosticContext} from './request-diagnost
 import {HumanCapabilities} from './HumanCapabilities.tsx';
 import {intentFeedback} from './intent-feedback.ts';
 import { useEffect, useRef, useState } from 'react';
-import { INTENT_V2, intentRequestV2Schema, type IntentRequestV2 } from '@sim/protocol';
-import type { Api } from './useSim.ts';
+import { INTENT_V2, intentRequestV2Schema, type IntentRequestV2 } from '@souls/protocol';
+import type { Api } from './useSouls.ts';
 import { intentResponse, type IntentResponse } from './intent-response.ts';
 import {IntentLookup} from './IntentLookup.tsx';
 import {AvailableActions} from './AvailableActions.tsx';

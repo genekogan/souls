@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 storage family (#435, W068): hiding places. core-hollow-stump@1 (8ca42ee07d97\u2026) and core-wall-niche@1 (d8b34b08b1fd\u2026) are new defs on the doorless container faculty with one place and `components.container.hidden: true`, so what is in them is never named, offered or drawn, and only a search finds it. The stump is 280 triangles and the niche 72 (budget 400). core-swap-shelf@1 (231856240a6a\u2026), core-lost-and-found@1 (cd65c96d17da\u2026), core-drawer-chest@2 (49445cc00954\u2026) and core-lockers@3 (a6e4e98f7e03\u2026) are byte-identical. Narrow production K=2 runs (`conformance.mjs --k 2 --filter core-hollow-stump`, then `core-wall-niche`) baked, placed and rendered all 5 samples of each with 0 findings and 0 qualification gaps, so this supplement pins no finding. No budgets, samples or gap checks were relaxed.",
+  "findings": []
+}

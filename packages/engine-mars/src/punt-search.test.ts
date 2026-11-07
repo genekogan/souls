@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import type {RenderScene} from '@sim/engine-contract';
+import type {RenderScene} from '@souls/engine-contract';
 import type {Runtime} from '../../../mars/viewer/engine/runtime/runtime.ts';
 import type {GroundField} from '../../../mars/viewer/engine/spatial/ground.ts';
 import type {Spatial} from '../../../mars/viewer/engine/spatial/service.ts';

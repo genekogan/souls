@@ -5,11 +5,11 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setImmediate} from 'node:timers/promises';
-import {connectedCommonsShoreFactory} from '@sim/engine-mars';
-import {kernelHash} from '@sim/kernel';
-import {hashOf} from '@sim/engine-contract';
-import {INTENT_V2,intentReceiptV2Schema,intentHistoryPageV1Schema,publicEvent} from '@sim/protocol';
-import type {CompileOut,callTool} from '@sim/brain';
+import {connectedCommonsShoreFactory} from '@souls/engine-mars';
+import {kernelHash} from '@souls/kernel';
+import {hashOf} from '@souls/engine-contract';
+import {INTENT_V2,intentReceiptV2Schema,intentHistoryPageV1Schema,publicEvent} from '@souls/protocol';
+import type {CompileOut,callTool} from '@souls/brain';
 import {Db} from '../../../src/db.ts';
 import {WorldHost} from '../../../src/world.ts';
 import {Brain} from '../../../src/brain.ts';
@@ -37,7 +37,7 @@ export async function generateOwnedConnectedShore(){
   const service=new IntentControlV2(host,brain,souls,{historyV1:true}),app=buildApp({cfg,db,host,auth,brain,souls,intentV2:service,hub:{refreshMe(){},clients:new Map()} as unknown as Hub});
   const request=async(route:string,owner:string,data?:unknown,extra?:Record<string,string>)=>app.request(route,{method:data?'POST':'GET',headers:{authorization:'Bearer dev:'+owner,...(data?{'content-type':'application/json'}:{}),...extra},...(data?{body:JSON.stringify(data)}:{})});
   async function drive<T>(p:Promise<T>){let done=false;p.then(()=>done=true,()=>done=true);for(let i=0;i<100&&!done;i++){host.drainInputs();await setImmediate();}assert.ok(done,'canonical request settled');return p;}
-  const phases=new Set<string>(),programEvents:import('@sim/engine-contract').ProgramEvent[]=[];host.listeners.push({onProgram:event=>programEvents.push(structuredClone(event))});
+  const phases=new Set<string>(),programEvents:import('@souls/engine-contract').ProgramEvent[]=[];host.listeners.push({onProgram:event=>programEvents.push(structuredClone(event))});
   try{
     for(const owner of ['alice','bob']){const issued=await request('/v1/admin','admin',{action:'invite',uses:1});assert.equal(issued.status,200);const {code}=await issued.json() as {code:string};assert.equal((await request('/v1/invite',owner,{code})).status,200);}
     await drive(host.enqueue('rules','fixture',{dayConfig:{origin:0,dayTicks:72000,customs:[]}}));

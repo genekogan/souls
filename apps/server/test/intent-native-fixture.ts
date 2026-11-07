@@ -2,8 +2,8 @@
 // compiler and fake Jev only; this is neither production bootstrap nor a worker.
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {marsFactory} from '@sim/engine-mars';
-import {newLife,type CompileOut,type callTool} from '@sim/brain';
+import {marsFactory} from '@souls/engine-mars';
+import {newLife,type CompileOut,type callTool} from '@souls/brain';
 import {Auth} from '../src/auth.ts';
 import {Brain} from '../src/brain.ts';
 import {config} from '../src/config.ts';

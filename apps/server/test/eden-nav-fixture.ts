@@ -2,7 +2,7 @@
 // nav/1 (solid buildings, the library interior, ground south to the park) and W1 places, for nav/activity tests.
 import {readFileSync} from 'node:fs';
 import {setImmediate} from 'node:timers/promises';
-import {edenLectureFactoryV1,edenGroundFactoryV1,retainedCommonsShoreFactory,commonsNewcomerResourcesFactory,nativeSleepSnapshotFactoryV1} from '@sim/engine-mars';
+import {edenLectureFactoryV1,edenGroundFactoryV1,retainedCommonsShoreFactory,commonsNewcomerResourcesFactory,nativeSleepSnapshotFactoryV1} from '@souls/engine-mars';
 import {fixture,invite,accept} from './native-owner-fixture.ts';
 import {LivingWorld} from '../src/living.ts';
 import {EdgeLedger} from '../src/edge/ledger/ledger.ts';

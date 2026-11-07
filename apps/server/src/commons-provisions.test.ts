@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {commonsProvisionsFactory,COMMONS_PERSONAL_RESOURCES} from '@sim/engine-mars';
+import {commonsProvisionsFactory,COMMONS_PERSONAL_RESOURCES} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';
 import {installCommonsProvisionCards,followCommonsProvisionBirths} from './commons-provisions.ts';
 import {setImmediate} from 'node:timers/promises';
 import {WorldHost} from './world.ts';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 const factory=await commonsProvisionsFactory();
 test('eight human owners retain bodies/history and get usable personal meal/sleep cards; ordinary owner intent eats finite stock and replay matches',async t=>{
   const f=fixture(':memory:',factory,{durableClockV1:true});f.souls.enableLifecycle();t.after(()=>{f.brain.quiesce();f.host.stop();f.db.close();});

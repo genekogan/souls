@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {commonsLifeReaderFactory} from './commons-life-engine.ts';
 import {marsCrewRemovalTransitionFactory} from './crew-removal-engine.ts';
 import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from './engine.ts';

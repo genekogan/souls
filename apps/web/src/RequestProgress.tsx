@@ -1,4 +1,4 @@
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import {requestPhase,type DiagnosticScope} from './request-diagnostics.ts';
 import {useOwnRequestDiagnostics} from './use-own-request-diagnostics.ts';
 /** Actual controller phase for an understood own direction. Mount with key=requestId. */

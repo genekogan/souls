@@ -41,11 +41,26 @@ fixed, quarantined and new failures. It never overwrites an output directory tha
 - Exit 0: `pass`, `quarantined` (only known, listed failures; inspect them before shipping) or `not-gated`.
 - `--dry-run` prints the plan (refs, scope, cache hit or miss, Modal runs) without contacting Modal or writing.
 
+### Running it from GitHub Actions
+
+`.github/workflows/gate.yml` runs the same command on a hosted runner with the repository's Modal secrets, so a gate
+no longer needs the maintainer's terminal:
+
+```sh
+gh workflow run gate.yml -f sha=<full sha> [-f baseline=<ref>] [-f scope=auto] [-f dry_run=true]
+```
+
+It shares release.yml's `release` concurrency group (one gate at a time), refuses a non-dry run once the day's runs of
+both workflows reach `modal_gates_per_day` (PROOF-POLICY.yml), keeps the baseline cache across runs with
+`actions/cache` keyed by baseline commit and Node version, and uploads `gate.log` and `receipt.json` as the
+`gate-<sha>` artifact. It ships nothing; the ship step is tracked by #519.
+
 ### What blocks
 
 - A failure not listed in `quarantine.json`, even one added to the list in the same change.
 - Missing steps or logs, cancellations, timeouts (each V5 shard has a fixed time envelope).
-- Changed skips or TODOs, removed baseline assertions, test files that fail to load, dropped V6 scenarios.
+- Changed skips or TODOs, removed baseline assertions (unless a reviewed [rename](#renames) is satisfied), test files
+  that fail to load, dropped V6 scenarios.
 
 Failures are identified by raw TAP leaf ids, so a second failure in an already failing file cannot hide.
 
@@ -54,6 +69,25 @@ Failures are identified by raw TAP leaf ids, so a second failure in an already f
 `tools/test-harness/quarantine.json` lists every retained failure, skip and TODO with its step, exact test id,
 status, reason and owner. Add an entry only for a known, explained failure; remove it when the test is fixed (the
 receipt reports it as fixed).
+
+### Renames
+
+`tools/test-harness/renames.json` lists reviewed renames and replacements of baseline assertions, with the same
+discipline as the quarantine. Each entry has `step`, `from` (the baseline's test id exactly as the receipt prints it:
+package prefix and ` > `-joined ancestors for a nested test, `\#` for a `#`), `to` (the replacement
+id, or a list of ids when one assertion became several), `reason` and `pr` (`#<number>`). The gate validates it
+strictly: a known step, never a V6 scenario step, non-empty fields and one entry per step and `from`.
+
+A baseline id that is gone from the candidate counts as `renamed`, not removed, only when every `to` id is new (absent
+from the baseline) and ran and passed in the candidate's same step. If a replacement is missing, failing, skipped or
+TODO, or already ran in the baseline, the id stays under `removed` with `rename.notPassing` or `rename.inBaseline`
+naming it, and the gate still blocks. Several old ids may name the same new replacement (tests merged into one). Anything unlisted blocks as before. The receipt lists
+`renamed` and records `renamesSha256` beside `quarantineSha256`.
+
+Add an entry in the PR that renames or replaces the test, or when a gate reports the removal, citing the PR that made
+it. An entry whose `from` still runs has no effect, and because a replacement must be absent from the baseline, an old
+entry cannot later excuse deleting a test that happens to reuse its `from` name. `renames.json` executes nowhere, but like `quarantine.json` it stays in the suite tree, so changing it re-runs
+the baseline once.
 
 ### Scope
 

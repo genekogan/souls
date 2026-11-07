@@ -1,4 +1,4 @@
-import {hydrateTakeBoundaryWireV1,TAKE_BOUNDARY_WIRE_V1} from '@sim/protocol';
+import {hydrateTakeBoundaryWireV1,TAKE_BOUNDARY_WIRE_V1} from '@souls/protocol';
 import {validChunks,MAX_PAST_CHUNKS} from './WorldGeometry.ts';
 /** Opt-in HTTP history uses the same synchronous, lossless decoder as the live connection.
  * Old raw replies are unchanged; a malformed envelope throws before existing replay can observe a ref. */

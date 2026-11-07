@@ -20,10 +20,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFile
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Context, Hono } from 'hono';
-import type { Baked, Vec2, Vec3 } from '@sim/generators';
-import type { AssetInfo, AssetLookup, StoredDef } from '@sim/world-compiler';
-import { nearHash, vocab } from '@sim/world-compiler';
-import { CREATION_LIMITS as L, assertFootprint, footprintToBaked, type LmFootprint } from '@sim/generators';
+import type { Baked, Vec2, Vec3 } from '@souls/generators';
+import type { AssetInfo, AssetLookup, StoredDef } from '@souls/world-compiler';
+import { nearHash, vocab } from '@souls/world-compiler';
+import { CREATION_LIMITS as L, assertFootprint, footprintToBaked, type LmFootprint } from '@souls/generators';
 import { assetBytesOf, mountCatalogRoutes } from './catalog.ts';
 import { WireCache, acceptsBrotli, readRenditions } from './asset-wire.ts';
 import type { Db } from '../db.ts';
@@ -189,6 +189,9 @@ export function measureGlb(buf: Uint8Array): GlbMeasure {
     if (sk.inverseBindMatrices === undefined || !bin) return jw;
     const a = acc[sk.inverseBindMatrices], v = a?.bufferView !== undefined ? views[a.bufferView] : undefined; if (!v) return jw;
     const off = (v.byteOffset ?? 0) + ((a as { byteOffset?: number }).byteOffset ?? 0);
+    // #760: in a meshopt-compressed file the matrices sit in a compressed view (or the virtual fallback buffer), not in
+    // the BIN chunk at this offset; at rest the joint's world matrix stands in, as it does for a skin without matrices.
+    if (v.extensions?.EXT_meshopt_compression || json.buffers?.[v.buffer]?.extensions?.EXT_meshopt_compression?.fallback || off + 64 > bin.byteLength) return jw;
     const dv2 = new DataView(bin.buffer, bin.byteOffset + off, 64);
     const ib = Array.from({ length: 16 }, (_, k) => dv2.getFloat32(k * 4, true));
     return mul(jw, ib);
@@ -240,7 +243,7 @@ export async function validateGlb(buf: Uint8Array, json?: GltfJson): Promise<str
 // ---------------------------------------------------------------- footprints
 
 // XP5: the pure converter is shared with kit/2; asset imports retain this public export.
-export { footprintToBaked } from '@sim/generators';
+export { footprintToBaked } from '@souls/generators';
 
 const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
 

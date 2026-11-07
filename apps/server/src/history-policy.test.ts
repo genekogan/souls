@@ -1,8 +1,8 @@
 import { test,type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { marsFactory,GREEN_FIELD_WORLD } from '@sim/engine-mars';
-import type { EngineFactory } from '@sim/engine-contract';
-import { kernelHash } from '@sim/kernel';
+import { marsFactory,GREEN_FIELD_WORLD } from '@souls/engine-mars';
+import type { EngineFactory } from '@souls/engine-contract';
+import { kernelHash } from '@souls/kernel';
 import { fixture,invite,accept } from '../test/native-owner-fixture.ts';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Db } from './db.ts';
