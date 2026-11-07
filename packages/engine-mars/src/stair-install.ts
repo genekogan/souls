@@ -115,9 +115,11 @@ export const installTreadV1: ActionDef<TP, Prog, SeatExec> = withParams(seatActi
 }));
 
 /** The ledge seats a loose flight standing here could hang on: a free seat on the outer face of a seated, supported
- *  beam that carries a deck (a joist on its other face), where the flight's foot then stands on the ground. */
+ *  beam that carries a deck (a joist on its other face), where the flight's foot then stands on the ground. A seat
+ *  must take a stair hook (its def says), and not be the last along the face: stairs up to the deck's very edge land
+ *  where no body fits. `near` is `planSeat`'s reach for a flight. */
 export type FlightBay = { beam: string; seat: string; at: number };
-export function flightBays(w: WorldState, flightId: string, near = 3.5): FlightBay[] {
+export function flightBays(w: WorldState, flightId: string, near = 3): FlightBay[] {
   const f = w.entities[flightId];
   if (!isFlightPart(f) || f.support?.kind !== 'ground' || f.phase !== 'staged' || f.reservedBy || f.connections?.length) return [];
   const out: FlightBay[] = [];
@@ -126,7 +128,9 @@ export function flightBays(w: WorldState, flightId: string, near = 3.5): FlightB
     const seats = ofKind(b, JOIST_SEAT), deckSide = seats.filter((s) => { const c = takenBy(b, s.id); return c && isJoistPart(w.entities[c.to]); }).map((s) => Math.sign(s.local[2]));
     if (!deckSide.length) continue;
     for (const s of seats) {
-      if (takenBy(b, s.id) || deckSide.includes(Math.sign(s.local[2]))) continue;
+      if (takenBy(b, s.id) || deckSide.includes(Math.sign(s.local[2])) || (s.mates && !s.mates.includes(STAIR_HOOK))) continue;
+      const along = seats.filter((x) => Math.sign(x.local[2]) === Math.sign(s.local[2]));
+      if (s === along[0] || s === along[along.length - 1]) continue;
       const q = worldPoint(b, s.local), pose = flightPose(f, b, q);
       if (Math.abs(pose.p[1] - f.pose.p[1]) > RISE_TOL || hypot(pose.p[0] - f.pose.p[0], pose.p[2] - f.pose.p[2]) > near) continue;
       out.push({ beam: b.id, seat: s.id, at: +s.local[0].toFixed(2) });
@@ -134,16 +138,29 @@ export function flightBays(w: WorldState, flightId: string, near = 3.5): FlightB
   }
   return out.sort((x, y) => x.at - y.at || (x.beam < y.beam ? -1 : 1));
 }
+/** The beam of a deck near this loose flight whose ledge would have had room but does not take a stair hook. */
+export function flightUnfit(w: WorldState, flightId: string, near = 3): string | null {
+  const f = w.entities[flightId];
+  if (!isFlightPart(f) || f.support?.kind !== 'ground' || f.phase !== 'staged' || f.reservedBy || f.connections?.length) return null;
+  for (const b of Object.values(w.entities).sort((x, y) => (x.id < y.id ? -1 : 1))) {
+    if (!isBeamPart(b) || hypot(b.pose.p[0] - f.pose.p[0], b.pose.p[2] - f.pose.p[2]) > near + 1.5 || beamProblems(w, b).length) continue;
+    const seats = ofKind(b, JOIST_SEAT), carries = seats.some((s) => { const c = takenBy(b, s.id); return c && isJoistPart(w.entities[c.to]); });
+    if (carries && seats.every((s) => s.mates && !s.mates.includes(STAIR_HOOK))) return b.id;
+  }
+  return null;
+}
 /** The flight a loose tread lying here goes into next, and which tread: the nearest installed, supported flight with a
- *  tread missing, its lowest missing one. */
+ *  tread missing, its lowest missing one, within `near` of that seat (`planSeat`'s reach for a tread). */
 export function treadTarget(w: WorldState, treadId: string, near = 3): { flight: string; index: number } | null {
   const t = w.entities[treadId];
   if (!isTreadPart(t) || t.support?.kind !== 'ground' || t.phase !== 'staged' || t.reservedBy || t.connections?.length) return null;
   let best: { flight: string; index: number; d: number } | null = null;
   for (const f of Object.values(w.entities)) {
     if (!isFlightPart(f) || f.phase !== 'installed' || flightProblems(w, f).length) continue;
-    const miss = missingTreads(w, f), d = hypot(f.pose.p[0] - t.pose.p[0], f.pose.p[2] - t.pose.p[2]);
-    if (!miss.length || d > near) continue;
+    const miss = missingTreads(w, f), seat = treadSeats(f).find((s) => s.n === miss[0]);
+    if (!seat) continue;
+    const q = worldPoint(f, seat.local), d = hypot(q[0] - t.pose.p[0], q[2] - t.pose.p[2]);
+    if (d > near) continue;
     if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) <= 1e-9 && f.id < best.flight)) best = { flight: f.id, index: miss[0]!, d };
   }
   return best && { flight: best.flight, index: best.index };

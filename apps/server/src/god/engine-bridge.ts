@@ -13,7 +13,7 @@ import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
 import { deckRaised, railGaps, rasterOf } from '@sim/generators';
 import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
-import { beamBays, joistBays, sheetBays, flightBays, treadTarget, treadsPhrase, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
+import { beamBays, joistBays, sheetBays, flightBays, flightUnfit, treadTarget, treadsPhrase, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
 import { createHash } from 'node:crypto';
 import type { WorldHost } from '../world.ts';
 import type { LogEvent } from '@sim/protocol';
@@ -884,6 +884,13 @@ export class EngineBridge {
     for (const [i, op] of ops.entries()) {
       const ref = op.op === 'remove' || op.op === 'move' ? op.id : op.op === 'disconnect' ? op.a.id : undefined; if (!ref) continue;
       const id = this.model.get(ref)?.id ?? ref;
+      // a flight stays hooked while its treads are in, from either end of the joint: unhooked, its foot alone would "support" it
+      if (op.op === 'disconnect') for (const d of decks) {
+        if (isDeck(d)) continue;
+        const hook = (this.model.resolvedDef(d.def)?.components.connectors ?? []).find((c) => c.kind === 'stair-hook'), j = hook && d.joins?.[hook.id], treads = Object.keys(d.joins ?? {}).filter((c) => c !== hook?.id);
+        if (!hook || !j || !treads.length || !((id === d.id && op.a.connector === hook.id) || (id === j.to && op.a.connector === j.at))) continue;
+        return { accepted: false, failures: [{ op: i, code: 'connector.joined', entity: d.id, detail: `${this.model.pathOf(d.id)} keeps its hook while its treads are in (${treads.join(', ')}); take them out first.` }] };
+      }
       for (const d of decks) {
         const flight = !isDeck(d);
         // a flight's treads are what one stands on
@@ -911,7 +918,8 @@ export class EngineBridge {
     const ya = r3(wp.y), yTop = r3(wp.y + top * wp.s), from = at(-run / 2 - 0.45), to = at(run / 2 + 0.45);
     const landing = this.levels.filter((l) => Math.abs(l.y - yTop) <= 0.08).sort((a, b) => Math.abs(a.y - yTop) - Math.abs(b.y - yTop));
     if (!landing.length) return;
-    const floor = landing.find((l) => this.hasFloorAt(l.id, to[0], to[1]) && this.hasFloorAt(l.id, ...at(run / 2 + 0.1)));
+    // a body has to fit where it steps off: the landing is inside the floor by a body's radius, not just near it
+    const floor = landing.find((l) => this.hasFloorAt(l.id, to[0], to[1]) && this.hasFloorAt(l.id, ...at(run / 2 + 0.1)) && this.fitsOnFloor(l.id, to));
     const missing = seats.map((x, i) => (e.joins?.[x.id] ? 0 : i + 1)).filter(Boolean), reasons: string[] = [];
     if (missing.length) reasons.push(treadsPhrase(missing));
     if (!floor) reasons.push('no landing at top');
@@ -1803,6 +1811,11 @@ export class EngineBridge {
   /** During a send: the floors derived so far, and the entities it re-derives (their engine floors are being replaced). */
   private sendFloors = new Map<number, OBB2[]>();
   private sendIds: Set<string> | null = null;
+  /** PC16 (#695): a body's width of this level's floor around the point (`hasFloorAt`'s FLOOR_NEAR also counts a point just off an edge). */
+  private fitsOnFloor(level: number, at: Vec2): boolean {
+    this.hasFloorAt(level, at[0], at[1]);   // the index, current
+    return !!this.floorIndex?.by.get(level)?.some(at[0], at[1], (f) => pointInObb(at, f.obb, -0.28));
+  }
   private hasFloorAt(level: number, x: number, z: number): boolean {
     const hash = this.physics?.hash ?? '';
     if (this.floorIndex?.hash !== hash) {
@@ -2168,6 +2181,11 @@ export class EngineBridge {
             // PC16 (#695): a loose stair flight standing by a deck's bay is set up against its outer beam by two Souls, its
             // header on a free ledge seat (engine-mars flightBays) and its foot on the ground
             const fbays=sdef!.tags.includes('flight')?flightBays(this.mw.world as never,x.id):[];
+            if(sdef!.tags.includes('flight')&&!fbays.length){
+              // PC16 (#695): a deck whose beams' ledges take no stair hook says so, rather than offering nothing
+              const old=flightUnfit(this.mw.world as never,x.id);
+              if(old){const fid=`install-flight-with:${x.id}`;caps.push({id:fid,verb:'install-flight-with',label:`Set ${name(x.id)} up against ${name(old)} with one other Soul`,target:{id:x.id,kind:'object'},available:false,blocked:{code:'stair.no-seat',reason:`The ledge of ${name(old)} does not take a stair hook; ${name(x.id)} needs a beam made for it.`}});}
+            }
             if(fbays.length){
               const ats=fbays.map(b=>b.at.toFixed(2)).join(', '),beam=name(fbays[0]!.beam);
               const fid=`install-flight-with:${x.id}`,flabel=`Set ${name(x.id)} up against ${beam} with one other Soul, its header on the beam's ledge and its foot on the ground (asks them first; at: where along the beam, in metres from its middle, free: ${ats}; with: who)`;

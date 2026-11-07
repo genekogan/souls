@@ -133,7 +133,7 @@ export function assetFromDef(id: string, d: DefFacts, o: { seen?: boolean; conne
   // so the engine's connections on its instances name real sockets. Library kinds are data; the native rack rules read
   // only their own kinds, and only for their own categories.
   // Only when the host mirrors joints (`connectors`: the server's SIM_SHARED_CARRY): otherwise the asset is as before PC12.
-  if (o.connectors && Array.isArray(c.connectors)) out.sockets = (c.connectors as { id: string; kind: string; at: [number, number, number] }[]).map((x) => ({ id: x.id, kind: x.kind as NonNullable<AssetDef['sockets']>[number]['kind'], local: [r4(x.at[0]), r4(x.at[1]), r4(x.at[2])] as [number, number, number] }));
+  if (o.connectors && Array.isArray(c.connectors)) out.sockets = (c.connectors as { id: string; kind: string; at: [number, number, number]; mates?: string[] }[]).map((x) => ({ id: x.id, kind: x.kind as NonNullable<AssetDef['sockets']>[number]['kind'], local: [r4(x.at[0]), r4(x.at[1]), r4(x.at[2])] as [number, number, number], ...(x.mates ? { mates: x.mates } : {}) }));
   if (upright) {
     const crew=Math.ceil(c.carryable.grips/2),span=Math.min(.6,w*.8);
     out.obstacle=true;

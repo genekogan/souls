@@ -106,6 +106,8 @@ export function planSeat(rt: Runtime, kind: Kind, crew: string[], partId: string
   for (const { host, seat } of pairs) {
     const h = w.entities[host]!, s = socketsOf(h).find((x) => x.id === seat && x.kind === seatKind);
     if (!s) return fail(C.seat, `${label(h)} has no ${seatKind} ${seat}`, [host]);
+    // PC16 (#695): a seat takes what its def says: an older beam's ledge has no room for a stair hook
+    if (s.mates && !s.mates.includes(endKind)) return fail(C.seat, `${seat} of ${label(h)} does not take a ${endKind}`, [host, partId]);
     const t = takenBy(h, seat); if (t) return fail(C.taken, `${seat} of ${label(h)} already holds ${t.to}`, [host, t.to]);
     qs.push(worldPoint(h, s.local));
   }

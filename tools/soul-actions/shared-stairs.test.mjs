@@ -90,14 +90,14 @@ async function toEnd(w, c, max = 4000) {for (let n = 0; n < max && inviteOf(w, c
  *  deck) on both columns, all joined; five joists on the low beams' ledges and a sheet on them (the deck, top 1.03 m);
  *  a loose stair flight standing beside the bay's +z side; five loose treads lying by it. Upright a's base centre at
  *  (x0, z0), the bay toward −x. */
-export function stock(x0, z0, {flight = true, treads = true} = {}) {
+export function stock(x0, z0, {flight = true, treads = true, beam = 'core/rack-beam@5', treadX = -1.5} = {}) {
   const bx = x0 - 2 * T - BEAM_L - 2 * GAP, xm = bayMid(x0), ops = [
     {op: 'place', tmp: '$a', name: 'bay-upright-a', def: 'core/rack-upright@2', p: [x0, UP_L / 2, z0], r: [0, 0, Math.PI / 2], anchor: 'center'},
     {op: 'place', tmp: '$b', name: 'bay-upright-b', def: 'core/rack-upright@2', p: [bx, UP_L / 2, z0], r: [Math.PI, 0, Math.PI / 2], anchor: 'center'},
   ];
   for (const i of [LOW, HIGH]) for (const [dz, aSide, bSide] of [[-ZC, 'l', 'r'], [ZC, 'r', 'l']]) {
     const t = `$b${i}${aSide}`;
-    ops.push({op: 'place', tmp: t, name: `bay-beam-${i}${aSide}`, def: 'core/rack-beam@5', p: [xm, seat(i) - BEAM_H / 2, z0 + dz], r: 0, anchor: 'center'});
+    ops.push({op: 'place', tmp: t, name: `bay-beam-${i}${aSide}`, def: beam, p: [xm, seat(i) - BEAM_H / 2, z0 + dz], r: 0, anchor: 'center'});
     ops.push({op: 'connect', a: {id: t, connector: 'end-r'}, b: {id: '$a', connector: `front-${aSide}-${i}`}});
     ops.push({op: 'connect', a: {id: t, connector: 'end-l'}, b: {id: '$b', connector: `front-${bSide}-${i}`}});
   }
@@ -109,7 +109,7 @@ export function stock(x0, z0, {flight = true, treads = true} = {}) {
   ops.push({op: 'place', tmp: '$s', name: 'bay-sheet', def: 'core/plywood-sheet@2', p: [xm, LEDGE_AT + JOIST_H, z0], r: 0, anchor: 'center'});
   for (const k of [0, 1, 2, 3, 4]) ops.push({op: 'connect', a: {id: '$s', connector: `on-${k}`}, b: {id: `$j${k}`, connector: 'top'}});
   if (flight) ops.push({op: 'place', def: 'core/deck-stair@1', name: 'flight', p: [xm + 1.7, z0 + 2.6], r: Math.PI / 2});
-  if (treads) for (const i of [1, 2, 3, 4, 5]) ops.push({op: 'place', def: 'core/deck-stair-tread@1', name: `tread-${i}`, p: [xm - 1.5, z0 + 1.3 + 0.4 * i], r: 0});
+  if (treads) for (const i of [1, 2, 3, 4, 5]) ops.push({op: 'place', def: 'core/deck-stair-tread@1', name: `tread-${i}`, p: [xm + treadX, z0 + 1.3 + 0.4 * i], r: 0});
   return ops;
 }
 const linkOf = (w, id) => (w.host.engine.world.entityPhysicsV1?.byEntity?.[id]?.links ?? []).find((l) => l.kind === 'stairs');
@@ -155,7 +155,7 @@ test('PC16 R1 R2 R4 R5: two Souls set the flight, one Soul its five treads; walk
   // R1: offered with its free positions on the deck's outer beam; no tread offered before the flight hangs
   const o = offer(w, Ada, `install-flight-with:${flight}`);
   assert.equal(o?.available, true, JSON.stringify(o)); assert.match(o.label, /^Set flight up against bay-beam-4r with one other Soul, its header on the beam's ledge/);
-  assert.deepEqual([...o.params.at.description.matchAll(/-?\d+\.\d\d/g)].map((m) => +m[0]), [-1.22, -0.61, 0, 0.61, 1.22]);
+  assert.deepEqual([...o.params.at.description.matchAll(/-?\d+\.\d\d/g)].map((m) => +m[0]), [-0.61, 0, 0.61]);
   assert.equal(offer(w, Cy, `install-tread:${w.idOf('tread-1')}`), undefined);
   // R2: they take hold and lift it in
   const c = await commit(w, Ada, [Bo], `install-flight-with:${flight}`, {at: 0});
@@ -215,7 +215,7 @@ test('PC16 R3: refused before anyone is asked: wrong crew, a position with no fr
   const w = await site(t), {Ada, Bo, Cy, Eve} = w.souls, flight = w.idOf('flight'), cap = `install-flight-with:${flight}`, eng = w.host.engine;
   const refused = async (s, c, params) => {const r = await act(w, s, {capability: c, params}); assert.equal(r.accepted, false, JSON.stringify(r)); return r;};
   assert.equal((await refused(Ada, cap, {at: 0, with: 'Bo and Cy'})).code, 'stair.crew');
-  assert.match((await refused(Ada, cap, {at: 0.3, with: 'Bo'})).reason, /Choose where along the beam flight goes \(at: metres from the beam's middle\): -1\.22, -0\.61, 0\.00, 0\.61, 1\.22/);
+  assert.match((await refused(Ada, cap, {at: 0.3, with: 'Bo'})).reason, /Choose where along the beam flight goes \(at: metres from the beam's middle\): -0\.61, 0\.00, 0\.61/);
   const beam = w.idOf('bay-beam-4r'), crew = [Ada.entityId, Bo.entityId];
   assert.equal(eng.previewMarsVerbV1('install_flight_v1', {crew, flight, beam, seat: 'joist-b-2'}), null, 'the plan is clear');
   assert.equal(eng.previewMarsVerbV1('install_flight_v1', {crew, flight, beam, seat: 'joist-a-2'})?.code, 'stair.occupied', 'the bay side holds a joist');
@@ -279,6 +279,64 @@ for (const clean of [true, false]) test(`PC16 R8: a ${clean ? 'clean' : 'crash'}
   assert.equal(w.E()[flight].phase, 'installed'); assert.equal(w.E()[flight].connections.length, 6);
   assert.deepEqual(linkOf(w, flight), before, 'the same stairs');
   assert.equal([...w.god.model.entities.values()].filter((e) => e.name === 'flight').length, 1, 'one flight');
+});
+
+test('PC16 review: a god does not unhook a flight with its treads in, from either end; with none in it comes away clean', {timeout: 600000}, async (t) => {
+  const w = await site(t), {Cy} = w.souls, flight = w.idOf('flight'), j = () => joinsOf(w, 'flight').hook;
+  await hang(w); await setTread(w, 1);
+  const beamEnd = () => ({id: j().to, connector: j().at});
+  for (const a of [{id: 'flight', connector: 'hook'}, beamEnd()]) {
+    const r = w.god.act({ops: [{op: 'disconnect', a}]}); assert.equal(r.accepted, false, JSON.stringify(r)); assert.equal(r.failures[0].code, 'connector.joined', JSON.stringify(r)); assert.match(r.failures[0].detail, /keeps its hook while its treads are in/);
+  }
+  await w.tick(40);
+  assert.equal(w.E()[flight].phase, 'installed'); assert.deepEqual((w.host.engine.rt?.violations ?? []).filter((v) => v.code === 'stair.unsupported'), []);
+  // the tread out, the same op is clean, and the world goes on
+  ok(w.god.act({ops: [{op: 'remove', id: 'tread-1'}]})); await w.tick(20);
+  ok(w.god.act({ops: [{op: 'disconnect', a: {id: 'flight', connector: 'hook'}}]})); await w.tick(40);
+  assert.equal(w.E()[flight].phase, 'staged'); assert.deepEqual(w.E()[flight].support, {kind: 'ground'}); assert.equal(linkOf(w, flight), undefined);
+  const tick = w.host.engine.world.tick; await w.tick(10); assert.ok(w.host.engine.world.tick > tick, 'the clock runs'); assert.ok(Cy);
+});
+
+for (const at of [-0.61, 0, 0.61]) test(`PC16 review: stairs set at ${at} can be walked, up and down`, {timeout: 900000}, async (t) => {
+  const w = await site(t, {treadX: -1.5 + at}), {Ada, Bo, Eve} = w.souls, flight = w.idOf('flight');
+  const c = await commit(w, Ada, [Bo], `install-flight-with:${flight}`, {at}); await toEnd(w, c);
+  assert.equal(inviteOf(w, c.id).shared.op.result, 'arrived', JSON.stringify(inviteOf(w, c.id).shared.op));
+  await w.at(Ada, w.xm + 2.6, w.z0 + 4.4); await w.at(Bo, w.xm + 3.4, w.z0 + 4.4); await w.tick(20);
+  for (const i of [1, 2, 3, 4, 5]) await setTread(w, i);
+  assert.equal(linkOf(w, flight).usable, true);
+  const up = await walkTo(w, Eve, 'bay-sheet'); assert.equal(up.phase, 'completed', JSON.stringify(up)); assert.ok((w.E()[Eve.entityId].human.level ?? 0) > 0, 'on the deck');
+  ok(w.god.act({ops: [{op: 'place', def: 'core/zone@1', name: 'below', shape: {area: [[w.xm + 3, w.z0 + 2], [w.xm + 4, w.z0 + 2], [w.xm + 4, w.z0 + 3], [w.xm + 3, w.z0 + 3]]}}]})); await w.tick(20);
+  const down = await walkTo(w, Eve, 'below'); assert.equal(down.phase, 'completed', JSON.stringify(down)); assert.equal(w.E()[Eve.entityId].human.level ?? 0, 0, 'back on the ground');
+});
+
+test('PC16 review: a god-hung flight on the last seat says no landing at top', {timeout: 300000}, async (t) => {
+  const w = await site(t), flight = w.idOf('flight'), bx = w.god.model.get('bay-beam-4r').id;
+  assert.ok(!offer(w, w.souls.Ada, `install-flight-with:${flight}`).params.at.description.match(/1\.22/), 'the last seat is not offered');
+  // the same flight hung by a god, at the beam's last seat
+  await hang(w);
+  const hung = structuredClone(w.god.model.get('flight'));
+  ok(w.god.act({ops: [{op: 'disconnect', a: {id: 'flight', connector: 'hook'}}]})); await w.tick(10);
+  const dir = Math.cos(w.E()[bx].pose.yaw) > 0 ? 1 : -1, moved = (w.god.act({ops: [{op: 'move', id: 'flight', in: {parent: 'world'}, p: [hung.p[0] + dir * 2 * SPAN, hung.p[1], hung.p[2]], r: hung.r}, {op: 'connect', a: {id: 'flight', connector: 'hook'}, b: {id: 'bay-beam-4r', connector: 'joist-b-4'}}]}));
+  ok(moved); await w.tick(30);
+  assert.match(JSON.stringify(linkOf(w, flight)), /no landing at top/);
+});
+
+test('PC16 review: a deck on beams whose ledges take no stair hook says so, and the plan refuses by name', {timeout: 600000}, async (t) => {
+  const w = await site(t, {beam: 'core/rack-beam@4'}), {Ada, Bo} = w.souls, flight = w.idOf('flight'), o = offer(w, Ada, `install-flight-with:${flight}`);
+  assert.equal(o?.available, false, JSON.stringify(o)); assert.equal(o.blocked.code, 'stair.no-seat'); assert.match(o.blocked.reason, /does not take a stair hook/);
+  const r = await act(w, Ada, {capability: o.id, params: {at: 0, with: 'Bo'}}); assert.equal(r.accepted, false); assert.equal(r.code, 'stair.no-seat', JSON.stringify(r));
+  const plan = w.host.engine.previewMarsVerbV1('install_flight_v1', {crew: [Ada.entityId, Bo.entityId], flight, beam: w.idOf('bay-beam-4r'), seat: 'joist-b-2'});
+  assert.equal(plan?.code, 'stair.no-seat', JSON.stringify(plan)); assert.match(plan.message, /does not take a stair-hook/);
+});
+
+test('PC16 review: reach as the plan measures it: no seat listed beyond 3 m, no tread beyond 3 m of its seat', {timeout: 600000}, async (t) => {
+  const w = await site(t), {Ada, Cy} = w.souls, flight = w.idOf('flight');
+  // flight stock at (+1.7, 2.6) from the middle: every seat offered can be set
+  const o = offer(w, Ada, `install-flight-with:${flight}`), ats = [...o.params.at.description.matchAll(/-?\d+\.\d\d/g)].map((m) => +m[0]);
+  for (const at of ats) {const r = w.host.engine.previewMarsVerbV1('install_flight_v1', {crew: [Ada.entityId, w.souls.Bo.entityId], flight, beam: w.idOf('bay-beam-4r'), seat: `joist-b-${Math.round(at / SPAN) + 2}`}); assert.notEqual(r?.code, 'stair.not-staged', `${at}: ${JSON.stringify(r)}`);}
+  await hang(w);
+  ok(w.god.act({ops: [{op: 'place', def: 'core/deck-stair-tread@1', name: 'far-tread', p: [w.xm - 3.3, w.z0 + 1.5], r: 0}]})); await w.tick(20);
+  assert.equal(offer(w, Cy, `install-tread:${w.idOf('far-tread')}`), undefined, 'too far from the lowest missing seat');
 });
 
 test('PC16 R11: with the flag off nothing is offered and the rules version has no stairs suffix', {timeout: 300000}, async (t) => {

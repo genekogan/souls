@@ -97,7 +97,7 @@ const tread = (rt: Runtime, i: number, crew = ['b1']) => { const t = treadTarget
 test('a flight hung on the outer beam\'s ledge, its foot on the ground, then five treads bottom up: every joint both ways, nothing fires', () => {
   const { rt } = site(), w = rt.world;
   // offered only on the deck's outer face (br's face b), every free ledge seat there
-  assert.deepEqual(flightBays(w, 'F').map((b) => [b.beam, b.seat]), [0, 1, 2, 3, 4].map((i) => ['br', `joist-b-${i}`]));
+  assert.deepEqual(flightBays(w, 'F').map((b) => [b.beam, b.seat]), [1, 2, 3].map((i) => ['br', `joist-b-${i}`]));
   assert.equal(treadTarget(w, 't1'), null, 'no tread offered before the flight is in');
   hung(rt);
   const F = w.entities.F!;
@@ -117,7 +117,7 @@ test('a flight hung on the outer beam\'s ledge, its foot on the ground, then fiv
 });
 
 test('refused before motion, named: a seat taken, a beam whose frames are not held up, a ledge the hook does not fit, someone where it goes, a tread already in', () => {
-  const { rt } = site(), w = rt.world, b = flightBays(w, 'F')[2]!, plan = (verb: string, p: object) => rt.registry.get(verb)!.plan(rt, p as never) as { ok: boolean; diagnostic?: { code: string; message: string } };
+  const { rt } = site(), w = rt.world, b = flightBays(w, 'F').find((x) => x.at === 0)!, plan = (verb: string, p: object) => rt.registry.get(verb)!.plan(rt, p as never) as { ok: boolean; diagnostic?: { code: string; message: string } };
   const code = (verb: string, p: object) => { const r = plan(verb, p); assert.equal(r.ok, false, JSON.stringify(r)); return r.diagnostic!.code; };
   assert.equal(code('install_flight_v1', { crew: ['a1', 'a2'], flight: 'F', beam: 'br', seat: 'joist-a-2' }), 'stair.occupied');
   assert.equal(code('install_flight_v1', { crew: ['a1', 'a2'], flight: 'F', beam: 'ur', seat: 'joist-b-2' }), 'stair.rise');
