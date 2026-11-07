@@ -118,16 +118,22 @@ would break a rule is not applied ([#1150](https://github.com/soulsimulation/sou
    everything since it except decisions and what only they explain (`decision`, `play`, `edge-stop`, intent admissions,
    arrivals and sleep stops), and set the clock to the fault's tick. This takes no engine step,
    so no rule can fire. It's logged as a recovery recipe with `lastRung`. Open receipts end `world.rewound`.
-   With no baseline, or within a minute of the last one, it stays on the head: stop, contain, logged as `lastRungInPlace`, once
-   per fault per minute. An event that won't re-apply costs only itself, and the recipe lists it.
+   With no baseline, or within a minute of the last one, it stays on the head, and rung 2 isn't tried: stop, contain, logged
+   as `lastRungInPlace`, whenever it stopped something and otherwise once per fault per minute. A replay makes the same
+   stops from that event. An event that won't re-apply costs only itself, and the recipe lists it.
 
 **`containedV1`** is part of world state, absent when empty: what still breaks a rule after rung 3. Each entry is counted
 once, doesn't fault again, and leaves when it stops firing. A body inside something is relocated once. Under these rules an
 invariant that throws is a named `engine.thrown` violation, so it is contained like any other. A replay survives what the
 live tick survived: a step or event that threw is reported and passed.
 
+**A step that throws still moves the clock,** live and in a replay, so no cooldown or replay waits on a tick that isn't
+coming. Ten seconds of world time with every tick faulted is `engine.step-failing`: the clock runs, no body can move, so
+acts are refused with `world.step-failing`, nothing rewinds, the launcher alerts as for a halt, and snapshots continue. A
+clean tick ends it.
+
 **What still halts:** durability only (`failCheckpoint`, a database that won't write, a clock frontier that can't be
-persisted, a stored baseline that won't restore). Without `souls-repair/1`, `haltOnFault` is unchanged.
+persisted, a stored baseline that won't restore). Each is named `durability.*`. Without `souls-repair/1`, `haltOnFault` is unchanged.
 
 ## Conformance
 

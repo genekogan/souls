@@ -91,6 +91,7 @@ export type EngineRefusalV1 = { tick: number; rule: string; bodies: string[]; pr
 /** #1150 decision 1: the world landed on a body, so there is no pose to go back to. The one named exception to "never teleport". */
 export const RELOCATED = { code: 'world.relocated', message: 'The world changed where you stood, so you were moved to the nearest free spot. Nothing else changed.' };
 /** #1150 rung 3: what a Soul is told when the world went back. */
+export const STEP_FAILING = { code: 'world.step-failing', message: 'The world is failing to move anything right now, so nothing you try can happen yet. You can still speak.' };
 export const REWOUND = { code: 'world.rewound', message: 'The world went back to its last clean moment, and what you were doing did not happen. You can act again.' };
 
 export interface Engine {
@@ -119,7 +120,7 @@ export interface Engine {
    * Optional; the sequencer otherwise requires an exact resumable checkpoint. */
   previewAdmission?(program: Program): ProgramAdmission;
   /** #1150 rung 3, for an engine that declares rules. None of these steps the world, so no rule can fire during them. */
-  stopAllV1?(why: { code: string; message: string }): void;
+  stopAllV1?(why: { code: string; message: string }): number;
   setClockV1?(tick: number): void;
   containV1?(): { contained: { code: string; subjects: string[] }[]; relocated: string[] };
   /** Stop a running program (the actor is left idle where it is). */

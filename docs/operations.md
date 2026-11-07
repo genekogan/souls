@@ -54,7 +54,9 @@ or proxy examples to this host. Internal `sim-*` service and data names remain u
   --base / [--world <slug>]` reads those, for sleeping worlds too. The health page shows the counts. A halted world is the
   `halted` problem code, so `hostOk` goes false and `host-health.log` gets its ALERT line; a refusal or recovery raises no alert
   until real numbers set a rate threshold ([#1150](https://github.com/soulsimulation/souls/issues/1150)). A rewind (rung 3) is the
-  `rewound` problem code, so it alerts every time, and clears on its own after a while.
+  `rewound` problem code, held for two checks so one always sees it: several in a window show as one line with the latest
+  count, and it clears on its own. A world whose every step faults for 10 s of world time counts as `halted` too, though
+  its clock runs: it refuses acts with `world.step-failing` until a tick is clean, and the glitch rule is `engine.step-failing`.
 - `sim-worlds-health@<stage>.timer` runs `deploy/host-health.mjs` every 10 minutes: disk, memory, the unit's working
   set against its `MemoryMax`, OOM kills and the last backup. It writes `<data>/host-health.json` and appends an
   ALERT/RECOVERED line to `<data>/host-health.log`; the launcher folds the result into healthz. An external monitor

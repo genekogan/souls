@@ -27,7 +27,7 @@ export const S = {
   // admission calibration (lane srv-admission-calib): EWMA of the tick's own ms over quiet loop windows (monitor.ts);
   // 0 = not measured yet. admission.ts reads it for the frame budget (frameBudgetMs).
   quietTickMs: 28,
-  halted: 29,      // 1 once the world's clock has stopped (a fault or a durability failure, #1150): the launcher alerts on it
+  halted: 29,      // 1 once the world's clock has stopped (a fault or a durability failure, #1150) or every step is failing: the launcher alerts on it
   rewinds: 30,     // rung 3s this world has had (#1150): the launcher alerts on each new one
   size: 31,
 } as const;

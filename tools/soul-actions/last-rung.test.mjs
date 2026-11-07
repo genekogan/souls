@@ -17,13 +17,17 @@ import {GodMode} from '../../apps/server/src/god/god.ts';
 import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
 import {marsFactory, GREEN_FIELD_WORLD} from '../../packages/engine-mars/src/engine.ts';
 import {forgetMotion} from '../../mars/viewer/engine/runtime/invariants.ts';
+import {kernelHash} from '../../apps/server/src/fold.ts';
 
 const repair = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true, soulsRepairV1: true}), today = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true});
 function faulted(base, control) {
   const wrap = (e) => {
     const rt = e.rt, fired = new WeakSet(), step = e.step.bind(e);
     rt.invariants = [(r) => { if (r.tick === control.at && !fired.has(r)) { fired.add(r); return control.fault(r) ?? []; } if (control.every) return control.every(r) ?? []; return []; }, ...rt.invariants];
-    e.step = () => { const o = step(); if (control.throwEvery || e.world.tick === control.throwAt) throw new Error('fixture.engine-bug'); return o; };   // after the tick moved, as a thrown action does
+    e.step = () => { const o = step(); if (control.throwEvery || e.world.tick === control.throwAt) throw new Error('fixture.engine-bug'); return o; };   // after a whole step
+    const clock = e.updateClock.bind(e), m = Object.create(e.m);
+    m.stepCarriers = (...x) => { if (control.preThrow?.(e)) throw new Error('fixture.pre-tick-bug'); return Object.getPrototypeOf(m).stepCarriers(...x); }; e.m = m;   // before the tick moves
+    e.updateClock = () => { if (control.midThrow?.(e)) throw new Error('fixture.mid-step-bug'); return clock(); };   // a real partial tick: actions and invariants ran, programmes didn't advance
     return e;
   };
   return {...base, create: (w) => wrap(base.create(w)), restore: (s) => wrap(base.restore(s))};
@@ -96,7 +100,7 @@ test('L2 a thrown step, every replay throwing: a rewind, not a halt', async (t) 
   assert.equal(host.paused, false); assert.equal(byRung(host).rewind, 1); assert.equal(byRung(host).halt ?? 0, 0);
 });
 
-test('a step that throws every tick cannot rewind every tick: one rewind, and the log stays bounded', async (t) => {
+test('a step that throws every tick cannot rewind every tick', async (t) => {
   t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
   const w = await world(t), host = w.f.host, rows = () => w.f.db.db.prepare('SELECT COUNT(*) n FROM events').get().n, before = rows();
   w.control.throwEvery = true; await w.tick(60);
@@ -217,6 +221,102 @@ for (const clean of [false, true])
     w.f.db.close();
     db2 = new Db(path); h2 = new WorldHost(db2, w.factory, seed, 1e9, worldId, {durableClockV1: true}); h2.boot();
     assert.equal(h2.engine.world.tick, tick); assert.equal(h2.engine.stateHash(), hash); assert.equal(h2.paused, false);
+  });
+
+const quiet = (t) => { t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {}); };
+const onDisk = (t) => { const dir = mkdtempSync(join(tmpdir(), 'last-rung-')); t.after(() => rmSync(dir, {recursive: true, force: true})); return join(dir, 'world.db'); };
+const reboot = (t, w, path) => {
+  w.comms.close(); w.f.host.stop(); w.f.db.close();
+  const db2 = new Db(path), h2 = new WorldHost(db2, w.factory, seed, 1e9, worldId, {durableClockV1: true}); t.after(() => { try { h2.stop(); db2.close(); } catch { /* the first failure is the one that matters */ } });
+  h2.boot(); return h2;
+};
+const rows = (w, where = '1') => w.f.db.db.prepare(`SELECT COUNT(*) n FROM events WHERE ${where}`).get().n;
+// each fires at the ticks it was armed for, live and in every replay, as a bug in the engine would
+const armed = (w) => { const at = w.control.ticks ??= new Set(); at.add(w.f.host.engine.world.tick + 2); return at; };
+const faultOnce = {
+  'a violation': async (w, s) => { const at = armed(w); w.control.every = (r) => at.has(r.tick) ? [{code: 'support.floating', message: 'forced', subjects: [s.entityId]}] : []; await w.tick(4); },
+  'a thrown step': async (w) => { const at = armed(w); w.control.midThrow = (e) => at.has(e.world.tick); await w.tick(4); },
+  'a throw before the tick moves': async (w) => { const at = armed(w); w.control.preThrow = (e) => at.has(e.world.tick); await w.tick(4); },
+};
+for (const [kind, once] of Object.entries(faultOnce))
+  test(`L7 ${kind} again in the cooldown, with a Soul acting: the stop is written, and a crash restart reaches the same world`, async (t) => {
+    quiet(t);
+    const path = onDisk(t), w = await world(t, repair, path), host = w.f.host, {Ada, Bo} = w.souls;
+    host.lastRewindTick = host.engine.world.tick;
+    await once(w, Ada); assert.equal(rows(w, "author='world:rewind'"), 1);
+    const walk = ok(await act(w, Bo, {capability: 'walk:shed'})); await w.tick(10); assert.ok(host.engine.programOf(Bo.entityId));
+    await once(w, Ada); await w.tick(8);
+    assert.equal(rows(w, "author='world:rewind'"), 2); assert.equal(host.engine.programOf(Bo.entityId), null);
+    assert.equal(read(w, Bo, walk).code, 'world.rewound');
+    const hash = host.engine.stateHash(), tick = host.engine.world.tick, h2 = reboot(t, w, path);
+    assert.equal(h2.engine.world.tick, tick); assert.equal(h2.engine.stateHash(), hash); assert.equal(h2.engine.programOf(Bo.entityId), null);
+  });
+
+test('L7 a step that throws part way with a programme running: live and a crash restart agree, kernel too', async (t) => {
+  quiet(t);
+  const path = onDisk(t), w = await world(t, repair, path), host = w.f.host, {Bo} = w.souls;
+  ok(await act(w, Bo, {capability: 'walk:shed'})); await w.tick(10);
+  host.lastRewindTick = host.engine.world.tick; const at = host.engine.world.tick + 2; w.control.midThrow = (e) => e.world.tick === at; await w.tick(6);
+  const hash = host.engine.stateHash(), kernel = kernelHash(host.kernel), tick = host.engine.world.tick, h2 = reboot(t, w, path);
+  assert.equal(h2.engine.world.tick, tick); assert.equal(h2.engine.stateHash(), hash); assert.equal(kernelHash(h2.kernel), kernel);
+});
+
+test('L2 a step that throws before its tick moves still moves the clock, so the cooldown ends', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host, t0 = host.engine.world.tick;
+  w.control.preThrow = () => true; await w.tick(50);
+  assert.equal(host.engine.world.tick, t0 + 50); assert.equal(host.paused, false); assert.equal(host.clockAvailable, true);
+});
+
+for (const [kind, key] of [['before its tick moves', 'preThrow'], ['part way through', 'midThrow']])
+  test(`L2 a step that throws ${kind} on every tick for minutes: one named state, acts refused, no more rewinds, and a clean tick ends it`, async (t) => {
+    quiet(t);
+    const w = await world(t), host = w.f.host, {Ada, Bo} = w.souls;
+    w.control[key] = () => true; await w.tick(20);
+    const walk = ok(await act(w, Ada, {capability: 'walk:shed'})); await w.tick(200);
+    assert.equal(read(w, Ada, walk).phase, 'failed'); assert.equal(read(w, Ada, walk).code, 'world.rewound');
+    assert.match(host.stepFailing, /fixture\./); assert.equal(host.glitches.byRule['engine.step-failing'].halt, 1);
+    const refused = await w.edge.act(Bo, {capability: 'walk:shed'}); assert.equal(refused.accepted, false); assert.equal(refused.code, 'world.step-failing'); assert.ok(refused.reason);
+    const before = rows(w), recipes = rows(w, "author='world:recovery'"); await w.tick(2600);
+    assert.equal(rows(w), before, 'nothing new to say'); assert.ok(recipes <= 1, `${recipes} recipes`);
+    assert.equal(host.glitches.byRule['engine.step-failing'].halt, 1); assert.equal(host.paused, false); assert.equal(host.clockAvailable, true);
+    w.control[key] = null; await w.tick(3);
+    assert.equal(host.stepFailing, null); ok(await act(w, Bo, {capability: 'walk:shed'})); const x = host.engine.world.entities[Bo.entityId].pose.p[0]; await w.tick(10);
+    assert.notEqual(host.engine.world.entities[Bo.entityId].pose.p[0], x, 'bodies move again');
+  });
+
+test('L7 a world whose every step fails keeps snapshotting, so what a restart must replay stays bounded', async (t) => {
+  quiet(t);
+  const path = onDisk(t), w = await world(t, repair, path), host = w.f.host;
+  w.control.midThrow = () => true; await w.tick(400); assert.ok(host.stepFailing);
+  const snap = () => w.f.db.latestSnapshot(host.worldId).tick, first = snap(); host.snapshotEvery = 100; await w.tick(150); for (let i = 0; i < 20; i++) await setImmediate();
+  assert.ok(snap() > first, `snapshot stayed at ${first}`);
+  reboot(t, w, path);
+});
+
+test('the rewind cooldown survives a restart', async (t) => {
+  quiet(t);
+  const path = onDisk(t), w = await world(t, repair, path), {Ada} = w.souls;
+  w.control.fault = violate('support.floating', [Ada.entityId]); w.control.at = w.f.host.engine.world.tick + 2; await w.tick(5);
+  const at = w.f.host.lastRewindTick; assert.ok(Number.isFinite(at));
+  assert.equal(reboot(t, w, path).lastRewindTick, at);
+});
+
+test('L2 construction.unsafe-failure thrown from a step takes the same way down, and never a halt', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host, at = host.engine.world.tick + 2;
+  w.control.midThrow = (e) => { if (e.world.tick === at) throw new Error('construction.unsafe-failure: forced'); return false; }; await w.tick(6); w.control.midThrow = null; await w.tick(3);
+  assert.equal(host.paused, false); assert.equal(byRung(host).rewind, 1); assert.equal(byRung(host).halt ?? 0, 0);
+});
+
+for (const [rung, why] of [['a rewind', 'support.floating'], ['a stop in place', 'beam.unseated']])
+  test(`L2 ${rung} that can't be written is a named durability halt, not a crash`, async (t) => {
+    quiet(t);
+    const w = await world(t), host = w.f.host, {Ada} = w.souls;
+    if (rung !== 'a rewind') host.lastRewindTick = host.engine.world.tick;
+    t.mock.method(w.f.db, 'appendEvent', (_, e) => { if (e.kind === 'rules') throw new Error('fixture.disk-full'); });
+    w.control.fault = violate(why, [Ada.entityId]); w.control.at = host.engine.world.tick + 2; await w.tick(4);
+    assert.equal(host.paused, true); assert.equal(host.clockAvailable, false); assert.equal(host.glitches.byRule['durability.repair'].halt, 1);
   });
 
 test('a durability failure still halts, and says so', async (t) => {
