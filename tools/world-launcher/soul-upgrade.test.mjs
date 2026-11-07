@@ -20,14 +20,15 @@ async function world(t, served) {
   const server = createServer((req, res) => { req.resume(); req.on('end', () => {
     const path = req.url.replace(/^\/w\/[a-z]+/, ''); hits.push(path);
     const w = served[/^\/w\/([a-z]+)/.exec(req.url)?.[1]];
-    if (path === '/v1/config') return json(res, 200, { devAuth: true, worldId: 'w', worldName: 'W', ...(w?.manifest ? { soulClient: w.manifest } : {}) });
+    if (path === '/v1/config' && w?.configRedirect) { res.writeHead(302, { location: w.configRedirect }); return res.end(); }
+    if (path === '/v1/config') return json(res, 200, { devAuth: !w?.noAuth, worldId: 'w', worldName: 'W', ...(w?.manifest ? { soulClient: w.manifest } : {}) });
     if (path === '/eden.mjs' && w.redirect) { res.writeHead(302, { location: w.redirect }); return res.end(); }
     if (path === '/eden.mjs') return res.end(w.bytes);
     json(res, 404, {});
   }); });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   t.after(() => { server.closeAllConnections(); server.close(); });
-  return { base: `http://127.0.0.1:${server.address().port}/w`, hits };
+  return { base: `http://127.0.0.1:${server.address().port}/w`, hits, set: (name, row) => { served[name] = row; }, close: () => { server.closeAllConnections(); server.close(); } };
 }
 function folder(t) {
   const d = realpathSync(mkdtempSync(join(tmpdir(), 'souls-upgrade-'))); t.after(() => rmSync(d, { recursive: true, force: true }));
@@ -150,11 +151,98 @@ test('a trusted site cannot hand the bundle over to another: a redirect is refus
   await run('register', `${w.base}/next`);
   for (const args of [['upgrade', 'next'], ['upgrade', 'next', '--trust']]) {
     const r = await run(...args);
-    assert.equal(r.code, 1); assert.match(r.err, /redirect is not followed/); assert.match(r.err, /Nothing changed/);
+    assert.equal(r.code, 1); assert.match(r.err, /redirected \/eden\.mjs/); assert.match(r.err, /Nothing changed/);
   }
   assert.deepEqual(other.hits, [], 'the other site is never asked');
   assert.deepEqual(readFileSync(join(d, 'eden.mjs')), readFileSync(cli), 'nothing was installed');
   assert.equal(JSON.parse(readFileSync(join(d, '.souls/config.json'), 'utf8')).client, ours);
+});
+
+test('a redirect at /v1/config is refused too: the manifest comes from the site asked', async (t) => {
+  const other = await world(t, { next: { manifest: describe(newer, NEWER), bytes: newer } });
+  const w = await world(t, { next: { manifest: describe(Buffer.from('x'), '2.0.0') } });
+  const { d, run } = folder(t);
+  await run('register', `${w.base}/next`);
+  w.set('next', { configRedirect: `${other.base}/next/v1/config` });
+  const r = await run('upgrade', 'next');
+  assert.match(r.err, /redirected \/v1\/config/);
+  assert.deepEqual(other.hits, []); assert.deepEqual(readFileSync(join(d, 'eden.mjs')), readFileSync(cli));
+});
+
+const configOf = (d) => JSON.parse(readFileSync(join(d, '.souls/config.json'), 'utf8'));
+
+test('a first register that fails trusts no one; the one that succeeds does', async (t) => {
+  const bad = await world(t, { next: { noAuth: true } }), good = await world(t, { next: { manifest: describe(newer, NEWER), bytes: newer } });
+  const { d, run } = folder(t);
+  assert.equal((await run('register', `${bad.base}/next`)).code, 1);
+  assert.equal(configOf(d).trustedOrigins, undefined, 'a world that refused the register earns nothing');
+  assert.equal((await run('register', `${good.base}/next`)).code, 0);
+  assert.deepEqual(configOf(d).trustedOrigins, [new URL(good.base).origin]);
+  assert.equal(configOf(d).awaitingFirstWorld, undefined);
+});
+
+test('a Soul moved in while travelling makes its home world the site, not the world it was visiting', async (t) => {
+  const real = await world(t, { home: { manifest: describe(Buffer.from('x'), '2.0.0') } }), visited = await world(t, { away: { manifest: describe(newer, NEWER), bytes: newer } });
+  const { d, run } = folder(t);
+  writeFileSync(join(d, '.eden-agent.json'), JSON.stringify({ world: `${visited.base}/away`, soul: 's_visit', token: 'visit', home: { world: `${real.base}/home`, soul: 's_home', token: 'home' } }));
+  assert.equal((await run('import')).d.imported, true);
+  assert.deepEqual(configOf(d).trustedOrigins, [new URL(real.base).origin]);
+  assert.match((await run('upgrade', 'away')).err, /Ask your human/);
+});
+
+test('a file someone handed over grants no trust', async (t) => {
+  const evil = await world(t, { evil: { manifest: describe(newer, NEWER), bytes: newer } }), mine = await world(t, { mine: { manifest: describe(Buffer.from('x'), '2.0.0') } });
+  const { d, run } = folder(t), gift = join(d, 'gift'); mkdirSync(gift);
+  writeFileSync(join(gift, 'soul.json'), JSON.stringify({ id: 's_gift', name: 'Gift', world: `${evil.base}/evil` }));
+  await run('init');
+  assert.equal((await run('import', 'gift')).d.imported, true);
+  assert.equal(configOf(d).trustedOrigins, undefined);
+  assert.match((await run('upgrade', 'evil')).err, /Ask your human/);
+  await run('register', `${mine.base}/mine`);
+  assert.deepEqual(configOf(d).trustedOrigins, [new URL(mine.base).origin], 'the first world the person registers is still theirs');
+});
+
+test('trust goes to the world named: a selector or no name is refused, not read as another world', async (t) => {
+  const w = await world(t, { aa: { manifest: describe(newer, NEWER), bytes: newer } }), other = await world(t, { bb: { manifest: describe(newer, NEWER), bytes: newer } }), third = await world(t, { cc: { manifest: describe(newer, NEWER), bytes: newer } });
+  const { d, run } = folder(t);
+  await run('register', `${w.base}/aa`); await run('register', `${other.base}/bb`); await run('register', `${third.base}/cc`);
+  assert.match((await run('@bb', 'upgrade', '--trust')).err, /goes by the world's name/);
+  assert.match((await run('upgrade', '--trust')).err, /a world they name/);
+  assert.match((await run('upgrade', 'constructor')).err, /usage: upgrade <world>/);
+  assert.equal(configOf(d).trustedOrigins.length, 1); assert.equal(configOf(d).client, ours);
+});
+
+test('a world this home does not trust cannot stand in the way, and a refusal changes nothing', async (t) => {
+  const manifest = describe(newer, NEWER), w = await world(t, { aa: { manifest, bytes: newer } }), evil = await world(t, { bb: { manifest: { ...describe(Buffer.from('x'), '2.0.0'), contract: 'eden-edge/99' } } });
+  const { d, run } = folder(t);
+  await run('register', `${w.base}/aa`); await run('register', `${evil.base}/bb`);
+  assert.equal((await run('upgrade', 'aa')).d.upgraded, true, 'an untrusted contract blocks nothing');
+  const w2 = await world(t, { aa: { manifest: describe(Buffer.from('x'), '2.0.0') }, bb: { manifest: { ...describe(newer, NEWER), contract: 'eden-edge/2' }, bytes: newer } });
+  const f = folder(t);
+  await f.run('register', `${w2.base}/aa`); await f.run('register', `${w2.base}/bb`);
+  const before = readFileSync(join(f.d, '.souls/config.json'), 'utf8');
+  const r = await f.run('upgrade', 'bb');
+  assert.match(r.err, /no one bundle serves both/); assert.equal(readFileSync(join(f.d, '.souls/config.json'), 'utf8'), before, 'Nothing changed means nothing changed');
+});
+
+test('a bundle cannot claim a version in a comment; a world needing what it does not serve says so', async (t) => {
+  const liar = Buffer.from(`// const VERSION = "${NEWER}";\nconst VERSION = "2.0.0";\n`);
+  const w = await world(t, { next: { manifest: describe(liar, NEWER), bytes: liar }, stuck: { manifest: describe(Buffer.from('x'), '2.0.0', NEWER) } });
+  const { d, run } = folder(t);
+  await run('register', `${w.base}/next`);
+  assert.match((await run('upgrade', 'next')).err, /calls itself 2\.0\.0/);
+  assert.equal(configOf(d).client, ours);
+  await run('register', `${w.base}/stuck`);
+  assert.match((await run('upgrade', 'stuck')).err, /has no bundle to give/);
+});
+
+test('an answer that is not the world\'s says so in words', async (t) => {
+  const w = await world(t, { next: { manifest: describe(newer, NEWER), bytes: newer } });
+  const { run } = folder(t);
+  await run('register', `${w.base}/next`);
+  w.close();
+  const r = await run('upgrade', 'next');
+  assert.match(r.err, /did not answer \/v1\/config/); assert.doesNotMatch(r.err, /redirect/); assert.match(r.err, /Nothing changed/);
 });
 
 test('a refused world does not become the current world', async (t) => {

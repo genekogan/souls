@@ -68,7 +68,7 @@ function readJson(file, fallback) {
 /** Make a home at `root`. `cli` is the bundle to keep in bin/. Safe to call on an existing home. */
 function createHome(root, { cli, version } = {}) {
   mkdirSync(join(root, "souls"), { recursive: true, mode: 0o700 });
-  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, client: version ?? null, default: null, currentWorld: null, worlds: {}, souls: {} });
+  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, client: version ?? null, default: null, currentWorld: null, worlds: {}, souls: {}, awaitingFirstWorld: true });
   if (!existsSync(join(root, CREDENTIALS))) writeJson(join(root, CREDENTIALS), { version: 1, souls: {}, worlds: {}, approvals: {} });
   if (!existsSync(join(root, ".gitignore"))) writeFileSync(join(root, ".gitignore"), `${CREDENTIALS}\nruntime/\npending/\n`);
   if (cli && !existsSync(join(root, "bin", "eden.mjs"))) {
@@ -189,15 +189,17 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
   /** The world's key in this home, added on first sight. */
   function ensureWorld(url, facts = {}) {
     return updateConfig((c) => {
-      const first = !Object.keys(c.worlds).length;
       let key = keyOf(c.worlds, url);
       if (!key) { const base = slugOf(url); key = base; for (let n = 2; c.worlds[key]; n++) key = `${base}-${n}`; c.worlds[key] = { url }; }
-      // Only the world a home is made for is trusted by default. A home that already has worlds and no list trusts nothing
-      // until a person says so: a read of any world must never be what grants its site trust.
-      if (first) c.trustedOrigins ??= [originOf(url)];
       Object.assign(c.worlds[key], Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== undefined)));
       return key;
     });
+  }
+  /** The one trust a home gives unasked: the first world a person registers, once it has answered, or the home world of a
+   *  Soul they moved in. A home from before this has no such moment and trusts nothing until a person says so; reading a
+   *  world, a travel answer or a file someone handed over is never what grants a site trust. */
+  function madeFor(url) {
+    if (config().awaitingFirstWorld) updateConfig((c) => { if (c.awaitingFirstWorld) { delete c.awaitingFirstWorld; c.trustedOrigins ??= [originOf(url)]; } });
   }
   const setCurrentWorld = (key) => updateConfig((c) => { c.currentWorld = key; });
   const seat = (key) => { const dir = at("pending", key); mkdirSync(dir, { recursive: true, mode: 0o700 }); return { kind: "seat", key, dir }; };
@@ -311,6 +313,7 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
     if (id && config().souls[id]?.state === "active") return { imported: false, soul: id, reason: "This Soul already lives in this home." };
     const key = ensureWorld(s.world, { worldId: s.worldId, accountAuth: s.accountAuth });
     if (s.home?.world) ensureWorld(s.home.world);
+    madeFor(s.home?.world ?? s.world);
     if (!id || !s.token) {   // a folder with no Soul yet is the world's seat, if that seat is free
       if (seatState(key).pendingApproval) throw new Error(`An approval already waits in ${key}. Finish it first: approval wait`);
       save(seat(key), { ...s, ...(legacy.pendingApproval ? { pendingApproval: legacy.pendingApproval } : {}) });
@@ -412,7 +415,7 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
   }
   const trustOrigin = (origin) => updateConfig((c) => { c.trustedOrigins = [...new Set([...(c.trustedOrigins ?? []), origin])]; });
 
-  return { root, config, installBundle, trustOrigin, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
+  return { root, config, installBundle, trustOrigin, madeFor, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
 }
 return { HOME_NAME, RUNTIME_LOCKS, SEAT_COMMANDS, HOME_COMMANDS, IMPORTED_FIELDS, findHome, globalRoot, createHome, slugOf, keyOf, originOf, newerThan, norm, splitSecrets, selectSoul, looksLikeSelector, chooseContext, runtimeLocks, openHome, LEGACY_STATE, STATE_FILE, CREDENTIALS };
 })();
@@ -766,6 +769,7 @@ function noteWorld(url, cfg, accountAuth) {
   const c = cfg.soulClient, key = HOME.ensureWorld(url, { name: cfg.worldName, worldId: cfg.worldId, accountAuth, ...(c ? { contract: c.contract, bundle: c.version, minClient: c.minVersion } : {}) });
   if (c && soulHome.newerThan(c.minVersion, VERSION)) throw new Error(`This world needs eden ${c.minVersion} or newer; this is ${VERSION}. Run: ${CLI} upgrade ${key}`);
   HOME.setCurrentWorld(key);
+  HOME.madeFor(url);
 }
 
 function forOption(argv) {
@@ -2236,7 +2240,7 @@ const HELP = `eden ${VERSION} — one Soul, one controller. Commands print JSON.
 
 setup     register <world-url>            create "<Name>" [--for CODE] [--new]    pair <soulId> [--for CODE]
           approval [status|wait|cancel]   status                          guide
-home      list   default <name>   adopt <name|id> [--for CODE]   doctor   export <name> [--out dir]   import [folder]   init [--global]   upgrade [world]
+home      list   default <name>   adopt <name|id> [--for CODE]   doctor   export <name> [--out dir]   import [folder]   init [--global]   upgrade [world] [--trust]
           name a Soul first when several live here: mira here · mira@eden here · @eden create "Ivo"
 look      here   observe   around|explore [place]   caps [--search w] [--verb v] [--all]   map   view [--map|--alt-only|--out f]
           context [query] [--cursor nextCursor]   views <ref> [ref…] [--detail] [--original] [--out picture.png]
@@ -2302,21 +2306,38 @@ async function importCommand(from) {
 // upgrade [world]: fetch the world's bundle into the home and check it against what the world says it is.
 async function upgradeCommand(...argv) {
   const trust = argv.includes("--trust"), [world] = argv.filter((a) => a !== "--trust");
-  const home = needHome(), cfg = home.config(), key = world ?? cfg.currentWorld, w = cfg.worlds[key];
+  const home = needHome(), cfg = home.config(), key = world ?? cfg.currentWorld, w = key && Object.hasOwn(cfg.worlds, key) ? cfg.worlds[key] : null;
   if (!w) throw new Error(`usage: upgrade <world> (${Object.keys(cfg.worlds).join(", ") || "no world yet"})`);
+  if (trust && !world) throw new Error(`A person's trust goes to a world they name: ${CLI} upgrade ${key} --trust`);
   // The site trusted below is the one asked: a redirect could hand this home a bundle from any other.
-  const get = (path) => fetch(w.url + path, { redirect: "error", signal: AbortSignal.timeout(30_000) }).catch((e) => { throw new Error(`${key} did not answer ${path} at its own address, and a redirect is not followed here (${e?.cause?.message ?? e?.message}). Nothing changed.`); });
-  const said = await (await get("/v1/config")).json(), m = said.soulClient;
+  const get = async (path) => {
+    const r = await fetch(w.url + path, { redirect: "error", signal: AbortSignal.timeout(30_000) }).catch((e) => {
+      const why = e?.cause?.message ?? e?.message;
+      throw new Error(/redirect/i.test(why) ? `${key} redirected ${path}, and a bundle is taken only from the address this home knows. If the world moved, register its new address. Nothing changed.` : `${key} did not answer ${path} (${why}). Nothing changed.`);
+    });
+    if (!r.ok) throw new Error(`${key} answered ${path} with HTTP ${r.status}. Nothing changed.`);
+    return r;
+  };
+  const said = await (await get("/v1/config")).json().catch(() => { throw new Error(`${key} did not answer /v1/config with JSON. Nothing changed.`); }), m = said.soulClient;
   if (!m) throw new Error(`${key} does not say which bundle it serves, so there is nothing to verify against. Nothing changed.`);
-  home.ensureWorld(w.url, { contract: m.contract, bundle: m.version, minClient: m.minVersion });
-  const clash = Object.entries(cfg.worlds).find(([k, v]) => k !== key && v.contract && v.contract !== m.contract);
+  const trusted = cfg.trustedOrigins ?? [], note = () => home.ensureWorld(w.url, { contract: m.contract, bundle: m.version, minClient: m.minVersion });
+  // Only a site this home trusts can stand in the way: any world can say what it likes about its contract.
+  const clash = Object.entries(cfg.worlds).find(([k, v]) => k !== key && v.contract && v.contract !== m.contract && trusted.includes(soulHome.originOf(v.url)));
   if (clash) throw new Error(`${key} speaks ${m.contract} and ${clash[0]} speaks ${clash[1].contract}: no one bundle serves both. Nothing changed.`);
-  if (!soulHome.newerThan(m.version, VERSION)) return { upgraded: false, world: key, version: VERSION, served: m.version, note: "This bundle is as new as what that world serves, and it still works there." };
+  if (!soulHome.newerThan(m.version, VERSION)) {
+    note();
+    if (soulHome.newerThan(m.minVersion, VERSION)) throw new Error(`${key} needs eden ${m.minVersion} or newer but serves ${m.version}, so it has no bundle to give this home. Tell whoever keeps that world.`);
+    return { upgraded: false, world: key, version: VERSION, served: m.version, note: "This bundle is as new as what that world serves, and it still works there." };
+  }
   // Whatever is installed here runs with every token in this home, for every world, so one world's say-so is not enough.
-  const origin = soulHome.originOf(w.url), known = (cfg.trustedOrigins ?? []).includes(origin), safe = /^https:/.test(origin) || /^http:\/\/(127\.0\.0\.1|localhost)(:|$)/.test(origin);
-  if (!(known && safe) && !trust) throw new Error(`A new client runs with every Soul's token in this home, and ${origin} is not a site this home trusts. Ask your human. Only if they agree: ${CLI} upgrade ${key} --trust`);
+  const origin = soulHome.originOf(w.url), safe = /^https:/.test(origin) || /^http:\/\/(127\.0\.0\.1|localhost)(:|$)/.test(origin), ask = `Ask your human. Only if they agree: ${CLI} upgrade ${key} --trust`;
+  if (!safe && !trust) throw new Error(`A new client runs with every Soul's token in this home, and ${origin} is plain http off this machine, so anyone between here and there could change it. ${ask}`);
+  if (!trusted.includes(origin) && !trust) throw new Error(`A new client runs with every Soul's token in this home, and ${origin} is not a site this home trusts. ${ask}`);
   const bytes = Buffer.from(await (await get("/eden.mjs")).arrayBuffer()), sha = createHash("sha256").update(bytes).digest("hex");
-  if (bytes.length !== m.bytes || sha !== m.sha256 || !bytes.includes(`const VERSION = "${m.version}"`)) throw new Error(`The bundle ${key} sent is not the one it describes (${bytes.length} bytes, expected ${m.bytes}). Nothing changed.`);
+  if (bytes.length !== m.bytes || sha !== m.sha256) throw new Error(`The bundle ${key} sent is not the one it describes (${bytes.length} bytes, expected ${m.bytes}; its hash ${sha === m.sha256 ? "matches" : "differs"}). Nothing changed.`);
+  const stated = /^const VERSION = "([0-9.]+)";$/m.exec(bytes.toString("utf8"))?.[1];
+  if (stated !== m.version) throw new Error(`The bundle ${key} sent calls itself ${stated ?? "nothing"}, and the world says ${m.version}. Nothing changed.`);
+  note();
   if (trust) home.trustOrigin(origin);
   if (!home.installBundle(bytes, process.argv[1], m.version)) return { upgraded: false, world: key, version: home.config().client, served: m.version, note: "This home's bundle is already as new." };
   return { upgraded: true, world: key, from: VERSION, to: m.version, bytes: m.bytes, sha256: m.sha256 };
@@ -2346,6 +2367,7 @@ export function enterHome(argv) {
   // A Soul named like a command: the command wins, but `say here` was meant for the Soul and must not be said aloud.
   if (first && commands[first] && commands[second] && soulHome.looksLikeSelector(cfg, first)) throw new Error(`${first} is a command and a Soul here. For the Soul use its address: ${HOME.principals().find((p) => soulHome.norm(p.name) === first)?.address ?? `${first}@<world>`}`);
   const cmd = line[0];
+  if (cmd === "upgrade" && selector) throw new Error(`upgrade goes by the world's name, not a Soul's or an @: ${CLI} upgrade <world>`);
   if (!cmd || !commands[cmd] || soulHome.HOME_COMMANDS.has(cmd)) return line;
   if (process.env.SOULS_PRINCIPAL) { SEAT = HOME.soul(process.env.SOULS_PRINCIPAL); process.chdir(SEAT.dir); return line; }
   const registering = cmd === "register" && WORLD_URL.test(line[1] ?? "") ? line[1].replace(/\/+$/, "") : null;

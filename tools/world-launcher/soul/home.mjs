@@ -48,7 +48,7 @@ function readJson(file, fallback) {
 /** Make a home at `root`. `cli` is the bundle to keep in bin/. Safe to call on an existing home. */
 export function createHome(root, { cli, version } = {}) {
   mkdirSync(join(root, "souls"), { recursive: true, mode: 0o700 });
-  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, client: version ?? null, default: null, currentWorld: null, worlds: {}, souls: {} });
+  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, client: version ?? null, default: null, currentWorld: null, worlds: {}, souls: {}, awaitingFirstWorld: true });
   if (!existsSync(join(root, CREDENTIALS))) writeJson(join(root, CREDENTIALS), { version: 1, souls: {}, worlds: {}, approvals: {} });
   if (!existsSync(join(root, ".gitignore"))) writeFileSync(join(root, ".gitignore"), `${CREDENTIALS}\nruntime/\npending/\n`);
   if (cli && !existsSync(join(root, "bin", "eden.mjs"))) {
@@ -169,15 +169,17 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
   /** The world's key in this home, added on first sight. */
   function ensureWorld(url, facts = {}) {
     return updateConfig((c) => {
-      const first = !Object.keys(c.worlds).length;
       let key = keyOf(c.worlds, url);
       if (!key) { const base = slugOf(url); key = base; for (let n = 2; c.worlds[key]; n++) key = `${base}-${n}`; c.worlds[key] = { url }; }
-      // Only the world a home is made for is trusted by default. A home that already has worlds and no list trusts nothing
-      // until a person says so: a read of any world must never be what grants its site trust.
-      if (first) c.trustedOrigins ??= [originOf(url)];
       Object.assign(c.worlds[key], Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== undefined)));
       return key;
     });
+  }
+  /** The one trust a home gives unasked: the first world a person registers, once it has answered, or the home world of a
+   *  Soul they moved in. A home from before this has no such moment and trusts nothing until a person says so; reading a
+   *  world, a travel answer or a file someone handed over is never what grants a site trust. */
+  function madeFor(url) {
+    if (config().awaitingFirstWorld) updateConfig((c) => { if (c.awaitingFirstWorld) { delete c.awaitingFirstWorld; c.trustedOrigins ??= [originOf(url)]; } });
   }
   const setCurrentWorld = (key) => updateConfig((c) => { c.currentWorld = key; });
   const seat = (key) => { const dir = at("pending", key); mkdirSync(dir, { recursive: true, mode: 0o700 }); return { kind: "seat", key, dir }; };
@@ -291,6 +293,7 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     if (id && config().souls[id]?.state === "active") return { imported: false, soul: id, reason: "This Soul already lives in this home." };
     const key = ensureWorld(s.world, { worldId: s.worldId, accountAuth: s.accountAuth });
     if (s.home?.world) ensureWorld(s.home.world);
+    madeFor(s.home?.world ?? s.world);
     if (!id || !s.token) {   // a folder with no Soul yet is the world's seat, if that seat is free
       if (seatState(key).pendingApproval) throw new Error(`An approval already waits in ${key}. Finish it first: approval wait`);
       save(seat(key), { ...s, ...(legacy.pendingApproval ? { pendingApproval: legacy.pendingApproval } : {}) });
@@ -392,5 +395,5 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
   }
   const trustOrigin = (origin) => updateConfig((c) => { c.trustedOrigins = [...new Set([...(c.trustedOrigins ?? []), origin])]; });
 
-  return { root, config, installBundle, trustOrigin, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
+  return { root, config, installBundle, trustOrigin, madeFor, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
 }

@@ -59,8 +59,10 @@ Every copy of the CLI in the home hands over to `bin/eden.mjs` once that is newe
 working: it never downgrades the home.
 
 Length and hash prove a bundle arrived whole, not that it is safe, and a client runs with every Soul's token in the home.
-So the home trusts only the site it was made for: a bundle from another origin, or over plain http off this machine,
-needs a person's `upgrade <world> --trust`.
+So a home trusts one site unasked: its first world, once a `register` there has succeeded, or the home world of a Soul
+moved in with `import`. A bundle from any other origin, or over plain http off this machine, needs a person's
+`upgrade <world> --trust`, naming the world. A home from before this client trusts nothing until a person says so, and
+reading a world never adds to the list. `upgrade` follows no redirect.
 
 Reconciling needs the account's list, which `/v1/me` gives a dev identity. A delegated Soul token sees only its own Soul,
 so on an account world `doctor` checks each Soul through its token and only the world saying `retired` retires one, and
