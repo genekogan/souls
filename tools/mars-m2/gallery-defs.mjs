@@ -4,7 +4,7 @@
 // portrait hall projection (3.2 x 4.3 m on the plywood projection partition) and six small monitors (0.49 x 0.32 m, two
 // tiers on pale panels along the gallery wall) run a shader whose default program "art" draws a glowing eight-petal
 // ring (blue, r = .22 + .05 sin 8a, slowly turning) round a six-lobed magenta ring (r = .14 + .025 sin 6a) on near-black,
-// and whose "talk" program shows a MARS COLLEGE card. Sim's Chiba mesh has the panels, bezels and dark screen glass but
+// and whose "talk" program shows a MARS COLLEGE card. Souls' Chiba mesh has the panels, bezels and dark screen glass but
 // no picture (marsland-parity residual "gallery screens' logo and the neon flower installation").
 // Two world-local defs, drawn as kit tubes (no image asset, no new viewer code; parts appear by state with `when: @…`):
 //  - mars-hall-projection: the portrait projection, petals turn (components.spin) while on. Residents switch it on/off
