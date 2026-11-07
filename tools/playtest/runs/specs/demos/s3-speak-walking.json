@@ -1,0 +1,20 @@
+{
+ "soulRun": 1,
+ "name": "s3-speak-walking",
+ "cast": {
+  "file": "../../../scenarios/casts/s3-speak-walking-scripted.json"
+ },
+ "observer": {
+  "check": false
+ },
+ "limits": {
+  "maxWallSec": 900,
+  "maxControllers": 2
+ },
+ "evaluation": {
+  "questions": [
+   "../../questions/spoke-while-walking.mjs",
+   "../../questions/talks-in-room.mjs"
+  ]
+ }
+}
