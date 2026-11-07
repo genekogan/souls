@@ -186,7 +186,7 @@ type Obstacle=Spatial['scene']['obstacles'][number];
  *  Every root of one operation lies within `reach` of `centre`, so a farther obstacle can never block it. */
 const nearOps=new WeakMap<Exec,{of:readonly Obstacle[];near:Obstacle[]}>();
 export const handClearanceStats={obstaclesVisited:0,candidateBuilds:0};
-const SHIFT_STEPS=[.03,.06,.09],SHIFT_MAX=.15;
+const SHIFT_STEPS=[.01,.02,.03,.05],SHIFT_MAX=.18,STEP_MAX=.07;
 function nearObstacles(ex:Exec,all:readonly Obstacle[]){
  const was=nearOps.get(ex);if(was?.of===all)return was.near;
  const o=ex.p.opening,centre=o?o.hinge:ex.root,reach=o?o.radius+2:ex.p.stroke?1:ex.p.slide?ex.p.slide.travel+.5:.5,near:Obstacle[]=[];
@@ -195,12 +195,14 @@ function nearObstacles(ex:Exec,all:readonly Obstacle[]){
 }
 /** #1070: exact box distance can pass a step the rasterized clearance fails near a turned footprint, and an opening's body
  *  follows the handle, so it can't stop short as a stroke does. It sidesteps instead: the rest of the path shifts by the
- *  smallest step that has room, up to SHIFT_MAX in all. False when no such step does. */
+ *  smallest step with room, up to SHIFT_MAX in all and no faster than a walk, so a big shift builds over several ticks. False when
+ *  nothing fits. */
 function sidestep(rt:Runtime,ex:Exec,a:Entity,root:Vec3):boolean{
- if(staticStepClear(rt,a,[root[0],root[2]]))return true;
+ const from=a.pose.p,fits=(x:number,z:number)=>staticStepClear(rt,a,[x,z]);
+ if(fits(root[0],root[2]))return true;
  const [x,z]=ex.shift??[0,0];
- for(const m of SHIFT_STEPS)for(let i=0;i<8;i++){const dx=m*dcos(i*Math.PI/4),dz=m*dsin(i*Math.PI/4);
-  if(hypot(x+dx,z+dz)<=SHIFT_MAX&&staticStepClear(rt,a,[root[0]+dx,root[2]+dz])){ex.shift=[x+dx,z+dz];root[0]+=dx;root[2]+=dz;return true;}}
+ for(const m of SHIFT_STEPS)for(let i=0;i<8;i++){const dx=m*dcos(i*Math.PI/4),dz=m*dsin(i*Math.PI/4),qx=root[0]+dx,qz=root[2]+dz;
+  if(hypot(x+dx,z+dz)<=SHIFT_MAX&&hypot(qx-from[0],qz-from[2])<=STEP_MAX&&fits(qx,qz)){ex.shift=[x+dx,z+dz];root[0]=qx;root[2]=qz;return true;}}
  return false;
 }
 function blocked(rt:Runtime,ex:Exec,root:Vec3,angle:number):Diagnostic|null{
@@ -363,8 +365,8 @@ export const handActuator:ActionDef<HandActuatorParams,true,Exec>={
   if(ex.p.slide&&hypot(ex.root[0]-slidePoint(ex.p.slide,ex.p.slide.from).root[0],ex.root[2]-slidePoint(ex.p.slide,ex.p.slide.from).root[2])>.22){clear(rt,ex);return {status:'failed',diagnostic:issue('not-at-handle','Walk to the actual handle before operating it.',[ex.p.target])};}
   if(ex.p.stroke){const goal=strokeRoot(ex.p.at,ex.p.stroke,ex.root[1]);if(hypot(goal[0]-ex.root[0],goal[2]-ex.root[2])>.5){clear(rt,ex);return {status:'failed',diagnostic:issue('not-at-board','Walk up to the board before writing on it.',[ex.p.target])};}
    const k=smooth(Math.min(1,ex.t/HAND_REACH_SECONDS));point.root=ex.strokeHeld?[...a.pose.p]:[ex.root[0]+(goal[0]-ex.root[0])*k,ex.root[1],ex.root[2]+(goal[2]-ex.root[2])*k];}
-  if(ex.shift)point.root=[point.root[0]+ex.shift[0],point.root[1],point.root[2]+ex.shift[1]];
   if((ex.p.opening||ex.p.slide)&&ex.t<handReachSeconds(ex.p)){const k=smooth(ex.t/handReachSeconds(ex.p));point.root=[ex.root[0]+(point.root[0]-ex.root[0])*k,ex.root[1]+(point.root[1]-ex.root[1])*k,ex.root[2]+(point.root[2]-ex.root[2])*k];}
+  if(ex.shift)point.root=[point.root[0]+ex.shift[0],point.root[1],point.root[2]+ex.shift[1]];
   const bad=blocked(rt,ex,point.root,f.angle);if(bad){clear(rt,ex);return {status:'failed',diagnostic:bad};}
   // #1063: a stroke's step stops for good where the next one would overlap by the invariant's measure, and the hand works from there
   if(ex.p.stroke&&!ex.strokeHeld&&!staticStepClear(rt,a,[point.root[0],point.root[2]])){ex.strokeHeld=true;point.root=[...a.pose.p];}

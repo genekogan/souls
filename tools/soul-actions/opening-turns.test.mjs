@@ -14,7 +14,7 @@ import {CORE_KIT} from '../../packages/world-compiler/src/index.ts';
 // stays clean: done, or refused by name, with no recovered fault and no violation. Every def with a hand contact to open is
 // covered without being listed, so a new one gets this too. Each turn is a fresh world, so a fault at one cannot blur the next.
 const defs = CORE_KIT.filter(d => d.actions?.some(a => a.name === 'open' && isContactActuator(d, a)) && d.actions.some(a => a.name === 'close')).map(d => `core/${d.name.replace(/^core-/, '')}@${d.version}`);
-const turns = [0, 0.4, 0.785, 1.2, 1.571, 1.9, 2.356, 2.9, 3.7, 4.712, 5.5];
+const turns = [0, 0.4, 0.571, 0.785, 1.2, 1.571, 1.9, 2.356, 2.9, 3.7, 4.712, 5.5, 5.712];
 const once = async (ref, r) => {
  const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
  const edge = new EdgeLedger(f.host, f.db, undefined, {ambient: false}), app = new Hono(); let soul;
@@ -51,6 +51,7 @@ test('open and close at every turn: done or refused by name, never a recovered f
   for (const r of turns) for (const code of await once(ref, r)) {
    assert.notEqual(code, 'engine.fault-recovered', `${ref} r=${r}`);
    assert.ok(code === 'completed' || /^[a-z]+(\.[a-z-]+)+$/.test(code ?? ''), `${ref} r=${r}: ${code}`);
+   if (/^core\/(door|gate)@/.test(ref)) assert.equal(code, 'completed', `${ref} r=${r}`);
   }
  });
 });
