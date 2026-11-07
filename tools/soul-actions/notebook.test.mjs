@@ -186,6 +186,6 @@ test('words for a thing that is not here take nothing',{timeout:120000},async t=
  const row=await accept(f.host,f.souls.create('dev:ana',{name:'Ana',description:'Notebook test'}));await tick();soul={soulId:row.id,entityId:row.entity_id,name:row.name,owner:'dev:ana'};
  const p=f.host.engine.world.entities[soul.entityId].pose.p;assert.equal(god.act({ops:[{op:'place',def:'core/notice-board@3',name:'board',p:[p[0]+1,p[2]+2.5],state:{text:'buy milk — Ana',textBy:soul.soulId}}]}).accepted,true);await tick(60);
  const r=async w=>(await (await accept(f.host,app.request('/v1/edge/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability:w})}))).json()).resolve;
- for(const w of ['cross out my notebook note','remove my journal note','take down my note inside the notebook','remove my diary note','take down my note at the sheet','cross off my name from the sign-up sheet'])assert.ok(!/unpin/.test(JSON.stringify((await r(w))?.would??null)),w);
+ for(const w of ['cross out my notebook note','cross out my journal note','cross out my note inside the notebook','cross out my diary note','cross out my note at the sheet','cross off my name from the sign-up sheet'])assert.ok(!/unpin/.test(JSON.stringify((await r(w))?.would??null)),w);
  assert.match(JSON.stringify((await r('take down my note'))?.would??null),/unpin/,'her own words for her own note still work');
 });
