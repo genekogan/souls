@@ -455,7 +455,9 @@ export class GodPerceive {
         // LAYERS: whose it is, to this viewer ("yours" / "Ana's, private" / "public"), its price and hours now
         const ent = lay ? this.h.model.entities.get(v.id) : undefined, word = ent ? this.h.layers!.ownerWord(v.id, soul) : null;
         const extra = ent ? { ...(word ? { owner: word } : {}), ...(ent.price && economyOn() ? { price: ent.price } : {}), ...(ent.schedule ? { hours: this.h.layers!.hoursOf(ent.schedule) } : {}) } : {};
-        built.push({ ...v, placeId, here: placeId !== root && inside.has(placeId), dist: Math.round(d * 10) / 10, ...extra });
+        // #428: a notebook's lines come with a read, never with the sight of it
+        const seen = this.signs.get(v.id)?.notebook ? { ...v, public: Object.fromEntries(Object.entries(v.public ?? {}).filter(([k]) => k !== 'text' && k !== 'state')) } : v;
+        built.push({ ...seen, placeId, here: placeId !== root && inside.has(placeId), dist: Math.round(d * 10) / 10, ...extra });
       }
       built.sort((a, b) => a.dist - b.dist || (a.id < b.id ? -1 : 1));
       return [...rest, ...built.slice(0, LISTED)];
@@ -486,7 +488,7 @@ export class GodPerceive {
       if (s.writable && !words && s.list !== 'poll' && !s.game) continue;
       // #428: a private notebook's lines are its owner's: a closed cover, not a count, for anyone else
       const closed = s.notebook ? this.h.layers?.refusal(s.id, soul) : null;
-      if (closed) { caps.push({ id, verb: 'read', label: `Read ${s.name} (a private notebook)`, target: { id: s.id, kind: 'object' }, available: false, blocked: closed }); continue; }
+      if (closed) { caps.push({ id, verb: 'read', label: `Read ${s.name}${closed.code === 'object.private' ? ' (a private notebook)' : ''}`, target: { id: s.id, kind: 'object' }, available: false, blocked: closed }); continue; }
       const pinned = s.pinboard ? s.text.split('\n').length : 0;
       const names = s.list === 'signup' ? s.text.split('\n').filter(Boolean).length : 0;
       // entry 25: counts only, never the names or the question (they come with the read)

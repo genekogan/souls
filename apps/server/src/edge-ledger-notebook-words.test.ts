@@ -25,4 +25,15 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('cross out my line in the notebook', [sign, unsign, nbPin, nbUnpin]), nbUnpin.id, 'the words name the notebook');
   const notSigned = {...unsign, available: false, blocked: {code: 'object.state', reason: 'Your name is not on this sheet.'}};
   assert.equal(resolve('cross out my line', [sign, notSigned, nbPin, nbUnpin]), nbUnpin.id, 'the sheet has nothing of hers to cross off');
+  // second review of #990: words that name the sheet stay on the sheet, whatever else nearby has a line or a note of hers
+  const all = [pin, unpin, sign, unsign, nbPin, nbUnpin];
+  assert.equal(resolve('cross off my name from the sign-up sheet', all), unsign.id, '"from" names nothing: not the board\'s note');
+  assert.equal(resolve('cross out my name from the sheet', all), unsign.id);
+  assert.equal(resolve('strike off my name from the sign-up sheet', all), unsign.id);
+  assert.equal(resolve('cross out your name on the sign-up sheet', [sign, unsign, nbPin, nbUnpin]), unsign.id);
+  assert.equal(resolve('cross out your name', [sign, unsign, nbPin, nbUnpin]), unsign.id);
+  assert.equal(resolve('cross out my line on the sign-up sheet', [sign, unsign, nbPin, nbUnpin]), unsign.id, 'the words name the sheet');
+  assert.equal(resolve('cross out my name on the sign-up sheet', [sign, notSigned, nbPin, nbUnpin]), notSigned.id, 'not signed: the sheet says so, nothing else is crossed out');
+  assert.equal(resolve('cross off my name from the sign-up sheet', [pin, unpin, sign, notSigned]), notSigned.id, 'not signed: the board keeps her note');
+  assert.equal(resolve('cross out my line', [sign, unsign, nbPin, nbUnpin]), nbUnpin.id, 'a line is the notebook\'s');
 });

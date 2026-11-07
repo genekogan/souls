@@ -170,6 +170,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
    * Checked on admission/dispatch/completion, never by a per-tick world scan. Historical terminal receipts stay immutable. */
   /** `steps`, when known, is the body plan about to run for the capability (beds/1: a bed is used only by its native berth). */
   nativeUseRefusal?: (capability: string, steps?: Program['steps']) => {code: string; reason: string} | null;
+  /** #428: may this Soul not read this thing now (a private notebook of someone else's)? */
+  signClosed?: (id: string, soulId: string) => boolean;
   /** World-engine easels only; installed alongside the existing art media routes. */
   painting?: PaintingService;
   contactActuator?: ContactActuatorService;
@@ -610,6 +612,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   /** A completed `read:<sign>` reports the sign's own words (a Soul's board text attributed and untrusted), never a library passage. */
   private signReadEffects(r:EdgeReceipt):ConfirmedEffects{
     if(r.phase!=='completed'||!r.capability.startsWith('read:'))return{};const sign=this.contactActuator?.sign(r.capability.slice(5));if(!sign)return{};
+    // #428: a notebook made private during the walk to it is closed by the time it would be read
+    if((sign as {notebook?:boolean}).notebook&&this.signClosed?.(sign.id,r.soulId))return{summary:`${sign.name} was closed to you when you reached it; nothing was read.`};
     const nameOf=(id:string)=>this.host.minds.get(id)?.name??(this.db.soul(id) as {name?:string}|undefined)?.name??'another Soul';
     const list=(xs:string[])=>xs.length>1?xs.slice(0,-1).join(', ')+' and '+xs.at(-1):xs[0]??'';
     // Entry 38: a poster wall reads as its posters (title, detail, author, age), a wanted/offered board as its notes with replies
@@ -1747,6 +1751,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
       const r = tx(this.db.db,()=>{prepared.commit();return this.insert(soul, capability, 'completed', clientRef, true,{confirmedEffects:effects});});this.comms.fading.touch?.(soul.soulId);
       return {accepted: true, receipt: {...this.receipt(soul.soulId, r.id)!, object: cap.object} as EdgeReceipt, ...(out.result ? {result: out.result} : {}), ...resolved};
     }
+    // #428: an offer that names its only book refuses another, strict client or not (a lectern reads what is open on it)
+    const onlyBooks = (cap?.params as {book?: {enum?: unknown[]}} | undefined)?.book?.enum;
+    if (cap?.verb === 'read' && params.book !== undefined && onlyBooks && !onlyBooks.includes(params.book)) return refuse('capability.params', `${String(cap.label)} reads ${onlyBooks.join(', ')}, not ${String(params.book)}.`);
     const plan = plans.get(capability) as TogetherPlan & {stop?: boolean; paintingTarget?: string} | undefined;
     // #850 (#1095 A5): an offer blocked because no walk reaches it now names what this Soul can do instead
     if (!plan) return cap && cap.available === false && cap.blocked ? (ROUTE_DEAD.has(cap.blocked.code) ? this.withAlternatives(soul, asked, refuse(cap.blocked.code, cap.blocked.reason), this.wordsMenu(soul).caps, cap) : refuse(cap.blocked.code, cap.blocked.reason))

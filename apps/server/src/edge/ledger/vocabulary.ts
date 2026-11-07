@@ -94,6 +94,7 @@ const ACT_ALIASES: Record<string, string> = {'turn-on': 'switch-on', 'turn-off':
 /** #428: a second meaning of an everyday word, used only when its ACT_ALIASES meaning is not on offer and this one is:
  *  "cross out" a sign-up name (unsign) or a notebook line (the pinboard faculty's unpin). */
 const ACT_ALT: Record<string, string> = {'cross-out': 'unpin', 'cross-off': 'unpin', 'strike-off': 'unpin'};
+const LABEL_FILLER = new Set(['from', 'your', 'my', 'out', 'off', 'down', 'take', 'cross', 'in', 'on', 'of']);
 /** #428: "write in the notebook" is a notebook's line (the pinboard faculty's `pin`), only where a notebook's line is on
  *  offer (its label says so), so "write in the study" still reaches a desk beside a pinboard. */
 const NOTEBOOK_WORDS: Record<string, string> = {'write-in': 'pin', 'write-a-line-in': 'pin'};
@@ -587,9 +588,11 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   if (notebookOffered && NOTEBOOK_WORDS[verb] && !ctx.caps.some(c => c.verb === verb)) verb = NOTEBOOK_WORDS[verb];
   else if (ACT_ALIASES[verb] && !ctx.caps.some(c => c.verb === verb)) {
     // the second meaning when it can happen and the first can't, or when the words name its target
-    const alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), ws = tokens(rest);
-    const altFits = !!alt && (can(alt).length ? !can(ACT_ALIASES[verb]!).length || can(alt).some(c => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')); return ws.some(w => tokenHit(w, all));}) : !verbs.has(ACT_ALIASES[verb]!) && verbs.has(alt));
-    verb = altFits ? alt : ACT_ALIASES[verb]!;
+    const primary = ACT_ALIASES[verb]!, alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), ws = tokens(rest);
+    // what an offer names: its target and its label's own nouns, never the label's "from" or "your" (#990)
+    const named = (c: EdgeCapability) => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')).filter(w => !LABEL_FILLER.has(w)); return ws.some(w => tokenHit(w, all));};
+    const altFits = !!alt && (can(alt).length ? !ctx.caps.some(c => c.action === primary && named(c)) && (!can(primary).length || can(alt).some(named)) : !verbs.has(primary) && verbs.has(alt));
+    verb = altFits ? alt : primary;
   }
   // A real fire is a qualifier of the existing fire request, not a new seat name.
   // Keep explicit/named IDs intact and require an offered actual fire before dropping it.
