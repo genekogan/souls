@@ -133,3 +133,75 @@ The launcher does not export process CPU, process RSS, cgroup CPU or memory pres
 ### Cost
 
 With 400 registered worlds (20 running), evaluation after each scrape takes 40 ms at the median and at most 80 ms at the end of an hour. That is under 0.6 % of one core at the 15 s cadence. The state file is about 40 KB.
+
+## Cost and the context packet
+
+Two commands, `cost` and `packet` (CW5 S2, #739), answer what is active, what it costs, where capacity is tight and
+what to do next. They read the store, the saved alert state and an optional cost file, and they write nothing.
+
+```bash
+node tools/world-launcher/telemetry.mjs cost   --dir <d> --cost <private>/cost.json [--range 24h]   # JSON
+node tools/world-launcher/telemetry.mjs packet --dir <d> [--cost <private>/cost.json] [--range 24h] [--json]
+```
+
+### The cost file
+
+The cost file (`sim-cost/1`) is the operator's **private** record. Keep it next to the launcher data, never in the
+repository. Rates, invoices and account mappings do not belong in public artifacts. The format is in
+`tools/world-launcher/telemetry/cost.example.json`, which holds placeholder numbers only. The file has a currency, a
+billing period and a list of items. Each item has:
+
+- a `kind`: compute, storage, backups, bandwidth, cdn, auth, model, render or other;
+- a `payer`: `platform` (the default) or `owner`;
+- a `basis`, with its numbers:
+  - `fixed` takes an `amount` per billing period;
+  - `metered` takes a `rate` per `unit` and the period's `usage`;
+- the rate's `source`, and optionally its `sourceDate`;
+- optionally, `billed` entries: actual invoice amounts, each for a named period.
+
+An unknown amount, rate or usage is written as `null`. A malformed file is refused, and the error names the field.
+
+### What `cost` reports
+
+`cost` gives three numbers and never adds them together:
+
+- **billed:** the invoice amounts whose periods overlap the window, listed with those periods, plus how many items
+  have any invoice recorded at all. With no invoice recorded, the amount is null, not 0.
+- **estimated:** the configured rates prorated over the part of the window inside the billing period, and projected
+  over the whole period. Each is given as `{low, high}`. While any rate or usage is unknown, `high` is `null` (open)
+  and the unknown items are listed.
+- **allocated:** the window's known estimate, split by a stated rule:
+  - covered time is split across worlds by their running world-hours (status share × covered time);
+  - covered time with no world running is shared fixed overhead;
+  - time without telemetry stays unallocated.
+
+Fixed rent stays fixed when activity drops. An allocated saving is not an invoice saving.
+
+Owner-paid costs, in particular agents' inference at the edge, are listed under `external`. They are never part of
+platform spend, and their amount is `unknown` unless one is given.
+
+### The context packet
+
+`packet` prints ten lines (or JSON, `sim-context-packet/1`):
+
+- **source:** the launcher build label and the tools commit;
+- **window and coverage**;
+- **what is active:** worlds and Souls;
+- **the top bottleneck:** firing alerts first, in rule order; otherwise the world with the worst loop and tick p99;
+- **the alert counts**;
+- **cost provenance:** billed, the estimate ranges, unknowns, rate sources and dates, and external costs;
+- **headroom:** host memory minimum; CPU is unknown, because it is not exported; and "unqualified until #736 has a
+  verdict";
+- **the next practical decision**, by a fixed rule, taking the first that applies:
+  1. evaluate the alerts first;
+  2. restore telemetry coverage (below 90 %, or a telemetry gap);
+  3. investigate the firing rule before any hardware change;
+  4. export the missing series;
+  5. review memory if the host went below 1.5 GiB;
+  6. otherwise, no capacity action.
+
+The packet holds world slugs and numbers only: no Soul names, messages or user content. It involves no model, UI or
+vendor account.
+
+Unit costs (per world-hour, per active-Soul-hour and per completed action) and the 10–400 world scenarios need #736's
+verdict and an exported count of completed actions. They are the next slice (S3).
