@@ -1,7 +1,8 @@
 // #437: "pick up the coffee mug" by a tea room took a prop cup of tea from the room's source instead of the god-built
 // coffee-mug lying there. A world thing named by the words comes before a prop source of its kind only when it is on offer
-// and the words name it more closely than the kind does (its exact name, or more than one word); a space in the words
-// matches a name's hyphen. A bare kind word in a café ("a cup") still takes the café's cup, not a furnished cafe-cup-1.
+// and the words name it more closely than the kind does: more than one word, wherever it is, or (#435) one word that is its
+// whole name, a copy's number aside, within 8 m. A space in the words matches a name's hyphen. A bare kind word in a café
+// ("a cup") still takes the café's cup, not a furnished cafe-cup-1.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {edenNavWorld} from '../test/eden-nav-fixture.ts';
@@ -28,4 +29,14 @@ test('#437 pick-up words: a named world thing before a prop source, a bare kind 
     assert.equal(to('pick up the apple', [food, item('e_red', 'table/red-apple', 2)]), 'pick-up:food', 'one word that is part of a name keeps the prop');
     assert.equal(to('pick up the coffee mug', [source, item('e_mug', 'far-counter/coffee-mug', 55)]), 'pick-up:e_mug', 'two words name it wherever it is');
     assert.equal(to('pick up the blue coffee-mug', [source, item('e_blue', 'counter/blue-coffee-mug-2', 2)]), 'pick-up:e_blue', 'a hyphen in the words is a separator');
+    // second review: a numbered copy is its name, near; a hyphen is a space on both branches; a number in the words counts
+    assert.equal(to('pick up the apple', [food, item('e_a', 'table/apple-1', 2)]), 'pick-up:e_a', 'the first of a count of apples');
+    assert.equal(to('pick up the apple', [food, item('e_a', 'table/apple-2', 55)]), 'pick-up:food', 'a copy keeps the 8 m limit');
+    assert.equal(to('pick up the mug', [source, item('e_m', 'counter/mug-2', 2)]), 'pick-up:e_m');
+    assert.equal(to('pick up a cup', [source, cafe]), 'pick-up:cup', 'cafe-cup-1 is not a copy of "cup"');
+    assert.equal(to('pick up the coffee-mug', [source, item('e_m', 'counter/coffee-mug-2', 2)]), 'pick-up:e_m', 'the spelling a label shows');
+    assert.equal(to('pick up the coffee mug', [source, item('e_m', 'counter/coffee-mug-2', 2)]), 'pick-up:e_m');
+    assert.equal(to('pick up the coffee-mug', [source, item('e_m', 'far-counter/coffee-mug', 55)]), 'pick-up:e_m', 'a hyphenated name wherever it is');
+    assert.equal(to('pick up the coffee', [source, item('e_m', 'counter/coffee-mug', 2)]), 'pick-up:e_m', 'the prop is a cup of tea, not coffee');
+    assert.equal(to('pick up the mug 2', [source, item('e_1', 'counter/mug-1', 55)]), 'pick-up:cup', 'a number in the words names that copy, not another');
 });
