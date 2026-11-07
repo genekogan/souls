@@ -13,6 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync, rmSync } from 'node:fs';
 import { atomicWrite } from './state.mjs';
 
+import { godFile } from './seat.mjs';
 export const WIRE = '.eden-god.wire.json';
 const HOP = new Set(['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'proxy-connection', 'host', 'http2-settings', 'te']);
 const pidAlive = (pid) => { if (!Number.isSafeInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
@@ -21,7 +22,7 @@ const pidAlive = (pid) => { if (!Number.isSafeInteger(pid) || pid <= 0) return f
 
 /** Start the relay for `world` (the folder's world URL). Returns { port, close(), usedAt() }. Never throws for upstream trouble:
  *  a request that cannot reach the world answers 502 with `x-eden-god-wire-error: unsent|sent`. */
-export async function startWire(world, { file = WIRE } = {}) {
+export async function startWire(world, { file = godFile(WIRE) } = {}) {
   const origin = new URL(world).origin, secret = randomBytes(18).toString('base64url');
   let used = 0, closed = false, mode = origin.startsWith('https:') ? 'h2' : 'h1', session = null;
   const agent = new (origin.startsWith('https:') ? https : http).Agent({ keepAlive: true, maxSockets: 8, keepAliveMsecs: 30_000 });
@@ -98,7 +99,7 @@ function relayFor(url) {
   if (known === undefined) {
     known = null;
     if (!/^(0|off|false|no)$/i.test(process.env.EDEN_GOD_WIRE ?? '')) try {
-      const w = JSON.parse(readFileSync(WIRE, 'utf8'));
+      const w = JSON.parse(readFileSync(godFile(WIRE), 'utf8'));
       if (w?.port && w.secret && w.world && pidAlive(w.pid)) known = w;
     } catch { /* none */ }
   }

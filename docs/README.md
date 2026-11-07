@@ -23,12 +23,14 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 | diagnose experiences spanning an edge agent and world | [experience report design](design/experience-reports.md) |
 | work on god mode | [god mode](architecture/godmode.md), [safety](architecture/safety.md) |
 | know what Souls do by hand (lamps, doors, water, carrying, boards, music, play, tea) | [Soul Actions](architecture/soul-actions.md) |
+| add something a Soul can do | [adding a Soul action](architecture/adding-an-action.md) |
 | work on worlds or the launcher | [worlds](architecture/worlds.md), [data](architecture/data.md), [load](architecture/load.md), [split](architecture/split.md) |
 | touch an engine | [engine contract](architecture/engine-contract.md), the [Mars engine docs](mars/README.md) |
 | touch model calls or the budget | [brain](architecture/brain.md) |
 | know which tests to run | [testing](testing.md) |
 | run a playtest or direct a cast | [playtests](testing/playtests.md), [swarm director](testing/swarm-director.md) |
 | ship a release | [release](release.md) |
+| know how the version lines relate and what a release carries | [versioning](process/versioning.md) |
 | operate the production host | [operations](operations.md) |
 | take an issue to a merged PR as an agent | [agent lifecycle](process/agent-lifecycle.md), [agent workflow](process/agent-workflow.md) |
 | know what a Mars building or place is | [Mars campus](mars/campus.md) |
@@ -46,7 +48,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
   - [testing/](testing/): [e2e](testing/e2e.md), [remote gate](testing/remote-gate.md),
     [playtests](testing/playtests.md), [cloud playtests](testing/playtests-cloud.md),
     [swarm director](testing/swarm-director.md)
-- [release.md](release.md): the release workflow, `ship.sh`, rollback
+- [release.md](release.md): the release workflow, `ship.sh`, rollback; [versioning](process/versioning.md): the version lines
 - [operations.md](operations.md): services, health, backups
   - [operations/](operations/): [runbook](operations/runbook.md), [disaster recovery](operations/disaster-recovery.md),
     [CDN](operations/cdn.md), [auth](operations/auth.md), [analytics](operations/analytics.md)
