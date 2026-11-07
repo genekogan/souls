@@ -53,3 +53,23 @@ test('between: no enforcement periods is 0 throttling (known); no cpu.stat is un
   assert.equal(between(at(0, 0), at(0, 0), 10).throttledPeriodShare, 0);
   assert.equal(between({ ...at(0, 0), cpuStat: null }, { ...at(0, 0), cpuStat: null }, 10).throttledPeriodShare, null);
 });
+
+test('resourceSample (#955): a world\'s files, live.json and threads; unreadable is null, never 0', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs'), { tmpdir } = await import('node:os'), { join } = await import('node:path');
+  const { resourceSample, dirMb } = await import('./host.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'res-')), wd = join(root, 'launcher', 'worlds', 'w1'), proc = join(root, 'proc');
+  try {
+    mkdirSync(join(wd, 'takes'), { recursive: true }); mkdirSync(join(proc, '42', 'task', '1'), { recursive: true }); mkdirSync(join(proc, '42', 'task', '2'));
+    writeFileSync(join(wd, 'sim.db'), Buffer.alloc(2 * 2 ** 20)); writeFileSync(join(wd, 'sim.db-wal'), Buffer.alloc(2 ** 19)); writeFileSync(join(wd, 'takes', 't0'), Buffer.alloc(2 ** 19));
+    writeFileSync(join(wd, 'live.json'), JSON.stringify({ heap: { usedMb: 300, limitMb: 2048, gcPct10s: 1.5 }, queue: { depth: 2 } }));
+    const tdir = join(root, 'telemetry'); mkdirSync(tdir); writeFileSync(join(tdir, 'h.jsonl'), Buffer.alloc(2 ** 20));
+    const r = resourceSample({ ldata: join(root, 'launcher'), worlds: [{ slug: 'w1', pid: 42, rssMb: 812.4 }, { slug: 'w2', pid: null, rssMb: null }], telemetryDir: tdir, procRoot: proc });
+    const sz = 3 + JSON.stringify({ heap: { usedMb: 300, limitMb: 2048, gcPct10s: 1.5 }, queue: { depth: 2 } }).length / 2 ** 20;
+    assert.deepEqual({ ...r.worlds.w1, dataDirMb: undefined }, { rssMb: 812, heapUsedMb: 300, heapLimitMb: 2048, nonHeapMb: 512, gcPct: 1.5, queueDepth: 2, threads: 2, dbMb: 2, walMb: 0.5, shmMb: null, dataDirMb: undefined });
+    assert.ok(Math.abs(r.worlds.w1.dataDirMb - sz) < 0.001, 'the whole data directory, nested files included');
+    assert.deepEqual(r.worlds.w2, { rssMb: null, heapUsedMb: null, heapLimitMb: null, nonHeapMb: null, gcPct: null, queueDepth: null, threads: null, dbMb: null, walMb: null, shmMb: null, dataDirMb: null });
+    assert.equal(r.telemetryMb, 1); assert.ok(r.diskFreeMb > 0);
+    assert.equal(resourceSample({ ldata: join(root, 'launcher'), worlds: [] }).telemetryMb, null, 'telemetry off: unknown');
+    assert.equal(dirMb(join(root, 'nope')), null);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

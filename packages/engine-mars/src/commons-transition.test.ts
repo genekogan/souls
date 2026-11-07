@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { marsFactory,marsCommonsTransitionFactory,GREEN_FIELD_WORLD,EDEN_COMMONS_WORLD } from './engine.ts';
-import type { Engine } from '@sim/engine-contract';
+import type { Engine } from '@souls/engine-contract';
 import type { WorldState } from '../../../mars/viewer/engine/world/types.ts';
 import type { RuntimeSnapshot } from '../../../mars/viewer/engine/runtime/snapshot.ts';
 

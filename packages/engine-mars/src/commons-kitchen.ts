@@ -1,4 +1,4 @@
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {itemEntity,placeOnSlot,surfaceSlot} from '../../../mars/viewer/engine/items/model.ts';
 import type {Entity,WorldState} from '../../../mars/viewer/engine/world/types.ts';
 export const COMMONS_KITCHENS=Object.freeze(Array.from({length:4},(_,i)=>Object.freeze({

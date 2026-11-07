@@ -222,17 +222,17 @@ export async function runUiLifecycleProof({ root, withFixtureSession, report, sa
       const bodyBefore = remainder ? await physicalBody() : null;
       const worldBefore = await (await request('/v1/world', undefined, null)).json(), soulsBefore = worldBefore.souls;
       check(remainder ? 'populated fixture before selection' : 'fixture has no Souls before selection', Array.isArray(soulsBefore) && soulsBefore.length === (remainder ? 1 : 0) && (!remainder || !!bodyBefore));
-      const beforeCamera = await page.evaluate(() => globalThis.__simCamera ?? null);
+      const beforeCamera = await page.evaluate(() => globalThis.__soulsCamera ?? null);
       await roomButton.click();
       await dialog.waitFor({ state: 'hidden' });
       const expectedCamera = roomTarget.viewpoint ?? roomTarget.camera;
       assert.ok(expectedCamera, 'room publishes an inspection camera');
       await page.waitForFunction(expected => {
-        const actual = globalThis.__simCamera;
+        const actual = globalThis.__soulsCamera;
         const distance = (a, b) => a && b ? Math.hypot(...a.map((v, i) => v - b[i])) : Infinity;
         return distance(actual?.p, expected.eye) < .05 && distance(actual?.pivot, expected.at) < .05;
       }, expectedCamera);
-      const afterCamera = await page.evaluate(() => globalThis.__simCamera ?? null);
+      const afterCamera = await page.evaluate(() => globalThis.__soulsCamera ?? null);
       await snapshot('ui-room-selected');
       const distance = (a, b) => a && b ? Math.hypot(...a.map((v, i) => v - b[i])) : Infinity;
       check('room selection reaches published inspection eye and target', !!afterCamera && !!expectedCamera && distance(afterCamera.p, expectedCamera.eye) < .05 && distance(afterCamera.pivot, expectedCamera.at) < .05,

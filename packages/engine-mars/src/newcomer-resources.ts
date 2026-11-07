@@ -1,4 +1,4 @@
-import {hashOf,newcomerResourcePlacementV1Schema,type NewcomerResourcePlacementV1} from '@sim/engine-contract';
+import {hashOf,newcomerResourcePlacementV1Schema,type NewcomerResourcePlacementV1} from '@souls/engine-contract';
 import {itemEntity} from '../../../mars/viewer/engine/items/model.ts';
 import type {Entity,Region} from '../../../mars/viewer/engine/world/types.ts';
 /** Add only fresh finite stock and lifetime slots. Positions must pass native admission. */

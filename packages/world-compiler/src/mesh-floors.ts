@@ -2,7 +2,7 @@
 // inputs cover pinned live defs as well as freshly placed catalogue revisions.
 // Authored surfaces always win at their height; unsupported roofs/tables do not
 // become floors just because the mesh has upward-facing triangles.
-import type {Surface, Link} from '@sim/generators';
+import type {Surface, Link} from '@souls/generators';
 import packed from './mesh-floor-runtime.json' with {type: 'json'};
 type Entry = [number, number, number[], number[]];
 const records = packed.assets as unknown as {[hash: string]: Entry};

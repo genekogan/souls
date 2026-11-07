@@ -7,7 +7,7 @@
 // A vessel's own `fill` (a can left lying about) also draws from a source standing next to it, and refuses otherwise:
 // water never appears from nothing. A source refills only by a delivery: the world's creator sets its level (Godmode
 // `set`), or a def's own `fill` action where the god kept one. Refusals say what is missing in plain words.
-import type { StoredDef } from '@sim/world-compiler';
+import type { StoredDef } from '@souls/world-compiler';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

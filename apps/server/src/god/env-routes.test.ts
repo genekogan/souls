@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Hono, type Context } from 'hono';
-import { CREATION_LIMITS } from '@sim/generators';
+import { CREATION_LIMITS } from '@souls/generators';
 import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
 import { GodMode } from './god.ts';

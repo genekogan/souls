@@ -74,13 +74,13 @@ try {
         const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: dpr })).newPage();
         const errors = []; page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
         await page.goto(`${base}?dev=1`, { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => !!window.__simEntity?.layer?.model && !!window.__edenSound, null, { timeout: 180_000 });
+        await page.waitForFunction(() => !!window.__soulsEntity?.layer?.model && !!window.__edenSound, null, { timeout: 180_000 });
         await sleep(4000);
         const before = await page.evaluate(() => window.__edenSound.state().ctx);
         await step(`dpr ${dpr}: no audio before a gesture`, () => before, (s) => s === 'none');
         await page.mouse.click(720, 450); await page.keyboard.down('w'); await sleep(250); await page.keyboard.up('w');   // a gesture; takes the camera from Broadcast
-        const look = (eye, at) => page.evaluate(([e, a]) => { const s = window.__simEntity; s.controls.target.set(...a); s.camera.position.set(...e); s.controls.update?.(); return true; }, [eye, at]);
-        const ground = (x, z) => page.evaluate(([x, z]) => window.__simEntity.layer.groundAt?.(x, z) ?? 0, [x, z]);
+        const look = (eye, at) => page.evaluate(([e, a]) => { const s = window.__soulsEntity; s.controls.target.set(...a); s.camera.position.set(...e); s.controls.update?.(); return true; }, [eye, at]);
+        const ground = (x, z) => page.evaluate(([x, z]) => window.__soulsEntity.layer.groundAt?.(x, z) ?? 0, [x, z]);
         const where = async (name, x, z, toward, wait = 3500) => {
           const g = await ground(x, z); await look([x, g + 1.7, z], [toward[0], g + 1.4, toward[1]]); await sleep(wait);
           const s = await page.evaluate(() => ({ ...window.__edenSound.state(), level: window.__edenSound.level() }));
@@ -98,14 +98,14 @@ try {
           const street = await step('between the houses: sheltered', () => where('street', 43, 21, [60, 21]), (s) => s.ctx === 'running');
           await step('on the knoll: exposed — more wind, gusts, flags flapping', () => where('knoll', 1, -116, [0, -104]), (s) => s.world.exposure > (street?.world.exposure ?? 1) && s.voices.some((v) => v.id === 'amb:gusts') && kinds(s).has('flag'));
           // residents: wherever they stand together, chatter (fake minds may wander; recorded, not required)
-          report.places.residents = await page.evaluate(() => window.__simEntity.residents());
+          report.places.residents = await page.evaluate(() => window.__soulsEntity.residents());
           await page.screenshot({ path: resolve(out, `day-knoll-dpr${dpr}.png`) }); report.shots.push(`day-knoll-dpr${dpr}.png`);
           await step('a resident speaking: a murmur of her voice where she stands', async () => {
             const me = await (await fetch(base + '/v1/me', { headers: { authorization: 'Bearer dev:admin' } })).json();
             const ana = me.souls?.find((x) => x.name === 'Ana'); if (!ana) return { error: 'no Ana' };
             const pair = await (await fetch(base + `/v1/souls/${ana.id}/pair`, { method: 'POST', headers: { authorization: 'Bearer dev:admin', 'content-type': 'application/json' }, body: '{}' })).json();
             const cred = await (await fetch(base + '/v1/agent/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: pair.code, agent: 'r31v-sound' }) })).json();
-            const pos = (await page.evaluate(() => window.__simEntity.residents())).find((r) => r.id === ana.id)?.p ?? [0, 0, 0];
+            const pos = (await page.evaluate(() => window.__soulsEntity.residents())).find((r) => r.id === ana.id)?.p ?? [0, 0, 0];
             const g = await ground(pos[0] + 6, pos[2] + 6); await look([pos[0] + 6, g + 1.7, pos[2] + 6], [pos[0], g + 1.4, pos[2]]);
             let hit = null, said = 0;
             for (let t0 = Date.now(); Date.now() - t0 < 40000 && !hit;) {
@@ -142,7 +142,7 @@ try {
         const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
         const page = await ctx.newPage(); const errors = []; page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
         await page.goto(`${base}?dev=1`, { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => !!window.__simEntity?.layer?.model && !!window.__edenSound, null, { timeout: 180_000 }); await sleep(4000);
+        await page.waitForFunction(() => !!window.__soulsEntity?.layer?.model && !!window.__edenSound, null, { timeout: 180_000 }); await sleep(4000);
         const before = await page.evaluate(() => window.__edenSound.state().ctx);
         await page.touchscreen.tap(195, 600); await sleep(3000);
         const after = await page.evaluate(() => ({ ctx: window.__edenSound.state().ctx, level: window.__edenSound.level(), voices: window.__edenSound.state().voices.length }));

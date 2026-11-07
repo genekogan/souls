@@ -1,6 +1,6 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,type RefObject} from 'react';
 import {createPortal} from 'react-dom';
-import type {TalkLine} from '@sim/protocol';
+import type {TalkLine} from '@souls/protocol';
 import type {WorldViewerHandle,WorldViewerState} from './WorldViewer.ts';
 import {createDialogueStore,hearingLabel,ingestDialogue,joinNames,participants,threadSoulColours,type DialogueEdgeMessage,type DialogueLine,type DialogueStore,type DialogueThread} from './dialogue-threads.ts';
 import {dialogueRequests,speakingNow} from './dialogue-speaking.ts';

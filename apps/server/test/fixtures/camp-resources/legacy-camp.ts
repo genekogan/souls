@@ -1,7 +1,7 @@
 // Frozen original43899 camp-pack producer; onlyrelativeimport paths rebased for this test fixture.
 // The camp's activity examples become ordinary, logged cards. They describe available acts;
 // neither this pack nor its conditions assigns times or a sequence of daily activities.
-import { cardHash, type Card } from '@sim/kernel';
+import { cardHash, type Card } from '@souls/kernel';
 import { edenCampActivities, bindCampActivity } from '../../../../../mars/viewer/engine/scenarios/eden-camp.ts';
 import type { WorldHost, Mind } from '../../../src/world.ts';
 
