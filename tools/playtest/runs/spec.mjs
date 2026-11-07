@@ -18,7 +18,7 @@ import { SCORER } from './controllability.mjs';
 export const SPEC_VERSION = 1;
 const CAMERAS = ['wide', 'free'];
 const OBSERVER_MODES = ['off', 'passive', 'cameras'];
-const TOP = new Set(['soulRun', 'name', 'scenario', 'cast', 'world', 'durationSec', 'observer', 'limits', 'controllers', 'retention', 'setup', 'evaluation', 'diagnostics']);
+const TOP = new Set(['soulRun', 'name', 'arm', 'scenario', 'cast', 'world', 'durationSec', 'observer', 'limits', 'controllers', 'retention', 'setup', 'evaluation', 'diagnostics']);
 const CASTS = ['scenario', 'none'];
 // The scripted director delivers cards and chat; it has no pause or resume (end is the run's own cancellation).
 const DIRECTOR_COMMANDS = { scripted: [] };
@@ -34,8 +34,8 @@ export const DEFAULTS = Object.freeze({
 });
 
 /** An ad hoc spec from CLI flags, so a one-off run needs no file. */
-export function adHocSpec({ scenario, name, cast, port, durationSec }) {
-  return { soulRun: SPEC_VERSION, name: name ?? null, scenario, ...(cast ? { cast } : {}), ...(port ? { world: { port: Number(port) } } : {}), ...(durationSec ? { durationSec: Number(durationSec) } : {}) };
+export function adHocSpec({ scenario, name, arm, cast, port, durationSec }) {
+  return { soulRun: SPEC_VERSION, name: name ?? null, ...(arm ? { arm } : {}), scenario, ...(cast ? { cast } : {}), ...(port ? { world: { port: Number(port) } } : {}), ...(durationSec ? { durationSec: Number(durationSec) } : {}) };
 }
 
 export function readSpec(file) {
@@ -50,6 +50,8 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return { ok: false, errors: [{ code: 'spec.not-object', message: 'spec must be a JSON object' }] };
   if (spec.soulRun !== SPEC_VERSION) fail('spec.version', `soulRun must be ${SPEC_VERSION} (got ${JSON.stringify(spec.soulRun)})`);
   for (const k of Object.keys(spec)) if (!TOP.has(k)) fail('spec.unknown-field', `unknown field "${k}"`);
+  // An arm label (#839): a declared condition such as baseline or candidate; compare never pools different labels.
+  if (spec.arm != null && !(typeof spec.arm === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/.test(spec.arm))) fail('spec.arm', `arm must be a short label (letters, digits, . _ -; at most 40), got ${JSON.stringify(spec.arm)}`);
   // A directed cast (#783): cast {file} names a swarm cast file (tools/playtest/scenarios/casts/) instead of a scenario.
   if (spec.cast && typeof spec.cast === 'object' && !Array.isArray(spec.cast) && 'file' in spec.cast) return validateDirected(spec, { specPath, cwd, serverRoot, errors });
   if (typeof spec.scenario !== 'string') fail('scenario.missing', 'scenario: path to an existing scenario JSON is required');
@@ -158,7 +160,7 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (policy?.required?.length && controllers.allowLiveModels !== true) fail('controllers.live-model', `this run needs live model providers (${policy.required.join(', ')}) for ${[...controllerList.map((c) => `${c.id}:${c.adapter}`), ...(policy.claude && !controllerList.length ? ['director/reviewer'] : [])].join(', ')}; set controllers.allowLiveModels only with explicit authorization, or use cast "none" with a scripted director and deterministic review`);
   if (errors.length) return { ok: false, errors };
 
-  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, time: worldTime.time, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), scorer: { id: SCORER.id, version: SCORER.version, path: SCORER.path, sha256: sha256(readFileSync(new URL('./controllability.mjs', import.meta.url))) }, ...(diag.effective ? { diagnostics: diag.effective } : {}) };
+  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, arm: spec.arm ?? null, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, time: worldTime.time, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), scorer: { id: SCORER.id, version: SCORER.version, path: SCORER.path, sha256: sha256(readFileSync(new URL('./controllability.mjs', import.meta.url))) }, ...(diag.effective ? { diagnostics: diag.effective } : {}) };
   return { ok: true, errors: [], effective, scenario: effectiveScenario, controllers: controllerList, policy, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches } : null };
 }
 
@@ -234,7 +236,7 @@ function validateDirected(spec, { specPath, cwd, serverRoot, errors }) {
   if (controllerList.length > limits.maxControllers) fail('limits.maxControllers', `${controllerList.length} controllers exceed limits.maxControllers ${limits.maxControllers}`);
   if (policy?.live.length && controllers.allowLiveModels !== true) fail('controllers.live-model', `this cast needs live models for ${policy.live.join(', ')}; set controllers.allowLiveModels only with explicit authorization, or use scripted-owner seats and no planner`);
   if (errors.length) return { ok: false, errors };
-  const effective = { soulRun: SPEC_VERSION, kind: 'cast', name: spec.name ?? cast.name, cast: { path: castPath, sha256: sha256(castText), name: cast.name, seats: eff.seats.length, consoleScript: eff.console.script.length },
+  const effective = { soulRun: SPEC_VERSION, kind: 'cast', name: spec.name ?? cast.name, arm: spec.arm ?? null, cast: { path: castPath, sha256: sha256(castText), name: cast.name, seats: eff.seats.length, consoleScript: eff.console.script.length },
     world: { port: eff.world.port, slug: eff.world.slug ?? null, genesis: eff.world.genesis, snapshot: null, source: { kind: 'genesis', path: eff.world.genesis, sha256: sha256(readFileSync(sourcePath)) } },
     setup: null, durationSec: eff.durationSec, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}) };
   // scenario: the shape the playtest preflight reads, so it checks exactly the providers this cast needs.

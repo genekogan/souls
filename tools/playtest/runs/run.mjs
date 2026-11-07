@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Soul Runs entry point (#749). One owned lifecycle around an existing scenario; see README.md.
 //   node tools/playtest/runs/run.mjs validate <spec.json> | --scenario <file> [--cast none] [--port n]
-//   node tools/playtest/runs/run.mjs start    <spec.json> | --scenario <file> [--cast none] [--port n] [--duration s] [--name x] [--out dir] [--server-root dir] [--force-machine]
+//   node tools/playtest/runs/run.mjs start    <spec.json> | --scenario <file> [--cast none] [--port n] [--duration s] [--name x] [--arm label] [--out dir] [--server-root dir] [--force-machine]
 //   node tools/playtest/runs/run.mjs cleanup  <runDir> [--world-data] [--controller-state]
 //   node tools/playtest/runs/run.mjs evaluate <runDir>… [--question q.mjs]…            (offline; new versioned evaluations/)
-//   node tools/playtest/runs/run.mjs compare  <runDir|replay-set>… [--question q.mjs]… [--out dir] [--md]
+//   node tools/playtest/runs/run.mjs compare  <runDir|replay-set>… [--question q.mjs]… [--pool] [--out dir] [--md]
 //   node tools/playtest/runs/run.mjs correlate <runDir>                 (diagnostics: trace ↔ run records, offline)
 //   node tools/playtest/runs/run.mjs inspect   <runDir> --seat <id>     (diagnostics: the local inspector, read-only)
 //   node tools/playtest/runs/run.mjs preview   <runDir> --camera <c> --from <s> --to <s>   (offline: labelled excerpt, never full proof)
@@ -28,12 +28,12 @@ function load() {
   if (file) {
     // Flags given with a spec file override it and are recorded: the effective spec, not the file, is what ran.
     const r = readSpec(file);
-    const o = adHocSpec({ scenario: flag('scenario') ?? r.spec.scenario, name: flag('name'), cast: flag('cast'), port: flag('port'), durationSec: flag('duration') });
-    const overrides = Object.fromEntries(Object.entries({ name: o.name, cast: o.cast, durationSec: o.durationSec, scenario: flag('scenario') }).filter(([, v]) => v != null));
+    const o = adHocSpec({ scenario: flag('scenario') ?? r.spec.scenario, name: flag('name'), arm: flag('arm'), cast: flag('cast'), port: flag('port'), durationSec: flag('duration') });
+    const overrides = Object.fromEntries(Object.entries({ name: o.name, arm: o.arm, cast: o.cast, durationSec: o.durationSec, scenario: flag('scenario') }).filter(([, v]) => v != null));
     return { ...r, spec: { ...r.spec, ...overrides, ...(o.world ? { world: { ...(r.spec.world ?? {}), ...o.world } } : {}) }, overrides: Object.keys(overrides).concat(o.world ? ['world.port'] : []) };
   }
   if (!flag('scenario')) throw new Error('give a spec file or --scenario <file>');
-  return { spec: adHocSpec({ scenario: flag('scenario'), name: flag('name'), cast: flag('cast'), port: flag('port'), durationSec: flag('duration') }), specPath: null, specSha256: null };
+  return { spec: adHocSpec({ scenario: flag('scenario'), name: flag('name'), arm: flag('arm'), cast: flag('cast'), port: flag('port'), durationSec: flag('duration') }), specPath: null, specSha256: null };
 }
 
 async function main() {
@@ -71,10 +71,10 @@ async function main() {
     for (let i = 1; i < argv.length; i++) { if (argv[i] === '--question') questions.push(resolve(argv[++i])); else if (argv[i] === '--out') i++; else if (!argv[i].startsWith('--')) dirs.push(argv[i]); }
     if (!dirs.length) throw new Error(`${cmd} <runDir>${cmd === 'compare' ? ' <runDir>…' : ''} [--question file.mjs]…`);
     if (cmd === 'evaluate') {
-      for (const d of dirs) { const { evaluation: e, dir } = await evaluateRun(d, { questions }); print({ run: e.run.runId, status: e.run.status, arm: e.run.arm, evaluation: dir, measured: e.measures.filter((m) => m.status === 'measured').length, unavailable: e.measures.filter((m) => m.status === 'unavailable').map((m) => m.id), questions: [...e.acceptance.predeclared, ...e.questions].map((q) => `${q.id}:${q.basis}:${q.verdict}`), conflicts: e.conflicts.length, sourcesUnchanged: e.sources.unchanged }); }
+      for (const d of dirs) { const { evaluation: e, dir } = await evaluateRun(d, { questions }); print({ run: e.run.runId, status: e.run.status, arm: e.run.arm, label: e.run.label, evaluation: dir, measured: e.measures.filter((m) => m.status === 'measured').length, unavailable: e.measures.filter((m) => m.status === 'unavailable').map((m) => m.id), questions: [...e.acceptance.predeclared, ...e.questions].map((q) => `${q.id}:${q.basis}:${q.verdict}`), conflicts: e.conflicts.length, sourcesUnchanged: e.sources.unchanged }); }
       return 0;
     }
-    const ix = await compareRunSet(dirs, { questions });
+    const ix = await compareRunSet(dirs, { questions, pool: has('pool') });
     if (flag('out')) { const { writeFileSync, mkdirSync } = await import('node:fs'); const o = resolve(flag('out')); mkdirSync(o, { recursive: true }); writeFileSync(`${o}/run-index.json`, JSON.stringify(ix, null, 1) + '\n'); writeFileSync(`${o}/COMPARE.md`, renderIndex(ix)); print({ index: `${o}/run-index.json`, arms: ix.arms.length, attempts: ix.attempts.length }); }
     else process.stdout.write(has('md') ? renderIndex(ix) : JSON.stringify(ix, null, 1) + '\n');
     return 0;
@@ -119,7 +119,7 @@ async function main() {
     log(`inspector for ${rc.runId}/${flag('seat')}: ${h.url ?? h}`); log('Ctrl-C stops the inspector; the run and its trace are unaffected');
     await new Promise((r) => process.on('SIGINT', r)); await h.close?.(); return 0;
   }
-  console.error('usage: run.mjs validate|start <spec.json> | --scenario <file> [--cast none] [--port n] [--duration s] [--out dir] | cleanup <runDir> [--world-data] [--controller-state] | evaluate <runDir>… [--question q.mjs]… | compare <runDir|replay-set>… [--question q.mjs]… [--out dir] [--md] | correlate <runDir> | inspect <runDir> --seat <id> [--port n]');
+  console.error('usage: run.mjs validate|start <spec.json> | --scenario <file> [--cast none] [--port n] [--duration s] [--arm label] [--out dir] | cleanup <runDir> [--world-data] [--controller-state] | evaluate <runDir>… [--question q.mjs]… | compare <runDir|replay-set>… [--question q.mjs]… [--pool] [--out dir] [--md] | correlate <runDir> | inspect <runDir> --seat <id> [--port n]');
   return 2;
 }
 main().then((code) => process.exit(code), (e) => { log(e.stack ?? e.message); process.exit(1); });

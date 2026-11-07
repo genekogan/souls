@@ -15,9 +15,11 @@ import { computeMetrics, readLedger } from '../review/metrics.mjs';
 import { runOracles } from '../review/oracles.mjs';
 import { SCORER, scoreRun, scorecardMeasures, renderScorecard } from './controllability.mjs';
 
-export const EVALUATOR = Object.freeze({ name: 'soul-runs/evaluate', version: '2' }); // v2: the controllability scorecard (#1097)
+// v2: the controllability scorecard (#1097). v3 (#839): the arm also covers the condition identity (server root, tools
+// checkout, served CLI/skill) and the label.
+export const EVALUATOR = Object.freeze({ name: 'soul-runs/evaluate', version: '3' });
 export const SCHEMA = 'soul-run-evaluation/1';
-export const INDEX_SCHEMA = 'soul-run-index/1';
+export const INDEX_SCHEMA = 'soul-run-index/2';
 const VERDICTS = ['pass', 'fail', 'unknown'];
 // Never indexed: world data, the seat working folders (owner identity, controller credentials, the served CLI) and
 // earlier evaluations. Seat transcripts are indexed (hash only) because they are the controller's evidence.
@@ -329,8 +331,15 @@ export function runIdentity(sr) {
     machine: pre ? { load1: pre.laptopLoad?.[0] ?? null, freeGb: pre.freeGb ?? null, machineOk: pre.machineOk ?? null } : null,
     observer: sr.receipt?.observer ? { ok: sr.receipt.observer.ok, stage: sr.receipt.observer.stage ?? null } : null,
   };
-  return { arm: hashOf(components).slice(0, 12), components, seats, conditions };
+  // Condition identity (#839): what the run was served by. Runs that differ here are separate arms unless compare --pool.
+  // The tools checkout is recorded from #801 on; older receipts read null on both sides, which is not a difference.
+  const src = sr.receipt?.source ?? {};
+  const condition = { serverCommit: src.serverRoot?.commit ?? src.commit ?? null, serverDirtyTrackedFiles: src.serverRoot?.dirtyTrackedFiles ?? src.dirtyTrackedFiles ?? null,
+    toolsCommit: src.tools?.commit ?? null, toolsDirtyTrackedFiles: src.tools?.dirtyTrackedFiles ?? null, cli: ev.cli ?? null, skill: ev.skill ?? null };
+  const label = eff?.arm ?? null;
+  return { arm: hashOf({ components, label, condition }).slice(0, 12), pooledArm: hashOf({ components, label }).slice(0, 12), components, label, condition, seats, conditions };
 }
+export const CONDITION_FIELDS = Object.freeze(['serverCommit', 'serverDirtyTrackedFiles', 'toolsCommit', 'toolsDirtyTrackedFiles', 'cli', 'skill']);
 
 function evaluatorFiles() {
   const here = dirname(new URL(import.meta.url).pathname);
@@ -368,7 +377,7 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
   const evaluation = {
     schema: SCHEMA, evaluator: evaluatorFiles(), createdAt: now().toISOString(),
     offline: { worldStarted: false, controllersStarted: false, network: false, modelCalls: 0 },
-    run: { runId: sr.runId, kind: sr.kind, status: sr.status, stage: sr.receipt?.stage ?? null, reason: sr.receipt?.reason ?? null, receiptSha256: before['run-receipt.json']?.sha256 ?? null, specSha256: sr.receipt?.spec?.sha256 ?? null, arm: identity.arm, identity: identity.components, conditions: identity.conditions },
+    run: { runId: sr.runId, kind: sr.kind, status: sr.status, stage: sr.receipt?.stage ?? null, reason: sr.receipt?.reason ?? null, receiptSha256: before['run-receipt.json']?.sha256 ?? null, specSha256: sr.receipt?.spec?.sha256 ?? null, arm: identity.arm, pooledArm: identity.pooledArm, label: identity.label, identity: identity.components, condition: identity.condition, conditions: identity.conditions },
     coverage: {
       directorSeats: Object.keys(sr.director).length, seatTranscripts: Object.values(sr.steps).filter((s) => s.length).length, requests: requests.length,
       observerEvidencePacks: sr.run?.evidence?.length ?? 0, observer: sr.receipt?.observer ?? null,
@@ -407,7 +416,7 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
 
 const fmt = (v) => (v == null ? '—' : typeof v === 'number' ? String(v) : String(v));
 export function renderEvaluation(e) {
-  const L = [`# Evaluation of ${e.run.runId}`, '', `${e.run.kind}, status **${e.run.status}**, arm \`${e.run.arm}\`. Evaluator ${e.evaluator.name} v${e.evaluator.version} at ${e.evaluator.commit?.slice(0, 8) ?? '?'}, offline (no world, controller, network or model). Sources: ${e.sources.files} files, unchanged: ${e.sources.unchanged}.`, ''];
+  const L = [`# Evaluation of ${e.run.runId}`, '', `${e.run.kind}, status **${e.run.status}**, arm \`${e.run.arm}\`${e.run.label ? ` (${e.run.label})` : ''}. Evaluator ${e.evaluator.name} v${e.evaluator.version} at ${e.evaluator.commit?.slice(0, 8) ?? '?'}, offline (no world, controller, network or model). Sources: ${e.sources.files} files, unchanged: ${e.sources.unchanged}.`, ''];
   L.push(`Coverage: ${e.coverage.requests} requests from ${e.coverage.directorSeats} director seat(s), ${e.coverage.seatTranscripts} seat transcript(s), ${e.coverage.observerEvidencePacks} observer evidence pack(s).`, '');
   L.push('## Standard measures', '', '| family | measure | value | unit | n / of | status | basis |', '|---|---|---|---|---|---|---|');
   for (const m of e.measures) L.push(`| ${m.family}${m.heuristic ? ' (heuristic)' : ''} | ${m.id} | ${fmt(m.value)} | ${m.unit} | ${m.status === 'measured' ? `${fmt(m.n)} / ${fmt(m.denominator)}` : '—'} | ${m.status} | ${(m.reason ?? m.basis).replace(/\|/g, '/')} |`);
@@ -424,8 +433,10 @@ export function renderEvaluation(e) {
 }
 
 /** Compare attempts: group by exact identity into arms, keep every attempt, pool only completed repeats within an arm,
- *  and flag incompatible arms instead of averaging across them. Accepts run folders and replay-set manifests. */
-export async function compareRunSet(dirs, { questions = [], now = () => new Date() } = {}) {
+ *  and flag incompatible arms instead of averaging across them. Accepts run folders and replay-set manifests.
+ *  The identity is what ran, the arm label and the condition identity (#839). pool: true drops only the condition
+ *  identity, and each arm then names the condition fields it pooled across; what ran and the label always separate. */
+export async function compareRunSet(dirs, { questions = [], pool = false, now = () => new Date() } = {}) {
   const expanded = [];
   for (const d of dirs) {
     const m = readJson(join(resolve(d), 'replay-set.json'), null);
@@ -437,13 +448,13 @@ export async function compareRunSet(dirs, { questions = [], now = () => new Date
     if (!existsSync(x.dir)) { attempts.push({ runId: basename(x.dir), from: x.from, status: 'missing', arm: null, note: 'listed but not on disk' }); continue; }
     try {
       const { evaluation: e } = await evaluateRun(x.dir, { questions, write: false, now });
-      attempts.push({ runId: e.run.runId, from: x.from, kind: e.run.kind, status: e.run.status, arm: e.run.arm, identity: e.run.identity, conditions: e.run.conditions, measures: e.measures, questions: [...e.acceptance.predeclared, ...e.questions], conflicts: e.conflicts.length, coverage: { requests: e.coverage.requests, observerEvidencePacks: e.coverage.observerEvidencePacks } });
+      attempts.push({ runId: e.run.runId, from: x.from, kind: e.run.kind, status: e.run.status, arm: pool ? e.run.pooledArm : e.run.arm, label: e.run.label, identity: e.run.identity, condition: e.run.condition, conditions: e.run.conditions, measures: e.measures, questions: [...e.acceptance.predeclared, ...e.questions], conflicts: e.conflicts.length, coverage: { requests: e.coverage.requests, observerEvidencePacks: e.coverage.observerEvidencePacks } });
     } catch (err) { attempts.push({ runId: basename(x.dir), from: x.from, status: 'unreadable', arm: null, note: String(err.message).slice(0, 200) }); }
   }
   const arms = [];
   for (const a of attempts.filter((t) => t.arm)) {
     let arm = arms.find((x) => x.arm === a.arm);
-    if (!arm) arms.push((arm = { arm: a.arm, identity: a.identity, attempts: [], repeats: [] }));
+    if (!arm) arms.push((arm = { arm: a.arm, label: a.label, identity: a.identity, ...(pool ? {} : { condition: a.condition }), attempts: [], repeats: [] }));
     arm.attempts.push({ runId: a.runId, status: a.status, kind: a.kind, from: a.from });
     if (a.status === 'completed') arm.repeats.push(a.runId);
   }
@@ -469,20 +480,34 @@ export async function compareRunSet(dirs, { questions = [], now = () => new Date
     arm.conditionsDiffer = keys.filter((k) => new Set(all.map((t) => JSON.stringify(k === 'machine' ? { ok: t.conditions?.machine?.machineOk } : t.conditions?.[k]))).size > 1);
     const dirty = all.filter((t) => t.conditions?.dirtyTrackedFiles || t.conditions?.toolsDirtyTrackedFiles);
     if (dirty.length) arm.caveats = [`source not exactly identified for ${dirty.map((t) => `${t.runId}${t.conditions?.toolsDirtyTrackedFiles ? (t.conditions?.dirtyTrackedFiles ? ' (server root and tools)' : ' (tools)') : ''}`).join(', ')} (uncommitted tracked files)`];
+    if (pool) {
+      arm.pooledAcross = CONDITION_FIELDS.filter((k) => new Set(all.map((t) => JSON.stringify(t.condition?.[k] ?? null))).size > 1);
+      arm.conditionValues = Object.fromEntries(arm.pooledAcross.map((k) => [k, Object.fromEntries(all.map((t) => [t.runId, t.condition?.[k] ?? null]))]));
+      if (arm.pooledAcross.length) arm.caveats = [...(arm.caveats ?? []), `pooled with --pool across differing ${arm.pooledAcross.join(', ')}`];
+    }
     if (reps.length < 2) arm.caveats = [...(arm.caveats ?? []), `${reps.length} completed repeat(s): no spread can be read`];
   }
   const incompatible = [];
   for (let i = 0; i < arms.length; i++) for (let j = i + 1; j < arms.length; j++) {
-    const differ = Object.keys(arms[i].identity).filter((k) => JSON.stringify(arms[i].identity[k]) !== JSON.stringify(arms[j].identity[k]));
-    incompatible.push({ arms: [arms[i].arm, arms[j].arm], differ });
+    const x = arms[i], y = arms[j];
+    const differ = Object.keys(x.identity).filter((k) => JSON.stringify(x.identity[k]) !== JSON.stringify(y.identity[k]));
+    if (x.label !== y.label) differ.push('label');
+    const values = Object.fromEntries(differ.filter((k) => k === 'label').map((k) => [k, [x.label, y.label]]));
+    if (!pool) for (const k of CONDITION_FIELDS) if (JSON.stringify(x.condition?.[k] ?? null) !== JSON.stringify(y.condition?.[k] ?? null)) { differ.push(k); values[k] = [x.condition?.[k] ?? null, y.condition?.[k] ?? null]; }
+    incompatible.push({ arms: [x.arm, y.arm], differ, values });
   }
-  return { schema: INDEX_SCHEMA, createdAt: now().toISOString(), evaluator: { ...EVALUATOR }, pooled: 'within an arm only; arms are never averaged together', attempts: attempts.map(({ measures, questions: q, identity, ...rest }) => rest), arms, incompatible };
+  return { schema: INDEX_SCHEMA, createdAt: now().toISOString(), evaluator: { ...EVALUATOR },
+    pooled: pool ? 'within an arm only (--pool: across differing condition identity, named per arm); arms are never averaged together' : 'within an arm only; arms are never averaged together',
+    poolConditions: pool, attempts: attempts.map(({ measures, questions: q, identity, ...rest }) => rest), arms, incompatible };
 }
 
+const cv = (k, v) => (v == null ? (k === 'label' ? 'none' : 'unrecorded') : /Commit$/.test(k) ? String(v).slice(0, 8) : String(v));
 export function renderIndex(ix) {
   const L = [`# Run comparison`, '', `${ix.attempts.length} attempt(s), ${ix.arms.length} arm(s). ${ix.pooled}.`, ''];
   for (const a of ix.arms) {
-    L.push(`## Arm \`${a.arm}\``, '', `Attempts: ${a.attempts.map((t) => `${t.runId} (${t.status})`).join(', ')}. Completed repeats: ${a.repeats.length}.${a.conditionsDiffer.length ? ` Conditions differ: ${a.conditionsDiffer.join(', ')}.` : ''}${a.caveats ? ` Caveats: ${a.caveats.join('; ')}.` : ''}`, '');
+    L.push(`## Arm \`${a.arm}\`${a.label ? ` (${a.label})` : ''}`, '', `Attempts: ${a.attempts.map((t) => `${t.runId} (${t.status})`).join(', ')}. Completed repeats: ${a.repeats.length}.${a.conditionsDiffer.length ? ` Conditions differ: ${a.conditionsDiffer.join(', ')}.` : ''}${a.caveats ? ` Caveats: ${a.caveats.join('; ')}.` : ''}`, '');
+    if (a.condition) L.push(`Served by: ${CONDITION_FIELDS.map((k) => `${k} ${cv(k, a.condition[k])}`).join(', ')}.`, '');
+    for (const k of a.pooledAcross ?? []) L.push(`Pooled across ${k}: ${Object.entries(a.conditionValues[k]).map(([id, v]) => `${id} ${cv(k, v)}`).join(', ')}.`, '');
     const src = (c) => `server root ${c?.commit?.slice(0, 8) ?? '?'}${c?.dirtyTrackedFiles ? `+${c.dirtyTrackedFiles}` : ''}, tools ${c?.toolsCommit?.slice(0, 8) ?? 'unrecorded'}${c?.toolsDirtyTrackedFiles ? `+${c.toolsDirtyTrackedFiles}` : ''}`;
     L.push(`Source: ${Object.entries(a.conditions ?? {}).map(([id, c]) => `${id} (${src(c)})`).join('; ')}.`, '');
     if (a.repeats.length) {
@@ -492,7 +517,7 @@ export function renderIndex(ix) {
       L.push('');
     }
   }
-  if (ix.incompatible.length) { L.push('## Incompatible arms (not pooled)', ''); for (const x of ix.incompatible) L.push(`- \`${x.arms[0]}\` vs \`${x.arms[1]}\`: differ in ${x.differ.join(', ') || 'nothing listed (check conditions)'}`); }
+  if (ix.incompatible.length) { L.push('## Incompatible arms (not pooled)', ''); for (const x of ix.incompatible) L.push(`- \`${x.arms[0]}\` vs \`${x.arms[1]}\`: differ in ${x.differ.map((k) => (x.values?.[k] ? `${k} (${cv(k, x.values[k][0])} vs ${cv(k, x.values[k][1])})` : k)).join(', ') || 'nothing listed (check conditions)'}`); }
   const other = ix.attempts.filter((t) => !t.arm);
   if (other.length) L.push('', '## Attempts not in an arm', '', ...other.map((t) => `- ${t.runId}: ${t.status} (${t.note ?? ''})`));
   return L.join('\n') + '\n';

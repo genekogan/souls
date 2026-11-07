@@ -19,7 +19,7 @@ node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio-
 node tools/playtest/runs/run.mjs preview  .local/soul-runs/<run> --camera bo --from 10 --to 40   # a labelled excerpt, never full proof
 node tools/playtest/runs/run.mjs preview  .local/soul-runs/<run> --camera bo --auto              # the same, starting at the run's first act
 node tools/playtest/runs/run.mjs package  .local/soul-runs/<run> --select wide --select bo      # local index + selected projection
-node tools/playtest/runs/run.mjs compare  .local/soul-runs/<run-a> .local/soul-runs/<run-b> [--out dir] [--md]
+node tools/playtest/runs/run.mjs compare  .local/soul-runs/<run-a> .local/soul-runs/<run-b> [--pool] [--out dir] [--md]
 ```
 
 Exit codes: 0 completed (or valid), 1 failed, 2 refused, 124 stopped at `limits.maxWallSec`, 130 cancelled.
@@ -36,6 +36,7 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 | `soulRun` | required, `1` | Spec version. Anything else is refused. |
 | `scenario` | required | Path to an existing scenario JSON, relative to the spec file, the working directory or the repo. |
 | `name` | scenario name | Run name in the run directory. |
+| `arm` | none | Declared arm label (`baseline`, `candidate`; `--arm`). `compare` never pools different labels. |
 | `cast` | `scenario` | `scenario` runs its seats; `none` removes seats, god and their script events (world, director, observer and review only); an object `{seats, script}` replaces the scenario's seats and/or scripted direction, each in the scenario's own format (see Composed casts). |
 | `world.port`, `world.slug` | scenario's | Use a free port; a busy port is refused, never taken over. |
 | `world.timeOfDay`, `world.timeScale` | `12`, `0` | The world's time of day (hours 0-24, `"HH:MM"`, `"7pm"`) and clock speed (world hours per real hour; `0` pauses it), set through the god env route (`POST /v1/god/env` as the dev owner) right after provision, before any seat or camera, so every clip of the run is by day. `"keep"` leaves the world's own clock (06:00 at boot, one world day per real hour). The receipt's `worldTime` has what was asked and the clock the world reported; a clock that could not be set is recorded there and the run goes on. |
@@ -184,10 +185,21 @@ sha256, never copied; seat working folders (owner identity, credentials) and wor
 `run-index.json` and `COMPARE.md`). It accepts run folders and `replay-set.json` folders. Attempts are grouped into
 arms by exact identity: the scenario without its port and paths, the world source hash, setup batch hashes, the seats
 (adapter, model, effort, persona, script hash), the director script, seed and duration. Every attempt is listed,
-including cancelled, failed and missing ones; only completed attempts are repeats. Server root and tools commits,
-uncommitted tracked files in each, CLI/skill/Node versions, machine load and observer state are listed per attempt and flagged where they differ.
-Arms are never pooled together; each pair of arms lists the identity parts that differ. A plain playtest folder has no
-hashed world source, so it forms its own arm.
+including cancelled, failed and missing ones; only completed attempts are repeats. The arm also covers the run's
+label and its condition identity (#839): the server root's commit and uncommitted tracked file count, the tools
+checkout's commit and count (recorded from #801 on; unrecorded on older receipts, which is not a difference between
+two of them) and the served CLI and skill versions. So a baseline and a candidate on different servers or CLI versions
+are separate arms. Each arm lists the condition identity it was served by, and each pair of arms names every
+differing field with both values. Node version, build, machine load and observer state are listed per attempt and
+flagged where they differ; each arm's `Source:` line lists every attempt's server root and tools commit with its
+uncommitted tracked-file count. Arms are never pooled together. `--pool` is the explicit override: it pools attempts that
+differ only in condition identity, and each such arm names the fields it pooled across with every run's value; what
+ran and the label still separate arms. A plain playtest folder has no hashed world source and no receipt, so it forms
+its own arm.
+
+`start --arm <label>` (or the spec field `arm`, letters, digits, `.`, `_` and `-`, at most 40) records a declared arm
+label such as `baseline` or `candidate` in the receipt's effective spec; `compare` shows it, and different labels never
+share an arm.
 
 Answers are retrospective: they describe what the records show and do not establish motivation, causality or that a
 replay would repeat it.
