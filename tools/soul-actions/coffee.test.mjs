@@ -96,7 +96,7 @@ test('coffee: made on the tea faculty, served by hand, drunk to empty, rinsed cl
 
   // ---- offers say what each mug makes ----
   assert.match(label(ana, 'mug', 'brew'), /^Make a cup of coffee \(/); assert.match(label(ana, 'cup', 'brew'), /^Make a cup of tea \(/);
-  refused(ana, `object:${id('mug')}:drink`, 'tea.not-holding', /drink the coffee/);
+  refused(ana, `object:${id('mug')}:drink`, 'tea.cup-empty', /is empty/);
   refused(ana, `object:${id('mug')}:wash`, 'tea.cup-clean');
   report.checks.push('labels: coffee mug "Make a cup of coffee", tea mug "Make a cup of tea"');
 
