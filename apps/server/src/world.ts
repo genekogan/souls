@@ -316,7 +316,7 @@ export class WorldHost {
     if (this.snapshotAfterReplayTicks > 0 && replayTicks > this.snapshotAfterReplayTicks) this.snapshotSoon = `replayed ${replayTicks} ticks`;
     // The snapshot's own text is the baseline (decoded only if a fault needs it): no second decoded copy of the world is
     // held, and no copy is taken after restore and replay have run over the decoded body's shared parts.
-    if (snapRow && (lastRepair === null || !canCapture)) { const text = snapRow.text; if (!(snap?.body as SnapshotBody | undefined)?.faultedHeadV1) this.recoveryCapture = () => JSON.parse(text) as SnapshotBody; }   // #1150: a faulted head is no baseline
+    if (snapRow && (lastRepair === null || !canCapture)) { const text = snapRow.text; if ((snap?.body as SnapshotBody | undefined)?.faultedHeadV1) this.bootedFaulted = true; else this.recoveryCapture = () => JSON.parse(text) as SnapshotBody; }   // #1150: a faulted head is no baseline
     else if (canCapture) this.recoveryBaseline = this.captureBody();
     // Write this world's starting vocabulary into its log once, so its history never depends on what the code's set becomes.
     if (!this.db.hasVocabulary(this.worldId)) void this.enqueue('rules', 'system', { vocabulary: structuredClone(baseVocabulary(this.kernel)), why: 'the vocabulary this world began with' });
@@ -1522,7 +1522,10 @@ export class WorldHost {
     console.error(`[world] ${this.faultTicks.length} of the last ${STEP_FAILING_WINDOW_TICKS} ticks faulted; acts are refused until that falls away:`, this.stepFailing);
     this.recordGlitch('halt', error, {rule: 'engine.step-failing', tick: this.engine.world.tick, evidence: {ticks: this.faultTicks.length}});
   }
+  /** Booted from a marked snapshot, with no clean tick since. */
+  private bootedFaulted = false;
   private noteCleanTick() {
+    if (this.bootedFaulted) { this.bootedFaulted = false; this.snapshotSoon ??= 'first clean tick since a faulted head'; }
     if (!this.faultTicks.length) return;
     this.pruneFaultTicks();
     if (this.stepFailing && this.faultTicks.length < STEP_FAILING_FAULTS / 4) { this.stepFailing = null; this.snapshotSoon ??= 'steps are clean again'; }   // the first clean baseline since
@@ -1547,13 +1550,12 @@ export class WorldHost {
    *  broken head may not capture: that is no durability failure, so it waits until one is next due. Only a failed write halts.
    *  It isn't clean, so it serves a boot and never a rewind, here or after a restart. */
   private snapshotFaultedHead() {
-    const clean = this.recoveryBaseline; let head: ReturnType<WorldHost['captureHead']>;
+    let head: ReturnType<WorldHost['captureHead']>;
     const skip = () => { this.lastSnapshotTick = this.engine.world.tick; this.snapshotTaken(); };
     try { if (this.engine.canSnapshot && !this.engine.canSnapshot()) return skip(); head = this.captureHead(); }
     catch (failure) { console.warn('[world] a faulted head would not snapshot; trying again when one is due:', String(failure).slice(0, 200)); return skip(); }
-    head.body.faultedHeadV1 = true;
     if (this.durableClockV1) { try { this.persistClockFrontier(); } catch { return; } }   // already a named halt
-    try { this.commitHead(head, true); this.recoveryBaseline = clean; }
+    try { this.commitHead(head, true); }
     catch (failure) { this.failCheckpoint(failure, 'durability.repair'); }
   }
   private snapshotRepair(): boolean {
@@ -1945,7 +1947,9 @@ export class WorldHost {
   private commitHead({ t0, runtime, body, physicalHash }: ReturnType<WorldHost['captureHead']>, sync: boolean): { tick: number; stateHash: string } {
     // captureBody owns every field; persistence only reads it, and restoration/
     // recovery recipes clone before mutation. Keep one immutable captured body.
-    this.recoveryBaseline = body; this.recoveryCapture = null;
+    // #1150: a head from a failing stretch, however it's captured, is marked and serves a boot, never a rewind.
+    if (this.stepFailing || this.bootedFaulted) body.faultedHeadV1 = true; else this.recoveryBaseline = body;
+    this.recoveryCapture = null;
     const meta = { tick: runtime.tick, seq: this.seq, stateHash: runtime.stateHash, physicalHash, rulesVersion: this.engine.rulesVersion, body };
     this.snapshotMs.capture = performance.now() - t0;
     this.lastSnapshotTick = runtime.tick; this.snapshotTaken();

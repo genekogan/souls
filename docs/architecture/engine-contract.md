@@ -131,7 +131,7 @@ live tick survived: a step or event that threw is reported and passed.
 coming. Half the ticks of ten seconds of world time faulted is `engine.step-failing`: the clock runs, bodies can't get
 anywhere, so acts are refused with `world.step-failing`, nothing rewinds, the launcher alerts as for a halt, and a due
 snapshot is taken at once. That snapshot serves a boot, never a rewind, and one that won't capture waits until the next is
-due. It ends when faults fall below a quarter of that, and the next snapshot is the first clean baseline. A stop already
+due. It ends when faults fall below a quarter of that, and a clean snapshot follows at once. A stop already
 under way keeps its own reason and cleanup, so one that itself keeps failing holds this state until an operator acts.
 
 **What still halts:** durability only (`failCheckpoint`, a database that won't write, a clock frontier that can't be

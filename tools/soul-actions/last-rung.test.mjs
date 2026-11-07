@@ -353,14 +353,25 @@ test('L6 a programme that finishes on a tick that faults on a repeat still close
   assert.equal(arm, 0, 'the fault landed on the finishing tick'); assert.notEqual(read(w, Ada, walk).phase, 'started');
 });
 
-test('L3 after a restart a faulted head is still no baseline: the next fault stays on the head instead of rewinding to it', async (t) => {
+for (const graceful of [false, true]) test(`L3 after a ${graceful ? 'graceful' : 'crash'} restart a faulted head is still no baseline: the next fault stays on the head instead of rewinding to it`, async (t) => {
   quiet(t);
   const path = onDisk(t), w = await world(t, repair, path), host = w.f.host;
   w.control.midThrow = () => true; await w.tick(260); host.snapshotEvery = 50; await w.tick(60);
+  if (graceful) host.saveSnapshot(true);   // what an operator's restart does, and the alert is what sends them there
   const h2 = reboot(t, w, path), count = (who) => h2.db.db.prepare(`SELECT COUNT(*) n FROM events WHERE author='${who}'`).get().n, recipes = count('world:recovery'), stops = count('world:rewind');
   assert.equal(h2.recoveryBaseline, null); assert.equal(h2.recoveryCapture, null);
   h2.lastRewindTick = -Infinity; h2.inPlaceAt.clear(); h2.tickOnce();   // no cooldown to hide behind: only the missing baseline keeps it on the head
   assert.equal(count('world:recovery'), recipes); assert.equal(count('world:rewind'), stops + 1);
+});
+
+test('a live snapshot in a failing stretch leaves the baseline, and a boot from a marked head gets a clean one at its first clean tick', async (t) => {
+  quiet(t);
+  const path = onDisk(t), w = await world(t, repair, path), host = w.f.host;
+  w.control.midThrow = () => true; await w.tick(260); const clean = host.recoveryBaseline; host.saveSnapshot(true); assert.equal(host.recoveryBaseline, clean);
+  w.control.midThrow = null; const h2 = reboot(t, w, path); assert.equal(h2.bootedFaulted, true);
+  h2.saveSnapshot(true); assert.equal(h2.recoveryBaseline, null, 'still no clean tick');
+  h2.tickOnce(); assert.equal(h2.bootedFaulted, false); for (let i = 0; i < 20; i++) await setImmediate();
+  assert.ok(h2.recoveryBaseline || h2.recoveryCapture);
 });
 
 test('a head that will not capture is tried once per interval, not every tick', async (t) => {
