@@ -20,10 +20,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFile
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Context, Hono } from 'hono';
-import type { Baked, Vec2, Vec3 } from '@sim/generators';
-import type { AssetInfo, AssetLookup, StoredDef } from '@sim/world-compiler';
-import { nearHash, vocab } from '@sim/world-compiler';
-import { CREATION_LIMITS as L, assertFootprint, footprintToBaked, type LmFootprint } from '@sim/generators';
+import type { Baked, Vec2, Vec3 } from '@souls/generators';
+import type { AssetInfo, AssetLookup, StoredDef } from '@souls/world-compiler';
+import { nearHash, vocab } from '@souls/world-compiler';
+import { CREATION_LIMITS as L, assertFootprint, footprintToBaked, type LmFootprint } from '@souls/generators';
 import { assetBytesOf, mountCatalogRoutes } from './catalog.ts';
 import { WireCache, acceptsBrotli, readRenditions } from './asset-wire.ts';
 import type { Db } from '../db.ts';
@@ -243,7 +243,7 @@ export async function validateGlb(buf: Uint8Array, json?: GltfJson): Promise<str
 // ---------------------------------------------------------------- footprints
 
 // XP5: the pure converter is shared with kit/2; asset imports retain this public export.
-export { footprintToBaked } from '@sim/generators';
+export { footprintToBaked } from '@souls/generators';
 
 const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
 

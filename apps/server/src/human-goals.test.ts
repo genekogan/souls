@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {retainedCommonsShoreFactory} from '@sim/engine-mars';
-import {humanCompilerOutputV1Schema} from '@sim/engine-contract';
-import type {callTool} from '@sim/brain';
+import {retainedCommonsShoreFactory} from '@souls/engine-mars';
+import {humanCompilerOutputV1Schema} from '@souls/engine-contract';
+import type {callTool} from '@souls/brain';
 import {Brain} from './brain.ts';
 import {IntentControlV2} from './intent-control.ts';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
@@ -12,8 +12,8 @@ import {readHumanCapabilitiesV1,observeSeatedHumanGoalV1} from './human-capabili
 import {buildApp} from './http.ts';
 import type {Hub} from './hub.ts';
 import {WorldHost} from './world.ts';
-import {kernelHash} from '@sim/kernel';
-import {publicEvent} from '@sim/protocol';
+import {kernelHash} from '@souls/kernel';
+import {publicEvent} from '@souls/protocol';
 const factory=await retainedCommonsShoreFactory({foodDeliveryV1:true});
 test('explicit named targets bind their own ordered steps instead of every later goal',async t=>{
  let mode='valid';const socialFactory=await retainedCommonsShoreFactory({foodDeliveryV1:true,socialEdenV1:true});

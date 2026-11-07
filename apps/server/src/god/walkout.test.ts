@@ -3,9 +3,9 @@
 // resident with no walking route is relocated; edits that change nothing anyone stands in move nobody.
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyBatch, coreRef, type DefInput, type ResidentMove, type Result } from '@sim/world-compiler';
-import { meter } from '@sim/world-compiler/work-meter';
-import { mediumAt } from '@sim/ground';
+import { applyBatch, coreRef, type DefInput, type ResidentMove, type Result } from '@souls/world-compiler';
+import { meter } from '@souls/world-compiler/work-meter';
+import { mediumAt } from '@souls/ground';
 import { Db } from '../db.ts';
 import { GodMode } from './god.ts';
 import { planWalkouts, walkoutReason, stuckWarning, type WalkoutEngine } from './walkout.ts';
@@ -221,7 +221,7 @@ test('route checks share one budget per edit: residents past it are relocated, n
   if (process.env.GOD_WALKOUT_BENCH === '1') console.log(`walk-out plan: 24 residents, no routes: ${ms.toFixed(1)} ms`);
 });
 
-// Z3: work budgets, not milliseconds (see @sim/world-compiler/work-meter): the same answer on any CPU, so it runs in the gate.
+// Z3: work budgets, not milliseconds (see @souls/world-compiler/work-meter): the same answer on any CPU, so it runs in the gate.
 // Measured 2026-10-20, identical on every run: planning 40 residents among 1,501 entities 358,325 (routes open) and
 // 361,596 (closed, 64 route checks: the shared per-edit budget). The work budget is about 2x; routes keep the edit's 64.
 const WALKOUT_WORK = { plan: 720_000, routes: 64 };

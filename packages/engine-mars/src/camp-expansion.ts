@@ -1,6 +1,6 @@
 // Canonical additive ground infrastructure, not adoption of World render mats,
 // upper-floor support, replenishment, economy or a live/default scene switch.
-import {campExpansionV1Schema,hashOf,type CampExpansionV1,type RenderScene} from '@sim/engine-contract';
+import {campExpansionV1Schema,hashOf,type CampExpansionV1,type RenderScene} from '@souls/engine-contract';
 import {decodeSnapshot,type RuntimeSnapshot} from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import {encode} from '../../../mars/viewer/engine/runtime/codec.ts';
 import {itemEntity,placeOnSlot,surfaceSlot} from '../../../mars/viewer/engine/items/model.ts';

@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { Hono } from 'hono';
-import { coreLibrary, coreRef } from '@sim/world-compiler';
-import { meter, work } from '@sim/world-compiler/work-meter';
+import { coreLibrary, coreRef } from '@souls/world-compiler';
+import { meter, work } from '@souls/world-compiler/work-meter';
 import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
 import { GodMode, type GodOptions } from './god.ts';
@@ -312,7 +312,7 @@ test('a find miss is logged once at offset zero', async t => {
 
 // Measured 2026-10-20: onDone 70,049 (13 per node), origins overhead -0.06%. Budgets are about 2x.
 const ONDONE_WORK = 140_000, ORIGINS_TOTAL_PCT = 2;
-// Z3: work budgets, not milliseconds (see @sim/world-compiler/work-meter): the same answer on any CPU, so these run in the gate.
+// Z3: work budgets, not milliseconds (see @souls/world-compiler/work-meter): the same answer on any CPU, so these run in the gate.
 test('bench: onDone with 256 roots and 5000 entities stays below 20ms', t => {
   const f = fixture(t); accepted(f.act([define()])); const b = f.start();
   const roots: string[] = [];

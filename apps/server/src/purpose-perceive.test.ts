@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {privatePurposeContextV1Schema} from '@sim/protocol';
+import {privatePurposeContextV1Schema} from '@souls/protocol';
 import {purposePerceiveFixture} from '../test/purpose-perceive-fixture.ts';
 test('owner/agent perceive share actual built-in bounded private purpose projection, no-store and unchanged public surfaces',async t=>{
  const f=await purposePerceiveFixture(t),before=f.host.seq,ctx=f.brain.midContext(f.mind,'agent'),owner=await f.app.request('/v1/souls/s_A/perceive',{headers:{authorization:'Bearer dev:alice'}}),agent=await f.app.request('/v1/agent/perceive',{headers:{authorization:'Bearer '+f.credential}});assert.equal(owner.status,200);assert.equal(agent.status,200);assert.equal(owner.headers.get('cache-control'),'no-store');assert.equal(agent.headers.get('cache-control'),'no-store');const a=privatePurposeContextV1Schema.parse((await owner.json() as any).private_purpose_context),b=privatePurposeContextV1Schema.parse((await agent.json() as any).private_purpose_context);assert.deepEqual(a,b);assert.deepEqual(a.purposes,ctx.purposes);assert.deepEqual(a.recall,ctx.purposeRecall);assert.equal(a.worldId,f.host.worldId);assert.equal(a.soulId,'s_A');assert.equal(a.entityId,'h_A');assert.equal(a.recall.total,30);assert.equal(a.purposes.filter(p=>p.strict).length,2);assert.ok(a.purposes.length<=12);assert.equal(f.host.seq,before);

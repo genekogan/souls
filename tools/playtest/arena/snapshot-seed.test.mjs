@@ -10,7 +10,7 @@ import { physicalSnapshotSha256,compilerSnapshot,assertFrozenGenesis,physicalGen
 import { sha256 } from '../lib/hash.mjs';
 const model=()=>new WorldModel({constants:{ground:'land',extent:100},seed:'fixed'}).snapshot();
 test('seed persists only compiler state through normal store and refuses an existing DB',async t=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-seed-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const dir=mkdtempSync(join(tmpdir(),'souls-seed-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
  const s=model();s.entities=[{id:'e_chair',name:'chair',def:'chair@1',in:{parent:'world'},p:[1,.37,2],by:'god',born:0,v:1}];
  const file=join(dir,'snapshot.json');writeFileSync(file,JSON.stringify(s));
  const receipt=await seedSnapshot({snapshotPath:file,dataDir:dir,worldId:'seed-1'});assert.equal(receipt.entities,1);
@@ -27,7 +27,7 @@ test('snapshot hash permits only meaning/attribution changes and guards exact fr
  const s=model();s.entities=[{id:'e_a',def:'chair@1',in:{parent:'world'},p:[1,0,2]}];const enriched=structuredClone(s);enriched.entities[0].about={title:'Harbour Bench'};enriched.entities[0].v=2;
  const defs=[{ref:'chair@1',hash:'one'},{ref:'chair@1',hash:'two'}];assert.notEqual(physicalSnapshotSha256({...s,defs}),physicalSnapshotSha256({...s,defs,defRefs:{'chair@1':'one'}}));
  assert.equal(physicalSnapshotSha256(s),physicalSnapshotSha256(enriched));enriched.entities[0].p[1]=.1;assert.notEqual(physicalSnapshotSha256(s),physicalSnapshotSha256(enriched));
- const dir=mkdtempSync(join(tmpdir(),'sim-seed-hash-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));const genesis={batches:[]};writeFileSync(join(dir,'genesis.json'),JSON.stringify(genesis));const bytes=JSON.stringify(s);writeFileSync(join(dir,'snapshot.json'),bytes);
+ const dir=mkdtempSync(join(tmpdir(),'souls-seed-hash-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));const genesis={batches:[]};writeFileSync(join(dir,'genesis.json'),JSON.stringify(genesis));const bytes=JSON.stringify(s);writeFileSync(join(dir,'snapshot.json'),bytes);
  const scenario={world:{genesis:'genesis.json',snapshot:'snapshot.json'},freeze:{physicalSha256:physicalGenesisSha256(genesis),snapshotSha256:sha256(bytes),physicalSnapshotSha256:physicalSnapshotSha256(s)}};assertFrozenGenesis(scenario,dir);
  writeFileSync(join(dir,'snapshot.json'),JSON.stringify(enriched));assert.throws(()=>assertFrozenGenesis(scenario,dir),/snapshot fixture mismatch/);
 });

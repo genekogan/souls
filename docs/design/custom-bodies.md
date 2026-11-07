@@ -1,33 +1,33 @@
 # Reusable custom Soul bodies
 
-Future design for [#589](https://github.com/genekogan/souls/issues/589), beginning with qualification and contract
-work in [#591](https://github.com/genekogan/souls/issues/591). This is not a claim that arbitrary rigs, action clips
+Future design for [#589](https://github.com/soulsimulation/souls/issues/589), beginning with qualification and contract
+work in [#591](https://github.com/soulsimulation/souls/issues/591). This is not a claim that arbitrary rigs, action clips
 or body portability are implemented. Existing specialized behavior should become available to compatible worlds
 through explicit definitions, inert when unused, rather than disappear during repository cleanup.
 
 ## First implementation: agent-local authoring
 
-[#667](https://github.com/genekogan/souls/issues/667) implements a bounded first slice: the downloadable
+[#667](https://github.com/soulsimulation/souls/issues/667) implements a bounded first slice: the downloadable
 [authoring skill](../../tools/body-authoring/SKILL.md), the server's identical local validator, and `body-motion/1`
 declarations for rigid bodies. Required idle/move/rest adapters and optional solo dance contain bounded numeric
 motion data. Ground navigation, support, stopping and effects stay authoritative. This is a visual hover over the
 existing ground-navigation disc, not a new 3D physics model. The native dance reserves the actor, keeps its root
 fixed and records a finite timeline for deterministic playback and interruption. Rigid hand actions remain refused.
 
-[#719](https://github.com/genekogan/souls/issues/719) adds the local kit: `body kit <dir>` in the Soul CLI copies the
+[#719](https://github.com/soulsimulation/souls/issues/719) adds the local kit: `body kit <dir>` in the Soul CLI copies the
 world's served contract, skill and validator modules with one starter (generated sculpture, canonical CC0 humanoid
 or shared Pip), and `validate.mjs --report` / `--preview` give a body-report/1 summary and a visual-only local
 preview. The served file list, server routes and web client are unchanged; the definition reference stays the
 content address `body_<sha256>`.
 
-[#722](https://github.com/genekogan/souls/issues/722) adds two shared examples built exactly like Pip: Grumble the
+[#722](https://github.com/soulsimulation/souls/issues/722) adds two shared examples built exactly like Pip: Grumble the
 monster (`tools/body-authoring/monster/`, original geometry on the canonical rig with its core canonical clips: idle, walk, solo dance, seat, ground sit, lying and swimming; the
 plain humanoid profile) and Wisp the ghost (`tools/body-authoring/ghost/`, dependency-free rigid mesh with
 `body-motion/1` adapters). The server builds their bytes lazily from that source, through ordinary admission, and
 refuses drift from the pinned asset ids in `apps/server/src/edge/body/shared-bodies.ts`. They are appended to the
 presets, so existing preset ids and Pip's asset id are unchanged. The ghost's hover is appearance only.
 
-[#723](https://github.com/genekogan/souls/issues/723) adds Juniper, a compact centaur foal (`tools/body-authoring/centaur/`),
+[#723](https://github.com/soulsimulation/souls/issues/723) adds Juniper, a compact centaur foal (`tools/body-authoring/centaur/`),
 under a second declared action profile, `quadruped-torso/1`. The profile has the same disposition as `rolling-gripper/1`,
 in its own words:
 - supported ground travel (walk gait only);
@@ -74,7 +74,7 @@ Source inspected at `6134d3c8`:
 
 Reuse these paths. Audit their limits and consumers before extending them; do not build another upload system or
 replace all existing motion. The remaining world/name coupling belongs to
-[#579](https://github.com/genekogan/souls/issues/579).
+[#579](https://github.com/soulsimulation/souls/issues/579).
 
 ## Collections and public references (#717, body-library/1)
 

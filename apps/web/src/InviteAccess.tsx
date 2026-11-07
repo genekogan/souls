@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 
 export function InviteAccess({api,refresh,accountCheck}:{api:Api;refresh():void;accountCheck:object}){
  const [code,setCode]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { captureRenderScene,parseRenderSceneCapture,hashOf,nativeShoreSceneV1Schema,decodeShoreAppearanceSourceV1,
-  shoreContactV1Schema,boatStateV1Schema,boatPassengerV1Schema,SHORE_APPEARANCE_SOURCE_V1 } from '@sim/engine-contract';
+  shoreContactV1Schema,boatStateV1Schema,boatPassengerV1Schema,SHORE_APPEARANCE_SOURCE_V1 } from '@souls/engine-contract';
 import { decodeSceneCapturePublication,recordedTakeChunkSchema } from '../../protocol/src/index.ts';
 import { nativeShoreFixture } from './shore-runtime.ts';
 import { nativeBoatFixture } from './boat-runtime.ts';

@@ -53,7 +53,7 @@
    "why": "Soul Actions 1-44 (drawers, storage-inside revision): each drawer is its own shape so a hand opens it and items go inside; 628 tris over the furniture.storage budget 600 (cutover hold, 2026-11-01)"
   },
   "core-drum-kit@1": {
-   "why": "Soul Actions 1-44 (music): drums, cymbals and stands are separate shapes so strikes animate per piece; 872 tris over the furniture.music budget 600 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @2 within budget (#494). Soul Actions 1-44 (music): drums, cymbals and stands are separate shapes so strikes animate per piece; 872 tris over the furniture.music budget 600 (cutover hold, 2026-11-01)"
   },
   "core-duck@1": {
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
@@ -338,7 +338,7 @@
    "why": "lod1 18580 tris (cap 1200): smaller versions did not match at the switch distance (Z2, 2026-10-20)"
   },
   "core-mic-stand@1": {
-   "why": "Soul Actions 1-44 (music): base, boom, clip and microphone are separate shapes so singing at it animates; 668 tris over the furniture.music budget 600 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @2 within budget (#494). Soul Actions 1-44 (music): base, boom, clip and microphone are separate shapes so singing at it animates; 668 tris over the furniture.music budget 600 (cutover hold, 2026-11-01)"
   },
   "core-minaret-temple@1": {
    "why": "lod1 3102 tris (cap 400): smaller versions did not match at the switch distance (Z2, 2026-10-20)"

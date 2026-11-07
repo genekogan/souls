@@ -1,8 +1,9 @@
 // CW2 (#736) A1/A4: what the allocation actually is and how hard it is pressed, from the kernel's own files.
 // Linux cgroup v2, PSI and /proc only; anything this host does not expose is `null` (unknown), never 0. The parsers
 // are pure (host.test.mjs feeds them fixed text); `probe` and `threads` read the files.
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statfsSync, statSync } from 'node:fs';
 import { cpus } from 'node:os';
+import { join } from 'node:path';
 
 const read = (p) => { try { return readFileSync(p, 'utf8'); } catch { return null; } };
 const num = (v) => (v == null || v === '' || v === 'max' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
@@ -84,4 +85,31 @@ export function hotThreads(a, b, seconds, clkTck = 100) {
   const rates = b.threads.filter((x) => before.has(x.tid)).map((x) => ({ tid: x.tid, name: x.name, cores: (x.cpuTicks - before.get(x.tid)) / clkTck / seconds })).sort((x, y) => y.cores - x.cores);
   const main = a.main != null && b.main != null ? (b.main - a.main) / clkTck / seconds : null;
   return { mainCores: main == null ? null : +main.toFixed(3), hottest: rates[0] ? { name: rates[0].name, cores: +rates[0].cores.toFixed(3) } : null, threads: rates.length };
+}
+
+// CW8 A2 (#955): one resource sample, every 30 s (meetup.mjs). Per world: RSS (given), heap used/limit, GC % and queue
+// depth from its own live.json, threads from /proc/<pid>/task, sim.db / -wal / -shm and the whole data directory; the
+// telemetry store (when given) and free space on the data volume. MB throughout; anything unreadable is null, never 0.
+const MB = 2 ** 20;
+const fileMb = (p) => { try { return +(statSync(p).size / MB).toFixed(3); } catch { return null; } };
+export function dirMb(p) {
+  let n = 0, seen = false;
+  const walk = (d) => { let es; try { es = readdirSync(d, { withFileTypes: true }); } catch { return; } seen = true;
+    for (const e of es) { const q = join(d, e.name); if (e.isDirectory()) walk(q); else if (e.isFile()) try { n += statSync(q).size; } catch { /* gone */ } } };
+  walk(p); return seen ? +(n / MB).toFixed(3) : null;
+}
+/** {ldata, worlds: [{slug, pid, rssMb}], telemetryDir|null} → {worlds: {slug: {...}}, telemetryMb, diskFreeMb}. */
+export function resourceSample({ ldata, worlds, telemetryDir = null, procRoot = '/proc' }) {
+  const out = {};
+  for (const w of worlds) {
+    const wd = join(ldata, 'worlds', w.slug);
+    let live = null; try { live = JSON.parse(readFileSync(join(wd, 'live.json'), 'utf8')); } catch { /* not yet */ }
+    let threads = null; if (w.pid) try { threads = readdirSync(`${procRoot}/${w.pid}/task`).length; } catch { /* not Linux */ }
+    const rss = Number.isFinite(w.rssMb) ? Math.round(w.rssMb) : null, heap = Number.isFinite(live?.heap?.usedMb) ? live.heap.usedMb : null;
+    out[w.slug] = { rssMb: rss, heapUsedMb: heap, heapLimitMb: live?.heap?.limitMb ?? null, nonHeapMb: rss != null && heap != null ? rss - heap : null,
+      gcPct: live?.heap?.gcPct10s ?? null, queueDepth: live?.queue?.depth ?? null, threads,
+      dbMb: fileMb(join(wd, 'sim.db')), walMb: fileMb(join(wd, 'sim.db-wal')), shmMb: fileMb(join(wd, 'sim.db-shm')), dataDirMb: dirMb(wd) };
+  }
+  let diskFreeMb = null; try { const v = statfsSync(ldata); diskFreeMb = Math.round((v.bavail * v.bsize) / MB); } catch { /* unsupported */ }
+  return { worlds: out, telemetryMb: telemetryDir ? dirMb(telemetryDir) : null, diskFreeMb };
 }

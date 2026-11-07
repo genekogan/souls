@@ -17,6 +17,7 @@ create their own versioned tables (`*_v1`) with `CREATE TABLE IF NOT EXISTS` whe
 | `brain_calls`, `prompts`, `spend_hourly` | model call bodies; long prompts by hash; hourly spend totals | call bodies: 24 h and 6,000 rows; totals kept |
 | `talks`, `narratives` | rendered speech; narrator plans (central driver) | newest 20,000 talk lines |
 | `take_chunks`, `take_archives` | recorded pose chunks for the viewer; archive manifest | only with `TAKES_PERSIST=1` (off by default) |
+| `glitches_v1` | one row per recovery and per halt: rung, rule, bodies, tick, evidence (`glitch.ts`) | operations data; replay never reads it |
 | `render_scene_captures` | content-addressed public render scenes | canonical for the takes that cite them |
 | `intent_*`, `lifecycle_operations_v1`, `clock_frontiers_v1`, … | structured intent, Soul lifecycle and durable clock facts | canonical |
 

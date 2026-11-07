@@ -3,7 +3,7 @@
 // the body: walking to the wheel (with metres left), boarding, riding for the whole turn, then standing again. Also the
 // stale "Lie down" after a stand (071922/111032): a stopped program with nothing after it no longer names the old plan.
 import test from 'node:test';import assert from 'node:assert/strict';
-import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@souls/engine-mars';
 import {Hono} from 'hono';import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';import {hashToken} from './auth.ts';import {EdgeLedger} from './edge/ledger/ledger.ts';import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';
 import {attractionRoute} from './god/rides.ts';

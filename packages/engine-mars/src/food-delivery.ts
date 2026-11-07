@@ -1,4 +1,4 @@
-import {hashOf,type CommonsFoodDeliveryV1} from '@sim/engine-contract';
+import {hashOf,type CommonsFoodDeliveryV1} from '@souls/engine-contract';
 import {COMMONS_PERSONAL_RESOURCES} from './commons-provisions.ts';
 import {itemEntity} from '../../../mars/viewer/engine/items/model.ts';
 import type {Entity} from '../../../mars/viewer/engine/world/types.ts';

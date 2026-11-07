@@ -2,7 +2,7 @@
 // as boxes. The real builders live in roads / water / areas / ecology / boundaries .mesh.ts; this
 // file registers nothing (so registration order never matters) and exports the helpers.
 import * as THREE from 'three';
-import type { Surface } from '@sim/generators';
+import type { Surface } from '@souls/generators';
 import { registerMesh, type MeshCtx } from './registry.ts';
 
 const box = new THREE.BoxGeometry(1, 1, 1);

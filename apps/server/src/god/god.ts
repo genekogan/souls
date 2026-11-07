@@ -4,8 +4,8 @@
 // pattern Souls use, keeps undo/redo, routes prayers, and publishes diffs to
 // viewers (hub) and to gods (SSE).
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { TILE_M, tileOf } from '@sim/ground';
-import { WorldModel, correctKitDefines, type PlanOptions, creationInputFailure, definitionRefs, coreLibrary, libraryRef, applyBatch, padResettle, plan, batchSchema, hashOf, type Batch, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type UsesHook, type ResidentMove } from '@sim/world-compiler';
+import { TILE_M, tileOf } from '@souls/ground';
+import { WorldModel, correctKitDefines, type PlanOptions, creationInputFailure, definitionRefs, coreLibrary, libraryRef, applyBatch, padResettle, plan, batchSchema, hashOf, type Batch, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type UsesHook, type ResidentMove } from '@souls/world-compiler';
 import { hashToken } from '../auth.ts';
 import type { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
@@ -59,7 +59,7 @@ export type GodOptions = {
   /** Content-addressed asset files (default $ASSET_DIR or <DATA_DIR>/../assets), shared by every world on the box. */
   assetDir?: string;
   /** The shared def library (default: the process's core library; null = none, for tests of a bare world). */
-  library?: import('@sim/world-compiler').DefLibrary | null;
+  library?: import('@souls/world-compiler').DefLibrary | null;
   /** Y4b co-builder tokens (`cobuilder:<account>:…`). Gene 2026-10-16: one god per world; the code stays for later but is off
    *  unless the world runs with SIM_COBUILDERS=1. Off: such tokens (and their helpers) are not god tokens at all. */
   cobuilders?: boolean;

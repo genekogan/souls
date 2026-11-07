@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { Terrain, emptyGround } from '@sim/ground';
+import { Terrain, emptyGround } from '@souls/ground';
 import { planContextPhoto, chooseContextPhoto } from './context-photographer.ts';
 import { contextPhotoScene, contextPhotoGeometry, roomPlanes, type ContextMesh } from './context-photo-scene.ts';
 const box = (id: string, size: [number,number,number], at: [number,number,number], structure?: { classification: string; exteriorFacade?: boolean }): ContextMesh => {

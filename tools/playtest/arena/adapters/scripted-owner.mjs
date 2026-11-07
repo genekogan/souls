@@ -76,10 +76,17 @@ export function stepOutcome(r, { waited = false } = {}) {
   if (!ongoing) return { ok: false, why: `still ${phase ?? 'open'} after waiting` };
   return { ok: true, phase, ongoing: true };
 }
+/** How much of one CLI output a tool result keeps (#371): all of it up to this many characters. It was 4000, which cut
+ *  `around` (its route) and `map` (its flags) mid-JSON, so the scorer read output the Soul really got as a broken string. */
+export const OUTPUT_KEEP = 1024 * 1024;
+/** The tool-result content of one output: whole up to OUTPUT_KEEP; past it the head, an explicit marker line and
+ *  `truncated: true`, so a scorer tells a cut output from a short one. */
+export function keptOutput(s, keep = OUTPUT_KEEP) {
+  const t = String(s ?? '');
+  return t.length <= keep ? { content: t } : { content: `${t.slice(0, keep)}\n[scripted-owner: output truncated: ${keep} of ${t.length} characters kept]`, truncated: true };
+}
 const firstLine = (s) => String(s ?? '').split('\n').find((l) => l.trim())?.slice(0, 120) ?? '';
 const clip = (s) => String(s).slice(0, 140);
-/** Transcript display cut for one CLI output. */
-export const OUTPUT_CUT = 4000;
 
 /** turn({cwd, text, script, maxWallSec}) → the same record shape as the model adapters, with zero usage. */
 export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = null }) {
@@ -95,9 +102,7 @@ export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = 
     stream.push({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] }, _rx: Date.now() });
     const r = left > 0 ? await run('node', [...pre, 'eden.mjs', ...args], { cwd, env, maxWallMs: left }) : { code: null, stdout: '', stderr: 'turn wall reached' };
     if (r.timedOut || left <= 0) timedOut = true;
-    // `content` keeps the display cut; a longer output is kept whole in `fullContent` for scorers (#883).
-    const output = r.stdout || r.stderr || '';
-    stream.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: output.slice(0, OUTPUT_CUT), ...(output.length > OUTPUT_CUT ? { fullContent: output } : {}), is_error: r.code !== 0 }] }, _rx: Date.now() });
+    stream.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, ...keptOutput(r.stdout || r.stderr || ''), is_error: r.code !== 0 }] }, _rx: Date.now() });
     return r;
   };
   const errs = validateScript(script);

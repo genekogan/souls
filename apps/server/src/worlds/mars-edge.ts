@@ -1,7 +1,7 @@
 // Mars camp offers use the same native programs as CampCards. Availability is a
 // structural preview; crew, occupancy, routes and finite resources decide again
 // at admission. Nothing here assigns chores or changes Eden's capabilities.
-import type {Program} from '@sim/engine-contract';
+import type {Program} from '@souls/engine-contract';
 import type {EdgeCapability,EdgeSoul} from '../edge/contract.ts';
 import type {WorldHost} from '../world.ts';
 import type {Entity as NativeEntity} from '../../../../mars/viewer/engine/world/types.ts';

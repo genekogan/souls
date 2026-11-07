@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {WorldHost} from './world.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {HUMAN_PROFILE} from '../../../mars/viewer/engine/spatial/types.ts';
 import {HUMAN_RADIUS} from '../../../mars/viewer/engine/world/catalog.ts';
 import {edenNavWorld, inSolid} from '../test/eden-nav-fixture.ts';

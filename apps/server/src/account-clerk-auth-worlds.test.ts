@@ -14,7 +14,7 @@ import { fixture, accept } from '../test/native-owner-fixture.ts';
 import { ISSUER, ORIGIN, PUBLISHABLE_KEY, clerkKeys, clerkSettings, stubJwks } from '../test/clerk-fixture.ts';
 
 test('Clerk exact verified issuer and origin bind an opaque shared identity; a Clerk user makes a Soul', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-clerk-test-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-clerk-test-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const { jwk, sign } = await clerkKeys();
   let fetches = 0; const restore = stubJwks(jwk); const stubbed = globalThis.fetch;
   globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => { fetches++; return stubbed(input, init); }) as typeof fetch; t.after(restore);

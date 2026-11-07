@@ -1,6 +1,6 @@
 // core/humanoid@2 on its own (lane PERF2): the viewer's look module (apps/web/src/humanoid/look.ts) needs only this def,
 // and importing CORE_KIT for it put the whole core kit (~2 MB of defs) into the web bundle. core-kit.ts still lists it.
-// Subpath export: `@sim/world-compiler/humanoid2`.
+// Subpath export: `@souls/world-compiler/humanoid2`.
 import type { DefInput } from '../schemas.ts';
 
 export const HUMANOID2_DEF: DefInput = { schema: 'def/1', name: 'core-humanoid', version: 2, extends: 'core/humanoid@1', description: 'A human body on the humanoid rig whose look (frame, face, hair, clothes, hat, glasses, bag, facial hair, scarf, gloves, mask, jewellery, colours, head size, height, build, shoulders, chest, hips, weight, walking speed) is composed from the shared humanoid kit.', tags: ['body'], form: 'point', make: { kind: 'none' }, size: { box: [0.56, 1.8, 0.56] }, layer: 'solid', anchor: 'base',
