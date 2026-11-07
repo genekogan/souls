@@ -1,0 +1,20 @@
+{
+ "soulRun": 1,
+ "name": "s3-reasonable-actions",
+ "cast": {
+  "file": "../../../scenarios/casts/s3-reasonable-actions-scripted.json"
+ },
+ "observer": {
+  "check": false
+ },
+ "limits": {
+  "maxWallSec": 1000,
+  "maxControllers": 2
+ },
+ "evaluation": {
+  "questions": [
+   "../../questions/reasonable-carried-out.mjs",
+   "../../questions/refusal-helps.mjs"
+  ]
+ }
+}
