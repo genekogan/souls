@@ -38,11 +38,16 @@ export const JOBS = [
   { name: 'client-cli', kind: 'client-cli', assets: true, steps: ['V3-client-cli'] },
   { name: 'native', kind: 'native', assets: true, steps: ['V3-mars-engine'] },
   { name: 'latency', kind: 'latency', assets: false, steps: ['V5-server-full'] },
-  // the server inventory in SERVER_SHARDS duration-balanced shards (server-test-files.mjs)
-  ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, steps: ['V5-server-full', 'V6-'] })),
+  // the server inventory in SERVER_SHARDS duration-balanced shards (server-test-files.mjs). Shard 0 also runs every
+  // god-skill unit test (GOD_SKILL_TESTS, the replay corpus among them; none needs a browser or a live server): about
+  // 35 s, and some need the pulled media, so they ride on a leg that god paths already select (#918).
+  ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, ...(shard === 0 ? { godSkill: true } : {}), steps: ['V5-server-full', 'V6-'] })),
   // No gate step on purpose: picked by its own paths, so the gate's suite tree and cached baseline stay as they are (#1061).
   { name: 'soul-actions', kind: 'soul-actions', assets: false, steps: [], paths: /^(tools\/soul-actions|apps\/server|packages\/world-compiler|packages\/engine-[^/]+)\// },
 ];
+
+/** The god-skill unit tests (every *.test.mjs under tools/god-skill), run by the job with `godSkill` (ci.yml). */
+export const GOD_SKILL_TESTS = 'tools/god-skill/*.test.mjs tools/god-skill/lib/*.test.mjs tools/god-skill/scripts/*.test.mjs tools/god-skill/e2e/*.test.mjs';
 
 const relevant = (job, steps) => job.steps.some(s => steps.some(step => s.endsWith('-') ? step.startsWith(s) : step === s));
 

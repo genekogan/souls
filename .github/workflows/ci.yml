@@ -138,6 +138,7 @@ jobs:
         env:
           CHECK_KIND: ${{ matrix.kind }}
           SERVER_SHARD: ${{ matrix.shard }}
+          GOD_SKILL: ${{ matrix.godSkill || false }}
         shell: bash
         run: |
           case "$CHECK_KIND" in
@@ -175,7 +176,10 @@ jobs:
               node --test --test-concurrency=4 tools/soul-actions/*.test.mjs
               ;;
             server)
-              node --input-type=module <<'NODE'
+              # The server shard, then (on the shard with `godSkill`, ci-scope.mjs) the god-skill unit tests, replay
+              # corpus included; both always run, either failing fails the job.
+              server=0
+              node --input-type=module <<'NODE' || server=$?
           import { spawnSync } from 'node:child_process';
           import { serverTestFiles, serverShardPlan, SERVER_TEST_CONCURRENCY } from './.github/scripts/server-test-files.mjs';
           const all = serverTestFiles(), shard = Number(process.env.SERVER_SHARD);
@@ -186,6 +190,9 @@ jobs:
           const a = run(parallel, SERVER_TEST_CONCURRENCY), b = run(serial, 1);
           process.exit(a || b);
           NODE
+              god=0
+              if [ "$GOD_SKILL" = true ]; then node --test --test-concurrency=1 tools/god-skill/*.test.mjs tools/god-skill/lib/*.test.mjs tools/god-skill/scripts/*.test.mjs tools/god-skill/e2e/*.test.mjs || god=$?; fi
+              exit $(( server || god ))
               ;;
             *) echo "unknown check kind: $CHECK_KIND"; exit 1 ;;
           esac

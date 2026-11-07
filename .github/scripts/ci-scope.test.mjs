@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { FULL_EVENTS, JOBS, MERGE_FORWARD_COMMENT, MERGE_FORWARD_MARKER, WINDOW_LABELS, acceptsPrInput, changedFiles, greenAtHead, hasMergeForwardComment, jobsFor, smokeFor, windowFor, windowed } from './ci-scope.mjs';
+import { FULL_EVENTS, GOD_SKILL_TESTS, JOBS, MERGE_FORWARD_COMMENT, MERGE_FORWARD_MARKER, WINDOW_LABELS, acceptsPrInput, changedFiles, greenAtHead, hasMergeForwardComment, jobsFor, smokeFor, windowFor, windowed } from './ci-scope.mjs';
 import { SCOPE_RULES, scopeFor } from '../../tools/test-harness/release-gate.mjs';
 
 const names = files => jobsFor(files).include.map(j => j.name);
@@ -98,6 +98,25 @@ test('pushes to main and manual runs check everything; pull request runs stay sc
   const workflow = readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8');
   assert.match(workflow, /ci-scope\.mjs --base "\$BASE" --head "\$HEAD_SHA" --event "\$EVENT"/);
   assert.match(workflow, /push:\n\s+branches: \[main\]/);
+});
+
+// #918: the god-skill unit tests (replay corpus included) run on the one job carrying godSkill.
+test('god-skill unit tests: one job runs them, and god or god-skill changes select it', async () => {
+  assert.deepEqual(JOBS.filter(j => j.godSkill).map(j => j.name), ['server-0']);
+  assert.equal(JOBS.find(j => j.godSkill).assets, true, 'glb and upload tests read pulled media');
+  const god = files => jobsFor(files).include.filter(j => j.godSkill).map(j => j.name);
+  for (const f of ['tools/god-skill/lib/upload.mjs', 'tools/god-skill/replay-corpus.test.mjs', 'apps/server/src/god/buildsafe-rule.ts']) assert.deepEqual(god([f]), ['server-0'], f);
+  assert.deepEqual(god(['docs/testing.md']), []);
+  const workflow = readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8');
+  assert.match(workflow, /GOD_SKILL: \$\{\{ matrix\.godSkill \|\| false \}\}/);
+  assert.ok(workflow.includes(`if [ "$GOD_SKILL" = true ]; then node --test --test-concurrency=1 ${GOD_SKILL_TESTS} || god=$?; fi`));
+  assert.match(workflow, /exit \$\(\( server \|\| god \)\)/);
+  // every god-skill *.test.mjs is covered by the globs (the e2e/*.test.mjs are fixture unit tests: no browser)
+  const { readdirSync } = await import('node:fs');
+  const root = fileURLToPath(new URL('../../tools/god-skill/', import.meta.url));
+  const all = readdirSync(root, { recursive: true }).filter(f => /\.test\.mjs$/.test(f) && !f.includes('node_modules')).map(f => `tools/god-skill/${f}`);
+  const covered = f => GOD_SKILL_TESTS.split(' ').some(g => new RegExp(`^${g.replace(/\./g, '\\.').replace('*', '[^/]*')}$`).test(f));
+  assert.deepEqual(all.filter(f => !covered(f)), [], 'god-skill tests outside GOD_SKILL_TESTS');
 });
 
 // The CI window (#913, docs/testing.md#ci-window).
