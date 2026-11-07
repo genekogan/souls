@@ -143,8 +143,8 @@ test('#468: a companion who left and came back wakes the Soul inside the cooldow
  try{
   await flush();f.host.finish({...wait(),wakeAt:far});await flush();f.ingest(presence('a0','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,2);
   f.host.finish({...wait(),wakeAt:far});await flush();
-  await advance(10000);f.ingest(presence('l1','leave.here','s_peer'));await advance(10000);f.ingest(presence('a1','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);
-  assert.equal(f.host.calls.length,2,'gone for 10 s is a flap');
+  await advance(10000);f.ingest(presence('l1','leave.here','s_peer'));await advance(60000);f.ingest(presence('a1','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);
+  assert.equal(f.host.calls.length,2,'gone for 60 s is not yet a return');
   await advance(10000);f.ingest(presence('l2','leave.here','s_peer'));await advance(PRESENCE_RETURN_ABSENCE_MS+15000);f.ingest(presence('a2','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);
   assert.equal(f.host.calls.length,3,'one wake on the return');assert.ok(f.host.calls[2].pending.some(x=>x.event.id==='a2'));
   f.host.finish({...wait(),wakeAt:far});await flush();
@@ -158,7 +158,7 @@ test('#468: a departure that wakes the Soul itself still lets the return wake it
   f.host.finish({...wait(),wakeAt:far});await flush();
   await advance(PRESENCE_COOLDOWN_MS+1000);f.ingest(presence('l1','leave.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,3,'past the cooldown, the departure wakes');
   f.host.finish({...wait(),wakeAt:far});await flush();
-  await advance(60000);f.ingest(presence('a1','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,4,'and the return 60 s later wakes too');
+  await advance(PRESENCE_RETURN_ABSENCE_MS);f.ingest(presence('a1','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,4,'and the return wakes too');
   f.host.finish({...wait(),wakeAt:far});await flush();
   await advance(60000);f.ingest(presence('a2','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,4,'one departure pays for one return');
  }finally{await f.cleanup();}

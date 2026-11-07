@@ -62,8 +62,9 @@ const attends=(fact,listenTo)=>ambientMatches(fact,listenTo)||presenceMatches(fa
 // A return is new again (#468): a subject that left at least PRESENCE_RETURN_ABSENCE_MS
 // ago wakes on its arrival inside the cooldown, and that wake restarts the cooldown.
 // A shorter absence is a flap and stays quiet, so one subject wakes a Soul at most
-// once per absence of that length.
-export const PRESENCE_COOLDOWN_MS=300000,PRESENCE_COOLDOWN_SUBJECTS=128,PRESENCE_RETURN_ABSENCE_MS=45000;
+// once per absence of that length. Two minutes is a judgment call, not a measurement:
+// each wake spends the owner's model budget, and 45 s about doubled wakes in a busy room (#486).
+export const PRESENCE_COOLDOWN_MS=300000,PRESENCE_COOLDOWN_SUBJECTS=128,PRESENCE_RETURN_ABSENCE_MS=120000;
 export function presenceCooldown({ms=PRESENCE_COOLDOWN_MS,limit=PRESENCE_COOLDOWN_SUBJECTS,absenceMs=PRESENCE_RETURN_ABSENCE_MS}={}){
  const last=new Map(),left=new Map(),spent=new Map(),cooled=(fact,at)=>{const t=last.get(fact.event.about.soulId);return t!==undefined&&at-t<ms;};
  const bounded=(map,subject,at)=>{map.delete(subject);map.set(subject,at);if(map.size>limit)map.delete(map.keys().next().value);};
