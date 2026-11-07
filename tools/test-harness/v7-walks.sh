@@ -38,7 +38,7 @@ if [ -n "${SIM_PREBUILT_WEB_ROOT:-}" ]; then
       "${SIM_ARRIVAL_UI_ENABLED:-0}" "${SIM_GOATCOUNTER-simeden}" "${SIM_GOD_UPLOADS_CDN:-1}" > "$OUT/prebuilt$([ -n "$suffix" ] && echo -root || echo -worlds).log" 2>&1 || { echo prebuilt install failed; exit 1; }
   done
 else
-  heavy v7-build-root pnpm --filter @sim/web build > "$OUT/build-root.log" 2>&1 || { echo build-root failed; exit 1; }
+  heavy v7-build-root pnpm --filter @souls/web build > "$OUT/build-root.log" 2>&1 || { echo build-root failed; exit 1; }
   heavy v7-build-worlds bash -c "cd apps/web && npx vite build --base /worlds/ --outDir $OUT/web-worlds --emptyOutDir" > "$OUT/build-worlds.log" 2>&1 || { echo build-worlds failed; exit 1; }
 fi
 node tools/test-harness/old-worlds.mjs "$ROOT" 5870 head > "$OUT/servers-head.log" 2>&1 & PIDS+=($!)

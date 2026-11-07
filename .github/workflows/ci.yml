@@ -102,7 +102,8 @@ jobs:
     if: needs.scope.outputs.any == 'true'
     # The qualify jobs (no browser) run on the repository variable CI_HEAVY_RUNNER when it is set, else ubuntu-latest.
     # Its value is one runner label (`souls-ci`) or a JSON array of labels (`["self-hosted","souls-ci"]`).
-    runs-on: ${{ vars.CI_HEAVY_RUNNER && (startsWith(vars.CI_HEAVY_RUNNER, '[') && fromJSON(vars.CI_HEAVY_RUNNER) || vars.CI_HEAVY_RUNNER) || 'ubuntu-latest' }}
+    # `native` stays on ubuntu-latest: its camera perf budget is wall time, and a shared host under load misses it (#1162).
+    runs-on: ${{ matrix.kind != 'native' && vars.CI_HEAVY_RUNNER && (startsWith(vars.CI_HEAVY_RUNNER, '[') && fromJSON(vars.CI_HEAVY_RUNNER) || vars.CI_HEAVY_RUNNER) || 'ubuntu-latest' }}
     # The recursive server inventory (about an hour of tests in all) runs in duration-balanced shards of ~10 minutes each.
     timeout-minutes: ${{ matrix.kind == 'server' && 45 || 60 }}
     strategy:
@@ -113,6 +114,8 @@ jobs:
         with: { fetch-depth: 0 }
       # pnpm's version comes from package.json `packageManager` (pnpm@10.27.0).
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        # Instances on one host share a user and home, so the default dest would collide between concurrent jobs (#1162).
+        with: { dest: '${{ runner.temp }}/setup-pnpm' }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -141,14 +144,16 @@ jobs:
           case "$CHECK_KIND" in
             types-web)
               pnpm typecheck
-              pnpm --filter @sim/web build
+              pnpm --filter @souls/web build
+              # V3-bundle's comparison, on the build above, so growth is seen on the PR that causes it (#1117)
+              node tools/test-harness/bundle-budget/budget.mjs --check
               # The Mars viewer's static site holds the people's character set (/modular); without it no world
               # draws people (issue #395). Build it as the first run does, then fail if the set is missing.
               pnpm build:viewer
               node tools/assets/mars-web.mjs --check
               ;;
             packages)
-              pnpm -r --filter '!mars-campus-viewer' --filter '!@sim/server' test
+              pnpm -r --filter '!mars-campus-viewer' --filter '!@souls/server' test
               ;;
             native)
               pnpm test:mars
@@ -170,11 +175,15 @@ jobs:
               pnpm test:client
               ;;
             latency)
-              pnpm --filter @sim/server exec node --test --test-concurrency=1 src/owner-response-milestones.test.ts
+              pnpm --filter @souls/server exec node --test --test-concurrency=1 src/owner-response-milestones.test.ts
               ;;
             soul-actions)
               # #1061: not a gate step; picked by ci-scope.mjs from its own paths
               node --test --test-concurrency=4 tools/soul-actions/*.test.mjs
+              ;;
+            soul-tools)
+              # #1111: not a gate step; picked by ci-scope.mjs from its own paths
+              node --test --test-concurrency=4 tools/soul-runtime/*.test.mjs tools/soul-trace/*.test.mjs
               ;;
             server)
               node --input-type=module <<'NODE'
@@ -184,7 +193,7 @@ jobs:
           const { parallel, serial } = serverShardPlan(all, shard);
           console.log(JSON.stringify({ shard, totalServerFiles: all.length, files: [...parallel, ...serial], parallel: parallel.length, serial: serial.length, concurrency: SERVER_TEST_CONCURRENCY }));
           // ephemeral-port files in parallel, then the fixed-port files one at a time; both always run, either failing fails the job
-          const run = (files, n) => { if (!files.length) return 0; const r = spawnSync('pnpm', ['--filter', '@sim/server', 'exec', process.execPath, '--test', `--test-concurrency=${n}`, ...files], { stdio: 'inherit' }); if (r.error) throw r.error; return r.status ?? 1; };
+          const run = (files, n) => { if (!files.length) return 0; const r = spawnSync('pnpm', ['--filter', '@souls/server', 'exec', process.execPath, '--test', `--test-concurrency=${n}`, ...files], { stdio: 'inherit' }); if (r.error) throw r.error; return r.status ?? 1; };
           const a = run(parallel, SERVER_TEST_CONCURRENCY), b = run(serial, 1);
           process.exit(a || b);
           NODE

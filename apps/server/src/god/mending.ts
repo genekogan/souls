@@ -2,7 +2,7 @@
 // (`components.repairable`, state `broken`): no code here names a def. "repair <thing>" is an act of ordinary native steps,
 // a walk to a clear stand point and `repair_v1`. The action changes nothing itself: `broken` clears when the receipt
 // completes, so an interrupted repair leaves it broken. No tick work; the receipt is what's durable across a restart.
-import { opSchema, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { opSchema, type Op, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
 import type { EdgeReceipt } from '../edge/contract.ts';
 import { keptShut } from './actuators.ts';

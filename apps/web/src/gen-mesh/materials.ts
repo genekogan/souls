@@ -1,7 +1,7 @@
 // The shared material library: one cached material per (kind, colour, flags). Owner: L1; L4 may
 // add procedural textures (triplanar wood/stone/plaster) behind the same `get` signature.
 import * as THREE from 'three';
-import type { Material } from '@sim/generators';
+import type { Material } from '@souls/generators';
 import { KitSurfaceMaterial, type KitSurface } from './kit-surfaces.ts'; // Y1 / XP7 hook
 
 type Look = { color: string; roughness: number; metalness: number; transparent?: boolean; opacity?: number; emissive?: boolean };

@@ -1,7 +1,7 @@
 // Soul Actions entry 38: a poster wall and a wanted/offered board, the rest of packet 34. Both are "list" boards (entry 25's
 // frame): several Souls own parts of one board, the hand writes or places at the part it changes, and the board changes at the
 // depicted end of the stroke. State: `text` is what a reader reads, `textBy` the parts as a small JSON list.
-import { POSTERS_MAX, POSTERS_PER_SOUL, POSTER_TITLE_MAX, POSTER_DETAIL_MAX, POSTER_STALE_DAYS, posterList, WANTED_ROWS, WANTED_TEXT_MAX, WANTED_PER_SOUL, WANTED_REPLY_MAX, WANTED_REPLIES, wantedList, type PosterRec, type WantedRec, type StoredDef } from '@sim/world-compiler';
+import { POSTERS_MAX, POSTERS_PER_SOUL, POSTER_TITLE_MAX, POSTER_DETAIL_MAX, POSTER_STALE_DAYS, posterList, WANTED_ROWS, WANTED_TEXT_MAX, WANTED_PER_SOUL, WANTED_REPLY_MAX, WANTED_REPLIES, wantedList, type PosterRec, type WantedRec, type StoredDef } from '@souls/world-compiler';
 import type { EdgeSoul } from '../edge/contract.ts';
 
 type Refusal = { code: string; reason: string };

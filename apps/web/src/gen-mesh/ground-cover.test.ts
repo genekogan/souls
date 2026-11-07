@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { WebGLObjects } from 'three/src/renderers/webgl/WebGLObjects.js';
-import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@souls/world-compiler';
 import terrainKit from '../../../../packages/world-compiler/src/core-kit/terrain.json' with { type: 'json' };
 import { GroundCover } from './ground-cover.ts';
 import { BLOCK_CELL, blockCellsOf } from './ecology.mesh.ts';

@@ -25,7 +25,7 @@ interface Engine {
   runtime: RuntimeView; world: WorldState;
   describeVerbs(): VerbInfo[];                         // { verb, description, inputSchema, scope? }
   stateHash(): string; physicalHash(): string;
-  step(): { paths; changes; events; programs };        // what changed this tick, for broadcast and the host
+  step(): { paths; changes; events; programs; refusals? };  // what changed this tick, for broadcast and the host
   perform(program): { id; ok; diagnostic? };           // start a program, replacing what the actor was doing
   stop(programId, opts?): void;                        // request a stop; committed physical work may finish safely;
                                                        // {untilSafe} keeps the programme until its native cleanup lands,
@@ -83,12 +83,37 @@ and the hand works from where the body is. A stroke stays held for the rest of t
 out. Invariants run at the end of every tick, so a held step would have been a violation on that same tick (unless something
 later in that tick moved the obstacle), and every earlier step moves as it did. Other body steps owned by actions, such as a door handle's reach, do not go through it yet.
 
+## Refusal
+
+With the `souls-repair/1` rules (`soulsRepairV1`, off unless `SIM_SOULS_REPAIR=1`; new worlds only for now: a world whose history lacks it
+refuses to boot under the flag), a move that
+would break a rule is not applied ([#1150](https://github.com/soulsimulation/souls/issues/1150)).
+
+- `Engine.step` leaves no refusable violation standing. The bodies that moved go back to their pose before the tick, and
+  their programmes end `failed` with `world.refused:<rule>` and a plain reason, in that tick.
+- **Refusable:** `collision.human-static`, `collision.human-human`, `collision.human-load`, `motion.overspeed`,
+  `motion.teleport`, `carry.load-static`, `lift.hands-out-of-reach`. A body that holds a load refuses with its load and
+  everyone holding it. Cleanup is the action's own, and a stop never drops a load. An action that keeps its own position
+  rewinds it in its `refused` hook: a carry backs up to 1 m along the route it came by and sets down there, further back if
+  it can't lay the load there. A person or a solid behind it, or a refusal while backing, ends the backing where it stands.
+- **Not refusable, left in `violations` for the host's repair:** any other rule in the same tick (a tick is refused whole
+  or not at all), a violation naming only bodies that did not move, a build programme, a body ridden, carried, on a
+  structure or on a flight, an action with no programme whose cancel is refused, and a third refusal of one programme within 5 s.
+- Refusal is a function of world state and the rules version, never of input. A replay or restart recomputes it, so a
+  restored runtime remembers the poses it restored (`rememberPosesAfterRestore`): the step check keeps its previous poses
+  outside the snapshot, and would otherwise miss a jump on its first tick.
+- A body that only turned did not move. Observers run in the end-of-tick pass, before the undo, so a take can show the
+  refused pose for that one tick.
+- `step().refusals` reports each one. The host logs it as a `rules` event from `world:refusal`. Replay reads those only to
+  compare the count, and a difference is reported, not fatal.
+
 ## Conformance
 
-`@sim/engine-contract/conformance` exports `conformance(name, factory, drive)`: same seed and inputs give the same hash,
+`@souls/engine-contract/conformance` exports `conformance(name, factory, drive)`: same seed and inputs give the same hash,
 different seeds diverge, snapshot/restore mid-action continues identically, `physicalHash` ignores labels, verbs
 describe with JSON Schema, an unknown verb fails cleanly. Both engines run it (`packages/engine-mars/src/mars.test.ts`,
-`packages/engine-toy/src/toy.test.ts`). (`packages/conformance` is a different gate: every core-library object bakes,
+`packages/engine-toy/src/toy.test.ts`). An engine that declares rules also runs `refusalConformance(name, factory, force)`; the toy engine
+has none. (`packages/conformance` is a different gate: every core-library object bakes,
 places and furnishes within budget.)
 
 ## The Mars adapter (`packages/engine-mars`)

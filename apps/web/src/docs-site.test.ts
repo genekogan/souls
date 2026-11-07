@@ -51,7 +51,7 @@ test('llms.txt lists every published page once with its description; llms-full.t
   assert.ok(!/\bSim\b/.test(llms + full), 'one product name');
 });
 
-// A plain root build with the default origin (as `pnpm --filter @sim/web build` and the bundle gate make it) must hold exactly
+// A plain root build with the default origin (as `pnpm --filter @souls/web build` and the bundle gate make it) must hold exactly
 // these files. A based or differently-originated build is checked by the parity test above, not here.
 const DIST = join(ROOT, 'apps/web/dist'), rootBuild = existsSync(join(DIST, 'llms.txt')) && readFileSync(join(DIST, 'llms.txt'), 'utf8').includes('](https://soul.game/docs.md)');
 test('the served reference pages are the full ones: HTML, Markdown twin and llms-full.txt', () => {

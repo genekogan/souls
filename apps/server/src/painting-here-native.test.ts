@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setImmediate} from 'node:timers/promises';
 import {Hono} from 'hono';
-import {coreRef} from '@sim/world-compiler';
+import {coreRef} from '@souls/world-compiler';
 import {fixture, invite, accept, factory} from '../test/native-owner-fixture.ts';
 import type {EdgeSoul} from './edge/contract.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';

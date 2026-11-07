@@ -90,7 +90,7 @@ async function context(browser, sub, { viewport, dpr, mobile, colorScheme } = {}
   await ctx.route(/clerk\.example\.test/, (r) => r.abort());
   return ctx;
 }
-const loaded = () => window.__simEntity?.layer?.active === true && !document.querySelector('.viewer-arrival:not([data-done="true"])');
+const loaded = () => window.__soulsEntity?.layer?.active === true && !document.querySelector('.viewer-arrival:not([data-done="true"])');
 async function openWorld(ctx, base, errors) {
   const page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(String(e.message).slice(0, 200)));
   await page.goto(base + '/', { waitUntil: 'commit' });

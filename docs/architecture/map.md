@@ -9,7 +9,7 @@ This detailed source map was assembled before the public cutover. Line numbers, 
 and the comparisons with older docs below are historical leads, not current measurements or operational instructions.
 Verify the named source at the working commit. Use [operations](../operations.md) and [release](../release.md) for the
 current root-only topology, and [repository layout](../development/repository-layout.md) for extraction boundaries.
-The [starting-line audit #555](https://github.com/genekogan/souls/issues/555) tracks per-section revalidation; this
+The [starting-line audit #555](https://github.com/soulsimulation/souls/issues/555) tracks per-section revalidation; this
 notice does not claim the entire map has been reverified.
 
 ## 1. The component graph
@@ -205,7 +205,7 @@ revive-def, economy, mint, pay, relate; `schemas.ts:362`), of which clients may 
 content-hashed, stored under both `sha:<hash>` and ref (`model.ts:141`); redefining pushes a `restore-def` inverse.
 `coreLibrary()` is one frozen process-wide `DefLibrary` built from `CORE_KIT`; a world pins a def by hash on first use.
 Limits are in `packages/generators/src/creation-limits.ts` (`CREATION_LIMITS`: 20,000 entities, 10,000 defs, 50 M tris,
-1,024 solids per region, 256 ops per batch). `@sim/generators` (kit, buildings, roads, clearance) and `@sim/ground`
+1,024 solids per region, 256 ops per batch). `@souls/generators` (kit, buildings, roads, clearance) and `@souls/ground`
 (terrain tiles, `settle`) are used by the compiler, the server and the web app alike.
 
 ## 5. Minds
@@ -298,7 +298,7 @@ interprets it, `intent-v2` is logged, and `host.enqueueIntentDecision` writes a 
 forked Playwright Chromium renders the viewer with `?eyes=1` only when `EDGE_EYES` is set.
 
 **Continuity.** There is no server-side Soul memory runtime. The agent's own folder holds `memory/` (self, goals,
-places, knowledge, lessons, ledger, schedule) via `memory-folder.mjs`; the world keeps only `edge_place_knowledge_v1`,
+places, knowledge, lessons, ledger, schedule) via `memory-folder.mjs`, on the shipping line through `soul/memory.mjs`; the world keeps only `edge_place_knowledge_v1`,
 the ≤ 140-character `now` line (`soul_now_v1`, outside the log) and receipts. `purpose-recall.ts` / `purpose-episodes.ts`
 feed only the *central* `Brain`. A continuity runtime would plug in at the CLI (`client-memory.mjs`, `client-living.mjs`)
 and read `boot` + `here`, not into the world process.
@@ -306,7 +306,7 @@ and read `boot` + `here`, not into the world process.
 **CLI.** `eden-agent.mjs` (v1.9.19) maps about forty commands (now, look, listen, here, observe, capabilities, act,
 resolve, say, converse, object, wait, receipt, plan, events, view, travel, live, register, approval, pair-soul, …) onto
 the `EDGE` route table (`eden-agent.mjs:45`); `live` spawns the `claude` CLI (codex or ollama as alternatives). It is
-dependency-free and does not import `@sim/protocol`.
+dependency-free and does not import `@souls/protocol`.
 
 ## 7. Protocol
 
@@ -338,8 +338,8 @@ served `SKILL.md`/`SCHEMA.md`.
 every 10 ticks, `heartbeat` every 100, `takes` chunks every 20, `stats` every 2 s, `kernel` at most every 40 ticks when
 dirty or every 200 (`hub.ts:125-138`, `world.ts:1631`); limits `MAX_PER_IP = 30`, `MAX_CLIENTS = 2000`.
 
-`apps/web`: `main.tsx` → `page-route.ts` picks list or world; `useSim.ts` opens `new Connection(<worldPath>/ws)`
-(`useSim.ts:57`); `snapshot-prefetch.ts` fetches `/v1/world/snapshot?defs=ref&cols=1` from an inline head script;
+`apps/web`: `main.tsx` → `page-route.ts` picks list or world; `useSouls.ts` opens `new Connection(<worldPath>/ws)`
+(`useSouls.ts:57`); `snapshot-prefetch.ts` fetches `/v1/world/snapshot?defs=ref&cols=1` from an inline head script;
 `LiveWorld.tsx` owns the three.js renderer (`:275-323`) and plays bodies from the socket's `takes` stream, with history
 from `GET /v1/takes` (`WorldTakeTransport.ts`). God panel: `GodPanel.tsx` + `god-ui/`. Soul pages: `SoulHome.tsx`,
 `MySouls.tsx`, `SoulDay.tsx`, `PairApprove.tsx`. Clerk via `ClerkBridge.tsx` and `LauncherRoot.tsx`. Assets resolve

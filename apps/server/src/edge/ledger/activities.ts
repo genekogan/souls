@@ -1,7 +1,7 @@
 // activities/1 (team/CONTRACTS/proposals/ACTIVITIES-v1.md): generic, native body activities offered as capabilities.
 // sit:here, sit-ground:here, lie:here, nap:here, read:here, read:<place>, <activity>:<spot>. Each plan is ordinary
 // body steps (walk_to, sit, stand, mars:pose_v1) performed as one logged decision with a normal receipt. No model calls.
-import type {Program} from '@sim/engine-contract';
+import type {Program} from '@souls/engine-contract';
 import type {EdgeCapability} from '../contract.ts';
 import type {Interior, Platform, Ring, Solid} from './nav.ts';
 import {DANCE_CLEARANCE,POSE_INSTRUMENTS} from '../../../../../mars/viewer/engine/social/pose.ts';

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Engine } from '@sim/engine-contract';
-import { conformance } from '@sim/engine-contract/conformance';
+import type { Engine } from '@souls/engine-contract';
+import { conformance } from '@souls/engine-contract/conformance';
 import { toyFactory } from './index.ts';
 
 function drive(e: Engine, i: number) {

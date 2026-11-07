@@ -15,7 +15,7 @@ function dropAnswer(res, status = 200) {
   setTimeout(() => res.destroy(), 20);
 }
 async function fixture(t, respond) {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-listen-recovery-')), paths = [];
+  const dir = mkdtempSync(join(tmpdir(), 'souls-listen-recovery-')), paths = [];
   const server = createServer((req, res) => { paths.push([req.method, req.url]); respond(req, res, paths.length); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({ world: `http://127.0.0.1:${server.address().port}`, soul: 'synthetic', token: 'synthetic-recovery-token' }), { mode: 0o600 });

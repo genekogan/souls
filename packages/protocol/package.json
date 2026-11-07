@@ -1,5 +1,5 @@
 {
-  "name": "@sim/protocol",
+  "name": "@souls/protocol",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -9,9 +9,9 @@
     "./columns-v1": "./src/columns-v1.ts"
   },
   "dependencies": {
-    "@sim/engine-contract": "workspace:*",
+    "@souls/engine-contract": "workspace:*",
     "zod": "^4.6.7",
-    "@sim/kernel": "workspace:*"
+    "@souls/kernel": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.19.19"

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toyFactory } from '@sim/engine-toy';
-import { cardHash } from '@sim/kernel';
+import { toyFactory } from '@souls/engine-toy';
+import { cardHash } from '@souls/kernel';
 import { Db } from './db.ts';
 import { optionsFor } from './deck.ts';
 import { WorldHost } from './world.ts';

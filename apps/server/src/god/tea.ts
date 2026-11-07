@@ -8,7 +8,7 @@
 // tea in thirds while the stream runs, the kettle's level when the pour ends. The heat itself is never committed: it is
 // kettleHeat(state, tick), a pure function of world time.
 import { keptShut } from './actuators.ts';
-import { opSchema, cupSteam, kettleHeat, spoutRun, KETTLE_CLOCK, containerInside, containerOpen, isFoodDef, isKettleDef, isTeaCupDef, CUP_LITRES, CUP_RIM, KETTLE_GRIP, KETTLE_LITRES, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { opSchema, cupSteam, kettleHeat, spoutRun, KETTLE_CLOCK, containerInside, containerOpen, isFoodDef, isKettleDef, isTeaCupDef, CUP_LITRES, CUP_RIM, KETTLE_GRIP, KETTLE_LITRES, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, type Op, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { canPoint, wateringEvents, type WateringMotion } from '../../../../mars/viewer/engine/items/watering.ts';
 import { cupEvents, MUG, type CupMotion } from '../../../../mars/viewer/engine/items/cup.ts';
 import { surfaceSlotsOf } from '../../../../mars/viewer/engine/items/model.ts';

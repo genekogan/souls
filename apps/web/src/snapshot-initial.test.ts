@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { SnapshotDecoder, INITIAL_ENTITY_BATCH, INITIAL_WORKER_BYTES, type DecoderRequest, type DecoderReply, type PlainSnapshot } from './snapshot-delta.ts';
 import { SnapshotWorkerSession } from './snapshot-worker-session.ts';
 import { splitSnapshot } from '../../server/src/god/snapshot-wire.ts';
-import { packColumnsV1, worldEntityOrderV1 } from '@sim/protocol';
+import { packColumnsV1, worldEntityOrderV1 } from '@souls/protocol';
 import type { SnapshotPieces } from './snapshot-wire.ts';
 
 const bytes = (value: unknown, large = false) => [new TextEncoder().encode(JSON.stringify(value) + (large ? ' '.repeat(INITIAL_WORKER_BYTES) : ''))];

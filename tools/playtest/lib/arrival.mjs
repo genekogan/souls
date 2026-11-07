@@ -6,9 +6,9 @@
 export const RECORD_STARTS = ['arrival', 'load'];
 
 /** Runs inside the page (keep it self-contained): the world is drawn and no arrival or loading card is showing. The
- *  arrival card ("Arriving in <World>") fades for 0.25 s and is then removed, so its text going is the dismissal. */
+ *  arrival light dissolves for 2 s and is then removed, so its element going is the dismissal. */
 export function worldArrived() {
-  return !!document.body && !document.body.innerText.includes('Arriving in') && !!document.querySelector('.viewer-history[data-viewer-ready="true"]');
+  return !!document.body && !document.querySelector('.viewer-arrival') && !!document.querySelector('.viewer-history[data-viewer-ready="true"]');
 }
 
 /** True when this Playwright can start a page recording mid-page (page.screencast; older Playwright lacks it). */

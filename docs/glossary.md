@@ -28,7 +28,7 @@ Terms as used in this repository.
 | **God mode** | `/v1/god/*` plus the God panel: validated edit batches, undo/redo, weather, terrain, builds |
 | **Batch / op** | A god edit: a list of ops (`place`, `move`, `set`, `remove`, …) compiled to a commit or a refusal |
 | **Def** | A kind of object a god can place: from the core library or defined in the world |
-| **Core library** | The built-in object definitions in `@sim/world-compiler` (`CORE_KIT`) |
+| **Core library** | The built-in object definitions in `@souls/world-compiler` (`CORE_KIT`) |
 | **Build** | A multi-step god construction with checkpoints (`build start`, `check`, `continue`) |
 | **Prayer** | A Soul's message to the world's god (`/v1/god/pray`), answered by the god |
 | **Mars engine** | The deterministic activity engine hard-forked under `mars/`, run through `packages/engine-mars` |

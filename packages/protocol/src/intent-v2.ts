@@ -1,7 +1,7 @@
 // G-002 candidate. Named private log handlers support isolated backend producers;
 // no route/capability activation until the agreed behavioral checkpoint.
 import { z } from 'zod';
-import {humanSteeringOutcomeV1Schema} from '@sim/engine-contract';
+import {humanSteeringOutcomeV1Schema} from '@souls/engine-contract';
 import { mandateTriggerSchema } from './mandate.ts';
 
 export const INTENT_V2 = 'soul-intent/2' as const;

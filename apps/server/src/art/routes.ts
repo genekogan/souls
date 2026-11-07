@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { Op, WorldModel } from '@sim/world-compiler';
+import type { Op, WorldModel } from '@souls/world-compiler';
 import { ApiError } from '../souls.ts';
 import { listDisplays, planHang, type Caller } from './art.ts';
 import { ART_TYPES, ArtRejected, validateUpload, type ArtFormat } from './validate.ts';

@@ -2,13 +2,13 @@
 // committed change with its inverse (spec §5). Two phases: `plan` simulates on
 // a scratch copy and never touches the model; `commit` applies a plan. The god
 // skill runs `plan` locally (dry runs); the server runs both.
-import { footprintOf, padFor, pointInPoly, settle, waterLevelAt, SKIRT_MAX_M as SKIRT_MAX, type Landform, type PadDoor } from '@sim/ground';
-import { CREATION_LIMITS, GENERATORS, kitFootprintIssues, prepareFor, queryOf } from '@sim/generators';
+import { footprintOf, padFor, pointInPoly, settle, waterLevelAt, SKIRT_MAX_M as SKIRT_MAX, type Landform, type PadDoor } from '@souls/ground';
+import { CREATION_LIMITS, GENERATORS, kitFootprintIssues, prepareFor, queryOf } from '@souls/generators';
 import { z } from 'zod';
 import { hashOf } from './hash.ts';
 import { handlingProblem } from './handling.ts';
 import { connectorProblem, joinProblem, supportProblem, withHalf, withoutHalf } from './joints.ts';
-import { offsetPolyline, pointAlong } from '@sim/generators';
+import { offsetPolyline, pointAlong } from '@souls/generators';
 import { BakeError, WorldModel, definitionRefs, obbOverlap, type OBB } from './model.ts';
 import { batchSchema, trustedBatchSchema, jointId, type Batch, type Entity, type Failure, type Field, type Op, type Result, type StoredDef, type Value, worldStateSchema, SKY_PALETTES } from './schemas.ts';
 import { layersStateSchema, type LayersState, type Schedule } from './layers.ts';

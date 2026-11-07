@@ -1,4 +1,5 @@
 import {mountSoulRuntimePublication} from './soul-runtime-publication.ts';
+import {soulClientManifest} from './soul-client-manifest.ts';
 import {mountContextViews} from './god/context-views.ts';
 import {AutoPortraits} from './portrait/auto-portraits.ts';
 import {SoulProfiles} from './soul-profile.ts';
@@ -19,14 +20,14 @@ import { EDGE_ACT_VERBS } from './edge/events/schema.ts';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { decodeJwt } from 'jose';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { adminSchema, commandSchema, inviteSchema, ownerLifecycleCapabilitySchema, pairApproveSchema, pairExchangeSchema, pairPollSchema, pairStartSchema, publicEvent, setIntentSchema,TAKE_BOUNDARY_WIRE_V1,stringifyTakeBoundaryWireV1 } from '@sim/protocol';
+import { adminSchema, commandSchema, inviteSchema, ownerLifecycleCapabilitySchema, pairApproveSchema, pairExchangeSchema, pairPollSchema, pairStartSchema, publicEvent, setIntentSchema,TAKE_BOUNDARY_WIRE_V1,stringifyTakeBoundaryWireV1 } from '@souls/protocol';
 import { hashToken, newId, type Auth } from './auth.ts';
 import type { Brain } from './brain.ts';
 import { publicWorldBase, type Config } from './config.ts';
 import { requestWorldBase } from './world-base.ts';
 import type { Db, SoulRow, UserRow } from './db.ts';
 import { publicTakes, type Hub } from './hub.ts';
-import { cardGrammar } from '@sim/brain';
+import { cardGrammar } from '@souls/brain';
 import { skillMd } from './skill.ts';
 import { edgeSkillStub } from './edge/skill-stub.ts';
 import { agentReader, LEGACY_READER_KEYS, worldReader } from './agent-reader.ts';
@@ -34,7 +35,7 @@ import { ApiError, type Souls } from './souls.ts';
 import { mountMarsStatic } from './mars-static.ts';
 import type {TakeArchive} from './take-archive.ts';
 import { checkAcceptanceGuard,type AcceptanceGuard,type WorldHost } from './world.ts';
-import {captureRenderScene} from '@sim/engine-contract';
+import {captureRenderScene} from '@souls/engine-contract';
 import type {CandidateStationV1} from './station.ts';
 import type {CandidateStationV2} from './station-v2.ts';
 import {mountStationRoutesV2} from './station-routes-v2.ts';
@@ -185,7 +186,8 @@ export function buildApp(d: Deps) {
   // A halted durable clock cannot serve an unacknowledged body/head or accept
   // more control. Generic unavailable response carries no private row/error.
   app.use('*',async(c,next)=>{
-    if(!d.host.clockAvailable)return c.json({ok:false,code:'world-unavailable',message:'World temporarily unavailable.'},503,{'Cache-Control':'no-store'});
+    // /healthz also says why it is unavailable, as counts by rule and rung (#1150).
+    if(!d.host.clockAvailable)return c.json({ok:false,code:'world-unavailable',message:'World temporarily unavailable.',...(c.req.path.endsWith('/healthz')?{halted:true,glitches:d.host.glitches}:{})},503,{'Cache-Control':'no-store'});
     await next();
   });
   // Nothing a person or an agent sends is large: a command, an intent, a few cards.
@@ -212,10 +214,12 @@ export function buildApp(d: Deps) {
   app.get('/healthz', (c) => { const mon = d.load?.monitor; let tickMs: {avg: number; max: number; n: number};
     if (mon) { const t = mon.tickStats; tickMs = {avg: t.avg, max: t.max, n: t.n}; }
     else { const ms = d.host.tickMs, n = ms.length; let sum = 0, max = 0; for (const x of ms) { sum += x; if (x > max) max = x; } tickMs = { avg: n ? Math.round(10 * sum / n) / 10 : 0, max: Math.round(10 * max) / 10, n }; }
-    return c.json({ ok: true, tick: d.host.engine.world.tick, clients: d.hub.clients.size, paused: d.host.paused, build: d.cfg.build, worldId: d.host.worldId,
+    return c.json({ ok: true, tick: d.host.engine.world.tick, clients: d.hub.clients.size, paused: d.host.paused, halted: !d.host.clockAvailable, glitches: d.host.glitches, build: d.cfg.build, worldId: d.host.worldId,
       tickMs, clockRate: d.host.clockRate, ...(mon ? {load: mon.health()} : {}) }, 200, mon ? {'X-Sim-Load': mon.level} : undefined); });
   // lane W1: the same config goes into the world page's <head> (inline-config.ts)
-  const configOf = (c: Context) => ({ authProvider:d.cfg.authProvider, authenticationOrigin:d.cfg.authProvider==='clerk'&&d.auth.ready?new URL(d.cfg.publicUrl).origin:'', clerkPublishableKey:d.cfg.authProvider==='clerk'?d.cfg.clerkPublishableKey:'', clerkIssuer:d.cfg.authProvider==='clerk'?d.cfg.clerkIssuer:'', ...(d.cfg.authProvider==='clerk'&&d.cfg.clerkSatelliteDomain?{clerkSatellite:{domain:d.cfg.clerkSatelliteDomain,signInUrl:d.cfg.clerkSignInUrl}}:{}), privyAppId:d.cfg.authProvider==='privy'?d.cfg.privyAppId:'', publicUrl: baseOf(c), worldURL:baseOf(c), instructionsURL:baseOf(c)+'/instructions.md', accountAuthRequired:d.cfg.accountAuthRequired, accountApproval:d.souls.accounts?{contract:'account-soul-approval/1',start:'/v1/agent/approval/start',poll:'/v1/agent/approval/poll',cancel:'/v1/agent/approval/cancel'}:null, soulProfile:{contract:'soul-profile/1',auth:'owner',edit:'PATCH /v1/souls/:id/profile',photo:'POST /v1/souls/:id/photo',resetPhoto:'DELETE /v1/souls/:id/photo',autoPortrait:portraits.enabled,photoFormat:'PNG RGB/RGBA8',maxPhotoBytes:262144,maxPhotoDimension:512}, worldId: d.host.worldId, worldKey: d.cfg.worldSlug ?? d.cfg.worldKey, worldEngine: d.cfg.worldEngine, worldName: displayWorldName, worldPath: d.cfg.worldPath, authReady: d.auth.ready, devAuth: d.auth.devAuth, inviteRequired: d.cfg.inviteRequired, build: d.cfg.build });
+  // One object for the page and the route, so what a page's inline config says and /v1/config says can't drift apart.
+  const soulClientField = () => { const soulClient = soulClientManifest(d.cfg.controllerCliFile); return soulClient ? {soulClient} : {}; };
+  const configOf = (c: Context) => ({ ...soulClientField(), authProvider:d.cfg.authProvider, authenticationOrigin:d.cfg.authProvider==='clerk'&&d.auth.ready?new URL(d.cfg.publicUrl).origin:'', clerkPublishableKey:d.cfg.authProvider==='clerk'?d.cfg.clerkPublishableKey:'', clerkIssuer:d.cfg.authProvider==='clerk'?d.cfg.clerkIssuer:'', ...(d.cfg.authProvider==='clerk'&&d.cfg.clerkSatelliteDomain?{clerkSatellite:{domain:d.cfg.clerkSatelliteDomain,signInUrl:d.cfg.clerkSignInUrl}}:{}), privyAppId:d.cfg.authProvider==='privy'?d.cfg.privyAppId:'', publicUrl: baseOf(c), worldURL:baseOf(c), instructionsURL:baseOf(c)+'/instructions.md', accountAuthRequired:d.cfg.accountAuthRequired, accountApproval:d.souls.accounts?{contract:'account-soul-approval/1',start:'/v1/agent/approval/start',poll:'/v1/agent/approval/poll',cancel:'/v1/agent/approval/cancel'}:null, soulProfile:{contract:'soul-profile/1',auth:'owner',edit:'PATCH /v1/souls/:id/profile',photo:'POST /v1/souls/:id/photo',resetPhoto:'DELETE /v1/souls/:id/photo',autoPortrait:portraits.enabled,photoFormat:'PNG RGB/RGBA8',maxPhotoBytes:262144,maxPhotoDimension:512}, worldId: d.host.worldId, worldKey: d.cfg.worldSlug ?? d.cfg.worldKey, worldEngine: d.cfg.worldEngine, worldName: displayWorldName, worldPath: d.cfg.worldPath, authReady: d.auth.ready, devAuth: d.auth.devAuth, inviteRequired: d.cfg.inviteRequired, build: d.cfg.build });
   app.get('/v1/config', (c) => c.json(configOf(c)));
   const safeConfig = (c: Context) => { try { return configOf(c); } catch { return null; } };  // the page never fails because of it
   app.get('/v1/world', (c) => c.json(d.souls.worldSummary()));

@@ -31,7 +31,8 @@ import { SERVER_SHARDS } from './server-test-files.mjs';
 // `assets` says whether the job pulls media first. Keep this list and the case block in ci.yml in step;
 // ci-scope.test.mjs checks that every step the scope map can select has a job.
 export const JOBS = [
-  { name: 'types-web', kind: 'types-web', assets: true, steps: ['V1-types', 'V2-build-root', 'V2-build-worlds', 'V3-bundle'] },
+  // paths: a baseline or budget change is tools-only, so no step selects it, and this job is what compares it (#1117).
+  { name: 'types-web', kind: 'types-web', assets: true, steps: ['V1-types', 'V2-build-root', 'V2-build-worlds', 'V3-bundle'], paths: /^tools\/test-harness\/bundle-budget\// },
   { name: 'packages', kind: 'packages', assets: true, steps: ['V3-packages', 'V3-walk'] },
   { name: 'web', kind: 'web', assets: true, steps: ['V4-web'] },
   { name: 'launcher', kind: 'launcher', assets: true, steps: ['V3-launcher-unit'] },
@@ -46,6 +47,8 @@ export const JOBS = [
   ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, steps: ['V5-server-full', 'V6-'] })),
   // No gate step on purpose: picked by its own paths, so the gate's suite tree and cached baseline stay as they are (#1061).
   { name: 'soul-actions', kind: 'soul-actions', assets: false, steps: [], paths: /^(tools\/soul-actions|apps\/server|packages\/world-compiler|packages\/engine-[^/]+)\// },
+  // Also no gate step (#1111). soul-trace drives the thin CLI in tools/world-launcher/soul; soul-runtime's native client test uses the server's comms fixture.
+  { name: 'soul-tools', kind: 'soul-tools', assets: false, steps: [], paths: /^(tools\/soul-runtime|tools\/soul-trace|tools\/world-launcher\/soul|apps\/server)\// },
 ];
 
 const relevant = (job, steps) => job.steps.some(s => steps.some(step => s.endsWith('-') ? step.startsWith(s) : step === s));

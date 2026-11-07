@@ -17,7 +17,7 @@ All of them use fake minds and isolated data directories. None touches productio
 
 ```sh
 pnpm typecheck                               # every package (tsc --noEmit)
-pnpm --filter @sim/server test               # one package
+pnpm --filter @souls/server test               # one package
 node --test apps/server/src/god/buildsafe.test.ts   # one file
 pnpm test:mars                               # the vendored engine's deterministic suite
 pnpm test:client                             # Soul client and client-eval suites
@@ -62,6 +62,10 @@ node tools/test-harness/bundle-budget/budget.mjs --build --write     # accept a 
 
 The gate never writes the baseline; only a reviewed commit does.
 
+The comparison runs in two places: the CI job `types-web`, on the build it already makes, so growth fails `ci-ok` on the
+PR that causes it; and V3-bundle in the release gate. A PR that changes only the baseline or the budget tool also selects
+`types-web`.
+
 ## Conformance
 
 `packages/conformance` bakes, places and furnishes every core library def revision at its parameter endpoints and
@@ -70,7 +74,7 @@ A change that alters a def revision fails until a new supplement in that folder 
 same change, with the reason in its note and in the folder's README. Never edit an older supplement.
 
 ```sh
-pnpm --filter @sim/conformance test
+pnpm --filter @souls/conformance test
 node packages/conformance/bin/conformance.mjs --shard 1/4 --out .local/conformance-1.json   # bounded sweep
 ```
 
@@ -116,7 +120,8 @@ therefore **windowed**:
   `merge:ready` PR. Dispatching main's `ci.yml` instead would not help: its checks would attach to main's commit, not
   the PR head.
 - Pushes to main, manual runs without `pr`, and merge-group runs are never windowed. Main keeps its full-scope runs,
-  which the merge train reads.
+  which the merge train reads. A merge-group run is path-scoped over everything in the group since `main`, and
+  `proof-ok` reports there without checking anything, because a PR passes it at its head to enter the queue.
 
 Steward procedure: give `ci:run` to the PRs entering the window, normally the next two in merge order. Add
 `merge:ready` once a head's `ci-ok` is green, and remove `ci:run` from PRs that leave the window. A PR labelled
@@ -130,9 +135,15 @@ loaded laptop. It is picked by its own paths (`tools/soul-actions`, `apps/server
 `packages/engine-*`) and by every full-scope run, including each push to main, and a failure blocks through `ci-ok`. It
 is not a gate step, so the gate's suite tree and cached baseline don't change.
 
+**Soul runtime and trace tests.** `tools/soul-runtime/*.test.mjs` and `tools/soul-trace/*.test.mjs` run as the CI job
+`soul-tools`, about 17 s measured on a loaded laptop. It is picked by its own paths (`tools/soul-runtime`,
+`tools/soul-trace`, `tools/world-launcher/soul`, `apps/server`) and by every full-scope run, and a failure blocks through
+`ci-ok`. Like `soul-actions`, it is not a gate step.
+
 **Self-hosted runners.** The heavy `qualify` legs run on the runners named by the repository variable
-`CI_HEAVY_RUNNER` when it is set (one label, such as `souls-ci`), else on GitHub-hosted runners; the browser `smoke`
-leg always stays GitHub-hosted. One runner instance takes one job at a time, so routing is only worth it with several
+`CI_HEAVY_RUNNER` when it is set (one label, such as `souls-ci`), else on GitHub-hosted runners. The browser `smoke` leg
+and the `native` leg always stay GitHub-hosted: `native` has a wall-clock budget that a loaded shared host misses
+(#1162). One runner instance takes one job at a time, so routing is only worth it with several
 instances online. `tools/ci/setup-runners.sh` sets them up on one Linux host, run there as root: N instances, each a
 systemd service under one dedicated unprivileged user, with the label, and Playwright's Chromium system packages when
 the OS has them (not Ubuntu 20.04). It is idempotent, takes the registration token as an argument and names no host;
@@ -198,7 +209,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
   seats in a fake-mind world; Reviewer and Developer passes produce findings and scorecards. Measure on a quiet
   machine, two repeats per arm. [testing/playtests-cloud.md](testing/playtests-cloud.md) runs them in a cloud session.
 - [testing/swarm-director.md](testing/swarm-director.md): `node tools/playtest/playtest.mjs direct <cast>` directs
-  several Souls live from a cast file; the `sim-director` skill does it from a chat session.
+  several Souls live from a cast file; the `souls-director` skill does it from a chat session.
 - How to run and judge them: [process/playtest-method.md](process/playtest-method.md).
 
 ## What to run when
@@ -208,7 +219,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
 | Docs, tools only | links resolve; the tool's own tests if it has them |
 | Server or package logic | `node --test` on touched files, `tsc -p` of touched packages |
 | Anything that can move geometry, navigation or god builds | add the walk gate |
-| Web app | `pnpm --filter @sim/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
+| Web app | `pnpm --filter @souls/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
 | Library defs, generators, compiler | `library.test.ts` and `catalogue-checks.test.ts` (budgets and holds), conformance, plus a supplement when a revision changes |
 | Soul behaviour, navigation, engines | the above plus a scenario playtest with two repeats per arm |
 | Release head | the remote gate, then the release workflow (live walks and cdn-walk) |

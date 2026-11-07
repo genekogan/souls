@@ -2,7 +2,7 @@
 // The mesh half lives in apps/web/src/gen-mesh/*.mesh.ts under the same id.
 // Owner: L1. Spec <eden4>/29 §4.2, 31 §3 (Stage-B readiness).
 import type { z } from 'zod';
-import type { LandformBody } from '@sim/ground';
+import type { LandformBody } from '@souls/ground';
 import type { Field, FieldInput, Slot, SlotInput, Value } from './fields.ts';
 
 export type Vec2 = [number, number];

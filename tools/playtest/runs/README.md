@@ -92,7 +92,11 @@ continues, and `supersede` closes requests still open as failed when a later rul
 no provider and no cost, and its transcript renders like a model seat's. Each CLI output is kept whole in the
 transcript up to 1 MiB; past that the tool result ends with a `[scripted-owner: output truncated: …]` line and carries
 `truncated: true`, which the scorer's `seatActs` passes on. Live casts stay on `playtest.mjs direct` and
-the sim-director skill.
+the souls-director skill.
+
+A step `["resolve", "<words>"]` keeps its first candidate's id as `{resolved}` for the steps after it in that rule, so a
+script can reach offers whose ids differ every run (`give:<soul>`, `accept:<invitation>`) the way an agent does. A resolve
+with no candidate fails the rule.
 
 ## Setup
 
