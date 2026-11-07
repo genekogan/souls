@@ -16,7 +16,7 @@ import {afterCommit, tx} from '../comms/store.ts';
 import {menuWorldOf} from '../../split/menu-world.ts';
 import {randomUUID} from 'node:crypto';
 import {bodyVerbProblem,isRigidBody} from '../body/actions.ts';
-import type {Program} from '@sim/engine-contract';
+import type {Program} from '@souls/engine-contract';
 import type {WorldState as NativeWorld} from '../../../../../mars/viewer/engine/world/types.ts';
 import type {WorldHost} from '../../world.ts';
 import type {Db} from '../../db.ts';

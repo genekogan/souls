@@ -12,7 +12,7 @@
 // The object id is the entity id. Objects follow the entity world: re-derived on each god edit, removed with the thing.
 // No edge file changes: the kind registers on the ledger's comms objects when they exist; the read capability goes in
 // through the ledger's world-profile hook (as nav.ts's `walk:<path>`).
-import { checkersStatus, containerInside, gameStatus, type Entity, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { checkersStatus, containerInside, gameStatus, type Entity, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { paintingLine } from '../art/art.ts';
 import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
@@ -25,7 +25,7 @@ import { waterRole, wordOf } from './water.ts';
 import { economyOn } from './layers.ts';
 import { supportY } from './nav.ts';
 import { posterStale, worldDay } from './poster-boards.ts';
-import { posterList, signupNoun, wantedList } from '@sim/world-compiler';
+import { posterList, signupNoun, wantedList } from '@souls/world-compiler';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Vec2 = [number, number];

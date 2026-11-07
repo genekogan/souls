@@ -7,7 +7,7 @@
 //   - pick-up / put-on / put-down receipts: outcome.changed names what is now held or where it was put;
 //   - `put-down:here` (on the ground in front of you) while holding a god thing.
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
-import type { WorldModel } from '@sim/world-compiler';
+import type { WorldModel } from '@souls/world-compiler';
 import { groundPutDistance, groundPutNeed } from '../../../../mars/viewer/engine/items/actions.ts';
 
 type Ents = Record<string, any>;

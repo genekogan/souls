@@ -85,7 +85,7 @@ later in that tick moved the obstacle), and every earlier step moves as it did. 
 
 ## Conformance
 
-`@sim/engine-contract/conformance` exports `conformance(name, factory, drive)`: same seed and inputs give the same hash,
+`@souls/engine-contract/conformance` exports `conformance(name, factory, drive)`: same seed and inputs give the same hash,
 different seeds diverge, snapshot/restore mid-action continues identically, `physicalHash` ignores labels, verbs
 describe with JSON Schema, an unknown verb fails cleanly. Both engines run it (`packages/engine-mars/src/mars.test.ts`,
 `packages/engine-toy/src/toy.test.ts`). (`packages/conformance` is a different gate: every core-library object bakes,

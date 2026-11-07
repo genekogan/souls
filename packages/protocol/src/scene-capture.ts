@@ -1,6 +1,6 @@
 // Small public historical-render codec. No engine, storage or private-intent import.
 import {z} from 'zod';
-import {renderSceneRefV1Schema,parseRenderSceneCapture,type RenderSceneCaptureV1} from '@sim/engine-contract/scene-capture';
+import {renderSceneRefV1Schema,parseRenderSceneCapture,type RenderSceneCaptureV1} from '@souls/engine-contract/scene-capture';
 
 /** Caller verifies selected world/requested hash. This decoder verifies bounded
  * structure/content; capture input is the trusted public render projection. */

@@ -1,5 +1,5 @@
 // Explicit fresh-world adapter. No existing-world transition or default switch.
-import {hashOf,type EngineFactory,type EngineSnapshot} from '@sim/engine-contract';
+import {hashOf,type EngineFactory,type EngineSnapshot} from '@souls/engine-contract';
 import {MarsEngine,EDEN_SAFE_COMMONS_WORLD,type MarsWorldConfig,type MarsPhysicalBinding} from './engine.ts';
 import {loadMars} from './load.ts';
 import {connectedCommonsShoreFixture} from './connected-shore.ts';

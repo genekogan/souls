@@ -11,8 +11,8 @@
 //
 // Pure reads over the entity model and the engine's standing grids; nothing here is logged or changes the world.
 import {menuWorldOf, type MenuWorld} from '../split/menu-world.ts';
-import { deckRaised } from '@sim/generators';
-import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
+import { deckRaised } from '@souls/generators';
+import type { Entity, StoredDef, WorldModel } from '@souls/world-compiler';
 import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 import { humanTitle, meaningParts } from './meaning.ts';
 import { isShut } from './doors.ts';

@@ -15,7 +15,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** A world with an inbox and an event stream. As the real one does (Inbox.takeBacklog): a listen returns every message not
  *  acknowledged after its cursor, and with no cursor every message not acknowledged. */
 async function world(t) {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-serve-'));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-serve-'));
   const w = { dir, inbox: [], events: [], calls: [], acts: 0, keys: [], busyNext: 0, heavyNow: 0, heavyMax: 0, listens: 0, parked: [], bodies: [], refuse: {}, results: [], byRef: new Map(), cut: new Set(), offers: { 'sit:bench': { seconds: { type: 'integer', optional: true, min: 1, max: 600 } } } };
   w.said = []; w.listeners = new Set(); w.streams = 0; w.streamAfter = [];
   w.say = (text, kind = 'speech.to-me') => { const e = { id: `c_${w.said.length + 1}`, kind, about: { soulId: 's_bo', name: 'Bo' }, text: `Bo: "${text}"`, untrusted: true, data: { text } }; w.said.push(e); for (const f of w.listeners) f(e); };
@@ -195,7 +195,7 @@ test('a keyed write cut off partway is asked again with its key, and the world a
 
 test('a stale lock never signals a process that is not this folder\'s serve', async (t) => {
   const w = await world(t);
-  const other = mkdtempSync(join(tmpdir(), 'sim-other-'));
+  const other = mkdtempSync(join(tmpdir(), 'souls-other-'));
   writeFileSync(join(other, 'eden.mjs'), 'setInterval(() => {}, 1000);');
   const bystanders = [
     spawn('tail', ['-f', '/dev/null'], { stdio: 'ignore' }),                                                  // anything that reused the pid

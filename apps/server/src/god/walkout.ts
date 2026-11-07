@@ -16,9 +16,9 @@
 // the edit changes only stops (its body stays). Held things are set down at the resident's feet, or beside its exit
 // when its feet are inside what the edit touches; the exit is never inside a footprint the edit touches. An upstairs
 // resident whose floor the edit leaves standing (only its chair moved) steps aside on that floor.
-import type { Diff, Entity, ResidentMove, WorldModel } from '@sim/world-compiler';
-import { isFixtureDef } from '@sim/engine-mars';
-import { mediumAt } from '@sim/ground';
+import type { Diff, Entity, ResidentMove, WorldModel } from '@souls/world-compiler';
+import { isFixtureDef } from '@souls/engine-mars';
+import { mediumAt } from '@souls/ground';
 import { inSite, siteLocal, siteWorld, type ClosingSite } from './builds.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

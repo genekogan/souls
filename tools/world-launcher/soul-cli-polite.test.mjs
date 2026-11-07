@@ -17,7 +17,7 @@ const busy = (res, code = 'world.busy', after = 4, status = code.startsWith('sou
   json(res, status, { error: { code, message: 'synthetic busy' }, world: { load: 'red', retry_after_s: after, note: 'It is crowded here right now; things take a little longer.' } }, { 'retry-after': String(after), 'x-sim-load': 'red' });
 
 async function fixture(t, respond) {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-polite-')), seen = [];
+  const dir = mkdtempSync(join(tmpdir(), 'souls-polite-')), seen = [];
   const server = createServer((req, res) => {
     let body = ''; req.on('data', c => { body += c; });
     req.on('end', () => { seen.push({ method: req.method, url: req.url, key: req.headers['idempotency-key'] ?? null, body: body ? JSON.parse(body) : null, at: Date.now() }); respond(req, res, seen.length); });

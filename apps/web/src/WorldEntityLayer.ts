@@ -12,9 +12,9 @@ import { loadSnapshot } from './snapshot-wire.ts';
 import { snapshotModel } from './snapshot-model.ts';
 import type { SnapshotDecoder, SnapshotDelta } from './snapshot-delta.ts';
 import * as THREE from 'three';
-import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@sim/ground';
-import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, keptBehindDoor, type Def, type Entity, type StoredDef } from '@sim/world-compiler';
-import { GENERATORS } from '@sim/generators';
+import { TILE_M, TILE_N, Terrain, groundForTile, heightAt, waterLevelAt, type Ground } from '@souls/ground';
+import { WorldModel, stableStringify, CAN_OPENING, CAN_ROSE, CUP_RIM, KETTLE_OPENING, KETTLE_SPOUT, KETTLE_SPOUT_ANGLE, KETTLE_SWITCH, SPOUT_SPEED, cupSteam, spoutSpeed, isKettleDef, isTeaCupDef, kettleHeat, spoutRun, containerInside, keptBehindDoor, type Def, type Entity, type StoredDef } from '@souls/world-compiler';
+import { GENERATORS } from '@souls/generators';
 import { meshFor, type MeshCtx } from './gen-mesh/index.ts';
 import { clearBuildingPrefetch, prefetchBuilding } from './gen-mesh/building.mesh.ts';
 import { MaterialLib } from './gen-mesh/materials.ts';
@@ -654,12 +654,12 @@ export class WorldEntityLayer {
         const { enter } = this.ring.update(pose.eye[0], pose.eye[2], true);
         sorted = enter.flatMap((id) => { const e = m.entities.get(id); return e ? [e] : []; }); far = -1;
         if (!workersLater) { this.prefetchBuildings(m, sorted, pending); await nextTask(); if (signal.aborted || this.model !== m) return; }
-        (window as unknown as { __simStream?: unknown }).__simStream = { inner: this.ring.inner, outer: this.ring.outer, things: this.ring.size, ring: sorted.length, stats: this.streamStats };   // probes
+        (window as unknown as { __soulsStream?: unknown }).__soulsStream = { inner: this.ring.inner, outer: this.ring.outer, things: this.ring.size, ring: sorted.length, stats: this.streamStats };   // probes
       }
       // t4-phone-new: of the near things, those the arrival camera can see (or whose shadow can reach its view) are drawn
       // before the poster; the fill then draws the next things in view, then the near ones behind or beside it (arrival-view.ts)
       const { list: all, first: nearCount } = view && keyOf && byId ? viewFirst(sorted, far < 0 ? sorted.length : far, arrivalSeen(m, view, keyOf, byId, true), FILL_AHEAD) : { list: sorted, first: far < 0 ? sorted.length : far };
-      (window as unknown as { __simViewFirst?: unknown }).__simViewFirst = { near: far < 0 ? sorted.length : far, seen: nearCount, wedge: view, eager: eagerShas().length, eagerKB: Math.round(Object.values(eagerSizes).reduce((a, b) => a + b, 0) / 1e3) };   // probes
+      (window as unknown as { __soulsViewFirst?: unknown }).__soulsViewFirst = { near: far < 0 ? sorted.length : far, seen: nearCount, wedge: view, eager: eagerShas().length, eagerKB: Math.round(Object.values(eagerSizes).reduce((a, b) => a + b, 0) / 1e3) };   // probes
       for (let i = 0; i < all.length;) {
         if (i >= nearCount && !this.filling) { this.active = true; this.building = false; this.filling = true; this.fill = this.fillRest(m, all, i, pending, signal, workersLater); return; }
         const until = performance.now() + BUILD_SLICE_MS;
@@ -1880,7 +1880,7 @@ function waterLevel(g: Ground, x: number, z: number): number | null {
   }
   return level ?? g.seaLevel ?? null;
 }
-// indexed reads, not array destructuring: the same arithmetic as @sim/ground's pointInPoly (L3e)
+// indexed reads, not array destructuring: the same arithmetic as @souls/ground's pointInPoly (L3e)
 function pointInPoly(px: number, pz: number, poly: [number, number][]) {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {

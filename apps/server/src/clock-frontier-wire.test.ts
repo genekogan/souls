@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import { getRequestListener } from '@hono/node-server';
 import { WebSocket } from 'ws';
-import { marsFactory,EDEN_COMMONS_WORLD } from '@sim/engine-mars';
+import { marsFactory,EDEN_COMMONS_WORLD } from '@souls/engine-mars';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { ClockFrontiers } from './clock-frontier.ts';

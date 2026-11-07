@@ -9,7 +9,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import {INTENT_V2,intentReceiptV2Schema,type IntentReceiptV2} from '@sim/protocol';
+import {INTENT_V2,intentReceiptV2Schema,type IntentReceiptV2} from '@souls/protocol';
 import {intentNativeFixture,seed,worldId} from '../test/intent-native-fixture.ts';
 import {hashToken} from './auth.ts';
 import {handleMcp} from './mcp.ts';

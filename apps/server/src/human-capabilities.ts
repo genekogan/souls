@@ -1,10 +1,10 @@
-import {hashOf,humanCapabilityRegistryV1Schema,HUMAN_GOAL_POSTCONDITIONS_V1,type HumanGoalV1,type HumanCapabilityRegistryV1,type Program} from '@sim/engine-contract';
+import {hashOf,humanCapabilityRegistryV1Schema,HUMAN_GOAL_POSTCONDITIONS_V1,type HumanGoalV1,type HumanCapabilityRegistryV1,type Program} from '@souls/engine-contract';
 import {menuWorldOf,withRead} from './split/menu-world.ts';
-import {COMMONS_PERSONAL_RESOURCES,commonsFoodDeliveryItemsV1} from '@sim/engine-mars';
+import {COMMONS_PERSONAL_RESOURCES,commonsFoodDeliveryItemsV1} from '@souls/engine-mars';
 import {add2,rot2,wrapAngle,angleDelta} from '../../../mars/viewer/engine/core/math.ts';
 import {CATALOG} from '../../../mars/viewer/engine/world/catalog.ts';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
-import type {Card} from '@sim/kernel';
+import type {Card} from '@souls/kernel';
 import {engineRef,registeredOptionsFor} from './deck.ts';
 import type {WorldHost,Mind} from './world.ts';
 export type HumanBindingV1={id:string;goal:HumanGoalV1['goal'];targetId?:string;label:string;aliases:string[];steps:Program['steps'];card:Card;available:boolean;blockedCode?:string;distance:number;green:boolean;reuseAgenda?:{card:string;target:string|null;hash:string};seatedWitness?:ReturnType<typeof observeSeatedHumanGoalV1>};

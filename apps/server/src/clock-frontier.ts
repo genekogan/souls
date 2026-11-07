@@ -1,6 +1,6 @@
 // Private bounded restart destination, not an instruction or physics edit.
 import { z } from 'zod';
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import type { Db } from './db.ts';
 const uint=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const digest=z.string().regex(/^[a-f0-9]{64}$/);

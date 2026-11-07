@@ -9,8 +9,8 @@ import {bodyCapabilityProblem,bodyVerbProblem,isRigidBody,shapeRigidCapabilities
 import {interiorShellPolygon} from './nav.ts';
 import {inPoly} from './places.ts';
 import {outdoorRegionExclusions} from './region-arrival.ts';
-import type {Program} from '@sim/engine-contract';
-import {clockAt} from '@sim/brain';
+import type {Program} from '@souls/engine-contract';
+import {clockAt} from '@souls/brain';
 import type {WorldState as NativeWorld} from '../../../../../mars/viewer/engine/world/types.ts';
 import type {WorldHost, Mind} from '../../world.ts';
 import type {Db} from '../../db.ts';

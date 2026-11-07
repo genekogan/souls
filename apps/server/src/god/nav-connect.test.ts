@@ -8,7 +8,7 @@ import { fixture, invite, accept, factory } from '../../test/native-owner-fixtur
 import { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { GodMode } from './god.ts';
 import { installEngineBridge } from './engine-bridge.ts';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function world(t: TestContext) {

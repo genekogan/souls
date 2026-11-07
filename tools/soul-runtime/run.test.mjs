@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import {openJournal} from './journal.mjs';
 import {main,claimStartupLease,openEvidenceRecorder} from './run.mjs';
 test('different task-state directories cannot start two controllers for the same paired folder',async t=>{
- const folder=mkdtempSync(join(tmpdir(),'sim-run-'));
+ const folder=mkdtempSync(join(tmpdir(),'souls-run-'));
  writeFileSync(join(folder,'.eden-agent.json'),JSON.stringify({world:'http://127.0.0.1:1/w/test',soul:'test-soul',token:'synthetic-test-only'}),{mode:0o600});
  const lock=openJournal(join(folder,'.soul-runtime-owner'),{worldId:'test-world',soulId:'test-soul'}),owner=lock.control.claim();t.after(()=>{lock.control.release(owner);lock.close();rmSync(folder,{recursive:true,force:true});});
  const original=globalThis.fetch;globalThis.fetch=async()=>Response.json({worldId:'test-world'});t.after(()=>{globalThis.fetch=original;});
@@ -17,21 +17,21 @@ test('different task-state directories cannot start two controllers for the same
  assert.equal(JSON.parse(readFileSync(join(folder,'different-state','status.json'),'utf8')).state,'blocked');
 });
 test('startup waits for an abandoned lease to expire before acquiring the next generation',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-startup-'));let time=1000;
+ const directory=mkdtempSync(join(tmpdir(),'souls-startup-'));let time=1000;
  const journal=openJournal(directory,{worldId:'w',soulId:'s',now:()=>time});t.after(()=>{journal.close();rmSync(directory,{recursive:true,force:true});});
  const old=journal.control.claim('dead',1000),waits=[];
  const owner=await claimStartupLease(journal.control,{now:()=>time,maxWaitMs:2000,sleep:async ms=>{time+=ms;},onWait:s=>waits.push(s)});
  assert.equal(time,old.expiresAt);assert.equal(owner.generation,old.generation+1);journal.control.assertOwner(owner);assert.equal(waits.length,1);
 });
 test('startup retry is bounded while an existing controller continues renewing',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-startup-'));let time=1000;
+ const directory=mkdtempSync(join(tmpdir(),'souls-startup-'));let time=1000;
  const journal=openJournal(directory,{worldId:'w',soulId:'s',now:()=>time});t.after(()=>{journal.close();rmSync(directory,{recursive:true,force:true});});
  let owner=journal.control.claim('live',1000);
  await assert.rejects(claimStartupLease(journal.control,{now:()=>time,maxWaitMs:2000,sleep:async ms=>{time+=ms;owner=journal.control.renew(owner,1000);}}),{code:'CONTROLLER_BUSY_TIMEOUT'});
  assert.equal(time,3000);journal.control.assertOwner(owner);assert.equal(owner.generation,1);
 });
 test('abort during startup lease waiting closes setup and leaves the live owner untouched',async t=>{
- const folder=mkdtempSync(join(tmpdir(),'sim-run-')),state=join(folder,'different-state');
+ const folder=mkdtempSync(join(tmpdir(),'souls-run-')),state=join(folder,'different-state');
  writeFileSync(join(folder,'.eden-agent.json'),JSON.stringify({world:'http://127.0.0.1:1/w/test',soul:'test-soul',token:'synthetic-test-only'}),{mode:0o600});
  const lock=openJournal(join(folder,'.soul-runtime-owner'),{worldId:'test-world',soulId:'test-soul'}),owner=lock.control.claim();t.after(()=>{lock.control.release(owner);lock.close();rmSync(folder,{recursive:true,force:true});});
  const stop=new AbortController(),original=globalThis.fetch;let timer;
@@ -44,7 +44,7 @@ test('abort during startup lease waiting closes setup and leaves the live owner 
  const reopened=openJournal(state,{worldId:'test-world',soulId:'test-soul'});reopened.close();
 });
 test('startup setup failure removes signal handlers and releases an acquired ownership lease',async t=>{
- const folder=mkdtempSync(join(tmpdir(),'sim-run-')),state=join(folder,'state');
+ const folder=mkdtempSync(join(tmpdir(),'souls-run-')),state=join(folder,'state');
  writeFileSync(join(folder,'.eden-agent.json'),JSON.stringify({world:'http://127.0.0.1:1/w/test',soul:'test-soul',token:'synthetic-test-only'}),{mode:0o600});
  const journal=openJournal(state,{worldId:'test-world',soulId:'test-soul'});journal.close();writeFileSync(join(state,'host'),'not a directory');
  const original=globalThis.fetch;globalThis.fetch=async()=>Response.json({worldId:'test-world'});t.after(()=>{globalThis.fetch=original;rmSync(folder,{recursive:true,force:true});});
@@ -54,7 +54,7 @@ test('startup setup failure removes signal handlers and releases an acquired own
  const ownership=openJournal(join(folder,'.soul-runtime-owner'),{worldId:'test-world',soulId:'test-soul'}),owner=ownership.control.claim('after-failure');ownership.control.release(owner);ownership.close();
 });
 test('initial instruction limit counts JSON encoding and rejects escape expansion before starting a host',async t=>{
- const folder=mkdtempSync(join(tmpdir(),'sim-run-instruction-')),instruction=join(folder,'instruction.txt');
+ const folder=mkdtempSync(join(tmpdir(),'souls-run-instruction-')),instruction=join(folder,'instruction.txt');
  writeFileSync(join(folder,'.eden-agent.json'),JSON.stringify({world:'http://127.0.0.1:1/w/test',soul:'test-soul',token:'synthetic-test-only'}),{mode:0o600});
  const lock=openJournal(join(folder,'.soul-runtime-owner'),{worldId:'test-world',soulId:'test-soul'}),owner=lock.control.claim();
  const original=globalThis.fetch;globalThis.fetch=async()=>Response.json({worldId:'test-world'});t.after(()=>{globalThis.fetch=original;lock.control.release(owner);lock.close();rmSync(folder,{recursive:true,force:true});});
@@ -64,7 +64,7 @@ test('initial instruction limit counts JSON encoding and rejects escape expansio
  assert.equal(existsSync(join(folder,'.soul-runtime','host')),false);lock.control.assertOwner(owner);
 });
 test('opt-in evidence preserves read returns/errors and receivers without recording credentials or arguments',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-evidence-')),file=join(directory,'agent-evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));let clock=100,calls=0,syncs=0;
+ const directory=mkdtempSync(join(tmpdir(),'souls-evidence-')),file=join(directory,'agent-evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));let clock=100,calls=0,syncs=0;
  const recorder=openEvidenceRecorder(file,{scope:{worldId:'world-native',soulId:'soul-native'},now:()=>++clock,syncFile:fd=>{syncs++;fsyncSync(fd);}}),native={body:'LOCAL_RESPONSE_ONLY'},refusal=Object.assign(Error('CREDENTIAL_CANARY in error message'),{code:'not-found',status:404,config:'CREDENTIAL_CANARY'}),args={token:'CREDENTIAL_CANARY'},signal=new AbortController().signal;
  const world={async read(command,receivedArgs,receivedSignal){assert.equal(this,world);assert.equal(receivedArgs,args);assert.equal(receivedSignal,signal);calls++;if(command==='object')throw refusal;return native;},ownerPage:async()=>({events:[]}),worldPage:async()=>({events:[]}),write:async()=>({accepted:true})};
  const wrapped=recorder.wrapWorld(world);assert.equal(wrapped.ownerPage,world.ownerPage);assert.equal(wrapped.worldPage,world.worldPage);assert.equal(wrapped.write,world.write);assert.equal(await wrapped.read('observe',args,signal),native);await assert.rejects(wrapped.read('object',args,signal),error=>error===refusal);await wrapped.ownerPage();await wrapped.worldPage();assert.equal(calls,2);assert.equal(syncs,0,'no per-row fsync in measured path');(await recorder.close());assert.equal(syncs,1);
@@ -72,7 +72,7 @@ test('opt-in evidence preserves read returns/errors and receivers without record
  chmodSync(file,0o644);const before=raw,second=openEvidenceRecorder(file,{scope:{worldId:'world-native',soulId:'soul-native'}});(await second.close());assert.ok(readFileSync(file,'utf8').startsWith(before));assert.equal(statSync(file).mode&0o777,0o600);const sessions=readFileSync(file,'utf8').trim().split('\n').map(JSON.parse).filter(r=>r.kind==='evidence-session'&&r.state==='started');assert.equal(sessions.length,2);assert.notEqual(sessions[0].sessionId,sessions[1].sessionId);
 });
 test('evidence records every selected host event with observed model/thread and no turn output or config',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-evidence-host-')),file=join(directory,'agent-evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ const directory=mkdtempSync(join(tmpdir(),'souls-evidence-host-')),file=join(directory,'agent-evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));
  const recorder=openEvidenceRecorder(file,{scope:{worldId:'w',soulId:'s'}}),host=new EventEmitter(),connected={threadId:'thread-actual',model:'model-actual'},options={config:{secret:'CONFIG_CANARY'}};host.pid=4242;host.model='requested-alias';host.connect=async function(received){assert.equal(received,options);this.threadId='thread-actual';return connected;};const original=host.connect;
  recorder.bindHost(host);assert.equal(await host.connect(options),connected);
  host.emit('event',{method:'turn/started',params:{threadId:'thread-actual',turn:{id:'turn-1',status:'inProgress',items:[{text:'OUTPUT_CANARY'}]}},receivedAt:123});
@@ -81,7 +81,7 @@ test('evidence records every selected host event with observed model/thread and 
  const raw=readFileSync(file,'utf8'),events=raw.trim().split('\n').map(JSON.parse).filter(r=>r.kind==='host-event');assert.deepEqual(events.map(r=>r.method),['turn/started','thread/tokenUsage/updated','turn/completed']);assert.deepEqual(events.map(r=>r.at),[123,124,125]);assert.ok(events.every(r=>r.model==='model-actual'&&r.threadId==='thread-actual'&&r.turnId==='turn-1'));assert.deepEqual(events[1].tokenUsage,usage);assert.deepEqual(events[2].error,{code:'native-error',status:null});assert.ok(!raw.includes('OUTPUT_CANARY'));assert.ok(!raw.includes('CONFIG_CANARY'));assert.ok(!raw.includes('requested-alias'));
 });
 test('host item and unsupported-request evidence is bounded metadata without content or unknown labels',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-evidence-items-')),file=join(directory,'evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ const directory=mkdtempSync(join(tmpdir(),'souls-evidence-items-')),file=join(directory,'evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));
  const recorder=openEvidenceRecorder(file,{now:()=>300}),host=new EventEmitter();host.pid=42;host.threadId='thread-1';host.activeTurnId='turn-1';host.connect=async()=>({});recorder.bindHost(host);
  const secret='PRIVATE_ITEM_CANARY',item={id:'item-1',type:'reasoning',text:secret,summary:[secret],content:[secret],command:secret,output:secret,arguments:secret,config:secret};
  for(const method of ['item/started','item/completed'])host.emit('event',{method,receivedAt:100,params:{threadId:'thread-1',turnId:'turn-1',item,model:secret}});
@@ -94,7 +94,7 @@ test('host item and unsupported-request evidence is bounded metadata without con
  assert.deepEqual(requests.map(r=>r.method),['item/tool/call','unknown','unknown']);assert.ok([...items,...requests].every(r=>Buffer.byteLength(JSON.stringify(r))<1024));assert.ok(!raw.includes(secret));assert.ok(!raw.includes('x'.repeat(201)));
 });
 test('host RPC evidence times ACK without waiting for completion or changing arguments, results or errors',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-evidence-rpc-')),file=join(directory,'evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));let clock=100,ack,beginCalls=0,steerCalls=0;
+ const directory=mkdtempSync(join(tmpdir(),'souls-evidence-rpc-')),file=join(directory,'evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));let clock=100,ack,beginCalls=0,steerCalls=0;
  const recorder=openEvidenceRecorder(file,{now:()=>clock}),host=new EventEmitter(),prompt='PROMPT_PRIVATE_CANARY 界',options={outputSchema:{private:'SCHEMA_PRIVATE_CANARY'}},completed=new Promise(()=>{}),result={turnId:'turn-1',completed},refusal=Object.assign(Error('ERROR_PRIVATE_CANARY'),{code:'ERROR_PRIVATE_CANARY'}),steered={accepted:true,private:'RESULT_PRIVATE_CANARY'};
  host.threadId='thread-1';host.activeTurnId='turn-1';host.connect=async()=>({});
  host.begin=async function(text,args){assert.equal(this,host);assert.equal(text,prompt);assert.equal(args,options);beginCalls++;return new Promise(resolve=>{ack=()=>resolve(result);});};
@@ -104,7 +104,7 @@ test('host RPC evidence times ACK without waiting for completion or changing arg
  const raw=readFileSync(file,'utf8'),rows=raw.trim().split('\n').map(JSON.parse).filter(r=>r.kind==='host-rpc');assert.deepEqual(rows.map(r=>[r.operation,r.status]),[['begin','acknowledged'],['steer','acknowledged'],['steer','rejected']]);assert.equal(rows[0].requestedAt,100);assert.equal(rows[0].acknowledgedAt,250);assert.equal(rows[2].failedAt,400);assert.ok(rows.every(r=>r.turnId==='turn-1'&&r.promptBytes===Buffer.byteLength(prompt)&&r.durationMs>=0));assert.ok(!raw.includes('PRIVATE_CANARY'));
 });
 test('host error notifications retain only verified retry/category/HTTP metadata, never error text',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-evidence-error-')),file=join(directory,'evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));const secret='ERROR_TEXT_CANARY';
+ const directory=mkdtempSync(join(tmpdir(),'souls-evidence-error-')),file=join(directory,'evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));const secret='ERROR_TEXT_CANARY';
  const recorder=openEvidenceRecorder(file),host=new EventEmitter();host.threadId='thread-1';host.connect=async()=>({});recorder.bindHost(host);
  const notify=(info,willRetry=true)=>host.emit('event',{method:'error',receivedAt:123,params:{threadId:'thread-1',turnId:'turn-1',willRetry,model:secret,error:{message:secret,additionalDetails:secret,code:secret,codexErrorInfo:info}}});
  for(const category of ['contextWindowExceeded','sessionBudgetExceeded','usageLimitExceeded','rateLimitExceeded','flexUnavailable','serverOverloaded','cyberPolicy','misalignmentPolicyViolation','tooManyDenials','internalServerError','unauthorized','badRequest','threadRollbackFailed','sandboxError','other'])notify(category);
@@ -113,12 +113,12 @@ test('host error notifications retain only verified retry/category/HTTP metadata
  const raw=readFileSync(file,'utf8'),rows=raw.trim().split('\n').map(JSON.parse).filter(r=>r.kind==='host-error');assert.equal(rows.length,27);assert.ok(rows.every(r=>r.method==='error'&&r.threadId==='thread-1'&&r.turnId==='turn-1'&&r.at===123));assert.deepEqual(rows.slice(15,19).map(r=>r.error.httpStatusCode),[429,429,429,429]);assert.equal(rows[19].error.httpStatusCode,null);assert.deepEqual(rows[20].error,{category:'activeTurnNotSteerable',turnKind:'review'});assert.equal(rows[20].willRetry,false);assert.equal(rows[21].error.turnKind,'compact');assert.equal(rows[22].error.turnKind,null);assert.ok(rows.slice(23).every(r=>r.error.category==='unknown'));assert.equal(rows[25].willRetry,null);assert.ok(!raw.includes(secret));assert.ok(!raw.includes('additionalDetails'));assert.ok(!raw.includes('message'));
 });
 test('required evidence: RPC write failure is sticky but preserves an already acknowledged result and original rejection',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-evidence-rpc-fail-')),file=join(directory,'evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));let failures=0;
+ const directory=mkdtempSync(join(tmpdir(),'souls-evidence-rpc-fail-')),file=join(directory,'evidence.jsonl');t.after(()=>rmSync(directory,{recursive:true,force:true}));let failures=0;
  const recorder=openEvidenceRecorder(file,{required:true,onFailure:()=>failures++,writeRecord:(fd,data)=>{if(data.includes('host-rpc'))throw Error('disk failure');writeFileSync(fd,data);}}),host=new EventEmitter(),result={turnId:'turn-1',completed:new Promise(()=>{})},error=Error('original refusal');host.connect=async()=>({});host.begin=async()=>result;host.steer=async()=>{throw error;};recorder.bindHost(host);
  assert.equal(await host.begin('private'),result);await assert.rejects(host.steer('private','turn-1'),actual=>actual===error);assert.equal(failures,1);assert.equal(recorder.failure.code,'EVIDENCE_IO');await assert.rejects(recorder.close(),{code:'EVIDENCE_IO'});
 });
 test('evidence refuses linked/nonregular targets; required evidence reports write/sync failures by throwing',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-evidence-fail-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));const target=join(directory,'target'),link=join(directory,'link'),hard=join(directory,'hard');writeFileSync(target,'UNTOUCHED');symlinkSync(target,link);linkSync(target,hard);
+ const directory=mkdtempSync(join(tmpdir(),'souls-evidence-fail-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));const target=join(directory,'target'),link=join(directory,'link'),hard=join(directory,'hard');writeFileSync(target,'UNTOUCHED');symlinkSync(target,link);linkSync(target,hard);
  for(const path of [link,hard,directory])assert.throws(()=>openEvidenceRecorder(path),{code:'EVIDENCE_IO'});assert.equal(readFileSync(target,'utf8'),'UNTOUCHED');
  let failWrites=false,failures=0,reads=0;const file=join(directory,'write-failure.jsonl'),recorder=openEvidenceRecorder(file,{required:true,onFailure:()=>failures++,writeRecord:(fd,data)=>{if(failWrites)throw Object.assign(Error('disk full'),{code:'ENOSPC'});writeFileSync(fd,data);}}),wrapped=recorder.wrapWorld({read:async()=>{reads++;return {native:true}}});failWrites=true;
  await assert.rejects(wrapped.read('observe',{}),{code:'EVIDENCE_IO'});await assert.rejects(wrapped.read('observe',{}),{code:'EVIDENCE_IO'});assert.equal(reads,1);assert.equal(failures,1);await assert.rejects(recorder.close(),{code:'EVIDENCE_IO'});assert.ok(!readFileSync(file,'utf8').includes('"state":"closed"'));
@@ -126,7 +126,7 @@ test('evidence refuses linked/nonregular targets; required evidence reports writ
  const syncRecorder=openEvidenceRecorder(join(directory,'sync-failure.jsonl'),{required:true,syncFile:()=>{throw Error('flush failed')}});await assert.rejects(syncRecorder.close(),{code:'EVIDENCE_IO'});
 });
 test('--evidence appends scoped lifecycle records across failed startups without stdout payloads or extra world calls',async t=>{
- const folder=mkdtempSync(join(tmpdir(),'sim-run-evidence-')),file=join(folder,'agent-evidence.jsonl');writeFileSync(join(folder,'.eden-agent.json'),JSON.stringify({world:'http://127.0.0.1:1/w/test',soul:'test-soul',token:'CREDENTIAL_CANARY'}),{mode:0o600});
+ const folder=mkdtempSync(join(tmpdir(),'souls-run-evidence-')),file=join(folder,'agent-evidence.jsonl');writeFileSync(join(folder,'.eden-agent.json'),JSON.stringify({world:'http://127.0.0.1:1/w/test',soul:'test-soul',token:'CREDENTIAL_CANARY'}),{mode:0o600});
  const lock=openJournal(join(folder,'.soul-runtime-owner'),{worldId:'test-world',soulId:'test-soul'}),owner=lock.control.claim();let calls=0;const fetch=globalThis.fetch,log=console.log,stdout=[];globalThis.fetch=async url=>{calls++;assert.ok(url.endsWith('/v1/config'));return Response.json({worldId:'test-world',privateConfig:'CONFIG_CANARY'});};console.log=text=>stdout.push(text);t.after(()=>{globalThis.fetch=fetch;console.log=log;lock.control.release(owner);lock.close();rmSync(folder,{recursive:true,force:true});});
  for(let attempt=0;attempt<2;attempt++)await assert.rejects(main(['--folder',folder,'--evidence',file],{leaseWaitMs:0}),{code:'CONTROLLER_BUSY_TIMEOUT'});
  assert.equal(calls,2);const raw=readFileSync(file,'utf8'),rows=raw.trim().split('\n').map(JSON.parse);assert.deepEqual(rows.map(r=>r.state),['started','closed','started','closed']);assert.ok(rows.every(r=>r.worldId==='test-world'&&r.soulId==='test-soul'));assert.ok(rows.filter(r=>r.state==='closed').every(r=>r.failed));assert.ok(!raw.includes('CREDENTIAL_CANARY')&&!raw.includes('CONFIG_CANARY'));assert.ok(!stdout.join('').includes('CREDENTIAL_CANARY')&&!stdout.join('').includes('CONFIG_CANARY'));assert.equal(existsSync(join(folder,'.soul-runtime','host')),false);lock.control.assertOwner(owner);
@@ -134,7 +134,7 @@ test('--evidence appends scoped lifecycle records across failed startups without
  await assert.rejects(main(['--folder',folder,'--evidence-required'],{leaseWaitMs:0}),/--evidence-required needs --evidence/);
 });
 test('default evidence (#733 A4): a failed sink disables recording and never changes world reads, host calls or the run',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-evidence-open-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ const directory=mkdtempSync(join(tmpdir(),'souls-evidence-open-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
  let failWrites=false,failures=0,reads=0;const file=join(directory,'evidence.jsonl');
  const recorder=openEvidenceRecorder(file,{onFailure:()=>failures++,appendRecord:(fd,data,_o,done)=>failWrites?setImmediate(done,Object.assign(Error('disk full'),{code:'ENOSPC'})):appendFile(fd,data,done)});
  const worldError=Object.assign(Error('world refused'),{code:'soul.busy'});
@@ -156,7 +156,7 @@ test('default evidence (#733 A4): a failed sink disables recording and never cha
  const syncFail=openEvidenceRecorder(join(directory,'sync.jsonl'),{syncFile:()=>{throw Error('flush failed')}});assert.equal((await syncFail.close()).complete,false);
 });
 test('default evidence (#733 S2) is queued: no write per row, a stalled sink delays nothing, overflow counts as dropped',async t=>{
- const directory=mkdtempSync(join(tmpdir(),'sim-evidence-queue-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ const directory=mkdtempSync(join(tmpdir(),'souls-evidence-queue-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
  // close()'s wait timer is unref'd so it can't hold a real shutdown; with a sink that holds nothing open, this keeps the test's own loop alive to see it fire
  const keep=setInterval(()=>{},1000);t.after(()=>clearInterval(keep));
  let writes=0;const file=join(directory,'evidence.jsonl');

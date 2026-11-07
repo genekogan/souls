@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { coreLibrary, type StoredDef } from '@sim/world-compiler';
+import { coreLibrary, type StoredDef } from '@souls/world-compiler';
 import { samplePoints, type Finding } from './conformance.ts';
 
 test('EF4 seeded points include all endpoints, enums, scales and K combinations without a 48-point cap', () => {

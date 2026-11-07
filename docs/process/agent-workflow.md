@@ -161,5 +161,5 @@ starts it.
 
 `.claude/skills/` holds the repo's skills as plain Markdown that any agent can read: `triage` (label and reproduce new
 issues), `finish` (turn a working change into a finished PR), `proof` (record the tier clip), `e2e` (browser
-scenarios) and `sim-director` (direct live Souls). `.claude/agents/` defines the `lane` implementer (one issue, end
+scenarios) and `souls-director` (direct live Souls). `.claude/agents/` defines the `lane` implementer (one issue, end
 to end, to a draft PR) and the `reviewer`.

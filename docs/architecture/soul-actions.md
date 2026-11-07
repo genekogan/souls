@@ -558,7 +558,7 @@ node --test --test-concurrency=1 tools/soul-actions/<name>.test.mjs
 Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. An entry that adds or
 revises a library def also runs the library budget tests, so a def over its triangle or draw budget is caught by its
 own entry: `node --test packages/world-compiler/src/core-kit/library.test.ts packages/conformance/src/catalogue-checks.test.ts`
-and `pnpm --filter @sim/conformance test`. A new revision carries no budget hold; fix the mesh instead. The tests live in
+and `pnpm --filter @souls/conformance test`. A new revision carries no budget hold; fix the mesh instead. The tests live in
 `tools/soul-actions/`; the viewer's motion units are under `apps/web/test/`, `apps/web/src/*.test.ts`,
 `mars/viewer/engine/test/` and `mars/viewer/app/engine-view/`.
 

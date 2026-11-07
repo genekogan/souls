@@ -143,14 +143,14 @@ jobs:
           case "$CHECK_KIND" in
             types-web)
               pnpm typecheck
-              pnpm --filter @sim/web build
+              pnpm --filter @souls/web build
               # The Mars viewer's static site holds the people's character set (/modular); without it no world
               # draws people (issue #395). Build it as the first run does, then fail if the set is missing.
               pnpm build:viewer
               node tools/assets/mars-web.mjs --check
               ;;
             packages)
-              pnpm -r --filter '!mars-campus-viewer' --filter '!@sim/server' test
+              pnpm -r --filter '!mars-campus-viewer' --filter '!@souls/server' test
               ;;
             native)
               pnpm test:mars
@@ -168,7 +168,7 @@ jobs:
               pnpm test:client
               ;;
             latency)
-              pnpm --filter @sim/server exec node --test --test-concurrency=1 src/owner-response-milestones.test.ts
+              pnpm --filter @souls/server exec node --test --test-concurrency=1 src/owner-response-milestones.test.ts
               ;;
             soul-actions)
               # #1061: not a gate step; picked by ci-scope.mjs from its own paths
@@ -182,7 +182,7 @@ jobs:
           const { parallel, serial } = serverShardPlan(all, shard);
           console.log(JSON.stringify({ shard, totalServerFiles: all.length, files: [...parallel, ...serial], parallel: parallel.length, serial: serial.length, concurrency: SERVER_TEST_CONCURRENCY }));
           // ephemeral-port files in parallel, then the fixed-port files one at a time; both always run, either failing fails the job
-          const run = (files, n) => { if (!files.length) return 0; const r = spawnSync('pnpm', ['--filter', '@sim/server', 'exec', process.execPath, '--test', `--test-concurrency=${n}`, ...files], { stdio: 'inherit' }); if (r.error) throw r.error; return r.status ?? 1; };
+          const run = (files, n) => { if (!files.length) return 0; const r = spawnSync('pnpm', ['--filter', '@souls/server', 'exec', process.execPath, '--test', `--test-concurrency=${n}`, ...files], { stdio: 'inherit' }); if (r.error) throw r.error; return r.status ?? 1; };
           const a = run(parallel, SERVER_TEST_CONCURRENCY), b = run(serial, 1);
           process.exit(a || b);
           NODE

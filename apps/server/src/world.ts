@@ -1,28 +1,28 @@
 import {tx} from './edge/comms/store.ts';
 import { SoulNow, type SoulNowLine } from './soul-now.ts';
 import type {CarrierInstallSpec} from '../../../mars/viewer/engine/vehicles/carrier.ts';
-import {soulProfileFactV1Schema,type SoulProfileFactV1} from '@sim/protocol';
-import {authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesDeclarationV1} from '@sim/engine-contract';
-import {edenLectureV1} from '@sim/engine-mars';
-import {renderPlatformRowsV1Schema,type RenderPlatformV1} from '@sim/engine-contract';
-import {officeStairGuardsDeclarationV1Schema,type OfficeStairGuardsDeclarationV1} from '@sim/engine-contract';
-import type {EdenLecturePlacementV1} from '@sim/engine-contract';
+import {soulProfileFactV1Schema,type SoulProfileFactV1} from '@souls/protocol';
+import {authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesDeclarationV1} from '@souls/engine-contract';
+import {edenLectureV1} from '@souls/engine-mars';
+import {renderPlatformRowsV1Schema,type RenderPlatformV1} from '@souls/engine-contract';
+import {officeStairGuardsDeclarationV1Schema,type OfficeStairGuardsDeclarationV1} from '@souls/engine-contract';
+import type {EdenLecturePlacementV1} from '@souls/engine-contract';
 import {latestPurposeDirectionV1} from './latest-purpose-direction.ts';
 import {episodesFromHistoryV1} from './purpose-episodes.ts';
-import {commonsNewcomerResourcesV1} from '@sim/engine-mars';
-import type {NewcomerResourcePlacementV1} from '@sim/engine-contract';
-import {existingGreenLandmarkV1} from '@sim/engine-mars';
-import {socialEdenV1} from '@sim/engine-mars';
+import {commonsNewcomerResourcesV1} from '@souls/engine-mars';
+import type {NewcomerResourcePlacementV1} from '@souls/engine-contract';
+import {existingGreenLandmarkV1} from '@souls/engine-mars';
+import {socialEdenV1} from '@souls/engine-mars';
 import {captureIntentArrivalV1,journalIntentArrivalV1,verifyIntentArrivalV1} from './intent-arrivals.ts';
 import {previewHumanSleepStopV1} from './human-sleep-transition.ts';
 import {bodyState,cardDoing,type ApproachV1,type BodyStateV1} from './body-state.ts';
-import {intentSleepStopV1Schema,type IntentSleepStopV1} from '@sim/protocol';
+import {intentSleepStopV1Schema,type IntentSleepStopV1} from '@souls/protocol';
 // WorldHost: the sequencer. Owns the engine, the event log, the tick loop,
 // snapshots, and the per-batch broadcast. The fold (doc 11):
 //   events logged with tick T are applied when world.tick == T, then the engine steps to T+1.
-import type { Engine, EngineFactory, PathCommit, ChangeEvent, ProgramEvent, EngineSnapshot, EngineCheckpoint, RuntimeEvent } from '@sim/engine-contract';
-import { hashOf } from '@sim/engine-contract';
-import { kernelHash, sweep, type KState } from '@sim/kernel';
+import type { Engine, EngineFactory, PathCommit, ChangeEvent, ProgramEvent, EngineSnapshot, EngineCheckpoint, RuntimeEvent } from '@souls/engine-contract';
+import { hashOf } from '@souls/engine-contract';
+import { kernelHash, sweep, type KState } from '@souls/kernel';
 import { ClockFrontiers,type ClockFrontierV1 } from './clock-frontier.ts';
 import {
   describeIntent, publicIntent, viewHashOf, viewRow,
@@ -33,9 +33,9 @@ import {
   type IntentAdmissionPayloadV2, type IntentControllerPayloadV2,
   type AgendaStep, type Batch, type BirthPayload, type DecisionPayload, type EventKind, type Heartbeat, type IntentPayload, type KernelView, type LogEvent,
   type PlayPayload, type PlayView, type PublicSoul, type ScenePayload, type Snapshot, type WireIntent,
-} from '@sim/protocol';
+} from '@souls/protocol';
 import type { Db } from './db.ts';
-import { advanceNeeds, newLife, type Life } from '@sim/brain';
+import { advanceNeeds, newLife, type Life } from '@souls/brain';
 import { arrivalPlace, baseVocabulary, codeVocabulary, foldEvent, initKernel, pinnedVocabulary, soulThing, type Vocabulary, type FoldResult } from './fold.ts';
 import { frontier, stepIndex, belongsTo } from './deck.ts';
 import {mandateOf,MANDATE_STATE} from './mandate.ts';
@@ -719,7 +719,7 @@ export class WorldHost {
 
   /** Internal opt-in choice producer. No wire operation accepts a purpose ref
    * or activity claim. The original caller fence still owns final authority. */
-  ownLectureRosterV1(soulId:string,steps:import('@sim/engine-contract').Program['steps']){const leader=this.minds.get(soulId);if(!leader)return false;for(const step of steps){if(step.verb==='control_classroom_v1'){const ids=typeof step.params.session==='string'?this.engine.ownedClassroomControlRosterV1?.(leader.entityId,step.params.session):null;if(!ids)return false;for(const id of ids){const m=this.mindByEntity.get(id),row=m?this.db.soul(m.soulId):undefined;if(!m||!row||row.retired_at!==null||row.world_id!==this.worldId||row.owner!==leader.owner||row.entity_id!==id||this.kernel.things[m.soulId]?.traits.body!==id)return false;}continue;}if(step.verb!=='mars:classroom_session')continue;const p=step.params as {host?:string;presenters?:string[];audience?:string[]};if(p.host!==leader.entityId||!Array.isArray(p.presenters)||!Array.isArray(p.audience))return false;const ids=[p.host,...p.presenters,...p.audience];if(new Set(ids).size!==ids.length)return false;for(const id of ids){const m=this.mindByEntity.get(id),row=m?this.db.soul(m.soulId):undefined;if(!m||!row||row.retired_at!==null||row.world_id!==this.worldId||row.owner!==leader.owner||m.owner!==leader.owner||row.entity_id!==id||this.kernel.things[m.soulId]?.traits.body!==id||!this.engine.world.entities[id])return false;}}return true;}
+  ownLectureRosterV1(soulId:string,steps:import('@souls/engine-contract').Program['steps']){const leader=this.minds.get(soulId);if(!leader)return false;for(const step of steps){if(step.verb==='control_classroom_v1'){const ids=typeof step.params.session==='string'?this.engine.ownedClassroomControlRosterV1?.(leader.entityId,step.params.session):null;if(!ids)return false;for(const id of ids){const m=this.mindByEntity.get(id),row=m?this.db.soul(m.soulId):undefined;if(!m||!row||row.retired_at!==null||row.world_id!==this.worldId||row.owner!==leader.owner||row.entity_id!==id||this.kernel.things[m.soulId]?.traits.body!==id)return false;}continue;}if(step.verb!=='mars:classroom_session')continue;const p=step.params as {host?:string;presenters?:string[];audience?:string[]};if(p.host!==leader.entityId||!Array.isArray(p.presenters)||!Array.isArray(p.audience))return false;const ids=[p.host,...p.presenters,...p.audience];if(new Set(ids).size!==ids.length)return false;for(const id of ids){const m=this.mindByEntity.get(id),row=m?this.db.soul(m.soulId):undefined;if(!m||!row||row.retired_at!==null||row.world_id!==this.worldId||row.owner!==leader.owner||m.owner!==leader.owner||row.entity_id!==id||this.kernel.things[m.soulId]?.traits.body!==id||!this.engine.world.entities[id])return false;}}return true;}
   enqueueIntentDecision(author: string, payload: DecisionPayload, raw: PurposeRef, guard: AcceptanceGuard): Promise<LogEvent> {
     this.assertClockReady();
     const purpose = intentReferenceV2Schema.parse(raw), mind = this.minds.get(payload.soulId);
@@ -1166,7 +1166,7 @@ export class WorldHost {
   enableIntentRetainedChoiceV1(){if(this.extra.intentRetainedChoiceV1)return Promise.resolve();if(!this.extra.intentPurposeRecallV1||!this.extra.intentNativeSequenceCompletionV1)return Promise.reject(Error('retained-choice.qualified-context-required'));return this.enqueue('rules','operator:retained-choice',{intentRetainedChoiceV1:true,why:'recalled owned typed unfinished steps are ordinary feasible alternatives; actual chosen contributions retain private intent provenance without FIFO priority'});}
   enableIntentEpisodeMemoryV1(){if(this.extra.intentEpisodeMemoryV1)return Promise.resolve();return this.enqueue('rules','operator:purpose-episodes',{intentEpisodeMemoryV1:true,why:'private reflection keeps bounded canonical owned outcomes separately from interpretive prose; current owner will fences delayed reflection'});}
   pendingHumanSleepTransitionV1(soulId:string){const p=(this.extra.intentHumanSleepTransitionsV1 as Record<string,IntentSleepStopV1>|undefined)?.[soulId];return !!p&&this.engine.programOf(p.entityId)===p.programId;}
-  enqueueHumanSleepStopV1(soulId:string,intent:PurposeRef,program:import('@sim/engine-contract').Program,guard:AcceptanceGuard){
+  enqueueHumanSleepStopV1(soulId:string,intent:PurposeRef,program:import('@souls/engine-contract').Program,guard:AcceptanceGuard){
     const m=this.minds.get(soulId),programId=m?previewHumanSleepStopV1(this,m,program):null;if(!m||!programId)return Promise.reject(new StaleIntentAttempt());
     const p=intentSleepStopV1Schema.parse({contract:'private-intent-sleep-stop/1',worldId:this.worldId,soulId,entityId:m.entityId,intent,programId});
     const current:AcceptanceGuard=()=>{

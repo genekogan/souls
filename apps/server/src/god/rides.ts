@@ -9,7 +9,7 @@
 //   • Any other god balloon flies a 6-minute loop round its own home (a 150 m ring at 60–80 m up).
 // Prospective only: a carrier is installed once (idempotent by id); earlier history replays unchanged. E2: when a god's
 // ferris wheel or carousel is resized or moved, its ride re-routes (logged `carrierRerouteV1`, once parked and empty).
-import type { WorldModel } from '@sim/world-compiler';
+import type { WorldModel } from '@souls/world-compiler';
 import type { WorldHost } from '../world.ts';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { CARRIER_ROUTES, type CarrierInstallSpec, type RouteKey } from '../../../../mars/viewer/engine/vehicles/carrier.ts';

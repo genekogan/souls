@@ -5,11 +5,11 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setImmediate} from 'node:timers/promises';
-import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@sim/engine-mars';
-import {kernelHash} from '@sim/kernel';
-import {hashOf} from '@sim/engine-contract';
-import {INTENT_V2,intentReceiptV2Schema,intentHistoryPageV1Schema,intentAdmissionFactV2,publicEvent} from '@sim/protocol';
-import type {CompileOut,callTool} from '@sim/brain';
+import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@souls/engine-mars';
+import {kernelHash} from '@souls/kernel';
+import {hashOf} from '@souls/engine-contract';
+import {INTENT_V2,intentReceiptV2Schema,intentHistoryPageV1Schema,intentAdmissionFactV2,publicEvent} from '@souls/protocol';
+import type {CompileOut,callTool} from '@souls/brain';
 import {Db} from '../../../src/db.ts';
 import {WorldHost} from '../../../src/world.ts';
 import {Brain} from '../../../src/brain.ts';
@@ -28,7 +28,7 @@ export async function generateCommonsCohort(measuredTicks=3600,retryV1=false,dia
   const dir=mkdtempSync(join(tmpdir(),'eden-commons-cohort-')),path=join(dir,'native.db'),db=new Db(path);
   const factory=await marsFactory({...EDEN_SAFE_COMMONS_WORLD,safeCrewRemoval:true,walkBlockV1}),seed='commons-active-24',worldId='commons-active-24';
   const host=new WorldHost(db,factory,seed,1e9,worldId,{durableClockV1:true});host.boot();host.drainInputs();
-  const programEvents:import('@sim/engine-contract').ProgramEvent[]=[];
+  const programEvents:import('@souls/engine-contract').ProgramEvent[]=[];
   if(diagnosticsV1)host.listeners.push({onProgram:event=>programEvents.push(structuredClone(event))});
   const cfg={...config,worldId,worldKey:'eden',worldPath:'/w/eden',brainMode:'fake' as const,budgetUsdPerDay:.5,
     publicUrl:'http://127.0.0.1:4957',typesafeKey:undefined,anthropicKey:'synthetic-only',compilerModel:'synthetic-only',privyAppId:'',privyAppSecret:'',inviteRequired:true};
