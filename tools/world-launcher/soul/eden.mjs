@@ -214,8 +214,9 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
     writeJson(join(ctx.dir, STATE_FILE), Object.fromEntries(Object.entries({ world, worldId, accountAuth }).filter(([, v]) => v !== undefined)));
     Object.assign(ctx, soul(id));
     process.chdir(ctx.dir);
-    // A kept Soul paired again goes on from where it was: same Soul, same cursor.
-    for (const [k, v] of Object.entries(readJson(join(ctx.dir, STATE_FILE), {}))) if (!(k in open)) open[k] = v;
+    // A kept Soul paired again in the same world goes on from where it was: same Soul, same stream, same cursor.
+    const kept = readJson(join(ctx.dir, STATE_FILE), {});
+    if (kept.world === world) for (const [k, v] of Object.entries(kept)) if (!(k in open)) open[k] = v;
     enlist(id, open, ctx.key);
   }
   function enlist(id, open, fallbackKey) {
@@ -305,6 +306,7 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
       setCurrentWorld(key);
       return { imported: true, soul: null, world: key };
     }
+    if (!seatState(key).world) writeJson(join(seat(key).dir, STATE_FILE), Object.fromEntries(Object.entries({ world: s.world, worldId: s.worldId, accountAuth: s.accountAuth }).filter(([, v]) => v !== undefined)));
     const ctx = soul(id);
     enlist(id, s, key);
     save(ctx, s);
