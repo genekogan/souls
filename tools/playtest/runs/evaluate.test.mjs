@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { evaluateRun, compareRunSet, cliArgs, joinRequests, loadSoulRun, answerQuestion, renderIndex, indexSources } from './evaluate.mjs';
+import { evaluateRun, compareRunSet, cliArgs, joinRequests, loadSoulRun, answerQuestion, renderIndex, indexSources, directionsMeasure } from './evaluate.mjs';
 import { validateSpec } from './spec.mjs';
 
 const Q = (f) => new URL(`./questions/${f}`, import.meta.url).pathname;
@@ -243,4 +243,28 @@ test('compare lists the tools checkout next to the server root and flags a tools
   const md = renderIndex(ix);
   assert.match(md, /Conditions differ: toolsCommit, toolsDirtyTrackedFiles/);
   assert.match(md, /trio-1 \(server root c0ffee, tools aaaa1111\); trio-2 \(server root c0ffee, tools cccc2222\+3\); trio-old \(server root c0ffee, tools unrecorded\)/);
+});
+
+test('directions: the direction journal is counted by command and outcome; each redirection says whether its target spoke after', () => {
+  const pt = mkdtempSync(join(tmpdir(), 'sr-dir-'));
+  const sr = { playtestDir: pt, at: (...p) => ['playtest', ...p].join('/') };
+  assert.equal(directionsMeasure(sr).status, 'unavailable', 'no journal: unavailable, never 0');
+  w(join(pt, 'director', 'commands.jsonl'), jl([
+    { t: iso(10), elapsedSec: 10, source: 'console', cmd: 'broadcast', target: 'all', outcome: 'applied', requestIds: ['a-001', 'b-001'] },
+    { t: iso(12), elapsedSec: 12, source: 'console', cmd: 'error', target: null, outcome: 'refused', reason: 'unknown seat "zed"', requestIds: [] },
+    { t: iso(20), elapsedSec: 20, source: 'script', cmd: 'redirect', target: 'b', outcome: 'applied', requestIds: ['b-002'], expect: ['Piano'] },
+    { t: iso(25), elapsedSec: 25, source: 'script', cmd: 'redirect', target: 'c', outcome: 'held', reason: 'card not delivered (seat not paired); kept for its turn', requestIds: [] },
+    { t: iso(90), elapsedSec: 90, source: 'lifecycle', cmd: 'end', target: 'all', outcome: 'applied', reason: 'lifecycle-cancel', requestIds: [] },
+  ]));
+  w(join(pt, 'director', 'speech.jsonl'), jl([{ t: iso(15), seat: 'b', atMs: T0 + 15000, text: 'rocks' }, { t: iso(40), seat: 'b', atMs: T0 + 40000, text: 'I love the old piano' }]));
+  const m = directionsMeasure(sr);
+  assert.deepEqual({ status: m.status, value: m.value, refused: m.refused }, { status: 'measured', value: 5, refused: 1 });
+  assert.deepEqual(m.byCommand, { broadcast: { applied: 1, held: 0, refused: 0 }, error: { applied: 0, held: 0, refused: 1 }, redirect: { applied: 1, held: 1, refused: 0 }, end: { applied: 1, held: 0, refused: 0 } });
+  assert.deepEqual(m.redirections.map((r) => [r.target, r.atSec, r.outcome, r.spokeAfter, r.expectHeard ?? null]), [['b', 20, 'applied', true, true], ['c', 25, 'held', false, null]]);
+  assert.deepEqual(m.sources, ['playtest/director/commands.jsonl', 'playtest/director/speech.jsonl']);
+  assert.equal(m.skipped, 0);
+  // A killed run's torn last line is skipped and counted; it is not a command and adds no undefined key.
+  writeFileSync(join(pt, 'director', 'commands.jsonl'), readFileSync(join(pt, 'director', 'commands.jsonl'), 'utf8') + '{"t":"2026-01-01T00:01:40Z","cmd":"redir');
+  const torn = directionsMeasure(sr);
+  assert.deepEqual({ value: torn.value, skipped: torn.skipped, keys: Object.keys(torn.byCommand) }, { value: 5, skipped: 1, keys: ['broadcast', 'error', 'redirect', 'end'] });
 });

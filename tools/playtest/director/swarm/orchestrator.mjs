@@ -177,26 +177,60 @@ export function createSwarm({ cast, runDir, seats, world, owner, truth, plan, cl
 
   // ---- console
   function submit(line) { inbox.push({ line, at: elapsed() }); }
+  // The direction journal (director/commands.jsonl): one record per console command (typed, scripted or from the
+  // lifecycle) with its target, timing, outcome and the cards it sent. outcome: applied | held (a redirect kept for the
+  // seat's turn but not delivered now) | refused (no effect, with the reason).
+  // The journal is evidence about the run, never a reason to stop it: a write failure (disk full, permissions) warns
+  // once and the command still takes effect, and a lifecycle end still stops the run.
+  let journalWarned = false;
+  function journal(rec) {
+    const out = { t: iso(), mono: clock.now(), elapsedSec: Math.round(elapsed() * 10) / 10, phase: state.phase, ...rec };
+    try {
+      appendJsonl(join(dir, 'commands.jsonl'), out);
+      if (out.outcome !== 'applied') timeline('command', { cmd: out.cmd, source: out.source, outcome: out.outcome, reason: out.reason ?? null }, `command ${out.cmd} ${out.outcome}${out.reason ? `: ${out.reason}` : ''}`);
+    } catch (e) {
+      if (!journalWarned) { journalWarned = true; print(`[${mmss(elapsed())}] warning: direction journal not written (${String(e?.message ?? e).split('\n')[0]}); the run goes on`); }
+    }
+    return out;
+  }
   async function handle({ line, expect = null, scripted = false }) {
     const p = parseLine(line, { seats: cast.seats });
     timeline('console', { line, cmd: p.cmd, scripted }, `console> ${line}`);
+    if (p.cmd === 'noop') return;
+    const j = { target: p.seat ?? null, requestIds: [], errors: [], outcome: 'applied', reason: null };
+    const send = async (st, ...args) => { const r = await direct(st, ...args); if (r.requestId) j.requestIds.push(r.requestId); if (r.error) j.errors.push(`${st.id}: ${r.error}`); return r; };
+    await command(p, { expect, j, send });
+    journal({ source: scripted ? 'script' : 'console', line: String(line), cmd: p.cmd, target: j.target, outcome: j.outcome, ...(j.reason ? { reason: j.reason } : {}), requestIds: j.requestIds, ...(j.errors.length ? { errors: j.errors } : {}), ...(expect ? { expect } : {}) });
+  }
+  async function command(p, { expect, j, send }) {
     const by = 'console';
-    if (p.cmd === 'pause') { state.paused = true; return; }
-    if (p.cmd === 'resume') { state.paused = false; return; }
-    if (p.cmd === 'end') { stop('console-end'); return; }
+    const refuse = (reason) => { j.outcome = 'refused'; j.reason = reason; };
+    if (p.cmd === 'pause') { j.target = 'all'; state.paused = true; return; }
+    if (p.cmd === 'resume') { j.target = 'all'; state.paused = false; return; }
+    if (p.cmd === 'end') { j.target = 'all'; stop('console-end'); return; }
     if (p.cmd === 'status') { print(statusLine()); return; }
-    if (p.cmd === 'error') { print(`console: ${p.error}`); return; }
-    if (p.cmd === 'broadcast') { for (const st of Object.values(S)) if (st.pairing === 'paired') await direct(st, 'console', p.text, 'typed to everyone at the console', { by, economy: false }); return; }
-    if (p.cmd === 'say') { await direct(S[p.seat], 'console', p.text, 'typed to this seat at the console', { by, economy: false }); return; }
+    if (p.cmd === 'error') { print(`console: ${p.error}`); refuse(p.error); return; }
+    if (p.cmd === 'broadcast') {
+      j.target = 'all';
+      const paired = Object.values(S).filter((st) => st.pairing === 'paired');
+      for (const st of paired) await send(st, 'console', p.text, 'typed to everyone at the console', { by, economy: false });
+      if (!paired.length) refuse('no paired seat');
+      else if (!j.requestIds.length) refuse('no card delivered');
+      return;
+    }
+    if (p.cmd === 'say') { await send(S[p.seat], 'console', p.text, 'typed to this seat at the console', { by, economy: false }); if (!j.requestIds.length) refuse(j.errors[0]?.replace(/^[^:]+: /, '') ?? 'no card delivered'); return; }
     if (p.cmd === 'economy') {
-      for (const st of p.seat ? [S[p.seat]] : Object.values(S)) { if (!cast.economy[p.level]) { print(`console: unknown economy ${p.level}`); return; } st.economy = p.level; await direct(st, 'economy', `token economy → ${p.level}`, 'console set the token economy', { by, channel: 'none' }); }
+      j.target = p.seat ?? 'all';
+      for (const st of p.seat ? [S[p.seat]] : Object.values(S)) { if (!cast.economy[p.level]) { print(`console: unknown economy ${p.level}`); refuse(`unknown economy ${p.level}`); return; } st.economy = p.level; await send(st, 'economy', `token economy → ${p.level}`, 'console set the token economy', { by, channel: 'none' }); }
       return;
     }
     if (p.cmd === 'redirect') {
       const st = S[p.seat]; st.override = p.text;
       // Before its turn the redirect is held and folded into its "your turn" direction (NUDGE.goOverride); during its turn it applies now.
-      const rec = await direct(st, 'redirect', NUDGE.redirect(st.cfg, p.text, !st.goAt), st.goAt ? 'redirect during its turn' : 'redirect before its turn: held, folded into its turn direction', { by, economy: false });
+      const rec = await send(st, 'redirect', NUDGE.redirect(st.cfg, p.text, !st.goAt), st.goAt ? 'redirect during its turn' : 'redirect before its turn: held, folded into its turn direction', { by, economy: false });
       state.redirects.push({ seat: st.id, text: p.text, t: rec.t, atMs: wallMs(), expect: expect ?? null, beforeTurn: !st.goAt, requestId: rec.requestId });
+      // Not delivered now (the seat is not paired yet): the override still replaces its talk when its turn comes.
+      if (!rec.requestId) { j.outcome = 'held'; j.reason = `card not delivered (${rec.error ?? 'no request'}); kept for its turn`; }
       fire(`redirect:${st.id}`);
     }
   }
@@ -325,7 +359,7 @@ export function createSwarm({ cast, runDir, seats, world, owner, truth, plan, cl
   return {
     state, seats: S, submit, run, statusLine,
     /** end(why): stop from outside the console (a Soul Run cancel); the loop closes as after `end`. */
-    end: (why = 'external-end') => stop(why),
+    end: (why = 'external-end', source = 'lifecycle') => { if (!state.stopped) journal({ source, line: null, cmd: 'end', target: 'all', outcome: 'applied', reason: why, requestIds: [] }); stop(why); },
     paired: (id, soul = null) => { const st = S[id]; if (st && st.pairing !== 'paired') markPaired(st, soul); },
     onboardFailed: (id) => { const st = S[id]; if (st && st.pairing === 'onboarding') { st.pairing = 'unpaired'; st.lastDirAt = null; timeline('unpaired', { seat: id }, `${id.padEnd(8)} onboarding ended unpaired`); } },
     onPaired: (fn) => { onPaired = fn; },
