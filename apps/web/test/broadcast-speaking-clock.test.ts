@@ -6,8 +6,8 @@ import { WorldBroadcast } from '../src/WorldBroadcast.ts';
 import { speakingNow } from '../src/dialogue-speaking.ts';
 
 test('DIRECTOR2: a Soul speaking now is a conversation for the broadcast, whatever the clocks', () => {
-  const g = globalThis as unknown as { __simBroadcastCuts?: { key: string }[] };
-  g.__simBroadcastCuts = [];
+  const g = globalThis as unknown as { __soulsBroadcastCuts?: { key: string }[] };
+  g.__soulsBroadcastCuts = [];
   const b = new WorldBroadcast();
   b.hints = () => ({ soulEntity: (s: string) => ({ s_a: 'h_a', s_b: 'h_b' } as Record<string, string>)[s] ?? null, eden: false, daylight: 1, views: [] });
   const now = performance.now();
@@ -17,5 +17,5 @@ test('DIRECTOR2: a Soul speaking now is a conversation for the broadcast, whatev
   const records = { h_a: { kind: 'human' }, h_b: { kind: 'human' } };
   try { b.sample(frame as never, records as never, {} as never, 10, 0.1, 16 / 9, Date.now() / 1000, 0.016); } catch { /* framing needs a real scene; the choice is made first */ }
   speakingNow.clear();
-  assert.match(g.__simBroadcastCuts.at(-1)?.key ?? '', /^conversation:c1$/);
+  assert.match(g.__soulsBroadcastCuts.at(-1)?.key ?? '', /^conversation:c1$/);
 });

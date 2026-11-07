@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
 import {Hono} from 'hono';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {edenNavWorld} from '../test/eden-nav-fixture.ts';
 import {registerEdgeComms} from './edge/comms/index.ts';
 import {registerEdgeEvents} from './edge/events/index.ts';

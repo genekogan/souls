@@ -1,5 +1,5 @@
 {
-  "name": "@sim/web",
+  "name": "@souls/web",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,23 +11,23 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.6",
-    "@sim/client": "workspace:*",
-    "@sim/ground": "workspace:*",
-    "@sim/world-compiler": "workspace:*",
-    "@sim/engine-contract": "workspace:*",
-    "@sim/protocol": "workspace:*",
+    "@souls/client": "workspace:*",
+    "@souls/ground": "workspace:*",
+    "@souls/world-compiler": "workspace:*",
+    "@souls/engine-contract": "workspace:*",
+    "@souls/protocol": "workspace:*",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "three": "^0.186.1",
+    "three": "^0.187.0",
     "tone": "15.1.22",
-    "@sim/generators": "workspace:*",
+    "@souls/generators": "workspace:*",
     "meshoptimizer": "^1.1.1"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@types/three": "^0.186.0",
+    "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^6.1.2",
     "vite": "^8.3.5"
   }

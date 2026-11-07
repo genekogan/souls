@@ -1,4 +1,4 @@
-import type {Entity} from '@sim/engine-contract';
+import type {Entity} from '@souls/engine-contract';
 import {admitBodyGLB,bindBodyDefinition} from './admission.ts';
 import {validateUpload,BODY_UPLOAD_POLICY} from '../../moderation/validate.ts';
 import {PIP_ASSET,pipBytes} from './pip.ts';

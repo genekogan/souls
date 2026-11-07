@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { registerHooks } from 'node:module';
-import { WorldModel, coreLibrary, applyBatch, type Entity } from '@sim/world-compiler';
+import { WorldModel, coreLibrary, applyBatch, type Entity } from '@souls/world-compiler';
 import { diffSnapshots, type PlainSnapshot, type SnapshotDelta, type SnapshotDecoder } from './snapshot-delta.ts';
 
 type Drawn = { settled?: boolean; frozen?: THREE.Object3D[]; removing?: boolean; dur: number; obj: THREE.Object3D; to: { p: THREE.Vector3; s: number } };

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type {PublicSoul} from '@sim/protocol';
+import type {PublicSoul} from '@souls/protocol';
 import {turn,UP} from '../../../mars/viewer/app/engine-view/rig.ts';
 /** LINK BODY (2026-10-24): how the body rule's states look (presentation only; the server owns the state, the engine the
  *  posture). A sleeper lies down through the engine's own nap pose and a wake stands up through the clip fade, so this layer

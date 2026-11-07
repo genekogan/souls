@@ -9,7 +9,7 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {serve} from '@hono/node-server';
-import {marsFactory, GREEN_FIELD_WORLD} from '@sim/engine-mars';
+import {marsFactory, GREEN_FIELD_WORLD} from '@souls/engine-mars';
 import {buildApp} from './http.ts';
 import type {Hub} from './hub.ts';
 import type {AccountIdentity} from './accounts/store.ts';

@@ -6,7 +6,7 @@
 // INDICATIVE on the laptop; the numbers to quote come from the eden2 bench (L6).
 import { writeFileSync } from 'node:fs';
 import { Session } from 'node:inspector/promises';
-import { kernelHash } from '@sim/kernel';
+import { kernelHash } from '@souls/kernel';
 import { bootEden } from './eden-capabilities-timing.ts';
 import { accept, invite, factory } from './native-owner-fixture.ts';
 import { WorldHost } from '../src/world.ts';

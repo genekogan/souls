@@ -15,7 +15,7 @@ const checks=[],errors=[];const check=(name,value)=>{assert.ok(value,name);check
 const browser=await chromium.launch({headless:true,args:['--enable-unsafe-swiftshader']});let page,status='fail';
 const data=k=>page.locator('.viewer-history').getAttribute('data-viewer-'+k);
 const mode=m=>page.waitForFunction(m=>document.querySelector('.viewer-history')?.dataset.viewerMode===m,m,{timeout:30000});
-const cam=()=>page.evaluate(()=>globalThis.__simCamera);
+const cam=()=>page.evaluate(()=>globalThis.__soulsCamera);
 const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
 try{
  const context=await browser.newContext({viewport:{width:1200,height:850}});

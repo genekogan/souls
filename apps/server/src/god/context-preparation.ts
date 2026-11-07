@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { GodMode } from './god.ts';
-import type { WorldModel } from '@sim/world-compiler';
+import type { WorldModel } from '@souls/world-compiler';
 import { contextTargetRows, transientDef, type ContextTarget } from './context-view-scene.ts';
 import { withoutHidden } from '../moderation/routes.ts';
 import { contextStage, contextTiming } from './context-timing.ts';

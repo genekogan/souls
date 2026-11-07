@@ -1,7 +1,7 @@
 // Private trusted-native outbox, separate from canonical progress. No client
 // handler, authority check or physical retry is supplied by this component.
-import { hashOf, stableStringify } from '@sim/engine-contract';
-import { intentAdmissionPayloadV2Schema, intentControllerPayloadV2Schema, intentControllerFactV2, type IntentControllerPayloadV2, type LogEvent } from '@sim/protocol';
+import { hashOf, stableStringify } from '@souls/engine-contract';
+import { intentAdmissionPayloadV2Schema, intentControllerPayloadV2Schema, intentControllerFactV2, type IntentControllerPayloadV2, type LogEvent } from '@souls/protocol';
 import type { Db } from './db.ts';
 
 type Row = { world_id:string; attempt_id:string; phase:string; observation_tick:number;

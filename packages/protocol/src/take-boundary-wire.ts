@@ -1,5 +1,5 @@
 // Lossless, self-contained transport only. Canonical Take/WorldState never use refs.
-import {authoredBoundariesV1Schema,hashOf,stableStringify} from '@sim/engine-contract';
+import {authoredBoundariesV1Schema,hashOf,stableStringify} from '@souls/engine-contract';
 
 export const TAKE_BOUNDARY_WIRE_V1='take-boundary-facts/1' as const;
 export const TAKE_BOUNDARY_WIRE_LIMITS={chunks:512,facts:32,factBytes:8*1024*1024,dictionaryBytes:32*1024*1024,expandedBytes:64*1024*1024} as const;

@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-06 wearing and carrying family (#434, W065, #1088): litter and bins. core-bin@2 and core-wheelie-bin@2 are new revisions of the street bins on entry 42's container faculty with data only: open at the top, three places down inside at the level of the rubbish, reached over the rim. core-wrapper@1 is a new small carryable thing. Frozen core-bin@1 and core-wheelie-bin@1 are byte-identical. A narrow production K=2 run (`conformance.mjs --k 2 --filter <name>`) baked, placed and rendered every sample of each with 0 findings and 0 qualification gaps, so this supplement pins no finding. No budgets, samples or gap checks were relaxed.",
+  "findings": []
+}
