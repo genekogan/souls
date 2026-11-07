@@ -94,7 +94,7 @@ const ACT_ALIASES: Record<string, string> = {'turn-on': 'switch-on', 'turn-off':
 /** #428: a second meaning of an everyday word, used only when its ACT_ALIASES meaning is not on offer and this one is:
  *  "cross out" a sign-up name (unsign) or a notebook line (the pinboard faculty's unpin). */
 const ACT_ALT: Record<string, string> = {'cross-out': 'unpin', 'cross-off': 'unpin', 'strike-off': 'unpin'};
-const LABEL_FILLER = new Set(['from', 'your', 'my', 'out', 'off', 'down', 'take', 'cross', 'in', 'on', 'of']), THING_ALIASES: Record<string, string> = {journal: 'notebook', logbook: 'notebook', noticeboard: 'board'};
+const LABEL_FILLER = new Set(['from', 'your', 'my', 'out', 'off', 'down', 'take', 'cross', 'in', 'on', 'of']), THING_WORDS = new Set(['notebook', 'journal', 'logbook', 'diary', 'guestbook', 'board', 'noticeboard', 'sheet']), THING_ALIASES: Record<string, string> = {journal: 'notebook', logbook: 'notebook', noticeboard: 'board'};
 /** #428: "write in the notebook" is a notebook's line (the pinboard faculty's `pin`), only where a notebook's line is on
  *  offer (its label says so), so "write in the study" still reaches a desk beside a pinboard. */
 const NOTEBOOK_WORDS: Record<string, string> = {'write-in': 'pin', 'write-a-line-in': 'pin'};
@@ -597,9 +597,12 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     const name = (c: EdgeCapability) => hits(thing(c)), noun = (c: EdgeCapability) => hits(c.label);
     const first = ctx.caps.filter(c => c.action === primary), second = alt ? ctx.caps.filter(c => c.action === alt) : [];
     const crossing = !!alt || primary === 'unpin', here = crossing ? tokens([...first, ...second].map(thing).join(' ')) : [];
-    // every word must be about something offered, its name or its label's noun, or nothing is done: "my journal note" with only
-    // a board is not that board's note, whatever the word and wherever it stands in the sentence
-    const known = crossing ? tokens([...first, ...second].flatMap(c => [c.label, thing(c)]).join(' ')) : [], stray = said.find(w => !tokenHit(w, known) && !tokenHit(THING_ALIASES[w] ?? w, known));
+    // words about something that isn't offered do nothing: "my journal note" with only a board is not that board's note. For
+    // the cross-out verbs that is any word that is neither an offered name nor a label's noun; "take down" and "remove" keep their
+    // free words ("the old poster", "Ben's note") and answer only to a word for a thing, or a place named after in, on or from.
+    const known = crossing ? tokens([...first, ...second].flatMap(c => [c.label, thing(c)]).join(' ')) : [], fits = (w: string) => tokenHit(w, known) || tokenHit(THING_ALIASES[w] ?? w, known);
+    const where = tokens(/\b(?:in|on|off|from)\s+(.+)$/i.exec(rest)?.[1] ?? '').filter(w => !LABEL_FILLER.has(w));
+    const stray = said.find(w => !fits(w) && (!!alt || THING_WORDS.has(w))) ?? where.find(w => !fits(w));
     if (crossing && first.length + second.length && stray) return {kind: 'unknown', code: 'capability.unknown', reason: `Nothing here to cross out or take down goes by "${stray}", so nothing was done.`, didYouMean: []};
     const altFits = !!alt && (second.length
       ? first.some(name) ? false : second.some(name) ? true : !first.length && ws.includes('name') ? false : first.some(noun) ? false : second.some(noun) ? true : !can(primary).length && (!!can(alt).length || !first.length)
