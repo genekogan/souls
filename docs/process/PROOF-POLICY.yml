@@ -8,7 +8,8 @@
 #   node tools/proof/tier.mjs                      tier of the working tree's diff against origin/main
 #   node tools/proof/tier.mjs --base <ref> [--label tier:T3] [--json]
 #
-# Changing a knob or a mapping is a reviewed one-line PR, not a new brief.
+# Changing a knob or a mapping is a reviewed one-line PR, not a new brief. It computes T3 (the first `paths` rule), so
+# it waits for the maintainer, who lands it with an approval and `proof:waived`.
 version: 1
 
 tiers:
@@ -57,6 +58,9 @@ pr_checks:
 # First match wins for each file. `prefix` matches the start of a repo-relative path; `glob` supports * (within a
 # path segment) and ** (across segments).
 paths:
+  # T3: this file. It sets every other change's tier and which PRs wait for the maintainer, so changing it is at least
+  # the highest tier it governs. (proof-check reads the base branch's copy, so a PR never lowers its own tier.)
+  - { glob: "docs/process/PROOF-POLICY.yml", tier: T3 }
   # T3: Soul behaviour, navigation, engines and the shared protocol
   - { glob: "apps/server/src/{edge,intent,soul,brain,body,purpose,lifecycle,nav}*", tier: T3 }
   # The original * keeps top-level names (edge-*.ts, soul-*.ts); nested family directories need **.
