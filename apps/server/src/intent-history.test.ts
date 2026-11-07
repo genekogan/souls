@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hashOf } from '@sim/engine-contract';
-import { INTENT_V2, intentRequestV2Schema, intentReceiptV2Schema, intentOutcomeV2Schema, publicIntentHistoryEventV2, type IntentHistoryEventV2 } from '@sim/protocol';
+import { hashOf } from '@souls/engine-contract';
+import { INTENT_V2, intentRequestV2Schema, intentReceiptV2Schema, intentOutcomeV2Schema, publicIntentHistoryEventV2, type IntentHistoryEventV2 } from '@souls/protocol';
 import { emptyIntentHistoryV2, foldIntentHistoryV2, replayIntentHistoryV2 } from './intent-history.ts';
 
 const scope = { contract: INTENT_V2, worldId: 'eden-fixture', soulId: 's_Alice' };

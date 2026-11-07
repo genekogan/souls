@@ -1,5 +1,5 @@
 // SPOTS 2026-10-22: a picnic sits on the blanket (seat top 0.2 m, the ground); a tall body was refused pose.seat-too-low.
-// Any body may picnic; a real 0.2 m seat (eat on a low stool) still refuses a tall body.
+// #1083 (Gene, 2026-11-06): any body sits at any seat height a def declares; a picnic, a low stool and a high one.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Runtime } from '../runtime/runtime.ts';
@@ -16,9 +16,14 @@ const tall = () => {
   const spatial = new Spatial(scene); spatial.sync(world);
   return new Runtime(world, new Map<string, ActionDef>([[poseV1.verb, poseV1 as ActionDef]]), { spatial }, DEFAULT_INVARIANTS);
 };
-test('a tall body picnics on a blanket (0.2 m); a 0.2 m seat for eating still does not fit it', () => {
-  const rt = tall(), r = rt.submit('pose_v1', { actor: 'a', activity: 'picnic', seconds: 2, base: 'sit', seatHeight: 0.2 });
-  assert.notEqual(r.status, 'failed', JSON.stringify(r).slice(0, 300));
-  const rt2 = tall(), r2 = rt2.submit('pose_v1', { actor: 'a', activity: 'eat', seconds: 2, base: 'sit', seatHeight: 0.2 });
-  assert.equal(r2.status, 'failed'); assert.match(JSON.stringify(r2), /seat-too-low/);
+test('a tall body picnics on a blanket (0.2 m), eats on a 0.1 m stool and on a 1.6 m one: no seat height is refused', () => {
+  for (const [activity, seatHeight] of [['picnic', 0.2], ['eat', 0.2], ['eat', 0.1], ['eat', 1.6], ['eat', 2.1]] as const) {
+    const rt = tall(), r = rt.submit('pose_v1', { actor: 'a', activity, seconds: 2, base: 'sit', seatHeight });
+    assert.notEqual(r.status, 'failed', `${activity} at ${seatHeight} m: ${JSON.stringify(r).slice(0, 300)}`);
+    for (let i = 0; i < 80; i++) rt.step();
+    assert.deepEqual(rt.violations, [], `${activity} at ${seatHeight} m`);
+  }
+  // above the tall body's standing reach (2.06 × 1.85 / 1.75 = 2.178 m) it can't get onto the seat: refused, with the reason
+  const r = tall().submit('pose_v1', { actor: 'a', activity: 'eat', seconds: 2, base: 'sit', seatHeight: 2.2 });
+  assert.equal(r.status, 'failed'); assert.equal(r.diagnostic?.code, 'pose.seat-out-of-reach', JSON.stringify(r).slice(0, 300));
 });

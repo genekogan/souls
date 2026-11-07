@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, coreRef } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, coreRef } from '@souls/world-compiler';
 import { resolveBootPlace } from '../edge/boot/place-resolution.ts';
 import { decorateMeaning, meaningParts } from './meaning.ts';
 import type { GodPlace } from './places.ts';

@@ -1,6 +1,6 @@
 // Public captured physical demonstration for World. Low-level hypothetical
 // bodies only; no product Souls, account, mind, compiler or live-world adoption.
-import {captureRenderScene,hashOf} from '@sim/engine-contract';
+import {captureRenderScene,hashOf} from '@souls/engine-contract';
 import {connectedCommonsShoreFixture,CONNECTED_SHORE_TRANSFORM} from './connected-shore.ts';
 import {TakeRecorder} from '../../../mars/viewer/engine/take/recorder.ts';
 export async function nativeConnectedCommonsShoreTake(){

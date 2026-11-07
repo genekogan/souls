@@ -7,7 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {manifest} from '../world-launcher/deploy/release-manifest.mjs';
 const script=new URL('../world-launcher/deploy/release.sh',import.meta.url);
 const verifier=new URL('../world-launcher/deploy/release-manifest.mjs',import.meta.url).pathname;
-function fixture(t){const root=mkdtempSync(join(tmpdir(),'sim-release-safe-'));t.after(()=>{const trash=join(homedir(),'.Trash');mkdirSync(trash,{recursive:true});renameSync(root,join(trash,root.split('/').at(-1)+'-'+Date.now()));});writeFileSync(join(root,'BUILD'),'we-123456789abc\n');mkdirSync(join(root,'app'));writeFileSync(join(root,'app','main.js'),'export const version=1;\n');symlinkSync('app/main.js',join(root,'main'));return root;}
+function fixture(t){const root=mkdtempSync(join(tmpdir(),'souls-release-safe-'));t.after(()=>{const trash=join(homedir(),'.Trash');mkdirSync(trash,{recursive:true});renameSync(root,join(trash,root.split('/').at(-1)+'-'+Date.now()));});writeFileSync(join(root,'BUILD'),'we-123456789abc\n');mkdirSync(join(root,'app'));writeFileSync(join(root,'app','main.js'),'export const version=1;\n');symlinkSync('app/main.js',join(root,'main'));return root;}
 function seal(root){const path=join(root,'RELEASE-MANIFEST.json');writeFileSync(path,JSON.stringify(manifest(root))+'\n');return path;}
 function verify(root,path){return spawnSync(process.execPath,[verifier,'verify',root,path],{encoding:'utf8'});}
 test('release recipe retains remote/local releases and refuses unverified same-build uploads',()=>{

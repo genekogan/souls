@@ -1,7 +1,7 @@
 // Y5 (CE3 Rewind): pure helpers for `POST /v1/god/builds/:id/rewind`. The atomic inverse chain itself is R1's
 // preflightUndo/commitSequence; this file only reads its result: what a rewind would change, and which later live
 // edits outside the reverted set would lose their effect (refused with a field and a fix, never silently destroyed).
-import { hashOf, type Diff, type Entity, type Failure, type WorldModel } from '@sim/world-compiler';
+import { hashOf, type Diff, type Entity, type Failure, type WorldModel } from '@souls/world-compiler';
 import type { EditRow } from './store.ts';
 
 const FIELDS = ['def', 'in', 'name', 'p', 'r', 's', 'shape', 'anchor', 'params', 'state', 'seed', 'constraints', 'owner', 'access', 'schedule', 'price'] as const;

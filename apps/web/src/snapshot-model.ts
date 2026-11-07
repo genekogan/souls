@@ -1,4 +1,4 @@
-import { WorldModel } from '@sim/world-compiler';
+import { WorldModel } from '@souls/world-compiler';
 
 type Snapshot = Parameters<typeof WorldModel.fromSnapshot>[0];
 /** Build the same lazy-index model as fromSnapshot, yielding between entity batches. The model stays private until

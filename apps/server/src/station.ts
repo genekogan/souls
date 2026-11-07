@@ -1,7 +1,7 @@
 // Explicit isolated installation only. No timer, default flag or main bootstrap.
-import { nativeGatheringObservationV1Schema } from '@sim/engine-contract';
+import { nativeGatheringObservationV1Schema } from '@souls/engine-contract';
 import { STATION_PINS_V1, stationEpochV1Schema, stationEpochId, makeStationCueV1, stationPhaseAtTick, stationEndTick,
-  stationLiveV1Schema, stationAnchorV1Schema, type StationLiveV1, type StationCueV1 } from '@sim/protocol';
+  stationLiveV1Schema, stationAnchorV1Schema, type StationLiveV1, type StationCueV1 } from '@souls/protocol';
 import { historicalStationV1 } from './station-history.ts';
 import type { WorldHost } from './world.ts';
 

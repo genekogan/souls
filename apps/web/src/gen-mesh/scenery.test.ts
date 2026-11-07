@@ -5,8 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { TILE_M } from '@sim/ground';
-import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@sim/world-compiler';
+import { TILE_M } from '@souls/ground';
+import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@souls/world-compiler';
 import { meshFor, type MeshCtx } from './registry.ts';
 import { MaterialLib } from './materials.ts';
 import './scenery.mesh.ts';

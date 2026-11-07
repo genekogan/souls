@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import type {PublicSoul} from '@sim/protocol';
+import type {PublicSoul} from '@souls/protocol';
 import {exploreSoulRoster} from '../src/explore-data.ts';
 const soul=(id:string,name:string):PublicSoul=>({id,name,entityId:'h_'+id,description:'public profile',owner:'fixture',intent:null,intentText:'',mood:'',energy:'',doing:'',native:true});
 void test('empty camera room retains the actual known world roster and global name search',()=>{

@@ -31,7 +31,7 @@ class SteerHost extends EventEmitter{
 }
 function fixture(t){
  t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:origin});
- const directory=mkdtempSync(join(tmpdir(),'sim-steer-incorporation-')),journal=openJournal(directory,{worldId:'w',soulId:'s'}),host=new SteerHost(),stop=new AbortController(),commands=[],states=[];
+ const directory=mkdtempSync(join(tmpdir(),'souls-steer-incorporation-')),journal=openJournal(directory,{worldId:'w',soulId:'s'}),host=new SteerHost(),stop=new AbortController(),commands=[],states=[];
  const instruction='Reply once to the presenter when the session opens.';
  journal.ingest({source:'owner',after:null,cursor:'original-owner',events:[{id:'original-owner',text:instruction}]});journal.handled('owner','original-owner','notification incorporated; task still open');
  const fence=journal.control.claim('prior');journal.control.save(fence,0,{threadId:host.threadId,initialInstruction:instruction,plan:'Wait for the session to open',wakeAt:null,listenTo:[]});journal.control.release(fence);

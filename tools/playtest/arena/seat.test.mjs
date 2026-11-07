@@ -62,7 +62,7 @@ test('chat onStart fires when the queued turn actually starts (after the running
   const run = mkdtempSync(join(tmpdir(), 'pt-seat-'));
   const s = createSeat({ runDir: run, seat: { id: 'q', adapter: 'claude-headless' }, worldBase: 'http://h' });
   const log = [];
-  s.adapter = { turn: async ({ text }) => { log.push(`run ${text}`); await new Promise((r) => setTimeout(r, 40)); log.push(`end ${text}`); return { stream: [], usage: {}, finalText: 'ok', toolCalls: [], exit: 0, wallMs: 40 }; }, renderChat: () => '' };
+  s.adapter = { turn: async ({ text }) => { log.push(`run ${text}`); await new Promise((r) => setTimeout(r, 40)); log.push(`end ${text}`); return { stream: [], usage: { costUsd: 0.01 * log.length }, finalText: 'ok', toolCalls: [], exit: 0, wallMs: 40 }; }, renderChat: () => '' };
   const a = s.chat('wake', { reason: 'wake' });
   const b = s.chat('sit down', { onStart: (i) => log.push(`start ${i.turn} ${i.reason}`) });
   await Promise.all([a, b]);

@@ -1,5 +1,5 @@
 import {humanActivity} from './human-activity.ts';
-import type {PublicSoul} from '@sim/protocol';
+import type {PublicSoul} from '@souls/protocol';
 type Choice=Pick<PublicSoul,'id'|'name'|'description'|'doing'>;
 const preview=(value:unknown,max:number)=>typeof value==='string'?(value.length>max?value.slice(0,max)+'…':value):'';
 /** Public identity/context only; ownership badges use the parent's current Me. */

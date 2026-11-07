@@ -1,7 +1,7 @@
 // G425: consecutive arrivals must not overlap.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {retainedCommonsShoreFactory} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory} from '@souls/engine-mars';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 test('souls created back to back arrive at least 0.8 m apart',async t=>{

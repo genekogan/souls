@@ -84,12 +84,12 @@ try {
     page.on('pageerror', (e) => report.failures.push({ name: `${label} pageerror`, error: String(e).slice(0, 300) }));
     await page.goto(`${base}?dev=1&shot=1&eye=${eye}&at=${at}${extra}`, { waitUntil: 'commit', timeout: 300000 });
     let steady = 0;
-    for (let i = 0; i < 900 && steady < 5; i++) { const ok = await page.evaluate(() => { const w = window.__simEntity; return !!w?.layer?.active && !!w.layer.model && w.layer.drawn?.size >= 6; }).catch(() => false); steady = ok ? steady + 1 : 0; await page.waitForTimeout(1000); }
+    for (let i = 0; i < 900 && steady < 5; i++) { const ok = await page.evaluate(() => { const w = window.__soulsEntity; return !!w?.layer?.active && !!w.layer.model && w.layer.drawn?.size >= 6; }).catch(() => false); steady = ok ? steady + 1 : 0; await page.waitForTimeout(1000); }
     return page;
   };
   /** In the page: every frame for `ms`, each horse's footprint (its box turned by its yaw) against her disc (r 0.3 m). */
   const watch = (page, ms) => page.evaluate(([ms, sx, sz]) => new Promise((done) => {
-    const w = window.__simEntity, horses = [];
+    const w = window.__soulsEntity, horses = [];
     for (const d of w.layer.drawn.values()) { if (d.obj.userData.rig) horses.push(d.obj); for (const c of d.obj.children) if (c.userData.rig) horses.push(c); }
     const v = new (horses[0].position.constructor)();
     let frames = 0, overlapFrames = 0, minGap = Infinity, frameMs = [];
@@ -111,7 +111,7 @@ try {
     requestAnimationFrame(tick);
   }), [ms, sx, sz]);
   const overlapNow = (page) => page.evaluate(([sx, sz]) => {
-    const w = window.__simEntity, hs = []; for (const d of w.layer.drawn.values()) { if (d.obj.userData.rig) hs.push(d.obj); for (const c of d.obj.children) if (c.userData.rig) hs.push(c); }
+    const w = window.__soulsEntity, hs = []; for (const d of w.layer.drawn.values()) { if (d.obj.userData.rig) hs.push(d.obj); for (const c of d.obj.children) if (c.userData.rig) hs.push(c); }
     const v = new (hs[0].position.constructor)(); let best = Infinity;
     for (const h of hs) { h.getWorldPosition(v); best = Math.min(best, Math.hypot(v.x - sx, v.z - sz)); }
     return best;
