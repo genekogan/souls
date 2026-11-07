@@ -55,6 +55,20 @@ test('supported untargeted activity commands remain activities before venue disc
  for(const query of ['find somewhere to read a book','find somewhere to take a nap'])assert.equal(semanticDiscovery(L,{soulId:'s'} as any,query,caps,new Map()),null,query);
  const venue=semanticDiscovery(L,{soulId:'s'} as any,'somewhere to hear live music',caps,new Map()) as any;assert.equal(venue.discovery.kind,'purpose');assert.equal(venue.didYouMean[0].id,'walk:stage');
 });
+
+test('#848: relation words between a seat and its place: inside reads as in, outside is a constraint (outdoor)',()=>{
+ const {run,L}=setup();
+ L.places.byId.set('cottage',{id:'cottage',ref:'cottage',name:'Knoll Cottage',aliases:['cottage'],parent:'world',parts:[{id:'outdoor-bench',title:'Outdoor Bench',aliases:['hill bench'],sit:'sit:cottage/part-outdoor-bench',target:{entity:'bench',ref:'bench',slot:'seat'}}]});
+ assert.deepEqual(run('sit on the bench outside the cottage').didYouMean.map((x:any)=>x.id),['sit:cottage/part-outdoor-bench']);
+ assert.deepEqual(run('sit at the podium desk inside Chiba').didYouMean.map((x:any)=>x.id),['sit:chiba/part-podium']);
+ assert.equal(run('sit at the podium desk outside Chiba').didYouMean.length,0,'no outdoor seat in Chiba: the constraint is kept');
+});
+
+test('#848 review: a generic sit does not build the named-seat parts (no cost before the early return)',()=>{
+ const {L,places}=setup(),knows=L.knowledge.knows;let calls=0;L.knowledge.knows=(...a:[string,string])=>{calls++;return knows(...a);};
+ for(const query of ['sit down','sit on a bench']){calls=0;assert.equal(semanticDiscovery(L,{soulId:'s'} as any,query,[],new Map()),null,query);assert.equal(calls,places.length,`${query}: only the known-places filter`);}
+});
+
 test('F5 (#376): a bound seat whose own name holds every word keeps the vocabulary path; seats of different names are named, never chosen',()=>{
  const {L}=setup(),seat=(name:string,id=name)=>({id:'sit:e_'+id,verb:'sit',label:`${name} (a mars-presenter-timber-box, sit on top, 23 m)`,target:{kind:'object',id},available:true});
  const run=(q:string,caps:any[])=>semanticDiscovery(L,{soulId:'s'} as any,q,caps,new Map()) as any;

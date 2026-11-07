@@ -12,6 +12,10 @@ const covers=(q:string[],set:Set<string>)=>q.every(w=>set.has(w));
 /** A bound object seat's own names: its label's name, the id after the verb, the target id, the label's words after the verb. */
 const seatNames=(c:EdgeCapability)=>[c.label.split(/\s*[([]|,\s*by\s/)[0]!,c.id.slice(c.id.indexOf(':')+1),c.target!.id,parseCapability(c.label,new Set(['sit'])).rest];
 const GENERIC_SEAT=new Set(['down','here','nearby','nearest','closest','somewhere','seat','chair','bench']);
+// #848: a relation word between a seat and its place ("the bench outside the cottage", "the bench inside the hall"). `inside`
+// reads as `in` (already a stop word). `outside` stays a constraint, read as the authored adjective `outdoor`, never dropped:
+// a place with no outdoor seat still names none. Only when a name follows it (see the sit path).
+const RELATION=new Map<string,string[]>([['inside',[]],['outside',['outdoor']]]);
 export const PURPOSE=/^(?:(?:find|show|suggest|choose|take me to|go to|head to)\s+)?(?:somewhere|(?:a|the|any)\s+(?:place|venue|spot))\s+(?:to|for)\s+(.+)$|^where\s+(?:can|could|should)\s+(?:i|we)\s+(.+)$/i;
 const stem=(w:string)=>w.length>5&&w.endsWith('ing')?w.slice(0,-3):w.length>4&&w.endsWith('ed')?w.slice(0,-2):w.length>3&&w.endsWith('s')?w.slice(0,-1):w;
 const purposeWords=(xs:string[])=>new Set(xs.flatMap(tokens).map(stem));
@@ -62,14 +66,21 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  const parsed=parseCapability(text,new Set([...caps.map(c=>c.verb),'sit']));if(parsed.verb!=='sit')return null;
  // An infinitive/so-clause after a named seat states why to sit, not a second seat identity.
  // #1152: how long is not part of the seat's name, and "outside" is how a person says the part's "outdoor".
- const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to|for\s+(?:a\s+(?:while|bit|moment)|some\s+time))(?:\s+|$)/i)[0],q=tokens(target).filter(w=>w!=='down').map(w=>w==='outside'?'outdoor':w);
+ const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to|for\s+(?:a\s+(?:while|bit|moment)|some\s+time))(?:\s+|$)/i)[0],raw=tokens(target).filter(w=>w!=='down'),plain=raw.map(w=>w==='outside'?'outdoor':w);
+ // (built on first use only: a generic or exact sit returns before it, as it did before #848)
+ let built:{p:Place;part:NonNullable<Place['parts']>[number];scope:Set<string>;own:Set<string>}[]|undefined;
+ const match=(q:string[])=>(built??=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(L,soul,p,part)).map(part=>({p,part,scope:words(contexts(L,p,soul)),own:words([part.title,...(part.aliases??[])])})))).filter(x=>covers(q,new Set([...x.scope,...x.own])));
+ // #848: a relation word between a seat and its place is read only when the words read that way name a seat ("the bench
+ // outside the cottage"); otherwise ("sit outside", "sit outside with Bo", "the bench outside the hall") the words keep
+ // their old handling, so a phrase that named nothing before still answers as before
+ const mapped=raw.flatMap((w,i)=>RELATION.has(w)&&i<raw.length-1?RELATION.get(w)!:[w]);
+ const q=mapped.join(' ')!==raw.join(' ')&&match(mapped).length?mapped:plain;
  if(!q.length||q.every(w=>GENERIC_SEAT.has(w)))return null;
  // Existing exact fixture identities retain the normal vocabulary/admission path. A shared
  // word in a semantic part must not intercept a fully named ordinary object.
- const identity=q.join(' ');
+ const identity=raw.join(' ');
  if(caps.some(c=>c.verb==='sit'&&c.target?.kind==='object'&&seatNames(c).some(n=>tokens(n).join(' ')===identity)))return null;
- const entries=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(L,soul,p,part)).map(part=>({p,part,scope:words(contexts(L,p,soul)),own:words([part.title,...(part.aliases??[])])})))
-  .filter(x=>covers(q,new Set([...x.scope,...x.own])));
+ const entries=match(q);
  // Do not relax an explicit target to a nearby fixture if a named part/place is missing or unsupported.
  const relevant=entries.length||known.some(p=>p.parts?.length&&q.some(w=>words([...contexts(L,p,soul),...p.parts!.filter(part=>knownPart(L,soul,p,part)).flatMap(x=>[x.title,...(x.aliases??[])])]).has(w)));
  if(!relevant)return null;
