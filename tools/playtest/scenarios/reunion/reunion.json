@@ -1,0 +1,20 @@
+{
+  "name": "reunion",
+  "version": 1,
+  "seed": 1138,
+  "providers": { "allowed": ["claude"] },
+  "world": { "kind": "dev", "genesis": "worlds/templates/hello-hamlet.json", "slug": "pt-reunion", "port": 4351, "natives": false },
+  "durationSec": 900,
+  "seats": [
+    { "id": "ada", "adapter": "claude-headless", "model": "sonnet", "effort": "low", "soulName": "Ada", "wake": true },
+    { "id": "bo", "adapter": "claude-headless", "model": "sonnet", "effort": "low", "soulName": "Bo", "wake": true }
+  ],
+  "god": null,
+  "director": { "mode": "scripted", "sequential": false, "script": [
+    { "seat": "*", "atSec": 5, "restart": true, "channel": "card", "text": "Find the other Soul in this world, get to know them, and agree together on one place you will both be tomorrow morning. Then say goodbye.", "budgetSec": 240 },
+    { "seat": "*", "atSec": 300, "after": "result", "restart": true, "channel": "card", "text": "It's a new day. Carry on with what you had planned.", "budgetSec": 300 }
+  ] },
+  "observer": { "sampleSec": 5, "viewport": [1280, 800], "dpr": 1, "cameras": [] },
+  "review": { "mode": "deterministic", "developer": false },
+  "rails": { "maxTurnWallSec": 180, "onboardWallSec": 240, "onboardTimeoutSec": 200, "maxTurnsPerRequest": 6 }
+}

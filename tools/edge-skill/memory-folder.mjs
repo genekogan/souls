@@ -308,6 +308,18 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log'} = {}) {
   return {
     /** What a memory on the shipping line looks things up by: known ids and the names they went by. */
     placeName(placeId){return places.get(placeId)?.name??null;},
+    /** The little the brief needs, looked up rather than scanned: its size never follows the log's. */
+    digest({place,near=[]}){
+      fresh();
+      const p=place?places.get(place):null;
+      return {
+        place:p?{name:p.name,visits:p.visits,note:impressions.get(p.id)??null}:null,
+        people:near.flatMap(personId=>{const row=people.get(personId);if(!row)return [];const m=row.meetings.at(-1);return [{id:row.id,name:row.name,met:row.meetings.length,last:m?{world:m.world??null,worldDay:m.day??null,place:m.seenAs??null}:null,note:row.impressions.at(-1)??null}];}),
+        goals:sorted(goals).sort((a,b)=>['today','week','month'].indexOf(a.horizon)-['today','week','month'].indexOf(b.horizon)).slice(0,4).map(g=>({note:g.note,next:g.next})),
+        recent:recentOutcomes.slice(-2).map(e=>({summary:e.summary,untrusted:e.untrusted})),
+        self:self.slice(0,8),
+      };
+    },
     known(){fresh();return {people:sorted(people).map(p=>({id:p.id,name:p.name,met:p.meetings.length})),places:sorted(places).map(p=>({id:p.id,name:p.name,formerly:(p.formerly??[]).map(f=>f.name)})),self:[...self]};},
     eventValue(eventId){fresh();id(eventId);const value=seen.get(eventId);if(!value)return null;const record=JSON.parse(value);return record.kind==='event'?structuredClone(record.value):null;},
     fold: input => append({version: VERSION, kind: 'event', value: validateEvent(input)}),

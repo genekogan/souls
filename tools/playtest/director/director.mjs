@@ -297,6 +297,8 @@ export async function runPlay({ runDir, scenario, world, seats, god = null, obse
           continue;
         }
       }
+      // #1138: a card with `restart` reaches a Soul whose resident client has just restarted, in a new chat: only what it wrote down carries over.
+      if (e.restart) await ctx.seat.restart?.();
       const shown = await gatherShown(ctx);
       saveShown(ctx, shown);
       const delivered = await deliver(ctx, { channel: e.channel ?? 'card', text: e.text }, { budgetSec: e.budgetSec ?? null, journey: !!e.expect?.journey });

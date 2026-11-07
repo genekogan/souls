@@ -82,6 +82,13 @@ last seen on both clocks. `travel` adds one and leaves the Soul's folder where i
 `remember --person|--place|--goal|--self` adds the mind's own judgments through the same validators, and
 `memory <words>` searches the projections and says where each line came from. A legacy folder has no memory.
 
+### The pre-turn brief
+
+With memory and a `serve` up, `pending` and a `listen` that woke for a message or for speech carry `brief`: known people
+near, this place, open commitments, the last episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the
+`remember --self` lines. `brief.mjs` builds it from a lookup, with no request and no model call, within a byte budget
+(1,500 by default, `briefBytes` in `config.json`). It doesn't grow with the log, and a Soul with no memory has none.
+
 ## The edge API
 
 All Soul routes take the Soul token. Writes accept an `Idempotency-Key` (or a `clientRef`) so a retry after a lost

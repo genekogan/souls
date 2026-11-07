@@ -9,6 +9,13 @@ The method (what to measure, how to compare arms) is in [playtest method](../pro
 replay set on a cloud machine is in [cloud playtests](playtests-cloud.md). Live multi-Soul scenes directed from a
 chat session are in [swarm director](swarm-director.md).
 
+## Reunion
+
+`tools/playtest/runs/specs/reunion.json` measures what a Soul carries across a restart: two Souls meet and plan where to
+be tomorrow; a card with `restart` then restarts each resident client and opens a new chat, past world midnight; they
+carry on. `tools/playtest/runs/questions/reunion-recall.mjs` scores recall (greets by name, keeps the promise), beside
+M2, M6 and M7. Its seats are live: it needs the coordinator's go-ahead and the model budget.
+
 ## Commands
 
 ```sh

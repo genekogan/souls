@@ -10,6 +10,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, 
 import { createHash, randomBytes } from "node:crypto";
 import { join, relative } from "node:path";
 import { openMemoryFolder } from "../../edge-skill/memory-folder.mjs";
+import { buildBrief } from "./brief.mjs";
 
 const TERMINAL = new Set(["completed", "failed", "replaced"]);
 /** How close a Soul has to be for a first meeting: the distance `here` counts as local. */
@@ -41,6 +42,14 @@ export function presences(soulDir) {
 }
 
 function dayFrom(text) { const m = /\bworld day (\d{1,12})\b/i.exec(String(text ?? "")); return m ? count(Number(m[1])) : null; }
+/** The lines under a heading, up to the next one. */
+function readLines(file, heading) {
+  let text; try { text = readFileSync(file, "utf8"); } catch { return []; }
+  const lines = text.split("\n"), start = lines.findIndex((l) => heading.test(l));
+  if (start < 0) return [];
+  const end = lines.findIndex((l, i) => i > start && /^#{1,2} /.test(l));
+  return lines.slice(start + 1, end < 0 ? undefined : end).map((l) => l.trim()).filter(Boolean).slice(0, 12);
+}
 function pidAlive(pid) { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } }
 
 /** `world` is this home's key for the world the Soul is in, `role` home or visiting. */
@@ -59,7 +68,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   // A Soul's serve and a chat in the same home can both write: the log takes one writer at a time, and a writer that finds
   // the log moved under it opens it again. A holder that died is passed over; a live one is waited for, then reported, and
   // nothing else may touch its lock. Everything else stays what memory-folder.mjs says: a torn log fails closed.
-  let records = null;
+  let records = null, nearNow = [];
   const openRecords = () => openMemoryFolder(soulDir, { logs: join("memory", "log") });
   function takeLock() {
     const mine = `${process.pid}:${randomBytes(6).toString("hex")}`;
@@ -165,6 +174,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       const me = frame?.me; if (!me) return;
       const when = clockAt({ real: now(), tick: frame.tick, time: frame.clock, worldDay: dayFrom(frame.now) });
       const near = rows(frame.near, 64).filter((p) => typeof p.dist === "number" && p.dist <= NEAR_METRES);
+      nearNow = near.map((p) => p.id).filter(safeId).slice(0, 8);
       const placeId = typeof me.place === "string" ? me.place : null;
       if ((placeId && placeId !== presence.place) || near.length) withRecords((r) => {
         arrived(r, when, placeId, me.placePath?.[0]);
@@ -243,6 +253,13 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
         r.remember({ ...value, place: p.id, seen: seenOf([[p.id, p.name]]), note: clip(note, 300) });
         return { remembered: "place", id: p.id, name: p.name };
       });
+    },
+    /** The pre-turn brief, within `bytes`. A Soul with no memory has none, and nothing is opened or made for it. */
+    brief({ bytes } = {}) {
+      if (!existsSync(join(soulDir, "memory", "log", "memory-events.jsonl"))) return "";
+      const facts = withRecords((r) => r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null, near: nearNow }));
+      const pinned = readLines(join(soulDir, "SOUL.md"), /^## Pinned\b/).map((l) => l.replace(/^- /, "")), schedule = readLines(join(soulDir, "memory", "schedule.md"), /^# Schedule\b/).filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
+      return buildBrief({ ...facts, schedule, self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes > 0 ? { bytes } : {});
     },
     /** `memory <query>`: every projection line holding every word, each with where it came from. */
     search(query) {

@@ -55,6 +55,11 @@ export class Seat {
       wake: (seat.adapter ?? 'claude-headless') === 'codex-headless' ? seat.wake === true : seat.wake !== false };
   }
   save() { writeJson(join(this.dir, 'seat.json'), this.info); }
+  /** A new start for this Soul's owner: its resident client restarts and the next turn opens a new chat. */
+  async restart() {
+    for (const step of [['serve', '--stop'], ['serve']]) await run('node', [this.cli.file, ...step], { cwd: this.folder, maxWallMs: 20000 });
+    this.info.sessionId = null; this.save();
+  }
   get sessionId() { return this.info.sessionId; }
   /** Number of completed turns (as recorded in turns.jsonl, so it survives a harness restart). */
   turnCount() { return readJsonl(join(this.dir, 'turns.jsonl')).length; }
