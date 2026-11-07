@@ -189,6 +189,16 @@ jobs:
               ;;
             *) echo "unknown check kind: $CHECK_KIND"; exit 1 ;;
           esac
+      # Body-authoring renderer checks (#843): they import the Mars renderer, whose parameter properties need
+      # --experimental-transform-types (Node 22 has it). One server leg runs them; it has the media they read.
+      - name: Body-authoring renderer tests
+        if: matrix.kind == 'server' && matrix.shard == 0
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(tools/body-authoring/*/*.test.mjs)
+          if [ ${#files[@]} -eq 0 ]; then echo "No body-authoring tests in this tree."; exit 0; fi
+          node --experimental-transform-types --test --test-concurrency=1 "${files[@]}"
 
   # The local smoke (e2e/local-smoke.mjs, docs/testing/e2e.md#local-smoke): an isolated fake-mind instance, the world
   # list and one world in headless Chromium (SwiftShader, no GPU), a person drawn, no console errors or failed requests.
