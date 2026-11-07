@@ -372,6 +372,7 @@ test('a live snapshot in a failing stretch leaves the baseline, and a boot from 
   h2.saveSnapshot(true); assert.equal(h2.recoveryBaseline, null, 'still no clean tick');
   h2.tickOnce(); assert.equal(h2.bootedFaulted, false); for (let i = 0; i < 20; i++) await setImmediate();
   assert.ok(h2.recoveryBaseline || h2.recoveryCapture);
+  assert.equal(h2.db.latestSnapshot(h2.worldId).body.faultedHeadV1, undefined, 'the durable snapshot is the clean one');
 });
 
 test('a head that will not capture is tried once per interval, not every tick', async (t) => {

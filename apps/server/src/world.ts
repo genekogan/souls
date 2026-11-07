@@ -1947,7 +1947,8 @@ export class WorldHost {
   private commitHead({ t0, runtime, body, physicalHash }: ReturnType<WorldHost['captureHead']>, sync: boolean): { tick: number; stateHash: string } {
     // captureBody owns every field; persistence only reads it, and restoration/
     // recovery recipes clone before mutation. Keep one immutable captured body.
-    // #1150: a head from a failing stretch, however it's captured, is marked and serves a boot, never a rewind.
+    // #1150: a head captured here during a failing stretch is marked and serves a boot, never a rewind. A sliced capture
+    // only starts on a tick that stepped clean, so it stays unmarked, as the first clean tick after a stretch would.
     if (this.stepFailing || this.bootedFaulted) body.faultedHeadV1 = true; else this.recoveryBaseline = body;
     this.recoveryCapture = null;
     const meta = { tick: runtime.tick, seq: this.seq, stateHash: runtime.stateHash, physicalHash, rulesVersion: this.engine.rulesVersion, body };
