@@ -16,6 +16,8 @@ import {mountEdgeRoutes} from '../../apps/server/src/edge/routes.ts';
 import {GodMode} from '../../apps/server/src/god/god.ts';
 import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
 import {marsFactory, GREEN_FIELD_WORLD} from '../../packages/engine-mars/src/engine.ts';
+import {forgetMotion} from '../../mars/viewer/engine/runtime/invariants.ts';
+import {carriedPose, carrierSpots} from '../../mars/viewer/engine/carry/formation.ts';
 
 const repair = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true, soulsRepairV1: true}), today = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true});
 
@@ -89,6 +91,7 @@ async function refused(w, t, r, rule) {
   await w.tick(20); assert.deepEqual(host.engine.runtime.violations, []);
 }
 
+// These two forge the violation, so they prove the crew and the receipts, not the carry's own state: the step-driven scenes below do that.
 test('the load would hit something: the whole crew and the load stop together, set down, and both Souls go free', async (t) => {
   t.mock.method(console, 'warn', () => {});
   const w = await world(t), r = await carrying(w), {Ada, Bo} = w.souls;
@@ -141,29 +144,76 @@ test('A1 the #1120 label: today it rewinds or halts; refused, the world runs on 
   ok(await act(now.w, now.w.souls.Cy, {capability: 'walk:yard'}));
 });
 
+/** The running carry of `item`, from the runtime. */
+const carryOf = (rt, item) => [...rt.live.values()].find((l) => l.rec.verb === 'carry' && l.exec.p?.item === item);
+/** Point a carry's remaining route from `q` along `dir` for `length` m, as a stale route would be: the steps after this are the action's own. */
+const aim = (ex, q, dir, length) => { ex.p.traj = {...ex.p.traj, poses: [q, {x: q.x + dir[0] * length, z: q.z + dir[1] * length, th: q.th}], u: [0, length]}; ex.u = 0; ex.i = 0; };
+
+// The crews meet by the carry's own steps. Crew 1 stands still mid-carry (a stopped load); crew 2's route is laid so that its
+// carrier walks into that load. Crew 2 is started with `perform`, and the route is laid by hand: no real scene has been
+// found that does this, so this is the rule break, not the scene that first produced it.
 async function twoCrews(t, base) {
-  const control = {at: -1, step() {}}, w = await world(t, triggered(base, control)), {Bo, Cy, Dee} = w.souls;
+  const w = await world(t, base), {Ada, Bo, Cy, Dee} = w.souls, host = w.f.host;
   await w.at(Cy, w.ax + 3, w.az + 7); await w.tick(5);
-  const r = await carrying(w), second = ok(await act(w, Cy, {capability: `carry-with:${w.beam2}`, params: {to: 'pen', with: 'Dee'}})), id = second.receipt.shared.invite;
-  const accepted = ok(await act(w, Dee, {capability: `accept:${id}`, params: {revision: 1}})), done = await eveWalks(w, 500);
-  for (let n = 0; n < 600 && w.E[w.beam2].phase !== 'carried'; n++) await w.tick(1);
-  assert.equal(w.E[w.beam2].phase, 'carried');
-  // A crew moves in formation, so the second crew and its load move as one and land on Bo: the real collision.human-load.
-  control.step = (rt) => { const E = rt.world.entities, load = E[w.beam2], bo = E[Bo.entityId]; if (load?.phase !== 'carried' || !bo) return; const dx = bo.pose.p[0] - load.pose.p[0], dz = bo.pose.p[2] - load.pose.p[2]; for (const id of [w.beam2, ...load.support.by]) { const p = E[id].pose.p; E[id].pose.p = [p[0] + dx, p[1], p[2] + dz]; } };
-  control.at = w.f.host.engine.world.tick + 2;
-  return {w, r, done, second, accepted, id};
+  const r = await carrying(w), rt = host.engine.rt, ex1 = carryOf(rt, w.beam).exec;
+  const held = {u: ex1.u, i: ex1.i, q: {...ex1.q}, poses: [Ada.entityId, Bo.entityId, w.beam].map((id) => [id, structuredClone(w.E[id].pose)])};
+  const hold = (x) => { const ex = carryOf(x, w.beam)?.exec; if (ex?.phase === 'move') { Object.assign(ex, {u: held.u, i: held.i, q: {...held.q}, v: 0}); for (const [id, pose] of held.poses) x.world.entities[id].pose = structuredClone(pose); } return []; };
+  let laid = false;
+  const lay = (x) => {
+    const ex = carryOf(x, w.beam2)?.exec; if (laid || ex?.phase !== 'move') return []; laid = true;
+    const E = x.world.entities, c = E[w.beam].pose.p, yaw = E[w.beam].pose.yaw, f = ex.p.f; let n = [-Math.sin(yaw), Math.cos(yaw)];
+    if ((ex.q.x - c[0]) * n[0] + (ex.q.z - c[2]) * n[1] < 0) n = [-n[0], -n[1]];
+    const d = [-n[0], -n[1]], s0 = carrierSpots(f, {x: 0, z: 0, th: 0})[0], th = Math.atan2(d[1], d[0]) - Math.atan2(s0[1], s0[0]), off = carrierSpots(f, {x: 0, z: 0, th})[0];
+    const q = {x: c[0] + n[0] * 0.9 - off[0], z: c[2] + n[1] * 0.9 - off[1], th};
+    aim(ex, q, d, 3); ex.v = 0.3; E[w.beam2].pose = carriedPose(f, q, ex.p.levelY);
+    carrierSpots(f, q).forEach((p, i) => { E[ex.p.crew[i]].pose = {p: [p[0], ex.p.levelY, p[1]], yaw: th}; }); ex.q = q; forgetMotion(x); return [];
+  };
+  rt.invariants = [hold, lay, ...rt.invariants];
+  const from = w.E[w.beam2].pose.p, adm = host.engine.perform({actor: Cy.entityId, label: 'carry', steps: [{verb: 'mars:carry', params: {crew: [Cy.entityId, Dee.entityId], item: w.beam2, to: {x: from[0] + 3, z: from[2] + 6, yaw: 0}}}]});
+  assert.equal(adm.ok, true, JSON.stringify(adm));
+  for (let n = 0; n < 900 && !laid; n++) await w.tick(1);
+  assert.ok(laid); return {w, r, adm};
 }
-test('A1 two crews: a carrier in the other crew\'s load is a rewind or a halt today; refused, the crew that moved stops, nobody else does', async (t) => {
+test('A1 two crews: a carrier walks into a stopped load by its own step. Today a rewind; refused, one refusal, and its crew backs off and sets down', async (t) => {
   t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
-  const old = await twoCrews(t, today); await old.done();
+  const old = await twoCrews(t, today); await old.w.tick(160);
   assert.ok(rungs(old.w.f.host).repair > 0, 'today it is a fault'); t.diagnostic(`today: paused ${old.w.f.host.paused}, ${JSON.stringify(old.w.f.host.glitches.byRule)}`);
-  const now = await twoCrews(t, repair), host = now.w.f.host, eve = await now.done();
-  t.diagnostic(`refusals ${JSON.stringify(now.w.f.db.db.prepare("SELECT payload FROM events WHERE author='world:refusal'").all().map((e) => JSON.parse(e.payload).refusal).map((r) => [r.rule, r.bodies.length]))}`);
-  assert.equal(host.paused, false); assert.equal(host.engineFault, null); assert.equal(rungs(host).repair, 0); assert.ok(rungs(host).refusal >= 1);
-  assert.deepEqual(host.engine.runtime.violations, []); assert.equal(eve.phase, 'completed', JSON.stringify(eve));
-  for (const b of [now.w.beam, now.w.beam2]) assert.ok(now.w.E[b].phase === 'carried' || now.w.E[b].support?.kind === 'ground', 'no load is dropped');
-  const x = read(now.w, now.w.souls.Cy, now.second); assert.equal(x.phase, 'failed', JSON.stringify(x)); assert.match(x.code, /^world\.refused:/);
-  const y = read(now.w, now.w.souls.Ada, now.r.p); assert.equal(y.phase, 'completed', `the crew that did not move this tick carries on: ${JSON.stringify(y)}`);
+  const {w} = await twoCrews(t, repair), host = w.f.host, E = w.E, walk = ok(await act(w, w.souls.Eve, {capability: 'walk:yard'})), ends = [], rtStep = host.engine.step.bind(host.engine);
+  host.engine.step = () => { const o = rtStep(); ends.push(...o.programs.filter((p) => p.kind !== 'step')); return o; };
+  let unsupported = 0;
+  for (let n = 0; n < 700 && !(ends.length && E[w.beam2].support?.kind === 'ground'); n++) { await w.tick(1); if (E[w.beam2].phase !== 'carried' && E[w.beam2].support?.kind !== 'ground') unsupported++; }
+  await w.tick(400);
+  const refusals = w.f.db.db.prepare("SELECT payload FROM events WHERE author='world:refusal'").all().map((e) => JSON.parse(e.payload).refusal);
+  t.diagnostic(`refusals ${JSON.stringify(refusals.map((r) => [r.tick, r.rule, r.bodies.length]))}; ends ${JSON.stringify(ends.map((e) => [e.tick, e.kind, e.code]))}`);
+  assert.equal(host.paused, false); assert.equal(host.engineFault, null); assert.deepEqual(rungs(host), {refusal: 1, repair: 0}); assert.deepEqual(host.engine.runtime.violations, []);
+  assert.equal(refusals[0].rule, 'collision.human-load'); assert.deepEqual([...refusals[0].bodies].sort(), [w.souls.Cy.entityId, w.souls.Dee.entityId, w.beam2].sort(), 'only the crew that moved');
+  const end = ends.find((e) => e.actor === w.souls.Cy.entityId); assert.equal(end?.kind, 'failed'); assert.equal(end.code, 'world.refused:collision.human-load');
+  assert.equal(unsupported, 0); assert.equal(E[w.beam2].support?.kind, 'ground', 'it lies on the ground'); assert.equal(E[w.beam].phase, 'carried', 'the stopped crew is untouched');
+  assert.equal(E[w.souls.Cy.entityId].human.grip ?? null, null); assert.equal(read(w, w.souls.Eve, walk).phase, 'completed');
+});
+
+test('a load driven through a real box by its own step: refused once, the crew backs along its route and sets down clear', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const w = await world(t), {Ada, Bo} = w.souls, r = await carrying(w), rt = w.f.host.engine.rt, ex = carryOf(rt, w.beam).exec, dir = [Math.cos(ex.q.th), Math.sin(ex.q.th)];
+  ok(w.god.act({ops: [{op: 'place', def: 'core/box@1', name: 'crate', p: [ex.q.x + dir[0] * 5, ex.q.z + dir[1] * 5]}]})); await w.tick(1);
+  const sp = rt.services.spatial; sp.sync(rt.world); aim(ex, {...ex.q}, dir, 9);
+  const inv = () => w.edge.together.invite(r.id); let at = null, n = 0;
+  for (; n < 700 && inv().shared.op.phase !== 'ended'; n++) { ex.epoch = sp.epoch; await w.tick(1); if (ex.retreatTo !== undefined) at ??= {u: ex.u, q: {...ex.q}}; }
+  assert.equal(w.f.host.paused, false); assert.deepEqual(rungs(w.f.host), {refusal: 1, repair: 0}); assert.deepEqual(w.f.host.engine.runtime.violations, []);
+  for (const [s, rc] of [[Ada, r.p], [Bo, r.a]]) { const x = read(w, s, rc); assert.equal(x.phase, 'failed', JSON.stringify(x)); assert.equal(x.code, 'world.refused:carry.load-static'); }
+  assert.ok(at, 'the crew backed off'); assert.equal(w.E[w.beam].support?.kind, 'ground');
+  assert.ok(Math.hypot(w.E[w.beam].pose.p[0] - at.q.x, w.E[w.beam].pose.p[2] - at.q.z) > 0.5, 'set down behind where it was refused');
+  for (const s of [Ada, Bo]) ok(await act(w, s, {capability: 'walk:yard'}));
+});
+
+test('one bad tick that names a whole crew is one refusal of its programme', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const w = await world(t), {Ada, Bo} = w.souls, r = await carrying(w), eng = w.f.host.engine;
+  force(w, () => [Ada.entityId, Bo.entityId, w.beam].map((id) => ({code: 'motion.teleport', message: 'forced', subjects: [id]})));
+  w.f.host.tickOnce();
+  assert.deepEqual([...eng.programs.values()].map((p) => p.refusalsV1?.length), [1]);
+  force(w, () => [{code: 'collision.human-static', message: 'forced', subjects: [Bo.entityId]}]);
+  w.f.host.tickOnce(); await w.tick(1); assert.equal(rungs(w.f.host).repair, 0, 'a second refusal is still a refusal');
 });
 
 for (const clean of [false, true])

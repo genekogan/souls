@@ -85,20 +85,25 @@ later in that tick moved the obstacle), and every earlier step moves as it did. 
 
 ## Refusal
 
-With the `souls-repair/1` rules (`soulsRepairV1`, off unless `SIM_SOULS_REPAIR=1`; new worlds only for now), a move that
+With the `souls-repair/1` rules (`soulsRepairV1`, off unless `SIM_SOULS_REPAIR=1`; new worlds only for now: a world whose history lacks it
+refuses to boot under the flag), a move that
 would break a rule is not applied ([#1150](https://github.com/soulsimulation/souls/issues/1150)).
 
 - `Engine.step` leaves no refusable violation standing. The bodies that moved go back to their pose before the tick, and
   their programmes end `failed` with `world.refused:<rule>` and a plain reason, in that tick.
 - **Refusable:** `collision.human-static`, `collision.human-human`, `collision.human-load`, `motion.overspeed`,
   `motion.teleport`, `carry.load-static`, `lift.hands-out-of-reach`. A body that holds a load refuses with its load and
-  everyone holding it. Cleanup is the action's own, and a stop never drops a load.
+  everyone holding it. Cleanup is the action's own, and a stop never drops a load. An action that keeps its own position
+  rewinds it in its `refused` hook: a carry backs 1 m along the route it came by, where every pose was valid, and sets
+  down there, further back if it can't lay the load there.
 - **Not refusable, left in `violations` for the host's repair:** any other rule in the same tick (a tick is refused whole
-  or not at all), a violation naming only bodies that did not move, a build programme, a ridden or carried body, and a
-  third refusal of one programme within 5 s.
+  or not at all), a violation naming only bodies that did not move, a build programme, a body ridden, carried, on a
+  structure or on a flight, an action with no programme whose cancel is refused, and a third refusal of one programme within 5 s.
 - Refusal is a function of world state and the rules version, never of input. A replay or restart recomputes it, so a
   restored runtime remembers the poses it restored (`rememberPosesAfterRestore`): the step check keeps its previous poses
   outside the snapshot, and would otherwise miss a jump on its first tick.
+- A body that only turned did not move. Observers run in the end-of-tick pass, before the undo, so a take can show the
+  refused pose for that one tick.
 - `step().refusals` reports each one. The host logs it as a `rules` event from `world:refusal`. Replay reads those only to
   compare the count, and a difference is reported, not fatal.
 
