@@ -90,7 +90,7 @@ export function mountEdgeRoutes(app: Hono, deps: EdgeDeps & {ledger: EdgeLedger}
     const r = await publicSoul(c);
     if (r.status !== 200) return r;
     const body = await r.text(), etag = `"${createHash('sha256').update(body).digest('base64url').slice(0, 27)}"`, headers = {ETag: etag, 'Cache-Control': 'no-cache'};
-    return c.req.header('if-none-match') === etag ? c.body(null, 304, headers) : c.body(body, 200, {...headers, 'Content-Type': 'application/json'});
+    return (c.req.header('if-none-match') ?? '').split(',').some((t) => t.trim().replace(/^W\//, '') === etag) ? c.body(null, 304, headers) : c.body(body, 200, {...headers, 'Content-Type': 'application/json'});
   });
   app.get('/v1/edge/metrics', wrap(c => {const m = Number(c.req.query('minutes') ?? 60); return L.metrics(Number.isFinite(m) && m >= 1 && m <= 10080 ? m * 60_000 : 3600_000);}));
   // Public: map knowledge (names, kinds, enclosure, capacity, public schedule) never lists occupants (§5).

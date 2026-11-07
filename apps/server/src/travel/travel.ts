@@ -71,8 +71,8 @@ export const appendLog = (log: LogEntry[], e: LogEntry) => [...log, e].slice(-LO
 export class Travel {
   readonly d: TravelDeps;
   private sql: Db['db'];
-  /** Told once a Soul sets off, while its body is still here. */
-  onLeave: ((soulId: string, at: number, world: string) => void) | null = null;
+  /** Told as a Soul sets off, while its body is still here; what it returns runs once the other world has admitted it. */
+  onLeave: ((soulId: string, at: number, world: string) => (() => void) | undefined) | null = null;
   constructor(d: TravelDeps) {
     this.d = d; this.sql = d.db.db;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS travel_settings_v1 (world_id TEXT PRIMARY KEY, open INTEGER NOT NULL, changed_at INTEGER NOT NULL);
@@ -154,7 +154,7 @@ export class Travel {
     const {body, note} = portableBody(engineBody);
     const leaving: LogEntry = {at: this.now(), kind: 'travel', from: this.d.slug, fromName: this.d.name, to: dest.slug, toName: dest.name, ...(note ? {note} : {})};
     this.put(soul.id, {traveller: id.traveller, home: id.home, state: 'departing', at: dest.slug, requestId, log: id.log});
-    this.onLeave?.(soul.id, leaving.at, dest.name);
+    const left = this.onLeave?.(soul.id, leaving.at, dest.name);
     const passport: Passport = {contract: TRAVEL_CONTRACT, requestId, traveller: id.traveller, home: id.home, homeSoulId: id.traveller.slice(id.home.length + 1), name: soul.name, description: soul.description,
       owner: soul.owner, body, bodyNote: note, from: this.d.slug, fromName: this.d.name, log: appendLog(id.log, leaving)};
     let r: {status: number; data: any};
@@ -170,6 +170,7 @@ export class Travel {
       if (code === 'travel.unreachable') void this.d.site.relay(dest.slug, '/v1/site/release', {traveller: id.traveller, requestId, reason: 'origin gave up'}).catch(() => {});
       throw new TravelError(r.status >= 400 && r.status < 600 ? r.status : 502, code, message, {to: dest.slug});
     }
+    left?.();
     const log: LogEntry[] = Array.isArray(r.data.log) ? r.data.log : appendLog(id.log, leaving);
     this.setState(soul.id, 'away', dest.slug, log);
     this.d.fading.depart(soul.id, `You leave ${this.d.name} for ${dest.name}.`, {to: dest.slug});

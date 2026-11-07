@@ -114,7 +114,7 @@ const OPEN: EdgeReceipt['phase'][] = ['waiting', 'started'];
 const FAR: [number, number] = [1e9, 1e9];
 const WITH_PARAM = {type: 'array', items: 'Soul id or name', optional: true, description: 'Invite Souls near you; each joins only if they accept (shared walk / ride).'};
 type Row = {created_at: number; receipt_id: string; soul_id: string; capability: string; phase: EdgeReceipt['phase']; accepted_tick: number; started_tick: number | null; ended_tick: number | null; code: string | null; reason: string | null; program_id: string | null; client_ref: string | null; plan?: string | null; detail?: string | null};
-const ARRIVAL_FRESH_MS = 10 * 60_000;
+const ARRIVAL_FRESH_MS = 10 * 60_000, MAX_DATE_MS = 8.64e15;
 type Pending = {receipt: string; soul: EdgeSoul; steps: Program['steps']; label: string; deadline: number; capability: string};
 type StandReleaseV1={actor:string;owner:string;seats:{action:string;slot:string}[]};
 
@@ -217,7 +217,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   /** Server start (ms): metrics count world model calls only from here, not copied history. */
   readonly startedAt = Date.now();
   private capCache = new Map<string, {tick: number; key: string; reads: MenuReads; value: {caps: EdgeCapability[]; plans: Plans}; last?: {tick: number; sig: string; value: {caps: EdgeCapability[]; plans: Plans}}}>();
-  comms?: {streams: {headCursor(soulId: string): string;deliver?(soulId:string,kind:string,tick:number,body:Record<string,unknown>):unknown}; fading: {status(soulId: string): unknown; touch?(soulId: string): void}; objects: {prepareAct?(id:string,soul:EdgeSoul,input:Record<string,unknown>):ReturnType<import('../comms/objects/framework.ts').Objects['prepareAct']>;act?(id: string, soul: EdgeSoul, input: Record<string, unknown>): unknown;get?(id:string,soul:EdgeSoul):unknown; visibleTo(soul: EdgeSoul): unknown[]; create(i: {id: string; kind: string; name: string; description?: string; placeId: string; params?: Record<string, unknown>}): {id: string}; has?(id: string): boolean; all(): {id: string; kind: string; placeId: string; state: unknown}[]}; close(): void};
+  comms?: {streams: {headCursor(soulId: string): string;deliver?(soulId:string,kind:string,tick:number,body:Record<string,unknown>):unknown}; fading: {status(soulId: string): unknown; touch?(soulId: string): void}; objects: {isRemoved?(id:string):boolean;prepareAct?(id:string,soul:EdgeSoul,input:Record<string,unknown>):ReturnType<import('../comms/objects/framework.ts').Objects['prepareAct']>;act?(id: string, soul: EdgeSoul, input: Record<string, unknown>): unknown;get?(id:string,soul:EdgeSoul):unknown; visibleTo(soul: EdgeSoul): unknown[]; create(i: {id: string; kind: string; name: string; description?: string; placeId: string; params?: Record<string, unknown>}): {id: string}; has?(id: string): boolean; all(): {id: string; kind: string; placeId: string; state: unknown}[]}; close(): void};
   attachComms(c: NonNullable<EdgeLedger['comms']>) {
     this.comms = c;this.notifyMail();
     // Re-deliver only persisted post-feature terminal projections whose event marker was not committed.
@@ -445,8 +445,6 @@ export class EdgeLedger implements EdgeLedgerHooks {
     {const paths = new Map<string, string[]>(), path = (sid: string) => this.placePathOf(sid).filter(p => p.kind !== 'occupier').map(p => p.id);
       this.placeListeners.push(e => {if (!e.to) {paths.delete(e.soulId); return;} const now = path(e.soulId); this.knowledge.arrive(e.soulId, now, e.tick, paths.get(e.soulId) ?? []); paths.set(e.soulId, now);});}
     this.outcomes=new ActionOutcomes(db.db,host.worldId);this.timeline=new SoulTimeline(db.db,host.worldId);
-    // A new Soul's first place. A Soul that has been here a while gets no arrival from a restart: it keeps the one from its record.
-    this.placeListeners.push((e) => {if (!e.to) return; const made = (db.soul(e.soulId) as {created_at?: number} | undefined)?.created_at; if (made !== undefined && Date.now() - made < ARRIVAL_FRESH_MS) this.timeline.arrived(e.soulId, e.tick, made, this.worldClock(e.tick), e.to);});
     this.syncCarrierPlaces();
     // together/1: gestures, invitations, follows and items (core-next4)
     this.together = new Together({host, db, places: this.places, spots: () => this.spots, staticVersion: () => this.staticVersion(),
@@ -791,6 +789,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
     if (tick % 10 === 0) this.rideFrames(tick);
     if (tick % 10 === 0) for (const m of this.host.minds.values()) {
       const to = this.innermostPlace(m), from = this.lastPlace.has(m.soulId) ? this.lastPlace.get(m.soulId)! : to;
+      if (!this.lastPlace.has(m.soulId) && to) this.firstSeen(m.soulId, to, tick);
       this.lastPlace.set(m.soulId, to);
       if (from !== to) for (const l of this.placeListeners) try {l({soulId: m.soulId, from, to, tick});} catch {/* ignore */}
     }
@@ -2678,15 +2677,16 @@ export class EdgeLedger implements EdgeLedgerHooks {
   /** Set by the travel module where a world has one: this Soul's own journeys. */
   travelLogOf: ((soulId: string) => {at: number; to?: string; from?: string}[]) | null = null;
   private worldClock(tick: number) {const day = this.host.living; if (!day) return null; const c = clockAt(tick, day.origin, day.dayTicks); return {worldDay: c.day + 1, time: `${String(c.hour).padStart(2, '0')}:${String(c.minute).padStart(2, '0')}`};}
-  /** A Soul about to leave for another world, while the world still knows where it stands. */
-  noteTravel(soulId: string, at: number, world: string) {const m = this.host.minds.get(soulId), tick = this.host.engine.world.tick; this.timeline.travelled(soulId, tick, at, this.worldClock(tick), m ? (this.placePathOf(soulId).filter((p) => p.kind !== 'occupier').at(-1)?.id ?? null) : null, world);}
+  /** Where a new Soul first stood. A Soul that has been here a while gets no arrival from a restart: it keeps the one in its record. */
+  private firstSeen(soulId: string, place: string, tick: number) {const made = (this.db.soul(soulId) as {created_at?: number} | undefined)?.created_at; if (made !== undefined && Date.now() - made < ARRIVAL_FRESH_MS) this.timeline.arrived(soulId, tick, made, this.worldClock(tick), place);}
+  /** A Soul about to leave for another world: read now, while the world still knows where it stands, and written only if it goes. */
+  noteTravel(soulId: string, at: number, world: string) {const tick = this.host.engine.world.tick, clock = this.worldClock(tick), place = this.host.minds.has(soulId) ? (this.placePathOf(soulId).find((p) => p.kind !== 'occupier')?.id ?? null) : null; return () => this.timeline.travelled(soulId, tick, at, clock, place, world);}
   /** A Soul's public biography, newest first. A bounded read of one index, whatever the log holds. */
   publicTimeline(soulId: string, row: {created_at: number}, limit = TIMELINE_MAX): TimelineEntry[] {
-    const clock = (tick: number) => this.worldClock(tick);
-    this.timeline.ensure(soulId, () => (this.db.db.prepare("SELECT * FROM edge_receipts_v1 WHERE world_id=? AND soul_id=? AND phase='completed' ORDER BY accepted_tick DESC LIMIT ?").all(this.host.worldId, soulId, REBUILD_MAX) as Row[]).map((r) => ({receipt: this.view(r), at: r.created_at})), clock);
+    this.timeline.ensure(soulId, () => (this.db.db.prepare("SELECT * FROM edge_receipts_v1 WHERE world_id=? AND soul_id=? AND phase='completed' ORDER BY accepted_tick DESC LIMIT ?").all(this.host.worldId, soulId, REBUILD_MAX) as Row[]).map((r) => ({receipt: this.view(r), at: r.created_at})));
     const at = (ms: number) => ({real: new Date(ms).toISOString(), tick: null, worldDay: null, time: null});
-    const extra: TimelineEntry[] = [{kind: 'arrival', when: at(row.created_at), place: {id: null, name: null}}, ...(this.travelLogOf?.(soulId) ?? []).filter((e) => Number.isFinite(e.at)).slice(-TIMELINE_MAX).map((e): TimelineEntry => ({kind: 'travel', when: at(e.at), place: {id: null, name: null}, ...(e.to ? {world: String(e.to).slice(0, 80)} : {})}))];
-    return timelineView(this.timeline.rows(soulId, limit), extra, {limit, placeName: (id) => (this.knowledge.isSecret(id) ? null : this.places.byId.get(id)?.name ?? null)});
+    const extra: TimelineEntry[] = [{kind: 'arrival', when: at(row.created_at), place: {id: null, name: null}}, ...(this.travelLogOf?.(soulId) ?? []).filter((e) => Number.isFinite(e.at) && Math.abs(e.at) <= MAX_DATE_MS).slice(-TIMELINE_MAX).map((e): TimelineEntry => ({kind: 'travel', when: at(e.at), place: {id: null, name: null}, ...(e.to ? {world: String(e.to).slice(0, 80)} : {})}))];
+    return timelineView(this.timeline.rows(soulId, limit), extra, {limit, placeName: (id) => (this.knowledge.isSecret(id) ? null : this.places.byId.get(id)?.name ?? null), gone: (id) => this.comms?.objects.isRemoved?.(id) ?? false});
   }
   publicSoul(soulId: string) {
     const row = this.db.soul(soulId) as {id: string; name?: string; description?: string; world_id: string; created_at: number; retired_at: number | null} | undefined;

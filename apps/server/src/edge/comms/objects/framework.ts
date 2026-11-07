@@ -211,6 +211,9 @@ export class Objects {
     });
   }
 
+  /** Taken down by its maker: what a public record stops showing. */
+  isRemoved(id: string) { return (this.row(id)?.state as {removed?: boolean} | undefined)?.removed === true; }
+
   get(id: string, soul: EdgeSoul) {
     if (!OBJECT_ID.test(id)) throw new EdgeError(404, 'not-found', 'no such object');
     return tx(this.core.db, () => {

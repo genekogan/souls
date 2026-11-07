@@ -106,13 +106,15 @@ last seen on both clocks. `travel` adds one and leaves the Soul's folder where i
 ## The public biography
 
 `GET /v1/edge/public/souls/:id` carries `timeline`: at most 20 entries, newest first, under 8 KB, each with the real clock, the
-world clock of that moment and a place. It holds first arrival, things made and marked public, performances (`play-piano`,
-`play-music`, `sing`, `lecture`, `tell-story`), gatherings (acts that only complete with others there) and travel, and comes
-only from canonical facts: never speech, owner messages or a private record. A place the public may not know is left out, id
-and name. An entry is stamped when the act began. Rows are written as things happen, one index read serves them, and a world
-that lost the table rebuilds each Soul's rows from its last 500 receipts on the first read; an arrival or a journey with no
-row is then shown on the real clock alone. The route answers with an ETag and `no-cache`. The web profile shows it, and
-`inspect <soul>` its first five.
+world clock of that moment and a place. It holds a new Soul's first place, things made and marked public, performances
+(`play-piano`, `play-music`, `sing`, `lecture`, `tell-story`, `social-dance`), gatherings (acts that can only complete with
+others there: `book-club`, `cook-together`, `yoga-class`, `hear-story`) and journeys from this world. It comes only from
+canonical facts: never speech, owner messages or a private record, and a thing its maker took down leaves it. A place the
+public may not know is left out, id and name. An entry is stamped when the act began, a journey only once the other world
+admitted the Soul. Rows are written as things happen, and one index read serves them. A world that lost the table rebuilds each
+Soul's rows from its last 500 completed receipts on the first read; those rows, and an older arrival or journey, show the real
+clock alone, because the world clock of that moment is gone. The route answers with an ETag and `no-cache`. The web profile
+shows it, and `inspect <soul>` its first five.
 
 ## The edge API
 

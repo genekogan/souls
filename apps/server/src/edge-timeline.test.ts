@@ -18,11 +18,13 @@ const view=(t:SoulTimeline,limit=TIMELINE_MAX,extra:TimelineEntry[]=[],secret=fa
 const made=(visibility:string,title='Dawn')=>({produced:[{id:'o_1',kind:'page',title,where:'hall',visibility}]});
 
 test('A1: public things made, performances and gatherings are kept; a private record, a walk, a hug and a failure are not', () => {
- assert.deepEqual(entryOf(receipt('r','paint:easel'),made('public') as never),{kind:'produced',title:'Dawn'});
+ assert.deepEqual(entryOf(receipt('r','paint:easel'),made('public') as never),{kind:'produced',title:'Dawn',object:'o_1'});
  for(const cap of ['write:desk','craft:bench','post-letter:box'])assert.equal(entryOf(receipt('r',cap),made('private','My secret diary') as never),null,cap);
  assert.equal(entryOf(receipt('r','paint:easel'),made('participants') as never),null);
  for(const [cap,title] of [['play-piano:hall','Play the piano'],['play-music:drums','Play music'],['lecture:podium','Give a talk or a lesson'],['tell-story:circle','Tell a story to the circle']] as const)assert.deepEqual(entryOf(receipt('r',cap),undefined),{kind:'performance',title},cap);
- assert.deepEqual(entryOf(receipt('r','social-dance:band'),undefined),{kind:'gathering',title:'Dance on the bandstand'});
+ assert.deepEqual(entryOf(receipt('r','social-dance:band'),undefined),{kind:'performance',title:'Dance on the bandstand'},'danced alone it still completes');
+ assert.deepEqual(entryOf(receipt('r','book-club:table'),undefined),{kind:'gathering',title:'Book club: read and talk it over together'});
+ assert.equal(entryOf(receipt('r','attend:hall'),undefined),null,'a seat in the room proves no gathering');
  for(const cap of ['walk:hall','read:sign','hug:s_b','accept:inv_1','gather:field','dance:here','play:piano'])assert.equal(entryOf(receipt('r',cap),{met:[{soulId:'s_b',name:'B'}]} as never),null,cap);
  assert.equal(entryOf(receipt('r','play-piano:hall',{},'failed'),undefined),null,'only what happened');
 });
@@ -34,8 +36,8 @@ test('A1: newest first, the clock of that moment, a place by name, at most N, un
  assert.equal(v.length,TIMELINE_MAX); assert.equal(v[0]!.when.tick,29*50);
  assert.deepEqual(v[0],{kind:'performance',when:{real:'2026-11-07T10:00:29.000Z',tick:1450,worldDay:15,time:'09:00'},place:{id:'hall',name:'Main Hall'},title:'Play the piano'});
  const long=new SoulTimeline(new DatabaseSync(':memory:'),'w');
- for(let i=0;i<30;i++)long.note(receipt(`r_${i}`,'paint:x',made('public','t'.repeat(200))),1000+i,clock);
- assert.ok(Buffer.byteLength(JSON.stringify(timelineView(long.rows('s_a',20),[],{placeName:()=>'p'.repeat(200)})))<8192,'the profile\'s budget');
+ for(let i=0;i<30;i++)long.note(receipt(`r_${i}`,'paint:x',made('public','\u6f22'.repeat(120))),1000+i,clock);
+ assert.ok(Buffer.byteLength(JSON.stringify(timelineView(long.rows('s_a',20),[],{placeName:()=>'\u6f22'.repeat(120)})))<8192,'the profile\'s budget, in any script');
 });
 
 test('A1: a clock is the one of its moment: a later change of the world\'s origin rewrites nothing', () => {
@@ -60,9 +62,18 @@ test('A3: a second look gives the same, and rows come back from the receipts', (
  for(const r of [...list,...list])t.note(r.receipt,r.at,clock);
  const before=view(t); assert.equal(before.length,3);
  db.exec('DELETE FROM edge_timeline_v1');
- t.ensure('s_a',()=>list,clock); assert.deepEqual(view(t),before);
+ t.ensure('s_a',()=>list);
+ const rebuilt=view(t);assert.deepEqual(rebuilt.map((e)=>[e.kind,e.when.real,e.title]),before.map((e)=>[e.kind,e.when.real,e.title]));
+ assert.ok(rebuilt.every((e)=>e.when.worldDay===null&&e.when.time===null),'the clock of that moment is gone: none is made up');
  db.exec('DELETE FROM edge_timeline_v1');
- t.ensure('s_a',()=>list,clock); assert.deepEqual(view(t),[],'once per Soul');
+ t.ensure('s_a',()=>list); assert.deepEqual(view(t),[],'once per Soul');
+});
+
+test('A1: a thing taken down leaves the record', () => {
+ const t=new SoulTimeline(new DatabaseSync(':memory:'),'w');
+ t.note(receipt('r_1','paint:x',made('public','My address')),1000,clock);
+ assert.equal(timelineView(t.rows('s_a',20),[],{placeName:()=>null,gone:(id)=>id==='o_1'}).length,0);
+ assert.equal(timelineView(t.rows('s_a',20),[],{placeName:()=>null}).length,1);
 });
 
 test('A5: a read is one bounded index lookup, however long the log', () => {
@@ -101,8 +112,21 @@ test('A1 A3 A4: the route: a private title never shows, a rebuild finds the rest
  assert.equal((await f.get('/v1/edge/public/souls/s_none')).headers.get('etag'),null,'an error is not cached');
 });
 
+test('A1: a Soul born here gets its first place on both clocks, from the first time the world saw it', async t => {
+ const f=await world(t);for(let i=0;i<40;i++)f.host.tickOnce();
+ const e=((await (await f.get(`/v1/edge/public/souls/${f.row.id}`)).json()) as {timeline:TimelineEntry[]}).timeline.find((x)=>x.kind==='arrival')!;
+ assert.ok(e.when.tick!==null&&e.when.worldDay!==null,JSON.stringify(e));assert.ok(e.place.name);
+});
+
+test('A1: a journey is written only when the other world took the Soul, with where it stood', async t => {
+ const f=await world(t);for(let i=0;i<20;i++)f.host.tickOnce();
+ const left=f.ledger.noteTravel(f.row.id,Date.now(),'Mars'),kinds=async()=>((await (await f.get(`/v1/edge/public/souls/${f.row.id}`)).json()) as {timeline:TimelineEntry[]}).timeline.filter((x)=>x.kind==='travel');
+ assert.deepEqual(await kinds(),[],'not until it went');left();
+ const [e]=await kinds();assert.equal(e!.world,'Mars');assert.ok(e!.when.worldDay!==null);assert.notEqual(e!.place.id,'world');
+});
+
 test('a travel log with a bad time costs that entry, not the record', async t => {
- const f=await world(t);f.ledger.travelLogOf=()=>[{at:Number.NaN,to:'Mars'},{at:Date.now(),to:'Venus'}];
+ const f=await world(t);f.ledger.travelLogOf=()=>[{at:Number.NaN,to:'Mars'},{at:1e20,to:'Nowhere'},{at:Date.now(),to:'Venus'}];
  const r=await f.get(`/v1/edge/public/souls/${f.row.id}`),body=await r.json() as {timeline:TimelineEntry[]};
  assert.equal(r.status,200);assert.deepEqual(body.timeline.filter((e)=>e.kind==='travel').map((e)=>e.world),['Venus']);
 });
