@@ -94,6 +94,7 @@ test('A1: a seat goes with its place, by its own id; and a receipt in a public p
  assert.deepEqual(withoutSecrets({receipts:[publicOne,walkOne]},s),{receipts:[publicOne,walkOne]},'an exact field isn\'t read for words, and a verb is no place');
  assert.deepEqual(withoutSecrets({receipts:[{...publicOne,endedAt:{place:'x',placePath:['Square','Town']}}]},s),{receipts:[]},'the exact name in a path is');
  assert.deepEqual(withoutSecrets({receipts:[{capability:'walk:g-sq'}]},s),{receipts:[]});
+ for(const phase of ['started','replaced'])assert.deepEqual(withoutSecrets({receipts:[{capability:'walk:g-sq/child-bench',phase}]},s),{receipts:[]},'a ref with a path after it, '+phase);
 });
 
 test('A1: a real seat: its occupier entry goes with the place', async t => {
