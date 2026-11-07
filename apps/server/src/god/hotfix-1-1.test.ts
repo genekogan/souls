@@ -2,8 +2,8 @@ import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
-import { CREATION_LIMITS } from '@sim/generators';
-import { coreRef } from '@sim/world-compiler';
+import { CREATION_LIMITS } from '@souls/generators';
+import { coreRef } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
 import { config } from '../config.ts';
@@ -92,7 +92,7 @@ test('schema advertises look and parts; source falls back to the deployed build;
   assert.equal(sourceVersion(undefined, 'we-cf2145156100'), 'we-cf2145156100');
   assert.equal(sourceVersion('bad source', 'we-cf2145156100'), 'we-cf2145156100');
   assert.equal(sourceVersion('cf214515', 'we-other'), 'cf214515'); assert.equal(sourceVersion(undefined), config.build);
-  assert.match(readFileSync(new URL('../../../../tools/god-skill/lib/version.d.mts', import.meta.url), 'utf8'), /SKILL_VERSION: '1\.7'/);
+  assert.match(readFileSync(new URL('../../../../tools/god-skill/lib/version.d.mts', import.meta.url), 'utf8'), /SKILL_VERSION: '1\.8'/);
 });
 
 test('probe retirement journal identifies the actual h_vp body prefix and keeps ordinary labels', () => {

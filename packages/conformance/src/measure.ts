@@ -3,8 +3,8 @@
 // use the asset store's measured facts (def.budget, filled by the compiler from the GLB at define time). Generator defs
 // fall back to the physics bake's triangle estimate.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import type { StoredDef, AssetLookup, DefLibrary } from '@sim/world-compiler';
-import { WorldModel, coreLibrary } from '@sim/world-compiler';
+import type { StoredDef, AssetLookup, DefLibrary } from '@souls/world-compiler';
+import { WorldModel, coreLibrary } from '@souls/world-compiler';
 
 export type Measured = { tris: number; draws: number; materials: number; assetBytes: number; textures: number; texturePx: number; box?: { min: [number, number, number]; max: [number, number, number] }; how: 'kit' | 'asset-meta' | 'estimate' };
 
@@ -17,7 +17,7 @@ export async function loadKitBuilder(): Promise<Kit | null> {
     const web = new URL('../../../apps/web/src/gen-mesh/', import.meta.url);
     const [{ buildKit }, { MaterialLib }, { kitArgs }, THREE] = await Promise.all([
       import(new URL('kit.mesh.ts', web).href), import(new URL('materials.ts', web).href),
-      import('@sim/generators'), import(new URL('../../node_modules/three/build/three.module.js', web).href),
+      import('@souls/generators'), import(new URL('../../node_modules/three/build/three.module.js', web).href),
     ]);
     kit = { buildKit, MaterialLib, kitArgs, THREE } as Kit;
   } catch (e) { kit = null; process.env.CATALOG_DEBUG && console.error('kit builder unavailable:', e); }

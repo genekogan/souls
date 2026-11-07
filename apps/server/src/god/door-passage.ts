@@ -4,7 +4,7 @@
 // reason naming it. Only the one door walked through is ever named; doors elsewhere never enter the plan or the receipt.
 import {actuatorPoint,HAND_OPEN_ANGLE} from '../../../../mars/viewer/engine/social/hand-actuator.ts';
 import type {EdgeSoul} from '../edge/contract.ts';
-import type {WorldModel} from '@sim/world-compiler';
+import type {WorldModel} from '@souls/world-compiler';
 import {actionsOf,actuatedState} from './actuators.ts';
 import {isContactActuator,type ContactActuatorIntent,type ContactActuatorService} from './contact-actuator.ts';
 

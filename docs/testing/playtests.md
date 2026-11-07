@@ -1,6 +1,6 @@
 # Playtests
 
-`tools/playtest/` plays a Sim world the way real people do. Coding agents act as the Souls' owners ("seats"), and
+`tools/playtest/` plays a Souls world the way real people do. Coding agents act as the Souls' owners ("seats"), and
 model personas decide what each owner says and when. A browser observer records what a visitor would see, and the
 review step scores every request against world truth. Use it to measure the Soul experience before and after a
 change. It is never part of CI.
@@ -8,6 +8,18 @@ change. It is never part of CI.
 The method (what to measure, how to compare arms) is in [playtest method](../process/playtest-method.md). Running a
 replay set on a cloud machine is in [cloud playtests](playtests-cloud.md). Live multi-Soul scenes directed from a
 chat session are in [swarm director](swarm-director.md).
+
+## Reunion
+
+`tools/playtest/runs/specs/reunion.json` measures what a Soul carries across a restart: two Souls in Souls homes meet, name
+one place to be tomorrow by its walk id, and walk apart; a card with `restart` then restarts each resident client, drops
+what the last chat left unread and opens a new chat; they carry on. `director.worldTime` sets the clock when play starts, not
+before onboarding: 15:00 at 120 to 1 puts the end of the first card at 23:00, and the second card at 06:40 the next day, past
+both midnight and the 06:00 turn of the world day. `tools/playtest/runs/questions/reunion-recall.mjs` scores recall beside M2,
+M6 and M7: both Souls finished a walk to the id they each named, using the other's name. `here` shows a near Soul's name to
+anyone, so a name alone passes nothing, and a Soul that never parted from the place, or read the plan back from the world,
+leaves the run unknown, as does a last move by `run` or `jog`, whose ids aren't walk ids. The baseline arm is the same spec on
+a branch whose client has no brief. Its seats are live: it needs the coordinator's go-ahead and the model budget.
 
 ## Commands
 
@@ -33,7 +45,7 @@ compose its cast and scripted direction in the spec; the model-free `scripted-ow
 world's served `eden.mjs` from a per-seat script, so composed scenes need no live model. `playtest.mjs run` behaves as
 before for existing scenarios; a scripted direction entry with `seat: "*"` is now a broadcast.
 
-Everything prints JSON on stdout and logs to stderr. `--server-root` is the Sim checkout whose server the dev worlds
+Everything prints JSON on stdout and logs to stderr. `--server-root` is the Souls checkout whose server the dev worlds
 run from (it needs a built `apps/web/dist`). Pass it explicitly, and pass `--out` or `--runs-root` for where runs go.
 
 ## A run
@@ -67,7 +79,7 @@ served god skill.
 
 `personas/*.md` are character sheets: newcomer, casual, social, spectator, storyteller, boundary, pinkteam, expert,
 and the creators first-timer, tinkerer, storyteller-god and pinkteam-god. A sheet describes who the player is, their
-patience, attention and channel mix, how they rate, and the JSON they answer with. It never mentions Sim internals.
+patience, attention and channel mix, how they rate, and the JSON they answer with. It never mentions Souls internals.
 A persona keeps one model session per run and sees only what a player sees: a screenshot, the legible page text, the
 chat as a terminal renders it, and the card. It answers with what to say (chat or card), how long to wait, a rating,
 desires and complaints. Seats are scheduled from separate seeded RNGs, and no persona sees another seat's information.

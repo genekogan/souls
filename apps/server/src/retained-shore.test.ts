@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {retainedCommonsShoreFactory,COMMONS_PERSONAL_RESOURCES,COMMONS_KITCHENS} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory,COMMONS_PERSONAL_RESOURCES,COMMONS_KITCHENS} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {installCommonsProvisionCards} from './commons-provisions.ts';
 import {installCommonsKitchenCards} from './commons-kitchen.ts';
 import {LivingWorld} from './living.ts';
 import {WorldHost} from './world.ts';
 import {setImmediate} from 'node:timers/promises';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
 const factory=await retainedCommonsShoreFactory();
 test('eight canonical human owners retain resources/history at shore checkpoint; ordinary owner swim/return and snapshot/genesis agree',async t=>{

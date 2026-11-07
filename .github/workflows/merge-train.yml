@@ -1,5 +1,17 @@
-# The merge train: lands ready PRs on main one at a time. The repo has no merge queue (personal account), so this
-# workflow is the queue.
+# The merge train: lands ready PRs on main one at a time, until the `main` ruleset requires GitHub's merge queue.
+#
+# Queue mode (the `merge_queue` rule on main, read on every pick, so adding or removing the rule is the whole switch)
+#   merge:ready          enqueues through auto-merge instead of merging. The PR enters once its required checks are
+#                        green at its head; proof-ok is one of them, so T3-T4 still wait for the maintainer. The queue
+#                        then re-tests the combination in parallel (merge_group runs) and lands it, and the push to
+#                        main runs full-scope CI. Non-strict landing and main-red fallback do not apply: nothing lands
+#                        untested against what is ahead of it
+#   conflict             a PR that conflicts takes the rebase and Claude resolution below, then enqueues
+#   unlabeled            removing merge:ready takes the PR out of the queue, or disables its auto-merge
+#   dequeued             a PR the queue drops without merging loses merge:ready and gets a comment with the reason
+#   A red head check does not eject in this mode: auto-merge waits, and a fix enters the queue by itself.
+#
+# Without the rule, everything below applies as written.
 #
 # Landing mode (landingMode in .github/scripts/merge-train.mjs, decided by the pick step; decision PD10)
 #   non-strict           T0-T2, no strict path (STRICT_PATHS: mars/, packages/engine-*, kernel and world-compiler,
@@ -50,7 +62,7 @@
 name: merge-train
 on:
   pull_request_target:
-    types: [labeled]
+    types: [labeled, unlabeled, dequeued]
   pull_request_review:
     types: [submitted]
   workflow_dispatch:
@@ -62,7 +74,7 @@ jobs:
   kick:
     if: >-
       (github.event_name == 'pull_request_review' && github.event.review.state == 'approved') ||
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'approved:maintainer')
+      (github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'approved:maintainer')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -74,8 +86,42 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: gh workflow run merge-train.yml --repo "$REPO" --ref "$DEFAULT_BRANCH"
 
+  # The queue's way back to the author (queue mode, see the header). Runs main's script; no PR code. A dequeue is read
+  # after a short wait, so a PR that merged or that the queue re-entered is left alone.
+  queue-exit:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      (github.event.action == 'dequeued' || (github.event.action == 'unlabeled' && github.event.label.name == 'merge:ready'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.MERGE_TRAIN_TOKEN || github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      ACTION: ${{ github.event.action }}
+      REASON: ${{ github.event.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22 }
+      - run: |
+          if [ "$ACTION" = unlabeled ]; then
+            node .github/scripts/merge-train.mjs hold --repo "$REPO" --pr "$PR"
+          else
+            sleep 20
+            node .github/scripts/merge-train.mjs dequeued --repo "$REPO" --pr "$PR" --reason "$REASON"
+          fi
+
   train:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request_target' && github.event.label.name == 'merge:ready')
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'merge:ready')
     runs-on: ubuntu-latest
     timeout-minutes: 120
     concurrency:
@@ -114,7 +160,7 @@ jobs:
 
       - name: Rebase onto main
         id: rebase
-        if: steps.pick.outputs.pr != '' && steps.pick.outputs.mode != 'nonstrict'
+        if: steps.pick.outputs.pr != '' && steps.pick.outputs.mode != 'nonstrict' && steps.pick.outputs.mode != 'queue'
         env:
           HEAD_REF: ${{ steps.pick.outputs.head_ref }}
           HEAD_SHA: ${{ steps.pick.outputs.head_sha }}
@@ -232,17 +278,18 @@ jobs:
 
       - name: Merge
         id: merge
-        if: steps.wait.outputs.result == 'pass'
+        if: steps.wait.outputs.result == 'pass' || steps.pick.outputs.mode == 'queue'
         env:
           PR: ${{ steps.pick.outputs.pr }}
           SHA: ${{ steps.push.outputs.sha || steps.pick.outputs.head_sha }}
           TIER: ${{ steps.pick.outputs.tier }}
           MODE: ${{ steps.pick.outputs.mode }}
           MODE_WHY: ${{ steps.pick.outputs.mode_why }}
+          QUEUE: ${{ steps.pick.outputs.queue }}
         run: |
           echo "Merging #$PR ($TIER, $MODE: $MODE_WHY) at $SHA"
-          if node .github/scripts/merge-train.mjs merge --repo "$REPO" --pr "$PR" --sha "$SHA" 2> "$RUNNER_TEMP/merge.err"; then
-            echo "merged=true" >> "$GITHUB_OUTPUT"
+          if node .github/scripts/merge-train.mjs merge --repo "$REPO" --pr "$PR" --sha "$SHA" --queue "$QUEUE" 2> "$RUNNER_TEMP/merge.err"; then
+            if [ "$QUEUE" != true ]; then echo "merged=true" >> "$GITHUB_OUTPUT"; fi
           else
             { echo "Merge train: the checks passed but GitHub refused the merge, so this PR left the train:"; echo; echo '```'; cat "$RUNNER_TEMP/merge.err"; echo '```'; echo; echo "Fix it and add \`merge:ready\` again."; } > "$RUNNER_TEMP/eject.md"
             node .github/scripts/merge-train.mjs eject --repo "$REPO" --pr "$PR" --message-file "$RUNNER_TEMP/eject.md"
@@ -276,4 +323,7 @@ jobs:
 
       - name: Next PR
         if: always() && (steps.pick.outputs.more == 'true' || steps.rebase.outputs.status == 'moved')
+        # The PAT lacks Actions: write; a dispatch made with GITHUB_TOKEN still starts the workflow.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh workflow run merge-train.yml --repo "$REPO" --ref "$DEFAULT_BRANCH"

@@ -89,12 +89,12 @@ async function shot(name, eye, at, wait = 5000) {
   try {
     // one Chrome at a time across lanes (MERGES.md 08:25), on the real GPU (Metal), not swiftshader (08:55)
     if (!browser) { releaseLease = await chromeLease('terrain'); browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--ignore-gpu-blocklist'] }); const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }); await ctx.addInitScript(() => { localStorage.setItem('sim.dev', 'admin'); }); page = await ctx.newPage(); page.setDefaultTimeout(180000); page.on('console', (m) => { if (m.type() === 'error' && /shader|WebGLProgram|GL_INVALID/i.test(m.text())) glErrors.push(m.text().slice(0, 300)); }); }
-    if (!page.url().startsWith(base)) { await page.goto(`${base}?dev=1&shot=1&eye=${eye.join(',')}&at=${at.join(',')}`, { waitUntil: 'domcontentloaded', timeout: 180000 }); await page.waitForFunction(() => window.__shotReady === true || (window.__simEntity?.layer?.active && document.title === 'ready'), null, { timeout: 180000 }).catch(() => {}); await page.waitForTimeout(Math.max(wait, 8000)); }
+    if (!page.url().startsWith(base)) { await page.goto(`${base}?dev=1&shot=1&eye=${eye.join(',')}&at=${at.join(',')}`, { waitUntil: 'domcontentloaded', timeout: 180000 }); await page.waitForFunction(() => window.__shotReady === true || (window.__soulsEntity?.layer?.active && document.title === 'ready'), null, { timeout: 180000 }).catch(() => {}); await page.waitForTimeout(Math.max(wait, 8000)); }
     // a clean picture: hide every overlay (panels, banners, buttons) that is not on the canvas's own ancestor chain
     await page.evaluate(() => { const c = document.querySelector('canvas'); if (!c) return; for (let el = c; el && el !== document.body; el = el.parentElement) for (const sib of el.parentElement?.children ?? []) if (sib !== el && !sib.contains(c) && sib.tagName !== 'SCRIPT') sib.style.visibility = 'hidden'; });
-    await page.evaluate(([e, a]) => { const w = window.__simEntity; if (!w) return; w.controls.target.set(a[0], a[1], a[2]); w.camera.position.set(e[0], e[1], e[2]); w.camera.lookAt(w.controls.target); w.controls.update?.(); }, [eye, at]);
+    await page.evaluate(([e, a]) => { const w = window.__soulsEntity; if (!w) return; w.controls.target.set(a[0], a[1], a[2]); w.camera.position.set(e[0], e[1], e[2]); w.camera.lookAt(w.controls.target); w.controls.update?.(); }, [eye, at]);
     await page.waitForTimeout(wait);
-    const state = await page.evaluate(() => { const w = window.__simEntity; return w ? { active: w.layer.active, drawn: w.layer.drawn?.size ?? null, err: w.layer.stats?.lastError ?? null } : null; });
+    const state = await page.evaluate(() => { const w = window.__soulsEntity; return w ? { active: w.layer.active, drawn: w.layer.drawn?.size ?? null, err: w.layer.stats?.lastError ?? null } : null; });
     const file = resolve(out, `${name}.png`);
     await page.screenshot({ path: file, timeout: 180000 });
     report.shots.push({ name, file, state, ms: +(t() - t0).toFixed(0) });

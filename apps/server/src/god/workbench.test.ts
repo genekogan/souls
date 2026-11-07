@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
-import { WorldModel, definitionRefs } from '@sim/world-compiler';
+import { WorldModel, definitionRefs } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
 import { GodMode } from './god.ts';

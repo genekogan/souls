@@ -90,7 +90,7 @@ export class CodexHost extends EventEmitter {
       try{this.send({id,method,params});}catch{clearTimeout(timer);this.pending.delete(id);resolve(null);}
     });
   }
-  async selectTransport(config,enabled,threadId=null){
+  async selectTransport(config,enabled,threadId=null,checkpointed=null){
     const off=(reason,cause)=>({providerId:null,idleTimeoutMs:null,authMode:null,reason,...(cause?{cause}:{})});
     if(!enabled)return off('disabled');
     if(Object.keys(config??{}).some(providerKey))return off('caller-provider');
@@ -105,7 +105,8 @@ export class CodexHost extends EventEmitter {
     // (probed on 0.163), so a retained thread keeps the transport it was created
     // with. A Soul thread that cannot provably keep it is disclosed, never hidden.
     if(threadId!==null){
-      const recorded=thread?.thread?.modelProvider;
+      // #488: the checkpoint answers when the host can't, so an unanswered read doesn't flip a Soul thread to the default.
+      const recorded=thread?.thread?.modelProvider??checkpointed;
       if(recorded!==SOUL_PROVIDER_ID)return off(typeof recorded==='string'?'retained-thread-provider':'thread-provider-unknown',blocked??undefined);
       if(blocked)return off('retained-soul-thread-fallback',blocked);
     }
@@ -165,7 +166,7 @@ export class CodexHost extends EventEmitter {
     if(FORWARDED.includes(m.method))this.emit('event',{method:m.method,params:p,receivedAt:Date.now()});
     else if(typeof m.method==='string')this.notice(/^[A-Za-z0-9_./-]{1,100}$/.test(m.method)?m.method:'unknown');
   }
-  async connect({threadId=null,instructions='',baseInstructions=null,config={},ephemeral=this.ephemeral,name=this.name,soulTransport=this.soulTransport}={}){
+  async connect({threadId=null,instructions='',baseInstructions=null,config={},ephemeral=this.ephemeral,name=this.name,soulTransport=this.soulTransport,threadProvider=null}={}){
     ephemeral=booleanOption('ephemeral',ephemeral);name=threadName(name);soulTransport=booleanOption('soulTransport',soulTransport);
     if(threadId!==null&&(typeof threadId!=='string'||!threadId))throw fault('HOST_INVALID_THREAD','Resume needs a nonempty thread ID');
     // Ephemeral work has no persistent history to resume. Never reinterpret a
@@ -181,7 +182,7 @@ export class CodexHost extends EventEmitter {
       this.model=listed.data?.find(m=>m.isDefault)?.model;
       if(!this.model)throw fault('HOST_MODEL_UNAVAILABLE','Host did not advertise a default model');
     }
-    const transport=await this.selectTransport(config,soulTransport,threadId);
+    const transport=await this.selectTransport(config,soulTransport,threadId,threadProvider);
     const effective=transport.providerId?{...config,model_provider:transport.providerId,['model_providers.'+transport.providerId]:soulProvider(transport.authMode)}:config;
     const params={cwd:this.cwd,model:this.model,approvalPolicy:'never',sandbox:'read-only',developerInstructions:instructions,...(baseInstructions?{baseInstructions}:{}),config:effective};
     const r=await this.request(threadId?'thread/resume':'thread/start',threadId?{...params,threadId}:{...params,ephemeral});

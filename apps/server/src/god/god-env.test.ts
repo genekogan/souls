@@ -2,7 +2,7 @@
 // things grounded, previews, and lightning. Pure model/compiler level here; the server routes are in land.test.ts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WorldModel, applyBatch, boundsOf, CORE_KIT } from '@sim/world-compiler';
+import { WorldModel, applyBatch, boundsOf, CORE_KIT } from '@souls/world-compiler';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function world(extent = 200) {
@@ -52,7 +52,7 @@ test('a terrain edit under a placed thing re-grounds it; undo puts it back', () 
 });
 
 test('lightning: storm strikes are deterministic, scale with intensity, stay in the world; the god strikes a point and Souls hear it', async () => {
-  const { stormStrikes, strikesBetween } = await import('@sim/world-compiler');
+  const { stormStrikes, strikesBetween } = await import('@souls/world-compiler');
   const b = [-500, -500, 500, 500];
   const a1 = stormStrikes('w', b, 1, 0, 20 * 600), a2 = stormStrikes('w', b, 1, 0, 20 * 600);
   assert.deepEqual(a1, a2, 'same world, same strikes');

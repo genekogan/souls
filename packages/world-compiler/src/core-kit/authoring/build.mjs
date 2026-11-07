@@ -2,16 +2,21 @@
 // Writes core-kit/<family>.json from the authoring modules and reports triangle counts
 // (kit estimate and the real three.js geometry) against the Eden budgets
 // (creature ≤ 600, prop ≤ 400, structures ≤ 6000).
-//   node packages/world-compiler/src/core-kit/authoring/build.mjs [--check]
+//   node packages/world-compiler/src/core-kit/authoring/build.mjs [--check [--against <dir>]]
+// --check writes no kit file and exits 1 when one differs from what the authoring modules produce; --against compares
+// with the files in <dir> in place of the committed ones. kit-build.test.ts runs it in CI.
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defSchema } from '../../schemas.ts';
+import { handlingProblem } from '../../handling.ts';
+import { connectorProblem } from '../../joints.ts';
 import { lintDef, triBudget, categoryOf } from '../../vocab/index.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAMILIES = ['creatures', 'furniture', 'props', 'plants', 'transport', 'civic', 'play', 'kitchen', 'work', 'signage', 'vocab', 'vocab-2', 'vocab-w1', 'vocab-w2', 'vocab-w3'];
 const check = process.argv.includes('--check');
+const against = process.argv.includes('--against') ? resolve(process.argv[process.argv.indexOf('--against') + 1]) : resolve(here, '..');
 
 // real triangle counts from the viewer's own kit builder
 const { buildKit } = await import('../../../../../apps/web/src/gen-mesh/kit.mesh.ts');
@@ -34,6 +39,8 @@ for (const fam of FAMILIES) {
   const defs = (await import(file)).default;
   for (const d of defs) {
     const p = defSchema.safeParse(d); if (!p.success) throw new Error(`${d.name}: ${p.error.message}`);
+    const h = handlingProblem(p.data); if (h) throw new Error(`${d.name}: ${h.code} ${h.message}`);
+    const k = connectorProblem(p.data); if (k) throw new Error(`${d.name}: ${k.code} ${k.message}`);
     // VOCAB-MECH: catalogue types (those with a category) must pass the induction lint
     if (d.category) { const l = lintDef(d, { tris: d.make.gen === 'kit/2' ? Math.max(realTris(d), d.__tris ?? 0) : 0 }); for (const e of l.errors) console.error(`✖ ${d.name}: ${e}`); for (const w of l.warnings) console.error(`  ${d.name}: ${w}`); lintErrors += l.errors.length; }
     if (d.make.gen !== 'kit/2') { rows.push({ fam, name: d.name, real: 0, est: 0, budget: 0, shapes: 0, roles: 0 }); continue; }
@@ -41,7 +48,7 @@ for (const fam of FAMILIES) {
     if (Math.max(real, est) > budget) over++;
     rows.push({ fam, name: d.name, real, est, budget, shapes: d.make.args.shapes.length, roles: [...new Set(d.make.args.shapes.map((s) => s.role).filter(Boolean))].length });
   }
-  const out = resolve(here, `../${fam}.json`), json = JSON.stringify(defs) + '\n';
+  const out = resolve(against, `${fam}.json`), json = JSON.stringify(defs) + '\n';
   if (check) { if (!existsSync(out) || readFileSync(out, 'utf8') !== json) { stale++; console.error(`stale: ${fam}.json`); } }
   else writeFileSync(out, json);
   total += defs.length;

@@ -1,4 +1,4 @@
-import { CREATION_LIMITS as L } from '@sim/generators';
+import { CREATION_LIMITS as L } from '@souls/generators';
 import type { WorldModel } from './model.ts';
 import type { Failure } from './schemas.ts';
 import type { Diff } from './compile.ts';

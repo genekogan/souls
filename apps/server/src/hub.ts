@@ -6,12 +6,13 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { z } from 'zod';
 import {randomUUID} from 'node:crypto';
 import { COLUMNS_V1,packColumnsV1,joinTableOrderV1, PROTO, publicEvent,TAKE_BOUNDARY_WIRE_V1,stringifyTakeBoundaryWireV1,TAKE_ENTITIES_WIRE_V1,TAKE_ENTITIES_JOIN_V1,TakeEntitiesEncoderV1,TAKE_CHUNKS_WIRE_V1,TakeChunksEncoderV1,kernelRestV1,stationHelloCapabilitiesV1Schema,negotiateStationContractV1,meLiveDescriptorV1Schema,meLiveViewV1Schema,
-  type StationLiveContract,type BrainCall, type ClientMsg, type Me, type ServerMsg, type ServerStats } from '@sim/protocol';
+  type StationLiveContract,type BrainCall, type ClientMsg, type Me, type ServerMsg, type ServerStats } from '@souls/protocol';
 import type { Auth } from './auth.ts';
 import type { Brain } from './brain.ts';
 import type { Db } from './db.ts';
 import { type WorldHost } from './world.ts';
 import type { Souls } from './souls.ts';
+import { isLooseCarryAsset } from '@souls/engine-mars';
 import type {CandidateStationV1} from './station.ts';
 import type {CandidateStationV2} from './station-v2.ts';
 
@@ -54,12 +55,14 @@ export function viewerChunk<T>(chunk: T): T {
   const physics = _omit as {assets?: Record<string, import('../../../mars/viewer/engine/world/catalog.ts').AssetDef>};
   const records = state.entities as Record<string, {def:string}> | undefined;
   const handling: Record<string, import('../../../mars/viewer/engine/world/catalog.ts').Handling> = {};
+  const transports: Record<string, import('../../../mars/viewer/engine/world/catalog.ts').AssetDef> = {};
   for (const id of Object.keys(c.take?.tracks ?? {})) {
     const e = records?.[id] ?? c.take?.entities0?.[id];
-    const h = e && physics.assets?.[e.def]?.capabilities?.fixtureCarry?.handling;
-    if (h) handling[e.def] = h;
+    const a = e && physics.assets?.[e.def], h = a ? a.capabilities?.fixtureCarry?.handling ?? (isLooseCarryAsset(a) ? a.handling : undefined) : undefined;
+    if (e && h) handling[e.def] = h;
+    if (e && a && isLooseCarryAsset(a)) transports[e.def] = a;
   }
-  return { ...c, take: { ...c.take, finalState: rest, ...(Object.keys(handling).length ? {fixtureCarryHandlingV1: handling} : {}) } } as T;
+  return { ...c, take: { ...c.take, finalState: rest, ...(Object.keys(handling).length ? {fixtureCarryHandlingV1: handling} : {}), ...(Object.keys(transports).length ? {transportAssetsV1: transports} : {}) } } as T;
 }
 /** P2 (E-life): an HTTP take history reply (/v1/takes, /v1/take) as the live stream sends it, without each chunk's static
  *  physics; `full` (the `?physics=1` query) keeps the canonical chunks for tools that replay from them. */
@@ -89,6 +92,8 @@ export class Hub {
   epoch = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   build = 'dev';
   private lastTakeTick = -1;
+  /** #1221: the oldest batch a client may resume from: nothing before the last recovery still holds. */
+  private resumeFrom = 0;
   /** take-entities-ref/1: one table registry for every peer that announced it (see packages/protocol take-entities-wire). */
   readonly takeEntities = new TakeEntitiesEncoderV1();
   readonly takeChunks = new TakeChunksEncoderV1();
@@ -121,7 +126,12 @@ export class Hub {
     host.holdClock = () => this.joinInFlight();
     host.listeners.push({
       onClockUnavailable:()=>{for(const c of this.clients){c.ready=false;c.ws.close(1013,'world unavailable');}},
-      onApplied: e => { if (e.kind === 'rules' && e.payload?.recovery) { this.lastTakeTick=host.engine.world.tick; this.epoch=`${Date.now().toString(36)}-repair`; for (const c of this.clients) c.ws.close(1012, 'world restored; reconnect'); }
+      onApplied: e => { if (e.kind === 'rules' && e.payload?.recovery) {
+          // #1221: the world took a step back; everyone gets the picture again where they are. A new epoch or a closed socket
+          // would make every page tear its whole view down and lose who it was following. Nothing from before this resumes.
+          this.lastTakeTick=host.engine.world.tick; this.resumeFrom=host.currentBatchSeq+1;
+          for (const c of this.clients) if (c.ready) this.send(c, {t: 'snapshot', reason: 'world restored', ...host.snapshotView()});
+        }
         if(e.kind==='station-rules-era-v1'){
           for(const c of this.clients){if(!c.ready)continue;
             if(c.stationContract==='station-live/1')this.welcomeClient(c);
@@ -220,7 +230,7 @@ export class Hub {
       // the join set is bounded (one per hello, hellos at most every 3 s) and is never dropped for backpressure
       c.joinSend=true;c.awaitingTakes=true;
       try{
-      const canResume = typeof m.since === 'number' && m.epoch === this.epoch && ring.length > 0 && m.since >= ring[0].seq - 1 && m.since <= this.host.currentBatchSeq;
+      const canResume = typeof m.since === 'number' && m.epoch === this.epoch && m.since >= this.resumeFrom && ring.length > 0 && m.since >= ring[0].seq - 1 && m.since <= this.host.currentBatchSeq;
       if (canResume) for (const b of ring) { if (b.seq > m.since!) this.send(c, { t: 'batch', ...b, log: b.log.map(publicEvent) }); }
       else this.send(c, { t: 'snapshot', reason: typeof m.since === 'number' ? 'too far behind; full snapshot' : 'join', ...this.host.snapshotView() });
       this.send(c, { t: 'log', events: this.db.tailEvents(this.host.worldId, 150, true).map(e=>joinLogEvent(publicEvent(e))) });

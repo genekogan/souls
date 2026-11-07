@@ -338,6 +338,11 @@ function layOut(name, def, params, recipe) {
   return { parts, baked, dropped: f.dropped, rooms: baked.rooms.map((r) => r.id) };
 }
 const report = [];
+/** A published revision keeps its bytes, and furnish has moved on since most of these were laid out (#1114). So the build
+ *  takes a published revision's contents from the committed file and lays out only a revision that isn't there yet. To
+ *  change what a type contains, publish a new revision with a conformance supplement. */
+const publishedFile = resolve(here, '../vocab-w3.json');
+const PUBLISHED = new Map(existsSync(publishedFile) ? JSON.parse(readFileSync(publishedFile, 'utf8')).map((d) => [`${d.name}@${d.version}`, d]) : []);
 /** Z2: each furnished type's smallest footprint, as a fraction of its authored w and d: the smallest 0.05 step from which
  *  every step up to the authored size still places (w alone, d alone and both; never under 3 m). Measured on the resizing
  *  plans by team/scratch/t4/z2/looks/floor.mts; the earlier blanket 0.85 refused sizes that place (a 10 x 12 church). */
@@ -357,7 +362,7 @@ function furnished({ name, category, synonyms, description, params: p0, plan, re
     params: Object.fromEntries(Object.entries({ ...p0, plan }).map(([k, v]) => [k, { ...genParams[k], ...(['w', 'd'].includes(k) ? { min: Math.max(3, Math.round(v * FURNISHED_MIN[name] * 100) / 100) } : {}), ...(name === 'townhouse-row' && k === 'floorHeight' ? { max: 4.6 } : {}), default: v }])) };
   const rec = { schema: 'furnish/1', style: name, rooms: recipe };
   const L = layOut(name, def, params, rec);
-  def.contents = [...L.parts, ...outside];
+  def.contents = PUBLISHED.get(`${def.name}@${def.version}`)?.contents ?? [...L.parts, ...outside];
   if (layers) def.layers = layers;
   def.size = { box: L.baked.box.map((v) => Math.round(v * 100) / 100) };
   report.push({ name, rooms: L.rooms.length, pieces: L.parts.length, dropped: L.dropped.map((d) => `${d.name}: ${d.why}`) });

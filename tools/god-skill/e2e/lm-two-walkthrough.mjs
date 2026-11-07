@@ -88,7 +88,7 @@ try {
   await Promise.all([page.waitForURL(/\/w\/[a-z]/, { timeout: 180_000, waitUntil: 'commit' }), page.locator('[data-create]').click()]);
   const url = page.url(), slug = url.match(/\/w\/([a-z][a-z0-9-]*)/)[1], base = `${origin}${BASE}/w/${slug}`;
   await page.locator('[data-god-panel]').waitFor({ timeout: 120_000 });
-  await page.waitForFunction(() => window.__simEntity?.layer?.active === true && window.__simCamera, null, { timeout: 120_000 });
+  await page.waitForFunction(() => window.__soulsEntity?.layer?.active === true && window.__soulsCamera, null, { timeout: 120_000 });
   await sleep(4000);
   const panel = await page.locator('[data-god-panel]').innerText();
   const signinButtons = await page.locator('[data-signin], [data-join-signin]').count();
@@ -106,7 +106,7 @@ try {
   check('the new world is the Arium world (the template\'s 432 things; Madmaraca is the library def core/lm-madmaraca@1); canvas drawn at the pixel ratio', st.entities >= 432 && st.template === TEMPLATE && /lm-madmaraca/.test(st.madmaraca ?? '') && st.dpr === DPR && Math.abs(st.canvas.w - st.canvas.cssW * DPR) <= 2, st);
   await shot('03-world-signed-in');
   // 3. camera with real input
-  const cam = () => page.evaluate(() => { const c = window.__simCamera; return { p: c.p, t: c.pivot, d: +Math.hypot(c.p[0] - c.pivot[0], c.p[1] - c.pivot[1], c.p[2] - c.pivot[2]).toFixed(2) }; });
+  const cam = () => page.evaluate(() => { const c = window.__soulsCamera; return { p: c.p, t: c.pivot, d: +Math.hypot(c.p[0] - c.pivot[0], c.p[1] - c.pivot[1], c.p[2] - c.pivot[2]).toFixed(2) }; });
   const moved = (a, b) => +Math.hypot(a.p[0] - b.p[0], a.p[1] - b.p[1], a.p[2] - b.p[2]).toFixed(2);
   const cx = 450, cy = 520; let a = await cam();
   // a 270 m world is framed whole at entity-arrival's ARRIVAL_MAX (110 m), by design (lane X); never the old 320 m limit
@@ -155,7 +155,7 @@ try {
   if (!(await page.locator('[data-join-form]').isVisible())) await page.locator('summary', { hasText: 'Live here yourself' }).click();  // the owner's own Soul sits behind this disclosure
   await page.locator('[data-join-form]').waitFor({ timeout: 30_000 });
   // typing W/A/S/D into a panel input types letters and leaves the camera alone
-  await page.waitForFunction(() => !!window.__simCamera, null, { timeout: 60_000 });
+  await page.waitForFunction(() => !!window.__soulsCamera, null, { timeout: 60_000 });
   const before = await cam(); await page.locator('[data-soul-name]').click(); await page.keyboard.type('wasd', { delay: 120 }); await sleep(500);
   const after = await cam(), typed = await page.locator('[data-soul-name]').inputValue();
   check('typing w/a/s/d in a panel input types them and does not move the camera', typed === 'wasd' && moved(before, after) < 0.01, { typed, moved: moved(before, after) });

@@ -242,8 +242,8 @@ try {
         page.errors = []; page.on('pageerror', (e) => page.errors.push(e.message));
         await page.goto(`${base}/?dev=1${hash}`, { waitUntil: 'domcontentloaded', timeout: PAGE_MS });
         await page.locator('.hud-actions').waitFor({ timeout: PAGE_MS });
-        await page.waitForFunction(() => window.__simEntity?.layer?.active === true, null, { timeout: PAGE_MS }).catch(() => {});
-        await page.evaluate(() => { const w = window.__simEntity; if (!w) return; w.controls.target.set(-2, 1, 8); w.camera.position.set(-16, 11, 30); w.camera.lookAt(w.controls.target); }).catch(() => {});
+        await page.waitForFunction(() => window.__soulsEntity?.layer?.active === true, null, { timeout: PAGE_MS }).catch(() => {});
+        await page.evaluate(() => { const w = window.__soulsEntity; if (!w) return; w.controls.target.set(-2, 1, 8); w.camera.position.set(-16, 11, 30); w.camera.lookAt(w.controls.target); }).catch(() => {});
         await sleep(3500);
         // #join also opens New Soul's copy-the-prompt dialog (e8's, on every world; lane UXFIX): note it, close it
         const dialog = page.locator('.bring-agent');

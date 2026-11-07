@@ -13,12 +13,12 @@ import { join, relative, resolve as resolvePath } from 'node:path';
 
 // Lane L3h: a new world's /v1/world/snapshot GET leaves from index.html's head, before any chunk downloads
 // (src/snapshot-prefetch.ts); WorldEntityLayer.start takes that response. The workbench page has no world.
-// Lane W1: the same script GETs /v1/config and opens the world's socket with the anonymous hello useSim's Connection sends
+// Lane W1: the same script GETs /v1/config and opens the world's socket with the anonymous hello useSouls's Connection sends
 // (packages/client/src/hello.ts, one definition); the Connection adopts that socket.
 function snapshotPrefetch(): Plugin {
   let base = '';
   return {
-    name: 'sim-snapshot-prefetch',
+    name: 'souls-snapshot-prefetch',
     configResolved(c) { base = c.base.replace(/\/+$/, ''); },
     // after <title>: the charset meta stays first, and the script runs before the stylesheet links (a classic script
     // after one would wait for it) and the module script Vite adds to the head
@@ -35,7 +35,7 @@ function snapshotPrefetch(): Plugin {
 // poster's critical path. Build only; the GLB worker's fetches share the page's connection pool.
 function cdnPreconnect(): Plugin {
   return {
-    name: 'sim-cdn-preconnect',
+    name: 'souls-cdn-preconnect',
     apply: 'build',
     transformIndexHtml(html, ctx) {
       if (!/(^|\/)index\.html$/.test(ctx.path) || process.env.SIM_ASSETS_CDN_ENABLED !== '1') return;
@@ -50,7 +50,7 @@ function cdnPreconnect(): Plugin {
 // (rollupOptions.input `early`); this replaces Vite's module script and modulepreload tags with the loader. Build only.
 function phasedEntry(): Plugin {
   return {
-    name: 'sim-phased-entry',
+    name: 'souls-phased-entry',
     apply: 'build',
     transformIndexHtml: { order: 'post', handler(html, ctx) {
       if (!/(^|\/)index\.html$/.test(ctx.path)) return;
@@ -75,7 +75,7 @@ function pwa(): Plugin {
   const hashed = (name: string, data: Buffer) => { const file = `${name}-${createHash('sha256').update(data).digest('hex').slice(0, 10)}.png`; icons.set(file, data); return file; };
   let names: PwaIcons;
   return {
-    name: 'sim-pwa',
+    name: 'souls-pwa',
     apply: 'build',
     configResolved(c) {
       base = c.base;
@@ -104,7 +104,7 @@ function changelogPage(): Plugin {
   const file = process.env.SIM_CHANGELOG_FILE ? resolvePath(process.env.SIM_CHANGELOG_FILE) : fileURLToPath(new URL('../../CHANGELOG.md', import.meta.url));
   const journalFile = fileURLToPath(new URL('../../tools/changelog/public-journal.json', import.meta.url));
   return {
-    name: 'sim-changelog-page',
+    name: 'souls-changelog-page',
     configResolved(c) { base = c.base; },
     configureServer(server) { server.watcher.add([file, journalFile]); },
     transformIndexHtml(html, ctx) {
@@ -128,7 +128,7 @@ function docsSite(): Plugin {
   const origin = (process.env.SIM_SITE_ORIGIN ?? 'https://soul.game').replace(/\/+$/, '');
   const files = (d: string): string[] => readdirSync(d).sort().flatMap((e) => { const f = join(d, e); return statSync(f).isDirectory() ? files(f) : f.endsWith('.md') ? [f] : []; });
   return {
-    name: 'sim-docs-site',
+    name: 'souls-docs-site',
     apply: 'build',
     configResolved(c) { base = c.base; },
     generateBundle() {
@@ -145,7 +145,7 @@ function docsSite(): Plugin {
 // phase-two chunk, and no stable chunk (vendor*, app-shared) imports main, whose hash changes with every app change.
 function checkChunks(): Plugin {
   return {
-    name: 'sim-check-chunks',
+    name: 'souls-check-chunks',
     apply: 'build',
     generateBundle(_o, bundle) {
       const chunks = Object.values(bundle).flatMap((c) => (c.type === 'chunk' ? [c] : []));
@@ -202,7 +202,7 @@ function vendorGroups() {
     const inVendor = (m: string) => (pkg(m) === 'zod' || (pkg(m) === 'three' && !m.includes('/examples/'))) ? phaseOne.has(m) : pkg(m) === 'three' && surely.has(m);
     const earlyFollow = (id: string, dyn: readonly string[]) => (id === earlyEntry ? dyn.filter(isEarlyRender) : []);
     // The module graph keeps edges the bundle's tree-shaking drops, so it over-states what phase one loads: a barrel's
-    // unused re-exports (phase one imports @sim/world-compiler's index, which re-exports core-kit.ts, which main loads), and
+    // unused re-exports (phase one imports @souls/world-compiler's index, which re-exports core-kit.ts, which main loads), and
     // modules something imports dynamically. `phaseOne` (walk into both) is a superset of the truth: nothing in it leaves
     // for a phase-two chunk. `surely` (walk into neither) is what phase one certainly loads.
     const every = closure([mainEntry, earlyEntry, workbench], (_id, dyn) => dyn);
@@ -247,7 +247,7 @@ function remoteInlineConfig(): Plugin {
     } catch { next(); }
   };
   return {
-    name: 'sim-remote-inline-config',
+    name: 'souls-remote-inline-config',
     configureServer(server) { if (remote) server.middlewares.use(serve(async (url) => server.transformIndexHtml(url, readFileSync(resolvePath(server.config.root, 'index.html'), 'utf8')))); },
     configurePreviewServer(server) { if (remote) server.middlewares.use(serve(async () => { try { return readFileSync(resolvePath(server.config.root, server.config.build.outDir, 'index.html'), 'utf8'); } catch { return null; } })); },
   };
@@ -257,7 +257,7 @@ function remoteInlineConfig(): Plugin {
 // variable, default 4500; WEB_PORT moves Vite off :5173). Under a world's path (/w/toy/) everything but the page itself is
 // the server's: /w/toy/v1/config, the socket. At the root: the API, and the Mars web assets the server serves from
 // mars/viewer/dist/client (src/mars-static.ts), among them the people's character set under /modular.
-// PERF-EDEN: `SIM_DEV_API=https://souls.game pnpm --filter @sim/web dev` points the same proxy at a deployed site, so a local
+// PERF-EDEN: `SIM_DEV_API=https://souls.game pnpm --filter @souls/web dev` points the same proxy at a deployed site, so a local
 // build can be measured against a live world (as an anonymous visitor) without copying its data.
 function devProxy() {
   // One RegExp key (a key starting with ^ is one) matching whole path segments: /history/… goes to the server, a page

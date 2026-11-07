@@ -1,13 +1,23 @@
 // A deterministic, bounded projection. Raw GitHub bodies and comments never enter the served snapshot.
-export const REPO = 'genekogan/souls';
+export const REPO = 'soulsimulation/souls';
 export const DEFAULT_ISSUES = [26, 415, 556, 560, 577, 583];
 export const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// Open issues carrying these labels join the initial cards, in this order: decisions waiting on the maintainer, then
+// tracking epics. `agent:claimed` is not one: claims outlive work, and stale claims would crowd out the epics.
+export const POPULATION_LABELS = ['needs:gene', 'type:epic'];
+export const MAX_ITEMS = 30;
+/** The issues to collect: the initial records, then each label's issues newest first (label order is priority), without
+ *  duplicates, at most `max`. A cap drops the oldest epics, never the initial records or a pending decision first. */
+export function selectIssues(defaults = DEFAULT_ISSUES, labelled = [], max = MAX_ITEMS) {
+  const numbers = labelled.flatMap(list => (Array.isArray(list) ? list : []).map(i => typeof i === 'number' ? i : i?.number).filter(Number.isSafeInteger).sort((a, b) => b - a));
+  return [...new Set([...defaults, ...numbers])].slice(0, max);
+}
 const STATES = ['planned', 'active', 'blocked', 'ready for review', 'merged', 'released', 'live-verified'];
 const text = (v, max = 600) => typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').slice(0, max) : null;
 export const timestamp = v => typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(v).toISOString() : null;
 export function recordUrl(v) {
   // Only source journals on this repository. Arbitrary URLs/media, credentials and query tokens are never exported.
-  return typeof v === 'string' && /^https:\/\/github\.com\/genekogan\/souls\/(?:issues\/\d+(?:#issuecomment-\d+)?|pull\/\d+(?:#(?:issuecomment|discussion_r)-\d+)?|releases\/tag\/[a-zA-Z0-9._-]+|commit\/[a-f0-9]{7,40})$/.test(v) ? v : null;
+  return typeof v === 'string' && /^https:\/\/github\.com\/(?:soulsimulation|genekogan)\/souls\/(?:issues\/\d+(?:#issuecomment-\d+)?|pull\/\d+(?:#(?:issuecomment|discussion_r)-\d+)?|releases\/tag\/[a-zA-Z0-9._-]+|commit\/[a-f0-9]{7,40})$/.test(v) ? v : null;
 }
 export function checkpointFrom(comments = [], observedAt, trustedAuthors = ['genekogan']) {
   const found = [];
@@ -30,8 +40,17 @@ export function checkpointFrom(comments = [], observedAt, trustedAuthors = ['gen
   return found.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null;
 }
 const excerpt = body => text(String(body ?? '').split(/\n\s*\n/).find(p => p.trim() && !/^\s*(?:#|[-*] \[|```)/.test(p) && !/^Part of #/.test(p))?.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\*\*/g, ''), 500);
-const domain = n => [26, 415].includes(n) ? 'Soul Actions' : n === 556 ? 'Performance' : n === 560 ? 'Coordination' : n === 577 ? 'Standards' : 'Project visibility';
-const refs = (body, n) => new RegExp(`(?:^|[^\\w])#${n}(?!\\d)|https://github\\.com/genekogan/souls/(?:issues|pull)/${n}(?!\\d)`).test(String(body ?? ''));
+const KNOWN_DOMAINS = { 26: 'Soul Actions', 415: 'Soul Actions', 556: 'Performance', 560: 'Coordination', 577: 'Standards', 583: 'Project visibility' };
+// The initial records keep their names; any other issue takes its epic (then area) label, e.g. `epic:dev-flow` -> "Dev flow".
+export function domainFor(issue) {
+  if (KNOWN_DOMAINS[issue.number]) return KNOWN_DOMAINS[issue.number];
+  const names = (issue.labels ?? []).map(l => l?.name).filter(n => typeof n === 'string');
+  const label = names.find(n => /^epic:[a-z0-9-]+$/.test(n)) ?? names.find(n => /^area:[a-z0-9-]+$/.test(n));
+  if (!label) return 'Other';
+  const words = label.split(':')[1].replace(/-/g, ' ');
+  return words[0].toUpperCase() + words.slice(1);
+}
+const refs = (body, n) => new RegExp(`(?:^|[^\\w])#${n}(?!\\d)|https://github\\.com/soulsimulation/souls/(?:issues|pull)/${n}(?!\\d)`).test(String(body ?? ''));
 export function projectRecords({ issues, pulls = [], releases = [], observedAt }) {
   const at = timestamp(observedAt);
   if (!at || !Array.isArray(issues)) throw new Error('invalid source records');
@@ -48,7 +67,7 @@ export function projectRecords({ issues, pulls = [], releases = [], observedAt }
     const group = reported === 'blocked' || i.labels?.some(l => /^(needs:(?:maintainer|decision|gene)|blocked)$/.test(l.name)) ? 'Needs you'
       : ['active', 'ready for review'].includes(reported) || openPR || i.labels?.some(l => l.name === 'agent:claimed') ? 'Now'
       : i.state === 'CLOSED' && shipped.length ? 'Recently shipped' : 'Next';
-    return { number: i.number, title: text(i.title, 250), url: recordUrl(i.url), domain: domain(i.number), group, lifecycle, relatedLifecycle,
+    return { number: i.number, title: text(i.title, 250), url: recordUrl(i.url), domain: domainFor(i), group, lifecycle, relatedLifecycle,
       owner, updatedAt: timestamp(i.updatedAt), sourceExcerpt: excerpt(i.body), checkpoint,
       branch: latest?.headRefName ? text(latest.headRefName, 200) : checkpoint?.branch ?? null,
       sha: /^[a-f0-9]{7,40}$/.test(latest?.headRefOid) ? latest.headRefOid : checkpoint?.sha ?? null,
@@ -58,14 +77,14 @@ export function projectRecords({ issues, pulls = [], releases = [], observedAt }
   return { version: 1, observedAt: at, repo: REPO, items, releases: releases.slice(0, 5).map(r => ({ title: text(r.name ?? r.tag_name, 160), url: recordUrl(r.html_url), at: timestamp(r.published_at) })) };
 }
 export function validateSnapshot(v) {
-  if (v?.version !== 1 || v.repo !== REPO || !timestamp(v.observedAt) || !Array.isArray(v.items) || v.items.length > 30 || !Array.isArray(v.releases)) throw new Error('invalid snapshot');
+  if (v?.version !== 1 || v.repo !== REPO || !timestamp(v.observedAt) || !Array.isArray(v.items) || v.items.length > MAX_ITEMS || !Array.isArray(v.releases)) throw new Error('invalid snapshot');
   // Project again from allowlisted fields; unknown/raw fields cannot leak through a hand-edited cache.
   const cleanLink = x => ({ title: text(x.title, 250), url: recordUrl(x.url), at: timestamp(x.at) });
   return { version: 1, repo: REPO, observedAt: timestamp(v.observedAt), releases: v.releases.slice(0, 5).map(cleanLink), items: v.items.map(i => {
     if (!Number.isSafeInteger(i.number) || !['Now', 'Next', 'Needs you', 'Recently shipped'].includes(i.group)) throw new Error('invalid card');
     const c = i.checkpoint;
     const checkpoint = c ? checkpointFrom([{ body: '```ops-checkpoint\n' + JSON.stringify(c) + '\n```', updatedAt: c.at, author: { login: c.author }, authorAssociation: c.authorAssociation, url: c.url }], v.observedAt, ['genekogan', ...(i.owner ?? [])]) : null;
-    return { number: i.number, title: text(i.title, 250), url: recordUrl(i.url), domain: domain(i.number), group: i.group,
+    return { number: i.number, title: text(i.title, 250), url: recordUrl(i.url), domain: text(i.domain, 80) ?? 'Other', group: i.group,
       sourceExcerpt: text(i.sourceExcerpt, 500), relatedLifecycle: ['merged', 'released'].includes(i.relatedLifecycle) ? i.relatedLifecycle : null, lifecycle: ['released', 'merged', 'branch-only', 'source issue only', 'closed issue; release unknown'].includes(i.lifecycle) ? i.lifecycle : 'unknown', owner: (Array.isArray(i.owner) ? i.owner : []).slice(0, 10).map(x => text(x, 80)).filter(Boolean), updatedAt: timestamp(i.updatedAt), checkpoint,
       branch: text(i.branch, 200), sha: /^[a-f0-9]{7,40}$/.test(i.sha) ? i.sha : null,
       pulls: (Array.isArray(i.pulls) ? i.pulls : []).slice(0, 8).map(p => ({ ...cleanLink(p), number: Number.isSafeInteger(p.number) ? p.number : null, state: ['merged', 'branch-only', 'closed'].includes(p.state) ? p.state : 'unknown' })),

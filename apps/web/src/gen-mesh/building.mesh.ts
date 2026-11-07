@@ -8,7 +8,7 @@
 // storeys above that floor); a camera inside a building's footprint hides its roof and the storeys
 // above the camera. Geometry is built once per (def, params, paint) and shared by every instance.
 import * as THREE from 'three';
-import { GENERATORS, type Value } from '@sim/generators';
+import { GENERATORS, type Value } from '@souls/generators';
 import { buildingFacadeSlots, type BuildingLayout } from '../../../../packages/generators/src/building.ts';
 import { Builder, hashStr, type Finish } from './building-kit.ts';
 import { buildingBuffers, beam, col, FACADE, FLOOR0, SLAB, type BuildingJob, type BuildingBuffers } from './building-buffers.ts';

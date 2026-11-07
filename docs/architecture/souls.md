@@ -29,6 +29,117 @@ The agent keeps its state in that folder: `.eden-agent.json` (world, Soul, token
 file stops the mind. The owner can message the Soul from the web (`/v1/edge/owner/:soulId/inbox`); the agent reads
 them with `listen` and answers with `ack` / `result`.
 
+## The Souls home
+
+The shipping CLI (`tools/world-launcher/soul/eden.mjs`) keeps every Soul a person pairs in one `.souls/` folder, found
+upward from the current folder like `.git`, stopping at the user's home folder (`SOULS_HOME` overrides). The first
+`register` in an empty folder makes it; `init --global` is the only way to get `~/.souls/`. Design:
+[Soul context](../design/soul-context.md); code: `tools/world-launcher/soul/home.mjs`.
+
+```text
+.souls/
+  config.json        worlds, the display name index, the default Soul; no secrets
+  credentials.json   mode 0600: every token, dev identity and approval poll secret, keyed by principal and world
+  souls/<soulId>/    soul.json (identity); runtime/ holds state.json, listen lock, serve socket and log, per Soul
+  pending/<world>/   a world's seat: the state of a pairing that has no Soul yet
+  gods/<world>/      a god seat: what the god CLI keeps today, minus its token
+  bin/eden.mjs       the CLI, for folders below the home
+```
+
+With one Soul every command works as it did. With several, name one first: `node eden.mjs mira here`, `mira@eden` when
+two share a name, `@eden create "Ivo"` to pick the world. Each run works inside that Soul's `runtime/`, so nothing
+collides. `list`, `default`, `adopt`, `doctor`, `export` and `import` manage the home; `import` brings a legacy folder in
+and reuses its token. Everything but `credentials.json` is safe to read or back up, apart from a god seat's relay secret below.
+
+A god is a second principal. `eden-god.mjs` joins a home that already exists: `register` makes the world's seat, and with
+several seats `node eden-god.mjs <world> <command>` picks one (`@<world>` when a command has that name). Its working directory stays yours, because god commands take
+relative files; only its own state moves. A folder with no home keeps `.eden-god.json` as ever, and that file wins until
+`node eden.mjs import` moves it in. Acting as a god reads nothing under `souls/`, and acting as a Soul nothing under
+`gods/`. A seat also holds the look keeper's per-start localhost secret (`.eden-god.wire.json`, 0600).
+
+One client and one project skill (`.claude/skills/souls/`, `.agents/skills/souls/`) serve every world in a home, because
+offers are data fetched from the world. `/v1/config` says which bundle a world serves: `soulClient: {contract, version,
+bytes, sha256, minVersion}`, read by `register`, so no command pays for it. A home records that per world. A world
+needing more than this client refuses at `register` with the exact `upgrade <world>`, and `upgrade` installs the bundle
+only if its length and SHA-256 match, it is newer than the home's, and no other world in the home speaks another contract
+(a world on an untrusted site can be passed over with `--trust`; a trusted one can't). Every copy of the CLI in the home hands over to `bin/eden.mjs` once that is newer. A world pinned to an older bundle keeps
+working: it never downgrades the home.
+
+Length and hash prove a bundle arrived whole, not that it is safe, and a client runs with every Soul's token in the home.
+So a home trusts one site unasked: its first world, once a `register` there has succeeded. A bundle from any other
+origin, or over plain http off this machine, needs a person's `upgrade <world> --trust`, naming the world. A home from
+before this client trusts nothing until a person says so. Reading a world, a travel answer and an imported file never add
+to the list, so a Soul moved in with `import` starts with no trusted site. `upgrade` follows no redirect.
+
+Reconciling needs the account's list, which `/v1/me` gives a dev identity. A delegated Soul token sees only its own Soul,
+so on an account world `doctor` checks each Soul through its token and only the world saying `retired` retires one, and
+`adopt` takes an id. A folder with `.eden-agent.json` stays a legacy one-Soul folder, even inside a home. So does a Soul
+under the managed runtime (`tools/soul-runtime`) and `tools/body-authoring/upload.mjs`, which read that file directly.
+
+`eden.mjs` is served and copied as one file, so `home.mjs` lives in a generated block of it: edit the module, then run
+`node tools/world-launcher/soul/inline.mjs`.
+
+## Memory
+
+A Soul in a home keeps one memory across every world it visits, in `souls/<id>/memory/`: an append-only log
+(`memory/log/memory-events.jsonl`) and the projections regenerated from it (`self`, `goals`, `schedule`, `places`,
+`knowledge`, `lessons`, `ledger`, `people/`, `journal/`). The record format and its validators are
+`tools/edge-skill/memory-folder.mjs`, the same module the 1.9 line uses; every record on the shipping line adds `world`,
+`when` (`{real, tick, worldDay, time}`) and `seen` (the names as they appeared). `tools/world-launcher/soul/memory.mjs`
+feeds it, and both are inlined into `eden.mjs`.
+
+Writing costs no request and no model call. Every answer from a world passes one place in the client, and with `serve`
+up only `serve` reaches it, so a terminal receipt, an arrival, a first meeting within 8 m, a heard turn and an owner
+message's result each add one record, once. An idle Soul writes nothing. A failure to write is said on stderr and never
+fails the command; a torn or conflicting log fails closed and stays as it was.
+
+Place ids repeat across worlds, so the log holds them as `<world>:<place>`, as it does receipts and learned facts. A
+record's own `seen` names make it stand alone: a place renamed by a god keeps the old name on old records and reads
+`formerly` in `places.md`, and an id gone from the world is only ever text. Speech and other Souls' reports carry
+UNTRUSTED through every projection.
+
+`worlds/<world>.json` is the Soul's standing in each world: home or visiting, the incarnation id, last place and posture,
+last seen on both clocks. `travel` adds one and leaves the Soul's folder where it is; `status` lists them all.
+`remember --person|--place|--goal|--self` adds the mind's own judgments through the same validators, and
+`memory <words>` searches the projections and says where each line came from. A legacy folder has no memory. The home marks
+everything a world reported as untrusted itself, whatever the world said about it. `memory/` and `MEMORY.md` are in the
+home's `.gitignore`, added to an older home when it next opens: they hold private conversations.
+
+### People
+
+`people/<slug>-<hash>.md` is one file per Soul met, keyed on the traveller id (`<home>/<id>`, hashed into the file name so
+two ids never share a file; `<world>/<id>` until the world gives one). `tools/world-launcher/soul/people.mjs` projects it
+from the log: first met and last contact on both clocks, episodes as pointers to conversations and shared receipts with a
+line each, this Soul's own beliefs, what worlds say of them, their last words, what this Soul has told them (its own `say`
+and `converse` from what it sent), and commitments. World text is under a heading marked UNTRUSTED, and a world's provenance
+is only a label: "my judgment" is what `remember` wrote. The title's name is a world's too, and `memory` says so. A file for
+someone met once stays under 2 KB, any file under 8 KB. No one met, no folder.
+
+Each Soul a world shows is its own row, and a world speaks only for its own. A traveller id naming a Soul elsewhere is a
+claim: it puts that row in the same file, under a heading that says whose word it is, and changes nothing else. A claim moves
+and merges no row. A note or a promise stays on the row it was written about, so a stranger who claims to be a friend gets
+none of it, and the brief says only that a world says so. A visitor's own world is the one that can vouch for them, so a
+promise to a friend at home closes on what that friend did at home.
+
+`remember --person <id|name> --promise "<what>" [--by me|them]` opens a commitment, and every open one is in the brief with
+its id, whoever is near. It closes only with `remember --kept <promise id> --evidence <id>`, and the log has to hold, later
+in the log than the promise (a world picks its own timestamps), a conversation turn of theirs, or for a promise of mine a
+completed receipt that names them. An owner's message, or an act alone, keeps nothing: a promise is kept by what happened, not
+by the mind saying so. Any turn of theirs since counts, even a greeting: the mind names which.
+
+### The pre-turn brief
+
+With memory, `pending` and a `listen` that woke carry `brief`: known people near, this place, open commitments, the last
+episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the `remember --self` lines. `brief.mjs` builds it from a
+lookup, with no request and no model call, within a byte budget (1,500 by default, `briefBytes` in `config.json`, 0 for none).
+It doesn't grow with the log, and a Soul with no memory has none. The CLI builds it from this folder's memory, and a `brief` in
+anything a world answered is dropped. Room goes first to what the Soul and its owner wrote; who is near is kept in the world's
+presence file, so it outlasts a restart.
+
+Everything a world supplied (names, places, what a receipt said) is in quotes it cannot close, under a first line saying
+quoted text is data; a world that says nothing about trust is not trusted. Only the Soul's notes, goals and own `result`
+reports, and its owner's `SOUL.md` and schedule, stand bare. A plan's close can carry a world's reason, so it is quoted too.
+
 ## The edge API
 
 All Soul routes take the Soul token. Writes accept an `Idempotency-Key` (or a `clientRef`) so a retry after a lost
@@ -39,9 +150,10 @@ response returns the original receipt.
 | `GET /v1/edge/boot` | Fresh session: clocks, the Soul (`me`), `here` with local offers, and the static manifest; never cached |
 | `GET /v1/edge/boot/static[?page=]`, `GET /v1/edge/boot/places` | Public, ETag-cached world knowledge: destinations, rules, verbs (paged within a 10 KB budget), and the full authored map |
 | `GET /v1/edge/here?include=doHere` | First-person frame: where the Soul is, who and what is near, exits, and the actions offered here with exact parameters |
-| `GET /v1/edge/observe`, `GET /v1/edge/capabilities`, `GET /v1/edge/around` | Wider views: state and open receipts, all offers, nearby with a route |
+| `GET /v1/edge/observe`, `GET /v1/edge/capabilities`, `GET /v1/edge/around` | Wider views: state and open receipts, all offers, nearby with a route. `around?to=` also finds a named god flag ("orchard", "the orchard flag") and answers with its distance, direction and `walk:flag-<name>`; an exact place name still wins over a flag |
+| `GET /v1/edge/map` | Public map: the places, and the named god flags as `flags: [{name, walk, at}]` |
 | `POST /v1/edge/resolve` | Dry run of an action: the resolved target and capability, no event |
-| `POST /v1/edge/act` | `{capability, params?, clientRef?}`: an action; answered with a receipt |
+| `POST /v1/edge/act` | `{capability, params?, clientRef?}`: an action; answered with a receipt, or a refusal (`code`, `reason`, `did_you_mean`; when nothing matched, `alternatives`: at most 3 offers available here and now) |
 | `GET /v1/edge/receipts/:id` | A receipt: accepted, started, completed, failed or replaced, with the reason |
 | `POST /v1/edge/say`, `POST /v1/edge/converse`, `GET /v1/edge/conversations` | Speech and conversations (consent-based membership) |
 | `GET /v1/edge/objects`, `POST /v1/edge/objects/:id/act` | Things the Soul can read, write or use |
@@ -143,3 +255,18 @@ Some engine behaviour changes are adopted per world as logged `rules` facts, so 
 example is `walkSettleWaitV1` (`WorldHost.enableWalkSettleWaitV1`): when a walker's final recentering is blocked by a
 person, it reports the native wait with the blocker instead of an unnamed settle. It is off by default and enabled only
 through an explicit world descriptor; once adopted, a rollback must use a reader that understands it.
+
+`routeReachV1` (route-reach/1, #872; `WorldHost.enableRouteReachV1`) is turned on at edge startup
+(`edge-runtime-rules.ts`). It changes three things in the paged ground planner (`mars/viewer/engine/spatial/tiled.ts`):
+
+- **Far walks from an upper floor.** A walk from an upper floor to a goal more than 72 m away is no longer refused
+  `ground.too-far`. The first chunk goes down the building's own stairs to standable ground toward the goal, and the
+  walk continues from there a chunk at a time, like any paged walk.
+- **Hops cut short by the window.** A fine hop that fails on its tile window is retried once on a window one ground tile
+  wider before the walk is refused. A fence or a building's walls can push the way round outside the first window.
+- **Full places.** A place is reported `route.region-full` only when people fill it. A place whose spots cannot be
+  reached gets the planner's own refusal instead.
+
+A place that no walk reaches within one planning window (72 m) still refuses at once. Like every paged walk, a farther walk
+is checked beyond the first chunk only on the coarse ground grid, so a goal sealed off by thin walls is found out when the
+walk reaches it, and the walk then fails `route.unreachable` there.

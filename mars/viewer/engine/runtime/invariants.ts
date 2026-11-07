@@ -107,6 +107,10 @@ const lastPoses = new WeakMap<Runtime, { tick: number; world: WorldState; poses:
 /** A deliberate logged relocation (edge reclaim) is not a teleport fault: forget that body's previous pose. */
 export function acknowledgeRelocation(rt: Runtime, id: string): void { lastPoses.get(rt)?.poses.delete(id); }
 
+/** #1150: a restored runtime starts with no previous poses, so its first tick could not see a jump a live one refuses.
+ *  Call once after a restore, where a move's refusal must replay. Reads the world only. */
+export function rememberPosesAfterRestore(rt: Runtime): void { maxStepPerTick(rt); }
+
 /**
  * No person or carried component moves more than MAX_STEP_PER_TICK in one tick (review C1): catches
  * every teleport class (formation flips, snaps, lerps with a wrong origin). For carried components the
@@ -167,7 +171,9 @@ export const speedWithinCap: Invariant = (rt: Runtime) => {
   const out: Diagnostic[] = [];
   for (const e of relevantEntities(rt.world)) {   // bodies only
     const sp = e.human?.speed;
-    if (sp === undefined) continue;
+    // #1086: a published zero is no movement (a relocated body that then reaches published 0 in `reach` and faulted); the
+    // ground bridge's cap (engine-mars ground-bridge.ts) already skips it
+    if (sp === undefined || sp === 0) continue;
     const cap = SPEED_CAPS[e.human!.activity];
     if (cap !== undefined && sp <= cap * OVERSPEED_TOL) continue;
     out.push({

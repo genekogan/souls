@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { fixture, invite, accept, factory as plainFactory } from '../test/native-owner-fixture.ts';
 import { planRetireResidents, retireResidents, retireResidentsBootHook, ownerKind } from './retire-residents.ts';
 

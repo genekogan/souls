@@ -9,12 +9,12 @@ import {fixture, invite, accept} from '../test/native-owner-fixture.ts';
 import {buildApp} from './http.ts';
 import {config} from './config.ts';
 import {GodMode} from './god/god.ts';
-import {coreRef} from '@sim/world-compiler';
+import {coreRef} from '@souls/world-compiler';
 import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {streamSSE} from 'hono/streaming';
 
 test('soul queue: nothing overwrites, the oldest waits first, listen takes the whole backlog, ack and result per id, restart', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   let db = new Db(join(dir, 'fixture.db')), now = 1000, inbox = new AgentInbox(db, 'w1', () => now);
   const a = {scope: 'soul:a', owner: 'alice'}, b = {scope: 'soul:a', owner: 'bob'}, other = new AgentInbox(db, 'w2', () => now);
   assert.deepEqual(inbox.view(a), {connected: false, lastSeenAt: null, listenedAt: null, latest: null, queued: 0, presence: 'away'});
@@ -65,7 +65,7 @@ test('soul queue: nothing overwrites, the oldest waits first, listen takes the w
 // Baseline id kept for the release gate. The Soul box became a queue (MSG 1.9.5): a newer message no longer replaces
 // the older one; the rest of the old contract (transitions, validation, isolation, presence expiry, restart) holds.
 test('one durable latest message: truthful transitions, replacement, isolation, expiry and restart', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   let db = new Db(join(dir, 'fixture.db')), now = 1000, inbox = new AgentInbox(db, 'w1', () => now);
   const a = {scope: 'soul:a', owner: 'alice'}, b = {scope: 'soul:a', owner: 'bob'}, other = new AgentInbox(db, 'w2', () => now);
   assert.equal(inbox.view(a).latest, null);
@@ -95,7 +95,7 @@ test('one durable latest message: truthful transitions, replacement, isolation, 
 // then 'away' (was 'recent' after a short gap); after handing messages, a newer queued message within the grace still shows
 // 'listening' (was "nobody listens until the agent runs listen again"). The full new contract is the PRESENCE test below.
 test('presence stays listening across the gap between two long-polls, not after the listener is gone or once it holds a message', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   const db = new Db(join(dir, 'fixture.db')); t.after(() => db.close());
   let now = 1000; const inbox = new AgentInbox(db, 'w1', () => now), a = {scope: 'soul:a', owner: 'alice'};
   inbox.touch(a); const end = inbox.listening(a); assert.equal(inbox.view(a).presence, 'listening');
@@ -109,7 +109,7 @@ test('presence stays listening across the gap between two long-polls, not after 
 });
 
 test('PRESENCE: a Soul listens while a listen is open or closed <= 60 s ago; other traffic, a stepped-back clock and the god box', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   let db = new Db(join(dir, 'fixture.db')); t.after(() => db.close());
   let now = 1000, inbox = new AgentInbox(db, 'w1', () => now); const a = {scope: 'soul:a', owner: 'alice'}, g = {scope: 'god', owner: 'alice'};
   assert.equal(inbox.view(a).presence, 'away'); assert.equal(inbox.view(a).listenedAt, null, 'never seen');
@@ -139,7 +139,7 @@ test('PRESENCE: a Soul listens while a listen is open or closed <= 60 s ago; oth
 });
 
 test('PRESENCE: an older agent_inbox_v1 table without listened_at gains the column at boot and keeps its rows', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-inbox-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   const db = new Db(join(dir, 'fixture.db')); t.after(() => db.close());
   db.db.exec(`CREATE TABLE agent_inbox_v1 (world_id TEXT NOT NULL, scope TEXT NOT NULL, owner TEXT NOT NULL, id TEXT, text TEXT, sent_at INTEGER, delivered_at INTEGER, acknowledged_at INTEGER, reply TEXT, last_seen_at INTEGER, PRIMARY KEY(world_id,scope,owner)) WITHOUT ROWID;
     INSERT INTO agent_inbox_v1(world_id,scope,owner,last_seen_at) VALUES('w1','soul:a','alice',7)`);
@@ -337,7 +337,7 @@ test('owner box and edge command need an invited owner (same gate as the central
 // #399: the god's presence after a listen hands over a command is 'working' however the clock moves between the
 // middleware's seen stamp and the delivery stamp (it read 'listening' when a millisecond passed in between).
 test('god presence is working right after a listen hands over a command, even if the clock ticks in between', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-godp-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-godp-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   let now = 1000;
   const db = new Db(join(dir, 'p.db')), inbox = new AgentInbox(db, 'w1', () => now++);   // every read of the clock moves it 1 ms
   t.after(() => db.close());
@@ -351,7 +351,7 @@ test('god presence is working right after a listen hands over a command, even if
 });
 
 test('god queue: commands typed while away wait in order; tickets move pending -> in progress -> done/failed/withdrawn', async t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-godq-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-godq-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   let db = new Db(join(dir, 'q.db')), now = 1000, inbox = new AgentInbox(db, 'w1', () => now);
   const g = {scope: 'god', owner: 'alice'}, other = {scope: 'god', owner: 'bob'};
   const a = inbox.send(g, 'Build a pier').latest!; now++;

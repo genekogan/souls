@@ -8,6 +8,8 @@
 //   match      case-insensitive regular expression tested against the owner's message text; the first rule that matches wins
 //   ack        reply sent with `ack <id>` (≤140 chars); default "On it."
 //   do         eden.mjs argument lists run in order; "{id}" is replaced by the message id. A step that fails stops the rule.
+//              A `resolve` step keeps its first candidate's id as "{resolved}" for the steps after it, as an agent reads an
+//              offered id off `resolve` and acts on it (#1192): `give:<soul>` and `accept:<invitation>` differ every run.
 //   close      "done" (default): `result <id> done|failed` from the steps' outcome. "open": leave the request open (the
 //              activity continues in the world) until a later rule supersedes it or the run ends.
 //   supersede  text for `result <old> failed "<text>"` on every request still open when this rule fires (owner redirection)
@@ -76,6 +78,17 @@ export function stepOutcome(r, { waited = false } = {}) {
   if (!ongoing) return { ok: false, why: `still ${phase ?? 'open'} after waiting` };
   return { ok: true, phase, ongoing: true };
 }
+/** The offered id a `resolve` step read its words as, or '' when it read none. */
+const firstCandidate = (r) => { try { return JSON.parse(r.stdout).candidates?.[0]?.id ?? ''; } catch { return ''; } };
+/** How much of one CLI output a tool result keeps (#371): all of it up to this many characters. It was 4000, which cut
+ *  `around` (its route) and `map` (its flags) mid-JSON, so the scorer read output the Soul really got as a broken string. */
+export const OUTPUT_KEEP = 1024 * 1024;
+/** The tool-result content of one output: whole up to OUTPUT_KEEP; past it the head, an explicit marker line and
+ *  `truncated: true`, so a scorer tells a cut output from a short one. */
+export function keptOutput(s, keep = OUTPUT_KEEP) {
+  const t = String(s ?? '');
+  return t.length <= keep ? { content: t } : { content: `${t.slice(0, keep)}\n[scripted-owner: output truncated: ${keep} of ${t.length} characters kept]`, truncated: true };
+}
 const firstLine = (s) => String(s ?? '').split('\n').find((l) => l.trim())?.slice(0, 120) ?? '';
 const clip = (s) => String(s).slice(0, 140);
 
@@ -93,7 +106,7 @@ export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = 
     stream.push({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] }, _rx: Date.now() });
     const r = left > 0 ? await run('node', [...pre, 'eden.mjs', ...args], { cwd, env, maxWallMs: left }) : { code: null, stdout: '', stderr: 'turn wall reached' };
     if (r.timedOut || left <= 0) timedOut = true;
-    stream.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: (r.stdout || r.stderr || '').slice(0, 4000), is_error: r.code !== 0 }] }, _rx: Date.now() });
+    stream.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, ...keptOutput(r.stdout || r.stderr || ''), is_error: r.code !== 0 }] }, _rx: Date.now() });
     return r;
   };
   const errs = validateScript(script);
@@ -140,10 +153,12 @@ export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = 
     }
     if (id) await cli(['ack', id, clip(rule.ack ?? 'On it.')]);
     let failed = null;
+    let resolved = '';
     for (const step of rule.do) {
-      const r = await cli(step.map((a) => (id ? a.replaceAll('{id}', id) : a)));
+      const r = await cli(step.map((a) => (id ? a.replaceAll('{id}', id) : a).replaceAll('{resolved}', resolved)));
       const o = stepOutcome(r, { waited: step.includes('--wait') });
       if (!o.ok) { failed = `${step[0]}: ${o.why}`; break; }
+      if (step[0] === 'resolve') { resolved = firstCandidate(r); if (!resolved) { failed = `resolve: nothing on offer reads as "${clip(step[1])}"`; break; } }
     }
     if (!id) return;
     if ((rule.close ?? 'done') === 'open' && !failed) { state.open.push(id); handled(); say(`Started; ${id} stays open.`); return; }

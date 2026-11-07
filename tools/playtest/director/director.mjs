@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { monoMs, sleep as realSleep } from '../lib/clock.mjs';
 import { rng as makeRng } from '../lib/hash.mjs';
 import { appendJsonl, writeJson } from '../lib/jsonl.mjs';
+import { applyWorldTime } from '../runs/setup.mjs';
 import { quota, quotaAllows } from '../lib/quota.mjs';
 import { withKinematics } from '../observer/kinematics.mjs';
 import { runFixtureSetup } from '../arena/fixture-setup.mjs';
@@ -53,7 +54,7 @@ export function budgetMsFor({ scenario, quick, budgetSec, god = false }) {
  * seats: array (or {id: seat}) of arena Seat objects matched to scenario.seats by id. god: god Seat or null.
  * Returns {stoppedBy, elapsedSec, seats: {id: {steps, requests, closed}}}.
  */
-export async function runPlay({ runDir, scenario, world, seats, god = null, observer, owner, clock = realClock, personaFactory = null, quotaCheck = null, seed = 0, pollSec = 2 }) {
+export async function runPlay({ runDir, scenario, world, seats, god = null, observer, owner, clock = realClock, personaFactory = null, quotaCheck = null, seed = 0, pollSec = 2, setWorldTime = applyWorldTime }) {
   const mode = scenario.director?.mode ?? 'persona';
   const rails = scenario.rails ?? {};
   const maxTurns = rails.maxTurnsPerRequest ?? 6;
@@ -64,6 +65,8 @@ export async function runPlay({ runDir, scenario, world, seats, god = null, obse
   const state = { stopped: null };
   const stop = (why) => { if (!state.stopped) { state.stopped = why; log('stop:', why); } };
   const live = () => !state.stopped && clock.now() < endAt;
+  // #1138: a clock a script depends on starts with the play, not before an onboarding of unknown length. Never fatal: the receipt says what happened.
+  if (scenario.director?.worldTime) writeJson(join(runDir, 'world-time.json'), await setWorldTime({ base: world.base, time: scenario.director.worldTime }));
   const elapsedSec = () => (clock.now() - start) / 1000;
   const sleepUntil = async (target, wake = null) => { while (live() && clock.now() < target) { if (wake?.()) return true; await clock.sleep(Math.min(pollMs, target - clock.now(), endAt - clock.now())); } return false; };
   const seatById = Array.isArray(seats) ? Object.fromEntries(seats.map((s) => [s.id, s])) : (seats ?? {});
@@ -285,7 +288,9 @@ export async function runPlay({ runDir, scenario, world, seats, god = null, obse
     const sequential = scenario.director?.sequential !== false; // a person waits for the result before the next basic instruction
     for (const e of entries) {
       await sleepUntil(start + e.atSec * 1000);
-      if (sequential) { while (live() && (ctx.open.size > 0 || ctx.pending > 0)) await clock.sleep(Math.min(pollMs, Math.max(1, endAt - clock.now()))); }
+      // after "result" (#888): this entry waits for the seat's own open requests to close, so direction follows results
+      // instead of a fixed clock; atSec is then the earliest time it can go.
+      if (sequential || e.after === 'result') { while (live() && (ctx.open.size > 0 || ctx.pending > 0)) await clock.sleep(Math.min(pollMs, Math.max(1, endAt - clock.now()))); }
       if (!live()) break;
       ctx.step += 1;
       if (e.setup) {
@@ -295,10 +300,15 @@ export async function runPlay({ runDir, scenario, world, seats, god = null, obse
           continue;
         }
       }
+      // #1138: a card with `restart` reaches a Soul whose resident client has just restarted, in a new chat: only what it wrote down carries over.
+      if (e.restart) {
+        try { await ctx.seat.restart?.(); }
+        catch (err) { appendJsonl(join(runDir, 'infrastructure-invalid.jsonl'), { requestKey: e.id ?? `${ctx.id}-${ctx.step}`, text: e.text, reason: err.message }); continue; }
+      }
       const shown = await gatherShown(ctx);
       saveShown(ctx, shown);
       const delivered = await deliver(ctx, { channel: e.channel ?? 'card', text: e.text }, { budgetSec: e.budgetSec ?? null, journey: !!e.expect?.journey });
-      record(ctx, { step: ctx.step, scripted: { atSec: e.atSec, channel: e.channel, text: e.text, budgetSec: e.budgetSec ?? null, ...(e.seat === '*' ? { broadcast: true } : {}) }, delivered });
+      record(ctx, { step: ctx.step, scripted: { atSec: e.atSec, ...(e.after ? { after: e.after } : {}), channel: e.channel, text: e.text, budgetSec: e.budgetSec ?? null, ...(e.seat === '*' ? { broadcast: true } : {}) }, delivered });
     }
   }
 
