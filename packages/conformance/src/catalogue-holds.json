@@ -395,7 +395,7 @@
    "why": "kit creature: one merged static draw plus one pivot draw per animated role (legs, head, tail, wings); a skinned single draw would never freeze on phones (Z2, 2026-10-20)"
   },
   "core-watering-can@2": {
-   "why": "Soul Actions 1-44 (garden): can body, handle, spout and rose are separate shapes so filling at the tap and watering animate; 1272 tris over the object.tool budget 400 (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @3 within budget (#494). Soul Actions 1-44 (garden): can body, handle, spout and rose are separate shapes so filling at the tap and watering animate; 1272 tris over the object.tool budget 400 (cutover hold, 2026-11-01)"
   },
   "core-wetland@1": {
    "why": "area/scatter generator: the bake estimate grows with the area and is held against a per-object class cap; not a wrong estimate (Z2, 2026-10-20)"

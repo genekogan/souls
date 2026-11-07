@@ -18,7 +18,7 @@ const FAMILIES={
  'bed-b':['core/planter-box@1','core/garden-planter@1',[0.4,-2.2],{moisture:1},{moisture:0}],
  notes:['core/notice-board@1','core/notice-board@3',[-2.2,2.4],{text:'Picnic at noon\nSwap books',textBy:'s_x,s_y'},{text:'far note one\nfar note two',textBy:'s_z,s_y'}],
  jukebox:['core/radio@1','core/jukebox@2',[2.0,-0.2],{on:false},{on:true}],
- fountain:['core/fountain@1','core/garden-fountain@1',[7,-1],{on:false},{on:true}],
+ fountain:['core/fountain@1','core/garden-fountain@2',[7,-1],{on:false},{on:true}],
  candle:['core/candle@1','core/candle-stand@1',[1.3,1.2],{on:false},{on:true}],
  lights:['core/string-lights@1','core/string-lights@2',[-5,-0.9],{on:false},{on:true}],
  campfire:['core/campfire@1','core/campfire@2',[-3.5,-5.5],{on:false},{on:true}],
