@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedLines, checkPaths, checkScrub, readAllowlist, scrubLine } from './guards.mjs';
+import { readFileSync } from 'node:fs';
+import { addedLines, checkLedger, checkPaths, checkScrub, ledgerEntries, readAllowlist, scrubLine } from './guards.mjs';
 
 test('path guard flags databases, state files, env files and unlisted media', () => {
   const allow = readAllowlist('# comment\napps/web/pwa/icon-192.png\n');
@@ -48,4 +49,43 @@ test('scrub guard: workspace paths and SSH targets beyond the service users, wit
   for (const line of ['cache ~/.cache/sim-assets', 'set $HOME/.config/tool', 'clone into ~/<project>', 'a bare ~/ prefix',
     'ssh user' + '@host', 'ssh -T git' + '@github.com', 'pnpm add foo' + '@latest', 'ssh deploy' + '@<host>'])
     assert.deepEqual(scrubLine(line), [], line);
+});
+
+const entry = (family, n, hex, id = n === 1 ? family : `${family}-${n}`) => ` {id:'${id}',family:'${family}',n:${n},asset:'body_${hex.repeat(64)}'},`;
+const ledger = (...lines) => `export type CoreRevision={readonly id:string};\nexport const CORE_REVISIONS:readonly CoreRevision[]=Object.freeze([\n${lines.join('\n')}\n].map(r=>Object.freeze(r)));\n`;
+const pip = entry('pip', 1, 'a'), ghost = entry('ghost', 1, 'b'), base = ledger(pip, ghost);
+
+test('ledger guard reads the real ledger', () => {
+  const entries = ledgerEntries(readFileSync(new URL('../../apps/server/src/edge/body/core-revisions.ts', import.meta.url), 'utf8'));
+  assert.ok(entries.length >= 4);
+  assert.deepEqual(Object.keys(entries[0]), ['id', 'family', 'n', 'asset']);
+  assert.equal(entries[0].id, 'pip');
+});
+
+test('ledger guard passes an unchanged ledger, an append, and a file the base does not have', () => {
+  assert.deepEqual(checkLedger(base, base), []);
+  assert.deepEqual(checkLedger(base, ledger(pip, ghost, entry('pip', 2, 'c'))), []);
+  assert.deepEqual(checkLedger(null, base), []);
+});
+
+test('ledger guard fails a changed, removed or reordered released entry (#845)', () => {
+  const cases = {
+    asset: ledger(entry('pip', 1, 'c'), ghost),
+    id: ledger(entry('pip', 1, 'a', 'pip-x'), ghost),
+    family: ledger(entry('pop', 1, 'a', 'pip'), ghost),
+    number: ledger(entry('pip', 2, 'a', 'pip'), ghost),
+    removed: ledger(pip),
+    'removed first': ledger(ghost),
+    reordered: ledger(ghost, pip),
+    'inserted before': ledger(entry('new', 1, 'c'), pip, ghost),
+  };
+  for (const [what, head] of Object.entries(cases)) assert.ok(checkLedger(base, head).length, what);
+});
+
+test('ledger guard fails closed: comments, deletion and an unreadable shape never pass', () => {
+  assert.ok(checkLedger(base, ledger(pip, `//${ghost}`)).length, 'commented out');
+  assert.ok(checkLedger(base, ledger(pip, `/*${ghost}*/`)).length, 'block comment');
+  assert.ok(checkLedger(base, null).length, 'file deleted');
+  assert.ok(checkLedger(base, ledger(pip, ghost.replace("n:1", "n:1,note:'x'"))).length, 'an entry it cannot read');
+  assert.ok(checkLedger('export const CORE_REVISIONS=load();', base).length, 'nothing readable at the base');
 });
