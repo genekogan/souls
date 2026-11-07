@@ -89,7 +89,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   function passOver() {
     const steal = `${lock}.steal`;
     try { closeSync(openSync(steal, "wx", 0o600)); }
-    catch (e) { if (e.code !== "EEXIST") throw e; if (lockGone(steal)) { try { unlinkSync(steal); } catch { /* someone did */ } } return; }
+    catch (e) { if (e.code !== "EEXIST") throw e; if (lockGone(steal)) { try { unlinkSync(steal); } catch { /* someone did */ } } else sleepMs(LOCK_WAIT_MS); return; }
     try { if (lockStale()) unlinkSync(lock); }
     catch (e) { if (e.code !== "ENOENT") throw e; }
     finally { try { unlinkSync(steal); } catch { /* someone did */ } }
@@ -163,7 +163,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   };
 
   function outcome(r, receipt, when) {
-    const out = receipt.outcome && typeof receipt.outcome === "object" ? receipt.outcome : {}, where = (id) => (typeof id === "string" && id ? worldKey(world, id) : null);
+    const out = receipt.outcome && typeof receipt.outcome === "object" ? receipt.outcome : {}, where = (id) => { const place = typeof id === "string" ? clip(id, PLACE_ID_MAX) : ""; return place ? worldKey(world, place) : null; };
     let metRows = unique(rows(out.met, 32).flatMap((p) => { const id = p.soulId ?? p.id, name = clip(p.name, 200); return safeId(id) && id !== soul && name ? [{ id, name, where: where(p.placeId) }] : []; }));
     let produced = unique(rows(out.produced, 32).flatMap((o) => (safeId(o.id) ? [{ id: o.id, title: clip(o.title, 200) || o.id, kind: clip(o.kind, 200) || "thing", where: where(o.where) }] : [])));
     // A changing source is a new reading, not a conflict: each fact keeps its own version of the source.
