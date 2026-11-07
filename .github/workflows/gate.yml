@@ -1,0 +1,137 @@
+# The full Modal release gate as a dispatchable workflow, separate from shipping (#519, #1133 itinerary §2b).
+#   gate   tools/test-harness/release-gate.sh <sha> --baseline <ref> [--scope full|auto] [--dry-run]
+#          against the newest v* tag by default; uploads gate.log and receipt.json as the `gate-<sha12>` artifact
+#
+# Why: the laptop path is denied for agents (.claude/settings.json denies release-gate.sh, modal and ssh), so every
+# gate has needed Gene's terminal. This runs it where MODAL_TOKEN_ID/SECRET already live (repo secrets). It ships
+# nothing: release.yml's ship job (root-only rewrite tracked by #519 / #523) consumes the receipt later.
+#
+# Spend guards (docs/process/modal-policy.md, PROOF-POLICY.yml knobs.modal_gates_per_day):
+#   - one gate at a time: the `release` concurrency group, shared with release.yml
+#   - at most modal_gates_per_day full gates per UTC day across gate.yml and release.yml (dry runs and scoped
+#     candidates count too, conservatively); the check reads the knob from PROOF-POLICY.yml
+#   - the baseline cache (SIM_GATE_CACHE) is restored and saved with actions/cache keyed by baseline and Node, so a
+#     cached baseline is not re-run (policy rule 1). First run on a new baseline runs it once and caches it.
+# Dispatch: `gh workflow run gate.yml -f sha=<full sha> [-f baseline=<ref>] [-f scope=auto] [-f dry_run=true]`.
+# A dry run contacts Modal for nothing and costs nothing; use it to validate inputs and the cache hit.
+name: gate
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Candidate commit (full sha, or a ref on origin)
+        required: true
+      baseline:
+        description: Baseline ref; default is the newest v* tag
+        required: false
+      scope:
+        description: full (release head; the only scope that qualifies a ship) or auto (lane candidate)
+        type: choice
+        options: [full, auto]
+        default: full
+      dry_run:
+        description: Print the plan (refs, scope, cache hit or miss, Modal runs) without contacting Modal
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Required secrets
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          missing=()
+          for name in MODAL_TOKEN_ID MODAL_TOKEN_SECRET; do [ -n "${!name}" ] || missing+=("$name"); done
+          if [ ${#missing[@]} -gt 0 ]; then echo "::error::Missing repository secrets: ${missing[*]}"; exit 1; fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { fetch-depth: 0 }
+      - id: refs
+        name: Candidate, baseline and the daily cap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA_IN: ${{ inputs.sha }}
+          BASELINE_IN: ${{ inputs.baseline }}
+          SCOPE: ${{ inputs.scope }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          sha=$(git rev-parse -q --verify "$SHA_IN^{commit}") || { echo "::error::'$SHA_IN' is not a commit on origin"; exit 1; }
+          baseline="$BASELINE_IN"
+          [ -n "$baseline" ] || baseline=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          [ -n "$baseline" ] || { echo "::error::No v* tag to gate against; pass the baseline input"; exit 1; }
+          bsha=$(git rev-parse -q --verify "$baseline^{commit}") || { echo "::error::baseline '$baseline' is not a commit"; exit 1; }
+          cap=$(grep -E '^\s*modal_gates_per_day:' docs/process/PROOF-POLICY.yml | grep -oE '[0-9]+' | head -1)
+          cap=${cap:-3}
+          today=$(date -u +%F)
+          # Runs of both gate workflows created today, this run included; cancelled and skipped runs are not counted.
+          used=0
+          for wf in gate.yml release.yml; do
+            n=$(gh run list --workflow "$wf" --created "$today" --json conclusion,status \
+                  --jq '[.[] | select(.conclusion != "cancelled" and .conclusion != "skipped")] | length' 2>/dev/null || echo 0)
+            used=$((used + n))
+          done
+          if [ "$DRY" != true ] && [ "$used" -gt "$cap" ]; then
+            echo "::error::Daily gate cap reached: $used runs today (gate.yml + release.yml) against modal_gates_per_day=$cap. A dry run is still allowed."
+            exit 1
+          fi
+          node_version=$(grep -E '^\s*node-version:' .github/workflows/gate.yml | head -1 | grep -oE '[0-9]+')
+          { echo "sha=$sha"; echo "baseline=$bsha"; echo "baseline_ref=$baseline"; echo "node=${node_version:-22}"; } >> "$GITHUB_OUTPUT"
+          echo "Gate: candidate $(git rev-parse --short "$sha"), baseline $baseline ($(git rev-parse --short "$bsha")), scope $SCOPE, dry_run=$DRY, gates today $used/$cap" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: '${{ steps.refs.outputs.sha }}', fetch-depth: 0 }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22 }
+      - name: Baseline cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gate-cache
+          key: gate-cache-${{ steps.refs.outputs.baseline }}-node${{ steps.refs.outputs.node }}-${{ github.run_id }}
+          restore-keys: |
+            gate-cache-${{ steps.refs.outputs.baseline }}-node${{ steps.refs.outputs.node }}-
+            gate-cache-
+      - name: Modal client
+        if: ${{ inputs.dry_run != true }}
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          MODAL_CLIENT_VERSION: ${{ vars.MODAL_CLIENT_VERSION }}
+        run: |
+          python3 -m pip install --quiet "modal${MODAL_CLIENT_VERSION:+==$MODAL_CLIENT_VERSION}"
+          profile=$(grep -oE "MODAL_PROFILE: '[^']+'" tools/test-harness/release-gate.mjs | head -1 | cut -d"'" -f2)
+          modal token set --token-id "$MODAL_TOKEN_ID" --token-secret "$MODAL_TOKEN_SECRET" --profile "${profile:-default}" --activate --no-verify
+      - name: Release gate
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          SIM_GATE_CACHE: ${{ runner.temp }}/gate-cache
+          SHA: ${{ steps.refs.outputs.sha }}
+          BASELINE: ${{ steps.refs.outputs.baseline }}
+          SCOPE: ${{ inputs.scope }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          mkdir -p "$SIM_GATE_CACHE"
+          flags=(--baseline "$BASELINE" --out "$RUNNER_TEMP/gate" --scope "$SCOPE")
+          [ "$DRY" != true ] || flags+=(--dry-run)
+          ( while sleep 300; do echo "gate still running ($(date -u +%H:%MZ))"; done ) & beat=$!
+          set +e
+          tools/test-harness/release-gate.sh "$SHA" "${flags[@]}" 2>&1 | tee "$RUNNER_TEMP/gate.log"
+          status=${PIPESTATUS[0]}
+          kill $beat
+          grep -E '^RELEASE_GATE ' "$RUNNER_TEMP/gate.log" | tail -1 >> "$GITHUB_STEP_SUMMARY" || true
+          exit $status
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: gate-${{ steps.refs.outputs.sha }}
+          path: |
+            ${{ runner.temp }}/gate.log
+            ${{ runner.temp }}/gate/**/*.json
+          if-no-files-found: ignore
