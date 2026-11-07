@@ -15,3 +15,5 @@ const WHY:Readonly<Record<string,string>>={
 };
 export const refusableRule=(code:string)=>Object.hasOwn(WHY,code);
 export const refusalDiag=(rule:string)=>({code:`world.refused:${rule}`,message:`Your action stopped: ${WHY[rule]}. Nothing else changed.`});
+/** Decision 1 on #1150: the world landed on a body, so there is no pose to go back to. The one named exception to "never teleport". */
+export const relocationDiag={code:'world.relocated',message:'The world changed where you stood, so you were moved to the nearest free spot. Nothing else changed.'};

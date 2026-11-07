@@ -3,7 +3,7 @@ import { SoulNow, type SoulNowLine } from './soul-now.ts';
 import type {CarrierInstallSpec} from '../../../mars/viewer/engine/vehicles/carrier.ts';
 import {soulProfileFactV1Schema,type SoulProfileFactV1} from '@souls/protocol';
 import {authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesDeclarationV1} from '@souls/engine-contract';
-import type {EngineRefusalV1} from '@souls/engine-contract';
+import {REWOUND,type EngineRefusalV1} from '@souls/engine-contract';
 import {edenLectureV1} from '@souls/engine-mars';
 import {renderPlatformRowsV1Schema,type RenderPlatformV1} from '@souls/engine-contract';
 import {officeStairGuardsDeclarationV1Schema,type OfficeStairGuardsDeclarationV1} from '@souls/engine-contract';
@@ -74,7 +74,10 @@ export type RecoveryRecipe = { baseline: SnapshotBody; events: LogEvent[]; until
   edge?: { stopActors: string[]; excludedSeqs: number[]; souls: string[];
     /** The rewound bodies' last valid poses (taken before the faulting tick): after the replay each lands back there, or at
      *  the nearest free standing point, instead of where the rewind left it (its arrival point). Absent in older recipes. */
-    poses?: Record<string, RecoveryPose> } };
+    poses?: Record<string, RecoveryPose> };
+  /** #1150 rung 3: `events` are re-applied to the baseline without stepping, every programme stops and the clock moves to
+   *  `untilTick`. What still breaks a rule is contained. */
+  lastRung?: { contained?: {code:string;subjects:string[]}[]; relocated?: string[] } };
 export type RecoveryPose = { p: [number, number, number]; yaw: number; level: number };
 /** A synchronous, read-only acceptance check. Throw to refuse before logging. */
 export type AcceptanceGuard = () => true;
@@ -260,7 +263,7 @@ export class WorldHost {
       const out=this.engine.step();this.advanceLives();replayTicks++;bootTick(this.engine.world.tick);
       replayedRefusals+=out.refusals?.length??0;
       if(this.durableClockV1){
-        if(this.engine.runtime.violations.length>before)throw new Error('clock-frontier.replay-violates');
+        if(this.engine.runtime.violations.length>before&&!this.repairRules)throw new Error('clock-frontier.replay-violates');   // #1150: a repair in the log follows it
         this.kernel.tick=this.engine.world.tick;sweep(this.kernel);
       }
       this.afterPrograms(out.programs,true);
@@ -1411,6 +1414,7 @@ export class WorldHost {
     let nested = -1; for (let i=0;i<recipe.events.length;i++) if (recipe.events[i].kind === 'rules' && recipe.events[i].payload?.recovery) nested=i;
     // Keep the outer recipe's original violation ceiling even when its replay prefix is superseded.
     this.restoreBody(recipe.baseline);
+    if (recipe.lastRung) return this.applyLastRung(recipe);
     const historicViolations=this.engine.runtime.violations.length;
     if (nested >= 0) { this.apply(recipe.events[nested],true); this.seq=recipe.events[nested].seq; }
     else {
@@ -1441,8 +1445,11 @@ export class WorldHost {
     try { baseline=this.recoveryCapture ? this.recoveryCapture() : this.recoveryBaseline; }
     catch (failure) { this.failCheckpoint(failure); return; }
     this.cancelPeriodicSnapshot(); this.recoveryCapture = null; this.recoveryBaseline = baseline;
+    // #1150: nothing clean to go back to, so the head stays and everything on it stops
+    if (this.repairRules && (!baseline || this.rewoundSinceSnapshot)) return this.containInPlace(error);
     if (!baseline) { if (this.edgeRecovery()) return this.haltOnFault(error, 'no resumable recovery baseline'); throw new Error(`No resumable recovery baseline: ${String(error)}`); }
     const untilTick=this.engine.world.tick, originalSeq=this.seq, all=this.db.events(this.worldId,baseline.seq);
+    this.faultTick=untilTick;
     const pending=[...this.minds.values()].filter(m=>m.pending).map(m=>m.pending!.card);
     const latest=[...all].reverse().find(e=>e.kind==='decision' && pending.includes(e.payload.card));
     const excluded=cardHint ? [cardHint] : latest?.payload.card ? [latest.payload.card as string] : [...new Set(pending)];
@@ -1450,7 +1457,7 @@ export class WorldHost {
     // collision's two people), widening once to every edge decision since the baseline; never a process exit.
     const plans = excluded.length ? [{excluded, edge: undefined as RecoveryRecipe['edge']}, {excluded, edge: undefined as RecoveryRecipe['edge']}]
       : this.edgeRecovery() ? this.edgePlans(error, all, edgeHint).map(edge => ({excluded: [] as string[], edge})) : [];
-    if (!plans.length) throw new Error(`Engine fault has no attributable card: ${String(error)}`);
+    if (!plans.length) { if (this.repairRules) return this.lastRung(error, baseline, all); throw new Error(`Engine fault has no attributable card: ${String(error)}`); }
     const faults={...this.extra.cardFaults as Record<string,number>};
     for (let attempt=0;attempt<plans.length;attempt++) {
       const plan=plans[attempt];
@@ -1461,7 +1468,7 @@ export class WorldHost {
       const edge=plan.edge?{...plan.edge,...this.rewoundPoses(plan.edge, all)}:undefined;
       const recipe: RecoveryRecipe={baseline:structuredClone(baseline),events,untilTick,faults:{...faults},excluded:[...plan.excluded],reason:String(error).slice(0,800),...(edge?{edge}:{})};
       try { this.restoreRecovery(recipe); }
-      catch (replayError) { if (attempt===plans.length-1) { if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults', error, untilTick); throw replayError; } continue; }
+      catch (replayError) { if (attempt===plans.length-1) { if (this.repairRules) return this.lastRung(error, baseline, all); if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults', error, untilTick); throw replayError; } continue; }
       this.seq=originalSeq;
       const e: LogEvent={seq:++this.seq,tick:untilTick,kind:'rules',author:'world:recovery',payload:{recovery:recipe},at:Date.now()};
       this.db.appendEvent(this.worldId,e); this.resetAcc(); this.acc.log.push(e); this.ring=[];
@@ -1474,6 +1481,54 @@ export class WorldHost {
       if (!this.engine.canSnapshot || this.engine.canSnapshot()) this.snapshotHead(true);
       this.flush(); this.heartbeat(); return;
     }
+  }
+  /** #1150: this world repairs instead of halting for a broken rule. */
+  private get repairRules(): boolean { return this.engine.rulesVersion.includes('+souls-repair/'); }
+  /** A rung 3 ran and no new snapshot followed: the baseline is the one that led here, so a second one stays on the head. */
+  private rewoundSinceSnapshot = false;
+  /** The tick the fault being repaired happened at: rung 2's replays move the clock. */
+  private faultTick = 0;
+  /** #1150 rung 3: rung 2 failed. Back to the last clean state, keeping everything but decisions, and on from there.
+   *  If those events won't re-apply, the baseline alone: that takes no step and no input, so it can't fail on a rule. */
+  private lastRung(error: unknown, baseline: SnapshotBody, all: LogEvent[]) {
+    const untilTick = this.faultTick, originalSeq = this.seq;
+    const kept = all.filter(e => !['decision', 'play'].includes(e.kind) && e.author !== 'world:refusal' && !e.payload?.recovery);
+    for (const events of [kept, []]) {
+      const recipe: RecoveryRecipe = { baseline: structuredClone(baseline), events, untilTick, faults: {...this.extra.cardFaults as Record<string, number>}, excluded: [], reason: String(error).slice(0, 800), lastRung: {} };
+      try { this.restoreRecovery(recipe); }
+      catch (failure) { console.error(`[world] last rung: ${events.length} kept events would not re-apply:`, String(failure).slice(0, 300)); continue; }
+      this.seq = originalSeq;
+      const e: LogEvent = {seq: ++this.seq, tick: untilTick, kind: 'rules', author: 'world:recovery', payload: {recovery: recipe}, at: Date.now()};
+      this.db.appendEvent(this.worldId, e); this.resetAcc(); this.acc.log.push(e); this.ring = [];
+      this.recordGlitch('rewind', error, {tick: untilTick, evidence: {seq: e.seq, kept: events.length, dropped: all.length - events.length, contained: recipe.lastRung!.contained, relocated: recipe.lastRung!.relocated}});
+      if (this.durableClockV1) this.persistClockFrontier();
+      for (const m of this.minds.values()) this.acc.dirty.add(m.soulId);
+      for (const l of this.listeners) l.onApplied?.(e);
+      if (!this.engine.canSnapshot || this.engine.canSnapshot()) this.snapshotHead(true); else this.rewoundSinceSnapshot = true;
+      this.flush(); this.heartbeat(); return;
+    }
+    this.failCheckpoint(new Error(`recovery.baseline-unusable: ${String(error).slice(0, 300)}`));   // the store's own copy won't restore: durability, not a rule
+  }
+  /** The replayable half of rung 3: no engine step, so no rule can fire during it. */
+  private applyLastRung(recipe: RecoveryRecipe) {
+    this.engine.stopAllV1!(REWOUND);
+    for (const e of recipe.events) { this.apply(e, true); this.seq = e.seq; }
+    this.engine.setClockV1!(recipe.untilTick);
+    Object.assign(recipe.lastRung!, this.engine.containV1!());
+    this.extra.cardFaults = {...recipe.faults};
+    for (const m of this.minds.values()) { m.pending = null; m.nextEvalTick = this.engine.world.tick + 1; m.evalTrigger = 'activity-failed'; m.lastFingerprint = ''; }
+    this.kernel.tick = this.engine.world.tick; sweep(this.kernel); this.kernelDirty = true;
+  }
+  /** #1150 rung 3 with no restore: stop what runs, contain what fires. Only a list and some stops, so it can't fail. */
+  private containInPlace(error: unknown) {
+    const tick = this.engine.world.tick;
+    this.engine.stopAllV1!(REWOUND);
+    const inPlace = {...this.engine.containV1!(), reason: String(error).slice(0, 800)};
+    void this.enqueue('rules', 'world:rewind', {lastRungInPlace: inPlace});
+    this.recordGlitch('rewind', error, {tick, evidence: {inPlace: true, contained: inPlace.contained, relocated: inPlace.relocated}});
+    for (const m of this.minds.values()) { m.pending = null; this.acc.dirty.add(m.soulId); }
+    this.drainInputs();
+    this.flush(); this.heartbeat();
   }
   /** Where each Soul's body is now (sorted by entity id). */
   private soulPoses(): Map<string, RecoveryPose> {
@@ -1790,6 +1845,7 @@ export class WorldHost {
   /** Capture and persist the head as the snapshot and recovery baseline (the caller has checked it can snapshot). */
   private snapshotHead(sync: boolean): { tick: number; stateHash: string } {
     this.cancelPeriodicSnapshot();
+    this.rewoundSinceSnapshot = false;
     const t0 = performance.now();
     const runtime = this.engine.snapshot();
     const body = this.captureBody(runtime);

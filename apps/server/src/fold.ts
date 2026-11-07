@@ -5,7 +5,7 @@ import {authoredBoundariesDeclarationV1Schema} from '@souls/engine-contract';
 //   the log alone, and the ENGINE (depiction: bodies, motion), which replays the
 //   programs that decisions started. Models never appear here.
 // Used identically by the live loop, the restart fast-forward and replay tests.
-import type { Engine } from '@souls/engine-contract';
+import { REWOUND, type Engine } from '@souls/engine-contract';
 import {
   applyAll, bind, changesOf, emptyKernel, kernelHash, seedVocabulary, sweep, whyNot, BASE_MANNERS,
   type Change, type KState, type Thing,
@@ -205,6 +205,7 @@ export function foldEvent(engine: Engine, k: KState, e: LogEvent, counts: Record
       return {};
     }
     case 'rules': {
+      if(e.payload?.lastRungInPlace){engine.stopAllV1!(REWOUND);engine.containV1!();return {};}
       if(e.payload?.nativeSleepSnapshotPolicy){if(Object.keys(e.payload).length!==1||!engine.adoptNativeSleepSnapshotV1)throw Error('sleep-snapshot.reader-required');engine.adoptNativeSleepSnapshotV1(e.payload.nativeSleepSnapshotPolicy);}
       if(e.payload?.commonsNewcomerResources){if(Object.keys(e.payload).length!==1||!engine.adoptCommonsNewcomerResourcesV1)throw Error('newcomer-resources.reader-required');engine.adoptCommonsNewcomerResourcesV1(e.payload.commonsNewcomerResources);
         for(const a of engine.anchors())if(!k.things[a.id]){const r=applyAll(k,[{op:'appear',id:a.id,kind:a.kind==='region'?'region':'place',name:a.name,at:a.in??null,traits:{...(a.entity?{entity:a.entity}:{}),...(a.point?{point:a.point}:{})}}],'world');if(!r.ok)throw Error('newcomer-resources.anchor:'+r.message);}}
@@ -331,10 +332,13 @@ export function replayFromGenesis(factory: { genesis(seed: string): unknown; cre
     const recipe=repair.payload.recovery as import('./world.ts').RecoveryRecipe;
     if (!factory.restore) throw new Error('recovery requires a checkpoint factory');
     engine=factory.restore(structuredClone(recipe.baseline.runtime)); kernel=structuredClone(recipe.baseline.kernel!); counts={...recipe.baseline.counts};
+    if (recipe.lastRung) { engine.stopAllV1!(REWOUND); for (const e of recipe.events) foldEvent(engine,kernel,e,counts); engine.setClockV1!(recipe.untilTick); engine.containV1!(); }
+    else {
     for (const m of recipe.baseline.minds) if (m.pending && recipe.excluded.includes(m.pending.card)) engine.stop(m.pending.program);
     for (const actor of recipe.edge?.stopActors ?? []) { const program=engine.programOf(actor); if (program) engine.stop(program); }
     for (const e of recipe.events) { while (engine.world.tick<e.tick) engine.step(); foldEvent(engine,kernel,e,counts); }
     while (engine.world.tick<recipe.untilTick) engine.step();
+    }
     suffix=events.filter(e=>e.seq>repair.seq);
   } else { engine=factory.create(factory.genesis(seed)); kernel=initKernel(engine,pinnedVocabulary(events)); counts={}; }
   let i=0;
