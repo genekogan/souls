@@ -39,6 +39,10 @@ test('#1152: words that name no place are still refused, and resolving does noth
     assert.equal(r.ok, false, `${words}: ${JSON.stringify(r).slice(0, 200)}`); assert.equal(r.code, code, words);
   }
   assert.equal((w.edge.intents.dryRun(w.soul, {capability: 'wave'}) as any).would?.capability, 'wave:here', 'a verb stays a verb');
+  // a refusal from resolve names what can be done instead, as act's does: that's where a strict client meets it
+  const fly = w.edge.intents.dryRun(w.soul, {capability: 'fly up to the pond hall'}) as any;
+  assert.equal(fly.alternatives?.[0]?.id, 'walk:lab-pond-hall', JSON.stringify(fly).slice(0, 300));
+  assert.ok(JSON.stringify({alternatives: fly.alternatives}).length <= 600, 'bounded bytes');
   // an older client's act on words isn't this path: it stays as it was
   const before = (w.db.db.prepare('SELECT COUNT(*) n FROM edge_receipts_v1').get() as {n: number}).n;
   w.edge.intents.dryRun(w.soul, {capability: 'orchard'});

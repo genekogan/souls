@@ -400,7 +400,8 @@ export class Intents {
       // #1152: words that only name a place ("orchard", "the pond hall", "reading room") are the walk there. A dry run, so nothing is chosen
       // for the Soul, and only when the walk's own id and label hold every word: a word it merely resembles stays refused.
       if (!social && (r.kind === 'unknown' ? !(r as {code?: string}).code : r.cap.id.endsWith(':here') && r.cap.verb !== 'walk')) {const walk = this.namedPlaceWalk(soul, asked); if (walk) return walk;}
-      if (r.kind === 'unknown') return {ok: false, code: (r as {code?: string}).code ?? 'capability.unknown', reason: r.reason, did_you_mean: r.didYouMean,...(r.discovery?{discovery:r.discovery}:{})};
+      // #1152: a refusal names what can be done instead here as well as on act: on the strict contract this is where an agent meets it
+      if (r.kind === 'unknown') {const no = {ok: false, code: (r as {code?: string}).code ?? 'capability.unknown', reason: r.reason, did_you_mean: r.didYouMean, ...(r.discovery ? {discovery: r.discovery} : {})}; return r.discovery ? no : this.L.withAlternatives(soul, asked, no, caps);}
       const params = {...(r.kind === 'alias' && r.params ? r.params : {}), ...(extra ?? {})};
       return this.capabilityWould(soul, r.cap, asked, params, [social?.note, r.kind === 'alias' ? r.note : null].filter(Boolean).join('; '), extra);
     }
