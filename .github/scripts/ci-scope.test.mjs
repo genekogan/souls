@@ -42,6 +42,16 @@ test('server changes run server shards and latency, not native', () => {
   assert.ok(!picked.includes('native'));
 });
 
+// tools/body-authoring builds the pinned shared presets the server serves (D028): the server legs, including the
+// renderer step on server-0, and latency; nothing else, and no browser smoke.
+test('body-authoring changes run every server shard and latency, and nothing else', () => {
+  const files = ['tools/body-authoring/pip/robot.mjs'], server = JOBS.filter(j => j.kind === 'server').map(j => j.name);
+  assert.ok(server.includes('server-0') && server.length > 1, server.join());
+  assert.deepEqual(names(files).sort(), ['latency', ...server].sort());
+  assert.equal(jobsFor(files).scope, 'scoped');
+  assert.equal(smokeFor(files), false);
+});
+
 test('the types-web job, which runs the bundle comparison, covers what can move the bundle (#1117)', () => {
   for (const f of ['apps/web/src/App.tsx', 'packages/world-compiler/src/joints.ts', 'tools/test-harness/bundle-budget/baseline.json', 'tools/test-harness/bundle-budget/budget.mjs']) assert.ok(names([f]).includes('types-web'), f);
   assert.ok(!names(['docs/testing.md']).includes('types-web'));

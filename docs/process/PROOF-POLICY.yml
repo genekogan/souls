@@ -82,6 +82,7 @@ paths:
   - { prefix: "tools/client-eval/", tier: T1 }
   - { prefix: "tools/world-launcher/", tier: T1 }
   - { prefix: "tools/god-skill/", tier: T1 }
+  - { prefix: "tools/body-authoring/", tier: T1 }
   - { prefix: "vendor/", tier: T1 }
   - { prefix: "infra/", tier: T1 }
   - { prefix: "e2e/", tier: T1 }
