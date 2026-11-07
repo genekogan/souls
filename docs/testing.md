@@ -116,7 +116,8 @@ therefore **windowed**:
   `merge:ready` PR. Dispatching main's `ci.yml` instead would not help: its checks would attach to main's commit, not
   the PR head.
 - Pushes to main, manual runs without `pr`, and merge-group runs are never windowed. Main keeps its full-scope runs,
-  which the merge train reads.
+  which the merge train reads. A merge-group run is path-scoped over everything in the group since `main`, and
+  `proof-ok` reports there without checking anything, because a PR passes it at its head to enter the queue.
 
 Steward procedure: give `ci:run` to the PRs entering the window, normally the next two in merge order. Add
 `merge:ready` once a head's `ci-ok` is green, and remove `ci:run` from PRs that leave the window. A PR labelled

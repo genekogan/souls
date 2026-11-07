@@ -7,12 +7,16 @@
 //        required checks are pending and could still land it non-strict; a red main CI is reported once on --notify-issue
 //   node .github/scripts/merge-train.mjs wait  --repo o/r --sha <sha> [--checks a,b] [--timeout-min 60] [--output f]
 //        polls check runs and commit statuses on <sha> until every required check concluded: result=pass|fail|timeout
-//   node .github/scripts/merge-train.mjs merge --repo o/r --pr <n> --sha <sha>
-//        squash-merges exactly <sha>
+//   node .github/scripts/merge-train.mjs merge --repo o/r --pr <n> --sha <sha> [--queue true]
+//        squash-merges exactly <sha>; with --queue, hands exactly <sha> to GitHub's merge queue instead
+//   node .github/scripts/merge-train.mjs hold --repo o/r --pr <n>
+//        merge:ready was removed: takes the PR out of the merge queue, or disables its auto-merge
+//   node .github/scripts/merge-train.mjs dequeued --repo o/r --pr <n> [--reason r]
+//        the queue dropped the PR: unless it merged or re-entered, ejects it with the reason
 //   node .github/scripts/merge-train.mjs eject --repo o/r --pr <n> [--label needs:rebase] --message-file <file>
 //        takes the PR off the train (removes merge:ready), adds the label, comments why
 //
-// Every GitHub call goes through `gh api` (GH_TOKEN).
+// Every GitHub call goes through `gh api` (GH_TOKEN), except the enqueue: `gh pr merge` picks the right mutation.
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -54,6 +58,38 @@ export function blocker({ pr, tier, approved, defaultBranch }) {
   if (pr.base?.ref && pr.base.ref !== defaultBranch) return 'not-default-branch';
   if (rank(tier) >= 3 && !approved) return 'awaiting-approval';
   return null;
+}
+
+/** GitHub's merge queue is on when the default branch's rules require it. The maintainer adds that rule. */
+export const queueRequired = rules => rules.some(r => r.type === 'merge_queue');
+
+/** Already in the queue, or waiting to enter it through auto-merge: the train has nothing more to do for it. */
+export const queued = s => Boolean(s.isInMergeQueue || s.autoMergeRequest);
+
+/** The mutation that undoes `queued`, with its input field. */
+export function holdAction(s) {
+  if (s.isInMergeQueue) return ['dequeuePullRequest', 'id'];
+  return s.autoMergeRequest ? ['disablePullRequestAutoMerge', 'pullRequestId'] : null;
+}
+
+/** The queue let go of a PR that did not merge, that has not re-entered, and that its author still wants landed. */
+export const dropped = s => !s.merged && !s.isInMergeQueue && (s.labels?.nodes ?? []).some(l => l.name === READY);
+
+/** `gh pr merge` enqueues a PR whose checks are green and otherwise enables auto-merge, which enqueues it once they are. */
+export const enqueueArgs = ({ repo, pr, sha }) => ['pr', 'merge', String(pr), '--repo', repo, '--auto', '--squash', '--match-head-commit', sha];
+
+/**
+ * How a pickable PR lands when the queue is on. The queue tests the combination, so nothing is rebased or re-tested
+ * here, except that a conflict never enters it: those take the strict steps, then enqueue. `mergeable` is computed
+ * lazily, so ask again briefly while it is unknown; still unknown goes to the queue, which refuses what conflicts.
+ */
+function queueMode({ repo, pr, api }) {
+  for (let i = 0; pr.mergeable == null && i < 3; i++) {
+    (api.pause ?? pause)(3000);
+    pr = api.gh(`repos/${repo}/pulls/${pr.number}`);
+  }
+  if (pr.mergeable === false || pr.mergeable_state === 'dirty') return { mode: 'strict', why: 'conflict: rebase, then enqueue' };
+  return { mode: 'queue', why: 'the merge queue tests and lands it' };
 }
 
 /**
@@ -168,6 +204,25 @@ const ghAll = path => gh(path, '--paginate', '--slurp').flat();
 const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 function comment(repo, pr, body) { ghRaw([`repos/${repo}/issues/${pr}/comments`, '--input', '-'], JSON.stringify({ body })); }
 
+function queueState(repo, pr) {
+  const [owner, name] = repo.split('/');
+  const query = 'query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){pullRequest(number:$pr){id merged isInMergeQueue autoMergeRequest{enabledAt} labels(first:50){nodes{name}}}}}';
+  return gh('graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `pr=${pr}`).data.repository.pullRequest;
+}
+
+function hold(state) {
+  const action = holdAction(state);
+  if (action) gh('graphql', '-f', `query=mutation($id:ID!){${action[0]}(input:{${action[1]}:$id}){clientMutationId}}`, '-f', `id=${state.id}`);
+  return action?.[0] ?? null;
+}
+
+function eject({ repo, pr, label, message }) {
+  try { ghRaw(['-X', 'DELETE', `repos/${repo}/issues/${pr}/labels/${encodeURIComponent(READY)}`]); } catch { /* already gone */ }
+  if (label) ghRaw([`repos/${repo}/issues/${pr}/labels`, '--input', '-'], JSON.stringify({ labels: [label] }));
+  comment(repo, pr, message);
+  console.log(`ejected #${pr}${label ? ` with ${label}` : ''}`);
+}
+
 /** What summarizeChecks reads for one head: its check runs, commit statuses and the Actions runs behind them. */
 export function readChecks(api, repo, sha) {
   return {
@@ -177,9 +232,10 @@ export function readChecks(api, repo, sha) {
   };
 }
 
-export function next({ repo, maintainer, notifyIssue, api = { gh, ghAll, comment } }) {
+export function next({ repo, maintainer, notifyIssue, api = { gh, ghAll, comment, queueState } }) {
   const repoInfo = api.gh(`repos/${repo}`);
   const defaultBranch = repoInfo.default_branch;
+  const queue = queueRequired(api.ghAll(`repos/${repo}/rules/branches/${encodeURIComponent(defaultBranch)}?per_page=100`));
   const candidates = api.ghAll(`repos/${repo}/issues?state=open&labels=${encodeURIComponent(READY)}&per_page=100`)
     .filter(i => i.pull_request).map(i => i.number).sort((a, b) => a - b);
   const policy = loadPolicy();
@@ -202,14 +258,15 @@ export function next({ repo, maintainer, notifyIssue, api = { gh, ghAll, comment
       }
     }
     if (why) { skipped.push({ pr: n, tier, why }); continue; }
-    const mode = pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api });
+    if (queue && queued(api.queueState(repo, n))) { skipped.push({ pr: n, tier, why: 'queued' }); continue; }
+    const mode = queue ? queueMode({ repo, pr, api }) : pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api });
     return {
       pr: n, tier, head_ref: pr.head.ref, head_sha: pr.head.sha, base_ref: pr.base.ref, title: pr.title,
       same_repo: pr.head.repo?.full_name === repo, more: candidates.length - i - 1 > 0, skipped,
-      mode: mode.mode, mode_why: mode.why,
+      mode: mode.mode, mode_why: mode.why, queue,
     };
   }
-  return { pr: '', more: false, skipped };
+  return { pr: '', more: false, skipped, queue };
 }
 
 function pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api }) {
@@ -284,6 +341,11 @@ async function main([mode, ...argv]) {
     out(opt('--output'), { result: r.result, failed: r.failed.join(', '), pending: [...r.pending, ...r.missing].join(', ') });
     return 0;
   }
+  if (mode === 'merge' && opt('--queue') === 'true') {
+    execFileSync('gh', enqueueArgs({ repo, pr: opt('--pr'), sha: opt('--sha') }), { stdio: ['ignore', 'inherit', 'inherit'] });
+    console.log(`queued #${opt('--pr')} at ${opt('--sha')}`);
+    return 0;
+  }
   if (mode === 'merge') {
     const pr = gh(`repos/${repo}/pulls/${opt('--pr')}`);
     gh('-X', 'PUT', `repos/${repo}/pulls/${opt('--pr')}/merge`, '-f', 'merge_method=squash', '-f', `sha=${opt('--sha')}`, '-f', `commit_title=${pr.title} (#${pr.number})`);
@@ -291,14 +353,21 @@ async function main([mode, ...argv]) {
     return 0;
   }
   if (mode === 'eject') {
-    const pr = opt('--pr');
-    try { ghRaw(['-X', 'DELETE', `repos/${repo}/issues/${pr}/labels/${encodeURIComponent(READY)}`]); } catch { /* already gone */ }
-    if (opt('--label')) ghRaw([`repos/${repo}/issues/${pr}/labels`, '--input', '-'], JSON.stringify({ labels: [opt('--label')] }));
-    comment(repo, pr, readFileSync(opt('--message-file'), 'utf8'));
-    console.log(`ejected #${pr}${opt('--label') ? ` with ${opt('--label')}` : ''}`);
+    eject({ repo, pr: opt('--pr'), label: opt('--label'), message: readFileSync(opt('--message-file'), 'utf8') });
     return 0;
   }
-  console.error('usage: merge-train.mjs next | wait | merge | eject (see the header)');
+  if (mode === 'hold') {
+    console.log(`#${opt('--pr')}: ${hold(queueState(repo, opt('--pr'))) ?? 'not queued, nothing to do'}`);
+    return 0;
+  }
+  if (mode === 'dequeued') {
+    const state = queueState(repo, opt('--pr'));
+    if (!dropped(state)) { console.log(`#${opt('--pr')} merged, re-entered or was held: nothing to do`); return 0; }
+    hold(state); // auto-merge left on would make the next merge:ready look already queued
+    eject({ repo, pr: opt('--pr'), message: `Merge queue: this PR left the queue without merging (reason: \`${opt('--reason') || 'not given'}\`), so it left the train. The failing run is on the \`gh-readonly-queue\` commit in the Actions tab.\n\nFix it and add \`merge:ready\` again.` });
+    return 0;
+  }
+  console.error('usage: merge-train.mjs next | wait | merge | eject | hold | dequeued (see the header)');
   return 2;
 }
 
