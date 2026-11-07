@@ -10,6 +10,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 | set direction or turn a request into work | [vision](design/vision.md), [roadmap](design/roadmap.md), [planning and intake](process/planning.md) |
 | improve agent control, diagnose delays and plan expressive collaboration | [agency quality design](design/agency-quality.md), [umbrella #623](https://github.com/genekogan/souls/issues/623) |
 | run Soul locally | [development](development.md) |
+| write the public docs served at soul.game/docs | [writing guide](site/WRITING.md); pages in [site/](site/), linted by `node tools/docs/lint.mjs` |
 | understand how it fits together | [architecture](architecture.md), then the [glossary](glossary.md) |
 | reason about contracts, performance or where a feature plugs in | [component and data-flow map](architecture/map.md) |
 | change the server API or protocol | [API](architecture/api.md), [protocol](architecture/protocol.md), [contracts](architecture/contracts.md) |

@@ -29,9 +29,10 @@ Rolled back; superseded by 4.1.
 Earlier development is recorded in the git history.
 `;
 
-// Text-only rendering has no subresources. Published visual journals intentionally add allowlisted media.
+// Text-only rendering has no subresources. Published visual journals intentionally add allowlisted media. A canonical or
+// alternate <link> (#894, #896) names the page's own URLs; the browser fetches nothing for it.
 function assertTextOnlySelfContained(page: string) {
-  assert.ok(!/<script|<link|<img|<iframe|@import|url\(/i.test(page), 'no script and no subresource: the document is the whole page');
+  assert.ok(!/<script|<link(?! rel="(?:canonical|alternate)")|<img|<iframe|@import|url\(/i.test(page), 'no script and no subresource: the document is the whole page');
   // Entries are escaped text. A written repository address or API path is not a runtime reference.
   const markup = (page.match(/<[^>]*>/g) ?? []).join('\n');
   assert.ok(!/github\.com|\/v1\//i.test(markup), 'no runtime GitHub or API reference');

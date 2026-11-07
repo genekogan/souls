@@ -1,6 +1,6 @@
 # Testing
 
-Sim has five layers of checks. Run the cheapest one that proves your change, and let the proof tier decide what a PR
+Souls has five layers of checks. Run the cheapest one that proves your change, and let the proof tier decide what a PR
 needs.
 
 | Layer | What | Where it runs |
