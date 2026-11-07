@@ -115,6 +115,15 @@ receipts with a line each, beliefs with their provenance, their last words marke
 `remember --kept <promise id> --evidence <id>`, and the id must be a completed receipt or a conversation with that person
 in the log: a promise is kept by what happened, not by the mind saying so.
 
+### Consolidation
+
+`consolidate [--force]`, and once a day from an idle `serve`, summarizes the oldest journal days past 32 KB into
+`MEMORY.md`, gathers notes written more than once and writes `memory/soul-proposal.diff` for the owner. It never writes
+`SOUL.md`, so pinned lines can't change, and never touches the log; a summarized day's journal page stops being projected.
+The owner pays, so it runs their local model CLI under hard caps set before any call (`consolidation` in `config.json`:
+`callsPerDay` 2, `tokensPerPass` 8,000); spent means skipped, and `memory/consolidation.json` says so. With
+`BRAIN_MODE=fake`, or no CLI, a deterministic stand-in runs the same plumbing. A Soul under budget makes no call.
+
 ### The pre-turn brief
 
 With memory and a `serve` up, `pending` and a `listen` that woke for a message or for speech carry `brief`: known people

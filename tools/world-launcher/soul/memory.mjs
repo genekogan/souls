@@ -72,7 +72,9 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   // fails closed.
   let records = null, nearNow = [], travellers = {};
   let people = createPeople({ world });
-  const openRecords = () => { people = createPeople({ world }); const opened = openMemoryFolder(soulDir, { logs: join("memory", "log"), observe: (record) => people.apply(record), personFiles: false }); flushPeople(); return opened; };
+  // A day consolidation has summarized stays in the log, and its journal page doesn't come back.
+  const journalAfter = () => { try { return JSON.parse(readFileSync(join(soulDir, "memory", "consolidation.json"), "utf8")).through ?? null; } catch { return null; } };
+  const openRecords = () => { people = createPeople({ world }); const opened = openMemoryFolder(soulDir, { logs: join("memory", "log"), observe: (record) => people.apply(record), personFiles: false, journalAfter: journalAfter() }); flushPeople(); return opened; };
   // No people/ folder until there is someone in it; a record folded into another leaves no file behind.
   function flushPeople() {
     const { write, remove } = people.changes(), dir = join(soulDir, "memory", "people");
@@ -324,6 +326,8 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       const pinned = readLines(join(soulDir, "SOUL.md"), /^## Pinned\b/).map((l) => l.replace(/^- /, "")), schedule = readLines(join(soulDir, "memory", "schedule.md"), /^# Schedule\b/).filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
       return buildBrief({ ...facts, schedule, self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes > 0 ? { bytes } : {});
     },
+    /** Consolidate under the log's lock is not needed: a pass reads projections and writes only its own files. Reopen after it. */
+    reopen() { records = null; },
     /** `memory <query>`: every projection line holding every word, each with where it came from. */
     search(query) {
       withRecords(() => {});   // opening regenerates the projections, and a torn log says so here

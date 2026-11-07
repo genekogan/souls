@@ -112,7 +112,7 @@ function validateRemember(input) {
  * Existing projection symlinks are rejected. JSONL records contain normalized facts
  * and explicit judgments, never raw responses or authentication state.
  */
-export function openMemoryFolder(directory, {logs: logFolder = 'log', observe = null, personFiles = true} = {}) {
+export function openMemoryFolder(directory, {logs: logFolder = 'log', observe = null, personFiles = true, journalAfter = null} = {}) {
   const root = resolve(directory), memory = join(root, 'memory'), logs = join(root, logFolder);
   const safe = path => {
     // Check every existing ancestor, including root, before any read or write.
@@ -257,7 +257,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log', observe = 
     write(join(memory, 'ledger.md'), '# Ledger — normalized public facts\n\n## Holding\n' + holding.map(v => `- ${md(v)}`).join('\n') + '\n\n## Produced\n' + sorted(objects).map(o => `- ${md(o.id)}: ${md(o.title)} (${md(o.kind)}), at ${md(o.where)}`).join('\n') + '\n\n## Marks/projects (provided snapshot)\n' + marks.map(o => `- ${md(o.id)}: ${md(o.title)}`).join('\n') + '\n\n## Observed budget by UTC day\n' + [...costs.keys()].sort().map(budgetLine).join('\n') + '\n');
     write(join(memory, 'queue.md'), '# Queue — supplied W4 projection; no runner\n\n' + queue.map(s => `- ${md(s.id)}: ${md(s.act)} [${s.status}], attempts ${s.attempts}${s.goal ? `; goal ${md(s.goal)}` : ''}${s.reason ? `; ${md(s.reason)}` : ''}`).join('\n') + '\n');
     if (personFiles) for (const p of sorted(people)) write(join(memory, 'people', personFile(p.id)), `# ${md(p.name)} [${md(p.id)}]\n\n## Facts — confirmed physical meetings (qualified evidence only)\n` + p.meetings.map(m => `- ${m.at} at ${md(m.seenAs ?? m.where)}${m.world ? ` in ${md(m.world)}` : ''}${m.day === null || m.day === undefined ? '' : `, day ${m.day}`}${m.together ? '; together-act' : ''}`).join('\n') + `\nConfirmed physical meetings ${p.meetings.length}\n\n## Communication encounters ${p.communications.length} — not physical meeting evidence\n`+p.communications.map(communicationLine).join('\n')+'\n'+`\n## Last reported words — UNTRUSTED data\n` + p.words.slice(-3).map(w => `> ${w.at}: ${md(w.text)}`).join('\n') + '\n\n## Judgments — model impressions/open threads\n' + p.impressions.map(s => `- ${md(s)}`).join('\n') + '\n');
-    for (const [day, lines] of journals) write(join(memory, 'journal', `${day}.md`), `# ${day}\n\n` + lines.map(s => `- ${md(s)}`).join('\n') + '\n');
+    for (const [day, lines] of journals) if (!journalAfter || day > journalAfter) write(join(memory, 'journal', `${day}.md`), `# ${day}\n\n` + lines.map(s => `- ${md(s)}`).join('\n') + '\n');
   };
   const seenPeople = e => e?.type === 'speech' && e.seen && Object.hasOwn(e.seen, e.personId) ? [e.personId] : [];
   const preflight = record => {
