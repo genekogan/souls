@@ -46,7 +46,7 @@ const short = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex'
 /** Engine asset id for a def at given params/scale: stable, namespaced, ≤ 80 chars. */
 export function assetIdFor(d: Pick<DefFacts, 'ref' | 'hash' | 'box'> & Partial<Pick<DefFacts, 'slots' | 'components'>>, paramsKey: string): string {
   // A policy change gets a new asset identity. Old logged assets/active slots keep their original approach semantics.
-  const policy = (d.slots?.some((s) => s.kind === 'seat') ? '|seat-approach:reachable/1' : '') + (isFireCircleDef(d) ? '|fire-circle/1' : '') + (d.slots && crossSeated(d as Pick<DefFacts, 'slots' | 'box'>) ? '|seat-approach:slot' : '')
+  const policy = (d.slots?.some((s) => s.kind === 'seat') ? '|seat-approach:reachable/1|seat-height/1' : '') + (isFireCircleDef(d) ? '|fire-circle/1' : '') + (d.slots && crossSeated(d as Pick<DefFacts, 'slots' | 'box'>) ? '|seat-approach:slot' : '')
     + (d.slots && berthSlots(d as Pick<DefFacts, 'slots' | 'box'> & Partial<Pick<DefFacts, 'components'>>).length ? '|berth/1' : '');
   return `ew:${d.ref.replace(/[^a-z0-9/@._-]/gi, '').slice(0, 48)}:${short(`${d.hash}|${paramsKey}|${d.box.map(r4).join(',')}${policy}`)}`;
 }
@@ -156,7 +156,7 @@ export function assetFromDef(id: string, d: DefFacts, o: { seen?: boolean; conne
   // B6: a fire's box spans its logs; its stone ring and logs are the entity's own solids, so the box is no obstacle
   // (people stand inside it, round the fire)
   } else if (!isFloatingDef(d) && !isFireCircleDef(d)) out.obstacle = true;
-  const seats: SlotDef[] = d.slots.filter((s) => s.kind === 'seat').map((s) => ({ id: s.id, kind: 'seat' as const, local: [r4(s.p[0]), r4(s.p[2])], yaw: r4(Math.PI / 2 - s.yaw), approachPolicy: 'reachable/1', ...(d.tags.includes('front-seat') ? {height:r4(s.height ?? s.p[1])} : {}) }));
+  const seats: SlotDef[] = d.slots.filter((s) => s.kind === 'seat').map((s) => ({ id: s.id, kind: 'seat' as const, local: [r4(s.p[0]), r4(s.p[2])], yaw: r4(Math.PI / 2 - s.yaw), approachPolicy: 'reachable/1', height: r4(s.height ?? s.p[1]) }));   // #1090: every seat's top, so the body is drawn on it
   const stands: SlotDef[] = d.slots.filter((s) => s.kind === 'stand').map((s) => ({ id: s.id, kind: 'stand' as const, local: [r4(s.p[0]), r4(s.p[2])], yaw: r4(Math.PI / 2 - s.yaw) }));
   // B6: the stone ring is the def's description's size when it says so ("a ring of stones (1.6 m)"), else 1 m
   const ring = Number(/ring of stones \((\d+(?:\.\d+)?) m\)/.exec(d.description ?? '')?.[1] ?? 1);
