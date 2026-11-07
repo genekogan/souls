@@ -1,5 +1,14 @@
 # Releasing Soul
 
+## Release owner
+
+The development coordinator is the release owner (maintainer decision, 2026-11-06). It runs each release end to end:
+the gate receipt for the exact head, `ship.sh` with its backups, the post-ship checks (healthz, walks, cdn-walk),
+rollback on failure, the changelog and the GitHub Release. Production deletes still need the maintainer's explicit
+yes. If a permission classifier refuses a step, the coordinator reports the exact step, the workaround it tried and
+the exact command for the maintainer to run; it never hands back silently. One owner holds an active release head;
+lanes and the repo steward don't deploy or run paid gates.
+
 ## Current production topology
 
 The canonical site is `https://soul.game`, with production built and launched at base `/`; `souls.game` redirects

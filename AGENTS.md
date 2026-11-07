@@ -114,9 +114,11 @@ contract; fresh sessions recover its dated agenda and assignments before dispatc
 
 ## Release and operations
 
-- The authorized release owner follows the current topology and automation limits in the release doc: gate receipt,
-  build of exactly HEAD of a clean tree, CDN-first assets,
-  staged ship, healthz, walks, cdn-walk, rollback on failure. [docs/release.md](docs/release.md)
+- The development coordinator is the release owner and runs releases end to end, following the current topology in
+  the release doc: gate receipt, build of exactly HEAD of a clean tree, CDN-first assets, staged `ship.sh` with
+  backups, healthz, walks, cdn-walk, rollback on failure, changelog. Production deletes need Gene's explicit yes. On a
+  classifier refusal, report the exact step and the workaround tried; never hand back silently.
+  [docs/release.md](docs/release.md#release-owner)
 - Never touch services, users, DNS or proxies on the host that aren't Soul's. [docs/operations.md](docs/operations.md)
 
 ## Visitor analytics

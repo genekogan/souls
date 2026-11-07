@@ -102,7 +102,7 @@ re-checked and after the maintainer approves (enforced by `proof-ok`). A conflic
 
 ## 8. Release
 
-The authorized release owner qualifies an exact `main` head: the remote gate against the cached baseline, required
+The release owner, the development coordinator ([release owner](../release.md#release-owner)), qualifies an exact `main` head: the remote gate against the cached baseline, required
 approval, staged activation with healthz, walks and cdn-walk, then the changelog and a GitHub Release.
 Root-only workflow automation remains under qualification; use the current topology in the release doc. See
 [release](../release.md).
