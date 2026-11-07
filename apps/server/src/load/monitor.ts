@@ -106,7 +106,7 @@ export class QuietTick {
 }
 
 /** What the monitor reads from the world (WorldHost satisfies it). */
-export type HostLike = {engine: {world: {tick: number}}; tickMs: number[]; paused: boolean; pace: number; baseRate: number; readonly running: boolean; readonly clockAvailable: boolean};
+export type HostLike = {rewinds?: number; engine: {world: {tick: number}}; tickMs: number[]; paused: boolean; pace: number; baseRate: number; readonly running: boolean; readonly clockAvailable: boolean};
 export type Dial = (level: Level) => void;
 export type MonitorOpts = {
   host: HostLike;
@@ -187,6 +187,7 @@ export class LoadMonitor {
     const now = this.now(), h = this.o.host, a = this.a;
     a[S.lastTurnAt] = now;
     a[S.halted] = h.clockAvailable === false ? 1 : 0;
+    a[S.rewinds] = h.rewinds ?? 0;
     // tick service over 5 s: ticks run / ticks owed at the admin rate and the attention pace (dilation counts as missed)
     const prev = this.ticks.at(-1), owing = h.running && !h.paused && h.clockAvailable;
     const due = prev && owing ? (Math.min(1000, now - prev.at) * h.baseRate * h.pace) / TICK_MS : 0;

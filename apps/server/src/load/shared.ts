@@ -28,11 +28,14 @@ export const S = {
   // 0 = not measured yet. admission.ts reads it for the frame budget (frameBudgetMs).
   quietTickMs: 28,
   halted: 29,      // 1 once the world's clock has stopped (a fault or a durability failure, #1150): the launcher alerts on it
-  size: 30,
+  rewinds: 30,     // rung 3s this world has had (#1150): the launcher alerts on each new one
+  size: 31,
 } as const;
 
 export type LiveJson = {
   v: 1; pid: number; at: number; phase: Phase;
+  /** Rung 3s so far (#1150). Absent at zero. */
+  rewinds?: number;
   boot?: {stage: BootStage; tick: number; target: number};
   loop: {lastTurnAgeMs: number; delayP99Ms: number};
   /** quietAvgMs: the tick's own average ms in quiet windows (EWMA; 0 = not measured yet), which sets the frame budget. */
@@ -79,5 +82,6 @@ export function liveOf(a: Float64Array, pid: number, now: number): LiveJson {
     out.read = {ports, workers: a[S.readWorkers], lagGens: a[S.readLagGens], subset: mode === 1, routes: READ_ROUTES[mode] ?? []};
   }
   if (a[S.halted]) out.halted = true;
+  if (a[S.rewinds]) out.rewinds = a[S.rewinds];
   return out;
 }

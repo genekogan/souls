@@ -1481,6 +1481,8 @@ export class WorldHost {
       this.flush(); this.heartbeat(); return;
     }
   }
+  /** Rung 3s this world has had, for the launcher's ALERT (#1150). */
+  get rewinds(): number { return Object.values(this.glitches.byRule).reduce((n, r) => n + (r.rewind ?? 0), 0); }
   /** #1150: this world repairs instead of halting for a broken rule. */
   private get repairRules(): boolean { return this.engine.rulesVersion.includes('+souls-repair/'); }
   /** A rung 3 ran and no new snapshot followed: the baseline is the one that led here, so a second one stays on the head. */

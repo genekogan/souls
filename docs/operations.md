@@ -53,7 +53,8 @@ or proxy examples to this host. Internal `sim-*` service and data names remain u
   the world's log and one row to its store, with the bodies, the tick and the evidence: `op.mjs glitches --port <port>
   --base / [--world <slug>]` reads those, for sleeping worlds too. The health page shows the counts. A halted world is the
   `halted` problem code, so `hostOk` goes false and `host-health.log` gets its ALERT line; a refusal or recovery raises no alert
-  until real numbers set a rate threshold ([#1150](https://github.com/soulsimulation/souls/issues/1150)).
+  until real numbers set a rate threshold ([#1150](https://github.com/soulsimulation/souls/issues/1150)). A rewind (rung 3) is the
+  `rewound` problem code, so it alerts every time, and clears on its own after a while.
 - `sim-worlds-health@<stage>.timer` runs `deploy/host-health.mjs` every 10 minutes: disk, memory, the unit's working
   set against its `MemoryMax`, OOM kills and the last backup. It writes `<data>/host-health.json` and appends an
   ALERT/RECOVERED line to `<data>/host-health.log`; the launcher folds the result into healthz. An external monitor
