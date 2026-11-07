@@ -76,7 +76,7 @@ async function shot(name, { eye, at, q = {} }) {
       lastUrl = `${base}?${new URLSearchParams({ dev: '1', eye: eye.join(','), at: at.join(',') })}`;
       await page.goto(lastUrl, { waitUntil: 'commit', timeout: 300000 });
       await page.waitForFunction(() => window.__soulsEntity?.layer?.active && window.__soulsEntity.layer.drawn?.size > 0, null, { timeout: 900000, polling: 5000 });
-      await page.waitForFunction(() => !/Arriving in/.test(document.body.innerText), null, { timeout: 300000, polling: 3000 }).catch(() => {});
+      await page.waitForFunction(() => !document.querySelector('.viewer-arrival'), null, { timeout: 300000, polling: 3000 }).catch(() => {});
       await page.waitForTimeout(8000);
       await page.evaluate(() => { for (const b of document.querySelectorAll('button')) if (b.textContent.trim() === '×') b.click(); }).catch(() => {});
     }

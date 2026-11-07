@@ -160,7 +160,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     let produced = unique(rows(out.produced, 32).flatMap((o) => (safeId(o.id) ? [{ id: o.id, title: clip(o.title, 200) || o.id, kind: clip(o.kind, 200) || "thing", where: where(o.where) }] : [])));
     // A changing source is a new reading, not a conflict: each fact keeps its own version of the source.
     let learned = unique(rows(out.learned, 5).flatMap((f) => {
-      const fact = clip(f.fact, 2000), said = clip(f.provenance, 100), provenance = (said === "authored-content" ? "authored-fiction" : said) || "world-fact", untrusted = !!f.untrusted || ["soul-text", "other-soul-report"].includes(said);
+      const fact = clip(f.fact, 2000), said = clip(f.provenance, 100), provenance = (said === "authored-content" ? "authored-fiction" : said) || "world-fact", untrusted = true;   // a world doesn't get to say its own words are safe
       if (!fact || typeof f.about !== "string" || !f.about) return [];
       const about = worldKey(world, f.about), source = `${world}:${clip(f.source ?? f.about, 900)}#${sha([fact, about, provenance, untrusted]).slice(0, 12)}`;
       return [{ id: source, fact, about, source, provenance, untrusted }];
@@ -168,7 +168,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     const end = where(receipt.endedAt?.place), messageId = safeId(presence.openFor?.[receipt.id]) ? presence.openFor[receipt.id] : null;
     const build = () => ({
       type: "outcome", receiptId: worldKey(world, receipt.id), act: clip(receipt.capability, 160) || "act", phase: receipt.phase, summary: clip(out.summary, 160) || `${clip(receipt.capability, 140) || "act"} ${receipt.phase}.`,
-      untrusted: !!out.untrusted || learned.some((f) => f.untrusted), learned, produced, met: metRows, ...(end ? { placeId: end } : {}), ...(messageId ? { messageId } : {}), when,
+      untrusted: true, learned, produced, met: metRows, ...(end ? { placeId: end } : {}), ...(messageId ? { messageId } : {}), when,
       seen: seenOf([...(end ? [[end, nameOf(r, end, receipt.endedAt?.placePath?.[0])]] : []), ...metRows.flatMap((p) => [[p.id, p.name], ...(p.where ? [[p.where, nameOf(r, p.where)]] : [])]), ...produced.flatMap((o) => [[o.id, o.title], ...(o.where ? [[o.where, nameOf(r, o.where)]] : [])]), ...learned.map((f) => [f.about, r.placeName(f.about) ?? f.about.slice(world.length + 1)])]),
     });
     let event = build();

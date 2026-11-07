@@ -1,5 +1,6 @@
 // CTX-1 (#1134): the Souls home. Discovery, addressing, doctor and import against a stand-in world, through the real CLI.
 import { test } from 'node:test';
+import { spawnSync as gitRun } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
@@ -363,4 +364,19 @@ test('worlds are told apart by url; an empty home has a guide too', (t) => {
   const seat = h.seat(h.ensureWorld('http://x.test/w/a'));
   assert.equal(seat.key, 'a');
   assert.equal(h.ensureWorld('http://y.test/w/a'), 'a-2', 'same slug on another host is another world');
+});
+
+test('#1137: a Soul\'s memory can\'t be committed by accident, in a new home or an older one', (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'souls-git-'))); t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, '.souls'), ignored = (p) => gitRun('git', ['check-ignore', '-q', p], { cwd: root }).status === 0;
+  gitRun('git', ['init', '-q'], { cwd: root });
+  createHome(home, {});
+  for (const p of ['.souls/souls/s_a/memory/people/ana.md', '.souls/souls/s_a/memory/log/memory-events.jsonl', '.souls/souls/s_a/MEMORY.md', '.souls/souls/s_a/runtime/x']) assert.ok(ignored(p), p);
+  assert.ok(!ignored('.souls/souls/s_a/SOUL.md'), 'the owner\'s own file is theirs to commit');
+  writeFileSync(join(home, '.gitignore'), 'credentials.json\nruntime/\npending/\ngods/\nmine.txt');
+  openHome(home);
+  const lines = readFileSync(join(home, '.gitignore'), 'utf8').split('\n');
+  assert.ok(lines.includes('memory/') && lines.includes('mine.txt'), 'an older home gets the line, and keeps its own');
+  openHome(home);
+  assert.equal(readFileSync(join(home, '.gitignore'), 'utf8').split('\n').filter((l) => l === 'memory/').length, 1);
 });

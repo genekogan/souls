@@ -101,7 +101,9 @@ UNTRUSTED through every projection.
 `worlds/<world>.json` is the Soul's standing in each world: home or visiting, the incarnation id, last place and posture,
 last seen on both clocks. `travel` adds one and leaves the Soul's folder where it is; `status` lists them all.
 `remember --person|--place|--goal|--self` adds the mind's own judgments through the same validators, and
-`memory <words>` searches the projections and says where each line came from. A legacy folder has no memory.
+`memory <words>` searches the projections and says where each line came from. A legacy folder has no memory. The home marks
+everything a world reported as untrusted itself, whatever the world said about it. `memory/` and `MEMORY.md` are in the
+home's `.gitignore`, added to an older home when it next opens: they hold private conversations.
 
 ### The pre-turn brief
 

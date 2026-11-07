@@ -344,6 +344,12 @@ function readJson(file, fallback) {
     throw new Error(`${basename(file)} cannot be read: ${e.message}`);
   }
 }
+function keepOutOfGit(root) {
+  const file = join(root, ".gitignore"), was = existsSync(file) ? readFileSync2(file, "utf8") : "", have = was.split("\n").map((l) => l.trim());
+  const missing = [CREDENTIALS, "runtime/", "pending/", "gods/", "memory/", "MEMORY.md"].filter((l) => !have.includes(l));
+  if (missing.length) writeFileSync2(file, `${was}${was && !was.endsWith("\n") ? "\n" : ""}${missing.join("\n")}
+`);
+}
 function slugOf(url) {
   const m = /\/w\/([a-z0-9-]+)\/*$/.exec(String(url));
   if (m) return m[1];
@@ -406,6 +412,7 @@ function readJsonQuietly(file) {
   }
 }
 function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } = {}) {
+  keepOutOfGit(root);
   const at = (...p) => join(root, ...p);
   const config = () => ({ worlds: {}, souls: {}, gods: {}, ...readJson(at("config.json"), {}) });
   const credentials = () => ({ souls: {}, worlds: {}, approvals: {}, gods: {}, ...readJson(at(CREDENTIALS), {}) });

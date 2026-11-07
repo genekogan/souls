@@ -47,12 +47,19 @@ function readJson(file, fallback) {
   catch (e) { if (e.code === "ENOENT") return fallback; throw new Error(`${basename(file)} cannot be read: ${e.message}`); }
 }
 
+/** What a home never commits: tokens, and a Soul's memory, which holds private conversations. A home made before a line was added gets it. */
+function keepOutOfGit(root) {
+  const file = join(root, ".gitignore"), was = existsSync(file) ? readFileSync(file, "utf8") : "", have = was.split("\n").map((l) => l.trim());
+  const missing = [CREDENTIALS, "runtime/", "pending/", "gods/", "memory/", "MEMORY.md"].filter((l) => !have.includes(l));
+  if (missing.length) writeFileSync(file, `${was}${was && !was.endsWith("\n") ? "\n" : ""}${missing.join("\n")}\n`);
+}
+
 /** Make a home at `root`. `cli` is the bundle to keep in bin/. Safe to call on an existing home. */
 export function createHome(root, { cli, version } = {}) {
   mkdirSync(join(root, "souls"), { recursive: true, mode: 0o700 });
   if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, client: version ?? null, default: null, currentWorld: null, worlds: {}, souls: {}, gods: {}, awaitingFirstWorld: true });
   if (!existsSync(join(root, CREDENTIALS))) writeJson(join(root, CREDENTIALS), { version: 1, souls: {}, worlds: {}, approvals: {}, gods: {} });
-  if (!existsSync(join(root, ".gitignore"))) writeFileSync(join(root, ".gitignore"), `${CREDENTIALS}\nruntime/\npending/\ngods/\n`);
+  keepOutOfGit(root);
   if (cli && !existsSync(join(root, "bin", "eden.mjs"))) {
     mkdirSync(join(root, "bin"), { recursive: true, mode: 0o700 });
     try { copyFileSync(cli, join(root, "bin", "eden.mjs")); } catch { /* the folder's own copy still runs */ }
@@ -147,6 +154,7 @@ export function runtimeLocks(dir, alive) {
 function readJsonQuietly(file) { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return existsSync(file) ? {} : null; } }
 
 export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } = {}) {
+  keepOutOfGit(root);
   const at = (...p) => join(root, ...p);
   const config = () => ({ worlds: {}, souls: {}, gods: {}, ...readJson(at("config.json"), {}) });
   const credentials = () => ({ souls: {}, worlds: {}, approvals: {}, gods: {}, ...readJson(at(CREDENTIALS), {}) });
