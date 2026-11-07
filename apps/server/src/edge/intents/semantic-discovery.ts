@@ -65,7 +65,8 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  }
  const parsed=parseCapability(text,new Set([...caps.map(c=>c.verb),'sit']));if(parsed.verb!=='sit')return null;
  // An infinitive/so-clause after a named seat states why to sit, not a second seat identity.
- const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to)\s+/i)[0],raw=tokens(target).filter(w=>w!=='down');
+ // #1152: how long is not part of the seat's name, and "outside" is how a person says the part's "outdoor".
+ const target=parsed.rest.split(/\s+(?:so(?:\s+that)?|in\s+order\s+to|to|for\s+(?:a\s+(?:while|bit|moment)|some\s+time))(?:\s+|$)/i)[0],raw=tokens(target).filter(w=>w!=='down'),plain=raw.map(w=>w==='outside'?'outdoor':w);
  // (built on first use only: a generic or exact sit returns before it, as it did before #848)
  let built:{p:Place;part:NonNullable<Place['parts']>[number];scope:Set<string>;own:Set<string>}[]|undefined;
  const match=(q:string[])=>(built??=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(L,soul,p,part)).map(part=>({p,part,scope:words(contexts(L,p,soul)),own:words([part.title,...(part.aliases??[])])})))).filter(x=>covers(q,new Set([...x.scope,...x.own])));
@@ -73,7 +74,7 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  // outside the cottage"); otherwise ("sit outside", "sit outside with Bo", "the bench outside the hall") the words keep
  // their old handling, so a phrase that named nothing before still answers as before
  const mapped=raw.flatMap((w,i)=>RELATION.has(w)&&i<raw.length-1?RELATION.get(w)!:[w]);
- const q=mapped.join(' ')!==raw.join(' ')&&match(mapped).length?mapped:raw;
+ const q=mapped.join(' ')!==raw.join(' ')&&match(mapped).length?mapped:plain;
  if(!q.length||q.every(w=>GENERIC_SEAT.has(w)))return null;
  // Existing exact fixture identities retain the normal vocabulary/admission path. A shared
  // word in a semantic part must not intercept a fully named ordinary object.

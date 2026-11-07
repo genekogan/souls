@@ -23,18 +23,13 @@ test('#848: "outside"/"inside" name the right seat on hello-hamlet, and "outside
 
 // Review of 98ccb03e and d00ed59b: a relation word that does not lead to a named seat keeps its old handling (A6), on
 // hello-hamlet and eden-2026.
-test('#848: "outside" that names no seat (bare, trailing, "with Bo", "now") answers as before', {timeout: 300000}, async t => {
+test('#848: "outside" that names no seat (bare, trailing, "with Bo", "now") answers as it does without the relation', {timeout: 300000}, async t => {
+  // #1152 reads "outside" as the part's "outdoor", so these aren't unknown words any more; the relation reading must not change them
   const hamlet = await bootEden(() => {}, new URL('../../../worlds/templates/hello-hamlet.json', import.meta.url)); t.after(hamlet.close);
   const outdoors = await accept(hamlet.host, hamlet.edge.act(hamlet.soul, {capability: 'sit outdoors'})) as any;
   assert.equal(outdoors.accepted, true, JSON.stringify(outdoors)); assert.equal(outdoors.receipt?.capability ?? outdoors.resolved, 'sit:cottage/part-outdoor-bench');
-  // a relation word followed by words that name no seat ("with Bo", "now"): as before, unknown with suggestions
-  for (const words of ['sit outside', 'sit outside with Bo', 'sit outside now', 'sit down outside for a minute', 'sit outside here']) {
-    const r = await accept(hamlet.host, hamlet.edge.act(hamlet.soul, {capability: words})) as any;
-    assert.equal(r.code, 'capability.unknown', `${words}: ${JSON.stringify(r).slice(0, 300)}`); assert.ok(r.did_you_mean?.length, `${words}: suggestions kept`);
-  }
+  const answers = async (w: typeof hamlet, table: [string, string][]) => { for (const [words, code] of table) { const r = await accept(w.host, w.edge.act(w.soul, {capability: words})) as any; assert.equal(r.code, code, `${words}: ${JSON.stringify(r).slice(0, 300)}`); } };
+  await answers(hamlet, [['sit outside', 'capability.choose'], ['sit outside with Bo', 'capability.unavailable'], ['sit outside now', 'capability.unavailable'], ['sit down outside for a minute', 'capability.unavailable'], ['sit outside here', 'capability.unavailable']]);
   const eden = await bootEden(); t.after(eden.close);
-  for (const words of ['sit outside', 'sit outdoors', 'sit outside with Bo', 'sit outside now', 'sit down outside for a minute']) {
-    const r = await accept(eden.host, eden.edge.act(eden.soul, {capability: words})) as any;
-    assert.equal(r.code, 'capability.unknown', `${words}: ${JSON.stringify(r).slice(0, 300)}`); assert.ok(r.did_you_mean?.length, `${words}: suggestions kept`);
-  }
+  await answers(eden, [['sit outside', 'capability.unavailable'], ['sit outdoors', 'capability.unknown'], ['sit outside with Bo', 'capability.unavailable'], ['sit outside now', 'capability.unavailable'], ['sit down outside for a minute', 'capability.unavailable']]);
 });
