@@ -53,13 +53,22 @@ modules they mount):
 | Builds and districts | `/v1/god/builds…`, `/v1/god/districts…` |
 | Environment | `POST /v1/god/env` (time, sky, weather), `/strike` (lightning), `/land` (terrain and water); public `GET /v1/world/env` |
 | Objects | `POST`/`GET /v1/god/assets` (uploads, moderated), `GET /v1/god/defs`, `/catalog`, `/catalog/taxonomy`, `/recommend`, `/layers`; public `GET /assets/<sha256>.<ext>`, `/thumbs/<hash>.png` |
-| Seeing | `POST /v1/god/look` (PNG) |
+| Seeing | `POST /v1/god/look` (PNG); `GET /v1/god/contained` (what a rewind set aside, see below) |
 | People | `GET /v1/god/prayers`, `POST /v1/god/answer`; Souls pray with `POST /v1/god/pray`; `POST /v1/god/visitors {open}` |
 | Public world model | `GET /v1/world/builds`, `/seq`, `/snapshot`, `/ground`, `/tiles/:tx/:tz`, `/entities/:id` |
 
 The catalogue lists this world's own defs plus the built-in core library (`coreLibrary()` from
 `@souls/world-compiler`, the `CORE_KIT` objects): furniture, buildings, landforms, vegetation and more, each with
 parameters, slots and actions.
+
+### When a rewind leaves something contained
+
+With the `souls-repair/1` rules, what still breaks a rule after a rewind, or in place when the world can't go back, is set
+aside so the world carries on ([engine contract](engine-contract.md)). A god edit is one cause; a Soul's body can be another.
+`GET /v1/god/contained`, for the world's god, lists each one: its `rule`, its `subjects`, and `things`, the subjects that are
+the god's own, by path. The list is empty when nothing is contained, and an entry leaves it when it stops firing. A world
+with no engine bridge answers 503 `contained.unavailable`. There's no push: read it after a rewind, or when something seems
+stuck. `eden-god contained` prints it.
 
 ## How an edit works
 

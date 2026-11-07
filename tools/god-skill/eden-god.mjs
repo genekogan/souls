@@ -6807,6 +6807,14 @@ async function answer(prayer, text) {
 async function stream(seconds = 60) {
   return follow(seconds, (e) => console.log(JSON.stringify(e)));
 }
+async function contained() {
+  const c = ok(await call("/v1/god/contained"), "contained").contained;
+  const named = (x) => {
+    const yours = new Map(x.things.map((t) => [t.id, t.path]));
+    return x.subjects.map((s) => yours.get(s) ?? s).join(", ") || "no subject named";
+  };
+  return c.length ? c.map((x) => `${x.rule}: ${named(x)}`).join("\n") : "nothing contained";
+}
 async function status() {
   const s = load();
   const st = ok(await call("/v1/god/status"), "status");
@@ -6935,6 +6943,7 @@ var COMMANDS = {
   pair: (r) => pair(r[0]),
   mint: (r) => mint(r[0]),
   status,
+  contained,
   map: (r, f) => map({ json: !!f.json, all: !!f.all }),
   defs: (r, f) => defs(r.join(" ") || void 0, f),
   schema: (r, f) => schema(f),
@@ -7032,7 +7041,7 @@ var HELP = `eden-god ${SKILL_VERSION} \u2014 god mode for one Eden world. Read S
 home:   in a Souls home, several seats: <world> <command> (or @<world> when a command has that name); a legacy god folder moves in with: node eden.mjs import
 locks:  doctor [--fix] [--local] [--json] (holders, stale locks; --fix breaks only stale ownership)
 trace:  trace [--build id] [--limit n] (the world's recent god requests: route, outcome, ms, no payloads; LOOP = the same refusal 3+ times in 2 min, also in build show)
-read:   verify-use <target> [--seat ref] [--from ref|x,z] [--uses enter,sit] \xB7 map \xB7 defs <words> \xB7 describe <ref> \xB7 where <x,z|ref> ([bounds] containment / [collider] hit) \xB7 reach <from> <to> \xB7 clear <x,z|ref> --size WxD \xB7 free WxD [--near ref] \xB7 look [--at ref|x,z] [--from s|n|e|w|above] [--dist m] [--span m] [--inside [--floor k]] \xB7 history \xB7 resolve \xB7 schema [--md]
+read:   contained (what a rewind set aside) \xB7 verify-use <target> [--seat ref] [--from ref|x,z] [--uses enter,sit] \xB7 map \xB7 defs <words> \xB7 describe <ref> \xB7 where <x,z|ref> ([bounds] containment / [collider] hit) \xB7 reach <from> <to> \xB7 clear <x,z|ref> --size WxD \xB7 free WxD [--near ref] \xB7 look [--at ref|x,z] [--from s|n|e|w|above] [--dist m] [--span m] [--inside [--floor k]] \xB7 history \xB7 resolve \xB7 schema [--md]
 look:   --views "sw;w --dist 30;inside" or --site makes a labelled sheet; --frames n --every ms makes a motion strip. kit look <kit.json> [--beside core/church@1] renders a world-free four-view bench. defs --unused [--remove] lists/retires never-placed trials (undoable).
 look:   --remote (or EDEN_GOD_LOOK=remote) uses the world host; automatic fallback if local Chrome cannot start. Sheets, frame strips and kit workbench require local Playwright and Google Chrome. --dist controls coordinate views; --span is a minimum fit and may require more distance. Explicit --span alone tightens the view; named things/sets auto-fit by default. Both take one finite positive number; the viewer refuses a camera within its near clipping plane. --hour HH[:MM] [--weather rain|clear|\u2026] changes only the picture, never the world clock.
 build:  place <def> --at x,z|ref | --near ref [--dist m] [--dir ne] [--count n] | --inside house/room [--at x,z] [--wall back|front|left|right|n\u2026] [--corner back-left|\u2026] | --on table|pier|house/balcony [--count n] | --along road [--t 0.3] [--side left|right|both] [--offset m] [--row n --gap g] | --against ref[.n] [--offset m|--t 0..1] | --between a b | --free   [--facing ref|n|e|s|w] [--float] [--row n|--grid WxH --gap g] [--name n] [--param k=v] [--scale s (defs <name> shows its range)] [--dry]
@@ -7145,6 +7154,7 @@ export {
   commit,
   compassKey,
   constitution,
+  contained,
   correctedLine,
   define,
   defineKit,

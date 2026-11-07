@@ -293,5 +293,5 @@ schema, def.unknown, def.budget, def.expansion, def.invalid, parent.unknown, slo
 
 ## Endpoints
 - read: GET /v1/world/snapshot · GET /v1/world/ground · GET /v1/world/tiles/:tx/:tz · GET /v1/world/entities/:path · GET /v1/god/schema · POST /v1/god/query
-- god: GET /v1/god/snapshot · GET /v1/god/defs?q=&tag= · POST /v1/god/dryrun · POST /v1/god/preview · POST /v1/god/act · POST /v1/god/undo[?group=] · POST /v1/god/redo · GET /v1/god/edits · GET /v1/god/stream (SSE) · GET /v1/god/prayers · POST /v1/god/answer
+- god: GET /v1/god/contained · GET /v1/god/snapshot · GET /v1/god/defs?q=&tag= · POST /v1/god/dryrun · POST /v1/god/preview · POST /v1/god/act · POST /v1/god/undo[?group=] · POST /v1/god/redo · GET /v1/god/edits · GET /v1/god/stream (SSE) · GET /v1/god/prayers · POST /v1/god/answer
 
