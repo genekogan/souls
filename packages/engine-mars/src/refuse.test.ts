@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { marsFactory, GREEN_FIELD_WORLD, MarsEngine } from './engine.ts';
 import { SOULS_REPAIR_POLICY } from './refuse.ts';
+import { refusalConformance } from '@souls/engine-contract/conformance';
 
 // #1150 rung 1. A test invariant runs first in the end-of-tick pass, so what it does to a body lands exactly where a bad
 // action step would: real programmes, real invariants after it. `forge` adds a named violation for rules a green field has
@@ -95,4 +96,12 @@ test('rules: the suffix is refused where it is unknown, and history without it i
   assert.equal(on.canReplayHistory?.(off.rulesVersion), false); assert.equal(on.canRestoreSnapshot?.(off.rulesVersion), false);
   assert.equal(on.canReplayHistory?.(on.rulesVersion), true); assert.equal(on.canRestoreSnapshot?.(on.rulesVersion), true);
   const e = off.create(off.genesis('x')); assert.throws(() => on.restore(e.snapshot()), /snapshot repair policy/);
+});
+
+refusalConformance('mars', on, (e) => {
+  e.spawnHuman({ id: 'a', label: 'Ada', soul: 's_a', at: [0, 0] } as any);
+  assert.equal(e.perform({ actor: 'a', label: 'walk', steps: [{ verb: 'walk_to', params: { to: [10, 0] } }] }).ok, true);
+  for (let i = 0; i < 10; i++) e.step();
+  const rt = (e as any).rt; let done = false;
+  rt.invariants = [(r: any) => { if (!done) { done = true; shove(1)(r); } return []; }, ...rt.invariants];
 });
