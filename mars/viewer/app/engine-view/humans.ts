@@ -1,5 +1,6 @@
+import {IDLE_REACH_HANDOFF,actuatorIdleBlend,interruptedGesture,ACTUATOR_GESTURE_HISTORY_SECONDS,actuatorArmDownSeconds} from './idle-reach-handoff.ts';
 import {wavePose,WAVE_BLEND_SECONDS,type WaveSample} from './wave-blend.ts';
-import {actuatorHand,handActuatorFrame,posterLocal,strokeWork,twoHanded,HAND_REACH_SECONDS,HAND_RELEASE_SECONDS,type HandActuatorMotion} from '../../engine/social/hand-actuator.ts';
+import {actuatorHand,handActuatorFrame,handReachSeconds,handSwingSeconds,handReleaseSeconds,posterLocal,strokeWork,twoHanded,HAND_REACH_SECONDS,HAND_RELEASE_SECONDS,type HandActuatorMotion} from '../../engine/social/hand-actuator.ts';
 import {insidePoint,itemPoseOf,ITEM_RECOVERY_SECONDS,type ItemPoseView} from '../../engine/items/presentation.ts';
 import {wateringFrame,transferWeight,TRANSFER_HANDOFF,type HandTransfer,type WateringMotion} from '../../engine/items/watering.ts';
 import { posterTexture, sheetGeometry, sheetLift as sheetLiftAt, tapeStrips, rollMesh, PAPERS } from './poster-sheet.ts';
@@ -112,6 +113,9 @@ type View = {
   transferTime?:number;
   /** Entry 38: the actuator that just ended, while its idle handoff is still fading in. */
   lastHandActuator?:HandActuatorMotion;
+  /** Idle occurrence mask and finite attained fade; neither retains old native hand ownership. */
+  idleInterruptAt?:number;
+  idleFadeMotion?:HandActuatorMotion;
   sleepPose?: NonNullable<Entity['human']>['sleepPose'];
   shore?: ShoreContactV1;
   shoreTime?: number;
@@ -270,6 +274,10 @@ export type SampledHuman = {
   phaseK?: number;
   handActuator?:HandActuatorMotion;
   handActuatorTime?:number;
+  /** Recorded predecessor, including explicit null when no compatible handoff remains. */
+  priorActuator?:HandActuatorMotion|null;
+  idleInterruptAt?:number|null;
+  idleFadeMotion?:HandActuatorMotion|null;
   itemPose?:ItemPoseView;
   /** Soul Actions 34: a watering-can stage (fill / pour), on the take clock. */
   watering?:WateringMotion;
@@ -450,6 +458,17 @@ const copyHands = (h?: Hands): Hands => ({ ...(h?.left ? { left: [...h.left] as 
 
 /** Entry 42: clip time advanced under a fade-out of length f, r s in: ∫0^r (1 − smoothstep(u/f)) du (f/2 once the fade is over). */
 const heldClip = (r: number, f: number) => { const x = Math.min(1, Math.max(0, r / f)); return Math.max(0, Math.min(r, f)) - f * (x * x * x - x * x * x * x / 2); };
+function actuatorPoseWeight(m: HandActuatorMotion, seconds: number) {
+  const travel = (r: number) => {
+    r = Math.max(0, Math.min(1, r));
+    const edge = .01;
+    return r < edge ? r*r/(2*edge*(1-edge)) : r > 1-edge ? 1-(1-r)*(1-r)/(2*edge*(1-edge)) : (r-edge/2)/(1-edge);
+  };
+  const releaseAt = m.abortedAt ?? handReachSeconds(m) + handSwingSeconds(m);
+  if (m.passage?.mode === 'unlock' && m.abortedAt === undefined) return handActuatorFrame(m, seconds).weight;
+  const attained = travel(Math.pow(Math.max(0,(m.abortedAt ?? seconds) / handReachSeconds(m)),1.07));
+  return attained * (1-travel((seconds-releaseAt)/(m.stroke?.release ?? handReleaseSeconds(m))));
+}
 /** PERF-EDEN (2026-11-01): the eye, its view and the pose-rate distances (quality-tier.ts bodies). Null: every body is
  *  posed every frame, as before. */
 export type HumanViewer = { eye: THREE.Vector3; frustum: THREE.Frustum; nearM: number; farM: number };
@@ -491,8 +510,10 @@ export class HumanViews {
   private climbs: { id: string; path: [number, number, number][] }[] = [];
 
   private readonly humanPresets: boolean;
-  constructor(humanPresets = false) {
+  private readonly idleReachHandoff:boolean;
+  constructor(humanPresets = false,idleReachHandoff=IDLE_REACH_HANDOFF) {
     this.humanPresets = humanPresets;
+    this.idleReachHandoff=idleReachHandoff;
     this.group.name = 'engine humans';
   }
 
@@ -636,7 +657,15 @@ export class HumanViews {
       v.shore = undefined;
       v.shoreTime = undefined;
       v.waterTransition = undefined;
-      if(v.handActuator&&!e.human?.handActuator)v.lastHandActuator=v.handActuator;else if(e.human?.handActuator)v.lastHandActuator=undefined;
+      if(this.idleReachHandoff&&(v.handActuator||e.human?.handActuator||v.idleFadeMotion)){
+        if(v.idleFadeMotion&&(world.tick-v.idleFadeMotion.startTick)*DT>=GESTURE_FADE)v.idleFadeMotion=undefined;
+        for(const m of [v.handActuator,e.human?.handActuator])if(m){
+          const age=(world.tick-m.startTick)*DT;if(age>=0&&age<GESTURE_FADE&&(!v.idleFadeMotion||m.startTick<=v.idleFadeMotion.startTick))v.idleFadeMotion=m;
+          const at=m.startTick*DT+actuatorArmDownSeconds(m);if(at<=world.tick*DT&&(v.idleInterruptAt===undefined||at>v.idleInterruptAt))v.idleInterruptAt=at;
+        }
+      }
+      if(v.handActuator&&!e.human?.handActuator)v.lastHandActuator=v.handActuator;else if(e.human?.handActuator&&!this.idleReachHandoff)v.lastHandActuator=undefined;
+      if(this.idleReachHandoff&&!e.human?.handActuator&&(e.human.hands||e.human.grip||e.human.handHold||e.human.rps||e.human.on||e.human.heldItemsV1||act!=='idle'&&!GAIT_ACTS.has(act)))v.lastHandActuator=undefined;
       v.handActuator=e.human?.handActuator;v.handActuatorTime=world.tick*DT;v.watering=e.human?.wateringV1;v.wateringTime=world.tick*DT;v.letGo=e.human?.letGoV1;v.letGoTime=world.tick*DT;v.cup=e.human?.cupV1;v.cupTime=world.tick*DT;v.transfer=e.human?.handTransferV1;v.transferTime=world.tick*DT;
       v.itemPose=itemPoseOf(e.human?.itemTransferV1,e.human?.heldItemsV1,world.tick,DT);
       v.handHold=e.human?.handHold;v.rps=e.human?.rps;v.hgTick=world.tick;v.hgDt=DT;{const q=v.handHold?world.entities[v.handHold.with]:undefined;v.holdP=q?new THREE.Vector3(...q.pose.p):undefined;}
@@ -866,7 +895,9 @@ export class HumanViews {
       if(!f.bodyModel&&v.rig.template===wanted)this.syncAppearance(v,f.publicSoulKey);
       const walkDur = v.rig.walk.getClip().duration, idleDur = v.rig.idle.getClip().duration;
       v.activity = act;
-      if(v.handActuator&&!f.handActuator)v.lastHandActuator=v.handActuator;else if(f.handActuator)v.lastHandActuator=undefined;
+      if(this.idleReachHandoff&&'priorActuator' in f)v.lastHandActuator=f.priorActuator??undefined;else if(v.handActuator&&!f.handActuator)v.lastHandActuator=v.handActuator;else if(f.handActuator&&!this.idleReachHandoff)v.lastHandActuator=undefined;
+      if(this.idleReachHandoff&&'idleInterruptAt' in f)v.idleInterruptAt=f.idleInterruptAt??undefined;
+      if(this.idleReachHandoff&&'idleFadeMotion' in f)v.idleFadeMotion=f.idleFadeMotion??undefined;
       v.handActuator=f.handActuator;v.handActuatorTime=f.handActuatorTime;v.watering=f.watering;v.wateringTime=f.wateringTime;v.letGo=f.letGo;v.letGoTime=f.letGoTime;v.cup=f.cup;v.cupTime=f.cupTime;v.transfer=f.transfer;v.transferTime=f.transferTime;
       v.itemPose=f.itemPose;
       v.sleepPose = f.sleepPose;
@@ -1030,11 +1061,14 @@ export class HumanViews {
     // while the arm travels from it to the target. It was cut on the first actuator frame (engine hands, idleBlend 0): the
     // hand dropped from the hair to the hip in one frame, 0.747 m per 50 ms (entry 33, neon switch-off).
     const reachS = v.handActuator ? (v.handActuatorTime ?? tSec) - v.handActuator.startTick * DT : 0;
-    const handoff = v.handActuator ? handActuatorFrame(v.handActuator, reachS) : null;
+    const gestureMotion=this.idleReachHandoff?(v.idleFadeMotion??v.handActuator??v.lastHandActuator):v.handActuator;
+    const gestureReachS=gestureMotion?(v.handActuatorTime??tSec)-gestureMotion.startTick*DT:reachS;
+    const nativeHandoff = v.handActuator ? handActuatorFrame(v.handActuator, reachS) : null;
+    const handoff = nativeHandoff && this.idleReachHandoff ? {...nativeHandoff,idleBlend:actuatorIdleBlend(v.handActuator!,reachS)} : nativeHandoff;
     // Over GESTURE_FADE, not the 0.65 s reach: folded arms opening in 0.65 s still swung the free hand 0.13 m per 50 ms (0.084 over 1.2 s).
     const transferS = v.transfer ? (v.transferTime ?? tSec) - v.transfer.startTick * DT : -1;
     // Soul Actions 34: an idle gesture fades out the same way over a hand-held item's reach (take_item / put_item)
-    const reachFade = v.handActuator && v.handActuator.abortedAt === undefined && reachS >= 0 && reachS < GESTURE_FADE ? 1 - smooth(reachS / GESTURE_FADE)
+    const reachFade = gestureMotion && (this.idleReachHandoff||gestureMotion.abortedAt===undefined) && gestureReachS >= 0 && gestureReachS < GESTURE_FADE ? 1 - smooth(gestureReachS / GESTURE_FADE)
       : v.transfer && transferS >= 0 && transferS < GESTURE_FADE ? 1 - smooth(transferS / GESTURE_FADE) : 0;
     // Idle variety also plays on into a walk start (scaled by 1 − walk weight, so it fades out with the walk's ease).
     // An opted-in item transfer (lantern, bowl) keeps its own clock (presentation.ts): idle variety plays on through its
@@ -1077,9 +1111,11 @@ export class HumanViews {
     if (relS >= ITEM_RECOVERY_SECONDS + TRANSFER_HANDOFF) v.itemReleasedAt = undefined;
     // Entry 38: an actuator that hands the body over soon after its arm is down (a board stroke and its step back) keeps
     // the idle handoff fading in after it ends, instead of switching idle variety on at full weight (a 0.31 m palm jump, take 5)
-    const after = !handoff && v.lastHandActuator ? handActuatorFrame(v.lastHandActuator, (v.handActuatorTime ?? tSec) - v.lastHandActuator.startTick * DT).idleBlend : 1;
-    if (after >= 1) v.lastHandActuator = undefined;
-    const idleHandoff = Math.min(putReturn, letGoing ? letIdle : v.itemPose ? (letGone && v.itemPose.take ? 0 : v.itemPose.idleBlend) : (handoff ? (reachS < 0 ? 1 : Math.max(handoff.idleBlend, fadeOut)) : v.transfer?.endTick !== undefined ? smooth(((v.transferTime ?? tSec) - v.transfer.endTick * DT) / TRANSFER_HANDOFF) : v.transfer && transferS >= 0 ? fadeOut : singFade > 0 ? singFade : after));
+    const priorHandoff = !handoff && v.lastHandActuator ? handActuatorFrame(v.lastHandActuator, (v.handActuatorTime ?? tSec) - v.lastHandActuator.startTick * DT) : null;
+    const after = priorHandoff && this.idleReachHandoff ? actuatorIdleBlend(v.lastHandActuator!, (v.handActuatorTime ?? tSec)-v.lastHandActuator!.startTick*DT) : priorHandoff?.idleBlend ?? 1;
+    if (after >= 1 && (!this.idleReachHandoff || !v.lastHandActuator || (v.handActuatorTime??tSec)-v.lastHandActuator.startTick*DT>actuatorArmDownSeconds(v.lastHandActuator)+ACTUATOR_GESTURE_HISTORY_SECONDS)) v.lastHandActuator = undefined;
+    const idleHandoff0 = Math.min(putReturn, letGoing ? letIdle : v.itemPose ? (letGone && v.itemPose.take ? 0 : v.itemPose.idleBlend) : (handoff ? (reachS < 0 ? 1 : Math.max(handoff.idleBlend, fadeOut)) : v.transfer?.endTick !== undefined ? smooth(((v.transferTime ?? tSec) - v.transfer.endTick * DT) / TRANSFER_HANDOFF) : v.transfer && transferS >= 0 ? fadeOut : singFade > 0 ? singFade : this.idleReachHandoff&&priorHandoff?Math.max(after,fadeOut):after));
+    const idleHandoff = this.idleReachHandoff && gestureMotion && gestureReachS>=0 && gestureReachS<GESTURE_FADE ? Math.min(idleHandoff0,fadeOut) : idleHandoff0;
     v.idleLast = idleHandoff;
     // Idle variety (Idle_Neutral, fold arms, look around) fades in from when the body came to rest: switched on at full
     // weight it raised or crossed the arms in one frame whenever a walk ended inside a person's variety window
@@ -1088,9 +1124,20 @@ export class HumanViews {
     const waveRestOnset=v.waveRestAge===undefined?1:smooth(v.waveRestAge/IDLE_VARIETY_ONSET);
     const restOnset = waveActive ? waveRestOnset : singFade > 0 ? v.singOnset! : normalRestOnset;
     if (v.activity === 'idle') v.singOnset = restOnset; else if (v.activity !== 'sing') v.singOnset = undefined;
-    const neutralW = extra.idleNeutral && idleFree ? (1 - w) * neutralWeight(h.name, gT) * idleHandoff * restOnset * (1 - hgOff) * idleShare * gameShare * (waveActive?1-waveBlend:1) : 0;
-    const variant = idleFree ? idleVariant(h.name, gT) : null, variantA = variant ? libAction(v.rig, variant.clip) : null;
-    const variantW = variantA ? (1 - w - neutralW) * variant!.w * idleHandoff * restOnset * (1 - hgOff) * idleShare * gameShare * (waveActive?1-waveBlend:1) : 0;
+    const interruptedBy = this.idleReachHandoff ? gestureMotion : undefined;
+    if(interruptedBy){const at=interruptedBy.startTick*DT+actuatorArmDownSeconds(interruptedBy);if(at<=gT&&(v.idleInterruptAt===undefined||at>v.idleInterruptAt))v.idleInterruptAt=at;}
+    const interruptedAt=this.idleReachHandoff?v.idleInterruptAt:undefined;
+    const gestureStart = interruptedBy?.startTick===undefined?undefined:interruptedBy.startTick*DT+actuatorArmDownSeconds(interruptedBy);
+    const gestureTime = this.idleReachHandoff && reachFade>0 && gestureMotion ? gestureMotion.startTick*DT : gT;
+    const idleVisible=interruptedAt===undefined||(reachFade>0&&gestureStart===interruptedAt),gestureHash=interruptedAt===undefined?0:hashId(h.name);
+    const neutralAllowed=idleVisible||!interruptedGesture(gestureHash,gT,interruptedAt!,false);
+    const variantAllowed=idleVisible||!interruptedGesture(gestureHash,gT,interruptedAt!,true);
+    const neutralW = extra.idleNeutral && idleFree && neutralAllowed ? (1 - w) * neutralWeight(h.name, gestureTime) * idleHandoff * restOnset * (1 - hgOff) * idleShare * gameShare * (waveActive?1-waveBlend:1) : 0;
+    const variant = idleFree && variantAllowed ? idleVariant(h.name, gestureTime) : null, variantA = variant ? libAction(v.rig, variant.clip) : null;
+    // A common actuator gate fades the attained neutral/variant mixture once.
+    // Subtracting the already-faded neutral share reintroduced variety during its fade.
+    const neutralBase = this.idleReachHandoff && gestureMotion && extra.idleNeutral && idleFree && neutralAllowed ? (1-w)*neutralWeight(h.name,gestureTime) : neutralW;
+    const variantW = variantA ? (1 - w - neutralBase) * variant!.w * idleHandoff * restOnset * (1 - hgOff) * idleShare * gameShare * (waveActive?1-waveBlend:1) : 0;
     v.variety = neutralW + variantW;
     // A walk starting out of an idle gesture: the legs take the walk's own ease (WALK_EASE, 0.55 s), but folded arms opening
     // that fast swung a hand 0.28 m per 50 ms. On the arms alone (arms-only copies of the gesture clips) the gesture fades
@@ -1100,7 +1147,7 @@ export class HumanViews {
     const gv = idleVariant(h.name, tSec);
     if ((v.activity === 'idle' || GAIT_ACTS.has(v.activity)) && v.walkAge !== undefined && v.walkAge < GESTURE_FADE && b.sitW === 0 && !engineHands && freeBody && !lib.cur) {
       const g = 1 - smooth(v.walkAge / GESTURE_FADE), on = v.restAgeAtWalk === undefined ? 1 : smooth(Math.min(1, v.restAgeAtWalk / IDLE_VARIETY_ONSET));
-      const n0 = extra.idleNeutral ? neutralWeight(h.name, tSec) * on : 0, v0 = gv && libAction(v.rig, gv.clip) ? (1 - n0) * gv.w * on : 0;
+      const n0 = extra.idleNeutral && neutralAllowed ? neutralWeight(h.name, tSec) * on : 0, v0 = gv && variantAllowed && libAction(v.rig, gv.clip) ? (1 - n0) * gv.w * on : 0;
       // entry 44: the gesture level at the walk start is what was shown then: a gesture let go before setting off (let-go,
       // then the walk) is not put back on the arms (folded arms reappeared at full weight in one frame as she set off)
       if (v.walkKey === undefined || v.walkAge < v.walkKey - 0.05) v.handoffAtWalk = v.walkAge < 0.25 ? v.idleLast ?? 1 : 1;
@@ -1129,9 +1176,9 @@ export class HumanViews {
     // entry 42 (take 6): a gesture fading out under a hand actuator's reach also slows its own clip to a stop over the fade:
     // a look-around raising the hand kept moving it at its own speed while the arm reached for a drawer knob (0.095 m per 50 ms
     // together). Clip time = the reach start + ∫(1 − fade) — the same pose and speed at the reach start, at rest by its end.
-    const slowed = reachFade > 0 ? heldClip(reachS, GESTURE_FADE) - reachS : 0;   // (weight 0 once the fade is over: back on the clock unseen)
-    if (variantA) libAt(gestureAction(v.rig, variant!.clip), variantW, variantTime(variant!.clip, h.name, gT + slowed));
-    if (neutralW > 0) libAt(gestureAction(v.rig, 'Idle_Neutral'), neutralW, gT);
+    const slowed = reachFade > 0 && !this.idleReachHandoff ? heldClip(reachS, GESTURE_FADE) - reachS : 0;   // (weight 0 once the fade is over: back on the clock unseen)
+    if (variantA) libAt(gestureAction(v.rig, variant!.clip), variantW, variantTime(variant!.clip, h.name, this.idleReachHandoff&&reachFade>0?gestureTime:gT+slowed));
+    if (neutralW > 0) libAt(gestureAction(v.rig, 'Idle_Neutral'), neutralW, this.idleReachHandoff?gestureTime:gT);
     if (neutralW + variantW > 1e-4) libAt(idleBodyAction(v.rig), neutralW + variantW, b.idleT);
     if (armsN > 0) libAt(armsAction(v.rig, 'Idle_Neutral'), armsN, tSec);
     if (armsV > 0 && gv) libAt(armsAction(v.rig, gv.clip), armsV, variantTime(gv.clip, h.name, tSec + slowed));
@@ -1333,7 +1380,7 @@ export class HumanViews {
       } } : expression?.kind === 'planted-dance' ? {girdle:0,pole:arm=>V().copy(_right).multiplyScalar(-arm.side*(.35+expression.elbowLift)).addScaledVector(UP,-.5+expression.elbowLift).addScaledVector(_fwd,.15)} : undefined;
       // Blend the actual arm bones to/from the existing idle/walk clip; lowering a
       // Cartesian hand target alone leaves the elbow/shoulder snapping at release.
-      const actW=v.handActuator?handActuatorFrame(v.handActuator,(v.handActuatorTime??tSec)-v.handActuator.startTick*DT).weight:undefined;
+      const actW=v.handActuator?(this.idleReachHandoff?actuatorPoseWeight(v.handActuator,(v.handActuatorTime??tSec)-v.handActuator.startTick*DT):handActuatorFrame(v.handActuator,(v.handActuatorTime??tSec)-v.handActuator.startTick*DT).weight):undefined;
       const weight=v.itemPose?.weight??actW??1;
       // entry 42: carrying in one hand while the free hand works a drawer or door: that hand takes the actuator's clock,
       // the carrying hand the item's (one weight for both popped the free arm onto the knob in one frame)
