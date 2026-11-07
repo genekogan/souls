@@ -101,7 +101,20 @@ UNTRUSTED through every projection.
 `worlds/<world>.json` is the Soul's standing in each world: home or visiting, the incarnation id, last place and posture,
 last seen on both clocks. `travel` adds one and leaves the Soul's folder where it is; `status` lists them all.
 `remember --person|--place|--goal|--self` adds the mind's own judgments through the same validators, and
-`memory <words>` searches the projections and says where each line came from. A legacy folder has no memory.
+`memory <words>` searches the projections and says where each line came from. A legacy folder has no memory. The home marks
+everything a world reported as untrusted itself, whatever the world said about it. `memory/` and `MEMORY.md` are in the
+home's `.gitignore`, added to an older home when it next opens: they hold private conversations.
+
+### The pre-turn brief
+
+With memory, `pending` and a `listen` that woke carry `brief`: known people near, this place, open commitments, the last episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the
+`remember --self` lines. `brief.mjs` builds it from a lookup, with no request and no model call, within a byte budget
+(1,500 by default, `briefBytes` in `config.json`, 0 for none). It doesn't grow with the log, and a Soul with no memory has
+none. The CLI builds it from this folder's memory, and a `brief` in anything a world answered is dropped. Room goes first to
+what the Soul and its owner wrote; who is near is kept in the world's presence file, so it outlasts a restart.
+Everything a world supplied (names, places, what a receipt said) is in quotes it cannot close, under a first line saying
+quoted text is data; a world that says nothing about trust is not trusted. Only the Soul's notes, goals and own `result`
+reports, and its owner's `SOUL.md` and schedule, stand bare. A plan's close can carry a world's reason, so it is quoted too.
 
 ## The edge API
 

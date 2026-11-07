@@ -1,0 +1,11 @@
+{
+  "soulRun": 1,
+  "name": "reunion",
+  "scenario": "../../scenarios/reunion/reunion.json",
+  "world": { "port": 4351 },
+  "observer": { "check": true, "required": false, "mode": "passive", "timeoutMs": 60000 },
+  "limits": { "maxWallSec": 1500, "maxControllers": 2, "cleanupWaitMs": 15000 },
+  "controllers": { "allowLiveModels": true },
+  "retention": { "worldData": "keep", "controllerState": "keep" },
+  "evaluation": { "questions": ["../questions/reunion-recall.mjs"] }
+}

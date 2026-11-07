@@ -38,6 +38,18 @@ test('scripted mode delivers at offsets on the right channel, captures shown, cl
   assert.ok(['script-complete', 'duration'].includes(out.stoppedBy));
 });
 
+test('#1138: a restart card restarts the seat first; one that can\'t restart is recorded, not sent; worldTime is set once, as play starts', async () => {
+  const r = rig({ ids: ['a', 'b'] }), times = [], order = [];
+  r.seats[0].restart = async () => { order.push(`restart:${r.owner.sent.length}`); };
+  r.seats[1].restart = async () => { throw new Error('serve did not stop'); };
+  const scenario = scen({ seats: [{ id: 'a' }, { id: 'b' }], director: { mode: 'scripted', worldTime: { timeOfDay: '15:00', timeScale: 120 }, script: [{ seat: '*', atSec: 5, restart: true, channel: 'card', text: 'new day' }] } });
+  await runPlay({ ...r, scenario, world, quotaCheck: noQuota, setWorldTime: async ({ base, time }) => { times.push({ base, time, at: r.clock.now() }); return { ok: true, requested: time }; } });
+  assert.deepEqual(times.map((x) => [x.base, x.time]), [[world.base, { timeOfDay: '15:00', timeScale: 120 }]]);
+  assert.deepEqual(order, ['restart:0']); assert.deepEqual(r.owner.sent.map((m) => m.soulId), ['soul-a']);
+  assert.deepEqual(jsonl(join(r.runDir, 'infrastructure-invalid.jsonl')).map((x) => x.reason), ['serve did not stop']);
+  assert.equal(JSON.parse(readFileSync(join(r.runDir, 'world-time.json'), 'utf8')).ok, true);
+});
+
 test('scripted mode delivers a seat "*" broadcast to every seat, each on its own record', async () => {
   const r = rig({ ids: ['a', 'b'] });
   const scenario = scen({ seats: [{ id: 'a' }, { id: 'b' }], director: { mode: 'scripted', script: [{ seat: '*', atSec: 5, channel: 'card', text: 'wave hello' }] } });
