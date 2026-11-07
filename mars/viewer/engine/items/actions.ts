@@ -10,7 +10,7 @@
 import { z } from 'zod';
 import {insideLength,insidePoint,insideReachSeconds,ITEM_PUT_RECOVERY_SECONDS,ITEM_REACH_SECONDS,ITEM_RECOVERY_SECONDS,type InsideVia} from './presentation.ts';
 import { handOver } from './handover.ts';
-import { angleDelta, clamp, heading, q6, rot2, wrapAngle, type Vec3 } from '../core/math.ts';
+import { angleDelta, clamp, heading, hypot, q6, rot2, wrapAngle, type Vec3 } from '../core/math.ts';
 import type { ActionDef, Diagnostic, StepResult } from '../actions/types.ts';
 import { DT, type Runtime } from '../runtime/runtime.ts';
 import type { Entity } from '../world/types.ts';
@@ -148,7 +148,7 @@ export const holdItems: ActionDef<{ actor: string }, null, HoldExec> = {
 
 // ---- take_item / put_item ----
 
-type TransferParams = { actor: string; item: string; hand?: Hand; surfaceSlot?: string };
+type TransferParams = { actor: string; item: string; hand?: Hand; surfaceSlot?: string; reachPolicy?: 'short-station-v1' };
 type Dest = { slot: SurfaceSlot; ownerPose: Entity['pose']; ownerDef: string } | { ground: Vec3 };
 type TransferProgram = { hand: Hand; station?: Station; target: Vec3; dest?: Dest; inside?: SurfaceSlot };
 type TransferExec = {
@@ -253,7 +253,17 @@ function planTake(rt: Runtime, p: TransferParams) {
   } else if (s?.kind !== 'ground') return fail('item.unsupported-source', `${it.id} is ${whereIs(rt.world, it)}; only items on a surface or the ground can be taken`, [it.id]);
   const target = graspPoint(it);
   const stored = owner ? storedIn(rt.world, it) : null;
-  const st = stored ? insideStation(owner!, stored) : fromHere(a, target) ?? reachStation(rt, a, target, owner, `${it.id} (${whereIs(rt.world, it)})`, presentedDepth(it));
+  let st: Station | Diagnostic;
+  if (stored) st = insideStation(owner!, stored);
+  else if (p.reachPolicy === 'short-station-v1' && owner && presentedDepth(it) !== undefined) {
+    // The nearby shortcut must not bypass the presented item's existing comfortable side, and an unavailable
+    // comfort station (no room, no route) never refuses a contact the shortcut still allows. With neither, the
+    // station's named refusal stands; never gain reach by moving the drawn root.
+    const preferred = reachStation(rt, a, target, owner, `${it.id} (${whereIs(rt.world, it)})`, presentedDepth(it));
+    const here = fromHere(a, target);
+    if ('code' in preferred) st = here ?? preferred;
+    else st = here && (reachOf(a, target) <= hypot(target[0] - preferred.p[0], target[2] - preferred.p[1]) + 1e-9 || checkStations(rt, [{ actor: p.actor, p: preferred.p, level: a.human!.level }])) ? here : preferred;
+  } else st = fromHere(a, target) ?? reachStation(rt, a, target, owner, `${it.id} (${whereIs(rt.world, it)})`, presentedDepth(it));
   if ('code' in st) return { ok: false as const, diagnostic: { ...st, subjects: [...new Set([...(st.subjects ?? []), it.id])] } };
   const here = Math.abs(st.p[0] - a.pose.p[0]) < 0.05 && Math.abs(st.p[1] - a.pose.p[2]) < 0.05;
   if (!here) {
@@ -511,7 +521,7 @@ export const takeItem = transfer(
   'take',
   'take_item',
   `A person takes a small hand-held item (bowl, spoon, plate, cup, pot) into one hand: walks to a standing point at the table edge within ${0.6} m reach of it (or beside it on the ground), reaches (${REACH_TIME} s, activity reach), grasps, draws the hand back. Refused item.held-by, item.hand-full, item.unreachable (naming blockers), item.not-handheld.`,
-  z.strictObject({ actor: id80, item: id80, hand: handSchema }) as z.ZodType<TransferParams>,
+  z.strictObject({ actor: id80, item: id80, hand: handSchema, reachPolicy: z.literal('short-station-v1').optional() }) as z.ZodType<TransferParams>,
 );
 
 export const putItem = transfer(
