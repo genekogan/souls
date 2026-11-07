@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {openJournal} from './journal.mjs';
 import {MAX_RESPONSE_BYTES,RESPONSE_DELIVERY_BYTES} from './responses.mjs';
 import {createHash} from 'node:crypto';
-function fixture(t){const directory=mkdtempSync(join(tmpdir(),'sim-control-'));let time=1000;const handles=[];t.after(()=>{for(const h of handles)h.close();rmSync(directory,{recursive:true,force:true})});return {advance(ms){time+=ms},open(){const j=openJournal(directory,{worldId:'w',soulId:'s',now:()=>time});handles.push(j);return j.control;}};}
+function fixture(t){const directory=mkdtempSync(join(tmpdir(),'souls-control-'));let time=1000;const handles=[];t.after(()=>{for(const h of handles)h.close();rmSync(directory,{recursive:true,force:true})});return {advance(ms){time+=ms},open(){const j=openJournal(directory,{worldId:'w',soulId:'s',now:()=>time});handles.push(j);return j.control;}};}
 test('expired owner cannot renew, write checkpoint or release a successor',t=>{
  const f=fixture(t),a=f.open(),b=f.open(),old=a.claim('old',1000);assert.throws(()=>b.claim('other'),{message:'Controller already active',code:'CONTROLLER_BUSY',expiresAt:2000,transient:true});f.advance(1001);const fresh=b.claim('new');assert.equal(fresh.generation,2);assert.throws(()=>a.renew(old),/lease lost/);assert.throws(()=>a.save(old,0,{}),/lease lost/);assert.throws(()=>a.release(old),/lease lost/);b.assertOwner(fresh);
 });

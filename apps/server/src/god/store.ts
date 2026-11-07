@@ -3,8 +3,8 @@
 // (meshes, textures) are NOT stored here; they go to the content-addressed
 // file store (M5). Tables carry world_id first and a composite key.
 import type { Db } from '../db.ts';
-import { WorldModel, type Diff, type Op, type StoredDef, type Entity, type Accepted, type Result } from '@sim/world-compiler';
-import { CREATION_LIMITS as L } from '@sim/generators';
+import { WorldModel, type Diff, type Op, type StoredDef, type Entity, type Accepted, type Result } from '@souls/world-compiler';
+import { CREATION_LIMITS as L } from '@souls/generators';
 import { buildBodyFailure, buildFailure, type BuildBody } from './builds.ts';
 import type { BuildReceipt } from './build-integrity.ts';
 import type { DefOrigin } from './parts.ts';

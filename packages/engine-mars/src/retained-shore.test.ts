@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf,type Engine} from '@sim/engine-contract';
+import {hashOf,type Engine} from '@souls/engine-contract';
 import {retainedCommonsShoreFactory} from './retained-shore-engine.ts';
 import {commonsKitchenFactory} from './commons-kitchen-engine.ts';
 import {COMMONS_KITCHENS} from './commons-kitchen.ts';

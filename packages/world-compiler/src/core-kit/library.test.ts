@@ -4,7 +4,7 @@
 import { triBudget } from '../vocab/index.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { kitArgs, kitPhysics } from '@sim/generators';
+import { kitArgs, kitPhysics } from '@souls/generators';
 import { CORE_KIT, WorldModel, applyBatch, defSchema, type Refused } from '../index.ts';
 import { FAMILY_KITS } from './index.ts';
 import { readFileSync } from 'node:fs';

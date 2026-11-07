@@ -52,7 +52,7 @@ test('globs: ** crosses directories, * does not, a trailing / takes the subtree'
 });
 
 test('pull downloads, verifies, caches, links and is idempotent; a wrong body fails without landing', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'sim-assets-test-'));
+  const dir = await mkdtemp(join(tmpdir(), 'souls-assets-test-'));
   try {
     const good = Buffer.from('good bytes'), bad = Buffer.from('bad bytes!');
     const sha = b => createHash('sha256').update(b).digest('hex');

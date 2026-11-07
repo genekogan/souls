@@ -33,7 +33,7 @@ const INIT = `(() => {
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) P.longtasks.push([e.startTime, e.duration]); }).observe({ type: 'longtask', buffered: true }); } catch {}
   const tick = (t) => { if (P.recording) P.frames.push(t); requestAnimationFrame(tick); }; requestAnimationFrame(tick);
   const poll = setInterval(() => {
-    const w = window.__simEntity;
+    const w = window.__soulsEntity;
     if (w && P.renderer !== w.renderer) {
       P.renderer = w.renderer; P.installs = (P.installs || 0) + 1;
       const r = w.renderer, orig = r.render.bind(r), gl = r.getContext();
@@ -58,7 +58,7 @@ const INIT = `(() => {
 })();`;
 
 const sceneStats = () => {
-  const w = window.__simEntity, r = w.renderer, P = window.__perf;
+  const w = window.__soulsEntity, r = w.renderer, P = window.__perf;
   let meshes = 0, visibleMeshes = 0, casters = 0, instanced = 0, instances = 0, skinned = 0, lights = 0, shadowLights = [];
   w.scene.traverse((o) => {
     if (o.isMesh) { meshes++; let v = true; for (let p = o; p; p = p.parent) if (!p.visible) { v = false; break; } if (v) { visibleMeshes++; if (o.castShadow) casters++; } if (o.isInstancedMesh) { instanced++; instances += o.count; } if (o.isSkinnedMesh) skinned++; }
@@ -121,7 +121,7 @@ try {
     let lastTri = -1, stableSince = Date.now(), settledAt = null;
     for (;;) {
       await page.waitForTimeout(250);
-      const s = await page.evaluate(() => ({ active: !!window.__simEntity?.layer?.active, tri: window.__perf.lastInfo?.triangles ?? -1, marks: window.__perf.marks, unfinished: Object.values(window.__assetStages ?? {}).filter((s) => s !== 'done').length, queue: window.__simLoadQueueStats?.() ?? null }));
+      const s = await page.evaluate(() => ({ active: !!window.__soulsEntity?.layer?.active, tri: window.__perf.lastInfo?.triangles ?? -1, marks: window.__perf.marks, unfinished: Object.values(window.__assetStages ?? {}).filter((s) => s !== 'done').length, queue: window.__soulsLoadQueueStats?.() ?? null }));
       if (s.tri !== lastTri) { lastTri = s.tri; stableSince = Date.now(); }
       if (s.active && s.tri > 0 && !s.unfinished && !(s.queue?.pending || s.queue?.activeCopies || s.queue?.active) && !pendingGlbs.size && Date.now() - lastGlbActivity > 7000 && Date.now() - stableSince > 3000) { settledAt = Date.now() - tNav; break; }
       if (Date.now() - tNav > settleMax * 1000) break;
@@ -140,9 +140,9 @@ try {
     phase = 'still';
     const still = await window_('still', () => page.waitForTimeout(seconds * 1000));
     const stats = await page.evaluate(sceneStats);
-    stats.assets = await page.evaluate(() => { const w=window.__simEntity, stages=window.__assetStages??{}, shas=new Set(); const m=w.layer.model; if(m)for(const e of m.entities.values()){const d=m.resolvedDef(e.def);if(d?.make?.kind==='mesh'&&d.make.asset)shas.add(d.make.asset);} return {expected:shas.size,done:[...shas].filter(s=>stages[s]==='done').length,missing:[...shas].filter(s=>stages[s]!=='done')}; });
-    stats.textureStorage = await page.evaluate(() => window.__textureStorage(window.__simEntity.scene));
-    stats.gpuRenderer = await page.evaluate(() => { const gl = window.__simEntity.renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); });
+    stats.assets = await page.evaluate(() => { const w=window.__soulsEntity, stages=window.__assetStages??{}, shas=new Set(); const m=w.layer.model; if(m)for(const e of m.entities.values()){const d=m.resolvedDef(e.def);if(d?.make?.kind==='mesh'&&d.make.asset)shas.add(d.make.asset);} return {expected:shas.size,done:[...shas].filter(s=>stages[s]==='done').length,missing:[...shas].filter(s=>stages[s]!=='done')}; });
+    stats.textureStorage = await page.evaluate(() => window.__textureStorage(window.__soulsEntity.scene));
+    stats.gpuRenderer = await page.evaluate(() => { const gl = window.__soulsEntity.renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); });
     if (/swiftshader|llvmpipe|software/i.test(stats.gpuRenderer)) throw new Error(`Hardware GPU required: ${stats.gpuRenderer}`);
     await page.screenshot({ path: resolve(out, `${tag}.png`) });
     const cx = Math.round(W * 0.5), cy = Math.round(H * 0.55);
@@ -173,13 +173,13 @@ try {
     }
     if (mobile) {
       phase = 'phone-touch';
-      const beforeTouch = await page.evaluate(() => window.__simEntity.camera.position.toArray());
+      const beforeTouch = await page.evaluate(() => window.__soulsEntity.camera.position.toArray());
       const ty = Math.round(H*.65), tx = Math.round(W*.45);
       await cdp.send('Input.dispatchTouchEvent', { type:'touchStart', touchPoints:[{x:tx,y:ty}] });
       for(let k=1;k<=12;k++){ await cdp.send('Input.dispatchTouchEvent', { type:'touchMove', touchPoints:[{x:tx+k*5,y:ty-k*2}] }); await page.waitForTimeout(16); }
       await cdp.send('Input.dispatchTouchEvent', { type:'touchEnd', touchPoints:[] });
       await page.waitForTimeout(300);
-      const afterTouch = await page.evaluate(() => window.__simEntity.camera.position.toArray());
+      const afterTouch = await page.evaluate(() => window.__soulsEntity.camera.position.toArray());
       phoneInput = { touchDragMovedM: Math.hypot(...afterTouch.map((v,i)=>v-beforeTouch[i])) };
       // This fixture speech is an explicit API action with fake minds, after the timing windows.
       // Pairing credentials stay in memory and are never written to evidence.
@@ -225,7 +225,7 @@ try {
       } else speechCheck = {unverified:'Start a fixture with one owned resident named Phone probe to test real speech.'};
     }
     } catch (error) { speechCheck={...speechCheck,error:String(error).split('\n')[0]}; await page.screenshot({path:resolve(out,`${tag}-ui-error.png`)}); }
-    const r = { world: url, phoneControls, phoneInput, speechCheck, mobile, cpuThrottle: throttle, network: measuredNetwork, ui, label, size: `${W}x${H}`, dpr, load1m: +load0.toFixed(1), timing, load, still, orbit, stats, afterOrbitInfo: after.info, gpuExt: after.gpuExt, rendererInstalls: after.installs, settled: settledAt !== null && stats.assets.missing.length === 0, queue: await page.evaluate(() => window.__simLoadQueueStats?.()), requestsFailed, errors, errorDetails, consoleErrors };
+    const r = { world: url, phoneControls, phoneInput, speechCheck, mobile, cpuThrottle: throttle, network: measuredNetwork, ui, label, size: `${W}x${H}`, dpr, load1m: +load0.toFixed(1), timing, load, still, orbit, stats, afterOrbitInfo: after.info, gpuExt: after.gpuExt, rendererInstalls: after.installs, settled: settledAt !== null && stats.assets.missing.length === 0, queue: await page.evaluate(() => window.__soulsLoadQueueStats?.()), requestsFailed, errors, errorDetails, consoleErrors };
     results.push(r);
     writeFileSync(resolve(out, 'report.json'), JSON.stringify(results, null, 1));
     console.log(`${tag} load ${r.load1m} | first ${timing.firstEntityFrameMs} live ${timing.liveMs} settled ${timing.settledMs} card ${timing.cardDoneMs} ms | load: max ${load.frameMax} >50:${load.over50} >100:${load.over100} lt ${load.longtaskMs}ms afterCard >50:${load.afterCard50} max ${load.afterCardMax} glb ${load.glbAtCard}/${load.glbAll} ${load.glbMBAtCard}/${load.glbMB}MB last ${load.lastGlbEndMs} | still ${still.fps} fps p50 ${still.frameP50} p95 ${still.frameP95} >50:${still.over50} cpu ${still.renderCpuP50}/${still.renderCpuP95} gpu ${still.gpuP50}/${still.gpuP95} | orbit ${orbit.fps} fps p95 ${orbit.frameP95} >50:${orbit.over50} gpu ${orbit.gpuP50}/${orbit.gpuP95} | draws ${stats.info?.calls} tris ${stats.info?.triangles} prog ${stats.programs} geo ${stats.geometries} tex ${stats.textures} meshes ${stats.visibleMeshes}/${stats.meshes} casters ${stats.casters} heap ${stats.heapMB} MB${errors.length ? ' errors ' + errors.length : ''}`);

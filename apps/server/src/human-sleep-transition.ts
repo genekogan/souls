@@ -1,5 +1,5 @@
 import {withStaticGridReadCache} from '../../../mars/viewer/engine/spatial/grid.ts';
-import type {Program,Engine} from '@sim/engine-contract';
+import type {Program,Engine} from '@souls/engine-contract';
 import type {WorldHost,Mind} from './world.ts';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
 type SleepStopPreview=(program:Program)=>string|null;

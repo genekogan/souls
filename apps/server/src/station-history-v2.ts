@@ -1,6 +1,6 @@
 // Opt-in public fact fold. No models, selection, clock or rendering.
 import { stationCueV2Schema,stationAnchorV2Schema,stationEndTick,acceptStationCuePhysicalV2,acceptStationAnchorV2,
-  initialStationPhysicalHeadV1,type StationCueVariant,type StationAnchorVariant,type StationPhysicalHeadV1,type LogEvent } from '@sim/protocol';
+  initialStationPhysicalHeadV1,type StationCueVariant,type StationAnchorVariant,type StationPhysicalHeadV1,type LogEvent } from '@souls/protocol';
 import type { StationHistoryV1 } from './station-history.ts';
 export type StationHistoryV2={cues:{cue:StationCueVariant;physical:StationPhysicalHeadV1}[];anchors:StationAnchorVariant[];lastFactSeq:number};
 export function initialStationHistoryV2(old:StationHistoryV1):StationHistoryV2 {

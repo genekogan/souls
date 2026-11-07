@@ -1,7 +1,7 @@
 // Observation only: Toy retains its rules, hashes and checkpoint format.
 // A separate bounded event buffer feeds the recorder; no Mars Runtime is constructed.
-import {captureRenderScene,type Engine,type EngineFactory} from '@sim/engine-contract';
-import { toyFactory } from '@sim/engine-toy';
+import {captureRenderScene,type Engine,type EngineFactory} from '@souls/engine-contract';
+import { toyFactory } from '@souls/engine-toy';
 import { TakeRecorder, type TakeSource } from '../../../mars/viewer/engine/take/recorder.ts';
 import type { Take } from '../../../mars/viewer/engine/take/types.ts';
 

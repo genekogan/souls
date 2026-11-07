@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { CORE_KIT, WorldModel, applyBatch, coreRef, type Entity, type StoredDef } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, coreRef, type Entity, type StoredDef } from '@souls/world-compiler';
 import furniture from '../../../../../packages/world-compiler/src/core-kit/furniture.json' with { type: 'json' };
 import { MaterialLib } from '../materials.ts';
 import { meshFor, type MeshCtx } from '../registry.ts';

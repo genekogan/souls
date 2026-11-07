@@ -1,7 +1,7 @@
-import {marsFactory,GREEN_FIELD_WORLD,LITTLE_MARTIANS_WORLD} from '@sim/engine-mars';
+import {marsFactory,GREEN_FIELD_WORLD,LITTLE_MARTIANS_WORLD} from '@souls/engine-mars';
 import test from 'node:test';import assert from 'node:assert/strict';
-import {authoredBoundaryDeclarationV1,authoredBoundariesDeclarationV1Schema,captureRenderScene,parseRenderSceneCapture,hashOf,authoredBoundaryBoxesAtPublicationV1} from '@sim/engine-contract';
-import {kernelHash} from '@sim/kernel';import {fixture,accept,factory,invite} from '../test/native-owner-fixture.ts';import {WorldHost} from './world.ts';
+import {authoredBoundaryDeclarationV1,authoredBoundariesDeclarationV1Schema,captureRenderScene,parseRenderSceneCapture,hashOf,authoredBoundaryBoxesAtPublicationV1} from '@souls/engine-contract';
+import {kernelHash} from '@souls/kernel';import {fixture,accept,factory,invite} from '../test/native-owner-fixture.ts';import {WorldHost} from './world.ts';
 import {sceneForWorld} from '../../../mars/viewer/engine/spatial/edits.ts';
 const lifecycleFactory=await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true});
 const source='synthetic-supported-ground-prism/1';

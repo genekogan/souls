@@ -1,4 +1,4 @@
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {itemEntity} from '../../../mars/viewer/engine/items/model.ts';
 import type {Entity,Region} from '../../../mars/viewer/engine/world/types.ts';
 // Finite prepared meals and ground sleeping areas on the retained commons.

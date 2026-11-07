@@ -1,8 +1,8 @@
 // Named station fold. Public facts only; no selection, models or live actors.
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import { stationEpochV1Schema, stationCueV1Schema, stationAnchorV1Schema, stationEpochId,
   sameStationScopeV1, acceptStationAnchorV1, stationEndTick, stationPhaseAtTick, isStationFactV1,
-  stationHistoricalV1Schema, type StationEpochV1, type StationCueV1, type StationAnchorV1, type LogEvent } from '@sim/protocol';
+  stationHistoricalV1Schema, type StationEpochV1, type StationCueV1, type StationAnchorV1, type LogEvent } from '@souls/protocol';
 
 export type StationHistoryV1={station:StationEpochV1;cues:StationCueV1[];anchors:StationAnchorV1[];lastFactSeq:number};
 export type StationBindingV1={worldId:string;genesisId:string;rulesVersion:string;dtSeconds:number};

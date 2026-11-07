@@ -1,10 +1,10 @@
 {
-  "name": "@sim/kernel",
+  "name": "@souls/kernel",
   "version": "0.0.1",
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "test": "node --test src/*.test.ts" },
-  "dependencies": { "@sim/engine-contract": "workspace:*", "zod": "^4.6.7" },
+  "dependencies": { "@souls/engine-contract": "workspace:*", "zod": "^4.6.7" },
   "devDependencies": { "@types/node": "^22.19.19" }
 }
