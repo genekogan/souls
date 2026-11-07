@@ -7,15 +7,17 @@ import { acquireLock, holder } from './locks.mjs';
 import { fetchWithRetry } from './retry.mjs';
 import { wireFetch } from './wire.mjs';
 import { noticeOwnerInbox, noticeInboxHeader } from './inbox-notice.mjs';
+import { godFile, keepSecrets, seatSecrets } from './seat.mjs';
 
 export const STATE = '.eden-god.json';
 const read = (file) => existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
-export const claimFile = (id) => {
+const claimName = (id) => {
   if (!/^c_[0-9a-f]{8}$/.test(id)) throw new Error('EDEN_GOD_CLAIM must be c_ followed by eight hexadecimal digits');
   return `.eden-god.claim-${id}.json`;
 };
+export const claimFile = (id) => godFile(claimName(id));
 /** WD7 slice 3: EDEN_GOD_HELPER names a helper file (world + the helper's own scoped token + its claim). */
-export const helperFile = (id) => `.eden-god.helper-${claimFile(id).slice('.eden-god.claim-'.length, -'.json'.length)}.json`;
+export const helperFile = (id) => `.eden-god.helper-${claimName(id).slice('.eden-god.claim-'.length, -'.json'.length)}.json`;
 function helperState() {
   const file = process.env.EDEN_GOD_HELPER; if (!file) return null;
   if (!existsSync(file)) throw new Error(`EDEN_GOD_HELPER names a missing file: ${file}`);
@@ -33,7 +35,7 @@ export function atomicWrite(file, text) {
 }
 export function load() {
   // A helper never reads the lead's credentials: its world and token come from the helper file.
-  const s = helperState() ?? read(STATE), cid = activeClaim();
+  const s = helperState() ?? { ...read(godFile(STATE)), ...seatSecrets() }, cid = activeClaim();
   if (!cid) return s;
   // Credentials belong to the lead's file. A new claim starts at its own first
   // step; subsequent progress/group/warnings live only in the claim file.
@@ -43,16 +45,18 @@ export function load() {
   return merged;
 }
 export function withStateLock(run) {
-  const cid = activeClaim(), file = cid ? claimFile(cid) : STATE;
+  const cid = activeClaim(), file = cid ? claimFile(cid) : godFile(STATE);
   const release = acquireLock(`${file}.lock`, { label: 'claim/step state', reentrant: true });
   try { const out = run(); if (out?.then) return out.finally(release); release(); return out; }
   catch (e) { release(); throw e; }
 }
 export function save(patch) { return withStateLock(() => saveUnlocked(patch)); }
 function saveUnlocked(patch) {
-  const cid = activeClaim(), file = cid ? claimFile(cid) : STATE;
+  const cid = activeClaim(), file = cid ? claimFile(cid) : godFile(STATE);
   const s = { ...read(file), ...patch };
   for (const k of Object.keys(s)) if (s[k] === undefined) delete s[k];
+  // In a home the god's token and identity live in credentials.json, never in the seat's own file.
+  if (seatSecrets()) { const { token, identity } = patch; keepSecrets({ token, identity }); delete s.token; delete s.identity; }
   // A null build is a claim-file tombstone: do not inherit the lead again.
   if (cid && Object.hasOwn(patch, 'build') && !patch.build) s.build = null;
   atomicWrite(file, JSON.stringify(s, null, 2) + '\n');

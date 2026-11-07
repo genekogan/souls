@@ -15,7 +15,8 @@ import { wakeText, onboardingText } from '../seat.mjs';
 
 const STANDIN = `import { appendFileSync } from 'node:fs';
 const a = process.argv.slice(2); appendFileSync('calls.jsonl', JSON.stringify(a) + '\\n');
-if (a[0] === 'act') { if (a[1].includes('swim')) { console.log(JSON.stringify({ accepted: false, code: 'no-offer' })); } else console.log(JSON.stringify({ accepted: true, receipt: { id: 'r1', phase: a.includes('--wait') ? 'completed' : 'running' } })); }
+if (a[0] === 'resolve') console.log(JSON.stringify({ candidates: a[1].includes('nothing') ? [] : [{ id: 'give:s_123' }, { id: 'give:s_456' }] }));
+else if (a[0] === 'act') { if (a[1].includes('swim')) { console.log(JSON.stringify({ accepted: false, code: 'no-offer' })); } else console.log(JSON.stringify({ accepted: true, receipt: { id: 'r1', phase: a.includes('--wait') ? 'completed' : 'running' } })); }
 else if (a[0] === 'status') console.log(JSON.stringify({ paired: true, soul: { id: 's1' } }));
 else console.log(JSON.stringify({ ok: true, cmd: a[0] }));`;
 const folder = () => { const d = mkdtempSync(join(tmpdir(), 'scripted-owner-')); writeFileSync(join(d, 'eden.mjs'), STANDIN); return d; };
@@ -90,6 +91,18 @@ test('a refused step and an unmatched message both end in an honest failed resul
   const d = folder();
   await turn({ cwd: d, text: wake([{ id: 'm1', text: 'swim to the island' }, { id: 'm2', text: 'dance' }]), script: SCRIPT });
   assert.deepEqual(calls(d), [['ack', 'm1', 'On it.'], ['act', 'swim across'], ['result', 'm1', 'failed', 'act: no-offer'], ['ack', 'm2'], ['result', 'm2', 'failed', 'no scripted response']]);
+});
+
+test('a resolve step hands its first candidate to the next act, and no candidate stops the rule (#1192)', async () => {
+  const script = { rules: [
+    { match: 'offer', ack: 'ok', do: [['resolve', 'offer Ben the coffee'], ['act', '{resolved}', '--wait', '5']], result: 'Offered' },
+    { match: 'void', ack: 'ok', do: [['resolve', 'nothing here'], ['act', '{resolved}']], result: 'Never' }] };
+  const cwd = folder(), calls = () => readFileSync(join(cwd, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  await ADAPTERS['scripted-owner'].turn({ cwd, text: wake([{ id: 'm1', text: 'offer it' }]), script });
+  assert.deepEqual(calls().find((c) => c[0] === 'act'), ['act', 'give:s_123', '--wait', '5']);
+  await ADAPTERS['scripted-owner'].turn({ cwd, text: wake([{ id: 'm2', text: 'void' }]), script });
+  assert.equal(calls().filter((c) => c[0] === 'act').length, 1, 'no act after an empty resolve');
+  assert.match(JSON.stringify(calls().filter((c) => c[0] === 'result').at(-1)), /m2.*failed.*nothing on offer/);
 });
 
 test('onboarding runs register, create and status from the served CLI already in the folder', async () => {

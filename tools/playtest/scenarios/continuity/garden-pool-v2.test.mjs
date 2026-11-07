@@ -18,7 +18,9 @@ const V1_ERRAND_WHEN='first observed 10-second all-three garden overlap';
 /** Version 1 of this scenario: v2 keys removed and the one description restored. */
 function v1Fixtures(){
  const f=structuredClone(fixtures),s=f.scenarios.find(s=>s.id==='eden-walk-three');
- for(const k of V2_KEYS)delete s[k];s.disturbances.find(d=>d.id==='independent-errand').when=V1_ERRAND_WHEN;return f;
+ for(const k of V2_KEYS)delete s[k];s.disturbances.find(d=>d.id==='independent-errand').when=V1_ERRAND_WHEN;
+ // #479's own declared change to another scenario: undone here, so this still proves the rest of the file is byte for byte v1
+ const band=f.scenarios.find(s=>s.id==='eden-bandstand-five');delete band.fixtureVersion;delete band.fixtureVersionNote;band.venue.audienceRegion.excludePolygon=band.venue.audienceRegion.excludePolygon.map(([x,z])=>[x,z===-26.2?-26.4:z]);return f;
 }
 const T0=1793400000000,ms=sec=>T0+sec*1000;
 const POOL=walk.gardenCandidates,garden=ref=>POOL.find(g=>g.ref===ref);
@@ -52,7 +54,7 @@ test('v1 is reproducible: removing the v2 keys restores the exact prior fixture 
  // commit id in `git`, so those two fields are compared with the same neutral value on both sides. Every other byte is exact.
  const provenanceFree=f=>JSON.parse(JSON.stringify(f,(k,v)=>k==='sliceEvidence'||k==='git'?'<provenance>':v));
  assert.deepEqual(provenanceFree(v1Fixtures()),provenanceFree(JSON.parse(prior)));
- const old=JSON.parse(prior);for(const [i,s]of old.scenarios.entries())if(s.id!=='eden-walk-three')assert.deepEqual(fixtures.scenarios[i],s,'other scenarios unchanged: '+s.id);
+ const old=JSON.parse(prior);for(const [i,s]of old.scenarios.entries())if(s.id!=='eden-walk-three'&&s.id!=='eden-bandstand-five')assert.deepEqual(fixtures.scenarios[i],s,'other scenarios unchanged: '+s.id);
 });
 
 test('pool centres are the authored template areas and membership is exclusive',()=>{
