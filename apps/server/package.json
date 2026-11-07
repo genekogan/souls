@@ -11,7 +11,7 @@
     "test:replay": "node --test src/replay.test.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.5",
+    "@hono/node-server": "^2.1.6",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@souls/brain": "workspace:*",
     "@souls/engine-contract": "workspace:*",
