@@ -320,7 +320,7 @@ export function hereFrame(ledger: EdgeLedger, soul: EdgeSoul,options:{doHere?:bo
     const ob = o.body, facing = ob.human?.attention ? compassOf(ob.human.attention[0] - o.at[0], ob.human.attention[1] - o.at[1]) : headingOfYaw(ob.pose.yaw);
     const with_ = talks.filter(t => t.members.includes(o.soulId)).flatMap(t => t.members).filter(id => id !== o.soulId);
     const partners = [...new Set(with_)].map(id => id === soul.soulId ? 'you' : seenIds.has(id) ? host.minds.get(id)?.name ?? 'someone' : 'someone');
-    return {id: o.soulId, name: o.name, ...host.publicNameMetadata(o.soulId), dist: o.distance, bearing: P.bearing(o.at), doing: doingWord(o.state, o.activity) + (partners.length ? ` · talking with ${partners.slice(0, 3).join(', ')}` : ''),
+    return {id: o.soulId, traveller: ledger.travellerOf(o.soulId), name: o.name, ...host.publicNameMetadata(o.soulId), dist: o.distance, bearing: P.bearing(o.at), doing: doingWord(o.state, o.activity) + (partners.length ? ` · talking with ${partners.slice(0, 3).join(', ')}` : ''),
       earshot: earshot(o.distance), facingMe: !!P.pos && facingPoint(o.at, facing, P.pos)};
   });
   // things: a few of each kind, nearest first (≤ 3 seats, ≤ 2 of any other kind); the rest are counted in `more`

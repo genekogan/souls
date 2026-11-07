@@ -170,7 +170,10 @@ export function registerEdgeComms(app: Hono, deps: EdgeDeps, options: CommsOptio
   }));
 
   app.get('/v1/edge/objects', route((_c, soul) => ({objects: objects.visibleTo(soul)})));
-  app.get('/v1/edge/objects/:id', route((c, soul) => objects.get(c.req.param('id') ?? '', soul)));
+  app.get('/v1/edge/objects/:id', route((c, soul) => {
+    const id = c.req.param('id') ?? '', gone = objects.tombstone(id, soul.soulId);
+    return gone ? {object: null, tombstone: gone} : objects.get(id, soul);
+  }));
   app.post('/v1/edge/objects/:id/act', route(async (c, soul) => {
     const body = await json(c), id = c.req.param('id') ?? '', cap = `object:${id}:${String(body.action ?? '')}`,prepared=objects.prepareAct(id,soul,body),out=prepared.result;
     if (!out.accepted) { if(!prepared.movesBody)objects.act(id,soul,body);deps.ledger.recordRefusal?.(soul.soulId, 'object', cap, String((out as {code?: unknown}).code ?? 'refused'), String((out as {reason?: unknown}).reason ?? '')); return out; }
