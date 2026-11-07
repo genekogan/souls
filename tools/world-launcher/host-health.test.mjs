@@ -41,3 +41,21 @@ test('#1150: a halted world from the launcher\'s guard is an ALERT with its own 
   const r = evaluate({ diskTotalBytes: 301e9, diskFreeBytes: 100e9, memMb: 8232, worldProblems: [{ slug: 'w', code: 'halted', text: 'w halted: its clock has stopped' }] });
   assert.equal(r.ok, false); assert.deepEqual(r.codes, ['halted']); assert.deepEqual(r.problems, ['w halted: its clock has stopped']);
 });
+
+test('#1150: the timer run on a halted world writes its ALERT line, and RECOVERED once the world runs again (a fake /proc: SIM_PROC_ROOT)', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, mkdirSync, readFileSync, writeFileSync } = await import('node:fs'); const { join } = await import('node:path'); const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(join(tmpdir(), 'host-health-')), data = join(dir, 'data'), proc = join(dir, 'root'); mkdirSync(data); mkdirSync(join(proc, 'proc'), { recursive: true });
+  writeFileSync(join(proc, 'proc', 'meminfo'), 'MemTotal: 16000000 kB\nMemAvailable: 8429280 kB\n');
+  const run = (problems) => {
+    writeFileSync(join(data, 'world-problems.json'), JSON.stringify({ at: new Date().toISOString(), problems }));
+    execFileSync(process.execPath, [new URL('./deploy/host-health.mjs', import.meta.url).pathname, data, '--min-free-pct', '0', '--min-free-gb', '0'], { env: { ...process.env, SIM_PROC_ROOT: proc }, stdio: 'pipe' });
+    return readFileSync(join(data, 'host-health.log'), 'utf8').trim().split('\n');
+  };
+  writeFileSync(join(data, 'host-health.log'), '');
+  const alert = run([{ slug: 'w', code: 'halted', text: 'w halted: its clock has stopped' }]);
+  assert.equal(alert.length, 1); assert.match(alert[0], / ALERT w halted: its clock has stopped$/);
+  assert.equal(JSON.parse(readFileSync(join(data, 'host-health.json'), 'utf8')).ok, false);
+  const after = run([]);
+  assert.equal(after.length, 2); assert.match(after[1], / RECOVERED disk /);
+});

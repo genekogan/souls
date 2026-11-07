@@ -100,7 +100,7 @@ function main(argv) {
   try {
     const s = statfsSync(diskPath);
     const units = readUnits();
-    status = evaluate({ diskTotalBytes: s.blocks * s.bsize, diskFreeBytes: s.bavail * s.bsize, memMb: memAvailableMb(readFileSync('/proc/meminfo', 'utf8')),
+    status = evaluate({ diskTotalBytes: s.blocks * s.bsize, diskFreeBytes: s.bavail * s.bsize, memMb: memAvailableMb(readFileSync(`${process.env.SIM_PROC_ROOT ?? ''}/proc/meminfo`, 'utf8')),
       units, prevUnits: prev?.units ?? {}, backups: readBackups(Object.keys(units)), worldProblems: readWorldProblems(dataDir) },
       { minFreePct: Number(opt('min-free-pct', 15)), minFreeGb: Number(opt('min-free-gb', 20)), minMemMb: Number(opt('min-mem-mb', 1536)), capPct: Number(opt('cap-pct', 90)) });
   } catch (e) { status = { ok: false, problems: [`check failed: ${e.message}`], codes: ['check'] }; }
