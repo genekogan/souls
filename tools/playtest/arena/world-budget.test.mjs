@@ -107,7 +107,7 @@ test('#1098 the coded prices reproduce what the CLI reports, and a difference is
 const killedSeat = (run, script) => {
   const s = createSeat({ runDir: run, seat: { id: 'ada', adapter: 'claude-headless' }, worldBase: 'http://h', rails: {} });
   let n = 0;
-  s.adapter = { turn: async () => { const t = script[n++]; return { stream: [{ type: 'assistant', message: { id: 'm' + n, usage: { input_tokens: 2, cache_read_input_tokens: 30_000, output_tokens: 20 } } }], usage: { costUsd: t.total }, finalText: t.killed ? null : 'ok', toolCalls: [], exit: t.killed ? 143 : 0, timedOut: !!t.killed, wallMs: 1 }; }, renderChat: () => '' };
+  s.adapter = { turn: async () => { const t = script[n++]; return { stream: [{ type: 'assistant', message: { id: 'm' + n, usage: { input_tokens: 2, cache_read_input_tokens: 30_000, output_tokens: 20 } } }], usage: { costUsd: t.total }, sessionId: t.session, finalText: t.killed ? null : 'ok', toolCalls: [], exit: t.killed ? 143 : 0, timedOut: !!t.killed, wallMs: 1 }; }, renderChat: () => '' };
   return s;
 };
 
@@ -118,9 +118,25 @@ test('#1098 a killed turn counts its reservation, not $0, and the real cost repl
   assert.equal(killed.known, false, 'the repeated total is not a known $0'); assert.equal(killed.costUsd, killed.usd);
   assert.equal(rows(ledger).at(-1).spentUsd, Math.round((0.12 + killed.usd) * 1e6) / 1e6, 'spent holds the whole reservation');
   await s.chat('three');
-  assert.equal(rows(ledger).at(-1).kind, 'released'); assert.equal(rows(ledger).at(-1).spentUsd, 0.3, 'the session total, once');
+  const lastCall = (2 * 2 + 30_000 * 0.1 + 20 * 10) / 1e6, released = rows(ledger).at(-1);
+  assert.equal(released.kind, 'released'); assert.equal(released.keptUsd, lastCall); assert.equal(released.spentUsd, Math.round((0.3 + lastCall) * 1e6) / 1e6, 'the session total, once, plus the call in flight at the kill');
   assert.deepEqual(rows(join(run, 'seats', 'ada', 'cost.jsonl')).map((r) => (r.costUsd == null ? null : Math.round(r.costUsd * 100) / 100)), [0.12, null, 0.18], 'the cost file says unknown, then the real difference');
   assert.equal(s.budgetRefused, null, 'a next turn carrying the killed turn\'s cost is not an exceeded reservation');
+});
+
+test('#1098 a killed session\'s reservation is released only by that session\'s total; a new session\'s total does not hold the killed turn', async () => {
+  const run = tmp(), s = killedSeat(run, [{ total: 0.12 }, { total: 0.12, killed: true }, { total: 0.05, session: 'other' }]), ledger = join(run, 'budget.jsonl');
+  await s.chat('one'); await s.chat('two'); await s.chat('three');
+  const all = rows(ledger), killed = all.filter((r) => r.kind === 'settled')[1];
+  assert.equal(all.filter((r) => r.kind === 'released').length, 0);
+  assert.equal(all.at(-1).spentUsd, Math.round((0.12 + killed.usd + 0.05) * 1e6) / 1e6, 'the killed turn stays counted beside the new session\'s spend');
+});
+
+test('#1098 two kills before the session total: both reservations stand until it arrives, and each keeps its last call', async () => {
+  const run = tmp(), s = killedSeat(run, [{ total: 0.12 }, { total: 0.12, killed: true }, { total: 0.12, killed: true }, { total: 0.4 }]), ledger = join(run, 'budget.jsonl');
+  await s.chat('one'); await s.chat('two'); await s.chat('three'); await s.chat('four');
+  const lastCall = (2 * 2 + 30_000 * 0.1 + 20 * 10) / 1e6, released = rows(ledger).at(-1);
+  assert.equal(released.keptUsd, 2 * lastCall); assert.equal(released.spentUsd, Math.round((0.4 + 2 * lastCall) * 1e6) / 1e6);
 });
 
 test('#1098 a kill on a seat\'s last turn stays counted, also when a later run reads the ledger back', async () => {

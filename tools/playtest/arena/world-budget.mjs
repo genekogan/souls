@@ -24,6 +24,11 @@ export function worstCallUsd({ maxContextTokens, maxOutputTokens } = WORLD_BUDGE
   return round((maxContextTokens * price.uncachedInput + maxOutputTokens * price.output) / 1e6);
 }
 
+/** One API call's price from its usage row. A stream row can show only part of the call's output, so this can read low. */
+export function callUsd(u = {}, price = SONNET_USD_PER_MTOK) {
+  return round(((u.input_tokens ?? 0) * price.input + (u.cache_creation_input_tokens ?? 0) * price.uncachedInput + (u.cache_read_input_tokens ?? 0) * price.cacheRead + (u.output_tokens ?? 0) * price.output) / 1e6);
+}
+
 /** A result line's modelUsage against the coded prices: null when they agree, else {model, reportedUsd, pricedUsd}. */
 export function priceDriftOf(modelUsage, price = SONNET_USD_PER_MTOK) {
   for (const [model, u] of Object.entries(modelUsage ?? {})) {
@@ -102,10 +107,10 @@ export function worldBudgetFor(runDir, { capUsd, turnCapUsd, maxContextTokens, m
       write({ kind: 'settled', id: r.id, seat: r.seat, usd: r.usd, costUsd: round(cost), known: Number.isFinite(costUsd), overReservation: cost > r.usd, spentUsd: round(spent), reservedUsd: round(reserved) });
       wake();
     },
-    /** A killed turn was settled at its reservation; the seat's next session total now holds its real cost, so take that back. */
-    release(seat, usd, why) {
-      const x = Math.min(usd, spent); spent -= x;
-      write({ kind: 'released', seat, usd: round(x), why, spentUsd: round(spent), reservedUsd: round(reserved) });
+    /** A killed turn was settled at its reservation; the seat's next session total now holds its completed calls, so take that back, less `keptUsd`. */
+    release(seat, usd, why, { keptUsd = 0 } = {}) {
+      const x = Math.min(Math.max(0, usd), spent); spent -= x;
+      write({ kind: 'released', seat, usd: round(x), keptUsd: round(keptUsd), why, spentUsd: round(spent), reservedUsd: round(reserved) });
       wake();
     },
     /** The CLI reported a cost the coded prices don't reproduce. Recorded, not acted on: the reported cost is what's spent. */
