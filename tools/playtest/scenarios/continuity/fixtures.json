@@ -1705,6 +1705,8 @@
       "role": "holdout",
       "world": "eden-2026",
       "fixtureStatus": "blocked-before-comparison",
+      "fixtureVersion": 2,
+      "fixtureVersionNote": "Declared 2026-11-07 (#479): native walk:eden-bandstand ends at [38.4, -26.3] on eden-2026, 0.1 m inside the audience exclusion zone, whose south edge was -26.4. That edge moves to -26.2, so the walk ends outside it. Instrument geometry, routes and every other value are unchanged; verdicts under version 1 stay as written.",
       "timeDomain": "real UTC; T0 set after all setup receipts and initial poses pass",
       "soulIds": "bind fresh per run; never publish or reuse probe Soul IDs",
       "agentInformation": "matrix instructions plus the declared initial owner supplements; no oracle entity IDs/coordinates or other agent state in model prompts",
@@ -1750,11 +1752,11 @@
           "excludePolygon": [
             [
               36.6,
-              -26.4
+              -26.2
             ],
             [
               38.6,
-              -26.4
+              -26.2
             ],
             [
               38.6,

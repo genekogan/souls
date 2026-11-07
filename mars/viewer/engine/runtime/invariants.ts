@@ -107,6 +107,10 @@ const lastPoses = new WeakMap<Runtime, { tick: number; world: WorldState; poses:
 /** A deliberate logged relocation (edge reclaim) is not a teleport fault: forget that body's previous pose. */
 export function acknowledgeRelocation(rt: Runtime, id: string): void { lastPoses.get(rt)?.poses.delete(id); }
 
+/** #1150: a restored runtime starts with no previous poses, so its first tick could not see a jump a live one refuses.
+ *  Call once after a restore, where a move's refusal must replay. Reads the world only. */
+export function rememberPosesAfterRestore(rt: Runtime): void { maxStepPerTick(rt); }
+
 /**
  * No person or carried component moves more than MAX_STEP_PER_TICK in one tick (review C1): catches
  * every teleport class (formation flips, snaps, lerps with a wrong origin). For carried components the

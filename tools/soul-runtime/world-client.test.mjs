@@ -128,3 +128,13 @@ test('refusals carry the stated Retry-After for the receiver backoff floor',asyn
  const plain=mock(async()=>Response.json({error:{code:'x'}},{status:500}));await assert.rejects(plain.ownerPage({after:null}),e=>e.retryAfterMs===null);
  assert.equal(retryAfterMs({get:()=>new Date(Date.now()+60000).toUTCString()})>50000,true);
 });
+
+test('#466: the stream connect limit ends at the headers; an open stream outlives it, and a slow connect does not',async()=>{
+ const seen=[],open=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('event: hello\ndata: {"contract":"eden-edge/1","format":"envelope","soulId":"s1","cursor":"c_0","heartbeatSeconds":15}\n\n'));}});
+ const client=createWorldClient({world:'https://example.test',token:'t',streamConnectMs:20,fetchImpl:async(url,o)=>{seen.push(o.signal);return new Response(open,{headers:{'content-type':'text/event-stream'}});}});
+ const stop=new AbortController(),page=client.eventPage({after:'c_0',signal:stop.signal}).catch(e=>e);
+ await new Promise(r=>setTimeout(r,60));assert.equal(seen[0].aborted,false,'open past the connect limit');stop.abort();await page;
+ const slow=createWorldClient({world:'https://example.test',token:'t',streamConnectMs:20,fetchImpl:(url,o)=>new Promise((_,reject)=>o.signal.addEventListener('abort',()=>reject(Error('aborted'))))});
+ await assert.rejects(slow.eventPage({after:'c_0'}),e=>e.code==='transport.unreachable'&&e.transient===true);
+});
+
