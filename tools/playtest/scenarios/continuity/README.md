@@ -33,6 +33,8 @@ Verified source facts:
   discovered. The walk holdout preserves agent choice and revision of its endpoint;
   library and bandstand form a sealed physically named candidate pool. No route
   sequence or endpoint coordinate is shown to the agents.
+- `eden-bandstand-five` is fixture version 2 (#479): the audience exclusion zone's south edge
+  is -26.2, so the native bandstand walk ends outside it. Version 1's verdicts stay as written.
 - `eden-walk-three` is fixture version 2 (`gardenRule: garden-pool-v2`, declared
   2026-10-31). The instruction names no garden, and native `explore garden` from
   the field returns five, so the garden is a sealed pool like the endpoint:

@@ -51,6 +51,14 @@ test('the god-bundle job checks the bundle on god-skill paths, full scope includ
   assert.match(readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8'), /god-bundle\)\n.*\n\s+node tools\/god-skill\/build\.mjs --check\n/);
 });
 
+test('the native leg stays hosted whatever CI_HEAVY_RUNNER says, and only it (#1162)', () => {
+  const workflow = readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8');
+  const runsOn = /^  qualify:[\s\S]*?^    runs-on: (.*)$/m.exec(workflow)?.[1] ?? '';
+  assert.match(runsOn, /^\$\{\{ matrix\.kind != 'native' && vars\.CI_HEAVY_RUNNER && /);
+  assert.match(runsOn, /\|\| 'ubuntu-latest' \}\}$/);
+  assert.equal(runsOn.match(/matrix\./g)?.length, 1, 'no other leg is pinned');
+});
+
 test('the soul-actions job runs on its own paths, full scope included, and on nothing else (#1061)', () => {
   for (const f of ['tools/soul-actions/shared-crew.test.mjs', 'apps/server/src/edge/ledger/together.ts', 'apps/server/test/native-owner-fixture.ts', 'packages/world-compiler/src/model.ts', 'packages/engine-mars/src/x.ts']) assert.ok(names([f]).includes('soul-actions'), f);
   for (const f of ['apps/web/src/App.tsx', 'docs/testing.md', 'tools/world-launcher/launcher.mjs', 'packages/edge-cli/x.ts']) assert.ok(!names([f]).includes('soul-actions'), f);
