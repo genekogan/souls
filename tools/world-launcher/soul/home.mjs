@@ -13,7 +13,10 @@ const SERVE_SOCKET = ".eden-serve.sock";
 /** Run in a seat (the world's waiting room), never as a Soul: they make or pair one. */
 export const SEAT_COMMANDS = new Set(["register", "create", "pair", "adopt", "approval"]);
 /** Work on the home itself, as no one in particular. */
-export const HOME_COMMANDS = new Set(["list", "doctor", "default", "export", "import", "init"]);
+export const HOME_COMMANDS = new Set(["list", "doctor", "default", "export", "import", "init", "guide", "help", "version"]);
+/** What a legacy folder hands over on import. Anything else (1.9's `delegations` holds tokens) stays in its own file. */
+export const IMPORTED_FIELDS = ["world", "worldId", "accountAuth", "identity", "soul", "token", "home", "cursor", "ownerMark", "lastReceipt", "lastActAt", "lastAcked", "lastAckedAt", "lastAckedActed", "pendingCreate"];
+const IMPORTED_RUNTIME = [".eden-serve.json"];
 
 const real = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
 const isHome = (root) => existsSync(join(root, "config.json"));
@@ -131,7 +134,7 @@ export function runtimeLocks(dir, alive) {
 }
 function readJsonQuietly(file) { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return existsSync(file) ? {} : null; } }
 
-export function openHome(root, { sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } = {}) {
+export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } = {}) {
   const at = (...p) => join(root, ...p);
   const config = () => ({ worlds: {}, souls: {}, ...readJson(at("config.json"), {}) });
   const credentials = () => ({ souls: {}, worlds: {}, approvals: {}, ...readJson(at(CREDENTIALS), {}) });
@@ -173,7 +176,7 @@ export function openHome(root, { sleepMs = (ms) => Atomics.wait(new Int32Array(n
   function load(ctx) {
     const s = { ...readJson(join(ctx.dir, STATE_FILE), {}) }, cfg = config(), creds = credentials();
     const key = keyOf(cfg.worlds, s.world) ?? ctx.key;
-    const identity = creds.worlds[key]?.identity;
+    const identity = (ctx.kind === "soul" ? creds.souls[ctx.id]?.[cfg.souls[ctx.id]?.world]?.identity : null) ?? creds.worlds[key]?.identity;
     if (identity) s.identity = identity;
     if (ctx.kind === "soul") {
       const token = creds.souls[ctx.id]?.[key]?.token;
@@ -191,9 +194,14 @@ export function openHome(root, { sleepMs = (ms) => Atomics.wait(new Int32Array(n
     writeJson(join(ctx.dir, STATE_FILE), Object.fromEntries(Object.entries({ world, worldId, accountAuth }).filter(([, v]) => v !== undefined)));
     Object.assign(ctx, soul(id));
     process.chdir(ctx.dir);
+    // A kept Soul paired again goes on from where it was: same Soul, same cursor.
+    for (const [k, v] of Object.entries(readJson(join(ctx.dir, STATE_FILE), {}))) if (!(k in open)) open[k] = v;
+    enlist(id, open, ctx.key);
+  }
+  function enlist(id, open, fallbackKey) {
     updateConfig((c) => {
-      const { retiredAt, ...old } = c.souls[id] ?? {}, key = keyOf(c.worlds, world) ?? ctx.key, home = open.home ? keyOf(c.worlds, open.home.world) ?? key : key;
-      c.souls[id] = { name: id, ...old, world: home, ...(home !== key ? { at: key } : {}), state: "active" };
+      const { retiredAt, at: was, ...old } = c.souls[id] ?? {}, key = keyOf(c.worlds, open.world) ?? fallbackKey, home = open.home ? keyOf(c.worlds, open.home.world) ?? key : key;
+      c.souls[id] = { name: id, ...old, world: old.world ?? home, ...(home !== key ? { at: key } : {}), state: "active" };
       c.currentWorld = key;
     });
     identify(id);
@@ -215,13 +223,16 @@ export function openHome(root, { sleepMs = (ms) => Atomics.wait(new Int32Array(n
       if (e && (e.at ?? e.world) !== key) updateConfig((c) => { c.souls[ctx.id].at = key; });
     }
     updateCredentials((c) => {
-      if (secrets.identity) (c.worlds[key] ??= {}).identity = secrets.identity;
+      // The world's identity makes new Souls there and is only ever set from its seat; each Soul keeps its own (it travels).
+      if (secrets.identity && seatKey) (c.worlds[seatKey] ??= {}).identity ??= secrets.identity;
       if (seatKey && secrets.pollSecret && ctx.kind === "seat") c.approvals[seatKey] = { pollSecret: secrets.pollSecret };
       else if (seatKey) delete c.approvals[seatKey];
       if (ctx.kind !== "soul") return;
-      const mine = (c.souls[ctx.id] ??= {});
+      const mine = (c.souls[ctx.id] ??= {}), homeKey = open.home ? keyOf(config().worlds, open.home.world) ?? key : key;
       if (secrets.token) (mine[key] ??= {}).token = secrets.token;
-      if (secrets.homeToken && open.home) (mine[keyOf(config().worlds, open.home.world) ?? key] ??= {}).token = secrets.homeToken;
+      // Back home, the token just saved is the live one; `home` still names the one the journey left with.
+      if (secrets.homeToken && homeKey !== key) (mine[homeKey] ??= {}).token = secrets.homeToken;
+      if (secrets.identity) (mine[config().souls[ctx.id]?.world ?? homeKey] ??= {}).identity = secrets.identity;
     });
     return s;
   }
@@ -236,7 +247,7 @@ export function openHome(root, { sleepMs = (ms) => Atomics.wait(new Int32Array(n
   function principals() {
     const c = config(), all = Object.entries(c.souls);
     return all.map(([id, e]) => {
-      const twin = all.some(([other, o]) => other !== id && o.state === "active" && norm(o.name) === norm(e.name));
+      const twin = reserved.has(norm(e.name)) || all.some(([other, o]) => other !== id && o.state === "active" && norm(o.name) === norm(e.name));
       const state = readJson(at("souls", id, "runtime", STATE_FILE), {});
       return { name: e.name, id, world: e.world, ...(e.at && e.at !== e.world ? { visiting: e.at } : {}), state: e.state, address: twin ? `${norm(e.name)}@${e.world}` : norm(e.name), ...(c.default === id ? { default: true } : {}), lastSeen: state.lastActAt ?? null };
     });
@@ -259,16 +270,27 @@ export function openHome(root, { sleepMs = (ms) => Atomics.wait(new Int32Array(n
 
   /** Move a legacy folder's Soul in, keeping its token. The legacy file is left where it is. */
   function importLegacy(folder) {
-    const s = JSON.parse(readFileSync(join(folder, LEGACY_STATE), "utf8"));
-    if (!s.world) throw new Error(`${LEGACY_STATE} names no world; nothing to import.`);
+    const legacy = JSON.parse(readFileSync(join(folder, LEGACY_STATE), "utf8"));
+    if (!legacy.world) throw new Error(`${LEGACY_STATE} names no world; nothing to import.`);
+    const s = Object.fromEntries(IMPORTED_FIELDS.filter((k) => legacy[k] !== undefined).map((k) => [k, legacy[k]]));
+    s.token ??= legacy.delegations?.[s.soul]?.token;
+    if (!s.token) delete s.token;
     const id = s.home?.soul ?? s.soul;
     if (id && config().souls[id]?.state === "active") return { imported: false, soul: id, reason: "This Soul already lives in this home." };
     const key = ensureWorld(s.world, { worldId: s.worldId, accountAuth: s.accountAuth });
     if (s.home?.world) ensureWorld(s.home.world);
-    const ctx = seat(key);
+    if (!id || !s.token) {   // a folder with no Soul yet is the world's seat, if that seat is free
+      if (seatState(key).pendingApproval) throw new Error(`An approval already waits in ${key}. Finish it first: approval wait`);
+      save(seat(key), { ...s, ...(legacy.pendingApproval ? { pendingApproval: legacy.pendingApproval } : {}) });
+      setCurrentWorld(key);
+      return { imported: true, soul: null, world: key };
+    }
+    const ctx = soul(id);
+    enlist(id, s, key);
     save(ctx, s);
-    setCurrentWorld(key);
-    return { imported: true, soul: ctx.kind === "soul" ? ctx.id : null, world: key, ctx };
+    updateCredentials((c) => { if (s.identity) (c.worlds[key] ??= {}).identity ??= s.identity; });
+    for (const f of IMPORTED_RUNTIME) if (existsSync(join(folder, f))) copyFileSync(join(folder, f), join(ctx.dir, f));
+    return { imported: true, soul: id, world: key, ctx };
   }
 
   /** The Soul without credentials or runtime: identity and whatever it has learned. */
@@ -298,11 +320,15 @@ export function openHome(root, { sleepMs = (ms) => Atomics.wait(new Int32Array(n
     const cfg = config(), creds = credentials();
     for (const [key, w] of Object.entries(cfg.worlds)) {
       const local = Object.entries(cfg.souls).filter(([, e]) => e.world === key && e.state === "active");
-      const identity = creds.worlds[key]?.identity;
-      const me = identity ? await ask(`${w.url}/v1/me`, `dev:${identity}`) : null;
-      if (me?.status === 200 && Array.isArray(me.data?.souls)) {
-        const owned = me.data.souls, ids = new Set(owned.map((s) => s.id));
-        for (const [id] of local) if (!ids.has(id)) retire(id);
+      // A home can hold Souls of several identities in one world (imported folders); the account is all of them together.
+      const identities = [...new Set([creds.worlds[key]?.identity, ...local.map(([id]) => creds.souls[id]?.[key]?.identity)].filter(Boolean))];
+      const answers = [];
+      for (const identity of identities) answers.push(await ask(`${w.url}/v1/me`, `dev:${identity}`));
+      const me = answers.find((a) => a.status === 0) ?? answers.find((a) => a.status !== 200) ?? answers[0];
+      if (me?.status === 200 && answers.every((a) => Array.isArray(a.data?.souls))) {
+        const owned = answers.flatMap((a) => a.data.souls), ids = new Set(owned.map((s) => s.id));
+        // A Soul away on a journey is not this world's to list; its home says nothing about it until it is back.
+        for (const [id, e] of local) if (!ids.has(id) && !(e.at && e.at !== e.world)) retire(id);
         for (const s of owned) {
           named(s.id, s.name);
           if (config().souls[s.id]?.state !== "active") out.adoptable.push({ id: s.id, name: s.name, world: key });

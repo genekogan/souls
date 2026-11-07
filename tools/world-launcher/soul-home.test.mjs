@@ -17,7 +17,7 @@ const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'a
 
 // Worlds /w/a and /w/b on one port. dev: `Bearer dev:<id>` owns Souls; `Bearer sim_<soul>_x` is that Soul. account: worlds answer approvals.
 async function worlds(t, { account = [] } = {}) {
-  const w = { a: new Map(), b: new Map() }, seen = [], approvals = new Map(), revoked = new Map();
+  const w = { a: new Map(), b: new Map() }, seen = [], approvals = new Map(), revoked = new Map(), moves = new Map();
   const server = createServer((req, res) => {
     let raw = ''; req.on('data', (c) => { raw += c; }); req.on('end', () => {
       const m = /^\/w\/([ab])(\/.*)$/.exec(req.url); if (!m) return json(res, 404, {});
@@ -32,6 +32,7 @@ async function worlds(t, { account = [] } = {}) {
       if (path === '/v1/me') return owner ? json(res, 200, { souls: [...souls].filter(([, s]) => s.owner === owner).map(([id, s]) => ({ id, name: s.name })) }) : json(res, 401, { code: 'unauthorized' });
       if (path === '/v1/agent/approval/start') { const id = `ap_${approvals.size + 1}`; approvals.set(id, { ...body, status: 'pending' }); return json(res, 200, { approval: { id, status: 'pending', name: body.name } }); }
       if (path === '/v1/agent/approval/poll') { const a = approvals.get(body.approvalId); if (a.pollSecret !== body.pollSecret) return json(res, 403, {}); if (a.status !== 'ready') return json(res, 200, { approval: { id: body.approvalId, status: 'pending' } }); return json(res, 200, { approval: { id: body.approvalId, status: 'ready', soulId: a.soulId, name: a.name }, token: `sim_${a.soulId}_x` }); }
+      if (path === '/v1/edge/travel' && req.method === 'POST') { const id = me === 's_b9' ? 's_a1' : me, m = moves.get(id).shift(); w[m.to].set(m.soulId, { name: m.name, owner: souls.get(me).owner }); return json(res, 200, { ok: true, to: m.to, base: `http://${req.headers.host}/w/${m.to}`, soulId: m.soulId, token: m.token }); }
       if (revoked.has(me)) return json(res, 401, { code: 'control.revoked', reason: revoked.get(me) });
       if (!me || !souls.has(me)) return json(res, 401, { code: 'control.unknown' });
       if (path === '/v1/agent/me') return json(res, 200, { soul: { id: me, name: souls.get(me).name }, inbox: {} });
@@ -46,7 +47,7 @@ async function worlds(t, { account = [] } = {}) {
   t.after(() => { server.closeAllConnections(); server.close(); });
   const base = `http://127.0.0.1:${server.address().port}/w`;
   const approve = (id, soulId, name) => { const a = approvals.get(id); Object.assign(a, { status: 'ready', soulId, name }); w.b.set(soulId, { name, owner: 'human' }); };
-  return { base, w, seen, approve, revoked };
+  return { base, w, seen, approve, revoked, moves };
 }
 const cliIn = (cwd, env = {}) => (...args) => new Promise((resolve) => {
   const child = spawn(process.execPath, [cli, ...args], { cwd, env: { ...process.env, HOME: cwd, SOULS_HOME: '', SOULS_PRINCIPAL: '', EDEN_TIME_SCALE: '0.01', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -244,6 +245,64 @@ test('A4: a legacy folder keeps working; import reuses its token and leaves the 
   const busy = tmp(t);
   writeFileSync(join(busy, '.eden-agent.json'), JSON.stringify(legacy)); writeFileSync(join(busy, '.listen.lock'), JSON.stringify({ pid: process.pid }));
   assert.match((await cliIn(busy)('import')).err, /still runs in that folder/);
+});
+
+test('travel: there and back keeps the live token and one Soul; the home world holds the Soul', async (t) => {
+  const f = await worlds(t), dir = tmp(t), run = cliIn(dir);
+  await run('register', `${f.base}/a`); await run('create', 'Mira');
+  await run('register', `${f.base}/b`); await run('create', 'Ivo');
+  f.moves.set('s_a1', [{ to: 'b', soulId: 's_b9', token: 'sim_s_b9_x', name: 'Mira' }, { to: 'a', soulId: 's_a1', token: 'sim_s_a1_back', name: 'Mira' }]);
+  const stored = () => JSON.parse(readFileSync(join(dir, '.souls/credentials.json'), 'utf8'));
+  const idA = stored().worlds.a.identity, idB = stored().worlds.b.identity;
+  assert.equal((await run('mira', 'travel', 'b')).d.ok, true);
+  assert.equal(stored().souls.s_a1.b.token, 'sim_s_b9_x'); assert.equal(stored().souls.s_a1.a.token, 'sim_s_a1_x', 'home token kept');
+  assert.deepEqual((await run('list')).d.souls.map((s) => [s.name, s.world, s.visiting]), [['Mira', 'a', 'b'], ['Ivo', 'b', undefined]]);
+  assert.equal(stored().worlds.b.identity, idB, 'a visitor never takes over the world\'s identity');
+  const away = await run('doctor');
+  assert.deepEqual(away.d.retired, [], 'neither the visitor nor the host is retired');
+  assert.equal((await run('mira', 'travel', 'a')).d.ok, true);
+  assert.equal(stored().souls.s_a1.a.token, 'sim_s_a1_back', 'the token that came back is the one kept');
+  assert.equal(stored().worlds.a.identity, idA);
+  assert.equal((await run('mira', 'here')).d.me.id, 's_a1');
+  assert.ok(!existsSync(join(dir, '.souls/souls/s_b9')), 'one Soul, one directory');
+  assert.equal((await run('list')).d.souls[0].visiting, undefined);
+});
+
+test('import: 1.9 delegations stay out, two identities in one world both count, a waiting approval survives', async (t) => {
+  const f = await worlds(t), dir = tmp(t), run = cliIn(dir);
+  f.w.a.set('s_a1', { name: 'Pip', owner: 'agent-one' }); f.w.a.set('s_a2', { name: 'Ana', owner: 'agent-two' });
+  await run('init');
+  const a = tmp(t), b = tmp(t);
+  writeFileSync(join(a, '.eden-agent.json'), JSON.stringify({ world: `${f.base}/a`, soul: 's_a1', token: 'sim_s_a1_x', identity: 'agent-one', delegations: { s_a1: { world: `${f.base}/a`, token: 'sim_s_a1_x' }, s_a7: { world: `${f.base}/a`, token: 'sim_s_a7_x' } } }));
+  writeFileSync(join(b, '.eden-agent.json'), JSON.stringify({ world: `${f.base}/a`, soul: 's_a2', token: 'sim_s_a2_x', identity: 'agent-two' }));
+  writeFileSync(join(b, '.eden-serve.json'), '{"plan":{"id":"p_1"}}');
+  const seatState = join(dir, '.souls/pending/a/state.json');
+  mkdirSync(join(dir, '.souls/pending/a'), { recursive: true });
+  writeFileSync(seatState, JSON.stringify({ world: `${f.base}/a`, pendingApproval: { approvalId: 'ap_1', input: { name: 'Next' } } }));
+  assert.equal((await run('import', a)).d.imported, true);
+  assert.equal((await run('import', b)).d.imported, true);
+  const leaks = tree(join(dir, '.souls')).filter((p) => !p.endsWith('credentials.json') && !p.endsWith('/bin/eden.mjs') && /sim_s_|agent-one|agent-two/.test(readFileSync(p, 'utf8')));
+  assert.deepEqual(leaks, []);
+  assert.equal(JSON.parse(readFileSync(seatState, 'utf8')).pendingApproval.approvalId, 'ap_1', 'import never touches the seat');
+  assert.equal(readFileSync(join(dir, '.souls/souls/s_a2/runtime/.eden-serve.json'), 'utf8'), '{"plan":{"id":"p_1"}}', 'a durable plan follows the Soul');
+  const r = await run('doctor');
+  assert.deepEqual(r.d.retired, []); assert.equal(r.d.healthy, true, JSON.stringify(r.d));
+});
+
+test('re-pairing a kept Soul goes on from its cursor; a Soul named like a command is reached by its address', async (t) => {
+  const f = await worlds(t), dir = tmp(t), run = cliIn(dir);
+  await run('register', `${f.base}/a`); await run('create', 'Mira'); await run('create', 'Say');
+  const state = join(dir, '.souls/souls/s_a1/runtime/state.json');
+  writeFileSync(state, JSON.stringify({ ...JSON.parse(readFileSync(state, 'utf8')), cursor: 'c_7', lastActAt: 'then' }));
+  assert.equal((await run('adopt', 's_a1')).d.paired, true);
+  assert.equal(JSON.parse(readFileSync(state, 'utf8')).cursor, 'c_7');
+  const say = (await run('list')).d.souls.find((s) => s.name === 'Say');
+  assert.equal(say.address, 'say@a');
+  assert.equal((await run('say@a', 'here')).d.me.id, 's_a2');
+  const r = await run('say', 'here');
+  assert.equal(r.code, 1); assert.match(r.err, /say@a/);
+  assert.ok(!f.seen.some((x) => x.path === '/v1/edge/say'), 'nothing was said');
+  assert.equal((await run('help')).code, 0); assert.equal((await run('guide')).code, 0);
 });
 
 test('A6: two Souls listen and serve at once; a second listen for one Soul still says so', async (t) => {
