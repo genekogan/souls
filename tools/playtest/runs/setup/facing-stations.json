@@ -1,0 +1,4 @@
+{ "id": "facing-stations", "note": "Soul Runs setup (#423): three standing stations in a 3 m triangle on open ground", "ops": [
+ { "op": "place", "def": "core/zone@1", "name": "station-ana", "shape": { "area": [[-8.65,17.85],[-8.35,17.85],[-8.35,18.15],[-8.65,18.15]] } },
+ { "op": "place", "def": "core/zone@1", "name": "station-ben", "shape": { "area": [[-5.65,17.85],[-5.35,17.85],[-5.35,18.15],[-5.65,18.15]] } },
+ { "op": "place", "def": "core/zone@1", "name": "station-cy", "shape": { "area": [[-7.15,20.45],[-6.85,20.45],[-6.85,20.75],[-7.15,20.75]] } } ] }

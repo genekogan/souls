@@ -533,6 +533,17 @@ Fixes found in review and deferred to after the repository migration:
   are cancelled, and notes already ringing decay naturally.
 - **Social facing in general.** Groups and conversations should face each other, and a Soul using an object should face
   it; today Souls often keep the heading they arrived with.
+  The #423 native experiment is default off: only local development with both `DEV_AUTH=1` and
+  `SOUL_SOCIAL_FACING=1` records `social-v1` ordinary activity plans and gradual conversation attention. Explicit
+  standing groups turn gradually toward their centre; object work prepares toward its fixed target before hands are
+  published; seats, walks and choreography keep their existing ownership. When a conversation forms (an inviter's
+  opening, an accepted invitation) and on every turn, free standing members turn through the native `face` action at
+  the ordinary turn rate (an `edge-attention` event with `turn: 'gradual-v1'`) instead of the at-once yaw, so a pair
+  already faces each other when the first reply is published. Speech itself is never delayed: an inviter's opening
+  line is published at once, before anyone can turn. Old operations, invitations and attention events keep legacy
+  semantics. The `social-v1` checks in `pose_v1.step` sit inside the group, displacement and fixed-target branches,
+  so a pose that cannot opt in (the body rule's nap) evaluates none of them. Maintainer sign-off is pending.
+  #419's board retreat/settled facing fix is separate; this experiment does not replace it.
 
 Other known limits:
 

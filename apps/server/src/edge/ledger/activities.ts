@@ -4,7 +4,7 @@
 import type {Program} from '@souls/engine-contract';
 import type {EdgeCapability} from '../contract.ts';
 import type {Interior, Platform, Ring, Solid} from './nav.ts';
-import {DANCE_CLEARANCE,POSE_INSTRUMENTS} from '../../../../../mars/viewer/engine/social/pose.ts';
+import {DANCE_CLEARANCE,POSE_INSTRUMENTS,SOCIAL_FACING_ACTIVITIES} from '../../../../../mars/viewer/engine/social/pose.ts';
 import {FLIGHT_MARGIN} from '../../../../../mars/viewer/engine/social/frisbee-clearance.ts';
 import {validInteriorShellBounds} from './nav.ts';
 import {paintingParam} from '../../art/painting.ts';
@@ -116,6 +116,8 @@ export function loadSpots(raw: unknown): {data: SpotsData; refused: string[]} {
 
 export type ActivityWorld = {
   me: V2; seated: boolean;
+  /** Unfinished social-v1 native phase: internal fixture opt-in; live plans require explicit dev flags. */
+  socialFacing?: boolean;
   /** The engine level the body stands on (0 = the ground; absent = 0). */
   level?: number;
   /** Clear standing ground at a point (m), 0 inside solids / off ground; may be capped at 1 m (only read against standing-room thresholds ≤ 0.95 m). */
@@ -144,7 +146,6 @@ export type ActivityWorld = {
 export const STARS_FROM = 20, STARS_UNTIL = 5;
 
 const d2 = (a: V2, b: V2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-const pose = (activity: string, seconds: number, extra: Record<string, unknown> = {}) => ({verb: 'mars:pose_v1', params: {activity, seconds, ...extra}});
 // upper-floors/1: a spot on level 0 inside a building (a hotel lobby sofa) reached from upstairs needs the level-aware walk;
 // plain walk_to keeps the body's current level and would seat it on the floor above the spot
 const walk = (to: V2, level?: number, from = 0) => level || (level === 0 && from) ? {verb: 'mars:walk_to', params: {x: to[0], z: to[1], level}} : {verb: 'walk_to', params: {to: [to[0], to[1]]}};
@@ -155,8 +156,14 @@ const secondsParam = (def: number, max = 1800) => ({seconds: {type: 'integer', m
 const seatSeconds = () => ({seconds: {type: 'integer', min: 1, max: 600, default: 60}});
 export const ACTIVITY_SECONDS_MAX = 1800;
 
+/** #423 social-v1 (unfinished, default off): new plans and conversation turns opt in only with both dev flags. */
+export const socialFacingEnabled = () => process.env.DEV_AUTH === '1' && process.env.SOUL_SOCIAL_FACING === '1';
+
 /** The activity capabilities and plans for one Soul right now. */
 export function activityCapabilities(data: SpotsData, w: ActivityWorld): {caps: EdgeCapability[]; plans: Map<string, Plan>} {
+  const socialFacing = w.socialFacing ?? socialFacingEnabled();
+  const pose = (activity:string,seconds:number,extra:Record<string,unknown>={})=>({verb:'mars:pose_v1',params:{activity,seconds,
+    ...(socialFacing&&SOCIAL_FACING_ACTIVITIES.has(activity)&&!extra.group&&!extra.game?{facingPolicy:'social-v1'}:{}),...extra}});
   const caps: EdgeCapability[] = [], plans = new Map<string, Plan>();
   const add = (cap: EdgeCapability, plan: Plan) => {caps.push(cap); plans.set(cap.id, plan);};
   // CN5 (acceptance): a spot World placed inside an obstacle (the picnic seats inside their table's box) is used from the
@@ -187,8 +194,11 @@ export function activityCapabilities(data: SpotsData, w: ActivityWorld): {caps: 
   const spotSteps = (s: Spot, seconds?: number, activity = s.activity, fromLevel = w.level): Program['steps'] => {
     const def = SPOT_ACTIVITIES[activity], body = (activity === s.activity && s.pose) || def.pose || activity, lying = s.base === 'lie', act = lying && !LYING_SPOT.has(body) ? 'lie' : body, prop = s.prop ?? def.prop;
     const reach = s.seat ? {verb: 'sit', params: {on: s.seat, seconds: 1}} : walk(clearAt(s) ?? s.at, s.level, fromLevel);
-    // entry 36: at a mic stand the singer turns to the mic on arrival (the pose's own facing is a one-tick snap)
-    const turn = act === 'sing' && s.accompany && s.faceTo && !s.seat ? [{verb: 'mars:face', params: {target: {point: s.faceTo}}}] : [];
+    // Ordinary standing work prepares through the existing native face action before publishing hands.
+    // Seats and explicit choreography retain their own direction and arrival contract.
+    const legacyTurn = act==='sing' && s.accompany && s.faceTo && !s.seat;
+    const turn = legacyTurn || (socialFacing && s.faceTo && !s.seat && s.base==='idle' && !s.together && SOCIAL_FACING_ACTIVITIES.has(act))
+      ? [{verb: 'mars:face', params: {target: {point: s.faceTo!}, ...(!legacyTurn ? {facingPolicy:'social-v1'} : {})}}] : [];
     return [...standFirst(w), reach, ...turn, pose(act, seconds ?? def.seconds, {...(prop && !lying ? {prop} : {}), ...(s.base === 'sit' ? {base: 'sit', ...(s.seatHeight ? {seatHeight: s.seatHeight, seatTogether: true} : {})} : {}),
       // CN5: lying on furniture (a gym bench) at its top; the instrument played at a music spot
       ...(lying && s.seatHeight ? {seatHeight: s.seatHeight, seatTogether: true} : {}), ...(s.instrument && (act === 'play-music' || act === 'play-piano') ? {instrument: s.instrument} : {}), ...(s.faceTo ? {face: s.faceTo} : {}),

@@ -49,7 +49,7 @@ const bboxSpan = (p: [number, number][]) => {const xs = p.map(q => q[0]), zs = p
 const area = (p: [number, number][]) => Math.abs(p.reduce((s, [x, z], i) => {const [x2, z2] = p[(i + 1) % p.length]; return s + x * z2 - x2 * z;}, 0)) / 2;
 import {resolveCapability, tokens, placeMatch, placeMatchTier, typoFix, wordsFocusVerbsV1, walkKeepV1, type VocabContext, type VocabResult} from './vocabulary.ts';
 import {isCampfire} from './fire.ts';
-import {activityCapabilities, activityMayOffer, loadSpots, ACTIVITY_SECONDS_MAX, SPOT_ACTIVITIES, SPOT_REACH, type SpotsData} from './activities.ts';
+import {activityCapabilities, activityMayOffer, socialFacingEnabled, loadSpots, ACTIVITY_SECONDS_MAX, SPOT_ACTIVITIES, SPOT_REACH, type SpotsData} from './activities.ts';
 import type {ContactActuatorIntent,ContactActuatorService} from '../../god/contact-actuator.ts';
 import type {DoorPassage,DoorPassageRefusal} from '../../god/door-passage.ts';
 import type {PaintingIntent, PaintingService} from '../../art/painting-completion.ts';
@@ -221,7 +221,13 @@ export class EdgeLedger implements EdgeLedgerHooks {
     // Re-deliver only persisted post-feature terminal projections whose event marker was not committed.
     if(this.db.db.prepare("SELECT 1 FROM sqlite_master WHERE name='edge_comms_receipts_seen'").get())for(const r of this.db.db.prepare("SELECT r.* FROM edge_receipts_v1 r JOIN edge_outcomes_v1 o ON o.world_id=r.world_id AND o.receipt_id=r.receipt_id LEFT JOIN edge_comms_receipts_seen seen ON seen.world_id=r.world_id AND seen.receipt_id=r.receipt_id AND seen.phase=r.phase WHERE r.world_id=? AND seen.receipt_id IS NULL ORDER BY r.created_at,r.receipt_id").all(this.host.worldId) as Row[])this.emit(this.view(r));
     // intents/1 auto-face: conversation members turn their heads to whoever speaks (default on)
-    try {(c as unknown as {onSpectator?(l: (m: {kind: string; conversation?: string; turn?: {from?: {soulId: string}}}) => void): void}).onSpectator?.(m => {
+    try {(c as unknown as {onSpectator?(l: (m: {kind: string; conversation?: string; turn?: {from?: {soulId: string}}; from?: {soulId: string}; invited?: {soulId: string}[]; soul?: {soulId: string}; change?: string}) => void): void}).onSpectator?.(m => {
+      // #423 social-v1 (dev flags only): bodies also turn when a conversation forms, not only at the next turn, so
+      // the pair already face each other when the first reply is published. An inviter turns to whom it invites.
+      if (m.conversation && socialFacingEnabled()) try {
+        if (m.kind === 'conversation.start' && m.from) this.intents.onTurn(m.conversation, m.from.soulId, (m.invited ?? []).map(x => x.soulId), 'speaker');
+        else if (m.kind === 'conversation.member' && m.change === 'joined' && m.soul) this.intents.onTurn(m.conversation, m.soul.soulId, this.coreA.conversations().find(x => x.id === m.conversation)?.members ?? []);
+      } catch {/* attention is best effort */}
       if (m.kind !== 'conversation.turn' || !m.conversation || !m.turn?.from) return;
       const members = this.coreA.conversations().find(x => x.id === m.conversation)?.members ?? [];
       // LINK BODY: a turn addressed to a member ends its idle reflex

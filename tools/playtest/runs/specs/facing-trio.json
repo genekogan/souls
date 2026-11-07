@@ -1,0 +1,11 @@
+{
+ "soulRun": 1,
+ "name": "facing-trio",
+ "scenario": "../../scenarios/soul-runs/facing-trio.json",
+ "world": { "port": 4331 },
+ "setup": { "batches": ["../setup/facing-stations.json"], "maxWallSec": 60 },
+ "observer": { "check": true, "required": true, "mode": "passive", "timeoutMs": 60000 },
+ "limits": { "maxWallSec": 600, "maxControllers": 3, "cleanupWaitMs": 15000 },
+ "retention": { "worldData": "keep", "controllerState": "keep" },
+ "evaluation": { "questions": ["../questions/group-faces-centre.mjs"] }
+}
