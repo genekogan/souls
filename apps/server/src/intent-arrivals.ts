@@ -1,6 +1,6 @@
-import {hashOf} from '@sim/engine-contract';
-import {whyNot} from '@sim/kernel';
-import {intentArrivalPayloadV1Schema,intentArrivalFactV1,intentArrivalPageV1Schema,intentControllerPayloadV2Schema,type IntentArrivalPayloadV1,type LogEvent} from '@sim/protocol';
+import {hashOf} from '@souls/engine-contract';
+import {whyNot} from '@souls/kernel';
+import {intentArrivalPayloadV1Schema,intentArrivalFactV1,intentArrivalPageV1Schema,intentControllerPayloadV2Schema,type IntentArrivalPayloadV1,type LogEvent} from '@souls/protocol';
 import type {WorldHost} from './world.ts';
 import type {IntentControlV2} from './intent-control.ts';
 import type {IntentRequestScope} from './intent-requests.ts';

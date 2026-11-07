@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { WebSocket } from 'ws';
-import { marsFactory, EDEN_COMMONS_WORLD } from '@sim/engine-mars';
+import { marsFactory, EDEN_COMMONS_WORLD } from '@souls/engine-mars';
 import { anonymousHello } from '../../../packages/client/src/hello.ts';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';

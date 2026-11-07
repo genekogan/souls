@@ -6,8 +6,8 @@
 // standing spot in the open area out to the world's bounds, else the nearest spot of the largest pocket; the birth then
 // carries it as the existing birth-near/1 hint {at, first:true}, so the event records the exact place and replay never
 // searches. Refused (birth.arrival-unavailable) only when the world has no standing ground at all.
-import { probeNativeHumanBirth, type ArrivalPocket, type ArrivalSpot } from '@sim/engine-mars';
-import type { BirthNearV1, HumanBirthProbe } from '@sim/engine-contract';
+import { probeNativeHumanBirth, type ArrivalPocket, type ArrivalSpot } from '@souls/engine-mars';
+import type { BirthNearV1, HumanBirthProbe } from '@souls/engine-contract';
 import type { WorldHost } from './world.ts';
 
 type ArrivalEngine = { arrivalSearchV1?(label?: string): ArrivalSpot | null; arrivalPocketV1?(p: [number, number], label?: string): ArrivalPocket; arrivalBlockedV1?(): boolean };

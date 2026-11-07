@@ -19,7 +19,7 @@ import { readyExpression, captureExpression } from './look-page.ts';
 let renderLockDir: string, previousRenderLockDir: string | undefined;
 before(() => {
   previousRenderLockDir = process.env.SIM_RENDER_LOCK_DIR;
-  renderLockDir = mkdtempSync(join(tmpdir(), 'sim-look-test-lock-'));
+  renderLockDir = mkdtempSync(join(tmpdir(), 'souls-look-test-lock-'));
   process.env.SIM_RENDER_LOCK_DIR = renderLockDir;
 });
 after(() => {

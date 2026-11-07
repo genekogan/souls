@@ -1,4 +1,4 @@
-import {hashOf,type EngineFactory,type EngineSnapshot,type EdenLecturePlacementV1} from '@sim/engine-contract';
+import {hashOf,type EngineFactory,type EngineSnapshot,type EdenLecturePlacementV1} from '@souls/engine-contract';
 import {MarsEngine} from './engine.ts';
 import {edenLectureV1} from './eden-lecture.ts';
 export function edenLectureFactoryV1(origin:EngineFactory):EngineFactory{

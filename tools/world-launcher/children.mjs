@@ -21,10 +21,6 @@ const within = (p, ms) => { let t; return Promise.race([p, new Promise((r) => { 
 /** Restart wait after the n-th failure in a row: full jitter, 1 s base, 5 min cap (guard.mjs). */
 /** The exit code of a world that asks to be restarted (apps/server main.ts: black for 60 s, snapshot saved): no backoff. */
 export const PLANNED_EXIT = 75;
-/** #447: the exit code of a world whose engine fault could not be recovered (main.ts onEngineHalt; no snapshot of the
- *  faulted state). Restarted from its last good snapshot with backoff and counted toward the breaker: a fault that
- *  replays deterministically ends held, never a hot restart loop. */
-export const ENGINE_FAULT_EXIT = 76;
 export const backoffMs = (n, random = Math.random, g = GUARD) => jitterMs(n, g, random);
 
 /** True when nothing listens on 127.0.0.1:port (we can bind it ourselves). */
@@ -257,7 +253,7 @@ export class ChildPool {
     return { status: k.frozen || (k.asleep && k.status === 'stopped') ? 'asleep' : k.status, ...(k.frozen ? { frozen: true } : {}), port: k.port, pid: k.child?.pid ?? k.adopted?.pid ?? null, ...(k.adopted ? { adopted: true } : {}), restarts: k.restarts, upSince: k.upSince, lastExit: k.lastExit,
       ...(k.restartsBy ? { restartsByReason: { ...k.restartsBy } } : {}), ...(k.lastBootMs != null ? { lastBootMs: k.lastBootMs } : {}), ...(k.readPorts?.length ? { readPorts: [...k.readPorts] } : {}), ...(k.healthPort ? { healthPort: k.healthPort } : k.noHealthPort ? { watchdog: 'none: live.json + main /healthz' } : {}), ...(k.held ? { held: { ...k.held } } : {}), ...(k.wedging ? { wedging: { ...k.wedging } } : {}),
       ...(k.boot && (k.status === 'starting' || k.status === 'handover') ? { boot: { ...k.boot } } : {}), ...(k.nextTryAt && k.status === 'restarting' ? { nextTryAt: k.nextTryAt } : {}),
-      ...(k.live ? { level: k.live.level ?? null } : {}), ...(k.lastHalt ? { lastHalt: { ...k.lastHalt } } : {}), ...(k.rampFrom && k.status === 'running' ? { rampFrom: k.rampFrom } : {}) };
+      ...(k.live ? { level: k.live.level ?? null } : {}), ...(this.halted(k) ? { halted: true } : {}), ...(k.rampFrom && k.status === 'running' ? { rampFrom: k.rampFrom } : {}) };
   }
   /** Ports held by live or (re)starting children; a sleeping world's old port is free for anyone. */
   usedPorts(except) { return new Set([...this.kids.values()].filter((k) => k.slug !== except && (k.child || k.adopted || k.status === 'starting' || k.status === 'restarting' || k.status === 'handover')).flatMap((k) => [k.port, k.healthPort, ...(k.readPorts ?? [])]).filter(Boolean)); }
@@ -397,7 +393,7 @@ export class ChildPool {
     child.stdout.pipe(log, { end: false }); child.stderr.pipe(log, { end: false });
     // a boot's progress, when the world writes no live.json: its output (healthy())
     const out = () => { run.lastOutputAt = Date.now(); }; child.stdout.on('data', out); child.stderr.on('data', out);
-    child.once('exit', (code, signal) => { run.exited = true; run.code = code; log.end(`--- exit ${code ?? signal}\n`); this.onExit(k, child, code, signal); });
+    child.once('exit', (code, signal) => { run.exited = true; log.end(`--- exit ${code ?? signal}\n`); this.onExit(k, child, code, signal); });
     child.once('error', (e) => { log.write(`--- spawn error ${e.message}\n`); });
     return run;
   }
@@ -437,8 +433,7 @@ export class ChildPool {
     if (!run.exited) child.kill('SIGKILL');
     k.status = 'failed'; k.boot = null; this.o.onChange?.(k.slug);
     const e = new Error(run.exited ? `world ${k.slug} exited while booting (see ${join(this.o.logDir, k.slug + '.log')})` : stalled ? `world ${k.slug} boot made no progress for ${since} s (killed ${Math.round((Date.now() - t0) / 1000)} s into it)` : `world ${k.slug}: boot stopped`);
-    // #447: a fault that surfaces while booting (exit 76) is still an engine fault, not a boot failure
-    e.reason = stalled ? 'boot-stalled' : run.code === ENGINE_FAULT_EXIT ? 'engine-fault' : 'boot';
+    e.reason = stalled ? 'boot-stalled' : 'boot';
     if (stalled) this.log(e.message);
     throw e;
   }
@@ -446,17 +441,13 @@ export class ChildPool {
   onExit(k, child, code, signal) {
     if (k.child !== child) return;
     const wedged = k.wedging; k.wedging = null;
-    const halted = k.live?.halted ?? null, fault = !wedged && code === ENGINE_FAULT_EXIT;
-    k.child = null; k.frozen = false; k.lastExit = { code, signal, at: Date.now(), ...(wedged ? { reason: `wedged: ${wedged.reason}` } : fault ? { reason: 'engine-fault' } : {}) }; this.savePids();
-    // #447: the last reason a world stopped for good is kept with its state (a qualify run's children.json records it)
-    if (fault || halted) k.lastHalt = { at: Date.now(), reason: fault ? 'engine-fault' : halted.reason, ...(halted?.tick != null ? { tick: halted.tick } : {}) };
-    k.live = null;   // that process's live.json: never read as the next child's
+    k.child = null; k.frozen = false; k.lastExit = { code, signal, at: Date.now(), ...(wedged ? { reason: `wedged: ${wedged.reason}` } : {}) }; this.savePids();
     if (this.closing || k.stopped || this.fenced) { k.status = 'stopped'; this.o.onChange?.(k.slug); return; }
     if (k.status === 'starting') return;  // boot() reports it (to ensure()'s caller, or to the restart loop)
     // exit 75 (LOAD-CONTRACT §4): the world asked for a planned restart (black too long; its snapshot is saved): at once
     const planned = !wedged && code === PLANNED_EXIT;
-    this.log(`world ${k.slug} exited (${code ?? signal})${wedged ? ` after it was found wedged: ${wedged.reason}` : planned ? ': a planned restart' : fault ? ': an unrecoverable engine fault (restart from its last good snapshot)' : ''}`);
-    this.scheduleRestart(k, wedged ? 'wedged' : planned ? 'planned' : fault ? 'engine-fault' : 'exit');
+    this.log(`world ${k.slug} exited (${code ?? signal})${wedged ? ` after it was found wedged: ${wedged.reason}` : planned ? ': a planned restart' : ''}`);
+    this.scheduleRestart(k, wedged ? 'wedged' : planned ? 'planned' : 'exit');
   }
   /** A crash, a wedge or a failed restart (lane L1): restart after a full-jitter backoff (1 s base, 5 min cap; the count
    *  resets after 10 min healthy). breakerN failures within breakerWindowMs: held, no more restarts until resume().
@@ -567,7 +558,9 @@ export class ChildPool {
     if (!exited()) { this.log(`world ${k.slug} still running after SIGUSR2: SIGTERM`); try { c.kill('SIGTERM'); } catch { /* gone */ } await within(exit, g.termGraceMs); }
     if (!exited()) { this.log(`world ${k.slug} still running after SIGTERM: SIGKILL`); try { c.kill('SIGKILL'); } catch { /* gone */ } }
   }
-  /** What host-health and /__sim/healthz show (LOAD-CONTRACT §4): wedged, held, crashloop, bootSlow. */
+  /** The world said its clock has stopped (live.json, #1150): running, but serving nobody. Until a restart. */
+  halted(k) { return k.status === 'running' && !!k.live?.halted && k.live.pid === k.child?.pid; }
+  /** What host-health and /__sim/healthz show (LOAD-CONTRACT §4): wedged, held, crashloop, bootSlow, halted. */
   problems(now = Date.now()) {
     const g = this.g, out = [], s = (ms) => `${Math.round(ms / 1000)} s`;
     for (const k of this.kids.values()) {
@@ -578,6 +571,7 @@ export class ChildPool {
       if (k.wedging) out.push({ slug: k.slug, code: 'wedged', text: `${k.slug} wedged (${k.wedging.reason}) ${s(now - k.wedging.at)} ago; being restarted` });
       else if (suspect) out.push({ slug: k.slug, code: 'wedged', text: `${k.slug} not answering: ${suspect}` });
       else if (k.lastWedge && now - k.lastWedge.at < g.wedgeShownMs) out.push({ slug: k.slug, code: 'wedged', text: `${k.slug} was wedged ${s(now - k.lastWedge.at)} ago (${k.lastWedge.reason}); restarted` });
+      if (this.halted(k)) out.push({ slug: k.slug, code: 'halted', text: `${k.slug} halted: its clock has stopped and visitors get 503; the reason is its [world] glitch line (op.mjs glitches --world ${k.slug}); a restart boots from the log` });
       if (k.status === 'starting' && k.boot && now - k.boot.since > g.bootSlowMs) out.push({ slug: k.slug, code: 'bootSlow', text: `${k.slug} booting for ${s(now - k.boot.since)}${k.boot.stage ? ` (${k.boot.stage}${k.boot.tick != null ? ` ${k.boot.tick}${k.boot.target ? `/${k.boot.target}` : ''}` : ''})` : ''}; last progress ${s(now - k.boot.movedAt)} ago` });
     }
     return out;

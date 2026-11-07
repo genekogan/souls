@@ -12,18 +12,21 @@ import type {LoadMonitor} from './load/monitor.ts';
 /** SEC2: the absolute request-body ceiling for a non-god route (uploads 17 MB, everything else 1 MB). */
 export const bodyCeiling=(path:string)=>/\/v1\/(?:edge\/body\/uploads|art\/media)$/.test(path)?17*1024*1024:1024*1024;
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { schemaReference } from './edge/intents/offer-schema.ts';
+import { EDGE_ACT_VERBS } from './edge/events/schema.ts';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { decodeJwt } from 'jose';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { adminSchema, commandSchema, inviteSchema, ownerLifecycleCapabilitySchema, pairApproveSchema, pairExchangeSchema, pairPollSchema, pairStartSchema, publicEvent, setIntentSchema,TAKE_BOUNDARY_WIRE_V1,stringifyTakeBoundaryWireV1 } from '@sim/protocol';
+import { adminSchema, commandSchema, inviteSchema, ownerLifecycleCapabilitySchema, pairApproveSchema, pairExchangeSchema, pairPollSchema, pairStartSchema, publicEvent, setIntentSchema,TAKE_BOUNDARY_WIRE_V1,stringifyTakeBoundaryWireV1 } from '@souls/protocol';
 import { hashToken, newId, type Auth } from './auth.ts';
 import type { Brain } from './brain.ts';
 import { publicWorldBase, type Config } from './config.ts';
 import { requestWorldBase } from './world-base.ts';
 import type { Db, SoulRow, UserRow } from './db.ts';
 import { publicTakes, type Hub } from './hub.ts';
-import { cardGrammar } from '@sim/brain';
+import { cardGrammar } from '@souls/brain';
 import { skillMd } from './skill.ts';
 import { edgeSkillStub } from './edge/skill-stub.ts';
 import { agentReader } from './agent-reader.ts';
@@ -31,7 +34,7 @@ import { ApiError, type Souls } from './souls.ts';
 import { mountMarsStatic } from './mars-static.ts';
 import type {TakeArchive} from './take-archive.ts';
 import { checkAcceptanceGuard,type AcceptanceGuard,type WorldHost } from './world.ts';
-import {captureRenderScene} from '@sim/engine-contract';
+import {captureRenderScene} from '@souls/engine-contract';
 import type {CandidateStationV1} from './station.ts';
 import type {CandidateStationV2} from './station-v2.ts';
 import {mountStationRoutesV2} from './station-routes-v2.ts';
@@ -45,7 +48,7 @@ import { poolOf } from './god/builds.ts';
 import {VerifyUse} from './god/verify-use.ts';
 import { mountModeration } from './moderation/routes.ts';
 import { mountEdgeSnapshot, safeKey, snapshotKey, withSnapshotKey, withWorldClock } from './edge-snapshot.ts';
-import { withInlineConfig } from './inline-config.ts';
+import { withInlineConfig, withWorldMeta } from './inline-config.ts';
 import { mountSharedLibraryRoutes } from './god/shared-library.ts';
 import { mountArtRoutes } from './art/routes.ts';
 import { createPaintingService } from './art/painting-completion.ts';
@@ -175,11 +178,15 @@ export function buildApp(d: Deps) {
     console.error('[http]', err);
     return c.json({ ok: false, code: 'internal', message: 'internal error' }, 500);
   });
-  app.use('*', async (c, next) => { await next(); c.header('X-Robots-Tag', 'noindex, nofollow'); c.header('X-Frame-Options', 'DENY'); c.header('Content-Security-Policy', "frame-ancestors 'none'"); });
+  // #894: the world page and its public guides may be indexed (the launcher marks every response of an unlisted world
+  // noindex itself); the API, MCP, health, debug and any query-string variant never are.
+  const INDEXABLE = new Set(['/', '/SKILL.md', '/skill.md', '/instructions.md', '/llms.txt', '/cards.md']);
+  app.use('*', async (c, next) => { await next(); if (!((c.req.method === 'GET' || c.req.method === 'HEAD') && INDEXABLE.has(c.req.path) && !c.req.url.includes('?'))) c.header('X-Robots-Tag', 'noindex, nofollow'); c.header('X-Frame-Options', 'DENY'); c.header('Content-Security-Policy', "frame-ancestors 'none'"); });
   // A halted durable clock cannot serve an unacknowledged body/head or accept
   // more control. Generic unavailable response carries no private row/error.
   app.use('*',async(c,next)=>{
-    if(!d.host.clockAvailable)return c.json({ok:false,code:'world-unavailable',message:'World temporarily unavailable.'},503,{'Cache-Control':'no-store'});
+    // /healthz also says why it is unavailable, as counts by rule and rung (#1150).
+    if(!d.host.clockAvailable)return c.json({ok:false,code:'world-unavailable',message:'World temporarily unavailable.',...(c.req.path.endsWith('/healthz')?{halted:true,glitches:d.host.glitches}:{})},503,{'Cache-Control':'no-store'});
     await next();
   });
   // Nothing a person or an agent sends is large: a command, an intent, a few cards.
@@ -206,9 +213,7 @@ export function buildApp(d: Deps) {
   app.get('/healthz', (c) => { const mon = d.load?.monitor; let tickMs: {avg: number; max: number; n: number};
     if (mon) { const t = mon.tickStats; tickMs = {avg: t.avg, max: t.max, n: t.n}; }
     else { const ms = d.host.tickMs, n = ms.length; let sum = 0, max = 0; for (const x of ms) { sum += x; if (x > max) max = x; } tickMs = { avg: n ? Math.round(10 * sum / n) / 10 : 0, max: Math.round(10 * max) / 10, n }; }
-    // #447: a world that stopped for good says why (the operator's pause has no `halted`)
-    const halt = d.host.halted?.(), halted = halt ? { kind: halt.kind, why: halt.why, tick: halt.tick, ...(halt.original ? { code: halt.original.code, subjects: halt.original.subjects, faultTick: halt.original.tick } : {}) } : undefined;
-    return c.json({ ok: true, tick: d.host.engine.world.tick, clients: d.hub.clients.size, paused: d.host.paused, ...(halted ? { halted } : {}), build: d.cfg.build, worldId: d.host.worldId,
+    return c.json({ ok: true, tick: d.host.engine.world.tick, clients: d.hub.clients.size, paused: d.host.paused, halted: !d.host.clockAvailable, glitches: d.host.glitches, build: d.cfg.build, worldId: d.host.worldId,
       tickMs, clockRate: d.host.clockRate, ...(mon ? {load: mon.health()} : {}) }, 200, mon ? {'X-Sim-Load': mon.level} : undefined); });
   // lane W1: the same config goes into the world page's <head> (inline-config.ts)
   const configOf = (c: Context) => ({ authProvider:d.cfg.authProvider, authenticationOrigin:d.cfg.authProvider==='clerk'&&d.auth.ready?new URL(d.cfg.publicUrl).origin:'', clerkPublishableKey:d.cfg.authProvider==='clerk'?d.cfg.clerkPublishableKey:'', clerkIssuer:d.cfg.authProvider==='clerk'?d.cfg.clerkIssuer:'', ...(d.cfg.authProvider==='clerk'&&d.cfg.clerkSatelliteDomain?{clerkSatellite:{domain:d.cfg.clerkSatelliteDomain,signInUrl:d.cfg.clerkSignInUrl}}:{}), privyAppId:d.cfg.authProvider==='privy'?d.cfg.privyAppId:'', publicUrl: baseOf(c), worldURL:baseOf(c), instructionsURL:baseOf(c)+'/instructions.md', accountAuthRequired:d.cfg.accountAuthRequired, accountApproval:d.souls.accounts?{contract:'account-soul-approval/1',start:'/v1/agent/approval/start',poll:'/v1/agent/approval/poll',cancel:'/v1/agent/approval/cancel'}:null, soulProfile:{contract:'soul-profile/1',auth:'owner',edit:'PATCH /v1/souls/:id/profile',photo:'POST /v1/souls/:id/photo',resetPhoto:'DELETE /v1/souls/:id/photo',autoPortrait:portraits.enabled,photoFormat:'PNG RGB/RGBA8',maxPhotoBytes:262144,maxPhotoDimension:512}, worldId: d.host.worldId, worldKey: d.cfg.worldSlug ?? d.cfg.worldKey, worldEngine: d.cfg.worldEngine, worldName: displayWorldName, worldPath: d.cfg.worldPath, authReady: d.auth.ready, devAuth: d.auth.devAuth, inviteRequired: d.cfg.inviteRequired, build: d.cfg.build });
@@ -278,6 +283,13 @@ export function buildApp(d: Deps) {
     return d.cfg.mindDriver === 'edge' ? edgeSkillStub(base) : skillMd(base);
   };
   const skill = (c: Context) => c.text(skillText(baseOf(c)), 200, { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'public, max-age=60' });
+  // CTRL-7 (#1099): the reference the skill links, read once: its notes beside the skill file, then the generated schema
+  app.get('/schema.md', c => {
+    let notes = ''; try { if (d.cfg.skillFile) notes = readFileSync(join(dirname(d.cfg.skillFile), 'schema-notes.md'), 'utf8') + '\n'; } catch { /* a world with no notes still has the generated part */ }
+    const text = notes + schemaReference(EDGE_ACT_VERBS), etag = `"${createHash('sha256').update(text).digest('hex').slice(0, 32)}"`;
+    if (c.req.header('if-none-match') === etag) return c.body(null, 304, { etag, 'cache-control': 'public, max-age=300' });
+    return c.text(text, 200, { 'content-type': 'text/markdown; charset=utf-8', etag, 'cache-control': 'public, max-age=300' });
+  });
   app.get('/skill.md', skill);
   app.get('/instructions.md',c=>{if(!d.cfg.instructionsFile)return c.json({ok:false,code:'instructions-unavailable'},503);
     // lane PUX: ?for=<window code> (the signed-in page's New Soul prompt) names the code in the guide; never cached shared
@@ -545,20 +557,21 @@ export function buildApp(d: Deps) {
   // ---- static web app (SPA)
   const worldAssets = new URL('../../../worlds', import.meta.url).pathname;
   app.get('/world-assets/*', serveStatic({ root: worldAssets, rewriteRequestPath: p => p.replace(/^\/world-assets/, '') }));
-  app.get('/buildings', c => c.html(`<main style="max-width:1100px;margin:auto;font:18px system-ui;padding:24px"><a href="/">Sim worlds</a><h1>Ceramic Tower and Minaret Temple</h1><p>First procedural versions, rebuilt after Vanessa Rosa's ceramics. Open rooms and shafts are sized for floating heads.</p><img style="width:100%" src="/world-assets/littlemartians/buildings/previews/both.jpg" alt="Ceramic Tower and Minaret Temple"/><h2>Inside the rooms</h2><img style="width:48%" src="/world-assets/littlemartians/buildings/previews/ceramic-tower-inside-L1.jpg" alt="Tower second room"/><img style="width:48%" src="/world-assets/littlemartians/buildings/previews/minaret-temple-inside-L1.jpg" alt="Temple domed room"/></main>`));
+  app.get('/buildings', c => c.html(`<main style="max-width:1100px;margin:auto;font:18px system-ui;padding:24px"><a href="/">Souls</a><h1>Ceramic Tower and Minaret Temple</h1><p>First procedural versions, rebuilt after Vanessa Rosa's ceramics. Open rooms and shafts are sized for floating heads.</p><img style="width:100%" src="/world-assets/littlemartians/buildings/previews/both.jpg" alt="Ceramic Tower and Minaret Temple"/><h2>Inside the rooms</h2><img style="width:48%" src="/world-assets/littlemartians/buildings/previews/ceramic-tower-inside-L1.jpg" alt="Tower second room"/><img style="width:48%" src="/world-assets/littlemartians/buildings/previews/minaret-temple-inside-L1.jpg" alt="Temple domed room"/></main>`));
   if (existsSync(d.cfg.marsWebDir)) mountMarsStatic(app, d.cfg.marsWebDir);
   if (existsSync(d.cfg.webDir)) {
     // Re-read when the file changes so a frontend install needs no server restart (stat per request is cheap).
     const indexPath = join(d.cfg.webDir, 'index.html');
-    let index = readFileSync(indexPath, 'utf8'), indexMtime = statSync(indexPath).mtimeMs;
+    const worldMeta = { name: displayWorldName, url: publicWorldBase(d.cfg) + '/' };   // #894: from configuration, never a request header
+    let index = withWorldMeta(readFileSync(indexPath, 'utf8'), worldMeta), indexMtime = statSync(indexPath).mtimeMs;
     const worldClockNow = () => { try { return (d.host.engine.world as { env?: { datetime?: unknown } }).env?.datetime; } catch { return null; } };   // P7d: the early poster's sky (edge-snapshot.ts withWorldClock)
     const worldSoulsNow = () => { try { return d.host.minds.size; } catch { return null; } };   // P7d: the early poster's view (souls here: broadcast opens on a landmark)
-    const currentIndex = () => { try { const m = statSync(indexPath).mtimeMs; if (m !== indexMtime) { index = readFileSync(indexPath, 'utf8'); indexMtime = m; } } catch { /* keep the last good index */ } return index; };
+    const currentIndex = () => { try { const m = statSync(indexPath).mtimeMs; if (m !== indexMtime) { index = withWorldMeta(readFileSync(indexPath, 'utf8'), worldMeta); indexMtime = m; } } catch { /* keep the last good index */ } return index; };
     app.use('/assets/*', async (c, next) => { await next(); if (c.res.ok) c.header('Cache-Control', 'public, max-age=31536000, immutable'); });
     app.use('/assets/*', serveStatic({ root: d.cfg.webDir }));
     // lane P4: the installable-app manifest beside the page (apps/web/src/pwa-manifest.ts: its start_url "./" is this world)
     app.get('/manifest.webmanifest', async (c, next) => { const r = await serveStatic({ root: d.cfg.webDir, path: 'manifest.webmanifest' })(c, next); if (r?.ok) r.headers.set('Cache-Control', 'public, max-age=3600'); return r ?? c.notFound(); });
     app.get('*', (c) => (c.req.path.startsWith('/v1/') || c.req.path.startsWith('/mcp') ? c.json({ ok: false, code: 'not-found', message: 'no such route' }, 404) : c.html(withInlineConfig(withSnapshotKey(withWorldClock(currentIndex(), worldClockNow(), worldSoulsNow()), safeKey(currentSnapshotKey), godRoutes?.partRefs()), safeConfig(c)), 200, { 'Cache-Control': 'no-cache' })));
-  } else app.get('/', (c) => c.text('Sim server is running. The web app has not been built (pnpm build).'));
+  } else app.get('/', (c) => c.text('A Souls world server is running. The web app has not been built (pnpm build).'));
   return app;
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { kernelHash } from '@sim/kernel';
+import { kernelHash } from '@souls/kernel';
 import { WorldHost,replayFromGenesis } from './world.ts';
 import { lifecycleBodyReady,projectLifecycle } from './lifecycle-runner.ts';
 import { fixture,settle,factory,seed,worldId,scope,requestId,input } from '../test/lifecycle-native-fixture.ts';

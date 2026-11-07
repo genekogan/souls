@@ -1,9 +1,9 @@
 // Explicit isolated G006 installation. No default timer, transport or audio.
-import { nativeGatheringObservationV1Schema,hashOf } from '@sim/engine-contract';
+import { nativeGatheringObservationV1Schema,hashOf } from '@souls/engine-contract';
 import { STATION_PINS_V1,makeStationCueV2,stationCueEraRevision,stationPhaseAtTickV2,stationEndTick,stationAnchorV2Schema,
   stationLiveV2Schema,stationHistoricalV2Schema,initialStationPhysicalHeadV1,foldStationRulesEraV1,acceptStationPhysicalHeadV1,
   stationEraPageV1Schema,stationRulesEraFactV1Schema,stationSourceFromRulesV1,
-  type StationLiveV2,type StationEraFoldStateV1 } from '@sim/protocol';
+  type StationLiveV2,type StationEraFoldStateV1 } from '@souls/protocol';
 import type { WorldHost } from './world.ts';
 
 export class CandidateStationV2 {

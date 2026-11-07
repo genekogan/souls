@@ -1,7 +1,7 @@
 // W1: one scene, four orthographic views, no world connection or writes.
 import * as THREE from 'three';
 import '../index.ts';
-import { WorldModel, type StoredDef } from '@sim/world-compiler';
+import { WorldModel, type StoredDef } from '@souls/world-compiler';
 import { MaterialLib } from '../materials.ts';
 import { meshFor } from '../registry.ts';
 import { ctxFor } from './studio.ts';

@@ -27,9 +27,8 @@ export const S = {
   // admission calibration (lane srv-admission-calib): EWMA of the tick's own ms over quiet loop windows (monitor.ts);
   // 0 = not measured yet. admission.ts reads it for the frame budget (frameBudgetMs).
   quietTickMs: 28,
-  // #447: the world stopped for good: 0 = running, 1 = an unrecoverable engine fault, 2 = a failed clock; and the tick
-  halt: 29, haltTick: 30,
-  size: 31,
+  halted: 29,      // 1 once the world's clock has stopped (a fault or a durability failure, #1150): the launcher alerts on it
+  size: 30,
 } as const;
 
 export type LiveJson = {
@@ -46,8 +45,8 @@ export type LiveJson = {
   /** Stage B: the first read worker's port (the launcher routes C2 reads here); present only with read workers. */
   readPort?: number;
   read?: {ports: number[]; workers: number; lagGens: number; subset: boolean; routes: string[]};
-  /** #447: present only when the world stopped for good (an operator's pause is not a halt). The launcher counts it dead. */
-  halted?: {reason: 'engine-fault' | 'clock'; tick: number};
+  /** The world's clock has stopped; present only then (#1150). */
+  halted?: true;
 };
 
 /** The routes a read worker answers itself, by mode (S.readMode): what the launcher may route to its port. */
@@ -74,11 +73,11 @@ export function liveOf(a: Float64Array, pid: number, now: number): LiveJson {
     out.queue = {depth: a[S.queueDepth], oldestMs: Math.round(a[S.queueOldestMs])};
     out.souls = {awake: a[S.awake], waiting: a[S.waiting], connected: a[S.connected]};
   }
-  if (a[S.halt] > 0) out.halted = {reason: a[S.halt] === 1 ? 'engine-fault' : 'clock', tick: a[S.haltTick]};
   const mode = a[S.readMode], ports = [0, 1, 2, 3].map(i => a[S.readPorts + i]).filter(p => p > 0);
   if (mode > 0 && ports.length) {
     out.readPort = ports[0];
     out.read = {ports, workers: a[S.readWorkers], lagGens: a[S.readLagGens], subset: mode === 1, routes: READ_ROUTES[mode] ?? []};
   }
+  if (a[S.halted]) out.halted = true;
   return out;
 }

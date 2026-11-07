@@ -92,8 +92,8 @@ blocked actions, and `execute` refuses to commit the unsettled result.
 The edge stall guard (`apps/server/src/edge/ledger/stall-guard.ts`) releases a body whose hold stopped making progress
 (engine `stallReleaseV1`, folded from the logged `edge-stop`). On the ground it stands the body at the nearest free
 standing spot. On an upper level it used to stand it where it was, which for a walk stuck cancelling mid-flight is
-off the level's floor: the next tick faulted `collision.human-static`, every recovery plan replayed the same release,
-and the world paused for good (#447). With `stallReleaseSupportV1` (prospective runtime policy, hashed; every edge world
+off the level's floor: the next tick faulted `collision.human-static`, and every recovery plan replayed the same
+release (#447). With `stallReleaseSupportV1` (prospective runtime policy, hashed; every edge world
 turns it on at startup) an upper-level release stands the body where it is only when its level has a clear standing
 disc there. Otherwise it goes to the nearer free landing of the stair link its walk is on: a clear disc on that
 landing's level and nobody within two body radii in plan and 1.5 m in height. With neither, nothing is released: the

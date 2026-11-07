@@ -117,16 +117,16 @@ try {
           const page = await ctx.newPage(), errors = [];
           page.on('pageerror', (e) => errors.push(String(e)));
           await page.goto(`${beta.base}/?dev=1`, { waitUntil: 'domcontentloaded' });
-          await page.waitForFunction(() => !!window.__simEntity?.layer.active, null, { timeout: 120000 });
+          await page.waitForFunction(() => !!window.__soulsEntity?.layer.active, null, { timeout: 120000 });
           await page.locator('.viewer-arrival').waitFor({ state: 'hidden', timeout: 120000 }).catch(() => {});
           await page.waitForTimeout(2500);
-          const stats = await page.evaluate(() => window.__simEntity.stats());
+          const stats = await page.evaluate(() => window.__soulsEntity.stats());
           const f = join(shots, `beta-library-dpr${dpr}.png`); await page.screenshot({ path: f });
           step(`screenshot dpr ${dpr}`, { file: f, stats, errors });
           check(`shot.dpr${dpr}`, stats.entities >= 10 && !errors.length, { entities: stats.entities, errors: errors.slice(0, 2) });
           // closer: the corners placed from the library (v1 left, v2 with its second bench right, v1 again behind,
           // the route-placed v2 in front, the uploaded totem in the middle)
-          const frame = () => page.evaluate(() => { const s = window.__simEntity; s.controls.target.set(0, 0.6, -1); s.camera.position.set(2, 8.5, 15); s.controls.update?.(); });
+          const frame = () => page.evaluate(() => { const s = window.__soulsEntity; s.controls.target.set(0, 0.6, -1); s.camera.position.set(2, 8.5, 15); s.controls.update?.(); });
           await frame(); await page.waitForTimeout(1000); await frame(); await page.waitForTimeout(1500);   // twice: an arrival glide may still own the camera
           const fc = join(shots, `beta-library-close-dpr${dpr}.png`); await page.screenshot({ path: fc });
           step(`close-up dpr ${dpr}`, { file: fc });

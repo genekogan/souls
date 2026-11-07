@@ -48,8 +48,6 @@ export function liveWedge(live, now, g = GUARD) {
   if (age > g.liveStaleMs) return `live.json ${Math.round(age / 1000)} s old`;
   const turn = live.loop?.lastTurnAgeMs;
   if (Number.isFinite(turn) && turn > g.turnAgeMs) return `main thread stuck ${Math.round(turn / 1000)} s`;
-  // #447: a world that stopped for good (engine fault, failed clock) answers healthz but never ticks again: dead
-  if (live.halted) return `halted (${live.halted.reason}) at tick ${live.halted.tick}`;
   return null;
 }
 

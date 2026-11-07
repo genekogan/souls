@@ -21,7 +21,7 @@ const world429 = (res, code = 'soul.slow-down', after = 5, message) =>
   json(res, 429, { contract: 'eden-edge/1', error: { code, ...(message ? { message } : {}) }, world: { load: 'amber', retry_after_s: after } }, { 'retry-after': String(after), 'x-sim-load': 'amber' });
 
 async function fixture(t, respond) {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-slowed-')), seen = [];
+  const dir = mkdtempSync(join(tmpdir(), 'souls-slowed-')), seen = [];
   const server = createServer((req, res) => { req.resume(); req.on('end', () => { seen.push(req.url); respond(req, res, seen.length); }); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({ world: `http://127.0.0.1:${server.address().port}`, soul: 's_slow', token: 'synthetic-slowed-token' }), { mode: 0o600 });
@@ -80,7 +80,7 @@ test('429 without a message: the built-in sentence per code; refused, then answe
   const f = await fixture(t, (req, res, n) => n <= 2 ? world429(res, 'soul.slow-down', 4) : req.url === '/v1/edge/act'
     ? json(res, 200, { accepted: true, receipt: { id: 'r_1', phase: 'running', capability: 'wave:here', now: 'waving' }, channel: 'body' })
     : json(res, 200, { here: {} }));
-  const got = await f.run('act', 'wave');
+  const got = await f.run('act', 'wave:here');
   assert.equal(got.code, 0, got.stderr);
   assert.match(got.d.slowed, /^The world asked me to slow down twice \(soul\.slow-down: I asked for a lot in a short time\); it answered after \d+ s\.$/);
   assert.equal(Object.keys(got.d)[0], 'slowed', 'the first thing the agent reads');

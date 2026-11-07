@@ -16,12 +16,12 @@ import { EdgeLedger } from '../src/edge/ledger/ledger.ts';
 
 const TEMPLATE = new URL('../../../worlds/templates/eden-2026.json', import.meta.url);
 
-export async function bootEden(log: (m: string) => void = () => {}) {
+export async function bootEden(log: (m: string) => void = () => {}, template: URL = TEMPLATE) {
   const t0 = performance.now();
   const f = fixture(':memory:');
   loadGroundRecipes(f.db, f.host.worldId);
   const edge = new EdgeLedger(f.host, f.db);
-  const genesis = JSON.parse(readFileSync(TEMPLATE, 'utf8')) as Genesis;
+  const genesis = JSON.parse(readFileSync(template, 'utf8')) as Genesis;
   const god = new GodMode(f.db, { genesis, worldId: f.host.worldId, ownerId: 'dev:admin', tick: () => f.host.engine.world.tick, emit: () => {} });
   log(`genesis: ${god.model.entities.size} entities in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
   new GroundHost(f.db, f.host, god);

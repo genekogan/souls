@@ -1,7 +1,7 @@
 // upper-floors/1 (lane L4b): old Eden's office upper floors as one logged rules fact — install, no-op, refused while someone
 // is upstairs, remove (the operator rollback), snapshot restore and genesis replay agree on every hash.
 import test from 'node:test';import assert from 'node:assert/strict';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {fixture,accept,factory,invite} from '../test/native-owner-fixture.ts';import {WorldHost} from './world.ts';
 // @ts-expect-error plain .mjs operator spec (pure)
 import {officeFact} from '../../../tools/upper-floors/old-eden-office.mjs';
@@ -9,7 +9,7 @@ import {officeFact} from '../../../tools/upper-floors/old-eden-office.mjs';
 import {HOTELS,hotelsFacts,hotelsRemoveFacts,hotelOpenings} from '../../../tools/upper-floors/old-eden-hotels.mjs';
 // @ts-expect-error plain .mjs operator tool
 import {upperFloorsState,planVerdict} from '../../../tools/upper-floors/upper-floors.mjs';
-import {authoredBoundaryDeclarationV1} from '@sim/engine-contract';
+import {authoredBoundaryDeclarationV1} from '@souls/engine-contract';
 
 const ROOMS=['eden-office-1-floor-1','eden-office-1-floor-2','int-office-studio','int-office-upper-lounge'];
 const levelsOf=(e:unknown)=>((e as {rt:{services:{spatial:{base:{levels:{id:number}[]}}}}}).rt.services.spatial.base.levels.map(l=>l.id));

@@ -36,9 +36,9 @@ import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {installPuntActivities} from './punt-install.ts';
 import {readFileSync} from 'node:fs';
 import {installBirthLooks} from './god/birth-look.ts';
-import { setKitViewerContract } from '@sim/generators';
+import { setKitViewerContract } from '@souls/generators';
 import { rehearseRestore, standby } from './standby.ts';
-import { coreLibrary } from '@sim/world-compiler';
+import { coreLibrary } from '@souls/world-compiler';
 import { startWatchdog, writeLiveNow } from './load/watchdog.ts';
 import { sharedLoad } from './load/shared.ts';
 import { LoadMonitor } from './load/monitor.ts';
@@ -52,7 +52,7 @@ const bootAt: Record<string, number> = { code: performance.now() };
 // (standby.ts rehearseRestore).
 let warmFactory: Awaited<ReturnType<typeof plainFactory>> | undefined;
 await standby(async () => {
-  if (config.engine === 'mars') await import('@sim/engine-mars');
+  if (config.engine === 'mars') await import('@souls/engine-mars');
   await import('./edge/body/migrate-looks.ts');
   if (config.worldEngine) coreLibrary();   // the god's shared core library (built once per process, ~0.1 s)
   if (!edenCoreRequested(config, process.env)) { warmFactory = await plainFactory(); rehearseRestore(join(config.dataDir, 'sim.db'), config.worldId, warmFactory as never, (ro) => { if (config.worldEngine && ro.prepare("SELECT 1 FROM sqlite_master WHERE name='world_ground_recipes_v1'").get()) registerGroundRecipes(ro, config.worldId); }); }
@@ -100,22 +100,13 @@ const factory=edenCore?await edenHistoryFactory(db,config.worldId,{lifeV1:edenLi
 /** A world's engine factory when it is not Eden core (that one reads its history from the database). Each process owns
  *  one world and imports its engine from this release. */
 async function plainFactory() {
-  const mars = config.engine === 'mars' ? await import('@sim/engine-mars') : null;
+  const mars = config.engine === 'mars' ? await import('@souls/engine-mars') : null;
   const accountLifecycle = config.worldEngine && !edenCoreRequested(config, process.env) && process.env.SOUL_LIFECYCLE === '1';
   return mars?await mars.marsFactory(config.worldKey==='littlemartians'?mars.LITTLE_MARTIANS_WORLD:config.worldKey==='eden'||!KNOWN_WORLD_KEYS.includes(config.worldKey as never)?(accountLifecycle?{...mars.GREEN_FIELD_WORLD,safeCrewRemoval:true}:mars.GREEN_FIELD_WORLD):undefined):recordedToyFactory;
 }
 // ground/1 (lane L8): every terrain recipe this entity world logged resolves by hash before the engine replays
 if (config.worldEngine) loadGroundRecipes(db, config.worldId);
 const host = new WorldHost(db, factory, config.worldSeed, config.snapshotEveryTicks, config.worldId,edenCore?{durableClockV1:true}:undefined);
-// #447: an engine fault that recovery cannot repair stops this world for a restart from its last good snapshot (exit 76,
-// ENGINE_FAULT_EXIT in tools/world-launcher/children.mjs). The launcher restarts it with backoff and counts it toward the
-// breaker, so a fault that replays deterministically ends `held` (visible) rather than looping. Other worlds run on.
-// Set before boot: a fault can surface while the bridge waits for initial physics. Until `shutdown` exists (boot), the
-// process exits at once; nothing is snapshotted either way.
-host.onEngineHalt = (halt) => {
-  console.error(`[world] engine fault: stopping for a restart from the last good snapshot (exit 76): ${halt.original?.code ?? 'error'} at tick ${halt.tick}`);
-  setImmediate(() => { try { void shutdown('engine:fault', 76).catch(() => process.exit(76)); } catch { process.exit(76); } });
-};
 { const at = performance.now(); if (db.vacuumIfBloated()) console.log(`[db] vacuumed at boot in ${Math.round(performance.now() - at)} ms (free pages over 30 %)`); }
 host.snapshotDebtMs = config.snapshotDebtMs; host.snapshotMinGapMs = config.snapshotMinGapMs; host.snapshotAfterReplayTicks = config.snapshotAfterReplayTicks;
 bootAt.open = performance.now();
@@ -237,7 +228,7 @@ if (process.env.SIM_READ_WORKER === '1' && edge) {
     run: async (f) => { const r = await app.fetch(new Request('http://127.0.0.1' + f.url, { method: f.method, headers: f.headers, ...(f.body && f.method !== 'GET' && f.method !== 'HEAD' ? { body: f.body } : {}) }), { simAdmitted: true });
       return { status: r.status, headers: [...r.headers], body: await r.arrayBuffer() }; } }).start();
   source.onDelta((d) => pool.delta(d), () => pool.reinit());
-  (globalThis as { __simReadPool?: unknown }).__simReadPool = pool;   // tests and the harness read pool.status()
+  (globalThis as { __soulsReadPool?: unknown }).__soulsReadPool = pool;   // tests and the harness read pool.status()
   // SIM_READ_ORACLE=1 (B-facade item 5, lane only): the five reads answered by main and by a replica ledger, compared
   if (process.env.SIM_READ_ORACLE === '1') { const { installReadOracle } = await import('./split/read-oracle.ts'); await installReadOracle(host, edge, source as never, db.path); console.log('[read-oracle] on'); }
   console.log(`[read] ${pool.size} read worker(s), mode ${readMode === 2 ? 'read code (here)' : 'subset (here, capabilities)'}`);
@@ -355,14 +346,12 @@ const shutdown = async (sig: string, exitCode = 0) => {
     await drainEdenThought(host,brain,intentV2,closed,[()=>edenLifeHandles?.settled()??Promise.resolve(),()=>takes.settled(),()=>Promise.all(backupWork)]);
     edenLifeHandles?.close();
   }
+  console.log(`[world] ${sig}: saving snapshot at tick ${host.engine.world.tick}`);
   host.stop(); takes.stop();
   const saveAt = performance.now();
-  // #447: after an unrecoverable engine fault the engine holds a failed recovery replay. Never make that the head: the
-  // restart boots from the last good snapshot and replays the log.
-  if (host.engineFault) console.log(`[world] ${sig}: no snapshot (engine fault at tick ${host.engine.world.tick}); the restart boots from the last good snapshot`);
-  else { console.log(`[world] ${sig}: saving snapshot at tick ${host.engine.world.tick}`); try { host.saveSnapshot(true); } catch (e) { console.error('[world] snapshot failed', e); }
+  try { host.saveSnapshot(true); } catch (e) { console.error('[world] snapshot failed', e); }
   if (process.env.SIM_BOOT_HASH === '1') console.log(`[world] ${sig}: state at tick ${host.engine.world.tick}: ${host.engine.stateHash()}`);
-  console.log(`[world] ${sig}: snapshot saved in ${Math.round(performance.now() - saveAt)} ms (capture ${Math.round(host.snapshotMs.capture)}, write ${Math.round(host.snapshotMs.persist)})`); }
+  console.log(`[world] ${sig}: snapshot saved in ${Math.round(performance.now() - saveAt)} ms (capture ${Math.round(host.snapshotMs.capture)}, write ${Math.round(host.snapshotMs.persist)})`);
   server.close(); void hub.closeClients('server restarting');
   await closeContextViews();
   auth.close();db.close(); process.exit(exitCode);

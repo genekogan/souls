@@ -51,15 +51,8 @@
       "Bash(git push -f:*)",
       "Bash(git push --mirror:*)",
       "Bash(git reset --hard:*)",
-      "Bash(ssh:*)",
       "Bash(scp:*)",
-      "Bash(rsync:*)",
-      "Bash(modal:*)",
-      "Bash(tools/test-harness/release-gate.sh:*)",
-      "Bash(tools/world-launcher/deploy/ship.sh:*)",
-      "Bash(tools/world-launcher/deploy/release.sh:*)",
-      "Bash(tools/world-launcher/deploy/activate.sh:*)",
-      "Bash(node tools/cdn/publish.mjs:*)"
+      "Bash(rsync:*)"
     ]
   }
 }

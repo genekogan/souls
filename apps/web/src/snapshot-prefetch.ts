@@ -27,21 +27,21 @@ export function phasedEntryWanted(search: string, coarsePointer: boolean, screen
   return coarsePointer && (short > 0 && short <= 820 || deviceMemory !== undefined && deviceMemory <= 2);
 }
 /** The window property the inline script leaves its decision on (true: two phases). */
-export const PHASED_GLOBAL = '__simPhased';
+export const PHASED_GLOBAL = '__soulsPhased';
 /** On a two-phase page, the entry socket opens with the second phase (phased-entry.ts calls this), so its join does not
  *  cross the link between the two phases. */
-export const OPEN_SOCKET_GLOBAL = '__simOpenSocket';
+export const OPEN_SOCKET_GLOBAL = '__soulsOpenSocket';
 
 /** The window properties the inline script leaves its requests on. */
-export const PREFETCH_GLOBAL = '__simSnapshotPrefetch';
-export const CONFIG_GLOBAL = '__simConfigPrefetch';
-export const SOCKET_GLOBAL = '__simSocketPrefetch';
+export const PREFETCH_GLOBAL = '__soulsSnapshotPrefetch';
+export const CONFIG_GLOBAL = '__soulsConfigPrefetch';
+export const SOCKET_GLOBAL = '__soulsSocketPrefetch';
 export type PrefetchRequest = { response: Promise<Response>; abort?: () => void };
 type Prefetch = PrefetchRequest & { url: string };
 type PrefetchPart = Promise<Response> | PrefetchRequest;
 type SnapshotPrefetch = Prefetch & { parts?: Record<string, PrefetchPart>; discard?: () => void };
 /** Lane W1: the world's WebSocket, opened at page entry with an anonymous hello (P7: in its URL, `?hello=`, said by the
- *  server at the upgrade); useSim's Connection adopts it (queue:
+ *  server at the upgrade); useSouls's Connection adopts it (queue:
  *  every message that arrived before then, in order). Closed after 20 s if nothing adopted it. */
 export type BootSocket = { url: string; ws: WebSocket; queue: unknown[]; hello: string; sent: boolean; adopted?: boolean };
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {WorldModel,coreLibrary,applyBatch,coreRef} from '@sim/world-compiler';
+import {WorldModel,coreLibrary,applyBatch,coreRef} from '@souls/world-compiler';
 import {unsupportedRootGap} from './walk-floats.ts';
 
 test('float audit recognizes complete deck support but retains raised and overhanging fixtures',()=>{
