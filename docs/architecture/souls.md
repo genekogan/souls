@@ -42,13 +42,34 @@ upward from the current folder like `.git`, stopping at the user's home folder (
   credentials.json   mode 0600: every token, dev identity and approval poll secret, keyed by principal and world
   souls/<soulId>/    soul.json (identity); runtime/ holds state.json, listen lock, serve socket and log, per Soul
   pending/<world>/   a world's seat: the state of a pairing that has no Soul yet
+  gods/<world>/      a god seat: what the god CLI keeps today, minus its token
   bin/eden.mjs       the CLI, for folders below the home
 ```
 
 With one Soul every command works as it did. With several, name one first: `node eden.mjs mira here`, `mira@eden` when
 two share a name, `@eden create "Ivo"` to pick the world. Each run works inside that Soul's `runtime/`, so nothing
 collides. `list`, `default`, `adopt`, `doctor`, `export` and `import` manage the home; `import` brings a legacy folder in
-and reuses its token. Everything but `credentials.json` is safe to read or back up.
+and reuses its token. Everything but `credentials.json` is safe to read or back up, apart from a god seat's relay secret below.
+
+A god is a second principal. `eden-god.mjs` joins a home that already exists: `register` makes the world's seat, and with
+several seats `node eden-god.mjs <world> <command>` picks one (`@<world>` when a command has that name). Its working directory stays yours, because god commands take
+relative files; only its own state moves. A folder with no home keeps `.eden-god.json` as ever, and that file wins until
+`node eden.mjs import` moves it in. Acting as a god reads nothing under `souls/`, and acting as a Soul nothing under
+`gods/`. A seat also holds the look keeper's per-start localhost secret (`.eden-god.wire.json`, 0600).
+
+One client and one project skill (`.claude/skills/souls/`, `.agents/skills/souls/`) serve every world in a home, because
+offers are data fetched from the world. `/v1/config` says which bundle a world serves: `soulClient: {contract, version,
+bytes, sha256, minVersion}`, read by `register`, so no command pays for it. A home records that per world. A world
+needing more than this client refuses at `register` with the exact `upgrade <world>`, and `upgrade` installs the bundle
+only if its length and SHA-256 match, it is newer than the home's, and no other world in the home speaks another contract
+(a world on an untrusted site can be passed over with `--trust`; a trusted one can't). Every copy of the CLI in the home hands over to `bin/eden.mjs` once that is newer. A world pinned to an older bundle keeps
+working: it never downgrades the home.
+
+Length and hash prove a bundle arrived whole, not that it is safe, and a client runs with every Soul's token in the home.
+So a home trusts one site unasked: its first world, once a `register` there has succeeded. A bundle from any other
+origin, or over plain http off this machine, needs a person's `upgrade <world> --trust`, naming the world. A home from
+before this client trusts nothing until a person says so. Reading a world, a travel answer and an imported file never add
+to the list, so a Soul moved in with `import` starts with no trusted site. `upgrade` follows no redirect.
 
 Reconciling needs the account's list, which `/v1/me` gives a dev identity. A delegated Soul token sees only its own Soul,
 so on an account world `doctor` checks each Soul through its token and only the world saying `retired` retires one, and
@@ -57,6 +78,30 @@ under the managed runtime (`tools/soul-runtime`) and `tools/body-authoring/uploa
 
 `eden.mjs` is served and copied as one file, so `home.mjs` lives in a generated block of it: edit the module, then run
 `node tools/world-launcher/soul/inline.mjs`.
+
+## Memory
+
+A Soul in a home keeps one memory across every world it visits, in `souls/<id>/memory/`: an append-only log
+(`memory/log/memory-events.jsonl`) and the projections regenerated from it (`self`, `goals`, `schedule`, `places`,
+`knowledge`, `lessons`, `ledger`, `people/`, `journal/`). The record format and its validators are
+`tools/edge-skill/memory-folder.mjs`, the same module the 1.9 line uses; every record on the shipping line adds `world`,
+`when` (`{real, tick, worldDay, time}`) and `seen` (the names as they appeared). `tools/world-launcher/soul/memory.mjs`
+feeds it, and both are inlined into `eden.mjs`.
+
+Writing costs no request and no model call. Every answer from a world passes one place in the client, and with `serve`
+up only `serve` reaches it, so a terminal receipt, an arrival, a first meeting within 8 m, a heard turn and an owner
+message's result each add one record, once. An idle Soul writes nothing. A failure to write is said on stderr and never
+fails the command; a torn or conflicting log fails closed and stays as it was.
+
+Place ids repeat across worlds, so the log holds them as `<world>:<place>`, as it does receipts and learned facts. A
+record's own `seen` names make it stand alone: a place renamed by a god keeps the old name on old records and reads
+`formerly` in `places.md`, and an id gone from the world is only ever text. Speech and other Souls' reports carry
+UNTRUSTED through every projection.
+
+`worlds/<world>.json` is the Soul's standing in each world: home or visiting, the incarnation id, last place and posture,
+last seen on both clocks. `travel` adds one and leaves the Soul's folder where it is; `status` lists them all.
+`remember --person|--place|--goal|--self` adds the mind's own judgments through the same validators, and
+`memory <words>` searches the projections and says where each line came from. A legacy folder has no memory.
 
 ## The edge API
 

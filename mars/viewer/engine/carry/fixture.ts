@@ -375,12 +375,13 @@ export const moveFixture: ActionDef<
           : ex.phase === 'set-down'
             ? ex.tr!.to
             : undefined;
-    if (target) {
+    if (target && ex.retreatTo === undefined) {   // #1150: a refused crew sets down where its backing ends, not here
       const issue = loweringIssue(rt, ex, target);
       if (issue) return { ok: false, diagnostic: issue };
     }
     return carry.cancel(rt, ex);
   },
+  refused: (rt, ex) => carry.refused!(rt, ex),
   recoverWait: (rt, ex, mover) => carry.recoverWait!(rt, ex, mover),
   waitQuiescent: (rt, ex, movers) => carry.waitQuiescent!(rt, ex, movers),
   resumable:

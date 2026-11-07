@@ -15,14 +15,15 @@ import { atomicWrite, load, save, sleep } from './state.mjs';
 import { holder, liveness, lockStatus, parseHolder } from './locks.mjs';
 import { chromeCandidates } from './remote-look.mjs';
 
+import { godFile } from './seat.mjs';
 export const WARM = '.eden-god.warm.json', LISTENER = '.eden-god.listen.json', KEEPER = '.eden-god.look.json';
 export const LISTEN_BEAT_MS = 20_000;
 const STARTING_MS = 5 * 60_000, FAILED_RETRY_MS = 10 * 60_000, REMOTE_RETRY_MS = 60 * 60_000;
 const read = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
 const pidAlive = (pid) => { if (!Number.isSafeInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
-export const readWarm = () => read(WARM);
+export const readWarm = () => read(godFile(WARM));
 /** Merges into the marker (so `pwFrom`, the Playwright folder the keeper found, survives phase changes). */
-export const writeWarm = (patch) => { try { atomicWrite(WARM, JSON.stringify({ ...(readWarm() ?? {}), ...patch, at: Date.now() })); } catch { /* best effort */ } };
+export const writeWarm = (patch) => { try { atomicWrite(godFile(WARM), JSON.stringify({ ...(readWarm() ?? {}), ...patch, at: Date.now() })); } catch { /* best effort */ } };
 
 /** Does this folder warm up? (a human-paired folder on a machine that has Google Chrome where Playwright looks) */
 export function warmEnabled(state = (() => { try { return load(); } catch { return {}; } })(), env = process.env, chrome = () => { const c = chromeCandidates(); return !c || c.some(existsSync); }) {
@@ -35,7 +36,7 @@ export function warmEnabled(state = (() => { try { return load(); } catch { retu
 
 /** 'ready' (a live keeper on this world) · 'warming' · 'failed' · 'stopped' · 'other' (a keeper on another world) · 'none' */
 export function warmStatus(world, now = Date.now()) {
-  const k = read(KEEPER);
+  const k = read(godFile(KEEPER));
   if (k && !lockStatus(parseHolder(k.holder), k.heartbeatAt ?? 0).stale) return k.world === world ? 'ready' : 'other';
   const w = readWarm();
   if (!w || (w.world && w.world !== world)) return 'none';
@@ -68,8 +69,8 @@ export function autoWarm(cliPath, { force = false, pairing = false } = {}) {
 }
 
 /** The listener's heartbeat: the keeper stays while it is fresh. */
-export function listenerBeat() { try { atomicWrite(LISTENER, JSON.stringify({ holder: holder('eden-god listen'), at: Date.now() })); } catch { /* best effort */ } }
-export const listenerAt = () => read(LISTENER)?.at ?? 0;
+export function listenerBeat() { try { atomicWrite(godFile(LISTENER), JSON.stringify({ holder: holder('eden-god listen'), at: Date.now() })); } catch { /* best effort */ } }
+export const listenerAt = () => read(godFile(LISTENER))?.at ?? 0;
 
 /** Whether the world's own renderer is worth trying (it said look.unavailable within the hour: no). */
 export const remoteKnownUnavailable = (s = load(), now = Date.now()) => s.remoteLook?.ok === false && now - (s.remoteLook.at ?? 0) < REMOTE_RETRY_MS;
@@ -111,4 +112,4 @@ export function treeRssMb(psText, port) {
   return Math.round(kb / 1024);
 }
 
-export const removeWarm = () => rmSync(WARM, { force: true });
+export const removeWarm = () => rmSync(godFile(WARM), { force: true });

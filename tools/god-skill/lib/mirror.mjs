@@ -19,6 +19,7 @@ import { atomicWrite, call, load, ok, writesSent } from './state.mjs';
 import { isFlagDef } from './solver.mjs';
 import { noticeInboxHeader } from './inbox-notice.mjs';
 
+import { godFile } from './seat.mjs';
 export const CACHE = '.eden-god.cache.json';
 let memo = null, synced = null, syncedAt = 0, syncedWrites = -1, oldServer = false, speaks = false, trustedRead = false;
 /** Was the last mirror() a trusted cache read (no request)? */
@@ -26,8 +27,8 @@ export const wasTrusted = () => trustedRead;
 /** Did this world answer mirror/1 in this process (so it also takes act `repair`, G2 C)? */
 export const speaksMirror = () => speaks && !oldServer;
 
-function readCache() { try { return existsSync(CACHE) ? JSON.parse(readFileSync(CACHE, 'utf8')) : null; } catch { return null; } }
-function writeCache(c) { try { atomicWrite(CACHE, JSON.stringify(c)); } catch { /* read-only folder: memory only */ } }
+function readCache() { try { return existsSync(godFile(CACHE)) ? JSON.parse(readFileSync(godFile(CACHE), 'utf8')) : null; } catch { return null; } }
+function writeCache(c) { try { atomicWrite(godFile(CACHE), JSON.stringify(c)); } catch { /* read-only folder: memory only */ } }
 
 /** Same function as the server's (apps/server/src/god/mirror.ts). */
 export const mirrorHash = (s) => createHash('sha1').update(s).digest('base64url').slice(0, 16);

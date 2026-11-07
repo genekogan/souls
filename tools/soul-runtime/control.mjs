@@ -2,22 +2,32 @@
 // cannot recall an already-sent HTTP request; a successor must reconcile it.
 import {randomUUID} from 'node:crypto';
 import {encodeResponse,responseReference,responseChunk,validateResponseArguments} from './responses.mjs';
+import {inspectOwnedProcess} from './controller-ownership.mjs';
 const json = value => {const s=JSON.stringify(value);if(s===undefined||Buffer.byteLength(s)>65536)throw Error('Control record must be JSON <=64KiB');return s;};
 const key = v => {if(typeof v!=='string'||!v.length||v.length>200)throw Error('Invalid control key');return v;};
-export function attachControl(db,{now,transaction}){
+/** Is this exact process gone? Only a clean answer counts: no such pid, or that pid started at another time. Anything else is alive. */
+export function processGone({pid,startToken},inspect=inspectOwnedProcess){try{const p=inspect(pid);return p===null||p.startToken!==startToken;}catch{return false;}}
+const selfIdentity=()=>{try{const p=inspectOwnedProcess(process.pid);return p?{pid:p.pid,startToken:p.startToken}:null;}catch{return null;}};
+export function attachControl(db,{now,transaction,self=selfIdentity,holderGone=processGone}){
  db.exec(`CREATE TABLE IF NOT EXISTS controller(singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL, generation INTEGER NOT NULL, expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS checkpoint(singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL, payload TEXT NOT NULL, at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY, request TEXT NOT NULL, status TEXT NOT NULL, response TEXT, at INTEGER NOT NULL, generation INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS read_response_v1(singleton INTEGER PRIMARY KEY CHECK(singleton=1),decision_id TEXT NOT NULL,response TEXT NOT NULL,resync_through INTEGER);
  CREATE TABLE IF NOT EXISTS startup_response_v1(singleton INTEGER PRIMARY KEY CHECK(singleton=1),id TEXT NOT NULL,response TEXT NOT NULL);`);
+ // #471: who holds the lease, so a successor needn't wait out a dead holder's TTL. Rows from before this have none, and wait.
+ if(!db.prepare('PRAGMA table_info(controller)').all().some(r=>r.name==='holder_pid'))db.exec('ALTER TABLE controller ADD COLUMN holder_pid INTEGER; ALTER TABLE controller ADD COLUMN holder_start TEXT');
  if(!db.prepare('PRAGMA table_info(read_response_v1)').all().some(r=>r.name==='resync_through'))db.exec('ALTER TABLE read_response_v1 ADD COLUMN resync_through INTEGER');
+ let mine;
  const ttl=v=>{if(!Number.isSafeInteger(v)||v<1000||v>60000)throw Error('Lease TTL must be1..60seconds');return v;};
- const current=()=>db.prepare('SELECT owner,generation,expires_at FROM controller WHERE singleton=1').get();
+ const current=()=>db.prepare('SELECT owner,generation,expires_at,holder_pid,holder_start FROM controller WHERE singleton=1').get();
  const guard=fence=>{const c=current();if(!c||c.owner!==fence?.owner||c.generation!==fence?.generation||c.expires_at<=now())throw Error('Controller lease lost');return c;};
  const op=id=>{const r=db.prepare('SELECT * FROM operations WHERE id=?').get(key(id));if(!r)throw Error('Unknown operation');return r;};
  const unpack=r=>r?{id:r.id,request:JSON.parse(r.request),status:r.status,response:r.response?JSON.parse(r.response):null,at:r.at,generation:r.generation}:null;
  return {
-  claim(owner=randomUUID(),leaseMs=15000){key(owner);ttl(leaseMs);return transaction(()=>{const c=current();if(c&&c.expires_at>now())throw Object.assign(Error('Controller already active'),{code:'CONTROLLER_BUSY',expiresAt:c.expires_at,transient:true});const generation=(c?.generation??0)+1;const expiresAt=now()+leaseMs;db.prepare('INSERT INTO controller VALUES(1,?,?,?) ON CONFLICT(singleton) DO UPDATE SET owner=excluded.owner,generation=excluded.generation,expires_at=excluded.expires_at').run(owner,generation,expiresAt);return {owner,generation,expiresAt};});},
+  claim(owner=randomUUID(),leaseMs=15000){key(owner);ttl(leaseMs);
+   // ps runs outside the transaction, and the row must be the one it judged: a new holder in between is never displaced.
+   const seen=current(),vacated=seen&&seen.expires_at>now()&&seen.holder_pid!==null&&seen.holder_start!==null&&holderGone({pid:seen.holder_pid,startToken:seen.holder_start}),me=(mine??=self());
+   return transaction(()=>{const c=current();if(c&&c.expires_at>now()&&!(vacated&&c.owner===seen.owner&&c.generation===seen.generation))throw Object.assign(Error('Controller already active'),{code:'CONTROLLER_BUSY',expiresAt:c.expires_at,transient:true});const generation=(c?.generation??0)+1;const expiresAt=now()+leaseMs;db.prepare('INSERT INTO controller(singleton,owner,generation,expires_at,holder_pid,holder_start) VALUES(1,?,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET owner=excluded.owner,generation=excluded.generation,expires_at=excluded.expires_at,holder_pid=excluded.holder_pid,holder_start=excluded.holder_start').run(owner,generation,expiresAt,me?.pid??null,me?.startToken??null);return {owner,generation,expiresAt};});},
   renew(fence,leaseMs=15000){ttl(leaseMs);return transaction(()=>{guard(fence);const expiresAt=now()+leaseMs;db.prepare('UPDATE controller SET expires_at=? WHERE singleton=1').run(expiresAt);return {...fence,expiresAt};});},
   release(fence){return transaction(()=>{guard(fence);db.prepare('UPDATE controller SET expires_at=0 WHERE singleton=1').run();});},
   assertOwner(fence){guard(fence);},

@@ -12,6 +12,7 @@
 // resolvable from the current folder, EDEN_GOD_PLAYWRIGHT_FROM, or the sim repo; else npx's cached
 // playwright-core (fetched once). Only without npx does it fall back to `npx playwright-core screenshot`
 // (a fixed 30 s wait, no --keep).
+import { godFile } from './seat.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -71,7 +72,7 @@ export function camera({ target, span, from = 's', dist, inside = false, height,
 
 const freePort = () => new Promise((res, rej) => { const s = createServer(); s.unref(); s.on('error', rej); s.listen(Number(process.env.EDEN_GOD_LOOK_PORT ?? 0), '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
 const alive = async (port) => { try { const r = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(3000) }); return r.ok; } catch { return false; } };
-export const readKeeper = () => { try { return JSON.parse(readFileSync(KEEPER, 'utf8')); } catch { return null; } };
+export const readKeeper = () => { try { return JSON.parse(readFileSync(godFile(KEEPER), 'utf8')); } catch { return null; } };
 
 /** The keeper process body (`eden-god.mjs look-keeper <worldUrl> <port>`): one Chrome, one tab on the world, until idle.
  * G1 warm mode (`look-keeper <world> 0 --warm`, started in the background by pair/listen/status): picks its own port, quits
@@ -79,7 +80,7 @@ export const readKeeper = () => { try { return JSON.parse(readFileSync(KEEPER, '
  * Playwright fetch. Either way it stays while this folder's listener runs and reloads (then quits) above its memory cap. */
 export async function keeper(worldUrl, port, { warm = false } = {}) {
   let release;
-  try { release = acquireLock(`${KEEPER}.lock`, { label: 'look keeper' }); }
+  try { release = acquireLock(`${godFile(KEEPER)}.lock`, { label: 'look keeper' }); }
   catch (e) { if (warm) process.exit(0); throw e; }
   const me = holder('look keeper'), phase = (p, extra = {}) => writeWarm({ world: worldUrl, pid: process.pid, holder: me, phase: p, ...extra });
   let browser, wire = null;
@@ -100,14 +101,14 @@ export async function keeper(worldUrl, port, { warm = false } = {}) {
   await page.goto(`${worldUrl}?shot=1&eye=0,60,60&at=0,0,0`, { waitUntil: 'commit', timeout: 25_000 });
   const identity = me;
   let rssMb = null;
-  const write = () => atomicWrite(KEEPER, JSON.stringify({ world: worldUrl, port, pid: process.pid, at: Date.now(), holder: identity, heartbeatAt: Date.now(), ttlMs: 30_000, ...(rssMb != null ? { rssMb } : {}) }));
+  const write = () => atomicWrite(godFile(KEEPER), JSON.stringify({ world: worldUrl, port, pid: process.pid, at: Date.now(), holder: identity, heartbeatAt: Date.now(), ttlMs: 30_000, ...(rssMb != null ? { rssMb } : {}) }));
   write();
   phase('ready');
-  let lastUse = statSync(KEEPER).mtimeMs, nextMem = Date.now() + MEM_EVERY_MS, over = false;
-  process.once('exit', () => { try { if (readKeeper()?.holder?.start === identity.start && readKeeper()?.pid === identity.pid) rmSync(KEEPER, { force: true }); } finally { release(); } });
+  let lastUse = statSync(godFile(KEEPER)).mtimeMs, nextMem = Date.now() + MEM_EVERY_MS, over = false;
+  process.once('exit', () => { try { if (readKeeper()?.holder?.start === identity.start && readKeeper()?.pid === identity.pid) rmSync(godFile(KEEPER), { force: true }); } finally { release(); } });
   for (;;) {
     await new Promise((r) => setTimeout(r, 5000));
-    let last = 0; try { last = statSync(KEEPER).mtimeMs; } catch { break; }
+    let last = 0; try { last = statSync(godFile(KEEPER)).mtimeMs; } catch { break; }
     if (last !== lastUse) lastUse = last;
     if (Date.now() - Math.max(lastUse, listenerAt(), wire?.usedAt() ?? 0) > IDLE_MS || readKeeper()?.pid !== process.pid || !browser.isConnected() || page.isClosed()) break;
     if (Date.now() >= nextMem) {
@@ -120,7 +121,7 @@ export async function keeper(worldUrl, port, { warm = false } = {}) {
       } else over = false;
     }
     // Refresh liveness without changing the idle-use timestamp.
-    write(); utimesSync(KEEPER, new Date(lastUse), new Date(lastUse));
+    write(); utimesSync(godFile(KEEPER), new Date(lastUse), new Date(lastUse));
   }
   } catch (e) { phase('failed', { error: String(e?.message ?? e).split('\n')[0].slice(0, 200) }); if (!warm) throw e; }
   finally { wire?.close(); if (browser) await browser.close().catch(() => {}); release(); }
@@ -131,10 +132,10 @@ async function ensureKeeper(worldUrl, cliPath, runtime = {}) {
   // G1: a background warm-up is starting this folder's keeper: wait for it rather than start a second one
   for (let i = 0; i < 120 && warmStatus(worldUrl) === 'warming'; i++) { await new Promise((r) => setTimeout(r, 250)); runtime.signal?.throwIfAborted(); }
   const k = readKeeper();
-  if (k && !lockStatus(parseHolder(k.holder), k.heartbeatAt ?? 0).stale && k.world === worldUrl && await alive(k.port)) { const now = new Date(); try { utimesSync(KEEPER, now, now); } catch { /* fine */ } return k; }
+  if (k && !lockStatus(parseHolder(k.holder), k.heartbeatAt ?? 0).stale && k.world === worldUrl && await alive(k.port)) { const now = new Date(); try { utimesSync(godFile(KEEPER), now, now); } catch { /* fine */ } return k; }
   if (k && !lockStatus(parseHolder(k.holder), k.heartbeatAt ?? 0).stale && liveness(parseHolder(k.holder)) !== 'alive') throw Object.assign(new Error('lock.busy: look keeper identity is uncertain; run doctor after its 30 s TTL'), { code: 'lock.busy' });
   if (k?.pid && liveness(parseHolder(k.holder)) === 'alive') try { process.kill(k.pid); } catch { /* gone */ }
-  rmSync(KEEPER, { force: true });
+  rmSync(godFile(KEEPER), { force: true });
   const port = await freePort();
   const child = spawn(process.execPath, [cliPath, 'look-keeper', worldUrl, String(port)], { detached: true, stdio: 'ignore', cwd: process.cwd(), env: process.env });
   let failure;
@@ -152,7 +153,7 @@ async function ensureKeeper(worldUrl, cliPath, runtime = {}) {
     throw new Error('look.timeout: the browser keeper did not start within 25 s; run doctor --fix');
   } catch (e) {
     if (child.pid) try { process.kill(process.platform === 'win32' ? child.pid : -child.pid); } catch { /* already exited */ }
-    if (readKeeper()?.pid === child.pid) rmSync(KEEPER, { force: true });
+    if (readKeeper()?.pid === child.pid) rmSync(godFile(KEEPER), { force: true });
     runtime.keeperChild = null;
     throw e;
   }
@@ -163,7 +164,7 @@ export function stopKeeper() {
   // a background warm-up still starting (no keeper file yet): it is ours, stop it too
   const starting = !k && wh && wh.pid === w.pid && ['fetch', 'chrome'].includes(w.phase) && liveness(wh) === 'alive';
   if (starting) try { process.kill(w.pid); } catch { /* gone */ }
-  rmSync(KEEPER, { force: true });
+  rmSync(godFile(KEEPER), { force: true });
   writeWarm({ ...(w ?? {}), holder: undefined, phase: 'stopped' });
   return k ? `stopped the look keeper (pid ${k.pid})` : starting ? `stopped the look keeper warm-up (pid ${w.pid})` : 'no look keeper running';
 }

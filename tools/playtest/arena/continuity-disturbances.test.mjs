@@ -7,8 +7,8 @@ const fixtures=JSON.parse(readFileSync(new URL('../scenarios/continuity/fixtures
 const T0=1793400000000;
 function fixture(name,{send,fixtureVersion}={}){
  const scenario=structuredClone(fixtures.scenarios.find(s=>s.id===name)),actors=scenario.actors.map(a=>({actorId:a.id,soulId:'s_'+a.id})),sent=[],records=[];let now=T0;
- // Callers declare a versioned fixture explicitly (eden-walk-three garden-pool-v2 is 2).
- fixtureVersion??=name==='eden-walk-three'?2:undefined;
+ // Callers declare a versioned fixture explicitly (eden-walk-three garden-pool-v2 and eden-bandstand-five are 2).
+ fixtureVersion??=scenario.fixtureVersion;
  const api=createContinuityDisturbances({scenario,fixtureVersion,t0:T0,cutoffAt:T0+scenario.timing.endOffsetSec*1000,worldId:'world_test',actors,evidence:['fixtures.json#'+name]}, {now:()=>now,send:async r=>{sent.push(r);return send?send(r):{status:'accepted',effectId:'native_'+r.id,evidence:['send.json#'+r.id]};},onRecord:r=>records.push(r)});
  const scope=actorId=>({worldId:'world_test',actorId,soulId:'s_'+actorId,evidence:['native.json#'+actorId+'-'+now]});
  const body=(actorId,at,p=[0,0],extra={})=>{now=Math.max(now,at);api.observeBody({...scope(actorId),at,receivedAt:at,pos:p,source:'here',currentBody:true,...extra});};
