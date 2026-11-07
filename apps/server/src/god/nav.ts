@@ -456,13 +456,17 @@ export class GodNav {
       // the wall) while the room's main floor is beside it: another stand point of it that is connected, else the nearest
       // connected standing spot within 2.5 m of that stand point, both in its own room; with none the goal stays, refused
       // honestly. The floor through the wall is no way to it, and a search by distance doesn't know a wall, so a seat in no
-      // room keeps its goal: a bench in a walled yard behind a closed door reads as cut off too, and the door opens on the way
+      // room keeps its goal: a bench in a walled yard behind a closed door reads as cut off too, and the door opens on the way.
+      // The ground floor only in practice: RESOLVE2 above has already moved an upper floor's goal, and no room limits that
       if (goal && t.seat && E.navCheckV1 && E.navWarmV1?.(0) && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) {
         const poly = this.things().find((r) => r.kind === 'room' && r.level === t.level && r.poly && inPoly(t.at[0], t.at[1], r.poly))?.poly;
         if (poly) {
+          const fits = (g: { p: Vec2; level: number } | null) => !!g && inPoly(g.p[0], g.p[1], poly) && !!E.navCheckV1!([{ id: t.ref, ...g }])[0]?.ok;
           let other: { p: Vec2; level: number } | null = null;
-          for (const s of stands) { const g = near(s, t.level, 6); if (g && inPoly(g.p[0], g.p[1], poly) && E.navCheckV1([{ id: t.ref, ...g }])[0]?.ok) { other = g; break; } }
-          goal = other ?? this.roofReach(goal, 2.5, poly) ?? goal;
+          for (const s of stands) { const g = near(s, t.level, 6); if (fits(g)) { other = g; break; } }
+          // roofReach knows nothing of bodies: step off anyone on its spot, as any goal does, if that stays in the room
+          const reach = other ? null : this.roofReach(goal, 2.5, poly), aside = reach ? near(reach.p, t.level, 6) : null;
+          goal = other ?? (fits(aside) ? aside : reach) ?? goal;
         }
       }
       // WALK3: a duck on the lake, a boat in the harbour: the shore of the water it floats on, nearest to it

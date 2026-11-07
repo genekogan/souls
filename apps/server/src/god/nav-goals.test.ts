@@ -158,7 +158,6 @@ function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean, room?: 
   const hall = { id: 'hall', name: 'hall', def: 'hall@1', in: { parent: 'world' } };
   const hallDef = { name: 'hall', form: 'point', components: {}, tags: ['building'], make: { kind: 'mesh' } };
   const hallBaked = { rooms: [{ id: 'dining', polygon: room }], colliders: [], openings: [], slots: [] };
-  const checked: Vec2[] = [];
   const nav = new GodNav({ model: {
     entities: new Map<string, unknown>([['chair', entity], ...(room ? [['hall', hall]] as [string, unknown][] : [])]), editSeq: 1,
     ground: () => ({ waters: [] }), resolvedDef: (d: string) => (d === 'hall@1' ? hallDef : def), bake: (d: { name: string }) => (d.name === 'hall' ? hallBaked : baked),
@@ -167,9 +166,9 @@ function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean, room?: 
   }, engine: { world: { tick: 0, entities: {} },
     standableNearV1: standable,
     navWarmV1: () => true,
-    navCheckV1: (pts: { id: string; p: Vec2 }[]) => pts.map((x) => { checked.push(x.p); return { id: x.id, ok: main(x.p) }; }),
+    navCheckV1: (pts: { id: string; p: Vec2 }[]) => pts.map((x) => ({ id: x.id, ok: main(x.p) })),
   }, levelAt: () => 0, engineOwned: () => false } as unknown as NavHost);
-  return { nav, checked };
+  return { nav };
 }
 
 const DINING: Vec2[] = [[-4, -4], [4, -4], [4, 12], [-4, 12]];
@@ -193,6 +192,16 @@ test('#875: a chair with no connected floor within 2.5 m keeps its own goal (ref
   const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 4, DINING);
   const goal = nav.goal(nav.thing('chair')!, [0, 10])!;
   assert.deepEqual(goal, { p: [0, 0.75], level: 0 });
+});
+
+test('#875: the spot beside a pocketed chair moves off someone already standing on it, and stays in the room', () => {
+  // someone stands on the nearest connected spot (0, 2.25), the 0.5 m grid round the stand point: standableNearV1 steps round them, as it does for any goal
+  const stepAside = (to: Vec2) => (at: Vec2): Vec2 => (at[0] === 0 && at[1] === 2.25 ? to : at);
+  const free = seatRoom([[0, 0]], (p) => p[1] >= 2, DINING, stepAside([0.5, 2.25])).nav;
+  assert.deepEqual(free.goal(free.thing('chair')!, [0, 10])!, { p: [0.5, 2.25], level: 0 });
+  // a step that leaves the room is no better than the occupied spot, which the walk's own making way can still clear
+  const walled = seatRoom([[0, 0]], (p) => p[1] >= 2, [[-0.4, -3], [3, -3], [3, 3], [-0.4, 3]], stepAside([-1, 2.25])).nav;
+  assert.deepEqual(walled.goal(walled.thing('chair')!, [0, 10])!, { p: [0, 2.25], level: 0 });
 });
 
 test('#875: a stand point that snaps through the wall is no other stand point: the seat keeps to its own room', () => {
