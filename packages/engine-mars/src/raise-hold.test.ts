@@ -93,3 +93,13 @@ test('the invariant notices a frame left standing unheld', () => {
   rt.world.entities.frame!.support = { kind: 'ground' };
   assert.equal(looseFramesHeld(rt)[0]?.code, 'raise.frame-unheld');
 });
+
+test('PC17: a named base decides which end stands, whichever end the crew is at', () => {
+  const near = fixture(2), f = near.rt.world.entities.frame!, L = 3.6576, t: [number, number] = [Math.cos(f.pose.yaw), Math.sin(f.pose.yaw)];
+  const ends = ([1, -1] as const).map((s) => [f.pose.p[0] - t[0] * s * L / 2, f.pose.p[2] - t[1] * s * L / 2] as [number, number]);
+  for (const [i, base] of ends.entries()) {
+    const { rt, crew } = fixture(2), r = rt.submit('raise_hold_v1', { crew, item: 'frame', baseV1: base }); assert.notEqual(r.status, 'failed', r.diagnostic?.message);
+    runTo(rt, r, 'hold'); const u = rt.world.entities.frame!;
+    assert.ok(Math.hypot(u.pose.p[0] - base[0], u.pose.p[2] - base[1]) < 0.2, `end ${i} stands at ${base}: ${u.pose.p}`);
+  }
+});

@@ -165,7 +165,7 @@ function stepClear(rt: Runtime, ex: SeatExec, part: Entity, clear: number, dt: n
   let moved = false;
   for (const c of ex.crew) {
     const h = rt.world.entities[c]!, at: Vec2 = [h.pose.p[0], h.pose.p[2]], gap = distToObb(at, obb); if (gap >= clear) continue;
-    const away: Vec2 = [at[0] - obb.c[0], at[1] - obb.c[1]], n = hypot(away[0], away[1]) || 1, step = Math.min(STEP_BACK_SPEED * dt, clear - gap), q: Vec2 = [at[0] + away[0] / n * step, at[1] + away[1] / n * step];
+    const away: Vec2 = [at[0] - obb.c[0], at[1] - obb.c[1]], n = hypot(away[0], away[1]) || 1, step = STEP_BACK_SPEED * dt, q: Vec2 = [at[0] + away[0] / n * step, at[1] + away[1] / n * step];
     if (g && clearanceAt(g, q) < HUMAN_RADIUS) continue;
     h.pose = { ...h.pose, p: [q[0], h.pose.p[1], q[1]] }; moved = true;
   }

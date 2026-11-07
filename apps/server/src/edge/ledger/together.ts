@@ -1440,7 +1440,6 @@ export class Together {
   soulsNamed(soul: EdgeSoul, raw: unknown) {return this.withSouls(soul, raw);}
   /** Every open proposal. */
   openShared(): Invite[] {return this.pending().filter(i => i.shared);}
-  committedShared(): Invite[] {return this.committed().filter(i => i.shared);}
   /** The loads an open proposal or a running operation has claimed. */
   sharedLoads(): Set<string> {return new Set([...this.pending(), ...this.committed()].filter(i => i.shared && i.shared.op?.phase !== 'ended').map(i => i.shared!.load.entity));}
   /** The loads a crew is carrying somewhere now. */
