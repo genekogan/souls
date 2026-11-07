@@ -328,9 +328,10 @@ test('L7 a burst, a clean gap, then a fault that never ends: a crash after a sna
 
 test('a snapshot from a faulted head never becomes what a rewind goes back to', async (t) => {
   quiet(t);
-  const w = await world(t), host = w.f.host; await w.tick(1); host.saveSnapshot(true); const clean = host.recoveryBaseline, at = w.f.db.latestSnapshot(host.worldId).tick;
-  w.control.midThrow = () => true; await w.tick(260); host.snapshotEvery = 50; await w.tick(60);
-  assert.ok(w.f.db.latestSnapshot(host.worldId).tick > at); assert.equal(host.recoveryBaseline, clean);
+  const w = await world(t), host = w.f.host; w.control.midThrow = () => true; await w.tick(260); assert.ok(host.stepFailing);   // its own rung 3 re-baselined at the repaired head
+  const clean = host.recoveryBaseline, at = w.f.db.latestSnapshot(host.worldId).tick; assert.ok(clean);
+  host.snapshotEvery = 50; await w.tick(60);
+  assert.ok(w.f.db.latestSnapshot(host.worldId).tick > at, 'a snapshot landed'); assert.equal(host.recoveryBaseline, clean);
 });
 
 for (const [what, breakIt] of [['a capture', (e) => { e.snapshot = () => { throw new Error('fixture.capture-bug'); }; }], ['canSnapshot', (e) => { e.canSnapshot = () => { throw new Error('fixture.capture-bug'); }; }]])
