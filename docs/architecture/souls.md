@@ -105,11 +105,14 @@ last seen on both clocks. `travel` adds one and leaves the Soul's folder where i
 
 ## The public biography
 
-`GET /v1/edge/public/souls/:id` carries `timeline`: at most 20 entries, newest first, about 4 KB at most, with both clocks
-and a place. It holds arrival, things made, performances, gatherings and travel, and comes only from canonical facts: a
-completed receipt and its confirmed outcome, the Soul's creation and its travel log, never speech or owner messages. A row
-is written when a receipt ends (`edge_timeline_v1`, `edge/ledger/timeline.ts`), so a read is one index lookup. The web
-profile shows it and `inspect <soul>` shows its first 5. Receipts from before this table aren't backfilled.
+`GET /v1/edge/public/souls/:id` carries `timeline`: at most 20 entries, newest first, under 8 KB, each with the real clock, the
+world clock of that moment and a place. It holds first arrival, things made and marked public, performances (`play-piano`,
+`play-music`, `sing`, `lecture`, `tell-story`), gatherings (acts that only complete with others there) and travel, and comes
+only from canonical facts: never speech, owner messages or a private record. A place the public may not know is left out, id
+and name. An entry is stamped when the act began. Rows are written as things happen, one index read serves them, and a world
+that lost the table rebuilds each Soul's rows from its last 500 receipts on the first read; an arrival or a journey with no
+row is then shown on the real clock alone. The route answers with an ETag and `no-cache`. The web profile shows it, and
+`inspect <soul>` its first five.
 
 ## The edge API
 

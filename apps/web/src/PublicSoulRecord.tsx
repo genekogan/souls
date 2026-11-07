@@ -18,7 +18,7 @@ function describe(e:Event){
 /** One line of the biography: the world's own record, each text the Soul's or the world's, rendered as text only. */
 function storyLine(e:PublicRecord['timeline'][number]){
  const where=e.place?` at ${e.place}`:'',when=e.worldDay!=null?`Day ${e.worldDay}${e.time?` ${e.time}`:''}`:e.real?.slice(0,10)??'';
- const what=e.kind==='arrival'?'Arrived':e.kind==='produced'?`Made ${e.title??'something'}`:e.kind==='performance'?`Performed: ${e.title??''}`:e.kind==='gathering'?`Joined ${e.with??'others'} for ${e.title??'a gathering'}`:e.kind==='travel'?`Travelled${e.world?` to ${e.world}`:''}`:e.kind;
+ const what=e.kind==='arrival'?'Arrived':e.kind==='produced'?`Made ${e.title??'something'}`:e.kind==='performance'?(e.title??'Performed'):e.kind==='gathering'?(e.title??'Joined a gathering'):e.kind==='travel'?`Travelled${e.world?` to ${e.world}`:''}`:e.kind;
  return `${when?`${when}: `:''}${what}${where}`;
 }
 export function PublicSoulRecord({api,soulId}:{api:Api;soulId:string}){

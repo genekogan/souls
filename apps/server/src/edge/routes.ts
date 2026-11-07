@@ -1,4 +1,5 @@
 // Mounts the EDGE-CONTRACT-v1 surface under /v1/edge. Ledger verbs here; Comms registers its own.
+import {createHash} from 'node:crypto';
 import {inspectFrame} from './perception/inspect.ts';
 import {freeTextAct, resolveCandidates} from './intents/strict.ts';
 import type {Context, Hono} from 'hono';
@@ -83,7 +84,14 @@ export function mountEdgeRoutes(app: Hono, deps: EdgeDeps & {ledger: EdgeLedger}
   app.get('/v1/edge/around', wrap(c => {const s = deps.soul(c); limit(s, 'around', 30); const to = c.req.query('to'); return {tick: deps.host.engine.world.tick, around: aroundFrame(L, s), ...(to !== undefined ? {route: routeFrame(L, s, to)} : {})};}));
   app.post('/v1/edge/resolve', wrap(async c => {const s = deps.soul(c); limit(s, 'resolve', 120); const body = await c.req.json().catch(() => { throw new EdgeError(400, 'invalid', 'body must be JSON {verb, target} or {capability}'); }); if (!body || typeof body !== 'object' || (body.verb === undefined && body.capability === undefined)) throw new EdgeError(400, 'invalid', 'body must be JSON {verb, target} or {capability}'); const resolve = L.intents.dryRun(s, body); return {tick: deps.host.engine.world.tick, resolve: {...resolve, candidates: resolveCandidates(L, s, resolve), ...(freeTextAct() ? {freeTextAct: true} : {})}};}));
   app.get('/v1/edge/receipts/:id', wrap(c => {const s = deps.soul(c); const r = L.receipt(s.soulId, c.req.param('id') ?? ''); if (!r) throw new EdgeError(404, 'not-found', 'no such receipt for this Soul'); return {receipt: r};}));
-  app.get('/v1/edge/public/souls/:soulId', wrap(c => L.publicSoul(c.req.param('soulId') ?? '')));
+  // Public and read often: it revalidates. The answer's own bytes are the tag, so a Soul that changed never reads as unchanged.
+  const publicSoul = wrap(c => L.publicSoul(c.req.param('soulId') ?? ''));
+  app.get('/v1/edge/public/souls/:soulId', async c => {
+    const r = await publicSoul(c);
+    if (r.status !== 200) return r;
+    const body = await r.text(), etag = `"${createHash('sha256').update(body).digest('base64url').slice(0, 27)}"`, headers = {ETag: etag, 'Cache-Control': 'no-cache'};
+    return c.req.header('if-none-match') === etag ? c.body(null, 304, headers) : c.body(body, 200, {...headers, 'Content-Type': 'application/json'});
+  });
   app.get('/v1/edge/metrics', wrap(c => {const m = Number(c.req.query('minutes') ?? 60); return L.metrics(Number.isFinite(m) && m >= 1 && m <= 10080 ? m * 60_000 : 3600_000);}));
   // Public: map knowledge (names, kinds, enclosure, capacity, public schedule) never lists occupants (§5).
   // F4 (#375): the named god flags beside the places (name, the walk that goes there, where it stands)

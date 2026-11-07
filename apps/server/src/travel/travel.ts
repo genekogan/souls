@@ -71,6 +71,8 @@ export const appendLog = (log: LogEntry[], e: LogEntry) => [...log, e].slice(-LO
 export class Travel {
   readonly d: TravelDeps;
   private sql: Db['db'];
+  /** Told once a Soul sets off, while its body is still here. */
+  onLeave: ((soulId: string, at: number, world: string) => void) | null = null;
   constructor(d: TravelDeps) {
     this.d = d; this.sql = d.db.db;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS travel_settings_v1 (world_id TEXT PRIMARY KEY, open INTEGER NOT NULL, changed_at INTEGER NOT NULL);
@@ -152,6 +154,7 @@ export class Travel {
     const {body, note} = portableBody(engineBody);
     const leaving: LogEntry = {at: this.now(), kind: 'travel', from: this.d.slug, fromName: this.d.name, to: dest.slug, toName: dest.name, ...(note ? {note} : {})};
     this.put(soul.id, {traveller: id.traveller, home: id.home, state: 'departing', at: dest.slug, requestId, log: id.log});
+    this.onLeave?.(soul.id, leaving.at, dest.name);
     const passport: Passport = {contract: TRAVEL_CONTRACT, requestId, traveller: id.traveller, home: id.home, homeSoulId: id.traveller.slice(id.home.length + 1), name: soul.name, description: soul.description,
       owner: soul.owner, body, bodyNote: note, from: this.d.slug, fromName: this.d.name, log: appendLog(id.log, leaving)};
     let r: {status: number; data: any};

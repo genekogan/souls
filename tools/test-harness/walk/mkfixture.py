@@ -7,7 +7,7 @@ import sqlite3, sys, os, gzip, hashlib, json, tempfile, shutil
 src, out = sys.argv[1], sys.argv[2]
 EMPTY = ['god_tokens_v1', 'users', 'account_identities_v1', 'account_soul_memberships_v1', 'agent_inbox_v1',
          'soul_auto_portraits_v1', 'render_scene_captures', 'welcome_visits_v1', 'god_meals_v1', 'god_lore_visits_v1',
-         'gov_seen_v1', 'edge_place_knowledge_v1', 'edge_outcome_contexts_v1', 'edge_outcomes_v1', 'edge_receipts_v1',
+         'gov_seen_v1', 'edge_place_knowledge_v1', 'edge_outcome_contexts_v1', 'edge_outcomes_v1', 'edge_receipts_v1', 'edge_timeline_v1', 'edge_timeline_built_v1',
          'edge_refusals_v1', 'edge_owner_control_v1', 'lifecycle_operations_v1', 'god_verify_receipts_v1']
 PREFIX = ('edge_comms_', 'travel_')
 tmp = tempfile.mkdtemp(prefix='walk-fixture-'); dst = os.path.join(tmp, 'w.db')
