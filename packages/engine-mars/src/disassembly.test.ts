@@ -6,7 +6,7 @@ import { CAMP_ARRIVALS } from '../../../mars/viewer/engine/scenarios/eden-camp.t
 import { createRegistry } from '../../../mars/viewer/engine/api/registry.ts';
 import { DISASSEMBLY_ACTIONS } from '../../../mars/viewer/engine/construction/disassembly.ts';
 import { atPile, LOOKOUT_PARTS, lookoutStateV1, pendingDisassembly } from './disassembly.ts';
-import type { Engine, EngineFactory, EngineSnapshot } from '@sim/engine-contract';
+import type { Engine, EngineFactory, EngineSnapshot } from '@souls/engine-contract';
 import type { WorldState } from '../../../mars/viewer/engine/world/types.ts';
 
 const base: MarsWorldConfig = { scene: 'eden-camp', arrival: CAMP_ARRIVALS[0].p, arrivalPlace: 'yard', reference: CAMP_ARRIVALS[1].p, grounds: { id: 'grounds', name: 'Camp' } };

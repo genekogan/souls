@@ -4,7 +4,7 @@ import type {Context} from 'hono';
 import type {WorldHost} from '../world.ts';
 import type {Db} from '../db.ts';
 import type {Souls} from '../souls.ts';
-import type {EdgeOutcomeV1} from '@sim/protocol';
+import type {EdgeOutcomeV1} from '@souls/protocol';
 
 export const EDGE_CONTRACT = 'eden-edge/1' as const;
 export type ObjectBodyAdmission={guard:()=>true;commit:(receiptId:string)=>Record<string,unknown>|void};

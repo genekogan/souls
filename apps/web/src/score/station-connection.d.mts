@@ -1,5 +1,5 @@
-import type {Connection,ConnectionSession,ClockProbe,PongReceipt,TransportReceipt} from '@sim/client';
-import type {StationLiveV1,StationLiveV2,StationLiveContract,ServerMsg} from '@sim/protocol';
+import type {Connection,ConnectionSession,ClockProbe,PongReceipt,TransportReceipt} from '@souls/client';
+import type {StationLiveV1,StationLiveV2,StationLiveContract,ServerMsg} from '@souls/protocol';
 export type StationClockEstimate={serverNowMs:number;earliestServerTimeMs:number;latestServerTimeMs:number;uncertaintyMs:number;rttMs:number;ageMs:number;transportEpoch:string};
 export type StationConnectionState={session:ConnectionSession|null;view:StationLiveV1|StationLiveV2|null;clock:StationClockEstimate|null;error:string|null};
 export type StationConnectionEvent={kind:'welcome'|'session'|'station'|'clock'|'unavailable';state:StationConnectionState};

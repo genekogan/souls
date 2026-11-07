@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { marsFactory, type MarsWorldConfig } from '@sim/engine-mars';
+import { marsFactory, type MarsWorldConfig } from '@souls/engine-mars';
 import type { WorldState } from '../../../mars/viewer/engine/world/types.ts';
 import { CAMP_ARRIVALS } from '../../../mars/viewer/engine/scenarios/eden-camp.ts';
-import { kernelHash, cardHash, type Card } from '@sim/kernel';
+import { kernelHash, cardHash, type Card } from '@souls/kernel';
 import { Db } from './db.ts';
 import { WorldHost, replayFromGenesis } from './world.ts';
 const cfg: MarsWorldConfig={scene:'eden-camp',arrival:CAMP_ARRIVALS[0].p,arrivalPlace:'yard',reference:CAMP_ARRIVALS[1].p,grounds:{id:'grounds',name:'Camp'}};
 async function setup(){
- const db=new Db(join(mkdtempSync(join(tmpdir(),'sim-build-')),'sim.db')),factory=await marsFactory(cfg),h=new WorldHost(db,factory,'physical-build',1e9,'build-proof');h.boot();
+ const db=new Db(join(mkdtempSync(join(tmpdir(),'souls-build-')),'sim.db')),factory=await marsFactory(cfg),h=new WorldHost(db,factory,'physical-build',1e9,'build-proof');h.boot();
  for(const [i,name] of ['Alice','Bob','Carol','David'].entries())void h.enqueue('birth','test',{soulId:`s${i}`,entityId:`h${i}`,name,description:'A builder',owner:'proof-owner'});
  h.tickOnce();
  for(const phase of ['stage','frame']){

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { BrainCall } from '@sim/protocol';
-import type { Api, Sim } from './useSim.ts';
+import type { BrainCall } from '@souls/protocol';
+import type { Api, Souls } from './useSouls.ts';
 
 const usd = (n: number) => (n < 0.01 ? `$${n.toFixed(5)}` : `$${n.toFixed(3)}`);
 const J = ({ v }: { v: unknown }) => <pre className="json">{JSON.stringify(v, null, 2)}</pre>;
@@ -72,7 +72,7 @@ export function Call({ c, open, api }: { c: BrainCall; open?: boolean; api?: Api
   );
 }
 
-export function BrainPanel({ sim, authed, selected, api, isAdmin }: { sim: Sim; authed: boolean; selected: string | null; api: Api; isAdmin: boolean }) {
+export function BrainPanel({ sim, authed, selected, api, isAdmin }: { sim: Souls; authed: boolean; selected: string | null; api: Api; isAdmin: boolean }) {
   const [tier, setTier] = useState('all');
   const b = sim.stats?.brain;
   const selName = selected ? sim.conn.replica.souls.get(selected)?.name : null;
@@ -97,7 +97,7 @@ export function BrainPanel({ sim, authed, selected, api, isAdmin }: { sim: Sim; 
   );
 }
 
-export function NarrativePanel({ sim }: { sim: Sim }) {
+export function NarrativePanel({ sim }: { sim: Souls }) {
   const tick = sim.stats?.tick ?? sim.conn.replica.tick;
   const views = Object.values(sim.narratives).sort((a, b) => a.region.localeCompare(b.region));
   return (
@@ -117,7 +117,7 @@ export function NarrativePanel({ sim }: { sim: Sim }) {
   );
 }
 
-export function BroadcastPanel({ sim }: { sim: Sim }) {
+export function BroadcastPanel({ sim }: { sim: Souls }) {
   const c = sim.camera;
   return (
     <section>

@@ -54,6 +54,55 @@ to claim all lanes are active. Cross-provider calls are optional: a Claude coord
 and Codex all-Codex. Neither must call the other. Mixed delegation requires an available authenticated route and
 the same scope, privacy and spend controls; do not build a provider bridge as a prerequisite to feature work.
 
+## Sustaining lanes
+
+These rules bind in every harness. A lane is either running or has a handoff the coordinator will be woken for. On
+every wake, the coordinator reconciles every lane before ending its turn. An idle lane is a coordinator failure,
+not a worker failure.
+
+- **Whole queue.** A worker brief gives the lane's whole ordered queue, not one task. After posting a task's
+  checkpoint, the worker continues to the next bounded task. It ends its turn only on a blocker that needs a
+  decision or capability it lacks, on nearing its context limit (after a checkpoint and a handover brief), on a
+  budget gate, or on an empty queue.
+- **No blocking dialogs.** Workers never open a question dialog that waits for an answer. They decide routine
+  questions and record the choice. Scope or ordering questions go to the coordinator as a message while the worker
+  continues. The coordinator takes product questions to Gene with a recommendation, parks only the dependent item
+  and keeps the lane on its next independent task.
+- **Review through the PR.** Review findings reach workers as PR comments. Workers read their PR comments at every
+  safe boundary; the coordinator routes only what is blocking.
+- **Immediate refresh.** When a worker hands over, the coordinator relaunches the lane in the same turn. Lane
+  identity, budget, hours and branch persist in the coordinator's private state, whichever executor runs the worker.
+- **Slice long issues.** Workers read long parent issues in slices (for example `gh api … --jq` on the fields or
+  comments they need) or through a read-only helper, never whole. Workers that loaded whole parent issues have
+  exhausted their context in under an hour.
+- **Repo steward.** Mechanical repository work belongs to a standing workhorse worker, the repo steward, that wakes
+  on PR changes, not to the frontier coordinator: review dispatch, merge-queue labelling of reviewed T0–T2 PRs, CI
+  and merge-train triage, and release-candidate summaries. The steward counts against the coordinator's worker
+  ceiling and budget. It never deploys or runs a paid gate.
+
+### Claude Code
+
+- Lanes are separate sessions started with `start_session`: fresh context, the workhorse model, and their own
+  worktree, or the shared checkout with one worktree per lane.
+- A session can be started only on a turn the user began; under Remote Control, event-triggered turns refuse it.
+  The fallback is a `lane` subagent inside the coordinator session. It can be steered and resumed through messages,
+  but it is invisible in the sidebar and ends with the coordinator session.
+- The app continues the coordinator only when every child session is idle. The coordinator therefore subscribes to
+  each lane's idle notice with `notify_when_idle` on every message it sends.
+- The coordinator and the steward each keep a `Monitor` armed on PR-change events as the heartbeat, with a 30-minute
+  expiry re-armed each time. No cron, no scheduled agents.
+- Cross-session messages are addressed by session title with a ref; workers address the coordinator by its session
+  name.
+- The auto-mode permission classifier can refuse routine commands in event-triggered turns. The fix is a narrow
+  allow rule in `.claude/settings.local.json` (ignored by git), never a broad one. A worker must not ask another
+  session to run a command it was refused.
+
+### Codex
+
+The Codex equivalents are to be verified at first use: sub-agent or session controls, an idle notification and a
+bounded wait primitive. Until they are verified, treat the harness as able to run only the whole-queue and
+no-dialog rules above, and record what it actually offers in the private manifest.
+
 ## Provider-neutral handoff
 
 Keep portable facts separate from optional `native_bindings` in private state. The portable part contains agenda,

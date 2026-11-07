@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, coreRef, type Op } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, coreRef, type Op } from '@souls/world-compiler';
 import { GodLayers, deferredOp } from './layers.ts';
 
 // The economy and relationships are opt-in (LAYERS=1); these tests exercise the opted-in world, the last one the default.

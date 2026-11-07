@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import { STATION_PINS_V1,stationEpochId,stationEpochV1Schema,makeStationCueV1,stationPhaseAtTick,stationLiveV1Schema,stationEndTick } from './station-v1.ts';
 import { initialStationPhysicalHeadV1,foldStationRulesEraV1 } from './station-era-v1.ts';
 import { makeStationCueV2,stationCueV2Schema,stationPhaseAtTickV2,stationCueEraRevision,stationAnchorV2Schema,

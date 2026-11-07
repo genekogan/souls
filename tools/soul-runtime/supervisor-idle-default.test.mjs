@@ -23,7 +23,7 @@ class Host extends EventEmitter{
 }
 function fixture(t,{legacy}={}){
  t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:origin});
- const directory=mkdtempSync(join(tmpdir(),'sim-idle-default-')),commands=[],states=[];
+ const directory=mkdtempSync(join(tmpdir(),'souls-idle-default-')),commands=[],states=[];
  let journal=openJournal(directory,{worldId:'world',soulId:'s_subject'}),host=new Host(journal),stop=new AbortController();
  if(legacy!==undefined){const fence=journal.control.claim('existing');journal.control.save(fence,0,legacy);journal.control.release(fence);}
  const initial=journal.control.checkpoint();

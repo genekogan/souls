@@ -1,6 +1,7 @@
 // Cast files (tools/playtest/scenarios/casts/*.json): a world, N seats with characters, a shared brief, a presentation
 // order and a success condition checkable from world truth. See STATUS-SWARM.md for the schema.
 import { readFileSync } from 'node:fs';
+import { providerPolicy } from '../../lib/provider-policy.mjs';
 
 export const ECONOMY = {
   // How much a seat may spend per direction: wake-turn cap (Seat.rails.maxTurnsPerRequest), turn wall, and the words
@@ -74,4 +75,15 @@ export function castToScenario(cast) {
     review: { reviewer: false, developer: false, reviewerModel: 'opus', developerModel: 'opus', rubric: 'accept3', ...(cast.review ?? {}) },
     rails: cast.rails,
   };
+}
+
+/** What a directed session needs from model providers: its seats (scripted-owner needs none) and the planner (one Claude
+ *  call when cast.orchestrator.planner names a model). Review and developer are off in direct sessions. `scenario` is the
+ *  shape the playtest preflight reads, so it checks exactly these providers. `live` names each live role. */
+export function castPolicy(cast) {
+  const planner = cast.orchestrator?.planner ?? null;
+  const scenario = { seats: cast.seats, god: null, director: { mode: planner ? 'persona' : 'scripted' }, review: { mode: 'deterministic' } };
+  const policy = providerPolicy(scenario);
+  const live = [...cast.seats.filter((s) => (s.adapter ?? 'claude-headless') !== 'scripted-owner').map((s) => `${s.id}:${s.adapter ?? 'claude-headless'}/${s.model ?? 'default'}`), ...(planner ? [`planner:${planner}`] : [])];
+  return { ...policy, live, scenario };
 }

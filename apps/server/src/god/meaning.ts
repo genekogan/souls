@@ -1,5 +1,5 @@
 // Public meaning is decoration over physical places: never alter their membership polygons or parent.
-import type { AboutPart, WorldModel } from '@sim/world-compiler';
+import type { AboutPart, WorldModel } from '@souls/world-compiler';
 import type { GodPlace } from './places.ts';
 import { centroid, inPoly } from '../edge/ledger/places.ts';
 

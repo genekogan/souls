@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {marsFactory,GREEN_FIELD_WORLD,EDEN_COMMONS_WORLD} from './engine.ts';
 import {groundFact,groundField} from './ground-bridge.ts';
 import {emptyGround} from '../../ground/src/index.ts';
-import type {Engine} from '@sim/engine-contract';
+import type {Engine} from '@souls/engine-contract';
 
 async function setup(ground=false){const f=await marsFactory(GREEN_FIELD_WORLD),e=f.create(f.genesis('gaits'));
   if(ground){const g=emptyGround(128);g.landforms.push({id:'knoll',kind:'bump',c:[25,0],r:18,h:3,peak:1},{id:'pond',kind:'carve',area:[[-25,-8],[-15,-8],[-15,8],[-25,8]],bed:-.2,edge:1});g.waters.push({id:'pond',area:[[-25,-8],[-15,-8],[-15,8],[-25,8]],level:0});(e as Engine&{installGroundV1(f:unknown):unknown}).installGroundV1(groundFact(g,1));}

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hashOf } from '@sim/engine-contract';
-import { recordedTakeStreamSchema, recordedTakeChunkSchema, scenePublicationSchema, ownerSoulDashboardSchema, steerReceiptSchema } from '@sim/protocol';
+import { hashOf } from '@souls/engine-contract';
+import { recordedTakeStreamSchema, recordedTakeChunkSchema, scenePublicationSchema, ownerSoulDashboardSchema, steerReceiptSchema } from '@souls/protocol';
 import { worldPresentationFixtures } from '../test/fixtures/w.ts';
 import { sampleTake } from '../../../mars/viewer/engine/take/replay.ts';
 import type { Take } from '../../../mars/viewer/engine/take/types.ts';

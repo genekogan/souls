@@ -9,7 +9,7 @@ pnpm assets:pull          # after a clone, and whenever the manifest changes
 pnpm assets:check         # verify only: exit 1 if anything is missing or wrong (no network, writes nothing)
 ```
 
-`pnpm dev` warns, and `pnpm test` and `pnpm --filter @sim/web build` stop, when the media they need is not in place.
+`pnpm dev` warns, and `pnpm test` and `pnpm --filter @souls/web build` stop, when the media they need is not in place.
 `mars-web.mjs` builds the Mars viewer's static site (the people's character set under `/modular`) when its inputs
 changed and checks it: `pnpm build` and `pnpm dev` run it, `--check` only verifies (CI runs that after the build).
 

@@ -1,6 +1,6 @@
 // Owner rules live in kernel state; their triggers request thought, never an activity.
-import type {KState,Json} from '@sim/kernel';
-import type {MandateRule,MandateTrigger} from '@sim/protocol';
+import type {KState,Json} from '@souls/kernel';
+import type {MandateRule,MandateTrigger} from '@souls/protocol';
 export const MANDATE_STATE='privateMandate';
 export function mandateOf(k:KState,soulId:string):MandateRule[]{return (k.things[soulId]?.states[MANDATE_STATE] as unknown as MandateRule[]|undefined)??[];}
 export function saveMandate(k:KState,soulId:string,rules:MandateRule[]){if(k.things[soulId])k.things[soulId].states[MANDATE_STATE]=structuredClone(rules) as unknown as Json;}

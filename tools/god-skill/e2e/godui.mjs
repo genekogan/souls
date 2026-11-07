@@ -48,7 +48,7 @@ async function step(name, fn, expect) {
 const chromium = createRequire(resolve(root, 'mars/viewer/package.json'))('@playwright/test').chromium;
 async function snap(page, name) { const file = resolve(out, `${name}.png`); await page.screenshot({ path: file }); report.shots.push(file); log(`  📷 ${name}.png`); }
 async function until(page, fn, ms = 30000, every = 250) { const t0 = Date.now(); let last; while (Date.now() - t0 < ms) { last = await fn(); if (last?.ok) return last; await page.waitForTimeout(every); } return last; }
-const atmos = (page) => page.evaluate(() => ({ a: window.__simLiving?.atmosphere?.(), l: window.__simLiving?.lightning?.() }));
+const atmos = (page) => page.evaluate(() => ({ a: window.__soulsLiving?.atmosphere?.(), l: window.__soulsLiving?.lightning?.() }));
 
 try {
   for (const dpr of dprs) {
@@ -75,7 +75,7 @@ try {
       };
       await step(`B1[${d}] the owner sees the bolt right of Explore and opens its panel (pairing line + Rain/Lightning/Haze)`, async () => {
         await page.locator('[data-god-open="owner"]').waitFor({ timeout: 90_000 });
-        await page.waitForFunction(() => window.__simEntity?.layer?.active === true, null, { timeout: 90_000 }); await sleep(2500);
+        await page.waitForFunction(() => window.__soulsEntity?.layer?.active === true, null, { timeout: 90_000 }); await sleep(2500);
         const ex = await page.locator('.explore-open').boundingBox(), bolt = await page.locator('[data-god-open]').boundingBox();
         await page.locator('button[aria-label="collapse"]').first().click().catch(() => {});
         const text = (await godSection('agent')) + (await godSection('world'));
@@ -99,7 +99,7 @@ try {
         return { exit: done.code, token: state.token?.slice(0, 12) };
       }, (r) => r.exit === 0 && r.token?.startsWith('god_godui'));
       const press = async (kind) => { const s0 = (await (await fetch(`${base}/v1/world/seq`)).json()).seq; await godSection('world'); await page.locator(`[data-weather-kind="${kind}"]`).click(); await page.locator('[data-god-modal] .gp-ok').waitFor({ timeout: 10_000 }); return s0; };
-      const look = () => page.evaluate(() => { const s = window.__simEntity; s.controls.target.set(0, 4, 0); s.camera.position.set(55, 28, 55); s.controls.update?.(); });
+      const look = () => page.evaluate(() => { const s = window.__soulsEntity; s.controls.target.set(0, 4, 0); s.camera.position.set(55, 28, 55); s.controls.update?.(); });
       await step(`W1[${d}] Rain: the sky rains (one ledger edit, like the CLI's)`, async () => {
         await look(); const s0 = await press('rain');
         const r = await until(page, async () => { const x = await atmos(page); return { ok: x.a?.kind === 'rain' && x.a.state.rain > 0.3, kind: x.a?.kind, rain: x.a?.state.rain }; }, 20000);
@@ -108,7 +108,7 @@ try {
         return { ...r, edits: seq - s0 };
       }, (r) => r.ok && r.edits === 1);
       await step(`W2[${d}] Lightning: a storm, and one strike near the view's centre (the bolt is drawn)`, async () => {
-        await page.evaluate(() => window.__simLiving.holdLightning(15000));
+        await page.evaluate(() => window.__soulsLiving.holdLightning(15000));
         const t0 = Date.now(); const s0 = await press('lightning');
         const r = await until(page, async () => { const x = await atmos(page); const g = x.l?.last?.find((h) => h.god && h.at >= t0); return { ok: x.a?.kind === 'storm' && !!g && x.l.bolts > 0, kind: x.a?.kind, bolts: x.l?.bolts, god: g }; }, 20000, 100);
         await page.waitForTimeout(150); await snap(page, `w2-lightning-${d}`);
@@ -116,7 +116,7 @@ try {
         return { ...r, near: r.god ? Math.hypot(r.god.x, r.god.z) : null, edits: seq - s0 };   // the view centre was (0, 0)
       }, (r) => r.ok && r.near !== null && r.near < 1 && r.edits === 2);
       await step(`W3[${d}] Haze: fog closes in`, async () => {
-        await page.evaluate(() => window.__simLiving.holdLightning(0));
+        await page.evaluate(() => window.__soulsLiving.holdLightning(0));
         const s0 = await press('haze');
         const r = await until(page, async () => { const x = await atmos(page); return { ok: x.a?.kind === 'fog' && x.a.state.fog > 0.3, kind: x.a?.kind, fog: x.a?.state.fog }; }, 20000);
         await page.waitForTimeout(4000); await snap(page, `w3-haze-${d}`);
