@@ -13,12 +13,12 @@ import {createContinuityDisturbances} from '../../arena/continuity-disturbances.
 const fixturesUrl=new URL('./fixtures.json',import.meta.url),fixtures=JSON.parse(readFileSync(fixturesUrl)),oracles=JSON.parse(readFileSync(new URL('./oracles.json',import.meta.url)));
 const matrix=JSON.parse(readFileSync(new URL('./matrix.json',import.meta.url)));
 const walk=fixtures.scenarios.find(s=>s.id==='eden-walk-three');
-const V2_KEYS=['fixtureVersion','gardenRule','fixtureVersionNote','gardenCandidates','gardenPoolSource','gardenMembership','gardenAgreementRule','gardenTemplateNote'];
+const V2_KEYS=['fixtureVersion','fixtureVersion3Note','gardenRule','fixtureVersionNote','gardenCandidates','gardenPoolSource','gardenMembership','gardenAgreementRule','gardenTemplateNote'];
 const V1_ERRAND_WHEN='first observed 10-second all-three garden overlap';
 /** Version 1 of this scenario: v2 keys removed and the one description restored. */
 function v1Fixtures(){
  const f=structuredClone(fixtures),s=f.scenarios.find(s=>s.id==='eden-walk-three');
- for(const k of V2_KEYS)delete s[k];s.disturbances.find(d=>d.id==='independent-errand').when=V1_ERRAND_WHEN;
+ for(const k of V2_KEYS)delete s[k];delete s.fieldReturn.openChildren;delete s.fieldReturn.childRule;s.disturbances.find(d=>d.id==='independent-errand').when=V1_ERRAND_WHEN;
  // #479's own declared change to another scenario: undone here, so this still proves the rest of the file is byte for byte v1
  const band=f.scenarios.find(s=>s.id==='eden-bandstand-five');delete band.fixtureVersion;delete band.fixtureVersionNote;band.venue.audienceRegion.excludePolygon=band.venue.audienceRegion.excludePolygon.map(([x,z])=>[x,z===-26.2?-26.4:z]);return f;
 }
@@ -27,7 +27,7 @@ const POOL=walk.gardenCandidates,garden=ref=>POOL.find(g=>g.ref===ref);
 const PLOT5={ref:'land-garden-plot-5',pos:[37.7,53.2],walkCapability:'walk:land-garden-plot-5'};
 
 test('v2 declares a sealed five-garden pool and leaves every other frozen value unchanged',()=>{
- assert.equal(walk.fixtureVersion,2);assert.equal(walk.gardenRule,GARDEN_POOL_RULE);
+ assert.equal(walk.fixtureVersion,3);assert.equal(walk.gardenRule,GARDEN_POOL_RULE);
  assert.deepEqual(POOL.map(g=>g.ref),['land-garden-plot-1','place-eden-stone-garden','land-garden-plot-2','land-garden-plot-4','land-garden-plot-3'],'exactly the native explore candidates, in explore order');
  assert.deepEqual(POOL.map(g=>g.placeId),POOL.map(g=>'g-'+g.ref));
  assert.ok(POOL.every(g=>g.region.radiusM===walk.venue.gardenRegion.radiusM),'v1 garden radius reused unchanged');
@@ -94,7 +94,7 @@ async function dispatch(scenario,participants,{undeclared=false}={}){
  }
  return {disturbances:api.finish().disturbances,notifications:delivered.map(e=>({actor:e.actorId,eventId:e.eventId,source:'owner',createdAt:e.createdAt}))};
 }
-function evidence({participants,disturbances,notifications,agreedGardenRef,version=2}){
+function evidence({participants,disturbances,notifications,agreedGardenRef,version=3}){
  const bindings=Object.fromEntries([...POOL.map(g=>[g.ref,g.walkCapability]),[PLOT5.ref,PLOT5.walkCapability]].map(([ref,cap])=>[ref,{ref,entityId:'e_'+ref,capabilities:{walk:[cap]}}]));
  return {scenarioId:'eden-walk-three',t0:T0,fixtureVerified:true,...(version===null?{}:{fixtureVersion:version}),bindings,participants:Object.fromEntries(participants),disturbances,notifications,semantic:{closureAt:ms(400),...(agreedGardenRef===undefined?{}:{agreedGardenRef})}};
 }
@@ -115,7 +115,7 @@ test('stone garden agreed: v2 behaves exactly as v1, row for row',async()=>{
  const p2=v2.dispatch.disturbances['independent-errand'].triggerProof,p1=v1.dispatch.disturbances['independent-errand'].triggerProof;
  assert.equal(p2.gardenRef,stone.ref);const {gardenRef,...rest}=p2;assert.deepEqual(rest,p1,'trigger proof is v1 plus the named pool garden');
  assert.equal(p2.overlapFrom,ms(320));assert.equal(p2.overlapTo,ms(330));
- assert.deepEqual({fixtureVersion:v2.score.fixtureVersion,gardenRule:v2.score.gardenRule,garden:v2.score.garden},{fixtureVersion:2,gardenRule:'garden-pool-v2',garden:{ref:stone.ref,basis:'agreed-pool-garden'}});
+ assert.deepEqual({fixtureVersion:v2.score.fixtureVersion,gardenRule:v2.score.gardenRule,garden:v2.score.garden},{fixtureVersion:3,gardenRule:'garden-pool-v2',garden:{ref:stone.ref,basis:'agreed-pool-garden'}});
 });
 
 test('Garden plot 1 agreed: visit, receipt, overlap and the errand trigger are evaluated at plot 1',async()=>{
@@ -150,10 +150,10 @@ test('no garden agreement follows the v1 failure path, row for row',async()=>{
  }
 });
 
-test('callers must declare fixtureVersion 2',async()=>{
+test('callers must declare the fixture version',async()=>{
  const participants=bodies();
- assert.throws(()=>scoreContinuity({fixtures,oracles,evidence:evidence({participants,disturbances:{},notifications:[],version:null})}),/declare fixtureVersion 2/);
- assert.throws(()=>scoreContinuity({fixtures,oracles,evidence:evidence({participants,disturbances:{},notifications:[],version:1})}),/declare fixtureVersion 2/);
+ assert.throws(()=>scoreContinuity({fixtures,oracles,evidence:evidence({participants,disturbances:{},notifications:[],version:null})}),/declare fixtureVersion 3/);
+ assert.throws(()=>scoreContinuity({fixtures,oracles,evidence:evidence({participants,disturbances:{},notifications:[],version:1})}),/declare fixtureVersion 3/);
  await assert.rejects(dispatch(walk,participants,{undeclared:true}),{code:'FIXTURE_VERSION_UNDECLARED'});
  // Unversioned scenarios need no declaration.
  assert.doesNotThrow(()=>scoreContinuity({fixtures,oracles,evidence:{scenarioId:'eden-reading-duo',t0:T0}}));

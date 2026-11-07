@@ -35,7 +35,11 @@ Verified source facts:
   sequence or endpoint coordinate is shown to the agents.
 - `eden-bandstand-five` is fixture version 2 (#479): the audience exclusion zone's south edge
   is -26.2, so the native bandstand walk ends outside it. Version 1's verdicts stay as written.
-- `eden-walk-three` is fixture version 2 (`gardenRule: garden-pool-v2`, declared
+- `eden-walk-three` is fixture version 3 (#473): `fieldReturn.openChildren` lets a binding's
+  `children` name open places the world puts inside a bound field place, each with `containedBy`,
+  so a return to Commons Fire Circle counts. Enclosed places and buildings never do, and the field
+  polygon still applies. Earlier verdicts stay as written.
+- Version 2 of `eden-walk-three` (`gardenRule: garden-pool-v2`, declared
   2026-10-31). The instruction names no garden, and native `explore garden` from
   the field returns five, so the garden is a sealed pool like the endpoint:
   Garden plots 1-4 and the stone garden (`gardenCandidates`, centres from the
@@ -226,7 +230,7 @@ are separate and unchanged. Previous failed/partial development reports remain
 unchanged; this is not retrospective acceptance.
 
 The required source-cited `fieldReturnBinding` annotation is frozen before T0:
-`{ref,worldId,boundAt,polygon,level,places,navigation,evidence}`. Each `places[]`
+`{ref,worldId,boundAt,polygon,level,places,children?,navigation,evidence}`. Each `places[]`
 record has `{ref,placeId,polygon,level,enclosed:false,evidence?}`; only the
 fixture's enumerated coextensive open-field refs are permitted. Each
 `navigation[]` has `{capability:'walk:…',targetPlaceId,evidence?}` and targets one

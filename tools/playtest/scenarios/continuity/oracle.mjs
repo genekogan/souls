@@ -13,7 +13,7 @@ const xz=p=>Array.isArray(p)?p.length===3?[p[0],p[2]]:p.length===2?p:null:p&&[p.
 const current=s=>s?.pos?.src!=='lastReceipt'&&(s?.currentBody===true||['here','owner','world'].includes(s?.pos?.src));
 const inside=(s,r)=>{const p=xz(s.pos),circle=Array.isArray(r.pos)&&Number.isFinite(r.radiusM);return p?.every(Number.isFinite)&&(circle||r.includePolygon)&&(!circle||Math.hypot(p[0]-r.pos[0],p[1]-r.pos[1])<=r.radiusM)&&(!r.includePolygon||insidePolygon(p,r.includePolygon))&&(!r.excludePolygon||!insidePolygon(p,r.excludePolygon))&&(!r.poolRef||poolGardenAt(p,r.pool)?.ref===r.poolRef);};
 const locationMissing=(s,p)=>p.placeIds&&(!xz(s.pos)?.every(Number.isFinite)||typeof s.place!=='string'||s.placeProvenance!=='explicit-native-most-specific-place');
-const locationMatches=(s,p)=>inside(s,p.region)&&(!p.placeIds||!locationMissing(s,p)&&p.placeIds.includes(s.place)&&(Number.isFinite(s.level)?s.level===p.level:p.placeLevels?.[s.place]===p.level));
+export const locationMatches=(s,p)=>inside(s,p.region)&&(!p.placeIds||!locationMissing(s,p)&&p.placeIds.includes(s.place)&&(Number.isFinite(s.level)?s.level===p.level:p.placeLevels?.[s.place]===p.level));
 const activity=s=>typeof s.activity==='string'?s.activity:s.activity?.kind;
 const accepted=r=>at(r.acceptedAtUtc??r.observedAcceptedAt??r.acceptedAt??r.startedAt);
 const ended=r=>at(r.endedAtUtc??r.observedEndedAt??(typeof r.endedAt==='string'?r.endedAt:null));
@@ -181,7 +181,17 @@ export function fieldReturnLocation({scenario,evidence,t0}){
   if(['building','room','water'].includes(p.kind))bad.push('field equivalent is a non-field venue');
   if(!cited(p.evidence??b.evidence))missing.push('native place source');
  }
- if(new Set(places.map(p=>p.placeId)).size!==places.length)bad.push('duplicate native field place identity');
+ // #473, fixture version 3: open places the world puts inside a bound field place. The containment is the world's, cited in the binding; the polygon still applies.
+ const children=spec.openChildren===true&&Array.isArray(b.children)?b.children.filter(p=>p&&typeof p==='object'):[];
+ if(b.children!==undefined&&spec.openChildren!==true)bad.push('field child places are not part of this fixture version');
+ for(const p of children){
+  required(p.placeId,typeof p.placeId==='string'&&!!p.placeId,'native field child place ID');
+  required(p.containedBy,places.some(f=>f.placeId===p.containedBy),'field child is not inside a bound field place');
+  required(p.level,p.level===spec.level,'field child level mismatch');required(p.enclosed,p.enclosed===false,'field child is enclosed');
+  if(['building','room','water'].includes(p.kind))bad.push('field child is a non-field venue');
+  if(!cited(p.evidence??b.evidence))missing.push('native child place source');
+ }
+ if(new Set([...places,...children].map(p=>p.placeId)).size!==places.length+children.length)bad.push('duplicate native field place identity');
  const navigation=Array.isArray(b.navigation)?b.navigation.filter(n=>n&&typeof n==='object'):[];
  if(!navigation.length||navigation.length!==b.navigation?.length)missing.push('native field walk binding');
  for(const n of navigation){
@@ -192,7 +202,7 @@ export function fieldReturnLocation({scenario,evidence,t0}){
  }
  const status=bad.length?'fail':missing.length?'unknown':'pass';
  return {status,detail:bad.length?bad.join('; '):missing.length?'Missing '+missing.join(', '):'Native field polygon, level, equivalence and walk targets frozen before T0',evidence:b.evidence,
-  ...(status==='pass'?{region:{includePolygon:spec.polygon},level:spec.level,placeIds:places.map(p=>p.placeId),placeLevels:Object.fromEntries(places.map(p=>[p.placeId,p.level])),navigation}:{} )};
+  ...(status==='pass'?{region:{includePolygon:spec.polygon},level:spec.level,placeIds:[...places,...children].map(p=>p.placeId),placeLevels:Object.fromEntries([...places,...children].map(p=>[p.placeId,p.level])),navigation}:{} )};
 }
 function errandReport(actor,reads,evidence,cutoff){
  const reports=(evidence.errandReports??[]).filter(r=>r?.actor===actor),failures=[];
