@@ -1,7 +1,7 @@
 // Pure G-002 private projection used by WorldHost's named opt-in log handler.
 // Caller must authenticate/revalidate producers and retain the canonical events.
 // Evidence references are checked structurally here; this does not prove physics.
-import { intentHistoryEventV2Schema, type IntentHistoryEventV2, type IntentRevisionV2, type IntentOutcomeV2 } from '@sim/protocol';
+import { intentHistoryEventV2Schema, type IntentHistoryEventV2, type IntentRevisionV2, type IntentOutcomeV2 } from '@souls/protocol';
 
 type Entry = { revision: IntentRevisionV2; status: 'active' | 'blocked' | 'fulfilled' | 'withdrawn'; statusSeq: number; report: string | null };
 export type IntentHistoryV2 = {

@@ -5,8 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { prepareFor, queryOf } from '@sim/generators';
-import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@sim/world-compiler';
+import { prepareFor, queryOf } from '@souls/generators';
+import { CORE_KIT, WorldModel, applyBatch, type DefInput } from '@souls/world-compiler';
 import terrainKit from '../../../../packages/world-compiler/src/core-kit/terrain.json' with { type: 'json' };
 import { meshFor, type MeshCtx } from './registry.ts';
 import { MaterialLib } from './materials.ts';

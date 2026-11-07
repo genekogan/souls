@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf,type Engine,type ProgramEvent} from '@sim/engine-contract';
+import {hashOf,type Engine,type ProgramEvent} from '@souls/engine-contract';
 import {connectedCommonsShoreFactory} from './connected-shore-engine.ts';
 import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from './engine.ts';
 import {probeNativeHumanBirth} from './birth.ts';

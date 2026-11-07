@@ -25,7 +25,9 @@ const rules = [
     || [...s.matchAll(/\b(?:https?|wss?):\/\/([A-Za-z][\w-]*)(?::\d{1,5})?(?=[/\s?#)\]>"'`]|$)/gi)].some(m => !NOT_A_HOST.test(m[1]))],
   // `user@host` with a single-label host: an SSH target, not an email address (those carry a dotted domain).
   ['ssh target', s => [...s.matchAll(/(?<![\w.%+:/@-])([A-Za-z_][\w.-]*)@([A-Za-z][\w-]*)(?![\w.@-])/g)].some(m => !PLACEHOLDER.test(m[1]) && !NOT_A_HOST.test(m[2]))],
-  ['private IPv6 address', s => /(?<![\w])(?:f[cd][\da-f]{2}|fe[89ab][\da-f]):[\da-f:]+|\[(?:::1|[\da-f]*:[\da-f:]+)\]/i.test(s)],
+  // Unique-local (fc00::/7) and link-local (fe80::/10) literals, bracketed or not, and the bracketed loopback. A
+  // bracket that follows a name, `]` or `)` is an index or slice (`xs[::1]`, `s[a:f]`), never an address.
+  ['private IPv6 address', s => /(?<![\w])(?:f[cd][\da-f]{2}|fe[89ab][\da-f]):[\da-f:]+|(?<![\w\])])\[::1\]/i.test(s)],
   ['local process identifier', s => [...s.matchAll(/\bPID[\s:=#]*(\d+)\b/gi)].some(m => Number(m[1]) > 1)],
   ['operational app identifier', s => /\bap-[A-Za-z0-9]{16,}\b/.test(s)],
 ];

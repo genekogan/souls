@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {marsFactory,LITTLE_MARTIANS_WORLD} from '@sim/engine-mars';
-import {kernelHash} from '@sim/kernel';import {Db} from './db.ts';import {WorldHost} from './world.ts';import {accept} from '../test/native-owner-fixture.ts';
+import {marsFactory,LITTLE_MARTIANS_WORLD} from '@souls/engine-mars';
+import {kernelHash} from '@souls/kernel';import {Db} from './db.ts';import {WorldHost} from './world.ts';import {accept} from '../test/native-owner-fixture.ts';
 
 test('legacy floater converse accepted suffix remains exact from snapshot and genesis; explicit BODY converse also works',async t=>{
  const factory=await marsFactory(LITTLE_MARTIANS_WORLD),db=new Db(':memory:'),host=new WorldHost(db,factory,'legacy-converse',1e9,'legacy-converse',{durableClockV1:true});host.boot();host.drainInputs();t.after(()=>{host.stop();db.close();});

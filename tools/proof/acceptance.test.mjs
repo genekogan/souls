@@ -142,6 +142,19 @@ test('validateProof: schema, evidence, uncut real-speed video, stale commit warn
   assert.ok(validateProof(proofDoc({ tier: 'T1' }), { tier: 'T2' }).problems.some(x => /records T1 proof/.test(x)));
 });
 
+test('validateProof: files[] (logs, JSON) are checked but never count as a clip; kind file in media[] is refused', () => {
+  const files = [{ file: 'run.log', url: 'https://h/pr-7.run.log', caption: '' }, { file: 'summary.json', url: 'https://h/pr-7.summary.json', caption: '' }];
+  assert.deepEqual(validateProof(proofDoc({ files }), { tier: 'T2' }).problems, []);
+  const noClip = validateProof(proofDoc({ media: [], files }), { tier: 'T2' });
+  assert.ok(noClip.problems.some(x => /no uploaded video/.test(x)));
+  const bad = validateProof(proofDoc({ files: [{ file: 'a.log', url: 'http://h/a.log' }, { file: 'b.log' }] }), { tier: 'T2' });
+  assert.ok(bad.problems.some(x => /files 1: url must be https/.test(x)));
+  assert.ok(bad.warnings.some(x => /files 2 \(b\.log\): no url yet/.test(x)));
+  assert.ok(validateProof(proofDoc({ files: {} }), { tier: 'T2' }).problems.some(x => /`files` must be an array/.test(x)));
+  const legacy = validateProof(proofDoc({ media: [...proofDoc().media, { file: 'run.log', url: 'https://h/run.log', kind: 'file' }] }), { tier: 'T2' });
+  assert.ok(legacy.problems.some(x => /kind must be video or image/.test(x)));
+});
+
 test('T3 needs playtest arms with the policy repeats and a reviewer verdict', () => {
   const bad = validateProof(proofDoc({ tier: 'T3', playtest: { arms: [{ name: 'baseline', repeats: 2 }, { name: 'candidate', repeats: 1 }] } }), { tier: 'T3', knobs: policy.knobs });
   assert.ok(bad.problems.some(x => /candidate: 1 repeat/.test(x)));
@@ -347,4 +360,32 @@ test('prMode never fetches a proof.json from a host outside the allowlist', asyn
   assert.deepEqual(fetched, []);
   assert.equal(result.ok, false);
   assert.ok(result.warnings.some(w => w.startsWith(`ignored proof link ${evil}`)));
+});
+
+test('a note cut inside a link renders without the partial link, and device details stay blocked (#1055)', () => {
+  const link = 'https://github.com/o/r/releases/tag/v1';
+  const withNote = note => checkPr({ body: body({ acceptance: `- [x] **A1** One — evidence: ${note}` }), tier: 'T1', policy });
+  const row = r => renderComment(r).split('\n').find(l => l.includes('A1 One'));
+
+  const lead = 'x'.repeat(109);
+  const cut = withNote(`${lead} ${link} and more`);
+  assert.equal(cut.checklist[0].note.slice(0, 120), `${lead} https://gi`, 'the cut falls inside the host');
+  assert.ok(row(cut).includes(`| ${lead} |`));
+
+  // A whole link that ends at the cut stays, and so does a cut through plain words.
+  assert.ok(row(withNote(`${'x'.repeat(119 - link.length)} ${link} tail`)).includes(`${link} |`));
+  assert.ok(row(withNote(`${'y'.repeat(200)} ${link}`)).includes(`| ${'y'.repeat(120)} |`));
+
+  // Real device details stay blocked: anywhere in the note, across the cut by checkPr's whole-body scan,
+  // and in the kept text by the comment's own check.
+  const hostUrl = ['http://', 'build-box', ':8080/x'].join('');
+  for (const note of [`see ${hostUrl}`, `${lead} ${hostUrl}`]) {
+    const blocked = withNote(note);
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.problems.join(' '), /device details detected/);
+    assert.ok(!renderComment(blocked).includes('build-box'));
+  }
+  const kept = withNote('fine');
+  kept.checklist[0].note = `see ${hostUrl}`;
+  assert.throws(() => renderComment(kept), /Publication blocked: local service URL/);
 });

@@ -2,7 +2,7 @@
 
 Soul is one pnpm workspace. Runnable applications, reusable code, authored content and developer tools have
 different responsibilities. A directory's size or historical name does not establish whether it is obsolete.
-The migration is tracked in [#577](https://github.com/genekogan/souls/issues/577); the boundaries below distinguish
+The migration is tracked in [#577](https://github.com/soulsimulation/souls/issues/577); the boundaries below distinguish
 the current tree from intended destinations.
 
 | Location | Responsibility and current exceptions |
@@ -11,7 +11,7 @@ the current tree from intended destinations.
 | `packages/` | First-party reusable code with explicit interfaces. The current `engine-mars` adapter still loads code from `mars/viewer/engine`; it is not yet an isolated engine package. |
 | `worlds/` | Curated templates, content definitions, source manifests and examples. Named worlds are legitimate data. Historical patch scripts need a documented role and are not automatically part of world startup. |
 | `tools/` | Maintained development, asset, test, proof, authoring and release CLIs. Consult the relevant tool's README; this is where most repository scripts live. |
-| `scripts/` | Thin environment entrypoints. Currently `cloud-session-start.sh` is a Claude cloud hook, not a universal setup command. |
+| `scripts/` | Environment entrypoints. `bootstrap.sh` is the provider-neutral checkout bootstrap; `cloud-session-start.sh` is the thin Claude cloud hook around it. |
 | `changes/` | Unreleased changelog fragments. Release compilation consumes them into `CHANGELOG.md`; a README-only directory is normal. |
 | `vendor/` | Source treated as externally maintained. `vendor/sim-score` is a temporary compatibility symlink to the first-party music source, not an external copy. |
 | `mars/` | A mixed historical boundary containing the live deterministic engine, viewer, Lab, content and asset tools. Preserve capabilities while extracting them; do not delete it as cosmetic cleanup. |
@@ -26,31 +26,31 @@ display name. A new compatible world should not require editing the engine.
 The current engine still has scene-specific constructors and a named-character floating-body selection in
 `packages/engine-mars/src/engine.ts`. Server startup/runtime rules and some browser asset defaults also distinguish
 legacy worlds. These paths need a consumer and compatibility audit: some preserve historical replay or deliberate
-feature exclusions. [#579](https://github.com/genekogan/souls/issues/579) tracks the migration to explicit contracts.
+feature exclusions. [#579](https://github.com/soulsimulation/souls/issues/579) tracks the migration to explicit contracts.
 
 The retired `/old` world-list bookmarks redirect to the current Worlds page without serving legacy HTML
-([#582](https://github.com/genekogan/souls/issues/582)). Queries are retained; fragments are deliberately cleared:
+([#582](https://github.com/soulsimulation/souls/issues/582)). Queries are retained; fragments are deliberately cleared:
 the old cards ignored them, while a fragment on `/` can select the single-world view. Existing world, pairing,
 god, API and asset URLs are not changed by this UI retirement.
 
 | Retired card | Current access / preserved capability |
 |---|---|
 | Eden (`/w/eden`) | Current list: `/w/eden/`; authored Eden content and original namespace remain. |
-| Mars (`/w/mars`) | Current list: `/w/mars-college-2026/` and `/w/mars-college-2027/`; template/content migration remains [#386](https://github.com/genekogan/souls/issues/386), construction and Lab parity [#560](https://github.com/genekogan/souls/issues/560)/[#561](https://github.com/genekogan/souls/issues/561). |
-| Little Martians (`/w/littlemartians`) | Current list: `/w/little-martians-arium/`; original body/content constructors and supported runtime namespaces remain; world-name capability generalization stays [#579](https://github.com/genekogan/souls/issues/579). |
+| Mars (`/w/mars`) | Current list: `/w/mars-college-2026/` and `/w/mars-college-2027/`; template/content migration remains [#386](https://github.com/soulsimulation/souls/issues/386), construction and Lab parity [#560](https://github.com/soulsimulation/souls/issues/560)/[#561](https://github.com/soulsimulation/souls/issues/561). |
+| Little Martians (`/w/littlemartians`) | Current list: `/w/little-martians-arium/`; original body/content constructors and supported runtime namespaces remain; world-name capability generalization stays [#579](https://github.com/soulsimulation/souls/issues/579). |
 
 The current public manifest listed these access homes during the retirement audit. The obsolete Mars and Little
 Martians card paths already returned 404 at the canonical site; a similarly named current world is not asserted
 to be the same saved world. Original dispatcher/fork support, bodies, physics, construction, music, assets and
 stored data are preserved. Removing unused card discovery does not remove strict world-bootstrap identity checks
-or authorize deleting the original world data. Engine extraction remains [#381](https://github.com/genekogan/souls/issues/381)/[#382](https://github.com/genekogan/souls/issues/382).
+or authorize deleting the original world data. Engine extraction remains [#381](https://github.com/soulsimulation/souls/issues/381)/[#382](https://github.com/soulsimulation/souls/issues/382).
 
 ## Changes that preserve behavior
 
 1. Inventory imports, dynamic loading, generated assets, test coverage and deployment inputs before moving code
-   ([#381](https://github.com/genekogan/souls/issues/381)).
+   ([#381](https://github.com/soulsimulation/souls/issues/381)).
 2. Define package boundaries; move code and its tests together, updating CI scope and asset/release inputs.
-   Separate mechanical moves from behavioral changes ([#382](https://github.com/genekogan/souls/issues/382)).
+   Separate mechanical moves from behavioral changes ([#382](https://github.com/soulsimulation/souls/issues/382)).
 3. Generalize content and capability inputs while preserving compatible saves, replay and asset URLs. Internal
    `sim-*` identifiers and old wire/snapshot versions are not global search-and-replace targets.
 4. Retire a source only after its consumers and required capabilities have migrated. Preserve the Lab recovery
@@ -61,7 +61,7 @@ lose its implementation or invalidate proof without review. Keep the normal tier
 
 ## First-party music
 
-[#578](https://github.com/genekogan/souls/issues/578) moves source ownership into Soul. `packages/music/source` now
+[#578](https://github.com/soulsimulation/souls/issues/578) moves source ownership into Soul. `packages/music/source` now
 owns the procedural source and existing optional studio. The studio is an inert,
 explicitly started local app; it is not imported by the game or started by root development/deployment commands.
 `vendor/sim-score` preserves current generator paths as a relative compatibility alias. Historical import hashes
@@ -86,6 +86,6 @@ lazy playback and the existing UI. Render outputs stay outside git.
 | Release qualification | Authorized release owner only; [release](../release.md) and existing gate accounting |
 
 This list describes checked-in commands; it is not a receipt that they all ran in a fresh cloud environment.
-The clean-cloud pilot in [#554](https://github.com/genekogan/souls/issues/554) must qualify that path. The current
-Claude hook includes its own install/asset logic; a future shared bootstrap should own that logic, with thin provider
-wrappers. Do not make another provider emulate Claude environment variables to obtain a normal checkout.
+The clean-cloud pilot in [#554](https://github.com/soulsimulation/souls/issues/554) must qualify that path. The shared
+`scripts/bootstrap.sh` owns the install/asset logic; provider hooks such as the Claude cloud hook are thin wrappers
+around it. Do not make another provider emulate Claude environment variables to obtain a normal checkout.

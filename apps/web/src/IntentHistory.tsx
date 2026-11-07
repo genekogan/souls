@@ -1,6 +1,6 @@
 import {recordedDirectionGroups} from './intent-history-row.ts';
 import {useEffect,useRef,useState} from 'react';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import {readIntentHistory,type HistoryRead,type HistoryWindow} from './intent-history-page.ts';
 type Props={api:Api;worldId:string;soulId:string;ownerId:string;authorityKey:string;updateSignal?:number;active?:boolean;entityId?:string};
 export function IntentHistory(props:Props){

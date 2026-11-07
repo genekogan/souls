@@ -1,16 +1,16 @@
 // Fly the world camera somewhere (flags, preview ghosts). Uses the handles the
-// world page exposes as window.__simEntity; keeps the current viewing direction.
+// world page exposes as window.__soulsEntity; keeps the current viewing direction.
 import * as THREE from 'three';
 
-type Sim = { camera: THREE.PerspectiveCamera; controls: { target: THREE.Vector3; update?: () => void } };
+type Souls = { camera: THREE.PerspectiveCamera; controls: { target: THREE.Vector3; update?: () => void } };
 let flight = 0;
 
-export function canFly(): boolean { return !!(window as unknown as { __simEntity?: Sim }).__simEntity?.camera; }
+export function canFly(): boolean { return !!(window as unknown as { __soulsEntity?: Souls }).__soulsEntity?.camera; }
 
 /** Ease the camera over `ms` to look at (x, y, z) from `distance` metres, same heading as now. */
 /** `aside` (0–0.5): put the point that far left of centre, e.g. to keep it clear of the god panel on the right. */
 export function flyTo(x: number, y: number, z: number, { distance = 45, ms = 900, aside = 0 }: { distance?: number; ms?: number; aside?: number } = {}) {
-  const sim = (window as unknown as { __simEntity?: Sim }).__simEntity; if (!sim?.camera) return false;
+  const sim = (window as unknown as { __soulsEntity?: Souls }).__soulsEntity; if (!sim?.camera) return false;
   const { camera, controls } = sim;
   const fromT = controls.target.clone(), fromP = camera.position.clone();
   const dir = fromP.clone().sub(fromT); if (dir.lengthSq() < 1e-6) dir.set(-0.6, 0.5, 0.7);

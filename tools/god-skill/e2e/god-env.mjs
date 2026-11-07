@@ -82,7 +82,7 @@ let chromium = null;
 try { chromium = createRequire(resolve(root, 'mars/viewer/package.json'))('@playwright/test').chromium; } catch { log('  (no @playwright/test: viewer steps skipped)'); }
 async function snap(page, name) { const file = resolve(out, `${name}.png`); await page.screenshot({ path: file }); report.shots.push(file); log(`  📷 ${name}.png`); }
 async function waitFor(page, fn, ms = 30000, every = 500) { const t0 = Date.now(); let last; while (Date.now() - t0 < ms) { last = await fn(); if (last?.ok) return last; await page.waitForTimeout(every); } return last; }
-const look = (page, eye, at) => page.evaluate(([e, a]) => { const s = window.__simEntity; if (!s) return false; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.controls.update?.(); return true; }, [eye, at]);
+const look = (page, eye, at) => page.evaluate(([e, a]) => { const s = window.__soulsEntity; if (!s) return false; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.controls.update?.(); return true; }, [eye, at]);
 
 try {
   await boot(); log(`▶ world "${slug}" on :${port}`);
@@ -189,34 +189,34 @@ try {
       await page.goto(`${base}?dev=1`, { waitUntil: 'domcontentloaded' });
       const d = `dpr${dpr}`;
       await step(`V1[${d}] the storm at dusk is drawn; a real click on the world lets the thunder sound`, async () => {
-        const r = await waitFor(page, async () => { const s = await page.evaluate(() => ({ atmos: window.__simLiving?.atmosphere?.(), lightning: window.__simLiving?.lightning?.(), entity: !!window.__simEntity?.layer?.active })); return { ok: s.entity && s.atmos?.kind === 'storm' && !!s.lightning, ...s }; }, 60000);
+        const r = await waitFor(page, async () => { const s = await page.evaluate(() => ({ atmos: window.__soulsLiving?.atmosphere?.(), lightning: window.__soulsLiving?.lightning?.(), entity: !!window.__soulsEntity?.layer?.active })); return { ok: s.entity && s.atmos?.kind === 'storm' && !!s.lightning, ...s }; }, 60000);
         const c = await page.locator('canvas').first().boundingBox(); await page.mouse.click(c.x + c.width * 0.5, c.y + c.height * 0.62); await page.waitForTimeout(800);
         // take the camera (real click on Broadcast → your camera) and fold the god panel away for the pictures
         await setCameraMode(page, 'manual'); await page.waitForTimeout(500);
         await page.locator('button[aria-label="collapse"]').first().click().catch(() => {});
         const mode = await page.evaluate(() => document.querySelector('canvas')?.dataset.cameraMode);
-        return { ...r, mode, audio: (await page.evaluate(() => window.__simLiving.lightning())).audio, errors };
+        return { ...r, mode, audio: (await page.evaluate(() => window.__soulsLiving.lightning())).audio, errors };
       }, (r) => r?.ok && r.audio === 'running' && r.mode === 'manual' && !r.errors.length);
       await step(`V2[${d}] the god strikes by the plaza: a bolt from the cloud to the ground, the scene flashes, the thunder is scheduled after distance ÷ 343 m/s`, async () => {
         await look(page, [70, 26, 70], [3, 22, -30]); await page.waitForTimeout(1500);
-        await page.evaluate(() => window.__simLiving.holdLightning(9000));
-        const n0 = (await page.evaluate(() => window.__simLiving.lightning())).heard;
+        await page.evaluate(() => window.__soulsLiving.holdLightning(9000));
+        const n0 = (await page.evaluate(() => window.__soulsLiving.lightning())).heard;
         const t0 = Date.now(), s = await god('strike', '--at', '6,-34');
-        const r = await waitFor(page, async () => { const l = await page.evaluate(() => window.__simLiving.lightning()); return { ok: l.heard > n0 && l.bolts > 0 && l.last.some((h) => h.god && h.at >= t0), ...l }; }, 15000, 100);
+        const r = await waitFor(page, async () => { const l = await page.evaluate(() => window.__soulsLiving.lightning()); return { ok: l.heard > n0 && l.bolts > 0 && l.last.some((h) => h.god && h.at >= t0), ...l }; }, 15000, 100);
         await page.waitForTimeout(200); await snap(page, `v2-bolt-plaza-${d}`);
         const last = r.last.find((h) => h.god) ?? r.last[r.last.length - 1];
         return { strike: s.raw, ...r, lastHeard: last };
       }, (r) => r?.ok && r.lastHeard?.sound === 'scheduled' && Math.abs(r.lastHeard.delay - r.lastHeard.dist / 343) < 0.02);
       await step(`V3[${d}] the storm's own strikes fall too (same bolts as the server's), over a minute of storm`, async () => {
-        await page.evaluate(() => window.__simLiving.holdLightning(0));
+        await page.evaluate(() => window.__soulsLiving.holdLightning(0));
         await look(page, [-60, 60, 120], [60, 10, -60]);
-        const r = await waitFor(page, async () => { const l = await page.evaluate(() => window.__simLiving.lightning()); return { ok: l.last.some((h) => !h.god), ...l }; }, 60000, 250);
+        const r = await waitFor(page, async () => { const l = await page.evaluate(() => window.__soulsLiving.lightning()); return { ok: l.last.some((h) => !h.god), ...l }; }, 60000, 250);
         return r;
       }, (r) => r?.ok);
       await step(`V4[${d}] Thunder Peak rises east of the hamlet, and the world reaches 300 m further east (terrain + horizon)`, async () => {
         await god('weather', '--kind', 'cloudy', '--intensity', '0.5'); await god('time', '17:30');
         await look(page, [-70, 55, 120], [220, 10, -50]); await page.waitForTimeout(5000); await snap(page, `v4-mountain-and-new-land-${d}`);
-        const g = await page.evaluate(() => ({ east: window.__simEntity.layer.groundAt(350, 0), beyond: window.__simEntity.layer.groundAt(450, 0), peak: window.__simEntity.layer.groundAt(150, -110) }));
+        const g = await page.evaluate(() => ({ east: window.__soulsEntity.layer.groundAt(350, 0), beyond: window.__soulsEntity.layer.groundAt(450, 0), peak: window.__soulsEntity.layer.groundAt(150, -110) }));
         return { ...g, errors };
       }, (r) => r.east !== null && r.beyond === null && r.peak > 40);
       await step(`V5[${d}] Ana on the new land by the East Meadow flag`, async () => {

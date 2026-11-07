@@ -15,11 +15,13 @@
 //             `${SIM_PROOF_PUBLIC_URL || SIM_PROOF_UPLOAD_URL}/pr-<n>/<file>`. For a future CDN endpoint.
 //
 // An existing name is never overwritten: a re-take gets `-2`, `-3`, ... so earlier (failed) takes stay linkable.
-// With --proof, each uploaded file's url is written into proof.json `media[]` (matched by file name; new media get
-// an entry to complete), then proof.json itself is uploaded last and its link printed: that is the link for the PR.
+// With --proof, clip and image urls are written into proof.json `media[]` and other files' (logs, JSON) into `files[]`,
+// matched by file name (new media get an entry to complete). Then proof.json itself is uploaded last and its link
+// printed: that is the link for the PR.
 //
 // Inline previews: GitHub serves release assets as downloads, so an mp4 link never plays in the PR. For each video,
-// ffmpeg makes `<clip>.preview.gif` beside it (the first --preview-seconds, default 6, from --preview-start, default 0;
+// ffmpeg makes `<clip>.preview.gif` beside it (--preview-seconds, default 6, from --preview-start, default the clip's
+// `arrived` mark in its `<clip>.json` sidecar, else 0, or 0 for a take recorded from load on purpose (#888);
 // real speed, at most 5 MB, smaller frames until it fits), uploads it next to the clip and records it as proof.json
 // `media[].preview`. The printed `[![...](preview.gif)](clip.mp4)` line embeds it in the PR, linked to the full clip.
 // Without ffmpeg the clip is uploaded alone, with a warning. --no-preview skips it.
@@ -197,25 +199,50 @@ export function makePreview(file, { start = 0, seconds = 6, ffmpeg = args => exe
   return { skipped: `even a ${PREVIEW_LADDER.at(-1).width}px preview is over ${PREVIEW_MAX_BYTES / 1024 ** 2} MB; use --preview-seconds to shorten it` };
 }
 
+/** A clip's sidecar (`<clip>.json`, written by record.mjs and the run cameras), or null. */
+export function clipSidecar(file, read = readFileSync) { try { return JSON.parse(read(`${file}.json`, 'utf8')); } catch { return null; } }
+
+/** Where a clip's inline preview starts (#888): its `arrived` mark (the world on screen), unless the take was recorded
+ *  from load on purpose (`--from-load`: the loading is what it shows), then 0. → {start, why} */
+export function previewStartFor(sidecar) {
+  if (!sidecar) return { start: 0, why: 'no sidecar' };
+  if (sidecar.startRequested === 'load') return { start: 0, why: 'recorded from load on purpose' };
+  const arrived = (sidecar.marks ?? []).find(m => m.label === 'arrived')?.atSec;
+  return Number.isFinite(arrived) ? { start: arrived, why: 'arrived mark' } : { start: 0, why: 'no arrived mark' };
+}
+
 /** The Markdown that embeds a clip's preview in a PR, linked to the full clip. */
 export const embedLine = (u, alt = basename(u.file)) => u.preview
   ? `[Full-resolution video: ${alt}](${u.url}) — reduced GIF preview below.\n\n[![Reduced preview: ${alt}](${u.preview})](${u.url})`
   : `[Full-resolution video: ${alt}](${u.url})`;
 
-/** Writes uploaded links into proof.json media[] (by file name); returns the updated object. */
+/** Writes uploaded links into proof.json: clips and images into media[], everything else (logs, JSON) into files[],
+ *  both matched by file name. A non-media entry left in media[] by an older upload moves to files[]. */
 export function linkMedia(proof, uploaded) {
   const media = Array.isArray(proof.media) ? proof.media : [];
+  const files = Array.isArray(proof.files) ? proof.files : [];
+  const named = (list, file) => list.find(m => m?.file && basename(m.file) === file);
   for (const u of uploaded) {
-    const file = basename(u.file);
-    const entry = media.find(m => m.file && basename(m.file) === file);
-    if (entry) { entry.url = u.url; if (u.preview) entry.preview = u.preview; }
-    else media.push({ file, url: u.url, ...(u.preview ? { preview: u.preview } : {}), kind: kindOf(file), ...(kindOf(file) === 'video' ? { uncut: null, realSpeed: null, seconds: null, viewport: null } : {}), caption: '' });
+    const file = basename(u.file), kind = kindOf(file);
+    if (kind === 'file') {
+      const stale = named(media, file);
+      if (stale) media.splice(media.indexOf(stale), 1);
+      const entry = named(files, file);
+      if (entry) entry.url = u.url;
+      else files.push({ file, url: u.url, caption: stale?.caption ?? '' });
+      continue;
+    }
+    const entry = named(media, file);
+    // Which start the take used (#888): "arrival" (the default) or "load" (from page creation), from its sidecar.
+    const start = u.start ? { start: u.start, ...(u.previewStartSec != null ? { previewStartSec: u.previewStartSec } : {}) } : {};
+    if (entry) { entry.url = u.url; if (u.preview) entry.preview = u.preview; Object.assign(entry, start); }
+    else media.push({ file, url: u.url, ...(u.preview ? { preview: u.preview } : {}), kind, ...(kind === 'video' ? { uncut: null, realSpeed: null, seconds: null, viewport: null } : {}), ...start, caption: '' });
   }
-  return { ...proof, media };
+  return { ...proof, media, ...(files.length || Array.isArray(proof.files) ? { files } : {}) };
 }
 
 /** Uploads `files` (each video with its preview when `preview(file)` makes one), then proof.json last. */
-export async function uploadAll({ pr, files, proofPath = null, target, read = readFileSync, write = writeFileSync, preview = null, warn = () => {} }) {
+export async function uploadAll({ pr, files, proofPath = null, target, read = readFileSync, write = writeFileSync, preview = null, previewStart = null, warn = () => {} }) {
   // Check the entire batch before the first network write, including a late proof/log payload.
   for (const file of [...files, ...(proofPath ? [proofPath] : [])]) {
     assertPublishable(basename(file));
@@ -224,8 +251,12 @@ export async function uploadAll({ pr, files, proofPath = null, target, read = re
   const uploaded = [];
   for (const file of files) {
     const u = { file, ...(await target.upload(pr, file)) };
+    const side = kindOf(file) === 'video' ? clipSidecar(file, read) : null;
+    if (side?.start) u.start = side.start;
     if (preview && kindOf(file) === 'video') {
-      const p = preview(file);
+      const at = previewStart ?? previewStartFor(side).start;
+      u.previewStartSec = at;
+      const p = preview(file, at);
       if (p.skipped) warn(`${basename(file)}: no inline preview (${p.skipped}); the PR will link the clip only`);
       else u.preview = (await target.upload(pr, p.file)).url;
     }
@@ -282,9 +313,9 @@ async function main(argv) {
     const where = process.env.SIM_PROOF_UPLOAD_URL ? target.name : `GitHub release "${releaseTag(pr, release || process.env.SIM_PROOF_RELEASE)}" on ${repo}`;
     console.error(`${dryRun ? 'dry run: would upload' : 'uploading'} ${files.length + (proofPath ? 1 : 0)} file(s) to ${where}`);
     const previews = !dryRun && !argv.includes('--no-preview');
-    const start = Number(opt('--preview-start') ?? 0), seconds = Number(opt('--preview-seconds') ?? 6);
-    const out = await uploadAll({ pr: Number(pr), files, proofPath, target, write: dryRun ? () => {} : writeFileSync,
-      preview: previews ? file => makePreview(file, { start, seconds }) : null, warn: m => console.error(`warn: ${m}`) });
+    const start = opt('--preview-start') != null ? Number(opt('--preview-start')) : null, seconds = Number(opt('--preview-seconds') ?? 6);
+    const out = await uploadAll({ pr: Number(pr), files, proofPath, target, write: dryRun ? () => {} : writeFileSync, previewStart: start,
+      preview: previews ? (file, at) => makePreview(file, { start: at, seconds }) : null, warn: m => console.error(`warn: ${m}`) });
     if (argv.includes('--json')) console.log(JSON.stringify(out, null, 2));
     else {
       for (const u of out.uploaded) console.log(`${u.url}  (${basename(u.file)})${u.preview ? `\n  preview ${u.preview}` : ''}`);

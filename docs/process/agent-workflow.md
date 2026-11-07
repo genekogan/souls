@@ -75,7 +75,9 @@ The strict steps:
    train's bounded waits.
 3. **Merge**, by tier ([PROOF-POLICY.yml](PROOF-POLICY.yml), `node tools/proof/tier.mjs`):
    - **T0–T2** merge automatically once every required check is green.
-   - **T3–T4** wait for the maintainer's approval, then merge.
+   - **T3** requires coordinator sign-off after the repo steward posts the bar at the current head, except for
+     the maintainer-reserved decisions below.
+   - **T4 and maintainer-reserved decisions** require Gene's approval.
 
    The maintainer gate lives in the required `proof-ok` check, not only in the train: for a T3 or T4 PR, `proof-ok`
    fails until the maintainer's latest decisive review is an approval or, on a PR the maintainer authored (GitHub
@@ -83,8 +85,33 @@ The strict steps:
    events; a label someone else added does not count). Approvals and labels re-run the check. The `main` ruleset
    requires no approving review, so that T0–T2 merge on green; without the gate in `proof-ok`, `gh pr merge --auto`
    would land a T3/T4 PR around the train. The rule is `tools/proof/gate.mjs`; the train reads the same rule only to
-   leave unapproved PRs queued. The check trusts GitHub identity, so agents never approve a PR or add
-   `approved:maintainer` or `proof:waived`, and never act with the maintainer's account to do so.
+   leave unapproved PRs queued.
+
+   **Approval matrix (maintainer decision, 2026-11-06).** The development coordinator may sign T3 PRs once the
+   repo steward posts the bar at the current head: independent approval, required proof and green required checks.
+   This delegation covers all T3 work outside the reserved decisions, not only flag-gated, test-only or low-risk
+   changes. The coordinator records the head SHA and the steward's bar in a PR comment when adding
+   `approved:maintainer`. Other agents do not grant sign-off; approving reviews and `proof:waived` are not
+   delegated by this rule.
+
+   Gene signs T4 and retains these six decision categories:
+   1. Production data deletes or restores.
+   2. Money: raising model budgets, Modal caps or paid plans, or adding a paid service.
+   3. Policy: `AGENTS.md`, `docs/process/PROOF-POLICY.yml`, `docs/process/agent-workflow.md`,
+      `.claude/settings.json` and `.claude/agents/*`. Agents may draft these PRs; Gene merges them.
+   4. Hosts and accounts: DNS, services that are not Soul's, SSH keys, GitHub organization/plan/settings and bot identities.
+   5. Irreversible third-party publishing, such as registry submissions, outreach or posts.
+   6. Product decisions Gene has not already made, including design-note signatures, family order and hardware purchases.
+
+   The coordinator owns routine gates, ships, tags, GitHub Releases, changelog PRs, runner variables, worktree pruning,
+   label hygiene, stale issue/PR closure and CI triage within the authorized agenda and existing budgets; Gene is
+   notified rather than asked. Release execution follows [release owner](../release.md#release-owner).
+   T4 approval remains reserved to Gene; it is distinct from executing an approved release.
+
+   **Enforcement limitation:** the current `tools/proof/gate.mjs` still recognizes only the maintainer's GitHub
+   identity. This policy does not implement separate coordinator identity support or steward-bar validation.
+   A coordinator label from a separate identity will not satisfy that check until the gate and identity setup
+   support it; do not bypass a failing required check. Policy PRs remain for Gene to merge.
 4. **On a conflict**, a Claude step tries to resolve it on the branch and re-runs the checks. If it can't produce a
    clean, green rebase, it labels the PR `needs:rebase` and comments with what conflicted; the author rebases by hand
    and relabels `merge:ready`.
@@ -109,13 +136,13 @@ and a comment naming the files. To redo one by hand, run `gh workflow run restac
   apply the same [review contract](review.md). Record the exact source SHA, reviewer/model, findings and their
   disposition in the PR. The change's author cannot supply its only review. Preserve the failed provider run;
   a separate review does not turn it into a pass. Do not require duplicate provider reviews. All required status
-  checks and T3–T4 maintainer approvals still apply; a required failed status cannot be bypassed by a comment.
+  checks and sign-offs under the approval matrix still apply; a required failed status cannot be bypassed by a comment.
 - **`@claude` for follow-ups.** Mention `@claude` in an issue, PR comment or review (the `claude` workflow) to ask a
   question, iterate on review feedback or have it push a fix to the PR branch. Only the owner, members and
   collaborators can trigger it.
 - **Proof tiers.** The PR states its tier and links its proof: lint (T0); focused tests and typecheck (T1); an uncut,
   real-speed clip of the changed journey (T2, the `proof` skill records it); a scenario playtest, a reviewer-agent
-  pass and maintainer sign-off (T3). T4 is the release head. What a reviewer checks: [review](review.md).
+  pass and sign-off under the approval matrix (T3). T4 is the release head. What a reviewer checks: [review](review.md).
 
 ## Who starts agents
 
@@ -123,7 +150,9 @@ There are no scheduled agents. Nothing wakes up on a timer to pick issues, open 
 bounded, expiring in-session watch is a wait, not a scheduled agent
 ([development coordinator](development-coordinator.md#intake-and-dispatch)). The maintainer
 sets priorities and may authorize a development owner to select and start bounded workers within that agenda.
-The maintainer still gives the required go-ahead for anything above T2 and for every release. Delegation does not
+Sign-off follows the [approval matrix](#the-merge-train): the coordinator signs eligible T3 work; Gene retains
+T4, policy and the six reserved decision categories. The development coordinator runs releases end to end as
+release owner ([release owner](../release.md#release-owner)); production deletes still need the maintainer's explicit yes. Delegation does not
 waive proof, budget or production safeguards. The only automation
 that runs on its own is CI (`ci`, `security`, `changelog`, `claude-review`, label sync), which checks work and never
 starts it.
@@ -132,5 +161,5 @@ starts it.
 
 `.claude/skills/` holds the repo's skills as plain Markdown that any agent can read: `triage` (label and reproduce new
 issues), `finish` (turn a working change into a finished PR), `proof` (record the tier clip), `e2e` (browser
-scenarios) and `sim-director` (direct live Souls). `.claude/agents/` defines the `lane` implementer (one issue, end
+scenarios) and `souls-director` (direct live Souls). `.claude/agents/` defines the `lane` implementer (one issue, end
 to end, to a draft PR) and the `reviewer`.

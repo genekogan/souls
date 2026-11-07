@@ -1,7 +1,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { toyFactory } from '@sim/engine-toy';
-import type { Diff } from '@sim/world-compiler';
+import { toyFactory } from '@souls/engine-toy';
+import type { Diff } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { WorldHost } from '../world.ts';
 import { GodMode } from './god.ts';

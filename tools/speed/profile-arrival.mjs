@@ -38,7 +38,7 @@ const INIT = `(() => {
   try { performance.setResourceTimingBufferSize(20000); } catch {}
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) P.longtasks.push([Math.round(e.startTime), Math.round(e.duration)]); }).observe({ type: 'longtask', buffered: true }); } catch {}
   const poll = setInterval(() => {
-    const w = window.__simEntity;
+    const w = window.__soulsEntity;
     if (w?.layer?.active && P.marks.layerActive === undefined) P.marks.layerActive = performance.now();
     if (P.marks.live === undefined && [...document.querySelectorAll('.ok b, .ok')].some((e) => /\\bLive\\b/.test(e.textContent || ''))) P.marks.live = performance.now();
     if (w && P.marks.entity === undefined) P.marks.entity = performance.now();

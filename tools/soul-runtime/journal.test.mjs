@@ -8,7 +8,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {openJournal,DEFAULT_JOURNAL_RETENTION} from './journal.mjs';
 const identity={worldId:'test-world',soulId:'test-soul'};
 const event={id:'c_1',kind:'conversation.turn',text:'Are you coming?'};
-function fixture(t){const directory=mkdtempSync(join(tmpdir(),'sim-journal-'));const handles=[];t.after(()=>{for(const h of handles)try{h.close()}catch{}rmSync(directory,{recursive:true,force:true})});return {directory,open(options={}){const h=openJournal(directory,{...identity,...options});handles.push(h);return h;}};}
+function fixture(t){const directory=mkdtempSync(join(tmpdir(),'souls-journal-'));const handles=[];t.after(()=>{for(const h of handles)try{h.close()}catch{}rmSync(directory,{recursive:true,force:true})});return {directory,open(options={}){const h=openJournal(directory,{...identity,...options});handles.push(h);return h;}};}
 const stored=f=>{const db=new DatabaseSync(join(f.directory,'continuity.sqlite'),{readOnly:true});try{return db.prepare('SELECT * FROM events ORDER BY seq').all();}finally{db.close();}};
 
 test('process death after ingest retains an unhandled message and matching cursor',t=>{
@@ -38,7 +38,7 @@ test('handling requires a known event and cannot silently revise its outcome',t=
  assert.deepEqual(j.handled('world','c_1','responded'),{alreadyHandled:false});assert.deepEqual(j.handled('world','c_1','responded'),{alreadyHandled:true});assert.throws(()=>j.handled('world','c_1','ignored'),/already recorded/);
 });
 test('urgent addressed speech is not buried behind an old ambient backlog',t=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-priority-'));const j=openJournal(dir,{worldId:'w',soulId:'s'});t.after(()=>{j.close();rmSync(dir,{recursive:true,force:true});});
+ const dir=mkdtempSync(join(tmpdir(),'souls-priority-'));const j=openJournal(dir,{worldId:'w',soulId:'s'});t.after(()=>{j.close();rmSync(dir,{recursive:true,force:true});});
  j.ingest({source:'world',after:null,cursor:'c_1000',events:Array.from({length:1000},(_,i)=>({id:'c_'+(i+1),salience:1,text:'ambient'}))});
  j.ingest({source:'world',after:'c_1000',cursor:'c_1001',events:[{id:'c_1001',salience:3,text:'Hello reader'}]});
  assert.equal(j.attention(1)[0].event.id,'c_1001');assert.equal(j.pending(1)[0].event.id,'c_1');

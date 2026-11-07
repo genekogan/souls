@@ -1,6 +1,6 @@
 # Testing
 
-Sim has five layers of checks. Run the cheapest one that proves your change, and let the proof tier decide what a PR
+Souls has five layers of checks. Run the cheapest one that proves your change, and let the proof tier decide what a PR
 needs.
 
 | Layer | What | Where it runs |
@@ -17,7 +17,7 @@ All of them use fake minds and isolated data directories. None touches productio
 
 ```sh
 pnpm typecheck                               # every package (tsc --noEmit)
-pnpm --filter @sim/server test               # one package
+pnpm --filter @souls/server test               # one package
 node --test apps/server/src/god/buildsafe.test.ts   # one file
 pnpm test:mars                               # the vendored engine's deterministic suite
 pnpm test:client                             # Soul client and client-eval suites
@@ -70,7 +70,7 @@ A change that alters a def revision fails until a new supplement in that folder 
 same change, with the reason in its note and in the folder's README. Never edit an older supplement.
 
 ```sh
-pnpm --filter @sim/conformance test
+pnpm --filter @souls/conformance test
 node packages/conformance/bin/conformance.mjs --shard 1/4 --out .local/conformance-1.json   # bounded sweep
 ```
 
@@ -125,6 +125,19 @@ the replaced failure as stale (#909). But the train's 15-minute head wait is sho
 is behind main can still leave with `needs:rebase`. The decision is `windowFor` and `windowed` in
 `.github/scripts/ci-scope.mjs`.
 
+**Soul Action tests.** `tools/soul-actions/*.test.mjs` runs as the CI job `soul-actions`, about 76 s measured on a
+loaded laptop. It is picked by its own paths (`tools/soul-actions`, `apps/server`, `packages/world-compiler`,
+`packages/engine-*`) and by every full-scope run, including each push to main, and a failure blocks through `ci-ok`. It
+is not a gate step, so the gate's suite tree and cached baseline don't change.
+
+**Self-hosted runners.** The heavy `qualify` legs run on the runners named by the repository variable
+`CI_HEAVY_RUNNER` when it is set (one label, such as `souls-ci`), else on GitHub-hosted runners; the browser `smoke`
+leg always stays GitHub-hosted. One runner instance takes one job at a time, so routing is only worth it with several
+instances online. `tools/ci/setup-runners.sh` sets them up on one Linux host, run there as root: N instances, each a
+systemd service under one dedicated unprivileged user, with the label, and Playwright's Chromium system packages when
+the OS has them (not Ubuntu 20.04). It is idempotent, takes the registration token as an argument and names no host;
+its header shows the one-line invocation from a workstation. The steward sets and clears `CI_HEAVY_RUNNER`.
+
 ## Remote gate
 
 [testing/remote-gate.md](testing/remote-gate.md): `tools/test-harness/release-gate.sh` runs the complete suite for a
@@ -144,7 +157,8 @@ refused before checkout. Until #791 and #793 merge, the bench is on `agent/736-h
 
 ```bash
 gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
-  [-f profile=even,meetup] [-f repeats=2] [-f short=false] [-f browser=false] [-f slice_cpu_quota=400%] [-f slice_memory_max=8G]
+  [-f profile=even,meetup] [-f repeats=2] [-f short=false] [-f browser=false] [-f slice_cpu_quota=400%] [-f slice_memory_max=8G] \
+  [-f active_min=60] [-f telemetry=true]
 ```
 
 - **Quiet.** The bench gets `--quiet-host --qualifying-executor` only when four things hold: the dispatcher sets
@@ -169,6 +183,12 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
   decision and its facts), plus each run's `REPORT.md`, `receipt.json` and `result.json`. Workspace, home, host and
   user names are replaced with placeholders. The upload is refused if a file holds a Soul token. `souls/`,
   `launcher/` and logs never leave the runner and are deleted at the end of the job.
+- **Slopes (CW7, #741).** `profile=slopes`, alone, runs `tools/bench/capacity/slopes/slopes.mjs` instead, with
+  `--cpu-prof`; see the bench README's "Slopes" section. The ctl script comes from the workflow's own commit, so until
+  this lands on `main`, dispatch the workflow from the branch that carries it (`gh workflow run … --ref <branch>`).
+  The artifact holds the top-level `REPORT.md`, `receipt.json` and `results.json`, plus each arm's `result.json`. The
+  calls, live samples, CPU profiles, templates and `souls/` stay on the runner.
+- **Long windows (CW8 A2, #955).** `active_min` sets the activity window, from 20 to 240 minutes; blank means 20. It is refused unless `(minutes + 15) × runs ≤ 280`, so the run fits the job's 300 min: for example, `profile=meetup repeats=1 active_min=60`. `telemetry=true` runs the launcher's collector beside the worlds. Each run's `result.json` carries `growth`, the trends after an explicit warm-up; see the bench README's "Long windows" section.
 - **What it qualifies.** The host is the maintainer's machine. Its verdict is labelled with `host_class` and is not
   a production-class result unless that host is the production class.
 
@@ -178,7 +198,7 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
   seats in a fake-mind world; Reviewer and Developer passes produce findings and scorecards. Measure on a quiet
   machine, two repeats per arm. [testing/playtests-cloud.md](testing/playtests-cloud.md) runs them in a cloud session.
 - [testing/swarm-director.md](testing/swarm-director.md): `node tools/playtest/playtest.mjs direct <cast>` directs
-  several Souls live from a cast file; the `sim-director` skill does it from a chat session.
+  several Souls live from a cast file; the `souls-director` skill does it from a chat session.
 - How to run and judge them: [process/playtest-method.md](process/playtest-method.md).
 
 ## What to run when
@@ -188,8 +208,8 @@ gh workflow run capacity-qualify.yml -f ref=<branch> -f quiet_host=true \
 | Docs, tools only | links resolve; the tool's own tests if it has them |
 | Server or package logic | `node --test` on touched files, `tsc -p` of touched packages |
 | Anything that can move geometry, navigation or god builds | add the walk gate |
-| Web app | `pnpm --filter @sim/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
-| Library defs, generators, compiler | conformance, plus a supplement when a revision changes |
+| Web app | `pnpm --filter @souls/web build`, the bundle gate, the local smoke, an uncut clip of the changed journey |
+| Library defs, generators, compiler | `library.test.ts` and `catalogue-checks.test.ts` (budgets and holds), conformance, plus a supplement when a revision changes |
 | Soul behaviour, navigation, engines | the above plus a scenario playtest with two repeats per arm |
 | Release head | the remote gate, then the release workflow (live walks and cdn-walk) |
 

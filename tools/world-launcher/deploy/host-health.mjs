@@ -49,7 +49,7 @@ export function evaluate({ diskTotalBytes, diskFreeBytes, memMb, units = {}, pre
   for (const [stage, b] of Object.entries(backups)) {
     if (b.enabled && b.result && b.result !== 'success') flag(`backup:${stage}`, `sim-worlds-backup@${stage} last run: ${b.result}`);
   }
-  // lane L1: the launcher's guard (children.mjs problems(), via <data>/world-problems.json): wedged, held, crashloop, bootSlow
+  // lane L1: the launcher's guard (children.mjs problems(), via <data>/world-problems.json): wedged, held, crashloop, bootSlow, halted
   for (const w of worldProblems) if (w?.code && w.text) flag(w.code, w.text);
   return { ok: problems.length === 0, diskFreeGb, diskFreePct, memAvailableMb: memMb, problems, codes: [...codes], units: unitStatus, backups,
     thresholds: { minFreePct: minPct, minFreeGb: minGb, minMemMb: minMem, capPct } };
@@ -100,7 +100,7 @@ function main(argv) {
   try {
     const s = statfsSync(diskPath);
     const units = readUnits();
-    status = evaluate({ diskTotalBytes: s.blocks * s.bsize, diskFreeBytes: s.bavail * s.bsize, memMb: memAvailableMb(readFileSync('/proc/meminfo', 'utf8')),
+    status = evaluate({ diskTotalBytes: s.blocks * s.bsize, diskFreeBytes: s.bavail * s.bsize, memMb: memAvailableMb(readFileSync(`${process.env.SIM_PROC_ROOT ?? ''}/proc/meminfo`, 'utf8')),
       units, prevUnits: prev?.units ?? {}, backups: readBackups(Object.keys(units)), worldProblems: readWorldProblems(dataDir) },
       { minFreePct: Number(opt('min-free-pct', 15)), minFreeGb: Number(opt('min-free-gb', 20)), minMemMb: Number(opt('min-mem-mb', 1536)), capPct: Number(opt('cap-pct', 90)) });
   } catch (e) { status = { ok: false, problems: [`check failed: ${e.message}`], codes: ['check'] }; }

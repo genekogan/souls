@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {captureRenderScene,hashOf,parseRenderSceneCapture} from '@sim/engine-contract';
+import {captureRenderScene,hashOf,parseRenderSceneCapture} from '@souls/engine-contract';
 import {marsFactory,GREEN_FIELD_WORLD,LITTLE_MARTIANS_WORLD} from './engine.ts';
 import {takeIdOf} from '../../../mars/viewer/engine/take/recorder.ts';
 import {sampleTake} from '../../../mars/viewer/engine/take/replay.ts';

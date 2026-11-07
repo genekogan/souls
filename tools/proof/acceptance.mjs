@@ -23,6 +23,7 @@
 //   { schema, pr, issue, commit, tier,
 //     criteria:      [{ id, text, status: met|unmet|deferred, evidence: [url | "`command` -> result" | "#n"] }],
 //     media:         [{ file, url, kind: video|image, seconds, viewport, uncut, realSpeed, caption }],
+//     files?:        [{ file, url, caption }],          other uploads (logs, JSON); never counted as a clip
 //     checks:        [{ cmd, result: pass|fail|skip, note }],
 //     failedAttempts:[{ what, why, evidence }],          kept, never deleted; [] when there were none
 //     externalities: [{ what, result, ok }],             long-tail cost elsewhere: payload or context bytes when the
@@ -239,6 +240,13 @@ export function validateProof(proof, { tier = 'T0', checklist = null, knobs = {}
     if (m?.kind === 'video' && (m.uncut !== true || m.realSpeed !== true)) problems.push(`proof.json media ${i + 1}: a proof video must be uncut and real speed (uncut: true, realSpeed: true)`);
   }
   if (rank(tier) >= 2 && !media.some(m => m?.kind === 'video' && m.url)) problems.push('proof.json: no uploaded video for a T2+ change');
+  if (proof.files !== undefined) {
+    for (const [i, f] of arr('files').entries()) {
+      if (!f?.file) problems.push(`proof.json files ${i + 1}: needs a file name`);
+      if (f?.url && !/^https:\/\//.test(f.url)) problems.push(`proof.json files ${i + 1}: url must be https`);
+      if (!f?.url) warnings.push(`proof.json files ${i + 1} (${f?.file ?? '?'}): no url yet (not uploaded)`);
+    }
+  }
   const checks = arr('checks', rank(tier) >= 1 ? 1 : 0);
   for (const [i, c] of checks.entries()) if (!c?.cmd || !['pass', 'fail', 'skip'].includes(c?.result)) problems.push(`proof.json check ${i + 1}: needs cmd and result pass|fail|skip`);
   arr('failedAttempts');
@@ -359,6 +367,17 @@ export function clipPreviews(videos = [], images = [], proof = null) {
   });
 }
 
+/** A note cut to the table's width, never mid-link: `https://gi` reads as a local host (#1055). checkPr has already scanned the whole note. */
+function clipNote(note, max = 120) {
+  const s = note || '';
+  if (s.length <= max) return s;
+  const start = s.slice(0, max).search(/\S*$/);
+  const word = s.slice(start).match(/^\S*/)[0];
+  return start + word.length > max && word.includes('://') ? s.slice(0, start).trimEnd() : s.slice(0, max);
+}
+
+const cell = s => s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+
 /** The bot comment (updated in place by proof-check.yml). */
 export function renderComment(result, { required = [], files = [], raisedByLabel = null, note = null } = {}) {
   const mark = ok => ok === true ? 'ok' : ok === false ? '**missing**' : '-';
@@ -371,7 +390,7 @@ export function renderComment(result, { required = [], files = [], raisedByLabel
   for (const r of result.rows) out.push(`| ${r.name} | ${mark(r.ok)} | ${String(r.detail).replace(/\|/g, '\\|')} |`);
   if (result.checklist.length) {
     out.push('', '<details><summary>Acceptance criteria</summary>', '', '| | Criterion | Status | Evidence |', '|---|---|---|---|');
-    for (const c of result.checklist) out.push(`| ${c.checked ? '[x]' : '[ ]'} | ${label(c).replace(/\|/g, '\\|')} | ${c.status} | ${(c.note || '').slice(0, 120).replace(/\|/g, '\\|')} |`);
+    for (const c of result.checklist) out.push(`| ${c.checked ? '[x]' : '[ ]'} | ${cell(label(c))} | ${c.status} | ${cell(clipNote(c.note))} |`);
     out.push('', '</details>');
   }
   const { videos, images, proofJson } = result.links;

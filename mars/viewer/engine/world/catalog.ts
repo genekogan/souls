@@ -18,7 +18,9 @@ import { COMMONS_ASSETS } from './catalog-commons.ts';
 import { SHORE_ASSETS } from './catalog-shore.ts';
 
 export type GripSlot = { id: string; local: Vec3; /** Optional centered handle segment, full end-to-end local vector; midpoint drives formation. */ span?: Vec3 };
-export type Socket = { id: string; kind: 'beam-seat' | 'beam-end' | 'joist-seat' | 'deck-seat' | 'stair-top' | 'stair-bottom'; local: Vec3; face?: 'front' | 'back' };
+export type Socket = { id: string; kind: 'beam-seat' | 'beam-end' | 'joist-seat' | 'deck-seat' | 'stair-top' | 'stair-bottom'; local: Vec3; face?: 'front' | 'back';
+  /** PC16 (#695): the connector kinds this socket takes, when its def says (a library part's `mates`); absent, any of its own rule's kinds. */
+  mates?: string[] };
 
 /**
  * Interaction slot on a fixture (spec §5 affordances, RESEARCH §8 Smart Objects): where a person's

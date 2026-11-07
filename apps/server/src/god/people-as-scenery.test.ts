@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { coreRef, CORE_KIT } from '@sim/world-compiler';
+import { coreRef, CORE_KIT } from '@souls/world-compiler';
 import { fixture, invite, accept, factory } from '../../test/native-owner-fixture.ts';
 import { GodMode } from './god.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';

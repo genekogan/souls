@@ -23,12 +23,12 @@ test('jukebox: knob contact, refusal, interruption, persistence, bounded percept
  await tick();await invite(f,'ana');const row=await accept(f.host,f.souls.create('dev:ana',{name:'Ana',description:'Jukebox test'}));soul={soulId:row.id,entityId:row.entity_id,name:row.name,owner:row.owner};await tick();
  const here=async()=>{const r=await app.request('/v1/edge/here?include=doHere');assert.equal(r.status,200);return (await r.json()).here;};
  const absent=await here();
- const distant=Array.from({length:100},(_,i)=>({op:'place',def:'core/jukebox@1',name:`distant-jukebox-${i}`,p:[120+i%10*2,120+Math.floor(i/10)*2],state:{on:i%2===0}}));
+ const distant=Array.from({length:100},(_,i)=>({op:'place',def:'core/jukebox@2',name:`distant-jukebox-${i}`,p:[120+i%10*2,120+Math.floor(i/10)*2],state:{on:i%2===0}}));
  assert.equal(god.act({ops:distant}).accepted,true);await tick(45);const far=await here();assert.equal(JSON.stringify(far).length,JSON.stringify(absent).length,'distant jukeboxes add 0 bytes');assert.ok(!/jukebox/.test(JSON.stringify(far)),'no distant jukebox in here');
  const farIds=new Set(distant.map(d=>god.model.get(d.name).id));
  assert.deepEqual(edge.capabilities(soul).filter(c=>c.object&&farIds.has(c.object)).map(c=>c.id),[],'no distant jukebox offers');
  const body=()=>f.host.engine.world.entities[soul.entityId],[ax,az]=[body().pose.p[0],body().pose.p[2]];
- assert.equal(god.act({ops:[{op:'place',def:'core/jukebox@1',name:'jukebox',p:[ax+1.6,az+1.4],r:Math.PI},{op:'place',def:'core/garden-tap@1',name:'tap',p:[ax-1.8,az+1.4]}]}).accepted,true);await tick(45);
+ assert.equal(god.act({ops:[{op:'place',def:'core/jukebox@2',name:'jukebox',p:[ax+1.6,az+1.4],r:Math.PI},{op:'place',def:'core/garden-tap@1',name:'tap',p:[ax-1.8,az+1.4]}]}).accepted,true);await tick(45);
  const near=await here(),state=n=>god.model.get(n).state,id=n=>god.model.get(n).id;
  const boxRow=near.objects.find(o=>o.id===id('jukebox'));assert.deepEqual(boxRow?.state,{on:false},'a nearby jukebox shows only its on fact');
  const act=async(cap,accepted=true)=>{const r=await accept(f.host,app.request('/v1/edge/act',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability:cap})}));const b=await r.json();assert.equal(b.accepted,accepted,JSON.stringify(b));return b;};
