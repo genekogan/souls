@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import * as soulHome$fs from "node:fs";
 import * as soulHome$path from "node:path";
 const soulHome = (() => {
-const { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } = soulHome$fs;
+const { appendFileSync, chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } = soulHome$fs;
 const { basename, dirname, join, resolve } = soulHome$path;
 // home.mjs: the Souls home, one `.souls/` folder holding every Soul a person keeps on this machine. No HTTP and no
 // model: `doctor` is handed its one way of asking a world. Design: docs/design/soul-context.md section 1.
@@ -67,12 +67,22 @@ function readJson(file, fallback) {
   catch (e) { if (e.code === "ENOENT") return fallback; throw new Error(`${basename(file)} cannot be read: ${e.message}`); }
 }
 
+/** What a home never commits: tokens, and a Soul's memory, which holds private conversations. A home made before a line was added gets it. */
+function keepOutOfGit(root) {
+  try {
+    // Latin-1 reads any bytes, and only what's missing is appended: an owner's file is never rewritten.
+    const file = join(root, ".gitignore"), was = existsSync(file) ? readFileSync(file, "latin1") : "", have = was.split("\n").map((l) => l.trim());
+    const missing = [CREDENTIALS, "runtime/", "pending/", "gods/", "memory/", "MEMORY.md"].filter((l) => !have.includes(l));
+    if (missing.length) appendFileSync(file, `${was && !was.endsWith("\n") ? "\n" : ""}${missing.join("\n")}\n`);
+  } catch { /* a home it can't write to still opens */ }
+}
+
 /** Make a home at `root`. `cli` is the bundle to keep in bin/. Safe to call on an existing home. */
 function createHome(root, { cli, version } = {}) {
   mkdirSync(join(root, "souls"), { recursive: true, mode: 0o700 });
   if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, client: version ?? null, default: null, currentWorld: null, worlds: {}, souls: {}, gods: {}, awaitingFirstWorld: true });
   if (!existsSync(join(root, CREDENTIALS))) writeJson(join(root, CREDENTIALS), { version: 1, souls: {}, worlds: {}, approvals: {}, gods: {} });
-  if (!existsSync(join(root, ".gitignore"))) writeFileSync(join(root, ".gitignore"), `${CREDENTIALS}\nruntime/\npending/\ngods/\n`);
+  keepOutOfGit(root);
   if (cli && !existsSync(join(root, "bin", "eden.mjs"))) {
     mkdirSync(join(root, "bin"), { recursive: true, mode: 0o700 });
     try { copyFileSync(cli, join(root, "bin", "eden.mjs")); } catch { /* the folder's own copy still runs */ }
@@ -167,6 +177,7 @@ function runtimeLocks(dir, alive) {
 function readJsonQuietly(file) { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return existsSync(file) ? {} : null; } }
 
 function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } = {}) {
+  keepOutOfGit(root);
   const at = (...p) => join(root, ...p);
   const config = () => ({ worlds: {}, souls: {}, gods: {}, ...readJson(at("config.json"), {}) });
   const credentials = () => ({ souls: {}, worlds: {}, approvals: {}, gods: {}, ...readJson(at(CREDENTIALS), {}) });
@@ -866,7 +877,7 @@ const when = (w) => [w?.world ? quoted(w.world) : null, w?.worldDay === null || 
  *  to what the Soul and its owner wrote, so a world's long names can't push a promise out. */
 function buildBrief(facts, { bytes = BRIEF_BYTES } = {}) {
   const person = (p) => `${quoted(p.name)}: ${p.met ? `met ${times(p.met)}` : "only heard from"}${p.last ? `, last ${[when(p.last), p.last.place ? quoted(p.last.place) : null].filter(Boolean).join(" at ")}` : ""}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}${p.open ? ` Open: ${mine(p.open, NOTE_BYTES)}` : ""}${p.claimed ? ` A world says this is ${quoted(p.claimed)}, whom I know elsewhere; I can't check that.` : ""}`;
-  const promise = (c) => `${c.by === "me" ? "I promised" : "They promised"} ${quoted(c.with)}: ${mine(c.what, 120)} [${c.id}]`;
+  const promise = (c) => `[${c.id}] ${c.by === "me" ? "I promised" : "They promised"} ${quoted(c.with)}: ${c.what}`;
   const place = (p) => `${quoted(p.name)}: ${p.visits > 1 ? `been here ${times(p.visits)}` : "first time here"}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}`;
   const goal = (g) => `${g.note}${g.next ? ` Next: ${g.next}` : ""}`;
   // Goals can't take every line: the owner's next schedule entry always has one.
@@ -905,7 +916,7 @@ const { createHash } = soulPeople$crypto;
 // Edit this file, then run `node tools/world-launcher/soul/inline.mjs`: worlds serve eden.mjs as one file.
 
 
-const BELIEFS = 8, LINE_BYTES = 200, NAME_BYTES = 100, ONCE_BYTES = 2048, RECORD_BYTES = 8192, OPEN_MAX = 8, CLAIMS_SHOWN = 4;
+const BELIEFS = 8, WHAT_BYTES = 60, LINE_BYTES = 200, NAME_BYTES = 100, ONCE_BYTES = 2048, RECORD_BYTES = 8192, OPEN_MAX = 8, CLAIMS_SHOWN = 4;
 /** A record bounds itself: fewer rows of each list until the file fits. */
 const KEEP = [8, 4, 2, 1];
 const md = (v) => String(v).replace(/[\r\n\u0085\u2028\u2029]+/g, " ").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/[\\`*_[\]{}()#|~]/g, "\\$&");
@@ -985,8 +996,10 @@ function createPeople({ world = null } = {}) {
     const list = (head, lines) => (lines.length ? [`${level} ${head}`, ...lines, ""] : []);
     const place = (c) => [c.world, c.worldDay == null ? null : `day ${c.worldDay}`, c.time, c.at].filter(Boolean).join(", ") + (c.place ? ` at ${md(short(c.place, NAME_BYTES))}` : "");
     const last = (items, n = keep) => items.slice(-n).reverse();
-    const beliefs = row.beliefs.filter((b) => b.mine), said = row.beliefs.filter((b) => !b.mine), commitments = [...open(row).slice(-Math.min(OPEN_MAX, keep + 1)), ...[...row.commitments.values()].filter((c) => c.kept).slice(-keep)];
+    const beliefs = row.beliefs.filter((b) => b.mine), said = row.beliefs.filter((b) => !b.mine), commitments = [...open(row).slice(-OPEN_MAX), ...[...row.commitments.values()].filter((c) => c.kept).slice(-keep)], what = keep > 2 ? LINE_BYTES : WHAT_BYTES;
     return [
+      // First, and every open one: it is what a mind has to be able to name, whatever a world has said since.
+      ...list("Commitments", commitments.map((c) => `- ${promised(c)}: ${md(short(c.what, what))} [${md(c.id)}]${c.kept ? ` — kept, ${md(c.kept.evidence)}` : " — open"}`)),
       ...list("First met — place as a world named it, UNTRUSTED", row.first ? [`- ${place(row.first)}`] : []),
       ...list("Last contact — place as a world named it, UNTRUSTED", row.last ? [`- ${place(row.last)}`] : []),
       ...list("Episodes — a world's words, UNTRUSTED", last(row.episodes).map((x) => `- ${md(short(x.line))} — ${x.kind} ${md(short(x.ref, NAME_BYTES))}`)),
@@ -994,21 +1007,21 @@ function createPeople({ world = null } = {}) {
       ...list("What a world says of them — UNTRUSTED", last(said, Math.min(keep, BELIEFS)).map((b) => `- ${md(short(b.text))} — ${md(short(b.provenance, NAME_BYTES))}`)),
       ...list("What they said — UNTRUSTED", last(row.words, Math.min(keep, 3)).map((w) => `> ${md(short(w.text))}`)),
       ...list("What I have told them", last(row.told, Math.min(keep, 6)).map((t) => `- ${md(short(t.text))}`)),
-      ...list("Commitments", commitments.map((c) => `- ${promised(c)}: ${md(short(c.what))} [${md(c.id)}]${c.kept ? ` — kept, ${md(c.kept.evidence)}` : " — open"}`)),
     ];
   }
   /** One file: the row a world speaks for, then each row some world says is this Soul, under that world's name for it. */
   function fitted(group, list) {
     const main = list[0].key === group ? list[0] : null, claimants = list.filter((r) => r !== main), title = main ?? claimants.at(-1), cap = (list.reduce((n, r) => n + r.met, 0) > 1 ? RECORD_BYTES : ONCE_BYTES) - 2;
-    const render = (keep) => [`# ${md(short(title.name, NAME_BYTES))} [${md(short(group, NAME_BYTES))}]`, "",
-      ...(claimants.length ? [`A world's word, not checked: ${claimants.slice(-CLAIMS_SHOWN).map((r) => md(short(r.key, NAME_BYTES))).join(", ")} is this Soul.`, ""] : []),
-      ...(main ? sections(main, keep, "##") : []),
-      ...claimants.slice(-CLAIMS_SHOWN).flatMap((r) => [`## As ${md(short(r.name, NAME_BYTES))} in ${md(short(r.world, NAME_BYTES))}, by that world's word — UNTRUSTED`, "", ...sections(r, Math.min(keep, 2), "###")])].join("\n");
-    let text = "";
-    for (const keep of KEEP) { text = render(keep); if (Buffer.byteLength(text) <= cap) return text; }
+    const head = [`# ${md(short(title.name, NAME_BYTES))} [${md(short(group, NAME_BYTES))}]`, "",
+      ...(claimants.length ? [`A world's word, not checked: ${claimants.slice(-CLAIMS_SHOWN).map((r) => md(short(r.key, NAME_BYTES))).join(", ")} is this Soul.`, ""] : [])].join("\n");
+    const fit = (n) => Buffer.byteLength(n) <= cap;
+    let text = head;
+    if (main) for (const keep of KEEP) { text = [head, ...sections(main, keep, "##")].join("\n"); if (fit(text)) break; }
+    // Those a world says are this Soul get what's left: they can't push out the row it speaks for.
+    for (const r of claimants.slice(-CLAIMS_SHOWN)) for (const keep of [2, 1]) { const next = [text, `## As ${md(short(r.name, NAME_BYTES))} in ${md(short(r.world, NAME_BYTES))}, by that world's word — UNTRUSTED`, "", ...sections(r, keep, "###")].join("\n"); if (fit(next)) { text = next; break; } }
     return short(text, cap);
   }
-  const local = (id) => at(world, id), here = (r) => r.world === world;
+  const local = (id) => at(world, id);
   return {
     apply,
     /** Records changed since the last call, as files to write, and files nothing is shown in any more. */
@@ -1018,8 +1031,13 @@ function createPeople({ world = null } = {}) {
       dirty.clear();
       return out;
     },
-    /** By id in this world, by key, else by name: someone here before someone elsewhere. */
-    find(target) { const lower = String(target).toLowerCase(), all = [...rows.values()], called = (r) => r.name.toLowerCase() === lower; return rows.get(local(target)) ?? rows.get(target) ?? all.find((r) => called(r) && here(r)) ?? all.find(called) ?? null; },
+    /** By id in this world, or by key. A name is a world's to change, so it only finds someone when one Soul goes by it. */
+    find(target) {
+      const lower = String(target).toLowerCase(), named = [...rows.values()].filter((r) => r.name.toLowerCase() === lower), byId = rows.get(local(target)) ?? rows.get(target);
+      if (byId) return byId;
+      if (named.length > 1) throw new Error(`Several Souls go by that name: ${named.slice(0, 6).map((r) => r.key).join(", ")}. Use one of these.`);
+      return named[0] ?? null;
+    },
     /** One line's worth for the brief, as this world's id sees it. */
     view(id) {
       const row = rows.get(local(id));
@@ -1071,6 +1089,8 @@ const MOVES = /^(?:walk|go|run|jog|stroll|hang-out|approach|follow|fly|ride)\b/;
 /** How close a Soul has to be for a first meeting: the distance `here` counts as local. */
 const NEAR_METRES = 8;
 const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20, LOCK_OLD_MS = 10_000, PLACE_ID_MAX = 200;
+/** `memory` fails closed: a line is the Soul's own only where nothing else writes. */
+const OWN_FILES = new Set(["self.md", "goals.md", "schedule.md"]), OWN_SECTION = /^(?:What I believe|What I have told them|Commitments|Judgments)\b/, OWN_JOURNAL = /^- \S+ (?:completed|failed): /;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/, TRAVELLER = /^[a-z0-9][a-z0-9-]{0,63}\/[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const sha = (v) => createHash("sha256").update(typeof v === "string" ? v : JSON.stringify(v)).digest("hex");
 const clip = (v, max) => { const t = String(v ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim(); return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t; };
@@ -1225,7 +1245,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
     let produced = unique(rows(out.produced, 32).flatMap((o) => (safeId(o.id) ? [{ id: o.id, title: clip(o.title, 200) || o.id, kind: clip(o.kind, 200) || "thing", where: where(o.where) }] : [])));
     // A changing source is a new reading, not a conflict: each fact keeps its own version of the source.
     let learned = unique(rows(out.learned, 5).flatMap((f) => {
-      const fact = clip(f.fact, 2000), said = clip(f.provenance, 100), provenance = (said === "authored-content" ? "authored-fiction" : said) || "world-fact", untrusted = !!f.untrusted || ["soul-text", "other-soul-report"].includes(said);
+      const fact = clip(f.fact, 2000), said = clip(f.provenance, 100), provenance = (said === "authored-content" ? "authored-fiction" : said) || "world-fact", untrusted = true;   // a world doesn't get to say its own words are safe
       if (!fact || typeof f.about !== "string" || !f.about) return [];
       const about = worldKey(world, f.about), source = `${world}:${clip(f.source ?? f.about, 900)}#${sha([fact, about, provenance, untrusted]).slice(0, 12)}`;
       return [{ id: source, fact, about, source, provenance, untrusted }];
@@ -1233,7 +1253,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
     const end = where(receipt.endedAt?.place), messageId = safeId(presence.openFor?.[receipt.id]) ? presence.openFor[receipt.id] : null;
     const build = () => ({
       type: "outcome", receiptId: worldKey(world, receipt.id), act: clip(receipt.capability, 160) || "act", phase: receipt.phase, summary: clip(out.summary, 160) || `${clip(receipt.capability, 140) || "act"} ${receipt.phase}.`,
-      untrusted: !!out.untrusted || learned.some((f) => f.untrusted), learned, produced, met: metRows, ...(end ? { placeId: end } : {}), ...(messageId ? { messageId } : {}), when,
+      untrusted: true, learned, produced, met: metRows, ...(end ? { placeId: end } : {}), ...(messageId ? { messageId } : {}), when,
       seen: seenOf([...(end ? [[end, nameOf(r, end, receipt.endedAt?.placePath?.[0])]] : []), ...metRows.flatMap((p) => [[p.id, p.name], ...(p.where ? [[p.where, nameOf(r, p.where)]] : [])]), ...produced.flatMap((o) => [[o.id, o.title], ...(o.where ? [[o.where, nameOf(r, o.where)]] : [])]), ...learned.map((f) => [f.about, r.placeName(f.about) ?? f.about.slice(world.length + 1)])]),
     });
     let event = build();
@@ -1327,7 +1347,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
         if (!row) throw new Error(`I have no record of ${target}.`);
         const id = `promise:${sha([row.key, what, at]).slice(0, 16)}`;
         r.fold({ id, at, world, when, type: "commitment", personId: row.id, of: row.key, by, what: clip(what, 300), seen: seenOf([[row.id, row.name]]) });
-        return { promised: id, with: row.name, by };
+        return { promised: id, with: row.name, key: row.key, by };
       });
     },
     /** A promise kept, by what happened since with that person: their own turn in a conversation, or for a promise of mine a
@@ -1368,7 +1388,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
           const p = people.find(target);
           if (!p) throw new Error(`I have no record of meeting ${target}. Use their id from around or here, once they have been near.`);
           r.remember({ ...value, person: p.id, of: p.key, seen: seenOf([[p.id, p.name]]), note: clip(note, 300) });
-          return { remembered: "person", id: p.id, name: p.name };
+          return { remembered: "person", id: p.id, key: p.key, name: p.name };
         }
         // Worlds from one template share names, so this world's place comes first.
         const key = worldKey(world, target), called = (x) => x.name.toLowerCase() === lower || x.formerly.some((n) => n.toLowerCase() === lower), mine = (x) => x.id.startsWith(`${world}:`);
@@ -1402,8 +1422,9 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
           if (!raw.trim() || !terms.every((t) => line.toLowerCase().includes(t))) continue;
           if (matches.length >= SEARCH_MAX) { more++; continue; }
           // A person's file is titled with a name a world gave them, so its title vouches for nothing.
-          const person = relative(root, file).startsWith("people"), from = person ? section ?? "name" : [title, section].filter(Boolean).join(" / ");
-          matches.push({ text: line.replace(/^[-> ]+/, ""), file: relative(root, file), provenance: from, untrusted: /untrusted/i.test(`${from} ${line}`) || (person && !section) });
+          const where = relative(root, file), from = where.startsWith("people") ? section ?? "name" : [title, section].filter(Boolean).join(" / ");
+          const mine = OWN_FILES.has(where) || OWN_SECTION.test(section ?? "") || (where.startsWith("journal") && OWN_JOURNAL.test(raw) && !/untrusted/i.test(raw));
+          matches.push({ text: line.replace(/^[-> ]+/, ""), file: where, provenance: from, untrusted: !mine });
         }
       }
       return { query, matches, ...(more ? { more } : {}) };

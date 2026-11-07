@@ -19,6 +19,8 @@ const MOVES = /^(?:walk|go|run|jog|stroll|hang-out|approach|follow|fly|ride)\b/;
 /** How close a Soul has to be for a first meeting: the distance `here` counts as local. */
 export const NEAR_METRES = 8;
 const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20, LOCK_OLD_MS = 10_000, PLACE_ID_MAX = 200;
+/** `memory` fails closed: a line is the Soul's own only where nothing else writes. */
+const OWN_FILES = new Set(["self.md", "goals.md", "schedule.md"]), OWN_SECTION = /^(?:What I believe|What I have told them|Commitments|Judgments)\b/, OWN_JOURNAL = /^- \S+ (?:completed|failed): /;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/, TRAVELLER = /^[a-z0-9][a-z0-9-]{0,63}\/[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const sha = (v) => createHash("sha256").update(typeof v === "string" ? v : JSON.stringify(v)).digest("hex");
 const clip = (v, max) => { const t = String(v ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim(); return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t; };
@@ -173,7 +175,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     let produced = unique(rows(out.produced, 32).flatMap((o) => (safeId(o.id) ? [{ id: o.id, title: clip(o.title, 200) || o.id, kind: clip(o.kind, 200) || "thing", where: where(o.where) }] : [])));
     // A changing source is a new reading, not a conflict: each fact keeps its own version of the source.
     let learned = unique(rows(out.learned, 5).flatMap((f) => {
-      const fact = clip(f.fact, 2000), said = clip(f.provenance, 100), provenance = (said === "authored-content" ? "authored-fiction" : said) || "world-fact", untrusted = !!f.untrusted || ["soul-text", "other-soul-report"].includes(said);
+      const fact = clip(f.fact, 2000), said = clip(f.provenance, 100), provenance = (said === "authored-content" ? "authored-fiction" : said) || "world-fact", untrusted = true;   // a world doesn't get to say its own words are safe
       if (!fact || typeof f.about !== "string" || !f.about) return [];
       const about = worldKey(world, f.about), source = `${world}:${clip(f.source ?? f.about, 900)}#${sha([fact, about, provenance, untrusted]).slice(0, 12)}`;
       return [{ id: source, fact, about, source, provenance, untrusted }];
@@ -181,7 +183,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     const end = where(receipt.endedAt?.place), messageId = safeId(presence.openFor?.[receipt.id]) ? presence.openFor[receipt.id] : null;
     const build = () => ({
       type: "outcome", receiptId: worldKey(world, receipt.id), act: clip(receipt.capability, 160) || "act", phase: receipt.phase, summary: clip(out.summary, 160) || `${clip(receipt.capability, 140) || "act"} ${receipt.phase}.`,
-      untrusted: !!out.untrusted || learned.some((f) => f.untrusted), learned, produced, met: metRows, ...(end ? { placeId: end } : {}), ...(messageId ? { messageId } : {}), when,
+      untrusted: true, learned, produced, met: metRows, ...(end ? { placeId: end } : {}), ...(messageId ? { messageId } : {}), when,
       seen: seenOf([...(end ? [[end, nameOf(r, end, receipt.endedAt?.placePath?.[0])]] : []), ...metRows.flatMap((p) => [[p.id, p.name], ...(p.where ? [[p.where, nameOf(r, p.where)]] : [])]), ...produced.flatMap((o) => [[o.id, o.title], ...(o.where ? [[o.where, nameOf(r, o.where)]] : [])]), ...learned.map((f) => [f.about, r.placeName(f.about) ?? f.about.slice(world.length + 1)])]),
     });
     let event = build();
@@ -275,7 +277,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
         if (!row) throw new Error(`I have no record of ${target}.`);
         const id = `promise:${sha([row.key, what, at]).slice(0, 16)}`;
         r.fold({ id, at, world, when, type: "commitment", personId: row.id, of: row.key, by, what: clip(what, 300), seen: seenOf([[row.id, row.name]]) });
-        return { promised: id, with: row.name, by };
+        return { promised: id, with: row.name, key: row.key, by };
       });
     },
     /** A promise kept, by what happened since with that person: their own turn in a conversation, or for a promise of mine a
@@ -316,7 +318,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
           const p = people.find(target);
           if (!p) throw new Error(`I have no record of meeting ${target}. Use their id from around or here, once they have been near.`);
           r.remember({ ...value, person: p.id, of: p.key, seen: seenOf([[p.id, p.name]]), note: clip(note, 300) });
-          return { remembered: "person", id: p.id, name: p.name };
+          return { remembered: "person", id: p.id, key: p.key, name: p.name };
         }
         // Worlds from one template share names, so this world's place comes first.
         const key = worldKey(world, target), called = (x) => x.name.toLowerCase() === lower || x.formerly.some((n) => n.toLowerCase() === lower), mine = (x) => x.id.startsWith(`${world}:`);
@@ -350,8 +352,9 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
           if (!raw.trim() || !terms.every((t) => line.toLowerCase().includes(t))) continue;
           if (matches.length >= SEARCH_MAX) { more++; continue; }
           // A person's file is titled with a name a world gave them, so its title vouches for nothing.
-          const person = relative(root, file).startsWith("people"), from = person ? section ?? "name" : [title, section].filter(Boolean).join(" / ");
-          matches.push({ text: line.replace(/^[-> ]+/, ""), file: relative(root, file), provenance: from, untrusted: /untrusted/i.test(`${from} ${line}`) || (person && !section) });
+          const where = relative(root, file), from = where.startsWith("people") ? section ?? "name" : [title, section].filter(Boolean).join(" / ");
+          const mine = OWN_FILES.has(where) || OWN_SECTION.test(section ?? "") || (where.startsWith("journal") && OWN_JOURNAL.test(raw) && !/untrusted/i.test(raw));
+          matches.push({ text: line.replace(/^[-> ]+/, ""), file: where, provenance: from, untrusted: !mine });
         }
       }
       return { query, matches, ...(more ? { more } : {}) };

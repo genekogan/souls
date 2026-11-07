@@ -23,7 +23,7 @@ const when = (w) => [w?.world ? quoted(w.world) : null, w?.worldDay === null || 
  *  to what the Soul and its owner wrote, so a world's long names can't push a promise out. */
 export function buildBrief(facts, { bytes = BRIEF_BYTES } = {}) {
   const person = (p) => `${quoted(p.name)}: ${p.met ? `met ${times(p.met)}` : "only heard from"}${p.last ? `, last ${[when(p.last), p.last.place ? quoted(p.last.place) : null].filter(Boolean).join(" at ")}` : ""}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}${p.open ? ` Open: ${mine(p.open, NOTE_BYTES)}` : ""}${p.claimed ? ` A world says this is ${quoted(p.claimed)}, whom I know elsewhere; I can't check that.` : ""}`;
-  const promise = (c) => `${c.by === "me" ? "I promised" : "They promised"} ${quoted(c.with)}: ${mine(c.what, 120)} [${c.id}]`;
+  const promise = (c) => `[${c.id}] ${c.by === "me" ? "I promised" : "They promised"} ${quoted(c.with)}: ${c.what}`;
   const place = (p) => `${quoted(p.name)}: ${p.visits > 1 ? `been here ${times(p.visits)}` : "first time here"}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}`;
   const goal = (g) => `${g.note}${g.next ? ` Next: ${g.next}` : ""}`;
   // Goals can't take every line: the owner's next schedule entry always has one.

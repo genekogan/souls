@@ -13,9 +13,10 @@ const same=(a,b)=>a&&b&&a.pid===b.pid&&a.pgid===b.pgid&&a.startToken===b.startTo
 const MAX_BYTES=262144,MAX_CONTROLLERS=16,MAX_HOSTS=128;
 function readPrivate(path){const s=lstatSync(path);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.size>MAX_BYTES||(s.mode&0o077))throw fault('CONTROLLER_INVENTORY_UNSAFE');const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);try{const actual=fstatSync(fd);if(actual.dev!==s.dev||actual.ino!==s.ino||!actual.isFile()||actual.nlink!==1||actual.size>MAX_BYTES||(actual.mode&0o077))throw fault('CONTROLLER_INVENTORY_UNSAFE');return JSON.parse(readFileSync(fd,'utf8'));}finally{closeSync(fd);}}
 function writePrivate(path,value,{exclusive=false}={}){const bytes=JSON.stringify(value);if(Buffer.byteLength(bytes)>MAX_BYTES)throw fault('CONTROLLER_INVENTORY_CAPACITY');const tmp=exclusive?path:path+'.'+randomUUID()+'.tmp';const fd=openSync(tmp,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);try{writeFileSync(fd,bytes);fsyncSync(fd);}finally{closeSync(fd);}if(!exclusive)renameSync(tmp,path);const dir=openSync(dirname(path),constants.O_RDONLY);try{fsyncSync(dir);}finally{closeSync(dir);}}
+// lstart prints in the reader's zone, so TZ is pinned: one process has one startToken for every reader (#471).
 export function inspectOwnedProcess(pid){
  if(!validPid(pid))throw fault('CONTROLLER_PROCESS_INVALID');let output;
- try{output=execFileSync('ps',['-p',String(pid),'-o','pid=,ppid=,pgid=,lstart='],{encoding:'utf8',timeout:500,maxBuffer:4096,stdio:['ignore','pipe','pipe'],env:{...process.env,LC_ALL:'C'}});}catch(e){if(e.status===1&&!String(e.stdout??'').trim())return null;throw fault('CONTROLLER_PROCESS_UNKNOWN');}
+ try{output=execFileSync('ps',['-p',String(pid),'-o','pid=,ppid=,pgid=,lstart='],{encoding:'utf8',timeout:500,maxBuffer:4096,stdio:['ignore','pipe','pipe'],env:{...process.env,LC_ALL:'C',TZ:'UTC'}});}catch(e){if(e.status===1&&!String(e.stdout??'').trim())return null;throw fault('CONTROLLER_PROCESS_UNKNOWN');}
  const m=output.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/);if(!m||Number(m[1])!==pid)throw fault('CONTROLLER_PROCESS_UNKNOWN');return {pid,ppid:Number(m[2]),pgid:Number(m[3]),startToken:m[4]};
 }
 export function inspectOwnedGroup(pgid){
