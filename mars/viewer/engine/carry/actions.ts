@@ -25,6 +25,7 @@ import { MAX_LEVEL_ID } from '../spatial/types.ts';
 
 export const CARRY_SPEED = 0.9; // m/s of the fastest-moving formation point (centre + load tips under rotation)
 const ACCEL = 0.5; // m/s²
+const RETREAT = 1; // m a refused crew backs along its route before it sets down (#1150)
 const LIFT_S = 1.2;
 const SETDOWN_S = 1.2;
 const RELEASE_S = 0.4;
@@ -50,6 +51,8 @@ export type CarryExec = {
   /** A construction cut with no alternative from here, at that scene epoch: held (blocked) without replanning again
    *  until the scene changes (PC07). */
   cut?: { epoch: number; diagnostic: Diagnostic };
+  /** #1150: the world refused the crew's move. It backs along the route it came by, to this arc length, and sets down there. */
+  retreatTo?: number;
   reachStart?: number;
   waited?: number;
   /** Climb (between levels): traversal parameter, whether the flight's traffic resource is held, done. */
@@ -126,6 +129,13 @@ function applyFormation(rt: Runtime, ex: CarryExec, q: SE2) {
     h.pose = { p: [spots[i][0], ex.p.levelY, spots[i][1]], yaw: carryFacing(ex, q.th, i) };
   });
   ex.q = q;
+}
+
+/** #1150: a refused crew's next step back would meet a person or something solid. */
+function retreatBlocked(rt: Runtime, ex: CarryExec, sp: Spatial, u: number): boolean {
+  const i0 = ex.i, g = sp.level(ex.p.level); ex.i = 0;
+  const q = poseAtU(ex, u); ex.i = i0;
+  return !!pathBystander(rt, ex, u) || (!!g && poseHit(g, ex.p.f, q, 0) >= 0);
 }
 
 /** A non-crew person inside the formation's footprint (load discs + carrier spots) at arc length u. */
@@ -342,6 +352,19 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
       }
       return { status: 'running', phase: ex.phase };
     }
+    if (ex.phase === 'move' && ex.retreatTo !== undefined) {
+      const sp = rt.services.spatial as Spatial; sp.sync(rt.world);
+      const next = Math.max(ex.retreatTo, ex.u - CARRY_SPEED * dt);
+      // the route was clear when it was planned, not necessarily now: what stands behind ends the backing here
+      if (next < ex.u && !retreatBlocked(rt, ex, sp, next)) {
+        ex.u = next; ex.i = 0; applyFormation(rt, ex, poseAtU(ex, ex.u));
+        if (ex.u > ex.retreatTo) return { status: 'running', phase: 'move' };
+        // not clear to lay it here: further back, where it was. The route's start is as far as it goes.
+        if (ex.u > 0 && laidIssue(sp, p.f, ex.q, p.level, p.levelY, p.item, p.crew)) { ex.retreatTo = Math.max(0, ex.u - RETREAT); return { status: 'running', phase: 'move' }; }
+      }
+      ex.retreatTo = undefined; startSetDown(rt, ex, ex.q);
+      return { status: 'running', phase: 'set-down' };
+    }
     if (ex.phase === 'move') {
       // construction changed the scene? the rest of the validated route must still be clear
       const sp = rt.services.spatial as Spatial;
@@ -478,6 +501,14 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
     if (ex.phase === 'gather') return ex.walks.every((walk, i) => !!walk && exhausted.has(ex.p.crew[i]) && walkTo.waitQuiescent!(rt, walk, exhausted));
     return ex.phase === 'move' && ex.v < 0.02 && !ex.onStair && exhausted.has(ex.p.item);
   },
+  /** #1150: the crew's last step was not taken. The route behind it is the way it came, so that is the way out, as far as it is still clear. */
+  refused(rt, ex) {
+    if (ex.phase !== 'move') return;
+    // refused while backing: that step was back, so undo it, and go no further that way
+    if (ex.retreatTo !== undefined) { ex.u = Math.min(ex.p.traj.u[ex.p.traj.u.length - 1], ex.u + CARRY_SPEED * DT); ex.i = 0; ex.q = poseAtU(ex, ex.u); ex.retreatTo = ex.u; return; }
+    ex.u = Math.max(0, ex.u - ex.v * DT); ex.v = 0; ex.i = 0; ex.q = poseAtU(ex, ex.u);
+    ex.retreatTo = Math.max(0, ex.u - RETREAT);
+  },
   cancel(rt, ex): CancelResult {
     const p = ex.p;
     if (ex.phase === 'gather' && ex.reachStart !== undefined) {
@@ -523,6 +554,7 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
         },
       };
     if (ex.phase === 'move') {
+      if (ex.retreatTo !== undefined) { ex.cancelling = true; return { ok: true, deferred: true }; }   // #1150: backing off already; it sets down
       const sp = rt.services.spatial as Spatial;
       sp.sync(rt.world);
       const why = laidIssue(sp, p.f, ex.q, p.level, p.levelY, p.item, p.crew);

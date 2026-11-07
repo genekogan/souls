@@ -15,6 +15,7 @@
 // still the one 1.75 m body: hand targets do not scale (BODY_MODEL.md "Humanoid looks").
 import type { Body, Entity } from '../world/types.ts';
 import { HUMAN_PROFILE, type AgentProfile } from '../spatial/types.ts';
+import { BODY_MODEL } from '../body/model.ts';
 
 /** Ranges of the physical look params (the def core/humanoid@2 declares the same; humanoid-dims test asserts it). */
 export const HUMANOID_DIM_RANGES = Object.freeze({
@@ -109,13 +110,13 @@ export function humanRadius(e: Pick<Entity, 'body'> | undefined): number {
   return humanoidDims(b).radius;
 }
 
-/** Whether a seat top `seatTop` m above the feet fits this body; null = it fits. */
-export function seatFitProblem(body: Body | undefined | null, seatTop: number): { code: 'seat.too-high' | 'seat.too-low'; message: string } | null {
-  if (body?.family === 'floater') return null;
-  const d = humanoidDims(body), [lo, hi] = d.seat;
-  if (seatTop > hi + 1e-9) return { code: 'seat.too-high', message: `the seat is ${seatTop.toFixed(2)} m high; a ${d.height.toFixed(2)} m body sits on seats up to ${hi.toFixed(2)} m` };
-  if (seatTop < lo - 1e-9) return { code: 'seat.too-low', message: `the seat is ${seatTop.toFixed(2)} m high; a ${d.height.toFixed(2)} m body sits on seats from ${lo.toFixed(2)} m` };
-  return null;
+/** #1083: the highest seat top a body can get onto (m above its feet): its standing reach (the body model's overheadMax,
+ *  2.06 m, scaled by height). A body hoists itself onto anything its hands reach; above that it would have to climb. */
+export function seatReach(body: Body | undefined | null): number { return r3(BODY_MODEL.overheadMax * (body?.family === 'floater' ? 1 : humanoidDims(body).scale)); }
+/** A seat top this body can't get onto (above its standing reach), or null. Height alone refuses nothing else. */
+export function seatOutOfReach(body: Body | undefined | null, seatTop: number): { code: 'seat.out-of-reach'; message: string } | null {
+  const top = seatReach(body);
+  return seatTop > top + 1e-9 ? { code: 'seat.out-of-reach', message: `the seat is ${seatTop.toFixed(2)} m high, above the ${top.toFixed(2)} m this body can reach to get onto it` } : null;
 }
 
 /** Structural check of a humanoid look's params (bodyProblem): shape, and the physical dims in range. */

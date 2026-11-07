@@ -242,6 +242,7 @@ function runCli(soul, args, deadlineMs, rec) {
 async function join_(run, i) {
   const dir = join(run.dir, 'souls', `s${i}`); mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'eden.mjs'), Buffer.from(await (await fetch(`${BASE}/eden.mjs`)).arrayBuffer()));
+  writeFileSync(join(dir, '.eden-agent.json'), '{}\n', { mode: 0o600 });   // a one-Soul folder, not a Souls home: the bench reads this file
   const soul = { i, dir };
   const a = await runCli(soul, ['register', BASE], 60_000);
   // v3 (srv-cli-lifecycle): the SAME name on every try, until the folder holds a token or 120 s pass. Soul CLI 2.5.3
