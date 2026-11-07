@@ -6,18 +6,18 @@
   },
   "sourcePins": {
     "tools/context-views/fixture.mjs": "afa6f2ab92625461f2d49e18b9636f7b8a3f61e738916b312764636f7157e51f",
-    "apps/web/src/gen-mesh/building.mesh.ts": "f4eb1fc8fea77f68a237f1e65883376debd8d324a8e091bdc556e6f89d39bf93",
-    "apps/web/src/gen-mesh/building-kit.ts": "b3d382a3d8f5258ce98105898e73b43760e74f701dc2c202b3e1855f2f0fd828",
-    "apps/web/src/gen-mesh/building-buffers.ts": "875b4a0d32f04cb39d194f8297376e61f89c7172b7d6ab4a27ae6bc1e14aa88b",
+    "apps/web/src/gen-mesh/building.mesh.ts": "1e6d2174a4e0b157e0da68f4a61ec38da5a0b185a85ac258f2e046f5af304e37",
+    "apps/web/src/gen-mesh/building-kit.ts": "93ed954c0e822b103c8f7e6d0f0cbc2c45e9724e694dac2daa47f4505babd70b",
+    "apps/web/src/gen-mesh/building-buffers.ts": "81c4868b7c6a9987dadb55447f871f4288528dae7b1fd1572f56dd39c16c09b1",
     "apps/web/src/gen-mesh/building-looks.json": "d053be8fa7cddb445f7f4986b55c71438a9544375bd9997f39b01c93236baa74",
-    "apps/web/src/gen-mesh/kit.mesh.ts": "bd97dfdc08706291be0f7e5016ae02a77a779cd73db1049ec70c43c0eb401959",
-    "apps/web/src/gen-mesh/kit-surfaces.ts": "5e5c6305d7ed7885ec48f1af2bfb438f0fb4bdf7e4888d353e2a4a20d70aee25",
-    "apps/web/src/gen-mesh/faces.ts": "d2bf1d7ba551a679de57fde5025b2cdd84f83ea08a07d4d15aaf3020820f3212",
-    "apps/web/src/gen-mesh/materials.ts": "79a0b9b9867ad8a46d5fe247da0c2eb43e8c9d85bf160ad430dff6aeb9822734",
+    "apps/web/src/gen-mesh/kit.mesh.ts": "ea1d4120a0d173878bb032f8ab55b1d6cd11ecb0e166b5a5c4730c291e74fd20",
+    "apps/web/src/gen-mesh/kit-surfaces.ts": "1ad538a4fade9c583d45f965c3d0670c2b6d4150ff01f5c28ca0d4561c8a65c3",
+    "apps/web/src/gen-mesh/faces.ts": "c8347f0360ded4c258fa82608fec6d75a99e4cb57f126eff8ad9c0c368d61768",
+    "apps/web/src/gen-mesh/materials.ts": "5d6e33b8665e5815e50df809f18ee7e929d209c67752c40cec8c04d08b8f8383",
     "apps/web/src/gen-mesh/soup.ts": "caefed9a1fc087ff26c6e8277e85e5d2774db99849368edebb2f95380a33a242",
     "apps/web/src/gen-mesh/ground-palette.ts": "b12d16197c9165ed283fe9f6b797fa7da2547ba1ddaf5f1ad62077b7478ca5e4",
     "apps/web/src/fx/water.ts": "51df0824ca3a17cbc44673e6c4f45a403d5e318e7fb5f126c4ab1555d6405d40",
-    "packages/generators/src/building.ts": "0472d421bd75bace7430286c9864b292df2e826a06498d1913ec56534c28550f"
+    "packages/generators/src/building.ts": "214bdfc6e2e58d1f884c70350998f39fe677cfa391fb9ff626435c71691e8aab"
   },
   "facts": {
     "constants": {
@@ -271,6 +271,78 @@
       "originalCommit": "4b398325d3a4731393efcea7a310183d210328de",
       "integratedCommit": "84eac557a",
       "reason": "Reviewed worker lifecycle-only change: idle retirement, reply/error bookkeeping and partial construction cleanup. Geometry generation, material selection, template key and emission are unchanged. Completed templates are retained; unused prefetched buffers regenerate through the same buildingBuffers job. Scene equivalence remains pending actual fixed-camera visual inspection."
+    },
+    {
+      "path": "apps/web/src/gen-mesh/building-buffers.ts",
+      "baselineSha256": "875b4a0d32f04cb39d194f8297376e61f89c7172b7d6ab4a27ae6bc1e14aa88b",
+      "candidateSha256": "81c4868b7c6a9987dadb55447f871f4288528dae7b1fd1572f56dd39c16c09b1",
+      "originalCommit": "143197abf",
+      "integratedCommit": "1daf783e2",
+      "reviewed": true,
+      "reason": "Only the package name in an import line changed (#1170): the pinned bytes with @sim renamed to @souls equal the current bytes. Not a content change."
+    },
+    {
+      "path": "apps/web/src/gen-mesh/kit-surfaces.ts",
+      "baselineSha256": "5e5c6305d7ed7885ec48f1af2bfb438f0fb4bdf7e4888d353e2a4a20d70aee25",
+      "candidateSha256": "1ad538a4fade9c583d45f965c3d0670c2b6d4150ff01f5c28ca0d4561c8a65c3",
+      "originalCommit": "96478c132",
+      "integratedCommit": "1daf783e2",
+      "reviewed": true,
+      "reason": "Only the package name in an import line changed (#1170): the pinned bytes with @sim renamed to @souls equal the current bytes. Not a content change."
+    },
+    {
+      "path": "apps/web/src/gen-mesh/faces.ts",
+      "baselineSha256": "d2bf1d7ba551a679de57fde5025b2cdd84f83ea08a07d4d15aaf3020820f3212",
+      "candidateSha256": "c8347f0360ded4c258fa82608fec6d75a99e4cb57f126eff8ad9c0c368d61768",
+      "originalCommit": "3d02de6bd",
+      "integratedCommit": "1daf783e2",
+      "reviewed": true,
+      "reason": "Only the package name in an import line changed (#1170): the pinned bytes with @sim renamed to @souls equal the current bytes. Not a content change."
+    },
+    {
+      "path": "apps/web/src/gen-mesh/materials.ts",
+      "baselineSha256": "79a0b9b9867ad8a46d5fe247da0c2eb43e8c9d85bf160ad430dff6aeb9822734",
+      "candidateSha256": "5d6e33b8665e5815e50df809f18ee7e929d209c67752c40cec8c04d08b8f8383",
+      "originalCommit": "e8f7e71f6",
+      "integratedCommit": "242678e8d, 1daf783e2",
+      "reviewed": false,
+      "reason": "Not reviewed for scene equivalence. #615 adds the batchSafeShader flag, which lets meshes merge; #1170 renames an import."
+    },
+    {
+      "path": "apps/web/src/gen-mesh/building-kit.ts",
+      "baselineSha256": "b3d382a3d8f5258ce98105898e73b43760e74f701dc2c202b3e1855f2f0fd828",
+      "candidateSha256": "93ed954c0e822b103c8f7e6d0f0cbc2c45e9724e694dac2daa47f4505babd70b",
+      "originalCommit": "143197abf",
+      "integratedCommit": "242678e8d",
+      "reviewed": false,
+      "reason": "Not reviewed for scene equivalence. #615 shares geometry between buildings by a hash of the vertex data. Its own comment says a hit is the same picture; no fixed-camera comparison has checked that."
+    },
+    {
+      "path": "apps/web/src/gen-mesh/kit.mesh.ts",
+      "baselineSha256": "bd97dfdc08706291be0f7e5016ae02a77a779cd73db1049ec70c43c0eb401959",
+      "candidateSha256": "ea1d4120a0d173878bb032f8ab55b1d6cd11ecb0e166b5a5c4730c291e74fd20",
+      "originalCommit": "8009146c0",
+      "integratedCommit": "76fd3ffe4, 242678e8d, 1daf783e2",
+      "reviewed": false,
+      "reason": "Not reviewed for scene equivalence. Real render changes since the pin: a shadow proxy for kits of several static casters, lock parts riding on the door leaf, and flames that catch up when lit by hand (#493, #615); #1170 renames an import."
+    },
+    {
+      "path": "apps/web/src/gen-mesh/building.mesh.ts",
+      "baselineSha256": "f4eb1fc8fea77f68a237f1e65883376debd8d324a8e091bdc556e6f89d39bf93",
+      "candidateSha256": "1e6d2174a4e0b157e0da68f4a61ec38da5a0b185a85ac258f2e046f5af304e37",
+      "originalCommit": null,
+      "integratedCommit": null,
+      "reviewed": false,
+      "reason": "Not reviewed. The pinned bytes are on no ref in this repository, so what changed cannot be read from history. Scene equivalence with the retained baseline is unknown. The earlier reviewed exception for this file covers its older candidate only."
+    },
+    {
+      "path": "packages/generators/src/building.ts",
+      "baselineSha256": "0472d421bd75bace7430286c9864b292df2e826a06498d1913ec56534c28550f",
+      "candidateSha256": "214bdfc6e2e58d1f884c70350998f39fe677cfa391fb9ff626435c71691e8aab",
+      "originalCommit": null,
+      "integratedCommit": null,
+      "reviewed": false,
+      "reason": "Not reviewed. The pinned bytes are on no ref in this repository, so what changed cannot be read from history. Scene equivalence with the retained baseline is unknown."
     }
   ]
 }
