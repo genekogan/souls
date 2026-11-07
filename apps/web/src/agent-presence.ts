@@ -3,7 +3,7 @@
 // Only the owner's own inbox reads feed it (GET /v1/edge/owner/:id/inbox, read-only), so nothing here confers control.
 import {useEffect,useState} from 'react';
 import {whenVisible} from './poll-pace.ts';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import {readLink,type Link} from './soul-state.ts';
 
 // PRESENCE (SOUL3): a Soul's agent is listening while a listen is open or closed <= 60 s ago (the server decides; its other

@@ -7,11 +7,18 @@ import { providerPolicy, assertMeasurementReady } from '../lib/provider-policy.m
 import { sha256 } from '../lib/hash.mjs';
 import { REPO_ROOT } from '../../lib/paths.mjs';
 import { validateScenario } from '../scenarios/lib/validate.mjs';
+import { validateDiagnostics } from './diagnostics.mjs';
+import { RECORD_SIZES } from '../observer/browser.mjs';
 import { normalizeCast, castPolicy } from '../director/swarm/cast.mjs';
 import { validateScript } from '../arena/adapters/scripted-owner.mjs';
+import { RECORD_STARTS } from '../lib/arrival.mjs';
+import { worldTimeRequest } from './setup.mjs';
+import { SCORER } from './controllability.mjs';
 
 export const SPEC_VERSION = 1;
-const TOP = new Set(['soulRun', 'name', 'scenario', 'cast', 'world', 'durationSec', 'observer', 'limits', 'controllers', 'retention', 'setup', 'evaluation']);
+const CAMERAS = ['wide', 'free'];
+const OBSERVER_MODES = ['off', 'passive', 'cameras'];
+const TOP = new Set(['soulRun', 'name', 'scenario', 'cast', 'world', 'durationSec', 'observer', 'limits', 'controllers', 'retention', 'setup', 'evaluation', 'diagnostics']);
 const CASTS = ['scenario', 'none'];
 // The scripted director delivers cards and chat; it has no pause or resume (end is the run's own cancellation).
 const DIRECTOR_COMMANDS = { scripted: [] };
@@ -19,7 +26,7 @@ const RETAIN = ['keep', 'delete'];
 
 export const DEFAULTS = Object.freeze({
   cast: 'scenario',
-  observer: { check: true, required: false, cameras: null, timeoutMs: 60000 },
+  observer: { check: true, required: false, cameras: null, timeoutMs: 60000, mode: 'cameras', record: null, recordSize: 'compact', recordStart: 'arrival', freeComposition: null },
   limits: { maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000 },
   controllers: { allowLiveModels: false },
   // Evidence is always kept. These apply only after a completed run; failed or cancelled runs keep everything.
@@ -37,7 +44,7 @@ export function readSpec(file) {
 }
 
 /** Static validation: no process, port or directory is touched. Returns {ok, errors, effective, scenario, policy}. */
-export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serverRoot = REPO_ROOT } = {}) {
+export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serverRoot = REPO_ROOT, toolsRoot = REPO_ROOT } = {}) {
   const errors = [];
   const fail = (code, message) => errors.push({ code, message });
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return { ok: false, errors: [{ code: 'spec.not-object', message: 'spec must be a JSON object' }] };
@@ -80,8 +87,21 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   for (const k of Object.keys(retention)) if (!(k in DEFAULTS.retention)) fail('retention.unknown', `retention.${k} is unknown (evidence is always kept)`);
   if (!(limits.maxWallSec > 0)) fail('limits.maxWallSec', 'limits.maxWallSec must be positive');
   if (!(observer.timeoutMs > 0)) fail('observer.timeoutMs', 'observer.timeoutMs must be positive');
-  if (observer.cameras != null && !(Array.isArray(observer.cameras) && observer.cameras.every((c) => c === 'wide'))) fail('observer.cameras', 'observer.cameras: only ["wide"] or [] here (seat follow cameras come from the scenario)');
-  for (const k of Object.keys(spec.world ?? {})) if (!['port', 'slug', 'genesis', 'snapshot'].includes(k)) fail('world.override', `world.${k} cannot be overridden here; reference a scenario with that world`);
+  if (observer.cameras != null && !(Array.isArray(observer.cameras) && observer.cameras.every((c) => CAMERAS.includes(c)))) fail('observer.cameras', `observer.cameras: a list of ${CAMERAS.join(', ')} (seat follow cameras come from the scenario)`);
+  for (const k of Object.keys(spec.observer ?? {})) if (!(k in DEFAULTS.observer)) fail('observer.unknown-field', `observer.${k} is unknown`);
+  if (!OBSERVER_MODES.includes(observer.mode)) fail('observer.mode', `observer.mode: ${OBSERVER_MODES.join(', ')}`);
+  if (observer.record != null && observer.record !== true && !(Array.isArray(observer.record) && observer.record.every((c) => typeof c === 'string' && c))) fail('observer.record', 'observer.record: true (every camera) or a list of camera names (wide, free, follow for every seat, or a seat id)');
+  if (observer.record != null && observer.mode !== 'cameras') fail('observer.record', `observer.record needs observer.mode "cameras" (got ${observer.mode})`);
+  if (Array.isArray(observer.record)) for (const c of observer.record) if ((c === 'wide' || c === 'free') && !(observer.cameras ?? []).includes(c)) fail('observer.record', `observer.record names ${c}, which observer.cameras does not open`);
+  const rs = spec.observer?.recordSize;
+  if (rs != null && !(RECORD_SIZES.includes(rs) || (rs && typeof rs === 'object' && Object.keys(rs).every((k) => k === 'width' || k === 'height') && [rs.width, rs.height].every((n) => Number.isInteger(n) && n >= 16 && n <= 4096)))) fail('observer.recordSize', `observer.recordSize: ${RECORD_SIZES.join(' or ')}, or {width, height} in whole pixels 16..4096`);
+  if (rs != null && observer.record == null) fail('observer.recordSize', 'observer.recordSize needs observer.record');
+  if (!RECORD_STARTS.includes(observer.recordStart)) fail('observer.recordStart', `observer.recordStart: ${RECORD_STARTS.join(' or ')} (arrival: the take begins with the world on screen; load: from page creation, when loading is what it shows)`);
+  if (observer.freeComposition != null && !(Array.isArray(observer.freeComposition.drag) && observer.freeComposition.drag.length === 2 && observer.freeComposition.drag.every(Number.isFinite) && (observer.freeComposition.wheel == null || Number.isFinite(observer.freeComposition.wheel)))) fail('observer.freeComposition', 'observer.freeComposition: {drag: [dx, dy], wheel?: n}');
+  for (const k of Object.keys(spec.world ?? {})) if (!['port', 'slug', 'genesis', 'snapshot', 'timeOfDay', 'timeScale'].includes(k)) fail('world.override', `world.${k} cannot be overridden here; reference a scenario with that world`);
+  // World time (#888): midday with the clock paused unless the spec says otherwise; applied after provision.
+  const worldTime = worldTimeRequest({ timeOfDay: spec.world?.timeOfDay, timeScale: spec.world?.timeScale });
+  for (const e of worldTime.errors) fail(e.code, e.message);
   if (spec.world?.genesis != null && spec.world?.snapshot != null) fail('world.source', 'world: give genesis or snapshot, not both');
   if (spec.world?.port != null && !(Number.isInteger(spec.world.port) && spec.world.port > 1024 && spec.world.port < 65536)) fail('world.port', 'world.port must be an unprivileged port');
   if (spec.world?.slug != null && !/^[a-z][a-z0-9-]{0,31}$/.test(spec.world.slug)) fail('world.slug', 'world.slug: lowercase letters, digits, dashes');
@@ -96,6 +116,9 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   try { scenarioText = readFileSync(scenarioPath, 'utf8'); scenario = JSON.parse(scenarioText); } catch (e) { return { ok: false, errors: [{ code: 'scenario.unreadable', message: e.message }] }; }
   if (scenario.world?.kind !== 'dev') fail('world.kind', `world.kind "${scenario.world?.kind}" is not supported; only isolated dev worlds`);
   try { assertMeasurementReady(scenario); } catch (e) { fail('scenario.measurement', e.message); }
+  // A scenario's own recording start stands unless the spec names one.
+  if (spec.observer?.recordStart == null && scenario.observer?.recordStart != null) observer.recordStart = scenario.observer.recordStart;
+  if (!RECORD_STARTS.includes(observer.recordStart)) fail('observer.recordStart', `scenario observer.recordStart: ${RECORD_STARTS.join(' or ')}`);
 
   const base0 = specPath ? dirname(specPath) : cwd;
   const find = (p) => isAbsolute(p) ? p : [resolve(base0, p), resolve(cwd, p), resolve(REPO_ROOT, p)].find(existsSync) ?? null;
@@ -125,6 +148,9 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (errors.length) return { ok: false, errors };
   const effectiveScenario = applyOverrides(scenario, { cast, world: spec.world, durationSec: spec.durationSec, observer });
   if (composed) for (const m of validateScenario(effectiveScenario)) fail('cast.scenario', `composed scenario: ${m}`);
+  // Diagnostics (SR3): opt-in trace capture per seat; off unless named. Capability and availability are recorded.
+  const diag = validateDiagnostics(spec.diagnostics, effectiveScenario.seats ?? [], { root: toolsRoot });
+  for (const e of diag.errors) errors.push(e);
   let policy = null;
   try { policy = providerPolicy(effectiveScenario); } catch (e) { fail('controllers.policy', e.message); }
   const controllerList = [...(effectiveScenario.seats ?? []).map((s) => ({ id: s.id, adapter: s.adapter ?? 'claude-headless', model: s.model ?? null, effort: s.effort ?? null })), ...(effectiveScenario.god ? [{ id: 'god', adapter: effectiveScenario.god.adapter ?? 'claude-headless', model: effectiveScenario.god.model ?? null, effort: effectiveScenario.god.effort ?? null }] : [])];
@@ -132,7 +158,7 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (policy?.required?.length && controllers.allowLiveModels !== true) fail('controllers.live-model', `this run needs live model providers (${policy.required.join(', ')}) for ${[...controllerList.map((c) => `${c.id}:${c.adapter}`), ...(policy.claude && !controllerList.length ? ['director/reviewer'] : [])].join(', ')}; set controllers.allowLiveModels only with explicit authorization, or use cast "none" with a scripted director and deterministic review`);
   if (errors.length) return { ok: false, errors };
 
-  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}) };
+  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, time: worldTime.time, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), scorer: { id: SCORER.id, version: SCORER.version, path: SCORER.path, sha256: sha256(readFileSync(new URL('./controllability.mjs', import.meta.url))) }, ...(diag.effective ? { diagnostics: diag.effective } : {}) };
   return { ok: true, errors: [], effective, scenario: effectiveScenario, controllers: controllerList, policy, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches } : null };
 }
 
@@ -157,6 +183,11 @@ function validateDirected(spec, { specPath, cwd, serverRoot, errors }) {
   if (!(limits.maxWallSec > 0)) fail('limits.maxWallSec', 'limits.maxWallSec must be positive');
   if (!(observer.timeoutMs > 0)) fail('observer.timeoutMs', 'observer.timeoutMs must be positive');
   if (observer.cameras != null && !(Array.isArray(observer.cameras) && observer.cameras.every((c) => CAST_CAMERAS.includes(c)))) fail('observer.cameras', `observer.cameras: a subset of ${CAST_CAMERAS.join(', ')} for a directed cast`);
+  // Scenario-only fields (SR3 diagnostics, SR5 recording, observer modes) are not carried to a cast yet: refuse, never ignore.
+  if (spec.diagnostics != null) fail('diagnostics.directed', 'diagnostics are not supported with a directed cast yet');
+  for (const k of Object.keys(spec.observer ?? {})) if (!(k in DEFAULTS.observer)) fail('observer.unknown-field', `observer.${k} is unknown`);
+  for (const k of ['record', 'recordSize', 'freeComposition']) if (spec.observer?.[k] != null) fail('observer.directed', `observer.${k} is not supported with a directed cast yet`);
+  if (spec.observer?.mode != null && spec.observer.mode !== 'cameras') fail('observer.directed', `observer.mode ${spec.observer.mode} is not supported with a directed cast yet`);
   for (const k of Object.keys(spec.world ?? {})) if (!['port', 'slug'].includes(k)) fail('world.override', `world.${k} cannot be overridden for a directed cast; change the cast file`);
   if (spec.world?.port != null && !(Number.isInteger(spec.world.port) && spec.world.port > 1024 && spec.world.port < 65536)) fail('world.port', 'world.port must be an unprivileged port');
   if (spec.world?.slug != null && !/^[a-z][a-z0-9-]{0,31}$/.test(spec.world.slug)) fail('world.slug', 'world.slug: lowercase letters, digits, dashes');
@@ -219,6 +250,7 @@ export function applyOverrides(scenario, { cast = 'scenario', world = null, dura
   if (world?.snapshot != null) out.world.snapshot = world.snapshot;
   if (durationSec != null) out.durationSec = durationSec;
   if (observer?.cameras != null) out.observer = { ...(out.observer ?? {}), cameras: observer.cameras };
+  for (const k of ['mode', 'record', 'recordSize', 'recordStart', 'freeComposition']) if (observer?.[k] != null && !(k === 'mode' && observer.mode === 'cameras') && !(k === 'recordStart' && observer.record == null)) out.observer = { ...(out.observer ?? {}), [k]: observer[k] };
   if (cast && typeof cast === 'object') {
     // A composed cast replaces the scenario's seats and/or scripted direction in their own formats (seat "*" is the
     // scripted director's broadcast).

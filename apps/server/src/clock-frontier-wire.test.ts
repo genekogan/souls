@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import { getRequestListener } from '@hono/node-server';
 import { WebSocket } from 'ws';
-import { marsFactory,EDEN_COMMONS_WORLD } from '@sim/engine-mars';
+import { marsFactory,EDEN_COMMONS_WORLD } from '@souls/engine-mars';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { ClockFrontiers } from './clock-frontier.ts';
@@ -66,7 +66,7 @@ test('actual native TCP/Hono/anonymous Hub exposes only committed clocks and clo
   const replies=[];
   for(const path of ['/healthz','/v1/scene','/v1/take','/v1/takes','/v1/world','/v1/debug/world','/v1/station-v2','/v1/me','/v1/agent/perceive']){
     const r=await fetch('http://127.0.0.1:4958'+path);assert.equal(r.status,503);assert.equal(r.headers.get('cache-control'),'no-store');
-    const value=await r.json();assert.deepEqual(value,{ok:false,code:'world-unavailable',message:'World temporarily unavailable.'});replies.push(value);
+    const value=await r.json();assert.deepEqual(value,{ok:false,code:'world-unavailable',message:'World temporarily unavailable.',...(path==='/healthz'?{halted:true,glitches:{total:1,byRule:{'durability.clock-frontier':{halt:1}}}}:{})});replies.push(value);
   }
   const late=new WebSocket('ws://127.0.0.1:4958/ws');sockets.push(late);const lateMessages:unknown[]=[];
   late.on('message',b=>lateMessages.push(String(b)));await once(late,'open');const lateClose=once(late,'close');

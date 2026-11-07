@@ -2,8 +2,8 @@
 // (plays as sentences, with the changes each one made), the words the world has
 // (kinds, links, manners, cards), what was said, and what the engine could not show.
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
-import type { KernelView, PlayView } from '@sim/protocol';
-import type { Api, Sim } from './useSim.ts';
+import type { KernelView, PlayView } from '@souls/protocol';
+import type { Api, Souls } from './useSouls.ts';
 
 type Change = PlayView['changes'][number];
 const nameIn = (k: KernelView | null) => (id: string | null | undefined) => (id ? (k?.things[id]?.name ?? id) : 'nowhere');
@@ -25,7 +25,7 @@ function changeText(c: Change, name: (id: string | null | undefined) => string, 
 }
 const OPS: Record<Change['op'], string> = { appear: 'appear', vanish: 'vanish', set: 'set', move: 'move', link: 'link', unlink: 'unlink', say: 'say' };
 
-export function SentencesPanel({ sim, soulId, limit = 40 }: { sim: Sim; soulId?: string; limit?: number }) {
+export function SentencesPanel({ sim, soulId, limit = 40 }: { sim: Souls; soulId?: string; limit?: number }) {
   const name = nameIn(sim.kernel), now = sim.conn.displayTick();
   const rows = sim.plays.filter((p) => !soulId || p.soulId === soulId).slice(-limit).reverse();
   // things that have since vanished are still named in the record of what happened to them
@@ -51,7 +51,7 @@ export function SentencesPanel({ sim, soulId, limit = 40 }: { sim: Sim; soulId?:
   );
 }
 
-export function HeardPanel({ sim, soulId }: { sim: Sim; soulId?: string }) {
+export function HeardPanel({ sim, soulId }: { sim: Souls; soulId?: string }) {
   const now = sim.conn.displayTick();
   const rows = sim.talk.filter((l) => !soulId || l.from === soulId || l.to === soulId).slice(-30).reverse();
   return (
@@ -79,7 +79,7 @@ function linkIndex(k: KernelView) {
   return ix;
 }
 
-export function ThingsPanel({ sim }: { sim: Sim }) {
+export function ThingsPanel({ sim }: { sim: Souls }) {
   const k = sim.kernel; if (!k) return <section><h2>Things</h2><span className="dim">loading…</span></section>;
   const name = nameIn(k);
   const things = Object.values(k.things).sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
@@ -108,7 +108,7 @@ export function ThingsPanel({ sim }: { sim: Sim }) {
   );
 }
 
-export function VocabularyPanel({ sim }: { sim: Sim }) {
+export function VocabularyPanel({ sim }: { sim: Souls }) {
   const k = sim.kernel; if (!k) return null;
   const used = new Map<string, number>(); for (const l of Object.values(k.links)) used.set(l.kind, (used.get(l.kind) ?? 0) + 1);
   const kindsInUse = new Map<string, number>(); for (const t of Object.values(k.things)) kindsInUse.set(t.kind, (kindsInUse.get(t.kind) ?? 0) + 1);
@@ -128,7 +128,7 @@ export function VocabularyPanel({ sim }: { sim: Sim }) {
   );
 }
 
-export function LibraryPanel({ sim }: { sim: Sim }) {
+export function LibraryPanel({ sim }: { sim: Souls }) {
   const k = sim.kernel; const [open, setOpen] = useState<string | null>(null);
   if (!k) return null;
   const name = nameIn(k);
@@ -161,7 +161,7 @@ export function LibraryPanel({ sim }: { sim: Sim }) {
 }
 
 /** Motions cards asked for that the engine cannot show yet, ranked by how often those cards are played. */
-export function BacklogPanel({ sim }: { sim: Sim }) {
+export function BacklogPanel({ sim }: { sim: Souls }) {
   const k = sim.kernel; if (!k) return null;
   const want = new Map<string, { plays: number; cards: Set<string> }>();
   for (const c of Object.values(k.vocab.cards)) for (const w of c.wants ?? []) { const x = want.get(w) ?? { plays: 0, cards: new Set<string>() }; x.plays += k.plays[c.name] ?? 0; x.cards.add(c.name); want.set(w, x); }
@@ -185,7 +185,7 @@ type DeckView = {
   manners: { name: string; summary: string }[]; agenda: { card: string; targetName: string | null; done: boolean }[]; agendaPos: number;
 };
 /** One Soul's deck, for its owner: its plan, its manners, and each card with whether it can be played now. */
-export function DeckPanel({ api, soulId, name, sim }: { api: Api; soulId: string; name: string; sim: Sim }) {
+export function DeckPanel({ api, soulId, name, sim }: { api: Api; soulId: string; name: string; sim: Souls }) {
   const [d, setD] = useState<DeckView | null>(null);
   const beat = Math.floor(sim.conn.displayTick() / 100);
   useEffect(() => { let live = true; void api<DeckView>(`/v1/souls/${soulId}/deck`).then((r) => { if (live && r.status === 200) setD(r.data); }); return () => { live = false; }; }, [soulId, beat]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -233,7 +233,7 @@ function plainWhy(w: string | null): string {
 }
 
 /** The open design questions, each beside what the running world shows about it. */
-export function NotebookPanel({ sim }: { sim: Sim }) {
+export function NotebookPanel({ sim }: { sim: Souls }) {
   const k = sim.kernel; if (!k) return <section className="wide"><h2>Notebook</h2><span className="dim">loading…</span></section>;
   const plays = sim.plays, ok = plays.filter((p) => p.ok), refused = plays.filter((p) => !p.ok);
   const ops = new Map<string, number>(); for (const p of ok) for (const c of p.changes) ops.set(c.op, (ops.get(c.op) ?? 0) + 1);

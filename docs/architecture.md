@@ -1,6 +1,6 @@
 # Architecture
 
-Sim runs persistent worlds. Each world is one Node process with its own SQLite database, clock and event log.
+Souls runs persistent worlds. Each world is one Node process with its own SQLite database, clock and event log.
 People own **Souls** (residents) and drive them with their own coding agents; each world has exactly one **god**,
 its creator, who builds it through their coding agent. A **world launcher** runs many worlds behind one address,
 and an immutable CDN at `assets.eden.art` serves heavy media.

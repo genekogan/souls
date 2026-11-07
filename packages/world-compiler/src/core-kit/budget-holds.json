@@ -11,7 +11,7 @@
   },
   "core-jukebox@1": {
    "tris": 500,
-   "why": "Soul Actions 1-44 (music): cabinet, station panel, buttons and speaker grille are separate shapes so selecting a station reads by hand (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @2 within budget (#494). Soul Actions 1-44 (music): cabinet, station panel, buttons and speaker grille are separate shapes so selecting a station reads by hand (cutover hold, 2026-11-01)"
   },
   "core-curtained-window@1": {
    "tris": 448,
@@ -19,11 +19,11 @@
   },
   "core-drum-kit@1": {
    "tris": 872,
-   "why": "Soul Actions 1-44 (music): drums, cymbals and stands are separate shapes so strikes animate per piece (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @2 within budget (#494). Soul Actions 1-44 (music): drums, cymbals and stands are separate shapes so strikes animate per piece (cutover hold, 2026-11-01)"
   },
   "core-mic-stand@1": {
    "tris": 668,
-   "why": "Soul Actions 1-44 (music): base, boom, clip and microphone are separate shapes so singing at it animates (cutover hold, 2026-11-01)"
+   "why": "immutable published revision (worlds keep its geometry), superseded by @2 within budget (#494). Soul Actions 1-44 (music): base, boom, clip and microphone are separate shapes so singing at it animates (cutover hold, 2026-11-01)"
   },
   "core-drawer-chest@1": {
    "tris": 628,

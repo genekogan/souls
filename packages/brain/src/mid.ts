@@ -3,9 +3,9 @@
 // Jev never emits coordinates, ids or text. Follows docs.typesafe.ai guidance:
 // one narrow judgment per question, backticked state paths, per-option
 // conditions, no weighting in prose, numbers as words, user text kept as data.
-import type { ActivityOption } from '@sim/engine-contract';
+import type { ActivityOption } from '@souls/engine-contract';
 import { livingChoice, type Needs } from './living.ts';
-import { nextFloat, seedRng } from '@sim/engine-contract';
+import { nextFloat, seedRng } from '@souls/engine-contract';
 import { JEV_MODEL, optionKeys, pick, type ChoiceA, type JevRequest, type JevResponse, type NoulA, type ScoreA } from './jev.ts';
 
 /** Pace levels → seconds until the next scheduled evaluation (code owns the timing). */

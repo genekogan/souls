@@ -9,8 +9,8 @@
 //   `creator:<owner id>:<label>` or `soul:<soul id>:<name>`.
 // Media must be an http(s) URL or a same-site path (e.g. one returned by POST /v1/art/media); videos are .mp4/.webm/
 // .mov/.m4v and loop muted in the viewer. Every display def stores `media`, `title`, `maker`, one line per slot.
-import type { Entity, Op, StoredDef, WorldModel } from '@sim/world-compiler';
-import { frameMediaKind } from '@sim/world-compiler';
+import type { Entity, Op, StoredDef, WorldModel } from '@souls/world-compiler';
+import { frameMediaKind } from '@souls/world-compiler';
 
 export type Caller = { kind: 'creator'; owner: string | null; label?: string } | { kind: 'soul'; id: string; name: string };
 export type HangRequest = { frame: string; media?: string | null; title?: string; slot?: number };
@@ -18,7 +18,7 @@ export type ArtFailure = { ok: false; status: number; code: string; message: str
 export type ArtPlan = { ok: true; id: string; slot: number; ops: Op[]; note: string };
 export type DisplayInfo = { id: string; name: string | null; def: string; slots: number; p: [number, number, number]; yaw: number; owner: string | null; art: { slot: number; media: string; kind: 'image' | 'video'; title: string; maker: string }[] };
 
-/** One media reference (the shared frame-media rule in @sim/world-compiler). */
+/** One media reference (the shared frame-media rule in @souls/world-compiler). */
 export const mediaKind = (url: string): 'image' | 'video' | null => frameMediaKind(url);
 const fail = (status: number, code: string, message: string): ArtFailure => ({ ok: false, status, code, message });
 const clean = (s: string, max: number) => s.replace(/[\r\n\t]+/g, ' ').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max);
@@ -57,14 +57,44 @@ export function paintingEasel(def: StoredDef | undefined): boolean {
   return !!disp && disp.slots === 1 && disp.withMaker && (def?.components as { workstation?: { kind?: string } } | undefined)?.workstation?.kind === 'painting';
 }
 
-/** Compact nearby projection; the private drawing recipe is never perception. */
-export function paintingLine(e: Entity, def: StoredDef | undefined): string | null {
+/** A painting workstation's canvas: its media face for slot 0 (def data, make.args.faces). */
+export type CanvasFace = { at?: number[]; w?: number; h?: number; pitch?: number; media?: boolean; slot?: number; fadeDays?: number };
+export function canvasFace(def: StoredDef | undefined): CanvasFace | null {
+  const faces = def?.make.kind === 'gen' && Array.isArray(def.make.args?.faces) ? def.make.args.faces as CanvasFace[] : [];
+  return faces.find(f => f && f.media && (f.slot ?? 0) === 0) ?? null;
+}
+/** #430: a canvas lying flat, facing up (pitch -90°), is on the ground: drawn in chalk, stooping. */
+export const flatCanvas = (face: CanvasFace | null | undefined) => !!face && typeof face.pitch === 'number' && Math.abs(face.pitch + Math.PI / 2) < 0.05;
+/** #430: whole world days since a fading canvas was drawn (its state `day`), or null when it does not fade. */
+export function canvasAge(e: Entity, face: CanvasFace | null | undefined, today: number): number | null {
+  const days = face?.fadeDays;
+  if (typeof days !== 'number' || !(days > 0) || typeof e.state?.day !== 'number') return null;
+  return Math.max(0, Math.floor(today) - e.state.day);
+}
+
+/** #430: drawn fading canvases whose perceived line may differ between world day `prev` and `today` (either way: a clock
+ *  can jump several days forward on a catch-up, or be set back): those not yet washed away on one of the two days. */
+export function fadingIds(model: WorldModel, today: number, prev = today): string[] {
+  const ids: string[] = [];
+  for (const e of model.entities.values()) {
+    if (typeof e.state?.day !== 'number' || !e.state.media) continue;
+    const def = model.resolvedDef(e.def); if (!paintingEasel(def)) continue;
+    const face = canvasFace(def), age = canvasAge(e, face, Math.min(today, prev)); if (age !== null && age <= face!.fadeDays!) ids.push(e.id);
+  }
+  return ids;
+}
+
+/** Compact nearby projection; the private drawing recipe is never perception. `today`: the world day (fading canvases). */
+export function paintingLine(e: Entity, def: StoredDef | undefined, today = 0): string | null {
   if (!paintingEasel(def) || typeof e.state?.media !== 'string' || !e.state.media || typeof e.state.maker !== 'string') return null;
   const parts = e.state.maker.split(':');
   if (parts[0] !== 'soul' || parts.length < 3) return null;
+  const face = canvasFace(def), age = canvasAge(e, face, today);
+  if (age !== null && age >= face!.fadeDays!) return null;
   const oneLine = (v: unknown, max: number) => clean(String(v ?? '').replace(/[\u0085\u2028\u2029]/g, ' '), max);
   const maker = oneLine(parts.slice(2).join(':'), 32) || 'a Soul', title = oneLine(e.state.title, 50) || 'Untitled';
-  return `an easel with ${maker}’s painting “${title}”`;
+  const wear = age === null || age < 1 ? '' : age >= face!.fadeDays! - 1 ? ', nearly washed away' : ', fading';
+  return flatCanvas(face) ? `${maker}’s chalk drawing “${title}” on the pavement${wear}` : `an easel with ${maker}’s painting “${title}”${wear}`;
 }
 
 function hang(model: WorldModel, caller: Caller, req: HangRequest, painting: boolean): ArtPlan | ArtFailure {
@@ -76,6 +106,8 @@ function hang(model: WorldModel, caller: Caller, req: HangRequest, painting: boo
   const slot = req.slot ?? 0;
   if (!Number.isInteger(slot) || slot < 0 || slot >= disp.slots) return fail(400, 'art.slot', `slot must be 0..${disp.slots - 1}`);
   const clear = req.media === null || req.media === '' || req.media === undefined;
+  // #430: a fading canvas (chalk) holds only what was drawn on it; hanging an image there is refused (clearing is not)
+  if (!clear && !painting && typeof canvasFace(def)?.fadeDays === 'number') return fail(409, 'art.drawn-only', `${req.frame} takes only drawings made on it by hand; draw on it instead`);
   if (!clear && !mediaKind(req.media!)) return fail(400, 'art.media', 'media must be an https URL or a same-site path (images, or .mp4/.webm/.mov/.m4v video), at most 480 characters, no spaces');
   const st = e.state ?? {}, media = lines(st.media, disp.slots), title = lines(st.title, disp.slots), maker = lines(st.maker, disp.slots);
   if (caller.kind === 'soul' && !painting && !ownsIt(e, caller)) {

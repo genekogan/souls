@@ -2,7 +2,7 @@
 // Never imports a live DB, provider credential, service or production bootstrap.
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { Auth } from '../src/auth.ts';
 import { Brain } from '../src/brain.ts';
 import { config } from '../src/config.ts';
@@ -23,10 +23,11 @@ export async function accept<T>(host: WorldHost, promise: Promise<T>): Promise<T
   for (let i = 0; !done && (i < 50 || performance.now() < bound); i++) { await setImmediate(); host.drainInputs(); }
   assert.ok(done, 'request settled through the actual sequencer'); return promise;
 }
-export function fixture(path: string, engineFactory = factory, options?:{durableClockV1?:boolean}) {
-  const db = new Db(path), host = new WorldHost(db, engineFactory, seed, 1e9, worldId,options);
+export function fixture(path: string, engineFactory = factory, options?:{durableClockV1?:boolean;worldId?:string}) {
+  const {worldId:id=worldId,...hostOptions}=options??{};
+  const db = new Db(path), host = new WorldHost(db, engineFactory, seed, 1e9, id,hostOptions);
   host.boot(); host.drainInputs();
-  const cfg = { ...config, worldId, worldKey:'eden', worldPath:'/w/eden', brainMode:'fake' as const,
+  const cfg = { ...config, worldId:id, worldKey:'eden', worldPath:'/w/eden', brainMode:'fake' as const,
     budgetUsdPerDay:0, typesafeKey:undefined, anthropicKey:undefined, privyAppId:'', privyAppSecret:'', inviteRequired:true };
   const auth = new Auth(cfg, db); auth.devAuth = true;
   const brain = new Brain(host, db, cfg, { clients:()=>0, onCall(){}, onCamera(){}, onTicker(){}, onNarrative(){}, onTalk(){} });
