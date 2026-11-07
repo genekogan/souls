@@ -144,6 +144,8 @@ jobs:
             types-web)
               pnpm typecheck
               pnpm --filter @souls/web build
+              # V3-bundle's comparison, on the build above, so growth is seen on the PR that causes it (#1117)
+              node tools/test-harness/bundle-budget/budget.mjs --check
               # The Mars viewer's static site holds the people's character set (/modular); without it no world
               # draws people (issue #395). Build it as the first run does, then fail if the set is missing.
               pnpm build:viewer

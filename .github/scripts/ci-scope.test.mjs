@@ -42,6 +42,12 @@ test('server changes run server shards and latency, not native', () => {
   assert.ok(!picked.includes('native'));
 });
 
+test('the types-web job, which runs the bundle comparison, covers what can move the bundle (#1117)', () => {
+  for (const f of ['apps/web/src/App.tsx', 'packages/world-compiler/src/joints.ts', 'tools/test-harness/bundle-budget/baseline.json', 'tools/test-harness/bundle-budget/budget.mjs']) assert.ok(names([f]).includes('types-web'), f);
+  assert.ok(!names(['docs/testing.md']).includes('types-web'));
+  assert.match(readFileSync(new URL('../workflows/ci.yml', import.meta.url), 'utf8'), /types-web\)[^;]*@souls\/web build\n[^;]*budget\.mjs --check/);
+});
+
 test('the soul-actions job runs on its own paths, full scope included, and on nothing else (#1061)', () => {
   for (const f of ['tools/soul-actions/shared-crew.test.mjs', 'apps/server/src/edge/ledger/together.ts', 'apps/server/test/native-owner-fixture.ts', 'packages/world-compiler/src/model.ts', 'packages/engine-mars/src/x.ts']) assert.ok(names([f]).includes('soul-actions'), f);
   for (const f of ['apps/web/src/App.tsx', 'docs/testing.md', 'tools/world-launcher/launcher.mjs', 'packages/edge-cli/x.ts']) assert.ok(!names([f]).includes('soul-actions'), f);
