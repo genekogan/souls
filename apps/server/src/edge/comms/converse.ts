@@ -181,8 +181,7 @@ export class Conversations {
   }
   private retain(b: Body, soulId: string) {
     const m = b.members.find(x => x.soulId === soulId); if (!m) return;
-    const was = b.past?.find(p => p.soulId === soulId);
-    if (was) was.toTurn = b.turns; else (b.past ??= []).push({soulId, fromTurn: m.fromTurn, toTurn: b.turns});
+    (b.past ??= []).push({soulId, fromTurn: m.fromTurn, toTurn: b.turns});   // one range per membership: nothing said while away
   }
   private leave(b: Body, soul: EdgeSoul): ConverseResult {
     if (b.members.some(m => m.soulId === soul.soulId)) {
@@ -253,10 +252,10 @@ export class Conversations {
   /** Turns a member is entitled to read: those spoken since they joined. */
   turns(soul: EdgeSoul, id: string, after: number, limit = 100) {
     const b = this.load(id);
-    const me = b?.members.find(m => m.soulId === soul.soulId), was = b?.past?.find(p => p.soulId === soul.soulId);
-    if (!b || (!me && !was)) throw new EdgeError(404, 'not-found', 'no such conversation for you');
-    const from = Math.max(after, me?.fromTurn ?? was!.fromTurn), to = me ? Number.MAX_SAFE_INTEGER : was!.toTurn;
-    const rows = this.core.db.prepare('SELECT seq, soul_id, tick, at, text FROM edge_comms_turns WHERE world_id = ? AND conversation_id = ? AND seq > ? AND seq <= ? ORDER BY seq LIMIT ?').all(this.core.worldId, id, from, to, limit) as {seq: number; soul_id: string; tick: number; at: number; text: string}[];
-    return {conversation: this.view(b, soul.soulId), turns: rows.map(r => {const historical=this.core.db.prepare('SELECT name FROM edge_comms_turn_names_v1 WHERE world_id=? AND conversation_id=? AND seq=?').get(this.core.worldId,id,r.seq) as {name:string}|undefined;return {seq:r.seq,tick:r.tick,at:r.at,from:{soulId:r.soul_id,name:historical?.name??this.core.nameOf(r.soul_id),currentName:this.core.nameOf(r.soul_id),nameSource:historical?'at-turn':'current-projection'},text:r.text};}), untrusted:true};
+    const me = b?.members.find(m => m.soulId === soul.soulId), was = b?.past?.filter(p => p.soulId === soul.soulId) ?? [];
+    if (!b || (!me && !was.length)) throw new EdgeError(404, 'not-found', 'no such conversation for you');
+    const spans = [...was.map(p => [p.fromTurn, p.toTurn] as const), ...(me ? [[me.fromTurn, Number.MAX_SAFE_INTEGER] as const] : [])];
+    const rows = this.core.db.prepare(`SELECT seq, soul_id, tick, at, text FROM edge_comms_turns WHERE world_id = ? AND conversation_id = ? AND seq > ? AND (${spans.map(() => '(seq > ? AND seq <= ?)').join(' OR ')}) ORDER BY seq LIMIT ?`).all(this.core.worldId, id, after, ...spans.flat(), limit) as {seq: number; soul_id: string; tick: number; at: number; text: string}[];
+    return {conversation: me ? this.view(b, soul.soulId) : {id: b.id, state: b.state, left: true, untrusted: true}, turns: rows.map(r => {const historical=this.core.db.prepare('SELECT name FROM edge_comms_turn_names_v1 WHERE world_id=? AND conversation_id=? AND seq=?').get(this.core.worldId,id,r.seq) as {name:string}|undefined;return {seq:r.seq,tick:r.tick,at:r.at,from:{soulId:r.soul_id,name:historical?.name??this.core.nameOf(r.soul_id),currentName:this.core.nameOf(r.soul_id),nameSource:historical?'at-turn':'current-projection'},text:r.text};}), untrusted:true};
   }
 }

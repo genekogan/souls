@@ -55,6 +55,14 @@ test('a conversation stays readable after leaving it, up to the turn you left', 
   assert.equal(after.body.turns.length, seen, 'nothing said after she left');
   assert.doesNotMatch(JSON.stringify(after.body.turns), /She has gone/);
   assert.match(JSON.stringify((await read(b)).body.turns), /She has gone/, 'those still here read on');
+  assert.equal(after.body.conversation.left, true); assert.equal(after.body.conversation.members, undefined, 'no one\'s presence now');
+  // back and gone again: what was said while she was away stays unread
+  assert.equal((await post(a, {op: 'ask', conversation})).body.accepted, true);
+  assert.equal((await post(b, {op: 'accept', conversation, soul: a.soulId})).body.accepted, true);
+  const back = await post(c, {op: 'say', conversation, text: 'Welcome back'}); assert.equal(back.body.accepted, true, JSON.stringify(back.body));
+  assert.equal((await post(a, {op: 'leave', conversation})).body.accepted, true);
+  const twice = JSON.stringify((await read(a)).body.turns);
+  assert.match(twice, /Hello back/); assert.match(twice, /Welcome back/); assert.doesNotMatch(twice, /She has gone/);
 });
 
 test('durable reads: a receipt stays readable, and a removed object answers with its last name', {timeout: 300000}, async t => {
