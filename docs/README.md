@@ -10,6 +10,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 | set direction or turn a request into work | [vision](design/vision.md), [roadmap](design/roadmap.md), [planning and intake](process/planning.md) |
 | improve agent control, diagnose delays and plan expressive collaboration | [agency quality design](design/agency-quality.md), [umbrella #623](https://github.com/genekogan/souls/issues/623) |
 | run Soul locally | [development](development.md) |
+| write the public docs served at soul.game/docs | [writing guide](site/WRITING.md); pages in [site/](site/), linted by `node tools/docs/lint.mjs` |
 | understand how it fits together | [architecture](architecture.md), then the [glossary](glossary.md) |
 | reason about contracts, performance or where a feature plugs in | [component and data-flow map](architecture/map.md) |
 | change the server API or protocol | [API](architecture/api.md), [protocol](architecture/protocol.md), [contracts](architecture/contracts.md) |
@@ -17,6 +18,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 | understand folder ownership and ordinary commands | [repository layout](development/repository-layout.md), [development](development.md) |
 | understand project reporting and visual release history | [project visibility design](design/project-visibility.md), [contribution attribution](process/contribution-attribution.md) |
 | work on Souls or the Soul client | [Souls at the edge](architecture/souls.md) |
+| plan where Souls live on a machine, Soul memory, presence and relationships | [Soul context design](design/soul-context.md), [tranche #1133](https://github.com/genekogan/souls/issues/1133) |
 | plan custom bodies and non-humanoid actions | [custom body design](design/custom-bodies.md) |
 | diagnose experiences spanning an edge agent and world | [experience report design](design/experience-reports.md) |
 | work on god mode | [god mode](architecture/godmode.md), [safety](architecture/safety.md) |
@@ -55,6 +57,7 @@ The code is the authority. When a doc and the code disagree, the code wins: fix 
 - [design/vision.md](design/vision.md): where Soul is heading
 - [design/roadmap.md](design/roadmap.md): outcome themes and unresolved product questions
 - [design/physical-coordination.md](design/physical-coordination.md): proposed shared physical activities and reusable construction
+- [design/soul-context.md](design/soul-context.md): a durable home for Souls and god seats, one memory across worlds, relationships
 - [design/project-visibility.md](design/project-visibility.md): private progress overview and public visual release history
 - [development/repository-layout.md](development/repository-layout.md): current folder responsibilities and staged first-party ownership
 - [process/planning.md](process/planning.md): intake, ready work and portable handoffs

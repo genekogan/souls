@@ -5,10 +5,11 @@ import { rewritePhasedHtml } from './src/phased-entry.ts';
 import { anonymousHello } from '../../packages/client/src/hello.ts';
 import { PWA_MANIFEST, pwaHeadTags, pwaManifest, type PwaIcons } from './src/pwa-manifest.ts';
 import { changelogHtml } from './src/changelog-page.ts';
+import { buildDocs } from './src/docs-site.ts';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { resolve as resolvePath } from 'node:path';
+import { join, relative, resolve as resolvePath } from 'node:path';
 
 // Lane L3h: a new world's /v1/world/snapshot GET leaves from index.html's head, before any chunk downloads
 // (src/snapshot-prefetch.ts); WorldEntityLayer.start takes that response. The workbench page has no world.
@@ -108,7 +109,34 @@ function changelogPage(): Plugin {
     configureServer(server) { server.watcher.add([file, journalFile]); },
     transformIndexHtml(html, ctx) {
       if (!/(^|\/)changelog\.html$/.test(ctx.path)) return;
-      return changelogHtml(html, readFileSync(file, 'utf8'), base, JSON.parse(readFileSync(journalFile, 'utf8')));
+      // #896: the page names its Markdown twin (changelog.md, emitted by docsSite) for agents
+      const page = changelogHtml(html, readFileSync(file, 'utf8'), base, JSON.parse(readFileSync(journalFile, 'utf8')));
+      return page.replace('</title>', `</title>\n    <link rel="alternate" type="text/markdown" href="${base}changelog.md" />`);
+    },
+  };
+}
+
+// #896 (#890 M3): the public docs, docs/site/**/*.md, rendered into this build beside the changelog: per page
+// docs/<slug>/index.html and its Markdown twin docs/<slug>.md (/docs: docs/index.html and docs.md), llms.txt, llms-full.txt,
+// docs/pages.json (the launcher's sitemap) and changelog.md (the changelog page's own source). Static files, no script, no
+// chunk: the viewer bundle is untouched. SIM_SITE_ORIGIN (default https://soul.game) is the origin canonical URLs and
+// llms.txt name. docs/site/WRITING.md is the writing guide, not a page.
+function docsSite(): Plugin {
+  let base = '/';
+  const dir = fileURLToPath(new URL('../../docs/site', import.meta.url)), template = fileURLToPath(new URL('./docs-template.html', import.meta.url));
+  const changelog = process.env.SIM_CHANGELOG_FILE ? resolvePath(process.env.SIM_CHANGELOG_FILE) : fileURLToPath(new URL('../../CHANGELOG.md', import.meta.url));
+  const origin = (process.env.SIM_SITE_ORIGIN ?? 'https://soul.game').replace(/\/+$/, '');
+  const files = (d: string): string[] => readdirSync(d).sort().flatMap((e) => { const f = join(d, e); return statSync(f).isDirectory() ? files(f) : f.endsWith('.md') ? [f] : []; });
+  return {
+    name: 'sim-docs-site',
+    apply: 'build',
+    configResolved(c) { base = c.base; },
+    generateBundle() {
+      const t0 = performance.now();
+      const { pages, out } = buildDocs({ files: files(dir).map((f) => relative(dir, f)), read: (r) => readFileSync(join(dir, r), 'utf8'), template: readFileSync(template, 'utf8'),
+        changelog: readFileSync(changelog, 'utf8'), base, origin });
+      for (const [fileName, source] of out) this.emitFile({ type: 'asset', fileName, source });
+      this.info(`docs: ${pages.length} pages (${pages.filter((p) => !p.stub).length} published) in ${(performance.now() - t0).toFixed(0)} ms`);
     },
   };
 }
@@ -242,7 +270,7 @@ function devProxy() {
 }
 
 export default defineConfig({
-  plugins: [snapshotPrefetch(), cdnPreconnect(), pwa(), phasedEntry(), checkChunks(), changelogPage(), react(), remoteInlineConfig()],
+  plugins: [snapshotPrefetch(), cdnPreconnect(), pwa(), phasedEntry(), checkChunks(), changelogPage(), docsSite(), react(), remoteInlineConfig()],
   define: { __BUILD__: JSON.stringify(process.env.BUILD_ID ?? 'dev'), __SIM_ARRIVAL_ENABLED__: process.env.SIM_ARRIVAL_UI_ENABLED==='1', __SIM_GOATCOUNTER__: JSON.stringify(process.env.SIM_GOATCOUNTER ?? 'simeden'),
     __SIM_ASSETS_CDN_ENABLED__: process.env.SIM_ASSETS_CDN_ENABLED==='1',
     // CDN4: god uploads via the pull-through Worker on assets.eden.art/w/* (default on; needs the CDN switch above)

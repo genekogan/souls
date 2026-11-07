@@ -136,7 +136,7 @@ function renderJournal(e: PublicJournal): string {
 export function renderChangelog(log: Changelog, { home, journal = [] }: { home: string; journal?: PublicJournal[] }): string {
   const out: string[] = [];
   out.push(`<nav class="cl-nav"><a href="${escapeHtml(home)}">← Worlds</a></nav>`);
-  out.push('<header class="cl-head"><h1>Changelog</h1><p>What changed in Sim, release by release. Newest first.</p></header>');
+  out.push('<header class="cl-head"><h1>Changelog</h1><p>What changed in Souls, release by release. Newest first.</p></header>');
   for (const r of log.releases) {
     const id = releaseId(r.version);
     out.push(`<section class="cl-release" id="${escapeHtml(id)}" aria-labelledby="${escapeHtml(id)}-h">`);

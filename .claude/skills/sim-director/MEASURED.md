@@ -44,7 +44,7 @@ Paths (all overridable): checkout `SIM_CHECKOUT` (default: this repo), state `SI
    `.e2e/playtest/casts/` unless they are meant to be committed in a PR.
 
 ## Before starting: server root
-- **Server root** (`--server-root`, default: the checkout) must be a built Sim checkout containing
+- **Server root** (`--server-root`, default: the checkout) must be a built Souls checkout containing
   `tools/god-skill/dev-world.mjs`, `apps/web/dist/index.html` and `tools/world-launcher/soul/eden.mjs`; the scripts
   refuse otherwise. Build with `pnpm install --frozen-lockfile && pnpm build`. Say which root you used.
 - Optional read-only check: `node tools/playtest/playtest.mjs preflight --server-root <root>` (usage, CLI versions,
