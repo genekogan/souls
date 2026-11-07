@@ -113,19 +113,40 @@ export function fullScope(run, jobs) {
   return JOBS.every(j => ok.has(j.name));
 }
 
-/** Folds check runs and commit statuses into one verdict over the required names (latest run per name wins). */
-export function summarizeChecks({ runs = [], statuses = [], required = DEFAULT_CHECKS }) {
-  const latest = new Map();
-  for (const r of runs) { const prev = latest.get(r.name); if (!prev || r.id > prev.id) latest.set(r.name, r); }
+/**
+ * Folds check runs and commit statuses into one verdict over the required names (latest run per name wins).
+ * `workflowRuns` (the Actions runs at the same head) drop stale results first: a check run whose workflow run was
+ * cancelled, or was replaced by a newer run of the same workflow at this head, or that predates the attempt now
+ * re-running, says nothing about the head. A name left with only stale results is pending, as is a `cancelled`
+ * conclusion; the callers' bounded waits turn a pending that never resolves into a timeout.
+ */
+export function summarizeChecks({ runs = [], statuses = [], required = DEFAULT_CHECKS, workflowRuns = [] }) {
+  const bySuite = new Map(workflowRuns.filter(w => w.check_suite_id != null).map(w => [w.check_suite_id, w]));
+  const newest = new Map(); // workflow_id -> its newest run at this head
+  for (const w of workflowRuns) { const prev = newest.get(w.workflow_id); if (!prev || w.id > prev.id) newest.set(w.workflow_id, w); }
+  const stale = r => {
+    const w = r.check_suite?.id != null && bySuite.get(r.check_suite.id);
+    if (!w) return false; // not an Actions run we know of: judged on its own
+    if (w.conclusion === 'cancelled' || newest.get(w.workflow_id) !== w) return true;
+    return w.status !== 'completed' && r.status === 'completed' && !!r.completed_at && !!w.run_started_at && r.completed_at < w.run_started_at;
+  };
+  const latest = new Map(), seen = new Set();
+  for (const r of runs) {
+    seen.add(r.name);
+    if (stale(r)) continue;
+    const prev = latest.get(r.name);
+    if (!prev || r.id > prev.id) latest.set(r.name, r);
+  }
   const status = new Map();
   for (const s of statuses) if (!status.has(s.context)) status.set(s.context, s); // API returns newest first
   const failed = [], pending = [], missing = [];
   for (const name of required) {
     const r = latest.get(name), s = status.get(name);
     if (r) {
-      if (r.status !== 'completed') pending.push(name);
+      if (r.status !== 'completed' || r.conclusion === 'cancelled') pending.push(name);
       else if (!['success', 'neutral', 'skipped'].includes(r.conclusion)) failed.push(`${name} (${r.conclusion})`);
-    } else if (s) {
+    } else if (seen.has(name)) pending.push(name); // only stale runs so far: the replacing run has not reported it yet
+    else if (s) {
       if (s.state === 'pending') pending.push(name);
       else if (s.state !== 'success') failed.push(`${name} (${s.state})`);
     } else missing.push(name);
@@ -146,6 +167,15 @@ const ghAll = path => gh(path, '--paginate', '--slurp').flat();
 
 const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 function comment(repo, pr, body) { ghRaw([`repos/${repo}/issues/${pr}/comments`, '--input', '-'], JSON.stringify({ body })); }
+
+/** What summarizeChecks reads for one head: its check runs, commit statuses and the Actions runs behind them. */
+export function readChecks(api, repo, sha) {
+  return {
+    runs: api.ghAll(`repos/${repo}/commits/${sha}/check-runs?per_page=100`).flatMap(p => p.check_runs ?? p),
+    statuses: api.ghAll(`repos/${repo}/commits/${sha}/statuses?per_page=100`),
+    workflowRuns: api.ghAll(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`).flatMap(p => p.workflow_runs ?? p),
+  };
+}
 
 export function next({ repo, maintainer, notifyIssue, api = { gh, ghAll, comment } }) {
   const repoInfo = api.gh(`repos/${repo}`);
@@ -190,11 +220,7 @@ function pickMode({ repo, pr, tier, files, defaultBranch, notifyIssue, api }) {
       .filter(r => ['push', 'workflow_dispatch'].includes(r.event));
     ci = mainCiState(runs, r => fullScope(r, r.event === 'workflow_dispatch' ? [] : api.ghAll(`repos/${repo}/actions/runs/${r.id}/jobs?per_page=100`).flatMap(p => p.jobs ?? p)));
   } catch { ci = { conclusion: 'unreadable', since: 'unreadable' }; }
-  const readHead = () => summarizeChecks({
-    runs: api.ghAll(`repos/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`).flatMap(p => p.check_runs ?? p),
-    statuses: api.ghAll(`repos/${repo}/commits/${pr.head.sha}/statuses?per_page=100`),
-    required: parseChecks(process.env.CHECKS),
-  }).state;
+  const readHead = () => summarizeChecks({ ...readChecks(api, repo, pr.head.sha), required: parseChecks(process.env.CHECKS) }).state;
   let headChecks = readHead();
   // Pending (not failed) head checks: wait, bounded, before choosing; on timeout pending is strict, as before.
   const now = api.now ?? Date.now, deadline = now() + HEAD_WAIT_MS;
@@ -225,9 +251,7 @@ export async function wait({ repo, sha, required, timeoutMin = 60, pollSec = 20,
   const deadline = now() + timeoutMin * 60_000;
   let s, failedBefore = null;
   for (;;) {
-    const runs = api.ghAll(`repos/${repo}/commits/${sha}/check-runs?per_page=100`).flatMap(p => p.check_runs ?? p);
-    const statuses = api.ghAll(`repos/${repo}/commits/${sha}/statuses?per_page=100`);
-    s = summarizeChecks({ runs, statuses, required });
+    s = summarizeChecks({ ...readChecks(api, repo, sha), required });
     if (s.state === 'pass') return { result: 'pass', ...s };
     // A failure counts once it is seen on two polls in a row: an approval re-runs `proof-ok` (proof-check.yml) at the
     // moment it kicks the train, so the first poll can still see the failed run from before the approval.

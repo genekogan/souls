@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { toyFactory } from '@sim/engine-toy';
-import { marsFactory } from '@sim/engine-mars';
-import { BASE_DECK, BASE_MANNERS, cardHash, kernelHash } from '@sim/kernel';
+import { toyFactory } from '@souls/engine-toy';
+import { marsFactory } from '@souls/engine-mars';
+import { BASE_DECK, BASE_MANNERS, cardHash, kernelHash } from '@souls/kernel';
 import { Db } from './db.ts';
 import { WorldHost, replayFromGenesis } from './world.ts';
 import { optionsFor, frontier } from './deck.ts';
@@ -13,7 +13,7 @@ import { Brain } from './brain.ts';
 import { config } from './config.ts';
 
 function start(seed: string, factory = toyFactory) {
-  const db = new Db(join(mkdtempSync(join(tmpdir(), 'sim-regression-')), 'test.db'));
+  const db = new Db(join(mkdtempSync(join(tmpdir(), 'souls-regression-')), 'test.db'));
   const host = new WorldHost(db, factory, seed, 1e9); host.boot();
   for (const name of ['A', 'B', 'C']) void host.enqueue('birth', 'test', { soulId: `s_${name}`, entityId: `h_${name}`, name, description: 'test', owner: 'test-owner' });
   host.tickOnce();

@@ -20,6 +20,7 @@ import { HUMAN_PROFILE } from '../spatial/types.ts';
 import type { Spatial } from '../spatial/service.ts';
 import { clearanceAt } from '../spatial/grid.ts';
 import { humanRadius } from '../bodies/humanoid.ts';
+import { staticStepClear } from '../runtime/static-step.ts';
 /** Clear ground left between a body and a long thing it puts down (covers the grid's rasterising). */
 const PUT_CLEAR_M = 0.15;
 /** Built-in catalogue items keep the historical 0.55 m exactly (their logged puts replay unchanged). */
@@ -28,6 +29,7 @@ import { checkStations, childrenState, walkCrew, type Children } from '../constr
 import { holdingDiagnostic } from '../construction/rules.ts';
 import { SIT_TRANSITION } from '../social/actions.ts';
 import { watering } from './watering.ts';
+import { repair } from './repair.ts';
 import { letGo } from './let-go.ts';
 import { cupAction } from './cup.ts';
 import {
@@ -35,7 +37,7 @@ import {
   type BodyFrame, type Hand,
 } from './body.ts';
 import {
-  BODY_REACH, carryPoint, fitsInside, fixtureLocal, fixturePoint, followHand, graspPoint, heldBy, heldYaw, inHand, isItem, itemReachSeconds, placeOnGround, placeOnSlot, putInHand,
+  BODY_REACH, carryPoint, fitsInside, fixtureLocal, fixturePoint, followHand, graspPoint, heldBy, heldYaw, publishHeldItems, inHand, isItem, itemReachSeconds, placeOnGround, placeOnSlot, putInHand,
   reachOf, reachStation, slotOccupant, storedIn, surfaceSlot, whereIs, type Station, type SurfaceSlot,
 } from './model.ts';
 
@@ -127,9 +129,7 @@ export const holdItems: ActionDef<{ actor: string }, null, HoldExec> = {
     const held = heldBy(rt.world, ex.actor);
     // Reuse the custody lookup already required by the holder. No new world scan,
     // and old definitions/takes retain their original state bytes.
-    const presented = held.filter(x => x.item.tags?.includes('entity-world-item-pose'));
-    if (presented.length) a.human.heldItemsV1 = Object.fromEntries(presented.map(x => [x.hand, x.item.id]));
-    else delete a.human.heldItemsV1;
+    publishHeldItems(a, held);
     // a construction grip (carry / lift / hand_up) owns human.hands while it lasts: leave them alone
     for (const h of a.human.grip ? [] : HANDS) {
       if (driven(rt, ex.actor, h)) continue;
@@ -366,7 +366,7 @@ function transfer(mode: 'take' | 'put', verb: string, description: string, schem
       }
       if(ex.phase==='cancel-withdraw'){
         const R=ex.reachTicks??ticks(REACH_TIME);ex.t++;const q=handPath(ex,smooth(ex.t/R));setHand(a,ex.hand,q);a.human!.activity='reach';
-        if(ex.lean){const w=1-smooth(ex.t/R),c=ex.lean.cancelFrom??ex.lean.in,o=ex.lean.out;a.pose.p=[o[0]+(c[0]-o[0])*w,a.pose.p[1],o[1]+(c[1]-o[1])*w];}
+        if(ex.lean){const w=1-smooth(ex.t/R),c=ex.lean.cancelFrom??ex.lean.in,o=ex.lean.out,to:[number,number]=[o[0]+(c[0]-o[0])*w,o[1]+(c[1]-o[1])*w];if(staticStepClear(rt,a,to))a.pose.p=[to[0],a.pose.p[1],to[1]];}
         if(inHand(rt.world,ex.actor,ex.hand))followHand(it,q,heldYaw(it,a));
         if(ex.t<R)return{status:'running',phase:'cancel-withdraw'};
         ex.phase='recover';ex.t=0;a.human!.itemTransferV1!.releaseTick=rt.tick;return{status:'running',phase:'recover'};
@@ -424,7 +424,7 @@ function transfer(mode: 'take' | 'put', verb: string, description: string, schem
       const reachTicks = ex.reachTicks ?? ticks(itemReachSeconds(it) ?? REACH_TIME);
       const k = smooth(ex.t / reachTicks);
       // entry 42: the body steps half a step in as the hand goes in, and back as it comes out
-      if (ex.lean) { const [o, i] = [ex.lean.out, ex.lean.in], w = ex.phase === 'reach' ? k : 1 - k; a.pose.p = [o[0] + (i[0] - o[0]) * w, a.pose.p[1], o[1] + (i[1] - o[1]) * w]; }
+      if (ex.lean) { const [o, i] = [ex.lean.out, ex.lean.in], w = ex.phase === 'reach' ? k : 1 - k, to: [number, number] = [o[0] + (i[0] - o[0]) * w, o[1] + (i[1] - o[1]) * w]; if (staticStepClear(rt, a, to)) a.pose.p = [to[0], a.pose.p[1], to[1]]; }
       const q = handPath(ex, k);
       setHand(a, ex.hand, q);
       const holding = (ex.mode === 'take') === (ex.phase === 'withdraw');
@@ -791,4 +791,4 @@ export const eat: ActionDef<EatParams, { bowlHand: Hand }, EatExec> = {
   resumable: true,
 };
 
-export const ITEM_ACTIONS: ActionDef[] = [takeItem, putItem, serve, eat, holdItems, letGo as unknown as ActionDef, watering as unknown as ActionDef, handOver as ActionDef, cupAction as unknown as ActionDef];
+export const ITEM_ACTIONS: ActionDef[] = [takeItem, putItem, serve, eat, holdItems, letGo as unknown as ActionDef, repair as unknown as ActionDef, watering as unknown as ActionDef, handOver as ActionDef, cupAction as unknown as ActionDef];

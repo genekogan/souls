@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { registerHooks } from 'node:module';
-import { WorldModel, coreLibrary, type Entity } from '@sim/world-compiler';
+import { WorldModel, coreLibrary, type Entity } from '@souls/world-compiler';
 import { StreamRing } from './StreamRing.ts';
 
 type Drawn = { obj: THREE.Object3D; world: boolean; inst?: string; frozen?: unknown };

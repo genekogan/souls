@@ -1,4 +1,4 @@
-import {hashOf,type EngineFactory,type EngineSnapshot} from '@sim/engine-contract';
+import {hashOf,type EngineFactory,type EngineSnapshot} from '@souls/engine-contract';
 import {decodeSnapshot} from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import {loadMars} from './load.ts';
 import {marsFactory,MarsEngine,type MarsWorldConfig} from './engine.ts';

@@ -1,5 +1,5 @@
 import type { MarsEngine } from './engine.ts';
-import { humanBirthRequestSchema, type Engine, type EngineFactory, type HumanBirthProbe } from '@sim/engine-contract';
+import { humanBirthRequestSchema, type Engine, type EngineFactory, type HumanBirthProbe } from '@souls/engine-contract';
 
 /** Run the existing native placer in an exact detached checkpoint. This never
  * accepts a birth, advances live time, reserves capacity or repairs old logs.

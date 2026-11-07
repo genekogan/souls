@@ -5,7 +5,7 @@
 // and maker, the soundscape logs which sources play where, and the mute button survives a reload.
 //
 //   node tools/art/e2e-art.mjs --port 6031 --out .local/artsound/e2e [--media <dir>] [--keep]
-// Needs apps/web/dist (pnpm --filter @sim/web build). Uses only its own port and data; stops only the server it started.
+// Needs apps/web/dist (pnpm --filter @souls/web build). Uses only its own port and data; stops only the server it started.
 import { openAudio, setEffects, setMusic } from '../browser/world-controls.mjs';
 import { spawn, execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -83,10 +83,10 @@ try {
       for (const dpr of [2, 1]) {
         const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
         const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: dpr });
-        const look = (eye, at) => page.evaluate(([e, a]) => { const s = window.__simEntity; s.controls.target.set(...a); s.camera.position.set(...e); s.controls.update?.(); return true; }, [eye, at]);
+        const look = (eye, at) => page.evaluate(([e, a]) => { const s = window.__soulsEntity; s.controls.target.set(...a); s.camera.position.set(...e); s.controls.update?.(); return true; }, [eye, at]);
         const shot = async (name) => { const f = resolve(out, `${name}-dpr${dpr}.png`); await page.screenshot({ path: f }); report.shots.push(f); };
         await page.goto(`${base}?dev=1`, { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => window.__simEntity?.layer?.active && window.__edenArt?.state().faces.length >= 4, null, { timeout: 180_000 });
+        await page.waitForFunction(() => window.__soulsEntity?.layer?.active && window.__edenArt?.state().faces.length >= 4, null, { timeout: 180_000 });
         await page.waitForTimeout(4000);
         await page.mouse.click(640, 700);   // a real gesture: unlocks audio
         await page.keyboard.down('w'); await page.waitForTimeout(250); await page.keyboard.up('w');   // deliberate movement takes the camera over from Broadcast
@@ -97,12 +97,12 @@ try {
         if (dpr === 2) report.videos = st?.videos;
         await shot('gallery');
         // hover the video in slot 1 with the real mouse: find where it is on screen
-        const pt = await page.evaluate(() => { const s = window.__simEntity; let p = null; s.layer.group.traverse((o) => { if (o.userData?.art?.slot === 1 && o.userData.art.kind === 'video' && !p) { const v = o.getWorldPosition(new o.position.constructor()); v.project(s.camera); const r = s.renderer.domElement.getBoundingClientRect(); p = { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } }); return p; });
+        const pt = await page.evaluate(() => { const s = window.__soulsEntity; let p = null; s.layer.group.traverse((o) => { if (o.userData?.art?.slot === 1 && o.userData.art.kind === 'video' && !p) { const v = o.getWorldPosition(new o.position.constructor()); v.project(s.camera); const r = s.renderer.domElement.getBoundingClientRect(); p = { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } }); return p; });
         if (pt) { await page.mouse.move(pt.x - 30, pt.y - 10); await page.mouse.move(pt.x, pt.y, { steps: 6 }); }
         await page.waitForTimeout(600);
         await step(`dpr ${dpr}: hovering a piece shows its title and maker`, () => page.evaluate(() => ({ hover: window.__edenArt.state().hover?.text ?? null, tip: document.querySelector('.eden-art-tooltip')?.hidden === false ? document.querySelector('.eden-art-tooltip').textContent : null })), (r) => /Game of Life — by the world's creator/.test(r.tip ?? ''));
         await shot('hover-video');
-        const pt3 = await page.evaluate(() => { const s = window.__simEntity; let p = null; s.layer.group.traverse((o) => { if (o.userData?.art?.slot === 2 && !p) { const v = o.getWorldPosition(new o.position.constructor()); v.project(s.camera); const r = s.renderer.domElement.getBoundingClientRect(); p = { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } }); return p; });
+        const pt3 = await page.evaluate(() => { const s = window.__soulsEntity; let p = null; s.layer.group.traverse((o) => { if (o.userData?.art?.slot === 2 && !p) { const v = o.getWorldPosition(new o.position.constructor()); v.project(s.camera); const r = s.renderer.domElement.getBoundingClientRect(); p = { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } }); return p; });
         if (pt3) await page.mouse.move(pt3.x, pt3.y, { steps: 6 });
         await page.waitForTimeout(600);
         await step(`dpr ${dpr}: the resident's piece names her`, () => page.evaluate(() => document.querySelector('.eden-art-tooltip')?.textContent ?? null), (t) => /Mandelbrot Zoom — by Ana \(a resident\)/.test(t ?? ''));

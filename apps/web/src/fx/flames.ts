@@ -5,7 +5,7 @@
 // (`userData.flames`); `mountFlames` puts one fire on each cluster. Its static cones stay as the far stand-in:
 // within reach the fire replaces them, nearer still it adds embers and smoke. motion.ts ticks `userData.fx`.
 import * as THREE from 'three';
-import type { StoredDef } from '@sim/world-compiler';
+import type { StoredDef } from '@souls/world-compiler';
 import { createFire, seedOf, type Fire, type FireKind } from './fire.ts';
 import { registerFx } from './debug.ts';
 
@@ -124,7 +124,7 @@ export function mountFlames(obj: THREE.Object3D, id: string, catchUp = false, wi
   const t0 = Date.now() / 1000;
   if (catchUp) for (const f of fires) { f.fire.update(0, 0.12); for (const s of f.standIns) s.visible = false; }
   obj.userData.fx = (t: number) => {
-    phone ??= (globalThis as { __simQuality?: { tier?: string } }).__simQuality?.tier === 'phone';
+    phone ??= (globalThis as { __soulsQuality?: { tier?: string } }).__soulsQuality?.tier === 'phone';
     const time = reduced?.matches ? 7.3 : t;
     const k = catchUp && !reduced?.matches ? Math.min(1, Math.max(0, (t - t0) / IGNITE)) : 1, strength = 0.12 + 0.88 * k * k * (3 - 2 * k);
     for (const f of fires) {

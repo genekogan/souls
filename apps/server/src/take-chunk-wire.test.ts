@@ -8,10 +8,10 @@ import {brotliDecompressSync} from 'node:zlib';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
 import WebSocket from 'ws';
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {PROTO,TAKE_ENTITIES_WIRE_V1,TAKE_BOUNDARY_WIRE_V1,TAKE_CHUNKS_WIRE_V1,TakeChunksEncoderV1,hydrateTakeChunksV1,hydrateTakeEntitiesV1,hydrateTakeBoundaryWireV1,
- type TakeEntitiesStateV1,type TakeChunksStateV1} from '@sim/protocol';
-import {Connection} from '@sim/client';
+ type TakeEntitiesStateV1,type TakeChunksStateV1} from '@souls/protocol';
+import {Connection} from '@souls/client';
 import {fixture} from '../test/native-owner-fixture.ts';
 import {recordedToyFactory} from './toy-takes.ts';
 import {Auth} from './auth.ts';

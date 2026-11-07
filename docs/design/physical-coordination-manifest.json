@@ -1,0 +1,111 @@
+{
+  "schema": "physical-coordination-manifest/1",
+  "issue": "#680",
+  "purpose": "PC01: the finite, source-pinned acceptance inventory for #560. Every row names its current source, primitives, assets, evidence and the PC issue that owns its remaining work. A row's evidence is historical or fixture-level unless it says otherwise; nothing here is a fresh real-speed current-owner proof. Per-scenario Lab proof grades are not repeated: see mars/viewer/deploy/scenario-coverage.json.",
+  "provenance": {
+    "pinnedSource": "main df69a3ca",
+    "researchBaselines": [
+      {"ref": "5eebdc33", "what": "release 4.09, the November 1 research baseline", "reachable": true},
+      {"ref": "fa695018", "what": "release 4.12, planning intake", "reachable": true},
+      {"ref": "ecb63f57", "what": "main at planning intake", "reachable": true}
+    ],
+    "inTreeResearch": [
+      "docs/design/physical-coordination.md",
+      "docs/mars/construction.md",
+      "docs/mars/carry.md",
+      "mars/viewer/deploy/scenario-coverage.json",
+      "mars/docs/engineering/evidence.json"
+    ],
+    "nativeCatalogAtPin": {"definitions": 155, "bundles": 16, "source": "mars/viewer/engine/world/catalog.ts"},
+    "missingSource": [
+      {"ref": "baf0ccc", "what": "crew-stair-carry", "blocks": ["#714", "#727"]},
+      {"ref": "c403d81", "what": "crew-stair-obstacles", "blocks": ["#714", "#686"]},
+      {"ref": "e9b6bc8", "what": "carry-height-band", "blocks": ["#685", "#714"]},
+      {"ref": "4abb117", "what": "staged-support (includes a revert to explain before reuse)", "blocks": ["#692", "#693"]},
+      {"ref": "5dfe067", "what": "support-transfer-articulation", "blocks": ["#687", "#692"]},
+      {"ref": "d81d4d7", "what": "top-beam-access", "blocks": ["#693"]},
+      {"ref": "9531a3b", "what": "forklift-traffic-recovery", "blocks": ["#715"]},
+      {"ref": "ec3aa6f", "what": "wave2-consolidation (had failures; discovery source only, never a wholesale upgrade)", "blocks": ["#730"]}
+    ],
+    "missingSourceNote": "These short refs are from the original engine lineage and are not objects in this repository. Their reports live only in the private research archive. A PC that needs one starts from the current tree and the in-tree tests below, and says in its PR whether the missing candidate was needed. A follow-up issue does not make up for a missing behaviour."
+  },
+  "pcs": {
+    "PC01": "#680", "PC02": "#681", "PC03": "#682", "PC04": "#683", "PC05": "#684", "PC06": "#685", "PC07": "#686", "PC08": "#687",
+    "PC09": "#688", "PC10": "#689", "PC11": "#690", "PC12": "#691", "PC13": "#692", "PC14": "#693", "PC15": "#694", "PC16": "#695",
+    "PC17": "#696", "PC18": "#697", "PC19": "#698", "PC20": "#699", "PC21": "#700", "PC22": "#701", "PC23": "#702", "PC24": "#703",
+    "PC25": "#704", "PC26": "#705", "PC27": "#706", "PC28": "#707", "PC29": "#708", "PC30": "#709", "PC31": "#710", "PC32": "#711",
+    "PC33": "#712", "PC34": "#713", "PC35": "#714", "PC36": "#715", "PC37": "#716", "PC38": "#718", "PC39": "#720", "PC40": "#721",
+    "PC41": "#724", "PC42": "#725", "PC43": "#726", "PC44": "#727", "PC45": "#728", "PC46": "#729", "PC47": "#730", "PC48": "#731"
+  },
+  "classes": {
+    "runnable": "the engine executes it to an outcome the scenario checks",
+    "refusal-probe": "its correct result is a named refusal or no motion; keep it a refusal",
+    "showcase": "visual or renderer-only; no physical journey to recover"
+  },
+  "lab": [
+    {"ids": ["eden-camp-snapshot", "littlemartians-snapshot", "greenfield-snapshot"], "class": "showcase", "source": ["mars/viewer/app/lab/world-snapshots.ts"], "primitives": [], "evidence": ["scenario-coverage.json: successor-focused-browser"], "pc": "#730", "note": "world snapshots; geometry reference only"},
+    {"ids": ["living-day-4", "living-day-studio", "library-reading", "computer-workshop", "garden-circuit", "communal-supper", "garden-afternoon", "garden-afternoon-rotated", "seed-planting", "seed-planting-rotated", "reading-circle", "reading-circle-rotated", "gallery-tour", "gallery-tour-short", "table-cleanup", "table-cleanup-rotated", "creative-afternoon", "art-sharing", "drawing-work", "garden-care"], "class": "runnable", "source": ["mars/viewer/app/lab/living-day.ts", "mars/viewer/app/lab/living-object-scenarios.ts"], "primitives": ["walk_to", "slots", "item custody"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play (two local-candidate)"], "pc": "#730", "note": "living/prepared-day examples: map each to a shipped Soul action or a voluntary adaptation; not physical collaboration"},
+    {"ids": ["room-preparation"], "class": "runnable", "source": ["mars/viewer/app/lab/living-object-scenarios.ts"], "primitives": ["move_fixture"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play"], "pc": "#708", "note": "room setup; solo fixture moves, the second supported setup reuses its recipes"},
+    {"ids": ["group-warmup"], "class": "runnable", "source": ["mars/viewer/app/lab/living-object-scenarios.ts"], "primitives": ["shared clock", "gestures"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play"], "pc": "#704"},
+    {"ids": ["open-jam", "music-dance", "computer-music"], "class": "runnable", "source": ["mars/viewer/app/lab/living-object-scenarios.ts", "mars/viewer/app/lab/music.ts"], "primitives": ["music clock", "dance-in-place"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play"], "pc": "#703", "note": "solo dance-in-place exists; partner dance is #701 and not inherited from these"},
+    {"ids": ["classroom-4", "classroom-8", "work-break-4", "work-break-8", "prepared-day-4", "prepared-day-8", "prepared-day-studio", "quiet-reading", "tabletop-chess", "design-studio"], "class": "runnable", "source": ["mars/viewer/app/lab/classroom.ts", "mars/viewer/app/lab/work-break.ts", "mars/viewer/app/lab/prepared-day.ts", "mars/viewer/app/lab/reading.ts", "mars/viewer/app/lab/chess.ts", "mars/viewer/app/lab/design-studio.ts"], "primitives": ["walk_to", "slots"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play"], "pc": "#730"},
+    {"ids": ["ground-sleep", "ground-sleep-rotated"], "class": "runnable", "source": ["mars/viewer/app/lab/sleep.ts"], "primitives": ["sleep-mat"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play"], "pc": "#730"},
+    {"ids": ["cold-preparation", "cold-preparation-rotated"], "class": "runnable", "source": ["mars/viewer/app/lab/preparation.ts"], "primitives": ["preparation recipe"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play"], "pc": "#708"},
+    {"ids": ["wall", "u-trap", "narrow-passage", "stairs", "deck-to-ground", "trio", "construction"], "class": "runnable", "source": ["mars/viewer/app/lab/scenarios.ts"], "primitives": ["walk_to", "replan on navigation epoch"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play", "mars/viewer/engine/test/walk.test.ts"], "pc": "#686", "note": "navigation/obstruction probes; a carried load must keep these guarantees for the whole formation"},
+    {"ids": ["incomplete-stairs"], "class": "refusal-probe", "source": ["mars/viewer/app/lab/scenarios.ts"], "primitives": ["route.link-unusable"], "evidence": ["scenario-coverage.json: recorded-exact-diagnostic"], "pc": "#695", "note": "must stay a refusal that names the stairs, with no movement"},
+    {"ids": ["stress-30"], "class": "runnable", "source": ["mars/viewer/app/lab/scenarios.ts"], "primitives": ["walk_to"], "evidence": ["scenario-coverage.json: recorded-ui-play-bounded-liveness"], "pc": "#729", "note": "stress(n) family; bounded liveness only, not indefinite fairness"},
+    {"ids": ["build-bay"], "class": "runnable", "source": ["mars/viewer/app/lab/build-bay.ts", "mars/viewer/engine/scenarios/build-bay.ts", "mars/viewer/engine/scenarios/build-bay-v2.ts", "mars/viewer/engine/scenarios/build-bay-v3.ts"], "primitives": ["carry", "raise_upright", "connect_beam", "release_support", "install_joist", "install_plywood", "install_stair_flight", "install_tread"], "native": ["upright-12ft", "beam-9ft", "plywood-4x8", "stair-flight-10", "stair-tread"], "evidence": ["mars/viewer/engine/test/build-bay.test.ts", "mars/viewer/engine/test/build-bay-v2.test.ts", "mars/viewer/engine/test/build-bay-v3.test.ts", "scenario-coverage.json: recorded-actual-ui-play"], "pc": "#696", "note": "six builders, centrally scripted crew, 43/43 historical steps at 8x; stairs began pre-delivered. Not consent or real-speed proof"},
+    {"ids": ["hand-up"], "class": "runnable", "source": ["mars/viewer/app/lab/hand-up.ts", "mars/viewer/engine/construction/handup.ts"], "primitives": ["hand_up", "forklift_present"], "evidence": ["mars/viewer/engine/test/handup.test.ts", "mars/viewer/engine/test/handup-rules.test.ts"], "pc": "#712"},
+    {"ids": ["prone"], "class": "runnable", "source": ["mars/viewer/app/lab/prone.ts"], "primitives": ["hand_up prone receive"], "evidence": ["mars/viewer/engine/test/handup-prone.test.ts"], "pc": "#713"},
+    {"ids": ["prone-forks"], "class": "runnable", "source": ["mars/viewer/app/lab/prone.ts", "mars/viewer/engine/vehicles/forklift.ts"], "primitives": ["forklift_pick", "forklift_present", "hand_up prone receive"], "evidence": ["mars/viewer/engine/test/handup-prone.test.ts", "mars/viewer/engine/test/forklift.test.ts"], "pc": "#715"},
+    {"ids": ["campfire-evening"], "class": "runnable", "source": ["mars/viewer/app/lab/campfire-evening.ts"], "primitives": ["fire-circle slots"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play (with provoked expected failures)"], "pc": "#730"},
+    {"ids": ["meal"], "class": "runnable", "source": ["mars/viewer/app/lab/meal.ts"], "primitives": ["seat", "item custody"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play"], "pc": "#730"},
+    {"ids": ["body"], "class": "showcase", "source": ["mars/viewer/app/lab/body.ts"], "primitives": [], "evidence": ["scenario-coverage.json: recorded-still-probe"], "pc": "#730", "note": "body-model still probe"},
+    {"ids": ["year-2020", "year-2021", "year-2022", "year-2023", "year-2024", "year-2025", "year-2026"], "class": "runnable", "source": ["mars/viewer/app/lab/year-walkabout.ts"], "primitives": ["walk_to"], "evidence": ["scenario-coverage.json: recorded-actual-ui-play"], "pc": "#730", "note": "year walkabouts; preserve geometry and traversal"},
+    {"ids": ["year-build-2022"], "class": "runnable", "source": ["mars/viewer/app/lab/year-build.ts", "mars/viewer/engine/scenarios/year-build.ts", "mars/viewer/engine/campus/sequence.ts"], "primitives": ["take_from_bundle", "raise_upright", "hold_frame", "hang_beam", "pass_up", "climb_stance"], "native": ["stack-upright-16ft-kit", "stack-beam-12ft"], "evidence": ["mars/viewer/engine/test/year-build.test.ts", "scenario-coverage.json: recorded-actual-ui-play-supported-layout"], "pc": "#721", "note": "has an admission refusal; first-bay skeleton, 201 historical steps / 24 parts"},
+    {"ids": ["year-build-2022-house"], "class": "runnable", "source": ["mars/viewer/app/lab/year-build.ts", "mars/viewer/engine/scenarios/year-build.ts"], "primitives": ["take_from_bundle", "raise_upright", "hold_frame", "hang_beam", "pass_up", "climb_stance"], "evidence": ["mars/viewer/engine/test/year-build.test.ts", "scenario-coverage.json: recorded-actual-ui-play-supported-layout"], "pc": "#724", "note": "east-house skeleton, 555 historical steps / 66 parts; research checked preflight only"},
+    {"ids": ["solar-paint"], "class": "showcase", "source": ["mars/viewer/app/lab/solar-paint.ts", "mars/viewer/engine/work/paint.ts"], "primitives": ["paint"], "evidence": ["mars/viewer/engine/test/paint.test.ts", "scenario-coverage.json: recorded-actual-ui-play"], "pc": "#720", "note": "renderer showcase, not a solar installation journey"}
+  ],
+  "specialRoutes": [
+    {"id": "raise-cancel-proof", "class": "runnable", "source": ["mars/viewer/app/lab/raise-cancel.ts"], "primitives": ["raise_upright", "raise cancel to supported lying"], "evidence": ["mars/viewer/engine/test/raise-cancel.test.ts"], "pc": "#692", "note": "hidden from the selector on purpose (scenarioByName only), so probe baselines stay unchanged"}
+  ],
+  "native": [
+    {"id": "carry-formation", "class": "runnable", "source": ["mars/viewer/engine/carry/formation.ts", "mars/viewer/engine/carry/planner.ts", "mars/viewer/engine/carry/sweep.ts"], "primitives": ["carry (crew formation)", "whole-load sweep"], "evidence": ["mars/viewer/engine/test/carry.test.ts"], "pc": "#685", "note": "native crew carry; reuse for the two-Soul beam carry. Crew is chosen centrally, so consent is not established"},
+    {"id": "carry-stairs", "class": "runnable", "source": ["mars/viewer/engine/carry/climb.ts"], "primitives": ["carry on stairs", "climb-wait", "carry.stairs-too-narrow"], "evidence": ["mars/viewer/engine/test/carry-stairs.test.ts"], "pc": "#714", "note": "solo stair carry and its refusals; crew stair carry depends on missing source baf0ccc/c403d81"},
+    {"id": "frame-raise-connect-release", "class": "runnable", "source": ["mars/viewer/engine/construction/raise.ts", "mars/viewer/engine/construction/beam.ts", "mars/viewer/engine/construction/frame.ts"], "primitives": ["raise_upright", "connect_beam", "release_support", "climb_frame", "beam_walk"], "evidence": ["mars/viewer/engine/test/frame.test.ts", "mars/viewer/engine/test/construction.test.ts"], "pc": "#693"},
+    {"id": "deck-and-stairs", "class": "runnable", "source": ["mars/viewer/engine/construction/deck.ts", "mars/viewer/engine/construction/stairs.ts", "mars/viewer/engine/construction/contributor.ts"], "primitives": ["install_joist", "install_plywood", "install_stair_flight", "install_tread"], "evidence": ["mars/viewer/engine/test/progressive.test.ts"], "pc": "#694", "note": "stairs and navigation truth are #695"},
+    {"id": "disassembly", "class": "runnable", "source": ["mars/viewer/engine/construction/disassembly.ts"], "primitives": ["remove_tread", "remove_stair_flight", "remove_plywood", "remove_joist", "hold_upright", "disconnect_beam", "lower_upright"], "evidence": ["none: no engine test exercises these verbs directly; apps/server/src/selected-native-lifecycle.test.ts only configures them"], "pc": "#698", "status": "unqualified"},
+    {"id": "roof-framing", "class": "runnable", "source": ["mars/viewer/engine/construction/framing.ts", "mars/viewer/engine/world/catalog-framing.ts"], "primitives": ["install_top_plate", "install_rafter", "install_blocking"], "evidence": ["mars/viewer/engine/test/framing.test.ts"], "pc": "#718"},
+    {"id": "solar-install", "class": "runnable", "source": ["mars/viewer/engine/construction/solar.ts", "mars/viewer/engine/world/catalog-solar.ts"], "primitives": ["install_rail", "install_panel", "place_equipment"], "evidence": ["mars/viewer/engine/test/solar.test.ts"], "pc": "#720", "note": "removal of mounts/panels has no engine verb yet"},
+    {"id": "stock-and-cutting", "class": "runnable", "source": ["mars/viewer/engine/construction/bundle.ts", "mars/viewer/engine/construction/cut.ts", "mars/viewer/engine/world/catalog-stock.ts"], "primitives": ["take_from_bundle", "cut", "stack_offcut"], "evidence": ["mars/viewer/engine/test/year-stock.test.ts"], "pc": "#711", "note": "a cutting station, not a two-person saw (#705)"},
+    {"id": "walls", "class": "runnable", "source": ["mars/viewer/engine/construction/wall.ts", "mars/viewer/engine/construction/moves-b.ts"], "primitives": ["install_wall"], "evidence": ["mars/viewer/engine/test/year-build-b.test.ts"], "pc": "#716"},
+    {"id": "campus-flagship", "class": "runnable", "source": ["mars/viewer/engine/campus/assembly.ts", "mars/viewer/engine/campus/sequence.ts"], "primitives": ["generated build"], "evidence": ["mars/viewer/engine/test/campus-full.test.ts", "mars/viewer/engine/test/campus-flagship.test.ts"], "pc": "#699"},
+    {"id": "east-house-phase-ab", "class": "runnable", "source": ["mars/viewer/engine/campus/sequence-b.ts", "mars/viewer/engine/campus/parts-b.ts", "mars/viewer/engine/world/catalog-phase-b.ts"], "primitives": ["generated build A+B"], "evidence": ["mars/viewer/engine/test/year-build-b.test.ts (pinned A+B; plan and section-boundary tests are todo: 2022 reconciliation W51)"], "pc": "#725", "status": "unresolved", "note": "historical 1,552 steps / 66 skeleton / 145 phase-B parts. Unplaced parts (roof, stair, wall, solar omissions) are reported by the plan test and stay omissions, not green"},
+    {"id": "chiba-phase-ab", "class": "runnable", "source": ["mars/viewer/engine/campus/sequence-b.ts"], "primitives": ["generated build A+B"], "evidence": ["mars/viewer/engine/test/year-build-houses.test.ts (A+B todo: content parked after the W51 re-seed; pin is from the pre-W51 scene)"], "pc": "#726", "status": "unresolved"},
+    {"id": "kitchen-phase-ab", "class": "runnable", "source": ["mars/viewer/engine/campus/sequence-b.ts"], "primitives": ["carry", "make-ways"], "evidence": ["mars/viewer/engine/test/year-build-houses.test.ts FULL_RED.kitchen: S s0995-carry, carry.path-occupied without end (idle m4 on the stair foot has no room to step aside)"], "pc": "#727", "status": "unresolved", "note": "the historical kitchen stair-carry failure"},
+    {"id": "west-house-phase-ab", "class": "runnable", "source": ["mars/viewer/engine/campus/sequence-b.ts"], "primitives": ["carry gather"], "evidence": ["mars/viewer/engine/test/year-build-houses.test.ts FULL_RED.west-house: S s1328-carry, carry.gather-stuck (carriers meet head-on gathering round the handrail stock)"], "pc": "#728", "status": "unresolved", "note": "the historical west-house stair-rail gathering failure"},
+    {"id": "studio-build-browser", "class": "showcase", "source": ["mars/viewer/e2e/studio-build.spec.ts"], "primitives": [], "evidence": ["scenario-coverage.json unprovedLegacyChecks: skipped browser tests"], "pc": "#730", "status": "unresolved", "note": "skipped checks count as unproved"}
+  ],
+  "server": [
+    {"id": "solo-fixture-carry", "class": "runnable", "source": ["apps/server/src/god/engine-bridge.ts"], "primitives": ["mars:move_fixture"], "evidence": ["the carry offer refuses need>1 as carry.crew-too-small"], "pc": "#685", "note": "solo carry for defs with capabilities.fixtureCarry and the upright-carry tag; the shared carry must keep this solo path working (#690)"},
+    {"id": "host-carry-replay", "class": "runnable", "source": ["apps/server/src/construction.test.ts"], "primitives": ["checkpoint + log replay"], "evidence": ["apps/server/src/construction.test.ts", "apps/server/src/camp-expanded-construction.test.ts"], "pc": "#689", "note": "native mid-carry survives a host restart; shared claims and per-member outcomes are not covered"},
+    {"id": "camp-lookout", "class": "runnable", "source": ["apps/server/src/camp.ts", "apps/server/src/worlds/mars-edge.ts"], "primitives": ["camp construction / take-down phases"], "evidence": ["apps/server/src/camp-expanded-construction.test.ts", "apps/server/src/camp-invitations.test.ts"], "pc": "#696", "note": "fixed camp identity and availability-based crew; does not establish consent"},
+    {"id": "together-ledger", "class": "runnable", "source": ["apps/server/src/edge/ledger/ledger.ts"], "primitives": ["invite / accept / decline / expiry"], "evidence": ["apps/server/src/edge-ledger-together.test.ts", "apps/server/src/edge-ledger-ride-together.test.ts", "apps/server/src/edge-ledger-dance-campfire.test.ts"], "pc": "#683", "note": "membership is not a material or connector claim"}
+  ],
+  "assets": [
+    {"need": "loose movable upright frame (complete braced two-column frame)", "library": [], "native": ["upright-8ft", "upright-9ft", "upright-12ft", "upright-16ft", "upright-19ft"], "pc": "#682", "status": "missing", "note": "core-pallet-rack is a complete static bay; the 19 ft frame needs at least three carriers under the current mass rule"},
+    {"need": "loose rack beam on the crew path", "library": ["core-rack-beam"], "native": ["beam-8ft", "beam-9ft", "beam-12ft"], "pc": "#682", "status": "adapt", "note": "core-rack-beam@1 has two-grip metadata but enters the one-hand item path; needs a new compatible revision or adapter, never a mutated old revision"},
+    {"need": "individual plywood sheet", "library": [], "native": ["plywood-4x8"], "pc": "#682", "status": "missing", "note": "core-plywood-stack has no counted sheet extraction (#711)"},
+    {"need": "counted stock bundles", "library": ["core-plywood-stack", "core-timber-pile"], "native": ["bundle-plywood-4x8", "bundle-2x4-16ft", "stack-beam-12ft", "stack-upright-16ft-kit"], "pc": "#711", "status": "adapt"},
+    {"need": "joists and timber pieces", "library": [], "native": ["2x4-8ft", "2x6-12ft"], "pc": "#694", "status": "missing"},
+    {"need": "stair flight and treads", "library": ["core-stair-flight"], "native": ["stair-flight-10", "stair-tread", "stair-stringer-kit8"], "pc": "#695", "status": "adapt", "note": "the library flight is static geometry"},
+    {"need": "wall and roof framing members", "library": [], "native": ["2x4-top-plate-8ft", "2x4-rafter-8ft", "2x4-blocking-16oc"], "pc": "#716", "status": "missing"},
+    {"need": "solar mounts, rails and panels", "library": ["core-solar-panel"], "native": ["panel-rail", "solar-panel-107x163", "battery", "charge-controller", "inverter"], "pc": "#720", "status": "adapt", "note": "core-solar-panel is a static array"},
+    {"need": "forklift for sheet presentation", "library": ["core-forklift"], "native": ["forklift"], "pc": "#715", "status": "adapt"},
+    {"need": "two-person saw and workpiece", "library": ["core-sawhorse"], "native": [], "pc": "#705", "status": "missing"},
+    {"need": "shared crank or hoist", "library": [], "native": [], "pc": "#706", "status": "missing"},
+    {"need": "canopy parts", "library": ["core-tent"], "native": [], "pc": "#707", "status": "missing", "note": "core-tent is one static piece, not parts"},
+    {"need": "passable ball", "library": ["core-ball"], "native": [], "pc": "#709", "status": "adapt", "note": "qualify carry/throw handling before use"},
+    {"need": "ladder (two-grip carryable)", "library": ["core-ladder"], "native": [], "pc": "#690", "status": "exists", "note": "a candidate second load"}
+  ]
+}

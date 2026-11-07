@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report security issues **privately** through GitHub's security advisories:
-<https://github.com/genekogan/souls/security/advisories/new> (repository **Security** tab → **Report a
+<https://github.com/soulsimulation/souls/security/advisories/new> (repository **Security** tab → **Report a
 vulnerability**). Don't open a public issue, pull request or discussion for a vulnerability.
 
 Include what you found, how to reproduce it (ideally against a local server, see below), and what an attacker could

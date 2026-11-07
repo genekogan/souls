@@ -2,7 +2,7 @@
 // It never installs a scene, assigns a contact or moves an entity. Existing
 // horizontal Spatial grids/locomotion are deliberately not consumers yet.
 import { terrainPatchV1Schema, terrainSweepV1Schema, terrainFootingV1Schema, terrainPointV1Schema, type TerrainPatchV1,
-  type TerrainSweepGeometryV1, type TerrainTriangleV1, type TerrainSpanV1, type TerrainFootingGeometryV1, type TerrainPointGeometryV1 } from '@sim/engine-contract';
+  type TerrainSweepGeometryV1, type TerrainTriangleV1, type TerrainSpanV1, type TerrainFootingGeometryV1, type TerrainPointGeometryV1 } from '@souls/engine-contract';
 
 type V2=[number,number];
 type Triangle={ref:TerrainTriangleV1;vertices:[V2,V2,V2];baseY:number;dx:number;dz:number;grade:number;normal:[number,number,number]};

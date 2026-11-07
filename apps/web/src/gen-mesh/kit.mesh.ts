@@ -3,7 +3,7 @@
 // Geometry is cached per (def hash, palette) so many instances share one BufferGeometry.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { expandKitProgram, kitArgs, kitWhen, type KitArgs, type KitProgramArgs, type KitShape } from '@sim/generators';
+import { expandKitProgram, kitArgs, kitWhen, type KitArgs, type KitProgramArgs, type KitShape } from '@souls/generators';
 import { fallingWaterMaterial, fallingWaterSheets, isSprayShape, rippleMaterial, type Disc } from '../fx/water.ts';
 import { flameClusters, flameHint, isFlameShape, isSmokeShape, mountFlames, smokeSources } from '../fx/flames.ts';
 import { registerMesh, type MeshCtx } from './registry.ts';

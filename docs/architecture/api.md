@@ -10,7 +10,10 @@ the original worlds. The server strips the world path (`WORLD_PATH`) before rout
   failures are 500 `{ code: 'internal' }`.
 - **Bodies.** `/v1/*` bodies are limited to 64 KB (larger: 413 `too-large`). Photo routes accept 360 KB; body and art
   uploads have their own limits. While the world's clock is halted, requests answer 503 `world-unavailable`.
-- **Headers.** Every response sets `X-Robots-Tag: noindex` and refuses framing.
+- **Headers.** Every response refuses framing. Every response except the world page (`/`) and its public guides
+  (`/SKILL.md`, `/skill.md`, `/instructions.md`, `/llms.txt`, `/cards.md`, GET or HEAD without a query string) sets
+  `X-Robots-Tag: noindex, nofollow`. The launcher adds it to every response of an unlisted world, every `/__sim`
+  answer and every root path it hands to whichever world is running, and serves `/robots.txt` and `/sitemap.xml` (`tools/world-launcher/crawl.mjs`): public pages and listed worlds only.
 - **Auth**, three kinds:
   - **User:** `Authorization: Bearer <session token>` from the web app's sign-in. Production uses Clerk
     (`AUTH_PROVIDER=clerk` with `CLERK_PUBLISHABLE_KEY`, `CLERK_ISSUER_URL`, `CLERK_AUTHORIZED_PARTIES`,
@@ -97,6 +100,8 @@ with their sign-in session or with a god token of that world. Every step is appe
 | `POST <B>/__sim/worlds/<slug>/offers/cancel` | | `{cancelled}` |
 | `POST <B>/__sim/worlds/<slug>/archive` | `{confirm: "<slug>", reason?}` | The world is stopped, moved to `<data>/archive/<id>/world` and removed from the list |
 | `POST <B>/__sim/worlds/<slug>/unlisted` | `{unlisted}` | Hide or show the world on the list |
+| `POST <B>/__sim/worlds/<slug>/thumbnail` | A JPEG as the raw body (`content-type: image/jpeg`): 16:9, 640–1920 px wide, at most 512 KB | `{thumbnail, thumbnailSource: "owner", sha, width, height, bytes, stripped}`; the world-list picture. Metadata is stripped. Each refused image is written to the audit log with the sha of the bytes sent and, once validated, the stripped sha. Refusals carry a `fix`: 415 `thumbnail.type`, 413 `thumbnail.size`, 400 `thumbnail.dimensions` / `thumbnail.invalid`, 422 `thumbnail.moderation`, 451 `thumbnail.vetoed` (the site admin removed this image), 429 `thumbnail.rate` (6 changes per 10 minutes, `Retry-After`) |
+| `DELETE <B>/__sim/worlds/<slug>/thumbnail` | | `{thumbnail, thumbnailSource}`: back to the template's default (or none) |
 | `GET <B>/__sim/worlds/<slug>/offer?code=` | | Offer details, for the person holding the link |
 | `POST <B>/__sim/worlds/<slug>/offer/accept` | `{code}` (signed in) | The receiver becomes the world's god; the world restarts and every earlier god token is revoked |
 

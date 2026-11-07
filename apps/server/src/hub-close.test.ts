@@ -9,7 +9,7 @@ import net from 'node:net';
 import { readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { WebSocket } from 'ws';
-import { marsFactory, EDEN_COMMONS_WORLD } from '@sim/engine-mars';
+import { marsFactory, EDEN_COMMONS_WORLD } from '@souls/engine-mars';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { config } from './config.ts';
