@@ -34,7 +34,10 @@ export function validateScenario(s) {
   const errs = [];
   if (!s?.name || !/^[a-z0-9-]+$/.test(s.name)) errs.push('name: lowercase letters, digits and -');
   if (s?.world?.kind !== 'dev') errs.push('world.kind must be "dev" (the only kind run provisions)');
-  if (!s?.world?.genesis || !existsSync(join(REPO, s.world.genesis))) errs.push(`world.genesis ${s?.world?.genesis} not found in the repo`);
+  // A frozen snapshot alone names the world (#883); a genesis given beside it must still exist.
+  if (s?.world?.snapshot) { if (!existsSync(resolve(REPO, s.world.snapshot))) errs.push(`world.snapshot ${s.world.snapshot} not found`); }
+  else if (!s?.world?.genesis) errs.push(`world.genesis ${s?.world?.genesis} not found in the repo`);
+  if (s?.world?.genesis && !existsSync(join(REPO, s.world.genesis))) errs.push(`world.genesis ${s.world.genesis} not found in the repo`);
   if (!Number.isInteger(s?.world?.port)) errs.push('world.port required');
   if (!(s?.durationSec > 0)) errs.push('durationSec > 0');
   const ids = new Set();

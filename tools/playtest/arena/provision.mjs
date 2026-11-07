@@ -9,7 +9,7 @@ import { sha256 } from '../lib/hash.mjs';
 import { writeJson } from '../lib/jsonl.mjs';
 import { sleep } from '../lib/clock.mjs';
 import { seedSnapshot } from './snapshot-seed.mjs';
-import { physicalSnapshotSha256 } from '../lib/physical-fixture.mjs';
+import { bootPhysicalSha256 } from '../lib/physical-fixture.mjs';
 
 export const RESERVED_KINDS = ['fork', 'template-eden2', 'live'];
 export function assertKind(kind = 'dev') {
@@ -92,7 +92,7 @@ export async function startWorld({ serverRoot, slug, port, genesis, snapshot, da
   if(fixture){
     // Health can answer before the first native reconciliation; validate after startup settles.
     await sleep(3000);
-    try { const r=await fetch(`${base}/v1/world/snapshot`,{signal:AbortSignal.timeout(30000)});if(!r.ok)throw Error('snapshot unavailable after boot');const actual=physicalSnapshotSha256(await r.json());if(actual!==fixture.physicalSnapshotSha256)throw Error(`snapshot physical state changed during boot: expected ${fixture.physicalSnapshotSha256}, got ${actual}`); }
+    try { const r=await fetch(`${base}/v1/world/snapshot`,{signal:AbortSignal.timeout(30000)});if(!r.ok)throw Error('snapshot unavailable after boot');const actual=bootPhysicalSha256(await r.json());if(actual!==fixture.bootPhysicalSha256)throw Error(`snapshot physical state changed during boot: expected ${fixture.bootPhysicalSha256}, got ${actual}`); }
     catch(error){await stopWorld({pid:child.pid});throw error;}
   }
   return { fixture, base, pid: child.pid, build: h.build ?? null, healthz: h, bootMs: Date.now() - t0, child, dataDir: data, marsWebDir: marsWeb };

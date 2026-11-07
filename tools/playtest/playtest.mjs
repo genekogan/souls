@@ -18,6 +18,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SERVER_ROOT = process.env.PLAYTEST_SERVER_ROOT ?? REPO_ROOT;
 const RUNS_ROOT = process.env.PLAYTEST_RUNS_ROOT ?? scratchDir('playtest/runs');
 const FROZEN_BUNDLE = join(here, 'frozen/frozen.json');
+
+/** The world files a dev run boots from: a genesis, a frozen snapshot, or both. A snapshot needs no genesis (#883). */
+export const worldFiles = (world, serverRoot) => ({
+  genesis: world.genesis ? resolve(serverRoot, world.genesis) : undefined,
+  snapshot: world.snapshot ? resolve(serverRoot, world.snapshot) : undefined,
+});
 const STEPS = ['preflight', 'provision', 'seats', 'play', 'close', 'review', 'develop', 'report'];
 
 function args(argv) { const out = { _: [] }; for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a.startsWith('--')) { const k = a.slice(2); const v = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true; out[k] = v; } else out._.push(a); } return out; }
@@ -110,7 +116,7 @@ export async function cmdRun(a, hooks = null) {
     checkAbort('provision');
     if (scenario.world.kind !== 'dev') throw new Error(`world kind ${scenario.world.kind} is not available in this stage`);
     const slug = scenario.world.slug ?? `pt-${scenario.name}`.slice(0, 31);
-    ctx.world = await m.provision.startWorld({ serverRoot, slug, port: scenario.world.port, genesis: resolve(serverRoot, scenario.world.genesis), snapshot:scenario.world.snapshot?resolve(serverRoot,scenario.world.snapshot):undefined, dataDir: join(runDir, 'server', 'data'), log: join(runDir, 'server', 'world.log'), fresh: true, natives: scenario.world.natives === true, onSpawn: (child) => own('world', slug, () => m.provision.stopWorld({ pid: child.pid }), { pid: child.pid, port: scenario.world.port, dataDir: join(runDir, 'server', 'data') }) });
+    ctx.world = await m.provision.startWorld({ serverRoot, slug, port: scenario.world.port, ...worldFiles(scenario.world, serverRoot), dataDir: join(runDir, 'server', 'data'), log: join(runDir, 'server', 'world.log'), fresh: true, natives: scenario.world.natives === true, onSpawn: (child) => own('world', slug, () => m.provision.stopWorld({ pid: child.pid }), { pid: child.pid, port: scenario.world.port, dataDir: join(runDir, 'server', 'data') }) });
     try { ctx.world = { ...ctx.world, ...(await m.provision.describeWorld({ base: ctx.world.base, slug, port: scenario.world.port, pid: ctx.world.pid, build: ctx.world.build, startedAt: new Date().toISOString() })) }; } catch (e) { log('describeWorld failed', e.message); }
     writeJson(join(runDir, 'world.json'), { ...ctx.world, child: undefined, healthz: undefined });
     try { writeJson(join(runDir, 'server', 'healthz-before.json'), { ...(await m.provision.healthz(ctx.world.base)), at: Date.now() }); } catch { /* recorded as missing */ }

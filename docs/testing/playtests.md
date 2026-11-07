@@ -32,6 +32,8 @@ A run can also choose the world source (genesis or frozen snapshot), apply god-e
 compose its cast and scripted direction in the spec; the model-free `scripted-owner` seat adapter plays a Soul through the
 world's served `eden.mjs` from a per-seat script, so composed scenes need no live model. `playtest.mjs run` behaves as
 before for existing scenarios; a scripted direction entry with `seat: "*"` is now a broadcast.
+A frozen snapshot needs no genesis beside it. After boot the runner checks that the world is physically the
+snapshot it seeded, ignoring only Soul-body defs that no entity uses, because boot drops those.
 
 Everything prints JSON on stdout and logs to stderr. `--server-root` is the Souls checkout whose server the dev worlds
 run from (it needs a built `apps/web/dist`). Pass it explicitly, and pass `--out` or `--runs-root` for where runs go.
