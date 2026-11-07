@@ -51,22 +51,44 @@ test('A1: a secret place is gone from self.placePath, receipts[].endedAt and rec
  assert.ok((await f.pub()).j.receipts.some((x:any)=>x.id===f.receiptId),'public again, shown again');
 });
 
-test('A1: what is inside a secret place goes with it, and so do public events and speech naming it', async t => {
+test('A1: what is inside a secret place goes with it, and so do world rows naming it; a Soul\'s own words stay', async t => {
  const f=await world(t),outer=places((await f.pub()).j)[0]!,inner={...f.ledger.places.byId.get(outer.id)!,id:'inner-room',name:'Inner Room',parent:outer.id};
  f.ledger.places.byId.set(inner.id,inner);   // a room inside it: this fixture has no such nesting
  f.db.db.exec("CREATE TABLE IF NOT EXISTS edge_comms_stream(world_id TEXT,soul_id TEXT,seq INTEGER,tick INTEGER,at INTEGER,kind TEXT,body TEXT);CREATE TABLE IF NOT EXISTS edge_comms_speech(world_id TEXT,id TEXT,soul_id TEXT,tick INTEGER,at INTEGER,channel TEXT,text TEXT,heard_by TEXT)");
  const w=f.host.worldId,s=f.row.id,row=f.db.db.prepare('INSERT INTO edge_comms_stream VALUES(?,?,?,?,?,?,?)'),said=f.db.db.prepare("INSERT INTO edge_comms_speech(world_id,id,soul_id,tick,at,channel,text,heard_by) VALUES(?,?,?,?,?,?,?,'[]')");
- row.run(w,s,9001,1,1,'arrival',JSON.stringify({place:inner.name}));row.run(w,s,9002,2,2,'arrival',JSON.stringify({placeId:inner.id}));row.run(w,s,9003,3,3,'world',JSON.stringify({text:'A fine morning.'}));
- said.run(w,'c_1',s,4,4,'"say"',`Meet me at ${inner.name}.`);said.run(w,'c_2',s,5,5,'"say"','Good morning.');
+ const soulRef={soulId:'s_b',name:'Bo'};
+ row.run(w,s,9001,1,1,'arrival',JSON.stringify({placeId:inner.id,soul:soulRef,untrusted:true}));row.run(w,s,9002,2,2,'arrival',JSON.stringify({placeId:'field-public',soul:soulRef,untrusted:true}));
+ said.run(w,'c_1',s,4,4,JSON.stringify({kind:'public',placeId:inner.id}),'Over here.');said.run(w,'c_2',s,5,5,JSON.stringify({kind:'public',placeId:'field-public'}),`I know ${inner.name}.`);
  assert.ok(f.ledger.knowledge.setSecret(outer.id,true));
  const {text,j}=await f.pub();
  assert.ok(!text.includes(`"${inner.id}"`));assert.ok(!text.includes(`"${outer.id}"`));
- assert.deepEqual(j.events.filter((e:any)=>e.text).map((e:any)=>e.text).sort(),['A fine morning.','Good morning.'],'what names nothing stays');
+ assert.deepEqual(j.events.filter((e:any)=>e.kind==='arrival').map((e:any)=>e.placeId),['field-public'],'a public place\'s row stays');
+ assert.deepEqual(j.events.filter((e:any)=>e.kind==='speech').map((e:any)=>e.text),[`I know ${inner.name}.`],'its own words stay; words said in there go');
+});
+
+test('A1: a receipt that ended inside a place built later goes by its position; an open one goes while the Soul is in there', async t => {
+ const f=await world(t),path=places((await f.pub()).j),spot={...f.ledger.places.byId.get(path[0]!.id)!,id:'late-cove',name:'Late Cove',parent:'world'};
+ f.ledger.places.byId.set(spot.id,spot);const was=f.ledger.places.containing.bind(f.ledger.places);(f.ledger.places as any).containing=(x:number,z:number,l:number)=>[spot,...was(x,z,l)];
+ f.ledger.knowledge.setSecret(spot.id,true);
+ assert.ok(!(await f.pub()).j.receipts.some((x:any)=>x.id===f.receiptId));
+});
+
+test('A2: a Soul\'s own token still reads everything', async t => {
+ const f=await world(t),before=await f.owner('GET','/v1/edge/receipts/'+f.receiptId),target=places((await f.pub()).j)[0]!;
+ f.ledger.knowledge.setSecret(target.id,true);
+ assert.deepEqual(await f.owner('GET','/v1/edge/receipts/'+f.receiptId),before);
+});
+
+test('A1: a public place outlives a secret one that sounds like it; words mean nothing in a key or an enum', () => {
+ const s=secretMatcher(['g-sq'],['Square','Self','Plaza','Receipts'])!;
+ const answer={self:{placePath:[{id:'open-sq',name:'Open Square',kind:'plaza'},{id:'g-sq',name:'Square',kind:'plaza'}],state:'plaza'},receipts:[{id:'r',capability:'walk:g-sq'},{id:'r2',capability:'sit:here',phase:'completed'}]};
+ assert.deepEqual(withoutSecrets(answer,s),{self:{placePath:[{id:'open-sq',name:'Open Square',kind:'plaza'}],state:'plaza'},receipts:[{id:'r2',capability:'sit:here',phase:'completed'}]});
+ assert.deepEqual(withoutSecrets({receipts:[{capability:'sit:here'}]},secretMatcher(['here','g-a'])),{receipts:[{capability:'sit:here'}]},'`here` is no place\'s ref');
+ assert.equal(secretMatcher([123,null,''],[7]),null,'a ref that isn\'t text is no term, and no 503');
 });
 
 test('A1: a new field can\'t bring one back: the scrub works on the answer, not on field names', () => {
- const re=secretMatcher(['hut-1','Hidden Cove'])!,gone=withoutSecrets({a:{later:{where:'hut-1',ok:1}},list:[{deep:[{x:'At the hidden cove.'}]},{y:'hut-12 and chutney'}],k:'Hidden Cove',n:3},re);
+ const s=secretMatcher(['hut-1'],['Hidden Cove'])!,gone=withoutSecrets({a:{later:{where:'hut-1',ok:1}},list:[{deep:[{x:'At the hidden cove.'}]},{y:'hut-12 and chutney'}],k:'Hidden Cove',n:3},s);
  assert.deepEqual(gone,{a:{later:{ok:1}},list:[{y:'hut-12 and chutney'}],n:3},'whole words only; an entry goes whole, a field alone');
  assert.equal(secretMatcher([]),null);const v={a:1};assert.equal(withoutSecrets(v,null),v,'no secret place, nothing touched');
- assert.deepEqual(withoutSecrets({'hut-1':1,b:2},re),{b:2},'a key can name it too');
 });
