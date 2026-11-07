@@ -19,8 +19,10 @@ const idOf = (cap) => String(cap).toLowerCase().replace(/^(?:walk|go):/, '').rep
 /** Every receipt a step shows, its own or those a serve finished (a `plan`'s steps end in `pending`). */
 const receiptsIn = (s) => [...(s.out?.receipt ? [{ step: s, receipt: s.out.receipt, outcome: actOutcome(s).outcome }] : []), ...(Array.isArray(s.out?.endedReceipts) ? s.out.endedReceipts : []).map((r) => ({ step: s, receipt: r, outcome: r?.phase === 'completed' ? 'completed' : ['failed', 'replaced', 'refused', 'cancelled', 'interrupted'].includes(r?.phase) ? 'failed' : 'started' }))];
 const walked = (steps) => steps.flatMap(receiptsIn).filter((r) => WALK.test(r.receipt?.capability ?? '') && r.outcome === 'completed').map((r) => idOf(r.receipt.capability));
+/** One record per receipt, its end if any step saw it: `act` prints it started and a later `wait` prints it done. */
+const lastOf = (steps) => { const seen = new Map(), loose = []; for (const r of steps.flatMap(receiptsIn)) { const id = r.receipt?.id; if (!id) loose.push(r); else if (!['completed', 'failed'].includes(seen.get(id)?.outcome)) seen.set(id, r); } return [...seen.values(), ...loose]; };
 /** Some move this question can't place: a walk with no observed end, any other move, or a plan with steps still unseen. */
-const unplaced = (steps) => steps.some((s) => (s.verb === 'plan' && s.out?.accepted === true)) || steps.flatMap(receiptsIn).some((r) => { const cap = r.receipt?.capability ?? ''; return r.outcome !== 'failed' && (OTHER_MOVE.test(cap) || (WALK.test(cap) && r.outcome !== 'completed')); });
+const unplaced = (steps) => steps.some((s) => (s.verb === 'plan' && s.out?.accepted === true)) || lastOf(steps).some((r) => { const cap = r.receipt?.capability ?? ''; return r.outcome !== 'failed' && (OTHER_MOVE.test(cap) || (WALK.test(cap) && r.outcome !== 'completed')); });
 /** Anything but the Soul's own memory that showed it day one's words before it set off. */
 function toldBefore(steps, id) {
   const leaf = id.split(/[-/]/).at(-1), set = steps.findIndex((s) => receiptsIn(s).some((r) => idOf(r.receipt?.capability ?? '') === id) || (s.verb === 'plan' && s.args.join(' ').includes(id)));
