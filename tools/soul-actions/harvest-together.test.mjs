@@ -32,7 +32,7 @@ async function garden(t, ops, ben = [0.6, 0.7]) {
  const act = async (s, vessel) => { soul = s; const r = await (await accept(f.host, app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability: `object:${id(vessel)}:harvest`, strict: true})}))).json(); assert.equal(r.accepted, true, JSON.stringify(r).slice(0, 300)); return {soulId: s.soulId, id: r.receipt.id}; };
  const receipt = r => edge.receipt(r.soulId, r.id);
  const end = async (rs, ticks = 2600) => { for (let n = 0; n < ticks && !rs.every(r => ENDED.includes(receipt(r)?.phase)); n++) await tick(1); return rs.map(receipt); };
- return {f, god, bridge, tick, ana, ben: b, W, ax, az, move, id, state, act, receipt, end};
+ return {f, edge, god, bridge, tick, ana, ben: b, W, ax, az, move, id, state, act, receipt, end};
 }
 const table = (ax, az) => [
  {op: 'place', def: 'core/garden-planter@2', name: 'bed', p: [ax + 4.9, az + 3.9], state: {growth: 4, moisture: 1}},
@@ -68,9 +68,9 @@ test('the bed stops being ripe before the hand arrives: failed by name, nothing 
  assert.equal(g.state('basket').fruit ?? 0, 0, 'nothing in the basket'); assert.equal(g.state('bed').growth, 1, 'the bed as it was set');
 });
 
-// Around the table, turned, and on the long table whose stands are hardest to reach: the walk is a step of the act, so
-// nothing hangs, and whatever the two receipts say is what the vessels hold. These starts hung for good under `take_item`'s
-// own approach, or ended with both Souls blocked on stands closer than two bodies.
+// Around the table, turned, on the long table whose stands are hardest to reach, and on a deep worktop no stand reaches:
+// these starts hung for good, or ended with both Souls blocked on stands closer than two bodies. Whatever the receipts say
+// is what the vessels hold. Neither walk may be the one with no limit, and if one is, the act gives up by name (#1216).
 const turned = (r, def = 'core/table@1', at = 0.25) => (ax, az) => [
  {op: 'place', def: 'core/garden-planter@2', name: 'bed', p: [ax + 6.9, az + 3.9], state: {growth: 4, moisture: 1}},
  {op: 'place', def: 'core/garden-planter@2', name: 'flower-bed', p: [ax + 6.9, az + 7.5], state: {growth: 3, moisture: 1}},
@@ -80,7 +80,9 @@ const turned = (r, def = 'core/table@1', at = 0.25) => (ax, az) => [
 const arms = [
  ...[[3, 0], [3, 0.3], [4, 0], [0, 3], [5, 3], [1.5, -1], [2.5, 4], [-1, 2], [2.9, 1.1]].map(s => ['table', table, s, ['basket', 'vase']]),
  ...[[2.5, 0.25], [2.5, -0.25], [2.5, 0.5], [2.75, 0]].map(s => ['long table', turned(-0.7, 'core/long-table@1', 0.2), s, ['basket', 'vase']]),
- ...[[2.3, 2.7], [2.9, 2.9]].map(s => ['turned table', turned(2.4), s, ['vase', 'basket']])];
+ ...[[2.5, -0.25], [2.5, 0.25], [2.75, 0.5]].map(s => ['turned long table', turned(2.4, 'core/long-table@1', 0.2), s, ['basket', 'vase']]),
+ ...[[2.3, 2.7], [2.9, 2.9], [2.5, 0.25]].map(s => ['turned table', turned(2.4), s, ['vase', 'basket']]),
+ ...[[4.5, 1.9]].flatMap(s => [['deep worktop', turned(0.7, 'core/mars-og-worktop@2'), s, ['vase', 'basket']], ['deep worktop', turned(0.7, 'core/mars-og-worktop@2'), s, ['basket', 'vase']]])];
 test('two Souls at one table end truthfully, and both pick', {timeout: 240000}, async t => {
  for (const [what, scene, start, [first, second]] of arms) await t.test(`${what}, Ben from ${start}`, async t => {
   const g = await garden(t, scene, start);
@@ -88,6 +90,13 @@ test('two Souls at one table end truthfully, and both pick', {timeout: 240000}, 
   assert.deepEqual(rs.map(r => r.phase), ['completed', 'completed'], JSON.stringify(rs.map(r => [r.phase, r.code, r.reason])));
   assert.deepEqual([g.state('basket').fruit, g.state('bed').growth, g.state('vase').flowers, g.state('flower-bed').growth], [3, 3, 3, 2]);
  });
+});
+
+test('an act given up ends failed by name, and the body stops', {timeout: 60000}, async t => {
+ const g = await garden(t, table), r = await g.act(g.ana, 'basket'); await g.tick(30);
+ g.edge.actFail(g.ana.entityId, g.receipt(r).capability, {code: 'harvest.fetch-blocked', reason: 'Others were in the way.'});
+ assert.equal(g.receipt(r).phase, 'failed'); assert.equal(g.receipt(r).code, 'harvest.fetch-blocked');
+ await g.tick(200); assert.equal(g.state('basket').fruit ?? 0, 0); assert.equal(g.f.host.engine.programOf(g.ana.entityId), null, 'the programme stopped');
 });
 
 test('a vessel on the ground behind something is fetched from its open side', {timeout: 60000}, async t => {
@@ -107,11 +116,11 @@ test('the watch outlives a hold-up while the act is open, and only a contact mak
  const g = await garden(t, table), {model} = g.god, basket = g.id('basket'), bed = g.id('bed'), me = g.ana.entityId;
  const world = {tick: 5000, entities: {[me]: {human: {}, pose: {p: [g.ax + 2.5, 0, g.az + 2.8]}}, [basket]: {support: {kind: 'ground'}, pose: {p: [g.ax + 2.8, 0, g.az + 2.8]}, tags: []}}};
  let open = true; const commits = [];
- const h = createHarvest({model, version: () => 1, engine: {world, dt: 0.05}, commit: ops => { commits.push(ops); return {accepted: true}; }, log() {}, actOpen: () => open});
+ const gaveUp = [], h = createHarvest({model, version: () => 1, engine: {world, dt: 0.05}, commit: ops => { commits.push(ops); return {accepted: true}; }, log() {}, actOpen: () => open, actFail: (b, c, why) => gaveUp.push(why.code)});
  const capability = `object:${basket}:harvest`, run = n => { for (let i = 0; i < n; i++) { world.tick++; h.tick(); } };
  const plan = () => { const p = h.plan({entityId: me}, basket, 'harvest'); assert.ok(p?.steps?.length, JSON.stringify(p)); h.expect(me); };
- plan(); run(3000);
- assert.equal(h.watchingCount(), 1, 'an open act keeps its watch through a long hold-up, the vessel still on the table');
+ plan(); run(2000);
+ assert.equal(h.watchingCount(), 1, 'an open act keeps its watch past the minute of grace, the vessel still on the table');
  world.entities[basket].support = {kind: 'in-hand', by: me, hand: 'right'}; run(10);
  assert.deepEqual(h.outcome(capability, me, false), null, 'stopped before any contact: the programme\'s own reason stands');
  assert.equal(h.outcome(capability, me, true).code, 'harvest.not-picked', 'the steps ended and no hand touched anything');
@@ -121,6 +130,8 @@ test('the watch outlives a hold-up while the act is open, and only a contact mak
  assert.equal(commits.length, 1, 'the contact picked, long after the first minute'); assert.equal(h.outcome(capability, me, false), 'done', 'a hold cut short after the pick is still a pick');
  assert.equal(h.outcome(capability, me, true).code, 'harvest.not-picked', 'an outcome is read once');
  delete world.entities[me].human.handActuator; run(2); assert.equal(h.watchingCount(), 0, 'the hand is back: nothing watched');
- plan(); open = false; run(1300);
+ world.entities[basket].support = {kind: 'ground'}; plan(); run(3700);
+ assert.deepEqual(gaveUp, ['harvest.fetch-blocked'], 'a fetch held up for two minutes ends by name, whatever walk holds it'); assert.equal(h.watchingCount(), 0);
+ world.entities[basket].support = {kind: 'in-hand', by: me, hand: 'right'}; plan(); open = false; run(1300);
  assert.equal(h.watchingCount(), 0, 'an act that has closed loses its watch at the end of the grace, the vessel still held'); assert.equal(commits.length, 1);
 });
