@@ -6,18 +6,23 @@
 // Edit this file, then run `node tools/world-launcher/soul/inline.mjs`: worlds serve eden.mjs as one file, so this module
 // lives inside it as a generated block.
 
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { join, relative } from "node:path";
 import { openMemoryFolder } from "../../edge-skill/memory-folder.mjs";
 import { buildBrief } from "./brief.mjs";
+import { SUMMARY } from "./consolidate.mjs";
 import { createPeople } from "./people.mjs";
 
 const TERMINAL = new Set(["completed", "failed", "replaced"]);
+/** Acts that take a body away from whoever was near: a place's id doesn't always change on the way. */
+const MOVES = /^(?:walk|go|run|jog|stroll|hang-out|approach|follow|fly|ride)\b/;
 /** How close a Soul has to be for a first meeting: the distance `here` counts as local. */
 export const NEAR_METRES = 8;
 const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20, LOCK_OLD_MS = 10_000, PLACE_ID_MAX = 200;
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/;
+/** `memory` fails closed: a line is the Soul's own only where nothing else writes. */
+const OWN_FILES = new Set(["self.md", "goals.md", "schedule.md"]), OWN_SECTION = /^(?:What I believe|What I have told them|Commitments|Judgments|Noted more than once)\b/, OWN_JOURNAL = /^- \S+ (?:completed|failed): /;
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/, TRAVELLER = /^[a-z0-9][a-z0-9-]{0,63}\/[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const sha = (v) => createHash("sha256").update(typeof v === "string" ? v : JSON.stringify(v)).digest("hex");
 const clip = (v, max) => { const t = String(v ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim(); return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t; };
 const safeId = (v) => typeof v === "string" && SAFE_ID.test(v);
@@ -38,7 +43,7 @@ export function presences(soulDir) {
   const dir = join(soulDir, "worlds");
   if (!existsSync(dir)) return [];
   return readdirSync(dir).filter((f) => f.endsWith(".json")).sort().flatMap((f) => {
-    try { const { openFor, ...p } = JSON.parse(readFileSync(join(dir, f), "utf8")); return [p]; } catch { return []; }
+    try { const { openFor, near, ...p } = JSON.parse(readFileSync(join(dir, f), "utf8")); return [p]; } catch { return []; }
   });
 }
 
@@ -50,6 +55,14 @@ function readLines(file, heading) {
   if (start < 0) return [];
   const end = lines.findIndex((l, i) => i > start && /^#{1,2} /.test(l));
   return lines.slice(start + 1, end < 0 ? undefined : end).map((l) => l.trim()).filter(Boolean).slice(0, 12);
+}
+/** The newest summary consolidation wrote. Its lines are a model's reading of what worlds said, so the brief quotes them. */
+function lastSummary(file) {
+  let lines; try { lines = readFileSync(file, "utf8").split("\n"); } catch { return []; }
+  const start = lines.findLastIndex((l) => l.startsWith("## ") && l.endsWith(SUMMARY));
+  if (start < 0) return [];
+  const end = lines.findIndex((l, i) => i > start && l.startsWith("## "));
+  return lines.slice(start + 1, end < 0 ? undefined : end).filter((l) => l.startsWith("- ")).map((l) => l.slice(2)).slice(0, 3);
 }
 function pidAlive(pid) { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } }
 
@@ -70,7 +83,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   // the log moved under it opens it again. A holder that died, or a lock older than any write takes, is passed over, one
   // writer at a time; a live one is waited for, then reported. Everything else stays what memory-folder.mjs says: a torn log
   // fails closed.
-  let records = null, nearNow = [], travellers = {};
+  let records = null, travellers = {};
   let people = createPeople({ world });
   // A day consolidation has summarized stays in the log, and its journal page doesn't come back.
   const journalAfter = () => { try { return JSON.parse(readFileSync(join(soulDir, "memory", "consolidation.json"), "utf8")).through ?? null; } catch { return null; } };
@@ -79,7 +92,9 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   function flushPeople() {
     const { write, remove } = people.changes(), dir = join(soulDir, "memory", "people");
     if (write.length) mkdirSync(dir, { recursive: true, mode: 0o700 });
-    for (const [file, text] of write) { const tmp = join(dir, `${file}.tmp`); writeFileSync(tmp, text, { mode: 0o600 }); renameSync(tmp, join(dir, file)); }
+    const plain = (path) => { try { if (lstatSync(path).isSymbolicLink()) throw new Error("memory: a link in the people folder; nothing was written"); } catch (e) { if (e.code !== "ENOENT") throw e; } return path; };
+    if (write.length) plain(dir);
+    for (const [file, text] of write) { const tmp = plain(join(dir, `${file}.tmp`)); writeFileSync(tmp, text, { mode: 0o600 }); renameSync(tmp, plain(join(dir, file))); }
     for (const file of remove) { try { unlinkSync(join(dir, file)); } catch { /* gone already */ } }
   }
   const lockGone = (file) => { try { return Date.now() - statSync(file).mtimeMs > LOCK_OLD_MS; } catch { return false; } };
@@ -122,10 +137,11 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       try { return fn(records); }
       catch (e) {
         if (!stale(e)) throw e;
+        records = null;
         records = openRecords();
         return fn(records);
       }
-    } finally { try { flushPeople(); } finally { dropLock(mine); } }
+    } finally { try { if (records) flushPeople(); } finally { dropLock(mine); } }
   }
 
   // One wire event or frame: both clocks. The world day is only in `here`; a clock going backwards as ticks go forwards means a
@@ -152,7 +168,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     if (!placeId || placeId === presence.place) return false;
     const place = worldKey(world, placeId), name = nameOf(r, place, said);
     const wrote = fold(r, `arrival:${world}:${when.tick ?? when.real}:${placeId}`, { type: "arrival", placeId: place, when, seen: seenOf([[place, name]]) });
-    writePresence({ place: placeId, placeName: name, lastSeen: when, worldDay: when.worldDay, time: when.time });
+    writePresence({ place: placeId, placeName: name, near: [], lastSeen: when, worldDay: when.worldDay, time: when.time });
     return wrote;
   };
   const here = (r) => { const key = typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null; return key ? [key, nameOf(r, key)] : [null, null]; };
@@ -170,7 +186,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     let produced = unique(rows(out.produced, 32).flatMap((o) => (safeId(o.id) ? [{ id: o.id, title: clip(o.title, 200) || o.id, kind: clip(o.kind, 200) || "thing", where: where(o.where) }] : [])));
     // A changing source is a new reading, not a conflict: each fact keeps its own version of the source.
     let learned = unique(rows(out.learned, 5).flatMap((f) => {
-      const fact = clip(f.fact, 2000), said = clip(f.provenance, 100), provenance = (said === "authored-content" ? "authored-fiction" : said) || "world-fact", untrusted = !!f.untrusted || ["soul-text", "other-soul-report"].includes(said);
+      const fact = clip(f.fact, 2000), said = clip(f.provenance, 100), provenance = (said === "authored-content" ? "authored-fiction" : said) || "world-fact", untrusted = true;   // a world doesn't get to say its own words are safe
       if (!fact || typeof f.about !== "string" || !f.about) return [];
       const about = worldKey(world, f.about), source = `${world}:${clip(f.source ?? f.about, 900)}#${sha([fact, about, provenance, untrusted]).slice(0, 12)}`;
       return [{ id: source, fact, about, source, provenance, untrusted }];
@@ -178,7 +194,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     const end = where(receipt.endedAt?.place), messageId = safeId(presence.openFor?.[receipt.id]) ? presence.openFor[receipt.id] : null;
     const build = () => ({
       type: "outcome", receiptId: worldKey(world, receipt.id), act: clip(receipt.capability, 160) || "act", phase: receipt.phase, summary: clip(out.summary, 160) || `${clip(receipt.capability, 140) || "act"} ${receipt.phase}.`,
-      untrusted: !!out.untrusted || learned.some((f) => f.untrusted), learned, produced, met: metRows, ...(end ? { placeId: end } : {}), ...(messageId ? { messageId } : {}), when,
+      untrusted: true, learned, produced, met: metRows, ...(end ? { placeId: end } : {}), ...(messageId ? { messageId } : {}), when,
       seen: seenOf([...(end ? [[end, nameOf(r, end, receipt.endedAt?.placePath?.[0])]] : []), ...metRows.flatMap((p) => [[p.id, p.name], ...(p.where ? [[p.where, nameOf(r, p.where)]] : [])]), ...produced.flatMap((o) => [[o.id, o.title], ...(o.where ? [[o.where, nameOf(r, o.where)]] : [])]), ...learned.map((f) => [f.about, r.placeName(f.about) ?? f.about.slice(world.length + 1)])]),
     });
     let event = build();
@@ -187,6 +203,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       event = build();
     }
     const wrote = fold(r, `terminal:${world}:${receipt.id}`, event);
+    if (wrote && receipt.phase === "completed" && MOVES.test(event.act) && presence.near?.length) writePresence({ near: [] });
     if (messageId) { const { [receipt.id]: _, ...rest } = presence.openFor; writePresence({ openFor: rest }); }
     return wrote;
   }
@@ -205,14 +222,16 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       const me = frame?.me; if (!me) return;
       const when = clockAt({ real: now(), tick: frame.tick, time: frame.clock, worldDay: dayFrom(frame.now) });
       const near = rows(frame.near, 64).filter((p) => typeof p.dist === "number" && p.dist <= NEAR_METRES);
-      nearNow = near.map((p) => p.id).filter(safeId).slice(0, 8);
-      for (const p of rows(frame.near, 64)) if (safeId(p.id) && typeof p.traveller === "string" && p.traveller) travellers[p.id] = clip(p.traveller, 300);
+      for (const p of rows(frame.near, 64)) if (safeId(p.id) && TRAVELLER.test(p.traveller ?? "")) travellers[p.id] = p.traveller;
       const placeId = typeof me.place === "string" ? clip(me.place, PLACE_ID_MAX) || null : null;
       if ((placeId && placeId !== presence.place) || near.length) withRecords((r) => {
         arrived(r, when, placeId, me.placePath?.[0]);
         for (const p of near) met(r, when, p);
       });
       noted(me, when);
+      // Kept with the presence: who is near outlasts this process, and goes when an arrival or a finished move says the Soul left.
+      const ids = near.filter((p) => safeId(p.id) && p.id !== soul && clip(p.name, 100)).map((p) => p.id).slice(0, 8);
+      if (ids.join() !== (presence.near ?? []).join()) writePresence({ near: ids });
     },
     /** Events off the stream or a `wait`. One the record won't take costs only itself. */
     sawEvents(events) {
@@ -221,7 +240,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       let last = null, problem = null;
       withRecords((r) => {
         for (const e of wanted) {
-          const when = clockAt({ real: Number.isFinite(e.at) ? realTime(e.at, now) : now(), tick: e.tick, time: e.clock });
+          const when = clockAt({ real: Number.isFinite(e.at) ? realTime(Math.min(e.at, Date.parse(now())), now) : now(), tick: e.tick, time: e.clock });
           try {
             if (e.kind === "receipt") outcome(r, e.receipt, when);
             else if (e.kind === "arrive") arrived(r, when, e.where?.placeId ?? e.placeId, e.where?.place ?? e.placePath?.[0]);
@@ -245,20 +264,20 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       if (typeof receiptId !== "string" || !safeId(messageId)) return;
       writePresence({ openFor: Object.fromEntries([...Object.entries(presence.openFor ?? {}), [receiptId, messageId]].slice(-OPEN_FOR_MAX)) });
     },
-    /** The Soul's own report on an owner's message. */
-    sawResult(messageId, done, text) {
+    /** A report on an owner's message: the mind's own words, or with `own: false` a plan's close, which can carry a world's reason. */
+    sawResult(messageId, done, text, { own = true } = {}) {
       if (!safeId(messageId) || !clip(text, 160)) return;
-      const when = clockAt({ real: now(), tick: null, time: null });
-      withRecords((r) => fold(r, `owner:${world}:${messageId}`, { type: "outcome", receiptId: worldKey(world, messageId), messageId, act: "owner-message", phase: done ? "completed" : "failed", summary: clip(text, 160), untrusted: false, learned: [], produced: [], met: [], when, seen: {} }));
+      const when = clockAt({ real: now(), tick: null, time: null }), from = own ? "owner" : "plan";
+      withRecords((r) => fold(r, `${from}:${world}:${messageId}`, { type: "outcome", receiptId: worldKey(world, own ? messageId : `plan-${messageId}`), messageId, act: "owner-message", phase: done ? "completed" : "failed", summary: clip(text, 160), untrusted: !own, learned: [], produced: [], met: [], when, seen: {} }));
     },
-    /** What this Soul just said: to the people near, or to a conversation. */
+    /** What this Soul just said: to the people near, or to a conversation, and then only to those in it. */
     sawSaid(text, { to, conversationId } = {}) {
       const said = clip(text, 500); if (!said) return;
-      const when = clockAt({ real: now(), tick: null, time: null }), ids = (to ?? nearNow).filter(safeId).slice(0, 16);
+      const when = clockAt({ real: now(), tick: null, time: null }), private_ = safeId(conversationId);
       withRecords((r) => {
-        const members = safeId(conversationId) ? people.conversation(conversationId) : [], personIds = ids.length ? ids : members;
+        const personIds = [...(to ?? (private_ ? [] : presence.near ?? [])), ...(private_ ? people.conversation(conversationId) : [])].filter((id) => safeId(id) && people.view(id)).slice(0, 16);
         if (!personIds.length) return;
-        fold(r, `told:${world}:${sha([said, personIds, when.real])}`, { type: "told", personIds, text: said, channel: safeId(conversationId) ? "private-conversation" : "public-speech", ...(safeId(conversationId) ? { conversationId } : {}), when, seen: seenOf(personIds.map((id) => [id, people.view(id)?.name])) });
+        fold(r, `told:${world}:${sha([said, personIds, when.real])}`, { type: "told", personIds, text: said, channel: private_ ? "private-conversation" : "public-speech", ...(private_ ? { conversationId } : {}), when, seen: seenOf(personIds.map((id) => [id, people.view(id)?.name])) });
       });
     },
     /** A promise, to or from someone this Soul knows. `by` is me or them. */
@@ -267,21 +286,22 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       return withRecords((r) => {
         const row = people.find(target);
         if (!row) throw new Error(`I have no record of ${target}.`);
-        const id = `promise:${sha([row.traveller, what, at]).slice(0, 16)}`;
-        r.fold({ id, at, world, when, type: "commitment", personId: row.ids[0], by, what: clip(what, 300), seen: seenOf([[row.ids[0], row.name]]) });
-        return { promised: id, with: row.name, by };
+        const id = `promise:${sha([row.key, what, at]).slice(0, 16)}`;
+        r.fold({ id, at, world, when, type: "commitment", personId: row.id, of: row.key, by, what: clip(what, 300), seen: seenOf([[row.id, row.name]]) });
+        return { promised: id, with: row.name, key: row.key, by };
       });
     },
-    /** A promise kept, by a receipt or a conversation: the mind names the evidence and the log has to hold it. */
+    /** A promise kept, by what happened since with that person: their own turn in a conversation, or for a promise of mine a
+     *  completed act that names them. An owner's message, or an act of mine alone, keeps no one's promise. */
     kept(commitmentId, evidence) {
       const at = now(), when = clockAt({ real: at, tick: null, time: null });
       return withRecords((r) => {
         const c = people.commitment(commitmentId);
         if (!c) throw new Error(`No promise ${commitmentId}.`);
-        const receipt = r.terminal(worldKey(world, evidence)) ?? r.terminal(evidence), turn = people.conversation(evidence).some((id) => c.row.ids.includes(id));
-        if (receipt?.phase !== "completed" && !turn) throw new Error(`${evidence} is not a completed receipt or a conversation with ${c.row.name} that I have on record. A promise is kept by what happened, not by saying so.`);
-        r.fold({ id: `kept:${commitmentId}`, at, world, when, type: "commitment.kept", personId: c.row.ids[0], commitmentId, evidence: receipt?.receiptId ?? evidence, seen: {} });
-        return { kept: commitmentId, evidence: receipt?.receiptId ?? evidence };
+        const proof = people.proof(c, evidence, worldKey(world, evidence));
+        if (!proof) throw new Error(`${evidence} is not ${c.by === "me" ? "a completed act shared with them, or a conversation turn of theirs," : "a conversation turn of theirs"} since the promise. A promise is kept by what happened, not by saying so.`);
+        r.fold({ id: `kept:${commitmentId}`, at, world, when, type: "commitment.kept", personId: c.row.id, of: c.row.key, commitmentId, evidence: proof, seen: {} });
+        return { kept: commitmentId, evidence: proof };
       });
     },
     /** Standing in this world, written when a Soul arrives by travel. */
@@ -308,8 +328,8 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
         if (selector === "person") {
           const p = people.find(target);
           if (!p) throw new Error(`I have no record of meeting ${target}. Use their id from around or here, once they have been near.`);
-          r.remember({ ...value, person: p.ids[0], seen: seenOf([[p.ids[0], p.name]]), note: clip(note, 300) });
-          return { remembered: "person", id: p.ids[0], name: p.name };
+          r.remember({ ...value, person: p.id, of: p.key, seen: seenOf([[p.id, p.name]]), note: clip(note, 300) });
+          return { remembered: "person", id: p.id, key: p.key, name: p.name };
         }
         // Worlds from one template share names, so this world's place comes first.
         const key = worldKey(world, target), called = (x) => x.name.toLowerCase() === lower || x.formerly.some((n) => n.toLowerCase() === lower), mine = (x) => x.id.startsWith(`${world}:`);
@@ -322,9 +342,10 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     /** The pre-turn brief, within `bytes`. A Soul with no memory has none, and nothing is opened or made for it. */
     brief({ bytes } = {}) {
       if (!existsSync(join(soulDir, "memory", "log", "memory-events.jsonl"))) return "";
-      const facts = withRecords((r) => ({ ...r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null }), people: nearNow.map((id) => people.view(id)).filter(Boolean) }));
+      presence = readPresence() ?? presence;   // another process may be the one watching the world
+      const facts = withRecords((r) => ({ ...r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null }), people: (presence.near ?? []).map((id) => people.view(id)).filter(Boolean), promises: people.promises() }));
       const pinned = readLines(join(soulDir, "SOUL.md"), /^## Pinned\b/).map((l) => l.replace(/^- /, "")), schedule = readLines(join(soulDir, "memory", "schedule.md"), /^# Schedule\b/).filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
-      return buildBrief({ ...facts, schedule, self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes > 0 ? { bytes } : {});
+      return buildBrief({ ...facts, schedule, earlier: lastSummary(join(soulDir, "MEMORY.md")), self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes >= 0 ? { bytes } : {});
     },
     /** Consolidate under the log's lock is not needed: a pass reads projections and writes only its own files. Reopen after it. */
     reopen() { records = null; },
@@ -332,10 +353,10 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
     search(query) {
       withRecords(() => {});   // opening regenerates the projections, and a torn log says so here
       const root = join(soulDir, "memory"), terms = String(query).toLowerCase().split(/\s+/).filter(Boolean), matches = [];
-      const walk = (dir) => readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? 1 : -1)).flatMap((d) => (d.isDirectory() ? (d.name === "log" ? [] : walk(join(dir, d.name))) : d.name.endsWith(".md") ? [join(dir, d.name)] : []));
+      const consolidated = join(soulDir, "MEMORY.md"), walk = (dir) => readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? 1 : -1)).flatMap((d) => (d.isDirectory() ? (d.name === "log" ? [] : walk(join(dir, d.name))) : d.name.endsWith(".md") ? [join(dir, d.name)] : []));
       const plain = (l) => l.replace(/\\(.)/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
       let more = 0;
-      for (const file of walk(root)) {
+      for (const file of [...walk(root), ...(existsSync(consolidated) ? [consolidated] : [])]) {
         let title = null, section = null;
         for (const raw of readFileSync(file, "utf8").split("\n")) {
           const line = plain(raw);
@@ -343,8 +364,10 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
           else if (raw.startsWith("## ")) section = line.slice(3);
           if (!raw.trim() || !terms.every((t) => line.toLowerCase().includes(t))) continue;
           if (matches.length >= SEARCH_MAX) { more++; continue; }
-          const from = [title, section].filter(Boolean).join(" / ");
-          matches.push({ text: line.replace(/^[-> ]+/, ""), file: relative(root, file), provenance: from, untrusted: /untrusted/i.test(`${from} ${line}`) });
+          // A person's file is titled with a name a world gave them, so its title vouches for nothing.
+          const where = file === consolidated ? "MEMORY.md" : relative(root, file), from = where.startsWith("people") ? section ?? "name" : [title, section].filter(Boolean).join(" / ");
+          const mine = OWN_FILES.has(where) || OWN_SECTION.test(section ?? "") || (where === "MEMORY.md" && !/untrusted/i.test(section ?? "")) || (where.startsWith("journal") && OWN_JOURNAL.test(raw) && !/untrusted/i.test(raw));
+          matches.push({ text: line.replace(/^[-> ]+/, ""), file: where, provenance: from, untrusted: !mine });
         }
       }
       return { query, matches, ...(more ? { more } : {}) };

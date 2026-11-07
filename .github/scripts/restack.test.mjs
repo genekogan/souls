@@ -130,6 +130,7 @@ test('run: retargets, merges forward with a fast-forward push, labels conflicts 
     const api = {
       pr: n => { assert.equal(n, 1); return mergedPr; },
       open: () => open,
+      priorHeads: () => [],
       retarget: (n, base) => calls.push(['retarget', n, base]),
       label: (n, name) => calls.push(['label', n, name]),
       comment: (n, body) => calls.push(['comment', n, body.split('\n')[0]]),
@@ -154,6 +155,75 @@ test('run: retargets, merges forward with a fast-forward push, labels conflicts 
     const again = run({ prNumber: 1, api: { ...api, open: () => open.slice(0, 1) }, git, log: () => {} });
     assert.deepEqual(again, [{ pr: 2, result: 'skip: already contains main' }]);
     assert.deepEqual(calls, []);
+  } finally { fx.cleanup(); }
+});
+
+// The train rebased the parent before landing it: b1, b2 became r1, r2 on m2, so the merged head (r2) shares no commit
+// with a child cut from b1. The run works in a fresh clone, where b2 is unreachable, as a force-pushed head is on GitHub.
+function rebasedFixture() {
+  const fx = fixture(), { git, origin, b1, b2, squash } = fx, remote = gitIn(origin);
+  git('checkout', '-q', '--detach', `${squash}^`);
+  git('cherry-pick', b1, b2);
+  const r2 = git('rev-parse', 'HEAD');
+  git('checkout', '-q', 'main');
+  git('push', '-q', '-f', 'origin', `${r2}:refs/pull/1/head`);
+  remote('config', 'uploadpack.allowAnySHA1InWant', 'true');
+  const clone = join(fx.root, 'clone');
+  execFileSync('git', ['clone', '-q', '--no-local', origin, clone]);
+  const cg = gitIn(clone);
+  cg('config', 'user.name', 'test'); cg('config', 'user.email', 'test@example.invalid'); cg('config', 'commit.gpgsign', 'false');
+  return { ...fx, r2, remote, cg };
+}
+const rebasedApi = (fx, open, calls, priorHeads) => ({
+  pr: () => ({ ...merged, head: { ref: 'agent/1-base', sha: fx.r2 } }), open: () => open, priorHeads,
+  retarget: (n, base) => calls.push(['retarget', n, base]), label: (n, name) => calls.push(['label', n, name]), comment: (n, body) => calls.push(['comment', n, body]),
+});
+const onMain = (number, ref, sha) => ({ number, state: 'open', base: { ref: 'main', repo }, head: { ref, sha, repo } });
+
+test('run: a child GitHub already retargeted is merged forward from its rebased parent\'s old head; an unrelated PR is left alone', () => {
+  const fx = rebasedFixture();
+  try {
+    const { cg, remote, b1, b2, c1, o1, squash } = fx, calls = [];
+    assert.throws(() => cg('cat-file', '-e', `${b2}^{commit}`), 'the old head is not in the clone until restack fetches it');
+    const results = run({ prNumber: 1, api: rebasedApi(fx, [onMain(2, 'agent/2-child', c1), onMain(4, 'agent/4-other', o1)], calls, () => [b2]), git: cg, log: () => {} });
+    assert.deepEqual(results.map(r => r.pr), [2]);
+    assert.match(results[0].result, /^merged main forward/);
+    const pushed = remote('rev-parse', 'refs/heads/agent/2-child');
+    assert.equal(remote('rev-parse', `${pushed}^1`), c1, 'a fast-forward of the old head');
+    assert.equal(remote('rev-parse', `${pushed}^2`), squash);
+    assert.equal(remote('diff', '--name-only', squash, pushed), 'child.txt', 'files the child never changed take the squashed content');
+    assert.equal(remote('rev-parse', 'refs/heads/agent/4-other'), o1);
+    assert.deepEqual(calls.map(c => [c[0], c[1]]), [['comment', 2]]);
+    assert.match(calls[0][2], new RegExp(`\\(\`${b1.slice(0, 7)}\`\\)`), 'the fork point is the old branch, not an old main');
+  } finally { fx.cleanup(); }
+});
+
+test('run: a child still on the rebased parent\'s branch uses the old head as its fork point, so only a real overlap conflicts', () => {
+  const fx = rebasedFixture();
+  try {
+    const { cg, remote, b2, c1, x1 } = fx, calls = [];
+    const onBranch = (number, ref, sha) => ({ ...onMain(number, ref, sha), base: { ref: 'agent/1-base', repo } });
+    const results = run({ prNumber: 1, api: rebasedApi(fx, [onBranch(2, 'agent/2-child', c1), onBranch(3, 'agent/3-clash', x1)], calls, () => [b2]), git: cg, log: () => {} });
+    assert.match(results[0].result, /^merged main forward/);
+    assert.match(results[1].result, /^conflict in base\.txt:/);
+    assert.equal(remote('rev-parse', 'refs/heads/agent/3-clash'), x1, 'a conflict pushes nothing');
+    assert.deepEqual(calls.filter(c => c[0] !== 'comment'), [['retarget', 2, 'main'], ['retarget', 3, 'main'], ['label', 3, REBASE]]);
+  } finally { fx.cleanup(); }
+});
+
+test('run: when an old head or the history cannot be read, the merged PR says children may have been skipped', () => {
+  const fx = rebasedFixture();
+  try {
+    const { cg, remote, c1 } = fx, gone = 'f'.repeat(40);
+    for (const [priorHeads, said] of [[() => [gone], /fffffff/], [() => [null], /no longer records/], [() => { throw Error('graphql down'); }, /force-push history/]]) {
+      const calls = [], results = run({ prNumber: 1, api: rebasedApi(fx, [onMain(2, 'agent/2-child', c1)], calls, priorHeads), git: cg, log: () => {} });
+      assert.deepEqual(calls.map(c => [c[0], c[1]]), [['comment', 1]], 'one comment, on the merged PR');
+      assert.match(calls[0][2], said); assert.match(calls[0][2], /may have been skipped/); assert.match(calls[0][2], /restack\.yml/);
+      assert.deepEqual(results.map(r => r.pr), [1]);
+      assert.equal(remote('rev-parse', 'refs/heads/agent/2-child'), c1, 'nothing is pushed on a guess');
+    }
+    const calls = [], dry = run({ prNumber: 1, dryRun: true, api: rebasedApi(fx, [onMain(2, 'agent/2-child', c1)], calls, () => [gone]), git: cg, log: () => {} });
+    assert.deepEqual(calls, [], 'a dry run comments on nothing'); assert.deepEqual(dry.map(r => r.pr), [1]);
   } finally { fx.cleanup(); }
 });
 

@@ -101,35 +101,63 @@ UNTRUSTED through every projection.
 `worlds/<world>.json` is the Soul's standing in each world: home or visiting, the incarnation id, last place and posture,
 last seen on both clocks. `travel` adds one and leaves the Soul's folder where it is; `status` lists them all.
 `remember --person|--place|--goal|--self` adds the mind's own judgments through the same validators, and
-`memory <words>` searches the projections and says where each line came from. A legacy folder has no memory.
+`memory <words>` searches the projections and says where each line came from. A legacy folder has no memory. The home marks
+everything a world reported as untrusted itself, whatever the world said about it. `memory/` and `MEMORY.md` are in the
+home's `.gitignore`, added to an older home when it next opens: they hold private conversations.
 
 ### People
 
-`people/<traveller>.md` is one record per Soul met, across worlds, keyed on the traveller id (`<home>/<id>`, with `~` for
-the slash; `<world>/<id>` until the world gives one, and folded in when it does). `tools/world-launcher/soul/people.mjs`
-projects it from the log: first met and last contact on both clocks, episodes as pointers to conversations and shared
-receipts with a line each, beliefs with their provenance, their last words marked UNTRUSTED, what this Soul has told them
-(its own `say` and `converse` from what it sent), and commitments. No one met, no folder.
+`people/<slug>-<hash>.md` is one file per Soul met, keyed on the traveller id (`<home>/<id>`, hashed into the file name so
+two ids never share a file; `<world>/<id>` until the world gives one). `tools/world-launcher/soul/people.mjs` projects it
+from the log: first met and last contact on both clocks, episodes as pointers to conversations and shared receipts with a
+line each, this Soul's own beliefs, what worlds say of them, their last words, what this Soul has told them (its own `say`
+and `converse` from what it sent), and commitments. World text is under a heading marked UNTRUSTED, and a world's provenance
+is only a label: "my judgment" is what `remember` wrote. The title's name is a world's too, and `memory` says so. A file for
+someone met once stays under 2 KB, any file under 8 KB. No one met, no folder.
 
-`remember --person <id|name> --promise "<what>" [--by me|them]` opens a commitment. It closes only with
-`remember --kept <promise id> --evidence <id>`, and the id must be a completed receipt or a conversation with that person
-in the log: a promise is kept by what happened, not by the mind saying so.
+Each Soul a world shows is its own row, and a world speaks only for its own. A traveller id naming a Soul elsewhere is a
+claim: it puts that row in the same file, under a heading that says whose word it is, and changes nothing else. A claim moves
+and merges no row. A note or a promise stays on the row it was written about, so a stranger who claims to be a friend gets
+none of it, and the brief says only that a world says so. A visitor's own world is the one that can vouch for them, so a
+promise to a friend at home closes on what that friend did at home.
+
+`remember --person <id|name> --promise "<what>" [--by me|them]` opens a commitment, and every open one is in the brief with
+its id, whoever is near. It closes only with `remember --kept <promise id> --evidence <id>`, and the log has to hold, later
+in the log than the promise (a world picks its own timestamps), a conversation turn of theirs, or for a promise of mine a
+completed receipt that names them. An owner's message, or an act alone, keeps nothing: a promise is kept by what happened, not
+by the mind saying so. Any turn of theirs since counts, even a greeting: the mind names which.
 
 ### Consolidation
 
-`consolidate [--force]`, and once a day from an idle `serve`, summarizes the oldest journal days past 32 KB into
-`MEMORY.md`, gathers notes written more than once and writes `memory/soul-proposal.diff` for the owner. It never writes
-`SOUL.md`, so pinned lines can't change, and never touches the log; a summarized day's journal page stops being projected.
-The owner pays, so it runs their local model CLI under hard caps set before any call (`consolidation` in `config.json`:
-`callsPerDay` 2, `tokensPerPass` 8,000); spent means skipped, and `memory/consolidation.json` says so. With
-`BRAIN_MODE=fake`, or no CLI, a deterministic stand-in runs the same plumbing. A Soul under budget makes no call.
+`consolidate [--force]`, and an idle `serve` on the owner's schedule, summarizes the oldest journal days past 32 KB into
+`MEMORY.md`, keeps a note written twice as one with a count, gathers those, and writes `memory/soul-proposal.diff` for the
+owner. It never writes `SOUL.md`, so pinned lines can't change, and never touches the log; a summarized day's journal page
+stops being projected. A day too big for one pass is read as far as fits. `memory` searches `MEMORY.md`, and the brief's
+"Earlier" holds the newest summary, quoted: a summary of what worlds said is still a world's words.
+
+The owner pays, so caps come before any call (`consolidation` in `config.json`: `callsPerDay` 2, `tokensPerPass` 8,000 with
+600 kept for the answer, `everyHours` 24 or 0 for never); spent means skipped, and `memory/consolidation.json` says so.
+`--force` looks past the journal budget and nothing else. A `serve` waits while a receipt or a plan runs, and a restart doesn't
+reset its clock.
+
+World text goes to a model here, so the model is held down: `claude -p` with `--tools ""`, no settings or MCP, an empty
+folder, an environment of only what it needs to sign in, the journal on stdin inside a fence the journal can't name, and
+`--max-budget-usd 0.05`. A CLI that can't be run without tools isn't used. With `BRAIN_MODE=fake`, or no CLI, a deterministic
+stand-in runs the same plumbing. It runs beside `serve`, one pass at a time. An answer with nothing in it deletes nothing, and
+a Soul under budget makes no call.
 
 ### The pre-turn brief
 
-With memory and a `serve` up, `pending` and a `listen` that woke for a message or for speech carry `brief`: known people
-near, this place, open commitments, the last episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the
-`remember --self` lines. `brief.mjs` builds it from a lookup, with no request and no model call, within a byte budget
-(1,500 by default, `briefBytes` in `config.json`). It doesn't grow with the log, and a Soul with no memory has none.
+With memory, `pending` and a `listen` that woke carry `brief`: known people near, this place, open commitments, the last
+episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the `remember --self` lines. `brief.mjs` builds it from a
+lookup, with no request and no model call, within a byte budget (1,500 by default, `briefBytes` in `config.json`, 0 for none).
+It doesn't grow with the log, and a Soul with no memory has none. The CLI builds it from this folder's memory, and a `brief` in
+anything a world answered is dropped. Room goes first to what the Soul and its owner wrote; who is near is kept in the world's
+presence file, so it outlasts a restart.
+
+Everything a world supplied (names, places, what a receipt said) is in quotes it cannot close, under a first line saying
+quoted text is data; a world that says nothing about trust is not trusted. Only the Soul's notes, goals and own `result`
+reports, and its owner's `SOUL.md` and schedule, stand bare. A plan's close can carry a world's reason, so it is quoted too.
 
 ## The edge API
 

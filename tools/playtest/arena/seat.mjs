@@ -55,10 +55,27 @@ export class Seat {
       wake: (seat.adapter ?? 'claude-headless') === 'codex-headless' ? seat.wake === true : seat.wake !== false };
   }
   save() { writeJson(join(this.dir, 'seat.json'), this.info); }
-  /** A new start for this Soul's owner: its resident client restarts and the next turn opens a new chat. */
+  /** A new start for this Soul's owner: its resident client restarts, and the next turn opens a new chat. What the last chat
+   *  left unread goes with it, or a replay would stand in for memory. A seat with `home` moves into a Souls home first. */
   async restart() {
-    for (const step of [['serve', '--stop'], ['serve']]) await run('node', [this.cli.file, ...step], { cwd: this.folder, maxWallMs: 20000 });
-    this.info.sessionId = null; this.save();
+    await this.chain;   // a turn in flight would write its session back
+    const cli = async (...args) => {
+      const r = await run('node', [this.cli.file, ...args], { cwd: this.folder, maxWallMs: 20000 });
+      if (r.code !== 0) throw new Error(`seat ${this.seat.id}: ${args.join(' ')} exited ${r.code}: ${r.stderr.slice(0, 300)}`);
+      return JSON.parse(r.stdout);
+    };
+    const listening = !!this.listener;
+    this.stopListen();
+    try {
+      if ((await cli('serve', '--status')).serving) await cli('pending');
+      await cli('serve', '--stop');
+      let up = true;
+      for (let i = 0; i < 100 && up; i++) { up = (await cli('serve', '--status')).serving; if (up) await sleep(100); }   // a stopping serve still answers
+      if (up) throw new Error(`seat ${this.seat.id}: serve did not stop`);
+      if (this.seat.home && existsSync(join(this.folder, '.eden-agent.json'))) await cli('import');
+      if (!(await cli('serve')).serving) throw new Error(`seat ${this.seat.id}: serve did not come back`);
+      this.info.sessionId = null; this.save();
+    } finally { if (listening) this.startListen(); }
   }
   get sessionId() { return this.info.sessionId; }
   /** Number of completed turns (as recorded in turns.jsonl, so it survives a harness restart). */

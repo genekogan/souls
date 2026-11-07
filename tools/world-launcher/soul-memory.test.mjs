@@ -208,7 +208,7 @@ test('A2: every projection regenerates, and speech and reports keep their label'
   for (const f of ['self.md', 'goals.md', 'schedule.md', 'places.md', 'knowledge.md', 'lessons.md', 'ledger.md']) assert.ok(existsSync(join(memory, f)), f);
   assert.equal(people.length, 1); assert.equal(readdirSync(join(memory, 'journal')).length, 1);
   const person = readFileSync(join(memory, 'people', people[0]), 'utf8');
-  assert.match(person, /UNTRUSTED/); assert.match(person, /Meet me at the mill tomorrow/); assert.match(person, /eden, day 3, 09:21 at the pier/);
+  assert.match(person, /UNTRUSTED/); assert.match(person, /Meet me at the mill tomorrow/); assert.match(person, /eden, day 3, 09:21, [^ ]+ at the pier/);
   assert.match(readFileSync(join(memory, 'knowledge.md'), 'utf8'), /The mill floods\..*UNTRUSTED/);
   assert.match(readdirSync(join(memory, 'journal')).map((f) => readFileSync(join(memory, 'journal', f), 'utf8')).join(''), /Ana said the mill floods.*untrusted content/);
   rmSync(join(memory, 'places.md')); rmSync(join(memory, 'people', people[0]));
@@ -227,7 +227,7 @@ test('A4: remember goes through the validators; memory finds it with its provena
   assert.throws(() => m.remember('place', 'moon', 'x'), /no record of being at/);
   assert.throws(() => m.remember('goal', 'g', 'x', { horizon: 'someday' }), /goal horizon/);
   const own = m.search('keeps her word').matches[0];
-  assert.match(own.provenance, /What I believe/); assert.equal(own.untrusted, false); assert.match(own.provenance, /Ana/);
+  assert.match(own.provenance, /What I believe/); assert.equal(own.untrusted, false); assert.match(own.file, /^people\//);
   const said = m.search('mill tomorrow').matches[0];
   assert.equal(said.untrusted, true); assert.match(said.provenance, /UNTRUSTED/);
   assert.match(m.search('ferry dawn').matches[0].file, /knowledge\.md/);

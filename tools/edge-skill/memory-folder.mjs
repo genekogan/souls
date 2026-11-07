@@ -25,7 +25,7 @@ const sorted = map => [...map.values()].sort((a, b) => lexical(a.id, b.id));
 const count = value => Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000 ? value : fail('invalid count');
 
 // The Souls home adds these to every record (docs/design/soul-context.md section 2). All optional: a 1.9 log has none.
-const CONTEXT = ['world', 'when', 'seen', 'travellers'];
+const CONTEXT = ['world', 'when', 'seen', 'travellers', 'of'];
 function validateContext(e) {
   if (e.world !== undefined) id(e.world);
   if (e.when !== undefined) {
@@ -41,6 +41,7 @@ function validateContext(e) {
     if (!e.travellers || typeof e.travellers !== 'object' || Array.isArray(e.travellers) || Object.keys(e.travellers).length > 64) fail('invalid traveller ids');
     for (const [k, v] of Object.entries(e.travellers)) {publicId(k); publicId(v);}
   }
+  if (e.of !== undefined) publicId(e.of);
 }
 
 function validateEvent(input) {
@@ -316,7 +317,6 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log', observe = 
   return {
     /** What a memory on the shipping line looks things up by: known ids and the names they went by. */
     placeName(placeId){return places.get(placeId)?.name??null;},
-    terminal(receiptId){const e=terminals.get(receiptId);return e?{receiptId:e.receiptId,phase:e.phase}:null;},
     /** The little the brief needs, looked up rather than scanned: its size never follows the log's. */
     digest({place,near=[]}){
       fresh();
@@ -325,7 +325,7 @@ export function openMemoryFolder(directory, {logs: logFolder = 'log', observe = 
         place:p?{name:p.name,visits:p.visits,note:impressions.get(p.id)??null}:null,
         people:near.flatMap(personId=>{const row=people.get(personId);if(!row)return [];const m=row.meetings.at(-1);return [{id:row.id,name:row.name,met:row.meetings.length,last:m?{world:m.world??null,worldDay:m.day??null,place:m.seenAs??null}:null,note:row.impressions.at(-1)??null}];}),
         goals:sorted(goals).sort((a,b)=>['today','week','month'].indexOf(a.horizon)-['today','week','month'].indexOf(b.horizon)).slice(0,4).map(g=>({note:g.note,next:g.next})),
-        recent:recentOutcomes.slice(-2).map(e=>({summary:e.summary,untrusted:e.untrusted})),
+        recent:recentOutcomes.slice(-2).map(e=>({summary:e.summary,own:e.id.startsWith('owner:')})),
         self:self.slice(0,8),
       };
     },
