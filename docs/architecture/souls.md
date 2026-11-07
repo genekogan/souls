@@ -42,13 +42,20 @@ upward from the current folder like `.git`, stopping at the user's home folder (
   credentials.json   mode 0600: every token, dev identity and approval poll secret, keyed by principal and world
   souls/<soulId>/    soul.json (identity); runtime/ holds state.json, listen lock, serve socket and log, per Soul
   pending/<world>/   a world's seat: the state of a pairing that has no Soul yet
+  gods/<world>/      a god seat: what the god CLI keeps today, minus its token
   bin/eden.mjs       the CLI, for folders below the home
 ```
 
 With one Soul every command works as it did. With several, name one first: `node eden.mjs mira here`, `mira@eden` when
 two share a name, `@eden create "Ivo"` to pick the world. Each run works inside that Soul's `runtime/`, so nothing
 collides. `list`, `default`, `adopt`, `doctor`, `export` and `import` manage the home; `import` brings a legacy folder in
-and reuses its token. Everything but `credentials.json` is safe to read or back up.
+and reuses its token. Everything but `credentials.json` is safe to read or back up, apart from a god seat's relay secret below.
+
+A god is a second principal. `eden-god.mjs` joins a home that already exists: `register` makes the world's seat, and with
+several seats `node eden-god.mjs <world> <command>` picks one (`@<world>` when a command has that name). Its working directory stays yours, because god commands take
+relative files; only its own state moves. A folder with no home keeps `.eden-god.json` as ever, and that file wins until
+`node eden.mjs import` moves it in. Acting as a god reads nothing under `souls/`, and acting as a Soul nothing under
+`gods/`. A seat also holds the look keeper's per-start localhost secret (`.eden-god.wire.json`, 0600).
 
 One client and one project skill (`.claude/skills/souls/`, `.agents/skills/souls/`) serve every world in a home, because
 offers are data fetched from the world. `/v1/config` says which bundle a world serves: `soulClient: {contract, version,

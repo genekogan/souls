@@ -5,6 +5,7 @@
 // (the world mirror). Commands print short human text; add --json for machine output.
 import { acquireLock } from './lib/locks.mjs';
 import { doctor } from './lib/doctor.mjs';
+import { enterGodSeat, godFile, seatForRegister } from './lib/seat.mjs';
 import { catalog, line as catalogLine, recommend, taxonomy } from './lib/catalog.mjs';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -42,8 +43,9 @@ export { SKILL_VERSION };
 export async function register(url, identity) {
   if (!url) throw new Error('usage: register <world-url> [dev:identity]');
   const base = url.replace(/[?#].*$/, '').replace(/\/$/, '');
+  const leaveSeat = seatForRegister(base);
   save({ world: base, ...(identity ? { identity } : {}) });
-  const cfg = ok(await call('/v1/config', { as: 'none' }), 'register');
+  const cfg = await call('/v1/config', { as: 'none' }).then((r) => ok(r, 'register')).catch((e) => { leaveSeat(); throw e; });
   return { world: base, worldId: cfg.worldId, devAuth: !!cfg.devAuth, next: cfg.devAuth && identity ? 'Run: mint' : 'Run: pair (your human approves in the browser)' };
 }
 export async function pair(agent = 'eden-god ' + SKILL_VERSION) {
@@ -427,10 +429,10 @@ const bakeCache = new Map();
 // G2: bakes of shapeless defs kept in the folder per library state (a def's bake depends only on its content), so a
 // place of a def used before needs no bake request. Only a commit whose ifSeq held may save them (place: ctx.bakes).
 const BAKES = '.eden-god.bakes.json';
-const readBakes = (lib) => { try { const b = JSON.parse(readFileSync(BAKES, 'utf8')); return b.lib === lib ? b.bakes : {}; } catch { return {}; } };
+const readBakes = (lib) => { try { const b = JSON.parse(readFileSync(godFile(BAKES), 'utf8')); return b.lib === lib ? b.bakes : {}; } catch { return {}; } };
 export function saveBakes(lib, fresh) {
   if (!lib || !Object.keys(fresh).length) return;
-  try { const all = Object.entries({ ...readBakes(lib), ...fresh }).slice(-300); atomicWrite(BAKES, JSON.stringify({ lib, bakes: Object.fromEntries(all) })); } catch { /* best effort */ }
+  try { const all = Object.entries({ ...readBakes(lib), ...fresh }).slice(-300); atomicWrite(godFile(BAKES), JSON.stringify({ lib, bakes: Object.fromEntries(all) })); } catch { /* best effort */ }
 }
 /** The physical facts of a def at given params (box, rooms, slots), from the server's own generators. `kept`: { lib,
  *  fresh } — read the folder's bakes for that library state and collect the ones fetched now (place saves them). */
@@ -1486,6 +1488,7 @@ for (const [feature, verbs] of Object.entries(OFF_VERBS)) for (const verb of ver
 
 for (const [name, fn] of Object.entries(COMMANDS)) COMMANDS[name] = (r = [], f = {}) => withBuildOptions(f, () => ['build', 'group'].includes(name) ? withStateLock(() => fn(r, f)) : fn(r, f));
 const HELP = `eden-god ${SKILL_VERSION} — god mode for one Eden world. Read SKILL.md.
+home:   in a Souls home, several seats: <world> <command> (or @<world> when a command has that name); a legacy god folder moves in with: node eden.mjs import
 locks:  doctor [--fix] [--local] [--json] (holders, stale locks; --fix breaks only stale ownership)
 trace:  trace [--build id] [--limit n] (the world's recent god requests: route, outcome, ms, no payloads; LOOP = the same refusal 3+ times in 2 min, also in build show)
 read:   verify-use <target> [--seat ref] [--from ref|x,z] [--uses enter,sit] · map · defs <words> · describe <ref> · where <x,z|ref> ([bounds] containment / [collider] hit) · reach <from> <to> · clear <x,z|ref> --size WxD · free WxD [--near ref] · look [--at ref|x,z] [--from s|n|e|w|above] [--dist m] [--span m] [--inside [--floor k]] · history · resolve · schema [--md]
@@ -1514,7 +1517,8 @@ ${godFeature('constitution') ? GOV_HELP + '\n' : ''}learn:  examples [name] · d
 
 const NO_WARM = new Set(['help', 'register', 'mint', 'pair', 'doctor', 'look', 'look-shot', 'look-keeper']);
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('eden-god.mjs')) {
-  const [cmd, ...argv] = process.argv.slice(2); const { flags: f, rest, argv: readAs, notes, hint } = readArgs(cmd, argv);
+  let line; try { line = enterGodSeat(process.argv.slice(2), COMMANDS); } catch (e) { console.error(e.message); process.exit(2); }
+  const [cmd, ...argv] = line; const { flags: f, rest, argv: readAs, notes, hint } = readArgs(cmd, argv);
   const fn = COMMANDS[cmd ?? 'help'];
   if (!fn) { console.error(`unknown command ${cmd}\n${HELP}`); process.exit(2); }
 
