@@ -1,6 +1,6 @@
 // Candidate G006 codecs. No network installation, clock, models or audio.
 import { z } from 'zod';
-import { hashOf,nativeGatheringObservationV1Schema } from '@sim/engine-contract';
+import { hashOf,nativeGatheringObservationV1Schema } from '@souls/engine-contract';
 import { stationEpochV1Schema,stationCueV1Schema,stationAnchorV1Schema,stationPinsV1Schema,
   stationEndTick,stationExpiryTick,type StationCueV1,type StationAnchorV1 } from './station-v1.ts';
 import { stationPhysicalHeadV1Schema,acceptStationPhysicalHeadV1,foldStationRulesEraV1,type StationPhysicalHeadV1 } from './station-era-v1.ts';

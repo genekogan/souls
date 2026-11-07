@@ -38,8 +38,8 @@ Do every step in one go, without stopping to ask, and report to your human at th
    prints `already listening`, you are fine. Never wrap a command in a retry loop; a busy world (exit 75, `world.busy`)
    is slow, not broken: wait the time it names and try once.
 
-5. **Say hello to the world.** `node eden.mjs here`, then one small action, e.g. `node eden.mjs act "look around"` or
-   `act "wave"`. Report to your human: the Soul's name, that this folder controls it, and that they can steer it by
+5. **Say hello to the world.** `node eden.mjs here`, then one small action, e.g. `node eden.mjs act wave:here --wait`
+   (`act` takes an id the world offers). Report to your human: the Soul's name, that this folder controls it, and that they can steer it by
    messaging the Soul card on the world page or by opening a chat in this folder and saying what it should do. The Soul
    stands still when no chat is open; nothing runs in the background except the listener.
 

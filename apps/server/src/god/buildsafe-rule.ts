@@ -2,7 +2,7 @@
 // BUILDSAFE part 1's shared clearance rule (packages/generators/src/clearance.ts, also furnish.mjs's ways rule: a body
 // PLAN_R round on a NAV_CELL grid; a piece's approach is in front of each seat, else the free spot nearest it).
 // buildsafe.ts reads nothing else.
-import { approachOf as clearanceApproach, PLAN_R, NAV_CELL } from '@sim/generators';
+import { approachOf as clearanceApproach, PLAN_R, NAV_CELL } from '@souls/generators';
 
 export type Vec2 = [number, number];
 /** A way key: the free cell nearest any of `pts` within `r` metres stands for it (as the walk goal search does). */

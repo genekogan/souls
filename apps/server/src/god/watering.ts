@@ -3,7 +3,7 @@
 // the valve), carry it to the planter and pour through the rose (watering_can_v1 pour), hang it back (put_item).
 // The world changes at the native timeline's own moments (`wateringEvents`), read only for bodies that were given this
 // act (no per-tick scan of the world): the tap at the valve contacts, the soil in three steps while the stream runs.
-import { opSchema, CAN_GRIP, CAN_LITRES, CAN_OPENING, CAN_ROSE, POUR_LITRES, type Op, type StoredDef, type WorldModel } from '@sim/world-compiler';
+import { opSchema, CAN_GRIP, CAN_LITRES, CAN_OPENING, CAN_ROSE, POUR_LITRES, type Op, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { canPoint, TILT, wateringEvents, type WateringMotion } from '../../../../mars/viewer/engine/items/watering.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
 import { litresOf } from './water.ts';

@@ -1,8 +1,8 @@
 // core/humanoid@2 looks: def-driven params, stable seeds and keys, edits, body records, legacy migration.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {bodyV1Schema} from '@sim/protocol';
-import {CORE_KIT, WorldModel} from '@sim/world-compiler';
+import {bodyV1Schema} from '@souls/protocol';
+import {CORE_KIT, WorldModel} from '@souls/world-compiler';
 import * as L from '../src/humanoid/look.ts';
 import {legacyLook, socialLook} from '../src/humanoid/legacy.ts';
 import {SOCIAL_HUMAN_PRESETS, SOCIAL_PUBLIC_ASSIGNMENTS} from '../../../mars/viewer/app/engine-view/content/details/human-presets/presets.mjs';

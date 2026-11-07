@@ -4,7 +4,7 @@ import { nativeBoatFixture } from './boat-runtime.ts';
 import { TakeRecorder } from '../../../mars/viewer/engine/take/recorder.ts';
 import { sampleTake } from '../../../mars/viewer/engine/take/replay.ts';
 import type { Runtime } from '../../../mars/viewer/engine/runtime/runtime.ts';
-import { boatStateV1Schema, boatPassengerV1Schema } from '@sim/engine-contract';
+import { boatStateV1Schema, boatPassengerV1Schema } from '@souls/engine-contract';
 import { BOAT_LAYOUT, BOAT_POLICY } from '../../../mars/viewer/engine/vehicles/boat.ts';
 import { nativeShoreFixture } from './shore-runtime.ts';
 

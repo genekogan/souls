@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {soulProfileFactV1Schema,soulProfileUpdateSchema,type SoulProfileFactV1} from '@sim/protocol';
+import {soulProfileFactV1Schema,soulProfileUpdateSchema,type SoulProfileFactV1} from '@souls/protocol';
 import {checkAcceptanceGuard,type AcceptanceGuard,type WorldHost} from './world.ts';
 import {ApiError,type Souls} from './souls.ts';
 import {validateProfilePNG} from './profile-png.ts';

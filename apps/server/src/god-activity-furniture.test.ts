@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { WorldModel, applyBatch, coreLibrary } from '@sim/world-compiler';
+import { WorldModel, applyBatch, coreLibrary } from '@souls/world-compiler';
 import { marsFactory, GREEN_FIELD_WORLD, EDEN_SAFE_COMMONS_WORLD, type MarsEngine, type MarsWorldConfig } from '../../../packages/engine-mars/src/engine.ts';
 import { assetFromDef, assetIdFor } from '../../../packages/engine-mars/src/catalog-adapter.ts';
 import { nextEntityPhysics } from '../../../packages/engine-mars/src/entity-physics.ts';

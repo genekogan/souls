@@ -2,9 +2,9 @@
 // acceptance and its receipt. Never opens a socket or contacts a model provider.
 import { workerData } from 'node:worker_threads';
 import { setImmediate } from 'node:timers/promises';
-import { toyFactory } from '@sim/engine-toy';
-import { type callTool } from '@sim/brain';
-import { INTENT_V2 } from '@sim/protocol';
+import { toyFactory } from '@souls/engine-toy';
+import { type callTool } from '@souls/brain';
+import { INTENT_V2 } from '@souls/protocol';
 import { Db } from '../../src/db.ts';
 import { config } from '../../src/config.ts';
 import { Brain } from '../../src/brain.ts';

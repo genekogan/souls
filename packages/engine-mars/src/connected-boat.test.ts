@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf,captureRenderScene,nativeBoatLayoutV1Schema} from '@sim/engine-contract';
+import {hashOf,captureRenderScene,nativeBoatLayoutV1Schema} from '@souls/engine-contract';
 import {connectedCommonsBoatFixture} from './connected-boat.ts';
 import {connectedCommonsShoreFixture} from './connected-shore.ts';
 import {nativeBoatFixture} from './boat-runtime.ts';
