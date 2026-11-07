@@ -1488,7 +1488,7 @@ for (const [feature, verbs] of Object.entries(OFF_VERBS)) for (const verb of ver
 
 for (const [name, fn] of Object.entries(COMMANDS)) COMMANDS[name] = (r = [], f = {}) => withBuildOptions(f, () => ['build', 'group'].includes(name) ? withStateLock(() => fn(r, f)) : fn(r, f));
 const HELP = `eden-god ${SKILL_VERSION} — god mode for one Eden world. Read SKILL.md.
-home:   in a Souls home, several seats: <world> <command>; a legacy god folder moves in with: node eden.mjs import
+home:   in a Souls home, several seats: <world> <command> (or @<world> when a command has that name); a legacy god folder moves in with: node eden.mjs import
 locks:  doctor [--fix] [--local] [--json] (holders, stale locks; --fix breaks only stale ownership)
 trace:  trace [--build id] [--limit n] (the world's recent god requests: route, outcome, ms, no payloads; LOOP = the same refusal 3+ times in 2 min, also in build show)
 read:   verify-use <target> [--seat ref] [--from ref|x,z] [--uses enter,sit] · map · defs <words> · describe <ref> · where <x,z|ref> ([bounds] containment / [collider] hit) · reach <from> <to> · clear <x,z|ref> --size WxD · free WxD [--near ref] · look [--at ref|x,z] [--from s|n|e|w|above] [--dist m] [--span m] [--inside [--floor k]] · history · resolve · schema [--md]

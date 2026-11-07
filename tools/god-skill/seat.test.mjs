@@ -89,6 +89,15 @@ test('A2: a legacy god folder works unchanged, a home does not capture it, and i
   assert.equal((await soul('import')).code, 1, 'nothing left to import');
 });
 
+test('import: a Soul still running keeps the god where it is too', async (t) => {
+  const base = await worlds(t), dir = folder(t), soul = runner(dir, eden);
+  writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({ world: `${base}/a`, soul: 's_a1', token: 'sim_s_a1_x' }));
+  writeFileSync(join(dir, '.eden-god.json'), JSON.stringify({ world: `${base}/a`, token: 'god_a_tok' }));
+  writeFileSync(join(dir, '.listen.lock'), JSON.stringify({ pid: process.pid }));
+  assert.match((await soul('import')).err, /still runs in that folder/);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, '.souls/credentials.json'), 'utf8')).gods, {}, 'nothing moved');
+});
+
 test('register: a flag is not a world, and a world that never answers leaves no seat', async (t) => {
   const base = await worlds(t), dir = folder(t), godCli = runner(dir, god), soul = runner(dir, eden);
   await soul('register', `${base}/a`); await soul('create', 'Mira');
@@ -105,6 +114,11 @@ test('register: a flag is not a world, and a world that never answers leaves no 
   await godCli('b', 'mint');
   assert.match((await godCli('b', 'status')).out, /\/w\/b/, 'each world has its own seat and token');
   assert.match((await godCli('a', 'status')).out, /\/w\/a/);
+  // a seat never changes world, however it is named
+  for (const at of ['a', '@a']) assert.match((await godCli(at, 'register', `${base}/b`, 'dev:owner')).err, /The seat a is for/);
+  assert.match((await godCli('a', 'status')).out, /\/w\/a/, 'seat a still speaks to world a');
+  assert.equal((await godCli('@a', 'register', `${base}/a`, 'dev:owner')).code, 0, 'its own world again is fine');
+  assert.match((await godCli('@b', 'status')).out, /\/w\/b/);
 });
 
 test('a helper sits in its own world\'s seat, and a legacy file does not hide another seat', async (t) => {

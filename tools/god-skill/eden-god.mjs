@@ -725,6 +725,7 @@ function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) =
 // lib/seat.mjs
 var seat = null;
 var registering = null;
+var registerAs = null;
 var godFile = (name) => seat ? join2(seat.dir, name) : name;
 var seatDir = () => seat?.dir ?? null;
 var seatSecrets = () => seat?.home.godSecrets(seat.key) ?? null;
@@ -745,7 +746,9 @@ var legacyWorld = () => {
 function seatForRegister(url) {
   if (!registering) return () => {
   };
-  const h = registering, before = h.config(), known2 = keyOf(before.worlds, url), held = known2 && before.gods[known2], key = h.ensureGod(url);
+  const h = registering, before = h.config(), known2 = keyOf(before.worlds, url), held = known2 && before.gods[known2];
+  if (registerAs !== null && known2 !== registerAs) throw new Error(`The seat ${registerAs} is for ${before.worlds[registerAs]?.url}, not ${url}. For another world: node eden-god.mjs register <world-url>`);
+  const key = h.ensureGod(url);
   sit(h, key);
   return held ? () => {
   } : () => {
@@ -777,6 +780,11 @@ function enterGodSeat(argv, commands, { cwd = process.cwd(), env: env2 = process
     if (key && cfg.gods[key]) sit(h, key);
     return line2;
   }
+  if (cmd === "register") {
+    registering = h;
+    registerAs = asked;
+    if (asked !== null) return line2;
+  }
   if (asked !== null) {
     sit(h, asked);
     return line2;
@@ -785,10 +793,7 @@ function enterGodSeat(argv, commands, { cwd = process.cwd(), env: env2 = process
     const key = keyOf(cfg.worlds, legacyWorld());
     if (!key || !cfg.gods[key]) return argv;
   }
-  if (cmd === "register") {
-    registering = h;
-    return line2;
-  }
+  if (cmd === "register") return line2;
   const seats = Object.keys(cfg.gods);
   if (seats.length === 1 && cmd !== "help") sit(h, seats[0]);
   else if (seats.length > 1 && commands[cmd] && cmd !== "help") throw new Error(`Several god seats here: ${seats.join(", ")}. Say which: node eden-god.mjs ${say(seats[0])} ${cmd}`);
@@ -6964,7 +6969,7 @@ for (const [feature, verbs] of Object.entries(OFF_VERBS)) for (const verb of ver
 }
 for (const [name, fn] of Object.entries(COMMANDS)) COMMANDS[name] = (r = [], f = {}) => withBuildOptions(f, () => ["build", "group"].includes(name) ? withStateLock(() => fn(r, f)) : fn(r, f));
 var HELP = `eden-god ${SKILL_VERSION} \u2014 god mode for one Eden world. Read SKILL.md.
-home:   in a Souls home, several seats: <world> <command>; a legacy god folder moves in with: node eden.mjs import
+home:   in a Souls home, several seats: <world> <command> (or @<world> when a command has that name); a legacy god folder moves in with: node eden.mjs import
 locks:  doctor [--fix] [--local] [--json] (holders, stale locks; --fix breaks only stale ownership)
 trace:  trace [--build id] [--limit n] (the world's recent god requests: route, outcome, ms, no payloads; LOOP = the same refusal 3+ times in 2 min, also in build show)
 read:   verify-use <target> [--seat ref] [--from ref|x,z] [--uses enter,sit] \xB7 map \xB7 defs <words> \xB7 describe <ref> \xB7 where <x,z|ref> ([bounds] containment / [collider] hit) \xB7 reach <from> <to> \xB7 clear <x,z|ref> --size WxD \xB7 free WxD [--near ref] \xB7 look [--at ref|x,z] [--from s|n|e|w|above] [--dist m] [--span m] [--inside [--floor k]] \xB7 history \xB7 resolve \xB7 schema [--md]

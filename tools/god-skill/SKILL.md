@@ -14,7 +14,7 @@ version: if newer than this file's, fetch `SKILL.md` and `eden-god.mjs` again.
 
 In a folder with a Souls home (`.souls/`), `register` makes this world's god seat there: your state lives under
 `.souls/gods/<world>/`, your token in `.souls/credentials.json`, and you never read that file. With several seats, name
-the world first: `node eden-god.mjs <world> status`. Everything below works the same.
+the world first: `node eden-god.mjs <world> status` (`@<world>` if a command has that name). Everything below works the same.
 
 ```
 node eden-god.mjs register <world-url>       # the page's address without ?… or #…, copied from the browser

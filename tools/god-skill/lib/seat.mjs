@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { findHome, keyOf, openHome } from '../../world-launcher/soul/home.mjs';
 
-let seat = null, registering = null;   // seat: {home, key, dir} once this run sits in a home
+let seat = null, registering = null, registerAs = null;   // seat: {home, key, dir} once this run sits in a home
 export const godFile = (name) => (seat ? join(seat.dir, name) : name);
 export const seatDir = () => seat?.dir ?? null;
 export const seatSecrets = () => seat?.home.godSecrets(seat.key) ?? null;
@@ -22,7 +22,10 @@ const legacyWorld = () => { try { return JSON.parse(readFileSync(LEGACY, 'utf8')
 /** `register` makes its own seat, once its arguments are parsed. Call the answer if the world does not confirm: a typo leaves no seat. */
 export function seatForRegister(url) {
   if (!registering) return () => {};
-  const h = registering, before = h.config(), known = keyOf(before.worlds, url), held = known && before.gods[known], key = h.ensureGod(url);
+  const h = registering, before = h.config(), known = keyOf(before.worlds, url), held = known && before.gods[known];
+  // A seat never changes world: its token belongs to the world it was minted for.
+  if (registerAs !== null && known !== registerAs) throw new Error(`The seat ${registerAs} is for ${before.worlds[registerAs]?.url}, not ${url}. For another world: node eden-god.mjs register <world-url>`);
+  const key = h.ensureGod(url);
   sit(h, key);
   return held ? () => {} : () => { h.dropGod(key, { world: !known }); seat = null; delete process.env.EDEN_GOD_SEAT; };
 }
@@ -46,10 +49,11 @@ export function enterGodSeat(argv, commands, { cwd = process.cwd(), env = proces
     if (key && cfg.gods[key]) sit(h, key);
     return line;
   }
+  if (cmd === 'register') { registering = h; registerAs = asked; if (asked !== null) return line; }
   if (asked !== null) { sit(h, asked); return line; }
   // A legacy file here is this folder's god until `node eden.mjs import` moves it: a seat is never lost from view.
   if (existsSync(join(cwd, LEGACY))) { const key = keyOf(cfg.worlds, legacyWorld()); if (!key || !cfg.gods[key]) return argv; }
-  if (cmd === 'register') { registering = h; return line; }
+  if (cmd === 'register') return line;
   const seats = Object.keys(cfg.gods);
   if (seats.length === 1 && cmd !== 'help') sit(h, seats[0]);
   else if (seats.length > 1 && commands[cmd] && cmd !== 'help') throw new Error(`Several god seats here: ${seats.join(', ')}. Say which: node eden-god.mjs ${say(seats[0])} ${cmd}`);

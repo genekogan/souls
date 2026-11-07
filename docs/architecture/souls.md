@@ -52,7 +52,7 @@ collides. `list`, `default`, `adopt`, `doctor`, `export` and `import` manage the
 and reuses its token. Everything but `credentials.json` is safe to read or back up.
 
 A god is a second principal. `eden-god.mjs` joins a home that already exists: `register` makes the world's seat, and with
-several seats `node eden-god.mjs <world> <command>` picks one. Its working directory stays yours, because god commands take
+several seats `node eden-god.mjs <world> <command>` picks one (`@<world>` when a command has that name). Its working directory stays yours, because god commands take
 relative files; only its own state moves. A folder with no home keeps `.eden-god.json` as ever, and that file wins until
 `node eden.mjs import` moves it in. Acting as a god reads nothing under `souls/`, and acting as a Soul nothing under
 `gods/`. A seat also holds the look keeper's per-start localhost secret (`.eden-god.wire.json`, 0600).
